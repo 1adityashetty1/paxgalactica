@@ -1,0 +1,722 @@
+import { z } from 'zod';
+import { FactionStatsSchema, STAT_NAMES, statModifier, type FactionStats } from './checks.js';
+import { CommitmentSchema, commitmentsFor, type Commitment } from './arbitration.js';
+import {
+  AgentSchema,
+  isTreatyLive,
+  TreatySchema,
+  type Agent,
+  type Treaty,
+} from './diplomacy.js';
+import { DurationCategorySchema, FibScaleSchema } from './duration.js';
+import { buildAdjacency } from './graph.js';
+// trade.ts imports only TYPES from here, so this edge is one-directional at
+// runtime and there is no import cycle to trip over.
+import { routeEarnings } from './trade.js';
+
+/**
+ * An order is either a fleet movement — whose duration the reducer computes
+ * from the hyperlane graph — or a piece of estimated work, whose duration the
+ * model proposes and code clamps. The type IS the duration category for
+ * estimated work, so the two taxonomies can never drift apart.
+ */
+export const MOVEMENT_ORDER_TYPE = 'fleet_movement' as const;
+
+export const OrderTypeSchema = z.union([
+  z.literal(MOVEMENT_ORDER_TYPE),
+  DurationCategorySchema,
+]);
+export type OrderType = z.infer<typeof OrderTypeSchema>;
+
+export function isMovementType(t: OrderType): t is typeof MOVEMENT_ORDER_TYPE {
+  return t === MOVEMENT_ORDER_TYPE;
+}
+
+export const OnInterruptSchema = z.enum(['cancel', 'partial', 'persist']);
+export type OnInterrupt = z.infer<typeof OnInterruptSchema>;
+
+export const DispositionSchema = z.number().int().min(-100).max(100);
+
+/**
+ * Where a power stands on starting wars. Drives NPC behaviour and what an
+ * extraction pass will believe a faction agreed to: a `defensive` power does
+ * not sign on to a war of conquest because the conversation went well.
+ */
+export const WAR_ETHICS = [
+  'expansionist',
+  'defensive',
+  'opportunist',
+  'crusading',
+  'mercenary',
+] as const;
+export const WarEthicSchema = z.enum(WAR_ETHICS);
+export type WarEthic = z.infer<typeof WarEthicSchema>;
+
+export const WAR_ETHIC_MEANING: Record<WarEthic, string> = {
+  expansionist: 'takes territory because it is there; needs no provocation, only opportunity',
+  defensive: 'fights only when struck or when a border is genuinely threatened; will not start a war of conquest',
+  opportunist: 'attacks the weak and the distracted, avoids fair fights, switches sides without embarrassment',
+  crusading: 'fights for legitimacy and grievance; will attack at a disadvantage if the cause demands it',
+  mercenary: 'fights for payment; war is a service sold, and someone else’s enemy is negotiable',
+};
+
+/** Where a power stands on commerce. Also sets its baseline income. */
+export const TRADE_ETHICS = [
+  'free_trade',
+  'monopolist',
+  'extortionist',
+  'autarkic',
+  'smuggler',
+] as const;
+export const TradeEthicSchema = z.enum(TRADE_ETHICS);
+export type TradeEthic = z.infer<typeof TradeEthicSchema>;
+
+export const TRADE_ETHIC_MEANING: Record<TradeEthic, string> = {
+  free_trade: 'open lanes enrich everyone; earns more the more of the galaxy is open, including lanes it has no stake in',
+  monopolist: 'trade is good when controlled; secures exclusive rights and punishes competitors',
+  extortionist: 'commerce is something that passes through your space and owes you a toll for the privilege',
+  autarkic: 'dependence is weakness; earns more from its own worlds and cannot be strangled by a blockade, because it was never on the lanes',
+  smuggler: 'the profitable cargo is the illegal one; runs blockades others cannot, and raids the shipping others depend on',
+};
+
+/** Prosperity multiplier applied to system income. */
+/**
+ * Multiplier on TERRITORIAL income only.
+ *
+ * Deliberately flatter than it used to be, because an ethic's real expression
+ * now lives in `trade.ts` — a toll, a raid, a blockade run, an openness bonus.
+ * When this multiplier was the entire mechanic, `extortionist` sat at 1.0 and
+ * the Hutts' defining trait did literally nothing. The spread here is now a
+ * thumb on the scale, not the whole of it.
+ */
+export const TRADE_INCOME_MULTIPLIER: Record<TradeEthic, number> = {
+  free_trade: 1.1,
+  monopolist: 1.05,
+  extortionist: 1.0,
+  autarkic: 1.15, // pays its own way at home, having renounced the network
+  smuggler: 1.05,
+};
+
+/**
+ * What a free trader earns on top of its route income for a galaxy that is
+ * open, at full network openness. Meridian profits from *everyone's* peace,
+ * which gives it a mechanical reason to broker other powers' ceasefires.
+ */
+export const FREE_TRADE_OPENNESS_BONUS = 0.25;
+
+export const FactionSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  /** ANSI 256 colour index used for every glyph this faction controls. */
+  displayColor: z.number().int().min(0).max(255),
+  /** factionId -> how this faction feels about them. Self-entry is ignored. */
+  disposition: z.record(z.string(), DispositionSchema),
+  /**
+   * NOTE: there is no `fleetStrength` field. A faction's navy IS its ships,
+   * summed across the systems they sit in plus anything in transit — see
+   * `fleetStrengthOf`. Storing a second global number alongside per-system
+   * ships gave two navies that never saw each other: one that fought and one
+   * that collected income.
+   */
+  credits: z.number().int().min(0),
+  doctrine: z.string(),
+  /** D&D-style capabilities; every action resolves against one of these. */
+  stats: FactionStatsSchema,
+  /**
+   * How this power SOUNDS: register, dialect, verbal habits. Fed verbatim into
+   * the diplomacy persona, because five factions that argue in the same voice
+   * are one faction wearing five colours.
+   */
+  voice: z.string(),
+  warEthic: WarEthicSchema,
+  tradeEthic: TradeEthicSchema,
+  /** Things this power will not do, whatever the incentive. */
+  redLines: z.array(z.string()).default([]),
+  /**
+   * Things this power's own institutions DEMAND of its leader.
+   *
+   * Red lines stop a faction acting out of character; compulsions stop it
+   * failing to act in character. An Iron Vigil leader who sits passive while a
+   * rebel holds Imperial ground is not playing Iron Vigil — the fleet
+   * commanders have views, and this is where they live.
+   */
+  compulsions: z.array(z.string()).default([]),
+  /**
+   * How far the leader has strayed from doctrine, 0–100. Rises when orders are
+   * refused or compulsions ignored; high dissent is a losing position.
+   */
+  dissent: z.number().int().min(0).max(100).default(0),
+  /** Work it reaches for by instinct, biasing what NPCs choose to build. */
+  buildBias: z.array(DurationCategorySchema).default([]),
+});
+export type Faction = z.infer<typeof FactionSchema>;
+
+export const SystemSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  sector: z.string().min(1),
+  coords: z.object({ x: z.number(), y: z.number() }),
+  /** null means unaligned/independent, not "unknown". */
+  controllerFactionId: z.string().nullable(),
+  garrison: z.number().int().min(0),
+  /**
+   * What the garrison regrows to. Ground forces are raised locally and cost
+   * neither fleet nor treasury, so a captured world slowly re-arms itself —
+   * which is what stops conquest being permanently cheap.
+   */
+  garrisonMax: z.number().int().min(0).default(0),
+  strategicValue: z.number().int().min(0).max(10),
+  hyperlaneEdges: z.array(z.string()),
+  /**
+   * Ships physically present, per faction.
+   *
+   * Separate from `garrison` (which is dug-in ground and orbital defence) and
+   * from a faction's global `fleetStrength`. Presence here is what makes a
+   * system contested and what splits its income: a rival parked in orbit is
+   * taking a cut whether or not anyone has fired.
+   */
+  ships: z.record(z.string(), z.number().int().min(0)).default({}),
+});
+export type StarSystem = z.infer<typeof SystemSchema>;
+
+export const PendingOrderSchema = z.object({
+  id: z.string().min(1),
+  factionId: z.string().min(1),
+  type: OrderTypeSchema,
+  originId: z.string().min(1),
+  targetId: z.string().min(1),
+  durationTurns: z.number().int().min(1),
+  progress: z.number().int().min(0),
+  interruptible: z.boolean(),
+  onInterrupt: OnInterruptSchema,
+  /** Which factions can observe this order. Drives NPC reaction context. */
+  visibility: z.array(z.string()),
+  /** Free text shown in the orders panel. */
+  label: z.string().default(''),
+  /** Why the model chose this duration. Empty for movement (computed). */
+  durationRationale: z.string().default(''),
+  /** Path for movement orders, so the map can draw the fleet in transit. */
+  path: z.array(z.string()).default([]),
+  /**
+   * Ships committed to a movement order, in transit and counted toward the
+   * owner's fleet but present in no system. Zero for non-movement work.
+   */
+  force: z.number().int().min(0).default(0),
+});
+export type PendingOrder = z.infer<typeof PendingOrderSchema>;
+
+export const EventLogEntrySchema = z.object({
+  turn: z.number().int().min(0),
+  kind: z.enum(['narrative', 'system', 'order', 'diplomacy', 'rejection', 'clamp']),
+  factionId: z.string().nullable().default(null),
+  text: z.string(),
+});
+export type EventLogEntry = z.infer<typeof EventLogEntrySchema>;
+
+export const WorldStateSchema = z.object({
+  factions: z.array(FactionSchema).min(1),
+  systems: z.array(SystemSchema).min(1),
+  pendingOrders: z.array(PendingOrderSchema),
+  /** Standing agreements with mechanical force, applied every tick. */
+  treaties: z.array(TreatySchema).default([]),
+  /** Durable arrangements with no dedicated mechanic — see `arbitration.ts`. */
+  commitments: z.array(CommitmentSchema).default([]),
+  /** Covert operatives in place, applied every tick. */
+  agents: z.array(AgentSchema).default([]),
+  playerFactionId: z.string().min(1),
+  /** Abstract unit. There is no calendar in this game, deliberately. */
+  turn: z.number().int().min(0),
+  eventLog: z.array(EventLogEntrySchema),
+});
+export type WorldState = z.infer<typeof WorldStateSchema>;
+
+/* ------------------------------------------------------------------ */
+/* Lookup helpers. Kept here so the reducer and UI agree on semantics.  */
+/* ------------------------------------------------------------------ */
+
+export function getFaction(s: WorldState, id: string): Faction | undefined {
+  return s.factions.find((f) => f.id === id);
+}
+
+export function getSystem(s: WorldState, id: string): StarSystem | undefined {
+  return s.systems.find((x) => x.id === id);
+}
+
+export function getOrder(s: WorldState, id: string): PendingOrder | undefined {
+  return s.pendingOrders.find((o) => o.id === id);
+}
+
+export function systemsOf(s: WorldState, factionId: string): StarSystem[] {
+  return s.systems.filter((x) => x.controllerFactionId === factionId);
+}
+
+/** Disposition of `from` toward `to`; 0 when unrecorded, 100 toward self. */
+export function dispositionBetween(
+  s: WorldState,
+  from: string,
+  to: string,
+): number {
+  if (from === to) return 100;
+  return getFaction(s, from)?.disposition[to] ?? 0;
+}
+
+/** Orders `factionId` is allowed to see — its own, plus anything visible. */
+export function ordersVisibleTo(s: WorldState, factionId: string): PendingOrder[] {
+  // Systems where this faction has a live intel agent. An operative in place is
+  // the whole point of surveillance: it turns a hidden project into a visible
+  // one, which is what makes long builds worth hiding AND worth spying on.
+  const watched = new Set(
+    (s.agents ?? [])
+      .filter(
+        (a) => a.ownerFactionId === factionId && !a.exposed && a.effect.kind === 'intel',
+      )
+      .map((a) => a.systemId),
+  );
+
+  return s.pendingOrders.filter(
+    (o) =>
+      o.factionId === factionId ||
+      o.visibility.includes(factionId) ||
+      watched.has(o.targetId) ||
+      watched.has(o.originId),
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Fleets                                                              */
+/* ------------------------------------------------------------------ */
+
+/** Ships a faction has sitting in a given system. */
+export function shipsAt(state: WorldState, factionId: string, systemId: string): number {
+  return getSystem(state, systemId)?.ships[factionId] ?? 0;
+}
+
+/** Ships a faction has in transit, committed to movement orders. */
+export function shipsInTransit(state: WorldState, factionId: string): number {
+  return state.pendingOrders
+    .filter((o) => o.factionId === factionId && isMovementType(o.type))
+    .reduce((sum, o) => sum + o.force, 0);
+}
+
+/**
+ * A faction's whole navy: every ship in every system, plus everything under
+ * way. This is derived, never stored — there is exactly one place ships live,
+ * so combat, income and upkeep cannot disagree about how many there are.
+ */
+export function fleetStrengthOf(state: WorldState, factionId: string): number {
+  const inSystems = state.systems.reduce((sum, s) => sum + (s.ships[factionId] ?? 0), 0);
+  return inSystems + shipsInTransit(state, factionId);
+}
+
+/**
+ * Where a faction could pull ships from, richest system first. Used when an op
+ * adds or removes fleet without naming a system; deterministic so replay holds.
+ */
+export function fleetBases(state: WorldState, factionId: string): StarSystem[] {
+  return state.systems
+    .filter((s) => s.controllerFactionId === factionId || (s.ships[factionId] ?? 0) > 0)
+    .sort(
+      (a, b) =>
+        b.strategicValue - a.strategicValue ||
+        (b.ships[factionId] ?? 0) - (a.ships[factionId] ?? 0) ||
+        a.id.localeCompare(b.id),
+    );
+}
+
+/* ------------------------------------------------------------------ */
+/* Economy                                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Credits a single system yields per turn before the trade-ethic modifier.
+ *
+ * Was 12, when territory was the entire economy. Trade routes now carry the
+ * difference (see `trade.ts`), so this was cut rather than kept and added to:
+ * inflating the galaxy's income would have made `SHIP_COST` meaningless. About
+ * a third of what a power earns is now route-borne, which is enough that
+ * losing a lane hurts and not so much that one blockade ends a campaign.
+ */
+export const INCOME_PER_STRATEGIC_POINT = 7;
+/** Credits each point of fleet strength costs to keep in being, per turn. */
+export const UPKEEP_PER_FLEET_POINT = 4;
+
+/**
+ * What one hull costs to commission.
+ *
+ * Priced against the economy it is paid from: net incomes run 87–300 a turn,
+ * so this buys between one and five ships per turn from revenue. Expanding a
+ * navy is therefore a multi-turn programme competing with everything else,
+ * rather than a sentence in an order.
+ *
+ * Enforced in the reducer, never in a prompt. "Build a thousand ships" is
+ * exactly the kind of instruction a model can be argued into, which is why the
+ * arithmetic lives here instead.
+ */
+export const SHIP_COST = 60;
+
+export interface Ledger {
+  gross: number;
+  upkeep: number;
+  net: number;
+  systems: number;
+  /** Flat treaty transfers: positive receives, negative pays. */
+  treatyFlow: number;
+  /** Credits denied by hostile agents in place. */
+  espionageLoss: number;
+  /** Territory: what the systems themselves pay. */
+  territory: number;
+  /** Trade: what the lane network pays, after tolls and raids. */
+  routes: number;
+  /** Of `routes`, what was taken from others as transit tolls. */
+  tolls: number;
+  /** Of `routes`, what was taken from others by commerce raiding. */
+  raided: number;
+}
+
+/** What a single system pays, and to whom, before faction-level modifiers. */
+export interface SystemIncome {
+  systemId: string;
+  base: number;
+  /** factionId -> credits from this system this turn. */
+  shares: Record<string, number>;
+  /** More than one faction has ships here, or a rival contests the owner. */
+  contested: boolean;
+  /** Present in the split only because a treaty put them there. */
+  byTreaty: string[];
+}
+
+const shipsPresent = (system: StarSystem): [string, number][] =>
+  Object.entries(system.ships ?? {}).filter(([, n]) => n > 0);
+
+/**
+ * Treaties that make a fleet a GUEST rather than an intruder.
+ *
+ * Deliberately narrow: only pacts that actually concern presence or joint
+ * defence. A `trade_accord` is about lanes and blockade immunity, and a
+ * `non_aggression` pact is only a promise not to attack — neither is
+ * permission to sit in someone's orbit, so a fleet there is still leverage and
+ * still contests.
+ */
+const GUEST_TREATIES = ['basing_rights', 'mutual_defense'] as const;
+
+/**
+ * Whether `visitor`'s ships at a world held by `holder` are there by invitation.
+ *
+ * Without this, income was blind to diplomacy: an ally you had granted basing
+ * rights skimmed your worlds exactly as an invader would, which made the
+ * treaty actively harmful to sign. Worse, `mutual_defense` DISPATCHES an
+ * ally's hulls into your system to defend it — so honouring a pact, taking
+ * losses for you, and saving your world ended with your rescuer contesting
+ * your income. Being defended must not be a tax.
+ */
+export function isGuestOf(
+  state: WorldState,
+  visitor: string,
+  holder: string | null,
+): boolean {
+  if (holder === null || visitor === holder) return false;
+  return (state.treaties ?? []).some(
+    (t) =>
+      isTreatyLive(t, state.turn) &&
+      (GUEST_TREATIES as readonly string[]).includes(t.type) &&
+      t.parties.includes(visitor) &&
+      t.parties.includes(holder),
+  );
+}
+
+/**
+ * How one system's income divides.
+ *
+ * Three cases, in the order they are resolved:
+ *
+ *  - **Wholly owned** — the controller has the system and no rival has ships in
+ *    it. The controller takes everything.
+ *  - **Contested** — rivals have ships present. The take splits by armed
+ *    presence, with the controller keeping a holder's edge, because occupying
+ *    a world you do not administer yields less than administering it.
+ *  - **Neutral** — nobody controls it, so nobody is owed anything by default.
+ *    Income flows only to factions a treaty names, which is what makes an
+ *    unaligned world worth negotiating over rather than just invading.
+ */
+export function systemIncome(state: WorldState, system: StarSystem): SystemIncome {
+  const base = system.strategicValue * INCOME_PER_STRATEGIC_POINT;
+  const shares: Record<string, number> = {};
+  const byTreaty: string[] = [];
+
+  // Treaty claims are honoured first and come off the top.
+  let remaining = 1;
+  for (const treaty of state.treaties ?? []) {
+    if (!isTreatyLive(treaty, state.turn)) continue;
+    for (const claim of treaty.terms.incomeShares) {
+      if (claim.systemId !== system.id || claim.share <= 0) continue;
+      const take = Math.min(claim.share, remaining);
+      if (take <= 0) continue;
+      shares[claim.factionId] = (shares[claim.factionId] ?? 0) + base * take;
+      if (!byTreaty.includes(claim.factionId)) byTreaty.push(claim.factionId);
+      remaining -= take;
+    }
+  }
+
+  const present = shipsPresent(system);
+  const controller = system.controllerFactionId;
+  // Invited fleets neither contest the world nor take a share of it. They are
+  // guests: the world is still wholly its holder's, and the guest earns
+  // nothing from it.
+  const rivals = present.filter(
+    ([id]) => id !== controller && !isGuestOf(state, id, controller),
+  );
+  const contested = rivals.length > 0 && (controller !== null || present.length > 1);
+
+  if (remaining > 0) {
+    if (controller && !contested) {
+      shares[controller] = (shares[controller] ?? 0) + base * remaining;
+    } else if (controller && contested) {
+      // The holder administers; rivals merely extract. A 2x weight keeps a
+      // blockade painful without making occupation strictly better than owning.
+      const HOLDER_EDGE = 2;
+      const weights: [string, number][] = [
+        // At least 1, so an owner with no ships in orbit still administers.
+        [controller, Math.max(1, system.ships?.[controller] ?? 0) * HOLDER_EDGE],
+        ...rivals,
+      ];
+      const total = weights.reduce((sum, [, w]) => sum + w, 0);
+      if (total > 0) {
+        for (const [id, w] of weights) {
+          shares[id] = (shares[id] ?? 0) + base * remaining * (w / total);
+        }
+      }
+    } else if (!controller && rivals.length > 0) {
+      // Unaligned and occupied: whoever is present splits what they can take.
+      const total = rivals.reduce((sum, [, n]) => sum + n, 0);
+      for (const [id, n] of rivals) {
+        shares[id] = (shares[id] ?? 0) + base * remaining * (n / total);
+      }
+    }
+    // Unaligned and unoccupied with no treaty: the remainder simply is not
+    // collected by anyone. Neutral worlds are not free money.
+  }
+
+  for (const id of Object.keys(shares)) shares[id] = Math.round(shares[id]!);
+  return { systemId: system.id, base, shares, contested, byTreaty };
+}
+
+/**
+ * What a faction earns and spends this turn. Pure and deterministic — it is
+ * applied during `tickTurn`, so replay reproduces every credit.
+ */
+export function ledgerFor(state: WorldState, factionId: string): Ledger {
+  const faction = getFaction(state, factionId);
+  if (!faction) {
+    return {
+      gross: 0, upkeep: 0, net: 0, systems: 0, treatyFlow: 0,
+      espionageLoss: 0, territory: 0, routes: 0, tolls: 0, raided: 0,
+    };
+  }
+
+  let base = 0;
+  let counted = 0;
+  for (const system of state.systems) {
+    const income = systemIncome(state, system);
+    const share = income.shares[factionId] ?? 0;
+    if (share > 0) {
+      base += share;
+      counted += 1;
+    }
+  }
+
+  const territory = Math.round(base * TRADE_INCOME_MULTIPLIER[faction.tradeEthic]);
+
+  // Trade is resolved for the whole galaxy at once, not per faction: tolls and
+  // raids move credits BETWEEN powers, so one faction's take cannot be
+  // computed without settling everyone else's claim on the same lane.
+  const earnings = routeEarnings(state);
+  let routes = earnings.shares[factionId] ?? 0;
+  if (faction.tradeEthic === 'free_trade') {
+    routes = Math.round(routes * (1 + FREE_TRADE_OPENNESS_BONUS * earnings.openness));
+  }
+
+  const gross = territory + routes;
+  const upkeep = fleetStrengthOf(state, factionId) * UPKEEP_PER_FLEET_POINT;
+
+  let treatyFlow = 0;
+  for (const treaty of state.treaties ?? []) {
+    if (!isTreatyLive(treaty, state.turn)) continue;
+    treatyFlow += treaty.terms.incomePerTurn[factionId] ?? 0;
+  }
+
+  // Hostile agents sitting on your systems skim before you ever see it.
+  let espionageLoss = 0;
+  for (const agent of state.agents ?? []) {
+    if (agent.exposed || agent.ownerFactionId === factionId) continue;
+    if (agent.effect.kind !== 'income_penalty') continue;
+    const host = getSystem(state, agent.systemId);
+    if (host?.controllerFactionId === factionId) espionageLoss += agent.effect.perTurn;
+  }
+
+  return {
+    gross,
+    upkeep,
+    net: gross - upkeep + treatyFlow - espionageLoss,
+    systems: counted,
+    treatyFlow,
+    espionageLoss,
+    territory,
+    routes,
+    tolls: earnings.tolls[factionId] ?? 0,
+    raided: earnings.raided[factionId] ?? 0,
+  };
+}
+
+/**
+ * How many hulls one power can talk out of another's service, per attempt.
+ *
+ * A stat contest rather than a constant: the suborner's `guile` against the
+ * target's `resolve`. One hull is the floor when you have any edge at all, and
+ * a point of advantage buys one more. A power with high resolve simply cannot
+ * be suborned — the Iron Vigil's crews do not defect, which is what resolve 17
+ * ought to mean.
+ *
+ * Playtesting produced a real defection (a Hutt corvette, on a natural 20) and
+ * that was a good outcome. The problem was that nothing capped it: the same op
+ * shape would move thirty hulls across the galaxy with no roll and no
+ * presence. The magnitude is now arithmetic here, where a prompt cannot argue
+ * with it.
+ */
+export function subornLimit(state: WorldState, actorId: string, targetId: string): number {
+  if (actorId === targetId) return 0;
+  const edge =
+    statModifier(effectiveStats(state, actorId).guile) -
+    statModifier(effectiveStats(state, targetId).resolve);
+  return Math.max(0, 1 + edge);
+}
+
+/**
+ * Whether a faction is close enough to suborn crews at a system.
+ *
+ * Three ways in, and the second is the important one:
+ *
+ * - ships **in** the system;
+ * - ships **one jump out** — boats go across, quietly or under a show of
+ *   force, and nobody has to fight;
+ * - an unexposed **agent** already in place.
+ *
+ * Requiring ships *in* the system meant you had to win the orbital battle
+ * before you could talk to anyone — so suborning was something you did to a
+ * power you had already beaten, which is the same inversion that made commerce
+ * raiding useless to the weak. A fleet should be able to force a defection
+ * precisely because it does NOT want to fight; the price is paid in standing,
+ * not in hulls.
+ */
+export function canSubornAt(state: WorldState, factionId: string, systemId: string): boolean {
+  const system = getSystem(state, systemId);
+  if (!system) return false;
+  if ((system.ships[factionId] ?? 0) > 0) return true;
+
+  const adjacent = buildAdjacency(state.systems).get(systemId) ?? new Set<string>();
+  for (const id of adjacent) {
+    if ((getSystem(state, id)?.ships[factionId] ?? 0) > 0) return true;
+  }
+
+  return (state.agents ?? []).some(
+    (a) => a.ownerFactionId === factionId && a.systemId === systemId && !a.exposed,
+  );
+}
+
+/** Live commitments binding a faction, for the UI and for prompts. */
+export function commitmentsOf(state: WorldState, factionId: string): Commitment[] {
+  return commitmentsFor(state.commitments ?? [], factionId);
+}
+
+/** Stat penalty from a leader's own institutions losing faith in them. */
+export const DISSENT_PER_PENALTY_POINT = 25;
+
+/**
+ * Dissent added each time your own faction refuses an order.
+ *
+ * Not a punishment for being refused — the institutions got their way. It
+ * measures how far the leader has strayed from the power they lead: repeatedly
+ * trying to make a faction act against its own character is what erodes
+ * confidence in the leadership, whether or not the attempt succeeds. Against a
+ * decay of 2 a turn, one refusal fades in four turns and a run of them does
+ * not.
+ */
+export const REFUSAL_DISSENT = 8;
+
+export function dissentPenalty(dissent: number): number {
+  return Math.floor(dissent / DISSENT_PER_PENALTY_POINT);
+}
+
+/**
+ * Effective stats after covert interference AND internal dissent.
+ *
+ * A `stat_debuff` agent makes its target measurably worse at something. So does
+ * a leader their own commanders no longer trust: dissent subtracts from EVERY
+ * stat, because an order carried out reluctantly is carried out badly. Checks
+ * read from here rather than straight off the faction, so refusing to govern in
+ * character has a running cost rather than being a free "no".
+ */
+export function effectiveStats(state: WorldState, factionId: string): FactionStats {
+  const faction = getFaction(state, factionId);
+  const base: FactionStats = faction
+    ? { ...faction.stats }
+    : { might: 10, guile: 10, industry: 10, influence: 10, resolve: 10 };
+
+  const penalty = dissentPenalty(faction?.dissent ?? 0);
+  if (penalty > 0) {
+    for (const stat of STAT_NAMES) base[stat] = Math.max(1, base[stat] - penalty);
+  }
+
+  for (const agent of state.agents ?? []) {
+    if (agent.exposed || agent.ownerFactionId === factionId) continue;
+    if (agent.effect.kind !== 'stat_debuff') continue;
+    const host = getSystem(state, agent.systemId);
+    if (host?.controllerFactionId !== factionId) continue;
+    base[agent.effect.stat] = Math.max(1, base[agent.effect.stat] - agent.effect.magnitude);
+  }
+  return base;
+}
+
+/** Live treaties a faction is party to. */
+export function treatiesFor(state: WorldState, factionId: string): Treaty[] {
+  return (state.treaties ?? []).filter(
+    (t) => t.parties.includes(factionId) && isTreatyLive(t, state.turn),
+  );
+}
+
+/** Agents a faction can see: its own, plus any hostile agent it has exposed. */
+export function agentsVisibleTo(state: WorldState, factionId: string): Agent[] {
+  return (state.agents ?? []).filter((a) => a.ownerFactionId === factionId || a.exposed);
+}
+
+/** Factions this one is at war with — no live non-aggression or ceasefire. */
+export function warsFor(state: WorldState, factionId: string): string[] {
+  const atPeace = new Set<string>();
+  for (const treaty of treatiesFor(state, factionId)) {
+    if (treaty.type === 'non_aggression' || treaty.type === 'ceasefire' || treaty.type === 'mutual_defense') {
+      for (const p of treaty.parties) if (p !== factionId) atPeace.add(p);
+    }
+  }
+  return state.factions
+    .filter(
+      (f) =>
+        f.id !== factionId &&
+        !atPeace.has(f.id) &&
+        dispositionBetween(state, f.id, factionId) <= -60,
+    )
+    .map((f) => f.id);
+}
+
+/**
+ * A system is contested when someone other than its controller has a fleet
+ * movement inbound that is already under way.
+ */
+export function isContested(s: WorldState, systemId: string): boolean {
+  const sys = getSystem(s, systemId);
+  if (!sys) return false;
+  return s.pendingOrders.some(
+    (o) =>
+      isMovementType(o.type) &&
+      o.targetId === systemId &&
+      o.factionId !== sys.controllerFactionId,
+  );
+}

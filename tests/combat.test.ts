@@ -1,0 +1,699 @@
+import { describe, expect, it } from 'vitest';
+import { applyOps, tickTurn, GARRISON_REGROWTH, DISSENT_DECAY } from '../src/domain/reducer.js';
+import { createSeedState } from '../src/seed/scenario.js';
+import { STAT_NAMES } from '../src/domain/checks.js';
+import {
+  effectiveStats,
+  fleetStrengthOf,
+  shipsInTransit,
+  type WorldState,
+} from '../src/domain/state.js';
+
+const fresh = (): WorldState => createSeedState('freeworlds');
+const sys = (s: WorldState, id: string) => s.systems.find((x) => x.id === id)!;
+const shipsOf = (s: WorldState, sysId: string, f: string) => sys(s, sysId).ships[f] ?? 0;
+
+/**
+ * Send `force` from ark-3 to slu-6 and tick until it arrives.
+ *
+ * That route is TWO jumps (ark-3 → ark-4 → slu-6), so a single tick lands
+ * nothing — the fleet is still in transit.
+ */
+function attack(setup: (s: WorldState) => void, force = 8) {
+  const state = fresh();
+  sys(state, 'ark-3').ships['freeworlds'] = force;
+  setup(state);
+  const issued = applyOps(state, [
+    {
+      op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
+      originId: 'ark-3', targetId: 'slu-6', force,
+    },
+  ]);
+  expect(issued.rejections).toHaveLength(0);
+
+  let result = tickTurn(issued.state);
+  while (result.state.pendingOrders.some((o) => o.id === 'ord-0-0')) {
+    result = tickTurn(result.state);
+  }
+  return result;
+}
+
+describe('the fleet is the ships', () => {
+  it('derives fleet strength from what is on the board', () => {
+    const state = fresh();
+    const counted = state.systems.reduce((n, s) => n + (s.ships['freeworlds'] ?? 0), 0);
+    expect(fleetStrengthOf(state, 'freeworlds')).toBe(counted);
+    expect(counted).toBeGreaterThan(0);
+  });
+
+  it('keeps ships in transit inside the total, so a fleet cannot vanish en route', () => {
+    const before = fleetStrengthOf(fresh(), 'freeworlds');
+    const moving = applyOps(fresh(), [
+      {
+        op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
+        originId: 'ark-1', targetId: 'tio-3', force: 5,
+      },
+    ]).state;
+    expect(shipsInTransit(moving, 'freeworlds')).toBe(5);
+    expect(fleetStrengthOf(moving, 'freeworlds')).toBe(before);
+    // ...and they have physically left the origin.
+    expect(shipsOf(moving, 'ark-1', 'freeworlds')).toBe(
+      shipsOf(fresh(), 'ark-1', 'freeworlds') - 5,
+    );
+  });
+
+  it('commits only the stated force, not the whole navy', () => {
+    const moving = applyOps(fresh(), [
+      {
+        op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
+        originId: 'ark-1', targetId: 'ark-4', force: 3,
+      },
+    ]).state;
+    expect(moving.pendingOrders[0]!.force).toBe(3);
+  });
+
+  it('clamps a request to what is actually at the origin, and says so', () => {
+    const res = applyOps(fresh(), [
+      {
+        op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
+        originId: 'ark-1', targetId: 'ark-4', force: 9999,
+      },
+    ]);
+    expect(res.notes.join(' ')).toMatch(/only \d+ were there/);
+    expect(res.state.pendingOrders[0]!.force).toBe(shipsOf(fresh(), 'ark-1', 'freeworlds'));
+  });
+
+  it('refuses a movement from a system with no ships', () => {
+    const res = applyOps(fresh(), [
+      {
+        op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
+        originId: 'slu-3', targetId: 'slu-6', force: 4,
+      },
+    ]);
+    expect(res.rejections.map((r) => r.code)).toEqual(['illegal_value']);
+  });
+
+  it('returns the ships when a movement is cancelled or interrupted', () => {
+    const before = fleetStrengthOf(fresh(), 'freeworlds');
+    const moving = applyOps(fresh(), [
+      {
+        op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
+        originId: 'ark-1', targetId: 'tio-3', force: 6, onInterrupt: 'partial',
+      },
+    ]).state;
+
+    const cancelled = applyOps(moving, [{ op: 'cancel_order', orderId: 'ord-0-0' }]).state;
+    expect(fleetStrengthOf(cancelled, 'freeworlds')).toBe(before);
+
+    const halted = applyOps(moving, [{ op: 'interrupt_order', orderId: 'ord-0-0' }]).state;
+    expect(fleetStrengthOf(halted, 'freeworlds')).toBe(before);
+  });
+});
+
+describe('phase 1 — the fleet battle', () => {
+  it('lands unopposed on a system with nobody in orbit AND nobody on the ground', () => {
+    const res = attack((s) => {
+      const t = sys(s, 'slu-6');
+      delete t.ships['freeworlds'];
+      // Unaligned is not the same as undefended: the garrison has to be gone
+      // too, or this is a ground assault.
+      t.garrison = 0;
+      t.garrisonMax = 0;
+    }, 6);
+    expect(res.state.systems.find((x) => x.id === 'slu-6')!.controllerFactionId).toBe('freeworlds');
+    expect(shipsOf(res.state, 'slu-6', 'freeworlds')).toBe(6);
+    expect(res.notes.join(' ')).toMatch(/unopposed/);
+  });
+
+  it('is fought before the ground: a defending fleet blocks any landing', () => {
+    // A large defending fleet and a token garrison. The garrison must survive
+    // untouched, because ground forces are never reached while ships hold.
+    const res = attack((s) => {
+      const t = sys(s, 'slu-6');
+      t.controllerFactionId = 'vigil';
+      t.ships['vigil'] = 40;
+      t.garrison = 1;
+      t.garrisonMax = 1;
+    }, 4);
+    const target = res.state.systems.find((x) => x.id === 'slu-6')!;
+    expect(target.controllerFactionId).toBe('vigil');
+    expect(target.garrison).toBe(1);
+    expect(res.notes.join(' ')).toMatch(/driven off|still holds the orbitals/);
+  });
+
+  it('lets an outmatched defender retreat rather than be annihilated', () => {
+    const res = attack((s) => {
+      const t = sys(s, 'slu-6');
+      t.controllerFactionId = 'vigil';
+      t.ships['vigil'] = 2;
+      t.garrison = 1;
+      t.garrisonMax = 1;
+    }, 40);
+    const text = res.notes.join(' ');
+    expect(text).toMatch(/breaks off|scattered/);
+    // Survivors fall back to another Vigil world rather than evaporating.
+    expect(res.state.systems.find((x) => x.id === 'slu-6')!.ships['vigil']).toBeUndefined();
+  });
+
+  it('costs a retreating force 10–35% of its strength', () => {
+    const before = 20;
+    const res = attack((s) => {
+      const t = sys(s, 'slu-6');
+      t.controllerFactionId = 'vigil';
+      t.ships['vigil'] = before;
+      t.garrison = 1;
+      t.garrisonMax = 1;
+    }, 200);
+    const escaped = res.state.systems
+      .filter((x) => x.id !== 'slu-6')
+      .reduce((n, x) => n + (x.ships['vigil'] ?? 0), 0);
+    const baseline = fresh().systems.reduce((n, x) => n + (x.ships['vigil'] ?? 0), 0);
+    const survivors = escaped - baseline;
+    expect(survivors).toBeGreaterThanOrEqual(Math.ceil(before * 0.65));
+    expect(survivors).toBeLessThanOrEqual(Math.ceil(before * 0.9));
+  });
+
+  it('lets an outmatched attacker withdraw one jump back down its path', () => {
+    const res = attack((s) => {
+      const t = sys(s, 'slu-6');
+      t.controllerFactionId = 'vigil';
+      t.ships['vigil'] = 60;
+    }, 3);
+    expect(res.notes.join(' ')).toMatch(/driven off/);
+    // The route is ark-3 → ark-4 → slu-6, so survivors fall back to ark-4 —
+    // the hop they came from, not all the way home.
+    expect(shipsOf(res.state, 'ark-4', 'freeworlds')).toBeGreaterThan(
+      shipsOf(fresh(), 'ark-4', 'freeworlds'),
+    );
+  });
+});
+
+describe('phase 2 — the ground assault', () => {
+  it('takes the world when the landing beats the garrison', () => {
+    const res = attack((s) => {
+      const t = sys(s, 'slu-6');
+      t.controllerFactionId = 'vigil';
+      t.garrison = 3;
+      t.garrisonMax = 3;
+      delete t.ships['vigil'];
+    }, 30);
+    const target = res.state.systems.find((x) => x.id === 'slu-6')!;
+    expect(target.controllerFactionId).toBe('freeworlds');
+    expect(res.notes.join(' ')).toMatch(/storms/);
+    // The victor's surviving ships are in orbit.
+    expect(target.ships['freeworlds']).toBeGreaterThan(0);
+  });
+
+  it('is thrown back by a garrison too strong to land against', () => {
+    const res = attack((s) => {
+      const t = sys(s, 'slu-6');
+      t.controllerFactionId = 'vigil';
+      t.garrison = 90;
+      t.garrisonMax = 90;
+      delete t.ships['vigil'];
+    }, 3);
+    const target = res.state.systems.find((x) => x.id === 'slu-6')!;
+    expect(target.controllerFactionId).toBe('vigil');
+    expect(res.notes.join(' ')).toMatch(/thrown back/);
+  });
+
+  it('never lets a garrison retreat — it fights where it stands', () => {
+    const res = attack((s) => {
+      const t = sys(s, 'slu-6');
+      t.controllerFactionId = 'vigil';
+      t.garrison = 90;
+      t.garrisonMax = 90;
+      delete t.ships['vigil'];
+    }, 3);
+    const target = res.state.systems.find((x) => x.id === 'slu-6')!;
+    // Damaged, but still in place and still Vigil's.
+    expect(target.garrison).toBeGreaterThan(0);
+    expect(target.garrison).toBeLessThan(90);
+  });
+});
+
+describe('garrisons regrow', () => {
+  it('rebuilds toward the ceiling, free of fleet and treasury', () => {
+    const state = fresh();
+    const target = sys(state, 'ark-1');
+    target.garrison = 2;
+    const creditsBefore = state.factions.find((f) => f.id === 'freeworlds')!.credits;
+    const fleetBefore = fleetStrengthOf(state, 'freeworlds');
+
+    const after = tickTurn(state).state;
+    const grown = after.systems.find((s) => s.id === 'ark-1')!;
+    expect(grown.garrison).toBe(2 + GARRISON_REGROWTH);
+    // Ground forces are raised locally — they cost neither hulls nor money.
+    expect(fleetStrengthOf(after, 'freeworlds')).toBe(fleetBefore);
+    expect(after.factions.find((f) => f.id === 'freeworlds')!.credits).toBeGreaterThan(
+      creditsBefore - 1,
+    );
+  });
+
+  it('stops at the ceiling', () => {
+    let state = fresh();
+    sys(state, 'ark-1').garrison = sys(state, 'ark-1').garrisonMax;
+    const cap = sys(state, 'ark-1').garrisonMax;
+    for (let i = 0; i < 4; i++) state = tickTurn(state).state;
+    expect(sys(state, 'ark-1').garrison).toBe(cap);
+  });
+
+  it('leaves unaligned worlds to fend for themselves', () => {
+    const state = fresh();
+    const neutral = sys(state, 'slu-3');
+    neutral.garrison = 1;
+    const after = tickTurn(state).state;
+    expect(after.systems.find((s) => s.id === 'slu-3')!.garrison).toBe(1);
+  });
+
+  it('lets a captured world slowly re-arm under its new owner', () => {
+    let state = attack((s) => {
+      const t = sys(s, 'slu-6');
+      t.controllerFactionId = 'vigil';
+      t.garrison = 3;
+      t.garrisonMax = 12;
+      delete t.ships['vigil'];
+    }, 30).state;
+    expect(sys(state, 'slu-6').controllerFactionId).toBe('freeworlds');
+    const justTaken = sys(state, 'slu-6').garrison;
+    for (let i = 0; i < 3; i++) state = tickTurn(state).state;
+    expect(sys(state, 'slu-6').garrison).toBe(justTaken + 3 * GARRISON_REGROWTH);
+  });
+});
+
+describe('retreat costs ships only when opposed', () => {
+  it('lands with the whole force intact when nothing is there to fight', () => {
+    // No opposing ships means no battle, so no retreat and no bleed.
+    const res = attack((s) => {
+      const t = sys(s, 'slu-6');
+      t.controllerFactionId = null;
+      t.ships = {};
+      t.garrison = 0;
+      t.garrisonMax = 0;
+    }, 9);
+    expect(shipsOf(res.state, 'slu-6', 'freeworlds')).toBe(9);
+    expect(res.notes.join(' ')).not.toMatch(/breaks off|driven off|scattered/);
+  });
+
+  it('makes an unaligned world fight with its garrison, like any other', () => {
+    // The seed gives neutral worlds garrisons of 2–5. Treating "nobody owns
+    // it" as "nobody defends it" made every neutral in the galaxy free, and
+    // handed the conqueror the militia it never fought.
+    const repulsed = attack((s) => {
+      const t = sys(s, 'slu-6');
+      t.controllerFactionId = null;
+      t.ships = {};
+      t.garrison = 8;
+      t.garrisonMax = 8;
+    }, 3);
+    expect(repulsed.notes.join(' ')).toMatch(/thrown back/);
+    expect(repulsed.state.systems.find((x) => x.id === 'slu-6')!.controllerFactionId).toBeNull();
+
+    const taken = attack((s) => {
+      const t = sys(s, 'slu-6');
+      t.controllerFactionId = null;
+      t.ships = {};
+      t.garrison = 4;
+      t.garrisonMax = 4;
+    }, 20);
+    const world = taken.state.systems.find((x) => x.id === 'slu-6')!;
+    expect(taken.notes.join(' ')).toMatch(/storms/);
+    expect(world.controllerFactionId).toBe('freeworlds');
+    // The garrison is broken and rebuilt from the remnant, not inherited whole.
+    expect(world.garrison).toBeLessThan(4);
+  });
+
+  it('loses nothing walking into an undefended enemy world it cannot take', () => {
+    // A garrison it cannot beat still costs ships — but to the GROUND assault,
+    // never to a retreat, because no fleet opposed it in orbit.
+    const res = attack((s) => {
+      const t = sys(s, 'slu-6');
+      t.controllerFactionId = 'vigil';
+      t.garrison = 99;
+      t.garrisonMax = 99;
+      t.ships = {};
+    }, 9);
+    const text = res.notes.join(' ');
+    expect(text).toMatch(/thrown back/);
+    expect(text).not.toMatch(/breaks off|driven off|withdrawing/);
+  });
+
+  it('only bleeds a withdrawal when opposing ships were present', () => {
+    const opposed = attack((s) => {
+      const t = sys(s, 'slu-6');
+      t.controllerFactionId = 'vigil';
+      t.ships['vigil'] = 80;
+    }, 4);
+    expect(opposed.notes.join(' ')).toMatch(/driven off/);
+
+    const unopposed = attack((s) => {
+      const t = sys(s, 'slu-6');
+      t.controllerFactionId = 'vigil';
+      t.ships = {};
+      t.garrison = 1;
+      t.garrisonMax = 1;
+    }, 4);
+    // Same force, no defending fleet: it arrives whole and takes the world.
+    expect(unopposed.state.systems.find((x) => x.id === 'slu-6')!.controllerFactionId).toBe(
+      'freeworlds',
+    );
+  });
+
+  it('treats any non-attacker ships in system as defenders', () => {
+    // A third power parked in a rival's orbit used to be walked straight past,
+    // while still drawing a share of the system's income.
+    const res = attack((s) => {
+      const t = sys(s, 'slu-6');
+      t.controllerFactionId = 'vigil';
+      delete t.ships['vigil'];
+      t.ships['krayt'] = 70; // Vigil holds it; Krayt is squatting in orbit
+      t.garrison = 1;
+      t.garrisonMax = 1;
+    }, 3);
+    expect(res.notes.join(' ')).toMatch(/driven off/);
+    expect(res.state.systems.find((x) => x.id === 'slu-6')!.controllerFactionId).toBe('vigil');
+  });
+});
+
+describe('a garrison under attack does not grow', () => {
+  it('stays put while hostile ships sit in orbit', () => {
+    const state = fresh();
+    const besieged = sys(state, 'ark-1');
+    besieged.garrison = 4;
+    besieged.ships['vigil'] = 6; // blockade
+    const after = tickTurn(state).state;
+    expect(after.systems.find((s) => s.id === 'ark-1')!.garrison).toBe(4);
+  });
+
+  it('resumes growing the moment the siege lifts', () => {
+    const state = fresh();
+    const besieged = sys(state, 'ark-1');
+    besieged.garrison = 4;
+    besieged.ships['vigil'] = 6;
+
+    const stillBesieged = tickTurn(state).state;
+    expect(sys(stillBesieged, 'ark-1').garrison).toBe(4);
+
+    delete sys(stillBesieged, 'ark-1').ships['vigil'];
+    const relieved = tickTurn(stillBesieged).state;
+    expect(sys(relieved, 'ark-1').garrison).toBe(4 + GARRISON_REGROWTH);
+  });
+
+  it('does not grow on the turn it is stormed', () => {
+    // Regrowth runs after combat and skips anything that saw a landing, so a
+    // world cannot reinforce itself on the way to being captured.
+    const res = attack((s) => {
+      const t = sys(s, 'slu-6');
+      t.controllerFactionId = 'vigil';
+      t.garrison = 3;
+      t.garrisonMax = 30;
+      t.ships = {};
+    }, 40);
+    const target = res.state.systems.find((x) => x.id === 'slu-6')!;
+    expect(target.controllerFactionId).toBe('freeworlds');
+    // Captured garrison is floor(3/3) = 1, with no regrowth tacked on.
+    expect(target.garrison).toBe(1);
+  });
+
+  it('does not grow on the turn an assault is thrown back', () => {
+    const res = attack((s) => {
+      const t = sys(s, 'slu-6');
+      t.controllerFactionId = 'vigil';
+      t.garrison = 40;
+      t.garrisonMax = 40;
+      t.ships = {};
+    }, 4);
+    const target = res.state.systems.find((x) => x.id === 'slu-6')!;
+    expect(target.controllerFactionId).toBe('vigil');
+    // Damaged by the landing, and NOT topped back up in the same turn.
+    expect(target.garrison).toBeLessThan(40);
+  });
+
+  it('still grows on a quiet world elsewhere in the same turn', () => {
+    const state = fresh();
+    sys(state, 'ark-1').garrison = 4;
+    sys(state, 'ark-3').garrison = 4;
+    sys(state, 'ark-1').ships['vigil'] = 5; // only ark-1 is besieged
+    const after = tickTurn(state).state;
+    expect(sys(after, 'ark-1').garrison).toBe(4);
+    expect(sys(after, 'ark-3').garrison).toBe(4 + GARRISON_REGROWTH);
+  });
+});
+
+describe('coalitions', () => {
+  /** Two powers landing on slu-6 in the same turn. */
+  function joint(setup: (s: WorldState) => void, forces: Record<string, number>) {
+    const state = fresh();
+    setup(state);
+    const ops = Object.entries(forces).map(([factionId, force]) => {
+      sys(state, 'ark-3').ships[factionId] = force;
+      return {
+        op: 'issue_order', factionId, type: 'fleet_movement',
+        originId: 'ark-3', targetId: 'slu-6', force, label: `${factionId} squadron`,
+      };
+    });
+    const issued = applyOps(state, ops);
+    expect(issued.rejections).toHaveLength(0);
+    let r = tickTurn(issued.state);
+    while (r.state.pendingOrders.length > 0) r = tickTurn(r.state);
+    return r;
+  }
+
+  it('adds two attackers into one battle rather than two duels', () => {
+    const res = joint(
+      (s) => {
+        const t = sys(s, 'slu-6');
+        t.controllerFactionId = 'vigil';
+        t.ships['vigil'] = 14;
+        t.garrison = 2;
+        t.garrisonMax = 2;
+      },
+      { freeworlds: 12, krayt: 12 },
+    );
+    // 24 attacking vs 14 defending: together they break it. Separately,
+    // each 12 would have been ground down by the same 14.
+    expect(res.state.systems.find((x) => x.id === 'slu-6')!.controllerFactionId).not.toBe('vigil');
+    expect(res.notes.join(' ')).toMatch(/and/);
+  });
+
+  it('gives the captured world to whoever brought the most', () => {
+    const res = joint(
+      (s) => {
+        const t = sys(s, 'slu-6');
+        t.controllerFactionId = 'vigil';
+        t.garrison = 2;
+        t.garrisonMax = 2;
+        delete t.ships['vigil'];
+      },
+      { freeworlds: 6, krayt: 24 },
+    );
+    const target = res.state.systems.find((x) => x.id === 'slu-6')!;
+    expect(target.controllerFactionId).toBe('krayt');
+    expect(res.notes.join(' ')).toMatch(/takes possession/);
+    // The junior partner's survivors are still in orbit, contesting income.
+    expect(target.ships['freeworlds']).toBeGreaterThan(0);
+  });
+
+  it('breaks a tie deterministically rather than by luck', () => {
+    const a = joint(
+      (s) => {
+        const t = sys(s, 'slu-6');
+        t.controllerFactionId = null;
+        t.ships = {};
+        t.garrison = 0;
+        t.garrisonMax = 0;
+      },
+      { freeworlds: 10, krayt: 10 },
+    );
+    const b = joint(
+      (s) => {
+        const t = sys(s, 'slu-6');
+        t.controllerFactionId = null;
+        t.ships = {};
+        t.garrison = 0;
+        t.garrisonMax = 0;
+      },
+      { freeworlds: 10, krayt: 10 },
+    );
+    const owner = a.state.systems.find((x) => x.id === 'slu-6')!.controllerFactionId;
+    expect(owner).toBe(b.state.systems.find((x) => x.id === 'slu-6')!.controllerFactionId);
+    expect(['freeworlds', 'krayt']).toContain(owner);
+  });
+
+  it('treats an uncommitted third party as a defender, the safe default', () => {
+    const res = attack((s) => {
+      const t = sys(s, 'slu-6');
+      t.controllerFactionId = 'vigil';
+      t.ships['vigil'] = 8;
+      t.ships['hutt'] = 40; // not attacking, so it defends
+      t.garrison = 1;
+      t.garrisonMax = 1;
+    }, 6);
+    expect(res.notes.join(' ')).toMatch(/driven off/);
+    expect(res.state.systems.find((x) => x.id === 'slu-6')!.controllerFactionId).toBe('vigil');
+  });
+
+  it('counts arrivals for the holder as reinforcement, not invasion', () => {
+    const state = fresh();
+    sys(state, 'ark-1').ships['freeworlds'] = 20;
+    const before = shipsOf(state, 'ark-3', 'freeworlds');
+    const issued = applyOps(state, [
+      {
+        op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
+        originId: 'ark-1', targetId: 'ark-3', force: 9, label: 'relief',
+      },
+    ]);
+    let r = tickTurn(issued.state);
+    while (r.state.pendingOrders.length > 0) r = tickTurn(r.state);
+    expect(r.notes.join(' ')).toMatch(/reinforces/);
+    expect(shipsOf(r.state, 'ark-3', 'freeworlds')).toBe(before + 9);
+  });
+});
+
+describe('dissent has teeth', () => {
+  it('subtracts from every stat as it rises', () => {
+    const state = fresh();
+    const me = state.factions.find((f) => f.id === 'freeworlds')!;
+    const base = effectiveStats(state, 'freeworlds');
+    me.dissent = 50; // two penalty points
+    const worse = effectiveStats(state, 'freeworlds');
+    for (const stat of STAT_NAMES) {
+      expect(worse[stat], stat).toBe(Math.max(1, base[stat] - 2));
+    }
+  });
+
+  it('does nothing below the first threshold', () => {
+    const state = fresh();
+    state.factions.find((f) => f.id === 'freeworlds')!.dissent = 24;
+    expect(effectiveStats(state, 'freeworlds')).toEqual(fresh().factions.find((f) => f.id === 'freeworlds')!.stats);
+  });
+
+  it('decays a little every turn, so one refusal fades', () => {
+    const state = fresh();
+    state.factions.find((f) => f.id === 'freeworlds')!.dissent = 8;
+    let after = tickTurn(state).state;
+    expect(after.factions.find((f) => f.id === 'freeworlds')!.dissent).toBe(8 - DISSENT_DECAY);
+    for (let i = 0; i < 5; i++) after = tickTurn(after).state;
+    expect(after.factions.find((f) => f.id === 'freeworlds')!.dissent).toBe(0);
+  });
+
+  it('weakens a faction in an actual battle', () => {
+    // A restive power fights worse, which is the whole point of the penalty.
+    //
+    // Asserted by SEARCHING for a garrison the penalty flips, rather than
+    // hard-coding one. A fixed pair of numbers here only ever tested one
+    // particular die roll, so it broke the moment the hash changed while the
+    // mechanic itself was untouched — a test that fails for the wrong reason.
+    const takenWith = (dissent: number, garrison: number, force: number) =>
+      attack((s) => {
+        s.factions.find((f) => f.id === 'freeworlds')!.dissent = dissent;
+        const t = sys(s, 'slu-6');
+        t.controllerFactionId = 'vigil';
+        t.garrison = garrison;
+        t.garrisonMax = garrison;
+        t.ships = {};
+      }, force).state.systems.find((x) => x.id === 'slu-6')!.controllerFactionId === 'freeworlds';
+
+    // Searched over force AND garrison. Dissent is worth roughly 5% of assault
+    // strength per modifier point, so at a single force it often fails to
+    // cross an integer garrison — the effect is real but marginal in combat,
+    // and its sharper bite is on d20 ability checks. Scanning one dimension
+    // found no flip at all and looked like a broken mechanic.
+    // Scanned along the diagonal where the assault roughly matches the
+    // garrison, which is where a 5% swing can change the answer. A full grid
+    // is a thousand battle simulations and times the suite out for no extra
+    // signal.
+    const flipped: string[] = [];
+    let everHelped = 0;
+    for (let force = 12; force <= 24; force += 2) {
+      for (let garrison = force - 4; garrison <= force; garrison++) {
+        const calm = takenWith(0, garrison, force);
+        const restive = takenWith(100, garrison, force);
+        if (calm && !restive) flipped.push(`${force}v${garrison}`);
+        if (restive && !calm) everHelped++;
+      }
+    }
+    expect(flipped.length, 'dissent never decided an assault').toBeGreaterThan(0);
+    // The direction matters more than the magnitude: being restive must never
+    // win you a world your confident self could not take.
+    expect(everHelped, 'dissent helped the attacker').toBe(0);
+  });
+
+  it('can be adjusted deliberately, in both directions', () => {
+    const up = applyOps(fresh(), [
+      { op: 'adjust_dissent', factionId: 'freeworlds', delta: 30 },
+    ]).state;
+    expect(up.factions.find((f) => f.id === 'freeworlds')!.dissent).toBe(30);
+    const down = applyOps(up, [
+      { op: 'adjust_dissent', factionId: 'freeworlds', delta: -100 },
+    ]).state;
+    expect(down.factions.find((f) => f.id === 'freeworlds')!.dissent).toBe(0);
+  });
+});
+
+describe('combat is deterministic', () => {
+  it('resolves identically on repeated runs, so replay holds', () => {
+    const build = () =>
+      attack((s) => {
+        const t = sys(s, 'slu-6');
+        t.controllerFactionId = 'vigil';
+        t.ships['vigil'] = 9;
+        t.garrison = 6;
+        t.garrisonMax = 6;
+      }, 14);
+    expect(JSON.stringify(build().state)).toBe(JSON.stringify(build().state));
+  });
+});
+
+describe('dissent is a mechanic, not a message', () => {
+  it('actually persists when your own faction refuses you', async () => {
+    // This is the regression that matters. `submitAction` computed the new
+    // dissent total, put it in a note telling the player it had risen, and
+    // never staged an op — so dissent never accumulated from a refusal and
+    // the mechanic had been inert since it was written.
+    const { Campaign } = await import('../src/engine/campaign.js');
+    const { MemoryCampaignStore } = await import('../src/engine/store.js');
+    const { REFUSAL_DISSENT } = await import('../src/domain/state.js');
+
+    const campaign = Campaign.start('meridian', 'refusals', new MemoryCampaignStore());
+    const dissentOf = () => campaign.state.factions.find((f) => f.id === 'meridian')!.dissent;
+    expect(dissentOf()).toBe(0);
+
+    // Exactly the ops a refusal stages.
+    campaign.stage(
+      [
+        { op: 'log_narrative', text: '[refused by the Trade Council] no.' },
+        { op: 'adjust_dissent', factionId: 'meridian', delta: REFUSAL_DISSENT, reason: 'red line' },
+      ],
+      'refused',
+      '',
+    );
+    campaign.commitTurn();
+    expect(dissentOf()).toBe(REFUSAL_DISSENT);
+    expect(campaign.verifyReplay().ok).toBe(true);
+  });
+
+  it('needs repeated defiance to cost a stat point, and forgives one lapse', async () => {
+    const { REFUSAL_DISSENT, DISSENT_PER_PENALTY_POINT, dissentPenalty } = await import(
+      '../src/domain/state.js'
+    );
+    // One refusal must not visibly weaken a power; a pattern of them must.
+    expect(dissentPenalty(REFUSAL_DISSENT)).toBe(0);
+    expect(dissentPenalty(REFUSAL_DISSENT * 4)).toBeGreaterThan(0);
+    // And decay has to be slower than a run of refusals can accumulate.
+    expect(REFUSAL_DISSENT).toBeGreaterThan(DISSENT_DECAY);
+    expect(DISSENT_PER_PENALTY_POINT).toBeGreaterThan(REFUSAL_DISSENT);
+  });
+
+  it('shows the player the number the game actually rolls against', () => {
+    // The panel renders effectiveStats, so this asserts the value it reads is
+    // the one `resolveCheck` uses — not the undegraded base.
+    const state = fresh();
+    state.factions.find((f) => f.id === 'freeworlds')!.dissent = 50;
+    const shown = effectiveStats(state, 'freeworlds');
+    const base = fresh().factions.find((f) => f.id === 'freeworlds')!.stats;
+    for (const stat of STAT_NAMES) {
+      expect(shown[stat], stat).toBeLessThan(base[stat]);
+    }
+  });
+});

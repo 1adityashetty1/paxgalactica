@@ -1,0 +1,44 @@
+{
+  "name": "paxgalactica",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.20.0",
+  "description": "An LLM-driven grand strategy campaign in the Star Wars Outer Rim, played in the browser on localhost.",
+  "engines": {
+    "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "replay": "tsc && node dist/replay.js",
+    "serve": "tsc && node dist/server/index.js",
+    "play:web": "node scripts/play-web.mjs",
+    "dev:web": "vite",
+    "build:web": "vite build",
+    "typecheck:web": "tsc --noEmit -p web/tsconfig.json",
+    "login": "node scripts/login.mjs",
+    "auth": "node scripts/auth.mjs",
+    "save-token": "node scripts/token.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "resume": "tsc && node dist/resume.js",
+    "balance": "tsc && node scripts/balance-report.mjs",
+    "doctor": "node scripts/doctor.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.225",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.1",
+    "vitest": "^4.1.10"
+  }
+}

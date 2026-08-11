@@ -1,0 +1,135 @@
+#!/bin/sh
+#
+# Pax Galactica — clone and play.
+#
+#   ./start
+#
+# Everything after the Node check is plain `pnpm`, and this script does
+# nothing you could not do by hand. It exists for the one bootstrap step that
+# cannot be written in Node: telling someone their Node is too old. A new
+# clone otherwise fails somewhere deep inside Vite with an error that does not
+# mention the version at all.
+#
+# POSIX sh on purpose — no bash, no Python, no second toolchain to install
+# before you can install the toolchain.
+
+set -eu
+
+cd "$(dirname "$0")"
+
+say()  { printf '%s\n' "$*"; }
+fail() { printf '\n%s\n\n' "$*" >&2; exit 1; }
+
+say ''
+say 'Pax Galactica'
+say '─────────────'
+
+# ── Node ──────────────────────────────────────────────────────────────────
+if ! command -v node >/dev/null 2>&1; then
+  fail 'Node is not installed.
+
+Install Node 22 or newer, then run ./start again:
+
+  macOS (Homebrew)   brew install node
+  anywhere           https://nodejs.org/en/download
+
+This project needs Node ^20.19, ^22.12 or >=24 — the floor is set by Vite.'
+fi
+
+NODE_V=$(node -v | sed 's/^v//')
+NODE_MAJOR=$(echo "$NODE_V" | cut -d. -f1)
+NODE_MINOR=$(echo "$NODE_V" | cut -d. -f2)
+
+node_ok=0
+if   [ "$NODE_MAJOR" -ge 24 ]; then node_ok=1
+elif [ "$NODE_MAJOR" -eq 22 ] && [ "$NODE_MINOR" -ge 12 ]; then node_ok=1
+elif [ "$NODE_MAJOR" -eq 20 ] && [ "$NODE_MINOR" -ge 19 ]; then node_ok=1
+fi
+
+if [ "$node_ok" -ne 1 ]; then
+  fail "Node $NODE_V is too old.
+
+This project needs ^20.19, ^22.12 or >=24. Vite sets the floor, and an older
+Node fails later with an error that does not mention the version.
+
+  macOS (Homebrew)   brew upgrade node
+  nvm                nvm install 22 && nvm use 22"
+fi
+say "  node    $NODE_V"
+
+# ── pnpm, via corepack ────────────────────────────────────────────────────
+# corepack ships with Node and installs the exact pnpm named in
+# package.json's packageManager field, so nobody has to match versions.
+if ! command -v pnpm >/dev/null 2>&1; then
+  say '  pnpm    not found — enabling via corepack'
+  if ! corepack enable pnpm >/dev/null 2>&1; then
+    fail 'Could not enable pnpm automatically.
+
+corepack ships with Node but may need permission to write a shim:
+
+  sudo corepack enable pnpm
+
+Or install pnpm directly:  npm install -g pnpm'
+  fi
+fi
+say "  pnpm    $(pnpm --version 2>/dev/null || echo 'ready')"
+
+# ── dependencies ──────────────────────────────────────────────────────────
+if [ ! -d node_modules ]; then
+  say ''
+  say 'Installing dependencies (once, ~30s)…'
+  pnpm install --frozen-lockfile
+fi
+
+# ── authentication ────────────────────────────────────────────────────────
+# The game runs on a Claude Pro/Max SUBSCRIPTION. `scripts/auth.mjs` probes
+# with the API-key variables stripped and the stored token injected — i.e. the
+# exact environment the game will use — rejects `authMethod: api_key`, and then
+# spends a few tokens on a real call, because `auth status` reports
+# loggedIn=true for a token that was truncated on paste.
+say ''
+auth_out=$(node scripts/auth.mjs 2>&1) && auth_rc=0 || auth_rc=$?
+
+if [ "$auth_rc" -eq 0 ]; then
+  say '  auth    subscription verified with a live call'
+else
+  # Distinguish a broken install from an unauthenticated one. Both used to
+  # print "you are not signed in" and send the user to `pnpm login`, which
+  # cannot fix a missing binary and is the one rabbit hole this project has
+  # already cost people an afternoon in.
+  if printf '%s' "$auth_out" | grep -q 'binary not found'; then
+    say 'Dependencies look incomplete — the Claude binary ships inside them.'
+    say ''
+    pnpm install
+    node scripts/auth.mjs >/dev/null 2>&1 || fail "Still cannot authenticate. Run \`pnpm doctor\` to see why."
+    say '  auth    subscription verified with a live call'
+  else
+    say 'You are not signed in yet.'
+    say ''
+    say 'This game runs on a Claude Pro or Max subscription — no API key and no'
+    say 'per-token billing. A browser will open for you to approve access.'
+    say ''
+    printf 'Sign in now? [Y/n] '
+    # Falls back to "no" when there is no terminal — piped or scripted runs
+    # must not hang waiting for an answer nobody can give.
+    read -r reply </dev/tty 2>/dev/null || { reply=n; printf '\n(no terminal — skipping)\n'; }
+    case "$reply" in
+      [Nn]*) fail 'Skipped. Run `pnpm login` when ready, then ./start again.' ;;
+    esac
+    pnpm login
+    node scripts/auth.mjs >/dev/null 2>&1 \
+      || fail "Sign-in did not complete. Run \`pnpm doctor\` to see exactly what is wrong."
+    say '  auth    subscription verified with a live call'
+  fi
+fi
+
+# ── go ────────────────────────────────────────────────────────────────────
+say ''
+say 'Building and starting the game. Ctrl-C to stop.'
+say ''
+# Already verified above, with a live call. `play:web` runs the same check on
+# its own so that it is safe to use directly — but running it twice would
+# spend two real model calls on every launch.
+PAXGALACTICA_AUTH_VERIFIED=1
+export PAXGALACTICA_AUTH_VERIFIED
+exec pnpm play:web

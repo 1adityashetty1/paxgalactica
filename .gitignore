@@ -1,0 +1,11 @@
+node_modules/
+dist/
+saves/
+*.log
+.DS_Store
+
+# Scratch files from ad-hoc analysis runs. These are written next to the
+# source (rather than in /tmp) so they can import from ./dist, which means
+# they are one careless `git add -A` away from shipping.
+_*.mjs
+_*.ts
