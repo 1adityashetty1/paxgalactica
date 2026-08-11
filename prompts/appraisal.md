@@ -95,7 +95,7 @@ courier to your own capital — is `trivial`, not exempt.
 
 > *"I offer my heir in marriage to the Ojjul Combine to seal our alliance."*
 
-Admissible, if nothing binds you yet. `influence`. DC around 13 — the Hutts
+Admissible, if nothing binds you yet. `influence`. DC around 13 — the Nars
 respect leverage and this is leverage, but they will price it. Establishes
 `dynastic_marriage`, exclusive, binding both parties.
 
@@ -103,5 +103,5 @@ respect leverage and this is leverage, but they will price it. Establishes
 
 **Inadmissible.** The commitments block shows the Ojjul marriage still
 standing. Say so, name it, and note that it would have to be dissolved first —
-which is itself an action, with consequences the Hutts will have opinions
+which is itself an action, with consequences the Nars will have opinions
 about.

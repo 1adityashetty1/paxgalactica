@@ -86,7 +86,7 @@ export const TRADE_ETHIC_MEANING: Record<TradeEthic, string> = {
  * Deliberately flatter than it used to be, because an ethic's real expression
  * now lives in `trade.ts` — a toll, a raid, a blockade run, an openness bonus.
  * When this multiplier was the entire mechanic, `extortionist` sat at 1.0 and
- * the Hutts' defining trait did literally nothing. The spread here is now a
+ * the Nars' defining trait did literally nothing. The spread here is now a
  * thumb on the scale, not the whole of it.
  */
 export const TRADE_INCOME_MULTIPLIER: Record<TradeEthic, number> = {
@@ -576,7 +576,7 @@ export function ledgerFor(state: WorldState, factionId: string): Ledger {
  * be suborned — the Iron Vigil's crews do not defect, which is what resolve 17
  * ought to mean.
  *
- * Playtesting produced a real defection (a Hutt corvette, on a natural 20) and
+ * Playtesting produced a real defection (a Nar corvette, on a natural 20) and
  * that was a good outcome. The problem was that nothing capped it: the same op
  * shape would move thirty hulls across the galaxy with no roll and no
  * presence. The magnitude is now arithmetic here, where a prompt cannot argue

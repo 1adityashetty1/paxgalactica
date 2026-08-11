@@ -1,6 +1,6 @@
 # Pax Galactica
 
-An LLM-driven grand strategy campaign in the Star Wars Outer Rim, played in a
+An LLM-driven grand strategy campaign in a lawless outer rim, played in a
 browser on localhost. The model narrates and decides; a pure reducer is the only
 thing that changes the world.
 
@@ -223,7 +223,7 @@ The arbiter **rules** that a dynastic marriage is exclusive. The reducer
 **enforces** it: `establish_commitment` is rejected with `commitment_conflict`
 when a bound faction already holds a live commitment of that `kind`. This is
 the load-bearing split. The alternative — describe the history and trust the
-model to stay consistent — would allow a marriage with the Hutts on turn 3 and,
+model to stay consistent — would allow a marriage with the Nars on turn 3 and,
 having forgotten, a second with Meridian on turn 4.
 
 Verified live, with exactly that sequence:
@@ -232,7 +232,7 @@ Verified live, with exactly that sequence:
 turn 3  admissible: true   influence DC 13
         establishes: dynastic_marriage, exclusive
 turn 4  admissible: false  "You are already bound by the exclusive dynastic
-        marriage to the Ojjul Hutt Combine (com-0-0). That marriage must be
+        marriage to the Ojjul Nar Combine (com-0-0). That marriage must be
         dissolved before you can enter another."
 ```
 
@@ -241,6 +241,19 @@ string; an inconsistent slug would silently disable the mechanism, so the
 schema rejects anything else.
 
 ## Faction character
+
+Internal `factionId` values are historical and were never renamed alongside
+the display names — they are opaque keys used throughout the code, tests and
+save files, so changing them is a much bigger and riskier pass than changing
+what a player sees. Reference, since `id` and `name` no longer share a root:
+
+| `factionId` | display name |
+|---|---|
+| `meridian` | Meridian Trade Authority |
+| `vigil` | Iron Vigil Remnant |
+| `hutt` | Ojjul Nar Combine |
+| `freeworlds` | Arkanis Free Worlds |
+| `krayt` | Drajk Confederacy |
 
 Five powers that should never be mistaken for one another. Each differs on four
 axes at once, because a faction that differs only in its doctrine paragraph
@@ -351,7 +364,7 @@ holders and 60% across the systems the lane crosses — an unaligned hop pays
 whoever has ships parked on it, exactly as an unaligned world does.
 
 `tradeEthic` used to be one multiplier, and `extortionist` sat at ×1.0, so the
-Hutts' defining trait did nothing whatsoever. The multiplier is now only a
+Nars' defining trait did nothing whatsoever. The multiplier is now only a
 thumb on the scale (and runs the *other* way — an autarkist wrings more out of
 its own worlds precisely because it has renounced the network). The doctrine
 lives here instead:
@@ -385,10 +398,10 @@ also run the blockade — so "smugglers run blockades", the Confederacy's entire
 economic identity, almost never fired.
 
 Raiding is available to anyone, because a cornered power turning pirate is a
-real strategic story. It stays a Krayt mechanic through three asymmetries
+real strategic story. It stays a Drajk mechanic through three asymmetries
 rather than a ban: half yield for non-smugglers, `PIRACY_REPUTATION_COST` with
 uninvolved powers who do not expect it of you, and red lines in the other four
-factions' own lore. Krayt's doctrine says *"raid the rich"*; the mechanics now
+factions' own lore. Drajk's doctrine says *"raid the rich"*; the mechanics now
 say the same thing.
 
 ## Treaty types have mechanical force
@@ -476,7 +489,7 @@ because destroyed hulls stay destroyed.
 
 ## Suborning crews
 
-A playtest produced a Hutt corvette defecting to Krayt on a natural 20 — a good
+A playtest produced a Nar corvette defecting to Drajk on a natural 20 — a good
 outcome, and exactly what `OUTCOME_GUIDANCE` names as a critical-success bonus.
 The problem was that the guard was incidental. `adjust_ships` let a model
 decrement **any** faction's ships at **any** system: the same op shape moved
@@ -506,7 +519,7 @@ Two rules now, both in the reducer:
 | **krayt** | 4 | 0 | 3 | 0 | — |
 
 Nobody can suborn the Iron Vigil (resolve 17) or the Free Worlds (19); the
-Hutts at guile 18 are the best at it; Meridian's resolve 9 is a real
+Nars at guile 18 are the best at it; Meridian's resolve 9 is a real
 vulnerability. All derived, no tuning constants.
 
 Over-asking is **trimmed with a note**, not rejected, on the same principle as
@@ -870,7 +883,7 @@ Balancing against turn-0 ledgers was measuring the opening position rather than
 the game. What matters is whether a doctrine *pays when played*, and the
 harness caught four things staring at ledgers never would:
 
-- **Raiding earned Krayt exactly 0 over thirty turns.** Raiding required ships
+- **Raiding earned Drajk exactly 0 over thirty turns.** Raiding required ships
   *in* the target, so the poorest power could only prey on powers it had
   already beaten in orbit — the precise inversion of what commerce raiding is
   for. Raids now run from one jump out; blockades still have to sit on the
@@ -896,7 +909,7 @@ Loose bounds on purpose: a tight assertion on a balance number is a test people
 learn to ignore.
 
 **What the harness cannot model:** the bots do not react to disposition. The
-Hutts finish hated by everyone and nobody invades them, so the harness
+Nars finish hated by everyone and nobody invades them, so the harness
 overstates their runaway — the counterplay their position invites is political,
 and politics is what the model-driven game supplies.
 

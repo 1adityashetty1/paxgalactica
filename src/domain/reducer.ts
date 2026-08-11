@@ -75,7 +75,7 @@ export const INTERDICTION_TYPES = new Set(['blockade', 'commerce_raiding']);
  * The distinction is load-bearing. Requiring raiders to be *in* the target
  * meant they had to defeat its defenders first, which made commerce raiding
  * something only the strong could do to the weak — the precise inversion of
- * what it is for. Krayt's whole doctrine is raiding the rich, and the rich are
+ * what it is for. Drajk's whole doctrine is raiding the rich, and the rich are
  * exactly who it cannot beat in orbit.
  */
 export function interdictionStations(
@@ -99,11 +99,11 @@ export const INTERDICTION_DISPOSITION_COST = 4;
  * not a smuggler raids commerce.
  *
  * Raiding is available to anyone — a cornered power turning pirate is a real
- * strategic story and should not be impossible. But it is the Krayt
+ * strategic story and should not be impossible. But it is the Drajk
  * Confederacy's declared trade ("raid the rich, vanish into the deep lanes"),
  * and everyone expects it of them. An Imperial remnant doing the same thing is
  * news. Together with the halved yield for non-smugglers, this is what keeps
- * raiding a Krayt mechanic in practice without hard-coding a ban that the
+ * raiding a Drajk mechanic in practice without hard-coding a ban that the
  * faction's own red lines already express better.
  */
 export const PIRACY_REPUTATION_COST = 2;

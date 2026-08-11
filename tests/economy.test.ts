@@ -160,7 +160,7 @@ describe('agents', () => {
   it('computes success chance in code, not from the model', () => {
     const res = withAgent({ kind: 'hull_damage', perTurn: 3 });
     const agent = res.state.agents[0]!;
-    // Hutt guile 18 vs Free Worlds resolve 19 → slightly unfavourable.
+    // Nar guile 18 vs Free Worlds resolve 19 → slightly unfavourable.
     expect(agent.successChance).toBeGreaterThan(0);
     expect(agent.successChance).toBeLessThan(100);
     expect(agent.successChance).toBe(50 + (18 - 19) * 6);

@@ -12,7 +12,7 @@ import type { StarSystem, WorldState } from './state.js';
  *
  * Here trade flows along lanes between hubs, and the systems it crosses take a
  * cut. That makes geography economic: the seed already put the extortionist
- * Hutts on kes-2, which sits on 74 of the galaxy's 300 shortest paths, and left
+ * Nars on kes-2, which sits on 74 of the galaxy's 300 shortest paths, and left
  * three more high-traffic junctions unaligned. None of it was read by anything.
  *
  * Everything in this file is pure and derived — routes are recomputed from the
@@ -43,13 +43,13 @@ export const DISTANCE_DECAY = 0.45;
  *
  * Tuned against the balance harness rather than against turn-0 ledgers, which
  * measured the opening position instead of the game. At 0.4 the transit hops
- * dominated, and because the Hutts hold the whole Kessel spine (kes-2 and
+ * dominated, and because the Nars hold the whole Kessel spine (kes-2 and
  * kes-5 carry 402 between them) that handed them a runaway no toll rate
  * affected. Moving value to the endpoints spreads it over the eight hubs,
  * which are held 2/2/2/1/1 rather than concentrated.
  *
- * Measured over 30 played turns: Meridian stops going insolvent, Krayt's net
- * rises from 6 to 35, the Hutts fall from 302 to 268.
+ * Measured over 30 played turns: Meridian stops going insolvent, Drajk's net
+ * rises from 6 to 35, the Nars fall from 302 to 268.
  */
 export const ENDPOINT_SHARE = 0.6;
 
@@ -62,7 +62,7 @@ export const TOLL_RATE = 0.25;
 /** What a raider diverts per turn from the transit value of a system it raids. */
 export const RAID_SHARE = 0.5;
 
-/** Smugglers raid at double effect — anyone can raid, Krayt is good at it. */
+/** Smugglers raid at double effect — anyone can raid, Drajk is good at it. */
 export const SMUGGLER_RAID_MULTIPLIER = 2;
 
 /** Autarkic economies barely touch the network, by choice. */
@@ -73,7 +73,7 @@ export const MONOPOLY_BONUS = 1.5;
 
 /**
  * How much better a smuggler is at moving cargo through lawless space, when
- * splitting the trade crossing an unaligned junction. Krayt holds no hub and
+ * splitting the trade crossing an unaligned junction. Drajk holds no hub and
  * sits on no lane between them — it is off the network by geography — so this
  * is the trade it *can* reach without conquering anything.
  */
@@ -314,7 +314,7 @@ export function routeEarnings(state: WorldState): RouteEarnings {
       let earned = perHop;
 
       // Extortion: a toll on goods that are not the extortionist's own.
-      // Charged to the foreign endpoints, never to itself — the Hutts carry a
+      // Charged to the foreign endpoints, never to itself — the Nars carry a
       // great deal of Meridian and Vigil cargo across Kessel, and this is
       // what "commerce owes you for passing through" costs in credits.
       const payers = [holderA, holderB].filter(

@@ -138,7 +138,7 @@ describe('every commercial doctrine differs measurably', () => {
   it('pays an extortionist a toll on other powers’ goods', () => {
     const state = fresh();
     const hutt = ledgerFor(state, 'hutt');
-    // The Hutts hold kes-2, the greatest chokepoint on the map. Their
+    // The Nars hold kes-2, the greatest chokepoint on the map. Their
     // doctrine used to be a ×1.0 multiplier, i.e. nothing whatsoever.
     expect(hutt.tolls).toBeGreaterThan(0);
 
@@ -217,7 +217,7 @@ describe('blockade', () => {
     const state = blockading('vigil', 'kes-2', 'tio-3');
     expect(isBlockaded(state, 'kes-2')).toBe(true);
     expect(routeEarnings(state).openness).toBeLessThan(1);
-    // The Hutts' commerce runs through Nar Shalka; strangling it shows.
+    // The Nars' commerce runs through Nar Shalka; strangling it shows.
     expect(ledgerFor(state, 'hutt').routes).toBeLessThan(ledgerFor(fresh(), 'hutt').routes);
   });
 
@@ -284,7 +284,7 @@ describe('commerce raiding', () => {
     expect(far.rejections.map((r) => r.code)).toEqual(['illegal_value']);
     expect(far.rejections[0]!.message).toMatch(/within one jump/);
 
-    // kes-4 is unaligned and adjacent to the Hutt-held kes-3.
+    // kes-4 is unaligned and adjacent to the Nar-held kes-3.
     const lurking = fresh('krayt');
     sys(lurking, 'kes-4').ships['krayt'] = 6;
     const near = applyOps(lurking, [
@@ -307,7 +307,7 @@ describe('commerce raiding', () => {
         },
       ]).state,
     ).state;
-    // The Hutts still hold Riqel and still have their fleet; they are simply
+    // The Nars still hold Riqel and still have their fleet; they are simply
     // losing the trade that crosses it.
     expect(sys(raiding, 'kes-3').controllerFactionId).toBe('hutt');
     expect(ledgerFor(raiding, 'krayt').raided).toBeGreaterThan(0);
@@ -361,7 +361,7 @@ describe('commerce raiding', () => {
     expect(ledgerFor(raided, 'krayt').raided).toBe(0);
   });
 
-  it('costs a non-smuggler its standing with the whole Rim, and Krayt nothing', () => {
+  it('costs a non-smuggler its standing with the whole Rim, and Drajk nothing', () => {
     // Raiding is not banned to anyone — a cornered power turning pirate is a
     // real strategic story. But it is the Confederacy's declared trade, so
     // only an unexpected pirate pays a reputation for it.
@@ -431,7 +431,7 @@ describe('treaties with mechanical force', () => {
     const state = fresh('vigil');
     state.treaties.push(pact('mutual_defense', ['meridian', 'hutt'], { hutt: 12 }));
     sys(state, 'tio-3').ships['vigil'] = 30;
-    // Count only the Hutts' OWN worlds. The global total is a battle outcome —
+    // Count only the Nars' OWN worlds. The global total is a battle outcome —
     // how many of the pledged hulls survived — which is a die roll, not the
     // property being tested.
     const atHome = (s: WorldState) =>
@@ -640,7 +640,7 @@ describe('arbitration: rulings the op vocabulary cannot express', () => {
     // silently disable the whole mechanism.
     const res = applyOps(fresh(), [
       {
-        op: 'establish_commitment', kind: 'Marriage To The Hutts',
+        op: 'establish_commitment', kind: 'Marriage To The Nars',
         factionIds: ['freeworlds'], text: 'x', exclusive: true,
       },
     ]);
@@ -915,7 +915,7 @@ describe('suborning is statecraft, not combat', () => {
   const disp = (s: WorldState, a: string, b: string) =>
     s.factions.find((f) => f.id === a)!.disposition[b] ?? 0;
 
-  /** Krayt lurking at the unaligned kes-4, which is adjacent to Hutt kes-3. */
+  /** Drajk lurking at the unaligned kes-4, which is adjacent to Nar kes-3. */
   const fromNextDoor = (n = 3) => {
     const state = fresh('krayt');
     sys(state, 'kes-4').ships['krayt'] = 8;

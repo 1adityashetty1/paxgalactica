@@ -88,7 +88,7 @@ describe('transcripts are memory, not world state', () => {
 
   it('keeps each faction’s memory separate', () => {
     const campaign = Campaign.start('freeworlds', 'dip3', new MemoryCampaignStore());
-    campaign.recordTranscript('hutt', [{ speaker: 'player', text: 'A secret for the Hutts.' }]);
+    campaign.recordTranscript('hutt', [{ speaker: 'player', text: 'A secret for the Nars.' }]);
     expect(campaign.priorTranscripts('vigil')).toHaveLength(0);
     expect(campaign.priorTranscripts('hutt')).toHaveLength(1);
   });

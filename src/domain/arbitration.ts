@@ -10,7 +10,7 @@ import { z } from 'zod';
  * (an event is something that happened; these are things that remain true).
  *
  * Without somewhere to put them, an arbitrator has no memory: it would allow a
- * political marriage with the Hutts on turn 3 and, having forgotten, allow a
+ * political marriage with the Nars on turn 3 and, having forgotten, allow a
  * second one with Meridian on turn 4. The obvious-looking fix — "tell the
  * model what happened and trust it to be consistent" — is exactly the failure
  * this codebase avoids everywhere else. So the arbitrator RULES that a thing
