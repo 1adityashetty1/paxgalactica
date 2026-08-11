@@ -366,7 +366,7 @@ describe('retreat costs ships only when opposed', () => {
       const t = sys(s, 'slu-6');
       t.controllerFactionId = 'vigil';
       delete t.ships['vigil'];
-      t.ships['krayt'] = 70; // Vigil holds it; Krayt is squatting in orbit
+      t.ships['krayt'] = 70; // Vigil holds it; Drajk is squatting in orbit
       t.garrison = 1;
       t.garrisonMax = 1;
     }, 3);

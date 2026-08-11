@@ -8,10 +8,10 @@ character is prose in a prompt.
 
 Three specific failures follow:
 
-1. **`extortionist` is ×1.0.** The Ojjul Hutt Combine — one of the two powers
+1. **`extortionist` is ×1.0.** The Ojjul Nar Combine — one of the two powers
    built around trade — has a defining trait worth precisely nothing, while
    Meridian's `free_trade` is the best multiplier in the game at ×1.3.
-2. **Krayt's `smuggler` ×1.1 is a rounding error.** A faction whose entire
+2. **Drajk's `smuggler` ×1.1 is a rounding error.** A faction whose entire
    identity is running contraband has no way to *do* smuggling. It is the
    poorest power on the map (sv 14 against Meridian's 30) with no asymmetric
    tool to close the gap.
@@ -45,8 +45,8 @@ cross each system:
 
 The seed already put the extortionist on the single greatest chokepoint and the
 free traders on the second. It already left three high-traffic junctions
-unaligned. It already gave Krayt the two inter-sector back doors
-(ark-5↔kes-7, tio-6↔kes-6) while the main crossings run through Hutt and
+unaligned. It already gave Drajk the two inter-sector back doors
+(ark-5↔kes-7, tio-6↔kes-6) while the main crossings run through Nar and
 Meridian space. There are only **10 inter-sector lanes** in the entire galaxy.
 
 None of this is currently read by anything. The overhaul is mostly a matter of
@@ -98,8 +98,8 @@ harness is for: run a recorded journal before and after and diff the worlds.
 | ethic | mechanic | holder |
 |---|---|---|
 | `free_trade` | Bonus scales with **network openness** — the fraction of *all* routes in the galaxy that are live. Meridian profits from everyone's peace, not just its own, so it has a mechanical reason to broker other people's ceasefires. | Meridian |
-| `extortionist` | **Toll.** Takes an extra cut of the transit value of every route crossing its systems, charged against the other beneficiaries. On kes-2 that is a cut of 74 paths' worth of traffic. | Hutt |
-| `smuggler` | **Blockade-runner.** Its own routes ignore blockades entirely, and it raids at double effect. The one power that profits from a closed galaxy. | Krayt |
+| `extortionist` | **Toll.** Takes an extra cut of the transit value of every route crossing its systems, charged against the other beneficiaries. On kes-2 that is a cut of 74 paths' worth of traffic. | Nar |
+| `smuggler` | **Blockade-runner.** Its own routes ignore blockades entirely, and it raids at double effect. The one power that profits from a closed galaxy. | Drajk |
 | `autarkic` | Reduced route income, but base income is **immune to blockade and raiding**. Cannot be economically strangled — only conquered. | Vigil, Arkanis |
 | `monopolist` | Double share on routes where it holds **both** endpoints; reduced share on routes it shares. Rewards a contiguous empire. Currently unused by the seed; implemented so the axis is complete. | — |
 
@@ -126,13 +126,13 @@ Blockading civilian traffic is Meridian's **declared red line**. It becomes a
 real sacrifice for the first time, and the refusal mechanic that enforces it
 already exists.
 
-### `commerce_raiding` — what Krayt is for
+### `commerce_raiding` — what Drajk is for
 
 A new duration category (floor 1, typical 2–3). An order against a system with
 a committed force. Each turn it runs, the raider diverts a share of that
 system's transit value from whoever was collecting it.
 
-- Smugglers raid at **double** effect; anyone *can* raid, Krayt is *good* at it.
+- Smugglers raid at **double** effect; anyone *can* raid, Drajk is *good* at it.
 - The raiding force is physically present, so it can be attacked like any
   other fleet. Raiding is not free.
 - It costs disposition with every victim, every turn, and is visible in their
@@ -140,7 +140,7 @@ system's transit value from whoever was collecting it.
 - Efficiency comes from a guile check resolved **in code** at issue time, on
   the same discipline as every other check.
 
-This is what makes the poorest faction on the map playable: Krayt cannot win a
+This is what makes the poorest faction on the map playable: Drajk cannot win a
 fleet engagement against Meridian, but it can bleed it.
 
 ---

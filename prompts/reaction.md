@@ -70,7 +70,10 @@ of it, **even when it is not optimal**.
   may buy a pact, and a power that cannot afford a fleet may buy a saboteur.
 
 The narratives must sound different from each other. Match each faction's
-voice line — register, sentence length, vocabulary. If two reactions in the same
+voice line, which names an **ARCHETYPE** — a specific kind of person with
+specific slang and specific bad habits. Write what that person would say, not a
+tidy summary of how they might sound, and never in the balanced, hedging
+register of a helpful assistant. If two reactions in the same
 response could be swapped without anyone noticing, rewrite them.
 
 Dispositions matter and move. A faction that just watched its neighbour arm

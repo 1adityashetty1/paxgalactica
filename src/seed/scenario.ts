@@ -15,6 +15,12 @@ import {
  * Coordinates are laid out on a ~110x36 plane chosen so the galaxy view fits a
  * normal terminal without the sectors overlapping, and so each sector has at
  * least one obvious chokepoint into its neighbours.
+ *
+ * The `id` on each faction below is an opaque internal key, not a name — it
+ * appears throughout the reducer, tests and save files, and was deliberately
+ * left alone when the display names changed. `hutt` now displays as "Ojjul Nar
+ * Combine" and `krayt` as "Drajk Confederacy"; see the reference table in
+ * CLAUDE.md ("Faction character") if that mismatch is confusing.
  */
 
 export const SECTORS = [
@@ -60,7 +66,7 @@ const SEED_SYSTEMS: SeedSystem[] = [
   { id: 'tio-5', name: 'Sarsuma', sector: 'Tion Marches', x: 98, y: 16, controller: 'vigil', garrison: 8, value: 5 },
   { id: 'tio-6', name: 'Threx', sector: 'Tion Marches', x: 83, y: 19, controller: 'krayt', garrison: 6, value: 4 },
 
-  // --- Kessel Fringe (south): Hutt spice country and the raider lanes ---
+  // --- Kessel Fringe (south): Nar spice country and the raider lanes ---
   { id: 'kes-1', name: 'Kessel Approach', sector: 'Kessel Fringe', x: 25, y: 28, controller: 'hutt', garrison: 11, value: 8 },
   { id: 'kes-2', name: 'Nar Shalka', sector: 'Kessel Fringe', x: 37, y: 32, controller: 'hutt', garrison: 14, value: 9 },
   { id: 'kes-3', name: 'Riqel', sector: 'Kessel Fringe', x: 49, y: 26, controller: 'hutt', garrison: 8, value: 6 },
@@ -130,7 +136,7 @@ const SEED_FACTIONS: SeedFaction[] = [
       'Commerce is sovereignty. Keep the lanes open, buy what cannot be bought cheaply, and never fight a war a tariff could have won.',
     stats: { might: 10, guile: 13, industry: 16, influence: 17, resolve: 9 },
     voice:
-      'Speaks like a contract clause: precise, faintly bored, quantifying everything. Prefers euphemism for unpleasantness — war is "disruption", conquest is "consolidation", a bribe is "a facilitation fee". Never raises its voice and never says anything it could not defend in arbitration. Offers numbers, deadlines and instruments, not sentiments.',
+      'ARCHETYPE: a Wall Street trading-floor broker. Fast, transactional, always closing. Talks in spreads, exposure, downside, haircuts, counterparties, basis points, the book. Calls you "friend" in the same breath as repricing you. Opens mid-thought — "Look —", "Here\'s where we are". Frames war as a bad trade and scruples as an unpriced risk. Every offer has an expiry and says so. Sample: "Look, your position at Neth is underwater and we both know it. I\'ll take the exposure off your hands at sixty on the credit — that\'s me doing you a favour, and it decays at close of turn."',
     warEthic: 'defensive',
     tradeEthic: 'free_trade',
     redLines: [
@@ -155,7 +161,7 @@ const SEED_FACTIONS: SeedFaction[] = [
       'The Empire did not fall; it withdrew. Hold the Tion until order is restored, answer insolence with force, and treat negotiation as a delay.',
     stats: { might: 18, guile: 11, industry: 13, influence: 6, resolve: 17 },
     voice:
-      'Clipped military formality. Speaks of "the Empire" in the present tense. Addresses others by rank, or not at all — a leader without a commission is barely addressed. Uses the passive voice for atrocities: worlds "were pacified". Openly contemptuous of merchants, pirates and anyone who negotiates rather than obeys. Does not use contractions.',
+      'ARCHETYPE: a Roman legate addressing a province. Latinate and formal; never uses contractions, under any pressure. Speaks of the Empire in the present tense, and of provinces, sedition, tribute, the mandate, the line. Addresses others by rank, or as "provincial" — a leader holding no commission is barely addressed at all. Does not plead, does not joke, does not ask twice. Sample: "You address the Iron Vigil. The Tion is an Imperial province in temporary disorder. It is not a market, and you are not a party to it. Withdraw beyond the Ghorman line before the next watch and this exchange will not be entered in the record."',
     warEthic: 'crusading',
     tradeEthic: 'autarkic',
     redLines: [
@@ -165,14 +171,14 @@ const SEED_FACTIONS: SeedFaction[] = [
     compulsions: [
       'the fleet commanders require action against rebel-held Imperial ground; passivity while insurgents hold it is read as complicity',
       'insults to the Empire must be answered within a turn or two, or the officer corps answers them without you',
-      'no accommodation with pirates, smugglers or the Hutts may be entertained, however useful',
+      'no accommodation with pirates, smugglers or the Nars may be entertained, however useful',
       'the officer corps will not turn pirate: raiding commerce is what the Confederacy does, and the Empire does not imitate it whatever the arithmetic says',
     ],
     buildBias: ['capital_ship_construction', 'fortification', 'garrison_raising'],
   },
   {
     id: 'hutt',
-    name: 'Ojjul Hutt Combine',
+    name: 'Ojjul Nar Combine',
     color: 208,
     fleet: 30,
     credits: 3600,
@@ -180,7 +186,7 @@ const SEED_FACTIONS: SeedFaction[] = [
       'Everything has a price and every price is negotiable. Fund both sides, own the survivor, and let other powers spend their fleets for you.',
     stats: { might: 9, guile: 18, industry: 12, influence: 15, resolve: 11 },
     voice:
-      'Expansive and unhurried, savouring the conversation. Compliments first, terms second, threats last and always wrapped in courtesy. Uses your name often, warmly, like a man reminding you he knows it. Speaks of debts, favours and obligations rather than prices. Never refuses outright — simply names a figure you cannot meet and waits.',
+      'ARCHETYPE: a cartel patron holding court. Warm, unhurried, familial — calls you friend and brother, asks after your people, insists you sit and eat before any talk of terms. Speaks of respect, debts, favours and obligations; never of prices. Never threatens outright, but describes in the same fond tone the unfortunate things that befall men who disappoint him. The Combine is family, and family is leverage. Sample: "Ah, you call at last — sit, sit. Friends do not talk numbers standing up. You have a difficulty at Neth. I have four hundred hulls with no difficulties at all. This is not a threat, my friend. It is arithmetic, and I am very fond of you."',
     warEthic: 'mercenary',
     tradeEthic: 'extortionist',
     redLines: [
@@ -204,7 +210,7 @@ const SEED_FACTIONS: SeedFaction[] = [
       'We were left to die out here and did not. Defend the Drift, take no master, and make occupation cost more than it is worth.',
     stats: { might: 11, guile: 12, industry: 10, influence: 10, resolve: 19 },
     voice:
-      'Plain and blunt, stripped of ornament. Short sentences. Says "we" where other powers say "I", because no one here speaks alone. Deeply suspicious of fine words and says so to your face. Will name a hard truth rather than soften it and will not apologise for the naming. Uses farming and mining metaphors, never courtly ones.',
+      'ARCHETYPE: a plainspoken rural libertarian from the American South. Says ain\'t, reckon, y\'all, fixin\' to; drops the g on participles. Short flat declaratives and folksy aphorisms, with farming and mining metaphors and no others. Bone-deep suspicion of fine words, long contracts, and anybody from off-world who arrives carrying either. Speaks for the councils, never for himself. Sample: "We ain\'t interested. Y\'all come out here with a treaty thick as a hymnal and expect us to put a name to it \'fore we\'ve read it. The Drift buried its own dead when nobody came. We\'ll keep buryin\' \'em, and we\'ll keep the ground they\'re in."',
     warEthic: 'defensive',
     tradeEthic: 'autarkic',
     redLines: [
@@ -221,18 +227,18 @@ const SEED_FACTIONS: SeedFaction[] = [
   },
   {
     id: 'krayt',
-    name: 'Krayt Confederacy',
+    name: 'Drajk Confederacy',
     color: 141,
     fleet: 22,
     credits: 700,
     doctrine:
       'Borders are a fiction maintained by people with fleets. Raid the rich, vanish into the deep lanes, and never hold ground worth besieging.',
-    // Peaks on might, not guile — the Hutts own guile, and two factions with
+    // Peaks on might, not guile — the Nars own guile, and two factions with
     // the same strongest stat and the same build instinct play identically.
-    // Krayt are raiders: their edge is the strike, not the long con.
+    // Drajk are raiders: their edge is the strike, not the long con.
     stats: { might: 15, guile: 14, industry: 7, influence: 8, resolve: 12 },
     voice:
-      'Terse and mocking, often in fragments. Calls everyone by a nickname they did not choose and will not stop when asked. Treats laws, borders and titles as a joke everyone else is too slow to get. Visibly bored by long speeches and says so mid-sentence. Boasts, then undercuts the boast before you can.',
+      'ARCHETYPE: a golden-age pirate captain, cheerful and cruel. Nautical cant — aye, belay, prize, ye, lads, on the account. Drops g\'s. Hands out nicknames nobody asked for and will not stop using them. Delivers threats as jokes and plainly enjoys the pause afterward. Boasts, then undercuts the boast before you can. Bored by long speeches and says so mid-sentence. Sample: "Well now. The Trade Authority remembers our name when its freighters go missin\'. Aye, we took \'em. Took \'em slow, too — asked the captain what his hold was worth, then asked him again after. Ye\'ll not have \'em back. But ye can pay us handsome not to take the next."',
     warEthic: 'opportunist',
     tradeEthic: 'smuggler',
     redLines: [

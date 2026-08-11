@@ -98,7 +98,7 @@ describe('adjust_fleet and adjust_credits', () => {
     const start = fresh();
     const before = fleetStrengthOf(start, 'krayt');
     const purse = start.factions.find((f) => f.id === 'krayt')!.credits;
-    // Krayt holds 700 credits, so 10 hulls at 60 apiece is affordable and 12
+    // Drajk holds 700 credits, so 10 hulls at 60 apiece is affordable and 12
     // would not be — the yards are the binding constraint, not the order.
     const res = applyOps(start, [{ op: 'adjust_fleet', factionId: 'krayt', delta: 10 }]);
     expect(fleetStrengthOf(res.state, 'krayt')).toBe(before + 10);

@@ -69,7 +69,7 @@ export function useGame() {
 
       if (event.type === 'progress') {
         // The label is written to be shown verbatim: "Resolving",
-        // "Ojjul Hutt Combine considers".
+        // "Ojjul Nar Combine considers".
         setBusy(event.busy ? event.label : null);
       } else if (event.type === 'state') {
         setView(event.view);

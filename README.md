@@ -1,6 +1,6 @@
 # Pax Galactica
 
-An LLM-driven grand strategy campaign in the Star Wars Outer Rim, played in your
+An LLM-driven grand strategy campaign in a lawless outer rim, played in your
 browser on localhost. Twenty-five systems, four sectors, five powers who will
 not shut up about their principles.
 

@@ -43,7 +43,7 @@ function exampleActions(state: WorldState | null): string[] {
     .map((id) => state.systems.find((s) => s.id === id)!)
     .filter((s) => s && s.controllerFactionId !== me);
 
-  // Nearest unaligned world, not merely an adjacent one. Krayt borders no
+  // Nearest unaligned world, not merely an adjacent one. Drajk borders no
   // neutral at all, and lawless junctions are the whole of its economy — the
   // example it most needs is the one it would otherwise never be shown.
   const neutral = outward.find((s) => s.controllerFactionId === null) ?? nearestNeutral(state, mine);

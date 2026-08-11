@@ -149,7 +149,7 @@ SIGTERM                            "Campaign saved."
 ### Carried into Prompt 3
 
 - Consume `/api/events` for progress; the label is human-readable and meant to
-  be shown verbatim ("Resolving", "Ojjul Hutt Combine considers").
+  be shown verbatim ("Resolving", "Ojjul Nar Combine considers").
 - `state` events carry a whole `CampaignView` — replace, do not patch.
 - Handle **409 `conflict`** as an expected outcome, not an error: it means a
   call is already running. Disable the input rather than showing a red banner.
