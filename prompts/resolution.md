@@ -68,6 +68,11 @@ an order: resolve it and let the consequences do the work.
 `transfer_control` is **not available to you.** A system changes hands only when
 a `fleet_movement` order physically arrives.
 
+An `establish_commitment` that earns or costs money should say so with
+`incomePerTurn` — a mining concession or a smuggling operation is worth
+something every turn, tribute paid is worth something negative. Up to 25 either
+way; more is trimmed. A purely political arrangement leaves it out.
+
 ## Fleets
 
 A faction's navy **is** the ships in its systems plus whatever is in transit;
@@ -194,6 +199,44 @@ Set `visibility` to the faction ids who would plausibly notice — covert work
 usually nobody. Visibility is what makes long projects raidable. Set
 `interruptible` and `onInterrupt` (`cancel`, `partial`, `persist`) to match the
 work.
+
+### What the order delivers — `onComplete`
+
+An order with no `onComplete` runs its duration and **changes nothing**. That is
+right for a courier run or a decree, and wrong for a shipyard: if the player is
+building, mining, developing, levying or fortifying, the payload is the whole
+point of the action. Set it, or the work was theatre.
+
+`onComplete` is `{kind, magnitude, summary}`. Four kinds, each legal only on the
+order types listed:
+
+| kind | does | allowed on |
+|---|---|---|
+| `develop_system` | +1..2 `strategicValue` — permanent income, and at 7 the world becomes a **trade hub** | `construction_infrastructure`, `industrial_conversion`, `retooling` |
+| `raise_garrison` | +1..5 garrison now, up to the world's ceiling | `garrison_raising`, `fortification` |
+| `fortify` | +1..3 to the garrison **ceiling** | `fortification`, `construction_infrastructure` |
+| `commission_ships` | hulls delivered at the target on completion | `capital_ship_construction`, `refit`, `retooling` |
+
+It is **paid for when the order is issued**: 60 credits a hull, 45 a point of
+garrison ceiling, 15 a garrison point. `develop_system` is priced from what it
+is worth on that particular world — twelve turns of the income it would create —
+so improving an ordinary world is cheap and founding a **trade hub** costs a
+large fraction of a treasury. You do not calculate this; the reducer does, and
+tells you the figure if the treasury cannot cover it.
+
+Ask for more than the cap or more than the treasury holds and it is trimmed, not
+rejected. Over-asking is therefore safe; **forgetting it entirely is what makes
+the action pointless.**
+
+`targetId` is the world the work happens on, and the faction must **hold it or
+have ships over it** — you cannot build on a rival's world by declaring it.
+Infrastructure survives a change of ownership and then serves whoever holds the
+world; levies and hulls do not.
+
+The other order types — `courier`, `decree`, `political_maneuver`, `espionage`,
+`counter_intelligence`, `blockade`, `commerce_raiding`, `treaty_ratification` —
+take no payload: their effect is the agent, the treaty or the interdiction
+itself, and a payload on them is rejected.
 
 ## Judging the action
 

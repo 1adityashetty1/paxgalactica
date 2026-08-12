@@ -7,8 +7,16 @@ import {
   type DurationCategory,
   type FibScale,
 } from './duration.js';
-import { conflictingCommitment } from './arbitration.js';
+import { conflictingCommitment, MAX_COMMITMENT_INCOME } from './arbitration.js';
 import { rollD20, statModifier } from './checks.js';
+import {
+  applyOrderEffect,
+  describeOrderEffect,
+  effectAllowedIn,
+  effectsAllowedFor,
+  priceOrderEffect,
+  trimOrderEffect,
+} from './development.js';
 import {
   AGENT_COST,
   MISSION_PROFILE,
@@ -29,6 +37,7 @@ import {
   fleetBases,
   fleetStrengthOf,
   canSubornAt,
+  getSystem,
   isMovementType,
   ledgerFor,
   liveAgentsOf,
@@ -38,6 +47,7 @@ import {
   UPKEEP_PER_FLEET_POINT,
   type EventLogEntry,
   type Ledger,
+  type OrderEffect,
   type PendingOrder,
   type WorldState,
 } from './state.js';
@@ -453,6 +463,50 @@ export function applyOps(
           break;
         }
 
+        // A works programme is validated HERE, before anything is mutated, and
+        // paid for further down once every other rejection has been ruled out.
+        // Charging earlier would take credits for an order that a later check
+        // refuses to create; charging later, on completion, would let a faction
+        // commission works it could never afford.
+        if (op.onComplete) {
+          if (isMovementType(op.type)) {
+            reject(
+              raw,
+              'illegal_value',
+              `A ${op.type} order carries ships, not a works programme; what it delivers is decided by the battle on arrival.`,
+            );
+            break;
+          }
+          // You can only build where you stand. Without this, a faction could
+          // commission works on a rival's world — priced at the floor, because
+          // the marginal income to the *actor* is nothing, while the rival kept
+          // the improvement. Presence or ownership, the same line interdiction
+          // and suborning draw.
+          const site = state.systems.find((sys) => sys.id === op.targetId)!;
+          const holds = site.controllerFactionId === op.factionId;
+          const present = (site.ships[op.factionId] ?? 0) > 0;
+          if (!holds && !present) {
+            reject(
+              raw,
+              'no_presence',
+              `${op.factionId} neither holds ${site.name} nor has ships there; a works programme needs the world, or at least a fleet over it.`,
+            );
+            break;
+          }
+          const category = op.type as DurationCategory;
+          if (!effectAllowedIn(op.onComplete.kind, category)) {
+            const allowed = effectsAllowedFor(category);
+            reject(
+              raw,
+              'illegal_value',
+              allowed.length === 0
+                ? `Order type "${category}" cannot deliver "${op.onComplete.kind}", or any other works: its effect belongs in a different op (an agent, a treaty) or is read while it runs.`
+                : `Order type "${category}" cannot deliver "${op.onComplete.kind}". It can deliver: ${allowed.join(', ')}.`,
+            );
+            break;
+          }
+        }
+
         if (INTERDICTION_TYPES.has(op.type)) {
           // Interdiction is done by ships, not by proclamation.
           if (interdictionStations(state, op) <= 0) {
@@ -534,6 +588,49 @@ export function applyOps(
           duration = clamp.duration;
         }
 
+        // Pay for the works. Trimmed to the per-kind cap and then to what the
+        // treasury can actually cover, on the same trim-don't-reject principle
+        // as `billConstruction`: a partly affordable programme is partly
+        // delivered, which reads the way a partial check reads. Only a treasury
+        // that cannot buy a single unit is refused outright.
+        let effect: OrderEffect | undefined;
+        let invested = 0;
+        if (op.onComplete) {
+          const treasury = state.factions.find((f) => f.id === op.factionId)!;
+          const site = getSystem(state, op.targetId)!;
+          const trim = trimOrderEffect(
+            state,
+            site,
+            op.factionId,
+            op.onComplete,
+            treasury.credits,
+          );
+          if (!trim) {
+            // Quote the price. A development that crosses into hub status can
+            // cost several turns of income, and "you cannot afford it" is only
+            // actionable if the player is told what it would have taken.
+            const asked = priceOrderEffect(state, site, op.factionId, op.onComplete);
+            reject(
+              raw,
+              'insufficient_credits',
+              `${op.onComplete.kind} at ${site.name} would cost ${asked} credits and ${op.factionId} has ${treasury.credits}.`,
+            );
+            break;
+          }
+          effect = trim.effect;
+          invested = trim.cost;
+          treasury.credits -= invested;
+          if (trim.from !== undefined) {
+            const why =
+              trim.reason === 'cap'
+                ? 'that is the most one programme can deliver'
+                : 'that is all the treasury could cover';
+            const note = `Trimmed ${op.onComplete.kind} from ${trim.from} to ${effect.magnitude}; ${why}.`;
+            notes.push(note);
+            logEvent(state, 'clamp', note, op.factionId);
+          }
+        }
+
         const order: PendingOrder = {
           id: mintOrderId(state),
           factionId: op.factionId,
@@ -549,12 +646,17 @@ export function applyOps(
           durationRationale: rationale,
           path,
           force,
+          onComplete: effect,
+          investedCredits: invested,
         };
         state.pendingOrders.push(order);
+        const delivers = effect
+          ? `, to deliver ${describeOrderEffect(effect)} for ${invested} credits`
+          : '';
         logEvent(
           state,
           'order',
-          `${op.factionId} begins ${order.label} (${duration} turns) -> ${op.targetId}.`,
+          `${op.factionId} begins ${order.label} (${duration} turns) -> ${op.targetId}${delivers}.`,
           op.factionId,
         );
         break;
@@ -575,7 +677,25 @@ export function applyOps(
             home.ships[removed!.factionId] = (home.ships[removed!.factionId] ?? 0) + removed!.force;
           }
         }
-        logEvent(state, 'order', `${removed!.label} cancelled. ${op.reason}`.trim(), removed!.factionId);
+        // Recalling your own order is orderly, so the works return what they
+        // have not yet cut into — the same principle that brings a recalled
+        // fleet's ships home rather than destroying them. An *interruption* is
+        // different: `onInterrupt: 'cancel'` means the work was lost, not
+        // stood down, so nothing comes back there.
+        let recovered = 0;
+        if (removed!.investedCredits > 0) {
+          const left = Math.max(0, removed!.durationTurns - removed!.progress);
+          recovered = Math.round(removed!.investedCredits * (left / removed!.durationTurns));
+          const owner = state.factions.find((f) => f.id === removed!.factionId);
+          if (owner) owner.credits += recovered;
+        }
+        const returned = recovered > 0 ? ` ${recovered} credits recovered from the works.` : '';
+        logEvent(
+          state,
+          'order',
+          `${removed!.label} cancelled.${returned} ${op.reason}`.trim(),
+          removed!.factionId,
+        );
         break;
       }
 
@@ -923,12 +1043,27 @@ export function applyOps(
           );
           break;
         }
+        // An arrangement may be worth money, within a bound. Trimmed rather
+        // than rejected: the arrangement itself is still real at a smaller
+        // number, so refusing the whole thing over its price would throw away
+        // the part the arbiter actually ruled on.
+        const asked = op.incomePerTurn;
+        const yieldPerTurn = Math.max(
+          -MAX_COMMITMENT_INCOME,
+          Math.min(MAX_COMMITMENT_INCOME, asked),
+        );
+        if (yieldPerTurn !== asked) {
+          const note = `Trimmed ${op.kind} yield from ${asked} to ${yieldPerTurn} per turn (ceiling ${MAX_COMMITMENT_INCOME}).`;
+          notes.push(note);
+          logEvent(state, 'clamp', note, op.factionIds[0] ?? null);
+        }
         state.commitments.push({
           id: mintId(state, 'com'),
           kind: op.kind,
           factionIds: [...op.factionIds],
           text: op.text,
           exclusive: op.exclusive,
+          incomePerTurn: yieldPerTurn,
           establishedTurn: state.turn,
           status: 'active',
         });
@@ -1078,7 +1213,11 @@ function resolveInterrupt(state: WorldState, order: PendingOrder, reason: string
       const home = state.systems.find((s) => s.id === order.originId);
       if (home) home.ships[order.factionId] = (home.ships[order.factionId] ?? 0) + order.force;
     }
-    const note = `${order.label} broken off; all progress lost. ${reason}`.trim();
+    // `cancel` means the work is lost entirely, so money sunk into the works is
+    // sunk. Said out loud rather than deducted silently: a player who abandons a
+    // shipyard should be told what it cost them.
+    const sunk = order.investedCredits > 0 ? ` ${order.investedCredits} credits sunk with it.` : '';
+    const note = `${order.label} broken off; all progress lost.${sunk} ${reason}`.trim();
     logEvent(state, 'order', note, order.factionId);
     return note;
   }
@@ -1097,7 +1236,14 @@ function resolveInterrupt(state: WorldState, order: PendingOrder, reason: string
   }
 
   const remaining = Math.max(0, order.durationTurns - order.progress);
-  const refund = remaining * 20;
+  // Banked work is kept and unspent work is refunded. A programme with real
+  // money sunk into it refunds pro-rata of what was actually committed, on top
+  // of the flat recovery — the yards return the materials they never cut into.
+  const unspent =
+    order.investedCredits > 0
+      ? Math.round(order.investedCredits * (remaining / order.durationTurns))
+      : 0;
+  const refund = remaining * 20 + unspent;
   if (faction) faction.credits += refund;
   const note = `${order.label} suspended at ${order.progress}/${order.durationTurns}; ${refund} credits recovered. ${reason}`.trim();
   logEvent(state, 'order', note, order.factionId);
@@ -1453,7 +1599,14 @@ export function tickTurn(input: WorldState): TickResult {
     if (isMovementType(order.type)) {
       // handled above, per system
     } else {
-      const note = `${order.label} completed at ${nameOf(order.targetId)}.`;
+      // A completed programme is where multi-turn work finally touches the
+      // world. Without a payload the order really does just finish — correct for
+      // a courier run or a decree, whose effects landed elsewhere.
+      const target = order.onComplete ? getSystem(state, order.targetId) : undefined;
+      const note =
+        order.onComplete && target
+          ? applyOrderEffect(target, order.factionId, order.onComplete, order.label).note
+          : `${order.label} completed at ${nameOf(order.targetId)}.`;
       logEvent(state, 'order', note, order.factionId);
       notes.push(note);
       report.completed.push({

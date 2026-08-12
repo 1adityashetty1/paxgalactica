@@ -56,6 +56,12 @@ Leave `establishes` out for anything the ops already cover. A treaty is a
 treaty; a fleet movement is a fleet movement. This is only for arrangements
 that would otherwise exist nowhere and be forgotten by next turn.
 
+**Economic development is covered by the ops**, so it does not belong here.
+Building yards, opening mines, developing a world, raising levies and
+fortifying are real multi-turn orders that deliver a real result, so price them
+as ordinary `industry` work rather than recording them as arrangements — and
+never rule them inadmissible for having no mechanic.
+
 You are not recording the *outcome* — the action may still fail. You are
 saying what it would establish **if it works**.
 

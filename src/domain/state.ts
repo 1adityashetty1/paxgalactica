@@ -1,6 +1,14 @@
 import { z } from 'zod';
 import { FactionStatsSchema, STAT_NAMES, statModifier, type FactionStats } from './checks.js';
-import { CommitmentSchema, commitmentsFor, type Commitment } from './arbitration.js';
+import {
+  COMMITMENT_INCOME_BASE,
+  COMMITMENT_INCOME_PER_INFLUENCE,
+  CommitmentSchema,
+  commitmentIncomeFor,
+  commitmentsFor,
+  MIN_COMMITMENT_INCOME_CEILING,
+  type Commitment,
+} from './arbitration.js';
 import {
   AgentSchema,
   isTreatyLive,
@@ -179,6 +187,37 @@ export const SystemSchema = z.object({
 });
 export type StarSystem = z.infer<typeof SystemSchema>;
 
+/**
+ * What a completed order delivers. The bounds, the pricing and the application
+ * live in `development.ts`; only the shape lives here.
+ *
+ * Every kind carries the same `magnitude` field on purpose, so capping,
+ * pricing, trimming and affordability are one linear calculation rather than
+ * four near-identical branches — and a kind added later cannot forget to be
+ * capped, because the capping code does not know which kind it has.
+ */
+export const OrderEffectSchema = z.object({
+  kind: z.enum([
+    /** Permanent economic development: `strategicValue` up, capped at 10. */
+    'develop_system',
+    /** Levies raised now rather than waiting on passive regrowth. */
+    'raise_garrison',
+    /** Permanent defensive capacity: `garrisonMax` up. */
+    'fortify',
+    /** Hulls delivered at the target when the programme lands. */
+    'commission_ships',
+  ]),
+  /**
+   * How much. Generous bounds here and the real limits in code: a schema
+   * rejection costs a correction round trip, where a trim costs a note.
+   */
+  magnitude: z.number().int().min(1).max(99),
+  /** One clause, shown to the player in the orders panel and the briefing. */
+  summary: z.string().max(160).default(''),
+});
+export type OrderEffect = z.infer<typeof OrderEffectSchema>;
+export type OrderEffectKind = OrderEffect['kind'];
+
 export const PendingOrderSchema = z.object({
   id: z.string().min(1),
   factionId: z.string().min(1),
@@ -202,6 +241,21 @@ export const PendingOrderSchema = z.object({
    * owner's fleet but present in no system. Zero for non-movement work.
    */
   force: z.number().int().min(0).default(0),
+  /**
+   * What this programme delivers on completion, already trimmed to its cap and
+   * already paid for. Absent for work whose effect lands elsewhere — a courier
+   * run, a decree, an espionage order that staged a `deploy_agent`.
+   */
+  onComplete: OrderEffectSchema.optional(),
+  /**
+   * Credits sunk into `onComplete` at issue time.
+   *
+   * Held on the order rather than recomputed because the refund on a `partial`
+   * interruption is pro-rata of what was actually spent, and the prices could
+   * change under a save file. Optional on the way in so journals and saves
+   * written before payloads existed still load and replay.
+   */
+  investedCredits: z.number().int().min(0).default(0),
 });
 export type PendingOrder = z.infer<typeof PendingOrderSchema>;
 
@@ -386,6 +440,21 @@ export function liveAgentsOf(state: WorldState, factionId: string): Agent[] {
   return (state.agents ?? []).filter((a) => a.ownerFactionId === factionId && !a.exposed);
 }
 
+/**
+ * The most a faction can draw from its standing arrangements at once, scaled
+ * off `influence` — see `MAX_COMMITMENT_INCOME` in `arbitration.ts` for why the
+ * ceiling exists and why it is derived rather than flat.
+ */
+export function maxCommitmentIncomeFor(state: WorldState, factionId: string): number {
+  const faction = getFaction(state, factionId);
+  if (!faction) return 0;
+  const modifier = statModifier(effectiveStats(state, factionId).influence);
+  return Math.max(
+    MIN_COMMITMENT_INCOME_CEILING,
+    COMMITMENT_INCOME_BASE + COMMITMENT_INCOME_PER_INFLUENCE * modifier,
+  );
+}
+
 export interface Ledger {
   gross: number;
   upkeep: number;
@@ -397,6 +466,11 @@ export interface Ledger {
   espionageLoss: number;
   /** What this faction's own live operatives cost it per turn. */
   agentUpkeep: number;
+  /**
+   * Standing arrangements: charters, smuggling operations, tribute paid.
+   * Positive receives, negative pays.
+   */
+  commitmentFlow: number;
   /** Territory: what the systems themselves pay. */
   territory: number;
   /** Trade: what the lane network pays, after tolls and raids. */
@@ -543,7 +617,8 @@ export function ledgerFor(state: WorldState, factionId: string): Ledger {
   if (!faction) {
     return {
       gross: 0, upkeep: 0, net: 0, systems: 0, treatyFlow: 0,
-      espionageLoss: 0, agentUpkeep: 0, territory: 0, routes: 0, tolls: 0, raided: 0,
+      espionageLoss: 0, agentUpkeep: 0, commitmentFlow: 0,
+      territory: 0, routes: 0, tolls: 0, raided: 0,
     };
   }
 
@@ -589,14 +664,24 @@ export function ledgerFor(state: WorldState, factionId: string): Ledger {
 
   const agentUpkeep = liveAgentsOf(state, factionId).length * AGENT_UPKEEP;
 
+  // Standing arrangements finally reach the books. Read here rather than paid
+  // out each tick, for the same reason agent effects are read where they are
+  // used: a per-turn mutation would compound instead of recurring.
+  const commitmentFlow = commitmentIncomeFor(
+    state.commitments ?? [],
+    factionId,
+    maxCommitmentIncomeFor(state, factionId),
+  );
+
   return {
     gross,
     upkeep,
-    net: gross - upkeep + treatyFlow - espionageLoss - agentUpkeep,
+    net: gross - upkeep + treatyFlow - espionageLoss - agentUpkeep + commitmentFlow,
     systems: counted,
     treatyFlow,
     espionageLoss,
     agentUpkeep,
+    commitmentFlow,
     territory,
     routes,
     tolls: earnings.tolls[factionId] ?? 0,

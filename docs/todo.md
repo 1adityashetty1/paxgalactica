@@ -1,44 +1,40 @@
 # TODO — known bugs and open design questions
 
-## Where things stand (handoff, 2026-08-12)
+## Where things stand (2026-08-12, after the item-8 work)
 
 **Open work, in priority order:**
 
-1. **Item #8 below — completed orders change nothing.** The only open
-   bug/gap. Economic development has no mechanical existence: twelve of
-   fifteen duration categories are hollow, `PendingOrder` has no effect
-   payload, and commitments never reach `ledgerFor`. Fully diagnosed with
-   probe output. **Needs a design decision from the user before coding** —
-   three options are written up; do not pick one unilaterally.
-2. **The combat tactical-phase design question** at the very bottom.
+1. **The combat tactical-phase design question** at the very bottom.
    Deliberately deferred by the user ("we will revisit combat design later").
    Note the *bug* behind it is already fixed (item #1) — what remains is
    whether combat wants a richer multi-round layer and a battle-report UI.
-3. **Pre-existing balance spread**, untouched and not written up as an item:
+2. **Pre-existing balance spread**, untouched and not written up as an item:
    `pnpm balance 30` has the Nars running away at ~272/turn while Meridian
-   sits marginally insolvent at about −1. Unrelated to any bug here.
+   sits marginally insolvent at about −1. Unrelated to any bug here, and
+   unchanged by the item-8 work (the doctrine bots do not build or develop).
+3. **The unfinished live playtest below** is still worth running.
 
-**Everything else in this file is fixed**, each with tests. Original
+**Every numbered item in this file is now fixed**, each with tests. Original
 write-ups are kept rather than deleted — the repro steps are the useful part
 and they document why each guard exists. A "**FIXED —**" note follows each.
 
-**Repo state:** branch `playtest-bug-fixes`, commit `68092a9`, pushed. PR #2
-("Fix nine bugs and gaps found in live playtesting") is **merged**, as is PR
-#1 (faction voices / IP rename). Working tree clean at handoff apart from
-this file. 441 tests pass; `pnpm typecheck`, `pnpm typecheck:web` and
-`pnpm build:web` are all clean. **Start a new branch off `main`** — do not
-build on `playtest-bug-fixes`, it is already merged.
+**Repo state:** branch `order-effects`, off `main` at `e5fb2c3`. PRs #1, #2 and
+#3 are all merged. 479 tests pass; `pnpm typecheck`, `pnpm typecheck:web` and
+`pnpm build:web` are clean.
 
-**A playtest was in progress and is unfinished.** An Ojjul Nar Combine
-regression run (`ojjul_regression`) was set up on port 4260 to re-verify the
-nine fixes under live play, covering (1) conquest by combat, (2) unorthodox
-agent use, (3) raids, (4) neutral-planet interaction. The board was surveyed
-and **no actions were declared** before the session ended on the item-8
-question. The server may still be running; `lsof -ti:4260` and a `SIGTERM`
-will close it cleanly, and `saves/ojjul_regression.json` can be deleted — it
-holds nothing but a turn-0 seed. Re-running that playtest from scratch is
-cheap (~$0.50) and is still worth doing: the nine fixes have unit tests but
-have not been exercised together in a live campaign.
+**A playtest was set up and never played.** An Ojjul Nar Combine regression run
+(`ojjul_regression`) was staged on port 4260 to re-verify the nine earlier fixes
+under live play, covering (1) conquest by combat, (2) unorthodox agent use, (3)
+raids, (4) neutral-planet interaction. The board was surveyed and **no actions
+were declared**. Nothing is left running and `saves/ojjul_regression.json` was
+never written, so there is nothing to clean up — but the playtest itself is
+still outstanding, and now has more to cover: **`onComplete` payloads and
+commitment income have unit tests but have never been exercised by a live model
+call.** The most valuable thing to watch for is whether the resolution pass
+actually *sets* `onComplete` on a development order rather than narrating a
+shipyard and emitting a bare `issue_order` — that is the same failure mode as
+items #1, #2 and #4 (narrating a mechanical outcome instead of emitting the op
+that produces it), and a payload is easy to omit.
 
 **Useful context for whoever picks this up:**
 
@@ -504,10 +500,7 @@ temptation peaks on the message that closes a deal. Two tests.
 
 ---
 
-## 8. OPEN — completed orders change nothing, so economic development does not exist
-
-**This is the only open bug/gap in this file. Everything else numbered is
-fixed. Start here.**
+## 8. ~~OPEN~~ FIXED — completed orders change nothing, so economic development does not exist
 
 Raised by the user reading the prompts and asking whether there is a concrete
 link between the arbiter *allowing* an action and the resolution pass actually
@@ -602,6 +595,45 @@ The user was asked to pick the shape and the session ended before they did.
 
 (A) is the most general and matches the architecture. (B) is the cheapest
 thing that would answer the user's literal question.
+
+**FIXED — (A) then (B), with the (C) scenario reachable through (A).** The user
+chose the effect payload as the mechanism and commitment income as a follow-up,
+and asked specifically that the scenario option (C) would have addressed — a
+developed world becoming a trade hub — be covered by what was built rather than
+by a separate mechanism.
+
+- **(A)** `src/domain/development.ts` plus `onComplete` on `issue_order` and
+  `PendingOrder`. Four effect kinds (`develop_system`, `raise_garrison`,
+  `fortify`, `commission_ships`) applied by the reducer on completion. Bounded
+  four ways: a closed vocabulary that cannot reach another faction, a
+  code-enforced map of which order category may deliver which kind (the link
+  that did not exist — a payload therefore inherits its category's duration
+  floor), per-kind magnitude caps trimmed with a note, and payment **at issue
+  time** so a payoff cannot exceed what the faction could afford. Seven of the
+  twelve hollow categories now deliver something; the other eight carry no
+  payload deliberately, because their effects already live in another op or are
+  read live while they run.
+- **(B)** `Commitment.incomePerTurn`, read by `ledgerFor` as `commitmentFlow`,
+  capped at 25 per arrangement and by a per-faction ceiling derived from
+  `influence` (Meridian 50, the Nars 40, the Iron Vigil 10).
+- **(C)'s scenario** is covered: `develop_system` crossing `HUB_THRESHOLD` turns
+  a world into a trade hub and creates new lanes. Asserted directly —
+  slu-2 at value 6 develops to 7, the galaxy goes from 8 hubs and 28 routes to 9
+  and more, and Meridian's route income rises.
+
+**The pricing was wrong first and the measurement is why it isn't now.** A flat
+80 credits per development point was reasoned from territory income (7/turn per
+point) and ignored that `strategicValue` also drives route volume and hub
+status. Measured marginal value per point on the seed: +7 for an ordinary
+backwater, +13 on an existing hub, +36 founding a poorly-connected hub, **+209
+founding slu-2**. A 30-turn reinvestment probe at the flat price took Meridian
+from 283 to 952 net for 1,120 credits — payback under two turns. `developmentCost`
+now computes the marginal income of the exact development on the actual board and
+charges 12 turns of it; the same run costs 7,968 credits and stays behind a
+hoarding control on treasury until about turn 25.
+
+36 tests in `tests/development.test.ts`, plus two replay tests (one for a
+payload order, one asserting a journal written before payloads still loads).
 
 ---
 

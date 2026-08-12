@@ -7,7 +7,7 @@ import {
   TreatyTypeSchema,
 } from './diplomacy.js';
 import { FibScaleSchema } from './duration.js';
-import { OnInterruptSchema, OrderTypeSchema } from './state.js';
+import { OnInterruptSchema, OrderEffectSchema, OrderTypeSchema } from './state.js';
 
 /**
  * The op vocabulary. The model never rewrites state — it emits ops from this
@@ -87,6 +87,15 @@ export const IssueOrderOp = z.object({
   onInterrupt: OnInterruptSchema.default('cancel'),
   visibility: z.array(z.string()).default([]),
   label: z.string().default(''),
+  /**
+   * What the programme delivers when it lands — see `development.ts`.
+   *
+   * Omit it and the order is theatre: it will run its duration and change
+   * nothing, which is correct for a courier run or a decree and wrong for a
+   * shipyard. Paid for at issue time, capped per kind, and only legal on a
+   * category that can plausibly deliver it.
+   */
+  onComplete: OrderEffectSchema.optional(),
 });
 
 export const CancelOrderOp = z.object({
@@ -171,6 +180,13 @@ export const EstablishCommitmentOp = z.object({
   factionIds: z.array(z.string().min(1)).min(1).max(5),
   text: z.string().min(1).max(240),
   exclusive: z.boolean().default(false),
+  /**
+   * What it is worth per turn to each bound faction — positive for a charter or
+   * a smuggling operation, negative for tribute paid. Trimmed by the reducer to
+   * `MAX_COMMITMENT_INCOME`, and again in the ledger by a per-faction ceiling.
+   * Omit it for an arrangement that is purely political.
+   */
+  incomePerTurn: z.number().int().min(-500).max(500).default(0),
 });
 
 export const DissolveCommitmentOp = z.object({
