@@ -354,6 +354,38 @@ export const UPKEEP_PER_FLEET_POINT = 4;
  */
 export const SHIP_COST = 60;
 
+/**
+ * What each live operative costs its owner per turn.
+ *
+ * Slightly cheaper than a hull (4), because a spy network should be the
+ * affordable way to project power for a weak faction — but not free, so that
+ * a large network is a standing drain the way a large fleet is. Exposed
+ * agents cost nothing: they are already burned.
+ */
+export const AGENT_UPKEEP = 3;
+
+/**
+ * How many operatives a faction can run at once.
+ *
+ * Scaled off `guile` rather than a flat constant, on the same principle as
+ * `subornLimit`: the Nars at guile 18 run a real intelligence service, the
+ * Iron Vigil at 11 manages a couple of watchers. Without any cap at all,
+ * nothing stopped a player accumulating an unbounded number of permanent,
+ * free intel and sabotage feeds.
+ */
+export const MAX_AGENTS_BASE = 2;
+
+export function maxAgentsFor(state: WorldState, factionId: string): number {
+  const faction = getFaction(state, factionId);
+  if (!faction) return 0;
+  return Math.max(1, MAX_AGENTS_BASE + statModifier(effectiveStats(state, factionId).guile));
+}
+
+/** Live (unexposed) operatives a faction is running. Exposed ones are spent. */
+export function liveAgentsOf(state: WorldState, factionId: string): Agent[] {
+  return (state.agents ?? []).filter((a) => a.ownerFactionId === factionId && !a.exposed);
+}
+
 export interface Ledger {
   gross: number;
   upkeep: number;
@@ -363,6 +395,8 @@ export interface Ledger {
   treatyFlow: number;
   /** Credits denied by hostile agents in place. */
   espionageLoss: number;
+  /** What this faction's own live operatives cost it per turn. */
+  agentUpkeep: number;
   /** Territory: what the systems themselves pay. */
   territory: number;
   /** Trade: what the lane network pays, after tolls and raids. */
@@ -509,7 +543,7 @@ export function ledgerFor(state: WorldState, factionId: string): Ledger {
   if (!faction) {
     return {
       gross: 0, upkeep: 0, net: 0, systems: 0, treatyFlow: 0,
-      espionageLoss: 0, territory: 0, routes: 0, tolls: 0, raided: 0,
+      espionageLoss: 0, agentUpkeep: 0, territory: 0, routes: 0, tolls: 0, raided: 0,
     };
   }
 
@@ -553,13 +587,16 @@ export function ledgerFor(state: WorldState, factionId: string): Ledger {
     if (host?.controllerFactionId === factionId) espionageLoss += agent.effect.perTurn;
   }
 
+  const agentUpkeep = liveAgentsOf(state, factionId).length * AGENT_UPKEEP;
+
   return {
     gross,
     upkeep,
-    net: gross - upkeep + treatyFlow - espionageLoss,
+    net: gross - upkeep + treatyFlow - espionageLoss - agentUpkeep,
     systems: counted,
     treatyFlow,
     espionageLoss,
+    agentUpkeep,
     territory,
     routes,
     tolls: earnings.tolls[factionId] ?? 0,
@@ -689,6 +726,27 @@ export function agentsVisibleTo(state: WorldState, factionId: string): Agent[] {
 }
 
 /** Factions this one is at war with — no live non-aggression or ceasefire. */
+/**
+ * How far a relationship has to sour before it counts as a war.
+ *
+ * Named rather than inlined because two different reads of it have to agree:
+ * a faction's own war list, and the same list as any other party sees it.
+ */
+export const WAR_DISPOSITION_THRESHOLD = -60;
+
+/**
+ * Factions this one is at war with — no live non-aggression or ceasefire, and
+ * a relationship soured past `WAR_DISPOSITION_THRESHOLD`.
+ *
+ * Checked in BOTH directions, because a war is a property of the relationship
+ * and not of one party's opinion. This previously read only "who hates me",
+ * which meant the victim of an unprovoked attack did not list their attacker
+ * as an enemy: the mechanical disposition costs (raiding, suborning, tolls,
+ * pact-breaking) all move the INJURED party's view of the aggressor, and
+ * nothing moves the aggressor's view of them. A playtest raid left Arkanis
+ * hating Drajk at -62 while Drajk's own view sat at -10, so
+ * `warsFor('freeworlds')` omitted the faction that had just raided it.
+ */
 export function warsFor(state: WorldState, factionId: string): string[] {
   const atPeace = new Set<string>();
   for (const treaty of treatiesFor(state, factionId)) {
@@ -701,7 +759,8 @@ export function warsFor(state: WorldState, factionId: string): string[] {
       (f) =>
         f.id !== factionId &&
         !atPeace.has(f.id) &&
-        dispositionBetween(state, f.id, factionId) <= -60,
+        (dispositionBetween(state, f.id, factionId) <= WAR_DISPOSITION_THRESHOLD ||
+          dispositionBetween(state, factionId, f.id) <= WAR_DISPOSITION_THRESHOLD),
     )
     .map((f) => f.id);
 }

@@ -20,6 +20,7 @@ export type PromptName =
   | 'diplomacy-persona'
   | 'extraction'
   | 'appraisal'
+  | 'correction'
   | 'duration-rubric'
   | 'flavor';
 

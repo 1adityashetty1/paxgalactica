@@ -135,6 +135,28 @@ export const AGENT_MISSION_MEANING: Record<AgentMission, string> = {
  * behaves identically whether it is called surveillance or assassination.
  * These are the two axes on which the missions genuinely differ.
  */
+/**
+ * What it costs to put an operative in place, by mission.
+ *
+ * Priced against the same economy as hulls (`SHIP_COST` 60, net incomes
+ * 72-283 a turn): a watcher is cheaper than a corvette, a decapitation strike
+ * costs more than two. Agents were previously free in every sense — no
+ * deployment cost, no upkeep, no cap — which made an unbounded covert network
+ * strictly dominant once a player noticed.
+ *
+ * Scales with what the mission actually requires rather than with its effect:
+ * `assassination` is dear because arranging one is dear, and it is spent after
+ * a single attempt either way.
+ */
+export const AGENT_COST: Record<AgentMission, number> = {
+  surveillance: 40,
+  theft: 60,
+  subversion: 60,
+  defection: 80,
+  sabotage: 80,
+  assassination: 150,
+};
+
 export interface MissionProfile {
   /** A failed roll at or below this exposes the operative. */
   exposureRisk: number;

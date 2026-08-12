@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyOps, tickTurn, MAX_ATTRITION_FRACTION } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
-import { MISSION_PROFILE } from '../src/domain/diplomacy.js';
+import { AGENT_COST, MISSION_PROFILE } from '../src/domain/diplomacy.js';
 import {
   agentsVisibleTo,
   effectiveStats,
@@ -14,6 +14,8 @@ import {
   treatiesFor,
   warsFor,
   type WorldState,
+  AGENT_UPKEEP,
+  maxAgentsFor,
 } from '../src/domain/state.js';
 
 const fresh = (): WorldState => createSeedState('freeworlds');
@@ -569,5 +571,83 @@ describe('a navy you cannot pay for does not simply sit there', () => {
     // Not an arbitrary pair of numbers: the ratio is what makes expansion a
     // commitment rather than a purchase.
     expect(SHIP_COST / UPKEEP_PER_FLEET_POINT).toBe(15);
+  });
+});
+
+describe('a covert service costs money and has a ceiling', () => {
+  const deploy = (state: WorldState, actor: string, systemId: string, mission = 'surveillance') =>
+    applyOps(
+      state,
+      [
+        {
+          op: 'deploy_agent', ownerFactionId: actor, systemId,
+          mission, effect: { kind: 'intel', revealsOrders: true }, cover: 'broker',
+        },
+      ],
+      'model',
+      actor,
+    );
+
+  it('charges for placing an operative', () => {
+    // Agents used to be free in every sense: no deployment cost, no upkeep,
+    // no cap — which made an unbounded spy network strictly dominant.
+    const state = fresh();
+    const before = state.factions.find((f) => f.id === 'freeworlds')!.credits;
+    const res = deploy(state, 'freeworlds', 'ark-2');
+    expect(res.rejections).toHaveLength(0);
+    expect(res.state.factions.find((f) => f.id === 'freeworlds')!.credits).toBe(
+      before - AGENT_COST.surveillance,
+    );
+  });
+
+  it('prices a decapitation strike well above a watcher', () => {
+    expect(AGENT_COST.assassination).toBeGreaterThan(AGENT_COST.surveillance * 2);
+  });
+
+  it('refuses a deployment the treasury cannot cover', () => {
+    const state = fresh();
+    state.factions.find((f) => f.id === 'freeworlds')!.credits = 10;
+    const res = deploy(state, 'freeworlds', 'ark-2');
+    expect(res.rejections.map((r) => r.code)).toContain('insufficient_credits');
+    expect(res.state.agents).toHaveLength(0);
+  });
+
+  it('caps simultaneous operatives, scaled off guile', () => {
+    // Not a flat constant: the Nars at guile 18 run a real service, the Iron
+    // Vigil at 11 manages a couple of watchers.
+    const state = fresh();
+    expect(maxAgentsFor(state, 'hutt')).toBeGreaterThan(maxAgentsFor(state, 'vigil'));
+
+    let s = fresh();
+    s.factions.find((f) => f.id === 'vigil')!.credits = 5000;
+    const cap = maxAgentsFor(s, 'vigil');
+    const targets = ['ark-2', 'slu-3', 'slu-5', 'slu-6', 'kes-4'];
+    for (let i = 0; i < cap; i++) {
+      const res = deploy(s, 'vigil', targets[i]!);
+      expect(res.rejections, `deployment ${i + 1} of ${cap}`).toHaveLength(0);
+      s = res.state;
+    }
+    const overflow = deploy(s, 'vigil', targets[cap]!);
+    expect(overflow.rejections.map((r) => r.code)).toContain('illegal_value');
+    expect(overflow.rejections[0]!.message).toMatch(/already running/);
+    expect(overflow.state.agents).toHaveLength(cap);
+  });
+
+  it('bills live operatives every turn, and burned ones not at all', () => {
+    const state = fresh();
+    state.factions.find((f) => f.id === 'freeworlds')!.credits = 2000;
+    const withAgent = deploy(state, 'freeworlds', 'ark-2').state;
+    expect(ledgerFor(withAgent, 'freeworlds').agentUpkeep).toBe(AGENT_UPKEEP);
+
+    withAgent.agents[0]!.exposed = true;
+    expect(ledgerFor(withAgent, 'freeworlds').agentUpkeep).toBe(0);
+  });
+
+  it('subtracts agent upkeep from net income', () => {
+    const state = fresh();
+    state.factions.find((f) => f.id === 'freeworlds')!.credits = 2000;
+    const before = ledgerFor(state, 'freeworlds').net;
+    const after = deploy(state, 'freeworlds', 'ark-2').state;
+    expect(ledgerFor(after, 'freeworlds').net).toBe(before - AGENT_UPKEEP);
   });
 });

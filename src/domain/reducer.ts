@@ -10,6 +10,7 @@ import {
 import { conflictingCommitment } from './arbitration.js';
 import { rollD20, statModifier } from './checks.js';
 import {
+  AGENT_COST,
   MISSION_PROFILE,
   PACT_BREAKING_REPUTATION_COST,
   PEACE_TREATIES,
@@ -30,6 +31,8 @@ import {
   canSubornAt,
   isMovementType,
   ledgerFor,
+  liveAgentsOf,
+  maxAgentsFor,
   subornLimit,
   SHIP_COST,
   UPKEEP_PER_FLEET_POINT,
@@ -54,6 +57,16 @@ export const DISSENT_DECAY = 2;
  * visible decline the player can react to over several turns.
  */
 export const MAX_ATTRITION_FRACTION = 0.15;
+
+/**
+ * The most of its own fleet a faction can lose to one declared action.
+ *
+ * A deliberate scuttling or a costly accident is legitimate narrative; losing
+ * the entire navy because a single `might` check came up 3 is the resolution
+ * call resolving a battle it does not get to resolve. See
+ * `capSelfInflictedLosses`.
+ */
+export const MAX_SELF_INFLICTED_LOSS_FRACTION = 0.25;
 
 /**
  * Orders that interdict trade rather than build or move anything.
@@ -351,6 +364,21 @@ export function applyOps(
       case 'adjust_fleet': {
         if (!factionExists(op.factionId)) {
           reject(raw, 'unknown_faction', `No faction "${op.factionId}".`);
+          break;
+        }
+        // Hulls belonging to somebody else are not yours to delete. Taking a
+        // rival's ships goes through `adjust_ships` (suborning: presence and a
+        // guile-vs-resolve limit) or through combat; there is no path where a
+        // narrative call simply erases another power's navy. `adjust_ships`
+        // has been guarded this way since the suborn work — `adjust_fleet`
+        // was not, and it is the *untargeted* op, which makes it strictly
+        // worse: it draws from the victim's largest concentrations galaxy-wide.
+        if (actor !== undefined && op.factionId !== actor && op.delta < 0) {
+          reject(
+            raw,
+            'reducer_only',
+            `${actor} cannot destroy ${op.factionId}'s ships directly. Losses come from combat when a fleet_movement arrives, or from suborning crews with adjust_ships.`,
+          );
           break;
         }
         // Ships have to exist somewhere. With no system named, new hulls
@@ -700,6 +728,21 @@ export function applyOps(
           reject(raw, 'unknown_faction', `No faction "${op.ownerFactionId}".`);
           break;
         }
+        // You may only run your own operatives. Reproduced three times in
+        // playtests: on a hostile mission the resolution call anchored
+        // `ownerFactionId` to the faction being harmed rather than the one
+        // acting, producing e.g. a Vigil agent sabotaging Vigil. The tick loop
+        // skips any agent whose owner is its own target, so such an agent is
+        // silently inert forever — no rejection, no warning, and invisible in
+        // the UI. Rejecting is strictly better than accepting a dead operative.
+        if (actor !== undefined && op.ownerFactionId !== actor) {
+          reject(
+            raw,
+            'illegal_value',
+            `${actor} cannot deploy an agent owned by ${op.ownerFactionId}. Set ownerFactionId to the acting faction — an operative owned by its own target can never act.`,
+          );
+          break;
+        }
         const host = state.systems.find((x) => x.id === op.systemId);
         if (!host) {
           reject(raw, 'unknown_system', `No system "${op.systemId}".`);
@@ -709,6 +752,51 @@ export function applyOps(
         const target = host.controllerFactionId
           ? state.factions.find((f) => f.id === host.controllerFactionId)
           : undefined;
+
+        // A `crew_defection` operative is worthless against a power whose
+        // resolve outmatches your guile: `subornLimit` returns 0, so the agent
+        // would roll faithfully every turn and be arithmetically incapable of
+        // ever turning a single hull. Rejected rather than accepted-and-inert,
+        // because the player has no way to see that from the agent panel — a
+        // playtest produced exactly this (Drajk guile 14 vs Arkanis resolve 19)
+        // and the operative sat there doing nothing for the rest of the run.
+        if (op.effect.kind === 'crew_defection' && target) {
+          if (subornLimit(state, op.ownerFactionId, target.id) <= 0) {
+            reject(
+              raw,
+              'illegal_value',
+              `${target.name}'s crews will not be suborned by ${owner.name} — their resolve is beyond its guile, so a defection network there could never turn a single hull. Choose another effect.`,
+            );
+            break;
+          }
+        }
+
+        // A covert service is a standing commitment, not a free action: there
+        // is a price to place an operative, a per-turn cost to run one, and a
+        // ceiling on how many a faction can handle at once. All three were
+        // missing, which made an unbounded spy network strictly dominant.
+        const cap = maxAgentsFor(state, op.ownerFactionId);
+        const running = liveAgentsOf(state, op.ownerFactionId).length;
+        if (running >= cap) {
+          reject(
+            raw,
+            'illegal_value',
+            `${owner.name} is already running ${running} operatives, its limit at guile ${effectiveStats(state, op.ownerFactionId).guile}. Recall one before placing another.`,
+          );
+          break;
+        }
+
+        const price = AGENT_COST[op.mission];
+        if (owner.credits < price) {
+          reject(
+            raw,
+            'insufficient_credits',
+            `Placing a ${op.mission} operative costs ${price} credits; ${owner.name} holds ${owner.credits}.`,
+          );
+          break;
+        }
+        owner.credits -= price;
+
         state.agents.push({
           id: mintId(state, 'agt'),
           ownerFactionId: op.ownerFactionId,
@@ -725,7 +813,7 @@ export function applyOps(
         logEvent(
           state,
           'order',
-          `${owner.name} places an agent on ${host.name} (${op.mission}).`,
+          `${owner.name} places an agent on ${host.name} (${op.mission}) for ${price} credits.`,
           op.ownerFactionId,
         );
         break;
@@ -875,9 +963,52 @@ export function applyOps(
     }
   }
 
+  capSelfInflictedLosses(state, actor, hullsBefore, notes);
   billConstruction(state, hullsBefore, notes);
 
   return { state, rejections, notes };
+}
+
+/**
+ * Stop a single declared action from wiping out the acting faction's own navy.
+ *
+ * Real combat losses never come through here — `resolveBattle` mutates state
+ * directly during `tickTurn`, so this cap cannot blunt an honest defeat. What
+ * it catches is a resolution call narrating a battle it was never supposed to
+ * resolve and emitting ops to match: five separate playtest reproductions had
+ * a bad `might` roll delete 88–100% of the acting fleet, with no
+ * `fleet_movement` order anywhere and the enemy untouched.
+ *
+ * A faction can still lose hulls to a story beat — scuttling, an accident, a
+ * disaster — but not its whole fleet in one declaration. Trimmed rather than
+ * rejected, on the same principle as `billConstruction`: the batch's other
+ * work stands, and the excess is handed back with a note.
+ */
+function capSelfInflictedLosses(
+  state: WorldState,
+  actor: string | undefined,
+  before: Map<string, number>,
+  notes: string[],
+): void {
+  if (actor === undefined) return; // engine ops, and journals predating the actor field
+  const faction = state.factions.find((f) => f.id === actor);
+  if (!faction) return;
+
+  const had = before.get(actor) ?? 0;
+  const lost = had - fleetStrengthOf(state, actor);
+  if (lost <= 0) return;
+
+  const allowed = Math.max(1, Math.floor(had * MAX_SELF_INFLICTED_LOSS_FRACTION));
+  if (lost <= allowed) return;
+
+  const restored = lost - allowed;
+  const bases = fleetBases(state, actor);
+  if (bases.length === 0) return;
+  bases[0]!.ships[actor] = (bases[0]!.ships[actor] ?? 0) + restored;
+
+  const note = `${faction.name} cannot lose ${lost} hulls to a single declaration; ${restored} were never at risk and remain at ${bases[0]!.name}. Battle losses are resolved when a fleet arrives, not when an order is given.`;
+  notes.push(note);
+  logEvent(state, 'rejection', note, actor);
 }
 
 /**
