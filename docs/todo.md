@@ -1,11 +1,60 @@
 # TODO — known bugs and open design questions
 
-> **Status:** every numbered item and both minor findings below are **fixed**
-> as of 2026-08-11, each with tests. Original write-ups are kept intact rather
-> than deleted — the repro steps are the useful part, and they document why
-> the guards exist. A short "**FIXED —**" note follows each one.
->
-> Still open: the combat design question at the bottom, deliberately deferred.
+## Where things stand (handoff, 2026-08-12)
+
+**Open work, in priority order:**
+
+1. **Item #8 below — completed orders change nothing.** The only open
+   bug/gap. Economic development has no mechanical existence: twelve of
+   fifteen duration categories are hollow, `PendingOrder` has no effect
+   payload, and commitments never reach `ledgerFor`. Fully diagnosed with
+   probe output. **Needs a design decision from the user before coding** —
+   three options are written up; do not pick one unilaterally.
+2. **The combat tactical-phase design question** at the very bottom.
+   Deliberately deferred by the user ("we will revisit combat design later").
+   Note the *bug* behind it is already fixed (item #1) — what remains is
+   whether combat wants a richer multi-round layer and a battle-report UI.
+3. **Pre-existing balance spread**, untouched and not written up as an item:
+   `pnpm balance 30` has the Nars running away at ~272/turn while Meridian
+   sits marginally insolvent at about −1. Unrelated to any bug here.
+
+**Everything else in this file is fixed**, each with tests. Original
+write-ups are kept rather than deleted — the repro steps are the useful part
+and they document why each guard exists. A "**FIXED —**" note follows each.
+
+**Repo state:** branch `playtest-bug-fixes`, commit `68092a9`, pushed. PR #2
+("Fix nine bugs and gaps found in live playtesting") is **merged**, as is PR
+#1 (faction voices / IP rename). Working tree clean at handoff apart from
+this file. 441 tests pass; `pnpm typecheck`, `pnpm typecheck:web` and
+`pnpm build:web` are all clean. **Start a new branch off `main`** — do not
+build on `playtest-bug-fixes`, it is already merged.
+
+**A playtest was in progress and is unfinished.** An Ojjul Nar Combine
+regression run (`ojjul_regression`) was set up on port 4260 to re-verify the
+nine fixes under live play, covering (1) conquest by combat, (2) unorthodox
+agent use, (3) raids, (4) neutral-planet interaction. The board was surveyed
+and **no actions were declared** before the session ended on the item-8
+question. The server may still be running; `lsof -ti:4260` and a `SIGTERM`
+will close it cleanly, and `saves/ojjul_regression.json` can be deleted — it
+holds nothing but a turn-0 seed. Re-running that playtest from scratch is
+cheap (~$0.50) and is still worth doing: the nine fixes have unit tests but
+have not been exercised together in a live campaign.
+
+**Useful context for whoever picks this up:**
+
+- Live playtesting has been by far the most productive bug-finding method
+  here — all nine fixed items came from four campaigns, and none were caught
+  by the test suite first. `.claude/agents/adversarial-player.md` is a
+  competitive-playtester agent definition built for this.
+- Cost is roughly **$0.073 per declared action** and **$0.14 per end-turn**
+  (arbitration on Haiku, resolution and reactions on Sonnet). A two-action
+  turn is about $0.29. Budget accordingly before long runs.
+- The recurring failure mode across every bug found so far: the resolution
+  call **narrating a mechanical outcome instead of emitting the op that
+  produces it**. Items #1, #2 and #4 are all variants. When something looks
+  wrong in a playtest, diff raw state before/after rather than trusting the
+  narrative — several bugs were invisible in the story and obvious in the
+  JSON.
 
 Findings from a live playtest campaign (Meridian vs. Iron Vigil, 7 turns,
 ~$2.15 across 21 model calls, 2026-08-11). Ranked by severity. Each has a
@@ -452,6 +501,107 @@ message) in case it recurs.
 speaking*, which is a different failure. It now forbids third-person
 meta-narration outright, requires first person, and calls out that the
 temptation peaks on the message that closes a deal. Two tests.
+
+---
+
+## 8. OPEN — completed orders change nothing, so economic development does not exist
+
+**This is the only open bug/gap in this file. Everything else numbered is
+fixed. Start here.**
+
+Raised by the user reading the prompts and asking whether there is a concrete
+link between the arbiter *allowing* an action and the resolution pass actually
+changing game state — "it would be annoying for a player to invest in mining
+expeditions to find there is no income reward." There is no such link, and the
+problem is broader than the mining case.
+
+### What was verified
+
+**Nothing carries from appraisal to resolution except `establishes`.** The
+`stat`, `difficulty` and `rationale` are passed as narrative context. There is
+no field meaning "this was priced as an economic investment, so it must yield
+income", and no code path that checks one against the other.
+
+**Commitments are inert.** `establish_commitment` writes to
+`state.commitments`, and the only readers are `conflictingCommitment`
+(exclusivity), `commitmentsOf` (the UI panel) and `serializeCommitments` (the
+arbiter's prompt). **`ledgerFor` never reads them.** A `mining_operation`
+commitment shows in the UI, lowers future related DCs via the item-7 ratchet,
+and pays zero credits forever.
+
+**`PendingOrder` has no effect payload.** No field describes what completion
+should do. The only outcome-bearing fields (`force`, `path`) are
+movement-specific. Order completion for non-movement work runs exactly this,
+in `tickTurn`:
+
+```ts
+const note = `${order.label} completed at ${nameOf(order.targetId)}.`;
+logEvent(state, 'order', note, order.factionId);
+notes.push(note);
+report.completed.push({ ... });
+```
+
+A log line and a report entry. No state change of any kind.
+
+**Probe — four order types, run to completion:**
+
+```
+construction_infra (5t)   sv=9 -> 9   net=260 -> 260   garrison 5 -> 10
+garrison_raising   (3t)   sv=9 -> 9   net=260 -> 260   garrison 5 -> 8
+fortification      (3t)   sv=9 -> 9   net=260 -> 260   garrison 5 -> 8
+industrial_conv    (5t)   sv=9 -> 9   net=260 -> 260   garrison 5 -> 10
+```
+
+The garrison movement is **passive `GARRISON_REGROWTH` (1/turn)**, not the
+order: 3-turn orders gave +3, 5-turn gave +5, and `fortification` and
+`garrison_raising` produced identical results. Credits rose by exactly
+accumulated income. So `garrison_raising` raises no garrison, `fortification`
+fortifies nothing, `industrial_conversion` converts nothing,
+`construction_infrastructure` builds nothing.
+
+**12 of 15 duration categories have zero readers** outside `duration.ts`. Only
+three do anything: `blockade` and `commerce_raiding` (read live off
+`pendingOrders` while `progress > 0`, in `trade.ts`) and `fleet_movement`
+(triggers `resolveBattle` on arrival).
+
+**`strategicValue` is immutable at runtime** — no op can change it, so
+territory income cannot grow except by taking more systems.
+
+### Why it matters
+
+The only ways income ever changes are: conquest, trade-route geography (also
+immutable), treaty transfers, tolls/raiding, and one-off `adjust_credits`.
+There is no "invest now, earn more later" anywhere in the game. Conquest,
+interdiction, agents and diplomacy all work — **economic development is the
+one strategy with no mechanical existence.** A player who spends five turns
+and real credits developing a world gets a log line.
+
+It also makes `durationTurns` meaningless for those twelve categories: any
+effect has to be emitted up front at declaration (so it lands immediately and
+the duration is theatre) or never lands at all.
+
+### Fix directions — this is a design call, not a mechanical fix
+
+The user was asked to pick the shape and the session ended before they did.
+**Do not just pick one; ask.** Options, roughly largest to smallest:
+
+- **(A) An effect payload on orders.** `onComplete` ops declared at issue time,
+  schema-validated then, held by the reducer, applied on completion. Fixes all
+  twelve categories at once and makes `durationTurns` mean something. The
+  hazard is that a model choosing its own payoff is "the model rewrites state"
+  on a delay — so it needs bounding the way `billConstruction` and
+  `subornLimit` already are: cap the per-turn income one project can create,
+  charge for it up front, and keep `transfer_control`-class effects out of the
+  payload entirely.
+- **(B) Make commitments economically live.** Give `Commitment` an optional
+  `incomePerTurn` that `ledgerFor` reads. Much smaller, solves only the
+  economic slice, leaves `fortification`/`garrison_raising` still hollow.
+- **(C) Make `strategicValue` mutable** via a reducer-only op emitted on
+  completion of development orders. Narrow, and touches the trade network too
+  since hubs are defined by `strategicValue >= 7`.
+
+(A) is the most general and matches the architecture. (B) is the cheapest
+thing that would answer the user's literal question.
 
 ---
 
