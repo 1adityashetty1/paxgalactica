@@ -697,3 +697,84 @@ describe('dissent is a mechanic, not a message', () => {
     }
   });
 });
+
+describe('a declared action cannot resolve its own battle', () => {
+  const total = (s: WorldState, f: string) => fleetStrengthOf(s, f);
+
+  it('caps how much of its own fleet one declaration can destroy', () => {
+    // Five playtest reproductions: a bad `might` roll on an attack had the
+    // resolution call narrate the battle as already lost and emit ops
+    // deleting 88-100% of the acting fleet, with no fleet_movement anywhere
+    // and the defender untouched. Real losses come from resolveBattle during
+    // the tick, which never routes through applyOps and is unaffected here.
+    const state = fresh();
+    const before = total(state, 'freeworlds');
+    const res = applyOps(
+      state,
+      [{ op: 'adjust_fleet', factionId: 'freeworlds', delta: -before, reason: 'the raid went badly' }],
+      'model',
+      'freeworlds',
+    );
+    const after = total(res.state, 'freeworlds');
+    expect(after).toBeGreaterThan(0);
+    expect(before - after).toBeLessThanOrEqual(Math.max(1, Math.floor(before * 0.25)));
+    expect(res.notes.join(' ')).toMatch(/cannot lose \d+ hulls to a single declaration/);
+  });
+
+  it('leaves a modest narrative loss alone', () => {
+    // Scuttling, accidents and disasters are legitimate; only wholesale
+    // deletion is the bug.
+    const state = fresh();
+    const before = total(state, 'freeworlds');
+    const res = applyOps(
+      state,
+      [{ op: 'adjust_fleet', factionId: 'freeworlds', delta: -2, reason: 'a hangar fire' }],
+      'model',
+      'freeworlds',
+    );
+    expect(total(res.state, 'freeworlds')).toBe(before - 2);
+    expect(res.notes.join(' ')).not.toMatch(/cannot lose/);
+  });
+
+  it('refuses to destroy another faction’s fleet outright', () => {
+    // `adjust_ships` has been guarded since the suborn work; `adjust_fleet`
+    // was not, and being untargeted it is worse — it draws from the victim's
+    // largest concentrations anywhere in the galaxy.
+    const state = fresh();
+    const before = total(state, 'vigil');
+    const res = applyOps(
+      state,
+      [{ op: 'adjust_fleet', factionId: 'vigil', delta: -30, reason: 'we crushed them' }],
+      'model',
+      'freeworlds',
+    );
+    expect(res.rejections.map((r) => r.code)).toContain('reducer_only');
+    expect(total(res.state, 'vigil')).toBe(before);
+  });
+
+  it('still lets a faction build ships for itself', () => {
+    const state = fresh();
+    const before = total(state, 'freeworlds');
+    const res = applyOps(
+      state,
+      [{ op: 'adjust_fleet', factionId: 'freeworlds', delta: 3 }],
+      'model',
+      'freeworlds',
+    );
+    expect(res.rejections).toHaveLength(0);
+    expect(total(res.state, 'freeworlds')).toBe(before + 3);
+  });
+
+  it('does not touch engine ops or journals written before actors existed', () => {
+    // Replay must reproduce what happened, not retroactively re-judge it.
+    const state = fresh();
+    const before = total(state, 'freeworlds');
+    const res = applyOps(
+      state,
+      [{ op: 'adjust_fleet', factionId: 'freeworlds', delta: -(before - 1) }],
+      'model',
+    );
+    expect(res.rejections).toHaveLength(0);
+    expect(total(res.state, 'freeworlds')).toBe(1);
+  });
+});

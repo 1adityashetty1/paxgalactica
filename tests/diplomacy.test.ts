@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { DiplomacyReplySchema } from '../src/model/calls.js';
@@ -6,6 +7,9 @@ import { Campaign } from '../src/engine/campaign.js';
 import { MemoryCampaignStore } from '../src/engine/store.js';
 import { GameSession } from '../src/server/session.js';
 import { loadPrompt } from '../src/model/prompts.js';
+import { createSeedState } from '../src/seed/scenario.js';
+import { subornLimit, warsFor } from '../src/domain/state.js';
+import { applyOps } from '../src/domain/reducer.js';
 
 /**
  * Diplomacy's central promise is that conversation changes nothing until the
@@ -235,5 +239,289 @@ describe('session-level channel lifecycle', () => {
     expect(campaign.stagedCount).toBe(0);
     // The (empty) conversation is still recorded as having happened.
     expect(campaign.priorTranscripts('hutt')).toHaveLength(1);
+  });
+});
+
+describe('war is a property of the relationship, not one opinion', () => {
+  const fresh = () => createSeedState('krayt');
+
+  it('lists an aggressor even when only the victim hates them', () => {
+    // The mechanical disposition costs — raiding, suborning, tolls,
+    // pact-breaking — all move the INJURED party's view of the aggressor and
+    // never the aggressor's view of them. Reading only "who hates me" meant
+    // the victim of a raid did not count their raider as an enemy: a playtest
+    // left Arkanis at -62 toward Drajk while Drajk sat at -10 toward Arkanis.
+    const state = fresh();
+    state.factions.find((f) => f.id === 'freeworlds')!.disposition['krayt'] = -62;
+    state.factions.find((f) => f.id === 'krayt')!.disposition['freeworlds'] = -10;
+
+    expect(warsFor(state, 'freeworlds')).toContain('krayt');
+    expect(warsFor(state, 'krayt')).toContain('freeworlds');
+  });
+
+  it('stays quiet when neither side has soured past the threshold', () => {
+    const state = fresh();
+    state.factions.find((f) => f.id === 'freeworlds')!.disposition['krayt'] = -59;
+    state.factions.find((f) => f.id === 'krayt')!.disposition['freeworlds'] = -59;
+    expect(warsFor(state, 'freeworlds')).not.toContain('krayt');
+    expect(warsFor(state, 'krayt')).not.toContain('freeworlds');
+  });
+
+  it('is still suppressed by a live pact, in both directions', () => {
+    // Mutuality must not defeat the treaty check — a pact is exactly the thing
+    // that says "we are not at war regardless of how we feel".
+    const state = fresh();
+    state.factions.find((f) => f.id === 'freeworlds')!.disposition['krayt'] = -90;
+    state.treaties.push({
+      id: 't1', type: 'non_aggression', parties: ['freeworlds', 'krayt'],
+      terms: { territory: [], shipsPledged: {}, incomePerTurn: {}, incomeShares: [], mutualDefenseTrigger: '' },
+      signedTurn: 0, expiresTurn: null, status: 'active', summary: 'na',
+    });
+    expect(warsFor(state, 'freeworlds')).not.toContain('krayt');
+    expect(warsFor(state, 'krayt')).not.toContain('freeworlds');
+  });
+});
+
+describe('agents cannot be given an effect that can never fire', () => {
+  it('rejects crew_defection where guile can never beat resolve', () => {
+    // Drajk guile 14 vs Arkanis resolve 19 -> subornLimit 0. An agent placed
+    // anyway is live, unexposed, rolls every turn, and can never turn a hull.
+    const state = createSeedState('krayt');
+    expect(subornLimit(state, 'krayt', 'freeworlds')).toBe(0);
+
+    const res = applyOps(
+      state,
+      [
+        {
+          op: 'deploy_agent', ownerFactionId: 'krayt', systemId: 'ark-6',
+          mission: 'theft', effect: { kind: 'crew_defection', perTurn: 1 },
+          cover: 'labour broker',
+        },
+      ],
+      'model',
+      'krayt',
+    );
+    expect(res.rejections.map((r) => r.code)).toContain('illegal_value');
+    expect(res.rejections[0]!.message).toMatch(/resolve is beyond its guile/);
+    expect(res.state.agents).toHaveLength(0);
+  });
+
+  it('allows crew_defection where the contest is winnable', () => {
+    // The Nars at guile 18 can suborn Meridian (resolve 9) comfortably.
+    const state = createSeedState('hutt');
+    expect(subornLimit(state, 'hutt', 'meridian')).toBeGreaterThan(0);
+    const res = applyOps(
+      state,
+      [
+        {
+          op: 'deploy_agent', ownerFactionId: 'hutt', systemId: 'slu-1',
+          mission: 'theft', effect: { kind: 'crew_defection', perTurn: 1 },
+          cover: 'dock factor',
+        },
+      ],
+      'model',
+      'hutt',
+    );
+    expect(res.rejections).toHaveLength(0);
+    expect(res.state.agents).toHaveLength(1);
+  });
+
+  it('leaves other effect kinds alone against a resolute target', () => {
+    // Only crew_defection depends on subornLimit; sabotage against Arkanis is
+    // perfectly legitimate and must not be caught by the new guard.
+    const res = applyOps(
+      createSeedState('krayt'),
+      [
+        {
+          op: 'deploy_agent', ownerFactionId: 'krayt', systemId: 'ark-6',
+          mission: 'sabotage', effect: { kind: 'hull_damage', perTurn: 2 },
+          cover: 'dock hand',
+        },
+      ],
+      'model',
+      'krayt',
+    );
+    expect(res.rejections).toHaveLength(0);
+    expect(res.state.agents).toHaveLength(1);
+  });
+});
+
+describe('an operative belongs to whoever deployed it', () => {
+  it('rejects an agent owned by the faction it targets', () => {
+    // Reproduced three times live: on a hostile mission the resolution call
+    // anchored ownerFactionId to the faction being harmed. The tick loop skips
+    // any agent whose owner is its own target, so the operative was silently
+    // inert forever with no rejection and nothing visible in the UI.
+    const res = applyOps(
+      createSeedState('meridian'),
+      [
+        {
+          op: 'deploy_agent', ownerFactionId: 'vigil', systemId: 'tio-2',
+          mission: 'sabotage', effect: { kind: 'hull_damage', perTurn: 3 },
+          cover: 'requisitions officer',
+        },
+      ],
+      'model',
+      'meridian',
+    );
+    expect(res.rejections.map((r) => r.code)).toContain('illegal_value');
+    expect(res.rejections[0]!.message).toMatch(/cannot deploy an agent owned by/);
+    expect(res.state.agents).toHaveLength(0);
+  });
+
+  it('accepts one the acting faction actually owns', () => {
+    const res = applyOps(
+      createSeedState('meridian'),
+      [
+        {
+          op: 'deploy_agent', ownerFactionId: 'meridian', systemId: 'tio-2',
+          mission: 'sabotage', effect: { kind: 'hull_damage', perTurn: 3 },
+          cover: 'dock hand',
+        },
+      ],
+      'model',
+      'meridian',
+    );
+    expect(res.rejections).toHaveLength(0);
+    expect(res.state.agents[0]!.ownerFactionId).toBe('meridian');
+  });
+
+  it('leaves engine ops and legacy journals alone', () => {
+    const res = applyOps(
+      createSeedState('meridian'),
+      [
+        {
+          op: 'deploy_agent', ownerFactionId: 'vigil', systemId: 'tio-2',
+          mission: 'sabotage', effect: { kind: 'hull_damage', perTurn: 3 },
+        },
+      ],
+      'model',
+    );
+    expect(res.rejections).toHaveLength(0);
+  });
+});
+
+describe('extraction knows about treaties at all', () => {
+  const extraction = () => loadPrompt('extraction');
+
+  it('documents form_treaty, which it previously never mentioned', () => {
+    // The root cause of a playtest finding: a negotiated deal covering trade
+    // immunity, basing rights AND mutual defence was extracted as a single
+    // `trade_accord`, so two of the three clauses were inert. The prompt's
+    // "What to emit" list did not mention `form_treaty` anywhere, leaving the
+    // model to guess both the op and its type.
+    expect(extraction()).toMatch(/`form_treaty`/);
+  });
+
+  it('names every treaty type the reducer treats differently', () => {
+    const text = extraction();
+    for (const type of [
+      'non_aggression', 'ceasefire', 'mutual_defense',
+      'trade_accord', 'basing_rights', 'tribute',
+    ]) {
+      expect(text, `extraction.md should explain ${type}`).toMatch(
+        new RegExp(`\`${type}\``),
+      );
+    }
+  });
+
+  it('tells the model a multi-clause deal needs multiple treaties', () => {
+    expect(extraction()).toMatch(/more than one of these needs more than one treaty/i);
+  });
+
+  it('warns that terms on the wrong type are inert', () => {
+    // `shipsPledged` only dispatches under mutual_defense; mutualDefenseTrigger
+    // on a trade_accord is narrative text.
+    expect(extraction()).toMatch(/shipsPledged/);
+    expect(extraction()).toMatch(/inert/i);
+  });
+});
+
+describe('the correction pass does not re-run the whole action', () => {
+  const correction = () => loadPrompt('correction');
+
+  it('exists as its own prompt rather than reusing resolution', () => {
+    // The correction call used to run under the full resolution system prompt,
+    // whose entire job is "narrate this action and emit its ops". That
+    // contradicted the user message's "only fix these rejects", and the system
+    // prompt won: one playtest correction re-derived the whole batch and
+    // double-billed a 3-hull defection as 6 hulls across two systems.
+    expect(correction().length).toBeGreaterThan(0);
+    expect(correction().replace(/\s+/g, ' ')).toMatch(
+      /do not re-emit anything that already succeeded/i,
+    );
+  });
+
+  it('tells the model an empty correction is acceptable', () => {
+    // Otherwise the model reaches for *something*, which is how a forbidden op
+    // becomes a creative workaround.
+    // Prompt text is hard-wrapped, so collapse whitespace before matching.
+    expect(correction().replace(/\s+/g, ' ')).toMatch(
+      /empty list is a perfectly good answer/i,
+    );
+  });
+
+  it('tells it to drop structurally forbidden ops rather than route around them', () => {
+    expect(correction().replace(/\s+/g, ' ')).toMatch(/routing around it is worse/i);
+  });
+
+  it('is no longer built from the resolution prompt', () => {
+    // Guards the actual regression: if someone re-points corrections at the
+    // resolution prompt, the duplication comes straight back.
+    const turnSource = readFileSync(
+      new URL('../src/engine/turn.ts', import.meta.url),
+      'utf8',
+    );
+    expect(turnSource).toMatch(/loadPrompt\('correction'\)/);
+    expect(turnSource).not.toMatch(/resolutionSystemPrompt/);
+  });
+});
+
+describe('the persona speaks rather than narrating itself', () => {
+  it('bans third-person meta-narration outright', () => {
+    // Observed once live: a reply that closed a treaty came back as
+    // "I role-played the Ojjul Nar Combine's side of this negotiation..."
+    // instead of the Combine's actual words. The anti-assistant section
+    // covered hedging and politeness but not describing-instead-of-speaking.
+    const persona = loadPrompt('diplomacy-persona').replace(/\s+/g, ' ');
+    expect(persona).toMatch(/never describe what you are doing instead of doing it/i);
+    expect(persona).toMatch(/first person/i);
+  });
+
+  it('warns that it happens most when closing a deal', () => {
+    const persona = loadPrompt('diplomacy-persona').replace(/\s+/g, ' ');
+    expect(persona).toMatch(/closes.{0,40}deal|seal it in character/i);
+  });
+});
+
+describe('slow diplomacy can accumulate', () => {
+  const appraisal = () => loadPrompt('appraisal').replace(/\s+/g, ' ');
+
+  it('tells the arbiter that partial headway is worth recording', () => {
+    // A playtest spent three turns and real credits courting neutral worlds;
+    // every world-targeted partial left `commitments: []` and the system
+    // byte-identical, so turn four started from nothing. Combat damage
+    // persists and agents persist — diplomacy was the one pressure track
+    // with no ratchet.
+    expect(appraisal()).toMatch(/ground gained also counts/i);
+    expect(appraisal()).toMatch(/`accession_talks`/);
+  });
+
+  it('asks for the specific world and how far it got', () => {
+    expect(appraisal()).toMatch(/name \*\*which world or party\*\*/i);
+  });
+
+  it('makes banked progress lower the next difficulty', () => {
+    // The ratchet itself: without this, recording progress would be flavour.
+    expect(appraisal()).toMatch(/ground already gained makes the next step easier/i);
+    expect(appraisal()).toMatch(/drop by roughly 2 or 3 per round/i);
+  });
+
+  it('keeps courtship non-exclusive so rivals can contest the same world', () => {
+    expect(appraisal()).toMatch(/normally \*\*false\*\*/i);
+  });
+
+  it('still refuses to record headway that did not happen', () => {
+    expect(appraisal()).toMatch(/do not record headway that did not happen/i);
   });
 });

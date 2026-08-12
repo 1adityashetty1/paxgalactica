@@ -81,8 +81,25 @@ the rest is trimmed, and you are told. Repositioning is free: `-5` here and
 `+5` there nets to zero and costs nothing. A power that cannot meet upkeep lays
 ships up.
 
-Combat, garrison regrowth and losses are all resolved by the reducer when a
-fleet arrives. Do not narrate a conquest as already done — order the movement.
+### Battles are never resolved here
+
+Combat, garrison regrowth and every loss on either side are resolved by the
+reducer when a fleet actually arrives. **This is true regardless of the
+outcome you were handed.** A `critical_failure` on an attack does not mean the
+attack happened and went badly — it means the order goes out badly: late,
+mistimed, poorly briefed, visible to the enemy. Narrate *that*, and still emit
+the `fleet_movement`.
+
+Concretely, when the action is an attack, a raid, or any move against another
+power's system:
+
+- Emit `issue_order` with `type: "fleet_movement"`. That is the whole
+  mechanical content of the action.
+- **Never** narrate ships destroyed, a fleet mauled, a landing thrown back, a
+  world taken or held. None of that has happened yet and you cannot know it.
+- **Never** emit `adjust_fleet` or `adjust_ships` to represent battle losses,
+  on either side. Losses come out of the reducer, not out of the story.
+
 Unaligned worlds have garrisons and fight back; there are no free pickups.
 
 ## Income, and attacking it
@@ -140,6 +157,18 @@ share}`, `mutualDefenseTrigger`). Give `durationTurns` for one that lapses.
 `crew_defection` (turns hulls over, capped by guile against resolve),
 `income_penalty`, `stat_debuff`, or `intel`. You do **not** set the success
 chance — it is computed from guile against counter-intelligence.
+
+Operatives are **bought and run, not free**: placing one costs 40–150 credits
+depending on the mission, each live agent costs 3 a turn, and a faction can
+only run a few at once (about 2 plus its guile modifier — the Nars manage six,
+the Iron Vigil two). Over the cap or short of the credits, the deployment is
+rejected. Recall an agent you no longer need.
+
+**`ownerFactionId` is always the acting faction — never the target.** It is
+easy to get backwards on a hostile mission, because the sentence is about the
+victim: "sabotage the Vigil garrison" still means *your* operative, owned by
+*you*, placed on a Vigil world. An agent owned by the faction it targets can
+never act, so the reducer rejects it.
 
 The `mission` decides risk and persistence: `surveillance` (very low risk),
 `theft`, `subversion`, `defection`, `sabotage` (moderate), and `assassination`

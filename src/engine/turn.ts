@@ -60,10 +60,6 @@ function touchedBy(ops: unknown[]): { factions: string[]; systems: string[] } {
   return { factions: [...factions], systems: [...systems] };
 }
 
-function resolutionSystemPrompt(): string {
-  return `${loadPrompt('resolution')}\n\n---\n\n${loadPrompt('duration-rubric')}`;
-}
-
 /**
  * Ask the model to repair ops the reducer refused.
  *
@@ -88,8 +84,9 @@ async function reviseRejected(
     '',
     '## Ops that were rejected',
     '',
-    'You emitted these ops and the reducer refused them. The valid ops from the',
-    'same batch have already been accepted — do not repeat those.',
+    'You emitted these ops and the reducer refused them. Every OTHER op from',
+    'that batch was accepted and is already applied — re-emitting any of them',
+    'would apply it twice.',
     '',
     describeRejections(rejections),
     '',
@@ -102,7 +99,12 @@ async function reviseRejected(
     const res = await callStructured({
       kind: 'resolution',
       label: `${label}:correction`,
-      system: resolutionSystemPrompt(),
+      // A dedicated, minimal prompt rather than the full resolution one. The
+      // resolution prompt's whole job is "narrate this action and emit its
+      // ops", which directly contradicts "only fix these three rejects" — and
+      // in practice the system prompt won: a correction pass re-derived the
+      // entire batch and double-applied everything that had already succeeded.
+      system: loadPrompt('correction'),
       user,
       schema: ModelTurnOutputSchema,
       maxRetries: 1,

@@ -46,6 +46,29 @@ Specifically:
   (ships committed, drawn from the origin); everything else uses a duration
   category and a value from **1, 2, 3, or 5**. Nothing takes longer than 5
   turns. A treaty that must be ratified is `treaty_ratification`.
+- `form_treaty` — for anything the parties agreed will **stand over time**.
+  This is the main instrument of a negotiation, and its `type` is not a label:
+  the reducer applies each type differently, so picking the wrong one silently
+  discards half the deal.
+
+  | type | what it actually does |
+  |---|---|
+  | `non_aggression` · `ceasefire` | attacking the other party auto-breaks it: −25 with them, −10 with every onlooker |
+  | `mutual_defense` | the above, plus `shipsPledged` are really dispatched to fight |
+  | `trade_accord` | mutual immunity from each other's blockades and commerce raiding |
+  | `basing_rights` | their fleets may enter your systems without it being an attack — the ONLY way to station ships in friendly space |
+  | `tribute` | `incomePerTurn` moves every turn |
+
+  **A deal that spans more than one of these needs more than one treaty.**
+  Emit several `form_treaty` ops. This is the common case, not an edge case: a
+  war pact where one side pays the other, opens its lanes, grants basing
+  rights and promises to answer an attack is *four* different mechanisms, and
+  collapsing it into a single `trade_accord` means the payment works and the
+  basing rights and mutual defence quietly do not exist. Terms belonging to
+  the wrong type are inert — `mutualDefenseTrigger` on a `trade_accord` is
+  just narrative text, and `shipsPledged` only dispatches under
+  `mutual_defense`.
+
 - `set_doctrine` — only when a faction explicitly committed to a change of
   standing posture, not for a single deal.
 - `spawn_event` / `log_narrative` — record the substance of what was agreed so

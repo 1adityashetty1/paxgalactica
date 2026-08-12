@@ -62,6 +62,7 @@ export function BriefingPanel({
             <span className="sub">
               +{briefing.ledger.territory} territory · +{briefing.ledger.routes} lanes · −
               {briefing.ledger.upkeep} upkeep
+              {briefing.ledger.agentUpkeep > 0 && ` · −${briefing.ledger.agentUpkeep} agents`}
               {briefing.ledger.tolls > 0 && ` · ${briefing.ledger.tolls} in tolls`}
               {briefing.ledger.raided > 0 && ` · ${briefing.ledger.raided} raided`}
             </span>
