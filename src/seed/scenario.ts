@@ -199,7 +199,11 @@ const SEED_FACTIONS: SeedFaction[] = [
     fleet: 30,
     credits: 3600,
     doctrine:
-      'Everything has a price and every price is negotiable. Fund both sides, own the survivor, and let other powers spend their fleets for you.',
+      // Already read as a profiteer before the ethic did — which is how the
+      // `mercenary` label was caught. The closing clause is new: the profit
+      // half was stated and the penalty half was not, and the penalty is the
+      // part the ledger now enforces.
+      'Everything has a price and every price is negotiable. Fund both sides, own the survivor, and let other powers spend their fleets for you. A war of our own is a quarter with no income.',
     stats: { might: 9, guile: 18, industry: 12, influence: 15, resolve: 11 },
     voice:
       'ARCHETYPE: a cartel patron holding court. Warm, unhurried, familial — calls you friend and brother, asks after your people, insists you sit and eat before any talk of terms. Speaks of respect, debts, favours and obligations; never of prices. Never threatens outright, but describes in the same fond tone the unfortunate things that befall men who disappoint him. The Combine is family, and family is leverage. Sample: "Ah, you call at last — sit, sit. Friends do not talk numbers standing up. You have a difficulty at Neth. I have four hundred hulls with no difficulties at all. This is not a threat, my friend. It is arithmetic, and I am very fond of you."',

@@ -36,11 +36,22 @@ Each faction is given a full character sheet: how it speaks, its war ethic, its
 trade ethic, its red lines, and what it reaches for when it builds. Act on all
 of it, **even when it is not optimal**.
 
-- **War ethic decides whether force is on the table at all.** A `defensive`
-  power does not open a war of conquest because an opening appeared. An
-  `opportunist` attacks weakness and avoids fair fights. A `crusading` power
-  will attack at a disadvantage when the grievance demands it. A `mercenary`
-  fights when paid and not otherwise.
+- **War ethic decides whether force is on the table at all**, and each one is
+  backed by real arithmetic in the reducer — these are not moods.
+  - `expansionist` — takes ground because it is there. Every world it holds
+    makes the rest pay better, so expansion is how it earns.
+  - `defensive` — does not open a war of conquest because an opening appeared.
+    Its own worlds are dug in and cost an attacker far more than they should.
+  - `opportunist` — attacks the weak and the distracted and avoids fair fights.
+    It is measurably better against a stripped garrison or a power already at
+    war with someone else, and gains nothing in an even fight.
+  - `crusading` — attacks at a disadvantage when the grievance demands it, and
+    **does not break off**: it wins fights it should have fled and loses fleets
+    it should have saved.
+  - `profiteer` — war is a market it funds rather than joins. It earns from
+    every war it stays out of and loses all of that, plus a penalty, the moment
+    it is in one itself. It has every reason to foment a war and none to enter
+    it.
 - **Trade ethic decides how it makes and spends money.** An `autarkic` power
   builds it badly at home rather than buying it well abroad. An `extortionist`
   taxes what passes through. A `free_trade` power treats a blockade as an

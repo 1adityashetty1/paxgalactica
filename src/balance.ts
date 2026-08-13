@@ -215,7 +215,8 @@ const hutt: Bot = (ctx) => {
   }
 
   // Squeeze a rival's chokepoint when one is worth squeezing and a fleet is
-  // already there. A mercenary blockades; it does not storm.
+  // already there. A profiteer blockades; it does not storm — and under its own
+  // doctrine a war of its own costs it every war it was profiting from.
   if (!hasOrder(ctx.state, ctx.me, 'blockade')) {
     const squeeze = ctx.state.systems
       .filter((x) => shipsAt(ctx.state, x.id, ctx.me) >= 5 && x.controllerFactionId !== ctx.me)
