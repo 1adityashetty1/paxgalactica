@@ -29,7 +29,41 @@ const campaignWithTurn = () => {
   return { campaign, report };
 };
 
+/** A campaign whose turn actually contained a battle, not just a build order. */
+const campaignWithBattle = () => {
+  const campaign = Campaign.start('krayt', 'contract-battle', new MemoryCampaignStore());
+  const origin = campaign.state.systems.find((s) => s.id === 'ark-5')!;
+  origin.ships['krayt'] = 20;
+  campaign.stage(
+    [
+      {
+        op: 'issue_order', factionId: 'krayt', type: 'fleet_movement',
+        originId: 'ark-5', targetId: 'ark-6', force: 20,
+      },
+    ],
+    'raid Pell Reach',
+  );
+  campaign.commitTurn();
+  let report = campaign.tick().report;
+  for (let i = 0; i < 5 && report.battles.length === 0; i++) report = campaign.tick().report;
+  return { campaign, report };
+};
+
 describe('the contract accepts real engine output', () => {
+  it('validates a briefing carrying a real battle report', () => {
+    // The drift risk `BattleReportSchema` exists to catch: the domain type and
+    // the wire schema are the same definition, so a field added to a battle in
+    // the reducer either appears here or fails this test.
+    const { campaign, report } = campaignWithBattle();
+    expect(report.battles.length, 'no battle was fought').toBeGreaterThan(0);
+    const parsed = BriefingSchema.safeParse(buildBriefing(campaign.state, report));
+    expect(parsed.success, JSON.stringify(parsed.error?.issues?.slice(0, 4))).toBe(true);
+
+    const battle = parsed.success ? parsed.data.battles[0]! : null;
+    expect(battle?.rounds.length).toBeGreaterThan(0);
+    expect(battle?.roll).toBeGreaterThanOrEqual(1);
+  });
+
   it('validates a full campaign view built from live state', () => {
     // The point of a Zod-first contract is that it is checked against the real
     // thing, not against a hand-written fixture that agrees with it by design.
