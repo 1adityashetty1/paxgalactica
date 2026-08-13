@@ -1,25 +1,42 @@
 # TODO — known bugs and open design questions
 
-## Where things stand (2026-08-12, after the item-8 work)
+## Where things stand (2026-08-13)
 
-**Open work, in priority order:**
+**Open work, in priority order.** Items 1–3 all come out of item 9, the first
+live playtest of this session's mechanics, so they are evidence-backed rather
+than speculative.
 
-1. **The combat tactical-phase design question** at the very bottom.
-   Deliberately deferred by the user ("we will revisit combat design later").
-   Note the *bug* behind it is already fixed (item #1) — what remains is
-   whether combat wants a richer multi-round layer and a battle-report UI.
-2. **Pre-existing balance spread**, untouched and not written up as an item:
-   `pnpm balance 30` has the Nars running away at ~272/turn while Meridian
-   sits marginally insolvent at about −1. Unrelated to any bug here, and
-   unchanged by the item-8 work (the doctrine bots do not build or develop).
-3. **The unfinished live playtest below** is still worth running.
+1. **`/api/action` does not return the ops it staged** (item 9). The cheapest
+   item here and the one that multiplies every other: all three playtest
+   findings needed the on-disk journal to see, because the response exposes
+   narrative, check and counts only. The staged ops are already in memory.
+   Fixing this makes the project's highest-value bug class visible from the API.
+2. **Unbounded `adjust_credits` riding alongside priced mechanics** (item 9.2).
+   A reducer-side hole of exactly the kind this codebase cares about: a model
+   inventing a number that a mechanic is supposed to own. It partly undoes the
+   `developmentCost` pricing work, and the fix has two existing models to copy
+   in `billConstruction` and `capSelfInflictedLosses`.
+3. **`set_doctrine` narrating a retirement it did not emit** (item 9.1), and
+   **a live red line not stopping the act it forbids** (item 9.3). Both are
+   model-side. The first is a prompt fix that cannot be verified without another
+   live run; the second is a real design question about whether red lines should
+   be structurally enforced rather than left to the resolution call's judgement.
+4. **No hiring mechanic**, so the Ojjul Nar's proxy red line names an
+   alternative the game does not offer, and **no debt mechanic**, so two more of
+   its lines are unmodelled. See "Still open from that audit" below.
+5. **The combat tactical-phase design question** at the very bottom.
+   Deliberately deferred ("we will revisit combat design later"). The *bug*
+   behind it is fixed (item #1); what remains is whether combat wants a richer
+   multi-round layer and a battle-report UI.
 
-**Meridian's insolvency is no longer the worst case it was.** The pre-existing
-spread had it at −1 net and falling. Giving the Iron Vigil the `monopolist`
-ethic (see CLAUDE.md, "One ethic each") changed the Tion balance of power and
-Meridian now finishes a 30-turn harness run at **+31**, holding 3 systems. It is
-still the weakest of the five and still worth attention, but it is no longer
-sliding toward zero.
+**Balance, measured after the war-ethic and monopolist work** (`pnpm balance 30`,
+turn 30): Meridian 24, Iron Vigil 90, Ojjul Nar 232, Arkanis 71, Drajk 32;
+territory 3/6/7/4/5. The old spread — the Nars running away at ~272 while
+Meridian sat at −1 and falling — has closed on both ends: Meridian is out of
+insolvency and the Nars now pay `PROFITEER_WAR_PENALTY` for the war their own
+tolls talk them into. Nobody is below the −40 floor the harness asserts.
+Meridian is still the weakest of the five and Arkanis is oddly flat at 71 for
+the whole run, which is the next thing to look at if balance comes up.
 
 **Also fixed this session, found by the user asking whether doctrine change was
 a real mechanic:** it was not. `set_doctrine` wrote a string with no reader
@@ -31,7 +48,8 @@ dissent for it, with nothing connecting the two. It is now real and priced in
 dissent (6 for words, 20 per ethic, 25 per principle retired), with an
 actor guard and a 75-dissent ceiling. Two unguarded holes found alongside it and
 closed: `set_doctrine` could rewrite a **rival's** doctrine (which feeds their
-diplomacy persona), and `adjust_dissent` remains unguarded — see below.
+diplomacy persona), and `adjust_dissent` had the same shape — both now closed,
+see below.
 
 **`adjust_dissent` had the same hole and it is now closed too.** It had no actor
 guard and no sign restriction, so a resolution batch could zero its own dissent
@@ -45,9 +63,8 @@ twice as damaging without anyone touching the op. A model-sourced
 dissent falls by `DISSENT_DECAY` a turn and in no other way, and turning a
 rival's institutions against it is an agent's job (`subversion` +
 `stat_debuff`), which costs credits, risks exposure and is capped. Seven tests.
-`prompts/resolution.md` actively invites it ("your own institutions grow more or
-less restive"). The fix is the same shape as the `set_doctrine` guard —
-actor-only, and positive deltas only from a model source.
+`prompts/resolution.md` had been actively inviting it ("your own institutions
+grow more or less restive") and now states both rules.
 
 ## 9. OPEN — three findings from the first live playtest of this session's work
 
