@@ -439,6 +439,34 @@ export function applyOps(
           reject(raw, 'unknown_faction', `No faction "${op.factionId}".`);
           break;
         }
+        // Dissent is a power's relationship with its OWN institutions, and it
+        // is worth `MAX_DISSENT_PENALTY` off every stat at the top — the
+        // largest debuff in the game. Unguarded, one batch could set a rival to
+        // 100 with no roll, no presence and no cost, which is both the cheapest
+        // hostile act available and a straight bypass of the agent route that
+        // exists to do exactly this for credits, at risk, under a cap.
+        if (actor !== undefined && op.factionId !== actor) {
+          reject(
+            raw,
+            'illegal_value',
+            `${actor} cannot move ${op.factionId}'s internal dissent. Turning a rival's institutions against it is an operative's work — deploy an agent on a subversion mission with a stat_debuff effect.`,
+          );
+          break;
+        }
+        // Raising your own costs nothing to allow: nothing needs protecting
+        // from a faction choosing to be less governable. LOWERING it is the
+        // exploit — without this, the same call that earns a refusal can erase
+        // the penalty it just earned, and the whole mechanic becomes optional.
+        // Standing is repaired by governing in character while `DISSENT_DECAY`
+        // does its work, which is the pace the number was tuned for.
+        if (actor !== undefined && op.delta < 0) {
+          reject(
+            raw,
+            'illegal_value',
+            `Dissent cannot be talked down. It falls ${DISSENT_DECAY} a turn on its own, and only by governing in character; ${f.name} is at ${f.dissent}/100.`,
+          );
+          break;
+        }
         f.dissent = Math.max(0, Math.min(100, f.dissent + op.delta));
         break;
       }

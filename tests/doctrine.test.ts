@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyOps, tickTurn } from '../src/domain/reducer.js';
+import { applyOps, DISSENT_DECAY, tickTurn } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import {
   DOCTRINE_CHANGE_DISSENT_CEILING,
@@ -9,6 +9,7 @@ import {
   dissentPenalty,
   effectiveStats,
   ledgerFor,
+  REFUSAL_DISSENT,
   type Op,
   type WorldState,
 } from '../src/domain/state.js';
@@ -167,6 +168,78 @@ describe('who may change a doctrine', () => {
     fac(state, 'meridian').dissent = 100;
     const out = applyOps(state, [turnRaider()], 'model', 'meridian');
     expect(out.rejections[0]!.code).toBe('doctrine_refusal');
+  });
+
+  it('replays a journal written before the guard exactly as it ran', () => {
+    // No actor: an engine op, or an older journal. It neither charges dissent
+    // nor rejects, so replaying an old campaign reproduces what happened.
+    const out = applyOps(fresh(), [
+      { op: 'set_doctrine', factionId: 'vigil', doctrine: 'Hold the Tion, whatever it costs.' },
+    ]);
+    expect(out.rejections).toHaveLength(0);
+    expect(fac(out.state, 'vigil').doctrine).toBe('Hold the Tion, whatever it costs.');
+    expect(fac(out.state, 'vigil').dissent).toBe(0);
+  });
+});
+
+/**
+ * `adjust_dissent` had the same unguarded shape `set_doctrine` did, and raising
+ * the penalty ceiling to `MAX_DISSENT_PENALTY` made it the single most
+ * cost-effective hostile act in the game: one op, no roll, no presence, no
+ * credits, and every one of a rival's stats drops by 8.
+ */
+describe('who may move dissent', () => {
+  const nudge = (factionId: string, delta: number): Op => ({
+    op: 'adjust_dissent',
+    factionId,
+    delta,
+    reason: 'unrest',
+  });
+
+  it('refuses to let one power wreck a rival’s institutions by narration', () => {
+    const out = applyOps(fresh(), [nudge('vigil', 100)], 'model', 'meridian');
+    expect(out.rejections[0]!.code).toBe('illegal_value');
+    expect(fac(out.state, 'vigil').dissent).toBe(0);
+    // The message points at the mechanism that exists to do this properly,
+    // which costs credits, risks exposure and is capped.
+    expect(out.rejections[0]!.message).toMatch(/subversion|stat_debuff/);
+  });
+
+  it('costs a rival nothing in capability when the attempt is refused', () => {
+    const before = effectiveStats(fresh(), 'vigil');
+    const out = applyOps(fresh(), [nudge('vigil', 100)], 'model', 'meridian');
+    expect(effectiveStats(out.state, 'vigil')).toEqual(before);
+  });
+
+  it('refuses to let one power calm a rival either', () => {
+    const state = fresh();
+    fac(state, 'vigil').dissent = 40;
+    const out = applyOps(state, [nudge('vigil', -40)], 'model', 'meridian');
+    expect(out.rejections[0]!.code).toBe('illegal_value');
+    expect(fac(out.state, 'vigil').dissent).toBe(40);
+  });
+
+  it('refuses to let a faction talk its own dissent down', () => {
+    // The exploit this closes: the same resolution call that earns a refusal
+    // erasing the penalty it just earned.
+    const state = fresh();
+    fac(state, 'meridian').dissent = 71;
+    const out = applyOps(state, [nudge('meridian', -100)], 'model', 'meridian');
+    expect(out.rejections[0]!.code).toBe('illegal_value');
+    expect(out.rejections[0]!.message).toMatch(/falls 2 a turn/);
+    expect(fac(out.state, 'meridian').dissent).toBe(71);
+  });
+
+  it('still lets a faction earn dissent, which is how refusals land', () => {
+    const out = applyOps(fresh(), [nudge('meridian', REFUSAL_DISSENT)], 'model', 'meridian');
+    expect(out.rejections).toHaveLength(0);
+    expect(fac(out.state, 'meridian').dissent).toBe(REFUSAL_DISSENT);
+  });
+
+  it('leaves dissent to fall only with time', () => {
+    let state = applyOps(fresh(), [nudge('meridian', 20)], 'model', 'meridian').state;
+    state = tickTurn(state).state;
+    expect(fac(state, 'meridian').dissent).toBe(20 - DISSENT_DECAY);
   });
 
   it('replays a journal written before the guard exactly as it ran', () => {

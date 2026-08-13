@@ -543,6 +543,26 @@ leader at the cap could reorient endlessly having already paid in full.
 Engine ops and journals without an `actor` skip both the guards and the charge,
 so a campaign recorded before this replays exactly as it ran.
 
+### Dissent moves one way, on your own faction only
+
+`adjust_dissent` had the same unguarded shape, and raising the ceiling to 8 made
+it the most cost-effective hostile act in the game: one op, no roll, no
+presence, no credits, and every one of a rival's stats drops by 8 — strictly
+better than the `stat_debuff` agent that exists to do exactly this for 40–150
+credits, at risk of exposure, under a cap. Two paths to one outcome that cost
+differently means only the cheaper one is ever used.
+
+A model-sourced `adjust_dissent` now moves only the **actor's own** faction, and
+only **upward**. Raising your own needs no guard — nothing needs protecting from
+a faction choosing to be less governable — but lowering it is the exploit, since
+the same call that earns a refusal could erase the penalty it just earned.
+Standing is repaired by `DISSENT_DECAY` and nothing else, which is the pace the
+number was tuned for. Turning a rival's institutions against it is an
+operative's work.
+
+Reactions commit with the reacting faction as `actor`, so an NPC can still move
+its own dissent; only the cross-faction reach is closed.
+
 ## Treaties and agents
 
 Both live in world state (`src/domain/diplomacy.ts`), because both have

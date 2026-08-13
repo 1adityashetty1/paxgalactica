@@ -51,7 +51,7 @@ an order: resolve it and let the consequences do the work.
 | `adjust_credits` | money spent or earned |
 | `adjust_ships` | ships added to or removed from one system |
 | `set_doctrine` | the faction changes course — see Changing doctrine |
-| `adjust_dissent` | your own institutions grow more or less restive |
+| `adjust_dissent` | **your own** institutions grow more restive — never less |
 | `cancel_order` | an existing order is called off |
 | `interrupt_order` | an order is disrupted by force or event |
 | `extend_order` | work runs longer than planned |
@@ -67,6 +67,13 @@ an order: resolve it and let the consequences do the work.
 
 `transfer_control` is **not available to you.** A system changes hands only when
 a `fleet_movement` order physically arrives.
+
+`adjust_dissent` moves **only your own** faction, and only upward. Dissent is a
+power's standing with its own institutions: it falls by 2 a turn on its own and
+in no other way, so it cannot be talked down by a leader who has just been
+refused. To turn a *rival's* institutions against it, deploy an agent on a
+`subversion` mission with a `stat_debuff` effect — that path costs credits,
+risks exposure and is capped, and it is the only one there is.
 
 An `establish_commitment` that earns or costs money should say so with
 `incomePerTurn` — a mining concession or a smuggling operation is worth
