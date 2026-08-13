@@ -485,12 +485,12 @@ describe('faction compulsions exist for every power', () => {
     }
   });
 
-  it('gives Iron Vigil a compulsion against passivity, and Meridian one against contraband', () => {
+  it('gives Iron Vigil a compulsion against sitting still, and Meridian one against contraband', () => {
     const state = fresh();
-    const vigil = state.factions.find((f) => f.id === 'vigil')!;
-    const meridian = state.factions.find((f) => f.id === 'meridian')!;
-    expect(vigil.compulsions.join(' ')).toMatch(/passiv/i);
-    expect(meridian.compulsions.join(' ')).toMatch(/spice|slave/i);
+    const textOf = (id: string) =>
+      state.factions.find((f) => f.id === id)!.compulsions.map((c) => c.text).join(' ');
+    expect(textOf('vigil')).toMatch(/complicity|no fleet under way/i);
+    expect(textOf('meridian')).toMatch(/spice|slave/i);
   });
 });
 

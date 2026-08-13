@@ -42,6 +42,37 @@ rival's institutions against it is an agent's job (`subversion` +
 less restive"). The fix is the same shape as the `set_doctrine` guard —
 actor-only, and positive deltas only from a model source.
 
+**Faction flavour text was audited and the dead lines are now live.** Of 28 red
+lines and compulsions across the five powers, 18 mapped to a real op or order
+type, 2 were reachable only through arbitration, **4 were dead** (their trigger
+was elapsed time or drift, which nothing measured) and **4 more have no
+mechanic in the game at all** (the Ojjul Nar's debt and proxy-hiring lines).
+The 4 dead ones were rewritten to name something measurable and given typed
+triggers — see "Compulsions also fire on drift" in CLAUDE.md. Three of them had
+promised a consequence in their own text (a vote of no confidence, the officer
+corps acting without you, the captains taking ships elsewhere) that did not
+exist; the consequence is now dissent, which does.
+
+**Still open from that audit:**
+
+- **`warEthic` has no mechanical readers at all.** `tradeEthic` drives tolls,
+  smuggling, autarky and the income multiplier; `warEthic` is read only by the
+  prompt serializer. All five factions have one, so this is a five-faction
+  design question rather than a patch — deliberately deferred. Note
+  `DOCTRINE_ETHIC_DISSENT` currently charges 20 to change either ethic, which
+  prices an inert axis identically to a load-bearing one.
+- **The Ojjul Nar's four D-category lines** ("will not forgive an unpaid debt",
+  "an unpaid debt must be pursued", and the two proxy-hiring lines) need a debt
+  mechanic and a hiring mechanic before they mean anything. Their red line bars
+  the Combine from fighting its own wars while the alternative it names does
+  not exist — the only faction whose lines subtract capability with no
+  substitute. Blocked on the `warEthic` question above.
+- **Five lines are duplicated within their own faction** (Meridian R0/C0,
+  Ojjul R0/C2, Arkanis R1/C1, Drajk R0/C1 and R1/C2). Since `retire` matches
+  exact strings, changing course means retiring both copies — Drajk going
+  legitimate costs 50 dissent rather than 25 purely because the same rule is
+  written twice.
+
 **Every numbered item in this file is now fixed**, each with tests. Original
 write-ups are kept rather than deleted — the repro steps are the useful part
 and they document why each guard exists. A "**FIXED —**" note follows each.

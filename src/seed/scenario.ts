@@ -2,6 +2,7 @@ import type { FactionStats } from '../domain/checks.js';
 import type { DurationCategory } from '../domain/duration.js';
 import {
   WorldStateSchema,
+  type CompulsionTrigger,
   type Faction,
   type StarSystem,
   type TradeEthic,
@@ -110,7 +111,12 @@ interface SeedFaction {
   warEthic: WarEthic;
   tradeEthic: TradeEthic;
   redLines: string[];
-  compulsions: string[];
+  /**
+   * A bare string for a compulsion enforced only by refusal; `{text, trigger}`
+   * for one that also fires on drift. Both shapes are normalised by
+   * `CompulsionSchema` when the seed is parsed.
+   */
+  compulsions: (string | { text: string; trigger: CompulsionTrigger })[];
   buildBias: DurationCategory[];
 }
 
@@ -147,7 +153,10 @@ const SEED_FACTIONS: SeedFaction[] = [
       'the Trade Council requires open lanes: prolonged blockades, embargoes or closed borders will be voted down',
       'commerce raiding is refused outright — the Authority insures the cargo it would be seizing, and preying on shipping ends it as a going concern',
       'trafficking in spice, slaves or proscribed weapons is refused outright — shareholders will not launder it, whatever it pays',
-      'an unprofitable quarter demands a plan; sitting on the treasury while income falls invites a vote of no confidence',
+      {
+        text: 'the Trade Council will not sit through an unprofitable quarter: while net income is negative it expects the leadership to have a plan, and says so',
+        trigger: 'unprofitable',
+      },
     ],
     buildBias: ['construction_infrastructure', 'treaty_ratification', 'retooling'],
   },
@@ -169,8 +178,14 @@ const SEED_FACTIONS: SeedFaction[] = [
       'will not recognise a rebel government as legitimate, whatever it controls',
     ],
     compulsions: [
-      'the fleet commanders require action against rebel-held Imperial ground; passivity while insurgents hold it is read as complicity',
-      'insults to the Empire must be answered within a turn or two, or the officer corps answers them without you',
+      {
+        text: 'the fleet commanders require a war to be prosecuted: an enemy on the books and no fleet under way is read as complicity',
+        trigger: 'idle_at_war',
+      },
+      {
+        text: 'a foreign fleet in Imperial space is an insult, and the officer corps expects it answered with a fleet of your own',
+        trigger: 'unanswered_incursion',
+      },
       'no accommodation with pirates, smugglers or the Nars may be entertained, however useful',
       'the officer corps will not turn pirate: raiding commerce is what the Confederacy does, and the Empire does not imitate it whatever the arithmetic says',
     ],
@@ -246,7 +261,10 @@ const SEED_FACTIONS: SeedFaction[] = [
       'will not put its name to a written treaty; a handshake it can deny is the most it offers',
     ],
     compulsions: [
-      'the captains require plunder: a stretch of quiet with no raid, no prize and no payout and they take ships elsewhere',
+      {
+        text: 'the captains require plunder: no raid under way and nothing taken from anyone, and they start asking aloud what the Confederacy is for',
+        trigger: 'no_plunder',
+      },
       'no captain will hold a siege line, garrison a world, or sit still to be besieged',
       'nothing gets signed. Written commitments are refused as a matter of principle and self-preservation',
     ],
@@ -311,7 +329,7 @@ function buildFactions(): Faction[] {
     warEthic: f.warEthic,
     tradeEthic: f.tradeEthic,
     redLines: [...f.redLines],
-    compulsions: [...f.compulsions],
+    compulsions: f.compulsions.map((c) => (typeof c === 'string' ? { text: c } : { ...c })),
     dissent: 0,
     buildBias: [...f.buildBias],
   }));

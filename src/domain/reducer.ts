@@ -8,6 +8,7 @@ import {
   type FibScale,
 } from './duration.js';
 import { conflictingCommitment, MAX_COMMITMENT_INCOME } from './arbitration.js';
+import { driftingCompulsions } from './compulsions.js';
 import { rollD20, statModifier } from './checks.js';
 import {
   applyOrderEffect,
@@ -37,6 +38,7 @@ import {
   fleetBases,
   fleetStrengthOf,
   canSubornAt,
+  COMPULSION_DRIFT_DISSENT,
   DOCTRINE_CHANGE_DISSENT_CEILING,
   DOCTRINE_ETHIC_DISSENT,
   DOCTRINE_RETIRE_DISSENT,
@@ -503,7 +505,7 @@ export function applyOps(
         // which principle was abandoned rather than a paraphrase of one.
         const retiring = [...new Set(op.retire)];
         const unmatched = retiring.filter(
-          (line) => !f.redLines.includes(line) && !f.compulsions.includes(line),
+          (line) => !f.redLines.includes(line) && !f.compulsions.some((c) => c.text === line),
         );
         if (unmatched.length > 0) {
           reject(
@@ -535,7 +537,7 @@ export function applyOps(
         }
         for (const line of retiring) {
           f.redLines = f.redLines.filter((r) => r !== line);
-          f.compulsions = f.compulsions.filter((c) => c !== line);
+          f.compulsions = f.compulsions.filter((c) => c.text !== line);
           cost += DOCTRINE_RETIRE_DISSENT;
           changed.push(`abandoned: ${line}`);
         }
@@ -1418,6 +1420,33 @@ export function tickTurn(input: WorldState): TickResult {
   // can drain, and every stat suffers for it.
   for (const faction of state.factions) {
     if (faction.dissent > 0) faction.dissent = Math.max(0, faction.dissent - DISSENT_DECAY);
+  }
+
+  /* --- Compulsions ignored --------------------------------------------- */
+  // The other half of governing in character. A refusal catches a leader
+  // ordering their faction to betray itself; nothing caught one who simply
+  // never acts, because a refusal needs an action to refuse. Four compulsions
+  // in the seed promised consequences for exactly that and had none.
+  //
+  // Read here, before the orders phase consumes `pendingOrders`, so a faction
+  // whose fleet lands this very turn still counts as having one under way —
+  // the forgiving direction, and the correct one.
+  //
+  // This runs for EVERY faction, which makes it the first thing in the game
+  // that holds an NPC to its own character: refusals only ever reached the
+  // player, since reactions have no refusal channel.
+  for (const faction of state.factions) {
+    const drifting = driftingCompulsions(state, faction.id);
+    if (drifting.length === 0) continue;
+    const before = faction.dissent;
+    faction.dissent = Math.min(100, before + drifting.length * COMPULSION_DRIFT_DISSENT);
+    const added = faction.dissent - before;
+    if (added === 0) continue;
+    const note = `${faction.name}: dissent +${added} (now ${faction.dissent}/100) — ${drifting
+      .map((d) => d.why)
+      .join('; ')}.`;
+    logEvent(state, 'system', note, faction.id);
+    if (faction.id === state.playerFactionId) notes.push(note);
   }
 
   /* --- Treaties lapse before anything is paid out ---------------------- */

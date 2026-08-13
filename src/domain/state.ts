@@ -112,6 +112,53 @@ export const TRADE_INCOME_MULTIPLIER: Record<TradeEthic, number> = {
  */
 export const FREE_TRADE_OPENNESS_BONUS = 0.25;
 
+/**
+ * What a compulsion watches for, when it watches for anything.
+ *
+ * Compulsions were enforced by exactly one path: the resolution call refusing a
+ * declared action. That works for a compulsion phrased as a prohibition, and
+ * not at all for one phrased as a demand — a refusal needs an action to refuse,
+ * so nothing ever fired on *drift*. Four lines in the seed promised
+ * consequences for elapsed time ("a stretch of quiet with no raid", "within a
+ * turn or two", "an unprofitable quarter") and nothing measured time, or
+ * anything else.
+ *
+ * A trigger is a **pure predicate on world state**, checked once per faction
+ * per turn. Nothing here reads history, a clock or a random number, so the
+ * check replays exactly; a "stretch" of neglect emerges from the predicate
+ * being true on several consecutive turns rather than from anything counting.
+ */
+export const COMPULSION_TRIGGERS = [
+  /** Net income is zero or negative. */
+  'unprofitable',
+  /** At war with someone, with no fleet under way. */
+  'idle_at_war',
+  /** A rival's ships sit on a world you hold, and you have sent nothing. */
+  'unanswered_incursion',
+  /** No raid under way and nothing taken from anyone's lanes. */
+  'no_plunder',
+] as const;
+export type CompulsionTrigger = (typeof COMPULSION_TRIGGERS)[number];
+export const CompulsionTriggerSchema = z.enum(COMPULSION_TRIGGERS);
+
+/**
+ * A compulsion is `{ text, trigger? }`, but a bare string is accepted and
+ * normalised — that is what every save file and journal written before triggers
+ * existed contains, and they must keep loading.
+ *
+ * A compulsion with no trigger is not inert: it is still enforced the original
+ * way, by the resolution call refusing an action that abandons it. The trigger
+ * only adds the case a refusal cannot cover.
+ */
+export const CompulsionSchema = z.preprocess(
+  (value) => (typeof value === 'string' ? { text: value } : value),
+  z.object({
+    text: z.string().min(1).max(240),
+    trigger: CompulsionTriggerSchema.optional(),
+  }),
+);
+export type Compulsion = z.infer<typeof CompulsionSchema>;
+
 export const FactionSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -148,7 +195,7 @@ export const FactionSchema = z.object({
    * rebel holds Imperial ground is not playing Iron Vigil — the fleet
    * commanders have views, and this is where they live.
    */
-  compulsions: z.array(z.string()).default([]),
+  compulsions: z.array(CompulsionSchema).default([]),
   /**
    * How far the leader has strayed from doctrine, 0–100. Rises when orders are
    * refused or compulsions ignored; high dissent is a losing position.
@@ -780,6 +827,21 @@ export const DISSENT_PER_PENALTY_POINT = 100 / MAX_DISSENT_PENALTY;
  * not.
  */
 export const REFUSAL_DISSENT = 8;
+
+/**
+ * Dissent added per turn, per compulsion a faction is visibly ignoring.
+ *
+ * Set against `DISSENT_DECAY` (2), which is what makes it a *drift* rather than
+ * a punishment: one ignored compulsion nets +1 a turn, so a power playing
+ * mildly against type takes about thirteen turns to lose a single stat point
+ * and stops the moment it complies. A power ignoring two at once — the Iron
+ * Vigil sitting passive while a rival's fleet sits on an Imperial world — nets
+ * +4, and finds out considerably sooner.
+ *
+ * Deliberately far below `REFUSAL_DISSENT` (8). Actively ordering your faction
+ * to betray itself is a worse offence than merely failing to be it.
+ */
+export const COMPULSION_DRIFT_DISSENT = 3;
 
 /**
  * Reorienting a power costs standing with the people who have to carry it out.

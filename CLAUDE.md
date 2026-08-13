@@ -484,10 +484,58 @@ by the fleet commanders.
 
 Dissent itself is faction-agnostic — every faction carries the field, all five
 have red lines and compulsions in the seed, and `effectiveStats` reads the same
-way for each. What is player-only is the *trigger*: refusal exists solely on the
-resolution call, and `ReactionSchema` has no `refusal` field, so an NPC acting
-straight through its own compulsions is never charged for it. NPC character is
-enforced by prompt; the player's is enforced by the reducer.
+way for each.
+
+### Compulsions also fire on drift, for everyone
+
+Refusal has a shape problem: it needs an action to refuse. That works for a
+compulsion phrased as a prohibition and not at all for one phrased as a demand,
+so a player who simply never acted was never noticed — and four lines in the
+seed promised consequences for exactly that, with nothing behind them:
+
+> *"a stretch of quiet with no raid, no prize and no payout and they take ships
+> elsewhere"* · *"insults must be answered within a turn or two, or the officer
+> corps answers them without you"* · *"an unprofitable quarter … invites a vote
+> of no confidence"*
+
+Nothing measured time, income or idleness. A compulsion may now carry a
+**trigger** (`src/domain/compulsions.ts`), a pure predicate on world state
+checked once per faction per turn in `tickTurn`:
+
+| trigger | fires when |
+|---|---|
+| `unprofitable` | net income is zero or negative |
+| `idle_at_war` | at war with someone and no fleet under way |
+| `unanswered_incursion` | a rival's ships sit on a world you hold and nothing was sent |
+| `no_plunder` | no raid under way and nothing taken from anyone's lanes |
+
+Three properties follow from making these predicates rather than counters:
+
+- **A "stretch" needs nothing to count it.** The predicate is simply true again
+  next turn, so neglect accumulates by repetition and stops the moment the
+  faction complies — the behaviour the flavour text always described.
+- **It replays exactly.** No history, no clock, no dice.
+- **It applies to every faction.** This is the first mechanism in the game that
+  holds an *NPC* to its own character. Refusals only ever reached the player,
+  because `ReactionSchema` has no `refusal` field, which left four of five
+  powers free to act completely against type at no cost.
+
+`COMPULSION_DRIFT_DISSENT` (3) is set against `DISSENT_DECAY` (2), so one
+ignored compulsion nets +1 a turn and two net +4. Measured over 30 turns in
+which nobody acts at all: the Iron Vigil and Drajk reach 32 dissent (−2 to every
+stat), and the three powers whose compulsions are all prohibitions never drift
+at all. It is deliberately well below `REFUSAL_DISSENT` (8) — ordering your
+faction to betray itself is worse than merely failing to be it.
+
+A compulsion with no trigger is **not** inert; it is still enforced the original
+way, by refusal. `CompulsionSchema` accepts a bare string and normalises it, so
+every save and journal written before triggers existed still loads.
+
+> The one thing TypeScript will not catch here: `faction.compulsions` is now
+> objects, and interpolating one into a template literal is legal and yields
+> `[object Object]`. That is precisely what `serializeCharacter` did for a
+> moment, which would have fed the model a character sheet with every
+> compulsion blanked. There is a test pinning it.
 
 ### Changing doctrine costs dissent, because it is real
 
@@ -1295,7 +1343,7 @@ re-sends its context. A trivial call still takes ~7s for that reason.
 ```
 src/
   domain/     state, ops, duration, development, graph, checks, diplomacy,
-              arbitration, trade, reducer
+              arbitration, compulsions, trade, reducer
               ← pure. No I/O, no network, no imports from engine/model/ui.
   api/        contract.ts — Zod schemas shared by server and browser
   engine/     campaign, store, journal, turn, briefing
