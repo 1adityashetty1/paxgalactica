@@ -22,6 +22,12 @@ const RUN = runBalance(30);
 const last = RUN[RUN.length - 1]!;
 const IDS = ['meridian', 'vigil', 'hutt', 'freeworlds', 'krayt'] as const;
 const net = (id: string) => last.perFaction[id]!.net;
+/** How much of a power's gross comes from the lane network rather than its worlds. */
+const laneShare = (id: string) => {
+  const f = last.perFaction[id]!;
+  return f.routes / Math.max(1, f.routes + f.territory);
+};
+
 const sum = (id: string, key: 'tolls' | 'raided') =>
   RUN.reduce((n, h) => n + h.perFaction[id]![key], 0);
 
@@ -78,13 +84,20 @@ describe('each doctrine pays off when it is actually played', () => {
     expect(sum('krayt', 'raided')).toBeGreaterThan(200);
   });
 
-  it('keeps autarkists off the network and free traders on it', () => {
-    const laneShare = (id: string) => {
-      const f = last.perFaction[id]!;
-      return f.routes / Math.max(1, f.routes + f.territory);
-    };
-    expect(laneShare('vigil')).toBeLessThan(laneShare('meridian'));
+  it('keeps the autarkist off the network and the free trader on it', () => {
+    // Arkanis is the autarkist. This used to name the Iron Vigil too, which
+    // stopped being true when the Vigil took over the `monopolist` doctrine —
+    // an ethic that had been implemented, tested and owned by nobody while
+    // `autarkic` was held twice.
     expect(laneShare('freeworlds')).toBeLessThan(laneShare('meridian'));
+  });
+
+  it('pays the monopolist for holding both ends of its own lane', () => {
+    // The Vigil holds tio-3 <-> tio-4, one of three both-ends lanes on the map.
+    // A doctrine nobody has is a doctrine that cannot be shown to work, so this
+    // is the assertion that keeps `monopolist` honest.
+    expect(last.perFaction['vigil']!.routes).toBeGreaterThan(0);
+    expect(laneShare('vigil')).toBeGreaterThan(laneShare('freeworlds'));
   });
 
   it('leaves trade worth interdicting: value sits unclaimed on neutral space', () => {

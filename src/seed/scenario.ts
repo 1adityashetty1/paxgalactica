@@ -173,7 +173,7 @@ const SEED_FACTIONS: SeedFaction[] = [
     voice:
       'ARCHETYPE: a Roman legate addressing a province. Latinate and formal; never uses contractions, under any pressure. Speaks of the Empire in the present tense, and of provinces, sedition, tribute, the mandate, the line. Addresses others by rank, or as "provincial" — a leader holding no commission is barely addressed at all. Does not plead, does not joke, does not ask twice. Sample: "You address the Iron Vigil. The Tion is an Imperial province in temporary disorder. It is not a market, and you are not a party to it. Withdraw beyond the Ghorman line before the next watch and this exchange will not be entered in the record."',
     warEthic: 'crusading',
-    tradeEthic: 'autarkic',
+    tradeEthic: 'monopolist',
     redLines: [
       'will not accept payment to stand down; being bought is the insult, not the price',
       'will not recognise a rebel government as legitimate, whatever it controls',

@@ -14,6 +14,13 @@
    unchanged by the item-8 work (the doctrine bots do not build or develop).
 3. **The unfinished live playtest below** is still worth running.
 
+**Meridian's insolvency is no longer the worst case it was.** The pre-existing
+spread had it at −1 net and falling. Giving the Iron Vigil the `monopolist`
+ethic (see CLAUDE.md, "One ethic each") changed the Tion balance of power and
+Meridian now finishes a 30-turn harness run at **+31**, holding 3 systems. It is
+still the weakest of the five and still worth attention, but it is no longer
+sliding toward zero.
+
 **Also fixed this session, found by the user asking whether doctrine change was
 a real mechanic:** it was not. `set_doctrine` wrote a string with no reader
 outside the prompts and the UI, and no op could touch `warEthic`, `tradeEthic`,

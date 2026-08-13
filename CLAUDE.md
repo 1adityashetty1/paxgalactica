@@ -287,10 +287,15 @@ sounds like every other faction the moment a conversation gets specific:
   diplomacy persona; the prompt's stated test is that a reply which could be
   pasted into another faction's mouth has failed.
 - **`warEthic`** — `expansionist` · `defensive` · `opportunist` · `crusading` ·
-  `mercenary`. Decides whether force is on the table at all.
+  `mercenary`. Reads as "decides whether force is on the table at all", and
+  **has no mechanical reader anywhere** — only the prompt serializer. Two
+  factions share `defensive` as a result, and the Ojjul Nar's `mercenary`
+  identity is unimplemented while its own red lines bar it from fighting its
+  own wars. Written up in `docs/todo.md`; deliberately not patched per-faction,
+  because all five have one.
 - **`tradeEthic`** — `free_trade` · `monopolist` · `extortionist` · `autarkic` ·
-  `smuggler`. Also sets the income multiplier, so commerce beliefs have a
-  mechanical price.
+  `smuggler`. Load-bearing, and now **one per faction**: Meridian, the Iron
+  Vigil, the Nars, Arkanis, Drajk in that order.
 - **`redLines[]`** — absolute refusals no incentive moves.
 - **`buildBias[]`** — what it reaches for first, so pressure does not make every
   power build the same shipyard.
@@ -399,11 +404,46 @@ lives here instead:
 | `extortionist` | a **toll** on every foreign cargo crossing its space |
 | `autarkic` | keeps only `AUTARKIC_ROUTE_FRACTION` of route income, and cannot be strangled |
 | `smuggler` | ignores blockades, raids at double effect, counts double at lawless junctions |
-| `monopolist` | premium on lanes it owns both ends of |
+| `monopolist` | `MONOPOLY_BONUS` premium on lanes it owns **both ends** of, paid on top of the conserved split |
 
 The seed already had the geography for this and nothing read it: kes-2 sits on
 74 of the galaxy's 300 shortest paths and the extortionists hold it; three more
 high-traffic junctions are unaligned.
+
+### One ethic each, which took a while
+
+`monopolist` was implemented, tested and **owned by nobody**, while `autarkic`
+was held twice — five ethics, five factions, one duplicated and one dead. That
+is an authoring slip, not a design.
+
+The Iron Vigil has it now, and the geography decides that rather than taste:
+only three lanes on the map have both ends under one power, and the Vigil holds
+one of them (`tio-3 <-> tio-4`, one jump, volume 44). The *other* autarkist,
+Arkanis, holds a single hub and would earn nothing from the doctrine, so the
+duplicate could only be broken on the Vigil's side. It fits the fiction better
+than expected: *"Hold the Tion until order is restored"* **is** the monopolist
+precondition, and fortification and garrison-raising are the toolkit for
+holding both ends of a corridor.
+
+**Two things had to change to make it work**, and both were only visible
+because the ethic finally had an owner:
+
+1. **The premium broke value conservation.** It multiplied the endpoint share
+   inside `routeEarnings`, so the network paid out more than the lanes were
+   worth — caught immediately by the test that guards exactly that, which had
+   never fired because no faction was a monopolist. It is now reported as
+   `monopolyPremium` and added by `ledgerFor`, which is where the free trader's
+   openness bonus already lives. The split stays a conserved division of what
+   the network is worth; the premium rides alongside it.
+2. **`MONOPOLY_BONUS` fell from 1.5 to 1.25.** Swept over 30 played turns, the
+   response is a *cliff*: at 1.4+ the Vigil's route income funds a fleet that
+   takes `tio-1` off Meridian — costing Meridian a hub and its own both-ends
+   lane — and Meridian ends at −82. At 1.3 and below Meridian keeps tio-1 and
+   finishes at **+31**, better than the −1 it managed before any of this. From
+   1.3 down to 1.15 the board is identical, because the premium applies to one
+   lane and the discrete question (does Meridian keep tio-1) swamps it. 1.25 is
+   chosen over the 1.3 that also passes for margin: a tuning value sitting on a
+   cliff edge is one unrelated change away from tipping back.
 
 ### Interdiction: attacking an economy without a battle
 

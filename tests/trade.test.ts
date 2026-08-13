@@ -173,16 +173,30 @@ describe('every commercial doctrine differs measurably', () => {
   });
 
   it('rewards a monopolist for owning both ends of a lane', () => {
-    // Measured against free_trade, which gets no route-side bonus of its own
-    // (its advantage is applied later, in `ledgerFor`). Comparing against the
-    // extortionist instead would measure the Kessel tolls, not the monopoly.
-    const earnings = (ethic: 'monopolist' | 'free_trade') => {
+    // Measured through `ledgerFor`, because that is where the premium lands.
+    // It is deliberately NOT in `routeEarnings().shares`: that is the conserved
+    // pot, and a test below asserts it never pays out more than the network is
+    // worth. The premium is extra value created by running a lane end to end,
+    // so it rides alongside — the same treatment the free trader's openness
+    // bonus gets. Reading `shares` here would now measure nothing at all.
+    const at = (ethic: 'monopolist' | 'autarkic') => {
       const state = fresh();
       for (const id of ['kes-1', 'kes-2']) sys(state, id).controllerFactionId = 'hutt';
       fac(state, 'hutt').tradeEthic = ethic;
-      return routeEarnings(state).shares['hutt'] ?? 0;
+      return { premium: routeEarnings(state).monopolyPremium['hutt'] ?? 0, ledger: ledgerFor(state, 'hutt') };
     };
-    expect(earnings('monopolist')).toBeGreaterThan(earnings('free_trade'));
+    const monopoly = at('monopolist');
+    expect(monopoly.premium).toBeGreaterThan(0);
+    expect(monopoly.ledger.routes).toBeGreaterThan(at('autarkic').ledger.routes);
+  });
+
+  it('pays the premium only to a power holding both ends', () => {
+    const state = fresh();
+    // The Nars hold kes-1 and kes-2; hand one end to someone else.
+    fac(state, 'hutt').tradeEthic = 'monopolist';
+    expect(routeEarnings(state).monopolyPremium['hutt'] ?? 0).toBeGreaterThan(0);
+    sys(state, 'kes-1').controllerFactionId = 'krayt';
+    expect(routeEarnings(state).monopolyPremium['hutt'] ?? 0).toBe(0);
   });
 
   it('scales a free trader’s take with the openness of the whole galaxy', () => {

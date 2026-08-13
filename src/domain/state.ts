@@ -690,6 +690,11 @@ export function ledgerFor(state: WorldState, factionId: string): Ledger {
   if (faction.tradeEthic === 'free_trade') {
     routes = Math.round(routes * (1 + FREE_TRADE_OPENNESS_BONUS * earnings.openness));
   }
+  // A monopolist running a lane end to end is worth more than the sum of the
+  // two halves. Added here rather than inside `routeEarnings` so the split it
+  // performs stays a conserved division of what the network is worth — the same
+  // treatment the free trader's openness bonus gets, two lines up.
+  routes += earnings.monopolyPremium[factionId] ?? 0;
 
   const gross = territory + routes;
   const upkeep = fleetStrengthOf(state, factionId) * UPKEEP_PER_FLEET_POINT;

@@ -68,8 +68,28 @@ export const SMUGGLER_RAID_MULTIPLIER = 2;
 /** Autarkic economies barely touch the network, by choice. */
 export const AUTARKIC_ROUTE_FRACTION = 0.35;
 
-/** A monopolist's premium on a lane whose both ends it owns. */
-export const MONOPOLY_BONUS = 1.5;
+/**
+ * A monopolist's premium on a lane whose both ends it owns.
+ *
+ * Lowered from 1.5 when the Iron Vigil was given this doctrine — it had been
+ * implemented, tested and owned by nobody, while `autarkic` was held twice.
+ * The Vigil holds `tio-3 <-> tio-4`, one of only three lanes in the galaxy with
+ * both ends under one power, so the ethic finally has somewhere to apply.
+ *
+ * Swept over 30 played turns, and the result is a **cliff rather than a
+ * gradient**: at 1.4 and above the Vigil's route income funds a fleet that
+ * takes `tio-1` off Meridian, which costs Meridian a hub *and* its own
+ * both-ends lane, and drives it to -82 net. At 1.3 and below Meridian keeps
+ * tio-1 and finishes at +31 — better than the -1 it managed before this change
+ * existed. Between those, nothing moves at all: 1.3, 1.25, 1.2 and 1.15 all
+ * produce an identical board, because the premium applies to a single lane
+ * worth 44 and the discrete question (does Meridian keep tio-1) dominates it.
+ *
+ * 1.25 rather than the 1.3 that also passes, because 1.3 sits exactly on the
+ * boundary and a tuning value on a cliff edge is one unrelated change away from
+ * tipping back. The margin is free: the outcome is the same either way.
+ */
+export const MONOPOLY_BONUS = 1.25;
 
 /**
  * How much better a smuggler is at moving cargo through lawless space, when
@@ -215,6 +235,18 @@ export interface RouteEarnings {
   tolls: Record<string, number>;
   /** factionId -> credits taken from someone else by raiding. */
   raided: Record<string, number>;
+  /**
+   * factionId -> the monopolist premium it has earned, held back from `shares`.
+   *
+   * Kept out of the split on purpose. `shares` is the conserved pot — what the
+   * lanes are worth, divided among the powers with a claim on them — and a test
+   * asserts it never pays out more than the network is worth, which is what
+   * catches a leak. A monopolist's premium is not a share of the lane, it is
+   * extra value that exists *because* one power runs the whole run end to end,
+   * so it is reported here and added by `ledgerFor`. That is exactly where the
+   * free trader's openness bonus is already applied, for the same reason.
+   */
+  monopolyPremium: Record<string, number>;
   /** Fraction of all routes running unimpeded, 0–1. What free traders live on. */
   openness: number;
 }
@@ -235,6 +267,7 @@ export function routeEarnings(state: WorldState): RouteEarnings {
   const shares: Record<string, number> = {};
   const tolls: Record<string, number> = {};
   const raided: Record<string, number> = {};
+  const monopolyPremium: Record<string, number> = {};
   let uncollected = 0;
   let live = 0;
 
@@ -278,7 +311,10 @@ export function routeEarnings(state: WorldState): RouteEarnings {
         uncollected += cut;
         continue;
       }
-      add(shares, holder, monopoly ? cut * MONOPOLY_BONUS : cut);
+      add(shares, holder, cut);
+      // The premium rides alongside the share rather than inflating it, so the
+      // conserved pot stays conserved. See `monopolyPremium`.
+      if (monopoly) add(monopolyPremium, holder, cut * (MONOPOLY_BONUS - 1));
     }
 
     /* --- transit: whoever the lane crosses --- */
@@ -355,12 +391,16 @@ export function routeEarnings(state: WorldState): RouteEarnings {
   for (const id of Object.keys(shares)) shares[id] = Math.round(shares[id]!);
   for (const id of Object.keys(tolls)) tolls[id] = Math.round(tolls[id]!);
   for (const id of Object.keys(raided)) raided[id] = Math.round(raided[id]!);
+  for (const id of Object.keys(monopolyPremium)) {
+    monopolyPremium[id] = Math.round(monopolyPremium[id]!);
+  }
 
   return {
     shares,
     uncollected: Math.round(uncollected),
     tolls,
     raided,
+    monopolyPremium,
     openness: routes.length === 0 ? 1 : live / routes.length,
   };
 }
