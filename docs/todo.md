@@ -67,11 +67,16 @@ exist; the consequence is now dissent, which does.
   the Combine from fighting its own wars while the alternative it names does
   not exist — the only faction whose lines subtract capability with no
   substitute. Blocked on the `warEthic` question above.
-- **Five lines are duplicated within their own faction** (Meridian R0/C0,
-  Ojjul R0/C2, Arkanis R1/C1, Drajk R0/C1 and R1/C2). Since `retire` matches
-  exact strings, changing course means retiring both copies — Drajk going
-  legitimate costs 50 dissent rather than 25 purely because the same rule is
-  written twice.
+- ~~Five lines duplicated within their own faction~~ **FIXED.** All five were
+  prohibitions miscategorised as demands, so the compulsion copy was dropped and
+  whatever it added folded into the surviving red line (Drajk's "sit still to be
+  besieged", Meridian's embargoes and shut borders, Arkanis's abandonment to
+  occupation). Changing course now costs what it should: Drajk going legitimate
+  is 25 dissent, not 50. A test asserts no faction states a line twice.
+  **Drajk is left with a single compulsion** — the triggered `no_plunder` one —
+  against 2 red lines; that is honest to a faction defined by what it refuses,
+  but it is the thinnest sheet of the five and worth a look if Drajk ever reads
+  as flat.
 
 **Every numbered item in this file is now fixed**, each with tests. Original
 write-ups are kept rather than deleted — the repro steps are the useful part

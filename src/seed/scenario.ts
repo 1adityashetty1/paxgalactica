@@ -146,11 +146,12 @@ const SEED_FACTIONS: SeedFaction[] = [
     warEthic: 'defensive',
     tradeEthic: 'free_trade',
     redLines: [
-      'will not blockade civilian traffic — closed lanes are bad for everyone, including the closer',
+      // Absorbs what used to be a second copy of this as a compulsion, which
+      // added embargoes and closed borders to the same prohibition.
+      'will not close a lane — no blockade of civilian traffic, no embargo, no shut border; closed lanes are bad for everyone, including the closer',
       'will not repudiate a contract it has signed, even a ruinous one; its whole value rests on that',
     ],
     compulsions: [
-      'the Trade Council requires open lanes: prolonged blockades, embargoes or closed borders will be voted down',
       'commerce raiding is refused outright — the Authority insures the cargo it would be seizing, and preying on shipping ends it as a going concern',
       'trafficking in spice, slaves or proscribed weapons is refused outright — shareholders will not launder it, whatever it pays',
       {
@@ -211,7 +212,6 @@ const SEED_FACTIONS: SeedFaction[] = [
     compulsions: [
       'the Combine requires that every favour carry a price; giving something away for goodwill is refused as ruinous precedent',
       'an unpaid debt must be pursued — forgiving one invites every client to test the next',
-      'the Combine will not commit its own hulls where a hired one would do',
     ],
     buildBias: ['espionage', 'political_maneuver', 'blockade'],
   },
@@ -230,11 +230,12 @@ const SEED_FACTIONS: SeedFaction[] = [
     tradeEthic: 'autarkic',
     redLines: [
       'will never accept occupation or a protectorate, on any terms, however generous',
-      'will not sell out another free world to buy its own safety',
+      // Absorbs the compulsion that restated this: no world of the Drift is
+      // abandoned to occupation to buy safety elsewhere either.
+      'will not sell out another free world, or abandon one to occupation, to buy its own safety',
     ],
     compulsions: [
       'the councils require consultation: any pact ceding territory, autonomy or basing rights is refused without their consent',
-      'no world of the Drift may be abandoned to occupation to buy safety elsewhere',
       'tribute is refused. The Drift does not pay to be left alone, whatever the arithmetic says',
       'the Drift does not prey on shipping. Being raided is the grievance the Free Worlds were founded on, and doing it would make the founding a lie',
     ],
@@ -257,7 +258,9 @@ const SEED_FACTIONS: SeedFaction[] = [
     warEthic: 'opportunist',
     tradeEthic: 'smuggler',
     redLines: [
-      'will not hold a siege line or garrison a world — being pinned down is how raiders die',
+      // Absorbs "or sit still to be besieged" from the compulsion that used to
+      // restate this line almost word for word.
+      'will not hold a siege line, garrison a world, or sit still to be besieged — being pinned down is how raiders die',
       'will not put its name to a written treaty; a handshake it can deny is the most it offers',
     ],
     compulsions: [
@@ -265,8 +268,6 @@ const SEED_FACTIONS: SeedFaction[] = [
         text: 'the captains require plunder: no raid under way and nothing taken from anyone, and they start asking aloud what the Confederacy is for',
         trigger: 'no_plunder',
       },
-      'no captain will hold a siege line, garrison a world, or sit still to be besieged',
-      'nothing gets signed. Written commitments are refused as a matter of principle and self-preservation',
     ],
     buildBias: ['commerce_raiding', 'refit', 'espionage'],
   },

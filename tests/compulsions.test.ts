@@ -217,6 +217,44 @@ describe('the compulsion shape', () => {
   });
 });
 
+describe('a faction states each of its principles once', () => {
+  /**
+   * Five lines used to be written twice — once correctly as a red line, once
+   * again as a compulsion saying the same thing. That is not free: `retire`
+   * matches exact strings, so changing course meant retiring both copies, and
+   * Drajk going legitimate cost 50 dissent instead of 25 purely because the
+   * same rule appeared in two places.
+   *
+   * The categories are not interchangeable. A red line is a prohibition
+   * ("will not"); a compulsion is a demand ("your institutions require"). Every
+   * one of the five duplicates was a prohibition miscategorised as a demand.
+   */
+  it('never states the same line as both a prohibition and a demand', () => {
+    for (const f of fresh().factions) {
+      const lines = [...f.redLines, ...f.compulsions.map((c) => c.text)];
+      expect(new Set(lines).size, `${f.id} repeats a line verbatim`).toBe(lines.length);
+    }
+  });
+
+  it('keeps every power recognisable on both axes', () => {
+    for (const f of fresh().factions) {
+      expect(f.redLines.length, `${f.id} red lines`).toBeGreaterThan(0);
+      expect(f.compulsions.length, `${f.id} compulsions`).toBeGreaterThan(0);
+    }
+  });
+
+  it('leaves the surviving line carrying what the duplicate added', () => {
+    const state = fresh();
+    const red = (id: string) => state.factions.find((f) => f.id === id)!.redLines.join(' ');
+    // Drajk's compulsion contributed "sit still to be besieged"...
+    expect(red('krayt')).toMatch(/sit still to be besieged/);
+    // ...Meridian's contributed embargoes and closed borders...
+    expect(red('meridian')).toMatch(/embargo/);
+    // ...and the Free Worlds' contributed abandonment to occupation.
+    expect(red('freeworlds')).toMatch(/abandon one to occupation/);
+  });
+});
+
 describe('retiring a compulsion stops it drifting', () => {
   it('ends the charge for good, which is what the dissent price buys', () => {
     const state = fresh('krayt');
