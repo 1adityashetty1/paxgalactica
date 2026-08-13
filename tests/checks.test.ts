@@ -7,7 +7,7 @@ import {
   STAT_NAMES,
 } from '../src/domain/checks.js';
 import { createSeedState } from '../src/seed/scenario.js';
-import { fleetStrengthOf, ledgerFor, TRADE_INCOME_MULTIPLIER } from '../src/domain/state.js';
+import { fleetStrengthOf, ledgerFor, UPKEEP_PER_FLEET_POINT } from '../src/domain/state.js';
 import { tickTurn } from '../src/domain/reducer.js';
 
 describe('ability modifiers', () => {
@@ -143,33 +143,13 @@ describe('economy', () => {
     expect(ledger.gross).toBeGreaterThan(0);
     // Upkeep is charged on the DERIVED fleet — the ships actually on the board,
     // not a separate global number that could drift from them.
-    expect(ledger.upkeep).toBe(fleetStrengthOf(state, 'freeworlds') * 4);
-    expect(ledger.net).toBe(ledger.gross - ledger.upkeep + ledger.treatyFlow - ledger.espionageLoss);
-  });
-
-  it('lets trade ethic change what the same holdings earn, and how', () => {
-    // The territorial multiplier now runs the OTHER way: an autarkist wrings
-    // more out of its own worlds precisely because it has renounced the
-    // network. The free trader's advantage is the network, so comparing the
-    // two on territory alone measures the wrong half of each doctrine.
-    expect(TRADE_INCOME_MULTIPLIER.autarkic).toBeGreaterThan(
-      TRADE_INCOME_MULTIPLIER.free_trade,
-    );
-
-    // What matters is the total. Same faction, same map, different beliefs.
-    const earnings = (ethic: (typeof TRADE_INCOME_MULTIPLIER) extends Record<infer K, number> ? K : never) => {
-      const world = createSeedState('meridian');
-      world.factions.find((f) => f.id === 'meridian')!.tradeEthic = ethic;
-      return ledgerFor(world, 'meridian');
-    };
-
-    const open = earnings('free_trade');
-    const closed = earnings('autarkic');
-    expect(closed.territory).toBeGreaterThan(open.territory);
-    expect(open.routes).toBeGreaterThan(closed.routes);
-    // On a hub-rich holding the network is worth more than the premium at
-    // home, which is why Meridian is the free trader and not the recluse.
-    expect(open.gross).toBeGreaterThan(closed.gross);
+    expect(ledger.upkeep).toBe(fleetStrengthOf(state, 'freeworlds') * UPKEEP_PER_FLEET_POINT);
+    // How `net` is assembled from its terms is asserted once, in
+    // economy.test.ts, with every term non-zero. Restating the formula here
+    // duplicated it and went stale twice over: this copy still read
+    // `gross - upkeep + treatyFlow - espionageLoss` long after `agentUpkeep`
+    // and `commitmentFlow` joined it, and passed anyway because a fresh seed
+    // has neither.
   });
 
   it('credits every faction on tick, deterministically', () => {

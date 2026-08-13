@@ -125,8 +125,58 @@ describe('ledgers', () => {
     );
     const mine = ledgerFor(res.state, 'freeworlds');
     expect(mine.treatyFlow).toBe(-150);
-    expect(mine.net).toBe(mine.gross - mine.upkeep + mine.treatyFlow - mine.espionageLoss);
     expect(ledgerFor(res.state, 'hutt').treatyFlow).toBe(150);
+  });
+
+  /**
+   * The one test that would catch a term being dropped from `net`.
+   *
+   * Two tests used to restate the formula as
+   * `gross - upkeep + treatyFlow - espionageLoss`, which stopped being the
+   * formula when `agentUpkeep` and `commitmentFlow` were added. Both kept
+   * passing, because a fresh seed has neither — a restatement that agrees with
+   * the code only where the code does nothing. So this drives every term
+   * non-zero at once, which is the only arrangement that can fail.
+   */
+  it('accounts for every term in net, with all of them in play at once', () => {
+    const state = fresh();
+    const res = applyOps(
+      state,
+      [
+        // pays out
+        {
+          op: 'form_treaty', treatyType: 'tribute', parties: ['freeworlds', 'hutt'],
+          terms: { incomePerTurn: { freeworlds: -150, hutt: 150 } },
+        },
+        // skimmed by a rival
+        {
+          op: 'deploy_agent', ownerFactionId: 'hutt', systemId: 'ark-1',
+          mission: 'theft', effect: { kind: 'income_penalty', perTurn: 60 },
+        },
+        // runs an operative of its own
+        {
+          op: 'deploy_agent', ownerFactionId: 'freeworlds', systemId: 'kes-1',
+          mission: 'surveillance', effect: { kind: 'intel', perTurn: 1 },
+        },
+        // and holds an arrangement that pays
+        {
+          op: 'establish_commitment', kind: 'salvage_charter', factionIds: ['freeworlds'],
+          text: 'Salvage rights across the Drift.', incomePerTurn: 20,
+        },
+      ],
+      'model',
+    );
+    expect(res.rejections).toEqual([]);
+
+    const l = ledgerFor(res.state, 'freeworlds');
+    // Every term is actually exercised, or the assertion below proves nothing.
+    for (const term of [l.upkeep, l.treatyFlow, l.espionageLoss, l.agentUpkeep, l.commitmentFlow]) {
+      expect(term).not.toBe(0);
+    }
+    expect(l.gross).toBe(l.territory + l.routes);
+    expect(l.net).toBe(
+      l.gross - l.upkeep + l.treatyFlow - l.espionageLoss - l.agentUpkeep + l.commitmentFlow,
+    );
   });
 
   it('docks income for a hostile agent skimming a system', () => {
