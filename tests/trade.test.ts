@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
-import { ledgerFor, subornLimit, systemIncome, type WorldState } from '../src/domain/state.js';
+import {
+  ledgerFor,
+  subornLimit,
+  systemIncome,
+  TRADE_INCOME_MULTIPLIER,
+  type WorldState,
+} from '../src/domain/state.js';
 import {
   isBlockaded,
   raidersOn,
@@ -129,10 +135,19 @@ describe('every commercial doctrine differs measurably', () => {
   };
 
   it('gives an autarkist its territory and a free trader the network', () => {
+    // The territorial multiplier runs the OTHER way on purpose: an autarkist
+    // wrings more out of its own worlds precisely because it has renounced the
+    // network, so comparing the two on territory alone measures the wrong half
+    // of each doctrine.
+    expect(TRADE_INCOME_MULTIPLIER.autarkic).toBeGreaterThan(TRADE_INCOME_MULTIPLIER.free_trade);
+
     const closed = asEthic('autarkic');
     const open = asEthic('free_trade');
     expect(closed.territory).toBeGreaterThan(open.territory);
     expect(open.routes).toBeGreaterThan(closed.routes);
+    // On a hub-rich holding the network is worth more than the premium at
+    // home, which is why Meridian is the free trader and not the recluse.
+    expect(open.gross).toBeGreaterThan(closed.gross);
   });
 
   it('pays an extortionist a toll on other powers’ goods', () => {

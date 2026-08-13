@@ -45,10 +45,68 @@ export const CommitmentSchema = z.object({
    * by the arbitrator remembering.
    */
   exclusive: z.boolean().default(false),
+  /**
+   * What the arrangement is worth per turn to each faction bound by it —
+   * positive for a smuggling operation or a charter, negative for a tribute or
+   * a protection payment.
+   *
+   * Commitments were economically inert for their whole existence: a
+   * `mining_operation` commitment appeared in the UI, lowered future related
+   * difficulties, and paid nothing forever. `ledgerFor` now reads this, which is
+   * what makes an off-mechanic arrangement worth arranging.
+   *
+   * Bounds are generous here and real in code (`MAX_COMMITMENT_INCOME`, and a
+   * per-faction ceiling from `maxCommitmentIncomeFor`) so an over-large ask is
+   * trimmed with a note rather than costing a correction round trip.
+   */
+  incomePerTurn: z.number().int().min(-500).max(500).default(0),
   establishedTurn: z.number().int().min(0),
   status: z.enum(['active', 'dissolved']).default('active'),
 });
 export type Commitment = z.infer<typeof CommitmentSchema>;
+
+/**
+ * Most any single arrangement can be worth per turn.
+ *
+ * A commitment is the catch-all for things nobody enumerated, so it is the
+ * easiest place in the game for a model to invent revenue. 25 a turn is
+ * material against net incomes of 87–300 and cannot on its own fund a war.
+ */
+export const MAX_COMMITMENT_INCOME = 25;
+
+/**
+ * Everything a faction may draw from arrangements at once.
+ *
+ * Derived from `influence` rather than being a flat constant, the way
+ * `maxAgentsFor` derives from guile and `subornLimit` from a stat contest: the
+ * work of holding a web of informal arrangements together IS influence. It puts
+ * Meridian at 50 and the Iron Vigil at the 10 floor, which is where the lore
+ * wants them — a trading authority runs charters, and a military remnant does
+ * not. Costs (negative commitments) are deliberately uncapped: nothing needs
+ * protecting from a faction agreeing to pay.
+ */
+export const COMMITMENT_INCOME_BASE = 20;
+export const COMMITMENT_INCOME_PER_INFLUENCE = 10;
+export const MIN_COMMITMENT_INCOME_CEILING = 10;
+
+/**
+ * What a faction actually collects from its live commitments, after the
+ * per-faction ceiling. `ceiling` is passed in rather than computed here so this
+ * module stays free of any dependency on stats.
+ */
+export function commitmentIncomeFor(
+  commitments: Commitment[],
+  factionId: string,
+  ceiling: number,
+): number {
+  let earned = 0;
+  let owed = 0;
+  for (const c of commitmentsFor(commitments, factionId)) {
+    if (c.incomePerTurn > 0) earned += c.incomePerTurn;
+    else owed += c.incomePerTurn;
+  }
+  return Math.min(earned, Math.max(0, ceiling)) + owed;
+}
 
 export const isCommitmentLive = (c: Commitment): boolean => c.status === 'active';
 

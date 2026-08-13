@@ -50,8 +50,8 @@ an order: resolve it and let the consequences do the work.
 | `adjust_fleet` | ships gained or lost |
 | `adjust_credits` | money spent or earned |
 | `adjust_ships` | ships added to or removed from one system |
-| `set_doctrine` | the faction's standing posture changes |
-| `adjust_dissent` | your own institutions grow more or less restive |
+| `set_doctrine` | the faction changes course — see Changing doctrine |
+| `adjust_dissent` | **your own** institutions grow more restive — never less |
 | `cancel_order` | an existing order is called off |
 | `interrupt_order` | an order is disrupted by force or event |
 | `extend_order` | work runs longer than planned |
@@ -67,6 +67,18 @@ an order: resolve it and let the consequences do the work.
 
 `transfer_control` is **not available to you.** A system changes hands only when
 a `fleet_movement` order physically arrives.
+
+`adjust_dissent` moves **only your own** faction, and only upward. Dissent is a
+power's standing with its own institutions: it falls by 2 a turn on its own and
+in no other way, so it cannot be talked down by a leader who has just been
+refused. To turn a *rival's* institutions against it, deploy an agent on a
+`subversion` mission with a `stat_debuff` effect — that path costs credits,
+risks exposure and is capped, and it is the only one there is.
+
+An `establish_commitment` that earns or costs money should say so with
+`incomePerTurn` — a mining concession or a smuggling operation is worth
+something every turn, tribute paid is worth something negative. Up to 25 either
+way; more is trimmed. A purely political arrangement leaves it out.
 
 ## Fleets
 
@@ -194,6 +206,74 @@ Set `visibility` to the faction ids who would plausibly notice — covert work
 usually nobody. Visibility is what makes long projects raidable. Set
 `interruptible` and `onInterrupt` (`cancel`, `partial`, `persist`) to match the
 work.
+
+### What the order delivers — `onComplete`
+
+An order with no `onComplete` runs its duration and **changes nothing**. That is
+right for a courier run or a decree, and wrong for a shipyard: if the player is
+building, mining, developing, levying or fortifying, the payload is the whole
+point of the action. Set it, or the work was theatre.
+
+`onComplete` is `{kind, magnitude, summary}`. Four kinds, each legal only on the
+order types listed:
+
+| kind | does | allowed on |
+|---|---|---|
+| `develop_system` | +1..2 `strategicValue` — permanent income, and at 7 the world becomes a **trade hub** | `construction_infrastructure`, `industrial_conversion`, `retooling` |
+| `raise_garrison` | +1..5 garrison now, up to the world's ceiling | `garrison_raising`, `fortification` |
+| `fortify` | +1..3 to the garrison **ceiling** | `fortification`, `construction_infrastructure` |
+| `commission_ships` | hulls delivered at the target on completion | `capital_ship_construction`, `refit`, `retooling` |
+
+It is **paid for when the order is issued**: 60 credits a hull, 45 a point of
+garrison ceiling, 15 a garrison point. `develop_system` is priced from what it
+is worth on that particular world — twelve turns of the income it would create —
+so improving an ordinary world is cheap and founding a **trade hub** costs a
+large fraction of a treasury. You do not calculate this; the reducer does, and
+tells you the figure if the treasury cannot cover it.
+
+Ask for more than the cap or more than the treasury holds and it is trimmed, not
+rejected. Over-asking is therefore safe; **forgetting it entirely is what makes
+the action pointless.**
+
+`targetId` is the world the work happens on, and the faction must **hold it or
+have ships over it** — you cannot build on a rival's world by declaring it.
+Infrastructure survives a change of ownership and then serves whoever holds the
+world; levies and hulls do not.
+
+The other order types — `courier`, `decree`, `political_maneuver`, `espionage`,
+`counter_intelligence`, `blockade`, `commerce_raiding`, `treaty_ratification` —
+take no payload: their effect is the agent, the treaty or the interdiction
+itself, and a payload on them is rejected.
+
+## Changing doctrine
+
+A power can genuinely change course, and `set_doctrine` is how. It carries more
+than words:
+
+- `doctrine` — the new statement of posture (required).
+- `warEthic` / `tradeEthic` — the mechanical stances. **Set these** when the
+  change is real; `tradeEthic` in particular decides how the faction earns.
+- `retire` — red lines or compulsions being abandoned, quoted **exactly** as
+  they appear on the faction sheet above. A near-quote is rejected.
+
+**Retiring is the part that matters.** A faction whose compulsion refuses
+commerce raiding will go on refusing every raid until that compulsion is
+retired, however its doctrine paragraph reads. Changing the words alone is a
+speech, not a change of course.
+
+The reducer charges the cost in **dissent**, per axis actually moved: a little
+for new words, more for each ethic, most for each principle abandoned. A full
+reorientation runs about 70 — two points off every stat for roughly thirty
+turns. That is intended. Turning a power against its own character is a
+campaign-defining act, and it should hurt.
+
+Two refusals come from the reducer, not from you: a faction may only change
+**its own** doctrine, and one already past 75 dissent cannot be reorganised at
+all until it falls back.
+
+Do not reach for this to dodge a red line in the middle of some other action.
+It is a deliberate act a leader takes, at a price, not a way to make an
+inconvenient refusal go away.
 
 ## Judging the action
 

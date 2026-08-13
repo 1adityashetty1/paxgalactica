@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { FleetsPanel } from './FleetsPanel.js';
 import { TradePanel } from './TradePanel.js';
 import { STAT_NAMES } from '../../../src/domain/checks.js';
+import { describeOrderEffect } from '../../../src/domain/development.js';
 import { describeEffect } from '../../../src/domain/diplomacy.js';
 import {
   agentsVisibleTo,
@@ -12,6 +13,7 @@ import {
   ledgerFor,
   commitmentsOf,
   dissentPenalty,
+  MAX_DISSENT_PENALTY,
   effectiveStats,
   systemIncome,
   treatiesFor,
@@ -168,7 +170,7 @@ function Factions({
             {f.dissent > 0 && (
               <div
                 className="dissent"
-                title="Your own institutions have been overruled once too often. Every stat drops one point per 25 dissent. It falls by 2 a turn on its own."
+                title={`Your own institutions have been overruled once too often. Every stat is reduced by ${penalty} (up to ${MAX_DISSENT_PENALTY} at 100 dissent). It falls by 2 a turn on its own.`}
               >
                 dissent {f.dissent}/100
                 {penalty > 0 && <span className="bad"> · −{penalty} to every stat</span>}
@@ -322,6 +324,17 @@ function Orders({ state, briefing }: { state: WorldState; briefing: Briefing | n
               {o.factionId === state.playerFactionId ? 'yours' : owner?.name} ·{' '}
               {o.type.replace(/_/g, ' ')} · {o.interruptible ? 'raidable' : 'locked'}
             </div>
+            {/*
+              What the work will actually deliver, and what has been sunk into
+              it. A programme whose payoff is invisible until it lands is a
+              programme the player cannot weigh against defending it.
+            */}
+            {o.onComplete && (
+              <div className="meta delivers">
+                delivers {describeOrderEffect(o.onComplete)}
+                {o.investedCredits > 0 && ` · ${o.investedCredits}cr committed`}
+              </div>
+            )}
           </div>
         );
       })}
@@ -363,6 +376,15 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
                 {c.exclusive && (
                   <span className="chip" title="You may hold only one of these at a time.">
                     exclusive
+                  </span>
+                )}
+                {/* An arrangement that pays is worth defending; one that costs
+                    is worth renegotiating. Either way the number belongs here
+                    rather than buried in the net income figure. */}
+                {c.incomePerTurn !== 0 && (
+                  <span className={c.incomePerTurn > 0 ? 'chip good' : 'chip bad'}>
+                    {c.incomePerTurn > 0 ? '+' : ''}
+                    {c.incomePerTurn}cr/turn
                   </span>
                 )}
               </div>

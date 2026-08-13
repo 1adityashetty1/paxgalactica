@@ -62,6 +62,56 @@ describe('journal replay', () => {
     expect(a.pendingOrders.find((o) => o.label === 'shipyard')!.progress).toBe(4);
   });
 
+  it('replays a works programme, payload and payment and all', () => {
+    const journal = journalWith([
+      {
+        kind: 'ops',
+        source: 'model',
+        label: 'develop',
+        ops: [
+          {
+            op: 'issue_order', factionId: 'freeworlds', type: 'construction_infrastructure',
+            originId: 'ark-1', targetId: 'ark-3', durationTurns: 3, label: 'orbital works',
+            onComplete: { kind: 'develop_system', magnitude: 2 },
+          },
+        ],
+      },
+      { kind: 'tick' },
+      { kind: 'tick' },
+      { kind: 'tick' },
+    ]);
+
+    const a = replay(journal).state;
+    const b = replay(journal).state;
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+    // The programme landed: ark-3 starts at 5 and the payload is worth 2.
+    expect(a.systems.find((s) => s.id === 'ark-3')!.strategicValue).toBe(7);
+    expect(a.pendingOrders).toHaveLength(0);
+  });
+
+  it('replays a journal written before payloads existed', () => {
+    // `onComplete` is optional and `investedCredits` defaults, so an order
+    // recorded by an older build still rebuilds rather than failing validation.
+    const journal = journalWith([
+      {
+        kind: 'ops',
+        source: 'model',
+        label: 'old build',
+        ops: [
+          {
+            op: 'issue_order', factionId: 'freeworlds', type: 'construction_infrastructure',
+            originId: 'ark-1', targetId: 'ark-1', durationTurns: 3, label: 'shipyard',
+          },
+        ],
+      },
+      { kind: 'tick' },
+    ]);
+    const { state } = replay(journal);
+    const order = state.pendingOrders.find((o) => o.label === 'shipyard')!;
+    expect(order.onComplete).toBeUndefined();
+    expect(order.investedCredits).toBe(0);
+  });
+
   it('replays rejections identically rather than diverging', () => {
     const journal = journalWith([
       {

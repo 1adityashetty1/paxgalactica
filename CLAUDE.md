@@ -123,7 +123,7 @@ load and save.
 |---|---|
 | `factions[]` | `id`, `name`, `displayColor` (ANSI 256), `disposition` (factionId → −100..100), `credits`, `doctrine`, `stats`, `voice`, `warEthic`, `tradeEthic`, `redLines[]`, `compulsions[]`, `dissent`, `buildBias[]` — **no `fleetStrength`; it is derived from ships** |
 | `systems[]` | `id`, `name`, `sector`, `coords {x,y}`, `controllerFactionId` (nullable = unaligned), `garrison`, `garrisonMax`, `strategicValue` 0–10, `hyperlaneEdges[]`, `ships` (factionId → count) |
-| `pendingOrders[]` | `id`, `factionId`, `type`, `originId`, `targetId`, `durationTurns`, `progress`, `interruptible`, `onInterrupt`, `visibility[]`, `label`, `durationRationale`, `path[]` |
+| `pendingOrders[]` | `id`, `factionId`, `type`, `originId`, `targetId`, `durationTurns`, `progress`, `interruptible`, `onInterrupt`, `visibility[]`, `label`, `durationRationale`, `path[]`, `onComplete?`, `investedCredits` |
 | `playerFactionId` | string |
 | `turn` | integer — an abstract unit. There is no calendar, deliberately. |
 | `eventLog[]` | `turn`, `kind`, `factionId`, `text` |
@@ -217,7 +217,8 @@ is a refusal, decided later by the faction itself).
 ### Commitments are world state, not the arbiter's memory
 
 `src/domain/arbitration.ts`. A commitment is a durable arrangement with no
-other home: `{ kind, factionIds, text, exclusive }`, stored on `WorldState`.
+other home: `{ kind, factionIds, text, exclusive, incomePerTurn }`, stored on
+`WorldState`.
 
 The arbiter **rules** that a dynastic marriage is exclusive. The reducer
 **enforces** it: `establish_commitment` is rejected with `commitment_conflict`
@@ -239,6 +240,29 @@ turn 4  admissible: false  "You are already bound by the exclusive dynastic
 `kind` is a lower_snake_case slug because exclusivity is matched on that
 string; an inconsistent slug would silently disable the mechanism, so the
 schema rejects anything else.
+
+### An arrangement can be worth money
+
+Commitments were economically inert for their entire existence. The readers were
+`conflictingCommitment` (exclusivity), `commitmentsOf` (the UI panel) and
+`serializeCommitments` (the arbiter's prompt) — **`ledgerFor` never read them**,
+so a `mining_operation` commitment appeared on screen, lowered future related
+DCs via the accession ratchet, and paid nothing forever.
+
+`incomePerTurn` is now read by `ledgerFor` as `commitmentFlow`: positive for a
+charter or a smuggling operation, negative for tribute paid. Two bounds, because
+a commitment is the easiest place in the game for a model to invent revenue:
+
+- `MAX_COMMITMENT_INCOME` (25) per arrangement, **trimmed** rather than
+  rejected — the arrangement is still real at a smaller number.
+- A per-faction ceiling from `maxCommitmentIncomeFor`, derived from `influence`
+  the way `maxAgentsFor` derives from guile: Meridian 50, the Nars 40, the Iron
+  Vigil at the floor of 10. A trading authority runs charters; a military
+  remnant does not. Costs are deliberately uncapped — nothing needs protecting
+  from a faction agreeing to pay.
+
+It is read where it is used rather than paid out each tick, for the same reason
+agent effects are: a per-turn mutation would compound instead of recurring.
 
 ## Faction character
 
@@ -433,8 +457,18 @@ The resolution call may return a `refusal` instead of ops. When it does,
 a smaller version of that order, it is no order at all. This is distinct from a
 failed check (attempted, went badly) and from a rejected op (malformed).
 `dissent` tracks how far a leader has strayed. It rises `REFUSAL_DISSENT` (8)
-per refusal, decays 2 a turn, and subtracts one point from **every** stat per
-25 — so one refusal fades in four turns and a pattern of them does not.
+per refusal, decays 2 a turn, and subtracts from **every** stat on a curve set
+by one number: `MAX_DISSENT_PENALTY` (8) is the loss at 100 dissent, and
+`DISSENT_PER_PENALTY_POINT` is derived from it (12.5). So one refusal fades in
+four turns and costs nothing on its own; a pattern of them does not fade and
+does cost.
+
+The ceiling is 8 rather than 4 because stats run **1–20**. A fifth of the scale
+read as a bad quarter; 40% of it, and −4 on every modifier, is the difference
+between a power that functions and one that does not — which is what "your own
+people have stopped following you" should mean. The formula lives in
+`dissentPenalty` and nowhere else: a hardcoded copy in `serialize.ts` was
+telling the model a different number than the one the game rolled against.
 
 It was inert for its entire existence: `submitAction` computed the new total,
 put it in a note telling the player dissent had risen, and never staged the op.
@@ -447,6 +481,87 @@ have lost faith in it.
 Verified live: a Meridian leader ordering a spice-and-slave run is refused by
 the Trade Council; an Iron Vigil leader ordering universal passivity is refused
 by the fleet commanders.
+
+Dissent itself is faction-agnostic — every faction carries the field, all five
+have red lines and compulsions in the seed, and `effectiveStats` reads the same
+way for each. What is player-only is the *trigger*: refusal exists solely on the
+resolution call, and `ReactionSchema` has no `refusal` field, so an NPC acting
+straight through its own compulsions is never charged for it. NPC character is
+enforced by prompt; the player's is enforced by the reducer.
+
+### Changing doctrine costs dissent, because it is real
+
+`set_doctrine` used to write a string and nothing else. The axes that actually
+did anything — `warEthic`, `tradeEthic`, `redLines`, `compulsions` — had no op
+at all and were immutable for a whole campaign. Nothing in code gated a change
+either: the arbiter is explicitly told not to rule on character
+(`prompts/appraisal.md`), and the reducer checked only that the faction existed.
+So a doctrine change either got refused by a model's judgement with nothing
+behind it, or it silently "succeeded" — narrative, event log and UI all
+confirming a change that had not happened.
+
+The second is the damaging one, because `serializeCharacter` then feeds the
+**new** doctrine and the **old** compulsions into the same block, and the
+player's next raid hits the anti-raiding compulsion still sitting there. They
+are refused, take dissent, degrade — while the doctrine on screen says raiding
+is policy, and nothing connects the two.
+
+Doctrine is now genuinely changeable and dissent is the price, charged in code
+per axis actually moved:
+
+| what moved | dissent |
+|---|---|
+| a new statement of posture | `DOCTRINE_TEXT_DISSENT` (6) |
+| `warEthic` or `tradeEthic` | `DOCTRINE_ETHIC_DISSENT` (20) each |
+| a red line or compulsion retired | `DOCTRINE_RETIRE_DISSENT` (25) each |
+
+Retiring is the load-bearing part: a compulsion refusing commerce raiding goes
+on refusing every raid until it is retired, whatever the paragraph says.
+Retirements are matched **literally** against the faction sheet so the journal
+records which principle was abandoned rather than a paraphrase.
+
+A full reorientation is ~71 — **five** points off every stat for the thirty-odd
+turns it takes to decay at 2 a turn. That is the intent: turning a power against
+its own character should be campaign-defining, not a free pivot. (It was two
+points when these prices were set, against the old ceiling of 4. Raising the
+ceiling to 8 more than doubled the real bite of a doctrine change without the
+dissent numbers moving — worth knowing before retuning either.)
+
+Two guards, both reducer-side. A faction may change only **its own** doctrine
+(`actor`-checked, the same hazard `deploy_agent` validates its owner against —
+without it a Meridian action could rewrite the Iron Vigil's doctrine, and
+doctrine is what its diplomacy persona is built from). And a faction at or above
+`DOCTRINE_CHANGE_DISSENT_CEILING` (75) cannot be reorganised at all, which is
+both the fiction and a loophole closed: dissent clamps at 100, so without it a
+leader at the cap could reorient endlessly having already paid in full.
+
+> Worth knowing when tuning: the clamp means **defiance at 100 dissent is
+> free** in general, not only here. Nothing else fires at the cap — there is no
+> coup, no collapse, no forced reversion. Dissent is a graduated debuff with a
+> long memory and no terminal state, now worth −8 on every stat at the top.
+
+Engine ops and journals without an `actor` skip both the guards and the charge,
+so a campaign recorded before this replays exactly as it ran.
+
+### Dissent moves one way, on your own faction only
+
+`adjust_dissent` had the same unguarded shape, and raising the ceiling to 8 made
+it the most cost-effective hostile act in the game: one op, no roll, no
+presence, no credits, and every one of a rival's stats drops by 8 — strictly
+better than the `stat_debuff` agent that exists to do exactly this for 40–150
+credits, at risk of exposure, under a cap. Two paths to one outcome that cost
+differently means only the cheaper one is ever used.
+
+A model-sourced `adjust_dissent` now moves only the **actor's own** faction, and
+only **upward**. Raising your own needs no guard — nothing needs protecting from
+a faction choosing to be less governable — but lowering it is the exploit, since
+the same call that earns a refusal could erase the penalty it just earned.
+Standing is repaired by `DISSENT_DECAY` and nothing else, which is the pace the
+number was tuned for. Turning a rival's institutions against it is an
+operative's work.
+
+Reactions commit with the reacting faction as `actor`, so an NPC can still move
+its own dissent; only the cross-faction reach is closed.
 
 ## Treaties and agents
 
@@ -587,12 +702,13 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `adjust_disposition` | clamped to −100..100; self-disposition rejected |
 | `adjust_fleet` | floors at 0 |
 | `adjust_credits` | floors at 0 |
-| `set_doctrine` | 1–240 chars |
-| `issue_order` | see Duration below |
-| `cancel_order` | |
+| `set_doctrine` | 1–240 chars; may move `warEthic`/`tradeEthic` and retire lines, charged in dissent; actor's own faction only |
+| `issue_order` | see Duration below; optional `onComplete` payload, paid at issue |
+| `cancel_order` | returns the unspent part of a works payload |
 | `interrupt_order` | rejected when the order is not interruptible |
 | `extend_order` | rejected for movement |
 | `accelerate_order` | spends credits, drops one Fibonacci bucket, min 1; rejected for movement |
+| `establish_commitment` | optional `incomePerTurn`, trimmed to `MAX_COMMITMENT_INCOME` |
 | `spawn_event` | |
 | `log_narrative` | |
 
@@ -604,9 +720,10 @@ the reducer rejects it from a `'model'` source, and arrival resolution is the
 sole caller. A model cannot talk itself into owning a system across the galaxy.
 
 Rejection codes: `unknown_op`, `schema_invalid`, `reducer_only`,
-`unknown_faction`, `unknown_system`, `unknown_order`, `unreachable_target`,
-`missing_duration`, `insufficient_credits`, `not_interruptible`,
-`illegal_value`.
+`unknown_faction`, `unknown_system`, `unknown_order`, `unknown_commitment`,
+`unknown_treaty`, `unknown_agent`, `commitment_conflict`, `no_presence`,
+`unreachable_target`, `missing_duration`, `insufficient_credits`,
+`not_interruptible`, `illegal_value`, `doctrine_refusal`.
 
 ---
 
@@ -654,6 +771,103 @@ drift apart. Categories: `courier`, `decree`, `political_maneuver`, `espionage`,
 
 A prompt can be argued out of its own rules; code cannot. That is why the floors
 live in TypeScript.
+
+### 3. What a finished order does — `onComplete`
+
+For most of this project's life, **completing an order changed nothing at all.**
+Non-movement completion ran a `logEvent` and a report entry and stopped. Twelve
+of the fifteen duration categories had no reader anywhere outside
+`duration.ts`: `garrison_raising` raised no garrison, `fortification` fortified
+nothing, `industrial_conversion` converted nothing. A probe ran four kinds of
+work to completion and found strategic value, income and garrison identical to a
+world where no order was ever issued — the garrison movement it *did* see was
+passive `GARRISON_REGROWTH`, which is why the tests compare a payload against
+**the same order without one** rather than against the starting state.
+
+The consequence was that economic development was the one strategy in the game
+with no mechanical existence, and `durationTurns` meant nothing for those twelve
+categories: an effect had to be emitted up front (making the duration theatre)
+or never land at all.
+
+An order now carries an optional `onComplete` payload — `src/domain/development.ts`
+for the bounds and pricing, `OrderEffectSchema` in `state.ts` for the shape:
+
+| kind | does | allowed on |
+|---|---|---|
+| `develop_system` | +1–2 `strategicValue`, and at 7 the world **becomes a trade hub** | `construction_infrastructure`, `industrial_conversion`, `retooling` |
+| `raise_garrison` | garrison up now, to the world's ceiling | `garrison_raising`, `fortification` |
+| `fortify` | `garrisonMax` up — capacity regrowth can never add | `fortification`, `construction_infrastructure` |
+| `commission_ships` | hulls delivered at the target on completion | `capital_ship_construction`, `refit`, `retooling` |
+
+The eight remaining categories carry **no** payload on purpose: `espionage`
+lands as `deploy_agent`, `treaty_ratification` as `form_treaty`, and `blockade`
+and `commerce_raiding` are read live off `pendingOrders` by `trade.ts` while they
+run. A payload there would be a second mechanism competing with one that works.
+
+#### Why this is not "the model rewrites state, on a delay"
+
+A payload a model picks freely is a model choosing its own payoff. Four bounds,
+all in code:
+
+1. **The vocabulary is closed** — four kinds, all arithmetic on one system.
+   Nothing here can transfer control or reach another faction.
+2. **The category must permit the kind.** This is the link that did not exist:
+   the order's type is already its duration category, so a development payload
+   inherits a development category's floor and cannot land in one turn however
+   the action is phrased. A `courier` run cannot develop a world.
+3. **Magnitude is capped** per kind and over-asking is **trimmed with a note**,
+   the same shape as `billConstruction`.
+4. **It is paid for at issue time.** The treasury is debited when the order goes
+   out, so a payoff cannot exceed what the faction could afford to commission,
+   and an interrupted programme has real money sunk in it.
+
+A fifth guard closes a hole the value-based pricing below opened: the payload
+requires the faction to **hold the target or have ships over it**, the same
+presence line interdiction and suborning draw. Because the price is the *actor's*
+marginal income, a development on a rival's world costs the floor — the actor
+gains nothing from it — while the rival keeps the improvement. Presence makes
+that unreachable rather than merely unwise.
+
+Recalling your own order (`cancel_order`) returns the materials not yet cut
+into, pro-rata — the same principle that brings a recalled fleet's ships home. An
+`onInterrupt: 'partial'` refunds the unspent portion; `'cancel'` means the work
+was destroyed rather than stood down, so the money is sunk and the note says so.
+
+#### Development is priced from what it is worth, not per point
+
+The first pricing attempt was a flat 80 credits per point of `strategicValue`,
+reasoned from territory income: a point pays `INCOME_PER_STRATEGIC_POINT` (7) a
+turn, so 80 is an eleven-turn payback. **That was wrong by a factor of
+twenty-five**, because `strategicValue` also sets route volume and at
+`HUB_THRESHOLD` a world *becomes a hub*, opening a lane to every other hub at
+once. Measured on the seed, one point is worth:
+
+```
+krayt  kes-7  3->4    +7/turn    an ordinary world, slightly better
+hutt   kes-2  9->10  +13/turn    already a hub; more volume on its lanes
+free   ark-4  6->7   +36/turn    becomes a hub, but a poorly connected one
+merid  slu-2  6->7  +209/turn    becomes a hub in the middle of everything
+```
+
+A 30-turn reinvestment run at the flat price took Meridian's net from 283 to 952
+for 1,120 credits of total spend — payback under two turns, and permanent.
+
+`developmentCost` now computes the marginal income of the exact development
+proposed, on the actual board, and charges `DEVELOPMENT_PAYBACK_TURNS` (12) of
+it, floored at `MIN_DEVELOPMENT_COST`. Routes are pure and derived, so this is
+ordinary arithmetic and replays exactly; it needs no per-case tuning constant,
+the same way `subornLimit` and `successChance` need none. The same run now costs
+7,968 credits over seven programmes, leaves the treasury behind a hoarding
+control until about turn 25, and reaches its ceiling because `strategicValue`
+caps at 10 per system — bounded, not exponential.
+
+> **What the probe cannot model:** nobody attacks these bots. A power that spends
+> twenty turns cash-poor to triple its income is taking a risk the harness has no
+> way to price, the same caveat that makes it overstate the Nars' runaway.
+
+Because pricing is nonlinear, affordability is walked down a point at a time
+rather than divided — the second point of a development can cost many times the
+first if it is the one that crosses into hub status.
 
 ---
 
@@ -1080,7 +1294,8 @@ re-sends its context. A trivial call still takes ~7s for that reason.
 
 ```
 src/
-  domain/     state, ops, duration, graph, checks, diplomacy, reducer
+  domain/     state, ops, duration, development, graph, checks, diplomacy,
+              arbitration, trade, reducer
               ← pure. No I/O, no network, no imports from engine/model/ui.
   api/        contract.ts — Zod schemas shared by server and browser
   engine/     campaign, store, journal, turn, briefing
@@ -1108,4 +1323,11 @@ tokens.
 - New op? Add to `ops.ts`, handle in `reducer.ts`, cover both the success and
   the rejection path in `tests/reducer.test.ts`, and document it here.
 - New duration category? Add to `DURATION_CATEGORIES`, give it a floor in
-  `CATEGORY_FLOORS`, and add an anchor to `duration-rubric.md`.
+  `CATEGORY_FLOORS`, add an anchor to `duration-rubric.md`, and decide in
+  `EFFECT_CATEGORIES` whether it can deliver an `onComplete` payload — a
+  category that can carry none is a category whose completion does nothing.
+- New order effect kind? Add it to `OrderEffectSchema`, give it a cap in
+  `EFFECT_CAPS`, a price, the categories that may deliver it in
+  `EFFECT_CATEGORIES`, and a branch in `applyOrderEffect`. Price it against what
+  it is actually worth on the board, not per unit — see `developmentCost` for
+  why a flat price was wrong by 25×.

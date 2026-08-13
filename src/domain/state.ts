@@ -1,6 +1,14 @@
 import { z } from 'zod';
 import { FactionStatsSchema, STAT_NAMES, statModifier, type FactionStats } from './checks.js';
-import { CommitmentSchema, commitmentsFor, type Commitment } from './arbitration.js';
+import {
+  COMMITMENT_INCOME_BASE,
+  COMMITMENT_INCOME_PER_INFLUENCE,
+  CommitmentSchema,
+  commitmentIncomeFor,
+  commitmentsFor,
+  MIN_COMMITMENT_INCOME_CEILING,
+  type Commitment,
+} from './arbitration.js';
 import {
   AgentSchema,
   isTreatyLive,
@@ -179,6 +187,37 @@ export const SystemSchema = z.object({
 });
 export type StarSystem = z.infer<typeof SystemSchema>;
 
+/**
+ * What a completed order delivers. The bounds, the pricing and the application
+ * live in `development.ts`; only the shape lives here.
+ *
+ * Every kind carries the same `magnitude` field on purpose, so capping,
+ * pricing, trimming and affordability are one linear calculation rather than
+ * four near-identical branches — and a kind added later cannot forget to be
+ * capped, because the capping code does not know which kind it has.
+ */
+export const OrderEffectSchema = z.object({
+  kind: z.enum([
+    /** Permanent economic development: `strategicValue` up, capped at 10. */
+    'develop_system',
+    /** Levies raised now rather than waiting on passive regrowth. */
+    'raise_garrison',
+    /** Permanent defensive capacity: `garrisonMax` up. */
+    'fortify',
+    /** Hulls delivered at the target when the programme lands. */
+    'commission_ships',
+  ]),
+  /**
+   * How much. Generous bounds here and the real limits in code: a schema
+   * rejection costs a correction round trip, where a trim costs a note.
+   */
+  magnitude: z.number().int().min(1).max(99),
+  /** One clause, shown to the player in the orders panel and the briefing. */
+  summary: z.string().max(160).default(''),
+});
+export type OrderEffect = z.infer<typeof OrderEffectSchema>;
+export type OrderEffectKind = OrderEffect['kind'];
+
 export const PendingOrderSchema = z.object({
   id: z.string().min(1),
   factionId: z.string().min(1),
@@ -202,6 +241,21 @@ export const PendingOrderSchema = z.object({
    * owner's fleet but present in no system. Zero for non-movement work.
    */
   force: z.number().int().min(0).default(0),
+  /**
+   * What this programme delivers on completion, already trimmed to its cap and
+   * already paid for. Absent for work whose effect lands elsewhere — a courier
+   * run, a decree, an espionage order that staged a `deploy_agent`.
+   */
+  onComplete: OrderEffectSchema.optional(),
+  /**
+   * Credits sunk into `onComplete` at issue time.
+   *
+   * Held on the order rather than recomputed because the refund on a `partial`
+   * interruption is pro-rata of what was actually spent, and the prices could
+   * change under a save file. Optional on the way in so journals and saves
+   * written before payloads existed still load and replay.
+   */
+  investedCredits: z.number().int().min(0).default(0),
 });
 export type PendingOrder = z.infer<typeof PendingOrderSchema>;
 
@@ -386,6 +440,21 @@ export function liveAgentsOf(state: WorldState, factionId: string): Agent[] {
   return (state.agents ?? []).filter((a) => a.ownerFactionId === factionId && !a.exposed);
 }
 
+/**
+ * The most a faction can draw from its standing arrangements at once, scaled
+ * off `influence` — see `MAX_COMMITMENT_INCOME` in `arbitration.ts` for why the
+ * ceiling exists and why it is derived rather than flat.
+ */
+export function maxCommitmentIncomeFor(state: WorldState, factionId: string): number {
+  const faction = getFaction(state, factionId);
+  if (!faction) return 0;
+  const modifier = statModifier(effectiveStats(state, factionId).influence);
+  return Math.max(
+    MIN_COMMITMENT_INCOME_CEILING,
+    COMMITMENT_INCOME_BASE + COMMITMENT_INCOME_PER_INFLUENCE * modifier,
+  );
+}
+
 export interface Ledger {
   gross: number;
   upkeep: number;
@@ -397,6 +466,11 @@ export interface Ledger {
   espionageLoss: number;
   /** What this faction's own live operatives cost it per turn. */
   agentUpkeep: number;
+  /**
+   * Standing arrangements: charters, smuggling operations, tribute paid.
+   * Positive receives, negative pays.
+   */
+  commitmentFlow: number;
   /** Territory: what the systems themselves pay. */
   territory: number;
   /** Trade: what the lane network pays, after tolls and raids. */
@@ -543,7 +617,8 @@ export function ledgerFor(state: WorldState, factionId: string): Ledger {
   if (!faction) {
     return {
       gross: 0, upkeep: 0, net: 0, systems: 0, treatyFlow: 0,
-      espionageLoss: 0, agentUpkeep: 0, territory: 0, routes: 0, tolls: 0, raided: 0,
+      espionageLoss: 0, agentUpkeep: 0, commitmentFlow: 0,
+      territory: 0, routes: 0, tolls: 0, raided: 0,
     };
   }
 
@@ -589,14 +664,24 @@ export function ledgerFor(state: WorldState, factionId: string): Ledger {
 
   const agentUpkeep = liveAgentsOf(state, factionId).length * AGENT_UPKEEP;
 
+  // Standing arrangements finally reach the books. Read here rather than paid
+  // out each tick, for the same reason agent effects are read where they are
+  // used: a per-turn mutation would compound instead of recurring.
+  const commitmentFlow = commitmentIncomeFor(
+    state.commitments ?? [],
+    factionId,
+    maxCommitmentIncomeFor(state, factionId),
+  );
+
   return {
     gross,
     upkeep,
-    net: gross - upkeep + treatyFlow - espionageLoss - agentUpkeep,
+    net: gross - upkeep + treatyFlow - espionageLoss - agentUpkeep + commitmentFlow,
     systems: counted,
     treatyFlow,
     espionageLoss,
     agentUpkeep,
+    commitmentFlow,
     territory,
     routes,
     tolls: earnings.tolls[factionId] ?? 0,
@@ -665,7 +750,24 @@ export function commitmentsOf(state: WorldState, factionId: string): Commitment[
 }
 
 /** Stat penalty from a leader's own institutions losing faith in them. */
-export const DISSENT_PER_PENALTY_POINT = 25;
+/**
+ * What a leader whose institutions have entirely stopped trusting them loses
+ * from every stat.
+ *
+ * Stats run 1–20, so the old ceiling of 4 was a fifth of the scale — a bad
+ * quarter, not a crisis. At 8 a maxed-out dissent is 40% of the range and −4 on
+ * every modifier, which is the difference between a power that functions and
+ * one that does not. That is what "your own people have stopped following you"
+ * should mean, and it gives the whole 0–100 track somewhere to go.
+ */
+export const MAX_DISSENT_PENALTY = 8;
+
+/**
+ * Dissent per point of penalty — derived, not chosen, so the ceiling above is
+ * the single number that sets the curve. 12.5 keeps one refusal (8) free and
+ * makes a run of them bite.
+ */
+export const DISSENT_PER_PENALTY_POINT = 100 / MAX_DISSENT_PENALTY;
 
 /**
  * Dissent added each time your own faction refuses an order.
@@ -679,8 +781,47 @@ export const DISSENT_PER_PENALTY_POINT = 25;
  */
 export const REFUSAL_DISSENT = 8;
 
+/**
+ * Reorienting a power costs standing with the people who have to carry it out.
+ *
+ * `set_doctrine` used to write a string and nothing else. Every axis that
+ * actually did anything — `warEthic`, `tradeEthic`, `redLines`, `compulsions` —
+ * was immutable for the whole campaign, so "we abandon free trade and turn
+ * raider" changed the paragraph on screen and left the Authority's
+ * anti-raiding compulsion in place to refuse every raid that followed. The
+ * player was told they had changed course while nothing had, and the mechanism
+ * that then punished them was invisibly unrelated.
+ *
+ * Doctrine is now really changeable, and dissent is the price. Priced in code,
+ * per axis actually moved, because a model asked to nominate its own cost will
+ * nominate a small one:
+ *
+ * - Restating your posture is cheap. Words are cheap.
+ * - Changing a war or trade ethic is a real institutional turn: two of these
+ *   plus an abandoned principle is 65, which is two penalty points off every
+ *   stat for the thirty turns it takes to decay.
+ * - Abandoning a red line or a compulsion is the expensive one. It is the thing
+ *   the institution exists to hold, and it is what actually unblocks a change
+ *   of course — retiring "commerce raiding is refused outright" is what lets
+ *   Meridian raid at all.
+ */
+export const DOCTRINE_TEXT_DISSENT = 6;
+export const DOCTRINE_ETHIC_DISSENT = 20;
+export const DOCTRINE_RETIRE_DISSENT = 25;
+
+/**
+ * Dissent at or above which a faction will not be reoriented at all.
+ *
+ * Two jobs. It is the fiction — a leadership its own institutions have stopped
+ * trusting does not get to redefine what the institution is for. And it closes
+ * a loophole in the ceiling: dissent clamps at 100, so without this a leader at
+ * the cap could change doctrine as often as they liked for free, the cost
+ * having already been paid in full.
+ */
+export const DOCTRINE_CHANGE_DISSENT_CEILING = 75;
+
 export function dissentPenalty(dissent: number): number {
-  return Math.floor(dissent / DISSENT_PER_PENALTY_POINT);
+  return Math.min(MAX_DISSENT_PENALTY, Math.floor(dissent / DISSENT_PER_PENALTY_POINT));
 }
 
 /**

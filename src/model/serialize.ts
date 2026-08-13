@@ -1,3 +1,4 @@
+import { describeOrderEffect } from '../domain/development.js';
 import { describeEffect } from '../domain/diplomacy.js';
 import {
   formatModifier,
@@ -96,7 +97,7 @@ export function serializeCharacter(faction: Faction): string {
     // own institutions had lost faith in it, while every stat it was being
     // asked to reason about was already reduced by exactly that.
     faction.dissent > 0
-      ? `Internal dissent: ${faction.dissent}/100 — every stat is reduced by ${Math.floor(faction.dissent / 25)}. Your institutions have been overruled once too often.`
+      ? `Internal dissent: ${faction.dissent}/100 — every stat is reduced by ${dissentPenalty(faction.dissent)}. Your institutions have been overruled once too often.`
       : 'Internal dissent: none. Your institutions are behind you.',
     '',
     `Capabilities: ${serializeStats(effectiveFor(faction))}`,
@@ -196,7 +197,12 @@ export function serializeOrders(state: WorldState, viewerId: string): string {
       const mine = o.factionId === viewerId ? 'YOURS' : 'observed';
       const kind = isMovementType(o.type) ? 'fleet movement' : o.type.replace(/_/g, ' ');
       const raidable = o.interruptible ? 'interruptible' : 'cannot be interrupted';
-      return `- \`${o.id}\` [${mine}] ${owner}: ${o.label} (${kind}) -> ${target}, ${remaining} of ${o.durationTurns} turns remaining, ${raidable}, on interrupt: ${o.onInterrupt}`;
+      // What it will deliver, so a project already paid for is not re-ordered
+      // and so a rival can see what is worth interrupting.
+      const delivers = o.onComplete
+        ? `, delivers ${describeOrderEffect(o.onComplete)} on completion`
+        : '';
+      return `- \`${o.id}\` [${mine}] ${owner}: ${o.label} (${kind}) -> ${target}, ${remaining} of ${o.durationTurns} turns remaining${delivers}, ${raidable}, on interrupt: ${o.onInterrupt}`;
     })
     .join('\n');
 }
@@ -300,7 +306,11 @@ export function serializeCommitments(state: WorldState): string {
         .map((id) => getFaction(state, id)?.name ?? id)
         .join(' & ');
       const flag = c.exclusive ? ' **[exclusive — one at a time]**' : '';
-      return `- \`${c.id}\` ${c.kind.replace(/_/g, ' ')} · ${who} · since turn ${c.establishedTurn}${flag}\n  ${c.text}`;
+      const worth =
+        c.incomePerTurn !== 0
+          ? ` · ${c.incomePerTurn > 0 ? '+' : ''}${c.incomePerTurn} credits/turn`
+          : '';
+      return `- \`${c.id}\` ${c.kind.replace(/_/g, ' ')} · ${who} · since turn ${c.establishedTurn}${worth}${flag}\n  ${c.text}`;
     })
     .join('\n');
 }

@@ -69,8 +69,12 @@ Specifically:
   just narrative text, and `shipsPledged` only dispatches under
   `mutual_defense`.
 
-- `set_doctrine` — only when a faction explicitly committed to a change of
-  standing posture, not for a single deal.
+- `set_doctrine` — **only for the faction whose turn this is.** A power changes
+  its own posture and pays its own institutions for it in dissent; the reducer
+  rejects one faction rewriting another's, so a rival that promised to
+  reorient in conversation is recorded with `spawn_event` or `log_narrative`,
+  not by editing its character. Emit it only for an explicit commitment to a
+  change of standing posture, never for a single deal.
 - `spawn_event` / `log_narrative` — record the substance of what was agreed so
   it appears in the event log and both parties can refer to it later.
 

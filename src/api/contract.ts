@@ -45,6 +45,8 @@ export const LedgerSchema = z.object({
   espionageLoss: z.number().int(),
   /** What this faction's own live operatives cost it per turn. */
   agentUpkeep: z.number().int(),
+  /** Standing arrangements: positive receives, negative pays. */
+  commitmentFlow: z.number().int(),
   /** What a faction's own worlds pay it. */
   territory: z.number().int(),
   /** What the lane network pays it, after tolls levied and raids suffered. */
