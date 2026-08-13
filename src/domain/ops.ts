@@ -7,7 +7,13 @@ import {
   TreatyTypeSchema,
 } from './diplomacy.js';
 import { FibScaleSchema } from './duration.js';
-import { OnInterruptSchema, OrderEffectSchema, OrderTypeSchema } from './state.js';
+import {
+  OnInterruptSchema,
+  OrderEffectSchema,
+  OrderTypeSchema,
+  TradeEthicSchema,
+  WarEthicSchema,
+} from './state.js';
 
 /**
  * The op vocabulary. The model never rewrites state — it emits ops from this
@@ -55,10 +61,29 @@ export const AdjustDissentOp = z.object({
   reason: z.string().default(''),
 });
 
+/**
+ * A change of standing posture — and, optionally, of the axes that give a
+ * posture mechanical force.
+ *
+ * The text alone is narration. `warEthic` and `tradeEthic` are read by the
+ * reducer and by `trade.ts`; `retire` abandons a named red line or compulsion,
+ * which is the only way an institution stops refusing the thing it refuses.
+ * All of it is charged in dissent by the reducer — see `DOCTRINE_TEXT_DISSENT`.
+ */
 export const SetDoctrineOp = z.object({
   op: z.literal('set_doctrine'),
   factionId: z.string().min(1),
   doctrine: z.string().min(1).max(240),
+  /** New stance on force. Omit to leave it alone. */
+  warEthic: WarEthicSchema.optional(),
+  /** New stance on commerce. Omit to leave it alone. */
+  tradeEthic: TradeEthicSchema.optional(),
+  /**
+   * Red lines or compulsions to abandon, quoted **exactly** as they appear on
+   * the faction sheet. Matched literally so the journal records precisely what
+   * was given up; an unmatched string is rejected rather than guessed at.
+   */
+  retire: z.array(z.string().min(1)).max(3).default([]),
 });
 
 export const IssueOrderOp = z.object({

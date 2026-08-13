@@ -14,6 +14,27 @@
    unchanged by the item-8 work (the doctrine bots do not build or develop).
 3. **The unfinished live playtest below** is still worth running.
 
+**Also fixed this session, found by the user asking whether doctrine change was
+a real mechanic:** it was not. `set_doctrine` wrote a string with no reader
+outside the prompts and the UI, and no op could touch `warEthic`, `tradeEthic`,
+`redLines` or `compulsions` at all — so a player could declare a change of
+course, see it confirmed in the narrative, the event log and the faction panel,
+and then be refused by the compulsion they thought they had abandoned, taking
+dissent for it, with nothing connecting the two. It is now real and priced in
+dissent (6 for words, 20 per ethic, 25 per principle retired), with an
+actor guard and a 75-dissent ceiling. Two unguarded holes found alongside it and
+closed: `set_doctrine` could rewrite a **rival's** doctrine (which feeds their
+diplomacy persona), and `adjust_dissent` remains unguarded — see below.
+
+**Still open, found but not fixed:** `adjust_dissent` has no actor guard and no
+sign restriction, so a resolution batch can zero its own dissent (erasing the
+refusal penalty it just earned) and set a rival's to 100, dropping every one of
+their stats by 4 with no roll, no presence and no cost. Verified: Vigil went
+18/11/13/6/17 to 14/7/9/2/13 from a single Meridian-actor batch, 0 rejections.
+`prompts/resolution.md` actively invites it ("your own institutions grow more or
+less restive"). The fix is the same shape as the `set_doctrine` guard —
+actor-only, and positive deltas only from a model source.
+
 **Every numbered item in this file is now fixed**, each with tests. Original
 write-ups are kept rather than deleted — the repro steps are the useful part
 and they document why each guard exists. A "**FIXED —**" note follows each.

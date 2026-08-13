@@ -50,7 +50,7 @@ an order: resolve it and let the consequences do the work.
 | `adjust_fleet` | ships gained or lost |
 | `adjust_credits` | money spent or earned |
 | `adjust_ships` | ships added to or removed from one system |
-| `set_doctrine` | the faction's standing posture changes |
+| `set_doctrine` | the faction changes course — see Changing doctrine |
 | `adjust_dissent` | your own institutions grow more or less restive |
 | `cancel_order` | an existing order is called off |
 | `interrupt_order` | an order is disrupted by force or event |
@@ -237,6 +237,36 @@ The other order types — `courier`, `decree`, `political_maneuver`, `espionage`
 `counter_intelligence`, `blockade`, `commerce_raiding`, `treaty_ratification` —
 take no payload: their effect is the agent, the treaty or the interdiction
 itself, and a payload on them is rejected.
+
+## Changing doctrine
+
+A power can genuinely change course, and `set_doctrine` is how. It carries more
+than words:
+
+- `doctrine` — the new statement of posture (required).
+- `warEthic` / `tradeEthic` — the mechanical stances. **Set these** when the
+  change is real; `tradeEthic` in particular decides how the faction earns.
+- `retire` — red lines or compulsions being abandoned, quoted **exactly** as
+  they appear on the faction sheet above. A near-quote is rejected.
+
+**Retiring is the part that matters.** A faction whose compulsion refuses
+commerce raiding will go on refusing every raid until that compulsion is
+retired, however its doctrine paragraph reads. Changing the words alone is a
+speech, not a change of course.
+
+The reducer charges the cost in **dissent**, per axis actually moved: a little
+for new words, more for each ethic, most for each principle abandoned. A full
+reorientation runs about 70 — two points off every stat for roughly thirty
+turns. That is intended. Turning a power against its own character is a
+campaign-defining act, and it should hurt.
+
+Two refusals come from the reducer, not from you: a faction may only change
+**its own** doctrine, and one already past 75 dissent cannot be reorganised at
+all until it falls back.
+
+Do not reach for this to dodge a red line in the middle of some other action.
+It is a deliberate act a leader takes, at a price, not a way to make an
+inconvenient refusal go away.
 
 ## Judging the action
 

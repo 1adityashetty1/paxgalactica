@@ -472,6 +472,64 @@ Verified live: a Meridian leader ordering a spice-and-slave run is refused by
 the Trade Council; an Iron Vigil leader ordering universal passivity is refused
 by the fleet commanders.
 
+Dissent itself is faction-agnostic — every faction carries the field, all five
+have red lines and compulsions in the seed, and `effectiveStats` reads the same
+way for each. What is player-only is the *trigger*: refusal exists solely on the
+resolution call, and `ReactionSchema` has no `refusal` field, so an NPC acting
+straight through its own compulsions is never charged for it. NPC character is
+enforced by prompt; the player's is enforced by the reducer.
+
+### Changing doctrine costs dissent, because it is real
+
+`set_doctrine` used to write a string and nothing else. The axes that actually
+did anything — `warEthic`, `tradeEthic`, `redLines`, `compulsions` — had no op
+at all and were immutable for a whole campaign. Nothing in code gated a change
+either: the arbiter is explicitly told not to rule on character
+(`prompts/appraisal.md`), and the reducer checked only that the faction existed.
+So a doctrine change either got refused by a model's judgement with nothing
+behind it, or it silently "succeeded" — narrative, event log and UI all
+confirming a change that had not happened.
+
+The second is the damaging one, because `serializeCharacter` then feeds the
+**new** doctrine and the **old** compulsions into the same block, and the
+player's next raid hits the anti-raiding compulsion still sitting there. They
+are refused, take dissent, degrade — while the doctrine on screen says raiding
+is policy, and nothing connects the two.
+
+Doctrine is now genuinely changeable and dissent is the price, charged in code
+per axis actually moved:
+
+| what moved | dissent |
+|---|---|
+| a new statement of posture | `DOCTRINE_TEXT_DISSENT` (6) |
+| `warEthic` or `tradeEthic` | `DOCTRINE_ETHIC_DISSENT` (20) each |
+| a red line or compulsion retired | `DOCTRINE_RETIRE_DISSENT` (25) each |
+
+Retiring is the load-bearing part: a compulsion refusing commerce raiding goes
+on refusing every raid until it is retired, whatever the paragraph says.
+Retirements are matched **literally** against the faction sheet so the journal
+records which principle was abandoned rather than a paraphrase.
+
+A full reorientation is ~71 — two points off every stat for the thirty-odd turns
+it takes to decay at 2 a turn. That is the intent: turning a power against its
+own character should be campaign-defining, not a free pivot.
+
+Two guards, both reducer-side. A faction may change only **its own** doctrine
+(`actor`-checked, the same hazard `deploy_agent` validates its owner against —
+without it a Meridian action could rewrite the Iron Vigil's doctrine, and
+doctrine is what its diplomacy persona is built from). And a faction at or above
+`DOCTRINE_CHANGE_DISSENT_CEILING` (75) cannot be reorganised at all, which is
+both the fiction and a loophole closed: dissent clamps at 100, so without it a
+leader at the cap could reorient endlessly having already paid in full.
+
+> Worth knowing when tuning: the clamp means **defiance at 100 dissent is
+> free** in general, not only here. Nothing else fires at the cap — there is no
+> coup, no collapse, no forced reversion. Dissent is a graduated debuff with a
+> long memory and no terminal state.
+
+Engine ops and journals without an `actor` skip both the guards and the charge,
+so a campaign recorded before this replays exactly as it ran.
+
 ## Treaties and agents
 
 Both live in world state (`src/domain/diplomacy.ts`), because both have
@@ -611,7 +669,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `adjust_disposition` | clamped to −100..100; self-disposition rejected |
 | `adjust_fleet` | floors at 0 |
 | `adjust_credits` | floors at 0 |
-| `set_doctrine` | 1–240 chars |
+| `set_doctrine` | 1–240 chars; may move `warEthic`/`tradeEthic` and retire lines, charged in dissent; actor's own faction only |
 | `issue_order` | see Duration below; optional `onComplete` payload, paid at issue |
 | `cancel_order` | returns the unspent part of a works payload |
 | `interrupt_order` | rejected when the order is not interruptible |

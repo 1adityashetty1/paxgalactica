@@ -764,6 +764,45 @@ export const DISSENT_PER_PENALTY_POINT = 25;
  */
 export const REFUSAL_DISSENT = 8;
 
+/**
+ * Reorienting a power costs standing with the people who have to carry it out.
+ *
+ * `set_doctrine` used to write a string and nothing else. Every axis that
+ * actually did anything — `warEthic`, `tradeEthic`, `redLines`, `compulsions` —
+ * was immutable for the whole campaign, so "we abandon free trade and turn
+ * raider" changed the paragraph on screen and left the Authority's
+ * anti-raiding compulsion in place to refuse every raid that followed. The
+ * player was told they had changed course while nothing had, and the mechanism
+ * that then punished them was invisibly unrelated.
+ *
+ * Doctrine is now really changeable, and dissent is the price. Priced in code,
+ * per axis actually moved, because a model asked to nominate its own cost will
+ * nominate a small one:
+ *
+ * - Restating your posture is cheap. Words are cheap.
+ * - Changing a war or trade ethic is a real institutional turn: two of these
+ *   plus an abandoned principle is 65, which is two penalty points off every
+ *   stat for the thirty turns it takes to decay.
+ * - Abandoning a red line or a compulsion is the expensive one. It is the thing
+ *   the institution exists to hold, and it is what actually unblocks a change
+ *   of course — retiring "commerce raiding is refused outright" is what lets
+ *   Meridian raid at all.
+ */
+export const DOCTRINE_TEXT_DISSENT = 6;
+export const DOCTRINE_ETHIC_DISSENT = 20;
+export const DOCTRINE_RETIRE_DISSENT = 25;
+
+/**
+ * Dissent at or above which a faction will not be reoriented at all.
+ *
+ * Two jobs. It is the fiction — a leadership its own institutions have stopped
+ * trusting does not get to redefine what the institution is for. And it closes
+ * a loophole in the ceiling: dissent clamps at 100, so without this a leader at
+ * the cap could change doctrine as often as they liked for free, the cost
+ * having already been paid in full.
+ */
+export const DOCTRINE_CHANGE_DISSENT_CEILING = 75;
+
 export function dissentPenalty(dissent: number): number {
   return Math.floor(dissent / DISSENT_PER_PENALTY_POINT);
 }

@@ -37,6 +37,10 @@ import {
   fleetBases,
   fleetStrengthOf,
   canSubornAt,
+  DOCTRINE_CHANGE_DISSENT_CEILING,
+  DOCTRINE_ETHIC_DISSENT,
+  DOCTRINE_RETIRE_DISSENT,
+  DOCTRINE_TEXT_DISSENT,
   getSystem,
   isMovementType,
   ledgerFor,
@@ -445,7 +449,76 @@ export function applyOps(
           reject(raw, 'unknown_faction', `No faction "${op.factionId}".`);
           break;
         }
+        // A power's character is its own. Rewriting a rival's doctrine reaches
+        // straight into the persona its diplomacy and reactions are built from,
+        // which is the same hazard `deploy_agent` validates its owner against.
+        // `actor === undefined` means an engine op or a journal written before
+        // this guard, and those replay exactly as they originally ran.
+        if (actor !== undefined && op.factionId !== actor) {
+          reject(
+            raw,
+            'illegal_value',
+            `${actor} cannot rewrite ${op.factionId}'s doctrine. A power changes its own posture, and pays its own institutions for it.`,
+          );
+          break;
+        }
+        if (actor !== undefined && f.dissent >= DOCTRINE_CHANGE_DISSENT_CEILING) {
+          reject(
+            raw,
+            'doctrine_refusal',
+            `${f.name} sits at ${f.dissent} dissent. Institutions this far past trusting their leadership will not be redefined by it — govern in character until dissent falls below ${DOCTRINE_CHANGE_DISSENT_CEILING}.`,
+          );
+          break;
+        }
+
+        // Retirements are matched literally, so the journal records exactly
+        // which principle was abandoned rather than a paraphrase of one.
+        const retiring = [...new Set(op.retire)];
+        const unmatched = retiring.filter(
+          (line) => !f.redLines.includes(line) && !f.compulsions.includes(line),
+        );
+        if (unmatched.length > 0) {
+          reject(
+            raw,
+            'illegal_value',
+            `${op.factionId} holds no such red line or compulsion: "${unmatched[0]}". Quote it exactly as it appears on the faction sheet.`,
+          );
+          break;
+        }
+
+        // Priced per axis actually moved. Restating the same posture in new
+        // words costs nothing, so a model cannot farm dissent — or dodge it by
+        // splitting one turn across several ops.
+        const changed: string[] = [];
+        let cost = 0;
+        if (op.doctrine !== f.doctrine) {
+          cost += DOCTRINE_TEXT_DISSENT;
+          changed.push('a new statement of posture');
+        }
+        if (op.warEthic && op.warEthic !== f.warEthic) {
+          changed.push(`war ${f.warEthic} -> ${op.warEthic}`);
+          f.warEthic = op.warEthic;
+          cost += DOCTRINE_ETHIC_DISSENT;
+        }
+        if (op.tradeEthic && op.tradeEthic !== f.tradeEthic) {
+          changed.push(`trade ${f.tradeEthic} -> ${op.tradeEthic}`);
+          f.tradeEthic = op.tradeEthic;
+          cost += DOCTRINE_ETHIC_DISSENT;
+        }
+        for (const line of retiring) {
+          f.redLines = f.redLines.filter((r) => r !== line);
+          f.compulsions = f.compulsions.filter((c) => c !== line);
+          cost += DOCTRINE_RETIRE_DISSENT;
+          changed.push(`abandoned: ${line}`);
+        }
         f.doctrine = op.doctrine;
+
+        if (actor !== undefined && cost > 0) {
+          f.dissent = Math.max(0, Math.min(100, f.dissent + cost));
+          const note = `${f.name} changes course (${changed.join('; ')}). Dissent +${cost}, now ${f.dissent}/100.`;
+          notes.push(note);
+          logEvent(state, 'system', note, f.id);
+        }
         break;
       }
 
