@@ -142,6 +142,18 @@ export const ActionOutcomeSchema = z.object({
   rejections: z.array(OpRejectionSchema),
   check: CheckResultSchema.nullable(),
   costUsd: z.number(),
+  /**
+   * The ops this declaration actually staged, as applied.
+   *
+   * Returned because the highest-value bug class in this project is a narrative
+   * that claims something the ops do not do — a battle resolved in prose, an
+   * agent owned by its own victim, a doctrine retirement announced with an empty
+   * `retire`. Every one of those was found by reading the on-disk journal,
+   * because this response used to carry narrative, check and counts only. They
+   * are already in memory; withholding them only made the game harder to test
+   * than to play.
+   */
+  ops: z.array(z.unknown()),
 });
 export type ActionOutcomeResponse = z.infer<typeof ActionOutcomeSchema>;
 

@@ -31,6 +31,11 @@ export interface ActionOutcome {
   costUsd: number;
   /** The ability check this action was resolved against, if it had one. */
   check?: CheckResult | null;
+  /**
+   * Exactly what this declaration staged, as applied. Returned so a narrative
+   * can be checked against what it did without opening the save file.
+   */
+  ops: unknown[];
 }
 
 export interface TurnOutcome {
@@ -200,6 +205,7 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
       rejections: [],
       costUsd: resolution.costUsd,
       check: null,
+      ops: [],
     };
   }
 
@@ -239,6 +245,7 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
       rejections: [],
       costUsd: resolution.costUsd,
       check: null,
+      ops: campaign.opsStagedSince(before),
     };
   }
 
@@ -269,6 +276,7 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     costUsd: resolution.costUsd + staged.costUsd,
     check: resolution.check,
     refusal: null,
+    ops: campaign.opsStagedSince(before),
   };
 }
 
@@ -375,6 +383,7 @@ export async function closeChannel(
       notes: [],
       rejections: [],
       costUsd: 0,
+      ops: [],
     };
   }
 
@@ -396,5 +405,8 @@ export async function closeChannel(
     notes: staged.notes,
     rejections: staged.rejections,
     costUsd: extraction.costUsd + staged.costUsd,
+    // Extraction is the one pass that can turn conversation into ops, so seeing
+    // exactly what it read out of a transcript matters more here than anywhere.
+    ops: campaign.opsStagedSince(before),
   };
 }

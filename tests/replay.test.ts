@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { emptyJournal, replay, type Journal } from '../src/engine/journal.js';
 import { Campaign } from '../src/engine/campaign.js';
-import { fleetStrengthOf } from '../src/domain/state.js';
+import { fleetStrengthOf, MAX_NARRATIVE_CREDITS } from '../src/domain/state.js';
 
 /**
  * Replay is what makes prompt changes evaluable, so it is held to a strict
@@ -174,13 +174,15 @@ describe('campaign / journal agreement', () => {
     const campaign = Campaign.start('freeworlds', 'test-staging');
     const journalBefore = campaign.journal.entries.length;
 
+    // Within MAX_NARRATIVE_CREDITS, so nothing is trimmed and the arithmetic
+    // below stays about staging rather than about the cap.
     campaign.stage(
-      [{ op: 'adjust_credits', factionId: 'freeworlds', delta: -300 }],
+      [{ op: 'adjust_credits', factionId: 'freeworlds', delta: -200 }],
       'buy something',
     );
 
     // The preview shows the consequence immediately...
-    expect(campaign.state.factions.find((f) => f.id === 'freeworlds')!.credits).toBe(800);
+    expect(campaign.state.factions.find((f) => f.id === 'freeworlds')!.credits).toBe(900);
     expect(campaign.stagedCount).toBe(1);
     // ...but nothing has been journaled, and replay still sees the old world.
     expect(campaign.journal.entries).toHaveLength(journalBefore);
@@ -194,19 +196,56 @@ describe('campaign / journal agreement', () => {
     expect(campaign.stagedCount).toBe(0);
     expect(campaign.journal.entries).toHaveLength(journalBefore + 1);
     expect(replay(campaign.journal).state.factions.find((f) => f.id === 'freeworlds')!.credits).toBe(
-      800,
+      900,
     );
     expect(campaign.verifyReplay().ok).toBe(true);
   });
 
   it('lets a second declaration see the first, so credits cannot be double-spent', () => {
     const campaign = Campaign.start('freeworlds', 'test-preview');
-    campaign.stage([{ op: 'adjust_credits', factionId: 'freeworlds', delta: -600 }], 'first');
-    campaign.stage([{ op: 'adjust_credits', factionId: 'freeworlds', delta: -600 }], 'second');
-    // 1100 - 600 = 500, then floored at 0 rather than going negative.
+    // Six batches at the narrative-credit cap rather than two oversized ones:
+    // the point is that the second declaration sees what the first spent, and
+    // a single op above MAX_NARRATIVE_CREDITS would be trimmed instead.
+    for (let i = 0; i < 6; i++) {
+      campaign.stage(
+        [{ op: 'adjust_credits', factionId: 'freeworlds', delta: -MAX_NARRATIVE_CREDITS }],
+        `spend ${i}`,
+      );
+    }
+    // 1100 against 6 x 240 committed in order, floored at 0 rather than negative.
     expect(campaign.state.factions.find((f) => f.id === 'freeworlds')!.credits).toBe(0);
     campaign.commitTurn();
     expect(campaign.verifyReplay().ok).toBe(true);
+  });
+
+  it('journals the actor, so replay applies the same guards the live turn did', () => {
+    // `commitTurn` applied each staged batch WITH its actor and journaled it
+    // WITHOUT — so replay re-ran every player-declared action as an actorless
+    // engine op and skipped every actor-gated guard: the suborn limits, the
+    // agent owner check, the doctrine guards, the dissent sign rule,
+    // capSelfInflictedLosses, the narrative-credit cap. Live trimmed or
+    // rejected; replay applied in full. It hid for as long as it did because
+    // those guards mostly reject, and a rejection leaves state alone — nothing
+    // staged an op that a guard would *modify* until the credit cap existed.
+    const campaign = Campaign.start('freeworlds', 'test-actor');
+    campaign.stage(
+      [{ op: 'adjust_credits', factionId: 'freeworlds', delta: -(MAX_NARRATIVE_CREDITS + 500) }],
+      'an extravagance',
+    );
+    campaign.commitTurn();
+
+    const entry = campaign.journal.entries.at(-1)!;
+    expect(entry.kind).toBe('ops');
+    expect((entry as { actor?: string }).actor).toBe('freeworlds');
+
+    // The trim happened once, live, and replay reproduces it exactly.
+    const live = campaign.state.factions.find((f) => f.id === 'freeworlds')!.credits;
+    expect(live).toBe(1100 - MAX_NARRATIVE_CREDITS);
+    expect(replay(campaign.journal).state.factions.find((f) => f.id === 'freeworlds')!.credits).toBe(
+      live,
+    );
+    const check = campaign.verifyReplay();
+    expect(check.ok, check.detail).toBe(true);
   });
 
   it('commits staged batches in declaration order', () => {

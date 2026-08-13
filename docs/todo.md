@@ -6,24 +6,31 @@
 live playtest of this session's mechanics, so they are evidence-backed rather
 than speculative.
 
-1. **`/api/action` does not return the ops it staged** (item 9). The cheapest
-   item here and the one that multiplies every other: all three playtest
-   findings needed the on-disk journal to see, because the response exposes
-   narrative, check and counts only. The staged ops are already in memory.
-   Fixing this makes the project's highest-value bug class visible from the API.
-2. **Unbounded `adjust_credits` riding alongside priced mechanics** (item 9.2).
-   A reducer-side hole of exactly the kind this codebase cares about: a model
-   inventing a number that a mechanic is supposed to own. It partly undoes the
-   `developmentCost` pricing work, and the fix has two existing models to copy
-   in `billConstruction` and `capSelfInflictedLosses`.
+1. ~~`/api/action` does not return the ops it staged~~ **DONE.** `ActionOutcome`
+   now carries `ops`, the batch as applied, for declarations, refusals and
+   diplomacy extraction alike. A narrative can be checked against what it did
+   without opening the save file.
+2. ~~Unbounded `adjust_credits`~~ **DONE**, and it turned up something worse —
+   see "The actor was not being journaled" below. The op is now capped at
+   `MAX_NARRATIVE_CREDITS` (4 x `SHIP_COST`) in either direction, trimmed with a
+   note, and taking credits *out of* a rival's treasury is rejected outright the
+   way a negative cross-faction `adjust_fleet` already was. Every real price is
+   charged by the mechanic that owns it and none of them route through this op,
+   so the cap cannot interfere with them.
 3. **`set_doctrine` narrating a retirement it did not emit** (item 9.1), and
    **a live red line not stopping the act it forbids** (item 9.3). Both are
    model-side. The first is a prompt fix that cannot be verified without another
    live run; the second is a real design question about whether red lines should
    be structurally enforced rather than left to the resolution call's judgement.
-4. **No hiring mechanic**, so the Ojjul Nar's proxy red line names an
-   alternative the game does not offer, and **no debt mechanic**, so two more of
-   its lines are unmodelled. See "Still open from that audit" below.
+4. **No debt mechanic**, so two of the Ojjul Nar's lines are unmodelled. Hiring
+   a proxy, by contrast, turns out **not** to need a new mechanic: a
+   `mutual_defense` treaty carrying `incomePerTurn` and `shipsPledged` is money
+   for hulls that really fight (`reducer.ts`, "Mutual defence: pledged hulls are
+   called in"). The one gap is direction — that dispatch fires when the *ally's*
+   world is attacked, so it buys a defender rather than an attacker. For a power
+   whose doctrine is "let other powers spend their fleets for you", defensive
+   proxying plus `profiteer` income covers the red line as written. What is
+   missing is that nothing tells the model this composition exists.
 5. **The combat tactical-phase design question** at the very bottom.
    Deliberately deferred ("we will revisit combat design later"). The *bug*
    behind it is fixed (item #1); what remains is whether combat wants a richer
@@ -65,6 +72,28 @@ rival's institutions against it is an agent's job (`subversion` +
 `stat_debuff`), which costs credits, risks exposure and is capped. Seven tests.
 `prompts/resolution.md` had been actively inviting it ("your own institutions
 grow more or less restive") and now states both rules.
+
+## 10. The actor was not being journaled, so replay skipped every actor guard
+
+Found while capping `adjust_credits`, and much worse than the thing being fixed.
+`Campaign.commitTurn` applied each staged batch **with** its actor and journaled
+it **without** one. Every player-declared action therefore replayed as an
+actorless engine op, which silently skipped every actor-gated guard: the suborn
+presence and limit checks, `deploy_agent`'s owner validation, both `set_doctrine`
+guards and its dissent charge, the `adjust_dissent` sign rule, and
+`capSelfInflictedLosses`. Live rejected or trimmed; replay applied in full.
+
+It stayed hidden because those guards almost all *reject*, and a rejection leaves
+state untouched — so live and replay agreed by accident. Nothing staged an op
+that a guard would *modify* until the narrative-credit cap existed, at which
+point `pnpm test` reported `Replay diverged: 31622 vs 31800 bytes`. Verified
+directly before the fix: live 860 credits, replay 800, one clamp event against
+zero.
+
+This is the mechanism CLAUDE.md describes as making replay exact ("the actor is
+recorded in the journal so replay stays exact"), and it was recorded on the
+`commit` path and dropped on the `commitTurn` path. Journals written before the
+fix still lack it and still replay as they originally ran. Pinned by a test.
 
 ## 9. OPEN — three findings from the first live playtest of this session's work
 

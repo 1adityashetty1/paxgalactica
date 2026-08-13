@@ -68,6 +68,14 @@ an order: resolve it and let the consequences do the work.
 `transfer_control` is **not available to you.** A system changes hands only when
 a `fleet_movement` order physically arrives.
 
+`adjust_credits` is for narrative money only — a bribe, a fine, a windfall.
+Every real price in this game is charged by the mechanic that owns it: hulls at
+60, agents at 40–150, a works payload from what it is worth, treaty and
+commitment flows. **Do not add a second charge alongside one of those**, and do
+not move a large sum with it; anything past a few hundred is trimmed, and taking
+credits out of a rival's treasury is rejected outright. Skim a rival with an
+`income_penalty` agent, toll them, or raid their lanes.
+
 `adjust_dissent` moves **only your own** faction, and only upward. Dissent is a
 power's standing with its own institutions: it falls by 2 a turn on its own and
 in no other way, so it cannot be talked down by a leader who has just been

@@ -9,6 +9,7 @@ import {
   dissentPenalty,
   effectiveStats,
   ledgerFor,
+  MAX_NARRATIVE_CREDITS,
   REFUSAL_DISSENT,
   type Op,
   type WorldState,
@@ -251,5 +252,74 @@ describe('who may move dissent', () => {
     expect(out.rejections).toHaveLength(0);
     expect(fac(out.state, 'vigil').doctrine).toBe('Hold the Tion, whatever it costs.');
     expect(fac(out.state, 'vigil').dissent).toBe(0);
+  });
+});
+
+/**
+ * Narrative money. Every large credit movement in this game has a mechanism
+ * that owns its price and debits the treasury directly — `SHIP_COST` through
+ * `billConstruction`, `AGENT_COST`, `developmentCost`, treaty and commitment
+ * flows, tolls, raiding. None of them route through `adjust_credits`, so what is
+ * left for that op is a bribe, a fine or a windfall.
+ *
+ * The live playtest found it unbounded: a failed construction attempt charged
+ * 380 with no order created, and a correctly priced 156-credit programme arrived
+ * with a freeform 180 riding alongside it.
+ */
+describe('adjust_credits is bounded narrative money', () => {
+  const move = (factionId: string, delta: number): Op => ({
+    op: 'adjust_credits',
+    factionId,
+    delta,
+    reason: 'a matter of contractors',
+  });
+
+  it('trims a charge past the cap rather than refusing it', () => {
+    const state = fresh();
+    const before = fac(state, 'meridian').credits;
+    const out = applyOps(state, [move('meridian', -380)], 'model', 'meridian');
+    expect(out.rejections).toHaveLength(0);
+    expect(fac(out.state, 'meridian').credits).toBe(before - MAX_NARRATIVE_CREDITS);
+    expect(out.notes.join(' ')).toMatch(/Trimmed a charge of 380/);
+    expect(out.state.eventLog.some((e) => e.kind === 'clamp')).toBe(true);
+  });
+
+  it('trims an invented windfall the same way, which is the worse direction', () => {
+    const state = fresh();
+    const before = fac(state, 'meridian').credits;
+    const out = applyOps(state, [move('meridian', 9000)], 'model', 'meridian');
+    expect(fac(out.state, 'meridian').credits).toBe(before + MAX_NARRATIVE_CREDITS);
+  });
+
+  it('leaves an ordinary sum alone', () => {
+    const state = fresh();
+    const before = fac(state, 'meridian').credits;
+    const out = applyOps(state, [move('meridian', -75)], 'model', 'meridian');
+    expect(fac(out.state, 'meridian').credits).toBe(before - 75);
+    expect(out.notes).toEqual([]);
+  });
+
+  it('refuses to take credits out of a rival treasury', () => {
+    const state = fresh();
+    const before = fac(state, 'vigil').credits;
+    const out = applyOps(state, [move('vigil', -500)], 'model', 'meridian');
+    expect(out.rejections[0]!.code).toBe('illegal_value');
+    expect(out.rejections[0]!.message).toMatch(/income_penalty|toll|raid/);
+    expect(fac(out.state, 'vigil').credits).toBe(before);
+  });
+
+  it('still lets one power pay another', () => {
+    const state = fresh();
+    const before = fac(state, 'vigil').credits;
+    const out = applyOps(state, [move('vigil', 100)], 'model', 'meridian');
+    expect(out.rejections).toHaveLength(0);
+    expect(fac(out.state, 'vigil').credits).toBe(before + 100);
+  });
+
+  it('leaves engine ops and older journals unbounded, so replay is exact', () => {
+    const state = fresh();
+    const before = fac(state, 'meridian').credits;
+    const out = applyOps(state, [move('meridian', -380)]);
+    expect(fac(out.state, 'meridian').credits).toBe(before - 380);
   });
 });

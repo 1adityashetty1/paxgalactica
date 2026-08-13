@@ -47,6 +47,7 @@ import {
   DOCTRINE_RETIRE_DISSENT,
   DOCTRINE_TEXT_DISSENT,
   getSystem,
+  MAX_NARRATIVE_CREDITS,
   isMovementType,
   ledgerFor,
   liveAgentsOf,
@@ -434,7 +435,34 @@ export function applyOps(
           reject(raw, 'unknown_faction', `No faction "${op.factionId}".`);
           break;
         }
-        f.credits = Math.max(0, f.credits + op.delta);
+        // Taking another power's money is not something a sentence can do. The
+        // same shape as the `adjust_fleet` guard: there are mechanisms for this
+        // — an `income_penalty` agent, an extortionist's toll, commerce raiding
+        // — and all of them cost something. Paying someone is still allowed,
+        // because nothing needs protecting from a faction giving money away.
+        if (actor !== undefined && op.factionId !== actor && op.delta < 0) {
+          reject(
+            raw,
+            'illegal_value',
+            `${actor} cannot take credits out of ${op.factionId}'s treasury directly. Skim it with an agent on an income_penalty mission, toll it, or raid its lanes.`,
+          );
+          break;
+        }
+        // Narrative money is capped. Every large movement of credits has a
+        // mechanism that owns its price and debits the treasury itself, so an
+        // `adjust_credits` this big is either duplicating one of those or
+        // inventing a sum outright — a failed action once charged 380 for
+        // nothing, and a priced 156-credit programme arrived with a freeform
+        // 180 riding alongside it.
+        let delta = op.delta;
+        if (actor !== undefined && Math.abs(delta) > MAX_NARRATIVE_CREDITS) {
+          const trimmed = Math.sign(delta) * MAX_NARRATIVE_CREDITS;
+          const note = `Trimmed a ${delta > 0 ? 'windfall' : 'charge'} of ${Math.abs(delta)} credits to ${MAX_NARRATIVE_CREDITS} for ${nameFor(state, op.factionId)}; sums past that belong to a mechanic that prices them.`;
+          notes.push(note);
+          logEvent(state, 'clamp', note, op.factionId);
+          delta = trimmed;
+        }
+        f.credits = Math.max(0, f.credits + delta);
         break;
       }
 

@@ -69,8 +69,10 @@ describe('a server-driven campaign replays exactly', () => {
     await dispatch(session, 'POST', ROUTES.endturn, {});
 
     // Turn 3 — declare, then throw one declaration away before it lands.
+    // Both inside MAX_NARRATIVE_CREDITS, so this stays a test of staging and
+    // discard rather than of the narrative-credit cap.
     campaign.stage([{ op: 'adjust_credits', factionId: 'freeworlds', delta: -200 }], 'a');
-    campaign.stage([{ op: 'adjust_credits', factionId: 'freeworlds', delta: -300 }], 'b');
+    campaign.stage([{ op: 'adjust_credits', factionId: 'freeworlds', delta: -240 }], 'b');
     await dispatch(session, 'POST', ROUTES.discardStaged, { index: 0 });
     await dispatch(session, 'POST', ROUTES.endturn, {});
 

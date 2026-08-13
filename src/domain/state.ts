@@ -871,6 +871,28 @@ export const REFUSAL_DISSENT = 8;
  */
 export const COMPULSION_DRIFT_DISSENT = 3;
 
+/**
+ * The most a single declaration may move a treasury through a freeform
+ * `adjust_credits`, in either direction.
+ *
+ * Found in the first live playtest. A failed construction attempt emitted
+ * `adjust_credits -380` with no order at all, and the successful retry emitted
+ * the correctly priced order — `investedCredits: 156`, derived from marginal
+ * income — *plus* a freeform `-180` for "premium rates demanded by wary
+ * contractors". So `developmentCost`'s careful pricing bounded the payload and
+ * bounded nothing about a second op in the same batch spending more than it.
+ *
+ * Every large movement of money in this game already has a mechanism that owns
+ * its price: `SHIP_COST` through `billConstruction`, `AGENT_COST`,
+ * `developmentCost`, treaty `incomePerTurn`, commitment income, tolls, raiding.
+ * None of them route through `adjust_credits` — they debit the treasury
+ * directly — so capping this op cannot interfere with any of them. What is left
+ * for `adjust_credits` is narrative money: a bribe, a fine, a windfall. Four
+ * hulls' worth is generous for that, and anything larger has somewhere better
+ * to live.
+ */
+export const MAX_NARRATIVE_CREDITS = 4 * SHIP_COST;
+
 /* ------------------------------------------------------------------ */
 /* War ethics                                                          */
 /* ------------------------------------------------------------------ */

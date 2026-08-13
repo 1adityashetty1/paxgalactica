@@ -140,6 +140,16 @@ export class Campaign {
     return this.stagedBatches.flatMap((b) => b.ops);
   }
 
+  /**
+   * Ops staged by batches from `index` onward — that is, everything one
+   * declaration put on the board, including any correction batch that followed
+   * it. Returned to the client so a narrative can be checked against what it
+   * actually did, which previously required reading the save file.
+   */
+  opsStagedSince(index: number): unknown[] {
+    return this.stagedBatches.slice(index).flatMap((b) => b.ops);
+  }
+
   stagedSummary(): string {
     return this.stagedBatches
       .map((b, i) => `${i + 1}. ${b.label}${b.narrative ? ` — ${b.narrative}` : ''}`)
@@ -188,6 +198,16 @@ export class Campaign {
         source: 'model',
         label: batch.label,
         ops: batch.ops,
+        // The actor MUST be journaled. It was applied above and dropped here,
+        // so replay re-ran every player-declared batch with `actor: undefined`
+        // and skipped every actor-gated guard — the suborn limits, the agent
+        // owner check, the doctrine guards, the dissent sign rule,
+        // `capSelfInflictedLosses`, the narrative-credit cap. Live rejected or
+        // trimmed; replay applied in full. It stayed invisible because those
+        // guards mostly *reject*, and no test staged an op that tripped one
+        // until the credit cap started *modifying* a value the parity test
+        // asserts on.
+        actor: batch.actor,
       });
       notes.push(...res.notes);
     }
