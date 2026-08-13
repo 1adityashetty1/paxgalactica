@@ -392,3 +392,31 @@ ul { margin: 0; padding-left: 1.1em; }
    hold — the distinction this panel exists to make visible. */
 .crew.mine { font-weight: 600; text-decoration: underline; }
 .warn-text { color: #d08a3a; }
+
+/* ---- battle report ---- */
+/* The numbers were always computed; they were just never shown. */
+.battle-card { border: 1px solid var(--line); border-radius: 4px; margin-bottom: 6px; background: #0e1117; }
+.battle-card.battle-taken { border-color: var(--warn); }
+.battle-head {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 6px 8px; background: none; border: none; cursor: pointer;
+  font: inherit; color: var(--text); text-align: left;
+}
+.battle-head:hover { background: #141821; }
+.battle-where { font-weight: 600; }
+.battle-summary { color: var(--dim); flex: 1; font-size: 11px; }
+.battle-roll { color: var(--accent); font-size: 11px; }
+.battle-losses { color: var(--bad); font-size: 11px; }
+.battle-toggle { color: var(--dim); width: 10px; text-align: center; }
+.battle-body { padding: 2px 10px 8px; border-top: 1px solid var(--line); }
+.battle-mods { font-size: 11px; margin: 6px 0; }
+.battle-doctrines { margin: 4px 0 8px; padding-left: 14px; color: var(--warn); font-size: 11px; }
+.battle-round { margin-bottom: 8px; }
+.battle-round-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.battle-phase { font-weight: 600; font-size: 11px; }
+.battle-outcome { color: var(--dim); font-size: 11px; }
+.battle-power { color: var(--dim); font-size: 10px; margin-left: auto; }
+.battle-side { display: flex; gap: 8px; flex-wrap: wrap; font-size: 11px; margin-top: 2px; }
+.battle-side-label { color: var(--dim); width: 62px; flex-shrink: 0; }
+.battle-contingent { white-space: nowrap; }
+.battle-lost { color: var(--bad); }

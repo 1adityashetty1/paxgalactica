@@ -8,6 +8,12 @@ import {
   type FibScale,
 } from './duration.js';
 import { conflictingCommitment, MAX_COMMITMENT_INCOME } from './arbitration.js';
+import type {
+  BattleOutcome,
+  BattleReport,
+  BattleRound,
+  Contingent,
+} from './battle.js';
 import { driftingCompulsions } from './compulsions.js';
 import { rollD20, statModifier } from './checks.js';
 import {
@@ -1378,6 +1384,14 @@ export interface TurnReport {
   }[];
   ledger: Ledger;
   arrivals: string[];
+  /**
+   * Structured battle reports for everything that fought this turn.
+   *
+   * `arrivals` keeps the prose for the log; this is the same engagements with
+   * the arithmetic still attached, so the UI can show which phase decided a
+   * battle and which doctrines changed it.
+   */
+  battles: BattleReport[];
 }
 
 export interface TickResult extends ApplyResult {
@@ -1700,6 +1714,7 @@ export function tickTurn(input: WorldState): TickResult {
     advanced: [],
     ledger: playerLedger,
     arrivals: [],
+    battles: [],
   };
 
   const nameOf = (id: string): string => state.systems.find((s) => s.id === id)?.name ?? id;
@@ -1721,9 +1736,10 @@ export function tickTurn(input: WorldState): TickResult {
   }
 
   for (const [systemId, orders] of landings) {
-    const outcome = resolveBattle(state, systemId, orders);
+    const { note: outcome, report: battle } = resolveBattle(state, systemId, orders);
     notes.push(outcome);
     report.arrivals.push(outcome);
+    if (battle) report.battles.push(battle);
     for (const order of orders) {
       report.completed.push({
         label: order.label,
@@ -1824,12 +1840,64 @@ export function tickTurn(input: WorldState): TickResult {
  *
  * Deterministic throughout — one seeded d20 per system per turn.
  */
-function resolveBattle(state: WorldState, systemId: string, orders: PendingOrder[]): string {
+interface BattleOutcomeResult {
+  note: string;
+  /** Null when nothing was fought — a reinforcement, or a missing system. */
+  report: BattleReport | null;
+}
+
+function resolveBattle(
+  state: WorldState,
+  systemId: string,
+  orders: PendingOrder[],
+): BattleOutcomeResult {
   const target = state.systems.find((s) => s.id === systemId);
-  if (!target) return `A landing on ${systemId} could not be resolved (missing system).`;
+  if (!target) {
+    return {
+      note: `A landing on ${systemId} could not be resolved (missing system).`,
+      report: null,
+    };
+  }
 
   const holder = target.controllerFactionId;
   const nameOf = (id: string): string => state.factions.find((f) => f.id === id)?.name ?? id;
+
+  // Everything below mutates `target`, so the "before" picture is taken now.
+  const garrisonBefore = target.garrison;
+  const rounds: BattleRound[] = [];
+  const doctrinesFired: string[] = [];
+  let roll = 0;
+  let attackModOut = 0;
+  let defendModOut = 0;
+
+  // Attackers are in transit, not in `target.ships`, so their "before" is the
+  // force they committed — reading the system would report a fleet of zero
+  // attacking. Snapshots advance per round, so each round shows its own delta
+  // rather than the cumulative one.
+  let attackSnapshot = new Map<string, number>();
+  let defendSnapshot = new Map<string, number>();
+
+  /** Close the engagement: snapshot the result and hand back both forms. */
+  const finish = (note: string): BattleOutcomeResult => ({
+    note,
+    report: {
+      id: `${systemId}:${state.turn}`,
+      systemId,
+      systemName: target.name,
+      turn: state.turn,
+      roll,
+      attackMod: attackModOut,
+      defendMod: defendModOut,
+      doctrinesFired,
+      holderBefore: holder,
+      holderAfter: target.controllerFactionId,
+      garrisonBefore,
+      garrisonAfter: target.garrison,
+      rounds,
+      status: 'resolved',
+      note,
+    },
+  });
 
   // Ships arriving, per faction.
   const arriving = new Map<string, number>();
@@ -1861,11 +1929,22 @@ function resolveBattle(state: WorldState, systemId: string, orders: PendingOrder
         ? `${guests.map(([id]) => nameOf(id)).join(' and ')} puts in at ${target.name} under basing rights.`
         : `${who} reinforces ${target.name}.`;
     logEvent(state, 'order', note, holder);
-    return note;
+    // Not a battle. Reporting one would put a "no losses" card in the panel
+    // every time a fleet moved between friendly worlds.
+    return { note, report: null };
   }
 
   const attackerIds = new Set(attackers.map(([id]) => id));
   const coalition = attackers.map(([id]) => nameOf(id)).join(' and ');
+  /** One side of one round: what it had at the round's start, and what it has now. */
+  const sideOf = (now: Map<string, number>, was: Map<string, number>): Contingent[] =>
+    [...now.entries()].map(([id, n]) => ({
+      factionId: id,
+      factionName: nameOf(id),
+      before: was.get(id) ?? n,
+      after: n,
+    }));
+  attackSnapshot = new Map(attackers);
   let attackForce = attackers.reduce((sum, [, n]) => sum + n, 0);
   const attackShare = new Map(attackers);
 
@@ -1936,6 +2015,7 @@ function resolveBattle(state: WorldState, systemId: string, orders: PendingOrder
   }
 
   let defenceForce = defenders.reduce((sum, [, n]) => sum + n, 0);
+  defendSnapshot = new Map(defenders);
 
   // Genuinely undefended: nobody in orbit AND nobody on the ground. An
   // unaligned world is NOT automatically this — the seed gives neutral worlds
@@ -1948,16 +2028,23 @@ function resolveBattle(state: WorldState, systemId: string, orders: PendingOrder
     target.controllerFactionId = owner;
     const note = `${coalition} occupies ${target.name} unopposed; ${nameOf(owner)} takes possession.`;
     logEvent(state, 'order', note, owner);
-    return note;
+    rounds.push({
+      turn: state.turn, phase: 'ground', outcome: 'unopposed',
+      attackPower: 0, defendPower: 0, assault: 0, garrison: 0, garrisonEffective: 0,
+      attackers: sideOf(attackShare, attackSnapshot),
+      defenders: [], note,
+    });
+    return finish(note);
   }
 
-  const roll = rollD20(state.turn, `combat:${systemId}:${state.turn}`);
+  roll = rollD20(state.turn, `combat:${systemId}:${state.turn}`);
   const bestMod = (ids: string[]): number =>
     ids.length === 0
       ? 0
       : Math.max(...ids.map((id) => statModifier(effectiveStats(state, id).might)));
   let attackMod = bestMod([...attackerIds]);
   const defendMod = bestMod(defenders.map(([id]) => id));
+  defendModOut = defendMod;
 
   // --- War ethics -------------------------------------------------------
   // Whose doctrine applies in a coalition is a real question: `bestMod` takes
@@ -1980,8 +2067,14 @@ function resolveBattle(state: WorldState, systemId: string, orders: PendingOrder
     const weakened = target.garrisonMax > 0 && target.garrison * 2 < target.garrisonMax;
     const distracted =
       holder !== null && warsFor(state, holder).some((id) => !attackerIds.has(id));
-    if (weakened || distracted) attackMod += OPPORTUNIST_MIGHT_BONUS;
+    if (weakened || distracted) {
+      attackMod += OPPORTUNIST_MIGHT_BONUS;
+      doctrinesFired.push(
+        `opportunist: +${OPPORTUNIST_MIGHT_BONUS} might for ${nameOf(largestAttacker!)} against a ${weakened ? 'weakened' : 'distracted'} ${holder ? nameOf(holder) : 'holder'}`,
+      );
+    }
   }
+  attackModOut = attackMod;
 
   // A retreating force loses 10–35% getting clear; bad luck costs more.
   const retreatLossPct = 10 + ((21 - roll) % 6) * 5;
@@ -2000,6 +2093,34 @@ function resolveBattle(state: WorldState, systemId: string, orders: PendingOrder
     const defenderStands = holderEthic === 'crusading';
     const attackerStands = attackEthic === 'crusading';
 
+    const orbital = (outcome: BattleOutcome, note: string): void => {
+      rounds.push({
+        turn: state.turn, phase: 'orbital', outcome,
+        attackPower: Math.round(attackPower), defendPower: Math.round(defendPower),
+        assault: 0, garrison: 0, garrisonEffective: 0,
+        attackers: sideOf(attackShare, attackSnapshot),
+        defenders: sideOf(
+          new Map(defenders.map(([id]) => [id, target.ships[id] ?? 0])),
+          defendSnapshot,
+        ),
+        note,
+      });
+      attackSnapshot = new Map(attackShare);
+      defendSnapshot = new Map(defenders.map(([id]) => [id, target.ships[id] ?? 0]));
+    };
+    // Only reported when it CHANGED the outcome: a crusading power that was
+    // never asked to retreat did not do anything worth telling the player.
+    if (defenderStands && attackPower >= defendPower * 2) {
+      doctrinesFired.push(
+        `crusading: ${nameOf(holder!)} was outmatched 2:1 and did not break off`,
+      );
+    }
+    if (attackerStands && attackPower * 2 <= defendPower) {
+      doctrinesFired.push(
+        `crusading: ${nameOf(largestAttacker!)} was outmatched 2:1 and pressed the attack anyway`,
+      );
+    }
+
     if (attackPower >= defendPower * 2 && !defenderStands) {
       let lost = 0;
       for (const [id, present] of defenders) {
@@ -2011,9 +2132,9 @@ function resolveBattle(state: WorldState, systemId: string, orders: PendingOrder
         );
         if (refuge && escaped > 0) refuge.ships[id] = (refuge.ships[id] ?? 0) + escaped;
       }
-      notes.push(
-        `${defenders.map(([id]) => nameOf(id)).join(' and ')} breaks off over ${target.name}, losing ${lost} ships between them.`,
-      );
+      const broke = `${defenders.map(([id]) => nameOf(id)).join(' and ')} breaks off over ${target.name}, losing ${lost} ships between them.`;
+      notes.push(broke);
+      orbital('defender_broke_off', broke);
       defenceForce = 0;
     } else if (attackPower * 2 <= defendPower && !attackerStands) {
       // The coalition withdraws, each contingent back down its own path.
@@ -2030,14 +2151,14 @@ function resolveBattle(state: WorldState, systemId: string, orders: PendingOrder
       }
       const note = `${coalition}'s attack on ${target.name} is driven off by its defenders, losing ${lost} ships.`;
       logEvent(state, 'order', note, attackers[0]![0]);
-      return note;
+      orbital('attacker_driven_off', note);
+      return finish(note);
     } else {
       const exchange = Math.min(attackPower, defendPower);
       const attackLeft = Math.max(0, attackForce - Math.ceil(exchange / (1 + attackMod / 20)));
       const defenceLeft = Math.max(0, defenceForce - Math.ceil(exchange / (1 + defendMod / 20)));
-      notes.push(
-        `Fleets engage over ${target.name}: ${coalition} loses ${attackForce - attackLeft} ships, the defenders lose ${defenceForce - defenceLeft}.`,
-      );
+      const engaged = `Fleets engage over ${target.name}: ${coalition} loses ${attackForce - attackLeft} ships, the defenders lose ${defenceForce - defenceLeft}.`;
+      notes.push(engaged);
       distribute(attackShare, attackForce, attackLeft);
       // Defender losses fall proportionally on each power present.
       let remaining = defenceLeft;
@@ -2052,6 +2173,9 @@ function resolveBattle(state: WorldState, systemId: string, orders: PendingOrder
       });
       attackForce = attackLeft;
       defenceForce = defenceLeft;
+      // Recorded after the redistribution, so the per-contingent numbers are
+      // the ones that actually landed on the board.
+      orbital('exchange', engaged);
     }
   }
 
@@ -2059,13 +2183,15 @@ function resolveBattle(state: WorldState, systemId: string, orders: PendingOrder
     for (const [id, n] of attackShare) land(id, n);
     const note = `${notes.join(' ')} The defenders still hold the orbitals of ${target.name}; no landing is attempted.`.trim();
     logEvent(state, 'order', note, attackers[0]![0]);
-    return note;
+    if (rounds.length > 0) rounds[rounds.length - 1]!.outcome = 'no_landing';
+    return finish(note);
   }
 
   if (attackForce <= 0) {
     const note = `${notes.join(' ')} ${coalition}'s force is spent over ${target.name}.`.trim();
     logEvent(state, 'order', note, attackers[0]![0]);
-    return note;
+    if (rounds.length > 0) rounds[rounds.length - 1]!.outcome = 'force_spent';
+    return finish(note);
   }
 
   /* ---------- Phase 2: ground assault ---------- */
@@ -2077,7 +2203,23 @@ function resolveBattle(state: WorldState, systemId: string, orders: PendingOrder
   // extra troops to kill.
   const dugIn =
     holderEthic === 'defensive' ? Math.round(garrison * DEFENSIVE_GARRISON_BONUS) : garrison;
+  if (dugIn !== garrison) {
+    doctrinesFired.push(
+      `defensive: ${nameOf(holder!)}'s garrison of ${garrison} fought as ${dugIn}`,
+    );
+  }
   const assault = attackForce * (1 + attackMod / 20) * (1 + (roll - 10.5) / 30);
+  const ground = (outcome: BattleOutcome, note: string): void => {
+    rounds.push({
+      turn: state.turn, phase: 'ground', outcome,
+      attackPower: 0, defendPower: 0,
+      assault: Math.round(assault), garrison, garrisonEffective: dugIn,
+      attackers: sideOf(attackShare, attackSnapshot),
+      defenders: [],
+      note,
+    });
+    attackSnapshot = new Map(attackShare);
+  };
 
   if (assault > dugIn) {
     const losses = Math.min(attackForce, Math.ceil(dugIn / 2));
@@ -2089,11 +2231,17 @@ function resolveBattle(state: WorldState, systemId: string, orders: PendingOrder
     // stronger occupation force, so conquest sticks instead of needing
     // re-garrisoning the moment the fleet moves on.
     const kept = attackEthic === 'expansionist' ? Math.floor(garrison / 2) : Math.floor(garrison / 3);
+    if (attackEthic === 'expansionist' && kept > Math.floor(garrison / 3)) {
+      doctrinesFired.push(
+        `expansionist: ${nameOf(owner)} consolidates, keeping ${kept} of the garrison rather than ${Math.floor(garrison / 3)}`,
+      );
+    }
     target.garrison = Math.max(1, kept);
     for (const [id, n] of attackShare) land(id, n);
     const note = `${notes.join(' ')} ${coalition} storms ${target.name}, breaking a garrison of ${garrison} for ${losses} ships; ${nameOf(owner)} takes possession.`.trim();
     logEvent(state, 'order', note, owner);
-    return note;
+    ground('world_taken', note);
+    return finish(note);
   }
 
   const losses = Math.min(attackForce, Math.ceil(attackForce / 3));
@@ -2102,7 +2250,8 @@ function resolveBattle(state: WorldState, systemId: string, orders: PendingOrder
   for (const [id, n] of attackShare) land(id, n);
   const note = `${notes.join(' ')} ${coalition}'s landing on ${target.name} is thrown back by its garrison; ${losses} ships lost.`.trim();
   logEvent(state, 'order', note, attackers[0]![0]);
-  return note;
+  ground('landing_thrown_back', note);
+  return finish(note);
 }
 
 /** Scale a coalition's contingents down to a new total, largest-remainder. */

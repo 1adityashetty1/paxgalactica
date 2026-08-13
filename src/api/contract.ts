@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { BattleReportSchema } from '../domain/battle.js';
 import { CheckOutcomeSchema, StatNameSchema } from '../domain/checks.js';
 import { WorldStateSchema } from '../domain/state.js';
 
@@ -88,6 +89,8 @@ export const BriefingSchema = z.object({
   completed: z.array(BriefingCompletionSchema),
   inProgress: z.array(BriefingProjectSchema),
   observed: z.array(BriefingProjectSchema),
+  /** Battles fought this turn, with the arithmetic that decided them. */
+  battles: z.array(BattleReportSchema),
   quiet: z.boolean(),
 });
 

@@ -812,6 +812,40 @@ That is what stops conquest being permanently cheap.
 All of it is deterministic — one seeded d20 per battle — so campaigns replay
 exactly.
 
+### Battles are reported, not just narrated
+
+`resolveBattle` computed the seeded roll, both might modifiers, the powers the
+2:1 break-off test compares, the retreat loss percentage, proportional
+per-contingent losses, the dug-in garrison value and the assault total — and
+flattened all of it into one sentence. The player saw *"Fleets engage over
+Kalzir: Meridian loses 24, defenders lose 20"* and could not tell which phase
+decided it, what the roll was, or what was left standing. `TurnReport.arrivals`
+carried that prose and **the browser never read it at all**.
+
+That got worse when war ethics gained mechanical force, because four doctrines
+now change battles and none of them were observable. `src/domain/battle.ts`
+defines a `BattleReport`; `resolveBattle` returns `{ note, report }`, so the log
+keeps its prose and the UI gets the arithmetic. `doctrinesFired` names only the
+doctrines that **changed** something — a crusading power never asked to retreat
+does not appear.
+
+Shaped as an **engagement made of rounds**, each stamped with its turn, rather
+than a flat record of one exchange. Combat resolves in a single tick today and
+whether it should stay that way is unsettled, so if it later spans turns the
+rounds append and `status` stays `'ongoing'` — schema and renderer unchanged. A
+richer resolver changes the producer, not this.
+
+Nothing is stored on `WorldState`: a report is derived from a tick that already
+happened and the journal can regenerate it, so persisting it would be a second
+source of truth. The cost is that `briefingFromState` has no battles on a
+resumed campaign, which is what a resumed player had before anyway.
+
+> Two things this caught immediately, both invisible in prose. The attacker's
+> "before" was being read from the target system, where a fleet still in transit
+> reads as zero — so the first version reported a fleet of **0** attacking.
+> Rounds now carry per-round deltas, and a test asserts the last round's numbers
+> equal what the board actually holds.
+
 ## Op vocabulary
 
 Defined in `src/domain/ops.ts`. Two schemas, deliberately:
