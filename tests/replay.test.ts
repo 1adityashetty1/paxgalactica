@@ -218,6 +218,26 @@ describe('campaign / journal agreement', () => {
     expect(campaign.verifyReplay().ok).toBe(true);
   });
 
+  it('reports only the ops that landed, never the ones the reducer refused', () => {
+    // The first version of this returned the PROPOSED list, and a playtest
+    // correctly called it out: an auditor diffing a narrative against it would
+    // confirm an effect that never happened, which is the exact bug class the
+    // field exists to expose.
+    const campaign = Campaign.start('freeworlds', 'test-applied');
+    campaign.stage(
+      [
+        // Legal.
+        { op: 'adjust_credits', factionId: 'freeworlds', delta: -50 },
+        // Reducer-only: rejected, and must not appear in the reported ops.
+        { op: 'transfer_control', systemId: 'tio-3', toFactionId: 'freeworlds' },
+      ],
+      'one good, one refused',
+    );
+    const reported = campaign.opsStagedSince(0) as { op: string }[];
+    expect(reported.map((o) => o.op)).toEqual(['adjust_credits']);
+    expect(campaign.state.systems.find((s) => s.id === 'tio-3')!.controllerFactionId).toBe('vigil');
+  });
+
   it('journals the actor, so replay applies the same guards the live turn did', () => {
     // `commitTurn` applied each staged batch WITH its actor and journaled it
     // WITHOUT — so replay re-ran every player-declared action as an actorless

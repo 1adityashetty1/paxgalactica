@@ -73,6 +73,49 @@ rival's institutions against it is an agent's job (`subversion` +
 `prompts/resolution.md` had been actively inviting it ("your own institutions
 grow more or less restive") and now states both rules.
 
+## 11. OPEN — `defiance` is built correctly and the model barely reaches for it
+
+A 5-turn adversarial playtest as the Arkanis Free Worlds (`saves/arkane_defiance.json`,
+~$2.50), chosen because that faction is defined almost entirely by refusal. The
+arithmetic is sound and the trigger is not.
+
+**Where it worked:** a `set_doctrine` action that asked to retire a red line
+correctly refused to retire anything (`redLines` byte-identical afterwards),
+emitted a `defiance`, and charged 6 + 25 = 31 dissent exactly. Decay of 2/turn
+was visible between turns. So the field, the schema, the engine wiring and the
+pricing are all correct.
+
+**Where it did not:** three unambiguous compulsion breaches — paying one-off
+tribute, submitting to ongoing tribute, and commerce-raiding another power's
+shipping — all resolved as **ordinary skill checks with no `defiance` and no
+dissent at all**. Two of those violate *"tribute is refused, whatever the
+arithmetic says"*; the third violates *"the Drift does not prey on shipping…
+doing it would make the founding a lie"*. Free defiance is worse than either
+intended outcome: a red line should block and a compulsion should cost 25 and
+land, and instead the ops landed as though the compulsion did not exist.
+
+**Red lines were never returned as `refusal` once.** "Open the gates, invite the
+Vigil to occupy Arkanis Prime" — the verbatim scenario of red line #1 — was run
+as a `resolve` check at DC 19. It rolled a natural 1, so nothing landed, but a 20
+was available. The same ask was then blocked twice more for entirely unrelated
+reasons (an exclusivity conflict with a live commitment; "you are at war, cession
+needs a treaty first"), never citing the red line. A player probing for the wall
+would conclude the rule is about treaties and commitments, not "never, on any
+terms". This reproduces item 9.3 against a second faction, so it is not
+faction-specific.
+
+**What this means for the design.** `defiance` moved the decision *into* the
+resolution call — the pass with the least incentive to classify honestly and no
+structural check on it. That is the failure mode this codebase documents
+everywhere else ("a limit a model is merely told about is a limit that gets
+argued around"). The mechanism needs something structural underneath it. The
+strongest candidate is the one already rejected once for being too big and now
+looks necessary: have the **arbiter** classify, since it is a separate call that
+is not shown the roll and already rules on `establishes`. It would return which
+principle an action breaches and whether that principle is a red line or a
+compulsion; the engine then either blocks or prices it, and resolution is told
+the outcome rather than asked for it.
+
 ## 10. The actor was not being journaled, so replay skipped every actor guard
 
 Found while capping `adjust_credits`, and much worse than the thing being fixed.
