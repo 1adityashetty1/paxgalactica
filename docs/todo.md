@@ -49,6 +49,55 @@ rival's institutions against it is an agent's job (`subversion` +
 less restive"). The fix is the same shape as the `set_doctrine` guard —
 actor-only, and positive deltas only from a model source.
 
+## 9. OPEN — three findings from the first live playtest of this session's work
+
+A 4-turn adversarial playtest as the Ojjul Nar Combine (`saves/ojjul_profiteer.json`,
+~$1.70) exercised the new mechanics against real model calls for the first time.
+**The reducer-side work all held.** Verified in raw state, not narrative:
+`onComplete` delivered (kes-2 strategic value 9 → 10, crossing `HUB_THRESHOLD`
+on schedule), `commitmentFlow` summed two live commitments to 28 and respected
+both the per-arrangement cap and `kind` exclusivity, `warProfit` flipped +40 →
+−40 the turn the Combine's raid opened a war with the Vigil, and compulsion
+drift fired for **NPCs** every turn (Vigil `idle_at_war`, Drajk `no_plunder`).
+Both correction passes did their job: Meridian's reaction tried to put a
+`develop_system` payload on a Nar world it had no presence at and the retry
+stripped it; Drajk's first-draft reaction deployed an agent owned by its own
+victim and the retry fixed the owner.
+
+Three real problems, all on the model side of the boundary rather than the
+reducer side:
+
+1. **`set_doctrine` was emitted with `retire: []` while the narrative claimed a
+   red line had been retired.** The declared action was explicitly *"retiring
+   the old absolute rule against forgiveness"*, the check was a natural 20, the
+   doctrine text was rewritten — and `redLines` is byte-identical afterwards,
+   because the model never populated `retire`. This is the project's signature
+   failure mode (narrating a mechanical outcome instead of emitting the op that
+   produces it) landing on a field built two commits earlier.
+   `prompts/resolution.md` already says "**Retiring is the part that matters**";
+   that was not enough. The reducer cannot help here — an empty `retire` is a
+   legal no-op — so the fix is prompt-side, or a resolution-time check that a
+   doctrine action claiming to abandon a principle actually names one.
+2. **Unbounded `adjust_credits` rides alongside priced mechanics.** A *failed*
+   construction action emitted `adjust_credits -380` with no `issue_order` at
+   all — money gone, no order to cancel or refund. The successful retry emitted
+   the correctly priced order (`investedCredits: 156`) **plus** a freeform
+   `adjust_credits -180` for "premium rates". `developmentCost`'s careful
+   marginal-income pricing bounds `onComplete`, and bounds nothing about a
+   second op in the same batch spending twice as much. Compare
+   `billConstruction`, which bills the *net* hull change precisely so the model
+   cannot invent the number.
+3. **A red line still in `redLines` did not stop the act it forbids.** In the
+   same batch as (1), the Combine forgave a debt — `establish_commitment
+   forgiven_debt_client` — while *"will not forgive an unpaid debt"* was live in
+   state. Red lines are enforced only by the resolution call choosing to refuse,
+   so a model that believes it has just repealed one will act against it.
+
+**Also worth fixing:** `/api/action` returns narrative, check and counts but not
+the ops it staged. Every finding above needed the on-disk journal to see. The
+staged ops are already in memory; returning them would make the highest-value
+bug class in this project visible from the API instead of requiring a save file.
+
 **Faction flavour text was audited and the dead lines are now live.** Of 28 red
 lines and compulsions across the five powers, 18 mapped to a real op or order
 type, 2 were reachable only through arbitration, **4 were dead** (their trigger
