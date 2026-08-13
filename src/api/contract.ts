@@ -137,6 +137,12 @@ export const RefusalViewSchema = z.object({
 export const ActionOutcomeSchema = z.object({
   narrative: z.string(),
   refusal: RefusalViewSchema.nullable().default(null),
+  /**
+   * The institutions objected and carried the order out anyway — a compulsion
+   * defied rather than a red line crossed. Distinct from `refusal`, where
+   * nothing happens at all.
+   */
+  defiance: RefusalViewSchema.nullable().default(null),
   staged: z.number().int(),
   notes: z.array(z.string()),
   rejections: z.array(OpRejectionSchema),

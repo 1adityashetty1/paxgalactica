@@ -2,6 +2,7 @@ import { describeCheck, type CheckResult } from '../domain/checks.js';
 import { describeRejections, ModelTurnOutputSchema, type OpRejection } from '../domain/ops.js';
 import type { TurnReport } from '../domain/reducer.js';
 import {
+  COMPULSION_BREACH_DISSENT,
   dissentPenalty,
   getFaction,
   MAX_DISSENT_PENALTY,
@@ -24,6 +25,12 @@ export interface ActionOutcome {
   narrative: string;
   /** Set when the player's own faction refused to carry the order out. */
   refusal?: { by: string; reason: string; violated: string } | null;
+  /**
+   * Set when the institutions objected and carried the order out anyway — a
+   * compulsion defied rather than a red line crossed. The ops landed; the
+   * faction paid `COMPULSION_BREACH_DISSENT` for it, and may pay again.
+   */
+  defiance?: { by: string; reason: string; violated: string } | null;
   /** Ops staged by this declaration; they land on `:endturn`. */
   staged: number;
   notes: string[];
@@ -249,16 +256,42 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     };
   }
 
+  // A COMPULSION defied rather than a red line crossed. The distinction is the
+  // whole of it: a red line is absolute and buys nothing, while a compulsion is
+  // a demand a leader is allowed to overrule — so the order stands, and the
+  // institutions charge for having been overruled. Four of these reach the cap.
+  //
+  // This replaced retiring principles. A player who means to change what their
+  // power is now does it by insisting, repeatedly, and absorbing the cost, which
+  // leaves nothing to desync between the character sheet and the fiction.
+  const defiance = resolution.output.defiance ?? null;
+
   // The check is recorded so a campaign's luck is auditable after the fact, but
   // it rides along with the action's own ops rather than forming a batch of its
   // own — a separate batch would show up in the player's "declared this turn"
   // list as a meaningless "check record" entry and inflate the count.
-  const ops = resolution.check
-    ? [
-        ...resolution.output.ops,
-        { op: 'log_narrative', text: `[check] ${describeCheck(resolution.check)}` },
-      ]
-    : resolution.output.ops;
+  const ops = [
+    ...resolution.output.ops,
+    ...(resolution.check
+      ? [{ op: 'log_narrative', text: `[check] ${describeCheck(resolution.check)}` }]
+      : []),
+    // Charged in code, not chosen by the model: the resolution call says a
+    // compulsion was defied, and the price for that is not its to nominate.
+    ...(defiance
+      ? [
+          {
+            op: 'adjust_dissent',
+            factionId: campaign.state.playerFactionId,
+            delta: COMPULSION_BREACH_DISSENT,
+            reason: defiance.violated || defiance.reason,
+          },
+          {
+            op: 'log_narrative',
+            text: `[objected to by ${defiance.by}] ${defiance.reason}`,
+          },
+        ]
+      : []),
+  ];
 
   const staged = await stageWithCorrection(
     campaign,
@@ -268,6 +301,20 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     `The player declared: ${action}\n\nYour narrative was: ${resolution.output.narrative}`,
   );
 
+  if (defiance) {
+    const total = Math.min(
+      100,
+      (getFaction(campaign.state, campaign.state.playerFactionId)?.dissent ?? 0),
+    );
+    staged.notes.push(
+      ...[
+        `${defiance.by} objected and carried the order out anyway.`,
+        defiance.violated ? `Defied: ${defiance.violated}` : '',
+        `Dissent +${COMPULSION_BREACH_DISSENT}, now ${total}/100 — every stat is reduced by ${dissentPenalty(total)}, to a maximum of ${MAX_DISSENT_PENALTY}.`,
+      ].filter(Boolean),
+    );
+  }
+
   return {
     narrative: resolution.output.narrative,
     staged: campaign.stagedCount - before,
@@ -276,6 +323,7 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     costUsd: resolution.costUsd + staged.costUsd,
     check: resolution.check,
     refusal: null,
+    defiance,
     ops: campaign.opsStagedSince(before),
   };
 }

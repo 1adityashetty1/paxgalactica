@@ -978,7 +978,24 @@ export const OPPORTUNIST_MIGHT_BONUS = 2;
  */
 export const DOCTRINE_TEXT_DISSENT = 6;
 export const DOCTRINE_ETHIC_DISSENT = 20;
-export const DOCTRINE_RETIRE_DISSENT = 25;
+/**
+ * What defying one of your own compulsions costs, every time you do it.
+ *
+ * This replaced retiring principles outright. Four breaches reach the 100 cap
+ * and `MAX_DISSENT_PENALTY` — eight points off every stat, fifty turns to clear
+ * at `DISSENT_DECAY` — so a leader can turn their power against its own
+ * character by simply insisting, and the price is that by the fourth insistence
+ * nobody is following them.
+ *
+ * Deliberately larger than `REFUSAL_DISSENT` (8), which is what a *red line*
+ * costs. Being told no is cheaper than being obeyed against the institution's
+ * judgement, because the second one actually happened.
+ *
+ * Nothing further fires at the cap, and that is on purpose: at 100 the penalty
+ * is already crippling, and a terminal state on top of it would be charging
+ * twice for one decision.
+ */
+export const COMPULSION_BREACH_DISSENT = 25;
 
 /**
  * Dissent at or above which a faction will not be reoriented at all.

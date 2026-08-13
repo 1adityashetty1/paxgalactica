@@ -217,6 +217,7 @@ export class GameSession {
     return {
       narrative: outcome.narrative,
       refusal: outcome.refusal ?? null,
+      defiance: outcome.defiance ?? null,
       staged: outcome.staged,
       ops: outcome.ops,
       notes: outcome.notes,
@@ -318,6 +319,7 @@ export class GameSession {
     return {
       narrative: outcome.narrative,
       refusal: null,
+      defiance: null,
       staged: outcome.staged,
       ops: outcome.ops,
       notes: outcome.notes,

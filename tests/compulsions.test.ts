@@ -255,26 +255,41 @@ describe('a faction states each of its principles once', () => {
   });
 });
 
-describe('retiring a compulsion stops it drifting', () => {
-  it('ends the charge for good, which is what the dissent price buys', () => {
+describe('a compulsion cannot be retired, so drift never stops on its own', () => {
+  it('keeps charging every turn the condition holds, with no way to switch it off', () => {
+    // `retire` is gone. Under the old design Drajk could pay 25 once and its
+    // no_plunder compulsion stopped drifting forever; the model narrated exactly
+    // that retirement while emitting an empty array, so the sheet and the story
+    // disagreed. A principle is permanent now — the only way to stop the drift
+    // is to satisfy the compulsion.
     const state = fresh('krayt');
-    const line = fac(state, 'krayt').compulsions.find((c) => c.trigger === 'no_plunder')!.text;
+    expect(triggers(state, 'krayt')).toContain('no_plunder');
+
+    // A doctrine change does not touch it, however sweeping the words.
     const out = applyOps(
       state,
       [
         {
           op: 'set_doctrine', factionId: 'krayt',
           doctrine: 'We hold ground now, and we sign our name to things.',
-          retire: [line],
+          warEthic: 'defensive',
         } as Op,
       ],
       'model',
       'krayt',
     );
     expect(out.rejections).toHaveLength(0);
-    expect(driftingCompulsions(out.state, 'krayt')).toEqual([]);
+    expect(triggers(out.state, 'krayt')).toContain('no_plunder');
+
+    // And it is still charging on the next tick.
+    const before = fac(out.state, 'krayt').dissent;
     const after = tickTurn(out.state).state;
-    // Dissent was paid once for the change, and no longer accrues every turn.
-    expect(fac(after, 'krayt').dissent).toBeLessThan(fac(out.state, 'krayt').dissent);
+    expect(fac(after, 'krayt').dissent).toBeGreaterThan(before - COMPULSION_DRIFT_DISSENT);
+  });
+
+  it('stops the moment the compulsion is satisfied instead', () => {
+    const state = fresh('krayt');
+    state.pendingOrders.push(order('krayt', 'commerce_raiding', 'kes-2') as never);
+    expect(triggers(state, 'krayt')).not.toContain('no_plunder');
   });
 });

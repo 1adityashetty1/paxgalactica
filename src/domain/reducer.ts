@@ -44,7 +44,6 @@ import {
   warsFor,
   DOCTRINE_CHANGE_DISSENT_CEILING,
   DOCTRINE_ETHIC_DISSENT,
-  DOCTRINE_RETIRE_DISSENT,
   DOCTRINE_TEXT_DISSENT,
   getSystem,
   MAX_NARRATIVE_CREDITS,
@@ -532,21 +531,6 @@ export function applyOps(
           break;
         }
 
-        // Retirements are matched literally, so the journal records exactly
-        // which principle was abandoned rather than a paraphrase of one.
-        const retiring = [...new Set(op.retire)];
-        const unmatched = retiring.filter(
-          (line) => !f.redLines.includes(line) && !f.compulsions.some((c) => c.text === line),
-        );
-        if (unmatched.length > 0) {
-          reject(
-            raw,
-            'illegal_value',
-            `${op.factionId} holds no such red line or compulsion: "${unmatched[0]}". Quote it exactly as it appears on the faction sheet.`,
-          );
-          break;
-        }
-
         // Priced per axis actually moved. Restating the same posture in new
         // words costs nothing, so a model cannot farm dissent — or dodge it by
         // splitting one turn across several ops.
@@ -565,12 +549,6 @@ export function applyOps(
           changed.push(`trade ${f.tradeEthic} -> ${op.tradeEthic}`);
           f.tradeEthic = op.tradeEthic;
           cost += DOCTRINE_ETHIC_DISSENT;
-        }
-        for (const line of retiring) {
-          f.redLines = f.redLines.filter((r) => r !== line);
-          f.compulsions = f.compulsions.filter((c) => c.text !== line);
-          cost += DOCTRINE_RETIRE_DISSENT;
-          changed.push(`abandoned: ${line}`);
         }
         f.doctrine = op.doctrine;
 

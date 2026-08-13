@@ -574,57 +574,50 @@ every save and journal written before triggers existed still loads.
 
 ### Changing doctrine costs dissent, because it is real
 
-`set_doctrine` used to write a string and nothing else. The axes that actually
-did anything — `warEthic`, `tradeEthic`, `redLines`, `compulsions` — had no op
-at all and were immutable for a whole campaign. Nothing in code gated a change
-either: the arbiter is explicitly told not to rule on character
-(`prompts/appraisal.md`), and the reducer checked only that the faction existed.
-So a doctrine change either got refused by a model's judgement with nothing
-behind it, or it silently "succeeded" — narrative, event log and UI all
-confirming a change that had not happened.
-
-The second is the damaging one, because `serializeCharacter` then feeds the
-**new** doctrine and the **old** compulsions into the same block, and the
-player's next raid hits the anti-raiding compulsion still sitting there. They
-are refused, take dissent, degrade — while the doctrine on screen says raiding
-is policy, and nothing connects the two.
+`set_doctrine` used to write a string and nothing else. `warEthic` and
+`tradeEthic` — the axes that actually do something — had no op at all and were
+immutable for a whole campaign, so a doctrine change either got refused by a
+model's judgement with nothing behind it, or silently "succeeded": narrative,
+event log and UI all confirming a change that had not happened.
 
 Doctrine is now genuinely changeable and dissent is the price, charged in code
-per axis actually moved:
+per axis actually moved: `DOCTRINE_TEXT_DISSENT` (6) for a new statement of
+posture, `DOCTRINE_ETHIC_DISSENT` (20) for each ethic. Both guards are
+reducer-side: a faction may change only **its own** doctrine (`actor`-checked,
+the same hazard `deploy_agent` validates against — without it a Meridian action
+could rewrite the Iron Vigil's doctrine, which is what its diplomacy persona is
+built from), and one at or above `DOCTRINE_CHANGE_DISSENT_CEILING` (75) cannot be
+reorganised at all.
 
-| what moved | dissent |
-|---|---|
-| a new statement of posture | `DOCTRINE_TEXT_DISSENT` (6) |
-| `warEthic` or `tradeEthic` | `DOCTRINE_ETHIC_DISSENT` (20) each |
-| a red line or compulsion retired | `DOCTRINE_RETIRE_DISSENT` (25) each |
+### Red lines are permanent; compulsions are a price
 
-Retiring is the load-bearing part: a compulsion refusing commerce raiding goes
-on refusing every raid until it is retired, whatever the paragraph says.
-Retirements are matched **literally** against the faction sheet so the journal
-records which principle was abandoned rather than a paraphrase.
+There was briefly a `retire` field on `set_doctrine` that abandoned a named red
+line or compulsion for 25 dissent. It was the wrong shape, and the first live
+model call proved it: asked explicitly to retire a red line, the resolution pass
+rewrote the doctrine paragraph, announced the retirement in the narrative, and
+emitted `retire: []`. The sheet and the story disagreed, and the enforcement
+skipped the still-live line anyway. Guarding that would have taken an arbiter
+field, prompt plumbing and a batch-composition rule to stop retire-then-breach
+becoming a universal bypass for a flat 25.
 
-A full reorientation is ~71 — **five** points off every stat for the thirty-odd
-turns it takes to decay at 2 a turn. That is the intent: turning a power against
-its own character should be campaign-defining, not a free pivot. (It was two
-points when these prices were set, against the old ceiling of 4. Raising the
-ceiling to 8 more than doubled the real bite of a doctrine change without the
-dissent numbers moving — worth knowing before retuning either.)
+The simpler answer is that **nothing is ever retired**, so there is no state to
+desync. The two kinds of principle are now answered differently:
 
-Two guards, both reducer-side. A faction may change only **its own** doctrine
-(`actor`-checked, the same hazard `deploy_agent` validates its owner against —
-without it a Meridian action could rewrite the Iron Vigil's doctrine, and
-doctrine is what its diplomacy persona is built from). And a faction at or above
-`DOCTRINE_CHANGE_DISSENT_CEILING` (75) cannot be reorganised at all, which is
-both the fiction and a loophole closed: dissent clamps at 100, so without it a
-leader at the cap could reorient endlessly having already paid in full.
+| | enforced by | cost | repeatable |
+|---|---|---|---|
+| **red line** — *"will not, whatever the incentive"* | `refusal`; **no ops at all** | `REFUSAL_DISSENT` (8) | the attempt, yes; the act, never |
+| **compulsion** — *"your institutions DEMAND"* | `defiance`; **the ops land** | `COMPULSION_BREACH_DISSENT` (25) | yes, and that is the point |
 
-> Worth knowing when tuning: the clamp means **defiance at 100 dissent is
-> free** in general, not only here. Nothing else fires at the cap — there is no
-> coup, no collapse, no forced reversion. Dissent is a graduated debuff with a
-> long memory and no terminal state, now worth −8 on every stat at the top.
+A leader who means to turn their power against its own character does it by
+insisting and absorbing the cost. Four defiances reach the 100 cap and
+`MAX_DISSENT_PENALTY` — eight off every stat, fifty turns to clear — so the
+mechanism is "you may, and by the fourth time nobody is following you" rather
+than "you may not".
 
-Engine ops and journals without an `actor` skip both the guards and the charge,
-so a campaign recorded before this replays exactly as it ran.
+`defiance` is charged in code, not nominated by the model: the resolution call
+reports *that* a compulsion was defied and the reducer sets the price. And
+nothing further fires at the cap on purpose — the penalty there is already
+crippling, and a terminal state on top of it would charge twice for one decision.
 
 ### Dissent moves one way, on your own faction only
 

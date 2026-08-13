@@ -66,9 +66,15 @@ export const AdjustDissentOp = z.object({
  * posture mechanical force.
  *
  * The text alone is narration. `warEthic` and `tradeEthic` are read by the
- * reducer and by `trade.ts`; `retire` abandons a named red line or compulsion,
- * which is the only way an institution stops refusing the thing it refuses.
- * All of it is charged in dissent by the reducer — see `DOCTRINE_TEXT_DISSENT`.
+ * reducer and by `trade.ts`, and both are charged in dissent — see
+ * `DOCTRINE_TEXT_DISSENT`.
+ *
+ * There is deliberately no way to retire a red line or a compulsion. A `retire`
+ * field existed briefly and was the wrong shape: the model narrated a
+ * retirement while emitting an empty array, so the paragraph on screen and the
+ * enforced principle disagreed, and the fix for that was three more guards. A
+ * principle is instead permanent, and acting against one is *priced* — see
+ * `defiance` below. Nothing to desync, because nothing changes.
  */
 export const SetDoctrineOp = z.object({
   op: z.literal('set_doctrine'),
@@ -78,12 +84,6 @@ export const SetDoctrineOp = z.object({
   warEthic: WarEthicSchema.optional(),
   /** New stance on commerce. Omit to leave it alone. */
   tradeEthic: TradeEthicSchema.optional(),
-  /**
-   * Red lines or compulsions to abandon, quoted **exactly** as they appear on
-   * the faction sheet. Matched literally so the journal records precisely what
-   * was given up; an unmatched string is rejected rather than guessed at.
-   */
-  retire: z.array(z.string().min(1)).max(3).default([]),
 });
 
 export const IssueOrderOp = z.object({
@@ -323,6 +323,29 @@ export const RefusalSchema = z.object({
 export type Refusal = z.infer<typeof RefusalSchema>;
 
 /**
+ * Your institutions objecting, and carrying the order out anyway.
+ *
+ * The third outcome, between "done" and "refused". A **red line** is absolute:
+ * it produces a `refusal`, nothing is staged, and no price buys it. A
+ * **compulsion** is a demand rather than a prohibition, and defying one is a
+ * decision a leader is allowed to make — so the ops land and the faction is
+ * charged `COMPULSION_BREACH_DISSENT`, which it can choose to pay again.
+ *
+ * This replaced retiring principles. A player who means to change what their
+ * power is does not edit its character sheet; they act against it and absorb
+ * what that costs, repeatedly, until either they stop or their institutions
+ * have stopped following them.
+ */
+export const DefianceSchema = z.object({
+  /** Who objected: "the Trade Council", "the old cousins". */
+  by: z.string().min(1),
+  reason: z.string().min(1),
+  /** The compulsion defied, quoted from the faction sheet. */
+  violated: z.string().default(''),
+});
+export type Defiance = z.infer<typeof DefianceSchema>;
+
+/**
  * What the appraisal pass returns: how an action should be priced, decided
  * WITHOUT knowledge of the roll.
  *
@@ -367,6 +390,11 @@ export const ResolutionOutputSchema = ModelTurnOutputSchema.extend({
   // nothing reads, while the prompt told it the outcome was already settled.
   /** Present when the player's OWN faction will not carry the order out. */
   refusal: RefusalSchema.optional(),
+  /**
+   * Present when the order breaches a COMPULSION rather than a red line: the
+   * institutions object, the ops still land, and the faction pays for it.
+   */
+  defiance: DefianceSchema.optional(),
   /**
    * Set by the engine, never by the model: the arbiter ruled the action could
    * not be attempted. Nothing was rolled and nothing is staged.
