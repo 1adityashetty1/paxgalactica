@@ -47,6 +47,8 @@ export const LedgerSchema = z.object({
   agentUpkeep: z.number().int(),
   /** Standing arrangements: positive receives, negative pays. */
   commitmentFlow: z.number().int(),
+  /** A profiteer's take from other powers' wars, or what its own cost it. */
+  warProfit: z.number().int(),
   /** What a faction's own worlds pay it. */
   territory: z.number().int(),
   /** What the lane network pays it, after tolls levied and raids suffered. */

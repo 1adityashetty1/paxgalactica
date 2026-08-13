@@ -62,18 +62,22 @@ exist; the consequence is now dissent, which does.
 
 **Still open from that audit:**
 
-- **`warEthic` has no mechanical readers at all.** `tradeEthic` drives tolls,
-  smuggling, autarky and the income multiplier; `warEthic` is read only by the
-  prompt serializer. All five factions have one, so this is a five-faction
-  design question rather than a patch — deliberately deferred. Note
-  `DOCTRINE_ETHIC_DISSENT` currently charges 20 to change either ethic, which
-  prices an inert axis identically to a load-bearing one.
-- **The Ojjul Nar's four D-category lines** ("will not forgive an unpaid debt",
-  "an unpaid debt must be pursued", and the two proxy-hiring lines) need a debt
-  mechanic and a hiring mechanic before they mean anything. Their red line bars
-  the Combine from fighting its own wars while the alternative it names does
-  not exist — the only faction whose lines subtract capability with no
-  substitute. Blocked on the `warEthic` question above.
+- ~~`warEthic` has no mechanical readers at all~~ **FIXED.** All five now have
+  one signature mechanic each — see "War ethics have mechanical force" in
+  CLAUDE.md. `mercenary` was deleted outright: it meant "fights for payment; war
+  is a service sold" and was worn by the faction whose doctrine is *"let other
+  powers spend their fleets for you"* on might 9. `profiteer` replaces it, and
+  `DOCTRINE_ETHIC_DISSENT`'s charge of 20 to change either ethic is now a fair
+  price for two load-bearing axes rather than one live and one inert.
+- **The Ojjul Nar's two proxy lines are now half-supported.** *"Will not fight
+  its own war where a proxy could be hired"* is backed by `profiteer` — its own
+  wars cost it real income, so the ledger agrees with the red line. What still
+  does not exist is the **hiring** half: there is no way to pay another power to
+  fight for you, so the Combine is discouraged from war without being offered
+  the alternative its doctrine names. That is the next piece of its identity.
+- **The Combine's two debt lines still have no mechanic** ("will not forgive an
+  unpaid debt", "an unpaid debt must be pursued"). Debt is not modelled at all;
+  the closest existing home is a `commitment` with a negative `incomePerTurn`.
 - ~~Five lines duplicated within their own faction~~ **FIXED.** All five were
   prohibitions miscategorised as demands, so the compulsion copy was dropped and
   whatever it added folded into the surviving red line (Drajk's "sit still to be

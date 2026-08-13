@@ -287,12 +287,7 @@ sounds like every other faction the moment a conversation gets specific:
   diplomacy persona; the prompt's stated test is that a reply which could be
   pasted into another faction's mouth has failed.
 - **`warEthic`** — `expansionist` · `defensive` · `opportunist` · `crusading` ·
-  `mercenary`. Reads as "decides whether force is on the table at all", and
-  **has no mechanical reader anywhere** — only the prompt serializer. Two
-  factions share `defensive` as a result, and the Ojjul Nar's `mercenary`
-  identity is unimplemented while its own red lines bar it from fighting its
-  own wars. Written up in `docs/todo.md`; deliberately not patched per-faction,
-  because all five have one.
+  `profiteer`. Load-bearing, and one per faction. See "War ethics" below.
 - **`tradeEthic`** — `free_trade` · `monopolist` · `extortionist` · `autarkic` ·
   `smuggler`. Load-bearing, and now **one per faction**: Meridian, the Iron
   Vigil, the Nars, Arkanis, Drajk in that order.
@@ -747,6 +742,53 @@ per hull, and reports finding "no takers" against a resolute power.
 on whether a model asked. The actor is recorded in the journal so replay stays
 exact; it is optional, so journals written before the guard existed still
 replay — reproducing what happened rather than retroactively rejecting it.
+
+## War ethics have mechanical force
+
+`warEthic` had **no mechanical reader anywhere** for the whole life of the
+project — only the prompt serializer. That is why nobody noticed two factions
+shared `defensive`, why `expansionist` sat unused, and why the Ojjul Nar
+Combine carried a label that was precisely inverted. Exactly the `tradeEthic`
+story before it: the axis was flavour, so its errors were invisible.
+
+**`mercenary` is gone.** It meant *"fights for payment; war is a service sold"* —
+the seller. The Combine's doctrine is *"let other powers spend their fleets for
+you"*, its red line is *"will not fight its own war where a proxy could be
+hired"*, and its might is **9**, the lowest in the game. It funds wars; it has
+never had an army to sell. `profiteer` replaces it.
+
+| ethic | faction | mechanic |
+|---|---|---|
+| `expansionist` | Meridian | `EXPANSIONIST_TERRITORY_BONUS` per world held, applied to **all** its territory income — expansion compounds. Conquest also consolidates: a captured world keeps half its garrison rather than a third |
+| `defensive` | Arkanis | its garrison fights at `DEFENSIVE_GARRISON_BONUS` of its size, and costs the attacker accordingly. Only the real garrison can be destroyed — the bonus buys resistance, not extra troops |
+| `opportunist` | Drajk | `OPPORTUNIST_MIGHT_BONUS` against a target **weakened** (garrison below half its ceiling) or **distracted** (its holder at war with someone else). Nothing in a fair fight |
+| `crusading` | Iron Vigil | **does not break off**, attacking or defending. Wins engagements it should have fled and loses fleets it should have saved |
+| `profiteer` | Ojjul Nar | `PROFITEER_INCOME_PER_WAR` from every war it is *not* in; at war itself it forfeits all of that **and** pays `PROFITEER_WAR_PENALTY` per war |
+
+Two are deliberately double-edged. A doctrine that is purely an advantage is
+not a doctrine, it is a bonus.
+
+**Whose doctrine applies in a coalition** is a real question, because `bestMod`
+takes the best modifier on each side and a doctrine is not a stat that can be
+borrowed. It is read off the **largest contingent**, so a one-ship junior
+partner cannot decide that nobody is allowed to retreat.
+
+### The profiteer's two doctrines are in tension, and that is the point
+
+`warProfitFor` flips sign the moment the Combine is in a war, which makes
+*"will not fight its own war"* a line the ledger agrees with rather than one the
+model has to be trusted to remember. It also collides productively with its
+trade doctrine: `TOLL_RESENTMENT` means tolling everyone gradually turns them
+against it. Measured over 30 harness turns, the Combine's own disposition toward
+the Iron Vigil ends at −75 — a war — which turns +40 a turn into −40. It gets
+rich by taxing everyone, and being resented by everyone is what eventually costs
+it the peace it profits from.
+
+> `expansionist` was assigned to Meridian rather than Arkanis on purpose. Both
+> were `defensive`, and an income-based expansionism suits *"Commerce is
+> sovereignty"*; Arkanis is the defensive faction par excellence — *"take no
+> master"*, *"will never accept occupation"* — and giving it an expansion-pays
+> mechanic would have contradicted its whole sheet.
 
 ## Combat
 

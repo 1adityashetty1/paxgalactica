@@ -39,6 +39,9 @@ import {
   fleetStrengthOf,
   canSubornAt,
   COMPULSION_DRIFT_DISSENT,
+  DEFENSIVE_GARRISON_BONUS,
+  OPPORTUNIST_MIGHT_BONUS,
+  warsFor,
   DOCTRINE_CHANGE_DISSENT_CEILING,
   DOCTRINE_ETHIC_DISSENT,
   DOCTRINE_RETIRE_DISSENT,
@@ -1947,8 +1950,32 @@ function resolveBattle(state: WorldState, systemId: string, orders: PendingOrder
     ids.length === 0
       ? 0
       : Math.max(...ids.map((id) => statModifier(effectiveStats(state, id).might)));
-  const attackMod = bestMod([...attackerIds]);
+  let attackMod = bestMod([...attackerIds]);
   const defendMod = bestMod(defenders.map(([id]) => id));
+
+  // --- War ethics -------------------------------------------------------
+  // Whose doctrine applies in a coalition is a real question: `bestMod` takes
+  // the best modifier on each side, but a doctrine is not a stat and cannot be
+  // borrowed. It is read off the LARGEST contingent, so a one-ship junior
+  // partner cannot decide that nobody is allowed to retreat.
+  const ethicOfFaction = (id: string | null): string | null =>
+    id === null ? null : (state.factions.find((f) => f.id === id)?.warEthic ?? null);
+  const largestAttacker =
+    [...attackShare.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ??
+    null;
+  const attackEthic = ethicOfFaction(largestAttacker);
+  const holderEthic = ethicOfFaction(holder);
+
+  // An opportunist avoids fair fights and is rewarded for picking unfair ones:
+  // a world already stripped of its garrison, or a holder whose attention is on
+  // somebody else entirely. Against a whole and undistracted defender it gets
+  // nothing, which is what stops this being a flat buff.
+  if (attackEthic === 'opportunist') {
+    const weakened = target.garrisonMax > 0 && target.garrison * 2 < target.garrisonMax;
+    const distracted =
+      holder !== null && warsFor(state, holder).some((id) => !attackerIds.has(id));
+    if (weakened || distracted) attackMod += OPPORTUNIST_MIGHT_BONUS;
+  }
 
   // A retreating force loses 10–35% getting clear; bad luck costs more.
   const retreatLossPct = 10 + ((21 - roll) % 6) * 5;
@@ -1961,7 +1988,13 @@ function resolveBattle(state: WorldState, systemId: string, orders: PendingOrder
     const attackPower = attackForce * (1 + attackMod / 20) * (1 + swing);
     const defendPower = defenceForce * (1 + defendMod / 20) * (1 - swing);
 
-    if (attackPower >= defendPower * 2) {
+    // A crusading power does not break off, in either direction. It wins
+    // engagements it should have fled and loses fleets it should have saved —
+    // the Iron Vigil fighting for the mandate rather than for the arithmetic.
+    const defenderStands = holderEthic === 'crusading';
+    const attackerStands = attackEthic === 'crusading';
+
+    if (attackPower >= defendPower * 2 && !defenderStands) {
       let lost = 0;
       for (const [id, present] of defenders) {
         const escaped = bleed(present);
@@ -1976,7 +2009,7 @@ function resolveBattle(state: WorldState, systemId: string, orders: PendingOrder
         `${defenders.map(([id]) => nameOf(id)).join(' and ')} breaks off over ${target.name}, losing ${lost} ships between them.`,
       );
       defenceForce = 0;
-    } else if (attackPower * 2 <= defendPower) {
+    } else if (attackPower * 2 <= defendPower && !attackerStands) {
       // The coalition withdraws, each contingent back down its own path.
       let lost = 0;
       for (const order of orders) {
@@ -2031,15 +2064,26 @@ function resolveBattle(state: WorldState, systemId: string, orders: PendingOrder
 
   /* ---------- Phase 2: ground assault ---------- */
   const garrison = target.garrison;
+  // A defensive power's ground is dug in: its garrison fights as though it were
+  // half again its size, and costs the attacker accordingly. "Make occupation
+  // cost more than it is worth" is the Arkanis doctrine written as arithmetic.
+  // Only the real garrison is ever destroyed — the bonus buys resistance, not
+  // extra troops to kill.
+  const dugIn =
+    holderEthic === 'defensive' ? Math.round(garrison * DEFENSIVE_GARRISON_BONUS) : garrison;
   const assault = attackForce * (1 + attackMod / 20) * (1 + (roll - 10.5) / 30);
 
-  if (assault > garrison) {
-    const losses = Math.min(attackForce, Math.ceil(garrison / 2));
+  if (assault > dugIn) {
+    const losses = Math.min(attackForce, Math.ceil(dugIn / 2));
     distribute(attackShare, attackForce, attackForce - losses);
     // Spoils go to whoever brought the most, counted on what survived.
     const owner = strongest(attackShare);
     target.controllerFactionId = owner;
-    target.garrison = Math.max(1, Math.floor(garrison / 3));
+    // An expansionist consolidates what it takes: the world comes with a
+    // stronger occupation force, so conquest sticks instead of needing
+    // re-garrisoning the moment the fleet moves on.
+    const kept = attackEthic === 'expansionist' ? Math.floor(garrison / 2) : Math.floor(garrison / 3);
+    target.garrison = Math.max(1, kept);
     for (const [id, n] of attackShare) land(id, n);
     const note = `${notes.join(' ')} ${coalition} storms ${target.name}, breaking a garrison of ${garrison} for ${losses} ships; ${nameOf(owner)} takes possession.`.trim();
     logEvent(state, 'order', note, owner);

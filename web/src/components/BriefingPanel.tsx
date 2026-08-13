@@ -67,6 +67,10 @@ export function BriefingPanel({
                 ` · ${briefing.ledger.commitmentFlow > 0 ? '+' : '−'}${Math.abs(
                   briefing.ledger.commitmentFlow,
                 )} arrangements`}
+              {briefing.ledger.warProfit !== 0 &&
+                ` · ${briefing.ledger.warProfit > 0 ? '+' : '−'}${Math.abs(
+                  briefing.ledger.warProfit,
+                )} ${briefing.ledger.warProfit > 0 ? "others' wars" : 'at war'}`}
               {briefing.ledger.tolls > 0 && ` · ${briefing.ledger.tolls} in tolls`}
               {briefing.ledger.raided > 0 && ` · ${briefing.ledger.raided} raided`}
             </span>

@@ -143,7 +143,7 @@ const SEED_FACTIONS: SeedFaction[] = [
     stats: { might: 10, guile: 13, industry: 16, influence: 17, resolve: 9 },
     voice:
       'ARCHETYPE: a Wall Street trading-floor broker. Fast, transactional, always closing. Talks in spreads, exposure, downside, haircuts, counterparties, basis points, the book. Calls you "friend" in the same breath as repricing you. Opens mid-thought — "Look —", "Here\'s where we are". Frames war as a bad trade and scruples as an unpriced risk. Every offer has an expiry and says so. Sample: "Look, your position at Neth is underwater and we both know it. I\'ll take the exposure off your hands at sixty on the credit — that\'s me doing you a favour, and it decays at close of turn."',
-    warEthic: 'defensive',
+    warEthic: 'expansionist',
     tradeEthic: 'free_trade',
     redLines: [
       // Absorbs what used to be a second copy of this as a compulsion, which
@@ -203,7 +203,7 @@ const SEED_FACTIONS: SeedFaction[] = [
     stats: { might: 9, guile: 18, industry: 12, influence: 15, resolve: 11 },
     voice:
       'ARCHETYPE: a cartel patron holding court. Warm, unhurried, familial — calls you friend and brother, asks after your people, insists you sit and eat before any talk of terms. Speaks of respect, debts, favours and obligations; never of prices. Never threatens outright, but describes in the same fond tone the unfortunate things that befall men who disappoint him. The Combine is family, and family is leverage. Sample: "Ah, you call at last — sit, sit. Friends do not talk numbers standing up. You have a difficulty at Neth. I have four hundred hulls with no difficulties at all. This is not a threat, my friend. It is arithmetic, and I am very fond of you."',
-    warEthic: 'mercenary',
+    warEthic: 'profiteer',
     tradeEthic: 'extortionist',
     redLines: [
       'will not fight its own war where a proxy could be hired to fight it instead',

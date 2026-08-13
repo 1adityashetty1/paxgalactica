@@ -144,33 +144,37 @@ describe('phase 1 — the fleet battle', () => {
     expect(res.notes.join(' ')).toMatch(/driven off|still holds the orbitals/);
   });
 
+  // These two use the Nars rather than the Iron Vigil, which used to defend
+  // here: the Vigil is `crusading` now and does not break off at all, so it can
+  // no longer demonstrate a retreat. The Nars are `profiteer`, which carries no
+  // battlefield doctrine, making them the neutral subject these want.
   it('lets an outmatched defender retreat rather than be annihilated', () => {
     const res = attack((s) => {
       const t = sys(s, 'slu-6');
-      t.controllerFactionId = 'vigil';
-      t.ships['vigil'] = 2;
+      t.controllerFactionId = 'hutt';
+      t.ships['hutt'] = 2;
       t.garrison = 1;
       t.garrisonMax = 1;
     }, 40);
     const text = res.notes.join(' ');
     expect(text).toMatch(/breaks off|scattered/);
-    // Survivors fall back to another Vigil world rather than evaporating.
-    expect(res.state.systems.find((x) => x.id === 'slu-6')!.ships['vigil']).toBeUndefined();
+    // Survivors fall back to another Nar world rather than evaporating.
+    expect(res.state.systems.find((x) => x.id === 'slu-6')!.ships['hutt']).toBeUndefined();
   });
 
   it('costs a retreating force 10–35% of its strength', () => {
     const before = 20;
     const res = attack((s) => {
       const t = sys(s, 'slu-6');
-      t.controllerFactionId = 'vigil';
-      t.ships['vigil'] = before;
+      t.controllerFactionId = 'hutt';
+      t.ships['hutt'] = before;
       t.garrison = 1;
       t.garrisonMax = 1;
     }, 200);
     const escaped = res.state.systems
       .filter((x) => x.id !== 'slu-6')
-      .reduce((n, x) => n + (x.ships['vigil'] ?? 0), 0);
-    const baseline = fresh().systems.reduce((n, x) => n + (x.ships['vigil'] ?? 0), 0);
+      .reduce((n, x) => n + (x.ships['hutt'] ?? 0), 0);
+    const baseline = fresh().systems.reduce((n, x) => n + (x.ships['hutt'] ?? 0), 0);
     const survivors = escaped - baseline;
     expect(survivors).toBeGreaterThanOrEqual(Math.ceil(before * 0.65));
     expect(survivors).toBeLessThanOrEqual(Math.ceil(before * 0.9));
