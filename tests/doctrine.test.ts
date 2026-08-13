@@ -77,10 +77,13 @@ describe('a doctrine change is priced in dissent', () => {
     const out = applyOps(fresh(), [turnRaider([NO_RAIDING])], 'model', 'meridian');
     const before = effectiveStats(fresh(), 'meridian');
     const after = effectiveStats(out.state, 'meridian');
-    // 71 dissent is two penalty points off every stat.
-    expect(dissentPenalty(fac(out.state, 'meridian').dissent)).toBe(2);
-    expect(after.industry).toBe(before.industry - 2);
-    expect(after.influence).toBe(before.influence - 2);
+    // ~71 dissent, which on a 1-20 stat scale is a serious institutional
+    // wound rather than a rounding error. Derived so retuning the curve does
+    // not need this test rewritten to agree with it.
+    const penalty = dissentPenalty(fac(out.state, 'meridian').dissent);
+    expect(penalty).toBeGreaterThanOrEqual(4);
+    expect(after.industry).toBe(before.industry - penalty);
+    expect(after.influence).toBe(before.influence - penalty);
   });
 
   it('takes about thirty turns to live down', () => {

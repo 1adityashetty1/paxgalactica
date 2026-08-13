@@ -750,7 +750,24 @@ export function commitmentsOf(state: WorldState, factionId: string): Commitment[
 }
 
 /** Stat penalty from a leader's own institutions losing faith in them. */
-export const DISSENT_PER_PENALTY_POINT = 25;
+/**
+ * What a leader whose institutions have entirely stopped trusting them loses
+ * from every stat.
+ *
+ * Stats run 1–20, so the old ceiling of 4 was a fifth of the scale — a bad
+ * quarter, not a crisis. At 8 a maxed-out dissent is 40% of the range and −4 on
+ * every modifier, which is the difference between a power that functions and
+ * one that does not. That is what "your own people have stopped following you"
+ * should mean, and it gives the whole 0–100 track somewhere to go.
+ */
+export const MAX_DISSENT_PENALTY = 8;
+
+/**
+ * Dissent per point of penalty — derived, not chosen, so the ceiling above is
+ * the single number that sets the curve. 12.5 keeps one refusal (8) free and
+ * makes a run of them bite.
+ */
+export const DISSENT_PER_PENALTY_POINT = 100 / MAX_DISSENT_PENALTY;
 
 /**
  * Dissent added each time your own faction refuses an order.
@@ -804,7 +821,7 @@ export const DOCTRINE_RETIRE_DISSENT = 25;
 export const DOCTRINE_CHANGE_DISSENT_CEILING = 75;
 
 export function dissentPenalty(dissent: number): number {
-  return Math.floor(dissent / DISSENT_PER_PENALTY_POINT);
+  return Math.min(MAX_DISSENT_PENALTY, Math.floor(dissent / DISSENT_PER_PENALTY_POINT));
 }
 
 /**

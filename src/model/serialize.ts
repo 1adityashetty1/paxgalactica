@@ -97,7 +97,7 @@ export function serializeCharacter(faction: Faction): string {
     // own institutions had lost faith in it, while every stat it was being
     // asked to reason about was already reduced by exactly that.
     faction.dissent > 0
-      ? `Internal dissent: ${faction.dissent}/100 — every stat is reduced by ${Math.floor(faction.dissent / 25)}. Your institutions have been overruled once too often.`
+      ? `Internal dissent: ${faction.dissent}/100 — every stat is reduced by ${dissentPenalty(faction.dissent)}. Your institutions have been overruled once too often.`
       : 'Internal dissent: none. Your institutions are behind you.',
     '',
     `Capabilities: ${serializeStats(effectiveFor(faction))}`,

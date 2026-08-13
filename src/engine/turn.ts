@@ -1,7 +1,12 @@
 import { describeCheck, type CheckResult } from '../domain/checks.js';
 import { describeRejections, ModelTurnOutputSchema, type OpRejection } from '../domain/ops.js';
 import type { TurnReport } from '../domain/reducer.js';
-import { getFaction, REFUSAL_DISSENT } from '../domain/state.js';
+import {
+  dissentPenalty,
+  getFaction,
+  MAX_DISSENT_PENALTY,
+  REFUSAL_DISSENT,
+} from '../domain/state.js';
 import { extractAgreements, gatherReactions, resolveAction, type ChatMessage } from '../model/calls.js';
 import { callStructured } from '../model/client.js';
 import { loadPrompt } from '../model/prompts.js';
@@ -229,7 +234,7 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
       notes: [
         `${refusal.by} refused the order.`,
         refusal.violated ? `Breached: ${refusal.violated}` : '',
-        `Dissent ${dissent}/100 — every stat drops a point per 25.`,
+        `Dissent ${dissent}/100 — every stat is now reduced by ${dissentPenalty(dissent)}, to a maximum of ${MAX_DISSENT_PENALTY}.`,
       ].filter(Boolean),
       rejections: [],
       costUsd: resolution.costUsd,

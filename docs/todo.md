@@ -29,8 +29,11 @@ diplomacy persona), and `adjust_dissent` remains unguarded — see below.
 **Still open, found but not fixed:** `adjust_dissent` has no actor guard and no
 sign restriction, so a resolution batch can zero its own dissent (erasing the
 refusal penalty it just earned) and set a rival's to 100, dropping every one of
-their stats by 4 with no roll, no presence and no cost. Verified: Vigil went
-18/11/13/6/17 to 14/7/9/2/13 from a single Meridian-actor batch, 0 rejections.
+their stats by `MAX_DISSENT_PENALTY` with no roll, no presence and no cost.
+Verified with a single Meridian-actor batch, 0 rejections: Vigil went
+18/11/13/6/17 to 14/7/9/2/13 against the old ceiling of 4, and now goes to
+10/3/5/1/9 — the penalty ceiling was raised to 8 afterwards, which made this
+hole twice as damaging without anyone touching the op.
 `prompts/resolution.md` actively invites it ("your own institutions grow more or
 less restive"). The fix is the same shape as the `set_doctrine` guard —
 actor-only, and positive deltas only from a model source.

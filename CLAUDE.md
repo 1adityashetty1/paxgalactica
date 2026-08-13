@@ -457,8 +457,18 @@ The resolution call may return a `refusal` instead of ops. When it does,
 a smaller version of that order, it is no order at all. This is distinct from a
 failed check (attempted, went badly) and from a rejected op (malformed).
 `dissent` tracks how far a leader has strayed. It rises `REFUSAL_DISSENT` (8)
-per refusal, decays 2 a turn, and subtracts one point from **every** stat per
-25 — so one refusal fades in four turns and a pattern of them does not.
+per refusal, decays 2 a turn, and subtracts from **every** stat on a curve set
+by one number: `MAX_DISSENT_PENALTY` (8) is the loss at 100 dissent, and
+`DISSENT_PER_PENALTY_POINT` is derived from it (12.5). So one refusal fades in
+four turns and costs nothing on its own; a pattern of them does not fade and
+does cost.
+
+The ceiling is 8 rather than 4 because stats run **1–20**. A fifth of the scale
+read as a bad quarter; 40% of it, and −4 on every modifier, is the difference
+between a power that functions and one that does not — which is what "your own
+people have stopped following you" should mean. The formula lives in
+`dissentPenalty` and nowhere else: a hardcoded copy in `serialize.ts` was
+telling the model a different number than the one the game rolled against.
 
 It was inert for its entire existence: `submitAction` computed the new total,
 put it in a note telling the player dissent had risen, and never staged the op.
@@ -510,9 +520,12 @@ on refusing every raid until it is retired, whatever the paragraph says.
 Retirements are matched **literally** against the faction sheet so the journal
 records which principle was abandoned rather than a paraphrase.
 
-A full reorientation is ~71 — two points off every stat for the thirty-odd turns
-it takes to decay at 2 a turn. That is the intent: turning a power against its
-own character should be campaign-defining, not a free pivot.
+A full reorientation is ~71 — **five** points off every stat for the thirty-odd
+turns it takes to decay at 2 a turn. That is the intent: turning a power against
+its own character should be campaign-defining, not a free pivot. (It was two
+points when these prices were set, against the old ceiling of 4. Raising the
+ceiling to 8 more than doubled the real bite of a doctrine change without the
+dissent numbers moving — worth knowing before retuning either.)
 
 Two guards, both reducer-side. A faction may change only **its own** doctrine
 (`actor`-checked, the same hazard `deploy_agent` validates its owner against —
@@ -525,7 +538,7 @@ leader at the cap could reorient endlessly having already paid in full.
 > Worth knowing when tuning: the clamp means **defiance at 100 dissent is
 > free** in general, not only here. Nothing else fires at the cap — there is no
 > coup, no collapse, no forced reversion. Dissent is a graduated debuff with a
-> long memory and no terminal state.
+> long memory and no terminal state, now worth −8 on every stat at the top.
 
 Engine ops and journals without an `actor` skip both the guards and the charge,
 so a campaign recorded before this replays exactly as it ran.

@@ -13,6 +13,7 @@ import {
   ledgerFor,
   commitmentsOf,
   dissentPenalty,
+  MAX_DISSENT_PENALTY,
   effectiveStats,
   systemIncome,
   treatiesFor,
@@ -169,7 +170,7 @@ function Factions({
             {f.dissent > 0 && (
               <div
                 className="dissent"
-                title="Your own institutions have been overruled once too often. Every stat drops one point per 25 dissent. It falls by 2 a turn on its own."
+                title={`Your own institutions have been overruled once too often. Every stat is reduced by ${penalty} (up to ${MAX_DISSENT_PENALTY} at 100 dissent). It falls by 2 a turn on its own.`}
               >
                 dissent {f.dissent}/100
                 {penalty > 0 && <span className="bad"> · −{penalty} to every stat</span>}

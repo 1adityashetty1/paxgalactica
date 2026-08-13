@@ -3,8 +3,11 @@ import { applyOps, tickTurn, GARRISON_REGROWTH, DISSENT_DECAY } from '../src/dom
 import { createSeedState } from '../src/seed/scenario.js';
 import { STAT_NAMES } from '../src/domain/checks.js';
 import {
+  dissentPenalty,
+  DISSENT_PER_PENALTY_POINT,
   effectiveStats,
   fleetStrengthOf,
+  MAX_DISSENT_PENALTY,
   shipsInTransit,
   type WorldState,
 } from '../src/domain/state.js';
@@ -555,16 +558,36 @@ describe('dissent has teeth', () => {
     const state = fresh();
     const me = state.factions.find((f) => f.id === 'freeworlds')!;
     const base = effectiveStats(state, 'freeworlds');
-    me.dissent = 50; // two penalty points
+    me.dissent = 50;
     const worse = effectiveStats(state, 'freeworlds');
+    // Derived rather than restated, so retuning the curve does not need a test
+    // edit to agree with it.
+    const expected = dissentPenalty(50);
+    expect(expected).toBeGreaterThan(0);
     for (const stat of STAT_NAMES) {
-      expect(worse[stat], stat).toBe(Math.max(1, base[stat] - 2));
+      expect(worse[stat], stat).toBe(Math.max(1, base[stat] - expected));
+    }
+  });
+
+  it('cripples a power whose institutions have entirely given up on it', () => {
+    // Stats run 1-20, so the ceiling has to be a large fraction of the scale
+    // for "nobody follows you any more" to mean anything.
+    const state = fresh();
+    const me = state.factions.find((f) => f.id === 'freeworlds')!;
+    const base = { ...me.stats };
+    me.dissent = 100;
+    expect(dissentPenalty(100)).toBe(MAX_DISSENT_PENALTY);
+    const worst = effectiveStats(state, 'freeworlds');
+    for (const stat of STAT_NAMES) {
+      expect(worst[stat], stat).toBe(Math.max(1, base[stat] - MAX_DISSENT_PENALTY));
     }
   });
 
   it('does nothing below the first threshold', () => {
     const state = fresh();
-    state.factions.find((f) => f.id === 'freeworlds')!.dissent = 24;
+    const under = Math.ceil(DISSENT_PER_PENALTY_POINT) - 1;
+    state.factions.find((f) => f.id === 'freeworlds')!.dissent = under;
+    expect(dissentPenalty(under)).toBe(0);
     expect(effectiveStats(state, 'freeworlds')).toEqual(fresh().factions.find((f) => f.id === 'freeworlds')!.stats);
   });
 
