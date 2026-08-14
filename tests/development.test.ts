@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import {
+  boundPayloadsToOutcome,
   DEVELOPMENT_PAYBACK_TURNS,
   developmentCost,
   EFFECT_CAPS,
@@ -17,6 +18,8 @@ import {
   maxCommitmentIncomeFor,
   SHIP_COST,
   type Op,
+  type OrderEffect,
+  type OrderEffectKind,
   type WorldState,
 } from '../src/domain/state.js';
 import {
@@ -666,5 +669,115 @@ describe('development reaches the trade network (the option-C scenario)', () => 
     for (const s of state.systems.filter((x) => x.controllerFactionId === 'krayt')) {
       expect(developmentCost(state, s, 'krayt', 1)).toBeGreaterThanOrEqual(MIN_DEVELOPMENT_COST);
     }
+  });
+});
+
+/**
+ * A payload may not deliver more than the roll earned.
+ *
+ * The four bounds this module was built with are all about magnitude, and none
+ * of them knows whether the action worked: `applyOps` has never been told the
+ * check, so `OUTCOME_GUIDANCE`'s "a failure emits the cost and NOT the thing the
+ * player wanted" was a promise made in a prompt and nowhere else.
+ *
+ * Seen live as Arkanis — a `fortification` action failed its `industry` check
+ * and the batch contained the cost AND the three-turn order, labelled
+ * "(stalled)", while the narrative said the walls were unchanged. That one
+ * carried no payload. With one it would have delivered in full.
+ */
+describe('payloads are bounded by the check that carried them', () => {
+  const order = (magnitude: number, kind: OrderEffectKind = 'develop_system') => ({
+    op: 'issue_order',
+    factionId: 'meridian',
+    type: 'construction_infrastructure',
+    originId: 'slu-1',
+    targetId: 'slu-2',
+    durationTurns: 5,
+    interruptible: true,
+    onInterrupt: 'cancel',
+    visibility: [],
+    label: 'Yard expansion',
+    onComplete: { kind, magnitude, summary: '' },
+  });
+
+  it('strips the payload on a failure, and says so', () => {
+    const out = boundPayloadsToOutcome([order(2)], 'failure');
+    expect(out.ops[0]).not.toHaveProperty('onComplete');
+    expect(out.notes[0]).toMatch(/not commissioned/);
+  });
+
+  it('strips it on a critical failure too', () => {
+    expect(boundPayloadsToOutcome([order(2)], 'critical_failure').ops[0]).not.toHaveProperty(
+      'onComplete',
+    );
+  });
+
+  it('leaves the order itself alone — an attack must still go out', () => {
+    // The combat fix requires a failed attack to still be issued. Dropping the
+    // order rather than the payload would reopen exactly that hole.
+    const out = boundPayloadsToOutcome([order(2)], 'critical_failure');
+    expect((out.ops[0] as Record<string, unknown>).op).toBe('issue_order');
+    expect((out.ops[0] as Record<string, unknown>).durationTurns).toBe(5);
+  });
+
+  it('halves on a partial, because "reduced" was never enforced', () => {
+    const out = boundPayloadsToOutcome([order(2)], 'partial');
+    expect((out.ops[0] as { onComplete: OrderEffect }).onComplete.magnitude).toBe(1);
+    expect(out.notes[0]).toMatch(/partial/i);
+  });
+
+  it('never floors a partial to nothing', () => {
+    const out = boundPayloadsToOutcome([order(1)], 'partial');
+    expect((out.ops[0] as { onComplete: OrderEffect }).onComplete.magnitude).toBe(1);
+    expect(out.notes).toHaveLength(0);
+  });
+
+  it('leaves a success untouched, and returns the same array', () => {
+    const ops = [order(3)];
+    for (const outcome of ['success', 'critical_success'] as const) {
+      const out = boundPayloadsToOutcome(ops, outcome);
+      expect(out.ops).toBe(ops);
+      expect(out.notes).toHaveLength(0);
+    }
+  });
+
+  it('does not mutate the ops it was given', () => {
+    const ops = [order(4)];
+    boundPayloadsToOutcome(ops, 'partial');
+    expect((ops[0] as { onComplete: OrderEffect }).onComplete.magnitude).toBe(4);
+  });
+
+  it('ignores ops that are not orders with payloads', () => {
+    const others = [
+      { op: 'adjust_credits', factionId: 'meridian', delta: -70 },
+      { op: 'issue_order', factionId: 'meridian', type: 'fleet_movement', originId: 'slu-1', targetId: 'slu-2' },
+      null,
+      'nonsense',
+    ];
+    expect(boundPayloadsToOutcome(others, 'critical_failure').ops).toEqual(others);
+  });
+
+  it('closes the measured case: a failed development delivers nothing', () => {
+    // The probe that quantified this: slu-2 crosses HUB_THRESHOLD and Meridian's
+    // net income goes 309 -> 519, permanently, from a batch the player was told
+    // was a failure.
+    const seed = createSeedState('meridian');
+    const funded = applyOps(seed, [{ op: 'adjust_credits', factionId: 'meridian', delta: 5000 }], 'engine').state;
+    const before = ledgerFor(funded, 'meridian').net;
+
+    const run = (ops: unknown[]) => {
+      let s = applyOps(funded, ops, 'model', 'meridian').state;
+      for (let i = 0; i < 6; i += 1) s = tickTurn(s).state;
+      return s;
+    };
+
+    const unbounded = run([order(1)]);
+    const bounded = run(boundPayloadsToOutcome([order(1)], 'failure').ops);
+
+    expect(sys(unbounded, 'slu-2').strategicValue).toBe(7);
+    expect(ledgerFor(unbounded, 'meridian').net).toBeGreaterThan(before);
+
+    expect(sys(bounded, 'slu-2').strategicValue).toBe(6);
+    expect(ledgerFor(bounded, 'meridian').net).toBe(before);
   });
 });

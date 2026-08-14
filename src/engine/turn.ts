@@ -1,4 +1,5 @@
 import { describeCheck, type CheckResult } from '../domain/checks.js';
+import { boundPayloadsToOutcome } from '../domain/development.js';
 import { describeRejections, ModelTurnOutputSchema, type OpRejection } from '../domain/ops.js';
 import type { TurnReport } from '../domain/reducer.js';
 import {
@@ -141,19 +142,36 @@ async function stageWithCorrection(
   label: string,
   narrative: string,
   context: string,
+  /**
+   * The band this action resolved in, so an `onComplete` payload cannot deliver
+   * more than the roll earned. Applied to the correction batch as well as the
+   * first: a retry that re-emitted the payload would otherwise be the hole.
+   */
+  outcome?: CheckResult['outcome'],
 ): Promise<{ rejections: OpRejection[]; notes: string[]; costUsd: number }> {
-  const first = campaign.stage(ops, label, narrative);
+  const bind = (batch: unknown[]) =>
+    outcome ? boundPayloadsToOutcome(batch, outcome) : { ops: batch, notes: [] };
+
+  const bound = bind(ops);
+  const first = campaign.stage(bound.ops, label, narrative);
   if (first.rejections.length === 0) {
-    return { rejections: [], notes: first.notes, costUsd: 0 };
+    return { rejections: [], notes: [...bound.notes, ...first.notes], costUsd: 0 };
   }
 
   const revised = await reviseRejected(campaign, first.rejections, label, context);
-  if (!revised) return { rejections: first.rejections, notes: first.notes, costUsd: 0 };
+  if (!revised) {
+    return {
+      rejections: first.rejections,
+      notes: [...bound.notes, ...first.notes],
+      costUsd: 0,
+    };
+  }
 
-  const second = campaign.stage(revised.ops, `${label}:correction`, '');
+  const boundAgain = bind(revised.ops);
+  const second = campaign.stage(boundAgain.ops, `${label}:correction`, '');
   return {
     rejections: second.rejections,
-    notes: [...first.notes, ...second.notes],
+    notes: [...bound.notes, ...first.notes, ...boundAgain.notes, ...second.notes],
     costUsd: revised.costUsd,
   };
 }
@@ -299,6 +317,7 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     action.length > 48 ? `${action.slice(0, 47)}…` : action,
     resolution.output.narrative,
     `The player declared: ${action}\n\nYour narrative was: ${resolution.output.narrative}`,
+    resolution.check?.outcome,
   );
 
   if (defiance) {

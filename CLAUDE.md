@@ -1054,7 +1054,41 @@ all in code:
    out, so a payoff cannot exceed what the faction could afford to commission,
    and an interrupted programme has real money sunk in it.
 
-A fifth guard closes a hole the value-based pricing below opened: the payload
+#### A fifth bound: the check that carried the payload
+
+The four bounds above are all about *magnitude*, and none of them knows whether
+the action worked — `applyOps` has never been told the check, so
+`OUTCOME_GUIDANCE`'s "a failure emits the ops for what the attempt COST and NOT
+the ops for the thing the player wanted" was a promise made in a prompt and
+nowhere else. Seen live as Arkanis: a `fortification` action failed its
+`industry` check, the narrative said the walls stood exactly as thick as that
+morning, and the batch contained the cost **and** the three-turn order, labelled
+"(stalled)". That one was harmless only because it carried no payload. Measured
+with one: a `develop_system +1` at slu-2, emitted in a batch the player was told
+was a failure, crosses `HUB_THRESHOLD` five turns later and takes Meridian's net
+from 309 to **519, permanently**, with zero rejections.
+
+This is the combat leak running the other way — there the model fabricated
+losses on a failure, here it banks gains on one — and the fix is the same shape.
+`boundPayloadsToOutcome` is applied in `stageWithCorrection`, which knows the
+band, **to the correction batch as well as the first**, since a retry that
+re-emitted the payload would otherwise be the hole:
+
+| band | payload |
+|---|---|
+| `critical_success` · `success` | untouched |
+| `partial` | halved, floored, minimum 1 — "a reduced result and a bill" never enforced the reduced half |
+| `failure` · `critical_failure` | stripped, with a note |
+
+The **order itself is never dropped**, only its payload: a failed attack must
+still be issued, which is the whole of the combat fix. And stripping happens
+before the reducer prices the payload, so a stripped payload is never charged
+for — the price exists to bound the payoff, and with no payoff there is nothing
+to bound. Charging for a commission never placed would invent a cost the player
+was never quoted; what a failed attempt costs is whatever the resolution call
+emits for it.
+
+A sixth guard closes a hole the value-based pricing below opened: the payload
 requires the faction to **hold the target or have ships over it**, the same
 presence line interdiction and suborning draw. Because the price is the *actor's*
 marginal income, a development on a rival's world costs the floor — the actor

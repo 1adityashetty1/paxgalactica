@@ -212,14 +212,21 @@ anyway"*. It falls back to the arbiter's when the name is just the faction.
   and the fix is cheap either way — charge the breach on the check landing at
   `partial` or better, or charge a smaller attempt price on a failure. Wants a
   design call rather than a patch.
-- **A failed check still emitted the order it failed to start.** The Arkanis
-  fortification failed and resolution emitted both `adjust_credits -70` *and* the
-  three-turn `fortification` order, labelled "(stalled)", while the narrative
-  said the walls stand exactly as thick as before. `OUTCOME_GUIDANCE` says a
-  failure emits the cost and **not** the thing the player wanted. Harmless today
-  because the order carries no `onComplete`, so it will complete and do nothing —
-  which is its own small lie to the player, who can see it ticking in the
-  briefing.
+- ~~**A failed check still emitted the order it failed to start.**~~ **FIXED**,
+  and it was worse than "harmless today". The Arkanis fortification failed and
+  resolution emitted `adjust_credits -70` *and* the three-turn order, labelled
+  "(stalled)", while the narrative said the walls stand exactly as thick as
+  before. That one carried no `onComplete`. Measured with one, on the seed: a
+  `develop_system +1` at slu-2 emitted in a batch the player was told was a
+  failure crosses `HUB_THRESHOLD` five turns later and takes Meridian's net from
+  **309 to 519, permanently**, zero rejections — because `applyOps` has never
+  been told the check, so the whole `OUTCOME_GUIDANCE` contract was a promise
+  made in a prompt and nowhere else. The same hole as the combat leak, running
+  the other way: there the model fabricated losses on a failure, here it banked
+  gains on one. `boundPayloadsToOutcome` strips the payload on a failure and
+  halves it on a partial, applied in `stageWithCorrection` **to the correction
+  batch as well as the first**. The order itself is never dropped — a failed
+  attack must still go out, which is the whole of the combat fix. Ten tests.
 
 The original write-up follows.
 
