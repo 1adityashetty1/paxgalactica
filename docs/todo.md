@@ -202,16 +202,21 @@ anyway"*. It falls back to the arbiter's when the name is just the faction.
 
 ### Still open, found by the same playtests
 
-- **A compulsion is charged on the attempt, not the act, and it out-prices a red
-  line.** The tribute action rolled a natural 1 — the Combine's negotiators
-  walked out, no arrangement was made — and still cost the full
-  `COMPULSION_BREACH_DISSENT` (25), while a red line *blocked outright* costs
-  `REFUSAL_DISSENT` (8). So attempting the lesser transgression and failing is
-  three times worse than attempting the absolute one. Defensible reading: the
-  institutions are furious you *proposed* it. But the severities are inverted,
-  and the fix is cheap either way — charge the breach on the check landing at
-  `partial` or better, or charge a smaller attempt price on a failure. Wants a
-  design call rather than a patch.
+- ~~**A compulsion is charged on the attempt, not the act, and it out-prices a
+  red line.**~~ **RESOLVED — charging on the attempt kept, price lowered.** The
+  tribute action rolled a natural 1 — the negotiators walked out, no arrangement
+  was made — and still cost the full 25, while a red line *blocked outright*
+  costs 8. Two readings were on the table; the user took the first: the
+  institutions really are furious that the thing was *proposed*, and keeping the
+  charge out of the outcome bands is what stops it becoming another number the
+  resolution call can reason its way around. What was wrong was the size.
+  `COMPULSION_BREACH_DISSENT` is now **15** — still ~2x a refusal, still under
+  `DOCTRINE_ETHIC_DISSENT` (20), since one act against character is lighter than
+  permanently rewriting what the power is. The live Arkanis turn that cost 58
+  dissent and −4 on every stat now costs 38 and −3, and reaching the cap by
+  insistence takes about eight breaches rather than four. A test pins the
+  ordering against both neighbouring constants and one pins that a single bad
+  turn cannot spiral.
 - ~~**A failed check still emitted the order it failed to start.**~~ **FIXED**,
   and it was worse than "harmless today". The Arkanis fortification failed and
   resolution emitted `adjust_credits -70` *and* the three-turn order, labelled

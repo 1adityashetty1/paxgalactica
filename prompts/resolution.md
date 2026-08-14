@@ -46,8 +46,8 @@ either for an order that is merely unwise, risky or expensive: that is still an
 order, so resolve it and let the consequences do the work.
 
 A leader who means to turn their power against its own character does it by
-insisting, repeatedly, and absorbing what each insistence costs. Four defiances
-is enough to leave a faction with nobody following it.
+insisting, repeatedly, and absorbing what each insistence costs. Enough of them
+leaves a faction with nobody following it.
 
 ## Output
 

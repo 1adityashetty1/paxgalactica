@@ -681,13 +681,22 @@ desync. The two kinds of principle are now answered differently:
 | | enforced by | cost | repeatable |
 |---|---|---|---|
 | **red line** — *"will not, whatever the incentive"* | `refusal`; **no ops at all** | `REFUSAL_DISSENT` (8) | the attempt, yes; the act, never |
-| **compulsion** — *"your institutions DEMAND"* | `defiance`; **the ops land** | `COMPULSION_BREACH_DISSENT` (25) | yes, and that is the point |
+| **compulsion** — *"your institutions DEMAND"* | `defiance`; **the ops land** | `COMPULSION_BREACH_DISSENT` (15) | yes, and that is the point |
 
 A leader who means to turn their power against its own character does it by
-insisting and absorbing the cost. Four defiances reach the 100 cap and
+insisting and absorbing the cost. Around eight defiances reach the 100 cap and
 `MAX_DISSENT_PENALTY` — eight off every stat, fifty turns to clear — so the
-mechanism is "you may, and by the fourth time nobody is following you" rather
+mechanism is "you may, and by the eighth time nobody is following you" rather
 than "you may not".
+
+The price lands on the **attempt**, not the act: the institutions are furious
+that the thing was proposed, and keeping the charge out of the outcome bands is
+what stops it becoming another number the resolution call can reason its way
+around. It was 25 until the first live playtest of the arbiter rework, where two
+Arkanis breaches in one turn — one of them a natural 1 that achieved nothing —
+cost 50 dissent and −4 on every stat before the second turn began. Charging on
+the attempt is right; charging three times what a *blocked red line* costs was
+not.
 
 `defiance` is charged in code, not nominated by the model: the **arbiter** rules
 that a compulsion was defied — see "Who rules on a breach" above — and the

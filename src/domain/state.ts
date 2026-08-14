@@ -981,21 +981,34 @@ export const DOCTRINE_ETHIC_DISSENT = 20;
 /**
  * What defying one of your own compulsions costs, every time you do it.
  *
- * This replaced retiring principles outright. Four breaches reach the 100 cap
- * and `MAX_DISSENT_PENALTY` — eight points off every stat, fifty turns to clear
- * at `DISSENT_DECAY` — so a leader can turn their power against its own
- * character by simply insisting, and the price is that by the fourth insistence
- * nobody is following them.
+ * This replaced retiring principles outright: a leader can turn their power
+ * against its own character by simply insisting, and the price is that
+ * eventually nobody is following them. Roughly **eight breaches** reach the 100
+ * cap and `MAX_DISSENT_PENALTY` — eight points off every stat — allowing for
+ * `DISSENT_DECAY` between them.
  *
  * Deliberately larger than `REFUSAL_DISSENT` (8), which is what a *red line*
  * costs. Being told no is cheaper than being obeyed against the institution's
- * judgement, because the second one actually happened.
+ * judgement, because the second one actually happened. And deliberately smaller
+ * than `DOCTRINE_ETHIC_DISSENT` (20): one act against character is a lighter
+ * thing than permanently rewriting what the power is.
+ *
+ * **It was 25, and the first live playtest of the arbiter rework showed that was
+ * too steep.** The charge lands on the *attempt* — the institutions are furious
+ * that the thing was proposed, which is the right reading and the one that keeps
+ * the price out of the outcome bands — but at 25 that made attempting the lesser
+ * transgression and failing three times worse than attempting an absolute one
+ * and being blocked. Playing Arkanis, two compulsion breaches in a single turn
+ * (one of them a natural 1 that achieved precisely nothing) took the Free Worlds
+ * to 58 dissent and −4 on every stat before the second turn began. At 15 that
+ * same turn lands at 38 and −3: still a real, visible cost, and no longer a
+ * spiral from one bad roll.
  *
  * Nothing further fires at the cap, and that is on purpose: at 100 the penalty
  * is already crippling, and a terminal state on top of it would be charging
  * twice for one decision.
  */
-export const COMPULSION_BREACH_DISSENT = 25;
+export const COMPULSION_BREACH_DISSENT = 15;
 
 /**
  * Dissent at or above which a faction will not be reoriented at all.
