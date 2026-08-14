@@ -568,7 +568,33 @@ the price of every action in the game.
 
 A red-line ruling is also **cheaper** than what it replaces: it skips the Sonnet
 resolution call entirely, so the most flagrant actions in the game now cost
-about `$0.017` instead of `$0.073`.
+about `$0.022` instead of `$0.073` — measured live.
+
+**The sheet decides which kind a line is, not the arbiter's label.** Verified in
+two playtests: Arkanis blocked the protectorate it had been talked into before
+and did *not* flag raising its own garrison, but the Vigil produced a new hole in
+the same shape as the old one. Asked to retain Nar smuggler captains as
+informants, the arbiter quoted the right line, called it *"a red line, not a
+compulsion"* when the seed carries it in `compulsions`, and returned the whole
+thing as `admissible: false` — the one exit that charges nothing at all. A
+25-dissent breach became a free no-op.
+
+`classifyPrinciple` in `src/domain/compulsions.ts` closes it by splitting the
+work the same way everything else here does. The model is good at the part that
+needs judgement — *which line does this action touch* — and unreliable at the
+part that is a lookup, so it names the line and code does the lookup:
+
+- `kind` is derived from the list the line is actually on; the model's label is
+  discarded, in both directions.
+- An `admissible: false` whose `reason` quotes a real line is rewritten into the
+  breach it actually is.
+- A principle matching **nothing** on the sheet is not a breach at all. An
+  invented rule buys no price.
+
+Matching is forgiving about truncation, punctuation and light paraphrase because
+the arbiter quotes imperfectly, and it is safe to be forgiving because the five
+sheets have almost nothing in common — a test asserts no line on any sheet
+matches any other faction's.
 
 ### Compulsions also fire on drift, for everyone
 

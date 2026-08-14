@@ -4,10 +4,11 @@
 
 **Open work, in priority order.** Everything below is evidence-backed: items
 1–3 came out of the two live playtests and are now done. **What is actually
-open is item 4 (no debt mechanic) and the open half of item 5** — and, ahead of
-either, two things that are built and have never been watched running: the
-battle report card (item 12) and the arbiter's new breach ruling (item 11).
-Live play has found every bug in this file that the suite did not.
+open is item 4 (no debt mechanic), the open half of item 5, and the two smaller
+findings under item 11** ("still open, found by the same playtests"). The battle
+report card (item 12) is built and has still never been watched rendering.
+Live play has found every bug in this file that the suite did not — including,
+again this session, one in the fix for the previous one.
 
 **Branch state:** `combat-report`, off `order-effects`. 576 tests pass;
 `pnpm typecheck`, `pnpm typecheck:web` and `pnpm build:web` are clean. PR #4 merged
@@ -152,10 +153,75 @@ carried-but-unrendered pattern as the battle report — the most consequential
 thing a declaration can do to a faction arrived as a grey note among the others.
 It now renders in the refusal voice, and the note that duplicated it is gone.
 
-**Not verified live.** Everything below was found by playing, and this fix has
-not been. The thing to watch is whether the arbiter now over-fires — a referee
-that finds a breach in every declaration makes the sheet meaningless as fast as
-one that never finds any. The original write-up follows.
+### Verified live, and it found one more hole
+
+Two short playtests, ~$1.60 total: Arkanis (5 calls, 1 turn committed) and the
+Iron Vigil (5 calls). Raw state diffed on every action, never the narrative.
+
+**Arkanis — all four prior misses now fire, and it does not over-fire.**
+
+| declared | ruling | cost |
+|---|---|---|
+| stand down, open the gates, let the Vigil garrison the capital *under a protectorate* | `red_line`, quoted verbatim, **no roll, no resolution call** | 8 dissent, **$0.022** |
+| pay the Combine 20/turn to leave our lanes alone | `compulsion` | 25 dissent, ops landed |
+| six hulls out to raid Combine cargo | `compulsion` | 25 dissent, ops landed |
+| *control:* raise the garrison and thicken the walls | **no breach** | — |
+
+The first row is the exact scenario that previously ran as a `resolve` check at
+DC 19 and would have succeeded on a 20. The control is the important one: the
+most in-character action Arkanis has was not flagged, so the referee is not
+finding a violation in every declaration. Dissent reached the dice as designed
+(58 dissent → `industry` 10 − 2 = 8 on the fortification roll), and the turn
+committed clean — 4 actions, 0 rejections, decay 58 → 56, NPC drift +3 on both
+the Vigil and Drajk.
+
+**Iron Vigil — both red lines held, and the escape hatch had moved.** *"Take the
+Combine's four hundred and stand down from the approaches"* and *"recognise
+Arkanis as a sovereign government"* both refused, quoted, at $0.022 each. But
+*"quietly retain the Combine's smuggler captains as informants"* came back
+`admissible: false` with the narrative *"This is a red line, not a compulsion"* —
+**and it is neither of those things.** The line is in the Vigil's `compulsions`,
+and `admissible: false` is the one exit in the game that charges **nothing at
+all**: no dissent, no ops, no record. A 25-dissent breach became a free no-op,
+and the prompt saying "out of character is not inadmissible" did not stop it.
+
+**FIXED — `classifyPrinciple` (`src/domain/compulsions.ts`).** The model is good
+at the part needing judgement (which line does this action touch) and unreliable
+at the part that is a lookup (which list is that line on), so it now names the
+line and **code does the lookup**: `kind` is derived from the sheet and the
+model's own label discarded, an `admissible: false` whose reason quotes a real
+line is rewritten into the breach it actually is, and a principle matching
+nothing on the sheet is not a breach at all — an invented rule buys no price.
+Matching is loose about truncation and punctuation, and a test asserts it never
+matches another power's line across all five sheets. Re-run live afterwards: the
+same declaration now charges 25 and lands its ops. Eight more tests, 585 total.
+
+Also fixed: resolution filled `defiance.by` with `"vigil"` rather than an
+institution, which the UI rendered as *"vigil object, and the order goes out
+anyway"*. It falls back to the arbiter's when the name is just the faction.
+
+### Still open, found by the same playtests
+
+- **A compulsion is charged on the attempt, not the act, and it out-prices a red
+  line.** The tribute action rolled a natural 1 — the Combine's negotiators
+  walked out, no arrangement was made — and still cost the full
+  `COMPULSION_BREACH_DISSENT` (25), while a red line *blocked outright* costs
+  `REFUSAL_DISSENT` (8). So attempting the lesser transgression and failing is
+  three times worse than attempting the absolute one. Defensible reading: the
+  institutions are furious you *proposed* it. But the severities are inverted,
+  and the fix is cheap either way — charge the breach on the check landing at
+  `partial` or better, or charge a smaller attempt price on a failure. Wants a
+  design call rather than a patch.
+- **A failed check still emitted the order it failed to start.** The Arkanis
+  fortification failed and resolution emitted both `adjust_credits -70` *and* the
+  three-turn `fortification` order, labelled "(stalled)", while the narrative
+  said the walls stand exactly as thick as before. `OUTCOME_GUIDANCE` says a
+  failure emits the cost and **not** the thing the player wanted. Harmless today
+  because the order carries no `onComplete`, so it will complete and do nothing —
+  which is its own small lie to the player, who can see it ticking in the
+  briefing.
+
+The original write-up follows.
 
 ---
 

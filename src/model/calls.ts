@@ -26,6 +26,7 @@ import {
   getFaction,
   type WorldState,
 } from '../domain/state.js';
+import { classifyPrinciple } from '../domain/compulsions.js';
 import { callStructured } from './client.js';
 import { loadPrompt } from './prompts.js';
 import {
@@ -114,6 +115,22 @@ export async function appraiseAction(
   return { appraisal: res.value, attempts: res.attempts, costUsd: res.costUsd };
 }
 
+/**
+ * Is this the name of a body inside the faction, rather than the faction?
+ *
+ * A defiance is spoken by someone — the officer corps, the Trade Council, the
+ * old cousins — and a bare faction id or name in that slot reads as nonsense
+ * once it is rendered ("vigil object, and the order goes out anyway").
+ */
+function namesAnInstitution(by: string | undefined, state: WorldState): boolean {
+  if (!by) return false;
+  const cleaned = by.trim().toLowerCase();
+  if (cleaned.length === 0) return false;
+  return !state.factions.some(
+    (f) => f.id.toLowerCase() === cleaned || f.name.toLowerCase() === cleaned,
+  );
+}
+
 export async function resolveAction(
   state: WorldState,
   action: string,
@@ -127,12 +144,33 @@ export async function resolveAction(
 }> {
   /* --- 1. Arbitrate: admissible at all, and priced blind to the roll --- */
   const priced = await appraiseAction(state, action);
+  const actor = getFaction(state, state.playerFactionId);
+
+  // What the arbiter NAMED, classified against the sheet rather than by its own
+  // label — see `classifyPrinciple`. The model is good at spotting which line an
+  // action touches and unreliable at saying which list that line is on, so the
+  // judgement is taken and the lookup is not.
+  const named = priced.appraisal.breach?.principle;
+  const classified = actor && named ? classifyPrinciple(actor, named) : null;
+
+  // `admissible: false` is the one exit that charges nothing at all, which makes
+  // it the cheapest possible bypass for a principle — and a live playtest found
+  // the arbiter reaching for it on a compulsion worth 25 dissent and a landed
+  // order, having correctly quoted the line in its reason. The prompt says "out
+  // of character is not inadmissible"; this is what says it in code. An
+  // inadmissible ruling whose reason quotes a real line off the sheet is
+  // rewritten into the breach it actually is.
+  const smuggled =
+    !priced.appraisal.admissible && actor && !classified
+      ? classifyPrinciple(actor, priced.appraisal.reason)
+      : null;
+  const ruled = classified ?? smuggled;
 
   // A ruling of inadmissible ends it here. No roll, no ops, no cost beyond
   // the arbitration — the action was not attempted, so there is nothing to
   // resolve. Distinct from a FAILED check (attempted, went badly) and from a
   // REFUSAL (your own institutions would not carry it out).
-  if (!priced.appraisal.admissible) {
+  if (!priced.appraisal.admissible && !ruled) {
     return {
       output: {
         narrative:
@@ -158,7 +196,22 @@ export async function resolveAction(
   // Ruling it here is structural rather than persuasive: on a red line there
   // IS no resolution call, so there is nothing left to argue the order back
   // into existence. A red line is absolute, and no roll can buy it.
-  const breach = priced.appraisal.breach;
+  //
+  // `ruled` rather than the arbiter's own `kind`, and the sheet's wording rather
+  // than the quote: the player is charged for the line as their faction states
+  // it, which is also the string every other reader in the game matches on.
+  const breach = ruled
+    ? {
+        kind: ruled.kind,
+        principle: ruled.principle,
+        by: priced.appraisal.breach?.by ?? 'your own institutions',
+        reason:
+          priced.appraisal.breach?.reason ||
+          priced.appraisal.reason ||
+          'Your institutions will not have it.',
+      }
+    : null;
+
   if (breach?.kind === 'red_line') {
     return {
       output: {
@@ -264,7 +317,13 @@ export async function resolveAction(
           // block, which is the distinction the whole mechanism rests on.
           refusal: undefined,
           defiance: {
-            by: res.value.defiance?.by ?? breach.by,
+            // `by` is meant to name the institution that objected — "the
+            // officer corps", "the Trade Council" — and resolution sometimes
+            // fills it with the faction id instead, which the UI then renders
+            // as "vigil object, and the order goes out anyway". Seen live.
+            by: namesAnInstitution(res.value.defiance?.by, state)
+              ? (res.value.defiance?.by as string)
+              : breach.by,
             reason: res.value.defiance?.reason ?? breach.reason,
             // Always the arbiter's, so the line the player is charged for is
             // the line that was actually ruled on.

@@ -41,6 +41,7 @@ const { submitAction } = await import('../src/engine/turn.js');
 const { Campaign } = await import('../src/engine/campaign.js');
 const { createSeedState } = await import('../src/seed/scenario.js');
 const { COMPULSION_BREACH_DISSENT, REFUSAL_DISSENT } = await import('../src/domain/state.js');
+const { classifyPrinciple } = await import('../src/domain/compulsions.js');
 
 /** Arkanis's first red line, quoted exactly as the faction sheet carries it. */
 const NO_OCCUPATION =
@@ -166,6 +167,23 @@ describe('a compulsion is a price, and the price is charged', () => {
     expect(out.output.defiance?.violated).toBe(compulsionBreach.principle);
   });
 
+  it('falls back to the arbiter when resolution names the faction, not a body', async () => {
+    // Seen live: resolution filled `by` with "vigil", which the browser then
+    // rendered as "vigil object, and the order goes out anyway".
+    scripted = {
+      appraisal: appraisal({ breach: compulsionBreach }),
+      resolution: {
+        narrative: 'It is agreed.',
+        ops: [],
+        defiance: { by: 'freeworlds', reason: 'Carried out under protest.', violated: '' },
+      },
+    };
+
+    const out = await resolveAction(createSeedState('freeworlds'), 'Agree to pay tribute.');
+
+    expect(out.output.defiance?.by).toBe(compulsionBreach.by);
+  });
+
   it('is not upgraded into a refusal by the resolution call', async () => {
     // A price and a block are different things, and only the arbiter decides
     // which one applies. Resolution volunteering a refusal on top of a
@@ -235,6 +253,167 @@ describe('the ordinary case is untouched', () => {
     const out = await resolveAction(createSeedState('freeworlds'), OPEN_THE_GATES);
 
     expect(out.output.refusal?.by).toBe('the fleet commanders');
+  });
+});
+
+describe('the sheet decides which kind a line is, not the arbiter’s label', () => {
+  // Found live, as the Iron Vigil. Asked to retain Nar smuggler captains as
+  // informants, the arbiter quoted the right line, called it "a red line, not a
+  // compulsion" when the seed carries it in `compulsions`, and returned the
+  // whole thing as `admissible: false` — the one exit that charges nothing at
+  // all. A 25-dissent compulsion became a free no-op.
+  const NO_NARS =
+    'no accommodation with pirates, smugglers or the Nars may be entertained, however useful';
+  const HIRE_THE_NARS = 'Quietly retain the Combine’s smuggler captains as our eyes on the spine.';
+
+  it('demotes a mislabelled red line to the compulsion it actually is', async () => {
+    scripted = {
+      appraisal: appraisal({
+        breach: {
+          kind: 'red_line',
+          principle: NO_NARS,
+          by: 'the officer corps',
+          reason: 'This is a red line, not a compulsion.',
+        },
+      }),
+      resolution: { narrative: 'The captains are retained.', ops: [] },
+    };
+    const campaign = Campaign.start('vigil', 'test-mislabelled');
+
+    const outcome = await submitAction(campaign, HIRE_THE_NARS);
+
+    // The order stands and is charged, rather than being blocked outright.
+    expect(outcome.refusal).toBeNull();
+    expect(outcome.defiance?.violated).toBe(NO_NARS);
+    expect(campaign.state.factions.find((f) => f.id === 'vigil')!.dissent).toBe(
+      COMPULSION_BREACH_DISSENT,
+    );
+  });
+
+  it('promotes a mislabelled compulsion to the red line it actually is', async () => {
+    // The same guard in the direction that matters more: under-charging a red
+    // line lets an absolute act through for 25.
+    scripted = {
+      appraisal: appraisal({
+        breach: {
+          kind: 'compulsion',
+          principle: 'will not accept payment to stand down',
+          by: 'the officer corps',
+          reason: 'Being bought is the insult, not the price.',
+        },
+      }),
+    };
+    const campaign = Campaign.start('vigil', 'test-promoted');
+
+    const outcome = await submitAction(campaign, 'Take the Combine’s money and withdraw.');
+
+    expect(calls.map((c) => c.kind)).toEqual(['appraisal']);
+    expect(outcome.refusal?.violated).toBe(
+      'will not accept payment to stand down; being bought is the insult, not the price',
+    );
+    expect(campaign.state.factions.find((f) => f.id === 'vigil')!.dissent).toBe(REFUSAL_DISSENT);
+  });
+
+  it('rewrites an inadmissible ruling that is really a breach', async () => {
+    // `admissible: false` costs nothing, which makes it the cheapest bypass in
+    // the game for a principle. The prompt says "out of character is not
+    // inadmissible"; this is what says it in code.
+    scripted = {
+      appraisal: appraisal({
+        admissible: false,
+        reason: `Your doctrine forbids this: "${NO_NARS}". The officer corps will not permit it.`,
+      }),
+      resolution: { narrative: 'It is done, quietly.', ops: [] },
+    };
+    const campaign = Campaign.start('vigil', 'test-smuggled');
+
+    const outcome = await submitAction(campaign, HIRE_THE_NARS);
+
+    expect(outcome.notes).not.toContain(
+      'The arbiter ruled this cannot be attempted as things stand.',
+    );
+    expect(outcome.defiance?.violated).toBe(NO_NARS);
+    expect(campaign.state.factions.find((f) => f.id === 'vigil')!.dissent).toBe(
+      COMPULSION_BREACH_DISSENT,
+    );
+  });
+
+  it('leaves an ordinary inadmissible ruling alone', async () => {
+    scripted = {
+      appraisal: appraisal({
+        admissible: false,
+        reason: 'You do not hold that world and have no fleet within six jumps of it.',
+      }),
+    };
+    const campaign = Campaign.start('vigil', 'test-plain-inadmissible');
+
+    const outcome = await submitAction(campaign, 'Cede Kalzir to the Free Worlds.');
+
+    expect(outcome.notes).toContain('The arbiter ruled this cannot be attempted as things stand.');
+    expect(campaign.state.factions.find((f) => f.id === 'vigil')!.dissent).toBe(0);
+  });
+
+  it('charges nothing for a principle the faction does not hold', async () => {
+    // An invented line is not a breach: there is nothing there to have broken,
+    // and a model that can name its own rule can charge any price it likes.
+    scripted = {
+      appraisal: appraisal({
+        breach: {
+          kind: 'red_line',
+          principle: 'the Vigil does not act before the second hour of the watch',
+          by: 'the officer corps',
+          reason: 'It is not yet the second hour.',
+        },
+      }),
+      resolution: { narrative: 'The order goes out.', ops: [] },
+    };
+    const campaign = Campaign.start('vigil', 'test-invented');
+
+    const outcome = await submitAction(campaign, 'Send a courier to Kalzir.');
+
+    expect(outcome.refusal).toBeNull();
+    expect(outcome.defiance).toBeNull();
+    expect(campaign.state.factions.find((f) => f.id === 'vigil')!.dissent).toBe(0);
+  });
+});
+
+describe('the matcher is loose about quoting and strict about identity', () => {
+  it('matches a truncated or re-punctuated quote', () => {
+    const vigil = createSeedState('vigil').factions.find((f) => f.id === 'vigil')!;
+    for (const quote of [
+      'will not accept payment to stand down',
+      'Will not accept payment to stand down — being bought is the insult, not the price.',
+      'will not recognise a rebel government as legitimate',
+    ]) {
+      expect(classifyPrinciple(vigil, quote)?.kind).toBe('red_line');
+    }
+  });
+
+  it('never matches another power’s line', () => {
+    // The five sheets have almost nothing in common, which is what lets the
+    // matcher be forgiving about wording without ever charging the wrong power
+    // for the wrong principle.
+    const state = createSeedState('vigil');
+    for (const f of state.factions) {
+      for (const other of state.factions) {
+        if (other.id === f.id) continue;
+        for (const line of [...other.redLines, ...other.compulsions.map((c) => c.text)]) {
+          expect(classifyPrinciple(f, line)).toBeNull();
+        }
+      }
+    }
+  });
+
+  it('resolves every line on every sheet to its own list', () => {
+    const state = createSeedState('vigil');
+    for (const f of state.factions) {
+      for (const line of f.redLines) {
+        expect(classifyPrinciple(f, line)).toEqual({ kind: 'red_line', principle: line });
+      }
+      for (const c of f.compulsions) {
+        expect(classifyPrinciple(f, c.text)).toEqual({ kind: 'compulsion', principle: c.text });
+      }
+    }
   });
 });
 
