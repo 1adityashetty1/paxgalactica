@@ -2,9 +2,16 @@
 
 ## Where things stand (2026-08-13)
 
-**Open work, in priority order.** Items 1–3 all come out of item 9, the first
-live playtest of this session's mechanics, so they are evidence-backed rather
-than speculative.
+**Open work, in priority order.** Everything below is evidence-backed: items
+1–2 came out of the two live playtests, and item 3 is what the second playtest
+proved about the mechanic built to answer the first.
+
+**Branch state:** `combat-report`, off `order-effects`. PR #4 merged
+`order-effects` into `main` at commit `60497b0`, which means everything from
+"Make compulsions fire on drift" onward — compulsion triggers, the line dedup,
+the monopolist reassignment, all five war ethics, all five faction voices, the
+defiance rework, the staged-ops fix and the battle report — is **not yet in
+`main`** and rides on this branch.
 
 1. ~~`/api/action` does not return the ops it staged~~ **DONE.** `ActionOutcome`
    now carries `ops`, the batch as applied, for declarations, refusals and
@@ -17,11 +24,14 @@ than speculative.
    way a negative cross-faction `adjust_fleet` already was. Every real price is
    charged by the mechanic that owns it and none of them route through this op,
    so the cap cannot interfere with them.
-3. **`set_doctrine` narrating a retirement it did not emit** (item 9.1), and
-   **a live red line not stopping the act it forbids** (item 9.3). Both are
-   model-side. The first is a prompt fix that cannot be verified without another
-   live run; the second is a real design question about whether red lines should
-   be structurally enforced rather than left to the resolution call's judgement.
+3. **`defiance` fires about a quarter of the time — item 11, the biggest open
+   thing.** The retirement desync from item 9.1 is gone (nothing can be retired
+   now), but the replacement has the same root: the red-line/compulsion
+   classification sits inside the resolution call, which has no structural check
+   on it. Three unambiguous compulsion breaches in the Arkane playtest cost
+   nothing at all, and a red line was never once returned as a `refusal`. The
+   fix is almost certainly to let the **arbiter** classify — it is a separate
+   call, is not shown the roll, and already rules on `establishes`.
 4. **No debt mechanic**, so two of the Ojjul Nar's lines are unmodelled. Hiring
    a proxy, by contrast, turns out **not** to need a new mechanic: a
    `mutual_defense` treaty carrying `incomePerTurn` and `shipsPledged` is money
@@ -31,10 +41,10 @@ than speculative.
    whose doctrine is "let other powers spend their fleets for you", defensive
    proxying plus `profiteer` income covers the red line as written. What is
    missing is that nothing tells the model this composition exists.
-5. **The combat tactical-phase design question** at the very bottom.
-   Deliberately deferred ("we will revisit combat design later"). The *bug*
-   behind it is fixed (item #1); what remains is whether combat wants a richer
-   multi-round layer and a battle-report UI.
+5. ~~The battle-report UI half of the combat design question~~ **DONE** — see
+   item 12. What remains genuinely open is only the *other* half: whether combat
+   wants a richer multi-round resolver. The report was deliberately built as an
+   engagement made of rounds so that decision stays free.
 
 **Balance, measured after the war-ethic and monopolist work** (`pnpm balance 30`,
 turn 30): Meridian 24, Iron Vigil 90, Ojjul Nar 232, Arkanis 71, Drajk 32;
@@ -72,6 +82,39 @@ rival's institutions against it is an agent's job (`subversion` +
 `stat_debuff`), which costs credits, risks exposure and is capped. Seven tests.
 `prompts/resolution.md` had been actively inviting it ("your own institutions
 grow more or less restive") and now states both rules.
+
+## 12. DONE — battles are reported instead of narrated
+
+`resolveBattle` computed the roll, both might modifiers, the powers the 2:1
+break-off test compares, the retreat loss percentage, per-contingent losses, the
+dug-in garrison and the assault total, then flattened all of it into one
+sentence. `TurnReport.arrivals` carried that prose and **the browser never read
+it at all**, so a whole engagement reached the player as one line inside the
+Completed list.
+
+That mattered more after the war-ethic work, because four doctrines now change
+battles and none of them were observable — mechanics nobody could see.
+`src/domain/battle.ts` holds a `BattleReport`; `resolveBattle` returns
+`{ note, report }`, threaded through `TurnReport` → `Briefing` → contract and
+rendered as a collapsible card at the top of the briefing. `doctrinesFired`
+names only the doctrines that actually **changed** something.
+
+Shaped as an engagement made of **rounds**, each stamped with its turn, so a
+multi-turn resolver later appends rounds and flips `status` to `'ongoing'`
+without touching the schema or the renderer. Nothing is stored on `WorldState` —
+the journal can regenerate a report, and a second source of truth is worse than
+losing it on resume.
+
+Building it caught a bug in itself: the attacker's "before" was read from the
+target system, where a fleet still in transit reads as zero, so the first
+version reported a fleet of **0** attacking. Found by running a real battle and
+reading the output, not by the tests, which all passed. Rounds now carry
+per-round deltas and a test asserts the last round equals the board.
+
+**Not visually verified.** Types, build and a contract round-trip against a real
+battle all pass, but producing a battle in a live campaign needs model calls and
+two turns for a fleet to arrive, so nobody has seen the card rendered yet. That
+is the one thing worth doing before trusting it.
 
 ## 11. OPEN — `defiance` is built correctly and the model barely reaches for it
 
@@ -851,6 +894,11 @@ payload order, one asserting a journal written before payloads still loads).
 ---
 
 ## Design question raised by #1: does combat need an explicit tactical phase?
+
+> **Half of this is now answered.** The UI gap described below is closed — see
+> item 12 — and the report was built to be indifferent to what combat becomes.
+> What is still open is only whether the resolver itself should be richer.
+
 
 The user's read, after seeing bug #1 reproduced three times: leaving combat
 resolution reachable from a single strategic-narrative call — even nominally
