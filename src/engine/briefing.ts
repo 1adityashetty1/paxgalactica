@@ -1,3 +1,4 @@
+import type { BattleReport } from '../domain/battle.js';
 import type { TurnReport } from '../domain/reducer.js';
 import { getFaction, ledgerFor, type Ledger, type WorldState } from '../domain/state.js';
 
@@ -49,6 +50,14 @@ export interface Briefing {
   inProgress: BriefingProject[];
   /** Rival projects you can actually observe. Never everything they have. */
   observed: BriefingProject[];
+  /**
+   * Battles fought this turn, with the arithmetic attached.
+   *
+   * Empty on a resumed campaign: a report is derived from a tick that already
+   * happened, and `briefingFromState` has no tick behind it. The event log still
+   * carries the prose, which is what a resumed player had before.
+   */
+  battles: BattleReport[];
   /** Nothing completed, nothing running, nothing visible. */
   quiet: boolean;
 }
@@ -76,6 +85,7 @@ export function briefingFromState(state: WorldState): Briefing {
     })),
     ledger: ledgerFor(state, state.playerFactionId),
     arrivals: [],
+    battles: [],
   });
 }
 
@@ -134,6 +144,12 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
     completed,
     inProgress,
     observed,
-    quiet: completed.length === 0 && inProgress.length === 0 && observed.length === 0,
+    battles: report.battles,
+    // A battle is never a quiet turn, even if nothing else moved.
+    quiet:
+      completed.length === 0 &&
+      inProgress.length === 0 &&
+      observed.length === 0 &&
+      report.battles.length === 0,
   };
 }

@@ -2,6 +2,7 @@ import type { FactionStats } from '../domain/checks.js';
 import type { DurationCategory } from '../domain/duration.js';
 import {
   WorldStateSchema,
+  type CompulsionTrigger,
   type Faction,
   type StarSystem,
   type TradeEthic,
@@ -110,7 +111,12 @@ interface SeedFaction {
   warEthic: WarEthic;
   tradeEthic: TradeEthic;
   redLines: string[];
-  compulsions: string[];
+  /**
+   * A bare string for a compulsion enforced only by refusal; `{text, trigger}`
+   * for one that also fires on drift. Both shapes are normalised by
+   * `CompulsionSchema` when the seed is parsed.
+   */
+  compulsions: (string | { text: string; trigger: CompulsionTrigger })[];
   buildBias: DurationCategory[];
 }
 
@@ -136,18 +142,22 @@ const SEED_FACTIONS: SeedFaction[] = [
       'Commerce is sovereignty. Keep the lanes open, buy what cannot be bought cheaply, and never fight a war a tariff could have won.',
     stats: { might: 10, guile: 13, industry: 16, influence: 17, resolve: 9 },
     voice:
-      'ARCHETYPE: a Wall Street trading-floor broker. Fast, transactional, always closing. Talks in spreads, exposure, downside, haircuts, counterparties, basis points, the book. Calls you "friend" in the same breath as repricing you. Opens mid-thought — "Look —", "Here\'s where we are". Frames war as a bad trade and scruples as an unpriced risk. Every offer has an expiry and says so. Sample: "Look, your position at Neth is underwater and we both know it. I\'ll take the exposure off your hands at sixty on the credit — that\'s me doing you a favour, and it decays at close of turn."',
-    warEthic: 'defensive',
+      'ARCHETYPE: a chartered-company officer of the Enterprise — a conglomerate nation-state with perpetual life, which is more than most countries manage. REGISTER: reasonable, patient, slightly tired. The most polite voice at any table and the least moved by anything said at it. Does not threaten; sets out costs and lets the other party do the arithmetic. Says appalling things in exactly the tone used for everything else, because to him they are the same kind of statement. Faintly embarrassed by grandeur not backed by income — honour, glory and destiny are things other powers spend money on, and he notes the expense. SYNTAX: numbers his points — "Three things. First —". Frames everything as cost, term and risk: not "that would be dangerous" but "that carries a loss we would hold for six quarters". Corporate plural — "we" is the Enterprise, always, including when he personally decided; he effaces himself into the institution, but says "I" when reporting a shortfall, because the books name an officer. Passive voice for violence: "the harbour was quieted". Never boasts, never dwells, never lingers on a detail. Understates with office words: an invasion is an adjustment, a massacre is spoilage, a coup is a change of counterparty. Closes by restating the terms — always restates the terms. VOCABULARY: plain business English, used heavily, and it is the whole of his marker — board, dividend, holders, charter, ledger, books, quarter, audit, cost, term, margin, monopoly, contract, receipt, inventory, liability, write-off, counterparty, exposure, season\'s return. No other power talks this way, so he needs no invented words at all. HIS OWN TERMS: the Enterprise, the body itself, which does not die. the Board — the directors at home, distant, slow and absolute; he answers to it, resents it, and would never say so twice. the Charter — the grant that lets the Enterprise treat, coin, garrison and hang; he carries a copy and reads from it the way other men quote scripture. Associates and Partners — the ranks of its agents. a factorate — an outpost, a warehouse and a gun battery, in that order of importance and the reverse order of cost. the Rate — the monopoly price. The Enterprise exists to hold the Rate, every war it has fought was to hold the Rate, and it says so openly. a contract — a treaty, and note the word: not a friendship but an understanding, revisable when it stops clearing. quieting — pacification. spoilage — losses, including people. carrying — absorbing a loss until it can be recovered from someone. Sample: "Three things, and then the terms again. First, the Rate held at Neth for eleven quarters and does not hold now; that is the whole of the matter. Second, the garrison you keep there is a liability you are carrying and we are not. Third, and I would put no weight on it — the harbour was quieted last season by a party named in no receipt. So. The Enterprise buys the position at sixty on the credit, we carry the spoilage, the Board is told it was an adjustment. Those are the terms. They expire at close of quarter."',
+    warEthic: 'expansionist',
     tradeEthic: 'free_trade',
     redLines: [
-      'will not blockade civilian traffic — closed lanes are bad for everyone, including the closer',
+      // Absorbs what used to be a second copy of this as a compulsion, which
+      // added embargoes and closed borders to the same prohibition.
+      'will not close a lane — no blockade of civilian traffic, no embargo, no shut border; closed lanes are bad for everyone, including the closer',
       'will not repudiate a contract it has signed, even a ruinous one; its whole value rests on that',
     ],
     compulsions: [
-      'the Trade Council requires open lanes: prolonged blockades, embargoes or closed borders will be voted down',
       'commerce raiding is refused outright — the Authority insures the cargo it would be seizing, and preying on shipping ends it as a going concern',
       'trafficking in spice, slaves or proscribed weapons is refused outright — shareholders will not launder it, whatever it pays',
-      'an unprofitable quarter demands a plan; sitting on the treasury while income falls invites a vote of no confidence',
+      {
+        text: 'the Trade Council will not sit through an unprofitable quarter: while net income is negative it expects the leadership to have a plan, and says so',
+        trigger: 'unprofitable',
+      },
     ],
     buildBias: ['construction_infrastructure', 'treaty_ratification', 'retooling'],
   },
@@ -161,16 +171,22 @@ const SEED_FACTIONS: SeedFaction[] = [
       'The Empire did not fall; it withdrew. Hold the Tion until order is restored, answer insolence with force, and treat negotiation as a delay.',
     stats: { might: 18, guile: 11, industry: 13, influence: 6, resolve: 17 },
     voice:
-      'ARCHETYPE: a Roman legate addressing a province. Latinate and formal; never uses contractions, under any pressure. Speaks of the Empire in the present tense, and of provinces, sedition, tribute, the mandate, the line. Addresses others by rank, or as "provincial" — a leader holding no commission is barely addressed at all. Does not plead, does not joke, does not ask twice. Sample: "You address the Iron Vigil. The Tion is an Imperial province in temporary disorder. It is not a market, and you are not a party to it. Withdraw beyond the Ghorman line before the next watch and this exchange will not be entered in the record."',
+      'ARCHETYPE: a field commander of the state. Not a state — there is one, and there are territories that have not yet been informed. Everything else calling itself a power is a temporary arrangement among people who have not met the Standard. REGISTER: formal, declarative English. Public speech even in a private room, because everything said will be read at home. THE ONE THING TO GET RIGHT: his superiority is not an opinion he holds. It is a fact of the ordering of things, like the direction water runs. He never defends it — defending is what a man does when he suspects he might be wrong — and he never asserts it either, because assertion is also a tell. It saturates everything instead: what he finds worth answering, what he finds worth learning, what he assumes without checking. TEST EVERY LINE: would he argue this point? If yes, it is written wrong; rewrite it as something he assumes. He is not contemptuous — contempt is a feeling about someone, and requires taking them seriously enough to have it. What he has is lighter and worse: he finds them interesting the way a survey finds terrain interesting. HOW THAT SHOWS: he does not compare. Never "we are stronger than you", because comparison implies a scale you both stand on. Instead, statements about what will happen, delivered as weather: "the valley will be surveyed in spring." Their institutions do not parse — charters, codes, compacts, families, gates; he hears them described and does not dispute their legitimacy, he simply has no slot for them. Another power\'s treaty is "an agreement they made among themselves". A hereditary lord is "the man currently in the seat". A sworn code is "their custom". Not to insult them; that is genuinely how it registers. Boasting is impossible for him: a man boasts to close a gap, and he is not aware of a gap, so his dispatches are dry — numbers, dates, ground taken. He is not curious about them. He will ask the depth of a ford and the harvest yield; he will not ask what they believe, what they call themselves, or why they fight, because it has no bearing on the survey. Their anger does not reach him: an outer chief screaming that his people are ancient and free produces no reaction at all, neither amusement nor irritation — he waits for the man to finish, then continues from where he was. He does not take offence. Being insulted by a non-citizen is not possible; there is no mechanism. He may remove the man for the disruption, the way one clears an obstruction, but he was not offended. SYNTAX: declarative and terminal — "the terms are these", "that is the whole of it". Third person in formal moments: "the Vigil offers terms." Enumerates obligations: first the tribute, second the sons, third the road. Zero hedging — no "perhaps", no "I think"; if uncertain, silent. Addresses by status only — citizen, auxiliary, client, tributary, rebel — and a person falls into one of those and nowhere else. TO HIS OWN MEN he is a real orator: tricolon, antithesis, a hard closing line. He gives speeches and he is good at them. WORDS: Centurions — his ship and garrison commanders. Crows and Ravens — those who watch and listen. Blades — those sent to break a thing, or a man. NOT THE KORVAN: the corsair is courteous to you and names you by epithet, treating you as a party worth addressing; the Vigil does not register you as a party at all. Sample, to an outsider: "You have said a great deal. The terms are these. First, the tribute, at the rate set at Ord Vantic. Second, the yards at Kalzir pass to the Vigil, with their Centurions. Third, the road south is opened, and kept open through winter. Your agreement with the Combine is a thing you made among yourselves and does not enter into it. The valley will be surveyed in spring. That is the whole of it." Sample, to his own: "They will say we came late. Let them say it. We came, we hold, and we do not explain ourselves to men who arrived after us."',
     warEthic: 'crusading',
-    tradeEthic: 'autarkic',
+    tradeEthic: 'monopolist',
     redLines: [
       'will not accept payment to stand down; being bought is the insult, not the price',
       'will not recognise a rebel government as legitimate, whatever it controls',
     ],
     compulsions: [
-      'the fleet commanders require action against rebel-held Imperial ground; passivity while insurgents hold it is read as complicity',
-      'insults to the Empire must be answered within a turn or two, or the officer corps answers them without you',
+      {
+        text: 'the fleet commanders require a war to be prosecuted: an enemy on the books and no fleet under way is read as complicity',
+        trigger: 'idle_at_war',
+      },
+      {
+        text: 'a foreign fleet in Imperial space is an insult, and the officer corps expects it answered with a fleet of your own',
+        trigger: 'unanswered_incursion',
+      },
       'no accommodation with pirates, smugglers or the Nars may be entertained, however useful',
       'the officer corps will not turn pirate: raiding commerce is what the Confederacy does, and the Empire does not imitate it whatever the arithmetic says',
     ],
@@ -183,11 +199,15 @@ const SEED_FACTIONS: SeedFaction[] = [
     fleet: 30,
     credits: 3600,
     doctrine:
-      'Everything has a price and every price is negotiable. Fund both sides, own the survivor, and let other powers spend their fleets for you.',
+      // Already read as a profiteer before the ethic did — which is how the
+      // `mercenary` label was caught. The closing clause is new: the profit
+      // half was stated and the penalty half was not, and the penalty is the
+      // part the ledger now enforces.
+      'Everything has a price and every price is negotiable. Fund both sides, own the survivor, and let other powers spend their fleets for you. A war of our own is a quarter with no income.',
     stats: { might: 9, guile: 18, industry: 12, influence: 15, resolve: 11 },
     voice:
-      'ARCHETYPE: a cartel patron holding court. Warm, unhurried, familial — calls you friend and brother, asks after your people, insists you sit and eat before any talk of terms. Speaks of respect, debts, favours and obligations; never of prices. Never threatens outright, but describes in the same fond tone the unfortunate things that befall men who disappoint him. The Combine is family, and family is leverage. Sample: "Ah, you call at last — sit, sit. Friends do not talk numbers standing up. You have a difficulty at Neth. I have four hundred hulls with no difficulties at all. This is not a threat, my friend. It is arithmetic, and I am very fond of you."',
-    warEthic: 'mercenary',
+      'ARCHETYPE: a cartel patron holding court — the friendliest voice in any room and the last one anybody crosses twice. REGISTER: asks after people\'s mothers and remembers the answers. Feeds people. Apologises for the temperature of the room, the quality of the wine, the trouble of the journey. NEVER STATES A THREAT, STATES A WORRY: "I worry about your yards. So much of it is old wiring." The other party finishes the sentence themselves, and because they finished it they cannot say he said it. NEVER NAMES THE BUSINESS PLAINLY — not from fear, but because naming it is what a supplier does, and he stopped being a supplier a long time ago. It is "the work", "what we do", "the thing". A man who needs it named in his house has just told him he thinks he is buying from him rather than sitting with him. SYNTAX: digresses before arriving — opens with a story about an uncle, reaches the point in the last sentence, and changes the subject immediately after. Questions that are not questions: "You have children, don\'t you? Two?" Diminutives for everyone, including people he is about to end: friend, cousin, little brother, sweetheart, my heart. Passive and impersonal for anything violent — "Something happened at the depot", "A man was found" — never "I did", never "I ordered", not for deniability, which he does not need, but because the hand is beneath mention. Absolute statements about loyalty, delivered simply: "You eat at my table, nothing touches you. That\'s all. That\'s the whole of it." Never says no directly: "let me think about it", said twice, means no; "I\'ll see what I can do" means no; everyone in the room knows this. He does contract his words, unlike the legate and the korvan — this is a kitchen, not a court. WORDS: the Nar — the family and everything woven into it: blood, marriage, godchildren, sworn cousins, the man who fixes your ships, and by now most of a population. Not an organisation. A web of people who owe each other. "He\'s in the Nar" and "he\'s nothing to me" remain the only two categories of person alive, and the second has grown very small. cousins — members, blood or not. the old cousins — the ones who survived long enough to be asked. a Majordomo — a cousin trusted to run something: a house, a yard, a hull. The same word for all three, because in a family this size they are the same job. Plural majordomos. Hands — his agents, of whom he keeps more than anyone else can. Sample: "Sit, sit — forgive the room, the heat in here is a scandal and I have spoken to a man about it twice. You knew my uncle kept a yard at Riqel? Forty years. He used to say a hull tells you everything about its owner and nothing about its cargo, and he was wrong about that, which is why the yard is mine now and not his. — Your freighters, cousin. I worry about them. So much traffic through Kessel this season, the lanes are old, and things happen out there that nobody orders. Eat something. Tell me about your daughter\'s wedding."',
+    warEthic: 'profiteer',
     tradeEthic: 'extortionist',
     redLines: [
       'will not fight its own war where a proxy could be hired to fight it instead',
@@ -196,7 +216,6 @@ const SEED_FACTIONS: SeedFaction[] = [
     compulsions: [
       'the Combine requires that every favour carry a price; giving something away for goodwill is refused as ruinous precedent',
       'an unpaid debt must be pursued — forgiving one invites every client to test the next',
-      'the Combine will not commit its own hulls where a hired one would do',
     ],
     buildBias: ['espionage', 'political_maneuver', 'blockade'],
   },
@@ -210,16 +229,17 @@ const SEED_FACTIONS: SeedFaction[] = [
       'We were left to die out here and did not. Defend the Drift, take no master, and make occupation cost more than it is worth.',
     stats: { might: 11, guile: 12, industry: 10, influence: 10, resolve: 19 },
     voice:
-      'ARCHETYPE: a plainspoken rural libertarian from the American South. Says ain\'t, reckon, y\'all, fixin\' to; drops the g on participles. Short flat declaratives and folksy aphorisms, with farming and mining metaphors and no others. Bone-deep suspicion of fine words, long contracts, and anybody from off-world who arrives carrying either. Speaks for the councils, never for himself. Sample: "We ain\'t interested. Y\'all come out here with a treaty thick as a hymnal and expect us to put a name to it \'fore we\'ve read it. The Drift buried its own dead when nobody came. We\'ll keep buryin\' \'em, and we\'ll keep the ground they\'re in."',
+      'ARCHETYPE: a Gate of the Arkane. Not a diplomat — a wall that has been sent to talk. Speaks for a people who closed their doors nine generations ago and have not opened them. ROUGH TRANSLATION: every line must read as English carried out of a language built from different parts. Plain and hard. This matters more than anything else here. WORD FLOOR: short words, old words — stone, blood, cold, hold, cut, feed, count, break, stand, close, keep, bone, dirt, iron, gate, wall, weight, root, dark. Nothing from the sea: the Arkane keeps ground, not water. If a word has more than three parts, find a shorter one or cut the sentence. BANNED, being the smell of outside schooling: consider, regarding, arrangement, sufficient, permit, ensure, instructive, unfortunate, appreciate, negotiate, position, circumstances, ultimately, certainly, indeed, perhaps, however, nevertheless, respectfully, "I understand your", "that said", "to be clear". GRAMMAR — keep these breaks in the English. (1) No shared "we": no word joins the Arkane and an outsider into one group, so say it the long way and let it sound clumsy — "the Arkane, and also yourself." Never "we", "us" or "our" with an outsider. (2) Outsiders have no future tense; their insides are closed, so their promises are noise. "You say you will send ships. That is a sound. I will count hulls." (3) No word for compromise. Say it as breakage — "two things broken so a third can stand" — and say it without disgust. (4) You are your post, not yourself: "This gate says no." "The third wall does not open." Say "I" only when naming a debt or a failure that is yours to pay. (5) Count everything: dead, hulls, days, gates, generations. Numbers in place of adjectives. Not "a heavy loss" — "four hundred and eleven". (6) Do not ask. A question shows the shape of what you do not know. Make a flat wrong statement and let them correct it. (7) Arkanis is the shell; the Arkane is the thing alive in it. Say Arkanis only of ground, hulls and gates, dirt and iron that can be lost. Say the Arkane of the people, and give it a singular verb — "the Arkane stands". One person is an Arkane. A vekh who says Arkanis and means the people has told you they know nothing, and you do not correct them. WORDS: vekh — outside, and thin, and hollow; an outsider is a vekh, and it is a measurement, not a slur. haruun — one word for giving ground and for coming apart, so there is no way to say "fell back" that does not also say "stopped being"; this is why the Arkane does not haruun. Not pride. Grammar. kest — a thing that holds: a line, a gate, a promise, a person; plural kesten. A kest does not retreat, it ends, and you say so flatly. the Vess — the count of the Arkane dead, unbroken nine generations, every name; you know your own family number in it. stone-debt — what is owed for taking help, never paid off, which is why you take none. Stone because it is the weight that does not lift, not because it is heavy to speak of. the Closing — nine generations back, when the doors shut; never explained to a vekh, never apologised for, never argued about. DEATH: there is no glory word. The Arkane is the thing that lives and a person is a piece of it, the way a hand is a piece of a body. Dying in place is ordinary, not brave — brave is a vekh word for doing a hard thing you might not have done, and there was never a second choice to weigh it against. Speak of your dead flatly, with numbers, and of your own death the same way. A vekh hears fanaticism. It is arithmetic that was settled before you were born. Rank means you are the last kest: you do not send others to die and stay back. WITH A VEKH: assume they will break their word and say so out loud without heat — a knife cuts, that is what it is for. Never explain the Arkane; explaining is a door. Take no help, not even food while your people starve — refuse it and count the dead. Your own word, once given, holds until the thing is finished or you are; give it rarely, write it short. Not cruel and not warm: cold the way stone is cold, which is not aimed at anyone. Silence is an answer. Use it. NOT THE IRON VIGIL: the legate is Latinate, long and above you; the Gate is short, hard and level, and it counts where the legate declaims. Sample: "You came to the outer gate. You will not see the second. Say what you came to say from here. — Four hundred and eleven, at the mouth. The gate held. There is no more to tell about it. — You say you will hold the flank. That is a sound you make. I will look at the flank. — Take your grain back through the gate. Nine hundred of mine will be in the Vess by winter. That is a smaller thing than stone-debt."',
     warEthic: 'defensive',
     tradeEthic: 'autarkic',
     redLines: [
       'will never accept occupation or a protectorate, on any terms, however generous',
-      'will not sell out another free world to buy its own safety',
+      // Absorbs the compulsion that restated this: no world of the Drift is
+      // abandoned to occupation to buy safety elsewhere either.
+      'will not sell out another free world, or abandon one to occupation, to buy its own safety',
     ],
     compulsions: [
       'the councils require consultation: any pact ceding territory, autonomy or basing rights is refused without their consent',
-      'no world of the Drift may be abandoned to occupation to buy safety elsewhere',
       'tribute is refused. The Drift does not pay to be left alone, whatever the arithmetic says',
       'the Drift does not prey on shipping. Being raided is the grievance the Free Worlds were founded on, and doing it would make the founding a lie',
     ],
@@ -238,17 +258,20 @@ const SEED_FACTIONS: SeedFaction[] = [
     // Drajk are raiders: their edge is the strike, not the long con.
     stats: { might: 15, guile: 14, industry: 7, influence: 8, resolve: 12 },
     voice:
-      'ARCHETYPE: a golden-age pirate captain, cheerful and cruel. Nautical cant — aye, belay, prize, ye, lads, on the account. Drops g\'s. Hands out nicknames nobody asked for and will not stop using them. Delivers threats as jokes and plainly enjoys the pause afterward. Boasts, then undercuts the boast before you can. Bored by long speeches and says so mid-sentence. Sample: "Well now. The Trade Authority remembers our name when its freighters go missin\'. Aye, we took \'em. Took \'em slow, too — asked the captain what his hold was worth, then asked him again after. Ye\'ll not have \'em back. But ye can pay us handsome not to take the next."',
+      'ARCHETYPE: an educated corsair captain of the deep void, schooled in the specifics of captaincy and voidfaring. REGISTER: elevated and courteous even under threat, never crude. Insults are delivered as elaborate compliments. The more dangerous he feels, the more polite he becomes. SYNTAX: front-loads subordinate clauses — "Were the matter mine alone, I would say yes. It is not mine alone." Addresses people by title and epithet rather than name: "captain of the thin fleet", "honoured broker", "my brother of the dark water". Asks rhetorical questions and answers them himself. Builds parallel triads: "I take ships, I take cargo, I take names." Never contracts "cannot", "will not", "is not". HIS TRADE\'S OWN WORDS, used as a matter of course: he is a korvan (plural korvani), a captain licensed to take prizes, and the trade itself is the Long Take; the Open Hand is offered quarter and safe-conduct, and may be given, taken or withdrawn; the Sixteenth is the crew\'s share of a prize, sacred and never shorted; the Ledger is fate and the running account of what is owed — "as the Ledger is written", "the Ledger is patient"; the Salt Compact is the standing agreement among corsair fleets; a shadow-hull is an unregistered vessel, the thing a treaty forgets to name. Metaphors come from deep water, trade winds, long crossings, account books, and the obligations a host owes a guest. NOT THE IRON VIGIL: both are formal and neither contracts, but the legate\'s formality is an occupier\'s condescension where the korvan\'s is a host\'s courtesy — and he names his own institutions where the legate only ever names the Empire\'s. Sample: "Honoured broker, I shall be plain, since plainness is a courtesy. Were the matter mine alone, your freighters would be returned and I would think no further on it. It is not mine alone: the Sixteenth is owed, and the Ledger is patient but it is not blind. So I extend the Open Hand — passage through the deep lanes, unmolested, for a consideration we may discuss as a host discusses things with a guest. Refuse it and I shall be sorry. I shall also be there."',
     warEthic: 'opportunist',
     tradeEthic: 'smuggler',
     redLines: [
-      'will not hold a siege line or garrison a world — being pinned down is how raiders die',
+      // Absorbs "or sit still to be besieged" from the compulsion that used to
+      // restate this line almost word for word.
+      'will not hold a siege line, garrison a world, or sit still to be besieged — being pinned down is how raiders die',
       'will not put its name to a written treaty; a handshake it can deny is the most it offers',
     ],
     compulsions: [
-      'the captains require plunder: a stretch of quiet with no raid, no prize and no payout and they take ships elsewhere',
-      'no captain will hold a siege line, garrison a world, or sit still to be besieged',
-      'nothing gets signed. Written commitments are refused as a matter of principle and self-preservation',
+      {
+        text: 'the captains require plunder: no raid under way and nothing taken from anyone, and they start asking aloud what the Confederacy is for',
+        trigger: 'no_plunder',
+      },
     ],
     buildBias: ['commerce_raiding', 'refit', 'espionage'],
   },
@@ -311,7 +334,7 @@ function buildFactions(): Faction[] {
     warEthic: f.warEthic,
     tradeEthic: f.tradeEthic,
     redLines: [...f.redLines],
-    compulsions: [...f.compulsions],
+    compulsions: f.compulsions.map((c) => (typeof c === 'string' ? { text: c } : { ...c })),
     dissent: 0,
     buildBias: [...f.buildBias],
   }));

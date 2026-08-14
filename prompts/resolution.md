@@ -19,20 +19,33 @@ from it. A failure still produces ops — credits spent for nothing, a
 disposition soured, an agent lost. A "failure" that quietly emits the ops the
 player wanted is not a failure.
 
-## Your own faction can refuse
+## Your own faction can refuse — or object and comply
 
-A leader commands a faction; they are not its owner. Emit a `refusal` object —
-and **no ops at all** — when the action crosses one of the faction's **red
-lines** or abandons what its **compulsions** demand. Both are listed on the
-state block and both are absolute.
+A leader commands a faction; they are not its owner. The state block lists two
+different kinds of principle, and they are answered differently.
 
-`refusal` carries `by` (who refused — "the fleet commanders", "the Trade
-Council"), `reason` (in that institution's voice, 1–2 sentences), and
-`violated` (the line or compulsion, quoted). The narrative then describes the
-refusal, not the action. Nothing is staged.
+**A red line is absolute.** *"Will not, whatever the incentive."* No price buys
+it, no argument moves it, and there is no mechanism anywhere in this game for
+retiring one. When an action crosses a red line, emit a `refusal` object and
+**no ops at all**. The narrative describes the refusal, not the action.
 
-Refuse only for a genuine breach. An unwise, risky or expensive order is still
-an order: resolve it and let the consequences do the work.
+**A compulsion is a demand, and a leader may overrule it.** *"Your own
+institutions DEMAND of you."* When an action defies a compulsion, emit a
+`defiance` object **and the ops as well** — the order is carried out, under
+protest. The narrative describes both: the thing happening, and who objected
+while it did. The reducer charges the dissent; you do not set a price.
+
+Both objects carry `by` (who spoke — "the fleet commanders", "the Trade
+Council", "the old cousins"), `reason` (in that institution's voice, 1–2
+sentences), and `violated` (the line or compulsion, quoted from the sheet).
+
+Use `refusal` for a red line and `defiance` for a compulsion. Do not use either
+for an order that is merely unwise, risky or expensive: that is still an order,
+so resolve it and let the consequences do the work.
+
+A leader who means to turn their power against its own character does it this
+way — by insisting, repeatedly, and absorbing what each insistence costs. Four
+defiances is enough to leave a faction with nobody following it.
 
 ## Output
 
@@ -67,6 +80,14 @@ an order: resolve it and let the consequences do the work.
 
 `transfer_control` is **not available to you.** A system changes hands only when
 a `fleet_movement` order physically arrives.
+
+`adjust_credits` is for narrative money only — a bribe, a fine, a windfall.
+Every real price in this game is charged by the mechanic that owns it: hulls at
+60, agents at 40–150, a works payload from what it is worth, treaty and
+commitment flows. **Do not add a second charge alongside one of those**, and do
+not move a large sum with it; anything past a few hundred is trimmed, and taking
+credits out of a rival's treasury is rejected outright. Skim a rival with an
+`income_penalty` agent, toll them, or raid their lanes.
 
 `adjust_dissent` moves **only your own** faction, and only upward. Dissent is a
 power's standing with its own institutions: it falls by 2 a turn on its own and
@@ -253,27 +274,20 @@ than words:
 - `doctrine` — the new statement of posture (required).
 - `warEthic` / `tradeEthic` — the mechanical stances. **Set these** when the
   change is real; `tradeEthic` in particular decides how the faction earns.
-- `retire` — red lines or compulsions being abandoned, quoted **exactly** as
-  they appear on the faction sheet above. A near-quote is rejected.
-
-**Retiring is the part that matters.** A faction whose compulsion refuses
-commerce raiding will go on refusing every raid until that compulsion is
-retired, however its doctrine paragraph reads. Changing the words alone is a
-speech, not a change of course.
+**Red lines and compulsions cannot be changed by this op, or by any op.** They
+are permanent. What `set_doctrine` moves is the posture and the two ethics; what
+gets a faction *acting* against its own principles is `defiance`, paid for every
+time. Do not narrate a principle being retired, abandoned or rewritten — nothing
+does that, and saying so leaves the faction sheet and the story disagreeing,
+which is worse than saying no.
 
 The reducer charges the cost in **dissent**, per axis actually moved: a little
-for new words, more for each ethic, most for each principle abandoned. A full
-reorientation runs about 70 — two points off every stat for roughly thirty
-turns. That is intended. Turning a power against its own character is a
-campaign-defining act, and it should hurt.
+for new words, more for each ethic. Changing both ethics is about 46 — two points
+off every stat for twenty-odd turns — and that is intended.
 
 Two refusals come from the reducer, not from you: a faction may only change
 **its own** doctrine, and one already past 75 dissent cannot be reorganised at
 all until it falls back.
-
-Do not reach for this to dodge a red line in the middle of some other action.
-It is a deliberate act a leader takes, at a price, not a way to make an
-inconvenient refusal go away.
 
 ## Judging the action
 

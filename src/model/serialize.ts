@@ -105,7 +105,7 @@ export function serializeCharacter(faction: Faction): string {
       ? `\nYou will NOT, whatever the incentive:\n${faction.redLines.map((r) => `  - ${r}`).join('\n')}`
       : '',
     faction.compulsions.length > 0
-      ? `\nYour own institutions DEMAND of you:\n${faction.compulsions.map((r) => `  - ${r}`).join('\n')}`
+      ? `\nYour own institutions DEMAND of you:\n${faction.compulsions.map((c) => `  - ${c.text}`).join('\n')}`
       : '',
     faction.buildBias.length > 0
       ? `\nWhen you build, you reach first for: ${faction.buildBias.map((b) => b.replace(/_/g, ' ')).join(', ')}.`

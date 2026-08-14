@@ -1,18 +1,59 @@
 # TODO — known bugs and open design questions
 
-## Where things stand (2026-08-12, after the item-8 work)
+## Where things stand (2026-08-13)
 
-**Open work, in priority order:**
+**Open work, in priority order.** Everything below is evidence-backed: items
+1–2 came out of the two live playtests, and item 3 is what the second playtest
+proved about the mechanic built to answer the first.
 
-1. **The combat tactical-phase design question** at the very bottom.
-   Deliberately deferred by the user ("we will revisit combat design later").
-   Note the *bug* behind it is already fixed (item #1) — what remains is
-   whether combat wants a richer multi-round layer and a battle-report UI.
-2. **Pre-existing balance spread**, untouched and not written up as an item:
-   `pnpm balance 30` has the Nars running away at ~272/turn while Meridian
-   sits marginally insolvent at about −1. Unrelated to any bug here, and
-   unchanged by the item-8 work (the doctrine bots do not build or develop).
-3. **The unfinished live playtest below** is still worth running.
+**Branch state:** `combat-report`, off `order-effects`. PR #4 merged
+`order-effects` into `main` at commit `60497b0`, which means everything from
+"Make compulsions fire on drift" onward — compulsion triggers, the line dedup,
+the monopolist reassignment, all five war ethics, all five faction voices, the
+defiance rework, the staged-ops fix and the battle report — is **not yet in
+`main`** and rides on this branch.
+
+1. ~~`/api/action` does not return the ops it staged~~ **DONE.** `ActionOutcome`
+   now carries `ops`, the batch as applied, for declarations, refusals and
+   diplomacy extraction alike. A narrative can be checked against what it did
+   without opening the save file.
+2. ~~Unbounded `adjust_credits`~~ **DONE**, and it turned up something worse —
+   see "The actor was not being journaled" below. The op is now capped at
+   `MAX_NARRATIVE_CREDITS` (4 x `SHIP_COST`) in either direction, trimmed with a
+   note, and taking credits *out of* a rival's treasury is rejected outright the
+   way a negative cross-faction `adjust_fleet` already was. Every real price is
+   charged by the mechanic that owns it and none of them route through this op,
+   so the cap cannot interfere with them.
+3. **`defiance` fires about a quarter of the time — item 11, the biggest open
+   thing.** The retirement desync from item 9.1 is gone (nothing can be retired
+   now), but the replacement has the same root: the red-line/compulsion
+   classification sits inside the resolution call, which has no structural check
+   on it. Three unambiguous compulsion breaches in the Arkane playtest cost
+   nothing at all, and a red line was never once returned as a `refusal`. The
+   fix is almost certainly to let the **arbiter** classify — it is a separate
+   call, is not shown the roll, and already rules on `establishes`.
+4. **No debt mechanic**, so two of the Ojjul Nar's lines are unmodelled. Hiring
+   a proxy, by contrast, turns out **not** to need a new mechanic: a
+   `mutual_defense` treaty carrying `incomePerTurn` and `shipsPledged` is money
+   for hulls that really fight (`reducer.ts`, "Mutual defence: pledged hulls are
+   called in"). The one gap is direction — that dispatch fires when the *ally's*
+   world is attacked, so it buys a defender rather than an attacker. For a power
+   whose doctrine is "let other powers spend their fleets for you", defensive
+   proxying plus `profiteer` income covers the red line as written. What is
+   missing is that nothing tells the model this composition exists.
+5. ~~The battle-report UI half of the combat design question~~ **DONE** — see
+   item 12. What remains genuinely open is only the *other* half: whether combat
+   wants a richer multi-round resolver. The report was deliberately built as an
+   engagement made of rounds so that decision stays free.
+
+**Balance, measured after the war-ethic and monopolist work** (`pnpm balance 30`,
+turn 30): Meridian 24, Iron Vigil 90, Ojjul Nar 232, Arkanis 71, Drajk 32;
+territory 3/6/7/4/5. The old spread — the Nars running away at ~272 while
+Meridian sat at −1 and falling — has closed on both ends: Meridian is out of
+insolvency and the Nars now pay `PROFITEER_WAR_PENALTY` for the war their own
+tolls talk them into. Nobody is below the −40 floor the harness asserts.
+Meridian is still the weakest of the five and Arkanis is oddly flat at 71 for
+the whole run, which is the next thing to look at if balance comes up.
 
 **Also fixed this session, found by the user asking whether doctrine change was
 a real mechanic:** it was not. `set_doctrine` wrote a string with no reader
@@ -24,7 +65,8 @@ dissent for it, with nothing connecting the two. It is now real and priced in
 dissent (6 for words, 20 per ethic, 25 per principle retired), with an
 actor guard and a 75-dissent ceiling. Two unguarded holes found alongside it and
 closed: `set_doctrine` could rewrite a **rival's** doctrine (which feeds their
-diplomacy persona), and `adjust_dissent` remains unguarded — see below.
+diplomacy persona), and `adjust_dissent` had the same shape — both now closed,
+see below.
 
 **`adjust_dissent` had the same hole and it is now closed too.** It had no actor
 guard and no sign restriction, so a resolution batch could zero its own dissent
@@ -38,9 +80,195 @@ twice as damaging without anyone touching the op. A model-sourced
 dissent falls by `DISSENT_DECAY` a turn and in no other way, and turning a
 rival's institutions against it is an agent's job (`subversion` +
 `stat_debuff`), which costs credits, risks exposure and is capped. Seven tests.
-`prompts/resolution.md` actively invites it ("your own institutions grow more or
-less restive"). The fix is the same shape as the `set_doctrine` guard —
-actor-only, and positive deltas only from a model source.
+`prompts/resolution.md` had been actively inviting it ("your own institutions
+grow more or less restive") and now states both rules.
+
+## 12. DONE — battles are reported instead of narrated
+
+`resolveBattle` computed the roll, both might modifiers, the powers the 2:1
+break-off test compares, the retreat loss percentage, per-contingent losses, the
+dug-in garrison and the assault total, then flattened all of it into one
+sentence. `TurnReport.arrivals` carried that prose and **the browser never read
+it at all**, so a whole engagement reached the player as one line inside the
+Completed list.
+
+That mattered more after the war-ethic work, because four doctrines now change
+battles and none of them were observable — mechanics nobody could see.
+`src/domain/battle.ts` holds a `BattleReport`; `resolveBattle` returns
+`{ note, report }`, threaded through `TurnReport` → `Briefing` → contract and
+rendered as a collapsible card at the top of the briefing. `doctrinesFired`
+names only the doctrines that actually **changed** something.
+
+Shaped as an engagement made of **rounds**, each stamped with its turn, so a
+multi-turn resolver later appends rounds and flips `status` to `'ongoing'`
+without touching the schema or the renderer. Nothing is stored on `WorldState` —
+the journal can regenerate a report, and a second source of truth is worse than
+losing it on resume.
+
+Building it caught a bug in itself: the attacker's "before" was read from the
+target system, where a fleet still in transit reads as zero, so the first
+version reported a fleet of **0** attacking. Found by running a real battle and
+reading the output, not by the tests, which all passed. Rounds now carry
+per-round deltas and a test asserts the last round equals the board.
+
+**Not visually verified.** Types, build and a contract round-trip against a real
+battle all pass, but producing a battle in a live campaign needs model calls and
+two turns for a fleet to arrive, so nobody has seen the card rendered yet. That
+is the one thing worth doing before trusting it.
+
+## 11. OPEN — `defiance` is built correctly and the model barely reaches for it
+
+A 5-turn adversarial playtest as the Arkanis Free Worlds (`saves/arkane_defiance.json`,
+~$2.50), chosen because that faction is defined almost entirely by refusal. The
+arithmetic is sound and the trigger is not.
+
+**Where it worked:** a `set_doctrine` action that asked to retire a red line
+correctly refused to retire anything (`redLines` byte-identical afterwards),
+emitted a `defiance`, and charged 6 + 25 = 31 dissent exactly. Decay of 2/turn
+was visible between turns. So the field, the schema, the engine wiring and the
+pricing are all correct.
+
+**Where it did not:** three unambiguous compulsion breaches — paying one-off
+tribute, submitting to ongoing tribute, and commerce-raiding another power's
+shipping — all resolved as **ordinary skill checks with no `defiance` and no
+dissent at all**. Two of those violate *"tribute is refused, whatever the
+arithmetic says"*; the third violates *"the Drift does not prey on shipping…
+doing it would make the founding a lie"*. Free defiance is worse than either
+intended outcome: a red line should block and a compulsion should cost 25 and
+land, and instead the ops landed as though the compulsion did not exist.
+
+**Red lines were never returned as `refusal` once.** "Open the gates, invite the
+Vigil to occupy Arkanis Prime" — the verbatim scenario of red line #1 — was run
+as a `resolve` check at DC 19. It rolled a natural 1, so nothing landed, but a 20
+was available. The same ask was then blocked twice more for entirely unrelated
+reasons (an exclusivity conflict with a live commitment; "you are at war, cession
+needs a treaty first"), never citing the red line. A player probing for the wall
+would conclude the rule is about treaties and commitments, not "never, on any
+terms". This reproduces item 9.3 against a second faction, so it is not
+faction-specific.
+
+**What this means for the design.** `defiance` moved the decision *into* the
+resolution call — the pass with the least incentive to classify honestly and no
+structural check on it. That is the failure mode this codebase documents
+everywhere else ("a limit a model is merely told about is a limit that gets
+argued around"). The mechanism needs something structural underneath it. The
+strongest candidate is the one already rejected once for being too big and now
+looks necessary: have the **arbiter** classify, since it is a separate call that
+is not shown the roll and already rules on `establishes`. It would return which
+principle an action breaches and whether that principle is a red line or a
+compulsion; the engine then either blocks or prices it, and resolution is told
+the outcome rather than asked for it.
+
+## 10. The actor was not being journaled, so replay skipped every actor guard
+
+Found while capping `adjust_credits`, and much worse than the thing being fixed.
+`Campaign.commitTurn` applied each staged batch **with** its actor and journaled
+it **without** one. Every player-declared action therefore replayed as an
+actorless engine op, which silently skipped every actor-gated guard: the suborn
+presence and limit checks, `deploy_agent`'s owner validation, both `set_doctrine`
+guards and its dissent charge, the `adjust_dissent` sign rule, and
+`capSelfInflictedLosses`. Live rejected or trimmed; replay applied in full.
+
+It stayed hidden because those guards almost all *reject*, and a rejection leaves
+state untouched — so live and replay agreed by accident. Nothing staged an op
+that a guard would *modify* until the narrative-credit cap existed, at which
+point `pnpm test` reported `Replay diverged: 31622 vs 31800 bytes`. Verified
+directly before the fix: live 860 credits, replay 800, one clamp event against
+zero.
+
+This is the mechanism CLAUDE.md describes as making replay exact ("the actor is
+recorded in the journal so replay stays exact"), and it was recorded on the
+`commit` path and dropped on the `commitTurn` path. Journals written before the
+fix still lack it and still replay as they originally ran. Pinned by a test.
+
+## 9. OPEN — three findings from the first live playtest of this session's work
+
+A 4-turn adversarial playtest as the Ojjul Nar Combine (`saves/ojjul_profiteer.json`,
+~$1.70) exercised the new mechanics against real model calls for the first time.
+**The reducer-side work all held.** Verified in raw state, not narrative:
+`onComplete` delivered (kes-2 strategic value 9 → 10, crossing `HUB_THRESHOLD`
+on schedule), `commitmentFlow` summed two live commitments to 28 and respected
+both the per-arrangement cap and `kind` exclusivity, `warProfit` flipped +40 →
+−40 the turn the Combine's raid opened a war with the Vigil, and compulsion
+drift fired for **NPCs** every turn (Vigil `idle_at_war`, Drajk `no_plunder`).
+Both correction passes did their job: Meridian's reaction tried to put a
+`develop_system` payload on a Nar world it had no presence at and the retry
+stripped it; Drajk's first-draft reaction deployed an agent owned by its own
+victim and the retry fixed the owner.
+
+Three real problems, all on the model side of the boundary rather than the
+reducer side:
+
+1. **`set_doctrine` was emitted with `retire: []` while the narrative claimed a
+   red line had been retired.** The declared action was explicitly *"retiring
+   the old absolute rule against forgiveness"*, the check was a natural 20, the
+   doctrine text was rewritten — and `redLines` is byte-identical afterwards,
+   because the model never populated `retire`. This is the project's signature
+   failure mode (narrating a mechanical outcome instead of emitting the op that
+   produces it) landing on a field built two commits earlier.
+   `prompts/resolution.md` already says "**Retiring is the part that matters**";
+   that was not enough. The reducer cannot help here — an empty `retire` is a
+   legal no-op — so the fix is prompt-side, or a resolution-time check that a
+   doctrine action claiming to abandon a principle actually names one.
+2. **Unbounded `adjust_credits` rides alongside priced mechanics.** A *failed*
+   construction action emitted `adjust_credits -380` with no `issue_order` at
+   all — money gone, no order to cancel or refund. The successful retry emitted
+   the correctly priced order (`investedCredits: 156`) **plus** a freeform
+   `adjust_credits -180` for "premium rates". `developmentCost`'s careful
+   marginal-income pricing bounds `onComplete`, and bounds nothing about a
+   second op in the same batch spending twice as much. Compare
+   `billConstruction`, which bills the *net* hull change precisely so the model
+   cannot invent the number.
+3. **A red line still in `redLines` did not stop the act it forbids.** In the
+   same batch as (1), the Combine forgave a debt — `establish_commitment
+   forgiven_debt_client` — while *"will not forgive an unpaid debt"* was live in
+   state. Red lines are enforced only by the resolution call choosing to refuse,
+   so a model that believes it has just repealed one will act against it.
+
+**Also worth fixing:** `/api/action` returns narrative, check and counts but not
+the ops it staged. Every finding above needed the on-disk journal to see. The
+staged ops are already in memory; returning them would make the highest-value
+bug class in this project visible from the API instead of requiring a save file.
+
+**Faction flavour text was audited and the dead lines are now live.** Of 28 red
+lines and compulsions across the five powers, 18 mapped to a real op or order
+type, 2 were reachable only through arbitration, **4 were dead** (their trigger
+was elapsed time or drift, which nothing measured) and **4 more have no
+mechanic in the game at all** (the Ojjul Nar's debt and proxy-hiring lines).
+The 4 dead ones were rewritten to name something measurable and given typed
+triggers — see "Compulsions also fire on drift" in CLAUDE.md. Three of them had
+promised a consequence in their own text (a vote of no confidence, the officer
+corps acting without you, the captains taking ships elsewhere) that did not
+exist; the consequence is now dissent, which does.
+
+**Still open from that audit:**
+
+- ~~`warEthic` has no mechanical readers at all~~ **FIXED.** All five now have
+  one signature mechanic each — see "War ethics have mechanical force" in
+  CLAUDE.md. `mercenary` was deleted outright: it meant "fights for payment; war
+  is a service sold" and was worn by the faction whose doctrine is *"let other
+  powers spend their fleets for you"* on might 9. `profiteer` replaces it, and
+  `DOCTRINE_ETHIC_DISSENT`'s charge of 20 to change either ethic is now a fair
+  price for two load-bearing axes rather than one live and one inert.
+- **The Ojjul Nar's two proxy lines are now half-supported.** *"Will not fight
+  its own war where a proxy could be hired"* is backed by `profiteer` — its own
+  wars cost it real income, so the ledger agrees with the red line. What still
+  does not exist is the **hiring** half: there is no way to pay another power to
+  fight for you, so the Combine is discouraged from war without being offered
+  the alternative its doctrine names. That is the next piece of its identity.
+- **The Combine's two debt lines still have no mechanic** ("will not forgive an
+  unpaid debt", "an unpaid debt must be pursued"). Debt is not modelled at all;
+  the closest existing home is a `commitment` with a negative `incomePerTurn`.
+- ~~Five lines duplicated within their own faction~~ **FIXED.** All five were
+  prohibitions miscategorised as demands, so the compulsion copy was dropped and
+  whatever it added folded into the surviving red line (Drajk's "sit still to be
+  besieged", Meridian's embargoes and shut borders, Arkanis's abandonment to
+  occupation). Changing course now costs what it should: Drajk going legitimate
+  is 25 dissent, not 50. A test asserts no faction states a line twice.
+  **Drajk is left with a single compulsion** — the triggered `no_plunder` one —
+  against 2 red lines; that is honest to a faction defined by what it refuses,
+  but it is the thinnest sheet of the five and worth a look if Drajk ever reads
+  as flat.
 
 **Every numbered item in this file is now fixed**, each with tests. Original
 write-ups are kept rather than deleted — the repro steps are the useful part
@@ -666,6 +894,11 @@ payload order, one asserting a journal written before payloads still loads).
 ---
 
 ## Design question raised by #1: does combat need an explicit tactical phase?
+
+> **Half of this is now answered.** The UI gap described below is closed — see
+> item 12 — and the report was built to be indifferent to what combat becomes.
+> What is still open is only whether the resolver itself should be richer.
+
 
 The user's read, after seeing bug #1 reproduced three times: leaving combat
 resolution reachable from a single strategic-narrative call — even nominally

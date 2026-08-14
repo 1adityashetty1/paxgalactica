@@ -334,6 +334,7 @@ export function App() {
           <BriefingPanel
             briefing={view.briefing}
             staged={view.staged}
+            state={view.state}
             onDiscard={(i) => void game.discard(i)}
           />
           <SidePanel

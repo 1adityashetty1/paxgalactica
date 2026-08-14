@@ -287,10 +287,10 @@ sounds like every other faction the moment a conversation gets specific:
   diplomacy persona; the prompt's stated test is that a reply which could be
   pasted into another faction's mouth has failed.
 - **`warEthic`** — `expansionist` · `defensive` · `opportunist` · `crusading` ·
-  `mercenary`. Decides whether force is on the table at all.
+  `profiteer`. Load-bearing, and one per faction. See "War ethics" below.
 - **`tradeEthic`** — `free_trade` · `monopolist` · `extortionist` · `autarkic` ·
-  `smuggler`. Also sets the income multiplier, so commerce beliefs have a
-  mechanical price.
+  `smuggler`. Load-bearing, and now **one per faction**: Meridian, the Iron
+  Vigil, the Nars, Arkanis, Drajk in that order.
 - **`redLines[]`** — absolute refusals no incentive moves.
 - **`buildBias[]`** — what it reaches for first, so pressure does not make every
   power build the same shipyard.
@@ -399,11 +399,46 @@ lives here instead:
 | `extortionist` | a **toll** on every foreign cargo crossing its space |
 | `autarkic` | keeps only `AUTARKIC_ROUTE_FRACTION` of route income, and cannot be strangled |
 | `smuggler` | ignores blockades, raids at double effect, counts double at lawless junctions |
-| `monopolist` | premium on lanes it owns both ends of |
+| `monopolist` | `MONOPOLY_BONUS` premium on lanes it owns **both ends** of, paid on top of the conserved split |
 
 The seed already had the geography for this and nothing read it: kes-2 sits on
 74 of the galaxy's 300 shortest paths and the extortionists hold it; three more
 high-traffic junctions are unaligned.
+
+### One ethic each, which took a while
+
+`monopolist` was implemented, tested and **owned by nobody**, while `autarkic`
+was held twice — five ethics, five factions, one duplicated and one dead. That
+is an authoring slip, not a design.
+
+The Iron Vigil has it now, and the geography decides that rather than taste:
+only three lanes on the map have both ends under one power, and the Vigil holds
+one of them (`tio-3 <-> tio-4`, one jump, volume 44). The *other* autarkist,
+Arkanis, holds a single hub and would earn nothing from the doctrine, so the
+duplicate could only be broken on the Vigil's side. It fits the fiction better
+than expected: *"Hold the Tion until order is restored"* **is** the monopolist
+precondition, and fortification and garrison-raising are the toolkit for
+holding both ends of a corridor.
+
+**Two things had to change to make it work**, and both were only visible
+because the ethic finally had an owner:
+
+1. **The premium broke value conservation.** It multiplied the endpoint share
+   inside `routeEarnings`, so the network paid out more than the lanes were
+   worth — caught immediately by the test that guards exactly that, which had
+   never fired because no faction was a monopolist. It is now reported as
+   `monopolyPremium` and added by `ledgerFor`, which is where the free trader's
+   openness bonus already lives. The split stays a conserved division of what
+   the network is worth; the premium rides alongside it.
+2. **`MONOPOLY_BONUS` fell from 1.5 to 1.25.** Swept over 30 played turns, the
+   response is a *cliff*: at 1.4+ the Vigil's route income funds a fleet that
+   takes `tio-1` off Meridian — costing Meridian a hub and its own both-ends
+   lane — and Meridian ends at −82. At 1.3 and below Meridian keeps tio-1 and
+   finishes at **+31**, better than the −1 it managed before any of this. From
+   1.3 down to 1.15 the board is identical, because the premium applies to one
+   lane and the discrete question (does Meridian keep tio-1) swamps it. 1.25 is
+   chosen over the 1.3 that also passes for margin: a tuning value sitting on a
+   cliff edge is one unrelated change away from tipping back.
 
 ### Interdiction: attacking an economy without a battle
 
@@ -484,64 +519,105 @@ by the fleet commanders.
 
 Dissent itself is faction-agnostic — every faction carries the field, all five
 have red lines and compulsions in the seed, and `effectiveStats` reads the same
-way for each. What is player-only is the *trigger*: refusal exists solely on the
-resolution call, and `ReactionSchema` has no `refusal` field, so an NPC acting
-straight through its own compulsions is never charged for it. NPC character is
-enforced by prompt; the player's is enforced by the reducer.
+way for each.
+
+### Compulsions also fire on drift, for everyone
+
+Refusal has a shape problem: it needs an action to refuse. That works for a
+compulsion phrased as a prohibition and not at all for one phrased as a demand,
+so a player who simply never acted was never noticed — and four lines in the
+seed promised consequences for exactly that, with nothing behind them:
+
+> *"a stretch of quiet with no raid, no prize and no payout and they take ships
+> elsewhere"* · *"insults must be answered within a turn or two, or the officer
+> corps answers them without you"* · *"an unprofitable quarter … invites a vote
+> of no confidence"*
+
+Nothing measured time, income or idleness. A compulsion may now carry a
+**trigger** (`src/domain/compulsions.ts`), a pure predicate on world state
+checked once per faction per turn in `tickTurn`:
+
+| trigger | fires when |
+|---|---|
+| `unprofitable` | net income is zero or negative |
+| `idle_at_war` | at war with someone and no fleet under way |
+| `unanswered_incursion` | a rival's ships sit on a world you hold and nothing was sent |
+| `no_plunder` | no raid under way and nothing taken from anyone's lanes |
+
+Three properties follow from making these predicates rather than counters:
+
+- **A "stretch" needs nothing to count it.** The predicate is simply true again
+  next turn, so neglect accumulates by repetition and stops the moment the
+  faction complies — the behaviour the flavour text always described.
+- **It replays exactly.** No history, no clock, no dice.
+- **It applies to every faction.** This is the first mechanism in the game that
+  holds an *NPC* to its own character. Refusals only ever reached the player,
+  because `ReactionSchema` has no `refusal` field, which left four of five
+  powers free to act completely against type at no cost.
+
+`COMPULSION_DRIFT_DISSENT` (3) is set against `DISSENT_DECAY` (2), so one
+ignored compulsion nets +1 a turn and two net +4. Measured over 30 turns in
+which nobody acts at all: the Iron Vigil and Drajk reach 32 dissent (−2 to every
+stat), and the three powers whose compulsions are all prohibitions never drift
+at all. It is deliberately well below `REFUSAL_DISSENT` (8) — ordering your
+faction to betray itself is worse than merely failing to be it.
+
+A compulsion with no trigger is **not** inert; it is still enforced the original
+way, by refusal. `CompulsionSchema` accepts a bare string and normalises it, so
+every save and journal written before triggers existed still loads.
+
+> The one thing TypeScript will not catch here: `faction.compulsions` is now
+> objects, and interpolating one into a template literal is legal and yields
+> `[object Object]`. That is precisely what `serializeCharacter` did for a
+> moment, which would have fed the model a character sheet with every
+> compulsion blanked. There is a test pinning it.
 
 ### Changing doctrine costs dissent, because it is real
 
-`set_doctrine` used to write a string and nothing else. The axes that actually
-did anything — `warEthic`, `tradeEthic`, `redLines`, `compulsions` — had no op
-at all and were immutable for a whole campaign. Nothing in code gated a change
-either: the arbiter is explicitly told not to rule on character
-(`prompts/appraisal.md`), and the reducer checked only that the faction existed.
-So a doctrine change either got refused by a model's judgement with nothing
-behind it, or it silently "succeeded" — narrative, event log and UI all
-confirming a change that had not happened.
-
-The second is the damaging one, because `serializeCharacter` then feeds the
-**new** doctrine and the **old** compulsions into the same block, and the
-player's next raid hits the anti-raiding compulsion still sitting there. They
-are refused, take dissent, degrade — while the doctrine on screen says raiding
-is policy, and nothing connects the two.
+`set_doctrine` used to write a string and nothing else. `warEthic` and
+`tradeEthic` — the axes that actually do something — had no op at all and were
+immutable for a whole campaign, so a doctrine change either got refused by a
+model's judgement with nothing behind it, or silently "succeeded": narrative,
+event log and UI all confirming a change that had not happened.
 
 Doctrine is now genuinely changeable and dissent is the price, charged in code
-per axis actually moved:
+per axis actually moved: `DOCTRINE_TEXT_DISSENT` (6) for a new statement of
+posture, `DOCTRINE_ETHIC_DISSENT` (20) for each ethic. Both guards are
+reducer-side: a faction may change only **its own** doctrine (`actor`-checked,
+the same hazard `deploy_agent` validates against — without it a Meridian action
+could rewrite the Iron Vigil's doctrine, which is what its diplomacy persona is
+built from), and one at or above `DOCTRINE_CHANGE_DISSENT_CEILING` (75) cannot be
+reorganised at all.
 
-| what moved | dissent |
-|---|---|
-| a new statement of posture | `DOCTRINE_TEXT_DISSENT` (6) |
-| `warEthic` or `tradeEthic` | `DOCTRINE_ETHIC_DISSENT` (20) each |
-| a red line or compulsion retired | `DOCTRINE_RETIRE_DISSENT` (25) each |
+### Red lines are permanent; compulsions are a price
 
-Retiring is the load-bearing part: a compulsion refusing commerce raiding goes
-on refusing every raid until it is retired, whatever the paragraph says.
-Retirements are matched **literally** against the faction sheet so the journal
-records which principle was abandoned rather than a paraphrase.
+There was briefly a `retire` field on `set_doctrine` that abandoned a named red
+line or compulsion for 25 dissent. It was the wrong shape, and the first live
+model call proved it: asked explicitly to retire a red line, the resolution pass
+rewrote the doctrine paragraph, announced the retirement in the narrative, and
+emitted `retire: []`. The sheet and the story disagreed, and the enforcement
+skipped the still-live line anyway. Guarding that would have taken an arbiter
+field, prompt plumbing and a batch-composition rule to stop retire-then-breach
+becoming a universal bypass for a flat 25.
 
-A full reorientation is ~71 — **five** points off every stat for the thirty-odd
-turns it takes to decay at 2 a turn. That is the intent: turning a power against
-its own character should be campaign-defining, not a free pivot. (It was two
-points when these prices were set, against the old ceiling of 4. Raising the
-ceiling to 8 more than doubled the real bite of a doctrine change without the
-dissent numbers moving — worth knowing before retuning either.)
+The simpler answer is that **nothing is ever retired**, so there is no state to
+desync. The two kinds of principle are now answered differently:
 
-Two guards, both reducer-side. A faction may change only **its own** doctrine
-(`actor`-checked, the same hazard `deploy_agent` validates its owner against —
-without it a Meridian action could rewrite the Iron Vigil's doctrine, and
-doctrine is what its diplomacy persona is built from). And a faction at or above
-`DOCTRINE_CHANGE_DISSENT_CEILING` (75) cannot be reorganised at all, which is
-both the fiction and a loophole closed: dissent clamps at 100, so without it a
-leader at the cap could reorient endlessly having already paid in full.
+| | enforced by | cost | repeatable |
+|---|---|---|---|
+| **red line** — *"will not, whatever the incentive"* | `refusal`; **no ops at all** | `REFUSAL_DISSENT` (8) | the attempt, yes; the act, never |
+| **compulsion** — *"your institutions DEMAND"* | `defiance`; **the ops land** | `COMPULSION_BREACH_DISSENT` (25) | yes, and that is the point |
 
-> Worth knowing when tuning: the clamp means **defiance at 100 dissent is
-> free** in general, not only here. Nothing else fires at the cap — there is no
-> coup, no collapse, no forced reversion. Dissent is a graduated debuff with a
-> long memory and no terminal state, now worth −8 on every stat at the top.
+A leader who means to turn their power against its own character does it by
+insisting and absorbing the cost. Four defiances reach the 100 cap and
+`MAX_DISSENT_PENALTY` — eight off every stat, fifty turns to clear — so the
+mechanism is "you may, and by the fourth time nobody is following you" rather
+than "you may not".
 
-Engine ops and journals without an `actor` skip both the guards and the charge,
-so a campaign recorded before this replays exactly as it ran.
+`defiance` is charged in code, not nominated by the model: the resolution call
+reports *that* a compulsion was defied and the reducer sets the price. And
+nothing further fires at the cap on purpose — the penalty there is already
+crippling, and a terminal state on top of it would charge twice for one decision.
 
 ### Dissent moves one way, on your own faction only
 
@@ -660,6 +736,53 @@ on whether a model asked. The actor is recorded in the journal so replay stays
 exact; it is optional, so journals written before the guard existed still
 replay — reproducing what happened rather than retroactively rejecting it.
 
+## War ethics have mechanical force
+
+`warEthic` had **no mechanical reader anywhere** for the whole life of the
+project — only the prompt serializer. That is why nobody noticed two factions
+shared `defensive`, why `expansionist` sat unused, and why the Ojjul Nar
+Combine carried a label that was precisely inverted. Exactly the `tradeEthic`
+story before it: the axis was flavour, so its errors were invisible.
+
+**`mercenary` is gone.** It meant *"fights for payment; war is a service sold"* —
+the seller. The Combine's doctrine is *"let other powers spend their fleets for
+you"*, its red line is *"will not fight its own war where a proxy could be
+hired"*, and its might is **9**, the lowest in the game. It funds wars; it has
+never had an army to sell. `profiteer` replaces it.
+
+| ethic | faction | mechanic |
+|---|---|---|
+| `expansionist` | Meridian | `EXPANSIONIST_TERRITORY_BONUS` per world held, applied to **all** its territory income — expansion compounds. Conquest also consolidates: a captured world keeps half its garrison rather than a third |
+| `defensive` | Arkanis | its garrison fights at `DEFENSIVE_GARRISON_BONUS` of its size, and costs the attacker accordingly. Only the real garrison can be destroyed — the bonus buys resistance, not extra troops |
+| `opportunist` | Drajk | `OPPORTUNIST_MIGHT_BONUS` against a target **weakened** (garrison below half its ceiling) or **distracted** (its holder at war with someone else). Nothing in a fair fight |
+| `crusading` | Iron Vigil | **does not break off**, attacking or defending. Wins engagements it should have fled and loses fleets it should have saved |
+| `profiteer` | Ojjul Nar | `PROFITEER_INCOME_PER_WAR` from every war it is *not* in; at war itself it forfeits all of that **and** pays `PROFITEER_WAR_PENALTY` per war |
+
+Two are deliberately double-edged. A doctrine that is purely an advantage is
+not a doctrine, it is a bonus.
+
+**Whose doctrine applies in a coalition** is a real question, because `bestMod`
+takes the best modifier on each side and a doctrine is not a stat that can be
+borrowed. It is read off the **largest contingent**, so a one-ship junior
+partner cannot decide that nobody is allowed to retreat.
+
+### The profiteer's two doctrines are in tension, and that is the point
+
+`warProfitFor` flips sign the moment the Combine is in a war, which makes
+*"will not fight its own war"* a line the ledger agrees with rather than one the
+model has to be trusted to remember. It also collides productively with its
+trade doctrine: `TOLL_RESENTMENT` means tolling everyone gradually turns them
+against it. Measured over 30 harness turns, the Combine's own disposition toward
+the Iron Vigil ends at −75 — a war — which turns +40 a turn into −40. It gets
+rich by taxing everyone, and being resented by everyone is what eventually costs
+it the peace it profits from.
+
+> `expansionist` was assigned to Meridian rather than Arkanis on purpose. Both
+> were `defensive`, and an income-based expansionism suits *"Commerce is
+> sovereignty"*; Arkanis is the defensive faction par excellence — *"take no
+> master"*, *"will never accept occupation"* — and giving it an expansion-pays
+> mechanic would have contradicted its whole sheet.
+
 ## Combat
 
 A faction has **no stored fleet strength**. Its navy is `sum(system.ships[f])`
@@ -688,6 +811,40 @@ That is what stops conquest being permanently cheap.
 
 All of it is deterministic — one seeded d20 per battle — so campaigns replay
 exactly.
+
+### Battles are reported, not just narrated
+
+`resolveBattle` computed the seeded roll, both might modifiers, the powers the
+2:1 break-off test compares, the retreat loss percentage, proportional
+per-contingent losses, the dug-in garrison value and the assault total — and
+flattened all of it into one sentence. The player saw *"Fleets engage over
+Kalzir: Meridian loses 24, defenders lose 20"* and could not tell which phase
+decided it, what the roll was, or what was left standing. `TurnReport.arrivals`
+carried that prose and **the browser never read it at all**.
+
+That got worse when war ethics gained mechanical force, because four doctrines
+now change battles and none of them were observable. `src/domain/battle.ts`
+defines a `BattleReport`; `resolveBattle` returns `{ note, report }`, so the log
+keeps its prose and the UI gets the arithmetic. `doctrinesFired` names only the
+doctrines that **changed** something — a crusading power never asked to retreat
+does not appear.
+
+Shaped as an **engagement made of rounds**, each stamped with its turn, rather
+than a flat record of one exchange. Combat resolves in a single tick today and
+whether it should stay that way is unsettled, so if it later spans turns the
+rounds append and `status` stays `'ongoing'` — schema and renderer unchanged. A
+richer resolver changes the producer, not this.
+
+Nothing is stored on `WorldState`: a report is derived from a tick that already
+happened and the journal can regenerate it, so persisting it would be a second
+source of truth. The cost is that `briefingFromState` has no battles on a
+resumed campaign, which is what a resumed player had before anyway.
+
+> Two things this caught immediately, both invisible in prose. The attacker's
+> "before" was being read from the target system, where a fleet still in transit
+> reads as zero — so the first version reported a fleet of **0** attacking.
+> Rounds now carry per-round deltas, and a test asserts the last round's numbers
+> equal what the board actually holds.
 
 ## Op vocabulary
 
@@ -1295,7 +1452,7 @@ re-sends its context. A trivial call still takes ~7s for that reason.
 ```
 src/
   domain/     state, ops, duration, development, graph, checks, diplomacy,
-              arbitration, trade, reducer
+              arbitration, compulsions, trade, reducer
               ← pure. No I/O, no network, no imports from engine/model/ui.
   api/        contract.ts — Zod schemas shared by server and browser
   engine/     campaign, store, journal, turn, briefing

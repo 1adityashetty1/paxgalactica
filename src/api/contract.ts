@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { BattleReportSchema } from '../domain/battle.js';
 import { CheckOutcomeSchema, StatNameSchema } from '../domain/checks.js';
 import { WorldStateSchema } from '../domain/state.js';
 
@@ -47,6 +48,8 @@ export const LedgerSchema = z.object({
   agentUpkeep: z.number().int(),
   /** Standing arrangements: positive receives, negative pays. */
   commitmentFlow: z.number().int(),
+  /** A profiteer's take from other powers' wars, or what its own cost it. */
+  warProfit: z.number().int(),
   /** What a faction's own worlds pay it. */
   territory: z.number().int(),
   /** What the lane network pays it, after tolls levied and raids suffered. */
@@ -86,6 +89,8 @@ export const BriefingSchema = z.object({
   completed: z.array(BriefingCompletionSchema),
   inProgress: z.array(BriefingProjectSchema),
   observed: z.array(BriefingProjectSchema),
+  /** Battles fought this turn, with the arithmetic that decided them. */
+  battles: z.array(BattleReportSchema),
   quiet: z.boolean(),
 });
 
@@ -135,11 +140,29 @@ export const RefusalViewSchema = z.object({
 export const ActionOutcomeSchema = z.object({
   narrative: z.string(),
   refusal: RefusalViewSchema.nullable().default(null),
+  /**
+   * The institutions objected and carried the order out anyway — a compulsion
+   * defied rather than a red line crossed. Distinct from `refusal`, where
+   * nothing happens at all.
+   */
+  defiance: RefusalViewSchema.nullable().default(null),
   staged: z.number().int(),
   notes: z.array(z.string()),
   rejections: z.array(OpRejectionSchema),
   check: CheckResultSchema.nullable(),
   costUsd: z.number(),
+  /**
+   * The ops this declaration actually staged, as applied.
+   *
+   * Returned because the highest-value bug class in this project is a narrative
+   * that claims something the ops do not do — a battle resolved in prose, an
+   * agent owned by its own victim, a doctrine retirement announced with an empty
+   * `retire`. Every one of those was found by reading the on-disk journal,
+   * because this response used to carry narrative, check and counts only. They
+   * are already in memory; withholding them only made the game harder to test
+   * than to play.
+   */
+  ops: z.array(z.unknown()),
 });
 export type ActionOutcomeResponse = z.infer<typeof ActionOutcomeSchema>;
 

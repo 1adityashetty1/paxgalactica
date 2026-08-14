@@ -4,11 +4,12 @@ import { createSeedState } from '../src/seed/scenario.js';
 import {
   DOCTRINE_CHANGE_DISSENT_CEILING,
   DOCTRINE_ETHIC_DISSENT,
-  DOCTRINE_RETIRE_DISSENT,
   DOCTRINE_TEXT_DISSENT,
   dissentPenalty,
   effectiveStats,
+  COMPULSION_BREACH_DISSENT,
   ledgerFor,
+  MAX_NARRATIVE_CREDITS,
   REFUSAL_DISSENT,
   type Op,
   type WorldState,
@@ -34,13 +35,12 @@ const fac = (s: WorldState, id: string) => s.factions.find((x) => x.id === id)!;
 const NO_RAIDING =
   'commerce raiding is refused outright — the Authority insures the cargo it would be seizing, and preying on shipping ends it as a going concern';
 
-const turnRaider = (retire: string[] = []): Op => ({
+const turnRaider = (): Op => ({
   op: 'set_doctrine',
   factionId: 'meridian',
   doctrine: 'Commerce was a mistake. We take the lanes by force and let the ledgers follow.',
   warEthic: 'opportunist',
   tradeEthic: 'smuggler',
-  retire,
 });
 
 describe('a doctrine change is priced in dissent', () => {
@@ -67,34 +67,48 @@ describe('a doctrine change is priced in dissent', () => {
   });
 
   it('charges per axis actually moved', () => {
-    const out = applyOps(fresh(), [turnRaider([NO_RAIDING])], 'model', 'meridian');
+    const out = applyOps(fresh(), [turnRaider()], 'model', 'meridian');
     expect(out.rejections).toHaveLength(0);
     expect(fac(out.state, 'meridian').dissent).toBe(
-      DOCTRINE_TEXT_DISSENT + 2 * DOCTRINE_ETHIC_DISSENT + DOCTRINE_RETIRE_DISSENT,
+      DOCTRINE_TEXT_DISSENT + 2 * DOCTRINE_ETHIC_DISSENT,
     );
   });
 
+  it('cannot touch a red line or a compulsion, by this op or any other', () => {
+    // There is no `retire` any more. A `retire` field existed briefly and was
+    // the wrong shape: the model narrated a retirement while emitting an empty
+    // array, so the sheet and the story disagreed. Principles are permanent now,
+    // and acting against one is priced instead — see the defiance tests below.
+    const out = applyOps(fresh(), [turnRaider()], 'model', 'meridian');
+    expect(fac(out.state, 'meridian').redLines).toEqual(fac(fresh(), 'meridian').redLines);
+    expect(fac(out.state, 'meridian').compulsions).toEqual(
+      fac(fresh(), 'meridian').compulsions,
+    );
+    // And the op schema has no way to ask.
+    expect(Object.keys(turnRaider())).not.toContain('retire');
+  });
+
   it('makes a full reorientation cost real capability, not just a number', () => {
-    const out = applyOps(fresh(), [turnRaider([NO_RAIDING])], 'model', 'meridian');
+    const out = applyOps(fresh(), [turnRaider()], 'model', 'meridian');
     const before = effectiveStats(fresh(), 'meridian');
     const after = effectiveStats(out.state, 'meridian');
     // ~71 dissent, which on a 1-20 stat scale is a serious institutional
     // wound rather than a rounding error. Derived so retuning the curve does
     // not need this test rewritten to agree with it.
     const penalty = dissentPenalty(fac(out.state, 'meridian').dissent);
-    expect(penalty).toBeGreaterThanOrEqual(4);
+    expect(penalty).toBeGreaterThanOrEqual(2);
     expect(after.industry).toBe(before.industry - penalty);
     expect(after.influence).toBe(before.influence - penalty);
   });
 
-  it('takes about thirty turns to live down', () => {
-    let state = applyOps(fresh(), [turnRaider([NO_RAIDING])], 'model', 'meridian').state;
+  it('takes twenty-odd turns to live down', () => {
+    let state = applyOps(fresh(), [turnRaider()], 'model', 'meridian').state;
     let turns = 0;
     while (fac(state, 'meridian').dissent > 0 && turns < 100) {
       state = tickTurn(state).state;
       turns += 1;
     }
-    expect(turns).toBeGreaterThan(30);
+    expect(turns).toBeGreaterThan(20);
   });
 });
 
@@ -111,28 +125,12 @@ describe('the change is mechanically real, which is what makes the price fair', 
     );
   });
 
-  it('retires the compulsion that was blocking the new course', () => {
-    const out = applyOps(fresh(), [turnRaider([NO_RAIDING])], 'model', 'meridian');
-    expect(fac(out.state, 'meridian').compulsions).not.toContain(NO_RAIDING);
-    // Only the named one goes. Abandoning a principle is not a general amnesty.
-    expect(fac(out.state, 'meridian').compulsions.length).toBe(
-      fac(fresh(), 'meridian').compulsions.length - 1,
-    );
-    expect(fac(out.state, 'meridian').redLines).toEqual(fac(fresh(), 'meridian').redLines);
-  });
-
-  it('rejects a principle quoted loosely rather than guessing which was meant', () => {
-    const out = applyOps(
-      fresh(),
-      [turnRaider(['no more commerce raiding rules'])],
-      'model',
-      'meridian',
-    );
-    expect(out.rejections[0]!.code).toBe('illegal_value');
-    expect(out.rejections[0]!.message).toMatch(/Quote it exactly/);
-    // Nothing partially applied.
-    expect(fac(out.state, 'meridian').tradeEthic).toBe('free_trade');
-    expect(fac(out.state, 'meridian').dissent).toBe(0);
+  it('leaves the compulsion standing, so the raid still costs every time', () => {
+    // The compulsion that refuses commerce raiding survives the doctrine
+    // change. Under the old design it could be retired for 25 once; now the
+    // raid itself is what costs, and it costs again on the next raid.
+    const out = applyOps(fresh(), [turnRaider()], 'model', 'meridian');
+    expect(fac(out.state, 'meridian').compulsions.map((c) => c.text)).toContain(NO_RAIDING);
   });
 });
 
@@ -251,5 +249,127 @@ describe('who may move dissent', () => {
     expect(out.rejections).toHaveLength(0);
     expect(fac(out.state, 'vigil').doctrine).toBe('Hold the Tion, whatever it costs.');
     expect(fac(out.state, 'vigil').dissent).toBe(0);
+  });
+});
+
+/**
+ * Narrative money. Every large credit movement in this game has a mechanism
+ * that owns its price and debits the treasury directly — `SHIP_COST` through
+ * `billConstruction`, `AGENT_COST`, `developmentCost`, treaty and commitment
+ * flows, tolls, raiding. None of them route through `adjust_credits`, so what is
+ * left for that op is a bribe, a fine or a windfall.
+ *
+ * The live playtest found it unbounded: a failed construction attempt charged
+ * 380 with no order created, and a correctly priced 156-credit programme arrived
+ * with a freeform 180 riding alongside it.
+ */
+describe('adjust_credits is bounded narrative money', () => {
+  const move = (factionId: string, delta: number): Op => ({
+    op: 'adjust_credits',
+    factionId,
+    delta,
+    reason: 'a matter of contractors',
+  });
+
+  it('trims a charge past the cap rather than refusing it', () => {
+    const state = fresh();
+    const before = fac(state, 'meridian').credits;
+    const out = applyOps(state, [move('meridian', -380)], 'model', 'meridian');
+    expect(out.rejections).toHaveLength(0);
+    expect(fac(out.state, 'meridian').credits).toBe(before - MAX_NARRATIVE_CREDITS);
+    expect(out.notes.join(' ')).toMatch(/Trimmed a charge of 380/);
+    expect(out.state.eventLog.some((e) => e.kind === 'clamp')).toBe(true);
+  });
+
+  it('trims an invented windfall the same way, which is the worse direction', () => {
+    const state = fresh();
+    const before = fac(state, 'meridian').credits;
+    const out = applyOps(state, [move('meridian', 9000)], 'model', 'meridian');
+    expect(fac(out.state, 'meridian').credits).toBe(before + MAX_NARRATIVE_CREDITS);
+  });
+
+  it('leaves an ordinary sum alone', () => {
+    const state = fresh();
+    const before = fac(state, 'meridian').credits;
+    const out = applyOps(state, [move('meridian', -75)], 'model', 'meridian');
+    expect(fac(out.state, 'meridian').credits).toBe(before - 75);
+    expect(out.notes).toEqual([]);
+  });
+
+  it('refuses to take credits out of a rival treasury', () => {
+    const state = fresh();
+    const before = fac(state, 'vigil').credits;
+    const out = applyOps(state, [move('vigil', -500)], 'model', 'meridian');
+    expect(out.rejections[0]!.code).toBe('illegal_value');
+    expect(out.rejections[0]!.message).toMatch(/income_penalty|toll|raid/);
+    expect(fac(out.state, 'vigil').credits).toBe(before);
+  });
+
+  it('still lets one power pay another', () => {
+    const state = fresh();
+    const before = fac(state, 'vigil').credits;
+    const out = applyOps(state, [move('vigil', 100)], 'model', 'meridian');
+    expect(out.rejections).toHaveLength(0);
+    expect(fac(out.state, 'vigil').credits).toBe(before + 100);
+  });
+
+  it('leaves engine ops and older journals unbounded, so replay is exact', () => {
+    const state = fresh();
+    const before = fac(state, 'meridian').credits;
+    const out = applyOps(state, [move('meridian', -380)]);
+    expect(fac(out.state, 'meridian').credits).toBe(before - 380);
+  });
+});
+
+/**
+ * Defiance: the third outcome, between "done" and "refused".
+ *
+ * A red line is absolute and produces a refusal, so nothing happens. A
+ * compulsion is a demand a leader may overrule, so the order stands and the
+ * institutions charge for having been overruled. This replaced retiring
+ * principles, which desynced the sheet from the story the one time a live model
+ * touched it.
+ */
+describe('a compulsion is a price, not a wall', () => {
+  it('costs more than being refused, because it actually happened', () => {
+    expect(COMPULSION_BREACH_DISSENT).toBeGreaterThan(REFUSAL_DISSENT);
+  });
+
+  it('reaches the cap in four, and stops there', () => {
+    const state = fresh();
+    for (let i = 0; i < 6; i++) {
+      const out = applyOps(
+        state,
+        [
+          {
+            op: 'adjust_dissent', factionId: 'meridian',
+            delta: COMPULSION_BREACH_DISSENT, reason: 'the Council was overruled',
+          },
+        ],
+        'model',
+        'meridian',
+      );
+      Object.assign(state, out.state);
+    }
+    expect(4 * COMPULSION_BREACH_DISSENT).toBeGreaterThanOrEqual(100);
+    expect(fac(state, 'meridian').dissent).toBe(100);
+    expect(dissentPenalty(100)).toBe(8);
+  });
+
+  it('leaves the compulsion in place, so the next breach costs the same again', () => {
+    const state = fresh();
+    const before = fac(state, 'meridian').compulsions.length;
+    const out = applyOps(
+      state,
+      [
+        {
+          op: 'adjust_dissent', factionId: 'meridian',
+          delta: COMPULSION_BREACH_DISSENT, reason: 'overruled again',
+        },
+      ],
+      'model',
+      'meridian',
+    );
+    expect(fac(out.state, 'meridian').compulsions).toHaveLength(before);
   });
 });

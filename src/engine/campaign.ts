@@ -23,7 +23,13 @@ export type { CampaignStore, SaveFile } from './store.js';
 
 export interface StagedBatch {
   label: string;
+  /** What was proposed. Journaled, so replay reproduces the same rejections. */
   ops: unknown[];
+  /**
+   * The subset that actually landed. Optional so a batch restored from an older
+   * shape still works; `opsStagedSince` falls back to `ops` when it is absent.
+   */
+  applied?: unknown[];
   /** What the model said would happen, for the end-of-turn summary. */
   narrative: string;
   /** Whose ops these are — carried so the commit replays under the same guards. */
@@ -127,7 +133,15 @@ export class Campaign {
     const actor = this.committed.playerFactionId;
     const res = applyOps(this.state, ops, 'model', actor);
     this.state = res.state;
-    this.stagedBatches.push({ label, ops, narrative, actor });
+    // `ops` is what was PROPOSED and is what gets journaled, because replay must
+    // re-run the rejections to reproduce them. `applied` is the subset that
+    // actually landed, and it is what the API reports: the first version of this
+    // returned the proposed list and a playtest correctly called it out, since an
+    // auditor reading it would conclude a rejected op had taken effect.
+    // Rejections carry the original op by reference, so identity is enough.
+    const refused = new Set(res.rejections.map((r) => r.op));
+    const applied = ops.filter((op) => !refused.has(op));
+    this.stagedBatches.push({ label, ops, applied, narrative, actor });
     return { rejections: res.rejections, notes: res.notes };
   }
 
@@ -138,6 +152,20 @@ export class Campaign {
   /** Every op declared but not yet landed, for picking who reacts. */
   stagedOps(): unknown[] {
     return this.stagedBatches.flatMap((b) => b.ops);
+  }
+
+  /**
+   * Ops from batches `index` onward that actually LANDED — one declaration's
+   * whole effect, including any correction batch that followed it, and excluding
+   * everything the reducer refused.
+   *
+   * Applied rather than proposed on purpose. Reporting the proposed list is
+   * worse than reporting nothing: a caller diffing the narrative against it
+   * would confirm an effect that never happened, which is the exact bug class
+   * this field exists to expose.
+   */
+  opsStagedSince(index: number): unknown[] {
+    return this.stagedBatches.slice(index).flatMap((b) => b.applied ?? b.ops);
   }
 
   stagedSummary(): string {
@@ -188,6 +216,16 @@ export class Campaign {
         source: 'model',
         label: batch.label,
         ops: batch.ops,
+        // The actor MUST be journaled. It was applied above and dropped here,
+        // so replay re-ran every player-declared batch with `actor: undefined`
+        // and skipped every actor-gated guard — the suborn limits, the agent
+        // owner check, the doctrine guards, the dissent sign rule,
+        // `capSelfInflictedLosses`, the narrative-credit cap. Live rejected or
+        // trimmed; replay applied in full. It stayed invisible because those
+        // guards mostly *reject*, and no test staged an op that tripped one
+        // until the credit cap started *modifying* a value the parity test
+        // asserts on.
+        actor: batch.actor,
       });
       notes.push(...res.notes);
     }
@@ -227,7 +265,12 @@ export class Campaign {
 
   private resyncPreview(): void {
     let s = this.committed;
-    for (const batch of this.stagedBatches) s = applyOps(s, batch.ops, 'model', batch.actor).state;
+    for (const batch of this.stagedBatches) {
+      const res = applyOps(s, batch.ops, 'model', batch.actor);
+      s = res.state;
+      const refused = new Set(res.rejections.map((r) => r.op));
+      batch.applied = batch.ops.filter((op) => !refused.has(op));
+    }
     this.state = s;
   }
 

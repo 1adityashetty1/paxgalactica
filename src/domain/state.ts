@@ -55,17 +55,25 @@ export const WAR_ETHICS = [
   'defensive',
   'opportunist',
   'crusading',
-  'mercenary',
+  /**
+   * Was `mercenary`, which was exactly backwards for the only faction that had
+   * it. `mercenary` means "fights for payment; war is a service sold" — the
+   * seller. The Ojjul Nar Combine's doctrine is *"let other powers spend their
+   * fleets for you"* and its red line is *"will not fight its own war where a
+   * proxy could be hired"* — the buyer. On might 9, the lowest in the game, it
+   * has no army to sell and never did. It funds wars; it does not fight them.
+   */
+  'profiteer',
 ] as const;
 export const WarEthicSchema = z.enum(WAR_ETHICS);
 export type WarEthic = z.infer<typeof WarEthicSchema>;
 
 export const WAR_ETHIC_MEANING: Record<WarEthic, string> = {
-  expansionist: 'takes territory because it is there; needs no provocation, only opportunity',
-  defensive: 'fights only when struck or when a border is genuinely threatened; will not start a war of conquest',
+  expansionist: 'takes territory because it is there; every world it holds makes the rest pay better',
+  defensive: 'fights only when struck; its worlds are dug in, and storming one costs far more than taking it should',
   opportunist: 'attacks the weak and the distracted, avoids fair fights, switches sides without embarrassment',
-  crusading: 'fights for legitimacy and grievance; will attack at a disadvantage if the cause demands it',
-  mercenary: 'fights for payment; war is a service sold, and someone else’s enemy is negotiable',
+  crusading: 'fights for legitimacy and grievance, and does not break off — it will win fights it should have fled and lose fleets it should have saved',
+  profiteer: 'war is a market it funds rather than joins; it earns from every war it stays out of, and loses that trade the moment it is in one',
 };
 
 /** Where a power stands on commerce. Also sets its baseline income. */
@@ -112,6 +120,53 @@ export const TRADE_INCOME_MULTIPLIER: Record<TradeEthic, number> = {
  */
 export const FREE_TRADE_OPENNESS_BONUS = 0.25;
 
+/**
+ * What a compulsion watches for, when it watches for anything.
+ *
+ * Compulsions were enforced by exactly one path: the resolution call refusing a
+ * declared action. That works for a compulsion phrased as a prohibition, and
+ * not at all for one phrased as a demand — a refusal needs an action to refuse,
+ * so nothing ever fired on *drift*. Four lines in the seed promised
+ * consequences for elapsed time ("a stretch of quiet with no raid", "within a
+ * turn or two", "an unprofitable quarter") and nothing measured time, or
+ * anything else.
+ *
+ * A trigger is a **pure predicate on world state**, checked once per faction
+ * per turn. Nothing here reads history, a clock or a random number, so the
+ * check replays exactly; a "stretch" of neglect emerges from the predicate
+ * being true on several consecutive turns rather than from anything counting.
+ */
+export const COMPULSION_TRIGGERS = [
+  /** Net income is zero or negative. */
+  'unprofitable',
+  /** At war with someone, with no fleet under way. */
+  'idle_at_war',
+  /** A rival's ships sit on a world you hold, and you have sent nothing. */
+  'unanswered_incursion',
+  /** No raid under way and nothing taken from anyone's lanes. */
+  'no_plunder',
+] as const;
+export type CompulsionTrigger = (typeof COMPULSION_TRIGGERS)[number];
+export const CompulsionTriggerSchema = z.enum(COMPULSION_TRIGGERS);
+
+/**
+ * A compulsion is `{ text, trigger? }`, but a bare string is accepted and
+ * normalised — that is what every save file and journal written before triggers
+ * existed contains, and they must keep loading.
+ *
+ * A compulsion with no trigger is not inert: it is still enforced the original
+ * way, by the resolution call refusing an action that abandons it. The trigger
+ * only adds the case a refusal cannot cover.
+ */
+export const CompulsionSchema = z.preprocess(
+  (value) => (typeof value === 'string' ? { text: value } : value),
+  z.object({
+    text: z.string().min(1).max(240),
+    trigger: CompulsionTriggerSchema.optional(),
+  }),
+);
+export type Compulsion = z.infer<typeof CompulsionSchema>;
+
 export const FactionSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -148,7 +203,7 @@ export const FactionSchema = z.object({
    * rebel holds Imperial ground is not playing Iron Vigil — the fleet
    * commanders have views, and this is where they live.
    */
-  compulsions: z.array(z.string()).default([]),
+  compulsions: z.array(CompulsionSchema).default([]),
   /**
    * How far the leader has strayed from doctrine, 0–100. Rises when orders are
    * refused or compulsions ignored; high dissent is a losing position.
@@ -471,6 +526,11 @@ export interface Ledger {
    * Positive receives, negative pays.
    */
   commitmentFlow: number;
+  /**
+   * A profiteer's take from other powers' wars — or, when it is in one itself,
+   * what that costs it. Zero for everyone else.
+   */
+  warProfit: number;
   /** Territory: what the systems themselves pay. */
   territory: number;
   /** Trade: what the lane network pays, after tolls and raids. */
@@ -617,7 +677,7 @@ export function ledgerFor(state: WorldState, factionId: string): Ledger {
   if (!faction) {
     return {
       gross: 0, upkeep: 0, net: 0, systems: 0, treatyFlow: 0,
-      espionageLoss: 0, agentUpkeep: 0, commitmentFlow: 0,
+      espionageLoss: 0, agentUpkeep: 0, commitmentFlow: 0, warProfit: 0,
       territory: 0, routes: 0, tolls: 0, raided: 0,
     };
   }
@@ -633,7 +693,13 @@ export function ledgerFor(state: WorldState, factionId: string): Ledger {
     }
   }
 
-  const territory = Math.round(base * TRADE_INCOME_MULTIPLIER[faction.tradeEthic]);
+  let territory = Math.round(base * TRADE_INCOME_MULTIPLIER[faction.tradeEthic]);
+  // Expansion compounds: every world an expansionist holds makes the rest pay
+  // better. `counted` is worlds actually paying it, so a power squeezed out of
+  // its holdings loses the bonus along with the income.
+  if (faction.warEthic === 'expansionist') {
+    territory = Math.round(territory * (1 + EXPANSIONIST_TERRITORY_BONUS * counted));
+  }
 
   // Trade is resolved for the whole galaxy at once, not per faction: tolls and
   // raids move credits BETWEEN powers, so one faction's take cannot be
@@ -643,6 +709,11 @@ export function ledgerFor(state: WorldState, factionId: string): Ledger {
   if (faction.tradeEthic === 'free_trade') {
     routes = Math.round(routes * (1 + FREE_TRADE_OPENNESS_BONUS * earnings.openness));
   }
+  // A monopolist running a lane end to end is worth more than the sum of the
+  // two halves. Added here rather than inside `routeEarnings` so the split it
+  // performs stays a conserved division of what the network is worth — the same
+  // treatment the free trader's openness bonus gets, two lines up.
+  routes += earnings.monopolyPremium[factionId] ?? 0;
 
   const gross = territory + routes;
   const upkeep = fleetStrengthOf(state, factionId) * UPKEEP_PER_FLEET_POINT;
@@ -673,15 +744,19 @@ export function ledgerFor(state: WorldState, factionId: string): Ledger {
     maxCommitmentIncomeFor(state, factionId),
   );
 
+  const warProfit = warProfitFor(state, factionId);
+
   return {
     gross,
     upkeep,
-    net: gross - upkeep + treatyFlow - espionageLoss - agentUpkeep + commitmentFlow,
+    net:
+      gross - upkeep + treatyFlow - espionageLoss - agentUpkeep + commitmentFlow + warProfit,
     systems: counted,
     treatyFlow,
     espionageLoss,
     agentUpkeep,
     commitmentFlow,
+    warProfit,
     territory,
     routes,
     tolls: earnings.tolls[factionId] ?? 0,
@@ -782,6 +857,102 @@ export const DISSENT_PER_PENALTY_POINT = 100 / MAX_DISSENT_PENALTY;
 export const REFUSAL_DISSENT = 8;
 
 /**
+ * Dissent added per turn, per compulsion a faction is visibly ignoring.
+ *
+ * Set against `DISSENT_DECAY` (2), which is what makes it a *drift* rather than
+ * a punishment: one ignored compulsion nets +1 a turn, so a power playing
+ * mildly against type takes about thirteen turns to lose a single stat point
+ * and stops the moment it complies. A power ignoring two at once — the Iron
+ * Vigil sitting passive while a rival's fleet sits on an Imperial world — nets
+ * +4, and finds out considerably sooner.
+ *
+ * Deliberately far below `REFUSAL_DISSENT` (8). Actively ordering your faction
+ * to betray itself is a worse offence than merely failing to be it.
+ */
+export const COMPULSION_DRIFT_DISSENT = 3;
+
+/**
+ * The most a single declaration may move a treasury through a freeform
+ * `adjust_credits`, in either direction.
+ *
+ * Found in the first live playtest. A failed construction attempt emitted
+ * `adjust_credits -380` with no order at all, and the successful retry emitted
+ * the correctly priced order — `investedCredits: 156`, derived from marginal
+ * income — *plus* a freeform `-180` for "premium rates demanded by wary
+ * contractors". So `developmentCost`'s careful pricing bounded the payload and
+ * bounded nothing about a second op in the same batch spending more than it.
+ *
+ * Every large movement of money in this game already has a mechanism that owns
+ * its price: `SHIP_COST` through `billConstruction`, `AGENT_COST`,
+ * `developmentCost`, treaty `incomePerTurn`, commitment income, tolls, raiding.
+ * None of them route through `adjust_credits` — they debit the treasury
+ * directly — so capping this op cannot interfere with any of them. What is left
+ * for `adjust_credits` is narrative money: a bribe, a fine, a windfall. Four
+ * hulls' worth is generous for that, and anything larger has somewhere better
+ * to live.
+ */
+export const MAX_NARRATIVE_CREDITS = 4 * SHIP_COST;
+
+/* ------------------------------------------------------------------ */
+/* War ethics                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `warEthic` had **no mechanical reader anywhere** — only the prompt
+ * serializer — for the whole life of the project, which is why two factions
+ * shared `defensive` and nobody noticed, and why `expansionist` sat unused. A
+ * belief with no arithmetic behind it is flavour text, and the model can be
+ * argued out of flavour text.
+ *
+ * Each ethic now has exactly one signature mechanic, on the same principle as
+ * `tradeEthic`: two of them are deliberately double-edged rather than flat
+ * buffs, because a doctrine that is purely an advantage is not a doctrine, it
+ * is a bonus.
+ */
+
+/**
+ * How much better every world an expansionist holds pays, per world it holds.
+ *
+ * Deliberately an income mechanic rather than a military one. Meridian is a
+ * *commercial* expansionist — "Commerce is sovereignty" — so what expansion
+ * buys it is administrative scale, not a better army. It compounds, which is
+ * the point: an expansionist that is allowed to keep taking worlds becomes a
+ * problem the others have to answer, and one held to four worlds gains ~12%.
+ */
+export const EXPANSIONIST_TERRITORY_BONUS = 0.03;
+
+/**
+ * What a war is worth per turn to a profiteer that is not in it.
+ *
+ * The Combine's entire doctrine — "fund both sides, own the survivor" — and
+ * nothing in the game paid it for doing so.
+ */
+export const PROFITEER_INCOME_PER_WAR = 20;
+
+/**
+ * What each of its own wars costs a profiteer, per turn, on top of forfeiting
+ * every war it was profiting from.
+ *
+ * This is what makes the doctrine self-enforcing rather than advisory. A
+ * financier at war is a financier whose clients have noticed its attention is
+ * elsewhere and taken their business somewhere calmer, so entering one war
+ * costs it that war's fee, every other war's fee, and this. Its red line
+ * against fighting its own wars is now a line the ledger agrees with.
+ */
+export const PROFITEER_WAR_PENALTY = 40;
+
+/**
+ * How much larger a defensive power's garrison fights than it is.
+ *
+ * "Make occupation cost more than it is worth" is the Arkanis doctrine stated
+ * almost as arithmetic, and this is the arithmetic.
+ */
+export const DEFENSIVE_GARRISON_BONUS = 1.5;
+
+/** What an opportunist gains against a target already weakened or distracted. */
+export const OPPORTUNIST_MIGHT_BONUS = 2;
+
+/**
  * Reorienting a power costs standing with the people who have to carry it out.
  *
  * `set_doctrine` used to write a string and nothing else. Every axis that
@@ -807,7 +978,24 @@ export const REFUSAL_DISSENT = 8;
  */
 export const DOCTRINE_TEXT_DISSENT = 6;
 export const DOCTRINE_ETHIC_DISSENT = 20;
-export const DOCTRINE_RETIRE_DISSENT = 25;
+/**
+ * What defying one of your own compulsions costs, every time you do it.
+ *
+ * This replaced retiring principles outright. Four breaches reach the 100 cap
+ * and `MAX_DISSENT_PENALTY` — eight points off every stat, fifty turns to clear
+ * at `DISSENT_DECAY` — so a leader can turn their power against its own
+ * character by simply insisting, and the price is that by the fourth insistence
+ * nobody is following them.
+ *
+ * Deliberately larger than `REFUSAL_DISSENT` (8), which is what a *red line*
+ * costs. Being told no is cheaper than being obeyed against the institution's
+ * judgement, because the second one actually happened.
+ *
+ * Nothing further fires at the cap, and that is on purpose: at 100 the penalty
+ * is already crippling, and a terminal state on top of it would be charging
+ * twice for one decision.
+ */
+export const COMPULSION_BREACH_DISSENT = 25;
 
 /**
  * Dissent at or above which a faction will not be reoriented at all.
@@ -904,6 +1092,49 @@ export function warsFor(state: WorldState, factionId: string): string[] {
           dispositionBetween(state, factionId, f.id) <= WAR_DISPOSITION_THRESHOLD),
     )
     .map((f) => f.id);
+}
+
+/**
+ * Every war currently running in the galaxy, as canonical unordered pairs.
+ *
+ * Derived from `warsFor` in both directions and de-duplicated, so a war between
+ * two powers is counted once however either of them feels about it.
+ */
+export function warsInProgress(state: WorldState): string[] {
+  const wars = new Set<string>();
+  for (const faction of state.factions) {
+    for (const enemy of warsFor(state, faction.id)) {
+      wars.add([faction.id, enemy].sort().join('~'));
+    }
+  }
+  return [...wars].sort();
+}
+
+/**
+ * What a profiteer earns from the galaxy's wars, or what its own cost it.
+ *
+ * Zero for every other ethic. This is the Ojjul Nar Combine's whole doctrine —
+ * *"fund both sides, own the survivor, and let other powers spend their fleets
+ * for you"* — which nothing in the game paid it a credit for.
+ *
+ * The sign flip is what makes the doctrine enforce itself. A profiteer at peace
+ * is paid for every war it is not in; a profiteer at war forfeits all of that
+ * *and* pays a penalty, because a financier whose attention is on its own
+ * fighting is a financier whose clients have gone somewhere calmer. Its red
+ * line against fighting its own wars is now a line the ledger agrees with,
+ * rather than one the model has to be trusted to remember.
+ */
+export function warProfitFor(state: WorldState, factionId: string): number {
+  const faction = getFaction(state, factionId);
+  if (!faction || faction.warEthic !== 'profiteer') return 0;
+
+  const own = warsFor(state, factionId);
+  if (own.length > 0) return -PROFITEER_WAR_PENALTY * own.length;
+
+  const elsewhere = warsInProgress(state).filter(
+    (war) => !war.split('~').includes(factionId),
+  );
+  return elsewhere.length * PROFITEER_INCOME_PER_WAR;
 }
 
 /**

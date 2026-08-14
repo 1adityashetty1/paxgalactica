@@ -1,4 +1,6 @@
+import type { WorldState } from '../../../src/domain/state.js';
 import type { Briefing } from '../../../src/engine/briefing.js';
+import { BattleCard } from './BattleCard.js';
 import type { StagedItem } from './types.js';
 import { ansi256ToHex } from '../color.js';
 
@@ -12,10 +14,12 @@ import { ansi256ToHex } from '../color.js';
 export function BriefingPanel({
   briefing,
   staged,
+  state,
   onDiscard,
 }: {
   briefing: Briefing | null;
   staged: StagedItem[];
+  state: WorldState;
   onDiscard: (index?: number) => void;
 }) {
   return (
@@ -67,10 +71,23 @@ export function BriefingPanel({
                 ` · ${briefing.ledger.commitmentFlow > 0 ? '+' : '−'}${Math.abs(
                   briefing.ledger.commitmentFlow,
                 )} arrangements`}
+              {briefing.ledger.warProfit !== 0 &&
+                ` · ${briefing.ledger.warProfit > 0 ? '+' : '−'}${Math.abs(
+                  briefing.ledger.warProfit,
+                )} ${briefing.ledger.warProfit > 0 ? "others' wars" : 'at war'}`}
               {briefing.ledger.tolls > 0 && ` · ${briefing.ledger.tolls} in tolls`}
               {briefing.ledger.raided > 0 && ` · ${briefing.ledger.raided} raided`}
             </span>
           </div>
+
+          {briefing.battles.length > 0 && (
+            <div className="brief-group">
+              <h4>Battles</h4>
+              {briefing.battles.map((b) => (
+                <BattleCard key={b.id} report={b} state={state} />
+              ))}
+            </div>
+          )}
 
           {briefing.completed.length > 0 && (
             <div className="brief-group">
