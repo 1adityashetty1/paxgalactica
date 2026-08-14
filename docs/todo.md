@@ -4,13 +4,13 @@
 
 **Open work, in priority order.** Everything below is evidence-backed: items
 1–3 came out of the two live playtests and are now done. **What is actually
-open is item 4 (no debt mechanic), the open half of item 5, and the two smaller
-findings under item 11** ("still open, found by the same playtests"). The battle
+open is item 4 (no debt mechanic), the open half of item 5, and the compulsion
+pricing question under item 11**. The battle
 report card (item 12) is built and has still never been watched rendering.
 Live play has found every bug in this file that the suite did not — including,
 again this session, one in the fix for the previous one.
 
-**Branch state:** `combat-report`, off `order-effects`. 576 tests pass;
+**Branch state:** `combat-report`, off `order-effects`. 594 tests pass;
 `pnpm typecheck`, `pnpm typecheck:web` and `pnpm build:web` are clean. PR #4 merged
 `order-effects` into `main` at commit `60497b0`, which means everything from
 "Make compulsions fire on drift" onward — compulsion triggers, the line dedup,
