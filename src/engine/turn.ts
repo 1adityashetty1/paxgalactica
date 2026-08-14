@@ -308,7 +308,8 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     );
     staged.notes.push(
       ...[
-        `${defiance.by} objected and carried the order out anyway.`,
+        // Who objected and why is on `defiance` itself, and the UI renders it
+        // in its own voice; repeating it here only doubled the line.
         defiance.violated ? `Defied: ${defiance.violated}` : '',
         `Dissent +${COMPULSION_BREACH_DISSENT}, now ${total}/100 — every stat is reduced by ${dissentPenalty(total)}, to a maximum of ${MAX_DISSENT_PENALTY}.`,
       ].filter(Boolean),

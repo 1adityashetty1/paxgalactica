@@ -3,10 +3,14 @@
 ## Where things stand (2026-08-13)
 
 **Open work, in priority order.** Everything below is evidence-backed: items
-1–2 came out of the two live playtests, and item 3 is what the second playtest
-proved about the mechanic built to answer the first.
+1–3 came out of the two live playtests and are now done. **What is actually
+open is item 4 (no debt mechanic) and the open half of item 5** — and, ahead of
+either, two things that are built and have never been watched running: the
+battle report card (item 12) and the arbiter's new breach ruling (item 11).
+Live play has found every bug in this file that the suite did not.
 
-**Branch state:** `combat-report`, off `order-effects`. PR #4 merged
+**Branch state:** `combat-report`, off `order-effects`. 576 tests pass;
+`pnpm typecheck`, `pnpm typecheck:web` and `pnpm build:web` are clean. PR #4 merged
 `order-effects` into `main` at commit `60497b0`, which means everything from
 "Make compulsions fire on drift" onward — compulsion triggers, the line dedup,
 the monopolist reassignment, all five war ethics, all five faction voices, the
@@ -24,14 +28,8 @@ defiance rework, the staged-ops fix and the battle report — is **not yet in
    way a negative cross-faction `adjust_fleet` already was. Every real price is
    charged by the mechanic that owns it and none of them route through this op,
    so the cap cannot interfere with them.
-3. **`defiance` fires about a quarter of the time — item 11, the biggest open
-   thing.** The retirement desync from item 9.1 is gone (nothing can be retired
-   now), but the replacement has the same root: the red-line/compulsion
-   classification sits inside the resolution call, which has no structural check
-   on it. Three unambiguous compulsion breaches in the Arkane playtest cost
-   nothing at all, and a red line was never once returned as a `refusal`. The
-   fix is almost certainly to let the **arbiter** classify — it is a separate
-   call, is not shown the roll, and already rules on `establishes`.
+3. ~~`defiance` fires about a quarter of the time~~ **DONE** — the arbiter
+   classifies now. See item 11 below for the rework and what is left to verify.
 4. **No debt mechanic**, so two of the Ojjul Nar's lines are unmodelled. Hiring
    a proxy, by contrast, turns out **not** to need a new mechanic: a
    `mutual_defense` treaty carrying `incomePerTurn` and `shipsPledged` is money
@@ -116,7 +114,51 @@ battle all pass, but producing a battle in a live campaign needs model calls and
 two turns for a fleet to arrive, so nobody has seen the card rendered yet. That
 is the one thing worth doing before trusting it.
 
-## 11. OPEN — `defiance` is built correctly and the model barely reaches for it
+## 11. FIXED — `defiance` was built correctly and the model barely reached for it
+
+**FIXED — the arbiter classifies now, which is the structural answer the
+write-up below argues for.** `AppraisalSchema` carries a `breach`
+(`red_line` | `compulsion`, plus the principle quoted from the sheet, who
+objects, and why), and the two rulings are enforced in different places:
+
+- **`red_line` ends the action before the roll.** `resolveAction` returns a
+  refusal and the resolution call **never runs**. That is the part that makes it
+  structural rather than persuasive — there is no downstream pass left to argue
+  the order back into existence, and no rephrasing reaches past a ruling made on
+  the appraisal. It is also cheaper than what it replaces: ~$0.017 rather than
+  ~$0.073, since the Sonnet call is skipped entirely.
+- **`compulsion` lets it through and charges for it.** The roll happens, the ops
+  land, and `defiance` is set from the arbiter's ruling *whether or not*
+  resolution mentioned one. `violated` is always the arbiter's quoted line, and
+  a `refusal` volunteered on top of a compulsion ruling is dropped — turning a
+  price into a block is the one distinction the mechanism rests on.
+
+**The arbiter had never been shown the lines it is now asked to enforce.**
+`serializeState` carries doctrine and ethics but neither list, so this was
+impossible before it was wrong. It gets a new `serializePrinciples` —
+deliberately not `serializeCharacter`, whose `voice` field is several thousand
+tokens of dialect notes for Arkanis alone, which would have roughly doubled the
+price of every action in the game. A test pins both halves: the red lines are
+present, the voice is not.
+
+`prompts/appraisal.md` is v2 and `prompts/resolution.md` is v4: the ruling moved
+out of resolution's job description into the arbiter's, with the three misses
+below written in as named failure modes ("judge the act, not how it is phrased",
+and the tribute case as a worked example). 11 tests in
+`tests/principles.test.ts`, which script the model client rather than calling it.
+
+Also fixed alongside: **the browser never read `defiance`**, the same
+carried-but-unrendered pattern as the battle report — the most consequential
+thing a declaration can do to a faction arrived as a grey note among the others.
+It now renders in the refusal voice, and the note that duplicated it is gone.
+
+**Not verified live.** Everything below was found by playing, and this fix has
+not been. The thing to watch is whether the arbiter now over-fires — a referee
+that finds a breach in every declaration makes the sheet meaningless as fast as
+one that never finds any. The original write-up follows.
+
+---
+
 
 A 5-turn adversarial playtest as the Arkanis Free Worlds (`saves/arkane_defiance.json`,
 ~$2.50), chosen because that faction is defined almost entirely by refusal. The

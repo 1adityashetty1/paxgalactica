@@ -28,7 +28,12 @@ import {
 } from '../domain/state.js';
 import { callStructured } from './client.js';
 import { loadPrompt } from './prompts.js';
-import { serializeCharacter, serializeOrders, serializeState } from './serialize.js';
+import {
+  serializeCharacter,
+  serializeOrders,
+  serializePrinciples,
+  serializeState,
+} from './serialize.js';
 
 /** Resolution and extraction share the duration rules, so both get the rubric. */
 function withRubric(base: string): string {
@@ -67,6 +72,7 @@ export async function appraiseAction(
   const statLines = STAT_NAMES.map(
     (s) => `  ${s} ${stats[s]} (${formatModifier(statModifier(stats[s]))}) — ${STAT_MEANINGS[s]}`,
   ).join('\n');
+  const actor = getFaction(state, state.playerFactionId);
 
   const res = await callStructured({
     kind: 'appraisal',
@@ -74,6 +80,17 @@ export async function appraiseAction(
     system: loadPrompt('appraisal'),
     user: [
       serializeState(state, state.playerFactionId),
+      '',
+      '---',
+      '',
+      // The arbiter now rules on whether an action breaks one of the acting
+      // faction's own principles, and for its whole existence before that it
+      // was never shown them: `serializeState` carries doctrine and ethics but
+      // not red lines or compulsions. A referee cannot enforce a rule it has
+      // not been given.
+      '## The acting faction’s own character',
+      '',
+      actor ? serializePrinciples(actor) : '_Unknown._',
       '',
       '---',
       '',
@@ -131,6 +148,35 @@ export async function resolveAction(
     };
   }
 
+  /* --- 1b. A red line ends it here, before the dice ------------------- */
+  // The classification used to sit inside the resolution call, which is the
+  // pass that has already been told the outcome and asked to make it real —
+  // and it duly ruled that almost nothing broke a principle. Three flagrant
+  // compulsion breaches in one playtest cost nothing and a red line was never
+  // once returned as a refusal.
+  //
+  // Ruling it here is structural rather than persuasive: on a red line there
+  // IS no resolution call, so there is nothing left to argue the order back
+  // into existence. A red line is absolute, and no roll can buy it.
+  const breach = priced.appraisal.breach;
+  if (breach?.kind === 'red_line') {
+    return {
+      output: {
+        narrative: breach.reason,
+        ops: [],
+        refusal: {
+          by: breach.by,
+          reason: breach.reason,
+          violated: breach.principle,
+        },
+      },
+      check: null,
+      roll: 0,
+      attempts: priced.attempts,
+      costUsd: priced.costUsd,
+    };
+  }
+
   /* --- 2. Roll, and resolve in code ----------------------------------- */
   const roll = rollD20(state.turn, `${salt}:${action}`);
   // EFFECTIVE stats, not base: dissent and hostile stat_debuffs both reduce
@@ -168,6 +214,21 @@ export async function resolveAction(
       'This outcome is settled. Narrate it and emit the ops that make it real.',
       'Do not narrate a different result, and do not re-price the action.',
       '',
+      ...(breach?.kind === 'compulsion'
+        ? [
+            '### Your institutions object, and the order stands',
+            '',
+            `The arbiter ruled that this breaches a compulsion on your own sheet: **${breach.principle}**`,
+            `${breach.by} have said so, in these terms: ${breach.reason}`,
+            '',
+            'A compulsion is a demand, not a prohibition, so the order is carried',
+            'out anyway and the price is charged in dissent by the engine. Emit the',
+            'ops for the outcome above exactly as you otherwise would, and let the',
+            'narrative carry the objection. Do NOT refuse, and do not soften the',
+            'ops to make the objection unnecessary.',
+            '',
+          ]
+        : []),
       ...(priced.appraisal.establishes && check.outcome !== 'failure' && check.outcome !== 'critical_failure'
         ? [
             '### This action establishes something lasting',
@@ -189,8 +250,31 @@ export async function resolveAction(
     schema: ResolutionOutputSchema,
   });
 
+  // The arbiter's ruling is the one that counts. If it found a compulsion
+  // breach, the defiance stands whatever the resolution call chose to report —
+  // that call declining to notice is precisely the failure this pass exists to
+  // close. The model's own wording is kept when it offered some, since it is
+  // written against the narrative it just produced.
+  const output: ResolutionOutput =
+    breach?.kind === 'compulsion'
+      ? {
+          ...res.value,
+          // A red line is the arbiter's call now; resolution volunteering a
+          // refusal on top of a compulsion ruling would turn a price into a
+          // block, which is the distinction the whole mechanism rests on.
+          refusal: undefined,
+          defiance: {
+            by: res.value.defiance?.by ?? breach.by,
+            reason: res.value.defiance?.reason ?? breach.reason,
+            // Always the arbiter's, so the line the player is charged for is
+            // the line that was actually ruled on.
+            violated: breach.principle,
+          },
+        }
+      : res.value;
+
   return {
-    output: res.value,
+    output,
     check,
     roll,
     attempts: priced.attempts + res.attempts,
