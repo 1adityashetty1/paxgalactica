@@ -26,9 +26,15 @@ import {
   getFaction,
   type WorldState,
 } from '../domain/state.js';
+import { classifyPrinciple } from '../domain/compulsions.js';
 import { callStructured } from './client.js';
 import { loadPrompt } from './prompts.js';
-import { serializeCharacter, serializeOrders, serializeState } from './serialize.js';
+import {
+  serializeCharacter,
+  serializeOrders,
+  serializePrinciples,
+  serializeState,
+} from './serialize.js';
 
 /** Resolution and extraction share the duration rules, so both get the rubric. */
 function withRubric(base: string): string {
@@ -67,6 +73,7 @@ export async function appraiseAction(
   const statLines = STAT_NAMES.map(
     (s) => `  ${s} ${stats[s]} (${formatModifier(statModifier(stats[s]))}) — ${STAT_MEANINGS[s]}`,
   ).join('\n');
+  const actor = getFaction(state, state.playerFactionId);
 
   const res = await callStructured({
     kind: 'appraisal',
@@ -74,6 +81,17 @@ export async function appraiseAction(
     system: loadPrompt('appraisal'),
     user: [
       serializeState(state, state.playerFactionId),
+      '',
+      '---',
+      '',
+      // The arbiter now rules on whether an action breaks one of the acting
+      // faction's own principles, and for its whole existence before that it
+      // was never shown them: `serializeState` carries doctrine and ethics but
+      // not red lines or compulsions. A referee cannot enforce a rule it has
+      // not been given.
+      '## The acting faction’s own character',
+      '',
+      actor ? serializePrinciples(actor) : '_Unknown._',
       '',
       '---',
       '',
@@ -97,6 +115,22 @@ export async function appraiseAction(
   return { appraisal: res.value, attempts: res.attempts, costUsd: res.costUsd };
 }
 
+/**
+ * Is this the name of a body inside the faction, rather than the faction?
+ *
+ * A defiance is spoken by someone — the officer corps, the Trade Council, the
+ * old cousins — and a bare faction id or name in that slot reads as nonsense
+ * once it is rendered ("vigil object, and the order goes out anyway").
+ */
+function namesAnInstitution(by: string | undefined, state: WorldState): boolean {
+  if (!by) return false;
+  const cleaned = by.trim().toLowerCase();
+  if (cleaned.length === 0) return false;
+  return !state.factions.some(
+    (f) => f.id.toLowerCase() === cleaned || f.name.toLowerCase() === cleaned,
+  );
+}
+
 export async function resolveAction(
   state: WorldState,
   action: string,
@@ -110,12 +144,33 @@ export async function resolveAction(
 }> {
   /* --- 1. Arbitrate: admissible at all, and priced blind to the roll --- */
   const priced = await appraiseAction(state, action);
+  const actor = getFaction(state, state.playerFactionId);
+
+  // What the arbiter NAMED, classified against the sheet rather than by its own
+  // label — see `classifyPrinciple`. The model is good at spotting which line an
+  // action touches and unreliable at saying which list that line is on, so the
+  // judgement is taken and the lookup is not.
+  const named = priced.appraisal.breach?.principle;
+  const classified = actor && named ? classifyPrinciple(actor, named) : null;
+
+  // `admissible: false` is the one exit that charges nothing at all, which makes
+  // it the cheapest possible bypass for a principle — and a live playtest found
+  // the arbiter reaching for it on a compulsion worth 25 dissent and a landed
+  // order, having correctly quoted the line in its reason. The prompt says "out
+  // of character is not inadmissible"; this is what says it in code. An
+  // inadmissible ruling whose reason quotes a real line off the sheet is
+  // rewritten into the breach it actually is.
+  const smuggled =
+    !priced.appraisal.admissible && actor && !classified
+      ? classifyPrinciple(actor, priced.appraisal.reason)
+      : null;
+  const ruled = classified ?? smuggled;
 
   // A ruling of inadmissible ends it here. No roll, no ops, no cost beyond
   // the arbitration — the action was not attempted, so there is nothing to
   // resolve. Distinct from a FAILED check (attempted, went badly) and from a
   // REFUSAL (your own institutions would not carry it out).
-  if (!priced.appraisal.admissible) {
+  if (!priced.appraisal.admissible && !ruled) {
     return {
       output: {
         narrative:
@@ -123,6 +178,50 @@ export async function resolveAction(
           'That cannot be attempted as things stand.',
         ops: [],
         inadmissible: priced.appraisal.reason || 'That cannot be attempted as things stand.',
+      },
+      check: null,
+      roll: 0,
+      attempts: priced.attempts,
+      costUsd: priced.costUsd,
+    };
+  }
+
+  /* --- 1b. A red line ends it here, before the dice ------------------- */
+  // The classification used to sit inside the resolution call, which is the
+  // pass that has already been told the outcome and asked to make it real —
+  // and it duly ruled that almost nothing broke a principle. Three flagrant
+  // compulsion breaches in one playtest cost nothing and a red line was never
+  // once returned as a refusal.
+  //
+  // Ruling it here is structural rather than persuasive: on a red line there
+  // IS no resolution call, so there is nothing left to argue the order back
+  // into existence. A red line is absolute, and no roll can buy it.
+  //
+  // `ruled` rather than the arbiter's own `kind`, and the sheet's wording rather
+  // than the quote: the player is charged for the line as their faction states
+  // it, which is also the string every other reader in the game matches on.
+  const breach = ruled
+    ? {
+        kind: ruled.kind,
+        principle: ruled.principle,
+        by: priced.appraisal.breach?.by ?? 'your own institutions',
+        reason:
+          priced.appraisal.breach?.reason ||
+          priced.appraisal.reason ||
+          'Your institutions will not have it.',
+      }
+    : null;
+
+  if (breach?.kind === 'red_line') {
+    return {
+      output: {
+        narrative: breach.reason,
+        ops: [],
+        refusal: {
+          by: breach.by,
+          reason: breach.reason,
+          violated: breach.principle,
+        },
       },
       check: null,
       roll: 0,
@@ -168,6 +267,21 @@ export async function resolveAction(
       'This outcome is settled. Narrate it and emit the ops that make it real.',
       'Do not narrate a different result, and do not re-price the action.',
       '',
+      ...(breach?.kind === 'compulsion'
+        ? [
+            '### Your institutions object, and the order stands',
+            '',
+            `The arbiter ruled that this breaches a compulsion on your own sheet: **${breach.principle}**`,
+            `${breach.by} have said so, in these terms: ${breach.reason}`,
+            '',
+            'A compulsion is a demand, not a prohibition, so the order is carried',
+            'out anyway and the price is charged in dissent by the engine. Emit the',
+            'ops for the outcome above exactly as you otherwise would, and let the',
+            'narrative carry the objection. Do NOT refuse, and do not soften the',
+            'ops to make the objection unnecessary.',
+            '',
+          ]
+        : []),
       ...(priced.appraisal.establishes && check.outcome !== 'failure' && check.outcome !== 'critical_failure'
         ? [
             '### This action establishes something lasting',
@@ -189,8 +303,37 @@ export async function resolveAction(
     schema: ResolutionOutputSchema,
   });
 
+  // The arbiter's ruling is the one that counts. If it found a compulsion
+  // breach, the defiance stands whatever the resolution call chose to report —
+  // that call declining to notice is precisely the failure this pass exists to
+  // close. The model's own wording is kept when it offered some, since it is
+  // written against the narrative it just produced.
+  const output: ResolutionOutput =
+    breach?.kind === 'compulsion'
+      ? {
+          ...res.value,
+          // A red line is the arbiter's call now; resolution volunteering a
+          // refusal on top of a compulsion ruling would turn a price into a
+          // block, which is the distinction the whole mechanism rests on.
+          refusal: undefined,
+          defiance: {
+            // `by` is meant to name the institution that objected — "the
+            // officer corps", "the Trade Council" — and resolution sometimes
+            // fills it with the faction id instead, which the UI then renders
+            // as "vigil object, and the order goes out anyway". Seen live.
+            by: namesAnInstitution(res.value.defiance?.by, state)
+              ? (res.value.defiance?.by as string)
+              : breach.by,
+            reason: res.value.defiance?.reason ?? breach.reason,
+            // Always the arbiter's, so the line the player is charged for is
+            // the line that was actually ruled on.
+            violated: breach.principle,
+          },
+        }
+      : res.value;
+
   return {
-    output: res.value,
+    output,
     check,
     roll,
     attempts: priced.attempts + res.attempts,

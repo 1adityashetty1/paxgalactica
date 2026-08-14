@@ -201,6 +201,89 @@ export function priceOrderEffect(
   return effect.magnitude * EFFECT_COST[effect.kind];
 }
 
+/* ------------------------------------------------------------------ */
+/* The fifth bound: the check the action was resolved against           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A payload may not deliver more than the roll earned.
+ *
+ * The four bounds above are all about *magnitude* — a closed vocabulary, an
+ * allowed category, a cap, and a price. None of them knows whether the action
+ * that carried the payload actually worked, because `applyOps` has never been
+ * told the check: `OUTCOME_GUIDANCE` ("a failure emits the ops for what the
+ * attempt COST and NOT the ops for the thing the player wanted") is a promise
+ * made in a prompt and nowhere else.
+ *
+ * Seen live, as Arkanis: a `fortification` action failed its `industry` check,
+ * the narrative said the walls stand exactly as thick as they did that morning,
+ * and the batch contained both the cost *and* the three-turn order, labelled
+ * "(stalled)". That one was harmless because it carried no payload. With one it
+ * would not have been — measured on the seed, a `develop_system +1` at slu-2
+ * emitted in a batch the player was told was a failure crosses `HUB_THRESHOLD`
+ * five turns later and takes Meridian's net income from 309 to **519,
+ * permanently**, with zero rejections.
+ *
+ * This is the same hole as the combat leak and it runs the other way: there the
+ * model fabricated losses on a failure, here it banks gains on one. The fix is
+ * the same shape — the engine knows the outcome band at the moment it stages,
+ * so the arithmetic is applied in code instead of asked for in a prompt.
+ *
+ * - **failure / critical_failure** — the payload is stripped. The order still
+ *   goes out (never dropped: an attack MUST still be issued on a failure, which
+ *   is the whole of the combat fix) and delivers nothing when it lands.
+ * - **partial** — halved, floored, minimum 1. "A reduced result and a bill" is
+ *   what a partial means, and nothing enforced the reduced half.
+ * - **success / critical_success** — untouched.
+ *
+ * Stripping happens *before* the reducer prices the payload, so a stripped
+ * payload is never charged for. That is deliberate: the price exists to bound
+ * the payoff, and with no payoff there is nothing to bound — charging for a
+ * commission that was never placed would invent a cost the player was never
+ * quoted. What a failed attempt costs is whatever the resolution call emits for
+ * it, which is the mechanism that already exists for exactly that.
+ */
+export const PARTIAL_PAYLOAD_DIVISOR = 2;
+
+export interface PayloadBounding {
+  ops: unknown[];
+  /** One line per payload changed, in the same voice as a `billConstruction` trim. */
+  notes: string[];
+}
+
+export function boundPayloadsToOutcome(
+  ops: unknown[],
+  outcome: 'critical_success' | 'success' | 'partial' | 'failure' | 'critical_failure',
+): PayloadBounding {
+  if (outcome === 'success' || outcome === 'critical_success') return { ops, notes: [] };
+
+  const notes: string[] = [];
+  const bounded = ops.map((op) => {
+    if (!op || typeof op !== 'object') return op;
+    const o = op as Record<string, unknown>;
+    if (o.op !== 'issue_order') return op;
+    const effect = o.onComplete as OrderEffect | undefined;
+    if (!effect || typeof effect !== 'object' || typeof effect.magnitude !== 'number') return op;
+
+    if (outcome === 'failure' || outcome === 'critical_failure') {
+      const { onComplete: _dropped, ...rest } = o;
+      notes.push(
+        `The attempt failed, so the ${String(o.label ?? 'order')} was issued without its programme: ${describeOrderEffect(effect)} is not commissioned and nothing is delivered on completion.`,
+      );
+      return rest;
+    }
+
+    const reduced = Math.max(1, Math.floor(effect.magnitude / PARTIAL_PAYLOAD_DIVISOR));
+    if (reduced === effect.magnitude) return op;
+    notes.push(
+      `A partial result: ${String(o.label ?? 'the order')} delivers ${describeOrderEffect({ ...effect, magnitude: reduced })} rather than ${describeOrderEffect(effect)}.`,
+    );
+    return { ...o, onComplete: { ...effect, magnitude: reduced } };
+  });
+
+  return { ops: bounded, notes };
+}
+
 export interface EffectTrim {
   effect: OrderEffect;
   /** What it costs, already computed against this board. */

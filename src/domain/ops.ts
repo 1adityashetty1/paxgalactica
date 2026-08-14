@@ -368,6 +368,35 @@ export const AppraisalSchema = z.object({
   difficulty: z.number().int().min(1).max(30),
   rationale: z.string().default(''),
   /**
+   * The principle on the acting faction's own sheet that this action breaks,
+   * if it breaks one.
+   *
+   * This ruling used to live in the resolution call, and a playtest showed why
+   * that was the wrong home: three unambiguous compulsion breaches resolved as
+   * ordinary skill checks costing nothing, and a red line was never once
+   * returned as a refusal. Resolution is the pass with the least incentive to
+   * classify honestly — it has been handed the outcome and asked to narrate a
+   * success — and nothing structural checked it.
+   *
+   * The arbiter is the right home for the same reasons it prices the action:
+   * it is a separate call, it is not shown the roll, and it already rules on
+   * `establishes`. A `red_line` ruling ends the action here, before anything is
+   * rolled; a `compulsion` ruling lets it through and the engine charges
+   * `COMPULSION_BREACH_DISSENT` for it.
+   */
+  breach: z
+    .object({
+      /** `red_line` blocks absolutely; `compulsion` is a price the leader may pay. */
+      kind: z.enum(['red_line', 'compulsion']),
+      /** The line itself, quoted from the faction sheet. */
+      principle: z.string().min(1).max(240),
+      /** Who inside the faction objects: "the fleet commanders", "the Trade Council". */
+      by: z.string().min(1).max(80),
+      /** One or two sentences, in the institutions' own voice. */
+      reason: z.string().min(1).max(400),
+    })
+    .optional(),
+  /**
    * A durable arrangement this action would create IF it succeeds, for which
    * the op vocabulary has no other home. The arbitrator decides that a thing
    * is exclusive; the reducer enforces it.

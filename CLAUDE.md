@@ -205,14 +205,16 @@ Every check is written to the event log, so a campaign's luck is auditable.
 The player can attempt anything, so they routinely attempt things the op
 vocabulary cannot express — a dynastic marriage, an exclusive charter, a
 hostage exchange. Step 1 above is a referee as well as a pricer. It answers
-three questions: may this be attempted at all, what does it test, and **does it
-establish something lasting**.
+four questions: may this be attempted at all, what does it test, **does it
+establish something lasting**, and **does it break one of the acting power's own
+principles** (`breach` — see "Who rules on a breach" below).
 
 `admissible: false` ends the action immediately: no roll, no ops, no
 resolution call. It is reserved for actions that contradict something already
 true, need something that is not there, or are impossible in the fiction —
-*not* for "unlikely" (that is difficulty) and not for "out of character" (that
-is a refusal, decided later by the faction itself).
+*not* for "unlikely" (that is difficulty) and not for "out of character", which
+is a `breach` ruling on the same call and answered differently: a red line
+blocks, a compulsion is priced.
 
 ### Commitments are world state, not the arbiter's memory
 
@@ -487,7 +489,7 @@ Red lines stop a faction acting out of character. **Compulsions** stop it
 failing to act in character — an Iron Vigil leader who sits passive while rebels
 hold Imperial ground is not being cautious, and the fleet commanders say so.
 
-The resolution call may return a `refusal` instead of ops. When it does,
+An action that breaks a line produces a `refusal` instead of ops. When it does,
 `submitAction` stages **nothing**: an order the fleet will not carry out is not
 a smaller version of that order, it is no order at all. This is distinct from a
 failed check (attempted, went badly) and from a rejected op (malformed).
@@ -520,6 +522,79 @@ by the fleet commanders.
 Dissent itself is faction-agnostic — every faction carries the field, all five
 have red lines and compulsions in the seed, and `effectiveStats` reads the same
 way for each.
+
+### Who rules on a breach: the arbiter, not resolution
+
+The classification lived in the resolution call for the whole life of the
+mechanism, and a playtest as the Arkanis Free Worlds — the power defined almost
+entirely by refusal — measured what that was worth. Three unambiguous
+compulsion breaches (paying one-off tribute, agreeing to ongoing tribute,
+raiding another power's shipping) resolved as **ordinary skill checks costing
+nothing at all**, and a red line was never once returned as a `refusal`: *"open
+the gates, invite the Vigil to occupy Arkanis Prime"* — the verbatim scenario of
+that faction's first red line — was priced as a `resolve` check at DC 19 and
+would have succeeded on a 20.
+
+The reason is structural rather than a matter of wording. Resolution is handed a
+settled outcome and asked to make it real, so it is the pass with the least
+incentive to rule that the order should never have gone out, and nothing checked
+it — the exact failure mode this file names everywhere else. `AppraisalSchema`
+therefore carries a `breach`, and the arbiter decides it: a separate call, not
+shown the roll, already ruling on `establishes`.
+
+| ruling | what happens |
+|---|---|
+| `red_line` | `resolveAction` returns a `refusal` **before the roll**, and the resolution call never runs at all |
+| `compulsion` | the roll and resolution proceed, the ops land, and the engine charges `COMPULSION_BREACH_DISSENT` |
+| none | ordinary resolution |
+
+A red line stopping the action *before* there is a second call is the whole
+point: there is nothing downstream left to argue the order back into existence,
+and no phrasing reaches past a ruling made on the appraisal. On a compulsion the
+arbiter's ruling also overrides resolution's own account of it — a `defiance` is
+set whether or not resolution mentioned one, its `violated` is always the
+arbiter's quoted line, and a `refusal` volunteered on top of a compulsion ruling
+is dropped, because turning a price into a block is the one distinction the
+mechanism rests on. Resolution may still refuse unprompted; that is a backstop
+now, not the mechanism.
+
+`serializeState` carries doctrine and ethics but neither list, so for its whole
+existence **the arbiter had never been shown the lines it is now asked to
+enforce**. It gets `serializePrinciples` — doctrine, ethics, red lines,
+compulsions — and deliberately not `serializeCharacter`, whose `voice` field
+runs to thousands of tokens of dialect notes for Arkanis alone. Handing a
+bounded classification call the whole character sheet would have roughly doubled
+the price of every action in the game.
+
+A red-line ruling is also **cheaper** than what it replaces: it skips the Sonnet
+resolution call entirely, so the most flagrant actions in the game now cost
+about `$0.022` instead of `$0.073` — measured live.
+
+**The sheet decides which kind a line is, not the arbiter's label.** Verified in
+two playtests: Arkanis blocked the protectorate it had been talked into before
+and did *not* flag raising its own garrison, but the Vigil produced a new hole in
+the same shape as the old one. Asked to retain Nar smuggler captains as
+informants, the arbiter quoted the right line, called it *"a red line, not a
+compulsion"* when the seed carries it in `compulsions`, and returned the whole
+thing as `admissible: false` — the one exit that charges nothing at all. A
+25-dissent breach became a free no-op.
+
+`classifyPrinciple` in `src/domain/compulsions.ts` closes it by splitting the
+work the same way everything else here does. The model is good at the part that
+needs judgement — *which line does this action touch* — and unreliable at the
+part that is a lookup, so it names the line and code does the lookup:
+
+- `kind` is derived from the list the line is actually on; the model's label is
+  discarded, in both directions.
+- An `admissible: false` whose `reason` quotes a real line is rewritten into the
+  breach it actually is.
+- A principle matching **nothing** on the sheet is not a breach at all. An
+  invented rule buys no price.
+
+Matching is forgiving about truncation, punctuation and light paraphrase because
+the arbiter quotes imperfectly, and it is safe to be forgiving because the five
+sheets have almost nothing in common — a test asserts no line on any sheet
+matches any other faction's.
 
 ### Compulsions also fire on drift, for everyone
 
@@ -606,16 +681,26 @@ desync. The two kinds of principle are now answered differently:
 | | enforced by | cost | repeatable |
 |---|---|---|---|
 | **red line** — *"will not, whatever the incentive"* | `refusal`; **no ops at all** | `REFUSAL_DISSENT` (8) | the attempt, yes; the act, never |
-| **compulsion** — *"your institutions DEMAND"* | `defiance`; **the ops land** | `COMPULSION_BREACH_DISSENT` (25) | yes, and that is the point |
+| **compulsion** — *"your institutions DEMAND"* | `defiance`; **the ops land** | `COMPULSION_BREACH_DISSENT` (15) | yes, and that is the point |
 
 A leader who means to turn their power against its own character does it by
-insisting and absorbing the cost. Four defiances reach the 100 cap and
+insisting and absorbing the cost. Around eight defiances reach the 100 cap and
 `MAX_DISSENT_PENALTY` — eight off every stat, fifty turns to clear — so the
-mechanism is "you may, and by the fourth time nobody is following you" rather
+mechanism is "you may, and by the eighth time nobody is following you" rather
 than "you may not".
 
-`defiance` is charged in code, not nominated by the model: the resolution call
-reports *that* a compulsion was defied and the reducer sets the price. And
+The price lands on the **attempt**, not the act: the institutions are furious
+that the thing was proposed, and keeping the charge out of the outcome bands is
+what stops it becoming another number the resolution call can reason its way
+around. It was 25 until the first live playtest of the arbiter rework, where two
+Arkanis breaches in one turn — one of them a natural 1 that achieved nothing —
+cost 50 dissent and −4 on every stat before the second turn began. Charging on
+the attempt is right; charging three times what a *blocked red line* costs was
+not.
+
+`defiance` is charged in code, not nominated by the model: the **arbiter** rules
+that a compulsion was defied — see "Who rules on a breach" above — and the
+reducer sets the price. Neither half is resolution's to decide. And
 nothing further fires at the cap on purpose — the penalty there is already
 crippling, and a terminal state on top of it would charge twice for one decision.
 
@@ -978,7 +1063,41 @@ all in code:
    out, so a payoff cannot exceed what the faction could afford to commission,
    and an interrupted programme has real money sunk in it.
 
-A fifth guard closes a hole the value-based pricing below opened: the payload
+#### A fifth bound: the check that carried the payload
+
+The four bounds above are all about *magnitude*, and none of them knows whether
+the action worked — `applyOps` has never been told the check, so
+`OUTCOME_GUIDANCE`'s "a failure emits the ops for what the attempt COST and NOT
+the ops for the thing the player wanted" was a promise made in a prompt and
+nowhere else. Seen live as Arkanis: a `fortification` action failed its
+`industry` check, the narrative said the walls stood exactly as thick as that
+morning, and the batch contained the cost **and** the three-turn order, labelled
+"(stalled)". That one was harmless only because it carried no payload. Measured
+with one: a `develop_system +1` at slu-2, emitted in a batch the player was told
+was a failure, crosses `HUB_THRESHOLD` five turns later and takes Meridian's net
+from 309 to **519, permanently**, with zero rejections.
+
+This is the combat leak running the other way — there the model fabricated
+losses on a failure, here it banks gains on one — and the fix is the same shape.
+`boundPayloadsToOutcome` is applied in `stageWithCorrection`, which knows the
+band, **to the correction batch as well as the first**, since a retry that
+re-emitted the payload would otherwise be the hole:
+
+| band | payload |
+|---|---|
+| `critical_success` · `success` | untouched |
+| `partial` | halved, floored, minimum 1 — "a reduced result and a bill" never enforced the reduced half |
+| `failure` · `critical_failure` | stripped, with a note |
+
+The **order itself is never dropped**, only its payload: a failed attack must
+still be issued, which is the whole of the combat fix. And stripping happens
+before the reducer prices the payload, so a stripped payload is never charged
+for — the price exists to bound the payoff, and with no payoff there is nothing
+to bound. Charging for a commission never placed would invent a cost the player
+was never quoted; what a failed attempt costs is whatever the resolution call
+emits for it.
+
+A sixth guard closes a hole the value-based pricing below opened: the payload
 requires the faction to **hold the target or have ships over it**, the same
 presence line interdiction and suborning draw. Because the price is the *actor's*
 marginal income, a development on a rival's world costs the floor — the actor

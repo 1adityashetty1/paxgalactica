@@ -335,9 +335,24 @@ describe('a compulsion is a price, not a wall', () => {
     expect(COMPULSION_BREACH_DISSENT).toBeGreaterThan(REFUSAL_DISSENT);
   });
 
-  it('reaches the cap in four, and stops there', () => {
+  it('costs less than permanently rewriting what the power is', () => {
+    // One act against character is a lighter thing than changing the ethic, and
+    // the ordering is the whole reason the two prices exist separately.
+    expect(COMPULSION_BREACH_DISSENT).toBeLessThan(DOCTRINE_ETHIC_DISSENT);
+  });
+
+  it('does not spiral from a single bad turn', () => {
+    // The price lands on the ATTEMPT, so a compulsion breach that rolls badly
+    // and achieves nothing is still charged. At 25 that made two breaches in one
+    // turn — one of them a natural 1 — cost Arkanis 50 dissent and −4 on every
+    // stat before the second turn began, which is what a live playtest found.
+    const twoInOneTurn = REFUSAL_DISSENT + 2 * COMPULSION_BREACH_DISSENT;
+    expect(dissentPenalty(twoInOneTurn)).toBeLessThanOrEqual(3);
+  });
+
+  it('reaches the cap by repeated insistence, and stops there', () => {
     const state = fresh();
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 10; i++) {
       const out = applyOps(
         state,
         [
@@ -351,7 +366,8 @@ describe('a compulsion is a price, not a wall', () => {
       );
       Object.assign(state, out.state);
     }
-    expect(4 * COMPULSION_BREACH_DISSENT).toBeGreaterThanOrEqual(100);
+    // Enough insistences to get there, and no further consequence at the top.
+    expect(7 * COMPULSION_BREACH_DISSENT).toBeGreaterThanOrEqual(100);
     expect(fac(state, 'meridian').dissent).toBe(100);
     expect(dissentPenalty(100)).toBe(8);
   });

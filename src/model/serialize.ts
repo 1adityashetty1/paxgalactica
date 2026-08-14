@@ -115,6 +115,30 @@ export function serializeCharacter(faction: Faction): string {
     .join('\n');
 }
 
+/**
+ * What a power will not do, and what it insists on — and nothing else.
+ *
+ * The arbiter rules on whether an action breaks one of these lines, so it has
+ * to be shown them; it emphatically does not need `voice`, which is a page of
+ * dialect notes for writing dialogue and, for Arkanis, several thousand tokens
+ * of it. Handing the whole character sheet to a bounded classification call
+ * would have quietly doubled the price of every action in the game.
+ */
+export function serializePrinciples(faction: Faction): string {
+  return [
+    `**${faction.name}** (\`${faction.id}\`)`,
+    '',
+    `Doctrine: ${faction.doctrine}`,
+    `On war — ${faction.warEthic}. On trade — ${faction.tradeEthic}.`,
+    faction.redLines.length > 0
+      ? `\nYou will NOT, whatever the incentive:\n${faction.redLines.map((r) => `  - ${r}`).join('\n')}`
+      : '\n_This power holds no red lines._',
+    faction.compulsions.length > 0
+      ? `\nYour own institutions DEMAND of you:\n${faction.compulsions.map((c) => `  - ${c.text}`).join('\n')}`
+      : '\n_This power is under no compulsions._',
+  ].join('\n');
+}
+
 /** Treaties, wars and visible agents — the standing situation, per faction. */
 export function serializeStanding(state: WorldState, viewerId: string): string {
   const treaties = treatiesFor(state, viewerId);

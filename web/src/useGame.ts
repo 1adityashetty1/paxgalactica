@@ -140,6 +140,16 @@ export function useGame() {
           for (const note of outcome.notes) say(note, 'system');
           return;
         }
+        if (outcome.defiance) {
+          // Your institutions objected and carried the order out anyway. The
+          // field was on the wire and the browser never read it, so the most
+          // consequential thing a declaration can do to a faction arrived as an
+          // ordinary grey note among the others.
+          say(
+            `${outcome.defiance.by} object, and the order goes out anyway: ${outcome.defiance.reason}`,
+            'refusal',
+          );
+        }
         if (outcome.check) {
           const c = outcome.check;
           const sign = c.modifier >= 0 ? '+' : '';
