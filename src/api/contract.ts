@@ -56,6 +56,12 @@ export const LedgerSchema = z.object({
   routes: z.number().int(),
   tolls: z.number().int(),
   raided: z.number().int(),
+  /**
+   * Scheduled debt service: positive receives, negative pays. Deliberately not
+   * part of `net` — a debt is settled as a transfer during the tick, because a
+   * rate cannot know whether the debtor could afford it.
+   */
+  debtService: z.number().int(),
 });
 
 export const BriefingProjectSchema = z.object({
@@ -146,6 +152,21 @@ export const ActionOutcomeSchema = z.object({
    * nothing happens at all.
    */
   defiance: RefusalViewSchema.nullable().default(null),
+  /**
+   * The action needs another power's agreement, so it was not rolled for and
+   * nothing was staged. A treaty binds someone who is not the actor, and the
+   * only place consent exists in this game is a transcript — so the arbiter
+   * points at the channel instead of pricing a roll for someone else's assent.
+   */
+  negotiation: z
+    .object({
+      withFactionIds: z.array(z.string()),
+      what: z.string(),
+      supported: z.boolean(),
+      channels: z.string(),
+    })
+    .nullable()
+    .default(null),
   staged: z.number().int(),
   notes: z.array(z.string()),
   rejections: z.array(OpRejectionSchema),

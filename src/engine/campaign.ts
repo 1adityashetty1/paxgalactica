@@ -34,6 +34,13 @@ export interface StagedBatch {
   narrative: string;
   /** Whose ops these are — carried so the commit replays under the same guards. */
   actor?: string;
+  /**
+   * Where the batch came from, carried for the same reason as `actor`: a
+   * negotiated treaty must commit under the source that permits it, or a deal
+   * struck in a channel would be rejected the moment the turn lands. Optional
+   * so a batch restored from an older shape still works.
+   */
+  source?: Extract<OpSource, 'model' | 'extraction'>;
 }
 
 /**
@@ -128,10 +135,20 @@ export class Campaign {
    * the player learns about a rejection now rather than at end of turn — but
    * the world does not formally change until `commitTurn`.
    */
-  stage(ops: unknown[], label: string, narrative = ''): { rejections: ApplyResult['rejections']; notes: string[] } {
+  stage(
+    ops: unknown[],
+    label: string,
+    narrative = '',
+    /**
+     * `extraction` for ops read out of a diplomatic transcript, which is the
+     * only model-driven source that may form a treaty — the other party said
+     * yes in its own voice, which is the thing a declared action cannot supply.
+     */
+    source: Extract<OpSource, 'model' | 'extraction'> = 'model',
+  ): { rejections: ApplyResult['rejections']; notes: string[] } {
     // The player's own faction is always the actor for a declared action.
     const actor = this.committed.playerFactionId;
-    const res = applyOps(this.state, ops, 'model', actor);
+    const res = applyOps(this.state, ops, source, actor);
     this.state = res.state;
     // `ops` is what was PROPOSED and is what gets journaled, because replay must
     // re-run the rejections to reproduce them. `applied` is the subset that
@@ -141,7 +158,7 @@ export class Campaign {
     // Rejections carry the original op by reference, so identity is enough.
     const refused = new Set(res.rejections.map((r) => r.op));
     const applied = ops.filter((op) => !refused.has(op));
-    this.stagedBatches.push({ label, ops, applied, narrative, actor });
+    this.stagedBatches.push({ label, ops, applied, narrative, actor, source });
     return { rejections: res.rejections, notes: res.notes };
   }
 
@@ -209,11 +226,16 @@ export class Campaign {
     const applied = this.stagedBatches.length;
 
     for (const batch of this.stagedBatches) {
-      const res = applyOps(this.committed, batch.ops, 'model', batch.actor);
+      // The source is carried from staging for the same reason the actor is: a
+      // treaty negotiated in a channel is staged under `extraction`, and
+      // committing it as `model` would reject it at the moment the turn landed
+      // — the deal visible in the preview would quietly not exist afterwards.
+      const source = batch.source ?? 'model';
+      const res = applyOps(this.committed, batch.ops, source, batch.actor);
       this.committed = res.state;
       this.journal.entries.push({
         kind: 'ops',
-        source: 'model',
+        source,
         label: batch.label,
         ops: batch.ops,
         // The actor MUST be journaled. It was applied above and dropped here,

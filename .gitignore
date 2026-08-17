@@ -9,3 +9,13 @@ saves/
 # they are one careless `git add -A` away from shipping.
 _*.mjs
 _*.ts
+
+# Source art for the diplomacy portraits, as generated: five ~1.7MB JPEGs at
+# 1408x768. What the game actually serves is the resized set under
+# web/public/portraits/ (1100px wide, ~165KB each), which IS tracked — the
+# build copies it into dist/web and the channel UI loads from it.
+#
+# Kept out of git because they are inputs, not deliverables: nothing in the
+# repo reads them, and re-exporting at a different size is one `sips` call.
+# They stay on disk; this only stops them being committed again.
+faction_portraits/

@@ -12,10 +12,11 @@ import {
 import {
   AppraisalSchema,
   type Appraisal,
+  ExtractionOutputSchema,
   ModelTurnOutputSchema,
   ReactionSetSchema,
   ResolutionOutputSchema,
-  type ModelTurnOutput,
+  type ExtractionOutput,
   type ReactionSet,
   type ResolutionOutput,
 } from '../domain/ops.js';
@@ -26,7 +27,7 @@ import {
   getFaction,
   type WorldState,
 } from '../domain/state.js';
-import { classifyPrinciple } from '../domain/compulsions.js';
+import { classifyPrinciple, classifyPrinciples } from '../domain/compulsions.js';
 import { callStructured } from './client.js';
 import { loadPrompt } from './prompts.js';
 import {
@@ -150,8 +151,8 @@ export async function resolveAction(
   // label — see `classifyPrinciple`. The model is good at spotting which line an
   // action touches and unreliable at saying which list that line is on, so the
   // judgement is taken and the lookup is not.
-  const named = priced.appraisal.breach?.principle;
-  const classified = actor && named ? classifyPrinciple(actor, named) : null;
+  const named = priced.appraisal.breach?.principles ?? [];
+  const classified = actor && named.length > 0 ? classifyPrinciples(actor, named) : null;
 
   // `admissible: false` is the one exit that charges nothing at all, which makes
   // it the cheapest possible bypass for a principle — and a live playtest found
@@ -221,6 +222,45 @@ export async function resolveAction(
           by: breach.by,
           reason: breach.reason,
           violated: breach.principle,
+        },
+      },
+      check: null,
+      roll: 0,
+      attempts: priced.attempts,
+      costUsd: priced.costUsd,
+    };
+  }
+
+  /* --- 1c. A negotiation is not a decree; send them to the channel ---- */
+  // Ordered after the red-line check on purpose: an action your own people will
+  // not carry out is refused whether or not it also needed someone else's
+  // agreement, so being told "that is a conversation" never launders a breach.
+  //
+  // This closes a real hole rather than adding polish. `form_treaty` used to be
+  // model-emittable from a resolution call, and the reducer checked only that
+  // the two ids existed and differed — so a declared "sign a mutual defence
+  // pact with the Iron Vigil" was priced as an ordinary influence check
+  // (measured live at DC 17, against a power at -45 disposition) and a good
+  // roll bound them to it. The op has left `ModelOpSchema` and the reducer
+  // rejects it from a `model` source; this is the half that tells the player
+  // where to go instead, so the boundary reads as a door rather than a wall.
+  const negotiation = priced.appraisal.negotiation;
+  if (negotiation) {
+    const names = negotiation.withFactionIds
+      .map((id) => getFaction(state, id)?.name ?? id)
+      .join(', ');
+    const channels = negotiation.withFactionIds.map((id) => `/talk ${id}`).join(' · ');
+    return {
+      output: {
+        narrative: priced.appraisal.reason || `That needs ${names} to agree to it.`,
+        ops: [],
+        negotiation: {
+          withFactionIds: [...negotiation.withFactionIds],
+          what: negotiation.what,
+          supported: negotiation.supported,
+          // Written here rather than by the model so the instruction is always
+          // the real command, spelled the way the client accepts it.
+          channels,
         },
       },
       check: null,
@@ -513,7 +553,7 @@ export async function extractAgreements(
   state: WorldState,
   factionId: string,
   history: ChatMessage[],
-): Promise<{ output: ModelTurnOutput; attempts: number; costUsd: number }> {
+): Promise<{ output: ExtractionOutput; attempts: number; costUsd: number }> {
   const faction = getFaction(state, factionId);
   const player = getFaction(state, state.playerFactionId);
 
@@ -543,7 +583,10 @@ export async function extractAgreements(
     label: 'extraction',
     system: withRubric(loadPrompt('extraction')),
     user,
-    schema: ModelTurnOutputSchema,
+    // The extraction vocabulary, which is the ordinary one plus `form_treaty`.
+    // This pass has read a transcript, so it is the only model-driven place in
+    // the game where another power's consent actually exists.
+    schema: ExtractionOutputSchema,
   });
   return { output: res.value, attempts: res.attempts, costUsd: res.costUsd };
 }

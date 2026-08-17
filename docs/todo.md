@@ -2,21 +2,26 @@
 
 ## Where things stand (2026-08-13)
 
-**Open work, in priority order.** Everything below is evidence-backed: items
-1–3 came out of the two live playtests and are now done. **What is actually
-open is item 4 (no debt mechanic), the open half of item 5, and the compulsion
-pricing question under item 11**. The battle
-report card (item 12) is built and has still never been watched rendering.
-Live play has found every bug in this file that the suite did not — including,
-again this session, one in the fix for the previous one.
+**Open work, in priority order.** Everything below is evidence-backed. Items
+1–3 and 5's first half are done, and so is the compulsion pricing question
+raised under item 11. **What is genuinely open is item 4 (no debt mechanic) and
+the open half of item 5 (whether combat wants a richer resolver).**
 
-**Branch state:** `combat-report`, off `order-effects`. 594 tests pass;
-`pnpm typecheck`, `pnpm typecheck:web` and `pnpm build:web` are clean. PR #4 merged
-`order-effects` into `main` at commit `60497b0`, which means everything from
-"Make compulsions fire on drift" onward — compulsion triggers, the line dedup,
-the monopolist reassignment, all five war ethics, all five faction voices, the
-defiance rework, the staged-ops fix and the battle report — is **not yet in
-`main`** and rides on this branch.
+Ahead of both, though, is a different kind of debt: **mechanisms that are built,
+tested and have never been watched running.** The battle report card came off
+that list on 2026-08-17 (see item 12). What remains on it is the extraction pass
+emitting a hire or a debt, which no live negotiation has yet produced, and
+`onComplete` payloads, which no live model call has ever set. The battle report card (item 12)
+has never been seen rendering; `onComplete` payloads and commitment income have
+never been exercised by a live model call; and `boundPayloadsToOutcome` was
+written from a measured probe rather than from play. Live play has found every
+bug in this file that the suite did not — including, twice this session, a bug
+in the fix for the previous one.
+
+**Branch state:** everything is in `main` as of PR #6 (`359f31f`), which merged
+the arbiter breach rework, `classifyPrinciple`, the payload/outcome binding and
+the compulsion reprice. 596 tests pass; `pnpm typecheck`, `pnpm typecheck:web`
+and `pnpm build:web` are clean.
 
 1. ~~`/api/action` does not return the ops it staged~~ **DONE.** `ActionOutcome`
    now carries `ops`, the batch as applied, for declarations, refusals and
@@ -31,15 +36,58 @@ defiance rework, the staged-ops fix and the battle report — is **not yet in
    so the cap cannot interfere with them.
 3. ~~`defiance` fires about a quarter of the time~~ **DONE** — the arbiter
    classifies now. See item 11 below for the rework and what is left to verify.
-4. **No debt mechanic**, so two of the Ojjul Nar's lines are unmodelled. Hiring
-   a proxy, by contrast, turns out **not** to need a new mechanic: a
-   `mutual_defense` treaty carrying `incomePerTurn` and `shipsPledged` is money
-   for hulls that really fight (`reducer.ts`, "Mutual defence: pledged hulls are
-   called in"). The one gap is direction — that dispatch fires when the *ally's*
-   world is attacked, so it buys a defender rather than an attacker. For a power
-   whose doctrine is "let other powers spend their fleets for you", defensive
-   proxying plus `profiteer` income covers the red line as written. What is
-   missing is that nothing tells the model this composition exists.
+4. ~~**No debt mechanic**~~ **ADDRESSED as diplomacy, per the user's call: both
+   proxy hiring and debt belong in the channel, not in a new op.**
+   `prompts/extraction.md` now names both compositions — a hire is a
+   `mutual_defense` treaty with `incomePerTurn` to the hired power and
+   `shipsPledged` naming the hulls; a debt is a commitment binding both parties
+   with `incomePerTurn` negative for the debtor, forgiven by
+   `dissolve_commitment`. Verified live that the arbiter now redirects both to
+   `/talk` rather than pricing them. **What is not yet verified is the other
+   end**: no live negotiation has actually produced either, so the extraction
+   pass has never been watched emitting a hire or a debt. That is the open half.
+
+   Probing this also turned up that the `mutual_defense` dispatch fires when the
+   *ally's* world is attacked, so it buys a defender rather than an attacker —
+   fine for the Combine's red line as written ("will not fight its **own** war"),
+   but a hire-them-to-attack arrangement is still only expressible as money plus
+   a pact, not as an offensive obligation the reducer enforces.
+
+   **A debt is still not really a commitment, and the first version of this
+   guidance was wrong.** Three gaps, found by asking why:
+
+   1. **`Commitment.incomePerTurn` is not directional.** It is one scalar every
+      bound faction reads the same way, unlike `Treaty.terms.incomePerTurn`,
+      which is a record keyed by faction. A debt written as a single two-party
+      commitment at 25 pays the creditor 25 **and the debtor 20** (its own
+      ceiling) — measured. `extraction.md` briefly recommended exactly that and
+      now splits the encoding: repayments are a `tribute` treaty, the principal
+      is a commitment at `incomePerTurn: 0`. Two tests pin the asymmetry.
+   2. **There is no principal.** A commitment is a perpetual flow, so "owe 400"
+      becomes "pay 25 a turn forever". Nothing counts down, nothing settles, and
+      repaying in full is indistinguishable from paying tribute.
+   3. **There is no default, and no trigger.** Both Combine lines turn on the
+      word *unpaid*, and a commitment is only `active` or `dissolved` — a
+      debtor who stops paying is unrepresentable. Worse, *"an unpaid debt must
+      be pursued"* is a **demand**, the exact shape that needs a trigger since a
+      refusal needs an action to refuse, and `COMPULSION_TRIGGERS` has no debt
+      member. A player who simply never chases a debtor is never noticed.
+
+   **BUILT.** `src/domain/debt.ts`: a principal, a balance that falls by exactly
+   what the debtor could find, an instalment, `missedPayments`, and a status of
+   current · delinquent · settled · forgiven. Serviced as a transfer in
+   `tickTurn` rather than a ledger rate, which is what makes it conserved — a
+   rate cannot know whether the debtor could afford it. `establish_debt` is
+   extraction-only (nobody becomes a debtor because someone declared it);
+   `forgive_debt` is the creditor's alone and buys real goodwill, so the
+   Combine's refusal to use it costs them something. `debt_unpursued` is the
+   fifth compulsion trigger and the first built for the mechanism rather than
+   retrofitted. The seed gives the Combine a defaulting debtor and a paying one,
+   so both halves are live from turn 0 and the arbiter has real state to rule
+   against. 23 tests; balance unmoved.
+
+   **Still unwatched:** no live negotiation has produced a debt or a hire, so
+   the extraction pass has never been seen emitting either op.
 5. ~~The battle-report UI half of the combat design question~~ **DONE** — see
    item 12. What remains genuinely open is only the *other* half: whether combat
    wants a richer multi-round resolver. The report was deliberately built as an
@@ -82,7 +130,7 @@ rival's institutions against it is an agent's job (`subversion` +
 `prompts/resolution.md` had been actively inviting it ("your own institutions
 grow more or less restive") and now states both rules.
 
-## 12. DONE — battles are reported instead of narrated
+## 12. DONE — battles are reported instead of narrated (verified on screen)
 
 `resolveBattle` computed the roll, both might modifiers, the powers the 2:1
 break-off test compares, the retreat loss percentage, per-contingent losses, the
@@ -110,10 +158,38 @@ version reported a fleet of **0** attacking. Found by running a real battle and
 reading the output, not by the tests, which all passed. Rounds now carry
 per-round deltas and a test asserts the last round equals the board.
 
-**Not visually verified.** Types, build and a contract round-trip against a real
-battle all pass, but producing a battle in a live campaign needs model calls and
-two turns for a fleet to arrive, so nobody has seen the card rendered yet. That
-is the one thing worth doing before trusting it.
+**VERIFIED LIVE** (2026-08-17, ~$0.51: one declared action plus one end turn).
+Iron Vigil, thirteen hulls from Ord Vantic onto Drajk-held Threx — one jump, so
+the fleet arrived on the very next tick rather than the two turns assumed here.
+
+The card renders and reads:
+
+```
+Threx   Drajk Confederacy holds        d20 2  -10 / -6
+attacker might +4 · defender might +2 · garrison 6 -> 4
+
+Orbitals   both sides traded losses                10 vs 9
+  attacking   Iron Vigil Remnant  13 -8 -> 5
+  defending   Drajk Confederacy    6 -6 -> 0
+
+Ground     landing thrown back        assault 4 vs garrison 6
+  attacking   Iron Vigil Remnant   5 -2 -> 3
+```
+
+Every number the write-up promised is on screen: the roll, both might modifiers,
+the powers the 2:1 break-off test actually compared (10 vs 9 — which is why
+nobody broke off despite 13 hulls against 6), per-contingent before/after, and
+which phase decided it. The defending fleet was wiped and the world still held,
+because the garrison threw the landing back — the two-phase rule, visible for
+the first time instead of inferred from one sentence.
+
+`doctrinesFired` was empty and correctly so: nobody was asked to retreat, so the
+Vigil's crusading "does not break off" changed nothing. That is the intended
+behaviour — only doctrines that *altered* the outcome are named.
+
+Also confirmed in passing: a `might` critical success emitted a `fleet_movement`
+order and nothing else — no fabricated losses, no battle resolved in prose. That
+is bug #1's fix holding under the exact conditions that used to break it.
 
 ## 11. FIXED — `defiance` was built correctly and the model barely reached for it
 

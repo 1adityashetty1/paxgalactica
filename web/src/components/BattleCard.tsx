@@ -8,6 +8,7 @@ import {
 import type { WorldState } from '../../../src/domain/state.js';
 import { getFaction } from '../../../src/domain/state.js';
 import { ansi256ToHex, NEUTRAL } from '../color.js';
+import { GarrisonIcon, ShipIcon } from './BattleIcons.js';
 
 /**
  * A battle, shown as the arithmetic that produced it.
@@ -58,6 +59,129 @@ function Side({
   );
 }
 
+/** One `<icon> x N` pair. The unit of the order of battle. */
+function Strength({
+  kind,
+  count,
+  label,
+}: {
+  kind: 'ship' | 'garrison';
+  count: number;
+  label: string;
+}) {
+  return (
+    <span className="ob-strength" title={`${count} ${label}`}>
+      {kind === 'ship' ? <ShipIcon /> : <GarrisonIcon />}
+      <span className="ob-count">×{count}</span>
+    </span>
+  );
+}
+
+/** One row of the order of battle: who, and what they brought. */
+function ObRow({
+  name,
+  colour,
+  ships,
+  garrison,
+}: {
+  name: string;
+  colour: string;
+  ships: number;
+  garrison?: number;
+}) {
+  if (ships <= 0 && !garrison) return null;
+  return (
+    <div className="ob-row" style={{ color: colour }}>
+      <span className="ob-name">{name}</span>
+      <span className="ob-units">
+        {ships > 0 && <Strength kind="ship" count={ships} label="warships" />}
+        {garrison !== undefined && garrison > 0 && (
+          <Strength kind="garrison" count={garrison} label="garrison batteries" />
+        )}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Who brought what, and what did not go home.
+ *
+ * The numbers were already on the card, spread across the phase breakdown as
+ * before/after pairs. This is the same information as a *shape*: two columns
+ * you can compare at a glance without doing subtraction in your head, which is
+ * what tells you whether a landing failed because the fleet was spent or
+ * because the garrison was simply too deep.
+ *
+ * Committed strength comes from the first round — that is the engagement as it
+ * opened — and the garrison from the report, because a garrison never appears
+ * in a contingent list; it is dug-in ground troops, not hulls.
+ */
+function OrderOfBattle({ report, state }: { report: BattleReport; state: WorldState }) {
+  const opening = report.rounds[0];
+  if (!opening) return null;
+
+  const losses = totalLosses(report);
+  const garrisonLost = Math.max(0, report.garrisonBefore - report.garrisonAfter);
+  const colourOf = (id: string) =>
+    ansi256ToHex(getFaction(state, id)?.displayColor ?? 0) || NEUTRAL;
+
+  // Defenders can be absent entirely (an unopposed walk-in), and a defending
+  // *fleet* can be absent while a garrison is not.
+  const defenders = opening.defenders;
+  const defenderName =
+    defenders[0]?.factionName ??
+    (report.holderBefore ? getFaction(state, report.holderBefore)?.name ?? 'the holder' : 'nobody');
+  const defenderColour = report.holderBefore ? colourOf(report.holderBefore) : NEUTRAL;
+
+  return (
+    <div className="order-of-battle">
+      <div className="ob-col">
+        <span className="ob-heading">Order of battle</span>
+        {opening.attackers.map((c) => (
+          <ObRow
+            key={c.factionId}
+            name={c.factionName}
+            colour={colourOf(c.factionId)}
+            ships={c.before}
+          />
+        ))}
+        {defenders.length > 0 ? (
+          defenders.map((c, i) => (
+            <ObRow
+              key={c.factionId}
+              name={c.factionName}
+              colour={colourOf(c.factionId)}
+              ships={c.before}
+              garrison={i === 0 ? report.garrisonBefore : undefined}
+            />
+          ))
+        ) : (
+          <ObRow
+            name={defenderName}
+            colour={defenderColour}
+            ships={0}
+            garrison={report.garrisonBefore}
+          />
+        )}
+      </div>
+
+      <div className="ob-col">
+        <span className="ob-heading">Losses</span>
+        <ObRow name="attacking" colour={NEUTRAL} ships={losses.attackers} />
+        <ObRow
+          name="defending"
+          colour={NEUTRAL}
+          ships={losses.defenders}
+          garrison={garrisonLost}
+        />
+        {losses.attackers === 0 && losses.defenders === 0 && garrisonLost === 0 && (
+          <span className="muted">nothing was fired</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function BattleCard({ report, state }: { report: BattleReport; state: WorldState }) {
   const [open, setOpen] = useState(false);
   const losses = totalLosses(report);
@@ -95,6 +219,8 @@ export function BattleCard({ report, state }: { report: BattleReport; state: Wor
             {report.attackMod} · defender might {report.defendMod >= 0 ? '+' : ''}
             {report.defendMod} · garrison {report.garrisonBefore} → {report.garrisonAfter}
           </p>
+
+          <OrderOfBattle report={report} state={state} />
 
           {report.doctrinesFired.length > 0 && (
             <ul className="battle-doctrines">

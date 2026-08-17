@@ -15,6 +15,12 @@ import type {
   Contingent,
 } from './battle.js';
 import { driftingCompulsions } from './compulsions.js';
+import {
+  instalment,
+  isDebtLive,
+  MAX_DEBT_PER_TURN,
+  MAX_DEBT_PRINCIPAL,
+} from './debt.js';
 import { rollD20, statModifier } from './checks.js';
 import {
   applyOrderEffect,
@@ -67,7 +73,26 @@ import {
   type WorldState,
 } from './state.js';
 
-export type OpSource = 'model' | 'engine';
+/**
+ * Where a batch came from, which some guards depend on.
+ *
+ * `extraction` is the diplomacy pass at `/endtalk`: it is handed a transcript
+ * and asked what the two powers actually agreed to, so it is the only
+ * model-driven source whose ops carry another faction's consent. `form_treaty`
+ * is reachable from it and from nowhere else a model can reach.
+ */
+export type OpSource = 'model' | 'engine' | 'extraction';
+
+/**
+ * What being let off a debt is worth to the debtor.
+ *
+ * Forgiveness has to buy something real, or the Ojjul Nar's refusal to use it
+ * is not a sacrifice and the red line costs them nothing to hold.
+ */
+export const DEBT_FORGIVENESS_GOODWILL = 20;
+
+/** What defaulting costs the debtor in the creditor's eyes, per missed payment. */
+export const DEBT_DEFAULT_DISPOSITION_COST = 6;
 
 /** Ground forces rebuilt per turn, toward the system's ceiling. */
 export const GARRISON_REGROWTH = 1;
@@ -908,6 +933,22 @@ export function applyOps(
       }
 
       case 'form_treaty': {
+        // A treaty binds a power other than the actor, and consent is a thing
+        // only a conversation can establish. Measured live: "sign a mutual
+        // defence pact with the Iron Vigil" was priced as an influence check at
+        // DC 17 against a power at -45 disposition, and a good roll would have
+        // bound them to it — pledged hulls, income and all — without the Vigil
+        // ever being asked. The op is absent from `ModelOpSchema` for that
+        // reason; this is the reducer saying the same thing, so a journal or a
+        // hand-written batch cannot route around it either.
+        if (source === 'model') {
+          reject(
+            raw,
+            'needs_consent',
+            'A treaty cannot be declared into existence: the other party has to agree to it. Open a channel with them (/talk) and negotiate — the ops are emitted from what is actually agreed there.',
+          );
+          break;
+        }
         const unknown = op.parties.find((id) => !factionExists(id));
         if (unknown) {
           reject(raw, 'unknown_faction', `No faction "${unknown}".`);
@@ -1200,6 +1241,97 @@ export function applyOps(
         break;
       }
 
+      case 'establish_debt': {
+        // The same rule as `form_treaty`: nobody becomes a debtor because
+        // somebody else declared it. Lending is negotiated, so the op is
+        // reachable from the extraction pass and nowhere else a model reaches.
+        if (source === 'model') {
+          reject(
+            raw,
+            'needs_consent',
+            'A debt cannot be declared into existence: the debtor has to agree to owe it. Open a channel with them (/talk) and negotiate the terms.',
+          );
+          break;
+        }
+        const missing = [op.creditorFactionId, op.debtorFactionId].find((id) => !factionExists(id));
+        if (missing) {
+          reject(raw, 'unknown_faction', `No faction "${missing}".`);
+          break;
+        }
+        if (op.creditorFactionId === op.debtorFactionId) {
+          reject(raw, 'illegal_value', 'A power cannot owe itself.');
+          break;
+        }
+
+        // Trimmed rather than rejected, the same shape as `billConstruction`
+        // and `trimOrderEffect`: the arrangement is still real at a smaller
+        // number, and a rejection costs a correction round trip.
+        const principal = Math.min(op.principal, MAX_DEBT_PRINCIPAL);
+        const perTurn = Math.min(op.perTurn, MAX_DEBT_PER_TURN, principal);
+        if (principal < op.principal || perTurn < op.perTurn) {
+          const note = `Debt trimmed to ${principal} at ${perTurn} a turn (asked ${op.principal} at ${op.perTurn}).`;
+          notes.push(note);
+          logEvent(state, 'clamp', note, op.creditorFactionId);
+        }
+
+        state.debts.push({
+          id: mintId(state, 'debt'),
+          creditorFactionId: op.creditorFactionId,
+          debtorFactionId: op.debtorFactionId,
+          principal,
+          balance: principal,
+          perTurn,
+          status: 'current',
+          missedPayments: 0,
+          establishedTurn: state.turn,
+          text: op.text,
+        });
+        logEvent(state, 'diplomacy', `Debt recorded: ${op.text}`, op.creditorFactionId);
+        break;
+      }
+
+      case 'forgive_debt': {
+        const debt = state.debts.find((d) => d.id === op.debtId);
+        if (!debt) {
+          reject(raw, 'unknown_debt', `No debt "${op.debtId}".`);
+          break;
+        }
+        // Only the creditor may write it off. Without this a debtor could
+        // cancel what it owes by declaring it — the cheapest possible exploit,
+        // and the same actor-shaped hazard `deploy_agent` and `set_doctrine`
+        // are both guarded against.
+        if (actor !== undefined && debt.creditorFactionId !== actor) {
+          reject(
+            raw,
+            'illegal_value',
+            `Only ${debt.creditorFactionId} can forgive what is owed to it. A debtor does not write off its own debt.`,
+          );
+          break;
+        }
+        if (!isDebtLive(debt)) {
+          reject(raw, 'illegal_value', `That debt is already ${debt.status}.`);
+          break;
+        }
+        debt.status = 'forgiven';
+        const debtor = state.factions.find((f) => f.id === debt.debtorFactionId);
+        // Being let off a debt is worth something to the debtor, which is what
+        // makes forgiveness a real instrument rather than pure loss — and what
+        // makes the Combine's refusal to use it a genuine sacrifice.
+        if (debtor) {
+          debtor.disposition[debt.creditorFactionId] = Math.max(
+            -100,
+            Math.min(100, (debtor.disposition[debt.creditorFactionId] ?? 0) + DEBT_FORGIVENESS_GOODWILL),
+          );
+        }
+        logEvent(
+          state,
+          'diplomacy',
+          `${debt.creditorFactionId} writes off ${debt.balance} owed by ${debt.debtorFactionId}. ${op.reason}`.trim(),
+          debt.creditorFactionId,
+        );
+        break;
+      }
+
       case 'spawn_event': {
         if (op.factionId !== null && !factionExists(op.factionId)) {
           reject(raw, 'unknown_faction', `No faction "${op.factionId}".`);
@@ -1435,6 +1567,52 @@ export function tickTurn(input: WorldState): TickResult {
       }
     }
   }
+  /* --- Debts are serviced ---------------------------------------------- */
+  // After income, so a debtor pays out of this turn's revenue, and as an
+  // explicit transfer rather than a ledger rate. The rate version is what a
+  // commitment does and it cannot work here: `credits` floors at zero, so a
+  // broke debtor would "pay" money it never had and the creditor would receive
+  // it. Moving exactly what is there keeps the two sides conserved and lets a
+  // shortfall be recorded as a default instead of conjured.
+  for (const debt of state.debts) {
+    if (!isDebtLive(debt)) continue;
+    const debtor = state.factions.find((f) => f.id === debt.debtorFactionId);
+    const creditor = state.factions.find((f) => f.id === debt.creditorFactionId);
+    if (!debtor || !creditor) continue;
+
+    const { paid, due, missed } = instalment(debt, debtor.credits);
+    debtor.credits -= paid;
+    creditor.credits += paid;
+    debt.balance -= paid;
+
+    if (missed) {
+      debt.status = 'delinquent';
+      debt.missedPayments += 1;
+      // A default is a grievance, and it compounds: the creditor thinks worse
+      // of them every turn the debt goes unserviced.
+      creditor.disposition[debt.debtorFactionId] = Math.max(
+        -100,
+        Math.min(
+          100,
+          (creditor.disposition[debt.debtorFactionId] ?? 0) - DEBT_DEFAULT_DISPOSITION_COST,
+        ),
+      );
+      const note = `${debtor.name} misses ${due - paid} of ${due} owed to ${creditor.name} (${debt.balance} outstanding).`;
+      notes.push(note);
+      logEvent(state, 'diplomacy', note, debt.creditorFactionId);
+    } else if (debt.balance === 0) {
+      debt.status = 'settled';
+      const note = `${debtor.name} settles its debt to ${creditor.name} in full.`;
+      notes.push(note);
+      logEvent(state, 'diplomacy', note, debt.debtorFactionId);
+    } else {
+      // Paying again after a default clears the *status*, so pressure can be
+      // relieved — but never `missedPayments`, which is what the relationship
+      // remembers.
+      debt.status = 'current';
+    }
+  }
+
   const playerLedger = ledgerFor(state, state.playerFactionId);
 
   /* --- Dissent cools ---------------------------------------------------- */

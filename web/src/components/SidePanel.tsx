@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { FleetsPanel } from './FleetsPanel.js';
 import { TradePanel } from './TradePanel.js';
 import { STAT_NAMES } from '../../../src/domain/checks.js';
+import { debtsFor } from '../../../src/domain/debt.js';
 import { describeOrderEffect } from '../../../src/domain/development.js';
 import { describeEffect } from '../../../src/domain/diplomacy.js';
 import {
@@ -360,6 +361,7 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
   const wars = warsFor(state, me);
   const agents = agentsVisibleTo(state, me);
   const commitments = commitmentsOf(state, me);
+  const debts = debtsFor(state.debts ?? [], me);
 
   return (
     <div className="standing">
@@ -398,6 +400,49 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
               </p>
             </div>
           ))}
+        </>
+      )}
+
+      {/* Debts sit with commitments and treaties because they are the same
+          kind of fact: a standing obligation that costs money every turn and
+          constrains what you can do. A defaulted debt is also the one thing on
+          this panel that another power can be *pursued* over, so the player
+          needs to see whose it is and how far behind they are. */}
+      {debts.length > 0 && (
+        <>
+          <h4>Debts</h4>
+          {debts.map((d) => {
+            const owed = d.creditorFactionId === me;
+            const other = owed ? d.debtorFactionId : d.creditorFactionId;
+            const name = state.factions.find((f) => f.id === other)?.name ?? other;
+            const paid = d.principal - d.balance;
+            return (
+              <div key={d.id} className="treaty">
+                <div className="treaty-head">
+                  <button className="linkish" onClick={() => onSelect(other)}>
+                    {owed ? `${name} owes you` : `you owe ${name}`}
+                  </button>
+                  <span className={owed ? 'chip good' : 'chip bad'}>
+                    {owed ? '+' : '-'}
+                    {Math.min(d.perTurn, d.balance)}cr/turn
+                  </span>
+                  {d.status === 'delinquent' && (
+                    <span
+                      className="chip bad"
+                      title={`${d.missedPayments} missed payment(s).`}
+                    >
+                      in default
+                    </span>
+                  )}
+                </div>
+                <p className="commitment-text">{d.text}</p>
+                <p className="muted">
+                  {d.balance} of {d.principal} outstanding · {paid} repaid
+                  {d.missedPayments > 0 ? ` · ${d.missedPayments} missed` : ''}
+                </p>
+              </div>
+            );
+          })}
         </>
       )}
 

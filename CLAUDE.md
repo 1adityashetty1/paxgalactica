@@ -664,6 +664,149 @@ could rewrite the Iron Vigil's doctrine, which is what its diplomacy persona is
 built from), and one at or above `DOCTRINE_CHANGE_DISSENT_CEILING` (75) cannot be
 reorganised at all.
 
+### Debt: a balance that depletes, and a debtor who can fail to pay
+
+`src/domain/debt.ts`. The Ojjul Nar Combine's sheet is built on debt — *"will
+not forgive an unpaid debt — the debt is the whole instrument of control"*, *"an
+unpaid debt must be pursued"* — and neither line had anything behind it. The
+obvious home looked like a `Commitment` with an `incomePerTurn`, and that was
+tried in the prompts first. **It does not work, in three separate ways**, and
+each is a thing the module had to supply:
+
+1. **A commitment's `incomePerTurn` is not directional.** It is one scalar every
+   bound faction reads the same way, unlike a treaty's, which is a record keyed
+   by faction. Measured: a debt written as one two-party commitment at 25 paid
+   the creditor 25 **and the debtor 20**. Both sides earned; nobody paid.
+2. **A commitment has no principal.** It is a perpetual flow, so "owe 400"
+   became "pay 25 a turn forever" — nothing counted down, nothing settled, and
+   repaying in full was indistinguishable from paying tribute.
+3. **A commitment has no default**, being only `active` or `dissolved`, while
+   both of the Combine's lines turn on the word *unpaid*.
+
+A `Debt` carries `principal`, a `balance` that falls by exactly what moves, a
+`perTurn` instalment, `missedPayments`, and a status of `current` ·
+`delinquent` · `settled` · `forgiven`.
+
+**Serviced as a transfer in `tickTurn`, not as a rate in `ledgerFor`**, and that
+is the load-bearing decision. A rate cannot know whether the debtor could
+afford it: `credits` floors at zero, so a broke debtor would "pay" money it
+never had and the creditor would receive it — the commitment bug in its purest
+form. The transfer moves exactly what is there, the balance falls by exactly
+what moved, and a shortfall becomes a default instead of being conjured.
+`Ledger.debtService` reports the scheduled figure and is deliberately **not**
+summed into `net`, so nothing is charged twice; the briefing shows it on its own
+line.
+
+| op | source | why |
+|---|---|---|
+| `establish_debt` | **extraction only** | nobody becomes a debtor because another power declared it |
+| `forgive_debt` | ordinary | a creditor needs nobody's permission to stop collecting — and it is the exact act the Combine's red line forbids |
+
+Forgiveness pays `DEBT_FORGIVENESS_GOODWILL` (20) with the debtor, so refusing
+to use it is a real sacrifice rather than a free principle. A default costs
+`DEBT_DEFAULT_DISPOSITION_COST` (6) every turn it continues, which is how a
+creditor's patience runs out on its own. A debtor cannot forgive its own debt;
+the reducer checks the actor, the same hazard `deploy_agent` and `set_doctrine`
+are guarded against.
+
+**`debt_unpursued` is the fifth compulsion trigger**, and the first one the
+mechanism was built *for* rather than retrofitted to. *"An unpaid debt must be
+pursued"* is a demand, which is exactly what a refusal cannot reach — a creditor
+who never chases a debtor takes no action to be refused. Pursuit is read as
+pressure actually applied: a fleet under way at one of their worlds, or an
+operative in their space. Diplomacy deliberately does not count; the line is
+about a client who has already learned that owing you costs nothing.
+
+The seed gives the Combine two debts so both halves are live from turn 0 — Drajk
+already in default, Meridian paying on schedule — which also gives the arbiter
+real state to rule against instead of a fiction. **Not Arkanis, deliberately:**
+*stone-debt* is their word for what is owed for taking help, and the Closing is
+a refusal to take any. A power that counts its dead rather than accept grain
+does not carry a Nar loan.
+
+Balance is unmoved (nets 24/90/232/71/32 before and after) because the transfer
+sits outside `net`, and the Combine's inflow is bounded by the principal rather
+than being another perpetual stream.
+
+### A treaty needs consent, so it is not a declared action
+
+`form_treaty` was in `ModelOpSchema` and the reducer checked that the two ids
+existed and differed and nothing else. Measured live: *"sign a mutual defence
+pact with the Iron Vigil"* was ruled admissible and priced as an `influence`
+check at **DC 17** — against a power at −45 disposition — and a good roll would
+have bound the Vigil to it, `shipsPledged` really dispatching, income really
+flowing, without the Vigil ever being asked. The diplomacy architecture exists
+precisely so that an NPC has to agree; the general-action path walked around it.
+
+Three changes, in the usual division of labour:
+
+- **The op left the model's vocabulary.** `ExtractionOpSchema` is
+  `ModelOpSchema` plus `form_treaty`, and only the `/endtalk` extraction pass
+  uses it — the one pass in the game that has read a transcript, which is the
+  only place consent exists. `break_treaty` stays ordinary: repudiation is
+  genuinely unilateral.
+- **The reducer says the same thing**, rejecting `form_treaty` from a `model`
+  source with `needs_consent` and a message naming the channel to open, so a
+  hand-written batch cannot route around the schema.
+- **The arbiter redirects instead of pricing.** `AppraisalSchema.negotiation`
+  names who must agree and what is wanted; `resolveAction` returns it before the
+  roll, staging nothing and charging nothing. Being told "that is a
+  conversation" is not a failure and must not be priced like one.
+
+Ordered **after** the breach ruling: an action your own people will not carry
+out is refused whether or not it also needed someone else's signature, so a
+redirect can never launder a red line. A test pins that.
+
+`OpSource` gained `'extraction'`, which `Campaign.stage` and `commitTurn` carry
+for the same reason they carry the actor — a treaty staged in a channel and
+committed as `model` would be rejected at the moment the turn landed, and the
+deal visible in the preview would quietly not exist afterwards.
+
+**This is the first change that would have made an old journal replay
+differently.** Diplomacy batches written before the split are recorded as
+`model`, and today's rule would delete a treaty that really was negotiated —
+verified against `saves/ojjul_profiteer.json`, which loses its `trade_accord`
+and gains a rejection. `JOURNAL_VERSION` is 2, both versions load, and a v1
+entry *containing a treaty* replays under `extraction`. Scoped to those entries
+rather than reinterpreting every legacy batch, because a diplomacy extraction
+never carried a `transfer_control`.
+
+Proxy hiring and debt — the Combine's two unmodelled lines — are diplomacy
+mechanics made of pieces that already exist, and `prompts/extraction.md` names
+both: a hire is a `mutual_defense` treaty with `incomePerTurn` to the hired
+power and `shipsPledged` naming the hulls; a debt is a commitment binding both
+parties with `incomePerTurn` negative for the debtor, forgiven by
+`dissolve_commitment`.
+
+### What the breach ruling can and cannot be held to
+
+Two guards were added after live probes, and the boundary between them is the
+point:
+
+- **Which list a line is on** is a lookup, so code does it (`classifyPrinciple`).
+- **The most severe line named** is arithmetic, so code does it
+  (`classifyPrinciples`) — a red line beats a compulsion whenever both are
+  quoted. Under-charging a red line is a hole; over-charging a compulsion is a
+  ruling the player can argue with.
+- **Which way a line points** is judgement, so the arbiter states it and code
+  only insists that it does. `breach.how` is required because the arbiter read
+  the Combine's *"will not fight its own war where a proxy could be hired"* as
+  forbidding **hiring a proxy** — the precise inversion, since hiring is the
+  line being kept. `classifyPrinciple` confirmed the quoted line was real and
+  duly blocked the one action that most expresses the faction's doctrine. A
+  verified quote is not a verified reading.
+- **Whether a breach is spotted at all** is judgement that nothing checks, and
+  it is not stable. Probed three times, *"forgive the Free Worlds' debt"* was
+  ruled a red line once, a compulsion once, and no breach at all once; *"write
+  off what they owe us"* — the same act — reliably hit the red line. Code
+  guarantees that a naming is classified correctly, not that the naming happens.
+
+One cause of that instability was a **seed defect the arbiter was right to be
+confused by**: the Combine stated forgiving a debt twice, as a red line and
+again inside a compulsion, at two different severities. The verbatim dedup test
+did not catch it because the strings differ. The compulsion is now purely about
+pursuit, so each act is stated once, at one severity.
+
 ### Red lines are permanent; compulsions are a price
 
 There was briefly a `retire` field on `set_doctrine` that abandoned a named red
@@ -914,6 +1057,30 @@ keeps its prose and the UI gets the arithmetic. `doctrinesFired` names only the
 doctrines that **changed** something — a crusading power never asked to retreat
 does not appear.
 
+An **order of battle** heads the expanded card: who brought what, as
+`<ship> x N` and `<tracked gun> x N` for the garrison, with the same pairs again
+under Losses. The numbers were already there, spread through the phase breakdown
+as before/after pairs; this is the same information as a *shape*, so you can see
+whether a landing failed because the fleet was spent or because the garrison was
+simply too deep, without subtracting in your head.
+
+The glyphs are inline SVG in `web/src/components/BattleIcons.tsx`, inheriting the
+faction colour through `currentColor`. They took four passes, and the failures
+are the point: at 18px only the *outline* survives, so a wedge hull with engine
+pods read as a flat lozenge with two detached bars, a barrel on a round carriage
+read as a lollipop (and its ring-wheel version as a magnifying glass — the
+barrel looked like a handle), a bare triangle read as a play button, and vertical
+fins read as a four-pointed star. What works is a silhouette whose outline is
+already the object: swept wings make a dart rather than a cross, and tracks with
+road wheels say "tracked vehicle" at any size. The wheels are holes cut with
+`evenodd`, not shapes painted in the panel colour, so the glyph survives being
+drawn on any background.
+
+The block is a single column, not two. The side panel is ~310px wide whatever the
+window is doing, so side-by-side truncated names to "Drajk Co…" — and a container
+that narrow cannot be rescued by a viewport media query, because the viewport is
+not what is narrow.
+
 Shaped as an **engagement made of rounds**, each stamped with its turn, rather
 than a flat record of one exchange. Combat resolves in a single tick today and
 whether it should stay that way is unsettled, so if it later spans turns the
@@ -950,7 +1117,10 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `interrupt_order` | rejected when the order is not interruptible |
 | `extend_order` | rejected for movement |
 | `accelerate_order` | spends credits, drops one Fibonacci bucket, min 1; rejected for movement |
+| `form_treaty` | **extraction-only** — absent from `ModelOpSchema`; a treaty needs the other party's consent |
 | `establish_commitment` | optional `incomePerTurn`, trimmed to `MAX_COMMITMENT_INCOME` |
+| `establish_debt` | **extraction-only** — a principal that depletes; trimmed to `MAX_DEBT_PRINCIPAL` |
+| `forgive_debt` | creditor only; writes off the balance and buys goodwill |
 | `spawn_event` | |
 | `log_narrative` | |
 
@@ -965,7 +1135,7 @@ Rejection codes: `unknown_op`, `schema_invalid`, `reducer_only`,
 `unknown_faction`, `unknown_system`, `unknown_order`, `unknown_commitment`,
 `unknown_treaty`, `unknown_agent`, `commitment_conflict`, `no_presence`,
 `unreachable_target`, `missing_duration`, `insufficient_credits`,
-`not_interruptible`, `illegal_value`, `doctrine_refusal`.
+`not_interruptible`, `illegal_value`, `doctrine_refusal`, `needs_consent`, `unknown_debt`.
 
 ---
 
@@ -1244,7 +1414,10 @@ diplomacy schema has no `ops` field at all — the boundary is structural, not a
 instruction a model could be talked out of.
 
 On `/endtalk`, a **separate extraction call** reads the transcript and emits ops
-for what was actually agreed. An NPC may promise anything in dialogue; only the
+for what was actually agreed. It is the **only** pass that may emit
+`form_treaty`: a treaty binds a power that is not the actor, and a transcript is
+the only place that power's consent exists. A treaty asked for as an ordinary
+declared action is redirected here rather than rolled for. An NPC may promise anything in dialogue; only the
 extraction pass produces ops. Those ops are **staged like any other action**, so
 a treaty lands on the same timestamp as everything else declared this turn
 rather than jumping the queue. Transcripts live beside the journal, not inside
@@ -1513,7 +1686,17 @@ automatically.
   from state on resume via `briefingFromState`.
 - **Channel** — diplomacy gets its own surface, in the faction's colour, with
   the boundary stated on screen. While it is open the command line and End Turn
-  are disabled, mirroring the server-side rule.
+  are disabled, mirroring the server-side rule. Opening one also **replaces the
+  map with the other power's portrait** (`PortraitStage`): the map is what you
+  read while moving fleets, and a conversation is not that, so swapping the
+  whole stage makes the mode change unmissable — which matters precisely because
+  a channel disables the command line, behaviour a player otherwise discovers by
+  finding their input dead. Gated on the same `activeChannel` the panel uses,
+  not on the server's `openChannel`, which is only set once a message has
+  actually been sent; gating on the latter left the map up through the entire
+  first exchange. Art lives in `web/public/portraits/<factionId>.jpeg` — named
+  by **id**, not display name, since the two diverged long ago — and a missing
+  file falls back to the faction's name rather than a blank slab.
 - **Progress** — model calls take 5–15s, so the server names what it is doing
   and the client shows that label verbatim. Without it the app looks broken
   while working perfectly.
@@ -1571,7 +1754,7 @@ re-sends its context. A trivial call still takes ~7s for that reason.
 ```
 src/
   domain/     state, ops, duration, development, graph, checks, diplomacy,
-              arbitration, compulsions, trade, reducer
+              arbitration, compulsions, debt, trade, reducer
               ← pure. No I/O, no network, no imports from engine/model/ui.
   api/        contract.ts — Zod schemas shared by server and browser
   engine/     campaign, store, journal, turn, briefing

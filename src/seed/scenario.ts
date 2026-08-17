@@ -215,7 +215,17 @@ const SEED_FACTIONS: SeedFaction[] = [
     ],
     compulsions: [
       'the Combine requires that every favour carry a price; giving something away for goodwill is refused as ruinous precedent',
-      'an unpaid debt must be pursued — forgiving one invites every client to test the next',
+      // Purely about pursuit. It used to end "forgiving one invites every
+      // client to test the next", which restated the red line above it — so
+      // forgiving a debt was stated twice at two different severities, and
+      // which one the arbiter happened to quote decided whether the act was
+      // blocked or merely priced. Measured across three live appraisals of the
+      // same action: red line once, compulsion twice. Forgiveness is the red
+      // line's; failing to chase a debtor is this one's.
+      {
+        text: 'an unpaid debt must be pursued — a client left owing without consequence teaches every other client to try it',
+        trigger: 'debt_unpursued',
+      },
     ],
     buildBias: ['espionage', 'political_maneuver', 'blockade'],
   },
@@ -364,6 +374,45 @@ export function createSeedState(playerFactionId: string): WorldState {
     treaties: [],
     commitments: [],
     agents: [],
+    /**
+     * The Combine's sheet is built on debt — *"the debt is the whole instrument
+     * of control"* — and until there was a debt mechanic those lines had nothing
+     * to point at. Two, chosen so both halves of the mechanism are live from
+     * turn 0 and so the arbiter has state to rule against rather than a fiction.
+     *
+     * Not Arkanis, deliberately: *stone-debt* is their word for what is owed for
+     * taking help, and the whole Closing is a refusal to take any. A power that
+     * counts its dead rather than accept grain does not carry a Nar loan.
+     */
+    debts: [
+      {
+        id: 'debt-0',
+        creditorFactionId: 'hutt',
+        debtorFactionId: 'krayt',
+        principal: 600,
+        // Already in default at turn 0, which is what makes the Combine's
+        // `debt_unpursued` compulsion a live question on the first turn rather
+        // than a rule waiting for something to happen.
+        balance: 480,
+        perTurn: 40,
+        status: 'delinquent',
+        missedPayments: 2,
+        establishedTurn: 0,
+        text: 'The Drajk Confederacy owes the Combine 600 against refitted hulls, and has stopped paying.',
+      },
+      {
+        id: 'debt-1',
+        creditorFactionId: 'hutt',
+        debtorFactionId: 'meridian',
+        principal: 400,
+        balance: 400,
+        perTurn: 25,
+        status: 'current',
+        missedPayments: 0,
+        establishedTurn: 0,
+        text: 'Meridian carries 400 of Combine paper against the Sluis yards, serviced on schedule.',
+      },
+    ],
     playerFactionId,
     turn: 0,
     eventLog: [

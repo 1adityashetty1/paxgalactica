@@ -214,6 +214,38 @@ export const EstablishCommitmentOp = z.object({
   incomePerTurn: z.number().int().min(-500).max(500).default(0),
 });
 
+/**
+ * Money owed, on terms both powers accepted.
+ *
+ * Extraction-only, exactly like `form_treaty` and for the same reason: a debt
+ * binds the debtor, and nobody becomes a debtor because the other party
+ * declared it. Lending is a negotiation.
+ */
+export const EstablishDebtOp = z.object({
+  op: z.literal('establish_debt'),
+  creditorFactionId: z.string().min(1),
+  debtorFactionId: z.string().min(1),
+  /** Trimmed to `MAX_DEBT_PRINCIPAL`, not rejected. */
+  principal: z.number().int().min(1).max(100000),
+  /** Trimmed to `MAX_DEBT_PER_TURN`, and never more than the principal. */
+  perTurn: z.number().int().min(1).max(10000),
+  text: z.string().min(1).max(240),
+});
+
+/**
+ * Writing a debt off.
+ *
+ * Unilateral and therefore an ordinary op, the same shape as `break_treaty`: a
+ * creditor needs nobody's permission to stop collecting. It is also the exact
+ * act the Ojjul Nar's first red line forbids, which is the point — the line now
+ * has something to forbid.
+ */
+export const ForgiveDebtOp = z.object({
+  op: z.literal('forgive_debt'),
+  debtId: z.string().min(1),
+  reason: z.string().default(''),
+});
+
 export const DissolveCommitmentOp = z.object({
   op: z.literal('dissolve_commitment'),
   commitmentId: z.string().min(1),
@@ -242,7 +274,9 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   InterruptOrderOp,
   ExtendOrderOp,
   AccelerateOrderOp,
-  FormTreatyOp,
+  // `form_treaty` is deliberately ABSENT — see `ExtractionOpSchema`. A treaty
+  // binds another power, and a resolution call reached by a single player
+  // declaration has nobody's consent but the player's.
   BreakTreatyOp,
   DeployAgentOp,
   RecallAgentOp,
@@ -250,10 +284,29 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   AdjustDissentOp,
   EstablishCommitmentOp,
   DissolveCommitmentOp,
+  // `establish_debt` is deliberately ABSENT, like `form_treaty`: lending binds
+  // the debtor, and consent lives in a transcript. Forgiving is unilateral.
+  ForgiveDebtOp,
   SpawnEventOp,
   LogNarrativeOp,
 ]);
 export type ModelOp = z.infer<typeof ModelOpSchema>;
+
+/**
+ * What the diplomacy extraction pass may emit: everything a model may emit,
+ * plus `form_treaty`.
+ *
+ * The split exists because a treaty is the one op that binds a faction other
+ * than the actor, and consent is a thing only a conversation can establish.
+ * Extraction is the single pass in the game that has read one: it is handed a
+ * transcript and asked what these two powers actually agreed to, so a treaty it
+ * emits is backed by an NPC that said yes in its own voice.
+ *
+ * `break_treaty` stays in the ordinary vocabulary on purpose. Repudiating an
+ * agreement is genuinely unilateral — you do not need the other party's
+ * agreement to stop honouring it, only to pay for having stopped.
+ */
+export const ExtractionOpSchema = z.union([ModelOpSchema, FormTreatyOp, EstablishDebtOp]);
 
 /** The full vocabulary, including ops only the reducer may originate. */
 export const OpSchema = z.discriminatedUnion('op', [
@@ -275,6 +328,8 @@ export const OpSchema = z.discriminatedUnion('op', [
   AdjustDissentOp,
   EstablishCommitmentOp,
   DissolveCommitmentOp,
+  EstablishDebtOp,
+  ForgiveDebtOp,
   SpawnEventOp,
   LogNarrativeOp,
 ]);
@@ -288,6 +343,13 @@ export const ModelTurnOutputSchema = z.object({
   ops: z.array(ModelOpSchema),
 });
 export type ModelTurnOutput = z.infer<typeof ModelTurnOutputSchema>;
+
+/** What `/endtalk` extraction returns: the ordinary vocabulary plus treaties. */
+export const ExtractionOutputSchema = z.object({
+  narrative: z.string().min(1),
+  ops: z.array(ExtractionOpSchema),
+});
+export type ExtractionOutput = z.infer<typeof ExtractionOutputSchema>;
 
 /**
  * The ability check an action resolves against.
@@ -386,14 +448,65 @@ export const AppraisalSchema = z.object({
    */
   breach: z
     .object({
-      /** `red_line` blocks absolutely; `compulsion` is a price the leader may pay. */
+      /**
+       * `red_line` blocks absolutely; `compulsion` is a price the leader may
+       * pay. **The label is advisory** — `classifyPrinciple` derives the real
+       * kind from the list the line is actually on, because a live playtest
+       * had the arbiter call a compulsion "a red line, not a compulsion".
+       */
       kind: z.enum(['red_line', 'compulsion']),
-      /** The line itself, quoted from the faction sheet. */
-      principle: z.string().min(1).max(240),
+      /**
+       * Every line this action touches, quoted from the sheet.
+       *
+       * A list rather than one string because an action can break more than
+       * one principle and the arbiter quotes whichever came to mind first:
+       * forgiving a debt was returned against the Combine's *"every favour
+       * carries a price"* compulsion, never mentioning *"will not forgive an
+       * unpaid debt"* — the red line that should have blocked it outright. The
+       * engine takes the most severe of whatever is named.
+       */
+      principles: z.array(z.string().min(1).max(240)).min(1).max(3),
+      /**
+       * What the action does that the line forbids, in one clause.
+       *
+       * Required, and required for a reason: the arbiter quoted the Ojjul Nar's
+       * *"will not fight its own war where a proxy could be hired to fight it
+       * instead"* against an action **hiring a proxy** — the precise inversion,
+       * since hiring is the line being honoured. Naming the direction out loud
+       * is the cheapest available check on it. Code cannot settle this the way
+       * it settles which list a line is on.
+       */
+      how: z.string().min(1).max(240),
       /** Who inside the faction objects: "the fleet commanders", "the Trade Council". */
       by: z.string().min(1).max(80),
       /** One or two sentences, in the institutions' own voice. */
       reason: z.string().min(1).max(400),
+    })
+    .optional(),
+  /**
+   * This is a negotiation, not a decree: it needs another power to agree.
+   *
+   * The fourth verdict, and the one that closes a hole rather than adding
+   * polish. `form_treaty` was model-emittable from a resolution call and the
+   * reducer checked only that the ids existed and differed, so "sign a mutual
+   * defence pact with the Iron Vigil" was priced as an `influence` check —
+   * measured live at DC 17 against a power at −45 disposition — and a good roll
+   * bound the Vigil to a pact it was never asked about, pledged hulls and all.
+   *
+   * The diplomacy architecture already answers this: chat emits no ops, and a
+   * separate extraction pass produces them from what was actually agreed. This
+   * verdict routes the player there instead of rolling for another power's
+   * consent. It costs nothing and stages nothing — being told "that is a
+   * conversation" is not a failure, and must not be priced like one.
+   */
+  negotiation: z
+    .object({
+      /** Who has to agree. Usually one power; the channel is opened per faction. */
+      withFactionIds: z.array(z.string().min(1)).min(1).max(4),
+      /** What the player is trying to get, in their own terms, to open with. */
+      what: z.string().min(1).max(240),
+      /** Whether the acting faction is behind it, so the redirect is not a "no". */
+      supported: z.boolean().default(true),
     })
     .optional(),
   /**
@@ -429,6 +542,21 @@ export const ResolutionOutputSchema = ModelTurnOutputSchema.extend({
    * not be attempted. Nothing was rolled and nothing is staged.
    */
   inadmissible: z.string().optional(),
+  /**
+   * Set by the engine, never by the model: this needs another power's consent,
+   * so it belongs in a diplomatic channel rather than on the dice. Nothing was
+   * rolled, nothing is staged, and nothing is charged — being told "that is a
+   * conversation" is not a failure and must not be priced like one.
+   */
+  negotiation: z
+    .object({
+      withFactionIds: z.array(z.string()),
+      what: z.string(),
+      supported: z.boolean(),
+      /** The literal commands to type, built in code so they are always right. */
+      channels: z.string(),
+    })
+    .optional(),
 });
 export type ResolutionOutput = z.infer<typeof ResolutionOutputSchema>;
 
@@ -463,7 +591,10 @@ export interface OpRejection {
     | 'illegal_value'
     | 'unknown_treaty'
     | 'unknown_agent'
-    | 'doctrine_refusal';
+    | 'unknown_debt'
+    | 'doctrine_refusal'
+    /** A treaty was declared rather than negotiated; the other party never agreed. */
+    | 'needs_consent';
   message: string;
 }
 

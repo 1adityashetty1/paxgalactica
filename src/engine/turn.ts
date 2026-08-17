@@ -1,6 +1,11 @@
 import { describeCheck, type CheckResult } from '../domain/checks.js';
 import { boundPayloadsToOutcome } from '../domain/development.js';
-import { describeRejections, ModelTurnOutputSchema, type OpRejection } from '../domain/ops.js';
+import {
+  describeRejections,
+  ExtractionOutputSchema,
+  ModelTurnOutputSchema,
+  type OpRejection,
+} from '../domain/ops.js';
 import type { TurnReport } from '../domain/reducer.js';
 import {
   COMPULSION_BREACH_DISSENT,
@@ -32,6 +37,17 @@ export interface ActionOutcome {
    * faction paid `COMPULSION_BREACH_DISSENT` for it, and may pay again.
    */
   defiance?: { by: string; reason: string; violated: string } | null;
+  /**
+   * Set when the action needs another power's agreement: it was not rolled for
+   * and nothing was staged, because a treaty is not something you can declare
+   * into existence. Carries the channel to open instead.
+   */
+  negotiation?: {
+    withFactionIds: string[];
+    what: string;
+    supported: boolean;
+    channels: string;
+  } | null;
   /** Ops staged by this declaration; they land on `:endturn`. */
   staged: number;
   notes: string[];
@@ -90,6 +106,12 @@ async function reviseRejected(
   rejections: OpRejection[],
   label: string,
   context: string,
+  /**
+   * Extraction corrections must be able to re-emit a treaty: the deal was
+   * struck, and handing back a vocabulary that cannot express it would turn a
+   * fixable rejection into a lost agreement.
+   */
+  source: 'model' | 'extraction' = 'model',
 ): Promise<{ ops: unknown[]; costUsd: number } | null> {
   const user = [
     serializeState(campaign.state, campaign.state.playerFactionId),
@@ -124,7 +146,7 @@ async function reviseRejected(
       // entire batch and double-applied everything that had already succeeded.
       system: loadPrompt('correction'),
       user,
-      schema: ModelTurnOutputSchema,
+      schema: source === 'extraction' ? ExtractionOutputSchema : ModelTurnOutputSchema,
       maxRetries: 1,
     });
     return { ops: res.value.ops, costUsd: res.costUsd };
@@ -148,17 +170,18 @@ async function stageWithCorrection(
    * first: a retry that re-emitted the payload would otherwise be the hole.
    */
   outcome?: CheckResult['outcome'],
+  source: 'model' | 'extraction' = 'model',
 ): Promise<{ rejections: OpRejection[]; notes: string[]; costUsd: number }> {
   const bind = (batch: unknown[]) =>
     outcome ? boundPayloadsToOutcome(batch, outcome) : { ops: batch, notes: [] };
 
   const bound = bind(ops);
-  const first = campaign.stage(bound.ops, label, narrative);
+  const first = campaign.stage(bound.ops, label, narrative, source);
   if (first.rejections.length === 0) {
     return { rejections: [], notes: [...bound.notes, ...first.notes], costUsd: 0 };
   }
 
-  const revised = await reviseRejected(campaign, first.rejections, label, context);
+  const revised = await reviseRejected(campaign, first.rejections, label, context, source);
   if (!revised) {
     return {
       rejections: first.rejections,
@@ -168,7 +191,7 @@ async function stageWithCorrection(
   }
 
   const boundAgain = bind(revised.ops);
-  const second = campaign.stage(boundAgain.ops, `${label}:correction`, '');
+  const second = campaign.stage(boundAgain.ops, `${label}:correction`, '', source);
   return {
     rejections: second.rejections,
     notes: [...bound.notes, ...first.notes, ...boundAgain.notes, ...second.notes],
@@ -227,6 +250,31 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
       refusal: null,
       staged: 0,
       notes: ['The arbiter ruled this cannot be attempted as things stand.'],
+      rejections: [],
+      costUsd: resolution.costUsd,
+      check: null,
+      ops: [],
+    };
+  }
+
+  // A negotiation, not a decree. Costs nothing, stages nothing, charges no
+  // dissent: the player asked for something reasonable and is being told where
+  // the mechanism for it actually lives.
+  if (resolution.output.negotiation) {
+    const n = resolution.output.negotiation;
+    return {
+      narrative: resolution.output.narrative,
+      refusal: null,
+      defiance: null,
+      negotiation: n,
+      staged: 0,
+      notes: [
+        n.supported
+          ? 'Your own people are behind this — but it is not yours to declare.'
+          : 'This needs agreement you do not have.',
+        `Open a channel and negotiate it: ${n.channels}`,
+        'Whatever is actually agreed there becomes ops when you /endtalk.',
+      ],
       rejections: [],
       costUsd: resolution.costUsd,
       check: null,
@@ -465,6 +513,10 @@ export async function closeChannel(
     `accord with ${faction?.name ?? factionId}`,
     extraction.output.narrative,
     `Extraction from a diplomatic channel with ${factionId}: ${extraction.output.narrative}`,
+    undefined,
+    // The one model-driven source that may form a treaty: these ops come from a
+    // transcript in which the other power actually said yes.
+    'extraction',
   );
 
   return {

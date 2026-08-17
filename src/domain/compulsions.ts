@@ -1,3 +1,4 @@
+import { delinquentDebtorsOf } from './debt.js';
 import {
   isGuestOf,
   isMovementType,
@@ -141,6 +142,36 @@ export function classifyPrinciple(
   return null;
 }
 
+/**
+ * The most severe principle among several the arbiter named.
+ *
+ * An action can touch more than one line, and which one gets quoted decides
+ * what happens — so leaving it to whichever came to mind first made the outcome
+ * arbitrary. Measured live: forgiving a debt as the Ojjul Nar was returned
+ * against *"every favour carries a price"* (a compulsion: pay 15 and it lands)
+ * and never against *"will not forgive an unpaid debt"* (a red line: blocked),
+ * which is the more apposite of the two and is the whole instrument the faction
+ * is built on.
+ *
+ * A red line therefore wins over a compulsion whenever both are named. The
+ * asymmetry is deliberate: under-charging a red line lets an absolute act
+ * through for 15, while over-charging a compulsion merely blocks something the
+ * player could have bought. The first is a hole; the second is a ruling they
+ * can argue with.
+ */
+export function classifyPrinciples(
+  faction: { redLines: string[]; compulsions: { text: string }[] },
+  quotes: string[],
+): ClassifiedPrinciple | null {
+  let compulsion: ClassifiedPrinciple | null = null;
+  for (const quote of quotes) {
+    const found = classifyPrinciple(faction, quote);
+    if (found?.kind === 'red_line') return found;
+    if (found && !compulsion) compulsion = found;
+  }
+  return compulsion;
+}
+
 export interface CompulsionDrift {
   /** The compulsion being ignored, quoted for the event log. */
   text: string;
@@ -206,6 +237,32 @@ function evaluate(
       if (raiding) return null;
       const taken = ledgerFor(state, factionId).raided;
       return taken > 0 ? null : 'no raid under way and nothing taken from anyone';
+    }
+    case 'debt_unpursued': {
+      // A creditor whose debtor has defaulted and who has done nothing about
+      // it. "Pursued" is read as any pressure actually applied to that debtor:
+      // a fleet under way toward one of their worlds, or an operative placed in
+      // their space. Diplomacy is deliberately not enough — the line is about a
+      // client who has already learned that owing you costs nothing.
+      const defaulters = delinquentDebtorsOf(state.debts ?? [], factionId);
+      if (defaulters.length === 0) return null;
+
+      const unpursued = defaulters.filter((debtorId) => {
+        const theirWorlds = new Set(
+          state.systems.filter((sys) => sys.controllerFactionId === debtorId).map((sys) => sys.id),
+        );
+        const fleetSent = state.pendingOrders.some(
+          (o) => o.factionId === factionId && isMovementType(o.type) && theirWorlds.has(o.targetId),
+        );
+        const agentPlaced = state.agents.some(
+          (a) => a.ownerFactionId === factionId && !a.exposed && theirWorlds.has(a.systemId),
+        );
+        return !fleetSent && !agentPlaced;
+      });
+
+      return unpursued.length > 0
+        ? `${unpursued.join(', ')} owe you and have defaulted, and nothing has been sent`
+        : null;
     }
   }
 }
