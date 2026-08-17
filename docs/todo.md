@@ -130,6 +130,86 @@ rival's institutions against it is an agent's job (`subversion` +
 `prompts/resolution.md` had been actively inviting it ("your own institutions
 grow more or less restive") and now states both rules.
 
+## 14. OPEN — agent exposure is unreachable, so operatives are effectively permanent
+
+**Measured against the real reducer, no model calls: 80 operatives placed across
+five owner/target pairings, ticked 40 turns each. Exposures: zero.** Every
+persistent mission survived all 40 turns.
+
+`MISSION_PROFILE.exposureRisk` — documented as "1 in 20" for surveillance up to
+"9 in 20" for assassination — is nearly unreachable, because exposure needs a
+roll that **both fails and is at or below the risk**:
+
+```ts
+const succeeded = roll * 5 <= agent.successChance;
+if (!succeeded) { if (roll <= profile.exposureRisk) { agent.exposed = true; } }
+```
+
+A roll succeeds when `roll * 5 <= successChance`, so rolls `1..floor(sc/5)` can
+never expose — and those are exactly the low rolls the risk test is looking for.
+Exposing rolls per turn are `max(0, risk - floor(successChance / 5))`:
+
+| mission | risk | sc 5% | 14% | 26% | 50% | 74% | 95% |
+|---|---|---|---|---|---|---|---|
+| surveillance | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
+| theft · subversion | 2 | 1 | 0 | 0 | 0 | 0 | 0 |
+| sabotage | 3 | 2 | 1 | 0 | 0 | 0 | 0 |
+| defection | 4 | 3 | 2 | 0 | 0 | 0 | 0 |
+| assassination | 9 | 8 | 7 | 4 | 0 | 0 | 0 |
+
+`successChance` is `clamp(50 + (guile - resolve) * 6, 5, 95)`, so it is **never
+below 5** and in practice sits at 26–95. Consequences:
+
+- **A surveillance operative can never be exposed, at any stat pairing** — even
+  at the 5% floor, `floor(5/5) = 1` cancels the risk of 1 exactly.
+- theft and subversion expose only at `sc <= 9`, sabotage at `sc <= 14`,
+  defection at `sc <= 19` — all requiring guile roughly 6+ below the target's
+  resolve.
+- assassination is the only mission that exposes in ordinary play, and only
+  when `sc <= 44`.
+
+Seen live in the Meridian campaign: the Combine's two surveillance agents on
+Meridian worlds ran at **95%/turn and cannot ever be burned**; Meridian's own
+agents against the Vigil sat at 26% and were equally unburnable. The intended
+risk/reward ladder between a watcher and an assassin does not exist.
+
+**This is the class of defect the project keeps finding: a table with no
+reachable path.** Nobody noticed because a burned agent is a non-event — you
+observe nothing rather than something wrong.
+
+### The decision to make
+
+The two tests are entangled by design ("a botched operation risks the
+operative"), and untangling them is the fix. Options:
+
+- **(A) Roll exposure separately** from the effect roll, `d20 <= exposureRisk`,
+  so the table means what it says. Simplest, and makes a watcher genuinely
+  cheap-and-safe against an assassin's near-coin-flip.
+- **(B) Keep one roll but test exposure on the *high* end** — expose on
+  `roll >= 21 - exposureRisk` — which preserves "a botched operation risks the
+  operative" while making the risk reachable at every `successChance`.
+- **(C) Accept it and rewrite the docs**: agents are permanent once placed, and
+  the cap plus upkeep are the only limits. Cheapest, and it makes the whole
+  `exposureRisk` field dead weight that should then be deleted.
+
+(B) is closest to the stated intent. Note that whichever is picked, exposure
+gets *more* common than today for everyone, which shifts espionage balance —
+worth a `pnpm balance` check, though the doctrine bots do not deploy agents.
+
+### What is NOT broken (verified the same way)
+
+- **The cap holds.** Five deploys with a cap of 3 left exactly 3 live, rejecting
+  with `illegal_value: "…is already running 3 operatives, its limit at guile 13.
+  Recall one before placing another."`
+- **Costs are charged**: 2400 → 2280 for three surveillance agents at 40 each,
+  and `insufficient_credits` fires cleanly at 30 credits ("costs 40 credits;
+  Meridian Trade Authority holds 30").
+- **Upkeep reaches the ledger**: `agentUpkeep` 9/turn for 3 live agents.
+- **The owner guard holds**: `ownerFactionId` set to the victim is rejected
+  `illegal_value` — the bug from the first playtest series stays fixed.
+- **NPCs really do deploy against the player.** By turn 2 the Combine had two
+  surveillance operatives on Meridian worlds (`slu-1`, `tio-1`) at 95%/turn.
+
 ## 13. OPEN — a red line can be walked past through diplomacy
 
 **Found by an adversarial Ojjul Nar playtest (2026-08-17, $1.67).** The arbiter's
