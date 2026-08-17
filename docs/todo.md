@@ -130,6 +130,51 @@ rival's institutions against it is an agent's job (`subversion` +
 `prompts/resolution.md` had been actively inviting it ("your own institutions
 grow more or less restive") and now states both rules.
 
+## 13. OPEN — a red line can be walked past through diplomacy
+
+**Found by an adversarial Ojjul Nar playtest (2026-08-17, $1.67).** The arbiter's
+breach ruling is wired into `appraiseAction` -> `resolveAction`. The **extraction
+pass has no arbiter pass at all** — `grep -c appraiseAction src/engine/turn.ts`
+returns 0 — so ops staged out of a diplomatic transcript are never checked
+against the acting faction's own principles.
+
+Repro: open `/talk krayt`, negotiate reducing an existing debt's balance framed
+as a "renegotiation" or "a new note superseding the old", close with
+`/endtalk krayt`. Extraction emitted:
+
+```
+{"op":"forgive_debt","debtId":"debt-0","reason":"Superseded by renegotiated terms..."}
+{"op":"establish_debt", ... principal 480, perTurn 10}
+{"op":"establish_debt", ... principal 150, perTurn 15}
+```
+
+No refusal, no `defiance`, **no dissent**. Verified in committed state:
+`debt-0 ... [forgiven]` permanently, hutt dissent 20 — ordinary decay, not the
++8 breach charge. The *same intent* declared as an ordinary action was refused
+three separate times (blunt, euphemistic, and as hardship relief), each quoting
+*"will not forgive an unpaid debt — the debt is the whole instrument of
+control"*.
+
+This is sharper than it first looks: `establish_debt` and `forgive_debt` are
+**extraction-only by design**, so the two ops most tied to that faction's
+identity live entirely on the ungated path. The consent boundary was built and
+the institutional one was left behind on the other road.
+
+### The decision to make
+
+- **(A) Appraise what was agreed, before staging.** One Haiku call (~$0.02) on
+  each `/endtalk` that produced ops, reusing `appraiseAction` and
+  `classifyPrinciples`; on a `red_line`, stage nothing and charge
+  `REFUSAL_DISSENT`. Faithful to the existing design and cheap against
+  endtalk's ~$0.05–0.15, but it is a new call on a hot path.
+- **(B) Decide a negotiated deal legitimately does what a decree cannot.**
+  Defensible fiction, and it guts red lines — almost anything can be framed as
+  a negotiation.
+
+(A) recommended. **One wrinkle either way:** extraction emits ops for *both*
+parties, so the check has to be scoped to what the acting faction is doing — an
+NPC's own concession must not trip the player's line.
+
 ## 12. DONE — battles are reported instead of narrated (verified on screen)
 
 `resolveBattle` computed the roll, both might modifiers, the powers the 2:1
