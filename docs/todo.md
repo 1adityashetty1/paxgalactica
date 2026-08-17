@@ -7,9 +7,11 @@
 raised under item 11. **What is genuinely open is item 4 (no debt mechanic) and
 the open half of item 5 (whether combat wants a richer resolver).**
 
-Ahead of both, though, is a different kind of debt: **four mechanisms are built,
-tested and have never been watched running** — the newest being the extraction
-pass emitting a hire or a debt, which no live negotiation has yet produced. The battle report card (item 12)
+Ahead of both, though, is a different kind of debt: **mechanisms that are built,
+tested and have never been watched running.** The battle report card came off
+that list on 2026-08-17 (see item 12). What remains on it is the extraction pass
+emitting a hire or a debt, which no live negotiation has yet produced, and
+`onComplete` payloads, which no live model call has ever set. The battle report card (item 12)
 has never been seen rendering; `onComplete` payloads and commitment income have
 never been exercised by a live model call; and `boundPayloadsToOutcome` was
 written from a measured probe rather than from play. Live play has found every
@@ -128,7 +130,7 @@ rival's institutions against it is an agent's job (`subversion` +
 `prompts/resolution.md` had been actively inviting it ("your own institutions
 grow more or less restive") and now states both rules.
 
-## 12. DONE — battles are reported instead of narrated
+## 12. DONE — battles are reported instead of narrated (verified on screen)
 
 `resolveBattle` computed the roll, both might modifiers, the powers the 2:1
 break-off test compares, the retreat loss percentage, per-contingent losses, the
@@ -156,10 +158,38 @@ version reported a fleet of **0** attacking. Found by running a real battle and
 reading the output, not by the tests, which all passed. Rounds now carry
 per-round deltas and a test asserts the last round equals the board.
 
-**Not visually verified.** Types, build and a contract round-trip against a real
-battle all pass, but producing a battle in a live campaign needs model calls and
-two turns for a fleet to arrive, so nobody has seen the card rendered yet. That
-is the one thing worth doing before trusting it.
+**VERIFIED LIVE** (2026-08-17, ~$0.51: one declared action plus one end turn).
+Iron Vigil, thirteen hulls from Ord Vantic onto Drajk-held Threx — one jump, so
+the fleet arrived on the very next tick rather than the two turns assumed here.
+
+The card renders and reads:
+
+```
+Threx   Drajk Confederacy holds        d20 2  -10 / -6
+attacker might +4 · defender might +2 · garrison 6 -> 4
+
+Orbitals   both sides traded losses                10 vs 9
+  attacking   Iron Vigil Remnant  13 -8 -> 5
+  defending   Drajk Confederacy    6 -6 -> 0
+
+Ground     landing thrown back        assault 4 vs garrison 6
+  attacking   Iron Vigil Remnant   5 -2 -> 3
+```
+
+Every number the write-up promised is on screen: the roll, both might modifiers,
+the powers the 2:1 break-off test actually compared (10 vs 9 — which is why
+nobody broke off despite 13 hulls against 6), per-contingent before/after, and
+which phase decided it. The defending fleet was wiped and the world still held,
+because the garrison threw the landing back — the two-phase rule, visible for
+the first time instead of inferred from one sentence.
+
+`doctrinesFired` was empty and correctly so: nobody was asked to retreat, so the
+Vigil's crusading "does not break off" changed nothing. That is the intended
+behaviour — only doctrines that *altered* the outcome are named.
+
+Also confirmed in passing: a `might` critical success emitted a `fleet_movement`
+order and nothing else — no fabricated losses, no battle resolved in prose. That
+is bug #1's fix holding under the exact conditions that used to break it.
 
 ## 11. FIXED — `defiance` was built correctly and the model barely reached for it
 
