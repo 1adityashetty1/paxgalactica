@@ -2,21 +2,23 @@
 
 ## Where things stand (2026-08-13)
 
-**Open work, in priority order.** Everything below is evidence-backed: items
-1–3 came out of the two live playtests and are now done. **What is actually
-open is item 4 (no debt mechanic), the open half of item 5, and the compulsion
-pricing question under item 11**. The battle
-report card (item 12) is built and has still never been watched rendering.
-Live play has found every bug in this file that the suite did not — including,
-again this session, one in the fix for the previous one.
+**Open work, in priority order.** Everything below is evidence-backed. Items
+1–3 and 5's first half are done, and so is the compulsion pricing question
+raised under item 11. **What is genuinely open is item 4 (no debt mechanic) and
+the open half of item 5 (whether combat wants a richer resolver).**
 
-**Branch state:** `combat-report`, off `order-effects`. 594 tests pass;
-`pnpm typecheck`, `pnpm typecheck:web` and `pnpm build:web` are clean. PR #4 merged
-`order-effects` into `main` at commit `60497b0`, which means everything from
-"Make compulsions fire on drift" onward — compulsion triggers, the line dedup,
-the monopolist reassignment, all five war ethics, all five faction voices, the
-defiance rework, the staged-ops fix and the battle report — is **not yet in
-`main`** and rides on this branch.
+Ahead of both, though, is a different kind of debt: **three mechanisms are built,
+tested and have never been watched running.** The battle report card (item 12)
+has never been seen rendering; `onComplete` payloads and commitment income have
+never been exercised by a live model call; and `boundPayloadsToOutcome` was
+written from a measured probe rather than from play. Live play has found every
+bug in this file that the suite did not — including, twice this session, a bug
+in the fix for the previous one.
+
+**Branch state:** everything is in `main` as of PR #6 (`359f31f`), which merged
+the arbiter breach rework, `classifyPrinciple`, the payload/outcome binding and
+the compulsion reprice. 596 tests pass; `pnpm typecheck`, `pnpm typecheck:web`
+and `pnpm build:web` are clean.
 
 1. ~~`/api/action` does not return the ops it staged~~ **DONE.** `ActionOutcome`
    now carries `ops`, the batch as applied, for declarations, refusals and
