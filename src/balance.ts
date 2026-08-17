@@ -102,7 +102,7 @@ function massAt(ctx: Ctx, whereId: string, want: number): Ops {
   return ops;
 }
 
-/** Send `force` from the strongest holding that can reach the target. */
+/** Send `force` from the nearest holding that can supply the whole blow. */
 function sortie(ctx: Ctx, targetId: string, force: number, label: string): Ops {
   const bases = held(ctx.state, ctx.me)
     .filter((b) => shipsAt(ctx.state, b.id, ctx.me) >= force)
@@ -242,7 +242,24 @@ const freeworlds: Bot = (ctx) => {
     .filter((t) => t.controllerFactionId === null && t.sector === 'Arkanis Drift')
     .sort((a, b) => b.strategicValue - a.strategicValue)[0];
   if (home && !hasOrder(ctx.state, ctx.me, 'fleet_movement')) {
-    ops.push(...sortie(ctx, home.id, home.garrison * 3 + 4, `secure ${home.name}`));
+    // Mass, then strike — the same step the Vigil already had, and the reason
+    // this faction was invisible to the harness without it. `sortie` needs one
+    // base holding the whole blow; the Drift wants 16 hulls for Sennex and
+    // keeps a navy of 31 spread 10/7/8/6, so no base ever qualified and the bot
+    // issued nothing for thirty turns. Its income sat at exactly 71/turn from
+    // turn 5 to turn 30, and that flat line was read as a balance signal when
+    // it was the harness never letting the faction move.
+    const need = home.garrison * 3 + 4;
+    const staging = held(ctx.state, ctx.me)
+      .filter((b) => neighboursOf(ctx.state, b.id).includes(home.id))
+      .sort((a, b) => shipsAt(ctx.state, b.id, ctx.me) - shipsAt(ctx.state, a.id, ctx.me))[0];
+    if (staging) {
+      if (shipsAt(ctx.state, staging.id, ctx.me) >= need) {
+        ops.push(...sortie(ctx, home.id, need, `secure ${home.name}`));
+      } else if (fleetStrengthOf(ctx.state, ctx.me) >= need + 8) {
+        ops.push(...massAt(ctx, staging.id, need));
+      }
+    }
   }
   return ops;
 };

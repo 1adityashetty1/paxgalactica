@@ -12,8 +12,35 @@ are deliberately unbuilt.
 - The open half of item 5 — whether combat wants a richer multi-round resolver.
   Still a genuine design question, and the battle report was deliberately shaped
   as rounds so it stays cheap either way.
-- **Arkanis sits flat at 71/turn for a whole 30-turn balance run** while every
-  other power moves. Never investigated.
+- ~~**Arkanis sits flat at 71/turn for a whole 30-turn balance run**~~
+  **EXPLAINED AND FIXED — it was the harness, not the balance.** `sortie`
+  requires a single base holding the *whole* blow, and a bot asks for
+  `garrison * 3 + 4`. The Drift wants 16 hulls for Sennex and keeps a navy of 31
+  spread 10/7/8/6, so no base ever qualified: `sortie` returned `[]` and the
+  Arkanis bot issued **no order of any kind for thirty turns**. The flat line
+  was the harness never letting the faction move.
+
+  The Vigil bot already solved this and carries the comment that says so —
+  *"it masses first, then strikes... Without the massing step it never attacked
+  at all, and a crusader that never crusades tests nothing."* The lesson was
+  learned once and never applied to Arkanis, which now gets the same
+  mass-then-strike step. It takes Sennex on turn 5 and runs at **97/turn**
+  (territory 177 → 209, 4 → 5 systems). Every other power's numbers are
+  unchanged, because only this bot's behaviour changed.
+
+  **A first attempt was wrong in an instructive way.** Relaxing `sortie` itself
+  to send a half-force from the largest base unblocked Arkanis *and* made every
+  bot far more aggressive: the Vigil took 12 of 25 systems at 494/turn, Meridian
+  collapsed to one world at −122, and the balance floor test failed. A shared
+  helper is the wrong place to fix one faction's blindness.
+
+  It is still flat *after* turn 5, but now for an honest reason: Sennex was the
+  only unaligned world in the Arkanis Drift, and the doctrine takes nothing
+  beyond its own doorstep. A turtle with one thing to take is flat once it has
+  taken it.
+- **Meridian is now the suspicious flat line** — pinned at exactly 24/turn from
+  turn 10 to turn 30, having fallen from 277. Worth the same treatment: is that
+  the free-trade bot running out of moves, or the economy?
 - **Drajk has one compulsion against two red lines** — the thinnest sheet of the
   five. Honest for a faction defined by refusal, worth a look if it reads flat.
 - **The arbiter's espionage vocabulary is only partly probed.** "Turn one of
