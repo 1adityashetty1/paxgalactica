@@ -1057,6 +1057,30 @@ keeps its prose and the UI gets the arithmetic. `doctrinesFired` names only the
 doctrines that **changed** something — a crusading power never asked to retreat
 does not appear.
 
+An **order of battle** heads the expanded card: who brought what, as
+`<ship> x N` and `<tracked gun> x N` for the garrison, with the same pairs again
+under Losses. The numbers were already there, spread through the phase breakdown
+as before/after pairs; this is the same information as a *shape*, so you can see
+whether a landing failed because the fleet was spent or because the garrison was
+simply too deep, without subtracting in your head.
+
+The glyphs are inline SVG in `web/src/components/BattleIcons.tsx`, inheriting the
+faction colour through `currentColor`. They took four passes, and the failures
+are the point: at 18px only the *outline* survives, so a wedge hull with engine
+pods read as a flat lozenge with two detached bars, a barrel on a round carriage
+read as a lollipop (and its ring-wheel version as a magnifying glass — the
+barrel looked like a handle), a bare triangle read as a play button, and vertical
+fins read as a four-pointed star. What works is a silhouette whose outline is
+already the object: swept wings make a dart rather than a cross, and tracks with
+road wheels say "tracked vehicle" at any size. The wheels are holes cut with
+`evenodd`, not shapes painted in the panel colour, so the glyph survives being
+drawn on any background.
+
+The block is a single column, not two. The side panel is ~310px wide whatever the
+window is doing, so side-by-side truncated names to "Drajk Co…" — and a container
+that narrow cannot be rescued by a viewport media query, because the viewport is
+not what is narrow.
+
 Shaped as an **engagement made of rounds**, each stamped with its turn, rather
 than a flat record of one exchange. Combat resolves in a single tick today and
 whether it should stay that way is unsettled, so if it later spans turns the
