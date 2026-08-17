@@ -7,8 +7,9 @@
 raised under item 11. **What is genuinely open is item 4 (no debt mechanic) and
 the open half of item 5 (whether combat wants a richer resolver).**
 
-Ahead of both, though, is a different kind of debt: **three mechanisms are built,
-tested and have never been watched running.** The battle report card (item 12)
+Ahead of both, though, is a different kind of debt: **four mechanisms are built,
+tested and have never been watched running** — the newest being the extraction
+pass emitting a hire or a debt, which no live negotiation has yet produced. The battle report card (item 12)
 has never been seen rendering; `onComplete` payloads and commitment income have
 never been exercised by a live model call; and `boundPayloadsToOutcome` was
 written from a measured probe rather than from play. Live play has found every
@@ -33,15 +34,22 @@ and `pnpm build:web` are clean.
    so the cap cannot interfere with them.
 3. ~~`defiance` fires about a quarter of the time~~ **DONE** — the arbiter
    classifies now. See item 11 below for the rework and what is left to verify.
-4. **No debt mechanic**, so two of the Ojjul Nar's lines are unmodelled. Hiring
-   a proxy, by contrast, turns out **not** to need a new mechanic: a
-   `mutual_defense` treaty carrying `incomePerTurn` and `shipsPledged` is money
-   for hulls that really fight (`reducer.ts`, "Mutual defence: pledged hulls are
-   called in"). The one gap is direction — that dispatch fires when the *ally's*
-   world is attacked, so it buys a defender rather than an attacker. For a power
-   whose doctrine is "let other powers spend their fleets for you", defensive
-   proxying plus `profiteer` income covers the red line as written. What is
-   missing is that nothing tells the model this composition exists.
+4. ~~**No debt mechanic**~~ **ADDRESSED as diplomacy, per the user's call: both
+   proxy hiring and debt belong in the channel, not in a new op.**
+   `prompts/extraction.md` now names both compositions — a hire is a
+   `mutual_defense` treaty with `incomePerTurn` to the hired power and
+   `shipsPledged` naming the hulls; a debt is a commitment binding both parties
+   with `incomePerTurn` negative for the debtor, forgiven by
+   `dissolve_commitment`. Verified live that the arbiter now redirects both to
+   `/talk` rather than pricing them. **What is not yet verified is the other
+   end**: no live negotiation has actually produced either, so the extraction
+   pass has never been watched emitting a hire or a debt. That is the open half.
+
+   Probing this also turned up that the `mutual_defense` dispatch fires when the
+   *ally's* world is attacked, so it buys a defender rather than an attacker —
+   fine for the Combine's red line as written ("will not fight its **own** war"),
+   but a hire-them-to-attack arrangement is still only expressible as money plus
+   a pact, not as an offensive obligation the reducer enforces.
 5. ~~The battle-report UI half of the combat design question~~ **DONE** — see
    item 12. What remains genuinely open is only the *other* half: whether combat
    wants a richer multi-round resolver. The report was deliberately built as an

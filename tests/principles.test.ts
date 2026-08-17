@@ -41,7 +41,7 @@ const { submitAction } = await import('../src/engine/turn.js');
 const { Campaign } = await import('../src/engine/campaign.js');
 const { createSeedState } = await import('../src/seed/scenario.js');
 const { COMPULSION_BREACH_DISSENT, REFUSAL_DISSENT } = await import('../src/domain/state.js');
-const { classifyPrinciple } = await import('../src/domain/compulsions.js');
+const { classifyPrinciple, classifyPrinciples } = await import('../src/domain/compulsions.js');
 
 /** Arkanis's first red line, quoted exactly as the faction sheet carries it. */
 const NO_OCCUPATION =
@@ -58,15 +58,17 @@ const appraisal = (extra: Record<string, unknown> = {}) => ({
 
 const redLineBreach = {
   kind: 'red_line',
-  principle: NO_OCCUPATION,
+  principles: [NO_OCCUPATION],
+  how: 'it hands the capital to a foreign garrison',
   by: 'the assembly of the Drift',
   reason: 'The Drift was founded to take no master. The gates stay shut.',
 };
 
 const compulsionBreach = {
   kind: 'compulsion',
-  principle:
+  principles: [
     'tribute is refused. The Drift does not pay to be left alone, whatever the arithmetic says',
+  ],
   by: 'the assembly of the Drift',
   reason: 'You are buying peace with the one coin we swore never to spend.',
 };
@@ -143,7 +145,7 @@ describe('a compulsion is a price, and the price is charged', () => {
     expect(out.output.defiance).toEqual({
       by: compulsionBreach.by,
       reason: compulsionBreach.reason,
-      violated: compulsionBreach.principle,
+      violated: compulsionBreach.principles[0],
     });
   });
 
@@ -164,7 +166,7 @@ describe('a compulsion is a price, and the price is charged', () => {
     const out = await resolveAction(createSeedState('freeworlds'), 'Agree to pay tribute.');
 
     expect(out.output.defiance?.by).toBe('the shipwrights');
-    expect(out.output.defiance?.violated).toBe(compulsionBreach.principle);
+    expect(out.output.defiance?.violated).toBe(compulsionBreach.principles[0]);
   });
 
   it('falls back to the arbiter when resolution names the faction, not a body', async () => {
@@ -216,7 +218,7 @@ describe('a compulsion is a price, and the price is charged', () => {
 
     const outcome = await submitAction(campaign, 'Agree to pay the Combine 30 a turn.');
 
-    expect(outcome.defiance?.violated).toBe(compulsionBreach.principle);
+    expect(outcome.defiance?.violated).toBe(compulsionBreach.principles[0]);
     const arkanis = campaign.state.factions.find((f) => f.id === 'freeworlds')!;
     expect(arkanis.dissent).toBe(COMPULSION_BREACH_DISSENT);
     // The order was carried out. That is the whole difference from a red line.
@@ -271,7 +273,8 @@ describe('the sheet decides which kind a line is, not the arbiter’s label', ()
       appraisal: appraisal({
         breach: {
           kind: 'red_line',
-          principle: NO_NARS,
+          principles: [NO_NARS],
+          how: 'it takes Nar smugglers onto the payroll',
           by: 'the officer corps',
           reason: 'This is a red line, not a compulsion.',
         },
@@ -297,7 +300,8 @@ describe('the sheet decides which kind a line is, not the arbiter’s label', ()
       appraisal: appraisal({
         breach: {
           kind: 'compulsion',
-          principle: 'will not accept payment to stand down',
+          principles: ['will not accept payment to stand down'],
+          how: 'it takes money in exchange for withdrawing',
           by: 'the officer corps',
           reason: 'Being bought is the insult, not the price.',
         },
@@ -360,7 +364,8 @@ describe('the sheet decides which kind a line is, not the arbiter’s label', ()
       appraisal: appraisal({
         breach: {
           kind: 'red_line',
-          principle: 'the Vigil does not act before the second hour of the watch',
+          principles: ['the Vigil does not act before the second hour of the watch'],
+          how: 'it acts in the first hour',
           by: 'the officer corps',
           reason: 'It is not yet the second hour.',
         },
@@ -439,5 +444,109 @@ describe('the arbiter can see what it is being asked to rule on', () => {
     // price of every action in the game.
     const arkanis = createSeedState('freeworlds').factions.find((f) => f.id === 'freeworlds')!;
     expect(arbiter.user).not.toContain(arkanis.voice);
+  });
+});
+
+/**
+ * A treaty binds a power that is not the actor, and the only place consent
+ * exists in this game is a transcript.
+ *
+ * Measured live before this existed: "sign a mutual defence pact with the Iron
+ * Vigil" was ruled admissible and priced as an `influence` check at DC 17 —
+ * against a power at −45 disposition — and the reducer checked only that the two
+ * ids existed and differed. A good roll bound the Vigil to a pact it was never
+ * asked about, with pledged hulls that really dispatch.
+ */
+describe('a negotiation is redirected, not rolled for', () => {
+  const PACT = 'Sign a mutual defence pact with the Iron Vigil: fifteen hulls for sixty a turn.';
+  const negotiation = {
+    withFactionIds: ['vigil'],
+    what: 'a mutual defence pact, fifteen hulls for sixty a turn',
+    supported: true,
+  };
+
+  it('never reaches the dice or the resolution call', async () => {
+    scripted = { appraisal: appraisal({ negotiation }) };
+
+    const out = await resolveAction(createSeedState('hutt'), PACT);
+
+    expect(calls.map((c) => c.kind)).toEqual(['appraisal']);
+    expect(out.check).toBeNull();
+    expect(out.output.ops).toEqual([]);
+    expect(out.output.negotiation?.withFactionIds).toEqual(['vigil']);
+  });
+
+  it('names the actual command, built in code so it is always right', async () => {
+    scripted = { appraisal: appraisal({ negotiation }) };
+
+    const out = await resolveAction(createSeedState('hutt'), PACT);
+
+    expect(out.output.negotiation?.channels).toBe('/talk vigil');
+  });
+
+  it('costs nothing — being told "that is a conversation" is not a failure', async () => {
+    scripted = { appraisal: appraisal({ negotiation }) };
+    const campaign = Campaign.start('hutt', 'test-negotiation');
+
+    const outcome = await submitAction(campaign, PACT);
+
+    expect(outcome.staged).toBe(0);
+    expect(outcome.ops).toEqual([]);
+    expect(campaign.state.factions.find((f) => f.id === 'hutt')!.dissent).toBe(0);
+    expect(outcome.notes.join(' ')).toMatch(/\/talk vigil/);
+  });
+
+  it('does not launder a red line: the breach is ruled first', async () => {
+    // Being sent to a channel must never be a cheaper exit than being refused.
+    scripted = {
+      appraisal: appraisal({
+        negotiation: { withFactionIds: ['vigil'], what: 'a protectorate', supported: true },
+        breach: redLineBreach,
+      }),
+    };
+    const campaign = Campaign.start('freeworlds', 'test-launder');
+
+    const outcome = await submitAction(campaign, OPEN_THE_GATES);
+
+    expect(outcome.negotiation ?? null).toBeNull();
+    expect(outcome.refusal?.violated).toBe(NO_OCCUPATION);
+    expect(campaign.state.factions.find((f) => f.id === 'freeworlds')!.dissent).toBe(
+      REFUSAL_DISSENT,
+    );
+  });
+});
+
+describe('the most severe principle named is the one that applies', () => {
+  // Live, as the Ojjul Nar: forgiving a debt came back against "every favour
+  // carries a price" (a compulsion, 15 dissent and it lands) and never against
+  // "will not forgive an unpaid debt" (a red line, blocked) — the more apposite
+  // of the two, and the instrument the whole faction is built on.
+  const combine = () => createSeedState('hutt').factions.find((f) => f.id === 'hutt')!;
+
+  it('takes the red line when both kinds are quoted', () => {
+    const ruled = classifyPrinciples(combine(), [
+      'the Combine requires that every favour carry a price',
+      'will not forgive an unpaid debt',
+    ]);
+    expect(ruled?.kind).toBe('red_line');
+  });
+
+  it('is order-independent', () => {
+    const ruled = classifyPrinciples(combine(), [
+      'will not forgive an unpaid debt',
+      'the Combine requires that every favour carry a price',
+    ]);
+    expect(ruled?.kind).toBe('red_line');
+  });
+
+  it('falls back to a compulsion when that is all there is', () => {
+    const ruled = classifyPrinciples(combine(), [
+      'the Combine requires that every favour carry a price',
+    ]);
+    expect(ruled?.kind).toBe('compulsion');
+  });
+
+  it('ignores lines the faction does not hold', () => {
+    expect(classifyPrinciples(combine(), ['the Combine rises at dawn'])).toBeNull();
   });
 });

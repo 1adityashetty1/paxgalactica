@@ -140,6 +140,15 @@ export function useGame() {
           for (const note of outcome.notes) say(note, 'system');
           return;
         }
+        if (outcome.negotiation) {
+          // Not a failure and not a refusal: the thing is reasonable, it just
+          // needs someone else to agree, and agreement lives in a channel.
+          const n = outcome.negotiation;
+          say(outcome.narrative, 'narrative');
+          for (const note of outcome.notes) say(note, 'system');
+          say(`→ ${n.channels}`, 'brief');
+          return;
+        }
         if (outcome.defiance) {
           // Your institutions objected and carried the order out anyway. The
           // field was on the wire and the browser never read it, so the most

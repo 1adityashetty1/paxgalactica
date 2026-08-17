@@ -13,6 +13,9 @@ import { createSeedState } from '../seed/scenario.js';
  * what the old prompt used to do.
  */
 
+/** Bumped when a change would otherwise make an older journal replay differently. */
+export const JOURNAL_VERSION = 2;
+
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('seed'),
@@ -20,8 +23,18 @@ export const JournalEntrySchema = z.discriminatedUnion('kind', [
   }),
   z.object({
     kind: z.literal('ops'),
-    /** 'model' ops are subject to the reducer-only guard; 'engine' ops are not. */
-    source: z.enum(['model', 'engine']),
+    /**
+     * 'model' ops are subject to the reducer-only guards; 'engine' ops are not.
+     * 'extraction' is the diplomacy pass, and is the only model-driven source
+     * that may `form_treaty` — a treaty needs the other party's consent, and a
+     * transcript is where consent is established.
+     *
+     * Journals written before `extraction` existed replay unchanged: they
+     * recorded diplomacy ops as 'model', which at the time could legally carry
+     * a treaty, so replaying them reproduces what actually happened rather than
+     * retroactively rejecting it.
+     */
+    source: z.enum(['model', 'engine', 'extraction']),
     label: z.string(),
     ops: z.array(z.unknown()),
     /**
@@ -39,13 +52,19 @@ export const JournalEntrySchema = z.discriminatedUnion('kind', [
 export type JournalEntry = z.infer<typeof JournalEntrySchema>;
 
 export const JournalSchema = z.object({
-  version: z.literal(1),
+  /**
+   * 1 — written before `form_treaty` required the `extraction` source, so its
+   *     diplomacy batches are recorded as `model` and must still replay as they
+   *     originally ran. See `replay`.
+   * 2 — current.
+   */
+  version: z.union([z.literal(1), z.literal(2)]),
   entries: z.array(JournalEntrySchema),
 });
 export type Journal = z.infer<typeof JournalSchema>;
 
 export function emptyJournal(playerFactionId: string): Journal {
-  return { version: 1, entries: [{ kind: 'seed', playerFactionId }] };
+  return { version: JOURNAL_VERSION, entries: [{ kind: 'seed', playerFactionId }] };
 }
 
 export interface ReplayResult {
@@ -70,7 +89,24 @@ export function replay(journal: Journal): ReplayResult {
 
   for (const entry of parsed.entries.slice(1)) {
     if (entry.kind === 'ops') {
-      const res = applyOps(state, entry.ops, entry.source, entry.actor);
+      // A journal written before treaties needed a transcript recorded its
+      // diplomacy batches as `model`, which the reducer now refuses. Replaying
+      // one under today's rule would silently delete a treaty that really was
+      // negotiated and really did apply — the campaign would come back a
+      // different campaign, which is the one thing the journal exists to
+      // prevent. Those entries replay under the source that permits them.
+      //
+      // Scoped to entries that actually contain a treaty, rather than
+      // reinterpreting every legacy batch: a diplomacy extraction never carried
+      // a `transfer_control`, so this cannot quietly permit anything else.
+      const legacyTreaty =
+        parsed.version < JOURNAL_VERSION &&
+        entry.source === 'model' &&
+        entry.ops.some(
+          (op) => !!op && typeof op === 'object' && (op as { op?: unknown }).op === 'form_treaty',
+        );
+      const source = legacyTreaty ? 'extraction' : entry.source;
+      const res = applyOps(state, entry.ops, source, entry.actor);
       state = res.state;
       rejectionCount += res.rejections.length;
     } else if (entry.kind === 'tick') {

@@ -141,6 +141,36 @@ export function classifyPrinciple(
   return null;
 }
 
+/**
+ * The most severe principle among several the arbiter named.
+ *
+ * An action can touch more than one line, and which one gets quoted decides
+ * what happens — so leaving it to whichever came to mind first made the outcome
+ * arbitrary. Measured live: forgiving a debt as the Ojjul Nar was returned
+ * against *"every favour carries a price"* (a compulsion: pay 15 and it lands)
+ * and never against *"will not forgive an unpaid debt"* (a red line: blocked),
+ * which is the more apposite of the two and is the whole instrument the faction
+ * is built on.
+ *
+ * A red line therefore wins over a compulsion whenever both are named. The
+ * asymmetry is deliberate: under-charging a red line lets an absolute act
+ * through for 15, while over-charging a compulsion merely blocks something the
+ * player could have bought. The first is a hole; the second is a ruling they
+ * can argue with.
+ */
+export function classifyPrinciples(
+  faction: { redLines: string[]; compulsions: { text: string }[] },
+  quotes: string[],
+): ClassifiedPrinciple | null {
+  let compulsion: ClassifiedPrinciple | null = null;
+  for (const quote of quotes) {
+    const found = classifyPrinciple(faction, quote);
+    if (found?.kind === 'red_line') return found;
+    if (found && !compulsion) compulsion = found;
+  }
+  return compulsion;
+}
+
 export interface CompulsionDrift {
   /** The compulsion being ignored, quoted for the event log. */
   text: string;

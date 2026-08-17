@@ -47,6 +47,12 @@ Specifically:
   category and a value from **1, 2, 3, or 5**. Nothing takes longer than 5
   turns. A treaty that must be ratified is `treaty_ratification`.
 - `form_treaty` — for anything the parties agreed will **stand over time**.
+  **This pass is the only one in the game that may emit it.** A treaty binds a
+  power that is not the player, so it needs that power's consent, and a
+  transcript is the only place consent exists. A declared action asking for a
+  treaty is turned away and the player is sent here. That makes you the sole
+  author of every alliance in the campaign — emit one whenever the conversation
+  actually produced one, and none when it did not.
   This is the main instrument of a negotiation, and its `type` is not a label:
   the reducer applies each type differently, so picking the wrong one silently
   discards half the deal.
@@ -90,3 +96,22 @@ cede a system does so by allowing a fleet in: emit the `fleet_movement` order.
 
 Be conservative. A campaign where every pleasant conversation silently becomes
 a treaty is a campaign where diplomacy means nothing.
+
+## Two arrangements worth recognising
+
+Both are things powers in this galaxy really do, and both are made of pieces
+that already exist — do not invent a mechanism for either.
+
+**Hiring a proxy to fight.** One power pays another to make war on a third. That
+is a `mutual_defense` treaty with `incomePerTurn` flowing to the hired power and
+`shipsPledged` naming the hulls: money in, hulls that really fight out. The
+Ojjul Nar Combine's whole doctrine is built on it — *"let other powers spend
+their fleets for you"* — so an agreement of this shape with the Combine paying
+is exactly in character, not an edge case.
+
+**A debt.** Lending, owing and being owed are not treaty types, and they do not
+need to be: a debt is an `establish_commitment` binding both parties, with
+`incomePerTurn` **negative for the debtor** and positive for the creditor, and
+`text` naming the principal and what settles it. Forgiveness is
+`dissolve_commitment`. Calling one in is a fresh negotiation, or an action
+against them if they refuse.

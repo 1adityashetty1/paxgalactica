@@ -101,7 +101,7 @@ describe('each trigger watches something real', () => {
           terms: {}, summary: 'The Combine may berth in the Tion.',
         },
       ],
-      'model',
+      'extraction',
     ).state;
     // A guest is not an insult, which is the same line `systemIncome` draws.
     expect(triggers(guested, 'vigil')).not.toContain('unanswered_incursion');
@@ -291,5 +291,33 @@ describe('a compulsion cannot be retired, so drift never stops on its own', () =
     const state = fresh('krayt');
     state.pendingOrders.push(order('krayt', 'commerce_raiding', 'kes-2') as never);
     expect(triggers(state, 'krayt')).not.toContain('no_plunder');
+  });
+});
+
+describe('a faction states each principle at ONE severity', () => {
+  /**
+   * The verbatim check above is not enough. The Combine's red line *"will not
+   * forgive an unpaid debt"* and its compulsion *"an unpaid debt must be
+   * pursued — forgiving one invites every client to test the next"* were not
+   * identical strings, but both covered **forgiving a debt** — so the same act
+   * was stated twice, once as absolute and once as a price.
+   *
+   * That is not cosmetic now that the arbiter quotes lines and code classifies
+   * them: whichever copy it happened to reach for decided whether forgiving a
+   * debt was blocked outright or cost 15 dissent and landed. Measured across
+   * three live appraisals of one action, it quoted the red line once and the
+   * compulsion twice.
+   */
+  it('leaves forgiving a debt to the red line alone', () => {
+    const combine = fresh().factions.find((f) => f.id === 'hutt')!;
+    expect(combine.redLines.join(' ')).toMatch(/forgive an unpaid debt/);
+    for (const c of combine.compulsions) {
+      expect(c.text, 'a compulsion restates the forgiveness red line').not.toMatch(/forgiv/i);
+    }
+  });
+
+  it('keeps what the compulsion is actually for: pursuit', () => {
+    const combine = fresh().factions.find((f) => f.id === 'hutt')!;
+    expect(combine.compulsions.map((c) => c.text).join(' ')).toMatch(/must be pursued/);
   });
 });

@@ -664,6 +664,85 @@ could rewrite the Iron Vigil's doctrine, which is what its diplomacy persona is
 built from), and one at or above `DOCTRINE_CHANGE_DISSENT_CEILING` (75) cannot be
 reorganised at all.
 
+### A treaty needs consent, so it is not a declared action
+
+`form_treaty` was in `ModelOpSchema` and the reducer checked that the two ids
+existed and differed and nothing else. Measured live: *"sign a mutual defence
+pact with the Iron Vigil"* was ruled admissible and priced as an `influence`
+check at **DC 17** — against a power at −45 disposition — and a good roll would
+have bound the Vigil to it, `shipsPledged` really dispatching, income really
+flowing, without the Vigil ever being asked. The diplomacy architecture exists
+precisely so that an NPC has to agree; the general-action path walked around it.
+
+Three changes, in the usual division of labour:
+
+- **The op left the model's vocabulary.** `ExtractionOpSchema` is
+  `ModelOpSchema` plus `form_treaty`, and only the `/endtalk` extraction pass
+  uses it — the one pass in the game that has read a transcript, which is the
+  only place consent exists. `break_treaty` stays ordinary: repudiation is
+  genuinely unilateral.
+- **The reducer says the same thing**, rejecting `form_treaty` from a `model`
+  source with `needs_consent` and a message naming the channel to open, so a
+  hand-written batch cannot route around the schema.
+- **The arbiter redirects instead of pricing.** `AppraisalSchema.negotiation`
+  names who must agree and what is wanted; `resolveAction` returns it before the
+  roll, staging nothing and charging nothing. Being told "that is a
+  conversation" is not a failure and must not be priced like one.
+
+Ordered **after** the breach ruling: an action your own people will not carry
+out is refused whether or not it also needed someone else's signature, so a
+redirect can never launder a red line. A test pins that.
+
+`OpSource` gained `'extraction'`, which `Campaign.stage` and `commitTurn` carry
+for the same reason they carry the actor — a treaty staged in a channel and
+committed as `model` would be rejected at the moment the turn landed, and the
+deal visible in the preview would quietly not exist afterwards.
+
+**This is the first change that would have made an old journal replay
+differently.** Diplomacy batches written before the split are recorded as
+`model`, and today's rule would delete a treaty that really was negotiated —
+verified against `saves/ojjul_profiteer.json`, which loses its `trade_accord`
+and gains a rejection. `JOURNAL_VERSION` is 2, both versions load, and a v1
+entry *containing a treaty* replays under `extraction`. Scoped to those entries
+rather than reinterpreting every legacy batch, because a diplomacy extraction
+never carried a `transfer_control`.
+
+Proxy hiring and debt — the Combine's two unmodelled lines — are diplomacy
+mechanics made of pieces that already exist, and `prompts/extraction.md` names
+both: a hire is a `mutual_defense` treaty with `incomePerTurn` to the hired
+power and `shipsPledged` naming the hulls; a debt is a commitment binding both
+parties with `incomePerTurn` negative for the debtor, forgiven by
+`dissolve_commitment`.
+
+### What the breach ruling can and cannot be held to
+
+Two guards were added after live probes, and the boundary between them is the
+point:
+
+- **Which list a line is on** is a lookup, so code does it (`classifyPrinciple`).
+- **The most severe line named** is arithmetic, so code does it
+  (`classifyPrinciples`) — a red line beats a compulsion whenever both are
+  quoted. Under-charging a red line is a hole; over-charging a compulsion is a
+  ruling the player can argue with.
+- **Which way a line points** is judgement, so the arbiter states it and code
+  only insists that it does. `breach.how` is required because the arbiter read
+  the Combine's *"will not fight its own war where a proxy could be hired"* as
+  forbidding **hiring a proxy** — the precise inversion, since hiring is the
+  line being kept. `classifyPrinciple` confirmed the quoted line was real and
+  duly blocked the one action that most expresses the faction's doctrine. A
+  verified quote is not a verified reading.
+- **Whether a breach is spotted at all** is judgement that nothing checks, and
+  it is not stable. Probed three times, *"forgive the Free Worlds' debt"* was
+  ruled a red line once, a compulsion once, and no breach at all once; *"write
+  off what they owe us"* — the same act — reliably hit the red line. Code
+  guarantees that a naming is classified correctly, not that the naming happens.
+
+One cause of that instability was a **seed defect the arbiter was right to be
+confused by**: the Combine stated forgiving a debt twice, as a red line and
+again inside a compulsion, at two different severities. The verbatim dedup test
+did not catch it because the strings differ. The compulsion is now purely about
+pursuit, so each act is stated once, at one severity.
+
 ### Red lines are permanent; compulsions are a price
 
 There was briefly a `retire` field on `set_doctrine` that abandoned a named red
@@ -950,6 +1029,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `interrupt_order` | rejected when the order is not interruptible |
 | `extend_order` | rejected for movement |
 | `accelerate_order` | spends credits, drops one Fibonacci bucket, min 1; rejected for movement |
+| `form_treaty` | **extraction-only** — absent from `ModelOpSchema`; a treaty needs the other party's consent |
 | `establish_commitment` | optional `incomePerTurn`, trimmed to `MAX_COMMITMENT_INCOME` |
 | `spawn_event` | |
 | `log_narrative` | |
@@ -965,7 +1045,7 @@ Rejection codes: `unknown_op`, `schema_invalid`, `reducer_only`,
 `unknown_faction`, `unknown_system`, `unknown_order`, `unknown_commitment`,
 `unknown_treaty`, `unknown_agent`, `commitment_conflict`, `no_presence`,
 `unreachable_target`, `missing_duration`, `insufficient_credits`,
-`not_interruptible`, `illegal_value`, `doctrine_refusal`.
+`not_interruptible`, `illegal_value`, `doctrine_refusal`, `needs_consent`.
 
 ---
 
@@ -1244,7 +1324,10 @@ diplomacy schema has no `ops` field at all — the boundary is structural, not a
 instruction a model could be talked out of.
 
 On `/endtalk`, a **separate extraction call** reads the transcript and emits ops
-for what was actually agreed. An NPC may promise anything in dialogue; only the
+for what was actually agreed. It is the **only** pass that may emit
+`form_treaty`: a treaty binds a power that is not the actor, and a transcript is
+the only place that power's consent exists. A treaty asked for as an ordinary
+declared action is redirected here rather than rolled for. An NPC may promise anything in dialogue; only the
 extraction pass produces ops. Those ops are **staged like any other action**, so
 a treaty lands on the same timestamp as everything else declared this turn
 rather than jumping the queue. Transcripts live beside the journal, not inside

@@ -75,7 +75,7 @@ describe('per-system income', () => {
           summary: 'Ithaal concession',
         },
       ],
-      'model',
+      'extraction',
     );
     expect(res.rejections).toHaveLength(0);
     const income = systemIncome(res.state, sys(res.state, 'slu-3'));
@@ -100,7 +100,7 @@ describe('per-system income', () => {
           },
         },
       ],
-      'model',
+      'extraction',
     );
     const income = systemIncome(res.state, sys(res.state, 'slu-3'));
     const total = Object.values(income.shares).reduce((a, b) => a + b, 0);
@@ -121,7 +121,7 @@ describe('ledgers', () => {
           terms: { incomePerTurn: { freeworlds: -150, hutt: 150 } },
         },
       ],
-      'model',
+      'extraction',
     );
     const mine = ledgerFor(res.state, 'freeworlds');
     expect(mine.treatyFlow).toBe(-150);
@@ -164,7 +164,7 @@ describe('ledgers', () => {
           text: 'Salvage rights across the Drift.', incomePerTurn: 20,
         },
       ],
-      'model',
+      'extraction',
     );
     expect(res.rejections).toEqual([]);
 
@@ -383,7 +383,7 @@ describe('treaties', () => {
           ...extra,
         },
       ],
-      'model',
+      'extraction',
     );
 
   it('records terms and an expiry', () => {
@@ -423,14 +423,14 @@ describe('treaties', () => {
       applyOps(
         fresh(),
         [{ op: 'form_treaty', treatyType: 'ceasefire', parties: ['hutt', 'hutt'], terms: {} }],
-        'model',
+        'extraction',
       ).rejections.map((r) => r.code),
     ).toEqual(['illegal_value']);
     expect(
       applyOps(
         fresh(),
         [{ op: 'form_treaty', treatyType: 'ceasefire', parties: ['hutt', 'ewoks'], terms: {} }],
-        'model',
+        'extraction',
       ).rejections.map((r) => r.code),
     ).toEqual(['unknown_faction']);
   });
@@ -449,7 +449,7 @@ describe('treaties', () => {
           terms: {},
         },
       ],
-      'model',
+      'extraction',
     );
     expect(warsFor(res.state, 'freeworlds')).not.toContain('vigil');
   });
@@ -699,5 +699,44 @@ describe('a covert service costs money and has a ceiling', () => {
     const before = ledgerFor(state, 'freeworlds').net;
     const after = deploy(state, 'freeworlds', 'ark-2').state;
     expect(ledgerFor(after, 'freeworlds').net).toBe(before - AGENT_UPKEEP);
+  });
+});
+
+/**
+ * A treaty is the one op that binds a faction other than the actor, so it is
+ * the one op that needs someone else's consent — and consent is a thing only a
+ * conversation establishes. `form_treaty` therefore left `ModelOpSchema` and is
+ * reachable from the diplomacy extraction pass and nowhere else a model reaches.
+ */
+describe('a treaty cannot be declared into existence', () => {
+  const pact: Op = {
+    op: 'form_treaty',
+    treatyType: 'mutual_defense',
+    parties: ['meridian', 'vigil'],
+    terms: { shipsPledged: { vigil: 15 } },
+    summary: 'declared, not negotiated',
+  } as unknown as Op;
+
+  it('is rejected from a declared action, with somewhere to go instead', () => {
+    const out = applyOps(fresh(), [pact], 'model', 'meridian');
+    expect(out.rejections.map((r) => r.code)).toEqual(['needs_consent']);
+    expect(out.rejections[0]!.message).toMatch(/\/talk/);
+    expect(out.state.treaties).toHaveLength(0);
+  });
+
+  it('is accepted from the pass that read a transcript', () => {
+    const out = applyOps(fresh(), [pact], 'extraction', 'meridian');
+    expect(out.rejections).toHaveLength(0);
+    expect(out.state.treaties).toHaveLength(1);
+  });
+
+  it('leaves repudiation unilateral, because it genuinely is', () => {
+    // You do not need the other party's agreement to stop honouring a deal,
+    // only a willingness to pay for having stopped.
+    const signed = applyOps(fresh(), [pact], 'extraction', 'meridian');
+    const id = signed.state.treaties[0]!.id;
+    const broken = applyOps(signed.state, [{ op: 'break_treaty', treatyId: id }], 'model', 'meridian');
+    expect(broken.rejections).toHaveLength(0);
+    expect(broken.state.treaties[0]!.status).not.toBe('active');
   });
 });

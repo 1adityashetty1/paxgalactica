@@ -67,7 +67,15 @@ import {
   type WorldState,
 } from './state.js';
 
-export type OpSource = 'model' | 'engine';
+/**
+ * Where a batch came from, which some guards depend on.
+ *
+ * `extraction` is the diplomacy pass at `/endtalk`: it is handed a transcript
+ * and asked what the two powers actually agreed to, so it is the only
+ * model-driven source whose ops carry another faction's consent. `form_treaty`
+ * is reachable from it and from nowhere else a model can reach.
+ */
+export type OpSource = 'model' | 'engine' | 'extraction';
 
 /** Ground forces rebuilt per turn, toward the system's ceiling. */
 export const GARRISON_REGROWTH = 1;
@@ -908,6 +916,22 @@ export function applyOps(
       }
 
       case 'form_treaty': {
+        // A treaty binds a power other than the actor, and consent is a thing
+        // only a conversation can establish. Measured live: "sign a mutual
+        // defence pact with the Iron Vigil" was priced as an influence check at
+        // DC 17 against a power at -45 disposition, and a good roll would have
+        // bound them to it — pledged hulls, income and all — without the Vigil
+        // ever being asked. The op is absent from `ModelOpSchema` for that
+        // reason; this is the reducer saying the same thing, so a journal or a
+        // hand-written batch cannot route around it either.
+        if (source === 'model') {
+          reject(
+            raw,
+            'needs_consent',
+            'A treaty cannot be declared into existence: the other party has to agree to it. Open a channel with them (/talk) and negotiate — the ops are emitted from what is actually agreed there.',
+          );
+          break;
+        }
         const unknown = op.parties.find((id) => !factionExists(id));
         if (unknown) {
           reject(raw, 'unknown_faction', `No faction "${unknown}".`);

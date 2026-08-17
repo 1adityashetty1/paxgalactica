@@ -215,7 +215,14 @@ const SEED_FACTIONS: SeedFaction[] = [
     ],
     compulsions: [
       'the Combine requires that every favour carry a price; giving something away for goodwill is refused as ruinous precedent',
-      'an unpaid debt must be pursued — forgiving one invites every client to test the next',
+      // Purely about pursuit. It used to end "forgiving one invites every
+      // client to test the next", which restated the red line above it — so
+      // forgiving a debt was stated twice at two different severities, and
+      // which one the arbiter happened to quote decided whether the act was
+      // blocked or merely priced. Measured across three live appraisals of the
+      // same action: red line once, compulsion twice. Forgiveness is the red
+      // line's; failing to chase a debtor is this one's.
+      'an unpaid debt must be pursued — a client left owing without consequence teaches every other client to try it',
     ],
     buildBias: ['espionage', 'political_maneuver', 'blockade'],
   },

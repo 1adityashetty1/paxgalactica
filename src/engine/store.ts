@@ -25,7 +25,9 @@ const ChatMessageSchema = z.object({
 export const SaveFileSchema = z.object({
   version: z.literal(1),
   journal: z.object({
-    version: z.literal(1),
+    // Both versions load. A v1 journal predates `form_treaty` requiring the
+    // `extraction` source and replays under the old rule — see `replay`.
+    version: z.union([z.literal(1), z.literal(2)]),
     entries: z.array(z.unknown()),
   }),
   /**

@@ -333,3 +333,56 @@ describe('campaign / journal agreement', () => {
     expect(campaign.state.eventLog.filter((e) => e.kind === 'diplomacy')).toHaveLength(0);
   });
 });
+
+/**
+ * A journal written before treaties needed a transcript.
+ *
+ * `form_treaty` now requires the `extraction` source, and every diplomacy batch
+ * recorded before that says `model`. Replaying one under today's rule would
+ * silently delete a treaty that really was negotiated and really did apply —
+ * the campaign would come back a different campaign, which is the single thing
+ * the journal exists to prevent.
+ *
+ * Verified against a real save (`saves/ojjul_profiteer.json`) while writing
+ * this: replayed as v1 it keeps its negotiated `trade_accord`; forced to v2 the
+ * treaty vanishes and the rejection count goes 2 to 3.
+ */
+describe('a v1 journal still replays as it originally ran', () => {
+  const legacy = (version: 1 | 2): Journal =>
+    ({
+      version,
+      entries: [
+        { kind: 'seed', playerFactionId: 'meridian' },
+        {
+          kind: 'ops',
+          source: 'model',
+          label: 'accord with the Ojjul Nar Combine',
+          actor: 'meridian',
+          ops: [
+            {
+              op: 'form_treaty',
+              treatyType: 'trade_accord',
+              parties: ['meridian', 'hutt'],
+              terms: {},
+              summary: 'negotiated before the source split existed',
+            },
+          ],
+        },
+      ],
+    }) as unknown as Journal;
+
+  it('keeps a treaty its diplomacy pass negotiated', () => {
+    const out = replay(legacy(1));
+    expect(out.rejectionCount).toBe(0);
+    expect(out.state.treaties).toHaveLength(1);
+  });
+
+  it('and a journal written today is held to the current rule', () => {
+    // The same entries at v2 are a model-sourced treaty, which is the thing the
+    // guard exists to refuse. This is what makes the exemption an exemption
+    // rather than a hole.
+    const out = replay(legacy(2));
+    expect(out.rejectionCount).toBe(1);
+    expect(out.state.treaties).toHaveLength(0);
+  });
+});

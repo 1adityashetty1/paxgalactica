@@ -146,6 +146,21 @@ export const ActionOutcomeSchema = z.object({
    * nothing happens at all.
    */
   defiance: RefusalViewSchema.nullable().default(null),
+  /**
+   * The action needs another power's agreement, so it was not rolled for and
+   * nothing was staged. A treaty binds someone who is not the actor, and the
+   * only place consent exists in this game is a transcript — so the arbiter
+   * points at the channel instead of pricing a roll for someone else's assent.
+   */
+  negotiation: z
+    .object({
+      withFactionIds: z.array(z.string()),
+      what: z.string(),
+      supported: z.boolean(),
+      channels: z.string(),
+    })
+    .nullable()
+    .default(null),
   staged: z.number().int(),
   notes: z.array(z.string()),
   rejections: z.array(OpRejectionSchema),
