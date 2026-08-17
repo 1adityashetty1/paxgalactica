@@ -109,20 +109,16 @@ Ojjul Nar Combine's whole doctrine is built on it — *"let other powers spend
 their fleets for you"* — so an agreement of this shape with the Combine paying
 is exactly in character, not an edge case.
 
-**A debt.** It takes two ops, and the split is not arbitrary.
+**A debt.** `establish_debt`, with a `creditorFactionId`, a `debtorFactionId`, a
+`principal`, a `perTurn` instalment and one sentence of `text`. It is real
+state: the balance falls by exactly what the debtor can actually find each turn,
+a shortfall puts them in default, and paying it off settles it. Over-large
+numbers are trimmed rather than rejected.
 
-- The **repayments** are a `form_treaty` of type `tribute`, whose
-  `incomePerTurn` is keyed **by faction** — `{ "freeworlds": -25, "hutt": 25 }`.
-  Give it `durationTurns` if the debt runs off after a known number of turns.
-- The **debt itself** — the principal, and what settles it — is an
-  `establish_commitment` binding both parties, with `incomePerTurn` **0** and
-  the amount written into `text`: *"The Free Worlds owe the Combine 400,
-  repaid at 25 a turn."*
+Like `form_treaty`, this op is yours alone — nobody becomes a debtor because
+another power declared it, so it is negotiated here or not at all. Do **not**
+model a debt as a commitment or a tribute treaty: those are recurring flows with
+no principal, and neither can end.
 
-Do **not** put the payment on the commitment. A commitment's `incomePerTurn` is
-one number shared by everyone it binds, not a transfer between them: set it to
-25 on a debt binding both parties and the creditor collects 25 **and so does the
-debtor**. Only a treaty's terms are directional.
-
-Forgiveness is `dissolve_commitment` plus `break_treaty`. Calling a debt in is a
-fresh negotiation, or an action against them if they refuse.
+Forgiving one is `forgive_debt` and belongs to the creditor. Calling a debt in
+early is a fresh negotiation, or an action against them if they refuse.

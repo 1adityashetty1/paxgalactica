@@ -664,6 +664,70 @@ could rewrite the Iron Vigil's doctrine, which is what its diplomacy persona is
 built from), and one at or above `DOCTRINE_CHANGE_DISSENT_CEILING` (75) cannot be
 reorganised at all.
 
+### Debt: a balance that depletes, and a debtor who can fail to pay
+
+`src/domain/debt.ts`. The Ojjul Nar Combine's sheet is built on debt — *"will
+not forgive an unpaid debt — the debt is the whole instrument of control"*, *"an
+unpaid debt must be pursued"* — and neither line had anything behind it. The
+obvious home looked like a `Commitment` with an `incomePerTurn`, and that was
+tried in the prompts first. **It does not work, in three separate ways**, and
+each is a thing the module had to supply:
+
+1. **A commitment's `incomePerTurn` is not directional.** It is one scalar every
+   bound faction reads the same way, unlike a treaty's, which is a record keyed
+   by faction. Measured: a debt written as one two-party commitment at 25 paid
+   the creditor 25 **and the debtor 20**. Both sides earned; nobody paid.
+2. **A commitment has no principal.** It is a perpetual flow, so "owe 400"
+   became "pay 25 a turn forever" — nothing counted down, nothing settled, and
+   repaying in full was indistinguishable from paying tribute.
+3. **A commitment has no default**, being only `active` or `dissolved`, while
+   both of the Combine's lines turn on the word *unpaid*.
+
+A `Debt` carries `principal`, a `balance` that falls by exactly what moves, a
+`perTurn` instalment, `missedPayments`, and a status of `current` ·
+`delinquent` · `settled` · `forgiven`.
+
+**Serviced as a transfer in `tickTurn`, not as a rate in `ledgerFor`**, and that
+is the load-bearing decision. A rate cannot know whether the debtor could
+afford it: `credits` floors at zero, so a broke debtor would "pay" money it
+never had and the creditor would receive it — the commitment bug in its purest
+form. The transfer moves exactly what is there, the balance falls by exactly
+what moved, and a shortfall becomes a default instead of being conjured.
+`Ledger.debtService` reports the scheduled figure and is deliberately **not**
+summed into `net`, so nothing is charged twice; the briefing shows it on its own
+line.
+
+| op | source | why |
+|---|---|---|
+| `establish_debt` | **extraction only** | nobody becomes a debtor because another power declared it |
+| `forgive_debt` | ordinary | a creditor needs nobody's permission to stop collecting — and it is the exact act the Combine's red line forbids |
+
+Forgiveness pays `DEBT_FORGIVENESS_GOODWILL` (20) with the debtor, so refusing
+to use it is a real sacrifice rather than a free principle. A default costs
+`DEBT_DEFAULT_DISPOSITION_COST` (6) every turn it continues, which is how a
+creditor's patience runs out on its own. A debtor cannot forgive its own debt;
+the reducer checks the actor, the same hazard `deploy_agent` and `set_doctrine`
+are guarded against.
+
+**`debt_unpursued` is the fifth compulsion trigger**, and the first one the
+mechanism was built *for* rather than retrofitted to. *"An unpaid debt must be
+pursued"* is a demand, which is exactly what a refusal cannot reach — a creditor
+who never chases a debtor takes no action to be refused. Pursuit is read as
+pressure actually applied: a fleet under way at one of their worlds, or an
+operative in their space. Diplomacy deliberately does not count; the line is
+about a client who has already learned that owing you costs nothing.
+
+The seed gives the Combine two debts so both halves are live from turn 0 — Drajk
+already in default, Meridian paying on schedule — which also gives the arbiter
+real state to rule against instead of a fiction. **Not Arkanis, deliberately:**
+*stone-debt* is their word for what is owed for taking help, and the Closing is
+a refusal to take any. A power that counts its dead rather than accept grain
+does not carry a Nar loan.
+
+Balance is unmoved (nets 24/90/232/71/32 before and after) because the transfer
+sits outside `net`, and the Combine's inflow is bounded by the principal rather
+than being another perpetual stream.
+
 ### A treaty needs consent, so it is not a declared action
 
 `form_treaty` was in `ModelOpSchema` and the reducer checked that the two ids
@@ -1031,6 +1095,8 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `accelerate_order` | spends credits, drops one Fibonacci bucket, min 1; rejected for movement |
 | `form_treaty` | **extraction-only** — absent from `ModelOpSchema`; a treaty needs the other party's consent |
 | `establish_commitment` | optional `incomePerTurn`, trimmed to `MAX_COMMITMENT_INCOME` |
+| `establish_debt` | **extraction-only** — a principal that depletes; trimmed to `MAX_DEBT_PRINCIPAL` |
+| `forgive_debt` | creditor only; writes off the balance and buys goodwill |
 | `spawn_event` | |
 | `log_narrative` | |
 
@@ -1045,7 +1111,7 @@ Rejection codes: `unknown_op`, `schema_invalid`, `reducer_only`,
 `unknown_faction`, `unknown_system`, `unknown_order`, `unknown_commitment`,
 `unknown_treaty`, `unknown_agent`, `commitment_conflict`, `no_presence`,
 `unreachable_target`, `missing_duration`, `insufficient_credits`,
-`not_interruptible`, `illegal_value`, `doctrine_refusal`, `needs_consent`.
+`not_interruptible`, `illegal_value`, `doctrine_refusal`, `needs_consent`, `unknown_debt`.
 
 ---
 
@@ -1654,7 +1720,7 @@ re-sends its context. A trivial call still takes ~7s for that reason.
 ```
 src/
   domain/     state, ops, duration, development, graph, checks, diplomacy,
-              arbitration, compulsions, trade, reducer
+              arbitration, compulsions, debt, trade, reducer
               ← pure. No I/O, no network, no imports from engine/model/ui.
   api/        contract.ts — Zod schemas shared by server and browser
   engine/     campaign, store, journal, turn, briefing

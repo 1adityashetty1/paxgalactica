@@ -56,6 +56,12 @@ export const LedgerSchema = z.object({
   routes: z.number().int(),
   tolls: z.number().int(),
   raided: z.number().int(),
+  /**
+   * Scheduled debt service: positive receives, negative pays. Deliberately not
+   * part of `net` — a debt is settled as a transfer during the tick, because a
+   * rate cannot know whether the debtor could afford it.
+   */
+  debtService: z.number().int(),
 });
 
 export const BriefingProjectSchema = z.object({

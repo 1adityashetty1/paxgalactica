@@ -117,12 +117,56 @@ describe('each trigger watches something real', () => {
   });
 
   it('leaves a faction whose compulsions are all prohibitions entirely alone', () => {
-    // Meridian, the Nars and the Free Worlds are defined by what they refuse,
-    // which refusal already handles. Drift is only for demands.
+    // Meridian and the Free Worlds are defined by what they refuse, which
+    // refusal already handles. Drift is only for demands.
+    //
+    // The Combine used to be in this list and no longer is: *"an unpaid debt
+    // must be pursued"* is a demand, and now that debts are real it has a
+    // trigger. See the debt suite.
     const state = fresh();
-    for (const id of ['meridian', 'hutt', 'freeworlds']) {
+    for (const id of ['meridian', 'freeworlds']) {
       expect(driftingCompulsions(state, id), id).toEqual([]);
     }
+  });
+
+  it('fires when a debtor has defaulted and nothing has been sent', () => {
+    // The seed puts Drajk in default to the Combine on turn 0, so the line the
+    // faction is built on is a live question from the first turn rather than a
+    // rule waiting for something to happen.
+    const state = fresh();
+    expect(triggers(state, 'hutt')).toContain('debt_unpursued');
+  });
+
+  it('stops the moment the creditor actually applies pressure', () => {
+    const sent = fresh();
+    // Drajk holds tul-1; a fleet under way at it is pursuit.
+    const target = sent.systems.find((s) => s.controllerFactionId === 'krayt')!;
+    sent.pendingOrders.push(order('hutt', 'fleet_movement', target.id) as never);
+    expect(triggers(sent, 'hutt')).not.toContain('debt_unpursued');
+  });
+
+  it('counts an operative in their space as pursuit too', () => {
+    const spied = fresh();
+    const target = spied.systems.find((s) => s.controllerFactionId === 'krayt')!;
+    spied.agents.push({
+      id: 'agt-x',
+      ownerFactionId: 'hutt',
+      systemId: target.id,
+      mission: 'surveillance',
+      effect: { kind: 'intel', perTurn: 1 },
+      successChance: 50,
+      exposed: false,
+      cover: '',
+      placedTurn: 0,
+    } as never);
+    expect(triggers(spied, 'hutt')).not.toContain('debt_unpursued');
+  });
+
+  it('does not fire for a debt that is being paid', () => {
+    // Meridian is current on its Combine paper, so it is not a grievance.
+    const state = fresh();
+    state.debts = state.debts.filter((d) => d.debtorFactionId === 'meridian');
+    expect(triggers(state, 'hutt')).not.toContain('debt_unpursued');
   });
 });
 

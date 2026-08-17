@@ -1,3 +1,4 @@
+import { delinquentDebtorsOf } from './debt.js';
 import {
   isGuestOf,
   isMovementType,
@@ -236,6 +237,32 @@ function evaluate(
       if (raiding) return null;
       const taken = ledgerFor(state, factionId).raided;
       return taken > 0 ? null : 'no raid under way and nothing taken from anyone';
+    }
+    case 'debt_unpursued': {
+      // A creditor whose debtor has defaulted and who has done nothing about
+      // it. "Pursued" is read as any pressure actually applied to that debtor:
+      // a fleet under way toward one of their worlds, or an operative placed in
+      // their space. Diplomacy is deliberately not enough — the line is about a
+      // client who has already learned that owing you costs nothing.
+      const defaulters = delinquentDebtorsOf(state.debts ?? [], factionId);
+      if (defaulters.length === 0) return null;
+
+      const unpursued = defaulters.filter((debtorId) => {
+        const theirWorlds = new Set(
+          state.systems.filter((sys) => sys.controllerFactionId === debtorId).map((sys) => sys.id),
+        );
+        const fleetSent = state.pendingOrders.some(
+          (o) => o.factionId === factionId && isMovementType(o.type) && theirWorlds.has(o.targetId),
+        );
+        const agentPlaced = state.agents.some(
+          (a) => a.ownerFactionId === factionId && !a.exposed && theirWorlds.has(a.systemId),
+        );
+        return !fleetSent && !agentPlaced;
+      });
+
+      return unpursued.length > 0
+        ? `${unpursued.join(', ')} owe you and have defaulted, and nothing has been sent`
+        : null;
     }
   }
 }

@@ -214,6 +214,38 @@ export const EstablishCommitmentOp = z.object({
   incomePerTurn: z.number().int().min(-500).max(500).default(0),
 });
 
+/**
+ * Money owed, on terms both powers accepted.
+ *
+ * Extraction-only, exactly like `form_treaty` and for the same reason: a debt
+ * binds the debtor, and nobody becomes a debtor because the other party
+ * declared it. Lending is a negotiation.
+ */
+export const EstablishDebtOp = z.object({
+  op: z.literal('establish_debt'),
+  creditorFactionId: z.string().min(1),
+  debtorFactionId: z.string().min(1),
+  /** Trimmed to `MAX_DEBT_PRINCIPAL`, not rejected. */
+  principal: z.number().int().min(1).max(100000),
+  /** Trimmed to `MAX_DEBT_PER_TURN`, and never more than the principal. */
+  perTurn: z.number().int().min(1).max(10000),
+  text: z.string().min(1).max(240),
+});
+
+/**
+ * Writing a debt off.
+ *
+ * Unilateral and therefore an ordinary op, the same shape as `break_treaty`: a
+ * creditor needs nobody's permission to stop collecting. It is also the exact
+ * act the Ojjul Nar's first red line forbids, which is the point — the line now
+ * has something to forbid.
+ */
+export const ForgiveDebtOp = z.object({
+  op: z.literal('forgive_debt'),
+  debtId: z.string().min(1),
+  reason: z.string().default(''),
+});
+
 export const DissolveCommitmentOp = z.object({
   op: z.literal('dissolve_commitment'),
   commitmentId: z.string().min(1),
@@ -252,6 +284,9 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   AdjustDissentOp,
   EstablishCommitmentOp,
   DissolveCommitmentOp,
+  // `establish_debt` is deliberately ABSENT, like `form_treaty`: lending binds
+  // the debtor, and consent lives in a transcript. Forgiving is unilateral.
+  ForgiveDebtOp,
   SpawnEventOp,
   LogNarrativeOp,
 ]);
@@ -271,7 +306,7 @@ export type ModelOp = z.infer<typeof ModelOpSchema>;
  * agreement is genuinely unilateral — you do not need the other party's
  * agreement to stop honouring it, only to pay for having stopped.
  */
-export const ExtractionOpSchema = z.union([ModelOpSchema, FormTreatyOp]);
+export const ExtractionOpSchema = z.union([ModelOpSchema, FormTreatyOp, EstablishDebtOp]);
 
 /** The full vocabulary, including ops only the reducer may originate. */
 export const OpSchema = z.discriminatedUnion('op', [
@@ -293,6 +328,8 @@ export const OpSchema = z.discriminatedUnion('op', [
   AdjustDissentOp,
   EstablishCommitmentOp,
   DissolveCommitmentOp,
+  EstablishDebtOp,
+  ForgiveDebtOp,
   SpawnEventOp,
   LogNarrativeOp,
 ]);
@@ -554,6 +591,7 @@ export interface OpRejection {
     | 'illegal_value'
     | 'unknown_treaty'
     | 'unknown_agent'
+    | 'unknown_debt'
     | 'doctrine_refusal'
     /** A treaty was declared rather than negotiated; the other party never agreed. */
     | 'needs_consent';

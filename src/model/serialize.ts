@@ -270,6 +270,9 @@ export function serializeState(state: WorldState, viewerId: string): string {
     '## Standing commitments',
     serializeCommitments(state),
     '',
+    '## Debts',
+    serializeDebts(state),
+    '',
     '## Recent events',
     serializeRecentLog(state),
   ].join('\n');
@@ -335,6 +338,33 @@ export function serializeCommitments(state: WorldState): string {
           ? ` · ${c.incomePerTurn > 0 ? '+' : ''}${c.incomePerTurn} credits/turn`
           : '';
       return `- \`${c.id}\` ${c.kind.replace(/_/g, ' ')} · ${who} · since turn ${c.establishedTurn}${worth}${flag}\n  ${c.text}`;
+    })
+    .join('\n');
+}
+
+/**
+ * Money owed between powers, and who is behind on it.
+ *
+ * Shown to every call rather than only the creditor's, because a debt is a
+ * lever anyone can reason about: a defaulting debtor is a power with a
+ * grievance pointed at it, and that is exactly the opening a third party looks
+ * for. It is also the state the arbiter needs in order to rule on the Combine's
+ * two debt lines against something real rather than a fiction.
+ */
+export function serializeDebts(state: WorldState): string {
+  const live = (state.debts ?? []).filter(
+    (d) => d.status === 'current' || d.status === 'delinquent',
+  );
+  if (live.length === 0) return '_Nobody owes anybody._';
+  return live
+    .map((d) => {
+      const creditor = getFaction(state, d.creditorFactionId)?.name ?? d.creditorFactionId;
+      const debtor = getFaction(state, d.debtorFactionId)?.name ?? d.debtorFactionId;
+      const behind =
+        d.status === 'delinquent'
+          ? ` — IN DEFAULT, ${d.missedPayments} payment(s) missed`
+          : '';
+      return `  - \`${d.id}\` ${debtor} owes ${creditor} ${d.balance} of ${d.principal}, at ${d.perTurn}/turn${behind}. ${d.text}`;
     })
     .join('\n');
 }

@@ -16,6 +16,7 @@ import {
   type Agent,
   type Treaty,
 } from './diplomacy.js';
+import { DebtSchema, scheduledDebtService, type Debt } from './debt.js';
 import { DurationCategorySchema, FibScaleSchema } from './duration.js';
 import { buildAdjacency } from './graph.js';
 // trade.ts imports only TYPES from here, so this edge is one-directional at
@@ -145,6 +146,13 @@ export const COMPULSION_TRIGGERS = [
   'unanswered_incursion',
   /** No raid under way and nothing taken from anyone's lanes. */
   'no_plunder',
+  /**
+   * Someone has defaulted on a debt owed to you and you have done nothing
+   * about it. The Ojjul Nar's *"an unpaid debt must be pursued"* is a demand,
+   * which is exactly the shape a refusal cannot reach: a creditor who simply
+   * never chases a debtor takes no action to be refused.
+   */
+  'debt_unpursued',
 ] as const;
 export type CompulsionTrigger = (typeof COMPULSION_TRIGGERS)[number];
 export const CompulsionTriggerSchema = z.enum(COMPULSION_TRIGGERS);
@@ -332,6 +340,13 @@ export const WorldStateSchema = z.object({
   commitments: z.array(CommitmentSchema).default([]),
   /** Covert operatives in place, applied every tick. */
   agents: z.array(AgentSchema).default([]),
+  /**
+   * Money owed between powers — see `debt.ts`. Serviced as a transfer during
+   * the tick rather than as a ledger rate, so a balance falls by exactly what a
+   * debtor could actually find. Defaults to empty, so every save written before
+   * debts existed still loads.
+   */
+  debts: z.array(DebtSchema).default([]),
   playerFactionId: z.string().min(1),
   /** Abstract unit. There is no calendar in this game, deliberately. */
   turn: z.number().int().min(0),
@@ -539,6 +554,17 @@ export interface Ledger {
   tolls: number;
   /** Of `routes`, what was taken from others by commerce raiding. */
   raided: number;
+  /**
+   * Scheduled debt service: positive receives, negative pays.
+   *
+   * Deliberately **not** part of `net`. A debt is settled as an explicit
+   * transfer in `tickTurn`, because a rate read off state cannot know whether
+   * the debtor could afford it — `credits` floors at zero, so a broke debtor
+   * would "pay" money it never had and the creditor would receive it. This is
+   * reported so the briefing is honest about the drain, and charged exactly
+   * once, in the tick.
+   */
+  debtService: number;
 }
 
 /** What a single system pays, and to whom, before faction-level modifiers. */
@@ -678,7 +704,7 @@ export function ledgerFor(state: WorldState, factionId: string): Ledger {
     return {
       gross: 0, upkeep: 0, net: 0, systems: 0, treatyFlow: 0,
       espionageLoss: 0, agentUpkeep: 0, commitmentFlow: 0, warProfit: 0,
-      territory: 0, routes: 0, tolls: 0, raided: 0,
+      territory: 0, routes: 0, tolls: 0, raided: 0, debtService: 0,
     };
   }
 
@@ -761,6 +787,8 @@ export function ledgerFor(state: WorldState, factionId: string): Ledger {
     routes,
     tolls: earnings.tolls[factionId] ?? 0,
     raided: earnings.raided[factionId] ?? 0,
+    // Reported, never summed into `net` — see `Ledger.debtService`.
+    debtService: scheduledDebtService(state.debts ?? [], factionId),
   };
 }
 

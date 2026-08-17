@@ -71,10 +71,21 @@ and `pnpm build:web` are clean.
       refusal needs an action to refuse, and `COMPULSION_TRIGGERS` has no debt
       member. A player who simply never chases a debtor is never noticed.
 
-   So a debt is currently expressible as *the payment stream plus a note*, which
-   is enough for the fiction and not enough for the two lines that reference it.
-   Making it real means a balance that depletes, a delinquency state, and a
-   fifth trigger.
+   **BUILT.** `src/domain/debt.ts`: a principal, a balance that falls by exactly
+   what the debtor could find, an instalment, `missedPayments`, and a status of
+   current · delinquent · settled · forgiven. Serviced as a transfer in
+   `tickTurn` rather than a ledger rate, which is what makes it conserved — a
+   rate cannot know whether the debtor could afford it. `establish_debt` is
+   extraction-only (nobody becomes a debtor because someone declared it);
+   `forgive_debt` is the creditor's alone and buys real goodwill, so the
+   Combine's refusal to use it costs them something. `debt_unpursued` is the
+   fifth compulsion trigger and the first built for the mechanism rather than
+   retrofitted. The seed gives the Combine a defaulting debtor and a paying one,
+   so both halves are live from turn 0 and the arbiter has real state to rule
+   against. 23 tests; balance unmoved.
+
+   **Still unwatched:** no live negotiation has produced a debt or a hire, so
+   the extraction pass has never been seen emitting either op.
 5. ~~The battle-report UI half of the combat design question~~ **DONE** — see
    item 12. What remains genuinely open is only the *other* half: whether combat
    wants a richer multi-round resolver. The report was deliberately built as an

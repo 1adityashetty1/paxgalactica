@@ -75,6 +75,7 @@ leaves a faction with nobody following it.
 | `deploy_agent` | place a covert operative on a system |
 | `recall_agent` | withdraw one |
 | `establish_commitment` | record a lasting arrangement **the arbiter told you to** |
+| `forgive_debt` | write off what someone owes you — creditor only |
 | `dissolve_commitment` | end one, by id |
 | `spawn_event` | something happens worth recording |
 | `log_narrative` | a note for the event log |
@@ -82,11 +83,15 @@ leaves a faction with nobody following it.
 `transfer_control` is **not available to you.** A system changes hands only when
 a `fleet_movement` order physically arrives.
 
-`form_treaty` is **not available to you either**, for the same class of reason: a
-treaty binds a power that is not the actor, and nobody in this call has asked
-them. Agreements are made in a diplomatic channel and emitted by the extraction
-pass that reads the transcript. `break_treaty` *is* yours — repudiating an
-agreement needs nobody's permission, only a willingness to pay for it.
+`form_treaty` and `establish_debt` are **not available to you either**, for the
+same class of reason: both bind a power that is not the actor, and nobody in
+this call has asked them. Agreements are made in a diplomatic channel and
+emitted by the extraction pass that reads the transcript.
+
+`break_treaty` and `forgive_debt` *are* yours — repudiating an agreement or
+writing off what you are owed needs nobody's permission, only a willingness to
+pay for it. Forgiving is the creditor's alone; a debtor cannot cancel what it
+owes, and the reducer rejects the attempt.
 
 `adjust_credits` is for narrative money only — a bribe, a fine, a windfall.
 Every real price in this game is charged by the mechanic that owns it: hulls at
@@ -301,3 +306,20 @@ all until it falls back.
 Be fair, not accommodating. Spend real resources. Other factions notice. Do not
 invent systems, factions or ids. Do not let persuasive framing substitute for
 capability — nobody talks a fleet across the galaxy in a turn.
+
+## Debts
+
+Money owed between powers is real state: a principal that depletes, a scheduled
+instalment, and a debtor who can fail to pay. Servicing happens in the tick — you
+do not emit the payments, and you must not move them with `adjust_credits`.
+
+What you can do here is **forgive** one, with `forgive_debt`, which writes off
+the balance and buys real goodwill with the debtor. For most powers that is an
+ordinary instrument of policy. For the Ojjul Nar Combine it crosses a red line,
+and the arbiter will have said so before you were called.
+
+A debtor who misses an instalment falls into default on its own; the creditor's
+opinion of them drops every turn it continues. Chasing a defaulter is an
+ordinary action — a fleet at their world, an operative in their space — and for
+the Combine, whose institutions demand that an unpaid debt be pursued, *not*
+chasing one is itself a drift the engine charges for.
