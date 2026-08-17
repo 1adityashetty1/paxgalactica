@@ -1,27 +1,44 @@
 # TODO — known bugs and open design questions
 
-## Where things stand (2026-08-13)
+## Where things stand (2026-08-17)
 
-**Open work, in priority order.** Everything below is evidence-backed. Items
-1–3 and 5's first half are done, and so is the compulsion pricing question
-raised under item 11. **What is genuinely open is item 4 (no debt mechanic) and
-the open half of item 5 (whether combat wants a richer resolver).**
+**Two open items need a decision from the user, not more work:** item 13 (a red
+line can be walked past through diplomacy) and item 14 (agent exposure never
+fires). Both are written up with the measurement and two or three options; both
+are deliberately unbuilt.
 
-Ahead of both, though, is a different kind of debt: **mechanisms that are built,
-tested and have never been watched running.** The battle report card came off
-that list on 2026-08-17 (see item 12). What remains on it is the extraction pass
-emitting a hire or a debt, which no live negotiation has yet produced, and
-`onComplete` payloads, which no live model call has ever set. The battle report card (item 12)
-has never been seen rendering; `onComplete` payloads and commitment income have
-never been exercised by a live model call; and `boundPayloadsToOutcome` was
-written from a measured probe rather than from play. Live play has found every
-bug in this file that the suite did not — including, twice this session, a bug
-in the fix for the previous one.
+**Open work that is nobody's decision but the implementer's:**
 
-**Branch state:** everything is in `main` as of PR #6 (`359f31f`), which merged
-the arbiter breach rework, `classifyPrinciple`, the payload/outcome binding and
-the compulsion reprice. 596 tests pass; `pnpm typecheck`, `pnpm typecheck:web`
-and `pnpm build:web` are clean.
+- The open half of item 5 — whether combat wants a richer multi-round resolver.
+  Still a genuine design question, and the battle report was deliberately shaped
+  as rounds so it stays cheap either way.
+- **Arkanis sits flat at 71/turn for a whole 30-turn balance run** while every
+  other power moves. Never investigated.
+- **Drajk has one compulsion against two red lines** — the thinnest sheet of the
+  five. Honest for a faction defined by refusal, worth a look if it reads flat.
+- **The arbiter's espionage vocabulary is only partly probed.** "Turn one of
+  their officers" produced a `commitment` (`turned_officer`) rather than a
+  `deploy_agent` — a durable arrangement with no espionage mechanic behind it.
+  The rest of the list (mole, sleeper, cut-out, "a man inside", "put someone on
+  the payroll") is untested.
+
+**The "built but never watched running" list is now empty.** Everything on it
+was verified by live play on 2026-08-17: the battle report card renders (item
+12), `onComplete` payloads are set by a live resolution call *and* the
+partial-band halving fired (`develop_system` magnitude halved to 1 on a partial),
+the negotiation redirect bounces a declared treaty to `/talk` for $0.016, and the
+extraction pass really emits both `form_treaty` for a proxy hire — verified
+end-to-end, with Meridian moving a squadron on a Drajk world the next turn — and
+`establish_debt` for a negotiated loan.
+
+Live play has found every bug in this file that the suite did not, including
+several bugs *in the fix for the previous one*. Two of the four items opened
+this session (13, 14) came from playtests; item 14 came from measuring the
+reducer directly after a playtest was cut short.
+
+**Branch state:** `main` at `27c9be2`, which is PR #7 plus the debt-id fix. 643
+tests pass; `pnpm typecheck`, `pnpm typecheck:web` and `pnpm build:web` are
+clean. Items 13 and 14 are written up on `extraction-breach-gap`.
 
 1. ~~`/api/action` does not return the ops it staged~~ **DONE.** `ActionOutcome`
    now carries `ops`, the batch as applied, for declarations, refusals and
@@ -571,15 +588,23 @@ exist; the consequence is now dissent, which does.
   powers spend their fleets for you"* on might 9. `profiteer` replaces it, and
   `DOCTRINE_ETHIC_DISSENT`'s charge of 20 to change either ethic is now a fair
   price for two load-bearing axes rather than one live and one inert.
-- **The Ojjul Nar's two proxy lines are now half-supported.** *"Will not fight
-  its own war where a proxy could be hired"* is backed by `profiteer` — its own
-  wars cost it real income, so the ledger agrees with the red line. What still
-  does not exist is the **hiring** half: there is no way to pay another power to
-  fight for you, so the Combine is discouraged from war without being offered
-  the alternative its doctrine names. That is the next piece of its identity.
-- **The Combine's two debt lines still have no mechanic** ("will not forgive an
-  unpaid debt", "an unpaid debt must be pursued"). Debt is not modelled at all;
-  the closest existing home is a `commitment` with a negative `incomePerTurn`.
+- ~~**The Ojjul Nar's two proxy lines are half-supported**~~ **BOTH HALVES NOW
+  EXIST.** *"Will not fight its own war where a proxy could be hired"* was
+  already backed by `profiteer`; the **hiring** half is a `mutual_defense`
+  treaty carrying `incomePerTurn` to the hired power and `shipsPledged` naming
+  the hulls, emitted by the extraction pass from a negotiated transcript.
+  Verified live 2026-08-17: `{"treatyType":"mutual_defense","parties":["hutt",
+  "meridian"],"terms":{"shipsPledged":{"meridian":6},"incomePerTurn":
+  {"meridian":80}}}` landed, and Meridian moved a squadron on a Drajk world the
+  next turn. The Free Worlds and the Iron Vigil both **refused** to be hired,
+  in character with their war ethics, and correctly staged zero ops.
+- ~~**The Combine's two debt lines still have no mechanic**~~ **FIXED** —
+  `src/domain/debt.ts`. A principal that depletes, an instalment priced against
+  what the debtor can actually find, a delinquency state, and `debt_unpursued`
+  as the fifth compulsion trigger. A commitment with a negative `incomePerTurn`
+  was tried first and cannot express it: that field is one scalar every bound
+  faction reads the same way, so a debt written that way paid the creditor 25
+  **and the debtor 20**.
 - ~~Five lines duplicated within their own faction~~ **FIXED.** All five were
   prohibitions miscategorised as demands, so the compulsion copy was dropped and
   whatever it added folded into the surviving red line (Drajk's "sit still to be
@@ -591,13 +616,14 @@ exist; the consequence is now dissent, which does.
   but it is the thinnest sheet of the five and worth a look if Drajk ever reads
   as flat.
 
-**Every numbered item in this file is now fixed**, each with tests. Original
-write-ups are kept rather than deleted — the repro steps are the useful part
-and they document why each guard exists. A "**FIXED —**" note follows each.
+Original write-ups are kept rather than deleted — the repro steps are the useful
+part and they document why each guard exists. A "**FIXED —**" note follows each.
 
-**Repo state:** branch `order-effects`, off `main` at `e5fb2c3`. PRs #1, #2 and
-#3 are all merged. 479 tests pass; `pnpm typecheck`, `pnpm typecheck:web` and
-`pnpm build:web` are clean.
+> The paragraph that used to sit here recorded a repo state from several
+> sessions ago (branch `order-effects`, 479 tests) and claimed every numbered
+> item was fixed, which stopped being true the moment items 13 and 14 opened.
+> Current state lives in one place, at the top of this file, so there is nothing
+> to keep in sync.
 
 **A playtest was set up and never played.** An Ojjul Nar Combine regression run
 (`ojjul_regression`) was staged on port 4260 to re-verify the nine earlier fixes
