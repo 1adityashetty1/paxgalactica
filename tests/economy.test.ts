@@ -740,3 +740,58 @@ describe('a treaty cannot be declared into existence', () => {
     expect(broken.state.treaties[0]!.status).not.toBe('active');
   });
 });
+
+/**
+ * A commitment's `incomePerTurn` is one number shared by everyone it binds, not
+ * a transfer between them.
+ *
+ * Worth pinning because it is the opposite of what the field's name suggests
+ * and of how the analogous treaty term works. `Treaty.terms.incomePerTurn` is a
+ * record keyed by faction, so it can say "A pays B"; a commitment's is a scalar
+ * every bound party reads the same way. A debt written as a single two-party
+ * commitment therefore pays the debtor as well as the creditor — which is
+ * exactly the encoding `prompts/extraction.md` briefly recommended before this
+ * was measured.
+ */
+describe('commitment income is shared, not directional', () => {
+  it('pays every bound faction the same figure', () => {
+    const out = applyOps(
+      fresh(),
+      [
+        {
+          op: 'establish_commitment',
+          kind: 'debt',
+          factionIds: ['hutt', 'freeworlds'],
+          text: 'The Free Worlds owe the Combine 400, repaid at 25 a turn.',
+          exclusive: false,
+          incomePerTurn: 25,
+        },
+      ],
+      'model',
+      'hutt',
+    );
+    expect(out.rejections).toHaveLength(0);
+    // Both sides earn. Nobody pays.
+    expect(ledgerFor(out.state, 'hutt').commitmentFlow).toBeGreaterThan(0);
+    expect(ledgerFor(out.state, 'freeworlds').commitmentFlow).toBeGreaterThan(0);
+  });
+
+  it('unlike a treaty, whose terms name each party separately', () => {
+    const out = applyOps(
+      fresh(),
+      [
+        {
+          op: 'form_treaty',
+          treatyType: 'tribute',
+          parties: ['freeworlds', 'hutt'],
+          terms: { incomePerTurn: { freeworlds: -25, hutt: 25 } },
+          summary: 'debt service',
+        },
+      ],
+      'extraction',
+      'hutt',
+    );
+    expect(ledgerFor(out.state, 'hutt').treatyFlow).toBe(25);
+    expect(ledgerFor(out.state, 'freeworlds').treatyFlow).toBe(-25);
+  });
+});

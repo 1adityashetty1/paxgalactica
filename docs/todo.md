@@ -50,6 +50,31 @@ and `pnpm build:web` are clean.
    fine for the Combine's red line as written ("will not fight its **own** war"),
    but a hire-them-to-attack arrangement is still only expressible as money plus
    a pact, not as an offensive obligation the reducer enforces.
+
+   **A debt is still not really a commitment, and the first version of this
+   guidance was wrong.** Three gaps, found by asking why:
+
+   1. **`Commitment.incomePerTurn` is not directional.** It is one scalar every
+      bound faction reads the same way, unlike `Treaty.terms.incomePerTurn`,
+      which is a record keyed by faction. A debt written as a single two-party
+      commitment at 25 pays the creditor 25 **and the debtor 20** (its own
+      ceiling) — measured. `extraction.md` briefly recommended exactly that and
+      now splits the encoding: repayments are a `tribute` treaty, the principal
+      is a commitment at `incomePerTurn: 0`. Two tests pin the asymmetry.
+   2. **There is no principal.** A commitment is a perpetual flow, so "owe 400"
+      becomes "pay 25 a turn forever". Nothing counts down, nothing settles, and
+      repaying in full is indistinguishable from paying tribute.
+   3. **There is no default, and no trigger.** Both Combine lines turn on the
+      word *unpaid*, and a commitment is only `active` or `dissolved` — a
+      debtor who stops paying is unrepresentable. Worse, *"an unpaid debt must
+      be pursued"* is a **demand**, the exact shape that needs a trigger since a
+      refusal needs an action to refuse, and `COMPULSION_TRIGGERS` has no debt
+      member. A player who simply never chases a debtor is never noticed.
+
+   So a debt is currently expressible as *the payment stream plus a note*, which
+   is enough for the fiction and not enough for the two lines that reference it.
+   Making it real means a balance that depletes, a delinquency state, and a
+   fifth trigger.
 5. ~~The battle-report UI half of the combat design question~~ **DONE** — see
    item 12. What remains genuinely open is only the *other* half: whether combat
    wants a richer multi-round resolver. The report was deliberately built as an
