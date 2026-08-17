@@ -303,3 +303,44 @@ describe('the seed makes the Combine’s sheet live from turn 0', () => {
     expect(debtsOwedBy(fresh().debts, 'freeworlds')).toEqual([]);
   });
 });
+
+describe('ids are unique even within one batch', () => {
+  /**
+   * Found by an adversarial playtest: a negotiated debt restructuring emitted
+   * two `establish_debt` ops in one extraction batch and both came out
+   * `debt-0-0`, because `mintId`'s pool listed treaties, agents and commitments
+   * and never debts. Both ledger entries were real and both ticked correctly,
+   * so nothing looked wrong — until an op tried to address one by id.
+   */
+  const lend = (principal: number) => ({
+    op: 'establish_debt',
+    creditorFactionId: 'hutt',
+    debtorFactionId: 'krayt',
+    principal,
+    perTurn: 10,
+    text: `a note for ${principal}`,
+  });
+
+  it('gives two debts minted in the same batch different ids', () => {
+    const out = applyOps(fresh(), [lend(200), lend(150)], 'extraction', 'hutt');
+    expect(out.rejections).toHaveLength(0);
+    const ids = out.state.debts.map((d) => d.id);
+    expect(new Set(ids).size, ids.join(',')).toBe(ids.length);
+  });
+
+  it('keeps them distinct across turns too', () => {
+    let state = applyOps(fresh(), [lend(200)], 'extraction', 'hutt').state;
+    state = tickTurn(state).state;
+    state = applyOps(state, [lend(150), lend(120)], 'extraction', 'hutt').state;
+    const ids = state.debts.map((d) => d.id);
+    expect(new Set(ids).size, ids.join(',')).toBe(ids.length);
+  });
+
+  it('so a later op addresses exactly one of them', () => {
+    const made = applyOps(fresh(), [lend(200), lend(150)], 'extraction', 'hutt').state;
+    const target = made.debts.at(-1)!;
+    const out = applyOps(made, [{ op: 'forgive_debt', debtId: target.id }], 'model', 'hutt');
+    expect(out.rejections).toHaveLength(0);
+    expect(out.state.debts.filter((d) => d.status === 'forgiven')).toHaveLength(1);
+  });
+});

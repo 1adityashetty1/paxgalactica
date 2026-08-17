@@ -241,13 +241,25 @@ function mintOrderId(state: WorldState): string {
   return `${prefix}${highest + 1}`;
 }
 
-/** Deterministic ids for treaties and agents, on the same scheme as orders. */
+/**
+ * Deterministic ids for treaties, agents, commitments and debts, on the same
+ * scheme as orders.
+ *
+ * Every id-bearing collection has to be in the pool. Debts were added to world
+ * state and not added here, so two debts minted in one turn both came out
+ * `debt-0-0` — found by an adversarial playtest that negotiated a debt
+ * restructuring, which emitted two `establish_debt` ops in a single extraction
+ * batch. The ledger entries were distinct and both ticked correctly, so nothing
+ * looked wrong until something tried to address one by id: `forgive_debt` on a
+ * duplicated id resolves to whichever the reducer finds first.
+ */
 function mintId(state: WorldState, prefix: string): string {
   const stem = `${prefix}-${state.turn}-`;
   const pool = [
     ...state.treaties.map((t) => t.id),
     ...state.agents.map((a) => a.id),
     ...(state.commitments ?? []).map((c) => c.id),
+    ...(state.debts ?? []).map((d) => d.id),
   ];
   let highest = -1;
   for (const id of pool) {
