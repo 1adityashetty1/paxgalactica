@@ -456,6 +456,41 @@ ul { margin: 0; padding-left: 1.1em; }
 .battle-mods { font-size: 11px; margin: 6px 0; }
 .battle-doctrines { margin: 4px 0 8px; padding-left: 14px; color: var(--warn); font-size: 11px; }
 .battle-round { margin-bottom: 8px; }
+
+/* Order of battle: what each side brought, and what did not go home. Two
+   columns so committed strength and losses sit side by side and can be
+   compared without subtracting in your head. Collapses to one column when the
+   panel is narrow, which it often is. */
+/* One column, not two. Two columns fit the mock and not the panel: the side
+   panel is ~310px wide whatever the window is doing, so side-by-side squeezed
+   the names to "Drajk Co…" — and a container this narrow cannot be rescued by
+   a viewport media query, because the viewport is not what is narrow. */
+.order-of-battle {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 10px;
+  padding: 8px;
+  background: #0b1119;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.ob-col { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ob-heading {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.ob-row { display: flex; align-items: center; gap: 8px; font-size: 11px; min-width: 0; }
+/* The name truncates; the counts never do — the numbers are the point. */
+.ob-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ob-units { display: flex; align-items: center; gap: 10px; flex: none; }
+.ob-strength { display: inline-flex; align-items: center; gap: 3px; }
+/* `currentColor` on the glyph, so a contingent's icon is its faction's colour
+   and the losses column stays neutral. */
+.ob-icon { display: block; flex: none; }
+.ob-count { font-variant-numeric: tabular-nums; }
 .battle-round-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 .battle-phase { font-weight: 600; font-size: 11px; }
 .battle-outcome { color: var(--dim); font-size: 11px; }
