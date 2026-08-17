@@ -1662,7 +1662,17 @@ automatically.
   from state on resume via `briefingFromState`.
 - **Channel** — diplomacy gets its own surface, in the faction's colour, with
   the boundary stated on screen. While it is open the command line and End Turn
-  are disabled, mirroring the server-side rule.
+  are disabled, mirroring the server-side rule. Opening one also **replaces the
+  map with the other power's portrait** (`PortraitStage`): the map is what you
+  read while moving fleets, and a conversation is not that, so swapping the
+  whole stage makes the mode change unmissable — which matters precisely because
+  a channel disables the command line, behaviour a player otherwise discovers by
+  finding their input dead. Gated on the same `activeChannel` the panel uses,
+  not on the server's `openChannel`, which is only set once a message has
+  actually been sent; gating on the latter left the map up through the entire
+  first exchange. Art lives in `web/public/portraits/<factionId>.jpeg` — named
+  by **id**, not display name, since the two diverged long ago — and a missing
+  file falls back to the faction's name rather than a blank slab.
 - **Progress** — model calls take 5–15s, so the server names what it is doing
   and the client shows that label verbatim. Without it the app looks broken
   while working perfectly.

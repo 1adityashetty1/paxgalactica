@@ -7,6 +7,7 @@ import { BriefingPanel } from './components/BriefingPanel.js';
 import { ChannelPanel } from './components/ChannelPanel.js';
 import { FactionPicker } from './components/FactionPicker.js';
 import { GalaxyMap } from './components/GalaxyMap.js';
+import { PortraitStage } from './components/PortraitStage.js';
 import { SidePanel } from './components/SidePanel.js';
 import { useGame, useStickToBottom } from './useGame.js';
 
@@ -269,7 +270,19 @@ export function App() {
 
       <main className="grid">
         <div className="left">
-          <GalaxyMap state={view.state} selectedId={selectedId} onSelect={setSelectedId} />
+          {/* While a channel is open the stage belongs to whoever is on the
+              other end of it.
+              `activeChannel`, which is the same signal `ChannelPanel` uses, and
+              not `view.openChannel`: the server only sets that once a message
+              has actually been sent, while the channel surface opens the moment
+              the player clicks `talk`. Gating on the server's flag left the map
+              up through the whole first exchange — the portrait arrived one
+              message late, or never, if the player thought better of it. */}
+          {activeChannel ? (
+            <PortraitStage state={view.state} factionId={activeChannel} />
+          ) : (
+            <GalaxyMap state={view.state} selectedId={selectedId} onSelect={setSelectedId} />
+          )}
           <div className="feed" ref={feedRef}>
             {game.messages.map((m) => (
               <p
