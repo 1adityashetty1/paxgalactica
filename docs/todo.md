@@ -1,27 +1,71 @@
 # TODO — known bugs and open design questions
 
-## Where things stand (2026-08-13)
+## Where things stand (2026-08-17)
 
-**Open work, in priority order.** Everything below is evidence-backed. Items
-1–3 and 5's first half are done, and so is the compulsion pricing question
-raised under item 11. **What is genuinely open is item 4 (no debt mechanic) and
-the open half of item 5 (whether combat wants a richer resolver).**
+**Two open items need a decision from the user, not more work:** item 13 (a red
+line can be walked past through diplomacy) and item 14 (agent exposure never
+fires). Both are written up with the measurement and two or three options; both
+are deliberately unbuilt.
 
-Ahead of both, though, is a different kind of debt: **mechanisms that are built,
-tested and have never been watched running.** The battle report card came off
-that list on 2026-08-17 (see item 12). What remains on it is the extraction pass
-emitting a hire or a debt, which no live negotiation has yet produced, and
-`onComplete` payloads, which no live model call has ever set. The battle report card (item 12)
-has never been seen rendering; `onComplete` payloads and commitment income have
-never been exercised by a live model call; and `boundPayloadsToOutcome` was
-written from a measured probe rather than from play. Live play has found every
-bug in this file that the suite did not — including, twice this session, a bug
-in the fix for the previous one.
+**Open work that is nobody's decision but the implementer's:**
 
-**Branch state:** everything is in `main` as of PR #6 (`359f31f`), which merged
-the arbiter breach rework, `classifyPrinciple`, the payload/outcome binding and
-the compulsion reprice. 596 tests pass; `pnpm typecheck`, `pnpm typecheck:web`
-and `pnpm build:web` are clean.
+- The open half of item 5 — whether combat wants a richer multi-round resolver.
+  Still a genuine design question, and the battle report was deliberately shaped
+  as rounds so it stays cheap either way.
+- ~~**Arkanis sits flat at 71/turn for a whole 30-turn balance run**~~
+  **EXPLAINED AND FIXED — it was the harness, not the balance.** `sortie`
+  requires a single base holding the *whole* blow, and a bot asks for
+  `garrison * 3 + 4`. The Drift wants 16 hulls for Sennex and keeps a navy of 31
+  spread 10/7/8/6, so no base ever qualified: `sortie` returned `[]` and the
+  Arkanis bot issued **no order of any kind for thirty turns**. The flat line
+  was the harness never letting the faction move.
+
+  The Vigil bot already solved this and carries the comment that says so —
+  *"it masses first, then strikes... Without the massing step it never attacked
+  at all, and a crusader that never crusades tests nothing."* The lesson was
+  learned once and never applied to Arkanis, which now gets the same
+  mass-then-strike step. It takes Sennex on turn 5 and runs at **97/turn**
+  (territory 177 → 209, 4 → 5 systems). Every other power's numbers are
+  unchanged, because only this bot's behaviour changed.
+
+  **A first attempt was wrong in an instructive way.** Relaxing `sortie` itself
+  to send a half-force from the largest base unblocked Arkanis *and* made every
+  bot far more aggressive: the Vigil took 12 of 25 systems at 494/turn, Meridian
+  collapsed to one world at −122, and the balance floor test failed. A shared
+  helper is the wrong place to fix one faction's blindness.
+
+  It is still flat *after* turn 5, but now for an honest reason: Sennex was the
+  only unaligned world in the Arkanis Drift, and the doctrine takes nothing
+  beyond its own doorstep. A turtle with one thing to take is flat once it has
+  taken it.
+- **Meridian is now the suspicious flat line** — pinned at exactly 24/turn from
+  turn 10 to turn 30, having fallen from 277. Worth the same treatment: is that
+  the free-trade bot running out of moves, or the economy?
+- **Drajk has one compulsion against two red lines** — the thinnest sheet of the
+  five. Honest for a faction defined by refusal, worth a look if it reads flat.
+- **The arbiter's espionage vocabulary is only partly probed.** "Turn one of
+  their officers" produced a `commitment` (`turned_officer`) rather than a
+  `deploy_agent` — a durable arrangement with no espionage mechanic behind it.
+  The rest of the list (mole, sleeper, cut-out, "a man inside", "put someone on
+  the payroll") is untested.
+
+**The "built but never watched running" list is now empty.** Everything on it
+was verified by live play on 2026-08-17: the battle report card renders (item
+12), `onComplete` payloads are set by a live resolution call *and* the
+partial-band halving fired (`develop_system` magnitude halved to 1 on a partial),
+the negotiation redirect bounces a declared treaty to `/talk` for $0.016, and the
+extraction pass really emits both `form_treaty` for a proxy hire — verified
+end-to-end, with Meridian moving a squadron on a Drajk world the next turn — and
+`establish_debt` for a negotiated loan.
+
+Live play has found every bug in this file that the suite did not, including
+several bugs *in the fix for the previous one*. Two of the four items opened
+this session (13, 14) came from playtests; item 14 came from measuring the
+reducer directly after a playtest was cut short.
+
+**Branch state:** `main` at `27c9be2`, which is PR #7 plus the debt-id fix. 643
+tests pass; `pnpm typecheck`, `pnpm typecheck:web` and `pnpm build:web` are
+clean. Items 13 and 14 are written up on `extraction-breach-gap`.
 
 1. ~~`/api/action` does not return the ops it staged~~ **DONE.** `ActionOutcome`
    now carries `ops`, the batch as applied, for declarations, refusals and
@@ -129,6 +173,131 @@ rival's institutions against it is an agent's job (`subversion` +
 `stat_debuff`), which costs credits, risks exposure and is capped. Seven tests.
 `prompts/resolution.md` had been actively inviting it ("your own institutions
 grow more or less restive") and now states both rules.
+
+## 14. OPEN — agent exposure is unreachable, so operatives are effectively permanent
+
+**Measured against the real reducer, no model calls: 80 operatives placed across
+five owner/target pairings, ticked 40 turns each. Exposures: zero.** Every
+persistent mission survived all 40 turns.
+
+`MISSION_PROFILE.exposureRisk` — documented as "1 in 20" for surveillance up to
+"9 in 20" for assassination — is nearly unreachable, because exposure needs a
+roll that **both fails and is at or below the risk**:
+
+```ts
+const succeeded = roll * 5 <= agent.successChance;
+if (!succeeded) { if (roll <= profile.exposureRisk) { agent.exposed = true; } }
+```
+
+A roll succeeds when `roll * 5 <= successChance`, so rolls `1..floor(sc/5)` can
+never expose — and those are exactly the low rolls the risk test is looking for.
+Exposing rolls per turn are `max(0, risk - floor(successChance / 5))`:
+
+| mission | risk | sc 5% | 14% | 26% | 50% | 74% | 95% |
+|---|---|---|---|---|---|---|---|
+| surveillance | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
+| theft · subversion | 2 | 1 | 0 | 0 | 0 | 0 | 0 |
+| sabotage | 3 | 2 | 1 | 0 | 0 | 0 | 0 |
+| defection | 4 | 3 | 2 | 0 | 0 | 0 | 0 |
+| assassination | 9 | 8 | 7 | 4 | 0 | 0 | 0 |
+
+`successChance` is `clamp(50 + (guile - resolve) * 6, 5, 95)`, so it is **never
+below 5** and in practice sits at 26–95. Consequences:
+
+- **A surveillance operative can never be exposed, at any stat pairing** — even
+  at the 5% floor, `floor(5/5) = 1` cancels the risk of 1 exactly.
+- theft and subversion expose only at `sc <= 9`, sabotage at `sc <= 14`,
+  defection at `sc <= 19` — all requiring guile roughly 6+ below the target's
+  resolve.
+- assassination is the only mission that exposes in ordinary play, and only
+  when `sc <= 44`.
+
+Seen live in the Meridian campaign: the Combine's two surveillance agents on
+Meridian worlds ran at **95%/turn and cannot ever be burned**; Meridian's own
+agents against the Vigil sat at 26% and were equally unburnable. The intended
+risk/reward ladder between a watcher and an assassin does not exist.
+
+**This is the class of defect the project keeps finding: a table with no
+reachable path.** Nobody noticed because a burned agent is a non-event — you
+observe nothing rather than something wrong.
+
+### The decision to make
+
+The two tests are entangled by design ("a botched operation risks the
+operative"), and untangling them is the fix. Options:
+
+- **(A) Roll exposure separately** from the effect roll, `d20 <= exposureRisk`,
+  so the table means what it says. Simplest, and makes a watcher genuinely
+  cheap-and-safe against an assassin's near-coin-flip.
+- **(B) Keep one roll but test exposure on the *high* end** — expose on
+  `roll >= 21 - exposureRisk` — which preserves "a botched operation risks the
+  operative" while making the risk reachable at every `successChance`.
+- **(C) Accept it and rewrite the docs**: agents are permanent once placed, and
+  the cap plus upkeep are the only limits. Cheapest, and it makes the whole
+  `exposureRisk` field dead weight that should then be deleted.
+
+(B) is closest to the stated intent. Note that whichever is picked, exposure
+gets *more* common than today for everyone, which shifts espionage balance —
+worth a `pnpm balance` check, though the doctrine bots do not deploy agents.
+
+### What is NOT broken (verified the same way)
+
+- **The cap holds.** Five deploys with a cap of 3 left exactly 3 live, rejecting
+  with `illegal_value: "…is already running 3 operatives, its limit at guile 13.
+  Recall one before placing another."`
+- **Costs are charged**: 2400 → 2280 for three surveillance agents at 40 each,
+  and `insufficient_credits` fires cleanly at 30 credits ("costs 40 credits;
+  Meridian Trade Authority holds 30").
+- **Upkeep reaches the ledger**: `agentUpkeep` 9/turn for 3 live agents.
+- **The owner guard holds**: `ownerFactionId` set to the victim is rejected
+  `illegal_value` — the bug from the first playtest series stays fixed.
+- **NPCs really do deploy against the player.** By turn 2 the Combine had two
+  surveillance operatives on Meridian worlds (`slu-1`, `tio-1`) at 95%/turn.
+
+## 13. OPEN — a red line can be walked past through diplomacy
+
+**Found by an adversarial Ojjul Nar playtest (2026-08-17, $1.67).** The arbiter's
+breach ruling is wired into `appraiseAction` -> `resolveAction`. The **extraction
+pass has no arbiter pass at all** — `grep -c appraiseAction src/engine/turn.ts`
+returns 0 — so ops staged out of a diplomatic transcript are never checked
+against the acting faction's own principles.
+
+Repro: open `/talk krayt`, negotiate reducing an existing debt's balance framed
+as a "renegotiation" or "a new note superseding the old", close with
+`/endtalk krayt`. Extraction emitted:
+
+```
+{"op":"forgive_debt","debtId":"debt-0","reason":"Superseded by renegotiated terms..."}
+{"op":"establish_debt", ... principal 480, perTurn 10}
+{"op":"establish_debt", ... principal 150, perTurn 15}
+```
+
+No refusal, no `defiance`, **no dissent**. Verified in committed state:
+`debt-0 ... [forgiven]` permanently, hutt dissent 20 — ordinary decay, not the
++8 breach charge. The *same intent* declared as an ordinary action was refused
+three separate times (blunt, euphemistic, and as hardship relief), each quoting
+*"will not forgive an unpaid debt — the debt is the whole instrument of
+control"*.
+
+This is sharper than it first looks: `establish_debt` and `forgive_debt` are
+**extraction-only by design**, so the two ops most tied to that faction's
+identity live entirely on the ungated path. The consent boundary was built and
+the institutional one was left behind on the other road.
+
+### The decision to make
+
+- **(A) Appraise what was agreed, before staging.** One Haiku call (~$0.02) on
+  each `/endtalk` that produced ops, reusing `appraiseAction` and
+  `classifyPrinciples`; on a `red_line`, stage nothing and charge
+  `REFUSAL_DISSENT`. Faithful to the existing design and cheap against
+  endtalk's ~$0.05–0.15, but it is a new call on a hot path.
+- **(B) Decide a negotiated deal legitimately does what a decree cannot.**
+  Defensible fiction, and it guts red lines — almost anything can be framed as
+  a negotiation.
+
+(A) recommended. **One wrinkle either way:** extraction emits ops for *both*
+parties, so the check has to be scoped to what the acting faction is doing — an
+NPC's own concession must not trip the player's line.
 
 ## 12. DONE — battles are reported instead of narrated (verified on screen)
 
@@ -446,15 +615,23 @@ exist; the consequence is now dissent, which does.
   powers spend their fleets for you"* on might 9. `profiteer` replaces it, and
   `DOCTRINE_ETHIC_DISSENT`'s charge of 20 to change either ethic is now a fair
   price for two load-bearing axes rather than one live and one inert.
-- **The Ojjul Nar's two proxy lines are now half-supported.** *"Will not fight
-  its own war where a proxy could be hired"* is backed by `profiteer` — its own
-  wars cost it real income, so the ledger agrees with the red line. What still
-  does not exist is the **hiring** half: there is no way to pay another power to
-  fight for you, so the Combine is discouraged from war without being offered
-  the alternative its doctrine names. That is the next piece of its identity.
-- **The Combine's two debt lines still have no mechanic** ("will not forgive an
-  unpaid debt", "an unpaid debt must be pursued"). Debt is not modelled at all;
-  the closest existing home is a `commitment` with a negative `incomePerTurn`.
+- ~~**The Ojjul Nar's two proxy lines are half-supported**~~ **BOTH HALVES NOW
+  EXIST.** *"Will not fight its own war where a proxy could be hired"* was
+  already backed by `profiteer`; the **hiring** half is a `mutual_defense`
+  treaty carrying `incomePerTurn` to the hired power and `shipsPledged` naming
+  the hulls, emitted by the extraction pass from a negotiated transcript.
+  Verified live 2026-08-17: `{"treatyType":"mutual_defense","parties":["hutt",
+  "meridian"],"terms":{"shipsPledged":{"meridian":6},"incomePerTurn":
+  {"meridian":80}}}` landed, and Meridian moved a squadron on a Drajk world the
+  next turn. The Free Worlds and the Iron Vigil both **refused** to be hired,
+  in character with their war ethics, and correctly staged zero ops.
+- ~~**The Combine's two debt lines still have no mechanic**~~ **FIXED** —
+  `src/domain/debt.ts`. A principal that depletes, an instalment priced against
+  what the debtor can actually find, a delinquency state, and `debt_unpursued`
+  as the fifth compulsion trigger. A commitment with a negative `incomePerTurn`
+  was tried first and cannot express it: that field is one scalar every bound
+  faction reads the same way, so a debt written that way paid the creditor 25
+  **and the debtor 20**.
 - ~~Five lines duplicated within their own faction~~ **FIXED.** All five were
   prohibitions miscategorised as demands, so the compulsion copy was dropped and
   whatever it added folded into the surviving red line (Drajk's "sit still to be
@@ -466,13 +643,14 @@ exist; the consequence is now dissent, which does.
   but it is the thinnest sheet of the five and worth a look if Drajk ever reads
   as flat.
 
-**Every numbered item in this file is now fixed**, each with tests. Original
-write-ups are kept rather than deleted — the repro steps are the useful part
-and they document why each guard exists. A "**FIXED —**" note follows each.
+Original write-ups are kept rather than deleted — the repro steps are the useful
+part and they document why each guard exists. A "**FIXED —**" note follows each.
 
-**Repo state:** branch `order-effects`, off `main` at `e5fb2c3`. PRs #1, #2 and
-#3 are all merged. 479 tests pass; `pnpm typecheck`, `pnpm typecheck:web` and
-`pnpm build:web` are clean.
+> The paragraph that used to sit here recorded a repo state from several
+> sessions ago (branch `order-effects`, 479 tests) and claimed every numbered
+> item was fixed, which stopped being true the moment items 13 and 14 opened.
+> Current state lives in one place, at the top of this file, so there is nothing
+> to keep in sync.
 
 **A playtest was set up and never played.** An Ojjul Nar Combine regression run
 (`ojjul_regression`) was staged on port 4260 to re-verify the nine earlier fixes
