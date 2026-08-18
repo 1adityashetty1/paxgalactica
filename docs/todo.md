@@ -49,7 +49,16 @@ are deliberately unbuilt.
   The rest of the list (mole, sleeper, cut-out, "a man inside", "put someone on
   the payroll") is untested.
 
-**The "built but never watched running" list is now empty.** Everything on it
+**The "built but never watched running" list is now empty.**
+
+**A 27-turn Meridian run (2026-08-17, $6.77) exercised the lot.** Development
+economics, debt servicing to settlement on both sides, red-line refusal, treaty
+consent, the action-point limit and agent exposure all behaved as documented,
+and a single bad covert decision chained coherently into a lost war and a lost
+hub. It opened items 15 and 16. It also found a cost property worth knowing:
+**an `endturn` with nothing staged skips the reaction call entirely and costs
+$0.000** — `endTurn` gates reactions on `committed.applied > 0` — which is what
+made 27 turns fit in that budget. Everything on it
 was verified by live play on 2026-08-17: the battle report card renders (item
 12), `onComplete` payloads are set by a live resolution call *and* the
 partial-band halving fired (`develop_system` magnitude halved to 1 on a partial),
@@ -173,6 +182,64 @@ rival's institutions against it is an agent's job (`subversion` +
 `stat_debuff`), which costs credits, risks exposure and is capped. Seven tests.
 `prompts/resolution.md` had been actively inviting it ("your own institutions
 grow more or less restive") and now states both rules.
+
+## 16. OPEN — the agent cap is invisible to the model, so hitting it is a silent no-op
+
+**Found by a 27-turn adversarial Meridian run (2026-08-17, $6.77).** Meridian's
+cap is 3 (`2 + guile modifier`). At the cap, actions phrased as espionage —
+*"buy a clerk in the customs house"*, *"run a network of paid informants"* —
+narrated full success and emitted **zero `deploy_agent` ops**, with no rejection,
+no note, and nothing in state. The player is told the network exists.
+
+The cause is a one-line absence: `grep -rn maxAgentsFor src/model/` returns
+nothing. **The cap is never serialized to any model call.** `serializeStanding`
+lists the agents a viewer knows about but never the ceiling, so the resolution
+pass cannot know it is at the limit. Both branches from there are bad:
+
+- it emits `deploy_agent` → the reducer rejects `illegal_value` with a good
+  message, and the player at least sees a rejection;
+- it emits nothing → **silence**, which is what was observed.
+
+This is the same shape as the arbiter never being shown the red lines it was
+asked to enforce: a rule the model cannot see is a rule it narrates around. The
+fix is symmetrical too — put the ceiling and the current count in
+`serializeState`/`serializeStanding`, so "you are running 3 of 3 operatives"
+is a fact the narrative has to respect.
+
+Worth deciding at the same time whether an over-cap deployment should be
+*trimmed with a note* the way `billConstruction` and `trimOrderEffect` are,
+rather than rejected. Trimming is this project's house style for over-asking.
+
+## 15. OPEN — the same covert act has two prices, depending on how it is reached
+
+Same run. A **declared** action *"assassinate the Drajk raid captain"* failed its
+`guile` check and cost −15 with Drajk and −6 with an onlooker: numbers the
+resolution call chose freely. A **deployed** `assassination` agent firing in the
+tick costs 35 undetected and 40 on exposure, in code (`reducer.ts`, the
+`profile.oneShot ? 40 : 20` and the flat 35).
+
+Neither is wrong on its own — and the playtester's reading that CLAUDE.md's
+"35/40" was contradicted is **not** right, since those figures describe the
+deployed-agent path and that path was never taken. What is real is that one
+fictional act has two mechanical routes with uncoordinated prices, and the
+cheaper one is the one a player reaches by typing a sentence.
+
+Related, from the same run: a declared sabotage *through an existing agent*
+narrated real physical damage ("a rack of munitions goes up") and emitted **no
+mechanical op at all** beyond a disposition change. Covert action declared as
+free text currently has no mechanical floor — it is priced as a check and can
+resolve into pure prose.
+
+### Two ways to close it
+
+- **(A) Route declared covert actions through the agent mechanic**: an
+  assassination attempt becomes a one-shot `deploy_agent`, so it is priced,
+  capped, charged and exposed like every other operation.
+- **(B) Give the resolution prompt the constants** so a narrated covert outcome
+  has to carry the documented cost.
+
+(A) is the structural answer and matches how `form_treaty` was handled — one
+mechanism, reached from one place.
 
 ## 14. FIXED — agent exposure was unreachable, so operatives were permanent
 

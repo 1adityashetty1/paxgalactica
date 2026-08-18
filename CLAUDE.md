@@ -1396,7 +1396,11 @@ and End Turn, which is its own pacing.
 1. Every staged batch is applied to committed state, in declaration order, and
    journaled.
 2. **Reaction call** — the 3–4 most affected factions respond **once**, to the
-   whole settled turn rather than piecemeal to each action. Each faction's
+   whole settled turn rather than piecemeal to each action. Skipped entirely
+   when nothing was staged (`committed.applied > 0`), so ending a turn to let
+   orders tick costs **nothing at all** — which is what makes a long campaign
+   affordable: a 27-turn playtest cost $6.77 because most of its turns were
+   free. Each faction's
    prompt block contains only the orders **it can observe**, so long projects
    are worth hiding and worth raiding.
 3. Income is paid to every faction, every pending order ticks, and whatever
