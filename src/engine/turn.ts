@@ -14,7 +14,14 @@ import {
   MAX_DISSENT_PENALTY,
   REFUSAL_DISSENT,
 } from '../domain/state.js';
-import { extractAgreements, gatherReactions, resolveAction, type ChatMessage } from '../model/calls.js';
+import {
+  appraiseAgreement,
+  extractAgreements,
+  gatherReactions,
+  resolveAction,
+  type ChatMessage,
+} from '../model/calls.js';
+import { classifyPrinciples } from '../domain/compulsions.js';
 import { callStructured } from '../model/client.js';
 import { loadPrompt } from '../model/prompts.js';
 import { mostAffectedFactions, serializeState } from '../model/serialize.js';
@@ -507,6 +514,65 @@ export async function closeChannel(
   const faction = getFaction(campaign.state, factionId);
   const extraction = await extractAgreements(campaign.state, factionId, history);
 
+  // The institutions get a view on a deal, exactly as they do on a decree.
+  //
+  // Without this the arbiter gated the declaration path and nothing gated
+  // extraction, so a red line could be walked past by framing the act as a
+  // negotiation — measured live, the Combine emitted `forgive_debt` against its
+  // own first red line for no dissent at all, while the same intent declared
+  // normally was refused three times. Sharper than a plain missing check:
+  // `establish_debt` and `forgive_debt` are extraction-only by design, so the
+  // ops most tied to that faction's identity were the ones with no check.
+  //
+  // Only when the transcript actually produced ops. A conversation that agreed
+  // nothing changes nothing, and must not cost a call to discover that.
+  const ruling =
+    extraction.output.ops.length > 0
+      ? await appraiseAgreement(campaign.state, factionId, extraction.output.narrative)
+      : null;
+  const actor = getFaction(campaign.state, campaign.state.playerFactionId);
+  const named = ruling?.appraisal.breach?.principles ?? [];
+  const breach = actor && named.length > 0 ? classifyPrinciples(actor, named) : null;
+  const rulingCost = ruling?.costUsd ?? 0;
+
+  // A red line refuses the WHOLE agreement. A deal that requires you to cross
+  // it is not a smaller deal, it is no deal — the same rule `submitAction`
+  // applies to an order the fleet will not carry out. The other party's
+  // concessions go with it, because there is nothing left to concede to.
+  if (breach?.kind === 'red_line') {
+    const by = ruling?.appraisal.breach?.by ?? 'your own institutions';
+    const why =
+      ruling?.appraisal.breach?.reason ||
+      'That is not something this power will put its name to.';
+    campaign.stage(
+      [
+        { op: 'log_narrative', text: `[refused by ${by}] ${why}` },
+        {
+          op: 'adjust_dissent',
+          factionId: campaign.state.playerFactionId,
+          delta: REFUSAL_DISSENT,
+          reason: breach.principle,
+        },
+      ],
+      `refused accord with ${faction?.name ?? factionId}`,
+      why,
+    );
+    const dissent = getFaction(campaign.state, campaign.state.playerFactionId)?.dissent ?? 0;
+    return {
+      narrative: why,
+      refusal: { by, reason: why, violated: breach.principle },
+      staged: campaign.stagedCount - before,
+      notes: [
+        `${by} will not ratify the accord with ${faction?.name ?? factionId}.`,
+        `Breached: ${breach.principle}`,
+        `Dissent ${dissent}/100 — every stat is now reduced by ${dissentPenalty(dissent)}, to a maximum of ${MAX_DISSENT_PENALTY}.`,
+      ],
+      rejections: [],
+      costUsd: extraction.costUsd + rulingCost,
+      ops: campaign.opsStagedSince(before),
+    };
+  }
+
   const staged = await stageWithCorrection(
     campaign,
     extraction.output.ops,
@@ -519,12 +585,45 @@ export async function closeChannel(
     'extraction',
   );
 
+  // A compulsion is a price, not a wall: the accord stands and the institutions
+  // charge for having been overruled — the same bargain a declared action gets.
+  const notes = [...staged.notes];
+  let defiance: ActionOutcome['defiance'] = null;
+  if (breach?.kind === 'compulsion') {
+    const by = ruling?.appraisal.breach?.by ?? 'your own institutions';
+    defiance = {
+      by,
+      reason: ruling?.appraisal.breach?.reason || 'It was agreed over their objection.',
+      violated: breach.principle,
+    };
+    campaign.stage(
+      [
+        {
+          op: 'adjust_dissent',
+          factionId: campaign.state.playerFactionId,
+          delta: COMPULSION_BREACH_DISSENT,
+          reason: breach.principle,
+        },
+        { op: 'log_narrative', text: `[objected to by ${by}] ${defiance.reason}` },
+      ],
+      `objection to the accord with ${faction?.name ?? factionId}`,
+      '',
+    );
+    const dissent = getFaction(campaign.state, campaign.state.playerFactionId)?.dissent ?? 0;
+    notes.push(
+      `${by} objected to the accord and it stands anyway.`,
+      `Defied: ${breach.principle}`,
+      `Dissent +${COMPULSION_BREACH_DISSENT}, now ${dissent}/100 — every stat is reduced by ${dissentPenalty(dissent)}, to a maximum of ${MAX_DISSENT_PENALTY}.`,
+    );
+  }
+
   return {
     narrative: extraction.output.narrative,
+    defiance,
     staged: campaign.stagedCount - before,
-    notes: staged.notes,
+    notes,
     rejections: staged.rejections,
-    costUsd: extraction.costUsd + staged.costUsd,
+    costUsd: extraction.costUsd + staged.costUsd + rulingCost,
     // Extraction is the one pass that can turn conversation into ops, so seeing
     // exactly what it read out of a transcript matters more here than anywhere.
     ops: campaign.opsStagedSince(before),

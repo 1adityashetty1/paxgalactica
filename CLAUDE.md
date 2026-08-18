@@ -566,6 +566,22 @@ runs to thousands of tokens of dialect notes for Arkanis alone. Handing a
 bounded classification call the whole character sheet would have roughly doubled
 the price of every action in the game.
 
+**A negotiated deal is held to the same lines as a declared order.** The arbiter
+gated `resolveAction` and nothing gated extraction, so a red line could be
+walked past by framing the act as a deal — measured live, the Combine emitted
+`forgive_debt` against its own first red line for no dissent at all, while the
+same intent declared normally was refused three times. That was sharper than a
+plain missing check, because `establish_debt` and `forgive_debt` are
+extraction-only *by design*: the two ops most tied to that faction's identity
+were the ones with nothing watching them. `closeChannel` now appraises what was
+agreed before staging it — one Haiku call, and **only when the transcript
+actually produced ops**, since a conversation that agreed nothing must not cost
+a call to discover that. A red line refuses the *whole* accord (a deal that
+needs you to cross it is no deal); a compulsion lets it stand and charges. The
+check is scoped to the acting faction by construction, because the arbiter
+appraises from `playerFactionId` — the other party's concessions are theirs to
+make and cannot trip your line.
+
 A red-line ruling is also **cheaper** than what it replaces: it skips the Sonnet
 resolution call entirely, so the most flagrant actions in the game now cost
 about `$0.022` instead of `$0.073` — measured live.
@@ -896,6 +912,21 @@ costs the breaker 25 disposition with the other party.
 `successChance` is computed in code from the owner's guile against the target's
 resolve, never chosen by a model. Agents resolve each tick against the same
 seeded d20 as everything else.
+
+**Exposure is read off the top of the die** — `roll >= 21 - exposureRisk` — and
+that is not a detail. It was written as `roll <= exposureRisk` inside the
+failure branch, which looks right and fired essentially never: a roll succeeds
+when `roll * 5 <= successChance`, so rolls `1..floor(successChance / 5)` never
+reach the branch at all, and those are exactly the low rolls the risk test was
+looking for. `successChance` floors at 5, so a *surveillance* operative could
+not be exposed at any stat pairing in the game. Measured before the fix: 80
+operatives, five owner/target pairings, 40 turns each — **zero exposures**.
+Nobody noticed because a burned agent is a non-event; you observe nothing rather
+than something visibly wrong. Reading the same risk off the high end keeps the
+intent and makes the ladder real: mean survival 18.1 turns for a watcher, 6.8
+for a saboteur, 47% caught per assassination against a claimed 45%. Competence
+still protects — an operative good enough to succeed on all but a natural 20 is
+only caught on that 20, which is 5% rather than nothing.
 
 **Assassination is a strike, not a posting.** The operative is spent after one
 attempt either way; success deals four times the declared effect and costs the

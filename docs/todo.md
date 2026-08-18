@@ -285,7 +285,27 @@ worth a `pnpm balance` check, though the doctrine bots do not deploy agents.
 - **NPCs really do deploy against the player.** By turn 2 the Combine had two
   surveillance operatives on Meridian worlds (`slu-1`, `tio-1`) at 95%/turn.
 
-## 13. OPEN — a red line can be walked past through diplomacy
+## 13. FIXED — a red line could be walked past through diplomacy
+
+**FIXED (option A): `closeChannel` appraises what was agreed before staging it.**
+One Haiku call, and only when the transcript actually produced ops — a
+conversation that agreed nothing changes nothing and must not cost a call to
+discover that. A **red line refuses the whole accord** (a deal that needs you to
+cross it is no deal, the same rule an unexecutable order gets) and charges
+`REFUSAL_DISSENT`; a **compulsion lets it stand** and charges
+`COMPULSION_BREACH_DISSENT`, exactly as on the declaration path.
+
+Scoped to the acting faction by construction: the arbiter appraises from
+`playerFactionId`, so a line only the *other* power holds is not on the sheet
+being matched and cannot trip yours. Four tests, including the live case that
+found it — a `forgive_debt` framed as a renegotiation now leaves `debt-0`
+untouched and costs 8 dissent.
+
+The original write-up follows.
+
+---
+
+## 13 (original) — a red line can be walked past through diplomacy
 
 **Found by an adversarial Ojjul Nar playtest (2026-08-17, $1.67).** The arbiter's
 breach ruling is wired into `appraiseAction` -> `resolveAction`. The **extraction

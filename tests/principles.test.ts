@@ -37,7 +37,7 @@ vi.mock('../src/model/client.js', () => ({
 }));
 
 const { resolveAction } = await import('../src/model/calls.js');
-const { submitAction } = await import('../src/engine/turn.js');
+const { closeChannel, submitAction } = await import('../src/engine/turn.js');
 const { Campaign } = await import('../src/engine/campaign.js');
 const { createSeedState } = await import('../src/seed/scenario.js');
 const { COMPULSION_BREACH_DISSENT, REFUSAL_DISSENT } = await import('../src/domain/state.js');
@@ -548,5 +548,144 @@ describe('the most severe principle named is the one that applies', () => {
 
   it('ignores lines the faction does not hold', () => {
     expect(classifyPrinciples(combine(), ['the Combine rises at dawn'])).toBeNull();
+  });
+});
+
+/**
+ * A negotiated deal is held to the same principles as a declared order.
+ *
+ * The arbiter gated `resolveAction` and nothing gated extraction, so a red line
+ * could be walked past by framing the act as a deal. Found live: the Combine,
+ * whose first red line is "will not forgive an unpaid debt — the debt is the
+ * whole instrument of control", negotiated a "renegotiation" with Drajk and the
+ * extraction pass emitted `forgive_debt` against that line with no refusal, no
+ * defiance and no dissent. The same intent declared as an ordinary action was
+ * refused three separate times.
+ *
+ * Sharper than a plain missing check: `establish_debt` and `forgive_debt` are
+ * extraction-only *by design*, so the two ops most tied to that faction's
+ * identity were exactly the ones with nothing watching them.
+ */
+describe('an accord cannot launder a red line', () => {
+  const NO_FORGIVING =
+    'will not forgive an unpaid debt — the debt is the whole instrument of control';
+  const forgiveOps = [
+    { op: 'forgive_debt', debtId: 'debt-0', reason: 'superseded by renegotiated terms' },
+  ];
+  const said = [
+    { speaker: 'player' as const, text: 'Let us restructure what you owe.' },
+    { speaker: 'faction' as const, text: 'Name the terms.' },
+  ];
+
+  it('refuses the whole agreement, stages none of it, and charges dissent', async () => {
+    scripted = {
+      extraction: { narrative: 'The old note is written off and replaced.', ops: forgiveOps },
+      appraisal: appraisal({
+        breach: {
+          kind: 'red_line',
+          principles: [NO_FORGIVING],
+          how: 'it writes off a debt that has not been paid',
+          by: 'the Council of Factors',
+          reason: 'The ledger is the instrument. We do not tear it up.',
+        },
+      }),
+    };
+    const campaign = Campaign.start('hutt', 'test-accord-redline');
+
+    const outcome = await closeChannel(campaign, 'krayt', said);
+
+    expect(outcome.refusal?.violated).toBe(NO_FORGIVING);
+    // The debt is untouched: the deal did not happen at all.
+    expect(campaign.state.debts.find((d) => d.id === 'debt-0')!.status).toBe('delinquent');
+    const ops = outcome.ops as { op: string }[];
+    expect(ops.some((o) => o.op === 'forgive_debt')).toBe(false);
+    expect(campaign.state.factions.find((f) => f.id === 'hutt')!.dissent).toBe(REFUSAL_DISSENT);
+  });
+
+  it('charges a compulsion and lets the accord stand', async () => {
+    scripted = {
+      extraction: { narrative: 'A favour is done for nothing in return.', ops: [] },
+      appraisal: appraisal(),
+    };
+    // An accord that agreed nothing must not even cost an arbitration call.
+    const quiet = Campaign.start('hutt', 'test-accord-empty');
+    calls.length = 0;
+    await closeChannel(quiet, 'krayt', said);
+    expect(calls.map((c) => c.kind)).toEqual(['extraction']);
+
+    scripted = {
+      extraction: {
+        narrative: 'The Combine gives the Free Worlds a season of grace, asking nothing.',
+        ops: [{ op: 'adjust_disposition', factionId: 'hutt', towardFactionId: 'freeworlds', delta: 5 }],
+      },
+      appraisal: appraisal({
+        breach: {
+          kind: 'compulsion',
+          principles: [
+            'the Combine requires that every favour carry a price; giving something away for goodwill is refused as ruinous precedent',
+          ],
+          how: 'it gives something away for goodwill',
+          by: 'the Council of Factors',
+          reason: 'Nothing leaves this house unpriced.',
+        },
+      }),
+    };
+    const campaign = Campaign.start('hutt', 'test-accord-compulsion');
+
+    const outcome = await closeChannel(campaign, 'freeworlds', said);
+
+    expect(outcome.refusal ?? null).toBeNull();
+    expect(outcome.defiance?.violated).toMatch(/every favour carry a price/);
+    // The accord stands — that is the whole difference from a red line.
+    const ops = outcome.ops as { op: string }[];
+    expect(ops.some((o) => o.op === 'adjust_disposition')).toBe(true);
+    expect(campaign.state.factions.find((f) => f.id === 'hutt')!.dissent).toBe(
+      COMPULSION_BREACH_DISSENT,
+    );
+  });
+
+  it('leaves an ordinary accord alone', async () => {
+    scripted = {
+      extraction: {
+        narrative: 'A trade accord is signed.',
+        ops: [{ op: 'adjust_disposition', factionId: 'hutt', towardFactionId: 'meridian', delta: 5 }],
+      },
+      appraisal: appraisal(),
+    };
+    const campaign = Campaign.start('hutt', 'test-accord-clean');
+
+    const outcome = await closeChannel(campaign, 'meridian', said);
+
+    expect(outcome.refusal ?? null).toBeNull();
+    expect(outcome.defiance ?? null).toBeNull();
+    expect(campaign.state.factions.find((f) => f.id === 'hutt')!.dissent).toBe(0);
+    expect((outcome.ops as { op: string }[]).length).toBeGreaterThan(0);
+  });
+
+  it('does not charge the player for the other party’s own concessions', async () => {
+    // The check is scoped to the acting faction by construction: the arbiter
+    // appraises from `playerFactionId`, so a line only the OTHER power holds is
+    // not on the sheet being matched and cannot be a breach.
+    scripted = {
+      extraction: {
+        narrative: 'The Free Worlds agree to let a Combine factor sit at Pell Reach.',
+        ops: [{ op: 'adjust_disposition', factionId: 'freeworlds', towardFactionId: 'hutt', delta: 5 }],
+      },
+      appraisal: appraisal({
+        breach: {
+          kind: 'red_line',
+          principles: ['will never accept occupation or a protectorate, on any terms, however generous'],
+          how: 'it seats a foreign factor on Arkanis soil',
+          by: 'the assembly of the Drift',
+          reason: 'That is the Drift’s line, not the Combine’s.',
+        },
+      }),
+    };
+    const campaign = Campaign.start('hutt', 'test-accord-other-sheet');
+
+    const outcome = await closeChannel(campaign, 'freeworlds', said);
+
+    expect(outcome.refusal ?? null).toBeNull();
+    expect(campaign.state.factions.find((f) => f.id === 'hutt')!.dissent).toBe(0);
   });
 });
