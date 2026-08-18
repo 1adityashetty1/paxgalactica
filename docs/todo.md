@@ -11,43 +11,16 @@ are deliberately unbuilt.
 
 - The open half of item 5 — whether combat wants a richer multi-round resolver.
   Still a genuine design question, and the battle report was deliberately shaped
-  as rounds so it stays cheap either way.
-- ~~**Arkanis sits flat at 71/turn for a whole 30-turn balance run**~~
-  **EXPLAINED AND FIXED — it was the harness, not the balance.** `sortie`
-  requires a single base holding the *whole* blow, and a bot asks for
-  `garrison * 3 + 4`. The Drift wants 16 hulls for Sennex and keeps a navy of 31
-  spread 10/7/8/6, so no base ever qualified: `sortie` returned `[]` and the
-  Arkanis bot issued **no order of any kind for thirty turns**. The flat line
-  was the harness never letting the faction move.
-
-  The Vigil bot already solved this and carries the comment that says so —
-  *"it masses first, then strikes... Without the massing step it never attacked
-  at all, and a crusader that never crusades tests nothing."* The lesson was
-  learned once and never applied to Arkanis, which now gets the same
-  mass-then-strike step. It takes Sennex on turn 5 and runs at **97/turn**
-  (territory 177 → 209, 4 → 5 systems). Every other power's numbers are
-  unchanged, because only this bot's behaviour changed.
-
-  **A first attempt was wrong in an instructive way.** Relaxing `sortie` itself
-  to send a half-force from the largest base unblocked Arkanis *and* made every
-  bot far more aggressive: the Vigil took 12 of 25 systems at 494/turn, Meridian
-  collapsed to one world at −122, and the balance floor test failed. A shared
-  helper is the wrong place to fix one faction's blindness.
-
-  It is still flat *after* turn 5, but now for an honest reason: Sennex was the
-  only unaligned world in the Arkanis Drift, and the doctrine takes nothing
-  beyond its own doorstep. A turtle with one thing to take is flat once it has
-  taken it.
-- **Meridian is now the suspicious flat line** — pinned at exactly 24/turn from
-  turn 10 to turn 30, having fallen from 277. Worth the same treatment: is that
-  the free-trade bot running out of moves, or the economy?
+  as rounds so it stays cheap either way. **The largest thing left in this file.**
+- The open half of item 15 — a declared covert action and a deployed operative
+  are two routes to one act with uncoordinated prices. Routing the first through
+  `deploy_agent` is the structural answer and is a real refactor.
 - **Drajk has one compulsion against two red lines** — the thinnest sheet of the
   five. Honest for a faction defined by refusal, worth a look if it reads flat.
-- **The arbiter's espionage vocabulary is only partly probed.** "Turn one of
-  their officers" produced a `commitment` (`turned_officer`) rather than a
-  `deploy_agent` — a durable arrangement with no espionage mechanic behind it.
-  The rest of the list (mole, sleeper, cut-out, "a man inside", "put someone on
-  the payroll") is untested.
+- **The espionage vocabulary is partly probed.** "Listening post" and "put
+  someone on the payroll" produce `establish_commitment` rather than
+  `deploy_agent` — the same fictional act reaching two mechanisms. Item 16's
+  prompt work may have closed this; it has not been re-probed live.
 
 **The "built but never watched running" list is now empty.**
 
@@ -183,7 +156,25 @@ rival's institutions against it is an agent's job (`subversion` +
 `prompts/resolution.md` had been actively inviting it ("your own institutions
 grow more or less restive") and now states both rules.
 
-## 16. OPEN — the agent cap is invisible to the model, so hitting it is a silent no-op
+## 16. FIXED — the agent cap was invisible to the model, so hitting it was a silent no-op
+
+**FIXED.** `serializeStanding` now carries the ceiling as well as the list:
+`Your operatives: N of M`, and at the limit an explicit *"AT YOUR LIMIT. You
+cannot place another until one is recalled or burned."* Counted from
+`liveAgentsOf`, so a burned operative frees a slot. Three tests.
+
+`prompts/resolution.md` (now v6) gained the other half — **"covert action is the
+agent mechanic, or it is nothing"**: spying, sabotage, bribery and turning an
+officer are `deploy_agent`, and narrating a covert effect with no op for it (a
+munitions rack going up with no `hull_damage`, a bought clerk with no operative)
+is called out as the worst outcome available. That also answers the sabotage
+half of item 15.
+
+The original write-up follows.
+
+---
+
+## 16 (original) — the agent cap is invisible to the model
 
 **Found by a 27-turn adversarial Meridian run (2026-08-17, $6.77).** Meridian's
 cap is 3 (`2 + guile modifier`). At the cap, actions phrased as espionage —
@@ -210,7 +201,20 @@ Worth deciding at the same time whether an over-cap deployment should be
 *trimmed with a note* the way `billConstruction` and `trimOrderEffect` are,
 rather than rejected. Trimming is this project's house style for over-asking.
 
-## 15. OPEN — the same covert act has two prices, depending on how it is reached
+## 15. PARTLY FIXED — the same covert act has two prices, depending on how it is reached
+
+**The narrated-with-no-op half is fixed** by `prompts/resolution.md` v6 (see item
+16): covert action is the agent mechanic or it is nothing, and narrating a
+covert effect without emitting an op for it is now called out explicitly.
+
+**The two-prices half is still open**, and it is a design call rather than a
+bug: a declared assassination costs whatever the resolution call picks, while a
+deployed assassination agent costs 35 or 40 in code. Closing it properly means
+option (A) below — routing a declared covert action through `deploy_agent` so it
+is priced, capped, charged and exposed like every other operation, the way
+`form_treaty` was reduced to one path. That is a real refactor and is not done.
+
+
 
 Same run. A **declared** action *"assassinate the Drajk raid captain"* failed its
 `guile` check and cost −15 with Drajk and −6 with an onlooker: numbers the

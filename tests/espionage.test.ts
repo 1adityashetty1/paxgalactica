@@ -3,6 +3,7 @@ import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { MISSION_PROFILE, type AgentMission } from '../src/domain/diplomacy.js';
 import type { WorldState } from '../src/domain/state.js';
+import { serializeStanding } from '../src/model/serialize.js';
 
 /**
  * Agents have to be catchable.
@@ -120,5 +121,61 @@ describe('an operative can actually be caught', () => {
       if (!succeeded && roll >= 21 - risk) exposingRolls.push(roll);
     }
     expect(exposingRolls).toEqual([20]);
+  });
+});
+
+/**
+ * The cap has to be visible, or the model narrates around it.
+ *
+ * `maxAgentsFor` had no reader anywhere in `src/model/`, so no call knew a
+ * faction was at its limit. Found in a 27-turn playtest: at 3 of 3, an action
+ * phrased "buy a clerk in the customs house" produced a full success story and
+ * **zero ops** — no rejection, no note, nothing in state — because the model
+ * never emitted the op that would have been refused. Same shape as the arbiter
+ * never being shown the red lines it was asked to enforce.
+ */
+describe('the model can see how many operatives it is running', () => {
+  it('states the count and the ceiling', () => {
+    const state = createSeedState('meridian');
+    const block = serializeStanding(state, 'meridian');
+    // Meridian: guile 13 -> 2 + 1.
+    expect(block).toMatch(/Your operatives: 0 of 3/);
+    expect(block).toMatch(/room for 3 more/);
+  });
+
+  it('says so plainly when there is no room left', () => {
+    let state = createSeedState('meridian');
+    const targets = state.systems.filter((x) => x.controllerFactionId === 'vigil').slice(0, 3);
+    state = applyOps(
+      state,
+      targets.map((t) => ({
+        op: 'deploy_agent', ownerFactionId: 'meridian', systemId: t.id,
+        mission: 'surveillance', effect: { kind: 'intel', perTurn: 1 }, cover: '',
+      })),
+      'model',
+      'meridian',
+    ).state;
+
+    const block = serializeStanding(state, 'meridian');
+    expect(block).toMatch(/Your operatives: 3 of 3/);
+    expect(block).toMatch(/AT YOUR LIMIT/);
+  });
+
+  it('counts only live operatives, so a burned one frees a slot', () => {
+    let state = createSeedState('meridian');
+    const target = state.systems.find((x) => x.controllerFactionId === 'vigil')!;
+    state = applyOps(
+      state,
+      [{
+        op: 'deploy_agent', ownerFactionId: 'meridian', systemId: target.id,
+        mission: 'surveillance', effect: { kind: 'intel', perTurn: 1 }, cover: '',
+      }],
+      'model',
+      'meridian',
+    ).state;
+    expect(serializeStanding(state, 'meridian')).toMatch(/Your operatives: 1 of 3/);
+
+    state.agents[0]!.exposed = true;
+    expect(serializeStanding(state, 'meridian')).toMatch(/Your operatives: 0 of 3/);
   });
 });
