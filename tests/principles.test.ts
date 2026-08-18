@@ -38,7 +38,7 @@ vi.mock('../src/model/client.js', () => ({
 
 const { resolveAction } = await import('../src/model/calls.js');
 const { closeChannel, submitAction } = await import('../src/engine/turn.js');
-const { Campaign } = await import('../src/engine/campaign.js');
+const { ACTION_POINTS_PER_TURN, Campaign } = await import('../src/engine/campaign.js');
 const { createSeedState } = await import('../src/seed/scenario.js');
 const { COMPULSION_BREACH_DISSENT, REFUSAL_DISSENT } = await import('../src/domain/state.js');
 const { classifyPrinciple, classifyPrinciples } = await import('../src/domain/compulsions.js');
@@ -687,5 +687,92 @@ describe('an accord cannot launder a red line', () => {
 
     expect(outcome.refusal ?? null).toBeNull();
     expect(campaign.state.factions.find((f) => f.id === 'hutt')!.dissent).toBe(0);
+  });
+});
+
+/**
+ * Action points: you may declare two things, then time has to move.
+ *
+ * Without a limit there is no reason to end a turn except to let orders tick,
+ * so a player can resolve a dozen actions against a frozen board while every
+ * NPC waits politely. The interesting part is not the counter, it is which
+ * outcomes spend one — an action the world never let you attempt must be free,
+ * or the arbiter saying "you cannot do that" becomes a punishment for asking.
+ */
+describe('two actions, then the turn has to end', () => {
+  const clean = () => ({
+    appraisal: appraisal(),
+    resolution: { narrative: 'It is done.', ops: [] },
+  });
+
+  it('spends one per ordinary action and then refuses, for free', async () => {
+    scripted = clean();
+    const campaign = Campaign.start('meridian', 'test-ap');
+    expect(campaign.actionPointsLeft).toBe(ACTION_POINTS_PER_TURN);
+
+    await submitAction(campaign, 'Send a courier.');
+    expect(campaign.actionPointsLeft).toBe(1);
+    await submitAction(campaign, 'Send another courier.');
+    expect(campaign.actionPointsLeft).toBe(0);
+
+    calls.length = 0;
+    const third = await submitAction(campaign, 'Send a third courier.');
+    // No model call at all: running out of turn has to be free to discover.
+    expect(calls).toHaveLength(0);
+    expect(third.costUsd).toBe(0);
+    expect(third.staged).toBe(0);
+    expect(third.notes.join(' ')).toMatch(/End the turn/);
+  });
+
+  it('does not charge for an action the arbiter ruled impossible', async () => {
+    scripted = { appraisal: appraisal({ admissible: false, reason: 'You hold no fleet there.' }) };
+    const campaign = Campaign.start('meridian', 'test-ap-inadmissible');
+
+    await submitAction(campaign, 'Attack with the fleet I do not have.');
+
+    expect(campaign.actionPointsLeft).toBe(ACTION_POINTS_PER_TURN);
+  });
+
+  it('does not charge for being redirected to a channel', async () => {
+    scripted = {
+      appraisal: appraisal({
+        negotiation: { withFactionIds: ['vigil'], what: 'a pact', supported: true },
+      }),
+    };
+    const campaign = Campaign.start('meridian', 'test-ap-redirect');
+
+    await submitAction(campaign, 'Sign a pact with the Vigil.');
+
+    expect(campaign.actionPointsLeft).toBe(ACTION_POINTS_PER_TURN);
+  });
+
+  it('DOES charge for a refusal, so red lines cannot be probed all day', async () => {
+    scripted = {
+      appraisal: appraisal({
+        breach: {
+          kind: 'red_line',
+          principles: ['will not close a lane'],
+          how: 'it closes a lane',
+          by: 'the Trade Council',
+          reason: 'Closed lanes are bad for everyone, including the closer.',
+        },
+      }),
+    };
+    const campaign = Campaign.start('meridian', 'test-ap-refusal');
+
+    await submitAction(campaign, 'Blockade the Kessel approaches.');
+
+    expect(campaign.actionPointsLeft).toBe(ACTION_POINTS_PER_TURN - 1);
+  });
+
+  it('restores the allowance when the turn lands', async () => {
+    scripted = clean();
+    const campaign = Campaign.start('meridian', 'test-ap-reset');
+    await submitAction(campaign, 'Send a courier.');
+    expect(campaign.actionPointsLeft).toBe(1);
+
+    campaign.commitTurn();
+
+    expect(campaign.actionPointsLeft).toBe(ACTION_POINTS_PER_TURN);
   });
 });

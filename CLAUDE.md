@@ -1354,6 +1354,34 @@ There are exactly **two kinds of action**: general actions, and diplomatic
 chats. Both are *declared* while time is paused and both land on the **next
 timestamp**. Time advances only on `:endturn`.
 
+### Two actions a turn
+
+`ACTION_POINTS_PER_TURN` is **2**, held on `Campaign` and reset by the same
+thing that clears the staged batches. Without a limit there is no reason to ever
+end a turn except to let orders tick, so a player could resolve a dozen actions
+against a frozen board while every NPC waited politely.
+
+Deliberately **not** in `WorldState`. It is a pacing rule about the player's
+turn, not a fact about the galaxy: no faction has action points, nothing in the
+reducer reads them, and putting them in state would push them through the
+schema, every save file and every replay for no benefit. It is counted as
+*declarations* rather than staged batches, because a correction pass stages a
+second batch and a refusal stages one of its own — `stagedCount` would charge
+two points for one order and a point for being told no.
+
+Which outcomes spend one is the part that matters:
+
+| outcome | spends |
+|---|---|
+| an ordinary action, however it rolls | yes |
+| your institutions **refuse** it | **yes** — a free retry would let a player probe their own red lines all day |
+| the arbiter rules it **inadmissible** | no — the world never let you attempt it |
+| the arbiter **redirects** it to a channel | no — a redirect is not an act, and charging would make it feel like a penalty for asking |
+
+The check runs before the arbitration call, so discovering you are out of turn
+costs nothing. Diplomacy is unmetered: a channel already blocks the command line
+and End Turn, which is its own pacing.
+
 ### Declaring (time paused)
 
 1. Player types free text, or a `:`/`/` command.

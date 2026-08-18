@@ -499,3 +499,16 @@ ul { margin: 0; padding-left: 1.1em; }
 .battle-side-label { color: var(--dim); width: 62px; flex-shrink: 0; }
 .battle-contingent { white-space: nowrap; }
 .battle-lost { color: var(--bad); }
+
+/* Action points, beside the command line. Two dots read faster than "2/2", and
+   a spent allowance has to be visible or running out looks like a broken app
+   rather than a rule of the game. */
+.ap { display: inline-flex; gap: 4px; align-items: center; margin-right: 2px; }
+.ap-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--good, #4ade80);
+}
+.ap-dot.used { background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
+.ap-spent .ap-dot { box-shadow: inset 0 0 0 1px #7f1d1d; }

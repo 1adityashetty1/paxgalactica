@@ -8,7 +8,7 @@ import {
   ServerEventSchema,
 } from '../src/api/contract.js';
 import { buildBriefing } from '../src/engine/briefing.js';
-import { Campaign } from '../src/engine/campaign.js';
+import { Campaign, ACTION_POINTS_PER_TURN } from '../src/engine/campaign.js';
 import { MemoryCampaignStore } from '../src/engine/store.js';
 
 const campaignWithTurn = () => {
@@ -74,6 +74,7 @@ describe('the contract accepts real engine output', () => {
       briefing: buildBriefing(campaign.state, report),
       openChannel: null,
       channelHistory: [],
+      actionPoints: { left: campaign.actionPointsLeft, perTurn: ACTION_POINTS_PER_TURN },
       name: campaign.name,
     };
     const parsed = CampaignViewSchema.safeParse(view);
@@ -94,6 +95,7 @@ describe('the contract accepts real engine output', () => {
       briefing: buildBriefing(campaign.state, report),
       openChannel: null,
       channelHistory: [{ speaker: 'player' as const, text: 'hello' }],
+      actionPoints: { left: 1, perTurn: ACTION_POINTS_PER_TURN },
       name: 'contract',
     };
     const wire = JSON.parse(JSON.stringify(view));

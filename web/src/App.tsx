@@ -303,6 +303,17 @@ export function App() {
             }}
           >
             <span className="prompt">turn {view.state.turn} ▸</span>
+            {/* The allowance has to be on screen next to the input, or running
+                out reads as the app breaking rather than as a rule. Dots, not a
+                number: two of anything is faster to read as a shape. */}
+            <span
+              className={`ap${view.actionPoints.left === 0 ? ' ap-spent' : ''}`}
+              title={`${view.actionPoints.left} of ${view.actionPoints.perTurn} actions left this turn`}
+            >
+              {Array.from({ length: view.actionPoints.perTurn }, (_, i) => (
+                <span key={i} className={i < view.actionPoints.left ? 'ap-dot' : 'ap-dot used'} />
+              ))}
+            </span>
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -311,12 +322,19 @@ export function App() {
                   ? 'Working…'
                   : activeChannel
                     ? 'Close the channel to declare actions'
-                    : 'Declare an action, or :help'
+                    : view.actionPoints.left === 0
+                      ? 'No actions left — end the turn'
+                      : 'Declare an action, or :help'
               }
               disabled={!!busy || !!activeChannel}
               autoFocus
             />
-            <button type="submit" disabled={!!busy || !!activeChannel || !input.trim()}>
+            <button
+              type="submit"
+              disabled={
+                !!busy || !!activeChannel || !input.trim() || view.actionPoints.left === 0
+              }
+            >
               Send
             </button>
             <button

@@ -25,7 +25,7 @@ import { classifyPrinciples } from '../domain/compulsions.js';
 import { callStructured } from '../model/client.js';
 import { loadPrompt } from '../model/prompts.js';
 import { mostAffectedFactions, serializeState } from '../model/serialize.js';
-import type { Campaign } from './campaign.js';
+import { ACTION_POINTS_PER_TURN, type Campaign } from './campaign.js';
 
 export interface ReactionView {
   factionId: string;
@@ -240,6 +240,25 @@ async function commitWithCorrection(
  * yet — they react once, at end of turn, to the whole settled world.
  */
 export async function submitAction(campaign: Campaign, action: string): Promise<ActionOutcome> {
+  // Checked before anything is spent. The arbiter costs real money, so running
+  // out of turn has to be free to discover.
+  if (campaign.actionPointsLeft <= 0) {
+    return {
+      narrative: `Nothing further will move until the turn ends. You have used all ${ACTION_POINTS_PER_TURN} actions.`,
+      refusal: null,
+      defiance: null,
+      staged: 0,
+      notes: [
+        `No actions left this turn (${ACTION_POINTS_PER_TURN} per turn).`,
+        'End the turn to let orders tick, income land and the other powers answer.',
+      ],
+      rejections: [],
+      costUsd: 0,
+      check: null,
+      ops: [],
+    };
+  }
+
   const before = campaign.stagedCount;
   // The salt keeps two declarations in the same turn from sharing a roll,
   // while staying a pure function of state so replay is unaffected.
@@ -251,6 +270,8 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
   // The arbiter ruled it could not be attempted. Nothing was rolled and
   // nothing is staged — distinct from a failed check (attempted, went badly)
   // and from a refusal (your own institutions would not carry it out).
+  // Deliberately BEFORE any point is spent: the arbiter has ruled the thing
+  // cannot be attempted, so nothing happened and there is nothing to charge for.
   if (resolution.output.inadmissible) {
     return {
       narrative: resolution.output.narrative,
@@ -267,6 +288,8 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
   // A negotiation, not a decree. Costs nothing, stages nothing, charges no
   // dissent: the player asked for something reasonable and is being told where
   // the mechanism for it actually lives.
+  // Also free: being told "that is a conversation" is a redirect, not an act.
+  // Charging for it would make the redirect feel like a penalty for asking.
   if (resolution.output.negotiation) {
     const n = resolution.output.negotiation;
     return {
@@ -290,6 +313,9 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
   }
 
   if (resolution.output.refusal) {
+    // Spent. Your institutions refusing is a real event with a real cost, and a
+    // free retry would let a player probe their own red lines all day.
+    campaign.spendActionPoint();
     const refusal = resolution.output.refusal;
     const faction = getFaction(campaign.state, campaign.state.playerFactionId);
     const dissent = Math.min(100, (faction?.dissent ?? 0) + REFUSAL_DISSENT);
@@ -337,6 +363,8 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
   // This replaced retiring principles. A player who means to change what their
   // power is now does it by insisting, repeatedly, and absorbing the cost, which
   // leaves nothing to desync between the character sheet and the fiction.
+  campaign.spendActionPoint();
+
   const defiance = resolution.output.defiance ?? null;
 
   // The check is recorded so a campaign's luck is auditable after the fact, but
