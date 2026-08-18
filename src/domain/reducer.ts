@@ -1785,7 +1785,26 @@ export function tickTurn(input: WorldState): TickResult {
     if (!succeeded) {
       // A botched operation risks the operative, and how much depends on the
       // mission: a watcher is rarely caught, an assassin usually is.
-      if (roll <= profile.exposureRisk) {
+      //
+      // Exposure is tested on the TOP of the die, not the bottom. It used to
+      // read `roll <= profile.exposureRisk`, which looks right and fires almost
+      // never: a roll succeeds when `roll * 5 <= successChance`, so rolls
+      // `1..floor(successChance / 5)` are exactly the ones that never reach
+      // this branch — and they are exactly the rolls the risk test was looking
+      // for. `successChance` floors at 5, so a *surveillance* operative (risk 1)
+      // could not be exposed at any stat pairing in the game, and only an
+      // assassin below 44% was ever really at risk. Measured before the change:
+      // 80 operatives, five owner/target pairings, 40 turns each — zero
+      // exposures. Nobody noticed because a burned agent is a non-event; you
+      // observe nothing rather than something visibly wrong.
+      //
+      // Reading the same risk off the high end keeps the intent ("a botched
+      // operation risks the operative") and makes the documented ladder real:
+      // 1 in 20 for a watcher through 9 in 20 for an assassin. Competence still
+      // protects — an operative good enough to succeed on all but a natural 20
+      // is only ever exposed on that 20 — which is the right shape, and bounded
+      // at 5% rather than at nothing.
+      if (roll >= 21 - profile.exposureRisk) {
         agent.exposed = true;
         logEvent(
           state,
