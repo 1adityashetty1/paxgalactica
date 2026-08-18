@@ -7,7 +7,7 @@ import type {
 } from '../api/contract.js';
 import { archiveFilename, packCampaign, unpackCampaign } from '../engine/archive.js';
 import { briefingFromState, buildBriefing, type Briefing } from '../engine/briefing.js';
-import { Campaign } from '../engine/campaign.js';
+import { Campaign, ACTION_POINTS_PER_TURN } from '../engine/campaign.js';
 import { FileCampaignStore, type CampaignStore } from '../engine/store.js';
 import { closeChannel, endTurn, submitAction } from '../engine/turn.js';
 import { diplomacyReply, type ChatMessage } from '../model/calls.js';
@@ -90,6 +90,7 @@ export class GameSession {
       briefing: this.lastBriefing,
       openChannel: this.openChannel,
       channelHistory: [...this.channelHistory],
+      actionPoints: { left: campaign.actionPointsLeft, perTurn: ACTION_POINTS_PER_TURN },
       name: campaign.name,
     };
   }

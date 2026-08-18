@@ -566,6 +566,22 @@ runs to thousands of tokens of dialect notes for Arkanis alone. Handing a
 bounded classification call the whole character sheet would have roughly doubled
 the price of every action in the game.
 
+**A negotiated deal is held to the same lines as a declared order.** The arbiter
+gated `resolveAction` and nothing gated extraction, so a red line could be
+walked past by framing the act as a deal — measured live, the Combine emitted
+`forgive_debt` against its own first red line for no dissent at all, while the
+same intent declared normally was refused three times. That was sharper than a
+plain missing check, because `establish_debt` and `forgive_debt` are
+extraction-only *by design*: the two ops most tied to that faction's identity
+were the ones with nothing watching them. `closeChannel` now appraises what was
+agreed before staging it — one Haiku call, and **only when the transcript
+actually produced ops**, since a conversation that agreed nothing must not cost
+a call to discover that. A red line refuses the *whole* accord (a deal that
+needs you to cross it is no deal); a compulsion lets it stand and charges. The
+check is scoped to the acting faction by construction, because the arbiter
+appraises from `playerFactionId` — the other party's concessions are theirs to
+make and cannot trip your line.
+
 A red-line ruling is also **cheaper** than what it replaces: it skips the Sonnet
 resolution call entirely, so the most flagrant actions in the game now cost
 about `$0.022` instead of `$0.073` — measured live.
@@ -896,6 +912,21 @@ costs the breaker 25 disposition with the other party.
 `successChance` is computed in code from the owner's guile against the target's
 resolve, never chosen by a model. Agents resolve each tick against the same
 seeded d20 as everything else.
+
+**Exposure is read off the top of the die** — `roll >= 21 - exposureRisk` — and
+that is not a detail. It was written as `roll <= exposureRisk` inside the
+failure branch, which looks right and fired essentially never: a roll succeeds
+when `roll * 5 <= successChance`, so rolls `1..floor(successChance / 5)` never
+reach the branch at all, and those are exactly the low rolls the risk test was
+looking for. `successChance` floors at 5, so a *surveillance* operative could
+not be exposed at any stat pairing in the game. Measured before the fix: 80
+operatives, five owner/target pairings, 40 turns each — **zero exposures**.
+Nobody noticed because a burned agent is a non-event; you observe nothing rather
+than something visibly wrong. Reading the same risk off the high end keeps the
+intent and makes the ladder real: mean survival 18.1 turns for a watcher, 6.8
+for a saboteur, 47% caught per assassination against a claimed 45%. Competence
+still protects — an operative good enough to succeed on all but a natural 20 is
+only caught on that 20, which is 5% rather than nothing.
 
 **Assassination is a strike, not a posting.** The operative is spent after one
 attempt either way; success deals four times the declared effect and costs the
@@ -1322,6 +1353,34 @@ first if it is the one that crosses into hub status.
 There are exactly **two kinds of action**: general actions, and diplomatic
 chats. Both are *declared* while time is paused and both land on the **next
 timestamp**. Time advances only on `:endturn`.
+
+### Two actions a turn
+
+`ACTION_POINTS_PER_TURN` is **2**, held on `Campaign` and reset by the same
+thing that clears the staged batches. Without a limit there is no reason to ever
+end a turn except to let orders tick, so a player could resolve a dozen actions
+against a frozen board while every NPC waited politely.
+
+Deliberately **not** in `WorldState`. It is a pacing rule about the player's
+turn, not a fact about the galaxy: no faction has action points, nothing in the
+reducer reads them, and putting them in state would push them through the
+schema, every save file and every replay for no benefit. It is counted as
+*declarations* rather than staged batches, because a correction pass stages a
+second batch and a refusal stages one of its own — `stagedCount` would charge
+two points for one order and a point for being told no.
+
+Which outcomes spend one is the part that matters:
+
+| outcome | spends |
+|---|---|
+| an ordinary action, however it rolls | yes |
+| your institutions **refuse** it | **yes** — a free retry would let a player probe their own red lines all day |
+| the arbiter rules it **inadmissible** | no — the world never let you attempt it |
+| the arbiter **redirects** it to a channel | no — a redirect is not an act, and charging would make it feel like a penalty for asking |
+
+The check runs before the arbitration call, so discovering you are out of turn
+costs nothing. Diplomacy is unmetered: a channel already blocks the command line
+and End Turn, which is its own pacing.
 
 ### Declaring (time paused)
 

@@ -174,7 +174,38 @@ rival's institutions against it is an agent's job (`subversion` +
 `prompts/resolution.md` had been actively inviting it ("your own institutions
 grow more or less restive") and now states both rules.
 
-## 14. OPEN — agent exposure is unreachable, so operatives are effectively permanent
+## 14. FIXED — agent exposure was unreachable, so operatives were permanent
+
+**FIXED (option B): exposure is tested on the top of the die**, `roll >= 21 -
+exposureRisk`, instead of the bottom. Re-measured the same way it was found —
+80 operatives, five owner/target pairings, 40 turns each:
+
+| mission | risk | mean turns alive, after |
+|---|---|---|
+| surveillance | 1/20 | 18.1 |
+| theft | 2/20 | 9.4 |
+| sabotage | 3/20 | 6.8 |
+| defection | 4/20 | 6.4 |
+| assassination | 9/20 | 47% caught per attempt (one-shot; claimed 45%) |
+
+Every mission now tracks its documented rate, and the ladder between a watcher
+and an assassin exists for the first time. **Competence still protects**: an
+operative good enough to succeed on all but a natural 20 is only ever caught on
+that 20 — 5%, not the 0% the old comparison produced.
+
+`tests/espionage.test.ts` pins it statistically against the real reducer rather
+than unit-testing the comparison, because the comparison *looked* correct. It
+asserts a watcher can be exposed at all (the regression that measured zero),
+that every persistent mission is caught within a long run, that the safer
+mission survives longer than the riskier one — compared as **survival**, since
+exposure counts saturate over 40 turns — and that an assassin burns at roughly
+its stated rate. Balance is unchanged: the doctrine bots deploy no agents.
+
+The original write-up follows.
+
+---
+
+## 14 (original) — agent exposure is unreachable, so operatives are effectively permanent
 
 **Measured against the real reducer, no model calls: 80 operatives placed across
 five owner/target pairings, ticked 40 turns each. Exposures: zero.** Every
@@ -254,7 +285,27 @@ worth a `pnpm balance` check, though the doctrine bots do not deploy agents.
 - **NPCs really do deploy against the player.** By turn 2 the Combine had two
   surveillance operatives on Meridian worlds (`slu-1`, `tio-1`) at 95%/turn.
 
-## 13. OPEN — a red line can be walked past through diplomacy
+## 13. FIXED — a red line could be walked past through diplomacy
+
+**FIXED (option A): `closeChannel` appraises what was agreed before staging it.**
+One Haiku call, and only when the transcript actually produced ops — a
+conversation that agreed nothing changes nothing and must not cost a call to
+discover that. A **red line refuses the whole accord** (a deal that needs you to
+cross it is no deal, the same rule an unexecutable order gets) and charges
+`REFUSAL_DISSENT`; a **compulsion lets it stand** and charges
+`COMPULSION_BREACH_DISSENT`, exactly as on the declaration path.
+
+Scoped to the acting faction by construction: the arbiter appraises from
+`playerFactionId`, so a line only the *other* power holds is not on the sheet
+being matched and cannot trip yours. Four tests, including the live case that
+found it — a `forgive_debt` framed as a renegotiation now leaves `debt-0`
+untouched and costs 8 dissent.
+
+The original write-up follows.
+
+---
+
+## 13 (original) — a red line can be walked past through diplomacy
 
 **Found by an adversarial Ojjul Nar playtest (2026-08-17, $1.67).** The arbiter's
 breach ruling is wired into `appraiseAction` -> `resolveAction`. The **extraction

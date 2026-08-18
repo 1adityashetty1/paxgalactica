@@ -21,6 +21,23 @@ import type { ChatMessage } from '../model/calls.js';
 export { SAVE_DIR, SaveFileSchema, FileCampaignStore, MemoryCampaignStore } from './store.js';
 export type { CampaignStore, SaveFile } from './store.js';
 
+/**
+ * What a player may declare in one turn before ending it.
+ *
+ * Two is enough for a plan with a hedge — strike and reinforce, court and
+ * build — and few enough that the turn has to end for anything to actually
+ * happen. Without a limit there is no reason to ever end a turn except to let
+ * orders tick, so a player can resolve a dozen actions against a frozen board
+ * while every NPC waits politely.
+ *
+ * Actions the world refused to let you attempt at all do not spend one: an
+ * arbiter ruling of inadmissible, and a redirect to a diplomatic channel, both
+ * mean nothing happened. Being *refused by your own institutions* does spend
+ * one — that is a real event with a real cost, and it is the one case where a
+ * free retry would let a player probe their own red lines all day.
+ */
+export const ACTION_POINTS_PER_TURN = 2;
+
 export interface StagedBatch {
   label: string;
   /** What was proposed. Journaled, so replay reproduces the same rejections. */
@@ -166,6 +183,30 @@ export class Campaign {
     return this.stagedBatches.length;
   }
 
+  /**
+   * Action points: how many things you may declare before time has to move.
+   *
+   * Deliberately **not** in `WorldState`. It is a pacing rule about the player's
+   * turn, not a fact about the galaxy — no faction has action points, nothing in
+   * the reducer reads them, and putting them in state would push them through
+   * the schema, the save file and every replay for no benefit. It lives beside
+   * the staged batches and is reset by the same thing that clears them.
+   *
+   * Counted as *declarations*, not as staged batches: a correction pass stages a
+   * second batch and a refusal stages one of its own, so `stagedCount` would
+   * charge two points for one order and a point for being told no.
+   */
+  private actionsDeclared = 0;
+
+  get actionPointsLeft(): number {
+    return Math.max(0, ACTION_POINTS_PER_TURN - this.actionsDeclared);
+  }
+
+  /** Spend one. Called once per action that was actually attempted. */
+  spendActionPoint(): void {
+    this.actionsDeclared += 1;
+  }
+
   /** Every op declared but not yet landed, for picking who reacts. */
   stagedOps(): unknown[] {
     return this.stagedBatches.flatMap((b) => b.ops);
@@ -253,6 +294,7 @@ export class Campaign {
     }
 
     this.stagedBatches = [];
+    this.actionsDeclared = 0;
     this.state = this.committed;
     return { notes, applied };
   }
