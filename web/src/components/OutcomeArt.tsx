@@ -3,12 +3,17 @@ import { useState } from 'react';
 /**
  * The three ways a declaration produces no ordinary result, as a picture.
  *
- * These are the outcomes the engine already reports as *typed fields* on
- * `ActionOutcome` — `refusal`, `defiance`, `negotiation` — so nothing about the
- * schema, the reducer or the contract had to move to draw them. All three fire
- * on both paths a declaration can take (a declared action, and an accord closed
- * with `/endtalk`), which is why this is one component read from the feed
- * rather than three branches in two callers.
+ * The five outcomes the engine reports as *typed fields* on `ActionOutcome`:
+ * `refusal`, `defiance` and `negotiation` fire on both paths a declaration can
+ * take (a declared action, and an accord closed with `/endtalk`), which is why
+ * this is one component read from the feed rather than branches in two callers.
+ * `inadmissible` and `out-of-actions` are declared-action only — there is no
+ * admissibility ruling on an accord, and diplomacy is unmetered.
+ *
+ * Deliberately NOT on the list: the five check bands. Every rolled action
+ * produces one, so imagery there becomes wallpaper and stops meaning anything.
+ * These five are the ways an action produces *nothing*, which is the thing
+ * worth marking.
  *
  * **In the feed, not on the stage.** A channel is a *mode* and earns the whole
  * stage the map sits in; an outcome is a beat. Taking the map away for one
@@ -21,7 +26,12 @@ import { useState } from 'react';
  * slab, and not a broken-image glyph, which is what an unguarded `<img>` leaves
  * behind for anyone who has not built the assets.
  */
-export type OutcomeArtKind = 'refusal' | 'defiance' | 'negotiation';
+export type OutcomeArtKind =
+  | 'refusal'
+  | 'defiance'
+  | 'negotiation'
+  | 'inadmissible'
+  | 'out-of-actions';
 
 export function OutcomeArt({ kind, alt }: { kind: OutcomeArtKind; alt: string }) {
   const [failed, setFailed] = useState(false);

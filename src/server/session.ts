@@ -221,6 +221,8 @@ export class GameSession {
       refusal: outcome.refusal ?? null,
       defiance: outcome.defiance ?? null,
       negotiation: outcome.negotiation ?? null,
+      inadmissible: outcome.inadmissible ?? null,
+      outOfActions: outcome.outOfActions ?? null,
       staged: outcome.staged,
       ops: outcome.ops,
       notes: outcome.notes,
@@ -345,6 +347,10 @@ export class GameSession {
       refusal: outcome.refusal ?? null,
       defiance: outcome.defiance ?? null,
       negotiation: outcome.negotiation ?? null,
+      // Neither can arise from closing a channel: there is no arbiter
+      // admissibility ruling on an accord, and diplomacy is unmetered.
+      inadmissible: null,
+      outOfActions: null,
       staged: outcome.staged,
       ops: outcome.ops,
       notes: outcome.notes,

@@ -1807,14 +1807,24 @@ automatically.
   can correct. Only the factions that need an override carry one. Both faults were found by looking at the screen, not
   by the suite, which is what the tests now guard. A missing file falls back to
   the colour chip, because a faction row must never render as a hole.
-- **Outcome art** — three images, one for each way a declaration produces no
-  ordinary result: `refusal` (your institutions will not carry the order out),
-  `defiance` (they objected and did it anyway) and `negotiation` (it is not
-  yours to declare). They are exactly the three the engine already reports as
-  *typed fields* on `ActionOutcome`, so drawing them needed no schema, reducer
-  or contract change — `OutcomeArt` reads a kind and a caller-supplied `alt`,
-  and a missing file renders **nothing at all**, falling back to the text
-  treatment that carried these outcomes before there was any art.
+- **Outcome art** — one image for each way a declaration produces no ordinary
+  result. Five, all typed fields on `ActionOutcome`: `refusal` (your
+  institutions will not carry the order out), `defiance` (they objected and did
+  it anyway), `negotiation` (it is not yours to declare), `inadmissible` (the
+  world does not permit it) and `outOfActions` (the turn's allowance is spent).
+  The first three fire on **both** paths a declaration can take — a declared
+  action and an accord closed with `/endtalk` — so one renderer covers both; the
+  last two are declared-action only, since there is no admissibility ruling on
+  an accord and diplomacy is unmetered. `OutcomeArt` reads a kind and a
+  caller-supplied `alt`, and a missing file renders **nothing at all**, falling
+  back to the text treatment that carried these outcomes before there was any
+  art — which is why the two newest kinds could ship their wiring before their
+  images exist.
+
+  Deliberately **not** on the list: the five check bands. Every rolled action
+  produces one, so imagery there becomes wallpaper and stops meaning anything.
+  These five are the ways an action produces *nothing*, which is what is worth
+  marking.
 
   They deliberately do **not** match the portrait set's painterly register, and
   all three carry text. A portrait exists to be recognised as a person you are

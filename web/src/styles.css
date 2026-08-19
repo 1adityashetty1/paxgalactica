@@ -344,6 +344,11 @@ ul { margin: 0; padding-left: 1.1em; }
    picture and its line reading as one thing. */
 .outcome-art.refusal, .outcome-art.defiance { border-left: 2px solid #7f1d1d; }
 .outcome-art.negotiation { border-left: 2px solid var(--accent); }
+/* The world said no, and the turn said no. Neither is your institutions
+   objecting, so neither takes the refusal red. */
+.outcome-art.inadmissible { border-left: 2px solid var(--line); }
+.outcome-art\.out-of-actions,
+.outcome-art.out-of-actions { border-left: 2px solid var(--dim, #666); }
 
 /* ---- export / import ---- */
 

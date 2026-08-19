@@ -55,6 +55,22 @@ export interface ActionOutcome {
     supported: boolean;
     channels: string;
   } | null;
+  /**
+   * Set when the arbiter ruled the action cannot be attempted at all — the
+   * world does not permit it, as distinct from permitting it and having it go
+   * badly. Nothing was rolled, nothing staged, no action point spent.
+   *
+   * `ResolutionOutput` has carried this since the arbiter was split out; it
+   * simply never reached the wire, so the browser could only tell an
+   * inadmissible action from an ordinary one by matching a note string.
+   */
+  inadmissible?: string | null;
+  /**
+   * Set when the declaration was turned away because the turn's actions are
+   * spent. The fifth and last way a declaration produces nothing, and the only
+   * one that is about the player's turn rather than about the world.
+   */
+  outOfActions?: { perTurn: number } | null;
   /** Ops staged by this declaration; they land on `:endturn`. */
   staged: number;
   notes: string[];
@@ -247,6 +263,7 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
       narrative: `Nothing further will move until the turn ends. You have used all ${ACTION_POINTS_PER_TURN} actions.`,
       refusal: null,
       defiance: null,
+      outOfActions: { perTurn: ACTION_POINTS_PER_TURN },
       staged: 0,
       notes: [
         `No actions left this turn (${ACTION_POINTS_PER_TURN} per turn).`,
@@ -276,6 +293,7 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     return {
       narrative: resolution.output.narrative,
       refusal: null,
+      inadmissible: resolution.output.inadmissible,
       staged: 0,
       notes: ['The arbiter ruled this cannot be attempted as things stand.'],
       rejections: [],

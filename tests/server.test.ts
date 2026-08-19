@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   ApiErrorSchema,
   CampaignViewSchema,
+  ActionOutcomeSchema,
   MAX_CHANNEL_MESSAGES,
   ROUTES,
   ServerEventSchema,
@@ -10,6 +11,7 @@ import {
 import { MemoryCampaignStore } from '../src/engine/store.js';
 import { dispatch } from '../src/server/router.js';
 import { GameSession } from '../src/server/session.js';
+import { ACTION_POINTS_PER_TURN } from '../src/engine/campaign.js';
 import { ApiFailure, parseBody, toApiFailure } from '../src/server/errors.js';
 import { serveStatic } from '../src/server/static.js';
 import { z } from 'zod';
@@ -398,6 +400,50 @@ describe('error mapping', () => {
 
   it('parseBody reports the offending field', () => {
     expect(() => parseBody(z.object({ n: z.number() }), { n: 'x' })).toThrow(/n:/);
+  });
+});
+
+/**
+ * The five ways a declaration produces nothing.
+ *
+ * Three were already typed fields on `ActionOutcome`; `inadmissible` and
+ * running out of actions were distinguishable only by matching a note string,
+ * so the browser could not tell them apart from an ordinary outcome and had
+ * nothing to draw. `ResolutionOutput` had carried `inadmissible` since the
+ * arbiter was split out — it simply never reached the wire.
+ */
+describe('the non-outcomes reach the wire', () => {
+  it('flags running out of actions, without spending a model call', async () => {
+    const { session } = await startedSession();
+    // Spend the turn's allowance without touching the network.
+    const campaign = (session as unknown as { campaign: { actionsDeclared: number } }).campaign;
+    campaign.actionsDeclared = ACTION_POINTS_PER_TURN;
+
+    const res = await dispatch(session, 'POST', ROUTES.action, { text: 'one more thing' });
+    expect(res.status).toBe(200);
+    const body = ActionOutcomeSchema.parse(res.body);
+    expect(body.outOfActions).toEqual({ perTurn: ACTION_POINTS_PER_TURN });
+    // Free to discover: the guard runs before the arbiter is paid for.
+    expect(body.costUsd).toBe(0);
+    expect(body.staged).toBe(0);
+    // And it is not any of the other four.
+    expect(body.inadmissible).toBeNull();
+    expect(body.refusal).toBeNull();
+    expect(body.negotiation).toBeNull();
+  });
+
+  it('defaults both fields to null so an ordinary outcome is unambiguous', () => {
+    const parsed = ActionOutcomeSchema.parse({
+      narrative: 'It is done.',
+      staged: 1,
+      notes: [],
+      rejections: [],
+      check: null,
+      costUsd: 0.07,
+      ops: [],
+    });
+    expect(parsed.inadmissible).toBeNull();
+    expect(parsed.outOfActions).toBeNull();
   });
 });
 

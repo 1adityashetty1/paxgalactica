@@ -316,7 +316,27 @@ This is the largest of the three gaps: the game has a full consent mechanism —
 persona, transcript, extraction, treaty formation — and only one of the five
 powers can ever invoke it.
 
-## 18. OPEN — the other two ways an action produces nothing
+## 18. DONE — the other two ways an action produces nothing
+
+**Built.** `inadmissible` and `outOfActions` are now typed fields on
+`ActionOutcome`, carried through the contract, and rendered in the feed through
+`OutcomeArt` like the other three — completing the set of **five ways a
+declaration produces nothing**. No art files exist for them yet; a missing file
+renders nothing at all, so both fall back to exactly the text treatment they had
+before, and dropping the two images in later needs no code change.
+
+`inadmissible` was the one-line change the note below predicted:
+`ResolutionOutput` had carried it since the arbiter was split out, and it simply
+never reached the wire. `outOfActions` carries the allowance rather than a
+reason, because it is the only one of the five that is about the player's turn
+rather than about the world.
+
+Two tests, both confirmed to fail without the fields — one driving the real
+out-of-actions path through `dispatch` (and asserting it still costs `$0`, since
+the guard runs before the arbiter is paid for), one pinning that both default to
+`null` so an ordinary outcome stays unambiguous.
+
+## 18 (original) — the other two ways an action produces nothing
 
 Split out of item 17, which built the three the engine already types. The other
 two are distinguishable today only by matching a note string:
@@ -974,7 +994,10 @@ recorded in the journal so replay stays exact"), and it was recorded on the
 `commit` path and dropped on the `commitTurn` path. Journals written before the
 fix still lack it and still replay as they originally ran. Pinned by a test.
 
-## 9. OPEN — three findings from the first live playtest of this session's work
+## 9. RESOLVED — three findings from the first live playtest of this session's work
+
+> Heading corrected: all three numbered findings and all four bullets in the
+> audit below are individually marked fixed. It was still labelled OPEN.
 
 A 4-turn adversarial playtest as the Ojjul Nar Combine (`saves/ojjul_profiteer.json`,
 ~$1.70) exercised the new mechanics against real model calls for the first time.

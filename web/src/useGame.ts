@@ -13,7 +13,7 @@ export interface Message {
   tone: 'you' | 'narrative' | 'faction' | 'system' | 'error' | 'check' | 'brief' | 'refusal';
   color?: number;
   /**
-   * A picture for one of the three typed non-outcomes, drawn above this line.
+   * A picture for one of the five typed non-outcomes, drawn above this line.
    *
    * Carried on the message rather than pushed as an entry of its own so the
    * image cannot drift away from the sentence explaining it — the feed is
@@ -173,6 +173,31 @@ export function useGame() {
           // The breached line is NOT said here: both refusal paths already put
           // `Breached: …` in `notes`, so saying it as well printed it twice.
           say(outcome.narrative, 'narrative');
+          for (const note of outcome.notes) say(note, 'system');
+          return;
+        }
+        if (outcome.outOfActions) {
+          // The turn's actions are spent. Not a failure and not a ruling about
+          // the world — the one non-outcome that is purely about pacing, and
+          // the only one that costs nothing to discover.
+          sayWithArt(
+            outcome.narrative,
+            'system',
+            'out-of-actions',
+            `No actions left this turn (${outcome.outOfActions.perTurn} per turn). End the turn to continue.`,
+          );
+          for (const note of outcome.notes) say(note, 'system');
+          return;
+        }
+        if (outcome.inadmissible) {
+          // The world does not permit the attempt, as distinct from permitting
+          // it and having it go badly. Nothing was rolled and nothing staged.
+          sayWithArt(
+            outcome.narrative,
+            'narrative',
+            'inadmissible',
+            `That cannot be attempted: ${outcome.inadmissible}`,
+          );
           for (const note of outcome.notes) say(note, 'system');
           return;
         }
