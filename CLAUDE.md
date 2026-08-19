@@ -1756,7 +1756,8 @@ automatically.
   nothing else in the UI answered "where are my ships, and whose are sitting on
   mine". Hulls in a system their owner does not hold are marked `*`.
   (Class is `.fleet-panel`, not `.fleets` — the SVG map layer already owns that.)
-- **Panels** — Factions (stat bars, ethics, disposition, `talk`), System (ships
+- **Panels** — Factions (a portrait thumbnail ringed in the faction's colour,
+  stat bars, ethics, disposition, `talk`), System (ships
   and income *per faction*, lanes, orders), Orders (progress + ETA), Treaties
   (terms, turn limits, wars, agents with effect and success chance), Log
   (filterable — `rejection` and `clamp` entries are debugging gold, so they are
@@ -1777,6 +1778,20 @@ automatically.
   first exchange. Art lives in `web/public/portraits/<factionId>.jpeg` — named
   by **id**, not display name, since the two diverged long ago — and a missing
   file falls back to the faction's name rather than a blank slab.
+
+  The same five images are cropped to 26px faces in the Factions panel
+  (`FactionAvatar`), which is what makes the channel portrait a *recognition*
+  rather than an introduction: before it, the five powers were told apart by a
+  colour chip and a name, and their faces were only ever seen at the moment of
+  negotiation. The crop began as one focal point for all five, on the reasoning
+  that the set was generated to a single framing brief — close, but not true.
+  The Vigil, the Combine and Drajk sit two or three percent right of centre, and
+  the 3x zoom multiplies that into a head visibly against the right edge of the
+  circle, while Meridian and Arkanis looked correct — which is exactly why the
+  assumption survived the first look. There is now a five-entry table of
+  measured focal points, with the offsets derived from it rather than
+  hand-tuned. A missing file falls back to the colour chip, because a faction
+  row must never render as a hole.
 - **Progress** — model calls take 5–15s, so the server names what it is doing
   and the client shows that label verbatim. Without it the app looks broken
   while working perfectly.
