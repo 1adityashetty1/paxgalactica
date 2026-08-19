@@ -12,6 +12,8 @@ const mk = (id: string, edges: string[]): StarSystem => ({
   coords: { x: 0, y: 0 },
   controllerFactionId: null,
   garrison: 0,
+  garrisonMax: 0,
+  ships: {},
   strategicValue: 0,
   hyperlaneEdges: edges,
 });

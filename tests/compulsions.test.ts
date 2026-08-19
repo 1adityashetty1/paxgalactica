@@ -7,9 +7,9 @@ import {
   COMPULSION_DRIFT_DISSENT,
   FactionSchema,
   warsFor,
-  type Op,
   type WorldState,
 } from '../src/domain/state.js';
+import type { OpInput as Op } from '../src/domain/ops.js';
 
 /**
  * Compulsions had one enforcement path — the resolution call refusing a

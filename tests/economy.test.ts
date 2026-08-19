@@ -17,6 +17,7 @@ import {
   AGENT_UPKEEP,
   maxAgentsFor,
 } from '../src/domain/state.js';
+import type { OpInput as Op } from '../src/domain/ops.js';
 
 const fresh = (): WorldState => createSeedState('freeworlds');
 const sys = (s: WorldState, id: string) => s.systems.find((x) => x.id === id)!;

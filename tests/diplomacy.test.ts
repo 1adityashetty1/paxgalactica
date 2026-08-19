@@ -178,7 +178,7 @@ describe('prompts do not drift from the schema', () => {
   });
 
   it('offers only ops the model is actually allowed to emit', () => {
-    const legal = new Set(ModelOpSchema.options.map((o) => o.shape.op.value));
+    const legal = new Set<string>(ModelOpSchema.options.map((o) => o.shape.op.value));
     for (const name of PROMPTS) {
       const text = loadPrompt(name);
       // Scoped to the ops table specifically — other tables in these prompts

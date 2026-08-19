@@ -33,7 +33,7 @@ strictly more setup to solve a problem Node already solves.
 | `pnpm resume <file>` | verify an exported `.tar.gz`, install it, and serve it |
 | `pnpm balance [turns]` | 5 doctrine bots vs the real reducer, no model calls |
 | `pnpm doctor` | full setup check — runtime, deps, binary, auth, port |
-| `pnpm typecheck` / `typecheck:web` | the two tsconfigs — **Vite does not typecheck** |
+| `pnpm typecheck` / `typecheck:web` / `typecheck:tests` | the three tsconfigs — **Vite does not typecheck** |
 
 > An earlier phase shipped an Ink terminal UI. It was retired: it could not run
 > headless, so it could never be tested or driven by an agent. Everything below
@@ -1926,6 +1926,23 @@ docs/         phase-2 prompt series and progress
 `PAXGALACTICA_NO_NETWORK=1`, and the model client throws if a call is attempted
 under it — a test that reaches the network fails loudly rather than billing
 tokens.
+
+**The suite is typechecked, by `tsconfig.tests.json` and `pnpm typecheck:tests`.**
+It cannot be folded into the main config, which emits to `dist` from
+`rootDir: src`; so for most of this project's life `tests/` was in that config's
+`exclude` list and was never typechecked at all. What that hid: a test importing
+a constant from a module that does not export it gets `undefined` at runtime
+rather than a compile error, so `for (let i = 0; i < MAX_CHANNEL_MESSAGES; i++)`
+silently looped **zero** times and the test passed while asserting nothing. Four
+more files imported the `Op` type from `state.ts`, where it has never lived, and
+three agent fixtures set `placedTurn` and `label` — neither of which is a field
+on `Agent` (they are `deployedTurn` and `cover`). All harmless by luck, none
+detectable by running the suite.
+
+`OpInput` exists for the same reason the JSON schema is generated with
+`{ io: 'input' }`: `Op` is the *parsed* shape, so every field with a `.default()`
+is required on it, which is right for reading an op out of state and wrong for
+writing one down. Fixtures and hand-built batches want the input type.
 
 ## Conventions
 

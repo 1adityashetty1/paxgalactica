@@ -1,0 +1,11 @@
+{
+  // Typechecks the suite, which the main config deliberately excludes because
+  // it emits to `dist` from `rootDir: src`. Tests were therefore never
+  // typechecked at all — a broken import in a test file evaluated to
+  // `undefined` at runtime instead of failing to compile, which is exactly how
+  // a test asserting on `MAX_CHANNEL_MESSAGES` silently looped zero times.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true, "rootDir": "." },
+  "include": ["src/**/*", "tests/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

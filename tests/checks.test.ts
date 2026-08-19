@@ -187,6 +187,8 @@ describe('turn report', () => {
           targetId: 'ark-1',
           durationTurns: 3,
           progress: 0,
+          force: 0,
+          investedCredits: 0,
           interruptible: true,
           onInterrupt: 'partial',
           visibility: [],
