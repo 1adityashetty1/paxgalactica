@@ -5,6 +5,7 @@ import type {
   ServerEvent,
   TurnOutcomeResponse,
 } from '../api/contract.js';
+import { MAX_CHANNEL_MESSAGES } from '../api/contract.js';
 import { archiveFilename, packCampaign, unpackCampaign } from '../engine/archive.js';
 import { briefingFromState, buildBriefing, type Briefing } from '../engine/briefing.js';
 import { Campaign, ACTION_POINTS_PER_TURN } from '../engine/campaign.js';
@@ -290,6 +291,22 @@ export class GameSession {
       this.openChannel = factionId;
       this.channelHistory = [];
     }
+
+    // A channel is unmetered by action points on purpose, but unmetered is not
+    // unbounded: every message re-sends the whole transcript and the persona,
+    // so a conversation nobody ends keeps costing more per reply. Refused
+    // rather than truncated — silently dropping the oldest exchange would make
+    // the faction forget terms it had already agreed, and the extraction pass
+    // reads that same transcript. The message is not consumed; the player is
+    // told to close the channel, which is also how anything agreed is banked.
+    const sent = this.channelHistory.filter((m) => m.speaker === 'player').length;
+    if (sent >= MAX_CHANNEL_MESSAGES) {
+      throw new ApiFailure(
+        'conflict',
+        `This channel has reached ${MAX_CHANNEL_MESSAGES} messages, which is as long as one conversation runs. Close it with /endtalk to enact whatever was agreed — you can open a fresh channel with ${faction.name} afterwards.`,
+      );
+    }
+
     this.channelHistory.push({ speaker: 'player', text });
 
     const result = await this.exclusive(`${faction.name} considers`, async () =>

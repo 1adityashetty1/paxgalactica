@@ -141,6 +141,28 @@ export const CampaignViewSchema = z.object({
 });
 export type CampaignView = z.infer<typeof CampaignViewSchema>;
 
+/**
+ * How many messages the player may send in one diplomatic channel.
+ *
+ * Diplomacy is deliberately unmetered by action points — a channel already
+ * blocks the command line and End Turn, which is its own pacing — but
+ * "unmetered" turned out to mean "unbounded", and an unbounded channel is a
+ * hazard rather than a freedom. Every message re-sends the whole transcript
+ * plus the persona (the Legate's voice alone is ~14k characters), so cost per
+ * reply climbs with the length of the conversation, and the transcript the
+ * extraction pass must read afterwards grows with it.
+ *
+ * Ten is chosen to sit well clear of any real negotiation: the live ones run
+ * three or four exchanges, and the longest deliberately padded test reached
+ * seven before it had plainly stopped going anywhere. This is a guard rail for
+ * the accident — a player who keeps typing into a conversation that has
+ * finished — not a budget anyone should feel.
+ *
+ * Counted in PLAYER messages, not entries, so it reads the way the player
+ * experiences it: the faction's replies are not the player's to ration.
+ */
+export const MAX_CHANNEL_MESSAGES = 10;
+
 /** Your own faction declining to carry out the order. */
 export const RefusalViewSchema = z.object({
   by: z.string(),

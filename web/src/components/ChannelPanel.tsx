@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { CampaignView } from '../../../src/api/contract.js';
 import { getFaction } from '../../../src/domain/state.js';
 import { ansi256ToHex } from '../color.js';
+import { MAX_CHANNEL_MESSAGES } from '../../../src/api/contract.js';
 
 /**
  * A diplomatic channel as an actual conversation.
@@ -39,6 +40,14 @@ export function ChannelPanel({
   if (!faction) return null;
   const color = ansi256ToHex(faction.displayColor);
 
+  // The server refuses an 11th message. Counting the same way it does, from the
+  // history already in the view, keeps the two from drifting without adding a
+  // field to the contract — and means the player sees the wall coming instead
+  // of discovering it by being turned away mid-sentence.
+  const sent = history.filter((m) => m.speaker === 'player').length;
+  const left = Math.max(0, MAX_CHANNEL_MESSAGES - sent);
+  const full = left === 0;
+
   return (
     <section className="channel" style={{ borderColor: color }}>
       <header style={{ borderColor: color }}>
@@ -71,12 +80,23 @@ export function ChannelPanel({
         {busy && <p className="channel-busy">{busy}…</p>}
       </div>
 
+      {/* Only once it is close enough to matter: a counter on every channel
+          would make a three-exchange negotiation feel rationed, which is the
+          opposite of what this cap is for. */}
+      {left <= 3 && (
+        <p className="channel-limit">
+          {full
+            ? 'This channel is full. Close it to enact whatever was agreed — you can open a fresh one afterwards.'
+            : `${left} message${left === 1 ? '' : 's'} left in this channel.`}
+        </p>
+      )}
+
       <form
         className="channel-input"
         onSubmit={(e) => {
           e.preventDefault();
           const text = draft.trim();
-          if (!text || busy) return;
+          if (!text || busy || full) return;
           setDraft('');
           onSend(text);
         }}
@@ -84,11 +104,17 @@ export function ChannelPanel({
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder={busy ? 'Waiting…' : `Say something to ${faction.name}`}
-          disabled={!!busy}
+          placeholder={
+            full
+              ? 'This conversation is finished — close it to enact what was agreed'
+              : busy
+                ? 'Waiting…'
+                : `Say something to ${faction.name}`
+          }
+          disabled={!!busy || full}
           autoFocus
         />
-        <button type="submit" disabled={!!busy || !draft.trim()}>
+        <button type="submit" disabled={!!busy || full || !draft.trim()}>
           Send
         </button>
       </form>

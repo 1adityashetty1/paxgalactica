@@ -37,7 +37,6 @@ export type { CampaignStore, SaveFile } from './store.js';
  * free retry would let a player probe their own red lines all day.
  */
 export const ACTION_POINTS_PER_TURN = 2;
-
 export interface StagedBatch {
   label: string;
   /** What was proposed. Journaled, so replay reproduces the same rejections. */
