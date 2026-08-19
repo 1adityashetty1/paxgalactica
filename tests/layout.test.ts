@@ -236,8 +236,24 @@ describe('a faction portrait always covers its avatar', () => {
 
   it('zooms enough that the focal points are reachable', () => {
     // At 3x the art was only 1.67 boxes tall, so a head a quarter down could
-    // not be centred without uncovering the top. This is the guard on that.
-    const height = PORTRAIT_ZOOM * PORTRAIT_ASPECT * 100;
-    expect(height).toBeGreaterThan(100 + 50);
+    // not be centred without uncovering the top. This is the guard on that,
+    // and it has to hold for a per-faction zoom too — pulling back to match a
+    // closer portrait must not pull back past coverage.
+    for (const id of Object.keys(PORTRAIT_FOCUS)) {
+      const crop = portraitCrop(id);
+      expect(crop.height, `${id} is drawn too small to cover and centre`).toBeGreaterThan(140);
+      expect(crop.width, `${id} is drawn too narrow`).toBeGreaterThan(140);
+    }
+    expect(PORTRAIT_ZOOM * PORTRAIT_ASPECT * 100).toBeGreaterThan(150);
+  });
+
+  it('keeps every head at a similar size, so one face does not loom', () => {
+    // The Vigil's portrait is a closer shot: at a shared zoom his head filled
+    // far more of the circle than anyone else's. Scale is not something a focal
+    // point can correct, which is why `zoom` is per-faction.
+    const drawnHeights = Object.keys(PORTRAIT_FOCUS).map((id) => portraitCrop(id).height);
+    const largest = Math.max(...drawnHeights);
+    const smallest = Math.min(...drawnHeights);
+    expect(largest / smallest).toBeLessThan(1.4);
   });
 });

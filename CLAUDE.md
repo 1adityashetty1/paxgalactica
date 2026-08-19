@@ -1798,7 +1798,13 @@ automatically.
   `src/ui/portrait.ts` — pure, beside `layout.ts`, and tested: a five-entry
   table of measured focal points, a zoom large enough that those points are
   reachable, and offsets clamped so the image can never uncover the box whatever
-  focal point is handed in. Both faults were found by looking at the screen, not
+  focal point is handed in.
+
+  A third pass added a **per-faction zoom**, because the portraits are not shot
+  at the same distance: the Iron Vigil's is a closer composition, his head
+  spanning ~44% of the image height against 26–39% for the rest, so at a shared
+  zoom his face loomed out of the circle. Scale is not something a focal point
+  can correct. Only the factions that need an override carry one. Both faults were found by looking at the screen, not
   by the suite, which is what the tests now guard. A missing file falls back to
   the colour chip, because a faction row must never render as a hole.
 - **Progress** — model calls take 5–15s, so the server names what it is doing

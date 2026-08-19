@@ -23,22 +23,32 @@
  * uncover the box whatever focal point is handed in.
  */
 
-/** Where the head sits, as a fraction of the image. Measured from the art. */
-export const PORTRAIT_FOCUS: Record<string, { x: number; y: number }> = {
+/**
+ * Where the head sits and how big it is, measured from each piece of art.
+ *
+ * `zoom` is per-faction because the portraits are not shot at the same
+ * distance: the Iron Vigil's is a closer composition, his head spanning about
+ * 44% of the image height where the rest run 26–39%. At a shared zoom his face
+ * filled visibly more of the circle than anyone else's — a difference a focal
+ * point cannot fix, because it is a matter of scale rather than position. Only
+ * the factions that need one carry an override.
+ */
+export const PORTRAIT_FOCUS: Record<string, { x: number; y: number; zoom?: number }> = {
   meridian: { x: 0.5, y: 0.27 },
-  vigil: { x: 0.527, y: 0.26 },
+  // Closer framing than the rest, so pulled back to match their head size.
+  vigil: { x: 0.527, y: 0.285, zoom: 2.9 },
   hutt: { x: 0.532, y: 0.28 },
   freeworlds: { x: 0.495, y: 0.27 },
   krayt: { x: 0.527, y: 0.29 },
 };
 
 /** Used for a faction with no measured focal point — a centred head, roughly. */
-export const DEFAULT_FOCUS = { x: 0.5, y: 0.27 };
+export const DEFAULT_FOCUS: { x: number; y: number; zoom?: number } = { x: 0.5, y: 0.27 };
 
 /**
- * How many boxes wide the image is drawn. Big enough that the head fills the
- * frame, and big enough that the focal points above are reachable rather than
- * being clamped away by the coverage rule.
+ * How many boxes wide the image is drawn, unless the faction overrides it.
+ * Big enough that the head fills the frame, and big enough that the focal
+ * points above are reachable rather than being clamped away by coverage.
  */
 export const PORTRAIT_ZOOM = 3.4;
 
@@ -58,8 +68,9 @@ export interface PortraitCrop {
 
 export function portraitCrop(factionId: string): PortraitCrop {
   const focus = PORTRAIT_FOCUS[factionId] ?? DEFAULT_FOCUS;
-  const width = PORTRAIT_ZOOM * 100;
-  const height = PORTRAIT_ZOOM * PORTRAIT_ASPECT * 100;
+  const zoom = focus.zoom ?? PORTRAIT_ZOOM;
+  const width = zoom * 100;
+  const height = zoom * PORTRAIT_ASPECT * 100;
   return {
     width,
     height,
