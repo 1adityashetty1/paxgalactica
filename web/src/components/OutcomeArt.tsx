@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 /**
- * The three ways a declaration produces no ordinary result, as a picture.
+ * The five ways a declaration produces no ordinary result, as a picture.
  *
  * The five outcomes the engine reports as *typed fields* on `ActionOutcome`:
  * `refusal`, `defiance` and `negotiation` fire on both paths a declaration can
