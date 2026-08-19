@@ -12,9 +12,6 @@ are deliberately unbuilt.
 - The open half of item 5 — whether combat wants a richer multi-round resolver.
   Still a genuine design question, and the battle report was deliberately shaped
   as rounds so it stays cheap either way. **The largest thing left in this file.**
-- The open half of item 15 — a declared covert action and a deployed operative
-  are two routes to one act with uncoordinated prices. Routing the first through
-  `deploy_agent` is the structural answer and is a real refactor.
 - **Drajk has one compulsion against two red lines** — the thinnest sheet of the
   five. Honest for a faction defined by refusal, worth a look if it reads flat.
 - **The espionage vocabulary is partly probed.** "Listening post" and "put
@@ -201,18 +198,26 @@ Worth deciding at the same time whether an over-cap deployment should be
 *trimmed with a note* the way `billConstruction` and `trimOrderEffect` are,
 rather than rejected. Trimming is this project's house style for over-asking.
 
-## 15. PARTLY FIXED — the same covert act has two prices, depending on how it is reached
+## 15. FIXED — the same covert act had two prices, depending on how it was reached
 
-**The narrated-with-no-op half is fixed** by `prompts/resolution.md` v6 (see item
-16): covert action is the agent mechanic or it is nothing, and narrating a
-covert effect without emitting an op for it is now called out explicitly.
+**FIXED, option (A): a covert declaration now *becomes* a deployment.**
+`AppraisalSchema.covert` names the mission and the system, the resolution prompt
+is told to emit the `deploy_agent` itself, and `routeCovertAction` appends one
+when it did not — so there is exactly one path, charged by `AGENT_COST`, held to
+`maxAgentsFor`, resolved on the tick and exposed on the same ladder. Only on an
+outcome that placed something: a failure places nobody, the same rule
+`boundPayloadsToOutcome` applies to a works payload. `prompts/appraisal.md` is v4
+and `prompts/resolution.md` v6. Nine tests, including one asserting that a routed
+deployment at the operative cap is rejected exactly as a hand-placed one is.
 
-**The two-prices half is still open**, and it is a design call rather than a
-bug: a declared assassination costs whatever the resolution call picks, while a
-deployed assassination agent costs 35 or 40 in code. Closing it properly means
-option (A) below — routing a declared covert action through `deploy_agent` so it
-is priced, capped, charged and exposed like every other operation, the way
-`form_treaty` was reduced to one path. That is a real refactor and is not done.
+The narrated-with-no-op half was fixed alongside item 16: covert action is the
+agent mechanic or it is nothing.
+
+The original write-up follows.
+
+---
+
+## 15 (original) — the same covert act has two prices
 
 
 

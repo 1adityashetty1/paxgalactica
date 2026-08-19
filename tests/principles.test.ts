@@ -776,3 +776,47 @@ describe('two actions, then the turn has to end', () => {
     expect(campaign.actionPointsLeft).toBe(ACTION_POINTS_PER_TURN);
   });
 });
+
+describe('a covert declaration is routed into the agent mechanic', () => {
+  it('places an operative even when resolution emitted only prose', async () => {
+    scripted = {
+      appraisal: appraisal({ covert: { mission: 'assassination', systemId: 'kes-6' } }),
+      resolution: {
+        narrative: 'Your man is in place before the week is out.',
+        // The live failure mode: a covert success with invented consequences
+        // and no operative anywhere.
+        ops: [
+          { op: 'adjust_disposition', factionId: 'krayt', towardFactionId: 'meridian', delta: -15 },
+        ],
+      },
+    };
+    const campaign = Campaign.start('meridian', 'test-covert');
+
+    const outcome = await submitAction(campaign, 'Assassinate the Drajk raid captain at Vergesse.');
+
+    const ops = outcome.ops as { op: string; mission?: string }[];
+    const placed = ops.find((o) => o.op === 'deploy_agent');
+    expect(placed?.mission).toBe('assassination');
+    // And it went through the mechanic: charged, and on the books.
+    expect(campaign.state.agents).toHaveLength(1);
+    expect(campaign.state.factions.find((f) => f.id === 'meridian')!.credits).toBeLessThan(2400);
+    expect(outcome.notes.join(' ')).toMatch(/operatives/);
+  });
+
+  it('places nobody when the attempt failed', async () => {
+    scripted = {
+      appraisal: appraisal({ covert: { mission: 'sabotage', systemId: 'tio-3' } }),
+      resolution: { narrative: 'He never reached the dock.', ops: [] },
+    };
+    const campaign = Campaign.start('meridian', 'test-covert-fail');
+    // Force the failure band by pricing it out of reach.
+    scripted.appraisal = appraisal({
+      difficulty: 30,
+      covert: { mission: 'sabotage', systemId: 'tio-3' },
+    });
+
+    await submitAction(campaign, 'Sabotage the Vigil yards at Ord Vantic.');
+
+    expect(campaign.state.agents).toHaveLength(0);
+  });
+});

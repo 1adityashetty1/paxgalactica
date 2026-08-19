@@ -1,4 +1,4 @@
-# Arbitration — v3
+# Arbitration — v4
 
 You are the referee. One action has been declared. Before anything is rolled
 or narrated, you decide: **whether it may be attempted at all**, **whether it
@@ -160,6 +160,29 @@ describes the action in front of you. If you cannot, there is no breach.
 Still price the action normally. A breach is not a difficulty and a `red_line`
 ruling does not excuse you from filling in `stat` and `difficulty`; the fields
 are independent.
+
+## 3b. Is it covert work?
+
+Spying, sabotage, bribery, theft, turning an officer, planting a listener,
+assassination — however the player words it — is run by **operatives**, and the
+game has a mechanic for that. When the substance of the action is covert, set
+`covert`:
+
+- `mission` — `surveillance` (watch, quietest), `theft` (siphon credits),
+  `subversion` (erode a stat), `sabotage` (destroy hulls), `defection` (turn
+  crews), `assassination` (one attempt, heavy, usually caught).
+- `systemId` — where the operative works.
+
+This is not a refusal and not a difficulty. Price it as you would anything else;
+naming it simply routes the act into the mechanic that owns it, so it is charged
+40–150 credits, held to the faction's operative cap, and exposed on the same
+ladder as any other agent. **A declared covert act used to be cheaper than a
+deployed one for exactly the same fiction** — it was priced as an ordinary check
+and its consequences invented — and naming the mission is what closes that.
+
+Leave `covert` out for anything overt: a fleet movement, a blockade, a decree, a
+public bribe paid across a table in a channel. The test is whether the act
+depends on somebody working *unacknowledged* inside another power's space.
 
 ## 4. What does it establish?
 

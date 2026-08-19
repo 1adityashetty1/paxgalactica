@@ -1,5 +1,5 @@
 import { describeCheck, type CheckResult } from '../domain/checks.js';
-import { boundPayloadsToOutcome } from '../domain/development.js';
+import { boundPayloadsToOutcome, routeCovertAction } from '../domain/development.js';
 import {
   describeRejections,
   ExtractionOutputSchema,
@@ -394,14 +394,26 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
       : []),
   ];
 
+  // One act, one mechanism. A covert declaration BECOMES a deployment, so it is
+  // charged by `AGENT_COST`, held to `maxAgentsFor`, resolved on the tick and
+  // exposed on the same ladder as an operative placed the ordinary way. Without
+  // this the declared route was simply cheaper than the mechanic it duplicates.
+  const routed = routeCovertAction(
+    ops,
+    resolution.check?.outcome ?? 'success',
+    resolution.output.covert,
+    campaign.state.playerFactionId,
+  );
+
   const staged = await stageWithCorrection(
     campaign,
-    ops,
+    routed.ops,
     action.length > 48 ? `${action.slice(0, 47)}…` : action,
     resolution.output.narrative,
     `The player declared: ${action}\n\nYour narrative was: ${resolution.output.narrative}`,
     resolution.check?.outcome,
   );
+  staged.notes.unshift(...routed.notes);
 
   if (defiance) {
     const total = Math.min(

@@ -928,6 +928,23 @@ for a saboteur, 47% caught per assassination against a claimed 45%. Competence
 still protects — an operative good enough to succeed on all but a natural 20 is
 only caught on that 20, which is 5% rather than nothing.
 
+**Covert action declared in free text is routed into this mechanic**, rather
+than resolved beside it. The same fiction had two routes with uncoordinated
+prices: a *deployed* assassination costs 150 credits, counts against the cap, is
+spent after one attempt, is caught ~45% of the time and costs the target 35
+disposition undetected or 40 exposed — all in code — while a *declared*
+"assassinate their raid captain" was priced as an ordinary `guile` check and the
+resolution call invented the consequences. Measured live: −15 with the victim
+and −6 with an onlooker, for no credits, against no cap, with no exposure roll.
+The cheaper route was the one a player reaches by typing a sentence.
+
+`AppraisalSchema.covert` names the mission and the system; `routeCovertAction`
+appends the `deploy_agent` when the resolution call did not emit one itself, so
+there is exactly one path — charged by `AGENT_COST`, held to `maxAgentsFor`,
+resolved on the tick, exposed on the same ladder. **Only on an outcome that
+placed something**: a failed attempt places nobody, the same rule
+`boundPayloadsToOutcome` applies to a works payload.
+
 **Assassination is a strike, not a posting.** The operative is spent after one
 attempt either way; success deals four times the declared effect and costs the
 target 35 disposition even undetected; failure exposes them nearly half the time

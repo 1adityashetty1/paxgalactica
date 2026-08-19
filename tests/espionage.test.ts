@@ -4,6 +4,7 @@ import { createSeedState } from '../src/seed/scenario.js';
 import { MISSION_PROFILE, type AgentMission } from '../src/domain/diplomacy.js';
 import type { WorldState } from '../src/domain/state.js';
 import { serializeStanding } from '../src/model/serialize.js';
+import { routeCovertAction } from '../src/domain/development.js';
 
 /**
  * Agents have to be catchable.
@@ -177,5 +178,78 @@ describe('the model can see how many operatives it is running', () => {
 
     state.agents[0]!.exposed = true;
     expect(serializeStanding(state, 'meridian')).toMatch(/Your operatives: 0 of 3/);
+  });
+});
+
+/**
+ * One act, one mechanism.
+ *
+ * A declared covert action and a deployed operative were two routes to the same
+ * fiction with uncoordinated prices. A deployed assassination costs 150 credits,
+ * counts against the cap, is spent after one attempt, is caught about 45% of the
+ * time and costs the target 35 disposition undetected or 40 exposed — all in
+ * code. A declared "assassinate their raid captain" was priced as an ordinary
+ * `guile` check and the resolution call invented the consequences: measured
+ * live, −15 with the victim and −6 with an onlooker, for no credits, against no
+ * cap, with no exposure roll. The cheaper route was the one a player reaches by
+ * typing a sentence.
+ */
+describe('a declared covert action becomes a deployment', () => {
+  const covert = { mission: 'assassination' as const, systemId: 'kes-6' };
+
+  it('places an operative when the resolution call did not', () => {
+    const out = routeCovertAction([], 'success', covert, 'meridian');
+    expect(out.ops).toHaveLength(1);
+    expect(out.ops[0]).toMatchObject({
+      op: 'deploy_agent',
+      ownerFactionId: 'meridian',
+      systemId: 'kes-6',
+      mission: 'assassination',
+    });
+    expect(out.notes[0]).toMatch(/charged and capped/);
+  });
+
+  it('leaves the batch alone when it already placed one', () => {
+    const ops = [
+      { op: 'deploy_agent', ownerFactionId: 'meridian', systemId: 'kes-6',
+        mission: 'assassination', effect: { kind: 'hull_damage', perTurn: 3 }, cover: '' },
+    ];
+    const out = routeCovertAction(ops, 'success', covert, 'meridian');
+    expect(out.ops).toBe(ops);
+    expect(out.notes).toHaveLength(0);
+  });
+
+  it('places nobody on a failure — the man was caught at the door', () => {
+    for (const outcome of ['failure', 'critical_failure'] as const) {
+      const out = routeCovertAction([], outcome, covert, 'meridian');
+      expect(out.ops).toEqual([]);
+      expect(out.notes).toHaveLength(0);
+    }
+  });
+
+  it('does nothing at all to an overt action', () => {
+    const ops = [{ op: 'adjust_credits', factionId: 'meridian', delta: -50 }];
+    expect(routeCovertAction(ops, 'success', null, 'meridian').ops).toBe(ops);
+  });
+
+  it('is then charged, capped and exposed like any other operative', () => {
+    // The whole point of routing: the same guards apply. At the cap, the
+    // synthesized deployment is rejected rather than quietly landing.
+    let state = createSeedState('meridian');
+    const targets = state.systems.filter((x) => x.controllerFactionId === 'vigil').slice(0, 3);
+    state = applyOps(
+      state,
+      targets.map((t) => ({
+        op: 'deploy_agent', ownerFactionId: 'meridian', systemId: t.id,
+        mission: 'surveillance', effect: { kind: 'intel', perTurn: 1 }, cover: '',
+      })),
+      'model',
+      'meridian',
+    ).state;
+
+    const routed = routeCovertAction([], 'success', { mission: 'sabotage', systemId: targets[0]!.id }, 'meridian');
+    const out = applyOps(state, routed.ops, 'model', 'meridian');
+    expect(out.rejections.map((r) => r.code)).toEqual(['illegal_value']);
+    expect(out.rejections[0]!.message).toMatch(/already running 3 operatives/);
   });
 });
