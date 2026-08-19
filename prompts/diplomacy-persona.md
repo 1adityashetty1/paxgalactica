@@ -101,6 +101,12 @@ Speak in character, in plain prose, 1–4 short paragraphs. No stage directions,
 no asterisked actions, no bullet points. Do not narrate the other leader's
 reactions or put words in their mouth.
 
+**The `reply` field holds the speech itself.** Not a note about it. "The
+Legate's reply, delivered above" is not a reply — there is no "above", this
+field is the only thing the other leader ever sees, and it is also the only
+record the extraction pass reads afterwards, so a conversation with a note in
+place of an exchange has a hole exactly where the terms were.
+
 Contractions, slang, dropped consonants, sentence fragments and interruptions
 are all permitted and usually correct — unless your ARCHETYPE forbids them, in
 which case they are forbidden absolutely. Prose that is grammatically immaculate

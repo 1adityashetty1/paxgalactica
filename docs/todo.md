@@ -193,6 +193,65 @@ Worth a dedicated playtest once that fix lands:
   negotiation with Arkanis is a good test of whether the new persona actually
   bargains instead of stonewalling, since the old one was reported as
   "annoying to play against" for exactly this kind of exchange.
+## 20. OPEN — disposition’s reach, and who is allowed to start a conversation
+
+Three questions raised in playtest. Answered here by reading the code; the parts
+marked LIVE still want a playtest to confirm behaviour rather than wiring.
+
+**1. What moves disposition toward the player?** Only ops and reducer events —
+there is **no passive drift and no decay**, so a relationship stays exactly where
+it was left until something moves it. Two sources:
+
+- **The model, via `adjust_disposition`**, emitted by resolution, reactions and
+  extraction. This is the bulk of it in practice, and it is *unbounded* per op
+  beyond the −100..100 clamp — the reducer trims narrative credits and
+  commitment income, but not this.
+- **The reducer, in code**, on acts that carry a standing cost: breaking a pact
+  (−25 with the party, −`PACT_BREAKING_REPUTATION_COST` with every onlooker),
+  suborning crews (−6/hull, −2 onlookers), blockade and commerce raiding
+  (−`INTERDICTION_DISPOSITION_COST`, −`PIRACY_REPUTATION_COST`), an exposed
+  agent, crew defection (−6/hull), assassination (−35), a debt in default
+  (−6/turn, ongoing), the extortionist’s toll
+  (−`TOLL_RESENTMENT`/turn, ongoing), and forgiving a debt
+  (+`DEBT_FORGIVENESS_GOODWILL`).
+
+Worth noticing: **both recurring sources are negative** (default, toll), and the
+only positive one in code is debt forgiveness. Everything that repairs a
+relationship comes from a model call. With no decay, disposition ratchets
+downward across a campaign unless the player actively talks — which may be the
+intent, but nobody has watched it over 30 turns. LIVE.
+
+**2. Does disposition change how factions behave?** Yes, in three places, and
+only one is mechanical:
+
+- **Mechanically, exactly one threshold:** `WAR_DISPOSITION_THRESHOLD` (−60),
+  checked in both directions by `warsFor`. Crossing it *is* being at war, which
+  then feeds the profiteer’s income, the opportunist’s “distracted” might
+  bonus, the `idle_at_war` compulsion trigger and what the model is told about
+  wars. Below −60 is a cliff; **anywhere between −59 and +100 disposition has
+  no mechanical effect whatsoever**.
+- **In the diplomacy persona**, as a single line stating the faction’s
+  disposition toward the player on a −100..100 scale. Whether the personas
+  actually modulate on it, and whether they do so consistently across the five,
+  is unverified. LIVE — the Legate’s rewritten sheet is the first with an
+  explicit standing ladder tied to it, so it is the natural place to start.
+- **In who reacts at all:** `mostAffectedFactions` scores `abs(disposition)/10`,
+  so *strong feeling in either direction* raises the odds of reacting. Being
+  hated and being loved both make a faction more likely to speak up.
+
+There is **no stat, DC, price or combat modifier** anywhere that reads
+disposition. A power that adores you fights you exactly as well as one that is
+indifferent to you.
+
+**3. Do factions ever open a channel?** **No.** `openChannel` is set in exactly
+one place — `GameSession.talk` — reachable only from `POST /api/talk/:id`, which
+is a player action. An NPC cannot approach you, make an unsolicited offer, or
+deliver an ultimatum through the channel surface. Reactions are the only
+unprompted NPC speech, and they are one-way narration attached to a turn.
+
+This is the largest of the three gaps: the game has a full consent mechanism —
+persona, transcript, extraction, treaty formation — and only one of the five
+powers can ever invoke it.
 
 ## 18. OPEN — the other two ways an action produces nothing
 
