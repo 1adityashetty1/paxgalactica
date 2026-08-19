@@ -1196,6 +1196,30 @@ export function applyOps(
       }
 
       case 'establish_commitment': {
+        // A commitment can bind another power exactly the way a treaty does —
+        // a dynastic marriage or a charter naming a partner is not something
+        // one side can declare into the other's ledger, and "a good roll is
+        // not agreement" applies here as much as it does to `form_treaty`.
+        // Gated on the actor rather than unconditionally on `source ===
+        // 'model'`: this op has been declarable directly since before consent
+        // was enforced anywhere, and existing journals contain exactly that,
+        // written with no actor recorded. `actor === undefined` is precisely
+        // "an engine op, or a journal from before the actor field existed" —
+        // see the note on `applyOps` — so those replay exactly as they did. A
+        // commitment naming only the actor (a unilateral policy, a charter
+        // over one's own space) needs nobody's consent and stays declarable.
+        if (
+          source === 'model' &&
+          actor !== undefined &&
+          op.factionIds.some((id) => id !== actor)
+        ) {
+          reject(
+            raw,
+            'needs_consent',
+            'A commitment binding another power cannot be declared into existence: they have to agree to it. Open a channel with them (/talk) and negotiate — the ops are emitted from what is actually agreed there.',
+          );
+          break;
+        }
         const unknown = op.factionIds.find((id) => !factionExists(id));
         if (unknown) {
           reject(raw, 'unknown_faction', `No faction "${unknown}".`);
