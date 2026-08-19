@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { DiplomacyReplySchema } from '../src/model/calls.js';
+import { DiplomacyReplySchema, looksLikeStubReply } from '../src/model/calls.js';
 import { ModelOpSchema, ModelTurnOutputSchema } from '../src/domain/ops.js';
 import { Campaign } from '../src/engine/campaign.js';
 import { MemoryCampaignStore } from '../src/engine/store.js';
@@ -523,5 +523,57 @@ describe('slow diplomacy can accumulate', () => {
 
   it('still refuses to record headway that did not happen', () => {
     expect(appraisal()).toMatch(/do not record headway that did not happen/i);
+  });
+});
+
+/**
+ * A reply that describes itself instead of being itself.
+ *
+ * Seen live on two different factions: "Gate-officer's reply, in character,
+ * delivered above." and "Legate's reply delivered in-channel as above." Under
+ * `outputFormat: json_schema` the model writes the prose as ordinary assistant
+ * text and fills the one required field with a pointer to it. `min(1)` passes,
+ * so the player is shown a stage direction — and because the stub is appended
+ * to the transcript the extraction pass reads, whatever was agreed in that
+ * exchange has a hole where its terms should be and cannot be enacted.
+ *
+ * The guard has to be narrow in one specific way: a very short reply is
+ * legitimate for at least two of the five powers ("No.", "Agreed."), so length
+ * alone can never be the test.
+ */
+describe('a diplomacy reply must be speech, not a note about speech', () => {
+  it('rejects the stubs seen in live play', () => {
+    for (const stub of [
+      "Gate-officer's reply, in character, delivered above.",
+      "Legate's reply delivered in-channel as above.",
+      'Response provided above.',
+      'The faction\'s reply is as follows.',
+    ]) {
+      expect(looksLikeStubReply(stub), stub).toBe(true);
+      expect(DiplomacyReplySchema.safeParse({ reply: stub }).success, stub).toBe(false);
+    }
+  });
+
+  it('leaves a genuinely short in-character reply alone', () => {
+    for (const real of [
+      'No.',
+      'Agreed. Twelve hulls, to the second mark, off my station by the next burn.',
+      'That is defensible. I could put it in a dispatch tomorrow. Yes.',
+      'Sit. This will take an hour whichever way it goes.',
+    ]) {
+      expect(looksLikeStubReply(real), real).toBe(false);
+      expect(DiplomacyReplySchema.safeParse({ reply: real }).success, real).toBe(true);
+    }
+  });
+
+  it('does not fire on long prose that happens to use the words', () => {
+    // A real reply can discuss a message or an answer without being a stub.
+    const long =
+      'Your message reached me above the Kessel line, and my answer is the one ' +
+      'I gave your predecessor: the survey party arrives on the ninth. I have ' +
+      'read the charts you provided and they do not change the arithmetic, ' +
+      'though I will say they are better kept than most. Bring me something ' +
+      'that alters the cost and I will hear it seriously, as I have said.';
+    expect(looksLikeStubReply(long)).toBe(false);
   });
 });
