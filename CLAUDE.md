@@ -1788,15 +1788,24 @@ automatically.
   The Vigil, the Combine and Drajk sit two or three percent right of centre, and
   the 3x zoom multiplies that into a head visibly against the right edge of the
   circle, while Meridian and Arkanis looked correct — which is exactly why the
-  assumption survived the first look. There is now a five-entry table of
-  measured focal points, with the offsets derived from it rather than
-  hand-tuned. A missing file falls back to the colour chip, because a faction
-  row must never render as a hole.
+  assumption survived the first look.
+
+  The second version fixed that and broke something else: **centring a face and
+  covering the circle are different requirements.** At 3x the art is only 1.67
+  boxes tall, so a head a quarter down wanted a *positive* top offset, which
+  pushed the picture below the top of the circle and left a bar of panel
+  background across three of the five. The geometry now lives in
+  `src/ui/portrait.ts` — pure, beside `layout.ts`, and tested: a five-entry
+  table of measured focal points, a zoom large enough that those points are
+  reachable, and offsets clamped so the image can never uncover the box whatever
+  focal point is handed in. Both faults were found by looking at the screen, not
+  by the suite, which is what the tests now guard. A missing file falls back to
+  the colour chip, because a faction row must never render as a hole.
 - **Progress** — model calls take 5–15s, so the server names what it is doing
   and the client shows that label verbatim. Without it the app looks broken
   while working perfectly.
 
-`src/ui/` now holds only `layout.ts` and `ansi256.ts` (faction colours are ANSI
+`src/ui/` holds `layout.ts`, `portrait.ts` and `ansi256.ts` (faction colours are ANSI
 256 indices; the browser needs hex).
 
 ## Cost
@@ -1857,7 +1866,8 @@ src/
               ← server-only. Spawns the binary, holds the token.
   server/     index (node:http), router, session, events, static, errors
   seed/       the 25-system Outer Rim scenario
-  ui/         layout.ts (pure map geometry) + ansi256.ts
+  ui/         layout.ts (pure map geometry), portrait.ts (avatar crops)
+              + ansi256.ts
 web/          React + Vite client → dist/web
 prompts/      versioned .md prompt files
 tests/        domain, engine, server, contract, layout, parity — all headless

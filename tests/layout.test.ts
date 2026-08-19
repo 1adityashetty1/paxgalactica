@@ -1,4 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import {
+  portraitCrop,
+  PORTRAIT_ASPECT,
+  PORTRAIT_FOCUS,
+  PORTRAIT_ZOOM,
+} from '../src/ui/portrait.js';
 import { applyOps } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { ansi256ToHex } from '../src/ui/ansi256.js';
@@ -185,5 +191,53 @@ describe('helpers', () => {
 
   it('still converts faction colours to hex for the browser', () => {
     expect(ansi256ToHex(76)).toMatch(/^#[0-9a-f]{6}$/);
+  });
+});
+
+/**
+ * A portrait has to cover the circle it is cropped into.
+ *
+ * Centring a face and covering a box are different requirements, and the first
+ * version of the avatar satisfied neither for every faction. It used one focal
+ * point for all five — the Vigil, the Combine and Drajk sit two or three
+ * percent right of centre, so their heads showed against the right edge — and
+ * its offsets came out *positive* on the vertical, which pushed the image below
+ * the top of the circle and left a bar of panel background across it. Both were
+ * spotted on screen rather than by the suite, which is why this exists.
+ */
+describe('a faction portrait always covers its avatar', () => {
+  const ids = [...Object.keys(PORTRAIT_FOCUS), 'a-faction-with-no-measured-focus'];
+
+  it('never uncovers the box, for any faction or an unknown one', () => {
+    for (const id of ids) {
+      const crop = portraitCrop(id);
+      // The image spans [offset, offset + size] over a box of [0, 100].
+      expect(crop.left, `${id} leaves a gap on the left`).toBeLessThanOrEqual(0);
+      expect(crop.top, `${id} leaves a bar across the top`).toBeLessThanOrEqual(0);
+      expect(crop.left + crop.width, `${id} leaves a gap on the right`).toBeGreaterThanOrEqual(100);
+      expect(crop.top + crop.height, `${id} leaves a gap on the bottom`).toBeGreaterThanOrEqual(100);
+    }
+  });
+
+  it('keeps the head near the middle rather than merely covering', () => {
+    // Coverage alone is satisfied by any corner of the picture. The point of
+    // the focal points is that the face lands roughly centre, so assert it.
+    for (const id of Object.keys(PORTRAIT_FOCUS)) {
+      const crop = portraitCrop(id);
+      const focus = PORTRAIT_FOCUS[id]!;
+      const faceX = crop.left + crop.width * focus.x;
+      const faceY = crop.top + crop.height * focus.y;
+      expect(faceX, `${id} head is off-centre horizontally`).toBeGreaterThan(35);
+      expect(faceX, `${id} head is off-centre horizontally`).toBeLessThan(65);
+      expect(faceY, `${id} head is too low or too high`).toBeGreaterThan(30);
+      expect(faceY, `${id} head is too low or too high`).toBeLessThan(60);
+    }
+  });
+
+  it('zooms enough that the focal points are reachable', () => {
+    // At 3x the art was only 1.67 boxes tall, so a head a quarter down could
+    // not be centred without uncovering the top. This is the guard on that.
+    const height = PORTRAIT_ZOOM * PORTRAIT_ASPECT * 100;
+    expect(height).toBeGreaterThan(100 + 50);
   });
 });
