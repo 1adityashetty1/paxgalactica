@@ -581,7 +581,9 @@ describe('standing arrangements pay', () => {
           factionIds: ['meridian', 'hutt'], text: 'A marriage binds the houses.', exclusive: true,
         },
       ],
-      'model',
+      // Binds a faction other than the actor, so it now needs consent —
+      // declared the way it would really land, from an agreed channel.
+      'extraction',
       'meridian',
     );
     expect(out.state.commitments[0]!.incomePerTurn).toBe(0);

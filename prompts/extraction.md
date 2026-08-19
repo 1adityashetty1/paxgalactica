@@ -97,10 +97,25 @@ cede a system does so by allowing a fleet in: emit the `fleet_movement` order.
 Be conservative. A campaign where every pleasant conversation silently becomes
 a treaty is a campaign where diplomacy means nothing.
 
-## Two arrangements worth recognising
+## Three arrangements worth recognising
 
-Both are things powers in this galaxy really do, and both are made of pieces
-that already exist — do not invent a mechanism for either.
+All three are things powers in this galaxy really do, and all three are made
+of pieces that already exist — do not invent a mechanism for any of them.
+
+**A durable arrangement binding both parties — a dynastic marriage, an
+exclusive charter naming a partner, a hostage exchange, a shared succession,
+the adoption of a client house.** These are not treaties, so `form_treaty`'s
+five fixed types do not fit them, and they are not something one side can
+declare on its own — a declared action asking for one is turned away exactly
+like a declared treaty, and sent here. When both sides have actually agreed,
+emit `establish_commitment`: `kind` a reusable lower_snake_case slug
+(`dynastic_marriage`, not `marriage_to_the_hutts`), `factionIds` naming
+everyone bound, `text` for what was agreed, and `exclusive: true` when a power
+can only sensibly hold one at a time — a marriage is; a friendship pact is not.
+This is the only pass that may emit it for an arrangement naming a faction
+other than the one whose turn this is, for the same reason `form_treaty` is
+extraction-only: nobody is married, chartered, ransomed or adopted because the
+other side merely offered it.
 
 **Hiring a proxy to fight.** One power pays another to make war on a third. That
 is a `mutual_defense` treaty with `incomePerTurn` flowing to the hired power and

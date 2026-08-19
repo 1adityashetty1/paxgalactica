@@ -742,6 +742,68 @@ describe('a treaty cannot be declared into existence', () => {
 });
 
 /**
+ * A commitment can bind a faction other than the actor exactly the way a
+ * treaty does — a dynastic marriage or a charter naming a partner is not
+ * something one side can put in the other's ledger — and for most of this
+ * project's life it had no guard at all: `establish_commitment` was declarable
+ * directly from an ordinary action, unlike `form_treaty` and `establish_debt`,
+ * which left `ModelOpSchema` for exactly this reason. A live playtest reported
+ * the arbiter inconsistently redirecting marriage proposals to a channel —
+ * traced to `prompts/appraisal.md` contradicting itself on whether marriage
+ * belongs in `establishes` (direct) or `negotiation` (consented), and to this
+ * guard's absence meaning a direct declaration would have succeeded regardless
+ * of which the arbiter picked.
+ *
+ * Gated on the actor, not unconditionally like the other two: this op has been
+ * declarable since before consent was enforced anywhere, and real saves
+ * contain commitments written that way with no actor recorded. Those replay
+ * exactly, because `actor === undefined` is "a journal from before the actor
+ * field existed" everywhere else in the reducer too.
+ */
+describe('a commitment binding another power needs their consent', () => {
+  const marriage: Op = {
+    op: 'establish_commitment',
+    kind: 'dynastic_marriage',
+    factionIds: ['meridian', 'hutt'],
+    text: 'declared, not negotiated',
+    exclusive: true,
+  };
+
+  it('is rejected from a declared action, with somewhere to go instead', () => {
+    const out = applyOps(fresh(), [marriage], 'model', 'meridian');
+    expect(out.rejections.map((r) => r.code)).toEqual(['needs_consent']);
+    expect(out.rejections[0]!.message).toMatch(/\/talk/);
+    expect(out.state.commitments).toHaveLength(0);
+  });
+
+  it('is accepted from the pass that read a transcript', () => {
+    const out = applyOps(fresh(), [marriage], 'extraction', 'meridian');
+    expect(out.rejections).toHaveLength(0);
+    expect(out.state.commitments).toHaveLength(1);
+  });
+
+  it('leaves a commitment naming only the actor declarable, needing nobody', () => {
+    const unilateral: Op = {
+      op: 'establish_commitment',
+      kind: 'salvage_charter',
+      factionIds: ['meridian'],
+      text: 'Salvage rights across our own space.',
+      exclusive: false,
+    };
+    const out = applyOps(fresh(), [unilateral], 'model', 'meridian');
+    expect(out.rejections).toHaveLength(0);
+    expect(out.state.commitments).toHaveLength(1);
+  });
+
+  it('replays a journal from before the actor field exactly as it ran', () => {
+    // No actor passed at all — the same shape a pre-fix journal entry has.
+    const out = applyOps(fresh(), [marriage], 'model');
+    expect(out.rejections).toHaveLength(0);
+    expect(out.state.commitments).toHaveLength(1);
+  });
+});
+
+/**
  * A commitment's `incomePerTurn` is one number shared by everyone it binds, not
  * a transfer between them.
  *
@@ -767,7 +829,12 @@ describe('commitment income is shared, not directional', () => {
           incomePerTurn: 25,
         },
       ],
-      'model',
+      // A commitment binding a faction other than the actor now needs the
+      // other party's consent, same as a treaty — see the reducer guard on
+      // `establish_commitment`. Irrelevant to what this test pins (income
+      // shape), so it is declared the way it would really land: extracted
+      // from an agreed channel, not as an ordinary action.
+      'extraction',
       'hutt',
     );
     expect(out.rejections).toHaveLength(0);

@@ -187,30 +187,35 @@ depends on somebody working *unacknowledged* inside another power's space.
 ## 4. What does it establish?
 
 If the action would create a **durable arrangement that the game has no
-mechanic for** — a dynastic marriage, an exclusive charter, a hostage
-exchange, a shared succession, an adoption of a client house — describe it in
+mechanic for** — a standing policy, a declared sphere over unclaimed space, a
+programme, ground gained in a campaign of persuasion — describe it in
 `establishes`:
 
 - `kind` — a lower_snake_case slug, reused exactly for the same sort of thing
-  every time. `dynastic_marriage`, not `marriage_to_the_hutts`. Exclusivity is
-  checked on this string, so an inconsistent slug silently disables it.
+  every time. Exclusivity is checked on this string, so an inconsistent slug
+  silently disables it.
 - `text` — one sentence, read back to the player verbatim.
-- `exclusive` — **true when a faction can only sensibly have one at a time.**
-  A marriage is exclusive. A trade charter naming one partner as sole agent is
-  exclusive. A non-exclusive friendship pact is not.
-- `factionIds` — everyone bound.
+- `exclusive` — true when a faction can only sensibly have one at a time.
+- `factionIds` — everyone bound. For `establishes` this should almost always
+  be the acting faction alone — see below.
 
 Leave `establishes` out for anything the ops already cover. A treaty is a
 treaty; a fleet movement is a fleet movement.
 
-**Never record a bilateral arrangement here.** A pact, an alliance, a defence
-agreement, a tribute, a charter binding two powers — these are treaties, they
-belong to the diplomatic channel, and writing one into `establishes` is the same
-bypass as pricing a roll for it: it manufactures an arrangement the other power
-never agreed to, in a field that was built for things nobody negotiates.
-`establishes` records what a power does **on its own** — a standing policy, a
-programme, ground gained in a campaign of persuasion. This is only for arrangements
-that would otherwise exist nowhere and be forgotten by next turn.
+**Never record a bilateral arrangement here, and that includes a dynastic
+marriage, an exclusive charter naming a partner, a hostage exchange, a shared
+succession, or the adoption of a client house.** Every one of those binds a
+power that is not the actor, which makes it exactly the same shape as a pact or
+an alliance: this is section 1's list, not this section's. Set `negotiation`
+for it instead, however durable or exclusive the arrangement would be once
+made — durability is not what makes something bilateral, the other party's
+consent is. Writing one into `establishes` manufactures an arrangement the
+other power never agreed to, in a field that was built for things nobody
+negotiates: `establishes` records what a power does **on its own**, and a
+faction cannot marry, charter or adopt on its own any more than it can sign a
+treaty on someone else's behalf. Once a marriage or a charter is actually
+agreed in a channel, the extraction pass records it as a commitment from
+there — the same split `form_treaty` and `establish_debt` already draw.
 
 **Economic development is covered by the ops**, so it does not belong here.
 Building yards, opening mines, developing a world, raising levies and
@@ -302,16 +307,21 @@ courier to your own capital — is `trivial`, not exempt.
 
 > *"I offer my heir in marriage to the Ojjul Combine to seal our alliance."*
 
-Admissible, if nothing binds you yet. `influence`. DC around 13 — the Nars
-respect leverage and this is leverage, but they will price it. Establishes
-`dynastic_marriage`, exclusive, binding both parties.
+**A negotiation**, with `hutt`. A marriage binds the Nars, and they have not
+been asked — no DC measures whether they say yes. `supported: true`: your own
+house is entirely behind the match, it simply is not yours to conclude alone.
+Point the player at `/talk hutt`. If it is agreed there, the extraction pass
+records it as `establish_commitment`, `dynastic_marriage`, exclusive, binding
+both parties — the same arrangement, made where consent actually exists.
 
-> *The next turn: "I offer my other heir to Meridian as well."*
+> *Once married, the next turn: "I offer my other heir to Meridian as well."*
 
 **Inadmissible.** The commitments block shows the Ojjul marriage still
 standing. Say so, name it, and note that it would have to be dissolved first —
 which is itself an action, with consequences the Nars will have opinions
-about.
+about. This ruling does not need a channel: it is not asking whether Meridian
+would agree, it is refusing an act that contradicts something already true,
+the same as citing a lapsed treaty or a fleet that is not there.
 
 ---
 

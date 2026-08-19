@@ -161,6 +161,39 @@ rival's institutions against it is an agent's job (`subversion` +
 `prompts/resolution.md` had been actively inviting it ("your own institutions
 grow more or less restive") and now states both rules.
 
+## 19. OPEN — playtest: marriages and ceremonial alliances, both routes, across disposition
+
+A live playtest reported the arbiter inconsistently redirecting a declared
+dynastic marriage to `negotiation` — sometimes it did, sometimes it resolved
+the marriage directly via `establishes`, which turned out to trace to
+`prompts/appraisal.md` contradicting itself on which of those two a marriage
+is (see the fix on `marriage-needs-consent`: the reducer never actually
+required the other faction's consent for `establish_commitment`, the same hole
+`form_treaty` was closed for earlier). That fix is mechanical and covered by
+reducer tests, but nobody has watched it played against real model calls yet.
+
+Worth a dedicated playtest once that fix lands:
+
+- **Both routes.** A marriage (or another "establishes"-shaped ceremonial
+  arrangement — a hostage exchange, a shared succession, adopting a client
+  house) declared as an ordinary action should now always redirect to
+  `/talk`; the same arrangement actually agreed in a channel should land via
+  `establish_commitment` from the extraction pass. Confirm both paths for at
+  least two factions, not just the one that surfaced the bug.
+- **Across disposition.** Try the same offer from a strongly positive
+  starting disposition and a strongly negative one, and watch whether the
+  in-channel response actually reads differently — enthusiasm and price versus
+  suspicion and price — rather than the difficulty number being the only thing
+  that moved. Disposition is read by the diplomacy persona prompt, not
+  mechanically enforced the way a red line is, so this is exactly the kind of
+  thing that can look right in the arbiter's numbers and still read flat or
+  inconsistent in the actual reply.
+- **Arkanis specifically** — the `voice` field was just rewritten (suspicious
+  and always countering rather than reflexively stubborn); a marriage
+  negotiation with Arkanis is a good test of whether the new persona actually
+  bargains instead of stonewalling, since the old one was reported as
+  "annoying to play against" for exactly this kind of exchange.
+
 ## 18. OPEN — the other two ways an action produces nothing
 
 Split out of item 17, which built the three the engine already types. The other
