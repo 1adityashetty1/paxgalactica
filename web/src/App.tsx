@@ -7,6 +7,7 @@ import { BriefingPanel } from './components/BriefingPanel.js';
 import { ChannelPanel } from './components/ChannelPanel.js';
 import { FactionPicker } from './components/FactionPicker.js';
 import { GalaxyMap } from './components/GalaxyMap.js';
+import { OutcomeArt } from './components/OutcomeArt.js';
 import { PortraitStage } from './components/PortraitStage.js';
 import { SidePanel } from './components/SidePanel.js';
 import { useGame, useStickToBottom } from './useGame.js';
@@ -285,13 +286,19 @@ export function App() {
           )}
           <div className="feed" ref={feedRef}>
             {game.messages.map((m) => (
-              <p
-                key={m.id}
-                className={`msg ${m.tone}`}
-                style={m.color !== undefined ? { color: ansi256ToHex(m.color) } : undefined}
-              >
-                {m.text}
-              </p>
+              <div key={m.id}>
+                {/* A beat, not a mode: the three typed non-outcomes get a
+                    picture in the feed above the line that explains them,
+                    while the map stays where it is. A missing file renders
+                    nothing and the line alone carries it. */}
+                {m.art && <OutcomeArt kind={m.art.kind} alt={m.art.alt} />}
+                <p
+                  className={`msg ${m.tone}`}
+                  style={m.color !== undefined ? { color: ansi256ToHex(m.color) } : undefined}
+                >
+                  {m.text}
+                </p>
+              </div>
             ))}
             {busy && <p className="msg busy">{busy}…</p>}
           </div>

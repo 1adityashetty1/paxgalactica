@@ -1807,6 +1807,38 @@ automatically.
   can correct. Only the factions that need an override carry one. Both faults were found by looking at the screen, not
   by the suite, which is what the tests now guard. A missing file falls back to
   the colour chip, because a faction row must never render as a hole.
+- **Outcome art** — three images, one for each way a declaration produces no
+  ordinary result: `refusal` (your institutions will not carry the order out),
+  `defiance` (they objected and did it anyway) and `negotiation` (it is not
+  yours to declare). They are exactly the three the engine already reports as
+  *typed fields* on `ActionOutcome`, so drawing them needed no schema, reducer
+  or contract change — `OutcomeArt` reads a kind and a caller-supplied `alt`,
+  and a missing file renders **nothing at all**, falling back to the text
+  treatment that carried these outcomes before there was any art.
+
+  They deliberately do **not** match the portrait set's painterly register, and
+  all three carry text. A portrait exists to be recognised as a person you are
+  negotiating with; these exist to communicate an idea — *this was vetoed*,
+  *this cost you standing*, *this needs someone else in the room* — and reading
+  in a second is worth more here than matching a house style.
+
+  In the **feed**, not on the stage. A channel is a mode and earns the whole
+  stage; an outcome is a beat, and taking the map away for it would overstate
+  it. The image is carried on the message rather than pushed as an entry of its
+  own, because the feed trims from the front at 500 and would otherwise be able
+  to behead a scene and leave its caption. The `alt` text carries the breached
+  line, so the picture is never the only record of what was crossed — and the
+  client no longer *says* that line as well, since both refusal paths have
+  always carried `Breached: …` in their notes and it was being printed twice.
+
+  Building it found that the boundary was leaking the other way: `closeChannel`
+  has always ruled on an accord — a red line refuses the whole thing, a
+  compulsion lets it stand and charges — and `GameSession.endTalk` returned
+  `refusal: null, defiance: null` literally, so a refused accord reached the
+  browser as an ordinary narrative. The ruling was correct, priced and
+  invisible. Both are now passed through, and the same renderer covers the
+  declared-action path and the diplomacy path.
+
 - **Progress** — model calls take 5–15s, so the server names what it is doing
   and the client shows that label verbatim. Without it the app looks broken
   while working perfectly.

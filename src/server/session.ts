@@ -320,9 +320,14 @@ export class GameSession {
 
     return {
       narrative: outcome.narrative,
-      refusal: null,
-      defiance: null,
-      negotiation: null,
+      // Passed through, not nulled. `closeChannel` appraises what was agreed
+      // and can return either — a red line refuses the whole accord, a
+      // compulsion lets it stand and charges — and hardcoding null here meant
+      // the browser was told a refused accord was an ordinary narrative. The
+      // engine's ruling was correct and invisible.
+      refusal: outcome.refusal ?? null,
+      defiance: outcome.defiance ?? null,
+      negotiation: outcome.negotiation ?? null,
       staged: outcome.staged,
       ops: outcome.ops,
       notes: outcome.notes,

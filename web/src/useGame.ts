@@ -5,12 +5,22 @@ import {
   type CampaignView,
 } from '../../src/api/contract.js';
 import { api, ApiError } from './api.js';
+import type { OutcomeArtKind } from './components/OutcomeArt.js';
 
 export interface Message {
   id: number;
   text: string;
   tone: 'you' | 'narrative' | 'faction' | 'system' | 'error' | 'check' | 'brief' | 'refusal';
   color?: number;
+  /**
+   * A picture for one of the three typed non-outcomes, drawn above this line.
+   *
+   * Carried on the message rather than pushed as an entry of its own so the
+   * image cannot drift away from the sentence explaining it — the feed is
+   * capped at 500 and trims from the front, which would otherwise be able to
+   * behead a scene and leave the caption.
+   */
+  art?: { kind: OutcomeArtKind; alt: string };
 }
 
 let nextMessageId = 1;
@@ -34,6 +44,29 @@ export function useGame() {
   const say = useCallback((text: string, tone: Message['tone'], color?: number) => {
     setMessages((prev) => [...prev, { id: nextMessageId++, text, tone, color }].slice(-500));
   }, []);
+
+  /**
+   * The same, with a picture of the non-outcome above the line.
+   *
+   * `alt` is a caller's job rather than the component's because the useful
+   * sentence is the *specific* one — which principle was crossed, whose assent
+   * is missing — and only the caller is holding it.
+   */
+  const sayWithArt = useCallback(
+    (text: string, tone: Message['tone'], kind: OutcomeArtKind, alt: string) => {
+      setMessages((prev) =>
+        [...prev, { id: nextMessageId++, text, tone, art: { kind, alt } }].slice(-500),
+      );
+    },
+    [],
+  );
+
+  /** Display name for a faction id, falling back to the id itself. */
+  const nameOf = useCallback(
+    (factionId: string) =>
+      view?.state.factions.find((f) => f.id === factionId)?.name ?? factionId,
+    [view],
+  );
 
   /* ---------------- initial load ---------------- */
 
@@ -131,11 +164,14 @@ export function useGame() {
         if (outcome.refusal) {
           // Your own faction said no. Distinct from a failed roll, and from a
           // rejected op — nothing was attempted at all.
-          say(
+          sayWithArt(
             `${outcome.refusal.by} refuse the order: ${outcome.refusal.reason}`,
             'refusal',
+            'refusal',
+            refusalAlt(outcome.refusal, 'will not carry the order out'),
           );
-          if (outcome.refusal.violated) say(`Breached: ${outcome.refusal.violated}`, 'system');
+          // The breached line is NOT said here: both refusal paths already put
+          // `Breached: …` in `notes`, so saying it as well printed it twice.
           say(outcome.narrative, 'narrative');
           for (const note of outcome.notes) say(note, 'system');
           return;
@@ -144,7 +180,14 @@ export function useGame() {
           // Not a failure and not a refusal: the thing is reasonable, it just
           // needs someone else to agree, and agreement lives in a channel.
           const n = outcome.negotiation;
-          say(outcome.narrative, 'narrative');
+          sayWithArt(
+            outcome.narrative,
+            'narrative',
+            'negotiation',
+            `Not yours to declare: ${n.what} needs the agreement of ${
+              n.withFactionIds.map(nameOf).join(', ') || 'another power'
+            }.`,
+          );
           for (const note of outcome.notes) say(note, 'system');
           say(`→ ${n.channels}`, 'brief');
           return;
@@ -154,9 +197,11 @@ export function useGame() {
           // field was on the wire and the browser never read it, so the most
           // consequential thing a declaration can do to a faction arrived as an
           // ordinary grey note among the others.
-          say(
+          sayWithArt(
             `${outcome.defiance.by} object, and the order goes out anyway: ${outcome.defiance.reason}`,
             'refusal',
+            'defiance',
+            refusalAlt(outcome.defiance, 'carry the order out under protest'),
           );
         }
         if (outcome.check) {
@@ -172,7 +217,7 @@ export function useGame() {
         for (const r of outcome.rejections) say(`rejected [${r.code}] ${r.message}`, 'error');
         say(`declared — lands on end of turn`, 'system');
       }),
-    [guard, say],
+    [guard, say, sayWithArt, nameOf],
   );
 
   const endTurn = useCallback(
@@ -217,7 +262,28 @@ export function useGame() {
     (factionId: string) =>
       guard(async () => {
         const outcome = await api.endTalk(factionId);
+        // An accord is held to the same lines as a declared order, so the same
+        // two non-outcomes can come back from a channel: a red line refuses the
+        // WHOLE accord, a compulsion lets it stand and charges. Both were on the
+        // wire and neither was drawn, which left the most consequential thing a
+        // conversation can do arriving as an ordinary narrative line.
+        if (outcome.refusal) {
+          sayWithArt(
+            `${outcome.refusal.by} will not ratify the accord: ${outcome.refusal.reason}`,
+            'refusal',
+            'refusal',
+            refusalAlt(outcome.refusal, 'will not put their name to the accord'),
+          );
+        } else if (outcome.defiance) {
+          sayWithArt(
+            `${outcome.defiance.by} object, and the accord stands anyway: ${outcome.defiance.reason}`,
+            'refusal',
+            'defiance',
+            refusalAlt(outcome.defiance, 'let the accord stand under protest'),
+          );
+        }
         say(outcome.narrative, 'narrative');
+        for (const note of outcome.notes) say(note, 'system');
         for (const r of outcome.rejections) say(`rejected [${r.code}] ${r.message}`, 'error');
         say(
           outcome.staged > 0
@@ -226,7 +292,7 @@ export function useGame() {
           'system',
         );
       }),
-    [guard, say],
+    [guard, say, sayWithArt],
   );
 
   /**
@@ -289,6 +355,20 @@ export function useGame() {
     talk,
     endTalk,
   };
+}
+
+/**
+ * Alt text for a refusal or a defiance.
+ *
+ * The breached line is the part worth carrying: the picture is a scene, and a
+ * reader who never sees it should still learn who objected and to what.
+ */
+function refusalAlt(
+  it: { by: string; reason: string; violated: string },
+  what: string,
+): string {
+  const line = it.violated || it.reason;
+  return line ? `${it.by} ${what}: ${line}` : `${it.by} ${what}.`;
 }
 
 /** Scroll a feed element to the bottom whenever it grows. */
