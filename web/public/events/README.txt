@@ -1,6 +1,7 @@
 Art for action outcomes — see docs/todo.md item 17.
 
-Expected files, 16:9, resized like the portraits:
+The files, 16:9, resized like the portraits (sources in the gitignored
+faction_portraits/, as with the diplomacy set):
   refusal.jpeg      your institutions will not carry the order out
   defiance.jpeg     they objected and did it anyway
   negotiation.jpeg  it needs another power to agree

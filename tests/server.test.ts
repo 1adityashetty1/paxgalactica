@@ -280,6 +280,53 @@ describe('the diplomacy boundary is enforced server-side', () => {
     const res = await dispatch(session, 'POST', ROUTES.endtalk('hutt'), {});
     expect(res.status).toBe(409);
   });
+
+  /**
+   * `closeChannel` appraises what a transcript agreed and can refuse the whole
+   * accord on a red line, or let it stand and charge for a compulsion. Both
+   * rulings were computed correctly and then dropped on the floor here, because
+   * this handler wrote `refusal: null, defiance: null` literally — so the
+   * browser was handed a refused accord as an ordinary narrative and had
+   * nothing to draw. The engine is stubbed because the real path is a model
+   * call; what is under test is the wiring between it and the response.
+   */
+  it('passes a channel refusal through to the response', async () => {
+    vi.resetModules();
+    vi.doMock('../src/engine/turn.js', async () => {
+      const actual = await vi.importActual<typeof import('../src/engine/turn.js')>(
+        '../src/engine/turn.js',
+      );
+      return {
+        ...actual,
+        closeChannel: async () => ({
+          narrative: 'The Assembly will not put its name to it.',
+          refusal: {
+            by: 'the Arkanis Assembly',
+            reason: 'It is occupation by another name.',
+            violated: 'will never accept occupation',
+          },
+          staged: 1,
+          notes: [],
+          rejections: [],
+          costUsd: 0,
+          ops: [],
+        }),
+      };
+    });
+    try {
+      const { GameSession: Fresh } = await import('../src/server/session.js');
+      const session = new Fresh(new MemoryCampaignStore(), () => {});
+      await session.newCampaign('freeworlds', 'refused-accord');
+      (session as unknown as { openChannel: string | null }).openChannel = 'vigil';
+
+      const outcome = await session.endTalk('vigil');
+      expect(outcome.refusal).toMatchObject({ violated: 'will never accept occupation' });
+      expect(outcome.defiance).toBeNull();
+    } finally {
+      vi.doUnmock('../src/engine/turn.js');
+      vi.resetModules();
+    }
+  });
 });
 
 describe('events', () => {
