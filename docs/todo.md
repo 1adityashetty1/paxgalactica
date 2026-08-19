@@ -193,6 +193,69 @@ Worth a dedicated playtest once that fix lands:
   negotiation with Arkanis is a good test of whether the new persona actually
   bargains instead of stonewalling, since the old one was reported as
   "annoying to play against" for exactly this kind of exchange.
+## 21. OPEN — a deal gated on ratification completes and produces nothing
+
+**Found in a live Ojjul Nar playtest.** The single biggest gap the playtest
+turned up, and it silently deletes negotiated deals.
+
+Arkanis carries the compulsion *"the councils require consultation"*, so its
+persona correctly refused to give final assent in-channel: *"you have my read,
+not my signature, not yet."* Extraction then did exactly what
+`prompts/extraction.md` tells it to — **"a conditional promise produces nothing
+yet"** — so it emitted no `form_treaty` and no `establish_commitment`, and
+instead issued a 3-turn `treaty_ratification` order plus `spawn_event` recording
+the terms.
+
+Three turns later the order **completed**:
+
+```
+turn 3  Council ratification of the Ojjul Nar-Arkane binding and Vashka
+        supply compact completed at Kessel Approach.
+```
+
+and the world contained **no treaty, no commitment, nothing**. A fully
+negotiated package — a dynastic marriage with named parties, a fixed 20/turn
+supply line, transit rights at Vashka, and an embargo pledge against the Vigil —
+evaporated on completion.
+
+The cause is two individually-correct rules that are jointly lossy:
+
+- `prompts/extraction.md` says a conditional promise produces nothing yet, so
+  the treaty is deliberately withheld.
+- `EFFECT_CATEGORIES` in `development.ts` gives `treaty_ratification` **no
+  payload on purpose**, and its comment states the reason: ratification
+  *"lands as `form_treaty`"*. That assumes the treaty was emitted alongside the
+  order. When the NPC gates on ratification, it was not, and **nothing anywhere
+  emits it later**.
+
+So the ratification order is theatre: it ticks, it completes, it logs, and it
+cannot change anything. This is the exact failure this file already documents
+under item 8 (*"completed orders change nothing"*) — reappearing in the one
+category that was deliberately exempted from the fix.
+
+It is not an edge case. Arkanis's compulsion **requires** council consultation,
+so every substantive negotiation with the Free Worlds ends this way, and any
+persona that plays for time ("I must put it to my people") triggers it.
+
+Three directions, none obviously right, so this wants a decision rather than a
+patch:
+
+1. **Give `treaty_ratification` a payload kind** — a `ratify` effect carrying the
+   `form_treaty` / `establish_commitment` to apply on completion. Fits the
+   existing machinery exactly and keeps the delay meaningful. The wrinkle is
+   that the payload vocabulary is deliberately closed and arithmetic-only
+   (`EFFECT_CATEGORIES`'s whole point), and this would be the first payload that
+   binds another faction — so it would need the same consent reasoning
+   `form_treaty` already carries.
+2. **Let extraction emit the treaty immediately with a future effective turn**,
+   making ratification a property of the treaty rather than an order.
+3. **Tell the personas not to gate**, which is the cheapest and the worst — it
+   would flatten a genuinely good piece of characterisation into "everyone signs
+   on the spot", and Arkanis's compulsion says otherwise anyway.
+
+Whatever is chosen, `spawn_event` recording the terms is not a substitute: the
+event log is narrative, and nothing reads it.
+
 ## 20. OPEN — disposition’s reach, and who is allowed to start a conversation
 
 Three questions raised in playtest. Answered here by reading the code; the parts
