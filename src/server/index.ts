@@ -128,7 +128,12 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     return sendJson(res, result.status, result.body);
   }
 
-  if (method === 'GET' && serveStatic(WEB_ROOT, path, res)) return;
+  if (
+    (method === 'GET' || method === 'HEAD') &&
+    serveStatic(WEB_ROOT, path, res, method)
+  ) {
+    return;
+  }
 
   sendJson(res, 404, {
     error: {

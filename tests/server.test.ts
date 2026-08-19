@@ -392,4 +392,24 @@ describe('static file serving', () => {
     // Even against a real directory, `..` must not reach outside it.
     expect(serveStatic(process.cwd(), '/../../../../etc/passwd', fakeRes())).toBe(false);
   });
+
+  /**
+   * `serveStatic` was only ever invoked by the caller on GET, so a HEAD
+   * request for any static asset — a build artifact, a portrait, one of the
+   * outcome images — fell through to the API router and came back as a JSON
+   * 404 instead of the file's real headers with no body. HEAD is the standard
+   * way to validate a cached resource, and some browsers and extensions issue
+   * one ahead of an `<img>` GET, so this could read as a broken image even
+   * though the GET underneath it works.
+   */
+  it('answers HEAD with the real headers and no body, for a file that exists', () => {
+    const res = fakeRes();
+    const ok = serveStatic(process.cwd(), '/package.json', res, 'HEAD');
+    expect(ok).toBe(true);
+    expect(res.writeHead).toHaveBeenCalledWith(
+      200,
+      expect.objectContaining({ 'Content-Type': 'application/json; charset=utf-8' }),
+    );
+    expect(res.end).toHaveBeenCalled();
+  });
 });

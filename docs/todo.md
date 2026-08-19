@@ -1,6 +1,16 @@
 # TODO — known bugs and open design questions
 
-## Where things stand (2026-08-18)
+## Where things stand (2026-08-18, updated)
+
+**A live playtest of the outcome-art branch found a real server bug**, separate
+from the art itself: `serveStatic` was only ever called on `method === 'GET'`,
+so a `HEAD` request for any static asset — this project's whole build output,
+portraits included — fell through to the API router and 404'd with a JSON body
+instead of the file's real headers. Some browsers and extensions issue a HEAD
+ahead of an `<img>` GET, so a file that loaded fine on GET could still present
+as a broken image. Fixed: `serveStatic` now takes a method and answers HEAD
+with the same headers and no body. A regression test pins it (confirmed to fail
+against the pre-fix code).
 
 **Item 17 is done** — the three non-outcomes have art in the feed, and building
 it turned up two things the art was not: `endTalk` was nulling `refusal` and

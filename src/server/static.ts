@@ -26,7 +26,12 @@ const TYPES: Record<string, string> = {
   '.map': 'application/json; charset=utf-8',
 };
 
-export function serveStatic(root: string, urlPath: string, res: ServerResponse): boolean {
+export function serveStatic(
+  root: string,
+  urlPath: string,
+  res: ServerResponse,
+  method: 'GET' | 'HEAD' = 'GET',
+): boolean {
   if (!existsSync(root)) return false;
 
   const rootResolved = resolve(root);
@@ -51,6 +56,16 @@ export function serveStatic(root: string, urlPath: string, res: ServerResponse):
     // rebuild leaves the browser on stale JavaScript.
     'Cache-Control': target.endsWith('index.html') ? 'no-store' : 'public, max-age=3600',
   });
+  // A HEAD probe (some browsers and extensions send one before an <img> GET,
+  // and it is the standard way to validate a cached resource) previously fell
+  // through this function entirely — the caller only invoked it on GET — and
+  // landed on the API's 404 instead of these headers with no body. The asset
+  // exists and the headers are correct; only the body is skipped.
+  if (method === 'HEAD') {
+    res.end();
+    return true;
+  }
+
   createReadStream(target).pipe(res);
   return true;
 }

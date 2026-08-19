@@ -1737,6 +1737,15 @@ automatically.
   the whole API is exercised without binding a port.
 - Path traversal is blocked in three places: campaign names, faction ids in
   URLs, and static file paths.
+- **`serveStatic` answers `HEAD` as well as `GET`.** It didn't for the whole
+  life of the server — the caller only reached it on `method === 'GET'`, so a
+  `HEAD` for any built asset (a bundle chunk, a portrait, one of the outcome
+  images) fell through to the API router and came back a JSON 404 instead of
+  the file's real headers. HEAD is the standard way to validate a cached
+  resource, and some browsers and extensions send one ahead of an `<img>` GET,
+  so a file that loaded fine on GET could still read as a broken image. Found
+  by chasing a live report of exactly that against `negotiation.jpeg`. Fixed by
+  writing the same headers and skipping only the body.
 
 ### Browser client
 
