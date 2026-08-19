@@ -1,3 +1,4 @@
+import { DEFAULT_COVERT_EFFECT, type AgentMission } from './diplomacy.js';
 import type { DurationCategory } from './duration.js';
 import {
   ledgerFor,
@@ -450,4 +451,72 @@ export function applyOrderEffect(
       };
     }
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Covert action: one act, one mechanism                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Route a declared covert action into the agent mechanic.
+ *
+ * The same act had two routes with uncoordinated prices. A **deployed**
+ * assassination costs 150 credits, counts against the cap, is spent after one
+ * attempt, is caught about 45% of the time, and costs the target 35 disposition
+ * undetected or 40 exposed — all of that in code. A **declared** "assassinate
+ * their raid captain" was priced as an ordinary `guile` check and the resolution
+ * call then invented the consequences: measured live, −15 with the victim and
+ * −6 with an onlooker, for no credits, against no cap, with no exposure roll.
+ * The cheaper route was the one a player reaches by typing a sentence.
+ *
+ * So a covert declaration now *becomes* a deployment. The arbiter names the
+ * mission and the place; if the resolution call did not emit the
+ * `deploy_agent` itself, one is appended here from that ruling. There is then
+ * exactly one path: charged by `AGENT_COST`, held to `maxAgentsFor`, resolved
+ * on the tick against the same seeded d20, exposed on the same ladder.
+ *
+ * **Only on an outcome that placed something.** A failed attempt places no
+ * operative — the man was caught at the door — so nothing is appended and
+ * whatever the resolution call emitted for the cost stands. That is the same
+ * rule `boundPayloadsToOutcome` applies to a works payload, for the same reason.
+ */
+export interface CovertRouting {
+  ops: unknown[];
+  notes: string[];
+}
+
+export function routeCovertAction(
+  ops: unknown[],
+  outcome: 'critical_success' | 'success' | 'partial' | 'failure' | 'critical_failure',
+  covert: { mission: AgentMission; systemId: string } | null | undefined,
+  actor: string,
+): CovertRouting {
+  if (!covert) return { ops, notes: [] };
+  // A failure places nobody. The attempt still cost whatever it cost.
+  if (outcome === 'failure' || outcome === 'critical_failure') return { ops, notes: [] };
+
+  const alreadyPlaced = ops.some(
+    (op) =>
+      !!op &&
+      typeof op === 'object' &&
+      (op as { op?: unknown }).op === 'deploy_agent',
+  );
+  if (alreadyPlaced) return { ops, notes: [] };
+
+  return {
+    ops: [
+      ...ops,
+      {
+        op: 'deploy_agent',
+        ownerFactionId: actor,
+        systemId: covert.systemId,
+        mission: covert.mission,
+        effect: DEFAULT_COVERT_EFFECT[covert.mission],
+        cover: 'placed by a covert operation the arbiter ruled on',
+      },
+    ],
+    notes: [
+      `Covert work is run by operatives: a ${covert.mission} agent was placed at ${covert.systemId}, charged and capped like any other. It resolves on the tick.`,
+    ],
+  };
 }

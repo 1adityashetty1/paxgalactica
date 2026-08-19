@@ -15,6 +15,8 @@ import {
   agentsVisibleTo,
   fleetStrengthOf,
   ledgerFor,
+  liveAgentsOf,
+  maxAgentsFor,
   ordersVisibleTo,
   systemIncome,
   treatiesFor,
@@ -163,6 +165,24 @@ export function serializeStanding(state: WorldState, viewerId: string): string {
 
   lines.push('', '**At war with**');
   lines.push(wars.length === 0 ? '  _Nobody, formally._' : `  ${wars.join(', ')}`);
+
+  // The ceiling, not just the list. `maxAgentsFor` had no reader anywhere in
+  // `src/model/`, so no call knew a faction was at its limit — and a resolution
+  // pass that cannot see the cap narrates a placement it cannot legally make.
+  // Found in a 27-turn playtest: at 3 of 3, "buy a clerk in the customs house"
+  // produced a full success story and **zero ops**, with no rejection and no
+  // note, because the model simply never emitted the op that would have been
+  // refused. Same shape as the arbiter never being shown the red lines it was
+  // asked to enforce: a rule the model cannot see is a rule it narrates around.
+  const live = liveAgentsOf(state, viewerId).length;
+  const ceiling = maxAgentsFor(state, viewerId);
+  lines.push(
+    '',
+    `**Your operatives: ${live} of ${ceiling}**` +
+      (live >= ceiling
+        ? ' — AT YOUR LIMIT. You cannot place another until one is recalled or burned.'
+        : ` (room for ${ceiling - live} more)`),
+  );
 
   lines.push('', '**Agents you know of**');
   if (agents.length === 0) lines.push('  _None._');

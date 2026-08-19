@@ -566,6 +566,22 @@ runs to thousands of tokens of dialect notes for Arkanis alone. Handing a
 bounded classification call the whole character sheet would have roughly doubled
 the price of every action in the game.
 
+**A negotiated deal is held to the same lines as a declared order.** The arbiter
+gated `resolveAction` and nothing gated extraction, so a red line could be
+walked past by framing the act as a deal — measured live, the Combine emitted
+`forgive_debt` against its own first red line for no dissent at all, while the
+same intent declared normally was refused three times. That was sharper than a
+plain missing check, because `establish_debt` and `forgive_debt` are
+extraction-only *by design*: the two ops most tied to that faction's identity
+were the ones with nothing watching them. `closeChannel` now appraises what was
+agreed before staging it — one Haiku call, and **only when the transcript
+actually produced ops**, since a conversation that agreed nothing must not cost
+a call to discover that. A red line refuses the *whole* accord (a deal that
+needs you to cross it is no deal); a compulsion lets it stand and charges. The
+check is scoped to the acting faction by construction, because the arbiter
+appraises from `playerFactionId` — the other party's concessions are theirs to
+make and cannot trip your line.
+
 A red-line ruling is also **cheaper** than what it replaces: it skips the Sonnet
 resolution call entirely, so the most flagrant actions in the game now cost
 about `$0.022` instead of `$0.073` — measured live.
@@ -896,6 +912,38 @@ costs the breaker 25 disposition with the other party.
 `successChance` is computed in code from the owner's guile against the target's
 resolve, never chosen by a model. Agents resolve each tick against the same
 seeded d20 as everything else.
+
+**Exposure is read off the top of the die** — `roll >= 21 - exposureRisk` — and
+that is not a detail. It was written as `roll <= exposureRisk` inside the
+failure branch, which looks right and fired essentially never: a roll succeeds
+when `roll * 5 <= successChance`, so rolls `1..floor(successChance / 5)` never
+reach the branch at all, and those are exactly the low rolls the risk test was
+looking for. `successChance` floors at 5, so a *surveillance* operative could
+not be exposed at any stat pairing in the game. Measured before the fix: 80
+operatives, five owner/target pairings, 40 turns each — **zero exposures**.
+Nobody noticed because a burned agent is a non-event; you observe nothing rather
+than something visibly wrong. Reading the same risk off the high end keeps the
+intent and makes the ladder real: mean survival 18.1 turns for a watcher, 6.8
+for a saboteur, 47% caught per assassination against a claimed 45%. Competence
+still protects — an operative good enough to succeed on all but a natural 20 is
+only caught on that 20, which is 5% rather than nothing.
+
+**Covert action declared in free text is routed into this mechanic**, rather
+than resolved beside it. The same fiction had two routes with uncoordinated
+prices: a *deployed* assassination costs 150 credits, counts against the cap, is
+spent after one attempt, is caught ~45% of the time and costs the target 35
+disposition undetected or 40 exposed — all in code — while a *declared*
+"assassinate their raid captain" was priced as an ordinary `guile` check and the
+resolution call invented the consequences. Measured live: −15 with the victim
+and −6 with an onlooker, for no credits, against no cap, with no exposure roll.
+The cheaper route was the one a player reaches by typing a sentence.
+
+`AppraisalSchema.covert` names the mission and the system; `routeCovertAction`
+appends the `deploy_agent` when the resolution call did not emit one itself, so
+there is exactly one path — charged by `AGENT_COST`, held to `maxAgentsFor`,
+resolved on the tick, exposed on the same ladder. **Only on an outcome that
+placed something**: a failed attempt places nobody, the same rule
+`boundPayloadsToOutcome` applies to a works payload.
 
 **Assassination is a strike, not a posting.** The operative is spent after one
 attempt either way; success deals four times the declared effect and costs the
@@ -1323,6 +1371,34 @@ There are exactly **two kinds of action**: general actions, and diplomatic
 chats. Both are *declared* while time is paused and both land on the **next
 timestamp**. Time advances only on `:endturn`.
 
+### Two actions a turn
+
+`ACTION_POINTS_PER_TURN` is **2**, held on `Campaign` and reset by the same
+thing that clears the staged batches. Without a limit there is no reason to ever
+end a turn except to let orders tick, so a player could resolve a dozen actions
+against a frozen board while every NPC waited politely.
+
+Deliberately **not** in `WorldState`. It is a pacing rule about the player's
+turn, not a fact about the galaxy: no faction has action points, nothing in the
+reducer reads them, and putting them in state would push them through the
+schema, every save file and every replay for no benefit. It is counted as
+*declarations* rather than staged batches, because a correction pass stages a
+second batch and a refusal stages one of its own — `stagedCount` would charge
+two points for one order and a point for being told no.
+
+Which outcomes spend one is the part that matters:
+
+| outcome | spends |
+|---|---|
+| an ordinary action, however it rolls | yes |
+| your institutions **refuse** it | **yes** — a free retry would let a player probe their own red lines all day |
+| the arbiter rules it **inadmissible** | no — the world never let you attempt it |
+| the arbiter **redirects** it to a channel | no — a redirect is not an act, and charging would make it feel like a penalty for asking |
+
+The check runs before the arbitration call, so discovering you are out of turn
+costs nothing. Diplomacy is unmetered: a channel already blocks the command line
+and End Turn, which is its own pacing.
+
 ### Declaring (time paused)
 
 1. Player types free text, or a `:`/`/` command.
@@ -1337,7 +1413,11 @@ timestamp**. Time advances only on `:endturn`.
 1. Every staged batch is applied to committed state, in declaration order, and
    journaled.
 2. **Reaction call** — the 3–4 most affected factions respond **once**, to the
-   whole settled turn rather than piecemeal to each action. Each faction's
+   whole settled turn rather than piecemeal to each action. Skipped entirely
+   when nothing was staged (`committed.applied > 0`), so ending a turn to let
+   orders tick costs **nothing at all** — which is what makes a long campaign
+   affordable: a 27-turn playtest cost $6.77 because most of its turns were
+   free. Each faction's
    prompt block contains only the orders **it can observe**, so long projects
    are worth hiding and worth raiding.
 3. Income is paid to every faction, every pending order ticks, and whatever
@@ -1676,7 +1756,8 @@ automatically.
   nothing else in the UI answered "where are my ships, and whose are sitting on
   mine". Hulls in a system their owner does not hold are marked `*`.
   (Class is `.fleet-panel`, not `.fleets` — the SVG map layer already owns that.)
-- **Panels** — Factions (stat bars, ethics, disposition, `talk`), System (ships
+- **Panels** — Factions (a portrait thumbnail ringed in the faction's colour,
+  stat bars, ethics, disposition, `talk`), System (ships
   and income *per faction*, lanes, orders), Orders (progress + ETA), Treaties
   (terms, turn limits, wars, agents with effect and success chance), Log
   (filterable — `rejection` and `clamp` entries are debugging gold, so they are
@@ -1697,11 +1778,40 @@ automatically.
   first exchange. Art lives in `web/public/portraits/<factionId>.jpeg` — named
   by **id**, not display name, since the two diverged long ago — and a missing
   file falls back to the faction's name rather than a blank slab.
+
+  The same five images are cropped to 26px faces in the Factions panel
+  (`FactionAvatar`), which is what makes the channel portrait a *recognition*
+  rather than an introduction: before it, the five powers were told apart by a
+  colour chip and a name, and their faces were only ever seen at the moment of
+  negotiation. The crop began as one focal point for all five, on the reasoning
+  that the set was generated to a single framing brief — close, but not true.
+  The Vigil, the Combine and Drajk sit two or three percent right of centre, and
+  the 3x zoom multiplies that into a head visibly against the right edge of the
+  circle, while Meridian and Arkanis looked correct — which is exactly why the
+  assumption survived the first look.
+
+  The second version fixed that and broke something else: **centring a face and
+  covering the circle are different requirements.** At 3x the art is only 1.67
+  boxes tall, so a head a quarter down wanted a *positive* top offset, which
+  pushed the picture below the top of the circle and left a bar of panel
+  background across three of the five. The geometry now lives in
+  `src/ui/portrait.ts` — pure, beside `layout.ts`, and tested: a five-entry
+  table of measured focal points, a zoom large enough that those points are
+  reachable, and offsets clamped so the image can never uncover the box whatever
+  focal point is handed in.
+
+  A third pass added a **per-faction zoom**, because the portraits are not shot
+  at the same distance: the Iron Vigil's is a closer composition, his head
+  spanning ~44% of the image height against 26–39% for the rest, so at a shared
+  zoom his face loomed out of the circle. Scale is not something a focal point
+  can correct. Only the factions that need an override carry one. Both faults were found by looking at the screen, not
+  by the suite, which is what the tests now guard. A missing file falls back to
+  the colour chip, because a faction row must never render as a hole.
 - **Progress** — model calls take 5–15s, so the server names what it is doing
   and the client shows that label verbatim. Without it the app looks broken
   while working perfectly.
 
-`src/ui/` now holds only `layout.ts` and `ansi256.ts` (faction colours are ANSI
+`src/ui/` holds `layout.ts`, `portrait.ts` and `ansi256.ts` (faction colours are ANSI
 256 indices; the browser needs hex).
 
 ## Cost
@@ -1762,7 +1872,8 @@ src/
               ← server-only. Spawns the binary, holds the token.
   server/     index (node:http), router, session, events, static, errors
   seed/       the 25-system Outer Rim scenario
-  ui/         layout.ts (pure map geometry) + ansi256.ts
+  ui/         layout.ts (pure map geometry), portrait.ts (avatar crops)
+              + ansi256.ts
 web/          React + Vite client → dist/web
 prompts/      versioned .md prompt files
 tests/        domain, engine, server, contract, layout, parity — all headless

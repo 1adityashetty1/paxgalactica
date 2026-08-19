@@ -132,6 +132,11 @@ export const CampaignViewSchema = z.object({
   /** Faction id of an open diplomatic channel, if any. */
   openChannel: z.string().nullable(),
   channelHistory: z.array(ChatMessageSchema),
+  /**
+   * Actions left this turn, and the allowance. Not part of `WorldState`: this
+   * is a pacing rule about the player's turn, not a fact about the galaxy.
+   */
+  actionPoints: z.object({ left: z.number().int().min(0), perTurn: z.number().int().min(1) }),
   name: z.string(),
 });
 export type CampaignView = z.infer<typeof CampaignViewSchema>;

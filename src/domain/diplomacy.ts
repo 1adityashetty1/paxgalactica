@@ -219,6 +219,24 @@ export const AgentEffectSchema = z.discriminatedUnion('kind', [
 ]);
 export type AgentEffect = z.infer<typeof AgentEffectSchema>;
 
+/**
+ * What a mission does when nobody said.
+ *
+ * Used when a declared covert action is routed into the agent mechanic and the
+ * resolution call did not supply an effect. Deliberately modest: the point of
+ * routing is that the act is priced, capped and exposed like every other
+ * operation, not that it hits hard. A model that wants more says so.
+ */
+export const DEFAULT_COVERT_EFFECT: Record<AgentMission, AgentEffect> = {
+  surveillance: { kind: 'intel', revealsOrders: true },
+  theft: { kind: 'income_penalty', perTurn: 10 },
+  subversion: { kind: 'stat_debuff', stat: 'industry', magnitude: 1 },
+  sabotage: { kind: 'hull_damage', perTurn: 2 },
+  defection: { kind: 'crew_defection', perTurn: 1 },
+  // One attempt, quadrupled by the mission profile, then the operative is gone.
+  assassination: { kind: 'stat_debuff', stat: 'resolve', magnitude: 1 },
+};
+
 export const AgentSchema = z.object({
   id: z.string().min(1),
   ownerFactionId: z.string().min(1),

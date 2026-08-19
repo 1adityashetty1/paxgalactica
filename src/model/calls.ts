@@ -132,6 +132,42 @@ function namesAnInstitution(by: string | undefined, state: WorldState): boolean 
   );
 }
 
+/**
+ * Rule on whether a negotiated agreement breaks the acting power's own
+ * principles, before any of it is staged.
+ *
+ * The arbiter gated the declaration path and nothing gated extraction, so a red
+ * line could be walked past simply by framing the act as a deal. Measured live:
+ * the Ojjul Nar Combine, whose first red line is *"will not forgive an unpaid
+ * debt — the debt is the whole instrument of control"*, negotiated a
+ * "renegotiation" with Drajk and the extraction pass emitted `forgive_debt`
+ * against that line with no refusal, no defiance and **no dissent**. The
+ * identical intent declared as an ordinary action was refused three times.
+ *
+ * It is sharper than a missing check: `establish_debt` and `forgive_debt` are
+ * extraction-only *by design*, so the two ops most tied to that faction's
+ * identity lived entirely on the ungated path.
+ *
+ * Reuses the arbiter rather than adding a prompt: entering into a deal IS an
+ * act the institutions get a view on, and `breach` is the only field read back.
+ * Scoped to the acting faction by construction, because `appraiseAction`
+ * appraises from `playerFactionId` — the other party's own concessions are
+ * theirs to make and must not trip your line.
+ */
+export async function appraiseAgreement(
+  state: WorldState,
+  withFactionId: string,
+  agreed: string,
+): Promise<{ appraisal: Appraisal; costUsd: number }> {
+  const other = getFaction(state, withFactionId)?.name ?? withFactionId;
+  const res = await appraiseAction(
+    state,
+    `Your envoys have concluded an agreement with ${other} and are about to put it into effect. ` +
+      `What was agreed: ${agreed}`,
+  );
+  return { appraisal: res.appraisal, costUsd: res.costUsd };
+}
+
 export async function resolveAction(
   state: WorldState,
   action: string,
@@ -322,6 +358,19 @@ export async function resolveAction(
             '',
           ]
         : []),
+      ...(priced.appraisal.covert
+        ? [
+            '### This is covert work, and covert work is run by operatives',
+            '',
+            `The arbiter ruled this a **${priced.appraisal.covert.mission}** operation at \`${priced.appraisal.covert.systemId}\`.`,
+            'Emit `deploy_agent` for it, owned by the acting faction, at that system,',
+            'with that mission and an effect that fits. Do NOT invent its consequences —',
+            'no hull losses, no stolen credits, no collapse in relations. The operative',
+            'is charged for, capped, and resolved on the tick like every other one.',
+            'If you do not emit it, the engine will, so that the act is priced once.',
+            '',
+          ]
+        : []),
       ...(priced.appraisal.establishes && check.outcome !== 'failure' && check.outcome !== 'critical_failure'
         ? [
             '### This action establishes something lasting',
@@ -348,7 +397,10 @@ export async function resolveAction(
   // that call declining to notice is precisely the failure this pass exists to
   // close. The model's own wording is kept when it offered some, since it is
   // written against the narrative it just produced.
-  const output: ResolutionOutput =
+  const withCovert = (o: ResolutionOutput): ResolutionOutput =>
+    priced.appraisal.covert ? { ...o, covert: priced.appraisal.covert } : o;
+
+  const output: ResolutionOutput = withCovert(
     breach?.kind === 'compulsion'
       ? {
           ...res.value,
@@ -370,7 +422,8 @@ export async function resolveAction(
             violated: breach.principle,
           },
         }
-      : res.value;
+      : res.value,
+  );
 
   return {
     output,

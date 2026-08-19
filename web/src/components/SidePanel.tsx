@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { FactionAvatar } from './FactionAvatar.js';
 import { FleetsPanel } from './FleetsPanel.js';
 import { TradePanel } from './TradePanel.js';
 import { STAT_NAMES } from '../../../src/domain/checks.js';
@@ -99,7 +100,7 @@ function Factions({
         return (
           <section key={f.id} className={isPlayer ? 'faction you' : 'faction'}>
             <header>
-              <span className="swatch" style={{ background: color }} />
+              <FactionAvatar faction={f} />
               <strong style={{ color }}>{f.name}</strong>
               {isPlayer ? (
                 <span className="badge">you</span>

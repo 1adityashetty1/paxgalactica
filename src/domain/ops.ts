@@ -484,6 +484,28 @@ export const AppraisalSchema = z.object({
     })
     .optional(),
   /**
+   * This action is a covert operation, and belongs to the agent mechanic.
+   *
+   * The same act had two routes with uncoordinated prices. A *deployed*
+   * assassination costs 150 credits, counts against the cap, is spent after one
+   * attempt, is caught about 45% of the time and costs the target 35 disposition
+   * undetected or 40 exposed — all in code. A *declared* "assassinate their raid
+   * captain" was priced as an ordinary `guile` check and the resolution call
+   * then invented its consequences: measured live, −15 with the victim and −6
+   * with an onlooker, for no credits, against no cap, with no exposure roll.
+   * The cheaper route was the one a player reaches by typing a sentence.
+   *
+   * Naming the mission and the place here lets the engine route the declaration
+   * into the mechanic, so there is one path, one price and one exposure profile.
+   */
+  covert: z
+    .object({
+      mission: AgentMissionSchema,
+      /** Where the operative works — the system the action happens at. */
+      systemId: z.string().min(1),
+    })
+    .optional(),
+  /**
    * This is a negotiation, not a decree: it needs another power to agree.
    *
    * The fourth verdict, and the one that closes a hole rather than adding
@@ -542,6 +564,12 @@ export const ResolutionOutputSchema = ModelTurnOutputSchema.extend({
    * not be attempted. Nothing was rolled and nothing is staged.
    */
   inadmissible: z.string().optional(),
+  /**
+   * Set by the engine, never by the model: the arbiter ruled this covert, and
+   * the mission and place it named. Carried so the engine can route the
+   * declaration into the agent mechanic rather than let it be priced twice.
+   */
+  covert: z.object({ mission: AgentMissionSchema, systemId: z.string() }).optional(),
   /**
    * Set by the engine, never by the model: this needs another power's consent,
    * so it belongs in a diplomatic channel rather than on the dice. Nothing was

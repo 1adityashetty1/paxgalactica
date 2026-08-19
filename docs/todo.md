@@ -11,45 +11,24 @@ are deliberately unbuilt.
 
 - The open half of item 5 — whether combat wants a richer multi-round resolver.
   Still a genuine design question, and the battle report was deliberately shaped
-  as rounds so it stays cheap either way.
-- ~~**Arkanis sits flat at 71/turn for a whole 30-turn balance run**~~
-  **EXPLAINED AND FIXED — it was the harness, not the balance.** `sortie`
-  requires a single base holding the *whole* blow, and a bot asks for
-  `garrison * 3 + 4`. The Drift wants 16 hulls for Sennex and keeps a navy of 31
-  spread 10/7/8/6, so no base ever qualified: `sortie` returned `[]` and the
-  Arkanis bot issued **no order of any kind for thirty turns**. The flat line
-  was the harness never letting the faction move.
-
-  The Vigil bot already solved this and carries the comment that says so —
-  *"it masses first, then strikes... Without the massing step it never attacked
-  at all, and a crusader that never crusades tests nothing."* The lesson was
-  learned once and never applied to Arkanis, which now gets the same
-  mass-then-strike step. It takes Sennex on turn 5 and runs at **97/turn**
-  (territory 177 → 209, 4 → 5 systems). Every other power's numbers are
-  unchanged, because only this bot's behaviour changed.
-
-  **A first attempt was wrong in an instructive way.** Relaxing `sortie` itself
-  to send a half-force from the largest base unblocked Arkanis *and* made every
-  bot far more aggressive: the Vigil took 12 of 25 systems at 494/turn, Meridian
-  collapsed to one world at −122, and the balance floor test failed. A shared
-  helper is the wrong place to fix one faction's blindness.
-
-  It is still flat *after* turn 5, but now for an honest reason: Sennex was the
-  only unaligned world in the Arkanis Drift, and the doctrine takes nothing
-  beyond its own doorstep. A turtle with one thing to take is flat once it has
-  taken it.
-- **Meridian is now the suspicious flat line** — pinned at exactly 24/turn from
-  turn 10 to turn 30, having fallen from 277. Worth the same treatment: is that
-  the free-trade bot running out of moves, or the economy?
+  as rounds so it stays cheap either way. **The largest thing left in this file.**
 - **Drajk has one compulsion against two red lines** — the thinnest sheet of the
   five. Honest for a faction defined by refusal, worth a look if it reads flat.
-- **The arbiter's espionage vocabulary is only partly probed.** "Turn one of
-  their officers" produced a `commitment` (`turned_officer`) rather than a
-  `deploy_agent` — a durable arrangement with no espionage mechanic behind it.
-  The rest of the list (mole, sleeper, cut-out, "a man inside", "put someone on
-  the payroll") is untested.
+- **The espionage vocabulary is partly probed.** "Listening post" and "put
+  someone on the payroll" produce `establish_commitment` rather than
+  `deploy_agent` — the same fictional act reaching two mechanisms. Item 16's
+  prompt work may have closed this; it has not been re-probed live.
 
-**The "built but never watched running" list is now empty.** Everything on it
+**The "built but never watched running" list is now empty.**
+
+**A 27-turn Meridian run (2026-08-17, $6.77) exercised the lot.** Development
+economics, debt servicing to settlement on both sides, red-line refusal, treaty
+consent, the action-point limit and agent exposure all behaved as documented,
+and a single bad covert decision chained coherently into a lost war and a lost
+hub. It opened items 15 and 16. It also found a cost property worth knowing:
+**an `endturn` with nothing staged skips the reaction call entirely and costs
+$0.000** — `endTurn` gates reactions on `committed.applied > 0` — which is what
+made 27 turns fit in that budget. Everything on it
 was verified by live play on 2026-08-17: the battle report card renders (item
 12), `onComplete` payloads are set by a live resolution call *and* the
 partial-band halving fired (`develop_system` magnitude halved to 1 on a partial),
@@ -174,7 +153,135 @@ rival's institutions against it is an agent's job (`subversion` +
 `prompts/resolution.md` had been actively inviting it ("your own institutions
 grow more or less restive") and now states both rules.
 
-## 14. OPEN — agent exposure is unreachable, so operatives are effectively permanent
+## 16. FIXED — the agent cap was invisible to the model, so hitting it was a silent no-op
+
+**FIXED.** `serializeStanding` now carries the ceiling as well as the list:
+`Your operatives: N of M`, and at the limit an explicit *"AT YOUR LIMIT. You
+cannot place another until one is recalled or burned."* Counted from
+`liveAgentsOf`, so a burned operative frees a slot. Three tests.
+
+`prompts/resolution.md` (now v6) gained the other half — **"covert action is the
+agent mechanic, or it is nothing"**: spying, sabotage, bribery and turning an
+officer are `deploy_agent`, and narrating a covert effect with no op for it (a
+munitions rack going up with no `hull_damage`, a bought clerk with no operative)
+is called out as the worst outcome available. That also answers the sabotage
+half of item 15.
+
+The original write-up follows.
+
+---
+
+## 16 (original) — the agent cap is invisible to the model
+
+**Found by a 27-turn adversarial Meridian run (2026-08-17, $6.77).** Meridian's
+cap is 3 (`2 + guile modifier`). At the cap, actions phrased as espionage —
+*"buy a clerk in the customs house"*, *"run a network of paid informants"* —
+narrated full success and emitted **zero `deploy_agent` ops**, with no rejection,
+no note, and nothing in state. The player is told the network exists.
+
+The cause is a one-line absence: `grep -rn maxAgentsFor src/model/` returns
+nothing. **The cap is never serialized to any model call.** `serializeStanding`
+lists the agents a viewer knows about but never the ceiling, so the resolution
+pass cannot know it is at the limit. Both branches from there are bad:
+
+- it emits `deploy_agent` → the reducer rejects `illegal_value` with a good
+  message, and the player at least sees a rejection;
+- it emits nothing → **silence**, which is what was observed.
+
+This is the same shape as the arbiter never being shown the red lines it was
+asked to enforce: a rule the model cannot see is a rule it narrates around. The
+fix is symmetrical too — put the ceiling and the current count in
+`serializeState`/`serializeStanding`, so "you are running 3 of 3 operatives"
+is a fact the narrative has to respect.
+
+Worth deciding at the same time whether an over-cap deployment should be
+*trimmed with a note* the way `billConstruction` and `trimOrderEffect` are,
+rather than rejected. Trimming is this project's house style for over-asking.
+
+## 15. FIXED — the same covert act had two prices, depending on how it was reached
+
+**FIXED, option (A): a covert declaration now *becomes* a deployment.**
+`AppraisalSchema.covert` names the mission and the system, the resolution prompt
+is told to emit the `deploy_agent` itself, and `routeCovertAction` appends one
+when it did not — so there is exactly one path, charged by `AGENT_COST`, held to
+`maxAgentsFor`, resolved on the tick and exposed on the same ladder. Only on an
+outcome that placed something: a failure places nobody, the same rule
+`boundPayloadsToOutcome` applies to a works payload. `prompts/appraisal.md` is v4
+and `prompts/resolution.md` v6. Nine tests, including one asserting that a routed
+deployment at the operative cap is rejected exactly as a hand-placed one is.
+
+The narrated-with-no-op half was fixed alongside item 16: covert action is the
+agent mechanic or it is nothing.
+
+The original write-up follows.
+
+---
+
+## 15 (original) — the same covert act has two prices
+
+
+
+Same run. A **declared** action *"assassinate the Drajk raid captain"* failed its
+`guile` check and cost −15 with Drajk and −6 with an onlooker: numbers the
+resolution call chose freely. A **deployed** `assassination` agent firing in the
+tick costs 35 undetected and 40 on exposure, in code (`reducer.ts`, the
+`profile.oneShot ? 40 : 20` and the flat 35).
+
+Neither is wrong on its own — and the playtester's reading that CLAUDE.md's
+"35/40" was contradicted is **not** right, since those figures describe the
+deployed-agent path and that path was never taken. What is real is that one
+fictional act has two mechanical routes with uncoordinated prices, and the
+cheaper one is the one a player reaches by typing a sentence.
+
+Related, from the same run: a declared sabotage *through an existing agent*
+narrated real physical damage ("a rack of munitions goes up") and emitted **no
+mechanical op at all** beyond a disposition change. Covert action declared as
+free text currently has no mechanical floor — it is priced as a check and can
+resolve into pure prose.
+
+### Two ways to close it
+
+- **(A) Route declared covert actions through the agent mechanic**: an
+  assassination attempt becomes a one-shot `deploy_agent`, so it is priced,
+  capped, charged and exposed like every other operation.
+- **(B) Give the resolution prompt the constants** so a narrated covert outcome
+  has to carry the documented cost.
+
+(A) is the structural answer and matches how `form_treaty` was handled — one
+mechanism, reached from one place.
+
+## 14. FIXED — agent exposure was unreachable, so operatives were permanent
+
+**FIXED (option B): exposure is tested on the top of the die**, `roll >= 21 -
+exposureRisk`, instead of the bottom. Re-measured the same way it was found —
+80 operatives, five owner/target pairings, 40 turns each:
+
+| mission | risk | mean turns alive, after |
+|---|---|---|
+| surveillance | 1/20 | 18.1 |
+| theft | 2/20 | 9.4 |
+| sabotage | 3/20 | 6.8 |
+| defection | 4/20 | 6.4 |
+| assassination | 9/20 | 47% caught per attempt (one-shot; claimed 45%) |
+
+Every mission now tracks its documented rate, and the ladder between a watcher
+and an assassin exists for the first time. **Competence still protects**: an
+operative good enough to succeed on all but a natural 20 is only ever caught on
+that 20 — 5%, not the 0% the old comparison produced.
+
+`tests/espionage.test.ts` pins it statistically against the real reducer rather
+than unit-testing the comparison, because the comparison *looked* correct. It
+asserts a watcher can be exposed at all (the regression that measured zero),
+that every persistent mission is caught within a long run, that the safer
+mission survives longer than the riskier one — compared as **survival**, since
+exposure counts saturate over 40 turns — and that an assassin burns at roughly
+its stated rate. Balance is unchanged: the doctrine bots deploy no agents.
+
+The original write-up follows.
+
+---
+
+## 14 (original) — agent exposure is unreachable, so operatives are effectively permanent
 
 **Measured against the real reducer, no model calls: 80 operatives placed across
 five owner/target pairings, ticked 40 turns each. Exposures: zero.** Every
@@ -254,7 +361,27 @@ worth a `pnpm balance` check, though the doctrine bots do not deploy agents.
 - **NPCs really do deploy against the player.** By turn 2 the Combine had two
   surveillance operatives on Meridian worlds (`slu-1`, `tio-1`) at 95%/turn.
 
-## 13. OPEN — a red line can be walked past through diplomacy
+## 13. FIXED — a red line could be walked past through diplomacy
+
+**FIXED (option A): `closeChannel` appraises what was agreed before staging it.**
+One Haiku call, and only when the transcript actually produced ops — a
+conversation that agreed nothing changes nothing and must not cost a call to
+discover that. A **red line refuses the whole accord** (a deal that needs you to
+cross it is no deal, the same rule an unexecutable order gets) and charges
+`REFUSAL_DISSENT`; a **compulsion lets it stand** and charges
+`COMPULSION_BREACH_DISSENT`, exactly as on the declaration path.
+
+Scoped to the acting faction by construction: the arbiter appraises from
+`playerFactionId`, so a line only the *other* power holds is not on the sheet
+being matched and cannot trip yours. Four tests, including the live case that
+found it — a `forgive_debt` framed as a renegotiation now leaves `debt-0`
+untouched and costs 8 dissent.
+
+The original write-up follows.
+
+---
+
+## 13 (original) — a red line can be walked past through diplomacy
 
 **Found by an adversarial Ojjul Nar playtest (2026-08-17, $1.67).** The arbiter's
 breach ruling is wired into `appraiseAction` -> `resolveAction`. The **extraction

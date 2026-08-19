@@ -1,5 +1,5 @@
 import { describeCheck, type CheckResult } from '../domain/checks.js';
-import { boundPayloadsToOutcome } from '../domain/development.js';
+import { boundPayloadsToOutcome, routeCovertAction } from '../domain/development.js';
 import {
   describeRejections,
   ExtractionOutputSchema,
@@ -14,11 +14,18 @@ import {
   MAX_DISSENT_PENALTY,
   REFUSAL_DISSENT,
 } from '../domain/state.js';
-import { extractAgreements, gatherReactions, resolveAction, type ChatMessage } from '../model/calls.js';
+import {
+  appraiseAgreement,
+  extractAgreements,
+  gatherReactions,
+  resolveAction,
+  type ChatMessage,
+} from '../model/calls.js';
+import { classifyPrinciples } from '../domain/compulsions.js';
 import { callStructured } from '../model/client.js';
 import { loadPrompt } from '../model/prompts.js';
 import { mostAffectedFactions, serializeState } from '../model/serialize.js';
-import type { Campaign } from './campaign.js';
+import { ACTION_POINTS_PER_TURN, type Campaign } from './campaign.js';
 
 export interface ReactionView {
   factionId: string;
@@ -233,6 +240,25 @@ async function commitWithCorrection(
  * yet — they react once, at end of turn, to the whole settled world.
  */
 export async function submitAction(campaign: Campaign, action: string): Promise<ActionOutcome> {
+  // Checked before anything is spent. The arbiter costs real money, so running
+  // out of turn has to be free to discover.
+  if (campaign.actionPointsLeft <= 0) {
+    return {
+      narrative: `Nothing further will move until the turn ends. You have used all ${ACTION_POINTS_PER_TURN} actions.`,
+      refusal: null,
+      defiance: null,
+      staged: 0,
+      notes: [
+        `No actions left this turn (${ACTION_POINTS_PER_TURN} per turn).`,
+        'End the turn to let orders tick, income land and the other powers answer.',
+      ],
+      rejections: [],
+      costUsd: 0,
+      check: null,
+      ops: [],
+    };
+  }
+
   const before = campaign.stagedCount;
   // The salt keeps two declarations in the same turn from sharing a roll,
   // while staying a pure function of state so replay is unaffected.
@@ -244,6 +270,8 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
   // The arbiter ruled it could not be attempted. Nothing was rolled and
   // nothing is staged — distinct from a failed check (attempted, went badly)
   // and from a refusal (your own institutions would not carry it out).
+  // Deliberately BEFORE any point is spent: the arbiter has ruled the thing
+  // cannot be attempted, so nothing happened and there is nothing to charge for.
   if (resolution.output.inadmissible) {
     return {
       narrative: resolution.output.narrative,
@@ -260,6 +288,8 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
   // A negotiation, not a decree. Costs nothing, stages nothing, charges no
   // dissent: the player asked for something reasonable and is being told where
   // the mechanism for it actually lives.
+  // Also free: being told "that is a conversation" is a redirect, not an act.
+  // Charging for it would make the redirect feel like a penalty for asking.
   if (resolution.output.negotiation) {
     const n = resolution.output.negotiation;
     return {
@@ -283,6 +313,9 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
   }
 
   if (resolution.output.refusal) {
+    // Spent. Your institutions refusing is a real event with a real cost, and a
+    // free retry would let a player probe their own red lines all day.
+    campaign.spendActionPoint();
     const refusal = resolution.output.refusal;
     const faction = getFaction(campaign.state, campaign.state.playerFactionId);
     const dissent = Math.min(100, (faction?.dissent ?? 0) + REFUSAL_DISSENT);
@@ -330,6 +363,8 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
   // This replaced retiring principles. A player who means to change what their
   // power is now does it by insisting, repeatedly, and absorbing the cost, which
   // leaves nothing to desync between the character sheet and the fiction.
+  campaign.spendActionPoint();
+
   const defiance = resolution.output.defiance ?? null;
 
   // The check is recorded so a campaign's luck is auditable after the fact, but
@@ -359,14 +394,26 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
       : []),
   ];
 
+  // One act, one mechanism. A covert declaration BECOMES a deployment, so it is
+  // charged by `AGENT_COST`, held to `maxAgentsFor`, resolved on the tick and
+  // exposed on the same ladder as an operative placed the ordinary way. Without
+  // this the declared route was simply cheaper than the mechanic it duplicates.
+  const routed = routeCovertAction(
+    ops,
+    resolution.check?.outcome ?? 'success',
+    resolution.output.covert,
+    campaign.state.playerFactionId,
+  );
+
   const staged = await stageWithCorrection(
     campaign,
-    ops,
+    routed.ops,
     action.length > 48 ? `${action.slice(0, 47)}…` : action,
     resolution.output.narrative,
     `The player declared: ${action}\n\nYour narrative was: ${resolution.output.narrative}`,
     resolution.check?.outcome,
   );
+  staged.notes.unshift(...routed.notes);
 
   if (defiance) {
     const total = Math.min(
@@ -507,6 +554,65 @@ export async function closeChannel(
   const faction = getFaction(campaign.state, factionId);
   const extraction = await extractAgreements(campaign.state, factionId, history);
 
+  // The institutions get a view on a deal, exactly as they do on a decree.
+  //
+  // Without this the arbiter gated the declaration path and nothing gated
+  // extraction, so a red line could be walked past by framing the act as a
+  // negotiation — measured live, the Combine emitted `forgive_debt` against its
+  // own first red line for no dissent at all, while the same intent declared
+  // normally was refused three times. Sharper than a plain missing check:
+  // `establish_debt` and `forgive_debt` are extraction-only by design, so the
+  // ops most tied to that faction's identity were the ones with no check.
+  //
+  // Only when the transcript actually produced ops. A conversation that agreed
+  // nothing changes nothing, and must not cost a call to discover that.
+  const ruling =
+    extraction.output.ops.length > 0
+      ? await appraiseAgreement(campaign.state, factionId, extraction.output.narrative)
+      : null;
+  const actor = getFaction(campaign.state, campaign.state.playerFactionId);
+  const named = ruling?.appraisal.breach?.principles ?? [];
+  const breach = actor && named.length > 0 ? classifyPrinciples(actor, named) : null;
+  const rulingCost = ruling?.costUsd ?? 0;
+
+  // A red line refuses the WHOLE agreement. A deal that requires you to cross
+  // it is not a smaller deal, it is no deal — the same rule `submitAction`
+  // applies to an order the fleet will not carry out. The other party's
+  // concessions go with it, because there is nothing left to concede to.
+  if (breach?.kind === 'red_line') {
+    const by = ruling?.appraisal.breach?.by ?? 'your own institutions';
+    const why =
+      ruling?.appraisal.breach?.reason ||
+      'That is not something this power will put its name to.';
+    campaign.stage(
+      [
+        { op: 'log_narrative', text: `[refused by ${by}] ${why}` },
+        {
+          op: 'adjust_dissent',
+          factionId: campaign.state.playerFactionId,
+          delta: REFUSAL_DISSENT,
+          reason: breach.principle,
+        },
+      ],
+      `refused accord with ${faction?.name ?? factionId}`,
+      why,
+    );
+    const dissent = getFaction(campaign.state, campaign.state.playerFactionId)?.dissent ?? 0;
+    return {
+      narrative: why,
+      refusal: { by, reason: why, violated: breach.principle },
+      staged: campaign.stagedCount - before,
+      notes: [
+        `${by} will not ratify the accord with ${faction?.name ?? factionId}.`,
+        `Breached: ${breach.principle}`,
+        `Dissent ${dissent}/100 — every stat is now reduced by ${dissentPenalty(dissent)}, to a maximum of ${MAX_DISSENT_PENALTY}.`,
+      ],
+      rejections: [],
+      costUsd: extraction.costUsd + rulingCost,
+      ops: campaign.opsStagedSince(before),
+    };
+  }
+
   const staged = await stageWithCorrection(
     campaign,
     extraction.output.ops,
@@ -519,12 +625,45 @@ export async function closeChannel(
     'extraction',
   );
 
+  // A compulsion is a price, not a wall: the accord stands and the institutions
+  // charge for having been overruled — the same bargain a declared action gets.
+  const notes = [...staged.notes];
+  let defiance: ActionOutcome['defiance'] = null;
+  if (breach?.kind === 'compulsion') {
+    const by = ruling?.appraisal.breach?.by ?? 'your own institutions';
+    defiance = {
+      by,
+      reason: ruling?.appraisal.breach?.reason || 'It was agreed over their objection.',
+      violated: breach.principle,
+    };
+    campaign.stage(
+      [
+        {
+          op: 'adjust_dissent',
+          factionId: campaign.state.playerFactionId,
+          delta: COMPULSION_BREACH_DISSENT,
+          reason: breach.principle,
+        },
+        { op: 'log_narrative', text: `[objected to by ${by}] ${defiance.reason}` },
+      ],
+      `objection to the accord with ${faction?.name ?? factionId}`,
+      '',
+    );
+    const dissent = getFaction(campaign.state, campaign.state.playerFactionId)?.dissent ?? 0;
+    notes.push(
+      `${by} objected to the accord and it stands anyway.`,
+      `Defied: ${breach.principle}`,
+      `Dissent +${COMPULSION_BREACH_DISSENT}, now ${dissent}/100 — every stat is reduced by ${dissentPenalty(dissent)}, to a maximum of ${MAX_DISSENT_PENALTY}.`,
+    );
+  }
+
   return {
     narrative: extraction.output.narrative,
+    defiance,
     staged: campaign.stagedCount - before,
-    notes: staged.notes,
+    notes,
     rejections: staged.rejections,
-    costUsd: extraction.costUsd + staged.costUsd,
+    costUsd: extraction.costUsd + staged.costUsd + rulingCost,
     // Extraction is the one pass that can turn conversation into ops, so seeing
     // exactly what it read out of a transcript matters more here than anywhere.
     ops: campaign.opsStagedSince(before),
