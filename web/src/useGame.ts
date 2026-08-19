@@ -170,7 +170,8 @@ export function useGame() {
             'refusal',
             refusalAlt(outcome.refusal, 'will not carry the order out'),
           );
-          if (outcome.refusal.violated) say(`Breached: ${outcome.refusal.violated}`, 'system');
+          // The breached line is NOT said here: both refusal paths already put
+          // `Breached: …` in `notes`, so saying it as well printed it twice.
           say(outcome.narrative, 'narrative');
           for (const note of outcome.notes) say(note, 'system');
           return;
@@ -273,7 +274,6 @@ export function useGame() {
             'refusal',
             refusalAlt(outcome.refusal, 'will not put their name to the accord'),
           );
-          if (outcome.refusal.violated) say(`Breached: ${outcome.refusal.violated}`, 'system');
         } else if (outcome.defiance) {
           sayWithArt(
             `${outcome.defiance.by} object, and the accord stands anyway: ${outcome.defiance.reason}`,

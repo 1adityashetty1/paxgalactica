@@ -3,9 +3,10 @@
 ## Where things stand (2026-08-18)
 
 **Item 17 is done** — the three non-outcomes have art in the feed, and building
-it turned up that `endTalk` was nulling `refusal` and `defiance` on the way to
-the browser. What is left of that item is the two cheap extras: `inadmissible`
-and the out-of-actions case.
+it turned up two things the art was not: `endTalk` was nulling `refusal` and
+`defiance` on the way to the browser, so a correctly ruled refused accord
+arrived as an ordinary narrative, and the client was printing `Breached: …`
+twice. The two cheap extras are now **item 18**.
 
 ## Where things stood (2026-08-17)
 
@@ -160,6 +161,21 @@ rival's institutions against it is an agent's job (`subversion` +
 `prompts/resolution.md` had been actively inviting it ("your own institutions
 grow more or less restive") and now states both rules.
 
+## 18. OPEN — the other two ways an action produces nothing
+
+Split out of item 17, which built the three the engine already types. The other
+two are distinguishable today only by matching a note string:
+
+- **`inadmissible`** — the world does not permit the attempt. `ResolutionOutput`
+  already carries it; surfacing it on `ActionOutcome` is one field.
+- **out of actions** — `ACTION_POINTS_PER_TURN` is spent. The engine knows;
+  nothing flags it as its own kind of nothing.
+
+Both would then draw through `OutcomeArt` unchanged, completing the set of five
+ways a declaration does not simply happen. Deliberately **not** on the list: the
+five check bands. Every rolled action produces one, so imagery there becomes
+wallpaper and stops meaning anything.
+
 ## 17. DONE — art for the three ways an action does not simply happen
 
 **Built and on screen (2026-08-18).** `web/src/components/OutcomeArt.tsx` draws
@@ -170,14 +186,17 @@ against the built stylesheet rather than by paying for three live refusals.
 
 Three things are worth recording:
 
-- **The art the user supplied is a different register from the brief below** —
-  cartoon-realist, and all three carry text (a stamped VETO, a news chyron, a
-  connecting-call card) where the brief asked for painterly and wordless. That
-  is the user's call and the brief is left standing as written rather than
-  rewritten to match; the point of keeping it is that the *next* three (see
-  below) have something to sit with. Nothing in the wiring depends on the style.
+- **These deliberately do not look like the portraits.** The brief below asked
+  for painterly and wordless, matching the diplomacy set; the art that shipped
+  is cartoon-realist and all three carry text — a stamped VETO, a news chyron, a
+  connecting-call card. That is the point rather than a drift from it: a
+  portrait exists to be *recognised* as a person you are talking to, while these
+  three exist to **communicate an idea** — this was vetoed, this cost you
+  standing, this needs someone else in the room — and reading in a second beats
+  matching a house style. The brief is left standing as written because it is
+  the portrait set's brief, not theirs. Nothing in the wiring depends on either.
   The images are near enough 16:9 (1.79) that `object-fit: cover` crops about a
-  percent, which matters slightly more than it would have for wordless art.
+  percent, which is worth knowing given they carry text.
 - **`endTalk` was dropping two of the three fields.** `closeChannel` has always
   returned a `refusal` on a red line and a `defiance` on a compulsion, and
   `GameSession.endTalk` wrote `refusal: null, defiance: null` literally — so the
@@ -188,9 +207,20 @@ Three things are worth recording:
 - **The art rides on the message, not on an entry of its own.** The feed is
   capped at 500 and trims from the front, which could otherwise behead a scene
   and leave its caption.
+- **`Breached: …` was printed twice** on a refusal, and adding the art is what
+  made it obvious: both refusal paths already carry the line in `notes`, and the
+  client said it a second time on its own. The client no longer does. It is also
+  in the image's `alt`, which is the copy that matters for a reader who cannot
+  see the picture.
 
-Still open from this item: the two nearly-free extras at the end — surfacing
-`inadmissible` on `ActionOutcome` and flagging the out-of-actions case.
+The three checks that were worth running against the screen rather than the
+suite, since this is all rendering: `Breached` appears exactly once, all three
+images draw at 460px in the feed column, and a **missing file leaves no hole** —
+verified by pointing the component at a name that does not exist and watching
+the refusal line stand alone, with no gap and no broken-image glyph.
+
+The two nearly-free extras at the end of the original write-up were not built;
+they are item 18.
 
 The original write-up follows.
 
