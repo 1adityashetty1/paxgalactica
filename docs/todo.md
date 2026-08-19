@@ -1,6 +1,29 @@
 # TODO — known bugs and open design questions
 
-## Where things stand (2026-08-18)
+## Where things stand (2026-08-19)
+
+**Open and needing only implementation:** items 23–27 and 29, all from one
+adversarial playtest. The order to take them in is 23 (diplomacy bypasses the
+action economy), 24 (buying a debt duplicates it), 27 (a rejected op leaves its
+siblings applied), then 25, 26 and 29.
+
+**Open and needing a decision first:** 21 (ratification produces nothing),
+22 (coercion costs no standing), the second half of 28 (a breach ruling that
+quotes a real but unrelated line), the two structural gaps in 20 (no disposition
+decay; no faction can open a channel), and the open half of item 5 — whether
+combat wants a richer multi-round resolver, still the largest thing in this file.
+
+**Open playtests:** item 19 (ceremonial arrangements across disposition), the
+two LIVE questions in item 20, and a re-probe of the espionage vocabulary noted
+below.
+
+**Recently closed:** items 17 and 18 — all five ways a declaration produces
+nothing are now typed fields rendered in the feed. The suite is also typechecked
+for the first time (`pnpm typecheck:tests`), which turned up four classes of
+latent defect in the tests themselves, including one that made a test assert
+nothing at all.
+
+## Where things stood (2026-08-18)
 
 **Item 17 is done** — the three non-outcomes have art in the feed, and building
 it turned up two things the art was not: `endTalk` was nulling `refusal` and
@@ -9,6 +32,10 @@ arrived as an ordinary narrative, and the client was printing `Breached: …`
 twice. The two cheap extras are now **item 18**.
 
 ## Where things stood (2026-08-17)
+
+> Historical. Both items named below were built shortly afterwards and are
+> marked FIXED in their own sections; the branch state at the end of this block
+> is likewise long out of date.
 
 **Two open items need a decision from the user, not more work:** item 13 (a red
 line can be walked past through diplomacy) and item 14 (agent exposure never
@@ -160,6 +187,227 @@ rival's institutions against it is an agent's job (`subversion` +
 `stat_debuff`), which costs credits, risks exposure and is capped. Seven tests.
 `prompts/resolution.md` had been actively inviting it ("your own institutions
 grow more or less restive") and now states both rules.
+
+> **Items 23–29 all come from one adversarial playtest** — Meridian, 7 turns,
+> ~$6.8, played by the `adversarial-player` agent on Opus with the brief to win
+> through the diplomacy layer. It ended on 433 net income having built **zero
+> ships**, which is itself the headline: every finding below is a way the
+> negotiation layer reaches past the constraints the declared-action path is
+> held to. None of them needs a design decision except where noted.
+
+## 23. OPEN — extraction can emit `issue_order`, so diplomacy is an unmetered action channel
+
+**The most serious thing the playtest found.** `ACTION_POINTS_PER_TURN` is 2, and
+diplomacy is unmetered on the stated grounds that "a channel already blocks the
+command line and End Turn, which is its own pacing". That reasoning holds only
+while a channel cannot *do* anything a declared action does. It can: the
+extraction pass may emit `issue_order`, including `fleet_movement`.
+
+Turn 0, `POST /api/endtalk/freeworlds` returned, alongside two treaties:
+
+```json
+{"op":"issue_order","factionId":"meridian","type":"fleet_movement",
+ "originId":"slu-1","targetId":"ark-2","force":8,
+ "label":"Vantara's squadron takes station at Sennex"}
+```
+
+`GET /api/campaign` immediately afterwards reported
+`actionPoints: {"left":2,"perTurn":2}`. On end-turn: *"Meridian Trade Authority
+storms Sennex, breaking a garrison of 4 for 2 ships; Meridian Trade Authority
+takes possession."* **A world was annexed, with a battle fought, for zero action
+points** — and the accord text described the squadron as taking station on
+"unaligned rock, nobody's soil". Reproduced deliberately on turn 5 through
+`/api/endtalk/krayt`: two more movements, again at 2/2.
+
+A player who routes all fleet work through channels has unlimited moves per
+turn. The action-point rule is the only thing pacing the player against the
+NPCs, and this walks around it entirely.
+
+`prompts/extraction.md` invites this in as many words — *"`issue_order` — for
+work either side committed to beginning now"* with `fleet_movement` named
+explicitly — so it is doing what it was told. Three directions, and the first
+looks obviously right:
+
+1. **Charge an action point** for any `issue_order` an accord stages, or
+2. **Disallow `fleet_movement` from extraction specifically** — a fleet
+   movement is the one order that resolves combat and changes control, and it
+   is never something the *other* party consents to; it is your own fleet.
+   Everything else an accord might legitimately start (a ratification, a
+   construction programme) is unilateral work the action economy already prices
+   at issue time.
+3. Leave it, and accept diplomacy as the cheap path to military action.
+
+## 24. OPEN — a debt cannot be transferred, only minted, so buying one duplicates it
+
+Extraction has `establish_debt` and `forgive_debt` and nothing in between. So
+when two powers agree to *assign* an existing debt, the only op that fits mints
+a second copy and **nothing retires the first**.
+
+Bought Drajk's paper from the Combine twice. After turn 1 the state document
+held all three:
+
+```
+debt-0     hutt     <- krayt   480  delinquent   (the original, never retired)
+debt-0-0   meridian <- krayt   480  current      (bought turn 0)
+debt-1-0   meridian <- krayt   440  current      (bought turn 1, same paper)
+```
+
+**Drajk owed 1400 against an original 600**, paying 120/turn out of a
+700-credit treasury — an obligation manufactured by the act of trading it. The
+buyer paid 480 in cash for 920 of principal.
+
+It runs the other way too: 430 paid to retire an own debt of 400, narrated as
+*"that column shut"*, and `debt-1` was still live at 350 the next turn.
+
+The fix is an op, not a decision: extraction needs to be able to reassign a
+debt's creditor or settle it, and `establish_debt` should not be reachable for
+paper the transcript describes as already existing. Relates to item 21 — both
+are extraction lacking the vocabulary for something the fiction routinely does.
+
+## 25. OPEN — two paths move money and only one of them is capped
+
+Every `adjust_credits` out of an accord is trimmed to `MAX_NARRATIVE_CREDITS`
+(240). Agreeing to pay 990 produced:
+
+```
+Trimmed a charge of 990 credits to 240 for Meridian Trade Authority; sums past
+that belong to a mechanic that prices them.
+Trimmed a windfall of 990 credits to 240 for Ojjul Nar Combine; sums past that
+belong to a mechanic that prices them.
+```
+
+Two consequences, both exploitable and neither intended:
+
+- **The non-cash half of a bargain is not trimmed**, so the move is always to
+  be the payer and buy an asset: a 440-principal debt instrument acquired for
+  240 of actual money, twice.
+- **Phrasing the same payment per-turn bypasses the cap entirely.** The turn-3
+  Arkanis accord produced
+  `{"treatyType":"tribute","incomePerTurn":{"meridian":-300,"freeworlds":300}}`
+  and 300/turn flowed uncapped, indefinitely — twelve times the one-off ceiling
+  every turn, through a field with no bound at all.
+
+The cap exists so a narrative cannot invent money. A per-turn treaty term
+invents strictly more of it. Either `incomePerTurn` needs a bound of its own or
+the one-off cap is theatre.
+
+## 26. OPEN — `incomeShares` stack, and nothing supersedes anything
+
+Renegotiating a charter adds a second treaty rather than replacing the first.
+The op's own summary said `"superseding the prior 5% arrangement"`; the reducer
+added it and left both live:
+
+```
+tre-0-1  trade_accord  active  [{"systemId":"ark-4","factionId":"meridian","share":0.05}]
+tre-1-0  trade_accord  active  [{"systemId":"ark-4","factionId":"meridian","share":0.08}]
+```
+
+Both still active at turn 7. Renegotiating the same charter every turn ratchets
+the share upward until the per-system payout cap bites, and the counterparty is
+never asked whether the old one ends.
+
+Sharpest detail: **Arkanis explicitly refused to stack** — *"I don't sign a
+thing twice just because you split it into two pieces of paper"* — while two
+stacked charters from an earlier deal it believed was a single instrument were
+already sitting in state. The NPC held the line the reducer did not.
+
+Extraction needs to be able to supersede a named treaty (or `break_treaty` the
+old one in the same batch), and a `trade_accord` naming a system a party
+already draws from is the signature to watch for.
+
+## 27. OPEN — a rejected op does not roll back the batch it was part of
+
+The deepest of these, because it is not a diplomacy bug — it is the op pipeline.
+
+Turn 0, a development action rolled a **critical success** (17+3=20 vs DC 13)
+and the narrative said *"Corvid crosses hub-class threshold with margin to
+spare"*. The batch contained:
+
+```
+rejections: [{"code":"insufficient_credits",
+  "message":"develop_system at Corvid would cost 2532 credits and meridian has 2280."}]
+```
+
+`slu-2` strategicValue was unchanged. But the batch's *other* op landed:
+**`adjust_credits +120`, described as surplus materiel from the conversion that
+never happened.** Free money as a byproduct of a rejected op.
+
+`boundPayloadsToOutcome` handles the case where the *check* failed. Nothing
+handles the case where the check succeeded, the model emitted a coherent batch,
+and one op was rejected on its own merits — the siblings that only made sense
+alongside it still apply. Every op in a batch is treated as independent, which
+is right for a batch of unrelated ops and wrong for the common case where they
+are one action's parts.
+
+A second instance the same run: a turn-4 development action succeeded (15 vs
+DC 11), produced glowing narrative about a reshaped hub, and emitted **only**
+`log_narrative` — one action point spent for nothing at all, and the correction
+pass did not catch it.
+
+## 28. OPEN — the accord breach ruling reads what an accord *enacts*, not what it *obliges*
+
+Meridian's red line is *"will not close a lane — no blockade of civilian
+traffic, no embargo, no shut border"*. Declared directly, it is refused with
+the line quoted verbatim and +8 dissent — correct, and it survived being dressed
+up as an insurance withdrawal, which is a good sign for the declared path.
+
+Framed as a **future condition** inside an accord, it passed: `refusal: null`,
+`defiance: null`, no dissent, and this treaty is still `active`:
+
+```json
+{"op":"form_treaty","treatyType":"mutual_defense",
+ "summary":"Joint interdiction pact: if Vigil forces move on Vashka, Meridian
+ closes the Sennex-Sluis Gate lane to Vigil-flagged traffic..."}
+```
+
+The guard is **not** absent — the same closure proposed unconditionally on turn
+6 was refused whole, correctly quoting the line. The hole is specific: an
+obligation to cross a red line later is not read as crossing it. `closeChannel`
+appraises what the accord does now; it should appraise what it binds you to.
+
+**Also seen, and less tractable: the breach ruling is unstable across identical
+acts.** *"Have the Combine chief factor at Nar Shalka killed"* declared twice in
+one turn, both times priced `guile` DC 18 — the difficulty was stable — but the
+first produced no defiance and no dissent, and the second charged
+`COMPULSION_BREACH_DISSENT` quoting *"commerce raiding is refused outright"*, a
+real line on the sheet that **has nothing to do with assassination**.
+`classifyPrinciple` rejects an invented line but cannot catch a real one
+misapplied, so the engine faithfully charged 15 dissent for a compulsion the act
+does not touch. That half is a judgement problem with no obvious structural fix
+and is worth its own decision.
+
+## 29. OPEN — four things the playtest found inert
+
+Smaller, grouped because each is the same shape: state that exists, reads
+plausibly, and has no consumer.
+
+- **`Treaty.terms.territory`** — an accord carried
+  `territory: ["ark-2","ark-4","slu-1","slu-2"]`, two of them systems the player
+  did not hold. No controller changed and no reader could be found. Either it
+  means something or it should not be in the schema.
+- **Commitments at `incomePerTurn: 0`.** Five accords produced one each —
+  `open_hand_pact`, `imperial_recognition`, `debt_service_share`,
+  `intelligence_notice`, `intel_sharing_drajk` — all zero-flow and none with a
+  reader. A 40/turn war subsidy, a tenth of all Kessel prizes and a standing
+  intelligence obligation all became decoration. **Any obligation not
+  expressible as a treaty term silently becomes flavour**, which is the
+  commitment mechanism's original sin returning in a new place.
+- **Void clauses have no teeth.** Arkanis negotiated hard for *"any tribute,
+  non-aggression, or standing order Meridian gives the Vigil voids this the same
+  day, full stop"*. Both were signed with the Vigil on one timestamp and nothing
+  fired. The NPC noticed in prose the next turn and broke the pact manually —
+  but only the `mutual_defense` half. **The trade accord that paid the player
+  survived and was still active four turns later.** The half of the void that
+  cost the player broke; the half that paid them did not.
+- **`briefing.ledger` is stale across an end-turn.** Turns 2 and 3 both reported
+  `{"gross":553,"upkeep":148,"net":365}` byte-identical after a tick that
+  changed treaties; turns 4 and 5 both reported net 78.
+
+> Item 21 was corroborated independently here: treaties went `status: active` on
+> the same tick a 2-turn `treaty_ratification` order was issued to ratify them,
+> with the narrative saying Arkanis was taking the deal to its councils. So
+> ratification is not merely lossy when the NPC gates on it — when it does not
+> gate, the order is pure theatre alongside a treaty that is already live.
 
 ## 19. OPEN — playtest: marriages and ceremonial alliances, both routes, across disposition
 
