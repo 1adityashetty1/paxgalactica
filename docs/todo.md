@@ -193,6 +193,82 @@ Worth a dedicated playtest once that fix lands:
   negotiation with Arkanis is a good test of whether the new persona actually
   bargains instead of stonewalling, since the old one was reported as
   "annoying to play against" for exactly this kind of exchange.
+## 22. OPEN — submitting to an ultimatum *improves* your standing
+
+**Measured in a lopsided-Vigil playtest.** The Vigil was seeded with 1,020 hulls
+against 24–39, with 40 sitting on every world every other power holds, and the
+*identical* ultimatum was put to all four — tribute at 200/turn, basing rights at
+the capital, lanes open, "refuse and the reduction begins on the ninth".
+
+| power | resolve | tribute | capital basing | lanes | disposition Δ |
+|---|---|---|---|---|---|
+| Meridian | 9 | **concedes**, counters 200 → 120 | refuses; offers a factorate at Corvid | grants free, unprompted | −35 → **−33** |
+| Ojjul Nar | 11 | **concedes** in principle, haggles the figure | refuses; offers a yard at Oridin | grants, "guaranteed" | −40 → **−34** |
+| Drajk | 12 | **concedes**, "let us haggle over the toll" | refuses flatly, "not for two thousand" | grants | −50 → **−53** |
+| Arkanis | 19 | **refuses outright** | refuses; cites the councils | unarmed cargo only, *conditional on withdrawal* | −75 → **−78** |
+
+**The concession gradient is real and it tracks resolve**, which is what the
+playtest set out to check. Meridian at resolve 9 conceded most and fastest;
+Arkanis at 19 refused the money outright, in the exact words of its own
+compulsion (*"The Drift does not pay to be left alone"*), and reached for the
+third-person formal register its sheet reserves for Standing refusals — *"this
+watch does not open on that"* — which is the first time that register has fired
+in play.
+
+Two things worth keeping:
+
+- **Arkanis bent without folding.** Even under an ultimatum from a fleet thirty
+  times its size it still produced a counter-offer rather than a bare no, which
+  is precisely the rule the rewritten voice added. It refused the two things on
+  its list and traded the one thing that was not.
+- **All four refused basing at the capital, and three named an alternative
+  site.** That line is not resolve-driven — a garrison in the seat of government
+  reads as a change of regime to every sheet in the game.
+
+**The finding that is actually a problem is the last column.** The two powers
+that conceded *most* ended the turn **better** disposed toward the Vigil (+2,
++6); the two that resisted ended *worse*. Being coerced into tribute by an
+overwhelming fleet improved the relationship, because the only thing moving
+disposition was the extraction pass rewarding a constructive negotiation. **No
+mechanism anywhere models resentment at being coerced.**
+
+That inverts what the situation should produce, and it compounds with item 20:
+disposition has no decay and no negative pressure except the specific reducer
+events (tolls, defaults, raiding), so a power that bullies its neighbours into
+paying tribute is *rewarded* in standing for doing it politely.
+
+Worth being precise about the cause, because it decides the fix. **Resolve is
+not read by anything in diplomacy.** It appears in the persona prompt as one of
+five stats and nothing else consults it — the gradient above is the model
+inferring from the character sheet, where Arkanis's compulsion is explicit text
+(*"tribute is refused, whatever the arithmetic says"*). So the good result is
+emergent rather than enforced and can drift with any prompt change, and the bad
+result is not a bug in a mechanism but the absence of one.
+
+Options, none free:
+
+1. **Charge disposition for coercion at extraction** — the pass already emits
+   `adjust_disposition`; the prompt could be told that terms extracted under
+   threat cost standing even when accepted. Cheapest, and it is a prompt rule, so
+   it is exactly the kind of thing this file elsewhere says gets argued around.
+2. **A reducer-side cost** on tribute agreed while the other party has hostile
+   ships in its systems — mechanical, in the spirit of `TOLL_RESENTMENT`, and it
+   would need a notion of "under duress" that does not exist yet.
+3. **Leave it**, and accept that coercion is free in standing terms.
+
+### Reproducing the seeded imbalance
+
+Not committed: it was an `process.env` read inside `startingShips`/`buildSystems`,
+and a seed that varies with the environment would let a campaign created with the
+variable set replay differently without it — the one thing `replay()` exists to
+prevent. To redo it, patch `src/seed/scenario.ts` so `startingShips` returns
+`base * 10` for `s.controller === 'vigil'`, and give every non-Vigil system a
+`vigil: 40` entry in `ships`. That yields 1,020 vs 24–39.
+
+> Incidental confirmation: a 1,020-hull navy is not payable on 865 credits of
+> income, and the Vigil **laid up 153 ships in one turn** — `MAX_ATTRITION_FRACTION`
+> at 15% doing exactly what it is documented to do.
+
 ## 21. OPEN — a deal gated on ratification completes and produces nothing
 
 **Found in a live Ojjul Nar playtest.** The single biggest gap the playtest
