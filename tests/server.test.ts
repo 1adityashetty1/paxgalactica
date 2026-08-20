@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   ApiErrorSchema,
   CampaignViewSchema,
+  MAX_CHANNEL_MESSAGES,
   ROUTES,
   ServerEventSchema,
   type ServerEvent,
@@ -273,6 +274,32 @@ describe('the diplomacy boundary is enforced server-side', () => {
     const { session } = await startedSession();
     const res = await dispatch(session, 'POST', ROUTES.talk('gungans'), { text: 'hi' });
     expect(res.status).toBe(404);
+  });
+
+  /**
+   * Diplomacy is unmetered by action points on purpose, but unmetered turned
+   * out to mean unbounded. Every message re-sends the whole transcript and the
+   * persona, so a conversation nobody closes costs more per reply as it grows,
+   * and the transcript the extraction pass reads afterwards grows with it.
+   * Refused rather than truncated: dropping the oldest exchange would make the
+   * faction forget terms it had already agreed to.
+   */
+  it('caps how many messages the player may send in one channel', async () => {
+    const { session } = await startedSession();
+    const history = (session as unknown as { channelHistory: unknown[] }).channelHistory;
+    (session as unknown as { openChannel: string | null }).openChannel = 'hutt';
+    for (let i = 0; i < MAX_CHANNEL_MESSAGES; i++) {
+      history.push({ speaker: 'player', text: `turn ${i}` });
+      history.push({ speaker: 'faction', text: 'noted' });
+    }
+
+    const res = await dispatch(session, 'POST', ROUTES.talk('hutt'), { text: 'one more' });
+    expect(res.status).toBe(409);
+    // The refused message must not be consumed, or the player loses it AND the
+    // channel is still full.
+    expect(history).toHaveLength(MAX_CHANNEL_MESSAGES * 2);
+    // And it has to say how to get out of the state it just refused.
+    expect(JSON.stringify(res.body)).toMatch(/endtalk/i);
   });
 
   it('endTalk without an open channel is a conflict', async () => {

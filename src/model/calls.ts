@@ -526,8 +526,56 @@ export async function gatherReactions(
 /* 3. Diplomacy chat — emits NO ops, by construction                    */
 /* ------------------------------------------------------------------ */
 
+/**
+ * The longest a reply can be and still be suspected of being a stub.
+ *
+ * A real reply runs to paragraphs; a stub is one sentence pointing somewhere
+ * else. Kept generous so the check never has to reason about long prose.
+ */
+export const STUB_REPLY_MAX_CHARS = 240;
+
+/**
+ * A reply that *describes* itself instead of *being* itself.
+ *
+ * Seen live twice, on two different factions: `"Gate-officer's reply, in
+ * character, delivered above."` and `"Legate's reply delivered in-channel as
+ * above."` Under `outputFormat: json_schema` the model writes the prose as
+ * ordinary assistant text and then fills the one required field with a pointer
+ * to it — so `z.string().min(1)` passes, and what reaches the player is a stage
+ * direction instead of a line of dialogue.
+ *
+ * It is worse than a cosmetic glitch, because the stub is appended to
+ * `channelHistory` and the transcript is what the extraction pass reads. A
+ * conversation with a stub in it has a hole exactly where the terms were, so
+ * whatever was agreed in that exchange cannot be extracted — the ops for it
+ * simply never appear.
+ *
+ * Deliberately **narrow**: it fires only on a SHORT string that both names the
+ * artefact and says where it supposedly is. A genuinely short reply — "No." —
+ * is in character for at least two of the five powers and must survive. The
+ * cost of a false positive is one retry, not a failed action.
+ */
+export function looksLikeStubReply(reply: string): boolean {
+  const text = reply.trim();
+  if (text.length > STUB_REPLY_MAX_CHARS) return false;
+  const namesTheArtefact = /\b(reply|response|answer|message|dialogue|statement)\b/i.test(text);
+  const pointsElsewhere =
+    /\b(above|below|delivered|provided|omitted|as follows|in[-\s]?channel|in character|as stated)\b/i.test(
+      text,
+    );
+  return namesTheArtefact && pointsElsewhere;
+}
+
 export const DiplomacyReplySchema = z.object({
-  reply: z.string().min(1),
+  reply: z
+    .string()
+    .min(1)
+    // Layer 2, which is the only layer that can catch this: no JSON schema can
+    // express "this string must be the speech rather than a note about it".
+    .refine((r) => !looksLikeStubReply(r), {
+      message:
+        'This must be the words the faction actually speaks, in character — not a description of a reply delivered elsewhere. Put the dialogue itself in this field.',
+    }),
 });
 
 export interface ChatMessage {
