@@ -381,6 +381,40 @@ Extraction needs to be able to supersede a named treaty (or `break_treaty` the
 old one in the same batch), and a `trade_accord` naming a system a party
 already draws from is the signature to watch for.
 
+## Decisions taken (2026-08-21)
+
+The open design questions were put to the user and answered. Recorded here
+before implementation so the *reasoning* survives even if a build slips.
+
+| item | decision |
+|---|---|
+| **27** batch atomicity | **Atomic.** Strictly — no fallback to partial. Done. |
+| **22** coercion | **Terms extracted under threat cost standing.** |
+| **20a** disposition decay | **No drift.** Relationships stay where they are put; the ratchet is accepted. |
+| **21** ratification | **Pending treaty.** Extraction emits the treaty immediately, inert until its effective turn. |
+| **28b** misapplied lines | **A cheap second call** to verify the quoted line is relevant. |
+| **29b** zero-flow commitments | **They are records, and records should bite.** A commitment affects disposition; the record is what stops it being exploitable. |
+| **29c** void clauses | **A closed set of typed void conditions** — including **negative income**, so a debtor cannot default its way out of an obligation. |
+| **20b** NPC-initiated talk | **Yes, in a window where the player cannot act** — after `/endturn` is submitted, not interrupting a live turn. |
+
+Still unanswered, and not blocking: **29a** (`Treaty.terms.territory` — define
+or delete) and the open half of **item 5** (a richer multi-round combat
+resolver), which I recommended deprioritising.
+
+Two notes on the decisions, because they change the shape of what gets built:
+
+- **"No drift" makes 22 sharper, not milder.** With no decay, a coercion charge
+  is permanent, so the number wants to be small and the *record* is what carries
+  the weight. A power that bullies its neighbours accumulates a standing debt
+  that never fades — which is the intended reading, but it means the constant
+  should be conservative on the first pass.
+- **Negative income as a void condition is the interesting half of 29c.** It
+  generalises past debt: any obligation whose payer has stopped being solvent
+  voids rather than silently continuing against a floored treasury. That is the
+  same failure `Ledger` already has to work around, so it is worth checking
+  whether the condition belongs on the treaty or in `tickTurn` beside the debt
+  service.
+
 ## 27. OPEN — a rejected op does not roll back the batch it was part of
 
 > **Reclassified: this needs a decision after all.** I listed it as mechanical
