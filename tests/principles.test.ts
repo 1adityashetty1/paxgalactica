@@ -889,3 +889,46 @@ describe('a quoted line has to be about the act', () => {
     expect(calls.map((c) => c.kind)).toEqual(['appraisal', 'resolution']);
   });
 });
+
+/**
+ * A red line must forbid something a faction can actually choose not to do.
+ *
+ * Drajk's first line read "will not hold a siege line, **garrison a world**, or
+ * sit still to be besieged". It was false the moment a campaign began: Drajk
+ * holds four worlds, every one garrisoned at turn 0, and `GARRISON_REGROWTH`
+ * tops up every controlled world each tick with no order, no credits and no say
+ * from the faction. The sheet asserted something the world contradicts
+ * continuously — and it would have refused a Drajk player for doing a thing the
+ * engine does *for* them every turn.
+ *
+ * Nothing broke, because red lines are only enforced when the arbiter rules on
+ * a declared action and passive regrowth is nobody's declaration. That is what
+ * made it survive: a contradiction with no reader.
+ */
+describe('no red line forbids a passive mechanic', () => {
+  it('lets Drajk hold a garrisoned world without contradicting its own sheet', () => {
+    const state = createSeedState('krayt');
+    const drajk = state.factions.find((f) => f.id === 'krayt')!;
+    const held = state.systems.filter((s) => s.controllerFactionId === 'krayt');
+
+    // The premise: it does hold worlds, and they do have troops on them.
+    expect(held.length).toBeGreaterThan(0);
+    expect(held.every((s) => s.garrison > 0)).toBe(true);
+
+    // So no line may forbid simply having one.
+    for (const line of drajk.redLines) {
+      expect(line, `"${line}" forbids a state the engine creates passively`).not.toMatch(
+        /garrison a world/i,
+      );
+    }
+  });
+
+  it('still refuses the thing the line is actually about', () => {
+    const drajk = createSeedState('krayt').factions.find((f) => f.id === 'krayt')!;
+    const pinned = drajk.redLines.find((l) => /pinned in place/i.test(l));
+    expect(pinned).toBeDefined();
+    // The choice, not the condition: committing the fleet to sit somewhere.
+    expect(pinned).toMatch(/siege line/i);
+    expect(pinned).toMatch(/besieged/i);
+  });
+});

@@ -274,7 +274,18 @@ const SEED_FACTIONS: SeedFaction[] = [
     redLines: [
       // Absorbs "or sit still to be besieged" from the compulsion that used to
       // restate this line almost word for word.
-      'will not hold a siege line, garrison a world, or sit still to be besieged — being pinned down is how raiders die',
+      // "garrison a world" was false the moment the campaign began: Drajk holds
+      // four worlds, all garrisoned at turn 0, and `GARRISON_REGROWTH` tops
+      // every controlled world up each tick with no order, no credits and no
+      // say from the faction. The sheet asserted something the world contradicts
+      // continuously, and it would have refused a Drajk player for doing a thing
+      // the engine does FOR them every turn.
+      //
+      // The intent was never "owns no troops" — it is that raiders do not let
+      // themselves be pinned. So the line now forbids the choice rather than the
+      // condition: committing the fleet to sit somewhere, which is a thing Drajk
+      // can actually decide not to do.
+      'will not be pinned in place — no siege line held, no fleet committed to sit and defend a world, no waiting to be besieged; being caught in one spot is how raiders die',
       'will not put its name to a written treaty; a handshake it can deny is the most it offers',
     ],
     compulsions: [
