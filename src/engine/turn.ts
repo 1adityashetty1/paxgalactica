@@ -130,6 +130,12 @@ async function reviseRejected(
   label: string,
   context: string,
   /**
+   * The whole batch as proposed. Needed because batches are atomic: nothing
+   * from the first attempt was applied, so the correction has to re-emit the
+   * good ops as well as fix the bad ones.
+   */
+  attempted: unknown[],
+  /**
    * Extraction corrections must be able to re-emit a treaty: the deal was
    * struck, and handing back a vocabulary that cannot express it would turn a
    * fixable rejection into a lost agreement.
@@ -145,17 +151,24 @@ async function reviseRejected(
     '',
     context,
     '',
-    '## Ops that were rejected',
+    '## What you emitted, none of which was applied',
     '',
-    'You emitted these ops and the reducer refused them. Every OTHER op from',
-    'that batch was accepted and is already applied — re-emitting any of them',
-    'would apply it twice.',
+    'An action lands whole or not at all. The reducer refused some of these ops,',
+    'so NONE of the batch was applied and the world is exactly as the state above',
+    'describes it. Nothing has happened twice and nothing needs preserving.',
+    '',
+    '```json',
+    JSON.stringify(attempted, null, 2).slice(0, 6000),
+    '```',
+    '',
+    '## Why it was refused',
     '',
     describeRejections(rejections),
     '',
-    'Re-emit ONLY corrected replacements for the rejected ops. If a rejected op',
-    'cannot be expressed legally, drop it and say so in the narrative rather than',
-    'working around the rules.',
+    'Re-emit the WHOLE batch, corrected. Keep the ops that were fine exactly as',
+    'they were, and fix or drop the ones named above. If a rejected op cannot be',
+    'expressed legally, drop it and say so in the narrative rather than working',
+    'around the rules — but do not drop the rest of the action with it.',
   ].join('\n');
 
   try {
@@ -204,7 +217,7 @@ async function stageWithCorrection(
     return { rejections: [], notes: [...bound.notes, ...first.notes], costUsd: 0 };
   }
 
-  const revised = await reviseRejected(campaign, first.rejections, label, context, source);
+  const revised = await reviseRejected(campaign, first.rejections, label, context, bound.ops, source);
   if (!revised) {
     return {
       rejections: first.rejections,
@@ -235,7 +248,7 @@ async function commitWithCorrection(
     return { rejections: [], notes: first.notes, costUsd: 0 };
   }
 
-  const revised = await reviseRejected(campaign, first.rejections, label, context);
+  const revised = await reviseRejected(campaign, first.rejections, label, context, ops);
   if (!revised) return { rejections: first.rejections, notes: first.notes, costUsd: 0 };
 
   const second = campaign.commit(revised.ops, 'model', `${label}:correction`, actor);

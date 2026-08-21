@@ -164,7 +164,7 @@ export class Campaign {
   ): { rejections: ApplyResult['rejections']; notes: string[] } {
     // The player's own faction is always the actor for a declared action.
     const actor = this.committed.playerFactionId;
-    const res = applyOps(this.state, ops, source, actor);
+    const res = applyOps(this.state, ops, source, actor, true);
     this.state = res.state;
     // `ops` is what was PROPOSED and is what gets journaled, because replay must
     // re-run the rejections to reproduce them. `applied` is the subset that
@@ -271,7 +271,7 @@ export class Campaign {
       // committing it as `model` would reject it at the moment the turn landed
       // — the deal visible in the preview would quietly not exist afterwards.
       const source = batch.source ?? 'model';
-      const res = applyOps(this.committed, batch.ops, source, batch.actor);
+      const res = applyOps(this.committed, batch.ops, source, batch.actor, true);
       this.committed = res.state;
       this.journal.entries.push({
         kind: 'ops',
@@ -310,7 +310,7 @@ export class Campaign {
     label: string,
     actor?: string,
   ): { rejections: ApplyResult['rejections']; notes: string[] } {
-    const res = applyOps(this.committed, ops, source, actor);
+    const res = applyOps(this.committed, ops, source, actor, true);
     this.committed = res.state;
     this.journal.entries.push({ kind: 'ops', source, label, ops, actor });
     this.resyncPreview();
@@ -329,7 +329,7 @@ export class Campaign {
   private resyncPreview(): void {
     let s = this.committed;
     for (const batch of this.stagedBatches) {
-      const res = applyOps(s, batch.ops, 'model', batch.actor);
+      const res = applyOps(s, batch.ops, batch.source ?? 'model', batch.actor, true);
       s = res.state;
       const refused = new Set(res.rejections.map((r) => r.op));
       batch.applied = batch.ops.filter((op) => !refused.has(op));

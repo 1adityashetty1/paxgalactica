@@ -335,14 +335,29 @@ describe('the payload is bounded in code, not in a prompt', () => {
     expect(fac(out.state, 'meridian').credits).toBe(10);
   });
 
-  it('refuses only when not even one unit can be paid for, and quotes the price', () => {
+  /**
+   * Unaffordable strips the payload; it does not throw the order away.
+   *
+   * This used to reject the whole `issue_order`, which answered the same
+   * situation two different ways depending on *why* the payload could not be
+   * delivered: a failed check strips the payload and issues the order anyway
+   * ("a failed attack must still be issued"), while an empty treasury dropped
+   * the lot. It also made the batch incoherent — with batches now atomic, one
+   * unaffordable programme would take an entire action down with it.
+   */
+  it('issues the order with nothing commissioned when it cannot pay, and quotes the price', () => {
     const state = fresh();
     fac(state, 'meridian').credits = 5;
     const out = applyOps(state, [develop('tio-1', 1)], 'model', 'meridian');
-    expect(out.rejections[0]!.code).toBe('insufficient_credits');
-    expect(out.rejections[0]!.message).toMatch(/would cost \d+ credits/);
-    expect(out.state.pendingOrders).toHaveLength(0);
+    expect(out.rejections).toHaveLength(0);
+    // The order exists; it simply delivers nothing.
+    expect(out.state.pendingOrders).toHaveLength(1);
+    expect(out.state.pendingOrders[0]!.onComplete).toBeUndefined();
+    expect(out.state.pendingOrders[0]!.investedCredits).toBe(0);
+    // And nothing was charged for a programme that was never commissioned.
     expect(fac(out.state, 'meridian').credits).toBe(5);
+    expect(out.notes.join(' ')).toMatch(/would cost \d+ credits/);
+    expect(out.notes.join(' ')).toMatch(/nothing commissioned/);
   });
 
   it('charges the treasury when the order goes out, not when it lands', () => {

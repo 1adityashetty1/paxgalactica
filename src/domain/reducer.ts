@@ -330,6 +330,27 @@ export function applyOps(
    * replay reproduces exactly what happened.
    */
   actor?: string,
+  /**
+   * Apply the batch as one unit: if any op is rejected, none of them land.
+   *
+   * The reducer treats a batch as a flat list of independent ops, which is
+   * right when they are independent — moving ships here and there — and wrong
+   * for the common case where they are one action's parts and some of them are
+   * only justified by the others. Measured live: a `develop_system` order was
+   * rejected for `insufficient_credits`, and its sibling `adjust_credits +120`
+   * for "surplus conversion materiel" landed anyway. Free money as a byproduct
+   * of a rejected op.
+   *
+   * Nothing expresses which ops depend on which — the model emits a flat list —
+   * so the only dependency unit actually available is the batch, and a batch is
+   * one declared action. Treating it as atomic is the honest reading.
+   *
+   * **Off by default, and deliberately so.** Replay re-runs recorded batches,
+   * and a journal written before this existed recorded batches that really did
+   * apply partially. Those must replay as they ran; `replay()` passes this
+   * according to the journal version. See `JOURNAL_VERSION`.
+   */
+  atomic = false,
 ): ApplyResult {
   const state = clone(input);
   const rejections: OpRejection[] = [];
@@ -785,28 +806,33 @@ export function applyOps(
             treasury.credits,
           );
           if (!trim) {
+            // The ORDER still goes out; only the payload is dropped. Exactly
+            // the rule `boundPayloadsToOutcome` applies when the check failed —
+            // "the order itself is never dropped, only its payload" — and it
+            // was inconsistent here: the same situation was answered two ways
+            // depending on *why* the payload could not be delivered, and the
+            // affordability branch threw the whole order away.
+            //
             // Quote the price. A development that crosses into hub status can
             // cost several turns of income, and "you cannot afford it" is only
             // actionable if the player is told what it would have taken.
             const asked = priceOrderEffect(state, site, op.factionId, op.onComplete);
-            reject(
-              raw,
-              'insufficient_credits',
-              `${op.onComplete.kind} at ${site.name} would cost ${asked} credits and ${op.factionId} has ${treasury.credits}.`,
-            );
-            break;
-          }
-          effect = trim.effect;
-          invested = trim.cost;
-          treasury.credits -= invested;
-          if (trim.from !== undefined) {
-            const why =
-              trim.reason === 'cap'
-                ? 'that is the most one programme can deliver'
-                : 'that is all the treasury could cover';
-            const note = `Trimmed ${op.onComplete.kind} from ${trim.from} to ${effect.magnitude}; ${why}.`;
+            const note = `${op.onComplete.kind} at ${site.name} would cost ${asked} credits and ${op.factionId} has ${treasury.credits}; the order goes out with nothing commissioned.`;
             notes.push(note);
             logEvent(state, 'clamp', note, op.factionId);
+          } else {
+            effect = trim.effect;
+            invested = trim.cost;
+            treasury.credits -= invested;
+            if (trim.from !== undefined) {
+              const why =
+                trim.reason === 'cap'
+                  ? 'that is the most one programme can deliver'
+                  : 'that is all the treasury could cover';
+              const trimNote = `Trimmed ${op.onComplete.kind} from ${trim.from} to ${effect.magnitude}; ${why}.`;
+              notes.push(trimNote);
+              logEvent(state, 'clamp', trimNote, op.factionId);
+            }
           }
         }
 
@@ -1583,6 +1609,21 @@ export function applyOps(
 
   capSelfInflictedLosses(state, actor, hullsBefore, notes);
   billConstruction(state, hullsBefore, notes);
+
+  // Nothing lands unless everything does. The notes are dropped with the state
+  // they describe — a trim note for an op that was discarded would be telling
+  // the player about work that did not happen — but the rejections are what
+  // the correction pass reads, so they are kept and one note says plainly that
+  // the batch was held back.
+  if (atomic && rejections.length > 0) {
+    return {
+      state: clone(input),
+      rejections,
+      notes: [
+        `Nothing in this batch was applied: ${rejections.length} of ${rawOps.length} ops were rejected, and an action lands whole or not at all.`,
+      ],
+    };
+  }
 
   return { state, rejections, notes };
 }

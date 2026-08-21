@@ -473,3 +473,50 @@ describe('tickTurn', () => {
     expect(res.notes.join(' ')).toMatch(/thrown back/);
   });
 });
+
+/**
+ * An action lands whole or not at all.
+ *
+ * The reducer treats a batch as a flat list of independent ops, which is right
+ * when they are independent and wrong for the common case where they are one
+ * action's parts and some are only justified by the others. Measured live: a
+ * `develop_system` order rejected for `insufficient_credits` left its sibling
+ * `adjust_credits +120` — "surplus conversion materiel" from a conversion that
+ * never happened — applied. Free money as a byproduct of a rejected op.
+ *
+ * Nothing expresses which ops depend on which, so the only dependency unit
+ * available is the batch, and a batch is one declared action.
+ */
+describe('a batch is atomic when asked to be', () => {
+  const good = { op: 'adjust_credits', factionId: 'meridian', delta: 120, reason: 'surplus' };
+  const bad = { op: 'adjust_credits', factionId: 'nobody-at-all', delta: -10, reason: 'x' };
+
+  const creditsOf = (s: WorldState) => s.factions.find((f) => f.id === 'meridian')!.credits;
+
+  it('applies nothing when any op is rejected', () => {
+    const state = createSeedState('meridian');
+    const before = creditsOf(state);
+    const out = applyOps(state, [good, bad], 'model', 'meridian', true);
+
+    expect(out.rejections).toHaveLength(1);
+    // The sibling that would otherwise have been free money.
+    expect(creditsOf(out.state)).toBe(before);
+    expect(out.notes.join(' ')).toMatch(/Nothing in this batch was applied/);
+  });
+
+  it('applies everything when nothing is rejected', () => {
+    const state = createSeedState('meridian');
+    const before = creditsOf(state);
+    const out = applyOps(state, [good], 'model', 'meridian', true);
+    expect(out.rejections).toHaveLength(0);
+    expect(creditsOf(out.state)).toBe(before + 120);
+  });
+
+  it('still applies partially when not atomic, which is how old journals replay', () => {
+    const state = createSeedState('meridian');
+    const before = creditsOf(state);
+    const out = applyOps(state, [good, bad], 'model', 'meridian');
+    expect(out.rejections).toHaveLength(1);
+    expect(creditsOf(out.state)).toBe(before + 120);
+  });
+});
