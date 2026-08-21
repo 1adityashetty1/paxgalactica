@@ -17,6 +17,7 @@ import {
 import {
   appraiseAgreement,
   extractAgreements,
+  verifyBreachRelevance,
   gatherReactions,
   resolveAction,
   type ChatMessage,
@@ -603,8 +604,22 @@ export async function closeChannel(
       : null;
   const actor = getFaction(campaign.state, campaign.state.playerFactionId);
   const named = ruling?.appraisal.breach?.principles ?? [];
-  const breach = actor && named.length > 0 ? classifyPrinciples(actor, named) : null;
-  const rulingCost = ruling?.costUsd ?? 0;
+  const firstPass = actor && named.length > 0 ? classifyPrinciples(actor, named) : null;
+
+  // Same second opinion the declared path gets: the quote is proven real by
+  // `classifyPrinciples`, and nothing proved it was about this act.
+  let relevanceCost = 0;
+  let breach = firstPass;
+  if (firstPass) {
+    const check = await verifyBreachRelevance(
+      extraction.output.narrative,
+      firstPass.principle,
+      firstPass.kind,
+    );
+    relevanceCost = check.costUsd;
+    if (!check.relevant) breach = null;
+  }
+  const rulingCost = (ruling?.costUsd ?? 0) + relevanceCost;
 
   // A red line refuses the WHOLE agreement. A deal that requires you to cross
   // it is not a smaller deal, it is no deal — the same rule `submitAction`

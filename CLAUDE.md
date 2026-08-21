@@ -699,6 +699,24 @@ compulsion"* when the seed carries it in `compulsions`, and returned the whole
 thing as `admissible: false` — the one exit that charges nothing at all. A
 25-dissent breach became a free no-op.
 
+**A real line is not necessarily the right line.** `classifyPrinciple` proves a
+quoted line exists on the sheet; nothing proved it was *about the act*, and
+relevance is precisely the judgement being delegated. Measured live: an
+assassination was charged `COMPULSION_BREACH_DISSENT` quoting *"commerce raiding
+is refused outright"* — a real line, with nothing to say about killing a factor —
+and the same declaration made twice in one turn produced a breach once and
+nothing the other time, while the DC stayed at 18 both ways. It is specifically
+the breach reading that wobbles, not the pricing.
+
+`verifyBreachRelevance` is a second, tiny call on the flavour tier, and it runs
+**only when a breach was named**, so an ordinary action costs nothing extra. It
+is a separate call rather than another field on the appraisal for the reason the
+arbiter is separate from resolution: asking the pass that found the breach
+whether the breach is real gets back the answer it already gave. This one is
+shown the act and the line and nothing else — no character sheet, no state — so
+it has nothing to reason from except whether the two match. On `relevant: false`
+the breach is dropped and nothing is charged.
+
 `classifyPrinciple` in `src/domain/compulsions.ts` closes it by splitting the
 work the same way everything else here does. The model is good at the part that
 needs judgement — *which line does this action touch* — and unreliable at the
@@ -1697,6 +1715,7 @@ Two layers of defence against malformed output:
 | Call | Tier | Model |
 |---|---|---|
 | resolution, reaction, diplomacy, extraction | `reasoning` | `claude-sonnet-5` |
+| breach relevance | `flavor` | `claude-haiku-4-5-20251001` |
 | flavour text | `flavor` | `claude-haiku-4-5-20251001` |
 
 Every call is single-shot JSON with `tools: []` and `settingSources: []`, so no

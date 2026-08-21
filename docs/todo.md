@@ -494,7 +494,27 @@ DC 11), produced glowing narrative about a reshaped hub, and emitted **only**
 `log_narrative` — one action point spent for nothing at all, and the correction
 pass did not catch it.
 
-## 28. OPEN — the accord breach ruling reads what an accord *enacts*, not what it *obliges*
+## 28. HALF FIXED — the accord breach ruling reads what an accord *enacts*, not what it *obliges*
+
+**The second half is done: `verifyBreachRelevance`.** A second, tiny call on the
+flavour tier, run only when a breach was named, shown the act and the line and
+nothing else. On `relevant: false` the breach is dropped and nothing is charged.
+Separate from the appraisal for the reason the arbiter is separate from
+resolution — asking the pass that found the breach whether it is real gets back
+the answer it already gave. It has its own `CallKind` so it can be tiered
+independently, and so a test scripting colour text cannot answer it by accident.
+
+**The first half is still open**, and it is the one that needs building rather
+than deciding: `closeChannel` appraises what an accord *enacts*, so a red line
+crossed in future tense ("if the Vigil moves on Vashka, we close the lane")
+passes where the same act refuses unconditionally. The fix is to appraise the
+obligation, not only the enactment.
+
+The original write-up follows.
+
+---
+
+## 28. (original) — the accord breach ruling reads what an accord *enacts*, not what it *obliges*
 
 Meridian's red line is *"will not close a lane — no blockade of civilian
 traffic, no embargo, no shut border"*. Declared directly, it is refused with

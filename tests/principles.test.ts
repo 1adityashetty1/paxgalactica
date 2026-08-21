@@ -29,7 +29,12 @@ let scripted: Record<string, unknown> = {};
 vi.mock('../src/model/client.js', () => ({
   callStructured: async (call: { kind: string; system: string; user: string }) => {
     calls.push({ kind: call.kind, system: call.system, user: call.user });
-    const value = scripted[call.kind];
+    // The relevance check runs on every breach the arbiter names. These tests
+    // are about what happens once a breach is accepted, so it answers "yes,
+    // that line is about this act" unless a test scripts otherwise.
+    const value =
+      scripted[call.kind] ??
+      (call.kind === 'breach_relevance' ? { relevant: true, why: '' } : undefined);
     if (value === undefined) throw new Error(`No scripted response for a "${call.kind}" call.`);
     return { value, attempts: 1, costUsd: 0 };
   },
@@ -88,7 +93,7 @@ describe('a red line is ruled on before the dice', () => {
 
     // The whole point. There is no second call, so there is nothing left that
     // could narrate the gates opening anyway.
-    expect(calls.map((c) => c.kind)).toEqual(['appraisal']);
+    expect(calls.map((c) => c.kind)).toEqual(['appraisal', 'breach_relevance']);
     expect(out.output.refusal).toEqual({
       by: redLineBreach.by,
       reason: redLineBreach.reason,
@@ -122,7 +127,9 @@ describe('a red line is ruled on before the dice', () => {
 
     const out = await resolveAction(createSeedState('freeworlds'), worded);
 
-    expect(calls).toHaveLength(1);
+    // The appraisal and its relevance check — and crucially no resolution call,
+    // which is what makes the ruling unreachable by rewording.
+    expect(calls.map((c) => c.kind)).toEqual(['appraisal', 'breach_relevance']);
     expect(out.output.refusal?.violated).toBe(NO_OCCUPATION);
   });
 });
@@ -139,7 +146,7 @@ describe('a compulsion is a price, and the price is charged', () => {
 
     const out = await resolveAction(createSeedState('freeworlds'), 'Agree to pay the Combine 30 a turn.');
 
-    expect(calls.map((c) => c.kind)).toEqual(['appraisal', 'resolution']);
+    expect(calls.map((c) => c.kind)).toEqual(['appraisal', 'breach_relevance', 'resolution']);
     // Rolled and resolved: unlike a red line, the order goes through.
     expect(out.check).not.toBeNull();
     expect(out.output.defiance).toEqual({
@@ -311,7 +318,7 @@ describe('the sheet decides which kind a line is, not the arbiter’s label', ()
 
     const outcome = await submitAction(campaign, 'Take the Combine’s money and withdraw.');
 
-    expect(calls.map((c) => c.kind)).toEqual(['appraisal']);
+    expect(calls.map((c) => c.kind)).toEqual(['appraisal', 'breach_relevance']);
     expect(outcome.refusal?.violated).toBe(
       'will not accept payment to stand down; being bought is the insult, not the price',
     );
@@ -818,5 +825,67 @@ describe('a covert declaration is routed into the agent mechanic', () => {
     await submitAction(campaign, 'Sabotage the Vigil yards at Ord Vantic.');
 
     expect(campaign.state.agents).toHaveLength(0);
+  });
+});
+
+/**
+ * `classifyPrinciple` proves a quoted line is real. Nothing proved it was about
+ * the act. Measured live: an assassination was charged
+ * `COMPULSION_BREACH_DISSENT` quoting *"commerce raiding is refused outright"* —
+ * a real line on the sheet with nothing to say about killing a factor. The same
+ * declaration made twice in one turn produced a breach once and nothing the
+ * other time, while the difficulty stayed at DC 18 both ways, so it is
+ * specifically the breach reading that wobbles.
+ */
+describe('a quoted line has to be about the act', () => {
+  const RAIDING =
+    'the Drift does not prey on shipping. Being raided is the grievance the Free Worlds were founded on, and doing it would make the founding a lie';
+
+  it('drops a breach whose line is real but irrelevant, and charges nothing', async () => {
+    scripted = {
+      appraisal: appraisal({
+        breach: { principles: [RAIDING], by: 'the shipmasters', reason: 'x', how: 'y' },
+      }),
+      breach_relevance: { relevant: false, why: 'that line is about raiding, not killing' },
+      resolution: { narrative: 'The factor does not reach his ship.', ops: [] },
+    };
+
+    const out = await resolveAction(
+      createSeedState('freeworlds'),
+      'Have the Combine factor at Nar Shalka killed.',
+    );
+
+    // Rolled and resolved as an ordinary action: no refusal, no defiance.
+    expect(out.output.refusal).toBeUndefined();
+    expect(out.output.defiance).toBeUndefined();
+    expect(out.check).not.toBeNull();
+    expect(calls.map((c) => c.kind)).toEqual(['appraisal', 'breach_relevance', 'resolution']);
+  });
+
+  it('keeps the breach when the line really is about the act', async () => {
+    scripted = {
+      appraisal: appraisal({
+        breach: { principles: [RAIDING], by: 'the shipmasters', reason: 'x', how: 'y' },
+      }),
+      breach_relevance: { relevant: true, why: 'this is preying on shipping' },
+      resolution: { narrative: 'The convoy is taken.', ops: [] },
+    };
+
+    const out = await resolveAction(
+      createSeedState('freeworlds'),
+      'Raid the Combine convoys running out of Nar Shalka.',
+    );
+
+    expect(out.output.defiance?.violated).toBe(RAIDING);
+  });
+
+  it('costs nothing at all when no breach was named', async () => {
+    scripted = {
+      appraisal: appraisal({}),
+      resolution: { narrative: 'The yards begin work.', ops: [] },
+    };
+    await resolveAction(createSeedState('freeworlds'), 'Expand the yards at Dolomar.');
+    // No breach, so the second opinion is never asked for.
+    expect(calls.map((c) => c.kind)).toEqual(['appraisal', 'resolution']);
   });
 });
