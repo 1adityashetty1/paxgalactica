@@ -40,6 +40,7 @@ function pact(type: TreatyType, parties: [string, string], pledged: Record<strin
       incomePerTurn: {},
       incomeShares: [],
       mutualDefenseTrigger: '',
+      voidsOn: [],
     },
     signedTurn: 0,
     expiresTurn: null,

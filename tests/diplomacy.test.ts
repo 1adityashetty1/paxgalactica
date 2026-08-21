@@ -283,7 +283,7 @@ describe('war is a property of the relationship, not one opinion', () => {
     state.factions.find((f) => f.id === 'freeworlds')!.disposition['krayt'] = -90;
     state.treaties.push({
       id: 't1', type: 'non_aggression', parties: ['freeworlds', 'krayt'],
-      terms: { territory: [], shipsPledged: {}, incomePerTurn: {}, incomeShares: [], mutualDefenseTrigger: '' },
+      terms: { territory: [], shipsPledged: {}, incomePerTurn: {}, incomeShares: [], mutualDefenseTrigger: '', voidsOn: [] },
       signedTurn: 0, expiresTurn: null, effectiveTurn: null, status: 'active', summary: 'na',
     });
     expect(warsFor(state, 'freeworlds')).not.toContain('krayt');
@@ -716,5 +716,94 @@ describe('a ceded system changes hands', () => {
     expect(sys(out.state, 'ark-6').controllerFactionId).toBe('freeworlds');
     const ticked = tickTurn(out.state);
     expect(sys(ticked.state, 'ark-6').controllerFactionId).toBe('hutt');
+  });
+});
+
+/**
+ * "This ends if you sign with the Vigil" is a thing powers say constantly, and
+ * it used to be pure narration. The playtest detail that makes it a bug rather
+ * than a gap: both forbidden treaties were signed on one timestamp, the NPC
+ * noticed in prose the next turn, and it broke only the half that cost it. The
+ * trade accord paying the player survived four more turns.
+ */
+describe('a void condition ends a treaty when it comes true', () => {
+  const withCondition = (condition: unknown) => ({
+    op: 'form_treaty',
+    treatyType: 'trade_accord' as const,
+    parties: ['freeworlds', 'hutt'],
+    terms: { incomePerTurn: { freeworlds: 10, hutt: -10 }, voidsOn: [condition] },
+    summary: 'conditional accord',
+  });
+
+  const statusOf = (s: WorldState) => s.treaties.at(-1)!.status;
+
+  it('fires when the constrained party signs with the named power', () => {
+    const state = createSeedState('freeworlds');
+    const signed = applyOps(
+      state,
+      [withCondition({ kind: 'treaty_with', by: 'hutt', target: 'vigil' })],
+      'extraction',
+      'freeworlds',
+    ).state;
+    expect(statusOf(signed)).toBe('active');
+    // Still fine after a quiet turn.
+    expect(statusOf(tickTurn(signed).state)).toBe('active');
+
+    const betrayed = applyOps(
+      signed,
+      [
+        {
+          op: 'form_treaty',
+          treatyType: 'non_aggression',
+          parties: ['hutt', 'vigil'],
+          terms: {},
+          summary: 'the very thing that was forbidden',
+        },
+      ],
+      'extraction',
+      'hutt',
+    ).state;
+    const ticked = tickTurn(betrayed);
+    expect(ticked.state.treaties[ticked.state.treaties.length - 2]!.status).toBe('voided');
+    expect(ticked.notes.join(' ')).toMatch(/Treaty voided/);
+  });
+
+  it('fires on insolvency, so a broke payer cannot quietly stop paying', () => {
+    const state = createSeedState('freeworlds');
+    const signed = applyOps(
+      state,
+      [withCondition({ kind: 'insolvent', by: 'hutt' })],
+      'extraction',
+      'freeworlds',
+    ).state;
+    expect(statusOf(signed)).toBe('active');
+
+    // Drive the Combine to a loss it cannot cover.
+    for (const sys of signed.systems) {
+      if (sys.controllerFactionId === 'hutt') sys.ships['hutt'] = 400;
+    }
+    const ticked = tickTurn(signed);
+    const treaty = ticked.state.treaties.find((t) => t.summary === 'conditional accord')!;
+    expect(treaty.status).toBe('voided');
+    expect(ticked.notes.join(' ')).toMatch(/running at a loss/);
+  });
+
+  it('leaves an unconditional treaty alone', () => {
+    const state = createSeedState('freeworlds');
+    const signed = applyOps(
+      state,
+      [
+        {
+          op: 'form_treaty',
+          treatyType: 'trade_accord',
+          parties: ['freeworlds', 'hutt'],
+          terms: {},
+          summary: 'no strings',
+        },
+      ],
+      'extraction',
+      'freeworlds',
+    ).state;
+    expect(statusOf(tickTurn(signed).state)).toBe('active');
   });
 });

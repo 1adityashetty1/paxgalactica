@@ -77,6 +77,21 @@ Specifically:
   nobody at the table controls, is a claim and does nothing. Use it only for a
   cession both sides actually agreed to.
 
+  **`terms.voidsOn` is for "this ends if you…".** Powers say it constantly and
+  it used to be pure narration, so a party could take a clause and then do the
+  exact thing it forbade. Three kinds, and nothing else:
+
+  | kind | ends the treaty when |
+  |---|---|
+  | `treaty_with` | `by` signs any treaty with `target` |
+  | `attacks` | `by` goes to war with `target` |
+  | `insolvent` | `by` is running at a loss and can no longer fund its side |
+
+  `by` is the party being constrained and `target` the third power. Use
+  `insolvent` whenever one side is promising a recurring payment: it ends the
+  arrangement out loud instead of letting a broke payer quietly stop paying
+  while still collecting.
+
   **`ratifyTurns` is for a deal agreed subject to ratification.** When the other
   side says yes *but* a council, a senate or an assembly must consent first, set
   it to how many turns that takes. The treaty is recorded immediately as

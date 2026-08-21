@@ -35,8 +35,10 @@ import {
   MISSION_PROFILE,
   PACT_BREAKING_REPUTATION_COST,
   PEACE_TREATIES,
+  isTreatyLive,
   treatyBetween,
   type Treaty,
+  type VoidCondition,
 } from './diplomacy.js';
 import { jumpsBetween, neighboursOf, positionAlongPath, shortestPath } from './graph.js';
 import { routeEarnings, tradeRoutes } from './trade.js';
@@ -354,6 +356,45 @@ function removeShips(
  * are untouched and simply become a foreign presence in the new owner's space,
  * which needs no special rule.
  */
+/**
+ * Whether a void condition has come true, and the sentence explaining it.
+ *
+ * Returns the reason rather than a boolean so the event log can say *why* a
+ * treaty ended — "voided" with no cause is exactly the kind of silent state
+ * change this project keeps having to dig out of playtests.
+ */
+function voidConditionMet(state: WorldState, condition: VoidCondition): string | null {
+  const name = (id: string): string =>
+    state.factions.find((f) => f.id === id)?.name ?? id;
+
+  switch (condition.kind) {
+    case 'treaty_with': {
+      const bound = (state.treaties ?? []).some(
+        (t) =>
+          isTreatyLive(t, state.turn) &&
+          t.parties.includes(condition.by) &&
+          t.parties.includes(condition.target),
+      );
+      return bound
+        ? `${name(condition.by)} is now bound by treaty to ${name(condition.target)}`
+        : null;
+    }
+    case 'attacks': {
+      const atWar = warsFor(state, condition.by).includes(condition.target);
+      return atWar ? `${name(condition.by)} is at war with ${name(condition.target)}` : null;
+    }
+    case 'insolvent': {
+      // Read from the ledger rather than the treasury: a faction can be sitting
+      // on savings while running at a loss, and it is the loss that means the
+      // obligation has stopped being funded.
+      const net = ledgerFor(state, condition.by).net;
+      return net < 0
+        ? `${name(condition.by)} is running at a loss (${net} a turn) and can no longer fund it`
+        : null;
+    }
+  }
+}
+
 function cedeTerritory(state: WorldState, treaty: Treaty): string[] {
   const notes: string[] = [];
   if (treaty.terms.territory.length === 0) return notes;
@@ -2038,6 +2079,22 @@ export function tickTurn(input: WorldState): TickResult {
     // A cession takes effect with the rest of the terms, not at signature, so a
     // council that has to consent delays the handover too.
     notes.push(...cedeTerritory(state, treaty));
+  }
+
+  /* --- Void conditions fire before anything is paid out ---------------- */
+  // Before expiry and before income, so a treaty that has voided does not pay
+  // out one last time on its way off the board.
+  for (const treaty of state.treaties) {
+    if (treaty.status !== 'active') continue;
+    for (const condition of treaty.terms.voidsOn) {
+      const why = voidConditionMet(state, condition);
+      if (!why) continue;
+      treaty.status = 'voided';
+      const note = `Treaty voided: ${treaty.summary || treaty.id} — ${why}.`;
+      logEvent(state, 'diplomacy', note, condition.by);
+      notes.push(note);
+      break;
+    }
   }
 
   /* --- Treaties lapse before anything is paid out ---------------------- */

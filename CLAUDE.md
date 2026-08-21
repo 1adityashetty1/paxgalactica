@@ -479,6 +479,30 @@ and nothing implemented it.
 | `basing_rights` | the other party's fleets may enter without it being an attack |
 | `tribute` | `incomePerTurn` moves every turn |
 | `territory` (a term, not a type) | the named systems **change hands** when the treaty takes force |
+| `voidsOn` (a term, not a type) | typed conditions that **end** the treaty when they come true |
+
+**A treaty can carry conditions that end it.** Powers negotiate these
+constantly, because natural language makes them free — *"any tribute or standing
+order you give the Vigil voids this, full stop"* — and nothing enforced them.
+The playtest detail that makes it a bug rather than a gap: both forbidden
+treaties were signed on one timestamp, the NPC noticed in prose the next turn,
+and it broke **only the `mutual_defense` half**. The `trade_accord` that paid the
+player survived four more turns. The half of the void that cost the player broke;
+the half that paid them did not.
+
+A **closed set** of three kinds rather than a condition language, the same
+principle as `OrderEffect`: `treaty_with` (the constrained party signs with a
+named power), `attacks` (goes to war with them), and `insolvent` (is running at
+a loss and can no longer fund its side). Evaluated in `tickTurn` before expiry
+and before income, so a voided treaty does not pay out once more on its way off
+the board, and the status is `voided` rather than `broken` — nobody repudiated
+it, the condition simply came true, so it carries no pact-breaking reputation
+cost.
+
+`insolvent` reads the **ledger**, not the treasury: a faction can be sitting on
+savings while running at a loss, and it is the loss that means the obligation has
+stopped being funded. It closes the case where a payer's treasury floors at zero,
+so it "pays" nothing while the treaty goes on claiming it does.
 
 **A treaty can be agreed now and take force later.** `form_treaty` accepts
 `ratifyTurns`, which records it `pending` with an `effectiveTurn` and applies

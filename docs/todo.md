@@ -526,7 +526,7 @@ misapplied, so the engine faithfully charged 15 dissent for a compulsion the act
 does not touch. That half is a judgement problem with no obvious structural fix
 and is worth its own decision.
 
-## 29. PARTLY FIXED — four things the playtest found inert
+## 29. MOSTLY FIXED — four things the playtest found inert
 
 **One of the four was a plain bug and is fixed: `briefing.ledger` was stale.**
 It was computed partway up `tickTurn`, and the rest of the tick then paid
@@ -537,6 +537,22 @@ turns reported byte-identical `{gross, upkeep, net}` across a tick that changed
 treaties. It is now computed immediately before the report is assembled. Safe to
 move because it only ever fed the report and the turn log: income is paid from a
 per-faction `ledgerFor` inside the payment loop, never from this one.
+
+**Three of the four are now done.** `territory` was defined rather than deleted
+(see the decisions section and item 21's commit), and `voidsOn` gives a treaty a
+closed set of three typed conditions that end it — `treaty_with`, `attacks` and
+`insolvent`. That last one was the user's addition and is the interesting one: it
+generalises past debt to any obligation whose payer has stopped being solvent,
+reading the ledger rather than the treasury, because a faction can sit on savings
+while running at a loss.
+
+**Only zero-flow commitments remain**, and the decision there is that they are
+records which should *bite* — a commitment affects disposition, and the record is
+what stops it being exploitable. Not yet built.
+
+The original three-way analysis follows.
+
+---
 
 **The other three need a decision, and I have not guessed at them.** Each is a
 question about what the mechanic should *be*, not a defect in what it does:
