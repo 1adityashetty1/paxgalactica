@@ -396,10 +396,35 @@ before implementation so the *reasoning* survives even if a build slips.
 | **29b** zero-flow commitments | **They are records, and records should bite.** A commitment affects disposition; the record is what stops it being exploitable. |
 | **29c** void clauses | **A closed set of typed void conditions** — including **negative income**, so a debtor cannot default its way out of an obligation. |
 | **20b** NPC-initiated talk | **Yes, in a window where the player cannot act** — after `/endturn` is submitted, not interrupting a live turn. |
+| **29a** `territory` | **Defined, not deleted.** Ceded worlds change hands; garrison transfers, the ceder's fleet withdraws. |
 
-Still unanswered, and not blocking: **29a** (`Treaty.terms.territory` — define
-or delete) and the open half of **item 5** (a richer multi-round combat
-resolver), which I recommended deprioritising.
+**29a is decided too: `territory` gets defined**, and the question it opened —
+what happens to the ceding faction's fleets — is answered by the rule the game
+already uses for the violent case. A defender that breaks off is moved to its
+nearest holding via `fleetBases`, instantly, losing 10–35% getting clear; a
+garrison is dug in, cannot retreat, and is destroyed.
+
+A negotiated cession inherits the shape and not the blood:
+
+- **The garrison transfers intact.** Nobody fought, and this is the difference
+  between capitulation and conquest — it is what makes a ceded world worth more
+  to the receiver than a stormed one.
+- **The ceder's ships withdraw to their nearest holding, with no losses**, since
+  there was no battle to escape from. Instant, like a break-off, which is
+  already the game's answer for leaving a system in a hurry.
+- **If there is no reachable holding they stay in orbit** as an uninvited
+  presence, contesting income until they leave or are cleared. The violent path
+  destroys such ships; doing that here would make cession a trap.
+
+Three guards go with it, all confirmed: **you can only cede what you actually
+hold** (a playtest emitted `territory` naming four systems, two of which the
+player did not control), the cession **applies at the treaty's effective turn**
+rather than at signature so a ratification gate delays the handover too, and it
+is **extraction-only** — control still never changes from a declared action,
+which keeps the existing invariant intact.
+
+Still unanswered, and not blocking: the open half of **item 5** (a richer
+multi-round combat resolver), which I recommended deprioritising.
 
 Two notes on the decisions, because they change the shape of what gets built:
 
@@ -678,7 +703,25 @@ prevent. To redo it, patch `src/seed/scenario.ts` so `startingShips` returns
 > income, and the Vigil **laid up 153 ships in one turn** — `MAX_ATTRITION_FRACTION`
 > at 15% doing exactly what it is documented to do.
 
-## 21. OPEN — a deal gated on ratification completes and produces nothing
+## 21. FIXED — a deal gated on ratification completes and produces nothing
+
+**Built as a pending treaty**, the second of the three options. `form_treaty`
+takes `ratifyTurns`; the treaty is recorded immediately with
+`status: 'pending'` and an `effectiveTurn`, does nothing at all until then, and
+comes into force in `tickTurn`. `isTreatyLive` already gated on
+`status === 'active'`, so a pending treaty is inert everywhere for free — no
+reader had to change.
+
+One object instead of an order plus a promise, so there is no second source of
+truth to desync, and the deal is visible in the treaties panel while it waits
+instead of hiding inside an order. `prompts/extraction.md` now says so, and says
+explicitly not to model it as a `treaty_ratification` order and no treaty.
+
+The original write-up follows.
+
+---
+
+## 21. (original) — a deal gated on ratification completes and produces nothing
 
 **Found in a live Ojjul Nar playtest.** The single biggest gap the playtest
 turned up, and it silently deletes negotiated deals.

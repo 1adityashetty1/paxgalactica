@@ -36,6 +36,7 @@ import {
   PACT_BREAKING_REPUTATION_COST,
   PEACE_TREATIES,
   treatyBetween,
+  type Treaty,
 } from './diplomacy.js';
 import { jumpsBetween, neighboursOf, positionAlongPath, shortestPath } from './graph.js';
 import { routeEarnings, tradeRoutes } from './trade.js';
@@ -317,6 +318,84 @@ function removeShips(
  * Invalid ops are collected as structured rejections and returned — never
  * silently dropped — so the caller can feed them back to the model on retry.
  */
+/**
+ * A negotiated handover of systems, applied when a treaty comes into force.
+ *
+ * `Treaty.terms.territory` existed for the whole life of the project and
+ * **nothing read it** — a playtest signed an accord listing four systems, two
+ * of which the player did not even hold, and no controller changed. It is now
+ * a real cession.
+ *
+ * The obvious objection is the invariant that control changes *only* when a
+ * `fleet_movement` arrives, which is enforced three times over. That rule
+ * exists to stop a model talking itself into owning a system across the galaxy,
+ * and a cession does not do that: it arrives from a transcript, which is the
+ * one place the other party's consent exists — the same argument that makes
+ * `form_treaty` extraction-only. Control still never changes from a declared
+ * action.
+ *
+ * What happens to what is standing there is decided by the rule the game
+ * already uses for the violent case, minus the blood:
+ *
+ * - **The garrison transfers intact.** Nobody fought. This is the whole
+ *   difference between capitulation and conquest, and it is what makes a ceded
+ *   world worth more than a stormed one, where the garrison is destroyed and
+ *   the conqueror keeps a fraction.
+ * - **The ceder's ships withdraw to their nearest holding, with no losses**,
+ *   because there was no battle to escape. A defender that breaks off is moved
+ *   instantly by exactly this route and pays 10–35% for the privilege; leaving
+ *   under a signature costs nothing.
+ * - **If there is nowhere to go they stay in orbit**, an uninvited presence
+ *   contesting the income of a world they no longer own, until they leave or
+ *   are cleared. The violent path destroys such ships; doing that here would
+ *   make cession a trap rather than a bargain.
+ *
+ * Only what the ceder actually holds moves. Anyone else's ships in the system
+ * are untouched and simply become a foreign presence in the new owner's space,
+ * which needs no special rule.
+ */
+function cedeTerritory(state: WorldState, treaty: Treaty): string[] {
+  const notes: string[] = [];
+  if (treaty.terms.territory.length === 0) return notes;
+
+  // Two parties, so the receiver is whichever one is not the holder.
+  for (const systemId of treaty.terms.territory) {
+    const system = state.systems.find((sys) => sys.id === systemId);
+    if (!system) continue;
+    const ceder = system.controllerFactionId;
+    // You can only cede what you hold. A treaty naming a world neither party
+    // controls is a claim, not a transfer, and quietly does nothing.
+    if (!ceder || !treaty.parties.includes(ceder)) continue;
+    const receiver = treaty.parties.find((party: string) => party !== ceder);
+    if (!receiver) continue;
+
+    system.controllerFactionId = receiver;
+
+    const leaving = system.ships[ceder] ?? 0;
+    if (leaving > 0) {
+      const refuge = fleetBases(state, ceder).find(
+        (x) => x.id !== system.id && x.controllerFactionId === ceder,
+      );
+      if (refuge) {
+        delete system.ships[ceder];
+        refuge.ships[ceder] = (refuge.ships[ceder] ?? 0) + leaving;
+        notes.push(
+          `${ceder} cedes ${system.name} to ${receiver}; ${leaving} ships withdraw to ${refuge.name}.`,
+        );
+      } else {
+        notes.push(
+          `${ceder} cedes ${system.name} to ${receiver}, but has nowhere to send its ${leaving} ships; they remain in orbit over a world they no longer hold.`,
+        );
+      }
+    } else {
+      notes.push(`${ceder} cedes ${system.name} to ${receiver}.`);
+    }
+
+    logEvent(state, 'diplomacy', notes[notes.length - 1]!, receiver);
+  }
+  return notes;
+}
+
 export function applyOps(
   input: WorldState,
   rawOps: unknown[],
@@ -1073,6 +1152,13 @@ export function applyOps(
           }
         }
 
+        // A deal agreed subject to ratification is recorded now and inert until
+        // its effective turn. `isTreatyLive` gates on `status === 'active'`, so
+        // `pending` costs nothing anywhere else.
+        const effectiveTurn =
+          op.ratifyTurns === undefined ? null : state.turn + op.ratifyTurns;
+        const pending = effectiveTurn !== null && effectiveTurn > state.turn;
+
         const treaty = {
           id: mintId(state, 'tre'),
           type: op.treatyType,
@@ -1080,11 +1166,30 @@ export function applyOps(
           terms,
           signedTurn: state.turn,
           expiresTurn: op.durationTurns === undefined ? null : state.turn + op.durationTurns,
-          status: 'active' as const,
+          effectiveTurn,
+          status: (pending ? 'pending' : 'active') as
+            | 'active'
+            | 'expired'
+            | 'broken'
+            | 'superseded'
+            | 'pending',
           summary: op.summary || `${op.treatyType.replace(/_/g, ' ')} between ${op.parties.join(' and ')}`,
         };
         state.treaties.push(treaty);
-        logEvent(state, 'diplomacy', `Treaty signed: ${treaty.summary}.`, op.parties[0]!);
+        logEvent(
+          state,
+          'diplomacy',
+          pending
+            ? `Treaty agreed, pending ratification on turn ${effectiveTurn}: ${treaty.summary}.`
+            : `Treaty signed: ${treaty.summary}.`,
+          op.parties[0]!,
+        );
+        // A treaty that is live on signature cedes now; a pending one cedes when
+        // it comes into force, in `tickTurn`. A cession is a one-time event
+        // rather than a term that applies while the treaty is live, so it is
+        // NOT undone if the treaty later lapses or is broken — land changes
+        // hands once, and taking it back is a fresh act.
+        if (!pending) notes.push(...cedeTerritory(state, treaty));
         break;
       }
 
@@ -1920,6 +2025,19 @@ export function tickTurn(input: WorldState): TickResult {
       .join('; ')}.`;
     logEvent(state, 'system', note, faction.id);
     if (faction.id === state.playerFactionId) notes.push(note);
+  }
+
+  /* --- Ratified treaties come into force ------------------------------- */
+  // Before expiry, so a treaty cannot lapse in the same tick it becomes live.
+  for (const treaty of state.treaties) {
+    if (treaty.status !== 'pending' || treaty.effectiveTurn === null) continue;
+    if (state.turn < treaty.effectiveTurn) continue;
+    treaty.status = 'active';
+    logEvent(state, 'diplomacy', `Treaty ratified and now in force: ${treaty.summary}.`);
+    notes.push(`Ratified: ${treaty.summary}`);
+    // A cession takes effect with the rest of the terms, not at signature, so a
+    // council that has to consent delays the handover too.
+    notes.push(...cedeTerritory(state, treaty));
   }
 
   /* --- Treaties lapse before anything is paid out ---------------------- */

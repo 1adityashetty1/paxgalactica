@@ -70,6 +70,20 @@ Specifically:
   | `basing_rights` | their fleets may enter your systems without it being an attack — the ONLY way to station ships in friendly space |
   | `tribute` | `incomePerTurn` moves every turn |
 
+  **`terms.territory` really cedes worlds.** List a system there and it changes
+  hands when the treaty takes force: the garrison goes with it intact, and the
+  ceding power's ships withdraw to its nearest holding. Only a system a *party
+  to this treaty actually holds* moves — naming someone else's world, or one
+  nobody at the table controls, is a claim and does nothing. Use it only for a
+  cession both sides actually agreed to.
+
+  **`ratifyTurns` is for a deal agreed subject to ratification.** When the other
+  side says yes *but* a council, a senate or an assembly must consent first, set
+  it to how many turns that takes. The treaty is recorded immediately as
+  pending, does nothing at all until then, and comes into force on its own. Do
+  NOT model this as a `treaty_ratification` order and no treaty — that order
+  carries no payload, so the deal simply disappears when it completes.
+
   **A deal that spans more than one of these needs more than one treaty.**
   Emit several `form_treaty` ops. This is the common case, not an edge case: a
   war pact where one side pays the other, opens its lanes, grants basing

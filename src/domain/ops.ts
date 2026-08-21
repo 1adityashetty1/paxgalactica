@@ -155,6 +155,17 @@ export const FormTreatyOp = z.object({
   terms: TreatyTermsSchema,
   /** Turns from now until it lapses; omit for an indefinite treaty. */
   durationTurns: z.number().int().min(1).max(40).optional(),
+  /**
+   * Turns until the terms start applying. Omit when the deal is live on
+   * signature, which is the ordinary case.
+   *
+   * Set it when the other party agreed *subject to ratification* — a council
+   * that must consent, a senate that must read it. The treaty is recorded now,
+   * `pending`, and does nothing until then. Previously this could only be
+   * expressed as a `treaty_ratification` order, which carries no payload and so
+   * completed without producing the treaty at all.
+   */
+  ratifyTurns: z.number().int().min(1).max(10).optional(),
   summary: z.string().default(''),
 });
 

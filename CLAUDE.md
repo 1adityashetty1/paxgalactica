@@ -478,6 +478,47 @@ and nothing implemented it.
 | `trade_accord` | parties are immune to each other's blockades and raiding |
 | `basing_rights` | the other party's fleets may enter without it being an attack |
 | `tribute` | `incomePerTurn` moves every turn |
+| `territory` (a term, not a type) | the named systems **change hands** when the treaty takes force |
+
+**A treaty can be agreed now and take force later.** `form_treaty` accepts
+`ratifyTurns`, which records it `pending` with an `effectiveTurn` and applies
+none of its terms until `tickTurn` promotes it. It exists because extraction is
+told — correctly — that a conditional promise produces nothing yet, so a deal an
+NPC gated on ratification used to emit a `treaty_ratification` order and no
+treaty at all. That category carries no payload by design, so the order ticked,
+completed, logged, and changed nothing: a fully negotiated marriage, supply line
+and transit compact evaporated on completion. One object rather than an order
+plus a promise means there is no second source of truth to desync, and
+`isTreatyLive` already gated on `status === 'active'`, so `pending` is inert
+everywhere without a single reader changing.
+
+**`terms.territory` cedes worlds, and did nothing at all before.** A playtest
+signed an accord naming four systems — two of them not even held by the player —
+and no controller changed. A cession does not breach the rule that control
+changes *only* when a `fleet_movement` arrives: that rule exists to stop a model
+talking itself into owning a distant system, and `form_treaty` is already
+extraction-only, so a cession can only arrive from a transcript, which is the one
+place the other party's consent exists. A declared action still cannot move a
+border.
+
+What is standing there follows the rule the game already uses for the violent
+case, minus the blood:
+
+- **The garrison transfers intact** — nobody fought. That is the whole
+  difference between capitulation and conquest, where the garrison is destroyed
+  and the conqueror keeps a fraction, and it is what makes a ceded world worth
+  more than a stormed one.
+- **The ceder's ships withdraw to their nearest holding with no losses**, by the
+  same `fleetBases` route a defender takes when it breaks off — which is also
+  instant, and costs 10–35% for the privilege. Leaving under a signature costs
+  nothing.
+- **With nowhere to go they stay in orbit**, an uninvited presence contesting
+  the income of a world they no longer own. The violent path destroys such
+  ships; doing that here would make cession a trap rather than a bargain.
+
+Only what a party actually holds moves, and a cession is a one-time event rather
+than a term that applies while the treaty is live — land changes hands once, and
+taking it back is a fresh act.
 
 `basing_rights` fixed something worse than an inert field: **there was no way
 to station ships in friendly space at all.** Any movement into a partner's

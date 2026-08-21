@@ -102,7 +102,26 @@ export const TreatySchema = z.object({
    * same grant. Added after a playtest ratcheted one charter from 5% to 8% and
    * left both live.
    */
-  status: z.enum(['active', 'expired', 'broken', 'superseded']).default('active'),
+  status: z.enum(['active', 'expired', 'broken', 'superseded', 'pending']).default('active'),
+  /**
+   * The turn this treaty starts having effect. `null` means immediately.
+   *
+   * A `pending` treaty is one whose parties agreed but whose terms are not yet
+   * live — a deal a council still has to ratify. It exists because extraction
+   * is told, correctly, that a conditional promise produces nothing yet, so a
+   * deal an NPC gated on ratification used to produce a `treaty_ratification`
+   * order and no treaty at all. That order carries no payload by design, so the
+   * order completed, logged, and changed nothing: a fully negotiated marriage,
+   * supply line and transit compact evaporated on completion.
+   *
+   * Making it one object rather than an order plus a promise means there is no
+   * second source of truth to desync, and the deal is visible in the treaties
+   * panel while it waits instead of hiding inside an order.
+   *
+   * `isTreatyLive` gates on `status === 'active'`, so a pending treaty is inert
+   * everywhere for free — no reader had to change.
+   */
+  effectiveTurn: z.number().int().min(0).nullable().default(null),
   /** One line the UI can show verbatim. */
   summary: z.string().default(''),
 });

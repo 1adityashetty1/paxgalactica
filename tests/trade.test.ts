@@ -43,6 +43,7 @@ function pact(type: TreatyType, parties: [string, string], pledged: Record<strin
     },
     signedTurn: 0,
     expiresTurn: null,
+    effectiveTurn: null,
     status: 'active',
     summary: type,
   };

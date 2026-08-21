@@ -8,8 +8,14 @@ import { MemoryCampaignStore } from '../src/engine/store.js';
 import { GameSession } from '../src/server/session.js';
 import { loadPrompt } from '../src/model/prompts.js';
 import { createSeedState } from '../src/seed/scenario.js';
-import { subornLimit, warsFor } from '../src/domain/state.js';
-import { applyOps } from '../src/domain/reducer.js';
+import { applyOps, tickTurn } from '../src/domain/reducer.js';
+import {
+  ledgerFor,
+  subornLimit,
+  treatiesFor,
+  warsFor,
+  type WorldState,
+} from '../src/domain/state.js';
 
 /**
  * Diplomacy's central promise is that conversation changes nothing until the
@@ -278,7 +284,7 @@ describe('war is a property of the relationship, not one opinion', () => {
     state.treaties.push({
       id: 't1', type: 'non_aggression', parties: ['freeworlds', 'krayt'],
       terms: { territory: [], shipsPledged: {}, incomePerTurn: {}, incomeShares: [], mutualDefenseTrigger: '' },
-      signedTurn: 0, expiresTurn: null, status: 'active', summary: 'na',
+      signedTurn: 0, expiresTurn: null, effectiveTurn: null, status: 'active', summary: 'na',
     });
     expect(warsFor(state, 'freeworlds')).not.toContain('krayt');
     expect(warsFor(state, 'krayt')).not.toContain('freeworlds');
@@ -578,5 +584,137 @@ describe('a diplomacy reply must be speech, not a note about speech', () => {
       'though I will say they are better kept than most. Bring me something ' +
       'that alters the cost and I will hear it seriously, as I have said.';
     expect(looksLikeStubReply(long)).toBe(false);
+  });
+});
+
+/**
+ * A deal an NPC gates on ratification used to evaporate.
+ *
+ * Extraction is told, correctly, that a conditional promise produces nothing
+ * yet — so it emitted a `treaty_ratification` order and no treaty. That order
+ * carries no payload by design, so it ticked, completed, logged, and changed
+ * nothing: a fully negotiated marriage, supply line and transit compact gone on
+ * completion. A treaty recorded now and inert until its effective turn is one
+ * object instead of two that can desync.
+ */
+describe('a treaty can be agreed now and take force later', () => {
+  const pact = (ratifyTurns?: number) => ({
+    op: 'form_treaty',
+    treatyType: 'tribute' as const,
+    parties: ['freeworlds', 'hutt'],
+    terms: { incomePerTurn: { freeworlds: -20, hutt: 20 } },
+    summary: 'subject to the councils',
+    ...(ratifyTurns === undefined ? {} : { ratifyTurns }),
+  });
+
+  it('records it as pending and applies none of its terms', () => {
+    const out = applyOps(createSeedState('freeworlds'), [pact(2)], 'extraction', 'freeworlds');
+    expect(out.rejections).toHaveLength(0);
+    const treaty = out.state.treaties.at(-1)!;
+    expect(treaty.status).toBe('pending');
+    expect(treaty.effectiveTurn).toBe(out.state.turn + 2);
+    // Inert: `isTreatyLive` gates on active, so no reader sees it.
+    expect(treatiesFor(out.state, 'hutt').map((t) => t.id)).not.toContain(treaty.id);
+    expect(ledgerFor(out.state, 'hutt').treatyFlow).toBe(0);
+  });
+
+  it('comes into force on its turn, and its terms start applying', () => {
+    let state = applyOps(
+      createSeedState('freeworlds'),
+      [pact(2)],
+      'extraction',
+      'freeworlds',
+    ).state;
+    const id = state.treaties.at(-1)!.id;
+
+    state = tickTurn(state).state;
+    expect(state.treaties.find((t) => t.id === id)!.status).toBe('pending');
+
+    const second = tickTurn(state);
+    expect(second.state.treaties.find((t) => t.id === id)!.status).toBe('active');
+    expect(ledgerFor(second.state, 'hutt').treatyFlow).toBe(20);
+    expect(second.notes.join(' ')).toMatch(/Ratified/);
+  });
+
+  it('is live at once when nothing has to ratify it', () => {
+    const out = applyOps(createSeedState('freeworlds'), [pact()], 'extraction', 'freeworlds');
+    expect(out.state.treaties.at(-1)!.status).toBe('active');
+    expect(ledgerFor(out.state, 'hutt').treatyFlow).toBe(20);
+  });
+});
+
+/**
+ * `Treaty.terms.territory` existed for the whole life of the project and
+ * nothing read it: a playtest signed an accord naming four systems, two of them
+ * not even held by the player, and no controller changed.
+ *
+ * It does not breach the rule that control changes only on a `fleet_movement`
+ * arrival. That rule stops a model talking itself into owning a distant system;
+ * a cession comes from a transcript, which is the one place the other party's
+ * consent exists — and `form_treaty` is already extraction-only, so a declared
+ * action still cannot move a border.
+ */
+describe('a ceded system changes hands', () => {
+  const cede = (systemId: string, parties: [string, string]) => ({
+    op: 'form_treaty',
+    treatyType: 'ceasefire' as const,
+    parties,
+    terms: { territory: [systemId] },
+    summary: 'a negotiated withdrawal',
+  });
+
+  const sys = (s: WorldState, id: string) => s.systems.find((x) => x.id === id)!;
+
+  it('transfers control, keeps the garrison, and withdraws the ceder’s ships', () => {
+    const state = createSeedState('freeworlds');
+    const before = sys(state, 'ark-6');
+    const garrison = before.garrison;
+    const ships = before.ships['freeworlds'] ?? 0;
+    expect(ships).toBeGreaterThan(0);
+
+    const out = applyOps(state, [cede('ark-6', ['freeworlds', 'hutt'])], 'extraction', 'freeworlds');
+    expect(out.rejections).toHaveLength(0);
+
+    const after = sys(out.state, 'ark-6');
+    expect(after.controllerFactionId).toBe('hutt');
+    // Nobody fought, so the garrison is handed over intact — the difference
+    // between capitulation and conquest.
+    expect(after.garrison).toBe(garrison);
+    // And the ceder's fleet leaves rather than being captured or destroyed.
+    expect(after.ships['freeworlds'] ?? 0).toBe(0);
+    const elsewhere = out.state.systems
+      .filter((x) => x.id !== 'ark-6')
+      .reduce((n, x) => n + (x.ships['freeworlds'] ?? 0), 0);
+    const originally = state.systems
+      .filter((x) => x.id !== 'ark-6')
+      .reduce((n, x) => n + (x.ships['freeworlds'] ?? 0), 0);
+    expect(elsewhere).toBe(originally + ships);
+    expect(out.notes.join(' ')).toMatch(/withdraw to/);
+  });
+
+  it('cedes nothing it does not hold', () => {
+    // tio-3 is the Vigil's, and the Vigil is not a party.
+    const out = applyOps(
+      createSeedState('freeworlds'),
+      [cede('tio-3', ['freeworlds', 'hutt'])],
+      'extraction',
+      'freeworlds',
+    );
+    expect(out.rejections).toHaveLength(0);
+    expect(sys(out.state, 'tio-3').controllerFactionId).toBe('vigil');
+  });
+
+  it('waits for ratification when the treaty is pending', () => {
+    const state = createSeedState('freeworlds');
+    const out = applyOps(
+      state,
+      [{ ...cede('ark-6', ['freeworlds', 'hutt']), ratifyTurns: 1 }],
+      'extraction',
+      'freeworlds',
+    );
+    // Still Free Worlds: the councils have not sat yet.
+    expect(sys(out.state, 'ark-6').controllerFactionId).toBe('freeworlds');
+    const ticked = tickTurn(out.state);
+    expect(sys(ticked.state, 'ark-6').controllerFactionId).toBe('hutt');
   });
 });
