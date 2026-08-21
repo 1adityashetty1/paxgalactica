@@ -7,7 +7,11 @@ import {
   type DurationCategory,
   type FibScale,
 } from './duration.js';
-import { conflictingCommitment, MAX_COMMITMENT_INCOME } from './arbitration.js';
+import {
+  COMMITMENT_GOODWILL,
+  conflictingCommitment,
+  MAX_COMMITMENT_INCOME,
+} from './arbitration.js';
 import type {
   BattleOutcome,
   BattleReport,
@@ -401,6 +405,39 @@ function removeShips(
  * A guest under `basing_rights` or `mutual_defense` is not coercion: those
  * ships were invited, and `isGuestOf` already knows the difference.
  */
+/**
+ * Move every bound party's view of every other bound party by `delta`.
+ *
+ * A commitment binds people to each other, so the standing it creates is
+ * mutual and pairwise. A one-party commitment — a standing policy, a charter
+ * over your own space — binds nobody else and moves nothing.
+ */
+function adjustCommitmentGoodwill(
+  state: WorldState,
+  factionIds: string[],
+  delta: number,
+  notes: string[],
+): void {
+  if (factionIds.length < 2) return;
+  for (const id of factionIds) {
+    const faction = state.factions.find((f) => f.id === id);
+    if (!faction) continue;
+    for (const other of factionIds) {
+      if (other === id) continue;
+      if (!state.factions.some((f) => f.id === other)) continue;
+      faction.disposition[other] = Math.max(
+        -100,
+        Math.min(100, (faction.disposition[other] ?? 0) + delta),
+      );
+    }
+  }
+  notes.push(
+    delta >= 0
+      ? `Bound together: ${factionIds.join(' and ')} each gain ${delta} disposition.`
+      : `No longer bound: ${factionIds.join(' and ')} each lose ${-delta} disposition.`,
+  );
+}
+
 function underDuressFrom(state: WorldState, coercer: string, victim: string): number {
   let worlds = 0;
   for (const system of state.systems) {
@@ -1573,6 +1610,16 @@ export function applyOps(
           establishedTurn: state.turn,
           status: 'active',
         });
+        // Binding yourself to another power is worth something in standing even
+        // when no money moves. Without this a commitment with no `incomePerTurn`
+        // was entirely inert, and a playtest closed five accords that each
+        // produced exactly that — a war subsidy, a share of prizes and a
+        // standing intelligence duty, all decoration. The record is the useful
+        // part; this is what makes the record bite.
+        //
+        // Between the parties only: a commitment is not public business the way
+        // a treaty is, so onlookers have no view.
+        adjustCommitmentGoodwill(state, op.factionIds, COMMITMENT_GOODWILL, notes);
         logEvent(state, 'diplomacy', op.text, op.factionIds[0] ?? null);
         break;
       }
@@ -1584,6 +1631,9 @@ export function applyOps(
           break;
         }
         found.status = 'dissolved';
+        // Walking away takes the goodwill back, which is what makes a
+        // commitment cost something to have made.
+        adjustCommitmentGoodwill(state, found.factionIds, -COMMITMENT_GOODWILL, notes);
         logEvent(state, 'diplomacy', `Ended: ${found.text}. ${op.reason}`.trim());
         break;
       }

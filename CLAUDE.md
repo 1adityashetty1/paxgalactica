@@ -266,6 +266,23 @@ a commitment is the easiest place in the game for a model to invent revenue:
 It is read where it is used rather than paid out each tick, for the same reason
 agent effects are: a per-turn mutation would compound instead of recurring.
 
+**And an arrangement with no money in it is still worth something.** A
+commitment carrying no `incomePerTurn` was entirely inert, and a playtest closed
+five accords that each produced exactly one — `open_hand_pact`,
+`imperial_recognition`, `debt_service_share`, `intelligence_notice`,
+`intel_sharing_drajk`. A war subsidy, a tenth of all prizes and a standing
+intelligence duty all became decoration, because any obligation without a
+mechanical home silently becomes flavour.
+
+The answer is not to stop recording them — the record is the useful part, and
+the arbiter reads it — but to make the record bite. `COMMITMENT_GOODWILL` moves
+disposition **between the bound parties, pairwise**, when one is established, and
+takes it back when one is dissolved, which is what makes a commitment cost
+something to have made. Only between the parties: unlike a treaty, a commitment
+is not public business, so onlookers have no view. A one-party commitment — a
+standing policy, a charter over your own space — binds nobody else and moves
+nothing.
+
 ## Faction character
 
 Internal `factionId` values are historical and were never renamed alongside

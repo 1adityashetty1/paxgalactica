@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { applyOps, tickTurn, MAX_ATTRITION_FRACTION } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { AGENT_COST, MISSION_PROFILE } from '../src/domain/diplomacy.js';
+import { COMMITMENT_GOODWILL } from '../src/domain/arbitration.js';
 import {
   agentsVisibleTo,
   effectiveStats,
@@ -987,5 +988,61 @@ describe('a renegotiated income share supersedes the old one', () => {
     };
     const second = applyOps(first.state, [other], 'extraction', 'freeworlds');
     expect(second.state.treaties.filter((t) => t.status === 'active')).toHaveLength(2);
+  });
+});
+
+/**
+ * A commitment with no `incomePerTurn` was mechanically inert, and a playtest
+ * closed five accords that each produced exactly one — a war subsidy, a tenth
+ * of all prizes, a standing intelligence duty, all decoration. The record is
+ * the useful part and the arbiter reads it, so the answer is not to stop
+ * recording them but to make the record bite.
+ */
+describe('a commitment binds people, so it moves how they see each other', () => {
+  const bind = (factionIds: string[]): Op => ({
+    op: 'establish_commitment',
+    kind: 'intelligence_notice',
+    factionIds,
+    text: 'standing notice of what crosses the lanes',
+    exclusive: false,
+  });
+
+  const disp = (s: WorldState, who: string, toward: string) =>
+    s.factions.find((f) => f.id === who)!.disposition[toward] ?? 0;
+
+  it('raises both parties, even with no money attached', () => {
+    const state = fresh();
+    const a = disp(state, 'freeworlds', 'hutt');
+    const b = disp(state, 'hutt', 'freeworlds');
+
+    const out = applyOps(state, [bind(['freeworlds', 'hutt'])], 'extraction', 'freeworlds');
+    expect(out.rejections).toHaveLength(0);
+    // Zero flow, and still not inert.
+    expect(out.state.commitments.at(-1)!.incomePerTurn).toBe(0);
+    expect(disp(out.state, 'freeworlds', 'hutt')).toBe(a + COMMITMENT_GOODWILL);
+    expect(disp(out.state, 'hutt', 'freeworlds')).toBe(b + COMMITMENT_GOODWILL);
+  });
+
+  it('takes it back when the commitment is dissolved', () => {
+    const state = fresh();
+    const before = disp(state, 'freeworlds', 'hutt');
+    const bound = applyOps(state, [bind(['freeworlds', 'hutt'])], 'extraction', 'freeworlds');
+    const id = bound.state.commitments.at(-1)!.id;
+
+    const out = applyOps(
+      bound.state,
+      [{ op: 'dissolve_commitment', commitmentId: id, reason: 'it served its turn' }],
+      'model',
+      'freeworlds',
+    );
+    expect(disp(out.state, 'freeworlds', 'hutt')).toBe(before);
+  });
+
+  it('moves nothing for a commitment that binds only its author', () => {
+    const state = fresh();
+    const before = disp(state, 'freeworlds', 'hutt');
+    const out = applyOps(state, [bind(['freeworlds'])], 'model', 'freeworlds');
+    expect(out.rejections).toHaveLength(0);
+    expect(disp(out.state, 'freeworlds', 'hutt')).toBe(before);
   });
 });

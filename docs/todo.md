@@ -526,7 +526,7 @@ misapplied, so the engine faithfully charged 15 dissent for a compulsion the act
 does not touch. That half is a judgement problem with no obvious structural fix
 and is worth its own decision.
 
-## 29. MOSTLY FIXED — four things the playtest found inert
+## 29. FIXED — four things the playtest found inert
 
 **One of the four was a plain bug and is fixed: `briefing.ledger` was stale.**
 It was computed partway up `tickTurn`, and the rest of the tick then paid
@@ -546,9 +546,13 @@ generalises past debt to any obligation whose payer has stopped being solvent,
 reading the ledger rather than the treasury, because a faction can sit on savings
 while running at a loss.
 
-**Only zero-flow commitments remain**, and the decision there is that they are
-records which should *bite* — a commitment affects disposition, and the record is
-what stops it being exploitable. Not yet built.
+**All four are now done.** Zero-flow commitments were the last: they stay
+records, and the record now bites. `COMMITMENT_GOODWILL` moves disposition
+pairwise between the bound parties on establishment and takes it back on
+dissolution, so binding yourself to someone is worth something in standing even
+when no money moves — and walking away costs it. Only between the parties, since
+a commitment is not public business the way a treaty is, and a one-party
+commitment binds nobody and moves nothing.
 
 The original three-way analysis follows.
 
