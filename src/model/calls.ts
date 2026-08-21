@@ -162,8 +162,40 @@ export async function appraiseAgreement(
   const other = getFaction(state, withFactionId)?.name ?? withFactionId;
   const res = await appraiseAction(
     state,
-    `Your envoys have concluded an agreement with ${other} and are about to put it into effect. ` +
+    [
+      `Your envoys have concluded an agreement with ${other} and are about to put it into effect.`,
+      '',
       `What was agreed: ${agreed}`,
+      '',
+      // Rule on what the accord OBLIGES, not only on what it enacts today.
+      //
+      // A red line crossed in future tense used to pass clean. Measured live:
+      // Meridian's line is "will not close a lane — no blockade of civilian
+      // traffic, no embargo, no shut border", the unconditional closure was
+      // refused with that line quoted, and the identical act written as
+      // "if Vigil forces move on Vashka, Meridian closes the Sennex lane"
+      // returned no refusal, no defiance and no dissent — leaving a live treaty
+      // obliging exactly the forbidden thing.
+      //
+      // This does NOT make conditional pacts suspect in general, which was the
+      // obvious worry and is wrong: it only bites when the obliged act is
+      // itself forbidden. A mutual defence pact obliges sending ships, which is
+      // on nobody's red line; the two cases where it does bite — the Combine
+      // pledging its own hulls where a proxy could be hired, Drajk committing
+      // to sit and defend — are the characterisation working, not collateral.
+      'Judge what this commits you to, not only what it does the moment it is',
+      'signed. An undertaking to do a thing later is an undertaking to do that',
+      'thing: if honouring this agreement would require you to cross one of your',
+      'own lines, it crosses it now, however the clause is worded and whether or',
+      'not the condition ever comes true. A power does not promise what it will',
+      'not do.',
+      '',
+      'This is about the SUBSTANCE of the obligation, not about conditionality.',
+      'Promising to send ships if an ally is attacked is an ordinary pact and',
+      'breaches nothing. Promising to close a lane, pay tribute, or hand over a',
+      'world is a breach for a power whose lines forbid those things, whatever',
+      'the trigger.',
+    ].join('\n'),
   );
   return { appraisal: res.appraisal, costUsd: res.costUsd };
 }

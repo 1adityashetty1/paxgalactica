@@ -47,6 +47,7 @@ const { ACTION_POINTS_PER_TURN, Campaign } = await import('../src/engine/campaig
 const { createSeedState } = await import('../src/seed/scenario.js');
 const { COMPULSION_BREACH_DISSENT, REFUSAL_DISSENT } = await import('../src/domain/state.js');
 const { classifyPrinciple, classifyPrinciples } = await import('../src/domain/compulsions.js');
+const { loadPrompt } = await import('../src/model/prompts.js');
 
 /** Arkanis's first red line, quoted exactly as the faction sheet carries it. */
 const NO_OCCUPATION =
@@ -930,5 +931,64 @@ describe('no red line forbids a passive mechanic', () => {
     // The choice, not the condition: committing the fleet to sit somewhere.
     expect(pinned).toMatch(/siege line/i);
     expect(pinned).toMatch(/besieged/i);
+  });
+});
+
+/**
+ * A red line crossed in future tense used to pass clean.
+ *
+ * Measured live: Meridian's line is "will not close a lane — no blockade of
+ * civilian traffic, no embargo, no shut border". The unconditional closure was
+ * refused with that line quoted. The identical act written as "if Vigil forces
+ * move on Vashka, Meridian closes the Sennex lane" returned no refusal, no
+ * defiance and no dissent — and left a live treaty obliging exactly the
+ * forbidden thing.
+ *
+ * `closeChannel` appraised what an accord *enacts*; a conditional obligation
+ * enacts nothing yet. It now appraises what the accord *obliges*.
+ */
+describe('an accord is judged on what it obliges, not only what it enacts', () => {
+  it('tells the arbiter to read the obligation, in both tenses', async () => {
+    scripted = {
+      appraisal: appraisal({}),
+      extraction: { narrative: 'Terms were agreed.', ops: [{ op: 'log_narrative', text: 'x' }] },
+    };
+    const campaign = Campaign.start('meridian', 'test-obligation-tense');
+    await closeChannel(campaign, 'freeworlds', [
+      { speaker: 'player', text: 'If the Vigil moves on Vashka we will close the Sennex lane.' },
+      { speaker: 'faction', text: 'Agreed.' },
+    ]);
+
+    const appraisalCall = calls.find((c) => c.kind === 'appraisal');
+    expect(appraisalCall).toBeDefined();
+    // The instruction that closes the tense hole.
+    expect(appraisalCall!.user).toMatch(/what this commits you to/i);
+    expect(appraisalCall!.user).toMatch(/undertaking to do a thing later/i);
+  });
+
+  it('says plainly that ordinary conditional pacts are not the target', async () => {
+    // The obvious failure mode of this rule is over-firing: treating every
+    // conditional clause as suspect would ban defensive pacts, which oblige
+    // sending ships — an act on nobody's red line.
+    scripted = {
+      appraisal: appraisal({}),
+      extraction: { narrative: 'Terms were agreed.', ops: [{ op: 'log_narrative', text: 'x' }] },
+    };
+    const campaign = Campaign.start('meridian', 'test-obligation-ordinary');
+    await closeChannel(campaign, 'freeworlds', [
+      { speaker: 'player', text: 'We will send ships if you are attacked.' },
+      { speaker: 'faction', text: 'Agreed.' },
+    ]);
+
+    const appraisalCall = calls.find((c) => c.kind === 'appraisal')!;
+    expect(appraisalCall.user).toMatch(/not about conditionality/i);
+    expect(appraisalCall.user).toMatch(/breaches nothing/i);
+  });
+
+  it('is stated in the arbiter prompt too, so the declared path agrees', () => {
+    const text = loadPrompt('appraisal');
+    expect(text).toMatch(/A promise to cross a line is crossing it/);
+    // And the guard against over-firing travels with it.
+    expect(text).toMatch(/do not start treating every conditional clause as suspect/i);
   });
 });

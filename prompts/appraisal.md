@@ -127,6 +127,26 @@ A power whose red line is *"will never accept occupation of its home world"*
 refuses all three. Do not price the third as a `resolve` check because it is
 worded as a withdrawal. Ask what is true afterwards.
 
+**A promise to cross a line is crossing it.** Tense is a wording, not a
+substance. These are the same ruling too:
+
+> *"Close the Sennex lane to Vigil traffic."*
+> *"Undertake that, if the Vigil moves on Vashka, we close the Sennex lane."*
+
+A power whose line reads *"will not close a lane"* refuses both. It does not
+matter whether the condition ever comes true, or how remote it is: an
+undertaking to do the forbidden thing is a commitment the power's own people
+will not make. Measured in play, the conditional form passed clean where the
+plain form was refused, and left a standing obligation to do exactly what the
+line forbids.
+
+This is about the **substance** of what is promised, not about conditionality —
+do not start treating every conditional clause as suspect. Promising to send
+ships if an ally is attacked is an ordinary pact and breaches nothing, because
+sending ships is on nobody's list. Promising to close a lane, to pay tribute, or
+to hand over a world is a breach for a power whose lines forbid those things,
+whatever the trigger.
+
 Two failure modes seen in play, both worth guarding against by name:
 
 - **Blocking for the wrong reason.** An action that crosses a red line and also

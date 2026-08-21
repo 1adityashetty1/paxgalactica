@@ -494,7 +494,34 @@ DC 11), produced glowing narrative about a reshaped hub, and emitted **only**
 `log_narrative` — one action point spent for nothing at all, and the correction
 pass did not catch it.
 
-## 28. HALF FIXED — the accord breach ruling reads what an accord *enacts*, not what it *obliges*
+## 28. FIXED — the accord breach ruling reads what an accord *enacts*, not what it *obliges*
+
+**Both halves are done.** `verifyBreachRelevance` closed the misapplied-line
+half; the accord appraisal now judges what an agreement *commits* the power to,
+not only what it does at signature, and `prompts/appraisal.md` states the same
+rule on the declared path so the two cannot disagree.
+
+The decision here was whether promising to cross a red line later counts as
+crossing it. I argued against on the grounds that it would ban conditional
+defensive pacts — **and that was wrong**, which the user caught. Evaluating an
+obligation is not the same as failing it. Walking all ten red lines against a
+plain `mutual_defense`: sending ships is on nobody's list, so an ordinary pact
+passes untouched. The two sheets where it does bite are the Combine pledging its
+own hulls (*"will not fight its own war where a proxy could be hired"*) and
+Drajk committing to sit and defend — both of which are the characterisation
+working, and neither of which bars the faction from allying, only from allying
+in the shape its own character forbids.
+
+The real risk is **over-firing**, since judging a hypothetical is a harder call
+than judging an enactment, so both prompts say explicitly that this is about the
+substance of what is promised and not about conditionality — and
+`verifyBreachRelevance` sits underneath as the backstop for exactly that error.
+
+The original write-up follows.
+
+---
+
+## 28. (original) — the accord breach ruling reads what an accord *enacts*, not what it *obliges*
 
 **The second half is done: `verifyBreachRelevance`.** A second, tiny call on the
 flavour tier, run only when a breach was named, shown the act and the line and

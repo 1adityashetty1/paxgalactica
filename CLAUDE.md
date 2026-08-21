@@ -699,6 +699,31 @@ compulsion"* when the seed carries it in `compulsions`, and returned the whole
 thing as `admissible: false` — the one exit that charges nothing at all. A
 25-dissent breach became a free no-op.
 
+**A promise to cross a line is crossing it.** `closeChannel` appraised what an
+accord *enacts*, and a conditional obligation enacts nothing yet — so a red line
+crossed in future tense passed clean where the plain form was refused. Measured
+live against Meridian's *"will not close a lane — no blockade of civilian
+traffic, no embargo, no shut border"*: the unconditional closure was refused with
+that line quoted, and *"if Vigil forces move on Vashka, Meridian closes the
+Sennex lane"* returned no refusal, no defiance and no dissent, leaving a live
+treaty obliging exactly the forbidden thing.
+
+The accord appraisal now judges what the agreement **commits** you to, and
+`prompts/appraisal.md` says the same thing on the declared path so the two
+cannot disagree.
+
+The obvious worry about this rule is that it makes conditional pacts suspect in
+general, and that is worth being precise about because it is wrong: it bites only
+when the *obliged act* is itself forbidden. Walking the ten red lines against a
+plain `mutual_defense`, sending ships is on nobody's list — and the two sheets
+where it does bite are the characterisation working rather than collateral
+damage. The Combine pledging its own hulls crosses *"will not fight its own war
+where a proxy could be hired"*, which is precisely what that faction hires Drajk
+to avoid; Drajk committing to sit and defend crosses its own line about being
+pinned. Neither is barred from allying, only from allying in the one shape its
+character forbids. Both prompts say so explicitly, because over-firing is this
+rule's real failure mode.
+
 **A real line is not necessarily the right line.** `classifyPrinciple` proves a
 quoted line exists on the sheet; nothing proved it was *about the act*, and
 relevance is precisely the judgement being delegated. Measured live: an
