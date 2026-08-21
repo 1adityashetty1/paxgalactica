@@ -170,9 +170,12 @@ describe('prompts do not drift from the schema', () => {
     }
   });
 
-  it('tells every ops-emitting prompt to set a movement force', () => {
+  it('tells every prompt that CAN move a fleet to set a force', () => {
     // Without this NPCs commit their entire navy at an origin on every move.
-    for (const name of ['resolution', 'reaction', 'extraction'] as const) {
+    // `extraction` is deliberately absent: it may no longer emit
+    // `fleet_movement` at all — the reducer rejects it as `declared_only` —
+    // because a fleet movement needs nobody's consent and must cost an action.
+    for (const name of ['resolution', 'reaction'] as const) {
       expect(loadPrompt(name), `${name}.md`).toMatch(/`?force`?/);
     }
   });

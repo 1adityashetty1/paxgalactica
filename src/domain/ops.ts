@@ -246,6 +246,49 @@ export const ForgiveDebtOp = z.object({
   reason: z.string().default(''),
 });
 
+/**
+ * Moving an existing debt to a new creditor.
+ *
+ * Buying another power's paper is a thing powers in this galaxy do constantly,
+ * and extraction had `establish_debt` and `forgive_debt` and nothing between —
+ * so agreeing to *assign* a debt could only be written as a fresh one, which
+ * minted a second copy and retired nothing. Measured live: two purchases of the
+ * same Drajk paper left three debts standing and Drajk owing 1400 against an
+ * original 600, an obligation manufactured by the act of trading it.
+ *
+ * Extraction-only for the same reason `establish_debt` is: the outgoing
+ * creditor has to agree to sell, and a transcript is the only place that
+ * agreement exists.
+ */
+export const AssignDebtOp = z.object({
+  op: z.literal('assign_debt'),
+  debtId: z.string().min(1),
+  /** Who holds the paper afterwards. */
+  toCreditorFactionId: z.string().min(1),
+  reason: z.string().default(''),
+});
+
+/**
+ * Paying a debt down, in part or in full.
+ *
+ * The other half of the same gap: a debtor who settles early had no op for it,
+ * so 430 credits paid to clear a 400 balance produced a narrative saying "that
+ * column shut" and a debt still live at 350 the next turn.
+ *
+ * An ordinary op rather than extraction-only, because prepaying what you owe
+ * needs nobody's permission — and it is safe to leave open precisely because
+ * the reducer moves the money: the debtor pays exactly what comes off the
+ * balance, capped at what it actually holds, so this cannot be used to wish a
+ * debt away.
+ */
+export const SettleDebtOp = z.object({
+  op: z.literal('settle_debt'),
+  debtId: z.string().min(1),
+  /** Trimmed to the balance, and to what the debtor can actually find. */
+  amount: z.number().int().min(1).max(100000),
+  reason: z.string().default(''),
+});
+
 export const DissolveCommitmentOp = z.object({
   op: z.literal('dissolve_commitment'),
   commitmentId: z.string().min(1),
@@ -287,6 +330,7 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   // `establish_debt` is deliberately ABSENT, like `form_treaty`: lending binds
   // the debtor, and consent lives in a transcript. Forgiving is unilateral.
   ForgiveDebtOp,
+  SettleDebtOp,
   SpawnEventOp,
   LogNarrativeOp,
 ]);
@@ -306,7 +350,12 @@ export type ModelOp = z.infer<typeof ModelOpSchema>;
  * agreement is genuinely unilateral — you do not need the other party's
  * agreement to stop honouring it, only to pay for having stopped.
  */
-export const ExtractionOpSchema = z.union([ModelOpSchema, FormTreatyOp, EstablishDebtOp]);
+export const ExtractionOpSchema = z.union([
+  ModelOpSchema,
+  FormTreatyOp,
+  EstablishDebtOp,
+  AssignDebtOp,
+]);
 
 /** The full vocabulary, including ops only the reducer may originate. */
 export const OpSchema = z.discriminatedUnion('op', [
@@ -330,6 +379,8 @@ export const OpSchema = z.discriminatedUnion('op', [
   DissolveCommitmentOp,
   EstablishDebtOp,
   ForgiveDebtOp,
+  AssignDebtOp,
+  SettleDebtOp,
   SpawnEventOp,
   LogNarrativeOp,
 ]);
@@ -632,7 +683,13 @@ export interface OpRejection {
     | 'unknown_debt'
     | 'doctrine_refusal'
     /** A treaty was declared rather than negotiated; the other party never agreed. */
-    | 'needs_consent';
+    | 'needs_consent'
+    /**
+     * The mirror of `needs_consent`: an op that came out of a negotiation but
+     * needs nobody's agreement, so it belongs on the declared path where the
+     * action economy prices it. Only `fleet_movement` is in this position.
+     */
+    | 'declared_only';
   message: string;
 }
 

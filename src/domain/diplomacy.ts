@@ -95,7 +95,14 @@ export const TreatySchema = z.object({
   signedTurn: z.number().int().min(0),
   /** null means indefinite; otherwise it lapses at the start of this turn. */
   expiresTurn: z.number().int().min(0).nullable().default(null),
-  status: z.enum(['active', 'expired', 'broken']).default('active'),
+  /**
+   * `superseded` is what a renegotiation leaves behind: distinct from `expired`
+   * (ran its term) and `broken` (repudiated, and priced accordingly), because
+   * neither of those is what happened when the same parties simply rewrote the
+   * same grant. Added after a playtest ratcheted one charter from 5% to 8% and
+   * left both live.
+   */
+  status: z.enum(['active', 'expired', 'broken', 'superseded']).default('active'),
   /** One line the UI can show verbatim. */
   summary: z.string().default(''),
 });

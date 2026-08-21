@@ -344,3 +344,130 @@ describe('ids are unique even within one batch', () => {
     expect(out.state.debts.filter((d) => d.status === 'forgiven')).toHaveLength(1);
   });
 });
+
+/**
+ * Buying another power's paper is a thing powers here do constantly, and
+ * extraction had `establish_debt` and `forgive_debt` and nothing between — so
+ * agreeing to *assign* a debt could only be written as a fresh one. Measured in
+ * a playtest: two purchases of the same Drajk paper left three debts standing
+ * and Drajk owing 1400 against an original 600, an obligation manufactured by
+ * the act of trading it.
+ *
+ * The seed ships two debts, both held by the Combine — `debt-0` against Drajk
+ * and `debt-1` against Meridian — so these work against real state rather than
+ * inventing more.
+ */
+describe('assigning a debt moves it rather than minting another', () => {
+  const debtOf = (state: WorldState, id: string) => state.debts.find((d) => d.id === id)!;
+
+  it('changes the creditor and mints nothing', () => {
+    const state = fresh();
+    const before = state.debts.length;
+    const out = applyOps(
+      state,
+      [{ op: 'assign_debt', debtId: 'debt-1', toCreditorFactionId: 'freeworlds' }],
+      'extraction',
+      'hutt',
+    );
+    expect(out.rejections).toHaveLength(0);
+    // The whole point: one instrument, moved — not a second one alongside it.
+    expect(out.state.debts).toHaveLength(before);
+    const moved = debtOf(out.state, 'debt-1');
+    expect(moved.creditorFactionId).toBe('freeworlds');
+    expect(moved.debtorFactionId).toBe('meridian');
+    // It keeps its balance and instalment; only who it answers to changed.
+    expect(moved.balance).toBe(400);
+    expect(moved.perTurn).toBe(25);
+  });
+
+  it('is rejected from a declared action, because the holder must agree to sell', () => {
+    const out = applyOps(
+      fresh(),
+      [{ op: 'assign_debt', debtId: 'debt-1', toCreditorFactionId: 'freeworlds' }],
+      'model',
+      'freeworlds',
+    );
+    expect(out.rejections.map((r) => r.code)).toEqual(['needs_consent']);
+    expect(debtOf(out.state, 'debt-1').creditorFactionId).toBe('hutt');
+  });
+
+  it('refuses to assign a debt to the faction that owes it', () => {
+    const out = applyOps(
+      fresh(),
+      [{ op: 'assign_debt', debtId: 'debt-1', toCreditorFactionId: 'meridian' }],
+      'extraction',
+      'hutt',
+    );
+    expect(out.rejections.map((r) => r.code)).toEqual(['illegal_value']);
+  });
+});
+
+/**
+ * The other half of the same gap: a debtor settling early had no op at all, so
+ * 430 credits paid against a 400 balance produced a narrative saying "that
+ * column shut" and a debt still live the next turn.
+ */
+describe('a debtor can pay a debt down, and the money really moves', () => {
+  const debtOf = (state: WorldState, id: string) => state.debts.find((d) => d.id === id)!;
+  const creditsOf = (state: WorldState, id: string) =>
+    state.factions.find((f) => f.id === id)!.credits;
+
+  it('settles the debt and moves the credits when paid in full', () => {
+    const state = fresh();
+    const debtorBefore = creditsOf(state, 'meridian');
+    const creditorBefore = creditsOf(state, 'hutt');
+
+    const out = applyOps(
+      state,
+      [{ op: 'settle_debt', debtId: 'debt-1', amount: 400 }],
+      'model',
+      'meridian',
+    );
+    expect(out.rejections).toHaveLength(0);
+    expect(debtOf(out.state, 'debt-1').balance).toBe(0);
+    expect(debtOf(out.state, 'debt-1').status).toBe('settled');
+    expect(creditsOf(out.state, 'meridian')).toBe(debtorBefore - 400);
+    expect(creditsOf(out.state, 'hutt')).toBe(creditorBefore + 400);
+  });
+
+  it('trims a payment to what the debtor actually holds', () => {
+    const state = fresh();
+    state.factions.find((f) => f.id === 'meridian')!.credits = 50;
+
+    const out = applyOps(
+      state,
+      [{ op: 'settle_debt', debtId: 'debt-1', amount: 400 }],
+      'model',
+      'meridian',
+    );
+    expect(debtOf(out.state, 'debt-1').balance).toBe(350);
+    expect(debtOf(out.state, 'debt-1').status).not.toBe('settled');
+    expect(creditsOf(out.state, 'meridian')).toBe(0);
+    expect(out.notes.join(' ')).toMatch(/Trimmed a payment/);
+  });
+
+  it('is the debtor\'s to make, not the creditor\'s', () => {
+    const out = applyOps(
+      fresh(),
+      [{ op: 'settle_debt', debtId: 'debt-1', amount: 100 }],
+      'model',
+      'hutt',
+    );
+    expect(out.rejections.map((r) => r.code)).toEqual(['illegal_value']);
+    expect(debtOf(out.state, 'debt-1').balance).toBe(400);
+  });
+
+  it('brings a delinquent debt back into good standing', () => {
+    const state = fresh();
+    expect(debtOf(state, 'debt-0').status).toBe('delinquent');
+    const out = applyOps(
+      state,
+      [{ op: 'settle_debt', debtId: 'debt-0', amount: 100 }],
+      'model',
+      'krayt',
+    );
+    expect(out.rejections).toHaveLength(0);
+    expect(debtOf(out.state, 'debt-0').status).toBe('current');
+    expect(debtOf(out.state, 'debt-0').missedPayments).toBe(0);
+  });
+});

@@ -76,6 +76,7 @@ leaves a faction with nobody following it.
 | `recall_agent` | withdraw one |
 | `establish_commitment` | record a lasting arrangement **the arbiter told you to** |
 | `forgive_debt` | write off what someone owes you — creditor only |
+| `settle_debt` | pay down what YOU owe, in part or in full — debtor only; the money really moves, so you must have it |
 | `dissolve_commitment` | end one, by id |
 | `spawn_event` | something happens worth recording |
 | `log_narrative` | a note for the event log |

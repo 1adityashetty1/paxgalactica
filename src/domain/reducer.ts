@@ -59,6 +59,7 @@ import {
   DOCTRINE_TEXT_DISSENT,
   getSystem,
   MAX_NARRATIVE_CREDITS,
+  MAX_TREATY_INCOME_PER_TURN,
   isMovementType,
   ledgerFor,
   liveAgentsOf,
@@ -605,6 +606,29 @@ export function applyOps(
       }
 
       case 'issue_order': {
+        // A fleet movement is your OWN fleet, and it is the one order that
+        // resolves combat and changes who holds a world. Nothing about it needs
+        // the other party's consent, so it has no business coming out of a
+        // transcript — and coming out of one is how it escaped the action
+        // economy. Measured live: an accord staged `fleet_movement` from
+        // slu-1 to ark-2 with force 8, the tick reported "storms Sennex,
+        // breaking a garrison of 4 ... takes possession", and the player's
+        // action points still read 2/2 afterwards. Diplomacy is unmetered on
+        // the grounds that a channel cannot *do* anything a declared action
+        // does; this is what made that false.
+        //
+        // The mirror of `needs_consent`: that rejects a declared op which needs
+        // someone else's agreement, this rejects a negotiated op which needs
+        // nobody's. Everything else an accord can legitimately start is
+        // unilateral work the action economy already prices at issue time.
+        if (source === 'extraction' && isMovementType(op.type)) {
+          reject(
+            raw,
+            'declared_only',
+            'A fleet movement cannot come out of a negotiation: it is your own fleet, it resolves combat, and it costs an action to order. Declare it as an action instead.',
+          );
+          break;
+        }
         if (!factionExists(op.factionId)) {
           reject(raw, 'unknown_faction', `No faction "${op.factionId}".`);
           break;
@@ -978,11 +1002,56 @@ export function applyOps(
           reject(raw, 'unknown_system', `No system "${badSystem}" in treaty terms.`);
           break;
         }
+        // A per-turn flow is the one treaty term that compounds, and it was
+        // unbounded — which made it strictly the better way to move money out
+        // of a negotiation than the capped one-off `adjust_credits`. Trimmed
+        // rather than rejected: the arrangement is still real at a smaller
+        // number, the same shape as `MAX_COMMITMENT_INCOME`.
+        const terms = { ...op.terms, incomePerTurn: { ...op.terms.incomePerTurn } };
+        for (const [who, amount] of Object.entries(terms.incomePerTurn)) {
+          const bounded = Math.max(
+            -MAX_TREATY_INCOME_PER_TURN,
+            Math.min(MAX_TREATY_INCOME_PER_TURN, amount),
+          );
+          if (bounded !== amount) {
+            terms.incomePerTurn[who] = bounded;
+            const note = `Trimmed a treaty flow of ${amount} to ${bounded} per turn for ${who} (ceiling ${MAX_TREATY_INCOME_PER_TURN}).`;
+            notes.push(note);
+            logEvent(state, 'clamp', note, who);
+          }
+        }
+
+        // Renegotiating a charter added a second treaty and left the first
+        // live, so the same system paid the same faction twice and the share
+        // ratcheted upward every time it was renegotiated — while the op's own
+        // summary said "superseding the prior arrangement". Nothing superseded
+        // anything, and the counterparty was never asked whether the old one
+        // ended. A new grant of the same system to the same faction, between
+        // the same parties, now retires the older grant explicitly.
+        for (const share of terms.incomeShares) {
+          for (const prior of state.treaties) {
+            if (prior.status !== 'active') continue;
+            if (prior.parties.length !== op.parties.length) continue;
+            if (!op.parties.every((party) => prior.parties.includes(party))) continue;
+            if (
+              !prior.terms.incomeShares.some(
+                (s) => s.systemId === share.systemId && s.factionId === share.factionId,
+              )
+            ) {
+              continue;
+            }
+            prior.status = 'superseded';
+            const note = `Superseded ${prior.id}: ${share.factionId}'s share of ${share.systemId} is now set by the new accord.`;
+            notes.push(note);
+            logEvent(state, 'diplomacy', note, share.factionId);
+          }
+        }
+
         const treaty = {
           id: mintId(state, 'tre'),
           type: op.treatyType,
           parties: [...op.parties],
-          terms: op.terms,
+          terms,
           signedTurn: state.turn,
           expiresTurn: op.durationTurns === undefined ? null : state.turn + op.durationTurns,
           status: 'active' as const,
@@ -1368,6 +1437,134 @@ export function applyOps(
         break;
       }
 
+      /**
+       * Move an existing debt to a new creditor.
+       *
+       * Extraction-only, like `establish_debt` and for the same reason: the
+       * outgoing creditor has to agree to sell. What this closes is that
+       * agreeing to *assign* paper could previously only be written as a new
+       * debt, which minted a second copy and retired nothing — three debts
+       * standing where there had been one, and a debtor owing more than twice
+       * what it originally borrowed purely because the paper changed hands.
+       */
+      case 'assign_debt': {
+        if (source === 'model') {
+          reject(
+            raw,
+            'needs_consent',
+            'A debt cannot be reassigned by declaration: the creditor holding it has to agree to part with it. Open a channel with them (/talk) and negotiate the sale.',
+          );
+          break;
+        }
+        const debt = state.debts.find((d) => d.id === op.debtId);
+        if (!debt) {
+          reject(raw, 'unknown_debt', `No debt "${op.debtId}".`);
+          break;
+        }
+        if (!factionExists(op.toCreditorFactionId)) {
+          reject(raw, 'unknown_faction', `No faction "${op.toCreditorFactionId}".`);
+          break;
+        }
+        if (!isDebtLive(debt)) {
+          reject(raw, 'illegal_value', `That debt is already ${debt.status}.`);
+          break;
+        }
+        // Nobody ends up owing money to themselves.
+        if (op.toCreditorFactionId === debt.debtorFactionId) {
+          reject(
+            raw,
+            'illegal_value',
+            `${debt.debtorFactionId} owes this debt; assigning it to them would be settling it, not selling it.`,
+          );
+          break;
+        }
+        const from = debt.creditorFactionId;
+        if (from === op.toCreditorFactionId) {
+          reject(raw, 'illegal_value', `${from} already holds that debt.`);
+          break;
+        }
+        debt.creditorFactionId = op.toCreditorFactionId;
+        logEvent(
+          state,
+          'diplomacy',
+          `${from} assigns the ${debt.balance} owed by ${debt.debtorFactionId} to ${op.toCreditorFactionId}. ${op.reason}`.trim(),
+          op.toCreditorFactionId,
+        );
+        break;
+      }
+
+      /**
+       * Pay a debt down, in part or in full.
+       *
+       * An ordinary op, because prepaying what you owe needs nobody's
+       * permission — and safe to leave open precisely because the money really
+       * moves: the debtor pays exactly what comes off the balance, bounded by
+       * what it actually holds, so this cannot wish a debt away. Without it,
+       * paying a debt off early produced a narrative saying the column was shut
+       * and a balance that was still there next turn.
+       */
+      case 'settle_debt': {
+        const debt = state.debts.find((d) => d.id === op.debtId);
+        if (!debt) {
+          reject(raw, 'unknown_debt', `No debt "${op.debtId}".`);
+          break;
+        }
+        // The debtor settles. A creditor writing it off is `forgive_debt`, and
+        // it is a different act with a different price.
+        if (actor !== undefined && debt.debtorFactionId !== actor) {
+          reject(
+            raw,
+            'illegal_value',
+            `Only ${debt.debtorFactionId} can pay this debt down. A creditor clearing it is forgive_debt.`,
+          );
+          break;
+        }
+        if (!isDebtLive(debt)) {
+          reject(raw, 'illegal_value', `That debt is already ${debt.status}.`);
+          break;
+        }
+        const debtor = state.factions.find((f) => f.id === debt.debtorFactionId);
+        const creditor = state.factions.find((f) => f.id === debt.creditorFactionId);
+        if (!debtor) {
+          reject(raw, 'unknown_faction', `No faction "${debt.debtorFactionId}".`);
+          break;
+        }
+        // Trimmed rather than rejected, the same shape as `billConstruction`:
+        // you cannot pay more than you owe, nor more than you have, and a
+        // part-payment is a real payment.
+        const paid = Math.min(op.amount, debt.balance, debtor.credits);
+        if (paid <= 0) {
+          const note = `${debtor.name} cannot pay anything toward ${debt.id}: it holds ${debtor.credits} credits.`;
+          notes.push(note);
+          logEvent(state, 'clamp', note, debtor.id);
+          break;
+        }
+        if (paid !== op.amount) {
+          const note = `Trimmed a payment of ${op.amount} to ${paid} against ${debt.id}: balance ${debt.balance}, treasury ${debtor.credits}.`;
+          notes.push(note);
+          logEvent(state, 'clamp', note, debtor.id);
+        }
+        debtor.credits = Math.max(0, debtor.credits - paid);
+        if (creditor) creditor.credits += paid;
+        debt.balance -= paid;
+        if (debt.balance <= 0) {
+          debt.balance = 0;
+          debt.status = 'settled';
+        } else if (debt.status === 'delinquent') {
+          // Paying against arrears brings you back into good standing; the
+          // per-turn service check decides afresh next tick.
+          debt.status = 'current';
+          debt.missedPayments = 0;
+        }
+        logEvent(
+          state,
+          'diplomacy',
+          `${debt.debtorFactionId} pays ${paid} against ${debt.id}; ${debt.balance} remains${debt.status === 'settled' ? ' — settled' : ''}. ${op.reason}`.trim(),
+          debt.debtorFactionId,
+        );
+        break;
+      }
+
       case 'spawn_event': {
         if (op.factionId !== null && !factionExists(op.factionId)) {
           reject(raw, 'unknown_faction', `No faction "${op.factionId}".`);
@@ -1648,8 +1845,6 @@ export function tickTurn(input: WorldState): TickResult {
       debt.status = 'current';
     }
   }
-
-  const playerLedger = ledgerFor(state, state.playerFactionId);
 
   /* --- Dissent cools ---------------------------------------------------- */
   // Institutions forgive slowly. A single refusal fades in a few turns; a
@@ -1941,6 +2136,18 @@ export function tickTurn(input: WorldState): TickResult {
     else survivors.push(next);
   }
   state.pendingOrders = survivors;
+
+  // Computed HERE, not partway up this function, which is where it used to sit.
+  // A tick pays income, resolves orders, fights battles, moves territory, fires
+  // agents and collects tolls — all of it after the old snapshot was taken — so
+  // the briefing reported a ledger describing a world that no longer existed by
+  // the time the player read it. Seen live as two consecutive turns reporting
+  // byte-identical `{gross, upkeep, net}` across a tick that changed treaties.
+  //
+  // Safe to move because this value only ever fed the report and the turn log:
+  // income is paid from a per-faction `ledgerFor` inside the payment loop above,
+  // never from this one.
+  const playerLedger = ledgerFor(state, state.playerFactionId);
 
   const report: TurnReport = {
     completed: [],

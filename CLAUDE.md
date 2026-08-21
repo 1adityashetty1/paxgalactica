@@ -716,7 +716,26 @@ line.
 | op | source | why |
 |---|---|---|
 | `establish_debt` | **extraction only** | nobody becomes a debtor because another power declared it |
+| `assign_debt` | **extraction only** | the creditor holding the paper has to agree to part with it |
+| `settle_debt` | ordinary | prepaying what you owe needs nobody's permission, and the reducer moves the money so it cannot be wished away |
 | `forgive_debt` | ordinary | a creditor needs nobody's permission to stop collecting — and it is the exact act the Combine's red line forbids |
+
+**A debt can now change hands and be paid down**, which it could not before.
+Extraction had `establish_debt` and `forgive_debt` and nothing between, so
+agreeing to *assign* paper could only be written as a fresh debt — which minted
+a second copy and retired nothing. A playtest bought the same Drajk paper twice
+and left **three debts standing, with Drajk owing 1400 against an original
+600**: an obligation manufactured purely by trading it. `assign_debt` moves the
+creditor and keeps the balance, the instalment and the history.
+
+`settle_debt` is the other half. Paying a debt off early had no op at all, so
+430 credits paid against a 400 balance produced a narrative saying "that column
+shut" and a debt still live the next turn. It is an ordinary op rather than
+extraction-only precisely because the reducer moves real money: the debtor pays
+exactly what comes off the balance, trimmed to what the treasury actually holds,
+so the worst it can do is a part-payment. Paying against arrears also clears a
+`delinquent` status, because the per-turn service check decides afresh next
+tick.
 
 Forgiveness pays `DEBT_FORGIVENESS_GOODWILL` (20) with the debtor, so refusing
 to use it is a real sacrifice rather than a free principle. A default costs
@@ -772,6 +791,27 @@ Three changes, in the usual division of labour:
 Ordered **after** the breach ruling: an action your own people will not carry
 out is refused whether or not it also needed someone else's signature, so a
 redirect can never launder a red line. A test pins that.
+
+### And the mirror: a fleet movement is not negotiable
+
+`declared_only` is `needs_consent` pointing the other way. Extraction could emit
+`issue_order` with `type: fleet_movement`, and a playtest used it to annex a
+world — battle fought, garrison broken, control changed — with the player's
+action points reading **2/2 afterwards**. Diplomacy is unmetered on the stated
+grounds that a channel already blocks the command line and End Turn, and that
+argument holds only while a channel cannot *do* what a declared action does.
+
+A fleet movement is the one order that needs nobody else's agreement: it is your
+own fleet, and it is also the one order that fights a battle and changes who
+holds a world. So it belongs on the declared path, where the action economy
+prices it at one of two per turn. The reducer rejects it from an `extraction`
+source and `prompts/extraction.md` no longer offers it — a conversation that
+ends "and my squadron will take station there" produces a `log_narrative`, and
+the player sails on their own turn.
+
+Everything else an accord can legitimately start — a ratification, a
+construction programme — is unilateral work the action economy already prices at
+issue time, and is untouched.
 
 `OpSource` gained `'extraction'`, which `Campaign.stage` and `commitTurn` carry
 for the same reason they carry the actor — a treaty staged in a channel and
@@ -1183,7 +1223,8 @@ Rejection codes: `unknown_op`, `schema_invalid`, `reducer_only`,
 `unknown_faction`, `unknown_system`, `unknown_order`, `unknown_commitment`,
 `unknown_treaty`, `unknown_agent`, `commitment_conflict`, `no_presence`,
 `unreachable_target`, `missing_duration`, `insufficient_credits`,
-`not_interruptible`, `illegal_value`, `doctrine_refusal`, `needs_consent`, `unknown_debt`.
+`not_interruptible`, `illegal_value`, `doctrine_refusal`, `needs_consent`,
+`declared_only`, `unknown_debt`.
 
 ---
 

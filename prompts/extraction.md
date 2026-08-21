@@ -41,11 +41,16 @@ Specifically:
   sides' feelings changed.
 - `adjust_credits` — only for a specific sum both sides settled on. Emit the
   matching negative and positive ops so the money actually moves.
-- `issue_order` — for work either side committed to beginning now. Same rules
-  as everywhere: `fleet_movement` omits `durationTurns` but MUST set `force`
-  (ships committed, drawn from the origin); everything else uses a duration
-  category and a value from **1, 2, 3, or 5**. Nothing takes longer than 5
-  turns. A treaty that must be ratified is `treaty_ratification`.
+- `issue_order` — for work either side committed to beginning now. Use a
+  duration category and a value from **1, 2, 3, or 5**; nothing takes longer
+  than 5 turns. A treaty that must be ratified is `treaty_ratification`.
+
+  **Not `fleet_movement`.** A fleet movement is the mover's own fleet, it needs
+  nobody's consent, and it is the one order that fights a battle and changes who
+  holds a world — so it costs an action to declare, and the reducer rejects it
+  from this pass. A conversation that ends "and my squadron will take station
+  there" produces no order: the player declares that on their own turn. Emit a
+  `log_narrative` recording the intent if it matters.
 - `form_treaty` — for anything the parties agreed will **stand over time**.
   **This pass is the only one in the game that may emit it.** A treaty binds a
   power that is not the player, so it needs that power's consent, and a
@@ -84,8 +89,11 @@ Specifically:
 - `spawn_event` / `log_narrative` — record the substance of what was agreed so
   it appears in the event log and both parties can refer to it later.
 
-`transfer_control` is unavailable here, as everywhere. A faction that agreed to
-cede a system does so by allowing a fleet in: emit the `fleet_movement` order.
+`transfer_control` is unavailable here, as everywhere, and so is
+`fleet_movement` (above). A faction that agreed to cede a system does so by
+letting a fleet in — but that fleet is *moved by its owner, as a declared
+action*, not by this pass. Record the agreement with `log_narrative` and let
+them sail.
 
 ## Output
 
@@ -137,3 +145,16 @@ no principal, and neither can end.
 
 Forgiving one is `forgive_debt` and belongs to the creditor. Calling a debt in
 early is a fresh negotiation, or an action against them if they refuse.
+
+**Buying or transferring someone's paper is `assign_debt`, not a new debt.**
+This op is yours alone, like `form_treaty` and `establish_debt`, because the
+creditor has to agree to part with it. Give it the `debtId` being sold and the
+`toCreditorFactionId` buying it; the debt keeps its balance, its instalment and
+its history, and simply answers to someone else. **Never write an assignment as
+`establish_debt`** — that mints a second copy of the same paper and retires
+nothing, so the debtor ends up owing it twice. If money changes hands for the
+paper, that is a separate `adjust_credits` pair.
+
+A debtor paying a balance down is `settle_debt`, which is an ordinary op either
+side may reach; the money really moves, so it is bounded by what the debtor
+actually holds.
