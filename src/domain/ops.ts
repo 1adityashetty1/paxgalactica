@@ -664,6 +664,33 @@ export const ReactionSchema = z.object({
   factionId: z.string().min(1),
   narrative: z.string().min(1),
   ops: z.array(ModelOpSchema),
+  /**
+   * This power wants to talk, and what about.
+   *
+   * `openChannel` is set in exactly one place, reachable only from a player
+   * POST, so for the whole life of the project **only one of the five powers
+   * could ever start a conversation**. The game has a complete consent
+   * mechanism — persona, transcript, extraction, treaty formation — and four of
+   * the powers it exists to bind could not invoke it.
+   *
+   * An approach is an *invitation*, not a channel: it appears in the turn the
+   * player has just ended, when they cannot act anyway, and they open the
+   * channel themselves if they want it. That is deliberate — a channel disables
+   * the command line and End Turn, so opening one unbidden would hijack a turn
+   * the player did not choose to spend.
+   *
+   * It rides on the reaction rather than costing a call of its own. The NPC is
+   * already speaking at exactly the right moment; asking it separately would
+   * pay twice for one thought.
+   */
+  approach: z
+    .object({
+      /** One or two sentences, in character, opening the subject. */
+      opening: z.string().min(1).max(400),
+      /** What they want, in a few words, for the prompt to open with. */
+      about: z.string().min(1).max(120),
+    })
+    .optional(),
 });
 
 export const ReactionSetSchema = z.object({

@@ -112,6 +112,15 @@ export const ReactionViewSchema = z.object({
   factionName: z.string(),
   color: z.number().int(),
   narrative: z.string(),
+  /**
+   * This power is asking to talk. An invitation the player may take up by
+   * opening a channel — never a channel opened on their behalf, because a
+   * channel disables the command line and End Turn.
+   */
+  approach: z
+    .object({ opening: z.string(), about: z.string() })
+    .nullable()
+    .default(null),
 });
 
 export const ChatMessageSchema = z.object({

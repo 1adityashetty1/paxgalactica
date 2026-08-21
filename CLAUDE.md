@@ -1656,6 +1656,20 @@ Past transcripts are replayed into the persona, so factions remember.
 diplomacy schema has no `ops` field at all — the boundary is structural, not an
 instruction a model could be talked out of.
 
+**A faction can ask to talk.** `openChannel` is set in exactly one place,
+reachable only from a player POST, so for most of this project's life **only one
+of the five powers could ever start a conversation** — a complete consent
+mechanism that four of the powers it exists to bind could not invoke.
+
+A reaction may now carry an `approach`: an opening line and the subject. It is
+an **invitation, not a channel**. It appears in the turn the player has just
+ended, when they cannot act anyway, and they open the channel themselves if they
+want it — because a channel disables the command line and End Turn, so opening
+one unbidden would hijack a turn the player did not choose to spend. It rides on
+the reaction rather than costing a call of its own: the NPC is already speaking
+at exactly the right moment, and asking separately would pay twice for one
+thought.
+
 On `/endtalk`, a **separate extraction call** reads the transcript and emits ops
 for what was actually agreed. It is the **only** pass that may emit
 `form_treaty`: a treaty binds a power that is not the actor, and a transcript is

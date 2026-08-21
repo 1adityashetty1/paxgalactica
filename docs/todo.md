@@ -844,7 +844,26 @@ patch:
 Whatever is chosen, `spawn_event` recording the terms is not a substitute: the
 event log is narrative, and nothing reads it.
 
-## 20. OPEN — disposition’s reach, and who is allowed to start a conversation
+## 20. RESOLVED — disposition’s reach, and who is allowed to start a conversation
+
+Both structural gaps are settled. **Disposition decay: decided against** — no
+drift, relationships stay where they are put, and the ratchet is accepted. That
+decision is what makes `COERCION_RESENTMENT` deliberately small, since it never
+fades.
+
+**NPC-initiated conversation: built.** A reaction may carry an `approach` — an
+opening line and a subject — surfaced in the turn the player has just ended,
+which is the window where they cannot act. An invitation rather than a channel:
+they open it themselves, because a channel disables the command line and End
+Turn and opening one unbidden would hijack a turn they did not spend. It rides
+on the reaction rather than costing a call, since the NPC is already speaking at
+the right moment.
+
+The three questions and their answers follow.
+
+---
+
+## 20. (original) — disposition’s reach, and who is allowed to start a conversation
 
 Three questions raised in playtest. Answered here by reading the code; the parts
 marked LIVE still want a playtest to confirm behaviour rather than wiring.

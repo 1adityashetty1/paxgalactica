@@ -256,7 +256,16 @@ export function useGame() {
             : 'You declared nothing this turn.',
           'system',
         );
-        for (const r of outcome.reactions) say(`${r.factionName}: ${r.narrative}`, 'faction', r.color);
+        for (const r of outcome.reactions) {
+          say(`${r.factionName}: ${r.narrative}`, 'faction', r.color);
+          // An approach is an invitation, never a channel opened on the
+          // player's behalf: a channel disables the command line and End Turn,
+          // so opening one unbidden would hijack a turn they did not spend.
+          if (r.approach) {
+            say(`${r.factionName} asks to talk: ${r.approach.opening}`, 'faction', r.color);
+            say(`→ /talk ${r.factionId} — ${r.approach.about}`, 'brief');
+          }
+        }
         for (const r of outcome.rejections) say(`rejected [${r.code}] ${r.message}`, 'error');
       }),
     [guard, say],

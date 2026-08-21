@@ -33,6 +33,8 @@ export interface ReactionView {
   factionName: string;
   color: number;
   narrative: string;
+  /** Set when this power wants to open a conversation. See `ReactionSchema`. */
+  approach: { opening: string; about: string } | null;
 }
 
 export interface ActionOutcome {
@@ -532,6 +534,9 @@ export async function endTurn(campaign: Campaign): Promise<TurnOutcome> {
             factionName: faction.name,
             color: faction.displayColor,
             narrative: reaction.narrative,
+            // An invitation to talk, if this power wants something. Passed
+            // through rather than acted on: the player opens the channel.
+            approach: reaction.approach ?? null,
           });
         }
       } catch (err) {

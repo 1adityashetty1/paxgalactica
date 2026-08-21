@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { DiplomacyReplySchema, looksLikeStubReply } from '../src/model/calls.js';
-import { ModelOpSchema, ModelTurnOutputSchema } from '../src/domain/ops.js';
+import { ModelOpSchema, ModelTurnOutputSchema, ReactionSchema } from '../src/domain/ops.js';
+import { ReactionViewSchema } from '../src/api/contract.js';
 import { Campaign } from '../src/engine/campaign.js';
 import { MemoryCampaignStore } from '../src/engine/store.js';
 import { GameSession } from '../src/server/session.js';
@@ -871,5 +872,57 @@ describe('signing under a fleet costs the power holding the fleet', () => {
 
     const out = applyOps(invited, [accord], 'extraction', 'freeworlds');
     expect(dispositionToward(out.state, 'freeworlds', 'vigil')).toBe(before);
+  });
+});
+
+/**
+ * `openChannel` is set in exactly one place, reachable only from a player POST,
+ * so for the whole life of the project **only one of the five powers could ever
+ * start a conversation**. The game has a complete consent mechanism — persona,
+ * transcript, extraction, treaty formation — and four of the powers it exists to
+ * bind could not invoke it.
+ *
+ * An approach is an invitation, not a channel. It rides on the reaction, which
+ * is already the NPC speaking at the one moment the player cannot act.
+ */
+describe('a faction can ask to talk', () => {
+  it('is optional, so an ordinary reaction still parses', () => {
+    const parsed = ReactionSchema.parse({
+      factionId: 'hutt',
+      narrative: 'The Combine watches, and says nothing.',
+      ops: [],
+    });
+    expect(parsed.approach).toBeUndefined();
+  });
+
+  it('carries an opening and a subject when a power wants something', () => {
+    const parsed = ReactionSchema.parse({
+      factionId: 'hutt',
+      narrative: 'The Combine counts the ships at Kessel.',
+      ops: [],
+      approach: {
+        opening: 'Cousin — your hulls are very close to my lanes. Sit with me before this gets expensive.',
+        about: 'transit through Kessel',
+      },
+    });
+    expect(parsed.approach?.about).toBe('transit through Kessel');
+  });
+
+  it('survives the contract on the way to the browser, and defaults to null', () => {
+    const view = ReactionViewSchema.parse({
+      factionId: 'hutt',
+      factionName: 'Ojjul Nar Combine',
+      color: 214,
+      narrative: 'x',
+    });
+    expect(view.approach).toBeNull();
+  });
+
+  it('does not open a channel by itself — the player still has to', async () => {
+    const session = new GameSession(new MemoryCampaignStore());
+    await session.newCampaign('freeworlds', 'approach');
+    // Nothing an NPC says can put the player in a channel: that would disable
+    // the command line and End Turn on a turn they did not choose to spend.
+    expect(session.view().openChannel).toBeNull();
   });
 });
