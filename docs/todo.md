@@ -643,7 +643,27 @@ Worth a dedicated playtest once that fix lands:
   negotiation with Arkanis is a good test of whether the new persona actually
   bargains instead of stonewalling, since the old one was reported as
   "annoying to play against" for exactly this kind of exchange.
-## 22. OPEN — submitting to an ultimatum *improves* your standing
+## 22. FIXED — submitting to an ultimatum *improves* your standing
+
+**`COERCION_RESENTMENT` (6), charged in the reducer at signature**, to whichever
+party has hostile ships on the other's worlds. Duress is `underDuressFrom` — the
+same presence test interdiction and suborning use — rather than a reading of the
+transcript, because "were they threatened" is precisely the judgement a model
+gets argued out of. A guest under `basing_rights` or `mutual_defense` does not
+count.
+
+Small deliberately, and the reason is the *other* decision taken the same day:
+disposition has **no decay**, so this never fades. A habitual extortionist
+accumulates a permanent debt of ill will, which is the intended reading and
+exactly why a single signature should be a grievance rather than a catastrophe.
+It sits above `TOLL_RESENTMENT` (a fleet in orbit is not a tariff) and well below
+`PACT_BREAKING_REPUTATION_COST` (signing under pressure is not betrayal).
+
+The original write-up follows.
+
+---
+
+## 22. (original) — submitting to an ultimatum *improves* your standing
 
 **Measured in a lopsided-Vigil playtest.** The Vigil was seeded with 1,020 hulls
 against 24–39, with 40 sitting on every world every other power holds, and the

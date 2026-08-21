@@ -51,6 +51,7 @@ import {
 import {
   effectiveStats,
   fleetBases,
+  isGuestOf,
   fleetStrengthOf,
   canSubornAt,
   COMPULSION_DRIFT_DISSENT,
@@ -199,6 +200,32 @@ export const SUBORN_REPUTATION_COST = 2;
  * an outrage; it accumulates.
  */
 export const TOLL_RESENTMENT = 1;
+
+/**
+ * What a power loses in standing for taking terms at gunpoint.
+ *
+ * A lopsided-Vigil playtest put the identical ultimatum to all four powers with
+ * 1,020 hulls against 24–39. Three of them conceded — and **the two that
+ * conceded most ended the turn better disposed toward the Vigil than before**,
+ * because the only thing moving disposition after a negotiation was the
+ * extraction pass rewarding a constructive conversation. Nothing anywhere
+ * modelled resentment at being coerced, so bullying a neighbour into tribute
+ * was rewarded in standing for having been done politely.
+ *
+ * Charged **per treaty signed under duress**, to the coercer, with the party
+ * that signed. Duress is not a judgement the model makes: it is
+ * `underDuressFrom` below, hostile ships sitting on your worlds — the same
+ * presence test interdiction and suborning already use.
+ *
+ * Small on purpose, and the reason is `DISSENT_DECAY`'s opposite: disposition
+ * has **no decay at all**, so this never fades. A power that habitually extorts
+ * its neighbours accumulates a permanent debt of ill will, which is the intended
+ * reading — but it means one signature should be a grievance rather than a
+ * catastrophe. Deliberately larger than `TOLL_RESENTMENT`, since a fleet in
+ * orbit is not a tariff, and well under `PACT_BREAKING_REPUTATION_COST` (10),
+ * since signing under pressure is not betrayal.
+ */
+export const COERCION_RESENTMENT = 6;
 
 export interface ApplyResult {
   state: WorldState;
@@ -363,6 +390,28 @@ function removeShips(
  * treaty ended — "voided" with no cause is exactly the kind of silent state
  * change this project keeps having to dig out of playtests.
  */
+/**
+ * Whether `victim` is signing with a fleet on its throat.
+ *
+ * Hostile ships sitting in systems the victim controls, which is the same
+ * presence test interdiction and suborning draw — deliberately mechanical
+ * rather than a reading of the transcript, because "were they threatened" is
+ * exactly the judgement a model would be talked out of.
+ *
+ * A guest under `basing_rights` or `mutual_defense` is not coercion: those
+ * ships were invited, and `isGuestOf` already knows the difference.
+ */
+function underDuressFrom(state: WorldState, coercer: string, victim: string): number {
+  let worlds = 0;
+  for (const system of state.systems) {
+    if (system.controllerFactionId !== victim) continue;
+    if ((system.ships[coercer] ?? 0) <= 0) continue;
+    if (isGuestOf(state, coercer, victim)) continue;
+    worlds += 1;
+  }
+  return worlds;
+}
+
 function voidConditionMet(state: WorldState, condition: VoidCondition): string | null {
   const name = (id: string): string =>
     state.factions.find((f) => f.id === id)?.name ?? id;
@@ -1225,6 +1274,27 @@ export function applyOps(
             : `Treaty signed: ${treaty.summary}.`,
           op.parties[0]!,
         );
+        // Signing with a fleet on your throat costs the power holding the fleet.
+        // Charged here rather than left to the extraction pass, which was the
+        // only thing moving disposition after a negotiation and rewarded a
+        // constructive conversation — so the two powers that conceded most to
+        // an ultimatum ended up BETTER disposed toward the power extorting them.
+        for (const party of op.parties) {
+          const other = op.parties.find((p: string) => p !== party);
+          if (!other) continue;
+          const worlds = underDuressFrom(state, party, other);
+          if (worlds <= 0) continue;
+          const victim = state.factions.find((f) => f.id === other);
+          if (!victim) continue;
+          victim.disposition[party] = Math.max(
+            -100,
+            Math.min(100, (victim.disposition[party] ?? 0) - COERCION_RESENTMENT),
+          );
+          const note = `${other} signs with ${party}'s ships over ${worlds} of its worlds: −${COERCION_RESENTMENT} disposition toward ${party}.`;
+          notes.push(note);
+          logEvent(state, 'diplomacy', note, other);
+        }
+
         // A treaty that is live on signature cedes now; a pending one cedes when
         // it comes into force, in `tickTurn`. A cession is a one-time event
         // rather than a term that applies while the treaty is live, so it is

@@ -499,6 +499,28 @@ the board, and the status is `voided` rather than `broken` — nobody repudiated
 it, the condition simply came true, so it carries no pact-breaking reputation
 cost.
 
+**Signing under a fleet costs the power holding the fleet.** A lopsided-Vigil
+playtest put the identical ultimatum to all four powers with 1,020 hulls against
+24–39; three conceded, and **the two that conceded most ended the turn better
+disposed toward the Vigil** — because the only thing moving disposition after a
+negotiation was extraction rewarding a constructive conversation. Nothing
+modelled resentment at being coerced, so bullying a neighbour into tribute was
+rewarded in standing for having been done politely.
+
+`COERCION_RESENTMENT` is charged in the reducer at signature, per treaty, to
+whichever party has hostile ships sitting on the other's worlds —
+`underDuressFrom`, the same presence test interdiction and suborning draw, and
+deliberately mechanical rather than a reading of the transcript, because "were
+they threatened" is exactly the judgement a model gets talked out of. A guest
+under `basing_rights` or `mutual_defense` does not count: those ships were
+invited, and `isGuestOf` already knows the difference.
+
+It is small on purpose, for the reason `DISSENT_DECAY` exists and its opposite
+does not: **disposition has no decay at all**, so this never fades. A power that
+habitually extorts its neighbours accumulates a permanent debt of ill will — the
+intended reading — which is exactly why one signature should be a grievance
+rather than a catastrophe.
+
 `insolvent` reads the **ledger**, not the treasury: a faction can be sitting on
 savings while running at a loss, and it is the loss that means the obligation has
 stopped being funded. It closes the case where a payer's treasury floors at zero,

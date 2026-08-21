@@ -8,7 +8,7 @@ import { MemoryCampaignStore } from '../src/engine/store.js';
 import { GameSession } from '../src/server/session.js';
 import { loadPrompt } from '../src/model/prompts.js';
 import { createSeedState } from '../src/seed/scenario.js';
-import { applyOps, tickTurn } from '../src/domain/reducer.js';
+import { applyOps, COERCION_RESENTMENT, tickTurn } from '../src/domain/reducer.js';
 import {
   ledgerFor,
   subornLimit,
@@ -805,5 +805,71 @@ describe('a void condition ends a treaty when it comes true', () => {
       'freeworlds',
     ).state;
     expect(statusOf(tickTurn(signed).state)).toBe('active');
+  });
+});
+
+/**
+ * A lopsided-Vigil playtest put the identical ultimatum to all four powers with
+ * 1,020 hulls against 24–39. Three conceded, and the two that conceded most
+ * ended the turn BETTER disposed toward the Vigil — because the only thing
+ * moving disposition after a negotiation was extraction rewarding a
+ * constructive conversation. Nothing modelled resentment at being coerced, so
+ * bullying a neighbour into tribute was rewarded for being done politely.
+ */
+describe('signing under a fleet costs the power holding the fleet', () => {
+  const accord = {
+    op: 'form_treaty',
+    treatyType: 'tribute' as const,
+    parties: ['freeworlds', 'vigil'],
+    terms: { incomePerTurn: { freeworlds: -20, vigil: 20 } },
+    summary: 'terms',
+  };
+
+  const dispositionToward = (s: WorldState, who: string, toward: string) =>
+    s.factions.find((f) => f.id === who)!.disposition[toward] ?? 0;
+
+  it('charges the coercer when its ships sit on the other party’s worlds', () => {
+    const state = createSeedState('freeworlds');
+    state.systems.find((x) => x.id === 'ark-1')!.ships['vigil'] = 40;
+    const before = dispositionToward(state, 'freeworlds', 'vigil');
+
+    const out = applyOps(state, [accord], 'extraction', 'freeworlds');
+    expect(out.rejections).toHaveLength(0);
+    expect(dispositionToward(out.state, 'freeworlds', 'vigil')).toBe(
+      before - COERCION_RESENTMENT,
+    );
+    expect(out.notes.join(' ')).toMatch(/ships over 1 of its worlds/);
+  });
+
+  it('charges nothing for an ordinary negotiation', () => {
+    const state = createSeedState('freeworlds');
+    const before = dispositionToward(state, 'freeworlds', 'vigil');
+    const out = applyOps(state, [accord], 'extraction', 'freeworlds');
+    expect(dispositionToward(out.state, 'freeworlds', 'vigil')).toBe(before);
+  });
+
+  it('does not charge a guest who was invited in', () => {
+    const state = createSeedState('freeworlds');
+    // Basing rights first: those ships are there by agreement, and `isGuestOf`
+    // already knows the difference between a guest and an occupier.
+    const invited = applyOps(
+      state,
+      [
+        {
+          op: 'form_treaty',
+          treatyType: 'basing_rights',
+          parties: ['freeworlds', 'vigil'],
+          terms: {},
+          summary: 'come and go',
+        },
+      ],
+      'extraction',
+      'freeworlds',
+    ).state;
+    invited.systems.find((x) => x.id === 'ark-1')!.ships['vigil'] = 40;
+    const before = dispositionToward(invited, 'freeworlds', 'vigil');
+
+    const out = applyOps(invited, [accord], 'extraction', 'freeworlds');
+    expect(dispositionToward(out.state, 'freeworlds', 'vigil')).toBe(before);
   });
 });
