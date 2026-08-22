@@ -29,7 +29,12 @@ let scripted: Record<string, unknown> = {};
 vi.mock('../src/model/client.js', () => ({
   callStructured: async (call: { kind: string; system: string; user: string }) => {
     calls.push({ kind: call.kind, system: call.system, user: call.user });
-    const value = scripted[call.kind];
+    // The relevance check runs on every breach the arbiter names. These tests
+    // are about what happens once a breach is accepted, so it answers "yes,
+    // that line is about this act" unless a test scripts otherwise.
+    const value =
+      scripted[call.kind] ??
+      (call.kind === 'breach_relevance' ? { relevant: true, why: '' } : undefined);
     if (value === undefined) throw new Error(`No scripted response for a "${call.kind}" call.`);
     return { value, attempts: 1, costUsd: 0 };
   },
@@ -42,6 +47,7 @@ const { ACTION_POINTS_PER_TURN, Campaign } = await import('../src/engine/campaig
 const { createSeedState } = await import('../src/seed/scenario.js');
 const { COMPULSION_BREACH_DISSENT, REFUSAL_DISSENT } = await import('../src/domain/state.js');
 const { classifyPrinciple, classifyPrinciples } = await import('../src/domain/compulsions.js');
+const { loadPrompt } = await import('../src/model/prompts.js');
 
 /** Arkanis's first red line, quoted exactly as the faction sheet carries it. */
 const NO_OCCUPATION =
@@ -88,7 +94,7 @@ describe('a red line is ruled on before the dice', () => {
 
     // The whole point. There is no second call, so there is nothing left that
     // could narrate the gates opening anyway.
-    expect(calls.map((c) => c.kind)).toEqual(['appraisal']);
+    expect(calls.map((c) => c.kind)).toEqual(['appraisal', 'breach_relevance']);
     expect(out.output.refusal).toEqual({
       by: redLineBreach.by,
       reason: redLineBreach.reason,
@@ -122,7 +128,9 @@ describe('a red line is ruled on before the dice', () => {
 
     const out = await resolveAction(createSeedState('freeworlds'), worded);
 
-    expect(calls).toHaveLength(1);
+    // The appraisal and its relevance check — and crucially no resolution call,
+    // which is what makes the ruling unreachable by rewording.
+    expect(calls.map((c) => c.kind)).toEqual(['appraisal', 'breach_relevance']);
     expect(out.output.refusal?.violated).toBe(NO_OCCUPATION);
   });
 });
@@ -139,7 +147,7 @@ describe('a compulsion is a price, and the price is charged', () => {
 
     const out = await resolveAction(createSeedState('freeworlds'), 'Agree to pay the Combine 30 a turn.');
 
-    expect(calls.map((c) => c.kind)).toEqual(['appraisal', 'resolution']);
+    expect(calls.map((c) => c.kind)).toEqual(['appraisal', 'breach_relevance', 'resolution']);
     // Rolled and resolved: unlike a red line, the order goes through.
     expect(out.check).not.toBeNull();
     expect(out.output.defiance).toEqual({
@@ -311,7 +319,7 @@ describe('the sheet decides which kind a line is, not the arbiter’s label', ()
 
     const outcome = await submitAction(campaign, 'Take the Combine’s money and withdraw.');
 
-    expect(calls.map((c) => c.kind)).toEqual(['appraisal']);
+    expect(calls.map((c) => c.kind)).toEqual(['appraisal', 'breach_relevance']);
     expect(outcome.refusal?.violated).toBe(
       'will not accept payment to stand down; being bought is the insult, not the price',
     );
@@ -818,5 +826,169 @@ describe('a covert declaration is routed into the agent mechanic', () => {
     await submitAction(campaign, 'Sabotage the Vigil yards at Ord Vantic.');
 
     expect(campaign.state.agents).toHaveLength(0);
+  });
+});
+
+/**
+ * `classifyPrinciple` proves a quoted line is real. Nothing proved it was about
+ * the act. Measured live: an assassination was charged
+ * `COMPULSION_BREACH_DISSENT` quoting *"commerce raiding is refused outright"* —
+ * a real line on the sheet with nothing to say about killing a factor. The same
+ * declaration made twice in one turn produced a breach once and nothing the
+ * other time, while the difficulty stayed at DC 18 both ways, so it is
+ * specifically the breach reading that wobbles.
+ */
+describe('a quoted line has to be about the act', () => {
+  const RAIDING =
+    'the Drift does not prey on shipping. Being raided is the grievance the Free Worlds were founded on, and doing it would make the founding a lie';
+
+  it('drops a breach whose line is real but irrelevant, and charges nothing', async () => {
+    scripted = {
+      appraisal: appraisal({
+        breach: { principles: [RAIDING], by: 'the shipmasters', reason: 'x', how: 'y' },
+      }),
+      breach_relevance: { relevant: false, why: 'that line is about raiding, not killing' },
+      resolution: { narrative: 'The factor does not reach his ship.', ops: [] },
+    };
+
+    const out = await resolveAction(
+      createSeedState('freeworlds'),
+      'Have the Combine factor at Nar Shalka killed.',
+    );
+
+    // Rolled and resolved as an ordinary action: no refusal, no defiance.
+    expect(out.output.refusal).toBeUndefined();
+    expect(out.output.defiance).toBeUndefined();
+    expect(out.check).not.toBeNull();
+    expect(calls.map((c) => c.kind)).toEqual(['appraisal', 'breach_relevance', 'resolution']);
+  });
+
+  it('keeps the breach when the line really is about the act', async () => {
+    scripted = {
+      appraisal: appraisal({
+        breach: { principles: [RAIDING], by: 'the shipmasters', reason: 'x', how: 'y' },
+      }),
+      breach_relevance: { relevant: true, why: 'this is preying on shipping' },
+      resolution: { narrative: 'The convoy is taken.', ops: [] },
+    };
+
+    const out = await resolveAction(
+      createSeedState('freeworlds'),
+      'Raid the Combine convoys running out of Nar Shalka.',
+    );
+
+    expect(out.output.defiance?.violated).toBe(RAIDING);
+  });
+
+  it('costs nothing at all when no breach was named', async () => {
+    scripted = {
+      appraisal: appraisal({}),
+      resolution: { narrative: 'The yards begin work.', ops: [] },
+    };
+    await resolveAction(createSeedState('freeworlds'), 'Expand the yards at Dolomar.');
+    // No breach, so the second opinion is never asked for.
+    expect(calls.map((c) => c.kind)).toEqual(['appraisal', 'resolution']);
+  });
+});
+
+/**
+ * A red line must forbid something a faction can actually choose not to do.
+ *
+ * Drajk's first line read "will not hold a siege line, **garrison a world**, or
+ * sit still to be besieged". It was false the moment a campaign began: Drajk
+ * holds four worlds, every one garrisoned at turn 0, and `GARRISON_REGROWTH`
+ * tops up every controlled world each tick with no order, no credits and no say
+ * from the faction. The sheet asserted something the world contradicts
+ * continuously — and it would have refused a Drajk player for doing a thing the
+ * engine does *for* them every turn.
+ *
+ * Nothing broke, because red lines are only enforced when the arbiter rules on
+ * a declared action and passive regrowth is nobody's declaration. That is what
+ * made it survive: a contradiction with no reader.
+ */
+describe('no red line forbids a passive mechanic', () => {
+  it('lets Drajk hold a garrisoned world without contradicting its own sheet', () => {
+    const state = createSeedState('krayt');
+    const drajk = state.factions.find((f) => f.id === 'krayt')!;
+    const held = state.systems.filter((s) => s.controllerFactionId === 'krayt');
+
+    // The premise: it does hold worlds, and they do have troops on them.
+    expect(held.length).toBeGreaterThan(0);
+    expect(held.every((s) => s.garrison > 0)).toBe(true);
+
+    // So no line may forbid simply having one.
+    for (const line of drajk.redLines) {
+      expect(line, `"${line}" forbids a state the engine creates passively`).not.toMatch(
+        /garrison a world/i,
+      );
+    }
+  });
+
+  it('still refuses the thing the line is actually about', () => {
+    const drajk = createSeedState('krayt').factions.find((f) => f.id === 'krayt')!;
+    const pinned = drajk.redLines.find((l) => /pinned in place/i.test(l));
+    expect(pinned).toBeDefined();
+    // The choice, not the condition: committing the fleet to sit somewhere.
+    expect(pinned).toMatch(/siege line/i);
+    expect(pinned).toMatch(/besieged/i);
+  });
+});
+
+/**
+ * A red line crossed in future tense used to pass clean.
+ *
+ * Measured live: Meridian's line is "will not close a lane — no blockade of
+ * civilian traffic, no embargo, no shut border". The unconditional closure was
+ * refused with that line quoted. The identical act written as "if Vigil forces
+ * move on Vashka, Meridian closes the Sennex lane" returned no refusal, no
+ * defiance and no dissent — and left a live treaty obliging exactly the
+ * forbidden thing.
+ *
+ * `closeChannel` appraised what an accord *enacts*; a conditional obligation
+ * enacts nothing yet. It now appraises what the accord *obliges*.
+ */
+describe('an accord is judged on what it obliges, not only what it enacts', () => {
+  it('tells the arbiter to read the obligation, in both tenses', async () => {
+    scripted = {
+      appraisal: appraisal({}),
+      extraction: { narrative: 'Terms were agreed.', ops: [{ op: 'log_narrative', text: 'x' }] },
+    };
+    const campaign = Campaign.start('meridian', 'test-obligation-tense');
+    await closeChannel(campaign, 'freeworlds', [
+      { speaker: 'player', text: 'If the Vigil moves on Vashka we will close the Sennex lane.' },
+      { speaker: 'faction', text: 'Agreed.' },
+    ]);
+
+    const appraisalCall = calls.find((c) => c.kind === 'appraisal');
+    expect(appraisalCall).toBeDefined();
+    // The instruction that closes the tense hole.
+    expect(appraisalCall!.user).toMatch(/what this commits you to/i);
+    expect(appraisalCall!.user).toMatch(/undertaking to do a thing later/i);
+  });
+
+  it('says plainly that ordinary conditional pacts are not the target', async () => {
+    // The obvious failure mode of this rule is over-firing: treating every
+    // conditional clause as suspect would ban defensive pacts, which oblige
+    // sending ships — an act on nobody's red line.
+    scripted = {
+      appraisal: appraisal({}),
+      extraction: { narrative: 'Terms were agreed.', ops: [{ op: 'log_narrative', text: 'x' }] },
+    };
+    const campaign = Campaign.start('meridian', 'test-obligation-ordinary');
+    await closeChannel(campaign, 'freeworlds', [
+      { speaker: 'player', text: 'We will send ships if you are attacked.' },
+      { speaker: 'faction', text: 'Agreed.' },
+    ]);
+
+    const appraisalCall = calls.find((c) => c.kind === 'appraisal')!;
+    expect(appraisalCall.user).toMatch(/not about conditionality/i);
+    expect(appraisalCall.user).toMatch(/breaches nothing/i);
+  });
+
+  it('is stated in the arbiter prompt too, so the declared path agrees', () => {
+    const text = loadPrompt('appraisal');
+    expect(text).toMatch(/A promise to cross a line is crossing it/);
+    // And the guard against over-firing travels with it.
+    expect(text).toMatch(/do not start treating every conditional clause as suspect/i);
   });
 });

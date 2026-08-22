@@ -16,7 +16,7 @@ import {
   type Agent,
   type Treaty,
 } from './diplomacy.js';
-import { DebtSchema, scheduledDebtService, type Debt } from './debt.js';
+import { DebtSchema, MAX_DEBT_PER_TURN, scheduledDebtService, type Debt } from './debt.js';
 import { DurationCategorySchema, FibScaleSchema } from './duration.js';
 import { buildAdjacency } from './graph.js';
 // trade.ts imports only TYPES from here, so this edge is one-directional at
@@ -920,6 +920,33 @@ export const COMPULSION_DRIFT_DISSENT = 3;
  * to live.
  */
 export const MAX_NARRATIVE_CREDITS = 4 * SHIP_COST;
+
+/**
+ * The most a single treaty may move per turn, in either direction.
+ *
+ * The paragraph above notes that treaty `incomePerTurn` is one of the
+ * mechanisms that "owns its price" and so does not need the narrative cap. It
+ * owned no price at all: the field was unbounded, which made it strictly the
+ * better way to move money out of a negotiation. Measured live — the same
+ * payment refused at 990 as a one-off (trimmed to `MAX_NARRATIVE_CREDITS`) was
+ * accepted at 300 *per turn*, indefinitely, through this field. Twelve times
+ * the one-off ceiling, every turn, forever, and the cap on the one-off path was
+ * theatre for as long as this one existed.
+ *
+ * Anchored to `MAX_DEBT_PER_TURN` rather than picked: a debt instalment is the
+ * other recurring per-turn instrument in the game, and the two should not
+ * differ by an order of magnitude for what is, mechanically, the same act of
+ * promising a stream. It is also one hull a turn, which is a real commitment
+ * against net incomes of 87–300 without being anyone's whole economy.
+ *
+ * Trimmed rather than rejected, the same shape as `MAX_COMMITMENT_INCOME`: the
+ * arrangement is still real at a smaller number.
+ *
+ * > Worth a balance pass. This is the first bound the field has ever had, so
+ * > the number has never been swept against played turns the way
+ * > `MONOPOLY_BONUS` and `ENDPOINT_SHARE` were.
+ */
+export const MAX_TREATY_INCOME_PER_TURN = MAX_DEBT_PER_TURN;
 
 /* ------------------------------------------------------------------ */
 /* War ethics                                                          */

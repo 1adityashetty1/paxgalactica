@@ -14,7 +14,7 @@ import { createSeedState } from '../seed/scenario.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 2;
+export const JOURNAL_VERSION = 3;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -58,7 +58,7 @@ export const JournalSchema = z.object({
    *     originally ran. See `replay`.
    * 2 — current.
    */
-  version: z.union([z.literal(1), z.literal(2)]),
+  version: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   entries: z.array(JournalEntrySchema),
 });
 export type Journal = z.infer<typeof JournalSchema>;
@@ -99,14 +99,27 @@ export function replay(journal: Journal): ReplayResult {
       // Scoped to entries that actually contain a treaty, rather than
       // reinterpreting every legacy batch: a diplomacy extraction never carried
       // a `transfer_control`, so this cannot quietly permit anything else.
+      // Pinned to 2 — the version at which `form_treaty` began requiring an
+      // `extraction` source — and NOT to `JOURNAL_VERSION`. Written against the
+      // current version it silently widened every time the version was bumped
+      // for an unrelated reason: bumping to 3 for atomic batches made this
+      // exempt v2 journals too, which are precisely the ones the guard exists
+      // to hold. An exemption belongs to the rule that created it.
       const legacyTreaty =
-        parsed.version < JOURNAL_VERSION &&
+        parsed.version < 2 &&
         entry.source === 'model' &&
         entry.ops.some(
           (op) => !!op && typeof op === 'object' && (op as { op?: unknown }).op === 'form_treaty',
         );
       const source = legacyTreaty ? 'extraction' : entry.source;
-      const res = applyOps(state, entry.ops, source, entry.actor);
+      // Batches are atomic from version 3 on. Before that they applied
+      // partially, and journals written then recorded batches that really did
+      // land in part — replaying those atomically would discard work the
+      // campaign actually did, which is the one thing this function exists to
+      // prevent. Each entry replays under the rule that was in force when it
+      // was written, exactly as the legacy-treaty clause above does.
+      const atomicBatches = parsed.version >= 3;
+      const res = applyOps(state, entry.ops, source, entry.actor, atomicBatches);
       state = res.state;
       rejectionCount += res.rejections.length;
     } else if (entry.kind === 'tick') {

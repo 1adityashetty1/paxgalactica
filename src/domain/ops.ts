@@ -155,6 +155,17 @@ export const FormTreatyOp = z.object({
   terms: TreatyTermsSchema,
   /** Turns from now until it lapses; omit for an indefinite treaty. */
   durationTurns: z.number().int().min(1).max(40).optional(),
+  /**
+   * Turns until the terms start applying. Omit when the deal is live on
+   * signature, which is the ordinary case.
+   *
+   * Set it when the other party agreed *subject to ratification* — a council
+   * that must consent, a senate that must read it. The treaty is recorded now,
+   * `pending`, and does nothing until then. Previously this could only be
+   * expressed as a `treaty_ratification` order, which carries no payload and so
+   * completed without producing the treaty at all.
+   */
+  ratifyTurns: z.number().int().min(1).max(10).optional(),
   summary: z.string().default(''),
 });
 
@@ -246,6 +257,49 @@ export const ForgiveDebtOp = z.object({
   reason: z.string().default(''),
 });
 
+/**
+ * Moving an existing debt to a new creditor.
+ *
+ * Buying another power's paper is a thing powers in this galaxy do constantly,
+ * and extraction had `establish_debt` and `forgive_debt` and nothing between —
+ * so agreeing to *assign* a debt could only be written as a fresh one, which
+ * minted a second copy and retired nothing. Measured live: two purchases of the
+ * same Drajk paper left three debts standing and Drajk owing 1400 against an
+ * original 600, an obligation manufactured by the act of trading it.
+ *
+ * Extraction-only for the same reason `establish_debt` is: the outgoing
+ * creditor has to agree to sell, and a transcript is the only place that
+ * agreement exists.
+ */
+export const AssignDebtOp = z.object({
+  op: z.literal('assign_debt'),
+  debtId: z.string().min(1),
+  /** Who holds the paper afterwards. */
+  toCreditorFactionId: z.string().min(1),
+  reason: z.string().default(''),
+});
+
+/**
+ * Paying a debt down, in part or in full.
+ *
+ * The other half of the same gap: a debtor who settles early had no op for it,
+ * so 430 credits paid to clear a 400 balance produced a narrative saying "that
+ * column shut" and a debt still live at 350 the next turn.
+ *
+ * An ordinary op rather than extraction-only, because prepaying what you owe
+ * needs nobody's permission — and it is safe to leave open precisely because
+ * the reducer moves the money: the debtor pays exactly what comes off the
+ * balance, capped at what it actually holds, so this cannot be used to wish a
+ * debt away.
+ */
+export const SettleDebtOp = z.object({
+  op: z.literal('settle_debt'),
+  debtId: z.string().min(1),
+  /** Trimmed to the balance, and to what the debtor can actually find. */
+  amount: z.number().int().min(1).max(100000),
+  reason: z.string().default(''),
+});
+
 export const DissolveCommitmentOp = z.object({
   op: z.literal('dissolve_commitment'),
   commitmentId: z.string().min(1),
@@ -287,6 +341,7 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   // `establish_debt` is deliberately ABSENT, like `form_treaty`: lending binds
   // the debtor, and consent lives in a transcript. Forgiving is unilateral.
   ForgiveDebtOp,
+  SettleDebtOp,
   SpawnEventOp,
   LogNarrativeOp,
 ]);
@@ -306,7 +361,12 @@ export type ModelOp = z.infer<typeof ModelOpSchema>;
  * agreement is genuinely unilateral — you do not need the other party's
  * agreement to stop honouring it, only to pay for having stopped.
  */
-export const ExtractionOpSchema = z.union([ModelOpSchema, FormTreatyOp, EstablishDebtOp]);
+export const ExtractionOpSchema = z.union([
+  ModelOpSchema,
+  FormTreatyOp,
+  EstablishDebtOp,
+  AssignDebtOp,
+]);
 
 /** The full vocabulary, including ops only the reducer may originate. */
 export const OpSchema = z.discriminatedUnion('op', [
@@ -330,6 +390,8 @@ export const OpSchema = z.discriminatedUnion('op', [
   DissolveCommitmentOp,
   EstablishDebtOp,
   ForgiveDebtOp,
+  AssignDebtOp,
+  SettleDebtOp,
   SpawnEventOp,
   LogNarrativeOp,
 ]);
@@ -602,6 +664,33 @@ export const ReactionSchema = z.object({
   factionId: z.string().min(1),
   narrative: z.string().min(1),
   ops: z.array(ModelOpSchema),
+  /**
+   * This power wants to talk, and what about.
+   *
+   * `openChannel` is set in exactly one place, reachable only from a player
+   * POST, so for the whole life of the project **only one of the five powers
+   * could ever start a conversation**. The game has a complete consent
+   * mechanism — persona, transcript, extraction, treaty formation — and four of
+   * the powers it exists to bind could not invoke it.
+   *
+   * An approach is an *invitation*, not a channel: it appears in the turn the
+   * player has just ended, when they cannot act anyway, and they open the
+   * channel themselves if they want it. That is deliberate — a channel disables
+   * the command line and End Turn, so opening one unbidden would hijack a turn
+   * the player did not choose to spend.
+   *
+   * It rides on the reaction rather than costing a call of its own. The NPC is
+   * already speaking at exactly the right moment; asking it separately would
+   * pay twice for one thought.
+   */
+  approach: z
+    .object({
+      /** One or two sentences, in character, opening the subject. */
+      opening: z.string().min(1).max(400),
+      /** What they want, in a few words, for the prompt to open with. */
+      about: z.string().min(1).max(120),
+    })
+    .optional(),
 });
 
 export const ReactionSetSchema = z.object({
@@ -632,7 +721,13 @@ export interface OpRejection {
     | 'unknown_debt'
     | 'doctrine_refusal'
     /** A treaty was declared rather than negotiated; the other party never agreed. */
-    | 'needs_consent';
+    | 'needs_consent'
+    /**
+     * The mirror of `needs_consent`: an op that came out of a negotiation but
+     * needs nobody's agreement, so it belongs on the declared path where the
+     * action economy prices it. Only `fleet_movement` is in this position.
+     */
+    | 'declared_only';
   message: string;
 }
 

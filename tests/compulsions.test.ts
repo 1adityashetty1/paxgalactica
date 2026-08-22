@@ -290,8 +290,11 @@ describe('a faction states each of its principles once', () => {
   it('leaves the surviving line carrying what the duplicate added', () => {
     const state = fresh();
     const red = (id: string) => state.factions.find((f) => f.id === id)!.redLines.join(' ');
-    // Drajk's compulsion contributed "sit still to be besieged"...
-    expect(red('krayt')).toMatch(/sit still to be besieged/);
+    // Drajk's compulsion contributed being besieged. Matched on the idea rather
+    // than the sentence: the line was later reworded to stop forbidding a
+    // garrison, which the engine grows passively on every world Drajk holds, and
+    // this assertion is about the merge surviving, not about the phrasing.
+    expect(red('krayt')).toMatch(/besieged/);
     // ...Meridian's contributed embargoes and closed borders...
     expect(red('meridian')).toMatch(/embargo/);
     // ...and the Free Worlds' contributed abandonment to occupation.

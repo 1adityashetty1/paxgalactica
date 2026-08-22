@@ -2,16 +2,21 @@
 
 ## Where things stand (2026-08-19)
 
-**Open and needing only implementation:** items 23–27 and 29, all from one
-adversarial playtest. The order to take them in is 23 (diplomacy bypasses the
-action economy), 24 (buying a debt duplicates it), 27 (a rejected op leaves its
-siblings applied), then 25, 26 and 29.
+**Just fixed:** items **23, 24, 25, 26** and the one plain bug inside **29**
+(a stale `briefing.ledger`) — everything from the adversarial playtest that was
+implementation rather than judgement. Diplomacy can no longer move a fleet, a
+debt can change hands and be paid down, a per-turn treaty flow has a ceiling,
+and a renegotiated income share supersedes the old one instead of stacking on it.
 
-**Open and needing a decision first:** 21 (ratification produces nothing),
-22 (coercion costs no standing), the second half of 28 (a breach ruling that
-quotes a real but unrelated line), the two structural gaps in 20 (no disposition
-decay; no faction can open a channel), and the open half of item 5 — whether
-combat wants a richer multi-round resolver, still the largest thing in this file.
+**Open and needing a decision first:** **27** (a rejected op leaves its siblings
+applied — reclassified; the fix is atomic batches and that is a rule change),
+the remaining three-quarters of **29** (unread `territory` terms, zero-flow
+commitments, unenforced void clauses), **21** (ratification produces nothing),
+**22** (coercion costs no standing), the second half of **28** (a breach ruling
+that quotes a real but unrelated line), the two structural gaps in **20** (no
+disposition decay; no faction can open a channel), and the open half of item 5 —
+whether combat wants a richer multi-round resolver, still the largest thing in
+this file.
 
 **Open playtests:** item 19 (ceremonial arrangements across disposition), the
 two LIVE questions in item 20, and a re-probe of the espionage vocabulary noted
@@ -195,7 +200,22 @@ grow more or less restive") and now states both rules.
 > negotiation layer reaches past the constraints the declared-action path is
 > held to. None of them needs a design decision except where noted.
 
-## 23. OPEN — extraction can emit `issue_order`, so diplomacy is an unmetered action channel
+## 23. FIXED — extraction can emit `issue_order`, so diplomacy is an unmetered action channel
+
+**Fixed by taking `fleet_movement` off the negotiated path.** The reducer rejects
+it from an `extraction` source with a new `declared_only` code — the mirror of
+`needs_consent`: that one refuses a declared op needing someone else's
+agreement, this refuses a negotiated op needing nobody's. `prompts/extraction.md`
+no longer offers it, and the test asserting every ops-emitting prompt documents
+`force` now excludes extraction, since it can no longer move a fleet at all.
+Non-movement work an accord may legitimately start (a ratification, a
+construction programme) is untouched. Three tests; the guard is confirmed to
+fail-open without it.
+
+The original write-up follows.
+
+---
+## 23. (original) — extraction can emit `issue_order`, so diplomacy is an unmetered action channel
 
 **The most serious thing the playtest found.** `ACTION_POINTS_PER_TURN` is 2, and
 diplomacy is unmetered on the stated grounds that "a channel already blocks the
@@ -237,7 +257,20 @@ looks obviously right:
    at issue time.
 3. Leave it, and accept diplomacy as the cheap path to military action.
 
-## 24. OPEN — a debt cannot be transferred, only minted, so buying one duplicates it
+## 24. FIXED — a debt cannot be transferred, only minted, so buying one duplicates it
+
+**Fixed with the two ops the gap was shaped like.** `assign_debt` moves a debt
+to a new creditor, keeping its balance, instalment and history —
+extraction-only, because the holder has to agree to sell. `settle_debt` pays a
+balance down and is an *ordinary* op, because prepaying what you owe needs
+nobody's permission and the reducer moves real money: trimmed to the balance and
+to what the treasury actually holds, so it cannot wish a debt away. Paying
+against arrears also clears a `delinquent` status. Eight tests.
+
+The original write-up follows.
+
+---
+## 24. (original) — a debt cannot be transferred, only minted, so buying one duplicates it
 
 Extraction has `establish_debt` and `forgive_debt` and nothing in between. So
 when two powers agree to *assign* an existing debt, the only op that fits mints
@@ -264,7 +297,24 @@ debt's creditor or settle it, and `establish_debt` should not be reachable for
 paper the transcript describes as already existing. Relates to item 21 — both
 are extraction lacking the vocabulary for something the fiction routinely does.
 
-## 25. OPEN — two paths move money and only one of them is capped
+## 25. FIXED — two paths move money and only one of them is capped
+
+**Fixed by giving the per-turn path a ceiling.** `MAX_TREATY_INCOME_PER_TURN`
+trims a treaty's `incomePerTurn` in both directions, the same trim-with-a-note
+shape as `MAX_COMMITMENT_INCOME`. Anchored to `MAX_DEBT_PER_TURN` (60) rather
+than picked: a debt instalment is the other recurring per-turn instrument, and
+the two should not differ by an order of magnitude for what is mechanically the
+same act of promising a stream.
+
+> **Worth a balance pass.** This is the first bound the field has ever had, so
+> the number has never been swept over played turns the way `MONOPOLY_BONUS` and
+> `ENDPOINT_SHARE` were. If 60 proves too tight for a real tribute, raising it is
+> a one-line change — but it should be measured, not guessed at twice.
+
+The original write-up follows.
+
+---
+## 25. (original) — two paths move money and only one of them is capped
 
 Every `adjust_credits` out of an accord is trimmed to `MAX_NARRATIVE_CREDITS`
 (240). Agreeing to pay 990 produced:
@@ -291,7 +341,23 @@ The cap exists so a narrative cannot invent money. A per-turn treaty term
 invents strictly more of it. Either `incomePerTurn` needs a bound of its own or
 the one-off cap is theatre.
 
-## 26. OPEN — `incomeShares` stack, and nothing supersedes anything
+## 26. FIXED — `incomeShares` stack, and nothing supersedes anything
+
+**Fixed in the reducer, not the prompt.** A `form_treaty` granting a system to a
+faction now retires any active treaty *between the same parties* that already
+granted that same system to that same faction, marking it `superseded` — a new
+status, distinct from `expired` (ran its term) and `broken` (repudiated, and
+priced accordingly), because neither is what happened. A grant of a *different*
+system is left alone. Two tests.
+
+Doing it reducer-side rather than by telling extraction to `break_treaty` the
+old one is deliberate: the model already believed it was superseding, and said
+so in the op's own summary. It was the reducer that did not agree.
+
+The original write-up follows.
+
+---
+## 26. (original) — `incomeShares` stack, and nothing supersedes anything
 
 Renegotiating a charter adds a second treaty rather than replacing the first.
 The op's own summary said `"superseding the prior 5% arrangement"`; the reducer
@@ -315,7 +381,91 @@ Extraction needs to be able to supersede a named treaty (or `break_treaty` the
 old one in the same batch), and a `trade_accord` naming a system a party
 already draws from is the signature to watch for.
 
+## Decisions taken (2026-08-21)
+
+The open design questions were put to the user and answered. Recorded here
+before implementation so the *reasoning* survives even if a build slips.
+
+| item | decision |
+|---|---|
+| **27** batch atomicity | **Atomic.** Strictly — no fallback to partial. Done. |
+| **22** coercion | **Terms extracted under threat cost standing.** |
+| **20a** disposition decay | **No drift.** Relationships stay where they are put; the ratchet is accepted. |
+| **21** ratification | **Pending treaty.** Extraction emits the treaty immediately, inert until its effective turn. |
+| **28b** misapplied lines | **A cheap second call** to verify the quoted line is relevant. |
+| **29b** zero-flow commitments | **They are records, and records should bite.** A commitment affects disposition; the record is what stops it being exploitable. |
+| **29c** void clauses | **A closed set of typed void conditions** — including **negative income**, so a debtor cannot default its way out of an obligation. |
+| **20b** NPC-initiated talk | **Yes, in a window where the player cannot act** — after `/endturn` is submitted, not interrupting a live turn. |
+| **29a** `territory` | **Defined, not deleted.** Ceded worlds change hands; garrison transfers, the ceder's fleet withdraws. |
+
+**29a is decided too: `territory` gets defined**, and the question it opened —
+what happens to the ceding faction's fleets — is answered by the rule the game
+already uses for the violent case. A defender that breaks off is moved to its
+nearest holding via `fleetBases`, instantly, losing 10–35% getting clear; a
+garrison is dug in, cannot retreat, and is destroyed.
+
+A negotiated cession inherits the shape and not the blood:
+
+- **The garrison transfers intact.** Nobody fought, and this is the difference
+  between capitulation and conquest — it is what makes a ceded world worth more
+  to the receiver than a stormed one.
+- **The ceder's ships withdraw to their nearest holding, with no losses**, since
+  there was no battle to escape from. Instant, like a break-off, which is
+  already the game's answer for leaving a system in a hurry.
+- **If there is no reachable holding they stay in orbit** as an uninvited
+  presence, contesting income until they leave or are cleared. The violent path
+  destroys such ships; doing that here would make cession a trap.
+
+Three guards go with it, all confirmed: **you can only cede what you actually
+hold** (a playtest emitted `territory` naming four systems, two of which the
+player did not control), the cession **applies at the treaty's effective turn**
+rather than at signature so a ratification gate delays the handover too, and it
+is **extraction-only** — control still never changes from a declared action,
+which keeps the existing invariant intact.
+
+Still unanswered, and not blocking: the open half of **item 5** (a richer
+multi-round combat resolver), which I recommended deprioritising.
+
+Two notes on the decisions, because they change the shape of what gets built:
+
+- **"No drift" makes 22 sharper, not milder.** With no decay, a coercion charge
+  is permanent, so the number wants to be small and the *record* is what carries
+  the weight. A power that bullies its neighbours accumulates a standing debt
+  that never fades — which is the intended reading, but it means the constant
+  should be conservative on the first pass.
+- **Negative income as a void condition is the interesting half of 29c.** It
+  generalises past debt: any obligation whose payer has stopped being solvent
+  voids rather than silently continuing against a floored treasury. That is the
+  same failure `Ledger` already has to work around, so it is worth checking
+  whether the condition belongs on the treaty or in `tickTurn` beside the debt
+  service.
+
 ## 27. OPEN — a rejected op does not roll back the batch it was part of
+
+> **Reclassified: this needs a decision after all.** I listed it as mechanical
+> when writing it up. Looking at the fix, it is not.
+>
+> The behaviour is deliberate, not accidental. `stageWithCorrection` applies what
+> it can, feeds the rejections back, and the correction prompt says in as many
+> words: *"Every OTHER op from that batch was accepted and is already applied —
+> re-emitting any of them would apply it twice."* Partial application is the
+> design.
+>
+> The principled fix is **atomic batches** — reject all if any is rejected, and
+> have the correction pass re-emit the whole corrected batch. `applyOps` already
+> clones state, so it is easy to implement. What makes it a decision is the
+> blast radius: corrections are bounded at one retry, so a batch containing one
+> unfixable op would then apply **nothing**, where today it applies the rest. An
+> attack that mostly worked would vanish because one op was malformed. That may
+> well be the right trade — "an action is one thing" is a defensible rule — but
+> it is a rule change, not a bug fix, and it wants measuring against a played
+> campaign rather than my judgement.
+>
+> Two narrower options, both partial: make `insufficient_credits` on a payload
+> issue the order *without* the payload rather than rejecting it (consistent with
+> the documented "the order itself is never dropped, only its payload" rule for a
+> failed check), or leave it. Neither addresses the general case, which is a
+> sibling op that only made sense alongside the rejected one.
 
 The deepest of these, because it is not a diplomacy bug — it is the op pipeline.
 
@@ -344,7 +494,54 @@ DC 11), produced glowing narrative about a reshaped hub, and emitted **only**
 `log_narrative` — one action point spent for nothing at all, and the correction
 pass did not catch it.
 
-## 28. OPEN — the accord breach ruling reads what an accord *enacts*, not what it *obliges*
+## 28. FIXED — the accord breach ruling reads what an accord *enacts*, not what it *obliges*
+
+**Both halves are done.** `verifyBreachRelevance` closed the misapplied-line
+half; the accord appraisal now judges what an agreement *commits* the power to,
+not only what it does at signature, and `prompts/appraisal.md` states the same
+rule on the declared path so the two cannot disagree.
+
+The decision here was whether promising to cross a red line later counts as
+crossing it. I argued against on the grounds that it would ban conditional
+defensive pacts — **and that was wrong**, which the user caught. Evaluating an
+obligation is not the same as failing it. Walking all ten red lines against a
+plain `mutual_defense`: sending ships is on nobody's list, so an ordinary pact
+passes untouched. The two sheets where it does bite are the Combine pledging its
+own hulls (*"will not fight its own war where a proxy could be hired"*) and
+Drajk committing to sit and defend — both of which are the characterisation
+working, and neither of which bars the faction from allying, only from allying
+in the shape its own character forbids.
+
+The real risk is **over-firing**, since judging a hypothetical is a harder call
+than judging an enactment, so both prompts say explicitly that this is about the
+substance of what is promised and not about conditionality — and
+`verifyBreachRelevance` sits underneath as the backstop for exactly that error.
+
+The original write-up follows.
+
+---
+
+## 28. (original) — the accord breach ruling reads what an accord *enacts*, not what it *obliges*
+
+**The second half is done: `verifyBreachRelevance`.** A second, tiny call on the
+flavour tier, run only when a breach was named, shown the act and the line and
+nothing else. On `relevant: false` the breach is dropped and nothing is charged.
+Separate from the appraisal for the reason the arbiter is separate from
+resolution — asking the pass that found the breach whether it is real gets back
+the answer it already gave. It has its own `CallKind` so it can be tiered
+independently, and so a test scripting colour text cannot answer it by accident.
+
+**The first half is still open**, and it is the one that needs building rather
+than deciding: `closeChannel` appraises what an accord *enacts*, so a red line
+crossed in future tense ("if the Vigil moves on Vashka, we close the lane")
+passes where the same act refuses unconditionally. The fix is to appraise the
+obligation, not only the enactment.
+
+The original write-up follows.
+
+---
+
+## 28. (original) — the accord breach ruling reads what an accord *enacts*, not what it *obliges*
 
 Meridian's red line is *"will not close a lane — no blockade of civilian
 traffic, no embargo, no shut border"*. Declared directly, it is refused with
@@ -376,7 +573,63 @@ misapplied, so the engine faithfully charged 15 dissent for a compulsion the act
 does not touch. That half is a judgement problem with no obvious structural fix
 and is worth its own decision.
 
-## 29. OPEN — four things the playtest found inert
+## 29. FIXED — four things the playtest found inert
+
+**One of the four was a plain bug and is fixed: `briefing.ledger` was stale.**
+It was computed partway up `tickTurn`, and the rest of the tick then paid
+income, resolved orders, fought battles, moved territory, fired agents and
+collected tolls — all after the snapshot. So the briefing described a world that
+no longer existed by the time the player read it, which is how two consecutive
+turns reported byte-identical `{gross, upkeep, net}` across a tick that changed
+treaties. It is now computed immediately before the report is assembled. Safe to
+move because it only ever fed the report and the turn log: income is paid from a
+per-faction `ledgerFor` inside the payment loop, never from this one.
+
+**Three of the four are now done.** `territory` was defined rather than deleted
+(see the decisions section and item 21's commit), and `voidsOn` gives a treaty a
+closed set of three typed conditions that end it — `treaty_with`, `attacks` and
+`insolvent`. That last one was the user's addition and is the interesting one: it
+generalises past debt to any obligation whose payer has stopped being solvent,
+reading the ledger rather than the treasury, because a faction can sit on savings
+while running at a loss.
+
+**All four are now done.** Zero-flow commitments were the last: they stay
+records, and the record now bites. `COMMITMENT_GOODWILL` moves disposition
+pairwise between the bound parties on establishment and takes it back on
+dissolution, so binding yourself to someone is worth something in standing even
+when no money moves — and walking away costs it. Only between the parties, since
+a commitment is not public business the way a treaty is, and a one-party
+commitment binds nobody and moves nothing.
+
+The original three-way analysis follows.
+
+---
+
+**The other three need a decision, and I have not guessed at them.** Each is a
+question about what the mechanic should *be*, not a defect in what it does:
+
+- **`Treaty.terms.territory`** — genuinely unread. But "make it transfer
+  control" collides head-on with the rule that control changes *only* when a
+  `fleet_movement` arrives, which is enforced three times over and is one of the
+  load-bearing invariants in this project. The alternatives are to drop the
+  field (a schema change old saves carry) or to define it as something weaker —
+  a claim, a recognised sphere — which is a design question.
+- **Commitments at `incomePerTurn: 0`.** Arguably working as intended: a
+  commitment with no flow is a *record*, and the arbiter uses records. The real
+  finding is that the model reaches for one whenever an obligation has no
+  mechanical home — a war subsidy, a share of prizes, a standing intelligence
+  duty — so the question is whether those should each get a mechanism or whether
+  a zero-flow commitment is an honest place to park them.
+- **Void clauses have no teeth.** Conditional treaty termination ("this voids if
+  you sign with the Vigil") is a real feature with real scope: a condition
+  language, an evaluation point in the tick, and a decision about whether an
+  NPC noticing in prose is good enough. Worth doing, not worth improvising.
+
+The original write-up follows.
+
+---
+
+## 29. (original) — four things the playtest found inert
 
 Smaller, grouped because each is the same shape: state that exists, reads
 plausibly, and has no consumer.
@@ -441,7 +694,27 @@ Worth a dedicated playtest once that fix lands:
   negotiation with Arkanis is a good test of whether the new persona actually
   bargains instead of stonewalling, since the old one was reported as
   "annoying to play against" for exactly this kind of exchange.
-## 22. OPEN — submitting to an ultimatum *improves* your standing
+## 22. FIXED — submitting to an ultimatum *improves* your standing
+
+**`COERCION_RESENTMENT` (6), charged in the reducer at signature**, to whichever
+party has hostile ships on the other's worlds. Duress is `underDuressFrom` — the
+same presence test interdiction and suborning use — rather than a reading of the
+transcript, because "were they threatened" is precisely the judgement a model
+gets argued out of. A guest under `basing_rights` or `mutual_defense` does not
+count.
+
+Small deliberately, and the reason is the *other* decision taken the same day:
+disposition has **no decay**, so this never fades. A habitual extortionist
+accumulates a permanent debt of ill will, which is the intended reading and
+exactly why a single signature should be a grievance rather than a catastrophe.
+It sits above `TOLL_RESENTMENT` (a fleet in orbit is not a tariff) and well below
+`PACT_BREAKING_REPUTATION_COST` (signing under pressure is not betrayal).
+
+The original write-up follows.
+
+---
+
+## 22. (original) — submitting to an ultimatum *improves* your standing
 
 **Measured in a lopsided-Vigil playtest.** The Vigil was seeded with 1,020 hulls
 against 24–39, with 40 sitting on every world every other power holds, and the
@@ -517,7 +790,25 @@ prevent. To redo it, patch `src/seed/scenario.ts` so `startingShips` returns
 > income, and the Vigil **laid up 153 ships in one turn** — `MAX_ATTRITION_FRACTION`
 > at 15% doing exactly what it is documented to do.
 
-## 21. OPEN — a deal gated on ratification completes and produces nothing
+## 21. FIXED — a deal gated on ratification completes and produces nothing
+
+**Built as a pending treaty**, the second of the three options. `form_treaty`
+takes `ratifyTurns`; the treaty is recorded immediately with
+`status: 'pending'` and an `effectiveTurn`, does nothing at all until then, and
+comes into force in `tickTurn`. `isTreatyLive` already gated on
+`status === 'active'`, so a pending treaty is inert everywhere for free — no
+reader had to change.
+
+One object instead of an order plus a promise, so there is no second source of
+truth to desync, and the deal is visible in the treaties panel while it waits
+instead of hiding inside an order. `prompts/extraction.md` now says so, and says
+explicitly not to model it as a `treaty_ratification` order and no treaty.
+
+The original write-up follows.
+
+---
+
+## 21. (original) — a deal gated on ratification completes and produces nothing
 
 **Found in a live Ojjul Nar playtest.** The single biggest gap the playtest
 turned up, and it silently deletes negotiated deals.
@@ -580,7 +871,26 @@ patch:
 Whatever is chosen, `spawn_event` recording the terms is not a substitute: the
 event log is narrative, and nothing reads it.
 
-## 20. OPEN — disposition’s reach, and who is allowed to start a conversation
+## 20. RESOLVED — disposition’s reach, and who is allowed to start a conversation
+
+Both structural gaps are settled. **Disposition decay: decided against** — no
+drift, relationships stay where they are put, and the ratchet is accepted. That
+decision is what makes `COERCION_RESENTMENT` deliberately small, since it never
+fades.
+
+**NPC-initiated conversation: built.** A reaction may carry an `approach` — an
+opening line and a subject — surfaced in the turn the player has just ended,
+which is the window where they cannot act. An invitation rather than a channel:
+they open it themselves, because a channel disables the command line and End
+Turn and opening one unbidden would hijack a turn they did not spend. It rides
+on the reaction rather than costing a call, since the NPC is already speaking at
+the right moment.
+
+The three questions and their answers follow.
+
+---
+
+## 20. (original) — disposition’s reach, and who is allowed to start a conversation
 
 Three questions raised in playtest. Answered here by reading the code; the parts
 marked LIVE still want a playtest to confirm behaviour rather than wiring.

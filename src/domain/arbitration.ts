@@ -75,6 +75,28 @@ export type Commitment = z.infer<typeof CommitmentSchema>;
 export const MAX_COMMITMENT_INCOME = 25;
 
 /**
+ * What binding yourself to another power is worth in standing, each way.
+ *
+ * A commitment with no `incomePerTurn` was mechanically inert — and a playtest
+ * closed five accords that each produced one: `open_hand_pact`,
+ * `imperial_recognition`, `debt_service_share`, `intelligence_notice`,
+ * `intel_sharing_drajk`. A war subsidy, a tenth of all prizes and a standing
+ * intelligence duty all became decoration, because any obligation without a
+ * mechanical home silently becomes flavour.
+ *
+ * The answer is not to stop recording them — the record is the useful part, and
+ * the arbiter reads it — but to make the record *bite*. Two powers that have
+ * bound themselves to each other are on better terms for it, and that is true
+ * whether or not money moves.
+ *
+ * Deliberately modest, and **only between the parties**: unlike a treaty, a
+ * commitment is not public business, so onlookers have no view. It is also the
+ * thing that makes a commitment costly to walk away from, since dissolving one
+ * takes the goodwill back.
+ */
+export const COMMITMENT_GOODWILL = 5;
+
+/**
  * Everything a faction may draw from arrangements at once.
  *
  * Derived from `influence` rather than being a flat constant, the way

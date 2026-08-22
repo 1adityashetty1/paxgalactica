@@ -25,9 +25,11 @@ const ChatMessageSchema = z.object({
 export const SaveFileSchema = z.object({
   version: z.literal(1),
   journal: z.object({
-    // Both versions load. A v1 journal predates `form_treaty` requiring the
-    // `extraction` source and replays under the old rule — see `replay`.
-    version: z.union([z.literal(1), z.literal(2)]),
+    // Every version loads, and each replays under the rule that was in force
+    // when it was written — see `replay`. v1 predates `form_treaty` requiring
+    // the `extraction` source; v1 and v2 both predate batches being atomic, and
+    // recorded batches that really did apply in part.
+    version: z.union([z.literal(1), z.literal(2), z.literal(3)]),
     entries: z.array(z.unknown()),
   }),
   /**

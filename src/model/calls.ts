@@ -162,10 +162,114 @@ export async function appraiseAgreement(
   const other = getFaction(state, withFactionId)?.name ?? withFactionId;
   const res = await appraiseAction(
     state,
-    `Your envoys have concluded an agreement with ${other} and are about to put it into effect. ` +
+    [
+      `Your envoys have concluded an agreement with ${other} and are about to put it into effect.`,
+      '',
       `What was agreed: ${agreed}`,
+      '',
+      // Rule on what the accord OBLIGES, not only on what it enacts today.
+      //
+      // A red line crossed in future tense used to pass clean. Measured live:
+      // Meridian's line is "will not close a lane — no blockade of civilian
+      // traffic, no embargo, no shut border", the unconditional closure was
+      // refused with that line quoted, and the identical act written as
+      // "if Vigil forces move on Vashka, Meridian closes the Sennex lane"
+      // returned no refusal, no defiance and no dissent — leaving a live treaty
+      // obliging exactly the forbidden thing.
+      //
+      // This does NOT make conditional pacts suspect in general, which was the
+      // obvious worry and is wrong: it only bites when the obliged act is
+      // itself forbidden. A mutual defence pact obliges sending ships, which is
+      // on nobody's red line; the two cases where it does bite — the Combine
+      // pledging its own hulls where a proxy could be hired, Drajk committing
+      // to sit and defend — are the characterisation working, not collateral.
+      'Judge what this commits you to, not only what it does the moment it is',
+      'signed. An undertaking to do a thing later is an undertaking to do that',
+      'thing: if honouring this agreement would require you to cross one of your',
+      'own lines, it crosses it now, however the clause is worded and whether or',
+      'not the condition ever comes true. A power does not promise what it will',
+      'not do.',
+      '',
+      'This is about the SUBSTANCE of the obligation, not about conditionality.',
+      'Promising to send ships if an ally is attacked is an ordinary pact and',
+      'breaches nothing. Promising to close a lane, pay tribute, or hand over a',
+      'world is a breach for a power whose lines forbid those things, whatever',
+      'the trigger.',
+    ].join('\n'),
   );
   return { appraisal: res.appraisal, costUsd: res.costUsd };
+}
+
+export const BreachRelevanceSchema = z.object({
+  /** Does the act actually do the thing the line forbids or demands? */
+  relevant: z.boolean(),
+  /** One clause, in plain words, for the log. */
+  why: z.string().max(200).default(''),
+});
+
+/**
+ * A second, cheap opinion on whether a quoted line is actually about this act.
+ *
+ * `classifyPrinciple` verifies that a quoted line **exists** on the sheet. It
+ * cannot verify the line is **relevant**, and relevance is exactly the judgement
+ * being delegated. Measured live: an assassination was charged
+ * `COMPULSION_BREACH_DISSENT` quoting *"commerce raiding is refused outright"*.
+ * The quote was real; the reading was nonsense. Code faithfully charged 15
+ * dissent for a compulsion the act does not touch, and the same declaration
+ * made twice in one turn produced a breach once and nothing the other time —
+ * the difficulty was stable at DC 18 both times, so it is specifically the
+ * breach reading that wobbles.
+ *
+ * Deliberately a **separate, tiny call** rather than a field on the appraisal:
+ * asking the same pass that found the breach whether the breach is real gets
+ * the answer it already gave. This one is shown the act and the line and
+ * nothing else — not the character sheet, not the state — so it has nothing to
+ * reason from except whether the two match.
+ *
+ * It runs **only when a breach was named**, which is rare, so it costs nothing
+ * on an ordinary action. On a false positive the cost is one Haiku call and a
+ * charge that should not have been made is dropped.
+ */
+export async function verifyBreachRelevance(
+  action: string,
+  principle: string,
+  kind: 'red_line' | 'compulsion',
+): Promise<{ relevant: boolean; why: string; costUsd: number }> {
+  const system = [
+    'You check one thing and answer nothing else.',
+    '',
+    'You are given an ACT a power is about to take, and one LINE from that',
+    "power's own character — either something it refuses to do, or something",
+    'its institutions demand of it.',
+    '',
+    'Answer whether the act genuinely does the thing that line is about.',
+    '',
+    'Say `relevant: true` when the act does what the line forbids, or fails to',
+    'do what it demands, even if the wording differs — judge the act, not the',
+    'phrasing. A blockade dressed up as withdrawing insurance still closes a',
+    'lane.',
+    '',
+    'Say `relevant: false` when the line is simply about something else. A line',
+    'about preying on shipping has nothing to say about an assassination; a line',
+    'about refusing tribute has nothing to say about building a shipyard. Being',
+    'generally out of character is not enough — the line has to be about THIS.',
+    '',
+    'You are not deciding whether the act is wise, legal or in character. Only',
+    'whether that specific line is the right line to invoke.',
+  ].join('\n');
+
+  const res = await callStructured({
+    kind: 'breach_relevance',
+    label: 'breach-relevance',
+    system,
+    user: [
+      `ACT: ${action}`,
+      '',
+      `LINE (${kind === 'red_line' ? 'something this power refuses' : 'something its institutions demand'}): ${principle}`,
+    ].join('\n'),
+    schema: BreachRelevanceSchema,
+  });
+  return { relevant: res.value.relevant, why: res.value.why, costUsd: res.costUsd };
 }
 
 export async function resolveAction(
@@ -188,7 +292,19 @@ export async function resolveAction(
   // action touches and unreliable at saying which list that line is on, so the
   // judgement is taken and the lookup is not.
   const named = priced.appraisal.breach?.principles ?? [];
-  const classified = actor && named.length > 0 ? classifyPrinciples(actor, named) : null;
+  const firstPass = actor && named.length > 0 ? classifyPrinciples(actor, named) : null;
+
+  // A second, cheap opinion on whether the line is actually about this act.
+  // `classifyPrinciples` proves the quote is real; nothing proved it was
+  // relevant, and a playtest charged 15 dissent for "commerce raiding is
+  // refused outright" on an assassination. Only fires when a breach was named.
+  let relevanceCost = 0;
+  let classified = firstPass;
+  if (firstPass) {
+    const check = await verifyBreachRelevance(action, firstPass.principle, firstPass.kind);
+    relevanceCost = check.costUsd;
+    if (!check.relevant) classified = null;
+  }
 
   // `admissible: false` is the one exit that charges nothing at all, which makes
   // it the cheapest possible bypass for a principle — and a live playtest found
@@ -219,7 +335,7 @@ export async function resolveAction(
       check: null,
       roll: 0,
       attempts: priced.attempts,
-      costUsd: priced.costUsd,
+      costUsd: priced.costUsd + relevanceCost,
     };
   }
 
@@ -263,7 +379,7 @@ export async function resolveAction(
       check: null,
       roll: 0,
       attempts: priced.attempts,
-      costUsd: priced.costUsd,
+      costUsd: priced.costUsd + relevanceCost,
     };
   }
 
@@ -302,7 +418,7 @@ export async function resolveAction(
       check: null,
       roll: 0,
       attempts: priced.attempts,
-      costUsd: priced.costUsd,
+      costUsd: priced.costUsd + relevanceCost,
     };
   }
 
@@ -430,7 +546,7 @@ export async function resolveAction(
     check,
     roll,
     attempts: priced.attempts + res.attempts,
-    costUsd: priced.costUsd + res.costUsd,
+    costUsd: priced.costUsd + relevanceCost + res.costUsd,
   };
 }
 

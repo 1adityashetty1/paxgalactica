@@ -40,7 +40,50 @@ export const IncomeShareSchema = z.object({
 });
 export type IncomeShare = z.infer<typeof IncomeShareSchema>;
 
+/**
+ * A condition that ends a treaty when it comes true.
+ *
+ * NPCs negotiate these constantly, because natural language makes them free —
+ * *"any tribute or standing order you give the Vigil voids this, full stop"* —
+ * and nothing enforced them. The playtest detail that makes it a bug rather
+ * than a gap: both halves of that deal were signed with the Vigil on one
+ * timestamp, the NPC noticed in prose the next turn, and it broke **only the
+ * `mutual_defense` half**. The `trade_accord` that paid the player survived and
+ * was still active four turns later. The half of the void that cost the player
+ * broke; the half that paid them did not.
+ *
+ * A **closed set** of three kinds rather than a condition language, on the same
+ * principle as `OrderEffect`: the vocabulary is small, it is arithmetic on
+ * state, and nothing here can be argued into meaning something else.
+ */
+export const VoidConditionSchema = z.object({
+  kind: z.enum([
+    /** `by` must not hold a live treaty with `target`. */
+    'treaty_with',
+    /** `by` must not be at war with `target`. */
+    'attacks',
+    /**
+     * `by` must stay solvent.
+     *
+     * A payer whose treasury has floored at zero "pays" nothing while the
+     * treaty goes on claiming it does — the obligation quietly stops being met
+     * and nothing says so. This makes insolvency end the arrangement out loud,
+     * so a party cannot keep the benefits of a deal it has stopped funding.
+     */
+    'insolvent',
+  ]),
+  /** The party the condition constrains. */
+  by: z.string().min(1),
+  /** The third power it constrains them against. Unused by `insolvent`. */
+  target: z.string().default(''),
+});
+export type VoidCondition = z.infer<typeof VoidConditionSchema>;
+
 export const TreatyTermsSchema = z.object({
+  /**
+   * Conditions that end this treaty when they come true. Evaluated every tick.
+   */
+  voidsOn: z.array(VoidConditionSchema).default([]),
   /** Systems whose ownership or access the treaty settles. */
   territory: z.array(z.string()).default([]),
   /** Fleet strength each party has pledged to the arrangement. */
@@ -95,7 +138,35 @@ export const TreatySchema = z.object({
   signedTurn: z.number().int().min(0),
   /** null means indefinite; otherwise it lapses at the start of this turn. */
   expiresTurn: z.number().int().min(0).nullable().default(null),
-  status: z.enum(['active', 'expired', 'broken']).default('active'),
+  /**
+   * `superseded` is what a renegotiation leaves behind: distinct from `expired`
+   * (ran its term) and `broken` (repudiated, and priced accordingly), because
+   * neither of those is what happened when the same parties simply rewrote the
+   * same grant. Added after a playtest ratcheted one charter from 5% to 8% and
+   * left both live.
+   */
+  status: z
+    .enum(['active', 'expired', 'broken', 'superseded', 'pending', 'voided'])
+    .default('active'),
+  /**
+   * The turn this treaty starts having effect. `null` means immediately.
+   *
+   * A `pending` treaty is one whose parties agreed but whose terms are not yet
+   * live — a deal a council still has to ratify. It exists because extraction
+   * is told, correctly, that a conditional promise produces nothing yet, so a
+   * deal an NPC gated on ratification used to produce a `treaty_ratification`
+   * order and no treaty at all. That order carries no payload by design, so the
+   * order completed, logged, and changed nothing: a fully negotiated marriage,
+   * supply line and transit compact evaporated on completion.
+   *
+   * Making it one object rather than an order plus a promise means there is no
+   * second source of truth to desync, and the deal is visible in the treaties
+   * panel while it waits instead of hiding inside an order.
+   *
+   * `isTreatyLive` gates on `status === 'active'`, so a pending treaty is inert
+   * everywhere for free — no reader had to change.
+   */
+  effectiveTurn: z.number().int().min(0).nullable().default(null),
   /** One line the UI can show verbatim. */
   summary: z.string().default(''),
 });

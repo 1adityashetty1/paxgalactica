@@ -11,6 +11,12 @@ export type CallKind =
   | 'diplomacy'
   | 'extraction'
   | 'appraisal'
+  /**
+   * The second opinion on whether a quoted principle is about the act at hand.
+   * Its own kind rather than `flavor` so it can be tiered independently — and
+   * so a test scripting colour text cannot accidentally answer it.
+   */
+  | 'breach_relevance'
   | 'flavor';
 
 export interface TierConfig {
@@ -75,6 +81,9 @@ export const ROUTES: Record<CallKind, ModelTier> = {
   reaction: 'reasoning',
   diplomacy: 'reasoning',
   extraction: 'reasoning',
+  // A yes/no about whether two sentences are about the same thing. Cheap tier,
+  // and it only runs when a breach was actually named.
+  breach_relevance: 'flavor',
   flavor: 'flavor',
 };
 

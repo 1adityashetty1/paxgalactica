@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { applyOps, tickTurn, MAX_ATTRITION_FRACTION } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { AGENT_COST, MISSION_PROFILE } from '../src/domain/diplomacy.js';
+import { COMMITMENT_GOODWILL } from '../src/domain/arbitration.js';
 import {
   agentsVisibleTo,
   effectiveStats,
@@ -16,6 +17,7 @@ import {
   type WorldState,
   AGENT_UPKEEP,
   maxAgentsFor,
+  MAX_TREATY_INCOME_PER_TURN,
 } from '../src/domain/state.js';
 import type { OpInput as Op } from '../src/domain/ops.js';
 
@@ -119,14 +121,41 @@ describe('ledgers', () => {
           op: 'form_treaty',
           treatyType: 'tribute',
           parties: ['freeworlds', 'hutt'],
-          terms: { incomePerTurn: { freeworlds: -150, hutt: 150 } },
+          // Within `MAX_TREATY_INCOME_PER_TURN`, so nothing is trimmed and
+          // this stays a test about which side the flow lands on.
+          terms: { incomePerTurn: { freeworlds: -50, hutt: 50 } },
         },
       ],
       'extraction',
     );
     const mine = ledgerFor(res.state, 'freeworlds');
-    expect(mine.treatyFlow).toBe(-150);
-    expect(ledgerFor(res.state, 'hutt').treatyFlow).toBe(150);
+    expect(mine.treatyFlow).toBe(-50);
+    expect(ledgerFor(res.state, 'hutt').treatyFlow).toBe(50);
+  });
+
+  /**
+   * A per-turn treaty flow is the one term that compounds, and it was
+   * unbounded — so the same payment refused at 990 as a one-off was accepted
+   * at 300 *per turn*, forever, which made the one-off cap theatre. Trimmed
+   * rather than rejected: the arrangement is real at a smaller number.
+   */
+  it('trims a treaty flow to the per-turn ceiling, in both directions', () => {
+    const res = applyOps(
+      fresh(),
+      [
+        {
+          op: 'form_treaty',
+          treatyType: 'tribute',
+          parties: ['freeworlds', 'hutt'],
+          terms: { incomePerTurn: { freeworlds: -300, hutt: 300 } },
+        },
+      ],
+      'extraction',
+    );
+    expect(res.rejections).toHaveLength(0);
+    expect(ledgerFor(res.state, 'hutt').treatyFlow).toBe(MAX_TREATY_INCOME_PER_TURN);
+    expect(ledgerFor(res.state, 'freeworlds').treatyFlow).toBe(-MAX_TREATY_INCOME_PER_TURN);
+    expect(res.notes.join(' ')).toMatch(/Trimmed a treaty flow/);
   });
 
   /**
@@ -861,5 +890,159 @@ describe('commitment income is shared, not directional', () => {
     );
     expect(ledgerFor(out.state, 'hutt').treatyFlow).toBe(25);
     expect(ledgerFor(out.state, 'freeworlds').treatyFlow).toBe(-25);
+  });
+});
+
+/**
+ * Diplomacy is unmetered by action points on the stated grounds that "a channel
+ * already blocks the command line and End Turn, which is its own pacing". That
+ * holds only while a channel cannot *do* what a declared action does — and it
+ * could: extraction could emit `fleet_movement`.
+ *
+ * Measured in a playtest: an accord staged a movement of 8 hulls, the tick
+ * reported "storms Sennex, breaking a garrison of 4 ... takes possession", and
+ * the player's action points still read 2/2 afterwards. A world annexed for
+ * free, through a conversation.
+ */
+describe('a fleet movement cannot come out of a negotiation', () => {
+  const move: Op = {
+    op: 'issue_order',
+    factionId: 'freeworlds',
+    type: 'fleet_movement',
+    originId: 'ark-1',
+    targetId: 'ark-2',
+    force: 8,
+    label: 'a squadron takes station',
+  };
+
+  it('is rejected from the extraction pass, pointing at the declared path', () => {
+    const out = applyOps(fresh(), [move], 'extraction', 'freeworlds');
+    expect(out.rejections.map((r) => r.code)).toEqual(['declared_only']);
+    expect(out.state.pendingOrders).toHaveLength(0);
+  });
+
+  it('is still perfectly legal as a declared action, which is what costs one', () => {
+    const out = applyOps(fresh(), [move], 'model', 'freeworlds');
+    expect(out.rejections).toHaveLength(0);
+    expect(out.state.pendingOrders).toHaveLength(1);
+  });
+
+  it('leaves non-movement work an accord may legitimately start alone', () => {
+    const out = applyOps(
+      fresh(),
+      [
+        {
+          op: 'issue_order',
+          factionId: 'freeworlds',
+          type: 'treaty_ratification',
+          originId: 'ark-1',
+          targetId: 'ark-1',
+          durationTurns: 2,
+          label: 'councils ratify',
+        },
+      ],
+      'extraction',
+      'freeworlds',
+    );
+    expect(out.rejections).toHaveLength(0);
+    expect(out.state.pendingOrders).toHaveLength(1);
+  });
+});
+
+/**
+ * Renegotiating a charter added a second treaty and left the first live, so the
+ * same system paid the same faction twice and the share ratcheted upward every
+ * time — while the op's own summary said "superseding the prior arrangement".
+ * Seen live at 5% and 8% on ark-4, both active four turns later.
+ */
+describe('a renegotiated income share supersedes the old one', () => {
+  const charter = (share: number): Op => ({
+    op: 'form_treaty',
+    treatyType: 'trade_accord',
+    parties: ['freeworlds', 'meridian'],
+    terms: { incomeShares: [{ systemId: 'ark-4', factionId: 'meridian', share }] },
+    summary: `carrier rights at Vashka at ${share * 100}%`,
+  });
+
+  it('retires the earlier grant of the same system to the same faction', () => {
+    const first = applyOps(fresh(), [charter(0.05)], 'extraction', 'freeworlds');
+    expect(first.rejections).toHaveLength(0);
+    const second = applyOps(first.state, [charter(0.08)], 'extraction', 'freeworlds');
+    expect(second.rejections).toHaveLength(0);
+
+    const active = second.state.treaties.filter((t) => t.status === 'active');
+    expect(active).toHaveLength(1);
+    expect(active[0]!.terms.incomeShares[0]!.share).toBe(0.08);
+    expect(second.state.treaties.find((t) => t.status === 'superseded')).toBeDefined();
+    expect(second.notes.join(' ')).toMatch(/Superseded/);
+  });
+
+  it('leaves a grant of a different system alone', () => {
+    const first = applyOps(fresh(), [charter(0.05)], 'extraction', 'freeworlds');
+    const other: Op = {
+      op: 'form_treaty',
+      treatyType: 'trade_accord',
+      parties: ['freeworlds', 'meridian'],
+      terms: { incomeShares: [{ systemId: 'ark-6', factionId: 'meridian', share: 0.05 }] },
+      summary: 'a second, unrelated lane',
+    };
+    const second = applyOps(first.state, [other], 'extraction', 'freeworlds');
+    expect(second.state.treaties.filter((t) => t.status === 'active')).toHaveLength(2);
+  });
+});
+
+/**
+ * A commitment with no `incomePerTurn` was mechanically inert, and a playtest
+ * closed five accords that each produced exactly one — a war subsidy, a tenth
+ * of all prizes, a standing intelligence duty, all decoration. The record is
+ * the useful part and the arbiter reads it, so the answer is not to stop
+ * recording them but to make the record bite.
+ */
+describe('a commitment binds people, so it moves how they see each other', () => {
+  const bind = (factionIds: string[]): Op => ({
+    op: 'establish_commitment',
+    kind: 'intelligence_notice',
+    factionIds,
+    text: 'standing notice of what crosses the lanes',
+    exclusive: false,
+  });
+
+  const disp = (s: WorldState, who: string, toward: string) =>
+    s.factions.find((f) => f.id === who)!.disposition[toward] ?? 0;
+
+  it('raises both parties, even with no money attached', () => {
+    const state = fresh();
+    const a = disp(state, 'freeworlds', 'hutt');
+    const b = disp(state, 'hutt', 'freeworlds');
+
+    const out = applyOps(state, [bind(['freeworlds', 'hutt'])], 'extraction', 'freeworlds');
+    expect(out.rejections).toHaveLength(0);
+    // Zero flow, and still not inert.
+    expect(out.state.commitments.at(-1)!.incomePerTurn).toBe(0);
+    expect(disp(out.state, 'freeworlds', 'hutt')).toBe(a + COMMITMENT_GOODWILL);
+    expect(disp(out.state, 'hutt', 'freeworlds')).toBe(b + COMMITMENT_GOODWILL);
+  });
+
+  it('takes it back when the commitment is dissolved', () => {
+    const state = fresh();
+    const before = disp(state, 'freeworlds', 'hutt');
+    const bound = applyOps(state, [bind(['freeworlds', 'hutt'])], 'extraction', 'freeworlds');
+    const id = bound.state.commitments.at(-1)!.id;
+
+    const out = applyOps(
+      bound.state,
+      [{ op: 'dissolve_commitment', commitmentId: id, reason: 'it served its turn' }],
+      'model',
+      'freeworlds',
+    );
+    expect(disp(out.state, 'freeworlds', 'hutt')).toBe(before);
+  });
+
+  it('moves nothing for a commitment that binds only its author', () => {
+    const state = fresh();
+    const before = disp(state, 'freeworlds', 'hutt');
+    const out = applyOps(state, [bind(['freeworlds'])], 'model', 'freeworlds');
+    expect(out.rejections).toHaveLength(0);
+    expect(disp(out.state, 'freeworlds', 'hutt')).toBe(before);
   });
 });
