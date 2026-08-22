@@ -334,6 +334,16 @@ export const OpSchema = z.discriminatedUnion('op', [
   LogNarrativeOp,
 ]);
 export type Op = z.infer<typeof OpSchema>;
+/**
+ * An op as *written* — before Zod fills in defaults.
+ *
+ * `Op` is the parsed shape, so every field carrying a `.default()` is required
+ * on it. That is right for reading an op out of state and wrong for writing one
+ * down, which is what a test fixture, a hand-built batch and the model itself
+ * all do. The same input/output split the JSON schema already makes with
+ * `z.toJSONSchema(..., { io: 'input' })`.
+ */
+export type OpInput = z.input<typeof OpSchema>;
 
 export const REDUCER_ONLY_OPS = new Set(['transfer_control']);
 

@@ -11,9 +11,9 @@ import {
   ledgerFor,
   MAX_NARRATIVE_CREDITS,
   REFUSAL_DISSENT,
-  type Op,
   type WorldState,
 } from '../src/domain/state.js';
+import type { OpInput as Op } from '../src/domain/ops.js';
 
 /**
  * `set_doctrine` used to write a string and nothing else.

@@ -194,6 +194,18 @@ export const ActionOutcomeSchema = z.object({
     })
     .nullable()
     .default(null),
+  /**
+   * The arbiter ruled the action cannot be attempted at all. The world does not
+   * permit it — distinct from permitting it and having it fail. Carries the
+   * arbiter's reason.
+   */
+  inadmissible: z.string().nullable().default(null),
+  /**
+   * The turn's actions are spent. The one non-outcome that is about the
+   * player's turn rather than the world, which is why it carries the allowance
+   * rather than a reason.
+   */
+  outOfActions: z.object({ perTurn: z.number().int().min(1) }).nullable().default(null),
   staged: z.number().int(),
   notes: z.array(z.string()),
   rejections: z.array(OpRejectionSchema),

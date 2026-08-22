@@ -17,11 +17,11 @@ import {
   ledgerFor,
   maxCommitmentIncomeFor,
   SHIP_COST,
-  type Op,
   type OrderEffect,
   type OrderEffectKind,
   type WorldState,
 } from '../src/domain/state.js';
+import type { OpInput as Op } from '../src/domain/ops.js';
 import {
   MAX_COMMITMENT_INCOME,
   MIN_COMMITMENT_INCOME_CEILING,

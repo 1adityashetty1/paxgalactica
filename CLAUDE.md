@@ -33,7 +33,7 @@ strictly more setup to solve a problem Node already solves.
 | `pnpm resume <file>` | verify an exported `.tar.gz`, install it, and serve it |
 | `pnpm balance [turns]` | 5 doctrine bots vs the real reducer, no model calls |
 | `pnpm doctor` | full setup check — runtime, deps, binary, auth, port |
-| `pnpm typecheck` / `typecheck:web` | the two tsconfigs — **Vite does not typecheck** |
+| `pnpm typecheck` / `typecheck:web` / `typecheck:tests` | the three tsconfigs — **Vite does not typecheck** |
 
 > An earlier phase shipped an Ink terminal UI. It was retired: it could not run
 > headless, so it could never be tested or driven by an agent. Everything below
@@ -1807,14 +1807,24 @@ automatically.
   can correct. Only the factions that need an override carry one. Both faults were found by looking at the screen, not
   by the suite, which is what the tests now guard. A missing file falls back to
   the colour chip, because a faction row must never render as a hole.
-- **Outcome art** — three images, one for each way a declaration produces no
-  ordinary result: `refusal` (your institutions will not carry the order out),
-  `defiance` (they objected and did it anyway) and `negotiation` (it is not
-  yours to declare). They are exactly the three the engine already reports as
-  *typed fields* on `ActionOutcome`, so drawing them needed no schema, reducer
-  or contract change — `OutcomeArt` reads a kind and a caller-supplied `alt`,
-  and a missing file renders **nothing at all**, falling back to the text
-  treatment that carried these outcomes before there was any art.
+- **Outcome art** — one image for each way a declaration produces no ordinary
+  result. Five, all typed fields on `ActionOutcome`: `refusal` (your
+  institutions will not carry the order out), `defiance` (they objected and did
+  it anyway), `negotiation` (it is not yours to declare), `inadmissible` (the
+  world does not permit it) and `outOfActions` (the turn's allowance is spent).
+  The first three fire on **both** paths a declaration can take — a declared
+  action and an accord closed with `/endtalk` — so one renderer covers both; the
+  last two are declared-action only, since there is no admissibility ruling on
+  an accord and diplomacy is unmetered. `OutcomeArt` reads a kind and a
+  caller-supplied `alt`, and a missing file renders **nothing at all**, falling
+  back to the text treatment that carried these outcomes before there was any
+  art — which is why the two newest kinds could ship their wiring before their
+  images exist.
+
+  Deliberately **not** on the list: the five check bands. Every rolled action
+  produces one, so imagery there becomes wallpaper and stops meaning anything.
+  These five are the ways an action produces *nothing*, which is what is worth
+  marking.
 
   They deliberately do **not** match the portrait set's painterly register, and
   all three carry text. A portrait exists to be recognised as a person you are
@@ -1916,6 +1926,23 @@ docs/         phase-2 prompt series and progress
 `PAXGALACTICA_NO_NETWORK=1`, and the model client throws if a call is attempted
 under it — a test that reaches the network fails loudly rather than billing
 tokens.
+
+**The suite is typechecked, by `tsconfig.tests.json` and `pnpm typecheck:tests`.**
+It cannot be folded into the main config, which emits to `dist` from
+`rootDir: src`; so for most of this project's life `tests/` was in that config's
+`exclude` list and was never typechecked at all. What that hid: a test importing
+a constant from a module that does not export it gets `undefined` at runtime
+rather than a compile error, so `for (let i = 0; i < MAX_CHANNEL_MESSAGES; i++)`
+silently looped **zero** times and the test passed while asserting nothing. Four
+more files imported the `Op` type from `state.ts`, where it has never lived, and
+three agent fixtures set `placedTurn` and `label` — neither of which is a field
+on `Agent` (they are `deployedTurn` and `cover`). All harmless by luck, none
+detectable by running the suite.
+
+`OpInput` exists for the same reason the JSON schema is generated with
+`{ io: 'input' }`: `Op` is the *parsed* shape, so every field with a `.default()`
+is required on it, which is right for reading an op out of state and wrong for
+writing one down. Fixtures and hand-built batches want the input type.
 
 ## Conventions
 

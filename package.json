@@ -16,6 +16,7 @@
     "dev:web": "vite",
     "build:web": "vite build",
     "typecheck:web": "tsc --noEmit -p web/tsconfig.json",
+    "typecheck:tests": "tsc --noEmit -p tsconfig.tests.json",
     "login": "node scripts/login.mjs",
     "auth": "node scripts/auth.mjs",
     "save-token": "node scripts/token.mjs",

@@ -326,14 +326,19 @@ ul { margin: 0; padding-left: 1.1em; }
    text, and a picture that fills the stage would read as a mode change the
    way a channel does. Capped in px as well as percent so a wide window does
    not turn one refusal into a poster. */
+/* Sized as a marker beside the line, not a panel above it. At 460px it was
+   nearly the full width of the feed column and pushed the narrative it belongs
+   to off the screen — an outcome is a beat, and a beat that costs a screenful
+   is being read as a scene. 220px keeps the image legible at a glance while
+   the text under it stays the thing you are reading. */
 .outcome-art {
   display: block;
   width: 100%;
-  max-width: 460px;
+  max-width: 220px;
   aspect-ratio: 16 / 9;
   object-fit: cover;
   border-radius: 3px;
-  margin: 4px 0 8px;
+  margin: 4px 0 6px;
   /* The art is brighter than the terminal it lands in; a dim border and a
      slight knock-down keep it from taking the eye off the text under it. */
   border: 1px solid var(--line);
@@ -344,6 +349,11 @@ ul { margin: 0; padding-left: 1.1em; }
    picture and its line reading as one thing. */
 .outcome-art.refusal, .outcome-art.defiance { border-left: 2px solid #7f1d1d; }
 .outcome-art.negotiation { border-left: 2px solid var(--accent); }
+/* The world said no, and the turn said no. Neither is your institutions
+   objecting, so neither takes the refusal red. */
+.outcome-art.inadmissible { border-left: 2px solid var(--line); }
+.outcome-art\.out-of-actions,
+.outcome-art.out-of-actions { border-left: 2px solid var(--dim, #666); }
 
 /* ---- export / import ---- */
 
