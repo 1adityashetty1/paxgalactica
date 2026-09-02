@@ -1,3 +1,4 @@
+import type { EpilogueView } from './epilogue.js';
 import {
   applyOps,
   tickTurn,
@@ -94,14 +95,35 @@ export class Campaign {
     playerFactionId: string,
     name = 'campaign',
     store: CampaignStore = new FileCampaignStore(),
+    maxTurns?: number,
   ): Campaign {
     return new Campaign(
       createSeedState(playerFactionId),
-      emptyJournal(playerFactionId),
+      emptyJournal(playerFactionId, maxTurns),
       {},
       name,
       store,
     );
+  }
+
+  /**
+   * How long this campaign runs, or `null` for one with no ending.
+   *
+   * Read off the seed entry, which is written once and never again — so it
+   * survives a save, an export and a replay without existing anywhere a
+   * faction could read it. A journal written before endings existed has no
+   * value here and stays endless, rather than acquiring a deadline it was
+   * never played under.
+   */
+  get maxTurns(): number | null {
+    const seed = this.journal.entries[0];
+    if (!seed || seed.kind !== 'seed') return null;
+    return seed.maxTurns ?? null;
+  }
+
+  /** True once time has run out. Committed turn, not the preview. */
+  get isOver(): boolean {
+    return this.maxTurns !== null && this.committed.turn >= this.maxTurns;
   }
 
   /**
@@ -119,13 +141,18 @@ export class Campaign {
   ): Campaign {
     const journal = file.journal as Journal;
     const { state } = replay(journal);
-    return new Campaign(
+    const campaign = new Campaign(
       state,
       journal,
       file.transcripts as Record<string, ChatMessage[][]>,
       name,
       store,
     );
+    // A finished campaign reloads finished. The ending is not replayable from
+    // ops — it is prose written once over the final board — so it has to be
+    // carried across explicitly, the same as the transcripts above it.
+    campaign.epilogue = file.epilogue ?? null;
+    return campaign;
   }
 
   /** Returns null when no such campaign exists, rather than throwing. */
@@ -167,13 +194,17 @@ export class Campaign {
     const res = applyOps(this.state, ops, source, actor, true);
     this.state = res.state;
     // `ops` is what was PROPOSED and is what gets journaled, because replay must
-    // re-run the rejections to reproduce them. `applied` is the subset that
-    // actually landed, and it is what the API reports: the first version of this
+    // re-run the rejections to reproduce them. `applied` is what actually
+    // landed, and it is what the API reports: the first version of this
     // returned the proposed list and a playtest correctly called it out, since an
     // auditor reading it would conclude a rejected op had taken effect.
-    // Rejections carry the original op by reference, so identity is enough.
-    const refused = new Set(res.rejections.map((r) => r.op));
-    const applied = ops.filter((op) => !refused.has(op));
+    //
+    // Batches are atomic, so a rejection means **nothing** landed — not merely
+    // the rejected op. This was `ops` minus the individually rejected ones,
+    // which was right before atomicity and a lie after it: a corrected action
+    // reported the whole held-back first batch *and* its correction, so ops
+    // appeared doubled and the counts in the notes matched neither list.
+    const applied = res.rejections.length > 0 ? [] : ops;
     this.stagedBatches.push({ label, ops, applied, narrative, actor, source });
     return { rejections: res.rejections, notes: res.notes };
   }
@@ -331,8 +362,10 @@ export class Campaign {
     for (const batch of this.stagedBatches) {
       const res = applyOps(s, batch.ops, batch.source ?? 'model', batch.actor, true);
       s = res.state;
-      const refused = new Set(res.rejections.map((r) => r.op));
-      batch.applied = batch.ops.filter((op) => !refused.has(op));
+      // Same rule as `stage`, and it has to be the same rule: a preview that
+      // recomputed `applied` differently would change the reported ops
+      // underneath the player on the next commit or tick.
+      batch.applied = res.rejections.length > 0 ? [] : batch.ops;
     }
     this.state = s;
   }
@@ -359,11 +392,20 @@ export class Campaign {
 
   /** The serialisable form of this campaign. Staged actions are excluded by
    *  construction — they are not in the journal and do not survive a save. */
+  /**
+   * The ending, once written. Persisted beside the journal for the same reason
+   * transcripts are: it is not a world fact and cannot be replayed from ops,
+   * but a player reopening a finished campaign must read the ending they were
+   * actually given rather than a freshly generated one.
+   */
+  epilogue: EpilogueView | null = null;
+
   toSaveFile(): SaveFile {
     return SaveFileSchema.parse({
       version: 1,
       journal: this.journal,
       transcripts: this.transcripts,
+      ...(this.epilogue === null ? {} : { epilogue: this.epilogue }),
     });
   }
 

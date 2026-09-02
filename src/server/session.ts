@@ -5,12 +5,14 @@ import type {
   ServerEvent,
   TurnOutcomeResponse,
 } from '../api/contract.js';
+import type { EpilogueView } from '../engine/epilogue.js';
+import { observeOrders } from '../domain/intel.js';
 import { MAX_CHANNEL_MESSAGES } from '../api/contract.js';
 import { archiveFilename, packCampaign, unpackCampaign } from '../engine/archive.js';
 import { briefingFromState, buildBriefing, type Briefing } from '../engine/briefing.js';
 import { Campaign, ACTION_POINTS_PER_TURN } from '../engine/campaign.js';
 import { FileCampaignStore, type CampaignStore } from '../engine/store.js';
-import { closeChannel, endTurn, submitAction } from '../engine/turn.js';
+import { closeChannel, endTurn, writeEpilogue, submitAction } from '../engine/turn.js';
 import { diplomacyReply, type ChatMessage } from '../model/calls.js';
 import { getFaction } from '../domain/state.js';
 import { playableFactions } from '../seed/scenario.js';
@@ -36,6 +38,15 @@ export class GameSession {
   private openChannel: string | null = null;
   private channelHistory: ChatMessage[] = [];
   private lastBriefing: Briefing | null = null;
+  /**
+   * The ending, once time has run out.
+   *
+   * Held here and mirrored into the save rather than derived on every read: it
+   * is the product of a model call, so regenerating it would both cost money
+   * and risk handing the player a *different* ending than the one they were
+   * given. Cached the same way transcripts are.
+   */
+  private epilogue: EpilogueView | null = null;
 
   /**
    * Guards against overlapping model calls. The staging model assumes ordered
@@ -51,6 +62,24 @@ export class GameSession {
 
   get isBusy(): boolean {
     return this.busyLabel !== null;
+  }
+
+  /**
+   * A finished campaign is read-only.
+   *
+   * Checked in one place rather than at each route, so a mutation added later
+   * inherits the guard. Reads are untouched: the player can still open panels,
+   * re-read the log and export the archive — they simply cannot play on.
+   */
+  private requirePlayable(): Campaign {
+    const campaign = this.require();
+    if (campaign.isOver) {
+      throw new ApiFailure(
+        'conflict',
+        `This campaign ended at turn ${campaign.maxTurns}. Start a new one to keep playing.`,
+      );
+    }
+    return campaign;
   }
 
   private require(): Campaign {
@@ -81,8 +110,15 @@ export class GameSession {
 
   view(): CampaignView {
     const campaign = this.require();
+    // The client is served the world AS THE PLAYER SEES IT, not the campaign's
+    // own state. Returning `campaign.state` whole is what made intelligence
+    // gathering unreachable: every faction's pending orders shipped to the
+    // browser for free, so the `intel` agent effect had nothing left to
+    // reveal. See `domain/intel.ts`.
+    const seen = observeOrders(campaign.state, campaign.state.playerFactionId);
     return {
-      state: campaign.state,
+      state: { ...campaign.state, pendingOrders: seen.orders },
+      rumours: seen.rumours,
       staged: campaign.stagedLabels().map((label, index) => ({
         index,
         label,
@@ -93,6 +129,8 @@ export class GameSession {
       channelHistory: [...this.channelHistory],
       actionPoints: { left: campaign.actionPointsLeft, perTurn: ACTION_POINTS_PER_TURN },
       name: campaign.name,
+      maxTurns: campaign.maxTurns,
+      epilogue: this.epilogue,
     };
   }
 
@@ -110,14 +148,15 @@ export class GameSession {
 
   /* ---------------- lifecycle ---------------- */
 
-  async newCampaign(factionId: string, name: string): Promise<CampaignView> {
+  async newCampaign(factionId: string, name: string, maxTurns?: number): Promise<CampaignView> {
     if (!playableFactions().some((f) => f.id === factionId)) {
       throw new ApiFailure('bad_request', `Unknown faction "${factionId}".`);
     }
-    this.campaign = Campaign.start(factionId, name, this.store);
+    this.campaign = Campaign.start(factionId, name, this.store, maxTurns);
     this.openChannel = null;
     this.channelHistory = [];
     this.lastBriefing = null;
+    this.epilogue = null;
     await this.campaign.save();
     this.pushState();
     return this.view();
@@ -129,6 +168,11 @@ export class GameSession {
     this.campaign = loaded;
     this.openChannel = null;
     this.channelHistory = [];
+    // A finished campaign reloads finished. The narration is cached in the
+    // save rather than regenerated, because it is a model call and a player
+    // reopening their own ending should not pay for it twice — nor read a
+    // different ending than the one they were given.
+    this.epilogue = loaded.epilogue;
     // Derive a briefing from state so a resumed campaign shows what is running
     // instead of "end a turn to see the report" while three projects tick away.
     this.lastBriefing = briefingFromState(loaded.state);
@@ -206,7 +250,7 @@ export class GameSession {
   /* ---------------- play ---------------- */
 
   async action(text: string): Promise<ActionOutcomeResponse> {
-    const campaign = this.require();
+    const campaign = this.requirePlayable();
     if (this.openChannel) {
       throw new ApiFailure(
         'conflict',
@@ -233,7 +277,7 @@ export class GameSession {
   }
 
   async endTurn(): Promise<TurnOutcomeResponse> {
-    const campaign = this.require();
+    const campaign = this.requirePlayable();
     if (this.openChannel) {
       throw new ApiFailure(
         'conflict',
@@ -243,6 +287,18 @@ export class GameSession {
 
     const outcome = await this.exclusive('The galaxy turns', () => endTurn(campaign));
     this.lastBriefing = buildBriefing(campaign.state, outcome.report);
+
+    // Time ran out on this turn. The ending is written once, here, and cached
+    // on the campaign — never regenerated, so reopening a finished campaign
+    // shows the ending the player was actually given.
+    let costUsd = outcome.costUsd;
+    if (campaign.isOver && this.epilogue === null) {
+      const written = await this.exclusive('The Rim settles', () => writeEpilogue(campaign));
+      this.epilogue = written.view;
+      campaign.epilogue = written.view;
+      costUsd += written.costUsd;
+    }
+
     await campaign.save();
     this.pushState();
 
@@ -252,12 +308,12 @@ export class GameSession {
       notes: outcome.notes,
       rejections: outcome.rejections,
       briefing: this.lastBriefing,
-      costUsd: outcome.costUsd,
+      costUsd,
     };
   }
 
   async discardStaged(index?: number): Promise<{ discarded: number }> {
-    const campaign = this.require();
+    const campaign = this.requirePlayable();
     if (this.isBusy) throw new ApiFailure('conflict', `Busy: ${this.busyLabel}.`);
 
     if (index === undefined) {
@@ -276,7 +332,7 @@ export class GameSession {
   /* ---------------- diplomacy ---------------- */
 
   async talk(factionId: string, text: string): Promise<{ reply: string; costUsd: number }> {
-    const campaign = this.require();
+    const campaign = this.requirePlayable();
     const faction = getFaction(campaign.state, factionId);
     if (!faction) throw new ApiFailure('not_found', `No faction "${factionId}".`);
     if (factionId === campaign.state.playerFactionId) {
@@ -321,7 +377,7 @@ export class GameSession {
   }
 
   async endTalk(factionId: string): Promise<ActionOutcomeResponse> {
-    const campaign = this.require();
+    const campaign = this.requirePlayable();
     if (this.openChannel !== factionId) {
       throw new ApiFailure('conflict', `No open channel with "${factionId}".`);
     }

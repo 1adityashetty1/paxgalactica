@@ -20,6 +20,21 @@ export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('seed'),
     playerFactionId: z.string(),
+    /**
+     * How long this campaign runs, chosen once when it is created.
+     *
+     * It lives on the seed entry rather than on `WorldState` for the same
+     * reason `ACTION_POINTS_PER_TURN` does not: it is a rule about this
+     * campaign, not a fact about the galaxy — no faction can read it and
+     * nothing in the reducer depends on it. Unlike action points it must
+     * survive a save and a replay, and the seed entry is the one place that is
+     * written once and never again.
+     *
+     * **Optional, so a journal written before endings existed loads as
+     * endless** rather than retroactively acquiring a deadline it was never
+     * played under.
+     */
+    maxTurns: z.number().int().min(10).max(100).optional(),
   }),
   z.object({
     kind: z.literal('ops'),
@@ -63,8 +78,11 @@ export const JournalSchema = z.object({
 });
 export type Journal = z.infer<typeof JournalSchema>;
 
-export function emptyJournal(playerFactionId: string): Journal {
-  return { version: JOURNAL_VERSION, entries: [{ kind: 'seed', playerFactionId }] };
+export function emptyJournal(playerFactionId: string, maxTurns?: number): Journal {
+  return {
+    version: JOURNAL_VERSION,
+    entries: [{ kind: 'seed', playerFactionId, ...(maxTurns === undefined ? {} : { maxTurns }) }],
+  };
 }
 
 export interface ReplayResult {

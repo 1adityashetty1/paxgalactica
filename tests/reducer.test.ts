@@ -512,6 +512,52 @@ describe('a batch is atomic when asked to be', () => {
     expect(creditsOf(out.state)).toBe(before + 120);
   });
 
+  /**
+   * The rollback discards the ops. It must not discard the account of why.
+   *
+   * `reject()` logs into the working state and the atomic path returned
+   * `clone(input)`, so every itemised rejection went out with the batch —
+   * measured on a real campaign as six rejections and zero log entries, which
+   * is why the browser's `rejection` filter had never had anything to show.
+   */
+  it('keeps the rejection log across an atomic rollback', () => {
+    const state = createSeedState('meridian');
+    const before = state.eventLog.length;
+    const out = applyOps(state, [good, bad], 'model', 'meridian', true);
+
+    const logged = out.state.eventLog.filter((e) => e.kind === 'rejection');
+    expect(logged).toHaveLength(1);
+    expect(logged[0]!.text).toMatch(/unknown_faction/);
+    expect(logged[0]!.text).toMatch(/nobody-at-all/);
+    // One entry per rejection, and nothing else from the discarded batch.
+    expect(out.state.eventLog).toHaveLength(before + 1);
+  });
+
+  /**
+   * A trim note describes work that did not happen when the batch is held
+   * back, so `capSelfInflictedLosses` — which logs under the same kind — is
+   * dropped with the state it describes, exactly as its note is. Only
+   * `reject()` entries survive.
+   */
+  it('does not carry a self-inflicted-loss trim across a rollback', () => {
+    const state = createSeedState('meridian');
+    const home = state.systems.find((sys) => (sys.ships.meridian ?? 0) > 0)!;
+    const out = applyOps(
+      state,
+      [
+        { op: 'adjust_ships', systemId: home.id, factionId: 'meridian', delta: -999, reason: 'scuttle' },
+        bad,
+      ],
+      'model',
+      'meridian',
+      true,
+    );
+
+    const logged = out.state.eventLog.filter((e) => e.kind === 'rejection');
+    expect(logged).toHaveLength(1);
+    expect(logged[0]!.text).toMatch(/unknown_faction/);
+  });
+
   it('still applies partially when not atomic, which is how old journals replay', () => {
     const state = createSeedState('meridian');
     const before = creditsOf(state);

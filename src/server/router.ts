@@ -62,8 +62,8 @@ async function route(
   }
 
   if (method === 'POST' && path === ROUTES.newCampaign) {
-    const { factionId, name } = parseBody(NewCampaignRequestSchema, body);
-    return ok(await session.newCampaign(factionId, name));
+    const { factionId, name, maxTurns } = parseBody(NewCampaignRequestSchema, body);
+    return ok(await session.newCampaign(factionId, name, maxTurns));
   }
 
   if (method === 'GET' && path === ROUTES.exportCampaign) {

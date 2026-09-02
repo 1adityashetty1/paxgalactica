@@ -1,3 +1,4 @@
+import { observeOrders } from '../src/domain/intel.js';
 import { describe, expect, it } from 'vitest';
 import {
   ActionRequestSchema,
@@ -68,14 +69,20 @@ describe('the contract accepts real engine output', () => {
     // The point of a Zod-first contract is that it is checked against the real
     // thing, not against a hand-written fixture that agrees with it by design.
     const { campaign, report } = campaignWithTurn();
+    // Built the way the server builds it: the client is served the world as
+    // the player sees it, not the campaign's own state.
+    const seen = observeOrders(campaign.state, campaign.state.playerFactionId);
     const view = {
-      state: campaign.state,
+      state: { ...campaign.state, pendingOrders: seen.orders },
+      rumours: seen.rumours,
       staged: [],
       briefing: buildBriefing(campaign.state, report),
       openChannel: null,
       channelHistory: [],
       actionPoints: { left: campaign.actionPointsLeft, perTurn: ACTION_POINTS_PER_TURN },
       name: campaign.name,
+      maxTurns: campaign.maxTurns,
+      epilogue: campaign.epilogue,
     };
     const parsed = CampaignViewSchema.safeParse(view);
     expect(parsed.success, JSON.stringify(parsed.error?.issues?.slice(0, 4))).toBe(true);
@@ -89,14 +96,18 @@ describe('the contract accepts real engine output', () => {
 
   it('survives a JSON round trip, which is how it will actually travel', () => {
     const { campaign, report } = campaignWithTurn();
+    const seen = observeOrders(campaign.state, campaign.state.playerFactionId);
     const view = {
-      state: campaign.state,
+      state: { ...campaign.state, pendingOrders: seen.orders },
+      rumours: seen.rumours,
       staged: [{ index: 0, label: 'x', narrative: 'y' }],
       briefing: buildBriefing(campaign.state, report),
       openChannel: null,
       channelHistory: [{ speaker: 'player' as const, text: 'hello' }],
       actionPoints: { left: 1, perTurn: ACTION_POINTS_PER_TURN },
       name: 'contract',
+      maxTurns: campaign.maxTurns,
+      epilogue: campaign.epilogue,
     };
     const wire = JSON.parse(JSON.stringify(view));
     expect(CampaignViewSchema.safeParse(wire).success).toBe(true);

@@ -1,5 +1,7 @@
 import type { BattleReport } from '../domain/battle.js';
 import type { TurnReport } from '../domain/reducer.js';
+import { describeEffect } from '../domain/diplomacy.js';
+import { observeOrders } from '../domain/intel.js';
 import { getFaction, ledgerFor, type Ledger, type WorldState } from '../domain/state.js';
 
 /**
@@ -30,6 +32,48 @@ export interface BriefingProject {
   isMovement: boolean;
 }
 
+/**
+ * A rival programme you know exists and nothing more.
+ *
+ * Deliberately carries no label and no type: the whole value of a rumour is
+ * that it names a place worth putting an operative, not a thing to react to.
+ */
+export interface BriefingRumour {
+  where: string;
+  factionId: string;
+  factionName: string;
+  color: number;
+  progress: number;
+  duration: number;
+  remaining: number;
+  completesNextTurn: boolean;
+}
+
+/**
+ * One of your operatives, and what it is doing.
+ *
+ * Derived from state rather than from the tick, so it is correct on a resumed
+ * campaign and correct on a turn that produced no report at all. The running
+ * account lives in the event log under `kind: 'intel'`; this is the standing
+ * one, in front of the player rather than scrolled past.
+ *
+ * Only ever the player's own — see the reducer's watch pass for why a rival's
+ * intelligence has no business in the player's briefing.
+ */
+export interface BriefingWatch {
+  where: string;
+  systemId: string;
+  mission: string;
+  /** What the effect does, in the same words the treaties panel uses. */
+  effect: string;
+  successChance: number;
+  /**
+   * What this operative can see at its posting right now, one line each.
+   * Empty means nothing is moving there — which is a report, not a blank.
+   */
+  sees: string[];
+}
+
 export interface BriefingCompletion {
   label: string;
   where: string;
@@ -50,6 +94,17 @@ export interface Briefing {
   inProgress: BriefingProject[];
   /** Rival projects you can actually observe. Never everything they have. */
   observed: BriefingProject[];
+  /**
+   * Work you know is happening and cannot identify.
+   *
+   * This is the hook the whole intelligence mechanic hangs on: without it a
+   * secret programme is invisible, a player never learns there is anything to
+   * look at, and surveillance stays as unmotivated as it was when four
+   * operatives ran seven turns and reported nothing. See `domain/intel.ts`.
+   */
+  rumoured: BriefingRumour[];
+  /** Your operatives, and what each of them has to say. Never a rival's. */
+  watch: BriefingWatch[];
   /**
    * Battles fought this turn, with the arithmetic attached.
    *
@@ -135,7 +190,52 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
     .map(toProject)
     .sort((a, b) => a.remaining - b.remaining);
 
-  const observed = report.advanced.filter((a) => a.factionId !== me).map(toProject);
+  // What the player can actually see. `report.advanced` is the board's truth —
+  // every order in the world — and reading it directly is what made the
+  // intelligence mechanic unreachable. See `domain/intel.ts`.
+  const seen = observeOrders(state, me);
+  const visible = new Set(seen.orders.map((o) => o.id));
+  const observed = report.advanced
+    .filter((a) => a.factionId !== me && visible.has(a.id))
+    .map(toProject);
+
+  const rumoured: BriefingRumour[] = seen.rumours.map((r) => {
+    const { name, color } = describe(r.factionId);
+    const remaining = r.durationTurns - r.progress;
+    return {
+      where: state.systems.find((sys) => sys.id === r.systemId)?.name ?? r.systemId,
+      factionId: r.factionId,
+      factionName: name,
+      color,
+      progress: r.progress,
+      duration: r.durationTurns,
+      remaining,
+      completesNextTurn: remaining === 1,
+    };
+  });
+
+  // Your operatives, standing rather than scrolling. An agent that reports
+  // nothing still appears, because an idle watcher must be visibly idle — the
+  // whole `intel` effect was unreachable for the life of the project and
+  // nobody noticed, precisely because silence looked the same as absence.
+  const watch: BriefingWatch[] = (state.agents ?? [])
+    .filter((a) => a.ownerFactionId === me && !a.exposed)
+    .map((a) => ({
+      where: state.systems.find((sys) => sys.id === a.systemId)?.name ?? a.systemId,
+      systemId: a.systemId,
+      mission: a.mission,
+      effect: describeEffect(a.effect),
+      successChance: a.successChance,
+      sees: state.pendingOrders
+        .filter(
+          (o) =>
+            o.factionId !== me && (o.originId === a.systemId || o.targetId === a.systemId),
+        )
+        .map((o) => {
+          const { name } = describe(o.factionId);
+          return `${name}: ${o.label || o.type} (${o.progress}/${o.durationTurns})`;
+        }),
+    }));
 
   return {
     turn: state.turn,
@@ -144,12 +244,15 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
     completed,
     inProgress,
     observed,
+    rumoured,
+    watch,
     battles: report.battles,
     // A battle is never a quiet turn, even if nothing else moved.
     quiet:
       completed.length === 0 &&
       inProgress.length === 0 &&
       observed.length === 0 &&
+      rumoured.length === 0 &&
       report.battles.length === 0,
   };
 }

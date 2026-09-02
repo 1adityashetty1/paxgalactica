@@ -1141,6 +1141,206 @@ Effects apply where they are *read* rather than mutating state each tick —
 otherwise a debuff would compound every turn. Only `hull_damage` mutates,
 because destroyed hulls stay destroyed.
 
+## Intelligence: what you can see, and what you only suspect
+
+`src/domain/intel.ts`. For most of this project's life the player had **perfect
+information for free**. `ordersVisibleTo` existed, worked, and had exactly one
+caller — `serialize.ts`, building prompt blocks for a *model*. Every
+player-facing path read `state.pendingOrders` whole: `report.advanced`, the
+`GET /api/campaign` payload, the orders panel. So "long projects are worth
+hiding and worth raiding" was true for NPCs and for nobody else. Measured over a
+seven-turn campaign played expressly to spy, four `surveillance` operatives
+produced **zero** output — no report, no briefing line, no event. There was
+nothing for them to reveal.
+
+**Filtering the existing function into the API is a trap**, and the board says
+why. On the final state of that campaign four orders were pending and
+`visibility` was **empty on all four**: `prompts/resolution.md` asks the
+resolution call to name who would plausibly notice, and it does not. Switching
+the filter on moves the game from "sees everything" to **"sees almost nothing"**,
+with the only dial that reopens it one the model has proven it will not turn — a
+fleet would arrive with no way to have seen it coming, which is a coin toss
+rather than fog of war.
+
+So visibility is decided in code, from rules that need nothing from a model:
+
+| rule | effect |
+|---|---|
+| your own order, or one whose `visibility` names you | full |
+| an unexposed `intel` operative at the origin or target | full — **tested first**, so an operative sees through everything |
+| `PUBLIC_CATEGORIES` | full |
+| `COVERT_CATEGORIES` | **rumour, whoever's space it is in** |
+| origin or target is a world you hold or have ships at | full |
+| anything else | rumour |
+
+`PUBLIC_CATEGORIES` asks a physical question, not a strategic one: could a
+neighbour with no operative tell this was happening? Troops drilling, walls
+going up, a lane closed, a decree read out and a fleet under way all pass —
+`fleet_movement`, `courier`, `decree`, `blockade`, `treaty_ratification`,
+`garrison_raising`, `fortification`, `construction_infrastructure`. The other
+eight happen inside a yard, a ministry or a safe house. It lives beside the
+order **type** deliberately: the type is already the duration category and
+already decides which `onComplete` payloads may be delivered, so visibility is a
+third column rather than a fourth taxonomy.
+
+**`COVERT_CATEGORIES` is the correction that matters most**, and the first draft
+of the module got it wrong. "You see your own space" is right for anything
+physical — a rival refitting hulls over a world you hold is in front of your own
+dockmasters — and exactly wrong for the four categories whose whole purpose is
+to be run against someone without their knowledge. An `espionage` order
+targeting your capital would have been revealed to you *because* it targeted
+your capital: the mechanic cancelling itself out, and a sharper bug than the one
+it replaced, since an oversight would have become a rule. `espionage`,
+`counter_intelligence`, `political_maneuver` and `commerce_raiding` are reachable
+only by an operative of your own, or by the acting power choosing to be seen.
+
+Presence is still not *nothing*: raiding needs a fleet a jump out and
+`system.ships` is not redacted, so the hulls show while the order does not. You
+can see raiders gathering and not that a raid is the plan.
+
+### A rumour is the hook, and it is not a `PendingOrder`
+
+Everything not seen in full becomes a **rumour**: whose it is, which world, how
+long it runs, how far along. Nothing else.
+
+That grading is load-bearing. A binary filter would hide secret work so
+completely that a player would never learn there was anything in the Tion
+Marches worth looking at, and surveillance would stay exactly as unmotivated as
+it was. Knowing that something is happening and not what it is, is the pressure
+that makes an operative worth 150 credits.
+
+`OrderRumour` is a separate, smaller record rather than a redacted
+`PendingOrder`, because reusing that shape would mean inventing a `type` and an
+`id` for something the player must not know the type of — and shipping the real
+id would let them `interrupt_order` a programme they cannot see, which is worse
+than showing it to them. A record cannot leak what it does not carry. Tests
+assert the label, the type and the id are all absent from the serialized form.
+
+The server serves `worldAsSeenBy(state, playerFactionId)` rather than
+`campaign.state`, so everything the client derives — the map's in-transit
+fleets, the orders panel, a system's activity — narrows with it instead of each
+component remembering to filter. `CampaignView` gains `rumours`; `Briefing`
+gains `rumoured`, rendered as its own group under *Unidentified activity*
+because a rumour and an observation are different kinds of knowledge and running
+them together invites reading one as the other.
+
+**One consequence looks like a bug and is not.** `shipsInTransit` and
+`fleetStrengthOf` derive from `pendingOrders`, so a rival's navy could in
+principle read low. It does not, because `fleet_movement` is public — every
+movement survives redaction and both totals stay exact for every faction. That
+is the property "ships in space are observable" was chosen to buy, and a test
+pins it, so making movement hideable cannot quietly turn two exact counts into
+partial ones.
+
+### Every operative reports, every turn
+
+An agent used to speak only when it destroyed something. `intel` had no branch
+at all, and `income_penalty` and `stat_debuff` are read where they are used
+rather than applied on the tick — so **three of the five effects produced no
+output whatsoever**. You could not tell a working operative from a broken one,
+which is exactly how the `intel` effect stayed unreachable for the life of the
+project without anyone noticing.
+
+Every branch of the agent pass now records a line, and anything that did not is
+reported as having nothing to report. **"Nothing to report" is the load-bearing
+case:** it is what makes an idle watcher visibly idle instead of invisibly
+broken. The running account is `kind: 'intel'` in the event log; the standing one
+is a `watch` section on the briefing, derived from state so it is right on a
+resumed campaign and on a turn with no report at all.
+
+`intel` is the one event kind that is **private**. The event log is shipped to
+the browser whole, so only the *player's* agents write these — logging every
+faction's watch reports would hand the player a transcript of what four rival
+spy networks can see, which is the exact opposite of the fog the same tick is
+enforcing. NPC operatives still work; their product reaches their own prompt
+block through `ordersVisibleTo`. There is a test for it.
+
+Replaying the campaign that opened all this: **34 intel lines across seven
+turns, where there were 0.**
+
+**Knowledge is a snapshot, not a memory.** Burn the operative and the programme
+goes back to being a rumour. A last-known-position model is the more honest one
+and needs a durable set on `WorldState` — schema, save format and journal — so
+it is written down as the known simplification rather than pretended away.
+
+Measured on the campaign that opened all this, at turn 7: the three physical
+programmes (a fortification, a fleet movement, an infrastructure works) are
+visible to everyone, and the Iron Vigil's counter-intelligence sweep is a rumour
+to the other four. It sits at **Ghorman Deep** — the exact world the playtest
+had put a theft operative on — so a player now reads *"the Vigil has something
+under way at Ghorman Deep, 1 of 2 turns"* and has a reason to go and look.
+
+## Doctrine initiative: the galaxy moves without you
+
+`src/domain/initiative.ts`. **The NPCs were not passive. They were
+solipsistic.** Measured over a seven-turn campaign, the reaction call produced
+16 fleet movements and six attacks — and **every attack targeted the player, on
+one world**. Zero NPC-vs-NPC aggression, while `vigil -> krayt` sat at −87 and
+`freeworlds -> vigil` at −75. Wars on paper that nobody fought.
+
+Three structural causes, none of them a prompt problem:
+
+1. Responders come from `mostAffectedFactions`, computed from what the
+   **player's** ops touched. A faction the player ignores is never asked to
+   think.
+2. Reactions are skipped entirely when nothing was staged — the optimisation
+   that makes a long campaign affordable. On a quiet turn NPCs cannot act at
+   all.
+3. `reaction.md` asks a power to *respond*. It never asks it to want anything.
+
+The five doctrine bots that had been sitting in `src/balance.ts` since the
+balance work **already do the thing the model does not: they contest each
+other.** That is the only reason `tests/balance.test.ts` can meaningfully assert
+that nobody is eliminated and nobody holds half the map. So they moved into the
+domain — one definition, imported by the harness — and now run in `endTurn` for
+every faction the model did not speak for.
+
+- **Dedup is by construction.** A faction is a responder *or* a bot in a given
+  turn, never both, so the two cannot double-order.
+- **It runs outside the `committed.applied > 0` gate**, deliberately: a turn the
+  player ends quietly is still a turn in which the galaxy moves.
+- **It costs nothing.** The bots are pure and deterministic, so a bot-driven
+  turn replays exactly like any other — the journal records the ops, not the
+  reasoning.
+
+Measured on a 12-turn campaign **in which the player never acts** — previously
+inert in every respect: six worlds change hands, four neutrals are taken, and
+the Iron Vigil takes two systems off Meridian.
+
+### The faction explains itself afterwards, for free
+
+A bot action logs a third-person account of what it did, and `serializeRecentLog`
+feeds the event log into `serializeState` — so the **next** reaction call reads
+*"Iron Vigil Remnant lays down 3 hulls, sends 42 hulls from Ord Vantic against
+Tion Anchorage"* and the faction can account for its own move when it next
+speaks. The alternative was paying the flavour tier to narrate every bot action;
+this makes an NPC's own history part of what it reasons from instead of
+something only the player remembers.
+
+### A doctrine is not a licence
+
+The bots were written for a harness where nobody signs anything, so none of them
+reads `state.treaties`. Turned loose on a live campaign that is a hazard rather
+than a rough edge: attacking a `non_aggression` partner auto-breaks the pact,
+costs 25 disposition and `PACT_BREAKING_REPUTATION_COST` with every onlooker — so
+a power could sign in good faith through the diplomacy layer and have its own
+doctrine tear the paper up on the same turn, for no reason a player could read.
+
+`honourTreaties` is a **post-filter over the proposed ops** rather than a check
+threaded into five bots, which is what makes it total: a bot added later
+inherits the guard without knowing it exists. It withholds an attack on a
+`non_aggression`, `ceasefire` or `mutual_defense` partner, and interdiction
+against a `trade_accord` partner — which is bad faith *and* mechanically inert,
+since those parties are already immune to each other's blockades and raiding.
+What was withheld is reported rather than silently dropped: a power that quietly
+does less than its doctrine demands is the bug this module exists to fix.
+
+**They are fog-clean by construction**, which matters because they predate the
+fog. They read `system.ships` and `system.garrison`, which redaction does not
+touch, and the only pending orders they consult are their own. A test pins it by
+asserting that a hidden rival programme changes no bot's proposal at all —
+an invariant rather than an accident.
+
 ## Suborning crews
 
 A playtest produced a Nar corvette defecting to Drajk on a natural 20 — a good
@@ -2059,6 +2259,61 @@ automatically.
 `src/ui/` holds `layout.ts`, `portrait.ts` and `ansi256.ts` (faction colours are ANSI
 256 indices; the browser needs hex).
 
+## A campaign has a length, and an ending
+
+A campaign ran until the player stopped playing, so every session trailed off
+rather than finishing. `POST /api/campaign/new` now takes `maxTurns` (10–100,
+30 by default in the picker), and when the committed turn reaches it the
+campaign becomes read-only and the Rim is summed up.
+
+**The limit lives on the journal's seed entry**, not on `WorldState`. It is a
+rule about this campaign, not a fact about the galaxy — no faction can read it
+and nothing in the reducer depends on it — which is the same argument that keeps
+`ACTION_POINTS_PER_TURN` out of state. Unlike action points it has to survive a
+save, an export and a replay, and the seed entry is the one place written once
+and never again. It is **optional**, so a journal written before endings existed
+loads as endless rather than acquiring a deadline it was never played under.
+
+`requirePlayable()` is checked in one place rather than at each route, so a
+mutation added later inherits it. Reads are untouched: a finished campaign can
+still be browsed, re-read and exported.
+
+### The facts are settled before anything is narrated
+
+`src/engine/epilogue.ts` computes the dossier — worlds held against worlds
+started with, what each power took and lost **by name**, fleet, treasury, net,
+dissent, wars, live treaties, debts outstanding, and standing toward the player.
+`prompts/epilogue.md` writes Fallout-style vignettes over it: one slide per
+faction, then a closing paragraph.
+
+This is the one call in the game where the reasoning tier is unarguable — it
+runs once per campaign and "narrate what became of these five powers" is exactly
+what a model is for. It gets the usual discipline anyway, and more strictly:
+**this is the last thing the player reads, and there is no turn left in which to
+catch an invented war.**
+
+`arc` — `ascendant` · `diminished` · `holding` · `broken` — is decided in code
+from territory first and income as the tie-break, handed to the prompt as
+*"settled; do not overturn"*, and **printed on screen beside the prose**. A power
+that lost half its territory cannot narrate itself as triumphant because its
+voice is confident, and a reader can check the story against the board.
+
+### The ending cannot fail
+
+A model call dies for reasons that have nothing to do with the campaign — a
+dropped stream, an overloaded tier, a token that expired mid-session — and an
+ending that does not appear is worse than a plain one. `fallbackEpilogue` is a
+complete deterministic ending built only from numbers already on the board, the
+view carries `fallback: true`, and the screen says so. Slides are also
+**reconciled against the dossier**: a slide for a faction that does not exist is
+dropped and a missing one is filled from the fallback, so the ending can never
+have a hole in it.
+
+It is cached on the campaign and persisted beside the journal, exactly as
+transcripts are — a player reopening a finished campaign must read the ending
+they were given, not a freshly generated one, and should not pay for it twice.
+It is not world state and does not replay: `verifyReplay` is unaffected.
+
 ## Cost
 
 Measured live, on the current prompts and tiers:
@@ -2109,10 +2364,10 @@ re-sends its context. A trivial call still takes ~7s for that reason.
 ```
 src/
   domain/     state, ops, duration, development, graph, checks, diplomacy,
-              arbitration, compulsions, debt, trade, reducer
+              arbitration, compulsions, debt, trade, intel, initiative, reducer
               ← pure. No I/O, no network, no imports from engine/model/ui.
   api/        contract.ts — Zod schemas shared by server and browser
-  engine/     campaign, store, journal, turn, briefing
+  engine/     campaign, store, journal, turn, briefing, epilogue
   model/      client, router, prompts, serialize, calls, auth, binary
               ← server-only. Spawns the binary, holds the token.
   server/     index (node:http), router, session, events, static, errors
@@ -2155,9 +2410,12 @@ writing one down. Fixtures and hand-built batches want the input type.
 - New op? Add to `ops.ts`, handle in `reducer.ts`, cover both the success and
   the rejection path in `tests/reducer.test.ts`, and document it here.
 - New duration category? Add to `DURATION_CATEGORIES`, give it a floor in
-  `CATEGORY_FLOORS`, add an anchor to `duration-rubric.md`, and decide in
+  `CATEGORY_FLOORS`, add an anchor to `duration-rubric.md`, decide in
   `EFFECT_CATEGORIES` whether it can deliver an `onComplete` payload — a
-  category that can carry none is a category whose completion does nothing.
+  category that can carry none is a category whose completion does nothing —
+  and put it in `PUBLIC_CATEGORIES` or `SECRET_CATEGORIES` in `intel.ts`. A
+  test asserts every type is in exactly one, because a forgotten one would
+  default to secret and nobody would notice.
 - New order effect kind? Add it to `OrderEffectSchema`, give it a cap in
   `EFFECT_CAPS`, a price, the categories that may deliver it in
   `EFFECT_CATEGORIES`, and a branch in `applyOrderEffect`. Price it against what

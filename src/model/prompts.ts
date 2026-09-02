@@ -22,6 +22,7 @@ export type PromptName =
   | 'appraisal'
   | 'correction'
   | 'duration-rubric'
+  | 'epilogue'
   | 'flavor';
 
 export function loadPrompt(name: PromptName): string {

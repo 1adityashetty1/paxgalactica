@@ -1,3 +1,4 @@
+import { ordersVisibleTo } from '../domain/intel.js';
 import { describeOrderEffect } from '../domain/development.js';
 import { describeEffect } from '../domain/diplomacy.js';
 import {
@@ -17,7 +18,6 @@ import {
   ledgerFor,
   liveAgentsOf,
   maxAgentsFor,
-  ordersVisibleTo,
   systemIncome,
   treatiesFor,
   warsFor,

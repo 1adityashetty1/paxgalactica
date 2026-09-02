@@ -15,6 +15,7 @@ import {
   REFUSAL_DISSENT,
 } from '../domain/state.js';
 import {
+  narrateEpilogue,
   appraiseAgreement,
   extractAgreements,
   verifyBreachRelevance,
@@ -25,7 +26,15 @@ import {
 import { classifyPrinciples } from '../domain/compulsions.js';
 import { callStructured } from '../model/client.js';
 import { loadPrompt } from '../model/prompts.js';
-import { mostAffectedFactions, serializeState } from '../model/serialize.js';
+import { createSeedState } from '../seed/scenario.js';
+import { proposeFor } from '../domain/initiative.js';
+import {
+  campaignOutcome,
+  fallbackEpilogue,
+  serializeOutcome,
+  type EpilogueView,
+} from './epilogue.js';
+import { mostAffectedFactions, serializeCharacter, serializeState } from '../model/serialize.js';
 import { ACTION_POINTS_PER_TURN, type Campaign } from './campaign.js';
 
 export interface ReactionView {
@@ -547,6 +556,48 @@ export async function endTurn(campaign: Campaign): Promise<TurnOutcome> {
     }
   }
 
+  // Every power that the model did NOT speak for acts on its own doctrine.
+  //
+  // This is what closes the solipsism. Responders are chosen from what the
+  // player's ops touched, and reactions are skipped entirely on a quiet turn —
+  // so a faction the player ignores has never acted at all. Measured over
+  // seven turns: 16 NPC fleet movements, six of them attacks, and every attack
+  // aimed at the player, while two NPC pairs sat at war on paper and never
+  // moved a ship at each other.
+  //
+  // The bots in `domain/initiative.ts` already contest each other; that is
+  // what the balance harness measures. Running them here costs nothing, is
+  // pure, and replays exactly — the journal records the ops, not the
+  // reasoning. It runs OUTSIDE the `committed.applied > 0` gate on purpose, so
+  // a turn the player ends quietly is still a turn in which the galaxy moves.
+  const spokenFor = new Set([campaign.state.playerFactionId, ...reactionViews.map((r) => r.factionId)]);
+  for (const faction of campaign.state.factions) {
+    if (spokenFor.has(faction.id)) continue;
+    const proposal = proposeFor(campaign.state, faction.id);
+    if (!proposal) continue;
+
+    // The rationale is logged as part of the batch, so `serializeRecentLog`
+    // carries it into the NEXT reaction call and the faction can account for
+    // its own move when it next speaks. That is the whole of the retroactive
+    // narration: no second model call, and the NPC's history becomes something
+    // it reasons from rather than something only the player remembers.
+    const withheld = proposal.withheld.length > 0
+      ? ` It holds back ${proposal.withheld.join(' and ')}.`
+      : '';
+    const batch = [
+      ...proposal.ops,
+      {
+        op: 'spawn_event',
+        factionId: faction.id,
+        text: `${proposal.rationale}${withheld}`,
+      },
+    ];
+
+    const applied = campaign.commit(batch, 'model', `initiative:${faction.id}`, faction.id);
+    notes.push(...applied.notes);
+    rejections.push(...applied.rejections);
+  }
+
   // Time passes last, so orders started this turn do not immediately progress.
   const ticked = campaign.tick();
   notes.push(...ticked.notes);
@@ -719,4 +770,67 @@ export async function closeChannel(
     // exactly what it read out of a transcript matters more here than anywhere.
     ops: campaign.opsStagedSince(before),
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* The last page                                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Close a campaign that has run out of turns.
+ *
+ * The facts are computed first and the prose is written over them, which is
+ * the same split the whole game uses — and it matters more here than anywhere
+ * else, because this is the last thing the player reads and they have no turn
+ * left in which to catch an invented war.
+ *
+ * **It cannot fail.** A model call can die for reasons that have nothing to do
+ * with the campaign — a dropped stream, an overloaded tier, a token that
+ * expired mid-session — and an ending that does not appear is worse than a
+ * plain one. On any failure the deterministic epilogue is used and the view
+ * says so, rather than the player being handed an error where their ending
+ * should be.
+ */
+export async function writeEpilogue(
+  campaign: Campaign,
+): Promise<{ view: EpilogueView; costUsd: number }> {
+  // `state` rather than the committed journal because they are the same thing
+  // here: this runs immediately after `endTurn`, which commits every staged
+  // batch and clears the list. Reading the preview keeps `committed` private.
+  const state = campaign.state;
+  const outcome = campaignOutcome(state, createSeedState(state.playerFactionId), campaign.maxTurns ?? state.turn);
+
+  const base = {
+    turn: outcome.turn,
+    maxTurns: outcome.maxTurns,
+    playerFactionId: outcome.playerFactionId,
+    unaligned: outcome.unaligned,
+    foremost: outcome.foremost,
+    factions: outcome.factions,
+  };
+
+  try {
+    const written = await narrateEpilogue(
+      serializeOutcome(outcome),
+      state.factions.map((f) => serializeCharacter(f)).join('\n\n'),
+    );
+    // A slide for a faction that does not exist, or a missing one, would leave
+    // a hole in the ending. Reconciled against the dossier rather than trusted.
+    const byId = new Map(written.output.slides.map((sl) => [sl.factionId, sl.text]));
+    const fallback = fallbackEpilogue(outcome);
+    const slides = outcome.factions.map((f) => ({
+      factionId: f.factionId,
+      text: byId.get(f.factionId) ?? fallback.slides.find((sl) => sl.factionId === f.factionId)!.text,
+    }));
+    return {
+      view: { ...base, slides, closing: written.output.closing, fallback: false },
+      costUsd: written.costUsd,
+    };
+  } catch {
+    const plain = fallbackEpilogue(outcome);
+    return {
+      view: { ...base, slides: plain.slides, closing: plain.closing, fallback: true },
+      costUsd: 0,
+    };
+  }
 }

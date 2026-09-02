@@ -8,6 +8,7 @@ import { ChannelPanel } from './components/ChannelPanel.js';
 import { FactionPicker } from './components/FactionPicker.js';
 import { GalaxyMap } from './components/GalaxyMap.js';
 import { OutcomeArt } from './components/OutcomeArt.js';
+import { EpilogueStage } from './components/EpilogueStage.js';
 import { PortraitStage } from './components/PortraitStage.js';
 import { SidePanel } from './components/SidePanel.js';
 import { useGame, useStickToBottom } from './useGame.js';
@@ -279,7 +280,11 @@ export function App() {
               the player clicks `talk`. Gating on the server's flag left the map
               up through the whole first exchange — the portrait arrived one
               message late, or never, if the player thought better of it. */}
-          {activeChannel ? (
+          {/* The ending outranks both: there are no fleets left to move and
+              nobody left to talk to, so it takes the stage outright. */}
+          {view.epilogue ? (
+            <EpilogueStage epilogue={view.epilogue} />
+          ) : activeChannel ? (
             <PortraitStage state={view.state} factionId={activeChannel} />
           ) : (
             <GalaxyMap state={view.state} selectedId={selectedId} onSelect={setSelectedId} />

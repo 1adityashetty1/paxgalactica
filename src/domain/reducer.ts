@@ -562,9 +562,29 @@ export function applyOps(
   const rejections: OpRejection[] = [];
   const notes: string[] = [];
 
+  // A rejection has to outlive an atomic rollback. `reject()` writes its entry
+  // into the working state, and the rollback returns `clone(input)` — so the
+  // discard that correctly removes the ops was also removing the only account
+  // of why they were removed. Measured on `saves/spy_playtest.json`: six
+  // rejections during replay, **zero** `rejection` entries in a 127-entry log,
+  // which is why the browser's filter for that kind had never had anything to
+  // show. Collected separately so both exits can carry them.
+  //
+  // Deliberately only `reject()`. `capSelfInflictedLosses` logs under the same
+  // kind, but it describes a trim that did not happen when the batch is held
+  // back — it is dropped with the state it describes, exactly as its note is.
+  const rejectionEvents: EventLogEntry[] = [];
+
   const reject = (op: unknown, code: OpRejection['code'], message: string): void => {
     rejections.push({ op, code, message });
-    logEvent(state, 'rejection', `[${code}] ${message}`);
+    const entry: EventLogEntry = {
+      turn: state.turn,
+      kind: 'rejection',
+      factionId: null,
+      text: `[${code}] ${message}`,
+    };
+    rejectionEvents.push({ ...entry });
+    state.eventLog.push(entry);
   };
 
   const factionExists = (id: string): boolean => state.factions.some((f) => f.id === id);
@@ -1881,9 +1901,15 @@ export function applyOps(
   // the player about work that did not happen — but the rejections are what
   // the correction pass reads, so they are kept and one note says plainly that
   // the batch was held back.
+  //
+  // The rejection log entries are carried across the rollback rather than
+  // rebuilt: they are the record of why the batch was held back, and rolling
+  // that back with it left the player with a summary and no itemisation.
   if (atomic && rejections.length > 0) {
+    const rolledBack = clone(input);
+    rolledBack.eventLog.push(...rejectionEvents);
     return {
-      state: clone(input),
+      state: rolledBack,
       rejections,
       notes: [
         `Nothing in this batch was applied: ${rejections.length} of ${rawOps.length} ops were rejected, and an action lands whole or not at all.`,
@@ -2321,13 +2347,44 @@ export function tickTurn(input: WorldState): TickResult {
   // one-shot decapitation share the same machinery without behaving alike.
   const spentAgents: string[] = [];
 
+  /**
+   * What each operative did this turn, so that none of them can be silent.
+   *
+   * An agent used to report only when it destroyed something. `intel` had no
+   * branch at all, and `income_penalty` / `stat_debuff` are read where they are
+   * used rather than applied here, so three of five effects produced no output
+   * whatsoever — measured live as four surveillance operatives running seven
+   * turns and generating not one line. You could not tell a working agent from
+   * a broken one, which is exactly how the `intel` effect stayed unreachable
+   * for the life of the project without anyone noticing.
+   *
+   * Every branch below writes an entry, and anything that did not is reported
+   * as having nothing to report. "Nothing to report" is the load-bearing case:
+   * it is what makes an idle operative visibly idle instead of invisibly
+   * broken.
+   */
+  const watchNotes = new Map<string, string>();
+
   for (const agent of state.agents) {
-    if (agent.exposed) continue;
+    if (agent.exposed) {
+      watchNotes.set(agent.id, 'is burned and out of contact.');
+      continue;
+    }
     const host = state.systems.find((sys) => sys.id === agent.systemId);
     const target = host?.controllerFactionId
       ? state.factions.find((f) => f.id === host.controllerFactionId)
       : undefined;
-    if (!host || !target || target.id === agent.ownerFactionId) continue;
+    if (!host || !target || target.id === agent.ownerFactionId) {
+      watchNotes.set(
+        agent.id,
+        host === undefined
+          ? 'has lost its posting.'
+          : target === undefined
+            ? `sits on ${host.name}, which answers to nobody. Nothing to work against.`
+            : `sits on ${host.name}, which is already ours. Nothing to report.`,
+      );
+      continue;
+    }
 
     const profile = MISSION_PROFILE[agent.mission];
     const owner = state.factions.find((f) => f.id === agent.ownerFactionId);
@@ -2359,8 +2416,10 @@ export function tickTurn(input: WorldState): TickResult {
       // protects — an operative good enough to succeed on all but a natural 20
       // is only ever exposed on that 20 — which is the right shape, and bounded
       // at 5% rather than at nothing.
+      watchNotes.set(agent.id, `attempted ${agent.mission} on ${host.name} and it came to nothing.`);
       if (roll >= 21 - profile.exposureRisk) {
         agent.exposed = true;
+        watchNotes.set(agent.id, `was taken on ${host.name}. That line is closed.`);
         logEvent(
           state,
           'system',
@@ -2400,6 +2459,10 @@ export function tickTurn(input: WorldState): TickResult {
         const buyer = state.factions.find((f) => f.id === agent.ownerFactionId);
         if (buyer) buyer.credits = Math.max(0, buyer.credits - turned * SHIP_COST);
 
+        watchNotes.set(
+          agent.id,
+          `turned ${turned} of ${target.name}'s hull(s) at ${host.name}, bought at ${turned * SHIP_COST} credits.`,
+        );
         logEvent(
           state,
           'system',
@@ -2412,12 +2475,18 @@ export function tickTurn(input: WorldState): TickResult {
           (target.disposition[agent.ownerFactionId] ?? 0) - 6 * turned,
         );
       } else if (limit <= 0) {
+        watchNotes.set(
+          agent.id,
+          `finds no takers among ${target.name}'s crews on ${host.name}; they will not be bought.`,
+        );
         logEvent(
           state,
           'system',
           `${owner?.name ?? agent.ownerFactionId}'s approaches to ${target.name}'s crews on ${host.name} find no takers.`,
           agent.ownerFactionId,
         );
+      } else {
+        watchNotes.set(agent.id, `found no ${target.name} crews left at ${host.name} to approach.`);
       }
       continue;
     }
@@ -2430,6 +2499,12 @@ export function tickTurn(input: WorldState): TickResult {
       if (left === 0) delete host.ships[target.id];
       else host.ships[target.id] = left;
       const lost = before - left;
+      watchNotes.set(
+        agent.id,
+        lost > 0
+          ? `destroyed ${lost} of ${target.name}'s hull(s) at ${host.name}.`
+          : `found nothing of ${target.name}'s left at ${host.name} to strike.`,
+      );
       if (lost > 0) {
         logEvent(
           state,
@@ -2454,7 +2529,64 @@ export function tickTurn(input: WorldState): TickResult {
       );
     }
     // income_penalty and stat_debuff are applied where they are read
-    // (ledgerFor and effectiveStats), so they cannot double-apply here.
+    // (ledgerFor and effectiveStats), so they cannot double-apply here. They
+    // still report, because "applied elsewhere" was being heard as "produces
+    // nothing" — a theft draining 15 a turn was exactly as silent as a
+    // surveillance post that did nothing at all.
+    if (agent.effect.kind === 'income_penalty') {
+      watchNotes.set(
+        agent.id,
+        `is skimming ${agent.effect.perTurn} a turn out of ${target.name}'s accounts at ${host.name}.`,
+      );
+    } else if (agent.effect.kind === 'stat_debuff') {
+      watchNotes.set(
+        agent.id,
+        `is costing ${target.name} ${agent.effect.magnitude} ${agent.effect.stat} for as long as it is in place.`,
+      );
+    } else if (agent.effect.kind === 'intel') {
+      // What the watcher can actually see: work at this world that is not its
+      // own master's. This is the output the effect never had — the reason a
+      // player could run four watchers for seven turns and read nothing.
+      const seen = state.pendingOrders.filter(
+        (o) =>
+          o.factionId !== agent.ownerFactionId &&
+          (o.originId === agent.systemId || o.targetId === agent.systemId),
+      );
+      watchNotes.set(
+        agent.id,
+        seen.length === 0
+          ? `reports nothing moving at ${host.name}.`
+          : `reports from ${host.name}: ${seen
+              .map((o) => {
+                const who = state.factions.find((f) => f.id === o.factionId)?.name ?? o.factionId;
+                return `${who} — ${o.label || o.type} (${o.progress}/${o.durationTurns})`;
+              })
+              .join('; ')}.`,
+      );
+    }
+  }
+
+  // One line per operative, and ONLY for the player's own.
+  //
+  // A watch report is private intelligence, and the event log is shipped to the
+  // browser whole — so logging every faction's reports would hand the player a
+  // transcript of what four rival spy networks can see, which is the exact
+  // opposite of the fog the same tick is enforcing. NPC operatives still work;
+  // their product reaches their own prompt block through `ordersVisibleTo` and
+  // has no business in the player's record.
+  //
+  // Written before `spentAgents` is filtered, so a one-shot mission still
+  // reports the strike it was spent on.
+  for (const agent of state.agents) {
+    if (agent.ownerFactionId !== state.playerFactionId) continue;
+    const note = watchNotes.get(agent.id) ?? 'has nothing to report.';
+    const where = state.systems.find((sys) => sys.id === agent.systemId)?.name ?? agent.systemId;
+    logEvent(
+      state,
+      'intel',
+      `[${agent.mission} · ${where}] Your operative ${note}`,
+      agent.ownerFactionId,
+    );
   }
 
   // Spent operatives leave the board; they were never a standing asset.

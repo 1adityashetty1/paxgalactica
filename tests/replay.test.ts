@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { emptyJournal, replay, type Journal } from '../src/engine/journal.js';
 import { Campaign } from '../src/engine/campaign.js';
+import { MemoryCampaignStore } from '../src/engine/store.js';
 import { fleetStrengthOf, MAX_NARRATIVE_CREDITS } from '../src/domain/state.js';
 
 /**
@@ -223,18 +224,25 @@ describe('campaign / journal agreement', () => {
     // correctly called it out: an auditor diffing a narrative against it would
     // confirm an effect that never happened, which is the exact bug class the
     // field exists to expose.
+    //
+    // This asserted `['adjust_credits']` while batches applied partially, and
+    // was not revisited when they became atomic — so it went on pinning the
+    // pre-atomic semantics. A rejection now means the whole batch was held
+    // back, and the legal sibling did not land either: the credits are
+    // untouched, so reporting the op would be the same lie in a smaller form.
     const campaign = Campaign.start('freeworlds', 'test-applied');
+    const before = campaign.state.factions.find((f) => f.id === 'freeworlds')!.credits;
     campaign.stage(
       [
-        // Legal.
+        // Legal on its own, but it goes down with the batch.
         { op: 'adjust_credits', factionId: 'freeworlds', delta: -50 },
         // Reducer-only: rejected, and must not appear in the reported ops.
         { op: 'transfer_control', systemId: 'tio-3', toFactionId: 'freeworlds' },
       ],
       'one good, one refused',
     );
-    const reported = campaign.opsStagedSince(0) as { op: string }[];
-    expect(reported.map((o) => o.op)).toEqual(['adjust_credits']);
+    expect(campaign.opsStagedSince(0)).toEqual([]);
+    expect(campaign.state.factions.find((f) => f.id === 'freeworlds')!.credits).toBe(before);
     expect(campaign.state.systems.find((s) => s.id === 'tio-3')!.controllerFactionId).toBe('vigil');
   });
 
@@ -384,5 +392,65 @@ describe('a v1 journal still replays as it originally ran', () => {
     const out = replay(legacy(2));
     expect(out.rejectionCount).toBe(1);
     expect(out.state.treaties).toHaveLength(0);
+  });
+});
+
+/**
+ * `applied` is what the API reports back as the ops an action produced, and it
+ * has to agree with what the reducer actually did.
+ *
+ * It was computed as "the proposed ops minus the individually rejected ones",
+ * which was correct while batches applied partially and became a lie the moment
+ * `stage` started passing `atomic`. A rejection means **nothing** landed, so
+ * every surviving sibling was reported as applied when none of it was — and a
+ * corrected action reported the whole first batch *and* the correction batch,
+ * which is why ops appeared doubled and the counts in the notes matched
+ * neither list.
+ */
+describe('what a staged batch reports as applied', () => {
+  const good = { op: 'adjust_credits', factionId: 'freeworlds', delta: 50, reason: 'levy' };
+  const bad = { op: 'adjust_credits', factionId: 'nobody-at-all', delta: -10, reason: 'x' };
+
+  it('reports nothing applied when the atomic batch was held back', () => {
+    const campaign = Campaign.start('freeworlds', 'applied-atomic', new MemoryCampaignStore());
+    const before = campaign.stagedCount;
+    const res = campaign.stage([good, bad], 'test');
+
+    expect(res.rejections).toHaveLength(1);
+    // The batch did not land, so it produced no ops.
+    expect(campaign.opsStagedSince(before)).toEqual([]);
+  });
+
+  it('reports the whole batch when it did land', () => {
+    const campaign = Campaign.start('freeworlds', 'applied-clean', new MemoryCampaignStore());
+    const before = campaign.stagedCount;
+    campaign.stage([good], 'test');
+    expect(campaign.opsStagedSince(before)).toEqual([good]);
+  });
+
+  /**
+   * The shape a correction actually takes: a rejected first batch, then a
+   * corrected one. Only the second produced anything.
+   */
+  it('does not concatenate a held-back batch with its correction', () => {
+    const campaign = Campaign.start('freeworlds', 'applied-correction', new MemoryCampaignStore());
+    const before = campaign.stagedCount;
+    campaign.stage([good, bad], 'test');
+    campaign.stage([good], 'test:correction');
+
+    expect(campaign.opsStagedSince(before)).toEqual([good]);
+  });
+
+  /**
+   * `resyncPreview` recomputes `applied` for every staged batch after a commit
+   * or a tick, so it has to agree with `stage` or the reported ops would change
+   * shape underneath the player.
+   */
+  it('still reports nothing applied after a resync', () => {
+    const campaign = Campaign.start('freeworlds', 'applied-resync', new MemoryCampaignStore());
+    const before = campaign.stagedCount;
+    campaign.stage([good, bad], 'test');
+    campaign.tick();
+    expect(campaign.opsStagedSince(before)).toEqual([]);
   });
 });

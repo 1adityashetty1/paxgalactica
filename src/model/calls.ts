@@ -272,6 +272,55 @@ export async function verifyBreachRelevance(
   return { relevant: res.value.relevant, why: res.value.why, costUsd: res.costUsd };
 }
 
+/* ------------------------------------------------------------------ */
+/* The epilogue                                                        */
+/* ------------------------------------------------------------------ */
+
+export const EpilogueSchema = z.object({
+  slides: z.array(
+    z.object({
+      factionId: z.string().min(1),
+      text: z.string().min(1).max(1200),
+    }),
+  ),
+  closing: z.string().min(1).max(1200),
+});
+export type EpilogueOutput = z.infer<typeof EpilogueSchema>;
+
+/**
+ * Close the campaign.
+ *
+ * Runs once, on the turn the limit is reached. Handed a dossier of facts
+ * computed in `engine/epilogue.ts` rather than raw state, for the reason the
+ * prompt states: this is the last thing the player reads and there is no turn
+ * left in which to catch an invented war.
+ *
+ * The caller is expected to fall back to `fallbackEpilogue` if this throws. An
+ * ending that fails to appear is worse than a plain one, and a model call can
+ * fail for reasons that have nothing to do with the campaign.
+ */
+export async function narrateEpilogue(
+  dossier: string,
+  characters: string,
+): Promise<{ output: EpilogueOutput; costUsd: number }> {
+  const res = await callStructured({
+    kind: 'epilogue',
+    label: 'epilogue',
+    system: loadPrompt('epilogue'),
+    user: [
+      '# Dossier — the galaxy at the last bell',
+      '',
+      dossier,
+      '',
+      '# The powers, in their own terms',
+      '',
+      characters,
+    ].join('\n'),
+    schema: EpilogueSchema,
+  });
+  return { output: res.value, costUsd: res.costUsd };
+}
+
 export async function resolveAction(
   state: WorldState,
   action: string,
