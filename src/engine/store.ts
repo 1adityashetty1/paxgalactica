@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
+import { EpilogueViewSchema } from './epilogue.js';
 
 /**
  * Campaign persistence, behind an interface.
@@ -38,6 +39,12 @@ export const SaveFileSchema = z.object({
    * only the extraction pass turns them into ops.
    */
   transcripts: z.record(z.string(), z.array(z.array(ChatMessageSchema))),
+  /**
+   * The ending, once a campaign has one. Optional, so every save written
+   * before endings existed still loads — and an unfinished campaign simply has
+   * none.
+   */
+  epilogue: EpilogueViewSchema.optional(),
 });
 export type SaveFile = z.infer<typeof SaveFileSchema>;
 

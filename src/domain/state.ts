@@ -324,7 +324,13 @@ export type PendingOrder = z.infer<typeof PendingOrderSchema>;
 
 export const EventLogEntrySchema = z.object({
   turn: z.number().int().min(0),
-  kind: z.enum(['narrative', 'system', 'order', 'diplomacy', 'rejection', 'clamp']),
+  /**
+   * `intel` is what your own operatives report, and it is the one kind that is
+   * PRIVATE: the event log is shipped to the browser whole, so an entry here
+   * must never contain something the player could not know. Only the player's
+   * own agents write these. See `reportWatch` in the reducer.
+   */
+  kind: z.enum(['narrative', 'system', 'order', 'diplomacy', 'rejection', 'clamp', 'intel']),
   factionId: z.string().nullable().default(null),
   text: z.string(),
 });
@@ -382,28 +388,6 @@ export function dispositionBetween(
 ): number {
   if (from === to) return 100;
   return getFaction(s, from)?.disposition[to] ?? 0;
-}
-
-/** Orders `factionId` is allowed to see — its own, plus anything visible. */
-export function ordersVisibleTo(s: WorldState, factionId: string): PendingOrder[] {
-  // Systems where this faction has a live intel agent. An operative in place is
-  // the whole point of surveillance: it turns a hidden project into a visible
-  // one, which is what makes long builds worth hiding AND worth spying on.
-  const watched = new Set(
-    (s.agents ?? [])
-      .filter(
-        (a) => a.ownerFactionId === factionId && !a.exposed && a.effect.kind === 'intel',
-      )
-      .map((a) => a.systemId),
-  );
-
-  return s.pendingOrders.filter(
-    (o) =>
-      o.factionId === factionId ||
-      o.visibility.includes(factionId) ||
-      watched.has(o.targetId) ||
-      watched.has(o.originId),
-  );
 }
 
 /* ------------------------------------------------------------------ */

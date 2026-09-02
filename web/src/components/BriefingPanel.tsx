@@ -151,6 +151,60 @@ export function BriefingPanel({
             </div>
           )}
 
+          {briefing.watch.length > 0 && (
+            <div className="brief-group">
+              {/*
+                Every live operative, every turn, including the ones with
+                nothing to say. An idle watcher must be VISIBLY idle: the whole
+                `intel` effect went unreachable for the life of the project
+                because silence read exactly like absence.
+              */}
+              <h4>Your operatives</h4>
+              <ul className="watch">
+                {briefing.watch.map((w) => (
+                  <li key={`${w.systemId}-${w.mission}`}>
+                    <span className="watch-head">
+                      {w.mission} · {w.where}{' '}
+                      <span className="muted">{w.successChance}%</span>
+                    </span>
+                    {w.sees.length === 0 ? (
+                      <span className="watch-quiet">Nothing moving. {w.effect}.</span>
+                    ) : (
+                      w.sees.map((line, i) => (
+                        <span key={i} className="watch-sees">
+                          {line}
+                        </span>
+                      ))
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {briefing.rumoured.length > 0 && (
+            <div className="brief-group">
+              {/*
+                The hook the whole intelligence mechanic hangs on. A rumour
+                names a place and a clock: enough to know there is something
+                worth an operative, and not enough to act on. Rendered as its
+                own group rather than as greyed-out rows in "work you can see",
+                because the two are different KINDS of knowledge and running
+                them together invites reading a rumour as a fact.
+              */}
+              <h4>Unidentified activity</h4>
+              <ul className="rumours">
+                {briefing.rumoured.map((r, i) => (
+                  <li key={i} style={{ color: ansi256ToHex(r.color) }}>
+                    {r.factionName} has something under way at {r.where} —{' '}
+                    {r.completesNextTurn ? 'lands next turn' : `${r.remaining} turns left`}.
+                    <span className="rumour-hint"> No detail without an operative in place.</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {briefing.quiet && <p className="empty">Nothing under way. The Rim is quiet.</p>}
         </>
       )}

@@ -134,13 +134,16 @@ export function useGame() {
   );
 
   const start = useCallback(
-    (factionId: string) =>
+    (factionId: string, maxTurns: number) =>
       guard(async () => {
-        const v = await api.newCampaign(factionId);
+        const v = await api.newCampaign(factionId, 'campaign', maxTurns);
         setView(v);
         setNeedsCampaign(false);
         setMessages([]);
         say(`You command the ${v.state.factions.find((f) => f.id === factionId)?.name}.`, 'system');
+        if (v.maxTurns !== null) {
+          say(`The campaign runs ${v.maxTurns} turns. Make them count.`, 'brief');
+        }
       }),
     [guard, say],
   );

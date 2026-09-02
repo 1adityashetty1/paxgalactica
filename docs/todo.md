@@ -1,5 +1,415 @@
 # TODO — known bugs and open design questions
 
+## Where things stand (2026-09-01) — the espionage playtest
+
+A 7-turn Ojjul Nar Combine run (~$6, Opus 5) played with one standing
+instruction: **use agents as spies extensively, and see whether the game gives
+intelligence gathering any narrative scaffolding.**
+
+The answer was no, and the reason was worse than a missing surface: **the player
+already had perfect information, for free.** That is item **30**, and it is
+**now fixed** — visibility is decided in code from the order's type and your own
+presence, an operative sees through the rest, and everything else surfaces as a
+rumour that names a place worth looking at.
+
+Two real bugs came with it — a failed espionage check places the agent anyway
+(**31**), and a debt restructure has to route through `forgive_debt`, minting
+principal and paying goodwill for a forgiveness that forgave nothing (**32**). Three
+smaller ones (**33**, **34**, **35**) are gaps in work landed this session:
+`ratifyTurns` never fired, atomic rollback discards the rejection log, and a
+held-back batch reported its ops as applied. **34 and 35 are now fixed** —
+both were regressions from the atomic-batch work, and both broke the account of
+the world rather than the world.
+
+The half that worked is worth as much as the half that did not, and it is
+written up as **36**: suborning is a complete, legible, devastating strategy,
+and acting on hidden information is fully built. Only *obtaining* it is not.
+
+> **Provenance.** Items **30, 31, 32, 34 and 35** were verified directly — against
+> the code, or by replaying `saves/spy_playtest.json`, or both. Two of them came
+> back *different from the report*: 32 is not a red-line bypass (nothing was
+> forgiven), and 35 is not a display quirk (it is 34's bug in a second place).
+> **33 is still the playtest agent's unconfirmed claim** and says so. 36 is its
+> account of what worked, and is not independently checked.
+
+---
+
+## 30. FIXED — intelligence gathering had no surface, because nothing was hidden
+
+**Built: A4 + A2, B2, C1** from the options below. `src/domain/intel.ts`, 17
+tests in `tests/intel.test.ts`, full write-up in CLAUDE.md.
+
+### What was wrong
+
+`ordersVisibleTo` had exactly one caller — `src/model/serialize.ts:234`,
+building prompt blocks for a *model*. Every player-facing path read
+`state.pendingOrders` whole: `report.advanced`, `GET /api/campaign`, the orders
+panel. The loop this project describes everywhere existed only for NPCs.
+Measured: four `surveillance` operatives over seven turns produced **zero**
+output, because nothing they could reveal was concealed.
+
+### Why "just turn the filter on" was a trap
+
+On the final board of that campaign, four orders were pending and `visibility`
+was **empty on all four**. `prompts/resolution.md:258` asks the resolution call
+to name who would plausibly notice, and it does not. Flipping the filter would
+have moved the game from *sees everything* to **sees almost nothing**, with the
+only dial that reopens it one the model had already proven it will not turn — a
+fleet arriving with no way to have seen it coming.
+
+### What was built
+
+- **A4 — visibility by order type.** `PUBLIC_CATEGORIES` asks a physical
+  question: could a neighbour with no operative tell? Eight types pass
+  (movement, courier, decree, blockade, ratification, garrison, fortification,
+  infrastructure); the other eight happen inside a yard or a back room. It sits
+  beside the type because the type is *already* the duration category and
+  already gates `onComplete` — a third column, not a fourth taxonomy.
+- **A2 — you see your own space**, for anything physical.
+- **`COVERT_CATEGORIES` — the correction the user caught.** The first draft let
+  A2 override secrecy, so an `espionage` order targeting your capital was
+  revealed to you *because* it targeted your capital. That is the mechanic
+  cancelling itself out, and worse than the bug it replaced: an oversight would
+  have become a rule. `espionage`, `counter_intelligence`, `political_maneuver`
+  and `commerce_raiding` are now reachable only by an operative of your own, or
+  by the acting power choosing to be seen.
+- **B2 — rumours.** Everything else reports whose, where, and how long, and
+  nothing more. A separate record, not a redacted `PendingOrder`: reusing that
+  shape would mean inventing a `type` and an `id` for something the player must
+  not know the type of, and shipping the real id would let them interrupt work
+  they cannot see. Tests assert the label, type and id are absent from the
+  serialized form.
+- **C1 — snapshot.** Burn the operative and the programme reverts to a rumour.
+  Last-known-position needs durable state on `WorldState`; noted, not built.
+
+### Verified on the campaign that opened this
+
+At turn 7 the three physical programmes are visible to all five powers, and the
+Iron Vigil's counter-intelligence sweep is a rumour to the other four. It sits
+at **Ghorman Deep** — the exact world the playtest had put a theft operative on
+— so the player now reads *"the Vigil has something under way at Ghorman Deep,
+1 of 2 turns"* and has a reason to look.
+
+### One thing that looked like a cost and is not
+
+`shipsInTransit` and `fleetStrengthOf` derive from `pendingOrders`, so a rival's
+navy could have read low under redaction. It does not: `fleet_movement` is
+public, so every movement survives and both totals stay exact for every faction.
+A test pins the invariant, so making movement hideable cannot quietly turn two
+exact counts into partial ones.
+
+### Still open, and deliberately separate
+
+**The `intel` effect produces no output of its own.** Converting a rumour into a
+full row is now a real payoff and is visible, but there is still no *"your
+operatives report"* section — the small piece that would make an agent read as
+intelligence rather than as a permissions change. Cheap, orthogonal, and no
+longer hollow now that something is actually secret.
+
+## 31. OPEN — a failed espionage check places the agent anyway
+
+**CONFIRMED.** Verified twice against `saves/spy_playtest.json` by stepping the
+journal, and the mechanism is confirmed in the code.
+
+| turn | roll | outcome | narrative said | what landed |
+|---|---|---|---|---|
+| 0 | **d20 1** +4 vs DC 11 | `critical_failure` | *"A Combine operative watching Ord Vantic is captured and exposed by Iron Vigil counter-intelligence; the confession is broadcast across the Tion Marches."* | `agt-0-1`, surveillance at `tio-3` (Ord Vantic), live, unburned, `successChance: 56` |
+| 1 | d20 5 +4 vs DC 18 | `failure` | *"…the theft did not succeed"* | `agt-1-1`, theft at `tio-4`, `income_penalty` **15/turn, permanent** |
+
+**Two guards exist and neither covers this.**
+
+- `boundPayloadsToOutcome` (`src/domain/development.ts:255`) returns early for a
+  success band and otherwise only rewrites ops where `op === 'issue_order'`,
+  reading `onComplete`. A `deploy_agent` passes through untouched on every band.
+- `routeCovertAction` does have the right rule and states it — *"a failed
+  attempt places no operative — the man was caught at the door"* — but it only
+  governs whether it **appends** one. On a failure it returns
+  `{ ops, notes: [] }`, and `ops` still contains whatever `deploy_agent` the
+  resolution call emitted for itself. The guard covers the path the engine
+  builds and not the path the model takes.
+
+So the dice are decorative for espionage: the model is handed the settled
+outcome, narrates the operative being caught, and emits the asset anyway. Same
+class as the combat leak (item 1) and the payload leak (item 8), and the third
+instance of it.
+
+**The fix belongs in `boundPayloadsToOutcome`**, which is the pass that already
+knows the band and already runs on both the first batch and the correction:
+strip `deploy_agent` on `failure` / `critical_failure` with a note. `partial` is
+the open question — an operative is placed or not, so there is no magnitude to
+halve. Placing them at reduced effect, or with the exposure risk of the next
+mission up, are both defensible; placing them intact is not.
+
+Worth doing at the same time: `routeCovertAction`'s failure guard becomes
+redundant once the strip is central, and leaving two rules for one thing is how
+this hole opened.
+
+## 32. OPEN — a restructure has to route through `forgive_debt`, and picks up a windfall on the way
+
+**Verified by replaying `saves/spy_playtest.json`.** The playtest agent reported
+this as a red-line bypass. **It is not one** — nobody was let off anything, and
+the correction matters, because the real defect is a missing primitive rather
+than a missing guard.
+
+Twice, the Combine agreed to *restructure* Drajk's refit debt. Extraction had no
+op for that, so it emitted the only retirement primitive there is —
+`forgive_debt` — followed by `establish_debt` for the new terms:
+
+| | balance at retirement | replaced by | minted |
+|---|---|---|---|
+| `debt-0` | 400, `delinquent`, 2 missed | 480 @ 20/turn | **+80** |
+| `debt-2-0` | 460 | 480 @ 18/turn | **+20** |
+
+The end state after 7 turns: Drajk owes **408** on `debt-3-0`, `current`. The
+obligation survived and grew. Read as a red line, the Combine kept it.
+
+**What is actually wrong is the two things the retirement half pays out.**
+
+1. **`DEBT_FORGIVENESS_GOODWILL` (20) fires on a forgiveness that forgave
+   nothing** — twice, so **+40** disposition. Drajk went from a seeded 30 to
+   **96** toward the Combine over the campaign; the two restructures supplied
+   60% of that swing. The constant exists to make declining to forgive a real
+   sacrifice. Here it paid full price for a debt that got *larger*.
+2. **The principal is re-declared rather than carried**, so a restructure mints
+   whatever gap the model writes down — +80 and +20 here, both plausibly just
+   rounding to a round number, neither bounded by anything but
+   `MAX_DEBT_PRINCIPAL` (1200). `assign_debt` was built precisely so that moving
+   a debt keeps its balance and history; retiring-and-reissuing has no such rule.
+
+A third effect, harder to price: the `delinquent` status and its two
+`missedPayments` were **laundered clean**. `DEBT_DEFAULT_DISPOSITION_COST` bleeds
+6 a turn for as long as a default continues — that is how a creditor's patience
+is modelled — and a restructure resets it to zero. That may well be correct
+(rescheduling is exactly what a creditor does instead of writing off), but it
+should be a decision rather than a side effect of the op chosen to express it.
+
+**The fix is a `restructure_debt` op**, extraction-only like `establish_debt`,
+which keeps the debt id, creditor, `establishedTurn` and **balance**, and moves
+only `perTurn`, `text` and status. It pays no goodwill, because nothing was
+forgiven. That removes all three effects at once without needing any ruling
+about red lines, and it is reducer arithmetic rather than judgement in a
+prompt — the same answer `assign_debt` was for the mint-on-transfer bug in item
+24, which is the same bug wearing a different verb.
+
+Worth noting the shape: **item 24 was "a debt cannot be transferred, only
+minted". This is "a debt cannot be rescheduled, only minted."** Both times, a
+missing verb forced the model through a primitive that did more than was meant.
+The remaining verb-shaped hole is a *partial* write-down, which today would have
+to be expressed the same way and would mint in the same manner.
+
+## 33. OPEN — `ratifyTurns` never fired
+
+**Playtest finding. Not independently verified.**
+
+Two accords were explicitly gated on ratification in the transcript — *"nothing
+moves before then, not the paper, not the world"* — and `assign_debt` executed
+immediately on the same timestamp.
+
+The agent's own caveat is the useful part: **`assign_debt` has no ratification
+field**. `ratifyTurns` lives on `form_treaty`, which records a `pending` treaty
+with an `effectiveTurn`; there is nowhere on a debt assignment to put a delay,
+so extraction had no way to express what was agreed even if it had tried.
+
+Which means this is one of two things, and they want different fixes:
+
+- **the prompt never reaches for it** (extraction guidance gap), or
+- **a deferred non-treaty op has no representation at all**, which is a design
+  question: does the game want a general "pending op" concept, or does deferral
+  stay a property of treaties only?
+
+The second reading is the more likely one and the more interesting. Worth
+checking whether a *treaty* gated on ratification does still work before
+concluding anything — that path was verified when it was built.
+
+---
+
+## 34. FIXED — atomic rollback discarded the rejection log along with the ops
+
+**Verified, cause found, fixed.** A regression from the atomic-batch work landed
+this session (item 27), and the reason the `rejection` log filter has had
+nothing to show.
+
+Replaying `saves/spy_playtest.json`:
+
+```
+rejections during replay:      6
+rejection events in eventLog:  0
+total events in eventLog:     127
+```
+
+The cause is two lines apart in behaviour and 1,300 apart in the file:
+
+- `reject()` (`src/domain/reducer.ts:567`) records the rejection **into
+  `state`** via `logEvent(state, 'rejection', ...)`.
+- the atomic path (`src/domain/reducer.ts:1884`) returns
+  **`state: clone(input)`** — the state as it was *before* the batch.
+
+So the rollback that correctly discards the ops also discards the account of why
+they were discarded. The player gets the summary note (*"Nothing in this batch
+was applied: N of M ops were rejected"*) and no itemisation anywhere, which is
+exactly what the playtest observed. CLAUDE.md's claim that rejections are
+recorded in the event log is currently false, and the browser ships a filter for
+a kind that is never emitted.
+
+**Fixed** by collecting the rejection entries in their own array as `reject()`
+records them, and appending them to the rolled-back state. The rollback returns
+`clone(input)` *plus* the log, so the discard removes the ops and keeps the
+account of why.
+
+**Scoped deliberately to `reject()`.** `capSelfInflictedLosses` also logs under
+the `'rejection'` kind, but it describes a trim that did not happen when the
+batch is held back — it goes with the state it describes, exactly as its note
+already does. There is a test for each direction.
+
+Re-verified end to end: the same campaign now replays to **byte-identical state**
+(Combine credits 3455, disposition 52, all four debts unchanged) with **6**
+rejection entries in a 133-entry log where there were 0 in 127.
+
+**The second half of the playtest's claim turned out to be the same bug in a
+different place** — see item 35, which is `applied` computed the pre-atomic way.
+
+## 35. FIXED — a held-back batch reported its ops as applied
+
+**Confirmed, root cause found, fixed.** The playtest read this as "the
+correction batch is concatenated to the first". That is the symptom; the cause
+is the same one as item 34, and it is again a regression from the atomic-batch
+work.
+
+`Campaign.stage` computed what to report as applied by removing the
+*individually rejected* ops:
+
+```ts
+const refused = new Set(res.rejections.map((r) => r.op));
+const applied = ops.filter((op) => !refused.has(op));
+```
+
+That was correct while batches applied partially. `stage` passes `atomic = true`,
+so **a rejection means nothing landed** — and every legal sibling in a held-back
+batch was still reported as applied. A corrected action therefore reported the
+whole first batch (which did nothing) *plus* the correction batch, which is
+exactly the doubling seen, and why the op counts quoted in the notes matched
+neither list. The world was right throughout, which is why it read as cosmetic.
+
+`resyncPreview` carried an identical copy of the same computation, so the
+reported ops would also change shape underneath the player on the next commit or
+tick.
+
+**Fixed** in `src/engine/campaign.ts`: both sites now report `[]` when the batch
+was held back and the whole batch when it landed.
+
+**A stale test was pinning the bug.** `tests/replay.test.ts` asserted
+`['adjust_credits']` for a one-good-one-rejected batch — written before
+atomicity and never revisited, so it went on asserting the pre-atomic
+semantics against post-atomic code. It now asserts that nothing is reported
+*and* that the legal sibling's credits are untouched, which is the fact that
+makes reporting it a lie.
+
+Four new tests, three of which fail against the pre-fix code, including the
+concatenation case directly.
+
+> **The pattern across 34 and 35 is worth naming.** Making batches atomic changed
+> what "applied" means, and three separate things still computed it the old way:
+> the rejection log (34), `stage` and `resyncPreview` (35). None of them broke
+> the world — all three broke the *account* of the world, which is why the suite
+> was clean and a playtest found them. A change to a core semantic wants a sweep
+> of everything that reports on it, not only everything that depends on it.
+
+## 39. DONE — a campaign has a length and an ending
+
+`POST /api/campaign/new` takes `maxTurns` (10–100, slider in the picker, 30 by
+default). When the committed turn reaches it the campaign goes read-only and an
+epilogue is written.
+
+- **The limit lives on the journal seed entry**, not `WorldState` — a rule about
+  this campaign, not a fact about the galaxy, and the seed entry is the one
+  place written once and never again. Optional, so an existing journal stays
+  endless rather than acquiring a deadline it was never played under.
+- **`src/engine/epilogue.ts` computes the dossier; the prompt narrates it.**
+  `arc` (ascendant/diminished/holding/broken) is settled in code, handed over as
+  *"do not overturn"*, and printed beside the prose so the story can be checked
+  against the board.
+- **It cannot fail.** `fallbackEpilogue` is a complete deterministic ending; the
+  view carries `fallback: true` and the screen says so. Slides are reconciled
+  against the dossier, so a missing or invented one cannot leave a hole.
+- Cached beside the journal like transcripts — reopening a finished campaign
+  reads the ending you were given, and does not pay for it twice. Not world
+  state; `verifyReplay` unaffected.
+
+13 tests in `tests/epilogue.test.ts`. Building it caught a real gap:
+`fromSaveFile` did not restore the epilogue, so a finished campaign reloaded as
+unfinished.
+
+---
+
+## 38. DONE — NPCs act on their own doctrine, not only in reply to the player
+
+**The NPCs were not passive; they were solipsistic.** Measured over seven turns:
+16 fleet movements, six attacks, **every attack aimed at the player on one
+world**, and zero NPC-vs-NPC aggression while `vigil -> krayt` sat at −87.
+
+The five doctrine bots moved out of `src/balance.ts` into
+`src/domain/initiative.ts` — one definition, the harness imports it, its 10
+tests pass unchanged — and now run in `endTurn` for every faction the model did
+not speak for. Outside the `committed.applied > 0` gate, so a quiet turn still
+moves. Free and deterministic; the journal records the ops, not the reasoning.
+
+**Measured on a 12-turn campaign in which the player never acts** (previously
+inert in every respect): six worlds change hands and the Vigil takes two off
+Meridian. NPC-vs-NPC attacks **0 → 2**.
+
+`honourTreaties` is a post-filter over proposed ops rather than a check threaded
+into five bots, so a bot added later inherits it — it withholds an attack on a
+`non_aggression`/`ceasefire`/`mutual_defense` partner and interdiction against a
+`trade_accord` partner, and reports what it withheld. Both guard tests fail
+without it. The bots are fog-clean by construction and a test pins it.
+
+**Retroactive narration, no extra call:** a bot logs a third-person account, and
+`serializeRecentLog` carries it into the next reaction call — so the faction
+accounts for its own past move when it next speaks.
+
+---
+
+## 37. DONE — every operative reports, every turn
+
+`intel` had no branch at all, and `income_penalty` / `stat_debuff` are read
+where they are used — so **three of five agent effects produced no output
+whatsoever** and a working operative was indistinguishable from a broken one.
+
+Every branch now records a line and anything that did not reports *"nothing to
+report"*, which is the load-bearing case. Replaying the campaign that opened
+item 30: **34 intel lines across seven turns, where there were 0.** Plus a
+standing *Your operatives* briefing section, derived from state so it is right
+on resume.
+
+`intel` is the one **private** event kind: the log ships whole, so only the
+player's agents write it — otherwise the player would be handed a transcript of
+what four rival spy networks can see, the exact opposite of the fog the same
+tick enforces. Tested.
+
+---
+
+## 36. Confirmed working — everything downstream of obtaining information
+
+Recorded because it is what makes item 30 worth doing: the *only* missing piece
+of an intelligence playstyle is obtaining the information.
+
+- **Suborning is a complete strategy, and devastating.** Two `defection` cells
+  took Meridian's home fleet apart with no battle fought: `slu-1` went
+  `{meridian: 13}` → `{meridian: 5, hutt: 12}` → **`{hutt: 17}`**. Every tick
+  reported in plain language, every hull billed at `SHIP_COST`, and Meridian
+  ended the campaign at **−100** disposition. That is the "information advantage
+  instead of a military one" the design asks for, paying off in full.
+- **Acting on hidden information is fully built.** `interrupt_order` against an
+  order id read out of state destroyed Meridian's counter-espionage programme
+  outright.
+- **Sabotage and exposure are legible.** Both read clearly in the log without
+  reconstruction.
+- **The NPCs held their character**, refusing well and in role throughout.
+- **`approach` fired four times**, always in the window it was designed for —
+  the turn the player has already ended.
+
+---
+
 ## Where things stand (2026-08-19)
 
 **Just fixed:** items **23, 24, 25, 26** and the one plain bug inside **29**

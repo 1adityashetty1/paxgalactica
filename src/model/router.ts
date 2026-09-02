@@ -17,6 +17,13 @@ export type CallKind =
    * so a test scripting colour text cannot accidentally answer it.
    */
   | 'breach_relevance'
+  /**
+   * The narrator that closes a campaign. Its own kind because it runs exactly
+   * once, is the longest single piece of prose the game produces, and is the
+   * one call whose failure must never reach the player — see
+   * `fallbackEpilogue`.
+   */
+  | 'epilogue'
   | 'flavor';
 
 export interface TierConfig {
@@ -84,6 +91,9 @@ export const ROUTES: Record<CallKind, ModelTier> = {
   // A yes/no about whether two sentences are about the same thing. Cheap tier,
   // and it only runs when a breach was actually named.
   breach_relevance: 'flavor',
+  // Once per campaign, and it is the last thing the player reads. The one call
+  // where paying for the better tier is unarguable.
+  epilogue: 'reasoning',
   flavor: 'flavor',
 };
 

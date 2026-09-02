@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { BattleReportSchema } from '../domain/battle.js';
 import { CheckOutcomeSchema, StatNameSchema } from '../domain/checks.js';
+import { EpilogueViewSchema } from '../engine/epilogue.js';
+import { OrderRumourSchema } from '../domain/intel.js';
 import { WorldStateSchema } from '../domain/state.js';
 
 /**
@@ -78,6 +80,32 @@ export const BriefingProjectSchema = z.object({
   isMovement: z.boolean(),
 });
 
+/**
+ * A rival programme known to exist and nothing more — see `domain/intel.ts`.
+ * No label, no type and no order id: a rumour names a place worth watching,
+ * and shipping the id would let the player interrupt work they cannot see.
+ */
+export const BriefingRumourSchema = z.object({
+  where: z.string(),
+  factionId: z.string(),
+  factionName: z.string(),
+  color: z.number().int(),
+  progress: z.number().int(),
+  duration: z.number().int(),
+  remaining: z.number().int(),
+  completesNextTurn: z.boolean(),
+});
+
+/** One of the player's own operatives, and what it can see. */
+export const BriefingWatchSchema = z.object({
+  where: z.string(),
+  systemId: z.string(),
+  mission: z.string(),
+  effect: z.string(),
+  successChance: z.number().int(),
+  sees: z.array(z.string()),
+});
+
 export const BriefingCompletionSchema = z.object({
   label: z.string(),
   where: z.string(),
@@ -95,6 +123,10 @@ export const BriefingSchema = z.object({
   completed: z.array(BriefingCompletionSchema),
   inProgress: z.array(BriefingProjectSchema),
   observed: z.array(BriefingProjectSchema),
+  /** Work you know is happening and cannot identify. */
+  rumoured: z.array(BriefingRumourSchema),
+  /** Your operatives, and what each of them has to say. */
+  watch: z.array(BriefingWatchSchema),
   /** Battles fought this turn, with the arithmetic that decided them. */
   battles: z.array(BattleReportSchema),
   quiet: z.boolean(),
@@ -134,7 +166,20 @@ export const ChatMessageSchema = z.object({
 
 /** Everything the client needs to draw the whole game. */
 export const CampaignViewSchema = z.object({
+  /**
+   * The world **as the player sees it**: `pendingOrders` carries only the work
+   * they can actually observe, so everything the client derives from it — the
+   * map's in-transit fleets, the orders panel, a system's activity — narrows
+   * with it rather than each component having to remember to filter.
+   *
+   * The server serves a redacted view rather than the campaign's own state.
+   * See `domain/intel.ts` for what that costs: a rival's fleet total reads low
+   * by whatever it has under way in secret, which is the fog working and must
+   * be labelled as partial rather than presented as a count.
+   */
   state: WorldStateSchema,
+  /** Rival work known to exist and not identifiable. Never carries an order id. */
+  rumours: z.array(OrderRumourSchema),
   staged: z.array(StagedItemSchema),
   /** Null before the first turn has been ended. */
   briefing: BriefingSchema.nullable(),
@@ -147,8 +192,14 @@ export const CampaignViewSchema = z.object({
    */
   actionPoints: z.object({ left: z.number().int().min(0), perTurn: z.number().int().min(1) }),
   name: z.string(),
+  /** Turns this campaign runs for, or null for one with no ending. */
+  maxTurns: z.number().int().nullable(),
+  /** Set once time has run out. While it is present the campaign is read-only. */
+  epilogue: EpilogueViewSchema.nullable(),
 });
 export type CampaignView = z.infer<typeof CampaignViewSchema>;
+export { EpilogueViewSchema };
+export type { EpilogueView } from '../engine/epilogue.js';
 
 /**
  * How many messages the player may send in one diplomatic channel.
@@ -286,6 +337,15 @@ export type ApiError = z.infer<typeof ApiErrorSchema>;
 export const NewCampaignRequestSchema = z.object({
   factionId: z.string().min(1),
   name: z.string().regex(/^[\w.-]+$/).default('campaign'),
+  /**
+   * How many turns the campaign runs before it ends.
+   *
+   * Bounded at both ends on purpose: below 10 there is not enough time for a
+   * multi-turn programme to land, and past 100 the ending stops being a
+   * horizon the player can plan against. Omit for a campaign with no ending,
+   * which is what every campaign was before this existed.
+   */
+  maxTurns: z.number().int().min(10).max(100).optional(),
 });
 
 export const ActionRequestSchema = z.object({

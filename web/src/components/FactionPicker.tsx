@@ -14,13 +14,17 @@ export function FactionPicker({
   onResume,
   onImport,
 }: {
-  onStart: (factionId: string) => void;
+  onStart: (factionId: string, maxTurns: number) => void;
   onResume: (name: string) => void;
   onImport: (file: File) => void | Promise<void>;
 }) {
   const [factions, setFactions] = useState<Playable[]>([]);
   const [saves, setSaves] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // 30 is the default because it is long enough for two development programmes
+  // to pay for themselves and a war to be fought and lost, and short enough
+  // that the ending is a horizon rather than a rumour.
+  const [maxTurns, setMaxTurns] = useState(30);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -76,6 +80,24 @@ export function FactionPicker({
         </button>
       </div>
 
+      <h2>Campaign length</h2>
+      <div className="length-picker">
+        <input
+          type="range"
+          min={10}
+          max={100}
+          step={5}
+          value={maxTurns}
+          onChange={(e) => setMaxTurns(Number(e.target.value))}
+          aria-label="Campaign length in turns"
+        />
+        <span className="length-value">{maxTurns} turns</span>
+      </div>
+      <p className="hint">
+        When the last turn is played the campaign ends and the Rim is summed up. Long enough to
+        matter, short enough to finish — a shipyard takes five turns, and a war rather longer.
+      </p>
+
       <h2>Choose your faction</h2>
       <div className="faction-cards">
         {factions.map((f) => (
@@ -83,7 +105,7 @@ export function FactionPicker({
             key={f.id}
             className="faction-card"
             style={{ borderColor: ansi256ToHex(f.color) }}
-            onClick={() => onStart(f.id)}
+            onClick={() => onStart(f.id, maxTurns)}
           >
             <strong style={{ color: ansi256ToHex(f.color) }}>{f.name}</strong>
             <span>{f.doctrine}</span>

@@ -1,3 +1,4 @@
+import { ordersVisibleTo } from '../src/domain/intel.js';
 import { describe, expect, it } from 'vitest';
 import { applyOps, tickTurn, MAX_ATTRITION_FRACTION } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
@@ -6,7 +7,6 @@ import { COMMITMENT_GOODWILL } from '../src/domain/arbitration.js';
 import {
   agentsVisibleTo,
   effectiveStats,
-  ordersVisibleTo,
   ledgerFor,
   fleetStrengthOf,
   SHIP_COST,
@@ -303,7 +303,10 @@ describe('every mission is mechanically distinct', () => {
     // The whole point of surveillance. This was declared and inert before.
     const hidden = applyOps(fresh(), [
       {
-        op: 'issue_order', factionId: 'freeworlds', type: 'construction_infrastructure',
+        // A capital-ship programme rather than infrastructure: works are
+        // visible from orbit and are public by category, which is the point of
+        // `PUBLIC_CATEGORIES`. A slipway inside a yard is not.
+        op: 'issue_order', factionId: 'freeworlds', type: 'capital_ship_construction',
         originId: 'ark-1', targetId: 'ark-1', durationTurns: 3, label: 'secret slipway',
         visibility: [],
       },
