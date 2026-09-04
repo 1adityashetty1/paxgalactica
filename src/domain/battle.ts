@@ -44,6 +44,12 @@ export const BATTLE_OUTCOMES = [
   'exchange',
   /** A defending fleet survived, so no landing was attempted at all. */
   'no_landing',
+    /**
+     * A holder cleared rivals out of its own orbit. Ship against ship only —
+     * the garrison takes no part, because the squatters never held the ground
+     * and there is none to take.
+     */
+    'orbit_cleared',
   /** The attackers won the orbitals and had nothing left to land. */
   'force_spent',
   /** The garrison broke and the world changed hands. */

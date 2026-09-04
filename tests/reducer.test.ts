@@ -290,11 +290,30 @@ describe('order lifecycle ops', () => {
   });
 
   it('interrupt with onInterrupt=partial refunds the unspent portion', () => {
+    // Money has to have been sunk in for there to be anything to refund. The
+    // flat `remaining * 20` that used to pay out regardless is gone: it made
+    // issue-then-interrupt unconditionally profitable, since at `progress: 0`
+    // the pro-rata half already returns the whole outlay.
+    const state = withOrder({
+      onInterrupt: 'partial',
+      onComplete: { kind: 'fortify', magnitude: 2, summary: 'deeper works' },
+    });
+    const order = state.pendingOrders[0]!;
+    expect(order.investedCredits).toBeGreaterThan(0);
+
+    const before = state.factions.find((f) => f.id === 'freeworlds')!.credits;
+    const res = applyOps(state, [{ op: 'interrupt_order', orderId: order.id }]);
+    expect(res.state.pendingOrders).toHaveLength(0);
+    const after = res.state.factions.find((f) => f.id === 'freeworlds')!.credits;
+    // Nothing done yet, so the whole outlay comes back — and not a credit more.
+    expect(after).toBe(before + order.investedCredits);
+  });
+
+  it('refunds nothing for a programme with no money in it', () => {
     const state = withOrder({ onInterrupt: 'partial' });
     const before = state.factions.find((f) => f.id === 'freeworlds')!.credits;
     const res = applyOps(state, [{ op: 'interrupt_order', orderId: 'ord-0-0' }]);
-    expect(res.state.pendingOrders).toHaveLength(0);
-    expect(res.state.factions.find((f) => f.id === 'freeworlds')!.credits).toBeGreaterThan(before);
+    expect(res.state.factions.find((f) => f.id === 'freeworlds')!.credits).toBe(before);
   });
 
   it('extends an estimated order but not a movement', () => {

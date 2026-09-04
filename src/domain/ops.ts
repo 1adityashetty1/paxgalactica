@@ -317,6 +317,71 @@ export const LogNarrativeOp = z.object({
   text: z.string().min(1),
 });
 
+/**
+ * What an accord may produce, as a closed set.
+ *
+ * The guard used to be one exception: extraction could emit any `issue_order`
+ * except a `fleet_movement`. Measured live, that made diplomacy an **unmetered
+ * action channel for 13 of the 14 order types** — a channel closed with
+ * `actionPoints: {left: 0}` issued a `courier` order and the count stayed at
+ * zero. `garrison_raising`, `fortification`, `capital_ship_construction`,
+ * `blockade`, `commerce_raiding` and `espionage` were all reachable free, and a
+ * refused accord cost no action point either, which fully bypasses the reason
+ * the declared path charges for a refusal.
+ *
+ * The rule is the one `form_treaty` and `establish_debt` already follow, stated
+ * once instead of enumerated backwards: **an accord may only produce what needs
+ * the other party's agreement, or what is purely a record of the conversation.**
+ * Everything else is unilateral work the action economy already prices at the
+ * moment it is declared, and it belongs there.
+ *
+ * A closed allowlist rather than a predicate, for the same reason `OrderEffect`
+ * is a closed vocabulary: a predicate has to be right about every op that will
+ * ever exist, and a list has to be edited when one is added — which is the
+ * failure mode you want, because the edit is where the thinking happens.
+ */
+export const EXTRACTION_ALLOWED = new Set<string>([
+  // Bind a party other than the actor. Consent lives only in a transcript.
+  'form_treaty',
+  'break_treaty',
+  'establish_debt',
+  'assign_debt',
+  'establish_commitment',
+  'dissolve_commitment',
+  // A creditor or debtor acting on what was agreed in the room. Both move real
+  // money in the reducer, so neither can be wished into existence.
+  'forgive_debt',
+  'settle_debt',
+  // The relational product of having talked at all.
+  'adjust_disposition',
+  // A payment agreed across the table.
+  'adjust_credits',
+  // The record of what was said.
+  'log_narrative',
+  'spawn_event',
+]);
+
+/**
+ * Ops an accord must NOT produce, with the reason a player would be given.
+ *
+ * Everything absent from `EXTRACTION_ALLOWED` is refused; this only supplies
+ * better wording for the cases a negotiation actually reaches for.
+ */
+export const EXTRACTION_REFUSAL_REASON: Record<string, string> = {
+  issue_order:
+    'An order is your own work and costs an action to give. A conversation can agree that you will do it; you still have to declare it on your own turn.',
+  adjust_fleet:
+    'Hulls are laid down by your own yards and billed to your own treasury. Agree the money here and build them as an action.',
+  deploy_agent:
+    'Covert work is placed by an operation, priced and capped and rolled for. It is not something a conversation delivers.',
+  set_doctrine:
+    "A power's posture is its own, and changing it costs its own institutions. Nobody agrees to it across a table.",
+  adjust_dissent:
+    'Your institutions answer to you, not to the other party. That is not theirs to move.',
+  adjust_ships:
+    'Crews change hands by suborning them, which needs presence and a stat contest. A conversation cannot hand over hulls.',
+};
+
 /** Everything the model is allowed to emit. */
 export const ModelOpSchema = z.discriminatedUnion('op', [
   AdjustDispositionOp,

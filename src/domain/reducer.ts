@@ -47,6 +47,8 @@ import {
 import { jumpsBetween, neighboursOf, positionAlongPath, shortestPath } from './graph.js';
 import { routeEarnings, tradeRoutes } from './trade.js';
 import {
+  EXTRACTION_ALLOWED,
+  EXTRACTION_REFUSAL_REASON,
   OpSchema,
   REDUCER_ONLY_OPS,
   type Op,
@@ -699,6 +701,28 @@ export function applyOps(
       continue;
     }
 
+    // An accord may only produce what needs the other party's agreement, or
+    // what is purely a record of the conversation. The mirror of
+    // `needs_consent`: that rejects a DECLARED op which needs someone else's
+    // agreement; this rejects a NEGOTIATED op which needs nobody's, because
+    // that is unilateral work the action economy already prices at the moment
+    // it is declared.
+    //
+    // This was one exception — `fleet_movement` — and everything else walked
+    // through. Measured live: a channel closed with `actionPoints: {left: 0}`
+    // issued a `courier` order and the count stayed at zero, so 13 of the 14
+    // order types were reachable free, along with a red-line probe that cost
+    // nothing because a refused accord spends no action point either.
+    if (source === 'extraction' && !EXTRACTION_ALLOWED.has(op.op)) {
+      reject(
+        raw,
+        'declared_only',
+        EXTRACTION_REFUSAL_REASON[op.op] ??
+          `"${op.op}" needs nobody's agreement, so it cannot come out of a negotiation. Declare it on your own turn, where it costs an action.`,
+      );
+      continue;
+    }
+
     switch (op.op) {
       case 'transfer_control': {
         const sys = state.systems.find((s) => s.id === op.systemId);
@@ -923,29 +947,6 @@ export function applyOps(
       }
 
       case 'issue_order': {
-        // A fleet movement is your OWN fleet, and it is the one order that
-        // resolves combat and changes who holds a world. Nothing about it needs
-        // the other party's consent, so it has no business coming out of a
-        // transcript — and coming out of one is how it escaped the action
-        // economy. Measured live: an accord staged `fleet_movement` from
-        // slu-1 to ark-2 with force 8, the tick reported "storms Sennex,
-        // breaking a garrison of 4 ... takes possession", and the player's
-        // action points still read 2/2 afterwards. Diplomacy is unmetered on
-        // the grounds that a channel cannot *do* anything a declared action
-        // does; this is what made that false.
-        //
-        // The mirror of `needs_consent`: that rejects a declared op which needs
-        // someone else's agreement, this rejects a negotiated op which needs
-        // nobody's. Everything else an accord can legitimately start is
-        // unilateral work the action economy already prices at issue time.
-        if (source === 'extraction' && isMovementType(op.type)) {
-          reject(
-            raw,
-            'declared_only',
-            'A fleet movement cannot come out of a negotiation: it is your own fleet, it resolves combat, and it costs an action to order. Declare it as an action instead.',
-          );
-          break;
-        }
         if (!factionExists(op.factionId)) {
           reject(raw, 'unknown_faction', `No faction "${op.factionId}".`);
           break;
@@ -2153,14 +2154,19 @@ function resolveInterrupt(state: WorldState, order: PendingOrder, reason: string
   }
 
   const remaining = Math.max(0, order.durationTurns - order.progress);
-  // Banked work is kept and unspent work is refunded. A programme with real
-  // money sunk into it refunds pro-rata of what was actually committed, on top
-  // of the flat recovery — the yards return the materials they never cut into.
-  const unspent =
+  // Banked work is kept and unspent work is refunded, pro-rata of what was
+  // actually committed: the yards return the materials they never cut into.
+  //
+  // There used to be a flat `remaining * 20` on top of that, and it made
+  // **issue-then-interrupt unconditionally profitable**. At `progress: 0` the
+  // pro-rata half already returns 100% of the outlay, so the flat part was pure
+  // profit — measured at +100 on a 120-credit programme, and unbounded once
+  // `extend_order` (which had no ceiling) inflated `remaining`. A refund that
+  // can exceed the outlay is not a refund.
+  const refund =
     order.investedCredits > 0
       ? Math.round(order.investedCredits * (remaining / order.durationTurns))
       : 0;
-  const refund = remaining * 20 + unspent;
   if (faction) faction.credits += refund;
   const note = `${order.label} suspended at ${order.progress}/${order.durationTurns}; ${refund} credits recovered. ${reason}`.trim();
   logEvent(state, 'order', note, order.factionId);
@@ -2929,9 +2935,42 @@ function resolveBattle(
     id !== holder &&
     treatyBetween(state.treaties, state.turn, id, holder, ['basing_rights']) !== undefined;
 
-  const attackers = [...arriving.entries()].filter(([id]) => id !== holder && !guest(id));
+  /**
+   * Rivals sitting in orbit over a world they do not hold.
+   *
+   * Presence is deliberately meaningful — parked ships take a share of the
+   * world's income, blockade its lanes and suborn its crews — and there was no
+   * way to answer it. Battles resolve only on a `fleet_movement` ARRIVAL, and a
+   * holder arriving at its own world was always read as reinforcing, so one
+   * enemy hull on your best world was a permanent, unanswerable tax. Measured
+   * live: the Vigil held a hull over Vergesse for five turns and nothing in the
+   * rules could remove it.
+   */
+  const squatters = Object.entries(target.ships).filter(
+    ([id, n]) => n > 0 && id !== holder && !guest(id),
+  );
+
+  /**
+   * A holder arriving where a rival is squatting is clearing its own orbit.
+   *
+   * Purely ship against ship: the garrison takes no part and grants no bonus,
+   * because the squatters do not hold the ground and there is no ground to
+   * take — the holder already has it. So the engagement stops after the
+   * orbital phase whichever way it goes.
+   */
+  const sweep =
+    holder !== null &&
+    (arriving.get(holder) ?? 0) > 0 &&
+    squatters.length > 0 &&
+    [...arriving.keys()].every((id) => id === holder || guest(id));
+
+  const attackers = sweep
+    ? ([[holder!, arriving.get(holder!)!]] as [string, number][])
+    : [...arriving.entries()].filter(([id]) => id !== holder && !guest(id));
   const guests = [...arriving.entries()].filter(([id]) => guest(id));
-  for (const [id, n] of arriving) if (id === holder) land(id, n);
+  // In a sweep the holder's arriving hulls are the attacking force, so they
+  // must not also be landed before the fight.
+  if (!sweep) for (const [id, n] of arriving) if (id === holder) land(id, n);
   for (const [id, n] of guests) land(id, n);
 
   if (attackers.length === 0) {
@@ -2963,18 +3002,28 @@ function resolveBattle(
   /* --- Pacts broken by this attack ------------------------------------- */
   // Attacking someone you have sworn peace with voids the pact, costs the
   // injured party's opinion, and costs your standing with everyone watching.
+  // Who is being attacked: normally the holder, but in a sweep it is the powers
+  // squatting in the holder's own orbit. Sweeping a partner you have sworn
+  // peace with breaks that peace exactly as any other attack does.
+  const pactVictims: string[] = sweep
+    ? squatters.map(([id]) => id)
+    : holder === null
+      ? []
+      : [holder];
+
   for (const attackerId of attackerIds) {
-    if (holder === null) continue;
-    const pact = treatyBetween(state.treaties, state.turn, attackerId, holder, PEACE_TREATIES);
+    for (const victimId of pactVictims) {
+    if (victimId === attackerId) continue;
+    const pact = treatyBetween(state.treaties, state.turn, attackerId, victimId, PEACE_TREATIES);
     if (!pact) continue;
 
     pact.status = 'broken';
-    const injured = state.factions.find((f) => f.id === holder);
+    const injured = state.factions.find((f) => f.id === victimId);
     if (injured) {
       injured.disposition[attackerId] = Math.max(-100, (injured.disposition[attackerId] ?? 0) - 25);
     }
     for (const witness of state.factions) {
-      if (witness.id === attackerId || witness.id === holder) continue;
+      if (witness.id === attackerId || witness.id === victimId) continue;
       witness.disposition[attackerId] = Math.max(
         -100,
         (witness.disposition[attackerId] ?? 0) - PACT_BREAKING_REPUTATION_COST,
@@ -2983,9 +3032,10 @@ function resolveBattle(
     logEvent(
       state,
       'diplomacy',
-      `${nameOf(attackerId)} breaks its ${pact.type.replace('_', ' ')} with ${nameOf(holder)} by attacking ${target.name}. The whole Rim notes it.`,
+      `${nameOf(attackerId)} breaks its ${pact.type.replace('_', ' ')} with ${nameOf(victimId)} by attacking ${target.name}. The whole Rim notes it.`,
       attackerId,
     );
+    }
   }
 
   // Safe default: everyone else present is a defender.
@@ -3204,6 +3254,17 @@ function resolveBattle(
     logEvent(state, 'order', note, attackers[0]![0]);
     if (rounds.length > 0) rounds[rounds.length - 1]!.outcome = 'force_spent';
     return finish(note);
+  }
+
+  // A sweep ends here whichever way it went. There is no ground phase: the
+  // holder already holds the ground, the garrison took no part, and there is
+  // nothing to take. Surviving hulls put in over the world they came to clear.
+  if (sweep) {
+    for (const [id, n] of attackShare) land(id, n);
+    const cleared = `${notes.join(' ')} ${nameOf(holder!)} clears the orbitals of ${target.name}.`.trim();
+    logEvent(state, 'order', cleared, holder);
+    if (rounds.length > 0) rounds[rounds.length - 1]!.outcome = 'orbit_cleared';
+    return finish(cleared);
   }
 
   /* ---------- Phase 2: ground assault ---------- */

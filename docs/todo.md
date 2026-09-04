@@ -1461,7 +1461,17 @@ Two notes on the decisions, because they change the shape of what gets built:
   whether the condition belongs on the treaty or in `tickTurn` beside the debt
   service.
 
-## 27. OPEN — a rejected op does not roll back the batch it was part of
+## 27. DONE — a rejected op did not roll back the batch it was part of
+
+> **Header was stale.** The decision was taken and atomic batches were built:
+> `applyOps` takes an `atomic` flag, `Campaign.stage`/`commit` pass it,
+> `JOURNAL_VERSION` is 3 and `replay` passes it per journal version so a legacy
+> batch still replays as it ran. Two later defects came out of exactly this
+> change and are both fixed — item 34 (the rollback discarded its own rejection
+> log) and item 35 (a held-back batch reported its ops as applied).
+
+<details><summary>The original write-up, kept for the reasoning</summary>
+
 
 > **Reclassified: this needs a decision after all.** I listed it as mechanical
 > when writing it up. Looking at the fix, it is not.

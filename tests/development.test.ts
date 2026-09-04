@@ -456,8 +456,11 @@ describe('money sunk into works', () => {
       'model',
       'meridian',
     );
-    // 2 of 3 turns unspent.
-    const expected = Math.round(invested * (2 / 3)) + 2 * 20;
+    // 2 of 3 turns unspent. Pro-rata of what was actually committed, and
+    // nothing on top: the flat `remaining * 20` that used to ride alongside it
+    // made issue-then-interrupt unconditionally profitable, because at
+    // `progress: 0` the pro-rata half already returns the whole outlay.
+    const expected = Math.round(invested * (2 / 3));
     expect(fac(out.state, 'meridian').credits).toBe(afterTick + expected);
   });
 
