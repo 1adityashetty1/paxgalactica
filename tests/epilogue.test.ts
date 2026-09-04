@@ -166,7 +166,7 @@ describe('a finished campaign', () => {
     const plain = fallbackEpilogue(outcome);
     c.epilogue = {
       turn: 10, maxTurns: 10, playerFactionId: 'hutt',
-      unaligned: outcome.unaligned, foremost: outcome.foremost,
+      unaligned: outcome.unaligned, foremost: outcome.foremost, leaders: outcome.leaders,
       factions: outcome.factions, slides: plain.slides, closing: plain.closing, fallback: true,
     };
 
@@ -179,5 +179,122 @@ describe('a finished campaign', () => {
     c.tick();
     c.epilogue = null;
     expect(c.verifyReplay().ok).toBe(true);
+  });
+});
+
+/**
+ * A war is not one power's opinion of another.
+ *
+ * `wars` read only the subject's outward disposition, and disposition is
+ * asymmetric everywhere else in the game — so a live campaign produced an
+ * ending that said "no war stands open against it" one slide after "the war
+ * with the Drajk Confederacy sits open on the ledger", about the same war.
+ * The prose was faithful; the dossier was wrong.
+ */
+describe('a war has two sides', () => {
+  const hated = (): WorldState => {
+    const s = seed();
+    // Meridian loathes Drajk; Drajk is indifferent. One war, seen from one side.
+    s.factions.find((f) => f.id === 'meridian')!.disposition.krayt = -100;
+    s.factions.find((f) => f.id === 'krayt')!.disposition.meridian = 10;
+    return s;
+  };
+
+  it('names the war on both slides, not just the hater’s', () => {
+    const outcome = campaignOutcome(hated(), seed(), 30);
+    const meridian = outcome.factions.find((f) => f.factionId === 'meridian')!;
+    const krayt = outcome.factions.find((f) => f.factionId === 'krayt')!;
+
+    expect(meridian.wars).toContain('Drajk Confederacy');
+    // The half that was missing: the target of the hatred is also at war.
+    expect(krayt.wars).toContain('Meridian Trade Authority');
+  });
+
+  it('never lists a faction as at war with itself', () => {
+    for (const f of campaignOutcome(hated(), seed(), 30).factions) {
+      expect(f.wars).not.toContain(f.name);
+    }
+  });
+
+  it('leaves a power at peace with nobody named', () => {
+    const s = seed();
+    for (const f of s.factions) for (const k of Object.keys(f.disposition)) f.disposition[k] = 0;
+    for (const f of campaignOutcome(s, seed(), 30).factions) expect(f.wars).toEqual([]);
+  });
+});
+
+/**
+ * A tie-break is a way of picking a value, not a finding. With every power on
+ * four worlds the ending announced "the largest single holding, the Arkanis
+ * Free Worlds" — an arbitrary id sort promoted into a stated fact.
+ */
+describe('a tie is reported as a tie', () => {
+  it('lists every power level on the largest holding', () => {
+    // The seed opens 4/4/4/4/4 apart from the unaligned worlds.
+    const outcome = campaignOutcome(seed(), seed(), 30);
+    const most = Math.max(...outcome.factions.map((f) => f.systems));
+    const level = outcome.factions.filter((f) => f.systems === most);
+    expect(outcome.leaders).toHaveLength(level.length);
+    expect(outcome.leaders).toContain(outcome.foremost);
+  });
+
+  it('tells the narrator not to name a leader when there is none', () => {
+    const outcome = campaignOutcome(seed(), seed(), 30);
+    if (outcome.leaders.length > 1) {
+      const text = serializeOutcome(outcome);
+      expect(text).toMatch(/Nobody ended foremost/);
+      expect(text).not.toMatch(/The largest holding is/);
+    }
+  });
+
+  it('names a single leader when there really is one', () => {
+    let s = seed();
+    const spare = s.systems.find((x) => x.controllerFactionId === 'krayt')!;
+    s = applyOps(s, [{ op: 'transfer_control', systemId: spare.id, toFactionId: 'vigil' }], 'engine').state;
+    const outcome = campaignOutcome(s, seed(), 30);
+    expect(outcome.leaders).toEqual(['vigil']);
+    expect(serializeOutcome(outcome)).toMatch(/The largest holding is/);
+  });
+
+  it('does not claim a leader in the fallback prose either', () => {
+    const outcome = campaignOutcome(seed(), seed(), 30);
+    const closing = fallbackEpilogue(outcome).closing;
+    if (outcome.leaders.length > 1) expect(closing).toMatch(/level with every other power/);
+  });
+});
+
+/**
+ * The dossier hands the narrator comparisons rather than counts.
+ *
+ * Told "treasury 6936" a model writes "a treasury of six thousand"; told "the
+ * heaviest purse in the Rim" it writes what that meant. Two live runs against a
+ * real finished campaign proved the prompt instruction alone does not hold —
+ * the second produced MORE raw figures than the first.
+ */
+describe('the dossier does not hand over raw figures', () => {
+  it('describes fleet, treasury and income by rank rather than value', () => {
+    const s = seed();
+    const text = serializeOutcome(campaignOutcome(s, seed(), 30));
+    for (const f of s.factions) {
+      expect(text, `treasury ${f.credits} leaked`).not.toContain(String(f.credits));
+    }
+    expect(text).toMatch(/the heaviest purse in the Rim/);
+    expect(text).toMatch(/navy/);
+  });
+
+  it('says a debt exists without saying what it is worth', () => {
+    const s = seed();
+    const text = serializeOutcome(campaignOutcome(s, seed(), 30));
+    expect(text).toMatch(/still owed money nobody has made good/);
+    // The seed's debts are 480 and 400; neither balance should appear.
+    for (const d of s.debts) expect(text).not.toContain(String(d.balance));
+  });
+
+  it('still gives the narrator the things only it can say', () => {
+    const text = serializeOutcome(campaignOutcome(seed(), seed(), 30));
+    // Names, arcs and worlds survive: these are what the prose is made of.
+    expect(text).toMatch(/arc: \*\*/);
+    expect(text).toMatch(/ended holding/);
+    expect(text).toMatch(/settled; do not overturn/);
   });
 });

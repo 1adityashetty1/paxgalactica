@@ -727,7 +727,19 @@ export interface OpRejection {
      * needs nobody's agreement, so it belongs on the declared path where the
      * action economy prices it. Only `fleet_movement` is in this position.
      */
-    | 'declared_only';
+    | 'declared_only'
+    /**
+     * A treaty was signed carrying a `voidsOn` condition that was ALREADY true.
+     *
+     * `voidConditionMet` had exactly one caller, in `tickTurn`, so such a treaty
+     * was recorded `active` and died on the next tick — having been announced,
+     * shown in the panel, and believed by the power that signed it. Measured
+     * live: a 15/turn toll voided on the same tick it was signed, and the
+     * counterparty's next reaction described it as a live arrangement it was
+     * honouring. Refusing it is what makes the deal get re-expressed rather
+     * than quietly evaporate.
+     */
+    | 'already_void';
   message: string;
 }
 

@@ -496,7 +496,38 @@ and nothing implemented it.
 | `basing_rights` | the other party's fleets may enter without it being an attack |
 | `tribute` | `incomePerTurn` moves every turn |
 | `territory` (a term, not a type) | the named systems **change hands** when the treaty takes force |
-| `voidsOn` (a term, not a type) | typed conditions that **end** the treaty when they come true |
+| `voidsOn` (a term, not a type) | typed conditions that **end** the treaty when they come true — and one already true at signature is **refused**, not signed |
+
+**A renegotiation replaces the old paper; it does not add to it.** Powers say
+"supersedes" constantly and nothing acted on it: a playtest left two `tribute`
+treaties live between one pair, and Arkanis believed it paid 40 and paid 65
+while the Combine believed 55 and paid 95. Supersession existed but was scoped
+to `incomeShares`, so every other recurring term stacked.
+
+The rule is **not** "one live treaty per (pair, type)" — two `trade_accord`s
+granting different lanes are two deals, and a test has pinned that since the
+`incomeShares` work. It is a clash of **pair-level footprint**: a term that
+flows between the parties as a whole (`incomePerTurn`, `shipsPledged`,
+`mutualDefenseTrigger`), or a type carrying no recurring terms at all, where the
+treaty *is* the status and a second is a pure duplicate. Applied where a treaty
+becomes **active**, so a `pending` one does not retire the live treaty it will
+replace and leave the parties with nothing in force.
+
+**A refused accord says so in its own transcript.** Transcripts are replayed
+into a persona, so an accord the player's institutions refused left the other
+power remembering a concession it never made — measured live as an NPC insisting
+*"my pen already struck the first hundred"* about a forgiveness that never
+landed, permanently blocking a deal the player was entitled to ask for again.
+`closeChannel` now records the transcript *after* the ruling and appends a
+`record` line saying nothing in it took effect.
+
+`record` is a third speaker and needed its own type — `TranscriptEntry`, not a
+wider `ChatMessage`. Widening would let a record line reach `diplomacyReply` and
+`extractAgreements`, whose speaker checks are `player ? … : faction`, so the
+engine's note would render as the faction's own words: the exact confusion the
+line exists to prevent. The persona prompt also now states which source wins —
+a conversation records what was **said**, the state block what is **in force**,
+and the state block is right.
 
 **A treaty can carry conditions that end it.** Powers negotiate these
 constantly, because natural language makes them free — *"any tribute or standing

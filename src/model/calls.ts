@@ -749,6 +749,22 @@ export interface ChatMessage {
 }
 
 /**
+ * A line in a STORED transcript, which is not quite a line of conversation.
+ *
+ * A live channel is two parties talking and can only ever hold those two. An
+ * archived one can also hold a `record`: the engine's note on what became of
+ * the conversation, written when an accord was refused so that replaying the
+ * transcript into a persona does not present a dead deal as a live one.
+ *
+ * Deliberately a separate type rather than a wider `ChatMessage`. Widening it
+ * would let a `record` line reach `diplomacyReply` and `extractAgreements`,
+ * whose speaker checks are `player ? … : faction` — so it would render as the
+ * faction's own words, which is the exact confusion the line exists to prevent.
+ * The narrow type makes that unreachable instead of merely unlikely.
+ */
+export type TranscriptEntry = ChatMessage | { speaker: 'record'; text: string };
+
+/**
  * A turn of conversation. The schema has no `ops` field at all — the boundary
  * that keeps chat from mutating state is structural, not a prompt instruction
  * the model could be talked out of.

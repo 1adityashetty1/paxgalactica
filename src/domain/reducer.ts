@@ -449,6 +449,76 @@ function underDuressFrom(state: WorldState, coercer: string, victim: string): nu
   return worlds;
 }
 
+/**
+ * Retire the treaty this one replaces.
+ *
+ * Powers renegotiate constantly and say so — both parties to a live playtest
+ * accord used the word "supersedes" out loud — and nothing acted on it. The
+ * result was two `tribute` treaties between the same pair, both paying: Arkanis
+ * believed it paid 40 and paid 65, the Combine believed 55 and paid 95, and the
+ * ending duly listed "tribute with Drajk Confederacy" twice.
+ *
+ * Supersession already existed and was scoped to `incomeShares` — a new grant
+ * of the same system to the same faction retired the old one. It never looked
+ * at anything else, so every other recurring term stacked.
+ *
+ * **"One live treaty per (pair, type)" is the tempting rule and it is wrong.**
+ * Two `trade_accord`s between the same powers granting *different lanes* are two
+ * deals, not a renegotiation, and a test has pinned that since item 26. What
+ * cannot coexist is two treaties doing the same recurring thing to the same
+ * pair. So the test is on the **footprint**:
+ *
+ * - a term that flows between the parties as a whole — `incomePerTurn`,
+ *   `shipsPledged`, `mutualDefenseTrigger` — there is one such flow, and a
+ *   second treaty carrying it is a double-count;
+ * - a type that carries no recurring terms at all — `non_aggression`,
+ *   `ceasefire`, `basing_rights` — where the treaty *is* the status, so a
+ *   second one is a pure duplicate.
+ *
+ * `incomeShares` is deliberately absent: it is keyed by system and already has
+ * its own, narrower supersession. `territory` is a one-time cession and cannot
+ * recur.
+ *
+ * Called where a treaty becomes ACTIVE rather than where it is created: a
+ * `pending` treaty must not retire the live one it will replace, or the parties
+ * would have nothing in force while a council deliberates.
+ */
+function pairLevelFootprint(t: Treaty): string[] {
+  const marks: string[] = [];
+  if (Object.values(t.terms.incomePerTurn).some((v) => v !== 0)) marks.push('incomePerTurn');
+  if (Object.values(t.terms.shipsPledged).some((v) => v > 0)) marks.push('shipsPledged');
+  if (t.terms.mutualDefenseTrigger !== '') marks.push('mutualDefenseTrigger');
+  // A treaty with no recurring term and no per-system grant is its own status:
+  // a second one of the same type between the same powers says nothing new.
+  if (marks.length === 0 && t.terms.incomeShares.length === 0) marks.push('the pact itself');
+  return marks;
+}
+
+function supersedePriorTreaties(
+  state: WorldState,
+  incoming: Treaty,
+  notes: string[],
+): void {
+  const mine = pairLevelFootprint(incoming);
+  if (mine.length === 0) return;
+
+  for (const prior of state.treaties) {
+    if (prior.id === incoming.id) continue;
+    if (prior.status !== 'active') continue;
+    if (prior.type !== incoming.type) continue;
+    if (prior.parties.length !== incoming.parties.length) continue;
+    if (!incoming.parties.every((party) => prior.parties.includes(party))) continue;
+
+    const clash = pairLevelFootprint(prior).filter((m) => mine.includes(m));
+    if (clash.length === 0) continue;
+
+    prior.status = 'superseded';
+    const note = `Superseded ${prior.id}: the ${prior.type.replace(/_/g, ' ')} between ${prior.parties.join(' and ')} is now set by the new accord, not added to it (${clash.join(', ')}).`;
+    notes.push(note);
+    logEvent(state, 'diplomacy', note, incoming.parties[0]);
+  }
+}
+
 function voidConditionMet(state: WorldState, condition: VoidCondition): string | null {
   const name = (id: string): string =>
     state.factions.find((f) => f.id === id)?.name ?? id;
@@ -1299,6 +1369,33 @@ export function applyOps(
           }
         }
 
+        // A treaty whose void condition is ALREADY true is not a treaty.
+        //
+        // `voidConditionMet` had one caller, in `tickTurn`, so such a deal was
+        // recorded `active`, announced, shown in the panel, and killed on the
+        // next tick — having paid nothing and been believed by both parties.
+        // Measured live: a 15/turn toll voided on the tick it was signed
+        // because its `attacks` condition already held at signature, and the
+        // counterparty's next reaction described it as an arrangement it was
+        // honouring.
+        //
+        // Refused rather than recorded-and-voided, because a silently void
+        // treaty IS the phantom-belief problem. Under atomic batching this
+        // fails the accord and the correction pass is told exactly why, so the
+        // deal gets re-expressed without the impossible clause instead of
+        // evaporating.
+        const alreadyVoid = terms.voidsOn
+          .map((condition) => voidConditionMet(state, condition))
+          .find((why): why is string => why !== null);
+        if (alreadyVoid !== undefined) {
+          reject(
+            raw,
+            'already_void',
+            `That treaty voids the moment it is signed: ${alreadyVoid}. Drop the condition or settle what triggers it first.`,
+          );
+          break;
+        }
+
         // A deal agreed subject to ratification is recorded now and inert until
         // its effective turn. `isTreatyLive` gates on `status === 'active'`, so
         // `pending` costs nothing anywhere else.
@@ -1323,6 +1420,10 @@ export function applyOps(
           summary: op.summary || `${op.treatyType.replace(/_/g, ' ')} between ${op.parties.join(' and ')}`,
         };
         state.treaties.push(treaty);
+        // One live treaty per (pair, type). A pending one supersedes nothing
+        // yet — it does so when it is promoted in `tickTurn`, or the parties
+        // would have nothing in force while the council deliberates.
+        if (!pending) supersedePriorTreaties(state, treaty, notes);
         logEvent(
           state,
           'diplomacy',
@@ -2220,6 +2321,9 @@ export function tickTurn(input: WorldState): TickResult {
     if (treaty.status !== 'pending' || treaty.effectiveTurn === null) continue;
     if (state.turn < treaty.effectiveTurn) continue;
     treaty.status = 'active';
+    // It replaces its predecessor now, not at signature — see
+    // `supersedePriorTreaties`.
+    supersedePriorTreaties(state, treaty, notes);
     logEvent(state, 'diplomacy', `Treaty ratified and now in force: ${treaty.summary}.`);
     notes.push(`Ratified: ${treaty.summary}`);
     // A cession takes effect with the rest of the terms, not at signature, so a

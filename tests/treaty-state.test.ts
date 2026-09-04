@@ -1,0 +1,189 @@
+import { describe, expect, it } from 'vitest';
+import { createSeedState } from '../src/seed/scenario.js';
+import { Campaign } from '../src/engine/campaign.js';
+import { MemoryCampaignStore } from '../src/engine/store.js';
+import { applyOps, tickTurn } from '../src/domain/reducer.js';
+import { ledgerFor, type WorldState } from '../src/domain/state.js';
+import type { OpInput } from '../src/domain/ops.js';
+
+/**
+ * A treaty conflates three things: what was AGREED (the conversation), what was
+ * RECORDED (the object), and what is IN FORCE (`active`, past `effectiveTurn`,
+ * not void). Phantom and contradictory effects come from those diverging with
+ * nothing to reconcile them.
+ */
+
+const seed = () => createSeedState('hutt');
+
+const tribute = (perTurn: number, extra: Record<string, unknown> = {}): OpInput =>
+  ({
+    op: 'form_treaty',
+    treatyType: 'tribute',
+    parties: ['krayt', 'freeworlds'],
+    terms: { incomePerTurn: { krayt: perTurn, freeworlds: -perTurn } },
+    summary: `tribute at ${perTurn}`,
+    ...extra,
+  }) as OpInput;
+
+const sign = (s: WorldState, op: OpInput) => applyOps(s, [op], 'extraction', 'krayt', true);
+const live = (s: WorldState) => s.treaties.filter((t) => t.status === 'active');
+
+describe('a renegotiated treaty replaces the old one instead of stacking', () => {
+  /**
+   * Measured live: both parties said "supersedes" out loud, both treaties
+   * stayed active, and Arkanis believed it paid 40 and paid 65.
+   */
+  it('supersedes a prior tribute between the same pair', () => {
+    let s = sign(seed(), tribute(40)).state;
+    expect(live(s)).toHaveLength(1);
+    const paidOnce = ledgerFor(s, 'krayt').treatyFlow;
+
+    s = sign(s, tribute(55)).state;
+    expect(live(s)).toHaveLength(1);
+    expect(s.treaties.filter((t) => t.status === 'superseded')).toHaveLength(1);
+
+    // The new rate, not the sum of both.
+    expect(ledgerFor(s, 'krayt').treatyFlow).toBe(55);
+    expect(ledgerFor(s, 'krayt').treatyFlow).not.toBe(paidOnce + 55);
+  });
+
+  it('supersedes a duplicate pact that carries no terms at all', () => {
+    const pact = (summary: string): OpInput =>
+      ({
+        op: 'form_treaty', treatyType: 'non_aggression',
+        parties: ['krayt', 'freeworlds'], terms: {}, summary,
+      }) as OpInput;
+    let s = sign(seed(), pact('first')).state;
+    s = sign(s, pact('second')).state;
+    expect(live(s)).toHaveLength(1);
+    expect(live(s)[0]!.summary).toBe('second');
+  });
+
+  /**
+   * The tempting rule is "one live treaty per (pair, type)" and it is wrong:
+   * two accords granting DIFFERENT lanes are two deals. Pinned since item 26.
+   */
+  it('leaves a treaty alone whose terms do not collide', () => {
+    const share = (systemId: string): OpInput =>
+      ({
+        op: 'form_treaty', treatyType: 'trade_accord',
+        parties: ['krayt', 'freeworlds'],
+        terms: { incomeShares: [{ systemId, factionId: 'krayt', share: 0.05 }] },
+        summary: `lane ${systemId}`,
+      }) as OpInput;
+    let s = sign(seed(), share('ark-1')).state;
+    s = sign(s, share('ark-3')).state;
+    expect(live(s)).toHaveLength(2);
+  });
+
+  it('leaves a different type between the same pair alone', () => {
+    let s = sign(seed(), tribute(40)).state;
+    s = sign(s, {
+      op: 'form_treaty', treatyType: 'non_aggression',
+      parties: ['krayt', 'freeworlds'], terms: {}, summary: 'and a pact',
+    } as OpInput).state;
+    expect(live(s)).toHaveLength(2);
+  });
+
+  it('leaves an unrelated pair alone', () => {
+    let s = sign(seed(), tribute(40)).state;
+    s = applyOps(s, [{
+      op: 'form_treaty', treatyType: 'tribute',
+      parties: ['krayt', 'meridian'],
+      terms: { incomePerTurn: { krayt: 30, meridian: -30 } }, summary: 'other pair',
+    }], 'extraction', 'krayt', true).state;
+    expect(live(s)).toHaveLength(2);
+  });
+
+  /**
+   * A pending treaty must not retire the live one it will replace, or the
+   * parties have nothing in force while a council deliberates.
+   */
+  it('supersedes only when the replacement actually comes into force', () => {
+    let s = sign(seed(), tribute(40)).state;
+    s = sign(s, tribute(55, { ratifyTurns: 2 })).state;
+
+    // Still the old rate while the new one is pending.
+    expect(live(s)).toHaveLength(1);
+    expect(ledgerFor(s, 'krayt').treatyFlow).toBe(40);
+
+    s = tickTurn(s).state;
+    s = tickTurn(s).state;
+    expect(live(s)).toHaveLength(1);
+    expect(ledgerFor(s, 'krayt').treatyFlow).toBe(55);
+  });
+});
+
+describe('a treaty that is already void cannot be signed', () => {
+  /**
+   * `voidConditionMet` had one caller, in `tickTurn` — so such a treaty was
+   * recorded active, announced, shown, and killed on the next tick, having paid
+   * nothing while both parties believed in it.
+   */
+  const withCondition = (): OpInput =>
+    ({
+      op: 'form_treaty', treatyType: 'tribute',
+      parties: ['krayt', 'meridian'],
+      terms: {
+        incomePerTurn: { krayt: 15, meridian: -15 },
+        voidsOn: [{ kind: 'attacks', by: 'krayt', target: 'meridian' }],
+      },
+      summary: 'a toll voided by war',
+    }) as OpInput;
+
+  it('is refused when the condition already holds at signature', () => {
+    const s = seed();
+    // Already at war: the void condition is true before the ink is dry.
+    s.factions.find((f) => f.id === 'krayt')!.disposition.meridian = -90;
+
+    const out = applyOps(s, [withCondition()], 'extraction', 'krayt', true);
+    expect(out.rejections.map((r) => r.code)).toContain('already_void');
+    expect(out.state.treaties).toHaveLength(0);
+    expect(out.rejections[0]!.message).toMatch(/voids the moment it is signed/);
+  });
+
+  it('signs normally when the condition does not hold', () => {
+    const s = seed();
+    s.factions.find((f) => f.id === 'krayt')!.disposition.meridian = 10;
+    const out = applyOps(s, [withCondition()], 'extraction', 'krayt', true);
+    expect(out.rejections).toHaveLength(0);
+    expect(live(out.state)).toHaveLength(1);
+  });
+});
+
+/**
+ * A refused accord kills the ops and keeps the conversation, and transcripts
+ * are replayed into the persona — so the other power went on believing it had
+ * granted a concession the world had no record of. Measured live: an NPC
+ * forgave 100 of a debt inside a refused accord and spent the rest of the
+ * campaign treating it as done (*"my pen already struck the first hundred"*)
+ * while the balance ran down on instalments alone.
+ */
+describe('a refused accord says so in its own transcript', () => {
+  it('renders the record line without attributing it to either party', () => {
+    const campaign = Campaign.start('krayt', 'refused', new MemoryCampaignStore());
+    campaign.recordTranscript('freeworlds', [
+      { speaker: 'player', text: 'Forgive the first hundred and we have a deal.' },
+      { speaker: 'faction', text: 'Done. My pen strikes it tonight.' },
+      { speaker: 'record', text: '[This accord was REFUSED by the captains and never took effect.]' },
+    ]);
+
+    const [replayed] = campaign.priorTranscripts('freeworlds');
+    expect(replayed).toContain('Them: Forgive the first hundred');
+    expect(replayed).toContain('You: Done.');
+    // The engine's note is not a line either of them spoke.
+    expect(replayed).toContain('[This accord was REFUSED');
+    expect(replayed).not.toContain('You: [This accord');
+    expect(replayed).not.toContain('Them: [This accord');
+  });
+
+  it('survives a save and a reload, because the persona reads it next turn', () => {
+    const campaign = Campaign.start('krayt', 'refused-save', new MemoryCampaignStore());
+    campaign.recordTranscript('freeworlds', [
+      { speaker: 'faction', text: 'Done.' },
+      { speaker: 'record', text: '[This accord was REFUSED by the captains.]' },
+    ]);
+    const back = Campaign.fromSaveFile('refused-save', campaign.toSaveFile(), new MemoryCampaignStore());
+    expect(back.priorTranscripts('freeworlds')[0]).toContain('[This accord was REFUSED');
+  });
+});

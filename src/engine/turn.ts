@@ -625,9 +625,8 @@ export async function closeChannel(
   factionId: string,
   history: ChatMessage[],
 ): Promise<ActionOutcome> {
-  campaign.recordTranscript(factionId, history);
-
   if (history.length === 0) {
+    campaign.recordTranscript(factionId, history);
     return {
       narrative: 'The channel closed without a word exchanged.',
       staged: 0,
@@ -683,6 +682,25 @@ export async function closeChannel(
   // concessions go with it, because there is nothing left to concede to.
   if (breach?.kind === 'red_line') {
     const by = ruling?.appraisal.breach?.by ?? 'your own institutions';
+    // The conversation happened and is worth keeping, but what it agreed did
+    // NOT. Transcripts are replayed into the persona, so a refused accord left
+    // the other power remembering a concession it never actually made:
+    // measured live, an NPC forgave 100 of a debt in a refused accord and
+    // spent the rest of the campaign treating it as done — *"my pen already
+    // struck the first hundred"* — while the balance ran down on instalments
+    // alone. The player paid the dissent, got nothing, and was permanently
+    // blocked from the deal by the counterparty's memory of granting it.
+    //
+    // A `record` line rather than dropping the transcript: the conversation is
+    // real and the rapport in it is real, and only the outcome was different
+    // from what was said.
+    campaign.recordTranscript(factionId, [
+      ...history,
+      {
+        speaker: 'record' as const,
+        text: `[This accord was REFUSED by ${by} and never took effect. Nothing agreed above was carried out — no treaty, no payment, no concession by either side. Both parties are back where they started.]`,
+      },
+    ]);
     const why =
       ruling?.appraisal.breach?.reason ||
       'That is not something this power will put its name to.';
@@ -714,6 +732,11 @@ export async function closeChannel(
       ops: campaign.opsStagedSince(before),
     };
   }
+
+  // The accord stands (or agreed nothing), so the conversation is recorded as
+  // it was spoken. Recorded here rather than on the way in, so the refusal path
+  // above can record what actually became of it instead.
+  campaign.recordTranscript(factionId, history);
 
   const staged = await stageWithCorrection(
     campaign,
@@ -806,6 +829,7 @@ export async function writeEpilogue(
     playerFactionId: outcome.playerFactionId,
     unaligned: outcome.unaligned,
     foremost: outcome.foremost,
+    leaders: outcome.leaders,
     factions: outcome.factions,
   };
 
