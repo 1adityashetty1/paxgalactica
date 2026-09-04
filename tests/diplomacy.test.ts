@@ -172,9 +172,19 @@ describe('prompts do not drift from the schema', () => {
   });
 
   it('states the five-turn ceiling wherever durations are described', () => {
-    for (const name of ['resolution', 'reaction', 'extraction'] as const) {
+    // `extraction` is deliberately absent, for the same reason it is absent
+    // from the force check below: an accord may no longer issue an order of ANY
+    // type, so it never describes a duration and has no ceiling to state.
+    for (const name of ['resolution', 'reaction'] as const) {
       expect(loadPrompt(name), `${name}.md`).toMatch(/1, 2, 3,? or 5/);
     }
+  });
+
+  it('does not offer an accord any order at all', () => {
+    // The guard was one exception — every `issue_order` except a movement —
+    // which made diplomacy an unmetered action channel for 13 of the 14 types.
+    const text = loadPrompt('extraction');
+    expect(text).toMatch(/No orders of any kind/);
   });
 
   it('tells every prompt that CAN move a fleet to set a force', () => {

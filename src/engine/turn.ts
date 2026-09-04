@@ -23,7 +23,8 @@ import {
   resolveAction,
   type ChatMessage,
 } from '../model/calls.js';
-import { classifyPrinciples } from '../domain/compulsions.js';
+import {
+  breachContradictsState, classifyPrinciples } from '../domain/compulsions.js';
 import { callStructured } from '../model/client.js';
 import { loadPrompt } from '../model/prompts.js';
 import { createSeedState } from '../seed/scenario.js';
@@ -44,6 +45,19 @@ export interface ReactionView {
   narrative: string;
   /** Set when this power wants to open a conversation. See `ReactionSchema`. */
   approach: { opening: string; about: string } | null;
+  /**
+   * What this faction actually did, as applied.
+   *
+   * `ReactionView` had no such field, so `reactions[].ops` was `null` for every
+   * faction on every turn while the event log proved ops had landed on the same
+   * tick. A caller reading the turn payload saw a narrative describing action
+   * and no way to tell what came of it — or that a whole batch had been held
+   * back, which atomic batching makes an all-or-nothing outcome worth
+   * reporting.
+   */
+  ops: unknown[];
+  /** Set when the batch was rejected whole and nothing in it landed. */
+  heldBack: number | null;
 }
 
 export interface ActionOutcome {
@@ -506,12 +520,25 @@ export async function endTurn(campaign: Campaign): Promise<TurnOutcome> {
   const reactionViews: ReactionView[] = [];
   if (committed.applied > 0) {
     const touched = touchedBy(stagedOps);
+    // Three responders, not four, so one seat is always left for a power the
+    // player never touched.
+    //
+    // `mostAffectedFactions` selects from what the PLAYER's ops touched, and in
+    // a live campaign a player touches enough of the board that nearly every
+    // faction is a responder nearly every turn — so `proposeFor` fell through
+    // for almost nobody and doctrine initiative fired exactly when it was least
+    // needed. Measured: 2 NPC-vs-NPC attacks over 12 turns with no player at
+    // all, and **zero** over a 10-turn campaign with one.
+    //
+    // The reserved seat is not a fifth responder — it costs no extra tokens,
+    // because the faction it displaces is handled by its own doctrine instead,
+    // which is free.
     const responders = mostAffectedFactions(
       campaign.state,
       touched.factions,
       touched.systems,
       campaign.state.playerFactionId,
-      4,
+      3,
     );
 
     if (responders.length > 0) {
@@ -543,6 +570,8 @@ export async function endTurn(campaign: Campaign): Promise<TurnOutcome> {
             factionName: faction.name,
             color: faction.displayColor,
             narrative: reaction.narrative,
+            ops: applied.rejections.length > 0 ? [] : reaction.ops,
+            heldBack: applied.rejections.length > 0 ? applied.rejections.length : null,
             // An invitation to talk, if this power wants something. Passed
             // through rather than acted on: the player opens the channel.
             approach: reaction.approach ?? null,
@@ -625,9 +654,8 @@ export async function closeChannel(
   factionId: string,
   history: ChatMessage[],
 ): Promise<ActionOutcome> {
-  campaign.recordTranscript(factionId, history);
-
   if (history.length === 0) {
+    campaign.recordTranscript(factionId, history);
     return {
       narrative: 'The channel closed without a word exchanged.',
       staged: 0,
@@ -666,7 +694,19 @@ export async function closeChannel(
   // `classifyPrinciples`, and nothing proved it was about this act.
   let relevanceCost = 0;
   let breach = firstPass;
-  if (firstPass) {
+  // A compulsion that carries a trigger is a question about the board, and the
+  // board can answer it for free. `verifyBreachRelevance` is shown the act and
+  // the line and deliberately no state, so it cannot notice that a
+  // state-dependent compulsion is factually inapplicable — measured live as 15
+  // dissent charged for "no raid under way" while a raid was staged and a fleet
+  // was in transit. Checked before the paid call, so a contradiction costs
+  // nothing to catch.
+  if (
+    firstPass?.kind === 'compulsion' &&
+    breachContradictsState(campaign.state, campaign.state.playerFactionId, firstPass.principle)
+  ) {
+    breach = null;
+  } else if (firstPass) {
     const check = await verifyBreachRelevance(
       extraction.output.narrative,
       firstPass.principle,
@@ -683,6 +723,25 @@ export async function closeChannel(
   // concessions go with it, because there is nothing left to concede to.
   if (breach?.kind === 'red_line') {
     const by = ruling?.appraisal.breach?.by ?? 'your own institutions';
+    // The conversation happened and is worth keeping, but what it agreed did
+    // NOT. Transcripts are replayed into the persona, so a refused accord left
+    // the other power remembering a concession it never actually made:
+    // measured live, an NPC forgave 100 of a debt in a refused accord and
+    // spent the rest of the campaign treating it as done — *"my pen already
+    // struck the first hundred"* — while the balance ran down on instalments
+    // alone. The player paid the dissent, got nothing, and was permanently
+    // blocked from the deal by the counterparty's memory of granting it.
+    //
+    // A `record` line rather than dropping the transcript: the conversation is
+    // real and the rapport in it is real, and only the outcome was different
+    // from what was said.
+    campaign.recordTranscript(factionId, [
+      ...history,
+      {
+        speaker: 'record' as const,
+        text: `[This accord was REFUSED by ${by} and never took effect. Nothing agreed above was carried out — no treaty, no payment, no concession by either side. Both parties are back where they started.]`,
+      },
+    ]);
     const why =
       ruling?.appraisal.breach?.reason ||
       'That is not something this power will put its name to.';
@@ -729,6 +788,28 @@ export async function closeChannel(
 
   // A compulsion is a price, not a wall: the accord stands and the institutions
   // charge for having been overruled — the same bargain a declared action gets.
+  // The conversation is recorded with whatever actually became of it.
+  //
+  // A refusal is only ONE of the ways an accord can agree something and deliver
+  // nothing. The reducer can reject the batch whole (atomic batches make that
+  // all-or-nothing), and transcripts are replayed into the persona — so the
+  // other power goes on believing in a concession the world has no record of,
+  // permanently blocking a deal the player is entitled to ask for again.
+  campaign.recordTranscript(
+    factionId,
+    staged.rejections.length > 0
+      ? [
+          ...history,
+          {
+            speaker: 'record' as const,
+            text: `[Nothing agreed above took effect: the terms could not be carried out (${staged.rejections
+              .map((r) => r.code)
+              .join(', ')}). Both parties are back where they started.]`,
+          },
+        ]
+      : history,
+  );
+
   const notes = [...staged.notes];
   let defiance: ActionOutcome['defiance'] = null;
   if (breach?.kind === 'compulsion') {
@@ -806,6 +887,7 @@ export async function writeEpilogue(
     playerFactionId: outcome.playerFactionId,
     unaligned: outcome.unaligned,
     foremost: outcome.foremost,
+    leaders: outcome.leaders,
     factions: outcome.factions,
   };
 

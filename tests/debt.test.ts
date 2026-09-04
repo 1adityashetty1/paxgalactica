@@ -471,3 +471,102 @@ describe('a debtor can pay a debt down, and the money really moves', () => {
     expect(debtOf(out.state, 'debt-0').missedPayments).toBe(0);
   });
 });
+
+/**
+ * A loan moves money, and a reschedule does not rebuild the paper.
+ *
+ * `establish_debt` recorded the obligation and transferred nothing, which made
+ * a negotiated advance impossible to express honestly: the borrower's
+ * `adjust_credits +N` is legal, the lender's `-N` is refused by design, and
+ * extraction runs as the borrower. Measured on a real campaign: `TOTAL +240`
+ * with no counterparty debit.
+ */
+describe('a debt is an advance of real money', () => {
+  const lend = (s: WorldState, principal: number) =>
+    applyOps(s, [{
+      op: 'establish_debt', creditorFactionId: 'hutt', debtorFactionId: 'krayt',
+      principal, perTurn: 20, text: 'a war chest advanced',
+    }], 'extraction', 'krayt', true);
+
+  const purse = (s: WorldState, id: string) => s.factions.find((f) => f.id === id)!.credits;
+  const total = (s: WorldState) => s.factions.reduce((n, f) => n + f.credits, 0);
+
+  it('moves the principal from the lender to the borrower', () => {
+    const before = createSeedState('krayt');
+    const out = lend(before, 240);
+    expect(purse(out.state, 'hutt')).toBe(purse(before, 'hutt') - 240);
+    expect(purse(out.state, 'krayt')).toBe(purse(before, 'krayt') + 240);
+    // Conserved: no credits entered the galaxy.
+    expect(total(out.state)).toBe(total(before));
+  });
+
+  it('lends only what the lender actually holds, and writes the paper for that', () => {
+    const s = createSeedState('krayt');
+    s.factions.find((f) => f.id === 'hutt')!.credits = 100;
+    const out = lend(s, 240);
+    const debt = out.state.debts.at(-1)!;
+    expect(debt.principal).toBe(100);
+    expect(debt.balance).toBe(100);
+    expect(purse(out.state, 'hutt')).toBe(0);
+    expect(out.notes.join(' ')).toMatch(/could only advance 100/);
+  });
+
+  it('refuses a loan from an empty treasury rather than conjuring one', () => {
+    const s = createSeedState('krayt');
+    s.factions.find((f) => f.id === 'hutt')!.credits = 0;
+    expect(lend(s, 240).rejections.map((r) => r.code)).toEqual(['insufficient_credits']);
+  });
+});
+
+describe('rescheduling a debt', () => {
+  const reschedule = (s: WorldState, extra: Record<string, unknown> = {}, actor = 'hutt') =>
+    applyOps(s, [{ op: 'restructure_debt', debtId: 'debt-0', perTurn: 20, ...extra }], 'extraction', actor, true);
+
+  it('changes the instalment and leaves the balance alone', () => {
+    const s = createSeedState('krayt');
+    const was = s.debts.find((d) => d.id === 'debt-0')!;
+    const out = reschedule(s);
+    const now = out.state.debts.find((d) => d.id === 'debt-0')!;
+
+    expect(now.perTurn).toBe(20);
+    // The thing the forgive+establish chain got wrong: no principal minted.
+    expect(now.balance).toBe(was.balance);
+    expect(out.state.debts).toHaveLength(s.debts.length);
+  });
+
+  /**
+   * The chain it replaces paid `DEBT_FORGIVENESS_GOODWILL` twice for a
+   * forgiveness that forgave nothing — 60% of a 66-point disposition swing.
+   */
+  it('pays no goodwill, because nothing was forgiven', () => {
+    const s = createSeedState('krayt');
+    const before = s.factions.find((f) => f.id === 'krayt')!.disposition.hutt ?? 0;
+    const out = reschedule(s);
+    expect(out.state.factions.find((f) => f.id === 'krayt')!.disposition.hutt ?? 0).toBe(before);
+  });
+
+  it('clears the arrears it renegotiated, and can be told not to', () => {
+    const s = createSeedState('krayt');
+    expect(s.debts.find((d) => d.id === 'debt-0')!.status).toBe('delinquent');
+
+    const cleared = reschedule(s).state.debts.find((d) => d.id === 'debt-0')!;
+    expect(cleared.status).toBe('current');
+    expect(cleared.missedPayments).toBe(0);
+
+    const kept = reschedule(s, { clearsArrears: false }).state.debts.find((d) => d.id === 'debt-0')!;
+    expect(kept.status).toBe('delinquent');
+  });
+
+  it('is open to both parties and closed to everyone else', () => {
+    const s = createSeedState('krayt');
+    expect(reschedule(s, {}, 'hutt').rejections).toHaveLength(0);
+    expect(reschedule(s, {}, 'krayt').rejections).toHaveLength(0);
+    expect(reschedule(s, {}, 'meridian').rejections.map((r) => r.code)).toEqual(['illegal_value']);
+  });
+
+  it('needs the other party, so it cannot be declared', () => {
+    const s = createSeedState('krayt');
+    const out = applyOps(s, [{ op: 'restructure_debt', debtId: 'debt-0', perTurn: 5 }], 'model', 'hutt', true);
+    expect(out.rejections.map((r) => r.code)).toEqual(['needs_consent']);
+  });
+});

@@ -16,7 +16,7 @@ import {
   type CampaignStore,
   type SaveFile,
 } from './store.js';
-import type { ChatMessage } from '../model/calls.js';
+import type { ChatMessage, TranscriptEntry } from '../model/calls.js';
 
 // Re-exported so existing importers (and src/replay.ts) keep working.
 export { SAVE_DIR, SaveFileSchema, FileCampaignStore, MemoryCampaignStore } from './store.js';
@@ -83,7 +83,7 @@ export class Campaign {
   private constructor(
     private committed: WorldState,
     public journal: Journal,
-    public transcripts: Record<string, ChatMessage[][]>,
+    public transcripts: Record<string, TranscriptEntry[][]>,
     public name: string,
     private readonly store: CampaignStore,
     private stagedBatches: StagedBatch[] = [],
@@ -144,7 +144,7 @@ export class Campaign {
     const campaign = new Campaign(
       state,
       journal,
-      file.transcripts as Record<string, ChatMessage[][]>,
+      file.transcripts as Record<string, TranscriptEntry[][]>,
       name,
       store,
     );
@@ -372,7 +372,7 @@ export class Campaign {
 
   /* ---------------- diplomacy transcripts ---------------- */
 
-  recordTranscript(factionId: string, messages: ChatMessage[]): void {
+  recordTranscript(factionId: string, messages: TranscriptEntry[]): void {
     const existing = this.transcripts[factionId] ?? [];
     existing.push(messages);
     this.transcripts[factionId] = existing;
@@ -384,7 +384,18 @@ export class Campaign {
     return sessions.map(
       (session, i) =>
         `### Conversation ${i + 1}\n` +
-        session.map((m) => `${m.speaker === 'player' ? 'Them' : 'You'}: ${m.text}`).join('\n'),
+        session
+          .map((m) =>
+            // A `record` line is the engine's note on what became of the
+            // conversation, not a thing either party said. Rendered without a
+            // speaker so it cannot be read back as the faction's own words —
+            // the previous mapping would have attributed a refusal notice to
+            // "You", which is exactly the confusion it exists to prevent.
+            m.speaker === 'record'
+              ? m.text
+              : `${m.speaker === 'player' ? 'Them' : 'You'}: ${m.text}`,
+          )
+          .join('\n'),
     );
   }
 

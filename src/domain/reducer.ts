@@ -1,4 +1,5 @@
 import {
+  MAX_DURATION,
   accelerationCost,
   applyCategoryFloor,
   dropOneBucket,
@@ -46,13 +47,18 @@ import {
 } from './diplomacy.js';
 import { jumpsBetween, neighboursOf, positionAlongPath, shortestPath } from './graph.js';
 import { routeEarnings, tradeRoutes } from './trade.js';
+import { isPublicOrderType } from './intel.js';
 import {
+  EXTRACTION_ALLOWED,
+  EXTRACTION_REFUSAL_REASON,
   OpSchema,
   REDUCER_ONLY_OPS,
   type Op,
   type OpRejection,
 } from './ops.js';
 import {
+  commitmentsOf,
+  maxCommitmentIncomeFor,
   effectiveStats,
   fleetBases,
   isGuestOf,
@@ -253,8 +259,10 @@ function logEvent(
   kind: EventLogEntry['kind'],
   text: string,
   factionId: string | null = null,
+  /** Who may read it. Omit for public — see `EventLogEntrySchema.visibleTo`. */
+  visibleTo: string[] | null = null,
 ): void {
-  state.eventLog.push({ turn: state.turn, kind, factionId, text });
+  state.eventLog.push({ turn: state.turn, kind, factionId, text, visibleTo });
 }
 
 /**
@@ -449,6 +457,76 @@ function underDuressFrom(state: WorldState, coercer: string, victim: string): nu
   return worlds;
 }
 
+/**
+ * Retire the treaty this one replaces.
+ *
+ * Powers renegotiate constantly and say so — both parties to a live playtest
+ * accord used the word "supersedes" out loud — and nothing acted on it. The
+ * result was two `tribute` treaties between the same pair, both paying: Arkanis
+ * believed it paid 40 and paid 65, the Combine believed 55 and paid 95, and the
+ * ending duly listed "tribute with Drajk Confederacy" twice.
+ *
+ * Supersession already existed and was scoped to `incomeShares` — a new grant
+ * of the same system to the same faction retired the old one. It never looked
+ * at anything else, so every other recurring term stacked.
+ *
+ * **"One live treaty per (pair, type)" is the tempting rule and it is wrong.**
+ * Two `trade_accord`s between the same powers granting *different lanes* are two
+ * deals, not a renegotiation, and a test has pinned that since item 26. What
+ * cannot coexist is two treaties doing the same recurring thing to the same
+ * pair. So the test is on the **footprint**:
+ *
+ * - a term that flows between the parties as a whole — `incomePerTurn`,
+ *   `shipsPledged`, `mutualDefenseTrigger` — there is one such flow, and a
+ *   second treaty carrying it is a double-count;
+ * - a type that carries no recurring terms at all — `non_aggression`,
+ *   `ceasefire`, `basing_rights` — where the treaty *is* the status, so a
+ *   second one is a pure duplicate.
+ *
+ * `incomeShares` is deliberately absent: it is keyed by system and already has
+ * its own, narrower supersession. `territory` is a one-time cession and cannot
+ * recur.
+ *
+ * Called where a treaty becomes ACTIVE rather than where it is created: a
+ * `pending` treaty must not retire the live one it will replace, or the parties
+ * would have nothing in force while a council deliberates.
+ */
+function pairLevelFootprint(t: Treaty): string[] {
+  const marks: string[] = [];
+  if (Object.values(t.terms.incomePerTurn).some((v) => v !== 0)) marks.push('incomePerTurn');
+  if (Object.values(t.terms.shipsPledged).some((v) => v > 0)) marks.push('shipsPledged');
+  if (t.terms.mutualDefenseTrigger !== '') marks.push('mutualDefenseTrigger');
+  // A treaty with no recurring term and no per-system grant is its own status:
+  // a second one of the same type between the same powers says nothing new.
+  if (marks.length === 0 && t.terms.incomeShares.length === 0) marks.push('the pact itself');
+  return marks;
+}
+
+function supersedePriorTreaties(
+  state: WorldState,
+  incoming: Treaty,
+  notes: string[],
+): void {
+  const mine = pairLevelFootprint(incoming);
+  if (mine.length === 0) return;
+
+  for (const prior of state.treaties) {
+    if (prior.id === incoming.id) continue;
+    if (prior.status !== 'active') continue;
+    if (prior.type !== incoming.type) continue;
+    if (prior.parties.length !== incoming.parties.length) continue;
+    if (!incoming.parties.every((party) => prior.parties.includes(party))) continue;
+
+    const clash = pairLevelFootprint(prior).filter((m) => mine.includes(m));
+    if (clash.length === 0) continue;
+
+    prior.status = 'superseded';
+    const note = `Superseded ${prior.id}: the ${prior.type.replace(/_/g, ' ')} between ${prior.parties.join(' and ')} is now set by the new accord, not added to it (${clash.join(', ')}).`;
+    notes.push(note);
+    logEvent(state, 'diplomacy', note, incoming.parties[0]);
+  }
+}
+
 function voidConditionMet(state: WorldState, condition: VoidCondition): string | null {
   const name = (id: string): string =>
     state.factions.find((f) => f.id === id)?.name ?? id;
@@ -582,6 +660,7 @@ export function applyOps(
       kind: 'rejection',
       factionId: null,
       text: `[${code}] ${message}`,
+      visibleTo: null,
     };
     rejectionEvents.push({ ...entry });
     state.eventLog.push(entry);
@@ -595,6 +674,9 @@ export function applyOps(
   // which is what makes repositioning free: `adjust_ships -5` here and `+5`
   // there nets to zero and costs nothing, however the ops are ordered.
   const hullsBefore = new Map(state.factions.map((f) => [f.id, fleetStrengthOf(state, f.id)]));
+  // Per-system counts too, so `capSelfInflictedLosses` can put restored hulls
+  // back where they were taken from rather than at the faction's best world.
+  const shipsBefore = new Map(state.systems.map((sys) => [sys.id, { ...sys.ships }]));
 
   for (const raw of rawOps) {
     const parsed = OpSchema.safeParse(raw);
@@ -625,6 +707,28 @@ export function applyOps(
         raw,
         'reducer_only',
         `"${op.op}" is reducer-only. Control of a system changes only when a fleet_movement order actually arrives. Issue a fleet_movement order instead.`,
+      );
+      continue;
+    }
+
+    // An accord may only produce what needs the other party's agreement, or
+    // what is purely a record of the conversation. The mirror of
+    // `needs_consent`: that rejects a DECLARED op which needs someone else's
+    // agreement; this rejects a NEGOTIATED op which needs nobody's, because
+    // that is unilateral work the action economy already prices at the moment
+    // it is declared.
+    //
+    // This was one exception — `fleet_movement` — and everything else walked
+    // through. Measured live: a channel closed with `actionPoints: {left: 0}`
+    // issued a `courier` order and the count stayed at zero, so 13 of the 14
+    // order types were reachable free, along with a red-line probe that cost
+    // nothing because a refused accord spends no action point either.
+    if (source === 'extraction' && !EXTRACTION_ALLOWED.has(op.op)) {
+      reject(
+        raw,
+        'declared_only',
+        EXTRACTION_REFUSAL_REASON[op.op] ??
+          `"${op.op}" needs nobody's agreement, so it cannot come out of a negotiation. Declare it on your own turn, where it costs an action.`,
       );
       continue;
     }
@@ -790,7 +894,22 @@ export function applyOps(
           );
           break;
         }
+        const wasDissent = f.dissent;
         f.dissent = Math.max(0, Math.min(100, f.dissent + op.delta));
+        // Dissent movements were not logged at all. Only the drift trigger
+        // wrote a line, so a refusal (+8) and a compulsion breach (+15) left no
+        // record — a playtest went 25 -> 28 -> 45 -> 69 with the log accounting
+        // for +9 of it, for the mechanic this project calls the most successful
+        // in the build. A number the engine changes and nobody can audit is the
+        // same defect as a check nobody can audit.
+        if (f.dissent !== wasDissent) {
+          logEvent(
+            state,
+            'system',
+            `${f.name}: dissent ${wasDissent} -> ${f.dissent}/100 (${op.delta >= 0 ? '+' : ''}${op.delta}). ${op.reason}`.trim(),
+            f.id,
+          );
+        }
         break;
       }
 
@@ -853,29 +972,6 @@ export function applyOps(
       }
 
       case 'issue_order': {
-        // A fleet movement is your OWN fleet, and it is the one order that
-        // resolves combat and changes who holds a world. Nothing about it needs
-        // the other party's consent, so it has no business coming out of a
-        // transcript — and coming out of one is how it escaped the action
-        // economy. Measured live: an accord staged `fleet_movement` from
-        // slu-1 to ark-2 with force 8, the tick reported "storms Sennex,
-        // breaking a garrison of 4 ... takes possession", and the player's
-        // action points still read 2/2 afterwards. Diplomacy is unmetered on
-        // the grounds that a channel cannot *do* anything a declared action
-        // does; this is what made that false.
-        //
-        // The mirror of `needs_consent`: that rejects a declared op which needs
-        // someone else's agreement, this rejects a negotiated op which needs
-        // nobody's. Everything else an accord can legitimately start is
-        // unilateral work the action economy already prices at issue time.
-        if (source === 'extraction' && isMovementType(op.type)) {
-          reject(
-            raw,
-            'declared_only',
-            'A fleet movement cannot come out of a negotiation: it is your own fleet, it resolves combat, and it costs an action to order. Declare it as an action instead.',
-          );
-          break;
-        }
         if (!factionExists(op.factionId)) {
           reject(raw, 'unknown_faction', `No faction "${op.factionId}".`);
           break;
@@ -1084,11 +1180,16 @@ export function applyOps(
         const delivers = effect
           ? `, to deliver ${describeOrderEffect(effect)} for ${invested} credits`
           : '';
+        // Secret work is logged for the people who can see it and nobody else.
+        // This line named the label, duration, target, payload and price of an
+        // order the fog had just redacted out of `pendingOrders` — so the
+        // redaction was decorative for anyone who read the log.
         logEvent(
           state,
           'order',
           `${op.factionId} begins ${order.label} (${duration} turns) -> ${op.targetId}${delivers}.`,
           op.factionId,
+          isPublicOrderType(order.type) ? null : [op.factionId, ...order.visibility],
         );
         break;
       }
@@ -1163,7 +1264,18 @@ export function applyOps(
           );
           break;
         }
-        order.durationTurns += op.additionalTurns;
+        // Clamped to the documented ceiling. This was a bare `+=`, so an order
+        // could be extended without limit — a playtest inherited one at 10
+        // turns against `MAX_DURATION` 5 and "Nothing takes longer than 5
+        // turns", and an unbounded `remaining` was the multiplier on the
+        // interrupt-refund exploit.
+        const wanted = order.durationTurns + op.additionalTurns;
+        order.durationTurns = Math.min(wanted, MAX_DURATION);
+        if (wanted > order.durationTurns) {
+          const trim = `${order.label} cannot run past ${MAX_DURATION} turns; extended to ${order.durationTurns} rather than ${wanted}.`;
+          notes.push(trim);
+          logEvent(state, 'clamp', trim, order.factionId);
+        }
         logEvent(
           state,
           'order',
@@ -1299,6 +1411,33 @@ export function applyOps(
           }
         }
 
+        // A treaty whose void condition is ALREADY true is not a treaty.
+        //
+        // `voidConditionMet` had one caller, in `tickTurn`, so such a deal was
+        // recorded `active`, announced, shown in the panel, and killed on the
+        // next tick — having paid nothing and been believed by both parties.
+        // Measured live: a 15/turn toll voided on the tick it was signed
+        // because its `attacks` condition already held at signature, and the
+        // counterparty's next reaction described it as an arrangement it was
+        // honouring.
+        //
+        // Refused rather than recorded-and-voided, because a silently void
+        // treaty IS the phantom-belief problem. Under atomic batching this
+        // fails the accord and the correction pass is told exactly why, so the
+        // deal gets re-expressed without the impossible clause instead of
+        // evaporating.
+        const alreadyVoid = terms.voidsOn
+          .map((condition) => voidConditionMet(state, condition))
+          .find((why): why is string => why !== null);
+        if (alreadyVoid !== undefined) {
+          reject(
+            raw,
+            'already_void',
+            `That treaty voids the moment it is signed: ${alreadyVoid}. Drop the condition or settle what triggers it first.`,
+          );
+          break;
+        }
+
         // A deal agreed subject to ratification is recorded now and inert until
         // its effective turn. `isTreatyLive` gates on `status === 'active'`, so
         // `pending` costs nothing anywhere else.
@@ -1323,6 +1462,10 @@ export function applyOps(
           summary: op.summary || `${op.treatyType.replace(/_/g, ' ')} between ${op.parties.join(' and ')}`,
         };
         state.treaties.push(treaty);
+        // One live treaty per (pair, type). A pending one supersedes nothing
+        // yet — it does so when it is promoted in `tickTurn`, or the parties
+        // would have nothing in force while the council deliberates.
+        if (!pending) supersedePriorTreaties(state, treaty, notes);
         logEvent(
           state,
           'diplomacy',
@@ -1474,6 +1617,11 @@ export function applyOps(
           'order',
           `${owner.name} places an agent on ${host.name} (${op.mission}) for ${price} credits.`,
           op.ownerFactionId,
+          // A covert placement is the acting power's business alone. This told
+          // the world's holder that a rival operative had just arrived on it,
+          // with the mission and the price — the one thing an operative exists
+          // not to announce.
+          [op.ownerFactionId],
         );
         break;
       }
@@ -1485,7 +1633,13 @@ export function applyOps(
           break;
         }
         const [gone] = state.agents.splice(idx, 1);
-        logEvent(state, 'order', `Agent withdrawn from ${gone!.systemId}. ${op.reason}`.trim(), gone!.ownerFactionId);
+        logEvent(
+      state,
+      'order',
+      `Agent withdrawn from ${gone!.systemId}. ${op.reason}`.trim(),
+      gone!.ownerFactionId,
+      [gone!.ownerFactionId],
+    );
         break;
       }
 
@@ -1620,6 +1774,25 @@ export function applyOps(
           notes.push(note);
           logEvent(state, 'clamp', note, op.factionIds[0] ?? null);
         }
+        // A second, tighter ceiling applies when the money is READ, and it is
+        // the one that actually decides what an arrangement is worth. Both caps
+        // are deliberate; nobody decided they should compound silently.
+        // Measured: the Combine agreed to 60 a turn, this trimmed it to 25, and
+        // `ledgerFor` paid 10 — a sixth of what was negotiated, on every turn of
+        // the campaign, with neither party ever told. Reported so a player can
+        // see the deal they actually struck rather than the one they discussed.
+        for (const bound of op.factionIds) {
+          const ceiling = maxCommitmentIncomeFor(state, bound);
+          const drawn = commitmentsOf(state, bound).reduce(
+            (n, c) => n + Math.max(0, c.incomePerTurn ?? 0),
+            0,
+          );
+          if (yieldPerTurn > 0 && drawn + yieldPerTurn > ceiling) {
+            const capped = `${nameFor(state, bound)} can draw at most ${ceiling} a turn from standing arrangements in total (its influence sets that), so this one is worth ${Math.max(0, ceiling - drawn)} to it rather than ${yieldPerTurn}.`;
+            notes.push(capped);
+            logEvent(state, 'clamp', capped, bound);
+          }
+        }
         state.commitments.push({
           id: mintId(state, 'com'),
           kind: op.kind,
@@ -1691,19 +1864,55 @@ export function applyOps(
           logEvent(state, 'clamp', note, op.creditorFactionId);
         }
 
+        // A loan MOVES THE MONEY. This recorded the obligation and transferred
+        // nothing, which made a negotiated advance impossible to express
+        // honestly: the debtor's `adjust_credits +N` is legal, the creditor's
+        // `-N` is refused by design ("you cannot take credits out of another
+        // faction's treasury"), and extraction runs as the borrower — so the
+        // only expressible half was the credit to self. Measured live on a
+        // real campaign: `TOTAL +240` with no counterparty debit, principal
+        // conjured out of nothing.
+        //
+        // Trimmed to what the creditor actually holds, exactly as `settle_debt`
+        // trims to what the debtor holds. A lender who cannot fund the whole
+        // advance lends what it has, and the paper is written for that.
+        const creditorFaction = state.factions.find((f) => f.id === op.creditorFactionId);
+        const debtorFaction = state.factions.find((f) => f.id === op.debtorFactionId);
+        const advanced = Math.min(principal, creditorFaction?.credits ?? 0);
+        if (advanced <= 0) {
+          reject(
+            raw,
+            'insufficient_credits',
+            `${op.creditorFactionId} has nothing to lend. A debt is an advance of real money, not a promise recorded.`,
+          );
+          break;
+        }
+        if (advanced < principal) {
+          const note = `${creditorFaction?.name ?? op.creditorFactionId} could only advance ${advanced} of the ${principal} agreed; the paper is written for what was actually paid over.`;
+          notes.push(note);
+          logEvent(state, 'clamp', note, op.creditorFactionId);
+        }
+        if (creditorFaction) creditorFaction.credits -= advanced;
+        if (debtorFaction) debtorFaction.credits += advanced;
+
         state.debts.push({
           id: mintId(state, 'debt'),
           creditorFactionId: op.creditorFactionId,
           debtorFactionId: op.debtorFactionId,
-          principal,
-          balance: principal,
-          perTurn,
+          principal: advanced,
+          balance: advanced,
+          perTurn: Math.min(perTurn, advanced),
           status: 'current',
           missedPayments: 0,
           establishedTurn: state.turn,
           text: op.text,
         });
-        logEvent(state, 'diplomacy', `Debt recorded: ${op.text}`, op.creditorFactionId);
+        logEvent(
+          state,
+          'diplomacy',
+          `Debt recorded: ${op.text} (${advanced} advanced).`,
+          op.creditorFactionId,
+        );
         break;
       }
 
@@ -1815,6 +2024,67 @@ export function applyOps(
        * paying a debt off early produced a narrative saying the column was shut
        * and a balance that was still there next turn.
        */
+      case 'restructure_debt': {
+        // New terms need the other party to grant them, so this is negotiated
+        // like `form_treaty` and `establish_debt`. The schema says so and the
+        // reducer says so, since a hand-written batch parses against the full
+        // vocabulary rather than the model's.
+        if (source === 'model') {
+          reject(
+            raw,
+            'needs_consent',
+            'Terms cannot be rewritten by declaring them: the other party to the debt has to agree. Open a channel with them (/talk) and settle it there.',
+          );
+          break;
+        }
+        const debt = state.debts.find((d) => d.id === op.debtId);
+        if (!debt) {
+          reject(raw, 'unknown_debt', `No debt "${op.debtId}".`);
+          break;
+        }
+        if (!isDebtLive(debt)) {
+          reject(raw, 'illegal_value', `That debt is already ${debt.status}.`);
+          break;
+        }
+        // Either party may agree new terms — the creditor grants them, the
+        // debtor asks for them — but a stranger cannot rewrite someone else's
+        // paper. Same actor-shaped hazard `forgive_debt` is guarded against.
+        if (
+          actor !== undefined &&
+          actor !== debt.creditorFactionId &&
+          actor !== debt.debtorFactionId
+        ) {
+          reject(
+            raw,
+            'illegal_value',
+            `${actor} is not a party to ${debt.id}. Only the creditor and the debtor can reschedule it.`,
+          );
+          break;
+        }
+
+        const wasPerTurn = debt.perTurn;
+        const wasStatus = debt.status;
+        // The balance is deliberately untouched: a restructure changes the
+        // TERMS of what is owed, never the amount. Writing part of it off is
+        // `forgive_debt` and paying it down is `settle_debt`, and both move
+        // real money. Rebuilding the debt through forgive+establish is what
+        // minted principal and paid goodwill for a forgiveness that forgave
+        // nothing.
+        debt.perTurn = Math.min(op.perTurn, MAX_DEBT_PER_TURN, debt.balance);
+        if (op.text !== undefined) debt.text = op.text;
+        if (op.clearsArrears) {
+          debt.missedPayments = 0;
+          if (debt.status === 'delinquent') debt.status = 'current';
+        }
+
+        const note = `${debt.id} rescheduled: ${wasPerTurn} -> ${debt.perTurn} a turn on an unchanged balance of ${debt.balance}${
+          wasStatus === 'delinquent' && debt.status === 'current' ? ', arrears cleared' : ''
+        }. ${op.reason}`.trim();
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, debt.creditorFactionId);
+        break;
+      }
+
       case 'settle_debt': {
         const debt = state.debts.find((d) => d.id === op.debtId);
         if (!debt) {
@@ -1893,7 +2163,7 @@ export function applyOps(
     }
   }
 
-  capSelfInflictedLosses(state, actor, hullsBefore, notes);
+  capSelfInflictedLosses(state, actor, hullsBefore, shipsBefore, notes);
   billConstruction(state, hullsBefore, notes);
 
   // Nothing lands unless everything does. The notes are dropped with the state
@@ -1939,6 +2209,8 @@ function capSelfInflictedLosses(
   state: WorldState,
   actor: string | undefined,
   before: Map<string, number>,
+  /** Per-system ship counts as they stood before the batch. */
+  shipsBefore: Map<string, Record<string, number>>,
   notes: string[],
 ): void {
   if (actor === undefined) return; // engine ops, and journals predating the actor field
@@ -1953,11 +2225,37 @@ function capSelfInflictedLosses(
   if (lost <= allowed) return;
 
   const restored = lost - allowed;
-  const bases = fleetBases(state, actor);
-  if (bases.length === 0) return;
-  bases[0]!.ships[actor] = (bases[0]!.ships[actor] ?? 0) + restored;
+  // Put them back WHERE THEY WERE TAKEN FROM. This restored at `fleetBases[0]`,
+  // which sorts by `strategicValue` — so a declaration that drew hulls from a
+  // backwater handed them back at the faction's best world. Measured: an
+  // `adjust_fleet -4` moved 3 hulls two jumps from Hollow Star to Vergesse,
+  // instantly, with no `fleet_movement`, no transit and no interception. A
+  // scuttling was a free strategic redeployment, and the note even claimed the
+  // survivors "remain at Vergesse" when they had never been there.
+  const drawnFrom = state.systems
+    .map((sys) => ({ sys, had: shipsBefore.get(sys.id)?.[actor] ?? 0, now: sys.ships[actor] ?? 0 }))
+    .filter((x) => x.had > x.now)
+    .sort((a, b) => b.had - a.had || a.sys.id.localeCompare(b.sys.id));
 
-  const note = `${faction.name} cannot lose ${lost} hulls to a single declaration; ${restored} were never at risk and remain at ${bases[0]!.name}. Battle losses are resolved when a fleet arrives, not when an order is given.`;
+  let owed = restored;
+  for (const { sys, had, now } of drawnFrom) {
+    if (owed <= 0) break;
+    const back = Math.min(owed, had - now);
+    sys.ships[actor] = (sys.ships[actor] ?? 0) + back;
+    owed -= back;
+  }
+  // Nothing identifiable was drawn from (an abstract `adjust_fleet` against a
+  // faction with no recorded losses): fall back to a holding rather than
+  // losing the hulls entirely.
+  const bases = fleetBases(state, actor);
+  if (owed > 0) {
+    if (bases.length === 0) return;
+    bases[0]!.ships[actor] = (bases[0]!.ships[actor] ?? 0) + owed;
+  }
+
+  const where =
+    drawnFrom.length > 0 ? drawnFrom.map((d) => d.sys.name).join(', ') : (bases[0]?.name ?? 'their stations');
+  const note = `${faction.name} cannot lose ${lost} hulls to a single declaration; ${restored} were never at risk and remain at ${where}. Battle losses are resolved when a fleet arrives, not when an order is given.`;
   notes.push(note);
   logEvent(state, 'rejection', note, actor);
 }
@@ -2052,14 +2350,19 @@ function resolveInterrupt(state: WorldState, order: PendingOrder, reason: string
   }
 
   const remaining = Math.max(0, order.durationTurns - order.progress);
-  // Banked work is kept and unspent work is refunded. A programme with real
-  // money sunk into it refunds pro-rata of what was actually committed, on top
-  // of the flat recovery — the yards return the materials they never cut into.
-  const unspent =
+  // Banked work is kept and unspent work is refunded, pro-rata of what was
+  // actually committed: the yards return the materials they never cut into.
+  //
+  // There used to be a flat `remaining * 20` on top of that, and it made
+  // **issue-then-interrupt unconditionally profitable**. At `progress: 0` the
+  // pro-rata half already returns 100% of the outlay, so the flat part was pure
+  // profit — measured at +100 on a 120-credit programme, and unbounded once
+  // `extend_order` (which had no ceiling) inflated `remaining`. A refund that
+  // can exceed the outlay is not a refund.
+  const refund =
     order.investedCredits > 0
       ? Math.round(order.investedCredits * (remaining / order.durationTurns))
       : 0;
-  const refund = remaining * 20 + unspent;
   if (faction) faction.credits += refund;
   const note = `${order.label} suspended at ${order.progress}/${order.durationTurns}; ${refund} credits recovered. ${reason}`.trim();
   logEvent(state, 'order', note, order.factionId);
@@ -2220,6 +2523,9 @@ export function tickTurn(input: WorldState): TickResult {
     if (treaty.status !== 'pending' || treaty.effectiveTurn === null) continue;
     if (state.turn < treaty.effectiveTurn) continue;
     treaty.status = 'active';
+    // It replaces its predecessor now, not at signature — see
+    // `supersedePriorTreaties`.
+    supersedePriorTreaties(state, treaty, notes);
     logEvent(state, 'diplomacy', `Treaty ratified and now in force: ${treaty.summary}.`);
     notes.push(`Ratified: ${treaty.summary}`);
     // A cession takes effect with the rest of the terms, not at signature, so a
@@ -2825,9 +3131,42 @@ function resolveBattle(
     id !== holder &&
     treatyBetween(state.treaties, state.turn, id, holder, ['basing_rights']) !== undefined;
 
-  const attackers = [...arriving.entries()].filter(([id]) => id !== holder && !guest(id));
+  /**
+   * Rivals sitting in orbit over a world they do not hold.
+   *
+   * Presence is deliberately meaningful — parked ships take a share of the
+   * world's income, blockade its lanes and suborn its crews — and there was no
+   * way to answer it. Battles resolve only on a `fleet_movement` ARRIVAL, and a
+   * holder arriving at its own world was always read as reinforcing, so one
+   * enemy hull on your best world was a permanent, unanswerable tax. Measured
+   * live: the Vigil held a hull over Vergesse for five turns and nothing in the
+   * rules could remove it.
+   */
+  const squatters = Object.entries(target.ships).filter(
+    ([id, n]) => n > 0 && id !== holder && !guest(id),
+  );
+
+  /**
+   * A holder arriving where a rival is squatting is clearing its own orbit.
+   *
+   * Purely ship against ship: the garrison takes no part and grants no bonus,
+   * because the squatters do not hold the ground and there is no ground to
+   * take — the holder already has it. So the engagement stops after the
+   * orbital phase whichever way it goes.
+   */
+  const sweep =
+    holder !== null &&
+    (arriving.get(holder) ?? 0) > 0 &&
+    squatters.length > 0 &&
+    [...arriving.keys()].every((id) => id === holder || guest(id));
+
+  const attackers = sweep
+    ? ([[holder!, arriving.get(holder!)!]] as [string, number][])
+    : [...arriving.entries()].filter(([id]) => id !== holder && !guest(id));
   const guests = [...arriving.entries()].filter(([id]) => guest(id));
-  for (const [id, n] of arriving) if (id === holder) land(id, n);
+  // In a sweep the holder's arriving hulls are the attacking force, so they
+  // must not also be landed before the fight.
+  if (!sweep) for (const [id, n] of arriving) if (id === holder) land(id, n);
   for (const [id, n] of guests) land(id, n);
 
   if (attackers.length === 0) {
@@ -2859,18 +3198,28 @@ function resolveBattle(
   /* --- Pacts broken by this attack ------------------------------------- */
   // Attacking someone you have sworn peace with voids the pact, costs the
   // injured party's opinion, and costs your standing with everyone watching.
+  // Who is being attacked: normally the holder, but in a sweep it is the powers
+  // squatting in the holder's own orbit. Sweeping a partner you have sworn
+  // peace with breaks that peace exactly as any other attack does.
+  const pactVictims: string[] = sweep
+    ? squatters.map(([id]) => id)
+    : holder === null
+      ? []
+      : [holder];
+
   for (const attackerId of attackerIds) {
-    if (holder === null) continue;
-    const pact = treatyBetween(state.treaties, state.turn, attackerId, holder, PEACE_TREATIES);
+    for (const victimId of pactVictims) {
+    if (victimId === attackerId) continue;
+    const pact = treatyBetween(state.treaties, state.turn, attackerId, victimId, PEACE_TREATIES);
     if (!pact) continue;
 
     pact.status = 'broken';
-    const injured = state.factions.find((f) => f.id === holder);
+    const injured = state.factions.find((f) => f.id === victimId);
     if (injured) {
       injured.disposition[attackerId] = Math.max(-100, (injured.disposition[attackerId] ?? 0) - 25);
     }
     for (const witness of state.factions) {
-      if (witness.id === attackerId || witness.id === holder) continue;
+      if (witness.id === attackerId || witness.id === victimId) continue;
       witness.disposition[attackerId] = Math.max(
         -100,
         (witness.disposition[attackerId] ?? 0) - PACT_BREAKING_REPUTATION_COST,
@@ -2879,9 +3228,10 @@ function resolveBattle(
     logEvent(
       state,
       'diplomacy',
-      `${nameOf(attackerId)} breaks its ${pact.type.replace('_', ' ')} with ${nameOf(holder)} by attacking ${target.name}. The whole Rim notes it.`,
+      `${nameOf(attackerId)} breaks its ${pact.type.replace('_', ' ')} with ${nameOf(victimId)} by attacking ${target.name}. The whole Rim notes it.`,
       attackerId,
     );
+    }
   }
 
   // Safe default: everyone else present is a defender.
@@ -3100,6 +3450,17 @@ function resolveBattle(
     logEvent(state, 'order', note, attackers[0]![0]);
     if (rounds.length > 0) rounds[rounds.length - 1]!.outcome = 'force_spent';
     return finish(note);
+  }
+
+  // A sweep ends here whichever way it went. There is no ground phase: the
+  // holder already holds the ground, the garrison took no part, and there is
+  // nothing to take. Surviving hulls put in over the world they came to clear.
+  if (sweep) {
+    for (const [id, n] of attackShare) land(id, n);
+    const cleared = `${notes.join(' ')} ${nameOf(holder!)} clears the orbitals of ${target.name}.`.trim();
+    logEvent(state, 'order', cleared, holder);
+    if (rounds.length > 0) rounds[rounds.length - 1]!.outcome = 'orbit_cleared';
+    return finish(cleared);
   }
 
   /* ---------- Phase 2: ground assault ---------- */

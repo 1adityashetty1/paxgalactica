@@ -19,7 +19,12 @@ import { EpilogueViewSchema } from './epilogue.js';
  */
 
 const ChatMessageSchema = z.object({
-  speaker: z.enum(['player', 'faction']),
+  /**
+   * `record` is not a voice. It is the engine writing down what became of the
+   * conversation — used when an accord was refused, so the transcript replayed
+   * into a persona says so rather than reading as an agreement that stands.
+   */
+  speaker: z.enum(['player', 'faction', 'record']),
   text: z.string(),
 });
 

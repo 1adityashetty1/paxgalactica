@@ -30,6 +30,7 @@ const OUTCOME_LABEL: Record<BattleRound['outcome'], string> = {
   force_spent: 'attacking force spent',
   world_taken: 'garrison broken, world taken',
   landing_thrown_back: 'landing thrown back',
+  orbit_cleared: 'orbit cleared of rival ships',
 };
 
 function Side({

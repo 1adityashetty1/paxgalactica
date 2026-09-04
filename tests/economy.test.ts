@@ -194,7 +194,11 @@ describe('ledgers', () => {
           text: 'Salvage rights across the Drift.', incomePerTurn: 20,
         },
       ],
-      'extraction',
+      // `engine`, not `extraction`: this is a fixture building a board with
+      // every ledger term non-zero, not a test of where ops may come from. An
+      // accord cannot place an agent (see `EXTRACTION_ALLOWED`), and using the
+      // negotiated source here would be testing the guard by accident.
+      'engine',
     );
     expect(res.rejections).toEqual([]);
 
@@ -930,7 +934,18 @@ describe('a fleet movement cannot come out of a negotiation', () => {
     expect(out.state.pendingOrders).toHaveLength(1);
   });
 
-  it('leaves non-movement work an accord may legitimately start alone', () => {
+  /**
+   * The guard was one exception and everything else walked through it, which
+   * made diplomacy an unmetered action channel for 13 of the 14 order types.
+   * An accord may now produce only what needs the other party's agreement, or
+   * what records the conversation — see `EXTRACTION_ALLOWED`.
+   *
+   * `treaty_ratification` is the order this test used to allow, and it is the
+   * clearest case of why the exception was wrong: a deal gated on ratification
+   * is expressed by `form_treaty`'s own `ratifyTurns`, not by an order that
+   * carries no payload and completes without producing anything.
+   */
+  it('refuses an order an accord tried to start, however harmless', () => {
     const out = applyOps(
       fresh(),
       [
@@ -947,8 +962,9 @@ describe('a fleet movement cannot come out of a negotiation', () => {
       'extraction',
       'freeworlds',
     );
-    expect(out.rejections).toHaveLength(0);
-    expect(out.state.pendingOrders).toHaveLength(1);
+    expect(out.rejections.map((r) => r.code)).toEqual(['declared_only']);
+    expect(out.state.pendingOrders).toHaveLength(0);
+    expect(out.rejections[0]!.message).toMatch(/costs an action/);
   });
 });
 

@@ -485,6 +485,21 @@ export async function resolveAction(
     priced.appraisal.difficulty,
   );
 
+  // Every check is written to the log, so a campaign's luck is auditable.
+  //
+  // That sentence was in CLAUDE.md and nowhere in the code: `EventKindSchema`
+  // has no `check` kind and nothing wrote one. The only reason any rolls were
+  // visible in a real campaign is that the resolution model *voluntarily*
+  // emitted `log_narrative` lines for them — model discretion, not a
+  // mechanism, and turns 0-5 of that campaign had none at all.
+  //
+  // Staged as an op rather than mutated in, so it lands with the batch and
+  // replays exactly like every other entry.
+  const checkOp = {
+    op: 'log_narrative' as const,
+    text: `[check] ${priced.appraisal.stat} check: d20 ${roll} ${check.modifier >= 0 ? '+' : ''}${check.modifier} = ${check.total} vs DC ${priced.appraisal.difficulty} -> ${check.outcome}`,
+  };
+
   /* --- 3. Narrate and enact the outcome code produced ------------------ */
   const res = await callStructured({
     kind: 'resolution',
@@ -565,7 +580,14 @@ export async function resolveAction(
   const withCovert = (o: ResolutionOutput): ResolutionOutput =>
     priced.appraisal.covert ? { ...o, covert: priced.appraisal.covert } : o;
 
-  const output: ResolutionOutput = withCovert(
+  // The check line rides at the FRONT of the batch, so the log reads
+  // roll-then-consequence rather than the other way round.
+  const withCheck = (o: ResolutionOutput): ResolutionOutput => ({
+    ...o,
+    ops: [checkOp, ...o.ops],
+  });
+
+  const output: ResolutionOutput = withCheck(withCovert(
     breach?.kind === 'compulsion'
       ? {
           ...res.value,
@@ -588,7 +610,7 @@ export async function resolveAction(
           },
         }
       : res.value,
-  );
+  ));
 
   return {
     output,
@@ -747,6 +769,22 @@ export interface ChatMessage {
   speaker: 'player' | 'faction';
   text: string;
 }
+
+/**
+ * A line in a STORED transcript, which is not quite a line of conversation.
+ *
+ * A live channel is two parties talking and can only ever hold those two. An
+ * archived one can also hold a `record`: the engine's note on what became of
+ * the conversation, written when an accord was refused so that replaying the
+ * transcript into a persona does not present a dead deal as a live one.
+ *
+ * Deliberately a separate type rather than a wider `ChatMessage`. Widening it
+ * would let a `record` line reach `diplomacyReply` and `extractAgreements`,
+ * whose speaker checks are `player ? … : faction` — so it would render as the
+ * faction's own words, which is the exact confusion the line exists to prevent.
+ * The narrow type makes that unreachable instead of merely unlikely.
+ */
+export type TranscriptEntry = ChatMessage | { speaker: 'record'; text: string };
 
 /**
  * A turn of conversation. The schema has no `ops` field at all — the boundary

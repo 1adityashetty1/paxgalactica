@@ -106,7 +106,7 @@ operatives report"* section — the small piece that would make an agent read as
 intelligence rather than as a permissions change. Cheap, orthogonal, and no
 longer hollow now that something is actually secret.
 
-## 31. OPEN — a failed espionage check places the agent anyway
+## 31. FIXED — a failed espionage check placed the agent anyway
 
 **CONFIRMED.** Verified twice against `saves/spy_playtest.json` by stepping the
 journal, and the mechanism is confirmed in the code.
@@ -144,7 +144,7 @@ Worth doing at the same time: `routeCovertAction`'s failure guard becomes
 redundant once the strip is central, and leaving two rules for one thing is how
 this hole opened.
 
-## 32. OPEN — a restructure has to route through `forgive_debt`, and picks up a windfall on the way
+## 32. FIXED — a restructure had to route through `forgive_debt`, and picked up a windfall
 
 **Verified by replaying `saves/spy_playtest.json`.** The playtest agent reported
 this as a red-line bypass. **It is not one** — nobody was let off anything, and
@@ -197,7 +197,7 @@ missing verb forced the model through a primitive that did more than was meant.
 The remaining verb-shaped hole is a *partial* write-down, which today would have
 to be expressed the same way and would mint in the same manner.
 
-## 33. OPEN — `ratifyTurns` never fired
+## 33. FIXED — `ratifyTurns` never fired
 
 **Playtest finding. Not independently verified.**
 
@@ -313,6 +313,640 @@ concatenation case directly.
 > the world — all three broke the *account* of the world, which is why the suite
 > was clean and a playtest found them. A change to a core semantic wants a sweep
 > of everything that reports on it, not only everything that depends on it.
+
+## Where things stand (2026-09-02, later) — the playtest backlog, built
+
+Everything from the 10-turn playtest that did not need a design decision is
+built, plus the four decisions taken since. **847 tests.**
+
+**Closed:** 31, 32, 33, 40, 42, 43, 44, 45, 46, 48, 49, 50, 52, 53, and three of
+the four in 54. Nine of the claims were mechanically validated first — see the
+validation pass in item 54 — and one of my own validations was **wrong**: 54a
+came back REFUTED because the test drew hulls from the same system the cap
+restores to, which masks the bug entirely. Reproducing the reporter's actual
+configuration confirmed it. *A test that does not reproduce the setup is not a
+refutation.*
+
+**Still open and needing a decision:** the multi-round combat resolver (item 5),
+and whether the two commitment ceilings should compound at all (item 51 — the
+reporting half is built, the balance question is not mine to answer).
+
+**Deliberately dropped:** art for `inadmissible` and `out-of-actions`. Those two
+are the only non-outcomes that are not about the player's own faction — one is
+the world saying no, one is the clock — and they read fine as text.
+
+---
+
+## Where things stand (2026-09-02) — the 10-turn Drajk playtest
+
+A full campaign played to its limit as the Drajk Confederacy, on the build that
+shipped items 30, 37, 38 and 39. It reached turn 10, the ending generated with
+`fallback: false`, and every mutating route was correctly refused afterwards.
+
+**The two worst findings are in code written that same day.** The event log
+leaks exactly what the new fog redacts (**40**), and the epilogue's `wars` field
+reads one side of a two-sided relationship, so the last thing the player reads
+contradicts itself twice (**41**). Both are the same mistake in different
+places: a fact was filtered or computed in one path and left alone in another.
+
+Then two credit exploits that predate all of it (**42**, **43**), diplomacy
+still being an unmetered action channel for 13 of 14 order types (**44**), and a
+documented mechanism that does not exist (**45**).
+
+> **Provenance.** Items **40–46** I verified directly in the code, with the file
+> and line cited. Items **47–54** are the playtest agent's measurements, quoted
+> with its reproductions and **not** independently confirmed; each says so.
+
+---
+
+## 40. FIXED — the event log defeated the fog, so redaction was decorative
+
+**VERIFIED.** A regression against item 30, shipped the same day.
+
+In the *same* `GET /api/campaign` payload where a Meridian order was correctly
+redacted to an anonymous rumour, `state.eventLog` contained:
+
+```
+order | meridian begins Patrol conversion at Tion Anchorage (3 turns) -> tio-1,
+        to deliver 4 new hulls for 240 credits.
+order | vigil begins Sweep the Ord Vantic yards (2 turns) -> tio-3.
+order | Ojjul Nar Combine places an agent on Hollow Star (surveillance) for 40 credits.
+```
+
+Line 1 hands over the label, duration, target, payload magnitude and price of
+the order the fog was hiding. Line 2 is a `counter_intelligence` order — a
+`COVERT_CATEGORIES` type whose entire purpose is to be unobservable. Line 3
+names a rival operative placed on the player's own world, with its cost.
+
+The source is `src/domain/reducer.ts:1087`: every `issue_order` writes an
+`order`-kind event naming faction, label, duration, target and payload.
+`worldAsSeenBy` replaces `pendingOrders` and passes `eventLog` through
+untouched, and the log is shipped to the browser whole.
+
+**The galling part is that this hazard was identified and closed for the kind
+next to it.** `intel` events are player-only precisely because "logging every
+faction's watch reports would hand the player a transcript of what four rival
+spy networks can see" — and there is a test for it. The same argument applies
+verbatim to `order` events and was not made.
+
+**The fix is not simply to stop logging.** The log is how a player follows the
+campaign, and their own orders must still appear — as must anything public. So
+the event needs to carry enough for a reader to decide: either
+
+1. **filter on the way out**, giving `EventLogEntry` an optional visibility
+   scope that `worldAsSeenBy` applies — the honest fix, and it generalises to
+   every future event kind; or
+2. **write two lines**, a full one attributed to the actor and a redacted one
+   for everyone else, which duplicates the `OrderRumour` split into the log.
+
+(1) is the one to price. The deeper lesson is that **fog is a property of the
+whole payload, not of one field** — filtering `pendingOrders` alone was never
+going to be enough, and a test asserting that no `eventLog` entry names a
+rumoured order's label would have caught it immediately.
+
+Worth auditing the other `logEvent` call sites at the same time: `deploy_agent`,
+interrupt/cancel notes and the initiative rationales all describe things a rival
+should not necessarily see.
+
+---
+
+## 41. PARTLY FIXED — the epilogue contradicted itself, and read like a ledger
+
+**VERIFIED.** Four defects in the ending shipped as item 39, one serious.
+**(a) and (c) are fixed and verified against the finished campaign; (b) and (d)
+are still open.** A fifth problem the user raised — the prose read as a plain
+recap rather than an ending — is fixed alongside them and written up at the
+bottom of this item.
+
+### (a) `wars` is one-sided — the ending states opposite things about the same war
+
+The `krayt` slide: *"No war stands open against it."* The `meridian` slide, in
+the same document: *"The war with the Drajk Confederacy sits open on the
+ledger."* The `vigil` slide names Drajk as one of its two open wars.
+
+`src/engine/epilogue.ts:104`:
+
+```ts
+const wars = Object.entries(f.disposition)
+  .filter(([, v]) => v <= WAR)
+  .map(([id]) => nameOf(id))
+```
+
+It reads only the subject's **outward** disposition. Final state:
+`krayt.disposition` is `{meridian: -19, vigil: -46, hutt: 73, freeworlds: 27}`
+— nothing at or below −75 — while `meridian.disposition.krayt = -100` and
+`vigil.disposition.krayt = -100`. So `krayt.wars: []` and two other slides name
+Drajk. The same artefact fires for the Combine: *"no war of its own fought
+anywhere"* against `vigil→hutt = -75`.
+
+Disposition is deliberately asymmetric everywhere else in this game; the
+epilogue treated it as if it were not.
+
+**FIXED:** a war is now either party at or below the threshold. Verified by
+re-running the narration against the finished campaign — `krayt.wars` went from
+`[]` to `[Iron Vigil Remnant, Meridian Trade Authority]`, `hutt` from `[]` to
+`[Iron Vigil Remnant]`, and no slide contradicts another. Three tests, including
+one asserting a power is never listed at war with itself.
+
+Still worth considering: the dossier could distinguish *"at war with"* from
+*"regarded as an enemy by"*, which are different sentences a narrator could use.
+
+This is the worst possible place for the defect. The whole argument for
+computing the facts before narrating them is that the last thing the player
+reads cannot be argued with — and it is the computed half that is wrong here,
+so the prose faithfully rendered a contradiction.
+
+### (b) `gained`/`lost` is a start-vs-end set difference, so a conquest can vanish
+
+The campaign's only conquest — Threx, Drajk's at turn 0, ceded to the Vigil
+around turn 2, stormed back on turn 8 and held through a counter-attack on turn
+10 — cancels to nothing under set difference. Three battles were fought and the
+closing paragraph says *"not one flag planted or struck for good."* The Vigil is
+told it *"merely held"* its state, having lost a world at gunpoint and 11 hulls.
+
+The dossier carries **no battle record at all**. Carrying a battle summary, or
+worlds-changed-hands events rather than endpoint sets, would fix it.
+
+### (c) `foremost` promotes an arbitrary tie-break into a stated fact
+
+All five powers ended holding four systems. `foremost` breaks the tie on faction
+id, and the closing rendered that as *"the largest single holding, the Arkanis
+Free Worlds"*.
+
+**FIXED:** `CampaignOutcome` gained `leaders`, everyone level on the largest
+holding. When it has more than one entry the dossier says *"Nobody ended
+foremost"* and tells the narrator not to name one; the deterministic fallback
+says "level with every other power" instead. Verified live — the closing now
+opens *"When the last bell rang, no power stood above the rest."* A tie-break is
+a way of picking a value, not a finding.
+
+### (d) Two smaller ones
+
+- `towardPlayer: 100, playerToward: 100` for the player's own faction is
+  synthesised at `epilogue.ts:135` — the reducer rejects self-disposition ops,
+  so this is a number in a document whose selling point is *"settled; do not
+  overturn"*.
+- `epilogue.factions[krayt].net = 258` and `briefing.ledger.net = 253` in one
+  response, both stamped `turn: 10`.
+
+### (e) FIXED — it read like a ledger, not an ending
+
+The user's read of the shipped version: stilted, a plain recap. The cause was in
+the prompt and in what the prompt was handed:
+
+> *"The Enterprise closes the books holding four worlds, the same four it opened
+> the last quarter with, and the arithmetic underneath is sound: forty-three
+> hulls, a treasury near five thousand, income of 308 a turn."*
+
+`prompts/epilogue.md` asked for "unsentimental" and "plainly" and got
+accountancy. **But rewriting the register was not enough, and that is the
+interesting half:** two live runs against the real finished campaign showed the
+"say what the numbers meant, never the numbers" instruction failing, and the
+second produced *more* raw figures than the first.
+
+The fix is structural, and it is the principle this whole project runs on —
+**a dossier that is a table of numbers will be narrated as a table of numbers.**
+`serializeOutcome` now hands the narrator *comparisons*: "the thinnest navy of
+any power still standing", "the heaviest purse in the Rim", "its own people have
+largely stopped following it". Nothing is lost, because every figure is already
+rendered on screen beside the prose — the reader gets numbers from the facts row
+and meaning from the paragraph.
+
+Third live run, same board:
+
+> *"what came home was the thinnest fleet of any power left standing, the
+> emptiest treasury, and captains who had largely stopped following the flag
+> they once sailed under."*
+
+Zero raw figures except world counts, which the prompt allows as the one number
+worth spending. Tests pin that no faction's treasury or debt balance appears in
+the dossier text. The call also got **cheaper** — $0.1387 against $0.2183 —
+because the dossier is shorter.
+
+---
+
+## 42. FIXED — interrupting your own order minted credits, and `extend_order` was unbounded
+
+**VERIFIED in code.** `src/domain/reducer.ts:2062`:
+
+```ts
+const refund = remaining * 20 + unspent;
+```
+
+At `progress: 0`, `unspent` returns **100% of the money back** and the flat
+`remaining * 20` rides on top. **Issue-and-immediately-interrupt is therefore
+unconditionally profitable at +20 per remaining turn**, for any order with
+`onInterrupt: 'partial'`, forever.
+
+Measured live, in one declaration:
+
+```
+order | krayt begins Long Take charter, maximum term, Hollow Star (3 turns)
+        -> kes-7, to deliver 2 new hulls for 120 credits.
+order | Long Take charter ... suspended at 0/3; 180 credits recovered.
+```
+
+Paid 120, recovered 180. A second reproduction on an order with
+`investedCredits: 0` recovered 140 from a programme that had never had a credit
+spent on it.
+
+**`extend_order` removes the ceiling.** `src/domain/reducer.ts:1166` is
+`order.durationTurns += op.additionalTurns` with no cap on the resulting total
+and no credit cost, so `remaining` is arbitrary and so is the refund — roughly
+420 credits per extend op, per action point.
+
+That is also a live breach of a documented invariant. The playtest inherited an
+order at `durationTurns: 10` against `MAX_DURATION = 5`, `FIB_BUCKETS =
+[1,2,3,5]` and CLAUDE.md's *"Nothing takes longer than 5 turns."* `extend_order`
+is the hole in it.
+
+**Two fixes, and they are independent:**
+
+1. The flat `remaining * 20` should not exist, or should be bounded by what was
+   actually spent. A refund that can exceed the outlay is not a refund.
+2. `extend_order` must clamp `durationTurns` to `MAX_DURATION`, or the duration
+   invariant is only true of orders nobody extended.
+
+---
+
+## 43. FIXED — a negotiated loan could only be written as a mint
+
+**VERIFIED with exact numbers**, by replaying the campaign journal op-by-op:
+
+```
+settle_debt      krayt -320  hutt +320   TOTAL   +0   <- conserved
+adjust_credits   krayt +240  hutt   +0   TOTAL +240   <- minted
+establish_debt   (no credit movement at all)
+issue_order      krayt -240  hutt   +0   <- spent on 4 hulls
+```
+
+240 credits entered the economy with no counterparty debit, and the debt records
+an obligation whose principal was never transferred.
+
+**It is a pincer, and neither half is reachable by better prompting:**
+
+1. **`establish_debt` moves no principal.** `src/domain/reducer.ts:1694` pushes
+   a debt record and nothing else — it neither debits the creditor nor credits
+   the debtor.
+2. **The borrower cannot write the lender's debit.** `adjust_credits` with a
+   negative delta on another faction is rejected by design, and that rejection
+   fired correctly here: *"krayt cannot take credits out of hutt's treasury
+   directly."* Extraction runs as the acting faction, so the only expressible
+   half of the pair is the credit to self.
+
+So the only way to express "the Combine advances 240" is a mint.
+
+**The fix mirrors `settle_debt`:** `establish_debt` should transfer the
+principal from creditor to debtor, trimmed to what the creditor actually holds,
+exactly as `settle_debt` trims to what the debtor holds. Then the paired
+`adjust_credits` is unnecessary and the mint is unreachable.
+
+Note the shape shared with item 32: **`settle_debt` moves real money and
+`establish_debt` moves none.** One module, two ops, opposite conventions —
+which is why both a loan and a restructure mint.
+
+---
+
+## 44. FIXED — diplomacy was an unmetered action channel for 13 of the 14 order types
+
+**VERIFIED.** `src/domain/reducer.ts:871` rejects an extraction-sourced
+`issue_order` only when `isMovementType`. Measured with `actionPoints: {left: 0,
+perTurn: 2}`, closing a channel emitted
+
+```json
+{"op":"issue_order","factionId":"krayt","type":"courier","originId":"tio-6",
+ "targetId":"kes-5","durationTurns":2}
+```
+
+and the order was in `pendingOrders` with action points still at 0.
+
+Item 23 closed the `fleet_movement` case on the argument that a movement fights
+a battle and changes who holds a world. But `garrison_raising`, `fortification`,
+`capital_ship_construction`, `blockade`, `commerce_raiding` and `espionage` are
+all reachable this way, all free. Combined with item 42, a channel is a
+money faucet that costs no action points at all.
+
+Two related bypasses of the same guard, both measured:
+
+- **A refused accord costs no action point.** A *declared* refusal spends one
+  specifically so "a free retry would let a player probe their own red lines all
+  day". An accord refused with `REFUSAL_DISSENT` left `actionPoints: {left: 2}`.
+  The AP guard's stated rationale is fully bypassed by the diplomacy path.
+- **Disposition is free, permanent and unbounded.** Every `endtalk` emitted
+  paired `adjust_disposition` ops — up to ±20 in one conversation. A −35
+  penalty for being caught buying Combine keels was repaired +20 by one
+  apologetic conversation in the same turn, at zero AP cost, with no limit on
+  repetition. Disposition has no decay by design, so this accumulates.
+
+The question this raises is whether diplomacy should be metered at all, or
+whether the guard should be *"extraction may only emit ops that need the other
+party's consent"* — which is the principle `form_treaty` and `establish_debt`
+already follow, and which would exclude every unilateral `issue_order`.
+
+**Re-checked after the treaty-state work: entirely unaffected and still open.**
+`src/domain/reducer.ts:941` still reads `source === 'extraction' &&
+isMovementType(op.type)`, so the guard remains movement-only. Nothing in
+supersession, `already_void` or the transcript record touches it.
+
+Worth stating what the treaty work *does* change about the calculus: it removes
+one of the ways an accord could pay twice, so the channel is a slightly less
+profitable faucet. It does not make it a metered one. The exploit in item 42
+still routes through here, and the AP-free red-line probe still works.
+
+The consent-based rule is the one to price. It is a single predicate — does this
+op bind a faction other than the actor? — and `form_treaty`, `establish_debt`
+and `assign_debt` already sit on the right side of it while every
+`issue_order`, `establish_commitment` and `adjust_credits` sits on the wrong
+one. That would make the extraction schema express the principle instead of
+enumerating one exception to it.
+
+---
+
+## 45. FIXED — two mechanisms CLAUDE.md documented did not exist
+
+**VERIFIED.**
+
+**Checks are not written to the event log.** `EventKindSchema`
+(`src/domain/state.ts:333`) is `['narrative', 'system', 'order', 'diplomacy',
+'rejection', 'clamp', 'intel']` — there is no `check` kind, and
+`grep -rn "kind: 'check'" src/` returns nothing. CLAUDE.md states *"Every check
+is written to the event log, so a campaign's luck is auditable."*
+
+The only reason any rolls were auditable in this campaign is that the resolution
+model **voluntarily** emitted `log_narrative` ops reading `"[check] guile check:
+d20 7 -1 = 6 vs DC 16 → critical failure"`. That is model discretion, not a
+mechanism — turns 0–5 of the campaign contain none at all.
+
+**Dissent movements are not logged either.** Only the drift trigger writes a
+line. Refusals (+8) and compulsion breaches (+15) leave no event. The player's
+dissent went 25 → 28 → 45 → 69 and the log accounts for +9 of it — for the
+mechanic this file calls the most successful in the build.
+
+Both are the same gap: a number the game rolls against, changed by the engine,
+with no record. Small to add and it makes the two most consequential mechanics
+auditable.
+
+---
+
+## 46. FIXED — the turn payload under-reported what the NPCs did
+
+**VERIFIED.** `ReactionView` (`src/engine/turn.ts:40`) has no `ops` field at
+all, so `reactions[].ops` is `null` for every faction on every turn while the
+event log proves ops landed on the same tick.
+
+Compounding it, an NPC batch that is rejected is voided whole — correctly, since
+item 27 — but the API hides it. Twice in one turn: `"Nothing in this batch was
+applied: 1 of 3 ops were rejected"` with top-level `"rejections": []`. The
+reason is now in the event log (item 34's fix), but a caller reading the
+response sees a narrative describing action and no indication that two thirds of
+the galaxy's turn was discarded.
+
+---
+
+## 47. Playtest claim — red-line rulings on accords are made on the fiction, not on the ops
+
+**The agent's measurement, not independently confirmed.** If it holds it is the
+sharpest finding in the run, because it is the arbitration/resolution split
+failing one layer up.
+
+Drajk's red line: *"will not put its name to a written treaty; a handshake it
+can deny is the most it offers."*
+
+- **Turn 6, Arkanis.** The accord contained **no treaty** — a creditor forgiving
+  100 of an existing debt, an unchanged charter rate, a promised future strike.
+  Ruled a refusal, whole accord destroyed, +8 dissent, the counterparty's
+  concession lost with it: *"It is a treaty, and we do not sign treaties."*
+- **Turn 6, Combine, minutes later.** Framed as *"no paper, nothing signed"* —
+  extraction emitted a literal `form_treaty` which ratified and paid 55/turn for
+  the rest of the campaign. `refusal: null`, no dissent.
+- **Turn 7, Meridian.** Same framing, another `form_treaty` with
+  `durationTurns: 40`. `refusal: null`.
+
+**The two accords that actually wrote a treaty into `state.treaties` were
+permitted; the one that wrote none was refused as "a treaty".** The only
+variable is the wording of the transcript.
+
+Item 28 moved the accord ruling from what an accord *enacts* to what it
+*obliges*, which was right. This says the ruling is still made on the prose
+rather than on the emitted batch — and for this particular red line the test is
+purely mechanical: **did this accord emit `form_treaty`?** Appraising the ops
+alongside the transcript is the obvious fix and is the third time this file has
+reached that conclusion (see also item 32).
+
+---
+
+## 48. FIXED — a compulsion breach could be charged against state that contradicts it
+
+**The agent's measurement; the structural argument is checkable and looks right.**
+
+Turn 7, charged `COMPULSION_BREACH_DISSENT` (+15) for the compulsion *"the
+captains require plunder: no raid under way and nothing taken from anyone"* —
+at a moment when `campaign.state` contained `ord-7-1`, a `commerce_raiding`
+order staged that same turn, plus six hulls in transit to storm a world.
+
+`closeChannel` passes `campaign.state` (committed **plus** staged) to
+`appraiseAgreement`, so the arbiter was looking at a board on which a raid *was*
+under way. The code's own predicate for the identical compulsion —
+`no_plunder` in `compulsions.ts` — would have evaluated **false**.
+
+`verifyBreachRelevance` cannot catch this by construction: it is passed the act
+and the line and nothing else, deliberately — *"no character sheet, no state"* —
+so it is structurally incapable of noticing that a state-dependent compulsion is
+factually inapplicable.
+
+**So a compulsion carrying a `trigger` has two enforcement paths that can
+disagree**: the model judging a breach from prose, and the code evaluating a
+predicate. The obvious fix is that a compulsion with a trigger should have its
+breach ruling *checked against the trigger* — if the predicate says the faction
+is complying, there is no breach to charge.
+
+---
+
+## 49. FIXED — an accord that delivered nothing left phantom history
+
+**Agent's measurement.** The turn-6 Arkanis accord was refused whole, so its
+`forgive_debt` never landed: the debt ran 240 → 200 → 160 → 120 → 80 → 40 on
+instalments alone, with no forgiveness at any point.
+
+But transcripts are replayed into the persona, so on turn 7 the same NPC said:
+
+> *"My pen already struck the first hundred, that turn, and I said I wouldn't
+> mention it again... a debt doesn't get forgiven twice for the same hundred."*
+
+and the turn-7 extraction wrote that belief into the world's own event log.
+
+So the player paid 8 dissent, received nothing, and is **permanently blocked
+from the deal** because the counterparty remembers granting it. A refusal has to
+scrub the transcript, or mark it as refused so the persona reads it as an
+attempt rather than an agreement.
+
+---
+
+## 50. FIXED — treaties stacked, and one already void was signable
+
+**Agent's measurements, both now confirmed and fixed.**
+
+**"Supersedes" is decorative.** The turn-6 Combine accord emitted a
+`form_treaty` whose own summary read *"...supersedes tre-0-0."* — and `tre-0-0`
+stayed `active`. Result at turn 7:
+
+```
+treatyFlow: 160  =  40 (tre-0-0) + 55 (tre-6-0) + 25 (tre-1-1) + 40 (tre-5-0)
+```
+
+Arkanis believed it paid 40 and paid 65; the Combine believed 55 and paid 95.
+Both NPCs said "supersedes" out loud. The ending duly rendered
+`freeworlds.liveTreaties` with **"tribute with Drajk Confederacy" listed twice**.
+
+**FIXED, in the reducer rather than the prompt.** Supersession already existed
+and was scoped to `incomeShares` — a new grant of the same system to the same
+faction retired the old one — and never looked at anything else, so every other
+recurring term stacked.
+
+The tempting rule is "one live treaty per (pair, type)" and it is **wrong**: two
+`trade_accord`s granting different lanes are two deals, and a test has pinned
+that since item 26 (it failed the moment the coarse rule went in, which is the
+test doing its job). The rule is on the **pair-level footprint** instead:
+
+- a term that flows between the parties as a whole — `incomePerTurn`,
+  `shipsPledged`, `mutualDefenseTrigger` — where there is one such flow and a
+  second treaty carrying it is a double-count;
+- a type carrying no recurring terms at all (`non_aggression`, `ceasefire`,
+  `basing_rights`), where the treaty *is* the status and a second is a pure
+  duplicate.
+
+`incomeShares` is deliberately excluded: it is keyed by system and has its own,
+narrower supersession. Applied where a treaty becomes **active**, not where it
+is created — a `pending` treaty must not retire the live one it will replace, or
+the parties have nothing in force while a council deliberates. Tested both ways.
+
+`break_treaty` is still absent from `prompts/extraction.md`, and that is now a
+smaller matter: supersession is automatic, so the prompt only needs it for a
+genuine **repudiation**, which is a different act with a different price
+(`PACT_BREAKING_REPUTATION_COST`). Left open deliberately.
+
+**A treaty whose void condition already holds is signable.** `tre-7-0` was
+signed and voided on the same tick by its own `voidsOn {kind: "attacks", by:
+"krayt", target: "meridian"}` — a condition already true at signature
+(`meridian→krayt = -89`). It never paid a credit, and Meridian's next reaction
+described it as a live arrangement it was honouring.
+
+**FIXED.** `voidConditionMet` had exactly one caller, in `tickTurn`. It now runs
+at signature too, and a treaty already void is **rejected** with a new
+`already_void` code naming the condition — not recorded-and-voided, because a
+silently void treaty *is* the phantom-belief problem this item is about. Under
+atomic batching that fails the accord and the correction pass is told exactly
+why, so the deal gets re-expressed without the impossible clause rather than
+evaporating.
+
+---
+
+## 51. PARTLY FIXED — a concession of 60 lands as 10, and nobody was told
+
+**Agent's measurement.** The Combine agreed to 60/turn. The reducer trimmed it
+to 25 (`"Trimmed war_chest_stipend yield from 60 to 25 per turn (ceiling 25)"`),
+and `ledgerFor` then applied the per-faction influence ceiling and paid **10**.
+`commitmentFlow: 10` on every turn of the campaign, across two renegotiations.
+
+Both caps are deliberate (item 29's `MAX_COMMITMENT_INCOME` and
+`maxCommitmentIncomeFor`). The problem is that they compound silently and the
+negotiating party is never informed, so an NPC bargains hard over a number that
+cannot exist and the player banks a sixth of what was agreed. At minimum the
+trim note should reach the channel; better, the arbiter should know the ceiling
+before the deal is struck.
+
+Two neighbours from the same run:
+
+- **A negotiated debt reschedule has no op.** Extraction said so itself: *"no
+  mechanical lever exists to alter an existing installment schedule, so this is
+  logged for the record"*. `perTurn` stayed 20 to the end. Same family as item
+  32 — the debt module can create, settle, assign and forgive, but not
+  *reschedule*, which is the most common real negotiation.
+- **`prize_share_tribute` was pure decoration** — `incomePerTurn: 0` before and
+  after renegotiation from one eighth to one sixth. Two conversations, one
+  dissolve, one establish, zero credits. Item 29 made zero-flow commitments move
+  disposition; a *share of prizes* still has no mechanism at all.
+
+---
+
+## 52. FIXED — enemy ships parked in your own system could not be attacked
+
+**Agent's measurement, and it reads as a real design hole rather than a bug.**
+
+The Iron Vigil kept 1 hull on the player's Vergesse from turn 6 and 3 from turn
+9, contesting the world's income for five turns. There was no legal way to
+remove them:
+
+- battles resolve only on a `fleet_movement` **arrival**, and moving into your
+  own system is reinforcing, not an invasion;
+- `subornLimit krayt→vigil` is 0 (Vigil resolve 17), so crews cannot be bought;
+- a blockade would have breached the acting faction's own red line.
+
+So parking one hull on a rival's best world is a permanent, unanswerable tax.
+The income rules make presence deliberately meaningful — *"parking ships in a
+rival's system is an economic act"* — but there is no counter to it, which turns
+a good mechanic into a free one.
+
+---
+
+## 53. ADDRESSED — NPC-vs-NPC aggression was zero in a live campaign
+
+**Mixed provenance.** My own harness measurement stands: over 12 turns with the
+player never acting, `initiative.ts` produced 2 NPC-vs-NPC attacks and moved six
+worlds. In this live 10-turn campaign the agent measured **zero** — every
+hostile act in four turns targeted the player, with `vigil→freeworlds = -80` and
+`freeworlds→vigil = -80` sitting unfought.
+
+The two are consistent and the difference is the point: **initiative only runs
+for factions the model did not speak for**, and in a live campaign the player
+touches enough of the board that most factions are responders most turns. So the
+mechanism fires exactly when it is least needed and stands down when a player is
+active — which is the opposite of what item 38 was for.
+
+Worth measuring before changing anything: how many factions per turn actually
+fell through to `proposeFor` in this campaign. If the answer is "almost none",
+the fix is in the responder selection (item 38's option 2c — always reserve a
+slot for a faction the player did not touch) rather than in the bots.
+
+**Related, and also unexercised:** all four NPCs ended at dissent 0. The agent's
+read is fair — Meridian was never unprofitable, both Combine debts stayed
+`current` with operatives in the debtors' space, nobody parked on a Vigil world
+— so the drift triggers were satisfied rather than broken. But the first
+mechanism that holds an NPC to its own character produced not one point of
+dissent across ten turns while the player accrued 69.
+
+---
+
+## 54. MOSTLY FIXED — four small playtest claims
+
+**All the agent's measurements, none independently confirmed.**
+
+- **`capSelfInflictedLosses` teleports ships across the galaxy.** A negative
+  `adjust_fleet` draws from the largest concentration and the cap restores the
+  excess at `fleetBases()[0]`, which sorts by `strategicValue` — not by where
+  the hulls were. Measured: `adjust_fleet -4` moved 3 hulls from Hollow Star
+  (sv 3) to Vergesse (sv 7), two jumps, instantly, with no `fleet_movement`.
+  Declaring a scuttling is a free strategic redeployment. Restoring them where
+  they were taken from is the fix.
+- **`briefing.watch` is a turn stale.** In one payload it named a recalled
+  operative's old posting and omitted the new one, while `state.agents` was
+  correct — two views of one fact disagreeing in a single response.
+- **Recalling your own operative is a contested roll that can fail**, costing an
+  action point for nothing. Undocumented, and arguably should not be a check at
+  all.
+- **Prompt text quotes a retired constant.** A turn-0 log line says *"you will
+  pay 25 dissent to override them"*; `COMPULSION_BREACH_DISSENT` is **15**. The
+  prompt was not updated when the constant was lowered, so the game is telling
+  the player a price it does not charge — the same class of defect as the
+  hardcoded `dissentPenalty` copy in `serialize.ts`.
+
+**Item 31 reproduced.** A `deploy_agent` landed on a `critical_failure` (d20 7,
+total 6 vs DC 16) whose narrative described the operative burned and
+questioned — and the agent was live at `successChance: 80`, delivering full
+visibility of a hidden Meridian order on the next tick. Third independent
+reproduction.
+
+---
 
 ## 39. DONE — a campaign has a length and an ending
 
@@ -850,7 +1484,17 @@ Two notes on the decisions, because they change the shape of what gets built:
   whether the condition belongs on the treaty or in `tickTurn` beside the debt
   service.
 
-## 27. OPEN — a rejected op does not roll back the batch it was part of
+## 27. DONE — a rejected op did not roll back the batch it was part of
+
+> **Header was stale.** The decision was taken and atomic batches were built:
+> `applyOps` takes an `atomic` flag, `Campaign.stage`/`commit` pass it,
+> `JOURNAL_VERSION` is 3 and `replay` passes it per journal version so a legacy
+> batch still replays as it ran. Two later defects came out of exactly this
+> change and are both fixed — item 34 (the rollback discarded its own rejection
+> log) and item 35 (a held-back batch reported its ops as applied).
+
+<details><summary>The original write-up, kept for the reasoning</summary>
+
 
 > **Reclassified: this needs a decision after all.** I listed it as mechanical
 > when writing it up. Looking at the fix, it is not.

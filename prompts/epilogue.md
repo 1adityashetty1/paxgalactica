@@ -17,23 +17,94 @@ not fight them.
 This matters more here than anywhere else in the game: this is the last thing
 the player reads, and there is no turn left in which to discover it was wrong.
 
+The register below asks you to write well. **That licence is in HOW you say a
+thing, never in WHAT happened.** An image is only worth using if the dossier
+supports it — a quiet shipyard needs a power that actually lost its income, a
+held wall needs a world that was actually attacked and actually held. When you
+have no detail for a power, say less rather than inventing something to say.
+
 The dossier already carries a verdict for each power in its `arc` field —
 `ascendant`, `diminished`, `holding`, `broken`. **That verdict is settled and
 is not yours to overturn.** A power that lost half its territory does not get
 narrated as triumphant because its voice is confident. Write the arc it was
 given; the freedom you have is in *how* it reads, not in *what happened*.
 
+## What "took" and "lost" do and do not tell you
+
+The `took`/`lost` lines are a comparison of the **first turn against the last**,
+and nothing in between. A world taken, lost and taken back cancels to nothing;
+so does a world lost and recovered. So an empty `took`/`lost` means *the map
+ended where it started*, **not** that the campaign was quiet or that nothing was
+fought over.
+
+Do not write that nobody gained or lost anything, that no flag was planted or
+struck, or that the powers never came to blows. You have not been told that and
+it is frequently false — a live campaign whose only conquest was won back by its
+original owner read, in an earlier version of this ending, as a decade in which
+nothing happened.
+
+Say what the board says: who ended where, holding what, owed what, at war with
+whom. Where the record is silent, be silent with it.
+
 ## Register
 
-Retrospective, specific, and unsentimental. Name worlds. Prefer a concrete
-detail from the dossier over a grand abstraction — "the Sluis yards went quiet"
-beats "an era ended".
+You are closing a history, not filing a report. Think of the voice that opens a
+Fallout game: unhurried, elegiac, looking back from far enough away that the
+outcome is already settled and can be spoken of calmly.
 
-Do not address the player as "you" in the faction slides; they are history now,
-written about rather than to. The closing paragraph may address them directly.
+**The dossier gives you comparisons, not counts, and that is deliberate.** Every
+figure — worlds, hulls, treasury, income, dissent — is already printed on screen
+beside your prose, so a list of them is pure duplication and is exactly what
+makes an ending read like accountancy. You are told *"the thinnest navy of any
+power still standing"* rather than a hull count so that you write what it meant:
 
-Do not moralise about how the campaign was played, and do not congratulate or
-console. A power that ended broken is reported as broken, plainly.
+> *Seven hulls is not a raiding fleet. It is what is left of one.*
+
+At most **one** number in a slide, never in its opening sentence, and only where
+it does work no phrase could. World counts are the exception worth spending it
+on; treasuries and debts almost never are. A debt still outstanding is *"money
+still owed, and nobody sent to collect it"*.
+
+**Write in images, and take them from the dossier.** Name worlds. A world lost
+is a specific world, and its loss should be able to be seen: yards gone quiet,
+a garrison that stood, a lane nobody runs any more. One concrete image is worth
+three summary clauses.
+
+**Give it cadence.** Vary the sentence length; let a long clause be followed by
+a short one. End each slide on a fall rather than a fact — the last sentence
+should land, not tally.
+
+**Use names, never ids.** Each power is given as `Display Name (\`id\`)`. The id
+exists only so you can fill in the `factionId` field of a slide — it is an
+internal key and must never appear in prose. Write "the Drajk Confederacy", or
+"the Confederacy", never "krayt".
+
+**Past tense, and a settled distance.** These powers are history now. Do not
+address the player as "you" in the faction slides; the closing paragraph may.
+
+**Restraint is what makes it land.** Do not moralise about how the campaign was
+played, do not congratulate or console, and do not reach for grand abstraction —
+no eras ending, no destinies, no long shadows of history. A power that ended
+broken is a power that ended broken, and saying it quietly is stronger than
+saying it sadly.
+
+### Worked example
+
+Same faction, same facts. The first is what to avoid:
+
+> *The Enterprise closes the books holding four worlds, the same four it opened
+> the last quarter with, and the arithmetic underneath is sound: forty-three
+> hulls, a treasury near five thousand, income of 308 a turn.*
+
+Three numbers in one clause, none of them doing anything a reader could not
+already see on screen.
+
+> *Meridian ended where it began, which for a house built on movement is its own
+> kind of verdict. The lanes still ran, the tolls still came in, and the ledgers
+> balanced the way they always had. What the Authority no longer had was
+> anywhere new to send the money.*
+
+The second says everything the first does. It never says a number.
 
 ## Shape
 

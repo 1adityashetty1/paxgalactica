@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
+import { MAX_DURATION } from '../src/domain/duration.js';
 import { fleetStrengthOf, SHIP_COST, type WorldState } from '../src/domain/state.js';
 
 const fresh = (): WorldState => createSeedState('freeworlds');
@@ -290,18 +291,40 @@ describe('order lifecycle ops', () => {
   });
 
   it('interrupt with onInterrupt=partial refunds the unspent portion', () => {
+    // Money has to have been sunk in for there to be anything to refund. The
+    // flat `remaining * 20` that used to pay out regardless is gone: it made
+    // issue-then-interrupt unconditionally profitable, since at `progress: 0`
+    // the pro-rata half already returns the whole outlay.
+    const state = withOrder({
+      onInterrupt: 'partial',
+      onComplete: { kind: 'fortify', magnitude: 2, summary: 'deeper works' },
+    });
+    const order = state.pendingOrders[0]!;
+    expect(order.investedCredits).toBeGreaterThan(0);
+
+    const before = state.factions.find((f) => f.id === 'freeworlds')!.credits;
+    const res = applyOps(state, [{ op: 'interrupt_order', orderId: order.id }]);
+    expect(res.state.pendingOrders).toHaveLength(0);
+    const after = res.state.factions.find((f) => f.id === 'freeworlds')!.credits;
+    // Nothing done yet, so the whole outlay comes back — and not a credit more.
+    expect(after).toBe(before + order.investedCredits);
+  });
+
+  it('refunds nothing for a programme with no money in it', () => {
     const state = withOrder({ onInterrupt: 'partial' });
     const before = state.factions.find((f) => f.id === 'freeworlds')!.credits;
     const res = applyOps(state, [{ op: 'interrupt_order', orderId: 'ord-0-0' }]);
-    expect(res.state.pendingOrders).toHaveLength(0);
-    expect(res.state.factions.find((f) => f.id === 'freeworlds')!.credits).toBeGreaterThan(before);
+    expect(res.state.factions.find((f) => f.id === 'freeworlds')!.credits).toBe(before);
   });
 
   it('extends an estimated order but not a movement', () => {
     const ok = applyOps(withOrder(), [
       { op: 'extend_order', orderId: 'ord-0-0', additionalTurns: 3 },
     ]);
-    expect(ok.state.pendingOrders[0]!.durationTurns).toBe(8);
+    // Clamped to `MAX_DURATION`: 5 + 3 would be 8, and nothing takes longer
+    // than 5 turns. Before this, `extend_order` was the hole in that rule.
+    expect(ok.state.pendingOrders[0]!.durationTurns).toBe(MAX_DURATION);
+    expect(ok.notes.join(' ')).toMatch(/cannot run past 5 turns/);
 
     const moving = applyOps(fresh(), [
       { op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement', originId: 'ark-1', targetId: 'ark-4' },
@@ -564,5 +587,53 @@ describe('a batch is atomic when asked to be', () => {
     const out = applyOps(state, [good, bad], 'model', 'meridian');
     expect(out.rejections).toHaveLength(1);
     expect(creditsOf(out.state)).toBe(before + 120);
+  });
+});
+
+/**
+ * A scuttling was a free strategic redeployment.
+ *
+ * `capSelfInflictedLosses` draws from the largest concentration and restored
+ * the excess at `fleetBases()[0]`, which sorts by `strategicValue` — not by
+ * where the hulls actually were. Measured: `adjust_fleet -4` moved 3 hulls two
+ * jumps from Hollow Star (value 3) to Vergesse (value 7), instantly, with no
+ * `fleet_movement`, no transit and no interception.
+ */
+describe('hulls a declaration could not lose stay where they were', () => {
+  const setup = () => {
+    const s = createSeedState('krayt');
+    for (const sys of s.systems) delete sys.ships.krayt;
+    s.systems.find((x) => x.id === 'kes-6')!.ships.krayt = 1; // strategicValue 7
+    s.systems.find((x) => x.id === 'kes-7')!.ships.krayt = 4; // strategicValue 3
+    return s;
+  };
+
+  it('does not teleport survivors to the faction’s best world', () => {
+    const out = applyOps(
+      setup(),
+      [{ op: 'adjust_fleet', factionId: 'krayt', delta: -4, reason: 'scuttle' }],
+      'model',
+      'krayt',
+      true,
+    );
+    const at = (id: string) => out.state.systems.find((x) => x.id === id)!.ships.krayt ?? 0;
+
+    // The world they were never at must not gain any.
+    expect(at('kes-6')).toBe(1);
+    // The cap still bites: some are lost, the rest stay put.
+    expect(at('kes-7')).toBeGreaterThan(0);
+    expect(at('kes-6') + at('kes-7')).toBeLessThan(5);
+  });
+
+  it('names where they actually are in the note', () => {
+    const out = applyOps(
+      setup(),
+      [{ op: 'adjust_fleet', factionId: 'krayt', delta: -4, reason: 'scuttle' }],
+      'model',
+      'krayt',
+      true,
+    );
+    expect(out.notes.join(' ')).toMatch(/Hollow Star/);
+    expect(out.notes.join(' ')).not.toMatch(/remain at Vergesse/);
   });
 });

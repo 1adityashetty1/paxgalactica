@@ -256,3 +256,37 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
       report.battles.length === 0,
   };
 }
+
+/**
+ * Re-derive the parts of a briefing that are facts about the board rather than
+ * about the turn that produced it.
+ *
+ * `watch` and `rumoured` are computed from state, but the briefing itself is
+ * only rebuilt on a tick — so an action that deployed or recalled an operative
+ * left them describing the board as it was one turn ago. Seen live: `watch`
+ * named a recalled operative's old posting and omitted the new one while
+ * `state.agents` was correct, two views of one fact disagreeing inside a single
+ * response.
+ *
+ * Completions and battles are deliberately untouched: those ARE facts about the
+ * turn, and re-deriving them from state is impossible by construction.
+ */
+export function withCurrentIntel(briefing: Briefing, state: WorldState): Briefing {
+  const fresh = buildBriefing(state, {
+    completed: [],
+    advanced: state.pendingOrders.map((o) => ({
+      id: o.id,
+      label: o.label,
+      factionId: o.factionId,
+      progress: o.progress,
+      duration: o.durationTurns,
+      remaining: o.durationTurns - o.progress,
+      where: state.systems.find((s) => s.id === o.targetId)?.name ?? o.targetId,
+      isMovement: o.type === 'fleet_movement',
+    })),
+    ledger: ledgerFor(state, state.playerFactionId),
+    arrivals: [],
+    battles: [],
+  });
+  return { ...briefing, watch: fresh.watch, rumoured: fresh.rumoured };
+}

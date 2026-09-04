@@ -287,3 +287,38 @@ export function driftingCompulsions(state: WorldState, factionId: string): Compu
   }
   return drifting;
 }
+
+/**
+ * Is a compulsion the arbiter says was breached actually being breached?
+ *
+ * A compulsion may carry a **trigger** — a pure predicate on world state — and
+ * that gives the game two enforcement paths for one line: a model judging a
+ * breach from the prose of an accord, and code evaluating the predicate. They
+ * can disagree, and measured live they did: a player was charged
+ * `COMPULSION_BREACH_DISSENT` for *"the captains require plunder: no raid under
+ * way and nothing taken from anyone"* at a moment when a `commerce_raiding`
+ * order was staged and six hulls were in transit to storm a world. The code's
+ * own `no_plunder` predicate evaluates **false** on that board.
+ *
+ * `verifyBreachRelevance` cannot catch it by construction — it is shown the act
+ * and the line and deliberately nothing else, no state — so it cannot know a
+ * state-dependent compulsion is factually inapplicable.
+ *
+ * Returns `false` only when the faction is demonstrably complying: the line has
+ * a trigger and that trigger is not firing. A compulsion with no trigger is not
+ * a state question and is left entirely to the ruling, which is the case
+ * refusal was built for.
+ */
+export function breachContradictsState(
+  state: WorldState,
+  factionId: string,
+  principle: string,
+): boolean {
+  const faction = state.factions.find((f) => f.id === factionId);
+  if (!faction) return false;
+
+  const line = faction.compulsions.find((c) => matches(principle, c.text));
+  if (!line?.trigger) return false;
+
+  return evaluate(state, factionId, line.trigger) === null;
+}

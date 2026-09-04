@@ -374,6 +374,6 @@ favour; they simply cannot sign on Drajk's behalf. Point the player at
 Admissible, and a `compulsion` breach. This is the ruling that is easiest to
 miss, because the deal is sensible and the check would be an unremarkable
 `influence` roll. It is still tribute. The order goes through, the treaty is
-real, and the power pays 25 dissent for having overruled its own founding
+real, and the power pays for having overruled its own founding
 principle — which is exactly the trade a leader is allowed to make, and to keep
 making until nobody is following them.
