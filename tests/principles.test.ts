@@ -211,7 +211,11 @@ describe('a compulsion is a price, and the price is charged', () => {
 
     expect(out.output.refusal).toBeUndefined();
     expect(out.output.defiance).toBeTruthy();
-    expect(out.output.ops).toHaveLength(1);
+    // The resolution call's own op, plus the `[check]` line the engine now
+    // stages in front of it so a campaign's luck is auditable.
+    expect(out.output.ops).toHaveLength(2);
+    expect(out.output.ops[0]).toMatchObject({ op: 'log_narrative' });
+    expect(String((out.output.ops[0] as { text: string }).text)).toMatch(/^\[check\] /);
   });
 
   it('charges COMPULSION_BREACH_DISSENT through the engine, and the ops still land', async () => {

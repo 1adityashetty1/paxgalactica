@@ -355,3 +355,70 @@ describe('operatives report every turn', () => {
     expect(intelLines(s)[0]).toMatch(/answers to nobody/i);
   });
 });
+
+/**
+ * Fog is a property of the whole payload, not of one field.
+ *
+ * `pendingOrders` was redacted and the event log was not — and the log carried
+ * the label, duration, target, payload and price of the very orders being
+ * hidden. Measured live in one `GET /api/campaign` response: an order was an
+ * anonymous rumour in `rumours` and fully described two lines down in
+ * `eventLog`, including a `counter_intelligence` sweep and a rival operative
+ * placed on the player's own world.
+ */
+describe('the event log does not leak what the fog hides', () => {
+  const secretOrder = (faction = 'freeworlds') => ({
+    op: 'issue_order', factionId: faction, type: 'capital_ship_construction',
+    originId: FOREIGN, targetId: FOREIGN, durationTurns: 3,
+    label: 'the secret slipway', visibility: [],
+  });
+
+  it('hides a secret order’s log line from everyone but its owner', () => {
+    const s = applyOps(seed(), [secretOrder()], 'model', 'freeworlds', true).state;
+    const line = (id: string) =>
+      worldAsSeenBy(s, id).eventLog.some((e) => e.text.includes('the secret slipway'));
+
+    expect(line('freeworlds'), 'its owner must still see its own order').toBe(true);
+    expect(line('hutt'), 'a rival must not read it out of the log').toBe(false);
+    // And the redaction of the order itself still holds, so the two agree.
+    expect(observeOrders(s, 'hutt').orders).toHaveLength(0);
+    expect(observeOrders(s, 'hutt').rumours).toHaveLength(1);
+  });
+
+  it('leaves a public order in the log for everyone', () => {
+    const s = applyOps(seed(), [{
+      op: 'issue_order', factionId: 'freeworlds', type: 'fortification',
+      originId: FOREIGN, targetId: FOREIGN, durationTurns: 3,
+      label: 'walls anyone can see', visibility: [],
+    }], 'model', 'freeworlds', true).state;
+    for (const id of ['freeworlds', 'hutt', 'vigil']) {
+      expect(worldAsSeenBy(s, id).eventLog.some((e) => e.text.includes('walls anyone can see')), id).toBe(true);
+    }
+  });
+
+  it('honours an explicit visibility list in the log too', () => {
+    const s = applyOps(seed(), [{ ...secretOrder(), visibility: ['hutt'] }], 'model', 'freeworlds', true).state;
+    expect(worldAsSeenBy(s, 'hutt').eventLog.some((e) => e.text.includes('the secret slipway'))).toBe(true);
+    expect(worldAsSeenBy(s, 'vigil').eventLog.some((e) => e.text.includes('the secret slipway'))).toBe(false);
+  });
+
+  /**
+   * The sharpest case the playtest found: the log told a world's holder that a
+   * rival operative had just arrived on it, with the mission and the price.
+   */
+  it('does not announce a covert placement to the world it was placed on', () => {
+    const s = applyOps(seed(), [{
+      op: 'deploy_agent', ownerFactionId: 'hutt', systemId: FOREIGN,
+      mission: 'surveillance', effect: { kind: 'intel', revealsOrders: true },
+    }], 'model', 'hutt', true).state;
+
+    expect(worldAsSeenBy(s, 'hutt').eventLog.some((e) => /places an agent/.test(e.text))).toBe(true);
+    expect(worldAsSeenBy(s, 'freeworlds').eventLog.some((e) => /places an agent/.test(e.text))).toBe(false);
+  });
+
+  it('defaults to public, so nothing written before this changed', () => {
+    const s = seed();
+    expect(s.eventLog.every((e) => e.visibleTo === null)).toBe(true);
+    expect(worldAsSeenBy(s, 'krayt').eventLog).toHaveLength(s.eventLog.length);
+  });
+});

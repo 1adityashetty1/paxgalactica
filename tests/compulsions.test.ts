@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { applyOps, tickTurn, DISSENT_DECAY } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
-import { driftingCompulsions } from '../src/domain/compulsions.js';
+import {
+  breachContradictsState, driftingCompulsions } from '../src/domain/compulsions.js';
 import { serializeCharacter } from '../src/model/serialize.js';
 import {
   COMPULSION_DRIFT_DISSENT,
@@ -366,5 +367,54 @@ describe('a faction states each principle at ONE severity', () => {
   it('keeps what the compulsion is actually for: pursuit', () => {
     const combine = fresh().factions.find((f) => f.id === 'hutt')!;
     expect(combine.compulsions.map((c) => c.text).join(' ')).toMatch(/must be pursued/);
+  });
+});
+
+/**
+ * A compulsion with a trigger has two enforcement paths — a model judging a
+ * breach from prose, and code evaluating a predicate — and they can disagree.
+ * Measured live: 15 dissent charged for "no raid under way and nothing taken
+ * from anyone" while a `commerce_raiding` order was staged and a fleet was in
+ * transit to storm a world.
+ */
+describe('a breach ruling is checked against the board where the board can answer', () => {
+  const drajkPlunder = () =>
+    createSeedState('krayt').factions.find((f) => f.id === 'krayt')!
+      .compulsions.find((c) => c.trigger === 'no_plunder')!.text;
+
+  it('drops a breach the faction is demonstrably not committing', () => {
+    let s = createSeedState('krayt');
+    const base = s.systems.find((x) => (x.ships.krayt ?? 0) > 0)!;
+    s = applyOps(s, [{
+      op: 'issue_order', factionId: 'krayt', type: 'commerce_raiding',
+      originId: base.id, targetId: base.id, durationTurns: 3, label: 'raid', visibility: [],
+    }], 'model', 'krayt', true).state;
+
+    // The predicate says it is complying, so the ruling is not charged.
+    expect(driftingCompulsions(s, 'krayt').map((d) => d.trigger)).not.toContain('no_plunder');
+    expect(breachContradictsState(s, 'krayt', drajkPlunder())).toBe(true);
+  });
+
+  it('keeps a breach the board agrees with', () => {
+    const s = createSeedState('krayt');
+    expect(driftingCompulsions(s, 'krayt').map((d) => d.trigger)).toContain('no_plunder');
+    expect(breachContradictsState(s, 'krayt', drajkPlunder())).toBe(false);
+  });
+
+  /**
+   * A compulsion with no trigger is not a state question. Refusal was built for
+   * exactly that case, and the ruling stands on its own.
+   */
+  it('never contradicts a compulsion that has no trigger', () => {
+    const s = createSeedState('meridian');
+    const untriggered = s.factions
+      .find((f) => f.id === 'meridian')!
+      .compulsions.find((c) => !c.trigger);
+    if (untriggered) expect(breachContradictsState(s, 'meridian', untriggered.text)).toBe(false);
+  });
+
+  it('says nothing about a line that is not on the sheet', () => {
+    const s = createSeedState('krayt');
+    expect(breachContradictsState(s, 'krayt', 'a principle nobody holds')).toBe(false);
   });
 });

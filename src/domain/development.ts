@@ -259,14 +259,47 @@ export function boundPayloadsToOutcome(
   if (outcome === 'success' || outcome === 'critical_success') return { ops, notes: [] };
 
   const notes: string[] = [];
-  const bounded = ops.map((op) => {
+  const failed = outcome === 'failure' || outcome === 'critical_failure';
+
+  // An operative placed on a failed attempt.
+  //
+  // This pass bounded `onComplete` payloads and nothing else, so a
+  // model-emitted `deploy_agent` sailed through on any band. Reproduced three
+  // times: a **natural 1** whose narrative had the courier paraded before a
+  // tribunal and the confession broadcast still landed a live, unburned asset
+  // at `successChance: 56`; a failed theft granted a permanent 15/turn income
+  // drain for an operation the game said bought nothing.
+  //
+  // `routeCovertAction` states the right rule — "a failed attempt places no
+  // operative, the man was caught at the door" — but it only governs whether
+  // the engine APPENDS one. On a failure it returns the model's ops untouched.
+  // The guard has to live here, in the pass that already knows the band and
+  // already runs on the correction batch as well as the first.
+  //
+  // `partial` places intact: an operative is in place or is not, so there is no
+  // magnitude to halve, and a half-placed spy is not a thing the mechanic can
+  // express.
+  const withoutFailedAgents = failed
+    ? ops.filter((op) => {
+        const isAgent =
+          !!op && typeof op === 'object' && (op as { op?: unknown }).op === 'deploy_agent';
+        if (isAgent) {
+          notes.push(
+            'The attempt failed, so nobody was placed: the operative never reached their posting, and the fee bought nothing.',
+          );
+        }
+        return !isAgent;
+      })
+    : ops;
+
+  const bounded = withoutFailedAgents.map((op) => {
     if (!op || typeof op !== 'object') return op;
     const o = op as Record<string, unknown>;
     if (o.op !== 'issue_order') return op;
     const effect = o.onComplete as OrderEffect | undefined;
     if (!effect || typeof effect !== 'object' || typeof effect.magnitude !== 'number') return op;
 
-    if (outcome === 'failure' || outcome === 'critical_failure') {
+    if (failed) {
       const { onComplete: _dropped, ...rest } = o;
       notes.push(
         `The attempt failed, so the ${String(o.label ?? 'order')} was issued without its programme: ${describeOrderEffect(effect)} is not commissioned and nothing is delivered on completion.`,

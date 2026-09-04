@@ -432,6 +432,7 @@ export function createSeedState(playerFactionId: string): WorldState {
         kind: 'system',
         factionId: null,
         text: 'The Outer Rim wakes to no authority worth the name. Four sectors, five powers, and lanes nobody polices.',
+        visibleTo: null,
       },
     ],
   };

@@ -92,7 +92,7 @@ describe('what an accord may still produce', () => {
 describe('the allowlist is a closed set, and says so', () => {
   it('contains only ops the model can actually emit, plus the negotiated ones', () => {
     const modelOps = new Set(ModelOpSchema.options.map((o) => o.shape.op.value as string));
-    const negotiated = new Set(['form_treaty', 'establish_debt', 'assign_debt']);
+    const negotiated = new Set(['form_treaty', 'establish_debt', 'assign_debt', 'restructure_debt']);
     for (const op of EXTRACTION_ALLOWED) {
       expect(modelOps.has(op) || negotiated.has(op), `${op} is not an op anything can emit`).toBe(true);
     }

@@ -276,7 +276,31 @@ export function observeOrders(state: WorldState, factionId: string): Observation
  * made quietly.
  */
 export function worldAsSeenBy(state: WorldState, factionId: string): WorldState {
-  return { ...state, pendingOrders: observeOrders(state, factionId).orders };
+  return {
+    ...state,
+    pendingOrders: observeOrders(state, factionId).orders,
+    eventLog: eventsVisibleTo(state, factionId),
+  };
+}
+
+/**
+ * The log as one faction may read it.
+ *
+ * Filtering `pendingOrders` alone was never going to be enough, and that is the
+ * lesson worth keeping: **fog is a property of the whole payload, not of one
+ * field.** The event log is shipped to the browser whole, and it carried the
+ * label, duration, target, payload and price of the very orders the redaction
+ * had just hidden — so a player who opened the log saw everything a player who
+ * read the orders panel could not.
+ *
+ * An entry is public unless it says otherwise, which is what keeps every save
+ * written before this loading unchanged and every existing call site correct.
+ * Only the handful of sites that describe secret work — a non-public order
+ * being issued, an operative placed, an operative recalled — name their
+ * audience.
+ */
+export function eventsVisibleTo(state: WorldState, factionId: string) {
+  return state.eventLog.filter((e) => e.visibleTo === null || e.visibleTo.includes(factionId));
 }
 
 /**

@@ -108,8 +108,8 @@ describe('a holder can clear rivals out of its own orbit', () => {
 
     const after = arrive(s, from, world, 10);
     expect(after.treaties[0]!.status).toBe('broken');
-    expect(after.factions.find((f) => f.id === 'vigil')!.disposition.hutt).toBeLessThan(
-      s.factions.find((f) => f.id === 'vigil')!.disposition.hutt,
+    expect(after.factions.find((f) => f.id === 'vigil')!.disposition.hutt ?? 0).toBeLessThan(
+      s.factions.find((f) => f.id === 'vigil')!.disposition.hutt ?? 0,
     );
   });
 

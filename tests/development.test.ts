@@ -801,3 +801,50 @@ describe('payloads are bounded by the check that carried them', () => {
     expect(ledgerFor(bounded, 'meridian').net).toBe(before);
   });
 });
+
+/**
+ * A failed espionage check placed the agent anyway — reproduced three times in
+ * a live campaign, including a natural 1 whose narrative had the courier
+ * paraded before a tribunal and the confession broadcast.
+ *
+ * `routeCovertAction` states the rule ("a failed attempt places no operative")
+ * but only governs whether the engine APPENDS one; a model-emitted
+ * `deploy_agent` sailed through. The guard belongs in the pass that knows the
+ * band and already runs on the correction batch too.
+ */
+describe('an operative is not placed by a failed attempt', () => {
+  const agent = {
+    op: 'deploy_agent', ownerFactionId: 'meridian', systemId: 'tio-1',
+    mission: 'surveillance', effect: { kind: 'intel', revealsOrders: true },
+  };
+
+  it('strips the placement on a failure and says why', () => {
+    for (const band of ['failure', 'critical_failure'] as const) {
+      const out = boundPayloadsToOutcome([agent], band);
+      expect(out.ops, band).toHaveLength(0);
+      expect(out.notes.join(' '), band).toMatch(/nobody was placed/);
+    }
+  });
+
+  it('places intact on a partial: an operative is in place or is not', () => {
+    const out = boundPayloadsToOutcome([agent], 'partial');
+    expect(out.ops).toHaveLength(1);
+    expect(out.notes.join(' ')).not.toMatch(/nobody was placed/);
+  });
+
+  it('leaves a success alone', () => {
+    for (const band of ['success', 'critical_success'] as const) {
+      expect(boundPayloadsToOutcome([agent], band).ops, band).toHaveLength(1);
+    }
+  });
+
+  it('strips the agent without disturbing the rest of the batch', () => {
+    const out = boundPayloadsToOutcome(
+      [{ op: 'adjust_credits', factionId: 'meridian', delta: -150, reason: 'the fee' }, agent],
+      'critical_failure',
+    );
+    expect(out.ops).toHaveLength(1);
+    // What a failed attempt COST still stands; only what it bought is removed.
+    expect((out.ops[0] as { op: string }).op).toBe('adjust_credits');
+  });
+});

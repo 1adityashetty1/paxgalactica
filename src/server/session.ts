@@ -9,7 +9,8 @@ import type { EpilogueView } from '../engine/epilogue.js';
 import { observeOrders } from '../domain/intel.js';
 import { MAX_CHANNEL_MESSAGES } from '../api/contract.js';
 import { archiveFilename, packCampaign, unpackCampaign } from '../engine/archive.js';
-import { briefingFromState, buildBriefing, type Briefing } from '../engine/briefing.js';
+import {
+  withCurrentIntel, briefingFromState, buildBriefing, type Briefing } from '../engine/briefing.js';
 import { Campaign, ACTION_POINTS_PER_TURN } from '../engine/campaign.js';
 import { FileCampaignStore, type CampaignStore } from '../engine/store.js';
 import { closeChannel, endTurn, writeEpilogue, submitAction } from '../engine/turn.js';
@@ -124,7 +125,13 @@ export class GameSession {
         label,
         narrative: campaign.stagedNarratives()[index] ?? '',
       })),
-      briefing: this.lastBriefing,
+      // `watch` and `rumoured` are facts about the board, not about the turn
+      // that produced the briefing — so they are re-derived on every read. An
+      // action that deploys or recalls an operative changes them immediately.
+      briefing:
+        this.lastBriefing === null
+          ? null
+          : withCurrentIntel(this.lastBriefing, campaign.state),
       openChannel: this.openChannel,
       channelHistory: [...this.channelHistory],
       actionPoints: { left: campaign.actionPointsLeft, perTurn: ACTION_POINTS_PER_TURN },

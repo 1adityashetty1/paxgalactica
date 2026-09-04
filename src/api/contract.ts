@@ -153,6 +153,10 @@ export const ReactionViewSchema = z.object({
     .object({ opening: z.string(), about: z.string() })
     .nullable()
     .default(null),
+  /** What this faction actually did, as applied. Empty when the batch was held back. */
+  ops: z.array(z.unknown()).default([]),
+  /** Non-null when the whole batch was rejected and nothing in it landed. */
+  heldBack: z.number().int().nullable().default(null),
 });
 
 export const ChatMessageSchema = z.object({

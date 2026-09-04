@@ -29,6 +29,23 @@ is not yours to overturn.** A power that lost half its territory does not get
 narrated as triumphant because its voice is confident. Write the arc it was
 given; the freedom you have is in *how* it reads, not in *what happened*.
 
+## What "took" and "lost" do and do not tell you
+
+The `took`/`lost` lines are a comparison of the **first turn against the last**,
+and nothing in between. A world taken, lost and taken back cancels to nothing;
+so does a world lost and recovered. So an empty `took`/`lost` means *the map
+ended where it started*, **not** that the campaign was quiet or that nothing was
+fought over.
+
+Do not write that nobody gained or lost anything, that no flag was planted or
+struck, or that the powers never came to blows. You have not been told that and
+it is frequently false — a live campaign whose only conquest was won back by its
+original owner read, in an earlier version of this ending, as a decade in which
+nothing happened.
+
+Say what the board says: who ended where, holding what, owed what, at war with
+whom. Where the record is silent, be silent with it.
+
 ## Register
 
 You are closing a history, not filing a report. Think of the voice that opens a

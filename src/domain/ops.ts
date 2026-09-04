@@ -292,6 +292,52 @@ export const AssignDebtOp = z.object({
  * balance, capped at what it actually holds, so this cannot be used to wish a
  * debt away.
  */
+/**
+ * Reschedule a debt without retiring it.
+ *
+ * Powers renegotiate terms constantly and there was no verb for it, so an
+ * agreed restructure had to be written as `forgive_debt` + `establish_debt` —
+ * the only retirement primitive there is. That chain pays out three things it
+ * should not, all measured on a real campaign:
+ *
+ * - **principal minted.** A balance of 400 was retired and reissued at 480, and
+ *   a balance of 460 at 480. The new figure is whatever the model writes down.
+ * - **`DEBT_FORGIVENESS_GOODWILL` paid for a forgiveness that forgave nothing.**
+ *   Twice, so +40 disposition on a debt that got *larger*; Drajk went from a
+ *   seeded 30 to 96 toward the Combine, and those two payouts were 60% of the
+ *   swing.
+ * - **a delinquency laundered clean**, ending the per-turn
+ *   `DEBT_DEFAULT_DISPOSITION_COST` bleed that models a creditor's patience
+ *   running out.
+ *
+ * This is the same shape as `assign_debt`, which exists because a debt could
+ * previously be *transferred* only by minting a second copy. One module, one
+ * lesson twice: a missing verb forces the model through a primitive that does
+ * more than was meant.
+ *
+ * The balance is untouchable here on purpose — a restructure changes the terms
+ * of what is owed, not the amount. Writing part of it off is `forgive_debt`,
+ * and paying part of it down is `settle_debt`; both already move real money.
+ */
+export const RestructureDebtOp = z.object({
+  op: z.literal('restructure_debt'),
+  debtId: z.string().min(1),
+  /** The new instalment, trimmed to `MAX_DEBT_PER_TURN` in code. The balance does not move. */
+  perTurn: z.number().int().min(0).max(10000),
+  /** Optional new wording for the paper. */
+  text: z.string().max(400).optional(),
+  /**
+   * Whether rescheduling clears the arrears.
+   *
+   * Defaults to true, which is what a creditor is doing when it agrees to new
+   * terms: it has chosen to reschedule rather than write off, and a debtor
+   * still marked `delinquent` on the terms it just renegotiated would keep
+   * bleeding disposition for a default that no longer exists.
+   */
+  clearsArrears: z.boolean().default(true),
+  reason: z.string().max(240).default(''),
+});
+
 export const SettleDebtOp = z.object({
   op: z.literal('settle_debt'),
   debtId: z.string().min(1),
@@ -346,6 +392,7 @@ export const EXTRACTION_ALLOWED = new Set<string>([
   'break_treaty',
   'establish_debt',
   'assign_debt',
+  'restructure_debt',
   'establish_commitment',
   'dissolve_commitment',
   // A creditor or debtor acting on what was agreed in the room. Both move real
@@ -431,6 +478,9 @@ export const ExtractionOpSchema = z.union([
   FormTreatyOp,
   EstablishDebtOp,
   AssignDebtOp,
+  // Rescheduling needs the creditor's agreement, so it belongs here with the
+  // rest of the negotiated vocabulary rather than on the declared path.
+  RestructureDebtOp,
 ]);
 
 /** The full vocabulary, including ops only the reducer may originate. */
@@ -456,6 +506,7 @@ export const OpSchema = z.discriminatedUnion('op', [
   EstablishDebtOp,
   ForgiveDebtOp,
   AssignDebtOp,
+  RestructureDebtOp,
   SettleDebtOp,
   SpawnEventOp,
   LogNarrativeOp,

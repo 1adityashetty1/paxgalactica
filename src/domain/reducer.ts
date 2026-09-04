@@ -1,4 +1,5 @@
 import {
+  MAX_DURATION,
   accelerationCost,
   applyCategoryFloor,
   dropOneBucket,
@@ -46,6 +47,7 @@ import {
 } from './diplomacy.js';
 import { jumpsBetween, neighboursOf, positionAlongPath, shortestPath } from './graph.js';
 import { routeEarnings, tradeRoutes } from './trade.js';
+import { isPublicOrderType } from './intel.js';
 import {
   EXTRACTION_ALLOWED,
   EXTRACTION_REFUSAL_REASON,
@@ -55,6 +57,8 @@ import {
   type OpRejection,
 } from './ops.js';
 import {
+  commitmentsOf,
+  maxCommitmentIncomeFor,
   effectiveStats,
   fleetBases,
   isGuestOf,
@@ -255,8 +259,10 @@ function logEvent(
   kind: EventLogEntry['kind'],
   text: string,
   factionId: string | null = null,
+  /** Who may read it. Omit for public — see `EventLogEntrySchema.visibleTo`. */
+  visibleTo: string[] | null = null,
 ): void {
-  state.eventLog.push({ turn: state.turn, kind, factionId, text });
+  state.eventLog.push({ turn: state.turn, kind, factionId, text, visibleTo });
 }
 
 /**
@@ -654,6 +660,7 @@ export function applyOps(
       kind: 'rejection',
       factionId: null,
       text: `[${code}] ${message}`,
+      visibleTo: null,
     };
     rejectionEvents.push({ ...entry });
     state.eventLog.push(entry);
@@ -667,6 +674,9 @@ export function applyOps(
   // which is what makes repositioning free: `adjust_ships -5` here and `+5`
   // there nets to zero and costs nothing, however the ops are ordered.
   const hullsBefore = new Map(state.factions.map((f) => [f.id, fleetStrengthOf(state, f.id)]));
+  // Per-system counts too, so `capSelfInflictedLosses` can put restored hulls
+  // back where they were taken from rather than at the faction's best world.
+  const shipsBefore = new Map(state.systems.map((sys) => [sys.id, { ...sys.ships }]));
 
   for (const raw of rawOps) {
     const parsed = OpSchema.safeParse(raw);
@@ -884,7 +894,22 @@ export function applyOps(
           );
           break;
         }
+        const wasDissent = f.dissent;
         f.dissent = Math.max(0, Math.min(100, f.dissent + op.delta));
+        // Dissent movements were not logged at all. Only the drift trigger
+        // wrote a line, so a refusal (+8) and a compulsion breach (+15) left no
+        // record — a playtest went 25 -> 28 -> 45 -> 69 with the log accounting
+        // for +9 of it, for the mechanic this project calls the most successful
+        // in the build. A number the engine changes and nobody can audit is the
+        // same defect as a check nobody can audit.
+        if (f.dissent !== wasDissent) {
+          logEvent(
+            state,
+            'system',
+            `${f.name}: dissent ${wasDissent} -> ${f.dissent}/100 (${op.delta >= 0 ? '+' : ''}${op.delta}). ${op.reason}`.trim(),
+            f.id,
+          );
+        }
         break;
       }
 
@@ -1155,11 +1180,16 @@ export function applyOps(
         const delivers = effect
           ? `, to deliver ${describeOrderEffect(effect)} for ${invested} credits`
           : '';
+        // Secret work is logged for the people who can see it and nobody else.
+        // This line named the label, duration, target, payload and price of an
+        // order the fog had just redacted out of `pendingOrders` — so the
+        // redaction was decorative for anyone who read the log.
         logEvent(
           state,
           'order',
           `${op.factionId} begins ${order.label} (${duration} turns) -> ${op.targetId}${delivers}.`,
           op.factionId,
+          isPublicOrderType(order.type) ? null : [op.factionId, ...order.visibility],
         );
         break;
       }
@@ -1234,7 +1264,18 @@ export function applyOps(
           );
           break;
         }
-        order.durationTurns += op.additionalTurns;
+        // Clamped to the documented ceiling. This was a bare `+=`, so an order
+        // could be extended without limit — a playtest inherited one at 10
+        // turns against `MAX_DURATION` 5 and "Nothing takes longer than 5
+        // turns", and an unbounded `remaining` was the multiplier on the
+        // interrupt-refund exploit.
+        const wanted = order.durationTurns + op.additionalTurns;
+        order.durationTurns = Math.min(wanted, MAX_DURATION);
+        if (wanted > order.durationTurns) {
+          const trim = `${order.label} cannot run past ${MAX_DURATION} turns; extended to ${order.durationTurns} rather than ${wanted}.`;
+          notes.push(trim);
+          logEvent(state, 'clamp', trim, order.factionId);
+        }
         logEvent(
           state,
           'order',
@@ -1576,6 +1617,11 @@ export function applyOps(
           'order',
           `${owner.name} places an agent on ${host.name} (${op.mission}) for ${price} credits.`,
           op.ownerFactionId,
+          // A covert placement is the acting power's business alone. This told
+          // the world's holder that a rival operative had just arrived on it,
+          // with the mission and the price — the one thing an operative exists
+          // not to announce.
+          [op.ownerFactionId],
         );
         break;
       }
@@ -1587,7 +1633,13 @@ export function applyOps(
           break;
         }
         const [gone] = state.agents.splice(idx, 1);
-        logEvent(state, 'order', `Agent withdrawn from ${gone!.systemId}. ${op.reason}`.trim(), gone!.ownerFactionId);
+        logEvent(
+      state,
+      'order',
+      `Agent withdrawn from ${gone!.systemId}. ${op.reason}`.trim(),
+      gone!.ownerFactionId,
+      [gone!.ownerFactionId],
+    );
         break;
       }
 
@@ -1722,6 +1774,25 @@ export function applyOps(
           notes.push(note);
           logEvent(state, 'clamp', note, op.factionIds[0] ?? null);
         }
+        // A second, tighter ceiling applies when the money is READ, and it is
+        // the one that actually decides what an arrangement is worth. Both caps
+        // are deliberate; nobody decided they should compound silently.
+        // Measured: the Combine agreed to 60 a turn, this trimmed it to 25, and
+        // `ledgerFor` paid 10 — a sixth of what was negotiated, on every turn of
+        // the campaign, with neither party ever told. Reported so a player can
+        // see the deal they actually struck rather than the one they discussed.
+        for (const bound of op.factionIds) {
+          const ceiling = maxCommitmentIncomeFor(state, bound);
+          const drawn = commitmentsOf(state, bound).reduce(
+            (n, c) => n + Math.max(0, c.incomePerTurn ?? 0),
+            0,
+          );
+          if (yieldPerTurn > 0 && drawn + yieldPerTurn > ceiling) {
+            const capped = `${nameFor(state, bound)} can draw at most ${ceiling} a turn from standing arrangements in total (its influence sets that), so this one is worth ${Math.max(0, ceiling - drawn)} to it rather than ${yieldPerTurn}.`;
+            notes.push(capped);
+            logEvent(state, 'clamp', capped, bound);
+          }
+        }
         state.commitments.push({
           id: mintId(state, 'com'),
           kind: op.kind,
@@ -1793,19 +1864,55 @@ export function applyOps(
           logEvent(state, 'clamp', note, op.creditorFactionId);
         }
 
+        // A loan MOVES THE MONEY. This recorded the obligation and transferred
+        // nothing, which made a negotiated advance impossible to express
+        // honestly: the debtor's `adjust_credits +N` is legal, the creditor's
+        // `-N` is refused by design ("you cannot take credits out of another
+        // faction's treasury"), and extraction runs as the borrower — so the
+        // only expressible half was the credit to self. Measured live on a
+        // real campaign: `TOTAL +240` with no counterparty debit, principal
+        // conjured out of nothing.
+        //
+        // Trimmed to what the creditor actually holds, exactly as `settle_debt`
+        // trims to what the debtor holds. A lender who cannot fund the whole
+        // advance lends what it has, and the paper is written for that.
+        const creditorFaction = state.factions.find((f) => f.id === op.creditorFactionId);
+        const debtorFaction = state.factions.find((f) => f.id === op.debtorFactionId);
+        const advanced = Math.min(principal, creditorFaction?.credits ?? 0);
+        if (advanced <= 0) {
+          reject(
+            raw,
+            'insufficient_credits',
+            `${op.creditorFactionId} has nothing to lend. A debt is an advance of real money, not a promise recorded.`,
+          );
+          break;
+        }
+        if (advanced < principal) {
+          const note = `${creditorFaction?.name ?? op.creditorFactionId} could only advance ${advanced} of the ${principal} agreed; the paper is written for what was actually paid over.`;
+          notes.push(note);
+          logEvent(state, 'clamp', note, op.creditorFactionId);
+        }
+        if (creditorFaction) creditorFaction.credits -= advanced;
+        if (debtorFaction) debtorFaction.credits += advanced;
+
         state.debts.push({
           id: mintId(state, 'debt'),
           creditorFactionId: op.creditorFactionId,
           debtorFactionId: op.debtorFactionId,
-          principal,
-          balance: principal,
-          perTurn,
+          principal: advanced,
+          balance: advanced,
+          perTurn: Math.min(perTurn, advanced),
           status: 'current',
           missedPayments: 0,
           establishedTurn: state.turn,
           text: op.text,
         });
-        logEvent(state, 'diplomacy', `Debt recorded: ${op.text}`, op.creditorFactionId);
+        logEvent(
+          state,
+          'diplomacy',
+          `Debt recorded: ${op.text} (${advanced} advanced).`,
+          op.creditorFactionId,
+        );
         break;
       }
 
@@ -1917,6 +2024,67 @@ export function applyOps(
        * paying a debt off early produced a narrative saying the column was shut
        * and a balance that was still there next turn.
        */
+      case 'restructure_debt': {
+        // New terms need the other party to grant them, so this is negotiated
+        // like `form_treaty` and `establish_debt`. The schema says so and the
+        // reducer says so, since a hand-written batch parses against the full
+        // vocabulary rather than the model's.
+        if (source === 'model') {
+          reject(
+            raw,
+            'needs_consent',
+            'Terms cannot be rewritten by declaring them: the other party to the debt has to agree. Open a channel with them (/talk) and settle it there.',
+          );
+          break;
+        }
+        const debt = state.debts.find((d) => d.id === op.debtId);
+        if (!debt) {
+          reject(raw, 'unknown_debt', `No debt "${op.debtId}".`);
+          break;
+        }
+        if (!isDebtLive(debt)) {
+          reject(raw, 'illegal_value', `That debt is already ${debt.status}.`);
+          break;
+        }
+        // Either party may agree new terms — the creditor grants them, the
+        // debtor asks for them — but a stranger cannot rewrite someone else's
+        // paper. Same actor-shaped hazard `forgive_debt` is guarded against.
+        if (
+          actor !== undefined &&
+          actor !== debt.creditorFactionId &&
+          actor !== debt.debtorFactionId
+        ) {
+          reject(
+            raw,
+            'illegal_value',
+            `${actor} is not a party to ${debt.id}. Only the creditor and the debtor can reschedule it.`,
+          );
+          break;
+        }
+
+        const wasPerTurn = debt.perTurn;
+        const wasStatus = debt.status;
+        // The balance is deliberately untouched: a restructure changes the
+        // TERMS of what is owed, never the amount. Writing part of it off is
+        // `forgive_debt` and paying it down is `settle_debt`, and both move
+        // real money. Rebuilding the debt through forgive+establish is what
+        // minted principal and paid goodwill for a forgiveness that forgave
+        // nothing.
+        debt.perTurn = Math.min(op.perTurn, MAX_DEBT_PER_TURN, debt.balance);
+        if (op.text !== undefined) debt.text = op.text;
+        if (op.clearsArrears) {
+          debt.missedPayments = 0;
+          if (debt.status === 'delinquent') debt.status = 'current';
+        }
+
+        const note = `${debt.id} rescheduled: ${wasPerTurn} -> ${debt.perTurn} a turn on an unchanged balance of ${debt.balance}${
+          wasStatus === 'delinquent' && debt.status === 'current' ? ', arrears cleared' : ''
+        }. ${op.reason}`.trim();
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, debt.creditorFactionId);
+        break;
+      }
+
       case 'settle_debt': {
         const debt = state.debts.find((d) => d.id === op.debtId);
         if (!debt) {
@@ -1995,7 +2163,7 @@ export function applyOps(
     }
   }
 
-  capSelfInflictedLosses(state, actor, hullsBefore, notes);
+  capSelfInflictedLosses(state, actor, hullsBefore, shipsBefore, notes);
   billConstruction(state, hullsBefore, notes);
 
   // Nothing lands unless everything does. The notes are dropped with the state
@@ -2041,6 +2209,8 @@ function capSelfInflictedLosses(
   state: WorldState,
   actor: string | undefined,
   before: Map<string, number>,
+  /** Per-system ship counts as they stood before the batch. */
+  shipsBefore: Map<string, Record<string, number>>,
   notes: string[],
 ): void {
   if (actor === undefined) return; // engine ops, and journals predating the actor field
@@ -2055,11 +2225,37 @@ function capSelfInflictedLosses(
   if (lost <= allowed) return;
 
   const restored = lost - allowed;
-  const bases = fleetBases(state, actor);
-  if (bases.length === 0) return;
-  bases[0]!.ships[actor] = (bases[0]!.ships[actor] ?? 0) + restored;
+  // Put them back WHERE THEY WERE TAKEN FROM. This restored at `fleetBases[0]`,
+  // which sorts by `strategicValue` — so a declaration that drew hulls from a
+  // backwater handed them back at the faction's best world. Measured: an
+  // `adjust_fleet -4` moved 3 hulls two jumps from Hollow Star to Vergesse,
+  // instantly, with no `fleet_movement`, no transit and no interception. A
+  // scuttling was a free strategic redeployment, and the note even claimed the
+  // survivors "remain at Vergesse" when they had never been there.
+  const drawnFrom = state.systems
+    .map((sys) => ({ sys, had: shipsBefore.get(sys.id)?.[actor] ?? 0, now: sys.ships[actor] ?? 0 }))
+    .filter((x) => x.had > x.now)
+    .sort((a, b) => b.had - a.had || a.sys.id.localeCompare(b.sys.id));
 
-  const note = `${faction.name} cannot lose ${lost} hulls to a single declaration; ${restored} were never at risk and remain at ${bases[0]!.name}. Battle losses are resolved when a fleet arrives, not when an order is given.`;
+  let owed = restored;
+  for (const { sys, had, now } of drawnFrom) {
+    if (owed <= 0) break;
+    const back = Math.min(owed, had - now);
+    sys.ships[actor] = (sys.ships[actor] ?? 0) + back;
+    owed -= back;
+  }
+  // Nothing identifiable was drawn from (an abstract `adjust_fleet` against a
+  // faction with no recorded losses): fall back to a holding rather than
+  // losing the hulls entirely.
+  const bases = fleetBases(state, actor);
+  if (owed > 0) {
+    if (bases.length === 0) return;
+    bases[0]!.ships[actor] = (bases[0]!.ships[actor] ?? 0) + owed;
+  }
+
+  const where =
+    drawnFrom.length > 0 ? drawnFrom.map((d) => d.sys.name).join(', ') : (bases[0]?.name ?? 'their stations');
+  const note = `${faction.name} cannot lose ${lost} hulls to a single declaration; ${restored} were never at risk and remain at ${where}. Battle losses are resolved when a fleet arrives, not when an order is given.`;
   notes.push(note);
   logEvent(state, 'rejection', note, actor);
 }

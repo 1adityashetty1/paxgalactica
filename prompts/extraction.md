@@ -7,6 +7,44 @@ committed to, and emit the ops that make it real.
 This is the only pass in a conversation that changes the world. Everything
 said in the channel was talk until now.
 
+## What an accord can and cannot produce
+
+An accord may only produce what needs **the other party's agreement**, or what
+is purely a **record** of the conversation:
+
+`form_treaty` · `break_treaty` · `establish_debt` · `assign_debt` ·
+`restructure_debt` · `establish_commitment` · `dissolve_commitment` ·
+`forgive_debt` · `settle_debt` · `adjust_disposition` · `adjust_credits` ·
+`log_narrative` · `spawn_event`
+
+Everything else is **unilateral work the player pays an action for**, and the
+reducer refuses it from here — orders of every kind, building hulls, placing
+operatives, changing doctrine, moving crews. A conversation can agree that a
+power *will* do one of those; the power still declares it on its own turn.
+
+So a channel that ends "and my squadron will take station there" produces a
+`log_narrative` saying so, and the fleet sails when the player orders it.
+
+## Deferral is a property of a treaty, and only of a treaty
+
+`form_treaty` takes `ratifyTurns`: the deal is recorded now, `pending`, and none
+of its terms apply until then. That is the one way to express *"agreed, subject
+to my council"*.
+
+**Nothing else can be deferred.** A debt assignment, a restructure, a
+commitment — these take effect when they are agreed or not at all. If a party
+gates one of those on a future date, you have two honest options:
+
+- record it now, if the agreement is real and the date is flavour; or
+- record nothing but a `log_narrative`, if the agreement genuinely is not
+  settled yet.
+
+Do NOT reach for an order to carry the delay. `treaty_ratification` used to be
+used this way and it carries no payload at all, so the order ticked, completed,
+logged, and produced nothing — a fully negotiated marriage, supply line and
+transit compact evaporated on completion. An accord cannot issue orders now in
+any case.
+
 ## The standard of proof
 
 Enact what was **agreed**, not what was discussed, offered, hinted at, or
@@ -39,18 +77,16 @@ Specifically:
   deal is +3 to +8, a real treaty is +15 to +30, an ultimatum delivered and
   refused can be −20 or worse. Apply it in **both directions** where both
   sides' feelings changed.
-- `adjust_credits` — only for a specific sum both sides settled on. Emit the
-  matching negative and positive ops so the money actually moves.
-- `issue_order` — for work either side committed to beginning now. Use a
-  duration category and a value from **1, 2, 3, or 5**; nothing takes longer
-  than 5 turns. A treaty that must be ratified is `treaty_ratification`.
-
-  **Not `fleet_movement`.** A fleet movement is the mover's own fleet, it needs
-  nobody's consent, and it is the one order that fights a battle and changes who
-  holds a world — so it costs an action to declare, and the reducer rejects it
-  from this pass. A conversation that ends "and my squadron will take station
-  there" produces no order: the player declares that on their own turn. Emit a
-  `log_narrative` recording the intent if it matters.
+- **No orders of any kind.** An order is unilateral work the player pays an
+  action for, so the reducer refuses every `issue_order` from this pass — not
+  just `fleet_movement`. A conversation that commits a power to building,
+  fortifying, blockading, raising a garrison or running an operation produces a
+  `log_narrative` recording the intent; the power declares it on its own turn.
+- `adjust_credits` — only for a specific sum both sides settled on, and only as
+  a payment one side makes from money it has. **A loan is not this.** Lending is
+  `establish_debt`, which moves the principal from the creditor to the debtor
+  itself; writing the advance as a bare `adjust_credits` to the borrower creates
+  money that never left anybody's treasury.
 - `form_treaty` — for anything the parties agreed will **stand over time**.
   **This pass is the only one in the game that may emit it.** A treaty binds a
   power that is not the player, so it needs that power's consent, and a

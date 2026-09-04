@@ -106,7 +106,7 @@ operatives report"* section — the small piece that would make an agent read as
 intelligence rather than as a permissions change. Cheap, orthogonal, and no
 longer hollow now that something is actually secret.
 
-## 31. OPEN — a failed espionage check places the agent anyway
+## 31. FIXED — a failed espionage check placed the agent anyway
 
 **CONFIRMED.** Verified twice against `saves/spy_playtest.json` by stepping the
 journal, and the mechanism is confirmed in the code.
@@ -144,7 +144,7 @@ Worth doing at the same time: `routeCovertAction`'s failure guard becomes
 redundant once the strip is central, and leaving two rules for one thing is how
 this hole opened.
 
-## 32. OPEN — a restructure has to route through `forgive_debt`, and picks up a windfall on the way
+## 32. FIXED — a restructure had to route through `forgive_debt`, and picked up a windfall
 
 **Verified by replaying `saves/spy_playtest.json`.** The playtest agent reported
 this as a red-line bypass. **It is not one** — nobody was let off anything, and
@@ -197,7 +197,7 @@ missing verb forced the model through a primitive that did more than was meant.
 The remaining verb-shaped hole is a *partial* write-down, which today would have
 to be expressed the same way and would mint in the same manner.
 
-## 33. OPEN — `ratifyTurns` never fired
+## 33. FIXED — `ratifyTurns` never fired
 
 **Playtest finding. Not independently verified.**
 
@@ -314,6 +314,29 @@ concatenation case directly.
 > was clean and a playtest found them. A change to a core semantic wants a sweep
 > of everything that reports on it, not only everything that depends on it.
 
+## Where things stand (2026-09-02, later) — the playtest backlog, built
+
+Everything from the 10-turn playtest that did not need a design decision is
+built, plus the four decisions taken since. **847 tests.**
+
+**Closed:** 31, 32, 33, 40, 42, 43, 44, 45, 46, 48, 49, 50, 52, 53, and three of
+the four in 54. Nine of the claims were mechanically validated first — see the
+validation pass in item 54 — and one of my own validations was **wrong**: 54a
+came back REFUTED because the test drew hulls from the same system the cap
+restores to, which masks the bug entirely. Reproducing the reporter's actual
+configuration confirmed it. *A test that does not reproduce the setup is not a
+refutation.*
+
+**Still open and needing a decision:** the multi-round combat resolver (item 5),
+and whether the two commitment ceilings should compound at all (item 51 — the
+reporting half is built, the balance question is not mine to answer).
+
+**Deliberately dropped:** art for `inadmissible` and `out-of-actions`. Those two
+are the only non-outcomes that are not about the player's own faction — one is
+the world saying no, one is the clock — and they read fine as text.
+
+---
+
 ## Where things stand (2026-09-02) — the 10-turn Drajk playtest
 
 A full campaign played to its limit as the Drajk Confederacy, on the build that
@@ -336,7 +359,7 @@ documented mechanism that does not exist (**45**).
 
 ---
 
-## 40. OPEN — the event log defeats the fog, so redaction is decorative
+## 40. FIXED — the event log defeated the fog, so redaction was decorative
 
 **VERIFIED.** A regression against item 30, shipped the same day.
 
@@ -502,7 +525,7 @@ because the dossier is shorter.
 
 ---
 
-## 42. OPEN — interrupting your own order mints credits, and `extend_order` makes it unbounded
+## 42. FIXED — interrupting your own order minted credits, and `extend_order` was unbounded
 
 **VERIFIED in code.** `src/domain/reducer.ts:2062`:
 
@@ -546,7 +569,7 @@ is the hole in it.
 
 ---
 
-## 43. OPEN — a negotiated loan can only be written as a mint
+## 43. FIXED — a negotiated loan could only be written as a mint
 
 **VERIFIED with exact numbers**, by replaying the campaign journal op-by-op:
 
@@ -584,7 +607,7 @@ which is why both a loan and a restructure mint.
 
 ---
 
-## 44. OPEN — diplomacy is an unmetered action channel for 13 of the 14 order types
+## 44. FIXED — diplomacy was an unmetered action channel for 13 of the 14 order types
 
 **VERIFIED.** `src/domain/reducer.ts:871` rejects an extraction-sourced
 `issue_order` only when `isMovementType`. Measured with `actionPoints: {left: 0,
@@ -639,7 +662,7 @@ enumerating one exception to it.
 
 ---
 
-## 45. OPEN — two mechanisms CLAUDE.md documents do not exist
+## 45. FIXED — two mechanisms CLAUDE.md documented did not exist
 
 **VERIFIED.**
 
@@ -665,7 +688,7 @@ auditable.
 
 ---
 
-## 46. OPEN — the turn payload under-reports what the NPCs did
+## 46. FIXED — the turn payload under-reported what the NPCs did
 
 **VERIFIED.** `ReactionView` (`src/engine/turn.ts:40`) has no `ops` field at
 all, so `reactions[].ops` is `null` for every faction on every turn while the
@@ -712,7 +735,7 @@ reached that conclusion (see also item 32).
 
 ---
 
-## 48. Playtest claim — a compulsion breach can be charged against state that contradicts it
+## 48. FIXED — a compulsion breach could be charged against state that contradicts it
 
 **The agent's measurement; the structural argument is checkable and looks right.**
 
@@ -739,7 +762,7 @@ is complying, there is no breach to charge.
 
 ---
 
-## 49. MOSTLY FIXED — a refused accord left phantom history that never expired
+## 49. FIXED — an accord that delivered nothing left phantom history
 
 **Agent's measurement.** The turn-6 Arkanis accord was refused whole, so its
 `forgive_debt` never landed: the debt ran 240 → 200 → 160 → 120 → 80 → 40 on
@@ -818,7 +841,7 @@ evaporating.
 
 ---
 
-## 51. Playtest claim — a concession of 60 lands as 10, and the NPC is never told
+## 51. PARTLY FIXED — a concession of 60 lands as 10, and nobody was told
 
 **Agent's measurement.** The Combine agreed to 60/turn. The reducer trimmed it
 to 25 (`"Trimmed war_chest_stipend yield from 60 to 25 per turn (ceiling 25)"`),
@@ -846,7 +869,7 @@ Two neighbours from the same run:
 
 ---
 
-## 52. Playtest claim — enemy ships parked in your own system cannot be attacked
+## 52. FIXED — enemy ships parked in your own system could not be attacked
 
 **Agent's measurement, and it reads as a real design hole rather than a bug.**
 
@@ -866,7 +889,7 @@ a good mechanic into a free one.
 
 ---
 
-## 53. NPC-vs-NPC aggression is still zero in a live campaign
+## 53. ADDRESSED — NPC-vs-NPC aggression was zero in a live campaign
 
 **Mixed provenance.** My own harness measurement stands: over 12 turns with the
 player never acting, `initiative.ts` produced 2 NPC-vs-NPC attacks and moved six
@@ -894,7 +917,7 @@ dissent across ten turns while the player accrued 69.
 
 ---
 
-## 54. Playtest claims — four small ones
+## 54. MOSTLY FIXED — four small playtest claims
 
 **All the agent's measurements, none independently confirmed.**
 

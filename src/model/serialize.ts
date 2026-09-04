@@ -1,4 +1,4 @@
-import { ordersVisibleTo } from '../domain/intel.js';
+import { eventsVisibleTo, ordersVisibleTo } from '../domain/intel.js';
 import { describeOrderEffect } from '../domain/development.js';
 import { describeEffect } from '../domain/diplomacy.js';
 import {
@@ -251,8 +251,10 @@ export function serializeOrders(state: WorldState, viewerId: string): string {
     .join('\n');
 }
 
-export function serializeRecentLog(state: WorldState, limit = 12): string {
-  const recent = state.eventLog.slice(-limit);
+export function serializeRecentLog(state: WorldState, viewerId: string, limit = 12): string {
+  // Symmetric with the player's view: an NPC reasons from the log too, and a
+  // rival's covert placement is no more its business than it is the player's.
+  const recent = eventsVisibleTo(state, viewerId).slice(-limit);
   if (recent.length === 0) return '_Nothing has happened yet._';
   return recent.map((e) => `- [turn ${e.turn}] ${e.text}`).join('\n');
 }
@@ -294,7 +296,7 @@ export function serializeState(state: WorldState, viewerId: string): string {
     serializeDebts(state),
     '',
     '## Recent events',
-    serializeRecentLog(state),
+    serializeRecentLog(state, viewerId),
   ].join('\n');
 }
 

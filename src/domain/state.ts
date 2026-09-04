@@ -333,6 +333,24 @@ export const EventLogEntrySchema = z.object({
   kind: z.enum(['narrative', 'system', 'order', 'diplomacy', 'rejection', 'clamp', 'intel']),
   factionId: z.string().nullable().default(null),
   text: z.string(),
+  /**
+   * Who may read this entry. `null` — the default — means everybody.
+   *
+   * The event log is shipped to the browser whole, and it was quietly undoing
+   * the fog. Measured live: in the *same* payload where a Meridian order was
+   * correctly redacted to an anonymous rumour, the log carried
+   * `"meridian begins Patrol conversion at Tion Anchorage (3 turns) -> tio-1,
+   * to deliver 4 new hulls for 240 credits"` — label, duration, target, payload
+   * and price of the thing being hidden. A `counter_intelligence` sweep and a
+   * rival's operative placed on the player's own world leaked the same way.
+   *
+   * Defaulting to public keeps every existing entry and every saved campaign
+   * exactly as it was: only the handful of sites that describe secret work set
+   * it. `intel` entries are player-only by a different route — they are written
+   * solely for the player's own agents — and this makes that rule expressible
+   * for anything else that needs it.
+   */
+  visibleTo: z.array(z.string()).nullable().default(null),
 });
 export type EventLogEntry = z.infer<typeof EventLogEntrySchema>;
 
