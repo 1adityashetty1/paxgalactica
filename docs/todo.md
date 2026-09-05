@@ -1025,6 +1025,17 @@ escorts a better story: destroyers were originally *torpedo boat destroyers*.
   | doubled chevron (escort) | legible, but a **mark among vessels** |
   | wet-navy battleship (line) | legible and **the wrong genre** — flat deck, turrets amidships, guns on the beam |
 
+  A third pass fixed two faults found by auditing the rendered set. The line
+  hull's bridge tower was drawn from y=2.9 to 5 above a castle starting at 5.2
+  — a 0.2 gap, so it **floated**. Replacing it with the garrison's turret fixed
+  the gap and then exposed a second problem: a superstructure carrying a
+  superstructure, for no reason except that the castle had been drawn first.
+  The turret **is** the superstructure, so the castle is gone and the turret
+  sits on the hull. The lifter's two big raked bays read as odd skewed windows;
+  they are now a row of six small round ports punched the same way the
+  garrison's road wheels are, which resolves into a dotted line at 18px and
+  reads as an airliner at a glance.
+
   A later pass **refaceted** three of them: the dart is all swept diagonals and
   the others were axis-aligned rectangles, so the set read as two different
   hands. Castles, bays and drives became raked trapezoids. That pass also

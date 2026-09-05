@@ -48,9 +48,9 @@ interface IconProps {
  * no waterline to sit turrets on.
  *
  * So the read here is front-to-back rather than top-to-bottom: fine bow, deep
- * body, a stepped castle over the after third, twin drive bells behind it. The
- * castle is chunky rather than a mast, because thin verticals rasterise into a
- * skyline at 18px and blocks stay masses.
+ * body, the main battery seated over the after third, twin drive bells behind
+ * it. A dorsal strake forward of the turret was tried and dropped — with the
+ * castle gone it read as a stray mark rather than as structure.
  *
  * Also the generic warship glyph. A stack from a save written before classes
  * existed normalises to line hulls, so a caller that just wants "ships" is
@@ -68,17 +68,26 @@ export function ShipIcon({ size = 18, title }: IconProps) {
       role={title ? 'img' : undefined}
     >
       {title && <title>{title}</title>}
-      {/* Hull: long wedge, chamfered prow, raked stern. */}
-      <path d="M23.6 13.4 L13 10.5 L5.6 9.7 L3.6 10.6 L3.6 16.2 L5.6 17.1 L13 15.9 Z" />
-      {/* Castle: a raked trapezoid, narrower at the top. */}
-      <path d="M5.4 9.6 L6.7 5.2 L9.6 5.2 L10.6 9.6 Z" />
-      {/* Bridge tower. */}
-      <path d="M7.3 5 L7.7 2.9 L8.9 2.9 L9.2 5 Z" />
+      {/* Hull: long wedge, chamfered prow, raked stern. Deep, so it carries
+          the turret without the turret overhanging it. */}
+      <path d="M23.6 13.6 L13.5 10.2 L5.4 9.4 L3.4 10.4 L3.4 16.6 L5.4 17.5 L13.5 16.4 Z" />
+      {/* Main battery, seated straight on the hull: the garrison's turret and
+          gun, scaled.
+          
+          Two things went before it. A bridge tower drawn from y=2.9 to 5, above
+          a castle starting at 5.2 — a 0.2 gap, so it visibly FLOATED. Then the
+          turret on top of that castle, which was attached but stacked: a
+          superstructure carrying a superstructure, for no reason except that
+          the castle was drawn first. The turret IS the superstructure, so it
+          sits on the hull and the castle is gone.
+          
+          Reusing the garrison's shapes rather than redrawing them also means
+          the two things in this set that are guns look like each other. */}
+      <rect x="5.4" y="6.2" width="6.6" height="4.2" rx="1.1" />
+      <rect x="11.8" y="7.4" width="6.2" height="1.8" rx="0.7" />
       {/* Drive bells, flared outward astern. */}
-      <path d="M1 10.9 L3.6 11.5 L3.6 13.2 L1 13.4 Z" />
-      <path d="M1 15.6 L3.6 13.8 L3.6 15.5 L1 16.1 Z" />
-      {/* Dorsal strake forward of the castle, so the spine is not a bare edge. */}
-      <path d="M11.2 10.2 L16.4 11.5 L16.4 12.2 L11.2 11 Z" />
+      <path d="M0.8 10.7 L3.4 11.4 L3.4 13.3 L0.8 13.4 Z" />
+      <path d="M0.8 16 L3.4 13.9 L3.4 15.8 L0.8 16.5 Z" />
     </svg>
   );
 }
@@ -238,11 +247,20 @@ export function LifterIcon({ size = 18, title }: IconProps) {
       role={title ? 'img' : undefined}
     >
       {title && <title>{title}</title>}
+      {/* A row of ports down the spine, punched the same way the garrison's road
+          wheels are. These replaced two big raked bays, which read as odd
+          skewed windows rather than as a ship — a row of small round ports
+          reads as an airliner at a glance, and at 18px it resolves into a
+          dotted line, which is exactly what it should look like. */}
       <path
         fillRule="evenodd"
         d="M3.4 6.6 L17.2 6.2 L22.8 12 L17.2 17.8 L3.4 17.4 L2.2 12 Z
-           M6.2 9.6 L10.6 9.4 L10.2 14.6 L5.8 14.4 Z
-           M12.2 9.4 L16.4 9.2 L15.8 14.8 L11.8 14.6 Z"
+           M4.5 12 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z
+           M7.1 12 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z
+           M9.7 12 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z
+           M12.3 12 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z
+           M14.9 12 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z
+           M17.5 12 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z"
       />
       {/* Drive block, astern. */}
       <path d="M0.6 10.4 L2.3 10.9 L2.3 13.1 L0.6 13.6 Z" />
