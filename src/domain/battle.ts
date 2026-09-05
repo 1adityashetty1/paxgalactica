@@ -58,6 +58,14 @@ export const BATTLE_OUTCOMES = [
   /** The garrison held and threw the landing back. */
   'landing_thrown_back',
   /**
+   * Torpedo boats fired before the fleets closed.
+   *
+   * The one exchange in the battle that is superadditive: what it destroys is
+   * not brought to the trade that follows, so it lowers both sides' losses
+   * there as well.
+   */
+  'torpedo_strike',
+  /**
    * The orbitals were won and there was nothing aboard to put ashore.
    *
    * A world is taken by the lift arm, so an all-warship fleet can sterilise a
@@ -91,7 +99,7 @@ export type Contingent = z.infer<typeof ContingentSchema>;
 export const BattleRoundSchema = z.object({
   /** Stamped per round so rounds can span turns without a schema change. */
   turn: z.number().int().min(0),
-  phase: z.enum(['orbital', 'ground']),
+  phase: z.enum(['strike', 'orbital', 'ground']),
   outcome: z.enum(BATTLE_OUTCOMES),
   /**
    * The two numbers the break-off test actually compared, rounded for display.

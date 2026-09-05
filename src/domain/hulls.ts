@@ -57,6 +57,17 @@ export const UPKEEP_PER_TON = 1;
 /** Ground troops one lifter puts on a world. */
 export const LIFTER_CARRY = 6;
 
+/**
+ * Tons destroyed per ton of torpedo boat, in the strike before the fleets meet.
+ *
+ * The boat's entire output: it adds nothing to the line, and spends everything
+ * it has in one salvo. That keeps it from being a cheaper battleship — a fleet
+ * of nothing but boats fires once and is then annihilated, since it has no
+ * weight with which to hold an orbit — while making it genuinely worth mixing,
+ * because a hit landed before the exchange lowers what the enemy brings to it.
+ */
+export const TORPEDO_STRIKE = 0.3;
+
 export interface HullSpec {
   /** How much ship there is. The unit every fleet-size limit is measured in. */
   tonnage: number;
@@ -96,8 +107,20 @@ export const HULL_SPEC: Record<HullClass, HullSpec> = {
   lifter: { tonnage: 3, orbitalWeight: 0, carry: LIFTER_CARRY, lossOrder: 1, label: 'lifter' },
   // Cheap, fragile, and built to kill things far above its weight — the Jeune
   // École boat, and the reason destroyers were originally called "torpedo boat
-  // destroyers". It strikes past the screen rather than adding to the line.
-  torpedo_boat: { tonnage: 2, orbitalWeight: 1, carry: 0, lossOrder: 2, label: 'torpedo boat' },
+  // destroyers".
+  //
+  // **It carries no weight into the line at all.** Its whole contribution is
+  // the opening strike, delivered before the fleets close, at the heaviest
+  // hulls it can reach. That is what makes a mixed fleet worth more than the
+  // sum of its hulls: damage dealt BEFORE the exchange compounds, because the
+  // enemy brings less into the trade and your own losses fall with it.
+  //
+  // Repricing could never have produced that. Combat weight is a sum over
+  // hulls, so weight-per-credit of any mix is a weighted average of the
+  // per-class figures and can never beat the best single class — every
+  // reweighting just moves which PURE fleet wins. A mixed optimum needs an
+  // effect that is superadditive, and firing first is one.
+  torpedo_boat: { tonnage: 2, orbitalWeight: 0, carry: 0, lossOrder: 2, label: 'torpedo boat' },
   battleship: { tonnage: 4, orbitalWeight: 3, carry: 0, lossOrder: 3, label: 'battleship' },
 };
 
@@ -353,20 +376,9 @@ export function drawToWeight(stack: ShipStack, be: number): ShipStack {
   return normaliseStack(stack);
 }
 
-/**
- * How much of a fleet's fire its torpedo boats deliver, as a share of the whole.
- *
- * A torpedo boat adds no more to the line than an escort does. What it does is
- * choose where its share lands: past the screen, on the heaviest thing there.
- */
-export function torpedoShare(stacks: Iterable<ShipStack>): number {
-  let torpedo = 0;
-  let total = 0;
-  for (const st of stacks) {
-    torpedo += (st.torpedo_boat ?? 0) * HULL_SPEC.torpedo_boat.orbitalWeight;
-    total += orbitalWeightOf(st);
-  }
-  return total > 0 ? torpedo / total : 0;
+/** What one side's torpedo strike destroys, in tons. */
+export function torpedoStrike(stacks: Iterable<ShipStack>): number {
+  return tonsOfClass(stacks, 'torpedo_boat') * TORPEDO_STRIKE;
 }
 
 /** Tons of one class across a side. */

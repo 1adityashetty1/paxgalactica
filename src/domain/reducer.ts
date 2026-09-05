@@ -64,7 +64,7 @@ import {
   strikeStack,
   subtractStack,
   tonsOfClass,
-  torpedoShare,
+  torpedoStrike,
   takeHulls,
   tonsIn,
   trimToTons,
@@ -1475,6 +1475,67 @@ export function applyOps(
             const note = `Trimmed a treaty flow of ${amount} to ${bounded} per turn for ${who} (ceiling ${MAX_TREATY_INCOME_PER_TURN}).`;
             notes.push(note);
             logEvent(state, 'clamp', note, who);
+          }
+        }
+
+        // A treaty flow is a TRANSFER, and it has to conserve.
+        //
+        // Nothing required the entries to sum to zero, so a negotiated "joint
+        // venture that pays both houses" landed as `{krayt: 30, meridian: 20}`
+        // — both positive, from nowhere. A playtest closed four of them and
+        // conjured 480 credits a turn galaxy-wide, roughly a sixth of the
+        // economy, at a cost of zero action points because diplomacy is
+        // unmetered. No NPC ever objected: in fiction the arrangement is
+        // Pareto-improving, so all four counterparties negotiated the number
+        // *upward*.
+        //
+        // **Both parties profiting is a legitimate deal — it just is not this
+        // field.** The game has three income mechanisms and this one was
+        // silently absorbing all three, while being the most generous:
+        //
+        // - a joint venture that pays both sides is an `establish_commitment`,
+        //   whose `incomePerTurn` is deliberately ONE scalar every bound
+        //   faction reads the same way, bounded at `MAX_COMMITMENT_INCOME` and
+        //   again by an influence-derived per-faction ceiling — precisely
+        //   because a commitment is the easiest place in the game for a model
+        //   to invent revenue;
+        // - a share of one world's take is `incomeShares`, conserved by that
+        //   system's own worth;
+        // - a transfer is this, and it exists at all *because* a commitment
+        //   cannot be directional. `MAX_TREATY_INCOME_PER_TURN` is literally
+        //   `MAX_DEBT_PER_TURN`: the ceiling was inherited from debt service.
+        //
+        // The direction is never guessed. If nothing is being paid, the term
+        // creates value and belongs in a commitment, so it is dropped and the
+        // treaty stands without it — flipping a party negative would invert a
+        // deal both sides agreed to, and which party to flip is a coin toss.
+        const flows = Object.entries(terms.incomePerTurn);
+        const paid = flows.reduce((n, [, v]) => n + Math.min(0, v), 0);
+        const received = flows.reduce((n, [, v]) => n + Math.max(0, v), 0);
+        if (received > -paid) {
+          if (paid === 0) {
+            terms.incomePerTurn = {};
+            const note = `A treaty flow paying ${received} per turn with nobody paying it is an arrangement, not a transfer; the treaty stands without it. Record it with establish_commitment, which prices what an arrangement is worth.`;
+            notes.push(note);
+            logEvent(state, 'clamp', note, op.parties[0]);
+          } else {
+            // Something IS being paid, so the deal has a direction; the
+            // receipts are simply larger than it. Trim them to what is
+            // actually leaving a treasury, largest first so the order is
+            // deterministic.
+            let over = received + paid;
+            for (const [who] of flows
+              .filter(([, v]) => v > 0)
+              .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))) {
+              if (over <= 0) break;
+              const cut = Math.min(over, terms.incomePerTurn[who]!);
+              terms.incomePerTurn[who]! -= cut;
+              over -= cut;
+              if (terms.incomePerTurn[who] === 0) delete terms.incomePerTurn[who];
+            }
+            const note = `Trimmed a treaty's receipts to the ${-paid} per turn actually being paid; a transfer cannot pay out more than it takes in.`;
+            notes.push(note);
+            logEvent(state, 'clamp', note, op.parties[0]);
           }
         }
 
@@ -3468,7 +3529,19 @@ function resolveBattle(
     return finish(note);
   }
 
-  roll = rollD20(state.turn, `combat:${systemId}:${state.turn}`);
+  // Who is fighting is part of the seed, not just where and when.
+  //
+  // The salt was `combat:${systemId}:${turn}` — neither fleet, neither faction,
+  // nor the order — so a world had a fixed lucky turn: Kalzir on turn 6 rolled a
+  // 20 whoever arrived and whatever they brought. That is noticeable over a long
+  // campaign with no arithmetic at all, because the same world keeps producing
+  // the same kind of battle, and it makes the roll a property of the calendar
+  // rather than of the engagement.
+  //
+  // Sorted, so it stays a function of who is present and never of the order the
+  // orders happened to arrive in, and replay reproduces it exactly.
+  const combatants = [...new Set([...attackerIds, ...defenders.map(([id]) => id)])].sort();
+  roll = rollD20(state.turn, `combat:${systemId}:${state.turn}:${combatants.join(',')}`);
   const bestMod = (ids: string[]): number =>
     ids.length === 0
       ? 0
@@ -3526,6 +3599,76 @@ function resolveBattle(
   const bleed = (stack: ShipStack): ShipStack =>
     strikeStack(stack, (tonsIn(stack) * retreatLossPct) / 100).left;
   const notes: string[] = [];
+
+  /* ---------- Phase 0: the torpedo strike ---------- */
+  //
+  // Boats fire before the fleets close, and this is the whole of what they do:
+  // they carry no weight into the exchange at all. Both sides fire at once, so
+  // a defender's boats are an ambush and not merely a slower version of the
+  // attacker's.
+  //
+  // **This is the one effect in the battle that is superadditive**, and it is
+  // why a mixed fleet can be worth more than the sum of its hulls. Damage dealt
+  // here lowers what the enemy brings to the exchange, so it lowers your losses
+  // there as well — where an extra battleship only ever adds its own weight.
+  // No reweighting of the classes could have produced that: combat weight is a
+  // sum, so weight-per-credit of any mix is a weighted average of the per-class
+  // figures and can never beat the best single class.
+  const strikeOn = (
+    firing: ShipStack[],
+    targetSide: ShipStack[],
+  ): { tons: number; deep: number } => ({
+    tons: torpedoStrike(firing),
+    deep: pastScreen(firing, targetSide),
+  });
+
+  {
+    const attackerStacks = [...attackShare.values()];
+    const defenderStacks = defenders.map(([, st]) => st);
+    const onDefenders = strikeOn(attackerStacks, defenderStacks);
+    const onAttackers = strikeOn(defenderStacks, attackerStacks);
+
+    if (onDefenders.tons > 0 || onAttackers.tons > 0) {
+      const beforeAtk = attackHulls();
+      const beforeDef = defenders.reduce((n, [id]) => n + hullsAt(target, id), 0);
+
+      // Simultaneous: both salvos are computed against the fleets as they
+      // stood, so neither side's losses reduce the fire it was already under.
+      if (onDefenders.tons > 0) {
+        const total = defenderStacks.reduce((n, st) => n + tonsIn(st), 0);
+        for (const [id, present] of defenders) {
+          if (total <= 0) break;
+          const share = (onDefenders.tons * tonsIn(present)) / total;
+          setStackAt(target, id, strikeStack(present, share, onDefenders.deep).left);
+        }
+      }
+      if (onAttackers.tons > 0) {
+        const total = attackerStacks.reduce((n, st) => n + tonsIn(st), 0);
+        for (const [id, st] of attackShare) {
+          if (total <= 0) break;
+          const share = (onAttackers.tons * tonsIn(st)) / total;
+          attackShare.set(id, strikeStack(st, share, onAttackers.deep).left);
+        }
+      }
+
+      defenceForce = defenders.reduce((n, [id]) => n + hullsAt(target, id), 0);
+      for (const [i, entry] of defenders.entries()) {
+        defenders[i] = [entry[0], stackAt(target, entry[0])];
+      }
+      const struck = `Torpedoes run in ahead of the fleets over ${target.name}: ${coalition} loses ${beforeAtk - attackHulls()} ships, the defenders lose ${beforeDef - defenceForce}.`;
+      notes.push(struck);
+      rounds.push({
+        turn: state.turn, phase: 'strike', outcome: 'torpedo_strike',
+        attackPower: Math.round(onDefenders.tons), defendPower: Math.round(onAttackers.tons),
+        assault: 0, garrison: 0, garrisonEffective: 0,
+        attackers: sideOf(attackShare, attackSnapshot),
+        defenders: sideOf(new Map(defenders), defendSnapshot),
+        note: struck,
+      });
+      attackSnapshot = new Map(attackShare);
+      defendSnapshot = new Map(defenders);
+    }
+  }
 
   /* ---------- Phase 1: fleet battle ---------- */
   const attackWeight = weightOfSide(attackShare.values());
@@ -3650,34 +3793,55 @@ function resolveBattle(
       orbital('attacker_driven_off', note);
       return finish(note);
     } else {
-      // Both sides trade. The exchange is settled in battleship-equivalents,
-      // exactly as it always was, and then charged to each contingent as a
+      // Both sides trade around the WEAKER side's raw weight, and the roll
+      // tilts which of them comes off better. Settled in
+      // battleship-equivalents and then charged to each contingent as a
       // fraction of the TONNAGE it brought — which is what makes a transport
       // die alongside the line that was covering it rather than sailing
       // through the battle untouched because it has no guns.
-      const exchange = Math.min(attackPower, defendPower);
-      const attackLeft = Math.max(0, attackWeight - Math.ceil(exchange / (1 + attackMod / 20)));
-      const defenceLeft = Math.max(0, defendWeight - Math.ceil(exchange / (1 + defendMod / 20)));
+      //
+      // **The roll used to reach the defender backwards.** The exchange was
+      // `min(attackPower, defendPower)`, so whichever side was weaker had its
+      // own swing already baked into the figure, and dividing by that side's
+      // own modifier cancelled the modifier but not the swing:
+      //
+      //     defenceLeft = defendWeight - defendWeight x (1 - swing)
+      //                 = defendWeight x swing
+      //
+      // — so a natural 20 left a defender that could not break off with 42% of
+      // its fleet intact and a natural 1 annihilated it. Measured live against
+      // the same crusading Vigil at the same odds: roll 20 left seven
+      // battleships holding the orbitals and the landing was called off; roll
+      // 10 destroyed them outright. The good roll was the worse outcome, and it
+      // bit hardest against `crusading` — the one doctrine that never escapes
+      // this branch by breaking off.
+      //
+      // The swing is applied ONCE now, to a base neither side's modifier has
+      // touched, in the same direction for both: it takes losses off the
+      // attacker and adds them to the defender. Might then divides each side's
+      // own losses, so it is counted once as well.
+      const base = Math.min(attackWeight, defendWeight);
+      const tilt = base * swing;
+      const attackLeft = Math.max(
+        0,
+        attackWeight - Math.ceil((base - tilt) / (1 + attackMod / 20)),
+      );
+      const defenceLeft = Math.max(
+        0,
+        defendWeight - Math.ceil((base + tilt) / (1 + defendMod / 20)),
+      );
       const hullsBeforeExchange = attackHulls();
       const defendHullsBefore = defenceForce;
 
-      // How much of each side's fire strikes past the other's screen. This is
-      // the class triangle and the whole of the torpedo boat: it is not extra
-      // damage — the tonnage destroyed is identical either way — only a say in
-      // WHICH hulls absorb it. A boat that hit harder would just be a cheaper
-      // battleship, and the escort would have nothing to answer.
-      const attackerStacks = [...attackShare.values()];
-      const defenderStacks = defenders.map(([, st]) => st);
-      const deepOnDefenders = pastScreen(attackerStacks, defenderStacks);
-      const deepOnAttackers = pastScreen(defenderStacks, attackerStacks);
-
+      // No redirection here: the boats already fired, in the strike phase, and
+      // carry nothing into the line. The exchange is the battle line's alone.
       for (const [id, st] of attackShare) {
         const lost = tonsIn(st) * (1 - attackLeft / attackWeight);
-        attackShare.set(id, strikeStack(st, lost, deepOnAttackers).left);
+        attackShare.set(id, strikeStack(st, lost).left);
       }
       for (const [id, present] of defenders) {
         const lost = tonsIn(present) * (1 - defenceLeft / defendWeight);
-        setStackAt(target, id, strikeStack(present, lost, deepOnDefenders).left);
+        setStackAt(target, id, strikeStack(present, lost).left);
       }
       defenceForce = defenders.reduce((sum, [id]) => sum + hullsAt(target, id), 0);
 
@@ -3828,27 +3992,19 @@ function resolveBattle(
 }
 
 /**
- * The share of one side's fire that lands past the other's screen.
+ * How much of a torpedo strike goes past the screen to the heaviest hulls.
  *
- * Torpedo boats choose where their share of the damage falls — on the heaviest
- * hulls, ignoring the loss order — and **escorts are what answers them**, which
- * is the historical shape as well as the mechanical one: destroyers were
- * originally *torpedo boat destroyers*. A screen matching the attacking boats
- * ton for ton cancels the redirection outright; half a screen halves it.
- *
- * Without this the escort has no job that a battleship does not do better. The
- * exchange band destroys 50–100% of a fleet's tonnage (at 2:1 the defender
- * simply breaks off and nothing is lost at all), so no realistic screen can
- * absorb a stand-up fight — the class earns its place by being the counter to
- * this, and by covering a withdrawal.
+ * **Escorts are what answers boats**, which is the historical shape as well as
+ * the mechanical one: destroyers were originally *torpedo boat destroyers*. A
+ * screen matching the attacking boats ton for ton turns the strike aside
+ * entirely — the tonnage still burns, but it burns off the screen instead of
+ * the battle line. Half a screen turns aside half of it.
  */
 function pastScreen(firing: ShipStack[], target: ShipStack[]): number {
-  const share = torpedoShare(firing);
-  if (share <= 0) return 0;
   const boats = tonsOfClass(firing, 'torpedo_boat');
   if (boats <= 0) return 0;
   const screen = tonsOfClass(target, 'escort');
-  return share * Math.max(0, 1 - Math.min(1, screen / boats));
+  return Math.max(0, 1 - Math.min(1, screen / boats));
 }
 
 /**

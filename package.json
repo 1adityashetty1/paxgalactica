@@ -25,7 +25,8 @@
     "typecheck": "tsc --noEmit",
     "resume": "tsc && node dist/resume.js",
     "balance": "tsc && node scripts/balance-report.mjs",
-    "doctor": "node scripts/doctor.mjs"
+    "doctor": "node scripts/doctor.mjs",
+    "fleetlab": "tsc && node --max-old-space-size=4096 scripts/fleetlab.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.225",

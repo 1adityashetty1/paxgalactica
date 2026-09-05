@@ -32,6 +32,7 @@ strictly more setup to solve a problem Node already solves.
 | `pnpm replay <name>` | rebuild a saved campaign from its journal, no model calls |
 | `pnpm resume <file>` | verify an exported `.tar.gz`, install it, and serve it |
 | `pnpm balance [turns]` | 5 doctrine bots vs the real reducer, no model calls |
+| `pnpm fleetlab [atk] [def]` | which fleet composition wins, at equal credits |
 | `pnpm doctor` | full setup check — runtime, deps, binary, auth, port |
 | `pnpm typecheck` / `typecheck:web` / `typecheck:tests` | the three tsconfigs — **Vite does not typecheck** |
 
@@ -525,13 +526,35 @@ there is nothing to absorb. A **withdrawal** costs 10–35%, and that a screen
 covers outright — which is what brings a convoy home from a battle it should
 not have fought. That, and torpedo boats.
 
-### The torpedo boat strikes past the screen
+### The torpedo boat fires before the fleets close
 
-`strikeStack(stack, tons, deep)`. `deep` is the fraction of the loss that
-ignores the loss order and comes off the **heaviest hulls first**. It is a
+A **strike phase** ahead of the orbital exchange. Both sides fire at once, so a
+defender's boats are an ambush rather than a slower copy of the attacker's, and
+the boat carries **no weight into the line at all** — its whole output is that
+one salvo.
+
+**Why a phase rather than a price.** Damage dealt before the exchange compounds:
+what it destroys is not brought to the trade, so it lowers your own losses there
+too. That is superadditive, and superadditivity is the only thing that can make
+a mixed fleet worth more than the sum of its hulls. Reweighting cannot —
+combat weight is a *sum*, so weight-per-credit of any mix is a weighted average
+of the per-class figures and can never beat the best single class. Every
+reprice merely moves which **pure** fleet wins, and a battleship dear enough to
+level the field produces indifference rather than a preference for mixing.
+
+Carrying no line weight is what stops the strike making it a cheaper
+battleship: a fleet of nothing but boats fires once and is then destroyed where
+it lies, having nothing with which to hold an orbit.
+
+`TORPEDO_STRIKE` was **swept, not chosen** — `pnpm fleetlab` at each value. Below
+0.3 boats are not worth buying and the best fleet is three classes; at 0.5 they
+*are* the fleet and pure boats win outright; at **0.3** all four classes appear
+in the best attacking fleet and the margin over anything simpler peaks.
+
+`strikeStack(stack, tons, deep)` carries it. `deep` is the fraction of the loss
+that ignores the loss order and comes off the **heaviest hulls first**. It is a
 redistribution, not extra damage: the tonnage destroyed is identical, and only
-which ships absorb it changes. A boat that hit harder would just be a cheaper
-battleship, and the escort would have nothing to answer.
+which ships absorb it changes.
 
 The whole triangle, on one defending fleet of eight battleships behind eight
 escorts losing sixteen tons:
@@ -543,12 +566,17 @@ escorts losing sixteen tons:
 | 50% | 2 battleships, 4 escorts |
 | 100% | 4 battleships |
 
-`pastScreen` is the firing side's torpedo weight as a share of its total,
-scaled by `1 - min(1, targetEscortTons / firingTorpedoTons)` — a screen
-matching the boats ton for ton cancels the redirection outright, half a screen
-halves it. Boats are not a fleet on their own: at the same tonnage a battle
-line has half again the weight, so a swarm loses the exchange and only gets to
-choose where its share of the damage lands.
+`pastScreen` is `1 - min(1, targetEscortTons / firingTorpedoTons)` — a screen
+matching the boats ton for ton turns the whole strike aside onto itself, and
+half a screen turns aside half. The tonnage still burns; only its address
+changes.
+
+**None of this reaches the defender**, and that is the open question rather than
+an oversight. A defender's fleet does exactly one thing — trade weight in the
+exchange — and one objective has a pure optimum. The attacker's mix is a
+decision because it has *two*: clear the orbit, and land troops. Measured at
+every budget ratio from 1:1 to 3:1, and scored on damage dealt as well as on
+holding, the best defender is a pure battle line every time. See item 74.
 
 The historical shape and the mechanical one agree, which is why the class is
 called what it is: destroyers were originally *torpedo boat destroyers*.
@@ -2364,6 +2392,46 @@ overstates their runaway — the counterplay their position invites is political
 and politics is what the model-driven game supplies.
 
 ---
+
+## Composition: does the mix decide anything?
+
+`src/fleetlab.ts`. `balance.ts` asks whether a *doctrine* pays, across a whole
+galaxy. This asks a narrower question the same way: **at equal credits, which
+composition wins?** Every attacker mix against every defender mix, over four
+garrisons, five rolls and three holder doctrines — 73,500 battles in 18 seconds
+through the real reducer, on a two-system arena with the galaxy stripped out
+(6.6ms a battle becomes 0.3ms).
+
+It exists because the question kept being answered with one-off scripts, and a
+one-off script answered it **wrong three times running**: once from a single
+seeded roll, once from a single defender — the Vigil, whose `crusading` makes it
+the one doctrine where a screen is decisive — and once from a control that was
+equal in tonnage while being unequal in fighting weight. Three dimensions are
+swept for exactly that reason, each having already flipped a conclusion.
+
+**An attacker needs local superiority or the question is not well posed.** At
+equal credits the defender holds essentially every battle and no composition can
+be told from another; the default is 3,600 against 1,200 plus a garrison.
+
+The measured answer is that composition decides an **invasion** and not a
+**defence**:
+
+| side | best fleet | rate |
+|---|---|---|
+| attacker | `battleship:30 escort:30 lifter:20` — three classes | 70% |
+| defender | `battleship:20` — one class, and every mix is worse | 80% |
+
+A line-heavy attacker fails by losing its transports (`no_lift`); a screen-heavy
+one fails by never clearing the orbit (`no_landing`). Two failure modes of
+different kinds is what makes the mix a decision rather than a ratio to solve
+once, and a test pins it.
+
+The defender's side has an exact explanation rather than a tuning problem:
+**a screen pays exactly when it protects something whose loss is not measured in
+weight.** A lifter has zero orbital weight, so losing one costs no fighting power
+and costs the whole objective — which is what makes an escort's 0.5 weight per
+ton worth taking over a battleship's 0.75. Everything a defender owns *is*
+weight, so the same trade is a straight loss. See item 74 in `docs/todo.md`.
 
 ## Deterministic replay
 

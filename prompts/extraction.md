@@ -106,6 +106,21 @@ Specifically:
   | `basing_rights` | their fleets may enter your systems without it being an attack — the ONLY way to station ships in friendly space |
   | `tribute` | `incomePerTurn` moves every turn |
 
+  **Money in a deal has three homes, and the wrong one gets trimmed.** Read
+  what the parties actually agreed and pick by *where the money comes from*:
+
+  | the deal | write it as |
+  |---|---|
+  | one side pays the other — tribute, a subsidy, a retainer, debt service | `incomePerTurn`, and it must **balance**: `{"payer": -40, "payee": 40}` |
+  | both sides share what a **named world** earns | `incomeShares`, which comes off that system's own take |
+  | a venture, charter or operation that **makes** money for both | **not a treaty at all** — `establish_commitment`, which prices what an arrangement is worth |
+
+  `incomePerTurn` is a **transfer**, so it can never pay out more than it takes
+  in. Writing `{"a": 30, "b": 20}` — both positive — is money from nowhere, and
+  the reducer drops the whole term and tells you to use a commitment instead.
+  A joint venture that genuinely enriches both houses is a real deal and it has
+  a real home; it is just not this field.
+
   **`terms.territory` really cedes worlds.** List a system there and it changes
   hands when the treaty takes force: the garrison goes with it intact, and the
   ceding power's ships withdraw to its nearest holding. Only a system a *party
