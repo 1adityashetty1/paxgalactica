@@ -1011,6 +1011,34 @@ escorts a better story: destroyers were originally *torpedo boat destroyers*.
    because "line hull" is not a term anyone uses.
 1. **`lifter`** — invasion becomes a composed fleet. No new phases: the orbital
    phase counts weight, the ground phase counts lift.
+
+   **Four prompt lines go false the moment a second class exists**, and they
+   are part of this step rather than a later tidy-up. Every one of them states a
+   hull's price as a single number, which is only ever a battleship's — an
+   escort is 30, a torpedo boat 30, a lifter 45 — and the suborn figures are per
+   **ton** under the tonnage design, not per hull:
+
+   | | claim | why it breaks |
+   |---|---|---|
+   | `resolution.md:97` | *"hulls at 60"* | only a battleship costs 60 |
+   | `resolution.md:179` | *"the hulls are paid for at 60 apiece"* | suborning is priced per ton |
+   | `resolution.md:280` | *"60 credits a hull"* (`commission_ships`) | depends which class is commissioned |
+   | `resolution.md:182` | *"6 standing per hull"* | `SUBORN_DISPOSITION_COST` becomes per ton |
+
+   Nothing is wrong today — with only battleships in play, 60 is still right —
+   which is exactly what makes this easy to ship past.
+
+   The vocabulary itself is fine and does not need changing: **no prompt treats
+   "hull" as a ship type**, and none enumerates ship kinds at all. "Hull" is used
+   correctly as the unit — *"2 hulls a turn"*, *"capital hulls"* — and the
+   classes are kinds of hull.
+
+   **Extend `tests/prompt-drift.test.ts` to cover ship prices.** It currently
+   guards only dissent figures and would not have caught any of the four above.
+   That test exists because `appraisal.md` quoted a compulsion price of 25 long
+   after the constant fell to 15; this is the identical defect waiting to
+   happen, and the guard should be mechanical rather than something someone
+   remembers.
 2. **`escort`** — something worth protecting exists, so a screen has a job.
    Still no new phase; it is a loss-ordering rule.
 3. **`torpedo boat`** — the lift arm is under threat, so escorts matter. Loss
