@@ -1036,6 +1036,27 @@ escorts a better story: destroyers were originally *torpedo boat destroyers*.
   garrison's road wheels are, which resolves into a dotted line at 18px and
   reads as an airliner at a glance.
 
+  A fifth pass, driven by auditing the rendered set rather than the source:
+
+  - The line hull's turret is a **hard-raked trapezoid with the gun set into
+    its face**, chosen from four candidates on the same hull. An earlier pick
+    was a *stepped* turret — a broad base rising to a raised block, which is a
+    two-tier superstructure and therefore the castle back under another name.
+    That was a real process failure, not a taste one: the instruction was
+    "drop the castle" and the stepped variant was rationalised as keeping
+    detail asked for earlier.
+  - **One drive, not two**, and every ship now tapers its nozzle *away* from
+    the hull. The lifter's used to widen away, so three ships held two opposite
+    ideas of what an engine is. The line hull's is inset from the stern edges:
+    at full depth it swallowed the raked stern corners and the back of the ship
+    read as a flat edge.
+  - The lifter has a **blunt bow** (a point read faintly warship-ish on the one
+    hull with no business looking fast) and **four ports at r1.25**, not six at
+    r1. That is arithmetic rather than taste: a gap must clear roughly 1.3
+    viewBox units to survive 18px, and six at r1 leave 0.56 — they merged into
+    a continuous streak and stopped reading as ports at all. Four at r1.25
+    leave 1.5, the largest holes that still hold a real gap.
+
   A fourth pass sharpened the turret. It had been lifted from the garrison
   intact, radii and all — and **a corner radius reads as sheet metal bent in a
   press**, which is right for a tank and wrong for a hull cut in a yard. The

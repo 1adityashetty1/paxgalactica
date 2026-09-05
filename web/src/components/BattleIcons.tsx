@@ -48,8 +48,7 @@ interface IconProps {
  * no waterline to sit turrets on.
  *
  * So the read here is front-to-back rather than top-to-bottom: fine bow, deep
- * body, the main battery seated over the after third, twin drive bells behind
- * it. A dorsal strake forward of the turret was tried and dropped — with the
+ * body, the main battery seated over the after third, one drive behind it. A dorsal strake forward of the turret was tried and dropped — with the
  * castle gone it read as a stray mark rather than as structure.
  *
  * Also the generic warship glyph. A stack from a save written before classes
@@ -87,11 +86,14 @@ export function ShipIcon({ size = 18, title }: IconProps) {
           straight-edged polygons — a raked trapezoid stepping up to a raised
           block, and a barrel that tapers rather than ending in a cap. Same
           shape language as the guns; same language as the ships. */}
-      <path d="M5.4 10.4 L6.1 7.6 L7.8 7.6 L8.3 5.5 L10.5 5.5 L10.9 7.6 L12.2 10.4 Z" />
-      <path d="M11.6 7.5 L18.3 8.2 L18.3 9 L11.6 9.3 Z" />
-      {/* Drive bells, flared outward astern. */}
-      <path d="M0.8 10.7 L3.4 11.4 L3.4 13.3 L0.8 13.4 Z" />
-      <path d="M0.8 16 L3.4 13.9 L3.4 15.8 L0.8 16.5 Z" />
+      <path d="M5.4 10.4 L6.8 6 L10.2 6 L12.4 10.4 Z" />
+      <path d="M10.9 7.2 L18.6 8.1 L18.6 9.1 L10.9 9.6 Z" />
+      {/* One drive, not two: a single nozzle tapering AWAY from the hull, the
+          same shape as the torpedo boat's so the two read as the same idea
+          rather than merely similar. Inset from the hull edges on purpose — at
+          full stern depth the drive swallowed the raked stern corners and the
+          back of the ship read as a flat edge. */}
+      <path d="M1 12 L3.4 11.3 L3.4 15.7 L1 15 Z" />
     </svg>
   );
 }
@@ -259,23 +261,29 @@ export function LifterIcon({ size = 18, title }: IconProps) {
       role={title ? 'img' : undefined}
     >
       {title && <title>{title}</title>}
-      {/* A row of ports down the spine, punched the same way the garrison's road
-          wheels are. These replaced two big raked bays, which read as odd
-          skewed windows rather than as a ship — a row of small round ports
-          reads as an airliner at a glance, and at 18px it resolves into a
-          dotted line, which is exactly what it should look like. */}
+      {/* Blunt bow and four ports down the spine, punched the way the
+          garrison's road wheels are.
+          
+          The count is not taste. A port's gap has to clear roughly 1.3 viewBox
+          units to survive 18px, where one unit is about 0.75 device pixels —
+          and six ports at r1 leave a gap of 0.56, so they merged into a
+          continuous light streak and stopped reading as ports at all. Four at
+          r1.25 leave 1.5: the largest holes that still hold a real gap.
+          
+          The bow is blunt because a point read faintly warship-ish, and the
+          lifter is the one hull here with no business looking fast. */}
       <path
         fillRule="evenodd"
-        d="M3.4 6.6 L17.2 6.2 L22.8 12 L17.2 17.8 L3.4 17.4 L2.2 12 Z
-           M4.5 12 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z
-           M7.1 12 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z
-           M9.7 12 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z
-           M12.3 12 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z
-           M14.9 12 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z
-           M17.5 12 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z"
+        d="M3.4 6.6 L18.6 6.2 L22.6 9.2 L22.6 14.8 L18.6 17.8 L3.4 17.4 L2.2 12 Z
+           M4.55 12 a1.25 1.25 0 1 0 2.5 0 a1.25 1.25 0 1 0 -2.5 0 Z
+           M8.55 12 a1.25 1.25 0 1 0 2.5 0 a1.25 1.25 0 1 0 -2.5 0 Z
+           M12.55 12 a1.25 1.25 0 1 0 2.5 0 a1.25 1.25 0 1 0 -2.5 0 Z
+           M16.55 12 a1.25 1.25 0 1 0 2.5 0 a1.25 1.25 0 1 0 -2.5 0 Z"
       />
-      {/* Drive block, astern. */}
-      <path d="M0.6 10.4 L2.3 10.9 L2.3 13.1 L0.6 13.6 Z" />
+      {/* One drive, tapering away from the hull like the rest of the fleet's.
+          It used to widen away, which made three ships hold two opposite ideas
+          of what an engine is. */}
+      <path d="M0.7 11.1 L2.3 10.5 L2.3 13.5 L0.7 12.9 Z" />
     </svg>
   );
 }
