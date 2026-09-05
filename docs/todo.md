@@ -1,5 +1,584 @@
 # TODO — known bugs and open design questions
 
+## Where things stand (2026-09-05) — the 12-turn Meridian playtest of ship classes
+
+A full campaign played to its limit as the **Meridian Trade Authority** on the
+build that shipped item 55 (ship classes, tonnage, the screen and the torpedo
+boat). It reached turn 12, went read-only, and wrote an epilogue. The player
+finished **ascendant with 18 of 25 systems from a starting 4**, fleet 130, net
+1,376/turn, with every other power `diminished` except Arkanis `holding`.
+
+**The classes themselves held up completely** — every battle the playtester
+pre-computed matched the report to the integer, loss order behaved exactly as
+advertised, and `no_lift` fired twice on fleets that won an orbit with nothing
+to land. That is item **71**, and it is the useful half of the result: the
+mechanic shipped this week is sound.
+
+What the campaign broke instead is **everything around it**. The worst finding
+by a distance is that **the d20 is computable before you act** (**56**): the
+seed is turn plus staged-batch-count plus the player's own text, all three known
+to the player, so a scripted player never fails a check and can read every
+future battle off a table. Ten of the playtester's declared actions rolled a
+natural 20.
+
+Then two money exploits reachable only through **unmetered diplomacy** — treaty
+`incomePerTurn` is not conserved, so both parties can be paid from nothing
+(**57**), and `terms.territory` cedes worlds in full while the payment for them
+is capped at 240 credits (**58**). Seven of the eighteen worlds were bought that
+way for 1,200 credits and **zero action points**.
+
+Three findings are in code written the same week: `expansionist` gives a **100%**
+lift discount rather than the 50% it claims (**69**), trade-hop income splits by
+hull count where system income splits by tonnage (**70**), and the exchange
+formula leaves a non-breaking defender **more** alive on a high roll (**64**) —
+that last one predates classes but was invisible until a player could compute
+the roll in advance.
+
+> **Provenance.** Items **56, 57, 58, 59, 60, 61, 63, 64, 65, 68, 69, 70** I
+> verified directly against the code, with file and line cited; **56** and
+> **64** I reproduced independently rather than only reading, and **57** I
+> confirmed by replaying the campaign. Items **62, 66, 67, 72** are the playtest
+> agent's measurements, quoted with its reproductions and **not** independently
+> confirmed; each says so. **71** is its account of what worked, spot-checked
+> but not exhaustively.
+>
+> The campaign is kept as `saves/classes_playtest.json` and replays to turn 12
+> with no model calls, so any claim here can be checked against the board it was
+> made on:
+>
+> ```
+> territory: meridian 18, freeworlds 4, vigil 1, hutt 1, krayt 1
+> four live trade accords at 60/60 → 480 credits a turn conjured galaxy-wide
+> meridian net: 1376
+> ```
+
+---
+
+## 56. CRITICAL — the d20 is computable before you act, so a scripted player never fails
+
+**VERIFIED, and reproduced independently.**
+
+`rollD20(turn, salt)` is FNV-1a plus a murmur3 finalizer. The murmur3 pass was
+added to fix *uniformity* — a padding family that reached only five of twenty
+faces — and it did. **Predictability was never the thing it addressed**, and
+nothing else addresses it either.
+
+Two seeds, both fully known to the player before they commit:
+
+| call | seed | what the player knows |
+|---|---|---|
+| a declared action (`calls.ts:475`) | `` `${turn}:${stagedCount}:${action}` `` | the turn, `campaign.staged.length` from `GET /api/campaign`, and the text they are about to type |
+| a battle (`reducer.ts:3471`) | `` `${turn}:combat:${systemId}:${turn}` `` | **the turn and the system. Nothing else.** |
+
+Reimplementing the hash takes about fifteen lines. Searching semantically
+neutral suffixes — `" Confirm."`, `" So ordered."` — until it returns 20 takes
+about twenty tries: appending 0–199 periods to one order lands **10 natural 20s
+in 200**. The playtester rolled a natural 20 on **ten** declared actions,
+including every action from turn 0 to turn 8. Its first confirmation, which my
+own reimplementation reproduces exactly:
+
+```
+predicted: roll(0, "0:The Sluis Gate yards lay down six lifters and four escorts. Confirm.") == 20
+returned:  {"stat":"industry","roll":20,"modifier":3,"total":23,
+            "difficulty":11,"outcome":"critical_success"}
+```
+
+The combat seed is worse, because it depends on **neither fleet, neither
+faction, nor the order** — only where and when. A 25-system by 14-turn table
+computed on turn 0 predicted every engagement of the campaign. Six of its
+predictions, all of which my own implementation also reproduces:
+
+| system | turn | predicted | reported |
+|---|---|---|---|
+| ark-2 | 2 | 5 | 5 |
+| slu-3 | 2 | 1 | 1 |
+| slu-6 | 2 | 9 | 9 |
+| tio-2 | 6 | 20 | 20 |
+| tio-4 | 7 | 10 | 10 |
+| tio-2 | 8 | 12 | 12 |
+
+A second lever falls out of the same seed: **`stagedCount` is incremented by
+diplomacy.** Closing a channel stages a batch, so a player can shift their own
+die by choosing how many `/endtalk`s to run before declaring — a roll-selection
+control with no connection to the action's content.
+
+**Why the fix is not obvious.** Determinism is load-bearing: `replay()` must
+reproduce every roll, so the seed cannot contain a clock or an RNG. What it must
+not contain is **player-chosen text**, and what the combat seed must contain is
+something the player cannot enumerate in advance. Candidates worth weighing:
+
+- Seed from a **per-campaign secret** written into the journal's seed entry —
+  replay reads it, the player never sees it. This is the smallest change and it
+  keeps replay exact.
+- Seed the action roll from the **turn and an action counter**, not the text, so
+  rewording cannot move it. Retains one lever (declaration order) instead of a
+  free search.
+- For combat, fold in the committing batch's index, so a battle's roll depends
+  on the sequence that produced it rather than on the calendar.
+
+Any of these is a schema-visible change to how a campaign replays, so it needs
+deciding rather than picking.
+
+---
+
+## 57. Treaty `incomePerTurn` is not conserved, and both parties can be paid from nothing
+
+**VERIFIED.** `ledgerFor` in `state.ts:954`:
+
+```ts
+treatyFlow += treaty.terms.incomePerTurn[factionId] ?? 0;
+```
+
+Nothing requires the entries to sum to zero. `MAX_TREATY_INCOME_PER_TURN` (60)
+caps the size of each entry but **not its sign**, so the cap makes this a
+*bounded* money printer rather than closing it.
+
+The playtester closed a channel on turn 0 describing a joint venture that "pays
+continuously to both houses" and got:
+
+```json
+{"op":"form_treaty","treatyType":"trade_accord","parties":["meridian","krayt"],
+ "terms":{"incomePerTurn":{"krayt":30,"meridian":20}}}
+```
+
+Both positive. Repeated with all four powers, the final board carried four
+accords at 60/60 — **480 credits a turn conjured galaxy-wide**, roughly a sixth
+of the whole economy, 240 of it the player's. No NPC ever objected, because in
+fiction the arrangement is Pareto-improving: the Combine, the Vigil, Arkanis and
+Drajk each *negotiated the number upward*.
+
+The schema can express the conserved form — one `tribute` term in the same
+campaign was written `{meridian: -45, hutt: 45}` — so this is a missing
+invariant, not a missing field. Cost to obtain: **zero action points**, since
+diplomacy is unmetered.
+
+---
+
+## 58. A world costs 240 credits, because the cession is uncapped and the payment is not
+
+**VERIFIED.** `MAX_NARRATIVE_CREDITS` (240) trims a model-emitted
+`adjust_credits` (`reducer.ts:917`). `cedeTerritory` (`reducer.ts:621`) moves
+every system named in `terms.territory`, in full, with garrisons intact and no
+cap of any kind. So a negotiated purchase transfers the world at face value and
+the price at about 6% of it.
+
+| accord | agreed | actually paid | worlds received |
+|---|---|---|---|
+| Threx Transfer (krayt) | 750 | 240 | tio-6 |
+| Kessel Divestment (krayt) | 2,700 | 240 | ark-5, kes-7, kes-4 |
+| Oridin Cession (hutt) | 1,500 | 240 | kes-5 |
+| Riqel Cession (hutt) | 3,000 | 240 | kes-3 |
+| Kessel Approach (hutt) | 6,000 | 240 | kes-1 |
+| **total** | **13,950** | **1,200** | **7 worlds** |
+
+Log lines from the same tick, verbatim: `"hutt cedes Kessel Approach to
+meridian; 11 ships withdraw to Nar Shalka."` beside `"Trimmed a charge of 6000
+credits to 240 for Meridian Trade Authority"`.
+
+**Seven of eighteen worlds, for 1,200 credits and zero action points.**
+Territory is what decides the epilogue's `arc`, so this is the strongest line in
+the game and it never touches the action economy. The two halves are individually
+defensible — a cession needs the other party's consent, and narrative money is
+capped because a mechanism should own its price — and together they are a
+market where one side is priced and the other is not.
+
+---
+
+## 59. `basing_rights` is unconditional mutual immunity from attack
+
+**VERIFIED.** `guest()` in `reducer.ts:3281` is binary:
+
+```ts
+const guest = (id: string): boolean =>
+  holder !== null && id !== holder &&
+  treatyBetween(state.treaties, state.turn, id, holder, ['basing_rights']) !== undefined;
+```
+
+A faction with a live `basing_rights` treaty is filtered out of `attackers`
+entirely. There is no term for what class of hull it covers, how many, or for
+how long.
+
+The Vigil granted it in-channel believing it covered freighters — *"the right
+extends to unarmed and lightly-escorted traffic... It does not extend to your
+battle squadrons making a habit of berthing at Kalzir."* The extraction wrote
+that narrowing into the treaty **summary string** and nowhere else. A battleship
+then arrived at Kalzir declared explicitly as *"an ATTACK, not a port call"*:
+
+```
+Meridian Trade Authority puts in at Kalzir under basing rights.
+```
+
+The Vigil's next reaction produced a `log_narrative` redrafting the clause,
+which changed nothing. It also ran in reverse: while the treaty stood, the
+Vigil's own lifters could not have taken Tion Anchorage.
+
+---
+
+## 60. A treaty can be written to void itself, so a red line about repudiation never fires
+
+**VERIFIED structurally; the campaign line is the agent's.**
+
+Meridian's red line is *"will not repudiate a contract it has signed, even a
+ruinous one."* The playtester never repudiated one — it wrote self-destructing
+paper instead. On turn 0 it *offered* the Vigil a voiding clause "as a guarantee
+of good faith" (`treaty_with by=meridian target=krayt`); the Vigil, pleased,
+**widened it itself** to include Arkanis; the player then signed with Arkanis in
+the same turn:
+
+```
+Ratified: Non-aggression pact between Meridian and the Iron Vigil...
+Treaty voided: ... — Meridian Trade Authority is now bound by treaty to Arkanis Free Worlds.
+```
+
+Ratified and voided on one tick. It kept the +20 disposition the Vigil paid for
+signing, kept the `basing_rights` treaty riding alongside (which had no
+`voidsOn` of its own), and paid no `PACT_BREAKING_REPUTATION_COST` — because a
+`voided` treaty is not a `broken` one. That distinction is deliberate and
+correct in itself; what it does not survive is a party *choosing* the condition.
+
+Two structural halves confirmed in code:
+
+- `break_treaty` is on the declared path and produced `refusal: null,
+  defiance: null` every time it was emitted — five times across the campaign.
+- **A pact broken by attack never reaches a red-line check at all.**
+  `resolveBattle` sets `pact.status = 'broken'` directly in the reducer, with no
+  arbitration anywhere on that path.
+
+---
+
+## 61. `subornLimit` is enforced per op, not per declaration
+
+**VERIFIED.** The cap lives inside the `adjust_ships` case (`reducer.ts:1774`),
+so it counts against each op rather than against the action. One declaration
+asking for three separate recruitments by class trimmed correctly **three
+times** and still took more than the ceiling:
+
+```
+Meridian turns 2 Ojjul Nar Combine hull(s) at Nar Shalka without a shot fired.
+Meridian could only talk 2 of 5 Ojjul Nar Combine hulls into changing sides.
+Meridian turns 2 Ojjul Nar Combine hull(s) at Nar Shalka without a shot fired.
+Meridian turns 1 Ojjul Nar Combine hull(s) at Nar Shalka without a shot fired.
+```
+
+`subornLimit(meridian → hutt)` is **2**. Five hulls changed sides. Reproduced on
+the previous turn at 3 against the same cap.
+
+The agent also reports a non-conserving case on turn 10 — the trim reduced what
+came *off* the Combine (2 escorts) but not what went *onto* the player
+(`adjust_ships +3 escort`), so the victim lost 2 and the actor gained 3. That
+half is unconfirmed and would be a separate defect: a suborn is two ops, and
+nothing ties them together.
+
+---
+
+## 62. UNCONFIRMED — `adjust_fleet` and `adjust_ships` both add hulls, and stack
+
+The agent's measurement. One declaration asking for 16 hulls produced six ops —
+three `adjust_fleet` and three `adjust_ships` describing the *same* squadron:
+
+```json
+{"op":"adjust_fleet","delta":6,"hull":"lifter"}
+{"op":"adjust_ships","systemId":"slu-1","delta":6,"hull":"lifter"}
+```
+
+The note read `"commissions 80 tons of shipping for 1200 credits"`; the board
+afterwards held **12 lifters, 12 torpedo boats, 12 escorts** — twice what the
+narrative said and twice the bill.
+
+`billConstruction` prices whatever appears, correctly, per ton. Nothing
+reconciles two ops describing one event, and both are legitimate in isolation:
+`adjust_fleet` bases new hulls at the best holding, `adjust_ships` places them
+somewhere named. Worth deciding whether the resolution prompt should be told to
+pick one, or whether the reducer should notice.
+
+---
+
+## 63. Narrative credits are charged on top of a mechanism that already priced it
+
+**VERIFIED**, and the guard says so itself. `reducer.ts:910`:
+
+> *"Every large movement of credits has a mechanism that owns its price and
+> debits the treasury itself, so an `adjust_credits` this big is either
+> duplicating one of those or inventing a sum outright"*
+
+— and then it trims to 240 and **applies it anyway**. Measured twice:
+
+| turn | trim note | mechanism's own charge | total paid |
+|---|---|---|---|
+| 1 | `Trimmed a charge of 510 to 240` | `commissions 80 tons for 1200` | 1,440 for 1,200 of hulls |
+| 11 | `Trimmed a charge of 3840 to 240` | `could only pay for 242 of 260 tons` | 3,870 for 3,630 of hulls |
+
+Trimming is right; applying the remainder to something already priced is not.
+The cap was built to stop an invented sum, and a duplicate is the other case in
+its own comment.
+
+---
+
+## 64. The exchange leaves a non-breaking defender MORE alive on a high roll
+
+**VERIFIED numerically.** Pre-existing arithmetic, untouched by classes, and
+invisible until a player could compute the roll in advance.
+
+In the exchange branch, when the attacker is the stronger side
+`exchange = defendPower`, so:
+
+```
+defenceLeft = defendWeight − ceil(defendWeight × (1 − swing))  ≈  defendWeight × swing
+```
+
+`swing` is positive on a **high** roll. Attacker 50 BE against a crusading
+defender of 12 BE that never breaks off:
+
+| roll | attacker keeps | defender keeps |
+|---|---|---|
+| 1 | 64% | **0%** |
+| 10 | 74% | **0%** |
+| 15 | 80% | 17% |
+| 20 | 86% | **42%** |
+
+The attacker's own losses behave correctly. **The defender's are inverted**, and
+a defending fleet left alive blocks the landing entirely. Measured live against
+the same crusading Vigil at the same ~5:1 advantage:
+
+- Kalzir t6, **roll 20**: defenders `{battleship:18, escort:1}` → `{battleship:7}`.
+  *"The defenders still hold the orbitals of Kalzir; no landing is attempted."*
+  29 ships lost, world held.
+- Ghorman Deep t7, **roll 10**: defenders `{battleship:7, lifter:2}` → `{}`.
+  14 ships lost, orbit cleared.
+
+The natural 20 was the worse outcome. It bites only where the 2:1 break-off is
+suppressed — that is, specifically against `crusading`, which is exactly where a
+player most needs the arithmetic to behave.
+
+---
+
+## 65. Ships already in orbit take no part in a battle fought over their heads
+
+**VERIFIED structurally.** `defenders` is `presentAt(target)` minus the
+attacking ids, and `attackShare` contains only *arriving* stacks. A fleet
+already sitting in a rival's orbit is therefore in neither side of the next
+arrival battle at that world.
+
+After taking the orbitals at Kalzir the playtester had 34 battleships parked
+there and could not use one of them in a second assault; they had to physically
+leave and come back, costing two turns of shuttling. Not wrong by the letter of
+the rules — an arrival battle is an arrival — but it is the opposite of what
+"my fleet is over their world" reads as, and it is the shape of thing a player
+discovers by losing to it.
+
+---
+
+## 66. UNCONFIRMED — breach rulings are made on the prose of the order, not on its effect
+
+The agent's measurements, and the sharpest cluster in the report. Three cases:
+
+**A compulsion did not fire on the act it names.** Meridian's sheet says
+*"commerce raiding is refused outright — the Authority insures the cargo it
+would be seizing."* The player declared commerce raiding and **quoted the line
+back inside the order**. Result: `"refusal": null, "defiance": null`, a `might`
+check at DC 16, critical success, +180 credits of seized cargo, no dissent.
+
+**An unrelated red line blocked an invasion.** A 56-hull assault on Kalzir was
+refused for *"will not close a lane — no blockade of civilian traffic, no
+embargo, no shut border"*. The order closes no lane, blockades nothing and
+embargoes nothing. It cost an action point and 8 dissent.
+`verifyBreachRelevance` exists for exactly this and either did not run or
+returned `relevant: true`.
+
+**The same invasion passed one turn later by disclaiming the line.** A *larger*
+assault on the same world, same enemy, plus a paragraph beginning `"NO LANE IS
+CLOSED BY THIS ORDER"`, returned `refusal: null` and rolled a `might` check.
+
+Together these read as the breach ruling matching against the *words* of the
+declaration rather than the ops it produces — which would explain all three at
+once, including why quoting a compulsion at the game does not trip it.
+
+---
+
+## 67. UNCONFIRMED — five things that produced nothing
+
+The agent's measurements, grouped because they share a shape: a conversation
+agreed something and the world did not change.
+
+1. **An agreed payment *from* an NPC is unreachable.** Arkanis agreed a 450-credit
+   settlement; `/endtalk` reported `1 of 5 ops were rejected` and the correction
+   batch contained no money movement at all. The reducer's guard — *"actor
+   cannot take credits out of another treasury"* — is correct in isolation, but
+   `EXTRACTION_ALLOWED` lists `adjust_credits` as "a payment agreed across the
+   table" and the only direction that matters is blocked. Both sides left
+   believing 450 credits had moved.
+2. **A negotiated `voidsOn` clause was bargained for over three messages and
+   written nowhere.** The emitted treaty carried `"voidsOn": []` while the same
+   batch's `log_narrative` asserted *"the void clause stands exactly as Meridian
+   originally wrote it"*. The cession that paid for it landed; the protection it
+   bought did not.
+3. **The second covert action in a declaration is silently dropped.**
+   `AppraisalSchema.covert` names one mission and one system, so an order
+   containing an assassination *and* a theft produced one `deploy_agent` and a
+   `log_narrative` promising the other *"will come on a later tick"*. It never
+   did.
+4. **`income_penalty` destroys value rather than moving it.** A theft operative
+   shows `−14/turn` on the victim's ledger and the owner's ledger gains nothing.
+   Nobody receives the stolen credits.
+5. **Nobody suborned Meridian once in twelve turns**, despite resolve 9 — the
+   worst in the game and explicitly the softest target on the board. NPC
+   reactions used `deploy_agent` freely and never `adjust_ships` for defection.
+
+---
+
+## 68. UNCONFIRMED — the briefing's ledger disagreed with `ledgerFor` on the same state
+
+The agent reports the player-facing `upkeep`/`net` differing from `ledgerFor()`
+run against the exact JSON from `GET /api/campaign` — at turn 6, `29/957` shown
+against `237/803` computed, an **8× understatement of fleet upkeep**. Treasury
+movement matched the larger figure, so the money is right and the number the
+player plans from was wrong.
+
+**My note, and why this is filed unconfirmed rather than verified:** the briefing
+calls `ledgerFor(state, playerFactionId)` directly (`briefing.ts:141`, `:287`).
+There is no second formula, so a divergence has to be about *which snapshot* —
+a briefing built at one point in the tick and compared against state read at
+another. That is worth chasing precisely because it would be a timing bug in the
+turn report rather than an arithmetic one, and those do not show up in any test
+that compares a ledger to itself.
+
+---
+
+## 69. `expansionist` gives a 100% lift discount, not the 50% it claims
+
+**VERIFIED.** Shipped this week, in item 55's step 1. `reducer.ts:3788`:
+
+```ts
+const bare = Math.ceil(dugIn / LIFTER_CARRY);
+const lifterLosses = attackEthic === 'expansionist' ? Math.floor(bare / 2) : bare;
+```
+
+`LIFTER_CARRY` is 6 and garrisons on this map run 2–15, so `bare` is 1 or 2
+almost everywhere — and `floor(1/2)` is **zero**. The playtester took four
+worlds for **no lifter losses at all**.
+
+The rounding was deliberate and the reasoning is in the comment: rounding *up*
+leaves the doctrine inert exactly where most conquests happen, since
+`ceil(1/2) = 1 = bare`. Both roundings are wrong at `bare = 1`; the shape of the
+mechanism is what needs revisiting, not the rounding mode. One option is to
+charge in troops and convert once — `lifterLosses = ceil(troopLosses × discount
+/ LIFTER_CARRY)` — so the discount applies before the flooring rather than after.
+
+---
+
+## 70. Trade-hop income splits by hull count, where system income splits by tonnage
+
+**VERIFIED.** Two conventions for the same rule, and the comment on one of them
+explains why the other is wrong. `state.ts:786`:
+
+> *"Weighed in TONS rather than counted... Hull counts would also make the
+> cheapest class the efficient way to skim a rival's income, which is exactly
+> the exploit per-ton pricing exists to close."*
+
+`distributeUnclaimed` in `trade.ts:424` uses `presentAt(system)`, which returns
+**hull counts**, and weights the split by them. So on an unaligned lane hop an
+escort (30 credits, 1 hull) claims the same share as a battleship (60 credits, 1
+hull) — **2× income per credit** — and a lifter 1.33×, while contributing
+nothing to a fight.
+
+Missed in item 55: `shipsPresent` was moved to tonnage and this reader was not.
+Not exercised live only because the playtester had taken every unaligned world
+by turn 3.
+
+---
+
+## 71. Confirmed working — the ship classes themselves
+
+The useful half of the result, and the reason the rest is worth fixing rather
+than shrugging at. Spot-checked, not exhaustively re-derived.
+
+- **The arithmetic is exact.** Every battle the playtester pre-computed matched
+  the report to the integer — powers, exchange fractions, per-contingent losses,
+  assault totals. Ghorman Deep t7: predicted `attackPower 36.16 / defendPower
+  8.59`, reported `36`/`9`.
+- **Loss order is exactly as advertised.** Kalzir t6, one exchange:
+  `{battleship:34, escort:16, torpedo_boat:12, lifter:10} → {battleship:34,
+  torpedo_boat:9}`. Every escort and every lifter destroyed, **not one
+  battleship scratched**. The agent reports it reshaped its whole doctrine into
+  two-wave attacks — which is the lesson the class was built to teach.
+- **"A world is taken by the lift arm" holds.** Twice a pure-warship fleet won
+  an orbit and got `outcome: "no_lift"` — *"commands the orbitals of Ghorman
+  Deep and has no troops aboard to land"* — and the world stayed enemy.
+- **`assault = lifters × 6 × mods` and the captured-garrison rule** verified four
+  times to the unit: 18 lifters at roll 16 → `"assault": 128` against a
+  prediction of 127.8, garrison 12 broken, `garrisonAfter` = min(garrisonMax,
+  landed).
+- **`crusading` is the best-implemented doctrine in the game.** It cost the
+  player 29 ships and a world at Kalzir by refusing a break-off that had been
+  planned around, and the Vigil refused to sell Ord Vantic — its last world — for
+  8,000 credits at the point of maximum pressure.
+- **`mutual_defense` visibly saved a world.** Tion Anchorage was defended
+  against a Vigil assault by six Arkanis battleships arriving under the pact,
+  with zero Meridian hulls in orbit.
+- **`transfer_control` held under direct assault**, refused a decree annexing a
+  world with a good explanation, cost no action point, and named the legal
+  routes instead.
+- **`billConstruction`'s cap works**: 200 battleships ordered on 3,877 credits →
+  *"could only pay for 242 of 260 new tons; 18 tons were never laid down"*,
+  trimmed rather than rejected.
+- **The NPCs are outstanding**, and four of five held character under real
+  financial pressure — the Combine caught the player inflating a hull count
+  mid-sentence and used their own overpayment as a comparable to charge 50% over
+  the opening. That is what makes **66** and **60** worth fixing: the characters
+  held where the machinery did not.
+
+---
+
+## 72. UNCONFIRMED — arbiter rulings drifted across turns
+
+The agent's measurements. Model-tier judgement, so not statically checkable, but
+the spread is wide enough to record.
+
+**The same requisition, ruled five ways.** Identical fiction — "requisition
+civilian hulls into naval service tonight, paid at market rate":
+
+| turn | ruling |
+|---|---|
+| 1 | admissible, `industry` **DC 10**, resolved as an instant `adjust_fleet` |
+| 2 | admissible, `industry` **DC 11**, resolved as two `retooling` orders, clamped 1 → 3 |
+| 3 | **inadmissible** — *"these hulls do not appear on the recorded fleet manifest"* |
+| 3 (reworded) | admissible, **DC 14** |
+| 5 / 11 | **DC 18** / **DC 5** |
+
+Both an instant and a three-turn mechanism for one act, and DCs of 5, 10, 11, 14
+and 18.
+
+**Suborning was priced, then redirected to a channel, then priced again**, across
+two turns — DC 16, then `"it is not yours to declare… /talk hutt"`, then DC 18
+for the turn-10 phrasing. Suborning is unilateral by construction:
+`canSubornAt`, `subornLimit`, `SUBORN_DISPOSITION_COST` and the `defection`
+mission all exist precisely because the victim does not consent. The redirect is
+wrong on the rules. (It correctly charged no action point.)
+
+**Difficulty did not track difficulty.** Declaring a great power hostile,
+expelling its agents and burning a joint office was priced at `influence`
+**DC 1**; requisitioning freighters was **DC 18**; moving four convoys between
+the player's own worlds was `might` **DC 16**.
+
+---
+
+## 73. An in-progress works programme completes for whoever holds the world
+
+The Vigil's `fortification` at Sarsuma completed one tick **after** it ceded the
+world, improving the new owner's defences at the old owner's expense:
+
+```
+Standing-to at Sarsuma completed at Sarsuma: garrison capacity 8 -> 10.
+The works stand, and they defend meridian.
+```
+
+`applyOrderEffect` checks `stillOurs` for `commission_ships` — the yards are
+lost with the world and the hulls with them — and does not for `fortify`. That
+asymmetry may be right (walls stay where they were built; ships sail) but it is
+currently an accident rather than a decision, and the log line reads as one.
+
+---
+
 ## Where things stand (2026-09-01) — the espionage playtest
 
 A 7-turn Ojjul Nar Combine run (~$6, Opus 5) played with one standing
