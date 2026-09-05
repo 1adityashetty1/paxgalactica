@@ -32,6 +32,7 @@ strictly more setup to solve a problem Node already solves.
 | `pnpm replay <name>` | rebuild a saved campaign from its journal, no model calls |
 | `pnpm resume <file>` | verify an exported `.tar.gz`, install it, and serve it |
 | `pnpm balance [turns]` | 5 doctrine bots vs the real reducer, no model calls |
+| `pnpm fleetlab [atk] [def]` | which fleet composition wins, at equal credits |
 | `pnpm doctor` | full setup check — runtime, deps, binary, auth, port |
 | `pnpm typecheck` / `typecheck:web` / `typecheck:tests` | the three tsconfigs — **Vite does not typecheck** |
 
@@ -2364,6 +2365,46 @@ overstates their runaway — the counterplay their position invites is political
 and politics is what the model-driven game supplies.
 
 ---
+
+## Composition: does the mix decide anything?
+
+`src/fleetlab.ts`. `balance.ts` asks whether a *doctrine* pays, across a whole
+galaxy. This asks a narrower question the same way: **at equal credits, which
+composition wins?** Every attacker mix against every defender mix, over four
+garrisons, five rolls and three holder doctrines — 73,500 battles in 18 seconds
+through the real reducer, on a two-system arena with the galaxy stripped out
+(6.6ms a battle becomes 0.3ms).
+
+It exists because the question kept being answered with one-off scripts, and a
+one-off script answered it **wrong three times running**: once from a single
+seeded roll, once from a single defender — the Vigil, whose `crusading` makes it
+the one doctrine where a screen is decisive — and once from a control that was
+equal in tonnage while being unequal in fighting weight. Three dimensions are
+swept for exactly that reason, each having already flipped a conclusion.
+
+**An attacker needs local superiority or the question is not well posed.** At
+equal credits the defender holds essentially every battle and no composition can
+be told from another; the default is 3,600 against 1,200 plus a garrison.
+
+The measured answer is that composition decides an **invasion** and not a
+**defence**:
+
+| side | best fleet | rate |
+|---|---|---|
+| attacker | `battleship:30 escort:30 lifter:20` — three classes | 70% |
+| defender | `battleship:20` — one class, and every mix is worse | 80% |
+
+A line-heavy attacker fails by losing its transports (`no_lift`); a screen-heavy
+one fails by never clearing the orbit (`no_landing`). Two failure modes of
+different kinds is what makes the mix a decision rather than a ratio to solve
+once, and a test pins it.
+
+The defender's side has an exact explanation rather than a tuning problem:
+**a screen pays exactly when it protects something whose loss is not measured in
+weight.** A lifter has zero orbital weight, so losing one costs no fighting power
+and costs the whole objective — which is what makes an escort's 0.5 weight per
+ton worth taking over a battleship's 0.75. Everything a defender owns *is*
+weight, so the same trade is a straight loss. See item 74 in `docs/todo.md`.
 
 ## Deterministic replay
 

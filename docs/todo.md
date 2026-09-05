@@ -48,6 +48,9 @@ the roll in advance.
 > confirmed; each says so. **71** is its account of what worked, spot-checked
 > but not exhaustively.
 >
+> Item **74** was added afterwards, from a measurement rather than the
+> campaign.
+>
 > The campaign is kept as `saves/classes_playtest.json` and replays to turn 12
 > with no model calls, so any claim here can be checked against the board it was
 > made on:
@@ -59,6 +62,83 @@ the roll in advance.
 > ```
 
 ---
+
+## 74. Composition is a decision for an attacker and not for a defender
+
+**MEASURED**, with a harness built for it: `src/fleetlab.ts` and `pnpm
+fleetlab`. Every attacker composition against every defender composition, over
+four garrisons, five rolls and three holder doctrines — 73,500 battles in 18
+seconds through the real reducer, on a pruned two-system arena.
+
+It exists because the question kept being answered by one-off scripts, and a
+one-off script answered it wrong three times running: once from a single seeded
+roll, once from a single defender (the Vigil, whose `crusading` makes it the one
+doctrine where a screen is decisive), and once from a control that was equal in
+tonnage while being unequal in fighting weight.
+
+**An attacker also needs local superiority for the question to be well posed.**
+At equal credits a defender holds essentially every battle and no composition
+can be told from any other; the harness defaults to 3,600 against 1,200.
+
+### The attacker: it works
+
+```
+  70% took  3cls  battleship:30 escort:30 lifter:20
+  70% took  3cls  battleship:15 escort:60 lifter:20
+  68% took  4cls  battleship:15 escort:30 torpedo_boat:30 lifter:20
+  67% took  2cls  escort:90 lifter:20          <- best simpler fleet
+   0% took  1cls  torpedo_boat:120             <- no lift, takes nothing, ever
+```
+
+Three classes is the top fleet, at 70%, and the two failure modes are different
+in kind — which is what makes the mix a decision rather than a ratio to solve
+once. A line-heavy fleet fails by **losing its transports** (`no_lift`); a
+screen-heavy fleet fails by **never clearing the orbit** (`no_landing`). Pinned
+in `tests/fleetlab.test.ts`.
+
+### The defender: it does not
+
+```
+  80% held  1cls  battleship:20                 <- best
+  79% held  2cls  battleship:15 escort:10
+  77% held  2cls  battleship:10 escort:20
+  76% held  3cls  battleship:10 escort:10 torpedo_boat:10
+  74% held  2cls  battleship:10 torpedo_boat:20
+```
+
+Monotonically worse with every hull that is not a battleship. A defender has no
+reason to build anything else, and the reason is exact:
+
+> **A screen pays exactly when it protects something whose loss is not measured
+> in weight.**
+
+An attacker has that and a defender does not. A lifter carries zero orbital
+weight, so losing one costs no fighting power and costs the whole objective —
+which is why paying 0.5 weight per ton for escorts instead of a battleship's
+0.75 is worth it. Everything a *defender* owns is weight, so the same trade is a
+straight loss: it gives up a third of its fighting power up front to save a
+third of the tonnage that dies.
+
+Torpedo boats fail on defence for a separate reason. They redistribute
+**outgoing** damage onto the attacker's heaviest hulls — but a defender holds a
+world by *surviving*, not by killing particular enemy ships, so the redirection
+is irrelevant to the thing it is trying to achieve.
+
+### What would have to change, and it needs deciding
+
+- **Denial is presence, not firepower.** Make "the defenders still hold the
+  orbitals" a question of surviving **hulls** rather than weight. Cheap hulls
+  become good at denial, a defender wants a screen, and it needs no new
+  constant — *you cannot deny an orbit you have no ships in* is the fiction
+  already. Cheapest of the three.
+- **Torpedo boats strike before the exchange.** A defensive ambush: the boats
+  put their redirected share in first, so a defender can kill lift or line
+  before the main trade. Gives boats a hold-relevant job, but it is a new phase
+  and therefore item 5's territory.
+- **Leave it.** A defender's answer being "more battle line" is not obviously
+  wrong — the interesting composition decision may simply belong to whoever is
+  attacking. Worth saying out loud as an option rather than assuming it is a
+  defect.
 
 ## 56. PARTLY FIXED — the d20 is computable before you act, which costs the playtest and not the player
 
