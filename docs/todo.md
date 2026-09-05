@@ -1036,6 +1036,15 @@ escorts a better story: destroyers were originally *torpedo boat destroyers*.
   garrison's road wheels are, which resolves into a dotted line at 18px and
   reads as an airliner at a glance.
 
+  A fourth pass sharpened the turret. It had been lifted from the garrison
+  intact, radii and all — and **a corner radius reads as sheet metal bent in a
+  press**, which is right for a tank and wrong for a hull cut in a yard. The
+  turret is now a raked trapezoid stepping up to a raised block and the gun
+  tapers rather than ending in a cap. The escort's drive block lost the radius
+  it had carried since it was the only ship in the game and had nothing to be
+  consistent with. **Nothing in the space set is rounded**; the only radii left
+  in the file are the garrison's.
+
   A later pass **refaceted** three of them: the dart is all swept diagonals and
   the others were axis-aligned rectangles, so the set read as two different
   hands. Castles, bays and drives became raked trapezoids. That pass also

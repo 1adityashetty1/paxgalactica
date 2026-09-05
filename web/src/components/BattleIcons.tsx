@@ -81,10 +81,14 @@ export function ShipIcon({ size = 18, title }: IconProps) {
           the castle was drawn first. The turret IS the superstructure, so it
           sits on the hull and the castle is gone.
           
-          Reusing the garrison's shapes rather than redrawing them also means
-          the two things in this set that are guns look like each other. */}
-      <rect x="5.4" y="6.2" width="6.6" height="4.2" rx="1.1" />
-      <rect x="11.8" y="7.4" width="6.2" height="1.8" rx="0.7" />
+          Borrowed from the garrison but NOT copied: the tank's turret and gun
+          are rounded rectangles, and a radius reads as sheet metal bent in a
+          press. Nothing else in the space set is rounded, so these are cut as
+          straight-edged polygons — a raked trapezoid stepping up to a raised
+          block, and a barrel that tapers rather than ending in a cap. Same
+          shape language as the guns; same language as the ships. */}
+      <path d="M5.4 10.4 L6.1 7.6 L7.8 7.6 L8.3 5.5 L10.5 5.5 L10.9 7.6 L12.2 10.4 Z" />
+      <path d="M11.6 7.5 L18.3 8.2 L18.3 9 L11.6 9.3 Z" />
       {/* Drive bells, flared outward astern. */}
       <path d="M0.8 10.7 L3.4 11.4 L3.4 13.3 L0.8 13.4 Z" />
       <path d="M0.8 16 L3.4 13.9 L3.4 15.8 L0.8 16.5 Z" />
@@ -151,6 +155,11 @@ export function GarrisonIcon({ size = 18, title }: IconProps) {
  * dart, a faceted capital wedge, an asymmetric wedge, and a raked box with bays
  * cut through it.
  *
+ * **Nothing in the space set is rounded.** A corner radius reads as sheet metal
+ * bent in a press, which is right for the garrison's tank and wrong for a hull
+ * cut in a yard — so every ship edge is a straight-edged polygon, and the only
+ * radii left in this file are the garrison's turret and gun.
+ *
  * A later pass **refaceted** three of them. The dart is all swept diagonals and
  * the others were axis-aligned rectangles, so the set read as two different
  * hands. Castles, bays and drives are now raked trapezoids rather than boxes,
@@ -186,7 +195,10 @@ export function EscortIcon({ size = 18, title }: IconProps) {
       <path d="M23.2 12 L15 9.6 L5.5 9.8 L4 10.8 L4 13.2 L5.5 14.2 L15 14.4 Z" />
       <path d="M13.5 10 L7 3.4 L3.2 4.2 L9 10.2 Z" />
       <path d="M13.5 14 L7 20.6 L3.2 19.8 L9 13.8 Z" />
-      <rect x="1.6" y="10.6" width="2.6" height="2.8" rx="0.6" />
+      {/* Drive block, square-cornered like the rest of the space set. It
+          carried a 0.6 radius from when this glyph was the only ship in the
+          game and had nothing to be consistent with. */}
+      <rect x="1.6" y="10.6" width="2.6" height="2.8" />
     </svg>
   );
 }
