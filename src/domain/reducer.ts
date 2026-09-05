@@ -64,7 +64,7 @@ import {
   strikeStack,
   subtractStack,
   tonsOfClass,
-  torpedoShare,
+  torpedoStrike,
   takeHulls,
   tonsIn,
   trimToTons,
@@ -3600,6 +3600,76 @@ function resolveBattle(
     strikeStack(stack, (tonsIn(stack) * retreatLossPct) / 100).left;
   const notes: string[] = [];
 
+  /* ---------- Phase 0: the torpedo strike ---------- */
+  //
+  // Boats fire before the fleets close, and this is the whole of what they do:
+  // they carry no weight into the exchange at all. Both sides fire at once, so
+  // a defender's boats are an ambush and not merely a slower version of the
+  // attacker's.
+  //
+  // **This is the one effect in the battle that is superadditive**, and it is
+  // why a mixed fleet can be worth more than the sum of its hulls. Damage dealt
+  // here lowers what the enemy brings to the exchange, so it lowers your losses
+  // there as well — where an extra battleship only ever adds its own weight.
+  // No reweighting of the classes could have produced that: combat weight is a
+  // sum, so weight-per-credit of any mix is a weighted average of the per-class
+  // figures and can never beat the best single class.
+  const strikeOn = (
+    firing: ShipStack[],
+    targetSide: ShipStack[],
+  ): { tons: number; deep: number } => ({
+    tons: torpedoStrike(firing),
+    deep: pastScreen(firing, targetSide),
+  });
+
+  {
+    const attackerStacks = [...attackShare.values()];
+    const defenderStacks = defenders.map(([, st]) => st);
+    const onDefenders = strikeOn(attackerStacks, defenderStacks);
+    const onAttackers = strikeOn(defenderStacks, attackerStacks);
+
+    if (onDefenders.tons > 0 || onAttackers.tons > 0) {
+      const beforeAtk = attackHulls();
+      const beforeDef = defenders.reduce((n, [id]) => n + hullsAt(target, id), 0);
+
+      // Simultaneous: both salvos are computed against the fleets as they
+      // stood, so neither side's losses reduce the fire it was already under.
+      if (onDefenders.tons > 0) {
+        const total = defenderStacks.reduce((n, st) => n + tonsIn(st), 0);
+        for (const [id, present] of defenders) {
+          if (total <= 0) break;
+          const share = (onDefenders.tons * tonsIn(present)) / total;
+          setStackAt(target, id, strikeStack(present, share, onDefenders.deep).left);
+        }
+      }
+      if (onAttackers.tons > 0) {
+        const total = attackerStacks.reduce((n, st) => n + tonsIn(st), 0);
+        for (const [id, st] of attackShare) {
+          if (total <= 0) break;
+          const share = (onAttackers.tons * tonsIn(st)) / total;
+          attackShare.set(id, strikeStack(st, share, onAttackers.deep).left);
+        }
+      }
+
+      defenceForce = defenders.reduce((n, [id]) => n + hullsAt(target, id), 0);
+      for (const [i, entry] of defenders.entries()) {
+        defenders[i] = [entry[0], stackAt(target, entry[0])];
+      }
+      const struck = `Torpedoes run in ahead of the fleets over ${target.name}: ${coalition} loses ${beforeAtk - attackHulls()} ships, the defenders lose ${beforeDef - defenceForce}.`;
+      notes.push(struck);
+      rounds.push({
+        turn: state.turn, phase: 'strike', outcome: 'torpedo_strike',
+        attackPower: Math.round(onDefenders.tons), defendPower: Math.round(onAttackers.tons),
+        assault: 0, garrison: 0, garrisonEffective: 0,
+        attackers: sideOf(attackShare, attackSnapshot),
+        defenders: sideOf(new Map(defenders), defendSnapshot),
+        note: struck,
+      });
+      attackSnapshot = new Map(attackShare);
+      defendSnapshot = new Map(defenders);
+    }
+  }
+
   /* ---------- Phase 1: fleet battle ---------- */
   const attackWeight = weightOfSide(attackShare.values());
   const defendWeight = weightOfSide(defenders.map(([, st]) => st));
@@ -3763,23 +3833,15 @@ function resolveBattle(
       const hullsBeforeExchange = attackHulls();
       const defendHullsBefore = defenceForce;
 
-      // How much of each side's fire strikes past the other's screen. This is
-      // the class triangle and the whole of the torpedo boat: it is not extra
-      // damage — the tonnage destroyed is identical either way — only a say in
-      // WHICH hulls absorb it. A boat that hit harder would just be a cheaper
-      // battleship, and the escort would have nothing to answer.
-      const attackerStacks = [...attackShare.values()];
-      const defenderStacks = defenders.map(([, st]) => st);
-      const deepOnDefenders = pastScreen(attackerStacks, defenderStacks);
-      const deepOnAttackers = pastScreen(defenderStacks, attackerStacks);
-
+      // No redirection here: the boats already fired, in the strike phase, and
+      // carry nothing into the line. The exchange is the battle line's alone.
       for (const [id, st] of attackShare) {
         const lost = tonsIn(st) * (1 - attackLeft / attackWeight);
-        attackShare.set(id, strikeStack(st, lost, deepOnAttackers).left);
+        attackShare.set(id, strikeStack(st, lost).left);
       }
       for (const [id, present] of defenders) {
         const lost = tonsIn(present) * (1 - defenceLeft / defendWeight);
-        setStackAt(target, id, strikeStack(present, lost, deepOnDefenders).left);
+        setStackAt(target, id, strikeStack(present, lost).left);
       }
       defenceForce = defenders.reduce((sum, [id]) => sum + hullsAt(target, id), 0);
 
@@ -3930,27 +3992,19 @@ function resolveBattle(
 }
 
 /**
- * The share of one side's fire that lands past the other's screen.
+ * How much of a torpedo strike goes past the screen to the heaviest hulls.
  *
- * Torpedo boats choose where their share of the damage falls — on the heaviest
- * hulls, ignoring the loss order — and **escorts are what answers them**, which
- * is the historical shape as well as the mechanical one: destroyers were
- * originally *torpedo boat destroyers*. A screen matching the attacking boats
- * ton for ton cancels the redirection outright; half a screen halves it.
- *
- * Without this the escort has no job that a battleship does not do better. The
- * exchange band destroys 50–100% of a fleet's tonnage (at 2:1 the defender
- * simply breaks off and nothing is lost at all), so no realistic screen can
- * absorb a stand-up fight — the class earns its place by being the counter to
- * this, and by covering a withdrawal.
+ * **Escorts are what answers boats**, which is the historical shape as well as
+ * the mechanical one: destroyers were originally *torpedo boat destroyers*. A
+ * screen matching the attacking boats ton for ton turns the strike aside
+ * entirely — the tonnage still burns, but it burns off the screen instead of
+ * the battle line. Half a screen turns aside half of it.
  */
 function pastScreen(firing: ShipStack[], target: ShipStack[]): number {
-  const share = torpedoShare(firing);
-  if (share <= 0) return 0;
   const boats = tonsOfClass(firing, 'torpedo_boat');
   if (boats <= 0) return 0;
   const screen = tonsOfClass(target, 'escort');
-  return share * Math.max(0, 1 - Math.min(1, screen / boats));
+  return Math.max(0, 1 - Math.min(1, screen / boats));
 }
 
 /**

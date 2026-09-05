@@ -82,6 +82,14 @@ describe('composition decides an invasion', () => {
     expect(m.mixed!.rate).toBeGreaterThan(0.4);
   });
 
+  it('leaves the torpedo boat unable to hold an orbit on its own', () => {
+    // It spends everything in the opening salvo and carries no weight into the
+    // line, so a fleet of nothing but boats fires once and is destroyed where
+    // it lies. That is what stops the strike making it a cheaper battleship.
+    const r = trial({ torpedo_boat: 60, lifter: 10 }, { battleship: 12 }, 6, 3, 'profiteer');
+    expect(r.took).toBe(false);
+  });
+
   it('leaves a fleet with no lift unable to take anything at all', () => {
     const r = tournament(FAST);
     for (const c of r.attackers.filter((x) => (x.stack.lifter ?? 0) === 0)) {

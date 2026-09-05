@@ -124,21 +124,83 @@ Torpedo boats fail on defence for a separate reason. They redistribute
 world by *surviving*, not by killing particular enemy ships, so the redirection
 is irrelevant to the thing it is trying to achieve.
 
-### What would have to change, and it needs deciding
+### What was tried
 
-- **Denial is presence, not firepower.** Make "the defenders still hold the
-  orbitals" a question of surviving **hulls** rather than weight. Cheap hulls
-  become good at denial, a defender wants a screen, and it needs no new
-  constant — *you cannot deny an orbit you have no ships in* is the fiction
-  already. Cheapest of the three.
-- **Torpedo boats strike before the exchange.** A defensive ambush: the boats
-  put their redirected share in first, so a defender can kill lift or line
-  before the main trade. Gives boats a hold-relevant job, but it is a new phase
-  and therefore item 5's territory.
-- **Leave it.** A defender's answer being "more battle line" is not obviously
-  wrong — the interesting composition decision may simply belong to whoever is
-  attacking. Worth saying out loud as an option rather than assuming it is a
-  defect.
+**Hull-based denial: rejected on inspection, and it was a bad idea.** The test
+is `weightOfSide(defenders) > 0` — binary, "did anything survive". Every class
+but the lifter has weight, so "any surviving hulls" and "any surviving weight"
+are the same condition. The change would have been very nearly a no-op.
+
+**Repricing: cannot work, for a structural reason.** Combat weight is a *sum*
+over hulls, so weight-per-credit of any mix is a weighted average of the
+per-class figures and can never exceed the best single class. With a linear
+objective the optimum is always a pure fleet, and reweighting only moves which
+one — swept and confirmed: a battleship at 6 tons produces a three-way tie
+(indifference, not preference), and a torpedo boat at weight 2 hands the crown
+to pure boats. Cost is not independently settable either, since
+`hullCost = tonnage x CREDITS_PER_TON` and tonnage is read by upkeep, the income
+contest, attrition and suborn pricing.
+
+**A phase ability: works, and only for the attacker.** See item 75.
+
+### Still open: the defender has one objective, and one objective has a pure optimum
+
+A defender's fleet does exactly one thing — trade weight in the exchange. The
+attacker's mix is a decision because it has **two** objectives, clear the orbit
+and land troops, and the optimum of two linear objectives is generally a mix.
+
+Scoring the defender differently does not rescue it either. Measured on
+*attacker tons destroyed per 1,000 defender credits* rather than on holding, the
+sensible fleets span 135–141 — about 4%, which is noise:
+
+```
+  141.4t  77%  2cls  battleship:15 lifter:6      <- and this one is nonsense
+  139.9t  79%  1cls  battleship:20
+  136.0t  77%  3cls  battleship:10 escort:10 torpedo_boat:10
+```
+
+So making a defender's composition a decision needs a **second objective for
+the defender**, not another ability on a hull. That is a larger design question
+than the class table — something like choosing between contesting the orbit and
+preserving force for a counter-attack — and it is unresolved.
+
+## 75. BUILT — the torpedo boat fires before the fleets close
+
+`TORPEDO_STRIKE`, and a `strike` phase before the orbital exchange. Both sides
+fire at once, so a defender's boats are an ambush rather than a slower copy of
+the attacker's.
+
+**Why a phase and not a price.** Damage dealt *before* the exchange compounds:
+what it destroys is not brought to the trade, so it lowers your own losses there
+as well. That is superadditive, and superadditivity is the only thing that can
+make a mixed fleet worth more than the sum of its hulls — no reweighting can,
+because weight is a sum and the optimum of a linear objective is always a pure
+fleet.
+
+The boat now carries **no weight into the line at all**. That is what stops the
+strike making it a cheaper battleship: a fleet of nothing but boats fires one
+salvo and is then destroyed where it lies, having no weight with which to hold
+an orbit. A test pins it. Escorts still answer boats — a screen matching them
+ton for ton turns the whole strike aside onto itself, and half a screen turns
+aside half.
+
+**Swept, not chosen.** `pnpm fleetlab` at each value, fresh process per point
+(the first sweep reused a cached `hulls.js` and reported six identical rows):
+
+| `TORPEDO_STRIKE` | best attacker | margin over simpler |
+|---|---|---|
+| 0.05–0.2 | 3 classes, 80% — no boats wanted | 1.2–1.6 |
+| **0.3** | **4 classes, 82%** — `battleship:15 escort:30 torpedo_boat:30 lifter:20` | **4.0** |
+| 0.5 | 2 classes, 100% — pure boats, degenerate | −11 |
+
+0.3 is the only value where all four classes appear in the best fleet, and the
+mixed margin peaks there. Above it boats stop being a supplement and become the
+fleet.
+
+**It does not touch the defender** — see item 74. At every budget ratio from
+1:1 to 3:1 the best defender is still pure battle line. A defender's boats do
+damage the attacker, but damaging the attacker is not what keeps a defender
+alive, and buying boats now costs it weight outright.
 
 ## 56. PARTLY FIXED — the d20 is computable before you act, which costs the playtest and not the player
 

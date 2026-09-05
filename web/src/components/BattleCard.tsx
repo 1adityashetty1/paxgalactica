@@ -32,6 +32,7 @@ const OUTCOME_LABEL: Record<BattleRound['outcome'], string> = {
   world_taken: 'garrison broken, world taken',
   landing_thrown_back: 'landing thrown back',
   no_lift: 'orbitals won — no troops aboard to land',
+  torpedo_strike: 'torpedoes ran in ahead of the fleets',
   orbit_cleared: 'orbit cleared of rival ships',
 };
 
