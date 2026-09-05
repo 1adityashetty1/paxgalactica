@@ -989,10 +989,26 @@ escorts a better story: destroyers were originally *torpedo boat destroyers*.
 
 ### Staging — each step gives the previous one its point
 
-0. **Type `ships` to a class record, `line` only.** Behaviour-neutral. **DONE:**
-   `src/domain/hulls.ts` plus 16 tests. `ShipStackSchema` accepts the bare
-   number every old save and journal carries and normalises it to battleships, so
-   an old campaign replays as the game it was played as.
+0. **Type `ships` to a class record, `battleship` only.** Behaviour-neutral.
+   **DONE.** `src/domain/hulls.ts` plus 16 tests, and the migration itself:
+   `system.ships` is now `Record<factionId, ShipStack>`, and every read and
+   write goes through accessors in `state.ts` — `hullsAt`, `tonsAt`,
+   `orbitalWeightAt`, `presentAt`, `addShipsAt`, `setShipsAt`. Roughly 280 call
+   sites across 11 source files and 13 test files.
+
+   Routing everything through accessors is what makes the stack invariant true
+   rather than merely intended: **no zero entries, no empty stacks, and no way
+   for a caller to write a bare total over a mixed force and silently lose a
+   class.** `setShipsAt` spends hulls in `lossOrder` when it removes them, which
+   is already the escort's whole job.
+
+   `ShipStackSchema` accepts the bare number every old save and journal carries
+   and normalises it, so an old campaign replays as the game it was played as.
+   Verified: **all 863 tests pass unchanged**, and all 22 saved campaigns replay
+   with valid stacks and the fleet totals they had before.
+
+   The class was called `line` while it was built; it is **`battleship`** now,
+   because "line hull" is not a term anyone uses.
 1. **`lifter`** — invasion becomes a composed fleet. No new phases: the orbital
    phase counts weight, the ground phase counts lift.
 2. **`escort`** — something worth protecting exists, so a screen has a job.
