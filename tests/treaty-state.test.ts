@@ -187,3 +187,93 @@ describe('a refused accord says so in its own transcript', () => {
     expect(back.priorTranscripts('freeworlds')[0]).toContain('[This accord was REFUSED');
   });
 });
+
+/**
+ * A treaty flow is a transfer, so it has to conserve.
+ *
+ * Nothing required the entries to sum to zero, so a negotiated "joint venture
+ * that pays both houses" landed as `{krayt: 30, meridian: 20}` — both positive,
+ * from nowhere. A playtest closed four of them and conjured 480 credits a turn
+ * galaxy-wide at a cost of zero action points, and no NPC ever objected because
+ * in fiction the arrangement is Pareto-improving.
+ *
+ * Both parties profiting is a legitimate deal; it is `establish_commitment`,
+ * which is non-directional on purpose and bounded twice. This field exists
+ * *because* a commitment cannot be directional.
+ */
+describe('a treaty flow cannot pay out more than it takes in', () => {
+  const sign = (incomePerTurn: Record<string, number>) =>
+    applyOps(
+      seed(),
+      [
+        {
+          op: 'form_treaty', treatyType: 'trade_accord',
+          parties: ['hutt', 'krayt'],
+          terms: { incomePerTurn },
+          summary: 'joint venture',
+        },
+      ],
+      'extraction',
+      'hutt',
+    );
+
+  it('drops a flow that pays everyone and takes from nobody', () => {
+    const res = sign({ hutt: 30, krayt: 20 });
+    expect(res.rejections).toHaveLength(0);
+    const treaty = res.state.treaties.at(-1)!;
+    // The accord itself survives — only the money that came from nowhere goes.
+    expect(treaty.terms.incomePerTurn).toEqual({});
+    expect(res.notes.join(' ')).toMatch(/establish_commitment/);
+  });
+
+  it('keeps a real transfer exactly as written', () => {
+    const res = sign({ hutt: -45, krayt: 45 });
+    expect(res.state.treaties.at(-1)!.terms.incomePerTurn).toEqual({
+      hutt: -45,
+      krayt: 45,
+    });
+    expect(res.notes.join(' ')).not.toMatch(/cannot pay out more/);
+  });
+
+  it('trims receipts to what is actually being paid', () => {
+    const res = sign({ hutt: 50, krayt: -20 });
+    const flow = res.state.treaties.at(-1)!.terms.incomePerTurn;
+    expect(flow['krayt']).toBe(-20);
+    expect(flow['hutt']).toBe(20);
+    expect(res.notes.join(' ')).toMatch(/cannot pay out more than it takes in/);
+  });
+
+  it('conserves after the per-entry ceiling has already trimmed', () => {
+    // Both trims run, and the conservation one sees the bounded figures.
+    const res = sign({ hutt: 500, krayt: -500 });
+    const flow = res.state.treaties.at(-1)!.terms.incomePerTurn;
+    const sum = Object.values(flow).reduce((a: number, b: number) => a + b, 0);
+    expect(sum).toBeLessThanOrEqual(0);
+  });
+
+  it('leaves the galaxy unable to print money through diplomacy', () => {
+    // The playtest's four accords, all at once.
+    let state = seed();
+    for (const other of ['krayt', 'vigil', 'freeworlds', 'meridian']) {
+      state = applyOps(
+        state,
+        [
+          {
+            op: 'form_treaty', treatyType: 'trade_accord',
+            parties: ['hutt', other],
+            terms: { incomePerTurn: { hutt: 60, [other]: 60 } },
+            summary: 'joint venture',
+          },
+        ],
+        'extraction',
+        'hutt',
+      ).state;
+    }
+    const sumOf = (flow: Record<string, number>): number =>
+      Object.values(flow).reduce((a, b) => a + b, 0);
+    const injected = state.treaties
+      .filter((t) => t.status === 'active')
+      .reduce((n, t) => n + sumOf(t.terms.incomePerTurn), 0);
+    expect(injected).toBeLessThanOrEqual(0);
+  });
+});

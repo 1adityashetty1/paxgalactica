@@ -1478,6 +1478,67 @@ export function applyOps(
           }
         }
 
+        // A treaty flow is a TRANSFER, and it has to conserve.
+        //
+        // Nothing required the entries to sum to zero, so a negotiated "joint
+        // venture that pays both houses" landed as `{krayt: 30, meridian: 20}`
+        // — both positive, from nowhere. A playtest closed four of them and
+        // conjured 480 credits a turn galaxy-wide, roughly a sixth of the
+        // economy, at a cost of zero action points because diplomacy is
+        // unmetered. No NPC ever objected: in fiction the arrangement is
+        // Pareto-improving, so all four counterparties negotiated the number
+        // *upward*.
+        //
+        // **Both parties profiting is a legitimate deal — it just is not this
+        // field.** The game has three income mechanisms and this one was
+        // silently absorbing all three, while being the most generous:
+        //
+        // - a joint venture that pays both sides is an `establish_commitment`,
+        //   whose `incomePerTurn` is deliberately ONE scalar every bound
+        //   faction reads the same way, bounded at `MAX_COMMITMENT_INCOME` and
+        //   again by an influence-derived per-faction ceiling — precisely
+        //   because a commitment is the easiest place in the game for a model
+        //   to invent revenue;
+        // - a share of one world's take is `incomeShares`, conserved by that
+        //   system's own worth;
+        // - a transfer is this, and it exists at all *because* a commitment
+        //   cannot be directional. `MAX_TREATY_INCOME_PER_TURN` is literally
+        //   `MAX_DEBT_PER_TURN`: the ceiling was inherited from debt service.
+        //
+        // The direction is never guessed. If nothing is being paid, the term
+        // creates value and belongs in a commitment, so it is dropped and the
+        // treaty stands without it — flipping a party negative would invert a
+        // deal both sides agreed to, and which party to flip is a coin toss.
+        const flows = Object.entries(terms.incomePerTurn);
+        const paid = flows.reduce((n, [, v]) => n + Math.min(0, v), 0);
+        const received = flows.reduce((n, [, v]) => n + Math.max(0, v), 0);
+        if (received > -paid) {
+          if (paid === 0) {
+            terms.incomePerTurn = {};
+            const note = `A treaty flow paying ${received} per turn with nobody paying it is an arrangement, not a transfer; the treaty stands without it. Record it with establish_commitment, which prices what an arrangement is worth.`;
+            notes.push(note);
+            logEvent(state, 'clamp', note, op.parties[0]);
+          } else {
+            // Something IS being paid, so the deal has a direction; the
+            // receipts are simply larger than it. Trim them to what is
+            // actually leaving a treasury, largest first so the order is
+            // deterministic.
+            let over = received + paid;
+            for (const [who] of flows
+              .filter(([, v]) => v > 0)
+              .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))) {
+              if (over <= 0) break;
+              const cut = Math.min(over, terms.incomePerTurn[who]!);
+              terms.incomePerTurn[who]! -= cut;
+              over -= cut;
+              if (terms.incomePerTurn[who] === 0) delete terms.incomePerTurn[who];
+            }
+            const note = `Trimmed a treaty's receipts to the ${-paid} per turn actually being paid; a transfer cannot pay out more than it takes in.`;
+            notes.push(note);
+            logEvent(state, 'clamp', note, op.parties[0]);
+          }
+        }
+
         // Renegotiating a charter added a second treaty and left the first
         // live, so the same system paid the same faction twice and the share
         // ratcheted upward every time it was renegotiated — while the op's own
