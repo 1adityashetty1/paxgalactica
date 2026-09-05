@@ -1,4 +1,14 @@
 import { z } from 'zod';
+import {
+  HULL_SPEC,
+  ShipStackSchema,
+  hullsIn,
+  inLossOrder,
+  orbitalWeightOf,
+  tonsIn,
+  type HullClass,
+  type ShipStack,
+} from './hulls.js';
 import { FactionStatsSchema, STAT_NAMES, statModifier, type FactionStats } from './checks.js';
 import {
   COMMITMENT_INCOME_BASE,
@@ -246,7 +256,7 @@ export const SystemSchema = z.object({
    * system contested and what splits its income: a rival parked in orbit is
    * taking a cut whether or not anyone has fired.
    */
-  ships: z.record(z.string(), z.number().int().min(0)).default({}),
+  ships: z.record(z.string(), ShipStackSchema).default({}),
 });
 export type StarSystem = z.infer<typeof SystemSchema>;
 
@@ -413,8 +423,94 @@ export function dispositionBetween(
 /* ------------------------------------------------------------------ */
 
 /** Ships a faction has sitting in a given system. */
+/**
+ * A faction's ships at one world, by class. Never undefined.
+ *
+ * Every read and write of `system.ships` goes through the four functions below,
+ * which is what keeps the stack invariant true everywhere: no zero entries, no
+ * empty stacks, and no way for a caller to leave a class behind by writing a
+ * bare total over a mixed force.
+ */
+export function stackAt(system: StarSystem, factionId: string): ShipStack {
+  return system.ships[factionId] ?? {};
+}
+
+/** Hulls of every class. What a player counts. */
+export function hullsAt(system: StarSystem, factionId: string): number {
+  return hullsIn(system.ships[factionId]);
+}
+
+/** Tons. What every rule that limits a fleet by size counts. */
+export function tonsAt(system: StarSystem, factionId: string): number {
+  return tonsIn(system.ships[factionId]);
+}
+
+/** What this force is worth in an orbital exchange — zero for pure lift. */
+export function orbitalWeightAt(system: StarSystem, factionId: string): number {
+  return orbitalWeightOf(system.ships[factionId]);
+}
+
+/** Everyone present, as `[factionId, hulls]`, skipping empty stacks. */
+export function presentAt(system: StarSystem): [string, number][] {
+  return Object.entries(system.ships ?? {})
+    .map(([id, stack]) => [id, hullsIn(stack)] as [string, number])
+    .filter(([, n]) => n > 0);
+}
+
+/** Add hulls of one class. */
+export function addShipsAt(
+  system: StarSystem,
+  factionId: string,
+  count: number,
+  hull: HullClass = 'battleship',
+): void {
+  if (count <= 0) return;
+  const stack = { ...stackAt(system, factionId) };
+  stack[hull] = (stack[hull] ?? 0) + count;
+  system.ships[factionId] = stack;
+}
+
+/**
+ * Set the TOTAL hull count, adding or removing to reach it.
+ *
+ * Removing spends classes in `lossOrder` — escorts, then torpedo boats, then
+ * battleships, then the lift arm — which is the whole of an escort's job and the
+ * reason a fleet without one arrives at a contested world with its transports
+ * already dead. Zero clears the entry entirely, so `presentAt` and the income
+ * split never see a faction that is not there.
+ */
+export function setShipsAt(
+  system: StarSystem,
+  factionId: string,
+  total: number,
+  hull: HullClass = 'battleship',
+): void {
+  const want = Math.max(0, Math.floor(total));
+  if (want === 0) {
+    delete system.ships[factionId];
+    return;
+  }
+  const stack = { ...stackAt(system, factionId) };
+  const have = hullsIn(stack);
+  if (want > have) {
+    stack[hull] = (stack[hull] ?? 0) + (want - have);
+  } else if (want < have) {
+    let toRemove = have - want;
+    for (const cls of inLossOrder(stack)) {
+      if (toRemove <= 0) break;
+      const taken = Math.min(toRemove, stack[cls] ?? 0);
+      const left = (stack[cls] ?? 0) - taken;
+      if (left === 0) delete stack[cls];
+      else stack[cls] = left;
+      toRemove -= taken;
+    }
+  }
+  system.ships[factionId] = stack;
+}
+
 export function shipsAt(state: WorldState, factionId: string, systemId: string): number {
-  return getSystem(state, systemId)?.ships[factionId] ?? 0;
+  const system = getSystem(state, systemId);
+  return system ? hullsAt(system, factionId) : 0;
 }
 
 /** Ships a faction has in transit, committed to movement orders. */
@@ -430,7 +526,7 @@ export function shipsInTransit(state: WorldState, factionId: string): number {
  * so combat, income and upkeep cannot disagree about how many there are.
  */
 export function fleetStrengthOf(state: WorldState, factionId: string): number {
-  const inSystems = state.systems.reduce((sum, s) => sum + (s.ships[factionId] ?? 0), 0);
+  const inSystems = state.systems.reduce((sum, s) => sum + (hullsAt(s, factionId)), 0);
   return inSystems + shipsInTransit(state, factionId);
 }
 
@@ -440,11 +536,11 @@ export function fleetStrengthOf(state: WorldState, factionId: string): number {
  */
 export function fleetBases(state: WorldState, factionId: string): StarSystem[] {
   return state.systems
-    .filter((s) => s.controllerFactionId === factionId || (s.ships[factionId] ?? 0) > 0)
+    .filter((s) => s.controllerFactionId === factionId || (hullsAt(s, factionId)) > 0)
     .sort(
       (a, b) =>
         b.strategicValue - a.strategicValue ||
-        (b.ships[factionId] ?? 0) - (a.ships[factionId] ?? 0) ||
+        (hullsAt(b, factionId)) - (hullsAt(a, factionId)) ||
         a.id.localeCompare(b.id),
     );
 }
@@ -582,7 +678,7 @@ export interface SystemIncome {
 }
 
 const shipsPresent = (system: StarSystem): [string, number][] =>
-  Object.entries(system.ships ?? {}).filter(([, n]) => n > 0);
+  presentAt(system);
 
 /**
  * Treaties that make a fleet a GUEST rather than an intruder.
@@ -672,7 +768,7 @@ export function systemIncome(state: WorldState, system: StarSystem): SystemIncom
       const HOLDER_EDGE = 2;
       const weights: [string, number][] = [
         // At least 1, so an owner with no ships in orbit still administers.
-        [controller, Math.max(1, system.ships?.[controller] ?? 0) * HOLDER_EDGE],
+        [controller, Math.max(1, hullsAt(system!, controller)) * HOLDER_EDGE],
         ...rivals,
       ];
       const total = weights.reduce((sum, [, w]) => sum + w, 0);
@@ -837,11 +933,11 @@ export function subornLimit(state: WorldState, actorId: string, targetId: string
 export function canSubornAt(state: WorldState, factionId: string, systemId: string): boolean {
   const system = getSystem(state, systemId);
   if (!system) return false;
-  if ((system.ships[factionId] ?? 0) > 0) return true;
+  if ((hullsAt(system, factionId)) > 0) return true;
 
   const adjacent = buildAdjacency(state.systems).get(systemId) ?? new Set<string>();
   for (const id of adjacent) {
-    if ((getSystem(state, id)?.ships[factionId] ?? 0) > 0) return true;
+    if (shipsAt(state, factionId, id) > 0) return true;
   }
 
   return (state.agents ?? []).some(

@@ -11,6 +11,8 @@ import { loadPrompt } from '../src/model/prompts.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { applyOps, COERCION_RESENTMENT, tickTurn } from '../src/domain/reducer.js';
 import {
+  hullsAt,
+  setShipsAt,
   ledgerFor,
   subornLimit,
   treatiesFor,
@@ -680,7 +682,7 @@ describe('a ceded system changes hands', () => {
     const state = createSeedState('freeworlds');
     const before = sys(state, 'ark-6');
     const garrison = before.garrison;
-    const ships = before.ships['freeworlds'] ?? 0;
+    const ships = hullsAt(before, 'freeworlds');
     expect(ships).toBeGreaterThan(0);
 
     const out = applyOps(state, [cede('ark-6', ['freeworlds', 'hutt'])], 'extraction', 'freeworlds');
@@ -692,13 +694,13 @@ describe('a ceded system changes hands', () => {
     // between capitulation and conquest.
     expect(after.garrison).toBe(garrison);
     // And the ceder's fleet leaves rather than being captured or destroyed.
-    expect(after.ships['freeworlds'] ?? 0).toBe(0);
+    expect(hullsAt(after, 'freeworlds')).toBe(0);
     const elsewhere = out.state.systems
       .filter((x) => x.id !== 'ark-6')
-      .reduce((n, x) => n + (x.ships['freeworlds'] ?? 0), 0);
+      .reduce((n, x) => n + (hullsAt(x, 'freeworlds')), 0);
     const originally = state.systems
       .filter((x) => x.id !== 'ark-6')
-      .reduce((n, x) => n + (x.ships['freeworlds'] ?? 0), 0);
+      .reduce((n, x) => n + (hullsAt(x, 'freeworlds')), 0);
     expect(elsewhere).toBe(originally + ships);
     expect(out.notes.join(' ')).toMatch(/withdraw to/);
   });
@@ -791,7 +793,7 @@ describe('a void condition ends a treaty when it comes true', () => {
 
     // Drive the Combine to a loss it cannot cover.
     for (const sys of signed.systems) {
-      if (sys.controllerFactionId === 'hutt') sys.ships['hutt'] = 400;
+      if (sys.controllerFactionId === 'hutt') setShipsAt(sys, 'hutt', 400);
     }
     const ticked = tickTurn(signed);
     const treaty = ticked.state.treaties.find((t) => t.summary === 'conditional accord')!;
@@ -841,7 +843,7 @@ describe('signing under a fleet costs the power holding the fleet', () => {
 
   it('charges the coercer when its ships sit on the other party’s worlds', () => {
     const state = createSeedState('freeworlds');
-    state.systems.find((x) => x.id === 'ark-1')!.ships['vigil'] = 40;
+    setShipsAt(state.systems.find((x) => x.id === 'ark-1')!, 'vigil', 40);
     const before = dispositionToward(state, 'freeworlds', 'vigil');
 
     const out = applyOps(state, [accord], 'extraction', 'freeworlds');
@@ -877,7 +879,7 @@ describe('signing under a fleet costs the power holding the fleet', () => {
       'extraction',
       'freeworlds',
     ).state;
-    invited.systems.find((x) => x.id === 'ark-1')!.ships['vigil'] = 40;
+    setShipsAt(invited.systems.find((x) => x.id === 'ark-1')!, 'vigil', 40);
     const before = dispositionToward(invited, 'freeworlds', 'vigil');
 
     const out = applyOps(invited, [accord], 'extraction', 'freeworlds');

@@ -7,7 +7,8 @@ import {
   STAT_NAMES,
 } from '../src/domain/checks.js';
 import { createSeedState } from '../src/seed/scenario.js';
-import { fleetStrengthOf, ledgerFor, UPKEEP_PER_FLEET_POINT } from '../src/domain/state.js';
+import {
+  setShipsAt, fleetStrengthOf, ledgerFor, UPKEEP_PER_FLEET_POINT } from '../src/domain/state.js';
 import { tickTurn } from '../src/domain/reducer.js';
 
 describe('ability modifiers', () => {
@@ -167,7 +168,7 @@ describe('economy', () => {
     const broke = createSeedState('krayt');
     broke.factions.find((f) => f.id === 'krayt')!.credits = 0;
     // Ruinous upkeep, expressed the only way it can be now: actual hulls.
-    broke.systems.find((s) => s.id === 'ark-5')!.ships['krayt'] = 900;
+    setShipsAt(broke.systems.find((s) => s.id === 'ark-5')!, 'krayt', 900);
     const res = tickTurn(broke);
     expect(res.state.factions.find((f) => f.id === 'krayt')!.credits).toBe(0);
   });

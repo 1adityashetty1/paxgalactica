@@ -8,6 +8,7 @@ import {
   type FactionStats,
 } from '../domain/checks.js';
 import {
+  presentAt,
   dissentPenalty,
   dispositionBetween,
   getFaction,
@@ -204,8 +205,7 @@ export function serializeSystems(state: WorldState): string {
       ? getFaction(state, s.controllerFactionId)?.name ?? s.controllerFactionId
       : 'unaligned';
     const income = systemIncome(state, s);
-    const ships = Object.entries(s.ships ?? {})
-      .filter(([, n]) => n > 0)
+    const ships = presentAt(s)
       .map(([id, n]) => `${id} ${n}`)
       .join(', ');
     const payout = Object.entries(income.shares)

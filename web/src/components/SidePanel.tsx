@@ -7,6 +7,7 @@ import { debtsFor } from '../../../src/domain/debt.js';
 import { describeOrderEffect } from '../../../src/domain/development.js';
 import { describeEffect } from '../../../src/domain/diplomacy.js';
 import {
+  presentAt,
   agentsVisibleTo,
   dispositionBetween,
   fleetStrengthOf,
@@ -206,7 +207,7 @@ function SystemTab({
   const color = controller ? ansi256ToHex(controller.displayColor) : NEUTRAL;
   const here = state.pendingOrders.filter((o) => o.targetId === sys.id || o.originId === sys.id);
   const income = systemIncome(state, sys);
-  const shipRows = Object.entries(sys.ships ?? {}).filter(([, n]) => n > 0);
+  const shipRows = presentAt(sys);
   const incomeRows = Object.entries(income.shares).filter(([, v]) => v > 0);
 
   return (

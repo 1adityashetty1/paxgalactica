@@ -5,6 +5,8 @@ import { createSeedState } from '../src/seed/scenario.js';
 import { AGENT_COST, MISSION_PROFILE } from '../src/domain/diplomacy.js';
 import { COMMITMENT_GOODWILL } from '../src/domain/arbitration.js';
 import {
+  hullsAt,
+  setShipsAt,
   agentsVisibleTo,
   effectiveStats,
   ledgerFor,
@@ -37,7 +39,7 @@ describe('per-system income', () => {
     const state = fresh();
     // Iron Vigil parks ships over a Free Worlds world.
     const target = sys(state, 'ark-1');
-    target.ships['vigil'] = 6;
+    setShipsAt(target, 'vigil', 6);
 
     const income = systemIncome(state, target);
     expect(income.contested).toBe(true);
@@ -59,8 +61,8 @@ describe('per-system income', () => {
   it('pays an unaligned system to whoever occupies it', () => {
     const state = fresh();
     const neutral = sys(state, 'slu-3');
-    neutral.ships['hutt'] = 3;
-    neutral.ships['krayt'] = 1;
+    setShipsAt(neutral, 'hutt', 3);
+    setShipsAt(neutral, 'krayt', 1);
     const income = systemIncome(state, neutral);
     expect(income.shares['hutt']!).toBeGreaterThan(income.shares['krayt']!);
   });
@@ -362,7 +364,7 @@ describe('every mission is mechanically distinct', () => {
 
   it('makes a successful assassination hit far harder than routine sabotage', () => {
     // Hulls are destroyed where the operative is, so measure ships at ark-1.
-    const at = (st: WorldState) => sys(st, 'ark-1').ships['freeworlds'] ?? 0;
+    const at = (st: WorldState) => hullsAt(sys(st, 'ark-1'), 'freeworlds');
     const base = at(fresh());
     // Keep the multiplied damage inside what is actually parked there, or the
     // comparison measures the floor at zero rather than the multiplier.
@@ -497,12 +499,15 @@ describe('ships in systems', () => {
     const added = applyOps(fresh(), [
       { op: 'adjust_ships', systemId: 'slu-3', factionId: 'krayt', delta: 5 },
     ]).state;
-    expect(sys(added, 'slu-3').ships['krayt']).toBe(5);
+    expect(hullsAt(sys(added, 'slu-3'), 'krayt')).toBe(5);
 
     const removed = applyOps(added, [
       { op: 'adjust_ships', systemId: 'slu-3', factionId: 'krayt', delta: -9 },
     ]).state;
-    expect(sys(removed, 'slu-3').ships['krayt']).toBeUndefined();
+    // The entry is cleared entirely, not left at zero — `presentAt` and the
+    // income split must never see a faction that is not there.
+    expect(hullsAt(sys(removed, 'slu-3'), 'krayt')).toBe(0);
+    expect(sys(removed, 'slu-3').ships.krayt).toBeUndefined();
   });
 
   it('rejects unknown systems and factions', () => {
@@ -614,7 +619,7 @@ describe('a navy you cannot pay for does not simply sit there', () => {
     const state0 = fresh();
     // Placed directly rather than bought, so the test is about upkeep and not
     // about whether the yards would have delivered them.
-    sys(state0, 'ark-1').ships['freeworlds'] = 600;
+    setShipsAt(sys(state0, 'ark-1'), 'freeworlds', 600);
     let state = state0;
 
     let laidUpTurn = -1;
@@ -637,7 +642,7 @@ describe('a navy you cannot pay for does not simply sit there', () => {
   it('declines gradually rather than collapsing in one turn', () => {
     const state = fresh();
     state.factions.find((f) => f.id === 'freeworlds')!.credits = 0;
-    sys(state, 'ark-1').ships['freeworlds'] = 400;
+    setShipsAt(sys(state, 'ark-1'), 'freeworlds', 400);
     const before = fleetStrengthOf(state, 'freeworlds');
 
     const after = tickTurn(state).state;

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import {
+  setShipsAt,
   DEFENSIVE_GARRISON_BONUS,
   EXPANSIONIST_TERRITORY_BONUS,
   ledgerFor,
@@ -90,7 +91,7 @@ describe('expansionist: every world makes the rest pay better', () => {
     const stripped = fresh();
     for (const s of stripped.systems) {
       if (s.controllerFactionId === 'meridian') s.controllerFactionId = 'vigil';
-      delete s.ships['meridian']; // otherwise presence still earns a contested share
+      setShipsAt(s, 'meridian', 0); // otherwise presence still earns a contested share
     }
     expect(ledgerFor(stripped, 'meridian').territory).toBe(0);
   });
@@ -102,7 +103,7 @@ describe('expansionist: every world makes the rest pay better', () => {
       const state = fresh();
       fac(state, 'meridian').warEthic = ethic;
       sys(state, 'slu-3').garrison = 9;
-      sys(state, 'slu-3').ships['meridian'] = 0;
+      setShipsAt(sys(state, 'slu-3'), 'meridian', 0);
       const out = applyOps(
         state,
         [
@@ -145,8 +146,8 @@ describe('defensive: occupation costs more than it is worth', () => {
       const t = sys(state, 'ark-6');
       t.garrison = 10;
       t.garrisonMax = 10;
-      delete t.ships['freeworlds'];
-      sys(state, 'ark-5').ships['krayt'] = force;
+      setShipsAt(t, 'freeworlds', 0);
+      setShipsAt(sys(state, 'ark-5'), 'krayt', force);
       const out = applyOps(
         state,
         [
@@ -189,10 +190,10 @@ describe('crusading: does not break off', () => {
       fac(state, 'vigil').warEthic = ethic;
       const t = sys(state, 'slu-6');
       t.controllerFactionId = 'vigil';
-      t.ships['vigil'] = 2;
+      setShipsAt(t, 'vigil', 2);
       t.garrison = 1;
       t.garrisonMax = 1;
-      sys(state, 'ark-3').ships['freeworlds'] = 40;
+      setShipsAt(sys(state, 'ark-3'), 'freeworlds', 40);
       const out = applyOps(
         state,
         [
@@ -221,9 +222,9 @@ describe('crusading: does not break off', () => {
     const strike = (ethic: WarEthic) => {
       const state = fresh();
       fac(state, 'vigil').warEthic = ethic;
-      sys(state, 'tio-2').ships['vigil'] = 3;
+      setShipsAt(sys(state, 'tio-2'), 'vigil', 3);
       const t = sys(state, 'tio-1');
-      t.ships['meridian'] = 60;
+      setShipsAt(t, 'meridian', 60);
       const out = applyOps(
         state,
         [
@@ -280,8 +281,8 @@ describe('opportunist: no reward for a fair fight', () => {
       const t = sys(state, 'ark-6');
       t.garrison = garrison;
       t.garrisonMax = max;
-      delete t.ships['freeworlds'];
-      sys(state, 'ark-5').ships['krayt'] = force;
+      setShipsAt(t, 'freeworlds', 0);
+      setShipsAt(sys(state, 'ark-5'), 'krayt', force);
       const out = applyOps(
         state,
         [

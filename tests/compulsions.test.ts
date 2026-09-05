@@ -5,6 +5,8 @@ import {
   breachContradictsState, driftingCompulsions } from '../src/domain/compulsions.js';
 import { serializeCharacter } from '../src/model/serialize.js';
 import {
+  hullsAt,
+  setShipsAt,
   COMPULSION_DRIFT_DISSENT,
   FactionSchema,
   warsFor,
@@ -85,7 +87,7 @@ describe('each trigger watches something real', () => {
 
   it('fires when a rival sits on your world and nothing is sent', () => {
     const state = fresh();
-    sys(state, 'tio-2').ships['hutt'] = 4;
+    setShipsAt(sys(state, 'tio-2'), 'hutt', 4);
     expect(triggers(state, 'vigil')).toContain('unanswered_incursion');
     expect(driftingCompulsions(state, 'vigil').find((d) => d.trigger === 'unanswered_incursion')!.why)
       .toMatch(/Kalzir/);
@@ -93,7 +95,7 @@ describe('each trigger watches something real', () => {
 
   it('does not count an invited fleet as an incursion', () => {
     const state = fresh();
-    sys(state, 'tio-2').ships['hutt'] = 4;
+    setShipsAt(sys(state, 'tio-2'), 'hutt', 4);
     const guested = applyOps(
       state,
       [
@@ -183,7 +185,7 @@ describe('drift is charged every turn it continues', () => {
 
   it('charges two ignored compulsions twice over', () => {
     const state = fresh();
-    sys(state, 'tio-2').ships['hutt'] = 4;
+    setShipsAt(sys(state, 'tio-2'), 'hutt', 4);
     expect(driftingCompulsions(state, 'vigil')).toHaveLength(2);
     const after = tickTurn(state).state;
     expect(fac(after, 'vigil').dissent).toBe(2 * COMPULSION_DRIFT_DISSENT);
@@ -384,7 +386,7 @@ describe('a breach ruling is checked against the board where the board can answe
 
   it('drops a breach the faction is demonstrably not committing', () => {
     let s = createSeedState('krayt');
-    const base = s.systems.find((x) => (x.ships.krayt ?? 0) > 0)!;
+    const base = s.systems.find((x) => (hullsAt(x, 'krayt')) > 0)!;
     s = applyOps(s, [{
       op: 'issue_order', factionId: 'krayt', type: 'commerce_raiding',
       originId: base.id, targetId: base.id, durationTurns: 3, label: 'raid', visibility: [],

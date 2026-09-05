@@ -19,7 +19,7 @@ const SRC = new URL('../web/src/components/BattleIcons.tsx', import.meta.url);
 const src = readFileSync(SRC, 'utf8');
 
 const ICONS = [
-  ['ShipIcon', 'line', 'line hull', '#7fd4cd'],
+  ['ShipIcon', 'battleship', 'battleship', '#7fd4cd'],
   ['EscortIcon', 'escort', 'escort', '#fbbf24'],
   ['TorpedoBoatIcon', 'torpedo_boat', 'torpedo boat', '#f87171'],
   ['LifterIcon', 'lifter', 'lifter', '#4ade80'],

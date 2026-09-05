@@ -3,6 +3,8 @@ import { applyOps, tickTurn, GARRISON_REGROWTH, DISSENT_DECAY } from '../src/dom
 import { createSeedState } from '../src/seed/scenario.js';
 import { STAT_NAMES } from '../src/domain/checks.js';
 import {
+  hullsAt,
+  setShipsAt,
   dissentPenalty,
   DISSENT_PER_PENALTY_POINT,
   effectiveStats,
@@ -14,7 +16,7 @@ import {
 
 const fresh = (): WorldState => createSeedState('freeworlds');
 const sys = (s: WorldState, id: string) => s.systems.find((x) => x.id === id)!;
-const shipsOf = (s: WorldState, sysId: string, f: string) => sys(s, sysId).ships[f] ?? 0;
+const shipsOf = (s: WorldState, sysId: string, f: string) => hullsAt(sys(s, sysId), f);
 
 /**
  * Send `force` from ark-3 to slu-6 and tick until it arrives.
@@ -24,7 +26,7 @@ const shipsOf = (s: WorldState, sysId: string, f: string) => sys(s, sysId).ships
  */
 function attack(setup: (s: WorldState) => void, force = 8) {
   const state = fresh();
-  sys(state, 'ark-3').ships['freeworlds'] = force;
+  setShipsAt(sys(state, 'ark-3'), 'freeworlds', force);
   setup(state);
   const issued = applyOps(state, [
     {
@@ -44,7 +46,7 @@ function attack(setup: (s: WorldState) => void, force = 8) {
 describe('the fleet is the ships', () => {
   it('derives fleet strength from what is on the board', () => {
     const state = fresh();
-    const counted = state.systems.reduce((n, s) => n + (s.ships['freeworlds'] ?? 0), 0);
+    const counted = state.systems.reduce((n, s) => n + (hullsAt(s, 'freeworlds')), 0);
     expect(fleetStrengthOf(state, 'freeworlds')).toBe(counted);
     expect(counted).toBeGreaterThan(0);
   });
@@ -117,7 +119,7 @@ describe('phase 1 — the fleet battle', () => {
   it('lands unopposed on a system with nobody in orbit AND nobody on the ground', () => {
     const res = attack((s) => {
       const t = sys(s, 'slu-6');
-      delete t.ships['freeworlds'];
+      setShipsAt(t, 'freeworlds', 0);
       // Unaligned is not the same as undefended: the garrison has to be gone
       // too, or this is a ground assault.
       t.garrison = 0;
@@ -134,7 +136,7 @@ describe('phase 1 — the fleet battle', () => {
     const res = attack((s) => {
       const t = sys(s, 'slu-6');
       t.controllerFactionId = 'vigil';
-      t.ships['vigil'] = 40;
+      setShipsAt(t, 'vigil', 40);
       t.garrison = 1;
       t.garrisonMax = 1;
     }, 4);
@@ -152,7 +154,7 @@ describe('phase 1 — the fleet battle', () => {
     const res = attack((s) => {
       const t = sys(s, 'slu-6');
       t.controllerFactionId = 'hutt';
-      t.ships['hutt'] = 2;
+      setShipsAt(t, 'hutt', 2);
       t.garrison = 1;
       t.garrisonMax = 1;
     }, 40);
@@ -167,14 +169,14 @@ describe('phase 1 — the fleet battle', () => {
     const res = attack((s) => {
       const t = sys(s, 'slu-6');
       t.controllerFactionId = 'hutt';
-      t.ships['hutt'] = before;
+      setShipsAt(t, 'hutt', before);
       t.garrison = 1;
       t.garrisonMax = 1;
     }, 200);
     const escaped = res.state.systems
       .filter((x) => x.id !== 'slu-6')
-      .reduce((n, x) => n + (x.ships['hutt'] ?? 0), 0);
-    const baseline = fresh().systems.reduce((n, x) => n + (x.ships['hutt'] ?? 0), 0);
+      .reduce((n, x) => n + (hullsAt(x, 'hutt')), 0);
+    const baseline = fresh().systems.reduce((n, x) => n + (hullsAt(x, 'hutt')), 0);
     const survivors = escaped - baseline;
     expect(survivors).toBeGreaterThanOrEqual(Math.ceil(before * 0.65));
     expect(survivors).toBeLessThanOrEqual(Math.ceil(before * 0.9));
@@ -184,7 +186,7 @@ describe('phase 1 — the fleet battle', () => {
     const res = attack((s) => {
       const t = sys(s, 'slu-6');
       t.controllerFactionId = 'vigil';
-      t.ships['vigil'] = 60;
+      setShipsAt(t, 'vigil', 60);
     }, 3);
     expect(res.notes.join(' ')).toMatch(/driven off/);
     // The route is ark-3 → ark-4 → slu-6, so survivors fall back to ark-4 —
@@ -202,13 +204,13 @@ describe('phase 2 — the ground assault', () => {
       t.controllerFactionId = 'vigil';
       t.garrison = 3;
       t.garrisonMax = 3;
-      delete t.ships['vigil'];
+      setShipsAt(t, 'vigil', 0);
     }, 30);
     const target = res.state.systems.find((x) => x.id === 'slu-6')!;
     expect(target.controllerFactionId).toBe('freeworlds');
     expect(res.notes.join(' ')).toMatch(/storms/);
     // The victor's surviving ships are in orbit.
-    expect(target.ships['freeworlds']).toBeGreaterThan(0);
+    expect(hullsAt(target, 'freeworlds')).toBeGreaterThan(0);
   });
 
   it('is thrown back by a garrison too strong to land against', () => {
@@ -217,7 +219,7 @@ describe('phase 2 — the ground assault', () => {
       t.controllerFactionId = 'vigil';
       t.garrison = 90;
       t.garrisonMax = 90;
-      delete t.ships['vigil'];
+      setShipsAt(t, 'vigil', 0);
     }, 3);
     const target = res.state.systems.find((x) => x.id === 'slu-6')!;
     expect(target.controllerFactionId).toBe('vigil');
@@ -230,7 +232,7 @@ describe('phase 2 — the ground assault', () => {
       t.controllerFactionId = 'vigil';
       t.garrison = 90;
       t.garrisonMax = 90;
-      delete t.ships['vigil'];
+      setShipsAt(t, 'vigil', 0);
     }, 3);
     const target = res.state.systems.find((x) => x.id === 'slu-6')!;
     // Damaged, but still in place and still Vigil's.
@@ -279,7 +281,7 @@ describe('garrisons regrow', () => {
       t.controllerFactionId = 'vigil';
       t.garrison = 3;
       t.garrisonMax = 12;
-      delete t.ships['vigil'];
+      setShipsAt(t, 'vigil', 0);
     }, 30).state;
     expect(sys(state, 'slu-6').controllerFactionId).toBe('freeworlds');
     const justTaken = sys(state, 'slu-6').garrison;
@@ -349,7 +351,7 @@ describe('retreat costs ships only when opposed', () => {
     const opposed = attack((s) => {
       const t = sys(s, 'slu-6');
       t.controllerFactionId = 'vigil';
-      t.ships['vigil'] = 80;
+      setShipsAt(t, 'vigil', 80);
     }, 4);
     expect(opposed.notes.join(' ')).toMatch(/driven off/);
 
@@ -372,8 +374,8 @@ describe('retreat costs ships only when opposed', () => {
     const res = attack((s) => {
       const t = sys(s, 'slu-6');
       t.controllerFactionId = 'vigil';
-      delete t.ships['vigil'];
-      t.ships['krayt'] = 70; // Vigil holds it; Drajk is squatting in orbit
+      setShipsAt(t, 'vigil', 0);
+      setShipsAt(t, 'krayt', 70); // Vigil holds it; Drajk is squatting in orbit
       t.garrison = 1;
       t.garrisonMax = 1;
     }, 3);
@@ -387,7 +389,7 @@ describe('a garrison under attack does not grow', () => {
     const state = fresh();
     const besieged = sys(state, 'ark-1');
     besieged.garrison = 4;
-    besieged.ships['vigil'] = 6; // blockade
+    setShipsAt(besieged, 'vigil', 6); // blockade
     const after = tickTurn(state).state;
     expect(after.systems.find((s) => s.id === 'ark-1')!.garrison).toBe(4);
   });
@@ -396,12 +398,12 @@ describe('a garrison under attack does not grow', () => {
     const state = fresh();
     const besieged = sys(state, 'ark-1');
     besieged.garrison = 4;
-    besieged.ships['vigil'] = 6;
+    setShipsAt(besieged, 'vigil', 6);
 
     const stillBesieged = tickTurn(state).state;
     expect(sys(stillBesieged, 'ark-1').garrison).toBe(4);
 
-    delete sys(stillBesieged, 'ark-1').ships['vigil'];
+    setShipsAt(sys(stillBesieged, 'ark-1'), 'vigil', 0);
     const relieved = tickTurn(stillBesieged).state;
     expect(sys(relieved, 'ark-1').garrison).toBe(4 + GARRISON_REGROWTH);
   });
@@ -440,7 +442,7 @@ describe('a garrison under attack does not grow', () => {
     const state = fresh();
     sys(state, 'ark-1').garrison = 4;
     sys(state, 'ark-3').garrison = 4;
-    sys(state, 'ark-1').ships['vigil'] = 5; // only ark-1 is besieged
+    setShipsAt(sys(state, 'ark-1'), 'vigil', 5); // only ark-1 is besieged
     const after = tickTurn(state).state;
     expect(sys(after, 'ark-1').garrison).toBe(4);
     expect(sys(after, 'ark-3').garrison).toBe(4 + GARRISON_REGROWTH);
@@ -453,7 +455,7 @@ describe('coalitions', () => {
     const state = fresh();
     setup(state);
     const ops = Object.entries(forces).map(([factionId, force]) => {
-      sys(state, 'ark-3').ships[factionId] = force;
+      setShipsAt(sys(state, 'ark-3'), factionId, force);
       return {
         op: 'issue_order', factionId, type: 'fleet_movement',
         originId: 'ark-3', targetId: 'slu-6', force, label: `${factionId} squadron`,
@@ -471,7 +473,7 @@ describe('coalitions', () => {
       (s) => {
         const t = sys(s, 'slu-6');
         t.controllerFactionId = 'vigil';
-        t.ships['vigil'] = 14;
+        setShipsAt(t, 'vigil', 14);
         t.garrison = 2;
         t.garrisonMax = 2;
       },
@@ -490,7 +492,7 @@ describe('coalitions', () => {
         t.controllerFactionId = 'vigil';
         t.garrison = 2;
         t.garrisonMax = 2;
-        delete t.ships['vigil'];
+        setShipsAt(t, 'vigil', 0);
       },
       { freeworlds: 6, krayt: 24 },
     );
@@ -498,7 +500,7 @@ describe('coalitions', () => {
     expect(target.controllerFactionId).toBe('krayt');
     expect(res.notes.join(' ')).toMatch(/takes possession/);
     // The junior partner's survivors are still in orbit, contesting income.
-    expect(target.ships['freeworlds']).toBeGreaterThan(0);
+    expect(hullsAt(target, 'freeworlds')).toBeGreaterThan(0);
   });
 
   it('breaks a tie deterministically rather than by luck', () => {
@@ -531,8 +533,8 @@ describe('coalitions', () => {
     const res = attack((s) => {
       const t = sys(s, 'slu-6');
       t.controllerFactionId = 'vigil';
-      t.ships['vigil'] = 8;
-      t.ships['hutt'] = 40; // not attacking, so it defends
+      setShipsAt(t, 'vigil', 8);
+      setShipsAt(t, 'hutt', 40); // not attacking, so it defends
       t.garrison = 1;
       t.garrisonMax = 1;
     }, 6);
@@ -542,7 +544,7 @@ describe('coalitions', () => {
 
   it('counts arrivals for the holder as reinforcement, not invasion', () => {
     const state = fresh();
-    sys(state, 'ark-1').ships['freeworlds'] = 20;
+    setShipsAt(sys(state, 'ark-1'), 'freeworlds', 20);
     const before = shipsOf(state, 'ark-3', 'freeworlds');
     const issued = applyOps(state, [
       {
@@ -664,7 +666,7 @@ describe('combat is deterministic', () => {
       attack((s) => {
         const t = sys(s, 'slu-6');
         t.controllerFactionId = 'vigil';
-        t.ships['vigil'] = 9;
+        setShipsAt(t, 'vigil', 9);
         t.garrison = 6;
         t.garrisonMax = 6;
       }, 14);

@@ -20,10 +20,10 @@ import {
  * rule that limits a fleet by size is denominated in it.
  */
 describe('tonnage prices everything', () => {
-  it('reproduces the old flat ship cost and upkeep for a line hull', () => {
+  it('reproduces the old flat ship cost and upkeep for a battleship', () => {
     // The migration is behaviour-neutral only if this holds.
-    expect(hullCost('line')).toBe(60);
-    expect(hullUpkeep('line')).toBe(4);
+    expect(hullCost('battleship')).toBe(60);
+    expect(hullUpkeep('battleship')).toBe(4);
   });
 
   it('charges every class the same per ton, so presence cannot be arbitraged', () => {
@@ -35,22 +35,22 @@ describe('tonnage prices everything', () => {
 });
 
 /**
- * The escort-spam bug: escorts once had a line hull's weight at half the
+ * The escort-spam bug: escorts once had a battleship's weight at half the
  * tonnage, making them twice as efficient on every axis.
  */
-describe('a line hull is the better fighter on every axis', () => {
-  const perTon = (h: 'line' | 'escort' | 'torpedo_boat') =>
+describe('a battleship is the better fighter on every axis', () => {
+  const perTon = (h: 'battleship' | 'escort' | 'torpedo_boat') =>
     HULL_SPEC[h].orbitalWeight / HULL_SPEC[h].tonnage;
-  const perCredit = (h: 'line' | 'escort' | 'torpedo_boat') =>
+  const perCredit = (h: 'battleship' | 'escort' | 'torpedo_boat') =>
     HULL_SPEC[h].orbitalWeight / hullCost(h);
 
   it('beats an escort per ton and per credit', () => {
-    expect(perTon('line')).toBeGreaterThan(perTon('escort'));
-    expect(perCredit('line')).toBeGreaterThan(perCredit('escort'));
+    expect(perTon('battleship')).toBeGreaterThan(perTon('escort'));
+    expect(perCredit('battleship')).toBeGreaterThan(perCredit('escort'));
   });
 
   it('beats a torpedo boat in a straight exchange too', () => {
-    expect(perTon('line')).toBeGreaterThan(perTon('torpedo_boat'));
+    expect(perTon('battleship')).toBeGreaterThan(perTon('torpedo_boat'));
   });
 
   it('leaves the lift arm worth nothing in orbit', () => {
@@ -67,7 +67,7 @@ describe('a line hull is the better fighter on every axis', () => {
 });
 
 describe('a stack', () => {
-  const mixed = { line: 3, escort: 2, lifter: 1 };
+  const mixed = { battleship: 3, escort: 2, lifter: 1 };
 
   it('counts hulls for a player and tons for the rules', () => {
     expect(hullsIn(mixed)).toBe(6);
@@ -79,8 +79,8 @@ describe('a stack', () => {
     expect(carryOf(mixed)).toBe(6);
   });
 
-  it('spends escorts before line hulls, and line hulls before the lift arm', () => {
-    expect(inLossOrder(mixed)).toEqual(['escort', 'line', 'lifter']);
+  it('spends escorts before battleships, and battleships before the lift arm', () => {
+    expect(inLossOrder(mixed)).toEqual(['escort', 'battleship', 'lifter']);
   });
 
   it('is empty-safe', () => {
@@ -94,17 +94,17 @@ describe('a stack', () => {
  * actually played as.
  */
 describe('the old shape still loads', () => {
-  it('reads a bare number as a stack of line hulls', () => {
-    expect(ShipStackSchema.parse(7)).toEqual({ line: 7 });
+  it('reads a bare number as a stack of battleships', () => {
+    expect(ShipStackSchema.parse(7)).toEqual({ battleship: 7 });
   });
 
   it('reads a typed stack unchanged', () => {
-    expect(ShipStackSchema.parse({ line: 2, lifter: 1 })).toEqual({ line: 2, lifter: 1 });
+    expect(ShipStackSchema.parse({ battleship: 2, lifter: 1 })).toEqual({ battleship: 2, lifter: 1 });
   });
 
   it('gives a legacy stack exactly its old tonnage and weight', () => {
     const legacy = ShipStackSchema.parse(5);
-    expect(tonsIn(legacy)).toBe(5 * HULL_SPEC.line.tonnage);
+    expect(tonsIn(legacy)).toBe(5 * HULL_SPEC.battleship.tonnage);
     expect(hullsIn(legacy)).toBe(5);
   });
 });

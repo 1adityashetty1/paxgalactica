@@ -1,4 +1,5 @@
 import {
+  presentAt,
   fleetStrengthOf,
   shipsInTransit,
   systemIncome,
@@ -33,9 +34,7 @@ export function FleetsPanel({
   const occupied = state.systems
     .map((s) => ({
       system: s,
-      crews: Object.entries(s.ships)
-        .filter(([, n]) => n > 0)
-        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])),
+      crews: presentAt(s).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])),
     }))
     .filter((row) => row.crews.length > 0);
 

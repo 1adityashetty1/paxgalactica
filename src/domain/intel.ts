@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { DurationCategory } from './duration.js';
 import {
+  hullsAt,
   MOVEMENT_ORDER_TYPE,
   type OrderType,
   type PendingOrder,
@@ -153,7 +154,7 @@ export type OrderVisibility = 'full' | 'rumour' | 'hidden';
 function ownSpace(state: WorldState, factionId: string): Set<string> {
   const ids = new Set<string>();
   for (const sys of state.systems) {
-    if (sys.controllerFactionId === factionId || (sys.ships[factionId] ?? 0) > 0) {
+    if (sys.controllerFactionId === factionId || (hullsAt(sys, factionId)) > 0) {
       ids.add(sys.id);
     }
   }

@@ -1,5 +1,6 @@
 import { delinquentDebtorsOf } from './debt.js';
 import {
+  presentAt,
   isGuestOf,
   isMovementType,
   ledgerFor,
@@ -191,7 +192,7 @@ function incursions(state: WorldState, factionId: string): string[] {
     .filter(
       (system) =>
         system.controllerFactionId === factionId &&
-        Object.entries(system.ships).some(
+        presentAt(system).some(
           ([id, n]) => n > 0 && id !== factionId && !isGuestOf(state, id, factionId),
         ),
     )

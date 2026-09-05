@@ -1,3 +1,4 @@
+import { setShipsAt } from '../src/domain/state.js';
 import { describe, expect, it } from 'vitest';
 import { createSeedState } from '../src/seed/scenario.js';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
@@ -171,7 +172,7 @@ describe('the proposal itself', () => {
   it('returns null rather than manufacturing an opportunity', () => {
     // A faction with no fleet, no money and nothing adjacent has nothing to do.
     const s = seed();
-    for (const sys of s.systems) delete sys.ships.freeworlds;
+    for (const sys of s.systems) setShipsAt(sys, 'freeworlds', 0);
     s.factions.find((f) => f.id === 'freeworlds')!.credits = 0;
     const p = proposeFor(s, 'freeworlds');
     expect(p === null || p.ops.length > 0).toBe(true);

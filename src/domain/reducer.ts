@@ -47,6 +47,7 @@ import {
 } from './diplomacy.js';
 import { jumpsBetween, neighboursOf, positionAlongPath, shortestPath } from './graph.js';
 import { routeEarnings, tradeRoutes } from './trade.js';
+import { hullsIn, type ShipStack } from './hulls.js';
 import { isPublicOrderType } from './intel.js';
 import {
   EXTRACTION_ALLOWED,
@@ -57,6 +58,11 @@ import {
   type OpRejection,
 } from './ops.js';
 import {
+  shipsAt,
+  presentAt,
+  addShipsAt,
+  hullsAt,
+  setShipsAt,
   commitmentsOf,
   maxCommitmentIncomeFor,
   effectiveStats,
@@ -160,10 +166,10 @@ export function interdictionStations(
   state: WorldState,
   order: { type: string; targetId: string; factionId: string },
 ): number {
-  const at = state.systems.find((s) => s.id === order.targetId)?.ships[order.factionId] ?? 0;
+  const at = shipsAt(state, order.factionId, order.targetId);
   if (order.type === 'blockade') return at;
   const nearby = neighboursOf(state, order.targetId).reduce(
-    (n, id) => n + (state.systems.find((s) => s.id === id)?.ships[order.factionId] ?? 0),
+    (n, id) => n + shipsAt(state, order.factionId, id),
     0,
   );
   return at + nearby;
@@ -339,14 +345,13 @@ function removeShips(
 ): number {
   let owed = count;
   const bases = [...state.systems]
-    .filter((s) => s.id !== exceptSystemId && (s.ships[factionId] ?? 0) > 0)
-    .sort((a, b) => (b.ships[factionId] ?? 0) - (a.ships[factionId] ?? 0) || a.id.localeCompare(b.id));
+    .filter((s) => s.id !== exceptSystemId && (hullsAt(s, factionId)) > 0)
+    .sort((a, b) => (hullsAt(b, factionId)) - (hullsAt(a, factionId)) || a.id.localeCompare(b.id));
   for (const base of bases) {
     if (owed <= 0) break;
-    const here = base.ships[factionId] ?? 0;
+    const here = hullsAt(base, factionId);
     const take = Math.min(here, owed);
-    if (here - take === 0) delete base.ships[factionId];
-    else base.ships[factionId] = here - take;
+    setShipsAt(base, factionId, here - take);
     owed -= take;
   }
   return count - owed;
@@ -450,7 +455,7 @@ function underDuressFrom(state: WorldState, coercer: string, victim: string): nu
   let worlds = 0;
   for (const system of state.systems) {
     if (system.controllerFactionId !== victim) continue;
-    if ((system.ships[coercer] ?? 0) <= 0) continue;
+    if ((hullsAt(system, coercer)) <= 0) continue;
     if (isGuestOf(state, coercer, victim)) continue;
     worlds += 1;
   }
@@ -576,14 +581,14 @@ function cedeTerritory(state: WorldState, treaty: Treaty): string[] {
 
     system.controllerFactionId = receiver;
 
-    const leaving = system.ships[ceder] ?? 0;
+    const leaving = hullsAt(system, ceder);
     if (leaving > 0) {
       const refuge = fleetBases(state, ceder).find(
         (x) => x.id !== system.id && x.controllerFactionId === ceder,
       );
       if (refuge) {
-        delete system.ships[ceder];
-        refuge.ships[ceder] = (refuge.ships[ceder] ?? 0) + leaving;
+        setShipsAt(system, ceder, 0);
+        addShipsAt(refuge, ceder, leaving);
         notes.push(
           `${ceder} cedes ${system.name} to ${receiver}; ${leaving} ships withdraw to ${refuge.name}.`,
         );
@@ -676,7 +681,14 @@ export function applyOps(
   const hullsBefore = new Map(state.factions.map((f) => [f.id, fleetStrengthOf(state, f.id)]));
   // Per-system counts too, so `capSelfInflictedLosses` can put restored hulls
   // back where they were taken from rather than at the faction's best world.
-  const shipsBefore = new Map(state.systems.map((sys) => [sys.id, { ...sys.ships }]));
+  // Deep enough to survive the batch: the values are stacks now, so a shallow
+  // copy of the record would hand back objects the batch goes on to mutate.
+  const shipsBefore = new Map(
+    state.systems.map((sys) => [
+      sys.id,
+      Object.fromEntries(Object.entries(sys.ships).map(([id, st]) => [id, { ...st }])),
+    ]),
+  );
 
   for (const raw of rawOps) {
     const parsed = OpSchema.safeParse(raw);
@@ -805,18 +817,17 @@ export function applyOps(
         }
         if (op.delta >= 0) {
           const home = bases[0]!;
-          home.ships[op.factionId] = (home.ships[op.factionId] ?? 0) + op.delta;
+          addShipsAt(home, op.factionId, op.delta);
         } else {
           let owed = -op.delta;
           for (const base of [...bases].sort(
-            (a, b) => (b.ships[op.factionId] ?? 0) - (a.ships[op.factionId] ?? 0) || a.id.localeCompare(b.id),
+            (a, b) => (hullsAt(b, op.factionId)) - (hullsAt(a, op.factionId)) || a.id.localeCompare(b.id),
           )) {
             if (owed <= 0) break;
-            const here = base.ships[op.factionId] ?? 0;
+            const here = hullsAt(base, op.factionId);
             const take = Math.min(here, owed);
             if (take <= 0) continue;
-            if (here - take === 0) delete base.ships[op.factionId];
-            else base.ships[op.factionId] = here - take;
+            setShipsAt(base, op.factionId, here - take);
             owed -= take;
           }
         }
@@ -1006,7 +1017,7 @@ export function applyOps(
           // and suborning draw.
           const site = state.systems.find((sys) => sys.id === op.targetId)!;
           const holds = site.controllerFactionId === op.factionId;
-          const present = (site.ships[op.factionId] ?? 0) > 0;
+          const present = (hullsAt(site, op.factionId)) > 0;
           if (!holds && !present) {
             reject(
               raw,
@@ -1072,7 +1083,7 @@ export function applyOps(
           // "the fleet" without saying how much used to commit every ship the
           // faction owned, everywhere.
           const origin = state.systems.find((sys) => sys.id === op.originId)!;
-          const available = origin.ships[op.factionId] ?? 0;
+          const available = hullsAt(origin, op.factionId);
           const wanted = op.force ?? available;
           force = Math.min(wanted, available);
           if (force <= 0) {
@@ -1088,8 +1099,7 @@ export function applyOps(
             notes.push(note);
             logEvent(state, 'system', note, op.factionId);
           }
-          if (available - force === 0) delete origin.ships[op.factionId];
-          else origin.ships[op.factionId] = available - force;
+          setShipsAt(origin, op.factionId, available - force);
         } else {
           // ESTIMATED branch. Model proposes, code clamps.
           if (op.durationTurns === undefined) {
@@ -1206,7 +1216,7 @@ export function applyOps(
         if (isMovementType(removed!.type) && removed!.force > 0) {
           const home = state.systems.find((sys) => sys.id === removed!.originId);
           if (home) {
-            home.ships[removed!.factionId] = (home.ships[removed!.factionId] ?? 0) + removed!.force;
+            addShipsAt(home, removed!.factionId, removed!.force);
           }
         }
         // Recalling your own order is orderly, so the works return what they
@@ -1686,10 +1696,9 @@ export function applyOps(
           }
         }
 
-        const now = Math.max(0, (host.ships[op.factionId] ?? 0) + delta);
-        const taken = Math.min(-delta, host.ships[op.factionId] ?? 0);
-        if (now === 0) delete host.ships[op.factionId];
-        else host.ships[op.factionId] = now;
+        const now = Math.max(0, (hullsAt(host, op.factionId)) + delta);
+        const taken = Math.min(-delta, hullsAt(host, op.factionId));
+        setShipsAt(host, op.factionId, now);
 
         // Suborning is an act of statecraft, not of war: no battle is fought,
         // and the price is paid in standing. Without this it was the only
@@ -2210,7 +2219,7 @@ function capSelfInflictedLosses(
   actor: string | undefined,
   before: Map<string, number>,
   /** Per-system ship counts as they stood before the batch. */
-  shipsBefore: Map<string, Record<string, number>>,
+  shipsBefore: Map<string, Record<string, ShipStack>>,
   notes: string[],
 ): void {
   if (actor === undefined) return; // engine ops, and journals predating the actor field
@@ -2233,7 +2242,7 @@ function capSelfInflictedLosses(
   // scuttling was a free strategic redeployment, and the note even claimed the
   // survivors "remain at Vergesse" when they had never been there.
   const drawnFrom = state.systems
-    .map((sys) => ({ sys, had: shipsBefore.get(sys.id)?.[actor] ?? 0, now: sys.ships[actor] ?? 0 }))
+    .map((sys) => ({ sys, had: hullsIn(shipsBefore.get(sys.id)?.[actor]), now: hullsAt(sys, actor) }))
     .filter((x) => x.had > x.now)
     .sort((a, b) => b.had - a.had || a.sys.id.localeCompare(b.sys.id));
 
@@ -2241,7 +2250,7 @@ function capSelfInflictedLosses(
   for (const { sys, had, now } of drawnFrom) {
     if (owed <= 0) break;
     const back = Math.min(owed, had - now);
-    sys.ships[actor] = (sys.ships[actor] ?? 0) + back;
+    addShipsAt(sys, actor, back);
     owed -= back;
   }
   // Nothing identifiable was drawn from (an abstract `adjust_fleet` against a
@@ -2250,7 +2259,7 @@ function capSelfInflictedLosses(
   const bases = fleetBases(state, actor);
   if (owed > 0) {
     if (bases.length === 0) return;
-    bases[0]!.ships[actor] = (bases[0]!.ships[actor] ?? 0) + owed;
+    addShipsAt(bases[0]!, actor, owed);
   }
 
   const where =
@@ -2325,7 +2334,7 @@ function resolveInterrupt(state: WorldState, order: PendingOrder, reason: string
     // Cancelled movement still returns its ships — they were never destroyed.
     if (isMovementType(order.type) && order.force > 0) {
       const home = state.systems.find((s) => s.id === order.originId);
-      if (home) home.ships[order.factionId] = (home.ships[order.factionId] ?? 0) + order.force;
+      if (home) addShipsAt(home, order.factionId, order.force);
     }
     // `cancel` means the work is lost entirely, so money sunk into the works is
     // sunk. Said out loud rather than deducted silently: a player who abandons a
@@ -2342,7 +2351,7 @@ function resolveInterrupt(state: WorldState, order: PendingOrder, reason: string
     const sys = state.systems.find((s) => s.id === halted);
     // The ships are real and have to come back onto the board somewhere.
     if (sys && order.force > 0) {
-      sys.ships[order.factionId] = (sys.ships[order.factionId] ?? 0) + order.force;
+      addShipsAt(sys, order.factionId, order.force);
     }
     const note = `${order.label} halted mid-transit at ${sys?.name ?? halted} with ${order.force} ships. ${reason}`.trim();
     logEvent(state, 'order', note, order.factionId);
@@ -2750,14 +2759,13 @@ export function tickTurn(input: WorldState): TickResult {
       // resolve beyond the suborner's guile yields nothing, ever.
       const limit = subornLimit(state, agent.ownerFactionId, target.id);
       const wanted = Math.min(agent.effect.perTurn * profile.effectMultiplier, limit);
-      const available = host.ships[target.id] ?? 0;
+      const available = hullsAt(host, target.id);
       const turned = Math.min(wanted, available);
 
       if (turned > 0) {
         const left = available - turned;
-        if (left === 0) delete host.ships[target.id];
-        else host.ships[target.id] = left;
-        host.ships[agent.ownerFactionId] = (host.ships[agent.ownerFactionId] ?? 0) + turned;
+        setShipsAt(host, target.id, left);
+        addShipsAt(host, agent.ownerFactionId, turned);
 
         // Bought, not conquered: crews that change sides still have to be
         // paid for, at the same price as a hull from the yards. Otherwise a
@@ -2800,10 +2808,9 @@ export function tickTurn(input: WorldState): TickResult {
     if (agent.effect.kind === 'hull_damage') {
       const damage = agent.effect.perTurn * profile.effectMultiplier;
       // Sabotage destroys hulls where the operative is, not somewhere abstract.
-      const before = host.ships[target.id] ?? 0;
+      const before = hullsAt(host, target.id);
       const left = Math.max(0, before - damage);
-      if (left === 0) delete host.ships[target.id];
-      else host.ships[target.id] = left;
+      setShipsAt(host, target.id, left);
       const lost = before - left;
       watchNotes.set(
         agent.id,
@@ -2996,7 +3003,7 @@ export function tickTurn(input: WorldState): TickResult {
     const holder = system.controllerFactionId;
     if (holder === null) continue;
     if (contested.has(system.id)) continue;
-    const besieged = Object.entries(system.ships).some(([id, n]) => id !== holder && n > 0);
+    const besieged = presentAt(system).some(([id, n]) => id !== holder && n > 0);
     if (besieged) continue;
     if (system.garrison < system.garrisonMax) {
       system.garrison = Math.min(system.garrisonMax, system.garrison + GARRISON_REGROWTH);
@@ -3118,7 +3125,7 @@ function resolveBattle(
   for (const o of orders) arriving.set(o.factionId, (arriving.get(o.factionId) ?? 0) + o.force);
 
   const land = (factionId: string, n: number): void => {
-    if (n > 0) target.ships[factionId] = (target.ships[factionId] ?? 0) + n;
+    if (n > 0) addShipsAt(target, factionId, n);
   };
 
   // The holder reinforcing itself is not an invasion — and neither is an ally
@@ -3142,7 +3149,7 @@ function resolveBattle(
    * live: the Vigil held a hull over Vergesse for five turns and nothing in the
    * rules could remove it.
    */
-  const squatters = Object.entries(target.ships).filter(
+  const squatters = presentAt(target).filter(
     ([id, n]) => n > 0 && id !== holder && !guest(id),
   );
 
@@ -3235,7 +3242,7 @@ function resolveBattle(
   }
 
   // Safe default: everyone else present is a defender.
-  const defenders: [string, number][] = Object.entries(target.ships).filter(
+  const defenders: [string, number][] = presentAt(target).filter(
     ([id, n]) => !attackerIds.has(id) && n > 0,
   );
 
@@ -3258,7 +3265,7 @@ function resolveBattle(
       // counted among the defenders.
       const sent = removeShips(state, ally, pledged, target.id);
       if (sent <= 0) continue;
-      target.ships[ally] = (target.ships[ally] ?? 0) + sent;
+      addShipsAt(target, ally, sent);
       const existing = defenders.find(([id]) => id === ally);
       if (existing) existing[1] += sent;
       else defenders.push([ally, sent]);
@@ -3358,13 +3365,13 @@ function resolveBattle(
         assault: 0, garrison: 0, garrisonEffective: 0,
         attackers: sideOf(attackShare, attackSnapshot),
         defenders: sideOf(
-          new Map(defenders.map(([id]) => [id, target.ships[id] ?? 0])),
+          new Map(defenders.map(([id]) => [id, hullsAt(target, id)])),
           defendSnapshot,
         ),
         note,
       });
       attackSnapshot = new Map(attackShare);
-      defendSnapshot = new Map(defenders.map(([id]) => [id, target.ships[id] ?? 0]));
+      defendSnapshot = new Map(defenders.map(([id]) => [id, hullsAt(target, id)]));
     };
     // Only reported when it CHANGED the outcome: a crusading power that was
     // never asked to retreat did not do anything worth telling the player.
@@ -3384,11 +3391,11 @@ function resolveBattle(
       for (const [id, present] of defenders) {
         const escaped = bleed(present);
         lost += present - escaped;
-        delete target.ships[id];
+        setShipsAt(target, id, 0);
         const refuge = fleetBases(state, id).find(
           (x) => x.id !== target.id && x.controllerFactionId === id,
         );
-        if (refuge && escaped > 0) refuge.ships[id] = (refuge.ships[id] ?? 0) + escaped;
+        if (refuge && escaped > 0) addShipsAt(refuge, id, escaped);
       }
       const broke = `${defenders.map(([id]) => nameOf(id)).join(' and ')} breaks off over ${target.name}, losing ${lost} ships between them.`;
       notes.push(broke);
@@ -3404,7 +3411,7 @@ function resolveBattle(
         const fallback = order.path[Math.max(0, order.path.length - 2)] ?? order.originId;
         const refuge = state.systems.find((x) => x.id === fallback);
         if (refuge && escaped > 0) {
-          refuge.ships[order.factionId] = (refuge.ships[order.factionId] ?? 0) + escaped;
+          addShipsAt(refuge, order.factionId, escaped);
         }
       }
       const note = `${coalition}'s attack on ${target.name} is driven off by its defenders, losing ${lost} ships.`;
@@ -3426,8 +3433,8 @@ function resolveBattle(
             ? remaining
             : Math.min(remaining, Math.round((present / defenceForce) * defenceLeft));
         remaining -= share;
-        if (share > 0) target.ships[id] = share;
-        else delete target.ships[id];
+        if (share > 0) setShipsAt(target, id, share);
+        else setShipsAt(target, id, 0);
       });
       attackForce = attackLeft;
       defenceForce = defenceLeft;

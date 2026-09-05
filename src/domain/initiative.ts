@@ -1,6 +1,8 @@
 import { neighboursOf, shortestPath } from './graph.js';
 import { isTreatyLive } from './diplomacy.js';
 import {
+  hullsAt,
+  presentAt,
   fleetStrengthOf,
   ledgerFor,
   SHIP_COST,
@@ -65,7 +67,10 @@ const sys = (s: WorldState, id: string): StarSystem | undefined =>
   s.systems.find((x) => x.id === id);
 export const held = (s: WorldState, me: string): StarSystem[] =>
   s.systems.filter((x) => x.controllerFactionId === me);
-const shipsAt = (s: WorldState, id: string, me: string): number => sys(s, id)?.ships[me] ?? 0;
+const shipsAt = (s: WorldState, id: string, me: string): number => {
+  const at = sys(s, id);
+  return at ? hullsAt(at, me) : 0;
+};
 const purse = (s: WorldState, me: string): number =>
   s.factions.find((f) => f.id === me)?.credits ?? 0;
 
@@ -194,7 +199,7 @@ const vigil: Bot = (ctx) => {
 
   const target = frontier(ctx.state, ctx.me)
     .map((t) => {
-      const defence = t.garrison + Object.entries(t.ships)
+      const defence = t.garrison + presentAt(t)
         .filter(([id]) => id !== ctx.me)
         .reduce((n, [, v]) => n + v, 0);
       return { t, defence, prize: t.strategicValue };

@@ -15,10 +15,10 @@ import { z } from 'zod';
  * they cannot disagree about how big a ship is, and everything that imposes a
  * limit based on fleet size is denominated in tons.
  *
- * The rates are chosen so a line hull is **exactly what a ship was before this
+ * The rates are chosen so a battleship is **exactly what a ship was before this
  * existed**: 4 tons at `CREDITS_PER_TON` is 60, the old `SHIP_COST`, and 4 tons
  * at `UPKEEP_PER_TON` is 4, the old `UPKEEP_PER_FLEET_POINT`. A galaxy of
- * nothing but line hulls therefore plays identically, which is what makes the
+ * nothing but battleships therefore plays identically, which is what makes the
  * migration to a typed record a change with no balance argument in it.
  *
  * ## Tonnage is not combat weight, and conflating them is the trap
@@ -38,20 +38,20 @@ import { z } from 'zod';
  * hull at half the tonnage, which made them **twice** as efficient per ton, per
  * credit and per point of upkeep — escort spam, with the only downside being
  * that they die first, which barely matters when you are winning. Weight is now
- * superlinear in tonnage for warships, so a line hull is the better fighter on
+ * superlinear in tonnage for warships, so a battleship is the better fighter on
  * every axis and an escort's compensation is entirely that it is *spent first*.
  *
  * That is the same lesson `tradeEthic` and `warEthic` both taught: a difference
  * expressed only as a number gets solved once and then ignored.
  */
 
-export const HULL_CLASSES = ['line', 'escort', 'torpedo_boat', 'lifter'] as const;
+export const HULL_CLASSES = ['battleship', 'escort', 'torpedo_boat', 'lifter'] as const;
 export const HullClassSchema = z.enum(HULL_CLASSES);
 export type HullClass = (typeof HULL_CLASSES)[number];
 
-/** Credits per ton of hull. `line` is 4 tons, so a line hull costs 60. */
+/** Credits per ton of hull. `line` is 4 tons, so a battleship costs 60. */
 export const CREDITS_PER_TON = 15;
-/** Upkeep per ton per turn. `line` is 4 tons, so a line hull costs 4 a turn. */
+/** Upkeep per ton per turn. `line` is 4 tons, so a battleship costs 4 a turn. */
 export const UPKEEP_PER_TON = 1;
 
 /** Ground troops one lifter puts on a world. */
@@ -88,7 +88,7 @@ export const HULL_SPEC: Record<HullClass, HullSpec> = {
   // École boat, and the reason destroyers were originally called "torpedo boat
   // destroyers". It strikes past the screen rather than adding to the line.
   torpedo_boat: { tonnage: 2, orbitalWeight: 1, carry: 0, lossOrder: 1, label: 'torpedo boat' },
-  line: { tonnage: 4, orbitalWeight: 3, carry: 0, lossOrder: 2, label: 'line hull' },
+  battleship: { tonnage: 4, orbitalWeight: 3, carry: 0, lossOrder: 2, label: 'battleship' },
   // Useless in orbit and the only way to take ground. High carry is what pays
   // for that uselessness.
   lifter: { tonnage: 3, orbitalWeight: 0, carry: LIFTER_CARRY, lossOrder: 3, label: 'lifter' },
@@ -103,7 +103,7 @@ export const hullUpkeep = (hull: HullClass): number => HULL_SPEC[hull].tonnage *
  * A faction's ships at one place, by class.
  *
  * Accepts the **bare number** every save and journal written before classes
- * existed carries, and normalises it to a stack of line hulls — so an old
+ * existed carries, and normalises it to a stack of battleships — so an old
  * campaign replays as the game it was played as rather than being refused.
  */
 const count = z.number().int().min(0).optional();
@@ -115,7 +115,7 @@ const count = z.number().int().min(0).optional();
  * test pins these keys against `HULL_CLASSES` so the two cannot drift.
  */
 const TypedStackSchema = z.object({
-  line: count,
+  battleship: count,
   escort: count,
   torpedo_boat: count,
   lifter: count,
@@ -123,7 +123,7 @@ const TypedStackSchema = z.object({
 
 export const ShipStackSchema = z
   .union([z.number().int().min(0), TypedStackSchema])
-  .transform((v): Partial<Record<HullClass, number>> => (typeof v === 'number' ? { line: v } : v));
+  .transform((v): Partial<Record<HullClass, number>> => (typeof v === 'number' ? { battleship: v } : v));
 
 /** The keys `ShipStackSchema` accepts. Exported so a test can hold it to `HULL_CLASSES`. */
 export const STACK_KEYS = Object.keys(TypedStackSchema.shape) as HullClass[];

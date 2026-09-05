@@ -1,3 +1,4 @@
+import { hullsAt, setShipsAt } from '../src/domain/state.js';
 import { describe, expect, it } from 'vitest';
 import { createSeedState } from '../src/seed/scenario.js';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
@@ -20,10 +21,10 @@ import type { WorldState } from '../src/domain/state.js';
 function contested(squatters = 3, relief = 9): { state: WorldState; world: string; from: string } {
   const s = createSeedState('hutt');
   const world = s.systems.find((x) => x.controllerFactionId === 'hutt')!;
-  world.ships.vigil = squatters;
+  setShipsAt(world, 'vigil', squatters);
   const from = neighboursOf(s, world.id).find((n) => n !== world.id)!;
   const base = s.systems.find((x) => x.id === from)!;
-  base.ships.hutt = relief;
+  setShipsAt(base, 'hutt', relief);
   return { state: s, world: world.id, from };
 }
 
@@ -42,7 +43,7 @@ describe('a holder can clear rivals out of its own orbit', () => {
     const sys = after.systems.find((x) => x.id === world)!;
 
     // The squatters were engaged, not walked past.
-    expect(sys.ships.vigil ?? 0).toBeLessThan(3);
+    expect(hullsAt(sys, 'vigil')).toBeLessThan(3);
     expect(after.eventLog.some((e) => /clears the orbitals/.test(e.text))).toBe(true);
   });
 
@@ -90,7 +91,7 @@ describe('a holder can clear rivals out of its own orbit', () => {
 
     const after = arrive(s, from, world, 10);
     const sys = after.systems.find((x) => x.id === world)!;
-    expect(sys.ships.vigil).toBe(3);
+    expect(hullsAt(sys, 'vigil')).toBe(3);
     expect(after.eventLog.some((e) => /clears the orbitals/.test(e.text))).toBe(false);
   });
 
@@ -118,7 +119,7 @@ describe('a holder can clear rivals out of its own orbit', () => {
     const { state, world, from } = contested(9, 4);
     const after = arrive(state, from, world, 1);
     const sys = after.systems.find((x) => x.id === world)!;
-    expect(sys.ships.vigil ?? 0).toBeGreaterThan(0);
+    expect(hullsAt(sys, 'vigil')).toBeGreaterThan(0);
     expect(sys.controllerFactionId).toBe('hutt');
   });
 });

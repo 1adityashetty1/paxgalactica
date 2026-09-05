@@ -933,10 +933,10 @@ decision. The design below is settled; step 0 is built.
 
 ### Tonnage is the single primitive
 
-`CREDITS_PER_TON` 15 and `UPKEEP_PER_TON` 1 are chosen so a **line hull is
+`CREDITS_PER_TON` 15 and `UPKEEP_PER_TON` 1 are chosen so a **battleship is
 exactly what a ship was before classes existed** — 4 tons is 60 credits, the old
 `SHIP_COST`, and 4 a turn, the old `UPKEEP_PER_FLEET_POINT`. A galaxy of nothing
-but line hulls plays identically, which is what makes the migration a change
+but battleships plays identically, which is what makes the migration a change
 with no balance argument in it.
 
 Everything that limits a fleet by size is now denominated in tons: upkeep,
@@ -950,7 +950,7 @@ exactly the same presence per credit.
 
 ### Two traps this design already fell into
 
-**Escort spam.** The first table gave escorts a line hull's `orbitalWeight` at
+**Escort spam.** The first table gave escorts a battleship's `orbitalWeight` at
 half the tonnage — twice as efficient per ton, per credit *and* per point of
 upkeep, with the only downside being that they die first, which barely matters
 when you are winning. Weight is now superlinear in tonnage for warships: a line
@@ -991,7 +991,7 @@ escorts a better story: destroyers were originally *torpedo boat destroyers*.
 
 0. **Type `ships` to a class record, `line` only.** Behaviour-neutral. **DONE:**
    `src/domain/hulls.ts` plus 16 tests. `ShipStackSchema` accepts the bare
-   number every old save and journal carries and normalises it to line hulls, so
+   number every old save and journal carries and normalises it to battleships, so
    an old campaign replays as the game it was played as.
 1. **`lifter`** — invasion becomes a composed fleet. No new phases: the orbital
    phase counts weight, the ground phase counts lift.
@@ -1038,7 +1038,7 @@ escorts a better story: destroyers were originally *torpedo boat destroyers*.
 
   A fifth pass, driven by auditing the rendered set rather than the source:
 
-  - The line hull's turret is a **hard-raked trapezoid with the gun set into
+  - The battleship's turret is a **hard-raked trapezoid with the gun set into
     its face**, chosen from four candidates on the same hull. An earlier pick
     was a *stepped* turret — a broad base rising to a raised block, which is a
     two-tier superstructure and therefore the castle back under another name.
@@ -1047,7 +1047,7 @@ escorts a better story: destroyers were originally *torpedo boat destroyers*.
     detail asked for earlier.
   - **One drive, not two**, and every ship now tapers its nozzle *away* from
     the hull. The lifter's used to widen away, so three ships held two opposite
-    ideas of what an engine is. The line hull's is inset from the stern edges:
+    ideas of what an engine is. The battleship's is inset from the stern edges:
     at full depth it swallowed the raked stern corners and the back of the ship
     read as a flat edge.
   - The lifter has a **blunt bow** (a point read faintly warship-ish on the one

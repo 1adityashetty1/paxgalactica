@@ -14,6 +14,8 @@ import {
 } from '../src/domain/development.js';
 import { DURATION_CATEGORIES } from '../src/domain/duration.js';
 import {
+  hullsAt,
+  setShipsAt,
   ledgerFor,
   maxCommitmentIncomeFor,
   SHIP_COST,
@@ -200,7 +202,7 @@ describe('garrison work, told apart from passive regrowth', () => {
 describe('hulls from a construction programme', () => {
   it('delivers them at the target, and bills them exactly once', () => {
     const state = fresh();
-    const before = sys(state, 'slu-2').ships['meridian'] ?? 0;
+    const before = hullsAt(sys(state, 'slu-2'), 'meridian');
     const issued = applyOps(
       state,
       [
@@ -221,7 +223,7 @@ describe('hulls from a construction programme', () => {
 
     const atIssue = fac(issued.state, 'meridian').credits;
     const finished = runOut(issued.state);
-    expect(sys(finished, 'slu-2').ships['meridian']).toBe(before + 3);
+    expect(hullsAt(sys(finished, 'slu-2'), 'meridian')).toBe(before + 3);
     // Income and upkeep move credits over five turns, so the assertion that
     // matters is that DELIVERY did not charge again: the hulls arrived without
     // a second SHIP_COST debit landing on the completion turn.
@@ -274,8 +276,8 @@ describe('the payload is bounded in code, not in a prompt', () => {
 
   it('refuses a payload on a movement order without stripping the origin of ships', () => {
     const state = fresh();
-    sys(state, 'slu-2').ships['meridian'] = 6;
-    const before = sys(state, 'slu-2').ships['meridian'];
+    setShipsAt(sys(state, 'slu-2'), 'meridian', 6);
+    const before = hullsAt(sys(state, 'slu-2'), 'meridian');
     const out = applyOps(
       state,
       [
@@ -291,7 +293,7 @@ describe('the payload is bounded in code, not in a prompt', () => {
     expect(out.rejections[0]!.code).toBe('illegal_value');
     // The rejection has to happen BEFORE the movement branch draws ships off
     // the origin, or a refused order would quietly delete a fleet.
-    expect(sys(out.state, 'slu-2').ships['meridian']).toBe(before);
+    expect(hullsAt(sys(out.state, 'slu-2'), 'meridian')).toBe(before);
     expect(out.state.pendingOrders).toHaveLength(0);
   });
 
@@ -306,7 +308,7 @@ describe('the payload is bounded in code, not in a prompt', () => {
   it('allows works on an unaligned world a fleet is sitting on', () => {
     const state = fresh();
     const neutral = state.systems.find((s) => s.controllerFactionId === null)!;
-    neutral.ships['meridian'] = 4;
+    setShipsAt(neutral, 'meridian', 4);
     fac(state, 'meridian').credits = 6000;
     const out = applyOps(state, [develop(neutral.id, 1)], 'model', 'meridian');
     expect(out.rejections).toHaveLength(0);
@@ -426,10 +428,10 @@ describe('a world that changes hands mid-programme', () => {
       'model',
       'meridian',
     );
-    const before = sys(issued.state, 'slu-2').ships['meridian'] ?? 0;
+    const before = hullsAt(sys(issued.state, 'slu-2'), 'meridian');
     sys(issued.state, 'slu-2').controllerFactionId = 'vigil';
     const finished = runOut(issued.state);
-    expect(sys(finished, 'slu-2').ships['meridian'] ?? 0).toBe(before);
+    expect(hullsAt(sys(finished, 'slu-2'), 'meridian')).toBe(before);
     expect(finished.eventLog.some((e) => /yards were lost with the world/.test(e.text))).toBe(true);
   });
 });

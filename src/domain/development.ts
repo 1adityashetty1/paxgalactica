@@ -1,6 +1,7 @@
 import { DEFAULT_COVERT_EFFECT, type AgentMission } from './diplomacy.js';
 import type { DurationCategory } from './duration.js';
 import {
+  addShipsAt,
   ledgerFor,
   SHIP_COST,
   type OrderEffect,
@@ -477,7 +478,7 @@ export function applyOrderEffect(
           delivered: false,
         };
       }
-      system.ships[factionId] = (system.ships[factionId] ?? 0) + effect.magnitude;
+      addShipsAt(system, factionId, effect.magnitude);
       return {
         note: `${label} completed at ${system.name}: ${effect.magnitude} hull${effect.magnitude === 1 ? '' : 's'} commissioned.`,
         delivered: true,

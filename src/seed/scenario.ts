@@ -338,7 +338,9 @@ function buildSystems(): StarSystem[] {
     hyperlaneEdges: [...(edges.get(s.id) ?? [])].sort(),
     // A controller starts with a token squadron in orbit, scaled to how much
     // the world is worth holding. Nobody starts contested.
-    ships: s.controller ? { [s.controller]: startingShips(s) } : {},
+    // A controller's opening squadron is line hulls: the seed predates classes
+    // and the game it describes is the one that was played.
+    ships: s.controller ? { [s.controller]: { battleship: startingShips(s) } } : {},
   }));
 }
 

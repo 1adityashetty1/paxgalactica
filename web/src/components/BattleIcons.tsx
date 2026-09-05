@@ -34,7 +34,7 @@ interface IconProps {
 }
 
 /**
- * A line hull: a capital ship. Long tapering wedge, castle aft, drives astern.
+ * A battleship: a capital ship. Long tapering wedge, castle aft, drives astern.
  *
  * This glyph replaced the dart, which now belongs to the escort. The dart is a
  * small nimble thing and always read as one — fine while every ship in the game
@@ -52,7 +52,7 @@ interface IconProps {
  * castle gone it read as a stray mark rather than as structure.
  *
  * Also the generic warship glyph. A stack from a save written before classes
- * existed normalises to line hulls, so a caller that just wants "ships" is
+ * existed normalises to battleships, so a caller that just wants "ships" is
  * right to get this one.
  */
 export function ShipIcon({ size = 18, title }: IconProps) {
@@ -146,7 +146,7 @@ export function GarrisonIcon({ size = 18, title }: IconProps) {
  *   tail flare dominated the hull, and at row size it was a dash with a blob.
  * - A **hull with the tube slung over it** read as **two stacked bars**, which
  *   is not a vessel.
- * - A **wet-navy battleship** for the line hull — flat deck, turrets amidships —
+ * - A **wet-navy battleship** for the battleship — flat deck, turrets amidships —
  *   was perfectly legible and the wrong genre. See `ShipIcon`.
  * - A **single chevron** for the escort read as a UI "next" arrow rather than a
  *   ship, and the doubled chevron that replaced it was legible but still a
@@ -174,7 +174,7 @@ export function GarrisonIcon({ size = 18, title }: IconProps) {
  * An escort: pointed hull, swept wings, engine block astern.
  *
  * This is the original warship glyph, and it belongs here rather than on the
- * line hull — it always read as something small and quick, which is what an
+ * battleship — it always read as something small and quick, which is what an
  * escort is. It replaced a doubled chevron that was legible but **abstract**:
  * every other glyph in this set is a vessel, and a mark among ships reads as an
  * interface affordance rather than a class.
@@ -293,7 +293,7 @@ export function HullIcon({
   hull,
   size = 18,
   title,
-}: IconProps & { hull: 'line' | 'escort' | 'torpedo_boat' | 'lifter' }) {
+}: IconProps & { hull: 'battleship' | 'escort' | 'torpedo_boat' | 'lifter' }) {
   switch (hull) {
     case 'escort':
       return <EscortIcon size={size} title={title} />;
@@ -301,7 +301,7 @@ export function HullIcon({
       return <TorpedoBoatIcon size={size} title={title} />;
     case 'lifter':
       return <LifterIcon size={size} title={title} />;
-    case 'line':
+    case 'battleship':
       return <ShipIcon size={size} title={title} />;
   }
 }
