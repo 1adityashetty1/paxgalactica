@@ -1,4 +1,20 @@
 import { z } from 'zod';
+import {
+  CREDITS_PER_TON,
+  HULL_SPEC,
+  HullClassSchema,
+  ShipStackSchema,
+  UPKEEP_PER_TON,
+  hullsIn,
+  mergeStacks,
+  normaliseStack,
+  takeHulls,
+  inLossOrder,
+  orbitalWeightOf,
+  tonsIn,
+  type HullClass,
+  type ShipStack,
+} from './hulls.js';
 import { FactionStatsSchema, STAT_NAMES, statModifier, type FactionStats } from './checks.js';
 import {
   COMMITMENT_INCOME_BASE,
@@ -246,7 +262,7 @@ export const SystemSchema = z.object({
    * system contested and what splits its income: a rival parked in orbit is
    * taking a cut whether or not anyone has fired.
    */
-  ships: z.record(z.string(), z.number().int().min(0)).default({}),
+  ships: z.record(z.string(), ShipStackSchema).default({}),
 });
 export type StarSystem = z.infer<typeof SystemSchema>;
 
@@ -275,10 +291,26 @@ export const OrderEffectSchema = z.object({
    * rejection costs a correction round trip, where a trim costs a note.
    */
   magnitude: z.number().int().min(1).max(99),
+  /**
+   * Which class `commission_ships` lays down. Ignored by every other kind.
+   *
+   * A yard builds what it is told to build, and what it is told to build is
+   * the difference between a programme that can take a world and one that can
+   * only win the space over it.
+   */
+  hull: HullClassSchema.default('battleship'),
   /** One clause, shown to the player in the orders panel and the briefing. */
   summary: z.string().max(160).default(''),
 });
 export type OrderEffect = z.infer<typeof OrderEffectSchema>;
+/**
+ * The shape a payload is WRITTEN in, before defaults are filled.
+ *
+ * Same reason `OpInput` exists: `OrderEffect` is the parsed shape, so every
+ * field with a `.default()` is required on it — right for reading a payload off
+ * an order, wrong for writing one down in a fixture or a hand-built batch.
+ */
+export type OrderEffectInput = z.input<typeof OrderEffectSchema>;
 export type OrderEffectKind = OrderEffect['kind'];
 
 export const PendingOrderSchema = z.object({
@@ -301,9 +333,16 @@ export const PendingOrderSchema = z.object({
   path: z.array(z.string()).default([]),
   /**
    * Ships committed to a movement order, in transit and counted toward the
-   * owner's fleet but present in no system. Zero for non-movement work.
+   * owner's fleet but present in no system. Empty for non-movement work.
+   *
+   * A **composed** force rather than a count, because the ground phase asks a
+   * question a total cannot answer: an invasion needs lift, and a fleet that is
+   * all guns can sterilise a world's orbitals and take nothing. Accepts the
+   * bare number every order written before classes existed carries, exactly as
+   * `system.ships` does, so an old campaign replays as the game it was played
+   * as.
    */
-  force: z.number().int().min(0).default(0),
+  force: ShipStackSchema.default({}),
   /**
    * What this programme delivers on completion, already trimmed to its cap and
    * already paid for. Absent for work whose effect lands elsewhere — a courier
@@ -413,15 +452,139 @@ export function dispositionBetween(
 /* ------------------------------------------------------------------ */
 
 /** Ships a faction has sitting in a given system. */
+/**
+ * A faction's ships at one world, by class. Never undefined.
+ *
+ * Every read and write of `system.ships` goes through the four functions below,
+ * which is what keeps the stack invariant true everywhere: no zero entries, no
+ * empty stacks, and no way for a caller to leave a class behind by writing a
+ * bare total over a mixed force.
+ */
+export function stackAt(system: StarSystem, factionId: string): ShipStack {
+  return system.ships[factionId] ?? {};
+}
+
+/** Hulls of every class. What a player counts. */
+export function hullsAt(system: StarSystem, factionId: string): number {
+  return hullsIn(system.ships[factionId]);
+}
+
+/** Tons. What every rule that limits a fleet by size counts. */
+export function tonsAt(system: StarSystem, factionId: string): number {
+  return tonsIn(system.ships[factionId]);
+}
+
+/** What this force is worth in an orbital exchange — zero for pure lift. */
+export function orbitalWeightAt(system: StarSystem, factionId: string): number {
+  return orbitalWeightOf(system.ships[factionId]);
+}
+
+/** Everyone present, as `[factionId, hulls]`, skipping empty stacks. */
+export function presentAt(system: StarSystem): [string, number][] {
+  return Object.entries(system.ships ?? {})
+    .map(([id, stack]) => [id, hullsIn(stack)] as [string, number])
+    .filter(([, n]) => n > 0);
+}
+
+/**
+ * Add hulls of one class.
+ *
+ * Written through `normaliseStack`, so the key order of a stack is a function
+ * of what is in it and never of the order it was built in. That is not
+ * cosmetic: `verifyReplay` compares `JSON.stringify` of live state against
+ * replayed state, and JSON preserves insertion order — so a fleet assembled as
+ * battleships-then-escorts and one assembled as escorts-then-battleships
+ * compared as DIFFERENT worlds while holding identical ships. It surfaced the
+ * moment the doctrine bots began buying three classes in varying order, and it
+ * would have surfaced sooner or later as a replay divergence nobody could
+ * explain, since every value on both sides matched.
+ */
+export function addShipsAt(
+  system: StarSystem,
+  factionId: string,
+  count: number,
+  hull: HullClass = 'battleship',
+): void {
+  if (count <= 0) return;
+  const stack = { ...stackAt(system, factionId) };
+  stack[hull] = (stack[hull] ?? 0) + count;
+  system.ships[factionId] = normaliseStack(stack);
+}
+
+/** Add a whole composed force. */
+export function addStackAt(system: StarSystem, factionId: string, stack: ShipStack): void {
+  const merged = mergeStacks(stackAt(system, factionId), stack);
+  if (hullsIn(merged) === 0) delete system.ships[factionId];
+  else system.ships[factionId] = merged;
+}
+
+/** Put an exact stack in place of whatever was there. */
+export function setStackAt(system: StarSystem, factionId: string, stack: ShipStack): void {
+  const next = normaliseStack(stack);
+  if (hullsIn(next) === 0) delete system.ships[factionId];
+  else system.ships[factionId] = next;
+}
+
+/**
+ * Take `hulls` ships out of a system, cheapest first, and say what went.
+ *
+ * The counterpart of `setShipsAt` for callers that have to report what they
+ * destroyed rather than only what survived.
+ */
+export function takeShipsAt(system: StarSystem, factionId: string, hulls: number): ShipStack {
+  const { taken, left } = takeHulls(stackAt(system, factionId), hulls);
+  setStackAt(system, factionId, left);
+  return taken;
+}
+
+/**
+ * Set the TOTAL hull count, adding or removing to reach it.
+ *
+ * Removing spends classes in `lossOrder` — the screen, then the lift arm, then
+ * torpedo boats, then the battle line — which is the whole of an escort's job
+ * and the reason a fleet without one arrives at a contested world with its
+ * transports already dead. Zero clears the entry entirely, so `presentAt` and
+ * the income split never see a faction that is not there.
+ */
+export function setShipsAt(
+  system: StarSystem,
+  factionId: string,
+  total: number,
+  hull: HullClass = 'battleship',
+): void {
+  const want = Math.max(0, Math.floor(total));
+  if (want === 0) {
+    delete system.ships[factionId];
+    return;
+  }
+  const stack = { ...stackAt(system, factionId) };
+  const have = hullsIn(stack);
+  if (want > have) {
+    stack[hull] = (stack[hull] ?? 0) + (want - have);
+  } else if (want < have) {
+    let toRemove = have - want;
+    for (const cls of inLossOrder(stack)) {
+      if (toRemove <= 0) break;
+      const taken = Math.min(toRemove, stack[cls] ?? 0);
+      const left = (stack[cls] ?? 0) - taken;
+      if (left === 0) delete stack[cls];
+      else stack[cls] = left;
+      toRemove -= taken;
+    }
+  }
+  system.ships[factionId] = normaliseStack(stack);
+}
+
 export function shipsAt(state: WorldState, factionId: string, systemId: string): number {
-  return getSystem(state, systemId)?.ships[factionId] ?? 0;
+  const system = getSystem(state, systemId);
+  return system ? hullsAt(system, factionId) : 0;
 }
 
 /** Ships a faction has in transit, committed to movement orders. */
 export function shipsInTransit(state: WorldState, factionId: string): number {
   return state.pendingOrders
     .filter((o) => o.factionId === factionId && isMovementType(o.type))
-    .reduce((sum, o) => sum + o.force, 0);
+    .reduce((sum, o) => sum + hullsIn(o.force), 0);
 }
 
 /**
@@ -430,8 +593,24 @@ export function shipsInTransit(state: WorldState, factionId: string): number {
  * so combat, income and upkeep cannot disagree about how many there are.
  */
 export function fleetStrengthOf(state: WorldState, factionId: string): number {
-  const inSystems = state.systems.reduce((sum, s) => sum + (s.ships[factionId] ?? 0), 0);
+  const inSystems = state.systems.reduce((sum, s) => sum + (hullsAt(s, factionId)), 0);
   return inSystems + shipsInTransit(state, factionId);
+}
+
+/**
+ * The same navy weighed rather than counted.
+ *
+ * **Tons are what every rule that limits a fleet by size reads** — upkeep, the
+ * yards' bill, insolvency attrition, the price of a suborned crew. Hulls are
+ * what a player counts, and the two must not be confused: three escorts and a
+ * battleship are four ships either way, but ten tons against twelve.
+ */
+export function fleetTonsOf(state: WorldState, factionId: string): number {
+  const inSystems = state.systems.reduce((sum, s) => sum + tonsAt(s, factionId), 0);
+  const inTransit = state.pendingOrders
+    .filter((o) => o.factionId === factionId && isMovementType(o.type))
+    .reduce((sum, o) => sum + tonsIn(o.force), 0);
+  return inSystems + inTransit;
 }
 
 /**
@@ -440,11 +619,11 @@ export function fleetStrengthOf(state: WorldState, factionId: string): number {
  */
 export function fleetBases(state: WorldState, factionId: string): StarSystem[] {
   return state.systems
-    .filter((s) => s.controllerFactionId === factionId || (s.ships[factionId] ?? 0) > 0)
+    .filter((s) => s.controllerFactionId === factionId || (hullsAt(s, factionId)) > 0)
     .sort(
       (a, b) =>
         b.strategicValue - a.strategicValue ||
-        (b.ships[factionId] ?? 0) - (a.ships[factionId] ?? 0) ||
+        (hullsAt(b, factionId)) - (hullsAt(a, factionId)) ||
         a.id.localeCompare(b.id),
     );
 }
@@ -463,22 +642,34 @@ export function fleetBases(state: WorldState, factionId: string): StarSystem[] {
  * losing a lane hurts and not so much that one blockade ends a campaign.
  */
 export const INCOME_PER_STRATEGIC_POINT = 7;
-/** Credits each point of fleet strength costs to keep in being, per turn. */
+/**
+ * Credits a battleship costs to keep in being, per turn.
+ *
+ * Kept as the anchor the tonnage rates were chosen against — `UPKEEP_PER_TON`
+ * times a battleship's four tons is exactly this — so the number the economy
+ * was balanced around is still stated once, in the place the balance argument
+ * was made. Upkeep itself is billed per ton.
+ */
 export const UPKEEP_PER_FLEET_POINT = 4;
 
 /**
- * What one hull costs to commission.
+ * What a battleship costs to commission — four tons at `CREDITS_PER_TON`.
  *
  * Priced against the economy it is paid from: net incomes run 87–300 a turn,
- * so this buys between one and five ships per turn from revenue. Expanding a
- * navy is therefore a multi-turn programme competing with everything else,
- * rather than a sentence in an order.
+ * so this buys between one and five capital ships per turn from revenue.
+ * Expanding a navy is therefore a multi-turn programme competing with
+ * everything else, rather than a sentence in an order.
+ *
+ * **Derived rather than stated**, since classes exist: the yards bill by
+ * displacement, and a constant that could disagree with the rate it was chosen
+ * against is the drift this whole design is trying to remove. Kept because it
+ * is still the anchor other prices are argued against.
  *
  * Enforced in the reducer, never in a prompt. "Build a thousand ships" is
  * exactly the kind of instruction a model can be argued into, which is why the
  * arithmetic lives here instead.
  */
-export const SHIP_COST = 60;
+export const SHIP_COST = HULL_SPEC.battleship.tonnage * CREDITS_PER_TON;
 
 /**
  * What each live operative costs its owner per turn.
@@ -581,8 +772,19 @@ export interface SystemIncome {
   byTreaty: string[];
 }
 
+/**
+ * Who is in orbit and how much of them there is.
+ *
+ * Weighed in TONS rather than counted, because the contest is over how much
+ * force is sitting on the world: three escorts do not extract what three
+ * battleships do. Hull counts would also make the cheapest class the efficient
+ * way to skim a rival's income, which is exactly the exploit per-ton pricing
+ * exists to close.
+ */
 const shipsPresent = (system: StarSystem): [string, number][] =>
-  Object.entries(system.ships ?? {}).filter(([, n]) => n > 0);
+  Object.entries(system.ships ?? {})
+    .map(([id, stack]) => [id, tonsIn(stack)] as [string, number])
+    .filter(([, t]) => t > 0);
 
 /**
  * Treaties that make a fleet a GUEST rather than an intruder.
@@ -672,7 +874,7 @@ export function systemIncome(state: WorldState, system: StarSystem): SystemIncom
       const HOLDER_EDGE = 2;
       const weights: [string, number][] = [
         // At least 1, so an owner with no ships in orbit still administers.
-        [controller, Math.max(1, system.ships?.[controller] ?? 0) * HOLDER_EDGE],
+        [controller, Math.max(1, tonsAt(system!, controller)) * HOLDER_EDGE],
         ...rivals,
       ];
       const total = weights.reduce((sum, [, w]) => sum + w, 0);
@@ -744,7 +946,7 @@ export function ledgerFor(state: WorldState, factionId: string): Ledger {
   routes += earnings.monopolyPremium[factionId] ?? 0;
 
   const gross = territory + routes;
-  const upkeep = fleetStrengthOf(state, factionId) * UPKEEP_PER_FLEET_POINT;
+  const upkeep = fleetTonsOf(state, factionId) * UPKEEP_PER_TON;
 
   let treatyFlow = 0;
   for (const treaty of state.treaties ?? []) {
@@ -837,11 +1039,11 @@ export function subornLimit(state: WorldState, actorId: string, targetId: string
 export function canSubornAt(state: WorldState, factionId: string, systemId: string): boolean {
   const system = getSystem(state, systemId);
   if (!system) return false;
-  if ((system.ships[factionId] ?? 0) > 0) return true;
+  if ((hullsAt(system, factionId)) > 0) return true;
 
   const adjacent = buildAdjacency(state.systems).get(systemId) ?? new Set<string>();
   for (const id of adjacent) {
-    if ((getSystem(state, id)?.ships[factionId] ?? 0) > 0) return true;
+    if (shipsAt(state, factionId, id) > 0) return true;
   }
 
   return (state.agents ?? []).some(

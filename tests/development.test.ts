@@ -14,10 +14,12 @@ import {
 } from '../src/domain/development.js';
 import { DURATION_CATEGORIES } from '../src/domain/duration.js';
 import {
+  hullsAt,
+  setShipsAt,
   ledgerFor,
   maxCommitmentIncomeFor,
   SHIP_COST,
-  type OrderEffect,
+  type OrderEffectInput,
   type OrderEffectKind,
   type WorldState,
 } from '../src/domain/state.js';
@@ -27,6 +29,7 @@ import {
   MIN_COMMITMENT_INCOME_CEILING,
 } from '../src/domain/arbitration.js';
 import { HUB_THRESHOLD, tradeHubs, tradeRoutes } from '../src/domain/trade.js';
+import { CREDITS_PER_TON, HULL_SPEC } from '../src/domain/hulls.js';
 
 /**
  * Completed orders used to change nothing at all.
@@ -200,7 +203,7 @@ describe('garrison work, told apart from passive regrowth', () => {
 describe('hulls from a construction programme', () => {
   it('delivers them at the target, and bills them exactly once', () => {
     const state = fresh();
-    const before = sys(state, 'slu-2').ships['meridian'] ?? 0;
+    const before = hullsAt(sys(state, 'slu-2'), 'meridian');
     const issued = applyOps(
       state,
       [
@@ -221,7 +224,7 @@ describe('hulls from a construction programme', () => {
 
     const atIssue = fac(issued.state, 'meridian').credits;
     const finished = runOut(issued.state);
-    expect(sys(finished, 'slu-2').ships['meridian']).toBe(before + 3);
+    expect(hullsAt(sys(finished, 'slu-2'), 'meridian')).toBe(before + 3);
     // Income and upkeep move credits over five turns, so the assertion that
     // matters is that DELIVERY did not charge again: the hulls arrived without
     // a second SHIP_COST debit landing on the completion turn.
@@ -229,7 +232,19 @@ describe('hulls from a construction programme', () => {
   });
 
   it('prices hulls exactly as the yards price them, so a programme is no cheaper', () => {
-    expect(EFFECT_COST.commission_ships).toBe(SHIP_COST);
+    // Priced by displacement rather than by a per-hull constant, so it cannot
+    // disagree with the yards about what a class costs — a battleship
+    // programme still bills at `SHIP_COST` apiece.
+    expect(
+      priceOrderEffect(fresh(), sys(fresh(), 'ark-1'), 'freeworlds', {
+        kind: 'commission_ships', magnitude: 1, hull: 'battleship', summary: '',
+      }),
+    ).toBe(SHIP_COST);
+    expect(
+      priceOrderEffect(fresh(), sys(fresh(), 'ark-1'), 'freeworlds', {
+        kind: 'commission_ships', magnitude: 1, hull: 'lifter', summary: '',
+      }),
+    ).toBe(HULL_SPEC.lifter.tonnage * CREDITS_PER_TON);
   });
 });
 
@@ -274,8 +289,8 @@ describe('the payload is bounded in code, not in a prompt', () => {
 
   it('refuses a payload on a movement order without stripping the origin of ships', () => {
     const state = fresh();
-    sys(state, 'slu-2').ships['meridian'] = 6;
-    const before = sys(state, 'slu-2').ships['meridian'];
+    setShipsAt(sys(state, 'slu-2'), 'meridian', 6);
+    const before = hullsAt(sys(state, 'slu-2'), 'meridian');
     const out = applyOps(
       state,
       [
@@ -291,7 +306,7 @@ describe('the payload is bounded in code, not in a prompt', () => {
     expect(out.rejections[0]!.code).toBe('illegal_value');
     // The rejection has to happen BEFORE the movement branch draws ships off
     // the origin, or a refused order would quietly delete a fleet.
-    expect(sys(out.state, 'slu-2').ships['meridian']).toBe(before);
+    expect(hullsAt(sys(out.state, 'slu-2'), 'meridian')).toBe(before);
     expect(out.state.pendingOrders).toHaveLength(0);
   });
 
@@ -306,7 +321,7 @@ describe('the payload is bounded in code, not in a prompt', () => {
   it('allows works on an unaligned world a fleet is sitting on', () => {
     const state = fresh();
     const neutral = state.systems.find((s) => s.controllerFactionId === null)!;
-    neutral.ships['meridian'] = 4;
+    setShipsAt(neutral, 'meridian', 4);
     fac(state, 'meridian').credits = 6000;
     const out = applyOps(state, [develop(neutral.id, 1)], 'model', 'meridian');
     expect(out.rejections).toHaveLength(0);
@@ -378,7 +393,7 @@ describe('the payload is bounded in code, not in a prompt', () => {
         state,
         site,
         'meridian',
-        { kind, magnitude: 99, summary: '' },
+        { kind, magnitude: 99, hull: 'battleship', summary: '' },
         10_000_000,
       );
       expect(trimmed!.effect.magnitude).toBe(EFFECT_CAPS[kind]);
@@ -426,10 +441,10 @@ describe('a world that changes hands mid-programme', () => {
       'model',
       'meridian',
     );
-    const before = sys(issued.state, 'slu-2').ships['meridian'] ?? 0;
+    const before = hullsAt(sys(issued.state, 'slu-2'), 'meridian');
     sys(issued.state, 'slu-2').controllerFactionId = 'vigil';
     const finished = runOut(issued.state);
-    expect(sys(finished, 'slu-2').ships['meridian'] ?? 0).toBe(before);
+    expect(hullsAt(sys(finished, 'slu-2'), 'meridian')).toBe(before);
     expect(finished.eventLog.some((e) => /yards were lost with the world/.test(e.text))).toBe(true);
   });
 });
@@ -742,13 +757,13 @@ describe('payloads are bounded by the check that carried them', () => {
 
   it('halves on a partial, because "reduced" was never enforced', () => {
     const out = boundPayloadsToOutcome([order(2)], 'partial');
-    expect((out.ops[0] as { onComplete: OrderEffect }).onComplete.magnitude).toBe(1);
+    expect((out.ops[0] as { onComplete: OrderEffectInput }).onComplete.magnitude).toBe(1);
     expect(out.notes[0]).toMatch(/partial/i);
   });
 
   it('never floors a partial to nothing', () => {
     const out = boundPayloadsToOutcome([order(1)], 'partial');
-    expect((out.ops[0] as { onComplete: OrderEffect }).onComplete.magnitude).toBe(1);
+    expect((out.ops[0] as { onComplete: OrderEffectInput }).onComplete.magnitude).toBe(1);
     expect(out.notes).toHaveLength(0);
   });
 
@@ -764,7 +779,7 @@ describe('payloads are bounded by the check that carried them', () => {
   it('does not mutate the ops it was given', () => {
     const ops = [order(4)];
     boundPayloadsToOutcome(ops, 'partial');
-    expect((ops[0] as { onComplete: OrderEffect }).onComplete.magnitude).toBe(4);
+    expect((ops[0] as { onComplete: OrderEffectInput }).onComplete.magnitude).toBe(4);
   });
 
   it('ignores ops that are not orders with payloads', () => {

@@ -11,7 +11,9 @@ import {
   worldAsSeenBy,
 } from '../src/domain/intel.js';
 import { DURATION_CATEGORIES } from '../src/domain/duration.js';
-import { fleetStrengthOf, shipsInTransit, type OrderType, type WorldState } from '../src/domain/state.js';
+import {
+  hullsAt,
+  setShipsAt, fleetStrengthOf, shipsInTransit, type OrderType, type WorldState } from '../src/domain/state.js';
 
 /**
  * Intelligence, from the player's side.
@@ -82,7 +84,7 @@ describe('what presence buys, and what it does not', () => {
   /** Give `hutt` a hull at the Free Worlds capital, so the world is in its space. */
   const withShips = (s: WorldState): WorldState => {
     const sys = s.systems.find((x) => x.id === FOREIGN)!;
-    sys.ships.hutt = 3;
+    setShipsAt(sys, 'hutt', 3);
     return s;
   };
 
@@ -112,7 +114,7 @@ describe('what presence buys, and what it does not', () => {
       // interesting case rather than an awkward one: the hulls ARE visible in
       // `system.ships`, and the order still is not.
       const staged = s.systems.find((x) => x.id === 'kes-2')!;
-      staged.ships.freeworlds = 4;
+      setShipsAt(staged, 'freeworlds', 4);
       s = applyOps(s, [
         {
           op: 'issue_order',
@@ -130,7 +132,7 @@ describe('what presence buys, and what it does not', () => {
       expect(seeOne(s), `${t} on a world hutt controls`).toBe('rumour');
       // The ships are not redacted, and should not be: you can see raiders
       // gathering without knowing a raid is the plan.
-      expect(s.systems.find((x) => x.id === 'kes-2')!.ships.freeworlds).toBe(4);
+      expect(hullsAt(s.systems.find((x) => x.id === 'kes-2')!, 'freeworlds')).toBe(4);
     }
   });
 
@@ -234,7 +236,7 @@ describe('the acting power can choose to be seen', () => {
 describe('redaction does not corrupt fleet arithmetic', () => {
   it('keeps every faction’s fleet total exact under a redacted view', () => {
     let s = seed();
-    const origin = s.systems.find((x) => (x.ships.freeworlds ?? 0) > 1)!;
+    const origin = s.systems.find((x) => (hullsAt(x, 'freeworlds')) > 1)!;
     s = applyOps(s, [
       {
         op: 'issue_order',

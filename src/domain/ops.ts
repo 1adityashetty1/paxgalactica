@@ -7,6 +7,7 @@ import {
   TreatyTypeSchema,
 } from './diplomacy.js';
 import { FibScaleSchema } from './duration.js';
+import { HullClassSchema, TypedStackSchema } from './hulls.js';
 import {
   OnInterruptSchema,
   OrderEffectSchema,
@@ -43,6 +44,8 @@ export const AdjustFleetOp = z.object({
   op: z.literal('adjust_fleet'),
   factionId: z.string().min(1),
   delta: z.number().int(),
+  /** Which class the yards lay down. Ignored when `delta` is a loss. */
+  hull: HullClassSchema.default('battleship'),
   reason: z.string().default(''),
 });
 
@@ -106,8 +109,15 @@ export const IssueOrderOp = z.object({
   /**
    * Ships committed, for `fleet_movement` only. Omit to send everything at the
    * origin. Clamped to what is actually there.
+   *
+   * Either a plain count — drawn proportionally across the classes berthed
+   * there, so the squadron that sails is the squadron that was standing — or a
+   * named composition, `{ "battleship": 8, "lifter": 4 }`, which is the only
+   * way to say "guns but no transports" or the reverse. **A world is taken by
+   * the lift arm**, so a fleet ordered out with no lifters can win the
+   * orbitals and take nothing.
    */
-  force: z.number().int().min(1).optional(),
+  force: z.union([z.number().int().min(1), TypedStackSchema]).optional(),
   interruptible: z.boolean().default(true),
   onInterrupt: OnInterruptSchema.default('cancel'),
   visibility: z.array(z.string()).default([]),
@@ -196,6 +206,16 @@ export const AdjustShipsOp = z.object({
   systemId: z.string().min(1),
   factionId: z.string().min(1),
   delta: z.number().int(),
+  /**
+   * Which class. Laying down escorts, torpedo boats or lift is how a fleet
+   * becomes composed rather than merely large — and **a world can only be
+   * taken by lifters**, so a power that builds nothing but battleships can
+   * win every battle and annex nothing.
+   *
+   * Defaults to `battleship`, which is what every op written before classes
+   * existed meant.
+   */
+  hull: HullClassSchema.default('battleship'),
   reason: z.string().default(''),
 });
 

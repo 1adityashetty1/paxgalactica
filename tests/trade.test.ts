@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import {
+  hullsAt,
+  setShipsAt,
   ledgerFor,
   subornLimit,
   systemIncome,
@@ -206,7 +208,7 @@ describe('every commercial doctrine differs measurably', () => {
     // broker other powers' ceasefires rather than merely approve of them.
     const calm = fresh();
     const closed = fresh();
-    sys(closed, 'kes-2').ships['vigil'] = 9;
+    setShipsAt(sys(closed, 'kes-2'), 'vigil', 9);
     const blockaded = tickTurn(
       applyOps(closed, [
         {
@@ -222,7 +224,7 @@ describe('every commercial doctrine differs measurably', () => {
 describe('blockade', () => {
   const blockading = (blocker: string, at: string, from: string) => {
     const state = fresh();
-    sys(state, at).ships[blocker] = 9;
+    setShipsAt(sys(state, at), blocker, 9);
     const issued = applyOps(state, [
       {
         op: 'issue_order', factionId: blocker, type: 'blockade',
@@ -281,7 +283,7 @@ describe('blockade', () => {
 
   it('ends the moment the blockading fleet is gone', () => {
     const state = blockading('vigil', 'kes-2', 'tio-3');
-    delete sys(state, 'kes-2').ships['vigil'];
+    setShipsAt(sys(state, 'kes-2'), 'vigil', 0);
     const res = tickTurn(state);
     expect(res.state.pendingOrders.filter((o) => o.type === 'blockade')).toHaveLength(0);
     expect(res.notes.join(' ')).toMatch(/no longer has ships/);
@@ -291,7 +293,7 @@ describe('blockade', () => {
 describe('commerce raiding', () => {
   const raiding = () => {
     const state = fresh('krayt');
-    sys(state, 'kes-3').ships['krayt'] = 6;
+    setShipsAt(sys(state, 'kes-3'), 'krayt', 6);
     const issued = applyOps(state, [
       {
         op: 'issue_order', factionId: 'krayt', type: 'commerce_raiding',
@@ -317,7 +319,7 @@ describe('commerce raiding', () => {
 
     // kes-4 is unaligned and adjacent to the Nar-held kes-3.
     const lurking = fresh('krayt');
-    sys(lurking, 'kes-4').ships['krayt'] = 6;
+    setShipsAt(sys(lurking, 'kes-4'), 'krayt', 6);
     const near = applyOps(lurking, [
       {
         op: 'issue_order', factionId: 'krayt', type: 'commerce_raiding',
@@ -329,7 +331,7 @@ describe('commerce raiding', () => {
 
   it('lets a weak power raid a stronger one it could never beat in orbit', () => {
     const state = fresh('krayt');
-    sys(state, 'kes-4').ships['krayt'] = 6;
+    setShipsAt(sys(state, 'kes-4'), 'krayt', 6);
     const raiding = tickTurn(
       applyOps(state, [
         {
@@ -355,7 +357,7 @@ describe('commerce raiding', () => {
     const asSmuggler = ledgerFor(raiding(), 'krayt').raided;
     const state = fresh('krayt');
     fac(state, 'krayt').tradeEthic = 'autarkic';
-    sys(state, 'kes-3').ships['krayt'] = 6;
+    setShipsAt(sys(state, 'kes-3'), 'krayt', 6);
     const plain = tickTurn(
       applyOps(state, [
         {
@@ -380,7 +382,7 @@ describe('commerce raiding', () => {
   it('spares a trade accord partner', () => {
     const state = fresh('krayt');
     state.treaties.push(pact('trade_accord', ['krayt', 'hutt']));
-    sys(state, 'kes-3').ships['krayt'] = 6;
+    setShipsAt(sys(state, 'kes-3'), 'krayt', 6);
     const raided = tickTurn(
       applyOps(state, [
         {
@@ -398,7 +400,7 @@ describe('commerce raiding', () => {
     // only an unexpected pirate pays a reputation for it.
     const raidWith = (factionId: string, from: string, at: string) => {
       const state = fresh(factionId);
-      sys(state, at).ships[factionId] = 6;
+      setShipsAt(sys(state, at), factionId, 6);
       let s2 = applyOps(state, [
         {
           op: 'issue_order', factionId, type: 'commerce_raiding',
@@ -425,7 +427,7 @@ describe('commerce raiding', () => {
 
   it('ends when the raiding squadron is destroyed', () => {
     const state = raiding();
-    delete sys(state, 'kes-3').ships['krayt'];
+    setShipsAt(sys(state, 'kes-3'), 'krayt', 0);
     expect(tickTurn(state).state.pendingOrders.filter((o) => o.type === 'commerce_raiding')).toHaveLength(0);
   });
 });
@@ -437,7 +439,7 @@ describe('treaties with mechanical force', () => {
     const send = (withRights: boolean) => {
       const state = fresh();
       if (withRights) state.treaties.push(pact('basing_rights', ['freeworlds', 'meridian']));
-      sys(state, 'ark-4').ships['freeworlds'] = 20;
+      setShipsAt(sys(state, 'ark-4'), 'freeworlds', 20);
       return untilArrived(
         applyOps(state, [
           {
@@ -455,20 +457,20 @@ describe('treaties with mechanical force', () => {
     expect(welcomed.notes.join(' ')).toMatch(/puts in at .* under basing rights/);
     const port = welcomed.state.systems.find((s) => s.id === 'slu-1')!;
     expect(port.controllerFactionId).toBe('meridian');
-    expect(port.ships['freeworlds']).toBe(8);
+    expect(hullsAt(port, 'freeworlds')).toBe(8);
   });
 
   it('brings pledged hulls to the battle', () => {
     const state = fresh('vigil');
     state.treaties.push(pact('mutual_defense', ['meridian', 'hutt'], { hutt: 12 }));
-    sys(state, 'tio-3').ships['vigil'] = 30;
+    setShipsAt(sys(state, 'tio-3'), 'vigil', 30);
     // Count only the Nars' OWN worlds. The global total is a battle outcome —
     // how many of the pledged hulls survived — which is a die roll, not the
     // property being tested.
     const atHome = (s: WorldState) =>
       s.systems
         .filter((x) => x.controllerFactionId === 'hutt')
-        .reduce((n, x) => n + (x.ships['hutt'] ?? 0), 0);
+        .reduce((n, x) => n + (hullsAt(x, 'hutt')), 0);
     const before = atHome(state);
 
     const res = untilArrived(
@@ -490,7 +492,7 @@ describe('treaties with mechanical force', () => {
       applyOps(
         (() => {
           const bare = fresh('vigil');
-          sys(bare, 'tio-3').ships['vigil'] = 30;
+          setShipsAt(sys(bare, 'tio-3'), 'vigil', 30);
           return bare;
         })(),
         [
@@ -501,14 +503,14 @@ describe('treaties with mechanical force', () => {
         ],
       ).state,
     );
-    const huttTotal = (s: WorldState) => s.systems.reduce((n, x) => n + (x.ships['hutt'] ?? 0), 0);
+    const huttTotal = (s: WorldState) => s.systems.reduce((n, x) => n + (hullsAt(x, 'hutt')), 0);
     expect(huttTotal(res.state)).toBeLessThan(huttTotal(withoutPact.state));
   });
 
   it('does not call in a pledge against the pledger', () => {
     const state = fresh('hutt');
     state.treaties.push(pact('mutual_defense', ['meridian', 'hutt'], { hutt: 12 }));
-    sys(state, 'kes-1').ships['hutt'] = 30;
+    setShipsAt(sys(state, 'kes-1'), 'hutt', 30);
     const res = untilArrived(
       applyOps(state, [
         {
@@ -526,7 +528,7 @@ describe('treaties with mechanical force', () => {
     const before = Object.fromEntries(
       state.factions.map((f) => [f.id, f.disposition['vigil'] ?? 0]),
     );
-    sys(state, 'tio-3').ships['vigil'] = 30;
+    setShipsAt(sys(state, 'tio-3'), 'vigil', 30);
 
     const res = untilArrived(
       applyOps(state, [
@@ -549,7 +551,7 @@ describe('treaties with mechanical force', () => {
   it('costs nothing extra to attack someone you never swore peace with', () => {
     const state = fresh('vigil');
     const before = fac(state, 'krayt').disposition['vigil'] ?? 0;
-    sys(state, 'tio-3').ships['vigil'] = 30;
+    setShipsAt(sys(state, 'tio-3'), 'vigil', 30);
     const res = untilArrived(
       applyOps(state, [
         {
@@ -566,8 +568,8 @@ describe('trade stays deterministic', () => {
   it('replays a blockaded, raided galaxy identically', () => {
     const build = () => {
       let state = fresh('krayt');
-      sys(state, 'kes-3').ships['krayt'] = 6;
-      sys(state, 'kes-2').ships['vigil'] = 9;
+      setShipsAt(sys(state, 'kes-3'), 'krayt', 6);
+      setShipsAt(sys(state, 'kes-2'), 'vigil', 9);
       state = applyOps(state, [
         {
           op: 'issue_order', factionId: 'krayt', type: 'commerce_raiding',
@@ -701,7 +703,7 @@ describe('arbitration: rulings the op vocabulary cannot express', () => {
 
 describe('suborning crews: presence and a stat contest, not a sentence', () => {
   const totalShips = (s: WorldState, f: string) =>
-    s.systems.reduce((n, x) => n + (x.ships[f] ?? 0), 0);
+    s.systems.reduce((n, x) => n + (hullsAt(x, f)), 0);
 
   /** The op shape a playtest actually produced, as the acting faction. */
   const suborn = (s: WorldState, at: string, from: string, n: number, actor = 'krayt') =>
@@ -724,7 +726,7 @@ describe('suborning crews: presence and a stat contest, not a sentence', () => {
 
   it('allows it where you have ships, capped by guile against resolve', () => {
     const state = fresh('krayt');
-    sys(state, 'kes-2').ships['krayt'] = 3;
+    setShipsAt(sys(state, 'kes-2'), 'krayt', 3);
     const limit = subornLimit(state, 'krayt', 'hutt');
     expect(limit).toBeGreaterThan(0);
 
@@ -751,7 +753,7 @@ describe('suborning crews: presence and a stat contest, not a sentence', () => {
     // Iron Vigil resolve 17, Arkanis 19. Their crews do not defect, which is
     // what a defining stat ought to mean.
     const state = fresh('krayt');
-    sys(state, 'tio-3').ships['krayt'] = 5;
+    setShipsAt(sys(state, 'tio-3'), 'krayt', 5);
     expect(subornLimit(state, 'krayt', 'vigil')).toBe(0);
     const res = suborn(state, 'tio-3', 'vigil', 3);
     expect(res.rejections.map((r) => r.code)).toContain('illegal_value');
@@ -812,12 +814,12 @@ describe('the defection agent mission', () => {
 
   it('moves hulls across rather than destroying them', () => {
     const { state } = withAgent(2);
-    const huttBefore = state.systems.reduce((n, s) => n + (s.ships['hutt'] ?? 0), 0);
-    const kraytBefore = state.systems.reduce((n, s) => n + (s.ships['krayt'] ?? 0), 0);
+    const huttBefore = state.systems.reduce((n, s) => n + (hullsAt(s, 'hutt')), 0);
+    const kraytBefore = state.systems.reduce((n, s) => n + (hullsAt(s, 'krayt')), 0);
 
     const after = tickTurn(state).state;
-    const huttAfter = after.systems.reduce((n, s) => n + (s.ships['hutt'] ?? 0), 0);
-    const kraytAfter = after.systems.reduce((n, s) => n + (s.ships['krayt'] ?? 0), 0);
+    const huttAfter = after.systems.reduce((n, s) => n + (hullsAt(s, 'hutt')), 0);
+    const kraytAfter = after.systems.reduce((n, s) => n + (hullsAt(s, 'krayt')), 0);
 
     expect(huttBefore - huttAfter).toBeGreaterThan(0);
     expect(kraytAfter - kraytBefore).toBe(huttBefore - huttAfter);
@@ -826,9 +828,9 @@ describe('the defection agent mission', () => {
   it('never exceeds the stat contest, however greedy the effect', () => {
     const { state } = withAgent(4);
     const limit = subornLimit(state, 'krayt', 'hutt');
-    const before = state.systems.reduce((n, s) => n + (s.ships['hutt'] ?? 0), 0);
+    const before = state.systems.reduce((n, s) => n + (hullsAt(s, 'hutt')), 0);
     const after = tickTurn(state).state;
-    expect(before - after.systems.reduce((n, s) => n + (s.ships['hutt'] ?? 0), 0)).toBeLessThanOrEqual(limit);
+    expect(before - after.systems.reduce((n, s) => n + (hullsAt(s, 'hutt')), 0)).toBeLessThanOrEqual(limit);
   });
 
   it('charges for the hulls, so it is not a free shipyard', () => {
@@ -840,9 +842,9 @@ describe('the defection agent mission', () => {
 
   it('finds no takers against a resolute power', () => {
     const { state } = withAgent(3, 'vigil', 'tio-3');
-    const before = state.systems.reduce((n, s) => n + (s.ships['vigil'] ?? 0), 0);
+    const before = state.systems.reduce((n, s) => n + (hullsAt(s, 'vigil')), 0);
     const res = tickTurn(state);
-    expect(res.state.systems.reduce((n, s) => n + (s.ships['vigil'] ?? 0), 0)).toBe(before);
+    expect(res.state.systems.reduce((n, s) => n + (hullsAt(s, 'vigil')), 0)).toBe(before);
     expect(res.state.eventLog.some((e) => /find no takers/.test(e.text))).toBe(true);
   });
 
@@ -924,8 +926,8 @@ describe('an invited fleet is a guest, not a rival', () => {
     // world it is sitting on, which is the safe default in `resolveBattle`.
     const state = fresh('vigil');
     state.treaties.push(pact('basing_rights', ['meridian', 'freeworlds']));
-    sys(state, 'slu-1').ships['freeworlds'] = 20;
-    sys(state, 'ark-2').ships['vigil'] = 12;
+    setShipsAt(sys(state, 'slu-1'), 'freeworlds', 20);
+    setShipsAt(sys(state, 'ark-2'), 'vigil', 12);
     const res = untilArrived(
       applyOps(state, [
         {
@@ -942,14 +944,14 @@ describe('an invited fleet is a guest, not a rival', () => {
 
 describe('suborning is statecraft, not combat', () => {
   const totalShips = (s: WorldState, f: string) =>
-    s.systems.reduce((n, x) => n + (x.ships[f] ?? 0), 0);
+    s.systems.reduce((n, x) => n + (hullsAt(x, f)), 0);
   const disp = (s: WorldState, a: string, b: string) =>
     s.factions.find((f) => f.id === a)!.disposition[b] ?? 0;
 
   /** Drajk lurking at the unaligned kes-4, which is adjacent to Nar kes-3. */
   const fromNextDoor = (n = 3) => {
     const state = fresh('krayt');
-    sys(state, 'kes-4').ships['krayt'] = 8;
+    setShipsAt(sys(state, 'kes-4'), 'krayt', 8);
     return {
       before: state,
       res: applyOps(
@@ -1015,7 +1017,7 @@ describe('suborning is statecraft, not combat', () => {
 
   it('is still refused from two jumps away', () => {
     const state = fresh('krayt');
-    sys(state, 'kes-6').ships['krayt'] = 20; // kes-6 is not adjacent to kes-2
+    setShipsAt(sys(state, 'kes-6'), 'krayt', 20); // kes-6 is not adjacent to kes-2
     const res = applyOps(
       state,
       [{ op: 'adjust_ships', systemId: 'kes-2', factionId: 'hutt', delta: -3 }],

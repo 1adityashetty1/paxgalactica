@@ -1,14 +1,32 @@
 import { neighboursOf, shortestPath } from './graph.js';
 import { isTreatyLive } from './diplomacy.js';
 import {
+  hullsAt,
+  presentAt,
   fleetStrengthOf,
+  fleetTonsOf,
   ledgerFor,
-  SHIP_COST,
-  UPKEEP_PER_FLEET_POINT,
+  stackAt,
   getFaction,
   type StarSystem,
   type WorldState,
 } from './state.js';
+import {
+  CREDITS_PER_TON,
+  HULL_CLASSES,
+  battleshipEquivalents,
+  HULL_SPEC,
+  UPKEEP_PER_TON,
+  describeStack,
+  drawProportional,
+  drawToWeight,
+  hullsIn,
+  mergeStacks,
+  normaliseStack,
+  subtractStack,
+  type HullClass,
+  type ShipStack,
+} from './hulls.js';
 import { routeEarnings, tradeRoutes } from './trade.js';
 
 /**
@@ -65,7 +83,10 @@ const sys = (s: WorldState, id: string): StarSystem | undefined =>
   s.systems.find((x) => x.id === id);
 export const held = (s: WorldState, me: string): StarSystem[] =>
   s.systems.filter((x) => x.controllerFactionId === me);
-const shipsAt = (s: WorldState, id: string, me: string): number => sys(s, id)?.ships[me] ?? 0;
+const shipsAt = (s: WorldState, id: string, me: string): number => {
+  const at = sys(s, id);
+  return at ? hullsAt(at, me) : 0;
+};
 const purse = (s: WorldState, me: string): number =>
   s.factions.find((f) => f.id === me)?.credits ?? 0;
 
@@ -82,6 +103,33 @@ function frontier(s: WorldState, me: string): StarSystem[] {
 }
 
 /**
+ * How much of a bot's tonnage it keeps as lift, and the floor under that.
+ *
+ * A world is taken by the troops the lift arm lands, so a bot with no
+ * transports can win every orbital engagement in the galaxy and annex nothing.
+ *
+ * Sized from **the board rather than from the fleet**: enough for the largest
+ * landing it can currently see, twice over, so one costly assault does not end
+ * its offensive career. A fraction of tonnage was the first attempt and it is
+ * the wrong shape — lift is bought for a job, so a fraction means a power that
+ * has grown large hoards transports it will never use and pays upkeep on all of
+ * them. It also drags the fleet's fighting weight down, since a lifter
+ * contributes none: at a fifth of tonnage in lift and a matching screen a bot
+ * fields barely three quarters of the combat power its credits bought, which
+ * the harness reports as a galaxy where nobody attacks.
+ */
+const MIN_BOT_LIFTERS = 4;
+const BOT_LANDINGS_HELD = 2;
+
+/**
+ * How much more than the garrison a bot wants ashore before it commits.
+ *
+ * `DEFENSIVE_GARRISON_BONUS` is 1.5 and the roll swings either way, so landing
+ * exactly the garrison's worth of troops is a coin toss against half the map.
+ */
+const DUG_IN_MARGIN = 2;
+
+/**
  * Buy hulls toward a fleet the faction's income can actually carry.
  *
  * The first version of these bots bought every turn they could afford to, and
@@ -90,37 +138,158 @@ function frontier(s: WorldState, me: string): StarSystem[] {
  * hid the economy completely, because everyone ended up at the same place. A
  * player would stop; so does this.
  */
-function buy(ctx: Ctx, appetite: number, reserve: number): Ops {
+interface BuyDoctrine {
+  /** What the yards lay down once lift and screen are covered. */
+  line?: HullClass;
+  /**
+   * Whether to keep a screen at all.
+   *
+   * A screen is a defensive purchase — it brings a convoy home from a
+   * withdrawal — so a power whose whole doctrine is preying on fleets it cannot
+   * beat in orbit spends that tonnage on boats instead. Turning it off is the
+   * only way a poor power reaches the line at all: sized ton for ton with the
+   * lift arm, the screen ate every credit Drajk had spare for thirty turns and
+   * its yards never laid down a warship.
+   */
+  screen?: boolean;
+}
+
+function buy(ctx: Ctx, appetite: number, reserve: number, doctrine: BuyDoctrine = {}): Ops {
+  const line = doctrine.line ?? 'battleship';
   const ledger = ledgerFor(ctx.state, ctx.me);
-  const fleet = fleetStrengthOf(ctx.state, ctx.me);
-  // Gross income supports a fleet of gross/upkeep hulls. Spend `appetite` of
+  const tons = fleetTonsOf(ctx.state, ctx.me);
+  // Gross income supports a fleet of gross/upkeep TONS. Spend `appetite` of
   // that headroom, never past it.
-  const sustainable = Math.floor((ledger.gross * appetite) / UPKEEP_PER_FLEET_POINT);
-  const room = sustainable - fleet;
+  const sustainable = Math.floor((ledger.gross * appetite) / UPKEEP_PER_TON);
+  const room = sustainable - tons;
   if (room <= 0) return [];
 
-  const affordable = Math.floor(Math.max(0, purse(ctx.state, ctx.me) - reserve) / SHIP_COST);
-  const n = Math.min(room, affordable, 8);
-  return n > 0 ? [{ op: 'adjust_fleet', factionId: ctx.me, delta: n, reason: 'yards' }] : [];
+  const budget = Math.max(0, purse(ctx.state, ctx.me) - reserve);
+  const affordable = Math.floor(budget / CREDITS_PER_TON);
+  let tonsToSpend = Math.min(room, affordable, 8 * HULL_SPEC.battleship.tonnage);
+  if (tonsToSpend <= 0) return [];
+
+  // **A world is taken by the lift arm**, so a bot that only laid down
+  // battleships would sterilise its neighbours' orbitals for thirty turns and
+  // annex nothing. Lift is topped up first, to a fraction of the fleet rather
+  // than to a fixed number, so a small power is not spending its whole yard on
+  // transports and a large one keeps enough to mount more than one landing.
+  const ops: Ops = [];
+  const lift = lifterCount(ctx.state, ctx.me);
+  // Enough for the largest landing on this board, twice over. `sortie` sizes a
+  // landing the same way, so the yards and the fleet cannot disagree about what
+  // an invasion needs.
+  const biggest = frontier(ctx.state, ctx.me).reduce((n, t) => Math.max(n, t.garrison), 0);
+  const wantLift = Math.max(
+    MIN_BOT_LIFTERS,
+    Math.ceil((biggest * DUG_IN_MARGIN + 1) / HULL_SPEC.lifter.carry) * BOT_LANDINGS_HELD,
+  );
+  const lifterTons = HULL_SPEC.lifter.tonnage;
+  const buyLift = Math.min(Math.max(0, wantLift - lift), Math.floor(tonsToSpend / lifterTons));
+  if (buyLift > 0) {
+    ops.push({ op: 'adjust_fleet', factionId: ctx.me, delta: buyLift, hull: 'lifter', reason: 'lift' });
+    tonsToSpend -= buyLift * lifterTons;
+  }
+
+  // **A convoy has an escort.** The lift arm is soft — it dies before the
+  // battle line does — so a fleet that buys transports and no screen wins the
+  // orbital battle and arrives with nothing to land. Sized to match the lift
+  // it is protecting rather than to an expected loss, because a bot cannot
+  // know what it is about to run into; ton for ton with the convoy is the
+  // simplest statement of "escorted".
+  const screen = escortCount(ctx.state, ctx.me);
+  const wantScreen = doctrine.screen === false
+    ? 0
+    : Math.round(((lift + buyLift) * lifterTons) / HULL_SPEC.escort.tonnage);
+  const escortTons = HULL_SPEC.escort.tonnage;
+  const buyScreen = Math.min(
+    Math.max(0, wantScreen - screen),
+    Math.floor(tonsToSpend / escortTons),
+  );
+  if (buyScreen > 0) {
+    ops.push({ op: 'adjust_fleet', factionId: ctx.me, delta: buyScreen, hull: 'escort', reason: 'screen' });
+    tonsToSpend -= buyScreen * escortTons;
+  }
+
+  const buyLine = Math.floor(tonsToSpend / HULL_SPEC[line].tonnage);
+  if (buyLine > 0) {
+    ops.push({ op: 'adjust_fleet', factionId: ctx.me, delta: buyLine, hull: line, reason: 'yards' });
+  }
+  return ops;
+}
+
+/** Escorts a faction has, everywhere. */
+function escortCount(s: WorldState, me: string): number {
+  const inSystems = s.systems.reduce((n, sys) => n + (stackAt(sys, me).escort ?? 0), 0);
+  const inTransit = s.pendingOrders
+    .filter((o) => o.factionId === me && o.type === 'fleet_movement')
+    .reduce((n, o) => n + (o.force.escort ?? 0), 0);
+  return inSystems + inTransit;
+}
+
+/**
+ * How much a faction can actually fight with at one world, in
+ * **battleship-equivalents**.
+ *
+ * Every strength threshold in these bots was a hull count, calibrated when a
+ * hull was a battleship and nothing else — and a hull count is wrong the moment
+ * classes exist, because a cheap hull is still one hull. Measured twice, in the
+ * same shape both times:
+ *
+ * - counting **transports** as strength took the Vigil from six systems to ten
+ *   and reduced Meridian to one world at −126 net;
+ * - counting **escorts** would do it again, more quietly, since an escort is a
+ *   whole hull for a third of a battleship's weight.
+ *
+ * Battleship-equivalents are the unit the exchange itself compares, so a
+ * threshold means the same thing whatever is in the fleet — and in a galaxy of
+ * nothing but battleships it reads exactly as the hull count it replaces.
+ */
+function lineStrengthAt(s: WorldState, systemId: string, me: string): number {
+  const sys = s.systems.find((x) => x.id === systemId);
+  return sys ? battleshipEquivalents(stackAt(sys, me)) : 0;
+}
+
+/** The same, everywhere, including what is under way. */
+function lineStrength(s: WorldState, me: string): number {
+  const inSystems = s.systems.reduce((n, sys) => n + battleshipEquivalents(stackAt(sys, me)), 0);
+  const inTransit = s.pendingOrders
+    .filter((o) => o.factionId === me && o.type === 'fleet_movement')
+    .reduce((n, o) => n + battleshipEquivalents(o.force), 0);
+  return inSystems + inTransit;
+}
+
+/** Lifters a faction has, everywhere. *//** Lifters a faction has, everywhere. */
+function lifterCount(s: WorldState, me: string): number {
+  const inSystems = s.systems.reduce((n, sys) => n + (stackAt(sys, me).lifter ?? 0), 0);
+  const inTransit = s.pendingOrders
+    .filter((o) => o.factionId === me && o.type === 'fleet_movement')
+    .reduce((n, o) => n + (o.force.lifter ?? 0), 0);
+  return inSystems + inTransit;
 }
 
 /** Concentrate scattered hulls at one holding, so a blow can be struck. */
 function massAt(ctx: Ctx, whereId: string, want: number): Ops {
   const ops: Ops = [];
-  let owed = want - shipsAt(ctx.state, whereId, ctx.me);
+  let owed = want - lineStrengthAt(ctx.state, whereId, ctx.me);
   if (owed <= 0) return ops;
   for (const base of held(ctx.state, ctx.me)
     .filter((b) => b.id !== whereId)
-    .sort((a, b) => shipsAt(ctx.state, b.id, ctx.me) - shipsAt(ctx.state, a.id, ctx.me))) {
+    .sort((a, b) => lineStrengthAt(ctx.state, b.id, ctx.me) - lineStrengthAt(ctx.state, a.id, ctx.me))) {
     if (owed <= 0) break;
     // Leave a token garrison behind rather than stripping the world bare.
-    const spare = Math.max(0, shipsAt(ctx.state, base.id, ctx.me) - 4);
+    const spare = Math.max(0, lineStrengthAt(ctx.state, base.id, ctx.me) - 4);
     const take = Math.min(spare, owed);
     if (take <= 0) continue;
-    ops.push(
-      { op: 'adjust_ships', systemId: base.id, factionId: ctx.me, delta: -take },
-      { op: 'adjust_ships', systemId: whereId, factionId: ctx.me, delta: take },
-    );
+    // Class by class, so concentrating a fleet does not silently turn its
+    // transports into battleships on the way: a bare `adjust_ships` removes in
+    // loss order and adds battleships.
+    for (const [hull, n] of movedClasses(ctx.state, base.id, ctx.me, take)) {
+      ops.push(
+        { op: 'adjust_ships', systemId: base.id, factionId: ctx.me, delta: -n, hull },
+        { op: 'adjust_ships', systemId: whereId, factionId: ctx.me, delta: n, hull },
+      );
+    }
     owed -= take;
   }
   return ops;
@@ -128,8 +297,20 @@ function massAt(ctx: Ctx, whereId: string, want: number): Ops {
 
 /** Send `force` from the nearest holding that can supply the whole blow. */
 function sortie(ctx: Ctx, targetId: string, force: number, label: string): Ops {
+  // **Enough lift to take the place, or this is a raid.** A bot that sails
+  // with guns only wins the orbitals and hands the world back, which is how
+  // conquest quietly stops happening: the fleets still move, the map stops
+  // changing, and nothing in the logs says why.
+  const target = ctx.state.systems.find((x) => x.id === targetId);
+  const garrison = target?.garrison ?? 0;
+  const wantLift = Math.ceil((garrison * DUG_IN_MARGIN + 1) / HULL_SPEC.lifter.carry);
+
   const bases = held(ctx.state, ctx.me)
-    .filter((b) => shipsAt(ctx.state, b.id, ctx.me) >= force)
+    .filter(
+      (b) =>
+        lineStrengthAt(ctx.state, b.id, ctx.me) >= force &&
+        (stackAt(b, ctx.me).lifter ?? 0) >= wantLift,
+    )
     .sort(
       (a, b) =>
         (shortestPath(ctx.state.systems, a.id, targetId)?.length ?? 99) -
@@ -138,12 +319,33 @@ function sortie(ctx: Ctx, targetId: string, force: number, label: string): Ops {
     );
   const from = bases[0];
   if (!from || force <= 0) return [];
+  // Named explicitly rather than left to the proportional draw: the point of
+  // the sortie is that a stated weight of warship goes with a stated number of
+  // troops, and a proportion of whatever happened to be berthed is neither.
+  const here = stackAt(from, ctx.me);
+  const lifter = Math.min(wantLift, here.lifter ?? 0);
+  const warships = subtractStack(here, { lifter: here.lifter ?? 0 });
   return [
     {
       op: 'issue_order', factionId: ctx.me, type: 'fleet_movement',
-      originId: from.id, targetId, force, label,
+      originId: from.id, targetId,
+      force: mergeStacks(drawToWeight(warships, force), { lifter }),
+      label,
     },
   ];
+}
+
+/** Which classes a move of `take` hulls actually draws, keeping the shape. */
+function movedClasses(
+  s: WorldState,
+  systemId: string,
+  me: string,
+  take: number,
+): [HullClass, number][] {
+  const sys = s.systems.find((x) => x.id === systemId);
+  if (!sys) return [];
+  const drawn = drawProportional(stackAt(sys, me), take);
+  return HULL_CLASSES.filter((h) => (drawn[h] ?? 0) > 0).map((h) => [h, drawn[h]!]);
 }
 
 const hasOrder = (s: WorldState, me: string, type: string): boolean =>
@@ -194,9 +396,11 @@ const vigil: Bot = (ctx) => {
 
   const target = frontier(ctx.state, ctx.me)
     .map((t) => {
-      const defence = t.garrison + Object.entries(t.ships)
-        .filter(([id]) => id !== ctx.me)
-        .reduce((n, [, v]) => n + v, 0);
+      const defence =
+        t.garrison +
+        Object.entries(t.ships ?? {})
+          .filter(([id]) => id !== ctx.me)
+          .reduce((n, [id]) => n + lineStrengthAt(ctx.state, t.id, id), 0);
       return { t, defence, prize: t.strategicValue };
     })
     .filter(({ defence }) => defence > 0)
@@ -209,11 +413,11 @@ const vigil: Bot = (ctx) => {
     // all, and a crusader that never crusades tests nothing.
     const staging = held(ctx.state, ctx.me)
       .filter((b) => neighboursOf(ctx.state, b.id).includes(target.t.id))
-      .sort((a, b) => shipsAt(ctx.state, b.id, ctx.me) - shipsAt(ctx.state, a.id, ctx.me))[0];
+      .sort((a, b) => lineStrengthAt(ctx.state, b.id, ctx.me) - lineStrengthAt(ctx.state, a.id, ctx.me))[0];
     if (staging) {
-      if (shipsAt(ctx.state, staging.id, ctx.me) >= need) {
+      if (lineStrengthAt(ctx.state, staging.id, ctx.me) >= need) {
         ops.push(...sortie(ctx, target.t.id, need, `pacify ${target.t.name}`));
-      } else if (fleetStrengthOf(ctx.state, ctx.me) >= need + 8) {
+      } else if (lineStrength(ctx.state, ctx.me) >= need + 8) {
         ops.push(...massAt(ctx, staging.id, need));
       }
     }
@@ -276,11 +480,11 @@ const freeworlds: Bot = (ctx) => {
     const need = home.garrison * 3 + 4;
     const staging = held(ctx.state, ctx.me)
       .filter((b) => neighboursOf(ctx.state, b.id).includes(home.id))
-      .sort((a, b) => shipsAt(ctx.state, b.id, ctx.me) - shipsAt(ctx.state, a.id, ctx.me))[0];
+      .sort((a, b) => lineStrengthAt(ctx.state, b.id, ctx.me) - lineStrengthAt(ctx.state, a.id, ctx.me))[0];
     if (staging) {
-      if (shipsAt(ctx.state, staging.id, ctx.me) >= need) {
+      if (lineStrengthAt(ctx.state, staging.id, ctx.me) >= need) {
         ops.push(...sortie(ctx, home.id, need, `secure ${home.name}`));
-      } else if (fleetStrengthOf(ctx.state, ctx.me) >= need + 8) {
+      } else if (lineStrength(ctx.state, ctx.me) >= need + 8) {
         ops.push(...massAt(ctx, staging.id, need));
       }
     }
@@ -295,7 +499,14 @@ const freeworlds: Bot = (ctx) => {
  */
 const krayt: Bot = (ctx) => {
   const ops: Ops = [];
-  ops.push(...buy(ctx, 0.7, 150));
+  // **Boats, not a battle line.** The Jeune École answer to a power you cannot
+  // beat in orbit: cheap hulls that put their share of the fire through the
+  // screen and onto the capital ships, rather than a line that would simply
+  // lose to a richer one. It is the doctrine the Confederacy already has —
+  // *"borders are a fiction maintained by people with fleets"* — expressed in
+  // what its yards lay down, and it is what gives the class an owner in the
+  // harness the way each ethic has one.
+  ops.push(...buy(ctx, 0.7, 150, { line: 'torpedo_boat', screen: false }));
 
   // Park on the richest unaligned junction — trade nobody else is carrying.
   const lawless = ctx.state.systems
@@ -311,7 +522,7 @@ const krayt: Bot = (ctx) => {
   if (!hasOrder(ctx.state, ctx.me, 'commerce_raiding')) {
     const reachable = new Set<string>();
     for (const base of ctx.state.systems) {
-      if (shipsAt(ctx.state, base.id, ctx.me) < 4) continue;
+      if (lineStrengthAt(ctx.state, base.id, ctx.me) < 4) continue;
       reachable.add(base.id);
       for (const n of neighboursOf(ctx.state, base.id)) reachable.add(n);
     }
@@ -416,7 +627,12 @@ function describeProposal(state: WorldState, me: string, ops: Record<string, unk
     else if (op.op === 'adjust_ships' && Number(op.delta ?? 0) > 0) massed += Number(op.delta);
     else if (op.op === 'issue_order') {
       if (op.type === 'fleet_movement') {
-        parts.push(`sends ${op.force} hull(s) from ${where(op.originId)} against ${where(op.targetId)}`);
+        // `op.force` is a stack now, and interpolating one yields
+        // "[object Object]" — legal TypeScript, and it would put that in the
+        // event log the next reaction call reads back.
+        parts.push(
+          `sends ${describeStack(normaliseStack((op.force ?? {}) as ShipStack))} from ${where(op.originId)} against ${where(op.targetId)}`,
+        );
       } else if (op.type === 'blockade') {
         parts.push(`closes the lanes at ${where(op.targetId)}`);
       } else if (op.type === 'commerce_raiding') {

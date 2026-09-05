@@ -80,12 +80,17 @@ describe('an operative can actually be caught', () => {
     expect(exposed, 'surveillance never fired: the exposure test is dead again').toBeGreaterThan(0);
   });
 
+  // Four missions x 40 turns of real ticks, so this is genuinely a long test
+  // rather than a slow one — it sat a few milliseconds under the 5s default and
+  // tipped over the moment the reducer got 4% heavier. The timeout is raised to
+  // match the work; the alternative is a test that fails on a busy machine and
+  // teaches everyone to re-run it.
   it('catches every persistent mission within a long run', () => {
     for (const mission of ['surveillance', 'theft', 'sabotage', 'defection'] as const) {
       const { exposed } = run(mission, 40);
       expect(exposed, `${mission} was never exposed in 40 turns`).toBeGreaterThan(0);
     }
-  });
+  }, 20_000);
 
   it('keeps the safer mission in place longer than the riskier one', () => {
     // The ladder is the point: a watcher is rarely caught, a saboteur often is.

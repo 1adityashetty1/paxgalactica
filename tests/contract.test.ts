@@ -1,3 +1,4 @@
+import { setShipsAt } from '../src/domain/state.js';
 import { observeOrders } from '../src/domain/intel.js';
 import { describe, expect, it } from 'vitest';
 import {
@@ -34,7 +35,7 @@ const campaignWithTurn = () => {
 const campaignWithBattle = () => {
   const campaign = Campaign.start('krayt', 'contract-battle', new MemoryCampaignStore());
   const origin = campaign.state.systems.find((s) => s.id === 'ark-5')!;
-  origin.ships['krayt'] = 20;
+  setShipsAt(origin, 'krayt', 20);
   campaign.stage(
     [
       {

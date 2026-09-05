@@ -1,5 +1,5 @@
 import { shortestPath } from './graph.js';
-import type { StarSystem, WorldState } from './state.js';
+import { presentAt, type StarSystem, type WorldState } from './state.js';
 
 /**
  * Trade as a network on the hyperlane graph.
@@ -421,7 +421,7 @@ function distributeUnclaimed(
   spill: (n: number) => void,
 ): void {
   const system = state.systems.find((s) => s.id === systemId);
-  const present = Object.entries(system?.ships ?? {}).filter(([, n]) => n > 0);
+  const present = presentAt(system!);
   if (present.length === 0) {
     spill(amount);
     return;

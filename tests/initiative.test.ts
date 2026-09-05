@@ -1,3 +1,5 @@
+import { addShipsAt, setShipsAt, stackAt } from '../src/domain/state.js';
+import { HULL_CLASSES, carryOf, type ShipStack } from '../src/domain/hulls.js';
 import { describe, expect, it } from 'vitest';
 import { createSeedState } from '../src/seed/scenario.js';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
@@ -171,7 +173,7 @@ describe('the proposal itself', () => {
   it('returns null rather than manufacturing an opportunity', () => {
     // A faction with no fleet, no money and nothing adjacent has nothing to do.
     const s = seed();
-    for (const sys of s.systems) delete sys.ships.freeworlds;
+    for (const sys of s.systems) setShipsAt(sys, 'freeworlds', 0);
     s.factions.find((f) => f.id === 'freeworlds')!.credits = 0;
     const p = proposeFor(s, 'freeworlds');
     expect(p === null || p.ops.length > 0).toBe(true);
@@ -187,5 +189,101 @@ describe('the proposal itself', () => {
     const a = proposeFor(seed(), 'krayt');
     const b = proposeFor(seed(), 'krayt');
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  });
+});
+
+/**
+ * The bots judge strength by the battle line, not by the hull count.
+ *
+ * Every threshold in `initiative.ts` is a hull count calibrated when a hull was
+ * a battleship and nothing else. A lifter is a whole hull for three quarters of
+ * a battleship's price, so counting transports among them makes a fleet cross
+ * its own thresholds faster the more lift it buys — which is a bug in the
+ * bots' units, not a doctrine. Measured before the fix: the Vigil, which buys
+ * hardest, went from six systems to ten and reduced Meridian to one world.
+ */
+describe('lift is carried, not counted as strength', () => {
+  it('does not let transports talk a bot into an attack its line cannot make', () => {
+    const withLift = (lifters: number) => {
+      const s = createSeedState('freeworlds');
+      // A staging world next to a target, held well short of what the bot
+      // needs, then padded out with transports.
+      const staging = s.systems.find((x) => x.id === 'tio-3')!;
+      setShipsAt(staging, 'vigil', 6);
+      if (lifters > 0) addShipsAt(staging, 'vigil', lifters, 'lifter');
+      return (proposeFor(s, 'vigil')?.ops ?? []).some(
+        (op: Record<string, unknown>) =>
+          op.op === 'issue_order' && op.type === 'fleet_movement',
+      );
+    };
+    // Whatever the answer is with no lift, adding forty transports must not
+    // change it: they are cargo, not combat power.
+    expect(withLift(40)).toBe(withLift(0));
+  });
+
+  it('sails with enough lift to hold what it takes, or does not sail', () => {
+    const s = createSeedState('freeworlds');
+    // Every bot, and every world it proposes to attack.
+    for (const me of ['meridian', 'vigil', 'hutt', 'freeworlds', 'krayt']) {
+      const ops = ((proposeFor(s, me)?.ops ?? []) as Record<string, unknown>[]).filter(
+        (op) => op.op === 'issue_order' && op.type === 'fleet_movement',
+      ) as unknown as { force: ShipStack; targetId: string }[];
+      for (const op of ops) {
+        const target = s.systems.find((x) => x.id === op.targetId)!;
+        if (target.controllerFactionId === me || target.garrison <= 0) continue;
+        // Troops aboard beat the garrison it is being sent against.
+        expect(
+          carryOf(op.force),
+          `${me}'s sortie at ${op.targetId} cannot beat a garrison of ${target.garrison}`,
+        ).toBeGreaterThan(target.garrison);
+      }
+    }
+  });
+});
+
+/**
+ * Every class has an owner in the harness, the way every ethic does.
+ *
+ * A class nobody builds is a class nobody has measured — the same failure as a
+ * `tradeEthic` held by nobody, which is how `monopolist` stayed implemented,
+ * tested and dead for the life of the project.
+ */
+describe('the bots field composed navies', () => {
+  const played = (turns: number): WorldState => {
+    let s = createSeedState('freeworlds');
+    for (let t = 0; t < turns; t++) {
+      for (const id of ['freeworlds', 'hutt', 'krayt', 'meridian', 'vigil']) {
+        const ops = proposeFor(s, id)?.ops ?? [];
+        if (ops.length > 0) s = applyOps(s, ops as never[], 'model', id).state;
+      }
+      s = tickTurn(s).state;
+    }
+    return s;
+  };
+
+  it('puts every hull class on the board within a short run', () => {
+    const end = played(12);
+    const seen = new Set<string>();
+    for (const sys of end.systems) {
+      for (const stack of Object.values(sys.ships)) {
+        for (const [hull, n] of Object.entries(stack)) if ((n ?? 0) > 0) seen.add(hull);
+      }
+    }
+    expect([...seen].sort()).toEqual([...HULL_CLASSES].sort());
+  });
+
+  it('gives the Confederacy boats rather than a battle line it could not win with', () => {
+    const end = played(12);
+    const boats = end.systems.reduce((n, s) => n + (stackAt(s, 'krayt').torpedo_boat ?? 0), 0);
+    expect(boats).toBeGreaterThan(0);
+  });
+
+  it('keeps a screen over the convoy for the powers that mount landings', () => {
+    const end = played(12);
+    for (const id of ['meridian', 'vigil', 'hutt']) {
+      const lift = end.systems.reduce((n, s) => n + (stackAt(s, id).lifter ?? 0), 0);
+      const screen = end.systems.reduce((n, s) => n + (stackAt(s, id).escort ?? 0), 0);
+      if (lift > 0) expect(screen, `${id} sails its convoy unescorted`).toBeGreaterThan(0);
+    }
   });
 });

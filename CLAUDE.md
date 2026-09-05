@@ -354,14 +354,20 @@ can never pay out more than it is worth.
 
 ### Ships are bought, and a navy you cannot pay for shrinks
 
-`SHIP_COST` is **60 credits a hull**; `UPKEEP_PER_FLEET_POINT` is **4 a turn**,
-so a ship costs its purchase price again every fifteen turns. Against net
-incomes of 87–300, that buys one to five ships a turn from revenue — expansion
-is a programme, not a sentence in an order.
+`CREDITS_PER_TON` is **15**; `UPKEEP_PER_TON` is **1 a turn**. A battleship is
+four tons, so it costs **60** and **4 a turn** — the numbers the economy was
+balanced against, now derived rather than stated. A ship costs its purchase
+price again every fifteen turns. Against net incomes of 87–300, that buys one to
+five capital ships a turn from revenue — expansion is a programme, not a
+sentence in an order.
+
+**Everything is billed by displacement**, which closes an exploit by
+construction: a cheap class cannot become the efficient way to buy presence,
+because every class costs the same per ton. See "Ships have classes" below.
 
 Billing happens in `billConstruction`, a post-pass over each `applyOps` batch
-that compares hull counts before and after. Two consequences follow from
-billing the **net** rather than each op:
+that compares each faction's **tonnage** before and after. Two consequences
+follow from billing the **net** rather than each op:
 
 - Repositioning is free. `adjust_ships -5` here and `+5` there costs nothing,
   in either order, and issuing a `fleet_movement` is not read as scrapping the
@@ -387,13 +393,216 @@ a thousand ships" is exactly the instruction a model can be argued into
 emitting; `prompts/resolution.md` explains the prices, but nothing depends on
 the model honouring them.
 
-Each system carries `ships: Record<factionId, number>` — presence, distinct
-from `garrison` (dug-in defence) and from a faction's global `fleetStrength`.
+Each system carries `ships: Record<factionId, ShipStack>` — presence by class,
+distinct from `garrison` (dug-in defence) and from a faction's global
+`fleetStrength`. Every read and write goes through accessors in `state.ts`
+(`stackAt`, `hullsAt`, `tonsAt`, `orbitalWeightAt`, `presentAt`, `addShipsAt`,
+`setShipsAt`, `addStackAt`, `setStackAt`, `takeShipsAt`), which is what makes
+the stack invariant true rather than merely intended: **no zero entries, no
+empty stacks, and no way for a caller to write a bare total over a mixed force
+and silently lose a class.**
 
 `ledgerFor()` then rolls a faction's shares up, applies its trade-ethic
 multiplier, and subtracts fleet upkeep, flat treaty transfers (`treatyFlow`) and
 credits skimmed by hostile agents (`espionageLoss`). Applied to every faction
 during `tickTurn`, floored at zero.
+
+### Ships have classes, and tonnage is the unit every limit is measured in
+
+`src/domain/hulls.ts`. A fleet used to be a count, so every hull was identical,
+composition was not a decision, and "build ships" was the whole of naval
+strategy. It also meant *fleet size* was expressed five different ways — a count
+for upkeep, the same count for presence and the income contest, another for
+`subornLimit`, a fraction of it for insolvency attrition, and a flat `SHIP_COST`
+for buying and for suborned crews — five conventions that could drift apart and
+had no reason to agree.
+
+| class | tons | cost | upkeep | orbital weight | carry | loss order | job |
+|---|---|---|---|---|---|---|---|
+| **escort** | 2 | 30 | 2 | 1 | — | 0 | the screen, and the answer to boats |
+| **lifter** | 3 | 45 | 3 | **0** | **6** | 1 | the only way to take ground |
+| **torpedo boat** | 2 | 30 | 2 | 1 | — | 2 | strikes past a screen at the heaviest hulls |
+| **battleship** | 4 | 60 | 4 | 3 | — | 3 | the line; it wins the exchange |
+
+**Tonnage is the single primitive.** Cost, upkeep, insolvency attrition,
+`capSelfInflictedLosses`, the income contest and the price of a suborned crew
+are all denominated in tons. Two things deliberately are **not**: `subornLimit`
+and `SUBORN_DISPOSITION_COST`, which stay per **hull**, because a crew is a crew
+whatever it stands on — and denominating them in tons would have been a silent
+4x nerf dressed up as consistency.
+
+The rates are chosen so a battleship is **exactly what a ship was before classes
+existed**, which is what made the migration a change with no balance argument in
+it: a galaxy of nothing but battleships plays identically, and all 22 saved
+campaigns replay to the fleets and ledgers they had.
+
+**Tonnage is not combat weight, and conflating them is the trap.** Tonnage is
+how much ship there is; `orbitalWeight` is what it does in a fight. A lifter is
+a real vessel that takes up space, costs upkeep, contests a world's income and
+can be suborned — and is worth nothing in an exchange of fire. One number cannot
+say both.
+
+> **The first draft of this table was escort spam.** It gave escorts a
+> battleship's `orbitalWeight` at half the tonnage, making them twice as
+> efficient per ton, per credit *and* per point of upkeep, with the only
+> downside being that they die first — which barely matters when you are
+> winning. Weight is superlinear in tonnage for warships now, so a battleship is
+> the better fighter on every axis and an escort's whole compensation is that it
+> is spent first. Same lesson as `tradeEthic` and `warEthic`: a difference
+> expressed only as a number gets solved once and then ignored.
+
+### A world is taken by the lift arm
+
+The orbital phase counts **guns**; the ground phase counts the **troops the
+lifters put down**. `assault = lifters x LIFTER_CARRY`, where it used to be every
+hull in the coalition — a fleet of pure warships stormed a planet by flying at
+it. Three consequences:
+
+- **Conquest has a dedicated cost.** An all-warship fleet can sterilise a
+  system's orbitals and take nothing (`no_lift`).
+- **Losses fall on the lift arm**, so a hard-fought landing eats the transports
+  and conquest stays a recurring cost rather than a one-off purchase.
+- **The captured world's garrison is the troops that took it**, clamped to
+  `garrisonMax` — replacing "the conqueror keeps a fraction of the defender's
+  garrison", which was a fraction of the militia that had just been destroyed.
+
+`expansionist` had to be re-expressed rather than kept: there is no longer a
+share of the defender's garrison to keep more of. It now comes through the
+landing with **half its lift losses**, so the occupation force it leaves behind
+is larger — the same doctrine ("conquest sticks"), said through the mechanism
+that now decides a garrison. Rounded *down* deliberately: a lifter carries six
+and the garrisons on this map are 2–15, so `bare` is usually 1 or 2 and rounding
+up would leave the doctrine inert exactly where most conquests happen.
+
+**A garrison that is broken still kills its own strength in troops.** That was
+half of it at first, mirroring the old formula — which charged half the garrison
+in *warships*. Half a garrison of ten is five hulls, 300 credits; half of it in
+lift is one lifter, 45. Conquest came out **six times cheaper** than the model it
+replaced, which is the opposite of a dedicated cost, and the balance harness said
+so within one run: the Vigil rolled Meridian down to a single world by turn 30.
+
+### Losses are counted in tons, not in weight
+
+Weight decides who wins the exchange; tonnage decides how much burns. Counting
+losses in weight would make a lifter unhittable — it has none — so a fleet that
+packed transports behind its line would carry them through any battle free and a
+mixed fleet would strictly dominate a pure warfleet of the same size.
+
+The exchange itself is stated in **battleship-equivalents** (weight divided by a
+battleship's 3), so the arithmetic and every threshold in it are exactly what
+they were before classes existed; only the currency of the losses changed.
+
+**A fleet that cannot shoot cannot deny the orbitals.** A pure-lift squadron has
+zero combat weight, which every branch of the exchange reads as "nothing to
+fight" — so a convoy nobody could remove would have blocked a landing forever.
+It is a walkover that destroys them, not a no-op, and symmetric: an invasion
+that arrives as transports only is annihilated the same way.
+
+### The lift arm is soft, so a screen has a job
+
+`lossOrder` runs **escort, lifter, torpedo boat, battleship**. A transport is
+unarmoured and unarmed, so it dies before the battle line does and the only
+thing that keeps it alive is a screen standing in front of it.
+
+For a while the table said exactly that in its own doc comment while ordering
+the classes the other way — lifters last — which made transports the *safest*
+thing in a fleet and left the escort with nothing whatsoever to protect. The
+sentence was right and the number was wrong.
+
+**Where a screen actually earns its keep is a withdrawal, not a stand-up
+fight**, and that is worth stating because the obvious reading is the other way
+round. The exchange band is narrow and brutal:
+
+| odds | what the attacker keeps |
+|---|---|
+| 1:1 | nothing — mutual annihilation |
+| 1.5:1 | 33% of its tonnage |
+| 1.99:1 | 50% |
+| 2:1 | **everything** — the defender breaks off and nothing is lost |
+
+So inside the band no realistic escort force absorbs the damage, and at 2:1
+there is nothing to absorb. A **withdrawal** costs 10–35%, and that a screen
+covers outright — which is what brings a convoy home from a battle it should
+not have fought. That, and torpedo boats.
+
+### The torpedo boat strikes past the screen
+
+`strikeStack(stack, tons, deep)`. `deep` is the fraction of the loss that
+ignores the loss order and comes off the **heaviest hulls first**. It is a
+redistribution, not extra damage: the tonnage destroyed is identical, and only
+which ships absorb it changes. A boat that hit harder would just be a cheaper
+battleship, and the escort would have nothing to answer.
+
+The whole triangle, on one defending fleet of eight battleships behind eight
+escorts losing sixteen tons:
+
+| past the screen | what dies |
+|---|---|
+| 0% | 8 escorts |
+| 25% | 1 battleship, 6 escorts |
+| 50% | 2 battleships, 4 escorts |
+| 100% | 4 battleships |
+
+`pastScreen` is the firing side's torpedo weight as a share of its total,
+scaled by `1 - min(1, targetEscortTons / firingTorpedoTons)` — a screen
+matching the boats ton for ton cancels the redirection outright, half a screen
+halves it. Boats are not a fleet on their own: at the same tonnage a battle
+line has half again the weight, so a swarm loses the exchange and only gets to
+choose where its share of the damage lands.
+
+The historical shape and the mechanical one agree, which is why the class is
+called what it is: destroyers were originally *torpedo boat destroyers*.
+
+### Key order is part of the state, because replay compares strings
+
+`verifyReplay` compares `JSON.stringify` of live state against replayed state,
+and JSON preserves insertion order. A stack built battleships-then-escorts and
+one built escorts-then-battleships therefore compared as **different worlds
+while holding identical ships** — same byte length, every value matching, no
+way to read the cause off the failure.
+
+It surfaced the moment the bots began buying three classes in varying order.
+`addShipsAt` and `setShipsAt` now write through `normaliseStack`, so a stack's
+key order is a function of its contents and never of its history, and a test
+pins it.
+
+### The bots judge strength by the battle line
+
+`initiative.ts` had every threshold as a hull count, calibrated when a hull was
+a battleship and nothing else. A lifter is a whole hull for three quarters of a
+battleship's price, so **counting transports among them makes a fleet cross its
+own thresholds faster the more lift it buys** — the same units-drift this design
+exists to remove, showing up one layer higher. Measured: the Vigil, which buys
+hardest, went from six systems to ten and reduced Meridian to one world and a
+net of −126.
+
+Strength is now stated in **battleship-equivalents** (`lineStrengthAt`,
+`lineStrength`) — the unit the exchange itself compares, so a threshold means
+the same thing whatever is in the fleet, and in a galaxy of nothing but
+battleships it reads exactly as the hull count it replaces. The same defect was
+waiting for escorts, more quietly, since an escort is a whole hull for a third
+of a battleship's weight.
+
+Lift is sized from **the board rather than the fleet**: enough for the largest
+landing currently visible, twice over, using the same formula `sortie` uses so
+the yards and the fleet cannot disagree about what an invasion needs. A
+fraction of tonnage was the first attempt and is the wrong shape — lift is
+bought for a job, so a fraction means a power that has grown large hoards
+transports it will never use and pays upkeep on all of them, while dragging its
+fighting weight down to three quarters of what its credits bought. The harness
+reports that as a galaxy where nobody attacks.
+
+A screen is kept ton for ton with the convoy, except by **Drajk**, which
+spends that tonnage on torpedo boats instead — a screen is a defensive
+purchase, and preying on fleets it could never beat in orbit is the whole of the
+Confederacy's doctrine. It also gives the class an owner in the harness, the way
+each ethic has one: a class nobody builds is a class nobody has measured, which
+is how `monopolist` stayed implemented, tested and dead for the life of the
+project.
+
+Measured over 30 turns: territory changes through turn 24 where the pre-classes
+harness froze at turn 10, the final board is 3/6/5/4/4 with nobody eliminated
+and nobody near half the map, and all four classes are on it.
 
 ## An accord may only produce what needs consent
 
@@ -1456,8 +1665,13 @@ Nars at guile 18 are the best at it; Meridian's resolve 9 is a real
 vulnerability. All derived, no tuning constants.
 
 Over-asking is **trimmed with a note**, not rejected, on the same principle as
-`billConstruction`. Hulls that change sides are charged at `SHIP_COST` — bought,
-not captured — so a defection network is not a free shipyard pointed at a rival.
+`billConstruction`. Hulls that change sides are charged at the same
+`CREDITS_PER_TON` the yards charge — bought, not captured — so a defection
+network is not a free shipyard pointed at a rival, and turning three escorts is
+not the bill for turning three battleships. The **limit** stays in hulls: a crew
+is a crew whatever it stands on, and denominating it in tons would have been a
+silent 4x nerf dressed up as consistency. Cheapest hulls change sides first —
+which of their ships defect is not the suborner's choice.
 
 **Suborning is not combat.** No battle is fought, the garrison is untouched,
 and the world does not change hands; the price is paid in standing instead —
@@ -1543,9 +1757,10 @@ total, and a cancelled or interrupted movement returns them.
    2:1 **breaks off**, losing 10–35% (derived from the same roll) and falling
    back — the defender to another world it holds, the attacker one jump down its
    path. **A surviving defending fleet means no landing happens at all.**
-2. **Ground assault** — only once the orbitals are clear. Garrisons are dug in
-   and **cannot retreat**, so this resolves either way: the world falls, or the
-   landing is thrown back.
+2. **Ground assault** — only once the orbitals are clear, and only if there is
+   lift aboard. Garrisons are dug in and **cannot retreat**, so this resolves
+   either way: the world falls, or the landing is thrown back. See "A world is
+   taken by the lift arm" above.
 
 Garrisons regrow by `GARRISON_REGROWTH` per turn toward `system.garrisonMax`,
 costing neither hulls nor credits, because ground forces are raised locally.
@@ -1623,10 +1838,11 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 |---|---|
 | `transfer_control` | **reducer-only** — absent from `ModelOpSchema` entirely |
 | `adjust_disposition` | clamped to −100..100; self-disposition rejected |
-| `adjust_fleet` | floors at 0 |
+| `adjust_fleet` | floors at 0; `hull` picks the class the yards lay down |
+| `adjust_ships` | `hull` picks the class — which to build, and which of *your own* to move. Taking another power's is suborning, and spends their loss order |
 | `adjust_credits` | floors at 0 |
 | `set_doctrine` | 1–240 chars; may move `warEthic`/`tradeEthic` and retire lines, charged in dissent; actor's own faction only |
-| `issue_order` | see Duration below; optional `onComplete` payload, paid at issue |
+| `issue_order` | see Duration below; optional `onComplete` payload, paid at issue. `force` is a count (drawn proportionally) or a named composition |
 | `cancel_order` | returns the unspent part of a works payload |
 | `interrupt_order` | rejected when the order is not interruptible |
 | `extend_order` | rejected for movement |
@@ -1725,7 +1941,7 @@ for the bounds and pricing, `OrderEffectSchema` in `state.ts` for the shape:
 | `develop_system` | +1–2 `strategicValue`, and at 7 the world **becomes a trade hub** | `construction_infrastructure`, `industrial_conversion`, `retooling` |
 | `raise_garrison` | garrison up now, to the world's ceiling | `garrison_raising`, `fortification` |
 | `fortify` | `garrisonMax` up — capacity regrowth can never add | `fortification`, `construction_infrastructure` |
-| `commission_ships` | hulls delivered at the target on completion | `capital_ship_construction`, `refit`, `retooling` |
+| `commission_ships` | hulls of a named `hull` class delivered at the target on completion, priced by displacement | `capital_ship_construction`, `refit`, `retooling` |
 
 The eight remaining categories carry **no** payload on purpose: `espionage`
 lands as `deploy_agent`, `treaty_ratification` as `form_treaty`, and `blockade`
@@ -1914,16 +2130,24 @@ in one turn fights a single battle rather than a queue of duels.
   defender rather than watching from orbit. A holder reinforcing its own world
   is not an invasion — those ships simply land.
 - **Phase 1, the orbitals.** Coalition against defenders, with the best `might`
-  modifier on each side. A side outmatched 2:1 breaks off and loses 10–35%
-  getting clear — defenders scatter to their own nearest holdings, attackers
-  fall back down each contingent's own path. Otherwise both sides trade losses,
-  distributed proportionally across contingents. **A surviving defending fleet
-  means no landing is attempted at all.**
-- **Phase 2, the ground.** Only once the orbitals are clear. Garrisons are
-  dug-in ground troops and **cannot retreat**, so this is fought to a decision.
-- **Spoils.** The world goes to the largest *surviving* contingent, ties broken
-  on faction id. Junior partners' ships stay in orbit, which leaves the world
-  contested and splits its income.
+  modifier on each side, weighed in battleship-equivalents. A side outmatched
+  2:1 breaks off and loses 10–35% of its **tonnage** getting clear — defenders
+  scatter to their own nearest holdings, attackers fall back down each
+  contingent's own path. Otherwise both sides trade losses, charged to each
+  contingent as a fraction of what it brought, spent in loss order and
+  redirected past the screen by whatever torpedo boats are firing. **A defending
+  fleet that can still shoot means no landing is attempted at all** — a fleet
+  with no combat weight cannot deny an orbit, and is destroyed where it lies.
+- **Phase 2, the ground.** Only once the orbitals are clear, and fought by the
+  troops the lift arm lands — a coalition with no transports wins the space over
+  a world and takes nothing. Garrisons are dug-in ground troops and **cannot
+  retreat**, so this is fought to a decision.
+- **Spoils.** A world stormed goes to whoever put the **most troops ashore**,
+  not to whoever brought the most ship — a partner who escorted the convoy and
+  landed nobody has not taken the world. One walked into unopposed goes to the
+  largest tonnage, since nobody landed anything. Ties break on faction id.
+  Junior partners' ships stay in orbit, which leaves the world contested and
+  splits its income.
 
 **Unaligned is not undefended.** The seed gives neutral worlds garrisons of
 2–5, and they fight a landing exactly as a faction's world would. An earlier
@@ -2443,8 +2667,9 @@ re-sends its context. A trivial call still takes ~7s for that reason.
 
 ```
 src/
-  domain/     state, ops, duration, development, graph, checks, diplomacy,
-              arbitration, compulsions, debt, trade, intel, initiative, reducer
+  domain/     state, ops, hulls, duration, development, graph, checks,
+              diplomacy, arbitration, compulsions, debt, trade, intel,
+              battle, initiative, reducer
               ← pure. No I/O, no network, no imports from engine/model/ui.
   api/        contract.ts — Zod schemas shared by server and browser
   engine/     campaign, store, journal, turn, briefing, epilogue
@@ -2489,6 +2714,13 @@ writing one down. Fixtures and hand-built batches want the input type.
 - `applyOps` never mutates its input.
 - New op? Add to `ops.ts`, handle in `reducer.ts`, cover both the success and
   the rejection path in `tests/reducer.test.ts`, and document it here.
+- New hull class? Add it to `HULL_CLASSES` and `HULL_SPEC`, write the key into
+  `TypedStackSchema` (a `z.record` keyed by the enum is exhaustive in Zod 4 and
+  would put four keys on every stack in every save — `STACK_KEYS` is pinned
+  against `HULL_CLASSES` so the two cannot drift), give it a glyph in
+  `BattleIcons.tsx` and a `case` in `HullIcon`, and state its price in
+  `prompts/resolution.md` — `tests/prompt-drift.test.ts` checks that the price
+  quoted is the price charged.
 - New duration category? Add to `DURATION_CATEGORIES`, give it a floor in
   `CATEGORY_FLOORS`, add an anchor to `duration-rubric.md`, decide in
   `EFFECT_CATEGORIES` whether it can deliver an `onComplete` payload — a
@@ -2500,4 +2732,6 @@ writing one down. Fixtures and hand-built batches want the input type.
   `EFFECT_CAPS`, a price, the categories that may deliver it in
   `EFFECT_CATEGORIES`, and a branch in `applyOrderEffect`. Price it against what
   it is actually worth on the board, not per unit — see `developmentCost` for
-  why a flat price was wrong by 25×.
+  why a flat price was wrong by 25×. `commission_ships` is priced by tonnage for
+  the same reason and is absent from `EFFECT_COST` entirely: a per-point
+  constant there would be a second opinion about what a class costs.

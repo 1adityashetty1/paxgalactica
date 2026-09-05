@@ -1,5 +1,6 @@
+import { HULL_CLASSES, HULL_SPEC, type ShipStack } from '../../../src/domain/hulls.js';
 /**
- * Two glyphs for the order of battle: a warship and a tracked gun.
+ * Glyphs for the order of battle: one per hull class, and a tracked gun.
  *
  * Inline SVG rather than image files, for three reasons that all matter here:
  * they inherit the faction's colour through `currentColor`, they stay crisp at
@@ -33,7 +34,28 @@ interface IconProps {
   title?: string;
 }
 
-/** A warship: pointed hull, swept wings, engine block astern. */
+/**
+ * A battleship: a capital ship. Long tapering wedge, castle aft, drives astern.
+ *
+ * This glyph replaced the dart, which now belongs to the escort. The dart is a
+ * small nimble thing and always read as one — fine while every ship in the game
+ * was the same ship, wrong the moment `line` meant the heavy.
+ *
+ * The first replacement was a **wet-navy battleship**: flat deck line, turrets
+ * amidships, guns on the beam. It was legible and it was the wrong genre. Space
+ * capitals — a Venator, a Retribution — share a silhouette that has nothing to
+ * do with a surface ship: **a long wedge tapering to the prow, with the mass
+ * and the superstructure concentrated aft, and drives at the stern.** There is
+ * no waterline to sit turrets on.
+ *
+ * So the read here is front-to-back rather than top-to-bottom: fine bow, deep
+ * body, the main battery seated over the after third, one drive behind it. A dorsal strake forward of the turret was tried and dropped — with the
+ * castle gone it read as a stray mark rather than as structure.
+ *
+ * Also the generic warship glyph. A stack from a save written before classes
+ * existed normalises to battleships, so a caller that just wants "ships" is
+ * right to get this one.
+ */
 export function ShipIcon({ size = 18, title }: IconProps) {
   return (
     <svg
@@ -46,13 +68,33 @@ export function ShipIcon({ size = 18, title }: IconProps) {
       role={title ? 'img' : undefined}
     >
       {title && <title>{title}</title>}
-      {/* Hull, prow right. */}
-      <path d="M23.2 12 L15 9.6 L5.5 9.8 L4 10.8 L4 13.2 L5.5 14.2 L15 14.4 Z" />
-      {/* Wings swept back from midships — this is the line that stops the
-          silhouette reading as a cross. */}
-      <path d="M13.5 10 L7 3.4 L3.2 4.2 L9 10.2 Z" />
-      <path d="M13.5 14 L7 20.6 L3.2 19.8 L9 13.8 Z" />
-      <rect x="1.6" y="10.6" width="2.6" height="2.8" rx="0.6" />
+      {/* Hull: long wedge, chamfered prow, raked stern. Deep, so it carries
+          the turret without the turret overhanging it. */}
+      <path d="M23.6 13.6 L13.5 10.2 L5.4 9.4 L3.4 10.4 L3.4 16.6 L5.4 17.5 L13.5 16.4 Z" />
+      {/* Main battery, seated straight on the hull: the garrison's turret and
+          gun, scaled.
+          
+          Two things went before it. A bridge tower drawn from y=2.9 to 5, above
+          a castle starting at 5.2 — a 0.2 gap, so it visibly FLOATED. Then the
+          turret on top of that castle, which was attached but stacked: a
+          superstructure carrying a superstructure, for no reason except that
+          the castle was drawn first. The turret IS the superstructure, so it
+          sits on the hull and the castle is gone.
+          
+          Borrowed from the garrison but NOT copied: the tank's turret and gun
+          are rounded rectangles, and a radius reads as sheet metal bent in a
+          press. Nothing else in the space set is rounded, so these are cut as
+          straight-edged polygons — a raked trapezoid stepping up to a raised
+          block, and a barrel that tapers rather than ending in a cap. Same
+          shape language as the guns; same language as the ships. */}
+      <path d="M5.4 10.4 L6.8 6 L10.2 6 L12.4 10.4 Z" />
+      <path d="M10.9 7.2 L18.6 8.1 L18.6 9.1 L10.9 9.6 Z" />
+      {/* One drive, not two: a single nozzle tapering AWAY from the hull, the
+          same shape as the torpedo boat's so the two read as the same idea
+          rather than merely similar. Inset from the hull edges on purpose — at
+          full stern depth the drive swallowed the raked stern corners and the
+          back of the ship read as a flat edge. */}
+      <path d="M1 12 L3.4 11.3 L3.4 15.7 L1 15 Z" />
     </svg>
   );
 }
@@ -90,5 +132,220 @@ export function GarrisonIcon({ size = 18, title }: IconProps) {
       <rect x="8" y="7.2" width="8.4" height="4" rx="1.2" />
       <rect x="15.8" y="8.4" width="7.8" height="1.8" rx="0.5" />
     </svg>
+  );
+}
+
+/**
+ * The rest of the hull classes.
+ *
+ * Drawn against the same bar as the two above — *can a player tell these apart
+ * at 18px without reading the label* — and chosen by rendering each at 18,
+ * magnifying the rasterisation, and looking. Two candidates were thrown away
+ * for exactly the reasons the originals were:
+ *
+ * - A **fletched needle** for the torpedo boat read as a **fish skeleton**: the
+ *   tail flare dominated the hull, and at row size it was a dash with a blob.
+ * - A **hull with the tube slung over it** read as **two stacked bars**, which
+ *   is not a vessel.
+ * - A **wet-navy battleship** for the battleship — flat deck, turrets amidships —
+ *   was perfectly legible and the wrong genre. See `ShipIcon`.
+ * - A **single chevron** for the escort read as a UI "next" arrow rather than a
+ *   ship, and the doubled chevron that replaced it was legible but still a
+ *   *mark* among vessels. The dart moved down from `line` instead, and the line
+ *   hull became the battleship it should always have been.
+ *
+ * What separates them is the outline *family*, never the detail: a symmetric
+ * dart, a faceted capital wedge, an asymmetric wedge, and a raked box with bays
+ * cut through it.
+ *
+ * **Nothing in the space set is rounded.** A corner radius reads as sheet metal
+ * bent in a press, which is right for the garrison's tank and wrong for a hull
+ * cut in a yard — so every ship edge is a straight-edged polygon, and the only
+ * radii left in this file are the garrison's turret and gun.
+ *
+ * A later pass **refaceted** three of them. The dart is all swept diagonals and
+ * the others were axis-aligned rectangles, so the set read as two different
+ * hands. Castles, bays and drives are now raked trapezoids rather than boxes,
+ * which is what the extra size buys — at 28px and up the facets read as
+ * structure, and at 18px the silhouette is unchanged. The torpedo boat is deliberately the only glyph in the set that
+ * is not bilaterally symmetric, which is what makes it separable at a glance.
+ */
+
+/**
+ * An escort: pointed hull, swept wings, engine block astern.
+ *
+ * This is the original warship glyph, and it belongs here rather than on the
+ * battleship — it always read as something small and quick, which is what an
+ * escort is. It replaced a doubled chevron that was legible but **abstract**:
+ * every other glyph in this set is a vessel, and a mark among ships reads as an
+ * interface affordance rather than a class.
+ *
+ * The swept wings are the load-bearing line: without them the silhouette reads
+ * as a cross.
+ */
+export function EscortIcon({ size = 18, title }: IconProps) {
+  return (
+    <svg
+      className="ob-icon"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden={title ? undefined : true}
+      role={title ? 'img' : undefined}
+    >
+      {title && <title>{title}</title>}
+      <path d="M23.2 12 L15 9.6 L5.5 9.8 L4 10.8 L4 13.2 L5.5 14.2 L15 14.4 Z" />
+      <path d="M13.5 10 L7 3.4 L3.2 4.2 L9 10.2 Z" />
+      <path d="M13.5 14 L7 20.6 L3.2 19.8 L9 13.8 Z" />
+      {/* Drive block, square-cornered like the rest of the space set. It
+          carried a 0.6 radius from when this glyph was the only ship in the
+          game and had nothing to be consistent with. */}
+      <rect x="1.6" y="10.6" width="2.6" height="2.8" />
+    </svg>
+  );
+}
+
+/**
+ * A torpedo boat: a long thin hull under one dorsal fin.
+ *
+ * Asymmetric on purpose. Every other glyph here is mirrored about its axis, so
+ * a single fin is the fastest thing to pick out of a row — and a shark's fin is
+ * the right connotation for a cheap hull built to kill things far above its
+ * weight.
+ */
+export function TorpedoBoatIcon({ size = 18, title }: IconProps) {
+  return (
+    <svg
+      className="ob-icon"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden={title ? undefined : true}
+      role={title ? 'img' : undefined}
+    >
+      {title && <title>{title}</title>}
+      {/* Hull: needle, chamfered stern, and a CLEAN UNDERSIDE. Nothing below
+          the centreline — a ventral strake was tried and it turned the glyph
+          into a red copy of the escort, which is the one thing this shape is
+          supposed to avoid. */}
+      <path d="M23.6 13.6 L11 11.8 L4.2 11.6 L3.2 12.4 L3.2 15.2 L4.2 15.9 L11 15.6 Z" />
+      {/* The fin, swept back with a stepped leading edge. */}
+      <path d="M10.4 11.5 L7.4 5.6 L6.2 3.2 L3.4 3.2 L3.4 11.5 Z" />
+      {/* A slot cut behind the fin root, so the mass reads as built rather
+          than as one solid triangle. */}
+      <path d="M4.6 10.6 L7.4 10.6 L6.6 8.6 L4.6 8.6 Z" />
+      {/* Drive flare. */}
+      <path d="M1.2 12.6 L3.2 12.2 L3.2 15.4 L1.2 15 Z" />
+    </svg>
+  );
+}
+
+/**
+ * A lifter: a blunt box with two bays cut clean through it.
+ *
+ * The holes are punched with `evenodd` rather than painted in the panel colour,
+ * the same trick the garrison's road wheels use, so the glyph survives being
+ * drawn on any background — which matters here because two filled rectangles on
+ * a slab would read as a solid brick the moment the background changed.
+ */
+export function LifterIcon({ size = 18, title }: IconProps) {
+  return (
+    <svg
+      className="ob-icon"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden={title ? undefined : true}
+      role={title ? 'img' : undefined}
+    >
+      {title && <title>{title}</title>}
+      {/* Blunt bow and four ports down the spine, punched the way the
+          garrison's road wheels are.
+          
+          The count is not taste. A port's gap has to clear roughly 1.3 viewBox
+          units to survive 18px, where one unit is about 0.75 device pixels —
+          and six ports at r1 leave a gap of 0.56, so they merged into a
+          continuous light streak and stopped reading as ports at all. Four at
+          r1.25 leave 1.5: the largest holes that still hold a real gap.
+          
+          The bow is blunt because a point read faintly warship-ish, and the
+          lifter is the one hull here with no business looking fast. */}
+      <path
+        fillRule="evenodd"
+        d="M3.4 6.6 L18.6 6.2 L22.6 9.2 L22.6 14.8 L18.6 17.8 L3.4 17.4 L2.2 12 Z
+           M4.55 12 a1.25 1.25 0 1 0 2.5 0 a1.25 1.25 0 1 0 -2.5 0 Z
+           M8.55 12 a1.25 1.25 0 1 0 2.5 0 a1.25 1.25 0 1 0 -2.5 0 Z
+           M12.55 12 a1.25 1.25 0 1 0 2.5 0 a1.25 1.25 0 1 0 -2.5 0 Z
+           M16.55 12 a1.25 1.25 0 1 0 2.5 0 a1.25 1.25 0 1 0 -2.5 0 Z"
+      />
+      {/* One drive, tapering away from the hull like the rest of the fleet's.
+          It used to widen away, which made three ships hold two opposite ideas
+          of what an engine is. */}
+      <path d="M0.7 11.1 L2.3 10.5 L2.3 13.5 L0.7 12.9 Z" />
+    </svg>
+  );
+}
+
+/** Pick the glyph for a hull class. One place, so a new class cannot be missed. */
+export function HullIcon({
+  hull,
+  size = 18,
+  title,
+}: IconProps & { hull: 'battleship' | 'escort' | 'torpedo_boat' | 'lifter' }) {
+  switch (hull) {
+    case 'escort':
+      return <EscortIcon size={size} title={title} />;
+    case 'torpedo_boat':
+      return <TorpedoBoatIcon size={size} title={title} />;
+    case 'lifter':
+      return <LifterIcon size={size} title={title} />;
+    case 'battleship':
+      return <ShipIcon size={size} title={title} />;
+  }
+}
+
+/**
+ * A composed force, as `<glyph> ×N` per class present.
+ *
+ * One renderer for the order of battle and the fleets panel, because a
+ * squadron should read the same wherever it is shown — and because a class
+ * added later has exactly one place to appear.
+ */
+export function StackGlyphs({
+  stack,
+  size = 18,
+  fallback,
+}: {
+  stack: ShipStack;
+  size?: number;
+  /** Total hulls, drawn as battleships when the stack is empty — an old report. */
+  fallback?: number;
+}) {
+  const classes = HULL_CLASSES.filter((h) => (stack[h] ?? 0) > 0);
+  if (classes.length === 0) {
+    if (!fallback || fallback <= 0) return null;
+    return (
+      <span className="ob-strength" title={`${fallback} ships`}>
+        <ShipIcon size={size} />
+        <span className="ob-count">×{fallback}</span>
+      </span>
+    );
+  }
+  return (
+    <>
+      {classes.map((hull) => (
+        <span
+          key={hull}
+          className="ob-strength"
+          title={`${stack[hull]} ${HULL_SPEC[hull].label}${stack[hull] === 1 ? '' : 's'}`}
+        >
+          <HullIcon hull={hull} size={size} />
+          <span className="ob-count">×{stack[hull]}</span>
+        </span>
+      ))}
+    </>
   );
 }

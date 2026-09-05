@@ -47,6 +47,30 @@ import {
 } from './diplomacy.js';
 import { jumpsBetween, neighboursOf, positionAlongPath, shortestPath } from './graph.js';
 import { routeEarnings, tradeRoutes } from './trade.js';
+import {
+  CREDITS_PER_TON,
+  HULL_CLASSES,
+  HULL_SPEC,
+  LIFTER_CARRY,
+  UPKEEP_PER_TON,
+  carryOf,
+  describeStack,
+  drawProportional,
+  hullsIn,
+  mergeStacks,
+  normaliseStack,
+  orbitalWeightOf,
+  stackCost,
+  strikeStack,
+  subtractStack,
+  tonsOfClass,
+  torpedoShare,
+  takeHulls,
+  tonsIn,
+  trimToTons,
+  type HullClass,
+  type ShipStack,
+} from './hulls.js';
 import { isPublicOrderType } from './intel.js';
 import {
   EXTRACTION_ALLOWED,
@@ -57,6 +81,17 @@ import {
   type OpRejection,
 } from './ops.js';
 import {
+  shipsAt,
+  presentAt,
+  addShipsAt,
+  addStackAt,
+  hullsAt,
+  setShipsAt,
+  setStackAt,
+  stackAt,
+  takeShipsAt,
+  tonsAt,
+  fleetTonsOf,
   commitmentsOf,
   maxCommitmentIncomeFor,
   effectiveStats,
@@ -79,8 +114,6 @@ import {
   liveAgentsOf,
   maxAgentsFor,
   subornLimit,
-  SHIP_COST,
-  UPKEEP_PER_FLEET_POINT,
   type EventLogEntry,
   type Ledger,
   type OrderEffect,
@@ -160,10 +193,10 @@ export function interdictionStations(
   state: WorldState,
   order: { type: string; targetId: string; factionId: string },
 ): number {
-  const at = state.systems.find((s) => s.id === order.targetId)?.ships[order.factionId] ?? 0;
+  const at = shipsAt(state, order.factionId, order.targetId);
   if (order.type === 'blockade') return at;
   const nearby = neighboursOf(state, order.targetId).reduce(
-    (n, id) => n + (state.systems.find((s) => s.id === id)?.ships[order.factionId] ?? 0),
+    (n, id) => n + shipsAt(state, order.factionId, id),
     0,
   );
   return at + nearby;
@@ -339,17 +372,43 @@ function removeShips(
 ): number {
   let owed = count;
   const bases = [...state.systems]
-    .filter((s) => s.id !== exceptSystemId && (s.ships[factionId] ?? 0) > 0)
-    .sort((a, b) => (b.ships[factionId] ?? 0) - (a.ships[factionId] ?? 0) || a.id.localeCompare(b.id));
+    .filter((s) => s.id !== exceptSystemId && (hullsAt(s, factionId)) > 0)
+    .sort((a, b) => (hullsAt(b, factionId)) - (hullsAt(a, factionId)) || a.id.localeCompare(b.id));
   for (const base of bases) {
     if (owed <= 0) break;
-    const here = base.ships[factionId] ?? 0;
+    const here = hullsAt(base, factionId);
     const take = Math.min(here, owed);
-    if (here - take === 0) delete base.ships[factionId];
-    else base.ships[factionId] = here - take;
+    setShipsAt(base, factionId, here - take);
     owed -= take;
   }
   return count - owed;
+}
+
+/**
+ * The same, but says which ships it drew rather than only how many.
+ *
+ * A mutual-defence pledge has to arrive as a real squadron: `shipsPledged` is a
+ * count, and the hulls it pulls out are whatever the ally had spare, so the
+ * composition is discovered rather than chosen.
+ */
+function drawShips(
+  state: WorldState,
+  factionId: string,
+  count: number,
+  exceptSystemId?: string,
+): ShipStack {
+  let owed = count;
+  let drawn: ShipStack = {};
+  const bases = [...state.systems]
+    .filter((s) => s.id !== exceptSystemId && hullsAt(s, factionId) > 0)
+    .sort((a, b) => hullsAt(b, factionId) - hullsAt(a, factionId) || a.id.localeCompare(b.id));
+  for (const base of bases) {
+    if (owed <= 0) break;
+    const take = Math.min(hullsAt(base, factionId), owed);
+    drawn = mergeStacks(drawn, takeShipsAt(base, factionId, take));
+    owed -= take;
+  }
+  return drawn;
 }
 
 /**
@@ -450,7 +509,7 @@ function underDuressFrom(state: WorldState, coercer: string, victim: string): nu
   let worlds = 0;
   for (const system of state.systems) {
     if (system.controllerFactionId !== victim) continue;
-    if ((system.ships[coercer] ?? 0) <= 0) continue;
+    if ((hullsAt(system, coercer)) <= 0) continue;
     if (isGuestOf(state, coercer, victim)) continue;
     worlds += 1;
   }
@@ -576,14 +635,14 @@ function cedeTerritory(state: WorldState, treaty: Treaty): string[] {
 
     system.controllerFactionId = receiver;
 
-    const leaving = system.ships[ceder] ?? 0;
+    const leaving = hullsAt(system, ceder);
     if (leaving > 0) {
       const refuge = fleetBases(state, ceder).find(
         (x) => x.id !== system.id && x.controllerFactionId === ceder,
       );
       if (refuge) {
-        delete system.ships[ceder];
-        refuge.ships[ceder] = (refuge.ships[ceder] ?? 0) + leaving;
+        setShipsAt(system, ceder, 0);
+        addShipsAt(refuge, ceder, leaving);
         notes.push(
           `${ceder} cedes ${system.name} to ${receiver}; ${leaving} ships withdraw to ${refuge.name}.`,
         );
@@ -673,10 +732,17 @@ export function applyOps(
   // afterwards. Counted per faction across the whole batch rather than per op,
   // which is what makes repositioning free: `adjust_ships -5` here and `+5`
   // there nets to zero and costs nothing, however the ops are ordered.
-  const hullsBefore = new Map(state.factions.map((f) => [f.id, fleetStrengthOf(state, f.id)]));
+  const hullsBefore = new Map(state.factions.map((f) => [f.id, fleetTonsOf(state, f.id)]));
   // Per-system counts too, so `capSelfInflictedLosses` can put restored hulls
   // back where they were taken from rather than at the faction's best world.
-  const shipsBefore = new Map(state.systems.map((sys) => [sys.id, { ...sys.ships }]));
+  // Deep enough to survive the batch: the values are stacks now, so a shallow
+  // copy of the record would hand back objects the batch goes on to mutate.
+  const shipsBefore = new Map(
+    state.systems.map((sys) => [
+      sys.id,
+      Object.fromEntries(Object.entries(sys.ships).map(([id, st]) => [id, { ...st }])),
+    ]),
+  );
 
   for (const raw of rawOps) {
     const parsed = OpSchema.safeParse(raw);
@@ -805,18 +871,17 @@ export function applyOps(
         }
         if (op.delta >= 0) {
           const home = bases[0]!;
-          home.ships[op.factionId] = (home.ships[op.factionId] ?? 0) + op.delta;
+          addShipsAt(home, op.factionId, op.delta, op.hull);
         } else {
           let owed = -op.delta;
           for (const base of [...bases].sort(
-            (a, b) => (b.ships[op.factionId] ?? 0) - (a.ships[op.factionId] ?? 0) || a.id.localeCompare(b.id),
+            (a, b) => (hullsAt(b, op.factionId)) - (hullsAt(a, op.factionId)) || a.id.localeCompare(b.id),
           )) {
             if (owed <= 0) break;
-            const here = base.ships[op.factionId] ?? 0;
+            const here = hullsAt(base, op.factionId);
             const take = Math.min(here, owed);
             if (take <= 0) continue;
-            if (here - take === 0) delete base.ships[op.factionId];
-            else base.ships[op.factionId] = here - take;
+            setShipsAt(base, op.factionId, here - take);
             owed -= take;
           }
         }
@@ -1006,7 +1071,7 @@ export function applyOps(
           // and suborning draw.
           const site = state.systems.find((sys) => sys.id === op.targetId)!;
           const holds = site.controllerFactionId === op.factionId;
-          const present = (site.ships[op.factionId] ?? 0) > 0;
+          const present = (hullsAt(site, op.factionId)) > 0;
           if (!holds && !present) {
             reject(
               raw,
@@ -1046,7 +1111,7 @@ export function applyOps(
         let duration: number;
         let rationale = op.durationRationale;
         let path: string[] = [];
-        let force = 0;
+        let force: ShipStack = {};
 
         if (isMovementType(op.type)) {
           // DETERMINISTIC branch. Whatever the model proposed is discarded.
@@ -1071,11 +1136,34 @@ export function applyOps(
           // A movement commits a stated force, drawn from the origin. Sending
           // "the fleet" without saying how much used to commit every ship the
           // faction owned, everywhere.
+          //
+          // The force is COMPOSED, because the ground phase asks a question a
+          // total cannot answer. `op.force` may name classes — the only way to
+          // send guns and no transports, or the reverse — and a bare number
+          // still means "this many ships", drawn proportionally so the
+          // squadron that sails is the squadron that was there.
           const origin = state.systems.find((sys) => sys.id === op.originId)!;
-          const available = origin.ships[op.factionId] ?? 0;
-          const wanted = op.force ?? available;
-          force = Math.min(wanted, available);
-          if (force <= 0) {
+          const inPort = stackAt(origin, op.factionId);
+          const available = hullsIn(inPort);
+          const wantStack: ShipStack =
+            op.force === undefined || typeof op.force === 'number'
+              ? inPort
+              : normaliseStack(op.force);
+          const asked = typeof op.force === 'number' ? op.force : hullsIn(wantStack);
+          force =
+            op.force === undefined
+              ? normaliseStack(inPort)
+              : typeof op.force === 'number'
+                ? drawProportional(inPort, op.force)
+                : // Named classes are trimmed per class: asking for six lifters
+                  // where two are berthed sends the two, and does not make up
+                  // the difference out of the battle line.
+                  normaliseStack(
+                    Object.fromEntries(
+                      HULL_CLASSES.map((h) => [h, Math.min(wantStack[h] ?? 0, inPort[h] ?? 0)]),
+                    ) as ShipStack,
+                  );
+          if (hullsIn(force) <= 0) {
             reject(
               raw,
               'illegal_value',
@@ -1083,13 +1171,18 @@ export function applyOps(
             );
             break;
           }
-          if (wanted > available) {
-            const note = `Requested ${wanted} ships from ${origin.name} but only ${available} were there; sending ${force}.`;
+          if (asked > hullsIn(force)) {
+            const note = `Requested ${asked} ships from ${origin.name} but only ${describeStack(force) || available} could sail; sending ${describeStack(force)}.`;
             notes.push(note);
             logEvent(state, 'system', note, op.factionId);
           }
-          if (available - force === 0) delete origin.ships[op.factionId];
-          else origin.ships[op.factionId] = available - force;
+          setStackAt(
+            origin,
+            op.factionId,
+            Object.fromEntries(
+              HULL_CLASSES.map((h) => [h, (inPort[h] ?? 0) - (force[h] ?? 0)]),
+            ) as ShipStack,
+          );
         } else {
           // ESTIMATED branch. Model proposes, code clamps.
           if (op.durationTurns === undefined) {
@@ -1203,10 +1296,10 @@ export function applyOps(
         const [removed] = state.pendingOrders.splice(idx, 1);
         // Recalling a movement brings its ships home. Splicing the order out
         // without this quietly destroyed the fleet it was carrying.
-        if (isMovementType(removed!.type) && removed!.force > 0) {
+        if (isMovementType(removed!.type) && hullsIn(removed!.force) > 0) {
           const home = state.systems.find((sys) => sys.id === removed!.originId);
           if (home) {
-            home.ships[removed!.factionId] = (home.ships[removed!.factionId] ?? 0) + removed!.force;
+            addStackAt(home, removed!.factionId, removed!.force);
           }
         }
         // Recalling your own order is orderly, so the works return what they
@@ -1686,10 +1779,20 @@ export function applyOps(
           }
         }
 
-        const now = Math.max(0, (host.ships[op.factionId] ?? 0) + delta);
-        const taken = Math.min(-delta, host.ships[op.factionId] ?? 0);
-        if (now === 0) delete host.ships[op.factionId];
-        else host.ships[op.factionId] = now;
+        const taken = Math.min(-delta, hullsAt(host, op.factionId));
+        if (delta > 0) {
+          addShipsAt(host, op.factionId, delta, op.hull);
+        } else if (taken > 0) {
+          // Moving your OWN ships, you say which. A crew changing sides is not
+          // a choice you get to make, so a suborn spends the loss order — the
+          // cheapest hulls, the ones with least invested in them.
+          const own = op.factionId === actor;
+          const here = stackAt(host, op.factionId);
+          const fromClass = own ? Math.min(taken, here[op.hull] ?? 0) : 0;
+          const named: ShipStack = fromClass > 0 ? { [op.hull]: fromClass } : {};
+          setStackAt(host, op.factionId, subtractStack(here, named));
+          if (taken > fromClass) takeShipsAt(host, op.factionId, taken - fromClass);
+        }
 
         // Suborning is an act of statecraft, not of war: no battle is fought,
         // and the price is paid in standing. Without this it was the only
@@ -2210,15 +2313,18 @@ function capSelfInflictedLosses(
   actor: string | undefined,
   before: Map<string, number>,
   /** Per-system ship counts as they stood before the batch. */
-  shipsBefore: Map<string, Record<string, number>>,
+  shipsBefore: Map<string, Record<string, ShipStack>>,
   notes: string[],
 ): void {
   if (actor === undefined) return; // engine ops, and journals predating the actor field
   const faction = state.factions.find((f) => f.id === actor);
   if (!faction) return;
 
+  // In TONS, the same currency the batch was billed in, so a declaration that
+  // scuttles lifters and one that scuttles battleships are held to the same
+  // limit by displacement rather than by headcount.
   const had = before.get(actor) ?? 0;
-  const lost = had - fleetStrengthOf(state, actor);
+  const lost = had - fleetTonsOf(state, actor);
   if (lost <= 0) return;
 
   const allowed = Math.max(1, Math.floor(had * MAX_SELF_INFLICTED_LOSS_FRACTION));
@@ -2233,16 +2339,26 @@ function capSelfInflictedLosses(
   // scuttling was a free strategic redeployment, and the note even claimed the
   // survivors "remain at Vergesse" when they had never been there.
   const drawnFrom = state.systems
-    .map((sys) => ({ sys, had: shipsBefore.get(sys.id)?.[actor] ?? 0, now: sys.ships[actor] ?? 0 }))
+    .map((sys) => ({
+      sys,
+      // The exact ships that went, so what comes back is what was taken and
+      // not an equivalent tonnage of battleships.
+      missing: subtractStack(shipsBefore.get(sys.id)?.[actor] ?? {}, stackAt(sys, actor)),
+      had: tonsIn(shipsBefore.get(sys.id)?.[actor]),
+      now: tonsAt(sys, actor),
+    }))
     .filter((x) => x.had > x.now)
     .sort((a, b) => b.had - a.had || a.sys.id.localeCompare(b.sys.id));
 
   let owed = restored;
-  for (const { sys, had, now } of drawnFrom) {
+  for (const { sys, missing } of drawnFrom) {
     if (owed <= 0) break;
-    const back = Math.min(owed, had - now);
-    sys.ships[actor] = (sys.ships[actor] ?? 0) + back;
-    owed -= back;
+    // Cheapest hulls first, so the cap restores the smallest ships it can and
+    // a partial restoration does not hand back the flagship.
+    const { taken } = trimToTons(missing, Math.max(0, tonsIn(missing) - owed));
+    if (hullsIn(taken) === 0) continue;
+    addStackAt(sys, actor, taken);
+    owed -= tonsIn(taken);
   }
   // Nothing identifiable was drawn from (an abstract `adjust_fleet` against a
   // faction with no recorded losses): fall back to a holding rather than
@@ -2250,12 +2366,12 @@ function capSelfInflictedLosses(
   const bases = fleetBases(state, actor);
   if (owed > 0) {
     if (bases.length === 0) return;
-    bases[0]!.ships[actor] = (bases[0]!.ships[actor] ?? 0) + owed;
+    addShipsAt(bases[0]!, actor, Math.ceil(owed / HULL_SPEC.battleship.tonnage));
   }
 
   const where =
     drawnFrom.length > 0 ? drawnFrom.map((d) => d.sys.name).join(', ') : (bases[0]?.name ?? 'their stations');
-  const note = `${faction.name} cannot lose ${lost} hulls to a single declaration; ${restored} were never at risk and remain at ${where}. Battle losses are resolved when a fleet arrives, not when an order is given.`;
+  const note = `${faction.name} cannot lose ${lost} tons of shipping to a single declaration; ${restored} tons were never at risk and remain at ${where}. Battle losses are resolved when a fleet arrives, not when an order is given.`;
   notes.push(note);
   logEvent(state, 'rejection', note, actor);
 }
@@ -2265,7 +2381,7 @@ function capSelfInflictedLosses(
  * it could pay for.
  *
  * This is the hard cap on "build a thousand ships". The model may emit any
- * `adjust_fleet` it likes; the yards deliver `credits / SHIP_COST` of it and
+ * `adjust_fleet` it likes; the yards deliver `credits / CREDITS_PER_TON` of it and
  * the rest never existed. Trimming the surplus rather than rejecting the op
  * keeps a partly-affordable order partly fulfilled, which is both the more
  * useful outcome and the one that matches how a partial check reads.
@@ -2279,27 +2395,58 @@ function billConstruction(
   notes: string[],
 ): void {
   for (const faction of state.factions) {
-    const gained = fleetStrengthOf(state, faction.id) - (before.get(faction.id) ?? 0);
+    // Billed in TONS, so a class costs what it displaces and nothing has to
+    // agree separately about the price of an escort. Comparing the whole
+    // faction's tonnage before and after is what keeps repositioning free.
+    const gained = fleetTonsOf(state, faction.id) - (before.get(faction.id) ?? 0);
     if (gained <= 0) continue;
 
-    const affordable = Math.floor(faction.credits / SHIP_COST);
+    const affordable = Math.floor(faction.credits / CREDITS_PER_TON);
     const built = Math.min(gained, affordable);
-    faction.credits -= built * SHIP_COST;
+    faction.credits -= built * CREDITS_PER_TON;
 
     const shortfall = gained - built;
     if (shortfall > 0) {
-      // Hulls in transit cannot be un-built, so trim from systems and accept
+      // Tonnage in transit cannot be un-built, so trim from systems and accept
       // a smaller cut if that is all that is reachable.
-      const trimmed = removeShips(state, faction.id, shortfall);
-      const note = `${faction.name} could only pay for ${built} of ${gained} new hulls (${SHIP_COST} credits each); ${trimmed} were never laid down.`;
+      const trimmed = removeTons(state, faction.id, shortfall);
+      const note = `${faction.name} could only pay for ${built} of ${gained} new tons (${CREDITS_PER_TON} credits each); ${trimmed} tons were never laid down.`;
       notes.push(note);
       logEvent(state, 'system', note, faction.id);
     } else if (built > 0) {
-      const note = `${faction.name} commissions ${built} hulls for ${built * SHIP_COST} credits.`;
+      const note = `${faction.name} commissions ${built} tons of shipping for ${built * CREDITS_PER_TON} credits.`;
       notes.push(note);
       logEvent(state, 'system', note, faction.id);
     }
   }
+}
+
+/**
+ * Cut `tons` of shipping out of a faction, richest system first.
+ *
+ * The tonnage counterpart of `removeShips`, for the two callers that are
+ * settling a bill rather than destroying particular ships: unpaid construction
+ * and unpaid upkeep. Deterministic ordering, so replay holds.
+ */
+function removeTons(
+  state: WorldState,
+  factionId: string,
+  tons: number,
+  exceptSystemId?: string,
+): number {
+  let owed = tons;
+  const bases = [...state.systems]
+    .filter((s) => s.id !== exceptSystemId && tonsAt(s, factionId) > 0)
+    .sort((a, b) => tonsAt(b, factionId) - tonsAt(a, factionId) || a.id.localeCompare(b.id));
+  for (const base of bases) {
+    if (owed <= 0) break;
+    const here = tonsAt(base, factionId);
+    const { taken, left } = trimToTons(stackAt(base, factionId), Math.max(0, here - owed));
+    if (hullsIn(taken) === 0) continue;
+    setStackAt(base, factionId, left);
+    owed -= here - tonsIn(left);
+  }
+  return tons - Math.max(0, owed);
 }
 
 /**
@@ -2323,9 +2470,9 @@ function resolveInterrupt(state: WorldState, order: PendingOrder, reason: string
 
   if (order.onInterrupt === 'cancel') {
     // Cancelled movement still returns its ships — they were never destroyed.
-    if (isMovementType(order.type) && order.force > 0) {
+    if (isMovementType(order.type) && hullsIn(order.force) > 0) {
       const home = state.systems.find((s) => s.id === order.originId);
-      if (home) home.ships[order.factionId] = (home.ships[order.factionId] ?? 0) + order.force;
+      if (home) addStackAt(home, order.factionId, order.force);
     }
     // `cancel` means the work is lost entirely, so money sunk into the works is
     // sunk. Said out loud rather than deducted silently: a player who abandons a
@@ -2341,10 +2488,10 @@ function resolveInterrupt(state: WorldState, order: PendingOrder, reason: string
     const halted = positionAlongPath(order.path, order.progress) ?? order.originId;
     const sys = state.systems.find((s) => s.id === halted);
     // The ships are real and have to come back onto the board somewhere.
-    if (sys && order.force > 0) {
-      sys.ships[order.factionId] = (sys.ships[order.factionId] ?? 0) + order.force;
+    if (sys && hullsIn(order.force) > 0) {
+      addStackAt(sys, order.factionId, order.force);
     }
-    const note = `${order.label} halted mid-transit at ${sys?.name ?? halted} with ${order.force} ships. ${reason}`.trim();
+    const note = `${order.label} halted mid-transit at ${sys?.name ?? halted} with ${hullsIn(order.force)} ships. ${reason}`.trim();
     logEvent(state, 'order', note, order.factionId);
     return note;
   }
@@ -2424,13 +2571,15 @@ export function tickTurn(input: WorldState): TickResult {
     // forever. Unpaid crews are stood down instead, enough to close the gap
     // but capped so insolvency is a decline rather than a collapse.
     if (balance < 0) {
+      // In tons, because upkeep is charged in tons: laying up a lifter has to
+      // close three credits of the gap and an escort two, not one apiece.
       const gap = -balance;
-      const fleet = fleetStrengthOf(state, faction.id);
-      const wanted = Math.ceil(gap / UPKEEP_PER_FLEET_POINT);
-      const cap = Math.max(1, Math.floor(fleet * MAX_ATTRITION_FRACTION));
-      const laidUp = removeShips(state, faction.id, Math.min(wanted, cap));
+      const tons = fleetTonsOf(state, faction.id);
+      const wanted = Math.ceil(gap / UPKEEP_PER_TON);
+      const cap = Math.max(1, Math.floor(tons * MAX_ATTRITION_FRACTION));
+      const laidUp = removeTons(state, faction.id, Math.min(wanted, cap));
       if (laidUp > 0) {
-        const note = `${faction.name} cannot meet its upkeep and lays up ${laidUp} ships.`;
+        const note = `${faction.name} cannot meet its upkeep and lays up ${laidUp} tons of shipping.`;
         notes.push(note);
         logEvent(state, 'system', note, faction.id);
       }
@@ -2750,24 +2899,27 @@ export function tickTurn(input: WorldState): TickResult {
       // resolve beyond the suborner's guile yields nothing, ever.
       const limit = subornLimit(state, agent.ownerFactionId, target.id);
       const wanted = Math.min(agent.effect.perTurn * profile.effectMultiplier, limit);
-      const available = host.ships[target.id] ?? 0;
+      const available = hullsAt(host, target.id);
       const turned = Math.min(wanted, available);
 
       if (turned > 0) {
-        const left = available - turned;
-        if (left === 0) delete host.ships[target.id];
-        else host.ships[target.id] = left;
-        host.ships[agent.ownerFactionId] = (host.ships[agent.ownerFactionId] ?? 0) + turned;
+        // Which hulls change sides is the loss order: a bought crew is the
+        // cheapest one that can be bought, not the flagship.
+        const crews = takeShipsAt(host, target.id, turned);
+        addStackAt(host, agent.ownerFactionId, crews);
 
         // Bought, not conquered: crews that change sides still have to be
-        // paid for, at the same price as a hull from the yards. Otherwise a
-        // defection network is a free shipyard pointed at your rival.
+        // paid for, at the same price the yards charge for the same tonnage.
+        // Otherwise a defection network is a free shipyard pointed at your
+        // rival — and priced per ton, so turning three escorts is not the same
+        // bill as turning three battleships.
+        const price = stackCost(crews);
         const buyer = state.factions.find((f) => f.id === agent.ownerFactionId);
-        if (buyer) buyer.credits = Math.max(0, buyer.credits - turned * SHIP_COST);
+        if (buyer) buyer.credits = Math.max(0, buyer.credits - price);
 
         watchNotes.set(
           agent.id,
-          `turned ${turned} of ${target.name}'s hull(s) at ${host.name}, bought at ${turned * SHIP_COST} credits.`,
+          `turned ${describeStack(crews)} of ${target.name}'s at ${host.name}, bought at ${price} credits.`,
         );
         logEvent(
           state,
@@ -2800,10 +2952,9 @@ export function tickTurn(input: WorldState): TickResult {
     if (agent.effect.kind === 'hull_damage') {
       const damage = agent.effect.perTurn * profile.effectMultiplier;
       // Sabotage destroys hulls where the operative is, not somewhere abstract.
-      const before = host.ships[target.id] ?? 0;
+      const before = hullsAt(host, target.id);
       const left = Math.max(0, before - damage);
-      if (left === 0) delete host.ships[target.id];
-      else host.ships[target.id] = left;
+      setShipsAt(host, target.id, left);
       const lost = before - left;
       watchNotes.set(
         agent.id,
@@ -2996,7 +3147,7 @@ export function tickTurn(input: WorldState): TickResult {
     const holder = system.controllerFactionId;
     if (holder === null) continue;
     if (contested.has(system.id)) continue;
-    const besieged = Object.entries(system.ships).some(([id, n]) => id !== holder && n > 0);
+    const besieged = presentAt(system).some(([id, n]) => id !== holder && n > 0);
     if (besieged) continue;
     if (system.garrison < system.garrisonMax) {
       system.garrison = Math.min(system.garrisonMax, system.garrison + GARRISON_REGROWTH);
@@ -3088,8 +3239,8 @@ function resolveBattle(
   // force they committed — reading the system would report a fleet of zero
   // attacking. Snapshots advance per round, so each round shows its own delta
   // rather than the cumulative one.
-  let attackSnapshot = new Map<string, number>();
-  let defendSnapshot = new Map<string, number>();
+  let attackSnapshot = new Map<string, ShipStack>();
+  let defendSnapshot = new Map<string, ShipStack>();
 
   /** Close the engagement: snapshot the result and hand back both forms. */
   const finish = (note: string): BattleOutcomeResult => ({
@@ -3113,12 +3264,13 @@ function resolveBattle(
     },
   });
 
-  // Ships arriving, per faction.
-  const arriving = new Map<string, number>();
-  for (const o of orders) arriving.set(o.factionId, (arriving.get(o.factionId) ?? 0) + o.force);
+  // Ships arriving, per faction — composed, because the ground phase asks what
+  // is aboard and not merely how much.
+  const arriving = new Map<string, ShipStack>();
+  for (const o of orders) arriving.set(o.factionId, mergeStacks(arriving.get(o.factionId), o.force));
 
-  const land = (factionId: string, n: number): void => {
-    if (n > 0) target.ships[factionId] = (target.ships[factionId] ?? 0) + n;
+  const land = (factionId: string, stack: ShipStack): void => {
+    if (hullsIn(stack) > 0) addStackAt(target, factionId, stack);
   };
 
   // The holder reinforcing itself is not an invasion — and neither is an ally
@@ -3142,7 +3294,7 @@ function resolveBattle(
    * live: the Vigil held a hull over Vergesse for five turns and nothing in the
    * rules could remove it.
    */
-  const squatters = Object.entries(target.ships).filter(
+  const squatters = presentAt(target).filter(
     ([id, n]) => n > 0 && id !== holder && !guest(id),
   );
 
@@ -3156,12 +3308,12 @@ function resolveBattle(
    */
   const sweep =
     holder !== null &&
-    (arriving.get(holder) ?? 0) > 0 &&
+    hullsIn(arriving.get(holder)) > 0 &&
     squatters.length > 0 &&
     [...arriving.keys()].every((id) => id === holder || guest(id));
 
-  const attackers = sweep
-    ? ([[holder!, arriving.get(holder!)!]] as [string, number][])
+  const attackers: [string, ShipStack][] = sweep
+    ? [[holder!, arriving.get(holder!)!]]
     : [...arriving.entries()].filter(([id]) => id !== holder && !guest(id));
   const guests = [...arriving.entries()].filter(([id]) => guest(id));
   // In a sweep the holder's arriving hulls are the attacking force, so they
@@ -3184,16 +3336,23 @@ function resolveBattle(
   const attackerIds = new Set(attackers.map(([id]) => id));
   const coalition = attackers.map(([id]) => nameOf(id)).join(' and ');
   /** One side of one round: what it had at the round's start, and what it has now. */
-  const sideOf = (now: Map<string, number>, was: Map<string, number>): Contingent[] =>
-    [...now.entries()].map(([id, n]) => ({
-      factionId: id,
-      factionName: nameOf(id),
-      before: was.get(id) ?? n,
-      after: n,
-    }));
+  const sideOf = (now: Map<string, ShipStack>, was: Map<string, ShipStack>): Contingent[] =>
+    [...now.entries()].map(([id, stack]) => {
+      const before = was.get(id) ?? stack;
+      return {
+        factionId: id,
+        factionName: nameOf(id),
+        before: hullsIn(before),
+        after: hullsIn(stack),
+        stackBefore: before,
+        stackAfter: stack,
+      };
+    });
   attackSnapshot = new Map(attackers);
-  let attackForce = attackers.reduce((sum, [, n]) => sum + n, 0);
   const attackShare = new Map(attackers);
+  /** Hulls the coalition still has. What a player counts. */
+  const attackHulls = (): number =>
+    [...attackShare.values()].reduce((n, st) => n + hullsIn(st), 0);
 
   /* --- Pacts broken by this attack ------------------------------------- */
   // Attacking someone you have sworn peace with voids the pact, costs the
@@ -3235,9 +3394,9 @@ function resolveBattle(
   }
 
   // Safe default: everyone else present is a defender.
-  const defenders: [string, number][] = Object.entries(target.ships).filter(
-    ([id, n]) => !attackerIds.has(id) && n > 0,
-  );
+  const defenders: [string, ShipStack][] = presentAt(target)
+    .filter(([id, n]) => !attackerIds.has(id) && n > 0)
+    .map(([id]) => [id, stackAt(target, id)]);
 
   /* --- Mutual defence: pledged hulls are called in ---------------------- */
   // `shipsPledged` was a dead field: a treaty could promise a squadron and
@@ -3256,23 +3415,37 @@ function resolveBattle(
 
       // Never drawn from the system under attack: those hulls are already
       // counted among the defenders.
-      const sent = removeShips(state, ally, pledged, target.id);
-      if (sent <= 0) continue;
-      target.ships[ally] = (target.ships[ally] ?? 0) + sent;
+      const sent = drawShips(state, ally, pledged, target.id);
+      if (hullsIn(sent) <= 0) continue;
+      addStackAt(target, ally, sent);
       const existing = defenders.find(([id]) => id === ally);
-      if (existing) existing[1] += sent;
+      if (existing) existing[1] = mergeStacks(existing[1], sent);
       else defenders.push([ally, sent]);
 
       logEvent(
         state,
         'diplomacy',
-        `${nameOf(ally)} honours its mutual defence pact and commits ${sent} ships to ${target.name}.`,
+        `${nameOf(ally)} honours its mutual defence pact and commits ${hullsIn(sent)} ships to ${target.name}.`,
         ally,
       );
     }
   }
 
-  let defenceForce = defenders.reduce((sum, [, n]) => sum + n, 0);
+  /**
+   * The two currencies the orbitals are settled in.
+   *
+   * **Weight decides who wins; tonnage decides how much burns.** A lifter has
+   * no weight at all, so counting losses in weight would make it unhittable and
+   * a fleet that packed transports behind its line would carry them through any
+   * battle free. Weight is stated in battleship-equivalents so the exchange is
+   * the arithmetic it has always been: a galaxy of nothing but battleships
+   * fights exactly as it did before classes existed.
+   */
+  const BE = HULL_SPEC.battleship.orbitalWeight;
+  const weightOfSide = (side: Iterable<ShipStack>): number =>
+    [...side].reduce((n, st) => n + orbitalWeightOf(st), 0) / BE;
+
+  let defenceForce = defenders.reduce((sum, [, st]) => sum + hullsIn(st), 0);
   defendSnapshot = new Map(defenders);
 
   // Genuinely undefended: nobody in orbit AND nobody on the ground. An
@@ -3281,8 +3454,8 @@ function resolveBattle(
   // neutral in the galaxy a free pickup whose militia you then inherited
   // intact. Unaligned means nobody speaks for it, not that nobody defends it.
   if (holder === null && defenceForce === 0 && target.garrison <= 0) {
-    for (const [id, n] of attackers) land(id, n);
-    const owner = strongest(attackShare);
+    for (const [id, st] of attackers) land(id, st);
+    const owner = strongestBy(attackShare, tonsIn);
     target.controllerFactionId = owner;
     const note = `${coalition} occupies ${target.name} unopposed; ${nameOf(owner)} takes possession.`;
     logEvent(state, 'order', note, owner);
@@ -3312,8 +3485,9 @@ function resolveBattle(
   const ethicOfFaction = (id: string | null): string | null =>
     id === null ? null : (state.factions.find((f) => f.id === id)?.warEthic ?? null);
   const largestAttacker =
-    [...attackShare.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ??
-    null;
+    [...attackShare.entries()].sort(
+      (a, b) => tonsIn(b[1]) - tonsIn(a[1]) || a[0].localeCompare(b[0]),
+    )[0]?.[0] ?? null;
   const attackEthic = ethicOfFaction(largestAttacker);
   const holderEthic = ethicOfFaction(holder);
 
@@ -3336,14 +3510,77 @@ function resolveBattle(
 
   // A retreating force loses 10–35% getting clear; bad luck costs more.
   const retreatLossPct = 10 + ((21 - roll) % 6) * 5;
-  const bleed = (n: number): number => Math.max(0, n - Math.ceil((n * retreatLossPct) / 100));
+  /**
+   * What survives a withdrawal, spending the loss order.
+   *
+   * In TONS, like every other loss, so a fleet of many cheap hulls does not
+   * escape more lightly than the same displacement of heavy ones. A pure
+   * battleship fleet bleeds exactly the hulls it always did, since its tons and
+   * its hulls are the same fraction.
+   *
+   * **This is where a screen actually earns its keep.** The exchange band
+   * destroys half a fleet or more, which no realistic escort force absorbs, but
+   * a withdrawal costs 10–35% — and that a screen can cover outright, which is
+   * what brings a convoy home from a battle it should not have fought.
+   */
+  const bleed = (stack: ShipStack): ShipStack =>
+    strikeStack(stack, (tonsIn(stack) * retreatLossPct) / 100).left;
   const notes: string[] = [];
 
   /* ---------- Phase 1: fleet battle ---------- */
-  if (defenceForce > 0) {
+  const attackWeight = weightOfSide(attackShare.values());
+  const defendWeight = weightOfSide(defenders.map(([, st]) => st));
+
+  /**
+   * A fleet that cannot shoot cannot deny the orbitals, and cannot cover its
+   * own withdrawal either.
+   *
+   * Without this a pure-lift squadron squatting in orbit had `defendWeight` 0,
+   * which every branch below reads as "nothing to fight" — so a convoy nobody
+   * could remove would block a landing forever. It is a walkover that destroys
+   * them, not a no-op. Symmetric, so an invasion that arrives as transports
+   * only is annihilated the same way.
+   */
+  if (defenceForce > 0 && defendWeight === 0 && attackWeight > 0) {
+    let lost = 0;
+    for (const [id, st] of defenders) {
+      lost += hullsIn(st);
+      setStackAt(target, id, {});
+    }
+    const swept = `${defenders.map(([id]) => nameOf(id)).join(' and ')} has nothing over ${target.name} that can fight; ${lost} unarmed ships are destroyed where they lie.`;
+    notes.push(swept);
+    rounds.push({
+      turn: state.turn, phase: 'orbital', outcome: 'defender_broke_off',
+      attackPower: Math.round(attackWeight), defendPower: 0,
+      assault: 0, garrison: 0, garrisonEffective: 0,
+      attackers: sideOf(attackShare, attackSnapshot),
+      defenders: sideOf(new Map(defenders.map(([id]) => [id, {}])), defendSnapshot),
+      note: swept,
+    });
+    attackSnapshot = new Map(attackShare);
+    defendSnapshot = new Map();
+    defenceForce = 0;
+  } else if (defenceForce > 0 && attackWeight === 0 && defendWeight > 0) {
+    let lost = 0;
+    for (const [id, st] of attackShare) {
+      lost += hullsIn(st);
+      attackShare.set(id, {});
+    }
+    const note = `${coalition} arrives over ${target.name} with nothing that can fight; ${lost} unarmed ships are destroyed by its defenders.`;
+    logEvent(state, 'order', note, attackers[0]![0]);
+    rounds.push({
+      turn: state.turn, phase: 'orbital', outcome: 'attacker_driven_off',
+      attackPower: 0, defendPower: Math.round(defendWeight),
+      assault: 0, garrison: 0, garrisonEffective: 0,
+      attackers: sideOf(attackShare, attackSnapshot),
+      defenders: sideOf(new Map(defenders), defendSnapshot),
+      note,
+    });
+    return finish(note);
+  } else if (defenceForce > 0 && defendWeight > 0) {
     const swing = (roll - 10.5) / 22;
-    const attackPower = attackForce * (1 + attackMod / 20) * (1 + swing);
-    const defendPower = defenceForce * (1 + defendMod / 20) * (1 - swing);
+    const attackPower = attackWeight * (1 + attackMod / 20) * (1 + swing);
+    const defendPower = defendWeight * (1 + defendMod / 20) * (1 - swing);
 
     // A crusading power does not break off, in either direction. It wins
     // engagements it should have fled and loses fleets it should have saved —
@@ -3358,13 +3595,13 @@ function resolveBattle(
         assault: 0, garrison: 0, garrisonEffective: 0,
         attackers: sideOf(attackShare, attackSnapshot),
         defenders: sideOf(
-          new Map(defenders.map(([id]) => [id, target.ships[id] ?? 0])),
+          new Map(defenders.map(([id]) => [id, stackAt(target, id)])),
           defendSnapshot,
         ),
         note,
       });
       attackSnapshot = new Map(attackShare);
-      defendSnapshot = new Map(defenders.map(([id]) => [id, target.ships[id] ?? 0]));
+      defendSnapshot = new Map(defenders.map(([id]) => [id, stackAt(target, id)]));
     };
     // Only reported when it CHANGED the outcome: a crusading power that was
     // never asked to retreat did not do anything worth telling the player.
@@ -3383,12 +3620,12 @@ function resolveBattle(
       let lost = 0;
       for (const [id, present] of defenders) {
         const escaped = bleed(present);
-        lost += present - escaped;
-        delete target.ships[id];
+        lost += hullsIn(present) - hullsIn(escaped);
+        setStackAt(target, id, {});
         const refuge = fleetBases(state, id).find(
           (x) => x.id !== target.id && x.controllerFactionId === id,
         );
-        if (refuge && escaped > 0) refuge.ships[id] = (refuge.ships[id] ?? 0) + escaped;
+        if (refuge && hullsIn(escaped) > 0) addStackAt(refuge, id, escaped);
       }
       const broke = `${defenders.map(([id]) => nameOf(id)).join(' and ')} breaks off over ${target.name}, losing ${lost} ships between them.`;
       notes.push(broke);
@@ -3400,52 +3637,69 @@ function resolveBattle(
       for (const order of orders) {
         if (!attackerIds.has(order.factionId)) continue;
         const escaped = bleed(order.force);
-        lost += order.force - escaped;
+        lost += hullsIn(order.force) - hullsIn(escaped);
         const fallback = order.path[Math.max(0, order.path.length - 2)] ?? order.originId;
         const refuge = state.systems.find((x) => x.id === fallback);
-        if (refuge && escaped > 0) {
-          refuge.ships[order.factionId] = (refuge.ships[order.factionId] ?? 0) + escaped;
+        if (refuge && hullsIn(escaped) > 0) {
+          addStackAt(refuge, order.factionId, escaped);
         }
       }
+      for (const [id] of attackShare) attackShare.set(id, {});
       const note = `${coalition}'s attack on ${target.name} is driven off by its defenders, losing ${lost} ships.`;
       logEvent(state, 'order', note, attackers[0]![0]);
       orbital('attacker_driven_off', note);
       return finish(note);
     } else {
+      // Both sides trade. The exchange is settled in battleship-equivalents,
+      // exactly as it always was, and then charged to each contingent as a
+      // fraction of the TONNAGE it brought — which is what makes a transport
+      // die alongside the line that was covering it rather than sailing
+      // through the battle untouched because it has no guns.
       const exchange = Math.min(attackPower, defendPower);
-      const attackLeft = Math.max(0, attackForce - Math.ceil(exchange / (1 + attackMod / 20)));
-      const defenceLeft = Math.max(0, defenceForce - Math.ceil(exchange / (1 + defendMod / 20)));
-      const engaged = `Fleets engage over ${target.name}: ${coalition} loses ${attackForce - attackLeft} ships, the defenders lose ${defenceForce - defenceLeft}.`;
+      const attackLeft = Math.max(0, attackWeight - Math.ceil(exchange / (1 + attackMod / 20)));
+      const defenceLeft = Math.max(0, defendWeight - Math.ceil(exchange / (1 + defendMod / 20)));
+      const hullsBeforeExchange = attackHulls();
+      const defendHullsBefore = defenceForce;
+
+      // How much of each side's fire strikes past the other's screen. This is
+      // the class triangle and the whole of the torpedo boat: it is not extra
+      // damage — the tonnage destroyed is identical either way — only a say in
+      // WHICH hulls absorb it. A boat that hit harder would just be a cheaper
+      // battleship, and the escort would have nothing to answer.
+      const attackerStacks = [...attackShare.values()];
+      const defenderStacks = defenders.map(([, st]) => st);
+      const deepOnDefenders = pastScreen(attackerStacks, defenderStacks);
+      const deepOnAttackers = pastScreen(defenderStacks, attackerStacks);
+
+      for (const [id, st] of attackShare) {
+        const lost = tonsIn(st) * (1 - attackLeft / attackWeight);
+        attackShare.set(id, strikeStack(st, lost, deepOnAttackers).left);
+      }
+      for (const [id, present] of defenders) {
+        const lost = tonsIn(present) * (1 - defenceLeft / defendWeight);
+        setStackAt(target, id, strikeStack(present, lost, deepOnDefenders).left);
+      }
+      defenceForce = defenders.reduce((sum, [id]) => sum + hullsAt(target, id), 0);
+
+      const engaged = `Fleets engage over ${target.name}: ${coalition} loses ${hullsBeforeExchange - attackHulls()} ships, the defenders lose ${defendHullsBefore - defenceForce}.`;
       notes.push(engaged);
-      distribute(attackShare, attackForce, attackLeft);
-      // Defender losses fall proportionally on each power present.
-      let remaining = defenceLeft;
-      defenders.forEach(([id, present], i) => {
-        const share =
-          i === defenders.length - 1
-            ? remaining
-            : Math.min(remaining, Math.round((present / defenceForce) * defenceLeft));
-        remaining -= share;
-        if (share > 0) target.ships[id] = share;
-        else delete target.ships[id];
-      });
-      attackForce = attackLeft;
-      defenceForce = defenceLeft;
       // Recorded after the redistribution, so the per-contingent numbers are
       // the ones that actually landed on the board.
       orbital('exchange', engaged);
     }
   }
 
-  if (defenceForce > 0) {
-    for (const [id, n] of attackShare) land(id, n);
+  // Denial is a question of guns, not of hulls: a surviving fleet that cannot
+  // shoot has already been dealt with above, and one that can stops a landing.
+  if (weightOfSide(defenders.map(([id]) => stackAt(target, id))) > 0) {
+    for (const [id, st] of attackShare) land(id, st);
     const note = `${notes.join(' ')} The defenders still hold the orbitals of ${target.name}; no landing is attempted.`.trim();
     logEvent(state, 'order', note, attackers[0]![0]);
     if (rounds.length > 0) rounds[rounds.length - 1]!.outcome = 'no_landing';
     return finish(note);
   }
 
-  if (attackForce <= 0) {
+  if (attackHulls() <= 0) {
     const note = `${notes.join(' ')} ${coalition}'s force is spent over ${target.name}.`.trim();
     logEvent(state, 'order', note, attackers[0]![0]);
     if (rounds.length > 0) rounds[rounds.length - 1]!.outcome = 'force_spent';
@@ -3456,7 +3710,7 @@ function resolveBattle(
   // holder already holds the ground, the garrison took no part, and there is
   // nothing to take. Surviving hulls put in over the world they came to clear.
   if (sweep) {
-    for (const [id, n] of attackShare) land(id, n);
+    for (const [id, st] of attackShare) land(id, st);
     const cleared = `${notes.join(' ')} ${nameOf(holder!)} clears the orbitals of ${target.name}.`.trim();
     logEvent(state, 'order', cleared, holder);
     if (rounds.length > 0) rounds[rounds.length - 1]!.outcome = 'orbit_cleared';
@@ -3477,7 +3731,18 @@ function resolveBattle(
       `defensive: ${nameOf(holder!)}'s garrison of ${garrison} fought as ${dugIn}`,
     );
   }
-  const assault = attackForce * (1 + attackMod / 20) * (1 + (roll - 10.5) / 30);
+  /**
+   * A world is taken by the troops the lift arm puts on it.
+   *
+   * `attackForce` used to be every hull in the coalition, so a fleet of pure
+   * warships stormed a planet by flying at it. Ground combat now counts what is
+   * actually aboard, which is what gives conquest a dedicated cost and lets an
+   * all-gun fleet win the orbitals and take nothing.
+   */
+  const liftersIn = (): number =>
+    [...attackShare.values()].reduce((n, st) => n + (st.lifter ?? 0), 0);
+  const troops = [...attackShare.values()].reduce((n, st) => n + carryOf(st), 0);
+  const assault = troops * (1 + attackMod / 20) * (1 + (roll - 10.5) / 30);
   const ground = (outcome: BattleOutcome, note: string): void => {
     rounds.push({
       turn: state.turn, phase: 'ground', outcome,
@@ -3490,58 +3755,144 @@ function resolveBattle(
     attackSnapshot = new Map(attackShare);
   };
 
+  // Won the orbitals with nothing aboard to put ashore. The world is left
+  // sterilised and in the same hands, which is the cost of sending a fleet
+  // that is all guns.
+  if (troops <= 0) {
+    for (const [id, st] of attackShare) land(id, st);
+    const note = `${notes.join(' ')} ${coalition} commands the orbitals of ${target.name} and has no troops aboard to land.`.trim();
+    logEvent(state, 'order', note, attackers[0]![0]);
+    ground('no_lift', note);
+    return finish(note);
+  }
+
   if (assault > dugIn) {
-    const losses = Math.min(attackForce, Math.ceil(dugIn / 2));
-    distribute(attackShare, attackForce, attackForce - losses);
-    // Spoils go to whoever brought the most, counted on what survived.
-    const owner = strongest(attackShare);
-    target.controllerFactionId = owner;
-    // An expansionist consolidates what it takes: the world comes with a
-    // stronger occupation force, so conquest sticks instead of needing
-    // re-garrisoning the moment the fleet moves on.
-    const kept = attackEthic === 'expansionist' ? Math.floor(garrison / 2) : Math.floor(garrison / 3);
-    if (attackEthic === 'expansionist' && kept > Math.floor(garrison / 3)) {
+    // The garrison is broken by troops, and the troops die with the transports
+    // carrying them — so a hard-fought landing eats the lift arm and conquest
+    // stays a recurring cost rather than a one-off purchase.
+    //
+    // An expansionist consolidates what it takes: it comes through the landing
+    // with more of its lift intact, so the occupying force it leaves behind is
+    // larger and conquest sticks instead of needing re-garrisoning the moment
+    // the fleet moves on. The same doctrine as before, said through the
+    // mechanism that now decides a garrison.
+    // A garrison that is broken still kills its own strength in troops, and
+    // the transports that carried them go with them.
+    //
+    // It was half that, mirroring the old formula — which charged half the
+    // garrison in *warships*. Half a garrison of ten is five hulls, 300
+    // credits; half of it in lift is one lifter, 45. Conquest came out six
+    // times CHEAPER than the model it replaced, which is the opposite of "a
+    // dedicated cost", and the balance harness showed it immediately: the
+    // Vigil rolled Meridian down to a single world by turn 30.
+    const bare = Math.ceil(dugIn / LIFTER_CARRY);
+    // Rounded in the expansionist's favour rather than against it: a lifter
+    // carries six, so `bare` is usually 1 or 2 against the garrisons on this
+    // map, and halving upwards would leave the doctrine inert exactly where
+    // most conquests happen.
+    const lifterLosses = Math.min(
+      liftersIn(),
+      attackEthic === 'expansionist' ? Math.floor(bare / 2) : bare,
+    );
+    if (attackEthic === 'expansionist' && lifterLosses < bare) {
       doctrinesFired.push(
-        `expansionist: ${nameOf(owner)} consolidates, keeping ${kept} of the garrison rather than ${Math.floor(garrison / 3)}`,
+        `expansionist: ${nameOf(largestAttacker!)} consolidates, losing ${lifterLosses} lifters in the landing rather than ${bare}`,
       );
     }
-    target.garrison = Math.max(1, kept);
-    for (const [id, n] of attackShare) land(id, n);
-    const note = `${notes.join(' ')} ${coalition} storms ${target.name}, breaking a garrison of ${garrison} for ${losses} ships; ${nameOf(owner)} takes possession.`.trim();
+    spendLifters(attackShare, lifterLosses);
+    // Spoils go to whoever put the most troops on the ground, not to whoever
+    // brought the most ships: a partner who escorted the convoy and landed
+    // nobody has not taken the world.
+    const owner = strongestBy(attackShare, carryOf);
+    target.controllerFactionId = owner;
+    // The garrison IS the landing force. What holds the world afterwards is
+    // the troops that took it, up to what the world can quarter — not a
+    // fraction of the defenders, who were just destroyed.
+    const landed = [...attackShare.values()].reduce((n, st) => n + carryOf(st), 0);
+    target.garrison = Math.max(1, Math.min(target.garrisonMax, landed));
+    for (const [id, st] of attackShare) land(id, st);
+    const note = `${notes.join(' ')} ${coalition} storms ${target.name}, breaking a garrison of ${garrison} for ${lifterLosses} lifters; ${nameOf(owner)} takes possession with ${target.garrison} troops ashore.`.trim();
     logEvent(state, 'order', note, owner);
     ground('world_taken', note);
     return finish(note);
   }
 
-  const losses = Math.min(attackForce, Math.ceil(attackForce / 3));
-  target.garrison = Math.max(0, garrison - Math.ceil(attackForce / 4));
-  distribute(attackShare, attackForce, attackForce - losses);
-  for (const [id, n] of attackShare) land(id, n);
-  const note = `${notes.join(' ')} ${coalition}'s landing on ${target.name} is thrown back by its garrison; ${losses} ships lost.`.trim();
+  const lifterLosses = Math.ceil(liftersIn() / 3);
+  target.garrison = Math.max(0, garrison - Math.ceil(troops / 4));
+  spendLifters(attackShare, lifterLosses);
+  for (const [id, st] of attackShare) land(id, st);
+  const note = `${notes.join(' ')} ${coalition}'s landing on ${target.name} is thrown back by its garrison; ${lifterLosses} lifters lost.`.trim();
   logEvent(state, 'order', note, attackers[0]![0]);
   ground('landing_thrown_back', note);
   return finish(note);
 }
 
-/** Scale a coalition's contingents down to a new total, largest-remainder. */
-function distribute(share: Map<string, number>, before: number, after: number): void {
-  if (before <= 0) return;
-  let remaining = after;
-  const ids = [...share.keys()];
+/**
+ * The share of one side's fire that lands past the other's screen.
+ *
+ * Torpedo boats choose where their share of the damage falls — on the heaviest
+ * hulls, ignoring the loss order — and **escorts are what answers them**, which
+ * is the historical shape as well as the mechanical one: destroyers were
+ * originally *torpedo boat destroyers*. A screen matching the attacking boats
+ * ton for ton cancels the redirection outright; half a screen halves it.
+ *
+ * Without this the escort has no job that a battleship does not do better. The
+ * exchange band destroys 50–100% of a fleet's tonnage (at 2:1 the defender
+ * simply breaks off and nothing is lost at all), so no realistic screen can
+ * absorb a stand-up fight — the class earns its place by being the counter to
+ * this, and by covering a withdrawal.
+ */
+function pastScreen(firing: ShipStack[], target: ShipStack[]): number {
+  const share = torpedoShare(firing);
+  if (share <= 0) return 0;
+  const boats = tonsOfClass(firing, 'torpedo_boat');
+  if (boats <= 0) return 0;
+  const screen = tonsOfClass(target, 'escort');
+  return share * Math.max(0, 1 - Math.min(1, screen / boats));
+}
+
+/**
+ * Take `count` lifters off a coalition, proportionally, largest remainder.
+ *
+ * Ground losses fall on the lift arm and nowhere else: the escorts and the
+ * battle line are in orbit, and it is the landing that is being fought.
+ */
+function spendLifters(share: Map<string, ShipStack>, count: number): void {
+  const total = [...share.values()].reduce((n, st) => n + (st.lifter ?? 0), 0);
+  if (total <= 0 || count <= 0) return;
+  const want = Math.min(count, total);
+  const ids = [...share.keys()].filter((id) => (share.get(id)!.lifter ?? 0) > 0);
+  const exact = ids.map((id) => ((share.get(id)!.lifter ?? 0) * want) / total);
+  const take = exact.map((x) => Math.floor(x));
+  let assigned = take.reduce((a, b) => a + b, 0);
+  const order = ids
+    .map((id, i) => ({ i, id, frac: exact[i]! - take[i]! }))
+    .sort((a, b) => b.frac - a.frac || a.id.localeCompare(b.id));
+  for (const { i, id } of order) {
+    if (assigned >= want) break;
+    if (take[i]! >= (share.get(id)!.lifter ?? 0)) continue;
+    take[i]! += 1;
+    assigned += 1;
+  }
   ids.forEach((id, i) => {
-    const had = share.get(id)!;
-    const now =
-      i === ids.length - 1 ? remaining : Math.min(remaining, Math.round((had / before) * after));
-    remaining -= now;
-    share.set(id, Math.max(0, now));
+    const stack = { ...share.get(id)! };
+    const left = (stack.lifter ?? 0) - take[i]!;
+    if (left > 0) stack.lifter = left;
+    else delete stack.lifter;
+    share.set(id, stack);
   });
 }
 
 /**
- * Who owns a captured world: the contingent that brought the most.
- * Ties break on faction id so replay stays exact.
+ * Who owns a captured world, by whichever measure the caller cares about.
+ *
+ * A world stormed goes to the power that landed the most troops; a world walked
+ * into goes to the power that brought the most ship. Ties break on faction id
+ * so replay stays exact.
  */
-function strongest(share: Map<string, number>): string {
-  return [...share.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]![0];
+function strongestBy(share: Map<string, ShipStack>, weigh: (s: ShipStack) => number): string {
+  return [...share.entries()].sort(
+    (a, b) => weigh(b[1]) - weigh(a[1]) || a[0].localeCompare(b[0]),
+  )[0]![0];
 }
 

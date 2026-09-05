@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { MAX_DURATION } from '../src/domain/duration.js';
-import { fleetStrengthOf, SHIP_COST, type WorldState } from '../src/domain/state.js';
+import {
+  addShipsAt,
+  hullsAt,
+  setShipsAt, fleetStrengthOf, SHIP_COST, type WorldState } from '../src/domain/state.js';
 
 const fresh = (): WorldState => createSeedState('freeworlds');
 
@@ -104,7 +107,7 @@ describe('adjust_fleet and adjust_credits', () => {
     const res = applyOps(start, [{ op: 'adjust_fleet', factionId: 'krayt', delta: 10 }]);
     expect(fleetStrengthOf(res.state, 'krayt')).toBe(before + 10);
     // They must exist in a system, not in an abstract pool.
-    const total = res.state.systems.reduce((n, s) => n + (s.ships['krayt'] ?? 0), 0);
+    const total = res.state.systems.reduce((n, s) => n + (hullsAt(s, 'krayt')), 0);
     expect(total).toBe(before + 10);
     expect(res.state.factions.find((f) => f.id === 'krayt')!.credits).toBe(purse - 10 * SHIP_COST);
   });
@@ -478,11 +481,12 @@ describe('tickTurn', () => {
     const base = fresh();
     // Send a token force at a heavily dug-in world with no defending fleet, so
     // phase 1 is skipped and the garrison decides it.
-    base.systems.find((s) => s.id === 'ark-3')!.ships['freeworlds'] = 2;
+    setShipsAt(base.systems.find((s) => s.id === 'ark-3')!, 'freeworlds', 2);
+    addShipsAt(base.systems.find((s) => s.id === 'ark-3')!, 'freeworlds', 1, 'lifter');
     let state = applyOps(base, [
       {
         op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
-        originId: 'ark-3', targetId: 'slu-6', force: 2,
+        originId: 'ark-3', targetId: 'slu-6', force: { battleship: 2, lifter: 1 },
       },
     ]).state;
     const target = state.systems.find((s) => s.id === 'slu-6')!;
@@ -564,7 +568,7 @@ describe('a batch is atomic when asked to be', () => {
    */
   it('does not carry a self-inflicted-loss trim across a rollback', () => {
     const state = createSeedState('meridian');
-    const home = state.systems.find((sys) => (sys.ships.meridian ?? 0) > 0)!;
+    const home = state.systems.find((sys) => (hullsAt(sys, 'meridian')) > 0)!;
     const out = applyOps(
       state,
       [
@@ -602,9 +606,9 @@ describe('a batch is atomic when asked to be', () => {
 describe('hulls a declaration could not lose stay where they were', () => {
   const setup = () => {
     const s = createSeedState('krayt');
-    for (const sys of s.systems) delete sys.ships.krayt;
-    s.systems.find((x) => x.id === 'kes-6')!.ships.krayt = 1; // strategicValue 7
-    s.systems.find((x) => x.id === 'kes-7')!.ships.krayt = 4; // strategicValue 3
+    for (const sys of s.systems) setShipsAt(sys, 'krayt', 0);
+    setShipsAt(s.systems.find((x) => x.id === 'kes-6')!, 'krayt', 1); // strategicValue 7
+    setShipsAt(s.systems.find((x) => x.id === 'kes-7')!, 'krayt', 4); // strategicValue 3
     return s;
   };
 
@@ -616,7 +620,7 @@ describe('hulls a declaration could not lose stay where they were', () => {
       'krayt',
       true,
     );
-    const at = (id: string) => out.state.systems.find((x) => x.id === id)!.ships.krayt ?? 0;
+    const at = (id: string) => hullsAt(out.state.systems.find((x) => x.id === id)!, 'krayt');
 
     // The world they were never at must not gain any.
     expect(at('kes-6')).toBe(1);

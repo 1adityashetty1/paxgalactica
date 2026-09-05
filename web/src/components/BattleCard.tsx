@@ -8,7 +8,8 @@ import {
 import type { WorldState } from '../../../src/domain/state.js';
 import { getFaction } from '../../../src/domain/state.js';
 import { ansi256ToHex, NEUTRAL } from '../color.js';
-import { GarrisonIcon, ShipIcon } from './BattleIcons.js';
+import { GarrisonIcon, ShipIcon, StackGlyphs } from './BattleIcons.js';
+import { subtractStack, type ShipStack } from '../../../src/domain/hulls.js';
 
 /**
  * A battle, shown as the arithmetic that produced it.
@@ -30,6 +31,7 @@ const OUTCOME_LABEL: Record<BattleRound['outcome'], string> = {
   force_spent: 'attacking force spent',
   world_taken: 'garrison broken, world taken',
   landing_thrown_back: 'landing thrown back',
+  no_lift: 'orbitals won — no troops aboard to land',
   orbit_cleared: 'orbit cleared of rival ships',
 };
 
@@ -78,16 +80,24 @@ function Strength({
   );
 }
 
-/** One row of the order of battle: who, and what they brought. */
+/**
+ * One row of the order of battle: who, and what they brought.
+ *
+ * `stack` is the composition and `ships` the total. Both, because a report
+ * written before classes existed carries only the total — and because the
+ * total is what the row is hidden on.
+ */
 function ObRow({
   name,
   colour,
   ships,
+  stack,
   garrison,
 }: {
   name: string;
   colour: string;
   ships: number;
+  stack?: ShipStack;
   garrison?: number;
 }) {
   if (ships <= 0 && !garrison) return null;
@@ -95,13 +105,32 @@ function ObRow({
     <div className="ob-row" style={{ color: colour }}>
       <span className="ob-name">{name}</span>
       <span className="ob-units">
-        {ships > 0 && <Strength kind="ship" count={ships} label="warships" />}
+        {ships > 0 && <StackGlyphs stack={stack ?? {}} fallback={ships} />}
         {garrison !== undefined && garrison > 0 && (
           <Strength kind="garrison" count={garrison} label="garrison batteries" />
         )}
       </span>
     </div>
   );
+}
+
+/**
+ * What one side lost, by class, summed across every round.
+ *
+ * Derived rather than recorded: each round already carries both stacks, so
+ * storing the difference would be a second copy of a subtraction.
+ */
+function lostBy(report: BattleReport, side: 'attackers' | 'defenders'): ShipStack {
+  let out: ShipStack = {};
+  for (const round of report.rounds) {
+    for (const c of round[side]) {
+      const gone = subtractStack(c.stackBefore, c.stackAfter);
+      for (const [hull, n] of Object.entries(gone) as [keyof ShipStack, number][]) {
+        out = { ...out, [hull]: (out[hull] ?? 0) + n };
+      }
+    }
+  }
+  return out;
 }
 
 /**
@@ -144,6 +173,7 @@ function OrderOfBattle({ report, state }: { report: BattleReport; state: WorldSt
             name={c.factionName}
             colour={colourOf(c.factionId)}
             ships={c.before}
+            stack={c.stackBefore}
           />
         ))}
         {defenders.length > 0 ? (
@@ -153,6 +183,7 @@ function OrderOfBattle({ report, state }: { report: BattleReport; state: WorldSt
               name={c.factionName}
               colour={colourOf(c.factionId)}
               ships={c.before}
+              stack={c.stackBefore}
               garrison={i === 0 ? report.garrisonBefore : undefined}
             />
           ))
@@ -168,11 +199,17 @@ function OrderOfBattle({ report, state }: { report: BattleReport; state: WorldSt
 
       <div className="ob-col">
         <span className="ob-heading">Losses</span>
-        <ObRow name="attacking" colour={NEUTRAL} ships={losses.attackers} />
+        <ObRow
+          name="attacking"
+          colour={NEUTRAL}
+          ships={losses.attackers}
+          stack={lostBy(report, 'attackers')}
+        />
         <ObRow
           name="defending"
           colour={NEUTRAL}
           ships={losses.defenders}
+          stack={lostBy(report, 'defenders')}
           garrison={garrisonLost}
         />
         {losses.attackers === 0 && losses.defenders === 0 && garrisonLost === 0 && (

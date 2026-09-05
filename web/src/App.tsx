@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { STAT_MEANINGS, STAT_NAMES } from '../../src/domain/checks.js';
 import { neighboursOf, shortestPath } from '../../src/domain/graph.js';
-import type { WorldState } from '../../src/domain/state.js';
+import { hullsAt, type WorldState } from '../../src/domain/state.js';
 import { ansi256ToHex } from './color.js';
 import { BriefingPanel } from './components/BriefingPanel.js';
 import { ChannelPanel } from './components/ChannelPanel.js';
@@ -32,7 +32,7 @@ function exampleActions(state: WorldState | null): string[] {
   if (!state) return [];
   const me = state.playerFactionId;
   const mine = state.systems.filter((s) => s.controllerFactionId === me);
-  const withShips = [...mine].sort((a, b) => (b.ships[me] ?? 0) - (a.ships[me] ?? 0));
+  const withShips = [...mine].sort((a, b) => hullsAt(b, me) - hullsAt(a, me));
   const base = withShips[0] ?? mine[0];
   if (!base) return [];
 
@@ -55,7 +55,7 @@ function exampleActions(state: WorldState | null): string[] {
     state.factions.find((f) => f.id !== me && f.id === rival?.controllerFactionId) ??
     state.factions.find((f) => f.id !== me)!;
 
-  const force = Math.max(4, Math.floor((base.ships[me] ?? 8) / 2));
+  const force = Math.max(4, Math.floor((hullsAt(base, me) || 8) / 2));
   const lines: string[] = [];
   // "the Free Worlds's crews" is a mouthful nobody would type.
   const possessive = (name: string) => (name.endsWith('s') ? `${name}'` : `${name}'s`);

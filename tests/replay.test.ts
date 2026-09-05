@@ -48,6 +48,11 @@ describe('journal replay', () => {
         source: 'model',
         label: 'move',
         ops: [
+          // Lift first: a world is taken by the troops that land on it, so a
+          // pure battle fleet would win the orbitals over slu-6 and leave it
+          // unaligned. Omitting `force` sends everything at ark-3, transports
+          // included.
+          { op: 'adjust_ships', systemId: 'ark-3', factionId: 'freeworlds', delta: 3, hull: 'lifter' },
           { op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement', originId: 'ark-3', targetId: 'slu-6' },
         ],
       },

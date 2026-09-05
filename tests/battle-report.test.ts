@@ -1,3 +1,4 @@
+import { hullsAt, setShipsAt } from '../src/domain/state.js';
 import { describe, expect, it } from 'vitest';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
@@ -27,7 +28,7 @@ function fight(
 ): { state: WorldState; battles: BattleReport[] } {
   const state = fresh();
   setup(state);
-  sys(state, opts.origin).ships[opts.attacker] = opts.force;
+  setShipsAt(sys(state, opts.origin), opts.attacker, opts.force);
   const issued = applyOps(
     state,
     [
@@ -90,7 +91,7 @@ describe('a battle is a record, not a sentence', () => {
 
   it('reports nothing for a reinforcement, which is not a battle', () => {
     const state = fresh();
-    sys(state, 'ark-1').ships['freeworlds'] = 6;
+    setShipsAt(sys(state, 'ark-1'), 'freeworlds', 6);
     const issued = applyOps(
       state,
       [
@@ -122,7 +123,7 @@ describe('a battle is a record, not a sentence', () => {
         const t = sys(s, 'ark-6');
         t.garrison = 3;
         t.garrisonMax = 14;
-        t.ships['freeworlds'] = 5;
+        setShipsAt(t, 'freeworlds', 5);
       },
       { attacker: 'krayt', origin: 'ark-5', target: 'ark-6', force: 26 },
     );
@@ -131,7 +132,7 @@ describe('a battle is a record, not a sentence', () => {
     expect(orbital.attackers[0]!.before).toBe(26);
 
     const last = b.rounds[b.rounds.length - 1]!;
-    const onBoard = sys(state, 'ark-6').ships['krayt'] ?? 0;
+    const onBoard = hullsAt(sys(state, 'ark-6'), 'krayt');
     expect(last.attackers.find((c) => c.factionId === 'krayt')!.after).toBe(onBoard);
   });
 
@@ -175,7 +176,7 @@ describe('doctrinesFired makes the war ethics observable', () => {
         const t = sys(s, 'ark-6');
         t.garrison = 2;
         t.garrisonMax = 14;
-        delete t.ships['freeworlds'];
+        setShipsAt(t, 'freeworlds', 0);
       },
       { attacker: 'krayt', origin: 'ark-5', target: 'ark-6', force: 10 },
     ).battles[0]!;
@@ -187,7 +188,7 @@ describe('the phases are told apart', () => {
   it('separates the orbital exchange from the ground assault', () => {
     const { battles } = fight(
       (s) => {
-        sys(s, 'ark-6').ships['freeworlds'] = 6;
+        setShipsAt(sys(s, 'ark-6'), 'freeworlds', 6);
         fac(s, 'freeworlds').warEthic = 'profiteer';
       },
       { attacker: 'krayt', origin: 'ark-5', target: 'ark-6', force: 30 },
@@ -201,7 +202,7 @@ describe('the phases are told apart', () => {
   it('carries the powers the break-off test compared, on the orbital round', () => {
     const { battles } = fight(
       (s) => {
-        sys(s, 'ark-6').ships['freeworlds'] = 6;
+        setShipsAt(sys(s, 'ark-6'), 'freeworlds', 6);
       },
       { attacker: 'krayt', origin: 'ark-5', target: 'ark-6', force: 30 },
     );

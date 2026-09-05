@@ -917,6 +917,321 @@ dissent across ten turns while the player accrued 69.
 
 ---
 
+## 55. DONE — ship classes, and tonnage as the unit of fleet size
+### all four steps done
+
+A fleet was a count, so every hull was identical and composition was not a
+decision. The design below is settled; step 0 is built.
+
+### The classes
+
+| class | tonnage | cost | upkeep | orbital weight | job |
+|---|---|---|---|---|---|
+| **escort** | 2 | 30 | 2 | 1 | takes losses first |
+| **torpedo boat** | 2 | 30 | 2 | 1 | strikes past the screen at the heaviest hulls |
+| **line** | 4 | 60 | 4 | 3 | the all-rounder |
+| **lifter** | 3 | 45 | 3 | 0 | 6 troops each; the only way to take ground |
+
+### Tonnage is the single primitive
+
+`CREDITS_PER_TON` 15 and `UPKEEP_PER_TON` 1 are chosen so a **battleship is
+exactly what a ship was before classes existed** — 4 tons is 60 credits, the old
+`SHIP_COST`, and 4 a turn, the old `UPKEEP_PER_FLEET_POINT`. A galaxy of nothing
+but battleships plays identically, which is what makes the migration a change
+with no balance argument in it.
+
+Everything that limits a fleet by size is now denominated in tons: upkeep,
+presence and income contest, `subornLimit`, the price of a suborned crew,
+`MAX_ATTRITION_FRACTION`, `capSelfInflictedLosses`, and the doctrine bots'
+budget. Five conventions that had no reason to agree become one.
+
+**Cost strictly per ton closes an exploit by construction:** cheap hulls cannot
+become the efficient way to skim a rival's income, because every class buys
+exactly the same presence per credit.
+
+### Two traps this design already fell into
+
+**Escort spam.** The first table gave escorts a battleship's `orbitalWeight` at
+half the tonnage — twice as efficient per ton, per credit *and* per point of
+upkeep, with the only downside being that they die first, which barely matters
+when you are winning. Weight is now superlinear in tonnage for warships: a line
+hull is the better fighter on every axis, and an escort's whole compensation is
+that it is spent first. Same lesson as `tradeEthic` and `warEthic` — a
+difference expressed only as a number gets solved once and then ignored.
+
+**"Monitors are the only class that can damage a garrison."** False: the
+surviving fleet already assaults the garrison (`assault = attackForce * …`).
+Monitors were dropped. The real distinction was *damaging a garrison without
+landing*, which is a different feature.
+
+### Ground combat becomes the lift arm's job
+
+`assault = lifters * LIFTER_CARRY` replaces `attackForce`. The might modifier,
+the roll and `DEFENSIVE_GARRISON_BONUS` are untouched. Consequences agreed:
+
+- **Conquest gains a dedicated cost.** An all-warship fleet can sterilise a
+  system's orbitals and take nothing.
+- **Losses fall on the lift arm** in the ground phase, so a hard-fought landing
+  eats your transports and conquest stays a recurring cost.
+- **The captured world's garrison becomes the troops that took it**, replacing
+  "the conqueror keeps a fraction of the defender's garrison". More coherent,
+  but it touches `expansionist`.
+
+### The naming, because it was argued twice
+
+"Minelayer" says *area denial*; the mechanic is *hunting*. Two of the class
+names turned out to be the historical ones already — a lifter is a troopship
+and an **escort** is literally what the WWII convoy-protection class was called,
+so the third leg of that triangle is the raider. **Torpedo boat** was chosen
+over `interdictor` with the mechanic widened from "kills lifters" to "strikes
+past the screen at the heaviest hulls", so the name and the rule agree and the
+class is not dead weight in every war that is not an invasion. It also gives
+escorts a better story: destroyers were originally *torpedo boat destroyers*.
+
+### Staging — each step gives the previous one its point
+
+0. **Type `ships` to a class record, `battleship` only.** Behaviour-neutral.
+   **DONE.** `src/domain/hulls.ts` plus 16 tests, and the migration itself:
+   `system.ships` is now `Record<factionId, ShipStack>`, and every read and
+   write goes through accessors in `state.ts` — `hullsAt`, `tonsAt`,
+   `orbitalWeightAt`, `presentAt`, `addShipsAt`, `setShipsAt`. Roughly 280 call
+   sites across 11 source files and 13 test files.
+
+   Routing everything through accessors is what makes the stack invariant true
+   rather than merely intended: **no zero entries, no empty stacks, and no way
+   for a caller to write a bare total over a mixed force and silently lose a
+   class.** `setShipsAt` spends hulls in `lossOrder` when it removes them, which
+   is already the escort's whole job.
+
+   `ShipStackSchema` accepts the bare number every old save and journal carries
+   and normalises it, so an old campaign replays as the game it was played as.
+   Verified: **all 863 tests pass unchanged**, and all 22 saved campaigns replay
+   with valid stacks and the fleet totals they had before.
+
+   The class was called `line` while it was built; it is **`battleship`** now,
+   because "line hull" is not a term anyone uses.
+1. **`lifter` — DONE.** Invasion is a composed fleet. No new phases: the orbital
+   phase counts weight, the ground phase counts lift.
+
+   `PendingOrder.force` is a `ShipStack`, accepting the bare number every older
+   order carries — the same union trick step 0 used for `system.ships`, so all
+   23 saved campaigns still replay to the fleets and ledgers they had. A bare
+   number on a movement draws **proportionally**, because the alternatives are
+   both wrong: loss order sends the escorts and keeps the battleships at home,
+   and best-first means a plain number can never carry lift, so "send 30 ships"
+   arrives unable to take ground.
+
+   Also landed in this step, because the lifter could not be real without them:
+   cost, upkeep, insolvency attrition, `capSelfInflictedLosses`, the income
+   contest and the price of a suborned crew are all denominated in **tons**;
+   `adjust_fleet`, `adjust_ships` and `commission_ships` take a `hull`; the
+   model's state block reports composition rather than a count; and the bots
+   build and carry lift.
+
+   **Two things it broke, both caught by measurement rather than by reading:**
+
+   - **Conquest got six times CHEAPER**, not more expensive. `troopLosses` was
+     half the garrison, mirroring the old formula — which charged half the
+     garrison in *warships*. Half a garrison of ten is five hulls, 300 credits;
+     half of it in lift is one lifter, 45. A broken garrison now kills its own
+     strength in troops.
+   - **The bots counted transports as strength.** Every threshold in
+     `initiative.ts` is a hull count calibrated when a hull was a battleship,
+     and a lifter is a whole hull for three quarters of the price — so a fleet
+     crossed its own thresholds faster the more lift it bought. The Vigil went
+     from six systems to ten and reduced Meridian to one world at −126 net.
+     Strength is the battle line now (`warshipsAt`); lift is sized separately
+     against the target's garrison.
+
+   Both were invisible in the unit tests and obvious in one `pnpm balance 30`.
+
+   **`expansionist` had to be re-expressed rather than kept**: there is no
+   longer a share of the defender's garrison to keep more of, so it comes
+   through the landing with half its lift losses instead. Rounded *down*, since
+   a lifter carries six against garrisons of 2–15 and rounding up leaves the
+   doctrine inert exactly where most conquests happen.
+
+   17 tests in `tests/lift.test.ts`, two more in `tests/initiative.test.ts`.
+   898 → 900 across the suite.
+
+   **Four prompt lines go false the moment a second class exists**, and they
+   are part of this step rather than a later tidy-up. Every one of them states a
+   hull's price as a single number, which is only ever a battleship's — an
+   escort is 30, a torpedo boat 30, a lifter 45 — and the suborn figures are per
+   **ton** under the tonnage design, not per hull:
+
+   | | claim | why it breaks |
+   |---|---|---|
+   | `resolution.md:97` | *"hulls at 60"* | only a battleship costs 60 |
+   | `resolution.md:179` | *"the hulls are paid for at 60 apiece"* | suborning is priced per ton |
+   | `resolution.md:280` | *"60 credits a hull"* (`commission_ships`) | depends which class is commissioned |
+   | `resolution.md:182` | *"6 standing per hull"* | `SUBORN_DISPOSITION_COST` becomes per ton |
+
+   Nothing is wrong today — with only battleships in play, 60 is still right —
+   which is exactly what makes this easy to ship past.
+
+   The vocabulary itself is fine and does not need changing: **no prompt treats
+   "hull" as a ship type**, and none enumerates ship kinds at all. "Hull" is used
+   correctly as the unit — *"2 hulls a turn"*, *"capital hulls"* — and the
+   classes are kinds of hull.
+
+   **Extend `tests/prompt-drift.test.ts` to cover ship prices.** It currently
+   guards only dissent figures and would not have caught any of the four above.
+   That test exists because `appraisal.md` quoted a compulsion price of 25 long
+   after the constant fell to 15; this is the identical defect waiting to
+   happen, and the guard should be mechanical rather than something someone
+   remembers.
+2. **`escort` — DONE.** The lift arm is **soft**: `lossOrder` runs escort,
+   lifter, torpedo boat, battleship, so a transport dies before the battle line
+   and only a screen keeps it alive.
+
+   The table had said exactly that in its own doc comment while ordering the
+   classes the other way — lifters last — which made transports the safest thing
+   in a fleet and left the escort with nothing to protect. The sentence was
+   right and the number was wrong.
+
+   **Where a screen earns its keep is a withdrawal, not a stand-up fight.** The
+   exchange band is narrow and brutal — 1:1 is mutual annihilation, 1.5:1 leaves
+   the attacker a third of its tonnage, and at 2:1 the defender simply breaks
+   off and nothing is lost at all — so inside the band no realistic escort force
+   absorbs the damage and above it there is nothing to absorb. A withdrawal
+   costs 10–35%, and *that* a screen covers outright. Worth stating because the
+   obvious reading is the other way round, and the first test written for this
+   step asserted the obvious reading and failed.
+3. **`torpedo boat` — DONE.** `strikeStack(stack, tons, deep)` sends `deep` of
+   the loss past the loss order and onto the **heaviest hulls first**. It is a
+   redistribution, not extra damage — the tonnage destroyed is identical either
+   way — because a boat that hit harder would just be a cheaper battleship and
+   the escort would have nothing to answer.
+
+   `pastScreen` is the firing side's torpedo weight as a share of its total,
+   scaled by `1 - min(1, targetEscortTons / firingTorpedoTons)`: a screen
+   matching the boats ton for ton cancels it outright, half a screen halves it.
+   The triangle closes — boats beat a battle line, a screen beats boats, and a
+   battle line beats a screen on raw weight, so a swarm is not a fleet.
+
+   **Two things this pass had to fix underneath it:**
+
+   - **Replay compared key order, not just values.** `verifyReplay` uses
+     `JSON.stringify`, which preserves insertion order, so a stack built
+     battleships-then-escorts and one built the other way compared as different
+     worlds while holding identical ships — same byte length, every value
+     matching. It surfaced the moment the bots bought three classes in varying
+     order. `addShipsAt`/`setShipsAt` now write through `normaliseStack`.
+   - **Bot strength had to become battleship-equivalents.** Counting escorts as
+     hulls is the same defect that counting lifters as hulls was, one layer
+     quieter. `lineStrengthAt` states strength in the unit the exchange
+     compares.
+
+   Drajk buys boats in place of a screen — a screen is a defensive purchase, and
+   preying on fleets it could never beat in orbit is its whole doctrine — which
+   also gives the class an owner in the harness, the way each ethic has one.
+
+### Answered by step 1
+
+- **"Does anyone still invade" — yes, and slightly more than before.** Measured
+  over 30 harness turns: territory changes through turn 20, where the
+  pre-classes harness froze at turn 10, and the board ends 3/6/5/4/4 with
+  nobody eliminated and nobody near half the map.
+- **`fleetStrengthOf` kept its units** and `fleetTonsOf` was added alongside.
+  The Fleets panel shows both (`74 · 279t`) and so does the model's state block,
+  because a player thinks in ships and the rules count tons.
+- **A defender with no combat weight is destroyed where it lies.** Symmetric: an
+  invasion arriving as transports only is annihilated the same way.
+
+### Still open
+
+- **The battle card overstates defender losses on a break-off.** A retreating
+  contingent's `after` at the target is 0, so the Losses column reads as the
+  whole contingent even though most of it escaped to a refuge. The prose note is
+  correct. Pre-existing, not a step-1 regression.
+- **The exchange band itself.** 1:1 annihilates both fleets and 2:1 costs the
+  winner nothing, so almost every battle worth fighting is decided before it is
+  joined. That is pre-existing arithmetic, untouched by classes, and it is what
+  makes the screen a withdrawal mechanic rather than a battle one. Whether the
+  band should be gentler is the open question behind item 5 (multi-phase
+  combat).
+- **Sprites — DONE.** Four silhouettes that differ by *outline family*, chosen
+  by rendering each at 18px, magnifying the rasterisation and looking, which is
+  how both faults in the original two were found. Five candidates were thrown
+  out on the way:
+
+  | discarded | why |
+  |---|---|
+  | fletched needle (torpedo boat) | read as a **fish skeleton** — the tail flare beat the hull |
+  | tube slung over a hull (torpedo boat) | read as **two stacked bars**, not a vessel |
+  | single chevron (escort) | read as a UI **"next" arrow** |
+  | doubled chevron (escort) | legible, but a **mark among vessels** |
+  | wet-navy battleship (line) | legible and **the wrong genre** — flat deck, turrets amidships, guns on the beam |
+
+  A third pass fixed two faults found by auditing the rendered set. The line
+  hull's bridge tower was drawn from y=2.9 to 5 above a castle starting at 5.2
+  — a 0.2 gap, so it **floated**. Replacing it with the garrison's turret fixed
+  the gap and then exposed a second problem: a superstructure carrying a
+  superstructure, for no reason except that the castle had been drawn first.
+  The turret **is** the superstructure, so the castle is gone and the turret
+  sits on the hull. The lifter's two big raked bays read as odd skewed windows;
+  they are now a row of six small round ports punched the same way the
+  garrison's road wheels are, which resolves into a dotted line at 18px and
+  reads as an airliner at a glance.
+
+  A fifth pass, driven by auditing the rendered set rather than the source:
+
+  - The battleship's turret is a **hard-raked trapezoid with the gun set into
+    its face**, chosen from four candidates on the same hull. An earlier pick
+    was a *stepped* turret — a broad base rising to a raised block, which is a
+    two-tier superstructure and therefore the castle back under another name.
+    That was a real process failure, not a taste one: the instruction was
+    "drop the castle" and the stepped variant was rationalised as keeping
+    detail asked for earlier.
+  - **One drive, not two**, and every ship now tapers its nozzle *away* from
+    the hull. The lifter's used to widen away, so three ships held two opposite
+    ideas of what an engine is. The battleship's is inset from the stern edges:
+    at full depth it swallowed the raked stern corners and the back of the ship
+    read as a flat edge.
+  - The lifter has a **blunt bow** (a point read faintly warship-ish on the one
+    hull with no business looking fast) and **four ports at r1.25**, not six at
+    r1. That is arithmetic rather than taste: a gap must clear roughly 1.3
+    viewBox units to survive 18px, and six at r1 leave 0.56 — they merged into
+    a continuous streak and stopped reading as ports at all. Four at r1.25
+    leave 1.5, the largest holes that still hold a real gap.
+
+  A fourth pass sharpened the turret. It had been lifted from the garrison
+  intact, radii and all — and **a corner radius reads as sheet metal bent in a
+  press**, which is right for a tank and wrong for a hull cut in a yard. The
+  turret is now a raked trapezoid stepping up to a raised block and the gun
+  tapers rather than ending in a cap. The escort's drive block lost the radius
+  it had carried since it was the only ship in the game and had nothing to be
+  consistent with. **Nothing in the space set is rounded**; the only radii left
+  in the file are the garrison's.
+
+  A later pass **refaceted** three of them: the dart is all swept diagonals and
+  the others were axis-aligned rectangles, so the set read as two different
+  hands. Castles, bays and drives became raked trapezoids. That pass also
+  produced its own regression worth remembering — adding a ventral strake to
+  the torpedo boat made it bilaterally symmetric, which turned it into a red
+  copy of the escort and destroyed the one property that made it findable. Its
+  underside is deliberately clean.
+
+  What ships: **escort** takes the old dart (it always read as something small
+  and quick), and **line** became a capital ship — a long wedge tapering to the
+  prow with the mass and the castle **aft** and drives astern, which is the
+  Venator/Retribution silhouette rather than a surface ship's. There is no
+  waterline in space to sit turrets on. **Torpedo boat** is the only
+  asymmetric glyph in the set, which is what makes it findable at a glance;
+  **lifter** is a blunt box with its bays punched through with `evenodd` so
+  they survive any background.
+
+### Leaders, deferred but decided
+
+Tied to **battles**, not fleets — no basing, no transit, nothing to move. A
+leader is lost only on a catastrophic defeat, which gives the bottom outcome
+band a consequence it does not currently have. The espionage layer already has
+the machinery to buy one in advance (`defection`, `subornLimit`), which is the
+Dune traitor reveal and the strongest reason to build leaders at all.
+
+---
+
 ## 54. MOSTLY FIXED — four small playtest claims
 
 **All the agent's measurements, none independently confirmed.**
