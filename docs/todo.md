@@ -1025,6 +1025,14 @@ escorts a better story: destroyers were originally *torpedo boat destroyers*.
   | doubled chevron (escort) | legible, but a **mark among vessels** |
   | wet-navy battleship (line) | legible and **the wrong genre** — flat deck, turrets amidships, guns on the beam |
 
+  A later pass **refaceted** three of them: the dart is all swept diagonals and
+  the others were axis-aligned rectangles, so the set read as two different
+  hands. Castles, bays and drives became raked trapezoids. That pass also
+  produced its own regression worth remembering — adding a ventral strake to
+  the torpedo boat made it bilaterally symmetric, which turned it into a red
+  copy of the escort and destroyed the one property that made it findable. Its
+  underside is deliberately clean.
+
   What ships: **escort** takes the old dart (it always read as something small
   and quick), and **line** became a capital ship — a long wedge tapering to the
   prow with the mass and the castle **aft** and drives astern, which is the

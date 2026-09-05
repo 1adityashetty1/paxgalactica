@@ -68,14 +68,17 @@ export function ShipIcon({ size = 18, title }: IconProps) {
       role={title ? 'img' : undefined}
     >
       {title && <title>{title}</title>}
-      {/* Hull: deep at the stern, tapering to a fine prow at the right. */}
-      <path d="M23.4 13 L15.5 9.4 L4.6 9.4 L4.6 17 L15.5 16.2 Z" />
-      {/* The castle, stepping down toward the bow. */}
-      <path d="M4.6 9.4 V4.8 H9.6 V9.4 Z" />
-      <path d="M9.6 9.4 V7 H12.8 V9.4 Z" />
-      {/* Drive bells, astern. */}
-      <path d="M1 10 H4.6 V12.6 H1 Z" />
-      <path d="M1 13.8 H4.6 V16.4 H1 Z" />
+      {/* Hull: long wedge, chamfered prow, raked stern. */}
+      <path d="M23.6 13.4 L13 10.5 L5.6 9.7 L3.6 10.6 L3.6 16.2 L5.6 17.1 L13 15.9 Z" />
+      {/* Castle: a raked trapezoid, narrower at the top. */}
+      <path d="M5.4 9.6 L6.7 5.2 L9.6 5.2 L10.6 9.6 Z" />
+      {/* Bridge tower. */}
+      <path d="M7.3 5 L7.7 2.9 L8.9 2.9 L9.2 5 Z" />
+      {/* Drive bells, flared outward astern. */}
+      <path d="M1 10.9 L3.6 11.5 L3.6 13.2 L1 13.4 Z" />
+      <path d="M1 15.6 L3.6 13.8 L3.6 15.5 L1 16.1 Z" />
+      {/* Dorsal strake forward of the castle, so the spine is not a bare edge. */}
+      <path d="M11.2 10.2 L16.4 11.5 L16.4 12.2 L11.2 11 Z" />
     </svg>
   );
 }
@@ -136,8 +139,14 @@ export function GarrisonIcon({ size = 18, title }: IconProps) {
  *   hull became the battleship it should always have been.
  *
  * What separates them is the outline *family*, never the detail: a symmetric
- * dart, a doubled chevron, an asymmetric wedge, and a blunt box with holes cut
- * through it. The torpedo boat is deliberately the only glyph in the set that
+ * dart, a faceted capital wedge, an asymmetric wedge, and a raked box with bays
+ * cut through it.
+ *
+ * A later pass **refaceted** three of them. The dart is all swept diagonals and
+ * the others were axis-aligned rectangles, so the set read as two different
+ * hands. Castles, bays and drives are now raked trapezoids rather than boxes,
+ * which is what the extra size buys — at 28px and up the facets read as
+ * structure, and at 18px the silhouette is unchanged. The torpedo boat is deliberately the only glyph in the set that
  * is not bilaterally symmetric, which is what makes it separable at a glance.
  */
 
@@ -193,10 +202,18 @@ export function TorpedoBoatIcon({ size = 18, title }: IconProps) {
       role={title ? 'img' : undefined}
     >
       {title && <title>{title}</title>}
-      {/* Hull, prow right, tapering to a needle. */}
-      <path d="M23.5 13 L9 11.2 L2.4 11.2 L2.4 14.8 L9 14.8 Z" />
-      {/* The fin. Swept back so the silhouette is a wedge, not a mast. */}
-      <path d="M9.5 11 L4.5 3.4 L2.4 3.4 L2.4 11 Z" />
+      {/* Hull: needle, chamfered stern, and a CLEAN UNDERSIDE. Nothing below
+          the centreline — a ventral strake was tried and it turned the glyph
+          into a red copy of the escort, which is the one thing this shape is
+          supposed to avoid. */}
+      <path d="M23.6 13.6 L11 11.8 L4.2 11.6 L3.2 12.4 L3.2 15.2 L4.2 15.9 L11 15.6 Z" />
+      {/* The fin, swept back with a stepped leading edge. */}
+      <path d="M10.4 11.5 L7.4 5.6 L6.2 3.2 L3.4 3.2 L3.4 11.5 Z" />
+      {/* A slot cut behind the fin root, so the mass reads as built rather
+          than as one solid triangle. */}
+      <path d="M4.6 10.6 L7.4 10.6 L6.6 8.6 L4.6 8.6 Z" />
+      {/* Drive flare. */}
+      <path d="M1.2 12.6 L3.2 12.2 L3.2 15.4 L1.2 15 Z" />
     </svg>
   );
 }
@@ -223,10 +240,12 @@ export function LifterIcon({ size = 18, title }: IconProps) {
       {title && <title>{title}</title>}
       <path
         fillRule="evenodd"
-        d="M2.6 6.4 H18.4 L22.6 9.6 V14.4 L18.4 17.6 H2.6 Z
-           M5.4 9.6 H10.2 V14.4 H5.4 Z
-           M12 9.6 H16.8 V14.4 H12 Z"
+        d="M3.4 6.6 L17.2 6.2 L22.8 12 L17.2 17.8 L3.4 17.4 L2.2 12 Z
+           M6.2 9.6 L10.6 9.4 L10.2 14.6 L5.8 14.4 Z
+           M12.2 9.4 L16.4 9.2 L15.8 14.8 L11.8 14.6 Z"
       />
+      {/* Drive block, astern. */}
+      <path d="M0.6 10.4 L2.3 10.9 L2.3 13.1 L0.6 13.6 Z" />
     </svg>
   );
 }
