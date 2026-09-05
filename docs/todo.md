@@ -1012,11 +1012,27 @@ escorts a better story: destroyers were originally *torpedo boat destroyers*.
 - **A defender with no combat weight still has to die.** A pure-lifter fleet
   squatting in orbit has `defenceForce` 0, which the sweep path reads as
   "nothing to fight". It must be a walkover that destroys them, not a no-op.
-- **Sprites.** Five silhouettes that must differ by *outline*, not detail — the
-  existing two took four passes and both faults were found on screen, not by the
-  suite. Planned: line = the existing dart, escort = a broad shallow chevron,
-  torpedo boat = a long needle with tail fins, lifter = a box with a bay notch
-  cut through it (`evenodd`, like the tank's road wheels).
+- **Sprites — DONE.** Four silhouettes that differ by *outline family*, chosen
+  by rendering each at 18px, magnifying the rasterisation and looking, which is
+  how both faults in the original two were found. Five candidates were thrown
+  out on the way:
+
+  | discarded | why |
+  |---|---|
+  | fletched needle (torpedo boat) | read as a **fish skeleton** — the tail flare beat the hull |
+  | tube slung over a hull (torpedo boat) | read as **two stacked bars**, not a vessel |
+  | single chevron (escort) | read as a UI **"next" arrow** |
+  | doubled chevron (escort) | legible, but a **mark among vessels** |
+  | wet-navy battleship (line) | legible and **the wrong genre** — flat deck, turrets amidships, guns on the beam |
+
+  What ships: **escort** takes the old dart (it always read as something small
+  and quick), and **line** became a capital ship — a long wedge tapering to the
+  prow with the mass and the castle **aft** and drives astern, which is the
+  Venator/Retribution silhouette rather than a surface ship's. There is no
+  waterline in space to sit turrets on. **Torpedo boat** is the only
+  asymmetric glyph in the set, which is what makes it findable at a glance;
+  **lifter** is a blunt box with its bays punched through with `evenodd` so
+  they survive any background.
 
 ### Leaders, deferred but decided
 

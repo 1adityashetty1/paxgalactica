@@ -33,7 +33,29 @@ interface IconProps {
   title?: string;
 }
 
-/** A line hull: pointed hull, swept wings, engine block astern. */
+/**
+ * A line hull: a capital ship. Long tapering wedge, castle aft, drives astern.
+ *
+ * This glyph replaced the dart, which now belongs to the escort. The dart is a
+ * small nimble thing and always read as one — fine while every ship in the game
+ * was the same ship, wrong the moment `line` meant the heavy.
+ *
+ * The first replacement was a **wet-navy battleship**: flat deck line, turrets
+ * amidships, guns on the beam. It was legible and it was the wrong genre. Space
+ * capitals — a Venator, a Retribution — share a silhouette that has nothing to
+ * do with a surface ship: **a long wedge tapering to the prow, with the mass
+ * and the superstructure concentrated aft, and drives at the stern.** There is
+ * no waterline to sit turrets on.
+ *
+ * So the read here is front-to-back rather than top-to-bottom: fine bow, deep
+ * body, a stepped castle over the after third, twin drive bells behind it. The
+ * castle is chunky rather than a mast, because thin verticals rasterise into a
+ * skyline at 18px and blocks stay masses.
+ *
+ * Also the generic warship glyph. A stack from a save written before classes
+ * existed normalises to line hulls, so a caller that just wants "ships" is
+ * right to get this one.
+ */
 export function ShipIcon({ size = 18, title }: IconProps) {
   return (
     <svg
@@ -46,13 +68,14 @@ export function ShipIcon({ size = 18, title }: IconProps) {
       role={title ? 'img' : undefined}
     >
       {title && <title>{title}</title>}
-      {/* Hull, prow right. */}
-      <path d="M23.2 12 L15 9.6 L5.5 9.8 L4 10.8 L4 13.2 L5.5 14.2 L15 14.4 Z" />
-      {/* Wings swept back from midships — this is the line that stops the
-          silhouette reading as a cross. */}
-      <path d="M13.5 10 L7 3.4 L3.2 4.2 L9 10.2 Z" />
-      <path d="M13.5 14 L7 20.6 L3.2 19.8 L9 13.8 Z" />
-      <rect x="1.6" y="10.6" width="2.6" height="2.8" rx="0.6" />
+      {/* Hull: deep at the stern, tapering to a fine prow at the right. */}
+      <path d="M23.4 13 L15.5 9.4 L4.6 9.4 L4.6 17 L15.5 16.2 Z" />
+      {/* The castle, stepping down toward the bow. */}
+      <path d="M4.6 9.4 V4.8 H9.6 V9.4 Z" />
+      <path d="M9.6 9.4 V7 H12.8 V9.4 Z" />
+      {/* Drive bells, astern. */}
+      <path d="M1 10 H4.6 V12.6 H1 Z" />
+      <path d="M1 13.8 H4.6 V16.4 H1 Z" />
     </svg>
   );
 }
@@ -105,8 +128,12 @@ export function GarrisonIcon({ size = 18, title }: IconProps) {
  *   tail flare dominated the hull, and at row size it was a dash with a blob.
  * - A **hull with the tube slung over it** read as **two stacked bars**, which
  *   is not a vessel.
+ * - A **wet-navy battleship** for the line hull — flat deck, turrets amidships —
+ *   was perfectly legible and the wrong genre. See `ShipIcon`.
  * - A **single chevron** for the escort read as a UI "next" arrow rather than a
- *   ship.
+ *   ship, and the doubled chevron that replaced it was legible but still a
+ *   *mark* among vessels. The dart moved down from `line` instead, and the line
+ *   hull became the battleship it should always have been.
  *
  * What separates them is the outline *family*, never the detail: a symmetric
  * dart, a doubled chevron, an asymmetric wedge, and a blunt box with holes cut
@@ -115,11 +142,16 @@ export function GarrisonIcon({ size = 18, title }: IconProps) {
  */
 
 /**
- * An escort: a doubled chevron.
+ * An escort: pointed hull, swept wings, engine block astern.
  *
- * Two marks rather than one, because a single `>` reads as an interface
- * affordance and because escorts are a screen — several small fast things, not
- * one. Nothing in the set is drawn twice, so the repetition alone identifies it.
+ * This is the original warship glyph, and it belongs here rather than on the
+ * line hull — it always read as something small and quick, which is what an
+ * escort is. It replaced a doubled chevron that was legible but **abstract**:
+ * every other glyph in this set is a vessel, and a mark among ships reads as an
+ * interface affordance rather than a class.
+ *
+ * The swept wings are the load-bearing line: without them the silhouette reads
+ * as a cross.
  */
 export function EscortIcon({ size = 18, title }: IconProps) {
   return (
@@ -133,8 +165,10 @@ export function EscortIcon({ size = 18, title }: IconProps) {
       role={title ? 'img' : undefined}
     >
       {title && <title>{title}</title>}
-      <path d="M2 6 L13 12 L2 18 L2 14.8 L7.6 12 L2 9.2 Z" />
-      <path d="M11 6 L22 12 L11 18 L11 14.8 L16.6 12 L11 9.2 Z" />
+      <path d="M23.2 12 L15 9.6 L5.5 9.8 L4 10.8 L4 13.2 L5.5 14.2 L15 14.4 Z" />
+      <path d="M13.5 10 L7 3.4 L3.2 4.2 L9 10.2 Z" />
+      <path d="M13.5 14 L7 20.6 L3.2 19.8 L9 13.8 Z" />
+      <rect x="1.6" y="10.6" width="2.6" height="2.8" rx="0.6" />
     </svg>
   );
 }
