@@ -124,12 +124,12 @@ there, which is rarely meant.
 
 ### Ships come in classes, and a fleet is composed
 
-| class | tons | cost | upkeep | in orbit | on the ground |
+| class | tons | cost | upkeep | in a fight | what it is for |
 |---|---|---|---|---|---|
-| **battleship** | 4 | 60 | 4 | the line — worth three escorts in a fight | nothing |
-| **escort** | 2 | 30 | 2 | one third of a battleship, and **spent first** | nothing |
-| **torpedo boat** | 2 | 30 | 2 | as an escort | nothing |
-| **lifter** | 3 | 45 | 3 | **nothing at all** | 6 troops each |
+| **battleship** | 4 | 60 | 4 | worth three escorts | the line; it wins the exchange |
+| **escort** | 2 | 30 | 2 | a third of a battleship | the screen — spent first, and the answer to torpedo boats |
+| **torpedo boat** | 2 | 30 | 2 | a third of a battleship | strikes past a screen at the heaviest hulls |
+| **lifter** | 3 | 45 | 3 | **nothing at all** | 6 troops each; the only way to take a world |
 
 Everything is billed by **displacement**: `CREDITS_PER_TON` to build, one a ton
 a turn to keep. So there is no cheap way to buy presence — every class costs
@@ -140,6 +140,14 @@ saves.
 phase counts the troops the lifters put down. A fleet of pure battleships can
 sterilise a system's orbitals and take nothing, and an invasion sailing without
 lift is a raid whether or not it was meant as one.
+
+**A convoy needs a screen.** Losses fall on the escorts first, then the
+transports, and on the battle line last — so an unescorted invasion that has to
+withdraw comes home with its troops dead and its warships intact. Torpedo boats
+send their share of the damage *past* a screen and onto the heaviest hulls
+there, and a screen matching them ton for ton cancels that outright. None of
+this is extra damage: the tonnage destroyed is the same either way, and only
+which ships absorb it changes.
 
 Say what to build with `hull` on `adjust_fleet` or `adjust_ships`, and what to
 send with `force` on a movement — either a plain count, which draws

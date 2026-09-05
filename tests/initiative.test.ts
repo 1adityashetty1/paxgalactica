@@ -1,5 +1,5 @@
-import { addShipsAt, setShipsAt } from '../src/domain/state.js';
-import { carryOf, type ShipStack } from '../src/domain/hulls.js';
+import { addShipsAt, setShipsAt, stackAt } from '../src/domain/state.js';
+import { HULL_CLASSES, carryOf, type ShipStack } from '../src/domain/hulls.js';
 import { describe, expect, it } from 'vitest';
 import { createSeedState } from '../src/seed/scenario.js';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
@@ -237,6 +237,53 @@ describe('lift is carried, not counted as strength', () => {
           `${me}'s sortie at ${op.targetId} cannot beat a garrison of ${target.garrison}`,
         ).toBeGreaterThan(target.garrison);
       }
+    }
+  });
+});
+
+/**
+ * Every class has an owner in the harness, the way every ethic does.
+ *
+ * A class nobody builds is a class nobody has measured — the same failure as a
+ * `tradeEthic` held by nobody, which is how `monopolist` stayed implemented,
+ * tested and dead for the life of the project.
+ */
+describe('the bots field composed navies', () => {
+  const played = (turns: number): WorldState => {
+    let s = createSeedState('freeworlds');
+    for (let t = 0; t < turns; t++) {
+      for (const id of ['freeworlds', 'hutt', 'krayt', 'meridian', 'vigil']) {
+        const ops = proposeFor(s, id)?.ops ?? [];
+        if (ops.length > 0) s = applyOps(s, ops as never[], 'model', id).state;
+      }
+      s = tickTurn(s).state;
+    }
+    return s;
+  };
+
+  it('puts every hull class on the board within a short run', () => {
+    const end = played(12);
+    const seen = new Set<string>();
+    for (const sys of end.systems) {
+      for (const stack of Object.values(sys.ships)) {
+        for (const [hull, n] of Object.entries(stack)) if ((n ?? 0) > 0) seen.add(hull);
+      }
+    }
+    expect([...seen].sort()).toEqual([...HULL_CLASSES].sort());
+  });
+
+  it('gives the Confederacy boats rather than a battle line it could not win with', () => {
+    const end = played(12);
+    const boats = end.systems.reduce((n, s) => n + (stackAt(s, 'krayt').torpedo_boat ?? 0), 0);
+    expect(boats).toBeGreaterThan(0);
+  });
+
+  it('keeps a screen over the convoy for the powers that mount landings', () => {
+    const end = played(12);
+    for (const id of ['meridian', 'vigil', 'hutt']) {
+      const lift = end.systems.reduce((n, s) => n + (stackAt(s, id).lifter ?? 0), 0);
+      const screen = end.systems.reduce((n, s) => n + (stackAt(s, id).escort ?? 0), 0);
+      if (lift > 0) expect(screen, `${id} sails its convoy unescorted`).toBeGreaterThan(0);
     }
   });
 });

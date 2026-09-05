@@ -917,8 +917,8 @@ dissent across ten turns while the player accrued 69.
 
 ---
 
-## 55. IN PROGRESS — ship classes, and tonnage as the unit of fleet size
-### steps 0 and 1 done; 2 and 3 remain
+## 55. DONE — ship classes, and tonnage as the unit of fleet size
+### all four steps done
 
 A fleet was a count, so every hull was identical and composition was not a
 decision. The design below is settled; step 0 is built.
@@ -1081,10 +1081,51 @@ escorts a better story: destroyers were originally *torpedo boat destroyers*.
    after the constant fell to 15; this is the identical defect waiting to
    happen, and the guard should be mechanical rather than something someone
    remembers.
-2. **`escort`** — something worth protecting exists, so a screen has a job.
-   Still no new phase; it is a loss-ordering rule.
-3. **`torpedo boat`** — the lift arm is under threat, so escorts matter. Loss
-   redirection past the screen, still inside the existing exchange.
+2. **`escort` — DONE.** The lift arm is **soft**: `lossOrder` runs escort,
+   lifter, torpedo boat, battleship, so a transport dies before the battle line
+   and only a screen keeps it alive.
+
+   The table had said exactly that in its own doc comment while ordering the
+   classes the other way — lifters last — which made transports the safest thing
+   in a fleet and left the escort with nothing to protect. The sentence was
+   right and the number was wrong.
+
+   **Where a screen earns its keep is a withdrawal, not a stand-up fight.** The
+   exchange band is narrow and brutal — 1:1 is mutual annihilation, 1.5:1 leaves
+   the attacker a third of its tonnage, and at 2:1 the defender simply breaks
+   off and nothing is lost at all — so inside the band no realistic escort force
+   absorbs the damage and above it there is nothing to absorb. A withdrawal
+   costs 10–35%, and *that* a screen covers outright. Worth stating because the
+   obvious reading is the other way round, and the first test written for this
+   step asserted the obvious reading and failed.
+3. **`torpedo boat` — DONE.** `strikeStack(stack, tons, deep)` sends `deep` of
+   the loss past the loss order and onto the **heaviest hulls first**. It is a
+   redistribution, not extra damage — the tonnage destroyed is identical either
+   way — because a boat that hit harder would just be a cheaper battleship and
+   the escort would have nothing to answer.
+
+   `pastScreen` is the firing side's torpedo weight as a share of its total,
+   scaled by `1 - min(1, targetEscortTons / firingTorpedoTons)`: a screen
+   matching the boats ton for ton cancels it outright, half a screen halves it.
+   The triangle closes — boats beat a battle line, a screen beats boats, and a
+   battle line beats a screen on raw weight, so a swarm is not a fleet.
+
+   **Two things this pass had to fix underneath it:**
+
+   - **Replay compared key order, not just values.** `verifyReplay` uses
+     `JSON.stringify`, which preserves insertion order, so a stack built
+     battleships-then-escorts and one built the other way compared as different
+     worlds while holding identical ships — same byte length, every value
+     matching. It surfaced the moment the bots bought three classes in varying
+     order. `addShipsAt`/`setShipsAt` now write through `normaliseStack`.
+   - **Bot strength had to become battleship-equivalents.** Counting escorts as
+     hulls is the same defect that counting lifters as hulls was, one layer
+     quieter. `lineStrengthAt` states strength in the unit the exchange
+     compares.
+
+   Drajk buys boats in place of a screen — a screen is a defensive purchase, and
+   preying on fleets it could never beat in orbit is its whole doctrine — which
+   also gives the class an owner in the harness, the way each ethic has one.
 
 ### Answered by step 1
 
@@ -1104,10 +1145,12 @@ escorts a better story: destroyers were originally *torpedo boat destroyers*.
   contingent's `after` at the target is 0, so the Losses column reads as the
   whole contingent even though most of it escaped to a refuge. The prose note is
   correct. Pre-existing, not a step-1 regression.
-- **Steps 2 and 3.** `escort` is loss-ordering (already implemented in
-  `inLossOrder`, but with nothing yet worth protecting it is only a tiebreak);
-  `torpedo_boat` is loss redirection past the screen and is currently identical
-  to an escort.
+- **The exchange band itself.** 1:1 annihilates both fleets and 2:1 costs the
+  winner nothing, so almost every battle worth fighting is decided before it is
+  joined. That is pre-existing arithmetic, untouched by classes, and it is what
+  makes the screen a withdrawal mechanic rather than a battle one. Whether the
+  band should be gentler is the open question behind item 5 (multi-phase
+  combat).
 - **Sprites — DONE.** Four silhouettes that differ by *outline family*, chosen
   by rendering each at 18px, magnifying the rasterisation and looking, which is
   how both faults in the original two were found. Five candidates were thrown

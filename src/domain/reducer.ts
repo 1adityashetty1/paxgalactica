@@ -61,7 +61,10 @@ import {
   normaliseStack,
   orbitalWeightOf,
   stackCost,
+  strikeStack,
   subtractStack,
+  tonsOfClass,
+  torpedoShare,
   takeHulls,
   tonsIn,
   trimToTons,
@@ -3507,7 +3510,21 @@ function resolveBattle(
 
   // A retreating force loses 10–35% getting clear; bad luck costs more.
   const retreatLossPct = 10 + ((21 - roll) % 6) * 5;
-  const bleed = (n: number): number => Math.max(0, n - Math.ceil((n * retreatLossPct) / 100));
+  /**
+   * What survives a withdrawal, spending the loss order.
+   *
+   * In TONS, like every other loss, so a fleet of many cheap hulls does not
+   * escape more lightly than the same displacement of heavy ones. A pure
+   * battleship fleet bleeds exactly the hulls it always did, since its tons and
+   * its hulls are the same fraction.
+   *
+   * **This is where a screen actually earns its keep.** The exchange band
+   * destroys half a fleet or more, which no realistic escort force absorbs, but
+   * a withdrawal costs 10–35% — and that a screen can cover outright, which is
+   * what brings a convoy home from a battle it should not have fought.
+   */
+  const bleed = (stack: ShipStack): ShipStack =>
+    strikeStack(stack, (tonsIn(stack) * retreatLossPct) / 100).left;
   const notes: string[] = [];
 
   /* ---------- Phase 1: fleet battle ---------- */
@@ -3602,7 +3619,7 @@ function resolveBattle(
     if (attackPower >= defendPower * 2 && !defenderStands) {
       let lost = 0;
       for (const [id, present] of defenders) {
-        const escaped = takeHulls(present, hullsIn(present) - bleed(hullsIn(present))).left;
+        const escaped = bleed(present);
         lost += hullsIn(present) - hullsIn(escaped);
         setStackAt(target, id, {});
         const refuge = fleetBases(state, id).find(
@@ -3619,9 +3636,8 @@ function resolveBattle(
       let lost = 0;
       for (const order of orders) {
         if (!attackerIds.has(order.factionId)) continue;
-        const sailed = hullsIn(order.force);
-        const escaped = takeHulls(order.force, sailed - bleed(sailed)).left;
-        lost += sailed - hullsIn(escaped);
+        const escaped = bleed(order.force);
+        lost += hullsIn(order.force) - hullsIn(escaped);
         const fallback = order.path[Math.max(0, order.path.length - 2)] ?? order.originId;
         const refuge = state.systems.find((x) => x.id === fallback);
         if (refuge && hullsIn(escaped) > 0) {
@@ -3645,15 +3661,23 @@ function resolveBattle(
       const hullsBeforeExchange = attackHulls();
       const defendHullsBefore = defenceForce;
 
+      // How much of each side's fire strikes past the other's screen. This is
+      // the class triangle and the whole of the torpedo boat: it is not extra
+      // damage — the tonnage destroyed is identical either way — only a say in
+      // WHICH hulls absorb it. A boat that hit harder would just be a cheaper
+      // battleship, and the escort would have nothing to answer.
+      const attackerStacks = [...attackShare.values()];
+      const defenderStacks = defenders.map(([, st]) => st);
+      const deepOnDefenders = pastScreen(attackerStacks, defenderStacks);
+      const deepOnAttackers = pastScreen(defenderStacks, attackerStacks);
+
       for (const [id, st] of attackShare) {
-        attackShare.set(id, trimToTons(st, tonsIn(st) * (attackLeft / attackWeight)).left);
+        const lost = tonsIn(st) * (1 - attackLeft / attackWeight);
+        attackShare.set(id, strikeStack(st, lost, deepOnAttackers).left);
       }
       for (const [id, present] of defenders) {
-        setStackAt(
-          target,
-          id,
-          trimToTons(present, tonsIn(present) * (defenceLeft / defendWeight)).left,
-        );
+        const lost = tonsIn(present) * (1 - defenceLeft / defendWeight);
+        setStackAt(target, id, strikeStack(present, lost, deepOnDefenders).left);
       }
       defenceForce = defenders.reduce((sum, [id]) => sum + hullsAt(target, id), 0);
 
@@ -3801,6 +3825,30 @@ function resolveBattle(
   logEvent(state, 'order', note, attackers[0]![0]);
   ground('landing_thrown_back', note);
   return finish(note);
+}
+
+/**
+ * The share of one side's fire that lands past the other's screen.
+ *
+ * Torpedo boats choose where their share of the damage falls — on the heaviest
+ * hulls, ignoring the loss order — and **escorts are what answers them**, which
+ * is the historical shape as well as the mechanical one: destroyers were
+ * originally *torpedo boat destroyers*. A screen matching the attacking boats
+ * ton for ton cancels the redirection outright; half a screen halves it.
+ *
+ * Without this the escort has no job that a battleship does not do better. The
+ * exchange band destroys 50–100% of a fleet's tonnage (at 2:1 the defender
+ * simply breaks off and nothing is lost at all), so no realistic screen can
+ * absorb a stand-up fight — the class earns its place by being the counter to
+ * this, and by covering a withdrawal.
+ */
+function pastScreen(firing: ShipStack[], target: ShipStack[]): number {
+  const share = torpedoShare(firing);
+  if (share <= 0) return 0;
+  const boats = tonsOfClass(firing, 'torpedo_boat');
+  if (boats <= 0) return 0;
+  const screen = tonsOfClass(target, 'escort');
+  return share * Math.max(0, 1 - Math.min(1, screen / boats));
 }
 
 /**

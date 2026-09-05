@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { createSeedState } from '../src/seed/scenario.js';
+import { addShipsAt, setShipsAt } from '../src/domain/state.js';
 import {
   CREDITS_PER_TON,
   HULL_CLASSES,
@@ -79,8 +81,15 @@ describe('a stack', () => {
     expect(carryOf(mixed)).toBe(6);
   });
 
-  it('spends escorts before battleships, and battleships before the lift arm', () => {
-    expect(inLossOrder(mixed)).toEqual(['escort', 'battleship', 'lifter']);
+  it('spends the screen first, then the lift arm, and the battle line last', () => {
+    // The lift arm is SOFT: unarmed and unarmoured, so it dies before the
+    // battleships do, and the only thing keeping it alive is a screen standing
+    // in front of it. Ordering it last made transports the safest thing in a
+    // fleet and left escorts with nothing to protect.
+    expect(inLossOrder(mixed)).toEqual(['escort', 'lifter', 'battleship']);
+    expect(
+      inLossOrder({ escort: 1, lifter: 1, torpedo_boat: 1, battleship: 1 }),
+    ).toEqual(['escort', 'lifter', 'torpedo_boat', 'battleship']);
   });
 
   it('is empty-safe', () => {
@@ -121,5 +130,54 @@ describe('the schema and the class list cannot drift', () => {
   it('gives every class a distinct place in the loss order', () => {
     const orders = HULL_CLASSES.map((h) => HULL_SPEC[h].lossOrder);
     expect(new Set(orders).size).toBe(orders.length);
+  });
+});
+
+/**
+ * A stack's key order must be a function of its contents, never of its history.
+ *
+ * `verifyReplay` compares `JSON.stringify` of live state against replayed
+ * state, and JSON preserves insertion order — so a fleet assembled as
+ * battleships-then-escorts and one assembled the other way round compared as
+ * DIFFERENT worlds while holding identical ships. It surfaced when the doctrine
+ * bots began buying three classes in varying order, and every value on both
+ * sides matched, which is exactly the kind of divergence nobody can explain
+ * from the failure message.
+ */
+describe('key order is canonical, so replay can compare by string', () => {
+  const sys = () => createSeedState('freeworlds').systems.find((s) => s.id === 'ark-2')!;
+
+  it('does not depend on the order classes were added', () => {
+    const a = sys();
+    addShipsAt(a, 'freeworlds', 3, 'battleship');
+    addShipsAt(a, 'freeworlds', 2, 'escort');
+    addShipsAt(a, 'freeworlds', 1, 'lifter');
+
+    const b = sys();
+    addShipsAt(b, 'freeworlds', 1, 'lifter');
+    addShipsAt(b, 'freeworlds', 2, 'escort');
+    addShipsAt(b, 'freeworlds', 3, 'battleship');
+
+    expect(JSON.stringify(a.ships)).toBe(JSON.stringify(b.ships));
+  });
+
+  it('survives a removal that empties a class in the middle', () => {
+    const a = sys();
+    addShipsAt(a, 'freeworlds', 3, 'battleship');
+    addShipsAt(a, 'freeworlds', 2, 'escort');
+    addShipsAt(a, 'freeworlds', 1, 'lifter');
+    setShipsAt(a, 'freeworlds', 4); // spends the screen first
+
+    const b = sys();
+    addShipsAt(b, 'freeworlds', 3, 'battleship');
+    addShipsAt(b, 'freeworlds', 1, 'lifter');
+
+    expect(JSON.stringify(a.ships)).toBe(JSON.stringify(b.ships));
+  });
+
+  it('orders every class the way HULL_CLASSES does', () => {
+    const s = sys();
+    for (const hull of [...HULL_CLASSES].reverse()) addShipsAt(s, 'freeworlds', 1, hull);
+    expect(Object.keys(s.ships['freeworlds']!)).toEqual([...HULL_CLASSES]);
   });
 });

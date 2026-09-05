@@ -486,7 +486,19 @@ export function presentAt(system: StarSystem): [string, number][] {
     .filter(([, n]) => n > 0);
 }
 
-/** Add hulls of one class. */
+/**
+ * Add hulls of one class.
+ *
+ * Written through `normaliseStack`, so the key order of a stack is a function
+ * of what is in it and never of the order it was built in. That is not
+ * cosmetic: `verifyReplay` compares `JSON.stringify` of live state against
+ * replayed state, and JSON preserves insertion order — so a fleet assembled as
+ * battleships-then-escorts and one assembled as escorts-then-battleships
+ * compared as DIFFERENT worlds while holding identical ships. It surfaced the
+ * moment the doctrine bots began buying three classes in varying order, and it
+ * would have surfaced sooner or later as a replay divergence nobody could
+ * explain, since every value on both sides matched.
+ */
 export function addShipsAt(
   system: StarSystem,
   factionId: string,
@@ -496,7 +508,7 @@ export function addShipsAt(
   if (count <= 0) return;
   const stack = { ...stackAt(system, factionId) };
   stack[hull] = (stack[hull] ?? 0) + count;
-  system.ships[factionId] = stack;
+  system.ships[factionId] = normaliseStack(stack);
 }
 
 /** Add a whole composed force. */
@@ -528,11 +540,11 @@ export function takeShipsAt(system: StarSystem, factionId: string, hulls: number
 /**
  * Set the TOTAL hull count, adding or removing to reach it.
  *
- * Removing spends classes in `lossOrder` — escorts, then torpedo boats, then
- * battleships, then the lift arm — which is the whole of an escort's job and the
- * reason a fleet without one arrives at a contested world with its transports
- * already dead. Zero clears the entry entirely, so `presentAt` and the income
- * split never see a faction that is not there.
+ * Removing spends classes in `lossOrder` — the screen, then the lift arm, then
+ * torpedo boats, then the battle line — which is the whole of an escort's job
+ * and the reason a fleet without one arrives at a contested world with its
+ * transports already dead. Zero clears the entry entirely, so `presentAt` and
+ * the income split never see a faction that is not there.
  */
 export function setShipsAt(
   system: StarSystem,
@@ -560,7 +572,7 @@ export function setShipsAt(
       toRemove -= taken;
     }
   }
-  system.ships[factionId] = stack;
+  system.ships[factionId] = normaliseStack(stack);
 }
 
 export function shipsAt(state: WorldState, factionId: string, systemId: string): number {

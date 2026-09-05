@@ -417,12 +417,12 @@ for upkeep, the same count for presence and the income contest, another for
 for buying and for suborned crews — five conventions that could drift apart and
 had no reason to agree.
 
-| class | tons | cost | upkeep | orbital weight | carry | job |
-|---|---|---|---|---|---|---|
-| **battleship** | 4 | 60 | 4 | 3 | — | the line |
-| **escort** | 2 | 30 | 2 | 1 | — | spent first |
-| **torpedo boat** | 2 | 30 | 2 | 1 | — | (step 3) strikes past the screen |
-| **lifter** | 3 | 45 | 3 | **0** | **6** | the only way to take ground |
+| class | tons | cost | upkeep | orbital weight | carry | loss order | job |
+|---|---|---|---|---|---|---|---|
+| **escort** | 2 | 30 | 2 | 1 | — | 0 | the screen, and the answer to boats |
+| **lifter** | 3 | 45 | 3 | **0** | **6** | 1 | the only way to take ground |
+| **torpedo boat** | 2 | 30 | 2 | 1 | — | 2 | strikes past a screen at the heaviest hulls |
+| **battleship** | 4 | 60 | 4 | 3 | — | 3 | the line; it wins the exchange |
 
 **Tonnage is the single primitive.** Cost, upkeep, insolvency attrition,
 `capSelfInflictedLosses`, the income contest and the price of a suborned crew
@@ -498,6 +498,74 @@ fight" — so a convoy nobody could remove would have blocked a landing forever.
 It is a walkover that destroys them, not a no-op, and symmetric: an invasion
 that arrives as transports only is annihilated the same way.
 
+### The lift arm is soft, so a screen has a job
+
+`lossOrder` runs **escort, lifter, torpedo boat, battleship**. A transport is
+unarmoured and unarmed, so it dies before the battle line does and the only
+thing that keeps it alive is a screen standing in front of it.
+
+For a while the table said exactly that in its own doc comment while ordering
+the classes the other way — lifters last — which made transports the *safest*
+thing in a fleet and left the escort with nothing whatsoever to protect. The
+sentence was right and the number was wrong.
+
+**Where a screen actually earns its keep is a withdrawal, not a stand-up
+fight**, and that is worth stating because the obvious reading is the other way
+round. The exchange band is narrow and brutal:
+
+| odds | what the attacker keeps |
+|---|---|
+| 1:1 | nothing — mutual annihilation |
+| 1.5:1 | 33% of its tonnage |
+| 1.99:1 | 50% |
+| 2:1 | **everything** — the defender breaks off and nothing is lost |
+
+So inside the band no realistic escort force absorbs the damage, and at 2:1
+there is nothing to absorb. A **withdrawal** costs 10–35%, and that a screen
+covers outright — which is what brings a convoy home from a battle it should
+not have fought. That, and torpedo boats.
+
+### The torpedo boat strikes past the screen
+
+`strikeStack(stack, tons, deep)`. `deep` is the fraction of the loss that
+ignores the loss order and comes off the **heaviest hulls first**. It is a
+redistribution, not extra damage: the tonnage destroyed is identical, and only
+which ships absorb it changes. A boat that hit harder would just be a cheaper
+battleship, and the escort would have nothing to answer.
+
+The whole triangle, on one defending fleet of eight battleships behind eight
+escorts losing sixteen tons:
+
+| past the screen | what dies |
+|---|---|
+| 0% | 8 escorts |
+| 25% | 1 battleship, 6 escorts |
+| 50% | 2 battleships, 4 escorts |
+| 100% | 4 battleships |
+
+`pastScreen` is the firing side's torpedo weight as a share of its total,
+scaled by `1 - min(1, targetEscortTons / firingTorpedoTons)` — a screen
+matching the boats ton for ton cancels the redirection outright, half a screen
+halves it. Boats are not a fleet on their own: at the same tonnage a battle
+line has half again the weight, so a swarm loses the exchange and only gets to
+choose where its share of the damage lands.
+
+The historical shape and the mechanical one agree, which is why the class is
+called what it is: destroyers were originally *torpedo boat destroyers*.
+
+### Key order is part of the state, because replay compares strings
+
+`verifyReplay` compares `JSON.stringify` of live state against replayed state,
+and JSON preserves insertion order. A stack built battleships-then-escorts and
+one built escorts-then-battleships therefore compared as **different worlds
+while holding identical ships** — same byte length, every value matching, no
+way to read the cause off the failure.
+
+It surfaced the moment the bots began buying three classes in varying order.
+`addShipsAt` and `setShipsAt` now write through `normaliseStack`, so a stack's
+key order is a function of its contents and never of its history, and a test
+pins it.
+
 ### The bots judge strength by the battle line
 
 `initiative.ts` had every threshold as a hull count, calibrated when a hull was
@@ -508,16 +576,33 @@ exists to remove, showing up one layer higher. Measured: the Vigil, which buys
 hardest, went from six systems to ten and reduced Meridian to one world and a
 net of −126.
 
-Strength is now the line (`warshipsAt`, `warshipStrength`); lift is a separate
-requirement, sized against the target's garrison in `sortie`, which will not
-sail without enough of it. `buy` keeps lift at `BOT_LIFT_FRACTION` of **tonnage**
-with a floor — read as a fraction of the lifter *count* instead, a 160-ton fleet
-wants 32 transports, three fifths of itself, and the battle line never gets
-built.
+Strength is now stated in **battleship-equivalents** (`lineStrengthAt`,
+`lineStrength`) — the unit the exchange itself compares, so a threshold means
+the same thing whatever is in the fleet, and in a galaxy of nothing but
+battleships it reads exactly as the hull count it replaces. The same defect was
+waiting for escorts, more quietly, since an escort is a whole hull for a third
+of a battleship's weight.
 
-Measured over 30 turns after both fixes: territory changes through turn 20 where
-the pre-classes harness froze at turn 10, and the final board is 3/6/5/4/4 with
-nobody eliminated and nobody near half the map.
+Lift is sized from **the board rather than the fleet**: enough for the largest
+landing currently visible, twice over, using the same formula `sortie` uses so
+the yards and the fleet cannot disagree about what an invasion needs. A
+fraction of tonnage was the first attempt and is the wrong shape — lift is
+bought for a job, so a fraction means a power that has grown large hoards
+transports it will never use and pays upkeep on all of them, while dragging its
+fighting weight down to three quarters of what its credits bought. The harness
+reports that as a galaxy where nobody attacks.
+
+A screen is kept ton for ton with the convoy, except by **Drajk**, which
+spends that tonnage on torpedo boats instead — a screen is a defensive
+purchase, and preying on fleets it could never beat in orbit is the whole of the
+Confederacy's doctrine. It also gives the class an owner in the harness, the way
+each ethic has one: a class nobody builds is a class nobody has measured, which
+is how `monopolist` stayed implemented, tested and dead for the life of the
+project.
+
+Measured over 30 turns: territory changes through turn 24 where the pre-classes
+harness froze at turn 10, the final board is 3/6/5/4/4 with nobody eliminated
+and nobody near half the map, and all four classes are on it.
 
 ## An accord may only produce what needs consent
 
@@ -2045,11 +2130,14 @@ in one turn fights a single battle rather than a queue of duels.
   defender rather than watching from orbit. A holder reinforcing its own world
   is not an invasion — those ships simply land.
 - **Phase 1, the orbitals.** Coalition against defenders, with the best `might`
-  modifier on each side. A side outmatched 2:1 breaks off and loses 10–35%
-  getting clear — defenders scatter to their own nearest holdings, attackers
-  fall back down each contingent's own path. Otherwise both sides trade losses,
-  distributed proportionally across contingents. **A surviving defending fleet
-  means no landing is attempted at all.**
+  modifier on each side, weighed in battleship-equivalents. A side outmatched
+  2:1 breaks off and loses 10–35% of its **tonnage** getting clear — defenders
+  scatter to their own nearest holdings, attackers fall back down each
+  contingent's own path. Otherwise both sides trade losses, charged to each
+  contingent as a fraction of what it brought, spent in loss order and
+  redirected past the screen by whatever torpedo boats are firing. **A defending
+  fleet that can still shoot means no landing is attempted at all** — a fleet
+  with no combat weight cannot deny an orbit, and is destroyed where it lies.
 - **Phase 2, the ground.** Only once the orbitals are clear, and fought by the
   troops the lift arm lands — a coalition with no transports wins the space over
   a world and takes nothing. Garrisons are dug-in ground troops and **cannot

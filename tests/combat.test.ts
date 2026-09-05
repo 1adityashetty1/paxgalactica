@@ -466,23 +466,26 @@ describe('coalitions', () => {
   /**
    * Two powers landing on slu-6 in the same turn.
    *
-   * A quarter of each contingent is lift, because a coalition that brings no
-   * troops cannot take the world it is fighting over — and the spoils go to
-   * whoever puts the most ashore, so the proportion has to track the size of
-   * the contingent rather than being a flat number each.
+   * Each contingent is a real invasion force — a screen, a line and a lift arm
+   * — rather than a number of identical hulls. A quarter is lift, because a
+   * coalition that brings no troops cannot take the world it is fighting over
+   * and the spoils go to whoever puts the most ashore; a quarter is screen,
+   * because the lift arm is soft and an unescorted convoy arrives dead.
    */
   function joint(setup: (s: WorldState) => void, forces: Record<string, number>) {
     const state = fresh();
     setup(state);
     const ops = Object.entries(forces).map(([factionId, force]) => {
       const lifter = Math.max(1, Math.round(force / 4));
-      const battleship = Math.max(0, force - lifter);
+      const escort = Math.max(1, Math.round(force / 4));
+      const battleship = Math.max(0, force - lifter - escort);
       setShipsAt(sys(state, 'ark-3'), factionId, battleship);
       addShipsAt(sys(state, 'ark-3'), factionId, lifter, 'lifter');
+      addShipsAt(sys(state, 'ark-3'), factionId, escort, 'escort');
       return {
         op: 'issue_order', factionId, type: 'fleet_movement',
         originId: 'ark-3', targetId: 'slu-6',
-        force: { battleship, lifter }, label: `${factionId} squadron`,
+        force: { battleship, lifter, escort }, label: `${factionId} squadron`,
       };
     });
     const issued = applyOps(state, ops);
@@ -493,20 +496,25 @@ describe('coalitions', () => {
   }
 
   it('adds two attackers into one battle rather than two duels', () => {
-    const res = joint(
-      (s) => {
-        const t = sys(s, 'slu-6');
-        t.controllerFactionId = 'vigil';
-        setShipsAt(t, 'vigil', 14);
-        t.garrison = 2;
-        t.garrisonMax = 2;
-      },
-      { freeworlds: 16, krayt: 16 },
+    // Defended by the Nars rather than the Vigil: the Vigil is `crusading` and
+    // never breaks off, so against it there is no 2:1 threshold to cross and
+    // the test would be measuring the exchange formula instead of the addition.
+    const defended = (s: WorldState) => {
+      const t = sys(s, 'slu-6');
+      t.controllerFactionId = 'hutt';
+      setShipsAt(t, 'hutt', 10);
+      t.garrison = 2;
+      t.garrisonMax = 2;
+    };
+    const together = joint(defended, { freeworlds: 20, krayt: 20 });
+    const alone = joint(defended, { freeworlds: 20 });
+    // Together they outweigh the defence 2:1 and it breaks off; alone, one of
+    // the same contingents is ground down in the exchange instead.
+    expect(together.state.systems.find((x) => x.id === 'slu-6')!.controllerFactionId).not.toBe(
+      'hutt',
     );
-    // 24 battleships between them against 14: together they break it.
-    // Separately, each 12 would have been ground down by the same 14.
-    expect(res.state.systems.find((x) => x.id === 'slu-6')!.controllerFactionId).not.toBe('vigil');
-    expect(res.notes.join(' ')).toMatch(/and/);
+    expect(alone.state.systems.find((x) => x.id === 'slu-6')!.controllerFactionId).toBe('hutt');
+    expect(together.notes.join(' ')).toMatch(/and/);
   });
 
   it('gives the captured world to whoever brought the most', () => {

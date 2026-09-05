@@ -72,10 +72,16 @@ export interface HullSpec {
   /**
    * Where it sits in the loss order — lower is spent first.
    *
-   * This is an escort's entire reason to exist. It is the same weight per ton
-   * as nothing else in particular; what it does is stand in front of the line
-   * hulls and the lift arm, which is why a fleet without escorts arrives at a
-   * contested world with its transports already dead.
+   * **The lift arm is soft.** A transport is unarmoured and unarmed, so it dies
+   * before the battle line does; the only thing that keeps it alive is a screen
+   * standing in front of it. That is an escort's entire reason to exist, and
+   * for a while the table said so while ordering the classes the other way —
+   * lifters last, which made transports the *safest* thing in a fleet and left
+   * escorts with nothing to protect.
+   *
+   * So a fleet without a screen wins the orbital battle and arrives with its
+   * transports already dead, which is the sentence this field was always meant
+   * to be enforcing.
    */
   lossOrder: number;
   /** For the UI and the order of battle. */
@@ -84,14 +90,15 @@ export interface HullSpec {
 
 export const HULL_SPEC: Record<HullClass, HullSpec> = {
   escort: { tonnage: 2, orbitalWeight: 1, carry: 0, lossOrder: 0, label: 'escort' },
+  // Useless in orbit and the only way to take ground. High carry is what pays
+  // for that uselessness — and being second in the loss order is what it pays
+  // in return: unarmed, unarmoured, and dead the moment the screen is gone.
+  lifter: { tonnage: 3, orbitalWeight: 0, carry: LIFTER_CARRY, lossOrder: 1, label: 'lifter' },
   // Cheap, fragile, and built to kill things far above its weight — the Jeune
   // École boat, and the reason destroyers were originally called "torpedo boat
   // destroyers". It strikes past the screen rather than adding to the line.
-  torpedo_boat: { tonnage: 2, orbitalWeight: 1, carry: 0, lossOrder: 1, label: 'torpedo boat' },
-  battleship: { tonnage: 4, orbitalWeight: 3, carry: 0, lossOrder: 2, label: 'battleship' },
-  // Useless in orbit and the only way to take ground. High carry is what pays
-  // for that uselessness.
-  lifter: { tonnage: 3, orbitalWeight: 0, carry: LIFTER_CARRY, lossOrder: 3, label: 'lifter' },
+  torpedo_boat: { tonnage: 2, orbitalWeight: 1, carry: 0, lossOrder: 2, label: 'torpedo boat' },
+  battleship: { tonnage: 4, orbitalWeight: 3, carry: 0, lossOrder: 3, label: 'battleship' },
 };
 
 /** What a hull of this class costs to lay down. */
@@ -306,4 +313,112 @@ export function subtractStack(a: ShipStack, b: ShipStack): ShipStack {
     if (n > 0) out[hull] = n;
   }
   return out;
+}
+
+/** A battleship's weight, the unit combat strength is stated in. */
+export const BATTLESHIP_EQUIVALENT = HULL_SPEC.battleship.orbitalWeight;
+
+/**
+ * What a stack is worth in a fight, in **battleship-equivalents**.
+ *
+ * The unit exists so that a strength threshold means the same thing whatever
+ * classes exist. A hull count does not: an escort is a whole hull for half a
+ * battleship's tonnage and a third of its weight, so a fleet counted in hulls
+ * crosses its own thresholds faster the more cheap hulls it buys — which is the
+ * units-drift this design exists to remove, and it has now bitten twice, once
+ * for the lift arm and once for the screen.
+ *
+ * A galaxy of nothing but battleships reads exactly as it did when strength was
+ * a hull count, which is what makes this safe to substitute everywhere.
+ */
+export function battleshipEquivalents(stack: ShipStack | undefined): number {
+  return orbitalWeightOf(stack) / BATTLESHIP_EQUIVALENT;
+}
+
+/**
+ * The smallest proportional slice of a fleet worth `be` battleship-equivalents.
+ *
+ * Proportional for the same reason `drawProportional` is: the squadron that
+ * sails should be the squadron that was standing. Returns the whole stack when
+ * it is not enough, so a caller that has already checked strength gets what it
+ * asked for and one that has not gets everything there is.
+ */
+export function drawToWeight(stack: ShipStack, be: number): ShipStack {
+  const total = hullsIn(stack);
+  if (total === 0 || be <= 0) return {};
+  for (let k = 1; k <= total; k++) {
+    const slice = drawProportional(stack, k);
+    if (battleshipEquivalents(slice) >= be) return slice;
+  }
+  return normaliseStack(stack);
+}
+
+/**
+ * How much of a fleet's fire its torpedo boats deliver, as a share of the whole.
+ *
+ * A torpedo boat adds no more to the line than an escort does. What it does is
+ * choose where its share lands: past the screen, on the heaviest thing there.
+ */
+export function torpedoShare(stacks: Iterable<ShipStack>): number {
+  let torpedo = 0;
+  let total = 0;
+  for (const st of stacks) {
+    torpedo += (st.torpedo_boat ?? 0) * HULL_SPEC.torpedo_boat.orbitalWeight;
+    total += orbitalWeightOf(st);
+  }
+  return total > 0 ? torpedo / total : 0;
+}
+
+/** Tons of one class across a side. */
+export function tonsOfClass(stacks: Iterable<ShipStack>, hull: HullClass): number {
+  let n = 0;
+  for (const st of stacks) n += (st[hull] ?? 0) * HULL_SPEC[hull].tonnage;
+  return n;
+}
+
+/**
+ * Losses applied to a fleet, some of them past the screen.
+ *
+ * `deep` is the fraction of `tons` that ignores the loss order and comes off
+ * the **heaviest hulls first** — a torpedo boat striking through the screen at
+ * the battle line. Whatever the heavy classes cannot absorb falls back into the
+ * ordinary pass, so a fleet that is all escorts loses escorts either way.
+ *
+ * This is the whole of the class triangle, and it is a redistribution rather
+ * than extra damage: the tonnage destroyed is the same, and only *which* ships
+ * are destroyed changes. A torpedo boat that dealt bonus damage would just be a
+ * better battleship.
+ */
+export function strikeStack(
+  stack: ShipStack,
+  tons: number,
+  deep = 0,
+): { taken: ShipStack; left: ShipStack } {
+  const want = Math.max(0, tons);
+  if (want <= 0) return { taken: {}, left: normaliseStack(stack) };
+
+  const deepTons = want * Math.max(0, Math.min(1, deep));
+  let left = normaliseStack(stack);
+  let taken: ShipStack = {};
+
+  if (deepTons > 0) {
+    // Heaviest first — the reverse of the loss order, which is what "past the
+    // screen" means: the screen is the cheapest thing there.
+    const heavy = inLossOrder(left).reverse();
+    let owed = deepTons;
+    for (const cls of heavy) {
+      if (owed <= 0) break;
+      const each = HULL_SPEC[cls].tonnage;
+      const n = Math.min(left[cls] ?? 0, Math.ceil(owed / each));
+      if (n <= 0) continue;
+      taken = mergeStacks(taken, { [cls]: n });
+      const rest = (left[cls] ?? 0) - n;
+      if (rest === 0) delete left[cls];
+      else left[cls] = rest;
+      owed -= n * each;
+    }
+  }
+
+  const rest = trimToTons(left, Math.max(0, tonsIn(left) - (want - tonsIn(taken))));
+  return { taken: mergeStacks(taken, rest.taken), left: rest.left };
 }
