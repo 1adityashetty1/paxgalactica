@@ -3650,14 +3650,43 @@ function resolveBattle(
       orbital('attacker_driven_off', note);
       return finish(note);
     } else {
-      // Both sides trade. The exchange is settled in battleship-equivalents,
-      // exactly as it always was, and then charged to each contingent as a
+      // Both sides trade around the WEAKER side's raw weight, and the roll
+      // tilts which of them comes off better. Settled in
+      // battleship-equivalents and then charged to each contingent as a
       // fraction of the TONNAGE it brought — which is what makes a transport
       // die alongside the line that was covering it rather than sailing
       // through the battle untouched because it has no guns.
-      const exchange = Math.min(attackPower, defendPower);
-      const attackLeft = Math.max(0, attackWeight - Math.ceil(exchange / (1 + attackMod / 20)));
-      const defenceLeft = Math.max(0, defendWeight - Math.ceil(exchange / (1 + defendMod / 20)));
+      //
+      // **The roll used to reach the defender backwards.** The exchange was
+      // `min(attackPower, defendPower)`, so whichever side was weaker had its
+      // own swing already baked into the figure, and dividing by that side's
+      // own modifier cancelled the modifier but not the swing:
+      //
+      //     defenceLeft = defendWeight - defendWeight x (1 - swing)
+      //                 = defendWeight x swing
+      //
+      // — so a natural 20 left a defender that could not break off with 42% of
+      // its fleet intact and a natural 1 annihilated it. Measured live against
+      // the same crusading Vigil at the same odds: roll 20 left seven
+      // battleships holding the orbitals and the landing was called off; roll
+      // 10 destroyed them outright. The good roll was the worse outcome, and it
+      // bit hardest against `crusading` — the one doctrine that never escapes
+      // this branch by breaking off.
+      //
+      // The swing is applied ONCE now, to a base neither side's modifier has
+      // touched, in the same direction for both: it takes losses off the
+      // attacker and adds them to the defender. Might then divides each side's
+      // own losses, so it is counted once as well.
+      const base = Math.min(attackWeight, defendWeight);
+      const tilt = base * swing;
+      const attackLeft = Math.max(
+        0,
+        attackWeight - Math.ceil((base - tilt) / (1 + attackMod / 20)),
+      );
+      const defenceLeft = Math.max(
+        0,
+        defendWeight - Math.ceil((base + tilt) / (1 + defendMod / 20)),
+      );
       const hullsBeforeExchange = attackHulls();
       const defendHullsBefore = defenceForce;
 

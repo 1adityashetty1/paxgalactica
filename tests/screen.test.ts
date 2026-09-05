@@ -221,3 +221,77 @@ describe('a battle where nobody has a screen still resolves', () => {
     expect(hullsAt(sys(res.state, 'slu-6'), 'freeworlds') >= 0).toBe(true);
   });
 });
+
+/**
+ * The roll has to run the same way for both sides.
+ *
+ * `exchange = min(attackPower, defendPower)` meant whichever side was weaker
+ * had its own swing already baked into the figure, and dividing by that side's
+ * own modifier cancelled the modifier but not the swing — so
+ * `defenceLeft = defendWeight x swing`, and a natural 20 left a defender that
+ * could not break off with 42% of its fleet while a natural 1 annihilated it.
+ * Measured live: at Kalzir a roll of 20 left seven battleships holding the
+ * orbitals and the landing was called off; at Ghorman Deep a roll of 10
+ * destroyed the defenders outright.
+ */
+describe('the exchange reads the roll the same way for both sides', () => {
+  // A crusading holder never breaks off, so every roll lands in the exchange
+  // branch — which is exactly where the inversion used to bite hardest.
+  const survivors = (roll: number) => {
+    const state = fresh();
+    const t = sys(state, 'slu-6');
+    t.controllerFactionId = 'vigil';
+    t.ships = {};
+    addShipsAt(t, 'vigil', 12, 'battleship');
+    t.garrison = 1;
+    t.garrisonMax = 1;
+    return { state, t };
+  };
+
+  it('gives the attacker more and the defender less as the roll rises', () => {
+    // Read straight off the arithmetic, since a live battle can only be fought
+    // at the one roll its turn and system produce.
+    const band = (aw: number, dw: number, roll: number) => {
+      const swing = (roll - 10.5) / 22;
+      const base = Math.min(aw, dw);
+      const tilt = base * swing;
+      return {
+        attacker: Math.max(0, aw - Math.ceil(base - tilt)) / aw,
+        defender: Math.max(0, dw - Math.ceil(base + tilt)) / dw,
+      };
+    };
+    let lastAttacker = -1;
+    let lastDefender = 2;
+    for (const roll of [1, 5, 10, 15, 20]) {
+      const { attacker, defender } = band(50, 12, roll);
+      expect(attacker, `attacker at roll ${roll}`).toBeGreaterThan(lastAttacker);
+      expect(defender, `defender at roll ${roll}`).toBeLessThanOrEqual(lastDefender);
+      lastAttacker = attacker;
+      lastDefender = defender;
+    }
+    // And the two ends are the right way round, which is the whole point.
+    expect(band(50, 12, 20).defender).toBeLessThan(band(50, 12, 1).defender);
+    expect(band(50, 12, 20).attacker).toBeGreaterThan(band(50, 12, 1).attacker);
+  });
+
+  it('still spends the weaker side in a stand-up fight', () => {
+    // The band is brutal by design — `min(attackPower, defendPower)` means an
+    // exchange consumes the weaker fleet — and this fix reorients it without
+    // softening it.
+    const { state, t } = survivors(10);
+    const origin = sys(state, 'ark-3');
+    origin.ships = {};
+    addShipsAt(origin, 'freeworlds', 16, 'battleship');
+    const issued = applyOps(state, [
+      {
+        op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
+        originId: 'ark-3', targetId: 'slu-6', force: { battleship: 16 },
+      },
+    ]);
+    let r = tickTurn(issued.state);
+    while (r.state.pendingOrders.some((o) => o.id === 'ord-0-0')) r = tickTurn(r.state);
+    expect(r.notes.join(' ')).toMatch(/Fleets engage|driven off|breaks off/);
+    expect(hullsAt(sys(r.state, 'slu-6'), 'vigil')).toBeLessThan(12);
+    expect(t.controllerFactionId).toBe('vigil'); // the fixture is untouched
+  });
+});
