@@ -14,12 +14,17 @@ advertised, and `no_lift` fired twice on fleets that won an orbit with nothing
 to land. That is item **71**, and it is the useful half of the result: the
 mechanic shipped this week is sound.
 
-What the campaign broke instead is **everything around it**. The worst finding
-by a distance is that **the d20 is computable before you act** (**56**): the
-seed is turn plus staged-batch-count plus the player's own text, all three known
-to the player, so a scripted player never fails a check and can read every
-future battle off a table. Ten of the playtester's declared actions rolled a
-natural 20.
+What the campaign broke instead is **everything around it**. The most consequential
+defect is that the exchange formula leaves a non-breaking defender **more** alive
+on a high roll (**64**) — it predates classes, and it bites worst against
+`crusading`, the doctrine the game is proudest of.
+
+The loudest finding is that **the d20 is computable before you act** (**56**),
+and it is loud rather than severe: this is single-player with nobody to defraud,
+so a player who computes their own rolls has modded their own game. What it
+really cost was the playtest — the agent farmed ten natural 20s and read every
+battle off a table built on turn 0, so this campaign measured a game nobody
+plays. It is **filed down** to a two-line change and a line in the agent brief.
 
 Then two money exploits reachable only through **unmetered diplomacy** — treaty
 `incomePerTurn` is not conserved, so both parties can be paid from nothing
@@ -54,9 +59,26 @@ the roll in advance.
 
 ---
 
-## 56. CRITICAL — the d20 is computable before you act, so a scripted player never fails
+## 56. DOWNGRADED — the d20 is computable before you act, which costs the playtest and not the player
 
-**VERIFIED, and reproduced independently.**
+**VERIFIED, and reproduced independently — then re-rated down.**
+
+> **Filed as CRITICAL and that was wrong.** This is single-player on localhost:
+> no opponent, no score, no undo, and nothing to defraud. A player who computes
+> their own rolls has taken the dice out of their own game, which is a mod
+> rather than a vulnerability. The rule *"a prompt can be argued out of its own
+> rules; code cannot"* was reached for here without first asking whether the
+> rule needed enforcing against anybody real.
+>
+> **What it actually costs is the measurement.** The playtest agent farmed ten
+> natural 20s and read every battle off a table computed on turn 0, so the
+> campaign measured a game nobody plays. The fix for a test rig that can apply
+> forces no real user can is to constrain the rig: the agent brief is told to
+> treat the seed as unavailable, the same way it is already told it has no human
+> GM. That is one line, against a schema change and a secret threaded through
+> `applyOps`.
+>
+> **One piece survives on different grounds — see the end of this item.**
 
 `rollD20(turn, salt)` is FNV-1a plus a murmur3 finalizer. The murmur3 pass was
 added to fix *uniformity* — a padding family that reached only five of twenty
@@ -102,22 +124,30 @@ diplomacy.** Closing a channel stages a batch, so a player can shift their own
 die by choosing how many `/endtalk`s to run before declaring — a roll-selection
 control with no connection to the action's content.
 
-**Why the fix is not obvious.** Determinism is load-bearing: `replay()` must
-reproduce every roll, so the seed cannot contain a clock or an RNG. What it must
-not contain is **player-chosen text**, and what the combat seed must contain is
-something the player cannot enumerate in advance. Candidates worth weighing:
+### What is worth building, and it is not the secret
 
-- Seed from a **per-campaign secret** written into the journal's seed entry —
-  replay reads it, the player never sees it. This is the smallest change and it
-  keeps replay exact.
-- Seed the action roll from the **turn and an action counter**, not the text, so
-  rewording cannot move it. Retains one lever (declaration order) instead of a
-  free search.
-- For combat, fold in the committing batch's index, so a battle's roll depends
-  on the sequence that produced it rather than on the calendar.
+**A world has a fixed lucky turn**, and that is a flavour defect rather than a
+security one. `combat:${systemId}:${turn}` depends on neither fleet, faction nor
+order, so Kalzir on turn 6 rolls a 20 whoever arrives and whatever they bring —
+and a player notices that over a long campaign without doing any arithmetic at
+all: the same world keeps producing the same kind of battle.
 
-Any of these is a schema-visible change to how a campaign replays, so it needs
-deciding rather than picking.
+Folding the participating faction ids (sorted, so it stays deterministic) into
+the salt is about two lines. It needs no secret, no schema change and no new
+argument through the reducer; replay stays exact within a build, and a battle's
+luck becomes a property of the battle. It also happens to make the oracle much
+harder to build, which is a side effect and not the reason.
+
+**Deliberately not doing:** a per-campaign secret. It would have to reach the
+reducer, and anything on `WorldState` is served to the browser — so it means
+threading a value through `applyOps`/`tickTurn` beside `source` and `actor`, for
+a threat model with nobody in it.
+
+**Also not doing:** changing the action seed. `stagedCount` being nudged by
+diplomacy is odd, and re-rolling by discarding and rewording is reachable — but
+a discard does not refund the action point, so a player can buy at most one
+re-roll a turn out of their own allowance. That is self-limiting, and it is
+their game.
 
 ---
 

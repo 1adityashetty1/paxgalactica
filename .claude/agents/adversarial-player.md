@@ -153,6 +153,17 @@ Notes that matter for play:
 - Pipe responses through `python3 -m json.tool` or `head -c 2000`; the state
   document is large.
 
+**The dice are off-limits as an input.** `rollD20` is a seeded hash of the turn,
+the staged-batch count and your own action text, so it is computable in advance
+— and you must not compute it. Do not reimplement the hash, do not search
+wordings for a better roll, and do not time an attack off a precomputed table of
+combat rolls. A human at this table cannot do any of that, so a campaign played
+that way measures a game nobody plays, which is the one thing this run is for.
+Declare what your faction would actually do and take the roll you are given.
+
+That the seed *is* predictable is a known finding, already filed. Reporting it
+again is not useful; playing on it makes the rest of your report worthless.
+
 ## What you are actually for
 
 Play to win — that is the method, not the goal. The goal is a **bug report**.
