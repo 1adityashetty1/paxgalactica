@@ -1,5 +1,5 @@
 /**
- * Two glyphs for the order of battle: a warship and a tracked gun.
+ * Glyphs for the order of battle: one per hull class, and a tracked gun.
  *
  * Inline SVG rather than image files, for three reasons that all matter here:
  * they inherit the faction's colour through `currentColor`, they stay crisp at
@@ -33,7 +33,7 @@ interface IconProps {
   title?: string;
 }
 
-/** A warship: pointed hull, swept wings, engine block astern. */
+/** A line hull: pointed hull, swept wings, engine block astern. */
 export function ShipIcon({ size = 18, title }: IconProps) {
   return (
     <svg
@@ -91,4 +91,126 @@ export function GarrisonIcon({ size = 18, title }: IconProps) {
       <rect x="15.8" y="8.4" width="7.8" height="1.8" rx="0.5" />
     </svg>
   );
+}
+
+/**
+ * The rest of the hull classes.
+ *
+ * Drawn against the same bar as the two above — *can a player tell these apart
+ * at 18px without reading the label* — and chosen by rendering each at 18,
+ * magnifying the rasterisation, and looking. Two candidates were thrown away
+ * for exactly the reasons the originals were:
+ *
+ * - A **fletched needle** for the torpedo boat read as a **fish skeleton**: the
+ *   tail flare dominated the hull, and at row size it was a dash with a blob.
+ * - A **hull with the tube slung over it** read as **two stacked bars**, which
+ *   is not a vessel.
+ * - A **single chevron** for the escort read as a UI "next" arrow rather than a
+ *   ship.
+ *
+ * What separates them is the outline *family*, never the detail: a symmetric
+ * dart, a doubled chevron, an asymmetric wedge, and a blunt box with holes cut
+ * through it. The torpedo boat is deliberately the only glyph in the set that
+ * is not bilaterally symmetric, which is what makes it separable at a glance.
+ */
+
+/**
+ * An escort: a doubled chevron.
+ *
+ * Two marks rather than one, because a single `>` reads as an interface
+ * affordance and because escorts are a screen — several small fast things, not
+ * one. Nothing in the set is drawn twice, so the repetition alone identifies it.
+ */
+export function EscortIcon({ size = 18, title }: IconProps) {
+  return (
+    <svg
+      className="ob-icon"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden={title ? undefined : true}
+      role={title ? 'img' : undefined}
+    >
+      {title && <title>{title}</title>}
+      <path d="M2 6 L13 12 L2 18 L2 14.8 L7.6 12 L2 9.2 Z" />
+      <path d="M11 6 L22 12 L11 18 L11 14.8 L16.6 12 L11 9.2 Z" />
+    </svg>
+  );
+}
+
+/**
+ * A torpedo boat: a long thin hull under one dorsal fin.
+ *
+ * Asymmetric on purpose. Every other glyph here is mirrored about its axis, so
+ * a single fin is the fastest thing to pick out of a row — and a shark's fin is
+ * the right connotation for a cheap hull built to kill things far above its
+ * weight.
+ */
+export function TorpedoBoatIcon({ size = 18, title }: IconProps) {
+  return (
+    <svg
+      className="ob-icon"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden={title ? undefined : true}
+      role={title ? 'img' : undefined}
+    >
+      {title && <title>{title}</title>}
+      {/* Hull, prow right, tapering to a needle. */}
+      <path d="M23.5 13 L9 11.2 L2.4 11.2 L2.4 14.8 L9 14.8 Z" />
+      {/* The fin. Swept back so the silhouette is a wedge, not a mast. */}
+      <path d="M9.5 11 L4.5 3.4 L2.4 3.4 L2.4 11 Z" />
+    </svg>
+  );
+}
+
+/**
+ * A lifter: a blunt box with two bays cut clean through it.
+ *
+ * The holes are punched with `evenodd` rather than painted in the panel colour,
+ * the same trick the garrison's road wheels use, so the glyph survives being
+ * drawn on any background — which matters here because two filled rectangles on
+ * a slab would read as a solid brick the moment the background changed.
+ */
+export function LifterIcon({ size = 18, title }: IconProps) {
+  return (
+    <svg
+      className="ob-icon"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden={title ? undefined : true}
+      role={title ? 'img' : undefined}
+    >
+      {title && <title>{title}</title>}
+      <path
+        fillRule="evenodd"
+        d="M2.6 6.4 H18.4 L22.6 9.6 V14.4 L18.4 17.6 H2.6 Z
+           M5.4 9.6 H10.2 V14.4 H5.4 Z
+           M12 9.6 H16.8 V14.4 H12 Z"
+      />
+    </svg>
+  );
+}
+
+/** Pick the glyph for a hull class. One place, so a new class cannot be missed. */
+export function HullIcon({
+  hull,
+  size = 18,
+  title,
+}: IconProps & { hull: 'line' | 'escort' | 'torpedo_boat' | 'lifter' }) {
+  switch (hull) {
+    case 'escort':
+      return <EscortIcon size={size} title={title} />;
+    case 'torpedo_boat':
+      return <TorpedoBoatIcon size={size} title={title} />;
+    case 'lifter':
+      return <LifterIcon size={size} title={title} />;
+    case 'line':
+      return <ShipIcon size={size} title={title} />;
+  }
 }

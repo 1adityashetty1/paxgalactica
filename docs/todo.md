@@ -917,6 +917,117 @@ dissent across ten turns while the player accrued 69.
 
 ---
 
+## 55. IN PROGRESS — ship classes, and tonnage as the unit of fleet size
+
+A fleet was a count, so every hull was identical and composition was not a
+decision. The design below is settled; step 0 is built.
+
+### The classes
+
+| class | tonnage | cost | upkeep | orbital weight | job |
+|---|---|---|---|---|---|
+| **escort** | 2 | 30 | 2 | 1 | takes losses first |
+| **torpedo boat** | 2 | 30 | 2 | 1 | strikes past the screen at the heaviest hulls |
+| **line** | 4 | 60 | 4 | 3 | the all-rounder |
+| **lifter** | 3 | 45 | 3 | 0 | 6 troops each; the only way to take ground |
+
+### Tonnage is the single primitive
+
+`CREDITS_PER_TON` 15 and `UPKEEP_PER_TON` 1 are chosen so a **line hull is
+exactly what a ship was before classes existed** — 4 tons is 60 credits, the old
+`SHIP_COST`, and 4 a turn, the old `UPKEEP_PER_FLEET_POINT`. A galaxy of nothing
+but line hulls plays identically, which is what makes the migration a change
+with no balance argument in it.
+
+Everything that limits a fleet by size is now denominated in tons: upkeep,
+presence and income contest, `subornLimit`, the price of a suborned crew,
+`MAX_ATTRITION_FRACTION`, `capSelfInflictedLosses`, and the doctrine bots'
+budget. Five conventions that had no reason to agree become one.
+
+**Cost strictly per ton closes an exploit by construction:** cheap hulls cannot
+become the efficient way to skim a rival's income, because every class buys
+exactly the same presence per credit.
+
+### Two traps this design already fell into
+
+**Escort spam.** The first table gave escorts a line hull's `orbitalWeight` at
+half the tonnage — twice as efficient per ton, per credit *and* per point of
+upkeep, with the only downside being that they die first, which barely matters
+when you are winning. Weight is now superlinear in tonnage for warships: a line
+hull is the better fighter on every axis, and an escort's whole compensation is
+that it is spent first. Same lesson as `tradeEthic` and `warEthic` — a
+difference expressed only as a number gets solved once and then ignored.
+
+**"Monitors are the only class that can damage a garrison."** False: the
+surviving fleet already assaults the garrison (`assault = attackForce * …`).
+Monitors were dropped. The real distinction was *damaging a garrison without
+landing*, which is a different feature.
+
+### Ground combat becomes the lift arm's job
+
+`assault = lifters * LIFTER_CARRY` replaces `attackForce`. The might modifier,
+the roll and `DEFENSIVE_GARRISON_BONUS` are untouched. Consequences agreed:
+
+- **Conquest gains a dedicated cost.** An all-warship fleet can sterilise a
+  system's orbitals and take nothing.
+- **Losses fall on the lift arm** in the ground phase, so a hard-fought landing
+  eats your transports and conquest stays a recurring cost.
+- **The captured world's garrison becomes the troops that took it**, replacing
+  "the conqueror keeps a fraction of the defender's garrison". More coherent,
+  but it touches `expansionist`.
+
+### The naming, because it was argued twice
+
+"Minelayer" says *area denial*; the mechanic is *hunting*. Two of the class
+names turned out to be the historical ones already — a lifter is a troopship
+and an **escort** is literally what the WWII convoy-protection class was called,
+so the third leg of that triangle is the raider. **Torpedo boat** was chosen
+over `interdictor` with the mechanic widened from "kills lifters" to "strikes
+past the screen at the heaviest hulls", so the name and the rule agree and the
+class is not dead weight in every war that is not an invasion. It also gives
+escorts a better story: destroyers were originally *torpedo boat destroyers*.
+
+### Staging — each step gives the previous one its point
+
+0. **Type `ships` to a class record, `line` only.** Behaviour-neutral. **DONE:**
+   `src/domain/hulls.ts` plus 16 tests. `ShipStackSchema` accepts the bare
+   number every old save and journal carries and normalises it to line hulls, so
+   an old campaign replays as the game it was played as.
+1. **`lifter`** — invasion becomes a composed fleet. No new phases: the orbital
+   phase counts weight, the ground phase counts lift.
+2. **`escort`** — something worth protecting exists, so a screen has a job.
+   Still no new phase; it is a loss-ordering rule.
+3. **`torpedo boat`** — the lift arm is under threat, so escorts matter. Loss
+   redirection past the screen, still inside the existing exchange.
+
+### Still open
+
+- **The sweep to run is "does anyone still invade"**, not "is the exchange rate
+  fair". Conquest gets more expensive at step 1 and gains a hard counter at step
+  3; the failure shows up as bots that stop attacking, the same shape as the
+  `MONOPOLY_BONUS` cliff where a discrete question swamped the tuning value.
+- **`fleetStrengthOf` changes units** — 43 hulls becomes 172 tons. It feeds the
+  prompt block, the Fleets panel and the bots. The UI should show both, since a
+  player thinks in ships and the rules think in tons.
+- **A defender with no combat weight still has to die.** A pure-lifter fleet
+  squatting in orbit has `defenceForce` 0, which the sweep path reads as
+  "nothing to fight". It must be a walkover that destroys them, not a no-op.
+- **Sprites.** Five silhouettes that must differ by *outline*, not detail — the
+  existing two took four passes and both faults were found on screen, not by the
+  suite. Planned: line = the existing dart, escort = a broad shallow chevron,
+  torpedo boat = a long needle with tail fins, lifter = a box with a bay notch
+  cut through it (`evenodd`, like the tank's road wheels).
+
+### Leaders, deferred but decided
+
+Tied to **battles**, not fleets — no basing, no transit, nothing to move. A
+leader is lost only on a catastrophic defeat, which gives the bottom outcome
+band a consequence it does not currently have. The espionage layer already has
+the machinery to buy one in advance (`defection`, `subornLimit`), which is the
+Dune traitor reveal and the strongest reason to build leaders at all.
+
+---
+
 ## 54. MOSTLY FIXED — four small playtest claims
 
 **All the agent's measurements, none independently confirmed.**
