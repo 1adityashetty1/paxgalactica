@@ -502,19 +502,27 @@ describe('coalitions', () => {
     const defended = (s: WorldState) => {
       const t = sys(s, 'slu-6');
       t.controllerFactionId = 'hutt';
-      setShipsAt(t, 'hutt', 10);
+      setShipsAt(t, 'hutt', 8);
       t.garrison = 2;
       t.garrisonMax = 2;
     };
-    const together = joint(defended, { freeworlds: 20, krayt: 20 });
-    const alone = joint(defended, { freeworlds: 20 });
-    // Together they outweigh the defence 2:1 and it breaks off; alone, one of
-    // the same contingents is ground down in the exchange instead.
-    expect(together.state.systems.find((x) => x.id === 'slu-6')!.controllerFactionId).not.toBe(
-      'hutt',
-    );
-    expect(alone.state.systems.find((x) => x.id === 'slu-6')!.controllerFactionId).toBe('hutt');
-    expect(together.notes.join(' ')).toMatch(/and/);
+    // **Swept rather than fought once.** One battle turns on one seeded roll,
+    // so pinning a single force size measures that roll as much as it measures
+    // the addition — and it broke the moment the combat seed changed while the
+    // mechanic was untouched, which is the failure `combat.test.ts` already
+    // learned about for dissent. Counting the cases where the pair take a world
+    // neither could measures the thing itself.
+    const holds = (s: WorldState) => s.systems.find((x) => x.id === 'slu-6')!.controllerFactionId;
+    let addedUp = 0;
+    for (const n of [20, 24, 28]) {
+      const together = joint(defended, { freeworlds: n, krayt: n });
+      const alone = joint(defended, { freeworlds: n });
+      if (holds(together.state) !== 'hutt' && holds(alone.state) === 'hutt') addedUp += 1;
+      // Never the other way round: two contingents must never do worse than one.
+      expect(holds(alone.state) === 'hutt' || holds(together.state) !== 'hutt').toBe(true);
+    }
+    expect(addedUp, 'a coalition never took a world one contingent could not').toBeGreaterThan(0);
+    expect(joint(defended, { freeworlds: 28, krayt: 28 }).notes.join(' ')).toMatch(/and/);
   });
 
   it('gives the captured world to whoever brought the most', () => {

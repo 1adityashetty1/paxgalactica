@@ -60,7 +60,7 @@ the roll in advance.
 
 ---
 
-## 56. DOWNGRADED — the d20 is computable before you act, which costs the playtest and not the player
+## 56. PARTLY FIXED — the d20 is computable before you act, which costs the playtest and not the player
 
 **VERIFIED, and reproduced independently — then re-rated down.**
 
@@ -139,6 +139,13 @@ argument through the reducer; replay stays exact within a build, and a battle's
 luck becomes a property of the battle. It also happens to make the oracle much
 harder to build, which is a side effect and not the reason.
 
+**Built.** The combat salt now carries the sorted ids of everyone fighting, so
+a battle's luck is a property of the battle. The agent brief declares the dice
+off-limits as an input and says why. Three combat tests that had been pinned to
+particular rolls broke and were rewritten to scan or to assert relationships —
+the brittleness `combat.test.ts` had already documented for dissent, in three
+more places.
+
 **Deliberately not doing:** a per-campaign secret. It would have to reach the
 reducer, and anything on `WorldState` is served to the browser — so it means
 threading a value through `applyOps`/`tickTurn` beside `source` and `actor`, for
@@ -152,7 +159,7 @@ their game.
 
 ---
 
-## 57. AUDITED — treaty `incomePerTurn` absorbs three different deals and is the most generous of the three
+## 57. FIXED — treaty `incomePerTurn` absorbed three different deals and was the most generous of the three
 
 **VERIFIED.** `ledgerFor` in `state.ts:954`:
 
@@ -400,7 +407,7 @@ its own comment.
 
 ---
 
-## 64. The exchange leaves a non-breaking defender MORE alive on a high roll
+## 64. FIXED — the exchange left a non-breaking defender MORE alive on a high roll
 
 **VERIFIED numerically.** Pre-existing arithmetic, untouched by classes, and
 invisible until a player could compute the roll in advance.

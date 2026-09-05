@@ -3529,7 +3529,19 @@ function resolveBattle(
     return finish(note);
   }
 
-  roll = rollD20(state.turn, `combat:${systemId}:${state.turn}`);
+  // Who is fighting is part of the seed, not just where and when.
+  //
+  // The salt was `combat:${systemId}:${turn}` — neither fleet, neither faction,
+  // nor the order — so a world had a fixed lucky turn: Kalzir on turn 6 rolled a
+  // 20 whoever arrived and whatever they brought. That is noticeable over a long
+  // campaign with no arithmetic at all, because the same world keeps producing
+  // the same kind of battle, and it makes the roll a property of the calendar
+  // rather than of the engagement.
+  //
+  // Sorted, so it stays a function of who is present and never of the order the
+  // orders happened to arrive in, and replay reproduces it exactly.
+  const combatants = [...new Set([...attackerIds, ...defenders.map(([id]) => id)])].sort();
+  roll = rollD20(state.turn, `combat:${systemId}:${state.turn}:${combatants.join(',')}`);
   const bestMod = (ids: string[]): number =>
     ids.length === 0
       ? 0

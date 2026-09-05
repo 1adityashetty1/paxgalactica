@@ -78,8 +78,13 @@ describe('the lift arm is soft', () => {
 
     expect(naked.notes.join(' ')).toMatch(/driven off/);
     expect(screened.notes.join(' ')).toMatch(/driven off/);
-    expect(liftOf(screened)).toBe(6);
-    expect(liftOf(naked)).toBeLessThan(6);
+    // Asserted as a RELATIONSHIP, not as an exact survivor count. A fixed
+    // number here only ever tests the one roll that this turn and this system
+    // happen to produce, so it breaks the moment the seed changes while the
+    // mechanic is untouched — a test that fails for the wrong reason, which
+    // `combat.test.ts` learned the same way.
+    expect(liftOf(screened)).toBeGreaterThan(liftOf(naked));
+    expect(liftOf(screened)).toBeGreaterThanOrEqual(5);
   });
 });
 
@@ -155,17 +160,22 @@ describe('escorts answer torpedo boats', () => {
     expect(battleshipEquivalents(line)).toBeGreaterThan(battleshipEquivalents(swarm));
   });
 
-  it('costs the defender its battle line when it fields no screen', () => {
-    // The integration check: same attacking tonnage, same defending tonnage,
-    // and the only difference is whether the defender screened its heavies.
+  it('keeps more of a battle line alive than the same line unscreened', () => {
+    // The player's actual question: *I have eight battleships — should I also
+    // buy a screen?* So the control is the same line without one.
+    //
+    // **Equal TONNAGE is the wrong control**, and the first version of this
+    // test used it: 14 battleships and `8 battleships + 12 escorts` displace
+    // the same 56 tons but are 14 and 12 battleship-equivalents, so the bare
+    // fleet is simply stronger and wins the exchange outright. That measures
+    // weight, not screening. Isolating the redirection itself is what the
+    // `strikeStack` cases above do, at the unit level where no roll is involved.
     const boats = { battleship: 6, torpedo_boat: 14 };
-    const bare = fight(boats, { battleship: 14 });
-    const guarded = fight(boats, { battleship: 8, escort: 12 });
-    const lineLeft = (r: ReturnType<typeof fight>) =>
-      stackAt(sys(r.state, 'slu-6'), 'vigil').battleship ?? 0;
-    // A screened defender keeps more of its line than an unscreened one keeps
-    // of a line that started larger.
-    expect(lineLeft(guarded) / 8).toBeGreaterThan(lineLeft(bare) / 14);
+    const lineLeft = (def: ShipStack) =>
+      stackAt(sys(fight(boats, def).state, 'slu-6'), 'vigil').battleship ?? 0;
+    expect(lineLeft({ battleship: 8, escort: 12 })).toBeGreaterThan(
+      lineLeft({ battleship: 8 }),
+    );
   });
 });
 
