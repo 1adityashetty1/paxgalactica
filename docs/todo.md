@@ -27,9 +27,10 @@ battle off a table built on turn 0, so this campaign measured a game nobody
 plays. It is **filed down** to a two-line change and a line in the agent brief.
 
 Then two money exploits reachable only through **unmetered diplomacy** — treaty
-`incomePerTurn` is not conserved, so both parties can be paid from nothing
-(**57**), and `terms.territory` cedes worlds in full while the payment for them
-is capped at 240 credits (**58**). Seven of the eighteen worlds were bought that
+`incomePerTurn` can pay both parties from nothing (**57**, audited: it silently
+absorbs three different deals and is the most generous of the three), and
+`terms.territory` cedes worlds in full while the payment for them is capped at
+240 credits (**58**). Seven of the eighteen worlds were bought that
 way for 1,200 credits and **zero action points**.
 
 Three findings are in code written the same week: `expansionist` gives a **100%**
@@ -151,7 +152,7 @@ their game.
 
 ---
 
-## 57. Treaty `incomePerTurn` is not conserved, and both parties can be paid from nothing
+## 57. AUDITED — treaty `incomePerTurn` absorbs three different deals and is the most generous of the three
 
 **VERIFIED.** `ledgerFor` in `state.ts:954`:
 
@@ -177,10 +178,65 @@ of the whole economy, 240 of it the player's. No NPC ever objected, because in
 fiction the arrangement is Pareto-improving: the Combine, the Vigil, Arkanis and
 Drajk each *negotiated the number upward*.
 
-The schema can express the conserved form — one `tribute` term in the same
-campaign was written `{meridian: -45, hutt: 45}` — so this is a missing
-invariant, not a missing field. Cost to obtain: **zero action points**, since
-diplomacy is unmetered.
+Cost to obtain: **zero action points**, since diplomacy is unmetered.
+
+### The audit, because "enforce sum = 0" was the wrong first answer
+
+**Two factions splitting an income source is a perfectly legitimate deal**, and
+a fix that simply forbids both entries being positive would forbid it. The
+question is which of two shapes is more robust — both parties receive, or one
+receives and pays the other — and the game has **already answered it three
+times**, in three mechanisms that this field silently absorbs:
+
+| mechanism | shape | creates value? | bounded by |
+|---|---|---|---|
+| `Commitment.incomePerTurn` | **one scalar, read the same way by every bound faction** | **yes, by design** | `MAX_COMMITMENT_INCOME` (25) per arrangement **and** `maxCommitmentIncomeFor` per faction — influence-derived, so Meridian 50, the Nars 40, the Vigil 10 |
+| `Treaty.terms.incomeShares` | a claim on a **named system**, taken off the top | no | the system's own worth; `remaining` cannot go below zero |
+| `Treaty.terms.incomePerTurn` | **a record keyed by faction** | **accidentally** | 60 per entry, and nothing at all on the sum |
+
+So each fiction already has a home:
+
+- **a joint venture that pays both houses** → `establish_commitment`, which is
+  non-directional *on purpose* and bounded twice precisely because *"a
+  commitment is the easiest place in the game for a model to invent revenue"*;
+- **a share of one world's take** → `incomeShares`, conserved by construction;
+- **tribute, a subsidy, debt service** → treaty `incomePerTurn`, whose entire
+  reason for existing is that a commitment **cannot** be directional. CLAUDE.md
+  documents that in the debt section, and documents this exact failure in the
+  other mechanism: *"a debt written as one two-party commitment at 25 paid the
+  creditor 25 and the debtor 20. Both sides earned; nobody paid."*
+
+The playtest's `{krayt: 30, meridian: 20}` is that same sentence, in the field
+that was built to be the directional one. A confirming detail:
+`MAX_TREATY_INCOME_PER_TURN = MAX_DEBT_PER_TURN` (`state.ts:1153`) — the cap was
+inherited from debt service, which is directional. The field was designed as a
+transfer and has never been constrained to be one.
+
+**The defect is therefore not "both positive is wrong."** It is that this field
+is a strictly better commitment: 60 an entry against 25, no influence ceiling,
+and no conservation — so extraction reaches for it every time and the other two
+mechanisms are dead letters for this fiction.
+
+### What to build
+
+Conserve it, and route the other two fictions to the mechanisms that already
+hold them. Two conventions of this codebase decide the details:
+
+- **Trim, do not reject** (`billConstruction`, `MAX_COMMITMENT_INCOME`,
+  `subornLimit`): the accord is still real at a smaller number.
+- **Do not guess a direction.** If *no* entry is negative the term creates value
+  and belongs in a commitment, so drop the `incomePerTurn` term — the treaty
+  itself stands — with a note naming `establish_commitment`. Flipping one party
+  to negative would invert the meaning of a deal both sides agreed to, and which
+  party to flip is a coin toss. If some entries *are* negative, trim the
+  positives to what is actually being paid.
+- `prompts/extraction.md` should say which of the three a deal belongs in, since
+  today it has no reason to prefer any of them.
+
+Rejected: allowing both-positive under a net cap borrowed from the commitment
+ceiling. It creates a second value-generating mechanism with a second ceiling
+that has to be kept in agreement with the first — the *"five conventions that
+had no reason to agree"* pattern this design keeps having to undo.
 
 ---
 
