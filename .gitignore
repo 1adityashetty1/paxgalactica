@@ -19,3 +19,4 @@ _*.ts
 # repo reads them, and re-exporting at a different size is one `sips` call.
 # They stay on disk; this only stops them being committed again.
 faction_portraits/
+glyph-audit.html
