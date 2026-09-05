@@ -114,7 +114,7 @@ const count = z.number().int().min(0).optional();
  * which would put four keys on every faction at every system in every save. A
  * test pins these keys against `HULL_CLASSES` so the two cannot drift.
  */
-const TypedStackSchema = z.object({
+export const TypedStackSchema = z.object({
   battleship: count,
   escort: count,
   torpedo_boat: count,
@@ -123,7 +123,27 @@ const TypedStackSchema = z.object({
 
 export const ShipStackSchema = z
   .union([z.number().int().min(0), TypedStackSchema])
-  .transform((v): Partial<Record<HullClass, number>> => (typeof v === 'number' ? { battleship: v } : v));
+  .transform((v): Partial<Record<HullClass, number>> =>
+    normaliseStack(typeof v === 'number' ? { battleship: v } : v),
+  );
+
+/**
+ * Drop empty classes, so a stack never carries a zero.
+ *
+ * The invariant is what lets `presentAt` and the income split trust that a key
+ * means a fleet. Enforced here as well as in the accessors because a stack can
+ * also arrive from a save file or a journal, where nothing went through them —
+ * `force: 0` on an old movement order parses to `{ battleship: 0 }` otherwise,
+ * which reads as a fleet of nothing rather than as no fleet.
+ */
+export function normaliseStack(stack: Partial<Record<HullClass, number>>): ShipStack {
+  const out: ShipStack = {};
+  for (const hull of HULL_CLASSES) {
+    const n = stack[hull] ?? 0;
+    if (n > 0) out[hull] = n;
+  }
+  return out;
+}
 
 /** The keys `ShipStackSchema` accepts. Exported so a test can hold it to `HULL_CLASSES`. */
 export const STACK_KEYS = Object.keys(TypedStackSchema.shape) as HullClass[];
@@ -165,4 +185,125 @@ export function inLossOrder(stack: ShipStack): HullClass[] {
   return HULL_CLASSES.filter((h) => (stack[h] ?? 0) > 0).sort(
     (a, b) => HULL_SPEC[a].lossOrder - HULL_SPEC[b].lossOrder || a.localeCompare(b),
   );
+}
+
+/** Two stacks added together. Neither input is mutated. */
+export function mergeStacks(a: ShipStack | undefined, b: ShipStack | undefined): ShipStack {
+  const out: ShipStack = {};
+  for (const hull of HULL_CLASSES) {
+    const n = (a?.[hull] ?? 0) + (b?.[hull] ?? 0);
+    if (n > 0) out[hull] = n;
+  }
+  return out;
+}
+
+/**
+ * Spend `hulls` ships out of a stack, cheapest-first, and say what went.
+ *
+ * Returns `{ taken, left }` rather than mutating, so a caller can put the
+ * losses in a report and the survivors on the board without recounting.
+ */
+export function takeHulls(stack: ShipStack, hulls: number): { taken: ShipStack; left: ShipStack } {
+  const left = normaliseStack(stack);
+  const taken: ShipStack = {};
+  let want = Math.max(0, Math.floor(hulls));
+  for (const cls of inLossOrder(left)) {
+    if (want <= 0) break;
+    const n = Math.min(want, left[cls] ?? 0);
+    if (n <= 0) continue;
+    taken[cls] = n;
+    const rest = (left[cls] ?? 0) - n;
+    if (rest === 0) delete left[cls];
+    else left[cls] = rest;
+    want -= n;
+  }
+  return { taken, left };
+}
+
+/**
+ * Cut a stack down until it displaces no more than `tons`, spending in loss
+ * order.
+ *
+ * **Losses are counted in tons, not in combat weight**, and that distinction is
+ * load-bearing. Weight decides who wins the exchange; tonnage decides how much
+ * is destroyed by it. Were losses counted in weight, a lifter — which has none
+ * — could never be hit, so a fleet that packed transports behind its line would
+ * carry them through any battle for free, and a mixed fleet would strictly
+ * dominate a pure warfleet of the same size.
+ */
+export function trimToTons(stack: ShipStack, tons: number): { taken: ShipStack; left: ShipStack } {
+  const left = normaliseStack(stack);
+  const taken: ShipStack = {};
+  let over = tonsIn(left) - Math.max(0, tons);
+  for (const cls of inLossOrder(left)) {
+    if (over <= 0) break;
+    const each = HULL_SPEC[cls].tonnage;
+    const n = Math.min(left[cls] ?? 0, Math.ceil(over / each));
+    if (n <= 0) continue;
+    taken[cls] = n;
+    const rest = (left[cls] ?? 0) - n;
+    if (rest === 0) delete left[cls];
+    else left[cls] = rest;
+    over -= n * each;
+  }
+  return { taken, left };
+}
+
+/**
+ * Take a slice of a fleet, keeping its shape.
+ *
+ * A bare `force: 20` on a movement order says how many ships to send and
+ * nothing about which, so the draw is **proportional** — twenty ships out of a
+ * mixed squadron leaves the same squadron, smaller. The alternatives are both
+ * worse: drawing in loss order sends the escorts and keeps the battleships at
+ * home, and drawing best-first means a plain number can never carry the lift
+ * arm, so an invasion ordered as "send 30 ships" arrives unable to take
+ * ground. Neither is guessable from the order the player wrote.
+ *
+ * Largest-remainder on a deterministic class order, so replay is exact.
+ */
+export function drawProportional(stack: ShipStack, hulls: number): ShipStack {
+  const have = hullsIn(stack);
+  const want = Math.min(Math.max(0, Math.floor(hulls)), have);
+  if (want <= 0) return {};
+  if (want === have) return normaliseStack(stack);
+
+  const out: ShipStack = {};
+  const classes = HULL_CLASSES.filter((h) => (stack[h] ?? 0) > 0);
+  let assigned = 0;
+  const remainders: { hull: HullClass; frac: number }[] = [];
+  for (const hull of classes) {
+    const exact = ((stack[hull] ?? 0) * want) / have;
+    const whole = Math.floor(exact);
+    if (whole > 0) out[hull] = whole;
+    assigned += whole;
+    remainders.push({ hull, frac: exact - whole });
+  }
+  remainders.sort((a, b) => b.frac - a.frac || a.hull.localeCompare(b.hull));
+  for (const { hull } of remainders) {
+    if (assigned >= want) break;
+    if ((out[hull] ?? 0) >= (stack[hull] ?? 0)) continue;
+    out[hull] = (out[hull] ?? 0) + 1;
+    assigned += 1;
+  }
+  return out;
+}
+
+/** Every class in a stack, in a stable order, for a report or a label. */
+export function describeStack(stack: ShipStack | undefined): string {
+  if (!stack) return '';
+  const parts = HULL_CLASSES.filter((h) => (stack[h] ?? 0) > 0).map(
+    (h) => `${stack[h]} ${HULL_SPEC[h].label}${(stack[h] ?? 0) === 1 ? '' : 's'}`,
+  );
+  return parts.join(', ');
+}
+
+/** What `a` has that `b` does not — the ships that went missing. */
+export function subtractStack(a: ShipStack, b: ShipStack): ShipStack {
+  const out: ShipStack = {};
+  for (const hull of HULL_CLASSES) {
+    const n = (a[hull] ?? 0) - (b[hull] ?? 0);
+    if (n > 0) out[hull] = n;
+  }
+  return out;
 }

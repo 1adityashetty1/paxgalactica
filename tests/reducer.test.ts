@@ -3,6 +3,7 @@ import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { MAX_DURATION } from '../src/domain/duration.js';
 import {
+  addShipsAt,
   hullsAt,
   setShipsAt, fleetStrengthOf, SHIP_COST, type WorldState } from '../src/domain/state.js';
 
@@ -481,10 +482,11 @@ describe('tickTurn', () => {
     // Send a token force at a heavily dug-in world with no defending fleet, so
     // phase 1 is skipped and the garrison decides it.
     setShipsAt(base.systems.find((s) => s.id === 'ark-3')!, 'freeworlds', 2);
+    addShipsAt(base.systems.find((s) => s.id === 'ark-3')!, 'freeworlds', 1, 'lifter');
     let state = applyOps(base, [
       {
         op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
-        originId: 'ark-3', targetId: 'slu-6', force: 2,
+        originId: 'ark-3', targetId: 'slu-6', force: { battleship: 2, lifter: 1 },
       },
     ]).state;
     const target = state.systems.find((s) => s.id === 'slu-6')!;

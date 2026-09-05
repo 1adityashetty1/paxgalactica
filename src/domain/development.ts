@@ -1,9 +1,9 @@
 import { DEFAULT_COVERT_EFFECT, type AgentMission } from './diplomacy.js';
 import type { DurationCategory } from './duration.js';
+import { CREDITS_PER_TON, HULL_SPEC } from './hulls.js';
 import {
   addShipsAt,
   ledgerFor,
-  SHIP_COST,
   type OrderEffect,
   type OrderEffectKind,
   type StarSystem,
@@ -75,18 +75,22 @@ export const EFFECT_CAPS: Record<OrderEffectKind, number> = {
 /**
  * Credits per point of magnitude, charged when the order is issued.
  *
- * `develop_system` is absent: it is the one kind whose payoff is not a fixed
- * quantity, so it is priced from what it is actually worth. See
- * `developmentCost`.
+ * Two kinds are absent, both because a flat per-point price would be a second
+ * opinion about something already priced elsewhere. `develop_system`'s payoff
+ * is not a fixed quantity, so it is priced from what it is actually worth —
+ * see `developmentCost`. `commission_ships` delivers hulls, and a hull is
+ * billed by displacement at `CREDITS_PER_TON`, the same rate the yards charge
+ * in `billConstruction`; anything else would make a construction programme a
+ * cheaper shipyard than the shipyard.
  */
-export const EFFECT_COST: Record<Exclude<OrderEffectKind, 'develop_system'>, number> = {
+export const EFFECT_COST: Record<
+  Exclude<OrderEffectKind, 'develop_system' | 'commission_ships'>,
+  number
+> = {
   // Ground troops are raised locally and normally cost nothing — passive
   // regrowth is free. What is bought here is speed, so the price is small.
   raise_garrison: 15,
   fortify: 45,
-  // Hulls cost what hulls cost, wherever they come from. Anything else would
-  // make a construction programme a cheaper shipyard than the shipyard.
-  commission_ships: SHIP_COST,
 };
 
 /**
@@ -199,6 +203,13 @@ export function priceOrderEffect(
 ): number {
   if (effect.kind === 'develop_system') {
     return developmentCost(state, system, factionId, effect.magnitude);
+  }
+  // Hulls are billed by displacement, so a programme for eight escorts costs
+  // what eight escorts cost — the same rate the yards charge in
+  // `billConstruction`, and the reason nothing has to agree separately about
+  // the price of a class.
+  if (effect.kind === 'commission_ships') {
+    return effect.magnitude * HULL_SPEC[effect.hull].tonnage * CREDITS_PER_TON;
   }
   return effect.magnitude * EFFECT_COST[effect.kind];
 }
@@ -378,7 +389,7 @@ export function describeOrderEffect(effect: OrderEffect): string {
     case 'fortify':
       return `+${n} garrison capacity`;
     case 'commission_ships':
-      return `${n} new hull${n === 1 ? '' : 's'}`;
+      return `${n} new ${HULL_SPEC[effect.hull].label}${n === 1 ? '' : 's'}`;
   }
 }
 
@@ -478,9 +489,9 @@ export function applyOrderEffect(
           delivered: false,
         };
       }
-      addShipsAt(system, factionId, effect.magnitude);
+      addShipsAt(system, factionId, effect.magnitude, effect.hull);
       return {
-        note: `${label} completed at ${system.name}: ${effect.magnitude} hull${effect.magnitude === 1 ? '' : 's'} commissioned.`,
+        note: `${label} completed at ${system.name}: ${describeOrderEffect(effect)} commissioned.`,
         delivered: true,
       };
     }

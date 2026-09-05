@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import {
+  addShipsAt,
   setShipsAt,
   DEFENSIVE_GARRISON_BONUS,
   EXPANSIONIST_TERRITORY_BONUS,
@@ -103,13 +104,18 @@ describe('expansionist: every world makes the rest pay better', () => {
       const state = fresh();
       fac(state, 'meridian').warEthic = ethic;
       sys(state, 'slu-3').garrison = 9;
+      // Room to quarter the whole landing force, so the ceiling does not mask
+      // the difference the doctrine makes.
+      sys(state, 'slu-3').garrisonMax = 40;
       setShipsAt(sys(state, 'slu-3'), 'meridian', 0);
+      addShipsAt(sys(state, 'slu-1'), 'meridian', 4, 'lifter');
       const out = applyOps(
         state,
         [
           {
             op: 'issue_order', factionId: 'meridian', type: 'fleet_movement',
-            originId: 'slu-1', targetId: 'slu-3', force: 60,
+            originId: 'slu-1', targetId: 'slu-3',
+            force: { battleship: 40, lifter: 4 },
           },
         ],
         'model',
@@ -139,7 +145,10 @@ describe('defensive: occupation costs more than it is worth', () => {
    */
   const capturesAcrossForces = (holderEthic: WarEthic, attackerEthic: WarEthic): number => {
     let taken = 0;
-    for (let force = 6; force <= 26; force += 2) {
+    // Swept over LIFT, because the ground phase counts the troops the lift arm
+    // puts down and a dug-in garrison is a ground doctrine. The battle line is
+    // held constant at a size that clears an empty orbit.
+    for (let lifter = 1; lifter <= 8; lifter += 1) {
       const state = fresh();
       fac(state, 'freeworlds').warEthic = holderEthic;
       fac(state, 'krayt').warEthic = attackerEthic;
@@ -147,13 +156,14 @@ describe('defensive: occupation costs more than it is worth', () => {
       t.garrison = 10;
       t.garrisonMax = 10;
       setShipsAt(t, 'freeworlds', 0);
-      setShipsAt(sys(state, 'ark-5'), 'krayt', force);
+      setShipsAt(sys(state, 'ark-5'), 'krayt', 12);
+      addShipsAt(sys(state, 'ark-5'), 'krayt', lifter, 'lifter');
       const out = applyOps(
         state,
         [
           {
             op: 'issue_order', factionId: 'krayt', type: 'fleet_movement',
-            originId: 'ark-5', targetId: 'ark-6', force,
+            originId: 'ark-5', targetId: 'ark-6', force: { battleship: 12, lifter },
           },
         ],
         'model',
@@ -265,12 +275,22 @@ describe('opportunist: no reward for a fair fight', () => {
    */
   const capturesAgainst = (
     attackerEthic: WarEthic,
-    garrison: number,
-    max: number,
+    weakened: boolean,
     distracted = false,
   ): number => {
     let taken = 0;
-    for (let force = 2; force <= 16; force += 1) {
+    // Swept over the GARRISON at a fixed landing force, not over the force.
+    //
+    // The bonus is +2 might, which is 10% of an assault total, and troops come
+    // in sixes — so sweeping lift moves the assault in jumps far larger than
+    // the effect being measured and the count saturates at both ends. Sweeping
+    // the garrison one point at a time is the dimension a 10% swing can
+    // actually cross, which is the same reason `combat.test.ts` scans garrison
+    // rather than fleet size for dissent.
+    const LIFT = 6;
+    for (let garrison = 20; garrison <= 40; garrison += 1) {
+      const lifter = LIFT;
+      const max = weakened ? garrison * 4 : garrison;
       const state = fresh();
       fac(state, 'krayt').warEthic = attackerEthic;
       fac(state, 'freeworlds').warEthic = 'profiteer'; // no dug-in bonus in play
@@ -282,13 +302,14 @@ describe('opportunist: no reward for a fair fight', () => {
       t.garrison = garrison;
       t.garrisonMax = max;
       setShipsAt(t, 'freeworlds', 0);
-      setShipsAt(sys(state, 'ark-5'), 'krayt', force);
+      setShipsAt(sys(state, 'ark-5'), 'krayt', 8);
+      addShipsAt(sys(state, 'ark-5'), 'krayt', lifter, 'lifter');
       const out = applyOps(
         state,
         [
           {
             op: 'issue_order', factionId: 'krayt', type: 'fleet_movement',
-            originId: 'ark-5', targetId: 'ark-6', force,
+            originId: 'ark-5', targetId: 'ark-6', force: { battleship: 8, lifter },
           },
         ],
         'model',
@@ -303,21 +324,21 @@ describe('opportunist: no reward for a fair fight', () => {
 
   it('takes a stripped world more often than anyone else would', () => {
     // Garrison far below its ceiling: weakened, so the bonus applies.
-    expect(capturesAgainst('opportunist', 3, 14)).toBeGreaterThan(
-      capturesAgainst('profiteer', 3, 14),
+    expect(capturesAgainst('opportunist', true)).toBeGreaterThan(
+      capturesAgainst('profiteer', true),
     );
   });
 
   it('gains nothing at all against a garrison at full strength', () => {
     // Whole and undistracted: a fair fight, and the doctrine sits out.
-    expect(capturesAgainst('opportunist', 12, 12)).toBe(capturesAgainst('profiteer', 12, 12));
+    expect(capturesAgainst('opportunist', false)).toBe(capturesAgainst('profiteer', false));
   });
 
   it('gains against a whole garrison whose holder is looking the other way', () => {
     // Same full garrison, but its holder is at war with somebody else. This is
     // the "distracted" arm: the raider is rewarded for timing, not for strength.
-    expect(capturesAgainst('opportunist', 12, 12, true)).toBeGreaterThan(
-      capturesAgainst('profiteer', 12, 12, true),
+    expect(capturesAgainst('opportunist', false, true)).toBeGreaterThan(
+      capturesAgainst('profiteer', false, true),
     );
   });
 });

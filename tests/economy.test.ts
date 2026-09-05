@@ -562,7 +562,8 @@ describe('ships cost money, in code rather than in a prompt', () => {
     const res = applyOps(start, [{ op: 'adjust_fleet', factionId: 'freeworlds', delta: 4 }]);
     expect(fleet(res.state)).toBe(fleet(start) + 4);
     expect(purse(res.state)).toBe(purse(start) - 4 * SHIP_COST);
-    expect(res.notes.join(' ')).toMatch(/commissions 4 hulls/);
+    // Billed by displacement: four battleships are sixteen tons.
+    expect(res.notes.join(' ')).toMatch(/commissions 16 tons/);
   });
 
   it('does not charge for repositioning, in either order', () => {

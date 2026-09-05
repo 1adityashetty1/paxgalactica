@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ShipStackSchema } from './hulls.js';
 
 /**
  * A battle, as a record rather than a sentence.
@@ -56,6 +57,14 @@ export const BATTLE_OUTCOMES = [
   'world_taken',
   /** The garrison held and threw the landing back. */
   'landing_thrown_back',
+  /**
+   * The orbitals were won and there was nothing aboard to put ashore.
+   *
+   * A world is taken by the lift arm, so an all-warship fleet can sterilise a
+   * system and take nothing. Distinct from `force_spent`, where there were
+   * troops and they were destroyed getting there.
+   */
+  'no_lift',
 ] as const;
 export type BattleOutcome = (typeof BATTLE_OUTCOMES)[number];
 
@@ -65,6 +74,17 @@ export const ContingentSchema = z.object({
   factionName: z.string(),
   before: z.number().int().min(0),
   after: z.number().int().min(0),
+  /**
+   * What it was made of, before and after.
+   *
+   * Two hull counts stopped being the whole story the moment a fleet could be
+   * composed: a coalition that arrives with twelve ships and leaves with eight
+   * has lost a very different battle depending on whether the four were escorts
+   * or the entire lift arm. Optional, so a report from before classes existed
+   * still parses; the renderer falls back to the totals.
+   */
+  stackBefore: ShipStackSchema.default({}),
+  stackAfter: ShipStackSchema.default({}),
 });
 export type Contingent = z.infer<typeof ContingentSchema>;
 

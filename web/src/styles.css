@@ -500,10 +500,22 @@ ul { margin: 0; padding-left: 1.1em; }
 /* Contested is the state worth spotting: someone is taking your income. */
 .fleet-row.contested { border-left-color: #d08a3a; }
 
-.crews { display: flex; gap: 0.5rem; margin-top: 0.1rem; font-variant-numeric: tabular-nums; }
+.crews {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.6rem;
+  margin-top: 0.1rem;
+  font-variant-numeric: tabular-nums;
+}
+.crew { display: inline-flex; align-items: baseline; gap: 2px; }
 /* A trailing asterisk marks hulls present in a system their owner does not
    hold — the distinction this panel exists to make visible. */
 .crew.mine { font-weight: 600; text-decoration: underline; }
+/* The breakdown is secondary to the total, so it is dimmer and tighter. The
+   panel is ~310px whatever the window does, so this has to wrap rather than
+   push the row wider. */
+.crew-mix { display: inline-flex; align-items: center; gap: 4px; opacity: 0.62; margin-left: 2px; }
+.crew-mix .ob-count { font-size: 0.85em; }
 .warn-text { color: #d08a3a; }
 
 /* ---- battle report ---- */

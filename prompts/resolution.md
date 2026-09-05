@@ -95,8 +95,9 @@ pay for it. Forgiving is the creditor's alone; a debtor cannot cancel what it
 owes, and the reducer rejects the attempt.
 
 `adjust_credits` is for narrative money only — a bribe, a fine, a windfall.
-Every real price in this game is charged by the mechanic that owns it: hulls at
-60, agents at 40–150, a works payload from what it is worth, treaty and
+Every real price in this game is charged by the mechanic that owns it: hulls by
+displacement (15 a ton — 60 for a battleship, 45 for a lifter, 30 for an escort
+or a torpedo boat), agents at 40–150, a works payload from what it is worth, treaty and
 commitment flows. **Do not add a second charge alongside one of those**, and do
 not move a large sum with it; anything past a few hundred is trimmed, and taking
 credits out of a rival's treasury is rejected outright. Skim a rival with an
@@ -121,11 +122,34 @@ there is no abstract strength. A `fleet_movement` order commits a stated force
 drawn from the origin: **always set `force`**. Omitting it sends everything
 there, which is rarely meant.
 
-Hulls cost **60 credits** each and **4 a turn** in upkeep. Ordering more than
-the treasury covers is not rejected — the yards deliver what was paid for and
-the rest is trimmed, and you are told. Repositioning is free: `-5` here and
-`+5` there nets to zero and costs nothing. A power that cannot meet upkeep lays
-ships up.
+### Ships come in classes, and a fleet is composed
+
+| class | tons | cost | upkeep | in orbit | on the ground |
+|---|---|---|---|---|---|
+| **battleship** | 4 | 60 | 4 | the line — worth three escorts in a fight | nothing |
+| **escort** | 2 | 30 | 2 | one third of a battleship, and **spent first** | nothing |
+| **torpedo boat** | 2 | 30 | 2 | as an escort | nothing |
+| **lifter** | 3 | 45 | 3 | **nothing at all** | 6 troops each |
+
+Everything is billed by **displacement**: `CREDITS_PER_TON` to build, one a ton
+a turn to keep. So there is no cheap way to buy presence — every class costs
+the same per ton — and a class is chosen for what it does, not for what it
+saves.
+
+**A world is taken by the lift arm.** The orbital phase counts guns; the ground
+phase counts the troops the lifters put down. A fleet of pure battleships can
+sterilise a system's orbitals and take nothing, and an invasion sailing without
+lift is a raid whether or not it was meant as one.
+
+Say what to build with `hull` on `adjust_fleet` or `adjust_ships`, and what to
+send with `force` on a movement — either a plain count, which draws
+proportionally from what is berthed, or a composition:
+`"force": { "battleship": 8, "lifter": 4 }`.
+
+Ordering more than the treasury covers is not rejected — the yards deliver what
+was paid for and the rest is trimmed, and you are told. Repositioning is free:
+`-5` here and `+5` there nets to zero and costs nothing. A power that cannot
+meet upkeep lays ships up.
 
 ### Battles are never resolved here
 
@@ -176,7 +200,10 @@ You may reduce **another** power's ships with `adjust_ships`. The reducer
 enforces both rules: you must have ships in the system, ships **one jump out**,
 or an agent there; and how many is your `guile` against their `resolve` — none
 at all against a power more resolute than you are cunning. Over-asking is
-trimmed, not rejected, and the hulls are paid for at 60 apiece.
+trimmed, not rejected, and the crews are bought at the same 15 a ton the yards
+charge — so turning three escorts is not the bill for turning three
+battleships. The limit is in **hulls**, though: a crew is a crew whatever it
+stands on. Cheapest hulls change sides first.
 
 No battle is fought — the world, holder and garrison are untouched. The bill is
 diplomatic: 6 standing per hull with the victim, 2 with every onlooker.
@@ -277,8 +304,10 @@ order types listed:
 | `fortify` | +1..3 to the garrison **ceiling** | `fortification`, `construction_infrastructure` |
 | `commission_ships` | hulls delivered at the target on completion | `capital_ship_construction`, `refit`, `retooling` |
 
-It is **paid for when the order is issued**: 60 credits a hull, 45 a point of
-garrison ceiling, 15 a garrison point. `develop_system` is priced from what it
+It is **paid for when the order is issued**: hulls by displacement at 15 a ton
+(so 60 for a battleship, 45 for a lifter, 30 for an escort or torpedo boat —
+name the class with `hull`), 45 a point of garrison ceiling, 15 a garrison
+point. `develop_system` is priced from what it
 is worth on that particular world — twelve turns of the income it would create —
 so improving an ordinary world is cheap and founding a **trade hub** costs a
 large fraction of a treasury. You do not calculate this; the reducer does, and

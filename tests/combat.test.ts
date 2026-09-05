@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { applyOps, tickTurn, GARRISON_REGROWTH, DISSENT_DECAY } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { STAT_NAMES } from '../src/domain/checks.js';
+import { LIFTER_CARRY, hullsIn } from '../src/domain/hulls.js';
 import {
+  addShipsAt,
   hullsAt,
   setShipsAt,
   dissentPenalty,
@@ -19,19 +21,27 @@ const sys = (s: WorldState, id: string) => s.systems.find((x) => x.id === id)!;
 const shipsOf = (s: WorldState, sysId: string, f: string) => hullsAt(sys(s, sysId), f);
 
 /**
- * Send `force` from ark-3 to slu-6 and tick until it arrives.
+ * Send `force` battleships and `lift` lifters from ark-3 to slu-6 and tick
+ * until they arrive.
  *
  * That route is TWO jumps (ark-3 → ark-4 → slu-6), so a single tick lands
  * nothing — the fleet is still in transit.
+ *
+ * `lift` defaults to none, so an orbital test sends a pure battle fleet and
+ * gets the arithmetic it always did. **A ground test must ask for lift**: a
+ * world is taken by the troops the lift arm lands, and a fleet of pure
+ * warships wins the orbitals and takes nothing.
  */
-function attack(setup: (s: WorldState) => void, force = 8) {
+function attack(setup: (s: WorldState) => void, force = 8, lift = 0) {
   const state = fresh();
   setShipsAt(sys(state, 'ark-3'), 'freeworlds', force);
+  if (lift > 0) addShipsAt(sys(state, 'ark-3'), 'freeworlds', lift, 'lifter');
   setup(state);
   const issued = applyOps(state, [
     {
       op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
-      originId: 'ark-3', targetId: 'slu-6', force,
+      originId: 'ark-3', targetId: 'slu-6',
+      force: { battleship: force, lifter: lift },
     },
   ]);
   expect(issued.rejections).toHaveLength(0);
@@ -74,7 +84,7 @@ describe('the fleet is the ships', () => {
         originId: 'ark-1', targetId: 'ark-4', force: 3,
       },
     ]).state;
-    expect(moving.pendingOrders[0]!.force).toBe(3);
+    expect(hullsIn(moving.pendingOrders[0]!.force)).toBe(3);
   });
 
   it('clamps a request to what is actually at the origin, and says so', () => {
@@ -84,8 +94,8 @@ describe('the fleet is the ships', () => {
         originId: 'ark-1', targetId: 'ark-4', force: 9999,
       },
     ]);
-    expect(res.notes.join(' ')).toMatch(/only \d+ were there/);
-    expect(res.state.pendingOrders[0]!.force).toBe(shipsOf(fresh(), 'ark-1', 'freeworlds'));
+    expect(res.notes.join(' ')).toMatch(/only .+ could sail/);
+    expect(hullsIn(res.state.pendingOrders[0]!.force)).toBe(shipsOf(fresh(), 'ark-1', 'freeworlds'));
   });
 
   it('refuses a movement from a system with no ships', () => {
@@ -205,7 +215,7 @@ describe('phase 2 — the ground assault', () => {
       t.garrison = 3;
       t.garrisonMax = 3;
       setShipsAt(t, 'vigil', 0);
-    }, 30);
+    }, 30, 2);
     const target = res.state.systems.find((x) => x.id === 'slu-6')!;
     expect(target.controllerFactionId).toBe('freeworlds');
     expect(res.notes.join(' ')).toMatch(/storms/);
@@ -220,7 +230,7 @@ describe('phase 2 — the ground assault', () => {
       t.garrison = 90;
       t.garrisonMax = 90;
       setShipsAt(t, 'vigil', 0);
-    }, 3);
+    }, 3, 2);
     const target = res.state.systems.find((x) => x.id === 'slu-6')!;
     expect(target.controllerFactionId).toBe('vigil');
     expect(res.notes.join(' ')).toMatch(/thrown back/);
@@ -233,7 +243,7 @@ describe('phase 2 — the ground assault', () => {
       t.garrison = 90;
       t.garrisonMax = 90;
       setShipsAt(t, 'vigil', 0);
-    }, 3);
+    }, 3, 2);
     const target = res.state.systems.find((x) => x.id === 'slu-6')!;
     // Damaged, but still in place and still Vigil's.
     expect(target.garrison).toBeGreaterThan(0);
@@ -282,7 +292,7 @@ describe('garrisons regrow', () => {
       t.garrison = 3;
       t.garrisonMax = 12;
       setShipsAt(t, 'vigil', 0);
-    }, 30).state;
+    }, 30, 2).state;
     expect(sys(state, 'slu-6').controllerFactionId).toBe('freeworlds');
     const justTaken = sys(state, 'slu-6').garrison;
     for (let i = 0; i < 3; i++) state = tickTurn(state).state;
@@ -314,7 +324,7 @@ describe('retreat costs ships only when opposed', () => {
       t.ships = {};
       t.garrison = 8;
       t.garrisonMax = 8;
-    }, 3);
+    }, 3, 1);
     expect(repulsed.notes.join(' ')).toMatch(/thrown back/);
     expect(repulsed.state.systems.find((x) => x.id === 'slu-6')!.controllerFactionId).toBeNull();
 
@@ -324,12 +334,14 @@ describe('retreat costs ships only when opposed', () => {
       t.ships = {};
       t.garrison = 4;
       t.garrisonMax = 4;
-    }, 20);
+    }, 20, 2);
     const world = taken.state.systems.find((x) => x.id === 'slu-6')!;
     expect(taken.notes.join(' ')).toMatch(/storms/);
     expect(world.controllerFactionId).toBe('freeworlds');
-    // The garrison is broken and rebuilt from the remnant, not inherited whole.
-    expect(world.garrison).toBeLessThan(4);
+    // The garrison it inherits is its OWN landing force, capped by what the
+    // world can quarter — not a fraction of the militia it just destroyed.
+    expect(world.garrison).toBeLessThanOrEqual(world.garrisonMax);
+    expect(world.garrison).toBeGreaterThan(0);
   });
 
   it('loses nothing walking into an undefended enemy world it cannot take', () => {
@@ -341,7 +353,7 @@ describe('retreat costs ships only when opposed', () => {
       t.garrison = 99;
       t.garrisonMax = 99;
       t.ships = {};
-    }, 9);
+    }, 9, 2);
     const text = res.notes.join(' ');
     expect(text).toMatch(/thrown back/);
     expect(text).not.toMatch(/breaks off|driven off|withdrawing/);
@@ -361,7 +373,7 @@ describe('retreat costs ships only when opposed', () => {
       t.ships = {};
       t.garrison = 1;
       t.garrisonMax = 1;
-    }, 4);
+    }, 4, 1);
     // Same force, no defending fleet: it arrives whole and takes the world.
     expect(unopposed.state.systems.find((x) => x.id === 'slu-6')!.controllerFactionId).toBe(
       'freeworlds',
@@ -417,11 +429,12 @@ describe('a garrison under attack does not grow', () => {
       t.garrison = 3;
       t.garrisonMax = 30;
       t.ships = {};
-    }, 40);
+    }, 40, 2);
     const target = res.state.systems.find((x) => x.id === 'slu-6')!;
     expect(target.controllerFactionId).toBe('freeworlds');
-    // Captured garrison is floor(3/3) = 1, with no regrowth tacked on.
-    expect(target.garrison).toBe(1);
+    // The garrison is the landing force that survived — two lifters, one lost
+    // to a garrison of 3 — and nothing is tacked on for regrowth.
+    expect(target.garrison).toBe(LIFTER_CARRY);
   });
 
   it('does not grow on the turn an assault is thrown back', () => {
@@ -431,7 +444,7 @@ describe('a garrison under attack does not grow', () => {
       t.garrison = 40;
       t.garrisonMax = 40;
       t.ships = {};
-    }, 4);
+    }, 4, 2);
     const target = res.state.systems.find((x) => x.id === 'slu-6')!;
     expect(target.controllerFactionId).toBe('vigil');
     // Damaged by the landing, and NOT topped back up in the same turn.
@@ -450,15 +463,26 @@ describe('a garrison under attack does not grow', () => {
 });
 
 describe('coalitions', () => {
-  /** Two powers landing on slu-6 in the same turn. */
+  /**
+   * Two powers landing on slu-6 in the same turn.
+   *
+   * A quarter of each contingent is lift, because a coalition that brings no
+   * troops cannot take the world it is fighting over — and the spoils go to
+   * whoever puts the most ashore, so the proportion has to track the size of
+   * the contingent rather than being a flat number each.
+   */
   function joint(setup: (s: WorldState) => void, forces: Record<string, number>) {
     const state = fresh();
     setup(state);
     const ops = Object.entries(forces).map(([factionId, force]) => {
-      setShipsAt(sys(state, 'ark-3'), factionId, force);
+      const lifter = Math.max(1, Math.round(force / 4));
+      const battleship = Math.max(0, force - lifter);
+      setShipsAt(sys(state, 'ark-3'), factionId, battleship);
+      addShipsAt(sys(state, 'ark-3'), factionId, lifter, 'lifter');
       return {
         op: 'issue_order', factionId, type: 'fleet_movement',
-        originId: 'ark-3', targetId: 'slu-6', force, label: `${factionId} squadron`,
+        originId: 'ark-3', targetId: 'slu-6',
+        force: { battleship, lifter }, label: `${factionId} squadron`,
       };
     });
     const issued = applyOps(state, ops);
@@ -477,10 +501,10 @@ describe('coalitions', () => {
         t.garrison = 2;
         t.garrisonMax = 2;
       },
-      { freeworlds: 12, krayt: 12 },
+      { freeworlds: 16, krayt: 16 },
     );
-    // 24 attacking vs 14 defending: together they break it. Separately,
-    // each 12 would have been ground down by the same 14.
+    // 24 battleships between them against 14: together they break it.
+    // Separately, each 12 would have been ground down by the same 14.
     expect(res.state.systems.find((x) => x.id === 'slu-6')!.controllerFactionId).not.toBe('vigil');
     expect(res.notes.join(' ')).toMatch(/and/);
   });
@@ -613,7 +637,7 @@ describe('dissent has teeth', () => {
     // hard-coding one. A fixed pair of numbers here only ever tested one
     // particular die roll, so it broke the moment the hash changed while the
     // mechanic itself was untouched — a test that fails for the wrong reason.
-    const takenWith = (dissent: number, garrison: number, force: number) =>
+    const takenWith = (dissent: number, garrison: number, lift: number) =>
       attack((s) => {
         s.factions.find((f) => f.id === 'freeworlds')!.dissent = dissent;
         const t = sys(s, 'slu-6');
@@ -621,7 +645,8 @@ describe('dissent has teeth', () => {
         t.garrison = garrison;
         t.garrisonMax = garrison;
         t.ships = {};
-      }, force).state.systems.find((x) => x.id === 'slu-6')!.controllerFactionId === 'freeworlds';
+      }, 12, lift).state.systems.find((x) => x.id === 'slu-6')!.controllerFactionId ===
+      'freeworlds';
 
     // Searched over force AND garrison. Dissent is worth roughly 5% of assault
     // strength per modifier point, so at a single force it often fails to
@@ -632,13 +657,18 @@ describe('dissent has teeth', () => {
     // garrison, which is where a 5% swing can change the answer. A full grid
     // is a thousand battle simulations and times the suite out for no extra
     // signal.
+    // Scanned over LIFT rather than over the whole fleet, because the ground
+    // phase counts the troops the lift arm puts down and nothing else. The
+    // battle line is held constant at a size that clears an empty orbit.
     const flipped: string[] = [];
     let everHelped = 0;
-    for (let force = 12; force <= 24; force += 2) {
-      for (let garrison = force - 4; garrison <= force; garrison++) {
-        const calm = takenWith(0, garrison, force);
-        const restive = takenWith(100, garrison, force);
-        if (calm && !restive) flipped.push(`${force}v${garrison}`);
+    for (let lift = 2; lift <= 8; lift++) {
+      const troops = lift * LIFTER_CARRY;
+      for (let garrison = troops - 5; garrison <= troops + 2; garrison++) {
+        if (garrison < 1) continue;
+        const calm = takenWith(0, garrison, lift);
+        const restive = takenWith(100, garrison, lift);
+        if (calm && !restive) flipped.push(`${lift}x${LIFTER_CARRY}v${garrison}`);
         if (restive && !calm) everHelped++;
       }
     }
@@ -747,7 +777,7 @@ describe('a declared action cannot resolve its own battle', () => {
     const after = total(res.state, 'freeworlds');
     expect(after).toBeGreaterThan(0);
     expect(before - after).toBeLessThanOrEqual(Math.max(1, Math.floor(before * 0.25)));
-    expect(res.notes.join(' ')).toMatch(/cannot lose \d+ hulls to a single declaration/);
+    expect(res.notes.join(' ')).toMatch(/cannot lose \d+ tons of shipping to a single declaration/);
   });
 
   it('leaves a modest narrative loss alone', () => {

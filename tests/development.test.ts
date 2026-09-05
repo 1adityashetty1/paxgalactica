@@ -19,7 +19,7 @@ import {
   ledgerFor,
   maxCommitmentIncomeFor,
   SHIP_COST,
-  type OrderEffect,
+  type OrderEffectInput,
   type OrderEffectKind,
   type WorldState,
 } from '../src/domain/state.js';
@@ -29,6 +29,7 @@ import {
   MIN_COMMITMENT_INCOME_CEILING,
 } from '../src/domain/arbitration.js';
 import { HUB_THRESHOLD, tradeHubs, tradeRoutes } from '../src/domain/trade.js';
+import { CREDITS_PER_TON, HULL_SPEC } from '../src/domain/hulls.js';
 
 /**
  * Completed orders used to change nothing at all.
@@ -231,7 +232,19 @@ describe('hulls from a construction programme', () => {
   });
 
   it('prices hulls exactly as the yards price them, so a programme is no cheaper', () => {
-    expect(EFFECT_COST.commission_ships).toBe(SHIP_COST);
+    // Priced by displacement rather than by a per-hull constant, so it cannot
+    // disagree with the yards about what a class costs — a battleship
+    // programme still bills at `SHIP_COST` apiece.
+    expect(
+      priceOrderEffect(fresh(), sys(fresh(), 'ark-1'), 'freeworlds', {
+        kind: 'commission_ships', magnitude: 1, hull: 'battleship', summary: '',
+      }),
+    ).toBe(SHIP_COST);
+    expect(
+      priceOrderEffect(fresh(), sys(fresh(), 'ark-1'), 'freeworlds', {
+        kind: 'commission_ships', magnitude: 1, hull: 'lifter', summary: '',
+      }),
+    ).toBe(HULL_SPEC.lifter.tonnage * CREDITS_PER_TON);
   });
 });
 
@@ -380,7 +393,7 @@ describe('the payload is bounded in code, not in a prompt', () => {
         state,
         site,
         'meridian',
-        { kind, magnitude: 99, summary: '' },
+        { kind, magnitude: 99, hull: 'battleship', summary: '' },
         10_000_000,
       );
       expect(trimmed!.effect.magnitude).toBe(EFFECT_CAPS[kind]);
@@ -744,13 +757,13 @@ describe('payloads are bounded by the check that carried them', () => {
 
   it('halves on a partial, because "reduced" was never enforced', () => {
     const out = boundPayloadsToOutcome([order(2)], 'partial');
-    expect((out.ops[0] as { onComplete: OrderEffect }).onComplete.magnitude).toBe(1);
+    expect((out.ops[0] as { onComplete: OrderEffectInput }).onComplete.magnitude).toBe(1);
     expect(out.notes[0]).toMatch(/partial/i);
   });
 
   it('never floors a partial to nothing', () => {
     const out = boundPayloadsToOutcome([order(1)], 'partial');
-    expect((out.ops[0] as { onComplete: OrderEffect }).onComplete.magnitude).toBe(1);
+    expect((out.ops[0] as { onComplete: OrderEffectInput }).onComplete.magnitude).toBe(1);
     expect(out.notes).toHaveLength(0);
   });
 
@@ -766,7 +779,7 @@ describe('payloads are bounded by the check that carried them', () => {
   it('does not mutate the ops it was given', () => {
     const ops = [order(4)];
     boundPayloadsToOutcome(ops, 'partial');
-    expect((ops[0] as { onComplete: OrderEffect }).onComplete.magnitude).toBe(4);
+    expect((ops[0] as { onComplete: OrderEffectInput }).onComplete.magnitude).toBe(4);
   });
 
   it('ignores ops that are not orders with payloads', () => {

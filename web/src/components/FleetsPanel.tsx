@@ -1,11 +1,15 @@
 import {
   presentAt,
+  stackAt,
   fleetStrengthOf,
+  fleetTonsOf,
   shipsInTransit,
   systemIncome,
   type WorldState,
 } from '../../../src/domain/state.js';
 import { ansi256ToHex } from '../color.js';
+import { describeStack, hullsIn } from '../../../src/domain/hulls.js';
+import { StackGlyphs } from './BattleIcons.js';
 
 /**
  * Every hull in the galaxy, by system.
@@ -47,7 +51,7 @@ export function FleetsPanel({
   );
 
   const inTransit = state.pendingOrders.filter(
-    (o) => o.type === 'fleet_movement' && o.force > 0,
+    (o) => o.type === 'fleet_movement' && hullsIn(o.force) > 0,
   );
 
   return (
@@ -59,7 +63,14 @@ export function FleetsPanel({
             <div key={f.id} className="fleet-total">
               <span style={{ color: colorOf(f.id) }}>{f.name}</span>
               <span>
+                {/* Both, because a player thinks in ships and the rules count
+                    tons: upkeep, the yards' bill, insolvency attrition and the
+                    contest for a world's income are all denominated in
+                    displacement. Showing only hulls would hide why a fleet of
+                    escorts costs less to keep than the same number of
+                    battleships. */}
                 {fleetStrengthOf(state, f.id)}
+                <span className="muted"> · {fleetTonsOf(state, f.id)}t</span>
                 {transit > 0 && <span className="muted"> ({transit} under way)</span>}
               </span>
             </div>
@@ -121,7 +132,9 @@ export function FleetsPanel({
         <ul className="fleet-list">
           {inTransit.map((o) => (
             <li key={o.id} className="fleet-row">
-              <span style={{ color: colorOf(o.factionId) }}>{o.force} hulls</span>
+              <span style={{ color: colorOf(o.factionId) }} title={describeStack(o.force)}>
+                <StackGlyphs stack={o.force} />
+              </span>
               <span className="muted">
                 {' '}
                 → {state.systems.find((s) => s.id === o.targetId)?.name ?? o.targetId} ·{' '}
@@ -172,12 +185,19 @@ function Row({
             key={id}
             className={id === me ? 'crew mine' : 'crew'}
             style={{ color: colorOf(id) }}
-            title={`${nameOf(id)} — ${n} hull${n === 1 ? '' : 's'}${
+            title={`${nameOf(id)} — ${describeStack(stackAt(system, id))}${
               id === holder ? ' (holds this world)' : ' (present, does not hold it)'
             }`}
           >
+            {/* Total first, because that is what the eye counts down the
+                column; the composition follows it, because a squadron of
+                twelve is a different thing depending on whether any of them
+                can put troops on the ground. */}
             {n}
             {id !== holder && '*'}
+            <span className="crew-mix">
+              <StackGlyphs stack={stackAt(system, id)} size={12} />
+            </span>
           </span>
         ))}
       </div>

@@ -1,3 +1,4 @@
+import { HULL_CLASSES, HULL_SPEC, type ShipStack } from '../../../src/domain/hulls.js';
 /**
  * Glyphs for the order of battle: one per hull class, and a tracked gun.
  *
@@ -304,4 +305,47 @@ export function HullIcon({
     case 'battleship':
       return <ShipIcon size={size} title={title} />;
   }
+}
+
+/**
+ * A composed force, as `<glyph> ×N` per class present.
+ *
+ * One renderer for the order of battle and the fleets panel, because a
+ * squadron should read the same wherever it is shown — and because a class
+ * added later has exactly one place to appear.
+ */
+export function StackGlyphs({
+  stack,
+  size = 18,
+  fallback,
+}: {
+  stack: ShipStack;
+  size?: number;
+  /** Total hulls, drawn as battleships when the stack is empty — an old report. */
+  fallback?: number;
+}) {
+  const classes = HULL_CLASSES.filter((h) => (stack[h] ?? 0) > 0);
+  if (classes.length === 0) {
+    if (!fallback || fallback <= 0) return null;
+    return (
+      <span className="ob-strength" title={`${fallback} ships`}>
+        <ShipIcon size={size} />
+        <span className="ob-count">×{fallback}</span>
+      </span>
+    );
+  }
+  return (
+    <>
+      {classes.map((hull) => (
+        <span
+          key={hull}
+          className="ob-strength"
+          title={`${stack[hull]} ${HULL_SPEC[hull].label}${stack[hull] === 1 ? '' : 's'}`}
+        >
+          <HullIcon hull={hull} size={size} />
+          <span className="ob-count">×{stack[hull]}</span>
+        </span>
+      ))}
+    </>
+  );
 }

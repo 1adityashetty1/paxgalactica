@@ -918,6 +918,7 @@ dissent across ten turns while the player accrued 69.
 ---
 
 ## 55. IN PROGRESS — ship classes, and tonnage as the unit of fleet size
+### steps 0 and 1 done; 2 and 3 remain
 
 A fleet was a count, so every hull was identical and composition was not a
 decision. The design below is settled; step 0 is built.
@@ -1009,8 +1010,49 @@ escorts a better story: destroyers were originally *torpedo boat destroyers*.
 
    The class was called `line` while it was built; it is **`battleship`** now,
    because "line hull" is not a term anyone uses.
-1. **`lifter`** — invasion becomes a composed fleet. No new phases: the orbital
+1. **`lifter` — DONE.** Invasion is a composed fleet. No new phases: the orbital
    phase counts weight, the ground phase counts lift.
+
+   `PendingOrder.force` is a `ShipStack`, accepting the bare number every older
+   order carries — the same union trick step 0 used for `system.ships`, so all
+   23 saved campaigns still replay to the fleets and ledgers they had. A bare
+   number on a movement draws **proportionally**, because the alternatives are
+   both wrong: loss order sends the escorts and keeps the battleships at home,
+   and best-first means a plain number can never carry lift, so "send 30 ships"
+   arrives unable to take ground.
+
+   Also landed in this step, because the lifter could not be real without them:
+   cost, upkeep, insolvency attrition, `capSelfInflictedLosses`, the income
+   contest and the price of a suborned crew are all denominated in **tons**;
+   `adjust_fleet`, `adjust_ships` and `commission_ships` take a `hull`; the
+   model's state block reports composition rather than a count; and the bots
+   build and carry lift.
+
+   **Two things it broke, both caught by measurement rather than by reading:**
+
+   - **Conquest got six times CHEAPER**, not more expensive. `troopLosses` was
+     half the garrison, mirroring the old formula — which charged half the
+     garrison in *warships*. Half a garrison of ten is five hulls, 300 credits;
+     half of it in lift is one lifter, 45. A broken garrison now kills its own
+     strength in troops.
+   - **The bots counted transports as strength.** Every threshold in
+     `initiative.ts` is a hull count calibrated when a hull was a battleship,
+     and a lifter is a whole hull for three quarters of the price — so a fleet
+     crossed its own thresholds faster the more lift it bought. The Vigil went
+     from six systems to ten and reduced Meridian to one world at −126 net.
+     Strength is the battle line now (`warshipsAt`); lift is sized separately
+     against the target's garrison.
+
+   Both were invisible in the unit tests and obvious in one `pnpm balance 30`.
+
+   **`expansionist` had to be re-expressed rather than kept**: there is no
+   longer a share of the defender's garrison to keep more of, so it comes
+   through the landing with half its lift losses instead. Rounded *down*, since
+   a lifter carries six against garrisons of 2–15 and rounding up leaves the
+   doctrine inert exactly where most conquests happen.
+
+   17 tests in `tests/lift.test.ts`, two more in `tests/initiative.test.ts`.
+   898 → 900 across the suite.
 
    **Four prompt lines go false the moment a second class exists**, and they
    are part of this step rather than a later tidy-up. Every one of them states a
@@ -1044,18 +1086,28 @@ escorts a better story: destroyers were originally *torpedo boat destroyers*.
 3. **`torpedo boat`** — the lift arm is under threat, so escorts matter. Loss
    redirection past the screen, still inside the existing exchange.
 
+### Answered by step 1
+
+- **"Does anyone still invade" — yes, and slightly more than before.** Measured
+  over 30 harness turns: territory changes through turn 20, where the
+  pre-classes harness froze at turn 10, and the board ends 3/6/5/4/4 with
+  nobody eliminated and nobody near half the map.
+- **`fleetStrengthOf` kept its units** and `fleetTonsOf` was added alongside.
+  The Fleets panel shows both (`74 · 279t`) and so does the model's state block,
+  because a player thinks in ships and the rules count tons.
+- **A defender with no combat weight is destroyed where it lies.** Symmetric: an
+  invasion arriving as transports only is annihilated the same way.
+
 ### Still open
 
-- **The sweep to run is "does anyone still invade"**, not "is the exchange rate
-  fair". Conquest gets more expensive at step 1 and gains a hard counter at step
-  3; the failure shows up as bots that stop attacking, the same shape as the
-  `MONOPOLY_BONUS` cliff where a discrete question swamped the tuning value.
-- **`fleetStrengthOf` changes units** — 43 hulls becomes 172 tons. It feeds the
-  prompt block, the Fleets panel and the bots. The UI should show both, since a
-  player thinks in ships and the rules think in tons.
-- **A defender with no combat weight still has to die.** A pure-lifter fleet
-  squatting in orbit has `defenceForce` 0, which the sweep path reads as
-  "nothing to fight". It must be a walkover that destroys them, not a no-op.
+- **The battle card overstates defender losses on a break-off.** A retreating
+  contingent's `after` at the target is 0, so the Losses column reads as the
+  whole contingent even though most of it escaped to a refuge. The prose note is
+  correct. Pre-existing, not a step-1 regression.
+- **Steps 2 and 3.** `escort` is loss-ordering (already implemented in
+  `inLossOrder`, but with nothing yet worth protecting it is only a tiebreak);
+  `torpedo_boat` is loss redirection past the screen and is currently identical
+  to an escort.
 - **Sprites — DONE.** Four silhouettes that differ by *outline family*, chosen
   by rendering each at 18px, magnifying the rasterisation and looking, which is
   how both faults in the original two were found. Five candidates were thrown

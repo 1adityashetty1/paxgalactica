@@ -1,4 +1,5 @@
 import { eventsVisibleTo, ordersVisibleTo } from '../domain/intel.js';
+import { describeStack, hullsIn } from '../domain/hulls.js';
 import { describeOrderEffect } from '../domain/development.js';
 import { describeEffect } from '../domain/diplomacy.js';
 import {
@@ -16,6 +17,7 @@ import {
   isMovementType,
   agentsVisibleTo,
   fleetStrengthOf,
+  fleetTonsOf,
   ledgerFor,
   liveAgentsOf,
   maxAgentsFor,
@@ -58,7 +60,7 @@ export function serializeFactions(state: WorldState, viewerId: string): string {
         : ` | disposition toward ${viewerId}: ${fmtDisposition(dispositionBetween(state, f.id, viewerId))}`;
     return [
       `- **${f.name}** (id: \`${f.id}\`)${self}`,
-      `  fleet ${fleetStrengthOf(state, f.id)} | credits ${f.credits} | ${held} systems${toward}`,
+      `  fleet ${fleetStrengthOf(state, f.id)} hulls / ${fleetTonsOf(state, f.id)} tons | credits ${f.credits} | ${held} systems${toward}`,
       `  stats: ${serializeStats(f.stats)}`,
       `  war: ${f.warEthic} — ${WAR_ETHIC_MEANING[f.warEthic]}`,
       `  trade: ${f.tradeEthic} — ${TRADE_ETHIC_MEANING[f.tradeEthic]}`,
@@ -205,8 +207,13 @@ export function serializeSystems(state: WorldState): string {
       ? getFaction(state, s.controllerFactionId)?.name ?? s.controllerFactionId
       : 'unaligned';
     const income = systemIncome(state, s);
-    const ships = presentAt(s)
-      .map(([id, n]) => `${id} ${n}`)
+    // Composed, not counted. The resolution prompt says a world is taken by
+    // the lift arm; a state block that reports "freeworlds 12" cannot tell the
+    // model whether any of the twelve can put troops on the ground, so the
+    // rule would be unactionable exactly where it matters.
+    const ships = Object.entries(s.ships ?? {})
+      .filter(([, stack]) => hullsIn(stack) > 0)
+      .map(([id, stack]) => `${id} ${describeStack(stack)}`)
       .join(', ');
     const payout = Object.entries(income.shares)
       .filter(([, v]) => v > 0)

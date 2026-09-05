@@ -1,4 +1,5 @@
-import { setShipsAt } from '../src/domain/state.js';
+import { addShipsAt, setShipsAt } from '../src/domain/state.js';
+import { carryOf, type ShipStack } from '../src/domain/hulls.js';
 import { describe, expect, it } from 'vitest';
 import { createSeedState } from '../src/seed/scenario.js';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
@@ -188,5 +189,54 @@ describe('the proposal itself', () => {
     const a = proposeFor(seed(), 'krayt');
     const b = proposeFor(seed(), 'krayt');
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  });
+});
+
+/**
+ * The bots judge strength by the battle line, not by the hull count.
+ *
+ * Every threshold in `initiative.ts` is a hull count calibrated when a hull was
+ * a battleship and nothing else. A lifter is a whole hull for three quarters of
+ * a battleship's price, so counting transports among them makes a fleet cross
+ * its own thresholds faster the more lift it buys — which is a bug in the
+ * bots' units, not a doctrine. Measured before the fix: the Vigil, which buys
+ * hardest, went from six systems to ten and reduced Meridian to one world.
+ */
+describe('lift is carried, not counted as strength', () => {
+  it('does not let transports talk a bot into an attack its line cannot make', () => {
+    const withLift = (lifters: number) => {
+      const s = createSeedState('freeworlds');
+      // A staging world next to a target, held well short of what the bot
+      // needs, then padded out with transports.
+      const staging = s.systems.find((x) => x.id === 'tio-3')!;
+      setShipsAt(staging, 'vigil', 6);
+      if (lifters > 0) addShipsAt(staging, 'vigil', lifters, 'lifter');
+      return (proposeFor(s, 'vigil')?.ops ?? []).some(
+        (op: Record<string, unknown>) =>
+          op.op === 'issue_order' && op.type === 'fleet_movement',
+      );
+    };
+    // Whatever the answer is with no lift, adding forty transports must not
+    // change it: they are cargo, not combat power.
+    expect(withLift(40)).toBe(withLift(0));
+  });
+
+  it('sails with enough lift to hold what it takes, or does not sail', () => {
+    const s = createSeedState('freeworlds');
+    // Every bot, and every world it proposes to attack.
+    for (const me of ['meridian', 'vigil', 'hutt', 'freeworlds', 'krayt']) {
+      const ops = ((proposeFor(s, me)?.ops ?? []) as Record<string, unknown>[]).filter(
+        (op) => op.op === 'issue_order' && op.type === 'fleet_movement',
+      ) as unknown as { force: ShipStack; targetId: string }[];
+      for (const op of ops) {
+        const target = s.systems.find((x) => x.id === op.targetId)!;
+        if (target.controllerFactionId === me || target.garrison <= 0) continue;
+        // Troops aboard beat the garrison it is being sent against.
+        expect(
+          carryOf(op.force),
+          `${me}'s sortie at ${op.targetId} cannot beat a garrison of ${target.garrison}`,
+        ).toBeGreaterThan(target.garrison);
+      }
+    }
   });
 });
