@@ -93,9 +93,28 @@ ceiling is derived from `influence`, which dissent and a hostile `stat_debuff`
 both move, so freezing it into the record would be wrong the turn after. The
 arrangement is real at what it says; what it *pays* is what the reader decides.
 
-**Still open — `prize_share_tribute` has no mechanism (51).** A share of prizes
-is a new mechanic, not a missing wire: it needs a rule for what a prize is and
-when it is taken. **Design input required**, so not started.
+**Still open — a commitment can only pay a flat number (51).** Filed as
+*"`prize_share_tribute` has no mechanism"*, which named the slug as though the
+slug were the thing. It is not: `kind` is deliberately free-form so commitments
+can hold arrangements nobody enumerated, and `prize_share_tribute` was invented
+by a model mid-playtest for *"a share of every prize the Confederacy takes"*. It
+appears nowhere in `src/`, `prompts/` or `tests/`.
+
+The real gap is general. A commitment carries `incomePerTurn` — **a fixed
+integer** — and nothing else that moves money. So a share of something that
+*varies* has no honest constant to write, and the model wrote `0` rather than
+invent one, which is the right call and leaves the deal as decoration.
+
+The quantity is not the problem: `Ledger.raided` is already real, per faction
+and per turn, as are `tolls`, `routes` and `territory`. What is missing is a way
+to say *"a tenth of that"* instead of *"25 a turn"* — a proportional term, on the
+mechanism whose whole purpose is arrangements with no other home.
+
+**Design input required**, so not started. The open questions are which flows
+may be shared (raiding only, or any ledger line), whether a share is capped the
+way `MAX_COMMITMENT_INCOME` caps a flat yield, and whether it is conserved —
+a tenth of prizes taken *from* the payer is a transfer, but a tenth of route
+income is a claim on money the payer never held.
 
 **Re-scoped — a bargained `voidsOn` written as `[]` (67.2).** Not a code defect.
 The field exists, the reducer enforces it (item 50/60), and
