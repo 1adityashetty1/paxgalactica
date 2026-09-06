@@ -144,10 +144,12 @@ two different hull classes are untouched.
 > is exactly the world a model then names. Removing unconditionally makes both
 > cases uniform. A test pins the same-system case specifically.
 
-## D. The battle model is one arrival-shaped event — **65, 74**
+## D. Composition is a decision for an attacker and not a defender — **74** (65 retired)
 
-- A fleet already in orbit takes no part in the battle fought over its head, so
-  a victor must physically leave and come back (**65**).
+- ~~A fleet already in orbit takes no part in the battle fought over its head~~
+  — **retested and mostly wrong**: it can assault the world under it with a
+  zero-jump `fleet_movement`, in one turn. What is left is a prompt line about
+  discoverability, and no decision (**65**).
 - A defender's composition is not a decision at any budget ratio, because a
   defender has one objective and one objective has a pure optimum (**74**).
 
@@ -1014,10 +1016,25 @@ arrival battle at that world.
 
 After taking the orbitals at Kalzir the playtester had 34 battleships parked
 there and could not use one of them in a second assault; they had to physically
-leave and come back, costing two turns of shuttling. Not wrong by the letter of
-the rules — an arrival battle is an arrival — but it is the opposite of what
-"my fleet is over their world" reads as, and it is the shape of thing a player
-discovers by losing to it.
+leave and come back, costing two turns of shuttling.
+
+**MOSTLY WRONG, re-tested 2026-09-06.** A fleet already in orbit *can* assault
+the world under it: a `fleet_movement` with `originId === targetId` is accepted,
+costs **one** turn, and fights a real battle. Verified both ways — against a
+defended Kalzir it engaged and lost, and against a cleared orbit it stormed the
+world: *"breaking a garrison of 8 for 1 lifters; Meridian takes possession with
+12 troops ashore."*
+
+So the capability exists and the playtester did not find it. What is left is
+much smaller than the item claimed:
+
+- **Discoverability.** Nothing in `prompts/resolution.md` says an assault can be
+  ordered from the system you are already in, so the model reaches for a
+  round trip. That is a prompt line, and needs no decision.
+- **The genuine residual**: ships already parked do not join a battle that
+  *someone else's* arrival triggers in the same turn. Leaving that alone is
+  defensible — `force` exists precisely so an arrival commits what you chose to
+  send, and auto-committing a parked fleet would take that control away.
 
 ---
 
