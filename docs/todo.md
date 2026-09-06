@@ -1,5 +1,119 @@
 # TODO — known bugs and open design questions
 
+Three sections. **Open work** is the current picture, grouped by root cause and
+pointing at the numbered detail below. **Performance** is its own track, `p.X`.
+**The detail** is every item ever raised, newest first, kept whether or not it
+is closed — the reasoning is the useful part, and a fixed item explains why the
+code looks the way it does.
+
+Statuses are checked against the code, not carried forward from the label. The
+last audit was **2026-09-06** and moved four items.
+
+---
+
+# Open work, grouped
+
+Every item below was checked against the code on **2026-09-06**, not taken from
+its own label. Four were wrong: **10** and **56** were finished, **62** was
+filed unconfirmed and is real, and **68** does not reproduce. The detail for
+each lives in its numbered item further down; this is the index.
+
+## A. The arbiter rules on the words of an order, not on what it does — **47, 66, 72**
+
+The single largest open risk, and three items are one finding. A breach ruling
+matches against the *prose* of a declaration rather than the ops it produces, so:
+
+- quoting a compulsion back at the game does not trip it, while an **unrelated**
+  red line blocks an invasion that closes no lane (**66**);
+- the same invasion passes a turn later with `"NO LANE IS CLOSED BY THIS ORDER"`
+  pasted in (**66**);
+- an accord containing **no treaty** is refused as *"a treaty"*, while two that
+  wrote real treaties into `state.treaties` pass — the only variable is the
+  transcript's wording (**47**);
+- one act is priced at DC 5, 10, 11, 14 and 18 on different turns, and ruled
+  admissible, inadmissible and "take it to a channel" (**72**).
+
+`verifyBreachRelevance` exists for exactly the second case and either did not
+run or returned `relevant: true`. All model-tier judgement, so none of it is
+statically checkable — which is the argument for anchoring the ruling to the
+**emitted ops** rather than to the text, the same split the project already
+makes everywhere else: code owns the number, the prompt owns the story.
+
+## B. A negotiated term the reducer cannot express — **51, 67.1, 67.2**
+
+Extraction agrees something and the world does not change, or changes by a sixth.
+
+- Two commitment caps compound silently: 60 agreed → trimmed to 25 → paid **10**,
+  with the negotiating party never told (**51**).
+- A `voidsOn` clause bargained over three messages was written as `[]` while the
+  narrative asserted it stood (**67.2**).
+- A payment *from* an NPC is blocked by the "cannot take credits out of another
+  treasury" guard (**67.1**) — **narrowed** since: a cession's price now has a
+  home in `terms.payment`, but a bare settlement still has none.
+- `prize_share_tribute` has no mechanism at all (**51**).
+
+The debt-reschedule half of 51 is **fixed** — `restructure_debt` exists now.
+
+## C. A batch is a transaction — the hull case — **62**
+
+`adjust_fleet` and `adjust_ships` describing one squadron deliver **twice** the
+hulls: measured, six requested and twelve delivered. This is 58/61/63 one field
+over, and those were closed by making the batch the unit for money and crews.
+The batch-scoped ledger they added is where this belongs. **The cheapest open
+item, and the only one with its fix already half-written.**
+
+## D. The battle model is one arrival-shaped event — **65, 74**
+
+- A fleet already in orbit takes no part in the battle fought over its head, so
+  a victor must physically leave and come back (**65**).
+- A defender's composition is not a decision at any budget ratio, because a
+  defender has one objective and one objective has a pure optimum (**74**).
+
+Both are the same shape: combat resolves on arrival and nothing else. **74 needs
+a design decision — a second objective for the defender — not another hull
+ability**, and is the one item here that should not be started without a call.
+
+## E. Treaty terms are all-or-nothing — **59, 60**
+
+`basing_rights` is unconditional mutual immunity with no term for what class of
+hull, how many, or for how long (**59**); and a treaty can carry a `voidsOn`
+that makes it dissolve itself, which walks a power around its own red line about
+repudiation (**60**). Both: the term vocabulary is coarser than what powers
+actually negotiate.
+
+## F. Value destroyed rather than moved — **67.4**
+
+`income_penalty` subtracts from the victim's ledger and credits nobody. Verified
+in `state.ts`: `espionageLoss` has no counterpart. Same family as the treaty-flow
+conservation fixed in 57.
+
+## G. An unwritten rule about what survives a change of hands — **73**
+
+A works programme completes for whoever holds the world — measured improving the
+*new* owner's defences at the old owner's expense. **The item's original framing
+was wrong and the audit corrected it**: `stillOurs` is checked in all four
+branches, and the split is coherent — ground improvements (`develop_system`,
+`fortify`) land for the new holder, people and hulls (`raise_garrison`,
+`commission_ships`) are withheld. So the open work is to *decide and record*
+that rule, not to find a missing check.
+
+## H. Wants a playtest, not a patch — **19, 41(b)(d), 67.3, 67.5**
+
+- Marriages and ceremonial arrangements down both routes, across disposition
+  (**19**).
+- Two epilogue defects still open (**41**).
+- The second covert action in one declaration is silently dropped, since
+  `AppraisalSchema.covert` names one mission (**67.3**).
+- Nobody suborned Meridian once in twelve turns despite resolve 9, the softest
+  target on the board (**67.5**).
+
+## Retired this pass
+
+**10** (actor journaled, pinned by `replay.test.ts:254`) · **56** (the combat
+salt was the last surviving piece and is built) · **68** (briefing ledger
+matches `ledgerFor` exactly, 156/309 both ways — reopen with a reproduction) ·
+**51**'s debt-reschedule half (`restructure_debt`).
+
 ---
 
 # Performance — `p.X`
@@ -100,13 +214,19 @@ inside a component is logic nothing checks.
 The proposal that prompted this section: every ~5 turns, encode what is behind
 you into something smaller.
 
-It is a real reduction and it is **third**, because p.1 and p.2 remove the same
-cost without losing information. It is worth doing on top of them: it shrinks
-the save file, the archive and the replayed state, and it bounds a campaign that
-runs to 100 turns rather than 30.
+**Its case is weaker now that p.1 and p.2 have landed, and that is worth saying
+plainly rather than leaving it queued at its original size.** The two costs it
+was aimed at are gone: a push is flat at 77KB whatever the campaign length, and
+the panel draws 200 entries rather than all of them. What a digest still buys is
+narrower — the save file, the archive, and the state a replay rebuilds — and
+none of those is on a path a player waits for. `save()` costs a millisecond at
+turn 90.
 
-Three constraints it has to respect, all of which follow from where the log
-lives:
+So this is now **speculative rather than pending**: do it if a campaign runs to
+100 turns and the save size or memory becomes a real complaint, and not before.
+
+Three constraints it has to respect if it is ever built, all following from
+where the log lives:
 
 - **The log is in `WorldState`, which `replay()` rebuilds from the journal.** A
   digest must therefore be a *pure, deterministic function applied inside
@@ -116,8 +236,7 @@ lives:
 - **It is lossy, and some of what it would drop is load-bearing.** CLAUDE.md
   keeps `rejection` and `clamp` entries deliberately (*"debugging gold, so they
   are filterable rather than hidden"*), every check is logged so *"a campaign's
-  luck is auditable"*, and `intel` entries are private to one faction. A digest
-  that folds those away removes the audit trail the design asks for. Fold
+  luck is auditable"*, and `intel` entries are private to one faction. Fold
   *narrative* and *system* chatter; keep the forensic kinds whole.
 - **It changes what the epilogue and the briefing can read.** Both derive from
   state, so a digest has to keep whatever they count.
@@ -136,11 +255,21 @@ nothing to get right and stops p.3 being the only lever on state size.
 Not in the server path, so it costs no player a turn. It does cost the suite and
 an archive import: 508ms at turn 90, and every call starts at turn 0. Worth a
 cached replay checkpoint only if the suite gets slow enough to notice, which it
-has not — 996 tests in ~7s.
+has not — 1,007 tests in ~7s.
 
 ---
 
-## Where things stand (2026-09-05) — the 12-turn Meridian playtest of ship classes
+---
+
+# The detail, newest first
+
+## The 12-turn Meridian playtest of ship classes (2026-09-05)
+
+> **Kept as written, and no longer the current picture.** Of the findings it
+> leads with, **56, 57, 58, 64, 69 and 70 are all closed**, and **61** and **63**
+> with them. What is still open is indexed above. This section is the evidence
+> the items were raised on, not a status report.
+
 
 A full campaign played to its limit as the **Meridian Trade Authority** on the
 build that shipped item 55 (ship classes, tonnage, the screen and the torpedo
@@ -352,7 +481,7 @@ fleet.
 damage the attacker, but damaging the attacker is not what keeps a defender
 alive, and buying boats now costs it weight outright.
 
-## 56. PARTLY FIXED — the d20 is computable before you act, which costs the playtest and not the player
+## 56. CLOSED — the d20 is computable before you act, which costs the playtest and not the player
 
 **VERIFIED, and reproduced independently — then re-rated down.**
 
@@ -371,7 +500,10 @@ alive, and buying boats now costs it weight outright.
 > GM. That is one line, against a schema change and a secret threaded through
 > `applyOps`.
 >
-> **One piece survives on different grounds — see the end of this item.**
+> **One piece survived on different grounds, and is now BUILT.** The combat
+> salt was `combat:${systemId}:${turn}` — neither fleet, neither faction, nor
+> the order — so a world had a fixed lucky turn. The sorted ids of everyone
+> fighting are part of the seed now, which closes the last of this item.
 
 `rollD20(turn, salt)` is FNV-1a plus a murmur3 finalizer. The murmur3 pass was
 added to fix *uniformity* — a padding family that reached only five of twenty
@@ -682,7 +814,7 @@ nothing ties them together.
 
 ---
 
-## 62. UNCONFIRMED — `adjust_fleet` and `adjust_ships` both add hulls, and stack
+## 62. VERIFIED — `adjust_fleet` and `adjust_ships` both add hulls, and stack
 
 The agent's measurement. One declaration asking for 16 hulls produced six ops —
 three `adjust_fleet` and three `adjust_ships` describing the *same* squadron:
@@ -699,8 +831,16 @@ narrative said and twice the bill.
 `billConstruction` prices whatever appears, correctly, per ton. Nothing
 reconciles two ops describing one event, and both are legitimate in isolation:
 `adjust_fleet` bases new hulls at the best holding, `adjust_ships` places them
-somewhere named. Worth deciding whether the resolution prompt should be told to
-pick one, or whether the reducer should notice.
+somewhere named.
+
+**CONFIRMED against current code.** One `adjust_fleet` of 6 lifters beside one
+`adjust_ships` of 6 lifters delivers **12 hulls** and bills 36 tons for 540
+credits. The bill is right for what appeared; the player asked for six.
+
+This is the **same defect as 58/61/63** one field over — `applyOps` reconciles
+each op on its own, and a transaction spans several. Those were closed by making
+the batch the unit for money and for crews; this is the hull case, and the
+batch-scoped ledger built for them is where it belongs.
 
 ---
 
@@ -837,7 +977,7 @@ agreed something and the world did not change.
 
 ---
 
-## 68. UNCONFIRMED — the briefing's ledger disagreed with `ledgerFor` on the same state
+## 68. NOT REPRODUCED — the briefing's ledger disagreed with `ledgerFor` on the same state
 
 The agent reports the player-facing `upkeep`/`net` differing from `ledgerFor()`
 run against the exact JSON from `GET /api/campaign` — at turn 6, `29/957` shown
@@ -845,7 +985,13 @@ against `237/803` computed, an **8× understatement of fleet upkeep**. Treasury
 movement matched the larger figure, so the money is right and the number the
 player plans from was wrong.
 
-**My note, and why this is filed unconfirmed rather than verified:** the briefing
+**NOT REPRODUCED.** Built a briefing after seven ticks and compared it against
+`ledgerFor` on the same state: **156/309 both ways, exact.** There is one
+formula and no second source, so unless a specific sequence can be produced that
+diverges, this is retired rather than carried as an open unknown. Reopen it with
+a reproduction, not with a recollection.
+
+**The original note:** the briefing
 calls `ledgerFor(state, playerFactionId)` directly (`briefing.ts:141`, `:287`).
 There is no second formula, so a divergence has to be about *which snapshot* —
 a briefing built at one point in the tick and compared against state read at
@@ -1023,6 +1169,22 @@ The works stand, and they defend meridian.
 lost with the world and the hulls with them — and does not for `fortify`. That
 asymmetry may be right (walls stay where they were built; ships sail) but it is
 currently an accident rather than a decision, and the log line reads as one.
+
+**Re-read on 2026-09-06, and the framing above is wrong.** `stillOurs` is
+checked in **all four** branches; what differs is the policy, and the split is
+more coherent than "an accident":
+
+| effect | when the world has changed hands |
+|---|---|
+| `develop_system` | lands — *"the works now serve whoever holds the world"* |
+| `fortify` | lands — *"they defend whoever takes the world next"* |
+| `raise_garrison` | **withheld** — the levy disperses |
+| `commission_ships` | **withheld** — the yards were lost with the world |
+
+Ground improvements stay where they were built; **people and hulls do not**.
+That is a defensible rule and it is nowhere written down — so what is actually
+open is smaller than this item claimed: decide whether that rule is the intended
+one and record it, or change it. Not a bug hunt.
 
 ---
 
@@ -1887,7 +2049,10 @@ Two neighbours from the same run:
   mechanical lever exists to alter an existing installment schedule, so this is
   logged for the record"*. `perTurn` stayed 20 to the end. Same family as item
   32 — the debt module can create, settle, assign and forgive, but not
-  *reschedule*, which is the most common real negotiation.
+  *reschedule*, which is the most common real negotiation. **This half is now
+  FIXED**: `restructure_debt` is extraction-only and keeps the id, the balance
+  and the history. The compounding-cap half and `prize_share_tribute` are still
+  open.
 - **`prize_share_tribute` was pure decoration** — `incomePerTurn: 0` before and
   after renegotiation from one eighth to one sixth. Two conversations, one
   dissolve, one establish, zero credits. Item 29 made zero-flow commitments move
@@ -4001,7 +4166,7 @@ principle an action breaches and whether that principle is a red line or a
 compulsion; the engine then either blocks or prices it, and resolution is told
 the outcome rather than asked for it.
 
-## 10. The actor was not being journaled, so replay skipped every actor guard
+## 10. FIXED — the actor was not being journaled, so replay skipped every actor guard
 
 Found while capping `adjust_credits`, and much worse than the thing being fixed.
 `Campaign.commitTurn` applied each staged batch **with** its actor and journaled
