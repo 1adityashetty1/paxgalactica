@@ -25,6 +25,7 @@ import {
 } from '../../../src/domain/state.js';
 import type { Briefing } from '../../../src/engine/briefing.js';
 import { ansi256ToHex, NEUTRAL } from '../color.js';
+import { logWindow } from '../../../src/ui/logview.js';
 
 type Tab = 'factions' | 'system' | 'fleets' | 'trade' | 'orders' | 'standing' | 'log';
 
@@ -553,10 +554,26 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
   );
 }
 
+/**
+ * How many log entries are drawn at once.
+ *
+ * The list used to render `state.eventLog` in full and rebuild it on every
+ * state push — and a push happens on every action, every end-turn and every
+ * message in a channel. A real campaign writes ~37 entries a turn, so a
+ * 30-turn game reconciled ~1,100 nodes several times a turn and a 60-turn one
+ * twice that, for a panel showing perhaps twenty of them.
+ *
+ * A window rather than virtualisation: the newest entries are the ones being
+ * read, older ones are reached by asking, and a button is a great deal less
+ * machinery than a windowing library for a list nobody scrolls to the end of.
+ */
+const LOG_PAGE = 200;
+
 function Log({ state }: { state: WorldState }) {
   const [kinds, setKinds] = useState<Set<string>>(new Set());
+  const [limit, setLimit] = useState(LOG_PAGE);
   const all = [...new Set(state.eventLog.map((e) => e.kind))];
-  const shown = kinds.size === 0 ? state.eventLog : state.eventLog.filter((e) => kinds.has(e.kind));
+  const { shown, hidden, firstIndex } = logWindow(state.eventLog, kinds, limit);
 
   const toggle = (k: string) =>
     setKinds((prev) => {
@@ -577,12 +594,17 @@ function Log({ state }: { state: WorldState }) {
         ))}
       </div>
       <ul>
-        {[...shown].reverse().map((e, i) => (
-          <li key={i} className={`log-${e.kind}`}>
+        {shown.map((e, i) => (
+          <li key={firstIndex + shown.length - i} className={`log-${e.kind}`}>
             <span className="turn">[{e.turn}]</span> {e.text}
           </li>
         ))}
       </ul>
+      {hidden > 0 && (
+        <button className="chip" onClick={() => setLimit((n) => n + LOG_PAGE)}>
+          {hidden} older {hidden === 1 ? 'entry' : 'entries'}
+        </button>
+      )}
     </div>
   );
 }

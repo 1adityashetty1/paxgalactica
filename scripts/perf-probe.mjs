@@ -13,6 +13,7 @@
 import { Campaign } from '../dist/engine/campaign.js';
 import { FileCampaignStore } from '../dist/engine/store.js';
 import { worldAsSeenBy } from '../dist/domain/intel.js';
+import { LOG_PUSH_TAIL } from '../dist/server/session.js';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -28,19 +29,26 @@ const turnOps = (t) => Array.from({ length: 9 }, (_, i) => ({
   text: `turn ${t} entry ${i}: a dispatch of about the length these actually run to, naming a world and a power and what was done there`,
 }));
 
-console.log('turn  logEntries  stateKB  save(ms)  payloadKB  buildPayload(ms)');
+console.log('turn  logEntries  stateKB  save(ms)  fullKB  pushKB  buildPayload(ms)');
 for (let turn = 1; turn <= 90; turn++) {
   c.stage(turnOps(turn), 'model', 'meridian');
   c.commitTurn(); c.tick();
   const saveMs = await ms(() => c.save());
   const t0 = process.hrtime.bigint();
-  const payload = JSON.stringify(worldAsSeenBy(c.state, 'meridian'));
+  const full = worldAsSeenBy(c.state, 'meridian');
+  const payload = JSON.stringify(full);
   const buildMs = Number(process.hrtime.bigint() - t0) / 1e6;
+  // What a PUSH now carries: the same world with only the log's tail.
+  const tail = JSON.stringify({
+    ...full,
+    eventLog: full.eventLog.slice(Math.max(0, full.eventLog.length - LOG_PUSH_TAIL)),
+  });
   if (turn % 15 === 0 || turn <= 2) {
     console.log(
       String(turn).padStart(4), String(c.state.eventLog.length).padStart(11),
       String(Math.round(JSON.stringify(c.state).length / 1024)).padStart(8),
-      saveMs.toFixed(1).padStart(9), String(Math.round(payload.length / 1024)).padStart(10),
+      saveMs.toFixed(1).padStart(9), String(Math.round(payload.length / 1024)).padStart(7),
+      String(Math.round(tail.length / 1024)).padStart(7),
       buildMs.toFixed(2).padStart(17));
   }
 }

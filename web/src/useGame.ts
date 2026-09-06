@@ -4,6 +4,7 @@ import {
   ServerEventSchema,
   type CampaignView,
 } from '../../src/api/contract.js';
+import { spliceLog } from '../../src/ui/logview.js';
 import { api, ApiError } from './api.js';
 import type { OutcomeArtKind } from './components/OutcomeArt.js';
 
@@ -105,7 +106,7 @@ export function useGame() {
         // "Ojjul Nar Combine considers".
         setBusy(event.busy ? event.label : null);
       } else if (event.type === 'state') {
-        setView(event.view);
+        setView((prev) => spliceLog(prev, event.view));
         setNeedsCampaign(false);
       } else if (event.type === 'error') {
         say(event.message, 'error');

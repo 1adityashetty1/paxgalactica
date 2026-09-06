@@ -41,7 +41,7 @@ but **it is not in the server path**. It is asserted in the suite and it gates
 
 ---
 
-## p.1 — the whole event log is shipped on every state push
+## p.1 — BUILT — the whole event log was shipped on every state push
 
 `pushState()` has **eight call sites** — every action, every end-turn, every
 message in a channel — and each sends a complete `CampaignView` including the
@@ -50,12 +50,30 @@ re-serialized, re-sent and re-parsed several times a turn, none of which the
 client did not already have.
 
 The log is **append-only**, which is what makes this fixable without losing
-anything: the client needs the entries it has not seen, not all of them. A
-`sinceIndex` on the view and an append on the client is the whole change.
+anything: the client needs the entries it has not seen, not all of them.
 
-This is the largest measured cost and the cheapest to fix, and it is lossless.
+**BUILT.** `CampaignView` carries `eventLogFrom` and `eventLogTotal`; a full
+read sends everything, a push sends the last `LOG_PUSH_TAIL` (200), and
+`spliceLog` puts the tail back onto what the client holds — so every consumer
+still sees a complete log and only the wire shrank. An index is a sound cursor
+because the visible log is append-only and order-stable (`visibleTo` is fixed
+per entry), so no sequence number and no schema change were needed. A client
+holding fewer entries than the tail starts at keeps the shorter authoritative
+log rather than splicing a history missing its middle.
 
-## p.2 — the client draws every log entry, unwindowed
+Measured: the pushed payload is now **flat at 77KB** where it was 106KB at turn
+30 and 238KB at turn 90 and climbing without bound — and the probe writes 12
+entries a turn against the ~37 a real campaign writes, so the real saving is
+larger.
+
+> **It also closed a fog leak.** `view()` went through `observeOrders` alone for
+> its whole life, so `pendingOrders` was redacted and the event log beside it
+> was not — while `intel.ts` says an `intel` entry is private *precisely
+> because* "the event log is shipped to the browser whole". `worldAsSeenBy`
+> does both halves and had **no caller outside the tests**. The served view now
+> filters the log, and a test pins it.
+
+## p.2 — BUILT — the client drew every log entry, unwindowed
 
 `SidePanel.tsx:556` renders `state.eventLog` in full, and rebuilds the list on
 every render — `[...shown].reverse()` copies the array, and every entry becomes
@@ -63,9 +81,19 @@ an `<li>` with no key beyond its index and no virtualisation. At turn 30 that is
 ~1,100 nodes reconciled on every state push; at 60 turns, ~2,200.
 
 **Structurally the strongest candidate for what the friends actually felt**, and
-the one thing here **not** directly measured — confirming it needs a profile in
-the browser against a long campaign, which is worth doing before building. Filed
-honestly rather than assumed, the same way a playtest claim is.
+the one thing here that was never directly measured — a browser profile against
+a long campaign would confirm it, and that is still worth doing.
+
+**BUILT** on the structural argument rather than on a measurement, which is
+worth saying plainly. `logWindow` filters by kind, takes the newest `LOG_PAGE`
+(200) and reverses *that* — slicing before reversing is the whole point, since
+the old form copied the entire array to display twenty entries. Older entries
+are reached with a button rather than by virtualising: a window is far less
+machinery for a list nobody scrolls to the end of.
+
+Both helpers live in `src/ui/logview.ts`, pure and beside `layout.ts` and
+`portrait.ts`, for the reason those are: there is no DOM in the suite, so logic
+inside a component is logic nothing checks.
 
 ## p.3 — fold old log entries into a compact digest
 

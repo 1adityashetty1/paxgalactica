@@ -2666,6 +2666,35 @@ automatically.
 - Path traversal is blocked in three places: campaign names, faction ids in
   URLs, and static file paths.
 
+### The event log is the biggest thing in a campaign
+
+443 entries in 12 turns on a real save — ~37 a turn — and **89KB of a 146KB
+state, 61% of the world**. Two consequences, both fixed and both cheap:
+
+- **It was shipped whole on every state push.** `pushState()` has eight call
+  sites — every action, every end-turn, every message in a channel — so ~220KB
+  of history the client already held was re-sent several times a turn.
+  `CampaignView` now carries `eventLogFrom`/`eventLogTotal`: a full read sends
+  everything, a push sends the last `LOG_PUSH_TAIL` entries, and `spliceLog`
+  reassembles on the client so every consumer still sees a complete log. An
+  index is a sound cursor because the visible log is **append-only and
+  order-stable** — `visibleTo` is fixed per entry — so no sequence number and no
+  schema change. Measured: the pushed payload is flat at 77KB where it was 238KB
+  at turn 90 and unbounded.
+- **It was drawn whole on every render**, and `[...shown].reverse()` copied the
+  entire array to display twenty entries. `logWindow` slices before reversing.
+
+`src/ui/logview.ts` holds both, pure and tested, for the same reason `layout.ts`
+and `portrait.ts` are: there is no DOM in the suite, so logic living inside a
+component is logic nothing checks.
+
+> Fixing the first found that `view()` had gone through `observeOrders` alone
+> for its whole life: `pendingOrders` was redacted and the log beside it was
+> not, while `intel.ts` says an `intel` entry is private *because* "the event
+> log is shipped to the browser whole". `worldAsSeenBy` does both halves and had
+> no caller outside the tests. Fog is a property of the whole payload, which is
+> the lesson that module already records — and it was still only half applied.
+
 ### Browser client
 
 `web/`, built by Vite to `dist/web`, which the server serves when present.

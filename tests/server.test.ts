@@ -10,7 +10,7 @@ import {
 } from '../src/api/contract.js';
 import { MemoryCampaignStore } from '../src/engine/store.js';
 import { dispatch } from '../src/server/router.js';
-import { GameSession } from '../src/server/session.js';
+import { GameSession, LOG_PUSH_TAIL } from '../src/server/session.js';
 import { ACTION_POINTS_PER_TURN } from '../src/engine/campaign.js';
 import { ApiFailure, parseBody, toApiFailure } from '../src/server/errors.js';
 import { serveStatic } from '../src/server/static.js';
@@ -464,5 +464,62 @@ describe('static file serving', () => {
   it('refuses to escape the web root', () => {
     // Even against a real directory, `..` must not reach outside it.
     expect(serveStatic(process.cwd(), '/../../../../etc/passwd', fakeRes())).toBe(false);
+  });
+});
+
+/**
+ * p.1. The event log is 61% of a real campaign's state and `pushState()` fires
+ * on every action, end-turn and channel message, so shipping it whole re-sent
+ * history the client already had several times a turn.
+ */
+describe('a state push carries a tail of the log, a read carries all of it', () => {
+  /** Write `n` visible entries straight onto committed state. */
+  const fill = (session: GameSession, n: number) => {
+    const state = (session as unknown as { campaign: { state: { eventLog: unknown[] } } })
+      .campaign.state;
+    for (let i = 0; i < n; i++) {
+      state.eventLog.push({
+        turn: 1, kind: 'narrative', factionId: null, text: `filler ${i}`, visibleTo: null,
+      });
+    }
+  };
+
+  it('sends the whole log on a full read', async () => {
+    const { session } = await startedSession();
+    fill(session, 500);
+    const view = session.view();
+    expect(view.eventLogFrom).toBe(0);
+    expect(view.state.eventLog).toHaveLength(view.eventLogTotal);
+  });
+
+  it('sends only the tail on a push, and says where it starts', async () => {
+    const { session, events } = await startedSession();
+    fill(session, 500);
+    // An end-turn pushes state; the push must not carry the whole log.
+    await session.endTurn();
+    const pushed = events.filter((e) => e.type === 'state').at(-1);
+    if (pushed?.type !== 'state') throw new Error('no state push');
+    const view = pushed.view;
+    expect(view.eventLogTotal).toBeGreaterThan(LOG_PUSH_TAIL);
+    expect(view.state.eventLog.length).toBeLessThanOrEqual(LOG_PUSH_TAIL);
+    // The cursor is exact: tail starts where the log ends minus what was sent.
+    expect(view.eventLogFrom).toBe(view.eventLogTotal - view.state.eventLog.length);
+  });
+
+  it('keeps a private intel entry out of the served view', async () => {
+    // `view()` went through `observeOrders` alone for its whole life, so the
+    // orders were redacted and the log beside them was not — while `intel.ts`
+    // says an `intel` entry is private precisely because "the event log is
+    // shipped to the browser whole". `worldAsSeenBy` had no caller outside the
+    // tests.
+    const { session } = await startedSession();
+    const state = (session as unknown as { campaign: { state: { eventLog: unknown[] } } })
+      .campaign.state;
+    state.eventLog.push({
+      turn: 1, kind: 'intel', factionId: 'vigil',
+      text: 'a Vigil operative reports', visibleTo: ['vigil'],
+    });
+    const view = session.view();
+    expect(view.state.eventLog.some((e) => e.text === 'a Vigil operative reports')).toBe(false);
   });
 });

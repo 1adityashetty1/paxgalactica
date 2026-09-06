@@ -187,6 +187,23 @@ export const CampaignViewSchema = z.object({
    * be labelled as partial rather than presented as a count.
    */
   state: WorldStateSchema,
+  /**
+   * Where `state.eventLog` starts in the player's visible log, and how long
+   * that log is in total.
+   *
+   * The log is the largest thing in a campaign — 61% of a real save's state at
+   * turn 12, and growing ~37 entries a turn — and `pushState()` has eight call
+   * sites, so shipping it whole re-sent ~220KB of history the client already
+   * had, several times a turn. A full read sends everything (`from` 0); a push
+   * sends only the tail.
+   *
+   * An index is a sound cursor because the visible log is **append-only and
+   * order-stable**: `visibleTo` is fixed per entry, so entry `i` is always the
+   * same entry. The client splices the tail onto what it holds and every
+   * consumer still sees a complete log — the wire shrank, not the view.
+   */
+  eventLogFrom: z.number().int().min(0),
+  eventLogTotal: z.number().int().min(0),
   /** Rival work known to exist and not identifiable. Never carries an order id. */
   rumours: z.array(OrderRumourSchema),
   staged: z.array(StagedItemSchema),

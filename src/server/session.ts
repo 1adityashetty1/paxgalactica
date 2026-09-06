@@ -6,7 +6,7 @@ import type {
   TurnOutcomeResponse,
 } from '../api/contract.js';
 import type { EpilogueView } from '../engine/epilogue.js';
-import { observeOrders } from '../domain/intel.js';
+import { eventsVisibleTo, observeOrders } from '../domain/intel.js';
 import { MAX_CHANNEL_MESSAGES } from '../api/contract.js';
 import { archiveFilename, packCampaign, unpackCampaign } from '../engine/archive.js';
 import {
@@ -34,6 +34,17 @@ export type Emit = (event: ServerEvent) => void;
  * `res`, no HTTP. That is what lets the whole surface be tested without
  * binding a port.
  */
+/**
+ * How many trailing log entries a state PUSH carries.
+ *
+ * A full read still sends the whole log; this bounds the eight `pushState()`
+ * call sites, which fire several times a turn and were re-sending every entry
+ * the client already had. 200 is ~5 turns of history at the ~37 entries a turn
+ * a real campaign writes, so a client that misses one push still splices
+ * cleanly; one that somehow falls further behind re-reads the campaign.
+ */
+export const LOG_PUSH_TAIL = 200;
+
 export class GameSession {
   private campaign: Campaign | null = null;
   private openChannel: string | null = null;
@@ -109,16 +120,35 @@ export class GameSession {
 
   /* ---------------- reads ---------------- */
 
-  view(): CampaignView {
+  /**
+   * @param logTail how many trailing log entries to ship. Omitted means all of
+   * them, which is what a full read wants; a push sends only what is new.
+   */
+  view(logTail?: number): CampaignView {
     const campaign = this.require();
     // The client is served the world AS THE PLAYER SEES IT, not the campaign's
     // own state. Returning `campaign.state` whole is what made intelligence
     // gathering unreachable: every faction's pending orders shipped to the
     // browser for free, so the `intel` agent effect had nothing left to
     // reveal. See `domain/intel.ts`.
-    const seen = observeOrders(campaign.state, campaign.state.playerFactionId);
+    //
+    // This went through `observeOrders` alone for its whole life, so the event
+    // log shipped UNFILTERED while the orders beside it were redacted — and
+    // `intel.ts` says in as many words that an `intel` entry is private because
+    // "the event log is shipped to the browser whole". `worldAsSeenBy` does
+    // both halves and had no caller outside the tests.
+    const player = campaign.state.playerFactionId;
+    const seen = observeOrders(campaign.state, player);
+    const visibleLog = eventsVisibleTo(campaign.state, player);
+    const from = logTail === undefined ? 0 : Math.max(0, visibleLog.length - logTail);
     return {
-      state: { ...campaign.state, pendingOrders: seen.orders },
+      state: {
+        ...campaign.state,
+        pendingOrders: seen.orders,
+        eventLog: from === 0 ? visibleLog : visibleLog.slice(from),
+      },
+      eventLogFrom: from,
+      eventLogTotal: visibleLog.length,
       rumours: seen.rumours,
       staged: campaign.stagedLabels().map((label, index) => ({
         index,
@@ -150,7 +180,7 @@ export class GameSession {
   }
 
   private pushState(): void {
-    if (this.campaign) this.emit({ type: 'state', view: this.view() });
+    if (this.campaign) this.emit({ type: 'state', view: this.view(LOG_PUSH_TAIL) });
   }
 
   /* ---------------- lifecycle ---------------- */

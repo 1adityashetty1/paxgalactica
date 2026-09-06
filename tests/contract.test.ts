@@ -1,5 +1,5 @@
 import { setShipsAt } from '../src/domain/state.js';
-import { observeOrders } from '../src/domain/intel.js';
+import { eventsVisibleTo, observeOrders } from '../src/domain/intel.js';
 import { describe, expect, it } from 'vitest';
 import {
   ActionRequestSchema,
@@ -72,9 +72,13 @@ describe('the contract accepts real engine output', () => {
     const { campaign, report } = campaignWithTurn();
     // Built the way the server builds it: the client is served the world as
     // the player sees it, not the campaign's own state.
-    const seen = observeOrders(campaign.state, campaign.state.playerFactionId);
+    const player = campaign.state.playerFactionId;
+    const seen = observeOrders(campaign.state, player);
+    const visibleLog = eventsVisibleTo(campaign.state, player);
     const view = {
-      state: { ...campaign.state, pendingOrders: seen.orders },
+      state: { ...campaign.state, pendingOrders: seen.orders, eventLog: visibleLog },
+      eventLogFrom: 0,
+      eventLogTotal: visibleLog.length,
       rumours: seen.rumours,
       staged: [],
       briefing: buildBriefing(campaign.state, report),
@@ -97,9 +101,13 @@ describe('the contract accepts real engine output', () => {
 
   it('survives a JSON round trip, which is how it will actually travel', () => {
     const { campaign, report } = campaignWithTurn();
-    const seen = observeOrders(campaign.state, campaign.state.playerFactionId);
+    const player = campaign.state.playerFactionId;
+    const seen = observeOrders(campaign.state, player);
+    const visibleLog = eventsVisibleTo(campaign.state, player);
     const view = {
-      state: { ...campaign.state, pendingOrders: seen.orders },
+      state: { ...campaign.state, pendingOrders: seen.orders, eventLog: visibleLog },
+      eventLogFrom: 0,
+      eventLogTotal: visibleLog.length,
       rumours: seen.rumours,
       staged: [{ index: 0, label: 'x', narrative: 'y' }],
       briefing: buildBriefing(campaign.state, report),
