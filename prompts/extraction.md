@@ -212,6 +212,23 @@ emit `establish_commitment`: `kind` a reusable lower_snake_case slug
 (`dynastic_marriage`, not `marriage_to_the_ojjuls`), `factionIds` naming
 everyone bound, `text` for what was agreed, and `exclusive: true` when a power
 can only sensibly hold one at a time — a marriage is; a friendship pact is not.
+
+**`incomePerTurn` is what the arrangement is worth per turn, and a deal with
+money in it must carry a number.** It is one figure every bound party reads the
+same way, so use it for a venture that pays the people in it — a charter, a
+mining concession, a smuggling run — and not for one side paying the other,
+which is a treaty's `incomePerTurn` and has to balance.
+
+**If the parties agreed a SHARE of something that varies — a tenth of every
+prize, a cut of the season's cargo — write the agreed per-turn estimate, not
+zero.** There is no proportional term: a commitment pays a flat figure. Zero
+says the arrangement is worth nothing, which is not what was agreed, and it is
+the number to avoid. Take the rate the parties themselves used, apply it to what
+that power currently earns, and round to a plain figure. A commitment with no
+money in it is still real — it moves standing between the parties and the
+arbiter reads it — so leave `incomePerTurn` at 0 only when the deal genuinely
+has no money in it: a non-aggression understanding, a shared succession, an
+exchange of hostages.
 This is the only pass that may emit it for an arrangement naming a faction
 other than the one whose turn this is, for the same reason `form_treaty` is
 extraction-only: nobody is married, chartered, ransomed or adopted because the

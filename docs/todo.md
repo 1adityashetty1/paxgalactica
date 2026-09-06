@@ -57,7 +57,7 @@ relevance verdict, so a drift like the DC 5-to-18 spread is measurable rather
 than anecdotal. Reopen the larger question only with a proposal that does not
 put the ruling downstream of resolution.
 
-## B. PARTLY CLOSED — a negotiated term the reducer cannot express — **51, 67.1, 67.2**
+## B. CLOSED — a negotiated term the reducer cannot express — **51, 67.1, 67.2**
 
 Extraction agrees something and the world does not change, or changes by a
 sixth. Split on inspection: two halves needed no design input and are **built**,
@@ -93,28 +93,34 @@ ceiling is derived from `influence`, which dissent and a hostile `stat_debuff`
 both move, so freezing it into the record would be wrong the turn after. The
 arrangement is real at what it says; what it *pays* is what the reader decides.
 
-**Still open — a commitment can only pay a flat number (51).** Filed as
-*"`prize_share_tribute` has no mechanism"*, which named the slug as though the
-slug were the thing. It is not: `kind` is deliberately free-form so commitments
-can hold arrangements nobody enumerated, and `prize_share_tribute` was invented
-by a model mid-playtest for *"a share of every prize the Confederacy takes"*. It
-appears nowhere in `src/`, `prompts/` or `tests/`.
+**CLOSED — the prize-share commitment was a missing prompt line, not a missing
+mechanic (51).** Filed twice as a design question and it was neither time.
 
-The real gap is general. A commitment carries `incomePerTurn` — **a fixed
-integer** — and nothing else that moves money. So a share of something that
-*varies* has no honest constant to write, and the model wrote `0` rather than
-invent one, which is the right call and leaves the deal as decoration.
+`prize_share_tribute` is not a thing in the codebase — zero hits in `src/`,
+`prompts/` or `tests/`. `Commitment.kind` is deliberately free-form so
+arrangements nobody enumerated can be held, and a model invented that slug
+mid-playtest.
 
-The quantity is not the problem: `Ledger.raided` is already real, per faction
-and per turn, as are `tolls`, `routes` and `territory`. What is missing is a way
-to say *"a tenth of that"* instead of *"25 a turn"* — a proportional term, on the
-mechanism whose whole purpose is arrangements with no other home.
+**And the commitment was not inert.** One carrying `incomePerTurn: 0` already
+moves disposition between the bound parties on establish and takes it back on
+dissolve, is serialized into the arbiter's prompt so it constrains later
+rulings, enforces exclusivity, and renders in the player's panel. "Pure
+decoration" in the playtest meant *credits only*.
 
-**Design input required**, so not started. The open questions are which flows
-may be shared (raiding only, or any ledger line), whether a share is capped the
-way `MAX_COMMITMENT_INCOME` caps a flat yield, and whether it is conserved —
-a tenth of prizes taken *from* the payer is a transfer, but a tenth of route
-income is a claim on money the payer never held.
+What was actually wrong: **`prompts/extraction.md` documents
+`establish_commitment` with `kind`, `factionIds`, `text` and `exclusive`, and
+never mentions `incomePerTurn` at all.** Nothing told the model to put a number
+on it, so it wrote zero — which reads as "this arrangement is worth nothing",
+which is not what was agreed. The prompt now says a deal with money in it must
+carry a figure, that a share of something variable is written as the agreed
+per-turn estimate rather than zero, and that zero is for arrangements which
+genuinely have no money in them.
+
+A proportional term — *"a tenth of `Ledger.raided`"* — is still not expressible,
+and is deliberately **not** being added. It would need a schema field, a reader,
+a cap and a conservation rule, and a share of route income is a claim on money
+the payer never held, which is the value-creation case every other money
+mechanism here refuses. A negotiated estimate is what `incomePerTurn` is for.
 
 **Re-scoped — a bargained `voidsOn` written as `[]` (67.2).** Not a code defect.
 The field exists, the reducer enforces it (item 50/60), and
