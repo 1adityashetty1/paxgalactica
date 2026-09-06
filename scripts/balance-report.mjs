@@ -16,7 +16,7 @@ const NAMES = Object.fromEntries(
 const ETHIC = Object.fromEntries(
   createSeedState('freeworlds').factions.map((f) => [f.id, f.tradeEthic]),
 );
-const IDS = ['meridian', 'vigil', 'hutt', 'freeworlds', 'krayt'];
+const IDS = ['meridian', 'vigil', 'ojjul', 'freeworlds', 'drajk'];
 
 const history = runBalance(turns, (s) => {
   if (!trace) return;
@@ -72,10 +72,10 @@ for (const t of [1, 10, 20, 30, 40, 50].filter((t) => t <= turns)) {
 
 console.log('\n── did each doctrine actually pay? ──');
 const sum = (id, key) => history.reduce((n, h) => n + h.perFaction[id][key], 0);
-console.log(`  Hutt tolls levied over the run   : ${sum('hutt', 'tolls')}`);
-console.log(`  Krayt credits taken by raiding   : ${sum('krayt', 'raided')}`);
+console.log(`  Ojjul tolls levied over the run   : ${sum('ojjul', 'tolls')}`);
+console.log(`  Drajk credits taken by raiding   : ${sum('drajk', 'raided')}`);
 console.log(
-  `  Krayt lane income vs territory   : ${last.perFaction.krayt.routes} vs ${last.perFaction.krayt.territory}`,
+  `  Drajk lane income vs territory   : ${last.perFaction.drajk.routes} vs ${last.perFaction.drajk.territory}`,
 );
 console.log(
   `  Meridian lane share of gross     : ${Math.round(
@@ -83,7 +83,7 @@ console.log(
       Math.max(1, last.perFaction.meridian.routes + last.perFaction.meridian.territory),
   )}%`,
 );
-// Arkanis is the only autarkist now: the Iron Vigil took over `monopolist`,
+// Arkane is the only autarkist now: the Iron Vigil took over `monopolist`,
 // which had been implemented and owned by nobody while `autarkic` was held
 // twice. Labelling the Vigil an autarkist here would report the wrong doctrine.
 const laneShare = (id) =>

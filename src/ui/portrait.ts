@@ -11,7 +11,7 @@
  * the reasoning that the set was generated to a single framing brief. Close, but
  * not true: the Vigil, the Combine and Drajk sit two or three percent right of
  * centre, and the zoom multiplies that into a head visibly against the right
- * edge of the circle. Meridian and Arkanis are centred, which is exactly why the
+ * edge of the circle. Meridian and Arkane are centred, which is exactly why the
  * assumption survived the first look.
  *
  * **Coverage.** Centring a face and covering a box are different requirements,
@@ -37,9 +37,9 @@ export const PORTRAIT_FOCUS: Record<string, { x: number; y: number; zoom?: numbe
   meridian: { x: 0.5, y: 0.27 },
   // Closer framing than the rest, so pulled back to match their head size.
   vigil: { x: 0.527, y: 0.285, zoom: 2.9 },
-  hutt: { x: 0.532, y: 0.28 },
+  ojjul: { x: 0.532, y: 0.28 },
   freeworlds: { x: 0.495, y: 0.27 },
-  krayt: { x: 0.527, y: 0.29 },
+  drajk: { x: 0.527, y: 0.29 },
 };
 
 /** Used for a faction with no measured focal point — a centred head, roughly. */

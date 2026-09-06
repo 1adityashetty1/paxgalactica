@@ -20,7 +20,7 @@ import { runBalance } from '../src/balance.js';
 
 const RUN = runBalance(30);
 const last = RUN[RUN.length - 1]!;
-const IDS = ['meridian', 'vigil', 'hutt', 'freeworlds', 'krayt'] as const;
+const IDS = ['meridian', 'vigil', 'ojjul', 'freeworlds', 'drajk'] as const;
 const net = (id: string) => last.perFaction[id]!.net;
 /** How much of a power's gross comes from the lane network rather than its worlds. */
 const laneShare = (id: string) => {
@@ -74,18 +74,18 @@ describe('a thirty-turn campaign, five doctrine bots', () => {
 
 describe('each doctrine pays off when it is actually played', () => {
   it('funds the extortionist from tolls on other powers’ cargo', () => {
-    expect(sum('hutt', 'tolls')).toBeGreaterThan(200);
+    expect(sum('ojjul', 'tolls')).toBeGreaterThan(200);
   });
 
   it('funds the smuggler from raiding', () => {
     // This was zero for an entire thirty-turn run, because raiding required
     // holding the system you raided — so the poorest power could only prey on
     // those it had already beaten. Raiding from one jump out is what fixed it.
-    expect(sum('krayt', 'raided')).toBeGreaterThan(200);
+    expect(sum('drajk', 'raided')).toBeGreaterThan(200);
   });
 
   it('keeps the autarkist off the network and the free trader on it', () => {
-    // Arkanis is the autarkist. This used to name the Iron Vigil too, which
+    // Arkane is the autarkist. This used to name the Iron Vigil too, which
     // stopped being true when the Vigil took over the `monopolist` doctrine —
     // an ethic that had been implemented, tested and owned by nobody while
     // `autarkic` was held twice.
@@ -93,7 +93,7 @@ describe('each doctrine pays off when it is actually played', () => {
   });
 
   it('pays the monopolist for holding both ends of its own lane', () => {
-    // The Vigil holds tio-3 <-> tio-4, one of three both-ends lanes on the map.
+    // The Vigil holds tor-3 <-> tor-4, one of three both-ends lanes on the map.
     // A doctrine nobody has is a doctrine that cannot be shown to work, so this
     // is the assertion that keeps `monopolist` honest.
     expect(last.perFaction['vigil']!.routes).toBeGreaterThan(0);

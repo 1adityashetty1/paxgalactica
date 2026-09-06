@@ -4,12 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * Who rules on a faction's own principles.
  *
  * For its whole existence the answer was "the resolution call", and a playtest
- * as the Arkanis Free Worlds — a power defined almost entirely by refusal —
+ * as the Arkane Free Worlds — a power defined almost entirely by refusal —
  * showed what that was worth: three unambiguous compulsion breaches (paying
  * one-off tribute, submitting to ongoing tribute, raiding another power's
  * shipping) all resolved as ordinary skill checks costing nothing at all, and a
  * red line was never once returned as a `refusal`. The verbatim scenario of
- * Arkanis's first red line — "open the gates, invite the Vigil in" — was priced
+ * Arkane's first red line — "open the gates, invite the Vigil in" — was priced
  * as a `resolve` check at DC 19 and would have SUCCEEDED on a 20.
  *
  * The reason is structural rather than a matter of prompt wording: resolution
@@ -49,7 +49,7 @@ const { COMPULSION_BREACH_DISSENT, REFUSAL_DISSENT } = await import('../src/doma
 const { classifyPrinciple, classifyPrinciples } = await import('../src/domain/compulsions.js');
 const { loadPrompt } = await import('../src/model/prompts.js');
 
-/** Arkanis's first red line, quoted exactly as the faction sheet carries it. */
+/** Arkane's first red line, quoted exactly as the faction sheet carries it. */
 const NO_OCCUPATION =
   'will never accept occupation or a protectorate, on any terms, however generous';
 
@@ -79,7 +79,7 @@ const compulsionBreach = {
   reason: 'You are buying peace with the one coin we swore never to spend.',
 };
 
-const OPEN_THE_GATES = 'Open the gates and invite the Vigil in to garrison Arkanis Prime.';
+const OPEN_THE_GATES = 'Open the gates and invite the Vigil in to garrison Arkane Prime.';
 
 beforeEach(() => {
   calls.length = 0;
@@ -223,7 +223,7 @@ describe('a compulsion is a price, and the price is charged', () => {
       appraisal: appraisal({ breach: compulsionBreach }),
       resolution: {
         narrative: 'The tribute is agreed.',
-        ops: [{ op: 'adjust_disposition', factionId: 'freeworlds', towardFactionId: 'hutt', delta: 5 }],
+        ops: [{ op: 'adjust_disposition', factionId: 'freeworlds', towardFactionId: 'ojjul', delta: 5 }],
       },
     };
     const campaign = Campaign.start('freeworlds', 'test-compulsion');
@@ -451,7 +451,7 @@ describe('the arbiter can see what it is being asked to rule on', () => {
     expect(arbiter.user).toContain(NO_OCCUPATION);
     expect(arbiter.user).toContain('Your own institutions DEMAND of you');
     // And is shown ONLY that. `voice` is a page of dialect notes for writing
-    // dialogue — for Arkanis, thousands of tokens of it — and putting the whole
+    // dialogue — for Arkane, thousands of tokens of it — and putting the whole
     // character sheet into a bounded classification call would have doubled the
     // price of every action in the game.
     const arkanis = createSeedState('freeworlds').factions.find((f) => f.id === 'freeworlds')!;
@@ -480,7 +480,7 @@ describe('a negotiation is redirected, not rolled for', () => {
   it('never reaches the dice or the resolution call', async () => {
     scripted = { appraisal: appraisal({ negotiation }) };
 
-    const out = await resolveAction(createSeedState('hutt'), PACT);
+    const out = await resolveAction(createSeedState('ojjul'), PACT);
 
     expect(calls.map((c) => c.kind)).toEqual(['appraisal']);
     expect(out.check).toBeNull();
@@ -491,20 +491,20 @@ describe('a negotiation is redirected, not rolled for', () => {
   it('names the actual command, built in code so it is always right', async () => {
     scripted = { appraisal: appraisal({ negotiation }) };
 
-    const out = await resolveAction(createSeedState('hutt'), PACT);
+    const out = await resolveAction(createSeedState('ojjul'), PACT);
 
     expect(out.output.negotiation?.channels).toBe('/talk vigil');
   });
 
   it('costs nothing — being told "that is a conversation" is not a failure', async () => {
     scripted = { appraisal: appraisal({ negotiation }) };
-    const campaign = Campaign.start('hutt', 'test-negotiation');
+    const campaign = Campaign.start('ojjul', 'test-negotiation');
 
     const outcome = await submitAction(campaign, PACT);
 
     expect(outcome.staged).toBe(0);
     expect(outcome.ops).toEqual([]);
-    expect(campaign.state.factions.find((f) => f.id === 'hutt')!.dissent).toBe(0);
+    expect(campaign.state.factions.find((f) => f.id === 'ojjul')!.dissent).toBe(0);
     expect(outcome.notes.join(' ')).toMatch(/\/talk vigil/);
   });
 
@@ -533,7 +533,7 @@ describe('the most severe principle named is the one that applies', () => {
   // carries a price" (a compulsion, 15 dissent and it lands) and never against
   // "will not forgive an unpaid debt" (a red line, blocked) — the more apposite
   // of the two, and the instrument the whole faction is built on.
-  const combine = () => createSeedState('hutt').factions.find((f) => f.id === 'hutt')!;
+  const combine = () => createSeedState('ojjul').factions.find((f) => f.id === 'ojjul')!;
 
   it('takes the red line when both kinds are quoted', () => {
     const ruled = classifyPrinciples(combine(), [
@@ -602,16 +602,16 @@ describe('an accord cannot launder a red line', () => {
         },
       }),
     };
-    const campaign = Campaign.start('hutt', 'test-accord-redline');
+    const campaign = Campaign.start('ojjul', 'test-accord-redline');
 
-    const outcome = await closeChannel(campaign, 'krayt', said);
+    const outcome = await closeChannel(campaign, 'drajk', said);
 
     expect(outcome.refusal?.violated).toBe(NO_FORGIVING);
     // The debt is untouched: the deal did not happen at all.
     expect(campaign.state.debts.find((d) => d.id === 'debt-0')!.status).toBe('delinquent');
     const ops = outcome.ops as { op: string }[];
     expect(ops.some((o) => o.op === 'forgive_debt')).toBe(false);
-    expect(campaign.state.factions.find((f) => f.id === 'hutt')!.dissent).toBe(REFUSAL_DISSENT);
+    expect(campaign.state.factions.find((f) => f.id === 'ojjul')!.dissent).toBe(REFUSAL_DISSENT);
   });
 
   it('charges a compulsion and lets the accord stand', async () => {
@@ -620,15 +620,15 @@ describe('an accord cannot launder a red line', () => {
       appraisal: appraisal(),
     };
     // An accord that agreed nothing must not even cost an arbitration call.
-    const quiet = Campaign.start('hutt', 'test-accord-empty');
+    const quiet = Campaign.start('ojjul', 'test-accord-empty');
     calls.length = 0;
-    await closeChannel(quiet, 'krayt', said);
+    await closeChannel(quiet, 'drajk', said);
     expect(calls.map((c) => c.kind)).toEqual(['extraction']);
 
     scripted = {
       extraction: {
         narrative: 'The Combine gives the Free Worlds a season of grace, asking nothing.',
-        ops: [{ op: 'adjust_disposition', factionId: 'hutt', towardFactionId: 'freeworlds', delta: 5 }],
+        ops: [{ op: 'adjust_disposition', factionId: 'ojjul', towardFactionId: 'freeworlds', delta: 5 }],
       },
       appraisal: appraisal({
         breach: {
@@ -642,7 +642,7 @@ describe('an accord cannot launder a red line', () => {
         },
       }),
     };
-    const campaign = Campaign.start('hutt', 'test-accord-compulsion');
+    const campaign = Campaign.start('ojjul', 'test-accord-compulsion');
 
     const outcome = await closeChannel(campaign, 'freeworlds', said);
 
@@ -651,7 +651,7 @@ describe('an accord cannot launder a red line', () => {
     // The accord stands — that is the whole difference from a red line.
     const ops = outcome.ops as { op: string }[];
     expect(ops.some((o) => o.op === 'adjust_disposition')).toBe(true);
-    expect(campaign.state.factions.find((f) => f.id === 'hutt')!.dissent).toBe(
+    expect(campaign.state.factions.find((f) => f.id === 'ojjul')!.dissent).toBe(
       COMPULSION_BREACH_DISSENT,
     );
   });
@@ -660,17 +660,17 @@ describe('an accord cannot launder a red line', () => {
     scripted = {
       extraction: {
         narrative: 'A trade accord is signed.',
-        ops: [{ op: 'adjust_disposition', factionId: 'hutt', towardFactionId: 'meridian', delta: 5 }],
+        ops: [{ op: 'adjust_disposition', factionId: 'ojjul', towardFactionId: 'meridian', delta: 5 }],
       },
       appraisal: appraisal(),
     };
-    const campaign = Campaign.start('hutt', 'test-accord-clean');
+    const campaign = Campaign.start('ojjul', 'test-accord-clean');
 
     const outcome = await closeChannel(campaign, 'meridian', said);
 
     expect(outcome.refusal ?? null).toBeNull();
     expect(outcome.defiance ?? null).toBeNull();
-    expect(campaign.state.factions.find((f) => f.id === 'hutt')!.dissent).toBe(0);
+    expect(campaign.state.factions.find((f) => f.id === 'ojjul')!.dissent).toBe(0);
     expect((outcome.ops as { op: string }[]).length).toBeGreaterThan(0);
   });
 
@@ -681,24 +681,24 @@ describe('an accord cannot launder a red line', () => {
     scripted = {
       extraction: {
         narrative: 'The Free Worlds agree to let a Combine factor sit at Pell Reach.',
-        ops: [{ op: 'adjust_disposition', factionId: 'freeworlds', towardFactionId: 'hutt', delta: 5 }],
+        ops: [{ op: 'adjust_disposition', factionId: 'freeworlds', towardFactionId: 'ojjul', delta: 5 }],
       },
       appraisal: appraisal({
         breach: {
           kind: 'red_line',
           principles: ['will never accept occupation or a protectorate, on any terms, however generous'],
-          how: 'it seats a foreign factor on Arkanis soil',
+          how: 'it seats a foreign factor on Arkane soil',
           by: 'the assembly of the Drift',
           reason: 'That is the Drift’s line, not the Combine’s.',
         },
       }),
     };
-    const campaign = Campaign.start('hutt', 'test-accord-other-sheet');
+    const campaign = Campaign.start('ojjul', 'test-accord-other-sheet');
 
     const outcome = await closeChannel(campaign, 'freeworlds', said);
 
     expect(outcome.refusal ?? null).toBeNull();
-    expect(campaign.state.factions.find((f) => f.id === 'hutt')!.dissent).toBe(0);
+    expect(campaign.state.factions.find((f) => f.id === 'ojjul')!.dissent).toBe(0);
   });
 });
 
@@ -772,7 +772,7 @@ describe('two actions, then the turn has to end', () => {
     };
     const campaign = Campaign.start('meridian', 'test-ap-refusal');
 
-    await submitAction(campaign, 'Blockade the Kessel approaches.');
+    await submitAction(campaign, 'Blockade the Ilvenn approaches.');
 
     expect(campaign.actionPointsLeft).toBe(ACTION_POINTS_PER_TURN - 1);
   });
@@ -792,13 +792,13 @@ describe('two actions, then the turn has to end', () => {
 describe('a covert declaration is routed into the agent mechanic', () => {
   it('places an operative even when resolution emitted only prose', async () => {
     scripted = {
-      appraisal: appraisal({ covert: { mission: 'assassination', systemId: 'kes-6' } }),
+      appraisal: appraisal({ covert: { mission: 'assassination', systemId: 'ilv-6' } }),
       resolution: {
         narrative: 'Your man is in place before the week is out.',
         // The live failure mode: a covert success with invented consequences
         // and no operative anywhere.
         ops: [
-          { op: 'adjust_disposition', factionId: 'krayt', towardFactionId: 'meridian', delta: -15 },
+          { op: 'adjust_disposition', factionId: 'drajk', towardFactionId: 'meridian', delta: -15 },
         ],
       },
     };
@@ -817,17 +817,17 @@ describe('a covert declaration is routed into the agent mechanic', () => {
 
   it('places nobody when the attempt failed', async () => {
     scripted = {
-      appraisal: appraisal({ covert: { mission: 'sabotage', systemId: 'tio-3' } }),
+      appraisal: appraisal({ covert: { mission: 'sabotage', systemId: 'tor-3' } }),
       resolution: { narrative: 'He never reached the dock.', ops: [] },
     };
     const campaign = Campaign.start('meridian', 'test-covert-fail');
     // Force the failure band by pricing it out of reach.
     scripted.appraisal = appraisal({
       difficulty: 30,
-      covert: { mission: 'sabotage', systemId: 'tio-3' },
+      covert: { mission: 'sabotage', systemId: 'tor-3' },
     });
 
-    await submitAction(campaign, 'Sabotage the Vigil yards at Ord Vantic.');
+    await submitAction(campaign, 'Sabotage the Vigil yards at Vantic.');
 
     expect(campaign.state.agents).toHaveLength(0);
   });
@@ -857,7 +857,7 @@ describe('a quoted line has to be about the act', () => {
 
     const out = await resolveAction(
       createSeedState('freeworlds'),
-      'Have the Combine factor at Nar Shalka killed.',
+      'Have the Combine factor at Shalka killed.',
     );
 
     // Rolled and resolved as an ordinary action: no refusal, no defiance.
@@ -878,7 +878,7 @@ describe('a quoted line has to be about the act', () => {
 
     const out = await resolveAction(
       createSeedState('freeworlds'),
-      'Raid the Combine convoys running out of Nar Shalka.',
+      'Raid the Combine convoys running out of Shalka.',
     );
 
     expect(out.output.defiance?.violated).toBe(RAIDING);
@@ -889,7 +889,7 @@ describe('a quoted line has to be about the act', () => {
       appraisal: appraisal({}),
       resolution: { narrative: 'The yards begin work.', ops: [] },
     };
-    await resolveAction(createSeedState('freeworlds'), 'Expand the yards at Dolomar.');
+    await resolveAction(createSeedState('freeworlds'), 'Expand the yards at Delvane.');
     // No breach, so the second opinion is never asked for.
     expect(calls.map((c) => c.kind)).toEqual(['appraisal', 'resolution']);
   });
@@ -912,9 +912,9 @@ describe('a quoted line has to be about the act', () => {
  */
 describe('no red line forbids a passive mechanic', () => {
   it('lets Drajk hold a garrisoned world without contradicting its own sheet', () => {
-    const state = createSeedState('krayt');
-    const drajk = state.factions.find((f) => f.id === 'krayt')!;
-    const held = state.systems.filter((s) => s.controllerFactionId === 'krayt');
+    const state = createSeedState('drajk');
+    const drajk = state.factions.find((f) => f.id === 'drajk')!;
+    const held = state.systems.filter((s) => s.controllerFactionId === 'drajk');
 
     // The premise: it does hold worlds, and they do have troops on them.
     expect(held.length).toBeGreaterThan(0);
@@ -929,7 +929,7 @@ describe('no red line forbids a passive mechanic', () => {
   });
 
   it('still refuses the thing the line is actually about', () => {
-    const drajk = createSeedState('krayt').factions.find((f) => f.id === 'krayt')!;
+    const drajk = createSeedState('drajk').factions.find((f) => f.id === 'drajk')!;
     const pinned = drajk.redLines.find((l) => /pinned in place/i.test(l));
     expect(pinned).toBeDefined();
     // The choice, not the condition: committing the fleet to sit somewhere.

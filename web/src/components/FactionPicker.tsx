@@ -41,7 +41,7 @@ export function FactionPicker({
     <div className="picker">
       <h1>PAX GALACTICA</h1>
       <p className="tagline">
-        Four sectors of the Outer Rim. Five powers. No authority worth the name.
+        Four sectors of the Rim. Five powers. No authority worth the name.
       </p>
 
       {error && <p className="error">{error}</p>}

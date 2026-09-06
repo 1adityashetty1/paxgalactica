@@ -38,7 +38,7 @@ describe('the chat schema cannot express an op', () => {
   it('strips anything resembling ops from a reply', () => {
     const parsed = DiplomacyReplySchema.parse({
       reply: 'We accept.',
-      ops: [{ op: 'adjust_credits', factionId: 'hutt', delta: 9999 }],
+      ops: [{ op: 'adjust_credits', factionId: 'ojjul', delta: 9999 }],
     });
     expect(parsed).toEqual({ reply: 'We accept.' });
     expect('ops' in parsed).toBe(false);
@@ -67,7 +67,7 @@ describe('extraction is the only pass that can mutate', () => {
     // A faction may "cede" a world in conversation; it still takes a fleet.
     const parsed = ModelTurnOutputSchema.safeParse({
       narrative: 'They ceded Ithaal.',
-      ops: [{ op: 'transfer_control', systemId: 'slu-3', toFactionId: 'freeworlds' }],
+      ops: [{ op: 'transfer_control', systemId: 'sek-3', toFactionId: 'freeworlds' }],
     });
     expect(parsed.success).toBe(false);
   });
@@ -78,8 +78,8 @@ describe('transcripts are memory, not world state', () => {
     const campaign = Campaign.start('freeworlds', 'dip', new MemoryCampaignStore());
     const before = campaign.journal.entries.length;
 
-    campaign.recordTranscript('hutt', [
-      { speaker: 'player', text: 'We want the spice lanes.' },
+    campaign.recordTranscript('ojjul', [
+      { speaker: 'player', text: 'We want the narcotics lanes.' },
       { speaker: 'faction', text: 'Everyone does.' },
     ]);
 
@@ -101,19 +101,19 @@ describe('transcripts are memory, not world state', () => {
 
   it('keeps each faction’s memory separate', () => {
     const campaign = Campaign.start('freeworlds', 'dip3', new MemoryCampaignStore());
-    campaign.recordTranscript('hutt', [{ speaker: 'player', text: 'A secret for the Nars.' }]);
+    campaign.recordTranscript('ojjul', [{ speaker: 'player', text: 'A secret for the Nars.' }]);
     expect(campaign.priorTranscripts('vigil')).toHaveLength(0);
-    expect(campaign.priorTranscripts('hutt')).toHaveLength(1);
+    expect(campaign.priorTranscripts('ojjul')).toHaveLength(1);
   });
 
   it('labels the speakers from the faction’s point of view', () => {
     // The persona reads these, so "You" must mean the faction, not the player.
     const campaign = Campaign.start('freeworlds', 'dip4', new MemoryCampaignStore());
-    campaign.recordTranscript('krayt', [
+    campaign.recordTranscript('drajk', [
       { speaker: 'player', text: 'Stand down.' },
       { speaker: 'faction', text: 'Make me.' },
     ]);
-    const text = campaign.priorTranscripts('krayt')[0]!;
+    const text = campaign.priorTranscripts('drajk')[0]!;
     expect(text).toMatch(/Them: Stand down/);
     expect(text).toMatch(/You: Make me/);
   });
@@ -121,11 +121,11 @@ describe('transcripts are memory, not world state', () => {
   it('survives a save and reload', async () => {
     const store = new MemoryCampaignStore();
     const campaign = Campaign.start('meridian', 'dip5', store);
-    campaign.recordTranscript('krayt', [{ speaker: 'player', text: 'Name your price.' }]);
+    campaign.recordTranscript('drajk', [{ speaker: 'player', text: 'Name your price.' }]);
     await campaign.save();
 
     const reloaded = await Campaign.load('dip5', store);
-    expect(reloaded!.priorTranscripts('krayt')[0]).toMatch(/Name your price/);
+    expect(reloaded!.priorTranscripts('drajk')[0]).toMatch(/Name your price/);
   });
 });
 
@@ -255,73 +255,73 @@ describe('session-level channel lifecycle', () => {
     // PAXGALACTICA_NO_NETWORK=1 would make any real call throw.
     const campaign = Campaign.start('freeworlds', 'empty', new MemoryCampaignStore());
     const { closeChannel } = await import('../src/engine/turn.js');
-    const outcome = await closeChannel(campaign, 'hutt', []);
+    const outcome = await closeChannel(campaign, 'ojjul', []);
     expect(outcome.staged).toBe(0);
     expect(outcome.costUsd).toBe(0);
     expect(campaign.stagedCount).toBe(0);
     // The (empty) conversation is still recorded as having happened.
-    expect(campaign.priorTranscripts('hutt')).toHaveLength(1);
+    expect(campaign.priorTranscripts('ojjul')).toHaveLength(1);
   });
 });
 
 describe('war is a property of the relationship, not one opinion', () => {
-  const fresh = () => createSeedState('krayt');
+  const fresh = () => createSeedState('drajk');
 
   it('lists an aggressor even when only the victim hates them', () => {
     // The mechanical disposition costs — raiding, suborning, tolls,
     // pact-breaking — all move the INJURED party's view of the aggressor and
     // never the aggressor's view of them. Reading only "who hates me" meant
     // the victim of a raid did not count their raider as an enemy: a playtest
-    // left Arkanis at -62 toward Drajk while Drajk sat at -10 toward Arkanis.
+    // left Arkane at -62 toward Drajk while Drajk sat at -10 toward Arkane.
     const state = fresh();
-    state.factions.find((f) => f.id === 'freeworlds')!.disposition['krayt'] = -62;
-    state.factions.find((f) => f.id === 'krayt')!.disposition['freeworlds'] = -10;
+    state.factions.find((f) => f.id === 'freeworlds')!.disposition['drajk'] = -62;
+    state.factions.find((f) => f.id === 'drajk')!.disposition['freeworlds'] = -10;
 
-    expect(warsFor(state, 'freeworlds')).toContain('krayt');
-    expect(warsFor(state, 'krayt')).toContain('freeworlds');
+    expect(warsFor(state, 'freeworlds')).toContain('drajk');
+    expect(warsFor(state, 'drajk')).toContain('freeworlds');
   });
 
   it('stays quiet when neither side has soured past the threshold', () => {
     const state = fresh();
-    state.factions.find((f) => f.id === 'freeworlds')!.disposition['krayt'] = -59;
-    state.factions.find((f) => f.id === 'krayt')!.disposition['freeworlds'] = -59;
-    expect(warsFor(state, 'freeworlds')).not.toContain('krayt');
-    expect(warsFor(state, 'krayt')).not.toContain('freeworlds');
+    state.factions.find((f) => f.id === 'freeworlds')!.disposition['drajk'] = -59;
+    state.factions.find((f) => f.id === 'drajk')!.disposition['freeworlds'] = -59;
+    expect(warsFor(state, 'freeworlds')).not.toContain('drajk');
+    expect(warsFor(state, 'drajk')).not.toContain('freeworlds');
   });
 
   it('is still suppressed by a live pact, in both directions', () => {
     // Mutuality must not defeat the treaty check — a pact is exactly the thing
     // that says "we are not at war regardless of how we feel".
     const state = fresh();
-    state.factions.find((f) => f.id === 'freeworlds')!.disposition['krayt'] = -90;
+    state.factions.find((f) => f.id === 'freeworlds')!.disposition['drajk'] = -90;
     state.treaties.push({
-      id: 't1', type: 'non_aggression', parties: ['freeworlds', 'krayt'],
-      terms: { territory: [], shipsPledged: {}, incomePerTurn: {}, incomeShares: [], mutualDefenseTrigger: '', voidsOn: [] },
+      id: 't1', type: 'non_aggression', parties: ['freeworlds', 'drajk'],
+      terms: { territory: [], shipsPledged: {}, incomePerTurn: {}, payment: {}, incomeShares: [], mutualDefenseTrigger: '', voidsOn: [] },
       signedTurn: 0, expiresTurn: null, effectiveTurn: null, status: 'active', summary: 'na',
     });
-    expect(warsFor(state, 'freeworlds')).not.toContain('krayt');
-    expect(warsFor(state, 'krayt')).not.toContain('freeworlds');
+    expect(warsFor(state, 'freeworlds')).not.toContain('drajk');
+    expect(warsFor(state, 'drajk')).not.toContain('freeworlds');
   });
 });
 
 describe('agents cannot be given an effect that can never fire', () => {
   it('rejects crew_defection where guile can never beat resolve', () => {
-    // Drajk guile 14 vs Arkanis resolve 19 -> subornLimit 0. An agent placed
+    // Drajk guile 14 vs Arkane resolve 19 -> subornLimit 0. An agent placed
     // anyway is live, unexposed, rolls every turn, and can never turn a hull.
-    const state = createSeedState('krayt');
-    expect(subornLimit(state, 'krayt', 'freeworlds')).toBe(0);
+    const state = createSeedState('drajk');
+    expect(subornLimit(state, 'drajk', 'freeworlds')).toBe(0);
 
     const res = applyOps(
       state,
       [
         {
-          op: 'deploy_agent', ownerFactionId: 'krayt', systemId: 'ark-6',
+          op: 'deploy_agent', ownerFactionId: 'drajk', systemId: 'ark-6',
           mission: 'theft', effect: { kind: 'crew_defection', perTurn: 1 },
           cover: 'labour broker',
         },
       ],
       'model',
-      'krayt',
+      'drajk',
     );
     expect(res.rejections.map((r) => r.code)).toContain('illegal_value');
     expect(res.rejections[0]!.message).toMatch(/resolve is beyond its guile/);
@@ -330,38 +330,38 @@ describe('agents cannot be given an effect that can never fire', () => {
 
   it('allows crew_defection where the contest is winnable', () => {
     // The Nars at guile 18 can suborn Meridian (resolve 9) comfortably.
-    const state = createSeedState('hutt');
-    expect(subornLimit(state, 'hutt', 'meridian')).toBeGreaterThan(0);
+    const state = createSeedState('ojjul');
+    expect(subornLimit(state, 'ojjul', 'meridian')).toBeGreaterThan(0);
     const res = applyOps(
       state,
       [
         {
-          op: 'deploy_agent', ownerFactionId: 'hutt', systemId: 'slu-1',
+          op: 'deploy_agent', ownerFactionId: 'ojjul', systemId: 'sek-1',
           mission: 'theft', effect: { kind: 'crew_defection', perTurn: 1 },
           cover: 'dock factor',
         },
       ],
       'model',
-      'hutt',
+      'ojjul',
     );
     expect(res.rejections).toHaveLength(0);
     expect(res.state.agents).toHaveLength(1);
   });
 
   it('leaves other effect kinds alone against a resolute target', () => {
-    // Only crew_defection depends on subornLimit; sabotage against Arkanis is
+    // Only crew_defection depends on subornLimit; sabotage against Arkane is
     // perfectly legitimate and must not be caught by the new guard.
     const res = applyOps(
-      createSeedState('krayt'),
+      createSeedState('drajk'),
       [
         {
-          op: 'deploy_agent', ownerFactionId: 'krayt', systemId: 'ark-6',
+          op: 'deploy_agent', ownerFactionId: 'drajk', systemId: 'ark-6',
           mission: 'sabotage', effect: { kind: 'hull_damage', perTurn: 2 },
           cover: 'dock hand',
         },
       ],
       'model',
-      'krayt',
+      'drajk',
     );
     expect(res.rejections).toHaveLength(0);
     expect(res.state.agents).toHaveLength(1);
@@ -378,7 +378,7 @@ describe('an operative belongs to whoever deployed it', () => {
       createSeedState('meridian'),
       [
         {
-          op: 'deploy_agent', ownerFactionId: 'vigil', systemId: 'tio-2',
+          op: 'deploy_agent', ownerFactionId: 'vigil', systemId: 'tor-2',
           mission: 'sabotage', effect: { kind: 'hull_damage', perTurn: 3 },
           cover: 'requisitions officer',
         },
@@ -396,7 +396,7 @@ describe('an operative belongs to whoever deployed it', () => {
       createSeedState('meridian'),
       [
         {
-          op: 'deploy_agent', ownerFactionId: 'meridian', systemId: 'tio-2',
+          op: 'deploy_agent', ownerFactionId: 'meridian', systemId: 'tor-2',
           mission: 'sabotage', effect: { kind: 'hull_damage', perTurn: 3 },
           cover: 'dock hand',
         },
@@ -413,7 +413,7 @@ describe('an operative belongs to whoever deployed it', () => {
       createSeedState('meridian'),
       [
         {
-          op: 'deploy_agent', ownerFactionId: 'vigil', systemId: 'tio-2',
+          op: 'deploy_agent', ownerFactionId: 'vigil', systemId: 'tor-2',
           mission: 'sabotage', effect: { kind: 'hull_damage', perTurn: 3 },
         },
       ],
@@ -591,7 +591,7 @@ describe('a diplomacy reply must be speech, not a note about speech', () => {
   it('does not fire on long prose that happens to use the words', () => {
     // A real reply can discuss a message or an answer without being a stub.
     const long =
-      'Your message reached me above the Kessel line, and my answer is the one ' +
+      'Your message reached me above the Ilvenn line, and my answer is the one ' +
       'I gave your predecessor: the survey party arrives on the ninth. I have ' +
       'read the charts you provided and they do not change the arithmetic, ' +
       'though I will say they are better kept than most. Bring me something ' +
@@ -614,8 +614,8 @@ describe('a treaty can be agreed now and take force later', () => {
   const pact = (ratifyTurns?: number) => ({
     op: 'form_treaty',
     treatyType: 'tribute' as const,
-    parties: ['freeworlds', 'hutt'],
-    terms: { incomePerTurn: { freeworlds: -20, hutt: 20 } },
+    parties: ['freeworlds', 'ojjul'],
+    terms: { incomePerTurn: { freeworlds: -20, ojjul: 20 } },
     summary: 'subject to the councils',
     ...(ratifyTurns === undefined ? {} : { ratifyTurns }),
   });
@@ -627,8 +627,8 @@ describe('a treaty can be agreed now and take force later', () => {
     expect(treaty.status).toBe('pending');
     expect(treaty.effectiveTurn).toBe(out.state.turn + 2);
     // Inert: `isTreatyLive` gates on active, so no reader sees it.
-    expect(treatiesFor(out.state, 'hutt').map((t) => t.id)).not.toContain(treaty.id);
-    expect(ledgerFor(out.state, 'hutt').treatyFlow).toBe(0);
+    expect(treatiesFor(out.state, 'ojjul').map((t) => t.id)).not.toContain(treaty.id);
+    expect(ledgerFor(out.state, 'ojjul').treatyFlow).toBe(0);
   });
 
   it('comes into force on its turn, and its terms start applying', () => {
@@ -645,14 +645,14 @@ describe('a treaty can be agreed now and take force later', () => {
 
     const second = tickTurn(state);
     expect(second.state.treaties.find((t) => t.id === id)!.status).toBe('active');
-    expect(ledgerFor(second.state, 'hutt').treatyFlow).toBe(20);
+    expect(ledgerFor(second.state, 'ojjul').treatyFlow).toBe(20);
     expect(second.notes.join(' ')).toMatch(/Ratified/);
   });
 
   it('is live at once when nothing has to ratify it', () => {
     const out = applyOps(createSeedState('freeworlds'), [pact()], 'extraction', 'freeworlds');
     expect(out.state.treaties.at(-1)!.status).toBe('active');
-    expect(ledgerFor(out.state, 'hutt').treatyFlow).toBe(20);
+    expect(ledgerFor(out.state, 'ojjul').treatyFlow).toBe(20);
   });
 });
 
@@ -685,11 +685,11 @@ describe('a ceded system changes hands', () => {
     const ships = hullsAt(before, 'freeworlds');
     expect(ships).toBeGreaterThan(0);
 
-    const out = applyOps(state, [cede('ark-6', ['freeworlds', 'hutt'])], 'extraction', 'freeworlds');
+    const out = applyOps(state, [cede('ark-6', ['freeworlds', 'ojjul'])], 'extraction', 'freeworlds');
     expect(out.rejections).toHaveLength(0);
 
     const after = sys(out.state, 'ark-6');
-    expect(after.controllerFactionId).toBe('hutt');
+    expect(after.controllerFactionId).toBe('ojjul');
     // Nobody fought, so the garrison is handed over intact — the difference
     // between capitulation and conquest.
     expect(after.garrison).toBe(garrison);
@@ -706,29 +706,29 @@ describe('a ceded system changes hands', () => {
   });
 
   it('cedes nothing it does not hold', () => {
-    // tio-3 is the Vigil's, and the Vigil is not a party.
+    // tor-3 is the Vigil's, and the Vigil is not a party.
     const out = applyOps(
       createSeedState('freeworlds'),
-      [cede('tio-3', ['freeworlds', 'hutt'])],
+      [cede('tor-3', ['freeworlds', 'ojjul'])],
       'extraction',
       'freeworlds',
     );
     expect(out.rejections).toHaveLength(0);
-    expect(sys(out.state, 'tio-3').controllerFactionId).toBe('vigil');
+    expect(sys(out.state, 'tor-3').controllerFactionId).toBe('vigil');
   });
 
   it('waits for ratification when the treaty is pending', () => {
     const state = createSeedState('freeworlds');
     const out = applyOps(
       state,
-      [{ ...cede('ark-6', ['freeworlds', 'hutt']), ratifyTurns: 1 }],
+      [{ ...cede('ark-6', ['freeworlds', 'ojjul']), ratifyTurns: 1 }],
       'extraction',
       'freeworlds',
     );
     // Still Free Worlds: the councils have not sat yet.
     expect(sys(out.state, 'ark-6').controllerFactionId).toBe('freeworlds');
     const ticked = tickTurn(out.state);
-    expect(sys(ticked.state, 'ark-6').controllerFactionId).toBe('hutt');
+    expect(sys(ticked.state, 'ark-6').controllerFactionId).toBe('ojjul');
   });
 });
 
@@ -743,8 +743,8 @@ describe('a void condition ends a treaty when it comes true', () => {
   const withCondition = (condition: unknown) => ({
     op: 'form_treaty',
     treatyType: 'trade_accord' as const,
-    parties: ['freeworlds', 'hutt'],
-    terms: { incomePerTurn: { freeworlds: 10, hutt: -10 }, voidsOn: [condition] },
+    parties: ['freeworlds', 'ojjul'],
+    terms: { incomePerTurn: { freeworlds: 10, ojjul: -10 }, voidsOn: [condition] },
     summary: 'conditional accord',
   });
 
@@ -754,7 +754,7 @@ describe('a void condition ends a treaty when it comes true', () => {
     const state = createSeedState('freeworlds');
     const signed = applyOps(
       state,
-      [withCondition({ kind: 'treaty_with', by: 'hutt', target: 'vigil' })],
+      [withCondition({ kind: 'treaty_with', by: 'ojjul', target: 'vigil' })],
       'extraction',
       'freeworlds',
     ).state;
@@ -768,13 +768,13 @@ describe('a void condition ends a treaty when it comes true', () => {
         {
           op: 'form_treaty',
           treatyType: 'non_aggression',
-          parties: ['hutt', 'vigil'],
+          parties: ['ojjul', 'vigil'],
           terms: {},
           summary: 'the very thing that was forbidden',
         },
       ],
       'extraction',
-      'hutt',
+      'ojjul',
     ).state;
     const ticked = tickTurn(betrayed);
     expect(ticked.state.treaties[ticked.state.treaties.length - 2]!.status).toBe('voided');
@@ -785,7 +785,7 @@ describe('a void condition ends a treaty when it comes true', () => {
     const state = createSeedState('freeworlds');
     const signed = applyOps(
       state,
-      [withCondition({ kind: 'insolvent', by: 'hutt' })],
+      [withCondition({ kind: 'insolvent', by: 'ojjul' })],
       'extraction',
       'freeworlds',
     ).state;
@@ -793,7 +793,7 @@ describe('a void condition ends a treaty when it comes true', () => {
 
     // Drive the Combine to a loss it cannot cover.
     for (const sys of signed.systems) {
-      if (sys.controllerFactionId === 'hutt') setShipsAt(sys, 'hutt', 400);
+      if (sys.controllerFactionId === 'ojjul') setShipsAt(sys, 'ojjul', 400);
     }
     const ticked = tickTurn(signed);
     const treaty = ticked.state.treaties.find((t) => t.summary === 'conditional accord')!;
@@ -809,7 +809,7 @@ describe('a void condition ends a treaty when it comes true', () => {
         {
           op: 'form_treaty',
           treatyType: 'trade_accord',
-          parties: ['freeworlds', 'hutt'],
+          parties: ['freeworlds', 'ojjul'],
           terms: {},
           summary: 'no strings',
         },
@@ -900,7 +900,7 @@ describe('signing under a fleet costs the power holding the fleet', () => {
 describe('a faction can ask to talk', () => {
   it('is optional, so an ordinary reaction still parses', () => {
     const parsed = ReactionSchema.parse({
-      factionId: 'hutt',
+      factionId: 'ojjul',
       narrative: 'The Combine watches, and says nothing.',
       ops: [],
     });
@@ -909,20 +909,20 @@ describe('a faction can ask to talk', () => {
 
   it('carries an opening and a subject when a power wants something', () => {
     const parsed = ReactionSchema.parse({
-      factionId: 'hutt',
-      narrative: 'The Combine counts the ships at Kessel.',
+      factionId: 'ojjul',
+      narrative: 'The Combine counts the ships at Ilvenn.',
       ops: [],
       approach: {
         opening: 'Cousin — your hulls are very close to my lanes. Sit with me before this gets expensive.',
-        about: 'transit through Kessel',
+        about: 'transit through Ilvenn',
       },
     });
-    expect(parsed.approach?.about).toBe('transit through Kessel');
+    expect(parsed.approach?.about).toBe('transit through Ilvenn');
   });
 
   it('survives the contract on the way to the browser, and defaults to null', () => {
     const view = ReactionViewSchema.parse({
-      factionId: 'hutt',
+      factionId: 'ojjul',
       factionName: 'Ojjul Nar Combine',
       color: 214,
       narrative: 'x',

@@ -110,7 +110,7 @@ export function campaignOutcome(
     // disposition, and disposition is asymmetric everywhere else in the game —
     // so a power nobody's own sheet hated ended up with `wars: []` while two
     // other slides in the same epilogue named it as an enemy. Measured live:
-    // `krayt` regarded nobody below -46 while `meridian` and `vigil` both
+    // `drajk` regarded nobody below -46 while `meridian` and `vigil` both
     // regarded it at -100, and the ending said "no war stands open against it"
     // one slide after "the war with the Drajk Confederacy sits open".
     //
@@ -174,7 +174,7 @@ export function campaignOutcome(
   // This used to be a plain sort with an id tie-break, and the narration duly
   // promoted an arbitrary tie into a stated fact: with all five powers holding
   // four worlds each, the ending announced "the largest single holding, the
-  // Arkanis Free Worlds". A tie-break is a way of picking a value, not a
+  // Arkane Free Worlds". A tie-break is a way of picking a value, not a
   // finding, so the dossier now reports the tie and the prompt is told what to
   // do with it.
   const most = Math.max(...factions.map((f) => f.systems));
@@ -230,7 +230,7 @@ export function fallbackEpilogue(outcome: CampaignOutcome): { closing: string; s
       : `${me.name} finished ${me.arc}, with ${worlds(me.systems)} against the ${first.name}'s ${first.systems}`;
 
   const closing =
-    `After ${outcome.turn} turns the Outer Rim settled into the shape you left it. ` +
+    `After ${outcome.turn} turns the Rim settled into the shape you left it. ` +
     `${standing}. ` +
     (outcome.unaligned === 0
       ? 'Every world answered to somebody.'

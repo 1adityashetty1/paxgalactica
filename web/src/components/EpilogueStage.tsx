@@ -25,7 +25,7 @@ export function EpilogueStage({ epilogue }: { epilogue: EpilogueView }) {
   return (
     <div className="epilogue">
       <header className="epilogue-head">
-        <h2>The Outer Rim, {epilogue.turn} turns on</h2>
+        <h2>The Rim, {epilogue.turn} turns on</h2>
         <p className="hint">
           {epilogue.unaligned} worlds still answer to nobody.
           {epilogue.fallback && ' (The narration could not be written; this is the plain record.)'}

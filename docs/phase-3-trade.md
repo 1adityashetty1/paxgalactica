@@ -34,19 +34,19 @@ cross each system:
 
 | system | sv | holder | on N paths |
 |---|---|---|---|
-| kes-2 Nar Shalka | 9 | **hutt** | **74** |
-| tio-1 Tion Anchorage | 7 | **meridian** | 65 |
-| kes-5 Oridin | 5 | hutt | 55 |
-| slu-1 Sluis Gate | 9 | meridian | 54 |
-| slu-6 Neth | 3 | **unaligned** | 52 |
-| kes-4 Byss Marker | 3 | **unaligned** | 52 |
-| slu-2 Corvid | 6 | meridian | 47 |
+| ilv-2 Shalka | 9 | **ojjul** | **74** |
+| tor-1 Torrek Anchorage | 7 | **meridian** | 65 |
+| ilv-5 Oridin | 5 | ojjul | 55 |
+| sek-1 Sekkar Gate | 9 | meridian | 54 |
+| sek-6 Neth | 3 | **unaligned** | 52 |
+| ilv-4 Vosk Marker | 3 | **unaligned** | 52 |
+| sek-2 Corvid | 6 | meridian | 47 |
 | ark-2 Sennex | 4 | **unaligned** | 44 |
 
 The seed already put the extortionist on the single greatest chokepoint and the
 free traders on the second. It already left three high-traffic junctions
 unaligned. It already gave Drajk the two inter-sector back doors
-(ark-5↔kes-7, tio-6↔kes-6) while the main crossings run through Nar and
+(ark-5↔ilv-7, tor-6↔ilv-6) while the main crossings run through Nar and
 Meridian space. There are only **10 inter-sector lanes** in the entire galaxy.
 
 None of this is currently read by anything. The overhaul is mostly a matter of
@@ -57,8 +57,8 @@ letting the economy see the graph the map is already drawn on.
 ## The core model: trade flows on hyperlanes
 
 A **route** is the shortest hyperlane path between two **hubs** (systems with
-`strategicValue >= 7` — eight of them: slu-1, tio-3, kes-2, slu-4, kes-1,
-ark-1, tio-1, tio-4). Twenty-eight routes, recomputed from the graph, never
+`strategicValue >= 7` — eight of them: sek-1, tor-3, ilv-2, sek-4, ilv-1,
+ark-1, tor-1, tor-4). Twenty-eight routes, recomputed from the graph, never
 stored.
 
 Each route carries a **volume** from its endpoints, decayed by length, so local
@@ -98,9 +98,9 @@ harness is for: run a recorded journal before and after and diff the worlds.
 | ethic | mechanic | holder |
 |---|---|---|
 | `free_trade` | Bonus scales with **network openness** — the fraction of *all* routes in the galaxy that are live. Meridian profits from everyone's peace, not just its own, so it has a mechanical reason to broker other people's ceasefires. | Meridian |
-| `extortionist` | **Toll.** Takes an extra cut of the transit value of every route crossing its systems, charged against the other beneficiaries. On kes-2 that is a cut of 74 paths' worth of traffic. | Nar |
+| `extortionist` | **Toll.** Takes an extra cut of the transit value of every route crossing its systems, charged against the other beneficiaries. On ilv-2 that is a cut of 74 paths' worth of traffic. | Nar |
 | `smuggler` | **Blockade-runner.** Its own routes ignore blockades entirely, and it raids at double effect. The one power that profits from a closed galaxy. | Drajk |
-| `autarkic` | Reduced route income, but base income is **immune to blockade and raiding**. Cannot be economically strangled — only conquered. | Vigil, Arkanis |
+| `autarkic` | Reduced route income, but base income is **immune to blockade and raiding**. Cannot be economically strangled — only conquered. | Vigil, Arkane |
 | `monopolist` | Double share on routes where it holds **both** endpoints; reduced share on routes it shares. Rewards a contiguous empire. Currently unused by the seed; implemented so the axis is complete. | — |
 
 Each of these is arithmetic in `ledgerFor` or `routeIncome`, never guidance in
@@ -182,7 +182,7 @@ random numbers.
   Mitigated by replaying recorded journals before and after and diffing the
   resulting worlds — that harness already exists and is asserted in the suite.
 - **Complexity the player cannot hold.** Twenty-eight routes is too many to
-  track by hand, which is why the briefing must say *"the Nar Shalka toll
+  track by hand, which is why the briefing must say *"the Shalka toll
   earned you 40 this turn"* rather than leaving it to be inferred.
 - **Determinism.** All-pairs BFS over 25 nodes, with neighbours already visited
   in sorted order. Cheap and already replay-safe.

@@ -54,17 +54,17 @@ describe('per-system income', () => {
   it('pays an unaligned, unoccupied system to nobody', () => {
     const state = fresh();
     // Neutral worlds are not free money lying on the table.
-    const income = systemIncome(state, sys(state, 'slu-3'));
+    const income = systemIncome(state, sys(state, 'sek-3'));
     expect(Object.keys(income.shares)).toHaveLength(0);
   });
 
   it('pays an unaligned system to whoever occupies it', () => {
     const state = fresh();
-    const neutral = sys(state, 'slu-3');
-    setShipsAt(neutral, 'hutt', 3);
-    setShipsAt(neutral, 'krayt', 1);
+    const neutral = sys(state, 'sek-3');
+    setShipsAt(neutral, 'ojjul', 3);
+    setShipsAt(neutral, 'drajk', 1);
     const income = systemIncome(state, neutral);
-    expect(income.shares['hutt']!).toBeGreaterThan(income.shares['krayt']!);
+    expect(income.shares['ojjul']!).toBeGreaterThan(income.shares['drajk']!);
   });
 
   it('pays a neutral system through a treaty, which is the only way', () => {
@@ -76,14 +76,14 @@ describe('per-system income', () => {
           op: 'form_treaty',
           treatyType: 'trade_accord',
           parties: ['freeworlds', 'meridian'],
-          terms: { incomeShares: [{ systemId: 'slu-3', factionId: 'freeworlds', share: 0.5 }] },
+          terms: { incomeShares: [{ systemId: 'sek-3', factionId: 'freeworlds', share: 0.5 }] },
           summary: 'Ithaal concession',
         },
       ],
       'extraction',
     );
     expect(res.rejections).toHaveLength(0);
-    const income = systemIncome(res.state, sys(res.state, 'slu-3'));
+    const income = systemIncome(res.state, sys(res.state, 'sek-3'));
     expect(income.shares['freeworlds']).toBe(Math.round(income.base * 0.5));
     expect(income.byTreaty).toContain('freeworlds');
   });
@@ -99,15 +99,15 @@ describe('per-system income', () => {
           parties: ['freeworlds', 'meridian'],
           terms: {
             incomeShares: [
-              { systemId: 'slu-3', factionId: 'freeworlds', share: 0.8 },
-              { systemId: 'slu-3', factionId: 'meridian', share: 0.8 },
+              { systemId: 'sek-3', factionId: 'freeworlds', share: 0.8 },
+              { systemId: 'sek-3', factionId: 'meridian', share: 0.8 },
             ],
           },
         },
       ],
       'extraction',
     );
-    const income = systemIncome(res.state, sys(res.state, 'slu-3'));
+    const income = systemIncome(res.state, sys(res.state, 'sek-3'));
     const total = Object.values(income.shares).reduce((a, b) => a + b, 0);
     expect(total).toBeLessThanOrEqual(income.base + 1);
   });
@@ -122,17 +122,17 @@ describe('ledgers', () => {
         {
           op: 'form_treaty',
           treatyType: 'tribute',
-          parties: ['freeworlds', 'hutt'],
+          parties: ['freeworlds', 'ojjul'],
           // Within `MAX_TREATY_INCOME_PER_TURN`, so nothing is trimmed and
           // this stays a test about which side the flow lands on.
-          terms: { incomePerTurn: { freeworlds: -50, hutt: 50 } },
+          terms: { incomePerTurn: { freeworlds: -50, ojjul: 50 } },
         },
       ],
       'extraction',
     );
     const mine = ledgerFor(res.state, 'freeworlds');
     expect(mine.treatyFlow).toBe(-50);
-    expect(ledgerFor(res.state, 'hutt').treatyFlow).toBe(50);
+    expect(ledgerFor(res.state, 'ojjul').treatyFlow).toBe(50);
   });
 
   /**
@@ -148,14 +148,14 @@ describe('ledgers', () => {
         {
           op: 'form_treaty',
           treatyType: 'tribute',
-          parties: ['freeworlds', 'hutt'],
-          terms: { incomePerTurn: { freeworlds: -300, hutt: 300 } },
+          parties: ['freeworlds', 'ojjul'],
+          terms: { incomePerTurn: { freeworlds: -300, ojjul: 300 } },
         },
       ],
       'extraction',
     );
     expect(res.rejections).toHaveLength(0);
-    expect(ledgerFor(res.state, 'hutt').treatyFlow).toBe(MAX_TREATY_INCOME_PER_TURN);
+    expect(ledgerFor(res.state, 'ojjul').treatyFlow).toBe(MAX_TREATY_INCOME_PER_TURN);
     expect(ledgerFor(res.state, 'freeworlds').treatyFlow).toBe(-MAX_TREATY_INCOME_PER_TURN);
     expect(res.notes.join(' ')).toMatch(/Trimmed a treaty flow/);
   });
@@ -177,17 +177,17 @@ describe('ledgers', () => {
       [
         // pays out
         {
-          op: 'form_treaty', treatyType: 'tribute', parties: ['freeworlds', 'hutt'],
-          terms: { incomePerTurn: { freeworlds: -150, hutt: 150 } },
+          op: 'form_treaty', treatyType: 'tribute', parties: ['freeworlds', 'ojjul'],
+          terms: { incomePerTurn: { freeworlds: -150, ojjul: 150 } },
         },
         // skimmed by a rival
         {
-          op: 'deploy_agent', ownerFactionId: 'hutt', systemId: 'ark-1',
+          op: 'deploy_agent', ownerFactionId: 'ojjul', systemId: 'ark-1',
           mission: 'theft', effect: { kind: 'income_penalty', perTurn: 60 },
         },
         // runs an operative of its own
         {
-          op: 'deploy_agent', ownerFactionId: 'freeworlds', systemId: 'kes-1',
+          op: 'deploy_agent', ownerFactionId: 'freeworlds', systemId: 'ilv-1',
           mission: 'surveillance', effect: { kind: 'intel', perTurn: 1 },
         },
         // and holds an arrangement that pays
@@ -223,7 +223,7 @@ describe('ledgers', () => {
       [
         {
           op: 'deploy_agent',
-          ownerFactionId: 'hutt',
+          ownerFactionId: 'ojjul',
           systemId: 'ark-1',
           mission: 'theft',
           effect: { kind: 'income_penalty', perTurn: 60 },
@@ -238,7 +238,7 @@ describe('ledgers', () => {
 });
 
 describe('agents', () => {
-  const withAgent = (effect: unknown, owner = 'hutt', system = 'ark-1') =>
+  const withAgent = (effect: unknown, owner = 'ojjul', system = 'ark-1') =>
     applyOps(
       fresh(),
       [{ op: 'deploy_agent', ownerFactionId: owner, systemId: system, mission: 'sabotage', effect }],
@@ -257,7 +257,7 @@ describe('agents', () => {
   it('debuffs a stat while in place, and only for the target', () => {
     const res = withAgent({ kind: 'stat_debuff', stat: 'industry', magnitude: 3 });
     expect(effectiveStats(res.state, 'freeworlds').industry).toBe(10 - 3);
-    expect(effectiveStats(res.state, 'hutt').industry).toBe(12);
+    expect(effectiveStats(res.state, 'ojjul').industry).toBe(12);
   });
 
   it('stops having any effect once exposed', () => {
@@ -278,7 +278,7 @@ describe('agents', () => {
       fresh(),
       [
         {
-          op: 'deploy_agent', ownerFactionId: 'hutt', systemId: 'nowhere',
+          op: 'deploy_agent', ownerFactionId: 'ojjul', systemId: 'nowhere',
           mission: 'theft', effect: { kind: 'income_penalty', perTurn: 10 },
         },
       ],
@@ -301,7 +301,7 @@ describe('every mission is mechanically distinct', () => {
   const place = (mission: string, effect: unknown, state = fresh()) =>
     applyOps(
       state,
-      [{ op: 'deploy_agent', ownerFactionId: 'hutt', systemId: 'ark-1', mission, effect }],
+      [{ op: 'deploy_agent', ownerFactionId: 'ojjul', systemId: 'ark-1', mission, effect }],
       'model',
     ).state;
 
@@ -318,10 +318,10 @@ describe('every mission is mechanically distinct', () => {
       },
     ]).state;
 
-    expect(ordersVisibleTo(hidden, 'hutt')).toHaveLength(0);
+    expect(ordersVisibleTo(hidden, 'ojjul')).toHaveLength(0);
 
     const watched = place('surveillance', { kind: 'intel', revealsOrders: true }, hidden);
-    expect(ordersVisibleTo(watched, 'hutt').map((o) => o.label)).toEqual(['secret slipway']);
+    expect(ordersVisibleTo(watched, 'ojjul').map((o) => o.label)).toEqual(['secret slipway']);
   });
 
   it('stops revealing once the watcher is burned', () => {
@@ -334,7 +334,7 @@ describe('every mission is mechanically distinct', () => {
     ]).state;
     const watched = place('surveillance', { kind: 'intel', revealsOrders: true }, hidden);
     watched.agents[0]!.exposed = true;
-    expect(ordersVisibleTo(watched, 'hutt')).toHaveLength(0);
+    expect(ordersVisibleTo(watched, 'ojjul')).toHaveLength(0);
   });
 
   it('gives a watcher far less exposure risk than an assassin', () => {
@@ -385,9 +385,9 @@ describe('every mission is mechanically distinct', () => {
   it('collapses relations on a successful killing, even undetected', () => {
     const state = place('assassination', { kind: 'hull_damage', perTurn: 3 });
     state.agents[0]!.successChance = 100;
-    const before = state.factions.find((f) => f.id === 'freeworlds')!.disposition['hutt'] ?? 0;
+    const before = state.factions.find((f) => f.id === 'freeworlds')!.disposition['ojjul'] ?? 0;
     const after = tickTurn(state).state.factions.find((f) => f.id === 'freeworlds')!;
-    expect(after.disposition['hutt']!).toBeLessThan(before);
+    expect(after.disposition['ojjul']!).toBeLessThan(before);
   });
 
   it('exposes a failed assassin far more often than a failed watcher', () => {
@@ -417,7 +417,7 @@ describe('treaties', () => {
           op: 'form_treaty',
           treatyType: 'ceasefire',
           parties: ['freeworlds', 'vigil'],
-          terms: { mutualDefenseTrigger: 'an attack on Arkanis Prime' },
+          terms: { mutualDefenseTrigger: 'an attack on Arkane Prime' },
           durationTurns: 3,
           ...extra,
         },
@@ -461,14 +461,14 @@ describe('treaties', () => {
     expect(
       applyOps(
         fresh(),
-        [{ op: 'form_treaty', treatyType: 'ceasefire', parties: ['hutt', 'hutt'], terms: {} }],
+        [{ op: 'form_treaty', treatyType: 'ceasefire', parties: ['ojjul', 'ojjul'], terms: {} }],
         'extraction',
       ).rejections.map((r) => r.code),
     ).toEqual(['illegal_value']);
     expect(
       applyOps(
         fresh(),
-        [{ op: 'form_treaty', treatyType: 'ceasefire', parties: ['hutt', 'ewoks'], terms: {} }],
+        [{ op: 'form_treaty', treatyType: 'ceasefire', parties: ['ojjul', 'ewoks'], terms: {} }],
         'extraction',
       ).rejections.map((r) => r.code),
     ).toEqual(['unknown_faction']);
@@ -497,23 +497,23 @@ describe('treaties', () => {
 describe('ships in systems', () => {
   it('moves ships in and out, clearing empty entries', () => {
     const added = applyOps(fresh(), [
-      { op: 'adjust_ships', systemId: 'slu-3', factionId: 'krayt', delta: 5 },
+      { op: 'adjust_ships', systemId: 'sek-3', factionId: 'drajk', delta: 5 },
     ]).state;
-    expect(hullsAt(sys(added, 'slu-3'), 'krayt')).toBe(5);
+    expect(hullsAt(sys(added, 'sek-3'), 'drajk')).toBe(5);
 
     const removed = applyOps(added, [
-      { op: 'adjust_ships', systemId: 'slu-3', factionId: 'krayt', delta: -9 },
+      { op: 'adjust_ships', systemId: 'sek-3', factionId: 'drajk', delta: -9 },
     ]).state;
     // The entry is cleared entirely, not left at zero — `presentAt` and the
     // income split must never see a faction that is not there.
-    expect(hullsAt(sys(removed, 'slu-3'), 'krayt')).toBe(0);
-    expect(sys(removed, 'slu-3').ships.krayt).toBeUndefined();
+    expect(hullsAt(sys(removed, 'sek-3'), 'drajk')).toBe(0);
+    expect(sys(removed, 'sek-3').ships.drajk).toBeUndefined();
   });
 
   it('rejects unknown systems and factions', () => {
     expect(
       applyOps(fresh(), [
-        { op: 'adjust_ships', systemId: 'nope', factionId: 'krayt', delta: 1 },
+        { op: 'adjust_ships', systemId: 'nope', factionId: 'drajk', delta: 1 },
       ]).rejections.map((r) => r.code),
     ).toEqual(['unknown_system']);
   });
@@ -532,7 +532,7 @@ describe('faction compulsions exist for every power', () => {
     const textOf = (id: string) =>
       state.factions.find((f) => f.id === id)!.compulsions.map((c) => c.text).join(' ');
     expect(textOf('vigil')).toMatch(/complicity|no fleet under way/i);
-    expect(textOf('meridian')).toMatch(/spice|slave/i);
+    expect(textOf('meridian')).toMatch(/narcotics|slave/i);
   });
 });
 
@@ -587,7 +587,7 @@ describe('ships cost money, in code rather than in a prompt', () => {
     const res = applyOps(start, [
       {
         op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
-        originId: 'ark-3', targetId: 'slu-6', force: 5, label: 'sortie',
+        originId: 'ark-3', targetId: 'sek-6', force: 5, label: 'sortie',
       },
     ]);
     // Ships in transit have left the origin but still exist and still cost.
@@ -606,10 +606,10 @@ describe('ships cost money, in code rather than in a prompt', () => {
     const start = fresh();
     const res = applyOps(start, [
       { op: 'adjust_fleet', factionId: 'freeworlds', delta: 3 },
-      { op: 'adjust_fleet', factionId: 'krayt', delta: 2 },
+      { op: 'adjust_fleet', factionId: 'drajk', delta: 2 },
     ]);
     expect(purse(res.state, 'freeworlds')).toBe(purse(start, 'freeworlds') - 3 * SHIP_COST);
-    expect(purse(res.state, 'krayt')).toBe(purse(start, 'krayt') - 2 * SHIP_COST);
+    expect(purse(res.state, 'drajk')).toBe(purse(start, 'drajk') - 2 * SHIP_COST);
   });
 });
 
@@ -709,12 +709,12 @@ describe('a covert service costs money and has a ceiling', () => {
     // Not a flat constant: the Nars at guile 18 run a real service, the Iron
     // Vigil at 11 manages a couple of watchers.
     const state = fresh();
-    expect(maxAgentsFor(state, 'hutt')).toBeGreaterThan(maxAgentsFor(state, 'vigil'));
+    expect(maxAgentsFor(state, 'ojjul')).toBeGreaterThan(maxAgentsFor(state, 'vigil'));
 
     let s = fresh();
     s.factions.find((f) => f.id === 'vigil')!.credits = 5000;
     const cap = maxAgentsFor(s, 'vigil');
-    const targets = ['ark-2', 'slu-3', 'slu-5', 'slu-6', 'kes-4'];
+    const targets = ['ark-2', 'sek-3', 'sek-5', 'sek-6', 'ilv-4'];
     for (let i = 0; i < cap; i++) {
       const res = deploy(s, 'vigil', targets[i]!);
       expect(res.rejections, `deployment ${i + 1} of ${cap}`).toHaveLength(0);
@@ -807,7 +807,7 @@ describe('a commitment binding another power needs their consent', () => {
   const marriage: Op = {
     op: 'establish_commitment',
     kind: 'dynastic_marriage',
-    factionIds: ['meridian', 'hutt'],
+    factionIds: ['meridian', 'ojjul'],
     text: 'declared, not negotiated',
     exclusive: true,
   };
@@ -866,7 +866,7 @@ describe('commitment income is shared, not directional', () => {
         {
           op: 'establish_commitment',
           kind: 'debt',
-          factionIds: ['hutt', 'freeworlds'],
+          factionIds: ['ojjul', 'freeworlds'],
           text: 'The Free Worlds owe the Combine 400, repaid at 25 a turn.',
           exclusive: false,
           incomePerTurn: 25,
@@ -878,11 +878,11 @@ describe('commitment income is shared, not directional', () => {
       // shape), so it is declared the way it would really land: extracted
       // from an agreed channel, not as an ordinary action.
       'extraction',
-      'hutt',
+      'ojjul',
     );
     expect(out.rejections).toHaveLength(0);
     // Both sides earn. Nobody pays.
-    expect(ledgerFor(out.state, 'hutt').commitmentFlow).toBeGreaterThan(0);
+    expect(ledgerFor(out.state, 'ojjul').commitmentFlow).toBeGreaterThan(0);
     expect(ledgerFor(out.state, 'freeworlds').commitmentFlow).toBeGreaterThan(0);
   });
 
@@ -893,15 +893,15 @@ describe('commitment income is shared, not directional', () => {
         {
           op: 'form_treaty',
           treatyType: 'tribute',
-          parties: ['freeworlds', 'hutt'],
-          terms: { incomePerTurn: { freeworlds: -25, hutt: 25 } },
+          parties: ['freeworlds', 'ojjul'],
+          terms: { incomePerTurn: { freeworlds: -25, ojjul: 25 } },
           summary: 'debt service',
         },
       ],
       'extraction',
-      'hutt',
+      'ojjul',
     );
-    expect(ledgerFor(out.state, 'hutt').treatyFlow).toBe(25);
+    expect(ledgerFor(out.state, 'ojjul').treatyFlow).toBe(25);
     expect(ledgerFor(out.state, 'freeworlds').treatyFlow).toBe(-25);
   });
 });
@@ -1037,21 +1037,21 @@ describe('a commitment binds people, so it moves how they see each other', () =>
 
   it('raises both parties, even with no money attached', () => {
     const state = fresh();
-    const a = disp(state, 'freeworlds', 'hutt');
-    const b = disp(state, 'hutt', 'freeworlds');
+    const a = disp(state, 'freeworlds', 'ojjul');
+    const b = disp(state, 'ojjul', 'freeworlds');
 
-    const out = applyOps(state, [bind(['freeworlds', 'hutt'])], 'extraction', 'freeworlds');
+    const out = applyOps(state, [bind(['freeworlds', 'ojjul'])], 'extraction', 'freeworlds');
     expect(out.rejections).toHaveLength(0);
     // Zero flow, and still not inert.
     expect(out.state.commitments.at(-1)!.incomePerTurn).toBe(0);
-    expect(disp(out.state, 'freeworlds', 'hutt')).toBe(a + COMMITMENT_GOODWILL);
-    expect(disp(out.state, 'hutt', 'freeworlds')).toBe(b + COMMITMENT_GOODWILL);
+    expect(disp(out.state, 'freeworlds', 'ojjul')).toBe(a + COMMITMENT_GOODWILL);
+    expect(disp(out.state, 'ojjul', 'freeworlds')).toBe(b + COMMITMENT_GOODWILL);
   });
 
   it('takes it back when the commitment is dissolved', () => {
     const state = fresh();
-    const before = disp(state, 'freeworlds', 'hutt');
-    const bound = applyOps(state, [bind(['freeworlds', 'hutt'])], 'extraction', 'freeworlds');
+    const before = disp(state, 'freeworlds', 'ojjul');
+    const bound = applyOps(state, [bind(['freeworlds', 'ojjul'])], 'extraction', 'freeworlds');
     const id = bound.state.commitments.at(-1)!.id;
 
     const out = applyOps(
@@ -1060,14 +1060,14 @@ describe('a commitment binds people, so it moves how they see each other', () =>
       'model',
       'freeworlds',
     );
-    expect(disp(out.state, 'freeworlds', 'hutt')).toBe(before);
+    expect(disp(out.state, 'freeworlds', 'ojjul')).toBe(before);
   });
 
   it('moves nothing for a commitment that binds only its author', () => {
     const state = fresh();
-    const before = disp(state, 'freeworlds', 'hutt');
+    const before = disp(state, 'freeworlds', 'ojjul');
     const out = applyOps(state, [bind(['freeworlds'])], 'model', 'freeworlds');
     expect(out.rejections).toHaveLength(0);
-    expect(disp(out.state, 'freeworlds', 'hutt')).toBe(before);
+    expect(disp(out.state, 'freeworlds', 'ojjul')).toBe(before);
   });
 });

@@ -63,7 +63,7 @@ function programme(ops: Op[], player = 'meridian') {
 }
 
 /**
- * A development on tio-1 (Meridian, value 7). Deliberately an *ordinary* point
+ * A development on tor-1 (Meridian, value 7). Deliberately an *ordinary* point
  * rather than one that crosses into hub status: those are priced from what they
  * unlock and cost an order of magnitude more, which the hub tests below assert
  * directly.
@@ -81,14 +81,14 @@ const develop = (targetId: string, magnitude = 1, factionId = 'meridian'): Op =>
 
 describe('a completed programme changes the world', () => {
   it('raises strategic value, which was previously immutable at runtime', () => {
-    const before = sys(fresh(), 'tio-1').strategicValue;
-    const { finished } = programme([develop('tio-1', 2)]);
-    expect(sys(finished, 'tio-1').strategicValue).toBe(before + 2);
+    const before = sys(fresh(), 'tor-1').strategicValue;
+    const { finished } = programme([develop('tor-1', 2)]);
+    expect(sys(finished, 'tor-1').strategicValue).toBe(before + 2);
   });
 
   it('raises the income that strategic value pays, so the investment returns', () => {
     const plain = runOut(fresh());
-    const { finished } = programme([develop('tio-1', 2)]);
+    const { finished } = programme([develop('tor-1', 2)]);
     expect(ledgerFor(finished, 'meridian').territory).toBeGreaterThan(
       ledgerFor(plain, 'meridian').territory,
     );
@@ -96,7 +96,7 @@ describe('a completed programme changes the world', () => {
 
   it('says what it delivered, in the note the player actually reads', () => {
     const state = fresh();
-    const issued = applyOps(state, [develop('tio-1', 1)], 'model', 'meridian');
+    const issued = applyOps(state, [develop('tor-1', 1)], 'model', 'meridian');
     let out = issued.state;
     let notes: string[] = [];
     for (let i = 0; i < 4 && out.pendingOrders.length > 0; i++) {
@@ -114,21 +114,21 @@ describe('a completed programme changes the world', () => {
       [
         {
           op: 'issue_order', factionId: 'meridian', type: 'construction_infrastructure',
-          originId: 'slu-2', targetId: 'slu-2', durationTurns: 3, label: 'surveys',
+          originId: 'sek-2', targetId: 'sek-2', durationTurns: 3, label: 'surveys',
         },
       ],
       'model',
       'meridian',
     );
     const finished = runOut(issued.state);
-    expect(sys(finished, 'slu-2').strategicValue).toBe(sys(state, 'slu-2').strategicValue);
+    expect(sys(finished, 'sek-2').strategicValue).toBe(sys(state, 'sek-2').strategicValue);
     expect(finished.pendingOrders).toHaveLength(0);
   });
 
   it('stops at the ceiling and says so rather than silently overshooting', () => {
     const state = fresh();
-    sys(state, 'tio-1').strategicValue = 10;
-    const issued = applyOps(state, [develop('tio-1', 2)], 'model', 'meridian');
+    sys(state, 'tor-1').strategicValue = 10;
+    const issued = applyOps(state, [develop('tor-1', 2)], 'model', 'meridian');
     expect(issued.rejections).toHaveLength(0);
     let out = issued.state;
     let notes: string[] = [];
@@ -137,7 +137,7 @@ describe('a completed programme changes the world', () => {
       out = tick.state;
       notes = tick.notes;
     }
-    expect(sys(out, 'tio-1').strategicValue).toBe(10);
+    expect(sys(out, 'tor-1').strategicValue).toBe(10);
     expect(notes.join(' ')).toMatch(/as far as it can be/);
   });
 });
@@ -145,7 +145,7 @@ describe('a completed programme changes the world', () => {
 describe('garrison work, told apart from passive regrowth', () => {
   it('raises a garrison by the amount bought, on top of what regrowth gives', () => {
     const withPayload = fresh();
-    sys(withPayload, 'slu-2').garrison = 2;
+    sys(withPayload, 'sek-2').garrison = 2;
     const without = structuredClone(withPayload);
 
     const raised = runOut(
@@ -154,7 +154,7 @@ describe('garrison work, told apart from passive regrowth', () => {
         [
           {
             op: 'issue_order', factionId: 'meridian', type: 'garrison_raising',
-            originId: 'slu-2', targetId: 'slu-2', durationTurns: 3, label: 'levy',
+            originId: 'sek-2', targetId: 'sek-2', durationTurns: 3, label: 'levy',
             onComplete: { kind: 'raise_garrison', magnitude: 4 },
           },
         ],
@@ -168,7 +168,7 @@ describe('garrison work, told apart from passive regrowth', () => {
         [
           {
             op: 'issue_order', factionId: 'meridian', type: 'garrison_raising',
-            originId: 'slu-2', targetId: 'slu-2', durationTurns: 3, label: 'levy',
+            originId: 'sek-2', targetId: 'sek-2', durationTurns: 3, label: 'levy',
           },
         ],
         'model',
@@ -176,19 +176,19 @@ describe('garrison work, told apart from passive regrowth', () => {
       ).state,
     );
 
-    expect(sys(raised, 'slu-2').garrison - sys(idle, 'slu-2').garrison).toBe(4);
+    expect(sys(raised, 'sek-2').garrison - sys(idle, 'sek-2').garrison).toBe(4);
   });
 
   it('fortifies by raising the ceiling, which regrowth can never do', () => {
     const state = fresh();
-    const before = sys(state, 'slu-2').garrisonMax;
+    const before = sys(state, 'sek-2').garrisonMax;
     const finished = runOut(
       applyOps(
         state,
         [
           {
             op: 'issue_order', factionId: 'meridian', type: 'fortification',
-            originId: 'slu-2', targetId: 'slu-2', durationTurns: 3, label: 'bastion',
+            originId: 'sek-2', targetId: 'sek-2', durationTurns: 3, label: 'bastion',
             onComplete: { kind: 'fortify', magnitude: 2 },
           },
         ],
@@ -196,20 +196,20 @@ describe('garrison work, told apart from passive regrowth', () => {
         'meridian',
       ).state,
     );
-    expect(sys(finished, 'slu-2').garrisonMax).toBe(before + 2);
+    expect(sys(finished, 'sek-2').garrisonMax).toBe(before + 2);
   });
 });
 
 describe('hulls from a construction programme', () => {
   it('delivers them at the target, and bills them exactly once', () => {
     const state = fresh();
-    const before = hullsAt(sys(state, 'slu-2'), 'meridian');
+    const before = hullsAt(sys(state, 'sek-2'), 'meridian');
     const issued = applyOps(
       state,
       [
         {
           op: 'issue_order', factionId: 'meridian', type: 'capital_ship_construction',
-          originId: 'slu-2', targetId: 'slu-2', durationTurns: 5, label: 'battle line',
+          originId: 'sek-2', targetId: 'sek-2', durationTurns: 5, label: 'battle line',
           onComplete: { kind: 'commission_ships', magnitude: 3 },
         },
       ],
@@ -224,7 +224,7 @@ describe('hulls from a construction programme', () => {
 
     const atIssue = fac(issued.state, 'meridian').credits;
     const finished = runOut(issued.state);
-    expect(hullsAt(sys(finished, 'slu-2'), 'meridian')).toBe(before + 3);
+    expect(hullsAt(sys(finished, 'sek-2'), 'meridian')).toBe(before + 3);
     // Income and upkeep move credits over five turns, so the assertion that
     // matters is that DELIVERY did not charge again: the hulls arrived without
     // a second SHIP_COST debit landing on the completion turn.
@@ -255,7 +255,7 @@ describe('the payload is bounded in code, not in a prompt', () => {
       [
         {
           op: 'issue_order', factionId: 'meridian', type: 'garrison_raising',
-          originId: 'slu-2', targetId: 'slu-2', durationTurns: 3,
+          originId: 'sek-2', targetId: 'sek-2', durationTurns: 3,
           onComplete: { kind: 'develop_system', magnitude: 2 },
         },
       ],
@@ -276,7 +276,7 @@ describe('the payload is bounded in code, not in a prompt', () => {
       [
         {
           op: 'issue_order', factionId: 'meridian', type: 'courier',
-          originId: 'slu-2', targetId: 'slu-1', durationTurns: 1,
+          originId: 'sek-2', targetId: 'sek-1', durationTurns: 1,
           onComplete: { kind: 'develop_system', magnitude: 1 },
         },
       ],
@@ -289,14 +289,14 @@ describe('the payload is bounded in code, not in a prompt', () => {
 
   it('refuses a payload on a movement order without stripping the origin of ships', () => {
     const state = fresh();
-    setShipsAt(sys(state, 'slu-2'), 'meridian', 6);
-    const before = hullsAt(sys(state, 'slu-2'), 'meridian');
+    setShipsAt(sys(state, 'sek-2'), 'meridian', 6);
+    const before = hullsAt(sys(state, 'sek-2'), 'meridian');
     const out = applyOps(
       state,
       [
         {
           op: 'issue_order', factionId: 'meridian', type: 'fleet_movement',
-          originId: 'slu-2', targetId: 'slu-1', force: 4,
+          originId: 'sek-2', targetId: 'sek-1', force: 4,
           onComplete: { kind: 'commission_ships', magnitude: 2 },
         },
       ],
@@ -306,14 +306,14 @@ describe('the payload is bounded in code, not in a prompt', () => {
     expect(out.rejections[0]!.code).toBe('illegal_value');
     // The rejection has to happen BEFORE the movement branch draws ships off
     // the origin, or a refused order would quietly delete a fleet.
-    expect(hullsAt(sys(out.state, 'slu-2'), 'meridian')).toBe(before);
+    expect(hullsAt(sys(out.state, 'sek-2'), 'meridian')).toBe(before);
     expect(out.state.pendingOrders).toHaveLength(0);
   });
 
   it('refuses works on a world the faction neither holds nor has ships over', () => {
     // Priced from the ACTOR's marginal income, a development on a rival's world
     // costs the floor and hands the rival the improvement. Presence is the fix.
-    const out = applyOps(fresh(), [develop('tio-3', 2)], 'model', 'meridian');
+    const out = applyOps(fresh(), [develop('tor-3', 2)], 'model', 'meridian');
     expect(out.rejections[0]!.code).toBe('no_presence');
     expect(out.state.pendingOrders).toHaveLength(0);
   });
@@ -329,7 +329,7 @@ describe('the payload is bounded in code, not in a prompt', () => {
   });
 
   it('trims an over-large ask to the cap and logs the clamp', () => {
-    const out = applyOps(fresh(), [develop('tio-1', 9)], 'model', 'meridian');
+    const out = applyOps(fresh(), [develop('tor-1', 9)], 'model', 'meridian');
     expect(out.rejections).toHaveLength(0);
     const order = out.state.pendingOrders[0]!;
     expect(order.onComplete!.magnitude).toBe(EFFECT_CAPS.develop_system);
@@ -339,12 +339,12 @@ describe('the payload is bounded in code, not in a prompt', () => {
 
   it('trims to what the treasury can cover rather than refusing outright', () => {
     const state = fresh();
-    const one = developmentCost(state, sys(state, 'tio-1'), 'meridian', 1);
-    const two = developmentCost(state, sys(state, 'tio-1'), 'meridian', 2);
+    const one = developmentCost(state, sys(state, 'tor-1'), 'meridian', 1);
+    const two = developmentCost(state, sys(state, 'tor-1'), 'meridian', 2);
     expect(two).toBeGreaterThan(one);
     fac(state, 'meridian').credits = one + 10;
 
-    const out = applyOps(state, [develop('tio-1', 2)], 'model', 'meridian');
+    const out = applyOps(state, [develop('tor-1', 2)], 'model', 'meridian');
     expect(out.rejections).toHaveLength(0);
     expect(out.state.pendingOrders[0]!.onComplete!.magnitude).toBe(1);
     expect(fac(out.state, 'meridian').credits).toBe(10);
@@ -363,7 +363,7 @@ describe('the payload is bounded in code, not in a prompt', () => {
   it('issues the order with nothing commissioned when it cannot pay, and quotes the price', () => {
     const state = fresh();
     fac(state, 'meridian').credits = 5;
-    const out = applyOps(state, [develop('tio-1', 1)], 'model', 'meridian');
+    const out = applyOps(state, [develop('tor-1', 1)], 'model', 'meridian');
     expect(out.rejections).toHaveLength(0);
     // The order exists; it simply delivers nothing.
     expect(out.state.pendingOrders).toHaveLength(1);
@@ -378,15 +378,15 @@ describe('the payload is bounded in code, not in a prompt', () => {
   it('charges the treasury when the order goes out, not when it lands', () => {
     const state = fresh();
     const before = fac(state, 'meridian').credits;
-    const price = developmentCost(state, sys(state, 'tio-1'), 'meridian', 2);
-    const out = applyOps(state, [develop('tio-1', 2)], 'model', 'meridian');
+    const price = developmentCost(state, sys(state, 'tor-1'), 'meridian', 2);
+    const out = applyOps(state, [develop('tor-1', 2)], 'model', 'meridian');
     expect(fac(out.state, 'meridian').credits).toBe(before - price);
     expect(out.state.pendingOrders[0]!.investedCredits).toBe(price);
   });
 
   it('caps every kind, so a kind added later cannot be unbounded', () => {
     const state = fresh();
-    const site = sys(state, 'tio-1');
+    const site = sys(state, 'tor-1');
     for (const kind of Object.keys(EFFECT_CAPS) as (keyof typeof EFFECT_CAPS)[]) {
       expect(EFFECT_CAPS[kind]).toBeGreaterThan(0);
       const trimmed = trimOrderEffect(
@@ -420,10 +420,10 @@ describe('the payload is bounded in code, not in a prompt', () => {
 describe('a world that changes hands mid-programme', () => {
   it('still gets its infrastructure, because concrete does not pick sides', () => {
     const state = fresh();
-    const issued = applyOps(state, [develop('tio-1', 2)], 'model', 'meridian');
-    sys(issued.state, 'tio-1').controllerFactionId = 'vigil';
+    const issued = applyOps(state, [develop('tor-1', 2)], 'model', 'meridian');
+    sys(issued.state, 'tor-1').controllerFactionId = 'vigil';
     const finished = runOut(issued.state);
-    expect(sys(finished, 'tio-1').strategicValue).toBe(sys(state, 'tio-1').strategicValue + 2);
+    expect(sys(finished, 'tor-1').strategicValue).toBe(sys(state, 'tor-1').strategicValue + 2);
     expect(finished.eventLog.some((e) => /now serve vigil/.test(e.text))).toBe(true);
   });
 
@@ -434,17 +434,17 @@ describe('a world that changes hands mid-programme', () => {
       [
         {
           op: 'issue_order', factionId: 'meridian', type: 'capital_ship_construction',
-          originId: 'slu-2', targetId: 'slu-2', durationTurns: 5, label: 'battle line',
+          originId: 'sek-2', targetId: 'sek-2', durationTurns: 5, label: 'battle line',
           onComplete: { kind: 'commission_ships', magnitude: 3 },
         },
       ],
       'model',
       'meridian',
     );
-    const before = hullsAt(sys(issued.state, 'slu-2'), 'meridian');
-    sys(issued.state, 'slu-2').controllerFactionId = 'vigil';
+    const before = hullsAt(sys(issued.state, 'sek-2'), 'meridian');
+    sys(issued.state, 'sek-2').controllerFactionId = 'vigil';
     const finished = runOut(issued.state);
-    expect(hullsAt(sys(finished, 'slu-2'), 'meridian')).toBe(before);
+    expect(hullsAt(sys(finished, 'sek-2'), 'meridian')).toBe(before);
     expect(finished.eventLog.some((e) => /yards were lost with the world/.test(e.text))).toBe(true);
   });
 });
@@ -456,7 +456,7 @@ describe('money sunk into works', () => {
       state,
       // `partial` is the bank-what-you-achieved case. The default is `cancel`,
       // which is the test below.
-      [{ ...develop('tio-1', 2), onInterrupt: 'partial' } as Op],
+      [{ ...develop('tor-1', 2), onInterrupt: 'partial' } as Op],
       'model',
       'meridian',
     );
@@ -483,7 +483,7 @@ describe('money sunk into works', () => {
     const state = fresh();
     const issued = applyOps(
       state,
-      [{ ...develop('tio-1', 2), onInterrupt: 'cancel' } as Op],
+      [{ ...develop('tor-1', 2), onInterrupt: 'cancel' } as Op],
       'model',
       'meridian',
     );
@@ -503,7 +503,7 @@ describe('money sunk into works', () => {
 
   it('comes back when the faction recalls its own order', () => {
     const state = fresh();
-    const issued = applyOps(state, [develop('tio-1', 2)], 'model', 'meridian');
+    const issued = applyOps(state, [develop('tor-1', 2)], 'model', 'meridian');
     const order = issued.state.pendingOrders[0]!;
     const before = fac(issued.state, 'meridian').credits;
     const out = applyOps(
@@ -580,7 +580,7 @@ describe('standing arrangements pay', () => {
   it('derives the ceiling from influence, putting the trading house above the remnant', () => {
     const state = fresh();
     expect(maxCommitmentIncomeFor(state, 'meridian')).toBe(50);
-    expect(maxCommitmentIncomeFor(state, 'hutt')).toBe(40);
+    expect(maxCommitmentIncomeFor(state, 'ojjul')).toBe(40);
     expect(maxCommitmentIncomeFor(state, 'vigil')).toBe(MIN_COMMITMENT_INCOME_CEILING);
   });
 
@@ -611,7 +611,7 @@ describe('standing arrangements pay', () => {
       [
         {
           op: 'establish_commitment', kind: 'dynastic_marriage',
-          factionIds: ['meridian', 'hutt'], text: 'A marriage binds the houses.', exclusive: true,
+          factionIds: ['meridian', 'ojjul'], text: 'A marriage binds the houses.', exclusive: true,
         },
       ],
       // Binds a faction other than the actor, so it now needs consent —
@@ -640,16 +640,16 @@ describe('development reaches the trade network (the option-C scenario)', () => 
 
   it('turns a developed world into a hub and creates lanes that did not exist', () => {
     const state = funded();
-    expect(sys(state, 'slu-2').strategicValue).toBe(HUB_THRESHOLD - 1);
+    expect(sys(state, 'sek-2').strategicValue).toBe(HUB_THRESHOLD - 1);
     const hubsBefore = tradeHubs(state.systems).length;
     const routesBefore = tradeRoutes(state).length;
 
-    const issued = applyOps(state, [develop('slu-2', 1)], 'model', 'meridian');
+    const issued = applyOps(state, [develop('sek-2', 1)], 'model', 'meridian');
     expect(issued.rejections).toHaveLength(0);
     const finished = runOut(issued.state);
 
-    expect(sys(finished, 'slu-2').strategicValue).toBe(HUB_THRESHOLD);
-    expect(tradeHubs(finished.systems).map((h) => h.id)).toContain('slu-2');
+    expect(sys(finished, 'sek-2').strategicValue).toBe(HUB_THRESHOLD);
+    expect(tradeHubs(finished.systems).map((h) => h.id)).toContain('sek-2');
     expect(tradeHubs(finished.systems).length).toBe(hubsBefore + 1);
     expect(tradeRoutes(finished).length).toBeGreaterThan(routesBefore);
   });
@@ -657,7 +657,7 @@ describe('development reaches the trade network (the option-C scenario)', () => 
   it('pays the developer more from the network once the hub exists', () => {
     const plain = runOut(funded());
     const finished = runOut(
-      applyOps(funded(), [develop('slu-2', 1)], 'model', 'meridian').state,
+      applyOps(funded(), [develop('sek-2', 1)], 'model', 'meridian').state,
     );
     expect(ledgerFor(finished, 'meridian').routes).toBeGreaterThan(
       ledgerFor(plain, 'meridian').routes,
@@ -675,14 +675,14 @@ describe('development reaches the trade network (the option-C scenario)', () => 
    */
   it('prices a hub crossing far above an ordinary point, from what each is worth', () => {
     const state = funded();
-    const ordinary = developmentCost(state, sys(state, 'tio-1'), 'meridian', 1);
-    const founding = developmentCost(state, sys(state, 'slu-2'), 'meridian', 1);
+    const ordinary = developmentCost(state, sys(state, 'tor-1'), 'meridian', 1);
+    const founding = developmentCost(state, sys(state, 'sek-2'), 'meridian', 1);
     expect(founding).toBeGreaterThan(10 * ordinary);
   });
 
   it('charges twelve turns of exactly the income it creates', () => {
     const state = funded();
-    const site = sys(state, 'slu-2');
+    const site = sys(state, 'sek-2');
     const before = ledgerFor(state, 'meridian');
 
     const raised: WorldState = {
@@ -698,11 +698,11 @@ describe('development reaches the trade network (the option-C scenario)', () => 
   });
 
   it('never gives a development away, however worthless the world', () => {
-    const state = fresh('krayt');
+    const state = fresh('drajk');
     // Drajk's backwaters sit off the lane network entirely, so the marginal
     // return is small — but never zero-cost.
-    for (const s of state.systems.filter((x) => x.controllerFactionId === 'krayt')) {
-      expect(developmentCost(state, s, 'krayt', 1)).toBeGreaterThanOrEqual(MIN_DEVELOPMENT_COST);
+    for (const s of state.systems.filter((x) => x.controllerFactionId === 'drajk')) {
+      expect(developmentCost(state, s, 'drajk', 1)).toBeGreaterThanOrEqual(MIN_DEVELOPMENT_COST);
     }
   });
 });
@@ -715,7 +715,7 @@ describe('development reaches the trade network (the option-C scenario)', () => 
  * check, so `OUTCOME_GUIDANCE`'s "a failure emits the cost and NOT the thing the
  * player wanted" was a promise made in a prompt and nowhere else.
  *
- * Seen live as Arkanis — a `fortification` action failed its `industry` check
+ * Seen live as Arkane — a `fortification` action failed its `industry` check
  * and the batch contained the cost AND the three-turn order, labelled
  * "(stalled)", while the narrative said the walls were unchanged. That one
  * carried no payload. With one it would have delivered in full.
@@ -725,8 +725,8 @@ describe('payloads are bounded by the check that carried them', () => {
     op: 'issue_order',
     factionId: 'meridian',
     type: 'construction_infrastructure',
-    originId: 'slu-1',
-    targetId: 'slu-2',
+    originId: 'sek-1',
+    targetId: 'sek-2',
     durationTurns: 5,
     interruptible: true,
     onInterrupt: 'cancel',
@@ -785,7 +785,7 @@ describe('payloads are bounded by the check that carried them', () => {
   it('ignores ops that are not orders with payloads', () => {
     const others = [
       { op: 'adjust_credits', factionId: 'meridian', delta: -70 },
-      { op: 'issue_order', factionId: 'meridian', type: 'fleet_movement', originId: 'slu-1', targetId: 'slu-2' },
+      { op: 'issue_order', factionId: 'meridian', type: 'fleet_movement', originId: 'sek-1', targetId: 'sek-2' },
       null,
       'nonsense',
     ];
@@ -793,7 +793,7 @@ describe('payloads are bounded by the check that carried them', () => {
   });
 
   it('closes the measured case: a failed development delivers nothing', () => {
-    // The probe that quantified this: slu-2 crosses HUB_THRESHOLD and Meridian's
+    // The probe that quantified this: sek-2 crosses HUB_THRESHOLD and Meridian's
     // net income goes 309 -> 519, permanently, from a batch the player was told
     // was a failure.
     const seed = createSeedState('meridian');
@@ -809,10 +809,10 @@ describe('payloads are bounded by the check that carried them', () => {
     const unbounded = run([order(1)]);
     const bounded = run(boundPayloadsToOutcome([order(1)], 'failure').ops);
 
-    expect(sys(unbounded, 'slu-2').strategicValue).toBe(7);
+    expect(sys(unbounded, 'sek-2').strategicValue).toBe(7);
     expect(ledgerFor(unbounded, 'meridian').net).toBeGreaterThan(before);
 
-    expect(sys(bounded, 'slu-2').strategicValue).toBe(6);
+    expect(sys(bounded, 'sek-2').strategicValue).toBe(6);
     expect(ledgerFor(bounded, 'meridian').net).toBe(before);
   });
 });
@@ -829,7 +829,7 @@ describe('payloads are bounded by the check that carried them', () => {
  */
 describe('an operative is not placed by a failed attempt', () => {
   const agent = {
-    op: 'deploy_agent', ownerFactionId: 'meridian', systemId: 'tio-1',
+    op: 'deploy_agent', ownerFactionId: 'meridian', systemId: 'tor-1',
     mission: 'surveillance', effect: { kind: 'intel', revealsOrders: true },
   };
 

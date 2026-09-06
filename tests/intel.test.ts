@@ -24,9 +24,9 @@ import {
  * seven turns and produced nothing, because nothing was hidden to find.
  */
 
-const seed = () => createSeedState('hutt');
+const seed = () => createSeedState('ojjul');
 
-/** A world nobody in `hutt`'s employ can see into: Free Worlds space, no Nar ships. */
+/** A world nobody in `ojjul`'s employ can see into: Free Worlds space, no Nar ships. */
 const FOREIGN = 'ark-1';
 
 function withOrder(
@@ -47,7 +47,7 @@ function withOrder(
   ]).state;
 }
 
-const seeOne = (s: WorldState, me = 'hutt') => visibilityOf(s, me, s.pendingOrders[0]!);
+const seeOne = (s: WorldState, me = 'ojjul') => visibilityOf(s, me, s.pendingOrders[0]!);
 
 describe('the public / secret split', () => {
   it('covers every order type exactly once', () => {
@@ -81,10 +81,10 @@ describe('the public / secret split', () => {
 });
 
 describe('what presence buys, and what it does not', () => {
-  /** Give `hutt` a hull at the Free Worlds capital, so the world is in its space. */
+  /** Give `ojjul` a hull at the Free Worlds capital, so the world is in its space. */
   const withShips = (s: WorldState): WorldState => {
     const sys = s.systems.find((x) => x.id === FOREIGN)!;
-    setShipsAt(sys, 'hutt', 3);
+    setShipsAt(sys, 'ojjul', 3);
     return s;
   };
 
@@ -96,8 +96,8 @@ describe('what presence buys, and what it does not', () => {
   });
 
   it('reveals physical work on a world you control', () => {
-    const s = withOrder('retooling', { target: 'kes-2' }); // a Nar-held world
-    expect(s.systems.find((x) => x.id === 'kes-2')!.controllerFactionId).toBe('hutt');
+    const s = withOrder('retooling', { target: 'ilv-2' }); // a Nar-held world
+    expect(s.systems.find((x) => x.id === 'ilv-2')!.controllerFactionId).toBe('ojjul');
     expect(seeOne(s)).toBe('full');
   });
 
@@ -113,15 +113,15 @@ describe('what presence buys, and what it does not', () => {
       // issue without a fleet in reach, so the raider gets one. That is the
       // interesting case rather than an awkward one: the hulls ARE visible in
       // `system.ships`, and the order still is not.
-      const staged = s.systems.find((x) => x.id === 'kes-2')!;
+      const staged = s.systems.find((x) => x.id === 'ilv-2')!;
       setShipsAt(staged, 'freeworlds', 4);
       s = applyOps(s, [
         {
           op: 'issue_order',
           factionId: 'freeworlds',
           type: t,
-          originId: 'kes-2',
-          targetId: 'kes-2',
+          originId: 'ilv-2',
+          targetId: 'ilv-2',
           durationTurns: 3,
           label: 'the thing itself',
           visibility: [],
@@ -129,10 +129,10 @@ describe('what presence buys, and what it does not', () => {
       ], 'model').state;
 
       expect(s.pendingOrders, `${t} was not issued`).toHaveLength(1);
-      expect(seeOne(s), `${t} on a world hutt controls`).toBe('rumour');
+      expect(seeOne(s), `${t} on a world ojjul controls`).toBe('rumour');
       // The ships are not redacted, and should not be: you can see raiders
       // gathering without knowing a raid is the plan.
-      expect(hullsAt(s.systems.find((x) => x.id === 'kes-2')!, 'freeworlds')).toBe(4);
+      expect(hullsAt(s.systems.find((x) => x.id === 'ilv-2')!, 'freeworlds')).toBe(4);
     }
   });
 
@@ -147,7 +147,7 @@ describe('what an operative buys', () => {
     applyOps(s, [
       {
         op: 'deploy_agent',
-        ownerFactionId: 'hutt',
+        ownerFactionId: 'ojjul',
         systemId,
         mission: 'surveillance',
         effect: { kind: 'intel', revealsOrders: true },
@@ -175,7 +175,7 @@ describe('what an operative buys', () => {
 describe('a rumour', () => {
   it('names a place and a clock and nothing else', () => {
     const s = withOrder('capital_ship_construction');
-    const { orders, rumours } = observeOrders(s, 'hutt');
+    const { orders, rumours } = observeOrders(s, 'ojjul');
 
     expect(orders).toHaveLength(0);
     // Duration is the order's own, which `CATEGORY_FLOORS` may have clamped
@@ -192,7 +192,7 @@ describe('a rumour', () => {
 
   it('carries no order id, so it cannot be handed to interrupt_order', () => {
     const s = withOrder('espionage');
-    const [rumour] = observeOrders(s, 'hutt').rumours;
+    const [rumour] = observeOrders(s, 'ojjul').rumours;
     expect(Object.keys(rumour!).sort()).toEqual(
       ['durationTurns', 'factionId', 'progress', 'systemId'],
     );
@@ -204,7 +204,7 @@ describe('a rumour', () => {
 
   it('does not leak the label or the type', () => {
     const s = withOrder('capital_ship_construction');
-    const json = JSON.stringify(observeOrders(s, 'hutt').rumours);
+    const json = JSON.stringify(observeOrders(s, 'ojjul').rumours);
     expect(json).not.toContain('the thing itself');
     expect(json).not.toContain('capital_ship_construction');
   });
@@ -212,14 +212,14 @@ describe('a rumour', () => {
 
 describe('the acting power can choose to be seen', () => {
   it('honours an explicit visibility list even for covert work', () => {
-    const s = withOrder('espionage', { visibility: ['hutt'] });
+    const s = withOrder('espionage', { visibility: ['ojjul'] });
     expect(seeOne(s)).toBe('full');
   });
 
   it('always shows you your own orders', () => {
-    const s = withOrder('espionage', { faction: 'hutt' });
+    const s = withOrder('espionage', { faction: 'ojjul' });
     expect(seeOne(s)).toBe('full');
-    expect(ordersVisibleTo(s, 'hutt')).toHaveLength(1);
+    expect(ordersVisibleTo(s, 'ojjul')).toHaveLength(1);
   });
 });
 
@@ -263,7 +263,7 @@ describe('redaction does not corrupt fleet arithmetic', () => {
       },
     ], 'model').state;
 
-    const seen = worldAsSeenBy(s, 'hutt');
+    const seen = worldAsSeenBy(s, 'ojjul');
     expect(seen.pendingOrders).toHaveLength(1);
     expect(seen.pendingOrders[0]!.type).toBe('fleet_movement');
 
@@ -285,7 +285,7 @@ describe('operatives report every turn', () => {
     mission: string,
     effect: unknown,
     systemId = FOREIGN,
-    owner = 'hutt',
+    owner = 'ojjul',
   ): WorldState =>
     applyOps(s, [
       { op: 'deploy_agent', ownerFactionId: owner, systemId, mission, effect },
@@ -334,12 +334,12 @@ describe('operatives report every turn', () => {
    */
   it('never writes a rival’s intelligence into the player’s log', () => {
     let s = deploy(seed(), 'surveillance', { kind: 'intel', revealsOrders: true });
-    s = deploy(s, 'surveillance', { kind: 'intel', revealsOrders: true }, 'kes-2', 'freeworlds');
+    s = deploy(s, 'surveillance', { kind: 'intel', revealsOrders: true }, 'ilv-2', 'freeworlds');
     s = tickTurn(s).state;
 
     const lines = intelLines(s);
     expect(lines).toHaveLength(1);
-    expect(s.eventLog.filter((e) => e.kind === 'intel').every((e) => e.factionId === 'hutt')).toBe(true);
+    expect(s.eventLog.filter((e) => e.kind === 'intel').every((e) => e.factionId === 'ojjul')).toBe(true);
   });
 
   it('reports a burned operative as burned', () => {
@@ -350,9 +350,9 @@ describe('operatives report every turn', () => {
   });
 
   it('says so when the posting has nobody to work against', () => {
-    // kes-4 is unaligned in the seed: nobody to watch.
+    // ilv-4 is unaligned in the seed: nobody to watch.
     const s = tickTurn(
-      deploy(seed(), 'surveillance', { kind: 'intel', revealsOrders: true }, 'kes-4'),
+      deploy(seed(), 'surveillance', { kind: 'intel', revealsOrders: true }, 'ilv-4'),
     ).state;
     expect(intelLines(s)[0]).toMatch(/answers to nobody/i);
   });
@@ -381,10 +381,10 @@ describe('the event log does not leak what the fog hides', () => {
       worldAsSeenBy(s, id).eventLog.some((e) => e.text.includes('the secret slipway'));
 
     expect(line('freeworlds'), 'its owner must still see its own order').toBe(true);
-    expect(line('hutt'), 'a rival must not read it out of the log').toBe(false);
+    expect(line('ojjul'), 'a rival must not read it out of the log').toBe(false);
     // And the redaction of the order itself still holds, so the two agree.
-    expect(observeOrders(s, 'hutt').orders).toHaveLength(0);
-    expect(observeOrders(s, 'hutt').rumours).toHaveLength(1);
+    expect(observeOrders(s, 'ojjul').orders).toHaveLength(0);
+    expect(observeOrders(s, 'ojjul').rumours).toHaveLength(1);
   });
 
   it('leaves a public order in the log for everyone', () => {
@@ -393,14 +393,14 @@ describe('the event log does not leak what the fog hides', () => {
       originId: FOREIGN, targetId: FOREIGN, durationTurns: 3,
       label: 'walls anyone can see', visibility: [],
     }], 'model', 'freeworlds', true).state;
-    for (const id of ['freeworlds', 'hutt', 'vigil']) {
+    for (const id of ['freeworlds', 'ojjul', 'vigil']) {
       expect(worldAsSeenBy(s, id).eventLog.some((e) => e.text.includes('walls anyone can see')), id).toBe(true);
     }
   });
 
   it('honours an explicit visibility list in the log too', () => {
-    const s = applyOps(seed(), [{ ...secretOrder(), visibility: ['hutt'] }], 'model', 'freeworlds', true).state;
-    expect(worldAsSeenBy(s, 'hutt').eventLog.some((e) => e.text.includes('the secret slipway'))).toBe(true);
+    const s = applyOps(seed(), [{ ...secretOrder(), visibility: ['ojjul'] }], 'model', 'freeworlds', true).state;
+    expect(worldAsSeenBy(s, 'ojjul').eventLog.some((e) => e.text.includes('the secret slipway'))).toBe(true);
     expect(worldAsSeenBy(s, 'vigil').eventLog.some((e) => e.text.includes('the secret slipway'))).toBe(false);
   });
 
@@ -410,17 +410,17 @@ describe('the event log does not leak what the fog hides', () => {
    */
   it('does not announce a covert placement to the world it was placed on', () => {
     const s = applyOps(seed(), [{
-      op: 'deploy_agent', ownerFactionId: 'hutt', systemId: FOREIGN,
+      op: 'deploy_agent', ownerFactionId: 'ojjul', systemId: FOREIGN,
       mission: 'surveillance', effect: { kind: 'intel', revealsOrders: true },
-    }], 'model', 'hutt', true).state;
+    }], 'model', 'ojjul', true).state;
 
-    expect(worldAsSeenBy(s, 'hutt').eventLog.some((e) => /places an agent/.test(e.text))).toBe(true);
+    expect(worldAsSeenBy(s, 'ojjul').eventLog.some((e) => /places an agent/.test(e.text))).toBe(true);
     expect(worldAsSeenBy(s, 'freeworlds').eventLog.some((e) => /places an agent/.test(e.text))).toBe(false);
   });
 
   it('defaults to public, so nothing written before this changed', () => {
     const s = seed();
     expect(s.eventLog.every((e) => e.visibleTo === null)).toBe(true);
-    expect(worldAsSeenBy(s, 'krayt').eventLog).toHaveLength(s.eventLog.length);
+    expect(worldAsSeenBy(s, 'drajk').eventLog).toHaveLength(s.eventLog.length);
   });
 });

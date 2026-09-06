@@ -13,45 +13,45 @@ import type { OpInput } from '../src/domain/ops.js';
  * nothing to reconcile them.
  */
 
-const seed = () => createSeedState('hutt');
+const seed = () => createSeedState('ojjul');
 
 const tribute = (perTurn: number, extra: Record<string, unknown> = {}): OpInput =>
   ({
     op: 'form_treaty',
     treatyType: 'tribute',
-    parties: ['krayt', 'freeworlds'],
-    terms: { incomePerTurn: { krayt: perTurn, freeworlds: -perTurn } },
+    parties: ['drajk', 'freeworlds'],
+    terms: { incomePerTurn: { drajk: perTurn, freeworlds: -perTurn } },
     summary: `tribute at ${perTurn}`,
     ...extra,
   }) as OpInput;
 
-const sign = (s: WorldState, op: OpInput) => applyOps(s, [op], 'extraction', 'krayt', true);
+const sign = (s: WorldState, op: OpInput) => applyOps(s, [op], 'extraction', 'drajk', true);
 const live = (s: WorldState) => s.treaties.filter((t) => t.status === 'active');
 
 describe('a renegotiated treaty replaces the old one instead of stacking', () => {
   /**
    * Measured live: both parties said "supersedes" out loud, both treaties
-   * stayed active, and Arkanis believed it paid 40 and paid 65.
+   * stayed active, and Arkane believed it paid 40 and paid 65.
    */
   it('supersedes a prior tribute between the same pair', () => {
     let s = sign(seed(), tribute(40)).state;
     expect(live(s)).toHaveLength(1);
-    const paidOnce = ledgerFor(s, 'krayt').treatyFlow;
+    const paidOnce = ledgerFor(s, 'drajk').treatyFlow;
 
     s = sign(s, tribute(55)).state;
     expect(live(s)).toHaveLength(1);
     expect(s.treaties.filter((t) => t.status === 'superseded')).toHaveLength(1);
 
     // The new rate, not the sum of both.
-    expect(ledgerFor(s, 'krayt').treatyFlow).toBe(55);
-    expect(ledgerFor(s, 'krayt').treatyFlow).not.toBe(paidOnce + 55);
+    expect(ledgerFor(s, 'drajk').treatyFlow).toBe(55);
+    expect(ledgerFor(s, 'drajk').treatyFlow).not.toBe(paidOnce + 55);
   });
 
   it('supersedes a duplicate pact that carries no terms at all', () => {
     const pact = (summary: string): OpInput =>
       ({
         op: 'form_treaty', treatyType: 'non_aggression',
-        parties: ['krayt', 'freeworlds'], terms: {}, summary,
+        parties: ['drajk', 'freeworlds'], terms: {}, summary,
       }) as OpInput;
     let s = sign(seed(), pact('first')).state;
     s = sign(s, pact('second')).state;
@@ -67,8 +67,8 @@ describe('a renegotiated treaty replaces the old one instead of stacking', () =>
     const share = (systemId: string): OpInput =>
       ({
         op: 'form_treaty', treatyType: 'trade_accord',
-        parties: ['krayt', 'freeworlds'],
-        terms: { incomeShares: [{ systemId, factionId: 'krayt', share: 0.05 }] },
+        parties: ['drajk', 'freeworlds'],
+        terms: { incomeShares: [{ systemId, factionId: 'drajk', share: 0.05 }] },
         summary: `lane ${systemId}`,
       }) as OpInput;
     let s = sign(seed(), share('ark-1')).state;
@@ -80,7 +80,7 @@ describe('a renegotiated treaty replaces the old one instead of stacking', () =>
     let s = sign(seed(), tribute(40)).state;
     s = sign(s, {
       op: 'form_treaty', treatyType: 'non_aggression',
-      parties: ['krayt', 'freeworlds'], terms: {}, summary: 'and a pact',
+      parties: ['drajk', 'freeworlds'], terms: {}, summary: 'and a pact',
     } as OpInput).state;
     expect(live(s)).toHaveLength(2);
   });
@@ -89,9 +89,9 @@ describe('a renegotiated treaty replaces the old one instead of stacking', () =>
     let s = sign(seed(), tribute(40)).state;
     s = applyOps(s, [{
       op: 'form_treaty', treatyType: 'tribute',
-      parties: ['krayt', 'meridian'],
-      terms: { incomePerTurn: { krayt: 30, meridian: -30 } }, summary: 'other pair',
-    }], 'extraction', 'krayt', true).state;
+      parties: ['drajk', 'meridian'],
+      terms: { incomePerTurn: { drajk: 30, meridian: -30 } }, summary: 'other pair',
+    }], 'extraction', 'drajk', true).state;
     expect(live(s)).toHaveLength(2);
   });
 
@@ -105,12 +105,12 @@ describe('a renegotiated treaty replaces the old one instead of stacking', () =>
 
     // Still the old rate while the new one is pending.
     expect(live(s)).toHaveLength(1);
-    expect(ledgerFor(s, 'krayt').treatyFlow).toBe(40);
+    expect(ledgerFor(s, 'drajk').treatyFlow).toBe(40);
 
     s = tickTurn(s).state;
     s = tickTurn(s).state;
     expect(live(s)).toHaveLength(1);
-    expect(ledgerFor(s, 'krayt').treatyFlow).toBe(55);
+    expect(ledgerFor(s, 'drajk').treatyFlow).toBe(55);
   });
 });
 
@@ -123,10 +123,10 @@ describe('a treaty that is already void cannot be signed', () => {
   const withCondition = (): OpInput =>
     ({
       op: 'form_treaty', treatyType: 'tribute',
-      parties: ['krayt', 'meridian'],
+      parties: ['drajk', 'meridian'],
       terms: {
-        incomePerTurn: { krayt: 15, meridian: -15 },
-        voidsOn: [{ kind: 'attacks', by: 'krayt', target: 'meridian' }],
+        incomePerTurn: { drajk: 15, meridian: -15 },
+        voidsOn: [{ kind: 'attacks', by: 'drajk', target: 'meridian' }],
       },
       summary: 'a toll voided by war',
     }) as OpInput;
@@ -134,9 +134,9 @@ describe('a treaty that is already void cannot be signed', () => {
   it('is refused when the condition already holds at signature', () => {
     const s = seed();
     // Already at war: the void condition is true before the ink is dry.
-    s.factions.find((f) => f.id === 'krayt')!.disposition.meridian = -90;
+    s.factions.find((f) => f.id === 'drajk')!.disposition.meridian = -90;
 
-    const out = applyOps(s, [withCondition()], 'extraction', 'krayt', true);
+    const out = applyOps(s, [withCondition()], 'extraction', 'drajk', true);
     expect(out.rejections.map((r) => r.code)).toContain('already_void');
     expect(out.state.treaties).toHaveLength(0);
     expect(out.rejections[0]!.message).toMatch(/voids the moment it is signed/);
@@ -144,8 +144,8 @@ describe('a treaty that is already void cannot be signed', () => {
 
   it('signs normally when the condition does not hold', () => {
     const s = seed();
-    s.factions.find((f) => f.id === 'krayt')!.disposition.meridian = 10;
-    const out = applyOps(s, [withCondition()], 'extraction', 'krayt', true);
+    s.factions.find((f) => f.id === 'drajk')!.disposition.meridian = 10;
+    const out = applyOps(s, [withCondition()], 'extraction', 'drajk', true);
     expect(out.rejections).toHaveLength(0);
     expect(live(out.state)).toHaveLength(1);
   });
@@ -161,7 +161,7 @@ describe('a treaty that is already void cannot be signed', () => {
  */
 describe('a refused accord says so in its own transcript', () => {
   it('renders the record line without attributing it to either party', () => {
-    const campaign = Campaign.start('krayt', 'refused', new MemoryCampaignStore());
+    const campaign = Campaign.start('drajk', 'refused', new MemoryCampaignStore());
     campaign.recordTranscript('freeworlds', [
       { speaker: 'player', text: 'Forgive the first hundred and we have a deal.' },
       { speaker: 'faction', text: 'Done. My pen strikes it tonight.' },
@@ -178,7 +178,7 @@ describe('a refused accord says so in its own transcript', () => {
   });
 
   it('survives a save and a reload, because the persona reads it next turn', () => {
-    const campaign = Campaign.start('krayt', 'refused-save', new MemoryCampaignStore());
+    const campaign = Campaign.start('drajk', 'refused-save', new MemoryCampaignStore());
     campaign.recordTranscript('freeworlds', [
       { speaker: 'faction', text: 'Done.' },
       { speaker: 'record', text: '[This accord was REFUSED by the captains.]' },
@@ -192,7 +192,7 @@ describe('a refused accord says so in its own transcript', () => {
  * A treaty flow is a transfer, so it has to conserve.
  *
  * Nothing required the entries to sum to zero, so a negotiated "joint venture
- * that pays both houses" landed as `{krayt: 30, meridian: 20}` — both positive,
+ * that pays both houses" landed as `{drajk: 30, meridian: 20}` — both positive,
  * from nowhere. A playtest closed four of them and conjured 480 credits a turn
  * galaxy-wide at a cost of zero action points, and no NPC ever objected because
  * in fiction the arrangement is Pareto-improving.
@@ -208,17 +208,17 @@ describe('a treaty flow cannot pay out more than it takes in', () => {
       [
         {
           op: 'form_treaty', treatyType: 'trade_accord',
-          parties: ['hutt', 'krayt'],
+          parties: ['ojjul', 'drajk'],
           terms: { incomePerTurn },
           summary: 'joint venture',
         },
       ],
       'extraction',
-      'hutt',
+      'ojjul',
     );
 
   it('drops a flow that pays everyone and takes from nobody', () => {
-    const res = sign({ hutt: 30, krayt: 20 });
+    const res = sign({ ojjul: 30, drajk: 20 });
     expect(res.rejections).toHaveLength(0);
     const treaty = res.state.treaties.at(-1)!;
     // The accord itself survives — only the money that came from nowhere goes.
@@ -227,25 +227,25 @@ describe('a treaty flow cannot pay out more than it takes in', () => {
   });
 
   it('keeps a real transfer exactly as written', () => {
-    const res = sign({ hutt: -45, krayt: 45 });
+    const res = sign({ ojjul: -45, drajk: 45 });
     expect(res.state.treaties.at(-1)!.terms.incomePerTurn).toEqual({
-      hutt: -45,
-      krayt: 45,
+      ojjul: -45,
+      drajk: 45,
     });
     expect(res.notes.join(' ')).not.toMatch(/cannot pay out more/);
   });
 
   it('trims receipts to what is actually being paid', () => {
-    const res = sign({ hutt: 50, krayt: -20 });
+    const res = sign({ ojjul: 50, drajk: -20 });
     const flow = res.state.treaties.at(-1)!.terms.incomePerTurn;
-    expect(flow['krayt']).toBe(-20);
-    expect(flow['hutt']).toBe(20);
+    expect(flow['drajk']).toBe(-20);
+    expect(flow['ojjul']).toBe(20);
     expect(res.notes.join(' ')).toMatch(/cannot pay out more than it takes in/);
   });
 
   it('conserves after the per-entry ceiling has already trimmed', () => {
     // Both trims run, and the conservation one sees the bounded figures.
-    const res = sign({ hutt: 500, krayt: -500 });
+    const res = sign({ ojjul: 500, drajk: -500 });
     const flow = res.state.treaties.at(-1)!.terms.incomePerTurn;
     const sum = Object.values(flow).reduce((a: number, b: number) => a + b, 0);
     expect(sum).toBeLessThanOrEqual(0);
@@ -254,19 +254,19 @@ describe('a treaty flow cannot pay out more than it takes in', () => {
   it('leaves the galaxy unable to print money through diplomacy', () => {
     // The playtest's four accords, all at once.
     let state = seed();
-    for (const other of ['krayt', 'vigil', 'freeworlds', 'meridian']) {
+    for (const other of ['drajk', 'vigil', 'freeworlds', 'meridian']) {
       state = applyOps(
         state,
         [
           {
             op: 'form_treaty', treatyType: 'trade_accord',
-            parties: ['hutt', other],
-            terms: { incomePerTurn: { hutt: 60, [other]: 60 } },
+            parties: ['ojjul', other],
+            terms: { incomePerTurn: { ojjul: 60, [other]: 60 } },
             summary: 'joint venture',
           },
         ],
         'extraction',
-        'hutt',
+        'ojjul',
       ).state;
     }
     const sumOf = (flow: Record<string, number>): number =>

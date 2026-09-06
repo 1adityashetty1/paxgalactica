@@ -1,5 +1,5 @@
 import { shortestPath } from './graph.js';
-import { presentAt, type StarSystem, type WorldState } from './state.js';
+import { tonsPresentAt, type StarSystem, type WorldState } from './state.js';
 
 /**
  * Trade as a network on the hyperlane graph.
@@ -12,7 +12,7 @@ import { presentAt, type StarSystem, type WorldState } from './state.js';
  *
  * Here trade flows along lanes between hubs, and the systems it crosses take a
  * cut. That makes geography economic: the seed already put the extortionist
- * Nars on kes-2, which sits on 74 of the galaxy's 300 shortest paths, and left
+ * Nars on ilv-2, which sits on 74 of the galaxy's 300 shortest paths, and left
  * three more high-traffic junctions unaligned. None of it was read by anything.
  *
  * Everything in this file is pure and derived — routes are recomputed from the
@@ -43,8 +43,8 @@ export const DISTANCE_DECAY = 0.45;
  *
  * Tuned against the balance harness rather than against turn-0 ledgers, which
  * measured the opening position instead of the game. At 0.4 the transit hops
- * dominated, and because the Nars hold the whole Kessel spine (kes-2 and
- * kes-5 carry 402 between them) that handed them a runaway no toll rate
+ * dominated, and because the Nars hold the whole Ilvenn spine (ilv-2 and
+ * ilv-5 carry 402 between them) that handed them a runaway no toll rate
  * affected. Moving value to the endpoints spreads it over the eight hubs,
  * which are held 2/2/2/1/1 rather than concentrated.
  *
@@ -73,17 +73,17 @@ export const AUTARKIC_ROUTE_FRACTION = 0.35;
  *
  * Lowered from 1.5 when the Iron Vigil was given this doctrine — it had been
  * implemented, tested and owned by nobody, while `autarkic` was held twice.
- * The Vigil holds `tio-3 <-> tio-4`, one of only three lanes in the galaxy with
+ * The Vigil holds `tor-3 <-> tor-4`, one of only three lanes in the galaxy with
  * both ends under one power, so the ethic finally has somewhere to apply.
  *
  * Swept over 30 played turns, and the result is a **cliff rather than a
  * gradient**: at 1.4 and above the Vigil's route income funds a fleet that
- * takes `tio-1` off Meridian, which costs Meridian a hub *and* its own
+ * takes `tor-1` off Meridian, which costs Meridian a hub *and* its own
  * both-ends lane, and drives it to -82 net. At 1.3 and below Meridian keeps
- * tio-1 and finishes at +31 — better than the -1 it managed before this change
+ * tor-1 and finishes at +31 — better than the -1 it managed before this change
  * existed. Between those, nothing moves at all: 1.3, 1.25, 1.2 and 1.15 all
  * produce an identical board, because the premium applies to a single lane
- * worth 44 and the discrete question (does Meridian keep tio-1) dominates it.
+ * worth 44 and the discrete question (does Meridian keep tor-1) dominates it.
  *
  * 1.25 rather than the 1.3 that also passes, because 1.3 sits exactly on the
  * boundary and a tuning value on a cliff edge is one unrelated change away from
@@ -351,7 +351,7 @@ export function routeEarnings(state: WorldState): RouteEarnings {
 
       // Extortion: a toll on goods that are not the extortionist's own.
       // Charged to the foreign endpoints, never to itself — the Nars carry a
-      // great deal of Meridian and Vigil cargo across Kessel, and this is
+      // great deal of Meridian and Vigil cargo across Ilvenn, and this is
       // what "commerce owes you for passing through" costs in credits.
       const payers = [holderA, holderB].filter(
         (id): id is string => id !== null && id !== holder,
@@ -421,7 +421,12 @@ function distributeUnclaimed(
   spill: (n: number) => void,
 ): void {
   const system = state.systems.find((s) => s.id === systemId);
-  const present = presentAt(system!);
+  // Weighed in TONS, the same way `systemIncome` splits a contested world.
+  // This counted HULLS, so an escort claimed a battleship's share of a lane at
+  // half the price and a third of the fighting weight — 2x income per credit,
+  // and a lifter 1.33x while contributing nothing to a fight. Two conventions
+  // for one rule, and the tonnage half is the one the rest of the game uses.
+  const present = tonsPresentAt(system!);
   if (present.length === 0) {
     spill(amount);
     return;

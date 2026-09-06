@@ -200,7 +200,7 @@ second offer is refused, by name, because the first is recorded in world state
 rather than in a model's memory.
 
 **Your own faction can refuse you.** Order the Meridian Trade Authority to run
-spice and the Trade Council votes it down. Order the Iron Vigil to stand down
+narcotics and the Trade Council votes it down. Order the Iron Vigil to stand down
 every patrol and the fleet commanders read it as complicity. Each power has red
 lines it will not cross and compulsions it insists on. Nothing is staged when
 they refuse.

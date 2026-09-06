@@ -54,7 +54,7 @@ function fight(
 describe('a battle is a record, not a sentence', () => {
   it('reports the engagement with the arithmetic still attached', () => {
     const { battles } = fight(() => {}, {
-      attacker: 'krayt', origin: 'ark-5', target: 'ark-6', force: 14,
+      attacker: 'drajk', origin: 'ark-5', target: 'ark-6', force: 14,
     });
     expect(battles).toHaveLength(1);
     const b = battles[0]!;
@@ -69,7 +69,7 @@ describe('a battle is a record, not a sentence', () => {
 
   it('agrees with the state it produced', () => {
     const { state, battles } = fight(() => {}, {
-      attacker: 'krayt', origin: 'ark-5', target: 'ark-6', force: 14,
+      attacker: 'drajk', origin: 'ark-5', target: 'ark-6', force: 14,
     });
     const b = battles[0]!;
     const after = sys(state, 'ark-6');
@@ -81,7 +81,7 @@ describe('a battle is a record, not a sentence', () => {
 
   it('records losses that reconcile with the hulls that vanished', () => {
     const { battles } = fight(() => {}, {
-      attacker: 'krayt', origin: 'ark-5', target: 'ark-6', force: 14,
+      attacker: 'drajk', origin: 'ark-5', target: 'ark-6', force: 14,
     });
     const { attackers, defenders } = totalLosses(battles[0]!);
     expect(attackers).toBeGreaterThanOrEqual(0);
@@ -125,20 +125,20 @@ describe('a battle is a record, not a sentence', () => {
         t.garrisonMax = 14;
         setShipsAt(t, 'freeworlds', 5);
       },
-      { attacker: 'krayt', origin: 'ark-5', target: 'ark-6', force: 26 },
+      { attacker: 'drajk', origin: 'ark-5', target: 'ark-6', force: 26 },
     );
     const b = battles[0]!;
     const orbital = b.rounds.find((r) => r.phase === 'orbital')!;
     expect(orbital.attackers[0]!.before).toBe(26);
 
     const last = b.rounds[b.rounds.length - 1]!;
-    const onBoard = hullsAt(sys(state, 'ark-6'), 'krayt');
-    expect(last.attackers.find((c) => c.factionId === 'krayt')!.after).toBe(onBoard);
+    const onBoard = hullsAt(sys(state, 'ark-6'), 'drajk');
+    expect(last.attackers.find((c) => c.factionId === 'drajk')!.after).toBe(onBoard);
   });
 
   it('is deterministic, like the battle it describes', () => {
-    const a = fight(() => {}, { attacker: 'krayt', origin: 'ark-5', target: 'ark-6', force: 14 });
-    const b = fight(() => {}, { attacker: 'krayt', origin: 'ark-5', target: 'ark-6', force: 14 });
+    const a = fight(() => {}, { attacker: 'drajk', origin: 'ark-5', target: 'ark-6', force: 14 });
+    const b = fight(() => {}, { attacker: 'drajk', origin: 'ark-5', target: 'ark-6', force: 14 });
     expect(JSON.stringify(a.battles)).toBe(JSON.stringify(b.battles));
   });
 });
@@ -149,9 +149,9 @@ describe('doctrinesFired makes the war ethics observable', () => {
     fight(
       (s) => {
         fac(s, 'freeworlds').warEthic = holder;
-        fac(s, 'krayt').warEthic = attacker;
+        fac(s, 'drajk').warEthic = attacker;
       },
-      { attacker: 'krayt', origin: 'ark-5', target: 'ark-6', force },
+      { attacker: 'drajk', origin: 'ark-5', target: 'ark-6', force },
     );
 
   it('names a defensive garrison fighting above its size', () => {
@@ -171,14 +171,14 @@ describe('doctrinesFired makes the war ethics observable', () => {
   it('names an opportunist that picked on a stripped garrison', () => {
     const raider = fight(
       (s) => {
-        fac(s, 'krayt').warEthic = 'opportunist';
+        fac(s, 'drajk').warEthic = 'opportunist';
         fac(s, 'freeworlds').warEthic = 'profiteer';
         const t = sys(s, 'ark-6');
         t.garrison = 2;
         t.garrisonMax = 14;
         setShipsAt(t, 'freeworlds', 0);
       },
-      { attacker: 'krayt', origin: 'ark-5', target: 'ark-6', force: 10 },
+      { attacker: 'drajk', origin: 'ark-5', target: 'ark-6', force: 10 },
     ).battles[0]!;
     expect(raider.doctrinesFired.join(' ')).toMatch(/opportunist: \+\d+ might/);
   });
@@ -191,7 +191,7 @@ describe('the phases are told apart', () => {
         setShipsAt(sys(s, 'ark-6'), 'freeworlds', 6);
         fac(s, 'freeworlds').warEthic = 'profiteer';
       },
-      { attacker: 'krayt', origin: 'ark-5', target: 'ark-6', force: 30 },
+      { attacker: 'drajk', origin: 'ark-5', target: 'ark-6', force: 30 },
     );
     const phases = battles[0]!.rounds.map((r) => r.phase);
     expect(phases[0]).toBe('orbital');
@@ -204,7 +204,7 @@ describe('the phases are told apart', () => {
       (s) => {
         setShipsAt(sys(s, 'ark-6'), 'freeworlds', 6);
       },
-      { attacker: 'krayt', origin: 'ark-5', target: 'ark-6', force: 30 },
+      { attacker: 'drajk', origin: 'ark-5', target: 'ark-6', force: 30 },
     );
     const orbital = battles[0]!.rounds.find((r) => r.phase === 'orbital')!;
     expect(orbital.attackPower).toBeGreaterThan(0);

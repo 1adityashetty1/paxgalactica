@@ -378,7 +378,7 @@ export const EventLogEntrySchema = z.object({
    * The event log is shipped to the browser whole, and it was quietly undoing
    * the fog. Measured live: in the *same* payload where a Meridian order was
    * correctly redacted to an anonymous rumour, the log carried
-   * `"meridian begins Patrol conversion at Tion Anchorage (3 turns) -> tio-1,
+   * `"meridian begins Patrol conversion at Torrek Anchorage (3 turns) -> tor-1,
    * to deliver 4 new hulls for 240 credits"` — label, duration, target, payload
    * and price of the thing being hidden. A `counter_intelligence` sweep and a
    * rival's operative placed on the player's own world leaked the same way.
@@ -480,6 +480,16 @@ export function orbitalWeightAt(system: StarSystem, factionId: string): number {
 }
 
 /** Everyone present, as `[factionId, hulls]`, skipping empty stacks. */
+/**
+ * Who is present, and with how many HULLS.
+ *
+ * This is a predicate helper and a display helper: "is anyone there", and "show
+ * the player what is parked here". It is **not** a weight — weighing a contest
+ * by hulls makes an escort worth a battleship and the cheapest class the
+ * efficient way to skim, which is the exploit per-ton pricing exists to close.
+ * Anything dividing a spoil uses `tonsPresentAt`. `distributeUnclaimed` reached
+ * for this one and paid an escort a battleship's share of a lane for it.
+ */
 export function presentAt(system: StarSystem): [string, number][] {
   return Object.entries(system.ships ?? {})
     .map(([id, stack]) => [id, hullsIn(stack)] as [string, number])
@@ -781,7 +791,7 @@ export interface SystemIncome {
  * way to skim a rival's income, which is exactly the exploit per-ton pricing
  * exists to close.
  */
-const shipsPresent = (system: StarSystem): [string, number][] =>
+export const tonsPresentAt = (system: StarSystem): [string, number][] =>
   Object.entries(system.ships ?? {})
     .map(([id, stack]) => [id, tonsIn(stack)] as [string, number])
     .filter(([, t]) => t > 0);
@@ -855,7 +865,7 @@ export function systemIncome(state: WorldState, system: StarSystem): SystemIncom
     }
   }
 
-  const present = shipsPresent(system);
+  const present = tonsPresentAt(system);
   const controller = system.controllerFactionId;
   // Invited fleets neither contest the world nor take a share of it. They are
   // guests: the world is still wholly its holder's, and the guest earns
@@ -1181,6 +1191,26 @@ export const MAX_TREATY_INCOME_PER_TURN = MAX_DEBT_PER_TURN;
 export const EXPANSIONIST_TERRITORY_BONUS = 0.03;
 
 /**
+ * The share of a landing's troop losses an expansionist still pays.
+ *
+ * "Conquest sticks": it comes through the landing with more lift intact, so the
+ * occupying force it leaves behind is larger and the world does not need
+ * re-garrisoning the moment the fleet moves on.
+ *
+ * It is applied to the TROOPS and converted to hulls once, never applied to the
+ * hull count — see the landing in `resolveBattle`. Halving a lifter count that
+ * is 1 against most garrisons on this map rounds to either 0 (a free conquest)
+ * or 1 (no doctrine at all), and neither is a half.
+ *
+ * The residual is worth stating rather than hiding: against a garrison of
+ * `LIFTER_CARRY` or fewer the landing costs one transport either way, because
+ * half a transport cannot be destroyed. The doctrine does not bite on a world
+ * held by four militia, which is not where "conquest sticks" was ever doing any
+ * work.
+ */
+export const EXPANSIONIST_LIFT_SHARE = 0.5;
+
+/**
  * What a war is worth per turn to a profiteer that is not in it.
  *
  * The Combine's entire doctrine — "fund both sides, own the survivor" — and
@@ -1203,7 +1233,7 @@ export const PROFITEER_WAR_PENALTY = 40;
 /**
  * How much larger a defensive power's garrison fights than it is.
  *
- * "Make occupation cost more than it is worth" is the Arkanis doctrine stated
+ * "Make occupation cost more than it is worth" is the Arkane doctrine stated
  * almost as arithmetic, and this is the arithmetic.
  */
 export const DEFENSIVE_GARRISON_BONUS = 1.5;
@@ -1257,7 +1287,7 @@ export const DOCTRINE_ETHIC_DISSENT = 20;
  * that the thing was proposed, which is the right reading and the one that keeps
  * the price out of the outcome bands — but at 25 that made attempting the lesser
  * transgression and failing three times worse than attempting an absolute one
- * and being blocked. Playing Arkanis, two compulsion breaches in a single turn
+ * and being blocked. Playing Arkane, two compulsion breaches in a single turn
  * (one of them a natural 1 that achieved precisely nothing) took the Free Worlds
  * to 58 dissent and −4 on every stat before the second turn began. At 15 that
  * same turn lands at 38 and −3: still a real, visible cost, and no longer a
@@ -1344,7 +1374,7 @@ export const WAR_DISPOSITION_THRESHOLD = -60;
  * which meant the victim of an unprovoked attack did not list their attacker
  * as an enemy: the mechanical disposition costs (raiding, suborning, tolls,
  * pact-breaking) all move the INJURED party's view of the aggressor, and
- * nothing moves the aggressor's view of them. A playtest raid left Arkanis
+ * nothing moves the aggressor's view of them. A playtest raid left Arkane
  * hating Drajk at -62 while Drajk's own view sat at -10, so
  * `warsFor('freeworlds')` omitted the faction that had just raided it.
  */

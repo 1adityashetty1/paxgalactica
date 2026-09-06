@@ -40,7 +40,7 @@ import { routeEarnings, tradeRoutes } from './trade.js';
  * **The NPCs were not passive. They were solipsistic.** Over a seven-turn
  * campaign the reaction call produced 16 fleet movements — six of them attacks
  * — and every single attack targeted the player, on one world. Zero
- * NPC-vs-NPC aggression, while `vigil -> krayt` sat at **-87** and
+ * NPC-vs-NPC aggression, while `vigil -> drajk` sat at **-87** and
  * `freeworlds -> vigil` at **-75**. Wars on paper that nobody fought. The
  * galaxy was the player and four powers who existed only in relation to them.
  *
@@ -385,7 +385,7 @@ const meridian: Bot = (ctx) => {
 };
 
 /**
- * "Hold the Tion until order is restored, answer insolence with force."
+ * "Hold the Torrek until order is restored, answer insolence with force."
  * Crusading and autarkic: builds hard, and attacks the best thing it can beat.
  */
 const vigil: Bot = (ctx) => {
@@ -430,7 +430,7 @@ const vigil: Bot = (ctx) => {
  * for you." Sits on its chokepoints, works neutral junctions, and blockades
  * rather than invades — it will not commit its own hulls to a conquest.
  */
-const hutt: Bot = (ctx) => {
+const ojjul: Bot = (ctx) => {
   const ops: Ops = [];
   ops.push(...buy(ctx, 0.5, 800)); // will not spend its own hulls freely
 
@@ -467,7 +467,7 @@ const freeworlds: Bot = (ctx) => {
 
   // The Drift takes what is on its own doorstep and nothing beyond it.
   const home = frontier(ctx.state, ctx.me)
-    .filter((t) => t.controllerFactionId === null && t.sector === 'Arkanis Drift')
+    .filter((t) => t.controllerFactionId === null && t.sector === 'Arkane Drift')
     .sort((a, b) => b.strategicValue - a.strategicValue)[0];
   if (home && !hasOrder(ctx.state, ctx.me, 'fleet_movement')) {
     // Mass, then strike — the same step the Vigil already had, and the reason
@@ -497,7 +497,7 @@ const freeworlds: Bot = (ctx) => {
  * besieging." Works lawless junctions for traffic and raids the busiest
  * transit system it can reach. Buys few hulls; it cannot afford many.
  */
-const krayt: Bot = (ctx) => {
+const drajk: Bot = (ctx) => {
   const ops: Ops = [];
   // **Boats, not a battle line.** The Jeune École answer to a power you cannot
   // beat in orbit: cheap hulls that put their share of the fire through the
@@ -541,7 +541,7 @@ const krayt: Bot = (ctx) => {
 };
 
 
-export const BOTS: Record<string, Bot> = { meridian, vigil, hutt, freeworlds, krayt };
+export const BOTS: Record<string, Bot> = { meridian, vigil, ojjul, freeworlds, drajk };
 
 /* ------------------------------------------------------------------ */
 /* Guards: a doctrine is not a licence                                  */

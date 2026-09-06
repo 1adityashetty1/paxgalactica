@@ -39,7 +39,7 @@ function pact(type: TreatyType, parties: [string, string], pledged: Record<strin
     terms: {
       territory: [],
       shipsPledged: pledged,
-      incomePerTurn: {},
+      incomePerTurn: {},      payment: {},
       incomeShares: [],
       mutualDefenseTrigger: '',
       voidsOn: [],
@@ -108,9 +108,9 @@ describe('the lane network', () => {
 
   it('leaves an empty unaligned junction paying nobody', () => {
     const state = fresh();
-    // slu-6 is unaligned and on several lanes; with no fleet there its cut of
+    // sek-6 is unaligned and on several lanes; with no fleet there its cut of
     // the traffic reaches no one, which is what makes it worth taking.
-    expect(sys(state, 'slu-6').controllerFactionId).toBeNull();
+    expect(sys(state, 'sek-6').controllerFactionId).toBeNull();
     expect(routeEarnings(state).uncollected).toBeGreaterThan(0);
   });
 
@@ -118,11 +118,45 @@ describe('the lane network', () => {
     // Exactly the rule unaligned worlds already follow for territory income.
     const before = routeEarnings(fresh());
     const occupied = applyOps(fresh(), [
-      { op: 'adjust_ships', systemId: 'slu-6', factionId: 'krayt', delta: 5 },
+      { op: 'adjust_ships', systemId: 'sek-6', factionId: 'drajk', delta: 5 },
     ]).state;
     const after = routeEarnings(occupied);
-    expect(after.shares['krayt'] ?? 0).toBeGreaterThan(before.shares['krayt'] ?? 0);
+    expect(after.shares['drajk'] ?? 0).toBeGreaterThan(before.shares['drajk'] ?? 0);
     expect(after.uncollected).toBeLessThan(before.uncollected);
+  });
+
+  it('splits an unaligned junction by tonnage, not by hull count', () => {
+    // `distributeUnclaimed` weighed `presentAt`, which counts HULLS, while
+    // `systemIncome` has always split a contested world by TONS. Two
+    // conventions for one rule, and the hull one reopens exactly the exploit
+    // per-ton pricing exists to close: an escort is half a battleship's price
+    // and a third of its fighting weight, so counting hulls paid it the same
+    // share -- 2x income per credit -- and a lifter 1.33x for contributing
+    // nothing to a fight at all.
+    //
+    // Isolated as a DELTA on one faction rather than a comparison between two.
+    // `shares[id]` is a faction's route income across the whole galaxy, so
+    // comparing two factions' totals says nothing about one junction: the
+    // Vigil holds hubs and out-earns a raider whatever is parked at sek-6.
+    // Holding Meridian's opponent fixed and changing only what MERIDIAN brings
+    // -- four escorts against four battleships, the same hull count either way
+    // -- moves nothing at all under hull counting.
+    const junction = (hull: 'escort' | 'battleship') =>
+      routeEarnings(
+        applyOps(fresh(), [
+          { op: 'adjust_ships', systemId: 'sek-6', factionId: 'meridian', delta: 4, hull },
+          { op: 'adjust_ships', systemId: 'sek-6', factionId: 'vigil', delta: 4, hull: 'battleship' },
+        ]).state,
+      ).shares['meridian'] ?? 0;
+
+    const withEscorts = junction('escort');
+    const withLine = junction('battleship');
+    expect(withEscorts).toBeGreaterThan(0);
+    // Four battleships outweigh four escorts two to one, so they take two
+    // thirds of the junction where the escorts take one third. Under hull
+    // counting both arrangements are four hulls against four and these are
+    // the same number.
+    expect(withLine).toBeGreaterThan(withEscorts);
   });
 
   it('reports full openness on a galaxy with nothing interdicted', () => {
@@ -156,22 +190,22 @@ describe('every commercial doctrine differs measurably', () => {
 
   it('pays an extortionist a toll on other powers’ goods', () => {
     const state = fresh();
-    const hutt = ledgerFor(state, 'hutt');
-    // The Nars hold kes-2, the greatest chokepoint on the map. Their
+    const ojjul = ledgerFor(state, 'ojjul');
+    // The Nars hold ilv-2, the greatest chokepoint on the map. Their
     // doctrine used to be a ×1.0 multiplier, i.e. nothing whatsoever.
-    expect(hutt.tolls).toBeGreaterThan(0);
+    expect(ojjul.tolls).toBeGreaterThan(0);
 
     const neutered = fresh();
-    fac(neutered, 'hutt').tradeEthic = 'free_trade';
-    expect(ledgerFor(neutered, 'hutt').tolls).toBe(0);
+    fac(neutered, 'ojjul').tradeEthic = 'free_trade';
+    expect(ledgerFor(neutered, 'ojjul').tolls).toBe(0);
   });
 
   it('charges the toll to the powers whose cargo it is', () => {
-    const withHutts = fresh();
+    const withOjjuls = fresh();
     const without = fresh();
-    fac(without, 'hutt').tradeEthic = 'free_trade';
-    // Meridian ships a great deal through Kessel; it pays for the privilege.
-    expect(ledgerFor(withHutts, 'meridian').routes).toBeLessThan(
+    fac(without, 'ojjul').tradeEthic = 'free_trade';
+    // Meridian ships a great deal through Ilvenn; it pays for the privilege.
+    expect(ledgerFor(withOjjuls, 'meridian').routes).toBeLessThan(
       ledgerFor(without, 'meridian').routes,
     );
   });
@@ -185,9 +219,9 @@ describe('every commercial doctrine differs measurably', () => {
     // bonus gets. Reading `shares` here would now measure nothing at all.
     const at = (ethic: 'monopolist' | 'autarkic') => {
       const state = fresh();
-      for (const id of ['kes-1', 'kes-2']) sys(state, id).controllerFactionId = 'hutt';
-      fac(state, 'hutt').tradeEthic = ethic;
-      return { premium: routeEarnings(state).monopolyPremium['hutt'] ?? 0, ledger: ledgerFor(state, 'hutt') };
+      for (const id of ['ilv-1', 'ilv-2']) sys(state, id).controllerFactionId = 'ojjul';
+      fac(state, 'ojjul').tradeEthic = ethic;
+      return { premium: routeEarnings(state).monopolyPremium['ojjul'] ?? 0, ledger: ledgerFor(state, 'ojjul') };
     };
     const monopoly = at('monopolist');
     expect(monopoly.premium).toBeGreaterThan(0);
@@ -196,11 +230,11 @@ describe('every commercial doctrine differs measurably', () => {
 
   it('pays the premium only to a power holding both ends', () => {
     const state = fresh();
-    // The Nars hold kes-1 and kes-2; hand one end to someone else.
-    fac(state, 'hutt').tradeEthic = 'monopolist';
-    expect(routeEarnings(state).monopolyPremium['hutt'] ?? 0).toBeGreaterThan(0);
-    sys(state, 'kes-1').controllerFactionId = 'krayt';
-    expect(routeEarnings(state).monopolyPremium['hutt'] ?? 0).toBe(0);
+    // The Nars hold ilv-1 and ilv-2; hand one end to someone else.
+    fac(state, 'ojjul').tradeEthic = 'monopolist';
+    expect(routeEarnings(state).monopolyPremium['ojjul'] ?? 0).toBeGreaterThan(0);
+    sys(state, 'ilv-1').controllerFactionId = 'drajk';
+    expect(routeEarnings(state).monopolyPremium['ojjul'] ?? 0).toBe(0);
   });
 
   it('scales a free trader’s take with the openness of the whole galaxy', () => {
@@ -208,12 +242,12 @@ describe('every commercial doctrine differs measurably', () => {
     // broker other powers' ceasefires rather than merely approve of them.
     const calm = fresh();
     const closed = fresh();
-    setShipsAt(sys(closed, 'kes-2'), 'vigil', 9);
+    setShipsAt(sys(closed, 'ilv-2'), 'vigil', 9);
     const blockaded = tickTurn(
       applyOps(closed, [
         {
           op: 'issue_order', factionId: 'vigil', type: 'blockade',
-          originId: 'tio-3', targetId: 'kes-2', durationTurns: 3, label: 'strangle',
+          originId: 'tor-3', targetId: 'ilv-2', durationTurns: 3, label: 'strangle',
         },
       ]).state,
     ).state;
@@ -238,8 +272,8 @@ describe('blockade', () => {
   it('cannot be declared without a fleet on station', () => {
     const res = applyOps(fresh(), [
       {
-        op: 'issue_order', factionId: 'hutt', type: 'blockade',
-        originId: 'kes-2', targetId: 'slu-6', durationTurns: 3, label: 'by decree',
+        op: 'issue_order', factionId: 'ojjul', type: 'blockade',
+        originId: 'ilv-2', targetId: 'sek-6', durationTurns: 3, label: 'by decree',
       },
     ]);
     expect(res.rejections.map((r) => r.code)).toEqual(['illegal_value']);
@@ -247,23 +281,23 @@ describe('blockade', () => {
   });
 
   it('closes the lanes that cross it', () => {
-    const state = blockading('vigil', 'kes-2', 'tio-3');
-    expect(isBlockaded(state, 'kes-2')).toBe(true);
+    const state = blockading('vigil', 'ilv-2', 'tor-3');
+    expect(isBlockaded(state, 'ilv-2')).toBe(true);
     expect(routeEarnings(state).openness).toBeLessThan(1);
-    // The Nars' commerce runs through Nar Shalka; strangling it shows.
-    expect(ledgerFor(state, 'hutt').routes).toBeLessThan(ledgerFor(fresh(), 'hutt').routes);
+    // The Nars' commerce runs through Shalka; strangling it shows.
+    expect(ledgerFor(state, 'ojjul').routes).toBeLessThan(ledgerFor(fresh(), 'ojjul').routes);
   });
 
   it('lets a smuggler through while it closes for everyone else', () => {
     // Resolved per beneficiary, not per lane. Deciding it once for the whole
     // route meant the smuggler only kept its trade when every other party
     // could also run the blockade — so the doctrine never fired.
-    const state = blockading('vigil', 'kes-2', 'tio-3');
+    const state = blockading('vigil', 'ilv-2', 'tor-3');
     const before = routeEarnings(fresh()).shares;
     const during = routeEarnings(state).shares;
-    expect(fac(state, 'krayt').tradeEthic).toBe('smuggler');
-    expect(during['krayt'] ?? 0).toBeGreaterThanOrEqual(before['krayt'] ?? 0);
-    expect(during['hutt'] ?? 0).toBeLessThan(before['hutt'] ?? 0);
+    expect(fac(state, 'drajk').tradeEthic).toBe('smuggler');
+    expect(during['drajk'] ?? 0).toBeGreaterThanOrEqual(before['drajk'] ?? 0);
+    expect(during['ojjul'] ?? 0).toBeLessThan(before['ojjul'] ?? 0);
   });
 
   it('parts for a trade accord partner', () => {
@@ -275,15 +309,15 @@ describe('blockade', () => {
   });
 
   it('costs the blockader standing with everyone it strangles', () => {
-    const before = fac(fresh(), 'hutt').disposition['vigil'] ?? 0;
-    const state = blockading('vigil', 'kes-2', 'tio-3');
+    const before = fac(fresh(), 'ojjul').disposition['vigil'] ?? 0;
+    const state = blockading('vigil', 'ilv-2', 'tor-3');
     const after = tickTurn(state).state;
-    expect(fac(after, 'hutt').disposition['vigil']).toBeLessThan(before);
+    expect(fac(after, 'ojjul').disposition['vigil']).toBeLessThan(before);
   });
 
   it('ends the moment the blockading fleet is gone', () => {
-    const state = blockading('vigil', 'kes-2', 'tio-3');
-    setShipsAt(sys(state, 'kes-2'), 'vigil', 0);
+    const state = blockading('vigil', 'ilv-2', 'tor-3');
+    setShipsAt(sys(state, 'ilv-2'), 'vigil', 0);
     const res = tickTurn(state);
     expect(res.state.pendingOrders.filter((o) => o.type === 'blockade')).toHaveLength(0);
     expect(res.notes.join(' ')).toMatch(/no longer has ships/);
@@ -292,12 +326,12 @@ describe('blockade', () => {
 
 describe('commerce raiding', () => {
   const raiding = () => {
-    const state = fresh('krayt');
-    setShipsAt(sys(state, 'kes-3'), 'krayt', 6);
+    const state = fresh('drajk');
+    setShipsAt(sys(state, 'ilv-3'), 'drajk', 6);
     const issued = applyOps(state, [
       {
-        op: 'issue_order', factionId: 'krayt', type: 'commerce_raiding',
-        originId: 'kes-6', targetId: 'kes-3', durationTurns: 5, label: 'the Riqel run',
+        op: 'issue_order', factionId: 'drajk', type: 'commerce_raiding',
+        originId: 'ilv-6', targetId: 'ilv-3', durationTurns: 5, label: 'the Riqel run',
       },
     ]);
     expect(issued.rejections).toHaveLength(0);
@@ -308,90 +342,90 @@ describe('commerce raiding', () => {
     // A raid must not require beating the defenders first: that would make
     // commerce raiding something only the strong could do to the weak, which
     // is the exact inversion of what it is for.
-    const far = applyOps(fresh('krayt'), [
+    const far = applyOps(fresh('drajk'), [
       {
-        op: 'issue_order', factionId: 'krayt', type: 'commerce_raiding',
-        originId: 'kes-6', targetId: 'kes-3', durationTurns: 2, label: 'by decree',
+        op: 'issue_order', factionId: 'drajk', type: 'commerce_raiding',
+        originId: 'ilv-6', targetId: 'ilv-3', durationTurns: 2, label: 'by decree',
       },
     ]);
     expect(far.rejections.map((r) => r.code)).toEqual(['illegal_value']);
     expect(far.rejections[0]!.message).toMatch(/within one jump/);
 
-    // kes-4 is unaligned and adjacent to the Nar-held kes-3.
-    const lurking = fresh('krayt');
-    setShipsAt(sys(lurking, 'kes-4'), 'krayt', 6);
+    // ilv-4 is unaligned and adjacent to the Nar-held ilv-3.
+    const lurking = fresh('drajk');
+    setShipsAt(sys(lurking, 'ilv-4'), 'drajk', 6);
     const near = applyOps(lurking, [
       {
-        op: 'issue_order', factionId: 'krayt', type: 'commerce_raiding',
-        originId: 'kes-6', targetId: 'kes-3', durationTurns: 3, label: 'prey on the Riqel run',
+        op: 'issue_order', factionId: 'drajk', type: 'commerce_raiding',
+        originId: 'ilv-6', targetId: 'ilv-3', durationTurns: 3, label: 'prey on the Riqel run',
       },
     ]);
     expect(near.rejections).toHaveLength(0);
   });
 
   it('lets a weak power raid a stronger one it could never beat in orbit', () => {
-    const state = fresh('krayt');
-    setShipsAt(sys(state, 'kes-4'), 'krayt', 6);
+    const state = fresh('drajk');
+    setShipsAt(sys(state, 'ilv-4'), 'drajk', 6);
     const raiding = tickTurn(
       applyOps(state, [
         {
-          op: 'issue_order', factionId: 'krayt', type: 'commerce_raiding',
-          originId: 'kes-6', targetId: 'kes-3', durationTurns: 3, label: 'raid',
+          op: 'issue_order', factionId: 'drajk', type: 'commerce_raiding',
+          originId: 'ilv-6', targetId: 'ilv-3', durationTurns: 3, label: 'raid',
         },
       ]).state,
     ).state;
     // The Nars still hold Riqel and still have their fleet; they are simply
     // losing the trade that crosses it.
-    expect(sys(raiding, 'kes-3').controllerFactionId).toBe('hutt');
-    expect(ledgerFor(raiding, 'krayt').raided).toBeGreaterThan(0);
+    expect(sys(raiding, 'ilv-3').controllerFactionId).toBe('ojjul');
+    expect(ledgerFor(raiding, 'drajk').raided).toBeGreaterThan(0);
   });
 
   it('takes trade from the power that was carrying it', () => {
     const state = raiding();
-    expect(raidersOn(state, 'kes-3')).toEqual(['krayt']);
-    expect(ledgerFor(state, 'krayt').raided).toBeGreaterThan(0);
-    expect(ledgerFor(state, 'hutt').routes).toBeLessThan(ledgerFor(fresh(), 'hutt').routes);
+    expect(raidersOn(state, 'ilv-3')).toEqual(['drajk']);
+    expect(ledgerFor(state, 'drajk').raided).toBeGreaterThan(0);
+    expect(ledgerFor(state, 'ojjul').routes).toBeLessThan(ledgerFor(fresh(), 'ojjul').routes);
   });
 
   it('is worth more to a smuggler than to anyone else', () => {
-    const asSmuggler = ledgerFor(raiding(), 'krayt').raided;
-    const state = fresh('krayt');
-    fac(state, 'krayt').tradeEthic = 'autarkic';
-    setShipsAt(sys(state, 'kes-3'), 'krayt', 6);
+    const asSmuggler = ledgerFor(raiding(), 'drajk').raided;
+    const state = fresh('drajk');
+    fac(state, 'drajk').tradeEthic = 'autarkic';
+    setShipsAt(sys(state, 'ilv-3'), 'drajk', 6);
     const plain = tickTurn(
       applyOps(state, [
         {
-          op: 'issue_order', factionId: 'krayt', type: 'commerce_raiding',
-          originId: 'kes-6', targetId: 'kes-3', durationTurns: 5, label: 'raid',
+          op: 'issue_order', factionId: 'drajk', type: 'commerce_raiding',
+          originId: 'ilv-6', targetId: 'ilv-3', durationTurns: 5, label: 'raid',
         },
       ]).state,
     ).state;
-    expect(asSmuggler).toBeGreaterThan(ledgerFor(plain, 'krayt').raided);
+    expect(asSmuggler).toBeGreaterThan(ledgerFor(plain, 'drajk').raided);
   });
 
   it('costs the raider standing with its victim, every turn', () => {
     let state = raiding();
-    const first = fac(state, 'hutt').disposition['krayt'] ?? 0;
+    const first = fac(state, 'ojjul').disposition['drajk'] ?? 0;
     state = tickTurn(state).state;
-    const second = fac(state, 'hutt').disposition['krayt'] ?? 0;
+    const second = fac(state, 'ojjul').disposition['drajk'] ?? 0;
     state = tickTurn(state).state;
     expect(second).toBeLessThan(first);
-    expect(fac(state, 'hutt').disposition['krayt']).toBeLessThan(second);
+    expect(fac(state, 'ojjul').disposition['drajk']).toBeLessThan(second);
   });
 
   it('spares a trade accord partner', () => {
-    const state = fresh('krayt');
-    state.treaties.push(pact('trade_accord', ['krayt', 'hutt']));
-    setShipsAt(sys(state, 'kes-3'), 'krayt', 6);
+    const state = fresh('drajk');
+    state.treaties.push(pact('trade_accord', ['drajk', 'ojjul']));
+    setShipsAt(sys(state, 'ilv-3'), 'drajk', 6);
     const raided = tickTurn(
       applyOps(state, [
         {
-          op: 'issue_order', factionId: 'krayt', type: 'commerce_raiding',
-          originId: 'kes-6', targetId: 'kes-3', durationTurns: 5, label: 'raid',
+          op: 'issue_order', factionId: 'drajk', type: 'commerce_raiding',
+          originId: 'ilv-6', targetId: 'ilv-3', durationTurns: 5, label: 'raid',
         },
       ]).state,
     ).state;
-    expect(ledgerFor(raided, 'krayt').raided).toBe(0);
+    expect(ledgerFor(raided, 'drajk').raided).toBe(0);
   });
 
   it('costs a non-smuggler its standing with the whole Rim, and Drajk nothing', () => {
@@ -412,22 +446,22 @@ describe('commerce raiding', () => {
       return s2;
     };
 
-    // Arkanis is uninvolved in the Kessel run either way, so its opinion is a
+    // Arkane is uninvolved in the Ilvenn run either way, so its opinion is a
     // clean read on reputation rather than on grievance.
-    const byPirate = raidWith('vigil', 'tio-3', 'kes-3');
+    const byPirate = raidWith('vigil', 'tor-3', 'ilv-3');
     expect(fac(byPirate, 'freeworlds').disposition['vigil']).toBeLessThan(
       fac(fresh(), 'freeworlds').disposition['vigil'] ?? 0,
     );
 
-    const byKrayt = raidWith('krayt', 'kes-6', 'kes-3');
-    expect(fac(byKrayt, 'freeworlds').disposition['krayt']).toBe(
-      fac(fresh(), 'freeworlds').disposition['krayt'],
+    const byDrajk = raidWith('drajk', 'ilv-6', 'ilv-3');
+    expect(fac(byDrajk, 'freeworlds').disposition['drajk']).toBe(
+      fac(fresh(), 'freeworlds').disposition['drajk'],
     );
   });
 
   it('ends when the raiding squadron is destroyed', () => {
     const state = raiding();
-    setShipsAt(sys(state, 'kes-3'), 'krayt', 0);
+    setShipsAt(sys(state, 'ilv-3'), 'drajk', 0);
     expect(tickTurn(state).state.pendingOrders.filter((o) => o.type === 'commerce_raiding')).toHaveLength(0);
   });
 });
@@ -444,7 +478,7 @@ describe('treaties with mechanical force', () => {
         applyOps(state, [
           {
             op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
-            originId: 'ark-4', targetId: 'slu-1', force: 8, label: 'port call',
+            originId: 'ark-4', targetId: 'sek-1', force: 8, label: 'port call',
           },
         ]).state,
       );
@@ -455,29 +489,29 @@ describe('treaties with mechanical force', () => {
 
     const welcomed = send(true);
     expect(welcomed.notes.join(' ')).toMatch(/puts in at .* under basing rights/);
-    const port = welcomed.state.systems.find((s) => s.id === 'slu-1')!;
+    const port = welcomed.state.systems.find((s) => s.id === 'sek-1')!;
     expect(port.controllerFactionId).toBe('meridian');
     expect(hullsAt(port, 'freeworlds')).toBe(8);
   });
 
   it('brings pledged hulls to the battle', () => {
     const state = fresh('vigil');
-    state.treaties.push(pact('mutual_defense', ['meridian', 'hutt'], { hutt: 12 }));
-    setShipsAt(sys(state, 'tio-3'), 'vigil', 30);
+    state.treaties.push(pact('mutual_defense', ['meridian', 'ojjul'], { ojjul: 12 }));
+    setShipsAt(sys(state, 'tor-3'), 'vigil', 30);
     // Count only the Nars' OWN worlds. The global total is a battle outcome —
     // how many of the pledged hulls survived — which is a die roll, not the
     // property being tested.
     const atHome = (s: WorldState) =>
       s.systems
-        .filter((x) => x.controllerFactionId === 'hutt')
-        .reduce((n, x) => n + (hullsAt(x, 'hutt')), 0);
+        .filter((x) => x.controllerFactionId === 'ojjul')
+        .reduce((n, x) => n + (hullsAt(x, 'ojjul')), 0);
     const before = atHome(state);
 
     const res = untilArrived(
       applyOps(state, [
         {
           op: 'issue_order', factionId: 'vigil', type: 'fleet_movement',
-          originId: 'tio-3', targetId: 'tio-1', force: 25, label: 'seize it',
+          originId: 'tor-3', targetId: 'tor-1', force: 25, label: 'seize it',
         },
       ]).state,
     );
@@ -492,30 +526,30 @@ describe('treaties with mechanical force', () => {
       applyOps(
         (() => {
           const bare = fresh('vigil');
-          setShipsAt(sys(bare, 'tio-3'), 'vigil', 30);
+          setShipsAt(sys(bare, 'tor-3'), 'vigil', 30);
           return bare;
         })(),
         [
           {
             op: 'issue_order', factionId: 'vigil', type: 'fleet_movement',
-            originId: 'tio-3', targetId: 'tio-1', force: 25, label: 'seize it',
+            originId: 'tor-3', targetId: 'tor-1', force: 25, label: 'seize it',
           },
         ],
       ).state,
     );
-    const huttTotal = (s: WorldState) => s.systems.reduce((n, x) => n + (hullsAt(x, 'hutt')), 0);
-    expect(huttTotal(res.state)).toBeLessThan(huttTotal(withoutPact.state));
+    const ojjulTotal = (s: WorldState) => s.systems.reduce((n, x) => n + (hullsAt(x, 'ojjul')), 0);
+    expect(ojjulTotal(res.state)).toBeLessThan(ojjulTotal(withoutPact.state));
   });
 
   it('does not call in a pledge against the pledger', () => {
-    const state = fresh('hutt');
-    state.treaties.push(pact('mutual_defense', ['meridian', 'hutt'], { hutt: 12 }));
-    setShipsAt(sys(state, 'kes-1'), 'hutt', 30);
+    const state = fresh('ojjul');
+    state.treaties.push(pact('mutual_defense', ['meridian', 'ojjul'], { ojjul: 12 }));
+    setShipsAt(sys(state, 'ilv-1'), 'ojjul', 30);
     const res = untilArrived(
       applyOps(state, [
         {
-          op: 'issue_order', factionId: 'hutt', type: 'fleet_movement',
-          originId: 'kes-1', targetId: 'ark-1', force: 20, label: 'attack',
+          op: 'issue_order', factionId: 'ojjul', type: 'fleet_movement',
+          originId: 'ilv-1', targetId: 'ark-1', force: 20, label: 'attack',
         },
       ]).state,
     );
@@ -528,13 +562,13 @@ describe('treaties with mechanical force', () => {
     const before = Object.fromEntries(
       state.factions.map((f) => [f.id, f.disposition['vigil'] ?? 0]),
     );
-    setShipsAt(sys(state, 'tio-3'), 'vigil', 30);
+    setShipsAt(sys(state, 'tor-3'), 'vigil', 30);
 
     const res = untilArrived(
       applyOps(state, [
         {
           op: 'issue_order', factionId: 'vigil', type: 'fleet_movement',
-          originId: 'tio-3', targetId: 'tio-1', force: 25, label: 'break it',
+          originId: 'tor-3', targetId: 'tor-1', force: 25, label: 'break it',
         },
       ]).state,
     );
@@ -543,41 +577,41 @@ describe('treaties with mechanical force', () => {
     // The injured party feels a grievance...
     expect(fac(res.state, 'meridian').disposition['vigil']).toBe(before['meridian']! - 25);
     // ...and every onlooker revises its opinion of a power that does this.
-    for (const witness of ['hutt', 'freeworlds', 'krayt']) {
+    for (const witness of ['ojjul', 'freeworlds', 'drajk']) {
       expect(fac(res.state, witness).disposition['vigil'], witness).toBe(before[witness]! - 10);
     }
   });
 
   it('costs nothing extra to attack someone you never swore peace with', () => {
     const state = fresh('vigil');
-    const before = fac(state, 'krayt').disposition['vigil'] ?? 0;
-    setShipsAt(sys(state, 'tio-3'), 'vigil', 30);
+    const before = fac(state, 'drajk').disposition['vigil'] ?? 0;
+    setShipsAt(sys(state, 'tor-3'), 'vigil', 30);
     const res = untilArrived(
       applyOps(state, [
         {
           op: 'issue_order', factionId: 'vigil', type: 'fleet_movement',
-          originId: 'tio-3', targetId: 'tio-1', force: 25, label: 'attack',
+          originId: 'tor-3', targetId: 'tor-1', force: 25, label: 'attack',
         },
       ]).state,
     );
-    expect(fac(res.state, 'krayt').disposition['vigil']).toBe(before);
+    expect(fac(res.state, 'drajk').disposition['vigil']).toBe(before);
   });
 });
 
 describe('trade stays deterministic', () => {
   it('replays a blockaded, raided galaxy identically', () => {
     const build = () => {
-      let state = fresh('krayt');
-      setShipsAt(sys(state, 'kes-3'), 'krayt', 6);
-      setShipsAt(sys(state, 'kes-2'), 'vigil', 9);
+      let state = fresh('drajk');
+      setShipsAt(sys(state, 'ilv-3'), 'drajk', 6);
+      setShipsAt(sys(state, 'ilv-2'), 'vigil', 9);
       state = applyOps(state, [
         {
-          op: 'issue_order', factionId: 'krayt', type: 'commerce_raiding',
-          originId: 'kes-6', targetId: 'kes-3', durationTurns: 5, label: 'raid',
+          op: 'issue_order', factionId: 'drajk', type: 'commerce_raiding',
+          originId: 'ilv-6', targetId: 'ilv-3', durationTurns: 5, label: 'raid',
         },
         {
           op: 'issue_order', factionId: 'vigil', type: 'blockade',
-          originId: 'tio-3', targetId: 'kes-2', durationTurns: 5, label: 'blockade',
+          originId: 'tor-3', targetId: 'ilv-2', durationTurns: 5, label: 'blockade',
         },
       ]).state;
       for (let i = 0; i < 4; i++) state = tickTurn(state).state;
@@ -600,7 +634,7 @@ describe('arbitration: rulings the op vocabulary cannot express', () => {
     ]);
 
   it('records an arrangement that is nothing else in the game', () => {
-    const res = marry(fresh(), 'hutt');
+    const res = marry(fresh(), 'ojjul');
     expect(res.rejections).toHaveLength(0);
     expect(res.state.commitments).toHaveLength(1);
     expect(res.state.commitments[0]).toMatchObject({
@@ -615,7 +649,7 @@ describe('arbitration: rulings the op vocabulary cannot express', () => {
     // The point of holding these in world state: the arbiter would have to
     // remember turn 3 on turn 4, and a prompt is exactly what cannot be
     // relied on for that.
-    const once = marry(fresh(), 'hutt').state;
+    const once = marry(fresh(), 'ojjul').state;
     const twice = marry(once, 'meridian');
     expect(twice.rejections.map((r) => r.code)).toEqual(['commitment_conflict']);
     expect(twice.state.commitments).toHaveLength(1);
@@ -625,7 +659,7 @@ describe('arbitration: rulings the op vocabulary cannot express', () => {
   });
 
   it('allows the second once the first is dissolved', () => {
-    const once = marry(fresh(), 'hutt').state;
+    const once = marry(fresh(), 'ojjul').state;
     const freed = applyOps(once, [
       { op: 'dissolve_commitment', commitmentId: once.commitments[0]!.id, reason: 'annulled' },
     ]).state;
@@ -633,11 +667,11 @@ describe('arbitration: rulings the op vocabulary cannot express', () => {
   });
 
   it('does not block a different kind, or an unrelated faction', () => {
-    const state = marry(fresh(), 'hutt').state;
+    const state = marry(fresh(), 'ojjul').state;
     const charter = applyOps(state, [
       {
         op: 'establish_commitment', kind: 'exclusive_charter',
-        factionIds: ['freeworlds', 'krayt'], text: 'Sole carrier rights in the Drift.',
+        factionIds: ['freeworlds', 'drajk'], text: 'Sole carrier rights in the Drift.',
         exclusive: true,
       },
     ]);
@@ -646,7 +680,7 @@ describe('arbitration: rulings the op vocabulary cannot express', () => {
     const others = applyOps(state, [
       {
         op: 'establish_commitment', kind: 'dynastic_marriage',
-        factionIds: ['vigil', 'krayt'], text: 'An Imperial match.', exclusive: true,
+        factionIds: ['vigil', 'drajk'], text: 'An Imperial match.', exclusive: true,
       },
     ]);
     expect(others.rejections).toHaveLength(0);
@@ -654,7 +688,7 @@ describe('arbitration: rulings the op vocabulary cannot express', () => {
 
   it('lets a non-exclusive arrangement repeat', () => {
     let state = fresh();
-    for (const partner of ['hutt', 'meridian', 'krayt']) {
+    for (const partner of ['ojjul', 'meridian', 'drajk']) {
       const res = applyOps(state, [
         {
           op: 'establish_commitment', kind: 'friendship_accord',
@@ -688,7 +722,7 @@ describe('arbitration: rulings the op vocabulary cannot express', () => {
       [
         {
           op: 'establish_commitment', kind: 'dynastic_marriage',
-          factionIds: ['freeworlds', 'hutt'], text: 'A match with the Combine.',
+          factionIds: ['freeworlds', 'ojjul'], text: 'A match with the Combine.',
           exclusive: true,
         },
       ],
@@ -706,7 +740,7 @@ describe('suborning crews: presence and a stat contest, not a sentence', () => {
     s.systems.reduce((n, x) => n + (hullsAt(x, f)), 0);
 
   /** The op shape a playtest actually produced, as the acting faction. */
-  const suborn = (s: WorldState, at: string, from: string, n: number, actor = 'krayt') =>
+  const suborn = (s: WorldState, at: string, from: string, n: number, actor = 'drajk') =>
     applyOps(
       s,
       [
@@ -719,93 +753,93 @@ describe('suborning crews: presence and a stat contest, not a sentence', () => {
 
   it('refuses a faction with no ships and no agent there', () => {
     // The original hole: this moved thirty hulls from across the galaxy.
-    const res = suborn(fresh('krayt'), 'kes-2', 'hutt', 30);
+    const res = suborn(fresh('drajk'), 'ilv-2', 'ojjul', 30);
     expect(res.rejections.map((r) => r.code)).toContain('no_presence');
-    expect(totalShips(res.state, 'hutt')).toBe(totalShips(fresh(), 'hutt'));
+    expect(totalShips(res.state, 'ojjul')).toBe(totalShips(fresh(), 'ojjul'));
   });
 
   it('allows it where you have ships, capped by guile against resolve', () => {
-    const state = fresh('krayt');
-    setShipsAt(sys(state, 'kes-2'), 'krayt', 3);
-    const limit = subornLimit(state, 'krayt', 'hutt');
+    const state = fresh('drajk');
+    setShipsAt(sys(state, 'ilv-2'), 'drajk', 3);
+    const limit = subornLimit(state, 'drajk', 'ojjul');
     expect(limit).toBeGreaterThan(0);
 
-    const res = suborn(state, 'kes-2', 'hutt', 30);
+    const res = suborn(state, 'ilv-2', 'ojjul', 30);
     expect(res.rejections.filter((r) => r.code === 'no_presence')).toHaveLength(0);
     // Asked for 30, got the limit — trimmed, and said so, rather than rejected.
-    expect(totalShips(state, 'hutt') - totalShips(res.state, 'hutt')).toBe(limit);
+    expect(totalShips(state, 'ojjul') - totalShips(res.state, 'ojjul')).toBe(limit);
     expect(res.notes.join(' ')).toMatch(/could only talk \d+ of 30/);
   });
 
   it('allows it where you have an agent instead of a fleet', () => {
-    const state = fresh('krayt');
+    const state = fresh('drajk');
     state.agents.push({
-      id: 'a1', ownerFactionId: 'krayt', systemId: 'kes-2', mission: 'defection',
+      id: 'a1', ownerFactionId: 'drajk', systemId: 'ilv-2', mission: 'defection',
       effect: { kind: 'crew_defection', perTurn: 2 },
       successChance: 60, exposed: false, deployedTurn: 0, cover: 'a quiet word',
     });
-    const res = suborn(state, 'kes-2', 'hutt', 2);
+    const res = suborn(state, 'ilv-2', 'ojjul', 2);
     expect(res.rejections).toHaveLength(0);
-    expect(totalShips(res.state, 'krayt')).toBe(totalShips(state, 'krayt') + 2);
+    expect(totalShips(res.state, 'drajk')).toBe(totalShips(state, 'drajk') + 2);
   });
 
   it('cannot suborn a resolute power at all, however much guile', () => {
-    // Iron Vigil resolve 17, Arkanis 19. Their crews do not defect, which is
+    // Iron Vigil resolve 17, Arkane 19. Their crews do not defect, which is
     // what a defining stat ought to mean.
-    const state = fresh('krayt');
-    setShipsAt(sys(state, 'tio-3'), 'krayt', 5);
-    expect(subornLimit(state, 'krayt', 'vigil')).toBe(0);
-    const res = suborn(state, 'tio-3', 'vigil', 3);
+    const state = fresh('drajk');
+    setShipsAt(sys(state, 'tor-3'), 'drajk', 5);
+    expect(subornLimit(state, 'drajk', 'vigil')).toBe(0);
+    const res = suborn(state, 'tor-3', 'vigil', 3);
     expect(res.rejections.map((r) => r.code)).toContain('illegal_value');
     expect(totalShips(res.state, 'vigil')).toBe(totalShips(state, 'vigil'));
   });
 
   it('leaves a faction free to move its own ships as before', () => {
-    const state = fresh('krayt');
+    const state = fresh('drajk');
     const res = applyOps(
       state,
       [
-        { op: 'adjust_ships', systemId: 'kes-6', factionId: 'krayt', delta: -5 },
-        { op: 'adjust_ships', systemId: 'kes-7', factionId: 'krayt', delta: 5 },
+        { op: 'adjust_ships', systemId: 'ilv-6', factionId: 'drajk', delta: -5 },
+        { op: 'adjust_ships', systemId: 'ilv-7', factionId: 'drajk', delta: 5 },
       ],
       'model',
-      'krayt',
+      'drajk',
     );
     expect(res.rejections).toHaveLength(0);
-    expect(totalShips(res.state, 'krayt')).toBe(totalShips(state, 'krayt'));
+    expect(totalShips(res.state, 'drajk')).toBe(totalShips(state, 'drajk'));
   });
 
   it('holds NPCs to the same rule as the player', () => {
-    const res = suborn(fresh('krayt'), 'slu-1', 'meridian', 6, 'hutt');
+    const res = suborn(fresh('drajk'), 'sek-1', 'meridian', 6, 'ojjul');
     expect(res.rejections.map((r) => r.code)).toContain('no_presence');
   });
 
   it('still applies no guard when no actor is known, so old journals replay', () => {
     const res = applyOps(
-      fresh('krayt'),
-      [{ op: 'adjust_ships', systemId: 'kes-2', factionId: 'hutt', delta: -5 }],
+      fresh('drajk'),
+      [{ op: 'adjust_ships', systemId: 'ilv-2', factionId: 'ojjul', delta: -5 }],
       'model',
     );
     expect(res.rejections).toHaveLength(0);
   });
 
   it('scales the limit off the two stats, not a constant', () => {
-    const state = fresh('krayt');
-    const before = subornLimit(state, 'krayt', 'hutt');
-    fac(state, 'krayt').stats.guile = 20;
-    expect(subornLimit(state, 'krayt', 'hutt')).toBeGreaterThan(before);
-    fac(state, 'hutt').stats.resolve = 20;
-    expect(subornLimit(state, 'krayt', 'hutt')).toBeLessThan(
-      subornLimit(fresh('krayt'), 'krayt', 'meridian') + 99,
+    const state = fresh('drajk');
+    const before = subornLimit(state, 'drajk', 'ojjul');
+    fac(state, 'drajk').stats.guile = 20;
+    expect(subornLimit(state, 'drajk', 'ojjul')).toBeGreaterThan(before);
+    fac(state, 'ojjul').stats.resolve = 20;
+    expect(subornLimit(state, 'drajk', 'ojjul')).toBeLessThan(
+      subornLimit(fresh('drajk'), 'drajk', 'meridian') + 99,
     );
   });
 });
 
 describe('the defection agent mission', () => {
-  const withAgent = (perTurn: number, target = 'hutt', at = 'kes-2') => {
-    const state = fresh('krayt');
+  const withAgent = (perTurn: number, target = 'ojjul', at = 'ilv-2') => {
+    const state = fresh('drajk');
     state.agents.push({
-      id: 'a1', ownerFactionId: 'krayt', systemId: at, mission: 'defection',
+      id: 'a1', ownerFactionId: 'drajk', systemId: at, mission: 'defection',
       effect: { kind: 'crew_defection', perTurn },
       successChance: 100, exposed: false, deployedTurn: 0, cover: 'quiet words',
     });
@@ -814,34 +848,34 @@ describe('the defection agent mission', () => {
 
   it('moves hulls across rather than destroying them', () => {
     const { state } = withAgent(2);
-    const huttBefore = state.systems.reduce((n, s) => n + (hullsAt(s, 'hutt')), 0);
-    const kraytBefore = state.systems.reduce((n, s) => n + (hullsAt(s, 'krayt')), 0);
+    const ojjulBefore = state.systems.reduce((n, s) => n + (hullsAt(s, 'ojjul')), 0);
+    const drajkBefore = state.systems.reduce((n, s) => n + (hullsAt(s, 'drajk')), 0);
 
     const after = tickTurn(state).state;
-    const huttAfter = after.systems.reduce((n, s) => n + (hullsAt(s, 'hutt')), 0);
-    const kraytAfter = after.systems.reduce((n, s) => n + (hullsAt(s, 'krayt')), 0);
+    const ojjulAfter = after.systems.reduce((n, s) => n + (hullsAt(s, 'ojjul')), 0);
+    const drajkAfter = after.systems.reduce((n, s) => n + (hullsAt(s, 'drajk')), 0);
 
-    expect(huttBefore - huttAfter).toBeGreaterThan(0);
-    expect(kraytAfter - kraytBefore).toBe(huttBefore - huttAfter);
+    expect(ojjulBefore - ojjulAfter).toBeGreaterThan(0);
+    expect(drajkAfter - drajkBefore).toBe(ojjulBefore - ojjulAfter);
   });
 
   it('never exceeds the stat contest, however greedy the effect', () => {
     const { state } = withAgent(4);
-    const limit = subornLimit(state, 'krayt', 'hutt');
-    const before = state.systems.reduce((n, s) => n + (hullsAt(s, 'hutt')), 0);
+    const limit = subornLimit(state, 'drajk', 'ojjul');
+    const before = state.systems.reduce((n, s) => n + (hullsAt(s, 'ojjul')), 0);
     const after = tickTurn(state).state;
-    expect(before - after.systems.reduce((n, s) => n + (hullsAt(s, 'hutt')), 0)).toBeLessThanOrEqual(limit);
+    expect(before - after.systems.reduce((n, s) => n + (hullsAt(s, 'ojjul')), 0)).toBeLessThanOrEqual(limit);
   });
 
   it('charges for the hulls, so it is not a free shipyard', () => {
     const { state } = withAgent(2);
-    const purse = fac(state, 'krayt').credits;
+    const purse = fac(state, 'drajk').credits;
     const after = tickTurn(state).state;
-    expect(fac(after, 'krayt').credits).toBeLessThan(purse);
+    expect(fac(after, 'drajk').credits).toBeLessThan(purse);
   });
 
   it('finds no takers against a resolute power', () => {
-    const { state } = withAgent(3, 'vigil', 'tio-3');
+    const { state } = withAgent(3, 'vigil', 'tor-3');
     const before = state.systems.reduce((n, s) => n + (hullsAt(s, 'vigil')), 0);
     const res = tickTurn(state);
     expect(res.state.systems.reduce((n, s) => n + (hullsAt(s, 'vigil')), 0)).toBe(before);
@@ -850,8 +884,8 @@ describe('the defection agent mission', () => {
 
   it('is a humiliation the victim remembers', () => {
     const { state } = withAgent(2);
-    const before = fac(state, 'hutt').disposition['krayt'] ?? 0;
-    expect(fac(tickTurn(state).state, 'hutt').disposition['krayt']).toBeLessThan(before);
+    const before = fac(state, 'ojjul').disposition['drajk'] ?? 0;
+    expect(fac(tickTurn(state).state, 'ojjul').disposition['drajk']).toBeLessThan(before);
   });
 });
 
@@ -861,11 +895,11 @@ describe('an invited fleet is a guest, not a rival', () => {
     if (treatyType) state.treaties.push(pact(treatyType, ['meridian', 'freeworlds']));
     return applyOps(
       state,
-      [{ op: 'adjust_ships', systemId: 'slu-1', factionId: 'freeworlds', delta: 8 }],
+      [{ op: 'adjust_ships', systemId: 'sek-1', factionId: 'freeworlds', delta: 8 }],
       'engine',
     ).state;
   };
-  const income = (s: WorldState) => systemIncome(s, sys(s, 'slu-1'));
+  const income = (s: WorldState) => systemIncome(s, sys(s, 'sek-1'));
 
   it('contests a world when nothing permits the visit', () => {
     const inc = income(withFleet(null));
@@ -915,10 +949,10 @@ describe('an invited fleet is a guest, not a rival', () => {
     state.turn = 5; // well past expiry
     const withShips = applyOps(
       state,
-      [{ op: 'adjust_ships', systemId: 'slu-1', factionId: 'freeworlds', delta: 8 }],
+      [{ op: 'adjust_ships', systemId: 'sek-1', factionId: 'freeworlds', delta: 8 }],
       'engine',
     ).state;
-    expect(systemIncome(withShips, sys(withShips, 'slu-1')).contested).toBe(true);
+    expect(systemIncome(withShips, sys(withShips, 'sek-1')).contested).toBe(true);
   });
 
   it('does not make a guest immune to being counted in a battle', () => {
@@ -926,19 +960,19 @@ describe('an invited fleet is a guest, not a rival', () => {
     // world it is sitting on, which is the safe default in `resolveBattle`.
     const state = fresh('vigil');
     state.treaties.push(pact('basing_rights', ['meridian', 'freeworlds']));
-    setShipsAt(sys(state, 'slu-1'), 'freeworlds', 20);
+    setShipsAt(sys(state, 'sek-1'), 'freeworlds', 20);
     setShipsAt(sys(state, 'ark-2'), 'vigil', 12);
     const res = untilArrived(
       applyOps(state, [
         {
           op: 'issue_order', factionId: 'vigil', type: 'fleet_movement',
-          originId: 'ark-2', targetId: 'slu-1', force: 10, label: 'strike',
+          originId: 'ark-2', targetId: 'sek-1', force: 10, label: 'strike',
         },
       ]).state,
     );
     // The Free Worlds squadron fought for its host rather than watching.
     expect(res.notes.join(' ')).toMatch(/driven off|breaks off|Fleets engage|still hold/);
-    expect(sys(res.state, 'slu-1').controllerFactionId).toBe('meridian');
+    expect(sys(res.state, 'sek-1').controllerFactionId).toBe('meridian');
   });
 });
 
@@ -948,20 +982,20 @@ describe('suborning is statecraft, not combat', () => {
   const disp = (s: WorldState, a: string, b: string) =>
     s.factions.find((f) => f.id === a)!.disposition[b] ?? 0;
 
-  /** Drajk lurking at the unaligned kes-4, which is adjacent to Nar kes-3. */
+  /** Drajk lurking at the unaligned ilv-4, which is adjacent to Nar ilv-3. */
   const fromNextDoor = (n = 3) => {
-    const state = fresh('krayt');
-    setShipsAt(sys(state, 'kes-4'), 'krayt', 8);
+    const state = fresh('drajk');
+    setShipsAt(sys(state, 'ilv-4'), 'drajk', 8);
     return {
       before: state,
       res: applyOps(
         state,
         [
-          { op: 'adjust_ships', systemId: 'kes-3', factionId: 'hutt', delta: -n },
-          { op: 'adjust_ships', systemId: 'kes-4', factionId: 'krayt', delta: n },
+          { op: 'adjust_ships', systemId: 'ilv-3', factionId: 'ojjul', delta: -n },
+          { op: 'adjust_ships', systemId: 'ilv-4', factionId: 'drajk', delta: n },
         ],
         'model',
-        'krayt',
+        'drajk',
       ),
     };
   };
@@ -972,24 +1006,24 @@ describe('suborning is statecraft, not combat', () => {
     // raiding useless to the weak.
     const { before, res } = fromNextDoor();
     expect(res.rejections).toHaveLength(0);
-    expect(totalShips(res.state, 'hutt')).toBeLessThan(totalShips(before, 'hutt'));
+    expect(totalShips(res.state, 'ojjul')).toBeLessThan(totalShips(before, 'ojjul'));
   });
 
   it('fights nothing: the world, its holder and its garrison are untouched', () => {
     const { before, res } = fromNextDoor();
-    const target = sys(res.state, 'kes-3');
-    expect(target.controllerFactionId).toBe('hutt');
-    expect(target.garrison).toBe(sys(before, 'kes-3').garrison);
+    const target = sys(res.state, 'ilv-3');
+    expect(target.controllerFactionId).toBe('ojjul');
+    expect(target.garrison).toBe(sys(before, 'ilv-3').garrison);
     expect(res.notes.join(' ')).not.toMatch(/engage|storms|driven off|thrown back/);
     expect(res.notes.join(' ')).toMatch(/without a shot fired/);
   });
 
   it('bills the victim per hull and every onlooker for the act', () => {
     const { before, res } = fromNextDoor(3);
-    expect(disp(res.state, 'hutt', 'krayt')).toBe(disp(before, 'hutt', 'krayt') - 6 * 3);
+    expect(disp(res.state, 'ojjul', 'drajk')).toBe(disp(before, 'ojjul', 'drajk') - 6 * 3);
     for (const witness of ['meridian', 'vigil', 'freeworlds']) {
-      expect(disp(res.state, witness, 'krayt'), witness).toBe(
-        disp(before, witness, 'krayt') - 2,
+      expect(disp(res.state, witness, 'drajk'), witness).toBe(
+        disp(before, witness, 'drajk') - 2,
       );
     }
   });
@@ -999,47 +1033,47 @@ describe('suborning is statecraft, not combat', () => {
     // cheaper one is the only one anybody uses.
     const byFleet = fromNextDoor(2);
     const perHullFleet =
-      (disp(byFleet.before, 'hutt', 'krayt') - disp(byFleet.res.state, 'hutt', 'krayt')) / 2;
+      (disp(byFleet.before, 'ojjul', 'drajk') - disp(byFleet.res.state, 'ojjul', 'drajk')) / 2;
 
-    const withAgent = fresh('krayt');
+    const withAgent = fresh('drajk');
     withAgent.agents.push({
-      id: 'a1', ownerFactionId: 'krayt', systemId: 'kes-2', mission: 'defection',
+      id: 'a1', ownerFactionId: 'drajk', systemId: 'ilv-2', mission: 'defection',
       effect: { kind: 'crew_defection', perTurn: 2 },
       successChance: 100, exposed: false, deployedTurn: 0, cover: 'quiet words',
     });
-    const beforeAgent = disp(withAgent, 'hutt', 'krayt');
+    const beforeAgent = disp(withAgent, 'ojjul', 'drajk');
     const ticked = tickTurn(withAgent).state;
-    const turned = totalShips(withAgent, 'hutt') - totalShips(ticked, 'hutt');
-    const perHullAgent = (beforeAgent - disp(ticked, 'hutt', 'krayt')) / turned;
+    const turned = totalShips(withAgent, 'ojjul') - totalShips(ticked, 'ojjul');
+    const perHullAgent = (beforeAgent - disp(ticked, 'ojjul', 'drajk')) / turned;
 
     expect(perHullFleet).toBe(perHullAgent);
   });
 
   it('is still refused from two jumps away', () => {
-    const state = fresh('krayt');
-    setShipsAt(sys(state, 'kes-6'), 'krayt', 20); // kes-6 is not adjacent to kes-2
+    const state = fresh('drajk');
+    setShipsAt(sys(state, 'ilv-6'), 'drajk', 20); // ilv-6 is not adjacent to ilv-2
     const res = applyOps(
       state,
-      [{ op: 'adjust_ships', systemId: 'kes-2', factionId: 'hutt', delta: -3 }],
+      [{ op: 'adjust_ships', systemId: 'ilv-2', factionId: 'ojjul', delta: -3 }],
       'model',
-      'krayt',
+      'drajk',
     );
     expect(res.rejections.map((r) => r.code)).toContain('no_presence');
   });
 
   it('charges nothing to a faction moving its own ships', () => {
-    const state = fresh('krayt');
-    const before = disp(state, 'hutt', 'krayt');
+    const state = fresh('drajk');
+    const before = disp(state, 'ojjul', 'drajk');
     const res = applyOps(
       state,
       [
-        { op: 'adjust_ships', systemId: 'kes-6', factionId: 'krayt', delta: -4 },
-        { op: 'adjust_ships', systemId: 'kes-7', factionId: 'krayt', delta: 4 },
+        { op: 'adjust_ships', systemId: 'ilv-6', factionId: 'drajk', delta: -4 },
+        { op: 'adjust_ships', systemId: 'ilv-7', factionId: 'drajk', delta: 4 },
       ],
       'model',
-      'krayt',
+      'drajk',
     );
-    expect(disp(res.state, 'hutt', 'krayt')).toBe(before);
+    expect(disp(res.state, 'ojjul', 'drajk')).toBe(before);
     expect(res.notes.join(' ')).not.toMatch(/without a shot fired/);
   });
 });
@@ -1052,21 +1086,21 @@ describe('a guest is paid by its treaty, never by presence', () => {
     state.treaties.push(treaty);
     return applyOps(
       state,
-      [{ op: 'adjust_ships', systemId: 'slu-1', factionId: 'freeworlds', delta: 8 }],
+      [{ op: 'adjust_ships', systemId: 'sek-1', factionId: 'freeworlds', delta: 8 }],
       'engine',
     ).state;
   };
 
   it('pays a guest nothing when the treaty says nothing', () => {
-    const inc = systemIncome(hosted([]), sys(hosted([]), 'slu-1'));
+    const inc = systemIncome(hosted([]), sys(hosted([]), 'sek-1'));
     expect(inc.shares['freeworlds']).toBeUndefined();
   });
 
   it('pays a guest exactly what the treaty negotiated, and marks it as such', () => {
     // One mechanism for "a treaty moves income", not two. A garrisoning ally
     // is paid by agreement, never by helping itself to a contest share.
-    const state = hosted([{ systemId: 'slu-1', factionId: 'freeworlds', share: 0.2 }]);
-    const inc = systemIncome(state, sys(state, 'slu-1'));
+    const state = hosted([{ systemId: 'sek-1', factionId: 'freeworlds', share: 0.2 }]);
+    const inc = systemIncome(state, sys(state, 'sek-1'));
     expect(inc.byTreaty).toContain('freeworlds');
     expect(inc.shares['freeworlds']).toBe(Math.round(inc.base * 0.2));
     // And the host keeps the rest in full — presence took nothing extra.
@@ -1075,8 +1109,8 @@ describe('a guest is paid by its treaty, never by presence', () => {
   });
 
   it('never pays out more than the world is worth', () => {
-    const state = hosted([{ systemId: 'slu-1', factionId: 'freeworlds', share: 0.5 }]);
-    const inc = systemIncome(state, sys(state, 'slu-1'));
+    const state = hosted([{ systemId: 'sek-1', factionId: 'freeworlds', share: 0.5 }]);
+    const inc = systemIncome(state, sys(state, 'sek-1'));
     const paid = Object.values(inc.shares).reduce((n, v) => n + v, 0);
     expect(paid).toBeLessThanOrEqual(inc.base + 1);
   });
