@@ -18,6 +18,7 @@ import { addShipsAt, hullsAt, stackAt, type WorldState } from '../src/domain/sta
 
 const fresh = (): WorldState => createSeedState('freeworlds');
 const sys = (s: WorldState, id: string) => s.systems.find((x) => x.id === id)!;
+const fac = (s: WorldState, id: string) => s.factions.find((x) => x.id === id)!;
 
 /** Send `att` from ark-3 against a world defended by `def`, and settle it. */
 function fight(att: ShipStack, def: ShipStack, garrison = 1, target = 'sek-6') {
@@ -328,5 +329,87 @@ describe('the exchange reads the roll the same way for both sides', () => {
     expect(r.notes.join(' ')).toMatch(/Fleets engage|driven off|breaks off/);
     expect(hullsAt(sys(r.state, 'sek-6'), 'vigil')).toBeLessThan(12);
     expect(t.controllerFactionId).toBe('vigil'); // the fixture is untouched
+  });
+});
+
+/**
+ * Item 74's second objective for a defender: a standing order on whether the
+ * world is worth the fleet.
+ */
+describe('a defender chooses whether to break off', () => {
+  const defend = (stance: 'hold' | 'stand' | 'withdraw') => {
+    const state = fresh();
+    const t = sys(state, 'sek-6');
+    t.controllerFactionId = 'vigil';
+    t.ships = {};
+    t.garrison = 1;
+    t.garrisonMax = 1;
+    fac(state, 'vigil').stance = stance;
+    // Not crusading: that doctrine overrides any stance, which is the point.
+    fac(state, 'vigil').warEthic = 'defensive';
+    addShipsAt(t, 'vigil', 10, 'battleship');
+    const origin = sys(state, 'ark-3');
+    origin.ships = {};
+    addShipsAt(origin, 'freeworlds', 60, 'battleship');
+    addShipsAt(origin, 'freeworlds', 4, 'lifter');
+    const out = applyOps(state, [{
+      op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
+      originId: 'ark-3', targetId: 'sek-6', force: { battleship: 60, lifter: 4 },
+    }], 'model', 'freeworlds');
+    let r = tickTurn(out.state);
+    while (r.state.pendingOrders.some((o) => o.id === 'ord-0-0')) r = tickTurn(r.state);
+    return r.notes.join(' ');
+  };
+
+  it('holds the orbit rather than break off when ordered to hold', () => {
+    expect(defend('hold')).not.toMatch(/breaks off/);
+  });
+
+  it('breaks off when badly outmatched on the default stance', () => {
+    expect(defend('stand')).toMatch(/breaks off/);
+  });
+
+  it('refuses a stance ordered by somebody else', () => {
+    const out = applyOps(
+      fresh(),
+      [{ op: 'set_stance', factionId: 'vigil', stance: 'withdraw' }],
+      'model',
+      'freeworlds',
+    );
+    expect(out.rejections.some((r) => r.code === 'illegal_value')).toBe(true);
+  });
+
+  it('lets a power set its own', () => {
+    const out = applyOps(
+      fresh(),
+      [{ op: 'set_stance', factionId: 'freeworlds', stance: 'hold' }],
+      'model',
+      'freeworlds',
+    );
+    expect(out.rejections).toHaveLength(0);
+    expect(fac(out.state, 'freeworlds').stance).toBe('hold');
+  });
+
+  it('cannot order a crusading power to run', () => {
+    // The stance is set, and the doctrine still overrides it.
+    const state = fresh();
+    fac(state, 'vigil').stance = 'withdraw';
+    expect(fac(state, 'vigil').warEthic).toBe('crusading');
+    const t = sys(state, 'sek-6');
+    t.controllerFactionId = 'vigil';
+    t.ships = {};
+    t.garrison = 1; t.garrisonMax = 1;
+    addShipsAt(t, 'vigil', 10, 'battleship');
+    const origin = sys(state, 'ark-3');
+    origin.ships = {};
+    addShipsAt(origin, 'freeworlds', 30, 'battleship');
+    addShipsAt(origin, 'freeworlds', 4, 'lifter');
+    const out = applyOps(state, [{
+      op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
+      originId: 'ark-3', targetId: 'sek-6', force: { battleship: 30, lifter: 4 },
+    }], 'model', 'freeworlds');
+    let r = tickTurn(out.state);
+    while (r.state.pendingOrders.some((o) => o.id === 'ord-0-0')) r = tickTurn(r.state);
+    expect(r.notes.join(' ')).not.toMatch(/breaks off/);
   });
 });

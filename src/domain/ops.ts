@@ -89,6 +89,25 @@ export const SetDoctrineOp = z.object({
   tradeEthic: TradeEthicSchema.optional(),
 });
 
+/**
+ * What your fleets do when they are losing a defence.
+ *
+ * Free — no credits, no dissent, no roll. It is a standing order to your own
+ * navy, not a change of character: `set_doctrine` charges dissent because
+ * rewriting what a power BELIEVES is a real upheaval, and deciding whether this
+ * particular war is worth the fleet is the ordinary work of commanding one.
+ */
+export const SetStanceOp = z.object({
+  op: z.literal('set_stance'),
+  factionId: z.string().min(1),
+  /**
+   * `hold` never breaks off — the world at any price.
+   * `stand` breaks off at two to one, which is how every campaign has played.
+   * `withdraw` leaves the moment it is outmatched, keeping the fleet.
+   */
+  stance: z.enum(['hold', 'stand', 'withdraw']),
+});
+
 export const IssueOrderOp = z.object({
   op: z.literal('issue_order'),
   factionId: z.string().min(1),
@@ -455,6 +474,7 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   AdjustFleetOp,
   AdjustCreditsOp,
   SetDoctrineOp,
+  SetStanceOp,
   IssueOrderOp,
   CancelOrderOp,
   InterruptOrderOp,
@@ -510,6 +530,7 @@ export const OpSchema = z.discriminatedUnion('op', [
   AdjustFleetOp,
   AdjustCreditsOp,
   SetDoctrineOp,
+  SetStanceOp,
   IssueOrderOp,
   CancelOrderOp,
   InterruptOrderOp,

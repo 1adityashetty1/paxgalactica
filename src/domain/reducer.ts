@@ -94,7 +94,9 @@ import {
   tonsAt,
   fleetTonsOf,
   commitmentsOf,
+  breakOffRatio,
   maxCommitmentIncomeFor,
+  refusesToBreakOff,
   effectiveStats,
   fleetBases,
   isGuestOf,
@@ -1200,6 +1202,37 @@ export function applyOps(
           notes.push(note);
           logEvent(state, 'system', note, f.id);
         }
+        break;
+      }
+
+      case 'set_stance': {
+        const f = state.factions.find((x) => x.id === op.factionId);
+        if (!f) {
+          reject(raw, 'unknown_faction', `No faction "${op.factionId}".`);
+          break;
+        }
+        // Your own navy only — the same hazard `set_doctrine` and `deploy_agent`
+        // are guarded against. Ordering a rival's fleet to run would be the
+        // cheapest hostile act in the game.
+        if (actor !== undefined && op.factionId !== actor) {
+          reject(
+            raw,
+            'illegal_value',
+            `${actor} does not command ${op.factionId}'s fleets and cannot tell them when to break off.`,
+          );
+          break;
+        }
+        if (f.stance === op.stance) break;
+        const was = f.stance;
+        f.stance = op.stance;
+        const said = {
+          hold: 'will hold whatever the odds',
+          stand: 'will break off only when badly outmatched',
+          withdraw: 'will break off the moment it is outmatched, and keep the fleet',
+        }[op.stance];
+        const note = `${f.name} ${said} (was ${was}).`;
+        notes.push(note);
+        logEvent(state, 'order', note, op.factionId);
         break;
       }
 
@@ -4007,7 +4040,12 @@ function resolveBattle(
     // A crusading power does not break off, in either direction. It wins
     // engagements it should have fled and loses fleets it should have saved —
     // the Iron Vigil fighting for the mandate rather than for the arithmetic.
-    const defenderStands = holderEthic === 'crusading';
+    // A holder's STANCE is its second objective: `hold` never breaks off and
+    // risks the fleet to keep the world, `withdraw` leaves the moment it is
+    // outmatched and keeps the fleet instead. `crusading` overrides both — that
+    // doctrine has never been allowed to retreat and is not allowed to order it.
+    const defenderStands = holderEthic === 'crusading' || (holder !== null && refusesToBreakOff(state, holder));
+    const breakAt = holder === null ? 2 : breakOffRatio(state, holder);
     const attackerStands = attackEthic === 'crusading';
 
     const orbital = (outcome: BattleOutcome, note: string): void => {
@@ -4027,7 +4065,7 @@ function resolveBattle(
     };
     // Only reported when it CHANGED the outcome: a crusading power that was
     // never asked to retreat did not do anything worth telling the player.
-    if (defenderStands && attackPower >= defendPower * 2) {
+    if (defenderStands && attackPower >= defendPower * breakAt) {
       doctrinesFired.push(
         `crusading: ${nameOf(holder!)} was outmatched 2:1 and did not break off`,
       );
@@ -4038,7 +4076,7 @@ function resolveBattle(
       );
     }
 
-    if (attackPower >= defendPower * 2 && !defenderStands) {
+    if (attackPower >= defendPower * breakAt && !defenderStands) {
       let lost = 0;
       for (const [id, present] of defenders) {
         const escaped = bleed(present);

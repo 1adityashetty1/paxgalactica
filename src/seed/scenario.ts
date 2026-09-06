@@ -355,6 +355,8 @@ function buildFactions(): Faction[] {
     name: f.name,
     displayColor: f.color,
     disposition: { ...(DISPOSITIONS[f.id] ?? {}) },
+    // Every campaign so far was played at `stand`; nobody opens by planning to run.
+    stance: 'stand' as const,
     credits: f.credits,
     doctrine: f.doctrine,
     stats: { ...f.stats },

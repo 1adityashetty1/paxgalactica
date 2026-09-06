@@ -66,6 +66,7 @@ leaves a faction with nobody following it.
 | `adjust_credits` | money spent or earned |
 | `adjust_ships` | ships added to or removed from one system |
 | `set_doctrine` | the faction changes course — see Changing doctrine |
+| `set_stance` | what its fleets do when losing a defence — see Standing orders |
 | `adjust_dissent` | **your own** institutions grow more restive — never less |
 | `cancel_order` | an existing order is called off |
 | `interrupt_order` | an order is disrupted by force or event |
@@ -380,3 +381,26 @@ opinion of them drops every turn it continues. Chasing a defaulter is an
 ordinary action — a fleet at their world, an operative in their space — and for
 the Combine, whose institutions demand that an unpaid debt be pursued, *not*
 chasing one is itself a drift the engine charges for.
+
+## Standing orders: when the fleet breaks off
+
+`set_stance` is a standing order to your own navy, and it is **free** — no
+credits, no dissent, no roll. It answers one question: when a defence is going
+badly, is the world worth the fleet?
+
+| stance | what your fleets do |
+|---|---|
+| `hold` | never break off. The world at any price, and the fleet may be spent doing it. |
+| `stand` | break off only when outmatched two to one. The default, and how every campaign has been played. |
+| `withdraw` | break off the moment they are outmatched, and keep the fleet. The world is lost; the navy is not. |
+
+A withdrawal costs 10–35% of the tonnage getting clear, and **escorts are spent
+first**, so a screen covers a retreat where it cannot absorb a stand-up
+exchange. That is the point of the stance: it makes a defending fleet's
+composition a decision, because holding and surviving want different ships.
+
+A **crusading** power never breaks off whatever the stance says — the Iron Vigil
+cannot be ordered to run — so `set_stance` on that faction changes only what
+happens if its doctrine changes later.
+
+Only your own faction. Ordering a rival's fleet to run is rejected.

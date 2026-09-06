@@ -1955,6 +1955,26 @@ it the peace it profits from.
 > master"*, *"will never accept occupation"* — and giving it an expansion-pays
 > mechanic would have contradicted its whole sheet.
 
+## A commander decides whether the world is worth the fleet
+
+`set_stance` — `hold` never breaks off, `stand` breaks at two to one (the
+default, and what every campaign was played under), `withdraw` breaks the moment
+it is outmatched. Free: no credits, no dissent, no roll, because it is a
+standing order to your own navy rather than a change of what the power believes.
+Your own faction only, and `crusading` overrides all three — the Iron Vigil
+cannot be ordered to run.
+
+It was built as the **second objective** item 74 says a defender needs, and it
+did not work. Swept over every defending composition at two budget ratios and
+scored on holding *and* on force preserved, a pure battle line wins every metric
+under every stance. The reason generalises 74's rule rather than escaping it: a
+withdrawal costs a fixed **fraction of tonnage**, and `bleed` spends the loss
+order — so a screen does not reduce what is lost, it changes which hulls absorb
+it. **Protecting a percentage of your own weight is still measured in weight.**
+
+It ships because it is a choice a commander should have and it is honestly
+documented, not because it solved anything. See items 74, 76 and 77.
+
 ## Combat
 
 A faction has **no stored fleet strength**. Its navy is `sum(system.ships[f])`

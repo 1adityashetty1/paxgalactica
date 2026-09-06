@@ -144,18 +144,32 @@ two different hull classes are untouched.
 > is exactly the world a model then names. Removing unconditionally makes both
 > cases uniform. A test pins the same-system case specifically.
 
-## D. Composition is a decision for an attacker and not a defender — **74** (65 retired)
+## D. Composition is a decision for an attacker and not a defender — **74, 76, 77**
 
-- ~~A fleet already in orbit takes no part in the battle fought over its head~~
-  — **retested and mostly wrong**: it can assault the world under it with a
-  zero-jump `fleet_movement`, in one turn. What is left is a prompt line about
-  discoverability, and no decision (**65**).
-- A defender's composition is not a decision at any budget ratio, because a
-  defender has one objective and one objective has a pure optimum (**74**).
+A defender's best fleet is a pure battle line at 80–84%, and every mix is
+monotonically worse — because a defender has one objective and one linear
+objective has a pure optimum. Measured with `pnpm fleetlab`.
 
-Both are the same shape: combat resolves on arrival and nothing else. **74 needs
-a design decision — a second objective for the defender — not another hull
-ability**, and is the one item here that should not be started without a call.
+**A second objective was built and did not fix it.** `set_stance` gives a
+commander a standing order — `hold` never breaks off, `stand` breaks at two to
+one, `withdraw` breaks the moment it is outmatched. It changes behaviour
+measurably (84% held → 92% on `hold`, 70% on `withdraw`) and **pure battleship
+still wins every metric under every stance**, because a withdrawal costs a fixed
+*fraction of tonnage* and a screen only changes which hulls absorb it.
+Protecting a percentage of your own weight is still measured in weight.
+
+The stance ships as an expressive choice, honestly documented, not as a fix.
+Two items came out of measuring it:
+
+- **76** — `hold` appears to *dominate* `stand`: more worlds held for the same
+  force preserved. If it holds up, the 2:1 break-off is all cost and no benefit,
+  which is a defect in the mechanic rather than in the stance. Needs a careful
+  re-measure first.
+- **77** — the open half of 74, with the two directions worth trying: **leaders**
+  (a commander is something to preserve that is not weight — exactly what the
+  rule says a screen needs), or **ship types that behave differently over a world
+  their owner holds**. Both are features; neither should start before it is clear
+  which one the game wants.
 
 ## E. Treaty terms are all-or-nothing — **59, 60**
 
@@ -426,6 +440,49 @@ the roll in advance.
 
 ---
 
+## 76. Breaking off may be all cost and no benefit
+
+Found while measuring `set_stance` for item 74, and not yet chased. Across the
+fleetlab sweep a holder ordered to `hold` — never break off — came out with
+**more worlds held and the same force preserved** as one on the default `stand`:
+
+```
+STANCE stand   kept 17.4t  held 84%   battleship:20
+STANCE hold    kept 17.4t  held 92%   battleship:20
+```
+
+If that survives scrutiny, the 2:1 break-off is a pure loss: it costs 10–35% of
+tonnage, surrenders the world, and preserves nothing a stand would not have
+preserved. That would make `stand` — the default every campaign has been played
+under — strictly worse than an option the player can now switch on for free.
+
+Worth measuring properly before acting: the sweep scores tonnage *anywhere*, so
+a fleet destroyed in the exchange and a fleet that retreated to a refuge may not
+be being counted the way the comparison assumes.
+
+---
+
+## 77. Make a defending fleet's composition a decision — leaders, or the garrison
+
+The open half of **74**, with the two directions worth trying, neither started.
+
+**Leaders.** A commander with traits attached to a fleet gives a defender
+something to preserve that is not weight — the exact property the rule above
+says a screen needs. Losing the flagship loses the leader, so a screen protects
+something whose loss is not measured in tonnage, which is what makes an
+attacker's convoy worth screening.
+
+**Ship types interacting with the garrison.** A class that does something
+different when it is over a world its owner holds — escorts covering a landing
+zone, boats using the garrison's tracking, lift reinforcing the ground — gives
+the defender a second thing to spend weight on. This is the cheaper of the two
+and stays inside the class table.
+
+Both are features rather than fixes, and neither should be started before it is
+clear which one the game wants.
+
+---
+
 ## 74. Composition is a decision for an attacker and not for a defender
 
 **MEASURED**, with a harness built for it: `src/fleetlab.ts` and `pnpm
@@ -523,9 +580,52 @@ sensible fleets span 135–141 — about 4%, which is noise:
 ```
 
 So making a defender's composition a decision needs a **second objective for
-the defender**, not another ability on a hull. That is a larger design question
-than the class table — something like choosing between contesting the orbit and
-preserving force for a counter-attack — and it is unresolved.
+the defender**, not another ability on a hull.
+
+### A second objective was built, and it did not fix it
+
+`set_stance` — `hold` never breaks off, `stand` breaks at two to one (the
+default, and how every campaign has played), `withdraw` breaks the moment it is
+outmatched. `crusading` overrides all three. The mechanism is real and
+measurable: at 3:1 budgets a holder goes from 84% held on `stand` to 92% on
+`hold` and 70% on `withdraw`.
+
+**It does not make composition a decision, and the harness says so flatly.**
+Swept over every defending composition, four garrisons, five rolls and three
+holder doctrines, scored on holding *and* on force preserved, at 3:1 budgets and
+again near parity:
+
+```
+STANCE stand      weight 13.0  held 84%  1cls  battleship:20   <- best
+STANCE withdraw   weight 10.1  held 70%  1cls  battleship:20   <- best
+STANCE hold       weight 17.4t held 92%  1cls  battleship:20   <- best
+```
+
+Pure battle line wins **every metric under every stance**, and the runners-up
+are the same descending series of screens. The reason is exact and it
+generalises the rule above:
+
+> A withdrawal costs a fixed **fraction of tonnage**, and `bleed` spends the
+> loss order — so a screen does not reduce what is lost, it only changes which
+> hulls absorb it. Protecting a percentage of your own weight is still measured
+> in weight.
+
+**Two further findings, both worth their own attention:**
+
+1. **`withdraw` is currently a dominated choice** — worse than `stand` on both
+   holding and force preserved, at every budget ratio measured. `stand` already
+   breaks off from the catastrophic cases at 2:1, so breaking off *earlier* only
+   adds retreats from battles that would have been survived, each costing
+   10–35%. A stance nobody would pick is the `monopolist` failure again.
+2. **`hold` appears to dominate `stand`** — more worlds held for the same force
+   preserved. If that holds up, breaking off is currently all cost and no
+   benefit, which is a defect in the break-off mechanic rather than in the
+   stance. **Filed as `76`.**
+
+The stance ships anyway because it is an expressive choice a commander should
+have and it is honestly documented, not because it solved 74. **74 stays open.**
+
+
 
 ## 75. BUILT — the torpedo boat fires before the fleets close
 

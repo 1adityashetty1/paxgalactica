@@ -235,6 +235,25 @@ export const FactionSchema = z.object({
   dissent: z.number().int().min(0).max(100).default(0),
   /** Work it reaches for by instinct, biasing what NPCs choose to build. */
   buildBias: z.array(DurationCategorySchema).default([]),
+  /**
+   * What this power's fleets do when they are losing a defence.
+   *
+   * The defender's SECOND objective, and the reason it exists: a defender's
+   * fleet did exactly one thing — trade weight in the exchange — and one linear
+   * objective has a pure optimum, so the best defending fleet was a pure battle
+   * line and every mix was monotonically worse. A screen pays exactly when it
+   * protects something whose loss is not measured in weight, and everything a
+   * defender owned WAS weight.
+   *
+   * A posture makes "keep the world" and "keep the fleet" two different things
+   * to want. `bleed` spends the loss order, so a screen covers a withdrawal
+   * outright — which is the job escorts do for an attacker's convoy and had no
+   * defensive equivalent.
+   *
+   * Defaults to `stand`, which is exactly the behaviour every save was written
+   * under: break off only when outmatched two to one.
+   */
+  stance: z.enum(['hold', 'stand', 'withdraw']).default('stand'),
 });
 export type Faction = z.infer<typeof FactionSchema>;
 
@@ -718,6 +737,23 @@ export function liveAgentsOf(state: WorldState, factionId: string): Agent[] {
  * off `influence` — see `MAX_COMMITMENT_INCOME` in `arbitration.ts` for why the
  * ceiling exists and why it is derived rather than flat.
  */
+/**
+ * When this power's fleets break off a defence, as a multiple of the attacker's
+ * advantage. `crusading` never breaks off whatever the stance says.
+ */
+export function breakOffRatio(state: WorldState, factionId: string): number {
+  const faction = getFaction(state, factionId);
+  // `withdraw` leaves the moment it is outmatched at all; `stand` holds until
+  // two to one, which is what every campaign was played under.
+  return faction?.stance === 'withdraw' ? 1 : 2;
+}
+
+/** Whether this power refuses to break off at all — by doctrine or by order. */
+export function refusesToBreakOff(state: WorldState, factionId: string): boolean {
+  const faction = getFaction(state, factionId);
+  return faction?.warEthic === 'crusading' || faction?.stance === 'hold';
+}
+
 export function maxCommitmentIncomeFor(state: WorldState, factionId: string): number {
   const faction = getFaction(state, factionId);
   if (!faction) return 0;
