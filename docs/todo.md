@@ -52,14 +52,24 @@ the roll in advance.
 > campaign.
 >
 > The campaign is kept as `saves/classes_playtest.json` and replays to turn 12
-> with no model calls, so any claim here can be checked against the board it was
-> made on:
+> with no model calls. What it measured, on the build it was played on:
 >
 > ```
 > territory: meridian 18, freeworlds 4, vigil 1, ojjul 1, drajk 1
 > four live trade accords at 60/60 → 480 credits a turn conjured galaxy-wide
 > meridian net: 1376
 > ```
+>
+> **It no longer replays to that board, and it should not.** Today it lands on
+> `meridian 17, freeworlds 4, vigil 2, ojjul 1, drajk 1` with 18 ops rejected.
+> Three changes since account for it and all three are the point: **57** now
+> refuses the treaty terms that conjured the 480 a turn, **64** reversed an
+> exchange that favoured the wrong side of a high roll, and the faction-id
+> rename changed the combat salt. A journal is a record of what was *declared*,
+> not of what it produced — replaying it against a fixed reducer is how a fix
+> gets checked, so a campaign that replays identically after a balance change
+> would mean the change did nothing. Read the numbers above as the evidence for
+> the items below, not as a board to diff against.
 
 ---
 
