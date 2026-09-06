@@ -57,20 +57,52 @@ relevance verdict, so a drift like the DC 5-to-18 spread is measurable rather
 than anecdotal. Reopen the larger question only with a proposal that does not
 put the ruling downstream of resolution.
 
-## B. A negotiated term the reducer cannot express — **51, 67.1, 67.2**
+## B. PARTLY CLOSED — a negotiated term the reducer cannot express — **51, 67.1, 67.2**
 
-Extraction agrees something and the world does not change, or changes by a sixth.
+Extraction agrees something and the world does not change, or changes by a
+sixth. Split on inspection: two halves needed no design input and are **built**,
+one is a new mechanic, and one turns out not to be a code problem at all.
 
-- Two commitment caps compound silently: 60 agreed → trimmed to 25 → paid **10**,
-  with the negotiating party never told (**51**).
-- A `voidsOn` clause bargained over three messages was written as `[]` while the
-  narrative asserted it stood (**67.2**).
-- A payment *from* an NPC is blocked by the "cannot take credits out of another
-  treasury" guard (**67.1**) — **narrowed** since: a cession's price now has a
-  home in `terms.payment`, but a bare settlement still has none.
-- `prize_share_tribute` has no mechanism at all (**51**).
+**BUILT — an accord may now move money between the parties (67.1).** A
+450-credit settlement agreed with an NPC could not be written: the creditor's
+`adjust_credits -450` was refused by *"you cannot take credits out of another
+faction's treasury"*, and both sides left the table believing it had moved. That
+guard is right for a **declared** action — it is looting a treasury by narration
+— and wrong for an accord, because extraction is the one pass that has read a
+transcript and so the one place the other party's consent exists.
 
-The debt-reschedule half of 51 is **fixed** — `restructure_debt` exists now.
+Extraction-sourced credit movements are now held back and settled together
+through `moveConserved`, the helper `terms.payment` already used: nobody paying
+means the entries mint rather than move, so the term is dropped; a payer who
+agreed to more than it holds pays what it holds and the receipts trim pro-rata.
+**Uncapped, and it needs no cap** — a transfer cannot invent a credit, so what
+needs guarding is conservation, not size. A declared action reaching into
+another treasury is refused exactly as before, and a test pins that.
+
+**BUILT — a commitment now says when its yield will not be paid (51).** Two
+ceilings compound and only one of them ever spoke: `MAX_COMMITMENT_INCOME`
+trims at signature *with* a note, and then `ledgerFor` caps a faction's total
+commitment earnings by `maxCommitmentIncomeFor` at **read** time, every turn,
+which produces no note by construction and cannot. Measured: 60 agreed → 25
+stored → **10 paid**, with the negotiating party told of neither step, so an NPC
+bargained hard over a number that could not exist.
+
+`establish_commitment` now warns at signature when the faction's influence
+ceiling will withhold the yield. Said rather than enforced, deliberately: the
+ceiling is derived from `influence`, which dissent and a hostile `stat_debuff`
+both move, so freezing it into the record would be wrong the turn after. The
+arrangement is real at what it says; what it *pays* is what the reader decides.
+
+**Still open — `prize_share_tribute` has no mechanism (51).** A share of prizes
+is a new mechanic, not a missing wire: it needs a rule for what a prize is and
+when it is taken. **Design input required**, so not started.
+
+**Re-scoped — a bargained `voidsOn` written as `[]` (67.2).** Not a code defect.
+The field exists, the reducer enforces it (item 50/60), and
+`prompts/extraction.md` documents all three kinds — the model simply did not
+emit one it had spent three messages agreeing. That is category **A**: a
+model-tier judgement that varies, with the mechanism already in place. Worth
+folding into A's logging rather than carrying here.
 
 ## C. CLOSED — a batch is a transaction, the hull case — **62**
 

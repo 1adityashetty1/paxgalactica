@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { applyOps } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { fleetStrengthOf, stackAt } from '../src/domain/state.js';
+import { maxCommitmentIncomeFor } from '../src/domain/state.js';
+import { MAX_COMMITMENT_INCOME } from '../src/domain/arbitration.js';
 import {
   addShipsAt,
   hullsAt,
@@ -233,5 +235,92 @@ describe('one squadron described twice is one squadron', () => {
       { op: 'adjust_fleet', factionId: 'meridian', delta: 6, hull: 'lifter' },
       { op: 'adjust_ships', systemId: 'sek-4', factionId: 'meridian', delta: 6, hull: 'escort' },
     ]).gained).toBe(12);
+  });
+});
+
+describe('an accord can move money between the parties', () => {
+  const settle = (movement: Record<string, number>, source: 'extraction' | 'model' = 'extraction') => {
+    const start = fresh();
+    const ops = Object.entries(movement).map(([factionId, delta]) => ({
+      op: 'adjust_credits', factionId, delta,
+    }));
+    const out = applyOps(start, ops as never, source, 'meridian');
+    return {
+      out,
+      moved: (id: string) => fac(out.state, id).credits - fac(start, id).credits,
+      held: (id: string) => fac(start, id).credits,
+    };
+  };
+
+  it('debits the payer and credits the payee, past the narrative ceiling', () => {
+    // The measured case: Arkane agreed a 450-credit settlement, the creditor's
+    // debit was refused by the "cannot take credits out of another treasury"
+    // guard, and both sides left believing the money had moved. That guard is
+    // right for a DECLARED action and wrong for an accord — extraction is the
+    // one pass that has read a transcript.
+    const { out, moved } = settle({ ojjul: -450, meridian: 450 });
+    expect(out.rejections).toHaveLength(0);
+    expect(moved('meridian')).toBe(450);
+    expect(moved('ojjul')).toBe(-450);
+    // Uncapped on purpose: a transfer cannot invent a credit, so what needs
+    // guarding is its conservation, not its size.
+    expect(moved('meridian')).toBeGreaterThan(MAX_NARRATIVE_CREDITS);
+  });
+
+  it('still refuses a declared action reaching into another treasury', () => {
+    const { out, moved } = settle({ ojjul: -450, meridian: 450 }, 'model');
+    expect(out.rejections.some((r) => r.code === 'illegal_value')).toBe(true);
+    expect(moved('ojjul')).toBe(0);
+  });
+
+  it('drops a settlement nobody is paying', () => {
+    // Both positive is money from nowhere — the same ruling `incomePerTurn`
+    // and `terms.payment` get, and dropped rather than flipped because which
+    // party to flip is a coin toss.
+    const { moved } = settle({ ojjul: 450, meridian: 450 });
+    expect(moved('meridian')).toBe(0);
+    expect(moved('ojjul')).toBe(0);
+  });
+
+  it('pays only what the payer holds, and trims the receipt to match', () => {
+    const start = fresh();
+    const purse = fac(start, 'drajk').credits;
+    const { moved } = settle({ drajk: -(purse * 10), meridian: purse * 10 });
+    expect(moved('drajk')).toBe(-purse);
+    expect(moved('meridian')).toBe(purse);
+  });
+});
+
+describe('a commitment says when its yield will not be paid', () => {
+  it('warns at signature that the influence ceiling will withhold it', () => {
+    // Two ceilings compound and only one of them ever spoke. `ledgerFor` caps
+    // total commitment earnings by `maxCommitmentIncomeFor` at READ time, so it
+    // produces no note by construction: 60 agreed, trimmed to 25 here, paid 10,
+    // and the negotiating party told of neither step.
+    const state = fresh();
+    const ceiling = maxCommitmentIncomeFor(state, 'drajk');
+    const out = applyOps(
+      state,
+      [{
+        op: 'establish_commitment', kind: 'war_chest_stipend', factionIds: ['drajk'],
+        text: 'a stipend', exclusive: false, incomePerTurn: ceiling + MAX_COMMITMENT_INCOME,
+      }] as never,
+      'extraction',
+      'drajk',
+    );
+    expect(out.notes.join(' ')).toMatch(/can draw \d+ a turn from standing arrangements/);
+  });
+
+  it('says nothing when the arrangement fits under the ceiling', () => {
+    const out = applyOps(
+      fresh(),
+      [{
+        op: 'establish_commitment', kind: 'small_charter', factionIds: ['meridian'],
+        text: 'a charter', exclusive: false, incomePerTurn: 1,
+      }] as never,
+      'extraction',
+      'meridian',
+    );
+    expect(out.notes.join(' ')).not.toMatch(/can draw/);
   });
 });

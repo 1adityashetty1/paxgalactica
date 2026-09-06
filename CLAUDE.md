@@ -1802,6 +1802,25 @@ duplicate on top of a real bill is a second charge for one purchase. Only
 charges are refunded, since a windfall beside a purchase is not the duplicate
 case.
 
+### An accord may move money; a declaration may not
+
+`adjust_credits` is refused when it takes credits out of a faction that is not
+the actor — correctly, for a declared action: that is looting a treasury by
+narration, and the honest routes are an `income_penalty` operative, a toll or a
+raid. Applied to an **accord** it blocked the one direction that matters. A
+450-credit settlement agreed with an NPC could not be written down at all, and
+both sides left the table believing the money had moved.
+
+Extraction is the one pass that has read a transcript, so it is the one place
+the other party's consent exists — the same argument that makes `form_treaty`
+extraction-only. Its credit movements are now held back and settled together
+through `moveConserved`, the helper `terms.payment` already used: a debit with a
+matching credit moves money, a credit on its own mints it and is dropped, and a
+payer who agreed to more than it holds pays what it holds with the receipts
+trimmed pro-rata. Deferred rather than applied in place because whether an entry
+is a transfer or an invention is a property of the **whole batch**, not of the
+op.
+
 ### A one-time price needed a home, and that is why a world cost 240
 
 The two halves of item 58 are each individually defensible: a cession needs the

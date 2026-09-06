@@ -10,6 +10,7 @@ import {
 } from './duration.js';
 import {
   COMMITMENT_GOODWILL,
+  commitmentIncomeFor,
   conflictingCommitment,
   MAX_COMMITMENT_INCOME,
 } from './arbitration.js';
@@ -634,15 +635,38 @@ function voidConditionMet(state: WorldState, condition: VoidCondition): string |
  * what was paid for rather than rejecting the order.
  */
 function settleTreatyPayment(state: WorldState, treaty: Treaty): string[] {
+  return moveConserved(state, treaty.terms.payment, treaty.summary, treaty.parties[0]!);
+}
+
+/**
+ * Move credits between parties who agreed to it, once.
+ *
+ * The one rule every money mechanism in this game has converged on: a TRANSFER
+ * needs no ceiling, because it cannot invent a credit. What needs guarding is
+ * its conservation and the payer's ability to fund it, not its size — which is
+ * why `terms.payment` is uncapped where narrative money is capped at a few
+ * hundred, and why the same is true of a settlement agreed in a channel.
+ *
+ * - Nobody paying means the entries create value rather than move it, so the
+ *   whole term is dropped, exactly as a non-conserving `incomePerTurn` is.
+ *   Flipping a party negative would invert a deal both sides agreed to, and
+ *   which party to flip is a coin toss.
+ * - A payer who agreed to more than it holds pays what it holds, and the
+ *   receipts are trimmed pro-rata to match — the same shape as
+ *   `billConstruction` delivering what was paid for rather than rejecting.
+ */
+function moveConserved(
+  state: WorldState,
+  movement: Record<string, number>,
+  label: string,
+  logTo: string,
+): string[] {
   const notes: string[] = [];
-  const entries = Object.entries(treaty.terms.payment).filter(([, n]) => n !== 0);
+  const entries = Object.entries(movement).filter(([, n]) => n !== 0);
   if (entries.length === 0) return notes;
 
   const owed = entries.filter(([, n]) => n < 0);
   const due = entries.filter(([, n]) => n > 0);
-  // Nothing is being paid, so the term creates value rather than moving it —
-  // the same ruling `form_treaty` makes on a non-conserving `incomePerTurn`,
-  // and dropped for the same reason.
   if (owed.length === 0 || due.length === 0) return notes;
 
   let pot = 0;
@@ -654,7 +678,7 @@ function settleTreatyPayment(state: WorldState, treaty: Treaty): string[] {
     pot += paid;
     if (paid < -amount) {
       notes.push(
-        `${payer.name} owed ${-amount} on  and could pay ${paid}; the rest is not in its treasury.`,
+        `${payer.name} owed ${-amount} on ${label} and could pay ${paid}; the rest is not in its treasury.`,
       );
     }
   }
@@ -663,13 +687,12 @@ function settleTreatyPayment(state: WorldState, treaty: Treaty): string[] {
   for (const [who, amount] of due) {
     const receiver = state.factions.find((f) => f.id === who);
     if (!receiver) continue;
-    // Pro-rata, so the receipts can never exceed what was actually paid.
     const share = Math.floor((pot * amount) / claimed);
     receiver.credits += share;
-    notes.push(`${receiver.name} receives ${share} credits under .`);
+    notes.push(`${receiver.name} receives ${share} credits under ${label}.`);
   }
 
-  for (const note of notes) logEvent(state, 'diplomacy', note, treaty.parties[0]!);
+  for (const note of notes) logEvent(state, 'diplomacy', note, logTo);
   return notes;
 }
 
@@ -816,6 +839,23 @@ export function applyOps(
    * placement can MOVE them rather than mint more; `placed` does the mirror for
    * the other emission order.
    */
+  /**
+   * A settlement agreed in a channel, held back until the batch is done.
+   *
+   * An accord that says "we will pay you 450" needs the NPC's treasury debited
+   * and the player's credited, and the debit was refused: the guard forbids
+   * taking credits out of another power directly, which is right for a DECLARED
+   * action and wrong here — extraction is the one pass that has read a
+   * transcript, so it is the one place the other party's consent exists. Both
+   * sides left a playtest believing 450 credits had moved.
+   *
+   * Deferred rather than applied in place, because whether an entry is a
+   * transfer or an invention is a property of the whole batch: a debit with a
+   * matching credit moves money, a credit on its own mints it. `moveConserved`
+   * decides that once, and a transfer needs no ceiling because it cannot invent
+   * a credit — the same rule `terms.payment` follows.
+   */
+  const negotiated: Record<string, number> = {};
   const commissioned = new Map<string, { count: number; at: StarSystem }>();
   const placed = new Map<string, number>();
   const hullsBefore = new Map(state.factions.map((f) => [f.id, fleetTonsOf(state, f.id)]));
@@ -1001,6 +1041,13 @@ export function applyOps(
         // — an `income_penalty` agent, an extortionist's toll, commerce raiding
         // — and all of them cost something. Paying someone is still allowed,
         // because nothing needs protecting from a faction giving money away.
+        // An accord may move money BETWEEN the parties, because a transcript is
+        // the one place the other side's consent exists. A declared action may
+        // not: that is looting a treasury by narration.
+        if (source === 'extraction') {
+          negotiated[op.factionId] = (negotiated[op.factionId] ?? 0) + op.delta;
+          break;
+        }
         if (actor !== undefined && op.factionId !== actor && op.delta < 0) {
           reject(
             raw,
@@ -2100,6 +2147,30 @@ export function applyOps(
           -MAX_COMMITMENT_INCOME,
           Math.min(MAX_COMMITMENT_INCOME, asked),
         );
+        // The SECOND ceiling is the one nobody was told about. `ledgerFor`
+        // caps a faction's total commitment earnings by
+        // `maxCommitmentIncomeFor`, at READ time, every turn — so it produces
+        // no note by construction and cannot. Measured: 60 agreed, trimmed to
+        // 25 here, and paid 10, with the negotiating party informed of neither
+        // step. An NPC bargains hard over a number that cannot exist.
+        //
+        // Said at signature rather than enforced here, because the ceiling is
+        // derived from `influence` and influence moves: dissent and a hostile
+        // `stat_debuff` both reach it, so freezing it into the record would be
+        // wrong the turn after. The arrangement is real at what it says; what
+        // it PAYS is what the reader decides.
+        if (yieldPerTurn > 0) {
+          for (const who of op.factionIds) {
+            const ceiling = maxCommitmentIncomeFor(state, who);
+            const already = commitmentIncomeFor(state.commitments, who, Number.MAX_SAFE_INTEGER);
+            const earnedNow = Math.max(0, already);
+            if (earnedNow + yieldPerTurn > ceiling) {
+              const note = `${nameFor(state, who)} can draw ${ceiling} a turn from standing arrangements at its influence, and this one takes it past that; the excess pays nothing until its standing improves or another lapses.`;
+              notes.push(note);
+              logEvent(state, 'clamp', note, who);
+            }
+          }
+        }
         if (yieldPerTurn !== asked) {
           const note = `Trimmed ${op.kind} yield from ${asked} to ${yieldPerTurn} per turn (ceiling ${MAX_COMMITMENT_INCOME}).`;
           notes.push(note);
@@ -2495,6 +2566,9 @@ export function applyOps(
   }
 
   capSelfInflictedLosses(state, actor, hullsBefore, shipsBefore, notes);
+  // Before the yards bill, so a settlement received this batch can pay for
+  // what the same accord commissioned.
+  notes.push(...moveConserved(state, negotiated, 'the terms agreed', actor ?? 'engine'));
   const pricedByYards = new Set<string>();
   billConstruction(state, hullsBefore, notes, pricedByYards);
   refundDuplicateCharges(state, chargedByNarrative, pricedByYards, notes);
