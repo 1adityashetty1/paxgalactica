@@ -17,22 +17,22 @@ import type { WorldState } from '../src/domain/state.js';
  * nothing in the rules could remove it.
  */
 
-/** A world `hutt` holds, with `vigil` squatting over it and a fleet next door. */
+/** A world `ojjul` holds, with `vigil` squatting over it and a fleet next door. */
 function contested(squatters = 3, relief = 9): { state: WorldState; world: string; from: string } {
-  const s = createSeedState('hutt');
-  const world = s.systems.find((x) => x.controllerFactionId === 'hutt')!;
+  const s = createSeedState('ojjul');
+  const world = s.systems.find((x) => x.controllerFactionId === 'ojjul')!;
   setShipsAt(world, 'vigil', squatters);
   const from = neighboursOf(s, world.id).find((n) => n !== world.id)!;
   const base = s.systems.find((x) => x.id === from)!;
-  setShipsAt(base, 'hutt', relief);
+  setShipsAt(base, 'ojjul', relief);
   return { state: s, world: world.id, from };
 }
 
 const arrive = (s: WorldState, from: string, to: string, force: number): WorldState => {
   const issued = applyOps(s, [{
-    op: 'issue_order', factionId: 'hutt', type: 'fleet_movement',
+    op: 'issue_order', factionId: 'ojjul', type: 'fleet_movement',
     originId: from, targetId: to, force, label: 'clear the orbit', visibility: [],
-  }], 'model', 'hutt', true).state;
+  }], 'model', 'ojjul', true).state;
   return tickTurn(issued).state;
 };
 
@@ -54,7 +54,7 @@ describe('a holder can clear rivals out of its own orbit', () => {
     const sys = after.systems.find((x) => x.id === world)!;
 
     // No ground phase: the holder already holds the ground.
-    expect(sys.controllerFactionId).toBe('hutt');
+    expect(sys.controllerFactionId).toBe('ojjul');
     expect(sys.garrison).toBe(before);
   });
 
@@ -86,8 +86,8 @@ describe('a holder can clear rivals out of its own orbit', () => {
     const { state, world, from } = contested(3, 12);
     const s = applyOps(state, [{
       op: 'form_treaty', treatyType: 'basing_rights',
-      parties: ['hutt', 'vigil'], terms: {}, summary: 'the Vigil may put in',
-    }], 'extraction', 'hutt', true).state;
+      parties: ['ojjul', 'vigil'], terms: {}, summary: 'the Vigil may put in',
+    }], 'extraction', 'ojjul', true).state;
 
     const after = arrive(s, from, world, 10);
     const sys = after.systems.find((x) => x.id === world)!;
@@ -104,13 +104,13 @@ describe('a holder can clear rivals out of its own orbit', () => {
     const { state, world, from } = contested(3, 12);
     const s = applyOps(state, [{
       op: 'form_treaty', treatyType: 'non_aggression',
-      parties: ['hutt', 'vigil'], terms: {}, summary: 'peace',
-    }], 'extraction', 'hutt', true).state;
+      parties: ['ojjul', 'vigil'], terms: {}, summary: 'peace',
+    }], 'extraction', 'ojjul', true).state;
 
     const after = arrive(s, from, world, 10);
     expect(after.treaties[0]!.status).toBe('broken');
-    expect(after.factions.find((f) => f.id === 'vigil')!.disposition.hutt ?? 0).toBeLessThan(
-      s.factions.find((f) => f.id === 'vigil')!.disposition.hutt ?? 0,
+    expect(after.factions.find((f) => f.id === 'vigil')!.disposition.ojjul ?? 0).toBeLessThan(
+      s.factions.find((f) => f.id === 'vigil')!.disposition.ojjul ?? 0,
     );
   });
 
@@ -120,6 +120,6 @@ describe('a holder can clear rivals out of its own orbit', () => {
     const after = arrive(state, from, world, 1);
     const sys = after.systems.find((x) => x.id === world)!;
     expect(hullsAt(sys, 'vigil')).toBeGreaterThan(0);
-    expect(sys.controllerFactionId).toBe('hutt');
+    expect(sys.controllerFactionId).toBe('ojjul');
   });
 });

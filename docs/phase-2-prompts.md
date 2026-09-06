@@ -428,7 +428,7 @@ logic that already works.
 - Clicking a system selects it and updates the side panel.
 - New tests for `layout.ts` covering the invariants worth keeping from
   `map.test.ts`: every system placed, nothing positioned outside bounds, the
-  aspect-ratio cap applied to a nearly-collinear sector (the Kessel Fringe is
+  aspect-ratio cap applied to a nearly-collinear sector (the Ilvenn Fringe is
   the case that broke this before), and sector zoom including only that
   sector's systems. Label-collision and Braille tests do not survive the port —
   say which you dropped and why.

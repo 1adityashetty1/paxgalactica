@@ -17,9 +17,9 @@ const journalWith = (entries: Journal['entries']): Journal => ({
 
 describe('journal replay', () => {
   it('rebuilds turn-0 state from a bare seed', () => {
-    const { state } = replay(emptyJournal('hutt'));
+    const { state } = replay(emptyJournal('ojjul'));
     expect(state.turn).toBe(0);
-    expect(state.playerFactionId).toBe('hutt');
+    expect(state.playerFactionId).toBe('ojjul');
     expect(state.systems).toHaveLength(25);
     expect(state.factions).toHaveLength(5);
   });
@@ -49,11 +49,11 @@ describe('journal replay', () => {
         label: 'move',
         ops: [
           // Lift first: a world is taken by the troops that land on it, so a
-          // pure battle fleet would win the orbitals over slu-6 and leave it
+          // pure battle fleet would win the orbitals over sek-6 and leave it
           // unaligned. Omitting `force` sends everything at ark-3, transports
           // included.
           { op: 'adjust_ships', systemId: 'ark-3', factionId: 'freeworlds', delta: 3, hull: 'lifter' },
-          { op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement', originId: 'ark-3', targetId: 'slu-6' },
+          { op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement', originId: 'ark-3', targetId: 'sek-6' },
         ],
       },
       { kind: 'tick' },
@@ -64,7 +64,7 @@ describe('journal replay', () => {
     const b = replay(journal).state;
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
     expect(a.turn).toBe(4);
-    expect(a.systems.find((s) => s.id === 'slu-6')!.controllerFactionId).toBe('freeworlds');
+    expect(a.systems.find((s) => s.id === 'sek-6')!.controllerFactionId).toBe('freeworlds');
     expect(a.pendingOrders.find((o) => o.label === 'shipyard')!.progress).toBe(4);
   });
 
@@ -125,7 +125,7 @@ describe('journal replay', () => {
         source: 'model',
         label: 'bad batch',
         ops: [
-          { op: 'transfer_control', systemId: 'tio-3', toFactionId: 'freeworlds' },
+          { op: 'transfer_control', systemId: 'tor-3', toFactionId: 'freeworlds' },
           { op: 'not_a_real_op' },
           { op: 'adjust_credits', factionId: 'freeworlds', delta: 250 },
         ],
@@ -139,7 +139,7 @@ describe('journal replay', () => {
     // The valid op in the batch still landed.
     expect(first.state.factions.find((f) => f.id === 'freeworlds')!.credits).toBe(1350);
     // The reducer-only op did not.
-    expect(first.state.systems.find((s) => s.id === 'tio-3')!.controllerFactionId).toBe('vigil');
+    expect(first.state.systems.find((s) => s.id === 'tor-3')!.controllerFactionId).toBe('vigil');
   });
 });
 
@@ -151,7 +151,7 @@ describe('campaign / journal agreement', () => {
       [
         {
           op: 'issue_order', factionId: 'meridian', type: 'espionage',
-          originId: 'slu-1', targetId: 'tio-3', durationTurns: 3, label: 'listening post',
+          originId: 'sek-1', targetId: 'tor-3', durationTurns: 3, label: 'listening post',
         },
       ],
       'model',
@@ -242,13 +242,13 @@ describe('campaign / journal agreement', () => {
         // Legal on its own, but it goes down with the batch.
         { op: 'adjust_credits', factionId: 'freeworlds', delta: -50 },
         // Reducer-only: rejected, and must not appear in the reported ops.
-        { op: 'transfer_control', systemId: 'tio-3', toFactionId: 'freeworlds' },
+        { op: 'transfer_control', systemId: 'tor-3', toFactionId: 'freeworlds' },
       ],
       'one good, one refused',
     );
     expect(campaign.opsStagedSince(0)).toEqual([]);
     expect(campaign.state.factions.find((f) => f.id === 'freeworlds')!.credits).toBe(before);
-    expect(campaign.state.systems.find((s) => s.id === 'tio-3')!.controllerFactionId).toBe('vigil');
+    expect(campaign.state.systems.find((s) => s.id === 'tor-3')!.controllerFactionId).toBe('vigil');
   });
 
   it('journals the actor, so replay applies the same guards the live turn did', () => {
@@ -325,22 +325,22 @@ describe('campaign / journal agreement', () => {
   it('surfaces a rejection at declaration time, not at end of turn', () => {
     const campaign = Campaign.start('freeworlds', 'test-reject');
     const res = campaign.stage(
-      [{ op: 'transfer_control', systemId: 'tio-3', toFactionId: 'freeworlds' }],
+      [{ op: 'transfer_control', systemId: 'tor-3', toFactionId: 'freeworlds' }],
       'seize it',
     );
     expect(res.rejections.map((r) => r.code)).toEqual(['reducer_only']);
     campaign.commitTurn();
-    expect(campaign.state.systems.find((s) => s.id === 'tio-3')!.controllerFactionId).toBe('vigil');
+    expect(campaign.state.systems.find((s) => s.id === 'tor-3')!.controllerFactionId).toBe('vigil');
   });
 
   it('records transcripts outside the journal, since talk is not world state', () => {
-    const campaign = Campaign.start('krayt', 'test-transcripts');
-    campaign.recordTranscript('hutt', [
-      { speaker: 'player', text: 'We want the spice lanes.' },
+    const campaign = Campaign.start('drajk', 'test-transcripts');
+    campaign.recordTranscript('ojjul', [
+      { speaker: 'player', text: 'We want the narcotics lanes.' },
       { speaker: 'faction', text: 'Everyone does.' },
     ]);
-    expect(campaign.priorTranscripts('hutt')).toHaveLength(1);
-    expect(campaign.priorTranscripts('hutt')[0]).toMatch(/spice lanes/);
+    expect(campaign.priorTranscripts('ojjul')).toHaveLength(1);
+    expect(campaign.priorTranscripts('ojjul')[0]).toMatch(/narcotics lanes/);
     // Nothing said in a channel reaches world state on its own.
     expect(campaign.verifyReplay().ok).toBe(true);
     expect(campaign.state.eventLog.filter((e) => e.kind === 'diplomacy')).toHaveLength(0);
@@ -375,7 +375,7 @@ describe('a v1 journal still replays as it originally ran', () => {
             {
               op: 'form_treaty',
               treatyType: 'trade_accord',
-              parties: ['meridian', 'hutt'],
+              parties: ['meridian', 'ojjul'],
               terms: {},
               summary: 'negotiated before the source split existed',
             },

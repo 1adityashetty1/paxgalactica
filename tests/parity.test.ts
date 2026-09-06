@@ -35,12 +35,12 @@ describe('a server-driven campaign replays exactly', () => {
       [
         {
           op: 'issue_order', factionId: 'freeworlds', type: 'construction_infrastructure',
-          originId: 'ark-1', targetId: 'ark-1', durationTurns: 3, label: 'Arkanis slipway',
+          originId: 'ark-1', targetId: 'ark-1', durationTurns: 3, label: 'Arkane slipway',
           visibility: ['vigil'],
         },
         {
           op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
-          originId: 'ark-3', targetId: 'slu-6', label: 'Drift squadron',
+          originId: 'ark-3', targetId: 'sek-6', label: 'Drift squadron',
         },
       ],
       'open the campaign',
@@ -54,15 +54,15 @@ describe('a server-driven campaign replays exactly', () => {
           op: 'form_treaty',
           treatyType: 'trade_accord',
           parties: ['freeworlds', 'meridian'],
-          terms: { incomeShares: [{ systemId: 'slu-3', factionId: 'freeworlds', share: 0.4 }] },
+          terms: { incomeShares: [{ systemId: 'sek-3', factionId: 'freeworlds', share: 0.4 }] },
           durationTurns: 6,
           summary: 'Ithaal concession',
         },
         {
-          op: 'deploy_agent', ownerFactionId: 'freeworlds', systemId: 'tio-3',
+          op: 'deploy_agent', ownerFactionId: 'freeworlds', systemId: 'tor-3',
           mission: 'sabotage', effect: { kind: 'hull_damage', perTurn: 2 },
         },
-        { op: 'adjust_ships', systemId: 'tio-3', factionId: 'freeworlds', delta: 4 },
+        { op: 'adjust_ships', systemId: 'tor-3', factionId: 'freeworlds', delta: 4 },
       ],
       'open a second front',
     );
@@ -125,12 +125,12 @@ describe('a server-driven campaign replays exactly', () => {
   it('keeps a resumed campaign replayable after further turns', async () => {
     const store = new MemoryCampaignStore();
     const first = new GameSession(store);
-    await dispatch(first, 'POST', ROUTES.newCampaign, { factionId: 'hutt', name: 'resumed' });
+    await dispatch(first, 'POST', ROUTES.newCampaign, { factionId: 'ojjul', name: 'resumed' });
     reach(first).stage(
       [
         {
-          op: 'issue_order', factionId: 'hutt', type: 'espionage',
-          originId: 'kes-2', targetId: 'slu-1', durationTurns: 2, label: 'listening post',
+          op: 'issue_order', factionId: 'ojjul', type: 'espionage',
+          originId: 'ilv-2', targetId: 'sek-1', durationTurns: 2, label: 'listening post',
         },
       ],
       'listen',
@@ -153,9 +153,9 @@ describe('a server-driven campaign replays exactly', () => {
   it('records every kind of entry the journal supports', async () => {
     const store = new MemoryCampaignStore();
     const session = new GameSession(store);
-    await dispatch(session, 'POST', ROUTES.newCampaign, { factionId: 'krayt', name: 'kinds' });
+    await dispatch(session, 'POST', ROUTES.newCampaign, { factionId: 'drajk', name: 'kinds' });
     const campaign = reach(session);
-    campaign.stage([{ op: 'adjust_fleet', factionId: 'krayt', delta: 5 }], 'muster');
+    campaign.stage([{ op: 'adjust_fleet', factionId: 'drajk', delta: 5 }], 'muster');
     await dispatch(session, 'POST', ROUTES.endturn, {});
 
     const kinds = new Set(campaign.journal.entries.map((e) => e.kind));

@@ -521,7 +521,7 @@ function underDuressFrom(state: WorldState, coercer: string, victim: string): nu
  *
  * Powers renegotiate constantly and say so — both parties to a live playtest
  * accord used the word "supersedes" out loud — and nothing acted on it. The
- * result was two `tribute` treaties between the same pair, both paying: Arkanis
+ * result was two `tribute` treaties between the same pair, both paying: Arkane
  * believed it paid 40 and paid 65, the Combine believed 55 and paid 95, and the
  * ending duly listed "tribute with Drajk Confederacy" twice.
  *
@@ -1481,7 +1481,7 @@ export function applyOps(
         // A treaty flow is a TRANSFER, and it has to conserve.
         //
         // Nothing required the entries to sum to zero, so a negotiated "joint
-        // venture that pays both houses" landed as `{krayt: 30, meridian: 20}`
+        // venture that pays both houses" landed as `{drajk: 30, meridian: 20}`
         // — both positive, from nowhere. A playtest closed four of them and
         // conjured 480 credits a turn galaxy-wide, roughly a sixth of the
         // economy, at a cost of zero action points because diplomacy is
@@ -1714,7 +1714,7 @@ export function applyOps(
         // would roll faithfully every turn and be arithmetically incapable of
         // ever turning a single hull. Rejected rather than accepted-and-inert,
         // because the player has no way to see that from the agent panel — a
-        // playtest produced exactly this (Drajk guile 14 vs Arkanis resolve 19)
+        // playtest produced exactly this (Drajk guile 14 vs Arkane resolve 19)
         // and the operative sat there doing nothing for the rest of the run.
         if (op.effect.kind === 'crew_defection' && target) {
           if (subornLimit(state, op.ownerFactionId, target.id) <= 0) {
@@ -3885,7 +3885,7 @@ function resolveBattle(
   const garrison = target.garrison;
   // A defensive power's ground is dug in: its garrison fights as though it were
   // half again its size, and costs the attacker accordingly. "Make occupation
-  // cost more than it is worth" is the Arkanis doctrine written as arithmetic.
+  // cost more than it is worth" is the Arkane doctrine written as arithmetic.
   // Only the real garrison is ever destroyed — the bonus buys resistance, not
   // extra troops to kill.
   const dugIn =

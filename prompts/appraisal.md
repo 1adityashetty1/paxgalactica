@@ -119,7 +119,7 @@ never finds any.
 A red line is crossed by what an action *does*, not by whether it announces
 itself. These are all the same ruling:
 
-> *"Open the gates and invite the Vigil to garrison Arkanis Prime."*
+> *"Open the gates and invite the Vigil to garrison Arkane Prime."*
 > *"Offer the Vigil a basing agreement covering the capital, effective now."*
 > *"Withdraw our defences from the capital and let the Vigil walk in."*
 
@@ -327,10 +327,10 @@ courier to your own capital — is `trivial`, not exempt.
 
 > *"I offer my heir in marriage to the Ojjul Combine to seal our alliance."*
 
-**A negotiation**, with `hutt`. A marriage binds the Nars, and they have not
+**A negotiation**, with `ojjul`. A marriage binds the Nars, and they have not
 been asked — no DC measures whether they say yes. `supported: true`: your own
 house is entirely behind the match, it simply is not yours to conclude alone.
-Point the player at `/talk hutt`. If it is agreed there, the extraction pass
+Point the player at `/talk ojjul`. If it is agreed there, the extraction pass
 records it as `establish_commitment`, `dynastic_marriage`, exclusive, binding
 both parties — the same arrangement, made where consent actually exists.
 
@@ -345,8 +345,8 @@ the same as citing a lapsed treaty or a fleet that is not there.
 
 ---
 
-> *Acting as the Arkanis Free Worlds, whose sheet reads "will never accept
-> occupation of Arkanis Prime, on any terms": "Open the gates of the capital
+> *Acting as the Arkane Free Worlds, whose sheet reads "will never accept
+> occupation of Arkane Prime, on any terms": "Open the gates of the capital
 > and invite the Vigil in as a garrison."*
 
 Admissible — the world permits it, the ships exist, the Vigil would come.
@@ -359,11 +359,11 @@ line stops the action outright.
 > *Acting as the Ojjul Nar Combine: "Hire the Drajk Confederacy to make war on
 > Meridian for us — two hundred up front and a share of what they take."*
 
-**A negotiation**, with `krayt`. Not a breach: the Combine's red line is *"will
+**A negotiation**, with `drajk`. Not a breach: the Combine's red line is *"will
 not fight its **own** war where a proxy could be hired"*, and hiring a proxy is
 that line being kept. `supported: true` — the Council of Factors is entirely in
 favour; they simply cannot sign on Drajk's behalf. Point the player at
-`/talk krayt`.
+`/talk drajk`.
 
 ---
 

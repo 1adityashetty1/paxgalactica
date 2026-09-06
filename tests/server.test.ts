@@ -67,11 +67,11 @@ describe('routing', () => {
 
   it('creates a campaign and returns a valid view', async () => {
     const { session } = newSession();
-    const res = await dispatch(session, 'POST', ROUTES.newCampaign, { factionId: 'hutt' });
+    const res = await dispatch(session, 'POST', ROUTES.newCampaign, { factionId: 'ojjul' });
     expect(res.status).toBe(200);
     const parsed = CampaignViewSchema.safeParse(res.body);
     expect(parsed.success, JSON.stringify(parsed.error?.issues?.slice(0, 3))).toBe(true);
-    expect(parsed.data!.state.playerFactionId).toBe('hutt');
+    expect(parsed.data!.state.playerFactionId).toBe('ojjul');
   });
 
   it('rejects an unknown faction', async () => {
@@ -184,7 +184,7 @@ describe('resuming restores a briefing', () => {
       [
         {
           op: 'issue_order', factionId: 'freeworlds', type: 'construction_infrastructure',
-          originId: 'ark-1', targetId: 'ark-1', durationTurns: 3, label: 'Arkanis slipway',
+          originId: 'ark-1', targetId: 'ark-1', durationTurns: 3, label: 'Arkane slipway',
         },
       ],
       'build',
@@ -201,7 +201,7 @@ describe('resuming restores a briefing', () => {
     // shipyard is two turns from completion.
     expect(briefing).not.toBeNull();
     expect(briefing!.inProgress).toHaveLength(1);
-    expect(briefing!.inProgress[0]!.label).toBe('Arkanis slipway');
+    expect(briefing!.inProgress[0]!.label).toBe('Arkane slipway');
     expect(briefing!.quiet).toBe(false);
     // Nothing completed *this* turn, because no turn has happened yet.
     expect(briefing!.completed).toHaveLength(0);
@@ -225,7 +225,7 @@ describe('the busy guard', () => {
     });
 
     expect(session.isBusy).toBe(true);
-    const rejected = await dispatch(session, 'POST', ROUTES.action, { text: 'fortify Dolomar' });
+    const rejected = await dispatch(session, 'POST', ROUTES.action, { text: 'fortify Delvane' });
     expect(rejected.status).toBe(409);
     expect((rejected.body as { error: { code: string } }).error.code).toBe('conflict');
 
@@ -248,7 +248,7 @@ describe('the diplomacy boundary is enforced server-side', () => {
   it('blocks actions and end-of-turn while a channel is open', async () => {
     const { session } = await startedSession();
     // Force the channel open without a model call.
-    (session as unknown as { openChannel: string | null }).openChannel = 'hutt';
+    (session as unknown as { openChannel: string | null }).openChannel = 'ojjul';
 
     for (const [path, body] of [
       [ROUTES.action, { text: 'attack' }],
@@ -261,7 +261,7 @@ describe('the diplomacy boundary is enforced server-side', () => {
 
   it('refuses a second, different channel', async () => {
     const { session } = await startedSession();
-    (session as unknown as { openChannel: string | null }).openChannel = 'hutt';
+    (session as unknown as { openChannel: string | null }).openChannel = 'ojjul';
     const res = await dispatch(session, 'POST', ROUTES.talk('vigil'), { text: 'hello' });
     expect(res.status).toBe(409);
   });
@@ -289,13 +289,13 @@ describe('the diplomacy boundary is enforced server-side', () => {
   it('caps how many messages the player may send in one channel', async () => {
     const { session } = await startedSession();
     const history = (session as unknown as { channelHistory: unknown[] }).channelHistory;
-    (session as unknown as { openChannel: string | null }).openChannel = 'hutt';
+    (session as unknown as { openChannel: string | null }).openChannel = 'ojjul';
     for (let i = 0; i < MAX_CHANNEL_MESSAGES; i++) {
       history.push({ speaker: 'player', text: `turn ${i}` });
       history.push({ speaker: 'faction', text: 'noted' });
     }
 
-    const res = await dispatch(session, 'POST', ROUTES.talk('hutt'), { text: 'one more' });
+    const res = await dispatch(session, 'POST', ROUTES.talk('ojjul'), { text: 'one more' });
     expect(res.status).toBe(409);
     // The refused message must not be consumed, or the player loses it AND the
     // channel is still full.
@@ -306,7 +306,7 @@ describe('the diplomacy boundary is enforced server-side', () => {
 
   it('endTalk without an open channel is a conflict', async () => {
     const { session } = await startedSession();
-    const res = await dispatch(session, 'POST', ROUTES.endtalk('hutt'), {});
+    const res = await dispatch(session, 'POST', ROUTES.endtalk('ojjul'), {});
     expect(res.status).toBe(409);
   });
 
@@ -330,7 +330,7 @@ describe('the diplomacy boundary is enforced server-side', () => {
         closeChannel: async () => ({
           narrative: 'The Assembly will not put its name to it.',
           refusal: {
-            by: 'the Arkanis Assembly',
+            by: 'the Arkane Assembly',
             reason: 'It is occupation by another name.',
             violated: 'will never accept occupation',
           },
@@ -361,7 +361,7 @@ describe('the diplomacy boundary is enforced server-side', () => {
 describe('events', () => {
   it('pushes a valid state event when a campaign starts', async () => {
     const { session, events } = newSession();
-    await session.newCampaign('krayt', 'evented');
+    await session.newCampaign('drajk', 'evented');
     const stateEvents = events.filter((e) => e.type === 'state');
     expect(stateEvents.length).toBeGreaterThan(0);
     for (const e of events) expect(ServerEventSchema.safeParse(e).success).toBe(true);

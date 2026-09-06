@@ -40,15 +40,15 @@ describe('shortest path', () => {
   });
 
   it('routes across sectors', () => {
-    const path = shortestPath(systems, 'ark-1', 'tio-3');
+    const path = shortestPath(systems, 'ark-1', 'tor-3');
     expect(path).not.toBeNull();
     expect(path![0]).toBe('ark-1');
-    expect(path![path!.length - 1]).toBe('tio-3');
+    expect(path![path!.length - 1]).toBe('tor-3');
   });
 
   it('returns null when the target is unreachable', () => {
     const isolated = [...systems.map((s) => ({ ...s, hyperlaneEdges: [] }))];
-    expect(shortestPath(isolated, 'ark-1', 'tio-3')).toBeNull();
+    expect(shortestPath(isolated, 'ark-1', 'tor-3')).toBeNull();
   });
 
   it('returns null for ids that do not exist', () => {
@@ -57,7 +57,7 @@ describe('shortest path', () => {
   });
 
   it('is deterministic across repeated calls', () => {
-    const runs = Array.from({ length: 5 }, () => shortestPath(systems, 'ark-5', 'tio-5'));
+    const runs = Array.from({ length: 5 }, () => shortestPath(systems, 'ark-5', 'tor-5'));
     for (const run of runs) expect(run).toEqual(runs[0]);
   });
 
@@ -75,7 +75,7 @@ describe('jump cost', () => {
   });
 
   it('is symmetric', () => {
-    expect(jumpsBetween(systems, 'ark-1', 'tio-5')).toBe(jumpsBetween(systems, 'tio-5', 'ark-1'));
+    expect(jumpsBetween(systems, 'ark-1', 'tor-5')).toBe(jumpsBetween(systems, 'tor-5', 'ark-1'));
   });
 });
 

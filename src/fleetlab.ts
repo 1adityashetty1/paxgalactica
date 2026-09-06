@@ -61,9 +61,9 @@ export interface TrialOutcome {
  */
 function buildArena(): WorldState {
   const full = createSeedState('freeworlds');
-  const keep = ['freeworlds', 'hutt'];
+  const keep = ['freeworlds', 'ojjul'];
   const origin = full.systems.find((s) => s.id === 'ark-4')!;
-  const target = full.systems.find((s) => s.id === 'slu-6')!;
+  const target = full.systems.find((s) => s.id === 'sek-6')!;
   return WorldStateSchema.parse({
     ...full,
     factions: full.factions
@@ -71,7 +71,7 @@ function buildArena(): WorldState {
       .map((f) => ({ ...f, disposition: { [keep.find((x) => x !== f.id)!]: -50 } })),
     systems: [
       { ...origin, hyperlaneEdges: [target.id], ships: {}, controllerFactionId: 'freeworlds' },
-      { ...target, hyperlaneEdges: [origin.id], ships: {}, controllerFactionId: 'hutt' },
+      { ...target, hyperlaneEdges: [origin.id], ships: {}, controllerFactionId: 'ojjul' },
     ],
     pendingOrders: [],
     treaties: [],
@@ -84,7 +84,7 @@ function buildArena(): WorldState {
 
 const ARENA = buildArena();
 const ORIGIN = 'ark-4';
-const TARGET = 'slu-6';
+const TARGET = 'sek-6';
 
 /** One battle: `attacker` sails against `defender` over a garrison. */
 export function trial(
@@ -98,13 +98,13 @@ export function trial(
   // The turn is what varies the seeded roll, and it costs nothing to change —
   // unlike ticking forward, which would also move income and garrisons.
   state.turn = turn;
-  state.factions.find((f) => f.id === 'hutt')!.warEthic = holderEthic;
+  state.factions.find((f) => f.id === 'ojjul')!.warEthic = holderEthic;
 
   const world = state.systems.find((s) => s.id === TARGET)!;
   world.garrison = garrison;
   world.garrisonMax = Math.max(garrison, 1);
   for (const [hull, n] of Object.entries(defender) as [HullClass, number][]) {
-    addShipsAt(world, 'hutt', n, hull);
+    addShipsAt(world, 'ojjul', n, hull);
   }
   const port = state.systems.find((s) => s.id === ORIGIN)!;
   for (const [hull, n] of Object.entries(attacker) as [HullClass, number][]) {

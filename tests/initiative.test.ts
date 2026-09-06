@@ -16,7 +16,7 @@ import type { WorldState } from '../src/domain/state.js';
  * only in relation to them.
  */
 
-const seed = () => createSeedState('hutt');
+const seed = () => createSeedState('ojjul');
 
 /** Play `turns` with the player doing nothing at all — the case that used to be inert. */
 function quietCampaign(turns: number): { state: WorldState; npcVsNpc: number } {
@@ -60,7 +60,7 @@ describe('the galaxy moves without the player', () => {
     // At least one world taken off an NPC by another NPC.
     const npcOffNpc = changed.filter((sys) => {
       const was = before.systems.find((x) => x.id === sys.id)!.controllerFactionId;
-      return was !== null && was !== 'hutt' && sys.controllerFactionId !== 'hutt';
+      return was !== null && was !== 'ojjul' && sys.controllerFactionId !== 'ojjul';
     });
     expect(npcOffNpc.length).toBeGreaterThan(0);
   });
@@ -69,7 +69,7 @@ describe('the galaxy moves without the player', () => {
     // The engine skips the player, but the bot exists for every faction and
     // must not be reachable by accident.
     const s = seed();
-    expect(proposeFor(s, 'hutt')).not.toBeNull(); // it CAN propose
+    expect(proposeFor(s, 'ojjul')).not.toBeNull(); // it CAN propose
     // …the guarantee is in the engine's `spokenFor` set, tested via turn.ts.
   });
 });
@@ -150,17 +150,17 @@ describe('initiative is fog-clean', () => {
     const withSecret = applyOps(seed(), [
       {
         op: 'issue_order',
-        factionId: 'hutt',
+        factionId: 'ojjul',
         type: 'capital_ship_construction',
-        originId: 'kes-2',
-        targetId: 'kes-2',
+        originId: 'ilv-2',
+        targetId: 'ilv-2',
         durationTurns: 3,
         label: 'a secret slipway',
         visibility: [],
       },
     ], 'model').state;
 
-    for (const id of ['meridian', 'vigil', 'freeworlds', 'krayt']) {
+    for (const id of ['meridian', 'vigil', 'freeworlds', 'drajk']) {
       expect(
         JSON.stringify(proposeFor(withSecret, id)?.ops ?? null),
         `${id} reacted to work it cannot see`,
@@ -186,8 +186,8 @@ describe('the proposal itself', () => {
   });
 
   it('is deterministic, so a bot-driven turn replays exactly', () => {
-    const a = proposeFor(seed(), 'krayt');
-    const b = proposeFor(seed(), 'krayt');
+    const a = proposeFor(seed(), 'drajk');
+    const b = proposeFor(seed(), 'drajk');
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   });
 });
@@ -208,7 +208,7 @@ describe('lift is carried, not counted as strength', () => {
       const s = createSeedState('freeworlds');
       // A staging world next to a target, held well short of what the bot
       // needs, then padded out with transports.
-      const staging = s.systems.find((x) => x.id === 'tio-3')!;
+      const staging = s.systems.find((x) => x.id === 'tor-3')!;
       setShipsAt(staging, 'vigil', 6);
       if (lifters > 0) addShipsAt(staging, 'vigil', lifters, 'lifter');
       return (proposeFor(s, 'vigil')?.ops ?? []).some(
@@ -224,7 +224,7 @@ describe('lift is carried, not counted as strength', () => {
   it('sails with enough lift to hold what it takes, or does not sail', () => {
     const s = createSeedState('freeworlds');
     // Every bot, and every world it proposes to attack.
-    for (const me of ['meridian', 'vigil', 'hutt', 'freeworlds', 'krayt']) {
+    for (const me of ['meridian', 'vigil', 'ojjul', 'freeworlds', 'drajk']) {
       const ops = ((proposeFor(s, me)?.ops ?? []) as Record<string, unknown>[]).filter(
         (op) => op.op === 'issue_order' && op.type === 'fleet_movement',
       ) as unknown as { force: ShipStack; targetId: string }[];
@@ -252,7 +252,7 @@ describe('the bots field composed navies', () => {
   const played = (turns: number): WorldState => {
     let s = createSeedState('freeworlds');
     for (let t = 0; t < turns; t++) {
-      for (const id of ['freeworlds', 'hutt', 'krayt', 'meridian', 'vigil']) {
+      for (const id of ['freeworlds', 'ojjul', 'drajk', 'meridian', 'vigil']) {
         const ops = proposeFor(s, id)?.ops ?? [];
         if (ops.length > 0) s = applyOps(s, ops as never[], 'model', id).state;
       }
@@ -274,13 +274,13 @@ describe('the bots field composed navies', () => {
 
   it('gives the Confederacy boats rather than a battle line it could not win with', () => {
     const end = played(12);
-    const boats = end.systems.reduce((n, s) => n + (stackAt(s, 'krayt').torpedo_boat ?? 0), 0);
+    const boats = end.systems.reduce((n, s) => n + (stackAt(s, 'drajk').torpedo_boat ?? 0), 0);
     expect(boats).toBeGreaterThan(0);
   });
 
   it('keeps a screen over the convoy for the powers that mount landings', () => {
     const end = played(12);
-    for (const id of ['meridian', 'vigil', 'hutt']) {
+    for (const id of ['meridian', 'vigil', 'ojjul']) {
       const lift = end.systems.reduce((n, s) => n + (stackAt(s, id).lifter ?? 0), 0);
       const screen = end.systems.reduce((n, s) => n + (stackAt(s, id).escort ?? 0), 0);
       if (lift > 0) expect(screen, `${id} sails its convoy unescorted`).toBeGreaterThan(0);

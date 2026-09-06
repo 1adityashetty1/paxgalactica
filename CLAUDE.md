@@ -286,18 +286,73 @@ nothing.
 
 ## Faction character
 
-Internal `factionId` values are historical and were never renamed alongside
-the display names — they are opaque keys used throughout the code, tests and
-save files, so changing them is a much bigger and riskier pass than changing
-what a player sees. Reference, since `id` and `name` no longer share a root:
+`factionId` values used to be historical — left alone when the display names
+changed, on the reasoning that they are opaque internal keys and renaming them
+would be a much bigger and riskier pass than changing what a player sees. The
+first half of that was simply false. **Ids are not private.** They ship in the
+`GET /api/campaign` payload, in every exported archive, in the orders panel's
+own markup, in rejection messages and in the event log — so `hutt` displaying
+as "Ojjul Nar Combine" did not hide the old name, it published it in five
+places and let the display name argue with it.
+
+The second half was true and is the reason it was worth doing early rather
+than never: it touched 60 files and ~1,700 references. That cost only grows.
+
+Ids and names now share a root, and a test pins it:
 
 | `factionId` | display name |
 |---|---|
 | `meridian` | Meridian Trade Authority |
 | `vigil` | Iron Vigil Remnant |
-| `hutt` | Ojjul Nar Combine |
-| `freeworlds` | Arkanis Free Worlds |
-| `krayt` | Drajk Confederacy |
+| `ojjul` | Ojjul Nar Combine |
+| `freeworlds` | Arkane Free Worlds |
+| `drajk` | Drajk Confederacy |
+
+### The setting is its own, and the ids had to move for it to be
+
+The map was named out of Star Wars — an Arkanis sector, a Sluis Verge, a Tion
+Marches, a Kessel Fringe, with Ghorman, Byss, Nar Shalka and an Ord- prefix
+inside them. Two faction ids were the same borrowing left in the machinery.
+`tests/naming.test.ts` holds a denylist so none of it comes back, scoped to the
+seed, the prompts and the client — the three places a name reaches a player.
+`docs/` and this file are **not** policed, and cannot be: explaining why a name
+was retired means naming it, which is exactly what the paragraph you are
+reading does. Their references were rewritten anyway, so a backlog item still
+points at a system that exists.
+
+| was | is | why |
+|---|---|---|
+| Arkanis Drift (`ark-`) | **Arkane** Drift (`ark-`) | folded into the demonym the Free Worlds' voice already used — *the Arkane stands* — so no voice text changed and the prefix stayed put |
+| Kessel Fringe (`kes-`) | **Ilvenn** Fringe (`ilv-`) | |
+| Sluis Verge (`slu-`) | **Sekkar** Verge (`sek-`) | |
+| Tion Marches (`tio-`) | **Torrek** Marches (`tor-`) | |
+
+**The prefixes are not free.** `buildAdjacency` breaks BFS ties on **sorted
+system ids**, so the alphabet is part of the map: the first assignment put
+Ilvenn where Sekkar now is, which reordered `ark < kes < slu < tio` into
+`ark < ilv < sek < tor` with positions 2 and 3 swapped, and equal-length trade
+routes started preferring different hops. Four test files failed and none of
+them was about names. Assigning the roots so the sorted order is *positionally
+isomorphic* to the old one makes the graph provably unchanged — the balance
+harness is byte-identical through turn 5, and route income is a pure function
+of the graph.
+
+**What the rename does move is the dice, and that is unavoidable.** The combat
+salt is `combat:<system>:<turn>:<sorted combatant ids>`, so `drajk,ojjul`
+hashes differently from `hutt,krayt`. Over 30 harness turns one battle goes the
+other way and the Combine ends on five systems instead of six; everything
+derived from the graph — tolls, raiding, lane shares, the 58/42 income mix — is
+unchanged. There is no version of renaming a faction that leaves the rolls
+alone, short of seeding battles on something other than who is in them.
+
+A campaign saved before the rename names factions and systems that no longer
+exist, so `applyOps` rejects every op in its journal and it will not load.
+Nothing is done about that on purpose: `saves/` is gitignored and a save is a
+local artifact of one machine, so a campaign that no longer opens is deleted
+rather than migrated. A migration tool for it would be a permanent script
+carrying a one-time rename, in the trust path of a file the game invites you to
+hand back to it — the same argument that keeps the tar reader hand-rolled runs
+the other way here, because this one has no ongoing job.
 
 Five powers that should never be mistaken for one another. Each differs on four
 axes at once, because a faction that differs only in its doctrine paragraph
@@ -310,7 +365,7 @@ sounds like every other faction the moment a conversation gets specific:
   `profiteer`. Load-bearing, and one per faction. See "War ethics" below.
 - **`tradeEthic`** — `free_trade` · `monopolist` · `extortionist` · `autarkic` ·
   `smuggler`. Load-bearing, and now **one per faction**: Meridian, the Iron
-  Vigil, the Nars, Arkanis, Drajk in that order.
+  Vigil, the Nars, Arkane, Drajk in that order.
 - **`redLines[]`** — absolute refusals no incentive moves.
 - **`buildBias[]`** — what it reaches for first, so pressure does not make every
   power build the same shipyard.
@@ -705,7 +760,7 @@ lives here instead:
 | `smuggler` | ignores blockades, raids at double effect, counts double at lawless junctions |
 | `monopolist` | `MONOPOLY_BONUS` premium on lanes it owns **both ends** of, paid on top of the conserved split |
 
-The seed already had the geography for this and nothing read it: kes-2 sits on
+The seed already had the geography for this and nothing read it: ilv-2 sits on
 74 of the galaxy's 300 shortest paths and the extortionists hold it; three more
 high-traffic junctions are unaligned.
 
@@ -717,10 +772,10 @@ is an authoring slip, not a design.
 
 The Iron Vigil has it now, and the geography decides that rather than taste:
 only three lanes on the map have both ends under one power, and the Vigil holds
-one of them (`tio-3 <-> tio-4`, one jump, volume 44). The *other* autarkist,
-Arkanis, holds a single hub and would earn nothing from the doctrine, so the
+one of them (`tor-3 <-> tor-4`, one jump, volume 44). The *other* autarkist,
+Arkane, holds a single hub and would earn nothing from the doctrine, so the
 duplicate could only be broken on the Vigil's side. It fits the fiction better
-than expected: *"Hold the Tion until order is restored"* **is** the monopolist
+than expected: *"Hold the Torrek until order is restored"* **is** the monopolist
 precondition, and fortification and garrison-raising are the toolkit for
 holding both ends of a corridor.
 
@@ -736,11 +791,11 @@ because the ethic finally had an owner:
    the network is worth; the premium rides alongside it.
 2. **`MONOPOLY_BONUS` fell from 1.5 to 1.25.** Swept over 30 played turns, the
    response is a *cliff*: at 1.4+ the Vigil's route income funds a fleet that
-   takes `tio-1` off Meridian — costing Meridian a hub and its own both-ends
-   lane — and Meridian ends at −82. At 1.3 and below Meridian keeps tio-1 and
+   takes `tor-1` off Meridian — costing Meridian a hub and its own both-ends
+   lane — and Meridian ends at −82. At 1.3 and below Meridian keeps tor-1 and
    finishes at **+31**, better than the −1 it managed before any of this. From
    1.3 down to 1.15 the board is identical, because the premium applies to one
-   lane and the discrete question (does Meridian keep tio-1) swamps it. 1.25 is
+   lane and the discrete question (does Meridian keep tor-1) swamps it. 1.25 is
    chosen over the 1.3 that also passes for margin: a tuning value sitting on a
    cliff edge is one unrelated change away from tipping back.
 
@@ -785,7 +840,7 @@ and nothing implemented it.
 
 **A renegotiation replaces the old paper; it does not add to it.** Powers say
 "supersedes" constantly and nothing acted on it: a playtest left two `tribute`
-treaties live between one pair, and Arkanis believed it paid 40 and paid 65
+treaties live between one pair, and Arkane believed it paid 40 and paid 65
 while the Combine believed 55 and paid 95. Supersession existed but was scoped
 to `incomeShares`, so every other recurring term stacked.
 
@@ -935,7 +990,7 @@ shown behind them, because a number that is not the number the game rolls
 against is a lie), and `serializeState` tells the model its own institutions
 have lost faith in it.
 
-Verified live: a Meridian leader ordering a spice-and-slave run is refused by
+Verified live: a Meridian leader ordering a narcotics-and-slave run is refused by
 the Trade Council; an Iron Vigil leader ordering universal passivity is refused
 by the fleet commanders.
 
@@ -946,12 +1001,12 @@ way for each.
 ### Who rules on a breach: the arbiter, not resolution
 
 The classification lived in the resolution call for the whole life of the
-mechanism, and a playtest as the Arkanis Free Worlds — the power defined almost
+mechanism, and a playtest as the Arkane Free Worlds — the power defined almost
 entirely by refusal — measured what that was worth. Three unambiguous
 compulsion breaches (paying one-off tribute, agreeing to ongoing tribute,
 raiding another power's shipping) resolved as **ordinary skill checks costing
 nothing at all**, and a red line was never once returned as a `refusal`: *"open
-the gates, invite the Vigil to occupy Arkanis Prime"* — the verbatim scenario of
+the gates, invite the Vigil to occupy Arkane Prime"* — the verbatim scenario of
 that faction's first red line — was priced as a `resolve` check at DC 19 and
 would have succeeded on a 20.
 
@@ -982,7 +1037,7 @@ now, not the mechanism.
 existence **the arbiter had never been shown the lines it is now asked to
 enforce**. It gets `serializePrinciples` — doctrine, ethics, red lines,
 compulsions — and deliberately not `serializeCharacter`, whose `voice` field
-runs to thousands of tokens of dialect notes for Arkanis alone. Handing a
+runs to thousands of tokens of dialect notes for Arkane alone. Handing a
 bounded classification call the whole character sheet would have roughly doubled
 the price of every action in the game.
 
@@ -1007,7 +1062,7 @@ resolution call entirely, so the most flagrant actions in the game now cost
 about `$0.022` instead of `$0.073` — measured live.
 
 **The sheet decides which kind a line is, not the arbiter's label.** Verified in
-two playtests: Arkanis blocked the protectorate it had been talked into before
+two playtests: Arkane blocked the protectorate it had been talked into before
 and did *not* flag raising its own garrison, but the Vigil produced a new hole in
 the same shape as the old one. Asked to retain Nar smuggler captains as
 informants, the arbiter quoted the right line, called it *"a red line, not a
@@ -1217,7 +1272,7 @@ about a client who has already learned that owing you costs nothing.
 
 The seed gives the Combine two debts so both halves are live from turn 0 — Drajk
 already in default, Meridian paying on schedule — which also gives the arbiter
-real state to rule against instead of a fiction. **Not Arkanis, deliberately:**
+real state to rule against instead of a fiction. **Not Arkane, deliberately:**
 *stone-debt* is their word for what is owed for taking help, and the Closing is
 a refusal to take any. A power that counts its dead rather than accept grain
 does not carry a Nar loan.
@@ -1355,7 +1410,7 @@ The price lands on the **attempt**, not the act: the institutions are furious
 that the thing was proposed, and keeping the charge out of the outcome bands is
 what stops it becoming another number the resolution call can reason its way
 around. It was 25 until the first live playtest of the arbiter rework, where two
-Arkanis breaches in one turn — one of them a natural 1 that achieved nothing —
+Arkane breaches in one turn — one of them a natural 1 that achieved nothing —
 cost 50 dissent and −4 on every stat before the second turn began. Charging on
 the attempt is right; charging three times what a *blocked red line* costs was
 not.
@@ -1520,7 +1575,7 @@ Everything not seen in full becomes a **rumour**: whose it is, which world, how
 long it runs, how far along. Nothing else.
 
 That grading is load-bearing. A binary filter would hide secret work so
-completely that a player would never learn there was anything in the Tion
+completely that a player would never learn there was anything in the Torrek
 Marches worth looking at, and surveillance would stay exactly as unmotivated as
 it was. Knowing that something is happening and not what it is, is the pressure
 that makes an operative worth 150 credits.
@@ -1582,16 +1637,16 @@ it is written down as the known simplification rather than pretended away.
 Measured on the campaign that opened all this, at turn 7: the three physical
 programmes (a fortification, a fleet movement, an infrastructure works) are
 visible to everyone, and the Iron Vigil's counter-intelligence sweep is a rumour
-to the other four. It sits at **Ghorman Deep** — the exact world the playtest
+to the other four. It sits at **Gorrun Deep** — the exact world the playtest
 had put a theft operative on — so a player now reads *"the Vigil has something
-under way at Ghorman Deep, 1 of 2 turns"* and has a reason to go and look.
+under way at Gorrun Deep, 1 of 2 turns"* and has a reason to go and look.
 
 ## Doctrine initiative: the galaxy moves without you
 
 `src/domain/initiative.ts`. **The NPCs were not passive. They were
 solipsistic.** Measured over a seven-turn campaign, the reaction call produced
 16 fleet movements and six attacks — and **every attack targeted the player, on
-one world**. Zero NPC-vs-NPC aggression, while `vigil -> krayt` sat at −87 and
+one world**. Zero NPC-vs-NPC aggression, while `vigil -> drajk` sat at −87 and
 `freeworlds -> vigil` at −75. Wars on paper that nobody fought.
 
 Three structural causes, none of them a prompt problem:
@@ -1627,8 +1682,8 @@ the Iron Vigil takes two systems off Meridian.
 
 A bot action logs a third-person account of what it did, and `serializeRecentLog`
 feeds the event log into `serializeState` — so the **next** reaction call reads
-*"Iron Vigil Remnant lays down 3 hulls, sends 42 hulls from Ord Vantic against
-Tion Anchorage"* and the faction can account for its own move when it next
+*"Iron Vigil Remnant lays down 3 hulls, sends 42 hulls from Vantic against
+Torrek Anchorage"* and the faction can account for its own move when it next
 speaks. The alternative was paying the flavour tier to narrate every bot action;
 this makes an NPC's own history part of what it reasons from instead of
 something only the player remembers.
@@ -1680,13 +1735,13 @@ Two rules now, both in the reducer:
 - **Magnitude from a stat contest.** `subornLimit` is the suborner's `guile`
   modifier minus the target's `resolve` modifier, plus one. Not a constant:
 
-| suborner → | meridian | vigil | hutt | freeworlds | krayt |
+| suborner → | meridian | vigil | ojjul | freeworlds | drajk |
 |---|---|---|---|---|---|
 | **meridian** | — | 0 | 2 | 0 | 1 |
 | **vigil** | 2 | — | 1 | 0 | 0 |
-| **hutt** | 6 | 2 | — | 1 | 4 |
+| **ojjul** | 6 | 2 | — | 1 | 4 |
 | **freeworlds** | 3 | 0 | 2 | — | 1 |
-| **krayt** | 4 | 0 | 3 | 0 | — |
+| **drajk** | 4 | 0 | 3 | 0 | — |
 
 Nobody can suborn the Iron Vigil (resolve 17) or the Free Worlds (19); the
 Nars at guile 18 are the best at it; Meridian's resolve 9 is a real
@@ -1737,7 +1792,7 @@ never had an army to sell. `profiteer` replaces it.
 | ethic | faction | mechanic |
 |---|---|---|
 | `expansionist` | Meridian | `EXPANSIONIST_TERRITORY_BONUS` per world held, applied to **all** its territory income — expansion compounds. Conquest also consolidates: a captured world keeps half its garrison rather than a third |
-| `defensive` | Arkanis | its garrison fights at `DEFENSIVE_GARRISON_BONUS` of its size, and costs the attacker accordingly. Only the real garrison can be destroyed — the bonus buys resistance, not extra troops |
+| `defensive` | Arkane | its garrison fights at `DEFENSIVE_GARRISON_BONUS` of its size, and costs the attacker accordingly. Only the real garrison can be destroyed — the bonus buys resistance, not extra troops |
 | `opportunist` | Drajk | `OPPORTUNIST_MIGHT_BONUS` against a target **weakened** (garrison below half its ceiling) or **distracted** (its holder at war with someone else). Nothing in a fair fight |
 | `crusading` | Iron Vigil | **does not break off**, attacking or defending. Wins engagements it should have fled and loses fleets it should have saved |
 | `profiteer` | Ojjul Nar | `PROFITEER_INCOME_PER_WAR` from every war it is *not* in; at war itself it forfeits all of that **and** pays `PROFITEER_WAR_PENALTY` per war |
@@ -1761,9 +1816,9 @@ the Iron Vigil ends at −75 — a war — which turns +40 a turn into −40. It
 rich by taxing everyone, and being resented by everyone is what eventually costs
 it the peace it profits from.
 
-> `expansionist` was assigned to Meridian rather than Arkanis on purpose. Both
+> `expansionist` was assigned to Meridian rather than Arkane on purpose. Both
 > were `defensive`, and an income-based expansionism suits *"Commerce is
-> sovereignty"*; Arkanis is the defensive faction par excellence — *"take no
+> sovereignty"*; Arkane is the defensive faction par excellence — *"take no
 > master"*, *"will never accept occupation"* — and giving it an expansion-pays
 > mechanic would have contradicted its whole sheet.
 
@@ -1999,11 +2054,11 @@ The four bounds above are all about *magnitude*, and none of them knows whether
 the action worked — `applyOps` has never been told the check, so
 `OUTCOME_GUIDANCE`'s "a failure emits the ops for what the attempt COST and NOT
 the ops for the thing the player wanted" was a promise made in a prompt and
-nowhere else. Seen live as Arkanis: a `fortification` action failed its
+nowhere else. Seen live as Arkane: a `fortification` action failed its
 `industry` check, the narrative said the walls stood exactly as thick as that
 morning, and the batch contained the cost **and** the three-turn order, labelled
 "(stalled)". That one was harmless only because it carried no payload. Measured
-with one: a `develop_system +1` at slu-2, emitted in a batch the player was told
+with one: a `develop_system +1` at sek-2, emitted in a batch the player was told
 was a failure, crosses `HUB_THRESHOLD` five turns later and takes Meridian's net
 from 309 to **519, permanently**, with zero rejections.
 
@@ -2049,10 +2104,10 @@ twenty-five**, because `strategicValue` also sets route volume and at
 once. Measured on the seed, one point is worth:
 
 ```
-krayt  kes-7  3->4    +7/turn    an ordinary world, slightly better
-hutt   kes-2  9->10  +13/turn    already a hub; more volume on its lanes
+drajk  ilv-7  3->4    +7/turn    an ordinary world, slightly better
+ojjul   ilv-2  9->10  +13/turn    already a hub; more volume on its lanes
 free   ark-4  6->7   +36/turn    becomes a hub, but a poorly connected one
-merid  slu-2  6->7  +209/turn    becomes a hub in the middle of everything
+merid  sek-2  6->7  +209/turn    becomes a hub in the middle of everything
 ```
 
 A 30-turn reinvestment run at the flat price took Meridian's net from 283 to 952
@@ -2378,7 +2433,7 @@ harness caught four things staring at ledgers never would:
   played 30-turn runs, the toll rate barely moved anything (it is ~20 credits
   of a 280 lane income); shifting value from transit hops to hub endpoints
   spread it over eight hubs held 2/2/2/1/1 instead of concentrating it on the
-  Kessel spine.
+  Ilvenn spine.
 
 `tests/balance.test.ts` asserts the properties rather than the numbers —
 nobody eliminated, nobody holding half the map, trade between 20% and 50% of
@@ -2522,7 +2577,7 @@ automatically.
   Lanes inside one power's territory take its colour; borders stay grey. Zoom,
   pan, click-to-select, hover tooltips, sector filter, fleets drawn along their
   path with an ETA.
-  `MIN_ASPECT`/`MAX_ASPECT` stop a nearly-collinear sector (the Kessel Fringe)
+  `MIN_ASPECT`/`MAX_ASPECT` stop a nearly-collinear sector (the Ilvenn Fringe)
   collapsing to a hairline or a tall one becoming a column.
 - **Fleets** — every hull by system, with a section for the rows that matter
   most: worlds where presence and ownership differ. Presence is not ownership
@@ -2562,7 +2617,7 @@ automatically.
   that the set was generated to a single framing brief — close, but not true.
   The Vigil, the Combine and Drajk sit two or three percent right of centre, and
   the 3x zoom multiplies that into a head visibly against the right edge of the
-  circle, while Meridian and Arkanis looked correct — which is exactly why the
+  circle, while Meridian and Arkane looked correct — which is exactly why the
   assumption survived the first look.
 
   The second version fixed that and broke something else: **centring a face and
@@ -2744,7 +2799,7 @@ src/
   model/      client, router, prompts, serialize, calls, auth, binary
               ← server-only. Spawns the binary, holds the token.
   server/     index (node:http), router, session, events, static, errors
-  seed/       the 25-system Outer Rim scenario
+  seed/       the 25-system Rim scenario
   ui/         layout.ts (pure map geometry), portrait.ts (avatar crops)
               + ansi256.ts
 web/          React + Vite client → dist/web

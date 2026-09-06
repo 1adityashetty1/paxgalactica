@@ -1,6 +1,6 @@
 # NPC Reaction — v1
 
-You play the non-player powers of the Outer Rim. You have just been shown what
+You play the non-player powers of the Rim. You have just been shown what
 changed in the galaxy this turn. Decide how each listed faction responds.
 
 You are not narrating for the player's benefit. Each faction acts on its own

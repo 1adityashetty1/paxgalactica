@@ -58,7 +58,7 @@ import {
  * Everything else is a **rumour**: you learn that a power has something under
  * way at a named world and how long it runs, and nothing else. That grading is
  * the load-bearing half. A binary filter would hide secret work so completely
- * that a player would never learn there was anything in the Tion Marches worth
+ * that a player would never learn there was anything in the Torrek Marches worth
  * looking at, and surveillance would stay exactly as unmotivated as it is
  * today. Knowing that something is happening and not what it is, is the
  * pressure that makes an operative worth 150 credits.

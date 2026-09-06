@@ -165,12 +165,12 @@ describe('economy', () => {
   });
 
   it('never drives a treasury negative', () => {
-    const broke = createSeedState('krayt');
-    broke.factions.find((f) => f.id === 'krayt')!.credits = 0;
+    const broke = createSeedState('drajk');
+    broke.factions.find((f) => f.id === 'drajk')!.credits = 0;
     // Ruinous upkeep, expressed the only way it can be now: actual hulls.
-    setShipsAt(broke.systems.find((s) => s.id === 'ark-5')!, 'krayt', 900);
+    setShipsAt(broke.systems.find((s) => s.id === 'ark-5')!, 'drajk', 900);
     const res = tickTurn(broke);
-    expect(res.state.factions.find((f) => f.id === 'krayt')!.credits).toBe(0);
+    expect(res.state.factions.find((f) => f.id === 'drajk')!.credits).toBe(0);
   });
 });
 
@@ -193,7 +193,7 @@ describe('turn report', () => {
           interruptible: true,
           onInterrupt: 'partial',
           visibility: [],
-          label: 'Arkanis works',
+          label: 'Arkane works',
           durationRationale: '',
           path: [],
         },
@@ -202,7 +202,7 @@ describe('turn report', () => {
 
     expect(withOrder.report.advanced).toHaveLength(1);
     expect(withOrder.report.advanced[0]!.remaining).toBe(2);
-    expect(withOrder.report.advanced[0]!.label).toBe('Arkanis works');
+    expect(withOrder.report.advanced[0]!.label).toBe('Arkane works');
     expect(withOrder.report.completed).toHaveLength(0);
     expect(withOrder.report.ledger.systems).toBe(4);
   });

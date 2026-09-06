@@ -24,9 +24,9 @@ const fresh = (): WorldState => createSeedState('freeworlds');
 const sys = (s: WorldState, id: string) => s.systems.find((x) => x.id === id)!;
 
 /**
- * Land a composed force on slu-6 and return the settled board.
+ * Land a composed force on sek-6 and return the settled board.
  *
- * ark-3 → ark-4 → slu-6 is two jumps, so the fleet is ticked until it lands.
+ * ark-3 → ark-4 → sek-6 is two jumps, so the fleet is ticked until it lands.
  */
 function land(setup: (s: WorldState) => void, force: ShipStack) {
   const state = fresh();
@@ -39,7 +39,7 @@ function land(setup: (s: WorldState) => void, force: ShipStack) {
   const issued = applyOps(state, [
     {
       op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
-      originId: 'ark-3', targetId: 'slu-6', force,
+      originId: 'ark-3', targetId: 'sek-6', force,
     },
   ]);
   expect(issued.rejections).toHaveLength(0);
@@ -50,7 +50,7 @@ function land(setup: (s: WorldState) => void, force: ShipStack) {
 
 /** An enemy world with a garrison and nothing in orbit. */
 const heldWorld = (garrison: number, garrisonMax = garrison) => (s: WorldState) => {
-  const t = sys(s, 'slu-6');
+  const t = sys(s, 'sek-6');
   t.controllerFactionId = 'vigil';
   t.ships = {};
   t.garrison = garrison;
@@ -62,7 +62,7 @@ describe('a world is taken by the lift arm', () => {
     // The whole point of the class: guns clear the space above a world and
     // cannot put anybody on it.
     const res = land(heldWorld(4), { battleship: 40 });
-    const target = sys(res.state, 'slu-6');
+    const target = sys(res.state, 'sek-6');
     expect(target.controllerFactionId).toBe('vigil');
     expect(target.garrison).toBe(4);
     expect(res.notes.join(' ')).toMatch(/no troops aboard to land/);
@@ -73,7 +73,7 @@ describe('a world is taken by the lift arm', () => {
 
   it('takes the same world once there is lift aboard', () => {
     const res = land(heldWorld(4), { battleship: 40, lifter: 2 });
-    expect(sys(res.state, 'slu-6').controllerFactionId).toBe('freeworlds');
+    expect(sys(res.state, 'sek-6').controllerFactionId).toBe('freeworlds');
     expect(res.notes.join(' ')).toMatch(/storms/);
   });
 
@@ -82,15 +82,15 @@ describe('a world is taken by the lift arm', () => {
     // fails against one comfortably above it — whatever else is in the fleet.
     const small = land(heldWorld(LIFTER_CARRY - 4), { battleship: 30, lifter: 1 });
     const large = land(heldWorld(LIFTER_CARRY * 4), { battleship: 30, lifter: 1 });
-    expect(sys(small.state, 'slu-6').controllerFactionId).toBe('freeworlds');
-    expect(sys(large.state, 'slu-6').controllerFactionId).toBe('vigil');
+    expect(sys(small.state, 'sek-6').controllerFactionId).toBe('freeworlds');
+    expect(sys(large.state, 'sek-6').controllerFactionId).toBe('vigil');
   });
 });
 
 describe('the landing is paid for in transports', () => {
   it('spends lifters and leaves the battle line untouched', () => {
     const res = land(heldWorld(20), { battleship: 20, lifter: 6 });
-    const target = sys(res.state, 'slu-6');
+    const target = sys(res.state, 'sek-6');
     expect(target.controllerFactionId).toBe('freeworlds');
     const survivors = stackAt(target, 'freeworlds');
     // The escorting battle line was never in the ground fight.
@@ -102,7 +102,7 @@ describe('the landing is paid for in transports', () => {
   it('costs more lift against a deeper garrison', () => {
     const liftLeft = (garrison: number) => {
       const res = land(heldWorld(garrison), { battleship: 20, lifter: 8 });
-      return stackAt(sys(res.state, 'slu-6'), 'freeworlds').lifter ?? 0;
+      return stackAt(sys(res.state, 'sek-6'), 'freeworlds').lifter ?? 0;
     };
     expect(liftLeft(40)).toBeLessThan(liftLeft(4));
   });
@@ -111,7 +111,7 @@ describe('the landing is paid for in transports', () => {
 describe('the captured garrison is the force that took it', () => {
   it('is the surviving troops, not a fraction of the defenders', () => {
     const res = land(heldWorld(4, 60), { battleship: 20, lifter: 5 });
-    const target = sys(res.state, 'slu-6');
+    const target = sys(res.state, 'sek-6');
     expect(target.controllerFactionId).toBe('freeworlds');
     const ashore = (stackAt(target, 'freeworlds').lifter ?? 0) * LIFTER_CARRY;
     expect(target.garrison).toBe(ashore);
@@ -119,14 +119,14 @@ describe('the captured garrison is the force that took it', () => {
 
   it('never quarters more than the world can hold', () => {
     const res = land(heldWorld(4, 9), { battleship: 20, lifter: 8 });
-    const target = sys(res.state, 'slu-6');
+    const target = sys(res.state, 'sek-6');
     expect(target.controllerFactionId).toBe('freeworlds');
     expect(target.garrison).toBe(9);
   });
 
   it('leaves a bigger occupation behind for a bigger landing', () => {
     const held = (lifter: number) =>
-      sys(land(heldWorld(6, 60), { battleship: 20, lifter }).state, 'slu-6').garrison;
+      sys(land(heldWorld(6, 60), { battleship: 20, lifter }).state, 'sek-6').garrison;
     expect(held(8)).toBeGreaterThan(held(3));
   });
 });
@@ -137,14 +137,14 @@ describe('a fleet that cannot shoot cannot hold an orbit', () => {
     // exchange reads as "nothing to fight". Left alone it would deny a landing
     // forever; it has to be a walkover that destroys them.
     const res = land((s) => {
-      const t = sys(s, 'slu-6');
+      const t = sys(s, 'sek-6');
       t.controllerFactionId = 'vigil';
       t.ships = {};
       addShipsAt(t, 'vigil', 9, 'lifter');
       t.garrison = 2;
       t.garrisonMax = 2;
     }, { battleship: 20, lifter: 2 });
-    const target = sys(res.state, 'slu-6');
+    const target = sys(res.state, 'sek-6');
     expect(hullsAt(target, 'vigil')).toBe(0);
     expect(res.notes.join(' ')).toMatch(/nothing over .* that can fight/);
     expect(target.controllerFactionId).toBe('freeworlds');
@@ -152,13 +152,13 @@ describe('a fleet that cannot shoot cannot hold an orbit', () => {
 
   it('annihilates an invasion that arrives as transports only', () => {
     const res = land((s) => {
-      const t = sys(s, 'slu-6');
+      const t = sys(s, 'sek-6');
       t.controllerFactionId = 'vigil';
       setShipsAt(t, 'vigil', 12);
       t.garrison = 2;
       t.garrisonMax = 2;
     }, { lifter: 6 });
-    const target = sys(res.state, 'slu-6');
+    const target = sys(res.state, 'sek-6');
     expect(target.controllerFactionId).toBe('vigil');
     expect(res.notes.join(' ')).toMatch(/nothing that can fight/);
     // Destroyed, not sent home: none of the six is anywhere on the board, and
@@ -177,7 +177,7 @@ describe('a transport dies with the line that was covering it', () => {
     // unhittable — otherwise a mixed fleet would carry its transports through
     // any battle free and strictly dominate a pure warfleet of the same size.
     const res = land((s) => {
-      const t = sys(s, 'slu-6');
+      const t = sys(s, 'sek-6');
       t.controllerFactionId = 'vigil';
       setShipsAt(t, 'vigil', 26);
       t.garrison = 1;
@@ -185,7 +185,7 @@ describe('a transport dies with the line that was covering it', () => {
     }, { battleship: 30, lifter: 10 });
     const text = res.notes.join(' ');
     expect(text).toMatch(/Fleets engage/);
-    // Somewhere on the board, fewer Arkanis hulls than sailed.
+    // Somewhere on the board, fewer Arkane hulls than sailed.
     const left = res.state.systems.reduce((n, x) => n + hullsAt(x, 'freeworlds'), 0);
     const started = fresh().systems.reduce((n, x) => n + hullsAt(x, 'freeworlds'), 0);
     expect(left).toBeLessThan(started - hullsAt(sys(fresh(), 'ark-3'), 'freeworlds') + 40);
@@ -208,7 +208,7 @@ describe('a bare force number keeps the squadron s shape', () => {
     const res = applyOps(state, [
       {
         op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
-        originId: 'ark-3', targetId: 'slu-6', force: 8,
+        originId: 'ark-3', targetId: 'sek-6', force: 8,
       },
     ]);
     expect(res.rejections).toHaveLength(0);
@@ -231,7 +231,7 @@ describe('a bare force number keeps the squadron s shape', () => {
     const res = applyOps(state, [
       {
         op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
-        originId: 'ark-3', targetId: 'slu-6', force: { battleship: 3, lifter: 6 },
+        originId: 'ark-3', targetId: 'sek-6', force: { battleship: 3, lifter: 6 },
       },
     ]);
     expect(res.state.pendingOrders[0]!.force).toEqual({ battleship: 3, lifter: 2 });

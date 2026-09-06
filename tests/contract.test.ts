@@ -19,7 +19,7 @@ const campaignWithTurn = () => {
     [
       {
         op: 'issue_order', factionId: 'freeworlds', type: 'construction_infrastructure',
-        originId: 'ark-1', targetId: 'ark-1', durationTurns: 3, label: 'Arkanis slipway',
+        originId: 'ark-1', targetId: 'ark-1', durationTurns: 3, label: 'Arkane slipway',
         visibility: ['vigil'],
       },
     ],
@@ -33,13 +33,13 @@ const campaignWithTurn = () => {
 
 /** A campaign whose turn actually contained a battle, not just a build order. */
 const campaignWithBattle = () => {
-  const campaign = Campaign.start('krayt', 'contract-battle', new MemoryCampaignStore());
+  const campaign = Campaign.start('drajk', 'contract-battle', new MemoryCampaignStore());
   const origin = campaign.state.systems.find((s) => s.id === 'ark-5')!;
-  setShipsAt(origin, 'krayt', 20);
+  setShipsAt(origin, 'drajk', 20);
   campaign.stage(
     [
       {
-        op: 'issue_order', factionId: 'krayt', type: 'fleet_movement',
+        op: 'issue_order', factionId: 'drajk', type: 'fleet_movement',
         originId: 'ark-5', targetId: 'ark-6', force: 20,
       },
     ],
@@ -118,7 +118,7 @@ describe('the contract accepts real engine output', () => {
 describe('request validation', () => {
   it('rejects an empty action', () => {
     expect(ActionRequestSchema.safeParse({ text: '' }).success).toBe(false);
-    expect(ActionRequestSchema.safeParse({ text: 'fortify Dolomar' }).success).toBe(true);
+    expect(ActionRequestSchema.safeParse({ text: 'fortify Delvane' }).success).toBe(true);
   });
 
   it('caps action length so a paste cannot blow up a prompt', () => {
@@ -126,16 +126,16 @@ describe('request validation', () => {
   });
 
   it('rejects a campaign name that could escape the save directory', () => {
-    expect(NewCampaignRequestSchema.safeParse({ factionId: 'hutt', name: '../etc' }).success).toBe(
+    expect(NewCampaignRequestSchema.safeParse({ factionId: 'ojjul', name: '../etc' }).success).toBe(
       false,
     );
-    expect(NewCampaignRequestSchema.safeParse({ factionId: 'hutt', name: 'run-2' }).success).toBe(
+    expect(NewCampaignRequestSchema.safeParse({ factionId: 'ojjul', name: 'run-2' }).success).toBe(
       true,
     );
   });
 
   it('defaults the campaign name', () => {
-    const parsed = NewCampaignRequestSchema.parse({ factionId: 'krayt' });
+    const parsed = NewCampaignRequestSchema.parse({ factionId: 'drajk' });
     expect(parsed.name).toBe('campaign');
   });
 });
@@ -162,8 +162,8 @@ describe('routes', () => {
       ROUTES.endturn,
       ROUTES.discardStaged,
       ROUTES.events,
-      ROUTES.talk('hutt'),
-      ROUTES.endtalk('hutt'),
+      ROUTES.talk('ojjul'),
+      ROUTES.endtalk('ojjul'),
     ];
     for (const p of paths) expect(p.startsWith('/api/')).toBe(true);
     expect(new Set(paths).size).toBe(paths.length);

@@ -50,9 +50,9 @@ describe('every war ethic has an owner and a mechanic', () => {
     const state = fresh();
     expect(fac(state, 'meridian').warEthic).toBe('expansionist');
     expect(fac(state, 'vigil').warEthic).toBe('crusading');
-    expect(fac(state, 'hutt').warEthic).toBe('profiteer');
+    expect(fac(state, 'ojjul').warEthic).toBe('profiteer');
     expect(fac(state, 'freeworlds').warEthic).toBe('defensive');
-    expect(fac(state, 'krayt').warEthic).toBe('opportunist');
+    expect(fac(state, 'drajk').warEthic).toBe('opportunist');
   });
 
   it('no longer offers `mercenary` at all', () => {
@@ -76,12 +76,12 @@ describe('expansionist: every world makes the rest pay better', () => {
   it('compounds, so taking a world raises what the others earn', () => {
     const before = ledgerFor(fresh(), 'meridian').territory;
     const wider = fresh();
-    sys(wider, 'slu-3').controllerFactionId = 'meridian';
+    sys(wider, 'sek-3').controllerFactionId = 'meridian';
     const after = ledgerFor(wider, 'meridian').territory;
     // More than the new world alone is worth, because the bonus applies to all.
     const plainWider = fresh();
     fac(plainWider, 'meridian').warEthic = 'defensive';
-    sys(plainWider, 'slu-3').controllerFactionId = 'meridian';
+    sys(plainWider, 'sek-3').controllerFactionId = 'meridian';
     const plainBefore = ledgerFor(fresh(), 'meridian').territory;
     expect(after - before).toBeGreaterThan(
       ledgerFor(plainWider, 'meridian').territory - plainBefore,
@@ -103,18 +103,18 @@ describe('expansionist: every world makes the rest pay better', () => {
     const storm = (ethic: WarEthic) => {
       const state = fresh();
       fac(state, 'meridian').warEthic = ethic;
-      sys(state, 'slu-3').garrison = 9;
+      sys(state, 'sek-3').garrison = 9;
       // Room to quarter the whole landing force, so the ceiling does not mask
       // the difference the doctrine makes.
-      sys(state, 'slu-3').garrisonMax = 40;
-      setShipsAt(sys(state, 'slu-3'), 'meridian', 0);
-      addShipsAt(sys(state, 'slu-1'), 'meridian', 4, 'lifter');
+      sys(state, 'sek-3').garrisonMax = 40;
+      setShipsAt(sys(state, 'sek-3'), 'meridian', 0);
+      addShipsAt(sys(state, 'sek-1'), 'meridian', 4, 'lifter');
       const out = applyOps(
         state,
         [
           {
             op: 'issue_order', factionId: 'meridian', type: 'fleet_movement',
-            originId: 'slu-1', targetId: 'slu-3',
+            originId: 'sek-1', targetId: 'sek-3',
             force: { battleship: 40, lifter: 4 },
           },
         ],
@@ -123,7 +123,7 @@ describe('expansionist: every world makes the rest pay better', () => {
       );
       let s = out.state;
       for (let i = 0; i < 6 && s.pendingOrders.length > 0; i++) s = tickTurn(s).state;
-      return sys(s, 'slu-3');
+      return sys(s, 'sek-3');
     };
     const taken = storm('expansionist');
     const alsoTaken = storm('defensive');
@@ -151,27 +151,27 @@ describe('defensive: occupation costs more than it is worth', () => {
     for (let lifter = 1; lifter <= 8; lifter += 1) {
       const state = fresh();
       fac(state, 'freeworlds').warEthic = holderEthic;
-      fac(state, 'krayt').warEthic = attackerEthic;
+      fac(state, 'drajk').warEthic = attackerEthic;
       const t = sys(state, 'ark-6');
       t.garrison = 10;
       t.garrisonMax = 10;
       setShipsAt(t, 'freeworlds', 0);
-      setShipsAt(sys(state, 'ark-5'), 'krayt', 12);
-      addShipsAt(sys(state, 'ark-5'), 'krayt', lifter, 'lifter');
+      setShipsAt(sys(state, 'ark-5'), 'drajk', 12);
+      addShipsAt(sys(state, 'ark-5'), 'drajk', lifter, 'lifter');
       const out = applyOps(
         state,
         [
           {
-            op: 'issue_order', factionId: 'krayt', type: 'fleet_movement',
+            op: 'issue_order', factionId: 'drajk', type: 'fleet_movement',
             originId: 'ark-5', targetId: 'ark-6', force: { battleship: 12, lifter },
           },
         ],
         'model',
-        'krayt',
+        'drajk',
       );
       let s = out.state;
       for (let i = 0; i < 8 && s.pendingOrders.length > 0; i++) s = tickTurn(s).state;
-      if (sys(s, 'ark-6').controllerFactionId === 'krayt') taken += 1;
+      if (sys(s, 'ark-6').controllerFactionId === 'drajk') taken += 1;
     }
     return taken;
   };
@@ -198,7 +198,7 @@ describe('crusading: does not break off', () => {
     const defend = (ethic: WarEthic) => {
       const state = fresh();
       fac(state, 'vigil').warEthic = ethic;
-      const t = sys(state, 'slu-6');
+      const t = sys(state, 'sek-6');
       t.controllerFactionId = 'vigil';
       setShipsAt(t, 'vigil', 2);
       t.garrison = 1;
@@ -209,7 +209,7 @@ describe('crusading: does not break off', () => {
         [
           {
             op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
-            originId: 'ark-3', targetId: 'slu-6', force: 40,
+            originId: 'ark-3', targetId: 'sek-6', force: 40,
           },
         ],
         'model',
@@ -232,15 +232,15 @@ describe('crusading: does not break off', () => {
     const strike = (ethic: WarEthic) => {
       const state = fresh();
       fac(state, 'vigil').warEthic = ethic;
-      setShipsAt(sys(state, 'tio-2'), 'vigil', 3);
-      const t = sys(state, 'tio-1');
+      setShipsAt(sys(state, 'tor-2'), 'vigil', 3);
+      const t = sys(state, 'tor-1');
       setShipsAt(t, 'meridian', 60);
       const out = applyOps(
         state,
         [
           {
             op: 'issue_order', factionId: 'vigil', type: 'fleet_movement',
-            originId: 'tio-2', targetId: 'tio-1', force: 3,
+            originId: 'tor-2', targetId: 'tor-1', force: 3,
           },
         ],
         'model',
@@ -266,7 +266,7 @@ describe('opportunist: no reward for a fair fight', () => {
   /**
    * Sweep force sizes, counting captures — see the note above.
    *
-   * Every disposition is neutralised first. The seed has Arkanis already at war
+   * Every disposition is neutralised first. The seed has Arkane already at war
    * with the Iron Vigil, which makes it *distracted* and fires the doctrine on
    * its own — the first version of this test asserted "no bonus at full
    * garrison" and failed because the bonus was correctly applying for the other
@@ -292,7 +292,7 @@ describe('opportunist: no reward for a fair fight', () => {
       const lifter = LIFT;
       const max = weakened ? garrison * 4 : garrison;
       const state = fresh();
-      fac(state, 'krayt').warEthic = attackerEthic;
+      fac(state, 'drajk').warEthic = attackerEthic;
       fac(state, 'freeworlds').warEthic = 'profiteer'; // no dug-in bonus in play
       for (const f of state.factions) {
         for (const g of state.factions) if (f.id !== g.id) f.disposition[g.id] = 0;
@@ -302,22 +302,22 @@ describe('opportunist: no reward for a fair fight', () => {
       t.garrison = garrison;
       t.garrisonMax = max;
       setShipsAt(t, 'freeworlds', 0);
-      setShipsAt(sys(state, 'ark-5'), 'krayt', 8);
-      addShipsAt(sys(state, 'ark-5'), 'krayt', lifter, 'lifter');
+      setShipsAt(sys(state, 'ark-5'), 'drajk', 8);
+      addShipsAt(sys(state, 'ark-5'), 'drajk', lifter, 'lifter');
       const out = applyOps(
         state,
         [
           {
-            op: 'issue_order', factionId: 'krayt', type: 'fleet_movement',
+            op: 'issue_order', factionId: 'drajk', type: 'fleet_movement',
             originId: 'ark-5', targetId: 'ark-6', force: { battleship: 8, lifter },
           },
         ],
         'model',
-        'krayt',
+        'drajk',
       );
       let s = out.state;
       for (let i = 0; i < 8 && s.pendingOrders.length > 0; i++) s = tickTurn(s).state;
-      if (sys(s, 'ark-6').controllerFactionId === 'krayt') taken += 1;
+      if (sys(s, 'ark-6').controllerFactionId === 'drajk') taken += 1;
     }
     return taken;
   };
@@ -346,19 +346,19 @@ describe('opportunist: no reward for a fair fight', () => {
 describe('profiteer: paid for wars it stays out of', () => {
   it('earns from a war between two other powers', () => {
     const peace = fresh();
-    expect(warProfitFor(peace, 'hutt')).toBe(
-      warsInProgress(peace).filter((w) => !w.includes('hutt')).length * PROFITEER_INCOME_PER_WAR,
+    expect(warProfitFor(peace, 'ojjul')).toBe(
+      warsInProgress(peace).filter((w) => !w.includes('ojjul')).length * PROFITEER_INCOME_PER_WAR,
     );
 
     const state = fresh();
     for (const f of state.factions) {
       for (const g of state.factions) if (f.id !== g.id) f.disposition[g.id] = 0;
     }
-    expect(warProfitFor(state, 'hutt')).toBe(0);
+    expect(warProfitFor(state, 'ojjul')).toBe(0);
     makeWar(state, 'vigil', 'freeworlds');
-    expect(warProfitFor(state, 'hutt')).toBe(PROFITEER_INCOME_PER_WAR);
-    makeWar(state, 'meridian', 'krayt');
-    expect(warProfitFor(state, 'hutt')).toBe(2 * PROFITEER_INCOME_PER_WAR);
+    expect(warProfitFor(state, 'ojjul')).toBe(PROFITEER_INCOME_PER_WAR);
+    makeWar(state, 'meridian', 'drajk');
+    expect(warProfitFor(state, 'ojjul')).toBe(2 * PROFITEER_INCOME_PER_WAR);
   });
 
   it('loses the whole trade the moment it is in a war itself', () => {
@@ -367,12 +367,12 @@ describe('profiteer: paid for wars it stays out of', () => {
       for (const g of state.factions) if (f.id !== g.id) f.disposition[g.id] = 0;
     }
     makeWar(state, 'vigil', 'freeworlds');
-    expect(warProfitFor(state, 'hutt')).toBe(PROFITEER_INCOME_PER_WAR);
+    expect(warProfitFor(state, 'ojjul')).toBe(PROFITEER_INCOME_PER_WAR);
 
     // Its own war forfeits every other war's fee AND costs it a penalty, which
     // is what makes "will not fight its own war" a line the ledger agrees with.
-    makeWar(state, 'hutt', 'krayt');
-    expect(warProfitFor(state, 'hutt')).toBe(-PROFITEER_WAR_PENALTY);
+    makeWar(state, 'ojjul', 'drajk');
+    expect(warProfitFor(state, 'ojjul')).toBe(-PROFITEER_WAR_PENALTY);
   });
 
   it('reaches the ledger, not just a helper', () => {
@@ -380,9 +380,9 @@ describe('profiteer: paid for wars it stays out of', () => {
     for (const f of state.factions) {
       for (const g of state.factions) if (f.id !== g.id) f.disposition[g.id] = 0;
     }
-    const quiet = ledgerFor(state, 'hutt').net;
+    const quiet = ledgerFor(state, 'ojjul').net;
     makeWar(state, 'vigil', 'freeworlds');
-    const profiting = ledgerFor(state, 'hutt');
+    const profiting = ledgerFor(state, 'ojjul');
     expect(profiting.warProfit).toBe(PROFITEER_INCOME_PER_WAR);
     expect(profiting.net).toBe(quiet + PROFITEER_INCOME_PER_WAR);
   });
@@ -390,7 +390,7 @@ describe('profiteer: paid for wars it stays out of', () => {
   it('pays nobody else, whatever the galaxy is doing', () => {
     const state = fresh();
     makeWar(state, 'vigil', 'freeworlds');
-    for (const id of ['meridian', 'vigil', 'freeworlds', 'krayt']) {
+    for (const id of ['meridian', 'vigil', 'freeworlds', 'drajk']) {
       expect(ledgerFor(state, id).warProfit, id).toBe(0);
     }
   });

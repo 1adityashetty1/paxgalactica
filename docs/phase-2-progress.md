@@ -174,8 +174,8 @@ SIGTERM                            "Campaign saved."
 
 ### Verified in a real browser
 
-Faction picker → started Arkanis Free Worlds → declared *"Fortify the orbital
-approaches of Dolomar"* → check rendered `industry · d20 13+0 = 13 vs DC 13 →
+Faction picker → started Arkane Free Worlds → declared *"Fortify the orbital
+approaches of Delvane"* → check rendered `industry · d20 13+0 = 13 vs DC 13 →
 success` → narrative → staged panel → **end turn** → four in-voice reactions →
 briefing with in-progress work and observed enemy projects → saved → resumed
 after a server restart with dispositions intact (Vigil −63, Meridian +13).
@@ -247,7 +247,7 @@ it now would have broken a module that prompt is about to rewrite.
 geometry at any size. That is what makes the geometry testable without a DOM.
 
 `MIN_ASPECT` (0.22) and `MAX_ASPECT` (0.85) replace the terminal's
-`MAX_STRETCH`. The Kessel Fringe spans x 13–87 but y only 26–32 — an unclamped
+`MAX_STRETCH`. The Ilvenn Fringe spans x 13–87 but y only 26–32 — an unclamped
 aspect of ~0.08, a hairline. The floor keeps it readable; the ceiling stops a
 tall sector becoming a column. Verified in the browser.
 
