@@ -117,13 +117,13 @@ curl -s $BASE/api/campaign                     # full state: systems, factions, 
 curl -s -X POST $BASE/api/action  -H 'Content-Type: application/json' \
   -d '{"text":"Move nine ships from Vergesse to Oridin and raid the lane."}'
 curl -s -X POST $BASE/api/endturn -H 'Content-Type: application/json' -d '{}'
-curl -s -X POST $BASE/api/talk/hutt    -H 'Content-Type: application/json' -d '{"text":"..."}'
-curl -s -X POST $BASE/api/endtalk/hutt -H 'Content-Type: application/json' -d '{}'
+curl -s -X POST $BASE/api/talk/ojjul    -H 'Content-Type: application/json' -d '{"text":"..."}'
+curl -s -X POST $BASE/api/endtalk/ojjul -H 'Content-Type: application/json' -d '{}'
 ```
 
 **Your line to the other four leaders is `/api/talk/<factionId>`**, and it is
 where your best weapon actually lives. Faction ids are `meridian`, `vigil`,
-`hutt`, `freeworlds`, `krayt` — they do not match the display names. Use it
+`ojjul`, `freeworlds`, `drajk` — they do not match the display names. Use it
 hard: your mind and your tongue reach further here than your hulls do, and the
 diplomacy layer is the least-tested part of the game.
 

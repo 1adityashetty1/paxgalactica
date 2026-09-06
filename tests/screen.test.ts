@@ -20,9 +20,9 @@ const fresh = (): WorldState => createSeedState('freeworlds');
 const sys = (s: WorldState, id: string) => s.systems.find((x) => x.id === id)!;
 
 /** Send `att` from ark-3 against a world defended by `def`, and settle it. */
-function fight(att: ShipStack, def: ShipStack, garrison = 1) {
+function fight(att: ShipStack, def: ShipStack, garrison = 1, target = 'sek-6') {
   const state = fresh();
-  const t = sys(state, 'slu-6');
+  const t = sys(state, target);
   t.controllerFactionId = 'vigil';
   t.ships = {};
   for (const [h, n] of Object.entries(def) as [HullClass, number][]) addShipsAt(t, 'vigil', n, h);
@@ -37,7 +37,7 @@ function fight(att: ShipStack, def: ShipStack, garrison = 1) {
   const issued = applyOps(state, [
     {
       op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
-      originId: 'ark-3', targetId: 'slu-6', force: att,
+      originId: 'ark-3', targetId: target, force: att,
     },
   ]);
   expect(issued.rejections).toHaveLength(0);
@@ -66,26 +66,47 @@ describe('the lift arm is soft', () => {
     // **Where a screen actually earns its keep.** The exchange band destroys
     // half a fleet or more — no realistic escort force absorbs that, and at 2:1
     // the defender simply breaks off and nothing is lost at all. A withdrawal
-    // costs 10–35%, and that a screen covers outright.
+    // costs 10-35%, and that a screen covers outright.
     //
     // Both fleets are the same tonnage; the screened one trades four
     // battleships for eight escorts, so it is the WEAKER of the two and still
     // comes home with its transports.
+    //
+    // SWEPT over ten targets rather than fought once. The withdrawal loss is
+    // derived from the battle's own d20, and the salt carries the system id —
+    // so a single fight measures one roll, and the surviving-lift figure it
+    // produces ranges from 0 to 6 across the map with the mechanic untouched.
+    // An earlier version of this test asserted `>= 5` on one system directly
+    // beneath a comment explaining why a fixed count is wrong, and duly broke
+    // when that system was renamed and nothing else changed.
     const wall = { battleship: 40 };
-    const naked = fight({ battleship: 16, lifter: 6 }, wall);
-    const screened = fight({ battleship: 12, escort: 8, lifter: 6 }, wall);
+    const targets = ['sek-2', 'sek-3', 'sek-4', 'sek-5', 'sek-6',
+                     'ilv-2', 'ilv-4', 'tor-2', 'tor-5', 'ark-4'];
     const liftOf = (r: ReturnType<typeof fight>) =>
       r.state.systems.reduce((n, s) => n + (stackAt(s, 'freeworlds').lifter ?? 0), 0);
 
-    expect(naked.notes.join(' ')).toMatch(/driven off/);
-    expect(screened.notes.join(' ')).toMatch(/driven off/);
-    // Asserted as a RELATIONSHIP, not as an exact survivor count. A fixed
-    // number here only ever tests the one roll that this turn and this system
-    // happen to produce, so it breaks the moment the seed changes while the
-    // mechanic is untouched — a test that fails for the wrong reason, which
-    // `combat.test.ts` learned the same way.
-    expect(liftOf(screened)).toBeGreaterThan(liftOf(naked));
-    expect(liftOf(screened)).toBeGreaterThanOrEqual(5);
+    // Only withdrawals are in scope. At some targets the roll lands the
+    // exchange in the annihilation band instead, and both fleets simply burn —
+    // that is the band this test is contrasting itself against, not a case of
+    // the screen failing.
+    const rows = targets
+      .map((t) => ({
+        t,
+        naked: fight({ battleship: 16, lifter: 6 }, wall, 1, t),
+        screened: fight({ battleship: 12, escort: 8, lifter: 6 }, wall, 1, t),
+      }))
+      .filter((r) => [r.naked, r.screened].every((f) => /driven off/.test(f.notes.join(' '))))
+      .map((r) => ({ t: r.t, naked: liftOf(r.naked), screened: liftOf(r.screened) }));
+
+    // Enough of the sweep is actually a withdrawal for the rest to mean something.
+    expect(rows.length).toBeGreaterThanOrEqual(8);
+    // The screen is never a liability: it cannot cost lift anywhere.
+    for (const r of rows) expect(r.screened, r.t).toBeGreaterThanOrEqual(r.naked);
+    // And it is a real gain, not a rounding one, in the clear majority.
+    expect(rows.filter((r) => r.screened > r.naked).length).toBeGreaterThanOrEqual(7);
+    // Somewhere it does the whole job: the convoy comes home entire while the
+    // unscreened one loses it outright. That is the claim being tested.
+    expect(rows.some((r) => r.screened === 6 && r.naked < 6)).toBe(true);
   });
 });
 
@@ -173,7 +194,7 @@ describe('escorts answer torpedo boats', () => {
     // `strikeStack` cases above do, at the unit level where no roll is involved.
     const boats = { battleship: 6, torpedo_boat: 14 };
     const lineLeft = (def: ShipStack) =>
-      stackAt(sys(fight(boats, def).state, 'slu-6'), 'vigil').battleship ?? 0;
+      stackAt(sys(fight(boats, def).state, 'sek-6'), 'vigil').battleship ?? 0;
     expect(lineLeft({ battleship: 8, escort: 12 })).toBeGreaterThan(
       lineLeft({ battleship: 8 }),
     );
@@ -232,7 +253,7 @@ describe('a battle where nobody has a screen still resolves', () => {
   it('does not divide by zero when a side has no escorts at all', () => {
     const res = fight({ battleship: 10, torpedo_boat: 6 }, { battleship: 9 });
     expect(res.report ?? res.notes).toBeTruthy();
-    expect(hullsAt(sys(res.state, 'slu-6'), 'freeworlds') >= 0).toBe(true);
+    expect(hullsAt(sys(res.state, 'sek-6'), 'freeworlds') >= 0).toBe(true);
   });
 });
 
@@ -245,7 +266,7 @@ describe('a battle where nobody has a screen still resolves', () => {
  * `defenceLeft = defendWeight x swing`, and a natural 20 left a defender that
  * could not break off with 42% of its fleet while a natural 1 annihilated it.
  * Measured live: at Kalzir a roll of 20 left seven battleships holding the
- * orbitals and the landing was called off; at Ghorman Deep a roll of 10
+ * orbitals and the landing was called off; at Gorrun Deep a roll of 10
  * destroyed the defenders outright.
  */
 describe('the exchange reads the roll the same way for both sides', () => {
@@ -253,7 +274,7 @@ describe('the exchange reads the roll the same way for both sides', () => {
   // branch — which is exactly where the inversion used to bite hardest.
   const survivors = (roll: number) => {
     const state = fresh();
-    const t = sys(state, 'slu-6');
+    const t = sys(state, 'sek-6');
     t.controllerFactionId = 'vigil';
     t.ships = {};
     addShipsAt(t, 'vigil', 12, 'battleship');
@@ -299,13 +320,13 @@ describe('the exchange reads the roll the same way for both sides', () => {
     const issued = applyOps(state, [
       {
         op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
-        originId: 'ark-3', targetId: 'slu-6', force: { battleship: 16 },
+        originId: 'ark-3', targetId: 'sek-6', force: { battleship: 16 },
       },
     ]);
     let r = tickTurn(issued.state);
     while (r.state.pendingOrders.some((o) => o.id === 'ord-0-0')) r = tickTurn(r.state);
     expect(r.notes.join(' ')).toMatch(/Fleets engage|driven off|breaks off/);
-    expect(hullsAt(sys(r.state, 'slu-6'), 'vigil')).toBeLessThan(12);
+    expect(hullsAt(sys(r.state, 'sek-6'), 'vigil')).toBeLessThan(12);
     expect(t.controllerFactionId).toBe('vigil'); // the fixture is untouched
   });
 });

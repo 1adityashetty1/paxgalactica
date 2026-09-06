@@ -29,10 +29,10 @@ import { routeCovertAction } from '../src/domain/development.js';
 
 const PAIRINGS = [
   ['meridian', 'vigil'],
-  ['hutt', 'meridian'],
-  ['krayt', 'freeworlds'],
-  ['vigil', 'hutt'],
-  ['freeworlds', 'krayt'],
+  ['ojjul', 'meridian'],
+  ['drajk', 'freeworlds'],
+  ['vigil', 'ojjul'],
+  ['freeworlds', 'drajk'],
 ] as const;
 
 /** Place `mission` agents on the target's worlds and run the tick for `turns`. */
@@ -200,7 +200,7 @@ describe('the model can see how many operatives it is running', () => {
  * typing a sentence.
  */
 describe('a declared covert action becomes a deployment', () => {
-  const covert = { mission: 'assassination' as const, systemId: 'kes-6' };
+  const covert = { mission: 'assassination' as const, systemId: 'ilv-6' };
 
   it('places an operative when the resolution call did not', () => {
     const out = routeCovertAction([], 'success', covert, 'meridian');
@@ -208,7 +208,7 @@ describe('a declared covert action becomes a deployment', () => {
     expect(out.ops[0]).toMatchObject({
       op: 'deploy_agent',
       ownerFactionId: 'meridian',
-      systemId: 'kes-6',
+      systemId: 'ilv-6',
       mission: 'assassination',
     });
     expect(out.notes[0]).toMatch(/charged and capped/);
@@ -216,7 +216,7 @@ describe('a declared covert action becomes a deployment', () => {
 
   it('leaves the batch alone when it already placed one', () => {
     const ops = [
-      { op: 'deploy_agent', ownerFactionId: 'meridian', systemId: 'kes-6',
+      { op: 'deploy_agent', ownerFactionId: 'meridian', systemId: 'ilv-6',
         mission: 'assassination', effect: { kind: 'hull_damage', perTurn: 3 }, cover: '' },
     ];
     const out = routeCovertAction(ops, 'success', covert, 'meridian');

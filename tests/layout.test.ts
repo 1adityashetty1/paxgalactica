@@ -63,18 +63,18 @@ describe('galaxy layout', () => {
 
   it('marks a lane shared when both ends are the same power', () => {
     const layout = layoutGalaxy(state);
-    // tio-2 and tio-4 are both Iron Vigil.
+    // tor-2 and tor-4 are both Iron Vigil.
     const lane = layout.lanes.find(
-      (l) => [l.a, l.b].sort().join('|') === ['tio-2', 'tio-4'].sort().join('|'),
+      (l) => [l.a, l.b].sort().join('|') === ['tor-2', 'tor-4'].sort().join('|'),
     );
     expect(lane?.sharedControllerId).toBe('vigil');
   });
 
   it('leaves a border lane unshared', () => {
     const layout = layoutGalaxy(state);
-    // tio-1 is Meridian, tio-2 is Vigil.
+    // tor-1 is Meridian, tor-2 is Vigil.
     const lane = layout.lanes.find(
-      (l) => [l.a, l.b].sort().join('|') === ['tio-1', 'tio-2'].sort().join('|'),
+      (l) => [l.a, l.b].sort().join('|') === ['tor-1', 'tor-2'].sort().join('|'),
     );
     expect(lane?.sharedControllerId).toBeNull();
   });
@@ -91,9 +91,9 @@ describe('galaxy layout', () => {
 
 describe('aspect handling', () => {
   it('caps a nearly-collinear sector instead of flattening it', () => {
-    // The Kessel Fringe spans x 13–87 but y only 26–32. Unclamped that is an
+    // The Ilvenn Fringe spans x 13–87 but y only 26–32. Unclamped that is an
     // aspect of ~0.08: a hairline nobody can read.
-    const layout = layoutGalaxy(state, { sector: 'Kessel Fringe' });
+    const layout = layoutGalaxy(state, { sector: 'Ilvenn Fringe' });
     expect(layout.aspect).toBe(MIN_ASPECT);
   });
 
@@ -114,14 +114,14 @@ describe('aspect handling', () => {
 
 describe('sector zoom', () => {
   it('includes only that sector and reports the rest as omitted', () => {
-    const layout = layoutGalaxy(state, { sector: 'Tion Marches' });
+    const layout = layoutGalaxy(state, { sector: 'Torrek Marches' });
     expect(layout.placed).toHaveLength(6);
     expect(layout.omitted).toHaveLength(19);
-    expect(layout.placed.every((p) => p.system.sector === 'Tion Marches')).toBe(true);
+    expect(layout.placed.every((p) => p.system.sector === 'Torrek Marches')).toBe(true);
   });
 
   it('drops lanes leaving the sector', () => {
-    const layout = layoutGalaxy(state, { sector: 'Tion Marches' });
+    const layout = layoutGalaxy(state, { sector: 'Torrek Marches' });
     const ids = new Set(layout.placed.map((p) => p.id));
     for (const l of layout.lanes) {
       expect(ids.has(l.a)).toBe(true);
@@ -136,7 +136,7 @@ describe('sector zoom', () => {
   });
 
   it('re-normalises so a zoomed sector fills the space', () => {
-    const layout = layoutGalaxy(state, { sector: 'Arkanis Drift' });
+    const layout = layoutGalaxy(state, { sector: 'Arkane Drift' });
     const xs = layout.placed.map((p) => p.x);
     expect(Math.min(...xs)).toBeCloseTo(0, 5);
     expect(Math.max(...xs)).toBeCloseTo(1, 5);
@@ -147,7 +147,7 @@ describe('fleets in transit', () => {
   const moving = applyOps(state, [
     {
       op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
-      originId: 'ark-1', targetId: 'tio-3', label: 'Drift squadron',
+      originId: 'ark-1', targetId: 'tor-3', label: 'Drift squadron',
     },
   ]).state;
 
@@ -163,29 +163,29 @@ describe('fleets in transit', () => {
     const origin = at.get('ark-1')!;
     // Partway along, so it does not sit on the system it is leaving.
     expect(fleet.x === origin.x && fleet.y === origin.y).toBe(false);
-    expect(fleet.targetId).toBe('tio-3');
+    expect(fleet.targetId).toBe('tor-3');
     expect(fleet.remaining).toBeGreaterThan(0);
   });
 
   it('omits a fleet whose current hop is outside a zoomed sector', () => {
-    const layout = layoutGalaxy(moving, { sector: 'Kessel Fringe' });
+    const layout = layoutGalaxy(moving, { sector: 'Ilvenn Fringe' });
     expect(layout.fleets).toHaveLength(0);
   });
 });
 
 describe('helpers', () => {
   it('finds a system’s sector', () => {
-    expect(sectorOf(state, 'tio-3')).toBe('Tion Marches');
+    expect(sectorOf(state, 'tor-3')).toBe('Torrek Marches');
     expect(sectorOf(state, 'nope')).toBeNull();
     expect(sectorOf(state, null)).toBeNull();
   });
 
   it('lists sectors in a stable order', () => {
     expect(sectorsOf(state)).toEqual([
-      'Arkanis Drift',
-      'Kessel Fringe',
-      'Sluis Verge',
-      'Tion Marches',
+      'Arkane Drift',
+      'Ilvenn Fringe',
+      'Sekkar Verge',
+      'Torrek Marches',
     ]);
   });
 

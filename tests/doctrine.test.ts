@@ -172,10 +172,10 @@ describe('who may change a doctrine', () => {
     // No actor: an engine op, or an older journal. It neither charges dissent
     // nor rejects, so replaying an old campaign reproduces what happened.
     const out = applyOps(fresh(), [
-      { op: 'set_doctrine', factionId: 'vigil', doctrine: 'Hold the Tion, whatever it costs.' },
+      { op: 'set_doctrine', factionId: 'vigil', doctrine: 'Hold the Torrek, whatever it costs.' },
     ]);
     expect(out.rejections).toHaveLength(0);
-    expect(fac(out.state, 'vigil').doctrine).toBe('Hold the Tion, whatever it costs.');
+    expect(fac(out.state, 'vigil').doctrine).toBe('Hold the Torrek, whatever it costs.');
     expect(fac(out.state, 'vigil').dissent).toBe(0);
   });
 });
@@ -244,10 +244,10 @@ describe('who may move dissent', () => {
     // No actor: an engine op, or an older journal. It neither charges dissent
     // nor rejects, so replaying an old campaign reproduces what happened.
     const out = applyOps(fresh(), [
-      { op: 'set_doctrine', factionId: 'vigil', doctrine: 'Hold the Tion, whatever it costs.' },
+      { op: 'set_doctrine', factionId: 'vigil', doctrine: 'Hold the Torrek, whatever it costs.' },
     ]);
     expect(out.rejections).toHaveLength(0);
-    expect(fac(out.state, 'vigil').doctrine).toBe('Hold the Tion, whatever it costs.');
+    expect(fac(out.state, 'vigil').doctrine).toBe('Hold the Torrek, whatever it costs.');
     expect(fac(out.state, 'vigil').dissent).toBe(0);
   });
 });
@@ -344,7 +344,7 @@ describe('a compulsion is a price, not a wall', () => {
   it('does not spiral from a single bad turn', () => {
     // The price lands on the ATTEMPT, so a compulsion breach that rolls badly
     // and achieves nothing is still charged. At 25 that made two breaches in one
-    // turn — one of them a natural 1 — cost Arkanis 50 dissent and −4 on every
+    // turn — one of them a natural 1 — cost Arkane 50 dissent and −4 on every
     // stat before the second turn began, which is what a live playtest found.
     const twoInOneTurn = REFUSAL_DISSENT + 2 * COMPULSION_BREACH_DISSENT;
     expect(dissentPenalty(twoInOneTurn)).toBeLessThanOrEqual(3);

@@ -17,7 +17,7 @@ import { isMovementType, type StarSystem, type WorldState } from '../domain/stat
 /**
  * Aspect bounds.
  *
- * The Kessel Fringe runs almost flat: without a floor it collapses to a
+ * The Ilvenn Fringe runs almost flat: without a floor it collapses to a
  * hairline, and without a ceiling a tall sector becomes an unreadable column.
  * Clamping keeps every sector legible while preserving relative shape.
  */

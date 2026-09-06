@@ -25,7 +25,7 @@ import { ledgerFor, type WorldState } from '../src/domain/state.js';
  * paid the creditor 25 and the debtor 20. Both sides earned; nobody paid.
  */
 
-const fresh = (player = 'hutt'): WorldState => createSeedState(player);
+const fresh = (player = 'ojjul'): WorldState => createSeedState(player);
 const fac = (s: WorldState, id: string) => s.factions.find((f) => f.id === id)!;
 const debt = (s: WorldState, id: string) => s.debts.find((d) => d.id === id)!;
 const rich = (s: WorldState, id: string, credits: number): WorldState => {
@@ -35,7 +35,7 @@ const rich = (s: WorldState, id: string, credits: number): WorldState => {
 
 describe('an instalment is priced against what the debtor can find', () => {
   const owed = (over: Partial<Debt> = {}): Debt => ({
-    id: 'd', creditorFactionId: 'hutt', debtorFactionId: 'krayt',
+    id: 'd', creditorFactionId: 'ojjul', debtorFactionId: 'drajk',
     principal: 400, balance: 400, perTurn: 25, status: 'current',
     missedPayments: 0, establishedTurn: 0, text: 'owed', ...over,
   });
@@ -61,7 +61,7 @@ describe('servicing a debt is conserved', () => {
   it('moves exactly what the debtor lost into the creditor, and off the balance', () => {
     // The whole reason this is a transfer in the tick and not a ledger rate.
     const state = rich(fresh(), 'meridian', 5000);
-    const before = { hutt: fac(state, 'hutt').credits, meridian: fac(state, 'meridian').credits };
+    const before = { ojjul: fac(state, 'ojjul').credits, meridian: fac(state, 'meridian').credits };
     const owedBefore = debt(state, 'debt-1').balance;
 
     const after = tickTurn(state).state;
@@ -75,8 +75,8 @@ describe('servicing a debt is conserved', () => {
     const controlAfter = tickTurn(control).state;
 
     expect(fac(after, 'meridian').credits).toBe(fac(controlAfter, 'meridian').credits - moved);
-    expect(fac(after, 'hutt').credits).toBe(fac(controlAfter, 'hutt').credits + moved);
-    expect(before.hutt).toBeGreaterThan(0);
+    expect(fac(after, 'ojjul').credits).toBe(fac(controlAfter, 'ojjul').credits + moved);
+    expect(before.ojjul).toBeGreaterThan(0);
   });
 
   it('never pays the creditor money the debtor did not have', () => {
@@ -86,15 +86,15 @@ describe('servicing a debt is conserved', () => {
     const state = fresh();
     state.debts = [
       {
-        id: 'debt-x', creditorFactionId: 'hutt', debtorFactionId: 'krayt',
+        id: 'debt-x', creditorFactionId: 'ojjul', debtorFactionId: 'drajk',
         principal: 400, balance: 400, perTurn: 40, status: 'current',
         missedPayments: 0, establishedTurn: 0, text: 'owed',
       },
     ];
     // Strip Drajk's income to nothing so it genuinely cannot pay.
-    for (const sys of state.systems) if (sys.controllerFactionId === 'krayt') sys.controllerFactionId = null;
-    fac(state, 'krayt').credits = 0;
-    const creditorBefore = fac(state, 'hutt').credits;
+    for (const sys of state.systems) if (sys.controllerFactionId === 'drajk') sys.controllerFactionId = null;
+    fac(state, 'drajk').credits = 0;
+    const creditorBefore = fac(state, 'ojjul').credits;
 
     const after = tickTurn(state).state;
     const control = tickTurn({ ...state, debts: [] }).state;
@@ -103,9 +103,9 @@ describe('servicing a debt is conserved', () => {
     // worlds — is all that moved, and it moved once.
     const paid = 400 - debt(after, 'debt-x').balance;
     expect(paid).toBeLessThan(40);
-    expect(fac(after, 'hutt').credits).toBe(fac(control, 'hutt').credits + paid);
-    expect(fac(after, 'krayt').credits).toBe(fac(control, 'krayt').credits - paid);
-    expect(fac(after, 'krayt').credits).toBeGreaterThanOrEqual(0);
+    expect(fac(after, 'ojjul').credits).toBe(fac(control, 'ojjul').credits + paid);
+    expect(fac(after, 'drajk').credits).toBe(fac(control, 'drajk').credits - paid);
+    expect(fac(after, 'drajk').credits).toBeGreaterThanOrEqual(0);
     // Short is short: the shortfall is a default, not a smaller schedule.
     expect(debt(after, 'debt-x').status).toBe('delinquent');
     expect(debt(after, 'debt-x').missedPayments).toBe(1);
@@ -116,7 +116,7 @@ describe('servicing a debt is conserved', () => {
     const state = rich(fresh(), 'meridian', 5000);
     state.debts = [
       {
-        id: 'debt-last', creditorFactionId: 'hutt', debtorFactionId: 'meridian',
+        id: 'debt-last', creditorFactionId: 'ojjul', debtorFactionId: 'meridian',
         principal: 400, balance: 20, perTurn: 25, status: 'current',
         missedPayments: 0, establishedTurn: 0, text: 'nearly done',
       },
@@ -138,13 +138,13 @@ describe('default is a state, because both of the Combine’s lines turn on "unp
     const state = fresh();
     state.debts = [
       {
-        id: 'debt-d', creditorFactionId: 'hutt', debtorFactionId: 'krayt',
+        id: 'debt-d', creditorFactionId: 'ojjul', debtorFactionId: 'drajk',
         principal: 400, balance: 400, perTurn: 40, status: 'current',
         missedPayments: 0, establishedTurn: 0, text: 'owed',
       },
     ];
-    for (const sys of state.systems) if (sys.controllerFactionId === 'krayt') sys.controllerFactionId = null;
-    fac(state, 'krayt').credits = 0;
+    for (const sys of state.systems) if (sys.controllerFactionId === 'drajk') sys.controllerFactionId = null;
+    fac(state, 'drajk').credits = 0;
     return state;
   };
 
@@ -158,9 +158,9 @@ describe('default is a state, because both of the Combine’s lines turn on "unp
 
   it('costs the debtor standing with the creditor, every turn it continues', () => {
     const state = broke();
-    const before = fac(state, 'hutt').disposition['krayt'] ?? 0;
+    const before = fac(state, 'ojjul').disposition['drajk'] ?? 0;
     const after = tickTurn(state).state;
-    expect(fac(after, 'hutt').disposition['krayt']).toBe(before - DEBT_DEFAULT_DISPOSITION_COST);
+    expect(fac(after, 'ojjul').disposition['drajk']).toBe(before - DEBT_DEFAULT_DISPOSITION_COST);
   });
 
   it('clears the status when payments resume but never the memory', () => {
@@ -168,7 +168,7 @@ describe('default is a state, because both of the Combine’s lines turn on "unp
     state = tickTurn(state).state;
     expect(debt(state, 'debt-d').status).toBe('delinquent');
 
-    fac(state, 'krayt').credits = 5000;
+    fac(state, 'drajk').credits = 5000;
     state = tickTurn(state).state;
     expect(debt(state, 'debt-d').status).toBe('current');
     // The relationship remembers. This is what the Combine's compulsion is about.
@@ -177,14 +177,14 @@ describe('default is a state, because both of the Combine’s lines turn on "unp
 
   it('names defaulters for the compulsion to read', () => {
     const state = tickTurn(broke()).state;
-    expect(delinquentDebtorsOf(state.debts, 'hutt')).toEqual(['krayt']);
+    expect(delinquentDebtorsOf(state.debts, 'ojjul')).toEqual(['drajk']);
   });
 });
 
 describe('lending needs consent; forgiving does not', () => {
   const lend = {
     op: 'establish_debt',
-    creditorFactionId: 'hutt',
+    creditorFactionId: 'ojjul',
     debtorFactionId: 'meridian',
     principal: 300,
     perTurn: 20,
@@ -192,13 +192,13 @@ describe('lending needs consent; forgiving does not', () => {
   };
 
   it('is rejected from a declared action, with somewhere to go instead', () => {
-    const out = applyOps(fresh(), [lend], 'model', 'hutt');
+    const out = applyOps(fresh(), [lend], 'model', 'ojjul');
     expect(out.rejections.map((r) => r.code)).toEqual(['needs_consent']);
     expect(out.rejections[0]!.message).toMatch(/\/talk/);
   });
 
   it('is accepted from the pass that read a transcript', () => {
-    const out = applyOps(fresh(), [lend], 'extraction', 'hutt');
+    const out = applyOps(fresh(), [lend], 'extraction', 'ojjul');
     expect(out.rejections).toHaveLength(0);
     const made = out.state.debts.at(-1)!;
     expect(made.balance).toBe(300);
@@ -211,7 +211,7 @@ describe('lending needs consent; forgiving does not', () => {
       fresh(),
       [{ ...lend, principal: 99999, perTurn: 9999 }],
       'extraction',
-      'hutt',
+      'ojjul',
     );
     expect(out.rejections).toHaveLength(0);
     const made = out.state.debts.at(-1)!;
@@ -223,36 +223,36 @@ describe('lending needs consent; forgiving does not', () => {
   it('refuses a power lending to itself', () => {
     const out = applyOps(
       fresh(),
-      [{ ...lend, debtorFactionId: 'hutt' }],
+      [{ ...lend, debtorFactionId: 'ojjul' }],
       'extraction',
-      'hutt',
+      'ojjul',
     );
     expect(out.rejections.map((r) => r.code)).toEqual(['illegal_value']);
   });
 
   it('lets the creditor write one off, and pays them in goodwill', () => {
     const state = fresh();
-    const before = fac(state, 'krayt').disposition['hutt'] ?? 0;
-    const out = applyOps(state, [{ op: 'forgive_debt', debtId: 'debt-0' }], 'model', 'hutt');
+    const before = fac(state, 'drajk').disposition['ojjul'] ?? 0;
+    const out = applyOps(state, [{ op: 'forgive_debt', debtId: 'debt-0' }], 'model', 'ojjul');
     expect(out.rejections).toHaveLength(0);
     expect(debt(out.state, 'debt-0').status).toBe('forgiven');
-    expect(fac(out.state, 'krayt').disposition['hutt']).toBeGreaterThan(before);
+    expect(fac(out.state, 'drajk').disposition['ojjul']).toBeGreaterThan(before);
   });
 
   it('does not let a debtor write off what it owes', () => {
     // The cheapest possible exploit, and the same actor-shaped hazard that
     // `deploy_agent` and `set_doctrine` are guarded against.
-    const out = applyOps(fresh(), [{ op: 'forgive_debt', debtId: 'debt-0' }], 'model', 'krayt');
+    const out = applyOps(fresh(), [{ op: 'forgive_debt', debtId: 'debt-0' }], 'model', 'drajk');
     expect(out.rejections.map((r) => r.code)).toEqual(['illegal_value']);
     expect(debt(out.state, 'debt-0').status).toBe('delinquent');
   });
 
   it('stops collecting once forgiven', () => {
     const forgiven = applyOps(
-      rich(fresh(), 'krayt', 5000),
+      rich(fresh(), 'drajk', 5000),
       [{ op: 'forgive_debt', debtId: 'debt-0' }],
       'model',
-      'hutt',
+      'ojjul',
     ).state;
     const balanceBefore = debt(forgiven, 'debt-0').balance;
     const after = tickTurn(forgiven).state;
@@ -264,9 +264,9 @@ describe('the ledger reports debt service without charging for it', () => {
   it('shows what is scheduled, on both sides', () => {
     const state = fresh();
     // 40 from Drajk plus 25 from Meridian, both owed to the Combine.
-    expect(ledgerFor(state, 'hutt').debtService).toBe(65);
+    expect(ledgerFor(state, 'ojjul').debtService).toBe(65);
     expect(ledgerFor(state, 'meridian').debtService).toBe(-25);
-    expect(ledgerFor(state, 'krayt').debtService).toBe(-40);
+    expect(ledgerFor(state, 'drajk').debtService).toBe(-40);
   });
 
   it('keeps it out of net, because the tick is what moves it', () => {
@@ -280,23 +280,23 @@ describe('the ledger reports debt service without charging for it', () => {
     const state = fresh();
     state.debts = [
       {
-        id: 'debt-e', creditorFactionId: 'hutt', debtorFactionId: 'krayt',
+        id: 'debt-e', creditorFactionId: 'ojjul', debtorFactionId: 'drajk',
         principal: 400, balance: 5, perTurn: 40, status: 'current',
         missedPayments: 0, establishedTurn: 0, text: 'nearly done',
       },
     ];
-    expect(scheduledDebtService(state.debts, 'hutt')).toBe(5);
+    expect(scheduledDebtService(state.debts, 'ojjul')).toBe(5);
   });
 });
 
 describe('the seed makes the Combine’s sheet live from turn 0', () => {
   it('gives it a debtor in default and one paying on schedule', () => {
     const state = fresh();
-    expect(debtsOwedTo(state.debts, 'hutt')).toHaveLength(2);
-    expect(delinquentDebtorsOf(state.debts, 'hutt')).toEqual(['krayt']);
+    expect(debtsOwedTo(state.debts, 'ojjul')).toHaveLength(2);
+    expect(delinquentDebtorsOf(state.debts, 'ojjul')).toEqual(['drajk']);
   });
 
-  it('leaves Arkanis owing nobody, because stone-debt is the point', () => {
+  it('leaves Arkane owing nobody, because stone-debt is the point', () => {
     // "What is owed for taking help, never paid off, which is why you take
     // none." A power that counts its dead rather than accept grain does not
     // carry a Nar loan.
@@ -314,32 +314,32 @@ describe('ids are unique even within one batch', () => {
    */
   const lend = (principal: number) => ({
     op: 'establish_debt',
-    creditorFactionId: 'hutt',
-    debtorFactionId: 'krayt',
+    creditorFactionId: 'ojjul',
+    debtorFactionId: 'drajk',
     principal,
     perTurn: 10,
     text: `a note for ${principal}`,
   });
 
   it('gives two debts minted in the same batch different ids', () => {
-    const out = applyOps(fresh(), [lend(200), lend(150)], 'extraction', 'hutt');
+    const out = applyOps(fresh(), [lend(200), lend(150)], 'extraction', 'ojjul');
     expect(out.rejections).toHaveLength(0);
     const ids = out.state.debts.map((d) => d.id);
     expect(new Set(ids).size, ids.join(',')).toBe(ids.length);
   });
 
   it('keeps them distinct across turns too', () => {
-    let state = applyOps(fresh(), [lend(200)], 'extraction', 'hutt').state;
+    let state = applyOps(fresh(), [lend(200)], 'extraction', 'ojjul').state;
     state = tickTurn(state).state;
-    state = applyOps(state, [lend(150), lend(120)], 'extraction', 'hutt').state;
+    state = applyOps(state, [lend(150), lend(120)], 'extraction', 'ojjul').state;
     const ids = state.debts.map((d) => d.id);
     expect(new Set(ids).size, ids.join(',')).toBe(ids.length);
   });
 
   it('so a later op addresses exactly one of them', () => {
-    const made = applyOps(fresh(), [lend(200), lend(150)], 'extraction', 'hutt').state;
+    const made = applyOps(fresh(), [lend(200), lend(150)], 'extraction', 'ojjul').state;
     const target = made.debts.at(-1)!;
-    const out = applyOps(made, [{ op: 'forgive_debt', debtId: target.id }], 'model', 'hutt');
+    const out = applyOps(made, [{ op: 'forgive_debt', debtId: target.id }], 'model', 'ojjul');
     expect(out.rejections).toHaveLength(0);
     expect(out.state.debts.filter((d) => d.status === 'forgiven')).toHaveLength(1);
   });
@@ -367,7 +367,7 @@ describe('assigning a debt moves it rather than minting another', () => {
       state,
       [{ op: 'assign_debt', debtId: 'debt-1', toCreditorFactionId: 'freeworlds' }],
       'extraction',
-      'hutt',
+      'ojjul',
     );
     expect(out.rejections).toHaveLength(0);
     // The whole point: one instrument, moved — not a second one alongside it.
@@ -388,7 +388,7 @@ describe('assigning a debt moves it rather than minting another', () => {
       'freeworlds',
     );
     expect(out.rejections.map((r) => r.code)).toEqual(['needs_consent']);
-    expect(debtOf(out.state, 'debt-1').creditorFactionId).toBe('hutt');
+    expect(debtOf(out.state, 'debt-1').creditorFactionId).toBe('ojjul');
   });
 
   it('refuses to assign a debt to the faction that owes it', () => {
@@ -396,7 +396,7 @@ describe('assigning a debt moves it rather than minting another', () => {
       fresh(),
       [{ op: 'assign_debt', debtId: 'debt-1', toCreditorFactionId: 'meridian' }],
       'extraction',
-      'hutt',
+      'ojjul',
     );
     expect(out.rejections.map((r) => r.code)).toEqual(['illegal_value']);
   });
@@ -415,7 +415,7 @@ describe('a debtor can pay a debt down, and the money really moves', () => {
   it('settles the debt and moves the credits when paid in full', () => {
     const state = fresh();
     const debtorBefore = creditsOf(state, 'meridian');
-    const creditorBefore = creditsOf(state, 'hutt');
+    const creditorBefore = creditsOf(state, 'ojjul');
 
     const out = applyOps(
       state,
@@ -427,7 +427,7 @@ describe('a debtor can pay a debt down, and the money really moves', () => {
     expect(debtOf(out.state, 'debt-1').balance).toBe(0);
     expect(debtOf(out.state, 'debt-1').status).toBe('settled');
     expect(creditsOf(out.state, 'meridian')).toBe(debtorBefore - 400);
-    expect(creditsOf(out.state, 'hutt')).toBe(creditorBefore + 400);
+    expect(creditsOf(out.state, 'ojjul')).toBe(creditorBefore + 400);
   });
 
   it('trims a payment to what the debtor actually holds', () => {
@@ -451,7 +451,7 @@ describe('a debtor can pay a debt down, and the money really moves', () => {
       fresh(),
       [{ op: 'settle_debt', debtId: 'debt-1', amount: 100 }],
       'model',
-      'hutt',
+      'ojjul',
     );
     expect(out.rejections.map((r) => r.code)).toEqual(['illegal_value']);
     expect(debtOf(out.state, 'debt-1').balance).toBe(400);
@@ -464,7 +464,7 @@ describe('a debtor can pay a debt down, and the money really moves', () => {
       state,
       [{ op: 'settle_debt', debtId: 'debt-0', amount: 100 }],
       'model',
-      'krayt',
+      'drajk',
     );
     expect(out.rejections).toHaveLength(0);
     expect(debtOf(out.state, 'debt-0').status).toBe('current');
@@ -484,46 +484,46 @@ describe('a debtor can pay a debt down, and the money really moves', () => {
 describe('a debt is an advance of real money', () => {
   const lend = (s: WorldState, principal: number) =>
     applyOps(s, [{
-      op: 'establish_debt', creditorFactionId: 'hutt', debtorFactionId: 'krayt',
+      op: 'establish_debt', creditorFactionId: 'ojjul', debtorFactionId: 'drajk',
       principal, perTurn: 20, text: 'a war chest advanced',
-    }], 'extraction', 'krayt', true);
+    }], 'extraction', 'drajk', true);
 
   const purse = (s: WorldState, id: string) => s.factions.find((f) => f.id === id)!.credits;
   const total = (s: WorldState) => s.factions.reduce((n, f) => n + f.credits, 0);
 
   it('moves the principal from the lender to the borrower', () => {
-    const before = createSeedState('krayt');
+    const before = createSeedState('drajk');
     const out = lend(before, 240);
-    expect(purse(out.state, 'hutt')).toBe(purse(before, 'hutt') - 240);
-    expect(purse(out.state, 'krayt')).toBe(purse(before, 'krayt') + 240);
+    expect(purse(out.state, 'ojjul')).toBe(purse(before, 'ojjul') - 240);
+    expect(purse(out.state, 'drajk')).toBe(purse(before, 'drajk') + 240);
     // Conserved: no credits entered the galaxy.
     expect(total(out.state)).toBe(total(before));
   });
 
   it('lends only what the lender actually holds, and writes the paper for that', () => {
-    const s = createSeedState('krayt');
-    s.factions.find((f) => f.id === 'hutt')!.credits = 100;
+    const s = createSeedState('drajk');
+    s.factions.find((f) => f.id === 'ojjul')!.credits = 100;
     const out = lend(s, 240);
     const debt = out.state.debts.at(-1)!;
     expect(debt.principal).toBe(100);
     expect(debt.balance).toBe(100);
-    expect(purse(out.state, 'hutt')).toBe(0);
+    expect(purse(out.state, 'ojjul')).toBe(0);
     expect(out.notes.join(' ')).toMatch(/could only advance 100/);
   });
 
   it('refuses a loan from an empty treasury rather than conjuring one', () => {
-    const s = createSeedState('krayt');
-    s.factions.find((f) => f.id === 'hutt')!.credits = 0;
+    const s = createSeedState('drajk');
+    s.factions.find((f) => f.id === 'ojjul')!.credits = 0;
     expect(lend(s, 240).rejections.map((r) => r.code)).toEqual(['insufficient_credits']);
   });
 });
 
 describe('rescheduling a debt', () => {
-  const reschedule = (s: WorldState, extra: Record<string, unknown> = {}, actor = 'hutt') =>
+  const reschedule = (s: WorldState, extra: Record<string, unknown> = {}, actor = 'ojjul') =>
     applyOps(s, [{ op: 'restructure_debt', debtId: 'debt-0', perTurn: 20, ...extra }], 'extraction', actor, true);
 
   it('changes the instalment and leaves the balance alone', () => {
-    const s = createSeedState('krayt');
+    const s = createSeedState('drajk');
     const was = s.debts.find((d) => d.id === 'debt-0')!;
     const out = reschedule(s);
     const now = out.state.debts.find((d) => d.id === 'debt-0')!;
@@ -539,14 +539,14 @@ describe('rescheduling a debt', () => {
    * forgiveness that forgave nothing — 60% of a 66-point disposition swing.
    */
   it('pays no goodwill, because nothing was forgiven', () => {
-    const s = createSeedState('krayt');
-    const before = s.factions.find((f) => f.id === 'krayt')!.disposition.hutt ?? 0;
+    const s = createSeedState('drajk');
+    const before = s.factions.find((f) => f.id === 'drajk')!.disposition.ojjul ?? 0;
     const out = reschedule(s);
-    expect(out.state.factions.find((f) => f.id === 'krayt')!.disposition.hutt ?? 0).toBe(before);
+    expect(out.state.factions.find((f) => f.id === 'drajk')!.disposition.ojjul ?? 0).toBe(before);
   });
 
   it('clears the arrears it renegotiated, and can be told not to', () => {
-    const s = createSeedState('krayt');
+    const s = createSeedState('drajk');
     expect(s.debts.find((d) => d.id === 'debt-0')!.status).toBe('delinquent');
 
     const cleared = reschedule(s).state.debts.find((d) => d.id === 'debt-0')!;
@@ -558,15 +558,15 @@ describe('rescheduling a debt', () => {
   });
 
   it('is open to both parties and closed to everyone else', () => {
-    const s = createSeedState('krayt');
-    expect(reschedule(s, {}, 'hutt').rejections).toHaveLength(0);
-    expect(reschedule(s, {}, 'krayt').rejections).toHaveLength(0);
+    const s = createSeedState('drajk');
+    expect(reschedule(s, {}, 'ojjul').rejections).toHaveLength(0);
+    expect(reschedule(s, {}, 'drajk').rejections).toHaveLength(0);
     expect(reschedule(s, {}, 'meridian').rejections.map((r) => r.code)).toEqual(['illegal_value']);
   });
 
   it('needs the other party, so it cannot be declared', () => {
-    const s = createSeedState('krayt');
-    const out = applyOps(s, [{ op: 'restructure_debt', debtId: 'debt-0', perTurn: 5 }], 'model', 'hutt', true);
+    const s = createSeedState('drajk');
+    const out = applyOps(s, [{ op: 'restructure_debt', debtId: 'debt-0', perTurn: 5 }], 'model', 'ojjul', true);
     expect(out.rejections.map((r) => r.code)).toEqual(['needs_consent']);
   });
 });

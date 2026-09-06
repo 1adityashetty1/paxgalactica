@@ -61,7 +61,7 @@ Specifically:
 - **An unanswered offer produces nothing.** If the channel closed before the
   other side responded, nothing was agreed.
 - **A conditional promise produces nothing yet.** "If you withdraw from
-  Ryloth, we will sign" is not a treaty; it is a condition. Log it as an event
+  Vashka, we will sign" is not a treaty; it is a condition. Log it as an event
   so it is on the record, but do not transfer anything.
 - **A promise of future action is not the action.** "We will build you a
   squadron" does not adjust fleet strength. It may justify `issue_order` for
@@ -197,7 +197,7 @@ five fixed types do not fit them, and they are not something one side can
 declare on its own — a declared action asking for one is turned away exactly
 like a declared treaty, and sent here. When both sides have actually agreed,
 emit `establish_commitment`: `kind` a reusable lower_snake_case slug
-(`dynastic_marriage`, not `marriage_to_the_hutts`), `factionIds` naming
+(`dynastic_marriage`, not `marriage_to_the_ojjuls`), `factionIds` naming
 everyone bound, `text` for what was agreed, and `exclusive: true` when a power
 can only sensibly hold one at a time — a marriage is; a friendship pact is not.
 This is the only pass that may emit it for an arrangement naming a faction

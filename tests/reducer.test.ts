@@ -36,20 +36,20 @@ describe('purity', () => {
 describe('transfer_control is reducer-only', () => {
   it('rejects the op when it comes from the model', () => {
     const res = applyOps(fresh(), [
-      { op: 'transfer_control', systemId: 'tio-3', toFactionId: 'freeworlds' },
+      { op: 'transfer_control', systemId: 'tor-3', toFactionId: 'freeworlds' },
     ]);
     expect(codes(res)).toEqual(['reducer_only']);
-    expect(res.state.systems.find((s) => s.id === 'tio-3')?.controllerFactionId).toBe('vigil');
+    expect(res.state.systems.find((s) => s.id === 'tor-3')?.controllerFactionId).toBe('vigil');
   });
 
   it('allows it from the engine', () => {
     const res = applyOps(
       fresh(),
-      [{ op: 'transfer_control', systemId: 'tio-3', toFactionId: 'freeworlds' }],
+      [{ op: 'transfer_control', systemId: 'tor-3', toFactionId: 'freeworlds' }],
       'engine',
     );
     expect(res.rejections).toHaveLength(0);
-    expect(res.state.systems.find((s) => s.id === 'tio-3')?.controllerFactionId).toBe('freeworlds');
+    expect(res.state.systems.find((s) => s.id === 'tor-3')?.controllerFactionId).toBe('freeworlds');
   });
 
   it('rejects an unknown system even from the engine', () => {
@@ -73,7 +73,7 @@ describe('adjust_disposition', () => {
 
   it('rejects a disposition toward itself', () => {
     const res = applyOps(fresh(), [
-      { op: 'adjust_disposition', factionId: 'hutt', towardFactionId: 'hutt', delta: 10 },
+      { op: 'adjust_disposition', factionId: 'ojjul', towardFactionId: 'ojjul', delta: 10 },
     ]);
     expect(codes(res)).toEqual(['illegal_value']);
   });
@@ -90,26 +90,26 @@ describe('adjust_disposition', () => {
 describe('adjust_fleet and adjust_credits', () => {
   it('never goes below zero', () => {
     const res = applyOps(fresh(), [
-      { op: 'adjust_fleet', factionId: 'krayt', delta: -9999 },
-      { op: 'adjust_credits', factionId: 'krayt', delta: -9999 },
+      { op: 'adjust_fleet', factionId: 'drajk', delta: -9999 },
+      { op: 'adjust_credits', factionId: 'drajk', delta: -9999 },
     ]);
     // adjust_fleet now drains actual ships from actual systems, largest first.
-    expect(fleetStrengthOf(res.state, 'krayt')).toBe(0);
-    expect(res.state.factions.find((f) => f.id === 'krayt')!.credits).toBe(0);
+    expect(fleetStrengthOf(res.state, 'drajk')).toBe(0);
+    expect(res.state.factions.find((f) => f.id === 'drajk')!.credits).toBe(0);
   });
 
   it('commissions new ships somewhere real, and charges for them', () => {
     const start = fresh();
-    const before = fleetStrengthOf(start, 'krayt');
-    const purse = start.factions.find((f) => f.id === 'krayt')!.credits;
+    const before = fleetStrengthOf(start, 'drajk');
+    const purse = start.factions.find((f) => f.id === 'drajk')!.credits;
     // Drajk holds 700 credits, so 10 hulls at 60 apiece is affordable and 12
     // would not be — the yards are the binding constraint, not the order.
-    const res = applyOps(start, [{ op: 'adjust_fleet', factionId: 'krayt', delta: 10 }]);
-    expect(fleetStrengthOf(res.state, 'krayt')).toBe(before + 10);
+    const res = applyOps(start, [{ op: 'adjust_fleet', factionId: 'drajk', delta: 10 }]);
+    expect(fleetStrengthOf(res.state, 'drajk')).toBe(before + 10);
     // They must exist in a system, not in an abstract pool.
-    const total = res.state.systems.reduce((n, s) => n + (hullsAt(s, 'krayt')), 0);
+    const total = res.state.systems.reduce((n, s) => n + (hullsAt(s, 'drajk')), 0);
     expect(total).toBe(before + 10);
-    expect(res.state.factions.find((f) => f.id === 'krayt')!.credits).toBe(purse - 10 * SHIP_COST);
+    expect(res.state.factions.find((f) => f.id === 'drajk')!.credits).toBe(purse - 10 * SHIP_COST);
   });
 
   it('rejects unknown factions', () => {
@@ -125,16 +125,16 @@ describe('adjust_fleet and adjust_credits', () => {
 describe('set_doctrine', () => {
   it('replaces the doctrine text', () => {
     const res = applyOps(fresh(), [
-      { op: 'set_doctrine', factionId: 'hutt', doctrine: 'Sell to whoever is winning.' },
+      { op: 'set_doctrine', factionId: 'ojjul', doctrine: 'Sell to whoever is winning.' },
     ]);
-    expect(res.state.factions.find((f) => f.id === 'hutt')?.doctrine).toBe(
+    expect(res.state.factions.find((f) => f.id === 'ojjul')?.doctrine).toBe(
       'Sell to whoever is winning.',
     );
   });
 
   it('rejects an empty doctrine', () => {
     expect(
-      codes(applyOps(fresh(), [{ op: 'set_doctrine', factionId: 'hutt', doctrine: '' }])),
+      codes(applyOps(fresh(), [{ op: 'set_doctrine', factionId: 'ojjul', doctrine: '' }])),
     ).toEqual(['schema_invalid']);
   });
 });
@@ -166,11 +166,11 @@ describe('issue_order — deterministic movement', () => {
     const state = fresh();
     // Sever every lane into Hollow Star, then try to reach it.
     for (const s of state.systems) {
-      s.hyperlaneEdges = s.hyperlaneEdges.filter((e) => e !== 'kes-7');
-      if (s.id === 'kes-7') s.hyperlaneEdges = [];
+      s.hyperlaneEdges = s.hyperlaneEdges.filter((e) => e !== 'ilv-7');
+      if (s.id === 'ilv-7') s.hyperlaneEdges = [];
     }
     const res = applyOps(state, [
-      { op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement', originId: 'ark-1', targetId: 'kes-7' },
+      { op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement', originId: 'ark-1', targetId: 'ilv-7' },
     ]);
     expect(codes(res)).toEqual(['unreachable_target']);
   });
@@ -220,7 +220,7 @@ describe('issue_order — estimated work', () => {
     const res = applyOps(fresh(), [
       {
         op: 'issue_order', factionId: 'freeworlds', type: 'espionage',
-        originId: 'ark-1', targetId: 'tio-3', durationTurns: 5,
+        originId: 'ark-1', targetId: 'tor-3', durationTurns: 5,
       },
     ]);
     expect(res.state.pendingOrders[0]!.durationTurns).toBe(5);
@@ -457,21 +457,21 @@ describe('tickTurn', () => {
   });
 
   it('transfers control only when a movement order arrives', () => {
-    // slu-6 is unaligned and two jumps from ark-3, via ark-4. Its garrison is
+    // sek-6 is unaligned and two jumps from ark-3, via ark-4. Its garrison is
     // cleared so this test is about arrival, not about a ground assault.
     const base = fresh();
-    base.systems.find((s) => s.id === 'slu-6')!.garrison = 0;
+    base.systems.find((s) => s.id === 'sek-6')!.garrison = 0;
     let state = applyOps(base, [
-      { op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement', originId: 'ark-3', targetId: 'slu-6' },
+      { op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement', originId: 'ark-3', targetId: 'sek-6' },
     ]).state;
     expect(state.pendingOrders[0]!.durationTurns).toBe(2);
-    expect(state.systems.find((s) => s.id === 'slu-6')!.controllerFactionId).toBeNull();
+    expect(state.systems.find((s) => s.id === 'sek-6')!.controllerFactionId).toBeNull();
 
     state = tickTurn(state).state; // one jump: not there yet
-    expect(state.systems.find((s) => s.id === 'slu-6')!.controllerFactionId).toBeNull();
+    expect(state.systems.find((s) => s.id === 'sek-6')!.controllerFactionId).toBeNull();
 
     const arrived = tickTurn(state);
-    expect(arrived.state.systems.find((s) => s.id === 'slu-6')!.controllerFactionId).toBe(
+    expect(arrived.state.systems.find((s) => s.id === 'sek-6')!.controllerFactionId).toBe(
       'freeworlds',
     );
     expect(arrived.notes.join(' ')).toMatch(/unopposed/);
@@ -486,17 +486,17 @@ describe('tickTurn', () => {
     let state = applyOps(base, [
       {
         op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
-        originId: 'ark-3', targetId: 'slu-6', force: { battleship: 2, lifter: 1 },
+        originId: 'ark-3', targetId: 'sek-6', force: { battleship: 2, lifter: 1 },
       },
     ]).state;
-    const target = state.systems.find((s) => s.id === 'slu-6')!;
+    const target = state.systems.find((s) => s.id === 'sek-6')!;
     target.controllerFactionId = 'vigil';
     target.garrison = 50;
     target.garrisonMax = 50;
 
     state = tickTurn(state).state;
     const res = tickTurn(state);
-    expect(res.state.systems.find((s) => s.id === 'slu-6')!.controllerFactionId).toBe('vigil');
+    expect(res.state.systems.find((s) => s.id === 'sek-6')!.controllerFactionId).toBe('vigil');
     expect(res.notes.join(' ')).toMatch(/thrown back/);
   });
 });
@@ -605,36 +605,36 @@ describe('a batch is atomic when asked to be', () => {
  */
 describe('hulls a declaration could not lose stay where they were', () => {
   const setup = () => {
-    const s = createSeedState('krayt');
-    for (const sys of s.systems) setShipsAt(sys, 'krayt', 0);
-    setShipsAt(s.systems.find((x) => x.id === 'kes-6')!, 'krayt', 1); // strategicValue 7
-    setShipsAt(s.systems.find((x) => x.id === 'kes-7')!, 'krayt', 4); // strategicValue 3
+    const s = createSeedState('drajk');
+    for (const sys of s.systems) setShipsAt(sys, 'drajk', 0);
+    setShipsAt(s.systems.find((x) => x.id === 'ilv-6')!, 'drajk', 1); // strategicValue 7
+    setShipsAt(s.systems.find((x) => x.id === 'ilv-7')!, 'drajk', 4); // strategicValue 3
     return s;
   };
 
   it('does not teleport survivors to the faction’s best world', () => {
     const out = applyOps(
       setup(),
-      [{ op: 'adjust_fleet', factionId: 'krayt', delta: -4, reason: 'scuttle' }],
+      [{ op: 'adjust_fleet', factionId: 'drajk', delta: -4, reason: 'scuttle' }],
       'model',
-      'krayt',
+      'drajk',
       true,
     );
-    const at = (id: string) => hullsAt(out.state.systems.find((x) => x.id === id)!, 'krayt');
+    const at = (id: string) => hullsAt(out.state.systems.find((x) => x.id === id)!, 'drajk');
 
     // The world they were never at must not gain any.
-    expect(at('kes-6')).toBe(1);
+    expect(at('ilv-6')).toBe(1);
     // The cap still bites: some are lost, the rest stay put.
-    expect(at('kes-7')).toBeGreaterThan(0);
-    expect(at('kes-6') + at('kes-7')).toBeLessThan(5);
+    expect(at('ilv-7')).toBeGreaterThan(0);
+    expect(at('ilv-6') + at('ilv-7')).toBeLessThan(5);
   });
 
   it('names where they actually are in the note', () => {
     const out = applyOps(
       setup(),
-      [{ op: 'adjust_fleet', factionId: 'krayt', delta: -4, reason: 'scuttle' }],
+      [{ op: 'adjust_fleet', factionId: 'drajk', delta: -4, reason: 'scuttle' }],
       'model',
-      'krayt',
+      'drajk',
       true,
     );
     expect(out.notes.join(' ')).toMatch(/Hollow Star/);

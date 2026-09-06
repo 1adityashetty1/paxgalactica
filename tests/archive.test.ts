@@ -42,12 +42,12 @@ function played(name = 'archived') {
   );
   campaign.tick();
   campaign.commit(
-    [{ op: 'adjust_disposition', factionId: 'freeworlds', towardFactionId: 'hutt', delta: 12 }],
+    [{ op: 'adjust_disposition', factionId: 'freeworlds', towardFactionId: 'ojjul', delta: 12 }],
     'model',
     'talks',
   );
   campaign.tick();
-  campaign.recordTranscript('hutt', [
+  campaign.recordTranscript('ojjul', [
     { speaker: 'player', text: 'Name your price.' },
     { speaker: 'faction', text: 'Higher than that.' },
   ]);
@@ -142,7 +142,7 @@ describe('a campaign archive round-trips', () => {
   it('carries diplomatic transcripts, which live outside the journal', () => {
     const restored = unpackCampaign(packCampaign('archived', played().toSaveFile()));
     const reloaded = Campaign.fromSaveFile('archived', restored.save, new MemoryCampaignStore());
-    expect(reloaded.priorTranscripts('hutt')[0]).toMatch(/Name your price/);
+    expect(reloaded.priorTranscripts('ojjul')[0]).toMatch(/Name your price/);
   });
 
   it('describes itself in a manifest without needing the game to read it', () => {
@@ -174,7 +174,7 @@ describe('a campaign archive round-trips', () => {
     const long = played('long');
     for (let i = 0; i < 40; i++) {
       long.commit(
-        [{ op: 'adjust_disposition', factionId: 'freeworlds', towardFactionId: 'krayt', delta: 1 }],
+        [{ op: 'adjust_disposition', factionId: 'freeworlds', towardFactionId: 'drajk', delta: 1 }],
         'model',
         `turn ${i}`,
       );
@@ -389,7 +389,7 @@ describe('the resume CLI', () => {
     expect(out).toMatch(/campaign\s+fromcli/);
     expect(out).toMatch(/turn\s+2/);
     expect(out).toMatch(/replayed clean/);
-    expect(out).toMatch(/Arkanis Free Worlds/);
+    expect(out).toMatch(/Arkane Free Worlds/);
     expect(out).toMatch(/1 conversations/);
     expect(out).not.toMatch(/Installed/);
   });

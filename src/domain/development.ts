@@ -106,10 +106,10 @@ export const EFFECT_COST: Record<
  * between +7 and +209 credits a turn depending entirely on which point it is:
  *
  * ```
- * krayt  kes-7  3->4    +7/turn      an ordinary world getting slightly better
- * hutt   kes-2  9->10  +13/turn      already a hub; more volume on its lanes
+ * drajk  ilv-7  3->4    +7/turn      an ordinary world getting slightly better
+ * ojjul   ilv-2  9->10  +13/turn      already a hub; more volume on its lanes
  * free   ark-4  6->7   +36/turn      becomes a hub, but a poorly connected one
- * merid  slu-2  6->7  +209/turn      becomes a hub in the middle of everything
+ * merid  sek-2  6->7  +209/turn      becomes a hub in the middle of everything
  * ```
  *
  * A single price cannot serve that range: at 80 credits a point, a 30-turn
@@ -228,11 +228,11 @@ export function priceOrderEffect(
  * attempt COST and NOT the ops for the thing the player wanted") is a promise
  * made in a prompt and nowhere else.
  *
- * Seen live, as Arkanis: a `fortification` action failed its `industry` check,
+ * Seen live, as Arkane: a `fortification` action failed its `industry` check,
  * the narrative said the walls stand exactly as thick as they did that morning,
  * and the batch contained both the cost *and* the three-turn order, labelled
  * "(stalled)". That one was harmless because it carried no payload. With one it
- * would not have been — measured on the seed, a `develop_system +1` at slu-2
+ * would not have been — measured on the seed, a `develop_system +1` at sek-2
  * emitted in a batch the player was told was a failure crosses `HUB_THRESHOLD`
  * five turns later and takes Meridian's net income from 309 to **519,
  * permanently**, with zero rejections.

@@ -6,7 +6,7 @@ A full campaign played to its limit as the **Meridian Trade Authority** on the
 build that shipped item 55 (ship classes, tonnage, the screen and the torpedo
 boat). It reached turn 12, went read-only, and wrote an epilogue. The player
 finished **ascendant with 18 of 25 systems from a starting 4**, fleet 130, net
-1,376/turn, with every other power `diminished` except Arkanis `holding`.
+1,376/turn, with every other power `diminished` except Arkane `holding`.
 
 **The classes themselves held up completely** — every battle the playtester
 pre-computed matched the report to the integer, loss order behaved exactly as
@@ -56,7 +56,7 @@ the roll in advance.
 > made on:
 >
 > ```
-> territory: meridian 18, freeworlds 4, vigil 1, hutt 1, krayt 1
+> territory: meridian 18, freeworlds 4, vigil 1, ojjul 1, drajk 1
 > four live trade accords at 60/60 → 480 credits a turn conjured galaxy-wide
 > meridian net: 1376
 > ```
@@ -243,7 +243,7 @@ including every action from turn 0 to turn 8. Its first confirmation, which my
 own reimplementation reproduces exactly:
 
 ```
-predicted: roll(0, "0:The Sluis Gate yards lay down six lifters and four escorts. Confirm.") == 20
+predicted: roll(0, "0:The Sekkar Gate yards lay down six lifters and four escorts. Confirm.") == 20
 returned:  {"stat":"industry","roll":20,"modifier":3,"total":23,
             "difficulty":11,"outcome":"critical_success"}
 ```
@@ -256,11 +256,11 @@ predictions, all of which my own implementation also reproduces:
 | system | turn | predicted | reported |
 |---|---|---|---|
 | ark-2 | 2 | 5 | 5 |
-| slu-3 | 2 | 1 | 1 |
-| slu-6 | 2 | 9 | 9 |
-| tio-2 | 6 | 20 | 20 |
-| tio-4 | 7 | 10 | 10 |
-| tio-2 | 8 | 12 | 12 |
+| sek-3 | 2 | 1 | 1 |
+| sek-6 | 2 | 9 | 9 |
+| tor-2 | 6 | 20 | 20 |
+| tor-4 | 7 | 10 | 10 |
+| tor-2 | 8 | 12 | 12 |
 
 A second lever falls out of the same seed: **`stagedCount` is incremented by
 diplomacy.** Closing a channel stages a batch, so a player can shift their own
@@ -317,14 +317,14 @@ The playtester closed a channel on turn 0 describing a joint venture that "pays
 continuously to both houses" and got:
 
 ```json
-{"op":"form_treaty","treatyType":"trade_accord","parties":["meridian","krayt"],
- "terms":{"incomePerTurn":{"krayt":30,"meridian":20}}}
+{"op":"form_treaty","treatyType":"trade_accord","parties":["meridian","drajk"],
+ "terms":{"incomePerTurn":{"drajk":30,"meridian":20}}}
 ```
 
 Both positive. Repeated with all four powers, the final board carried four
 accords at 60/60 — **480 credits a turn conjured galaxy-wide**, roughly a sixth
 of the whole economy, 240 of it the player's. No NPC ever objected, because in
-fiction the arrangement is Pareto-improving: the Combine, the Vigil, Arkanis and
+fiction the arrangement is Pareto-improving: the Combine, the Vigil, Arkane and
 Drajk each *negotiated the number upward*.
 
 Cost to obtain: **zero action points**, since diplomacy is unmetered.
@@ -355,7 +355,7 @@ So each fiction already has a home:
   other mechanism: *"a debt written as one two-party commitment at 25 paid the
   creditor 25 and the debtor 20. Both sides earned; nobody paid."*
 
-The playtest's `{krayt: 30, meridian: 20}` is that same sentence, in the field
+The playtest's `{drajk: 30, meridian: 20}` is that same sentence, in the field
 that was built to be the directional one. A confirming detail:
 `MAX_TREATY_INCOME_PER_TURN = MAX_DEBT_PER_TURN` (`state.ts:1153`) — the cap was
 inherited from debt service, which is directional. The field was designed as a
@@ -399,15 +399,15 @@ the price at about 6% of it.
 
 | accord | agreed | actually paid | worlds received |
 |---|---|---|---|
-| Threx Transfer (krayt) | 750 | 240 | tio-6 |
-| Kessel Divestment (krayt) | 2,700 | 240 | ark-5, kes-7, kes-4 |
-| Oridin Cession (hutt) | 1,500 | 240 | kes-5 |
-| Riqel Cession (hutt) | 3,000 | 240 | kes-3 |
-| Kessel Approach (hutt) | 6,000 | 240 | kes-1 |
+| Threx Transfer (drajk) | 750 | 240 | tor-6 |
+| Ilvenn Divestment (drajk) | 2,700 | 240 | ark-5, ilv-7, ilv-4 |
+| Oridin Cession (ojjul) | 1,500 | 240 | ilv-5 |
+| Riqel Cession (ojjul) | 3,000 | 240 | ilv-3 |
+| Ilvenn Approach (ojjul) | 6,000 | 240 | ilv-1 |
 | **total** | **13,950** | **1,200** | **7 worlds** |
 
-Log lines from the same tick, verbatim: `"hutt cedes Kessel Approach to
-meridian; 11 ships withdraw to Nar Shalka."` beside `"Trimmed a charge of 6000
+Log lines from the same tick, verbatim: `"ojjul cedes Ilvenn Approach to
+meridian; 11 ships withdraw to Shalka."` beside `"Trimmed a charge of 6000
 credits to 240 for Meridian Trade Authority"`.
 
 **Seven of eighteen worlds, for 1,200 credits and zero action points.**
@@ -445,7 +445,7 @@ Meridian Trade Authority puts in at Kalzir under basing rights.
 
 The Vigil's next reaction produced a `log_narrative` redrafting the clause,
 which changed nothing. It also ran in reverse: while the treaty stood, the
-Vigil's own lifters could not have taken Tion Anchorage.
+Vigil's own lifters could not have taken Torrek Anchorage.
 
 ---
 
@@ -456,13 +456,13 @@ Vigil's own lifters could not have taken Tion Anchorage.
 Meridian's red line is *"will not repudiate a contract it has signed, even a
 ruinous one."* The playtester never repudiated one — it wrote self-destructing
 paper instead. On turn 0 it *offered* the Vigil a voiding clause "as a guarantee
-of good faith" (`treaty_with by=meridian target=krayt`); the Vigil, pleased,
-**widened it itself** to include Arkanis; the player then signed with Arkanis in
+of good faith" (`treaty_with by=meridian target=drajk`); the Vigil, pleased,
+**widened it itself** to include Arkane; the player then signed with Arkane in
 the same turn:
 
 ```
 Ratified: Non-aggression pact between Meridian and the Iron Vigil...
-Treaty voided: ... — Meridian Trade Authority is now bound by treaty to Arkanis Free Worlds.
+Treaty voided: ... — Meridian Trade Authority is now bound by treaty to Arkane Free Worlds.
 ```
 
 Ratified and voided on one tick. It kept the +20 disposition the Vigil paid for
@@ -489,13 +489,13 @@ asking for three separate recruitments by class trimmed correctly **three
 times** and still took more than the ceiling:
 
 ```
-Meridian turns 2 Ojjul Nar Combine hull(s) at Nar Shalka without a shot fired.
+Meridian turns 2 Ojjul Nar Combine hull(s) at Shalka without a shot fired.
 Meridian could only talk 2 of 5 Ojjul Nar Combine hulls into changing sides.
-Meridian turns 2 Ojjul Nar Combine hull(s) at Nar Shalka without a shot fired.
-Meridian turns 1 Ojjul Nar Combine hull(s) at Nar Shalka without a shot fired.
+Meridian turns 2 Ojjul Nar Combine hull(s) at Shalka without a shot fired.
+Meridian turns 1 Ojjul Nar Combine hull(s) at Shalka without a shot fired.
 ```
 
-`subornLimit(meridian → hutt)` is **2**. Five hulls changed sides. Reproduced on
+`subornLimit(meridian → ojjul)` is **2**. Five hulls changed sides. Reproduced on
 the previous turn at 3 against the same cap.
 
 The agent also reports a non-conserving case on turn 10 — the trim reduced what
@@ -513,7 +513,7 @@ three `adjust_fleet` and three `adjust_ships` describing the *same* squadron:
 
 ```json
 {"op":"adjust_fleet","delta":6,"hull":"lifter"}
-{"op":"adjust_ships","systemId":"slu-1","delta":6,"hull":"lifter"}
+{"op":"adjust_ships","systemId":"sek-1","delta":6,"hull":"lifter"}
 ```
 
 The note read `"commissions 80 tons of shipping for 1200 credits"`; the board
@@ -578,7 +578,7 @@ the same crusading Vigil at the same ~5:1 advantage:
 - Kalzir t6, **roll 20**: defenders `{battleship:18, escort:1}` → `{battleship:7}`.
   *"The defenders still hold the orbitals of Kalzir; no landing is attempted."*
   29 ships lost, world held.
-- Ghorman Deep t7, **roll 10**: defenders `{battleship:7, lifter:2}` → `{}`.
+- Gorrun Deep t7, **roll 10**: defenders `{battleship:7, lifter:2}` → `{}`.
   14 ships lost, orbit cleared.
 
 The natural 20 was the worse outcome. It bites only where the 2:1 break-off is
@@ -635,7 +635,7 @@ once, including why quoting a compulsion at the game does not trip it.
 The agent's measurements, grouped because they share a shape: a conversation
 agreed something and the world did not change.
 
-1. **An agreed payment *from* an NPC is unreachable.** Arkanis agreed a 450-credit
+1. **An agreed payment *from* an NPC is unreachable.** Arkane agreed a 450-credit
    settlement; `/endtalk` reported `1 of 5 ops were rejected` and the correction
    batch contained no money movement at all. The reducer's guard — *"actor
    cannot take credits out of another treasury"* — is correct in isolation, but
@@ -729,7 +729,7 @@ than shrugging at. Spot-checked, not exhaustively re-derived.
 
 - **The arithmetic is exact.** Every battle the playtester pre-computed matched
   the report to the integer — powers, exchange fractions, per-contingent losses,
-  assault totals. Ghorman Deep t7: predicted `attackPower 36.16 / defendPower
+  assault totals. Gorrun Deep t7: predicted `attackPower 36.16 / defendPower
   8.59`, reported `36`/`9`.
 - **Loss order is exactly as advertised.** Kalzir t6, one exchange:
   `{battleship:34, escort:16, torpedo_boat:12, lifter:10} → {battleship:34,
@@ -737,7 +737,7 @@ than shrugging at. Spot-checked, not exhaustively re-derived.
   battleship scratched**. The agent reports it reshaped its whole doctrine into
   two-wave attacks — which is the lesson the class was built to teach.
 - **"A world is taken by the lift arm" holds.** Twice a pure-warship fleet won
-  an orbit and got `outcome: "no_lift"` — *"commands the orbitals of Ghorman
+  an orbit and got `outcome: "no_lift"` — *"commands the orbitals of Gorrun
   Deep and has no troops aboard to land"* — and the world stayed enemy.
 - **`assault = lifters × 6 × mods` and the captured-garrison rule** verified four
   times to the unit: 18 lifters at roll 16 → `"assault": 128` against a
@@ -745,10 +745,10 @@ than shrugging at. Spot-checked, not exhaustively re-derived.
   landed).
 - **`crusading` is the best-implemented doctrine in the game.** It cost the
   player 29 ships and a world at Kalzir by refusing a break-off that had been
-  planned around, and the Vigil refused to sell Ord Vantic — its last world — for
+  planned around, and the Vigil refused to sell Vantic — its last world — for
   8,000 credits at the point of maximum pressure.
-- **`mutual_defense` visibly saved a world.** Tion Anchorage was defended
-  against a Vigil assault by six Arkanis battleships arriving under the pact,
+- **`mutual_defense` visibly saved a world.** Torrek Anchorage was defended
+  against a Vigil assault by six Arkane battleships arriving under the pact,
   with zero Meridian hulls in orbit.
 - **`transfer_control` held under direct assault**, refused a decree annexing a
   world with a good explanation, cost no action point, and named the legal
@@ -784,7 +784,7 @@ Both an instant and a three-turn mechanism for one act, and DCs of 5, 10, 11, 14
 and 18.
 
 **Suborning was priced, then redirected to a channel, then priced again**, across
-two turns — DC 16, then `"it is not yours to declare… /talk hutt"`, then DC 18
+two turns — DC 16, then `"it is not yours to declare… /talk ojjul"`, then DC 18
 for the turn-10 phrasing. Suborning is unilateral by construction:
 `canSubornAt`, `subornLimit`, `SUBORN_DISPOSITION_COST` and the `defection`
 mission all exist precisely because the victim does not consent. The redirect is
@@ -900,8 +900,8 @@ fleet arriving with no way to have seen it coming.
 
 At turn 7 the three physical programmes are visible to all five powers, and the
 Iron Vigil's counter-intelligence sweep is a rumour to the other four. It sits
-at **Ghorman Deep** — the exact world the playtest had put a theft operative on
-— so the player now reads *"the Vigil has something under way at Ghorman Deep,
+at **Gorrun Deep** — the exact world the playtest had put a theft operative on
+— so the player now reads *"the Vigil has something under way at Gorrun Deep,
 1 of 2 turns"* and has a reason to look.
 
 ### One thing that looked like a cost and is not
@@ -927,8 +927,8 @@ journal, and the mechanism is confirmed in the code.
 
 | turn | roll | outcome | narrative said | what landed |
 |---|---|---|---|---|
-| 0 | **d20 1** +4 vs DC 11 | `critical_failure` | *"A Combine operative watching Ord Vantic is captured and exposed by Iron Vigil counter-intelligence; the confession is broadcast across the Tion Marches."* | `agt-0-1`, surveillance at `tio-3` (Ord Vantic), live, unburned, `successChance: 56` |
-| 1 | d20 5 +4 vs DC 18 | `failure` | *"…the theft did not succeed"* | `agt-1-1`, theft at `tio-4`, `income_penalty` **15/turn, permanent** |
+| 0 | **d20 1** +4 vs DC 11 | `critical_failure` | *"A Combine operative watching Vantic is captured and exposed by Iron Vigil counter-intelligence; the confession is broadcast across the Torrek Marches."* | `agt-0-1`, surveillance at `tor-3` (Vantic), live, unburned, `successChance: 56` |
+| 1 | d20 5 +4 vs DC 18 | `failure` | *"…the theft did not succeed"* | `agt-1-1`, theft at `tor-4`, `income_penalty` **15/turn, permanent** |
 
 **Two guards exist and neither covers this.**
 
@@ -1181,9 +1181,9 @@ In the *same* `GET /api/campaign` payload where a Meridian order was correctly
 redacted to an anonymous rumour, `state.eventLog` contained:
 
 ```
-order | meridian begins Patrol conversion at Tion Anchorage (3 turns) -> tio-1,
+order | meridian begins Patrol conversion at Torrek Anchorage (3 turns) -> tor-1,
         to deliver 4 new hulls for 240 credits.
-order | vigil begins Sweep the Ord Vantic yards (2 turns) -> tio-3.
+order | vigil begins Sweep the Vantic yards (2 turns) -> tor-3.
 order | Ojjul Nar Combine places an agent on Hollow Star (surveillance) for 40 credits.
 ```
 
@@ -1234,7 +1234,7 @@ bottom of this item.
 
 ### (a) `wars` is one-sided — the ending states opposite things about the same war
 
-The `krayt` slide: *"No war stands open against it."* The `meridian` slide, in
+The `drajk` slide: *"No war stands open against it."* The `meridian` slide, in
 the same document: *"The war with the Drajk Confederacy sits open on the
 ledger."* The `vigil` slide names Drajk as one of its two open wars.
 
@@ -1247,18 +1247,18 @@ const wars = Object.entries(f.disposition)
 ```
 
 It reads only the subject's **outward** disposition. Final state:
-`krayt.disposition` is `{meridian: -19, vigil: -46, hutt: 73, freeworlds: 27}`
-— nothing at or below −75 — while `meridian.disposition.krayt = -100` and
-`vigil.disposition.krayt = -100`. So `krayt.wars: []` and two other slides name
+`drajk.disposition` is `{meridian: -19, vigil: -46, ojjul: 73, freeworlds: 27}`
+— nothing at or below −75 — while `meridian.disposition.drajk = -100` and
+`vigil.disposition.drajk = -100`. So `drajk.wars: []` and two other slides name
 Drajk. The same artefact fires for the Combine: *"no war of its own fought
-anywhere"* against `vigil→hutt = -75`.
+anywhere"* against `vigil→ojjul = -75`.
 
 Disposition is deliberately asymmetric everywhere else in this game; the
 epilogue treated it as if it were not.
 
 **FIXED:** a war is now either party at or below the threshold. Verified by
-re-running the narration against the finished campaign — `krayt.wars` went from
-`[]` to `[Iron Vigil Remnant, Meridian Trade Authority]`, `hutt` from `[]` to
+re-running the narration against the finished campaign — `drajk.wars` went from
+`[]` to `[Iron Vigil Remnant, Meridian Trade Authority]`, `ojjul` from `[]` to
 `[Iron Vigil Remnant]`, and no slide contradicts another. Three tests, including
 one asserting a power is never listed at war with itself.
 
@@ -1284,7 +1284,7 @@ worlds-changed-hands events rather than endpoint sets, would fix it.
 ### (c) `foremost` promotes an arbitrary tie-break into a stated fact
 
 All five powers ended holding four systems. `foremost` breaks the tie on faction
-id, and the closing rendered that as *"the largest single holding, the Arkanis
+id, and the closing rendered that as *"the largest single holding, the Arkane
 Free Worlds"*.
 
 **FIXED:** `CampaignOutcome` gained `leaders`, everyone level on the largest
@@ -1300,7 +1300,7 @@ a way of picking a value, not a finding.
   synthesised at `epilogue.ts:135` — the reducer rejects self-disposition ops,
   so this is a number in a document whose selling point is *"settled; do not
   overturn"*.
-- `epilogue.factions[krayt].net = 258` and `briefing.ledger.net = 253` in one
+- `epilogue.factions[drajk].net = 258` and `briefing.ledger.net = 253` in one
   response, both stamped `turn: 10`.
 
 ### (e) FIXED — it read like a ledger, not an ending
@@ -1355,8 +1355,8 @@ unconditionally profitable at +20 per remaining turn**, for any order with
 Measured live, in one declaration:
 
 ```
-order | krayt begins Long Take charter, maximum term, Hollow Star (3 turns)
-        -> kes-7, to deliver 2 new hulls for 120 credits.
+order | drajk begins Long Take charter, maximum term, Hollow Star (3 turns)
+        -> ilv-7, to deliver 2 new hulls for 120 credits.
 order | Long Take charter ... suspended at 0/3; 180 credits recovered.
 ```
 
@@ -1388,10 +1388,10 @@ is the hole in it.
 **VERIFIED with exact numbers**, by replaying the campaign journal op-by-op:
 
 ```
-settle_debt      krayt -320  hutt +320   TOTAL   +0   <- conserved
-adjust_credits   krayt +240  hutt   +0   TOTAL +240   <- minted
+settle_debt      drajk -320  ojjul +320   TOTAL   +0   <- conserved
+adjust_credits   drajk +240  ojjul   +0   TOTAL +240   <- minted
 establish_debt   (no credit movement at all)
-issue_order      krayt -240  hutt   +0   <- spent on 4 hulls
+issue_order      drajk -240  ojjul   +0   <- spent on 4 hulls
 ```
 
 240 credits entered the economy with no counterparty debit, and the debt records
@@ -1404,7 +1404,7 @@ an obligation whose principal was never transferred.
    the debtor.
 2. **The borrower cannot write the lender's debit.** `adjust_credits` with a
    negative delta on another faction is rejected by design, and that rejection
-   fired correctly here: *"krayt cannot take credits out of hutt's treasury
+   fired correctly here: *"drajk cannot take credits out of ojjul's treasury
    directly."* Extraction runs as the acting faction, so the only expressible
    half of the pair is the credit to self.
 
@@ -1428,8 +1428,8 @@ which is why both a loan and a restructure mint.
 perTurn: 2}`, closing a channel emitted
 
 ```json
-{"op":"issue_order","factionId":"krayt","type":"courier","originId":"tio-6",
- "targetId":"kes-5","durationTurns":2}
+{"op":"issue_order","factionId":"drajk","type":"courier","originId":"tor-6",
+ "targetId":"ilv-5","durationTurns":2}
 ```
 
 and the order was in `pendingOrders` with action points still at 0.
@@ -1526,7 +1526,7 @@ failing one layer up.
 Drajk's red line: *"will not put its name to a written treaty; a handshake it
 can deny is the most it offers."*
 
-- **Turn 6, Arkanis.** The accord contained **no treaty** — a creditor forgiving
+- **Turn 6, Arkane.** The accord contained **no treaty** — a creditor forgiving
   100 of an existing debt, an unchanged charter rate, a promised future strike.
   Ruled a refusal, whole accord destroyed, +8 dissent, the counterparty's
   concession lost with it: *"It is a treaty, and we do not sign treaties."*
@@ -1578,7 +1578,7 @@ is complying, there is no breach to charge.
 
 ## 49. FIXED — an accord that delivered nothing left phantom history
 
-**Agent's measurement.** The turn-6 Arkanis accord was refused whole, so its
+**Agent's measurement.** The turn-6 Arkane accord was refused whole, so its
 `forgive_debt` never landed: the debt ran 240 → 200 → 160 → 120 → 80 → 40 on
 instalments alone, with no forgiveness at any point.
 
@@ -1608,7 +1608,7 @@ stayed `active`. Result at turn 7:
 treatyFlow: 160  =  40 (tre-0-0) + 55 (tre-6-0) + 25 (tre-1-1) + 40 (tre-5-0)
 ```
 
-Arkanis believed it paid 40 and paid 65; the Combine believed 55 and paid 95.
+Arkane believed it paid 40 and paid 65; the Combine believed 55 and paid 95.
 Both NPCs said "supersedes" out loud. The ending duly rendered
 `freeworlds.liveTreaties` with **"tribute with Drajk Confederacy" listed twice**.
 
@@ -1641,8 +1641,8 @@ genuine **repudiation**, which is a different act with a different price
 
 **A treaty whose void condition already holds is signable.** `tre-7-0` was
 signed and voided on the same tick by its own `voidsOn {kind: "attacks", by:
-"krayt", target: "meridian"}` — a condition already true at signature
-(`meridian→krayt = -89`). It never paid a credit, and Meridian's next reaction
+"drajk", target: "meridian"}` — a condition already true at signature
+(`meridian→drajk = -89`). It never paid a credit, and Meridian's next reaction
 described it as a live arrangement it was honouring.
 
 **FIXED.** `voidConditionMet` had exactly one caller, in `tickTurn`. It now runs
@@ -1693,7 +1693,7 @@ remove them:
 
 - battles resolve only on a `fleet_movement` **arrival**, and moving into your
   own system is reinforcing, not an invasion;
-- `subornLimit krayt→vigil` is 0 (Vigil resolve 17), so crews cannot be bought;
+- `subornLimit drajk→vigil` is 0 (Vigil resolve 17), so crews cannot be bought;
 - a blockade would have breached the acting faction's own red line.
 
 So parking one hull on a rival's best world is a permanent, unanswerable tax.
@@ -2108,7 +2108,7 @@ unfinished.
 
 **The NPCs were not passive; they were solipsistic.** Measured over seven turns:
 16 fleet movements, six attacks, **every attack aimed at the player on one
-world**, and zero NPC-vs-NPC aggression while `vigil -> krayt` sat at −87.
+world**, and zero NPC-vs-NPC aggression while `vigil -> drajk` sat at −87.
 
 The five doctrine bots moved out of `src/balance.ts` into
 `src/domain/initiative.ts` — one definition, the harness imports it, its 10
@@ -2157,8 +2157,8 @@ Recorded because it is what makes item 30 worth doing: the *only* missing piece
 of an intelligence playstyle is obtaining the information.
 
 - **Suborning is a complete strategy, and devastating.** Two `defection` cells
-  took Meridian's home fleet apart with no battle fought: `slu-1` went
-  `{meridian: 13}` → `{meridian: 5, hutt: 12}` → **`{hutt: 17}`**. Every tick
+  took Meridian's home fleet apart with no battle fought: `sek-1` went
+  `{meridian: 13}` → `{meridian: 5, ojjul: 12}` → **`{ojjul: 17}`**. Every tick
   reported in plain language, every hull billed at `SHIP_COST`, and Meridian
   ended the campaign at **−100** disposition. That is the "information advantage
   instead of a military one" the design asks for, paying off in full.
@@ -2330,12 +2330,12 @@ clean. Items 13 and 14 are written up on `extraction-breach-gap`.
    engagement made of rounds so that decision stays free.
 
 **Balance, measured after the war-ethic and monopolist work** (`pnpm balance 30`,
-turn 30): Meridian 24, Iron Vigil 90, Ojjul Nar 232, Arkanis 71, Drajk 32;
+turn 30): Meridian 24, Iron Vigil 90, Ojjul Nar 232, Arkane 71, Drajk 32;
 territory 3/6/7/4/5. The old spread — the Nars running away at ~272 while
 Meridian sat at −1 and falling — has closed on both ends: Meridian is out of
 insolvency and the Nars now pay `PROFITEER_WAR_PENALTY` for the war their own
 tolls talk them into. Nobody is below the −40 floor the harness asserts.
-Meridian is still the weakest of the five and Arkanis is oddly flat at 71 for
+Meridian is still the weakest of the five and Arkane is oddly flat at 71 for
 the whole run, which is the next thing to look at if balance comes up.
 
 **Also fixed this session, found by the user asking whether doctrine change was
@@ -2400,7 +2400,7 @@ Turn 0, `POST /api/endtalk/freeworlds` returned, alongside two treaties:
 
 ```json
 {"op":"issue_order","factionId":"meridian","type":"fleet_movement",
- "originId":"slu-1","targetId":"ark-2","force":8,
+ "originId":"sek-1","targetId":"ark-2","force":8,
  "label":"Vantara's squadron takes station at Sennex"}
 ```
 
@@ -2410,7 +2410,7 @@ storms Sennex, breaking a garrison of 4 for 2 ships; Meridian Trade Authority
 takes possession."* **A world was annexed, with a battle fought, for zero action
 points** — and the accord text described the squadron as taking station on
 "unaligned rock, nobody's soil". Reproduced deliberately on turn 5 through
-`/api/endtalk/krayt`: two more movements, again at 2/2.
+`/api/endtalk/drajk`: two more movements, again at 2/2.
 
 A player who routes all fleet work through channels has unlimited moves per
 turn. The action-point rule is the only thing pacing the player against the
@@ -2453,9 +2453,9 @@ Bought Drajk's paper from the Combine twice. After turn 1 the state document
 held all three:
 
 ```
-debt-0     hutt     <- krayt   480  delinquent   (the original, never retired)
-debt-0-0   meridian <- krayt   480  current      (bought turn 0)
-debt-1-0   meridian <- krayt   440  current      (bought turn 1, same paper)
+debt-0     ojjul     <- drajk   480  delinquent   (the original, never retired)
+debt-0-0   meridian <- drajk   480  current      (bought turn 0)
+debt-1-0   meridian <- drajk   440  current      (bought turn 1, same paper)
 ```
 
 **Drajk owed 1400 against an original 600**, paying 120/turn out of a
@@ -2505,7 +2505,7 @@ Two consequences, both exploitable and neither intended:
   be the payer and buy an asset: a 440-principal debt instrument acquired for
   240 of actual money, twice.
 - **Phrasing the same payment per-turn bypasses the cap entirely.** The turn-3
-  Arkanis accord produced
+  Arkane accord produced
   `{"treatyType":"tribute","incomePerTurn":{"meridian":-300,"freeworlds":300}}`
   and 300/turn flowed uncapped, indefinitely — twelve times the one-off ceiling
   every turn, through a field with no bound at all.
@@ -2545,7 +2545,7 @@ Both still active at turn 7. Renegotiating the same charter every turn ratchets
 the share upward until the per-system payout cap bites, and the counterparty is
 never asked whether the old one ends.
 
-Sharpest detail: **Arkanis explicitly refused to stack** — *"I don't sign a
+Sharpest detail: **Arkane explicitly refused to stack** — *"I don't sign a
 thing twice just because you split it into two pieces of paper"* — while two
 stacked charters from an earlier deal it believed was a single instrument were
 already sitting in state. The NPC held the line the reducer did not.
@@ -2661,7 +2661,7 @@ rejections: [{"code":"insufficient_credits",
   "message":"develop_system at Corvid would cost 2532 credits and meridian has 2280."}]
 ```
 
-`slu-2` strategicValue was unchanged. But the batch's *other* op landed:
+`sek-2` strategicValue was unchanged. But the batch's *other* op landed:
 **`adjust_credits +120`, described as surplus materiel from the conversion that
 never happened.** Free money as a byproduct of a rejected op.
 
@@ -2737,7 +2737,7 @@ Framed as a **future condition** inside an accord, it passed: `refusal: null`,
 ```json
 {"op":"form_treaty","treatyType":"mutual_defense",
  "summary":"Joint interdiction pact: if Vigil forces move on Vashka, Meridian
- closes the Sennex-Sluis Gate lane to Vigil-flagged traffic..."}
+ closes the Sennex-Sekkar Gate lane to Vigil-flagged traffic..."}
 ```
 
 The guard is **not** absent — the same closure proposed unconditionally on turn
@@ -2746,7 +2746,7 @@ obligation to cross a red line later is not read as crossing it. `closeChannel`
 appraises what the accord does now; it should appraise what it binds you to.
 
 **Also seen, and less tractable: the breach ruling is unstable across identical
-acts.** *"Have the Combine chief factor at Nar Shalka killed"* declared twice in
+acts.** *"Have the Combine chief factor at Shalka killed"* declared twice in
 one turn, both times priced `guile` DC 18 — the difficulty was stable — but the
 first produced no defiance and no dissent, and the second charged
 `COMPULSION_BREACH_DISSENT` quoting *"commerce raiding is refused outright"*, a
@@ -2818,17 +2818,17 @@ Smaller, grouped because each is the same shape: state that exists, reads
 plausibly, and has no consumer.
 
 - **`Treaty.terms.territory`** — an accord carried
-  `territory: ["ark-2","ark-4","slu-1","slu-2"]`, two of them systems the player
+  `territory: ["ark-2","ark-4","sek-1","sek-2"]`, two of them systems the player
   did not hold. No controller changed and no reader could be found. Either it
   means something or it should not be in the schema.
 - **Commitments at `incomePerTurn: 0`.** Five accords produced one each —
   `open_hand_pact`, `imperial_recognition`, `debt_service_share`,
   `intelligence_notice`, `intel_sharing_drajk` — all zero-flow and none with a
-  reader. A 40/turn war subsidy, a tenth of all Kessel prizes and a standing
+  reader. A 40/turn war subsidy, a tenth of all Ilvenn prizes and a standing
   intelligence obligation all became decoration. **Any obligation not
   expressible as a treaty term silently becomes flavour**, which is the
   commitment mechanism's original sin returning in a new place.
-- **Void clauses have no teeth.** Arkanis negotiated hard for *"any tribute,
+- **Void clauses have no teeth.** Arkane negotiated hard for *"any tribute,
   non-aggression, or standing order Meridian gives the Vigil voids this the same
   day, full stop"*. Both were signed with the Vigil on one timestamp and nothing
   fired. The NPC noticed in prose the next turn and broke the pact manually —
@@ -2841,7 +2841,7 @@ plausibly, and has no consumer.
 
 > Item 21 was corroborated independently here: treaties went `status: active` on
 > the same tick a 2-turn `treaty_ratification` order was issued to ratify them,
-> with the narrative saying Arkanis was taking the deal to its councils. So
+> with the narrative saying Arkane was taking the deal to its councils. So
 > ratification is not merely lossy when the NPC gates on it — when it does not
 > gate, the order is pure theatre alongside a treaty that is already live.
 
@@ -2872,9 +2872,9 @@ Worth a dedicated playtest once that fix lands:
   mechanically enforced the way a red line is, so this is exactly the kind of
   thing that can look right in the arbiter's numbers and still read flat or
   inconsistent in the actual reply.
-- **Arkanis specifically** — the `voice` field was just rewritten (suspicious
+- **Arkane specifically** — the `voice` field was just rewritten (suspicious
   and always countering rather than reflexively stubborn); a marriage
-  negotiation with Arkanis is a good test of whether the new persona actually
+  negotiation with Arkane is a good test of whether the new persona actually
   bargains instead of stonewalling, since the old one was reported as
   "annoying to play against" for exactly this kind of exchange.
 ## 22. FIXED — submitting to an ultimatum *improves* your standing
@@ -2909,11 +2909,11 @@ the capital, lanes open, "refuse and the reduction begins on the ninth".
 | Meridian | 9 | **concedes**, counters 200 → 120 | refuses; offers a factorate at Corvid | grants free, unprompted | −35 → **−33** |
 | Ojjul Nar | 11 | **concedes** in principle, haggles the figure | refuses; offers a yard at Oridin | grants, "guaranteed" | −40 → **−34** |
 | Drajk | 12 | **concedes**, "let us haggle over the toll" | refuses flatly, "not for two thousand" | grants | −50 → **−53** |
-| Arkanis | 19 | **refuses outright** | refuses; cites the councils | unarmed cargo only, *conditional on withdrawal* | −75 → **−78** |
+| Arkane | 19 | **refuses outright** | refuses; cites the councils | unarmed cargo only, *conditional on withdrawal* | −75 → **−78** |
 
 **The concession gradient is real and it tracks resolve**, which is what the
 playtest set out to check. Meridian at resolve 9 conceded most and fastest;
-Arkanis at 19 refused the money outright, in the exact words of its own
+Arkane at 19 refused the money outright, in the exact words of its own
 compulsion (*"The Drift does not pay to be left alone"*), and reached for the
 third-person formal register its sheet reserves for Standing refusals — *"this
 watch does not open on that"* — which is the first time that register has fired
@@ -2921,7 +2921,7 @@ in play.
 
 Two things worth keeping:
 
-- **Arkanis bent without folding.** Even under an ultimatum from a fleet thirty
+- **Arkane bent without folding.** Even under an ultimatum from a fleet thirty
   times its size it still produced a counter-offer rather than a bare no, which
   is precisely the rule the rewritten voice added. It refused the two things on
   its list and traded the one thing that was not.
@@ -2944,7 +2944,7 @@ paying tribute is *rewarded* in standing for doing it politely.
 Worth being precise about the cause, because it decides the fix. **Resolve is
 not read by anything in diplomacy.** It appears in the persona prompt as one of
 five stats and nothing else consults it — the gradient above is the model
-inferring from the character sheet, where Arkanis's compulsion is explicit text
+inferring from the character sheet, where Arkane's compulsion is explicit text
 (*"tribute is refused, whatever the arithmetic says"*). So the good result is
 emergent rather than enforced and can drift with any prompt change, and the bad
 result is not a bug in a mechanism but the absence of one.
@@ -2996,7 +2996,7 @@ The original write-up follows.
 **Found in a live Ojjul Nar playtest.** The single biggest gap the playtest
 turned up, and it silently deletes negotiated deals.
 
-Arkanis carries the compulsion *"the councils require consultation"*, so its
+Arkane carries the compulsion *"the councils require consultation"*, so its
 persona correctly refused to give final assent in-channel: *"you have my read,
 not my signature, not yet."* Extraction then did exactly what
 `prompts/extraction.md` tells it to — **"a conditional promise produces nothing
@@ -3008,7 +3008,7 @@ Three turns later the order **completed**:
 
 ```
 turn 3  Council ratification of the Ojjul Nar-Arkane binding and Vashka
-        supply compact completed at Kessel Approach.
+        supply compact completed at Ilvenn Approach.
 ```
 
 and the world contained **no treaty, no commitment, nothing**. A fully
@@ -3031,7 +3031,7 @@ cannot change anything. This is the exact failure this file already documents
 under item 8 (*"completed orders change nothing"*) — reappearing in the one
 category that was deliberately exempted from the fix.
 
-It is not an edge case. Arkanis's compulsion **requires** council consultation,
+It is not an edge case. Arkane's compulsion **requires** council consultation,
 so every substantive negotiation with the Free Worlds ends this way, and any
 persona that plays for time ("I must put it to my people") triggers it.
 
@@ -3049,7 +3049,7 @@ patch:
    making ratification a property of the treaty rather than an order.
 3. **Tell the personas not to gate**, which is the cheapest and the worst — it
    would flatten a genuinely good piece of characterisation into "everyone signs
-   on the spot", and Arkanis's compulsion says otherwise anyway.
+   on the spot", and Arkane's compulsion says otherwise anyway.
 
 Whatever is chosen, `spawn_event` recording the terms is not a substitute: the
 event log is narrative, and nothing reads it.
@@ -3497,7 +3497,7 @@ worth a `pnpm balance` check, though the doctrine bots do not deploy agents.
 - **The owner guard holds**: `ownerFactionId` set to the victim is rejected
   `illegal_value` — the bug from the first playtest series stays fixed.
 - **NPCs really do deploy against the player.** By turn 2 the Combine had two
-  surveillance operatives on Meridian worlds (`slu-1`, `tio-1`) at 95%/turn.
+  surveillance operatives on Meridian worlds (`sek-1`, `tor-1`) at 95%/turn.
 
 ## 13. FIXED — a red line could be walked past through diplomacy
 
@@ -3527,9 +3527,9 @@ pass has no arbiter pass at all** — `grep -c appraiseAction src/engine/turn.ts
 returns 0 — so ops staged out of a diplomatic transcript are never checked
 against the acting faction's own principles.
 
-Repro: open `/talk krayt`, negotiate reducing an existing debt's balance framed
+Repro: open `/talk drajk`, negotiate reducing an existing debt's balance framed
 as a "renegotiation" or "a new note superseding the old", close with
-`/endtalk krayt`. Extraction emitted:
+`/endtalk drajk`. Extraction emitted:
 
 ```
 {"op":"forgive_debt","debtId":"debt-0","reason":"Superseded by renegotiated terms..."}
@@ -3538,7 +3538,7 @@ as a "renegotiation" or "a new note superseding the old", close with
 ```
 
 No refusal, no `defiance`, **no dissent**. Verified in committed state:
-`debt-0 ... [forgiven]` permanently, hutt dissent 20 — ordinary decay, not the
+`debt-0 ... [forgiven]` permanently, ojjul dissent 20 — ordinary decay, not the
 +8 breach charge. The *same intent* declared as an ordinary action was refused
 three separate times (blunt, euphemistic, and as hardship relief), each quoting
 *"will not forgive an unpaid debt — the debt is the whole instrument of
@@ -3593,7 +3593,7 @@ reading the output, not by the tests, which all passed. Rounds now carry
 per-round deltas and a test asserts the last round equals the board.
 
 **VERIFIED LIVE** (2026-08-17, ~$0.51: one declared action plus one end turn).
-Iron Vigil, thirteen hulls from Ord Vantic onto Drajk-held Threx — one jump, so
+Iron Vigil, thirteen hulls from Vantic onto Drajk-held Threx — one jump, so
 the fleet arrived on the very next tick rather than the two turns assumed here.
 
 The card renders and reads:
@@ -3648,7 +3648,7 @@ objects, and why), and the two rulings are enforced in different places:
 `serializeState` carries doctrine and ethics but neither list, so this was
 impossible before it was wrong. It gets a new `serializePrinciples` —
 deliberately not `serializeCharacter`, whose `voice` field is several thousand
-tokens of dialect notes for Arkanis alone, which would have roughly doubled the
+tokens of dialect notes for Arkane alone, which would have roughly doubled the
 price of every action in the game. A test pins both halves: the red lines are
 present, the voice is not.
 
@@ -3665,10 +3665,10 @@ It now renders in the refusal voice, and the note that duplicated it is gone.
 
 ### Verified live, and it found one more hole
 
-Two short playtests, ~$1.60 total: Arkanis (5 calls, 1 turn committed) and the
+Two short playtests, ~$1.60 total: Arkane (5 calls, 1 turn committed) and the
 Iron Vigil (5 calls). Raw state diffed on every action, never the narrative.
 
-**Arkanis — all four prior misses now fire, and it does not over-fire.**
+**Arkane — all four prior misses now fire, and it does not over-fire.**
 
 | declared | ruling | cost |
 |---|---|---|
@@ -3679,7 +3679,7 @@ Iron Vigil (5 calls). Raw state diffed on every action, never the narrative.
 
 The first row is the exact scenario that previously ran as a `resolve` check at
 DC 19 and would have succeeded on a 20. The control is the important one: the
-most in-character action Arkanis has was not flagged, so the referee is not
+most in-character action Arkane has was not flagged, so the referee is not
 finding a violation in every declaration. Dissent reached the dice as designed
 (58 dissent → `industry` 10 − 2 = 8 on the fortification roll), and the turn
 committed clean — 4 actions, 0 rejections, decay 58 → 56, NPC drift +3 on both
@@ -3687,7 +3687,7 @@ the Vigil and Drajk.
 
 **Iron Vigil — both red lines held, and the escape hatch had moved.** *"Take the
 Combine's four hundred and stand down from the approaches"* and *"recognise
-Arkanis as a sovereign government"* both refused, quoted, at $0.022 each. But
+Arkane as a sovereign government"* both refused, quoted, at $0.022 each. But
 *"quietly retain the Combine's smuggler captains as informants"* came back
 `admissible: false` with the narrative *"This is a red line, not a compulsion"* —
 **and it is neither of those things.** The line is in the Vigil's `compulsions`,
@@ -3722,17 +3722,17 @@ anyway"*. It falls back to the arbiter's when the name is just the faction.
   resolution call can reason its way around. What was wrong was the size.
   `COMPULSION_BREACH_DISSENT` is now **15** — still ~2x a refusal, still under
   `DOCTRINE_ETHIC_DISSENT` (20), since one act against character is lighter than
-  permanently rewriting what the power is. The live Arkanis turn that cost 58
+  permanently rewriting what the power is. The live Arkane turn that cost 58
   dissent and −4 on every stat now costs 38 and −3, and reaching the cap by
   insistence takes about eight breaches rather than four. A test pins the
   ordering against both neighbouring constants and one pins that a single bad
   turn cannot spiral.
 - ~~**A failed check still emitted the order it failed to start.**~~ **FIXED**,
-  and it was worse than "harmless today". The Arkanis fortification failed and
+  and it was worse than "harmless today". The Arkane fortification failed and
   resolution emitted `adjust_credits -70` *and* the three-turn order, labelled
   "(stalled)", while the narrative said the walls stand exactly as thick as
   before. That one carried no `onComplete`. Measured with one, on the seed: a
-  `develop_system +1` at slu-2 emitted in a batch the player was told was a
+  `develop_system +1` at sek-2 emitted in a batch the player was told was a
   failure crosses `HUB_THRESHOLD` five turns later and takes Meridian's net from
   **309 to 519, permanently**, zero rejections — because `applyOps` has never
   been told the check, so the whole `OUTCOME_GUIDANCE` contract was a promise
@@ -3748,7 +3748,7 @@ The original write-up follows.
 ---
 
 
-A 5-turn adversarial playtest as the Arkanis Free Worlds (`saves/arkane_defiance.json`,
+A 5-turn adversarial playtest as the Arkane Free Worlds (`saves/arkane_defiance.json`,
 ~$2.50), chosen because that faction is defined almost entirely by refusal. The
 arithmetic is sound and the trigger is not.
 
@@ -3768,7 +3768,7 @@ intended outcome: a red line should block and a compulsion should cost 25 and
 land, and instead the ops landed as though the compulsion did not exist.
 
 **Red lines were never returned as `refusal` once.** "Open the gates, invite the
-Vigil to occupy Arkanis Prime" — the verbatim scenario of red line #1 — was run
+Vigil to occupy Arkane Prime" — the verbatim scenario of red line #1 — was run
 as a `resolve` check at DC 19. It rolled a natural 1, so nothing landed, but a 20
 was available. The same ask was then blocked twice more for entirely unrelated
 reasons (an exclusivity conflict with a live commitment; "you are at war, cession
@@ -3819,7 +3819,7 @@ fix still lack it and still replay as they originally ran. Pinned by a test.
 A 4-turn adversarial playtest as the Ojjul Nar Combine (`saves/ojjul_profiteer.json`,
 ~$1.70) exercised the new mechanics against real model calls for the first time.
 **The reducer-side work all held.** Verified in raw state, not narrative:
-`onComplete` delivered (kes-2 strategic value 9 → 10, crossing `HUB_THRESHOLD`
+`onComplete` delivered (ilv-2 strategic value 9 → 10, crossing `HUB_THRESHOLD`
 on schedule), `commitmentFlow` summed two live commitments to 28 and respected
 both the per-arrangement cap and `kind` exclusivity, `warProfit` flipped +40 →
 −40 the turn the Combine's raid opened a war with the Vigil, and compulsion
@@ -3888,7 +3888,7 @@ exist; the consequence is now dissent, which does.
   already backed by `profiteer`; the **hiring** half is a `mutual_defense`
   treaty carrying `incomePerTurn` to the hired power and `shipsPledged` naming
   the hulls, emitted by the extraction pass from a negotiated transcript.
-  Verified live 2026-08-17: `{"treatyType":"mutual_defense","parties":["hutt",
+  Verified live 2026-08-17: `{"treatyType":"mutual_defense","parties":["ojjul",
   "meridian"],"terms":{"shipsPledged":{"meridian":6},"incomePerTurn":
   {"meridian":80}}}` landed, and Meridian moved a squadron on a Drajk world the
   next turn. The Free Worlds and the Iron Vigil both **refused** to be hired,
@@ -3903,7 +3903,7 @@ exist; the consequence is now dissent, which does.
 - ~~Five lines duplicated within their own faction~~ **FIXED.** All five were
   prohibitions miscategorised as demands, so the compulsion copy was dropped and
   whatever it added folded into the surviving red line (Drajk's "sit still to be
-  besieged", Meridian's embargoes and shut borders, Arkanis's abandonment to
+  besieged", Meridian's embargoes and shut borders, Arkane's abandonment to
   occupation). Changing course now costs what it should: Drajk going legitimate
   is 25 dissent, not 50. A test asserts no faction states a line twice.
   **Drajk is left with a single compulsion** — the triggered `no_plunder` one —
@@ -4010,7 +4010,7 @@ already reducer-only for the analogous reason).
 See also the user's related architecture question below — this may want a
 bigger structural answer than a prompt patch.
 
-**Reproduced a 5th time** (Drajk raiding Arkanis playtest), and this
+**Reproduced a 5th time** (Drajk raiding Arkane playtest), and this
 reproduction pinned down the exact mechanism: *"send eight ships from Tulgarn
 to raid Pell Reach"* → `might` critical_failure (roll 3) → the acting
 faction's fleet dropped by 7, but **the ships removed came from Vergesse (my
@@ -4056,11 +4056,11 @@ rejection, no warning — `staged: 1, rejections: 0`. Only caught by inspecting
 raw agent state directly; a player would have no way to know their spy was
 permanently inert.
 
-**Reproduced two more times** in a follow-up playtest (Arkanis Free Worlds,
+**Reproduced two more times** in a follow-up playtest (Arkane Free Worlds,
 agent-focused stress test), which narrowed the pattern considerably:
 
 - *"send an assassin to Kalzir to kill the Vigil Legate-Commander"* (acting:
-  Arkanis, target: Vigil-held Kalzir) → same bug, `ownerFactionId: "vigil"`
+  Arkane, target: Vigil-held Kalzir) → same bug, `ownerFactionId: "vigil"`
   again, again permanently inert (mission was `assassination`, which is
   one-shot — this agent will never even get its one shot). The narrative
   *and two separate NPC reactions* then treated the assassination as a
@@ -4068,13 +4068,13 @@ agent-focused stress test), which narrowed the pattern considerably:
   the garrison "after the desertion," meaning **the fiction's own
   bookkeeping (an NPC issuing a real multi-turn recovery order) is now
   inconsistent with the actual game state**, not just the player's.
-- *"deploy an agent to Byss Marker [[unaligned, no controller]] to organize
+- *"deploy an agent to Vosk Marker [[unaligned, no controller]] to organize
   the local smugglers into a network loyal to us"* → correct this time,
   `ownerFactionId` matched the actor.
-- Separately, in a Nar/Ojjul Combine playtest: *"seduce a Drajk-affiliated
+- Separately, in an Ojjul Nar Combine playtest: *"seduce a Drajk-affiliated
   captain at Tulgarn [[Drajk-controlled]] into an informal understanding"* →
   also correct, `ownerFactionId` matched the actor, even though the target
-  system had a controller (Krayt/Drajk).
+  system had a controller (Drajk).
 
 So the failure isn't simply "does the target system have a controller" — the
 Tulgarn case had one and was fine. Both failures were **hostile/destructive**
@@ -4226,7 +4226,7 @@ the doctrine bots do not deploy agents.
 
 ## 7. ~~GAP~~ FIXED — no way to accumulate diplomatic progress toward a neutral world
 
-Observed across an Arkanis playtest whose entire goal was annexing neutral
+Observed across an Arkane playtest whose entire goal was annexing neutral
 worlds by persuasion alone (no force, no bribery), over three genuinely
 different approaches.
 
@@ -4282,9 +4282,9 @@ rationale. Five tests.
 
 ## Minor — ~~an agent can be given an effect that is mathematically incapable of firing~~ FIXED
 
-In the Drajk playtest, a covert captive-taking operation against Arkanis
+In the Drajk playtest, a covert captive-taking operation against Arkane
 produced an agent with `effect: { kind: 'crew_defection', perTurn: 1 }`. But
-`subornLimit(krayt, freeworlds)` evaluates to **0** — Arkanis's `resolve` 19
+`subornLimit(drajk, freeworlds)` evaluates to **0** — Arkane's `resolve` 19
 against Drajk's `guile` 14 means Drajk can never suborn anything from them, at
 any roll, ever. So the agent is live, unexposed, has a `successChance` of 20%,
 and will faithfully roll for an effect that is guaranteed to produce nothing
@@ -4316,10 +4316,10 @@ the actor substantially, but never the actor's opinion of them:
 
 | | before | after |
 |---|---|---|
-| freeworlds → krayt (victim's view) | −30 | **−52** |
-| hutt → krayt (buyer's view) | 20 | **25** |
-| krayt → freeworlds (actor's view of victim) | −10 | −10 |
-| krayt → hutt (actor's view of buyer) | 30 | 29 |
+| freeworlds → drajk (victim's view) | −30 | **−52** |
+| ojjul → drajk (buyer's view) | 20 | **25** |
+| drajk → freeworlds (actor's view of victim) | −10 | −10 |
+| drajk → ojjul (actor's view of buyer) | 30 | 29 |
 
 Raiding a faction and getting repelled, then being publicly exposed running
 slavers on their soil, moved the victim −22 — but left the raider's own view
@@ -4332,8 +4332,8 @@ relationship. Worth a look; low priority.
 
 **FIXED —** investigating turned up a concrete defect rather than a modelling
 quibble. `warsFor(f)` filtered on `other.disposition[f] <= -60` — i.e. "who
-hates me" — so with the playtest's end state (Arkanis at −62 toward Drajk,
-Drajk at −10 toward Arkanis) **Arkanis did not list Drajk as an enemy at all**,
+hates me" — so with the playtest's end state (Arkane at −62 toward Drajk,
+Drajk at −10 toward Arkane) **Arkane did not list Drajk as an enemy at all**,
 despite having just been raided by it. `warsFor` now checks both directions,
 on the principle that a war is a property of the relationship rather than of
 one party's opinion, and the −60 threshold is a named constant
@@ -4349,7 +4349,7 @@ a toll collector does not resent the payer for paying.
 
 ## Confirmed working well (arbitration for off-mechanic concepts)
 
-Two short playtests (Arkanis pushing agents unorthodoxly; Ojjul Nar Combine
+Two short playtests (Arkane pushing agents unorthodoxly; Ojjul Nar Combine
 roleplaying a drug lord — smuggling and seduction, neither a defined mechanic)
 stress-tested `arbitration.ts`'s "does this establish something lasting" path
 specifically. Worth recording since it's the part of the system doing the most
@@ -4516,7 +4516,7 @@ by a separate mechanism.
   `influence` (Meridian 50, the Nars 40, the Iron Vigil 10).
 - **(C)'s scenario** is covered: `develop_system` crossing `HUB_THRESHOLD` turns
   a world into a trade hub and creates new lanes. Asserted directly —
-  slu-2 at value 6 develops to 7, the galaxy goes from 8 hubs and 28 routes to 9
+  sek-2 at value 6 develops to 7, the galaxy goes from 8 hubs and 28 routes to 9
   and more, and Meridian's route income rises.
 
 **The pricing was wrong first and the measurement is why it isn't now.** A flat
@@ -4524,7 +4524,7 @@ by a separate mechanism.
 point) and ignored that `strategicValue` also drives route volume and hub
 status. Measured marginal value per point on the seed: +7 for an ordinary
 backwater, +13 on an existing hub, +36 founding a poorly-connected hub, **+209
-founding slu-2**. A 30-turn reinvestment probe at the flat price took Meridian
+founding sek-2**. A 30-turn reinvestment probe at the flat price took Meridian
 from 283 to 952 net for 1,120 credits — payback under two turns. `developmentCost`
 now computes the marginal income of the exact development on the actual board and
 charges 12 turns of it; the same run costs 7,968 credits and stays behind a

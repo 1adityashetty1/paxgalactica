@@ -125,7 +125,7 @@ export function serializeCharacter(faction: Faction): string {
  *
  * The arbiter rules on whether an action breaks one of these lines, so it has
  * to be shown them; it emphatically does not need `voice`, which is a page of
- * dialect notes for writing dialogue and, for Arkanis, several thousand tokens
+ * dialect notes for writing dialogue and, for Arkane, several thousand tokens
  * of it. Handing the whole character sheet to a bounded classification call
  * would have quietly doubled the price of every action in the game.
  */

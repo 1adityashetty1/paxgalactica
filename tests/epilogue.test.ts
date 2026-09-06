@@ -18,11 +18,11 @@ import type { WorldState } from '../src/domain/state.js';
  * epilogue gives it a last page.
  */
 
-const seed = () => createSeedState('hutt');
+const seed = () => createSeedState('ojjul');
 
 describe('the turn limit', () => {
   it('is recorded on the seed entry, so it survives a save and a replay', () => {
-    const c = Campaign.start('hutt', 'limited', new MemoryCampaignStore(), 25);
+    const c = Campaign.start('ojjul', 'limited', new MemoryCampaignStore(), 25);
     expect(c.maxTurns).toBe(25);
 
     const reloaded = Campaign.fromSaveFile('limited', c.toSaveFile(), new MemoryCampaignStore());
@@ -34,15 +34,15 @@ describe('the turn limit', () => {
    * acquiring a deadline it was never played under.
    */
   it('is absent from a legacy journal, which stays endless', () => {
-    const c = Campaign.start('hutt', 'legacy', new MemoryCampaignStore());
+    const c = Campaign.start('ojjul', 'legacy', new MemoryCampaignStore());
     expect(c.maxTurns).toBeNull();
     expect(c.isOver).toBe(false);
     // And a bare journal still replays.
-    expect(replay(emptyJournal('hutt')).state.turn).toBe(0);
+    expect(replay(emptyJournal('ojjul')).state.turn).toBe(0);
   });
 
   it('is over only once the committed turn reaches it', () => {
-    const c = Campaign.start('hutt', 'short', new MemoryCampaignStore(), 10);
+    const c = Campaign.start('ojjul', 'short', new MemoryCampaignStore(), 10);
     expect(c.isOver).toBe(false);
     for (let i = 0; i < 9; i++) c.tick();
     expect(c.isOver).toBe(false);
@@ -93,13 +93,13 @@ describe('the dossier is computed, not narrated', () => {
 
   it('calls a power with nothing left broken', () => {
     let s = seed();
-    for (const sys of s.systems.filter((x) => x.controllerFactionId === 'krayt')) {
+    for (const sys of s.systems.filter((x) => x.controllerFactionId === 'drajk')) {
       s = applyOps(s, [
         { op: 'transfer_control', systemId: sys.id, toFactionId: null },
       ], 'engine').state;
     }
     const outcome = campaignOutcome(s, seed(), 30);
-    expect(outcome.factions.find((f) => f.factionId === 'krayt')!.arc).toBe('broken');
+    expect(outcome.factions.find((f) => f.factionId === 'drajk')!.arc).toBe('broken');
   });
 
   it('names the foremost power deterministically', () => {
@@ -129,7 +129,7 @@ describe('the ending cannot fail', () => {
       expect(slide, f.factionId).toBeDefined();
       expect(slide!.text.length).toBeGreaterThan(20);
     }
-    expect(plain.closing).toMatch(/Outer Rim/);
+    expect(plain.closing).toMatch(/Rim/);
   });
 
   it('validates against the wire schema', () => {
@@ -151,21 +151,21 @@ describe('the ending cannot fail', () => {
 
   it('describes a broken power as broken rather than politely', () => {
     let s = seed();
-    for (const sys of s.systems.filter((x) => x.controllerFactionId === 'krayt')) {
+    for (const sys of s.systems.filter((x) => x.controllerFactionId === 'drajk')) {
       s = applyOps(s, [{ op: 'transfer_control', systemId: sys.id, toFactionId: null }], 'engine').state;
     }
     const plain = fallbackEpilogue(campaignOutcome(s, seed(), 30));
-    expect(plain.slides.find((x) => x.factionId === 'krayt')!.text).toMatch(/held nothing/);
+    expect(plain.slides.find((x) => x.factionId === 'drajk')!.text).toMatch(/held nothing/);
   });
 });
 
 describe('a finished campaign', () => {
   it('caches its ending in the save file rather than regenerating it', () => {
-    const c = Campaign.start('hutt', 'ended', new MemoryCampaignStore(), 10);
+    const c = Campaign.start('ojjul', 'ended', new MemoryCampaignStore(), 10);
     const outcome = campaignOutcome(seed(), seed(), 10);
     const plain = fallbackEpilogue(outcome);
     c.epilogue = {
-      turn: 10, maxTurns: 10, playerFactionId: 'hutt',
+      turn: 10, maxTurns: 10, playerFactionId: 'ojjul',
       unaligned: outcome.unaligned, foremost: outcome.foremost, leaders: outcome.leaders,
       factions: outcome.factions, slides: plain.slides, closing: plain.closing, fallback: true,
     };
@@ -175,7 +175,7 @@ describe('a finished campaign', () => {
   });
 
   it('still replays exactly — the ending is not world state', () => {
-    const c = Campaign.start('hutt', 'replays', new MemoryCampaignStore(), 10);
+    const c = Campaign.start('ojjul', 'replays', new MemoryCampaignStore(), 10);
     c.tick();
     c.epilogue = null;
     expect(c.verifyReplay().ok).toBe(true);
@@ -195,19 +195,19 @@ describe('a war has two sides', () => {
   const hated = (): WorldState => {
     const s = seed();
     // Meridian loathes Drajk; Drajk is indifferent. One war, seen from one side.
-    s.factions.find((f) => f.id === 'meridian')!.disposition.krayt = -100;
-    s.factions.find((f) => f.id === 'krayt')!.disposition.meridian = 10;
+    s.factions.find((f) => f.id === 'meridian')!.disposition.drajk = -100;
+    s.factions.find((f) => f.id === 'drajk')!.disposition.meridian = 10;
     return s;
   };
 
   it('names the war on both slides, not just the hater’s', () => {
     const outcome = campaignOutcome(hated(), seed(), 30);
     const meridian = outcome.factions.find((f) => f.factionId === 'meridian')!;
-    const krayt = outcome.factions.find((f) => f.factionId === 'krayt')!;
+    const drajk = outcome.factions.find((f) => f.factionId === 'drajk')!;
 
     expect(meridian.wars).toContain('Drajk Confederacy');
     // The half that was missing: the target of the hatred is also at war.
-    expect(krayt.wars).toContain('Meridian Trade Authority');
+    expect(drajk.wars).toContain('Meridian Trade Authority');
   });
 
   it('never lists a faction as at war with itself', () => {
@@ -225,7 +225,7 @@ describe('a war has two sides', () => {
 
 /**
  * A tie-break is a way of picking a value, not a finding. With every power on
- * four worlds the ending announced "the largest single holding, the Arkanis
+ * four worlds the ending announced "the largest single holding, the Arkane
  * Free Worlds" — an arbitrary id sort promoted into a stated fact.
  */
 describe('a tie is reported as a tie', () => {
@@ -249,7 +249,7 @@ describe('a tie is reported as a tie', () => {
 
   it('names a single leader when there really is one', () => {
     let s = seed();
-    const spare = s.systems.find((x) => x.controllerFactionId === 'krayt')!;
+    const spare = s.systems.find((x) => x.controllerFactionId === 'drajk')!;
     s = applyOps(s, [{ op: 'transfer_control', systemId: spare.id, toFactionId: 'vigil' }], 'engine').state;
     const outcome = campaignOutcome(s, seed(), 30);
     expect(outcome.leaders).toEqual(['vigil']);

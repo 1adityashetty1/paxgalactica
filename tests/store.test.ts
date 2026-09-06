@@ -9,8 +9,8 @@ describe('MemoryCampaignStore', () => {
     expect(await store.load('nope')).toBeNull();
     expect(await store.exists('nope')).toBe(false);
 
-    const campaign = Campaign.start('hutt', 'demo', store);
-    campaign.stage([{ op: 'adjust_credits', factionId: 'hutt', delta: -100 }], 'spend');
+    const campaign = Campaign.start('ojjul', 'demo', store);
+    campaign.stage([{ op: 'adjust_credits', factionId: 'ojjul', delta: -100 }], 'spend');
     campaign.commitTurn();
     await campaign.save();
 
@@ -26,7 +26,7 @@ describe('MemoryCampaignStore', () => {
     // A real file cannot be mutated by whoever wrote it; the memory store
     // must not behave differently, or tests would pass for the wrong reason.
     const store = new MemoryCampaignStore();
-    const campaign = Campaign.start('krayt', 'iso', store);
+    const campaign = Campaign.start('drajk', 'iso', store);
     await campaign.save();
 
     const first = (await store.load('iso'))!;
@@ -69,20 +69,20 @@ describe('Campaign with an injected store', () => {
       [
         {
           op: 'issue_order', factionId: 'meridian', type: 'construction_infrastructure',
-          originId: 'slu-1', targetId: 'slu-1', durationTurns: 3, label: 'Sluis slipway',
+          originId: 'sek-1', targetId: 'sek-1', durationTurns: 3, label: 'Sekkar slipway',
         },
       ],
       'build',
     );
     original.commitTurn();
     original.tick();
-    original.recordTranscript('hutt', [{ speaker: 'player', text: 'Terms?' }]);
+    original.recordTranscript('ojjul', [{ speaker: 'player', text: 'Terms?' }]);
     await original.save();
 
     const loaded = await Campaign.load('reload', store);
     expect(loaded).not.toBeNull();
     expect(JSON.stringify(loaded!.state)).toBe(JSON.stringify(original.state));
-    expect(loaded!.priorTranscripts('hutt')).toHaveLength(1);
+    expect(loaded!.priorTranscripts('ojjul')).toHaveLength(1);
     expect(loaded!.verifyReplay().ok).toBe(true);
   });
 
@@ -105,7 +105,7 @@ describe('Campaign with an injected store', () => {
     const store = new MemoryCampaignStore();
     const campaign = Campaign.start('vigil', 'determinism', store);
     campaign.stage(
-      [{ op: 'issue_order', factionId: 'vigil', type: 'fleet_movement', originId: 'tio-2', targetId: 'tio-4' }],
+      [{ op: 'issue_order', factionId: 'vigil', type: 'fleet_movement', originId: 'tor-2', targetId: 'tor-4' }],
       'move',
     );
     campaign.commitTurn();

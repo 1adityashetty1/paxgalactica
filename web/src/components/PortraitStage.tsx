@@ -13,7 +13,7 @@ import type { WorldState } from '../../../src/domain/state.js';
  * disables the command line and End Turn — behaviour a player otherwise
  * discovers by finding their input dead.
  *
- * Files are named by internal `factionId` — `hutt.jpeg`, not
+ * Files are named by internal `factionId` — `ojjul.jpeg`, not
  * `ojjul_nar.jpeg` — because ids are the keys used everywhere in the code and
  * they diverged from the display names long ago. See the id/name table in
  * CLAUDE.md.

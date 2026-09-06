@@ -378,7 +378,7 @@ export const EventLogEntrySchema = z.object({
    * The event log is shipped to the browser whole, and it was quietly undoing
    * the fog. Measured live: in the *same* payload where a Meridian order was
    * correctly redacted to an anonymous rumour, the log carried
-   * `"meridian begins Patrol conversion at Tion Anchorage (3 turns) -> tio-1,
+   * `"meridian begins Patrol conversion at Torrek Anchorage (3 turns) -> tor-1,
    * to deliver 4 new hulls for 240 credits"` — label, duration, target, payload
    * and price of the thing being hidden. A `counter_intelligence` sweep and a
    * rival's operative placed on the player's own world leaked the same way.
@@ -1203,7 +1203,7 @@ export const PROFITEER_WAR_PENALTY = 40;
 /**
  * How much larger a defensive power's garrison fights than it is.
  *
- * "Make occupation cost more than it is worth" is the Arkanis doctrine stated
+ * "Make occupation cost more than it is worth" is the Arkane doctrine stated
  * almost as arithmetic, and this is the arithmetic.
  */
 export const DEFENSIVE_GARRISON_BONUS = 1.5;
@@ -1257,7 +1257,7 @@ export const DOCTRINE_ETHIC_DISSENT = 20;
  * that the thing was proposed, which is the right reading and the one that keeps
  * the price out of the outcome bands — but at 25 that made attempting the lesser
  * transgression and failing three times worse than attempting an absolute one
- * and being blocked. Playing Arkanis, two compulsion breaches in a single turn
+ * and being blocked. Playing Arkane, two compulsion breaches in a single turn
  * (one of them a natural 1 that achieved precisely nothing) took the Free Worlds
  * to 58 dissent and −4 on every stat before the second turn began. At 15 that
  * same turn lands at 38 and −3: still a real, visible cost, and no longer a
@@ -1344,7 +1344,7 @@ export const WAR_DISPOSITION_THRESHOLD = -60;
  * which meant the victim of an unprovoked attack did not list their attacker
  * as an enemy: the mechanical disposition costs (raiding, suborning, tolls,
  * pact-breaking) all move the INJURED party's view of the aggressor, and
- * nothing moves the aggressor's view of them. A playtest raid left Arkanis
+ * nothing moves the aggressor's view of them. A playtest raid left Arkane
  * hating Drajk at -62 while Drajk's own view sat at -10, so
  * `warsFor('freeworlds')` omitted the faction that had just raided it.
  */

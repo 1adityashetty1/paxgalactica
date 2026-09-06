@@ -15,18 +15,18 @@ import { EXTRACTION_ALLOWED, ModelOpSchema } from '../src/domain/ops.js';
  * entire reason the declared path charges for a refusal.
  */
 
-const seed = () => createSeedState('krayt');
+const seed = () => createSeedState('drajk');
 const viaAccord = (op: Record<string, unknown>) =>
-  applyOps(seed(), [op], 'extraction', 'krayt', true);
+  applyOps(seed(), [op], 'extraction', 'drajk', true);
 const codes = (r: ReturnType<typeof viaAccord>) => r.rejections.map((x) => x.code);
 
 describe('what an accord may not produce', () => {
-  const home = () => createSeedState('krayt').systems.find((x) => x.controllerFactionId === 'krayt')!.id;
+  const home = () => createSeedState('drajk').systems.find((x) => x.controllerFactionId === 'drajk')!.id;
 
   it('refuses an order of any type, not just a fleet movement', () => {
     for (const type of ['courier', 'garrison_raising', 'fortification', 'capital_ship_construction', 'blockade', 'espionage']) {
       const out = viaAccord({
-        op: 'issue_order', factionId: 'krayt', type,
+        op: 'issue_order', factionId: 'drajk', type,
         originId: home(), targetId: home(), durationTurns: 2, label: type, visibility: [],
       });
       expect(codes(out), type).toEqual(['declared_only']);
@@ -36,7 +36,7 @@ describe('what an accord may not produce', () => {
 
   it('refuses a fleet movement, as it always did', () => {
     const out = viaAccord({
-      op: 'issue_order', factionId: 'krayt', type: 'fleet_movement',
+      op: 'issue_order', factionId: 'drajk', type: 'fleet_movement',
       originId: home(), targetId: home(), force: 3, label: 'move', visibility: [],
     });
     expect(codes(out)).toEqual(['declared_only']);
@@ -44,11 +44,11 @@ describe('what an accord may not produce', () => {
 
   it('refuses hulls, operatives, doctrine and dissent', () => {
     for (const op of [
-      { op: 'adjust_fleet', factionId: 'krayt', delta: 5, reason: 'yards' },
-      { op: 'deploy_agent', ownerFactionId: 'krayt', systemId: 'kes-6', mission: 'surveillance', effect: { kind: 'intel', revealsOrders: true } },
-      { op: 'set_doctrine', factionId: 'krayt', doctrine: 'a new posture entirely' },
-      { op: 'adjust_dissent', factionId: 'krayt', delta: 5, reason: 'x' },
-      { op: 'adjust_ships', systemId: 'kes-6', factionId: 'krayt', delta: 3, reason: 'x' },
+      { op: 'adjust_fleet', factionId: 'drajk', delta: 5, reason: 'yards' },
+      { op: 'deploy_agent', ownerFactionId: 'drajk', systemId: 'ilv-6', mission: 'surveillance', effect: { kind: 'intel', revealsOrders: true } },
+      { op: 'set_doctrine', factionId: 'drajk', doctrine: 'a new posture entirely' },
+      { op: 'adjust_dissent', factionId: 'drajk', delta: 5, reason: 'x' },
+      { op: 'adjust_ships', systemId: 'ilv-6', factionId: 'drajk', delta: 3, reason: 'x' },
     ]) {
       expect(codes(viaAccord(op)), String(op.op)).toEqual(['declared_only']);
     }
@@ -56,7 +56,7 @@ describe('what an accord may not produce', () => {
 
   it('explains itself in terms a player can act on', () => {
     const out = viaAccord({
-      op: 'issue_order', factionId: 'krayt', type: 'fortification',
+      op: 'issue_order', factionId: 'drajk', type: 'fortification',
       originId: home(), targetId: home(), durationTurns: 3, label: 'walls', visibility: [],
     });
     expect(out.rejections[0]!.message).toMatch(/costs an action/);
@@ -67,23 +67,23 @@ describe('what an accord may still produce', () => {
   it('allows the ops that bind the other party', () => {
     const out = applyOps(seed(), [
       {
-        op: 'form_treaty', treatyType: 'tribute', parties: ['krayt', 'hutt'],
-        terms: { incomePerTurn: { krayt: 20, hutt: -20 } }, summary: 'a tithe',
+        op: 'form_treaty', treatyType: 'tribute', parties: ['drajk', 'ojjul'],
+        terms: { incomePerTurn: { drajk: 20, ojjul: -20 } }, summary: 'a tithe',
       },
       {
         op: 'establish_commitment', kind: 'quiet_understanding',
-        factionIds: ['krayt', 'hutt'], text: 'nothing on paper', exclusive: false,
+        factionIds: ['drajk', 'ojjul'], text: 'nothing on paper', exclusive: false,
       },
-      { op: 'adjust_disposition', factionId: 'hutt', towardFactionId: 'krayt', delta: 5, reason: 'a good hour' },
+      { op: 'adjust_disposition', factionId: 'ojjul', towardFactionId: 'drajk', delta: 5, reason: 'a good hour' },
       { op: 'log_narrative', text: 'They shook on it.' },
-    ], 'extraction', 'krayt', true);
+    ], 'extraction', 'drajk', true);
     expect(out.rejections).toEqual([]);
     expect(out.state.treaties).toHaveLength(1);
   });
 
   it('still allows a creditor to act on what was agreed', () => {
     const out = viaAccord({ op: 'forgive_debt', debtId: 'debt-0', reason: 'agreed in the room' });
-    // `krayt` is the DEBTOR on debt-0, so this is refused on the actor guard —
+    // `drajk` is the DEBTOR on debt-0, so this is refused on the actor guard —
     // the point is that it is not refused for coming out of a negotiation.
     expect(codes(out)).not.toContain('declared_only');
   });

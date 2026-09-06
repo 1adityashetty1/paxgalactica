@@ -71,7 +71,7 @@ describe('each trigger watches something real', () => {
 
     // A fleet under way is prosecuting it.
     const moving = fresh();
-    moving.pendingOrders.push(order('vigil', 'fleet_movement', 'tio-2') as never);
+    moving.pendingOrders.push(order('vigil', 'fleet_movement', 'tor-2') as never);
     expect(triggers(moving, 'vigil')).not.toContain('idle_at_war');
   });
 
@@ -87,7 +87,7 @@ describe('each trigger watches something real', () => {
 
   it('fires when a rival sits on your world and nothing is sent', () => {
     const state = fresh();
-    setShipsAt(sys(state, 'tio-2'), 'hutt', 4);
+    setShipsAt(sys(state, 'tor-2'), 'ojjul', 4);
     expect(triggers(state, 'vigil')).toContain('unanswered_incursion');
     expect(driftingCompulsions(state, 'vigil').find((d) => d.trigger === 'unanswered_incursion')!.why)
       .toMatch(/Kalzir/);
@@ -95,13 +95,13 @@ describe('each trigger watches something real', () => {
 
   it('does not count an invited fleet as an incursion', () => {
     const state = fresh();
-    setShipsAt(sys(state, 'tio-2'), 'hutt', 4);
+    setShipsAt(sys(state, 'tor-2'), 'ojjul', 4);
     const guested = applyOps(
       state,
       [
         {
-          op: 'form_treaty', treatyType: 'basing_rights', parties: ['vigil', 'hutt'],
-          terms: {}, summary: 'The Combine may berth in the Tion.',
+          op: 'form_treaty', treatyType: 'basing_rights', parties: ['vigil', 'ojjul'],
+          terms: {}, summary: 'The Combine may berth in the Torrek.',
         },
       ],
       'extraction',
@@ -112,11 +112,11 @@ describe('each trigger watches something real', () => {
 
   it('fires when the captains have no plunder, and stops when they do', () => {
     const state = fresh();
-    expect(triggers(state, 'krayt')).toContain('no_plunder');
+    expect(triggers(state, 'drajk')).toContain('no_plunder');
 
     const raiding = fresh();
-    raiding.pendingOrders.push(order('krayt', 'commerce_raiding', 'kes-2') as never);
-    expect(triggers(raiding, 'krayt')).not.toContain('no_plunder');
+    raiding.pendingOrders.push(order('drajk', 'commerce_raiding', 'ilv-2') as never);
+    expect(triggers(raiding, 'drajk')).not.toContain('no_plunder');
   });
 
   it('leaves a faction whose compulsions are all prohibitions entirely alone', () => {
@@ -137,23 +137,23 @@ describe('each trigger watches something real', () => {
     // faction is built on is a live question from the first turn rather than a
     // rule waiting for something to happen.
     const state = fresh();
-    expect(triggers(state, 'hutt')).toContain('debt_unpursued');
+    expect(triggers(state, 'ojjul')).toContain('debt_unpursued');
   });
 
   it('stops the moment the creditor actually applies pressure', () => {
     const sent = fresh();
     // Drajk holds tul-1; a fleet under way at it is pursuit.
-    const target = sent.systems.find((s) => s.controllerFactionId === 'krayt')!;
-    sent.pendingOrders.push(order('hutt', 'fleet_movement', target.id) as never);
-    expect(triggers(sent, 'hutt')).not.toContain('debt_unpursued');
+    const target = sent.systems.find((s) => s.controllerFactionId === 'drajk')!;
+    sent.pendingOrders.push(order('ojjul', 'fleet_movement', target.id) as never);
+    expect(triggers(sent, 'ojjul')).not.toContain('debt_unpursued');
   });
 
   it('counts an operative in their space as pursuit too', () => {
     const spied = fresh();
-    const target = spied.systems.find((s) => s.controllerFactionId === 'krayt')!;
+    const target = spied.systems.find((s) => s.controllerFactionId === 'drajk')!;
     spied.agents.push({
       id: 'agt-x',
-      ownerFactionId: 'hutt',
+      ownerFactionId: 'ojjul',
       systemId: target.id,
       mission: 'surveillance',
       effect: { kind: 'intel', perTurn: 1 },
@@ -162,30 +162,30 @@ describe('each trigger watches something real', () => {
       cover: '',
       placedTurn: 0,
     } as never);
-    expect(triggers(spied, 'hutt')).not.toContain('debt_unpursued');
+    expect(triggers(spied, 'ojjul')).not.toContain('debt_unpursued');
   });
 
   it('does not fire for a debt that is being paid', () => {
     // Meridian is current on its Combine paper, so it is not a grievance.
     const state = fresh();
     state.debts = state.debts.filter((d) => d.debtorFactionId === 'meridian');
-    expect(triggers(state, 'hutt')).not.toContain('debt_unpursued');
+    expect(triggers(state, 'ojjul')).not.toContain('debt_unpursued');
   });
 });
 
 describe('drift is charged every turn it continues', () => {
   it('adds per drifting compulsion, and nets against the decay', () => {
     const state = fresh();
-    const before = fac(state, 'krayt').dissent;
+    const before = fac(state, 'drajk').dissent;
     const after = tickTurn(state).state;
     // One drifting compulsion, minus the turn's decay (which floors at 0 here).
-    expect(fac(after, 'krayt').dissent).toBe(before + COMPULSION_DRIFT_DISSENT);
+    expect(fac(after, 'drajk').dissent).toBe(before + COMPULSION_DRIFT_DISSENT);
     expect(COMPULSION_DRIFT_DISSENT).toBeGreaterThan(DISSENT_DECAY);
   });
 
   it('charges two ignored compulsions twice over', () => {
     const state = fresh();
-    setShipsAt(sys(state, 'tio-2'), 'hutt', 4);
+    setShipsAt(sys(state, 'tor-2'), 'ojjul', 4);
     expect(driftingCompulsions(state, 'vigil')).toHaveLength(2);
     const after = tickTurn(state).state;
     expect(fac(after, 'vigil').dissent).toBe(2 * COMPULSION_DRIFT_DISSENT);
@@ -195,13 +195,13 @@ describe('drift is charged every turn it continues', () => {
     let state = fresh();
     state = tickTurn(state).state;
     state = tickTurn(state).state;
-    const drifted = fac(state, 'krayt').dissent;
+    const drifted = fac(state, 'drajk').dissent;
     expect(drifted).toBeGreaterThan(0);
 
     // Put a raid under way: the compulsion is satisfied and dissent recedes.
-    state.pendingOrders.push(order('krayt', 'commerce_raiding', 'kes-2') as never);
+    state.pendingOrders.push(order('drajk', 'commerce_raiding', 'ilv-2') as never);
     const complied = tickTurn(state).state;
-    expect(fac(complied, 'krayt').dissent).toBe(drifted - DISSENT_DECAY);
+    expect(fac(complied, 'drajk').dissent).toBe(drifted - DISSENT_DECAY);
   });
 
   it('holds NPCs to their character, which nothing did before', () => {
@@ -211,7 +211,7 @@ describe('drift is charged every turn it continues', () => {
     const state = fresh('meridian');
     const after = tickTurn(state).state;
     expect(fac(after, 'vigil').dissent).toBeGreaterThan(0);
-    expect(fac(after, 'krayt').dissent).toBeGreaterThan(0);
+    expect(fac(after, 'drajk').dissent).toBeGreaterThan(0);
     expect(fac(after, 'meridian').dissent).toBe(0);
   });
 
@@ -224,8 +224,8 @@ describe('drift is charged every turn it continues', () => {
 
   it('never pushes past the ceiling', () => {
     const state = fresh();
-    fac(state, 'krayt').dissent = 100;
-    expect(fac(tickTurn(state).state, 'krayt').dissent).toBeLessThanOrEqual(100);
+    fac(state, 'drajk').dissent = 100;
+    expect(fac(tickTurn(state).state, 'drajk').dissent).toBeLessThanOrEqual(100);
   });
 
   it('is a pure function of state, so it replays exactly', () => {
@@ -258,7 +258,7 @@ describe('the compulsion shape', () => {
     // TypeScript happily interpolates an object into a template literal, so
     // this is the only thing standing between the model and a character sheet
     // reading "[object Object]" for every compulsion it has.
-    const sheet = serializeCharacter(fac(fresh(), 'krayt'));
+    const sheet = serializeCharacter(fac(fresh(), 'drajk'));
     expect(sheet).not.toMatch(/\[object Object\]/);
     expect(sheet).toMatch(/the captains require plunder/);
   });
@@ -297,7 +297,7 @@ describe('a faction states each of its principles once', () => {
     // than the sentence: the line was later reworded to stop forbidding a
     // garrison, which the engine grows passively on every world Drajk holds, and
     // this assertion is about the merge surviving, not about the phrasing.
-    expect(red('krayt')).toMatch(/besieged/);
+    expect(red('drajk')).toMatch(/besieged/);
     // ...Meridian's contributed embargoes and closed borders...
     expect(red('meridian')).toMatch(/embargo/);
     // ...and the Free Worlds' contributed abandonment to occupation.
@@ -312,35 +312,35 @@ describe('a compulsion cannot be retired, so drift never stops on its own', () =
     // that retirement while emitting an empty array, so the sheet and the story
     // disagreed. A principle is permanent now — the only way to stop the drift
     // is to satisfy the compulsion.
-    const state = fresh('krayt');
-    expect(triggers(state, 'krayt')).toContain('no_plunder');
+    const state = fresh('drajk');
+    expect(triggers(state, 'drajk')).toContain('no_plunder');
 
     // A doctrine change does not touch it, however sweeping the words.
     const out = applyOps(
       state,
       [
         {
-          op: 'set_doctrine', factionId: 'krayt',
+          op: 'set_doctrine', factionId: 'drajk',
           doctrine: 'We hold ground now, and we sign our name to things.',
           warEthic: 'defensive',
         } as Op,
       ],
       'model',
-      'krayt',
+      'drajk',
     );
     expect(out.rejections).toHaveLength(0);
-    expect(triggers(out.state, 'krayt')).toContain('no_plunder');
+    expect(triggers(out.state, 'drajk')).toContain('no_plunder');
 
     // And it is still charging on the next tick.
-    const before = fac(out.state, 'krayt').dissent;
+    const before = fac(out.state, 'drajk').dissent;
     const after = tickTurn(out.state).state;
-    expect(fac(after, 'krayt').dissent).toBeGreaterThan(before - COMPULSION_DRIFT_DISSENT);
+    expect(fac(after, 'drajk').dissent).toBeGreaterThan(before - COMPULSION_DRIFT_DISSENT);
   });
 
   it('stops the moment the compulsion is satisfied instead', () => {
-    const state = fresh('krayt');
-    state.pendingOrders.push(order('krayt', 'commerce_raiding', 'kes-2') as never);
-    expect(triggers(state, 'krayt')).not.toContain('no_plunder');
+    const state = fresh('drajk');
+    state.pendingOrders.push(order('drajk', 'commerce_raiding', 'ilv-2') as never);
+    expect(triggers(state, 'drajk')).not.toContain('no_plunder');
   });
 });
 
@@ -359,7 +359,7 @@ describe('a faction states each principle at ONE severity', () => {
    * compulsion twice.
    */
   it('leaves forgiving a debt to the red line alone', () => {
-    const combine = fresh().factions.find((f) => f.id === 'hutt')!;
+    const combine = fresh().factions.find((f) => f.id === 'ojjul')!;
     expect(combine.redLines.join(' ')).toMatch(/forgive an unpaid debt/);
     for (const c of combine.compulsions) {
       expect(c.text, 'a compulsion restates the forgiveness red line').not.toMatch(/forgiv/i);
@@ -367,7 +367,7 @@ describe('a faction states each principle at ONE severity', () => {
   });
 
   it('keeps what the compulsion is actually for: pursuit', () => {
-    const combine = fresh().factions.find((f) => f.id === 'hutt')!;
+    const combine = fresh().factions.find((f) => f.id === 'ojjul')!;
     expect(combine.compulsions.map((c) => c.text).join(' ')).toMatch(/must be pursued/);
   });
 });
@@ -381,26 +381,26 @@ describe('a faction states each principle at ONE severity', () => {
  */
 describe('a breach ruling is checked against the board where the board can answer', () => {
   const drajkPlunder = () =>
-    createSeedState('krayt').factions.find((f) => f.id === 'krayt')!
+    createSeedState('drajk').factions.find((f) => f.id === 'drajk')!
       .compulsions.find((c) => c.trigger === 'no_plunder')!.text;
 
   it('drops a breach the faction is demonstrably not committing', () => {
-    let s = createSeedState('krayt');
-    const base = s.systems.find((x) => (hullsAt(x, 'krayt')) > 0)!;
+    let s = createSeedState('drajk');
+    const base = s.systems.find((x) => (hullsAt(x, 'drajk')) > 0)!;
     s = applyOps(s, [{
-      op: 'issue_order', factionId: 'krayt', type: 'commerce_raiding',
+      op: 'issue_order', factionId: 'drajk', type: 'commerce_raiding',
       originId: base.id, targetId: base.id, durationTurns: 3, label: 'raid', visibility: [],
-    }], 'model', 'krayt', true).state;
+    }], 'model', 'drajk', true).state;
 
     // The predicate says it is complying, so the ruling is not charged.
-    expect(driftingCompulsions(s, 'krayt').map((d) => d.trigger)).not.toContain('no_plunder');
-    expect(breachContradictsState(s, 'krayt', drajkPlunder())).toBe(true);
+    expect(driftingCompulsions(s, 'drajk').map((d) => d.trigger)).not.toContain('no_plunder');
+    expect(breachContradictsState(s, 'drajk', drajkPlunder())).toBe(true);
   });
 
   it('keeps a breach the board agrees with', () => {
-    const s = createSeedState('krayt');
-    expect(driftingCompulsions(s, 'krayt').map((d) => d.trigger)).toContain('no_plunder');
-    expect(breachContradictsState(s, 'krayt', drajkPlunder())).toBe(false);
+    const s = createSeedState('drajk');
+    expect(driftingCompulsions(s, 'drajk').map((d) => d.trigger)).toContain('no_plunder');
+    expect(breachContradictsState(s, 'drajk', drajkPlunder())).toBe(false);
   });
 
   /**
@@ -416,7 +416,7 @@ describe('a breach ruling is checked against the board where the board can answe
   });
 
   it('says nothing about a line that is not on the sheet', () => {
-    const s = createSeedState('krayt');
-    expect(breachContradictsState(s, 'krayt', 'a principle nobody holds')).toBe(false);
+    const s = createSeedState('drajk');
+    expect(breachContradictsState(s, 'drajk', 'a principle nobody holds')).toBe(false);
   });
 });
