@@ -1,5 +1,117 @@
 # TODO — known bugs and open design questions
 
+---
+
+# Performance — `p.X`
+
+**Measured before anything was proposed**, because "turns are slow, probably the
+log" is two claims and only one of them survives measurement.
+
+## What was measured
+
+A campaign driven to 90 turns through the real `Campaign` with a realistic op
+load (the 12-turn `classes_playtest` wrote **443 log entries, 36.9 a turn**, so
+the probe writes the same):
+
+| | turn 1 | turn 30 | turn 90 | shape |
+|---|---|---|---|---|
+| `stage()` | 0.3ms | 0.4ms | 0.6ms | flat |
+| `commitTurn()` + `tick()` | 26ms | 5.5ms | 5.9ms | **flat** |
+| `campaign.save()` | 1.6ms | 0.4ms | 1.1ms | flat |
+| build the API payload | 0.27ms | 0.34ms | 0.78ms | flat enough |
+| **payload size** | **43KB** | **106KB** | **238KB** | **linear in the log** |
+| `applyOps` (one op) | 0.32ms | 0.43ms | 0.53ms | creeps |
+| `verifyReplay()` | 11ms | 167ms | 508ms | **linear per call** |
+
+On the real `classes_playtest` save at turn 12: **443 log entries, 89KB of log
+inside a 146KB state — the log is 61% of the world.** At the picker's default
+30-turn limit that is ~1,100 entries and ~220KB.
+
+## So the diagnosis is transport and render, not the reducer
+
+**The turn loop is flat.** Ending a turn costs the same 5.5ms at turn 90 as at
+turn 3, and saving costs a millisecond. Nothing in `tickTurn` walks the log. The
+friends' report is real but the cause is not where the guess put it: what grows
+is **what is shipped and what is drawn**, not what is computed.
+
+`verifyReplay` is the one genuinely superlinear thing in the codebase — every
+call replays from turn 0, so calling it per turn is quadratic over a campaign —
+but **it is not in the server path**. It is asserted in the suite and it gates
+`unpackCampaign`. It makes the test suite and an archive import slow, not a turn.
+
+---
+
+## p.1 — the whole event log is shipped on every state push
+
+`pushState()` has **eight call sites** — every action, every end-turn, every
+message in a channel — and each sends a complete `CampaignView` including the
+entire event log through `worldAsSeenBy`. At turn 30 that is ~220KB of log
+re-serialized, re-sent and re-parsed several times a turn, none of which the
+client did not already have.
+
+The log is **append-only**, which is what makes this fixable without losing
+anything: the client needs the entries it has not seen, not all of them. A
+`sinceIndex` on the view and an append on the client is the whole change.
+
+This is the largest measured cost and the cheapest to fix, and it is lossless.
+
+## p.2 — the client draws every log entry, unwindowed
+
+`SidePanel.tsx:556` renders `state.eventLog` in full, and rebuilds the list on
+every render — `[...shown].reverse()` copies the array, and every entry becomes
+an `<li>` with no key beyond its index and no virtualisation. At turn 30 that is
+~1,100 nodes reconciled on every state push; at 60 turns, ~2,200.
+
+**Structurally the strongest candidate for what the friends actually felt**, and
+the one thing here **not** directly measured — confirming it needs a profile in
+the browser against a long campaign, which is worth doing before building. Filed
+honestly rather than assumed, the same way a playtest claim is.
+
+## p.3 — fold old log entries into a compact digest
+
+The proposal that prompted this section: every ~5 turns, encode what is behind
+you into something smaller.
+
+It is a real reduction and it is **third**, because p.1 and p.2 remove the same
+cost without losing information. It is worth doing on top of them: it shrinks
+the save file, the archive and the replayed state, and it bounds a campaign that
+runs to 100 turns rather than 30.
+
+Three constraints it has to respect, all of which follow from where the log
+lives:
+
+- **The log is in `WorldState`, which `replay()` rebuilds from the journal.** A
+  digest must therefore be a *pure, deterministic function applied inside
+  `tickTurn`* — computed the same way on replay as it was live — or
+  `verifyReplay` fails and every saved campaign stops loading. It cannot be done
+  at save time and undone at load time.
+- **It is lossy, and some of what it would drop is load-bearing.** CLAUDE.md
+  keeps `rejection` and `clamp` entries deliberately (*"debugging gold, so they
+  are filterable rather than hidden"*), every check is logged so *"a campaign's
+  luck is auditable"*, and `intel` entries are private to one faction. A digest
+  that folds those away removes the audit trail the design asks for. Fold
+  *narrative* and *system* chatter; keep the forensic kinds whole.
+- **It changes what the epilogue and the briefing can read.** Both derive from
+  state, so a digest has to keep whatever they count.
+
+## p.4 — `applyOps` deep-clones the log on every batch
+
+`clone()` is `JSON.parse(JSON.stringify(state))` and runs once per `applyOps`.
+The log is 61% of what it copies, and the log is append-only — it is the one
+part of the world a batch can only add to. Measured at 0.32ms → 0.53ms across 90
+turns, so this is **small**, and it is listed because it is pure waste rather
+than because it hurts yet: a structural clone that shares the log prefix costs
+nothing to get right and stops p.3 being the only lever on state size.
+
+## p.5 — `verifyReplay` is quadratic over a campaign
+
+Not in the server path, so it costs no player a turn. It does cost the suite and
+an archive import: 508ms at turn 90, and every call starts at turn 0. Worth a
+cached replay checkpoint only if the suite gets slow enough to notice, which it
+has not — 996 tests in ~7s.
+
+---
+
 ## Where things stand (2026-09-05) — the 12-turn Meridian playtest of ship classes
 
 A full campaign played to its limit as the **Meridian Trade Authority** on the

@@ -32,6 +32,7 @@ strictly more setup to solve a problem Node already solves.
 | `pnpm replay <name>` | rebuild a saved campaign from its journal, no model calls |
 | `pnpm resume <file>` | verify an exported `.tar.gz`, install it, and serve it |
 | `pnpm balance [turns]` | 5 doctrine bots vs the real reducer, no model calls |
+| `pnpm perf [turns]` | where a long campaign's time goes — turn loop, save, payload size |
 | `pnpm fleetlab [atk] [def]` | which fleet composition wins, at equal credits |
 | `pnpm doctor` | full setup check — runtime, deps, binary, auth, port |
 | `pnpm typecheck` / `typecheck:web` / `typecheck:tests` | the three tsconfigs — **Vite does not typecheck** |
