@@ -480,6 +480,16 @@ export function orbitalWeightAt(system: StarSystem, factionId: string): number {
 }
 
 /** Everyone present, as `[factionId, hulls]`, skipping empty stacks. */
+/**
+ * Who is present, and with how many HULLS.
+ *
+ * This is a predicate helper and a display helper: "is anyone there", and "show
+ * the player what is parked here". It is **not** a weight — weighing a contest
+ * by hulls makes an escort worth a battleship and the cheapest class the
+ * efficient way to skim, which is the exploit per-ton pricing exists to close.
+ * Anything dividing a spoil uses `tonsPresentAt`. `distributeUnclaimed` reached
+ * for this one and paid an escort a battleship's share of a lane for it.
+ */
 export function presentAt(system: StarSystem): [string, number][] {
   return Object.entries(system.ships ?? {})
     .map(([id, stack]) => [id, hullsIn(stack)] as [string, number])
@@ -781,7 +791,7 @@ export interface SystemIncome {
  * way to skim a rival's income, which is exactly the exploit per-ton pricing
  * exists to close.
  */
-const shipsPresent = (system: StarSystem): [string, number][] =>
+export const tonsPresentAt = (system: StarSystem): [string, number][] =>
   Object.entries(system.ships ?? {})
     .map(([id, stack]) => [id, tonsIn(stack)] as [string, number])
     .filter(([, t]) => t > 0);
@@ -855,7 +865,7 @@ export function systemIncome(state: WorldState, system: StarSystem): SystemIncom
     }
   }
 
-  const present = shipsPresent(system);
+  const present = tonsPresentAt(system);
   const controller = system.controllerFactionId;
   // Invited fleets neither contest the world nor take a share of it. They are
   // guests: the world is still wholly its holder's, and the guest earns
@@ -1179,6 +1189,26 @@ export const MAX_TREATY_INCOME_PER_TURN = MAX_DEBT_PER_TURN;
  * problem the others have to answer, and one held to four worlds gains ~12%.
  */
 export const EXPANSIONIST_TERRITORY_BONUS = 0.03;
+
+/**
+ * The share of a landing's troop losses an expansionist still pays.
+ *
+ * "Conquest sticks": it comes through the landing with more lift intact, so the
+ * occupying force it leaves behind is larger and the world does not need
+ * re-garrisoning the moment the fleet moves on.
+ *
+ * It is applied to the TROOPS and converted to hulls once, never applied to the
+ * hull count — see the landing in `resolveBattle`. Halving a lifter count that
+ * is 1 against most garrisons on this map rounds to either 0 (a free conquest)
+ * or 1 (no doctrine at all), and neither is a half.
+ *
+ * The residual is worth stating rather than hiding: against a garrison of
+ * `LIFTER_CARRY` or fewer the landing costs one transport either way, because
+ * half a transport cannot be destroyed. The doctrine does not bite on a world
+ * held by four militia, which is not where "conquest sticks" was ever doing any
+ * work.
+ */
+export const EXPANSIONIST_LIFT_SHARE = 0.5;
 
 /**
  * What a war is worth per turn to a profiteer that is not in it.

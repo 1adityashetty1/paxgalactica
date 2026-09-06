@@ -125,6 +125,40 @@ describe('the lane network', () => {
     expect(after.uncollected).toBeLessThan(before.uncollected);
   });
 
+  it('splits an unaligned junction by tonnage, not by hull count', () => {
+    // `distributeUnclaimed` weighed `presentAt`, which counts HULLS, while
+    // `systemIncome` has always split a contested world by TONS. Two
+    // conventions for one rule, and the hull one reopens exactly the exploit
+    // per-ton pricing exists to close: an escort is half a battleship's price
+    // and a third of its fighting weight, so counting hulls paid it the same
+    // share -- 2x income per credit -- and a lifter 1.33x for contributing
+    // nothing to a fight at all.
+    //
+    // Isolated as a DELTA on one faction rather than a comparison between two.
+    // `shares[id]` is a faction's route income across the whole galaxy, so
+    // comparing two factions' totals says nothing about one junction: the
+    // Vigil holds hubs and out-earns a raider whatever is parked at sek-6.
+    // Holding Meridian's opponent fixed and changing only what MERIDIAN brings
+    // -- four escorts against four battleships, the same hull count either way
+    // -- moves nothing at all under hull counting.
+    const junction = (hull: 'escort' | 'battleship') =>
+      routeEarnings(
+        applyOps(fresh(), [
+          { op: 'adjust_ships', systemId: 'sek-6', factionId: 'meridian', delta: 4, hull },
+          { op: 'adjust_ships', systemId: 'sek-6', factionId: 'vigil', delta: 4, hull: 'battleship' },
+        ]).state,
+      ).shares['meridian'] ?? 0;
+
+    const withEscorts = junction('escort');
+    const withLine = junction('battleship');
+    expect(withEscorts).toBeGreaterThan(0);
+    // Four battleships outweigh four escorts two to one, so they take two
+    // thirds of the junction where the escorts take one third. Under hull
+    // counting both arrangements are four hulls against four and these are
+    // the same number.
+    expect(withLine).toBeGreaterThan(withEscorts);
+  });
+
   it('reports full openness on a galaxy with nothing interdicted', () => {
     expect(routeEarnings(fresh()).openness).toBe(1);
   });

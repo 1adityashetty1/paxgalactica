@@ -526,9 +526,31 @@ it. Three consequences:
 share of the defender's garrison to keep more of. It now comes through the
 landing with **half its lift losses**, so the occupation force it leaves behind
 is larger — the same doctrine ("conquest sticks"), said through the mechanism
-that now decides a garrison. Rounded *down* deliberately: a lifter carries six
-and the garrisons on this map are 2–15, so `bare` is usually 1 or 2 and rounding
-up would leave the doctrine inert exactly where most conquests happen.
+that now decides a garrison.
+
+**The half is taken on the troops and converted once, not taken on the converted
+hull count**, and that ordering is the whole of it. Halving afterwards shipped a
+**100% discount wearing a 50% label**: `bare` is `ceil(dugIn / LIFTER_CARRY)`,
+which is 1 against any garrison of six or fewer, and `floor(1 / 2)` is zero — so
+an expansionist took those worlds for no lift losses at all, and a playtester
+took four of them that way. The original comment argued for rounding down on the
+grounds that `ceil(1 / 2)` is 1, which is `bare`, leaving the doctrine inert
+exactly where most conquests happen. That was right about the rounding and wrong
+about the conclusion: **neither rounding of a one-hull loss can express a half**,
+so the fix is to halve upstream, where the quantity is troops and the
+granularity is six times finer.
+
+The residual is worth stating rather than hiding. Against a garrison of
+`LIFTER_CARRY` or fewer the landing still costs one transport either way,
+because half a transport cannot be destroyed — the doctrine does not bite on a
+world held by four militia, which is not where "conquest sticks" was ever doing
+any work. Where the granularity allows a half it takes one: a garrison of nine
+costs two transports and an expansionist one.
+
+Charging the *cost* rather than the garrison is also deliberate, and it is the
+same argument the paragraph below makes. A discount on conquest is exactly what
+made conquest six times too cheap once already; this one is bounded at half of a
+quantity that is itself derived from the garrison, so it cannot run away.
 
 **A garrison that is broken still kills its own strength in troops.** That was
 half of it at first, mirroring the old formula — which charged half the garrison
@@ -745,6 +767,24 @@ A **route** is the shortest hyperlane path between two hubs (`strategicValue >=
 stored, so there is no second source of truth. Value splits 40% to the two hub
 holders and 60% across the systems the lane crosses — an unaligned hop pays
 whoever has ships parked on it, exactly as an unaligned world does.
+
+**Weighed in tons, "exactly as an unaligned world does" being the point.**
+`distributeUnclaimed` split that hop by `presentAt`, which counts **hulls**,
+while `systemIncome` has always split a contested world by **tons** — two
+conventions for one rule, and the comment on the tonnage one already explained
+why the other is wrong: *"hull counts would also make the cheapest class the
+efficient way to skim a rival's income, which is exactly the exploit per-ton
+pricing exists to close."* It was closed on the world and open on the lane. An
+escort is half a battleship's price and a third of its fighting weight, so
+counting hulls paid it a battleship's share — **2× income per credit** — and paid
+a lifter 1.33× for contributing nothing to a fight at all.
+
+The tonnage helper is now exported as `tonsPresentAt` and both readers use it,
+so there is one definition rather than two that agree by inspection.
+`presentAt` stays, because a hull count is the right answer to *"is anyone
+there"* — which is how the reducer's siege, squatter and defender checks use it,
+and what the fleet panel displays. It is only wrong as a **weight**, and its doc
+comment now says so.
 
 `tradeEthic` used to be one multiplier, and `extortionist` sat at ×1.0, so the
 Nars' defining trait did nothing whatsoever. The multiplier is now only a
@@ -1791,7 +1831,7 @@ never had an army to sell. `profiteer` replaces it.
 
 | ethic | faction | mechanic |
 |---|---|---|
-| `expansionist` | Meridian | `EXPANSIONIST_TERRITORY_BONUS` per world held, applied to **all** its territory income — expansion compounds. Conquest also consolidates: a captured world keeps half its garrison rather than a third |
+| `expansionist` | Meridian | `EXPANSIONIST_TERRITORY_BONUS` per world held, applied to **all** its territory income — expansion compounds. Conquest also consolidates: it pays `EXPANSIONIST_LIFT_SHARE` of a landing's troop losses, so more lift survives and the occupying garrison is larger |
 | `defensive` | Arkane | its garrison fights at `DEFENSIVE_GARRISON_BONUS` of its size, and costs the attacker accordingly. Only the real garrison can be destroyed — the bonus buys resistance, not extra troops |
 | `opportunist` | Drajk | `OPPORTUNIST_MIGHT_BONUS` against a target **weakened** (garrison below half its ceiling) or **distracted** (its holder at war with someone else). Nothing in a fair fight |
 | `crusading` | Iron Vigil | **does not break off**, attacking or defending. Wins engagements it should have fled and loses fleets it should have saved |

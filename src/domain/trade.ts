@@ -1,5 +1,5 @@
 import { shortestPath } from './graph.js';
-import { presentAt, type StarSystem, type WorldState } from './state.js';
+import { tonsPresentAt, type StarSystem, type WorldState } from './state.js';
 
 /**
  * Trade as a network on the hyperlane graph.
@@ -421,7 +421,12 @@ function distributeUnclaimed(
   spill: (n: number) => void,
 ): void {
   const system = state.systems.find((s) => s.id === systemId);
-  const present = presentAt(system!);
+  // Weighed in TONS, the same way `systemIncome` splits a contested world.
+  // This counted HULLS, so an escort claimed a battleship's share of a lane at
+  // half the price and a third of the fighting weight — 2x income per credit,
+  // and a lifter 1.33x while contributing nothing to a fight. Two conventions
+  // for one rule, and the tonnage half is the one the rest of the game uses.
+  const present = tonsPresentAt(system!);
   if (present.length === 0) {
     spill(amount);
     return;

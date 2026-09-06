@@ -4,6 +4,8 @@ import { createSeedState } from '../src/seed/scenario.js';
 import {
   addShipsAt,
   setShipsAt,
+  stackAt,
+  EXPANSIONIST_LIFT_SHARE,
   DEFENSIVE_GARRISON_BONUS,
   EXPANSIONIST_TERRITORY_BONUS,
   ledgerFor,
@@ -130,6 +132,60 @@ describe('expansionist: every world makes the rest pay better', () => {
     expect(taken.controllerFactionId).toBe('meridian');
     expect(alsoTaken.controllerFactionId).toBe('meridian');
     expect(taken.garrison).toBeGreaterThan(alsoTaken.garrison);
+  });
+
+  it('still pays for its landing against a garrison one transport can break', () => {
+    // The discount used to be applied AFTER converting troops to hulls:
+    // `floor(bare / 2)`, where `bare = ceil(dugIn / LIFTER_CARRY)` is 1 against
+    // any garrison of six or fewer. `floor(1 / 2)` is zero, so an expansionist
+    // took those worlds for no lift losses at all -- a 100% discount wearing a
+    // 50% label, and a playtester took four worlds that way.
+    //
+    // Rounding the other way is not the fix: `ceil(1 / 2)` is 1, which is
+    // `bare`, so the doctrine would be inert in the same place instead of free.
+    // A one-hull loss cannot express a half either way, so the halving happens
+    // upstream, on troops, where the granularity is six times finer.
+    const land = (ethic: WarEthic, garrison: number) => {
+      const state = fresh();
+      fac(state, 'meridian').warEthic = ethic;
+      sys(state, 'sek-3').garrison = garrison;
+      sys(state, 'sek-3').garrisonMax = 40;
+      setShipsAt(sys(state, 'sek-3'), 'meridian', 0);
+      addShipsAt(sys(state, 'sek-1'), 'meridian', 6, 'lifter');
+      const out = applyOps(
+        state,
+        [{
+          op: 'issue_order', factionId: 'meridian', type: 'fleet_movement',
+          originId: 'sek-1', targetId: 'sek-3',
+          force: { battleship: 40, lifter: 6 },
+        }],
+        'model',
+        'meridian',
+      );
+      let s = out.state;
+      for (let i = 0; i < 6 && s.pendingOrders.length > 0; i++) s = tickTurn(s).state;
+      expect(sys(s, 'sek-3').controllerFactionId).toBe('meridian');
+      return 6 - (stackAt(sys(s, 'sek-3'), 'meridian').lifter ?? 0);
+    };
+
+    // A garrison of four needs one transport's worth of troops to break, and
+    // an expansionist pays it. This is the regression: it used to be zero.
+    expect(land('expansionist', 4)).toBeGreaterThan(0);
+    expect(land('expansionist', 4)).toBe(land('defensive', 4));
+
+    // Where the granularity allows a half, the doctrine takes one: a garrison
+    // of nine costs two transports normally and one to an expansionist.
+    expect(land('expansionist', 9)).toBeLessThan(land('defensive', 9));
+
+    // And it is a discount, never a waiver: swept across the garrison range on
+    // this map, an expansionist always pays something and never pays more.
+    for (const g of [2, 4, 6, 8, 10, 12, 15]) {
+      const cheap = land('expansionist', g);
+      const full = land('defensive', g);
+      expect(cheap, `garrison ${g}`).toBeGreaterThan(0);
+      expect(cheap, `garrison ${g}`).toBeLessThanOrEqual(full);
+      expect(cheap, `garrison ${g}`).toBeGreaterThanOrEqual(Math.floor(full * EXPANSIONIST_LIFT_SHARE));
+    }
   });
 });
 

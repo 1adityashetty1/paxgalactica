@@ -101,6 +101,7 @@ import {
   canSubornAt,
   COMPULSION_DRIFT_DISSENT,
   DEFENSIVE_GARRISON_BONUS,
+  EXPANSIONIST_LIFT_SHARE,
   OPPORTUNIST_MIGHT_BONUS,
   warsFor,
   DOCTRINE_CHANGE_DISSENT_CEILING,
@@ -3949,15 +3950,18 @@ function resolveBattle(
     // times CHEAPER than the model it replaced, which is the opposite of "a
     // dedicated cost", and the balance harness showed it immediately: the
     // Vigil rolled Meridian down to a single world by turn 30.
+    // The discount is applied to the TROOPS and converted once, not applied to
+    // the converted lifter count. Halving after the conversion was a 100%
+    // discount rather than the 50% it claimed: `bare` is 1 against any garrison
+    // of six or fewer, and `floor(1 / 2)` is zero, so a playtester took four
+    // worlds for no lift losses at all. Rounding the other way is not the fix
+    // either — `ceil(1 / 2)` is 1, which is `bare`, so the doctrine would be
+    // inert in the same place instead of free. Neither rounding of a one-hull
+    // loss can express a half, so the halving has to happen upstream of it,
+    // where the quantity is troops and the granularity is six times finer.
+    const troopLosses = dugIn * (attackEthic === 'expansionist' ? EXPANSIONIST_LIFT_SHARE : 1);
     const bare = Math.ceil(dugIn / LIFTER_CARRY);
-    // Rounded in the expansionist's favour rather than against it: a lifter
-    // carries six, so `bare` is usually 1 or 2 against the garrisons on this
-    // map, and halving upwards would leave the doctrine inert exactly where
-    // most conquests happen.
-    const lifterLosses = Math.min(
-      liftersIn(),
-      attackEthic === 'expansionist' ? Math.floor(bare / 2) : bare,
-    );
+    const lifterLosses = Math.min(liftersIn(), Math.ceil(troopLosses / LIFTER_CARRY));
     if (attackEthic === 'expansionist' && lifterLosses < bare) {
       doctrinesFired.push(
         `expansionist: ${nameOf(largestAttacker!)} consolidates, losing ${lifterLosses} lifters in the landing rather than ${bare}`,

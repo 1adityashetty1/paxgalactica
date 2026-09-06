@@ -689,7 +689,7 @@ that compares a ledger to itself.
 
 ---
 
-## 69. `expansionist` gives a 100% lift discount, not the 50% it claims
+## 69. FIXED — `expansionist` gave a 100% lift discount, not the 50% it claimed
 
 **VERIFIED.** Shipped this week, in item 55's step 1. `reducer.ts:3788`:
 
@@ -705,13 +705,28 @@ worlds for **no lifter losses at all**.
 The rounding was deliberate and the reasoning is in the comment: rounding *up*
 leaves the doctrine inert exactly where most conquests happen, since
 `ceil(1/2) = 1 = bare`. Both roundings are wrong at `bare = 1`; the shape of the
-mechanism is what needs revisiting, not the rounding mode. One option is to
-charge in troops and convert once — `lifterLosses = ceil(troopLosses × discount
-/ LIFTER_CARRY)` — so the discount applies before the flooring rather than after.
+mechanism is what needs revisiting, not the rounding mode.
+
+**FIXED** by charging in troops and converting once, which was the option named
+here: `EXPANSIONIST_LIFT_SHARE` (0.5) multiplies `dugIn` and the result is
+converted to hulls a single time, so the halving happens where the granularity
+is six times finer.
+
+**The residual is real and is documented rather than papered over.** Against a
+garrison of `LIFTER_CARRY` or fewer the landing costs one transport either way,
+because half a transport cannot be destroyed — so the doctrine is inert on small
+worlds, which is the lesser of the two failures and the one that does not hand
+out free conquests. Where the granularity allows a half it takes one: a garrison
+of nine costs two transports and an expansionist one.
+
+Guarded by a sweep in `war-ethics.test.ts` asserting an expansionist always pays
+something, never pays more than a non-expansionist, and never pays less than
+half — verified non-vacuous against the old code, which fails it with
+`expected 0 to be greater than 0`, the free landing itself.
 
 ---
 
-## 70. Trade-hop income splits by hull count, where system income splits by tonnage
+## 70. FIXED — trade-hop income split by hull count, where system income splits by tonnage
 
 **VERIFIED.** Two conventions for the same rule, and the comment on one of them
 explains why the other is wrong. `state.ts:786`:
@@ -725,6 +740,27 @@ explains why the other is wrong. `state.ts:786`:
 escort (30 credits, 1 hull) claims the same share as a battleship (60 credits, 1
 hull) — **2× income per credit** — and a lifter 1.33×, while contributing
 nothing to a fight.
+
+**FIXED.** The tonnage helper `state.ts` already had — carrying the comment
+quoted above — was private, which is why `trade.ts` reached for the hull one. It
+is exported as `tonsPresentAt` and both readers use it, so there is one
+definition rather than two that happen to agree. `presentAt` stays: a hull count
+is the right answer to "is anyone there", which is how the reducer's siege,
+squatter and defender checks use it and what the fleet panel displays. It is
+only wrong as a *weight*, and its doc comment now says so.
+
+The regression test isolates the junction as a **delta on one faction** rather
+than a comparison between two, because `shares[id]` is a faction's route income
+across the whole galaxy — the first version compared two factions' totals and
+passed on the broken code, since the Vigil out-earns a raider whatever is parked
+at sek-6. Holding the opponent fixed and changing only what the measured faction
+brings, four escorts against four battleships, the old code returns
+`expected 192 to be greater than 192`: four hulls is four hulls.
+
+**The balance harness does not move**, and that is a statement about the harness
+rather than about the fix. `distributeUnclaimed` only bites when two
+differently-composed fleets contest the same unaligned hop, and the bots do not
+do that — this is a player-reachable exploit, of the same family as item 58.
 
 Missed in item 55: `shipsPresent` was moved to tonnage and this reader was not.
 Not exercised live only because the playtester had taken every unaligned world
