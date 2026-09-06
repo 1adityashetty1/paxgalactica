@@ -1777,6 +1777,22 @@ unit; this is the same move for money and for crews. A batch-scoped ledger
 carries what has been spent against each cap, so a ceiling cannot be multiplied
 by saying the same thing more times.
 
+**One squadron described twice is one squadron.** `adjust_fleet` commissions and
+bases at the best holding; `adjust_ships` puts hulls at a named world — and a
+model describing one squadron reaches for both, so six lifters arrived as
+twelve, billed as twelve, under a narrative that said six. Neither op is wrong
+in isolation, which is why nothing caught it. Within a batch they are one
+commissioning: a placement **moves** what was just built, and only the surplus
+past it is a genuine addition. Two `adjust_fleet` programmes are still two, and
+two different hull classes are still two.
+
+> The first fix skipped the relocation when the placement named the system the
+> hulls were already based at, on the reasoning that moving something to where
+> it is does nothing. That is the *common* case — `adjust_fleet` bases at the
+> best holding, which is exactly the world a model then names — so it counted
+> the squadron twice inside its own fix. Removing unconditionally makes both
+> cases uniform.
+
 **A duplicate can only be recognised after the mechanisms have run**, so
 `refundDuplicateCharges` is a post-pass beside `billConstruction` rather than a
 test inside the op. The cap's own comment always named both cases — *"either

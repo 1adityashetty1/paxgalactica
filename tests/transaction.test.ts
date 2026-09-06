@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyOps } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
+import { fleetStrengthOf, stackAt } from '../src/domain/state.js';
 import {
   addShipsAt,
   hullsAt,
@@ -164,5 +165,73 @@ describe('a cession and its price are two halves of one deal', () => {
     const out = purchase({ meridian: 3000, ojjul: 3000 });
     expect(fac(out.state, 'meridian').credits).toBe(fac(start, 'meridian').credits);
     expect(fac(out.state, 'ojjul').credits).toBe(fac(start, 'ojjul').credits);
+  });
+});
+
+describe('one squadron described twice is one squadron', () => {
+  const build = (ops: unknown[]) => {
+    const state = fresh();
+    const before = fleetStrengthOf(state, 'meridian');
+    const out = applyOps(state, ops as never, 'model', 'meridian');
+    const lifters = (id: string) => stackAt(sys(out.state, id), 'meridian').lifter ?? 0;
+    return { gained: fleetStrengthOf(out.state, 'meridian') - before, lifters };
+  };
+
+  // `adjust_fleet` commissions and bases at the best holding; `adjust_ships`
+  // puts hulls at a named world. A model describing one squadron reaches for
+  // both, and the reducer counted them as two — twice the hulls the narrative
+  // claimed, and twice the bill. Same defect as 58/61/63 one field over.
+  it('does not mint a second squadron when the placement names the base', () => {
+    // Meridian's best holding IS sek-1, which is what made the first fix fail:
+    // a "different system" guard skipped the relocation and still added.
+    const { gained, lifters } = build([
+      { op: 'adjust_fleet', factionId: 'meridian', delta: 6, hull: 'lifter' },
+      { op: 'adjust_ships', systemId: 'sek-1', factionId: 'meridian', delta: 6, hull: 'lifter' },
+    ]);
+    expect(gained).toBe(6);
+    expect(lifters('sek-1')).toBe(6);
+  });
+
+  it('moves them when the placement names somewhere else', () => {
+    const { gained, lifters } = build([
+      { op: 'adjust_fleet', factionId: 'meridian', delta: 6, hull: 'lifter' },
+      { op: 'adjust_ships', systemId: 'sek-4', factionId: 'meridian', delta: 6, hull: 'lifter' },
+    ]);
+    expect(gained).toBe(6);
+    expect(lifters('sek-4')).toBe(6);
+    expect(lifters('sek-1')).toBe(0);
+  });
+
+  it('reconciles the other emission order too', () => {
+    const { gained, lifters } = build([
+      { op: 'adjust_ships', systemId: 'sek-4', factionId: 'meridian', delta: 6, hull: 'lifter' },
+      { op: 'adjust_fleet', factionId: 'meridian', delta: 6, hull: 'lifter' },
+    ]);
+    expect(gained).toBe(6);
+    expect(lifters('sek-4')).toBe(6);
+  });
+
+  it('delivers the surplus when the placement asks for more than was built', () => {
+    const { gained } = build([
+      { op: 'adjust_fleet', factionId: 'meridian', delta: 6, hull: 'lifter' },
+      { op: 'adjust_ships', systemId: 'sek-4', factionId: 'meridian', delta: 10, hull: 'lifter' },
+    ]);
+    expect(gained).toBe(10);
+  });
+
+  it('leaves two genuine programmes alone', () => {
+    // Two `adjust_fleet` ops are two builds, not one described twice. The rule
+    // must not make a fleet cheaper to buy by splitting the order.
+    expect(build([
+      { op: 'adjust_fleet', factionId: 'meridian', delta: 6, hull: 'lifter' },
+      { op: 'adjust_fleet', factionId: 'meridian', delta: 6, hull: 'lifter' },
+    ]).gained).toBe(12);
+  });
+
+  it('does not reconcile across hull classes', () => {
+    expect(build([
+      { op: 'adjust_fleet', factionId: 'meridian', delta: 6, hull: 'lifter' },
+      { op: 'adjust_ships', systemId: 'sek-4', factionId: 'meridian', delta: 6, hull: 'escort' },
+    ]).gained).toBe(12);
   });
 });

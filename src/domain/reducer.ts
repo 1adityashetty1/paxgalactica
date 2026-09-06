@@ -119,6 +119,7 @@ import {
   type Ledger,
   type OrderEffect,
   type PendingOrder,
+  type StarSystem,
   type WorldState,
 } from './state.js';
 
@@ -802,6 +803,21 @@ export function applyOps(
   const spentOnNarrative = new Map<string, number>();
   const chargedByNarrative = new Map<string, number>();
   const subornedThisBatch = new Map<string, number>();
+  /**
+   * Hulls this batch has already put on the board, by faction and class.
+   *
+   * `adjust_fleet` commissions and bases at the best holding; `adjust_ships`
+   * puts hulls at a named world. A model describing one squadron reaches for
+   * both — "lay down six lifters" and "six lifters at Sekkar Gate" — and the
+   * reducer counted them as twelve, billed for twelve, while the narrative said
+   * six. Neither op is wrong in isolation, which is why nothing caught it.
+   *
+   * `commissioned` remembers where `adjust_fleet` based them so a later
+   * placement can MOVE them rather than mint more; `placed` does the mirror for
+   * the other emission order.
+   */
+  const commissioned = new Map<string, { count: number; at: StarSystem }>();
+  const placed = new Map<string, number>();
   const hullsBefore = new Map(state.factions.map((f) => [f.id, fleetTonsOf(state, f.id)]));
   // Per-system counts too, so `capSelfInflictedLosses` can put restored hulls
   // back where they were taken from rather than at the faction's best world.
@@ -941,7 +957,23 @@ export function applyOps(
         }
         if (op.delta >= 0) {
           const home = bases[0]!;
-          addShipsAt(home, op.factionId, op.delta, op.hull);
+          const key = `${op.factionId}:${op.hull}`;
+          // Already on the board from an `adjust_ships` earlier in this batch:
+          // this op is the same squadron described the other way round.
+          const standing = placed.get(key) ?? 0;
+          const counted = Math.min(op.delta, standing);
+          if (counted > 0) placed.set(key, standing - counted);
+          const fresh = op.delta - counted;
+          if (fresh > 0) {
+            addShipsAt(home, op.factionId, fresh, op.hull);
+            const prior = commissioned.get(key);
+            commissioned.set(
+              key,
+              prior && prior.at === home
+                ? { count: prior.count + fresh, at: home }
+                : { count: fresh, at: home },
+            );
+          }
         } else {
           let owed = -op.delta;
           for (const base of [...bases].sort(
@@ -1950,6 +1982,33 @@ export function applyOps(
           subornedThisBatch.set(key, (subornedThisBatch.get(key) ?? 0) + taken);
         }
         if (delta > 0) {
+          // One squadron, described twice. An `adjust_fleet` earlier in this
+          // batch already laid these down and based them at the best holding;
+          // this op says where they are meant to sit, so they MOVE rather than
+          // being minted again. Anything past what was commissioned is a
+          // genuine addition and is billed as one.
+          const key = `${op.factionId}:${op.hull}`;
+          const built = commissioned.get(key);
+          if (built !== undefined && built.count > 0) {
+            // Lifted from where they were based and set down here — and the
+            // removal is unconditional, because the two systems are very often
+            // the SAME one: `adjust_fleet` bases at the faction's best holding,
+            // which is exactly the world a model then names. Skipping the
+            // removal in that case left the squadron counted twice, which was
+            // the whole defect in its own fix.
+            const relocate = Math.min(delta, built.count);
+            const there = stackAt(built.at, op.factionId)[op.hull] ?? 0;
+            const movable = Math.min(relocate, there);
+            if (movable > 0) {
+              setStackAt(
+                built.at,
+                op.factionId,
+                subtractStack(stackAt(built.at, op.factionId), { [op.hull]: movable }),
+              );
+            }
+            built.count -= relocate;
+          }
+          placed.set(key, (placed.get(key) ?? 0) + delta);
           addShipsAt(host, op.factionId, delta, op.hull);
         } else if (taken > 0) {
           // Moving your OWN ships, you say which. A crew changing sides is not

@@ -18,26 +18,44 @@ its own label. Four were wrong: **10** and **56** were finished, **62** was
 filed unconfirmed and is real, and **68** does not reproduce. The detail for
 each lives in its numbered item further down; this is the index.
 
-## A. The arbiter rules on the words of an order, not on what it does — **47, 66, 72**
+## A. ACCEPTED — the arbiter's ruling varies, and mostly it has to — **47, 66, 72**
 
-The single largest open risk, and three items are one finding. A breach ruling
-matches against the *prose* of a declaration rather than the ops it produces, so:
+Filed as one fixable finding across three items. It is not one, and the honest
+answer is that **most of it is irreducible.**
 
-- quoting a compulsion back at the game does not trip it, while an **unrelated**
-  red line blocks an invasion that closes no lane (**66**);
-- the same invasion passes a turn later with `"NO LANE IS CLOSED BY THIS ORDER"`
-  pasted in (**66**);
-- an accord containing **no treaty** is refused as *"a treaty"*, while two that
-  wrote real treaties into `state.treaties` pass — the only variable is the
-  transcript's wording (**47**);
-- one act is priced at DC 5, 10, 11, 14 and 18 on different turns, and ruled
-  admissible, inadmissible and "take it to a channel" (**72**).
+The symptoms are real: quoting a compulsion back at the game does not trip it;
+an unrelated red line blocked an invasion that closes no lane; the same invasion
+passed a turn later with `"NO LANE IS CLOSED BY THIS ORDER"` pasted in; an
+accord containing no treaty was refused as *"a treaty"* while two that wrote real
+treaties passed; one act priced at DC 5, 10, 11, 14 and 18 on different turns.
 
-`verifyBreachRelevance` exists for exactly the second case and either did not
-run or returned `relevant: true`. All model-tier judgement, so none of it is
-statically checkable — which is the argument for anchoring the ruling to the
-**emitted ops** rather than to the text, the same split the project already
-makes everywhere else: code owns the number, the prompt owns the story.
+**But every part of this that code can own already has an owner**, and checking
+that was what settled it:
+
+| the judgement | who makes it |
+|---|---|
+| is the quoted line real, and on which list | `classifyPrinciple` — code, by lookup |
+| which of several named lines wins | `classifyPrinciples` — code, red line beats compulsion |
+| is the line actually *about* this act | `verifyBreachRelevance` — a second, cheap call shown the act and the line and nothing else |
+
+`verifyBreachRelevance` takes `kind: 'red_line' | 'compulsion'` and fires
+whenever a breach is named, so in the invasion case **it ran and returned
+`relevant: true`.** The guard is not missing. A model-tier judgement disagreed
+with a later reading of the same facts, which is what a model-tier judgement
+does.
+
+**The structural fix is not available at a price worth paying.** Ruling on the
+*ops* rather than the words would anchor it — but the arbiter runs **before**
+resolution precisely so the pass that is handed a settled outcome is not the
+pass deciding the order should never have gone out. The ops do not exist yet at
+breach time, and moving the ruling after resolution reintroduces the exact
+failure the arbitration split was built to remove.
+
+So this is **accepted variance**, not a queued fix. What remains worth doing is
+narrower and cheaper: log every breach ruling with the line, the kind and the
+relevance verdict, so a drift like the DC 5-to-18 spread is measurable rather
+than anecdotal. Reopen the larger question only with a proposal that does not
+put the ruling downstream of resolution.
 
 ## B. A negotiated term the reducer cannot express — **51, 67.1, 67.2**
 
@@ -54,13 +72,20 @@ Extraction agrees something and the world does not change, or changes by a sixth
 
 The debt-reschedule half of 51 is **fixed** — `restructure_debt` exists now.
 
-## C. A batch is a transaction — the hull case — **62**
+## C. CLOSED — a batch is a transaction, the hull case — **62**
 
-`adjust_fleet` and `adjust_ships` describing one squadron deliver **twice** the
-hulls: measured, six requested and twelve delivered. This is 58/61/63 one field
-over, and those were closed by making the batch the unit for money and crews.
-The batch-scoped ledger they added is where this belongs. **The cheapest open
-item, and the only one with its fix already half-written.**
+`adjust_fleet` (build, based at the best holding) and `adjust_ships` (place at a
+named world) describing one squadron delivered **twice** the hulls and twice the
+bill. Closed the same way 58/61/63 were: within a batch, the two ops are one
+commissioning, so a placement **moves** what was just built instead of minting
+more. Both emission orders reconcile; two genuine `adjust_fleet` programmes and
+two different hull classes are untouched.
+
+> The first attempt failed on its own defect. It skipped the relocation when the
+> placement named the same system the hulls were based at — and that is the
+> common case, because `adjust_fleet` bases at the faction's best holding, which
+> is exactly the world a model then names. Removing unconditionally makes both
+> cases uniform. A test pins the same-system case specifically.
 
 ## D. The battle model is one arrival-shaped event — **65, 74**
 
@@ -814,7 +839,7 @@ nothing ties them together.
 
 ---
 
-## 62. VERIFIED — `adjust_fleet` and `adjust_ships` both add hulls, and stack
+## 62. FIXED — `adjust_fleet` and `adjust_ships` both add hulls, and stack
 
 The agent's measurement. One declaration asking for 16 hulls produced six ops —
 three `adjust_fleet` and three `adjust_ships` describing the *same* squadron:
@@ -833,14 +858,34 @@ reconciles two ops describing one event, and both are legitimate in isolation:
 `adjust_fleet` bases new hulls at the best holding, `adjust_ships` places them
 somewhere named.
 
-**CONFIRMED against current code.** One `adjust_fleet` of 6 lifters beside one
-`adjust_ships` of 6 lifters delivers **12 hulls** and bills 36 tons for 540
-credits. The bill is right for what appeared; the player asked for six.
+**CONFIRMED against current code**, then **FIXED**. One `adjust_fleet` of 6
+lifters beside one `adjust_ships` of 6 lifters delivered **12 hulls** and billed
+36 tons for 540 credits. The bill was right for what appeared; the player asked
+for six.
 
-This is the **same defect as 58/61/63** one field over — `applyOps` reconciles
-each op on its own, and a transaction spans several. Those were closed by making
-the batch the unit for money and for crews; this is the hull case, and the
-batch-scoped ledger built for them is where it belongs.
+The same defect as 58/61/63 one field over — `applyOps` reconciles each op on
+its own, and a transaction spans several — so it is closed the same way, in the
+batch-scoped ledger those added. Within a batch the two ops are **one
+commissioning**: a placement moves what was just built rather than minting more,
+and the surplus past what was built is a genuine addition, billed as one.
+
+| batch | delivered |
+|---|---|
+| `adjust_fleet 6` then `adjust_ships 6` at the base | 6 |
+| `adjust_fleet 6` then `adjust_ships 6` elsewhere | 6, relocated |
+| `adjust_ships 6` then `adjust_fleet 6` | 6 |
+| `adjust_fleet 6` then `adjust_ships 10` | 10 |
+| `adjust_fleet 6` twice | 12 — two programmes, untouched |
+| `adjust_fleet 6 lifter` + `adjust_ships 6 escort` | 12 — different classes |
+
+> **The first attempt failed on its own defect**, which is worth keeping. It
+> skipped the relocation when the placement named the same system the hulls were
+> based at, on the reasoning that moving something to where it already is does
+> nothing. That is the *common* case — `adjust_fleet` bases at the faction's
+> best holding, which is exactly the world a model then names — and skipping the
+> removal while still adding left the squadron counted twice, reproducing the
+> bug inside its own fix. Removing unconditionally makes both cases uniform, and
+> a test pins the same-system case by name.
 
 ---
 
