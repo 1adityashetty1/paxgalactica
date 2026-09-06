@@ -399,7 +399,7 @@ had no reason to agree"* pattern this design keeps having to undo.
 
 ---
 
-## 58. A world costs 240 credits, because the cession is uncapped and the payment is not
+## 58. FIXED — a world cost 240 credits, because the cession was uncapped and the payment was not
 
 **VERIFIED.** `MAX_NARRATIVE_CREDITS` (240) trims a model-emitted
 `adjust_credits` (`reducer.ts:917`). `cedeTerritory` (`reducer.ts:621`) moves
@@ -426,6 +426,32 @@ the game and it never touches the action economy. The two halves are individuall
 defensible — a cession needs the other party's consent, and narrative money is
 capped because a mechanism should own its price — and together they are a
 market where one side is priced and the other is not.
+
+---
+
+**FIXED — all three together, as one rule.** 58, 61 and 63 are the same defect:
+`applyOps` prices each op on its own, but a transaction spans several ops. A
+suborn is a take and a give; a purchase is a cession and a price; a commission
+is an order that debits and a narrative charge beside it. Capping per op let a
+ceiling be multiplied by saying the same thing more times, and said nothing
+about the counterpart op standing next to it.
+
+A cap now belongs to the **declaration**, carried in a batch-scoped ledger, the
+way `billConstruction` and `capSelfInflictedLosses` already treat the batch as
+the unit. `refundDuplicateCharges` is a post-pass beside `billConstruction`,
+because a duplicate can only be recognised once the mechanisms have run.
+
+And 58's missing piece was a **home for a one-time price**: `incomePerTurn` is
+recurring, `incomeShares` is a claim on a named system, a commitment's flow is
+non-directional — so a purchase could only be written as narrative money, which
+is capped. `terms.payment` is the fourth mechanism, moved by
+`settleTreatyPayment` from the same two places `cedeTerritory` is called. It has
+no ceiling and needs none: it is a transfer, conserved and bounded by the
+payer's treasury, so it cannot invent a credit.
+
+Five assertions in `tests/transaction.test.ts`, each verified against the old
+behaviour rather than assumed — reverting any one of the three parts fails its
+own test and no others.
 
 ---
 
@@ -491,7 +517,7 @@ Two structural halves confirmed in code:
 
 ---
 
-## 61. `subornLimit` is enforced per op, not per declaration
+## 61. FIXED — `subornLimit` was enforced per op, not per declaration
 
 **VERIFIED.** The cap lives inside the `adjust_ships` case (`reducer.ts:1774`),
 so it counts against each op rather than against the action. One declaration
@@ -538,7 +564,7 @@ pick one, or whether the reducer should notice.
 
 ---
 
-## 63. Narrative credits are charged on top of a mechanism that already priced it
+## 63. FIXED — narrative credits were charged on top of a mechanism that already priced it
 
 **VERIFIED**, and the guard says so itself. `reducer.ts:910`:
 

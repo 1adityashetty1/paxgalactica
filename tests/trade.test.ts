@@ -39,7 +39,7 @@ function pact(type: TreatyType, parties: [string, string], pledged: Record<strin
     terms: {
       territory: [],
       shipsPledged: pledged,
-      incomePerTurn: {},
+      incomePerTurn: {},      payment: {},
       incomeShares: [],
       mutualDefenseTrigger: '',
       voidsOn: [],

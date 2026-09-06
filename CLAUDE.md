@@ -876,6 +876,7 @@ and nothing implemented it.
 | `basing_rights` | the other party's fleets may enter without it being an attack |
 | `tribute` | `incomePerTurn` moves every turn |
 | `territory` (a term, not a type) | the named systems **change hands** when the treaty takes force |
+| `payment` (a term, not a type) | credits move **once**, when the treaty takes force — the price of a cession, an indemnity, a lump settlement |
 | `voidsOn` (a term, not a type) | typed conditions that **end** the treaty when they come true — and one already true at signature is **refused**, not signed |
 
 **A renegotiation replaces the old paper; it does not add to it.** Powers say
@@ -1751,6 +1752,62 @@ fog. They read `system.ships` and `system.garrison`, which redaction does not
 touch, and the only pending orders they consult are their own. A test pins it by
 asserting that a hidden rival programme changes no bot's proposal at all —
 an invariant rather than an accident.
+
+## A batch is a transaction
+
+`applyOps` prices each op on its own. That is right when ops are independent —
+moving ships here and there — and wrong for the common case where they are one
+action's parts, and one playtest found the same gap three times:
+
+- a **suborn** is a take and a give, and `subornLimit` sat inside the
+  `adjust_ships` case, so one declaration split by hull class was trimmed
+  correctly three times and still took five crews against a ceiling of two;
+- a **purchase** is a cession and a price, and only the price was capped —
+  `terms.territory` moved worlds in full while `MAX_NARRATIVE_CREDITS` trimmed
+  the payment to 240, so **seven worlds changed hands for 1,200 credits against
+  13,950 agreed**, at zero action points;
+- a **commission** is an order that debits and a narrative charge beside it, and
+  the cap trimmed the duplicate and then applied it anyway — 1,440 paid for
+  1,200 credits of hulls.
+
+The fix is one rule, not three patches: **a cap belongs to the declaration.**
+`billConstruction` and `capSelfInflictedLosses` already treat the batch as the
+unit; this is the same move for money and for crews. A batch-scoped ledger
+carries what has been spent against each cap, so a ceiling cannot be multiplied
+by saying the same thing more times.
+
+**A duplicate can only be recognised after the mechanisms have run**, so
+`refundDuplicateCharges` is a post-pass beside `billConstruction` rather than a
+test inside the op. The cap's own comment always named both cases — *"either
+duplicating one of those or inventing a sum outright"* — and answered only the
+second. Trimming an invented sum is still right, and still happens; a trimmed
+duplicate on top of a real bill is a second charge for one purchase. Only
+charges are refunded, since a windfall beside a purchase is not the duplicate
+case.
+
+### A one-time price needed a home, and that is why a world cost 240
+
+The two halves of item 58 are each individually defensible: a cession needs the
+other party's consent, and narrative money is capped because a mechanism should
+own its price. Together they are a market where one side is priced and the other
+is not — and the reason is that **a one-time payment had nowhere to live.**
+`incomePerTurn` is recurring, `incomeShares` is a claim on a named system, and a
+commitment's `incomePerTurn` is deliberately non-directional. So a negotiated
+purchase could only be written as narrative credits, and narrative credits are
+capped.
+
+`terms.payment` is the fourth money mechanism, moved by `settleTreatyPayment`
+from the same two places `cedeTerritory` is called — because the cession and its
+price are two halves of one transaction and calling one without the other is the
+defect.
+
+**It carries no ceiling, and does not need one.** It is a *transfer*: conserved
+to zero, and bounded by what the payer actually holds. A term that pays somebody
+from nobody is dropped, exactly as a non-conserving `incomePerTurn` is; a payer
+who agreed to more than it has pays what it has and the receipts are trimmed
+pro-rata to match, the same shape as `billConstruction` delivering what was paid
+for. Only a flow that creates value needs a cap — a transfer cannot invent a
+credit, so what needs guarding is its conservation, not its size.
 
 ## Suborning crews
 

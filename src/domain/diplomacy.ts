@@ -90,6 +90,23 @@ export const TreatyTermsSchema = z.object({
   shipsPledged: z.record(z.string(), z.number().int().min(0)).default({}),
   /** Flat credits moved every turn: positive receives, negative pays. */
   incomePerTurn: z.record(z.string(), z.number().int()).default({}),
+  /**
+   * Credits moved ONCE, when the treaty takes force: positive receives,
+   * negative pays. The price of a cession, an indemnity, a lump settlement.
+   *
+   * This is the fourth money mechanism and it was the missing one. A one-time
+   * price had nowhere to live — `incomePerTurn` is recurring, `incomeShares` is
+   * a claim on a named system, and a commitment's `incomePerTurn` is
+   * non-directional — so a negotiated purchase was written as narrative
+   * `adjust_credits` and trimmed to `MAX_NARRATIVE_CREDITS`, while
+   * `terms.territory` moved the worlds in full. Seven worlds changed hands for
+   * 1,200 credits against 13,950 agreed.
+   *
+   * It carries no ceiling, and does not need one: it is a TRANSFER, conserved
+   * to zero and bounded by what the payer actually holds, so it cannot invent a
+   * credit. Only a flow into existence needs a cap.
+   */
+  payment: z.record(z.string(), z.number().int()).default({}),
   /** Claims on system income — the mechanism for neutral and shared worlds. */
   incomeShares: z.array(IncomeShareSchema).default([]),
   /** What obliges the signatories to act. Empty for treaties with no trigger. */

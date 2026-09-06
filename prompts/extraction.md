@@ -106,14 +106,23 @@ Specifically:
   | `basing_rights` | their fleets may enter your systems without it being an attack — the ONLY way to station ships in friendly space |
   | `tribute` | `incomePerTurn` moves every turn |
 
-  **Money in a deal has three homes, and the wrong one gets trimmed.** Read
-  what the parties actually agreed and pick by *where the money comes from*:
+  **Money in a deal has four homes, and the wrong one gets trimmed.** Read
+  what the parties actually agreed and pick by *where the money comes from* and
+  *how often it moves*:
 
   | the deal | write it as |
   |---|---|
-  | one side pays the other — tribute, a subsidy, a retainer, debt service | `incomePerTurn`, and it must **balance**: `{"payer": -40, "payee": 40}` |
+  | a price paid **once** — a cession, an indemnity, a lump settlement, a ransom | `payment`, and it must **balance**: `{"buyer": -3000, "seller": 3000}` |
+  | one side pays the other **every turn** — tribute, a subsidy, a retainer, debt service | `incomePerTurn`, and it must **balance**: `{"payer": -40, "payee": 40}` |
   | both sides share what a **named world** earns | `incomeShares`, which comes off that system's own take |
   | a venture, charter or operation that **makes** money for both | **not a treaty at all** — `establish_commitment`, which prices what an arrangement is worth |
+
+  **`terms.payment` is how a world is bought.** It carries no ceiling, because
+  it is a transfer: it moves on the turn the treaty takes force, the buyer pays
+  only what its treasury actually holds, and the seller receives exactly that.
+  Write the agreed price here. Do **not** write a purchase price as
+  `adjust_credits` — narrative money is capped at a few hundred credits, so a
+  world agreed at 3,000 used to change hands for 240.
 
   `incomePerTurn` is a **transfer**, so it can never pay out more than it takes
   in. Writing `{"a": 30, "b": 20}` — both positive — is money from nowhere, and
@@ -126,7 +135,10 @@ Specifically:
   ceding power's ships withdraw to its nearest holding. Only a system a *party
   to this treaty actually holds* moves — naming someone else's world, or one
   nobody at the table controls, is a claim and does nothing. Use it only for a
-  cession both sides actually agreed to.
+  cession both sides actually agreed to. **If a price was agreed for it, put
+  that price in `terms.payment` on the same treaty** — the cession and its price
+  are two halves of one deal, and writing only one of them is how seven worlds
+  once changed hands for 1,200 credits against 13,950 agreed.
 
   **`terms.voidsOn` is for "this ends if you…".** Powers say it constantly and
   it used to be pure narration, so a party could take a clause and then do the

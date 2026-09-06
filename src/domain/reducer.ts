@@ -619,6 +619,59 @@ function voidConditionMet(state: WorldState, condition: VoidCondition): string |
   }
 }
 
+/**
+ * Move a treaty's one-time price when it takes force.
+ *
+ * Paired with `cedeTerritory` and called from the same two places, because a
+ * cession and its price are two halves of one transaction and pricing only one
+ * of them is what made a world cost 240 credits.
+ *
+ * Bounded by what the payer HOLDS rather than by a ceiling. A transfer cannot
+ * invent a credit, so the thing that needs guarding is not its size but its
+ * conservation — and a payer who agreed to more than it has pays what it has,
+ * with the receipts trimmed to match, exactly as `billConstruction` delivers
+ * what was paid for rather than rejecting the order.
+ */
+function settleTreatyPayment(state: WorldState, treaty: Treaty): string[] {
+  const notes: string[] = [];
+  const entries = Object.entries(treaty.terms.payment).filter(([, n]) => n !== 0);
+  if (entries.length === 0) return notes;
+
+  const owed = entries.filter(([, n]) => n < 0);
+  const due = entries.filter(([, n]) => n > 0);
+  // Nothing is being paid, so the term creates value rather than moving it —
+  // the same ruling `form_treaty` makes on a non-conserving `incomePerTurn`,
+  // and dropped for the same reason.
+  if (owed.length === 0 || due.length === 0) return notes;
+
+  let pot = 0;
+  for (const [who, amount] of owed) {
+    const payer = state.factions.find((f) => f.id === who);
+    if (!payer) continue;
+    const paid = Math.min(payer.credits, -amount);
+    payer.credits -= paid;
+    pot += paid;
+    if (paid < -amount) {
+      notes.push(
+        `${payer.name} owed ${-amount} on  and could pay ${paid}; the rest is not in its treasury.`,
+      );
+    }
+  }
+
+  const claimed = due.reduce((n, [, amount]) => n + amount, 0);
+  for (const [who, amount] of due) {
+    const receiver = state.factions.find((f) => f.id === who);
+    if (!receiver) continue;
+    // Pro-rata, so the receipts can never exceed what was actually paid.
+    const share = Math.floor((pot * amount) / claimed);
+    receiver.credits += share;
+    notes.push(`${receiver.name} receives ${share} credits under .`);
+  }
+
+  for (const note of notes) logEvent(state, 'diplomacy', note, treaty.parties[0]!);
+  return notes;
+}
+
 function cedeTerritory(state: WorldState, treaty: Treaty): string[] {
   const notes: string[] = [];
   if (treaty.terms.territory.length === 0) return notes;
@@ -733,6 +786,22 @@ export function applyOps(
   // afterwards. Counted per faction across the whole batch rather than per op,
   // which is what makes repositioning free: `adjust_ships -5` here and `+5`
   // there nets to zero and costs nothing, however the ops are ordered.
+  /**
+   * What this BATCH has already spent against the caps that guard it.
+   *
+   * `applyOps` prices each op on its own, but a transaction spans several ops —
+   * and every one of the three defects this closes is that gap. A suborn is a
+   * take and a give; a purchase is a cession and a price; a commission is an
+   * order that debits and a narrative charge beside it. Capping per op meant a
+   * cap could be multiplied by splitting one action into more ops, and said
+   * nothing about the counterpart op standing next to it.
+   *
+   * `billConstruction` and `capSelfInflictedLosses` already treat the batch as
+   * the unit; this is the same move for money and for crews.
+   */
+  const spentOnNarrative = new Map<string, number>();
+  const chargedByNarrative = new Map<string, number>();
+  const subornedThisBatch = new Map<string, number>();
   const hullsBefore = new Map(state.factions.map((f) => [f.id, fleetTonsOf(state, f.id)]));
   // Per-system counts too, so `capSelfInflictedLosses` can put restored hulls
   // back where they were taken from rather than at the faction's best world.
@@ -914,13 +983,31 @@ export function applyOps(
         // inventing a sum outright — a failed action once charged 380 for
         // nothing, and a priced 156-credit programme arrived with a freeform
         // 180 riding alongside it.
+        //
+        // The allowance is the BATCH's, not the op's. Per op it could be
+        // multiplied by saying the same thing three times, which is exactly
+        // what happened to `subornLimit` below.
         let delta = op.delta;
-        if (actor !== undefined && Math.abs(delta) > MAX_NARRATIVE_CREDITS) {
-          const trimmed = Math.sign(delta) * MAX_NARRATIVE_CREDITS;
-          const note = `Trimmed a ${delta > 0 ? 'windfall' : 'charge'} of ${Math.abs(delta)} credits to ${MAX_NARRATIVE_CREDITS} for ${nameFor(state, op.factionId)}; sums past that belong to a mechanic that prices them.`;
-          notes.push(note);
-          logEvent(state, 'clamp', note, op.factionId);
-          delta = trimmed;
+        if (actor !== undefined) {
+          const used = spentOnNarrative.get(op.factionId) ?? 0;
+          const room = Math.max(0, MAX_NARRATIVE_CREDITS - used);
+          if (Math.abs(delta) > room) {
+            const trimmed = Math.sign(delta) * room;
+            const note =
+              room === 0
+                ? `Dropped a ${delta > 0 ? 'windfall' : 'charge'} of ${Math.abs(delta)} credits for ${nameFor(state, op.factionId)}; this declaration has already moved its ${MAX_NARRATIVE_CREDITS} of narrative money.`
+                : `Trimmed a ${delta > 0 ? 'windfall' : 'charge'} of ${Math.abs(delta)} credits to ${room} for ${nameFor(state, op.factionId)}; sums past that belong to a mechanic that prices them.`;
+            notes.push(note);
+            logEvent(state, 'clamp', note, op.factionId);
+            delta = trimmed;
+          }
+          spentOnNarrative.set(op.factionId, used + Math.abs(delta));
+          if (delta < 0) {
+            chargedByNarrative.set(
+              op.factionId,
+              (chargedByNarrative.get(op.factionId) ?? 0) + -delta,
+            );
+          }
         }
         f.credits = Math.max(0, f.credits + delta);
         break;
@@ -1655,7 +1742,11 @@ export function applyOps(
         // rather than a term that applies while the treaty is live, so it is
         // NOT undone if the treaty later lapses or is broken — land changes
         // hands once, and taking it back is a fresh act.
-        if (!pending) notes.push(...cedeTerritory(state, treaty));
+        if (!pending) {
+          notes.push(...cedeTerritory(state, treaty));
+    notes.push(...settleTreatyPayment(state, treaty));
+          notes.push(...settleTreatyPayment(state, treaty));
+        }
         break;
       }
 
@@ -1833,15 +1924,31 @@ export function applyOps(
             );
             break;
           }
-          if (-delta > limit) {
-            const note = `${nameFor(state, actor)} could only talk ${limit} of ${-delta} ${nameFor(state, op.factionId)} hulls into changing sides.`;
+          // Against what this DECLARATION has already turned, not against this
+          // op. The cap used to sit inside the op, so one action asking for
+          // three recruitments by hull class was trimmed correctly three times
+          // and still took five crews against a ceiling of two.
+          const already = subornedThisBatch.get(`${actor}->${op.factionId}`) ?? 0;
+          const room = Math.max(0, limit - already);
+          if (room <= 0) {
+            const note = `${nameFor(state, actor)} has already turned its ${limit} ${nameFor(state, op.factionId)} crews with this declaration; the rest will not be moved.`;
             notes.push(note);
             logEvent(state, 'system', note, actor);
-            delta = -limit;
+            break;
+          }
+          if (-delta > room) {
+            const note = `${nameFor(state, actor)} could only talk ${room} of ${-delta} ${nameFor(state, op.factionId)} hulls into changing sides.`;
+            notes.push(note);
+            logEvent(state, 'system', note, actor);
+            delta = -room;
           }
         }
 
         const taken = Math.min(-delta, hullsAt(host, op.factionId));
+        if (actor !== undefined && op.factionId !== actor && taken > 0) {
+          const key = `${actor}->${op.factionId}`;
+          subornedThisBatch.set(key, (subornedThisBatch.get(key) ?? 0) + taken);
+        }
         if (delta > 0) {
           addShipsAt(host, op.factionId, delta, op.hull);
         } else if (taken > 0) {
@@ -2329,7 +2436,9 @@ export function applyOps(
   }
 
   capSelfInflictedLosses(state, actor, hullsBefore, shipsBefore, notes);
-  billConstruction(state, hullsBefore, notes);
+  const pricedByYards = new Set<string>();
+  billConstruction(state, hullsBefore, notes, pricedByYards);
+  refundDuplicateCharges(state, chargedByNarrative, pricedByYards, notes);
 
   // Nothing lands unless everything does. The notes are dropped with the state
   // they describe — a trim note for an op that was discarded would be telling
@@ -2439,6 +2548,39 @@ function capSelfInflictedLosses(
 }
 
 /**
+ * Give back a narrative charge that stood beside the mechanism which already
+ * priced the same thing.
+ *
+ * The cap's own comment names both cases — *"an `adjust_credits` this big is
+ * either duplicating one of those or inventing a sum outright"* — and then
+ * trimmed and applied it regardless, which answers only the second. Measured
+ * twice in one campaign: 1,440 paid for 1,200 credits of hulls, and 3,870 paid
+ * for 3,630. Trimming an invented sum is right; charging a trimmed duplicate on
+ * top of a real price is a second bill for one purchase.
+ *
+ * A duplicate can only be recognised after the mechanisms have run, so this is
+ * a post-pass rather than a test inside the op — the same reason
+ * `billConstruction` is one. Only charges are refunded: a windfall beside a
+ * purchase is not the duplicate case.
+ */
+function refundDuplicateCharges(
+  state: WorldState,
+  chargedByNarrative: Map<string, number>,
+  priced: Set<string>,
+  notes: string[],
+): void {
+  for (const [id, amount] of chargedByNarrative) {
+    if (amount <= 0 || !priced.has(id)) continue;
+    const faction = state.factions.find((f) => f.id === id);
+    if (!faction) continue;
+    faction.credits += amount;
+    const note = `Refunded ${amount} narrative credits to ${faction.name}; the yards had already billed this declaration and a price is charged once.`;
+    notes.push(note);
+    logEvent(state, 'clamp', note, id);
+  }
+}
+
+/**
  * Bill every faction for the hulls it gained this batch, and deliver only what
  * it could pay for.
  *
@@ -2455,6 +2597,8 @@ function billConstruction(
   state: WorldState,
   before: Map<string, number>,
   notes: string[],
+  /** Factions this pass actually debited, so a duplicate charge can be found. */
+  charged: Set<string> = new Set(),
 ): void {
   for (const faction of state.factions) {
     // Billed in TONS, so a class costs what it displaces and nothing has to
@@ -2466,6 +2610,7 @@ function billConstruction(
     const affordable = Math.floor(faction.credits / CREDITS_PER_TON);
     const built = Math.min(gained, affordable);
     faction.credits -= built * CREDITS_PER_TON;
+    if (built > 0) charged.add(faction.id);
 
     const shortfall = gained - built;
     if (shortfall > 0) {
