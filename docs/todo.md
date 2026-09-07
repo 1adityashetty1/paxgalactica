@@ -505,6 +505,49 @@ and stays inside the class table.
 Both are features rather than fixes, and neither should be started before it is
 clear which one the game wants.
 
+### Tried and rejected, so they are not tried again
+
+**Class x garrison in the strike phase.** A holder's boats firing harder and its
+escorts screening wider over a world its own garrison still holds. Built, swept
+from 0/0 to 3/2 on the two bonuses, and **near-inert**: the mixed-versus-pure
+margin moves only −2.1 → −1.7 and pure battleship still wins. The strike is too
+small a share of the battle to move the exchange, and most winning defending
+compositions carry no boats for a strike bonus to apply to. Reverted rather than
+shipped, because a mechanic that measurably does nothing is the `monopolist`
+failure again.
+
+**A defending lifter reinforcing the garrison, on losing the orbit.** The
+appealing version — *"the transports burn, the troops are ashore"* — and it is
+**structurally unreachable**. `lossOrder` puts a lifter at 1 and a battleship at
+3, so for a lifter to survive an exchange a battleship must have survived too;
+a surviving battleship means `defendWeight > 0`, and a defending fleet that can
+still shoot means **no landing is attempted at all**. "Lost the orbit" and
+"still has lifters" exclude each other by construction. Measured: across 23,520
+trials where the defender bought lift, the orbit fell 18,928 times and the
+defender still held tonnage anywhere in 1,381 of them (7.3%) — nearly all of it
+fleets that had *retreated to a refuge*, not lift waiting in orbit.
+
+**Escort first, then losses spread proportionally across the rest**, in place of
+the fixed escort → lifter → boat → battleship order. Measured both ways at 3:1
+budgets over four garrisons, three rolls and three doctrines:
+
+```
+strict order (today)      defender best 85.7%  1cls battleship:20   margin -0.6
+escort -> proportional    defender best 83.9%  2cls battleship:16 torpedo_boat:8   margin 0.0
+```
+
+It does move the named best fleet off a pure battle line — and it moves it to an
+**exact tie**, which is indifference rather than a decision, the same outcome
+the repricing sweep produced. It also makes defending harder across the board
+and leaves the attacker unchanged. **Not adopted.**
+
+Worth recording what all three failures have in common, because it is the same
+sentence every time: none of them gives the defender something to protect whose
+loss is **not measured in weight**. Redistributing weight, discounting weight
+and reordering which weight dies are all still weight. That is why **77's two
+directions are what they are** — a leader is not weight, and a garrison is not
+weight.
+
 ---
 
 ## 74. Composition is a decision for an attacker and not for a defender
