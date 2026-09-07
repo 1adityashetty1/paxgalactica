@@ -10,6 +10,7 @@ import {
 } from './duration.js';
 import {
   COMMITMENT_GOODWILL,
+  commitmentIncomeFor,
   conflictingCommitment,
   MAX_COMMITMENT_INCOME,
 } from './arbitration.js';
@@ -93,7 +94,9 @@ import {
   tonsAt,
   fleetTonsOf,
   commitmentsOf,
+  breakOffRatio,
   maxCommitmentIncomeFor,
+  refusesToBreakOff,
   effectiveStats,
   fleetBases,
   isGuestOf,
@@ -119,6 +122,7 @@ import {
   type Ledger,
   type OrderEffect,
   type PendingOrder,
+  type StarSystem,
   type WorldState,
 } from './state.js';
 
@@ -633,15 +637,38 @@ function voidConditionMet(state: WorldState, condition: VoidCondition): string |
  * what was paid for rather than rejecting the order.
  */
 function settleTreatyPayment(state: WorldState, treaty: Treaty): string[] {
+  return moveConserved(state, treaty.terms.payment, treaty.summary, treaty.parties[0]!);
+}
+
+/**
+ * Move credits between parties who agreed to it, once.
+ *
+ * The one rule every money mechanism in this game has converged on: a TRANSFER
+ * needs no ceiling, because it cannot invent a credit. What needs guarding is
+ * its conservation and the payer's ability to fund it, not its size — which is
+ * why `terms.payment` is uncapped where narrative money is capped at a few
+ * hundred, and why the same is true of a settlement agreed in a channel.
+ *
+ * - Nobody paying means the entries create value rather than move it, so the
+ *   whole term is dropped, exactly as a non-conserving `incomePerTurn` is.
+ *   Flipping a party negative would invert a deal both sides agreed to, and
+ *   which party to flip is a coin toss.
+ * - A payer who agreed to more than it holds pays what it holds, and the
+ *   receipts are trimmed pro-rata to match — the same shape as
+ *   `billConstruction` delivering what was paid for rather than rejecting.
+ */
+function moveConserved(
+  state: WorldState,
+  movement: Record<string, number>,
+  label: string,
+  logTo: string,
+): string[] {
   const notes: string[] = [];
-  const entries = Object.entries(treaty.terms.payment).filter(([, n]) => n !== 0);
+  const entries = Object.entries(movement).filter(([, n]) => n !== 0);
   if (entries.length === 0) return notes;
 
   const owed = entries.filter(([, n]) => n < 0);
   const due = entries.filter(([, n]) => n > 0);
-  // Nothing is being paid, so the term creates value rather than moving it —
-  // the same ruling `form_treaty` makes on a non-conserving `incomePerTurn`,
-  // and dropped for the same reason.
   if (owed.length === 0 || due.length === 0) return notes;
 
   let pot = 0;
@@ -653,7 +680,7 @@ function settleTreatyPayment(state: WorldState, treaty: Treaty): string[] {
     pot += paid;
     if (paid < -amount) {
       notes.push(
-        `${payer.name} owed ${-amount} on  and could pay ${paid}; the rest is not in its treasury.`,
+        `${payer.name} owed ${-amount} on ${label} and could pay ${paid}; the rest is not in its treasury.`,
       );
     }
   }
@@ -662,13 +689,12 @@ function settleTreatyPayment(state: WorldState, treaty: Treaty): string[] {
   for (const [who, amount] of due) {
     const receiver = state.factions.find((f) => f.id === who);
     if (!receiver) continue;
-    // Pro-rata, so the receipts can never exceed what was actually paid.
     const share = Math.floor((pot * amount) / claimed);
     receiver.credits += share;
-    notes.push(`${receiver.name} receives ${share} credits under .`);
+    notes.push(`${receiver.name} receives ${share} credits under ${label}.`);
   }
 
-  for (const note of notes) logEvent(state, 'diplomacy', note, treaty.parties[0]!);
+  for (const note of notes) logEvent(state, 'diplomacy', note, logTo);
   return notes;
 }
 
@@ -695,8 +721,15 @@ function cedeTerritory(state: WorldState, treaty: Treaty): string[] {
         (x) => x.id !== system.id && x.controllerFactionId === ceder,
       );
       if (refuge) {
+        // The STACK withdraws, not a hull count. `addShipsAt(refuge, ceder, n)`
+        // lands `n` hulls of one default class, so a mixed squadron marched out
+        // of a ceded world and arrived as battleships — sixteen hulls of 43
+        // tons became sixteen of 64, and `billConstruction` duly charged the
+        // ceder 315 credits for shipping it never built. Invisible for as long
+        // as every fleet in the seed was a pure battle line.
+        const withdrawing = stackAt(system, ceder);
         setShipsAt(system, ceder, 0);
-        addShipsAt(refuge, ceder, leaving);
+        addStackAt(refuge, ceder, withdrawing);
         notes.push(
           `${ceder} cedes ${system.name} to ${receiver}; ${leaving} ships withdraw to ${refuge.name}.`,
         );
@@ -802,6 +835,38 @@ export function applyOps(
   const spentOnNarrative = new Map<string, number>();
   const chargedByNarrative = new Map<string, number>();
   const subornedThisBatch = new Map<string, number>();
+  /**
+   * Hulls this batch has already put on the board, by faction and class.
+   *
+   * `adjust_fleet` commissions and bases at the best holding; `adjust_ships`
+   * puts hulls at a named world. A model describing one squadron reaches for
+   * both — "lay down six lifters" and "six lifters at Sekkar Gate" — and the
+   * reducer counted them as twelve, billed for twelve, while the narrative said
+   * six. Neither op is wrong in isolation, which is why nothing caught it.
+   *
+   * `commissioned` remembers where `adjust_fleet` based them so a later
+   * placement can MOVE them rather than mint more; `placed` does the mirror for
+   * the other emission order.
+   */
+  /**
+   * A settlement agreed in a channel, held back until the batch is done.
+   *
+   * An accord that says "we will pay you 450" needs the NPC's treasury debited
+   * and the player's credited, and the debit was refused: the guard forbids
+   * taking credits out of another power directly, which is right for a DECLARED
+   * action and wrong here — extraction is the one pass that has read a
+   * transcript, so it is the one place the other party's consent exists. Both
+   * sides left a playtest believing 450 credits had moved.
+   *
+   * Deferred rather than applied in place, because whether an entry is a
+   * transfer or an invention is a property of the whole batch: a debit with a
+   * matching credit moves money, a credit on its own mints it. `moveConserved`
+   * decides that once, and a transfer needs no ceiling because it cannot invent
+   * a credit — the same rule `terms.payment` follows.
+   */
+  const negotiated: Record<string, number> = {};
+  const commissioned = new Map<string, { count: number; at: StarSystem }>();
+  const placed = new Map<string, number>();
   const hullsBefore = new Map(state.factions.map((f) => [f.id, fleetTonsOf(state, f.id)]));
   // Per-system counts too, so `capSelfInflictedLosses` can put restored hulls
   // back where they were taken from rather than at the faction's best world.
@@ -941,7 +1006,23 @@ export function applyOps(
         }
         if (op.delta >= 0) {
           const home = bases[0]!;
-          addShipsAt(home, op.factionId, op.delta, op.hull);
+          const key = `${op.factionId}:${op.hull}`;
+          // Already on the board from an `adjust_ships` earlier in this batch:
+          // this op is the same squadron described the other way round.
+          const standing = placed.get(key) ?? 0;
+          const counted = Math.min(op.delta, standing);
+          if (counted > 0) placed.set(key, standing - counted);
+          const fresh = op.delta - counted;
+          if (fresh > 0) {
+            addShipsAt(home, op.factionId, fresh, op.hull);
+            const prior = commissioned.get(key);
+            commissioned.set(
+              key,
+              prior && prior.at === home
+                ? { count: prior.count + fresh, at: home }
+                : { count: fresh, at: home },
+            );
+          }
         } else {
           let owed = -op.delta;
           for (const base of [...bases].sort(
@@ -969,6 +1050,13 @@ export function applyOps(
         // — an `income_penalty` agent, an extortionist's toll, commerce raiding
         // — and all of them cost something. Paying someone is still allowed,
         // because nothing needs protecting from a faction giving money away.
+        // An accord may move money BETWEEN the parties, because a transcript is
+        // the one place the other side's consent exists. A declared action may
+        // not: that is looting a treasury by narration.
+        if (source === 'extraction') {
+          negotiated[op.factionId] = (negotiated[op.factionId] ?? 0) + op.delta;
+          break;
+        }
         if (actor !== undefined && op.factionId !== actor && op.delta < 0) {
           reject(
             raw,
@@ -1121,6 +1209,37 @@ export function applyOps(
           notes.push(note);
           logEvent(state, 'system', note, f.id);
         }
+        break;
+      }
+
+      case 'set_stance': {
+        const f = state.factions.find((x) => x.id === op.factionId);
+        if (!f) {
+          reject(raw, 'unknown_faction', `No faction "${op.factionId}".`);
+          break;
+        }
+        // Your own navy only — the same hazard `set_doctrine` and `deploy_agent`
+        // are guarded against. Ordering a rival's fleet to run would be the
+        // cheapest hostile act in the game.
+        if (actor !== undefined && op.factionId !== actor) {
+          reject(
+            raw,
+            'illegal_value',
+            `${actor} does not command ${op.factionId}'s fleets and cannot tell them when to break off.`,
+          );
+          break;
+        }
+        if (f.stance === op.stance) break;
+        const was = f.stance;
+        f.stance = op.stance;
+        const said = {
+          hold: 'will hold whatever the odds',
+          stand: 'will break off only when badly outmatched',
+          withdraw: 'will break off the moment it is outmatched, and keep the fleet',
+        }[op.stance];
+        const note = `${f.name} ${said} (was ${was}).`;
+        notes.push(note);
+        logEvent(state, 'order', note, op.factionId);
         break;
       }
 
@@ -1744,7 +1863,6 @@ export function applyOps(
         // hands once, and taking it back is a fresh act.
         if (!pending) {
           notes.push(...cedeTerritory(state, treaty));
-    notes.push(...settleTreatyPayment(state, treaty));
           notes.push(...settleTreatyPayment(state, treaty));
         }
         break;
@@ -1950,6 +2068,33 @@ export function applyOps(
           subornedThisBatch.set(key, (subornedThisBatch.get(key) ?? 0) + taken);
         }
         if (delta > 0) {
+          // One squadron, described twice. An `adjust_fleet` earlier in this
+          // batch already laid these down and based them at the best holding;
+          // this op says where they are meant to sit, so they MOVE rather than
+          // being minted again. Anything past what was commissioned is a
+          // genuine addition and is billed as one.
+          const key = `${op.factionId}:${op.hull}`;
+          const built = commissioned.get(key);
+          if (built !== undefined && built.count > 0) {
+            // Lifted from where they were based and set down here — and the
+            // removal is unconditional, because the two systems are very often
+            // the SAME one: `adjust_fleet` bases at the faction's best holding,
+            // which is exactly the world a model then names. Skipping the
+            // removal in that case left the squadron counted twice, which was
+            // the whole defect in its own fix.
+            const relocate = Math.min(delta, built.count);
+            const there = stackAt(built.at, op.factionId)[op.hull] ?? 0;
+            const movable = Math.min(relocate, there);
+            if (movable > 0) {
+              setStackAt(
+                built.at,
+                op.factionId,
+                subtractStack(stackAt(built.at, op.factionId), { [op.hull]: movable }),
+              );
+            }
+            built.count -= relocate;
+          }
+          placed.set(key, (placed.get(key) ?? 0) + delta);
           addShipsAt(host, op.factionId, delta, op.hull);
         } else if (taken > 0) {
           // Moving your OWN ships, you say which. A crew changing sides is not
@@ -2041,6 +2186,30 @@ export function applyOps(
           -MAX_COMMITMENT_INCOME,
           Math.min(MAX_COMMITMENT_INCOME, asked),
         );
+        // The SECOND ceiling is the one nobody was told about. `ledgerFor`
+        // caps a faction's total commitment earnings by
+        // `maxCommitmentIncomeFor`, at READ time, every turn — so it produces
+        // no note by construction and cannot. Measured: 60 agreed, trimmed to
+        // 25 here, and paid 10, with the negotiating party informed of neither
+        // step. An NPC bargains hard over a number that cannot exist.
+        //
+        // Said at signature rather than enforced here, because the ceiling is
+        // derived from `influence` and influence moves: dissent and a hostile
+        // `stat_debuff` both reach it, so freezing it into the record would be
+        // wrong the turn after. The arrangement is real at what it says; what
+        // it PAYS is what the reader decides.
+        if (yieldPerTurn > 0) {
+          for (const who of op.factionIds) {
+            const ceiling = maxCommitmentIncomeFor(state, who);
+            const already = commitmentIncomeFor(state.commitments, who, Number.MAX_SAFE_INTEGER);
+            const earnedNow = Math.max(0, already);
+            if (earnedNow + yieldPerTurn > ceiling) {
+              const note = `${nameFor(state, who)} can draw ${ceiling} a turn from standing arrangements at its influence, and this one takes it past that; the excess pays nothing until its standing improves or another lapses.`;
+              notes.push(note);
+              logEvent(state, 'clamp', note, who);
+            }
+          }
+        }
         if (yieldPerTurn !== asked) {
           const note = `Trimmed ${op.kind} yield from ${asked} to ${yieldPerTurn} per turn (ceiling ${MAX_COMMITMENT_INCOME}).`;
           notes.push(note);
@@ -2436,6 +2605,9 @@ export function applyOps(
   }
 
   capSelfInflictedLosses(state, actor, hullsBefore, shipsBefore, notes);
+  // Before the yards bill, so a settlement received this batch can pay for
+  // what the same accord commissioned.
+  notes.push(...moveConserved(state, negotiated, 'the terms agreed', actor ?? 'engine'));
   const pricedByYards = new Set<string>();
   billConstruction(state, hullsBefore, notes, pricedByYards);
   refundDuplicateCharges(state, chargedByNarrative, pricedByYards, notes);
@@ -3816,6 +3988,47 @@ function resolveBattle(
     }
   }
 
+  /* ---------- Phase 0.5: the lift phase ---------- */
+  //
+  // A defender's transports put their troops on the ground and are spent doing
+  // it. No choice, and deliberately: a power that has brought lift to a world
+  // it holds has already decided what the lift is for, and asking again would
+  // be a decision with one sensible answer.
+  //
+  // It happens HERE, after the strike and before the exchange, because that is
+  // the only window where the answer is neither free nor unreachable. Later —
+  // once the orbit is lost — the transports are already dead. Earlier is the
+  // same thing. And counting them at the strike while letting them survive is
+  // the version that can be farmed: a defender that breaks off at two to one
+  // keeps its transports, so the same six troops would "land" in every battle
+  // it ever fought, forever, and the attacker would pay real lift for each of
+  // them. Spending the hulls here is what closes that.
+  //
+  // The HOLDER's lift only. Troops from a third party's transports would be a
+  // free transfer of ground forces into somebody else's garrison.
+  //
+  // The garrison may exceed `garrisonMax`, and that is the point: a world of
+  // seven with four transports committed reads **11/7**. `GARRISON_REGROWTH`
+  // only fires below the ceiling, so the excess is spent once and never grows
+  // back — an emergency deployment, not a permanent fortification.
+  if (holder !== null) {
+    const held = defenders.find(([id]) => id === holder);
+    const committed = held?.[1].lifter ?? 0;
+    if (committed > 0) {
+      const troops = committed * LIFTER_CARRY;
+      target.garrison += troops;
+      setStackAt(target, holder, subtractStack(stackAt(target, holder), { lifter: committed }));
+      for (const entry of defenders) {
+        if (entry[0] === holder) entry[1] = stackAt(target, holder);
+      }
+      defenceForce = defenders.reduce((n, [id]) => n + hullsAt(target, id), 0);
+      const put = `${nameOf(holder)} puts ${troops} troops down from ${committed} transport(s) over ${target.name}; the garrison stands at ${target.garrison} of ${target.garrisonMax}.`;
+      notes.push(put);
+      logEvent(state, 'order', put, holder);
+      defendSnapshot = new Map(defenders);
+    }
+  }
+
   /* ---------- Phase 1: fleet battle ---------- */
   const attackWeight = weightOfSide(attackShare.values());
   const defendWeight = weightOfSide(defenders.map(([, st]) => st));
@@ -3874,7 +4087,12 @@ function resolveBattle(
     // A crusading power does not break off, in either direction. It wins
     // engagements it should have fled and loses fleets it should have saved —
     // the Iron Vigil fighting for the mandate rather than for the arithmetic.
-    const defenderStands = holderEthic === 'crusading';
+    // A holder's STANCE is its second objective: `hold` never breaks off and
+    // risks the fleet to keep the world, `withdraw` leaves the moment it is
+    // outmatched and keeps the fleet instead. `crusading` overrides both — that
+    // doctrine has never been allowed to retreat and is not allowed to order it.
+    const defenderStands = holderEthic === 'crusading' || (holder !== null && refusesToBreakOff(state, holder));
+    const breakAt = holder === null ? 2 : breakOffRatio(state, holder);
     const attackerStands = attackEthic === 'crusading';
 
     const orbital = (outcome: BattleOutcome, note: string): void => {
@@ -3894,7 +4112,7 @@ function resolveBattle(
     };
     // Only reported when it CHANGED the outcome: a crusading power that was
     // never asked to retreat did not do anything worth telling the player.
-    if (defenderStands && attackPower >= defendPower * 2) {
+    if (defenderStands && attackPower >= defendPower * breakAt) {
       doctrinesFired.push(
         `crusading: ${nameOf(holder!)} was outmatched 2:1 and did not break off`,
       );
@@ -3905,7 +4123,7 @@ function resolveBattle(
       );
     }
 
-    if (attackPower >= defendPower * 2 && !defenderStands) {
+    if (attackPower >= defendPower * breakAt && !defenderStands) {
       let lost = 0;
       for (const [id, present] of defenders) {
         const escaped = bleed(present);
@@ -4123,6 +4341,27 @@ function resolveBattle(
     // fraction of the defenders, who were just destroyed.
     const landed = [...attackShare.values()].reduce((n, st) => n + carryOf(st), 0);
     target.garrison = Math.max(1, Math.min(target.garrisonMax, landed));
+    // The transports that put THAT garrison ashore are spent, the same way a
+    // defender's are in the lift phase. They used to be counted twice: their
+    // capacity became the new garrison AND the hulls themselves were landed as
+    // ships, so a conqueror kept its whole lift arm and got the troops as well.
+    //
+    // Only the ones the garrison actually needed. The garrison is clamped to
+    // `garrisonMax`, so a fleet that brought more lift than the world can
+    // quarter still has transports with their troops aboard — and consuming
+    // ALL of them costs the attacker its composition decision outright:
+    // measured, the best attacking fleet went from `battleship:15 escort:30
+    // torpedo_boat:30 lifter:20` at 80% with a 6.1-point margin over anything
+    // simpler, to a two-class `battleship:30 lifter:40` tied with the mixed
+    // fleet at 69%.
+    let spent = Math.ceil(target.garrison / LIFTER_CARRY);
+    for (const [id, st] of attackShare) {
+      if (spent <= 0) break;
+      const take = Math.min(spent, st.lifter ?? 0);
+      if (take <= 0) continue;
+      attackShare.set(id, subtractStack(st, { lifter: take }));
+      spent -= take;
+    }
     for (const [id, st] of attackShare) land(id, st);
     const note = `${notes.join(' ')} ${coalition} storms ${target.name}, breaking a garrison of ${garrison} for ${lifterLosses} lifters; ${nameOf(owner)} takes possession with ${target.garrison} troops ashore.`.trim();
     logEvent(state, 'order', note, owner);

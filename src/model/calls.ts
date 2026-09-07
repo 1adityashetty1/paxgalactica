@@ -24,6 +24,7 @@ import {
   effectiveStats,
   dispositionBetween,
   fleetStrengthOf,
+  fleetTonsOf,
   getFaction,
   type WorldState,
 } from '../domain/state.js';
@@ -666,7 +667,12 @@ export async function gatherReactions(
         '',
         serializeCharacter(f),
         '',
-        `Fleet ${fleetStrengthOf(state, f.id)} · credits ${f.credits} · disposition toward the player (${state.playerFactionId}): ${dispositionBetween(
+        // Hulls AND tons. A bare hull count was the whole fleet a model saw,
+        // and it means different things by class: thirty escorts and thirty
+        // battleships are the same number and a third of the fighting weight
+        // apart. `serializeState` has reported both since classes shipped;
+        // these two call sites were left behind.
+        `Fleet ${fleetStrengthOf(state, f.id)} hulls / ${fleetTonsOf(state, f.id)} tons · credits ${f.credits} · disposition toward the player (${state.playerFactionId}): ${dispositionBetween(
           state,
           id,
           state.playerFactionId,
@@ -815,7 +821,7 @@ export async function diplomacyReply(
     '',
     serializeCharacter(faction),
     '',
-    `Fleet strength ${fleetStrengthOf(state, faction.id)} · treasury ${faction.credits} credits.`,
+    `Fleet ${fleetStrengthOf(state, faction.id)} hulls / ${fleetTonsOf(state, faction.id)} tons · treasury ${faction.credits} credits.`,
     `Your disposition toward ${player?.name ?? state.playerFactionId}: ${dispositionBetween(
       state,
       factionId,

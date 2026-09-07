@@ -7,7 +7,7 @@ import {
   type HullClass,
   type ShipStack,
 } from './domain/hulls.js';
-import { WorldStateSchema, addShipsAt, type WarEthic, type WorldState } from './domain/state.js';
+import { WorldStateSchema, addShipsAt, fleetTonsOf, orbitalWeightAt, type WarEthic, type WorldState } from './domain/state.js';
 
 /**
  * Does fleet composition actually decide a battle, and which mix wins?
@@ -51,6 +51,24 @@ export interface TrialOutcome {
   took: boolean;
   /** Why it ended, for reading the shape of a loss rather than only its fact. */
   why: 'taken' | 'no_lift' | 'no_landing' | 'driven_off' | 'unopposed' | 'other';
+  /**
+   * Defender tonnage still afloat anywhere, which is its SECOND objective.
+   *
+   * Holding alone cannot tell a defending composition apart — one linear
+   * objective has a pure optimum, and the pure battle line wins it. A stance
+   * that lets a defender break off early makes "keep the fleet" a separate
+   * thing to want, and that needs a separate number to see.
+   */
+  defenderTonsLeft: number;
+  /**
+   * Defender combat weight still afloat.
+   *
+   * Distinct from tonnage on purpose, and the distinction is the whole test: a
+   * withdrawal costs a fixed FRACTION OF TONNAGE and `bleed` spends the loss
+   * order, so a screen does not reduce the tonnage lost — it only changes which
+   * hulls absorb it. If a screen pays a defender anywhere, it is here.
+   */
+  defenderWeightLeft: number;
 }
 
 /**
@@ -93,12 +111,15 @@ export function trial(
   garrison: number,
   turn: number,
   holderEthic: WarEthic,
+  /** The holder's standing order on breaking off. Defaults to how it has always played. */
+  holderStance: 'hold' | 'stand' | 'withdraw' = 'stand',
 ): TrialOutcome {
   const state = JSON.parse(JSON.stringify(ARENA)) as WorldState;
   // The turn is what varies the seeded roll, and it costs nothing to change —
   // unlike ticking forward, which would also move income and garrisons.
   state.turn = turn;
   state.factions.find((f) => f.id === 'ojjul')!.warEthic = holderEthic;
+  state.factions.find((f) => f.id === 'ojjul')!.stance = holderStance;
 
   const world = state.systems.find((s) => s.id === TARGET)!;
   world.garrison = garrison;
@@ -117,7 +138,7 @@ export function trial(
       originId: ORIGIN, targetId: TARGET, force: attacker,
     },
   ]);
-  if (issued.rejections.length > 0) return { took: false, why: 'other' };
+  if (issued.rejections.length > 0) return { took: false, why: 'other', defenderTonsLeft: 0, defenderWeightLeft: 0 };
 
   let r = tickTurn(issued.state);
   for (let guard = 0; guard < 6 && r.state.pendingOrders.length > 0; guard++) r = tickTurn(r.state);
@@ -130,7 +151,14 @@ export function trial(
     : /no troops aboard/.test(text) ? 'no_lift'
       : /still hold the orbitals/.test(text) ? 'no_landing'
         : /driven off/.test(text) ? 'driven_off' : 'other';
-  return { took, why };
+  // Anywhere, not just here: a fleet that broke off and reached a refuge is
+  // exactly what the withdrawal stance is trying to preserve.
+  const defenderTonsLeft = fleetTonsOf(r.state, 'ojjul');
+  const defenderWeightLeft = r.state.systems.reduce(
+    (n, sys) => n + orbitalWeightAt(sys, 'ojjul'),
+    0,
+  );
+  return { took, why, defenderTonsLeft, defenderWeightLeft };
 }
 
 /**

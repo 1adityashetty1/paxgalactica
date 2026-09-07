@@ -18,6 +18,7 @@ import { addShipsAt, hullsAt, stackAt, type WorldState } from '../src/domain/sta
 
 const fresh = (): WorldState => createSeedState('freeworlds');
 const sys = (s: WorldState, id: string) => s.systems.find((x) => x.id === id)!;
+const fac = (s: WorldState, id: string) => s.factions.find((x) => x.id === id)!;
 
 /** Send `att` from ark-3 against a world defended by `def`, and settle it. */
 function fight(att: ShipStack, def: ShipStack, garrison = 1, target = 'sek-6') {
@@ -147,7 +148,13 @@ describe('a torpedo boat strikes past the screen', () => {
     expect(torpedoStrike([{ torpedo_boat: 10 }])).toBe(
       10 * HULL_SPEC.torpedo_boat.tonnage * TORPEDO_STRIKE,
     );
-    expect(battleshipEquivalents({ torpedo_boat: 40 })).toBe(0);
+    // Nominal line weight, so a mass of boats is not literally nothing — but
+    // 40 of them are worth barely one battleship, which is what keeps the
+    // salvo their whole output. Measured: at 0.5 the best attacking fleet in
+    // the harness becomes 96 boats and nothing else at 98%, and at 1.0 it is
+    // 100%.
+    expect(battleshipEquivalents({ torpedo_boat: 40 })).toBeLessThan(2);
+    expect(battleshipEquivalents({ torpedo_boat: 40 })).toBeGreaterThan(0);
   });
 });
 
@@ -212,7 +219,8 @@ describe('battleship-equivalents', () => {
 
   it('prices a cheap hull at what it actually contributes', () => {
     expect(battleshipEquivalents({ escort: 3 })).toBe(1);
-    expect(battleshipEquivalents({ lifter: 9 })).toBe(0);
+    // Nine transports are worth less than a third of one battleship.
+    expect(battleshipEquivalents({ lifter: 9 })).toBeLessThan(0.5);
   });
 
   it('draws the smallest proportional slice worth a stated strength', () => {
@@ -230,11 +238,17 @@ describe('battleship-equivalents', () => {
 });
 
 describe('the classes keep their shape', () => {
-  it('gives a torpedo boat no weight at all, so it is not a better battleship', () => {
-    // It fires once, before the fleets close, and adds nothing to the line —
-    // so a fleet of nothing but boats delivers one salvo and is then destroyed
-    // where it lies, having no weight with which to hold an orbit.
-    expect(HULL_SPEC.torpedo_boat.orbitalWeight).toBe(0);
+  it('gives a torpedo boat only nominal weight, so it is not a better battleship', () => {
+    // It fires once, before the fleets close, and adds almost nothing to the
+    // line — so a fleet of nothing but boats delivers one salvo and is then
+    // destroyed for having nothing worth calling a fleet left. The weight is
+    // nominal so the exchange can resolve it rather than needing an exception,
+    // and it has to STAY nominal: swept at 0.5 the best attacker in the
+    // harness is 96 boats and nothing else, winning 98%.
+    expect(HULL_SPEC.torpedo_boat.orbitalWeight).toBeGreaterThan(0);
+    expect(HULL_SPEC.torpedo_boat.orbitalWeight).toBeLessThan(
+      HULL_SPEC.escort.orbitalWeight / 5,
+    );
     expect(HULL_SPEC.torpedo_boat.tonnage).toBe(HULL_SPEC.escort.tonnage);
   });
 
@@ -328,5 +342,87 @@ describe('the exchange reads the roll the same way for both sides', () => {
     expect(r.notes.join(' ')).toMatch(/Fleets engage|driven off|breaks off/);
     expect(hullsAt(sys(r.state, 'sek-6'), 'vigil')).toBeLessThan(12);
     expect(t.controllerFactionId).toBe('vigil'); // the fixture is untouched
+  });
+});
+
+/**
+ * Item 74's second objective for a defender: a standing order on whether the
+ * world is worth the fleet.
+ */
+describe('a defender chooses whether to break off', () => {
+  const defend = (stance: 'hold' | 'stand' | 'withdraw') => {
+    const state = fresh();
+    const t = sys(state, 'sek-6');
+    t.controllerFactionId = 'vigil';
+    t.ships = {};
+    t.garrison = 1;
+    t.garrisonMax = 1;
+    fac(state, 'vigil').stance = stance;
+    // Not crusading: that doctrine overrides any stance, which is the point.
+    fac(state, 'vigil').warEthic = 'defensive';
+    addShipsAt(t, 'vigil', 10, 'battleship');
+    const origin = sys(state, 'ark-3');
+    origin.ships = {};
+    addShipsAt(origin, 'freeworlds', 60, 'battleship');
+    addShipsAt(origin, 'freeworlds', 4, 'lifter');
+    const out = applyOps(state, [{
+      op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
+      originId: 'ark-3', targetId: 'sek-6', force: { battleship: 60, lifter: 4 },
+    }], 'model', 'freeworlds');
+    let r = tickTurn(out.state);
+    while (r.state.pendingOrders.some((o) => o.id === 'ord-0-0')) r = tickTurn(r.state);
+    return r.notes.join(' ');
+  };
+
+  it('holds the orbit rather than break off when ordered to hold', () => {
+    expect(defend('hold')).not.toMatch(/breaks off/);
+  });
+
+  it('breaks off when badly outmatched on the default stance', () => {
+    expect(defend('stand')).toMatch(/breaks off/);
+  });
+
+  it('refuses a stance ordered by somebody else', () => {
+    const out = applyOps(
+      fresh(),
+      [{ op: 'set_stance', factionId: 'vigil', stance: 'withdraw' }],
+      'model',
+      'freeworlds',
+    );
+    expect(out.rejections.some((r) => r.code === 'illegal_value')).toBe(true);
+  });
+
+  it('lets a power set its own', () => {
+    const out = applyOps(
+      fresh(),
+      [{ op: 'set_stance', factionId: 'freeworlds', stance: 'hold' }],
+      'model',
+      'freeworlds',
+    );
+    expect(out.rejections).toHaveLength(0);
+    expect(fac(out.state, 'freeworlds').stance).toBe('hold');
+  });
+
+  it('cannot order a crusading power to run', () => {
+    // The stance is set, and the doctrine still overrides it.
+    const state = fresh();
+    fac(state, 'vigil').stance = 'withdraw';
+    expect(fac(state, 'vigil').warEthic).toBe('crusading');
+    const t = sys(state, 'sek-6');
+    t.controllerFactionId = 'vigil';
+    t.ships = {};
+    t.garrison = 1; t.garrisonMax = 1;
+    addShipsAt(t, 'vigil', 10, 'battleship');
+    const origin = sys(state, 'ark-3');
+    origin.ships = {};
+    addShipsAt(origin, 'freeworlds', 30, 'battleship');
+    addShipsAt(origin, 'freeworlds', 4, 'lifter');
+    const out = applyOps(state, [{
+      op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
+      originId: 'ark-3', targetId: 'sek-6', force: { battleship: 30, lifter: 4 },
+    }], 'model', 'freeworlds');
+    let r = tickTurn(out.state);
+    while (r.state.pendingOrders.some((o) => o.id === 'ord-0-0')) r = tickTurn(r.state);
+    expect(r.notes.join(' ')).not.toMatch(/breaks off/);
   });
 });

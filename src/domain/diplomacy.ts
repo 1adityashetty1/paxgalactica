@@ -137,6 +137,7 @@ export function treatyBetween(
  */
 export const PEACE_TREATIES = ['non_aggression', 'ceasefire', 'mutual_defense'] as const;
 
+
 /**
  * What every OTHER power's opinion of you drops by when you attack a partner.
  *

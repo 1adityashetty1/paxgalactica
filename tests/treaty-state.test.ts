@@ -3,7 +3,7 @@ import { createSeedState } from '../src/seed/scenario.js';
 import { Campaign } from '../src/engine/campaign.js';
 import { MemoryCampaignStore } from '../src/engine/store.js';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
-import { ledgerFor, type WorldState } from '../src/domain/state.js';
+import { addShipsAt, ledgerFor, setShipsAt, type WorldState } from '../src/domain/state.js';
 import type { OpInput } from '../src/domain/ops.js';
 
 /**
@@ -275,5 +275,62 @@ describe('a treaty flow cannot pay out more than it takes in', () => {
       .filter((t) => t.status === 'active')
       .reduce((n, t) => n + sumOf(t.terms.incomePerTurn), 0);
     expect(injected).toBeLessThanOrEqual(0);
+  });
+});
+
+/**
+ * Item 59, and the correction that came with it.
+ *
+ * I reported that a `basing_rights` partner could storm the grantor's world and
+ * keep the treaty. **That was an artefact of a malformed fixture** — the probe
+ * set `treatyType`, which is the field on the *op*, where a `Treaty` carries
+ * `type`. With no valid treaty `guest()` never matched and the invader was an
+ * ordinary attacker.
+ *
+ * With a real grant the mechanism works: a guest is filtered out of the
+ * attackers entirely and simply puts in. A partner who wants to attack has to
+ * repudiate the treaty first, which is exactly the explicit, priced act it
+ * should be.
+ */
+describe('a fleet under basing rights puts in rather than invades', () => {
+  const fresh = (): WorldState => createSeedState('meridian');
+  const sys = (w: WorldState, id: string) => w.systems.find((x) => x.id === id)!;
+  const arrive = (type: 'basing_rights' | 'trade_accord') => {
+    const s = fresh();
+    s.treaties.push({
+      id: 't-base', type, parties: ['meridian', 'vigil'],
+      summary: 'basing', status: 'active', signedTurn: 0, expiresTurn: null,
+      terms: {
+        voidsOn: [], territory: [], shipsPledged: {}, incomePerTurn: {},
+        payment: {}, incomeShares: [], mutualDefenseTrigger: '',
+      },
+    } as never);
+    const t = sys(s, 'tor-2');
+    setShipsAt(t, 'vigil', 0);
+    t.garrison = 4;
+    t.garrisonMax = 4;
+    const o = sys(s, 'sek-1');
+    setShipsAt(o, 'meridian', 0);
+    addShipsAt(o, 'meridian', 40, 'battleship');
+    addShipsAt(o, 'meridian', 6, 'lifter');
+    const out = applyOps(s, [{
+      op: 'issue_order', factionId: 'meridian', type: 'fleet_movement',
+      originId: 'sek-1', targetId: 'tor-2', force: { battleship: 40, lifter: 6 },
+    }], 'model', 'meridian');
+    let r = tickTurn(out.state);
+    for (let i = 0; i < 8 && r.state.pendingOrders.length > 0; i++) r = tickTurn(r.state);
+    return r.state;
+  };
+
+  it('cannot take the world it was invited into', () => {
+    const after = arrive('basing_rights');
+    expect(sys(after, 'tor-2').controllerFactionId).toBe('vigil');
+    expect(after.treaties.find((t) => t.id === 't-base')?.status).toBe('active');
+  });
+
+  it('and a trade accord grants no such shelter', () => {
+    // Deliberately narrow: a `trade_accord` concerns lanes, not orbits, so the
+    // same fleet arriving under one is an invasion.
+    expect(sys(arrive('trade_accord'), 'tor-2').controllerFactionId).toBe('meridian');
   });
 });

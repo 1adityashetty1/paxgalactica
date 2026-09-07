@@ -477,8 +477,8 @@ had no reason to agree.
 | class | tons | cost | upkeep | orbital weight | carry | loss order | job |
 |---|---|---|---|---|---|---|---|
 | **escort** | 2 | 30 | 2 | 1 | — | 0 | the screen, and the answer to boats |
-| **lifter** | 3 | 45 | 3 | **0** | **6** | 1 | the only way to take ground |
-| **torpedo boat** | 2 | 30 | 2 | 1 | — | 2 | strikes past a screen at the heaviest hulls |
+| **lifter** | 3 | 45 | 3 | **0.1** | **6** | 1 | the only way to take ground |
+| **torpedo boat** | 2 | 30 | 2 | **0.1** | — | 2 | strikes past a screen at the heaviest hulls |
 | **battleship** | 4 | 60 | 4 | 3 | — | 3 | the line; it wins the exchange |
 
 **Tonnage is the single primitive.** Cost, upkeep, insolvency attrition,
@@ -492,6 +492,27 @@ The rates are chosen so a battleship is **exactly what a ship was before classes
 existed**, which is what made the migration a change with no balance argument in
 it: a galaxy of nothing but battleships plays identically, and all 22 saved
 campaigns replay to the fleets and ledgers they had.
+
+**Nothing weighs exactly nothing, and the two nominal values are the reason.**
+A lifter and a torpedo boat carry **0.1** — a thirtieth of a battleship — which
+is not a contribution to the line so much as a way for the exchange to have an
+answer. At exactly zero, a fleet of nothing but transports or nothing but boats
+read as *"nothing to fight"* to every branch of the resolver, so the phase could
+not settle itself and needed an exception to annihilate them where they lay.
+Something that is *there* should be fought and destroyed by the ordinary
+arithmetic. Both exceptions are now unreachable, and the outcomes they produced
+are reached by fighting instead: unarmed squatters are still cleared out, but
+the attacker pays for it — an unscreened convoy spends its own transports
+winning the orbit and lands nothing.
+
+**The value has to stay nominal, and that was swept rather than assumed.**
+`TORPEDO_STRIKE` was tuned on the premise that a boat carries no line weight at
+all: it fires once and is then destroyed for having nothing to hold an orbit
+with. Give it staying power and the salvo simply wins — at 0.5 the best
+attacking fleet in the harness is **96 torpedo boats and nothing else at 98%**,
+and at 1.0 it is 100%. At 0.1 the best attacker is the same four-class fleet it
+was at zero, `battleship:15 escort:30 torpedo_boat:30 lifter:20`, and the margin
+over anything simpler is marginally better (5.8 → 6.1).
 
 **Tonnage is not combat weight, and conflating them is the trap.** Tonnage is
 how much ship there is; `orbitalWeight` is what it does in a fight. A lifter is
@@ -1554,6 +1575,21 @@ Effects apply where they are *read* rather than mutating state each tick —
 otherwise a debuff would compound every turn. Only `hull_damage` mutates,
 because destroyed hulls stay destroyed.
 
+### A thief receives what it steals
+
+`income_penalty` destroyed value rather than moving it: the victim's ledger
+showed the loss and nobody's showed the gain. Three sources said otherwise and
+the code was the odd one out — the schema calls it *"credits denied to the
+target"*, `prompts/resolution.md` offers it as the honest way to **skim** a
+rival (*"taking credits out of a rival's treasury is rejected outright; skim a
+rival with an `income_penalty` agent"*), and the mission that places one by
+default is called `theft`. Theft moves money.
+
+`Ledger.espionageGain` is the mirror of `espionageLoss`, read the same way and
+in the same pass. An operative on a world its own owner holds steals from
+nobody. The transfer conserves; the owner's separate `AGENT_UPKEEP` is what
+makes running the network cost something.
+
 ## Intelligence: what you can see, and what you only suspect
 
 `src/domain/intel.ts`. For most of this project's life the player had **perfect
@@ -1777,6 +1813,22 @@ unit; this is the same move for money and for crews. A batch-scoped ledger
 carries what has been spent against each cap, so a ceiling cannot be multiplied
 by saying the same thing more times.
 
+**One squadron described twice is one squadron.** `adjust_fleet` commissions and
+bases at the best holding; `adjust_ships` puts hulls at a named world — and a
+model describing one squadron reaches for both, so six lifters arrived as
+twelve, billed as twelve, under a narrative that said six. Neither op is wrong
+in isolation, which is why nothing caught it. Within a batch they are one
+commissioning: a placement **moves** what was just built, and only the surplus
+past it is a genuine addition. Two `adjust_fleet` programmes are still two, and
+two different hull classes are still two.
+
+> The first fix skipped the relocation when the placement named the system the
+> hulls were already based at, on the reasoning that moving something to where
+> it is does nothing. That is the *common* case — `adjust_fleet` bases at the
+> best holding, which is exactly the world a model then names — so it counted
+> the squadron twice inside its own fix. Removing unconditionally makes both
+> cases uniform.
+
 **A duplicate can only be recognised after the mechanisms have run**, so
 `refundDuplicateCharges` is a post-pass beside `billConstruction` rather than a
 test inside the op. The cap's own comment always named both cases — *"either
@@ -1785,6 +1837,25 @@ second. Trimming an invented sum is still right, and still happens; a trimmed
 duplicate on top of a real bill is a second charge for one purchase. Only
 charges are refunded, since a windfall beside a purchase is not the duplicate
 case.
+
+### An accord may move money; a declaration may not
+
+`adjust_credits` is refused when it takes credits out of a faction that is not
+the actor — correctly, for a declared action: that is looting a treasury by
+narration, and the honest routes are an `income_penalty` operative, a toll or a
+raid. Applied to an **accord** it blocked the one direction that matters. A
+450-credit settlement agreed with an NPC could not be written down at all, and
+both sides left the table believing the money had moved.
+
+Extraction is the one pass that has read a transcript, so it is the one place
+the other party's consent exists — the same argument that makes `form_treaty`
+extraction-only. Its credit movements are now held back and settled together
+through `moveConserved`, the helper `terms.payment` already used: a debit with a
+matching credit moves money, a credit on its own mints it and is dropped, and a
+payer who agreed to more than it holds pays what it holds with the receipts
+trimmed pro-rata. Deferred rather than applied in place because whether an entry
+is a transfer or an invention is a property of the **whole batch**, not of the
+op.
 
 ### A one-time price needed a home, and that is why a world cost 240
 
@@ -1919,6 +1990,26 @@ it the peace it profits from.
 > sovereignty"*; Arkane is the defensive faction par excellence — *"take no
 > master"*, *"will never accept occupation"* — and giving it an expansion-pays
 > mechanic would have contradicted its whole sheet.
+
+## A commander decides whether the world is worth the fleet
+
+`set_stance` — `hold` never breaks off, `stand` breaks at two to one (the
+default, and what every campaign was played under), `withdraw` breaks the moment
+it is outmatched. Free: no credits, no dissent, no roll, because it is a
+standing order to your own navy rather than a change of what the power believes.
+Your own faction only, and `crusading` overrides all three — the Iron Vigil
+cannot be ordered to run.
+
+It was built as the **second objective** item 74 says a defender needs, and it
+did not work. Swept over every defending composition at two budget ratios and
+scored on holding *and* on force preserved, a pure battle line wins every metric
+under every stance. The reason generalises 74's rule rather than escaping it: a
+withdrawal costs a fixed **fraction of tonnage**, and `bleed` spends the loss
+order — so a screen does not reduce what is lost, it changes which hulls absorb
+it. **Protecting a percentage of your own weight is still measured in weight.**
+
+It ships because it is a choice a commander should have and it is honestly
+documented, not because it solved anything. See items 74, 76 and 77.
 
 ## Combat
 
@@ -2128,6 +2219,28 @@ The eight remaining categories carry **no** payload on purpose: `espionage`
 lands as `deploy_agent`, `treaty_ratification` as `form_treaty`, and `blockade`
 and `commerce_raiding` are read live off `pendingOrders` by `trade.ts` while they
 run. A payload there would be a second mechanism competing with one that works.
+
+#### What survives a change of hands
+
+A programme can complete on a world its owner no longer holds, and
+`applyOrderEffect` checks `stillOurs` in **all four** branches. What differs is
+the policy, and the split is a rule rather than an accident:
+
+| effect | when the world has changed hands |
+|---|---|
+| `develop_system` | **lands** — *"the works now serve whoever holds the world"* |
+| `fortify` | **lands** — *"they defend whoever takes the world next"* |
+| `raise_garrison` | **withheld** — the levy disperses |
+| `commission_ships` | **withheld** — the yards were lost with the world and the hulls with them |
+
+**Ground improvements stay where they were built; people and hulls do not.** A
+wall does not care who is standing behind it, and a survey does not un-survey
+itself — but a levy raised for one flag does not muster for the next, and a hull
+still on the slipway belongs to whoever holds the slipway.
+
+It was filed as an asymmetry to fix, on the reading that `commission_ships`
+checked and `fortify` did not. Both check; only their answers differ, and the
+answers are right. Written down here so it stays a decision.
 
 #### Why this is not "the model rewrites state, on a delay"
 

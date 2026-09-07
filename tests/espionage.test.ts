@@ -1,10 +1,20 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { MISSION_PROFILE, type AgentMission } from '../src/domain/diplomacy.js';
-import type { WorldState } from '../src/domain/state.js';
+import { ledgerFor, type WorldState } from '../src/domain/state.js';
 import { serializeStanding } from '../src/model/serialize.js';
 import { routeCovertAction } from '../src/domain/development.js';
+
+// These are the two heaviest files in the suite — real work through the real
+// reducer, not slow assertions. The longest case runs 3.8s against vitest's
+// 5s default, a margin CPU contention eats: the suite failed twice in nine runs
+// when it was chained behind three typechecks in one shell command, always
+// these two files and never with an assertion error. Raised rather than
+// shrunk, because the iteration counts are what make the measurements mean
+// anything.
+vi.setConfig({ testTimeout: 30_000 });
+
 
 /**
  * Agents have to be catchable.
@@ -256,5 +266,48 @@ describe('a declared covert action becomes a deployment', () => {
     const out = applyOps(state, routed.ops, 'model', 'meridian');
     expect(out.rejections.map((r) => r.code)).toEqual(['illegal_value']);
     expect(out.rejections[0]!.message).toMatch(/already running 3 operatives/);
+  });
+});
+
+/**
+ * Item 67.4. An `income_penalty` operative used to DESTROY value: the victim's
+ * ledger showed the loss and nobody's showed the gain.
+ *
+ * Three sources said otherwise and the code was the odd one out — the schema
+ * calls it "credits denied", `prompts/resolution.md` offers it as the honest
+ * way to *skim* a rival, and the mission that places one by default is called
+ * `theft`. Theft moves money.
+ */
+describe('a thief receives what it steals', () => {
+  const withThief = () => {
+    const s = createSeedState('meridian');
+    s.agents = [
+      {
+        id: 'a1', ownerFactionId: 'meridian', targetFactionId: 'vigil',
+        systemId: 'tor-3', mission: 'theft',
+        effect: { kind: 'income_penalty', perTurn: 10 },
+        cover: 'a factor', deployedTurn: 0, exposed: false, successChance: 50,
+      },
+    ] as never;
+    return s;
+  };
+
+  it('moves exactly what it takes', () => {
+    const s = withThief();
+    expect(ledgerFor(s, 'vigil').espionageLoss).toBe(10);
+    expect(ledgerFor(s, 'meridian').espionageGain).toBe(10);
+  });
+
+  it('pays nobody once the operative is burned', () => {
+    const s = withThief();
+    (s.agents[0] as { exposed: boolean }).exposed = true;
+    expect(ledgerFor(s, 'vigil').espionageLoss).toBe(0);
+    expect(ledgerFor(s, 'meridian').espionageGain).toBe(0);
+  });
+
+  it('steals from nobody when it sits on its owner’s own world', () => {
+    const s = withThief();
+    (s.agents[0] as { systemId: string }).systemId = 'sek-1'; // Meridian's own
+    expect(ledgerFor(s, 'meridian').espionageGain).toBe(0);
   });
 });

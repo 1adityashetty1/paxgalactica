@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { applyOps } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
+import { fleetStrengthOf, stackAt } from '../src/domain/state.js';
+import { maxCommitmentIncomeFor } from '../src/domain/state.js';
+import { MAX_COMMITMENT_INCOME } from '../src/domain/arbitration.js';
 import {
   addShipsAt,
   hullsAt,
@@ -164,5 +167,165 @@ describe('a cession and its price are two halves of one deal', () => {
     const out = purchase({ meridian: 3000, ojjul: 3000 });
     expect(fac(out.state, 'meridian').credits).toBe(fac(start, 'meridian').credits);
     expect(fac(out.state, 'ojjul').credits).toBe(fac(start, 'ojjul').credits);
+  });
+});
+
+describe('one squadron described twice is one squadron', () => {
+  const build = (ops: unknown[]) => {
+    const state = fresh();
+    const before = fleetStrengthOf(state, 'meridian');
+    const at = (w: WorldState, id: string) => stackAt(sys(w, id), 'meridian').lifter ?? 0;
+    // Measured as a DELTA: the seed now opens every power with a doctrine-shaped
+    // squadron, so Meridian already has transports at these worlds and an
+    // absolute count would be asserting the seed rather than the reconciliation.
+    const opening = new Map(['sek-1', 'sek-4'].map((id) => [id, at(state, id)]));
+    const out = applyOps(state, ops as never, 'model', 'meridian');
+    const lifters = (id: string) => at(out.state, id) - (opening.get(id) ?? 0);
+    return { gained: fleetStrengthOf(out.state, 'meridian') - before, lifters };
+  };
+
+  // `adjust_fleet` commissions and bases at the best holding; `adjust_ships`
+  // puts hulls at a named world. A model describing one squadron reaches for
+  // both, and the reducer counted them as two — twice the hulls the narrative
+  // claimed, and twice the bill. Same defect as 58/61/63 one field over.
+  it('does not mint a second squadron when the placement names the base', () => {
+    // Meridian's best holding IS sek-1, which is what made the first fix fail:
+    // a "different system" guard skipped the relocation and still added.
+    const { gained, lifters } = build([
+      { op: 'adjust_fleet', factionId: 'meridian', delta: 6, hull: 'lifter' },
+      { op: 'adjust_ships', systemId: 'sek-1', factionId: 'meridian', delta: 6, hull: 'lifter' },
+    ]);
+    expect(gained).toBe(6);
+    expect(lifters('sek-1')).toBe(6);
+  });
+
+  it('moves them when the placement names somewhere else', () => {
+    const { gained, lifters } = build([
+      { op: 'adjust_fleet', factionId: 'meridian', delta: 6, hull: 'lifter' },
+      { op: 'adjust_ships', systemId: 'sek-4', factionId: 'meridian', delta: 6, hull: 'lifter' },
+    ]);
+    expect(gained).toBe(6);
+    expect(lifters('sek-4')).toBe(6);
+    expect(lifters('sek-1')).toBe(0);
+  });
+
+  it('reconciles the other emission order too', () => {
+    const { gained, lifters } = build([
+      { op: 'adjust_ships', systemId: 'sek-4', factionId: 'meridian', delta: 6, hull: 'lifter' },
+      { op: 'adjust_fleet', factionId: 'meridian', delta: 6, hull: 'lifter' },
+    ]);
+    expect(gained).toBe(6);
+    expect(lifters('sek-4')).toBe(6);
+  });
+
+  it('delivers the surplus when the placement asks for more than was built', () => {
+    const { gained } = build([
+      { op: 'adjust_fleet', factionId: 'meridian', delta: 6, hull: 'lifter' },
+      { op: 'adjust_ships', systemId: 'sek-4', factionId: 'meridian', delta: 10, hull: 'lifter' },
+    ]);
+    expect(gained).toBe(10);
+  });
+
+  it('leaves two genuine programmes alone', () => {
+    // Two `adjust_fleet` ops are two builds, not one described twice. The rule
+    // must not make a fleet cheaper to buy by splitting the order.
+    expect(build([
+      { op: 'adjust_fleet', factionId: 'meridian', delta: 6, hull: 'lifter' },
+      { op: 'adjust_fleet', factionId: 'meridian', delta: 6, hull: 'lifter' },
+    ]).gained).toBe(12);
+  });
+
+  it('does not reconcile across hull classes', () => {
+    expect(build([
+      { op: 'adjust_fleet', factionId: 'meridian', delta: 6, hull: 'lifter' },
+      { op: 'adjust_ships', systemId: 'sek-4', factionId: 'meridian', delta: 6, hull: 'escort' },
+    ]).gained).toBe(12);
+  });
+});
+
+describe('an accord can move money between the parties', () => {
+  const settle = (movement: Record<string, number>, source: 'extraction' | 'model' = 'extraction') => {
+    const start = fresh();
+    const ops = Object.entries(movement).map(([factionId, delta]) => ({
+      op: 'adjust_credits', factionId, delta,
+    }));
+    const out = applyOps(start, ops as never, source, 'meridian');
+    return {
+      out,
+      moved: (id: string) => fac(out.state, id).credits - fac(start, id).credits,
+      held: (id: string) => fac(start, id).credits,
+    };
+  };
+
+  it('debits the payer and credits the payee, past the narrative ceiling', () => {
+    // The measured case: Arkane agreed a 450-credit settlement, the creditor's
+    // debit was refused by the "cannot take credits out of another treasury"
+    // guard, and both sides left believing the money had moved. That guard is
+    // right for a DECLARED action and wrong for an accord — extraction is the
+    // one pass that has read a transcript.
+    const { out, moved } = settle({ ojjul: -450, meridian: 450 });
+    expect(out.rejections).toHaveLength(0);
+    expect(moved('meridian')).toBe(450);
+    expect(moved('ojjul')).toBe(-450);
+    // Uncapped on purpose: a transfer cannot invent a credit, so what needs
+    // guarding is its conservation, not its size.
+    expect(moved('meridian')).toBeGreaterThan(MAX_NARRATIVE_CREDITS);
+  });
+
+  it('still refuses a declared action reaching into another treasury', () => {
+    const { out, moved } = settle({ ojjul: -450, meridian: 450 }, 'model');
+    expect(out.rejections.some((r) => r.code === 'illegal_value')).toBe(true);
+    expect(moved('ojjul')).toBe(0);
+  });
+
+  it('drops a settlement nobody is paying', () => {
+    // Both positive is money from nowhere — the same ruling `incomePerTurn`
+    // and `terms.payment` get, and dropped rather than flipped because which
+    // party to flip is a coin toss.
+    const { moved } = settle({ ojjul: 450, meridian: 450 });
+    expect(moved('meridian')).toBe(0);
+    expect(moved('ojjul')).toBe(0);
+  });
+
+  it('pays only what the payer holds, and trims the receipt to match', () => {
+    const start = fresh();
+    const purse = fac(start, 'drajk').credits;
+    const { moved } = settle({ drajk: -(purse * 10), meridian: purse * 10 });
+    expect(moved('drajk')).toBe(-purse);
+    expect(moved('meridian')).toBe(purse);
+  });
+});
+
+describe('a commitment says when its yield will not be paid', () => {
+  it('warns at signature that the influence ceiling will withhold it', () => {
+    // Two ceilings compound and only one of them ever spoke. `ledgerFor` caps
+    // total commitment earnings by `maxCommitmentIncomeFor` at READ time, so it
+    // produces no note by construction: 60 agreed, trimmed to 25 here, paid 10,
+    // and the negotiating party told of neither step.
+    const state = fresh();
+    const ceiling = maxCommitmentIncomeFor(state, 'drajk');
+    const out = applyOps(
+      state,
+      [{
+        op: 'establish_commitment', kind: 'war_chest_stipend', factionIds: ['drajk'],
+        text: 'a stipend', exclusive: false, incomePerTurn: ceiling + MAX_COMMITMENT_INCOME,
+      }] as never,
+      'extraction',
+      'drajk',
+    );
+    expect(out.notes.join(' ')).toMatch(/can draw \d+ a turn from standing arrangements/);
+  });
+
+  it('says nothing when the arrangement fits under the ceiling', () => {
+    const out = applyOps(
+      fresh(),
+      [{
+        op: 'establish_commitment', kind: 'small_charter', factionIds: ['meridian'],
+        text: 'a charter', exclusive: false, incomePerTurn: 1,
+      }] as never,
+      'extraction',
+      'meridian',
+    );
+    expect(out.notes.join(' ')).not.toMatch(/can draw/);
   });
 });

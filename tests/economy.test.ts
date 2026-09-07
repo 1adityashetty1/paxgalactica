@@ -1,6 +1,7 @@
 import { ordersVisibleTo } from '../src/domain/intel.js';
 import { describe, expect, it } from 'vitest';
 import { applyOps, tickTurn, MAX_ATTRITION_FRACTION } from '../src/domain/reducer.js';
+import { CREDITS_PER_TON, HULL_SPEC } from '../src/domain/hulls.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { AGENT_COST, MISSION_PROFILE } from '../src/domain/diplomacy.js';
 import { COMMITMENT_GOODWILL } from '../src/domain/arbitration.js';
@@ -10,7 +11,9 @@ import {
   agentsVisibleTo,
   effectiveStats,
   ledgerFor,
+  addShipsAt,
   fleetStrengthOf,
+  fleetTonsOf,
   SHIP_COST,
   UPKEEP_PER_FLEET_POINT,
   systemIncome,
@@ -539,6 +542,7 @@ describe('faction compulsions exist for every power', () => {
 
 describe('ships cost money, in code rather than in a prompt', () => {
   const fleet = (s: WorldState, id = 'freeworlds') => fleetStrengthOf(s, id);
+const tons = (s: WorldState) => fleetTonsOf(s, 'freeworlds');
   const purse = (s: WorldState, id = 'freeworlds') => s.factions.find((f) => f.id === id)!.credits;
 
   it('cannot build a thousand ships on eleven hundred credits', () => {
@@ -548,9 +552,14 @@ describe('ships cost money, in code rather than in a prompt', () => {
     const before = fleet(start);
     const res = applyOps(start, [{ op: 'adjust_fleet', factionId: 'freeworlds', delta: 1000 }]);
 
-    const affordable = Math.floor(purse(start) / SHIP_COST);
-    expect(fleet(res.state)).toBe(before + affordable);
-    expect(purse(res.state)).toBeLessThan(SHIP_COST);
+    // Affordability is in TONS, because that is what the yards bill and what
+    // the trim removes. Counting hulls gave the same answer only while every
+    // fleet was a pure battle line: the surplus is cut cheapest-first, so the
+    // hulls that come off are not the hulls that went on.
+    const affordableTons = Math.floor(purse(start) / CREDITS_PER_TON);
+    expect(tons(res.state)).toBe(tons(start) + affordableTons);
+    expect(fleet(res.state)).toBeGreaterThan(before);
+    expect(purse(res.state)).toBeLessThan(CREDITS_PER_TON * HULL_SPEC.battleship.tonnage);
     expect(res.notes.join(' ')).toMatch(/could only pay for/);
     // Not a rejection — the order is partly fulfilled, which is the more
     // useful outcome and matches how a partial check reads.
@@ -568,13 +577,28 @@ describe('ships cost money, in code rather than in a prompt', () => {
 
   it('does not charge for repositioning, in either order', () => {
     const start = fresh();
-    const forward = applyOps(start, [
-      { op: 'adjust_ships', systemId: 'ark-3', factionId: 'freeworlds', delta: -5 },
-      { op: 'adjust_ships', systemId: 'ark-1', factionId: 'freeworlds', delta: 5 },
+    // Named by CLASS on both sides. A bare `-5` removes cheapest-first while a
+    // bare `+5` adds the default class, so on a mixed fleet the pair is not a
+    // reposition at all — it scraps five escorts and commissions five
+    // battleships, and the yards rightly bill the ten tons of difference. See
+    // the note on `adjust_ships` in docs/todo.md.
+    // ark-3's opening squadron has fewer than five battleships, so the origin
+    // is stocked explicitly: a reposition that cannot draw what it moves is
+    // testing the draw, not the billing.
+    addShipsAt(sys(start, 'ark-3'), 'freeworlds', 5, 'battleship');
+    // WITH AN ACTOR. `adjust_ships` honours the named class on a removal only
+    // when the op belongs to the faction losing the hulls — "moving your OWN
+    // ships, you say which; a crew changing sides is not your choice" — so an
+    // actorless batch removes cheapest-first whatever `hull` says, and this
+    // pair scrapped escorts and commissioned battleships.
+    const move = (ops: Op[]) => applyOps(start, ops, 'model', 'freeworlds');
+    const forward = move([
+      { op: 'adjust_ships', systemId: 'ark-3', factionId: 'freeworlds', delta: -5, hull: 'battleship' },
+      { op: 'adjust_ships', systemId: 'ark-1', factionId: 'freeworlds', delta: 5, hull: 'battleship' },
     ]);
-    const reversed = applyOps(start, [
-      { op: 'adjust_ships', systemId: 'ark-1', factionId: 'freeworlds', delta: 5 },
-      { op: 'adjust_ships', systemId: 'ark-3', factionId: 'freeworlds', delta: -5 },
+    const reversed = move([
+      { op: 'adjust_ships', systemId: 'ark-1', factionId: 'freeworlds', delta: 5, hull: 'battleship' },
+      { op: 'adjust_ships', systemId: 'ark-3', factionId: 'freeworlds', delta: -5, hull: 'battleship' },
     ]);
     // Billing net hulls across the batch is what makes this order-independent.
     expect(purse(forward.state)).toBe(purse(start));
@@ -645,11 +669,20 @@ describe('a navy you cannot pay for does not simply sit there', () => {
     state.factions.find((f) => f.id === 'freeworlds')!.credits = 0;
     setShipsAt(sys(state, 'ark-1'), 'freeworlds', 400);
     const before = fleetStrengthOf(state, 'freeworlds');
+    const beforeTons = fleetTonsOf(state, 'freeworlds');
 
     const after = tickTurn(state).state;
-    const lost = before - fleetStrengthOf(after, 'freeworlds');
+    // Measured in TONS: the cap is a fraction of displacement, and attrition
+    // lays up the cheapest hulls first — so a mixed fleet can lose more HULLS
+    // than the fraction while losing exactly the tonnage it allows.
+    const lost = beforeTons - fleetTonsOf(after, 'freeworlds');
+    expect(before - fleetStrengthOf(after, 'freeworlds')).toBeGreaterThan(0);
     expect(lost).toBeGreaterThan(0);
-    expect(lost).toBeLessThanOrEqual(Math.ceil(before * MAX_ATTRITION_FRACTION));
+    // Hulls are discrete, so laying up to a TONNAGE cap can overshoot it by
+    // less than one hull — 251 tons against a cap of 250.
+    expect(lost).toBeLessThan(
+      Math.ceil(beforeTons * MAX_ATTRITION_FRACTION) + HULL_SPEC.battleship.tonnage,
+    );
   });
 
   it('leaves a solvent power alone', () => {

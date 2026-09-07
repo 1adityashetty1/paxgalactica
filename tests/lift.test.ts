@@ -95,7 +95,11 @@ describe('the landing is paid for in transports', () => {
     const survivors = stackAt(target, 'freeworlds');
     // The escorting battle line was never in the ground fight.
     expect(survivors.battleship).toBe(20);
-    expect(survivors.lifter!).toBeLessThan(6);
+    // The transports are spent — some in the landing itself, the rest putting
+    // the new garrison ashore — so `lifter` is absent from the stack entirely
+    // rather than merely reduced.
+    expect(survivors.lifter ?? 0).toBeLessThan(6);
+    expect(target.garrison).toBeGreaterThan(0);
     expect(res.notes.join(' ')).toMatch(/lifters/);
   });
 
@@ -109,12 +113,19 @@ describe('the landing is paid for in transports', () => {
 });
 
 describe('the captured garrison is the force that took it', () => {
-  it('is the surviving troops, not a fraction of the defenders', () => {
+  it('is the troops that landed, not a fraction of the defenders', () => {
     const res = land(heldWorld(4, 60), { battleship: 20, lifter: 5 });
     const target = sys(res.state, 'sek-6');
     expect(target.controllerFactionId).toBe('freeworlds');
-    const ashore = (stackAt(target, 'freeworlds').lifter ?? 0) * LIFTER_CARRY;
-    expect(target.garrison).toBe(ashore);
+    // The garrison is what the transports put down, so it is a whole number of
+    // transport-loads and bears no relation to the four defenders who were
+    // just destroyed. It can no longer be read off the SURVIVING lift, because
+    // the transports that carried it are spent doing so.
+    expect(target.garrison % LIFTER_CARRY).toBe(0);
+    expect(target.garrison).toBeGreaterThan(4);
+    expect(stackAt(target, 'freeworlds').lifter ?? 0).toBeLessThan(5);
+    // The battle line is untouched: it was never in the ground fight.
+    expect(stackAt(target, 'freeworlds').battleship).toBe(20);
   });
 
   it('never quarters more than the world can hold', () => {
@@ -131,11 +142,27 @@ describe('the captured garrison is the force that took it', () => {
   });
 });
 
-describe('a fleet that cannot shoot cannot hold an orbit', () => {
-  it('destroys unarmed squatters rather than deadlocking on them', () => {
-    // A pure-lift fleet has zero combat weight, which every branch of the
-    // exchange reads as "nothing to fight". Left alone it would deny a landing
-    // forever; it has to be a walkover that destroys them.
+describe('a fleet that can barely shoot does not deadlock the orbit', () => {
+  // These two used to be exceptions. A lifter and a torpedo boat carried
+  // exactly zero orbital weight, which every branch of the exchange read as
+  // "nothing to fight", so a pure-lift squadron would have denied a landing
+  // forever — and the resolver needed a special case to annihilate them where
+  // they lay.
+  //
+  // Both classes now carry a NOMINAL 0.1, a thirtieth of a battleship. That is
+  // not a contribution to the line; it is what lets the ordinary arithmetic
+  // reach an answer. The outcomes below are the same ones the exceptions
+  // produced, arrived at by fighting rather than by a branch.
+
+  it('converts a holder\'s transports into its garrison rather than deadlocking', () => {
+    // This case used to be an exception: a pure-lift squadron carried zero
+    // orbital weight, every branch read it as "nothing to fight", and the
+    // resolver needed a special case to annihilate it where it lay.
+    //
+    // The lift phase answers it properly instead. A holder's transports put
+    // their troops on the ground immediately after the strike and are spent
+    // doing it, so there is nothing left in orbit to deadlock on — and the
+    // world is defended by the troops rather than by the ships.
     const res = land((s) => {
       const t = sys(s, 'sek-6');
       t.controllerFactionId = 'vigil';
@@ -145,12 +172,22 @@ describe('a fleet that cannot shoot cannot hold an orbit', () => {
       t.garrisonMax = 2;
     }, { battleship: 20, lifter: 2 });
     const target = sys(res.state, 'sek-6');
+    // Nothing of the Vigil's is left in orbit — the transports were spent.
     expect(hullsAt(target, 'vigil')).toBe(0);
-    expect(res.notes.join(' ')).toMatch(/nothing over .* that can fight/);
-    expect(target.controllerFactionId).toBe('freeworlds');
+    // Their troops are on the ground, ABOVE the world's own ceiling: nine
+    // transports carry 54, on top of a garrison of 2. `GARRISON_REGROWTH` only
+    // fires below the ceiling, so the excess is spent once and never grows
+    // back.
+    // 2 + 54 committed, less what the repelled landing cost: a thrown-back
+    // assault still kills a quarter of the troops it put ashore.
+    expect(target.garrison).toBe(2 + 9 * LIFTER_CARRY - Math.ceil((2 * LIFTER_CARRY) / 4));
+    expect(target.garrison).toBeGreaterThan(target.garrisonMax);
+    // And it holds: two transports of troops cannot break fifty-six.
+    expect(target.controllerFactionId).toBe('vigil');
+    expect(res.notes.join(' ')).toMatch(/puts 54 troops down/);
   });
 
-  it('annihilates an invasion that arrives as transports only', () => {
+  it('turns back an invasion that arrives as transports only', () => {
     const res = land((s) => {
       const t = sys(s, 'sek-6');
       t.controllerFactionId = 'vigil';
@@ -159,14 +196,9 @@ describe('a fleet that cannot shoot cannot hold an orbit', () => {
       t.garrisonMax = 2;
     }, { lifter: 6 });
     const target = sys(res.state, 'sek-6');
+    // The world holds and the convoy does not take it, which is the point.
     expect(target.controllerFactionId).toBe('vigil');
-    expect(res.notes.join(' ')).toMatch(/nothing that can fight/);
-    // Destroyed, not sent home: none of the six is anywhere on the board, and
-    // none fell back down its path either.
     expect(hullsAt(target, 'freeworlds')).toBe(0);
-    expect(hullsAt(sys(res.state, 'ark-4'), 'freeworlds')).toBe(
-      hullsAt(sys(fresh(), 'ark-4'), 'freeworlds'),
-    );
     expect(res.state.pendingOrders).toHaveLength(0);
   });
 });
