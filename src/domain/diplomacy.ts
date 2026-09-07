@@ -18,11 +18,20 @@ export const TREATY_TYPES = [
   'tribute',
   'basing_rights',
   'ceasefire',
+  // A land transfer had no type of its own, so extraction borrowed one — and
+  // the borrowed label was load-bearing in two places it had no business being.
+  // A playtest ceded three worlds inside a `basing_rights` treaty, which grants
+  // the right to ENTER without it being an attack and is the opposite of a
+  // handover; another wrote a sale as a `trade_accord` and superseded the live
+  // raid-immunity pact between the same pair, because supersession keys on the
+  // type. Naming the thing fixes both.
+  'cession',
 ] as const;
 export const TreatyTypeSchema = z.enum(TREATY_TYPES);
 export type TreatyType = z.infer<typeof TreatyTypeSchema>;
 
 export const TREATY_TYPE_MEANING: Record<TreatyType, string> = {
+  cession: 'one party hands named worlds to the other, once and permanently; a price may ride with it',
   non_aggression: 'neither party attacks the other; breaking it is a betrayal everyone sees',
   mutual_defense: 'an attack on one obliges the other to answer',
   trade_accord: 'lanes stay open and income is shared on named systems',

@@ -345,12 +345,19 @@ export function routeEarnings(state: WorldState): RouteEarnings {
     /* --- endpoints: producer and consumer --- */
     const monopoly =
       holderA !== null && holderA === holderB && ethicOf(holderA) === 'monopolist';
+    // What each end ACTUALLY received on this route, which is not always
+    // `endpointPot / 2` — a severed or unaligned end pays nobody, and a toll
+    // comes off the top. The raid below takes a share of the receipt rather
+    // than of the pot, because stealing from a figure the holder never got
+    // would take the difference out of `uncollected` and mint it.
+    const received: Record<string, number> = {};
     for (const holder of [holderA, holderB]) {
       const cut = endpointPot / 2;
       if (holder === null || !carries(holder)) {
         uncollected += cut;
         continue;
       }
+      add(received, holder, cut);
       add(shares, holder, cut);
       // The premium rides alongside the share rather than inflating it, so the
       // conserved pot stays conserved. See `monopolyPremium`.
@@ -398,8 +405,39 @@ export function routeEarnings(state: WorldState): RouteEarnings {
       const toll = (endpointPot / 2) * BASE_TOLL_RATE;
       add(shares, other, -toll);
       add(tollsPaid, other, toll);
+      add(received, other, -toll);
       add(shares, holder, toll);
       add(tolls, holder, toll);
+      add(received, holder, toll);
+    }
+
+    /* --- a raider may take a lane's cargo at either end of it --- */
+    // Raiding was levied on TRANSIT hops only, exactly as tolling was, and it
+    // excluded the same three things: every route ENDPOINT — and endpoints are
+    // hubs, the high-value systems worth raiding — every adjacent-hub lane,
+    // where there is no middle at all, and every unaligned hop.
+    //
+    // On the live board `ilv-1`, `ilv-6`, `ark-1` and `tor-4` appear on zero
+    // interior paths, so a fleet sitting on any of them could raid nothing
+    // whatever it did. Prizes are taken where the cargo is, and at a terminus
+    // the cargo is all in one place.
+    for (const endId of [route.path[0]!, route.path.at(-1)!]) {
+      const holder = state.systems.find((sys) => sys.id === endId)?.controllerFactionId ?? null;
+      if (holder === null || !carries(holder)) continue;
+      // Only what that end actually collected is on the table.
+      let atRisk = received[holder] ?? 0;
+      if (atRisk <= 0) continue;
+      for (const raider of raidersOn(state, endId)) {
+        if (!raidLandsOn(state, raider, holder)) continue;
+        const multiplier =
+          ethicOf(raider) === 'smuggler' ? SMUGGLER_RAID_MULTIPLIER : 1;
+        const stolen = Math.min(atRisk, atRisk * RAID_SHARE * multiplier);
+        if (stolen <= 0) continue;
+        atRisk -= stolen;
+        add(shares, holder, -stolen);
+        add(shares, raider, stolen);
+        add(raided, raider, stolen);
+      }
     }
 
     /* --- transit: whoever the lane crosses --- */

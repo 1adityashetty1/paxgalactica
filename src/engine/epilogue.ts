@@ -158,6 +158,13 @@ export function campaignOutcome(
       lost: heldStart.filter((s) => !endIds.has(s.id)).map((s) => s.name).sort(),
       // In the order they happened, and NOT sorted or deduplicated: taking a
       // world back is a second taking, and the sequence is the story.
+      //
+      // One caveat the prompt is told about rather than hidden: worlds moved by
+      // a SINGLE action moved simultaneously, and `controlHistory` samples once
+      // per journal entry, so their relative order inside that entry is the
+      // order `state.systems` happens to be in. A treaty ceding three worlds at
+      // once is one event; the epilogue narrated it as a sequence and said
+      // "taken from it in that order" about an ordering nothing chose.
       took: history.filter((c) => c.to === f.id).map((c) => c.systemName),
       ceded: history.filter((c) => c.from === f.id).map((c) => c.systemName),
       contested: [

@@ -359,7 +359,7 @@ describe('a ratified cession is paid for', () => {
     )!;
     return {
       op: 'form_treaty',
-      treatyType: 'trade_accord',
+      treatyType: 'cession',
       parties: ['drajk', 'meridian'],
       terms: {
         territory: [world.id],
@@ -407,5 +407,75 @@ describe('a ratified cession is paid for', () => {
     // Ticking afterwards must not charge a second time.
     const later = tickTurn(immediate).state;
     expect(before - purse(later, 'meridian')).toBeLessThanOrEqual(paidAtSignature);
+  });
+});
+
+/**
+ * A CESSION IS ITS OWN INSTRUMENT.
+ *
+ * A land transfer had no treaty type, so extraction borrowed one — and the
+ * borrowed label was load-bearing in two places it had no business being. A
+ * playtest moved three worlds, one of them the map's greatest junction, inside
+ * a `basing_rights` treaty: the type that grants the right to ENTER without it
+ * being an attack, which is the opposite of a handover. The counterparty's own
+ * words in that transcript were *"Oridin, no … garrison standing, no world
+ * changes hands"*, and two of the three systems were never asked for.
+ *
+ * Consent is the half code cannot verify. These are the halves it can.
+ */
+describe('a cession has to look like one', () => {
+  const mine = () => createSeedState('drajk').systems.find((x) => x.controllerFactionId === 'drajk')!;
+  const theirs = () =>
+    createSeedState('drajk').systems.find((x) => x.controllerFactionId === 'meridian')!;
+
+  const cede = (extra: Record<string, unknown>): OpInput =>
+    ({
+      op: 'form_treaty',
+      treatyType: 'cession',
+      parties: ['drajk', 'meridian'],
+      terms: { territory: [mine().id] },
+      summary: 'a world handed over',
+      ...extra,
+    }) as OpInput;
+
+  it('refuses to move a border under a treaty about something else', () => {
+    for (const type of ['basing_rights', 'trade_accord', 'non_aggression'] as const) {
+      const res = sign(seed(), cede({ treatyType: type }));
+      expect(res.rejections[0]?.code, type).toBe('illegal_value');
+      expect(res.state.systems.find((x) => x.id === mine().id)!.controllerFactionId).toBe('drajk');
+    }
+  });
+
+  it('refuses to expire, because land does not come back on its own', () => {
+    // `cedeTerritory` is a one-time event and nothing returns the world when a
+    // treaty lapses, so an expiring cession promises a return that never comes.
+    // The playtest's three-world handover carried `expiresTurn: 20`.
+    const res = sign(seed(), cede({ durationTurns: 20 }));
+    expect(res.rejections[0]?.code).toBe('illegal_value');
+  });
+
+  it('will not write the other party’s world to the actor for nothing', () => {
+    const res = sign(seed(), cede({ terms: { territory: [theirs().id] } }));
+    expect(res.rejections[0]?.code).toBe('illegal_value');
+    expect(res.state.systems.find((x) => x.id === theirs().id)!.controllerFactionId).toBe(
+      'meridian',
+    );
+  });
+
+  it('allows a purchase, because a price is what makes it a bargain', () => {
+    const res = sign(
+      seed(),
+      cede({
+        terms: { territory: [theirs().id], payment: { drajk: -400, meridian: 400 } },
+      }),
+    );
+    expect(res.rejections).toEqual([]);
+    expect(res.state.systems.find((x) => x.id === theirs().id)!.controllerFactionId).toBe('drajk');
+  });
+
+  it('always allows giving your own away', () => {
+    const res = sign(seed(), cede({}));
+    expect(res.rejections).toEqual([]);
+    expect(res.state.systems.find((x) => x.id === mine().id)!.controllerFactionId).toBe('meridian');
   });
 });

@@ -1985,6 +1985,71 @@ export function applyOps(
           logEvent(state, 'diplomacy', note, other);
         }
 
+        // A CESSION IS ITS OWN INSTRUMENT, and three guards follow from that.
+        //
+        // A playtest moved three worlds — one of them the map's greatest
+        // junction — inside a `basing_rights` treaty, which grants the right to
+        // ENTER without it being an attack and is the exact opposite of a
+        // handover. The counterparty's own words in that transcript were
+        // "Oridin, no ... garrison standing, no world changes hands", and two of
+        // the three systems were never asked for at all.
+        //
+        // Consent is the part code cannot verify — `form_treaty` is
+        // extraction-only because "a transcript is the only place the other
+        // party's consent exists", which is true and is NOT the same as the
+        // transcript containing consent. What code can insist on is that a
+        // cession looks like a cession.
+        if (treaty.terms.territory.length > 0) {
+          if (op.treatyType !== 'cession') {
+            reject(
+              raw,
+              'illegal_value',
+              `Worlds change hands under a \`cession\`, not under a ${op.treatyType}. If ${op.parties.join(' and ')} agreed a handover, record it as one; if they agreed access or trade, it moves no borders.`,
+            );
+            break;
+          }
+          // A cession is permanent — `cedeTerritory` is a one-time event and
+          // nothing gives the land back when a treaty lapses — so riding one on
+          // an instrument that expires promises a return that will never come.
+          if (op.durationTurns !== undefined && op.durationTurns !== null) {
+            reject(
+              raw,
+              'illegal_value',
+              'A cession does not expire: land changes hands once, and taking it back is a fresh act. Drop the duration, or agree something that is not a handover.',
+            );
+            break;
+          }
+          // The actor cannot simply write worlds to itself. A power giving its
+          // OWN land away needs no protecting from itself, but acquiring
+          // someone else's has to look like a bargain rather than a
+          // declaration: a price, or land going back the other way. It does not
+          // prove consent and is not claimed to — it makes the bare land-grab,
+          // which is what was actually measured, unreachable.
+          // Scoped to worlds held by the OTHER PARTY — "I am taking yours" —
+          // which is the grab that was measured. A world held by somebody who
+          // never signed is neither party's to move, and `cedeTerritory`
+          // already ignores it; rejecting there would turn a documented no-op
+          // into an error for an accord that is merely sloppy.
+          const acquiring = treaty.terms.territory.filter((sysId) => {
+            const owner = state.systems.find((x) => x.id === sysId)?.controllerFactionId;
+            return (
+              owner !== undefined &&
+              owner !== null &&
+              owner !== actor &&
+              op.parties.includes(owner)
+            );
+          });
+          const paid = Object.values(treaty.terms.payment ?? {}).some((n) => (n ?? 0) < 0);
+          if (actor !== undefined && acquiring.length > 0 && !paid) {
+            reject(
+              raw,
+              'illegal_value',
+              `${acquiring.join(', ')} belongs to somebody else, and nothing in this accord is being given for it. A world bought is a world paid for — put the price in \`terms.payment\`.`,
+            );
+            break;
+          }
+        }
+
         // A treaty that is live on signature cedes now; a pending one cedes when
         // it comes into force, in `tickTurn`. A cession is a one-time event
         // rather than a term that applies while the treaty is live, so it is
@@ -2195,6 +2260,42 @@ export function applyOps(
         if (actor !== undefined && op.factionId !== actor && taken > 0) {
           const key = `${actor}->${op.factionId}`;
           subornedThisBatch.set(key, (subornedThisBatch.get(key) ?? 0) + taken);
+        }
+        // Placement needs presence, exactly as removal does. `canSubornAt`
+        // gated `delta < 0` against another power's ships and nothing gated a
+        // POSITIVE delta at all — so hulls could be set down at any system on
+        // the map, a rival's capital included, for the price of the tonnage,
+        // with no movement order, no turn elapsed and no battle.
+        //
+        // Found through suborning: six hulls asked for, `subornLimit` correctly
+        // trimmed the victim's loss to one, and all six were delivered — the
+        // surplus reclassified as ordinary construction and placed inside the
+        // Combine's capital past sixteen battleships and twenty-seven escorts.
+        // But the hole is wider than suborning and this is the general form.
+        //
+        // `transfer_control` is reducer-only precisely so a model cannot talk
+        // itself into owning a distant system. This is the fleet-shaped hole
+        // beside that guard: your yards deliver where you already are.
+        //
+        // Exempt when this batch has just turned crews here: a suborn is a
+        // removal from the victim and an addition to the suborner AT THE SAME
+        // SYSTEM, and the whole point of `canSubornAt` is that it reaches one
+        // jump out. Those hulls change sides where they already are, so
+        // requiring the suborner to be present would undo the adjacency clause
+        // that makes suborning something you do to a power you have NOT already
+        // beaten in orbit.
+        if (delta > 0 && actor !== undefined && op.factionId === actor) {
+          const there = state.systems.find((x) => x.id === op.systemId);
+          const ours = there?.controllerFactionId === actor;
+          const defected = hullsIn(uprooted.get(actor) ?? {}) > 0;
+          if (!ours && !defected && hullsAt(there!, actor) === 0) {
+            reject(
+              raw,
+              'no_presence',
+              `${actor} holds neither ${op.systemId} nor any ships over it; hulls are delivered where its yards can reach, and a fleet arrives by moving there.`,
+            );
+            break;
+          }
         }
         if (delta > 0) {
           // One squadron, described twice. An `adjust_fleet` earlier in this

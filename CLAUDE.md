@@ -968,7 +968,25 @@ be destroyed, which ends the order.
 - **`blockade`** severs every lane through a system. It closes for the
   blockader's own trade too, so blockading a lane you profit from is
   self-harm.
-- **`commerce_raiding`** diverts transiting trade to the raider.
+- **`commerce_raiding`** diverts trade to the raider, on the hops a lane crosses
+  **and at either end of it**. Endpoints were excluded, along with adjacent-hub
+  lanes and unaligned hops — and endpoints are the hubs, so the cargo most worth
+  taking was the cargo that could not be touched. On the live board four systems
+  appeared on zero interior paths, so a fleet parked on any of them raided
+  nothing whatever it did.
+
+  The prize comes out of **what that end actually received**, not out of a
+  recomputed share of the pot: stealing from a figure the holder never got takes
+  the difference out of `uncollected` and mints it. Measured before the fix —
+  the victim lost 15, the raider gained 44, and 29 came from nowhere.
+
+  Its duration floor is **2**, not 1. `raidersOn` filters `progress > 0` and
+  income settles before orders tick, so a one-turn raid was skipped by the only
+  settlement that could have paid it and then completed and left the board — a
+  playtest raided for eighteen turns and earned three credits. The old comment
+  argued for 1 so that raiding would not become "a second kind of blockade",
+  which two turns does not: a blockade sits on the system and severs every lane
+  through it. A mechanic that cannot be paid is not a faster version of itself.
 
 Blockades resolve **per beneficiary, not per lane**. Deciding it once for the
 whole route meant a smuggler only kept its trade when every other party could
@@ -995,6 +1013,7 @@ and nothing implemented it.
 | `trade_accord` | parties are immune to each other's blockades and raiding |
 | `basing_rights` | the other party's fleets may enter without it being an attack |
 | `tribute` | `incomePerTurn` moves every turn |
+| `cession` | the named systems **change hands**, once and permanently; the only type `terms.territory` is legal on |
 | `territory` (a term, not a type) | the named systems **change hands** when the treaty takes force |
 | `payment` (a term, not a type) | credits move **once**, when the treaty takes force — the price of a cession, an indemnity, a lump settlement |
 | `voidsOn` (a term, not a type) | typed conditions that **end** the treaty when they come true — and one already true at signature is **refused**, not signed |
@@ -1114,6 +1133,30 @@ case, minus the blood:
 Only what a party actually holds moves, and a cession is a one-time event rather
 than a term that applies while the treaty is live — land changes hands once, and
 taking it back is a fresh act.
+
+**A cession is its own instrument, because the borrowed label was load-bearing.**
+A land transfer had no treaty type, so extraction wrote it into whatever was to
+hand — and that decides real things. A playtest moved three worlds, one of them
+the map's greatest junction, inside a **`basing_rights`** treaty: the type that
+grants the right to *enter* without it being an attack, which is the opposite of
+a handover. A separate sale written as a `trade_accord` **superseded the live
+raid-immunity pact** between the same pair, because supersession keys on the
+type — so buying land from a raider cancelled your protection from them.
+
+`terms.territory` is now legal only on a `cession`, a cession may carry no
+duration (nothing gives the land back when a treaty lapses, so an expiring one
+promises a return that never comes), and a cession writing the **other party's**
+world to the actor with nothing given for it is refused — giving your own away
+is always allowed; taking theirs needs `terms.payment`.
+
+**What none of that establishes is consent**, and it is worth being exact. The
+argument for `form_treaty` being extraction-only is that *"a transcript is the
+only place the other party's consent exists"* — true, and not the same as *the
+transcript contains consent*. The counterparty's words in that playtest were
+*"Oridin, no … garrison standing, no world changes hands"*, and two of the three
+worlds were never asked for at all. The guards make the **bare** land-grab
+unreachable and force a mispriced one to look like a bargain; the rest is a
+prompt rule.
 
 `basing_rights` fixed something worse than an inert field: **there was no way
 to station ships in friendly space at all.** Any movement into a partner's

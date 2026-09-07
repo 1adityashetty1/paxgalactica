@@ -23,7 +23,7 @@ did not survive first contact with the code. Treat **CLAIMED** as a lead.
 
 # 1. Verified — these are real
 
-## 1.1 A treaty cedes worlds the counterparty refused
+## 1.1 FIXED (mostly) — a treaty cedes worlds the counterparty refused
 
 **This is the finding that decided the campaign.** Drajk went 4 → 7 systems and
 the Ojjul Nar Combine 4 → 1 in a single turn, on turn 0, for zero action points.
@@ -65,11 +65,37 @@ The same batch contains a `log_narrative` reading *"no numeric rate was actually
 fixed for either"* — extraction correctly declined to invent a piece rate, and
 in the same breath transferred three star systems it had been told no about.
 
-**Fix shape:** (1) and (2) are reducer guards and cheap — reject `territory` on
-a type where it is incoherent, and reject a cession on a treaty carrying an
-expiry. (3) is a prompt problem with a possible code backstop: a cession where
-the ceder is not the actor could require the ceder's own affirmation, the way
-`establish_debt` requires the creditor to actually hold the money.
+**FIXED, with the third part mitigated rather than solved — say so plainly.**
+
+A **`cession` treaty type** now exists, which is the root fix: a land transfer
+had no type, so extraction borrowed one, and the borrowed label decides real
+things. That closes finding 2.1 as well, where a sale written as a
+`trade_accord` superseded the live raid-immunity pact between the same pair
+because supersession keys on the type.
+
+Three reducer guards follow:
+
+- `terms.territory` is **refused on any type but `cession`**;
+- a cession carrying a **duration is refused** — nothing returns the land when a
+  treaty lapses, so an expiring cession promises a return that never comes;
+- a cession that writes **the other party's world to the actor with nothing
+  given for it is refused**. Giving your own away is always allowed; taking
+  theirs needs `terms.payment`.
+
+The third guard is deliberately scoped to worlds held by the *counterparty*. A
+world held by a power that never signed is neither party's to move, and
+`cedeTerritory` already ignores it — rejecting there would turn a documented
+no-op into an error for an accord that is merely sloppy.
+
+**What is NOT fixed: consent itself.** Nothing verifies that the transcript
+contains a yes. `form_treaty` is extraction-only because "a transcript is the
+only place the other party's consent exists", which is true and is not the same
+as the transcript containing consent. What the guards do is make the *bare*
+land-grab — which is what was actually measured — unreachable, and force a
+mispriced one to at least look like a bargain. The rest is a prompt rule, now
+written explicitly in `prompts/extraction.md`: a world moves only when the power
+holding it said, of that world, that it would let it go, and *"look the other
+way when your ships come through"* is transit, not a handover.
 
 ## 1.2 FIXED — a ratified treaty cedes land and never charges for it
 
@@ -96,7 +122,7 @@ signature path is gated on `!pending` and the ratification path only promotes
 already fixed once. A test pins both halves: the money moves on the turn the
 world does, and it is charged once whichever path the treaty takes.
 
-## 1.3 Commerce raiding cannot earn, for two independent reasons
+## 1.3 FIXED — commerce raiding cannot earn, for two independent reasons
 
 Drajk's entire economic identity — *"raid the rich"* — is inert, and the balance
 harness could not see it because the harness bots raid multi-turn on interior
@@ -122,13 +148,29 @@ Measured: four raids on `ilv-1`, including a critical success and one extended
 to 3 turns → `raided: 0` at every settlement, with `gross == territory + routes`
 exactly. Control on `ark-6` (interior, duration 2) → `raided: 3`.
 
-**Fix:** raise the `commerce_raiding` floor to 2 (matching `blockade`, and the
-comment arguing for 1 is about not making it *"a second kind of blockade"*,
-which a floor of 2 does not do), **or** evaluate raids before the progress tick.
-The hop restriction is the deeper half and needs a decision: a raid on a hub
-endpoint is exactly the raid worth making.
+**FIXED, both halves.**
 
-## 1.4 `lossOrder` never governs a battle
+`CATEGORY_FLOORS.commerce_raiding` is **2**. The old comment argued for 1 on the
+grounds that a slower raid becomes "a second kind of blockade" — which two turns
+is not: a blockade sits on the system and severs every lane through it, while a
+raid runs from a jump out and diverts what crosses. And a mechanic that cannot
+be paid at all is not a faster version of itself.
+
+A raider may now also take a lane's cargo **at either end of it**, the same
+extension the toll fix needed and for the same reason — the endpoints are the
+hubs, which is where the cargo worth taking is.
+
+One thing that had to be got right: the prize comes out of **what that end
+actually received**, not out of a recomputed `endpointPot / 2`. Stealing from a
+figure the holder never got takes the difference out of `uncollected` and mints
+it. Caught by measuring rather than by reasoning: Arkane lost 15, Drajk gained
+44, and `uncollected` fell by 29.
+
+Balance is unchanged (3/6/5/4/4, 58/42) because the harness bots already raid
+interior hops at duration 2 or more — the fixes open what was closed to a
+*player*, which is exactly who could not reach it.
+
+## 1.4 FIXED (as documentation) — `lossOrder` never governs a battle
 
 All five combat loss sites spend through `strikeStack`
 ([`reducer.ts:4059, 4101, 4109, 4345, 4349`](../src/domain/reducer.ts)). Nothing
@@ -144,10 +186,19 @@ not describe what happens. Measured: a defending `{battleship: 6,
 torpedo_boat: 6}` losing 20 tons lost **5 battleships and 0 boats**; the
 documented order gives 6 boats and 2 battleships.
 
-**This one is worth thinking about rather than patching.** `strikeOrder` was
-introduced deliberately (boats last, so they cannot shield the lift arm), and it
-may simply be the better order — in which case `HULL_SPEC.lossOrder` and several
-paragraphs of `CLAUDE.md` are the things that are wrong.
+**The agent's framing overstated it, and the resolution is a docs fix.**
+`strikeOrder` is `inLossOrder` with **torpedo boats moved to the end**, so the
+real combat order is escort -> lifter -> battleship -> torpedo boat. The first
+two positions are identical to the table — and those two are the whole of the
+"a screen protects the lift arm" argument, which therefore stands untouched.
+Only the boat and the battleship swap.
+
+Boats-last is the deliberate half: a boat has fired by then, and leaving it
+higher makes it a shield for the escorts and transports that still have work to
+do. So the code is right and the table's doc comment was stale. It now says what
+it governs — a non-combat removal through `takeShipsAt` — and points at
+`strikeOrder` for what a battle does. A test pins the real combat order so the
+two cannot drift apart silently again.
 
 ## 1.5 FIXED — every intel report is written public
 
@@ -214,7 +265,7 @@ commit replays the staged batch through `applyOps` and would regenerate the
 entries unscoped. So the rule lives in the reducer, derived from the op itself —
 which also means it replays identically and needs no journal change.
 
-## 1.7 `adjust_ships` guards removal and not placement
+## 1.7 FIXED — `adjust_ships` guards removal and not placement
 
 `canSubornAt` gates only `delta < 0` against another faction's ships. A
 **positive** delta has no presence check at all, so hulls can be placed at any
@@ -229,11 +280,18 @@ battleships and 27 escorts.
 `transfer_control` is reducer-only precisely so a model cannot talk itself into
 owning a distant system. This is the fleet-shaped hole beside that guard.
 
-**Fix:** require presence (hold the system, or have ships there) for a positive
-`adjust_ships` at a system the actor does not control — the same line
-interdiction, suborning and `onComplete` payloads already draw.
+**FIXED.** A positive `adjust_ships` for the actor's own faction now requires
+that it hold the system or have ships over it.
 
-## 1.8 A share can be sold on a flow the payer cannot generate
+With one exemption that had to be added after a test caught it: a **suborn** is a
+removal from the victim and an addition to the suborner *at the same system*,
+and `canSubornAt` deliberately reaches one jump out. Those crews change sides
+where they already are, so requiring presence would have undone the adjacency
+clause that makes suborning something you do to a power you have **not** already
+beaten in orbit. The exemption keys on the batch having actually uprooted hulls
+for the actor.
+
+## 1.8 FIXED — a share can be sold on a flow the payer cannot generate
 
 [`trade.ts:359`](../src/domain/trade.ts) credits `tolls` only when
 `ethicOf(holder) === 'extortionist'`. Drajk is a `smuggler`. The agent sold the
@@ -244,11 +302,17 @@ of the three-world seizure with it.
 > "Seventy, cousin… I take it. Gladly." … "a toll share you were never using
 > anyway."
 
-Nothing can price the flow for the persona or the arbiter, so neither could tell
-that the consideration was nothing. **See §4 — the deeper answer here is that
-tolls should not be extortionist-only.**
+Nothing could price the flow for the persona or the arbiter, so neither could
+tell that the consideration was nothing.
 
-## 1.9 `took`/`ceded` order is not chronological within one batch
+**FIXED in two halves.** §4 made tolling a policy any power can adopt, so the
+flow is no longer structurally unreachable — the claim became one about a
+**policy the payer can change** rather than an ethic it can never have, which is
+a fair thing to bargain over. And `serializeCommitments` now quotes what a share
+is **currently worth per turn** beside its rate, so both the counterparty's
+persona and the arbiter can see that a 50% share of nothing is nothing.
+
+## 1.9 FIXED — `took`/`ceded` order is not chronological within one batch
 
 My own code, from yesterday. `controlHistory` records changes by diffing after
 each journal entry, and within one entry it iterates a `Map` built in
@@ -260,9 +324,20 @@ batches that is true; within a batch they happened **simultaneously** and there
 is no order to report. The epilogue prose then said *"taken from it in that
 order"*, treating an arbitrary sequence as a fact.
 
-**Fix:** the honest version is to say a batch's changes are simultaneous rather
-than to invent a sequence — either group them or drop the ordering claim from
-the prompt.
+**FIXED, and it turned up a second, worse bug in the same function.**
+`prompts/epilogue.md` now says that worlds moved by a single action moved
+*simultaneously* — a treaty ceding three at once is one event, not three in a
+sequence — so the narration no longer invents an order among them.
+
+The second bug: `controlHistory` skipped its first sample to establish a
+baseline, so the baseline was the state **after the first journal entry** and
+any change of control in that entry was invisible. A world taken on a campaign's
+opening move did not appear at all. `replay` now emits the seed state before
+processing entries, and the baseline is the opening board.
+
+Found because the tests for this were rewritten — they had been reading
+campaigns out of `saves/`, which is **gitignored with no tracked files**, so
+they passed only on the machine that played them.
 
 ---
 

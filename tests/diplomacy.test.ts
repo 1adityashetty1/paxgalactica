@@ -670,7 +670,7 @@ describe('a treaty can be agreed now and take force later', () => {
 describe('a ceded system changes hands', () => {
   const cede = (systemId: string, parties: [string, string]) => ({
     op: 'form_treaty',
-    treatyType: 'ceasefire' as const,
+    treatyType: 'cession' as const,
     parties,
     terms: { territory: [systemId] },
     summary: 'a negotiated withdrawal',

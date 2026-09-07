@@ -116,6 +116,11 @@ export function replay(
 
   let state = createSeedState(seed.playerFactionId);
   let rejectionCount = 0;
+  // The opening board, before anything is applied. Without it an observer's
+  // first sample is the state AFTER the first batch, so anything that batch
+  // changed is invisible — `controlHistory` duly missed a world taken on the
+  // campaign's opening move, which is exactly the move most worth recording.
+  observe?.(state, seed);
 
   for (const entry of parsed.entries.slice(1)) {
     if (entry.kind === 'ops') {
@@ -198,17 +203,18 @@ export interface ControlChange {
  */
 export function controlHistory(journal: Journal): ControlChange[] {
   const changes: ControlChange[] = [];
-  let held = new Map<string, string | null>();
-  let first = true;
+  let held: Map<string, string | null> | null = null;
 
   replay(journal, (state) => {
     const now = new Map(state.systems.map((sys) => [sys.id, sys.controllerFactionId]));
-    if (!first) {
+    // `held === null` only on the seed sample, which is the baseline rather
+    // than a change.
+    if (held !== null) {
       for (const [id, to] of now) {
         // `has` rather than a truthiness test: `null` is a legitimate holder
         // (unaligned), and a world losing its owner is a change worth naming.
-        if (!held.has(id)) continue;
-        const from = held.get(id) ?? null;
+        if (!held!.has(id)) continue;
+        const from = held!.get(id) ?? null;
         if (from === to) continue;
         changes.push({
           turn: state.turn,
@@ -220,7 +226,6 @@ export function controlHistory(journal: Journal): ControlChange[] {
       }
     }
     held = now;
-    first = false;
   });
 
   return changes;

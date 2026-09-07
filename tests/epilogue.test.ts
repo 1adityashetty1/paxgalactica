@@ -9,8 +9,7 @@ import {
   serializeOutcome,
   EpilogueViewSchema,
 } from '../src/engine/epilogue.js';
-import { controlHistory, emptyJournal, replay, type Journal } from '../src/engine/journal.js';
-import { readFileSync } from 'node:fs';
+import { controlHistory, emptyJournal, replay } from '../src/engine/journal.js';
 import type { WorldState } from '../src/domain/state.js';
 
 /**
@@ -311,80 +310,82 @@ describe('the dossier does not hand over raw figures', () => {
  * one flag was planted or struck after three battles were fought over it.
  */
 describe('the campaign has a history, not only two endpoints', () => {
-  const journalFor = (name: string): Journal =>
-    JSON.parse(readFileSync(`saves/${name}.json`, 'utf8')).journal as Journal;
+  /**
+   * Built here rather than read out of `saves/`, which is **gitignored and
+   * holds no tracked files** — a test that reads one passes on the machine that
+   * played the campaign and fails everywhere else. The original version of this
+   * test did exactly that.
+   *
+   * A world changes hands and changes back, which is the case a start-vs-end
+   * set difference cannot see: it cancels out of both `gained` and `lost`.
+   */
+  const contestedCampaign = (): Campaign => {
+    const c = Campaign.start('drajk', 'hist', new MemoryCampaignStore(), 30);
+    const world = c.state.systems.find((x) => x.controllerFactionId === 'meridian')!;
+    c.commit(
+      [{ op: 'transfer_control', systemId: world.id, toFactionId: 'drajk', reason: 'stormed' }],
+      'engine',
+      'a world taken',
+    );
+    c.tick();
+    c.commit(
+      [{ op: 'transfer_control', systemId: world.id, toFactionId: 'meridian', reason: 'retaken' }],
+      'engine',
+      'and taken back',
+    );
+    c.tick();
+    return c;
+  };
 
   it('sees a world that changed hands and changed back', () => {
-    // Sekkar Gate goes meridian -> freeworlds and back to meridian one turn
-    // later. Both powers end holding exactly what they started with there.
-    const journal = journalFor('opus_adversarial');
-    const history = controlHistory(journal);
-    const gate = history.filter((c) => c.systemName === 'Sekkar Gate');
-    expect(gate).toHaveLength(2);
-    expect(gate.map((c) => `${c.from}->${c.to}`)).toEqual([
-      'meridian->freeworlds',
-      'freeworlds->meridian',
+    const c = contestedCampaign();
+    const world = createSeedState('drajk').systems.find(
+      (x) => x.controllerFactionId === 'meridian',
+    )!;
+
+    const history = controlHistory(c.journal);
+    const moves = history.filter((h) => h.systemId === world.id);
+    expect(moves.map((m) => `${m.from}->${m.to}`)).toEqual([
+      'meridian->drajk',
+      'drajk->meridian',
     ]);
 
-    const { state } = replay(journal);
-    const outcome = campaignOutcome(
-      state,
-      createSeedState(state.playerFactionId),
-      30,
-      history,
-    );
-    const meridian = outcome.factions.find((f) => f.factionId === 'meridian')!;
-    const arkane = outcome.factions.find((f) => f.factionId === 'freeworlds')!;
-
-    // Invisible to the endpoint difference, on both sides. This is the exact
-    // assertion that fails without a history: the world is in nobody's list.
-    expect(meridian.gained).not.toContain('Sekkar Gate');
-    expect(meridian.lost).not.toContain('Sekkar Gate');
-    expect(arkane.gained).not.toContain('Sekkar Gate');
-    expect(arkane.lost).not.toContain('Sekkar Gate');
-
-    // And fully visible in the history, from both sides.
-    expect(meridian.took).toContain('Sekkar Gate');
-    expect(meridian.ceded).toContain('Sekkar Gate');
-    expect(arkane.took).toContain('Sekkar Gate');
-    expect(arkane.ceded).toContain('Sekkar Gate');
-    expect(meridian.contested).toEqual(['Sekkar Gate']);
-    expect(arkane.contested).toEqual(['Sekkar Gate']);
-  });
-
-  it('counts a world taken twice twice, and keeps the order', () => {
-    const history = controlHistory(journalFor('classes_playtest'));
-    const { state } = replay(journalFor('classes_playtest'));
-    const outcome = campaignOutcome(state, createSeedState(state.playerFactionId), 30, history);
+    const outcome = campaignOutcome(c.state, createSeedState('drajk'), 30, history);
     const drajk = outcome.factions.find((f) => f.factionId === 'drajk')!;
+    const meridian = outcome.factions.find((f) => f.factionId === 'meridian')!;
 
-    // Drajk takes Vosk Marker off nobody on turn 4 and loses it on turn 10, so
-    // it is both taken and ceded — and `contested` names it because it changed
-    // hands more than once in the campaign.
-    expect(drajk.took).toEqual(['Vosk Marker']);
-    expect(drajk.ceded).toContain('Vosk Marker');
-    expect(drajk.contested).toEqual(['Vosk Marker']);
-    // Order preserved, not sorted: the sequence is the story.
-    expect(drajk.ceded).toEqual(['Threx', 'Tulgarn', 'Vosk Marker', 'Hollow Star']);
+    // Invisible to the endpoint difference on BOTH sides — both powers end
+    // holding exactly what they started with. This is the assertion that fails
+    // without a history.
+    expect(drajk.gained).not.toContain(world.name);
+    expect(drajk.lost).not.toContain(world.name);
+    expect(meridian.gained).not.toContain(world.name);
+    expect(meridian.lost).not.toContain(world.name);
+
+    // And fully visible in it, from both sides.
+    expect(drajk.took).toContain(world.name);
+    expect(drajk.ceded).toContain(world.name);
+    expect(meridian.took).toContain(world.name);
+    expect(meridian.ceded).toContain(world.name);
+    expect(drajk.contested).toEqual([world.name]);
+    expect(outcome.upheavals).toBe(2);
   });
 
   it('says plainly when the map never moved', () => {
     const outcome = campaignOutcome(seed(), seed(), 30, []);
     expect(outcome.upheavals).toBe(0);
-    // With nothing to narrate, the prompt must say the map held rather than
+    // With nothing to narrate the prompt must SAY the map held, rather than
     // leaving the model to infer a quiet campaign from an empty list — which is
     // the inference that produced the bug.
     expect(serializeOutcome(outcome)).toContain('No world changed hands');
   });
 
   it('carries the history into the prompt', () => {
-    const journal = journalFor('opus_adversarial');
-    const { state } = replay(journal);
+    const c = contestedCampaign();
     const text = serializeOutcome(
-      campaignOutcome(state, createSeedState(state.playerFactionId), 30, controlHistory(journal)),
+      campaignOutcome(c.state, createSeedState('drajk'), 30, controlHistory(c.journal)),
     );
     expect(text).toContain('fought over more than once');
-    expect(text).toContain('Sekkar Gate');
     expect(text).toContain('changes of control across the campaign');
   });
 
@@ -395,7 +396,6 @@ describe('the campaign has a history, not only two endpoints', () => {
     // narration as "settled; do not overturn".
     expect(me.towardPlayer).toBeNull();
     expect(me.playerToward).toBeNull();
-    // And every other power still carries a real number.
     for (const f of outcome.factions) {
       if (f.factionId === outcome.playerFactionId) continue;
       expect(typeof f.towardPlayer).toBe('number');

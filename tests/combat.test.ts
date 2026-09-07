@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { applyOps, tickTurn, GARRISON_REGROWTH, DISSENT_DECAY } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { STAT_NAMES } from '../src/domain/checks.js';
-import { LIFTER_CARRY, hullsIn } from '../src/domain/hulls.js';
+import { HULL_CLASSES, HULL_SPEC, LIFTER_CARRY, hullsIn, strikeStack } from '../src/domain/hulls.js';
 import {
   addShipsAt,
   hullsAt,
@@ -913,5 +913,44 @@ describe('an assault from the orbit you already hold', () => {
     // was spent doing it — conquest costs the lift arm either way.
     expect(taken.garrison).toBeGreaterThan(0);
     expect(stackAt(taken, 'meridian').lifter!).toBeLessThan(6);
+  });
+});
+
+/**
+ * WHAT ACTUALLY DIES, AND IN WHAT ORDER.
+ *
+ * `HULL_SPEC.lossOrder` reads escort -> lifter -> torpedo boat -> battleship,
+ * and for the life of the strike phase no battle has used it: every combat loss
+ * is spent through `strikeStack`, whose `strikeOrder` moves boats to the very
+ * end. A playtest measured a defending `{battleship: 6, torpedo_boat: 6}` losing
+ * twenty tons as five battleships and no boats, where the table predicts six
+ * boats and two battleships.
+ *
+ * Boats-last is the deliberate half — a boat has fired by the strike phase, and
+ * leaving it higher makes it a shield for the escorts and transports that still
+ * have work. The table was the stale half. This pins the real order so the two
+ * cannot drift apart again without a test saying so.
+ */
+describe('the order hulls are spent in a battle', () => {
+  it('spends escorts first and torpedo boats last', () => {
+    const order = HULL_CLASSES.map((h) => ({ h, n: HULL_SPEC[h].lossOrder })).sort(
+      (a, b) => a.n - b.n,
+    );
+    // Documented order, still true of a NON-combat removal.
+    expect(order.map((x) => x.h)).toEqual(['escort', 'lifter', 'torpedo_boat', 'battleship']);
+
+    // Combat order, which is what a battle actually uses.
+    const stack = { escort: 4, lifter: 4, torpedo_boat: 4, battleship: 4 };
+    const spentFirst = strikeStack(stack, HULL_SPEC.escort.tonnage * 4).taken;
+    expect(spentFirst).toEqual({ escort: 4 });
+
+    // Everything except the boats goes before a single boat does.
+    const upToBoats = strikeStack(stack, 2 * 4 + 3 * 4 + 4 * 4).taken;
+    expect(upToBoats.torpedo_boat ?? 0).toBe(0);
+    expect(upToBoats).toEqual({ escort: 4, lifter: 4, battleship: 4 });
+
+    // And the screen still stands in front of the lift arm, which is the whole
+    // of the argument the table was carrying.
+    expect(HULL_SPEC.escort.lossOrder).toBeLessThan(HULL_SPEC.lifter.lossOrder);
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
+import { CATEGORY_FLOORS } from '../src/domain/duration.js';
 import {
   hullsAt,
   setShipsAt,
@@ -1266,5 +1267,87 @@ describe('tolls are charged by policy', () => {
     const v = after.factions.find((f) => f.id === 'vigil')!.disposition.drajk ?? 0;
     expect(m).toBeLessThan(before.meridian);
     expect(v).toBe(before.vigil);
+  });
+});
+
+/**
+ * COMMERCE RAIDING COULD NOT EARN, FOR TWO INDEPENDENT REASONS.
+ *
+ * Drajk's whole economic identity is "raid the rich", and eighteen turns of an
+ * adversarial campaign spent raiding produced **three credits**. Neither cause
+ * was balance; both were arithmetic.
+ */
+describe('a raid can actually be paid', () => {
+  const hub = (s: WorldState) =>
+    tradeRoutes(s).map((r) => r.path[0]!).find((id) => {
+      const sys = s.systems.find((x) => x.id === id)!;
+      return sys.controllerFactionId !== null && sys.controllerFactionId !== 'drajk';
+    })!;
+
+  it('is never shorter than the settlement that pays it', () => {
+    // `raidersOn` filters `progress > 0`, income settles before orders tick, so
+    // a one-turn raid is skipped by the only settlement it could be paid at and
+    // then completes and leaves the board. Two is the shortest raid that can be
+    // paid at all.
+    expect(CATEGORY_FLOORS.commerce_raiding).toBeGreaterThanOrEqual(2);
+  });
+
+  it('reaches a lane it can only meet at the end of', () => {
+    // Raiding was levied on transit hops only, and on the seed the Confederacy
+    // can reach no interior hop that carries traffic — `ilv-1`, `ilv-6`,
+    // `ark-1` and `tor-4` are on zero interior paths, so a fleet parked on any
+    // of them raided nothing whatever it did.
+    const s = createSeedState('drajk');
+    const target = hub(s);
+    const before = routeEarnings(s).raided.drajk ?? 0;
+    expect(before).toBe(0);
+
+    const raiding: WorldState = {
+      ...s,
+      pendingOrders: [
+        ...s.pendingOrders,
+        {
+          id: 'ord-raid', factionId: 'drajk', type: 'commerce_raiding',
+          originId: target, targetId: target, durationTurns: 2, progress: 1,
+          interruptible: true, onInterrupt: 'cancel', visibility: [],
+          label: 'prizes at the terminus', durationRationale: '', path: [],
+          investedCredits: 0, force: {},
+        },
+      ],
+    };
+    expect(routeEarnings(raiding).raided.drajk ?? 0).toBeGreaterThan(0);
+  });
+
+  it('takes it from the power that was collecting, not from nowhere', () => {
+    const s = createSeedState('drajk');
+    const target = hub(s);
+    const victim = s.systems.find((x) => x.id === target)!.controllerFactionId!;
+    const before = routeEarnings(s).shares[victim] ?? 0;
+
+    const raiding: WorldState = {
+      ...s,
+      pendingOrders: [
+        ...s.pendingOrders,
+        {
+          id: 'ord-raid', factionId: 'drajk', type: 'commerce_raiding',
+          originId: target, targetId: target, durationTurns: 2, progress: 1,
+          interruptible: true, onInterrupt: 'cancel', visibility: [],
+          label: 'prizes at the terminus', durationRationale: '', path: [],
+          investedCredits: 0, force: {},
+        },
+      ],
+    };
+    const after = routeEarnings(raiding);
+    expect(after.shares[victim] ?? 0).toBeLessThan(before);
+    expect(after.raided.drajk).toBeGreaterThan(0);
+
+    // Conserved against the WHOLE network, not against the victim's final
+    // share. Arkane is `autarkic` and keeps only `AUTARKIC_ROUTE_FRACTION` of
+    // its route income, the rest going to `uncollected` — so a prize taken off
+    // its gross correctly reduces both, and comparing the raider's gain to the
+    // victim's post-clamp share reads as a leak when nothing has leaked.
+    const total = (e: ReturnType<typeof routeEarnings>) =>
+      Object.values(e.shares).reduce((n, v) => n + v, 0) + e.uncollected;
+    expect(Math.abs(total(after) - total(routeEarnings(s)))).toBeLessThanOrEqual(2);
   });
 });
