@@ -607,3 +607,21 @@ ul { margin: 0; padding-left: 1.1em; }
   background: #05070a;
 }
 .avatar img { position: absolute; height: auto; display: block; }
+
+/* The deal as it is written down, beside the words that wrote it. */
+.channel-terms,
+.channel-blockers {
+  border-top: 1px solid var(--line);
+  padding: 8px 12px;
+}
+.channel-terms h5,
+.channel-blockers h5 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.channel-blockers h5 { color: var(--bad); }
+.channel-term { margin: 0 0 4px; font-size: 12px; line-height: 1.45; }
+.channel-term.bad { color: var(--bad); }

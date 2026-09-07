@@ -11,6 +11,100 @@ import { StatNameSchema } from './checks.js';
  * that quietly stops existing.
  */
 
+/**
+ * Something a power puts on the table, recorded **by the party it would bind**,
+ * in the same breath as the words that offer it.
+ *
+ * Consent used to exist only as prose. `DiplomacyReplySchema` was
+ * `{ reply: string }`, so the extraction pass at `/endtalk` was the one and
+ * only thing that ever interpreted what a counterparty had agreed to — it both
+ * read the transcript and asserted what was in it, with nothing downstream
+ * comparing the two. A playtest moved three worlds, one of them the map's
+ * greatest junction, off a transcript whose counterparty had said *"Oridin, no
+ * — garrison standing, no world changes hands"*, and two of those worlds were
+ * never asked for at all.
+ *
+ * Adding another interpreter cannot fix a missing record, and a checker shown
+ * the transcript plus a plausible reading is being handed the conclusion and
+ * asked to agree with it — the exact confirmation bias `verifyBreachRelevance`
+ * is shaped to avoid. So the record is made instead: the persona states what it
+ * is conceding **forward**, as part of speaking, with its own sheet and state
+ * loaded. Extraction stops being a judge and becomes a matcher.
+ *
+ * The same split this project uses everywhere else. The arbiter rules and the
+ * reducer enforces; `classifyPrinciple` has the model name the line and code do
+ * the lookup. Here the persona offers and code enforces that the ops match.
+ *
+ * **`kind` is deliberately open**, unlike `OrderEffect` or `voidsOn`. A closed
+ * list is right when a wrong entry lands silently and permanently — but a
+ * concession is recorded on every message, rendered in the channel, and
+ * correctable in the next breath by either party. That feedback loop is what
+ * makes an open vocabulary safe here rather than reckless, and it is what lets
+ * two powers invent an arrangement nobody enumerated, which is the whole point
+ * of the diplomacy layer.
+ *
+ * The **referents** are structured even though the kind is not, because they
+ * are what a reducer has to match against. Free-form in what the arrangement
+ * IS, exact about the worlds and the money it moves — the same shape as
+ * `Commitment`, which pairs a free-form `kind` with a typed `share`.
+ */
+export const ConcessionSchema = z.object({
+  /** The power giving this up. It binds them and nobody else. */
+  by: z.string().min(1),
+  /** A lower_snake_case slug. Reusable, invented freely. */
+  kind: z
+    .string()
+    .min(1)
+    .max(40)
+    .regex(/^[a-z][a-z0-9_]*$/, 'kind must be a lower_snake_case slug'),
+  /** One sentence, in the words the parties actually used. */
+  text: z.string().min(1).max(240),
+  /**
+   * Worlds this concession hands over, RESOLVED TO IDS by the power giving
+   * them up.
+   *
+   * The resolution is the load-bearing part and it has to happen here. A
+   * counterparty says *"the Sennex lane is yours"* or *"take the Ilvenn
+   * holdings"* — no world is named, and no downstream matcher can turn that
+   * into ids without guessing. The power conceding knows what it holds and what
+   * it meant, at the moment it means it.
+   */
+  systems: z.array(z.string().min(1)).max(12).default([]),
+  /** Credits moving once, from `by` to the other party. */
+  credits: z.number().int().min(0).max(100000).default(0),
+  /** Credits moving every turn, from `by` to the other party. */
+  perTurn: z.number().int().min(0).max(1000).default(0),
+  /** Hulls pledged out of `by`'s own fleet. */
+  hulls: z.number().int().min(0).max(1000).default(0),
+});
+export type Concession = z.infer<typeof ConcessionSchema>;
+
+/**
+ * Taking a concession back, in character.
+ *
+ * The correction loop is the reason this whole mechanism records per MESSAGE
+ * rather than once at `/endtalk`: a concession the persona wrote down by
+ * mistake is visible in the channel while the conversation is still open, so
+ * either party can strike it before it binds anything. That is also what makes
+ * the open `kind` vocabulary safe.
+ *
+ * `why` is flavour and it is load-bearing flavour. A misrecorded term struck
+ * out as *"my clerk had written Oridin into the draft; he had misheard the
+ * lane for the world"* reads as a translation failure between two powers
+ * negotiating in a second language — which is what it is, in the fiction — and
+ * not as the machine correcting itself in front of the player. An error the
+ * game can narrate is an error that costs nothing.
+ */
+export const RetractionSchema = z.object({
+  /** Whose concession is being struck. */
+  by: z.string().min(1),
+  /** The `kind` slug being taken back. */
+  kind: z.string().min(1).max(40),
+  /** In character, one sentence. A mishearing, a clerk's error, a bad draft. */
+  why: z.string().min(1).max(240),
+});
+export type Retraction = z.infer<typeof RetractionSchema>;
+
 export const TREATY_TYPES = [
   'non_aggression',
   'mutual_defense',

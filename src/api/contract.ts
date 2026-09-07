@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ConcessionSchema, RetractionSchema } from '../domain/diplomacy.js';
 import { BattleReportSchema } from '../domain/battle.js';
 import { CheckOutcomeSchema, StatNameSchema } from '../domain/checks.js';
 import { EpilogueViewSchema } from '../engine/epilogue.js';
@@ -189,6 +190,18 @@ export const CampaignViewSchema = z.object({
   openChannel: z.string().nullable(),
   channelHistory: z.array(ChatMessageSchema),
   /**
+   * What the other power has written down as conceded in the open channel, and
+   * any of the player's own concessions its institutions will not have.
+   *
+   * On the view rather than only on the reply, because the channel panel draws
+   * from state — and because seeing the bargain assemble as it is made is half
+   * the reason concessions are recorded per message at all.
+   */
+  channelConcessions: z.array(ConcessionSchema).default([]),
+  channelBlockers: z
+    .array(z.object({ concession: z.string(), principle: z.string() }))
+    .default([]),
+  /**
    * Actions left this turn, and the allowance. Not part of `WorldState`: this
    * is a pacing rule about the player's turn, not a fact about the galaxy.
    */
@@ -311,7 +324,33 @@ export const FactionListSchema = z.object({
   saves: z.array(z.string()),
 });
 
-export const ChatReplySchema = z.object({ reply: z.string(), costUsd: z.number() });
+export const ChatReplySchema = z.object({
+  reply: z.string(),
+  /**
+   * Everything the other power has written down as conceded so far in this
+   * channel — its own record of the deal, not an inference from the prose.
+   *
+   * Sent on every reply so the player watches the bargain assemble. That is
+   * half the value of recording per message: a term the persona took down too
+   * generously is on screen while the conversation is still open, and either
+   * party can strike it before it binds.
+   */
+  concessions: z.array(ConcessionSchema).default([]),
+  /** Struck this message, with the in-character reason. */
+  retractions: z.array(RetractionSchema).default([]),
+  /**
+   * Concessions by the PLAYER that its own institutions will not have.
+   *
+   * Flagged in the turn the line is approached rather than at signature. A red
+   * line found at `/endtalk` refuses the whole accord after both sides have
+   * agreed, costing a real negotiation for something the player would have
+   * steered around had they been told.
+   */
+  blockers: z
+    .array(z.object({ concession: z.string(), principle: z.string() }))
+    .default([]),
+  costUsd: z.number(),
+});
 
 export const OkSchema = z.object({ ok: z.literal(true) });
 

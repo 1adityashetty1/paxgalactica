@@ -31,6 +31,9 @@ export function ChannelPanel({
   const faction = getFaction(view.state, factionId);
   // Only the server-confirmed channel has history worth showing.
   const history = view.openChannel === factionId ? view.channelHistory : [];
+  const conceded = view.openChannel === factionId ? view.channelConcessions : [];
+  const blockers = view.openChannel === factionId ? view.channelBlockers : [];
+  const me = view.state.playerFactionId;
 
   useEffect(() => {
     const el = scroller.current;
@@ -79,6 +82,49 @@ export function ChannelPanel({
         ))}
         {busy && <p className="channel-busy">{busy}…</p>}
       </div>
+
+      {/* The bargain as it is actually being written down, rather than as the
+          prose might be read at the end. This is half the reason concessions
+          are recorded per message: a term taken down too generously is on
+          screen while the conversation is still open, and either party can
+          strike it before it binds anything. */}
+      {conceded.length > 0 && (
+        <div className="channel-terms">
+          <h5>On the table</h5>
+          {conceded.map((c, i) => (
+            <p key={`${c.by}-${c.kind}-${i}`} className="channel-term">
+              <span className="chip">{c.by === me ? 'you give' : 'they give'}</span>{' '}
+              {c.text}
+              {c.systems.length > 0 && (
+                <span className="muted"> · {c.systems.join(', ')}</span>
+              )}
+              {c.credits > 0 && <span className="muted"> · {c.credits}cr</span>}
+              {c.perTurn > 0 && <span className="muted"> · {c.perTurn}/turn</span>}
+              {c.hulls > 0 && <span className="muted"> · {c.hulls} hulls</span>}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {/* A red line the player is walking toward, said now rather than sprung
+          at signature — the whole accord is refused if it is still standing
+          when the channel closes, so there is a turn in which to steer around
+          it. */}
+      {blockers.length > 0 && (
+        <div className="channel-blockers">
+          <h5>Your institutions will not have this</h5>
+          {blockers.map((b, i) => (
+            <p key={i} className="channel-term bad">
+              {b.concession}
+              <span className="muted"> — {b.principle}</span>
+            </p>
+          ))}
+          <p className="muted">
+            The accord will be refused whole while this stands. Take it back in the
+            conversation and the rest can still be signed.
+          </p>
+        </div>
+      )}
 
       {/* Only once it is close enough to matter: a counter on every channel
           would make a three-exchange negotiation feel rationed, which is the

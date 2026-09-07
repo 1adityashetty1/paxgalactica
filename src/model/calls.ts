@@ -1,5 +1,11 @@
 import { z } from 'zod';
 import {
+  ConcessionSchema,
+  RetractionSchema,
+  type Concession,
+  type Retraction,
+} from '../domain/diplomacy.js';
+import {
   DIFFICULTY_BANDS,
   formatModifier,
   resolveCheck,
@@ -765,6 +771,17 @@ export function looksLikeStubReply(reply: string): boolean {
 }
 
 export const DiplomacyReplySchema = z.object({
+  /**
+   * What this power is putting on the table, recorded as it says it.
+   *
+   * Only what **this** power gives up, and only what it has actually decided
+   * to give — not what it is being asked for, not what it is considering, and
+   * not what the other side offered. An empty list is the normal case: most
+   * messages in a negotiation concede nothing.
+   */
+  concessions: z.array(ConcessionSchema).max(6).default([]),
+  /** Concessions being struck, with an in-character reason. */
+  retractions: z.array(RetractionSchema).max(6).default([]),
   reply: z
     .string()
     .min(1)
@@ -807,7 +824,12 @@ export async function diplomacyReply(
   factionId: string,
   history: ChatMessage[],
   priorTranscripts: string[],
-): Promise<{ reply: string; costUsd: number }> {
+): Promise<{
+  reply: string;
+  concessions: Concession[];
+  retractions: Retraction[];
+  costUsd: number;
+}> {
   const faction = getFaction(state, factionId);
   const player = getFaction(state, state.playerFactionId);
   if (!faction) throw new Error(`No faction "${factionId}".`);
@@ -857,7 +879,15 @@ export async function diplomacyReply(
     user,
     schema: DiplomacyReplySchema,
   });
-  return { reply: res.value.reply, costUsd: res.costUsd };
+  return {
+    reply: res.value.reply,
+    // Only this power may concede on its own behalf. A persona writing a
+    // concession `by` somebody else is either confused or being talked into
+    // speaking for a third party, and either way it is not consent.
+    concessions: res.value.concessions.filter((c) => c.by === factionId),
+    retractions: res.value.retractions.filter((r) => r.by === factionId),
+    costUsd: res.costUsd,
+  };
 }
 
 /* ------------------------------------------------------------------ */

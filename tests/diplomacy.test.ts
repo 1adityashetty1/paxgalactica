@@ -9,6 +9,8 @@ import { MemoryCampaignStore } from '../src/engine/store.js';
 import { GameSession } from '../src/server/session.js';
 import { loadPrompt } from '../src/model/prompts.js';
 import { createSeedState } from '../src/seed/scenario.js';
+import { groundInConcessions } from '../src/engine/turn.js';
+import type { Concession } from '../src/domain/diplomacy.js';
 import { applyOps, COERCION_RESENTMENT, tickTurn } from '../src/domain/reducer.js';
 import {
   hullsAt,
@@ -27,12 +29,19 @@ import {
  */
 
 describe('the chat schema cannot express an op', () => {
-  it('has a reply and nothing else', () => {
-    // This is the load-bearing part. The boundary is not a prompt instruction a
-    // model could be talked out of — the JSON schema handed to the model has no
-    // `ops` field at all, so ops are unrepresentable in a diplomacy reply.
+  it('cannot express an op', () => {
+    // This is the load-bearing part, and it is not a prompt instruction a model
+    // could be talked out of: the JSON schema handed to the model has no `ops`
+    // field, so ops are unrepresentable in a diplomacy reply.
+    //
+    // The reply carries `concessions` and `retractions` beside the prose now,
+    // and those are NOT ops — a concession is a statement of position by the
+    // power it would bind, and it still takes the `/endtalk` extraction pass to
+    // become anything. So the assertion is the boundary itself rather than the
+    // field count, which was only ever a proxy for it.
     const shape = Object.keys(DiplomacyReplySchema.shape);
-    expect(shape).toEqual(['reply']);
+    expect(shape).not.toContain('ops');
+    expect(shape.sort()).toEqual(['concessions', 'reply', 'retractions']);
   });
 
   it('strips anything resembling ops from a reply', () => {
@@ -40,7 +49,7 @@ describe('the chat schema cannot express an op', () => {
       reply: 'We accept.',
       ops: [{ op: 'adjust_credits', factionId: 'ojjul', delta: 9999 }],
     });
-    expect(parsed).toEqual({ reply: 'We accept.' });
+    expect(parsed).toEqual({ reply: 'We accept.', concessions: [], retractions: [] });
     expect('ops' in parsed).toBe(false);
   });
 
@@ -936,5 +945,131 @@ describe('a faction can ask to talk', () => {
     // Nothing an NPC says can put the player in a channel: that would disable
     // the command line and End Turn on a turn they did not choose to spend.
     expect(session.view().openChannel).toBeNull();
+  });
+});
+
+/**
+ * CONSENT IS A RECORDED POSITION, NOT AN INFERENCE.
+ *
+ * `extractAgreements` both read the transcript and asserted what was in it, and
+ * nothing compared the two. A playtest moved three worlds — one the map's
+ * greatest junction — off a conversation whose counterparty said *"Oridin, no —
+ * garrison standing, no world changes hands"*, and two of the three were never
+ * asked for at all.
+ *
+ * Adding another interpreter cannot close that: a checker shown the transcript
+ * plus a plausible reading is handed the conclusion and asked to agree with it.
+ * So the counterparty writes down what it concedes as it concedes it, and
+ * `groundInConcessions` is the enforcement half — a matcher, not a judge.
+ */
+describe('an accord may only enact what was actually conceded', () => {
+  const state = () => createSeedState('drajk');
+  const theirWorld = () =>
+    createSeedState('drajk').systems.find((x) => x.controllerFactionId === 'ojjul')!.id;
+  const myWorld = () =>
+    createSeedState('drajk').systems.find((x) => x.controllerFactionId === 'drajk')!.id;
+
+  const cede = (systems: string[]) => ({
+    op: 'form_treaty',
+    treatyType: 'cession',
+    parties: ['drajk', 'ojjul'],
+    terms: { territory: systems },
+    summary: 'worlds change hands',
+  });
+
+  const conceded = (over: Partial<Concession> = {}): Concession => ({
+    by: 'ojjul',
+    kind: 'cede_worlds',
+    text: 'It passes to the Confederacy.',
+    systems: [],
+    credits: 0,
+    perTurn: 0,
+    hulls: 0,
+    ...over,
+  });
+
+  it('drops a world the other power never put on the table', () => {
+    const out = groundInConcessions(state(), [cede([theirWorld()])], [], 'ojjul');
+    expect(out.ops).toHaveLength(0);
+    expect(out.dropped[0]).toContain(theirWorld());
+  });
+
+  it('keeps the world it did', () => {
+    const out = groundInConcessions(
+      state(),
+      [cede([theirWorld()])],
+      [conceded({ systems: [theirWorld()] })],
+      'ojjul',
+    );
+    expect(out.ops).toHaveLength(1);
+    expect(out.dropped).toHaveLength(0);
+  });
+
+  it('drops the world that was not named even when another was', () => {
+    // The measured shape: one world discussed, three transferred.
+    const extra = createSeedState('drajk').systems.filter(
+      (x) => x.controllerFactionId === 'ojjul',
+    );
+    const out = groundInConcessions(
+      state(),
+      [cede([extra[0]!.id, extra[1]!.id])],
+      [conceded({ systems: [extra[0]!.id] })],
+      'ojjul',
+    );
+    expect(out.ops).toHaveLength(0);
+    expect(out.dropped[0]).toContain(extra[1]!.id);
+  });
+
+  it('never grounds what the ACTOR gives away', () => {
+    // Nobody needs protecting from a power binding itself, and requiring a
+    // record here would turn every one-sided concession into a dead promise —
+    // the exact bug class this exists to end.
+    const out = groundInConcessions(state(), [cede([myWorld()])], [], 'ojjul');
+    expect(out.ops).toHaveLength(1);
+    expect(out.dropped).toHaveLength(0);
+  });
+
+  it('drops money the other power never offered, and keeps what it did', () => {
+    const pay = (n: number) => ({
+      op: 'form_treaty',
+      treatyType: 'tribute',
+      parties: ['drajk', 'ojjul'],
+      terms: { payment: { ojjul: -n, drajk: n } },
+      summary: 'a settlement',
+    });
+    expect(groundInConcessions(state(), [pay(800)], [], 'ojjul').ops).toHaveLength(0);
+    expect(
+      groundInConcessions(state(), [pay(800)], [conceded({ credits: 800 })], 'ojjul').ops,
+    ).toHaveLength(1);
+    // Offered less than was written down.
+    expect(
+      groundInConcessions(state(), [pay(800)], [conceded({ credits: 100 })], 'ojjul').ops,
+    ).toHaveLength(0);
+  });
+
+  it('will not put a power in debt it never agreed to owe', () => {
+    const debt = {
+      op: 'establish_debt',
+      creditorFactionId: 'drajk',
+      debtorFactionId: 'ojjul',
+      principal: 500,
+      perTurn: 50,
+      text: 'paper',
+    };
+    expect(groundInConcessions(state(), [debt], [], 'ojjul').ops).toHaveLength(0);
+    // Coarse on purpose for the free-form terms: having conceded ANYTHING is
+    // enough, because the arrangement vocabulary is deliberately open and the
+    // damage there is bounded.
+    expect(groundInConcessions(state(), [debt], [conceded()], 'ojjul').ops).toHaveLength(1);
+  });
+
+  it('ignores a concession written on someone else’s behalf', () => {
+    const out = groundInConcessions(
+      state(),
+      [cede([theirWorld()])],
+      [conceded({ by: 'meridian', systems: [theirWorld()] })],
+      'ojjul',
+    );
+    expect(out.ops).toHaveLength(0);
   });
 });

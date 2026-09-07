@@ -2683,6 +2683,61 @@ the reaction rather than costing a call of its own: the NPC is already speaking
 at exactly the right moment, and asking separately would pay twice for one
 thought.
 
+### Consent is a recorded position, not an inference
+
+`DiplomacyReplySchema` was `{ reply: string }`, so a counterparty's consent
+existed only as prose — and `extractAgreements` both **read** the transcript and
+**asserted** what was in it, with nothing comparing the two. A playtest moved
+three worlds, one of them the map's greatest junction, off a conversation whose
+counterparty had said *"Oridin, no — garrison standing, no world changes
+hands"*; two of the three were never asked for at all.
+
+**Another interpreter cannot close that.** A checker shown the transcript plus a
+plausible reading is handed the conclusion and asked to agree with it — the
+exact confirmation bias `verifyBreachRelevance` is shaped to avoid, and personas
+are measurably agreeable under pressure besides. Adding a pass cannot fix a
+missing record.
+
+So the record is made instead. A reply carries `concessions` alongside its
+prose: what **this** power is giving up, stated forward as it speaks, with its
+own sheet and state loaded. Not ops — the "chat emits no ops" boundary is
+unchanged, and `/endtalk` still does the work. `groundInConcessions` is the
+enforcement half, and extraction stops being a judge and becomes a **matcher**:
+the same split as `classifyPrinciple`, where the model names the line and code
+does the lookup.
+
+Three properties follow, and each answers something a checker could not:
+
+- **The power conceding resolves its own vague words.** *"The Sennex lane is
+  yours"* names no system, and nothing downstream can turn that into ids without
+  guessing — but the power saying it knows what it holds and what it meant. So
+  `systems` is resolved at the moment of the offer.
+- **Only terms that cost the counterparty are grounded.** Giving your own world
+  away, paying your own credits, taking on your own debt binds nobody else, and
+  requiring a record there would turn every one-sided concession into a dead
+  promise — the exact bug class this exists to end.
+- **It is recorded per MESSAGE, not at `/endtalk`.** That is what makes the open
+  `kind` vocabulary safe rather than reckless: a term the persona wrote down too
+  generously is on screen while the conversation is still open, so either party
+  can strike it before it binds. `retractions` do that in character — *"my clerk
+  had Oridin in the draft; he had heard the lane and written the world"* — so a
+  misreading reads as a translation failure between two powers, which is what it
+  is in the fiction, rather than as the machine correcting itself in front of
+  the player. An error the game can narrate costs nothing.
+
+**A red line is flagged where it is approached, not at signature.** The same
+per-message pass appraises the player's own concessions through
+`appraiseAgreement`, so a line lands as a visible blocker in the turn the player
+walks toward it. It still refuses the whole accord if it is standing when the
+channel closes — a deal that needs you to cross a red line is no deal — but
+there is now a conversation left in which to steer around it, where before the
+whole negotiation was lost after both sides had said yes.
+
+What this does **not** establish: a persona that records a concession
+contradicting its own prose is still possible. But that is a contradiction
+inside one message, on screen, in the turn it happens — which is the difference
+between a bug you can find and the one this replaced.
+
 On `/endtalk`, a **separate extraction call** reads the transcript and emits ops
 for what was actually agreed. It is the **only** pass that may emit
 `form_treaty`: a treaty binds a power that is not the actor, and a transcript is

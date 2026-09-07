@@ -30,6 +30,8 @@ import { loadPrompt } from '../model/prompts.js';
 import { createSeedState } from '../seed/scenario.js';
 import { proposeFor } from '../domain/initiative.js';
 import { controlHistory } from './journal.js';
+import type { Concession } from '../domain/diplomacy.js';
+import type { WorldState } from '../domain/state.js';
 import {
   campaignOutcome,
   fallbackEpilogue,
@@ -650,10 +652,121 @@ export async function endTurn(campaign: Campaign): Promise<TurnOutcome> {
  * are staged like any other action, so a treaty lands on the same timestamp as
  * everything else declared this turn rather than jumping the queue.
  */
+
+/**
+ * Drop what the other power never actually put on the table.
+ *
+ * The consent gap in one sentence: `extractAgreements` reads the transcript AND
+ * asserts what was in it, and nothing compared the two. A playtest moved three
+ * worlds — one the map's greatest junction — off a conversation whose
+ * counterparty had said *"Oridin, no — garrison standing, no world changes
+ * hands"*, and two of the three were never asked for at all.
+ *
+ * Another interpreter cannot close that: a checker shown the transcript and a
+ * plausible reading is handed the conclusion and asked to agree. So the
+ * counterparty records what it concedes as it concedes it, and this function is
+ * the enforcement half — a matcher, not a judge. The same split as
+ * `classifyPrinciple`, where the model names the line and code does the lookup.
+ *
+ * **Only terms that cost the counterparty are grounded.** A player giving its
+ * own world away, paying its own credits or taking on its own debt binds
+ * nobody else, and requiring a record there would turn every one-sided
+ * concession into a dead promise — the exact bug class this is meant to end.
+ */
+export function groundInConcessions(
+  state: WorldState,
+  ops: unknown[],
+  conceded: readonly Concession[],
+  otherId: string,
+): { ops: unknown[]; dropped: string[] } {
+  const theirs = conceded.filter((c) => c.by === otherId);
+  const ceded = new Set(theirs.flatMap((c) => c.systems));
+  const offeredCredits = theirs.reduce((n, c) => n + c.credits, 0);
+  const offeredPerTurn = theirs.reduce((n, c) => n + c.perTurn, 0);
+  const offeredHulls = theirs.reduce((n, c) => n + c.hulls, 0);
+  const saidAnything = theirs.length > 0;
+  const dropped: string[] = [];
+
+  const keep = ops.filter((raw) => {
+    if (raw === null || typeof raw !== 'object') return true;
+    const op = raw as Record<string, unknown>;
+
+    if (op.op === 'form_treaty') {
+      const terms = (op.terms ?? {}) as Record<string, unknown>;
+      // Worlds are the sharpest case and the one that was measured: a world
+      // moves only if that power named it. Ids, because the power conceding
+      // resolved its own "the Sennex lane is yours" into systems itself.
+      const territory = Array.isArray(terms.territory) ? (terms.territory as string[]) : [];
+      const theirWorlds = territory.filter(
+        (id) => state.systems.find((sys) => sys.id === id)?.controllerFactionId === otherId,
+      );
+      const ungranted = theirWorlds.filter((id) => !ceded.has(id));
+      if (ungranted.length > 0) {
+        dropped.push(
+          `${ungranted.join(', ')} — ${otherId} never put ${ungranted.length === 1 ? 'it' : 'them'} on the table.`,
+        );
+        return false;
+      }
+      const payment = (terms.payment ?? {}) as Record<string, number>;
+      const owed = -(payment[otherId] ?? 0);
+      if (owed > 0 && owed > offeredCredits) {
+        dropped.push(`a payment of ${owed} from ${otherId}, which it never offered.`);
+        return false;
+      }
+      const perTurn = (terms.incomePerTurn ?? {}) as Record<string, number>;
+      const stream = -(perTurn[otherId] ?? 0);
+      if (stream > 0 && stream > offeredPerTurn) {
+        dropped.push(`${stream} a turn from ${otherId}, which it never offered.`);
+        return false;
+      }
+      const pledged = (terms.shipsPledged ?? {}) as Record<string, number>;
+      if ((pledged[otherId] ?? 0) > offeredHulls) {
+        dropped.push(`${pledged[otherId]} hulls pledged by ${otherId}, which it never offered.`);
+        return false;
+      }
+      return true;
+    }
+
+    // A debt binds the debtor. Anything else — a commitment naming them, money
+    // taken out of their treasury — needs them to have conceded SOMETHING; the
+    // arrangement itself is free-form by design, so the check is coarse on
+    // purpose. Terms with no structured referent are the creative case, where
+    // the damage is bounded and the vocabulary is deliberately open.
+    if (op.op === 'establish_debt' && op.debtorFactionId === otherId && !saidAnything) {
+      dropped.push(`a debt owed by ${otherId}, which it never agreed to owe.`);
+      return false;
+    }
+    if (op.op === 'adjust_credits' && op.factionId === otherId && Number(op.delta ?? 0) < 0 && !saidAnything) {
+      dropped.push(`credits out of ${otherId}'s treasury, which it never agreed to pay.`);
+      return false;
+    }
+    if (op.op === 'establish_commitment') {
+      const bound = Array.isArray(op.factionIds) ? (op.factionIds as string[]) : [];
+      if (bound.includes(otherId) && !saidAnything) {
+        dropped.push(`an arrangement binding ${otherId}, which it never agreed to.`);
+        return false;
+      }
+    }
+    return true;
+  });
+
+  return { ops: keep, dropped };
+}
+
 export async function closeChannel(
   campaign: Campaign,
   factionId: string,
   history: ChatMessage[],
+  /**
+   * What each power actually wrote down as conceded, accumulated message by
+   * message during the conversation, and any of the player's own concessions
+   * its institutions ruled a red line.
+   *
+   * Optional so a caller with no channel state (a test, a replay) behaves as
+   * before rather than having every accord refused for want of a record.
+   */
+  conceded: readonly Concession[] = [],
+  blockers: readonly { concession: string; principle: string }[] = [],
 ): Promise<ActionOutcome> {
   if (history.length === 0) {
     campaign.recordTranscript(factionId, history);
@@ -775,9 +888,36 @@ export async function closeChannel(
     };
   }
 
+  // A red line found DURING the conversation blocks the accord, and it was
+  // already said out loud in the turn it was approached rather than sprung at
+  // the end. Refused whole for the same reason a declared red line is: a deal
+  // that needs you to cross one is not a smaller deal, it is no deal.
+  if (blockers.length > 0) {
+    const first = blockers[0]!;
+    const by = getFaction(campaign.state, campaign.state.playerFactionId)?.name ?? 'Your institutions';
+    const why = `${by} will not ratify: ${first.concession}`;
+    return {
+      narrative: why,
+      refusal: { by, reason: why, violated: first.principle },
+      staged: 0,
+      notes: [
+        ...blockers.map((b) => `Breached: ${b.principle} — ${b.concession}`),
+        'This was flagged when it was conceded, not at signature; the accord could have been renegotiated around it.',
+      ],
+      rejections: [],
+      costUsd: extraction.costUsd,
+      ops: [],
+    };
+  }
+
+  // Ops that COST THE COUNTERPARTY must be grounded in something that power
+  // actually wrote down. A concession by the player needs no grounding: nobody
+  // needs protecting from a power binding itself.
+  const grounded = groundInConcessions(campaign.state, extraction.output.ops, conceded, factionId);
+
   const staged = await stageWithCorrection(
     campaign,
-    extraction.output.ops,
+    grounded.ops,
     `accord with ${faction?.name ?? factionId}`,
     extraction.output.narrative,
     `Extraction from a diplomatic channel with ${factionId}: ${extraction.output.narrative}`,
@@ -838,6 +978,18 @@ export async function closeChannel(
       `${by} objected to the accord and it stands anyway.`,
       `Defied: ${breach.principle}`,
       `Dissent +${COMPULSION_BREACH_DISSENT}, now ${dissent}/100 — every stat is reduced by ${dissentPenalty(dissent)}, to a maximum of ${MAX_DISSENT_PENALTY}.`,
+    );
+  }
+
+  // Said out loud rather than dropped quietly. A term the other power never put
+  // on the table is exactly the thing both sides would otherwise leave the room
+  // believing in — which is the failure `closeChannel` already records a
+  // transcript line for.
+  if (grounded.dropped.length > 0) {
+    notes.push(
+      ...grounded.dropped.map(
+        (d) => `Not enacted — ${d} Nothing binds a power that did not write it down.`,
+      ),
     );
   }
 
