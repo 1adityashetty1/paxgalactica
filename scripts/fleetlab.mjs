@@ -17,10 +17,11 @@ const nums = args.filter((a) => /^\d+$/.test(a));
 // told from any other. Three to one is roughly what a power actually brings.
 const budget = Number(nums[0] ?? 3600);
 const defenceBudget = Number(nums[1] ?? 1200);
-const steps = args.includes('--fine') ? 6 : Number(args[args.indexOf('--steps') + 1]) || 4;
+const steps = Number(args[args.indexOf('--steps') + 1]) || 4;
+const lift = args.includes('--fine') ? LIFT_AXIS_FINE : undefined;
 
 const t0 = Date.now();
-const res = tournament({ budget, defenceBudget, steps });
+const res = tournament({ budget, defenceBudget, steps, lift });
 const secs = ((Date.now() - t0) / 1000).toFixed(1);
 
 const pct = (n) => `${(n * 100).toFixed(0)}%`;

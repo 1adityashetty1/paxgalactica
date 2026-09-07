@@ -20,6 +20,16 @@ import { z } from 'zod';
  * code owns the rule.
  */
 
+/**
+ * The largest slice of one power's own take another may hold.
+ *
+ * Half, because a share is a claim on money the payer worked for: past that the
+ * arrangement stops being a cut and becomes ownership, which is what a treaty's
+ * `incomeShares` is for. Over-asking is trimmed rather than rejected, the same
+ * shape as `MAX_COMMITMENT_INCOME`.
+ */
+export const MAX_COMMITMENT_SHARE = 50;
+
 export const CommitmentSchema = z.object({
   id: z.string().min(1),
   /**
@@ -60,6 +70,37 @@ export const CommitmentSchema = z.object({
    * trimmed with a note rather than costing a correction round trip.
    */
   incomePerTurn: z.number().int().min(-500).max(500).default(0),
+  /**
+   * A share of one party's own take, rather than a flat figure.
+   *
+   * `incomePerTurn` is a fixed integer, so an arrangement that is genuinely a
+   * PROPORTION — *"a tenth of every prize you take"* — had no honest number to
+   * write down, and a model asked for one correctly wrote zero. The obligation
+   * was then recorded, read back to the player, and worth nothing.
+   *
+   * Restricted to the lane flows, and both halves of that are load-bearing:
+   *
+   * - They come from `routeEarnings`, which is computed for the whole galaxy at
+   *   once and **does not read commitments** — so a share can be priced without
+   *   `ledgerFor` recursing into another faction's `ledgerFor`. A share of
+   *   `net` has no fixed point at all once two powers share with each other.
+   * - They are money the payer actually receives, so a share cannot become a
+   *   claim on credits nobody ever held.
+   *
+   * Directional, unlike `incomePerTurn`, which is one scalar every bound party
+   * reads the same way — the defect `src/domain/debt.ts` was written to escape.
+   */
+  share: z
+    .object({
+      of: z.enum(['raided', 'tolls', 'routes']),
+      /** Whole percent, floored when applied — the payer keeps the remainder. */
+      percent: z.number().int().min(1).max(MAX_COMMITMENT_SHARE),
+      /** Whose take is divided. Must be bound by the commitment. */
+      from: z.string().min(1),
+      /** Who receives the slice. Must be bound by the commitment. */
+      to: z.string().min(1),
+    })
+    .optional(),
   establishedTurn: z.number().int().min(0),
   status: z.enum(['active', 'dissolved']).default('active'),
 });
@@ -128,6 +169,49 @@ export function commitmentIncomeFor(
     else owed += c.incomePerTurn;
   }
   return Math.min(earned, Math.max(0, ceiling)) + owed;
+}
+
+/**
+ * What a faction gains or gives up per turn under proportional commitment terms.
+ *
+ * `base` is the raw per-faction figure for each shareable flow, taken straight
+ * off `routeEarnings` — before the free trader's openness bonus and the
+ * monopolist's premium, deliberately. Those are doctrine paid to the holder for
+ * being what it is; a counterparty bargained for a slice of the lane, not for a
+ * cut of someone else's ethic. Using the raw figure also means both sides of
+ * one arrangement are computed from the same number whichever one is asking.
+ *
+ * Floored, so the payer keeps the remainder and the same integer is added to
+ * one party and subtracted from the other — the transfer conserves exactly, in
+ * the way `moveConserved` conserves a negotiated payment.
+ *
+ * Excluded from the `MAX_COMMITMENT_INCOME` ceiling on purpose: that bounds a
+ * figure a model INVENTED, and this one is a percentage of money already on the
+ * board. It cannot exceed what the payer earned, and the percentage is capped
+ * where it is written.
+ */
+export function commitmentShareFor(
+  commitments: Commitment[],
+  factionId: string,
+  base: (id: string, of: 'raided' | 'tolls' | 'routes') => number,
+): number {
+  let flow = 0;
+  for (const c of commitments) {
+    if (!isCommitmentLive(c)) continue;
+    const share = c.share;
+    if (share === undefined) continue;
+    if (share.from === share.to) continue;
+    // Only between parties actually bound by the arrangement — a commitment
+    // cannot reach into the take of a power that never signed it.
+    if (!c.factionIds.includes(share.from) || !c.factionIds.includes(share.to)) continue;
+    if (share.from !== factionId && share.to !== factionId) continue;
+    const pot = base(share.from, share.of);
+    if (pot <= 0) continue;
+    const cut = Math.floor((pot * Math.min(share.percent, MAX_COMMITMENT_SHARE)) / 100);
+    if (cut <= 0) continue;
+    flow += share.to === factionId ? cut : -cut;
+  }
+  return flow;
 }
 
 export const isCommitmentLive = (c: Commitment): boolean => c.status === 'active';

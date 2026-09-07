@@ -543,7 +543,10 @@ export async function resolveAction(
         ? [
             '### This is covert work, and covert work is run by operatives',
             '',
-            `The arbiter ruled this a **${priced.appraisal.covert.mission}** operation at \`${priced.appraisal.covert.systemId}\`.`,
+            `The arbiter ruled this ${priced.appraisal.covert.length === 1 ? 'a' : `${priced.appraisal.covert.length}`} covert operation${priced.appraisal.covert.length === 1 ? '' : 's'}: ${priced.appraisal.covert
+              .map((c) => `**${c.mission}** at \`${c.systemId}\``)
+              .join(', ')}.`,
+            'Emit one `deploy_agent` for EACH of them.',
             'Emit `deploy_agent` for it, owned by the acting faction, at that system,',
             'with that mission and an effect that fits. Do NOT invent its consequences —',
             'no hull losses, no stolen credits, no collapse in relations. The operative',
@@ -579,7 +582,9 @@ export async function resolveAction(
   // close. The model's own wording is kept when it offered some, since it is
   // written against the narrative it just produced.
   const withCovert = (o: ResolutionOutput): ResolutionOutput =>
-    priced.appraisal.covert ? { ...o, covert: priced.appraisal.covert } : o;
+    priced.appraisal.covert && priced.appraisal.covert.length > 0
+      ? { ...o, covert: priced.appraisal.covert }
+      : o;
 
   // The check line rides at the FRONT of the batch, so the log reads
   // roll-then-consequence rather than the other way round.

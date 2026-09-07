@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import {
+  LIFTER_CARRY,
+  hullUpkeep,
   CREDITS_PER_TON,
   HULL_SPEC,
   HullClassSchema,
@@ -21,6 +23,7 @@ import {
   COMMITMENT_INCOME_PER_INFLUENCE,
   CommitmentSchema,
   commitmentIncomeFor,
+  commitmentShareFor,
   commitmentsFor,
   MIN_COMMITMENT_INCOME_CEILING,
   type Commitment,
@@ -646,6 +649,25 @@ export function fleetTonsOf(state: WorldState, factionId: string): number {
  * Where a faction could pull ships from, richest system first. Used when an op
  * adds or removes fleet without naming a system; deterministic so replay holds.
  */
+/**
+ * What a troop costs per turn once a world is holding more than it can quarter.
+ *
+ * A garrison inside `garrisonMax` is free, and deliberately: ground forces are
+ * raised locally, which is what lets a captured world slowly re-arm itself and
+ * stops conquest being permanently cheap.
+ *
+ * Surplus is different. The lift phase converts a defender's transports into
+ * troops that sit **above** the ceiling, and a transport costs 3 a turn forever
+ * while the six troops it lands used to cost nothing at all — so committing
+ * lift was a permanent upkeep dodge as well as a defensive move, and a fleet
+ * parked as garrison was strictly cheaper than the same fleet afloat.
+ *
+ * The rate is derived rather than chosen: a lifter's own upkeep divided by what
+ * it carries, so the conversion is upkeep-NEUTRAL. Committing lift changes what
+ * the troops can do, not what they cost.
+ */
+export const SURPLUS_GARRISON_UPKEEP = hullUpkeep('lifter') / LIFTER_CARRY;
+
 export function fleetBases(state: WorldState, factionId: string): StarSystem[] {
   return state.systems
     .filter((s) => s.controllerFactionId === factionId || (hullsAt(s, factionId)) > 0)
@@ -764,37 +786,52 @@ export function maxCommitmentIncomeFor(state: WorldState, factionId: string): nu
   );
 }
 
-export interface Ledger {
-  gross: number;
-  upkeep: number;
-  net: number;
-  systems: number;
+/**
+ * A faction's books for one turn.
+ *
+ * A **Zod schema**, not a bare interface, because `src/api/contract.ts` needs
+ * one — and when it did not have one it restated all fifteen fields by hand,
+ * against the rule at the top of that file that domain schemas are imported and
+ * never restated. It drifted exactly as that rule predicts: adding
+ * `espionageGain` and then `garrisonUpkeep` each broke the web typecheck there
+ * and nowhere else. The type is inferred from the schema, which is the
+ * convention everywhere else in the domain.
+ */
+export const LedgerSchema = z.object({
+  gross: z.number().int(),
+  upkeep: z.number().int(),
+  net: z.number().int(),
+  systems: z.number().int(),
   /** Flat treaty transfers: positive receives, negative pays. */
-  treatyFlow: number;
+  treatyFlow: z.number().int(),
   /** Credits denied by hostile agents in place. */
-  espionageLoss: number;
+  espionageLoss: z.number().int(),
   /** What this faction's own operatives take off other powers per turn. */
-  espionageGain: number;
+  espionageGain: z.number().int(),
+  /** Troops billed for sitting above a world's `garrisonMax`. */
+  garrisonUpkeep: z.number().int(),
   /** What this faction's own live operatives cost it per turn. */
-  agentUpkeep: number;
+  agentUpkeep: z.number().int(),
   /**
    * Standing arrangements: charters, smuggling operations, tribute paid.
    * Positive receives, negative pays.
    */
-  commitmentFlow: number;
+  commitmentFlow: z.number().int(),
+  /** Proportional commitment terms — a slice of a lane flow, either way. */
+  commitmentShare: z.number().int(),
   /**
    * A profiteer's take from other powers' wars — or, when it is in one itself,
    * what that costs it. Zero for everyone else.
    */
-  warProfit: number;
+  warProfit: z.number().int(),
   /** Territory: what the systems themselves pay. */
-  territory: number;
+  territory: z.number().int(),
   /** Trade: what the lane network pays, after tolls and raids. */
-  routes: number;
+  routes: z.number().int(),
   /** Of `routes`, what was taken from others as transit tolls. */
-  tolls: number;
+  tolls: z.number().int(),
   /** Of `routes`, what was taken from others by commerce raiding. */
-  raided: number;
+  raided: z.number().int(),
   /**
    * Scheduled debt service: positive receives, negative pays.
    *
@@ -805,8 +842,9 @@ export interface Ledger {
    * reported so the briefing is honest about the drain, and charged exactly
    * once, in the tick.
    */
-  debtService: number;
-}
+  debtService: z.number().int(),
+});
+export type Ledger = z.infer<typeof LedgerSchema>;
 
 /** What a single system pays, and to whom, before faction-level modifiers. */
 export interface SystemIncome {
@@ -955,7 +993,7 @@ export function ledgerFor(state: WorldState, factionId: string): Ledger {
   if (!faction) {
     return {
       gross: 0, upkeep: 0, net: 0, systems: 0, treatyFlow: 0,
-      espionageLoss: 0, espionageGain: 0, agentUpkeep: 0, commitmentFlow: 0, warProfit: 0,
+      espionageLoss: 0, espionageGain: 0, garrisonUpkeep: 0, agentUpkeep: 0, commitmentFlow: 0, commitmentShare: 0, warProfit: 0,
       territory: 0, routes: 0, tolls: 0, raided: 0, debtService: 0,
     };
   }
@@ -995,6 +1033,18 @@ export function ledgerFor(state: WorldState, factionId: string): Ledger {
 
   const gross = territory + routes;
   const upkeep = fleetTonsOf(state, factionId) * UPKEEP_PER_TON;
+  // Troops a world cannot quarter are billed. Everything inside the ceiling is
+  // still free — see `SURPLUS_GARRISON_UPKEEP`.
+  // Rounded UP, and once, on the total rather than per world: the rate is a
+  // half, so a faction holding an odd number of surplus troops pays for the
+  // spare one. Charging per world would round several times and turn a half
+  // into most of a credit.
+  const garrisonUpkeep = Math.ceil(
+    state.systems
+      .filter((sys) => sys.controllerFactionId === factionId)
+      .reduce((n, sys) => n + Math.max(0, sys.garrison - sys.garrisonMax), 0) *
+      SURPLUS_GARRISON_UPKEEP,
+  );
 
   let treatyFlow = 0;
   for (const treaty of state.treaties ?? []) {
@@ -1036,19 +1086,45 @@ export function ledgerFor(state: WorldState, factionId: string): Ledger {
     maxCommitmentIncomeFor(state, factionId),
   );
 
+  // A share is a slice of what the payer's lanes actually paid, so it is
+  // computed off `earnings` rather than off the other faction's ledger — which
+  // would recurse, and has no fixed point once two powers share with each
+  // other. See `commitmentShareFor`.
+  const commitmentShare = commitmentShareFor(
+    state.commitments ?? [],
+    factionId,
+    (id, of) =>
+      of === 'routes'
+        ? (earnings.shares[id] ?? 0)
+        : of === 'tolls'
+          ? (earnings.tolls[id] ?? 0)
+          : (earnings.raided[id] ?? 0),
+  );
+
   const warProfit = warProfitFor(state, factionId);
 
   return {
     gross,
     upkeep,
     net:
-      gross - upkeep + treatyFlow - espionageLoss + espionageGain - agentUpkeep + commitmentFlow + warProfit,
+      gross -
+      upkeep -
+      garrisonUpkeep +
+      treatyFlow -
+      espionageLoss +
+      espionageGain -
+      agentUpkeep +
+      commitmentFlow +
+      commitmentShare +
+      warProfit,
     systems: counted,
     treatyFlow,
     espionageLoss,
     espionageGain,
+    garrisonUpkeep,
     agentUpkeep,
     commitmentFlow,
+    commitmentShare,
     warProfit,
     territory,
     routes,

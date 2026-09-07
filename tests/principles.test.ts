@@ -792,7 +792,7 @@ describe('two actions, then the turn has to end', () => {
 describe('a covert declaration is routed into the agent mechanic', () => {
   it('places an operative even when resolution emitted only prose', async () => {
     scripted = {
-      appraisal: appraisal({ covert: { mission: 'assassination', systemId: 'ilv-6' } }),
+      appraisal: appraisal({ covert: [{ mission: 'assassination', systemId: 'ilv-6' }] }),
       resolution: {
         narrative: 'Your man is in place before the week is out.',
         // The live failure mode: a covert success with invented consequences
@@ -817,14 +817,14 @@ describe('a covert declaration is routed into the agent mechanic', () => {
 
   it('places nobody when the attempt failed', async () => {
     scripted = {
-      appraisal: appraisal({ covert: { mission: 'sabotage', systemId: 'tor-3' } }),
+      appraisal: appraisal({ covert: [{ mission: 'sabotage', systemId: 'tor-3' }] }),
       resolution: { narrative: 'He never reached the dock.', ops: [] },
     };
     const campaign = Campaign.start('meridian', 'test-covert-fail');
     // Force the failure band by pricing it out of reach.
     scripted.appraisal = appraisal({
       difficulty: 30,
-      covert: { mission: 'sabotage', systemId: 'tor-3' },
+      covert: [{ mission: 'sabotage', systemId: 'tor-3' }],
     });
 
     await submitAction(campaign, 'Sabotage the Vigil yards at Vantic.');

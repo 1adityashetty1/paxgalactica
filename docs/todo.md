@@ -7,16 +7,20 @@ is closed — the reasoning is the useful part, and a fixed item explains why th
 code looks the way it does.
 
 Statuses are checked against the code, not carried forward from the label. The
-last audit was **2026-09-06** and moved four items.
+last audit was **2026-09-07**.
 
 ---
 
 # Open work, grouped
 
-Every item below was checked against the code on **2026-09-06**, not taken from
-its own label. Four were wrong: **10** and **56** were finished, **62** was
-filed unconfirmed and is real, and **68** does not reproduce. The detail for
-each lives in its numbered item further down; this is the index.
+Every item below was checked against the code, not taken from its own label. The
+**2026-09-06** audit moved four: **10** and **56** were finished, **62** was
+filed unconfirmed and is real, and **68** does not reproduce.
+
+As of **2026-09-07** everything here is closed except **A** (accepted variance,
+with one buildable instrument left) and **H** (two items that need a campaign
+played, not code written). The detail for each lives in its numbered item
+further down; this is the index.
 
 ## A. ACCEPTED — the arbiter's ruling varies, and mostly it has to — **47, 66, 72**
 
@@ -51,11 +55,20 @@ pass deciding the order should never have gone out. The ops do not exist yet at
 breach time, and moving the ruling after resolution reintroduces the exact
 failure the arbitration split was built to remove.
 
-So this is **accepted variance**, not a queued fix. What remains worth doing is
-narrower and cheaper: log every breach ruling with the line, the kind and the
-relevance verdict, so a drift like the DC 5-to-18 spread is measurable rather
-than anecdotal. Reopen the larger question only with a proposal that does not
-put the ruling downstream of resolution.
+So this is **accepted variance**, not a queued fix. Reopen the larger question
+only with a proposal that does not put the ruling downstream of resolution.
+
+**One buildable thing remains, and it is the only open item in this file that
+needs code rather than a campaign:** log every breach ruling with the quoted
+line, the kind, and the `verifyBreachRelevance` verdict. Today a drift like one
+act pricing at DC 5, 10, 11, 14 and 18 across turns is anecdote — it was found by
+a playtester noticing, and there is no way to ask a finished campaign how often
+it happened. A `kind: 'clamp'`-style entry per ruling makes the variance
+measurable, which is what would let the next playtest of 47/66/72 conclude
+something instead of producing another anecdote.
+
+It is deliberately **not** a fix for the variance. It is the instrument that
+would tell us whether the variance is the size we are assuming it is.
 
 ## B. CLOSED — a negotiated term the reducer cannot express — **51, 67.1, 67.2**
 
@@ -116,11 +129,47 @@ carry a figure, that a share of something variable is written as the agreed
 per-turn estimate rather than zero, and that zero is for arrangements which
 genuinely have no money in them.
 
-A proportional term — *"a tenth of `Ledger.raided`"* — is still not expressible,
-and is deliberately **not** being added. It would need a schema field, a reader,
-a cap and a conservation rule, and a share of route income is a claim on money
-the payer never held, which is the value-creation case every other money
-mechanism here refuses. A negotiated estimate is what `incomePerTurn` is for.
+**BUILT — a proportional term, which the paragraph this replaces argued against
+on a premise that was simply false (51).** The argument was that *"a share of
+route income is a claim on money the payer never held"*. Route income is money
+the payer holds; it is the whole of what its lanes pay it. What is a claim on
+money nobody held is a share of `net` — which nets off upkeep and can be
+negative — or a flat figure a model invented, and that is what
+`MAX_COMMITMENT_INCOME` already exists to bound. The two cases were run
+together, and the wrong one was refused.
+
+The rest of the objection was a list of things to build, all four of which now
+exist: `Commitment.share` (`{ of, percent, from, to }`), a reader in
+`ledgerFor`, `MAX_COMMITMENT_SHARE` at 50%, and floored integer arithmetic that
+adds the identical credit to one party and subtracts it from the other.
+
+Two restrictions carry the design, and both fall out of the same choice —
+`of` names a **lane flow** (`raided`, `tolls`, `routes`) rather than a ledger
+line:
+
+- **It cannot recurse.** All three come off `routeEarnings`, which settles the
+  whole galaxy in one pass and does not read commitments — so pricing A's share
+  never calls B's `ledgerFor`. A share of `net` has no fixed point at all once
+  two powers hold shares of each other, and the stack is where you find that
+  out.
+- **It cannot be a claim on money nobody earned**, which is the actual version
+  of the objection above. A share is bounded by what the payer's lanes paid it
+  this turn, so a bad season pays nothing rather than paying a figure agreed in
+  a good one. That is what a share is *for*, and it is precisely the behaviour
+  an estimated `incomePerTurn` cannot have.
+
+Directional, unlike `incomePerTurn` — which is one scalar every bound party
+reads the same way, the defect `src/domain/debt.ts` was written to escape — and
+both parties must be bound by the commitment, so an arrangement cannot reach
+into the take of a power that never signed it. That last one is **rejected**
+rather than trimmed: there is no smaller version of *"and the Vigil pays for
+it"* that is still the deal.
+
+`incomePerTurn` keeps its job. It is right for a venture paying its members a
+steady rate, and it is the only term available for a proportion of anything the
+three lane flows do not cover — a harvest, a mine, a yard's output — where an
+agreed estimate still beats zero. `prompts/extraction.md` now says which to
+reach for, and says not to write both for one flow.
 
 **Re-scoped — a bargained `voidsOn` written as `[]` (67.2).** Not a code defect.
 The field exists, the reducer enforces it (item 50/60), and
@@ -144,7 +193,7 @@ two different hull classes are untouched.
 > is exactly the world a model then names. Removing unconditionally makes both
 > cases uniform. A test pins the same-system case specifically.
 
-## D. Composition is a decision for an attacker and not a defender — **74, 77** (76 retired)
+## D. CLOSED — composition is a decision for both sides once lift is on its own axis — **74, 77** (76 retired)
 
 A defender's best fleet is a pure battle line at 80–84%, and every mix is
 monotonically worse — because a defender has one objective and one linear
@@ -164,11 +213,14 @@ Two items came out of measuring it:
 - **76** — **retired.** Re-measured in isolation: `hold` keeps 4t and holds 6/6,
   `stand` keeps 30.7t and holds 0/6. Neither dominates; the fleetlab signal was
   the tonnage dilution the item was filed with a warning about.
-- **77** — the open half of 74, with the two directions worth trying: **leaders**
-  (a commander is something to preserve that is not weight — exactly what the
-  rule says a screen needs), or **ship types that behave differently over a world
-  their owner holds**. Both are features; neither should start before it is clear
-  which one the game wants.
+- **77** — **MOOT.** It was the open half of 74, and 74 closed underneath it.
+  Making lift its own `fleetlab` axis showed a defender does want a mix after
+  all (margin +1.2 over the best pure fleet, against the attacker's +10.4) — the
+  earlier "pure battle line wins every metric" was an artefact of a grid where
+  every composition carried enough lift to saturate the effect. The item existed
+  to invent a second defensive objective; the defender already has one, and it
+  is the lift phase. No leaders, and no
+  hold-your-own-world ship type, are needed to make the choice real.
 
 ## E. CLOSED — treaty terms are all-or-nothing — **59, 60**
 
@@ -214,15 +266,23 @@ whoever holds the world, people and hulls are withheld.** A wall does not care
 who stands behind it; a levy raised for one flag does not muster for the next.
 Written into CLAUDE.md so it is a decision rather than an accident.
 
-## H. Wants a playtest, not a patch — **19, 41(b)(d), 67.3, 67.5**
+## H. Wants a playtest, not a patch — **19, 67.5**
+
+Both need a campaign played, not code written: each is a claim about what the
+model *reaches for*, which no test can settle.
 
 - Marriages and ceremonial arrangements down both routes, across disposition
   (**19**).
-- Two epilogue defects still open (**41**).
-- The second covert action in one declaration is silently dropped, since
-  `AppraisalSchema.covert` names one mission (**67.3**).
 - Nobody suborned Meridian once in twelve turns despite resolve 9, the softest
-  target on the board (**67.5**).
+  target on the board (**67.5**). The mechanism works and is tested; the
+  question is whether an NPC ever chooses it.
+
+**Cleared from this section since it was written:** 41(b) and 41(d) (the
+epilogue now carries a control history, and the one remaining half does not
+reproduce) and 67.3 (`covert` is a list, so an appraisal naming three operations
+places three agents). Neither needed a playtest — both were readable off the
+code, which is worth noting because both had sat here on the assumption that
+they were not.
 
 ## Retired this pass
 
@@ -233,7 +293,7 @@ matches `ledgerFor` exactly, 156/309 both ways — reopen with a reproduction) �
 
 ---
 
-## 78. What a multiclass seed exposed, and why nothing caught it sooner
+## 78. FIXED — what a multiclass seed exposed, and why nothing caught it sooner
 
 The seed opened every power with a **pure battle line** from before classes
 existed, so `hulls x 4 == tons` held everywhere in the galaxy and no test could
@@ -268,17 +328,48 @@ mistake matters more than the individual fixes:
 - a battle report's round 0 assumed to be `orbital` when a strike round comes
   first whenever either side brought boats.
 
-**And one asymmetry that is not a bug but is a trap.** `adjust_ships -N` removes
-**cheapest-first**, while `+N` adds the **default class** — so on a mixed fleet
-the pair is not a reposition, it scraps escorts and commissions battleships, and
-the yards rightly bill the difference. The named `hull` fixes it, but only on a
-removal where `op.factionId === actor`: "moving your OWN ships, you say which".
-An actorless batch ignores the class entirely. Worth deciding whether a model
-should ever emit a bare `adjust_ships` delta.
+**And one asymmetry filed as "not a bug but a trap", which was the wrong call.**
+`adjust_ships -N` removes cheapest-first while `+N` adds the default class, so on
+a mixed fleet the pair is not a reposition: it scraps escorts at the origin and
+commissions battleships at the destination. The item's own defence was that the
+yards rightly bill the difference — **and billing it correctly does not make it a
+move.** That is precisely what made it hard to see: the money was right and the
+fleet was wrong, and the narrative said the squadron sailed while a different
+squadron arrived.
+
+**FIXED**, in the shape the batch already uses for `adjust_fleet` +
+`adjust_ships`: one squadron described twice is one squadron. A batch-scoped
+`uprooted` pool records which classes actually came off — diffed from the stack
+before and after, since `takeShipsAt` spends the loss order and stops at what is
+there — and an addition that named no class draws from it in loss order before
+minting anything. Only the surplus past that is a genuine build, and it is
+billed as one.
+
+Two details carry it:
+
+- **Whether a class was named is read off the RAW op.** `hull` has a
+  `.default('battleship')`, so the parsed value cannot distinguish "the model
+  asked for battleships" from "the model said nothing", and only the second may
+  be reinterpreted. An op that says `escort` gets escorts.
+- **A suborned crew brings its hull.** The removal records under the suborner as
+  well, so turning three escorts delivers three escorts. It delivered three
+  battleships before — paid for at battleship rates, so never free, but the
+  opposite of what CLAUDE.md has always claimed about pricing a defection by
+  class.
+
+**No journal version bump, and that was measured rather than assumed.** Four
+saved batches contain a `+`/`-` pair; three name explicit hulls and the fourth is
+a pre-classes suborn where the removed class *was* battleship, so the new rule is
+a no-op on it. Replaying all 23 campaigns before and after gives byte-identical
+worlds — which is also worth recording as a correction to how this repo has been
+citing that check: **a save holds only the journal, no stored state**, so
+`pnpm replay` on its own proves a journal still applies cleanly, not that it
+produces the same galaxy. Diffing the output of both revisions is what proves the
+second.
 
 ---
 
-## 79. `fleetlab`'s grid cannot see a lift-poor attacker
+## 79. FIXED — `fleetlab`'s grid could not see a lift-poor attacker
 
 The harness's composition verdicts have been drawn from a grid that structurally
 excludes the region where the ground phase decides anything, and that is why
@@ -317,11 +408,27 @@ strongest at 2–6. Lift is tied to a share of a large budget, so the fix is to
 treat it as its own axis or to sweep a much smaller attacker budget — not to
 refine the simplex.
 
-**Until this is fixed, `pnpm fleetlab`'s answer on defending composition should
-not be trusted**, and neither should any conclusion drawn from it about whether
-the ground phase matters. The attacker-side finding (three or four classes beat
-one or two) is unaffected: it turns on the orbital phase, which the grid does
-sample.
+**FIXED.** Lift is drawn from `LIFT_AXIS` — `0, 2, 4, 6, 10, 16, 30`, dense
+where the decision lives — and the simplex divides the remainder between the
+three fighting classes. `--fine` swaps in a twelve-point axis.
+
+Sampling was trimmed with it, because the grid went from 35x35 to 180x150:
+4 garrisons x 5 rolls x 3 doctrines was 60 battles a pairing and is now 3 x 3 x
+2 = 18, keeping the ends of each range. `pnpm fleetlab` runs in **43 seconds**
+against 18 before the change and 6:40 with the dense axis and the old sampling.
+
+**And the answer inverts.** With the blind spot gone, both sides want a mix:
+
+```
+  ATTACKER  best 64%  3cls  escort:24 torpedo_boat:72 lifter:16   margin +10.4
+  DEFENDER  best 85%  3cls  battleship:9 escort:6 lifter:10       margin  +1.2
+```
+
+That is the first time the defender's composition has been a decision, and it
+closes the question item 74 has been asking through five failed attempts. The
+answer was never a new mechanic: a defender needed something to protect whose
+loss is not measured in weight, the lift phase gave it one, and the harness
+could not see it.
 
 ---
 
@@ -450,14 +557,30 @@ where the log lives:
 - **It changes what the epilogue and the briefing can read.** Both derive from
   state, so a digest has to keep whatever they count.
 
-## p.4 — `applyOps` deep-clones the log on every batch
+## p.4 — BUILT — `applyOps` deep-cloned the log on every batch
 
-`clone()` is `JSON.parse(JSON.stringify(state))` and runs once per `applyOps`.
-The log is 61% of what it copies, and the log is append-only — it is the one
-part of the world a batch can only add to. Measured at 0.32ms → 0.53ms across 90
-turns, so this is **small**, and it is listed because it is pure waste rather
-than because it hurts yet: a structural clone that shares the log prefix costs
-nothing to get right and stops p.3 being the only lever on state size.
+`clone()` was `JSON.parse(JSON.stringify(state))`, run once per `applyOps` and
+once per `tickTurn`. The log is 61% of what it copies, and the log is
+append-only — it is the one part of the world a batch can only add to, because
+every writer goes through `logEvent`, which pushes, and nothing anywhere edits an
+entry once it exists.
+
+`cloneState` copies the array and **shares the entries**. The array must be new,
+since `applyOps` never mutates its input; the entries need not be, and that is
+the whole saving.
+
+**It was filed as small on a measurement that was wrong.** The item said 0.32ms
+→ 0.53ms across 90 turns and called it pure waste rather than pain. Measured
+directly at a 90-turn log (1,100 entries), `applyOps` goes **1.372ms → 0.263ms**
+— 5.2x, not 1.6x — and it shows up in replay too: `meridian_long` 331ms → 290ms,
+`classes_playtest` 223ms → 181ms, unchanged worlds in both. The earlier figure
+was measuring a probe's own overhead alongside the clone.
+
+The invariant is what makes it sound rather than merely fast, so a test asserts
+it directly: mutate an entry in the returned world and the input must be
+unchanged. That fails the moment somebody starts editing a log entry in place
+instead of appending a new one — which is exactly when sharing would stop being
+safe.
 
 ## p.5 — `verifyReplay` is quadratic over a campaign
 
@@ -578,7 +701,7 @@ hulls as force preserved.
 adds retreats from battles `stand` would have survived, each costing 10–35%.
 That is recorded on **74** and is a threshold to tune, not a decision to make.
 
-## 77. Make a defending fleet's composition a decision — leaders, or the garrison
+## 77. MOOT — make a defending fleet's composition a decision — leaders, or the garrison
 
 The open half of **74**, with the two directions worth trying, neither started.
 
@@ -642,7 +765,7 @@ weight.
 
 ---
 
-## 74. Composition is a decision for an attacker and not for a defender
+## 74. CLOSED — composition is a decision for an attacker and not for a defender
 
 **MEASURED**, with a harness built for it: `src/fleetlab.ts` and `pnpm
 fleetlab`. Every attacker composition against every defender composition, over
@@ -1266,7 +1389,7 @@ player most needs the arithmetic to behave.
 
 ---
 
-## 65. Ships already in orbit take no part in a battle fought over their heads
+## 65. MOSTLY CLOSED — ships already in orbit take no part in a battle fought over their heads
 
 **VERIFIED structurally.** `defenders` is `presentAt(target)` minus the
 attacking ids, and `attackShare` contains only *arriving* stacks. A fleet
@@ -1287,9 +1410,17 @@ world: *"breaking a garrison of 8 for 1 lifters; Meridian takes possession with
 So the capability exists and the playtester did not find it. What is left is
 much smaller than the item claimed:
 
-- **Discoverability.** Nothing in `prompts/resolution.md` says an assault can be
-  ordered from the system you are already in, so the model reaches for a
-  round trip. That is a prompt line, and needs no decision.
+- **Discoverability. FIXED.** Nothing in `prompts/resolution.md` said an assault
+  can be ordered from the system you are already in, so the model reached for a
+  round trip. The prompt now says it outright — set `originId` and `targetId` to
+  the same system — and names the other use of the same order, a holder sweeping
+  squatters out of its own orbit.
+
+  Pinned by a test rather than left to the prompt, because a prompt that
+  instructs an order which quietly stopped working would be worse than the
+  silence it replaced: `originId === targetId` gives `durationTurns: 1`, a path
+  of one system, and a real assault — verified taking a world off Drajk with the
+  garrison raised from the troops landed and three of six lifters spent.
 - **The genuine residual**: ships already parked do not join a battle that
   *someone else's* arrival triggers in the same turn. Leaving that alone is
   defensible — `force` exists precisely so an arrival commits what you chose to
@@ -1324,7 +1455,7 @@ once, including why quoting a compulsion at the game does not trip it.
 
 ---
 
-## 67. UNCONFIRMED — five things that produced nothing
+## 67. FOUR FIXED, ONE OPEN — five things that produced nothing
 
 The agent's measurements, grouped because they share a shape: a conversation
 agreed something and the world did not change.
@@ -1976,11 +2107,12 @@ should not necessarily see.
 
 ---
 
-## 41. PARTLY FIXED — the epilogue contradicted itself, and read like a ledger
+## 41. FIXED — the epilogue contradicted itself, and read like a ledger
 
-**VERIFIED.** Four defects in the ending shipped as item 39, one serious.
-**(a) and (c) are fixed and verified against the finished campaign; (b) and (d)
-are still open.** A fifth problem the user raised — the prose read as a plain
+**VERIFIED.** Four defects in the ending shipped as item 39, one serious. All
+four are now closed: **(a)** and **(c)** against the finished campaign, **(b)**
+with a control history derived from the journal, and **(d)** as one real fix and
+one finding that does not reproduce. A fifth problem the user raised — the prose read as a plain
 recap rather than an ending — is fixed alongside them and written up at the
 bottom of this item.
 
@@ -2033,6 +2165,34 @@ told it *"merely held"* its state, having lost a world at gunpoint and 11 hulls.
 The dossier carries **no battle record at all**. Carrying a battle summary, or
 worlds-changed-hands events rather than endpoint sets, would fix it.
 
+**FIXED.** `controlHistory(journal)` replays the campaign and records every
+change of control — turn, world, from, to. `FactionOutcome` gains `took`,
+`ceded` (in the order they happened, names repeating, because taking a world
+back is a second taking) and `contested` (worlds that changed hands more than
+once); `CampaignOutcome` gains `upheavals`.
+
+Derived from the journal rather than stored in `WorldState`, deliberately: the
+journal already holds this — `transfer_control` originates only in arrival
+resolution and cession, both of which replay exactly — so a durable field would
+be a second source of truth for a fact the first can already answer, and would
+need a schema change, a save-format change and a migration of 23 campaigns to
+gain nothing. The cost is one extra replay at the final bell, on a path already
+making a model call that takes seconds.
+
+`replay()` takes an optional observer rather than the history getting its own
+walker, because the walk is not trivial — two legacy exemptions decide each
+batch's source and atomicity by journal version, and a copy would drift the
+first time a third is added.
+
+Verified on a real save. `opus_adversarial` sends **Sekkar Gate** from Meridian
+to Arkane and back one turn later, and it appears in *neither* power's `gained`
+nor `lost` — both end holding what they started with. It is now in both powers'
+`took`, both powers' `ceded`, and named as the one contested world on each side.
+`prompts/epilogue.md`'s workaround section — which existed only to stop the model
+inferring a quiet campaign from an empty list — is replaced by the real
+instruction: the net position and the history are two different facts, both
+true, and the count of changes of control settles which reading applies.
+
 ### (c) `foremost` promotes an arbitrary tie-break into a stated fact
 
 All five powers ended holding four systems. `foremost` breaks the tie on faction
@@ -2048,12 +2208,26 @@ a way of picking a value, not a finding.
 
 ### (d) Two smaller ones
 
-- `towardPlayer: 100, playerToward: 100` for the player's own faction is
-  synthesised at `epilogue.ts:135` — the reducer rejects self-disposition ops,
-  so this is a number in a document whose selling point is *"settled; do not
-  overturn"*.
-- `epilogue.factions[drajk].net = 258` and `briefing.ledger.net = 253` in one
-  response, both stamped `turn: 10`.
+- **FIXED.** `towardPlayer: 100, playerToward: 100` for the player's own faction
+  was synthesised — the reducer rejects self-disposition ops, so this was a
+  number invented inside the one document whose selling point is *"settled; do
+  not overturn"*. Both are `number | null` now and `null` on the player's own
+  slide, which forces every reader to acknowledge the absence rather than print
+  a figure nothing stands behind.
+
+  Typing it turned up the duplication underneath: `FactionOutcome` was declared
+  **twice** in one file — a hand-written interface and a Zod restatement two
+  hundred lines below it — so the two disagreed the moment a field changed type.
+  Same defect as the `Ledger` copy in `api/contract.ts`, same fix: the interface
+  is gone and the type is inferred from the schema.
+
+- **NOT REPRODUCED.** `epilogue.factions[drajk].net = 258` against
+  `briefing.ledger.net = 253`, both stamped `turn: 10`. Checked across all 23
+  saved campaigns: the epilogue's net and the briefing's net agree exactly on
+  every one, and they must — `endTurn` builds both from the same
+  `campaign.state` with nothing mutating in between, and both call `ledgerFor`.
+  Filed beside **68**, which was retired for the same reason. Reopen with a
+  reproduction.
 
 ### (e) FIXED — it read like a ledger, not an ending
 

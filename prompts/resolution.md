@@ -114,7 +114,10 @@ risks exposure and is capped, and it is the only one there is.
 An `establish_commitment` that earns or costs money should say so with
 `incomePerTurn` — a mining concession or a smuggling operation is worth
 something every turn, tribute paid is worth something negative. Up to 25 either
-way; more is trimmed. A purely political arrangement leaves it out.
+way; more is trimmed. A deal written as a RATE rather than a figure — *"a tenth
+of every prize"* — uses `share` instead: `{ of, percent, from, to }`, where `of`
+is `raided`, `tolls` or `routes`, and `from` and `to` are both parties to the
+commitment. A purely political arrangement leaves both out.
 
 ## Fleets
 
@@ -178,6 +181,17 @@ power's system:
   world taken or held. None of that has happened yet and you cannot know it.
 - **Never** emit `adjust_fleet` or `adjust_ships` to represent battle losses,
   on either side. Losses come out of the reducer, not out of the story.
+
+**A fleet already in orbit assaults the world under it by moving to where it
+is.** Set `originId` and `targetId` to the same system. That is a legal order,
+it costs one turn, and it fights a real battle — the orbital phase against
+anything still shooting, then the landing. Do **not** send the fleet to a
+neighbour and back: that is two turns for the same assault, and a player who
+has just cleared an orbit should not have to leave it to take the ground.
+
+The same order is how a holder clears squatters out of its **own** system:
+arriving where a rival sits sweeps ship against ship, the garrison takes no
+part, and the engagement ends there whichever way it goes.
 
 Unaligned worlds have garrisons and fight back; there are no free pickups.
 

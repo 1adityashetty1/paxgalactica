@@ -162,45 +162,82 @@ export function trial(
 }
 
 /**
- * Every composition that spends about `budget`, on a simplex grid.
+ * Lift counts swept as their own axis, rather than as a share of the budget.
  *
- * `steps` is how finely the budget is divided: each class takes a whole number
- * of steps and the shares sum to `steps`. A step of 4 gives 35 compositions per
- * side, which is a 35x35 round robin — coarse enough to run in seconds and fine
- * enough to separate a screen from a battle line.
+ * **This is the fix for item 79, and the reason it was needed is worth keeping.**
+ * A simplex share of a large budget cannot express a small fleet: one share of
+ * 3,600 credits over four steps is 900, and 900 credits is exactly twenty
+ * transports. So the attacker grid carried `0, 20, 40, 60, 80` lifters and
+ * nothing between 1 and 19 — while the thing being measured, a defender
+ * converting its own lift into garrison, stops mattering once the attacker
+ * carries about ten, because `assault` already beats any garrison it will meet.
+ *
+ * Every lift-carrying attacker in the old grid sat above that line and every
+ * other one carried none, so the harness sampled only the two regions where the
+ * mechanism is guaranteed inert: `no_lift` came back 0.0% on every defending
+ * composition it tested. Refining the simplex does not reach it either —
+ * `steps: 12` costs 455 compositions and still bottoms out at six.
+ *
+ * The counts are dense where the decision lives (0-10) and sparse above it,
+ * where one more transport changes nothing.
+ */
+export const LIFT_AXIS = [0, 2, 4, 6, 10, 16, 30] as const;
+
+/**
+ * The dense axis, for when the question is specifically about small lift arms.
+ * `--fine` uses it. Twelve counts rather than seven roughly triples the run.
+ */
+export const LIFT_AXIS_FINE = [0, 1, 2, 3, 4, 6, 8, 10, 14, 20, 30, 45] as const;
+
+/** Classes the simplex still divides between, once lift is drawn separately. */
+const FIGHTING_CLASSES = HULL_CLASSES.filter((h) => h !== 'lifter');
+
+/**
+ * Every composition that spends about `budget`.
+ *
+ * Lift is drawn from `LIFT_AXIS` and the remainder is divided between the
+ * fighting classes on a simplex grid, so a fleet carrying two transports is
+ * enumerated as readily as one carrying forty. `steps` is how finely that
+ * remainder is divided.
  *
  * The grid deliberately includes compositions nobody would build — a defender
  * carrying lift it cannot use, an attacker with no lift at all. A harness that
  * only enumerates sensible fleets cannot tell you that the others are worse.
  */
-export function compositions(budget: number, steps = 4): Composition[] {
+export function compositions(budget: number, steps = 4, lift: readonly number[] = LIFT_AXIS): Composition[] {
   const out: Composition[] = [];
-  const walk = (i: number, left: number, take: number[]): void => {
-    if (i === HULL_CLASSES.length - 1) {
-      const shares = [...take, left];
-      const stack: ShipStack = {};
-      for (const [k, hull] of HULL_CLASSES.entries()) {
-        const spend = (budget * shares[k]!) / steps;
-        const n = Math.floor(spend / hullCost(hull));
-        if (n > 0) stack[hull] = n;
+  for (const lifters of lift) {
+    const spentOnLift = lifters * hullCost('lifter');
+    if (spentOnLift > budget) continue;
+    const rest = budget - spentOnLift;
+    const walk = (i: number, left: number, take: number[]): void => {
+      if (i === FIGHTING_CLASSES.length - 1) {
+        const shares = [...take, left];
+        const stack: ShipStack = {};
+        if (lifters > 0) stack.lifter = lifters;
+        for (const [k, hull] of FIGHTING_CLASSES.entries()) {
+          const spend = (rest * shares[k]!) / steps;
+          const n = Math.floor(spend / hullCost(hull));
+          if (n > 0) stack[hull] = n;
+        }
+        const cost = HULL_CLASSES.reduce((n, h) => n + (stack[h] ?? 0) * hullCost(h), 0);
+        const classes = HULL_CLASSES.filter((h) => (stack[h] ?? 0) > 0).length;
+        if (classes > 0) {
+          out.push({
+            stack,
+            cost,
+            classes,
+            label: HULL_CLASSES.filter((h) => (stack[h] ?? 0) > 0)
+              .map((h) => `${h}:${stack[h]}`)
+              .join(' '),
+          });
+        }
+        return;
       }
-      const cost = HULL_CLASSES.reduce((n, h) => n + (stack[h] ?? 0) * hullCost(h), 0);
-      const classes = HULL_CLASSES.filter((h) => (stack[h] ?? 0) > 0).length;
-      if (classes > 0) {
-        out.push({
-          stack,
-          cost,
-          classes,
-          label: HULL_CLASSES.filter((h) => (stack[h] ?? 0) > 0)
-            .map((h) => `${h}:${stack[h]}`)
-            .join(' '),
-        });
-      }
-      return;
-    }
-    for (let n = 0; n <= left; n++) walk(i + 1, left - n, [...take, n]);
-  };
-  walk(0, steps, []);
+      for (let n = 0; n <= left; n++) walk(i + 1, left - n, [...take, n]);
+    };
+    walk(0, steps, []);
+  }
   // Distinct fleets only: two share splits can floor to the same hulls.
   const seen = new Set<string>();
   return out.filter((c) => {
@@ -232,6 +269,8 @@ export interface TournamentOptions {
   /** The defender spends this; defaults to the attacker's budget. */
   defenceBudget?: number;
   steps?: number;
+  /** Lift counts to sweep. Defaults to `LIFT_AXIS`. */
+  lift?: readonly number[];
   garrisons?: number[];
   turns?: number[];
   ethics?: WarEthic[];
@@ -248,14 +287,22 @@ export function tournament(opts: TournamentOptions = {}): TournamentResult {
   const budget = opts.budget ?? 1800;
   const defenceBudget = opts.defenceBudget ?? budget;
   const steps = opts.steps ?? 4;
-  const garrisons = opts.garrisons ?? [4, 8, 12, 16];
-  const turns = opts.turns ?? [1, 2, 3, 4, 5];
-  const ethics = opts.ethics ?? (['profiteer', 'crusading', 'defensive'] as WarEthic[]);
+  const lift = opts.lift ?? LIFT_AXIS;
+  // Sampling was 4 garrisons x 5 rolls x 3 doctrines = 60 battles a pairing,
+  // which was affordable when the grid was 35x35 and is not now that lift has
+  // its own axis. Trimmed to 3 x 3 x 2 = 18, keeping the ends of each range —
+  // a shallow garrison and a deep one, a bad roll and a good one, and the two
+  // doctrines that actually change a battle (`crusading` never breaks off,
+  // `defensive` digs its garrison in). `profiteer` is the neutral case and is
+  // what the other two are measured against, so it stays.
+  const garrisons = opts.garrisons ?? [4, 10, 16];
+  const turns = opts.turns ?? [1, 3, 5];
+  const ethics = opts.ethics ?? (['profiteer', 'crusading'] as WarEthic[]);
 
-  const atk = compositions(budget, steps).map(
+  const atk = compositions(budget, steps, lift).map(
     (c): Scored => ({ ...c, trials: 0, wins: 0, rate: 0, why: {} }),
   );
-  const def = compositions(defenceBudget, steps).map(
+  const def = compositions(defenceBudget, steps, lift).map(
     (c): Scored => ({ ...c, trials: 0, wins: 0, rate: 0, why: {} }),
   );
 

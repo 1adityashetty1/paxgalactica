@@ -60,6 +60,22 @@ export function EpilogueStage({ epilogue }: { epilogue: EpilogueView }) {
               {f.net}/turn
             </span>
             {f.wars.length > 0 && <span className="down">at war: {f.wars.join(', ')}</span>}
+            {/* The net position above can be zero while the campaign was
+                fought over the same world three times, so the count of
+                changes of hands is a separate fact and belongs on screen
+                beside the prose that draws on it — the whole point of
+                settling the facts in code is that a reader can check the
+                story against them. */}
+            {(f.took.length > 0 || f.ceded.length > 0) && (
+              <span title={`taken: ${f.took.join(', ') || 'none'} · lost: ${f.ceded.join(', ') || 'none'}`}>
+                {f.took.length} taken / {f.ceded.length} lost
+              </span>
+            )}
+            {f.contested.length > 0 && (
+              <span title="Changed hands more than once">
+                fought over: {f.contested.join(', ')}
+              </span>
+            )}
           </div>
         </section>
       ))}

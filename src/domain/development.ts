@@ -533,35 +533,51 @@ export interface CovertRouting {
 export function routeCovertAction(
   ops: unknown[],
   outcome: 'critical_success' | 'success' | 'partial' | 'failure' | 'critical_failure',
-  covert: { mission: AgentMission; systemId: string } | null | undefined,
+  /**
+   * Every operation the arbiter named. A LIST because a declaration routinely
+   * contains more than one: an order carrying an assassination and a theft used
+   * to produce a single `deploy_agent` and a `log_narrative` promising the
+   * other "will come on a later tick", which never came.
+   */
+  covert: readonly { mission: AgentMission; systemId: string }[] | null | undefined,
   actor: string,
 ): CovertRouting {
-  if (!covert) return { ops, notes: [] };
+  if (!covert || covert.length === 0) return { ops, notes: [] };
   // A failure places nobody. The attempt still cost whatever it cost.
   if (outcome === 'failure' || outcome === 'critical_failure') return { ops, notes: [] };
 
-  const alreadyPlaced = ops.some(
-    (op) =>
-      !!op &&
-      typeof op === 'object' &&
-      (op as { op?: unknown }).op === 'deploy_agent',
+  // Whatever the resolution call placed itself is honoured, and only the
+  // operations it did NOT cover are added — matched on mission and place, so a
+  // batch that already deployed the assassin still gets its thief.
+  const placed = new Set(
+    ops
+      .filter(
+        (op): op is { op: string; mission: string; systemId: string } =>
+          !!op &&
+          typeof op === 'object' &&
+          (op as { op?: unknown }).op === 'deploy_agent',
+      )
+      .map((op) => `${op.mission}@${op.systemId}`),
   );
-  if (alreadyPlaced) return { ops, notes: [] };
+
+  const added = covert.filter((c) => !placed.has(`${c.mission}@${c.systemId}`));
+  if (added.length === 0) return { ops, notes: [] };
 
   return {
     ops: [
       ...ops,
-      {
+      ...added.map((c) => ({
         op: 'deploy_agent',
         ownerFactionId: actor,
-        systemId: covert.systemId,
-        mission: covert.mission,
-        effect: DEFAULT_COVERT_EFFECT[covert.mission],
+        systemId: c.systemId,
+        mission: c.mission,
+        effect: DEFAULT_COVERT_EFFECT[c.mission],
         cover: 'placed by a covert operation the arbiter ruled on',
-      },
+      })),
     ],
-    notes: [
-      `Covert work is run by operatives: a ${covert.mission} agent was placed at ${covert.systemId}, charged and capped like any other. It resolves on the tick.`,
-    ],
+    notes: added.map(
+      (c) =>
+        `Covert work is run by operatives: a ${c.mission} agent was placed at ${c.systemId}, charged and capped like any other. It resolves on the tick.`,
+    ),
   };
 }

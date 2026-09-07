@@ -29,6 +29,7 @@ import { callStructured } from '../model/client.js';
 import { loadPrompt } from '../model/prompts.js';
 import { createSeedState } from '../seed/scenario.js';
 import { proposeFor } from '../domain/initiative.js';
+import { controlHistory } from './journal.js';
 import {
   campaignOutcome,
   fallbackEpilogue,
@@ -879,7 +880,16 @@ export async function writeEpilogue(
   // here: this runs immediately after `endTurn`, which commits every staged
   // batch and clears the list. Reading the preview keeps `committed` private.
   const state = campaign.state;
-  const outcome = campaignOutcome(state, createSeedState(state.playerFactionId), campaign.maxTurns ?? state.turn);
+  // The campaign's history, not only its endpoints. Replaying the journal once
+  // more costs milliseconds on a path that is about to make a model call taking
+  // seconds, and it is the only way to see a world that changed hands and
+  // changed back — which is exactly the world worth narrating.
+  const outcome = campaignOutcome(
+    state,
+    createSeedState(state.playerFactionId),
+    campaign.maxTurns ?? state.turn,
+    controlHistory(campaign.journal),
+  );
 
   const base = {
     turn: outcome.turn,
@@ -888,6 +898,7 @@ export async function writeEpilogue(
     unaligned: outcome.unaligned,
     foremost: outcome.foremost,
     leaders: outcome.leaders,
+    upheavals: outcome.upheavals,
     factions: outcome.factions,
   };
 

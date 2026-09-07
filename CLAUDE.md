@@ -268,6 +268,41 @@ a commitment is the easiest place in the game for a model to invent revenue:
 It is read where it is used rather than paid out each tick, for the same reason
 agent effects are: a per-turn mutation would compound instead of recurring.
 
+**And some deals are a rate, not a figure.** `incomePerTurn` is a fixed integer,
+so *"a tenth of every prize you take"* had no honest number to write down — a
+model asked for one correctly wrote zero, and the obligation was recorded, read
+back to the player, and worth nothing. `Commitment.share` is the proportional
+term: `{ of, percent, from, to }`, capped at `MAX_COMMITMENT_SHARE` (50%),
+floored to whole credits, and directional — unlike `incomePerTurn`, which is one
+scalar every bound party reads the same way and is the defect `debt.ts` exists
+to escape.
+
+`of` names a **lane flow** — `raided`, `tolls` or `routes` — and that choice
+carries the whole design:
+
+- **It cannot recurse.** All three come off `routeEarnings`, which settles the
+  galaxy in one pass and does not read commitments, so pricing A's share never
+  calls B's `ledgerFor`. A share of `net` has no fixed point at all once two
+  powers hold shares of each other.
+- **It cannot be a claim on money nobody earned.** A share is bounded by what
+  the payer's lanes actually paid it, so a bad season pays nothing rather than
+  paying a figure agreed in a good one — which is what a share is *for*, and
+  precisely what an estimated `incomePerTurn` cannot do.
+
+Read off the **raw** `routeEarnings` figure, before the free trader's openness
+bonus and the monopolist's premium: those are doctrine paid to the holder for
+being what it is, and a counterparty bargained for a slice of the lane rather
+than a cut of somebody else's ethic. It also means both sides of one arrangement
+are computed from the same number whichever one is asking.
+
+Both parties must be bound by the commitment, so it cannot reach into the take
+of a power that never signed. That one is **rejected** rather than trimmed —
+there is no smaller version of *"and the Vigil pays for it"* that is still the
+deal — while an over-large percentage is trimmed with a note, the same shape as
+`MAX_COMMITMENT_INCOME`. And it sits outside that ceiling on purpose: the
+ceiling bounds a figure a model *invented*, and this one is a percentage of
+money already on the board.
+
 **And an arrangement with no money in it is still worth something.** A
 commitment carrying no `incomePerTurn` was entirely inert, and a playtest closed
 five accords that each produced exactly one — `open_hand_pact`,
@@ -670,12 +705,13 @@ matching the boats ton for ton turns the whole strike aside onto itself, and
 half a screen turns aside half. The tonnage still burns; only its address
 changes.
 
-**None of this reaches the defender**, and that is the open question rather than
-an oversight. A defender's fleet does exactly one thing — trade weight in the
-exchange — and one objective has a pure optimum. The attacker's mix is a
-decision because it has *two*: clear the orbit, and land troops. Measured at
-every budget ratio from 1:1 to 3:1, and scored on damage dealt as well as on
-holding, the best defender is a pure battle line every time. See item 74.
+**None of this reaches the defender**, and for a long time that read as the open
+question — a defender's fleet did exactly one thing, trade weight in the
+exchange, and one objective has a pure optimum. What closed it was not giving
+the defender a strike but giving it the **lift phase**: transports it converts
+to garrison are a second objective, and they are worth nothing in weight, which
+is the exact condition under which a screen pays. The boat stays an attacker's
+instrument, and a defender's answer to it is still a screen.
 
 The historical shape and the mechanical one agree, which is why the class is
 called what it is: destroyers were originally *torpedo boat destroyers*.
@@ -1813,6 +1849,25 @@ unit; this is the same move for money and for crews. A batch-scoped ledger
 carries what has been spent against each cap, so a ceiling cannot be multiplied
 by saying the same thing more times.
 
+**And a squadron moved is the squadron that arrives.** `adjust_ships -N` spends
+the loss order and `+N` mints the class named, which defaults to `battleship` —
+so the obvious way to write a reposition scrapped escorts at the origin and
+commissioned battleships at the destination. `billConstruction` charged the
+difference correctly, and that is what made it invisible: the money was right and
+the fleet was wrong, under a narrative saying the squadron had sailed.
+
+A batch-scoped pool records which classes actually came off — diffed from the
+stack, since `takeShipsAt` spends the loss order and stops at what is there — and
+an addition that named **no** class draws from it in loss order before minting
+anything. Only the surplus past that is a genuine build. Whether a class was
+named is read off the **raw** op, because `hull` carries a `.default`, so the
+parsed value cannot tell "the model asked for battleships" from "the model said
+nothing", and only the second may be reinterpreted.
+
+A suborned crew brings its hull the same way: the removal records under the
+suborner too, so turning three escorts delivers three escorts rather than three
+battleships bought at battleship rates.
+
 **One squadron described twice is one squadron.** `adjust_fleet` commissions and
 bases at the best holding; `adjust_ships` puts hulls at a named world — and a
 model describing one squadron reaches for both, so six lifters arrived as
@@ -2679,25 +2734,30 @@ swept for exactly that reason, each having already flipped a conclusion.
 equal credits the defender holds essentially every battle and no composition can
 be told from another; the default is 3,600 against 1,200 plus a garrison.
 
-The measured answer is that composition decides an **invasion** and not a
-**defence**:
+The measured answer is that composition decides **both sides**, but by a very
+different margin:
 
-| side | best fleet | rate |
-|---|---|---|
-| attacker | `battleship:30 escort:30 lifter:20` — three classes | 70% |
-| defender | `battleship:20` — one class, and every mix is worse | 80% |
+| side | best fleet | rate | margin over the best 1–2 class fleet |
+|---|---|---|---|
+| attacker | `escort:24 torpedo_boat:72 lifter:16` | 64% | **+10.4 points** |
+| defender | `battleship:9 escort:6 lifter:10` | 85% | **+1.2 points** |
 
 A line-heavy attacker fails by losing its transports (`no_lift`); a screen-heavy
 one fails by never clearing the orbit (`no_landing`). Two failure modes of
 different kinds is what makes the mix a decision rather than a ratio to solve
 once, and a test pins it.
 
-The defender's side has an exact explanation rather than a tuning problem:
-**a screen pays exactly when it protects something whose loss is not measured in
-weight.** A lifter has zero orbital weight, so losing one costs no fighting power
-and costs the whole objective — which is what makes an escort's 0.5 weight per
-ton worth taking over a battleship's 0.75. Everything a defender owns *is*
-weight, so the same trade is a straight loss. See item 74 in `docs/todo.md`.
+**The defender's half was reported as a pure battle line for most of this
+project, and that was an artefact of the grid rather than a result.** Lift was
+derived from the rest of the composition, so every fleet in the sweep carried
+enough of it to saturate the effect — `no_lift` was 0.0% in every single row,
+which is the tell. With lift on its own axis the rule that explains the
+attacker's side explains the defender's too: **a screen pays exactly when it
+protects something whose loss is not measured in weight.** A lifter has
+essentially no orbital weight, so losing one costs no fighting power and costs
+the objective — on defence, the garrison it would have become in the lift phase.
+The margin is thin because a defender's second objective is smaller than an
+attacker's, not because it has none.
 
 ## Deterministic replay
 
@@ -2794,6 +2854,15 @@ state, 61% of the world**. Two consequences, both fixed and both cheap:
   order-stable** — `visibleTo` is fixed per entry — so no sequence number and no
   schema change. Measured: the pushed payload is flat at 77KB where it was 238KB
   at turn 90 and unbounded.
+- **It was deep-cloned on every batch.** `clone` is
+  `JSON.parse(JSON.stringify(state))`, and the log is the majority of what it
+  copies — while being the one part of the world a batch can only *add* to:
+  every writer goes through `logEvent`, which pushes, and nothing edits an entry
+  once it exists. `cloneState` copies the array (a push must not reach the
+  caller's world) and **shares the entries**. Measured at a 90-turn log,
+  `applyOps` goes from 1.372ms to 0.263ms. A test asserts the invariant rather
+  than the timing: mutate an entry in the returned world and the input must be
+  unchanged, which fails the moment somebody starts editing an entry in place.
 - **It was drawn whole on every render**, and `[...shown].reverse()` copied the
   entire array to display twenty entries. `logWindow` slices before reversing.
 
@@ -2950,6 +3019,30 @@ still be browsed, re-read and exported.
 `src/engine/epilogue.ts` computes the dossier — worlds held against worlds
 started with, what each power took and lost **by name**, fleet, treasury, net,
 dissent, wars, live treaties, debts outstanding, and standing toward the player.
+
+**The endpoints are not the story, and for a while they were all there was.**
+`gained`/`lost` compare the first turn to the last, so a world taken and taken
+back cancels out of both — and a live campaign whose only conquest changed hands
+three times, over three battles, was narrated as a decade in which no flag was
+planted or struck. `controlHistory(journal)` replays the campaign and records
+every change of control, giving each power `took` and `ceded` **in the order they
+happened** (a name twice means the world was taken back) and `contested` for
+ground that moved more than once. Both readings ship, stated as different facts,
+because they can honestly disagree.
+
+Derived from the journal rather than stored on `WorldState`: `transfer_control`
+originates only in arrival resolution and cession, both of which replay exactly,
+so a durable field would be a second source of truth for something the first can
+already answer — and would cost a schema change, a save-format change and a
+migration to gain nothing. `replay()` takes an optional observer rather than the
+history getting a walker of its own, since the walk carries two legacy exemptions
+that decide each batch's source and atomicity by journal version.
+
+`towardPlayer` and `playerToward` are `null` on the player's own slide. They were
+synthesised as 100, which put an invented number inside the one document handed
+to the narration as *"settled; do not overturn"* — nobody holds a disposition
+toward themselves, and the reducer rejects the op that would set one.
+
 `prompts/epilogue.md` writes Fallout-style vignettes over it: one slide per
 faction, then a closing paragraph.
 

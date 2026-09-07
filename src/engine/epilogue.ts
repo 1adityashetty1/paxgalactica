@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isTreatyLive } from '../domain/diplomacy.js';
+import type { ControlChange } from './journal.js';
 import { isDebtLive } from '../domain/debt.js';
 import {
   fleetStrengthOf,
@@ -29,32 +30,16 @@ import {
  * dossier is reproducible from the journal.
  */
 
-export interface FactionOutcome {
-  factionId: string;
-  name: string;
-  color: number;
-  /** Worlds held at the end, and the change from where they started. */
-  systems: number;
-  systemsDelta: number;
-  /** Worlds taken and lost by name, so the narration has specifics to use. */
-  gained: string[];
-  lost: string[];
-  fleet: number;
-  credits: number;
-  net: number;
-  dissent: number;
-  /** How this power ended up regarding the player, and vice versa. */
-  towardPlayer: number;
-  playerToward: number;
-  /** Powers it is at war with (disposition at or below −75). */
-  wars: string[];
-  liveTreaties: string[];
-  /** Debts still owed to and by this power at the final bell. */
-  owes: number;
-  owed: number;
-  /** A one-word verdict computed from the above, never chosen by a model. */
-  arc: 'ascendant' | 'diminished' | 'holding' | 'broken';
-}
+/**
+ * One power's ending, as facts.
+ *
+ * Inferred from `FactionOutcomeSchema` rather than declared beside it. It was
+ * declared twice — a hand-written interface here and a Zod restatement two
+ * hundred lines down — and the two duly disagreed the first time a field
+ * changed type. Same defect as the `Ledger` copy in `api/contract.ts`, and the
+ * same fix: one definition, and the other side imports it.
+ */
+export type FactionOutcome = z.infer<typeof FactionOutcomeSchema>;
 
 export interface CampaignOutcome {
   turn: number;
@@ -70,6 +55,14 @@ export interface CampaignOutcome {
    * one entry nobody is foremost, and the narration must not say otherwise.
    */
   leaders: string[];
+  /**
+   * How many times any world changed hands, across the whole campaign.
+   *
+   * Zero is a real and narratable answer — a cold war nobody won — and it is
+   * one an endpoint difference could never distinguish from a war fought to a
+   * draw over the same four worlds.
+   */
+  upheavals: number;
 }
 
 const WAR = -75;
@@ -94,9 +87,24 @@ export function campaignOutcome(
    */
   start: WorldState,
   maxTurns: number,
+  /**
+   * Every change of control across the campaign, from `controlHistory`.
+   *
+   * Optional, so `campaignOutcome` stays callable from a pair of states — the
+   * endpoint facts do not need it, and a caller without a journal should get a
+   * dossier that is thinner rather than one that throws. When it is absent
+   * `took`, `ceded` and `contested` are empty and the prompt says so, rather
+   * than the narration being free to guess.
+   */
+  history: readonly ControlChange[] = [],
 ): CampaignOutcome {
   const nameOf = (id: string): string => getFaction(state, id)?.name ?? id;
   const me = state.playerFactionId;
+
+  // How often each world changed hands, so "contested" is a fact about the
+  // campaign rather than an impression from the last turn of it.
+  const turnovers = new Map<string, number>();
+  for (const c of history) turnovers.set(c.systemId, (turnovers.get(c.systemId) ?? 0) + 1);
 
   const factions: FactionOutcome[] = state.factions.map((f) => {
     const held = systemsOf(state, f.id);
@@ -148,12 +156,31 @@ export function campaignOutcome(
       systemsDelta,
       gained: held.filter((s) => !startIds.has(s.id)).map((s) => s.name).sort(),
       lost: heldStart.filter((s) => !endIds.has(s.id)).map((s) => s.name).sort(),
+      // In the order they happened, and NOT sorted or deduplicated: taking a
+      // world back is a second taking, and the sequence is the story.
+      took: history.filter((c) => c.to === f.id).map((c) => c.systemName),
+      ceded: history.filter((c) => c.from === f.id).map((c) => c.systemName),
+      contested: [
+        ...new Set(
+          history
+            .filter(
+              (c) => (c.to === f.id || c.from === f.id) && (turnovers.get(c.systemId) ?? 0) > 1,
+            )
+            .map((c) => c.systemName),
+        ),
+      ].sort(),
       fleet: fleetStrengthOf(state, f.id),
       credits: f.credits,
       net: ledger.net,
       dissent: f.dissent,
-      towardPlayer: f.id === me ? 100 : (f.disposition[me] ?? 0),
-      playerToward: f.id === me ? 100 : (getFaction(state, me)?.disposition[f.id] ?? 0),
+      // `null`, not 100. A faction holds no disposition toward itself — the
+      // reducer rejects the op that would set one — so a synthesised 100 was a
+      // fact invented inside the one document whose whole selling point is
+      // "settled; do not overturn". Absent is the honest value, and typing it
+      // as nullable is what forces every reader to say so rather than print a
+      // number nothing stands behind.
+      towardPlayer: f.id === me ? null : (f.disposition[me] ?? 0),
+      playerToward: f.id === me ? null : (getFaction(state, me)?.disposition[f.id] ?? 0),
       wars,
       liveTreaties: state.treaties
         .filter((t) => isTreatyLive(t, state.turn) && t.parties.includes(f.id))
@@ -189,6 +216,7 @@ export function campaignOutcome(
     unaligned: state.systems.filter((s) => s.controllerFactionId === null).length,
     foremost,
     leaders,
+    upheavals: history.length,
   };
 }
 
@@ -253,20 +281,56 @@ export const FactionOutcomeSchema = z.object({
   factionId: z.string(),
   name: z.string(),
   color: z.number().int(),
+  /** Worlds held at the end, and the change from where they started. */
   systems: z.number().int(),
   systemsDelta: z.number().int(),
+  /**
+   * Worlds taken and lost by name, comparing the opening board to the closing
+   * one. Right about where things ended, and silent about how they got there —
+   * a world taken and lost again cancels out of both lists. See `took`/`ceded`.
+   */
   gained: z.array(z.string()),
   lost: z.array(z.string()),
+  /**
+   * Every world this power took, and every world it lost, **as it happened**.
+   *
+   * A campaign's only conquest changed hands three times and appeared in
+   * neither `gained` nor `lost`, so the ending reported that no flag was
+   * planted or struck after three battles were fought over it. A set difference
+   * cannot see a war that ended where it began, which is most of them.
+   *
+   * In the order they happened, and names may repeat: taking a world back is a
+   * second taking, and saying so is the point.
+   *
+   * Defaulted, so an epilogue written before this existed still loads — a
+   * finished campaign is read back from disk, and it must open with the ending
+   * the player was given rather than fail to open at all.
+   */
+  took: z.array(z.string()).default([]),
+  ceded: z.array(z.string()).default([]),
+  /** Worlds this power fought over that changed hands more than once. */
+  contested: z.array(z.string()).default([]),
   fleet: z.number().int(),
   credits: z.number().int(),
   net: z.number().int(),
   dissent: z.number().int(),
-  towardPlayer: z.number().int(),
-  playerToward: z.number().int(),
+  /**
+   * How this power ended up regarding the player, and vice versa.
+   *
+   * `null` on the player's own slide: nobody holds a disposition toward
+   * themselves, and the reducer rejects the op that would set one. It was
+   * synthesised as 100, which put an invented fact in the one document sold to
+   * the narration as "settled; do not overturn".
+   */
+  towardPlayer: z.number().int().nullable(),
+  playerToward: z.number().int().nullable(),
+  /** Powers it is at war with — either party at or below -75. */
   wars: z.array(z.string()),
   liveTreaties: z.array(z.string()),
+  /** Debts still owed to and by this power at the final bell. */
   owes: z.number().int(),
   owed: z.number().int(),
+  /** A one-word verdict computed from the above, never chosen by a model. */
   arc: z.enum(['ascendant', 'diminished', 'holding', 'broken']),
 });
 
@@ -285,6 +349,8 @@ export const EpilogueViewSchema = z.object({
   foremost: z.string(),
   /** Everyone level on the largest holding. More than one means nobody leads. */
   leaders: z.array(z.string()).default([]),
+  /** How many times any world changed hands across the campaign. */
+  upheavals: z.number().int().default(0),
   factions: z.array(FactionOutcomeSchema),
   slides: z.array(z.object({ factionId: z.string(), text: z.string() })),
   closing: z.string(),
@@ -335,6 +401,10 @@ export function serializeOutcome(outcome: CampaignOutcome): string {
       ? `${outcome.unaligned} worlds ended unaligned. **Nobody ended foremost**: ${outcome.leaders.length} powers finished level on the largest holding (\`${outcome.leaders.join('`, `')}\`). Do not name any of them the largest — say they finished level, or do not raise it.`
       : `${outcome.unaligned} worlds ended unaligned. The largest holding is \`${outcome.foremost}\`.`,
     '',
+    outcome.upheavals === 0
+      ? '**No world changed hands in the whole campaign.** Whatever else happened, the map is where it started — do not write a conquest.'
+      : `${outcome.upheavals} changes of control across the campaign. Where a power took a world and lost it again, both are listed below and BOTH ARE TRUE: the net position and the fight over it are different facts, and a war that ended where it began is still a war that was fought.`,
+    '',
     '_Standings below are given as comparisons, not counts. The figures are',
     'already on screen beside your prose — write what they meant._',
     '',
@@ -360,8 +430,29 @@ export function serializeOutcome(outcome: CampaignOutcome): string {
             ? `${-f.systemsDelta} fewer than it began with`
             : 'the same number it began with'
       }`,
-      f.gained.length > 0 ? `- took: ${f.gained.join(', ')}` : '- took nothing from anyone',
-      f.lost.length > 0 ? `- lost: ${f.lost.join(', ')}` : '- lost nothing to anyone',
+      // Endpoints AND history, said as two different things, because they
+      // answer different questions and can disagree honestly: a world taken and
+      // taken back is in `took` twice and in `gained` not at all. Naming the
+      // net position "on balance" is what stops the two reading as a
+      // contradiction.
+      f.gained.length > 0
+        ? `- holds, that it did not start with: ${f.gained.join(', ')}`
+        : '- ends holding nothing it did not start with',
+      f.lost.length > 0
+        ? `- started with, and no longer holds: ${f.lost.join(', ')}`
+        : '- kept everything it started with',
+      f.took.length > 0
+        ? `- **worlds it took, in the order it took them**: ${f.took.join(', ')} — a name twice means it was taken back`
+        : '',
+      f.ceded.length > 0
+        ? `- **worlds it lost, in the order it lost them**: ${f.ceded.join(', ')}`
+        : '',
+      f.contested.length > 0
+        ? `- **fought over more than once**: ${f.contested.join(', ')}. This is the ground that mattered; reach for it before anything else.`
+        : '',
+      f.took.length === 0 && f.ceded.length === 0
+        ? '- no world ever changed hands with this power, in either direction'
+        : '',
       `- fleet: ${standing(f.fleet, fleets, ['the largest navy in the Rim', 'a middling navy', 'the thinnest navy of any power still standing'])}`,
       `- treasury: ${standing(f.credits, purses, ['the heaviest purse in the Rim', 'comfortable enough', 'the emptiest treasury of any power still standing'])}`,
       f.net > 0
@@ -374,9 +465,17 @@ export function serializeOutcome(outcome: CampaignOutcome): string {
         : '- no agreement still stands',
       f.owes > 0 ? '- still owes money it has not repaid' : '',
       f.owed > 0 ? '- still owed money nobody has made good' : '',
-      f.factionId === outcome.playerFactionId
+      f.towardPlayer === null
         ? ''
         : `- toward the player: ${f.towardPlayer <= -75 ? 'open hostility' : f.towardPlayer < 0 ? 'cool' : f.towardPlayer > 50 ? 'warm' : 'correct, no more'}`,
+      // The campaign's own history, which is what an endpoint difference
+      // cannot supply — a world taken and taken back appears in neither
+      // `gained` nor `lost`, and three battles read as "nothing happened".
+      f.took.length > 0 ? `- worlds taken, in order: ${f.took.join(', ')}` : '',
+      f.ceded.length > 0 ? `- worlds lost, in order: ${f.ceded.join(', ')}` : '',
+      f.contested.length > 0
+        ? `- fought over more than once: ${f.contested.join(', ')}`
+        : '',
       '',
     );
   }

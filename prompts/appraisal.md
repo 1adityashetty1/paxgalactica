@@ -186,12 +186,17 @@ are independent.
 Spying, sabotage, bribery, theft, turning an officer, planting a listener,
 assassination — however the player words it — is run by **operatives**, and the
 game has a mechanic for that. When the substance of the action is covert, set
-`covert`:
+`covert` — **a list, with one entry for every covert operation the order
+contains**. An order that both assassinates a factor and steals from a treasury
+is two entries, and naming only one used to mean only one ever happened: the
+other was promised in prose and never came. Each entry:
 
 - `mission` — `surveillance` (watch, quietest), `theft` (siphon credits),
   `subversion` (erode a stat), `sabotage` (destroy hulls), `defection` (turn
   crews), `assassination` (one attempt, heavy, usually caught).
-- `systemId` — where the operative works.
+- `systemId` — where that operative works.
+
+Four at most. Each is charged, capped and exposed on its own.
 
 This is not a refusal and not a difficulty. Price it as you would anything else;
 naming it simply routes the act into the mechanic that owns it, so it is charged

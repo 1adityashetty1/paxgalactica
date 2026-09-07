@@ -7,6 +7,8 @@ import {
   addShipsAt,
   hullsAt,
   setShipsAt,
+  setStackAt,
+  stackAt,
   dissentPenalty,
   DISSENT_PER_PENALTY_POINT,
   effectiveStats,
@@ -857,5 +859,59 @@ describe('a declared action cannot resolve its own battle', () => {
     );
     expect(res.rejections).toHaveLength(0);
     expect(total(res.state, 'freeworlds')).toBe(1);
+  });
+});
+
+/**
+ * A FLEET IN ORBIT TAKES THE GROUND BY MOVING TO WHERE IT IS.
+ *
+ * A playtester cleared an orbit, could not see how to land, and shuttled 34
+ * battleships to a neighbour and back — two turns for one assault. The
+ * capability was there all along: `originId === targetId` is a legal
+ * `fleet_movement`, costs one turn, and fights a real battle. Nothing said so,
+ * so the model reached for the round trip.
+ *
+ * `prompts/resolution.md` now says it explicitly, which is what makes this a
+ * behaviour worth pinning: a prompt instructing an order that stopped working
+ * would be worse than the silence it replaced.
+ */
+describe('an assault from the orbit you already hold', () => {
+  it('is one turn, and it storms the world', () => {
+    const s = createSeedState('meridian');
+    const target = s.systems.find((x) => x.controllerFactionId === 'drajk')!;
+    target.garrison = 4;
+    setStackAt(target, 'drajk', {});
+    setStackAt(target, 'meridian', { battleship: 10, lifter: 6 });
+
+    const res = applyOps(
+      s,
+      [
+        {
+          op: 'issue_order',
+          factionId: 'meridian',
+          type: 'fleet_movement',
+          originId: target.id,
+          targetId: target.id,
+          label: 'take the ground',
+          force: { battleship: 10, lifter: 6 },
+        },
+      ],
+      'model',
+      'meridian',
+    );
+    expect(res.rejections).toEqual([]);
+
+    // One turn: the path is the system itself, not a hop out and back.
+    const order = res.state.pendingOrders.at(-1)!;
+    expect(order.durationTurns).toBe(1);
+    expect(order.path).toEqual([target.id]);
+
+    const after = tickTurn(res.state).state;
+    const taken = after.systems.find((x) => x.id === target.id)!;
+    expect(taken.controllerFactionId).toBe('meridian');
+    // The garrison is the troops that landed, and the lift that carried them
+    // was spent doing it — conquest costs the lift arm either way.
+    expect(taken.garrison).toBeGreaterThan(0);
+    expect(stackAt(taken, 'meridian').lifter!).toBeLessThan(6);
   });
 });

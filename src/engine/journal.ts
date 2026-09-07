@@ -95,7 +95,19 @@ export interface ReplayResult {
  * Rebuild world state from a journal. Pure and offline: if this ever needs a
  * model call, the journal has failed at its job.
  */
-export function replay(journal: Journal): ReplayResult {
+export function replay(
+  journal: Journal,
+  /**
+   * Called with the rebuilt world after every entry, so a caller can observe
+   * the campaign as it happened rather than only where it ended.
+   *
+   * An observer rather than a second walker, because the walk is not trivial:
+   * two legacy exemptions decide the source and the atomicity of each batch by
+   * journal version, and a copy of that logic would drift the first time a
+   * third exemption is added. There is one reader of the journal.
+   */
+  observe?: (state: WorldState, entry: JournalEntry) => void,
+): ReplayResult {
   const parsed = JournalSchema.parse(journal);
   const seed = parsed.entries[0];
   if (!seed || seed.kind !== 'seed') {
@@ -143,7 +155,73 @@ export function replay(journal: Journal): ReplayResult {
     } else if (entry.kind === 'tick') {
       state = tickTurn(state).state;
     }
+    observe?.(state, entry);
   }
 
   return { state: WorldStateSchema.parse(state), rejectionCount };
+}
+
+/**
+ * One world changing hands, with the turn it happened on.
+ *
+ * The epilogue's `gained`/`lost` was a set difference between the opening board
+ * and the closing one, which erases exactly the campaigns worth narrating. A
+ * playtest's only conquest — Threx, held by Drajk at turn 0, ceded to the Vigil
+ * around turn 2, stormed back on turn 8 and held through a counter-attack on
+ * turn 10 — cancelled to nothing. Three battles were fought and the ending said
+ * *"not one flag planted or struck for good"*, while the Vigil was told it
+ * "merely held" after losing a world at gunpoint and eleven hulls.
+ *
+ * The endpoints are not wrong; they are simply not the story. Both are kept.
+ */
+export interface ControlChange {
+  turn: number;
+  systemId: string;
+  systemName: string;
+  /** Who held it before. `null` is unaligned, which is a real answer here. */
+  from: string | null;
+  to: string | null;
+}
+
+/**
+ * Every change of control across a campaign, in the order they happened.
+ *
+ * Derived from the journal rather than recorded in `WorldState`, deliberately.
+ * The journal already holds this — `transfer_control` originates only in
+ * arrival resolution and cession, both of which replay exactly — so storing it
+ * would be a second source of truth for a fact the first source can already
+ * answer, and it would need a schema change, a save-format change and a
+ * migration for all 23 saved campaigns to gain nothing.
+ *
+ * The cost is one extra replay, paid once per campaign at the final bell, on a
+ * path that is already making a model call that takes seconds.
+ */
+export function controlHistory(journal: Journal): ControlChange[] {
+  const changes: ControlChange[] = [];
+  let held = new Map<string, string | null>();
+  let first = true;
+
+  replay(journal, (state) => {
+    const now = new Map(state.systems.map((sys) => [sys.id, sys.controllerFactionId]));
+    if (!first) {
+      for (const [id, to] of now) {
+        // `has` rather than a truthiness test: `null` is a legitimate holder
+        // (unaligned), and a world losing its owner is a change worth naming.
+        if (!held.has(id)) continue;
+        const from = held.get(id) ?? null;
+        if (from === to) continue;
+        changes.push({
+          turn: state.turn,
+          systemId: id,
+          systemName: state.systems.find((sys) => sys.id === id)?.name ?? id,
+          from,
+          to,
+        });
+      }
+    }
+    held = now;
+    first = false;
+  });
+
+  return changes;
 }

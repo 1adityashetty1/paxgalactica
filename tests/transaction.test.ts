@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { applyOps } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
-import { fleetStrengthOf, stackAt } from '../src/domain/state.js';
+import { fleetStrengthOf, setStackAt, stackAt } from '../src/domain/state.js';
+import { hullsIn, subtractStack, type ShipStack } from '../src/domain/hulls.js';
 import { maxCommitmentIncomeFor } from '../src/domain/state.js';
 import { MAX_COMMITMENT_INCOME } from '../src/domain/arbitration.js';
 import {
@@ -327,5 +328,157 @@ describe('a commitment says when its yield will not be paid', () => {
       'meridian',
     );
     expect(out.notes.join(' ')).not.toMatch(/can draw/);
+  });
+});
+
+/**
+ * A BARE `adjust_ships` PAIR IS A MOVE, NOT A REFIT.
+ *
+ * `-N` spends the loss order and `+N` mints the class named, which defaults to
+ * `battleship`. So the obvious way to write a reposition — take six from here,
+ * put six down there — scrapped six escorts at the origin and commissioned six
+ * battleships at the destination. `billConstruction` charged the difference
+ * correctly, which is exactly what made it hard to see: the money was right and
+ * the fleet was wrong. The narrative said the squadron sailed and a different
+ * squadron arrived.
+ */
+describe('a reposition keeps the fleet it moved', () => {
+  /** Six escorts and two battleships at `originId`, an empty world at `destId`. */
+  const mixed = (): { s: WorldState; originId: string; destId: string } => {
+    const s = createSeedState('meridian');
+    const [from, to] = s.systems.filter((x) => x.controllerFactionId === 'meridian');
+    setStackAt(from!, 'meridian', { escort: 6, battleship: 2 });
+    setStackAt(to!, 'meridian', {});
+    return { s, originId: from!.id, destId: to!.id };
+  };
+
+  const at = (s: WorldState, id: string): ShipStack =>
+    stackAt(s.systems.find((x) => x.id === id)!, 'meridian');
+
+  it('lands exactly the hulls it lifted when no class was named', () => {
+    const { s, originId, destId } = mixed();
+    const before = at(s, originId);
+
+    const res = applyOps(
+      s,
+      [
+        { op: 'adjust_ships', systemId: originId, factionId: 'meridian', delta: -4 },
+        { op: 'adjust_ships', systemId: destId, factionId: 'meridian', delta: 4 },
+      ],
+      'model',
+      'meridian',
+    );
+    expect(res.rejections).toEqual([]);
+
+    // The property is not "four escorts arrived" — an unnamed removal takes
+    // two battleships and then two escorts. It is that WHAT LEFT IS WHAT
+    // ARRIVED. Before this, four battleships arrived whatever had left.
+    const gone = subtractStack(before, at(res.state, originId));
+    expect(at(res.state, destId)).toEqual(gone);
+    expect(hullsIn(gone)).toBe(4);
+
+    // And because nothing was built, nothing was billed.
+    const paid =
+      s.factions.find((f) => f.id === 'meridian')!.credits -
+      res.state.factions.find((f) => f.id === 'meridian')!.credits;
+    expect(paid).toBe(0);
+  });
+
+  it('still obeys an explicitly named class', () => {
+    // The pool must never override an op that said what it wanted. `hull` is
+    // read off the raw op precisely so "the model asked for battleships" is
+    // distinguishable from "the model said nothing".
+    const { s, originId, destId } = mixed();
+    const res = applyOps(
+      s,
+      [
+        { op: 'adjust_ships', systemId: originId, factionId: 'meridian', delta: -2, hull: 'escort' },
+        { op: 'adjust_ships', systemId: destId, factionId: 'meridian', delta: 2, hull: 'battleship' },
+      ],
+      'model',
+      'meridian',
+    );
+    expect(res.rejections).toEqual([]);
+    expect(at(res.state, destId)).toEqual({ battleship: 2 });
+  });
+
+  it('bills only the surplus past what was lifted', () => {
+    const { s, originId, destId } = mixed();
+    const res = applyOps(
+      s,
+      [
+        { op: 'adjust_ships', systemId: originId, factionId: 'meridian', delta: -2, hull: 'escort' },
+        { op: 'adjust_ships', systemId: destId, factionId: 'meridian', delta: 5 },
+      ],
+      'model',
+      'meridian',
+    );
+    expect(res.rejections).toEqual([]);
+    // Two escorts moved; three battleships past them are a genuine build.
+    expect(at(res.state, destId)).toEqual({ escort: 2, battleship: 3 });
+  });
+
+  it('lets a suborned crew keep the hull it was standing on', () => {
+    // Turning three escorts used to deliver three battleships — paid for at
+    // battleship rates, so never free, but not what was turned either, and the
+    // opposite of what CLAUDE.md says about pricing a defection by class.
+    const s = createSeedState('ojjul');
+    const host = s.systems.find((x) => x.controllerFactionId === 'meridian')!;
+    setStackAt(host, 'meridian', { escort: 4 });
+    setStackAt(host, 'ojjul', { battleship: 1 });
+    expect(subornLimit(s, 'ojjul', 'meridian')).toBeGreaterThanOrEqual(2);
+
+    const res = applyOps(
+      s,
+      [
+        { op: 'adjust_ships', systemId: host.id, factionId: 'meridian', delta: -2 },
+        { op: 'adjust_ships', systemId: host.id, factionId: 'ojjul', delta: 2 },
+      ],
+      'model',
+      'ojjul',
+    );
+    expect(res.rejections).toEqual([]);
+    const after = stackAt(res.state.systems.find((x) => x.id === host.id)!, 'ojjul');
+    expect(after.escort).toBe(2);
+  });
+});
+
+/**
+ * The event log is the one part of the world a batch can only append to, and it
+ * is 61% of what `clone` copies. Sharing the entries is safe exactly while
+ * nothing edits one in place — so that is what this asserts, rather than the
+ * timing, which is not a property a test should own.
+ */
+describe('cloning a world shares the log it cannot change', () => {
+  it('does not let a batch reach the caller world', () => {
+    const s = createSeedState('meridian');
+    const before = s.eventLog.length;
+    const res = applyOps(
+      s,
+      [{ op: 'log_narrative', text: 'A courier arrives.' }],
+      'model',
+      'meridian',
+    );
+    expect(res.state.eventLog.length).toBe(before + 1);
+    // `applyOps` never mutates its input — the array is copied even though its
+    // entries are not.
+    expect(s.eventLog.length).toBe(before);
+  });
+
+  it('never edits an existing entry, which is what makes sharing sound', () => {
+    const s = createSeedState('meridian');
+    s.eventLog.push({ turn: 0, kind: 'narrative', factionId: null, text: 'original', visibleTo: null });
+    const mine = s.eventLog.at(-1)!;
+
+    const res = applyOps(
+      s,
+      [{ op: 'log_narrative', text: 'and another' }],
+      'model',
+      'meridian',
+    );
+    // The entry survives unchanged in both worlds. If a future writer starts
+    // editing entries in place instead of appending, this is where it shows up.
+    expect(res.state.eventLog.find((e) => e.text === 'original')?.text).toBe('original');
+    expect(mine.text).toBe('original');
   });
 });

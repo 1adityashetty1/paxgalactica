@@ -392,6 +392,15 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
                     {c.incomePerTurn}cr/turn
                   </span>
                 )}
+                {/* A proportional term has no fixed figure, so the chip names
+                    the rate and the direction rather than a number that would
+                    be wrong by the next turn. */}
+                {c.share !== undefined && (
+                  <span className={c.share.to === me ? 'chip good' : 'chip bad'}>
+                    {c.share.to === me ? '+' : '-'}
+                    {c.share.percent}% {c.share.of}
+                  </span>
+                )}
               </div>
               <p className="commitment-text">{c.text}</p>
               <p className="muted">

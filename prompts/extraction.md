@@ -220,12 +220,31 @@ mining concession, a smuggling run — and not for one side paying the other,
 which is a treaty's `incomePerTurn` and has to balance.
 
 **If the parties agreed a SHARE of something that varies — a tenth of every
-prize, a cut of the season's cargo — write the agreed per-turn estimate, not
-zero.** There is no proportional term: a commitment pays a flat figure. Zero
-says the arrangement is worth nothing, which is not what was agreed, and it is
-the number to avoid. Take the rate the parties themselves used, apply it to what
-that power currently earns, and round to a plain figure. A commitment with no
-money in it is still real — it moves standing between the parties and the
+prize, a cut of what a lane pays — write it as a share, not as a guess.** Use
+`share`, which is proportional and settled every turn against what that power
+actually earned:
+
+```jsonc
+"share": { "of": "raided", "percent": 10, "from": "drajk", "to": "ojjul" }
+```
+
+`of` is `raided` (prizes taken off other powers' lanes), `tolls` (transit
+charged in your own space) or `routes` (everything the lane network pays you).
+`from` is whose take is divided and `to` is who receives the slice; **both must
+appear in `factionIds`**, since a commitment cannot reach into the take of a
+power that never signed it. Up to 50%; more is trimmed. It floors to whole
+credits, so a small percentage of a small take pays nothing some turns — which
+is what a share of a bad season should do.
+
+Use `share` when the parties named a rate and `incomePerTurn` when they named a
+figure. Do not use both for one flow: that would pay twice for one promise.
+`incomePerTurn` remains the right term for a venture that pays the people in it
+at a steady rate, and it is the only one available for anything the three flows
+above do not cover — a cut of a harvest, a mine, a shipyard's output — where an
+agreed per-turn estimate is still better than zero. Zero says the arrangement is
+worth nothing, which is not what was agreed.
+
+A commitment with no money in it is still real — it moves standing between the parties and the
 arbiter reads it — so leave `incomePerTurn` at 0 only when the deal genuinely
 has no money in it: a non-aggression understanding, a shared succession, an
 exchange of hostages.

@@ -29,22 +29,30 @@ is not yours to overturn.** A power that lost half its territory does not get
 narrated as triumphant because its voice is confident. Write the arc it was
 given; the freedom you have is in *how* it reads, not in *what happened*.
 
-## What "took" and "lost" do and do not tell you
+## The map's endpoints and the campaign's history are two different facts
 
-The `took`/`lost` lines are a comparison of the **first turn against the last**,
-and nothing in between. A world taken, lost and taken back cancels to nothing;
-so does a world lost and recovered. So an empty `took`/`lost` means *the map
-ended where it started*, **not** that the campaign was quiet or that nothing was
-fought over.
+Each power gets both, and they can disagree without either being wrong:
 
-Do not write that nobody gained or lost anything, that no flag was planted or
-struck, or that the powers never came to blows. You have not been told that and
-it is frequently false — a live campaign whose only conquest was won back by its
-original owner read, in an earlier version of this ending, as a decade in which
-nothing happened.
+- **holds / started with** compares the **first turn to the last**. It is the
+  net position, and nothing in between.
+- **worlds it took / lost, in order** is what actually happened, turn by turn. A
+  name appearing twice means the world was taken back.
+- **fought over more than once** is the contested ground. Reach for it first;
+  it is where the campaign's fighting actually was.
+
+A world taken, lost and taken back cancels out of the net position entirely
+while appearing three times in the history. Both readings are true, and the
+second is usually the story. An earlier version of this ending had only the net
+position, and narrated a campaign whose single conquest changed hands three
+times as a decade in which no flag was planted or struck.
+
+So: never infer from an empty net position that the campaign was quiet. The line
+that settles it is the count of changes of control at the top of the dossier —
+and when that is **zero**, say the map held, because then it really did.
 
 Say what the board says: who ended where, holding what, owed what, at war with
-whom. Where the record is silent, be silent with it.
+whom, and what they fought over on the way. Where the record is silent, be
+silent with it.
 
 ## Register
 
