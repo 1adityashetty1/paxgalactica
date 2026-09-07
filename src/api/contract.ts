@@ -3,7 +3,8 @@ import { BattleReportSchema } from '../domain/battle.js';
 import { CheckOutcomeSchema, StatNameSchema } from '../domain/checks.js';
 import { EpilogueViewSchema } from '../engine/epilogue.js';
 import { OrderRumourSchema } from '../domain/intel.js';
-import { WorldStateSchema } from '../domain/state.js';
+import {
+  LedgerSchema, WorldStateSchema } from '../domain/state.js';
 
 /**
  * The client/server contract, Zod-first.
@@ -39,44 +40,7 @@ export const CheckResultSchema = z.object({
   margin: z.number().int(),
 });
 
-/**
- * NOTE: this restates `Ledger` rather than importing it, against the rule at
- * the top of this file that domain schemas are imported and never restated —
- * and it drifted exactly as that rule predicts. Adding `espionageGain` to the
- * domain broke the web typecheck here and nowhere else. Worth collapsing into
- * the domain type; left alone for now because it is a wider change than the
- * fix that surfaced it.
- */
-export const LedgerSchema = z.object({
-  gross: z.number().int(),
-  upkeep: z.number().int(),
-  net: z.number().int(),
-  systems: z.number().int(),
-  treatyFlow: z.number().int(),
-  espionageLoss: z.number().int(),
-  /** What this faction's own operatives take off other powers per turn. */
-  espionageGain: z.number().int(),
-  /** Troops billed for sitting above a world's `garrisonMax`. */
-  garrisonUpkeep: z.number().int(),
-  /** What this faction's own live operatives cost it per turn. */
-  agentUpkeep: z.number().int(),
-  /** Standing arrangements: positive receives, negative pays. */
-  commitmentFlow: z.number().int(),
-  /** A profiteer's take from other powers' wars, or what its own cost it. */
-  warProfit: z.number().int(),
-  /** What a faction's own worlds pay it. */
-  territory: z.number().int(),
-  /** What the lane network pays it, after tolls levied and raids suffered. */
-  routes: z.number().int(),
-  tolls: z.number().int(),
-  raided: z.number().int(),
-  /**
-   * Scheduled debt service: positive receives, negative pays. Deliberately not
-   * part of `net` — a debt is settled as a transfer during the tick, because a
-   * rate cannot know whether the debtor could afford it.
-   */
-  debtService: z.number().int(),
-});
+
 
 export const BriefingProjectSchema = z.object({
   id: z.string(),

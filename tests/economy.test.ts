@@ -4,7 +4,7 @@ import { applyOps, tickTurn, MAX_ATTRITION_FRACTION } from '../src/domain/reduce
 import { CREDITS_PER_TON, HULL_SPEC, LIFTER_CARRY, hullUpkeep } from '../src/domain/hulls.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { AGENT_COST, MISSION_PROFILE } from '../src/domain/diplomacy.js';
-import { COMMITMENT_GOODWILL } from '../src/domain/arbitration.js';
+import { COMMITMENT_GOODWILL, MAX_COMMITMENT_SHARE } from '../src/domain/arbitration.js';
 import {
   hullsAt,
   setShipsAt,
@@ -1151,5 +1151,128 @@ describe('troops a world cannot quarter are billed', () => {
     const w = state.systems.find((x) => x.controllerFactionId === 'vigil')!;
     w.garrison = w.garrisonMax + 20;
     expect(ledgerFor(state, 'vigil').net).toBe(before - 10);
+  });
+});
+
+/**
+ * A commitment written as a RATE rather than a figure.
+ *
+ * `incomePerTurn` is a fixed integer, so *"a tenth of every prize you take"* had
+ * no honest number to write down — a model asked for one correctly wrote zero,
+ * and the obligation was recorded, read back to the player, and worth nothing.
+ */
+describe('proportional commitment terms', () => {
+  const shareCommitment = (
+    share: { of: 'raided' | 'tolls' | 'routes'; percent: number; from: string; to: string },
+    factionIds: string[] = [share.from, share.to],
+  ): Op => ({
+    op: 'establish_commitment',
+    kind: 'prize_share',
+    factionIds,
+    text: 'A cut of what the lanes pay.',
+    share,
+  });
+
+  it('moves the same integer out of one ledger and into the other', () => {
+    const before = fresh();
+    const payerBefore = ledgerFor(before, 'ojjul').net;
+    const payeeBefore = ledgerFor(before, 'drajk').net;
+
+    const res = applyOps(
+      before,
+      [shareCommitment({ of: 'routes', percent: 10, from: 'ojjul', to: 'drajk' })],
+      'extraction',
+      'drajk',
+    );
+    expect(res.rejections).toEqual([]);
+
+    const payer = ledgerFor(res.state, 'ojjul');
+    const payee = ledgerFor(res.state, 'drajk');
+
+    // Real money, not a rounding artefact.
+    expect(payee.commitmentShare).toBeGreaterThan(0);
+    // Conserved to the credit: what one loses is exactly what the other gains,
+    // which is the property `moveConserved` enforces for a negotiated payment.
+    expect(payer.commitmentShare).toBe(-payee.commitmentShare);
+    expect(payee.net - payeeBefore).toBe(payee.commitmentShare);
+    expect(payer.net - payerBefore).toBe(payer.commitmentShare);
+  });
+
+  it('floors, so the payer keeps the remainder', () => {
+    // Arkane's lanes pay 19, so 10% of them is 1.9 — one credit, not two.
+    const res = applyOps(
+      fresh(),
+      [shareCommitment({ of: 'routes', percent: 10, from: 'freeworlds', to: 'drajk' })],
+      'extraction',
+      'drajk',
+    );
+    expect(res.rejections).toEqual([]);
+    const pot = ledgerFor(fresh(), 'freeworlds').routes;
+    expect(ledgerFor(res.state, 'drajk').commitmentShare).toBe(Math.floor(pot * 0.1));
+  });
+
+  it('pays nothing at all on a flow the payer does not earn', () => {
+    // Nobody is raiding on turn 0, so a tenth of the prizes is a tenth of
+    // nothing — which is what a share of a bad season should do, rather than
+    // the flat figure that would have been guessed in its place.
+    const res = applyOps(
+      fresh(),
+      [shareCommitment({ of: 'raided', percent: 25, from: 'drajk', to: 'ojjul' })],
+      'extraction',
+      'ojjul',
+    );
+    expect(res.rejections).toEqual([]);
+    expect(ledgerFor(res.state, 'ojjul').commitmentShare).toBe(0);
+    expect(ledgerFor(res.state, 'drajk').commitmentShare).toBe(0);
+  });
+
+  it('refuses to reach into the take of a power that never signed', () => {
+    const res = applyOps(
+      fresh(),
+      [
+        shareCommitment(
+          { of: 'routes', percent: 10, from: 'meridian', to: 'drajk' },
+          ['ojjul', 'drajk'],
+        ),
+      ],
+      'extraction',
+      'drajk',
+    );
+    expect(res.rejections[0]?.code).toBe('illegal_value');
+    expect(res.state.commitments).toHaveLength(fresh().commitments.length);
+  });
+
+  it('trims an over-large percentage rather than rejecting the arrangement', () => {
+    const res = applyOps(
+      fresh(),
+      [shareCommitment({ of: 'routes', percent: 90, from: 'ojjul', to: 'drajk' })],
+      'extraction',
+      'drajk',
+    );
+    expect(res.rejections).toEqual([]);
+    const made = res.state.commitments.at(-1);
+    expect(made?.share?.percent).toBe(MAX_COMMITMENT_SHARE);
+    expect(res.notes.some((n) => n.includes('Trimmed'))).toBe(true);
+  });
+
+  it('terminates when two powers hold shares of each other', () => {
+    // The reason a share is computed off `routeEarnings` rather than off the
+    // other faction's ledger: a share of `net` has no fixed point once this
+    // board exists, and `ledgerFor` would recurse until the stack gave out.
+    const res = applyOps(
+      fresh(),
+      [
+        shareCommitment({ of: 'routes', percent: 10, from: 'ojjul', to: 'drajk' }),
+        shareCommitment(
+          { of: 'routes', percent: 10, from: 'drajk', to: 'ojjul' },
+        ),
+      ],
+      'extraction',
+      'drajk',
+    );
+    // Same `kind` twice is fine — it is not exclusive.
+    expect(res.rejections).toEqual([]);
+    expect(ledgerFor(res.state, 'ojjul').commitmentShare).toBeLessThan(0);
+    expect(ledgerFor(res.state, 'drajk').commitmentShare).toBeGreaterThan(0);
   });
 });

@@ -366,7 +366,14 @@ export function serializeCommitments(state: WorldState): string {
         c.incomePerTurn !== 0
           ? ` · ${c.incomePerTurn > 0 ? '+' : ''}${c.incomePerTurn} credits/turn`
           : '';
-      return `- \`${c.id}\` ${c.kind.replace(/_/g, ' ')} · ${who} · since turn ${c.establishedTurn}${worth}${flag}\n  ${c.text}`;
+      // A proportional term is worth reading out in full: it is the one part
+      // of a commitment whose value changes every turn, so a flat figure would
+      // tell the reader nothing about what it is currently paying.
+      const cut =
+        c.share === undefined
+          ? ''
+          : ` · ${c.share.percent}% of ${getFaction(state, c.share.from)?.name ?? c.share.from}'s ${c.share.of} to ${getFaction(state, c.share.to)?.name ?? c.share.to}`;
+      return `- \`${c.id}\` ${c.kind.replace(/_/g, ' ')} · ${who} · since turn ${c.establishedTurn}${worth}${cut}${flag}\n  ${c.text}`;
     })
     .join('\n');
 }

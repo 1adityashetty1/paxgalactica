@@ -71,6 +71,14 @@ export function BriefingPanel({
                 ` · ${briefing.ledger.commitmentFlow > 0 ? '+' : '−'}${Math.abs(
                   briefing.ledger.commitmentFlow,
                 )} arrangements`}
+              {/* Kept off the `arrangements` figure beside it: a flat term is
+                  a number the player agreed to, and a share is a number that
+                  moves with somebody else's season. Running them together
+                  would make a stable line look like a volatile one. */}
+              {briefing.ledger.commitmentShare !== 0 &&
+                ` · ${briefing.ledger.commitmentShare > 0 ? '+' : '−'}${Math.abs(
+                  briefing.ledger.commitmentShare,
+                )} shares`}
               {briefing.ledger.warProfit !== 0 &&
                 ` · ${briefing.ledger.warProfit > 0 ? '+' : '−'}${Math.abs(
                   briefing.ledger.warProfit,

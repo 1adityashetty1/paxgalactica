@@ -268,6 +268,41 @@ a commitment is the easiest place in the game for a model to invent revenue:
 It is read where it is used rather than paid out each tick, for the same reason
 agent effects are: a per-turn mutation would compound instead of recurring.
 
+**And some deals are a rate, not a figure.** `incomePerTurn` is a fixed integer,
+so *"a tenth of every prize you take"* had no honest number to write down — a
+model asked for one correctly wrote zero, and the obligation was recorded, read
+back to the player, and worth nothing. `Commitment.share` is the proportional
+term: `{ of, percent, from, to }`, capped at `MAX_COMMITMENT_SHARE` (50%),
+floored to whole credits, and directional — unlike `incomePerTurn`, which is one
+scalar every bound party reads the same way and is the defect `debt.ts` exists
+to escape.
+
+`of` names a **lane flow** — `raided`, `tolls` or `routes` — and that choice
+carries the whole design:
+
+- **It cannot recurse.** All three come off `routeEarnings`, which settles the
+  galaxy in one pass and does not read commitments, so pricing A's share never
+  calls B's `ledgerFor`. A share of `net` has no fixed point at all once two
+  powers hold shares of each other.
+- **It cannot be a claim on money nobody earned.** A share is bounded by what
+  the payer's lanes actually paid it, so a bad season pays nothing rather than
+  paying a figure agreed in a good one — which is what a share is *for*, and
+  precisely what an estimated `incomePerTurn` cannot do.
+
+Read off the **raw** `routeEarnings` figure, before the free trader's openness
+bonus and the monopolist's premium: those are doctrine paid to the holder for
+being what it is, and a counterparty bargained for a slice of the lane rather
+than a cut of somebody else's ethic. It also means both sides of one arrangement
+are computed from the same number whichever one is asking.
+
+Both parties must be bound by the commitment, so it cannot reach into the take
+of a power that never signed. That one is **rejected** rather than trimmed —
+there is no smaller version of *"and the Vigil pays for it"* that is still the
+deal — while an over-large percentage is trimmed with a note, the same shape as
+`MAX_COMMITMENT_INCOME`. And it sits outside that ceiling on purpose: the
+ceiling bounds a figure a model *invented*, and this one is a percentage of
+money already on the board.
+
 **And an arrangement with no money in it is still worth something.** A
 commitment carrying no `incomePerTurn` was entirely inert, and a playtest closed
 five accords that each produced exactly one — `open_hand_pact`,
@@ -670,12 +705,13 @@ matching the boats ton for ton turns the whole strike aside onto itself, and
 half a screen turns aside half. The tonnage still burns; only its address
 changes.
 
-**None of this reaches the defender**, and that is the open question rather than
-an oversight. A defender's fleet does exactly one thing — trade weight in the
-exchange — and one objective has a pure optimum. The attacker's mix is a
-decision because it has *two*: clear the orbit, and land troops. Measured at
-every budget ratio from 1:1 to 3:1, and scored on damage dealt as well as on
-holding, the best defender is a pure battle line every time. See item 74.
+**None of this reaches the defender**, and for a long time that read as the open
+question — a defender's fleet did exactly one thing, trade weight in the
+exchange, and one objective has a pure optimum. What closed it was not giving
+the defender a strike but giving it the **lift phase**: transports it converts
+to garrison are a second objective, and they are worth nothing in weight, which
+is the exact condition under which a screen pays. The boat stays an attacker's
+instrument, and a defender's answer to it is still a screen.
 
 The historical shape and the mechanical one agree, which is why the class is
 called what it is: destroyers were originally *torpedo boat destroyers*.
@@ -2679,25 +2715,30 @@ swept for exactly that reason, each having already flipped a conclusion.
 equal credits the defender holds essentially every battle and no composition can
 be told from another; the default is 3,600 against 1,200 plus a garrison.
 
-The measured answer is that composition decides an **invasion** and not a
-**defence**:
+The measured answer is that composition decides **both sides**, but by a very
+different margin:
 
-| side | best fleet | rate |
-|---|---|---|
-| attacker | `battleship:30 escort:30 lifter:20` — three classes | 70% |
-| defender | `battleship:20` — one class, and every mix is worse | 80% |
+| side | best fleet | rate | margin over the best 1–2 class fleet |
+|---|---|---|---|
+| attacker | `escort:24 torpedo_boat:72 lifter:16` | 64% | **+10.4 points** |
+| defender | `battleship:9 escort:6 lifter:10` | 85% | **+1.2 points** |
 
 A line-heavy attacker fails by losing its transports (`no_lift`); a screen-heavy
 one fails by never clearing the orbit (`no_landing`). Two failure modes of
 different kinds is what makes the mix a decision rather than a ratio to solve
 once, and a test pins it.
 
-The defender's side has an exact explanation rather than a tuning problem:
-**a screen pays exactly when it protects something whose loss is not measured in
-weight.** A lifter has zero orbital weight, so losing one costs no fighting power
-and costs the whole objective — which is what makes an escort's 0.5 weight per
-ton worth taking over a battleship's 0.75. Everything a defender owns *is*
-weight, so the same trade is a straight loss. See item 74 in `docs/todo.md`.
+**The defender's half was reported as a pure battle line for most of this
+project, and that was an artefact of the grid rather than a result.** Lift was
+derived from the rest of the composition, so every fleet in the sweep carried
+enough of it to saturate the effect — `no_lift` was 0.0% in every single row,
+which is the tell. With lift on its own axis the rule that explains the
+attacker's side explains the defender's too: **a screen pays exactly when it
+protects something whose loss is not measured in weight.** A lifter has
+essentially no orbital weight, so losing one costs no fighting power and costs
+the objective — on defence, the garrison it would have become in the lift phase.
+The margin is thin because a defender's second objective is smaller than an
+attacker's, not because it has none.
 
 ## Deterministic replay
 

@@ -13,6 +13,7 @@ import {
   commitmentIncomeFor,
   conflictingCommitment,
   MAX_COMMITMENT_INCOME,
+  MAX_COMMITMENT_SHARE,
 } from './arbitration.js';
 import type {
   BattleOutcome,
@@ -2234,6 +2235,35 @@ export function applyOps(
             logEvent(state, 'clamp', capped, bound);
           }
         }
+        // A proportional term. Both parties must be bound by the arrangement:
+        // a commitment cannot reach into the take of a power that never signed
+        // it, which is the same thing `needs_consent` says about binding one at
+        // all. Rejected rather than trimmed, unlike the percentage, because
+        // there is no smaller version of "and the Vigil pays for it" that is
+        // still the deal that was struck.
+        let share = op.share;
+        if (share !== undefined) {
+          const outside = [share.from, share.to].find((id) => !op.factionIds.includes(id));
+          if (outside !== undefined) {
+            reject(
+              raw,
+              'illegal_value',
+              `A share can only move between the parties bound by the commitment; ${outside} is not one of them (${op.factionIds.join(', ')}).`,
+            );
+            break;
+          }
+          if (share.from === share.to) {
+            reject(raw, 'illegal_value', 'A share of a power\'s own take, paid to itself, moves nothing.');
+            break;
+          }
+          const pct = Math.min(share.percent, MAX_COMMITMENT_SHARE);
+          if (pct !== share.percent) {
+            const note = `Trimmed the ${op.kind} share from ${share.percent}% to ${pct}% of ${nameFor(state, share.from)}'s ${share.of} (ceiling ${MAX_COMMITMENT_SHARE}%).`;
+            notes.push(note);
+            logEvent(state, 'clamp', note, share.to);
+          }
+          share = { ...share, percent: pct };
+        }
         state.commitments.push({
           id: mintId(state, 'com'),
           kind: op.kind,
@@ -2241,6 +2271,7 @@ export function applyOps(
           text: op.text,
           exclusive: op.exclusive,
           incomePerTurn: yieldPerTurn,
+          ...(share === undefined ? {} : { share }),
           establishedTurn: state.turn,
           status: 'active',
         });

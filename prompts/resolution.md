@@ -114,7 +114,10 @@ risks exposure and is capped, and it is the only one there is.
 An `establish_commitment` that earns or costs money should say so with
 `incomePerTurn` — a mining concession or a smuggling operation is worth
 something every turn, tribute paid is worth something negative. Up to 25 either
-way; more is trimmed. A purely political arrangement leaves it out.
+way; more is trimmed. A deal written as a RATE rather than a figure — *"a tenth
+of every prize"* — uses `share` instead: `{ of, percent, from, to }`, where `of`
+is `raided`, `tolls` or `routes`, and `from` and `to` are both parties to the
+commitment. A purely political arrangement leaves both out.
 
 ## Fleets
 

@@ -213,7 +213,7 @@ describe('a declared covert action becomes a deployment', () => {
   const covert = { mission: 'assassination' as const, systemId: 'ilv-6' };
 
   it('places an operative when the resolution call did not', () => {
-    const out = routeCovertAction([], 'success', covert, 'meridian');
+    const out = routeCovertAction([], 'success', [covert], 'meridian');
     expect(out.ops).toHaveLength(1);
     expect(out.ops[0]).toMatchObject({
       op: 'deploy_agent',
@@ -229,14 +229,14 @@ describe('a declared covert action becomes a deployment', () => {
       { op: 'deploy_agent', ownerFactionId: 'meridian', systemId: 'ilv-6',
         mission: 'assassination', effect: { kind: 'hull_damage', perTurn: 3 }, cover: '' },
     ];
-    const out = routeCovertAction(ops, 'success', covert, 'meridian');
+    const out = routeCovertAction(ops, 'success', [covert], 'meridian');
     expect(out.ops).toBe(ops);
     expect(out.notes).toHaveLength(0);
   });
 
   it('places nobody on a failure — the man was caught at the door', () => {
     for (const outcome of ['failure', 'critical_failure'] as const) {
-      const out = routeCovertAction([], outcome, covert, 'meridian');
+      const out = routeCovertAction([], outcome, [covert], 'meridian');
       expect(out.ops).toEqual([]);
       expect(out.notes).toHaveLength(0);
     }
@@ -262,7 +262,7 @@ describe('a declared covert action becomes a deployment', () => {
       'meridian',
     ).state;
 
-    const routed = routeCovertAction([], 'success', { mission: 'sabotage', systemId: targets[0]!.id }, 'meridian');
+    const routed = routeCovertAction([], 'success', [{ mission: 'sabotage', systemId: targets[0]!.id }], 'meridian');
     const out = applyOps(state, routed.ops, 'model', 'meridian');
     expect(out.rejections.map((r) => r.code)).toEqual(['illegal_value']);
     expect(out.rejections[0]!.message).toMatch(/already running 3 operatives/);
@@ -309,5 +309,56 @@ describe('a thief receives what it steals', () => {
     const s = withThief();
     (s.agents[0] as { systemId: string }).systemId = 'sek-1'; // Meridian's own
     expect(ledgerFor(s, 'meridian').espionageGain).toBe(0);
+  });
+});
+
+/**
+ * Item 67.3. `AppraisalSchema.covert` was a single object, so an order that
+ * contained an assassination AND a theft produced one `deploy_agent` and a
+ * `log_narrative` promising the other "will come on a later tick". It never
+ * did.
+ */
+describe('every covert operation in one declaration is routed', () => {
+  const both = [
+    { mission: 'assassination' as const, systemId: 'ilv-6' },
+    { mission: 'theft' as const, systemId: 'ilv-2' },
+  ];
+
+  it('places one operative per operation named', () => {
+    const out = routeCovertAction([], 'success', both, 'meridian');
+    const placed = out.ops.filter(
+      (op) => (op as { op?: string }).op === 'deploy_agent',
+    ) as { mission: string; systemId: string }[];
+    expect(placed).toHaveLength(2);
+    expect(placed.map((p) => `${p.mission}@${p.systemId}`).sort()).toEqual([
+      'assassination@ilv-6',
+      'theft@ilv-2',
+    ]);
+    expect(out.notes).toHaveLength(2);
+  });
+
+  it('adds only what the resolution call did not place itself', () => {
+    // Matched on mission AND place, so a batch that already deployed the
+    // assassin still gets its thief — the old check was "did it place ANY
+    // agent", which let one deployment swallow the rest of the order.
+    const ops = [
+      {
+        op: 'deploy_agent',
+        ownerFactionId: 'meridian',
+        systemId: 'ilv-6',
+        mission: 'assassination',
+        effect: { kind: 'stat_debuff', stat: 'resolve', magnitude: 1 },
+        cover: 'a factor',
+      },
+    ];
+    const out = routeCovertAction(ops, 'success', both, 'meridian');
+    const placed = out.ops.filter((op) => (op as { op?: string }).op === 'deploy_agent');
+    expect(placed).toHaveLength(2);
+    expect(out.notes).toHaveLength(1);
+    expect(out.notes[0]).toMatch(/theft/);
+  });
+
+  it('places nobody at all when the attempt failed', () => {
+    expect(routeCovertAction([], 'failure', both, 'meridian').ops).toHaveLength(0);
   });
 });

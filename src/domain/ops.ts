@@ -262,6 +262,25 @@ export const EstablishCommitmentOp = z.object({
    * Omit it for an arrangement that is purely political.
    */
   incomePerTurn: z.number().int().min(-500).max(500).default(0),
+  /**
+   * A PROPORTION of one party's own take, for the deals that are naturally
+   * written that way — *"a tenth of every prize"*, *"a share of what the
+   * Sennex lane pays you"*. `incomePerTurn` is a fixed integer, so those had no
+   * honest number and were recorded as worth nothing.
+   *
+   * `of` names which flow is divided: `raided` (prizes taken off other powers'
+   * lanes), `tolls` (transit charged in your own space), or `routes` (the whole
+   * of what the lane network pays you). `from` and `to` must both be bound by
+   * the commitment. Floored to whole credits when applied.
+   */
+  share: z
+    .object({
+      of: z.enum(['raided', 'tolls', 'routes']),
+      percent: z.number().int().min(1).max(100),
+      from: z.string().min(1),
+      to: z.string().min(1),
+    })
+    .optional(),
 });
 
 /**
@@ -726,13 +745,22 @@ export const AppraisalSchema = z.object({
    *
    * Naming the mission and the place here lets the engine route the declaration
    * into the mechanic, so there is one path, one price and one exposure profile.
+   *
+   * A LIST, because a declaration routinely contains more than one. This was a
+   * single object, so an order carrying an assassination *and* a theft produced
+   * one `deploy_agent` and a `log_narrative` promising the other "will come on
+   * a later tick" — which never did. Every operation named is routed, and each
+   * is charged, capped and exposed on its own.
    */
   covert: z
-    .object({
-      mission: AgentMissionSchema,
-      /** Where the operative works — the system the action happens at. */
-      systemId: z.string().min(1),
-    })
+    .array(
+      z.object({
+        mission: AgentMissionSchema,
+        /** Where the operative works — the system the action happens at. */
+        systemId: z.string().min(1),
+      }),
+    )
+    .max(4)
     .optional(),
   /**
    * This is a negotiation, not a decree: it needs another power to agree.
@@ -798,7 +826,9 @@ export const ResolutionOutputSchema = ModelTurnOutputSchema.extend({
    * the mission and place it named. Carried so the engine can route the
    * declaration into the agent mechanic rather than let it be priced twice.
    */
-  covert: z.object({ mission: AgentMissionSchema, systemId: z.string() }).optional(),
+  covert: z
+    .array(z.object({ mission: AgentMissionSchema, systemId: z.string() }))
+    .optional(),
   /**
    * Set by the engine, never by the model: this needs another power's consent,
    * so it belongs in a diplomatic channel rather than on the dice. Nothing was

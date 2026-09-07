@@ -116,11 +116,47 @@ carry a figure, that a share of something variable is written as the agreed
 per-turn estimate rather than zero, and that zero is for arrangements which
 genuinely have no money in them.
 
-A proportional term — *"a tenth of `Ledger.raided`"* — is still not expressible,
-and is deliberately **not** being added. It would need a schema field, a reader,
-a cap and a conservation rule, and a share of route income is a claim on money
-the payer never held, which is the value-creation case every other money
-mechanism here refuses. A negotiated estimate is what `incomePerTurn` is for.
+**BUILT — a proportional term, which the paragraph this replaces argued against
+on a premise that was simply false (51).** The argument was that *"a share of
+route income is a claim on money the payer never held"*. Route income is money
+the payer holds; it is the whole of what its lanes pay it. What is a claim on
+money nobody held is a share of `net` — which nets off upkeep and can be
+negative — or a flat figure a model invented, and that is what
+`MAX_COMMITMENT_INCOME` already exists to bound. The two cases were run
+together, and the wrong one was refused.
+
+The rest of the objection was a list of things to build, all four of which now
+exist: `Commitment.share` (`{ of, percent, from, to }`), a reader in
+`ledgerFor`, `MAX_COMMITMENT_SHARE` at 50%, and floored integer arithmetic that
+adds the identical credit to one party and subtracts it from the other.
+
+Two restrictions carry the design, and both fall out of the same choice —
+`of` names a **lane flow** (`raided`, `tolls`, `routes`) rather than a ledger
+line:
+
+- **It cannot recurse.** All three come off `routeEarnings`, which settles the
+  whole galaxy in one pass and does not read commitments — so pricing A's share
+  never calls B's `ledgerFor`. A share of `net` has no fixed point at all once
+  two powers hold shares of each other, and the stack is where you find that
+  out.
+- **It cannot be a claim on money nobody earned**, which is the actual version
+  of the objection above. A share is bounded by what the payer's lanes paid it
+  this turn, so a bad season pays nothing rather than paying a figure agreed in
+  a good one. That is what a share is *for*, and it is precisely the behaviour
+  an estimated `incomePerTurn` cannot have.
+
+Directional, unlike `incomePerTurn` — which is one scalar every bound party
+reads the same way, the defect `src/domain/debt.ts` was written to escape — and
+both parties must be bound by the commitment, so an arrangement cannot reach
+into the take of a power that never signed it. That last one is **rejected**
+rather than trimmed: there is no smaller version of *"and the Vigil pays for
+it"* that is still the deal.
+
+`incomePerTurn` keeps its job. It is right for a venture paying its members a
+steady rate, and it is the only term available for a proportion of anything the
+three lane flows do not cover — a harvest, a mine, a yard's output — where an
+agreed estimate still beats zero. `prompts/extraction.md` now says which to
+reach for, and says not to write both for one flow.
 
 **Re-scoped — a bargained `voidsOn` written as `[]` (67.2).** Not a code defect.
 The field exists, the reducer enforces it (item 50/60), and
@@ -144,7 +180,7 @@ two different hull classes are untouched.
 > is exactly the world a model then names. Removing unconditionally makes both
 > cases uniform. A test pins the same-system case specifically.
 
-## D. Composition is a decision for an attacker and not a defender — **74, 77** (76 retired)
+## D. CLOSED — composition is a decision for both sides once lift is on its own axis — **74, 77** (76 retired)
 
 A defender's best fleet is a pure battle line at 80–84%, and every mix is
 monotonically worse — because a defender has one objective and one linear
@@ -164,11 +200,14 @@ Two items came out of measuring it:
 - **76** — **retired.** Re-measured in isolation: `hold` keeps 4t and holds 6/6,
   `stand` keeps 30.7t and holds 0/6. Neither dominates; the fleetlab signal was
   the tonnage dilution the item was filed with a warning about.
-- **77** — the open half of 74, with the two directions worth trying: **leaders**
-  (a commander is something to preserve that is not weight — exactly what the
-  rule says a screen needs), or **ship types that behave differently over a world
-  their owner holds**. Both are features; neither should start before it is clear
-  which one the game wants.
+- **77** — **MOOT.** It was the open half of 74, and 74 closed underneath it.
+  Making lift its own `fleetlab` axis showed a defender does want a mix after
+  all (margin +1.2 over the best pure fleet, against the attacker's +10.4) — the
+  earlier "pure battle line wins every metric" was an artefact of a grid where
+  every composition carried enough lift to saturate the effect. The item existed
+  to invent a second defensive objective; the defender already has one, and it
+  is the lift phase. No leaders, and no
+  hold-your-own-world ship type, are needed to make the choice real.
 
 ## E. CLOSED — treaty terms are all-or-nothing — **59, 60**
 
