@@ -1849,6 +1849,25 @@ unit; this is the same move for money and for crews. A batch-scoped ledger
 carries what has been spent against each cap, so a ceiling cannot be multiplied
 by saying the same thing more times.
 
+**And a squadron moved is the squadron that arrives.** `adjust_ships -N` spends
+the loss order and `+N` mints the class named, which defaults to `battleship` —
+so the obvious way to write a reposition scrapped escorts at the origin and
+commissioned battleships at the destination. `billConstruction` charged the
+difference correctly, and that is what made it invisible: the money was right and
+the fleet was wrong, under a narrative saying the squadron had sailed.
+
+A batch-scoped pool records which classes actually came off — diffed from the
+stack, since `takeShipsAt` spends the loss order and stops at what is there — and
+an addition that named **no** class draws from it in loss order before minting
+anything. Only the surplus past that is a genuine build. Whether a class was
+named is read off the **raw** op, because `hull` carries a `.default`, so the
+parsed value cannot tell "the model asked for battleships" from "the model said
+nothing", and only the second may be reinterpreted.
+
+A suborned crew brings its hull the same way: the removal records under the
+suborner too, so turning three escorts delivers three escorts rather than three
+battleships bought at battleship rates.
+
 **One squadron described twice is one squadron.** `adjust_fleet` commissions and
 bases at the best holding; `adjust_ships` puts hulls at a named world — and a
 model describing one squadron reaches for both, so six lifters arrived as
@@ -2835,6 +2854,15 @@ state, 61% of the world**. Two consequences, both fixed and both cheap:
   order-stable** — `visibleTo` is fixed per entry — so no sequence number and no
   schema change. Measured: the pushed payload is flat at 77KB where it was 238KB
   at turn 90 and unbounded.
+- **It was deep-cloned on every batch.** `clone` is
+  `JSON.parse(JSON.stringify(state))`, and the log is the majority of what it
+  copies — while being the one part of the world a batch can only *add* to:
+  every writer goes through `logEvent`, which pushes, and nothing edits an entry
+  once it exists. `cloneState` copies the array (a push must not reach the
+  caller's world) and **shares the entries**. Measured at a 90-turn log,
+  `applyOps` goes from 1.372ms to 0.263ms. A test asserts the invariant rather
+  than the timing: mutate an entry in the returned world and the input must be
+  unchanged, which fails the moment somebody starts editing an entry in place.
 - **It was drawn whole on every render**, and `[...shown].reverse()` copied the
   entire array to display twenty entries. `logWindow` slices before reversing.
 
@@ -2991,6 +3019,30 @@ still be browsed, re-read and exported.
 `src/engine/epilogue.ts` computes the dossier — worlds held against worlds
 started with, what each power took and lost **by name**, fleet, treasury, net,
 dissent, wars, live treaties, debts outstanding, and standing toward the player.
+
+**The endpoints are not the story, and for a while they were all there was.**
+`gained`/`lost` compare the first turn to the last, so a world taken and taken
+back cancels out of both — and a live campaign whose only conquest changed hands
+three times, over three battles, was narrated as a decade in which no flag was
+planted or struck. `controlHistory(journal)` replays the campaign and records
+every change of control, giving each power `took` and `ceded` **in the order they
+happened** (a name twice means the world was taken back) and `contested` for
+ground that moved more than once. Both readings ship, stated as different facts,
+because they can honestly disagree.
+
+Derived from the journal rather than stored on `WorldState`: `transfer_control`
+originates only in arrival resolution and cession, both of which replay exactly,
+so a durable field would be a second source of truth for something the first can
+already answer — and would cost a schema change, a save-format change and a
+migration to gain nothing. `replay()` takes an optional observer rather than the
+history getting a walker of its own, since the walk carries two legacy exemptions
+that decide each batch's source and atomicity by journal version.
+
+`towardPlayer` and `playerToward` are `null` on the player's own slide. They were
+synthesised as 100, which put an invented number inside the one document handed
+to the narration as *"settled; do not overturn"* — nobody holds a disposition
+toward themselves, and the reducer rejects the op that would set one.
+
 `prompts/epilogue.md` writes Fallout-style vignettes over it: one slide per
 faction, then a closing paragraph.
 
