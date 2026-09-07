@@ -334,3 +334,78 @@ describe('a fleet under basing rights puts in rather than invades', () => {
     expect(sys(arrive('trade_accord'), 'tor-2').controllerFactionId).toBe('meridian');
   });
 });
+
+/**
+ * A CESSION AND ITS PRICE ARE TWO HALVES OF ONE TRANSACTION.
+ *
+ * `cedeTerritory` has two call sites — signature, and ratification in
+ * `tickTurn`. `settleTreatyPayment` had one. So any deal an NPC gated on
+ * ratification handed the land over for nothing, which is exactly the failure
+ * `cedeTerritory`'s own doc comment names: *"pricing only one of them is what
+ * made a world cost 240 credits."*
+ *
+ * Measured in a live campaign: Threx sold to Meridian for 800 with
+ * `ratifyTurns: 1`. The log recorded `drajk cedes Threx to meridian`. The 800
+ * never moved.
+ */
+describe('a ratified cession is paid for', () => {
+  const purse = (s: WorldState, id: string) => s.factions.find((f) => f.id === id)!.credits;
+  const heldBy = (s: WorldState, sysId: string) =>
+    s.systems.find((x) => x.id === sysId)!.controllerFactionId;
+
+  const sale = (extra: Record<string, unknown>): OpInput => {
+    const world = createSeedState('ojjul').systems.find(
+      (x) => x.controllerFactionId === 'drajk',
+    )!;
+    return {
+      op: 'form_treaty',
+      treatyType: 'trade_accord',
+      parties: ['drajk', 'meridian'],
+      terms: {
+        territory: [world.id],
+        payment: { drajk: 800, meridian: -800 },
+      },
+      summary: 'Drajk sells a world to Meridian for 800',
+      ...extra,
+    } as OpInput;
+  };
+
+  const world = createSeedState('ojjul').systems.find(
+    (x) => x.controllerFactionId === 'drajk',
+  )!.id;
+
+  it('moves the money on the turn it moves the world', () => {
+    const start = seed();
+    const before = { drajk: purse(start, 'drajk'), meridian: purse(start, 'meridian') };
+
+    let s = sign(start, sale({ ratifyTurns: 1 })).state;
+    // Nothing yet: a pending treaty cedes nothing and pays nothing.
+    expect(heldBy(s, world)).toBe('drajk');
+    expect(purse(s, 'drajk')).toBe(before.drajk);
+
+    s = tickTurn(s).state;
+    expect(heldBy(s, world)).toBe('meridian');
+    // The half that was missing. Income moves in the same tick, so assert the
+    // delta covers the payment rather than pinning an exact treasury.
+    expect(purse(s, 'drajk') - before.drajk).toBeGreaterThanOrEqual(800);
+    expect(purse(s, 'meridian') - before.meridian).toBeLessThan(800);
+  });
+
+  it('charges exactly once, whichever path the treaty takes', () => {
+    // The mirror hazard, and one this repo has already been bitten by:
+    // `settleTreatyPayment` was once wired at both sites for one treaty and ran
+    // twice, debiting the payer and then debiting whatever was left. The
+    // signature path is gated on `!pending` and the ratification path only
+    // promotes `pending` treaties, so exactly one fires.
+    const start = seed();
+    const before = purse(start, 'meridian');
+
+    const immediate = sign(start, sale({})).state;
+    const paidAtSignature = before - purse(immediate, 'meridian');
+    expect(paidAtSignature).toBe(800);
+
+    // Ticking afterwards must not charge a second time.
+    const later = tickTurn(immediate).state;
+    expect(before - purse(later, 'meridian')).toBeLessThanOrEqual(paidAtSignature);
+  });
+});

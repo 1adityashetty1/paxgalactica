@@ -1959,6 +1959,10 @@ export function applyOps(
             ? `Treaty agreed, pending ratification on turn ${effectiveTurn}: ${treaty.summary}.`
             : `Treaty signed: ${treaty.summary}.`,
           op.parties[0]!,
+          // The parties, and nobody else. `treatiesFor` has always scoped the
+          // treaty LIST this way; the log entry announcing the same treaty was
+          // public, so the scoping was decorative.
+          [...op.parties],
         );
         // Signing with a fleet on your throat costs the power holding the fleet.
         // Charged here rather than left to the extraction pass, which was the
@@ -2450,7 +2454,11 @@ export function applyOps(
         // Between the parties only: a commitment is not public business the way
         // a treaty is, so onlookers have no view.
         adjustCommitmentGoodwill(state, op.factionIds, COMMITMENT_GOODWILL, notes);
-        logEvent(state, 'diplomacy', op.text, op.factionIds[0] ?? null);
+        // CLAUDE.md already states the rule this entry was breaking: "unlike a
+        // treaty, a commitment is not public business, so onlookers have no
+        // view" — which is why `COMMITMENT_GOODWILL` moves disposition only
+        // between the bound parties. The log said otherwise to everyone.
+        logEvent(state, 'diplomacy', op.text, op.factionIds[0] ?? null, [...op.factionIds]);
         break;
       }
 
@@ -2549,6 +2557,11 @@ export function applyOps(
           'diplomacy',
           `Debt recorded: ${op.text} (${advanced} advanced).`,
           op.creditorFactionId,
+          // A loan is between a lender and a borrower. Publishing it told every
+          // rival exactly who was leveraged and by how much — which is the one
+          // fact the Combine's whole doctrine is built on knowing and others
+          // not.
+          [op.creditorFactionId, op.debtorFactionId],
         );
         break;
       }
@@ -2591,6 +2604,7 @@ export function applyOps(
           'diplomacy',
           `${debt.creditorFactionId} writes off ${debt.balance} owed by ${debt.debtorFactionId}. ${op.reason}`.trim(),
           debt.creditorFactionId,
+          [debt.creditorFactionId, debt.debtorFactionId],
         );
         break;
       }
@@ -2647,6 +2661,7 @@ export function applyOps(
           'diplomacy',
           `${from} assigns the ${debt.balance} owed by ${debt.debtorFactionId} to ${op.toCreditorFactionId}. ${op.reason}`.trim(),
           op.toCreditorFactionId,
+          [from, op.toCreditorFactionId, debt.debtorFactionId],
         );
         break;
       }
@@ -2780,6 +2795,7 @@ export function applyOps(
           'diplomacy',
           `${debt.debtorFactionId} pays ${paid} against ${debt.id}; ${debt.balance} remains${debt.status === 'settled' ? ' — settled' : ''}. ${op.reason}`.trim(),
           debt.debtorFactionId,
+          [debt.creditorFactionId, debt.debtorFactionId],
         );
         break;
       }
@@ -2794,7 +2810,30 @@ export function applyOps(
       }
 
       case 'log_narrative': {
-        logEvent(state, 'narrative', op.text);
+        // An extraction narrative is one conversation's account of itself, and
+        // it was written PUBLIC — so a negotiation's whole substance went into
+        // a log that `serializeRecentLog` feeds to every NPC prompt. Measured
+        // live: after a world was sold to Meridian in a private channel, the
+        // Vigil opened the next conversation quoting the price ("eight hundred
+        // credits"), the terms, and two asks that had been raised and withdrawn
+        // and never agreed to at all.
+        //
+        // `serializeStanding` already scopes the treaty list with
+        // `treatiesFor(viewerId)`; the log one block earlier in the same prompt
+        // published it in prose. That closes off the entire betrayal layer,
+        // which is the thing the diplomacy architecture exists for.
+        //
+        // Scoped to the actor rather than to both parties, because the op does
+        // not name a counterparty and the counterparty has a better memory
+        // already: transcripts are replayed into its persona, which is how an
+        // NPC remembers a conversation it was actually in.
+        logEvent(
+          state,
+          'narrative',
+          op.text,
+          null,
+          source === 'extraction' && actor !== undefined ? [actor] : null,
+        );
         break;
       }
     }
@@ -3254,7 +3293,19 @@ export function tickTurn(input: WorldState): TickResult {
     notes.push(`Ratified: ${treaty.summary}`);
     // A cession takes effect with the rest of the terms, not at signature, so a
     // council that has to consent delays the handover too.
+    //
+    // And its PRICE moves with it. `settleTreatyPayment` was called at the
+    // signature path only, so any deal an NPC gated on ratification handed the
+    // land over for nothing — measured live: Threx sold for 800 with
+    // `ratifyTurns: 1`, the log recorded the cession, and the 800 never moved.
+    //
+    // `cedeTerritory`'s own doc comment already named the invariant this
+    // breaks: the cession and its price are two halves of one transaction, and
+    // "pricing only one of them is what made a world cost 240 credits". The
+    // two calls belong together at BOTH sites, which is the whole reason that
+    // comment says "the same two places".
     notes.push(...cedeTerritory(state, treaty));
+    notes.push(...settleTreatyPayment(state, treaty));
   }
 
   /* --- Void conditions fire before anything is paid out ---------------- */
@@ -3629,6 +3680,21 @@ export function tickTurn(input: WorldState): TickResult {
       'intel',
       `[${agent.mission} · ${where}] Your operative ${note}`,
       agent.ownerFactionId,
+      // SCOPED, and it was not. The fourth argument is attribution; `visibleTo`
+      // is the fifth and defaults to null, which is public — so every operative
+      // report the player's network filed was shipped in the log to every NPC
+      // prompt through `serializeRecentLog`. Measured live: Meridian's prompt
+      // received "[theft · Sekkar Gate] Your operative is skimming 8 a turn out
+      // of Meridian Trade Authority's accounts" and burned the operative that
+      // same tick.
+      //
+      // The guard that existed — `if (agent.ownerFactionId !== playerFactionId)
+      // continue` — is a guard on WHO WRITES, which is exactly what CLAUDE.md's
+      // sentence describes and is not the same thing as who reads. And the test
+      // hand-built an entry with `visibleTo` already set and checked the
+      // reader, so nothing anywhere asserted the producer set it: a test that
+      // pins the mechanism while nothing pins that the mechanism is reached.
+      [agent.ownerFactionId],
     );
   }
 

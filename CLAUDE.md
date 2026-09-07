@@ -1800,10 +1800,39 @@ the browser whole, so only the *player's* agents write these — logging every
 faction's watch reports would hand the player a transcript of what four rival
 spy networks can see, which is the exact opposite of the fog the same tick is
 enforcing. NPC operatives still work; their product reaches their own prompt
-block through `ordersVisibleTo`. There is a test for it.
+block through `ordersVisibleTo`.
 
-Replaying the campaign that opened all this: **34 intel lines across seven
-turns, where there were 0.**
+**And for a long time only half of that was true, because the guard was on who
+WRITES rather than on who reads.** `logEvent`'s fourth argument is attribution
+and `visibleTo` is the fifth, so every operative report was written with
+`visibleTo: null` — public — and `serializeRecentLog` handed it to every NPC
+prompt. Measured in a playtest: Meridian's prompt received *"[theft · Sekkar
+Gate] Your operative is skimming 8 a turn out of Meridian Trade Authority's
+accounts"* and burned the operative on the same tick.
+
+The test that was supposed to cover this hand-built an entry with `visibleTo`
+already set and asserted the *reader* redacted it. Nothing asserted the producer
+ever set it — a test that pins the mechanism while nothing pins that the
+mechanism is reached, which is the failure mode this file names everywhere else.
+The tests now run a real agent tick and read what it produced.
+
+**The same defect ran through diplomacy, and there it was worse.** A negotiated
+accord's `log_narrative`, its treaty, its commitment and its debts were all
+logged public, so a private channel's substance was published to every power in
+prose. Measured: after a world was sold to Meridian in one channel, the Iron
+Vigil opened the next conversation quoting the price, the terms, **and two asks
+that had been raised and withdrawn and never agreed to at all**. That closes off
+the entire betrayal layer — the thing the diplomacy architecture exists for.
+
+`serializeStanding` already scoped the treaty *list* with `treatiesFor`; the log
+one block earlier in the same prompt published the same treaty to everyone, so
+the scoping was decorative. An event is now visible to the parties it names: a
+treaty to its parties, a commitment to the bound factions (which is what
+`COMMITMENT_GOODWILL` already assumed — *"a commitment is not public business,
+so onlookers have no view"*), a debt to its lender and borrower. An
+extraction-sourced `log_narrative` is scoped to the **actor**, since the op
+names no counterparty and the counterparty has the better memory anyway:
+transcripts are replayed into its persona.
 
 **Knowledge is a snapshot, not a memory.** Burn the operative and the programme
 goes back to being a rumour. A last-known-position model is the more honest one

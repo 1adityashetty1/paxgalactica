@@ -71,7 +71,7 @@ expiry. (3) is a prompt problem with a possible code backstop: a cession where
 the ceder is not the actor could require the ceder's own affirmation, the way
 `establish_debt` requires the creditor to actually hold the money.
 
-## 1.2 A ratified treaty cedes land and never charges for it
+## 1.2 FIXED — a ratified treaty cedes land and never charges for it
 
 `cedeTerritory` runs at [`reducer.ts:1935`](../src/domain/reducer.ts) **and**
 [`3202`](../src/domain/reducer.ts). `settleTreatyPayment` runs at
@@ -89,7 +89,12 @@ The function's own doc comment states the invariant it breaks:
 Measured in play: Threx sold to Meridian for 800 with `ratifyTurns: 1`. The log
 records `drajk cedes Threx to meridian`. The 800 never moved.
 
-**Fix:** one line at the second call site. This is the cheapest real bug here.
+**FIXED.** `settleTreatyPayment` now runs beside `cedeTerritory` at the
+ratification site too. Exactly one of the two paths fires per treaty — the
+signature path is gated on `!pending` and the ratification path only promotes
+`pending` treaties — so this does not reintroduce the double-debit item 78
+already fixed once. A test pins both halves: the money moves on the turn the
+world does, and it is charged once whichever path the treaty takes.
 
 ## 1.3 Commerce raiding cannot earn, for two independent reasons
 
@@ -144,7 +149,7 @@ introduced deliberately (boats last, so they cannot shield the lift arm), and it
 may simply be the better order — in which case `HULL_SPEC.lossOrder` and several
 paragraphs of `CLAUDE.md` are the things that are wrong.
 
-## 1.5 Every intel report is written public
+## 1.5 FIXED — every intel report is written public
 
 [`reducer.ts:3563`](../src/domain/reducer.ts) passes `agent.ownerFactionId` as
 `logEvent`'s **fourth** argument, which is attribution. `visibleTo` is the fifth
@@ -170,10 +175,11 @@ exposed the operative that tick.
 **This is the project's own documented failure mode** — a test that pins the
 mechanism while nothing pins that the mechanism is reached.
 
-**Fix:** set `visibleTo: [agent.ownerFactionId]` at the producer, and add a test
-that runs a real agent tick and asserts the entry it *produces* is scoped.
+**FIXED.** The producer sets `visibleTo: [agent.ownerFactionId]`, and the tests
+now run a real agent tick and read what it produced rather than hand-building an
+entry that already has the field set.
 
-## 1.6 Negotiated outcomes are broadcast to every power
+## 1.6 FIXED — negotiated outcomes are broadcast to every power
 
 Same root cause, wider blast radius. `closeChannel`'s ops land through
 `applyOps`, and `log_narrative` / `diplomacy` entries take `logEvent`'s default
@@ -194,6 +200,19 @@ prompt publishes it in prose.
 **This closes off the entire betrayal layer** — the thing the diplomacy
 architecture exists for. Bidirectional: closing the Vigil channel published its
 private statements to Meridian.
+
+**FIXED.** An event is now visible to the parties it names: a treaty to its
+parties, a commitment to the bound factions (which is what `COMMITMENT_GOODWILL`
+already assumed — *"a commitment is not public business, so onlookers have no
+view"*), a debt to its lender and borrower. An extraction-sourced
+`log_narrative` is scoped to the actor, since the op names no counterparty and
+the counterparty has the better memory anyway: transcripts are replayed into its
+persona.
+
+It could not be patched in `closeChannel` where the parties are known, because
+commit replays the staged batch through `applyOps` and would regenerate the
+entries unscoped. So the rule lives in the reducer, derived from the op itself —
+which also means it replays identically and needs no journal change.
 
 ## 1.7 `adjust_ships` guards removal and not placement
 
