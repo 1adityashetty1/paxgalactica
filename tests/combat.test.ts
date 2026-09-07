@@ -34,7 +34,13 @@ const shipsOf = (s: WorldState, sysId: string, f: string) => hullsAt(sys(s, sysI
  */
 function attack(setup: (s: WorldState) => void, force = 8, lift = 0) {
   const state = fresh();
-  setShipsAt(sys(state, 'ark-3'), 'freeworlds', force);
+  // Set the origin's squadron EXPLICITLY by class. A bare number trims a mixed
+  // stack to that many hulls while keeping its shape — so once the seed opened
+  // each power with a real composition, `setShipsAt(..., 6)` left three
+  // battleships and three of everything else, and an order for six battleships
+  // could only draw the three that existed.
+  setShipsAt(sys(state, 'ark-3'), 'freeworlds', 0);
+  addShipsAt(sys(state, 'ark-3'), 'freeworlds', force, 'battleship');
   if (lift > 0) addShipsAt(sys(state, 'ark-3'), 'freeworlds', lift, 'lifter');
   setup(state);
   const issued = applyOps(state, [

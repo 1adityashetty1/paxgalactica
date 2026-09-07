@@ -233,6 +233,51 @@ matches `ledgerFor` exactly, 156/309 both ways — reopen with a reproduction) �
 
 ---
 
+## 78. What a multiclass seed exposed, and why nothing caught it sooner
+
+The seed opened every power with a **pure battle line** from before classes
+existed, so `hulls x 4 == tons` held everywhere in the galaxy and no test could
+tell the two units apart. Giving each faction a doctrine-shaped squadron turned
+19 latent assumptions into failures at once. Recorded because the *class* of
+mistake matters more than the individual fixes:
+
+**Engine defects, now fixed:**
+
+- `cedeTerritory` withdrew a ceded world's garrisoned fleet by **hull count** —
+  `addShipsAt(refuge, ceder, 16)` lands sixteen hulls of one default class, so a
+  mixed squadron of 43 tons marched out and arrived as 64 tons of battleships.
+  `billConstruction` then charged the ceder 315 credits for shipping it never
+  built. It moves the stack now.
+- `settleTreatyPayment` was wired at both call sites for one treaty and ran
+  twice, so a payer was debited, then debited again for whatever was left.
+- Two prompt blocks in `calls.ts` told a model a bare hull count as *"fleet
+  strength"*. Thirty escorts and thirty battleships are the same number and a
+  third of the fighting weight apart. `serializeState` has reported hulls **and**
+  tons since classes shipped; these two were left behind.
+
+**Assumptions in the suite, all of them true only under a pure line:**
+
+- upkeep asserted as `hulls x UPKEEP_PER_FLEET_POINT` when it is billed per ton;
+- affordability computed in hulls when `billConstruction` bills tons and trims
+  cheapest-first, so the hulls that come off are not the hulls that went on;
+- attrition capped as a fraction of hulls when it is a fraction of tonnage —
+  and hulls are discrete, so laying up to a tonnage cap overshoots it by less
+  than one hull;
+- `setShipsAt(sys, id, 6)` read as "six battleships" when a bare number **trims
+  a mixed stack to six hulls keeping its shape**;
+- a battle report's round 0 assumed to be `orbital` when a strike round comes
+  first whenever either side brought boats.
+
+**And one asymmetry that is not a bug but is a trap.** `adjust_ships -N` removes
+**cheapest-first**, while `+N` adds the **default class** — so on a mixed fleet
+the pair is not a reposition, it scraps escorts and commissions battleships, and
+the yards rightly bill the difference. The named `hull` fixes it, but only on a
+removal where `op.factionId === actor`: "moving your OWN ships, you say which".
+An actorless batch ignores the class entirely. Worth deciding whether a model
+should ever emit a bare `adjust_ships` delta.
+
+---
+
 # Performance — `p.X`
 
 **Measured before anything was proposed**, because "turns are slow, probably the

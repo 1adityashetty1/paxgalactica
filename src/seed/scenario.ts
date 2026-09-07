@@ -1,6 +1,12 @@
 import type { FactionStats } from '../domain/checks.js';
 import type { DurationCategory } from '../domain/duration.js';
 import {
+  HULL_SPEC,
+  normaliseStack,
+  type HullClass,
+  type ShipStack,
+} from '../domain/hulls.js';
+import {
   WorldStateSchema,
   type CompulsionTrigger,
   type Faction,
@@ -316,10 +322,101 @@ const DISPOSITIONS: Record<string, Record<string, number>> = {
  * A controller's opening squadron, scaled to what the world is worth holding.
  *
  * Fleets are no longer a global number — a faction's navy is the sum of these,
- * so the seed has to distribute it rather than declare it.
+ * so the seed has to distribute it rather than declare it. Expressed in TONS,
+ * because that is the unit every fleet limit is measured in and the unit the
+ * composition below is divided by.
  */
-function startingShips(s: SeedSystem): number {
-  return Math.max(2, Math.round(s.value * 1.4));
+function startingTons(s: SeedSystem): number {
+  return Math.max(2, Math.round(s.value * 1.4)) * HULL_SPEC.battleship.tonnage;
+}
+
+/**
+ * What each power's opening squadron is made of, as shares of its tonnage.
+ *
+ * The seed predated ship classes and gave everybody a pure battle line, so the
+ * one thing a player saw on turn 0 contradicted the thing the classes exist to
+ * make interesting. These shares say the same thing each faction's **bot
+ * doctrine** already says in `initiative.ts`, so the board a campaign opens on
+ * and the fleets it buys afterwards are not two different opinions:
+ *
+ * - the **Iron Vigil** is `crusading` and spends most of its income on hulls,
+ *   with `capital_ship_construction` first in its build bias: the heaviest line
+ *   on the board and the least lift, because it does not need transports to
+ *   restore an order it believes it already holds.
+ * - **Meridian** is the expansionist, so it opens with real lift and a screen
+ *   to bring it home.
+ * - the **Free Worlds** are `defensive` and poor — screen-heavy, and almost no
+ *   lift, because *"take no master"* is not an invasion doctrine.
+ * - the **Combine** has the lowest might in the game and a red line against
+ *   fighting its own wars, so its line is thin and its escorts are what keep
+ *   its factors alive.
+ * - **Drajk** buys boats and **no screen at all**, which is exactly what its
+ *   bot does: preying on fleets it cannot beat in orbit is the whole of the
+ *   Confederacy's doctrine, and a screen is a defensive purchase. Its line is
+ *   still the largest share of its tonnage, and that is not taste — the bots
+ *   judge strength in **battleship-equivalents**, and a boat carries a nominal
+ *   0.1, so a squadron of mostly boats reads as almost no strength at all.
+ *   Opened at half boats, Drajk never reached the threshold to send a raid and
+ *   its raiding income over thirty harness turns fell from 368 to **zero** —
+ *   a doctrine going dead, which is the failure this file exists to catch. At
+ *   0.45 line it raids for 1,160 and the board returns to where it was.
+ *
+ * Tonnage per world is unchanged, so this redistributes the opening fleets
+ * rather than resizing them.
+ */
+const OPENING_SQUADRON: Record<string, Partial<Record<HullClass, number>>> = {
+  meridian: { battleship: 0.55, escort: 0.25, lifter: 0.2 },
+  vigil: { battleship: 0.75, escort: 0.15, lifter: 0.1 },
+  ojjul: { battleship: 0.4, escort: 0.4, lifter: 0.2 },
+  freeworlds: { battleship: 0.5, escort: 0.4, lifter: 0.1 },
+  drajk: { battleship: 0.45, torpedo_boat: 0.4, lifter: 0.15 },
+};
+
+/**
+ * Divide a world's opening tonnage into hulls.
+ *
+ * Floored per class, so a small world simply does not get the classes its share
+ * cannot pay for a whole hull of — and the line is guaranteed at least one hull
+ * whatever the rounding does, because a squadron with nothing that can fight is
+ * not a squadron.
+ */
+function openingSquadron(controller: string, tons: number): ShipStack {
+  const shares = OPENING_SQUADRON[controller] ?? { battleship: 1 };
+  const entries = Object.entries(shares) as [HullClass, number][];
+  const stack: ShipStack = {};
+  let spent = 0;
+  for (const [hull, share] of entries) {
+    const n = Math.floor((tons * share) / HULL_SPEC[hull].tonnage);
+    if (n > 0) {
+      stack[hull] = n;
+      spent += n * HULL_SPEC[hull].tonnage;
+    }
+  }
+  // Flooring each class on its own threw away a tenth of the galaxy's opening
+  // tonnage, which is a change to the ECONOMY dressed as a change to
+  // composition — upkeep is per ton. The remainder is filled by whichever class
+  // is furthest below its share and still fits, so a world's squadron
+  // displaces what it always displaced.
+  for (;;) {
+    let pick: HullClass | null = null;
+    let worst = Infinity;
+    for (const [hull, share] of entries) {
+      if (HULL_SPEC[hull].tonnage > tons - spent) continue;
+      const deficit = (stack[hull] ?? 0) * HULL_SPEC[hull].tonnage - tons * share;
+      if (deficit < worst) {
+        worst = deficit;
+        pick = hull;
+      }
+    }
+    if (pick === null) break;
+    stack[pick] = (stack[pick] ?? 0) + 1;
+    spent += HULL_SPEC[pick].tonnage;
+  }
+  // A squadron with nothing that can fight is not a squadron.
+  if ((stack.battleship ?? 0) === 0 && (stack.torpedo_boat ?? 0) === 0) {
+    stack[shares.torpedo_boat !== undefined ? 'torpedo_boat' : 'battleship'] = 1;
+  }
+  return normaliseStack(stack);
 }
 
 function buildSystems(): StarSystem[] {
@@ -342,10 +439,11 @@ function buildSystems(): StarSystem[] {
     strategicValue: s.value,
     hyperlaneEdges: [...(edges.get(s.id) ?? [])].sort(),
     // A controller starts with a token squadron in orbit, scaled to how much
-    // the world is worth holding. Nobody starts contested.
-    // A controller's opening squadron is line hulls: the seed predates classes
-    // and the game it describes is the one that was played.
-    ships: s.controller ? { [s.controller]: { battleship: startingShips(s) } } : {},
+    // the world is worth holding, and composed the way that power's own
+    // doctrine composes a fleet. Nobody starts contested.
+    ships: s.controller
+      ? { [s.controller]: openingSquadron(s.controller, startingTons(s)) }
+      : {},
   }));
 }
 

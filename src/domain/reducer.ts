@@ -721,8 +721,15 @@ function cedeTerritory(state: WorldState, treaty: Treaty): string[] {
         (x) => x.id !== system.id && x.controllerFactionId === ceder,
       );
       if (refuge) {
+        // The STACK withdraws, not a hull count. `addShipsAt(refuge, ceder, n)`
+        // lands `n` hulls of one default class, so a mixed squadron marched out
+        // of a ceded world and arrived as battleships — sixteen hulls of 43
+        // tons became sixteen of 64, and `billConstruction` duly charged the
+        // ceder 315 credits for shipping it never built. Invisible for as long
+        // as every fleet in the seed was a pure battle line.
+        const withdrawing = stackAt(system, ceder);
         setShipsAt(system, ceder, 0);
-        addShipsAt(refuge, ceder, leaving);
+        addStackAt(refuge, ceder, withdrawing);
         notes.push(
           `${ceder} cedes ${system.name} to ${receiver}; ${leaving} ships withdraw to ${refuge.name}.`,
         );
@@ -1856,7 +1863,6 @@ export function applyOps(
         // hands once, and taking it back is a fresh act.
         if (!pending) {
           notes.push(...cedeTerritory(state, treaty));
-    notes.push(...settleTreatyPayment(state, treaty));
           notes.push(...settleTreatyPayment(state, treaty));
         }
         break;

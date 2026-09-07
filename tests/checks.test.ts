@@ -8,7 +8,8 @@ import {
 } from '../src/domain/checks.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import {
-  setShipsAt, fleetStrengthOf, ledgerFor, UPKEEP_PER_FLEET_POINT } from '../src/domain/state.js';
+  setShipsAt, fleetStrengthOf, fleetTonsOf, ledgerFor, UPKEEP_PER_FLEET_POINT } from '../src/domain/state.js';
+import { UPKEEP_PER_TON } from '../src/domain/hulls.js';
 import { tickTurn } from '../src/domain/reducer.js';
 
 describe('ability modifiers', () => {
@@ -143,8 +144,11 @@ describe('economy', () => {
     expect(ledger.systems).toBe(4);
     expect(ledger.gross).toBeGreaterThan(0);
     // Upkeep is charged on the DERIVED fleet — the ships actually on the board,
-    // not a separate global number that could drift from them.
-    expect(ledger.upkeep).toBe(fleetStrengthOf(state, 'freeworlds') * UPKEEP_PER_FLEET_POINT);
+    // not a separate global number that could drift from them. In TONS, which
+    // is the unit it is actually billed in: `hulls x UPKEEP_PER_FLEET_POINT`
+    // gave the same answer only for as long as every fleet in the seed was a
+    // pure battle line, and the seed now opens each power with a mix.
+    expect(ledger.upkeep).toBe(fleetTonsOf(state, 'freeworlds') * UPKEEP_PER_TON);
     // How `net` is assembled from its terms is asserted once, in
     // economy.test.ts, with every term non-zero. Restating the formula here
     // duplicated it and went stale twice over: this copy still read

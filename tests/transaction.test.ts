@@ -174,8 +174,13 @@ describe('one squadron described twice is one squadron', () => {
   const build = (ops: unknown[]) => {
     const state = fresh();
     const before = fleetStrengthOf(state, 'meridian');
+    const at = (w: WorldState, id: string) => stackAt(sys(w, id), 'meridian').lifter ?? 0;
+    // Measured as a DELTA: the seed now opens every power with a doctrine-shaped
+    // squadron, so Meridian already has transports at these worlds and an
+    // absolute count would be asserting the seed rather than the reconciliation.
+    const opening = new Map(['sek-1', 'sek-4'].map((id) => [id, at(state, id)]));
     const out = applyOps(state, ops as never, 'model', 'meridian');
-    const lifters = (id: string) => stackAt(sys(out.state, id), 'meridian').lifter ?? 0;
+    const lifters = (id: string) => at(out.state, id) - (opening.get(id) ?? 0);
     return { gained: fleetStrengthOf(out.state, 'meridian') - before, lifters };
   };
 

@@ -194,7 +194,14 @@ describe('the phases are told apart', () => {
       { attacker: 'drajk', origin: 'ark-5', target: 'ark-6', force: 30 },
     );
     const phases = battles[0]!.rounds.map((r) => r.phase);
-    expect(phases[0]).toBe('orbital');
+    // A strike round comes first whenever either side brought boats, and the
+    // seed now opens Drajk with them — so the assertion is about ORDER, not
+    // about which round happens to be index 0.
+    expect(phases).toContain('orbital');
+    expect(phases.indexOf('orbital')).toBeLessThan(phases.indexOf('ground'));
+    if (phases.includes('strike')) {
+      expect(phases.indexOf('strike')).toBeLessThan(phases.indexOf('orbital'));
+    }
     // Every round carries the turn it happened on — the multi-turn hook.
     for (const r of battles[0]!.rounds) expect(r.turn).toBe(battles[0]!.turn);
   });
