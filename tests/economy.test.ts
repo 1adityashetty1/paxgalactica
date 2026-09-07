@@ -1,7 +1,7 @@
 import { ordersVisibleTo } from '../src/domain/intel.js';
 import { describe, expect, it } from 'vitest';
 import { applyOps, tickTurn, MAX_ATTRITION_FRACTION } from '../src/domain/reducer.js';
-import { CREDITS_PER_TON, HULL_SPEC } from '../src/domain/hulls.js';
+import { CREDITS_PER_TON, HULL_SPEC, LIFTER_CARRY, hullUpkeep } from '../src/domain/hulls.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { AGENT_COST, MISSION_PROFILE } from '../src/domain/diplomacy.js';
 import { COMMITMENT_GOODWILL } from '../src/domain/arbitration.js';
@@ -14,6 +14,7 @@ import {
   addShipsAt,
   fleetStrengthOf,
   fleetTonsOf,
+  SURPLUS_GARRISON_UPKEEP,
   SHIP_COST,
   UPKEEP_PER_FLEET_POINT,
   systemIncome,
@@ -1102,5 +1103,53 @@ describe('a commitment binds people, so it moves how they see each other', () =>
     const out = applyOps(state, [bind(['freeworlds'])], 'model', 'freeworlds');
     expect(out.rejections).toHaveLength(0);
     expect(disp(out.state, 'freeworlds', 'ojjul')).toBe(before);
+  });
+});
+
+/**
+ * A garrison inside a world's ceiling is free — ground forces are raised
+ * locally, which is what lets a captured world re-arm and stops conquest being
+ * permanently cheap. Surplus is not.
+ */
+describe('troops a world cannot quarter are billed', () => {
+  const surplusOf = (n: number) => {
+    const state = fresh();
+    const w = state.systems.find((x) => x.controllerFactionId === 'vigil')!;
+    w.garrisonMax = 7;
+    w.garrison = 7 + n;
+    return ledgerFor(state, 'vigil').garrisonUpkeep;
+  };
+
+  it('charges nothing for a garrison inside the ceiling', () => {
+    const state = fresh();
+    for (const w of state.systems) if (w.controllerFactionId === 'vigil') w.garrison = w.garrisonMax;
+    expect(ledgerFor(state, 'vigil').garrisonUpkeep).toBe(0);
+  });
+
+  it('charges the surplus, rounded up once on the total', () => {
+    expect(surplusOf(0)).toBe(0);
+    expect(surplusOf(1)).toBe(1);
+    expect(surplusOf(4)).toBe(2);
+    expect(surplusOf(5)).toBe(3);
+  });
+
+  it('makes committing lift upkeep-neutral, which is why the rate is a half', () => {
+    // A lifter costs its own upkeep forever and carries LIFTER_CARRY troops.
+    // The lift phase turns one into the other, so the rate is derived rather
+    // than chosen: without it, parking a fleet as garrison was strictly
+    // cheaper than keeping it afloat.
+    const lifters = 4;
+    const afloat = lifters * hullUpkeep('lifter');
+    const ashore = surplusOf(lifters * LIFTER_CARRY);
+    expect(ashore).toBe(afloat);
+    expect(SURPLUS_GARRISON_UPKEEP).toBe(hullUpkeep('lifter') / LIFTER_CARRY);
+  });
+
+  it('reaches the net, so a swollen garrison shows up in the ledger', () => {
+    const state = fresh();
+    const before = ledgerFor(state, 'vigil').net;
+    const w = state.systems.find((x) => x.controllerFactionId === 'vigil')!;
+    w.garrison = w.garrisonMax + 20;
+    expect(ledgerFor(state, 'vigil').net).toBe(before - 10);
   });
 });

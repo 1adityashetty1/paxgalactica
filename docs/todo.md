@@ -278,7 +278,7 @@ should ever emit a bare `adjust_ships` delta.
 
 ---
 
-## 79. `fleetlab`'s grid cannot see a lift-poor attacker
+## 79. FIXED — `fleetlab`'s grid could not see a lift-poor attacker
 
 The harness's composition verdicts have been drawn from a grid that structurally
 excludes the region where the ground phase decides anything, and that is why
@@ -317,11 +317,27 @@ strongest at 2–6. Lift is tied to a share of a large budget, so the fix is to
 treat it as its own axis or to sweep a much smaller attacker budget — not to
 refine the simplex.
 
-**Until this is fixed, `pnpm fleetlab`'s answer on defending composition should
-not be trusted**, and neither should any conclusion drawn from it about whether
-the ground phase matters. The attacker-side finding (three or four classes beat
-one or two) is unaffected: it turns on the orbital phase, which the grid does
-sample.
+**FIXED.** Lift is drawn from `LIFT_AXIS` — `0, 2, 4, 6, 10, 16, 30`, dense
+where the decision lives — and the simplex divides the remainder between the
+three fighting classes. `--fine` swaps in a twelve-point axis.
+
+Sampling was trimmed with it, because the grid went from 35x35 to 180x150:
+4 garrisons x 5 rolls x 3 doctrines was 60 battles a pairing and is now 3 x 3 x
+2 = 18, keeping the ends of each range. `pnpm fleetlab` runs in **43 seconds**
+against 18 before the change and 6:40 with the dense axis and the old sampling.
+
+**And the answer inverts.** With the blind spot gone, both sides want a mix:
+
+```
+  ATTACKER  best 64%  3cls  escort:24 torpedo_boat:72 lifter:16   margin +10.4
+  DEFENDER  best 85%  3cls  battleship:9 escort:6 lifter:10       margin  +1.2
+```
+
+That is the first time the defender's composition has been a decision, and it
+closes the question item 74 has been asking through five failed attempts. The
+answer was never a new mechanic: a defender needed something to protect whose
+loss is not measured in weight, the lift phase gave it one, and the harness
+could not see it.
 
 ---
 

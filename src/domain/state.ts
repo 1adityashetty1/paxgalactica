@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import {
+  LIFTER_CARRY,
+  hullUpkeep,
   CREDITS_PER_TON,
   HULL_SPEC,
   HullClassSchema,
@@ -646,6 +648,25 @@ export function fleetTonsOf(state: WorldState, factionId: string): number {
  * Where a faction could pull ships from, richest system first. Used when an op
  * adds or removes fleet without naming a system; deterministic so replay holds.
  */
+/**
+ * What a troop costs per turn once a world is holding more than it can quarter.
+ *
+ * A garrison inside `garrisonMax` is free, and deliberately: ground forces are
+ * raised locally, which is what lets a captured world slowly re-arm itself and
+ * stops conquest being permanently cheap.
+ *
+ * Surplus is different. The lift phase converts a defender's transports into
+ * troops that sit **above** the ceiling, and a transport costs 3 a turn forever
+ * while the six troops it lands used to cost nothing at all — so committing
+ * lift was a permanent upkeep dodge as well as a defensive move, and a fleet
+ * parked as garrison was strictly cheaper than the same fleet afloat.
+ *
+ * The rate is derived rather than chosen: a lifter's own upkeep divided by what
+ * it carries, so the conversion is upkeep-NEUTRAL. Committing lift changes what
+ * the troops can do, not what they cost.
+ */
+export const SURPLUS_GARRISON_UPKEEP = hullUpkeep('lifter') / LIFTER_CARRY;
+
 export function fleetBases(state: WorldState, factionId: string): StarSystem[] {
   return state.systems
     .filter((s) => s.controllerFactionId === factionId || (hullsAt(s, factionId)) > 0)
@@ -775,6 +796,8 @@ export interface Ledger {
   espionageLoss: number;
   /** What this faction's own operatives take off other powers per turn. */
   espionageGain: number;
+  /** Troops billed for sitting above a world's `garrisonMax`. */
+  garrisonUpkeep: number;
   /** What this faction's own live operatives cost it per turn. */
   agentUpkeep: number;
   /**
@@ -955,7 +978,7 @@ export function ledgerFor(state: WorldState, factionId: string): Ledger {
   if (!faction) {
     return {
       gross: 0, upkeep: 0, net: 0, systems: 0, treatyFlow: 0,
-      espionageLoss: 0, espionageGain: 0, agentUpkeep: 0, commitmentFlow: 0, warProfit: 0,
+      espionageLoss: 0, espionageGain: 0, garrisonUpkeep: 0, agentUpkeep: 0, commitmentFlow: 0, warProfit: 0,
       territory: 0, routes: 0, tolls: 0, raided: 0, debtService: 0,
     };
   }
@@ -995,6 +1018,18 @@ export function ledgerFor(state: WorldState, factionId: string): Ledger {
 
   const gross = territory + routes;
   const upkeep = fleetTonsOf(state, factionId) * UPKEEP_PER_TON;
+  // Troops a world cannot quarter are billed. Everything inside the ceiling is
+  // still free — see `SURPLUS_GARRISON_UPKEEP`.
+  // Rounded UP, and once, on the total rather than per world: the rate is a
+  // half, so a faction holding an odd number of surplus troops pays for the
+  // spare one. Charging per world would round several times and turn a half
+  // into most of a credit.
+  const garrisonUpkeep = Math.ceil(
+    state.systems
+      .filter((sys) => sys.controllerFactionId === factionId)
+      .reduce((n, sys) => n + Math.max(0, sys.garrison - sys.garrisonMax), 0) *
+      SURPLUS_GARRISON_UPKEEP,
+  );
 
   let treatyFlow = 0;
   for (const treaty of state.treaties ?? []) {
@@ -1042,11 +1077,20 @@ export function ledgerFor(state: WorldState, factionId: string): Ledger {
     gross,
     upkeep,
     net:
-      gross - upkeep + treatyFlow - espionageLoss + espionageGain - agentUpkeep + commitmentFlow + warProfit,
+      gross -
+      upkeep -
+      garrisonUpkeep +
+      treatyFlow -
+      espionageLoss +
+      espionageGain -
+      agentUpkeep +
+      commitmentFlow +
+      warProfit,
     systems: counted,
     treatyFlow,
     espionageLoss,
     espionageGain,
+    garrisonUpkeep,
     agentUpkeep,
     commitmentFlow,
     warProfit,

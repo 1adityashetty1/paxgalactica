@@ -56,6 +56,8 @@ export const LedgerSchema = z.object({
   espionageLoss: z.number().int(),
   /** What this faction's own operatives take off other powers per turn. */
   espionageGain: z.number().int(),
+  /** Troops billed for sitting above a world's `garrisonMax`. */
+  garrisonUpkeep: z.number().int(),
   /** What this faction's own live operatives cost it per turn. */
   agentUpkeep: z.number().int(),
   /** Standing arrangements: positive receives, negative pays. */
