@@ -3988,6 +3988,47 @@ function resolveBattle(
     }
   }
 
+  /* ---------- Phase 0.5: the lift phase ---------- */
+  //
+  // A defender's transports put their troops on the ground and are spent doing
+  // it. No choice, and deliberately: a power that has brought lift to a world
+  // it holds has already decided what the lift is for, and asking again would
+  // be a decision with one sensible answer.
+  //
+  // It happens HERE, after the strike and before the exchange, because that is
+  // the only window where the answer is neither free nor unreachable. Later —
+  // once the orbit is lost — the transports are already dead. Earlier is the
+  // same thing. And counting them at the strike while letting them survive is
+  // the version that can be farmed: a defender that breaks off at two to one
+  // keeps its transports, so the same six troops would "land" in every battle
+  // it ever fought, forever, and the attacker would pay real lift for each of
+  // them. Spending the hulls here is what closes that.
+  //
+  // The HOLDER's lift only. Troops from a third party's transports would be a
+  // free transfer of ground forces into somebody else's garrison.
+  //
+  // The garrison may exceed `garrisonMax`, and that is the point: a world of
+  // seven with four transports committed reads **11/7**. `GARRISON_REGROWTH`
+  // only fires below the ceiling, so the excess is spent once and never grows
+  // back — an emergency deployment, not a permanent fortification.
+  if (holder !== null) {
+    const held = defenders.find(([id]) => id === holder);
+    const committed = held?.[1].lifter ?? 0;
+    if (committed > 0) {
+      const troops = committed * LIFTER_CARRY;
+      target.garrison += troops;
+      setStackAt(target, holder, subtractStack(stackAt(target, holder), { lifter: committed }));
+      for (const entry of defenders) {
+        if (entry[0] === holder) entry[1] = stackAt(target, holder);
+      }
+      defenceForce = defenders.reduce((n, [id]) => n + hullsAt(target, id), 0);
+      const put = `${nameOf(holder)} puts ${troops} troops down from ${committed} transport(s) over ${target.name}; the garrison stands at ${target.garrison} of ${target.garrisonMax}.`;
+      notes.push(put);
+      logEvent(state, 'order', put, holder);
+      defendSnapshot = new Map(defenders);
+    }
+  }
+
   /* ---------- Phase 1: fleet battle ---------- */
   const attackWeight = weightOfSide(attackShare.values());
   const defendWeight = weightOfSide(defenders.map(([, st]) => st));
@@ -4300,6 +4341,27 @@ function resolveBattle(
     // fraction of the defenders, who were just destroyed.
     const landed = [...attackShare.values()].reduce((n, st) => n + carryOf(st), 0);
     target.garrison = Math.max(1, Math.min(target.garrisonMax, landed));
+    // The transports that put THAT garrison ashore are spent, the same way a
+    // defender's are in the lift phase. They used to be counted twice: their
+    // capacity became the new garrison AND the hulls themselves were landed as
+    // ships, so a conqueror kept its whole lift arm and got the troops as well.
+    //
+    // Only the ones the garrison actually needed. The garrison is clamped to
+    // `garrisonMax`, so a fleet that brought more lift than the world can
+    // quarter still has transports with their troops aboard — and consuming
+    // ALL of them costs the attacker its composition decision outright:
+    // measured, the best attacking fleet went from `battleship:15 escort:30
+    // torpedo_boat:30 lifter:20` at 80% with a 6.1-point margin over anything
+    // simpler, to a two-class `battleship:30 lifter:40` tied with the mixed
+    // fleet at 69%.
+    let spent = Math.ceil(target.garrison / LIFTER_CARRY);
+    for (const [id, st] of attackShare) {
+      if (spent <= 0) break;
+      const take = Math.min(spent, st.lifter ?? 0);
+      if (take <= 0) continue;
+      attackShare.set(id, subtractStack(st, { lifter: take }));
+      spent -= take;
+    }
     for (const [id, st] of attackShare) land(id, st);
     const note = `${notes.join(' ')} ${coalition} storms ${target.name}, breaking a garrison of ${garrison} for ${lifterLosses} lifters; ${nameOf(owner)} takes possession with ${target.garrison} troops ashore.`.trim();
     logEvent(state, 'order', note, owner);

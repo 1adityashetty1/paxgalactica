@@ -278,6 +278,53 @@ should ever emit a bare `adjust_ships` delta.
 
 ---
 
+## 79. `fleetlab`'s grid cannot see a lift-poor attacker
+
+The harness's composition verdicts have been drawn from a grid that structurally
+excludes the region where the ground phase decides anything, and that is why
+five attempts at item 74 all measured "the defender has no decision".
+
+`compositions(budget, steps)` divides the budget into `steps` equal shares, so
+at the default 3,600 credits over 4 steps one share is 900 credits — **exactly
+20 lifters**. The attacker grid therefore carries only:
+
+```
+lifter counts: 0, 20, 40, 60, 80
+```
+
+Nothing between 1 and 19. Measured separately, a defender's converted lift stops
+mattering once the attacker carries about ten transports, because `assault`
+already exceeds any garrison it will meet:
+
+```
+attacker lift   defender bs:15 lift:6 keeps   defender bs:20 keeps
+   2                    100%                         68%
+   4                    100%                         57%
+   6                     86%                         57%
+  10                     62%                         57%
+  20                     57%                         57%
+  40                     57%                         57%
+```
+
+**Every lift-carrying attacker in the grid sits above the saturation point and
+every other one carries none**, so the harness samples only the two regions
+where the mechanism is guaranteed inert. `no_lift` is 0.0% across every
+defender composition it tests — the attacker is never once made to run out.
+
+Raising `steps` does not reach it either: `steps=12` costs 455 compositions
+(207k pairings) and still bottoms out at **6** lifters, and the effect is
+strongest at 2–6. Lift is tied to a share of a large budget, so the fix is to
+treat it as its own axis or to sweep a much smaller attacker budget — not to
+refine the simplex.
+
+**Until this is fixed, `pnpm fleetlab`'s answer on defending composition should
+not be trusted**, and neither should any conclusion drawn from it about whether
+the ground phase matters. The attacker-side finding (three or four classes beat
+one or two) is unaffected: it turns on the orbital phase, which the grid does
+sample.
+
+---
+
 # Performance — `p.X`
 
 **Measured before anything was proposed**, because "turns are slow, probably the

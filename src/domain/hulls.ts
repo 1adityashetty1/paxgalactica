@@ -84,6 +84,12 @@ export interface HullSpec {
    * fought and destroyed by the ordinary arithmetic, not swept aside by an
    * exception.
    *
+   * A lifter's is smaller still — **0.01** — because a DEFENDER's transports
+   * never reach the exchange at all: they put their troops ashore in the lift
+   * phase, immediately after the strike, and are spent doing it. What is left
+   * is a number small enough never to matter and large enough that no branch
+   * reads a fleet as "nothing to fight".
+   *
    * **The value has to stay nominal**, and that was measured rather than
    * assumed. `TORPEDO_STRIKE` was swept on the premise that a boat carries no
    * line weight at all — it fires once and is then destroyed for having nothing
@@ -119,7 +125,7 @@ export const HULL_SPEC: Record<HullClass, HullSpec> = {
   // Useless in orbit and the only way to take ground. High carry is what pays
   // for that uselessness — and being second in the loss order is what it pays
   // in return: unarmed, unarmoured, and dead the moment the screen is gone.
-  lifter: { tonnage: 3, orbitalWeight: 0.1, carry: LIFTER_CARRY, lossOrder: 1, label: 'lifter' },
+  lifter: { tonnage: 3, orbitalWeight: 0.01, carry: LIFTER_CARRY, lossOrder: 1, label: 'lifter' },
   // Cheap, fragile, and built to kill things far above its weight — the Jeune
   // École boat, and the reason destroyers were originally called "torpedo boat
   // destroyers".
@@ -416,6 +422,26 @@ export function tonsOfClass(stacks: Iterable<ShipStack>, hull: HullClass): numbe
  * are destroyed changes. A torpedo boat that dealt bonus damage would just be a
  * better battleship.
  */
+/**
+ * The order a TORPEDO STRIKE spends a fleet, in both directions.
+ *
+ * A boat fires once, before the fleets close, and does nothing afterwards — so
+ * letting it absorb the strike gives it a second job it has not paid for, and
+ * makes it ablative armour for the escorts and transports that still have work
+ * to do in the phases after this one. Boats are spent **last** whichever
+ * direction the strike runs: last in the ordinary pass, and last in the deep
+ * pass that goes at the heaviest hulls first.
+ *
+ * This is deliberately not a change to `lossOrder`, which is one ordering read
+ * forwards and backwards and therefore cannot put a class at the end of both.
+ */
+const strikeOrder = (stack: ShipStack, heaviestFirst: boolean): HullClass[] => {
+  const present = inLossOrder(stack);
+  const boats = present.filter((h) => h === 'torpedo_boat');
+  const rest = present.filter((h) => h !== 'torpedo_boat');
+  return [...(heaviestFirst ? rest.reverse() : rest), ...boats];
+};
+
 export function strikeStack(
   stack: ShipStack,
   tons: number,
@@ -431,7 +457,7 @@ export function strikeStack(
   if (deepTons > 0) {
     // Heaviest first — the reverse of the loss order, which is what "past the
     // screen" means: the screen is the cheapest thing there.
-    const heavy = inLossOrder(left).reverse();
+    const heavy = strikeOrder(left, true);
     let owed = deepTons;
     for (const cls of heavy) {
       if (owed <= 0) break;
@@ -446,6 +472,19 @@ export function strikeStack(
     }
   }
 
-  const rest = trimToTons(left, Math.max(0, tonsIn(left) - (want - tonsIn(taken))));
-  return { taken: mergeStacks(taken, rest.taken), left: rest.left };
+  // The shallow half, spending the strike order rather than the plain loss
+  // order — same reason: a spent boat must not stand in front of a transport.
+  let owed = want - tonsIn(taken);
+  for (const cls of strikeOrder(left, false)) {
+    if (owed <= 0) break;
+    const each = HULL_SPEC[cls].tonnage;
+    const n = Math.min(left[cls] ?? 0, Math.ceil(owed / each));
+    if (n <= 0) continue;
+    taken = mergeStacks(taken, { [cls]: n });
+    const rest = (left[cls] ?? 0) - n;
+    if (rest === 0) delete left[cls];
+    else left[cls] = rest;
+    owed -= n * each;
+  }
+  return { taken, left: normaliseStack(left) };
 }

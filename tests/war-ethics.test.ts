@@ -134,7 +134,7 @@ describe('expansionist: every world makes the rest pay better', () => {
     expect(taken.garrison).toBeGreaterThan(alsoTaken.garrison);
   });
 
-  it('still pays for its landing against a garrison one transport can break', () => {
+  it('lands more troops than a non-expansionist, and never fewer', () => {
     // The discount used to be applied AFTER converting troops to hulls:
     // `floor(bare / 2)`, where `bare = ceil(dugIn / LIFTER_CARRY)` is 1 against
     // any garrison of six or fewer. `floor(1 / 2)` is zero, so an expansionist
@@ -165,26 +165,32 @@ describe('expansionist: every world makes the rest pay better', () => {
       let s = out.state;
       for (let i = 0; i < 6 && s.pendingOrders.length > 0; i++) s = tickTurn(s).state;
       expect(sys(s, 'sek-3').controllerFactionId).toBe('meridian');
-      return 6 - (stackAt(sys(s, 'sek-3'), 'meridian').lifter ?? 0);
+      // Measured as the GARRISON the landing leaves, not as surviving lift.
+      // Transports are consumed putting that garrison ashore, so every landing
+      // ends with zero of them and the doctrine is invisible there — it shows
+      // up as more troops on the ground, which is what "conquest sticks" meant
+      // all along.
+      return sys(s, 'sek-3').garrison;
     };
 
-    // A garrison of four needs one transport's worth of troops to break, and
-    // an expansionist pays it. This is the regression: it used to be zero.
-    expect(land('expansionist', 4)).toBeGreaterThan(0);
+    // Against a garrison of four, one transport covers it either way and the
+    // doctrine cannot express a half of one hull — the documented residual.
     expect(land('expansionist', 4)).toBe(land('defensive', 4));
 
     // Where the granularity allows a half, the doctrine takes one: a garrison
-    // of nine costs two transports normally and one to an expansionist.
-    expect(land('expansionist', 9)).toBeLessThan(land('defensive', 9));
+    // of nine costs two transports normally and one to an expansionist, so the
+    // expansionist lands a transport more of troops.
+    expect(land('expansionist', 9)).toBeGreaterThan(land('defensive', 9));
 
     // And it is a discount, never a waiver: swept across the garrison range on
-    // this map, an expansionist always pays something and never pays more.
+    // this map, an expansionist never comes away with LESS than a
+    // non-expansionist, and never with more than twice as much.
     for (const g of [2, 4, 6, 8, 10, 12, 15]) {
       const cheap = land('expansionist', g);
       const full = land('defensive', g);
-      expect(cheap, `garrison ${g}`).toBeGreaterThan(0);
-      expect(cheap, `garrison ${g}`).toBeLessThanOrEqual(full);
-      expect(cheap, `garrison ${g}`).toBeGreaterThanOrEqual(Math.floor(full * EXPANSIONIST_LIFT_SHARE));
+      expect(full, `garrison ${g}`).toBeGreaterThan(0);
+      expect(cheap, `garrison ${g}`).toBeGreaterThanOrEqual(full);
+      expect(cheap, `garrison ${g}`).toBeLessThanOrEqual(Math.ceil(full / EXPANSIONIST_LIFT_SHARE));
     }
   });
 });
