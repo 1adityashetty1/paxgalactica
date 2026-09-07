@@ -7,16 +7,20 @@ is closed — the reasoning is the useful part, and a fixed item explains why th
 code looks the way it does.
 
 Statuses are checked against the code, not carried forward from the label. The
-last audit was **2026-09-06** and moved four items.
+last audit was **2026-09-07**.
 
 ---
 
 # Open work, grouped
 
-Every item below was checked against the code on **2026-09-06**, not taken from
-its own label. Four were wrong: **10** and **56** were finished, **62** was
-filed unconfirmed and is real, and **68** does not reproduce. The detail for
-each lives in its numbered item further down; this is the index.
+Every item below was checked against the code, not taken from its own label. The
+**2026-09-06** audit moved four: **10** and **56** were finished, **62** was
+filed unconfirmed and is real, and **68** does not reproduce.
+
+As of **2026-09-07** everything here is closed except **A** (accepted variance,
+with one buildable instrument left) and **H** (two items that need a campaign
+played, not code written). The detail for each lives in its numbered item
+further down; this is the index.
 
 ## A. ACCEPTED — the arbiter's ruling varies, and mostly it has to — **47, 66, 72**
 
@@ -51,11 +55,20 @@ pass deciding the order should never have gone out. The ops do not exist yet at
 breach time, and moving the ruling after resolution reintroduces the exact
 failure the arbitration split was built to remove.
 
-So this is **accepted variance**, not a queued fix. What remains worth doing is
-narrower and cheaper: log every breach ruling with the line, the kind and the
-relevance verdict, so a drift like the DC 5-to-18 spread is measurable rather
-than anecdotal. Reopen the larger question only with a proposal that does not
-put the ruling downstream of resolution.
+So this is **accepted variance**, not a queued fix. Reopen the larger question
+only with a proposal that does not put the ruling downstream of resolution.
+
+**One buildable thing remains, and it is the only open item in this file that
+needs code rather than a campaign:** log every breach ruling with the quoted
+line, the kind, and the `verifyBreachRelevance` verdict. Today a drift like one
+act pricing at DC 5, 10, 11, 14 and 18 across turns is anecdote — it was found by
+a playtester noticing, and there is no way to ask a finished campaign how often
+it happened. A `kind: 'clamp'`-style entry per ruling makes the variance
+measurable, which is what would let the next playtest of 47/66/72 conclude
+something instead of producing another anecdote.
+
+It is deliberately **not** a fix for the variance. It is the instrument that
+would tell us whether the variance is the size we are assuming it is.
 
 ## B. CLOSED — a negotiated term the reducer cannot express — **51, 67.1, 67.2**
 
@@ -253,15 +266,23 @@ whoever holds the world, people and hulls are withheld.** A wall does not care
 who stands behind it; a levy raised for one flag does not muster for the next.
 Written into CLAUDE.md so it is a decision rather than an accident.
 
-## H. Wants a playtest, not a patch — **19, 41(b)(d), 67.3, 67.5**
+## H. Wants a playtest, not a patch — **19, 67.5**
+
+Both need a campaign played, not code written: each is a claim about what the
+model *reaches for*, which no test can settle.
 
 - Marriages and ceremonial arrangements down both routes, across disposition
   (**19**).
-- Two epilogue defects still open (**41**).
-- The second covert action in one declaration is silently dropped, since
-  `AppraisalSchema.covert` names one mission (**67.3**).
 - Nobody suborned Meridian once in twelve turns despite resolve 9, the softest
-  target on the board (**67.5**).
+  target on the board (**67.5**). The mechanism works and is tested; the
+  question is whether an NPC ever chooses it.
+
+**Cleared from this section since it was written:** 41(b) and 41(d) (the
+epilogue now carries a control history, and the one remaining half does not
+reproduce) and 67.3 (`covert` is a list, so an appraisal naming three operations
+places three agents). Neither needed a playtest — both were readable off the
+code, which is worth noting because both had sat here on the assumption that
+they were not.
 
 ## Retired this pass
 
@@ -272,7 +293,7 @@ matches `ledgerFor` exactly, 156/309 both ways — reopen with a reproduction) �
 
 ---
 
-## 78. What a multiclass seed exposed, and why nothing caught it sooner
+## 78. FIXED — what a multiclass seed exposed, and why nothing caught it sooner
 
 The seed opened every power with a **pure battle line** from before classes
 existed, so `hulls x 4 == tons` held everywhere in the galaxy and no test could
@@ -680,7 +701,7 @@ hulls as force preserved.
 adds retreats from battles `stand` would have survived, each costing 10–35%.
 That is recorded on **74** and is a threshold to tune, not a decision to make.
 
-## 77. Make a defending fleet's composition a decision — leaders, or the garrison
+## 77. MOOT — make a defending fleet's composition a decision — leaders, or the garrison
 
 The open half of **74**, with the two directions worth trying, neither started.
 
@@ -744,7 +765,7 @@ weight.
 
 ---
 
-## 74. Composition is a decision for an attacker and not for a defender
+## 74. CLOSED — composition is a decision for an attacker and not for a defender
 
 **MEASURED**, with a harness built for it: `src/fleetlab.ts` and `pnpm
 fleetlab`. Every attacker composition against every defender composition, over
@@ -1434,7 +1455,7 @@ once, including why quoting a compulsion at the game does not trip it.
 
 ---
 
-## 67. UNCONFIRMED — five things that produced nothing
+## 67. FOUR FIXED, ONE OPEN — five things that produced nothing
 
 The agent's measurements, grouped because they share a shape: a conversation
 agreed something and the world did not change.
