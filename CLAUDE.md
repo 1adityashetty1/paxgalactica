@@ -1554,6 +1554,21 @@ Effects apply where they are *read* rather than mutating state each tick —
 otherwise a debuff would compound every turn. Only `hull_damage` mutates,
 because destroyed hulls stay destroyed.
 
+### A thief receives what it steals
+
+`income_penalty` destroyed value rather than moving it: the victim's ledger
+showed the loss and nobody's showed the gain. Three sources said otherwise and
+the code was the odd one out — the schema calls it *"credits denied to the
+target"*, `prompts/resolution.md` offers it as the honest way to **skim** a
+rival (*"taking credits out of a rival's treasury is rejected outright; skim a
+rival with an `income_penalty` agent"*), and the mission that places one by
+default is called `theft`. Theft moves money.
+
+`Ledger.espionageGain` is the mirror of `espionageLoss`, read the same way and
+in the same pass. An operative on a world its own owner holds steals from
+nobody. The transfer conserves; the owner's separate `AGENT_UPKEEP` is what
+makes running the network cost something.
+
 ## Intelligence: what you can see, and what you only suspect
 
 `src/domain/intel.ts`. For most of this project's life the player had **perfect
@@ -2183,6 +2198,28 @@ The eight remaining categories carry **no** payload on purpose: `espionage`
 lands as `deploy_agent`, `treaty_ratification` as `form_treaty`, and `blockade`
 and `commerce_raiding` are read live off `pendingOrders` by `trade.ts` while they
 run. A payload there would be a second mechanism competing with one that works.
+
+#### What survives a change of hands
+
+A programme can complete on a world its owner no longer holds, and
+`applyOrderEffect` checks `stillOurs` in **all four** branches. What differs is
+the policy, and the split is a rule rather than an accident:
+
+| effect | when the world has changed hands |
+|---|---|
+| `develop_system` | **lands** — *"the works now serve whoever holds the world"* |
+| `fortify` | **lands** — *"they defend whoever takes the world next"* |
+| `raise_garrison` | **withheld** — the levy disperses |
+| `commission_ships` | **withheld** — the yards were lost with the world and the hulls with them |
+
+**Ground improvements stay where they were built; people and hulls do not.** A
+wall does not care who is standing behind it, and a survey does not un-survey
+itself — but a levy raised for one flag does not muster for the next, and a hull
+still on the slipway belongs to whoever holds the slipway.
+
+It was filed as an asymmetry to fix, on the reading that `commission_ships`
+checked and `fortify` did not. Both check; only their answers differ, and the
+answers are right. Written down here so it stays a decision.
 
 #### Why this is not "the model rewrites state, on a delay"
 

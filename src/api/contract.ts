@@ -39,6 +39,14 @@ export const CheckResultSchema = z.object({
   margin: z.number().int(),
 });
 
+/**
+ * NOTE: this restates `Ledger` rather than importing it, against the rule at
+ * the top of this file that domain schemas are imported and never restated —
+ * and it drifted exactly as that rule predicts. Adding `espionageGain` to the
+ * domain broke the web typecheck here and nowhere else. Worth collapsing into
+ * the domain type; left alone for now because it is a wider change than the
+ * fix that surfaced it.
+ */
 export const LedgerSchema = z.object({
   gross: z.number().int(),
   upkeep: z.number().int(),
@@ -46,6 +54,8 @@ export const LedgerSchema = z.object({
   systems: z.number().int(),
   treatyFlow: z.number().int(),
   espionageLoss: z.number().int(),
+  /** What this faction's own operatives take off other powers per turn. */
+  espionageGain: z.number().int(),
   /** What this faction's own live operatives cost it per turn. */
   agentUpkeep: z.number().int(),
   /** Standing arrangements: positive receives, negative pays. */

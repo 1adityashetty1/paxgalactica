@@ -171,29 +171,49 @@ Two items came out of measuring it:
   their owner holds**. Both are features; neither should start before it is clear
   which one the game wants.
 
-## E. Treaty terms are all-or-nothing — **59, 60**
+## E. CLOSED — treaty terms are all-or-nothing — **59, 60**
 
-`basing_rights` is unconditional mutual immunity with no term for what class of
-hull, how many, or for how long (**59**); and a treaty can carry a `voidsOn`
-that makes it dissolve itself, which walks a power around its own red line about
-repudiation (**60**). Both: the term vocabulary is coarser than what powers
-actually negotiate.
+**59 is not a bug, and the "exploit" I reported was my own broken fixture.** I
+probed it by pushing a treaty with `treatyType: 'basing_rights'` — that is the
+field on the *op*; a `Treaty` carries `type`. With no valid treaty `guest()`
+never matched, the invader was an ordinary attacker, and I wrote it up as a
+verified hole. With a real grant the mechanism works: a guest is filtered out of
+the attackers entirely and simply puts in, and a partner who wants to attack has
+to repudiate first — which is the explicit, priced act it should be. Two tests
+now pin it, including that a `trade_accord` grants no such shelter.
 
-## F. Value destroyed rather than moved — **67.4**
+A guard was written and then reverted with it: adding `basing_rights` to the
+treaties an attack breaks is unreachable, because a guest can never be an
+attacker while the grant is live. Shipping it would have been the `monopolist`
+failure again — implemented, tested and dead.
 
-`income_penalty` subtracts from the victim's ledger and credits nobody. Verified
-in `state.ts`: `espionageLoss` has no counterpart. Same family as the treaty-flow
-conservation fixed in 57.
+The remaining half — terms for *which* hulls, how many, for how long — is
+genuine design and deliberately dropped rather than queued.
 
-## G. An unwritten rule about what survives a change of hands — **73**
+**60 is closed into A.** Writing a treaty that voids itself is not repudiation:
+the paper ends by its own terms, which is clever play rather than an exploit.
+Any fix would be the arbiter ruling on intent, which is exactly the varying
+model-tier judgement A accepts.
 
-A works programme completes for whoever holds the world — measured improving the
-*new* owner's defences at the old owner's expense. **The item's original framing
-was wrong and the audit corrected it**: `stillOurs` is checked in all four
-branches, and the split is coherent — ground improvements (`develop_system`,
-`fortify`) land for the new holder, people and hulls (`raise_garrison`,
-`commission_ships`) are withheld. So the open work is to *decide and record*
-that rule, not to find a missing check.
+## F. FIXED — value destroyed rather than moved — **67.4**
+
+`income_penalty` subtracted from the victim and credited nobody. Three sources
+disagreed and the code was the odd one out: the schema says *"credits denied to
+the target"*, `prompts/resolution.md` offers it as the honest way to **skim** a
+rival, and the mission placing one by default is called `theft`.
+
+`Ledger.espionageGain` mirrors `espionageLoss`, read in the same pass. An
+operative on a world its own owner holds steals from nobody. The transfer
+conserves; `AGENT_UPKEEP` is what still makes the network cost something.
+
+## G. CLOSED — an unwritten rule about what survives a change of hands — **73**
+
+Nothing to fix; the rule existed and was coherent, and the item's claim that
+`fortify` skipped its ownership check was wrong. All four branches check
+`stillOurs` and only their answers differ: **ground improvements land for
+whoever holds the world, people and hulls are withheld.** A wall does not care
+who stands behind it; a levy raised for one flag does not muster for the next.
+Written into CLAUDE.md so it is a decision rather than an accident.
 
 ## H. Wants a playtest, not a patch — **19, 41(b)(d), 67.3, 67.5**
 
@@ -911,7 +931,7 @@ own test and no others.
 
 ---
 
-## 59. `basing_rights` is unconditional mutual immunity from attack
+## 59. NOT A BUG — `basing_rights` is unconditional mutual immunity from attack
 
 **VERIFIED.** `guest()` in `reducer.ts:3281` is binary:
 
@@ -941,7 +961,7 @@ Vigil's own lifters could not have taken Torrek Anchorage.
 
 ---
 
-## 60. A treaty can be written to void itself, so a red line about repudiation never fires
+## 60. CLOSED into A — a treaty can be written to void itself
 
 **VERIFIED structurally; the campaign line is the agent's.**
 
@@ -1374,7 +1394,7 @@ the player's own worlds was `might` **DC 16**.
 
 ---
 
-## 73. An in-progress works programme completes for whoever holds the world
+## 73. CLOSED — an in-progress works programme completes for whoever holds the world
 
 The Vigil's `fortification` at Sarsuma completed one tick **after** it ceded the
 world, improving the new owner's defences at the old owner's expense:

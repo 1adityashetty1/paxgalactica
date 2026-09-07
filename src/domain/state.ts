@@ -773,6 +773,8 @@ export interface Ledger {
   treatyFlow: number;
   /** Credits denied by hostile agents in place. */
   espionageLoss: number;
+  /** What this faction's own operatives take off other powers per turn. */
+  espionageGain: number;
   /** What this faction's own live operatives cost it per turn. */
   agentUpkeep: number;
   /**
@@ -953,7 +955,7 @@ export function ledgerFor(state: WorldState, factionId: string): Ledger {
   if (!faction) {
     return {
       gross: 0, upkeep: 0, net: 0, systems: 0, treatyFlow: 0,
-      espionageLoss: 0, agentUpkeep: 0, commitmentFlow: 0, warProfit: 0,
+      espionageLoss: 0, espionageGain: 0, agentUpkeep: 0, commitmentFlow: 0, warProfit: 0,
       territory: 0, routes: 0, tolls: 0, raided: 0, debtService: 0,
     };
   }
@@ -1000,13 +1002,27 @@ export function ledgerFor(state: WorldState, factionId: string): Ledger {
     treatyFlow += treaty.terms.incomePerTurn[factionId] ?? 0;
   }
 
-  // Hostile agents sitting on your systems skim before you ever see it.
+  // Hostile agents sitting on your systems skim before you ever see it — and
+  // what they skim, their owner receives.
+  //
+  // It used to be destroyed rather than moved: the victim's ledger showed the
+  // loss and nobody's showed the gain. Three sources said otherwise and the
+  // code was the odd one out — the schema calls it "credits denied", but
+  // `prompts/resolution.md` offers it as the honest way to *skim* a rival
+  // ("taking credits out of a rival's treasury is rejected outright; skim a
+  // rival with an `income_penalty` agent"), and the mission that places one by
+  // default is called `theft`. Theft moves money.
   let espionageLoss = 0;
+  let espionageGain = 0;
   for (const agent of state.agents ?? []) {
-    if (agent.exposed || agent.ownerFactionId === factionId) continue;
+    if (agent.exposed) continue;
     if (agent.effect.kind !== 'income_penalty') continue;
     const host = getSystem(state, agent.systemId);
-    if (host?.controllerFactionId === factionId) espionageLoss += agent.effect.perTurn;
+    if (host === undefined || host.controllerFactionId === null) continue;
+    // An operative on its owner's own world steals from nobody.
+    if (agent.ownerFactionId === host.controllerFactionId) continue;
+    if (host.controllerFactionId === factionId) espionageLoss += agent.effect.perTurn;
+    else if (agent.ownerFactionId === factionId) espionageGain += agent.effect.perTurn;
   }
 
   const agentUpkeep = liveAgentsOf(state, factionId).length * AGENT_UPKEEP;
@@ -1026,10 +1042,11 @@ export function ledgerFor(state: WorldState, factionId: string): Ledger {
     gross,
     upkeep,
     net:
-      gross - upkeep + treatyFlow - espionageLoss - agentUpkeep + commitmentFlow + warProfit,
+      gross - upkeep + treatyFlow - espionageLoss + espionageGain - agentUpkeep + commitmentFlow + warProfit,
     systems: counted,
     treatyFlow,
     espionageLoss,
+    espionageGain,
     agentUpkeep,
     commitmentFlow,
     warProfit,

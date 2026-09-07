@@ -1,7 +1,17 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { compositions, mixedWins, tournament, trial } from '../src/fleetlab.js';
 import { HULL_CLASSES, hullCost, type ShipStack } from '../src/domain/hulls.js';
 import type { WarEthic } from '../src/domain/state.js';
+
+// These are the two heaviest files in the suite — real work through the real
+// reducer, not slow assertions. The longest case runs 3.8s against vitest's
+// 5s default, a margin CPU contention eats: the suite failed twice in nine runs
+// when it was chained behind three typechecks in one shell command, always
+// these two files and never with an assertion error. Raised rather than
+// shrunk, because the iteration counts are what make the measurements mean
+// anything.
+vi.setConfig({ testTimeout: 30_000 });
+
 
 /**
  * Composition has to be a decision, and the harness that says so has to be
