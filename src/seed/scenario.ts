@@ -366,10 +366,32 @@ function startingTons(s: SeedSystem): number {
  */
 const OPENING_SQUADRON: Record<string, Partial<Record<HullClass, number>>> = {
   meridian: { battleship: 0.55, escort: 0.25, lifter: 0.2 },
-  vigil: { battleship: 0.75, escort: 0.15, lifter: 0.1 },
-  ojjul: { battleship: 0.4, escort: 0.4, lifter: 0.2 },
-  freeworlds: { battleship: 0.5, escort: 0.4, lifter: 0.1 },
-  drajk: { battleship: 0.45, torpedo_boat: 0.4, lifter: 0.15 },
+  vigil: { battleship: 0.64, escort: 0.26, lifter: 0.1 },
+  ojjul: { battleship: 0.44, escort: 0.36, lifter: 0.2 },
+  freeworlds: { battleship: 0.55, escort: 0.42, lifter: 0.03 },
+  drajk: { battleship: 0.6, torpedo_boat: 0.4 },
+};
+
+/**
+ * Hull counts a power opens with regardless of what its shares round to.
+ *
+ * Shares are allocated **per world**, so a share too small to buy a whole hull
+ * anywhere floors to nothing everywhere: three percent of Arkane's best world
+ * is 1.2 tons, and a transport is three. That is right for a doctrine with no
+ * lift arm — *"take no master"* is not an invasion doctrine — but it leaves a
+ * player who has never seen a lifter with no reason to learn the class exists.
+ *
+ * One transport is a **teaching hull**, not a lift arm: it cannot take a
+ * garrison of more than six and it is there to be noticed. The floor is applied
+ * to the faction's largest holding and paid for out of that world's line, so
+ * tonnage does not move.
+ */
+const OPENING_FLOOR: Record<string, Partial<Record<HullClass, number>>> = {
+  // The Combine's screen is what keeps its factors alive — might 9, and a red
+  // line against fighting its own wars. Shares land it on 26 and this is the
+  // two it is short, paid for out of a line it barely uses.
+  ojjul: { escort: 28 },
+  freeworlds: { lifter: 1 },
 };
 
 /**
@@ -478,6 +500,32 @@ export function playableFactions(): { id: string; name: string; color: number; d
 }
 
 /** Build turn-0 state for a chosen faction. Validated before it escapes. */
+/**
+ * Top a faction up to its `OPENING_FLOOR`, paying out of its own battle line so
+ * the world's displacement is unchanged.
+ */
+function applyOpeningFloors(systems: StarSystem[]): void {
+  for (const [who, floors] of Object.entries(OPENING_FLOOR)) {
+    const held = systems.filter((sys) => sys.ships?.[who] !== undefined);
+    if (held.length === 0) continue;
+    const biggest = [...held].sort(
+      (a, b) => (b.ships![who]!.battleship ?? 0) - (a.ships![who]!.battleship ?? 0),
+    )[0]!;
+    for (const [hull, want] of Object.entries(floors) as [HullClass, number][]) {
+      const have = held.reduce((n, sys) => n + (sys.ships![who]![hull] ?? 0), 0);
+      let owed = want - have;
+      while (owed > 0 && (biggest.ships![who]!.battleship ?? 0) > 0) {
+        // One battleship pays for one transport and change; the change is left
+        // on the table rather than conjured into another hull.
+        biggest.ships![who]!.battleship = (biggest.ships![who]!.battleship ?? 0) - 1;
+        if (biggest.ships![who]!.battleship === 0) delete biggest.ships![who]!.battleship;
+        biggest.ships![who]![hull] = (biggest.ships![who]![hull] ?? 0) + 1;
+        owed -= 1;
+      }
+    }
+  }
+}
+
 export function createSeedState(playerFactionId: string): WorldState {
   if (!SEED_FACTIONS.some((f) => f.id === playerFactionId)) {
     throw new Error(
@@ -485,9 +533,11 @@ export function createSeedState(playerFactionId: string): WorldState {
     );
   }
 
+  const systems = buildSystems();
+  applyOpeningFloors(systems);
   const state: WorldState = {
     factions: buildFactions(),
-    systems: buildSystems(),
+    systems,
     pendingOrders: [],
     treaties: [],
     commitments: [],
