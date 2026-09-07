@@ -55,8 +55,14 @@ describe('a battleship is the better fighter on every axis', () => {
     expect(perTon('battleship')).toBeGreaterThan(perTon('torpedo_boat'));
   });
 
-  it('leaves the lift arm worth nothing in orbit', () => {
-    expect(HULL_SPEC.lifter.orbitalWeight).toBe(0);
+  it('leaves the lift arm worth almost nothing in orbit, but not nothing', () => {
+    // Nominal rather than zero. At exactly zero a fleet of nothing but
+    // transports read as "nothing to fight" to every branch of the resolver,
+    // so the phase could not settle itself and needed an exception to
+    // annihilate them where they lay. Something that is there should be fought
+    // and destroyed by the ordinary arithmetic.
+    expect(HULL_SPEC.lifter.orbitalWeight).toBeGreaterThan(0);
+    expect(HULL_SPEC.lifter.orbitalWeight).toBeLessThan(HULL_SPEC.escort.orbitalWeight / 5);
     expect(HULL_SPEC.lifter.carry).toBeGreaterThan(0);
   });
 
@@ -76,8 +82,11 @@ describe('a stack', () => {
     expect(tonsIn(mixed)).toBe(3 * 4 + 2 * 2 + 1 * 3);
   });
 
-  it('weighs only what can fight', () => {
-    expect(orbitalWeightOf(mixed)).toBe(3 * 3 + 2 * 1);
+  it('weighs what can fight, and counts the rest as nominal', () => {
+    const nominal = 1 * HULL_SPEC.lifter.orbitalWeight;
+    expect(orbitalWeightOf(mixed)).toBeCloseTo(3 * 3 + 2 * 1 + nominal, 6);
+    // The fighting hulls are still essentially all of it.
+    expect(orbitalWeightOf(mixed)).toBeLessThan(3 * 3 + 2 * 1 + 1);
     expect(carryOf(mixed)).toBe(6);
   });
 

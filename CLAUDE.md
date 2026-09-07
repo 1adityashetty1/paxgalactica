@@ -477,8 +477,8 @@ had no reason to agree.
 | class | tons | cost | upkeep | orbital weight | carry | loss order | job |
 |---|---|---|---|---|---|---|---|
 | **escort** | 2 | 30 | 2 | 1 | — | 0 | the screen, and the answer to boats |
-| **lifter** | 3 | 45 | 3 | **0** | **6** | 1 | the only way to take ground |
-| **torpedo boat** | 2 | 30 | 2 | 1 | — | 2 | strikes past a screen at the heaviest hulls |
+| **lifter** | 3 | 45 | 3 | **0.1** | **6** | 1 | the only way to take ground |
+| **torpedo boat** | 2 | 30 | 2 | **0.1** | — | 2 | strikes past a screen at the heaviest hulls |
 | **battleship** | 4 | 60 | 4 | 3 | — | 3 | the line; it wins the exchange |
 
 **Tonnage is the single primitive.** Cost, upkeep, insolvency attrition,
@@ -492,6 +492,27 @@ The rates are chosen so a battleship is **exactly what a ship was before classes
 existed**, which is what made the migration a change with no balance argument in
 it: a galaxy of nothing but battleships plays identically, and all 22 saved
 campaigns replay to the fleets and ledgers they had.
+
+**Nothing weighs exactly nothing, and the two nominal values are the reason.**
+A lifter and a torpedo boat carry **0.1** — a thirtieth of a battleship — which
+is not a contribution to the line so much as a way for the exchange to have an
+answer. At exactly zero, a fleet of nothing but transports or nothing but boats
+read as *"nothing to fight"* to every branch of the resolver, so the phase could
+not settle itself and needed an exception to annihilate them where they lay.
+Something that is *there* should be fought and destroyed by the ordinary
+arithmetic. Both exceptions are now unreachable, and the outcomes they produced
+are reached by fighting instead: unarmed squatters are still cleared out, but
+the attacker pays for it — an unscreened convoy spends its own transports
+winning the orbit and lands nothing.
+
+**The value has to stay nominal, and that was swept rather than assumed.**
+`TORPEDO_STRIKE` was tuned on the premise that a boat carries no line weight at
+all: it fires once and is then destroyed for having nothing to hold an orbit
+with. Give it staying power and the salvo simply wins — at 0.5 the best
+attacking fleet in the harness is **96 torpedo boats and nothing else at 98%**,
+and at 1.0 it is 100%. At 0.1 the best attacker is the same four-class fleet it
+was at zero, `battleship:15 escort:30 torpedo_boat:30 lifter:20`, and the margin
+over anything simpler is marginally better (5.8 → 6.1).
 
 **Tonnage is not combat weight, and conflating them is the trap.** Tonnage is
 how much ship there is; `orbitalWeight` is what it does in a fight. A lifter is

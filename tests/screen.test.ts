@@ -148,7 +148,13 @@ describe('a torpedo boat strikes past the screen', () => {
     expect(torpedoStrike([{ torpedo_boat: 10 }])).toBe(
       10 * HULL_SPEC.torpedo_boat.tonnage * TORPEDO_STRIKE,
     );
-    expect(battleshipEquivalents({ torpedo_boat: 40 })).toBe(0);
+    // Nominal line weight, so a mass of boats is not literally nothing — but
+    // 40 of them are worth barely one battleship, which is what keeps the
+    // salvo their whole output. Measured: at 0.5 the best attacking fleet in
+    // the harness becomes 96 boats and nothing else at 98%, and at 1.0 it is
+    // 100%.
+    expect(battleshipEquivalents({ torpedo_boat: 40 })).toBeLessThan(2);
+    expect(battleshipEquivalents({ torpedo_boat: 40 })).toBeGreaterThan(0);
   });
 });
 
@@ -213,7 +219,8 @@ describe('battleship-equivalents', () => {
 
   it('prices a cheap hull at what it actually contributes', () => {
     expect(battleshipEquivalents({ escort: 3 })).toBe(1);
-    expect(battleshipEquivalents({ lifter: 9 })).toBe(0);
+    // Nine transports are worth less than a third of one battleship.
+    expect(battleshipEquivalents({ lifter: 9 })).toBeLessThan(0.5);
   });
 
   it('draws the smallest proportional slice worth a stated strength', () => {
@@ -231,11 +238,17 @@ describe('battleship-equivalents', () => {
 });
 
 describe('the classes keep their shape', () => {
-  it('gives a torpedo boat no weight at all, so it is not a better battleship', () => {
-    // It fires once, before the fleets close, and adds nothing to the line —
-    // so a fleet of nothing but boats delivers one salvo and is then destroyed
-    // where it lies, having no weight with which to hold an orbit.
-    expect(HULL_SPEC.torpedo_boat.orbitalWeight).toBe(0);
+  it('gives a torpedo boat only nominal weight, so it is not a better battleship', () => {
+    // It fires once, before the fleets close, and adds almost nothing to the
+    // line — so a fleet of nothing but boats delivers one salvo and is then
+    // destroyed for having nothing worth calling a fleet left. The weight is
+    // nominal so the exchange can resolve it rather than needing an exception,
+    // and it has to STAY nominal: swept at 0.5 the best attacker in the
+    // harness is 96 boats and nothing else, winning 98%.
+    expect(HULL_SPEC.torpedo_boat.orbitalWeight).toBeGreaterThan(0);
+    expect(HULL_SPEC.torpedo_boat.orbitalWeight).toBeLessThan(
+      HULL_SPEC.escort.orbitalWeight / 5,
+    );
     expect(HULL_SPEC.torpedo_boat.tonnage).toBe(HULL_SPEC.escort.tonnage);
   });
 

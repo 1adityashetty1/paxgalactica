@@ -74,8 +74,23 @@ export interface HullSpec {
   /**
    * What it contributes to an orbital exchange.
    *
-   * Zero means it cannot fight at all: it is carried, it is counted, and it
-   * dies with whatever was protecting it.
+   * Never zero, and the smallest values are the interesting ones. A lifter and
+   * a torpedo boat each carry a **nominal 0.1** — a thirtieth of a battleship —
+   * which is not a contribution to the line so much as a way for the exchange
+   * to have an answer. At exactly zero, a fleet of nothing but transports or
+   * nothing but boats read as "nothing to fight" to every branch of the
+   * resolver, so the phase could not resolve itself and needed a special case
+   * to annihilate them where they lay. Something that is *there* should be
+   * fought and destroyed by the ordinary arithmetic, not swept aside by an
+   * exception.
+   *
+   * **The value has to stay nominal**, and that was measured rather than
+   * assumed. `TORPEDO_STRIKE` was swept on the premise that a boat carries no
+   * line weight at all — it fires once and is then destroyed for having nothing
+   * to hold an orbit with. Give it staying power and the salvo simply wins: at
+   * 0.5 the best attacking fleet in the harness is 96 torpedo boats and nothing
+   * else, at 98%, and at 1.0 it is 100%. At 0.1 the attacker's win rate is
+   * unchanged from zero.
    */
   orbitalWeight: number;
   /** Ground troops it lands. Only the lift arm has any. */
@@ -104,7 +119,7 @@ export const HULL_SPEC: Record<HullClass, HullSpec> = {
   // Useless in orbit and the only way to take ground. High carry is what pays
   // for that uselessness — and being second in the loss order is what it pays
   // in return: unarmed, unarmoured, and dead the moment the screen is gone.
-  lifter: { tonnage: 3, orbitalWeight: 0, carry: LIFTER_CARRY, lossOrder: 1, label: 'lifter' },
+  lifter: { tonnage: 3, orbitalWeight: 0.1, carry: LIFTER_CARRY, lossOrder: 1, label: 'lifter' },
   // Cheap, fragile, and built to kill things far above its weight — the Jeune
   // École boat, and the reason destroyers were originally called "torpedo boat
   // destroyers".
@@ -120,7 +135,7 @@ export const HULL_SPEC: Record<HullClass, HullSpec> = {
   // per-class figures and can never beat the best single class — every
   // reweighting just moves which PURE fleet wins. A mixed optimum needs an
   // effect that is superadditive, and firing first is one.
-  torpedo_boat: { tonnage: 2, orbitalWeight: 0, carry: 0, lossOrder: 2, label: 'torpedo boat' },
+  torpedo_boat: { tonnage: 2, orbitalWeight: 0.1, carry: 0, lossOrder: 2, label: 'torpedo boat' },
   battleship: { tonnage: 4, orbitalWeight: 3, carry: 0, lossOrder: 3, label: 'battleship' },
 };
 

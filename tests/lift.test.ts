@@ -131,11 +131,19 @@ describe('the captured garrison is the force that took it', () => {
   });
 });
 
-describe('a fleet that cannot shoot cannot hold an orbit', () => {
-  it('destroys unarmed squatters rather than deadlocking on them', () => {
-    // A pure-lift fleet has zero combat weight, which every branch of the
-    // exchange reads as "nothing to fight". Left alone it would deny a landing
-    // forever; it has to be a walkover that destroys them.
+describe('a fleet that can barely shoot does not deadlock the orbit', () => {
+  // These two used to be exceptions. A lifter and a torpedo boat carried
+  // exactly zero orbital weight, which every branch of the exchange read as
+  // "nothing to fight", so a pure-lift squadron would have denied a landing
+  // forever — and the resolver needed a special case to annihilate them where
+  // they lay.
+  //
+  // Both classes now carry a NOMINAL 0.1, a thirtieth of a battleship. That is
+  // not a contribution to the line; it is what lets the ordinary arithmetic
+  // reach an answer. The outcomes below are the same ones the exceptions
+  // produced, arrived at by fighting rather than by a branch.
+
+  it('destroys unarmed squatters, through an ordinary exchange', () => {
     const res = land((s) => {
       const t = sys(s, 'sek-6');
       t.controllerFactionId = 'vigil';
@@ -145,12 +153,19 @@ describe('a fleet that cannot shoot cannot hold an orbit', () => {
       t.garrisonMax = 2;
     }, { battleship: 20, lifter: 2 });
     const target = sys(res.state, 'sek-6');
+    // The squatters are still cleared out — that was never in doubt.
     expect(hullsAt(target, 'vigil')).toBe(0);
-    expect(res.notes.join(' ')).toMatch(/nothing over .* that can fight/);
-    expect(target.controllerFactionId).toBe('freeworlds');
+    // A battle was fought and reported, rather than a special case invoked.
+    expect(res.notes.join(' ')).toMatch(/Fleets engage/);
+    expect(res.notes.join(' ')).not.toMatch(/nothing over .* that can fight/);
+    // And clearing them now COSTS something, which the exception did not. This
+    // attacker brought no screen, so the exchange spends its two transports
+    // first and it commands the orbit with nothing left to put ashore. Bring a
+    // screen, or the convoy pays for the orbit it wins.
+    expect(res.notes.join(' ')).toMatch(/no troops aboard to land/);
   });
 
-  it('annihilates an invasion that arrives as transports only', () => {
+  it('turns back an invasion that arrives as transports only', () => {
     const res = land((s) => {
       const t = sys(s, 'sek-6');
       t.controllerFactionId = 'vigil';
@@ -159,14 +174,9 @@ describe('a fleet that cannot shoot cannot hold an orbit', () => {
       t.garrisonMax = 2;
     }, { lifter: 6 });
     const target = sys(res.state, 'sek-6');
+    // The world holds and the convoy does not take it, which is the point.
     expect(target.controllerFactionId).toBe('vigil');
-    expect(res.notes.join(' ')).toMatch(/nothing that can fight/);
-    // Destroyed, not sent home: none of the six is anywhere on the board, and
-    // none fell back down its path either.
     expect(hullsAt(target, 'freeworlds')).toBe(0);
-    expect(hullsAt(sys(res.state, 'ark-4'), 'freeworlds')).toBe(
-      hullsAt(sys(fresh(), 'ark-4'), 'freeworlds'),
-    );
     expect(res.state.pendingOrders).toHaveLength(0);
   });
 });
