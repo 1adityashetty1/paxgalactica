@@ -144,7 +144,7 @@ two different hull classes are untouched.
 > is exactly the world a model then names. Removing unconditionally makes both
 > cases uniform. A test pins the same-system case specifically.
 
-## D. Composition is a decision for an attacker and not a defender — **74, 76, 77**
+## D. Composition is a decision for an attacker and not a defender — **74, 77** (76 retired)
 
 A defender's best fleet is a pure battle line at 80–84%, and every mix is
 monotonically worse — because a defender has one objective and one linear
@@ -161,10 +161,9 @@ Protecting a percentage of your own weight is still measured in weight.
 The stance ships as an expressive choice, honestly documented, not as a fix.
 Two items came out of measuring it:
 
-- **76** — `hold` appears to *dominate* `stand`: more worlds held for the same
-  force preserved. If it holds up, the 2:1 break-off is all cost and no benefit,
-  which is a defect in the mechanic rather than in the stance. Needs a careful
-  re-measure first.
+- **76** — **retired.** Re-measured in isolation: `hold` keeps 4t and holds 6/6,
+  `stand` keeps 30.7t and holds 0/6. Neither dominates; the fleetlab signal was
+  the tonnage dilution the item was filed with a warning about.
 - **77** — the open half of 74, with the two directions worth trying: **leaders**
   (a commander is something to preserve that is not weight — exactly what the
   rule says a screen needs), or **ship types that behave differently over a world
@@ -460,27 +459,32 @@ the roll in advance.
 
 ---
 
-## 76. Breaking off may be all cost and no benefit
+## 76. RETIRED — breaking off may be all cost and no benefit
 
-Found while measuring `set_stance` for item 74, and not yet chased. Across the
-fleetlab sweep a holder ordered to `hold` — never break off — came out with
-**more worlds held and the same force preserved** as one on the default `stand`:
+Filed from a fleetlab sweep where a holder ordered to `hold` came out with more
+worlds held and the same force preserved as one on `stand`, which would have
+made the default strictly worse than a free option. Filed **with** the caveat
+that the sweep sums tonnage *anywhere*, and that caveat was the answer.
+
+Re-measured on the battle where the two stances actually differ — one world, the
+holder's other fleets stripped so the surviving tonnage is this fight's, swept
+over six turns and four force ratios:
 
 ```
-STANCE stand   kept 17.4t  held 84%   battleship:20
-STANCE hold    kept 17.4t  held 92%   battleship:20
+  60 v 10   hold kept  4.0t held 6/6  |  stand kept 30.7t held 0/6
+  40 v 10   hold kept  4.0t held 6/6  |  stand kept 30.7t held 0/6
+  30 v 10   hold kept  4.0t held 6/6  |  stand kept 22.7t held 2/6
+  24 v 10   hold kept  4.0t held 6/6  |  stand kept 18.0t held 3/6
 ```
 
-If that survives scrutiny, the 2:1 break-off is a pure loss: it costs 10–35% of
-tonnage, surrenders the world, and preserves nothing a stand would not have
-preserved. That would make `stand` — the default every campaign has been played
-under — strictly worse than an option the player can now switch on for free.
+**Neither dominates.** `hold` spends the fleet and keeps the world; `stand`
+spends the world and keeps the fleet — which is the trade the stance was built
+to offer, working. The sweep drowned it by counting a holder's other garrisons'
+hulls as force preserved.
 
-Worth measuring properly before acting: the sweep scores tonnage *anywhere*, so
-a fleet destroyed in the exchange and a fleet that retreated to a refuge may not
-be being counted the way the comparison assumes.
-
----
+`withdraw` remains the dominated setting of the three: breaking off at 1:1 only
+adds retreats from battles `stand` would have survived, each costing 10–35%.
+That is recorded on **74** and is a threshold to tune, not a decision to make.
 
 ## 77. Make a defending fleet's composition a decision — leaders, or the garrison
 
