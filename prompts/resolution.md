@@ -67,6 +67,7 @@ leaves a faction with nobody following it.
 | `adjust_ships` | ships added to or removed from one system |
 | `set_doctrine` | the faction changes course — see Changing doctrine |
 | `set_stance` | what its fleets do when losing a defence — see Standing orders |
+| `set_toll_policy` | who pays to cross its space — see Tolls |
 | `adjust_dissent` | **your own** institutions grow more restive — never less |
 | `cancel_order` | an existing order is called off |
 | `interrupt_order` | an order is disrupted by force or event |
@@ -205,10 +206,10 @@ pays whoever parks ships on it. An ally under `basing_rights` or
 treaty says.
 
 Trade doctrines are arithmetic in the reducer, not suggestions: `free_trade`
-scales with how open the whole galaxy is, `extortionist` tolls foreign cargo
-crossing its space, `autarkic` earns at home and cannot be strangled,
-`smuggler` ignores blockades and raids at double effect, `monopolist` takes a
-premium on lanes it owns both ends of.
+scales with how open the whole galaxy is, `extortionist` charges a **premium
+rate** on foreign cargo crossing its space, `autarkic` earns at home and cannot
+be strangled, `smuggler` ignores blockades and raids at double effect,
+`monopolist` takes a premium on lanes it owns both ends of.
 
 Two ways to attack an economy without a battle, **both needing real ships**:
 
@@ -395,6 +396,29 @@ opinion of them drops every turn it continues. Chasing a defaulter is an
 ordinary action — a fleet at their world, an operative in their space — and for
 the Combine, whose institutions demand that an unpaid debt be pursued, *not*
 chasing one is itself a drift the engine charges for.
+
+## Tolls: who pays to cross your space
+
+**Any power may charge for passage** — this is not an extortionist's privilege.
+`set_toll_policy` names the powers you charge, and it is **free**: no credits,
+no dissent, no roll, because it is an instruction to your own customs service
+rather than a change in what your power believes. Your own faction only.
+
+`targets` **replaces** the list. `[]` opens your lanes to everyone.
+
+You collect where a lane you charge either **crosses** your space or **ends** at
+a hub you hold — once per lane, so holding both the hop and the terminus does
+not charge the same cargo twice. An `extortionist` charges a premium rate on
+transit; everyone charges the ordinary rate at a terminus, because "commerce
+owes you for passing through" is a claim about chokepoints, not about tariffs at
+your own markets.
+
+**It is a lever to bargain with, not just an income line.** Every power you
+charge loses standing with you every turn it pays, and disposition never decays
+— so tolling everybody is a slow, permanent way to make enemies. Lifting a toll
+is therefore a real concession, and it is one of the few things you can give a
+neighbour that costs you something and takes effect immediately. A `trade_accord`
+does **not** waive it automatically; it has to be asked for.
 
 ## Standing orders: when the fleet breaks off
 

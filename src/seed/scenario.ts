@@ -487,6 +487,16 @@ function buildFactions(): Faction[] {
     compulsions: f.compulsions.map((c) => (typeof c === 'string' ? { text: c } : { ...c })),
     dissent: 0,
     buildBias: [...f.buildBias],
+    // The Combine opens charging everyone, and everyone else opens charging
+    // nobody. That is not a balance choice so much as a compatibility one: the
+    // extortionist was the only power that could toll at all, so seeding it
+    // tolling all four at the unchanged `TOLL_RATE` makes the opening galaxy
+    // byte-identical to the one before tolling became a policy. The other four
+    // now HAVE the lever; they have simply not pulled it.
+    tollTargets:
+      f.tradeEthic === 'extortionist'
+        ? SEED_FACTIONS.filter((o) => o.id !== f.id).map((o) => o.id)
+        : [],
   }));
 }
 

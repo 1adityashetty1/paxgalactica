@@ -64,6 +64,14 @@ export function serializeFactions(state: WorldState, viewerId: string): string {
       `  stats: ${serializeStats(f.stats)}`,
       `  war: ${f.warEthic} — ${WAR_ETHIC_MEANING[f.warEthic]}`,
       `  trade: ${f.tradeEthic} — ${TRADE_ETHIC_MEANING[f.tradeEthic]}`,
+      // Public by design: a tariff is announced, not discovered. It is also the
+      // single most negotiable thing on this sheet, so a power that cannot read
+      // who charges it cannot come and argue about it.
+      `  tolls: ${
+        f.tollTargets.length === 0
+          ? 'charges nobody for passage'
+          : `charges ${f.tollTargets.map((id) => getFaction(state, id)?.name ?? id).join(', ')} for passage`
+      }`,
       `  doctrine: ${f.doctrine}`,
     ].join('\n');
   });

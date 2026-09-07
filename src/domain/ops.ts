@@ -108,6 +108,26 @@ export const SetStanceOp = z.object({
   stance: z.enum(['hold', 'stand', 'withdraw']),
 });
 
+/**
+ * Decide who pays to cross your space.
+ *
+ * A standing policy about your own borders, so it is free and takes no roll —
+ * the same reasoning as `set_stance`: this is an instruction to your own
+ * customs service, not a change in what your power believes. Your own faction
+ * only.
+ *
+ * `targets` REPLACES the list rather than adding to it, which is what lets an
+ * accord say "and the Sennex lane opens to Meridian" as one op instead of a
+ * diff the model has to compute correctly.
+ */
+export const SetTollPolicyOp = z.object({
+  op: z.literal('set_toll_policy'),
+  factionId: z.string().min(1),
+  /** Everyone charged for passage. Empty means the lanes are open to all. */
+  targets: z.array(z.string().min(1)).max(8),
+  reason: z.string().default(''),
+});
+
 export const IssueOrderOp = z.object({
   op: z.literal('issue_order'),
   factionId: z.string().min(1),
@@ -461,6 +481,13 @@ export const EXTRACTION_ALLOWED = new Set<string>([
   'adjust_disposition',
   // A payment agreed across the table.
   'adjust_credits',
+  // Lifting a toll is a concession, and a concession is the thing an accord is
+  // FOR — "I'll open the Sennex lane to your hulls" produced nothing before,
+  // which is the exact class of dead promise this pass keeps finding. The
+  // reducer refuses an extraction-sourced policy that ADDS a target: imposing a
+  // tariff needs nobody's agreement and belongs on the declared path, where the
+  // action economy prices it.
+  'set_toll_policy',
   // The record of what was said.
   'log_narrative',
   'spawn_event',
@@ -494,6 +521,7 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   AdjustCreditsOp,
   SetDoctrineOp,
   SetStanceOp,
+  SetTollPolicyOp,
   IssueOrderOp,
   CancelOrderOp,
   InterruptOrderOp,
@@ -550,6 +578,7 @@ export const OpSchema = z.discriminatedUnion('op', [
   AdjustCreditsOp,
   SetDoctrineOp,
   SetStanceOp,
+  SetTollPolicyOp,
   IssueOrderOp,
   CancelOrderOp,
   InterruptOrderOp,

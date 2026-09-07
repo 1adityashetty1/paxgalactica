@@ -853,7 +853,7 @@ lives here instead:
 | ethic | mechanic |
 |---|---|
 | `free_trade` | scales with **galaxy-wide openness** — profits from everyone's peace, not just its own |
-| `extortionist` | a **toll** on every foreign cargo crossing its space |
+| `extortionist` | a **premium rate** on the toll it charges for crossing its space — see "Tolls are a policy" |
 | `autarkic` | keeps only `AUTARKIC_ROUTE_FRACTION` of route income, and cannot be strangled |
 | `smuggler` | ignores blockades, raids at double effect, counts double at lawless junctions |
 | `monopolist` | `MONOPOLY_BONUS` premium on lanes it owns **both ends** of, paid on top of the conserved split |
@@ -896,6 +896,68 @@ because the ethic finally had an owner:
    lane and the discrete question (does Meridian keep tor-1) swamps it. 1.25 is
    chosen over the 1.3 that also passes for margin: a tuning value sitting on a
    cliff edge is one unrelated change away from tipping back.
+
+### Tolls are a policy, not an ethic
+
+Tolling was a property of `extortionist` and nothing else, so one faction in
+five could charge for passage and the other four could not, whatever junction
+they held. Two things were wrong with that, and a playtest found the second one
+the hard way.
+
+A junction is a fact about the map, and charging commerce to cross it is what
+any power holding one would do — so four powers were denied the most obvious
+lever they had. Worse, a toll share became a **negotiable instrument whose value
+nobody at the table could see**: an adversarial run sold the Combine 50% of a
+*smuggler's* tolls — a flow structurally guaranteed to be zero forever — and
+neither the counterparty's persona nor the arbiter could tell the consideration
+was nothing.
+
+`Faction.tollTargets` names who you charge, set by `set_toll_policy`, free and
+actor's-own-faction-only for the same reason `set_stance` is: it is an
+instruction to your own customs service, not a change in what the power
+believes.
+
+**A list rather than a flag, because that is what makes it leverage.** Waiving a
+toll for one power while keeping it on their rival is a thing to offer across a
+table, and lifting one is a concession that costs something and lands at once —
+which is why `set_toll_policy` is in `EXTRACTION_ALLOWED` but the reducer
+refuses an accord that **adds** a target. Opening your lanes needs the room;
+closing them needs nobody, so imposing a tariff stays on the declared path where
+the action economy prices it. A `trade_accord` deliberately does **not** waive
+tolls automatically: folding it into an existing type would hand the chip over
+for free.
+
+Three rules decide what is collected:
+
+- **Where.** A lane you charge either **crosses** your space or **ends** at a
+  hub you hold. Transit-only was the first version, and it made the mechanic
+  unreachable for the power that most needs it: on the seed the Confederacy
+  holds **zero** interior hops against the Combine's twenty, so no policy it
+  could ever set would earn it a credit.
+- **Once per lane per collector.** Holding both the hop and the terminus does
+  not charge the same cargo twice on the same run. This is also what stops the
+  terminus tariff being a straight buff to whoever is already ahead — without
+  it the Combine collects on both halves of most lanes it touches, measured at
+  884 tolls over 30 harness turns against 567 with the rule, and a sixth system
+  it does not otherwise take.
+- **At what rate.** `TOLL_RATE` (0.25) for an extortionist's **transit**;
+  `BASE_TOLL_RATE` (0.12) for everyone else, and for **every** terminus tariff
+  including the extortionist's. *"Commerce owes you for passing through"* is a
+  claim about chokepoints, not about tariffs at your own markets, so that is
+  where the doctrine keeps its premium.
+
+**`TOLL_RESENTMENT` had to be fixed to make any of this safe.** It bled
+disposition from every faction with *any* route income toward every faction
+collecting a toll — near enough while a single extortionist was the only power
+that could charge, and badly wrong the moment five powers can: twenty pairs
+bleeding every turn, against a disposition that has no decay, so the galaxy
+floors out and never recovers. `RouteEarnings.tollsPaid` is the mirror of
+`tolls`, and a power now resents whoever charged **it**.
+
+The seed gives the Combine all four targets and everyone else none, so the
+opening galaxy is the one every campaign to date was played in — the balance
+harness reads 3/6/5/4/4 and a 58/42 income mix, both unchanged. The other four
+powers now *have* the lever; they have simply not pulled it.
 
 ### Interdiction: attacking an economy without a battle
 
@@ -2169,6 +2231,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `adjust_ships` | `hull` picks the class — which to build, and which of *your own* to move. Taking another power's is suborning, and spends their loss order |
 | `adjust_credits` | floors at 0 |
 | `set_doctrine` | 1–240 chars; may move `warEthic`/`tradeEthic` and retire lines, charged in dissent; actor's own faction only |
+| `set_toll_policy` | who pays to cross your space; free, actor's own faction only. An accord may only **lift** a toll — adding one is `declared_only` |
 | `issue_order` | see Duration below; optional `onComplete` payload, paid at issue. `force` is a count (drawn proportionally) or a named composition |
 | `cancel_order` | returns the unspent part of a works payload |
 | `interrupt_order` | rejected when the order is not interruptible |

@@ -257,6 +257,34 @@ export const FactionSchema = z.object({
    * under: break off only when outmatched two to one.
    */
   stance: z.enum(['hold', 'stand', 'withdraw']).default('stand'),
+  /**
+   * Which powers this one charges for passage through its space.
+   *
+   * Tolling used to be a property of the `extortionist` ethic and nothing else,
+   * so one faction in five could do it and the other four could not, whatever
+   * junction they held. Two things were wrong with that.
+   *
+   * A junction is a fact about the map, and charging for passage is what
+   * anybody holding one would do — so four powers were denied the most obvious
+   * lever they had. And a toll share became a **negotiable instrument whose
+   * value nobody at the table could see**: a playtest sold the Combine 50% of
+   * a *smuggler's* tolls — a flow structurally guaranteed to be zero forever —
+   * and neither the counterparty's persona nor the arbiter could tell the
+   * consideration was nothing.
+   *
+   * It is a **list rather than a flag** because that is what makes it leverage
+   * instead of an income line. Waiving a toll for one power and keeping it on
+   * their rival is a thing to offer across a table, and it is the shape a
+   * treaty term can take. `TOLL_RESENTMENT` then lands only on the powers
+   * actually charged, which is what stops a galaxy where everyone tolls from
+   * becoming a galaxy where everyone hates everyone — disposition has no decay,
+   * so an ambient bleed would never recover.
+   *
+   * Empty by default: a power charges nobody until it decides to. The seed
+   * gives the Combine all four, so its behaviour is exactly what it has always
+   * been and the balance harness reads unchanged.
+   */
+  tollTargets: z.array(z.string().min(1)).default([]),
 });
 export type Faction = z.infer<typeof FactionSchema>;
 

@@ -15,7 +15,14 @@ is purely a **record** of the conversation:
 `form_treaty` · `break_treaty` · `establish_debt` · `assign_debt` ·
 `restructure_debt` · `establish_commitment` · `dissolve_commitment` ·
 `forgive_debt` · `settle_debt` · `adjust_disposition` · `adjust_credits` ·
-`log_narrative` · `spawn_event`
+`log_narrative` · `spawn_event` · `set_toll_policy`
+
+**`set_toll_policy` may only OPEN your lanes here, never close them.** Lifting a
+toll is a concession, and it is one of the few real ones you can make that takes
+effect at once — *"the Sennex lane opens to Meridian hulls"*. Imposing a toll
+needs nobody's agreement, so the reducer refuses an accord that adds a target;
+that is a declared action. `targets` replaces the whole list, so emit the list
+the acting power is left charging after the deal, not the names it dropped.
 
 Everything else is **unilateral work the player pays an action for**, and the
 reducer refuses it from here — orders of every kind, building hulls, placing

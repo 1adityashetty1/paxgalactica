@@ -48,7 +48,7 @@ import {
   type VoidCondition,
 } from './diplomacy.js';
 import { jumpsBetween, neighboursOf, positionAlongPath, shortestPath } from './graph.js';
-import { routeEarnings, tradeRoutes } from './trade.js';
+import { routeEarnings, tollsOn, tradeRoutes } from './trade.js';
 import {
   CREDITS_PER_TON,
   HULL_CLASSES,
@@ -1279,6 +1279,61 @@ export function applyOps(
           notes.push(note);
           logEvent(state, 'system', note, f.id);
         }
+        break;
+      }
+
+      case 'set_toll_policy': {
+        const f = state.factions.find((x) => x.id === op.factionId);
+        if (!f) {
+          reject(raw, 'unknown_faction', `No faction "${op.factionId}".`);
+          break;
+        }
+        // Your own customs service only, the same actor-shaped guard
+        // `set_stance` and `set_doctrine` carry. Opening a rival's borders for
+        // them would be a free strike at their treasury.
+        if (actor !== undefined && op.factionId !== actor) {
+          reject(
+            raw,
+            'illegal_value',
+            `${actor} does not set ${op.factionId}'s tariffs. Charging or waiving passage through their space is theirs to decide — negotiate it (/talk) if you want it changed.`,
+          );
+          break;
+        }
+        const unknown = op.targets.find((id) => !factionExists(id));
+        if (unknown) {
+          reject(raw, 'unknown_faction', `No faction "${unknown}".`);
+          break;
+        }
+        // An accord may LIFT a toll and may not impose one. Lifting is a
+        // concession, and a concession is what a transcript is evidence of;
+        // imposing a tariff needs nobody's agreement, so it is unilateral work
+        // the action economy already prices at declaration. Without this,
+        // opening a channel would be a free way to tax a neighbour — the same
+        // hole `declared_only` closes for a fleet movement.
+        if (source === 'extraction') {
+          const added = op.targets.filter((id) => !f.tollTargets.includes(id));
+          if (added.length > 0) {
+            reject(
+              raw,
+              'declared_only',
+              `An accord can open your lanes, not close them. Charging ${added.join(', ')} for passage is yours to declare on your own turn.`,
+            );
+            break;
+          }
+        }
+        // Nobody charges themselves for crossing their own space.
+        const targets = [...new Set(op.targets.filter((id) => id !== op.factionId))].sort();
+        const was = [...f.tollTargets].sort();
+        if (was.length === targets.length && was.every((id, i) => id === targets[i])) break;
+        f.tollTargets = targets;
+        const nameList = (ids: string[]): string =>
+          ids.length === 0 ? 'nobody' : ids.map((id) => nameFor(state, id)).join(', ');
+        const note = `${f.name} charges ${nameList(targets)} for passage through its space (was ${nameList(was)}). ${op.reason}`.trim();
+        notes.push(note);
+        // Public: a tariff is announced, not discovered. A neighbour that finds
+        // out only from its own ledger cannot come and argue about it, and
+        // arguing about it is the whole point of the policy being a choice.
+        logEvent(state, 'diplomacy', note, op.factionId);
         break;
       }
 
@@ -3297,17 +3352,28 @@ export function tickTurn(input: WorldState): TickResult {
   /* --- Tolls breed resentment ------------------------------------------ */
   // Levied in `trade.ts` as arithmetic; resented here, because a toll the
   // payers never notice is a toll with no politics attached to it.
+  //
+  // Charged to the powers who actually PAID, which it was not before. The old
+  // loop bled every faction with any route income at all toward every faction
+  // collecting a toll — near enough while one extortionist was the only power
+  // that could charge, and badly wrong the moment tolling became a policy any
+  // power can adopt: five tollers would have had all twenty pairs bleeding
+  // every turn, and disposition has no decay, so the galaxy would floor out and
+  // never recover. A power resents whoever charged it, and nobody else.
   {
     const earnings = routeEarnings(state);
-    for (const [collector, amount] of Object.entries(earnings.tolls)) {
-      if (amount <= 0) continue;
-      for (const payer of state.factions) {
-        if (payer.id === collector) continue;
-        // Only the powers actually shipping through them mind.
-        if ((ledgerFor(state, payer.id).routes ?? 0) <= 0) continue;
-        payer.disposition[collector] = Math.max(
+    for (const payer of state.factions) {
+      if ((earnings.tollsPaid[payer.id] ?? 0) <= 0) continue;
+      for (const collector of state.factions) {
+        if (collector.id === payer.id) continue;
+        if ((earnings.tolls[collector.id] ?? 0) <= 0) continue;
+        // Did THIS collector charge THIS payer? `tollsPaid` says a toll was
+        // paid and `tolls` says one was collected; only the policy says by
+        // whom to whom.
+        if (!tollsOn(state, collector.id, payer.id)) continue;
+        payer.disposition[collector.id] = Math.max(
           -100,
-          (payer.disposition[collector] ?? 0) - TOLL_RESENTMENT,
+          (payer.disposition[collector.id] ?? 0) - TOLL_RESENTMENT,
         );
       }
     }

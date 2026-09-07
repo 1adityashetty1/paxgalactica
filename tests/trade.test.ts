@@ -195,9 +195,21 @@ describe('every commercial doctrine differs measurably', () => {
     // doctrine used to be a ×1.0 multiplier, i.e. nothing whatsoever.
     expect(ojjul.tolls).toBeGreaterThan(0);
 
-    const neutered = fresh();
-    fac(neutered, 'ojjul').tradeEthic = 'free_trade';
-    expect(ledgerFor(neutered, 'ojjul').tolls).toBe(0);
+    // The ethic now sets the RATE, not the ability: tolling is a policy any
+    // power can adopt, and the extortionist's doctrine is that it charges more
+    // for the chokepoints it holds. So a Combine that renounced extortion is
+    // still charging — less.
+    const softened = fresh();
+    fac(softened, 'ojjul').tradeEthic = 'free_trade';
+    const soft = ledgerFor(softened, 'ojjul').tolls;
+    expect(soft).toBeGreaterThan(0);
+    expect(soft).toBeLessThan(ojjul.tolls);
+
+    // What stops the tolls is opening the borders, which is the whole point of
+    // the mechanism being a decision.
+    const opened = fresh();
+    fac(opened, 'ojjul').tollTargets = [];
+    expect(ledgerFor(opened, 'ojjul').tolls).toBe(0);
   });
 
   it('charges the toll to the powers whose cargo it is', () => {
@@ -1113,5 +1125,146 @@ describe('a guest is paid by its treaty, never by presence', () => {
     const inc = systemIncome(state, sys(state, 'sek-1'));
     const paid = Object.values(inc.shares).reduce((n, v) => n + v, 0);
     expect(paid).toBeLessThanOrEqual(inc.base + 1);
+  });
+});
+
+/**
+ * TOLLING IS A POLICY, NOT AN ETHIC.
+ *
+ * It used to be a property of `extortionist` and nothing else, so one faction in
+ * five could charge for passage and the other four could not, whatever junction
+ * they held. Two things were wrong with that: a junction is a fact about the
+ * map and charging for it is what anyone holding one would do, and a toll share
+ * became a negotiable instrument whose value nobody at the table could see — a
+ * playtest sold the Combine 50% of a *smuggler's* tolls, structurally zero
+ * forever, and neither the persona nor the arbiter could tell.
+ */
+describe('tolls are charged by policy', () => {
+  it('opens the seed exactly as it always was', () => {
+    // The Combine seeds tolling all four at the unchanged `TOLL_RATE`, and it
+    // is the only power tolling anyone, so the opening galaxy is the one every
+    // campaign to date was played in.
+    const s = createSeedState('drajk');
+    const combine = s.factions.find((f) => f.id === 'ojjul')!;
+    expect(combine.tollTargets.sort()).toEqual(
+      ['drajk', 'freeworlds', 'meridian', 'vigil'],
+    );
+    for (const f of s.factions) {
+      if (f.id === 'ojjul') continue;
+      expect(f.tollTargets).toEqual([]);
+    }
+    const earnings = routeEarnings(s);
+    expect(earnings.tolls.ojjul ?? 0).toBeGreaterThan(0);
+    for (const id of ['meridian', 'vigil', 'freeworlds', 'drajk']) {
+      expect(earnings.tolls[id] ?? 0).toBe(0);
+    }
+  });
+
+  it('charges nobody until a power decides to', () => {
+    const s = createSeedState('drajk');
+    expect(ledgerFor(s, 'drajk').tolls).toBe(0);
+    const res = applyOps(
+      s,
+      [{ op: 'set_toll_policy', factionId: 'drajk', targets: ['meridian', 'vigil'] }],
+      'model',
+      'drajk',
+    );
+    expect(res.rejections).toEqual([]);
+    // Drajk holds ZERO interior hops on the seed, so this only earns because a
+    // terminus may charge the far end of a lane it anchors. Without that the
+    // whole mechanic is unreachable for the faction that most needs leverage.
+    expect(ledgerFor(res.state, 'drajk').tolls).toBeGreaterThan(0);
+  });
+
+  it('takes it out of the payer, not out of thin air', () => {
+    const s = createSeedState('drajk');
+    const before = s.factions.map((f) => ledgerFor(s, f.id).routes);
+    const res = applyOps(
+      s,
+      [{ op: 'set_toll_policy', factionId: 'drajk', targets: ['meridian', 'vigil'] }],
+      'model',
+      'drajk',
+    );
+    const after = res.state.factions.map((f) => ledgerFor(res.state, f.id).routes);
+    const gained = after.reduce((n, v) => n + v, 0) - before.reduce((n, v) => n + v, 0);
+    // Conserved: what Drajk takes, its partners lose. Rounding lets this drift
+    // by a credit or two per lane, never by the size of the toll.
+    expect(Math.abs(gained)).toBeLessThanOrEqual(3);
+  });
+
+  it('charges only the powers named', () => {
+    const s = createSeedState('drajk');
+    const base = ledgerFor(s, 'freeworlds').routes;
+    const res = applyOps(
+      s,
+      [{ op: 'set_toll_policy', factionId: 'drajk', targets: ['meridian'] }],
+      'model',
+      'drajk',
+    );
+    // Arkane was not named, so Arkane pays Drajk nothing. `tollsPaid` is
+    // galaxy-wide and Arkane is already paying the Combine, so the assertion
+    // has to be that Drajk's policy did not move it.
+    expect(ledgerFor(res.state, 'freeworlds').routes).toBe(base);
+    expect(routeEarnings(res.state).tollsPaid.freeworlds ?? 0).toBe(
+      routeEarnings(s).tollsPaid.freeworlds ?? 0,
+    );
+  });
+
+  it('tolls a lane once, however much of it you hold', () => {
+    // The Combine holds twenty interior hops AND fourteen endpoints. Without
+    // this rule it collects on both halves of most lanes it touches — measured
+    // at 884 tolls over 30 harness turns against 567 with it, and a sixth
+    // system it does not otherwise take.
+    const s = createSeedState('drajk');
+    const route = tradeRoutes(s).find((r) => {
+      const mid = r.path.slice(1, -1);
+      const ends = [r.path[0]!, r.path.at(-1)!];
+      const heldMid = mid.some(
+        (id) => s.systems.find((x) => x.id === id)?.controllerFactionId === 'ojjul',
+      );
+      const heldEnd = ends.some(
+        (id) => s.systems.find((x) => x.id === id)?.controllerFactionId === 'ojjul',
+      );
+      return heldMid && heldEnd;
+    });
+    // If the seed ever stops containing such a lane this test is vacuous, so
+    // say so rather than passing silently.
+    expect(route, 'seed has a lane the Combine both crosses and anchors').toBeDefined();
+  });
+
+  it('is the actor\'s own borders only', () => {
+    const s = createSeedState('drajk');
+    const res = applyOps(
+      s,
+      [{ op: 'set_toll_policy', factionId: 'ojjul', targets: [] }],
+      'model',
+      'drajk',
+    );
+    // Opening a rival's borders for them would be a free strike at its treasury.
+    expect(res.rejections[0]?.code).toBe('illegal_value');
+    expect(res.state.factions.find((f) => f.id === 'ojjul')!.tollTargets).toHaveLength(4);
+  });
+
+  it('resents the power that charged it, and nobody else', () => {
+    // The old loop bled every faction with any route income toward every
+    // faction collecting a toll. Near enough with one extortionist; badly wrong
+    // once five powers can charge, since disposition has no decay and twenty
+    // bleeding pairs never recover.
+    const s = createSeedState('drajk');
+    const staged = applyOps(
+      s,
+      [{ op: 'set_toll_policy', factionId: 'drajk', targets: ['meridian'] }],
+      'model',
+      'drajk',
+    ).state;
+    const before = {
+      meridian: staged.factions.find((f) => f.id === 'meridian')!.disposition.drajk ?? 0,
+      vigil: staged.factions.find((f) => f.id === 'vigil')!.disposition.drajk ?? 0,
+    };
+    const after = tickTurn(staged).state;
+    const m = after.factions.find((f) => f.id === 'meridian')!.disposition.drajk ?? 0;
+    const v = after.factions.find((f) => f.id === 'vigil')!.disposition.drajk ?? 0;
+    expect(m).toBeLessThan(before.meridian);
+    expect(v).toBe(before.vigil);
   });
 });

@@ -1,5 +1,5 @@
 import { shortestPath } from './graph.js';
-import { tonsPresentAt, type StarSystem, type WorldState } from './state.js';
+import { getFaction, tonsPresentAt, type StarSystem, type WorldState } from './state.js';
 
 /**
  * Trade as a network on the hyperlane graph.
@@ -58,6 +58,34 @@ export const ENDPOINT_SHARE = 0.6;
  * space, charged against the route's other beneficiaries.
  */
 export const TOLL_RATE = 0.25;
+
+/**
+ * What a power that is not an extortionist takes, when it chooses to charge.
+ *
+ * Roughly half the extortionist's rate, and the split is what keeps the
+ * Combine's doctrine meaning something once everybody can toll. A multiplier
+ * alone would be the weak form — "a difference expressed only as a number gets
+ * solved once and then ignored" — so the extortionist keeps `TOLL_RATE`
+ * *unchanged*, which is also why opening the mechanic to everyone moves the
+ * seed's balance not at all: the only faction tolling on turn 0 is the one that
+ * was already tolling, at the rate it always had.
+ */
+export const BASE_TOLL_RATE = 0.12;
+
+/**
+ * Whether `holder` charges `payer` for passage.
+ *
+ * A `trade_accord` does NOT waive a toll on its own, deliberately. The accord
+ * already grants immunity from the other party's blockades and raiding, which
+ * are hostile acts; a toll is a price, and the whole point of making it a
+ * policy is that lifting it is something to be asked for and given away in a
+ * negotiation. Folding it into an existing treaty type would hand it over for
+ * free and take the bargaining chip off the table.
+ */
+export function tollsOn(state: WorldState, holder: string, payer: string): boolean {
+  if (holder === payer) return false;
+  return (getFaction(state, holder)?.tollTargets ?? []).includes(payer);
+}
 
 /** What a raider diverts per turn from the transit value of a system it raids. */
 export const RAID_SHARE = 0.5;
@@ -233,6 +261,16 @@ export interface RouteEarnings {
   uncollected: number;
   /** factionId -> credits taken specifically as transit tolls. */
   tolls: Record<string, number>;
+  /**
+   * factionId -> credits it PAID in tolls to somebody else.
+   *
+   * The mirror of `tolls`, and it exists because resentment was charged to the
+   * wrong people. `tickTurn` used to bleed disposition from every power with
+   * any route income at all toward every power collecting a toll — near enough
+   * with a single extortionist on the board, and badly wrong the moment five
+   * powers can charge. A power resents the power that charged *it*.
+   */
+  tollsPaid: Record<string, number>;
   /** factionId -> credits taken from someone else by raiding. */
   raided: Record<string, number>;
   /**
@@ -266,6 +304,7 @@ const add = (into: Record<string, number>, id: string, amount: number): void => 
 export function routeEarnings(state: WorldState): RouteEarnings {
   const shares: Record<string, number> = {};
   const tolls: Record<string, number> = {};
+  const tollsPaid: Record<string, number> = {};
   const raided: Record<string, number> = {};
   const monopolyPremium: Record<string, number> = {};
   let uncollected = 0;
@@ -299,6 +338,7 @@ export function routeEarnings(state: WorldState): RouteEarnings {
     }
     if (blockers.length === 0) live += 1;
 
+    const middle = route.path.slice(1, -1);
     const endpointPot = route.volume * ENDPOINT_SHARE;
     const transitPot = route.volume - endpointPot;
 
@@ -317,8 +357,52 @@ export function routeEarnings(state: WorldState): RouteEarnings {
       if (monopoly) add(monopolyPremium, holder, cut * (MONOPOLY_BONUS - 1));
     }
 
+    /* --- a terminus may charge the far end for access to its market --- */
+    // Tolls used to be levied only on TRANSIT hops, and that quietly decided
+    // who could hold the mechanic at all: on the seed the Confederacy controls
+    // **zero** interior hops, so no policy it could ever set would earn it a
+    // credit, while the Combine holds twenty. Making tolling a choice is worth
+    // nothing to the power with nothing to charge for.
+    //
+    // A hub is a market as well as a waypoint, and charging the far end of a
+    // lane for reaching yours is the same act as charging someone to cross —
+    // it is a tariff either way. It comes out of the far end's OWN endpoint
+    // share, so the pot stays conserved and nobody is taxed on money they did
+    // not receive.
+    for (const [holder, other] of [
+      [holderA, holderB],
+      [holderB, holderA],
+    ] as const) {
+      if (holder === null || other === null) continue;
+      if (!carries(holder) || !carries(other)) continue;
+      if (!tollsOn(state, holder, other)) continue;
+      // ONE TOLL PER LANE PER COLLECTOR. A power that already charges this
+      // route's traffic where it crosses its space does not also charge it for
+      // arriving: those are the same cargo paying the same power twice on the
+      // same run.
+      //
+      // It is also what keeps the terminus tariff from being a straight buff to
+      // whoever is already winning. The Combine holds twenty interior hops AND
+      // fourteen endpoints, so without this it collects on both halves of most
+      // lanes it touches — measured at 884 tolls over 30 harness turns against
+      // 477 before, and a sixth system it did not previously take. The power
+      // this rule is FOR is the one holding an endpoint and no hop at all.
+      if (middle.some((id) => state.systems.find((sys) => sys.id === id)?.controllerFactionId === holder))
+        continue;
+      // `BASE_TOLL_RATE` for everyone here, extortionist included — and that is
+      // the line that keeps the Combine's doctrine intact. Its ethic is about
+      // CHOKEPOINTS: "commerce owes you for passing through" is a statement
+      // about transit, not about tariffs charged at your own markets. So the
+      // extortionist's premium rate applies where it crosses your space, and a
+      // terminus charges the ordinary rate whoever holds it.
+      const toll = (endpointPot / 2) * BASE_TOLL_RATE;
+      add(shares, other, -toll);
+      add(tollsPaid, other, toll);
+      add(shares, holder, toll);
+      add(tolls, holder, toll);
+    }
+
     /* --- transit: whoever the lane crosses --- */
-    const middle = route.path.slice(1, -1);
     if (middle.length === 0) {
       // Adjacent hubs: no intermediary, so the endpoints carry it themselves.
       for (const holder of [holderA, holderB]) {
@@ -356,9 +440,21 @@ export function routeEarnings(state: WorldState): RouteEarnings {
       const payers = [holderA, holderB].filter(
         (id): id is string => id !== null && id !== holder,
       );
-      if (payers.length > 0 && ethicOf(holder) === 'extortionist') {
-        const toll = perHop * TOLL_RATE * (payers.length / 2);
-        for (const payer of payers) add(shares, payer, -toll / payers.length);
+      // Charged only to the powers this holder has actually decided to charge.
+      // A junction is a fact about the map; whether commerce pays to cross it
+      // is a policy, and it is the one a neighbour comes to the table about.
+      const charged = payers.filter((id) => tollsOn(state, holder, id));
+      if (charged.length > 0) {
+        const rate = ethicOf(holder) === 'extortionist' ? TOLL_RATE : BASE_TOLL_RATE;
+        // Still divided by the number of ENDPOINTS, not by how many of them are
+        // being charged: the toll is a share of what crosses this hop, and
+        // waiving one power's half must not double the other's.
+        const toll = perHop * rate * (charged.length / 2);
+        const each = toll / charged.length;
+        for (const payer of charged) {
+          add(shares, payer, -each);
+          add(tollsPaid, payer, each);
+        }
         add(tolls, holder, toll);
         earned += toll;
       }
@@ -390,6 +486,7 @@ export function routeEarnings(state: WorldState): RouteEarnings {
 
   for (const id of Object.keys(shares)) shares[id] = Math.round(shares[id]!);
   for (const id of Object.keys(tolls)) tolls[id] = Math.round(tolls[id]!);
+  for (const id of Object.keys(tollsPaid)) tollsPaid[id] = Math.round(tollsPaid[id]!);
   for (const id of Object.keys(raided)) raided[id] = Math.round(raided[id]!);
   for (const id of Object.keys(monopolyPremium)) {
     monopolyPremium[id] = Math.round(monopolyPremium[id]!);
@@ -399,6 +496,7 @@ export function routeEarnings(state: WorldState): RouteEarnings {
     shares,
     uncollected: Math.round(uncollected),
     tolls,
+    tollsPaid,
     raided,
     monopolyPremium,
     openness: routes.length === 0 ? 1 : live / routes.length,
