@@ -36,7 +36,9 @@ Each power gets both, and they can disagree without either being wrong:
 - **holds / started with** compares the **first turn to the last**. It is the
   net position, and nothing in between.
 - **worlds it took / lost, in order** is what actually happened, turn by turn. A
-  name appearing twice means the world was taken back.
+  name appearing twice means the world was taken back. Worlds that moved in the
+  *same* action moved **simultaneously** — a treaty ceding three at once is one
+  event, not three in a sequence — so do not narrate an order among them.
 - **fought over more than once** is the contested ground. Reach for it first;
   it is where the campaign's fighting actually was.
 

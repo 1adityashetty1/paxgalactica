@@ -853,7 +853,7 @@ lives here instead:
 | ethic | mechanic |
 |---|---|
 | `free_trade` | scales with **galaxy-wide openness** — profits from everyone's peace, not just its own |
-| `extortionist` | a **toll** on every foreign cargo crossing its space |
+| `extortionist` | a **premium rate** on the toll it charges for crossing its space — see "Tolls are a policy" |
 | `autarkic` | keeps only `AUTARKIC_ROUTE_FRACTION` of route income, and cannot be strangled |
 | `smuggler` | ignores blockades, raids at double effect, counts double at lawless junctions |
 | `monopolist` | `MONOPOLY_BONUS` premium on lanes it owns **both ends** of, paid on top of the conserved split |
@@ -897,6 +897,68 @@ because the ethic finally had an owner:
    chosen over the 1.3 that also passes for margin: a tuning value sitting on a
    cliff edge is one unrelated change away from tipping back.
 
+### Tolls are a policy, not an ethic
+
+Tolling was a property of `extortionist` and nothing else, so one faction in
+five could charge for passage and the other four could not, whatever junction
+they held. Two things were wrong with that, and a playtest found the second one
+the hard way.
+
+A junction is a fact about the map, and charging commerce to cross it is what
+any power holding one would do — so four powers were denied the most obvious
+lever they had. Worse, a toll share became a **negotiable instrument whose value
+nobody at the table could see**: an adversarial run sold the Combine 50% of a
+*smuggler's* tolls — a flow structurally guaranteed to be zero forever — and
+neither the counterparty's persona nor the arbiter could tell the consideration
+was nothing.
+
+`Faction.tollTargets` names who you charge, set by `set_toll_policy`, free and
+actor's-own-faction-only for the same reason `set_stance` is: it is an
+instruction to your own customs service, not a change in what the power
+believes.
+
+**A list rather than a flag, because that is what makes it leverage.** Waiving a
+toll for one power while keeping it on their rival is a thing to offer across a
+table, and lifting one is a concession that costs something and lands at once —
+which is why `set_toll_policy` is in `EXTRACTION_ALLOWED` but the reducer
+refuses an accord that **adds** a target. Opening your lanes needs the room;
+closing them needs nobody, so imposing a tariff stays on the declared path where
+the action economy prices it. A `trade_accord` deliberately does **not** waive
+tolls automatically: folding it into an existing type would hand the chip over
+for free.
+
+Three rules decide what is collected:
+
+- **Where.** A lane you charge either **crosses** your space or **ends** at a
+  hub you hold. Transit-only was the first version, and it made the mechanic
+  unreachable for the power that most needs it: on the seed the Confederacy
+  holds **zero** interior hops against the Combine's twenty, so no policy it
+  could ever set would earn it a credit.
+- **Once per lane per collector.** Holding both the hop and the terminus does
+  not charge the same cargo twice on the same run. This is also what stops the
+  terminus tariff being a straight buff to whoever is already ahead — without
+  it the Combine collects on both halves of most lanes it touches, measured at
+  884 tolls over 30 harness turns against 567 with the rule, and a sixth system
+  it does not otherwise take.
+- **At what rate.** `TOLL_RATE` (0.25) for an extortionist's **transit**;
+  `BASE_TOLL_RATE` (0.12) for everyone else, and for **every** terminus tariff
+  including the extortionist's. *"Commerce owes you for passing through"* is a
+  claim about chokepoints, not about tariffs at your own markets, so that is
+  where the doctrine keeps its premium.
+
+**`TOLL_RESENTMENT` had to be fixed to make any of this safe.** It bled
+disposition from every faction with *any* route income toward every faction
+collecting a toll — near enough while a single extortionist was the only power
+that could charge, and badly wrong the moment five powers can: twenty pairs
+bleeding every turn, against a disposition that has no decay, so the galaxy
+floors out and never recovers. `RouteEarnings.tollsPaid` is the mirror of
+`tolls`, and a power now resents whoever charged **it**.
+
+The seed gives the Combine all four targets and everyone else none, so the
+opening galaxy is the one every campaign to date was played in — the balance
+harness reads 3/6/5/4/4 and a 58/42 income mix, both unchanged. The other four
+powers now *have* the lever; they have simply not pulled it.
+
 ### Interdiction: attacking an economy without a battle
 
 Two order types, both requiring **a fleet already at the target** — you cannot
@@ -906,7 +968,25 @@ be destroyed, which ends the order.
 - **`blockade`** severs every lane through a system. It closes for the
   blockader's own trade too, so blockading a lane you profit from is
   self-harm.
-- **`commerce_raiding`** diverts transiting trade to the raider.
+- **`commerce_raiding`** diverts trade to the raider, on the hops a lane crosses
+  **and at either end of it**. Endpoints were excluded, along with adjacent-hub
+  lanes and unaligned hops — and endpoints are the hubs, so the cargo most worth
+  taking was the cargo that could not be touched. On the live board four systems
+  appeared on zero interior paths, so a fleet parked on any of them raided
+  nothing whatever it did.
+
+  The prize comes out of **what that end actually received**, not out of a
+  recomputed share of the pot: stealing from a figure the holder never got takes
+  the difference out of `uncollected` and mints it. Measured before the fix —
+  the victim lost 15, the raider gained 44, and 29 came from nowhere.
+
+  Its duration floor is **2**, not 1. `raidersOn` filters `progress > 0` and
+  income settles before orders tick, so a one-turn raid was skipped by the only
+  settlement that could have paid it and then completed and left the board — a
+  playtest raided for eighteen turns and earned three credits. The old comment
+  argued for 1 so that raiding would not become "a second kind of blockade",
+  which two turns does not: a blockade sits on the system and severs every lane
+  through it. A mechanic that cannot be paid is not a faster version of itself.
 
 Blockades resolve **per beneficiary, not per lane**. Deciding it once for the
 whole route meant a smuggler only kept its trade when every other party could
@@ -933,6 +1013,7 @@ and nothing implemented it.
 | `trade_accord` | parties are immune to each other's blockades and raiding |
 | `basing_rights` | the other party's fleets may enter without it being an attack |
 | `tribute` | `incomePerTurn` moves every turn |
+| `cession` | the named systems **change hands**, once and permanently; the only type `terms.territory` is legal on |
 | `territory` (a term, not a type) | the named systems **change hands** when the treaty takes force |
 | `payment` (a term, not a type) | credits move **once**, when the treaty takes force — the price of a cession, an indemnity, a lump settlement |
 | `voidsOn` (a term, not a type) | typed conditions that **end** the treaty when they come true — and one already true at signature is **refused**, not signed |
@@ -1052,6 +1133,30 @@ case, minus the blood:
 Only what a party actually holds moves, and a cession is a one-time event rather
 than a term that applies while the treaty is live — land changes hands once, and
 taking it back is a fresh act.
+
+**A cession is its own instrument, because the borrowed label was load-bearing.**
+A land transfer had no treaty type, so extraction wrote it into whatever was to
+hand — and that decides real things. A playtest moved three worlds, one of them
+the map's greatest junction, inside a **`basing_rights`** treaty: the type that
+grants the right to *enter* without it being an attack, which is the opposite of
+a handover. A separate sale written as a `trade_accord` **superseded the live
+raid-immunity pact** between the same pair, because supersession keys on the
+type — so buying land from a raider cancelled your protection from them.
+
+`terms.territory` is now legal only on a `cession`, a cession may carry no
+duration (nothing gives the land back when a treaty lapses, so an expiring one
+promises a return that never comes), and a cession writing the **other party's**
+world to the actor with nothing given for it is refused — giving your own away
+is always allowed; taking theirs needs `terms.payment`.
+
+**What none of that establishes is consent**, and it is worth being exact. The
+argument for `form_treaty` being extraction-only is that *"a transcript is the
+only place the other party's consent exists"* — true, and not the same as *the
+transcript contains consent*. The counterparty's words in that playtest were
+*"Oridin, no … garrison standing, no world changes hands"*, and two of the three
+worlds were never asked for at all. The guards make the **bare** land-grab
+unreachable and force a mispriced one to look like a bargain; the rest is a
+prompt rule.
 
 `basing_rights` fixed something worse than an inert field: **there was no way
 to station ships in friendly space at all.** Any movement into a partner's
@@ -1738,10 +1843,39 @@ the browser whole, so only the *player's* agents write these — logging every
 faction's watch reports would hand the player a transcript of what four rival
 spy networks can see, which is the exact opposite of the fog the same tick is
 enforcing. NPC operatives still work; their product reaches their own prompt
-block through `ordersVisibleTo`. There is a test for it.
+block through `ordersVisibleTo`.
 
-Replaying the campaign that opened all this: **34 intel lines across seven
-turns, where there were 0.**
+**And for a long time only half of that was true, because the guard was on who
+WRITES rather than on who reads.** `logEvent`'s fourth argument is attribution
+and `visibleTo` is the fifth, so every operative report was written with
+`visibleTo: null` — public — and `serializeRecentLog` handed it to every NPC
+prompt. Measured in a playtest: Meridian's prompt received *"[theft · Sekkar
+Gate] Your operative is skimming 8 a turn out of Meridian Trade Authority's
+accounts"* and burned the operative on the same tick.
+
+The test that was supposed to cover this hand-built an entry with `visibleTo`
+already set and asserted the *reader* redacted it. Nothing asserted the producer
+ever set it — a test that pins the mechanism while nothing pins that the
+mechanism is reached, which is the failure mode this file names everywhere else.
+The tests now run a real agent tick and read what it produced.
+
+**The same defect ran through diplomacy, and there it was worse.** A negotiated
+accord's `log_narrative`, its treaty, its commitment and its debts were all
+logged public, so a private channel's substance was published to every power in
+prose. Measured: after a world was sold to Meridian in one channel, the Iron
+Vigil opened the next conversation quoting the price, the terms, **and two asks
+that had been raised and withdrawn and never agreed to at all**. That closes off
+the entire betrayal layer — the thing the diplomacy architecture exists for.
+
+`serializeStanding` already scoped the treaty *list* with `treatiesFor`; the log
+one block earlier in the same prompt published the same treaty to everyone, so
+the scoping was decorative. An event is now visible to the parties it names: a
+treaty to its parties, a commitment to the bound factions (which is what
+`COMMITMENT_GOODWILL` already assumed — *"a commitment is not public business,
+so onlookers have no view"*), a debt to its lender and borrower. An
+extraction-sourced `log_narrative` is scoped to the **actor**, since the op
+names no counterparty and the counterparty has the better memory anyway:
+transcripts are replayed into its persona.
 
 **Knowledge is a snapshot, not a memory.** Burn the operative and the programme
 goes back to being a rumour. A last-known-position model is the more honest one
@@ -2169,6 +2303,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `adjust_ships` | `hull` picks the class — which to build, and which of *your own* to move. Taking another power's is suborning, and spends their loss order |
 | `adjust_credits` | floors at 0 |
 | `set_doctrine` | 1–240 chars; may move `warEthic`/`tradeEthic` and retire lines, charged in dissent; actor's own faction only |
+| `set_toll_policy` | who pays to cross your space; free, actor's own faction only. An accord may only **lift** a toll — adding one is `declared_only` |
 | `issue_order` | see Duration below; optional `onComplete` payload, paid at issue. `force` is a count (drawn proportionally) or a named composition |
 | `cancel_order` | returns the unspent part of a works payload |
 | `interrupt_order` | rejected when the order is not interruptible |
@@ -2547,6 +2682,61 @@ one unbidden would hijack a turn the player did not choose to spend. It rides on
 the reaction rather than costing a call of its own: the NPC is already speaking
 at exactly the right moment, and asking separately would pay twice for one
 thought.
+
+### Consent is a recorded position, not an inference
+
+`DiplomacyReplySchema` was `{ reply: string }`, so a counterparty's consent
+existed only as prose — and `extractAgreements` both **read** the transcript and
+**asserted** what was in it, with nothing comparing the two. A playtest moved
+three worlds, one of them the map's greatest junction, off a conversation whose
+counterparty had said *"Oridin, no — garrison standing, no world changes
+hands"*; two of the three were never asked for at all.
+
+**Another interpreter cannot close that.** A checker shown the transcript plus a
+plausible reading is handed the conclusion and asked to agree with it — the
+exact confirmation bias `verifyBreachRelevance` is shaped to avoid, and personas
+are measurably agreeable under pressure besides. Adding a pass cannot fix a
+missing record.
+
+So the record is made instead. A reply carries `concessions` alongside its
+prose: what **this** power is giving up, stated forward as it speaks, with its
+own sheet and state loaded. Not ops — the "chat emits no ops" boundary is
+unchanged, and `/endtalk` still does the work. `groundInConcessions` is the
+enforcement half, and extraction stops being a judge and becomes a **matcher**:
+the same split as `classifyPrinciple`, where the model names the line and code
+does the lookup.
+
+Three properties follow, and each answers something a checker could not:
+
+- **The power conceding resolves its own vague words.** *"The Sennex lane is
+  yours"* names no system, and nothing downstream can turn that into ids without
+  guessing — but the power saying it knows what it holds and what it meant. So
+  `systems` is resolved at the moment of the offer.
+- **Only terms that cost the counterparty are grounded.** Giving your own world
+  away, paying your own credits, taking on your own debt binds nobody else, and
+  requiring a record there would turn every one-sided concession into a dead
+  promise — the exact bug class this exists to end.
+- **It is recorded per MESSAGE, not at `/endtalk`.** That is what makes the open
+  `kind` vocabulary safe rather than reckless: a term the persona wrote down too
+  generously is on screen while the conversation is still open, so either party
+  can strike it before it binds. `retractions` do that in character — *"my clerk
+  had Oridin in the draft; he had heard the lane and written the world"* — so a
+  misreading reads as a translation failure between two powers, which is what it
+  is in the fiction, rather than as the machine correcting itself in front of
+  the player. An error the game can narrate costs nothing.
+
+**A red line is flagged where it is approached, not at signature.** The same
+per-message pass appraises the player's own concessions through
+`appraiseAgreement`, so a line lands as a visible blocker in the turn the player
+walks toward it. It still refuses the whole accord if it is standing when the
+channel closes — a deal that needs you to cross a red line is no deal — but
+there is now a conversation left in which to steer around it, where before the
+whole negotiation was lost after both sides had said yes.
+
+What this does **not** establish: a persona that records a concession
+contradicting its own prose is still possible. But that is a contradiction
+inside one message, on screen, in the turn it happens — which is the difference
+between a bug you can find and the one this replaced.
 
 On `/endtalk`, a **separate extraction call** reads the transcript and emits ops
 for what was actually agreed. It is the **only** pass that may emit

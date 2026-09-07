@@ -334,3 +334,148 @@ describe('a fleet under basing rights puts in rather than invades', () => {
     expect(sys(arrive('trade_accord'), 'tor-2').controllerFactionId).toBe('meridian');
   });
 });
+
+/**
+ * A CESSION AND ITS PRICE ARE TWO HALVES OF ONE TRANSACTION.
+ *
+ * `cedeTerritory` has two call sites — signature, and ratification in
+ * `tickTurn`. `settleTreatyPayment` had one. So any deal an NPC gated on
+ * ratification handed the land over for nothing, which is exactly the failure
+ * `cedeTerritory`'s own doc comment names: *"pricing only one of them is what
+ * made a world cost 240 credits."*
+ *
+ * Measured in a live campaign: Threx sold to Meridian for 800 with
+ * `ratifyTurns: 1`. The log recorded `drajk cedes Threx to meridian`. The 800
+ * never moved.
+ */
+describe('a ratified cession is paid for', () => {
+  const purse = (s: WorldState, id: string) => s.factions.find((f) => f.id === id)!.credits;
+  const heldBy = (s: WorldState, sysId: string) =>
+    s.systems.find((x) => x.id === sysId)!.controllerFactionId;
+
+  const sale = (extra: Record<string, unknown>): OpInput => {
+    const world = createSeedState('ojjul').systems.find(
+      (x) => x.controllerFactionId === 'drajk',
+    )!;
+    return {
+      op: 'form_treaty',
+      treatyType: 'cession',
+      parties: ['drajk', 'meridian'],
+      terms: {
+        territory: [world.id],
+        payment: { drajk: 800, meridian: -800 },
+      },
+      summary: 'Drajk sells a world to Meridian for 800',
+      ...extra,
+    } as OpInput;
+  };
+
+  const world = createSeedState('ojjul').systems.find(
+    (x) => x.controllerFactionId === 'drajk',
+  )!.id;
+
+  it('moves the money on the turn it moves the world', () => {
+    const start = seed();
+    const before = { drajk: purse(start, 'drajk'), meridian: purse(start, 'meridian') };
+
+    let s = sign(start, sale({ ratifyTurns: 1 })).state;
+    // Nothing yet: a pending treaty cedes nothing and pays nothing.
+    expect(heldBy(s, world)).toBe('drajk');
+    expect(purse(s, 'drajk')).toBe(before.drajk);
+
+    s = tickTurn(s).state;
+    expect(heldBy(s, world)).toBe('meridian');
+    // The half that was missing. Income moves in the same tick, so assert the
+    // delta covers the payment rather than pinning an exact treasury.
+    expect(purse(s, 'drajk') - before.drajk).toBeGreaterThanOrEqual(800);
+    expect(purse(s, 'meridian') - before.meridian).toBeLessThan(800);
+  });
+
+  it('charges exactly once, whichever path the treaty takes', () => {
+    // The mirror hazard, and one this repo has already been bitten by:
+    // `settleTreatyPayment` was once wired at both sites for one treaty and ran
+    // twice, debiting the payer and then debiting whatever was left. The
+    // signature path is gated on `!pending` and the ratification path only
+    // promotes `pending` treaties, so exactly one fires.
+    const start = seed();
+    const before = purse(start, 'meridian');
+
+    const immediate = sign(start, sale({})).state;
+    const paidAtSignature = before - purse(immediate, 'meridian');
+    expect(paidAtSignature).toBe(800);
+
+    // Ticking afterwards must not charge a second time.
+    const later = tickTurn(immediate).state;
+    expect(before - purse(later, 'meridian')).toBeLessThanOrEqual(paidAtSignature);
+  });
+});
+
+/**
+ * A CESSION IS ITS OWN INSTRUMENT.
+ *
+ * A land transfer had no treaty type, so extraction borrowed one — and the
+ * borrowed label was load-bearing in two places it had no business being. A
+ * playtest moved three worlds, one of them the map's greatest junction, inside
+ * a `basing_rights` treaty: the type that grants the right to ENTER without it
+ * being an attack, which is the opposite of a handover. The counterparty's own
+ * words in that transcript were *"Oridin, no … garrison standing, no world
+ * changes hands"*, and two of the three systems were never asked for.
+ *
+ * Consent is the half code cannot verify. These are the halves it can.
+ */
+describe('a cession has to look like one', () => {
+  const mine = () => createSeedState('drajk').systems.find((x) => x.controllerFactionId === 'drajk')!;
+  const theirs = () =>
+    createSeedState('drajk').systems.find((x) => x.controllerFactionId === 'meridian')!;
+
+  const cede = (extra: Record<string, unknown>): OpInput =>
+    ({
+      op: 'form_treaty',
+      treatyType: 'cession',
+      parties: ['drajk', 'meridian'],
+      terms: { territory: [mine().id] },
+      summary: 'a world handed over',
+      ...extra,
+    }) as OpInput;
+
+  it('refuses to move a border under a treaty about something else', () => {
+    for (const type of ['basing_rights', 'trade_accord', 'non_aggression'] as const) {
+      const res = sign(seed(), cede({ treatyType: type }));
+      expect(res.rejections[0]?.code, type).toBe('illegal_value');
+      expect(res.state.systems.find((x) => x.id === mine().id)!.controllerFactionId).toBe('drajk');
+    }
+  });
+
+  it('refuses to expire, because land does not come back on its own', () => {
+    // `cedeTerritory` is a one-time event and nothing returns the world when a
+    // treaty lapses, so an expiring cession promises a return that never comes.
+    // The playtest's three-world handover carried `expiresTurn: 20`.
+    const res = sign(seed(), cede({ durationTurns: 20 }));
+    expect(res.rejections[0]?.code).toBe('illegal_value');
+  });
+
+  it('will not write the other party’s world to the actor for nothing', () => {
+    const res = sign(seed(), cede({ terms: { territory: [theirs().id] } }));
+    expect(res.rejections[0]?.code).toBe('illegal_value');
+    expect(res.state.systems.find((x) => x.id === theirs().id)!.controllerFactionId).toBe(
+      'meridian',
+    );
+  });
+
+  it('allows a purchase, because a price is what makes it a bargain', () => {
+    const res = sign(
+      seed(),
+      cede({
+        terms: { territory: [theirs().id], payment: { drajk: -400, meridian: 400 } },
+      }),
+    );
+    expect(res.rejections).toEqual([]);
+    expect(res.state.systems.find((x) => x.id === theirs().id)!.controllerFactionId).toBe('drajk');
+  });
+
+  it('always allows giving your own away', () => {
+    const res = sign(seed(), cede({}));
+    expect(res.rejections).toEqual([]);
+    expect(res.state.systems.find((x) => x.id === mine().id)!.controllerFactionId).toBe('meridian');
+  });
+});

@@ -126,7 +126,7 @@ describe('a cession and its price are two halves of one deal', () => {
       [
         {
           op: 'form_treaty',
-          treatyType: 'trade_accord',
+          treatyType: 'cession',
           parties: ['meridian', 'ojjul'],
           summary: 'Ilvenn Approach',
           terms: { territory: ['ilv-1'], payment },

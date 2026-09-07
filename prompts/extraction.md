@@ -15,7 +15,14 @@ is purely a **record** of the conversation:
 `form_treaty` · `break_treaty` · `establish_debt` · `assign_debt` ·
 `restructure_debt` · `establish_commitment` · `dissolve_commitment` ·
 `forgive_debt` · `settle_debt` · `adjust_disposition` · `adjust_credits` ·
-`log_narrative` · `spawn_event`
+`log_narrative` · `spawn_event` · `set_toll_policy`
+
+**`set_toll_policy` may only OPEN your lanes here, never close them.** Lifting a
+toll is a concession, and it is one of the few real ones you can make that takes
+effect at once — *"the Sennex lane opens to Meridian hulls"*. Imposing a toll
+needs nobody's agreement, so the reducer refuses an accord that adds a target;
+that is a declared action. `targets` replaces the whole list, so emit the list
+the acting power is left charging after the deal, not the names it dropped.
 
 Everything else is **unilateral work the player pays an action for**, and the
 reducer refuses it from here — orders of every kind, building hulls, placing
@@ -201,6 +208,27 @@ a treaty is a campaign where diplomacy means nothing.
 
 All three are things powers in this galaxy really do, and all three are made
 of pieces that already exist — do not invent a mechanism for any of them.
+
+**A world changing hands is a `cession`, and only a `cession`.** A land transfer
+had no type of its own, so it used to be written into whatever treaty was to
+hand — and that borrowed label decides real things, so it did real damage: three
+worlds once moved inside a `basing_rights` accord, which grants the right to
+*enter* without it being an attack and is the opposite of a handover, and a sale
+written as a `trade_accord` cancelled the live raid-immunity pact between the
+same pair because supersession keys on the type.
+
+So: `treatyType: "cession"`, `terms.territory` naming the worlds, and
+
+- **no duration.** A cession is permanent — nothing gives the land back when a
+  treaty lapses — so an expiring one promises a return that never comes.
+- **a price, if the acting power is the one gaining.** Giving your own world
+  away needs nothing; taking the other party's needs `terms.payment` to say what
+  was given for it. The reducer refuses a bare transfer the other way.
+- **only what was actually agreed, world by world.** *"I'll tell my people to
+  look the other way when your ships come through"* is transit, not a handover.
+  *"Refit through Oridin"* is basing rights. A world moves only when the power
+  holding it said, of that world, that it would let it go — and if they said no,
+  it does not move whatever else was agreed in the same breath.
 
 **A durable arrangement binding both parties — a dynastic marriage, an
 exclusive charter naming a partner, a hostage exchange, a shared succession,

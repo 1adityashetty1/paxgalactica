@@ -18,6 +18,9 @@ import { diplomacyReply, type ChatMessage } from '../model/calls.js';
 import { getFaction } from '../domain/state.js';
 import { playableFactions } from '../seed/scenario.js';
 import { ApiFailure, toApiFailure } from './errors.js';
+import { appraiseAgreement } from '../model/calls.js';
+import { classifyPrinciples } from '../domain/compulsions.js';
+import type { Concession, Retraction } from '../domain/diplomacy.js';
 
 export type Emit = (event: ServerEvent) => void;
 
@@ -48,6 +51,19 @@ export const LOG_PUSH_TAIL = 200;
 export class GameSession {
   private campaign: Campaign | null = null;
   private openChannel: string | null = null;
+  /**
+   * What the other power has put on the table so far in the open channel, and
+   * any of the PLAYER's own concessions that its institutions will not have.
+   *
+   * Accumulated per message rather than read once at `/endtalk`, and that is
+   * the point rather than an optimisation. A concession the persona wrote down
+   * by mistake is on screen while the conversation is still open, so either
+   * party can strike it before it binds anything — and a red line the player is
+   * about to cross is flagged in the turn they approach it, instead of the
+   * whole negotiation being refused at the end after both sides have said yes.
+   */
+  private channelConcessions: Concession[] = [];
+  private channelBlockers: { concession: string; principle: string }[] = [];
   private channelHistory: ChatMessage[] = [];
   private lastBriefing: Briefing | null = null;
   /**
@@ -164,6 +180,8 @@ export class GameSession {
           : withCurrentIntel(this.lastBriefing, campaign.state),
       openChannel: this.openChannel,
       channelHistory: [...this.channelHistory],
+      channelConcessions: [...this.channelConcessions],
+      channelBlockers: [...this.channelBlockers],
       actionPoints: { left: campaign.actionPointsLeft, perTurn: ACTION_POINTS_PER_TURN },
       name: campaign.name,
       maxTurns: campaign.maxTurns,
@@ -192,6 +210,8 @@ export class GameSession {
     this.campaign = Campaign.start(factionId, name, this.store, maxTurns);
     this.openChannel = null;
     this.channelHistory = [];
+    this.channelConcessions = [];
+    this.channelBlockers = [];
     this.lastBriefing = null;
     this.epilogue = null;
     await this.campaign.save();
@@ -205,6 +225,8 @@ export class GameSession {
     this.campaign = loaded;
     this.openChannel = null;
     this.channelHistory = [];
+    this.channelConcessions = [];
+    this.channelBlockers = [];
     // A finished campaign reloads finished. The narration is cached in the
     // save rather than regenerated, because it is a model call and a player
     // reopening their own ending should not pay for it twice — nor read a
@@ -368,7 +390,16 @@ export class GameSession {
 
   /* ---------------- diplomacy ---------------- */
 
-  async talk(factionId: string, text: string): Promise<{ reply: string; costUsd: number }> {
+  async talk(
+    factionId: string,
+    text: string,
+  ): Promise<{
+    reply: string;
+    concessions: Concession[];
+    retractions: Retraction[];
+    blockers: { concession: string; principle: string }[];
+    costUsd: number;
+  }> {
     const campaign = this.requirePlayable();
     const faction = getFaction(campaign.state, factionId);
     if (!faction) throw new ApiFailure('not_found', `No faction "${factionId}".`);
@@ -385,6 +416,8 @@ export class GameSession {
     if (!this.openChannel) {
       this.openChannel = factionId;
       this.channelHistory = [];
+      this.channelConcessions = [];
+      this.channelBlockers = [];
     }
 
     // A channel is unmetered by action points on purpose, but unmetered is not
@@ -409,8 +442,43 @@ export class GameSession {
     );
 
     this.channelHistory.push({ speaker: 'faction', text: result.reply });
+
+    // A retraction strikes a concession already on the table. Applied before
+    // the new ones so a persona can correct and re-offer in one breath.
+    for (const r of result.retractions) {
+      this.channelConcessions = this.channelConcessions.filter(
+        (c) => !(c.by === r.by && c.kind === r.kind),
+      );
+    }
+    this.channelConcessions.push(...result.concessions);
+
+    // The player's own institutions get a view NOW, not at `/endtalk`. A red
+    // line found at the end refuses the whole accord after both sides have
+    // agreed — costing a real negotiation for a line the player would have
+    // steered around had they been told. Only the player's concessions are
+    // appraised: the other power's are theirs to make and cannot trip your
+    // line, which `appraiseAgreement` already guarantees by construction.
+    let costUsd = result.costUsd;
+    const mine = result.concessions.filter((c) => c.by === campaign.state.playerFactionId);
+    for (const c of mine) {
+      const ruled = await appraiseAgreement(campaign.state, factionId, c.text);
+      costUsd += ruled.costUsd;
+      const named = ruled.appraisal.breach?.principles ?? [];
+      const me = getFaction(campaign.state, campaign.state.playerFactionId);
+      const found = me && named.length > 0 ? classifyPrinciples(me, named) : null;
+      if (found?.kind === 'red_line') {
+        this.channelBlockers.push({ concession: c.text, principle: found.principle });
+      }
+    }
+
     this.pushState();
-    return { reply: result.reply, costUsd: result.costUsd };
+    return {
+      reply: result.reply,
+      concessions: [...this.channelConcessions],
+      retractions: result.retractions,
+      blockers: [...this.channelBlockers],
+      costUsd,
+    };
   }
 
   async endTalk(factionId: string): Promise<ActionOutcomeResponse> {
@@ -420,13 +488,19 @@ export class GameSession {
     }
 
     const history = [...this.channelHistory];
+    const conceded = [...this.channelConcessions];
+    const blockers = [...this.channelBlockers];
     // Close the channel before extraction: whatever the pass returns, the
     // conversation is over, and leaving it open on failure would strand the UI.
     this.openChannel = null;
     this.channelHistory = [];
+    this.channelConcessions = [];
+    this.channelBlockers = [];
+    this.channelConcessions = [];
+    this.channelBlockers = [];
 
     const outcome = await this.exclusive('Reading the transcript', () =>
-      closeChannel(campaign, factionId, history),
+      closeChannel(campaign, factionId, history, conceded, blockers),
     );
     this.pushState();
 

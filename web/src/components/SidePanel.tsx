@@ -183,6 +183,27 @@ function Factions({
             <div className="ethics">
               <span className="chip">{f.warEthic}</span>
               <span className="chip">{f.tradeEthic.replace('_', ' ')}</span>
+              {/* Who this power charges for passage. Shown as a chip beside the
+                  ethics because that is where it used to live — tolling was a
+                  property of `extortionist` and is now a policy any power can
+                  set, so the ethic alone no longer answers "does this power
+                  tax me". The one that matters most to the reader is the toll
+                  charged to THEM, so it is called out separately. */}
+              {f.tollTargets.includes(state.playerFactionId) && f.id !== state.playerFactionId && (
+                <span className="chip bad" title="You pay this power to cross its space. Lifting it is something to negotiate for.">
+                  tolls you
+                </span>
+              )}
+              {f.tollTargets.length > 0 && (
+                <span
+                  className="chip"
+                  title={`Charges for passage: ${f.tollTargets
+                    .map((id) => state.factions.find((x) => x.id === id)?.name ?? id)
+                    .join(', ')}`}
+                >
+                  tolls {f.tollTargets.length}
+                </span>
+              )}
             </div>
             <p className="doctrine">{f.doctrine}</p>
           </section>

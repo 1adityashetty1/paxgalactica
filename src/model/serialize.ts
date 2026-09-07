@@ -2,6 +2,8 @@ import { eventsVisibleTo, ordersVisibleTo } from '../domain/intel.js';
 import { describeStack, hullsIn } from '../domain/hulls.js';
 import { describeOrderEffect } from '../domain/development.js';
 import { describeEffect } from '../domain/diplomacy.js';
+import { routeEarnings } from '../domain/trade.js';
+import type { Commitment } from '../domain/arbitration.js';
 import {
   formatModifier,
   statModifier,
@@ -64,6 +66,14 @@ export function serializeFactions(state: WorldState, viewerId: string): string {
       `  stats: ${serializeStats(f.stats)}`,
       `  war: ${f.warEthic} — ${WAR_ETHIC_MEANING[f.warEthic]}`,
       `  trade: ${f.tradeEthic} — ${TRADE_ETHIC_MEANING[f.tradeEthic]}`,
+      // Public by design: a tariff is announced, not discovered. It is also the
+      // single most negotiable thing on this sheet, so a power that cannot read
+      // who charges it cannot come and argue about it.
+      `  tolls: ${
+        f.tollTargets.length === 0
+          ? 'charges nobody for passage'
+          : `charges ${f.tollTargets.map((id) => getFaction(state, id)?.name ?? id).join(', ')} for passage`
+      }`,
       `  doctrine: ${f.doctrine}`,
     ].join('\n');
   });
@@ -352,6 +362,29 @@ export function mostAffectedFactions(
  * see what is already true. Without this block it would allow a dynastic
  * marriage on turn 3 and, having no memory, a second one on turn 4.
  */
+/**
+ * What a proportional share is paying right now.
+ *
+ * A share was a negotiable instrument whose value nobody at the table could
+ * see: a playtest sold the Combine 50% of a *smuggler's* tolls — a flow that
+ * was structurally zero at the time — and neither the counterparty's persona
+ * nor the arbiter could tell the consideration was nothing. Quoting the live
+ * figure beside the rate is what lets either of them notice.
+ *
+ * "Currently" is doing real work in that sentence: this moves every turn, which
+ * is the whole point of a share, so it is a fact about today and not a promise.
+ */
+function shareWorth(state: WorldState, share: NonNullable<Commitment['share']>): number {
+  const earnings = routeEarnings(state);
+  const pot =
+    share.of === 'routes'
+      ? (earnings.shares[share.from] ?? 0)
+      : share.of === 'tolls'
+        ? (earnings.tolls[share.from] ?? 0)
+        : (earnings.raided[share.from] ?? 0);
+  return pot <= 0 ? 0 : Math.floor((pot * share.percent) / 100);
+}
+
 export function serializeCommitments(state: WorldState): string {
   const live = (state.commitments ?? []).filter((c) => c.status === 'active');
   if (live.length === 0) return '_None. Nothing beyond treaties currently binds anyone._';
@@ -372,7 +405,7 @@ export function serializeCommitments(state: WorldState): string {
       const cut =
         c.share === undefined
           ? ''
-          : ` · ${c.share.percent}% of ${getFaction(state, c.share.from)?.name ?? c.share.from}'s ${c.share.of} to ${getFaction(state, c.share.to)?.name ?? c.share.to}`;
+          : ` · ${c.share.percent}% of ${getFaction(state, c.share.from)?.name ?? c.share.from}'s ${c.share.of} to ${getFaction(state, c.share.to)?.name ?? c.share.to} (currently worth ${shareWorth(state, c.share)} a turn)`;
       return `- \`${c.id}\` ${c.kind.replace(/_/g, ' ')} · ${who} · since turn ${c.establishedTurn}${worth}${cut}${flag}\n  ${c.text}`;
     })
     .join('\n');

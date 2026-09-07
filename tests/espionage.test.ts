@@ -5,6 +5,7 @@ import { MISSION_PROFILE, type AgentMission } from '../src/domain/diplomacy.js';
 import { ledgerFor, type WorldState } from '../src/domain/state.js';
 import { serializeStanding } from '../src/model/serialize.js';
 import { routeCovertAction } from '../src/domain/development.js';
+import { eventsVisibleTo } from '../src/domain/intel.js';
 
 // These are the two heaviest files in the suite — real work through the real
 // reducer, not slow assertions. The longest case runs 3.8s against vitest's
@@ -360,5 +361,136 @@ describe('every covert operation in one declaration is routed', () => {
 
   it('places nobody at all when the attempt failed', () => {
     expect(routeCovertAction([], 'failure', both, 'meridian').ops).toHaveLength(0);
+  });
+});
+
+/**
+ * THE PRODUCER MUST SCOPE THE ENTRY, NOT JUST THE READER.
+ *
+ * `CLAUDE.md` claims `intel` is "the one event kind that is private… there is a
+ * test for it." The test hand-built an entry with `visibleTo: ['vigil']` and
+ * asserted the *reader* redacted it. Nothing asserted the producer ever set it —
+ * and it did not: `logEvent`'s fourth argument is attribution and `visibleTo` is
+ * the fifth, so every operative report the player filed was public and reached
+ * every NPC prompt through `serializeRecentLog`.
+ *
+ * A test that pins the mechanism while nothing pins that the mechanism is
+ * reached. So these run the real tick and read what it produced.
+ */
+describe('a private entry is written private', () => {
+  it('scopes an operative report to the network that filed it', () => {
+    let s = createSeedState('drajk');
+    const target = s.systems.find((x) => x.controllerFactionId === 'meridian')!;
+    s = applyOps(
+      s,
+      [
+        {
+          op: 'deploy_agent',
+          ownerFactionId: 'drajk',
+          systemId: target.id,
+          mission: 'theft',
+          effect: { kind: 'income_penalty', perTurn: 8 },
+        },
+      ],
+      'engine',
+    ).state;
+
+    const after = tickTurn(s).state;
+    const reports = after.eventLog.filter((e) => e.kind === 'intel');
+    expect(reports.length).toBeGreaterThan(0);
+    for (const entry of reports) {
+      // The thing that was actually wrong: null means public.
+      expect(entry.visibleTo).not.toBeNull();
+      expect(entry.visibleTo).toEqual(['drajk']);
+    }
+    // And the rival it is being run against cannot read it.
+    expect(eventsVisibleTo(after, 'meridian').some((e) => e.kind === 'intel')).toBe(false);
+    expect(eventsVisibleTo(after, 'drajk').some((e) => e.kind === 'intel')).toBe(true);
+  });
+
+  it('keeps a negotiated accord between the powers that negotiated it', () => {
+    // Measured live: a world sold to Meridian in a private channel, and the
+    // Vigil opened the next conversation quoting the price, the terms, and two
+    // asks that had been withdrawn and never agreed. `serializeStanding` scopes
+    // the treaty list; the log one block earlier published it in prose.
+    const s = createSeedState('drajk');
+    const res = applyOps(
+      s,
+      [
+        {
+          op: 'form_treaty',
+          treatyType: 'trade_accord',
+          parties: ['drajk', 'meridian'],
+          terms: {},
+          summary: 'the Sennex lane, quietly',
+        },
+        { op: 'log_narrative', text: 'Eight hundred credits and no signature.' },
+      ],
+      'extraction',
+      'drajk',
+    );
+    expect(res.rejections).toEqual([]);
+
+    const leaked = eventsVisibleTo(res.state, 'vigil');
+    expect(leaked.some((e) => e.text.includes('Sennex'))).toBe(false);
+    expect(leaked.some((e) => e.text.includes('Eight hundred'))).toBe(false);
+
+    // Both parties see the treaty; the narrative is the actor's own record.
+    for (const id of ['drajk', 'meridian']) {
+      expect(eventsVisibleTo(res.state, id).some((e) => e.text.includes('Sennex'))).toBe(true);
+    }
+    expect(
+      eventsVisibleTo(res.state, 'drajk').some((e) => e.text.includes('Eight hundred')),
+    ).toBe(true);
+  });
+
+  it('keeps a commitment between the bound parties, as its goodwill already is', () => {
+    const res = applyOps(
+      createSeedState('drajk'),
+      [
+        {
+          op: 'establish_commitment',
+          kind: 'quiet_understanding',
+          factionIds: ['drajk', 'ojjul'],
+          text: 'The Vosk run is not spoken of.',
+        },
+      ],
+      'extraction',
+      'drajk',
+    );
+    expect(res.rejections).toEqual([]);
+    expect(eventsVisibleTo(res.state, 'vigil').some((e) => e.text.includes('Vosk run'))).toBe(
+      false,
+    );
+    expect(eventsVisibleTo(res.state, 'ojjul').some((e) => e.text.includes('Vosk run'))).toBe(
+      true,
+    );
+  });
+
+  it('keeps a loan between the lender and the borrower', () => {
+    const res = applyOps(
+      createSeedState('ojjul'),
+      [
+        {
+          op: 'establish_debt',
+          creditorFactionId: 'ojjul',
+          debtorFactionId: 'drajk',
+          principal: 200,
+          perTurn: 20,
+          text: 'Paper against the Verge run.',
+        },
+      ],
+      'extraction',
+      'ojjul',
+    );
+    expect(res.rejections).toEqual([]);
+    // Who is leveraged and by how much is the one fact the Combine's doctrine
+    // is built on knowing and others not.
+    expect(eventsVisibleTo(res.state, 'meridian').some((e) => e.text.includes('Verge run'))).toBe(
+      false,
+    );
+    for (const id of ['ojjul', 'drajk']) {
+      expect(eventsVisibleTo(res.state, id).some((e) => e.text.includes('Verge run'))).toBe(true);
+    }
   });
 });

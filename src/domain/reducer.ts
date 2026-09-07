@@ -48,7 +48,7 @@ import {
   type VoidCondition,
 } from './diplomacy.js';
 import { jumpsBetween, neighboursOf, positionAlongPath, shortestPath } from './graph.js';
-import { routeEarnings, tradeRoutes } from './trade.js';
+import { routeEarnings, tollsOn, tradeRoutes } from './trade.js';
 import {
   CREDITS_PER_TON,
   HULL_CLASSES,
@@ -1282,6 +1282,61 @@ export function applyOps(
         break;
       }
 
+      case 'set_toll_policy': {
+        const f = state.factions.find((x) => x.id === op.factionId);
+        if (!f) {
+          reject(raw, 'unknown_faction', `No faction "${op.factionId}".`);
+          break;
+        }
+        // Your own customs service only, the same actor-shaped guard
+        // `set_stance` and `set_doctrine` carry. Opening a rival's borders for
+        // them would be a free strike at their treasury.
+        if (actor !== undefined && op.factionId !== actor) {
+          reject(
+            raw,
+            'illegal_value',
+            `${actor} does not set ${op.factionId}'s tariffs. Charging or waiving passage through their space is theirs to decide — negotiate it (/talk) if you want it changed.`,
+          );
+          break;
+        }
+        const unknown = op.targets.find((id) => !factionExists(id));
+        if (unknown) {
+          reject(raw, 'unknown_faction', `No faction "${unknown}".`);
+          break;
+        }
+        // An accord may LIFT a toll and may not impose one. Lifting is a
+        // concession, and a concession is what a transcript is evidence of;
+        // imposing a tariff needs nobody's agreement, so it is unilateral work
+        // the action economy already prices at declaration. Without this,
+        // opening a channel would be a free way to tax a neighbour — the same
+        // hole `declared_only` closes for a fleet movement.
+        if (source === 'extraction') {
+          const added = op.targets.filter((id) => !f.tollTargets.includes(id));
+          if (added.length > 0) {
+            reject(
+              raw,
+              'declared_only',
+              `An accord can open your lanes, not close them. Charging ${added.join(', ')} for passage is yours to declare on your own turn.`,
+            );
+            break;
+          }
+        }
+        // Nobody charges themselves for crossing their own space.
+        const targets = [...new Set(op.targets.filter((id) => id !== op.factionId))].sort();
+        const was = [...f.tollTargets].sort();
+        if (was.length === targets.length && was.every((id, i) => id === targets[i])) break;
+        f.tollTargets = targets;
+        const nameList = (ids: string[]): string =>
+          ids.length === 0 ? 'nobody' : ids.map((id) => nameFor(state, id)).join(', ');
+        const note = `${f.name} charges ${nameList(targets)} for passage through its space (was ${nameList(was)}). ${op.reason}`.trim();
+        notes.push(note);
+        // Public: a tariff is announced, not discovered. A neighbour that finds
+        // out only from its own ledger cannot come and argue about it, and
+        // arguing about it is the whole point of the policy being a choice.
+        logEvent(state, 'diplomacy', note, op.factionId);
+        break;
+      }
+
       case 'set_stance': {
         const f = state.factions.find((x) => x.id === op.factionId);
         if (!f) {
@@ -1904,6 +1959,10 @@ export function applyOps(
             ? `Treaty agreed, pending ratification on turn ${effectiveTurn}: ${treaty.summary}.`
             : `Treaty signed: ${treaty.summary}.`,
           op.parties[0]!,
+          // The parties, and nobody else. `treatiesFor` has always scoped the
+          // treaty LIST this way; the log entry announcing the same treaty was
+          // public, so the scoping was decorative.
+          [...op.parties],
         );
         // Signing with a fleet on your throat costs the power holding the fleet.
         // Charged here rather than left to the extraction pass, which was the
@@ -1924,6 +1983,71 @@ export function applyOps(
           const note = `${other} signs with ${party}'s ships over ${worlds} of its worlds: −${COERCION_RESENTMENT} disposition toward ${party}.`;
           notes.push(note);
           logEvent(state, 'diplomacy', note, other);
+        }
+
+        // A CESSION IS ITS OWN INSTRUMENT, and three guards follow from that.
+        //
+        // A playtest moved three worlds — one of them the map's greatest
+        // junction — inside a `basing_rights` treaty, which grants the right to
+        // ENTER without it being an attack and is the exact opposite of a
+        // handover. The counterparty's own words in that transcript were
+        // "Oridin, no ... garrison standing, no world changes hands", and two of
+        // the three systems were never asked for at all.
+        //
+        // Consent is the part code cannot verify — `form_treaty` is
+        // extraction-only because "a transcript is the only place the other
+        // party's consent exists", which is true and is NOT the same as the
+        // transcript containing consent. What code can insist on is that a
+        // cession looks like a cession.
+        if (treaty.terms.territory.length > 0) {
+          if (op.treatyType !== 'cession') {
+            reject(
+              raw,
+              'illegal_value',
+              `Worlds change hands under a \`cession\`, not under a ${op.treatyType}. If ${op.parties.join(' and ')} agreed a handover, record it as one; if they agreed access or trade, it moves no borders.`,
+            );
+            break;
+          }
+          // A cession is permanent — `cedeTerritory` is a one-time event and
+          // nothing gives the land back when a treaty lapses — so riding one on
+          // an instrument that expires promises a return that will never come.
+          if (op.durationTurns !== undefined && op.durationTurns !== null) {
+            reject(
+              raw,
+              'illegal_value',
+              'A cession does not expire: land changes hands once, and taking it back is a fresh act. Drop the duration, or agree something that is not a handover.',
+            );
+            break;
+          }
+          // The actor cannot simply write worlds to itself. A power giving its
+          // OWN land away needs no protecting from itself, but acquiring
+          // someone else's has to look like a bargain rather than a
+          // declaration: a price, or land going back the other way. It does not
+          // prove consent and is not claimed to — it makes the bare land-grab,
+          // which is what was actually measured, unreachable.
+          // Scoped to worlds held by the OTHER PARTY — "I am taking yours" —
+          // which is the grab that was measured. A world held by somebody who
+          // never signed is neither party's to move, and `cedeTerritory`
+          // already ignores it; rejecting there would turn a documented no-op
+          // into an error for an accord that is merely sloppy.
+          const acquiring = treaty.terms.territory.filter((sysId) => {
+            const owner = state.systems.find((x) => x.id === sysId)?.controllerFactionId;
+            return (
+              owner !== undefined &&
+              owner !== null &&
+              owner !== actor &&
+              op.parties.includes(owner)
+            );
+          });
+          const paid = Object.values(treaty.terms.payment ?? {}).some((n) => (n ?? 0) < 0);
+          if (actor !== undefined && acquiring.length > 0 && !paid) {
+            reject(
+              raw,
+              'illegal_value',
+              `${acquiring.join(', ')} belongs to somebody else, and nothing in this accord is being given for it. A world bought is a world paid for — put the price in \`terms.payment\`.`,
+            );
+            break;
+          }
         }
 
         // A treaty that is live on signature cedes now; a pending one cedes when
@@ -2136,6 +2260,42 @@ export function applyOps(
         if (actor !== undefined && op.factionId !== actor && taken > 0) {
           const key = `${actor}->${op.factionId}`;
           subornedThisBatch.set(key, (subornedThisBatch.get(key) ?? 0) + taken);
+        }
+        // Placement needs presence, exactly as removal does. `canSubornAt`
+        // gated `delta < 0` against another power's ships and nothing gated a
+        // POSITIVE delta at all — so hulls could be set down at any system on
+        // the map, a rival's capital included, for the price of the tonnage,
+        // with no movement order, no turn elapsed and no battle.
+        //
+        // Found through suborning: six hulls asked for, `subornLimit` correctly
+        // trimmed the victim's loss to one, and all six were delivered — the
+        // surplus reclassified as ordinary construction and placed inside the
+        // Combine's capital past sixteen battleships and twenty-seven escorts.
+        // But the hole is wider than suborning and this is the general form.
+        //
+        // `transfer_control` is reducer-only precisely so a model cannot talk
+        // itself into owning a distant system. This is the fleet-shaped hole
+        // beside that guard: your yards deliver where you already are.
+        //
+        // Exempt when this batch has just turned crews here: a suborn is a
+        // removal from the victim and an addition to the suborner AT THE SAME
+        // SYSTEM, and the whole point of `canSubornAt` is that it reaches one
+        // jump out. Those hulls change sides where they already are, so
+        // requiring the suborner to be present would undo the adjacency clause
+        // that makes suborning something you do to a power you have NOT already
+        // beaten in orbit.
+        if (delta > 0 && actor !== undefined && op.factionId === actor) {
+          const there = state.systems.find((x) => x.id === op.systemId);
+          const ours = there?.controllerFactionId === actor;
+          const defected = hullsIn(uprooted.get(actor) ?? {}) > 0;
+          if (!ours && !defected && hullsAt(there!, actor) === 0) {
+            reject(
+              raw,
+              'no_presence',
+              `${actor} holds neither ${op.systemId} nor any ships over it; hulls are delivered where its yards can reach, and a fleet arrives by moving there.`,
+            );
+            break;
+          }
         }
         if (delta > 0) {
           // One squadron, described twice. An `adjust_fleet` earlier in this
@@ -2395,7 +2555,11 @@ export function applyOps(
         // Between the parties only: a commitment is not public business the way
         // a treaty is, so onlookers have no view.
         adjustCommitmentGoodwill(state, op.factionIds, COMMITMENT_GOODWILL, notes);
-        logEvent(state, 'diplomacy', op.text, op.factionIds[0] ?? null);
+        // CLAUDE.md already states the rule this entry was breaking: "unlike a
+        // treaty, a commitment is not public business, so onlookers have no
+        // view" — which is why `COMMITMENT_GOODWILL` moves disposition only
+        // between the bound parties. The log said otherwise to everyone.
+        logEvent(state, 'diplomacy', op.text, op.factionIds[0] ?? null, [...op.factionIds]);
         break;
       }
 
@@ -2494,6 +2658,11 @@ export function applyOps(
           'diplomacy',
           `Debt recorded: ${op.text} (${advanced} advanced).`,
           op.creditorFactionId,
+          // A loan is between a lender and a borrower. Publishing it told every
+          // rival exactly who was leveraged and by how much — which is the one
+          // fact the Combine's whole doctrine is built on knowing and others
+          // not.
+          [op.creditorFactionId, op.debtorFactionId],
         );
         break;
       }
@@ -2536,6 +2705,7 @@ export function applyOps(
           'diplomacy',
           `${debt.creditorFactionId} writes off ${debt.balance} owed by ${debt.debtorFactionId}. ${op.reason}`.trim(),
           debt.creditorFactionId,
+          [debt.creditorFactionId, debt.debtorFactionId],
         );
         break;
       }
@@ -2592,6 +2762,7 @@ export function applyOps(
           'diplomacy',
           `${from} assigns the ${debt.balance} owed by ${debt.debtorFactionId} to ${op.toCreditorFactionId}. ${op.reason}`.trim(),
           op.toCreditorFactionId,
+          [from, op.toCreditorFactionId, debt.debtorFactionId],
         );
         break;
       }
@@ -2725,6 +2896,7 @@ export function applyOps(
           'diplomacy',
           `${debt.debtorFactionId} pays ${paid} against ${debt.id}; ${debt.balance} remains${debt.status === 'settled' ? ' — settled' : ''}. ${op.reason}`.trim(),
           debt.debtorFactionId,
+          [debt.creditorFactionId, debt.debtorFactionId],
         );
         break;
       }
@@ -2739,7 +2911,30 @@ export function applyOps(
       }
 
       case 'log_narrative': {
-        logEvent(state, 'narrative', op.text);
+        // An extraction narrative is one conversation's account of itself, and
+        // it was written PUBLIC — so a negotiation's whole substance went into
+        // a log that `serializeRecentLog` feeds to every NPC prompt. Measured
+        // live: after a world was sold to Meridian in a private channel, the
+        // Vigil opened the next conversation quoting the price ("eight hundred
+        // credits"), the terms, and two asks that had been raised and withdrawn
+        // and never agreed to at all.
+        //
+        // `serializeStanding` already scopes the treaty list with
+        // `treatiesFor(viewerId)`; the log one block earlier in the same prompt
+        // published it in prose. That closes off the entire betrayal layer,
+        // which is the thing the diplomacy architecture exists for.
+        //
+        // Scoped to the actor rather than to both parties, because the op does
+        // not name a counterparty and the counterparty has a better memory
+        // already: transcripts are replayed into its persona, which is how an
+        // NPC remembers a conversation it was actually in.
+        logEvent(
+          state,
+          'narrative',
+          op.text,
+          null,
+          source === 'extraction' && actor !== undefined ? [actor] : null,
+        );
         break;
       }
     }
@@ -3199,7 +3394,19 @@ export function tickTurn(input: WorldState): TickResult {
     notes.push(`Ratified: ${treaty.summary}`);
     // A cession takes effect with the rest of the terms, not at signature, so a
     // council that has to consent delays the handover too.
+    //
+    // And its PRICE moves with it. `settleTreatyPayment` was called at the
+    // signature path only, so any deal an NPC gated on ratification handed the
+    // land over for nothing — measured live: Threx sold for 800 with
+    // `ratifyTurns: 1`, the log recorded the cession, and the 800 never moved.
+    //
+    // `cedeTerritory`'s own doc comment already named the invariant this
+    // breaks: the cession and its price are two halves of one transaction, and
+    // "pricing only one of them is what made a world cost 240 credits". The
+    // two calls belong together at BOTH sites, which is the whole reason that
+    // comment says "the same two places".
     notes.push(...cedeTerritory(state, treaty));
+    notes.push(...settleTreatyPayment(state, treaty));
   }
 
   /* --- Void conditions fire before anything is paid out ---------------- */
@@ -3297,17 +3504,28 @@ export function tickTurn(input: WorldState): TickResult {
   /* --- Tolls breed resentment ------------------------------------------ */
   // Levied in `trade.ts` as arithmetic; resented here, because a toll the
   // payers never notice is a toll with no politics attached to it.
+  //
+  // Charged to the powers who actually PAID, which it was not before. The old
+  // loop bled every faction with any route income at all toward every faction
+  // collecting a toll — near enough while one extortionist was the only power
+  // that could charge, and badly wrong the moment tolling became a policy any
+  // power can adopt: five tollers would have had all twenty pairs bleeding
+  // every turn, and disposition has no decay, so the galaxy would floor out and
+  // never recover. A power resents whoever charged it, and nobody else.
   {
     const earnings = routeEarnings(state);
-    for (const [collector, amount] of Object.entries(earnings.tolls)) {
-      if (amount <= 0) continue;
-      for (const payer of state.factions) {
-        if (payer.id === collector) continue;
-        // Only the powers actually shipping through them mind.
-        if ((ledgerFor(state, payer.id).routes ?? 0) <= 0) continue;
-        payer.disposition[collector] = Math.max(
+    for (const payer of state.factions) {
+      if ((earnings.tollsPaid[payer.id] ?? 0) <= 0) continue;
+      for (const collector of state.factions) {
+        if (collector.id === payer.id) continue;
+        if ((earnings.tolls[collector.id] ?? 0) <= 0) continue;
+        // Did THIS collector charge THIS payer? `tollsPaid` says a toll was
+        // paid and `tolls` says one was collected; only the policy says by
+        // whom to whom.
+        if (!tollsOn(state, collector.id, payer.id)) continue;
+        payer.disposition[collector.id] = Math.max(
           -100,
-          (payer.disposition[collector] ?? 0) - TOLL_RESENTMENT,
+          (payer.disposition[collector.id] ?? 0) - TOLL_RESENTMENT,
         );
       }
     }
@@ -3563,6 +3781,21 @@ export function tickTurn(input: WorldState): TickResult {
       'intel',
       `[${agent.mission} · ${where}] Your operative ${note}`,
       agent.ownerFactionId,
+      // SCOPED, and it was not. The fourth argument is attribution; `visibleTo`
+      // is the fifth and defaults to null, which is public — so every operative
+      // report the player's network filed was shipped in the log to every NPC
+      // prompt through `serializeRecentLog`. Measured live: Meridian's prompt
+      // received "[theft · Sekkar Gate] Your operative is skimming 8 a turn out
+      // of Meridian Trade Authority's accounts" and burned the operative that
+      // same tick.
+      //
+      // The guard that existed — `if (agent.ownerFactionId !== playerFactionId)
+      // continue` — is a guard on WHO WRITES, which is exactly what CLAUDE.md's
+      // sentence describes and is not the same thing as who reads. And the test
+      // hand-built an entry with `visibleTo` already set and checked the
+      // reader, so nothing anywhere asserted the producer set it: a test that
+      // pins the mechanism while nothing pins that the mechanism is reached.
+      [agent.ownerFactionId],
     );
   }
 

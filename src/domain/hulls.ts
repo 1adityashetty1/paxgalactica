@@ -115,6 +115,23 @@ export interface HullSpec {
    * transports already dead, which is the sentence this field was always meant
    * to be enforcing.
    */
+  /**
+   * Spent-first order for a NON-COMBAT removal — a suborned crew, a
+   * repositioning that named no class, anything going through `takeShipsAt`.
+   *
+   * **It does not govern a battle**, and the doc that said it did was wrong for
+   * as long as the strike phase has existed. Every loss in `resolveBattle` is
+   * spent through `strikeStack`, which uses `strikeOrder`: the same sequence
+   * with **torpedo boats moved to the very end**, because a boat has fired by
+   * then and leaving it higher would make it a shield for the escorts and
+   * transports that still have work to do.
+   *
+   * So in combat the order is escort -> lifter -> battleship -> torpedo boat.
+   * The first two positions — which are the whole of the "a screen protects the
+   * lift arm" argument — are the same either way; only the boat and the
+   * battleship swap. `tests/combat.test.ts` pins the combat order so the two
+   * cannot drift apart silently again.
+   */
   lossOrder: number;
   /** For the UI and the order of battle. */
   label: string;

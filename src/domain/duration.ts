@@ -65,9 +65,19 @@ export const CATEGORY_FLOORS: Record<DurationCategory, FibScale> = {
   espionage: 2,
   counter_intelligence: 2,
   blockade: 2,
-  // A raid is a raid: you arrive, you take what is moving, you leave. Making
-  // it slower would turn commerce raiding into a second kind of blockade.
-  commerce_raiding: 1,
+  // A raid at the floor of 1 EARNED NOTHING, ever, and that is arithmetic
+  // rather than balance. `raidersOn` filters `progress > 0`; income settles
+  // before orders tick, so a one-turn raid is skipped by the only settlement it
+  // could have been paid at, then completes and leaves the board. Four raids in
+  // a playtest, including a critical success, took `raided: 0` every time.
+  //
+  // The old comment argued 1 on the grounds that a slower raid becomes "a
+  // second kind of blockade". Two is still not that: a blockade sits on the
+  // system and severs every lane through it, while a raid runs from a jump out
+  // and diverts what crosses. Two turns is the shortest raid that can be paid
+  // at all, and a mechanic that cannot be paid is not a faster version of
+  // itself.
+  commerce_raiding: 2,
   treaty_ratification: 2,
   garrison_raising: 2,
   refit: 2,
