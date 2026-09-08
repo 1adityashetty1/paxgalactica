@@ -284,6 +284,98 @@ places three agents). Neither needed a playtest — both were readable off the
 code, which is worth noting because both had sat here on the assumption that
 they were not.
 
+## 81. Assets: things that are neither credits nor ships
+
+The playtest kept reaching for objects the world has no way to hold. Prisoners
+and hostages (**B-1**, **C-9**), a claimant's seal held in escrow (**B-4/5/6/7**),
+falsified navigational charts sold as genuine (**C-3**), a piece of intelligence
+sold exclusively and then sold again (**B-11**). Filed first as "prize crews",
+which is too narrow: the shape is **an arbitrary asset class**.
+
+```jsonc
+{
+  "id": "ast-3-0",
+  "kind": "prisoners",              // free-form slug, like Commitment.kind
+  "text": "Vigil crews taken off Vantic, 40 of them, held at Shalka.",
+  "heldBy": "ojjul",
+  "quantity": 40,
+  "unit": "crew",                   // "crew", "tons", "heirloom"
+  "divisible": true,
+  "valuePerUnit": { "vigil": 12, "meridian": 1 }
+}
+```
+
+**Per-faction value is the good idea in this**, and it is what makes an asset
+worth trading rather than worth hoarding. Prisoners are worth a great deal to the
+power that lost them and almost nothing to anyone else; an heirloom is worth
+something to the house it came from; a hundred tons of a rare material is worth
+whatever each power's industry can do with it. Asymmetric valuation is the whole
+of gains-from-trade, and it is exactly the thing the run showed nobody at the
+table can currently see — **B-13** (a figure bargained 80→95 settles at 60 and
+neither persona is told) and **B-11** (the same intelligence sold twice because
+nothing records who holds it).
+
+**Divisible vs atomic.** Forty prisoners split into two lots of twenty; one
+family heirloom does not. Splitting mints a second asset with the same `kind` and
+`valuePerUnit` and a share of the `quantity` — which is why value is stated **per
+unit** rather than as a total: a split then conserves by construction and cannot
+be used to manufacture worth.
+
+### The property that makes it safe
+
+**An asset has no intrinsic economic force.** `valuePerUnit` is a claim about
+what somebody would pay, not money — it never enters a ledger, is never income,
+and creating an asset mints nothing. It becomes credits only when a power
+actually pays, through `terms.payment` or a negotiated `adjust_credits`, both of
+which are already conserved.
+
+That is what lets the vocabulary stay open and lets a model create assets freely,
+the same bargain `Commitment.kind` already strikes. Compare `incomePerTurn`,
+which had to be capped twice over precisely because it *is* money.
+
+The corollary is the risk: **an asset that only sits in a list is another inert
+commitment**, which is the single most common defect in the whole playtest. It
+has to bite somewhere. Three cheap places, in order of value:
+
+1. **A treaty can be conditioned on one.** Add `asset_lost` / `asset_moved` to the
+   closed `voidsOn` vocabulary and a hostage against a treaty's performance works
+   with no new machinery — the pact voids when the hostage does.
+2. **The reducer creates them.** Prize crews out of `resolveBattle` on a decisive
+   win, which is also the first time in this game that a battle produces anything
+   but destruction. Assets held on a world are lost with it.
+3. **A debt can be collateralised**, and a default forfeits the collateral. This
+   is the Combine's entire doctrine and it currently has no instrument.
+
+### What it composes with
+
+Deliberately built **after or alongside item 5 in the playtest synthesis** (a
+contingent payment, *"if X then pay Y"*), because the two compose into most of
+what was missing:
+
+| arrangement | assets | contingent payment |
+|---|---|---|
+| ransom | transfer the prisoners | — (payment is immediate) |
+| hostage against performance | hold the hostage | `voidsOn: asset_lost` |
+| escrow / surety | hold the seal | pay out on the trigger |
+| insurance | — | the whole of it |
+| bounty | — | pay on `controller_changed` |
+
+### Size, honestly
+
+**A subsystem, not an op.** `WorldState.assets`, a schema change, a save-format
+change, `transfer_asset` / `split_asset` / `create_asset` ops with an actor
+guard, `voidsOn` extensions, a `resolveBattle` producer, serialization into the
+prompt so personas can price a trade, and a UI panel. Replay is unaffected —
+everything here is deterministic — and no journal version bump is needed, since
+old journals simply have no assets.
+
+The one open question worth settling before building: **who may create an asset
+from nothing.** Reducer-created prizes are safe. A model inventing *"a hundred
+tons of rare ore"* is safe under the no-intrinsic-force rule above, but it is
+still a thing that can be sold for real credits, so the value claim wants a
+ceiling derived from something — the way `maxCommitmentIncomeFor` derives from
+influence — rather than a flat constant.
+
 ## 80. An advisor: worked examples that know the board, and cost an action
 
 `exampleActions` in `web/src/App.tsx` writes worked examples against the

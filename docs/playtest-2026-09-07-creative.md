@@ -64,7 +64,7 @@ whether a prompt change helped.
 
 | # | What is missing | Covers | Size |
 |---|---|---|---|
-| 8 | **People as objects.** Hostages, fostered heirs, captured crews, prisoner exchange, ransom. Nothing can be held, kept, killed, returned or refused. Losses are destroyed, never taken. | B-1, C-9 | **Medium**, and it is one object, not two. A `Prize`/`Hostage` record produced by `resolveBattle` on a decisive win gives ransom, hostage, prisoner-exchange and `defection` a shared home. |
+| 8 | **An arbitrary asset class** — things that are neither credits nor ships. Prisoners, hostages, an heirloom, a claimant's seal in escrow, a hundred tons of rare material, a chart that is false, a piece of intelligence held exclusively. Each carries flavour text, a **per-faction** credit value, and a divisible/atomic flag: forty prisoners split into two lots, one heirloom does not. | B-1, C-9, C-3, B-11, and the escrow half of B-4/5/6/7 | **A subsystem.** See `docs/todo.md` item 81. Filed originally as "prize crews", which was too narrow. |
 | 9 | **A `contract` treaty type.** `tribute` is the only type carrying `incomePerTurn`, so it is the sink for every recurring flow — and words bind here: Arkane's sheet refuses tribute outright and it is now the payer on a live `tribute` treaty. Supersession keys on type, so a second commercial deal silently retires the first. | C-5 | **Medium**, and cheap for how much fiction it unblocks. Pair with running the accord appraisal against **both** parties' principles, not just the actor's. |
 | 10 | **No op can raise a rival's dissent.** Two successful legitimacy attacks left the Iron Vigil mechanically identical. `adjust_dissent` is actor-only and upward-only by design; `adjust_disposition` measures the wrong quantity and moved the wrong way. | B-2 | **Medium.** A `sedition` agent effect under the same bounds `stat_debuff` uses. Opens a whole axis that currently has a fiction and no arithmetic. |
 | 11 | **A hired squadron.** Twelve hulls offered under another power's flag and command landed as `basing_rights` — permission for *my* fleet to visit *their* space. The hulls stay mine, fight when I say, and count in my strength. | C-6 | **Medium.** Let `shipsPledged` transfer control for the treaty's life. |
@@ -86,9 +86,15 @@ applied" note to the batch it describes.
 
 - **Cheap but rare:** `C-4`, `B-13`, `E-2`. Worth doing on a quiet afternoon, not
   worth planning around.
-- **Expensive but constant:** #8 (people) and #10 (rival dissent). Both were
+- **Expensive but constant:** #8 (assets) and #10 (rival dissent). Both were
   reached for in most turns and neither is small. They are the two that would
   most change what the game *is*.
+
+  #8 grew on inspection. Stating it as an **asset class** rather than as
+  prisoners covers five findings instead of two, and the per-faction value is
+  what makes an asset worth trading rather than worth hoarding — asymmetric
+  valuation is the whole of gains-from-trade, and it is precisely what B-11 and
+  B-13 showed nobody at the table can currently see.
 - **`B-12`, the most-favoured-nation ratchet, is the one thing here not worth
   building.** No arrangement can read another arrangement's terms, and a clause
   whose whole content is *"track that other contract"* is structurally
