@@ -1,272 +1,217 @@
 # TODO — known bugs and open design questions
 
-Three sections. **Open work** is the current picture, grouped by root cause and
-pointing at the numbered detail below. **Performance** is its own track, `p.X`.
-**The detail** is every item ever raised, newest first, kept whether or not it
-is closed — the reasoning is the useful part, and a fixed item explains why the
-code looks the way it does.
+Four sections. **Open work** is the ranked list of what is actually outstanding.
+**Performance** is its own track, `p.X`. **Closed groupings** is the previous
+index, kept because its reasoning explains decisions the code still carries.
+**The detail** is every item ever raised, newest first, kept whether or not it is
+closed — the reasoning is the useful part, and a fixed item explains why the code
+looks the way it does.
 
 Statuses are checked against the code, not carried forward from the label. The
 last audit was **2026-09-07**.
 
 ---
 
-# Open work, grouped
+# Open work
 
-Every item below was checked against the code, not taken from its own label. The
-**2026-09-06** audit moved four: **10** and **56** were finished, **62** was
-filed unconfirmed and is real, and **68** does not reproduce.
+Ranked. Items 82–91 come from the creative playtest of 2026-09-07
+(`docs/playtest-2026-09-07-creative.md`, 40 findings over nine turns as the
+Combine); the bucket ids in brackets point into that report.
 
-As of **2026-09-07** everything here is closed except **A** (accepted variance,
-with one buildable instrument left) and **H** (two items that need a campaign
-played, not code written). The detail for each lives in its numbered item
-further down; this is the index.
+**The diagnosis that orders this list:** thirteen findings were *allowed but
+inert* against six *wrongly denied*. This game is good at hearing anything and
+bad at doing anything with it — the arbiter said yes to a free port, a
+pretender, a bill of attainder, an insurance syndicate, a cartel and an
+arbitration bench, and eleven of those produced a `Commitment` with
+`incomePerTurn: 0` and a line of narrative. An inert success is worse than a
+refusal: a refusal teaches the boundary, an inert success teaches one that is
+not there. **So the priority is mechanics, not arbiter tuning.**
 
-## A. ACCEPTED — the arbiter's ruling varies, and mostly it has to — **47, 66, 72**
+| # | what | size | why now |
+|---|---|---|---|
+| **82** | `channelBlockers` never fires | small | defect in code from 2026-09-07 |
+| **83** | a declared action can mint credits | small | open economy loop |
+| **84** | every private commitment is published to every power | small | half-fixed and written up as closed |
+| **85** | the concession ledger accumulates instead of superseding | small | extraction matches against it |
+| **86** | a contingent payment — *"if X then pay Y"* | medium | **the largest single gap** |
+| **81** | assets: things that are neither credits nor ships | subsystem | five findings, composes with 86 |
+| **87** | log every breach ruling | small | the instrument that makes 88–90 measurable |
+| **88** | a `contract` treaty type | medium | cheap for the fiction it unblocks |
+| **89** | no op can raise a rival's dissent | medium | an axis with a fiction and no arithmetic |
+| **90** | a hired squadron | medium | the commonest arrangement in the genre |
+| **91** | seven small things | small | a quiet afternoon |
+| **80** | an advisor that costs an action | medium | not from the playtest; wanted |
+| **92** | two claims only a campaign can settle | — | needs play, not code |
 
-Filed as one fixable finding across three items. It is not one, and the honest
-answer is that **most of it is irreducible.**
+**Where frequency and cost disagree:** 81 and 89 were reached for in most turns
+and neither is small — they are the two that would most change what the game
+*is*. 91's contents are cheap and rare. And one finding is deliberately **not**
+on this list: the most-favoured-nation ratchet (`B-12`), because no arrangement
+can read another's terms and a clause whose whole content is *"track that other
+contract"* is structurally unrepresentable. The fix there is the arbiter *saying
+so* rather than recording it as though it bound something.
 
-The symptoms are real: quoting a compulsion back at the game does not trip it;
-an unrelated red line blocked an invasion that closes no lane; the same invasion
-passed a turn later with `"NO LANE IS CLOSED BY THIS ORDER"` pasted in; an
-accord containing no treaty was refused as *"a treaty"* while two that wrote real
-treaties passed; one act priced at DC 5, 10, 11, 14 and 18 on different turns.
+## 82. `channelBlockers` never fires
 
-**But every part of this that code can own already has an owner**, and checking
-that was what settled it:
+Three deliberate, self-announced red-line crossings across four channels — one
+of them quoting the Combine's own line and then saying *"I am doing it
+anyway"* — and `channelBlockers` was `[]` at every read. Two messages later the
+close-time appraisal on the same transcript charged 15 dissent for it, so the
+breach **is** detectable and the per-message pass is not reaching the field.
 
-| the judgement | who makes it |
-|---|---|
-| is the quoted line real, and on which list | `classifyPrinciple` — code, by lookup |
-| which of several named lines wins | `classifyPrinciples` — code, red line beats compulsion |
-| is the line actually *about* this act | `verifyBreachRelevance` — a second, cheap call shown the act and the line and nothing else |
+The whole stated purpose of moving this check per-message was *"a line lands as
+a visible blocker in the turn the player walks toward it … there is now a
+conversation left in which to steer around it"*. Across four channels the player
+was never once warned before signing. `[D-6]`
 
-`verifyBreachRelevance` takes `kind: 'red_line' | 'compulsion'` and fires
-whenever a breach is named, so in the invasion case **it ran and returned
-`relevant: true`.** The guard is not missing. A model-tier judgement disagreed
-with a later reading of the same facts, which is what a model-tier judgement
-does.
+**Check the wiring before touching the prompt.** Small if that is all it is.
 
-**The structural fix is not available at a price worth paying.** Ruling on the
-*ops* rather than the words would anchor it — but the arbiter runs **before**
-resolution precisely so the pass that is handed a settled outcome is not the
-pass deciding the order should never have gone out. The ops do not exist yet at
-breach time, and moving the ruling after resolution reintroduces the exact
-failure the arbitration split was built to remove.
+## 83. A declared action can mint credits
 
-So this is **accepted variance**, not a queued fix. Reopen the larger question
-only with a proposal that does not put the ruling downstream of resolution.
+`moveConserved` is scoped to extraction batches. On the **declared** path a
+one-sided `adjust_credits` is capped at `MAX_NARRATIVE_CREDITS` and applied — so
+the cap bounds the *size* of the invention, not the fact of it. Measured: an
+arbitral award left the galaxy 320 credits richer with no treasury paying
+(Meridian 2243 → 2483, Ojjul 4032 → 4052). `[E-1]`
 
-**One buildable thing remains, and it is the only open item in this file that
-needs code rather than a campaign:** log every breach ruling with the quoted
-line, the kind, and the `verifyBreachRelevance` verdict. Today a drift like one
-act pricing at DC 5, 10, 11, 14 and 18 across turns is anecdote — it was found by
-a playtester noticing, and there is no way to ask a finished campaign how often
-it happened. A `kind: 'clamp'`-style entry per ruling makes the variance
-measurable, which is what would let the next playtest of 47/66/72 conclude
-something instead of producing another anecdote.
+**Fix:** run `moveConserved` over declared batches too. Small, and it closes a
+loop — any fiction shaped *"X pays Y"* pays Y whether or not X can be charged.
 
-It is deliberately **not** a fix for the variance. It is the instrument that
-would tell us whether the variance is the size we are assuming it is.
+## 84. Every private commitment is published to every power
 
-## B. CLOSED — a negotiated term the reducer cannot express — **51, 67.1, 67.2**
+`serializeCommitments(state)` takes no viewer and renders every live commitment
+into all five prompts. Measured: the Vigil quoted the exact 7% share of a
+commitment binding only the Combine and Drajk. `[D-5]`
 
-Extraction agrees something and the world does not change, or changes by a
-sixth. Split on inspection: two halves needed no design input and are **built**,
-one is a new mechanic, and one turns out not to be a code problem at all.
+The **log** half of this was fixed on 2026-09-07 and written up as closed; the
+state block was not. Small — `treatiesFor`-style scoping.
 
-**BUILT — an accord may now move money between the parties (67.1).** A
-450-credit settlement agreed with an NPC could not be written: the creditor's
-`adjust_credits -450` was refused by *"you cannot take credits out of another
-faction's treasury"*, and both sides left the table believing it had moved. That
-guard is right for a **declared** action — it is looting a treasury by narration
-— and wrong for an accord, because extraction is the one pass that has read a
-transcript and so the one place the other party's consent exists.
+## 85. The concession ledger accumulates instead of superseding
 
-Extraction-sourced credit movements are now held back and settled together
-through `moveConserved`, the helper `terms.payment` already used: nobody paying
-means the entries mint rather than move, so the term is dropped; a payer who
-agreed to more than it holds pays what it holds and the receipts trim pro-rata.
-**Uncapped, and it needs no cap** — a transfer cannot invent a credit, so what
-needs guarding is conservation, not size. A declared action reaching into
-another treasury is refused exactly as before, and a test pins that.
+One hire recorded four times, one recorded **backwards**
+(`{by: meridian, perTurn: 95}` when the flow is Combine → Meridian), and terms
+both parties struck still live in the list after a retraction — whose `kind`
+matched none of the three entries it was meant to strike, so even a kind-keyed
+removal would have missed. A withdrawal was itself recorded as a *concession*.
+`[D-8]`
 
-**BUILT — a commitment now says when its yield will not be paid (51).** Two
-ceilings compound and only one of them ever spoke: `MAX_COMMITMENT_INCOME`
-trims at signature *with* a note, and then `ledgerFor` caps a faction's total
-commitment earnings by `maxCommitmentIncomeFor` at **read** time, every turn,
-which produces no note by construction and cannot. Measured: 60 agreed → 25
-stored → **10 paid**, with the negotiating party told of neither step, so an NPC
-bargained hard over a number that could not exist.
+Extraction deduped all of it correctly this time, so nothing broke. But
+extraction is documented as a **matcher** against this list. Fix: key by `kind`
+and supersede in place; make a retraction remove rather than append; never
+record a withdrawal as a concession. Small, and it is the difference between a
+ledger and a transcript with extra steps.
 
-`establish_commitment` now warns at signature when the faction's influence
-ceiling will withhold the yield. Said rather than enforced, deliberately: the
-ceiling is derived from `influence`, which dissent and a hostile `stat_debuff`
-both move, so freezing it into the record would be wrong the turn after. The
-arrangement is real at what it says; what it *pays* is what the reader decides.
+## 86. A contingent payment — "if X then pay Y"
 
-**CLOSED — the prize-share commitment was a missing prompt line, not a missing
-mechanic (51).** Filed twice as a design question and it was neither time.
+**The largest single gap found.** A 900-credit indemnity on the fall of a world,
+with 450 of it laid off to a third power as reinsurance, landed as a
+`Commitment` with `incomePerTurn: 0` plus a `log_narrative`. Only the *premium*
+was real — so the engine can price the flow **into** an insurer and can never pay
+a claim **out** of one. An underwriter here is a subscription with no liability.
+`[B-10, C-8]`
 
-`prize_share_tribute` is not a thing in the codebase — zero hits in `src/`,
-`prompts/` or `tests/`. `Commitment.kind` is deliberately free-form so
-arrangements nobody enumerated can be held, and a model invented that slug
-mid-playtest.
+`Commitment.contingentPayment {trigger, amount, from, to}`, reusing the closed
+`voidsOn` trigger vocabulary (`treaty_with` / `attacks` / `insolvent`, plus
+`controller_changed`), settled in `tickTurn` by `moveConserved`. **Medium.**
 
-**And the commitment was not inert.** One carrying `incomePerTurn: 0` already
-moves disposition between the bound parties on establish and takes it back on
-dissolve, is serialized into the arbiter's prompt so it constrains later
-rulings, enforces exclusivity, and renders in the player's panel. "Pure
-decoration" in the playtest meant *credits only*.
+Ranked this high because *"if X then pay Y"* is the shape of **insurance,
+indemnity, bounty, ransom, escrow, surety, war subsidy, success fee and the
+performance clause of any treaty** — and it was reached for unprompted in four
+separate turns. Build with or before **81**; together they cover most of what
+was missing.
 
-What was actually wrong: **`prompts/extraction.md` documents
-`establish_commitment` with `kind`, `factionIds`, `text` and `exclusive`, and
-never mentions `incomePerTurn` at all.** Nothing told the model to put a number
-on it, so it wrote zero — which reads as "this arrangement is worth nothing",
-which is not what was agreed. The prompt now says a deal with money in it must
-carry a figure, that a share of something variable is written as the agreed
-per-turn estimate rather than zero, and that zero is for arrangements which
-genuinely have no money in them.
+## 87. Log every breach ruling
 
-**BUILT — a proportional term, which the paragraph this replaces argued against
-on a premise that was simply false (51).** The argument was that *"a share of
-route income is a claim on money the payer never held"*. Route income is money
-the payer holds; it is the whole of what its lanes pay it. What is a claim on
-money nobody held is a share of `net` — which nets off upkeep and can be
-negative — or a flat figure a model invented, and that is what
-`MAX_COMMITMENT_INCOME` already exists to bound. The two cases were run
-together, and the wrong one was refused.
+Section **A** below accepts arbiter variance as irreducible and names this as
+the one thing left worth building. The playtest is the argument for it:
+`verifyBreachRelevance` failed four times in nine turns — a prisoner release
+refused under the *debt* red line, the same act (forgiving a debt) ruled three
+different ways across three turns, and paying men to change sides charged as a
+*favour given for goodwill*. `[A-3, A-5, A-6]`
 
-The rest of the objection was a list of things to build, all four of which now
-exist: `Commitment.share` (`{ of, percent, from, to }`), a reader in
-`ledgerFor`, `MAX_COMMITMENT_SHARE` at 50%, and floored integer arithmetic that
-adds the identical credit to one party and subtracts it from the other.
+Record the quoted line, the kind, and the relevance verdict on every ruling.
+Right now "the same act was ruled three ways" is an anecdote from one agent's
+notes; there is no way to ask a campaign how often it happens, and no way to
+tell whether a prompt change helped. Small, and it is the instrument that makes
+the rest of this measurable.
 
-Two restrictions carry the design, and both fall out of the same choice —
-`of` names a **lane flow** (`raided`, `tolls`, `routes`) rather than a ledger
-line:
+> The **seventh** finding in that cluster is fixed: the Combine's proxy red line
+> was being read backwards verbatim, and the sentence was rewritten
+> prohibition-first after two prompt warnings and a worked example had failed to
+> stop it. A sweep of the other 21 principles found one more of the same shape
+> (the Vigil's pirate line) and two that were over-broad. See **79** and the
+> 2026-09-07 commits.
 
-- **It cannot recurse.** All three come off `routeEarnings`, which settles the
-  whole galaxy in one pass and does not read commitments — so pricing A's share
-  never calls B's `ledgerFor`. A share of `net` has no fixed point at all once
-  two powers hold shares of each other, and the stack is where you find that
-  out.
-- **It cannot be a claim on money nobody earned**, which is the actual version
-  of the objection above. A share is bounded by what the payer's lanes paid it
-  this turn, so a bad season pays nothing rather than paying a figure agreed in
-  a good one. That is what a share is *for*, and it is precisely the behaviour
-  an estimated `incomePerTurn` cannot have.
+## 88. A `contract` treaty type
 
-Directional, unlike `incomePerTurn` — which is one scalar every bound party
-reads the same way, the defect `src/domain/debt.ts` was written to escape — and
-both parties must be bound by the commitment, so an arrangement cannot reach
-into the take of a power that never signed it. That last one is **rejected**
-rather than trimmed: there is no smaller version of *"and the Vigil pays for
-it"* that is still the deal.
+`tribute` is the only treaty type carrying `incomePerTurn`, so it is the sink
+for every recurring commercial flow regardless of fiction — a hire contract and
+a reinsurance annuity both landed as `tribute`. Two consequences. It is the
+**wrong word**, and words bind here: Arkane's own compulsion refuses tribute
+outright and it is now the payer on a live `tribute` treaty. And supersession
+keys on `(pair, type)`, so a second commercial contract with the same power
+silently retires the first. `[C-5]`
 
-`incomePerTurn` keeps its job. It is right for a venture paying its members a
-steady rate, and it is the only term available for a proportion of anything the
-three lane flows do not cover — a harvest, a mine, a yard's output — where an
-agreed estimate still beats zero. `prompts/extraction.md` now says which to
-reach for, and says not to write both for one flow.
+Same `incomePerTurn` machinery, different label and supersession key. Pair it
+with running the accord appraisal against **both** parties' principles rather
+than only the actor's — the counterparty's sheet is currently never checked
+against the instrument its own concession lands in. **Medium**, and cheap for
+how much fiction it unblocks.
 
-**Re-scoped — a bargained `voidsOn` written as `[]` (67.2).** Not a code defect.
-The field exists, the reducer enforces it (item 50/60), and
-`prompts/extraction.md` documents all three kinds — the model simply did not
-emit one it had spent three messages agreeing. That is category **A**: a
-model-tier judgement that varies, with the mechanism already in place. Worth
-folding into A's logging rather than carrying here.
+## 89. No op can raise a rival's dissent
 
-## C. CLOSED — a batch is a transaction, the hull case — **62**
+Two successful legitimacy attacks — crowning a pretender, a bill of attainder —
+left the Iron Vigil **mechanically identical**. `adjust_dissent` is actor-only
+and upward-only by design, so there is no op in the game that can turn a rival's
+institutions against it; `adjust_disposition` measures their opinion of *you*,
+which is the wrong quantity, and it moved the wrong way. Net effect of two
+successes: −200 credits, +15 of the actor's own dissent, and the target liking
+them less. `[B-2]`
 
-`adjust_fleet` (build, based at the best holding) and `adjust_ships` (place at a
-named world) describing one squadron delivered **twice** the hulls and twice the
-bill. Closed the same way 58/61/63 were: within a batch, the two ops are one
-commissioning, so a placement **moves** what was just built instead of minting
-more. Both emission orders reconcile; two genuine `adjust_fleet` programmes and
-two different hull classes are untouched.
+A `sedition` agent effect under the same bounds `stat_debuff` already uses.
+**Medium**, and it opens the whole subversion axis, which currently has a
+fiction and no arithmetic.
 
-> The first attempt failed on its own defect. It skipped the relocation when the
-> placement named the same system the hulls were based at — and that is the
-> common case, because `adjust_fleet` bases at the faction's best holding, which
-> is exactly the world a model then names. Removing unconditionally makes both
-> cases uniform. A test pins the same-system case specifically.
+## 90. A hired squadron
 
-## D. CLOSED — composition is a decision for both sides once lift is on its own axis — **74, 77** (76 retired)
+Twelve hulls offered under another power's flag, command and orders landed as
+`basing_rights` — permission for the *lender's* fleet to visit the borrower's
+space. The hulls stay the lender's: they fight when it says, count in its
+`fleetStrengthOf`, and the borrower cannot use them for anything. The commonest
+arrangement in this genre has no representation. `shipsPledged` on
+`mutual_defense` is close and was not chosen. `[C-6]`
 
-A defender's best fleet is a pure battle line at 80–84%, and every mix is
-monotonically worse — because a defender has one objective and one linear
-objective has a pure optimum. Measured with `pnpm fleetlab`.
+Let `shipsPledged` transfer control for the treaty's life, or add
+`terms.command`. **Medium.**
 
-**A second objective was built and did not fix it.** `set_stance` gives a
-commander a standing order — `hold` never breaks off, `stand` breaks at two to
-one, `withdraw` breaks the moment it is outmatched. It changes behaviour
-measurably (84% held → 92% on `hold`, 70% on `withdraw`) and **pure battleship
-still wins every metric under every stance**, because a withdrawal costs a fixed
-*fraction of tonnage* and a screen only changes which hulls absorb it.
-Protecting a percentage of your own weight is still measured in weight.
+## 91. Seven small things
 
-The stance ships as an expressive choice, honestly documented, not as a fix.
-Two items came out of measuring it:
+- **an accord is refused whole when the offending clause is severable.** One
+  proxy-war clause destroyed a prize tithe, a letter of marque, a syndicate and
+  a hostage exchange with it. `[A-1]`
+- **repudiating your own multi-party commitment is free**, and pays the same. A
+  `Commitment` is not a `Treaty`, so `PACT_BREAKING_REPUTATION_COST` never
+  applies; the replacement commitment paid the identical +20/turn. `[B-8]`
+- **route an exclusivity clause into an `exclusive` commitment** instead of a
+  `log_narrative`, and `commitment_conflict` catches a double sale for free. The
+  same intelligence was sold twice in one hour with `exclusive` written into the
+  paper. `[B-11]`
+- **refuse to write a multilateral compact as a one-party commitment.** A pact
+  narrated as co-signed by four powers recorded `factionIds: ["ojjul"]`, so it
+  bound nobody — and a later one carried a deemed-accession clause binding two
+  powers never asked. `[C-1, D-3]`
+- **surface a trimmed figure** back into the accord narrative. A number
+  bargained from 80 to 95 settled at 60 and neither persona was told; a headline
+  33% toll share settles at one credit a turn. `[B-13]`
+- **reject a hostile-effect `deploy_agent` on the actor's own system.** 80
+  credits and an agent slot died permanently on a `stat_debuff` placed on the
+  actor's own capital. `[C-4]`
+- **put `rejections` on the response**, and scope the "nothing was applied" note
+  to the batch it describes. Four rejections were logged and none reached the
+  API, under a note saying nothing landed — while the correction pass had landed
+  320 credits. `[E-2]`
 
-- **76** — **retired.** Re-measured in isolation: `hold` keeps 4t and holds 6/6,
-  `stand` keeps 30.7t and holds 0/6. Neither dominates; the fleetlab signal was
-  the tonnage dilution the item was filed with a warning about.
-- **77** — **MOOT.** It was the open half of 74, and 74 closed underneath it.
-  Making lift its own `fleetlab` axis showed a defender does want a mix after
-  all (margin +1.2 over the best pure fleet, against the attacker's +10.4) — the
-  earlier "pure battle line wins every metric" was an artefact of a grid where
-  every composition carried enough lift to saturate the effect. The item existed
-  to invent a second defensive objective; the defender already has one, and it
-  is the lift phase. No leaders, and no
-  hold-your-own-world ship type, are needed to make the choice real.
-
-## E. CLOSED — treaty terms are all-or-nothing — **59, 60**
-
-**59 is not a bug, and the "exploit" I reported was my own broken fixture.** I
-probed it by pushing a treaty with `treatyType: 'basing_rights'` — that is the
-field on the *op*; a `Treaty` carries `type`. With no valid treaty `guest()`
-never matched, the invader was an ordinary attacker, and I wrote it up as a
-verified hole. With a real grant the mechanism works: a guest is filtered out of
-the attackers entirely and simply puts in, and a partner who wants to attack has
-to repudiate first — which is the explicit, priced act it should be. Two tests
-now pin it, including that a `trade_accord` grants no such shelter.
-
-A guard was written and then reverted with it: adding `basing_rights` to the
-treaties an attack breaks is unreachable, because a guest can never be an
-attacker while the grant is live. Shipping it would have been the `monopolist`
-failure again — implemented, tested and dead.
-
-The remaining half — terms for *which* hulls, how many, for how long — is
-genuine design and deliberately dropped rather than queued.
-
-**60 is closed into A.** Writing a treaty that voids itself is not repudiation:
-the paper ends by its own terms, which is clever play rather than an exploit.
-Any fix would be the arbiter ruling on intent, which is exactly the varying
-model-tier judgement A accepts.
-
-## F. FIXED — value destroyed rather than moved — **67.4**
-
-`income_penalty` subtracted from the victim and credited nobody. Three sources
-disagreed and the code was the odd one out: the schema says *"credits denied to
-the target"*, `prompts/resolution.md` offers it as the honest way to **skim** a
-rival, and the mission placing one by default is called `theft`.
-
-`Ledger.espionageGain` mirrors `espionageLoss`, read in the same pass. An
-operative on a world its own owner holds steals from nobody. The transfer
-conserves; `AGENT_UPKEEP` is what still makes the network cost something.
-
-## G. CLOSED — an unwritten rule about what survives a change of hands — **73**
-
-Nothing to fix; the rule existed and was coherent, and the item's claim that
-`fortify` skipped its ownership check was wrong. All four branches check
-`stillOurs` and only their answers differ: **ground improvements land for
-whoever holds the world, people and hulls are withheld.** A wall does not care
-who stands behind it; a levy raised for one flag does not muster for the next.
-Written into CLAUDE.md so it is a decision rather than an accident.
-
-## H. Wants a playtest, not a patch — **19, 67.5**
+## 92. Wants a playtest, not a patch — **19, 67.5**
 
 Both need a campaign played, not code written: each is a claim about what the
 model *reaches for*, which no test can settle.
@@ -448,6 +393,108 @@ Design notes for whoever builds it:
 - **Keep `exampleActions`.** It is free, deterministic and it teaches the
   vocabulary; an advisor answers a different question. Surfacing the examples on
   turn one of a new campaign is a separate and much cheaper win.
+
+
+---
+
+# Closed groupings
+
+The previous top-of-file index, kept because its reasoning explains decisions
+the code still carries — and because section **A** holds the standing position
+on arbiter variance that **87** is scoped against. Everything here is closed;
+what was still open in it (**H**) moved up to **92**.
+
+Every item below was checked against the code, not taken from its own label. The
+**2026-09-06** audit moved four: **10** and **56** were finished, **62** was
+filed unconfirmed and is real, and **68** does not reproduce.
+
+As of **2026-09-07** everything here is closed except **A** (accepted variance,
+with one buildable instrument left) and **H** (two items that need a campaign
+played, not code written). The detail for each lives in its numbered item
+further down; this is the index.
+
+## A. ACCEPTED — the arbiter's ruling varies, and mostly it has to — **47, 66, 72**
+
+Filed as one fixable finding across three items. It is not one, and the honest
+answer is that **most of it is irreducible.**
+
+The symptoms are real: quoting a compulsion back at the game does not trip it;
+an unrelated red line blocked an invasion that closes no lane; the same invasion
+passed a turn later with `"NO LANE IS CLOSED BY THIS ORDER"` pasted in; an
+accord containing no treaty was refused as *"a treaty"* while two that wrote real
+treaties passed; one act priced at DC 5, 10, 11, 14 and 18 on different turns.
+
+**But every part of this that code can own already has an owner**, and checking
+that was what settled it:
+
+| the judgement | who makes it |
+|---|---|
+| is the quoted line real, and on which list | `classifyPrinciple` — code, by lookup |
+| which of several named lines wins | `classifyPrinciples` — code, red line beats compulsion |
+| is the line actually *about* this act | `verifyBreachRelevance` — a second, cheap call shown the act and the line and nothing else |
+
+`verifyBreachRelevance` takes `kind: 'red_line' | 'compulsion'` and fires
+whenever a breach is named, so in the invasion case **it ran and returned
+`relevant: true`.** The guard is not missing. A model-tier judgement disagreed
+with a later reading of the same facts, which is what a model-tier judgement
+does.
+
+**The structural fix is not available at a price worth paying.** Ruling on the
+*ops* rather than the words would anchor it — but the arbiter runs **before**
+resolution precisely so the pass that is handed a settled outcome is not the
+pass deciding the order should never have gone out. The ops do not exist yet at
+breach time, and moving the ruling after resolution reintroduces the exact
+failure the arbitration split was built to remove.
+
+So this is **accepted variance**, not a queued fix. Reopen the larger question
+only with a proposal that does not put the ruling downstream of resolution.
+
+**One buildable thing remains, and it is the only open item in this file that
+needs code rather than a campaign:** log every breach ruling with the quoted
+line, the kind, and the `verifyBreachRelevance` verdict. Today a drift like one
+act pricing at DC 5, 10, 11, 14 and 18 across turns is anecdote — it was found by
+a playtester noticing, and there is no way to ask a finished campaign how often
+it happened. A `kind: 'clamp'`-style entry per ruling makes the variance
+measurable, which is what would let the next playtest of 47/66/72 conclude
+something instead of producing another anecdote.
+
+It is deliberately **not** a fix for the variance. It is the instrument that
+would tell us whether the variance is the size we are assuming it is.
+
+## B–G. CLOSED — six groupings, kept as pointers
+
+Each of these was a root-cause grouping over numbered items that are all now
+closed. The full reasoning lives in the numbered detail below; this is the index
+it was written as.
+
+- **B — a negotiated term the reducer cannot express (51, 67.1, 67.2).** An
+  accord may now move money between the parties, a commitment says when its
+  yield will not be paid, and a commitment can be written as a **rate** rather
+  than a figure — `Commitment.share`, whose whole design is that `of` names a
+  *lane flow*, so it can neither recurse through another faction's `ledgerFor`
+  nor become a claim on money nobody earned. The paragraph that argued against
+  building it was wrong on a premise: route income *is* money the payer holds.
+  → **51, 57, 67**
+- **C — a batch is a transaction, the hull case (62).** `adjust_fleet` and
+  `adjust_ships` both add hulls, so one squadron described twice was
+  commissioned twice. The first fix reproduced the bug inside itself by skipping
+  the relocation when the placement named the base — which is the *common* case.
+  → **62**
+- **D — composition is a decision for both sides once lift is on its own axis
+  (74, 77; 76 retired).** "A defender's best fleet is a pure battle line" was an
+  artefact of a grid where every composition carried enough lift to saturate the
+  effect — `no_lift` was 0.0% in every row. With lift on its own axis both sides
+  want a mix, and 77 is moot. → **74, 76, 77, 79**
+- **E — treaty terms are all-or-nothing (59, 60).** 59 was not a bug and the
+  "exploit" reported was a malformed fixture. 60 folded into A. → **59, 60**
+- **F — value destroyed rather than moved (67.4).** `income_penalty` showed the
+  victim's loss and nobody's gain; three sources called it theft and the code was
+  the odd one out. `Ledger.espionageGain` is the mirror. → **67**
+- **G — what survives a change of hands (73).** Ground improvements stay where
+  they were built; people and hulls do not. Filed as an asymmetry to fix; both
+  branches check, and their answers differ because the answers are right. → **73**
+
+---
 
 ## Retired this pass
 
