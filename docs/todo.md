@@ -284,6 +284,44 @@ places three agents). Neither needed a playtest — both were readable off the
 code, which is worth noting because both had sat here on the assumption that
 they were not.
 
+## 80. An advisor: worked examples that know the board, and cost an action
+
+`exampleActions` in `web/src/App.tsx` writes worked examples against the
+player's **actual** position — their best-crewed world, a real neighbour they
+could reach, the nearest unaligned world by BFS rather than merely an adjacent
+one — with a one-line note under each teaching the rule nobody guesses: that a
+neutral world fights back, that raiding needs a squadron a jump out rather than
+a won battle, that suborning costs standing rather than hulls, and that the
+arbiter will rule on things with no mechanic at all.
+
+It is pure, client-side, free, and **reachable only by typing `:help`**.
+`helpLines` has exactly one call site, nothing surfaces it on a new campaign,
+and the input placeholder says only `Declare an action, or :help`. So the one
+piece of the game that tells a player the arbiter will hear anything is behind a
+command they have to know exists.
+
+**Wanted: an advisor on top of it.** A model call, against the real board, that
+answers "what should I be thinking about" rather than "what can I type" — and
+**costs an action point**, which is what stops it being a strictly-correct thing
+to open every turn.
+
+Design notes for whoever builds it:
+
+- **The action cost is the whole design.** Free advice is a solved-once optimum:
+  every player opens it every turn and the game plays itself. Charging one of
+  two makes asking a real decision, and it is the same argument that put
+  `ACTION_POINTS_PER_TURN` on `Campaign` rather than in state.
+- **What tier.** The flavour tier is probably enough — it is a bounded reading
+  of a board that is already serialized — and `serializeState` exists. If it
+  needs the reasoning tier, the action cost matters more, not less.
+- **It must not become a solver.** Advice that names the optimal line turns a
+  strategy game into a queue of instructions. The useful version names
+  *pressures* — what is undefended, who is about to be able to afford a fleet,
+  which lane is worth closing — and leaves the move to the player.
+- **Keep `exampleActions`.** It is free, deterministic and it teaches the
+  vocabulary; an advisor answers a different question. Surfacing the examples on
+  turn one of a new campaign is a separate and much cheaper win.
+
 ## Retired this pass
 
 **10** (actor journaled, pinned by `replay.test.ts:254`) · **56** (the combat
