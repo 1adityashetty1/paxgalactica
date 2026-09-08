@@ -5,6 +5,7 @@ import {
   AgentMissionSchema,
   TreatyTermsSchema,
   TreatyTypeSchema,
+  VoidConditionSchema,
 } from './diplomacy.js';
 import { FibScaleSchema } from './duration.js';
 import { HullClassSchema, TypedStackSchema } from './hulls.js';
@@ -363,6 +364,28 @@ export const EstablishCommitmentOp = z.object({
       to: z.string().min(1),
     })
     .optional(),
+  /**
+   * What this pays out, and on what — *"if Pell Reach falls, nine hundred"*.
+   *
+   * The shape of insurance, indemnity, bounty, ransom, escrow, surety, war
+   * subsidy and any performance clause. `trigger` uses the same closed
+   * vocabulary a treaty's `voidsOn` uses. It fires **once**; a thing that paid
+   * every turn its condition held would be `incomePerTurn`.
+   */
+  contingencies: z
+    .array(
+      z.object({
+        trigger: VoidConditionSchema,
+        from: z.string().min(1),
+        to: z.string().min(1),
+        credits: z.number().int().min(0).max(100000).default(0),
+        /** An asset changing hands rather than, or as well as, money. */
+        assetId: z.string().nullable().default(null),
+        text: z.string().min(1).max(240),
+      }),
+    )
+    .max(4)
+    .default([]),
 });
 
 /**

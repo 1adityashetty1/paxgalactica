@@ -347,6 +347,15 @@ export const VoidConditionSchema = z.object({
      * was no object to hold.
      */
     'asset_lost',
+    /**
+     * `by` must still hold the system named in `target`.
+     *
+     * The trigger an indemnity is written against — *"if Pell Reach falls"* —
+     * and the reason this vocabulary is shared with `Commitment.contingencies`
+     * rather than duplicated: a condition that can end a treaty is exactly the
+     * kind of condition somebody insures against.
+     */
+    'world_lost',
   ]),
   /** The party the condition constrains. */
   by: z.string().min(1),

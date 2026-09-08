@@ -33,7 +33,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~83~~ | ~~a declared action can mint credits~~ | small | **FIXED** |
 | ~~84~~ | ~~every private commitment is published~~ | small | **FIXED** |
 | ~~85~~ | ~~the concession ledger accumulates~~ | small | **FIXED** |
-| **86** | a contingent payment — *"if X then pay Y"* | medium | **the largest single gap** |
+| ~~86~~ | ~~a contingent payment~~ | medium | **BUILT** — and it moves assets, not only credits |
 | ~~81~~ | ~~assets~~ | subsystem | **BUILT** — 86 can now trigger on them |
 | **87** | log every breach ruling | small | the instrument that makes 88–90 measurable |
 | **88** | a `contract` treaty type | medium | cheap for the fiction it unblocks |
@@ -137,7 +137,7 @@ Pure, and in `domain/diplomacy.ts` rather than inside the request handler, for
 the reason `logview.ts` and `layout.ts` are pure: the suite has no server, so
 logic living in a handler is logic nothing checks.
 
-## 86. A contingent payment — "if X then pay Y"
+## 86. BUILT — a contingent payment, "if X then pay Y"
 
 **The largest single gap found.** A 900-credit indemnity on the fall of a world,
 with 450 of it laid off to a third power as reinsurance, landed as a
@@ -153,8 +153,17 @@ a claim **out** of one. An underwriter here is a subscription with no liability.
 Ranked this high because *"if X then pay Y"* is the shape of **insurance,
 indemnity, bounty, ransom, escrow, surety, war subsidy, success fee and the
 performance clause of any treaty** — and it was reached for unprompted in four
-separate turns. Build with or before **81**; together they cover most of what
-was missing.
+separate turns.
+
+**BUILT, after 81 rather than before it**, which was the right order: a
+contingency that can only move credits is the narrow version. `assetId` is what
+makes collateral, a forfeited bond and a ransom of prisoners the same mechanism
+as an insurance payout.
+
+The trigger vocabulary is **shared with `voidsOn`** rather than duplicated — a
+condition that can end a deal is the kind of condition somebody insures against,
+and the polarity already matched, since `voidConditionMet` returns a reason
+exactly when a claim should pay. `world_lost` was added for it.
 
 ## 87. Log every breach ruling
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { VoidConditionSchema } from './diplomacy.js';
 
 /**
  * Commitments: durable facts the game has no dedicated mechanic for.
@@ -29,6 +30,71 @@ import { z } from 'zod';
  * shape as `MAX_COMMITMENT_INCOME`.
  */
 export const MAX_COMMITMENT_SHARE = 50;
+
+/**
+ * "If X happens, Y pays Z" — the single largest gap a creative playtest found.
+ *
+ * An underwriter wrote a 900-credit indemnity on the fall of a world and laid
+ * 450 of it off to a third power as reinsurance. What the world recorded was a
+ * commitment worth `incomePerTurn: 0` and a `log_narrative`. **Only the premium
+ * was real** — so the engine could price the flow *into* an insurer and could
+ * never pay a claim *out* of one, which makes an underwriter a subscription
+ * with no liability rather than an insurer.
+ *
+ * It is ranked as one feature because *"if X then pay Y"* is the shape of
+ * **insurance, indemnity, bounty, ransom, escrow, surety, war subsidy, success
+ * fee and the performance clause of any treaty** — and it was reached for
+ * unprompted in four separate turns of one campaign.
+ *
+ * ## The trigger vocabulary is shared, not duplicated
+ *
+ * `trigger` is a `VoidCondition`, the same closed set a treaty uses to void
+ * itself, because a condition that can END a deal is exactly the kind of
+ * condition somebody insures against — and the polarity already matches:
+ * `voidConditionMet` returns a reason when the bad thing has happened, which is
+ * precisely when a contingency should pay.
+ *
+ * Closed for the reason `OrderEffect` is closed: a predicate has to be right
+ * about every case that will ever exist, a list has to be edited, and the edit
+ * is where the thinking happens.
+ *
+ * ## It fires once
+ *
+ * A contingency that paid every turn its condition held would be a recurring
+ * flow, which is `incomePerTurn` and already exists. `firedTurn` is what makes
+ * this the other thing: a claim, paid when the event happens, and then spent.
+ *
+ * ## It needs no ceiling
+ *
+ * The rule every money mechanism here has converged on: a **transfer** cannot
+ * invent a credit, so what wants guarding is its conservation and the payer's
+ * ability to fund it, not its size. Trimmed to what the payer actually holds,
+ * exactly as `terms.payment` is.
+ */
+export const ContingencySchema = z.object({
+  /** What has to happen. Shares the `voidsOn` vocabulary — see above. */
+  trigger: VoidConditionSchema,
+  /** Who pays when it does. */
+  from: z.string().min(1),
+  /** Who is paid. */
+  to: z.string().min(1),
+  /** Credits moving once. Trimmed to what the payer holds. */
+  credits: z.number().int().min(0).max(100000).default(0),
+  /**
+   * An asset changing hands instead of, or as well as, money.
+   *
+   * What makes this more than an insurance payout: collateral forfeited on a
+   * default, a bond surrendered, prisoners handed over when a world falls. It
+   * is why assets were built first — a contingency that could only move credits
+   * is the narrow version of this.
+   */
+  assetId: z.string().nullable().default(null),
+  /** One sentence, read back to the player verbatim. */
+  text: z.string().min(1).max(240),
+  /** The turn it paid out, or `null` while it is still standing. */
+  firedTurn: z.number().int().min(0).nullable().default(null),
+});
+export type Contingency = z.infer<typeof ContingencySchema>;
 
 export const CommitmentSchema = z.object({
   id: z.string().min(1),
@@ -101,6 +167,14 @@ export const CommitmentSchema = z.object({
       to: z.string().min(1),
     })
     .optional(),
+  /**
+   * What this arrangement pays out, and on what. See `ContingencySchema`.
+   *
+   * On the commitment rather than the treaty because a commitment is already
+   * the catch-all for arrangements nobody enumerated, and because the playtest's
+   * indemnity landed there — as an `incomePerTurn: 0` record that did nothing.
+   */
+  contingencies: z.array(ContingencySchema).max(4).default([]),
   establishedTurn: z.number().int().min(0),
   status: z.enum(['active', 'dissolved']).default('active'),
 });

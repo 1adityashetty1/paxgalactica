@@ -665,6 +665,14 @@ function voidConditionMet(state: WorldState, condition: VoidCondition): string |
         ? `${name(condition.by)} is running at a loss (${net} a turn) and can no longer fund it`
         : null;
     }
+    case 'world_lost': {
+      const held = state.systems.find(
+        (sys) => sys.id === condition.target && sys.controllerFactionId === condition.by,
+      );
+      return held
+        ? null
+        : `${name(condition.by)} no longer holds ${state.systems.find((sys) => sys.id === condition.target)?.name ?? condition.target}`;
+    }
     case 'asset_lost': {
       // What makes a hostage a hostage: the pact holds while the thing is held.
       // `target` is an asset id rather than a faction — the one condition kind
@@ -2777,6 +2785,13 @@ export function applyOps(
           exclusive: op.exclusive,
           incomePerTurn: yieldPerTurn,
           ...(share === undefined ? {} : { share }),
+          // Bound to the parties, like everything else here: a contingency can
+          // only move what the powers who signed it have agreed to move.
+          contingencies: op.contingencies
+            .filter(
+              (c) => op.factionIds.includes(c.from) && op.factionIds.includes(c.to),
+            )
+            .map((c) => ({ ...c, firedTurn: null })),
           establishedTurn: state.turn,
           status: 'active',
         });
@@ -3643,6 +3658,56 @@ export function tickTurn(input: WorldState): TickResult {
     // comment says "the same two places".
     notes.push(...cedeTerritory(state, treaty));
     notes.push(...settleTreatyPayment(state, treaty));
+  }
+
+  /* --- Contingencies pay out when the thing they were written against happens --- */
+  // "If X happens, Y pays Z". Settled here, before void conditions and before
+  // income, for the same reason those are: a claim that came due this turn is
+  // due whether or not the arrangement carrying it survives the turn.
+  //
+  // Fires ONCE. A contingency that paid every turn its condition held would be
+  // a recurring flow, which is `incomePerTurn` and already exists — `firedTurn`
+  // is what makes this a claim rather than a subscription.
+  for (const commitment of state.commitments ?? []) {
+    if (commitment.status !== 'active') continue;
+    for (const c of commitment.contingencies ?? []) {
+      if (c.firedTurn !== null) continue;
+      const why = voidConditionMet(state, c.trigger);
+      if (!why) continue;
+      c.firedTurn = state.turn;
+
+      const payer = state.factions.find((f) => f.id === c.from);
+      const payee = state.factions.find((f) => f.id === c.to);
+      // Conserved, and trimmed to what the payer actually holds — the rule
+      // every money mechanism here has converged on. A transfer cannot invent a
+      // credit, so what needs guarding is its conservation and the payer's
+      // ability to fund it, never its size.
+      const paid = payer && payee ? Math.min(c.credits, payer.credits) : 0;
+      if (payer && payee && paid > 0) {
+        payer.credits -= paid;
+        payee.credits += paid;
+      }
+
+      // And the other half, which is why assets were built first: collateral
+      // forfeited, a bond surrendered, prisoners handed over when a world falls.
+      const asset = c.assetId ? (state.assets ?? []).find((a) => a.id === c.assetId) : undefined;
+      const moved = asset !== undefined && asset.heldBy === c.from;
+      if (asset && moved) asset.heldBy = c.to;
+
+      const parts = [
+        paid > 0 ? `${paid} credits` : null,
+        moved ? `${asset!.quantity} ${asset!.unit}` : null,
+      ].filter((x): x is string => x !== null);
+      const shortfall =
+        paid < c.credits
+          ? ` ${nameFor(state, c.from)} could only find ${paid} of the ${c.credits} agreed.`
+          : '';
+      const note = parts.length
+        ? `${c.text} — ${why}. ${nameFor(state, c.from)} pays ${nameFor(state, c.to)} ${parts.join(' and ')}.${shortfall}`
+        : `${c.text} — ${why}, and nothing was there to pay it with.`;
+      notes.push(note);
+      logEvent(state, 'diplomacy', note, c.to, [c.from, c.to]);
+    }
   }
 
   /* --- Void conditions fire before anything is paid out ---------------- */

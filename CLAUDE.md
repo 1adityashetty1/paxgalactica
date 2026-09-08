@@ -1231,6 +1231,46 @@ record that sits in a list and changes nothing.
   holdings and, for each, which *other* powers value it and roughly at what — so
   a persona can price a trade instead of inventing a number.
 
+### A contingency: "if X happens, Y pays Z"
+
+`ContingencySchema` in `src/domain/arbitration.ts`, carried on a `Commitment`.
+The largest single gap a creative playtest found: an underwriter wrote a
+900-credit indemnity on the fall of a world and laid 450 of it off as
+reinsurance, and what the world recorded was a commitment worth
+`incomePerTurn: 0` and a line of narrative. **Only the premium was real** — so
+the engine could price the flow *into* an insurer and never pay a claim *out* of
+one, which is a subscription with no liability rather than insurance.
+
+One feature, because *"if X then pay Y"* is the shape of **insurance, indemnity,
+bounty, ransom, escrow, surety, war subsidy, success fee and the performance
+clause of any bargain**. It was reached for unprompted in four separate turns of
+one campaign.
+
+**The trigger vocabulary is shared with `voidsOn`, not duplicated.** A condition
+that can *end* a deal is exactly the kind of condition somebody insures against,
+and the polarity already matched: `voidConditionMet` returns a reason when the
+bad thing has happened, which is precisely when a contingency should pay. Closed
+for the reason `OrderEffect` is closed — a predicate has to be right about every
+case that will ever exist, a list has to be edited, and the edit is where the
+thinking happens. `world_lost` was added for it.
+
+**It fires once.** `firedTurn` is what makes this a claim rather than a
+subscription; a thing that paid every turn its condition held would be
+`incomePerTurn`, which already exists.
+
+**It needs no ceiling**, by the rule every money mechanism here has converged
+on: a transfer cannot invent a credit, so what wants guarding is its
+conservation and the payer's ability to fund it, not its size. Trimmed to what
+the payer actually holds, exactly as `terms.payment` is, and the shortfall is
+said out loud.
+
+**`assetId` is why assets were built first.** A contingency that could only move
+credits is the narrow version — collateral forfeited on a default, a bond
+surrendered, prisoners handed over when a world falls are all this mechanism
+moving a *thing*. Both parties must have signed: a contingency naming a power
+that is not bound by the commitment is dropped, the same rule
+`Commitment.share` follows.
+
 ## Faction lines are enforced, not suggested
 
 Red lines stop a faction acting out of character. **Compulsions** stop it

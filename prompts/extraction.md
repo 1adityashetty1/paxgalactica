@@ -281,6 +281,35 @@ above do not cover — a cut of a harvest, a mine, a shipyard's output — where
 agreed per-turn estimate is still better than zero. Zero says the arrangement is
 worth nothing, which is not what was agreed.
 
+**If the parties agreed that something happens ONLY IF something else does, use
+`contingencies`.** This is insurance, indemnity, a bounty, a ransom paid on
+delivery, collateral forfeited on a default, a war subsidy, a success fee, and
+the performance clause of any bargain — *"nine hundred if Pell Reach falls"*,
+*"the charter is yours if I default"*, *"a hundred a head when the crews are
+handed over"*.
+
+```jsonc
+"contingencies": [{
+  "trigger": { "kind": "world_lost", "by": "freeworlds", "target": "ark-6" },
+  "from": "ojjul", "to": "freeworlds", "credits": 900, "assetId": null,
+  "text": "Nine hundred if Pell Reach falls."
+}]
+```
+
+`trigger.kind` is one of five, and no others exist: `world_lost` (`by` stops
+holding system `target`), `asset_lost` (`by` stops holding asset `target`),
+`treaty_with` (`by` signs with `target`), `attacks` (`by` goes to war with
+`target`), `insolvent` (`by` is running at a loss).
+
+`from` and `to` must **both** be parties to the commitment — a contingency
+cannot reach into the treasury of a power that never signed, and one that does
+is dropped. Set `assetId` to move a **thing** rather than, or as well as,
+credits: that is how collateral, a forfeited bond and a ransom of prisoners are
+written.
+
+It pays **once**, when the thing happens. Something that pays every turn a
+condition holds is `incomePerTurn`, not this.
+
 A commitment with no money in it is still real — it moves standing between the parties and the
 arbiter reads it — so leave `incomePerTurn` at 0 only when the deal genuinely
 has no money in it: a non-aggression understanding, a shared succession, an

@@ -1276,3 +1276,152 @@ describe('proportional commitment terms', () => {
     expect(ledgerFor(res.state, 'drajk').commitmentShare).toBeGreaterThan(0);
   });
 });
+
+/**
+ * "IF X HAPPENS, Y PAYS Z."
+ *
+ * The single largest gap a creative playtest found. An underwriter wrote a
+ * 900-credit indemnity on the fall of a world and laid 450 of it off as
+ * reinsurance; the world recorded a commitment worth `incomePerTurn: 0` and a
+ * line of narrative. Only the *premium* was real — so the engine could price
+ * the flow into an insurer and never pay a claim out of one, which is a
+ * subscription with no liability rather than insurance.
+ */
+describe('a contingent payment', () => {
+  const indemnity = (over: Record<string, unknown> = {}): Op => {
+    const world = createSeedState('ojjul').systems.find(
+      (x) => x.controllerFactionId === 'freeworlds',
+    )!;
+    return {
+      op: 'establish_commitment',
+      kind: 'indemnity_pact',
+      factionIds: ['ojjul', 'freeworlds'],
+      text: 'The Combine underwrites the Drift.',
+      contingencies: [
+        {
+          trigger: { kind: 'world_lost', by: 'freeworlds', target: world.id },
+          from: 'ojjul',
+          to: 'freeworlds',
+          credits: 900,
+          text: 'Nine hundred if Pell Reach falls.',
+        },
+      ],
+      ...over,
+    } as Op;
+  };
+  const world = () =>
+    createSeedState('ojjul').systems.find((x) => x.controllerFactionId === 'freeworlds')!.id;
+  const purse = (s: WorldState, id: string) => s.factions.find((f) => f.id === id)!.credits;
+
+  it('pays nothing while the thing it was written against has not happened', () => {
+    const s = applyOps(createSeedState('ojjul'), [indemnity()], 'extraction', 'ojjul').state;
+    const before = { o: purse(s, 'ojjul'), f: purse(s, 'freeworlds') };
+    const after = tickTurn(s).state;
+    // Income moves, so assert the claim did not: the gap stays what it was.
+    expect(purse(after, 'freeworlds') - purse(after, 'ojjul')).toBeCloseTo(
+      before.f - before.o + (purse(after, 'freeworlds') - before.f) - (purse(after, 'ojjul') - before.o),
+      0,
+    );
+    expect(after.commitments.at(-1)!.contingencies[0]!.firedTurn).toBeNull();
+  });
+
+  it('pays out when it does, once', () => {
+    let s = applyOps(createSeedState('ojjul'), [indemnity()], 'extraction', 'ojjul').state;
+    s = applyOps(
+      s,
+      [{ op: 'transfer_control', systemId: world(), toFactionId: 'vigil', reason: 'stormed' }],
+      'engine',
+    ).state;
+
+    const before = purse(s, 'freeworlds');
+    const paidTurn = tickTurn(s).state;
+    const claim = paidTurn.commitments.at(-1)!.contingencies[0]!;
+    expect(claim.firedTurn).toBe(paidTurn.turn);
+    // 900 moved on top of whatever income did.
+    const withIncome = purse(paidTurn, 'freeworlds') - before;
+    expect(withIncome).toBeGreaterThanOrEqual(900);
+
+    // And it is spent: the next turn pays nothing more.
+    const next = tickTurn(paidTurn).state;
+    const secondTurn = purse(next, 'freeworlds') - purse(paidTurn, 'freeworlds');
+    expect(secondTurn).toBeLessThan(900);
+  });
+
+  it('conserves — what the payee gains, the payer loses', () => {
+    let s = applyOps(createSeedState('ojjul'), [indemnity()], 'extraction', 'ojjul').state;
+    s = applyOps(
+      s,
+      [{ op: 'transfer_control', systemId: world(), toFactionId: 'vigil', reason: 'stormed' }],
+      'engine',
+    ).state;
+    const noClaim = { ...s, commitments: [] } as WorldState;
+
+    const withClaim = tickTurn(s).state;
+    const without = tickTurn(noClaim).state;
+    expect(purse(withClaim, 'freeworlds') - purse(without, 'freeworlds')).toBe(900);
+    expect(purse(without, 'ojjul') - purse(withClaim, 'ojjul')).toBe(900);
+  });
+
+  it('pays what the payer has, and says so when that is less', () => {
+    let s = createSeedState('ojjul');
+    s.factions.find((f) => f.id === 'ojjul')!.credits = 200;
+    s = applyOps(s, [indemnity()], 'extraction', 'ojjul').state;
+    s = applyOps(
+      s,
+      [{ op: 'transfer_control', systemId: world(), toFactionId: 'vigil', reason: 'stormed' }],
+      'engine',
+    ).state;
+    const out = tickTurn(s);
+    expect(out.notes.join(' ')).toMatch(/could only find/);
+  });
+
+  it('moves an asset, which is why assets came first', () => {
+    // Collateral forfeited on a trigger — a contingency that could only move
+    // credits is the narrow version of this.
+    let s = applyOps(
+      createSeedState('ojjul'),
+      [
+        {
+          op: 'create_asset', kind: 'collateral', heldBy: 'ojjul',
+          text: 'The Drift charter, held in escrow.', quantity: 1, unit: 'charter',
+          divisible: false, valuePerUnit: { freeworlds: 600 },
+        } as Op,
+      ],
+      'model',
+      'ojjul',
+    ).state;
+    const assetId = s.assets[0]!.id;
+    s = applyOps(
+      s,
+      [indemnity({ contingencies: [{
+        trigger: { kind: 'world_lost', by: 'freeworlds', target: world() },
+        from: 'ojjul', to: 'freeworlds', credits: 0, assetId,
+        text: 'The charter passes if Pell Reach falls.',
+      }] })],
+      'extraction',
+      'ojjul',
+    ).state;
+    s = applyOps(
+      s,
+      [{ op: 'transfer_control', systemId: world(), toFactionId: 'vigil', reason: 'stormed' }],
+      'engine',
+    ).state;
+
+    expect(tickTurn(s).state.assets.find((a) => a.id === assetId)!.heldBy).toBe('freeworlds');
+  });
+
+  it('binds only the parties who signed it', () => {
+    const out = applyOps(
+      createSeedState('ojjul'),
+      [indemnity({ contingencies: [{
+        trigger: { kind: 'insolvent', by: 'vigil', target: '' },
+        from: 'vigil', to: 'ojjul', credits: 500,
+        text: 'The Vigil pays for it.',
+      }] })],
+      'extraction',
+      'ojjul',
+    );
+    // A commitment cannot reach into the treasury of a power that never signed.
+    expect(out.state.commitments.at(-1)!.contingencies).toHaveLength(0);
+  });
+});

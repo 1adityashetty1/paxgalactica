@@ -469,6 +469,17 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
                 )}
               </div>
               <p className="commitment-text">{c.text}</p>
+              {/* What this pays out and on what. A claim standing against a
+                  world you hold is a fact about your position, not a footnote —
+                  and one already paid is what the arrangement was for. */}
+              {(c.contingencies ?? []).map((k, i) => (
+                <p key={i} className={k.firedTurn === null ? 'muted' : 'commitment-text'}>
+                  {k.firedTurn === null ? '◇' : '◆'} {k.text}
+                  {k.firedTurn !== null && (
+                    <span className="muted"> — paid, turn {k.firedTurn}</span>
+                  )}
+                </p>
+              ))}
               <p className="muted">
                 since turn {c.establishedTurn} ·{' '}
                 {c.factionIds
