@@ -9,6 +9,7 @@ import {
 import type { TurnReport } from '../domain/reducer.js';
 import {
   COMPULSION_BREACH_DISSENT,
+  COUNTERPARTY_BREACH_DISSENT,
   dissentPenalty,
   getFaction,
   MAX_DISSENT_PENALTY,
@@ -877,6 +878,57 @@ export async function closeChannel(
   // The same record the declared path writes. An accord's rulings drift exactly
   // as an order's do — a playtest saw six treaty-emitting accords permitted and
   // two refused, one of them on a debt, with no way to ask how often.
+  // AND THE OTHER POWER'S OWN INSTITUTIONS GET A VIEW.
+  //
+  // `appraiseAgreement` is scoped to the acting faction by construction, on the
+  // correct ground that the counterparty's concessions cannot trip the PLAYER's
+  // lines. They should trip their own, and nothing checked: measured, the Iron
+  // Vigil negotiated three messages and signed an accommodation with the Nars
+  // against a sheet that forbids exactly that, at no cost to itself.
+  //
+  // A price rather than a veto — an NPC backing out at signature would destroy a
+  // deal the player negotiated in good faith, with none of the warning the
+  // player gets from a blocker. A leader may agree to what its people hate, and
+  // its people notice.
+  //
+  // Only when the accord produced ops AND the other power actually conceded
+  // something: agreeing to nothing costs nobody anything, and a conversation
+  // that agreed nothing must not cost a call to discover that.
+  let counterpartyCost = 0;
+  const counterpartyNotes: string[] = [];
+  const theirs = conceded.filter((c) => c.by === factionId);
+  if (extraction.output.ops.length > 0 && theirs.length > 0) {
+    const other = getFaction(campaign.state, factionId);
+    const theirRuling = await appraiseAgreement(
+      campaign.state,
+      campaign.state.playerFactionId,
+      theirs.map((c) => c.text).join(' '),
+      factionId,
+    );
+    counterpartyCost = theirRuling.costUsd;
+    const theirNamed = theirRuling.appraisal.breach?.principles ?? [];
+    const theirBreach =
+      other && theirNamed.length > 0 ? classifyPrinciples(other, theirNamed) : null;
+    if (theirBreach) {
+      campaign.stage(
+        [
+          {
+            op: 'adjust_dissent',
+            factionId,
+            delta: COUNTERPARTY_BREACH_DISSENT[theirBreach.kind],
+            reason: theirBreach.principle,
+          },
+        ],
+        `${factionId} signs against its own line`,
+        '',
+        'engine',
+        factionId,
+      );
+      const said = `${other?.name ?? factionId} signs anyway, against its own standing: "${theirBreach.principle}". Its institutions will remember.`;
+      counterpartyNotes.push(said);
+    }
+  }
+
   const rulingRow = recordRuling(
     extraction.output.narrative,
     'accord',
@@ -1031,7 +1083,7 @@ export async function closeChannel(
         : history,
   );
 
-  const notes = [...staged.notes];
+  const notes = [...staged.notes, ...counterpartyNotes];
   let defiance: ActionOutcome['defiance'] = null;
   if (breach?.kind === 'compulsion') {
     const by = ruling?.appraisal.breach?.by ?? 'your own institutions';
@@ -1079,7 +1131,7 @@ export async function closeChannel(
     staged: campaign.stagedCount - before,
     notes,
     rejections: staged.rejections,
-    costUsd: extraction.costUsd + staged.costUsd + rulingCost,
+    costUsd: extraction.costUsd + staged.costUsd + rulingCost + counterpartyCost,
     // Extraction is the one pass that can turn conversation into ops, so seeing
     // exactly what it read out of a transcript matters more here than anywhere.
     ops: campaign.opsStagedSince(before),

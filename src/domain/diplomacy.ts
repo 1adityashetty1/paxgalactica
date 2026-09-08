@@ -194,12 +194,29 @@ export const TREATY_TYPES = [
   // raid-immunity pact between the same pair, because supersession keys on the
   // type. Naming the thing fixes both.
   'cession',
+  /**
+   * A commercial agreement that pays: a hire, an annuity, a charter fee, a
+   * retainer, a share of a season's take.
+   *
+   * `tribute` was the only type carrying `incomePerTurn`, so it became the sink
+   * for every recurring flow regardless of what the parties meant — and words
+   * bind here. A playtest recorded a hire contract and a reinsurance annuity as
+   * `tribute`, which put the **Arkane Free Worlds** on the paying end of an
+   * instrument their own sheet refuses outright: *"tribute is refused. The
+   * Drift does not pay to be left alone, whatever the arithmetic says."*
+   *
+   * It also fixes a quieter bug. Supersession keys on `(pair, type)`, so a
+   * second commercial deal with the same power silently retired the first — two
+   * unrelated contracts could not coexist because they had to share a label.
+   */
+  'contract',
 ] as const;
 export const TreatyTypeSchema = z.enum(TREATY_TYPES);
 export type TreatyType = z.infer<typeof TreatyTypeSchema>;
 
 export const TREATY_TYPE_MEANING: Record<TreatyType, string> = {
   cession: 'one party hands named worlds to the other, once and permanently; a price may ride with it',
+  contract: 'a commercial agreement that pays — a hire, an annuity, a charter fee; money for something given, not tribute',
   non_aggression: 'neither party attacks the other; breaking it is a betrayal everyone sees',
   mutual_defense: 'an attack on one obliges the other to answer',
   trade_accord: 'lanes stay open and income is shared on named systems',
@@ -565,6 +582,29 @@ export const AgentEffectSchema = z.discriminatedUnion('kind', [
     perTurn: z.number().int().min(0).max(20),
   }),
   z.object({
+    /**
+     * Turn a rival's own institutions against it.
+     *
+     * **There was no op in the game that could raise another power's dissent.**
+     * `adjust_dissent` is actor-only and upward-only by design — the guard that
+     * stops it being the cheapest hostile act available — and
+     * `adjust_disposition` measures the wrong quantity: how they feel about
+     * *you*, not how their own people feel about them.
+     *
+     * So a playtest crowned a pretender and passed a bill of attainder against
+     * the Iron Vigil, both successfully, and left it **mechanically identical**:
+     * −200 credits and +15 of the actor's own dissent, for a legitimacy attack
+     * the fiction described in detail and the arithmetic could not express.
+     *
+     * Mutates rather than being read where it is used, like `hull_damage` and
+     * unlike `stat_debuff`: dissent accumulates and decays on its own clock, so
+     * a value read fresh each turn would not accumulate at all.
+     */
+    kind: z.literal('sedition'),
+    /** Dissent added to the target per turn on success. */
+    perTurn: z.number().int().min(1).max(6),
+  }),
+  z.object({
     kind: z.literal('income_penalty'),
     /** Credits denied to the target per turn on success. */
     perTurn: z.number().int().min(0).max(400),
@@ -641,6 +681,8 @@ export function describeEffect(effect: AgentEffect): string {
       return `−${effect.magnitude} ${effect.stat}`;
     case 'crew_defection':
       return `talks up to ${effect.perTurn} hull(s) a turn out of the target's service, as far as guile beats resolve`;
+    case 'sedition':
+      return `+${effect.perTurn} dissent a turn in the target's own institutions`;
     case 'intel':
       return 'reveals hidden orders';
   }

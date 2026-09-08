@@ -112,8 +112,11 @@ credits out of a rival's treasury is rejected outright. Skim a rival with an
 power's standing with its own institutions: it falls by 2 a turn on its own and
 in no other way, so it cannot be talked down by a leader who has just been
 refused. To turn a *rival's* institutions against it, deploy an agent on a
-`subversion` mission with a `stat_debuff` effect — that path costs credits,
-risks exposure and is capped, and it is the only one there is.
+`subversion` mission — with a `stat_debuff` effect to blunt one stat, or a
+**`sedition`** effect to raise their dissent directly, which reaches every stat
+at once and is what a legitimacy attack actually does: crowning a pretender,
+proclaiming an attainder, buying their officer corps. Those paths cost credits,
+risk exposure and are capped, and they are the only ones there is.
 
 An `establish_commitment` that earns or costs money should say so with
 `incomePerTurn` — a mining concession or a smuggling operation is worth

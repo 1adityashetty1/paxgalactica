@@ -1518,6 +1518,31 @@ export const DOCTRINE_ETHIC_DISSENT = 20;
 export const COMPULSION_BREACH_DISSENT = 15;
 
 /**
+ * What it costs a power to sign something its own sheet forbids.
+ *
+ * Nothing held an NPC to its own character inside a channel. `ReactionSchema`
+ * has no `refusal` field, blockers are scoped to the player's lines by design,
+ * and the accord appraisal runs from the player's viewpoint by construction —
+ * so the Iron Vigil negotiated for three messages and signed an accommodation
+ * with the Nars against a sheet reading *"no accommodation with pirates,
+ * smugglers or the Nars may be entertained, however useful"*, and paid nothing.
+ *
+ * **The answer is a price, not a veto**, and the asymmetry with the player is
+ * deliberate. A player's red line refuses the accord outright because they are
+ * the one being told what their own institutions will bear, and they get to
+ * argue with it — a blocker in the turn they approach it, and a conversation
+ * left in which to steer around. An NPC that backed out at signature would
+ * destroy a deal the player negotiated in good faith, with no such warning and
+ * no way to renegotiate. So a leader may agree to what its people hate, and its
+ * people notice.
+ *
+ * Priced above `COMPULSION_BREACH_DISSENT` for a red line and level with it for
+ * a compulsion, for the reason the player's own scale is set that way: crossing
+ * an absolute refusal is worse than overruling a demand.
+ */
+export const COUNTERPARTY_BREACH_DISSENT = { red_line: 20, compulsion: 15 } as const;
+
+/**
  * Dissent at or above which a faction will not be reoriented at all.
  *
  * Two jobs. It is the fiction — a leadership its own institutions have stopped

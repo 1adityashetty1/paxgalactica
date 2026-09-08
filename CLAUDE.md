@@ -1014,6 +1014,7 @@ and nothing implemented it.
 | `basing_rights` | the other party's fleets may enter without it being an attack |
 | `tribute` | `incomePerTurn` moves every turn |
 | `cession` | the named systems **change hands**, once and permanently; the only type `terms.territory` is legal on |
+| `contract` | the same `incomePerTurn` machinery as `tribute`, for a **commercial** deal — a hire, an annuity, a charter fee |
 | `territory` (a term, not a type) | the named systems **change hands** when the treaty takes force |
 | `payment` (a term, not a type) | credits move **once**, when the treaty takes force — the price of a cession, an indemnity, a lump settlement |
 | `voidsOn` (a term, not a type) | typed conditions that **end** the treaty when they come true — and one already true at signature is **refused**, not signed |
@@ -1769,7 +1770,8 @@ costs the breaker 25 disposition with the other party.
 
 - the **effect** is what happens — `hull_damage` (mutates fleet strength),
   `income_penalty` (read in `ledgerFor`), `stat_debuff` (read in
-  `effectiveStats`), `intel` (read in `ordersVisibleTo`, revealing hidden
+  `effectiveStats`), `sedition` (raises the target's own dissent, and is the
+  only thing in the game that can), `intel` (read in `ordersVisibleTo`, revealing hidden
   orders on the watched system).
 - the **mission** is risk and persistence, via `MISSION_PROFILE`:
 

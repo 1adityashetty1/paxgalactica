@@ -4087,6 +4087,32 @@ export function tickTurn(input: WorldState): TickResult {
       continue;
     }
 
+    if (agent.effect.kind === 'sedition') {
+      // Bounded by the same ceiling a leader's own refusals are, so a spy
+      // network cannot do to a rival what the rival could not do to itself.
+      const before = target.dissent;
+      target.dissent = Math.min(100, before + agent.effect.perTurn * profile.effectMultiplier);
+      const gained = target.dissent - before;
+      watchNotes.set(
+        agent.id,
+        gained > 0
+          ? `is turning ${target.name}'s own people against it (+${gained} dissent, now ${target.dissent}).`
+          : `finds ${target.name}'s institutions already past listening to anyone.`,
+      );
+      if (gained > 0) {
+        logEvent(
+          state,
+          'system',
+          `Sedition in ${target.name}: its own institutions are ${target.dissent}/100 out of patience.`,
+          target.id,
+          // The victim knows its own house is restive; it does not know who is
+          // doing it. `intel` is where the owner reads the attribution.
+          [target.id, agent.ownerFactionId],
+        );
+      }
+      continue;
+    }
+
     if (agent.effect.kind === 'hull_damage') {
       const damage = agent.effect.perTurn * profile.effectMultiplier;
       // Sabotage destroys hulls where the operative is, not somewhere abstract.

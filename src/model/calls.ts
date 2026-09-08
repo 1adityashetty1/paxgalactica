@@ -76,20 +76,34 @@ function withRubric(base: string): string {
 export async function appraiseAction(
   state: WorldState,
   action: string,
+  /**
+   * Whose institutions are ruling. Defaults to the player, which is right for
+   * every declared action and every accord they close.
+   *
+   * Passed explicitly when the question is *"would the OTHER power's own people
+   * stand for this"* — the half `appraiseAgreement` deliberately never asked,
+   * on the correct ground that the counterparty's concessions cannot trip the
+   * player's lines. It turns out they should trip their own: a playtest watched
+   * the Iron Vigil negotiate for three messages and sign an accommodation with
+   * the Nars against a sheet that says *"no accommodation with pirates,
+   * smugglers or the Nars may be entertained, however useful"*, at no cost to
+   * itself whatsoever.
+   */
+  viewerId: string = state.playerFactionId,
 ): Promise<{ appraisal: Appraisal; attempts: number; costUsd: number }> {
-  const stats = effectiveStats(state, state.playerFactionId);
+  const stats = effectiveStats(state, viewerId);
   const bands = DIFFICULTY_BANDS.map((b) => `  DC ${b.dc} ${b.label} — ${b.example}`).join('\n');
   const statLines = STAT_NAMES.map(
     (s) => `  ${s} ${stats[s]} (${formatModifier(statModifier(stats[s]))}) — ${STAT_MEANINGS[s]}`,
   ).join('\n');
-  const actor = getFaction(state, state.playerFactionId);
+  const actor = getFaction(state, viewerId);
 
   const res = await callStructured({
     kind: 'appraisal',
     label: 'the arbiter considers it',
     system: loadPrompt('appraisal'),
     user: [
-      serializeState(state, state.playerFactionId),
+      serializeState(state, viewerId),
       '',
       '---',
       '',
@@ -166,6 +180,8 @@ export async function appraiseAgreement(
   state: WorldState,
   withFactionId: string,
   agreed: string,
+  /** Whose institutions are ruling. Defaults to the player — see `appraiseAction`. */
+  viewerId?: string,
 ): Promise<{ appraisal: Appraisal; costUsd: number }> {
   const other = getFaction(state, withFactionId)?.name ?? withFactionId;
   const res = await appraiseAction(
@@ -204,6 +220,7 @@ export async function appraiseAgreement(
       'world is a breach for a power whose lines forbid those things, whatever',
       'the trigger.',
     ].join('\n'),
+    viewerId,
   );
   return { appraisal: res.appraisal, costUsd: res.costUsd };
 }

@@ -36,8 +36,8 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~86~~ | ~~a contingent payment~~ | medium | **BUILT** — and it moves assets, not only credits |
 | ~~81~~ | ~~assets~~ | subsystem | **BUILT** — 86 can now trigger on them |
 | ~~87~~ | ~~log every breach ruling~~ | small | **BUILT** |
-| **88** | a `contract` treaty type | medium | cheap for the fiction it unblocks |
-| **89** | no op can raise a rival's dissent | medium | an axis with a fiction and no arithmetic |
+| ~~88~~ | ~~a `contract` treaty type~~ | medium | **BUILT** |
+| ~~89~~ | ~~rival dissent~~ | medium | **BUILT** — an agent effect *and* a treaty consequence |
 | **90** | loans of things that are not credits (incl. a hired squadron) | medium | the commonest arrangement in the genre |
 | ~~91~~ | ~~seven small things~~ | small | **BUILT**, six of seven; severability is not small |
 | **80** | an advisor that costs an action | medium | not from the playtest; wanted |
@@ -213,7 +213,7 @@ Three things fell out of building it:
 > (the Vigil's pirate line) and two that were over-broad. See **79** and the
 > 2026-09-07 commits.
 
-## 88. A `contract` treaty type
+## 88. BUILT — a `contract` treaty type
 
 `tribute` is the only treaty type carrying `incomePerTurn`, so it is the sink
 for every recurring commercial flow regardless of fiction — a hire contract and
@@ -223,13 +223,16 @@ outright and it is now the payer on a live `tribute` treaty. And supersession
 keys on `(pair, type)`, so a second commercial contract with the same power
 silently retires the first. `[C-5]`
 
-Same `incomePerTurn` machinery, different label and supersession key. Pair it
-with running the accord appraisal against **both** parties' principles rather
-than only the actor's — the counterparty's sheet is currently never checked
-against the instrument its own concession lands in. **Medium**, and cheap for
-how much fiction it unblocks.
+**BUILT.** Same `incomePerTurn` machinery, different label and supersession
+key, so two commercial deals with one power are two deals. The prompt now says
+plainly what separates them: tribute is money paid to be left alone, a contract
+is money paid for something given.
 
-## 89. No op can raise a rival's dissent
+The both-parties appraisal it wanted shipped with **89**, since they are the
+same call — `appraiseAction` takes a viewer now, so the arbiter can rule from
+the counterparty's chair.
+
+## 89. BUILT — no op can raise a rival's dissent
 
 Two successful legitimacy attacks — crowning a pretender, a bill of attainder —
 left the Iron Vigil **mechanically identical**. `adjust_dissent` is actor-only
@@ -239,9 +242,36 @@ which is the wrong quantity, and it moved the wrong way. Net effect of two
 successes: −200 credits, +15 of the actor's own dissent, and the target liking
 them less. `[B-2]`
 
-A `sedition` agent effect under the same bounds `stat_debuff` already uses.
-**Medium**, and it opens the whole subversion axis, which currently has a
-fiction and no arithmetic.
+**BUILT, and along two paths rather than one.**
+
+**As an agent effect.** `sedition` raises the target's dissent on the tick, and
+it **mutates** rather than being read where it is used — like `hull_damage` and
+unlike `stat_debuff` — because dissent accumulates and decays on its own clock,
+so a value read fresh each turn would never accumulate. It reaches every stat at
+once through `effectiveStats`, which is what a legitimacy attack actually does.
+`adjust_dissent` stays actor-only and upward-only: the cheap path is still shut,
+and this one costs credits, risks exposure and is capped.
+
+**As a consequence of a treaty.** Nothing held an NPC to its own sheet inside a
+channel — `ReactionSchema` has no `refusal` field, blockers are scoped to the
+player's lines, and the accord appraisal runs from the player's viewpoint by
+construction. So the Iron Vigil negotiated three messages and signed an
+accommodation with the Nars against a sheet reading *"no accommodation with
+pirates, smugglers or the Nars may be entertained, however useful"*, and paid
+nothing at all. `closeChannel` now appraises **the other power's own
+concessions against their own principles** and charges
+`COUNTERPARTY_BREACH_DISSENT`.
+
+**A price, not a veto**, and the asymmetry with the player is deliberate. A
+player's red line refuses the accord because they are the one being told what
+their institutions will bear, and they get a blocker in the turn they approach
+it and a conversation in which to steer around. An NPC backing out at signature
+would destroy a deal the player negotiated in good faith with no such warning.
+So a leader may agree to what its people hate, and its people notice.
+
+One extra Haiku call per accord, and only when the accord produced ops **and**
+the counterparty actually conceded something — agreeing to nothing costs nobody
+anything.
 
 ## 90. A hired squadron — which is a loan of units, and loans want generalising
 

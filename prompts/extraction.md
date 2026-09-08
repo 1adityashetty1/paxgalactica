@@ -120,7 +120,17 @@ Specifically:
   | `mutual_defense` | the above, plus `shipsPledged` are really dispatched to fight |
   | `trade_accord` | mutual immunity from each other's blockades and commerce raiding |
   | `basing_rights` | their fleets may enter your systems without it being an attack — the ONLY way to station ships in friendly space |
-  | `tribute` | `incomePerTurn` moves every turn |
+  | `tribute` | `incomePerTurn` moves every turn — **only when it really is tribute**: money paid to be left alone, not money paid for something |
+  | `contract` | the same `incomePerTurn` machinery for a **commercial** deal: a hire, an annuity, a charter fee, a retainer, a share of a season |
+
+  **`tribute` and `contract` carry the same machinery and are not the same
+  word, and words bind here.** Tribute is money paid to be left alone; a
+  contract is money paid for something given. The Arkane Free Worlds refuse
+  tribute outright — *"the Drift does not pay to be left alone, whatever the
+  arithmetic says"* — and a hire they agreed to, written as `tribute`, puts them
+  on the paying end of the one instrument their sheet forbids. Two commercial
+  deals with the same power are also two deals: supersession keys on the type,
+  so filing both as `tribute` silently retires the first.
 
   **Money in a deal has four homes, and the wrong one gets trimmed.** Read
   what the parties actually agreed and pick by *where the money comes from* and
@@ -129,7 +139,7 @@ Specifically:
   | the deal | write it as |
   |---|---|
   | a price paid **once** — a cession, an indemnity, a lump settlement, a ransom | `payment`, and it must **balance**: `{"buyer": -3000, "seller": 3000}` |
-  | one side pays the other **every turn** — tribute, a subsidy, a retainer, debt service | `incomePerTurn`, and it must **balance**: `{"payer": -40, "payee": 40}` |
+  | one side pays the other **every turn** | `incomePerTurn`, and it must **balance**: `{"payer": -40, "payee": 40}` — on a `tribute` if it is money for nothing, on a `contract` if it buys something |
   | both sides share what a **named world** earns | `incomeShares`, which comes off that system's own take |
   | a venture, charter or operation that **makes** money for both | **not a treaty at all** — `establish_commitment`, which prices what an arrangement is worth |
 

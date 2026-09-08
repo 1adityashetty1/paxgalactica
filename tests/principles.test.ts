@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { recordRuling } from '../src/model/calls.js';
-import { applyOps } from '../src/domain/reducer.js';
+import { effectiveStats } from '../src/domain/state.js';
+import { applyOps, tickTurn } from '../src/domain/reducer.js';
 
 /**
  * Who rules on a faction's own principles.
@@ -1088,5 +1089,66 @@ describe('the arbiter leaves a record', () => {
       'meridian',
     );
     expect(res.rejections[0]?.code).toBe('reducer_only');
+  });
+});
+
+/**
+ * A RIVAL'S OWN INSTITUTIONS CAN BE TURNED AGAINST IT.
+ *
+ * There was no op in the game that could raise another power's dissent:
+ * `adjust_dissent` is actor-only and upward-only by design, and
+ * `adjust_disposition` measures how they feel about *you*, which is the wrong
+ * quantity. So two successful legitimacy attacks — a crowned pretender and a
+ * bill of attainder — left the Iron Vigil mechanically identical.
+ */
+describe('sedition', () => {
+  const place = (perTurn: number) =>
+    applyOps(
+      createSeedState('ojjul'),
+      [
+        {
+          op: 'deploy_agent', ownerFactionId: 'ojjul',
+          systemId: createSeedState('ojjul').systems.find(
+            (x) => x.controllerFactionId === 'vigil',
+          )!.id,
+          mission: 'subversion', effect: { kind: 'sedition', perTurn },
+        },
+      ],
+      'engine',
+    ).state;
+
+  it('raises the target’s dissent, which nothing else could do', () => {
+    const s = place(3);
+    const before = s.factions.find((f) => f.id === 'vigil')!.dissent;
+    const after = tickTurn(s).state.factions.find((f) => f.id === 'vigil')!;
+    // DISSENT_DECAY runs in the same tick, so assert it outran the decay.
+    expect(after.dissent).toBeGreaterThan(before);
+  });
+
+  it('degrades the stats the target actually rolls with', () => {
+    // The whole point: dissent subtracts from every stat via `effectiveStats`,
+    // so a legitimacy attack finally reaches the dice.
+    let s = place(6);
+    const before = effectiveStats(s, 'vigil').might;
+    for (let i = 0; i < 6; i++) s = tickTurn(s).state;
+    expect(effectiveStats(s, 'vigil').might).toBeLessThan(before);
+  });
+
+  it('cannot push a rival past the ceiling its own refusals stop at', () => {
+    let s = place(6);
+    s.factions.find((f) => f.id === 'vigil')!.dissent = 99;
+    for (let i = 0; i < 3; i++) s = tickTurn(s).state;
+    expect(s.factions.find((f) => f.id === 'vigil')!.dissent).toBeLessThanOrEqual(100);
+  });
+
+  it('is still not something a faction can do to a rival by declaring it', () => {
+    // The guard that makes sedition worth having: the cheap path stays closed.
+    const out = applyOps(
+      createSeedState('ojjul'),
+      [{ op: 'adjust_dissent', factionId: 'vigil', delta: 20, reason: 'x' }],
+      'model',
+      'ojjul',
+    );
+    expect(out.state.factions.find((f) => f.id === 'vigil')!.dissent).toBe(0);
   });
 });
