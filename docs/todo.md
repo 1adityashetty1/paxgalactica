@@ -369,12 +369,47 @@ prompt so personas can price a trade, and a UI panel. Replay is unaffected —
 everything here is deterministic — and no journal version bump is needed, since
 old journals simply have no assets.
 
-The one open question worth settling before building: **who may create an asset
-from nothing.** Reducer-created prizes are safe. A model inventing *"a hundred
-tons of rare ore"* is safe under the no-intrinsic-force rule above, but it is
-still a thing that can be sold for real credits, so the value claim wants a
-ceiling derived from something — the way `maxCommitmentIncomeFor` derives from
-influence — rather than a flat constant.
+### Nobody declares an asset into existence
+
+**Settled: there is no declaration path.** An asset is never something a player
+says they have; it is always the *outcome of a resolved attempt*. That closes the
+value-inflation question outright — a ceiling on an invented figure was the wrong
+answer to the wrong question, because the problem was never how much an invented
+asset is worth, it was that it could be invented at all.
+
+Two origins, and only two:
+
+1. **The reducer produces it.** Prize crews out of `resolveBattle` on a decisive
+   win — also the first time in this game that a battle produces anything but
+   destruction. Salvage off a wreck. Assets held on a world are lost with it.
+2. **A resolved action produces it, on a check that succeeded.** The player
+   spends an action point sweeping the wreckage for survivors, rolls `might` or
+   `industry`, and prisoners exist because the attempt worked. The asset is the
+   *payoff*, priced by the same action economy everything else is.
+
+`create_asset` is therefore **absent from `ModelOpSchema`**, exactly as
+`transfer_control` is and for exactly the same reason: control changes only when
+a fleet arrives, and an asset appears only when an attempt succeeds. The
+mechanism to bound it already exists — `boundPayloadsToOutcome` strips an
+`onComplete` payload on a failed check and halves it on a partial, and an asset
+minted by a resolution is the same kind of payoff wearing a different shape.
+
+**The arbiter redirects rather than refuses.** An action whose premise is holding
+something you do not hold — *"I sell Meridian a hundred tons of rare ore"* — is
+not inadmissible in the sense of contradicting the world; it is an act stated in
+the wrong tense. So it wants a third redirect beside `needs_consent` ("that is a
+conversation") and `declared_only` ("that is your own turn's work"): **"that is
+something you could try to get, not something you have."** The player is told to
+rephrase it as an attempt.
+
+Like `negotiation`, that redirect must cost **no action point**. A redirect is
+not an act, and charging for one makes the game feel like it is penalising the
+player for asking — which is already the stated rule for the other two.
+
+**The open `kind` survives this**, and is safer for it. A slug invented by a
+*successful check* is a thing the fiction earned; a slug invented by a
+declaration was the thing worth stopping. So a survey expedition can still bring
+back something nobody enumerated.
 
 ## 80. An advisor: worked examples that know the board, and cost an action
 
