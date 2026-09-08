@@ -128,6 +128,68 @@ export const SetTollPolicyOp = z.object({
   reason: z.string().default(''),
 });
 
+/**
+ * Bring a thing into the world — prisoners taken, ore surveyed, a seal struck.
+ *
+ * **Only ever the payoff of an attempt that worked.** A player never declares
+ * that they have something; they declare an attempt to get it, spend an action
+ * point, roll, and the asset exists because the roll succeeded.
+ * `boundPayloadsToOutcome` strips this on a failed check and halves the
+ * quantity on a partial, exactly as it treats an `onComplete` payload — an
+ * asset minted by a resolution is that same payoff in a different shape.
+ *
+ * Refused from an **accord**: a conversation can trade what exists and cannot
+ * conjure what does not. And refused when the actor is not the holder — you
+ * cannot survey ore into somebody else's warehouse.
+ */
+export const CreateAssetOp = z.object({
+  op: z.literal('create_asset'),
+  kind: z
+    .string()
+    .min(1)
+    .max(40)
+    .regex(/^[a-z][a-z0-9_]*$/),
+  text: z.string().min(1).max(240),
+  heldBy: z.string().min(1),
+  quantity: z.number().int().min(1).max(100000),
+  unit: z.string().min(1).max(24),
+  divisible: z.boolean().default(true),
+  /** factionId -> credits one unit is worth to them. A claim, never money. */
+  valuePerUnit: z.record(z.string(), z.number().int().min(0).max(10000)).default({}),
+  /** Where it is, if anywhere. An asset at a world changes hands with it. */
+  atSystemId: z.string().nullable().default(null),
+});
+
+/**
+ * Hand a thing to somebody else.
+ *
+ * Giving your own away needs nobody's permission. **Taking** another power's
+ * needs theirs, so it is refused from a declared action and reachable from an
+ * accord — the same rule `terms.territory` follows, and for the same reason: a
+ * transcript is the one place the other party's consent exists.
+ */
+export const TransferAssetOp = z.object({
+  op: z.literal('transfer_asset'),
+  assetId: z.string().min(1),
+  toFactionId: z.string().min(1),
+  reason: z.string().default(''),
+});
+
+/**
+ * Break a divisible holding into two.
+ *
+ * Forty crews ransomed twenty at a time. Value is stated per unit, so the split
+ * conserves by construction rather than by a model dividing correctly — and an
+ * atomic asset refuses, because half a family heirloom is not a thing.
+ */
+export const SplitAssetOp = z.object({
+  op: z.literal('split_asset'),
+  assetId: z.string().min(1),
+  /** How much comes off into the new lot. Must leave at least one behind. */
+  quantity: z.number().int().min(1),
+  reason: z.string().default(''),
+});
+
 export const IssueOrderOp = z.object({
   op: z.literal('issue_order'),
   factionId: z.string().min(1),
@@ -488,6 +550,9 @@ export const EXTRACTION_ALLOWED = new Set<string>([
   // tariff needs nobody's agreement and belongs on the declared path, where the
   // action economy prices it.
   'set_toll_policy',
+  // Handing a thing over, or being handed one. Taking another power's asset
+  // needs their agreement, and a transcript is the one place it exists.
+  'transfer_asset',
   // The record of what was said.
   'log_narrative',
   'spawn_event',
@@ -520,8 +585,11 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   AdjustFleetOp,
   AdjustCreditsOp,
   SetDoctrineOp,
+  CreateAssetOp,
   SetStanceOp,
   SetTollPolicyOp,
+  SplitAssetOp,
+  TransferAssetOp,
   IssueOrderOp,
   CancelOrderOp,
   InterruptOrderOp,
@@ -577,8 +645,11 @@ export const OpSchema = z.discriminatedUnion('op', [
   AdjustFleetOp,
   AdjustCreditsOp,
   SetDoctrineOp,
+  CreateAssetOp,
   SetStanceOp,
   SetTollPolicyOp,
+  SplitAssetOp,
+  TransferAssetOp,
   IssueOrderOp,
   CancelOrderOp,
   InterruptOrderOp,
@@ -940,6 +1011,7 @@ export interface OpRejection {
     | 'unknown_treaty'
     | 'unknown_agent'
     | 'unknown_debt'
+    | 'unknown_asset'
     | 'doctrine_refusal'
     /** A treaty was declared rather than negotiated; the other party never agreed. */
     | 'needs_consent'

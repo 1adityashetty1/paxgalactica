@@ -605,6 +605,11 @@ export function createSeedState(playerFactionId: string): WorldState {
      * taking help, and the whole Closing is a refusal to take any. A power that
      * counts its dead rather than accept grain does not carry a Nar loan.
      */
+    // Nobody starts holding anything: an asset is the outcome of an attempt, not
+
+    // a starting position. See `AssetSchema`.
+
+    assets: [],
     debts: [
       {
         id: 'debt-0',

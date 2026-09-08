@@ -15,7 +15,16 @@ is purely a **record** of the conversation:
 `form_treaty` · `break_treaty` · `establish_debt` · `assign_debt` ·
 `restructure_debt` · `establish_commitment` · `dissolve_commitment` ·
 `forgive_debt` · `settle_debt` · `adjust_disposition` · `adjust_credits` ·
-`log_narrative` · `spawn_event` · `set_toll_policy`
+`log_narrative` · `spawn_event` · `set_toll_policy` · `transfer_asset`
+
+**`transfer_asset` moves a thing that already exists** — prisoners ransomed
+back, an heirloom handed over, a lot of ore delivered. Taking another power's
+asset needs their agreement, which is why it is reachable from here at all; a
+declared action can only give one away.
+
+**You cannot create one here.** A conversation trades what exists and does not
+conjure what does not, so an accord promising *"a hundred tons of ore"* nobody
+holds produces nothing. That is not a gap: it is a thing to go and get.
 
 **`set_toll_policy` may only OPEN your lanes here, never close them.** Lifting a
 toll is a concession, and it is one of the few real ones you can make that takes

@@ -233,6 +233,95 @@ export type IncomeShare = z.infer<typeof IncomeShareSchema>;
  * principle as `OrderEffect`: the vocabulary is small, it is arithmetic on
  * state, and nothing here can be argued into meaning something else.
  */
+/**
+ * A thing that is neither credits nor ships.
+ *
+ * Prisoners, a fostered heir, a claimant's seal held in escrow, a hundred tons
+ * of a rare material, a chart that is false, a piece of intelligence held
+ * exclusively. A creative playtest reached for all of these and the world had
+ * nowhere to put any of them: an accord would record *"fifty crews at forty a
+ * head"* and the game could not count a single crew.
+ *
+ * ## Per-faction value is the idea
+ *
+ * `valuePerUnit` is what makes an asset worth **trading** rather than worth
+ * hoarding. Prisoners are worth a great deal to the power that lost them and
+ * almost nothing to anyone else; an heirloom is worth something to the house it
+ * came from. Asymmetric valuation is the whole of gains-from-trade, and it is
+ * precisely what the playtest showed nobody at the table could see — a figure
+ * bargained from 80 to 95 settled at 60 with neither persona told, and the same
+ * intelligence was sold twice because nothing recorded who held it.
+ *
+ * ## An asset has no intrinsic economic force
+ *
+ * `valuePerUnit` is a **claim about what somebody would pay**, not money. It
+ * never enters a ledger, is never income, and creating an asset mints nothing.
+ * It becomes credits only when a power actually pays, through `terms.payment`
+ * or a negotiated `adjust_credits` — both already conserved.
+ *
+ * That is what lets `kind` stay open, the same bargain `Commitment.kind`
+ * strikes, and it is the opposite of `incomePerTurn`, which had to be capped
+ * twice over precisely because it *is* money.
+ *
+ * ## Value is per UNIT, and that is not cosmetic
+ *
+ * Forty prisoners split into two lots of twenty; one heirloom does not split.
+ * Stating value per unit rather than as a total means a split **conserves by
+ * construction** — the arithmetic does it, rather than a model being trusted to
+ * divide correctly.
+ */
+export const AssetSchema = z.object({
+  id: z.string().min(1),
+  /** A lower_snake_case slug, invented freely — `prisoners`, `heirloom`, `ore`. */
+  kind: z
+    .string()
+    .min(1)
+    .max(40)
+    .regex(/^[a-z][a-z0-9_]*$/, 'kind must be a lower_snake_case slug'),
+  /** One sentence, written to be read back to the player verbatim. */
+  text: z.string().min(1).max(240),
+  /** Who has it. An asset is always somebody's. */
+  heldBy: z.string().min(1),
+  quantity: z.number().int().min(1).max(100000),
+  /** What one of it is: `crew`, `ton`, `heirloom`, `dossier`. */
+  unit: z.string().min(1).max(24),
+  /**
+   * Whether it can be split into lots.
+   *
+   * Forty crews can be ransomed twenty at a time; a family heirloom cannot be
+   * halved. `split_asset` refuses on an atomic one.
+   */
+  divisible: z.boolean().default(true),
+  /**
+   * factionId -> what one unit is worth to that power, in credits.
+   *
+   * A claim, never money. Absent means worth nothing to them, which is the
+   * ordinary case and the point: prisoners are worth something to the power
+   * that lost them and nothing to anybody else.
+   */
+  valuePerUnit: z.record(z.string(), z.number().int().min(0).max(10000)).default({}),
+  /**
+   * Where it physically is, if anywhere.
+   *
+   * Optional, and it is what makes an asset losable: prisoners held at a world
+   * change hands when the world does. An asset with no location — a title, a
+   * charter, a debt of honour — is held by the faction and travels with it.
+   */
+  atSystemId: z.string().nullable().default(null),
+  acquiredTurn: z.number().int().min(0),
+});
+export type Asset = z.infer<typeof AssetSchema>;
+
+/** What an asset is worth to a power, in total. A claim, never a ledger entry. */
+export function assetWorthTo(asset: Asset, factionId: string): number {
+  return (asset.valuePerUnit[factionId] ?? 0) * asset.quantity;
+}
+
+/** Everything a faction is holding. */
+export function assetsOf(assets: readonly Asset[], factionId: string): Asset[] {
+  return assets.filter((a) => a.heldBy === factionId);
+}
+
 export const VoidConditionSchema = z.object({
   kind: z.enum([
     /** `by` must not hold a live treaty with `target`. */
@@ -248,6 +337,16 @@ export const VoidConditionSchema = z.object({
      * so a party cannot keep the benefits of a deal it has stopped funding.
      */
     'insolvent',
+    /**
+     * `by` must still hold the asset named in `target`.
+     *
+     * What makes a hostage a hostage. Without it an accord could record that
+     * someone was held against a treaty's performance and nothing anywhere
+     * could notice them being killed, released or taken back — which is what a
+     * playtest measured: hostages were offered twice, accepted once, and there
+     * was no object to hold.
+     */
+    'asset_lost',
   ]),
   /** The party the condition constrains. */
   by: z.string().min(1),

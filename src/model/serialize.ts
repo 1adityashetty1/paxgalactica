@@ -309,6 +309,9 @@ export function serializeState(state: WorldState, viewerId: string): string {
     '## Standing commitments',
     serializeCommitments(state, viewerId),
     '',
+    '## What you hold',
+    serializeAssets(state, viewerId),
+    '',
     '## Debts',
     serializeDebts(state),
     '',
@@ -383,6 +386,35 @@ function shareWorth(state: WorldState, share: NonNullable<Commitment['share']>):
         ? (earnings.tolls[share.from] ?? 0)
         : (earnings.raided[share.from] ?? 0);
   return pot <= 0 ? 0 : Math.floor((pot * share.percent) / 100);
+}
+
+/**
+ * What is being held, and what it is worth to whom.
+ *
+ * Scoped to the viewer's own holdings: what a power is sitting on is exactly
+ * the sort of thing a rival should have to find out. The one exception is that
+ * `valuePerUnit` names everybody it is worth something to — because that
+ * asymmetry is the whole reason to trade, and a persona that cannot see the
+ * other side wants a thing cannot price it. A playtest sold the same
+ * intelligence twice and bargained a figure that settled 35 lower, both because
+ * nobody at the table could see what was on it.
+ */
+export function serializeAssets(state: WorldState, viewerId: string): string {
+  const mine = (state.assets ?? []).filter((a) => a.heldBy === viewerId);
+  if (mine.length === 0) return '_You hold nothing beyond credits, ships and ground._';
+  return mine
+    .map((a) => {
+      const wanted = Object.entries(a.valuePerUnit)
+        .filter(([id, v]) => v > 0 && id !== viewerId)
+        .map(([id, v]) => `${getFaction(state, id)?.name ?? id} would pay about ${v} a ${a.unit}`)
+        .join('; ');
+      const where = a.atSystemId ? ` · at ${getSystem(state, a.atSystemId)?.name ?? a.atSystemId}` : '';
+      const split = a.divisible ? '' : ' · one thing, does not divide';
+      return `- \`${a.id}\` ${a.quantity} ${a.unit} — ${a.text}${where}${split}\n  ${
+        wanted || 'nobody has shown it is worth anything to them'
+      }`;
+    })
+    .join('\n');
 }
 
 export function serializeCommitments(state: WorldState, viewerId?: string): string {

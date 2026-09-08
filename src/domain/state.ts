@@ -34,6 +34,7 @@ import {
   TreatySchema,
   type Agent,
   type Treaty,
+  AssetSchema,
 } from './diplomacy.js';
 import { DebtSchema, MAX_DEBT_PER_TURN, scheduledDebtService, type Debt } from './debt.js';
 import { DurationCategorySchema, FibScaleSchema } from './duration.js';
@@ -460,6 +461,14 @@ export const WorldStateSchema = z.object({
    * debts existed still loads.
    */
   debts: z.array(DebtSchema).default([]),
+  /**
+   * Things that are neither credits nor ships — see `AssetSchema`.
+   *
+   * Defaulted, so every campaign saved before assets existed loads as one with
+   * none rather than failing. No journal version bump is needed for the same
+   * reason: an old journal simply never creates any.
+   */
+  assets: z.array(AssetSchema).default([]),
   playerFactionId: z.string().min(1),
   /** Abstract unit. There is no calendar in this game, deliberately. */
   turn: z.number().int().min(0),

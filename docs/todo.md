@@ -34,7 +34,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~84~~ | ~~every private commitment is published~~ | small | **FIXED** |
 | ~~85~~ | ~~the concession ledger accumulates~~ | small | **FIXED** |
 | **86** | a contingent payment — *"if X then pay Y"* | medium | **the largest single gap** |
-| **81** | assets: things that are neither credits nor ships | subsystem | five findings, composes with 86 |
+| ~~81~~ | ~~assets~~ | subsystem | **BUILT** — 86 can now trigger on them |
 | **87** | log every breach ruling | small | the instrument that makes 88–90 measurable |
 | **88** | a `contract` treaty type | medium | cheap for the fiction it unblocks |
 | **89** | no op can raise a rival's dissent | medium | an axis with a fiction and no arithmetic |
@@ -265,7 +265,7 @@ places three agents). Neither needed a playtest — both were readable off the
 code, which is worth noting because both had sat here on the assumption that
 they were not.
 
-## 81. Assets: things that are neither credits nor ships
+## 81. BUILT — assets: things that are neither credits nor ships
 
 The playtest kept reaching for objects the world has no way to hold. Prisoners
 and hostages (**B-1**, **C-9**), a claimant's seal held in escrow (**B-4/5/6/7**),
@@ -340,6 +340,17 @@ what was missing:
 | escrow / surety | hold the seal | pay out on the trigger |
 | insurance | — | the whole of it |
 | bounty | — | pay on `controller_changed` |
+
+### BUILT, 2026-09-07
+
+Shipped as specced, with one correction to this document: `create_asset` is
+**in** `ModelOpSchema` rather than absent from it. The spec said "absent, exactly
+as `transfer_control` is", which contradicts the rest of itself — a resolution
+pass has to be able to mint the prize an attempt just won. The bound is the
+outcome, not the vocabulary: `boundPayloadsToOutcome` strips it on a failure and
+halves it on a partial, which is the machinery that already exists for exactly
+this shape. What is genuinely closed is the *declaration* path — the op is
+refused from an accord, and refused when the actor is not the holder.
 
 ### Size, honestly
 

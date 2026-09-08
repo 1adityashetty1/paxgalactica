@@ -385,6 +385,7 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
   const wars = warsFor(state, me);
   const agents = agentsVisibleTo(state, me);
   const commitments = commitmentsOf(state, me);
+  const assets = (state.assets ?? []).filter((a) => a.heldBy === me);
   const debts = debtsFor(state.debts ?? [], me);
 
   return (
@@ -392,6 +393,50 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
       {/* Commitments first: they are the things most likely to block an
           action the player is about to try, and a ruling of "you are already
           bound" only reads as fair if the binding was visible beforehand. */}
+      {/* What this power is holding. A thing with a price beside it is a thing
+          the player can think about trading; without the panel an asset is a
+          line in a log that scrolls away. */}
+      {assets.length > 0 && (
+        <>
+          <h4>Held</h4>
+          {assets.map((a) => {
+            const wanted = Object.entries(a.valuePerUnit).filter(
+              ([id, v]) => v > 0 && id !== me,
+            );
+            return (
+              <div key={a.id} className="commitment">
+                <div className="commitment-head">
+                  <span>
+                    {a.quantity} {a.unit}
+                    {a.quantity === 1 ? '' : 's'}
+                  </span>
+                  {!a.divisible && (
+                    <span className="chip" title="One thing. It does not come apart.">
+                      indivisible
+                    </span>
+                  )}
+                  {wanted.map(([id, v]) => (
+                    <span
+                      key={id}
+                      className="chip good"
+                      title={`${state.factions.find((f) => f.id === id)?.name ?? id} values this at about ${v} a ${a.unit}`}
+                    >
+                      {state.factions.find((f) => f.id === id)?.name ?? id} · {v * a.quantity}cr
+                    </span>
+                  ))}
+                </div>
+                <p className="commitment-text">{a.text}</p>
+                {a.atSystemId && (
+                  <p className="muted">
+                    at {getSystem(state, a.atSystemId)?.name ?? a.atSystemId} — lost with the world
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </>
+      )}
+
       {commitments.length > 0 && (
         <>
           <h4>Standing commitments</h4>

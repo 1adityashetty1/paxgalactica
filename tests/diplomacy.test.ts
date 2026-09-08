@@ -10,7 +10,13 @@ import { GameSession } from '../src/server/session.js';
 import { loadPrompt } from '../src/model/prompts.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { groundInConcessions } from '../src/engine/turn.js';
-import { atThisTable, mergeConcessions, type Concession } from '../src/domain/diplomacy.js';
+import {
+  assetWorthTo,
+  atThisTable,
+  mergeConcessions,
+  type Concession,
+} from '../src/domain/diplomacy.js';
+import { boundPayloadsToOutcome } from '../src/domain/development.js';
 import { applyOps, COERCION_RESENTMENT, tickTurn } from '../src/domain/reducer.js';
 import {
   hullsAt,
@@ -1160,5 +1166,126 @@ describe('whose concessions a reply may carry', () => {
 
   it('drops a power that is not in the room', () => {
     expect(atThisTable([e('vigil')], 'ojjul', 'drajk')).toEqual([]);
+  });
+});
+
+/**
+ * ASSETS — things that are neither credits nor ships.
+ *
+ * A creative playtest reached for prisoners, a fostered heir, a seal in escrow,
+ * a hundred tons of rare material, a chart that was false, and intelligence
+ * held exclusively. The world had nowhere to put any of them: an accord would
+ * record "fifty crews at forty a head" and the game could not count one crew.
+ */
+describe('assets', () => {
+  const seedState = () => createSeedState('ojjul');
+  const make = (over: Record<string, unknown> = {}) => ({
+    op: 'create_asset', kind: 'prisoners', heldBy: 'ojjul',
+    text: 'Vigil crews taken off Vantic.', quantity: 40, unit: 'crew',
+    valuePerUnit: { vigil: 12 }, ...over,
+  });
+  const held = (s: WorldState, id = 'ojjul') => s.assets.filter((a) => a.heldBy === id);
+
+  it('is created by an action, and only for the actor', () => {
+    const ok = applyOps(seedState(), [make()], 'model', 'ojjul');
+    expect(ok.rejections).toEqual([]);
+    expect(held(ok.state)[0]!.quantity).toBe(40);
+
+    // You cannot survey ore into somebody else's warehouse.
+    const other = applyOps(seedState(), [make({ heldBy: 'vigil' })], 'model', 'ojjul');
+    expect(other.rejections[0]?.code).toBe('illegal_value');
+  });
+
+  it('cannot be conjured in a conversation', () => {
+    // An accord trades what exists; it does not bring things into being.
+    const out = applyOps(seedState(), [make()], 'extraction', 'ojjul');
+    expect(out.rejections[0]?.code).toBe('declared_only');
+    expect(out.state.assets).toHaveLength(0);
+  });
+
+  it('is worth different things to different powers, and that is the point', () => {
+    const s = applyOps(seedState(), [make()], 'model', 'ojjul').state;
+    const a = s.assets[0]!;
+    // Prisoners are worth a great deal to whoever lost them and nothing to
+    // anybody else. Asymmetric valuation is the whole of gains-from-trade.
+    expect(assetWorthTo(a, 'vigil')).toBe(480);
+    expect(assetWorthTo(a, 'meridian')).toBe(0);
+  });
+
+  it('splits without inventing or destroying worth', () => {
+    const s = applyOps(seedState(), [make()], 'model', 'ojjul').state;
+    const before = assetWorthTo(s.assets[0]!, 'vigil');
+    const out = applyOps(s, [{ op: 'split_asset', assetId: s.assets[0]!.id, quantity: 15 }], 'model', 'ojjul');
+    expect(out.rejections).toEqual([]);
+    expect(out.state.assets.map((a) => a.quantity).sort((x, y) => x - y)).toEqual([15, 25]);
+    // Value is per UNIT, so the two lots are worth exactly what the one was.
+    const after = out.state.assets.reduce((n, a) => n + assetWorthTo(a, 'vigil'), 0);
+    expect(after).toBe(before);
+  });
+
+  it('refuses to halve a thing that is one thing', () => {
+    const s = applyOps(
+      seedState(),
+      [make({ kind: 'heirloom', text: 'The Ojjul seal.', quantity: 1, unit: 'seal', divisible: false })],
+      'model',
+      'ojjul',
+    ).state;
+    const out = applyOps(s, [{ op: 'split_asset', assetId: s.assets[0]!.id, quantity: 1 }], 'model', 'ojjul');
+    expect(out.rejections[0]?.code).toBe('illegal_value');
+  });
+
+  it('can be given away freely and never taken by declaration', () => {
+    const s = applyOps(seedState(), [make()], 'model', 'ojjul').state;
+    const id = s.assets[0]!.id;
+
+    const gift = applyOps(s, [{ op: 'transfer_asset', assetId: id, toFactionId: 'drajk' }], 'model', 'ojjul');
+    expect(gift.rejections).toEqual([]);
+    expect(gift.state.assets[0]!.heldBy).toBe('drajk');
+
+    // Taking somebody else's needs them at the table.
+    const grab = applyOps(gift.state, [{ op: 'transfer_asset', assetId: id, toFactionId: 'ojjul' }], 'model', 'ojjul');
+    expect(grab.rejections[0]?.code).toBe('needs_consent');
+    const agreed = applyOps(gift.state, [{ op: 'transfer_asset', assetId: id, toFactionId: 'ojjul' }], 'extraction', 'ojjul');
+    expect(agreed.rejections).toEqual([]);
+  });
+
+  it('changes hands with the world it sits on', () => {
+    const world = seedState().systems.find((x) => x.controllerFactionId === 'ojjul')!;
+    const s = applyOps(seedState(), [make({ atSystemId: world.id })], 'model', 'ojjul').state;
+    const out = applyOps(
+      s,
+      [{ op: 'transfer_control', systemId: world.id, toFactionId: 'vigil', reason: 'stormed' }],
+      'engine',
+    );
+    // Hold the world, hold the prisoners — which is the difference between a
+    // hostage and a note saying somebody has a hostage.
+    expect(out.state.assets[0]!.heldBy).toBe('vigil');
+  });
+
+  it('is stripped from a failed attempt and halved on a partial', () => {
+    expect(boundPayloadsToOutcome([make()], 'failure').ops).toHaveLength(0);
+    const part = boundPayloadsToOutcome([make()], 'partial');
+    expect((part.ops[0] as { quantity: number }).quantity).toBe(20);
+    expect(boundPayloadsToOutcome([make()], 'success').ops).toHaveLength(1);
+  });
+
+  it('voids a treaty written against holding it', () => {
+    // What makes a hostage a hostage.
+    let s = applyOps(seedState(), [make({ kind: 'hostage', quantity: 1, unit: 'heir', divisible: false })], 'model', 'ojjul').state;
+    const assetId = s.assets[0]!.id;
+    s = applyOps(
+      s,
+      [{
+        op: 'form_treaty', treatyType: 'non_aggression', parties: ['ojjul', 'vigil'],
+        summary: 'peace while the heir is held',
+        terms: { voidsOn: [{ kind: 'asset_lost', by: 'ojjul', target: assetId }] },
+      }],
+      'extraction',
+      'ojjul',
+    ).state;
+    expect(tickTurn(s).state.treaties[0]!.status).toBe('active');
+
+    const released = applyOps(s, [{ op: 'transfer_asset', assetId, toFactionId: 'vigil' }], 'model', 'ojjul').state;
+    expect(tickTurn(released).state.treaties[0]!.status).toBe('voided');
   });
 });

@@ -665,6 +665,17 @@ function voidConditionMet(state: WorldState, condition: VoidCondition): string |
         ? `${name(condition.by)} is running at a loss (${net} a turn) and can no longer fund it`
         : null;
     }
+    case 'asset_lost': {
+      // What makes a hostage a hostage: the pact holds while the thing is held.
+      // `target` is an asset id rather than a faction — the one condition kind
+      // where it is not a power, and the field is named for the common case.
+      const held = (state.assets ?? []).find(
+        (a) => a.id === condition.target && a.heldBy === condition.by,
+      );
+      return held
+        ? null
+        : `${name(condition.by)} no longer holds what this was written against`;
+    }
   }
 }
 
@@ -1062,6 +1073,21 @@ export function applyOps(
         }
         const from = sys.controllerFactionId ?? 'nobody';
         sys.controllerFactionId = op.toFactionId;
+        // Whatever was sitting on the world changes hands with it. This is what
+        // makes an asset losable, and it is the difference between a hostage
+        // and a note saying somebody has a hostage: hold the world, hold the
+        // prisoners. An asset with no location — a title, a charter — travels
+        // with its holder and is untouched.
+        for (const asset of state.assets ?? []) {
+          if (asset.atSystemId !== sys.id) continue;
+          if (asset.heldBy === op.toFactionId) continue;
+          const wasHeldBy = asset.heldBy;
+          if (op.toFactionId === null) continue;
+          asset.heldBy = op.toFactionId;
+          const taken = `${nameFor(state, op.toFactionId)} takes ${asset.quantity} ${asset.unit} with ${sys.name}: ${asset.text}`;
+          notes.push(taken);
+          logEvent(state, 'system', taken, op.toFactionId, [wasHeldBy, op.toFactionId]);
+        }
         logEvent(
           state,
           'order',
@@ -1352,6 +1378,142 @@ export function applyOps(
           notes.push(note);
           logEvent(state, 'system', note, f.id);
         }
+        break;
+      }
+
+      case 'create_asset': {
+        // An asset is the OUTCOME OF AN ATTEMPT, never a thing declared into
+        // existence. A player who says "I sell Meridian a hundred tons of rare
+        // ore" has not made the ore; the arbiter redirects that to an attempt,
+        // and `boundPayloadsToOutcome` strips this op when the attempt failed.
+        //
+        // Refused from an accord because a conversation trades what exists and
+        // cannot conjure what does not — the mirror of `transfer_asset`, which
+        // is reachable there precisely because it moves something real.
+        if (source === 'extraction') {
+          reject(
+            raw,
+            'declared_only',
+            'An accord can trade a thing that exists; it cannot bring one into being. Whatever produced this — a sweep, a survey, a seizure — is an action to attempt on your own turn.',
+          );
+          break;
+        }
+        if (!factionExists(op.heldBy)) {
+          reject(raw, 'unknown_faction', `No faction "${op.heldBy}".`);
+          break;
+        }
+        // You cannot survey ore into somebody else's warehouse.
+        if (actor !== undefined && op.heldBy !== actor) {
+          reject(
+            raw,
+            'illegal_value',
+            `${actor} cannot put something into ${op.heldBy}'s hands by declaring it. Take it, make it, or trade for it.`,
+          );
+          break;
+        }
+        if (op.atSystemId !== null && !state.systems.some((x) => x.id === op.atSystemId)) {
+          reject(raw, 'unknown_system', `No system "${op.atSystemId}".`);
+          break;
+        }
+        const asset = {
+          id: mintId(state, 'ast'),
+          kind: op.kind,
+          text: op.text,
+          heldBy: op.heldBy,
+          quantity: op.quantity,
+          unit: op.unit,
+          divisible: op.divisible,
+          // Trimmed to the powers that exist. A value quoted for a faction
+          // nobody has is not a price, it is noise in a document two personas
+          // are about to bargain over.
+          valuePerUnit: Object.fromEntries(
+            Object.entries(op.valuePerUnit).filter(([id]) => factionExists(id)),
+          ),
+          atSystemId: op.atSystemId,
+          acquiredTurn: state.turn,
+        };
+        state.assets.push(asset);
+        const note = `${nameFor(state, op.heldBy)} holds ${op.quantity} ${op.unit}: ${op.text}`;
+        notes.push(note);
+        // Visible to the holder alone. What you are sitting on is exactly the
+        // sort of thing a rival should have to find out.
+        logEvent(state, 'system', note, op.heldBy, [op.heldBy]);
+        break;
+      }
+
+      case 'transfer_asset': {
+        const asset = state.assets.find((a) => a.id === op.assetId);
+        if (!asset) {
+          reject(raw, 'unknown_asset', `No asset "${op.assetId}".`);
+          break;
+        }
+        if (!factionExists(op.toFactionId)) {
+          reject(raw, 'unknown_faction', `No faction "${op.toFactionId}".`);
+          break;
+        }
+        if (asset.heldBy === op.toFactionId) {
+          reject(raw, 'illegal_value', `${op.toFactionId} already holds ${asset.id}.`);
+          break;
+        }
+        // Giving your own away needs nobody. TAKING somebody else's needs them,
+        // so it is reachable from an accord and refused from a declaration —
+        // the same rule `terms.territory` follows.
+        if (source === 'model' && actor !== undefined && asset.heldBy !== actor) {
+          reject(
+            raw,
+            'needs_consent',
+            `${asset.id} is ${asset.heldBy}'s, and they have to agree to part with it. Open a channel with them (/talk), or take it by an act that could take it.`,
+          );
+          break;
+        }
+        const from = asset.heldBy;
+        asset.heldBy = op.toFactionId;
+        const note = `${nameFor(state, from)} hands ${asset.quantity} ${asset.unit} to ${nameFor(state, op.toFactionId)}: ${asset.text} ${op.reason}`.trim();
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, op.toFactionId, [from, op.toFactionId]);
+        break;
+      }
+
+      case 'split_asset': {
+        const asset = state.assets.find((a) => a.id === op.assetId);
+        if (!asset) {
+          reject(raw, 'unknown_asset', `No asset "${op.assetId}".`);
+          break;
+        }
+        if (actor !== undefined && asset.heldBy !== actor) {
+          reject(raw, 'illegal_value', `${asset.id} is ${asset.heldBy}'s to divide, not ${actor}'s.`);
+          break;
+        }
+        if (!asset.divisible) {
+          reject(
+            raw,
+            'illegal_value',
+            `${asset.text} is one thing and does not come apart. Trade it whole or not at all.`,
+          );
+          break;
+        }
+        if (op.quantity >= asset.quantity) {
+          reject(
+            raw,
+            'illegal_value',
+            `Splitting ${op.quantity} of ${asset.quantity} would leave nothing behind; that is the whole holding, not a lot off it.`,
+          );
+          break;
+        }
+        asset.quantity -= op.quantity;
+        // Value is stated PER UNIT, so the two lots are worth exactly what the
+        // one was. The split conserves because of the shape of the record, not
+        // because anything divided carefully.
+        state.assets.push({
+          ...asset,
+          id: mintId(state, 'ast'),
+          quantity: op.quantity,
+          valuePerUnit: { ...asset.valuePerUnit },
+          acquiredTurn: state.turn,
+        });
+        const note = `${nameFor(state, asset.heldBy)} sets aside ${op.quantity} ${asset.unit} of ${asset.text} ${op.reason}`.trim();
+        notes.push(note);
+        logEvent(state, 'system', note, asset.heldBy, [asset.heldBy]);
         break;
       }
 
