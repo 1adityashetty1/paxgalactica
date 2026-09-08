@@ -199,7 +199,14 @@ const SEED_FACTIONS: SeedFaction[] = [
         trigger: 'unanswered_incursion',
       },
       'no accommodation with pirates, smugglers or the Nars may be entertained, however useful',
-      'the officer corps will not turn pirate: raiding commerce is what the Confederacy does, and the Empire does not imitate it whatever the arithmetic says',
+      // Same defect as the Combine's proxy line, found in the sweep after it: a
+      // prohibition with ANOTHER POWER'S behaviour named inside it. "raiding
+      // commerce is what the Confederacy does" is explanatory colour about
+      // Drajk, and it sits close enough to "will not" that a reader can quote
+      // this line against an action involving Drajk raiding, or against the
+      // Vigil merely tolerating it. The forbidden act is the Vigil's own
+      // officers turning pirate, and nothing else.
+      'the officer corps will not turn pirate — Imperial hulls do not raid commerce, whatever the arithmetic says; what other powers do with their own ships is not what this line is about',
     ],
     buildBias: ['capital_ship_construction', 'fortification', 'garrison_raising'],
   },
@@ -243,7 +250,12 @@ const SEED_FACTIONS: SeedFaction[] = [
       'will not forgive an unpaid debt — the debt is the whole instrument of control',
     ],
     compulsions: [
-      'the Combine requires that every favour carry a price; giving something away for goodwill is refused as ruinous precedent',
+      // "Every favour must carry a price" was read as covering any transaction
+      // the arbiter found generous — it charged 15 dissent for offering Vigil
+      // officers BACK-PAY to change sides, which is a price, and the most
+      // transactional act available. The line is about giving something for
+      // nothing; anything paid for is already keeping it.
+      'the Combine requires that nothing be given away for nothing; a gift, a waiver or a favour with no consideration is refused as ruinous precedent — a deal on any terms, however cheap, is not a gift',
       // Purely about pursuit. It used to end "forgiving one invites every
       // client to test the next", which restated the red line above it — so
       // forgiving a debt was stated twice at two different severities, and
@@ -314,7 +326,20 @@ const SEED_FACTIONS: SeedFaction[] = [
       // themselves be pinned. So the line now forbids the choice rather than the
       // condition: committing the fleet to sit somewhere, which is a thing Drajk
       // can actually decide not to do.
-      'will not be pinned in place — no siege line held, no fleet committed to sit and defend a world, no waiting to be besieged; being caught in one spot is how raiders die',
+      // Narrowed to DEFENCE, which is what it was always about. As written it
+      // read on any multi-turn commitment, and a playtest walked into the bind
+      // that creates: the `no_plunder` compulsion charges 3 a turn for taking
+      // nothing, the only raid that can be paid runs two turns or more, and
+      // declaring one was refused as "will not be pinned in place" for 8. The
+      // faction could not satisfy one of its own principles without breaking
+      // the other. A raid is not a siege line; it is the opposite of one.
+      //
+      // A first draft said "no world garrisoned against a coming blow" and the
+      // suite caught it: `tests/principles.test.ts` asserts no Drajk red line
+      // forbids having a garrison, because `GARRISON_REGROWTH` creates one
+      // passively on every world it holds. A line that forbids a state the
+      // engine produces on its own is a line the faction breaches by existing.
+      'will not hold a defensive line — no siege endured, no fleet committed to sit and wait to be attacked; a raid or an offensive under way is the opposite of this and never breaches it',
       'will not put its name to a written treaty; a handshake it can deny is the most it offers',
     ],
     compulsions: [

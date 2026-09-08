@@ -101,6 +101,26 @@ applied" note to the batch it describes.
   unrepresentable. The fix is the arbiter **saying so** rather than recording it
   as though it bound something.
 
+**The sweep of the other nine lines, done.** Twenty-two principles across five
+sheets. One carried the same defect and two carried a different one worth fixing
+with it:
+
+| line | defect | now |
+|---|---|---|
+| Vigil compulsion *"the officer corps will not turn pirate: **raiding commerce is what the Confederacy does**, and the Empire does not imitate it"* | **The same shape** — another power's permitted behaviour named inside a prohibition, close enough to "will not" to be quoted against an action involving Drajk raiding. | *"Imperial hulls do not raid commerce … what other powers do with their own ships is not what this line is about."* |
+| Drajk red line *"will not be pinned in place — no siege line held, **no fleet committed to sit and defend a world**"* | **Over-broad**, not inverted. It read on any multi-turn commitment, so the only raid that can be paid (two turns) was refused under it — while `no_plunder` charged 3 a turn for taking nothing. The faction could not satisfy one of its own principles without breaking the other. | Narrowed to defence, and says outright that *"a raid or an offensive under way is the opposite of this and never breaches it."* |
+| Combine compulsion *"every favour carry a price"* | **Over-broad.** Charged 15 dissent for offering Vigil officers **back-pay** to change sides — a price, and the most transactional act available (**A-6**). | *"nothing be given away for nothing … a deal on any terms, however cheap, is not a gift."* |
+
+The other nineteen are clean: prohibition first, no permitted act named inside
+them, no other faction's behaviour used as colour.
+
+**The suite caught a mistake in the sweep itself**, which is worth recording. A
+first draft of the Drajk line said *"no world garrisoned against a coming
+blow"*, and `tests/principles.test.ts` asserts that no Drajk red line forbids
+having a garrison — because `GARRISON_REGROWTH` creates one passively on every
+world it holds. **A line that forbids a state the engine produces on its own is
+a line the faction breaches by existing.** The clause came out.
+
 **A note on #7 now that it is fixed.** Two prompt warnings and a worked example
 did not stop the inversion, and that is the lesson worth keeping: the old line
 was a garden path — a reader hits *"will not fight ... where a proxy could be
