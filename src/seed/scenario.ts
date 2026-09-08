@@ -221,7 +221,25 @@ const SEED_FACTIONS: SeedFaction[] = [
     warEthic: 'profiteer',
     tradeEthic: 'extortionist',
     redLines: [
-      'will not fight its own war where a proxy could be hired to fight it instead',
+      // Stated PROHIBITION FIRST, and blunt to the point of clumsiness, because
+      // the elegant version was misread twice by the arbiter in live play.
+      //
+      // It used to read "will not fight its own war where a proxy could be
+      // hired to fight it instead", which is a garden path: a reader hits
+      // "will not fight ... where a proxy could be hired" and the
+      // nearest-attachment reading forbids the HIRING. That is the precise
+      // inversion of the doctrine — hiring is the line being kept — and it is
+      // recorded in CLAUDE.md as the reason `breach.how` became a required
+      // field. `prompts/appraisal.md` then carried two separate warnings about
+      // this one sentence, including a worked example, and a playtest inverted
+      // it anyway: a 200/turn contract to have Drajk raid on the Combine's
+      // behalf was refused, quoting this line, in a paragraph that stated the
+      // doctrine correctly and then ruled against it.
+      //
+      // Two warnings and a worked example not being enough is the evidence that
+      // the sentence was the defect. A line whose correct reading needs a
+      // footnote is a line that will be read wrong.
+      'will not spend Combine hulls on a war of conquest — hiring a mercenary or an ally to fight it is looked on favourably by the family, and is never a breach',
       'will not forgive an unpaid debt — the debt is the whole instrument of control',
     ],
     compulsions: [

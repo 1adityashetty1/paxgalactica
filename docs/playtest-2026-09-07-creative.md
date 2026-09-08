@@ -51,7 +51,7 @@ at medium cost. Build this one.
 | # | What is missing | Covers | Size |
 |---|---|---|---|
 | 6 | **`verifyBreachRelevance` failed four times in nine turns.** A prisoner release refused under the *debt* red line. The same act (forgiving a debt) ruled three different ways across three turns. Paying men to change sides charged as a *favour given for goodwill*. | A-3, A-5, A-6 | Unclear — see below. |
-| 7 | **The Combine's proxy line was read backwards, verbatim.** Hiring a proxy was refused for *"will not fight its own war where a proxy could be hired"* — the line being **kept**. `CLAUDE.md` records this exact inversion, on this exact line, as the reason `breach.how` became required. **The guard did not hold.** | A-4 | Small to diagnose, unknown to fix. |
+| 7 | **FIXED — the Combine's proxy line was read backwards, verbatim.** Hiring a proxy was refused for *"will not fight its own war where a proxy could be hired"* — the line being **kept**. `CLAUDE.md` records this exact inversion, on this exact line, as the reason `breach.how` became required, and `prompts/appraisal.md` carried two warnings and a worked example about it. It was inverted anyway. | A-4 | **The sentence was the defect, not the guidance.** Rewritten prohibition-first: *"will not spend Combine hulls on a war of conquest — hiring a mercenary or an ally to fight it is looked on favourably by the family, and is never a breach."* |
 
 `docs/todo.md` section A already accepts arbiter variance as irreducible and
 names one remaining buildable item: **log every breach ruling with the line, the
@@ -100,6 +100,14 @@ applied" note to the batch it describes.
   whose whole content is *"track that other contract"* is structurally
   unrepresentable. The fix is the arbiter **saying so** rather than recording it
   as though it bound something.
+
+**A note on #7 now that it is fixed.** Two prompt warnings and a worked example
+did not stop the inversion, and that is the lesson worth keeping: the old line
+was a garden path — a reader hits *"will not fight ... where a proxy could be
+hired"* and the nearest-attachment reading forbids the **hiring**. No amount of
+guidance downstream rescues a sentence that reads the wrong way on first pass.
+**A line whose correct reading needs a footnote is a line that will be read
+wrong.** Worth a sweep of the other nine red lines for the same shape.
 
 ### Which bucket is the real problem
 

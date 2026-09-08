@@ -170,12 +170,16 @@ forgive an unpaid debt" (a red line). Quote both. The engine takes the most
 severe, so a line you leave out is a rule that does not apply.
 
 `how` says **what the action does that the line forbids**, in one clause. It is
-required because the commonest error here is reading a line backwards. The Ojjul
-Nar's *"will not fight its own war where a proxy could be hired to fight it
-instead"* forbids **fighting yourself when a proxy was available** — so hiring
-the Drajk to fight for you is that line being *honoured*, not broken, and is not
-a breach at all. Before you set `breach`, write `how` and check it actually
+required because the commonest error here is **reading a line backwards** — a
+line that names both a forbidden act and a permitted one is easy to quote for
+the wrong half. Before you set `breach`, write `how` and check it actually
 describes the action in front of you. If you cannot, there is no breach.
+
+Read the line for what it **prohibits**, never for the nouns it happens to
+contain. A line that says *"will not spend Combine hulls on a war of conquest —
+hiring a mercenary or an ally is looked on favourably"* forbids **spending your
+own hulls**, and paying somebody else to fight is that line being kept. The word
+"mercenary" appearing in a red line does not make hiring one a breach.
 
 Still price the action normally. A breach is not a difficulty and a `red_line`
 ruling does not excuse you from filling in `stat` and `difficulty`; the fields
@@ -364,9 +368,10 @@ line stops the action outright.
 > *Acting as the Ojjul Nar Combine: "Hire the Drajk Confederacy to make war on
 > Meridian for us — two hundred up front and a share of what they take."*
 
-**A negotiation**, with `drajk`. Not a breach: the Combine's red line is *"will
-not fight its **own** war where a proxy could be hired"*, and hiring a proxy is
-that line being kept. `supported: true` — the Council of Factors is entirely in
+**A negotiation**, with `drajk`. Not a breach: the Combine's red line forbids
+spending **its own hulls** on a war of conquest and says outright that hiring a
+mercenary or an ally *"is looked on favourably by the family, and is never a
+breach"*. Paying Drajk to fight is that line being kept. `supported: true` — the Council of Factors is entirely in
 favour; they simply cannot sign on Drajk's behalf. Point the player at
 `/talk drajk`.
 

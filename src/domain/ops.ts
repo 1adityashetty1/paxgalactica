@@ -747,11 +747,16 @@ export const AppraisalSchema = z.object({
        * What the action does that the line forbids, in one clause.
        *
        * Required, and required for a reason: the arbiter quoted the Ojjul Nar's
-       * *"will not fight its own war where a proxy could be hired to fight it
-       * instead"* against an action **hiring a proxy** — the precise inversion,
+       * red line against an action **hiring a proxy** — the precise inversion,
        * since hiring is the line being honoured. Naming the direction out loud
        * is the cheapest available check on it. Code cannot settle this the way
        * it settles which list a line is on.
+       *
+       * It was not enough on its own. The same line was inverted again in a
+       * later playtest, with two warnings and a worked example about it live in
+       * `prompts/appraisal.md`, so the SENTENCE was rewritten prohibition-first
+       * — see `src/seed/scenario.ts`. `how` is still the right guard; it is not
+       * a substitute for a line that reads the way it means.
        */
       how: z.string().min(1).max(240),
       /** Who inside the faction objects: "the fleet commanders", "the Trade Council". */

@@ -188,8 +188,8 @@ export async function appraiseAgreement(
       // obvious worry and is wrong: it only bites when the obliged act is
       // itself forbidden. A mutual defence pact obliges sending ships, which is
       // on nobody's red line; the two cases where it does bite — the Combine
-      // pledging its own hulls where a proxy could be hired, Drajk committing
-      // to sit and defend — are the characterisation working, not collateral.
+      // pledging its own hulls to a war of conquest, Drajk committing to sit
+      // and defend — are the characterisation working, not collateral.
       'Judge what this commits you to, not only what it does the moment it is',
       'signed. An undertaking to do a thing later is an undertaking to do that',
       'thing: if honouring this agreement would require you to cross one of your',

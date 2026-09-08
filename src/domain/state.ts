@@ -79,8 +79,8 @@ export const WAR_ETHICS = [
    * Was `mercenary`, which was exactly backwards for the only faction that had
    * it. `mercenary` means "fights for payment; war is a service sold" — the
    * seller. The Ojjul Nar Combine's doctrine is *"let other powers spend their
-   * fleets for you"* and its red line is *"will not fight its own war where a
-   * proxy could be hired"* — the buyer. On might 9, the lowest in the game, it
+   * fleets for you"* and its red line forbids spending its OWN hulls on a war
+   * of conquest — the buyer. On might 9, the lowest in the game, it
    * has no army to sell and never did. It funds wars; it does not fight them.
    */
   'profiteer',
