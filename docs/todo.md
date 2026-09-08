@@ -38,7 +38,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | **87** | log every breach ruling | small | the instrument that makes 88–90 measurable |
 | **88** | a `contract` treaty type | medium | cheap for the fiction it unblocks |
 | **89** | no op can raise a rival's dissent | medium | an axis with a fiction and no arithmetic |
-| **90** | a hired squadron | medium | the commonest arrangement in the genre |
+| **90** | loans of things that are not credits (incl. a hired squadron) | medium | the commonest arrangement in the genre |
 | **91** | seven small things | small | a quiet afternoon |
 | **80** | an advisor that costs an action | medium | not from the playtest; wanted |
 | **92** | two claims only a campaign can settle | — | needs play, not code |
@@ -217,17 +217,77 @@ A `sedition` agent effect under the same bounds `stat_debuff` already uses.
 **Medium**, and it opens the whole subversion axis, which currently has a
 fiction and no arithmetic.
 
-## 90. A hired squadron
+## 90. A hired squadron — which is a loan of units, and loans want generalising
 
 Twelve hulls offered under another power's flag, command and orders landed as
 `basing_rights` — permission for the *lender's* fleet to visit the borrower's
 space. The hulls stay the lender's: they fight when it says, count in its
 `fleetStrengthOf`, and the borrower cannot use them for anything. The commonest
-arrangement in this genre has no representation. `shipsPledged` on
-`mutual_defense` is close and was not chosen. `[C-6]`
+arrangement in the genre has no representation. `[C-6]`
 
-Let `shipsPledged` transfer control for the treaty's life, or add
-`terms.command`. **Medium.**
+**Restated: a hired squadron is a loan whose principal is hulls.** And once it
+is put that way, credits are not special — a loan could be of ships, of an
+asset, of a world (a lease), of an operative. That is the right frame and it is
+worth building toward. But it is not a small edit to `Debt`, and the reason is
+worth writing down before somebody tries.
+
+### What `Debt` is today
+
+Entirely credit-denominated. `principal`, `balance` and `perTurn` are integers of
+credits; `establish_debt` moves `creditor.credits -> debtor.credits` at
+signature; `serviceDebts` moves `debtor.credits -> creditor.credits` each tick
+and does `debt.balance -= paid`.
+
+Two separable things are welded together in it:
+
+1. **The thing lent** — always credits, disbursed once.
+2. **The obligation** — a balance that **depletes through the flow**, with
+   `status`, `missedPayments`, `DEBT_DEFAULT_DISPOSITION_COST` and the
+   `debt_unpursued` compulsion hanging off it.
+
+### Half of it generalises and half of it does not
+
+**The obligation machinery is genuinely general.** Default, arrears that are
+never reset by catching up, a per-turn disposition cost while a debt runs
+delinquent, a compulsion that fires on a creditor who does not pursue — none of
+that cares what was lent. Reuse it.
+
+**The balance arithmetic does not, and forcing it would repeat a mistake this
+file already records.** A debt's balance *depletes through its flow*: you pay it
+down and it is gone. A hired squadron is the opposite shape — the hulls come
+**back whole** (or die), and the per-turn flow is **rent going the other way**,
+from borrower to lender. Modelling that as a `Debt` would make the hire fee look
+like repayment and the squadron's return look like a write-off.
+
+That is exactly the shape of **C-5**: `tribute` became the sink for every
+recurring commercial flow because it was the only treaty type carrying
+`incomePerTurn`, and it put Arkane on the paying end of an instrument its own
+sheet refuses. **A loan-for-repayment and a loan-for-hire are two instruments,
+and one of them being implemented is not a reason to file the other under it.**
+
+### The shape worth building
+
+A `Loan` beside `Debt` rather than inside it, sharing the default machinery:
+
+- **what was lent** — a discriminated union: `credits`, `hulls` (a `ShipStack`),
+  `assetId`, `systemId`. This is the axis the user is right about; nothing here
+  is credit-specific.
+- **who commands it while it is out.** For hulls this is the whole point of
+  C-6 — the borrower's orders, the borrower's `fleetStrengthOf` — and it is the
+  one part with no precedent in the codebase to copy.
+- **the flow, and its direction.** Rent from borrower to lender, which is
+  `incomePerTurn`'s shape but pointing the other way from a debt's.
+- **return terms** — a turn, or a trigger. **86 already built the trigger
+  half**: a contingency with `assetId` moves a thing when a condition fires, so
+  *"the charter comes back if you default"* is written today.
+
+Sequenced after **81** and **86** deliberately: assets gave loans something to
+lend besides money, and contingencies gave them a return condition. What is left
+is the units case and the command transfer.
+
+**Medium**, and unchanged in size by the restatement — but the restatement means
+it should be built as `Loan`, not as `terms.command` bolted onto
+`mutual_defense`.
 
 ## 91. Seven small things
 
