@@ -2346,6 +2346,35 @@ export function applyOps(
           );
           break;
         }
+        // A hostile effect on your OWN world does nothing and can never do
+        // anything: `ledgerFor` skips an operative whose owner holds the host,
+        // `effectiveStats` reads a debuff against its target, and the tick
+        // reports "nothing to report" forever. Measured: a forged-evidence
+        // action put one of its two operatives on the actor's own capital, and
+        // 80 credits plus one of a small number of agent slots died there
+        // permanently.
+        //
+        // Rejected rather than trimmed, because there is no smaller version of
+        // it — the posting is either somewhere it can act or it is nowhere.
+        // `intel` and `counter_intelligence` are exempt: watching your own
+        // space is what counter-intelligence IS.
+        //
+        // Scoped to a live actor, like the ownership guard above it: an
+        // actorless batch is an engine op or a journal written before the guard
+        // existed, and those replay exactly as they ran.
+        const hostileHere =
+          actor !== undefined &&
+          op.effect.kind !== 'intel' &&
+          state.systems.find((x) => x.id === op.systemId)?.controllerFactionId ===
+            op.ownerFactionId;
+        if (hostileHere) {
+          reject(
+            raw,
+            'illegal_value',
+            `A ${op.effect.kind.replace(/_/g, ' ')} operative on ${op.systemId}, which ${op.ownerFactionId} already holds, has nobody to work against. Post them somewhere a rival is.`,
+          );
+          break;
+        }
         const host = state.systems.find((x) => x.id === op.systemId);
         if (!host) {
           reject(raw, 'unknown_system', `No system "${op.systemId}".`);
@@ -2823,6 +2852,30 @@ export function applyOps(
         // Walking away takes the goodwill back, which is what makes a
         // commitment cost something to have made.
         adjustCommitmentGoodwill(state, found.factionIds, -COMMITMENT_GOODWILL, notes);
+
+        // And tearing up a MULTI-PARTY arrangement is public business, which
+        // walking away from a two-party understanding is not. A playtest
+        // repudiated a compact sworn to four powers one turn earlier, in all
+        // three of its clauses, and paid nothing at all with anybody: a
+        // `Commitment` is not a `Treaty`, so `PACT_BREAKING_REPUTATION_COST`
+        // never applied, and the replacement commitment paid the identical
+        // +20/turn. Repudiation was strictly free.
+        //
+        // Charged only to the party doing the tearing, and only when more than
+        // two powers were bound — the goodwill swing above is already the whole
+        // price of ending a private understanding between two.
+        if (actor !== undefined && found.factionIds.length > 2 && found.factionIds.includes(actor)) {
+          for (const witness of state.factions) {
+            if (witness.id === actor) continue;
+            witness.disposition[actor] = Math.max(
+              -100,
+              (witness.disposition[actor] ?? 0) - PACT_BREAKING_REPUTATION_COST,
+            );
+          }
+          const seen = `${nameFor(state, actor)} tears up an arrangement it swore to ${found.factionIds.length - 1} other powers; everyone notices.`;
+          notes.push(seen);
+          logEvent(state, 'diplomacy', seen, actor);
+        }
         logEvent(state, 'diplomacy', `Ended: ${found.text}. ${op.reason}`.trim());
         break;
       }
@@ -3157,6 +3210,41 @@ export function applyOps(
           break;
         }
         logEvent(state, 'system', op.text, op.factionId);
+        break;
+      }
+
+      case 'log_ruling': {
+        // Guarded here as well as by absence from `ModelOpSchema`, the same
+        // belt-and-braces `transfer_control` gets — a hand-written batch parses
+        // against the full vocabulary, so the schema alone does not refuse it.
+        if (source !== 'engine') {
+          reject(
+            raw,
+            'reducer_only',
+            'A ruling is the engine\'s account of a judgement, not something the judgement writes about itself.',
+          );
+          break;
+        }
+        // The engine's account of a model's judgement, written whether or not
+        // the judgement cost anything. A ruling that charged nothing is the row
+        // that makes drift measurable — it is the one nothing else records.
+        const summary =
+          op.kind === null
+            ? `named "${op.named[0] ?? '(nothing)'}" — matched no line on the sheet`
+            : `${op.kind.replace('_', ' ')}: "${op.matched ?? op.named[0] ?? ''}"`;
+        const verdict =
+          op.relevant === null ? 'relevance not checked' : op.relevant ? 'relevant' : 'not relevant';
+        logEvent(
+          state,
+          'arbiter',
+          `[${op.via}] "${op.action}" — ${summary} · ${verdict} · ${op.outcome.replace(/_/g, ' ')}`,
+          actor ?? null,
+          // The player's own institutions ruling on the player's own act. A
+          // rival has no business reading it, and `serializeRecentLog` would
+          // otherwise hand every NPC a transcript of what the player was told
+          // they may not do.
+          actor === undefined ? null : [actor],
+        );
         break;
       }
 

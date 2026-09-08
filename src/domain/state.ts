@@ -420,7 +420,28 @@ export const EventLogEntrySchema = z.object({
    * must never contain something the player could not know. Only the player's
    * own agents write these. See `reportWatch` in the reducer.
    */
-  kind: z.enum(['narrative', 'system', 'order', 'diplomacy', 'rejection', 'clamp', 'intel']),
+  kind: z.enum([
+    'narrative',
+    'system',
+    'order',
+    'diplomacy',
+    'rejection',
+    'clamp',
+    'intel',
+    /**
+     * A breach ruling, recorded whether or not it charged anything.
+     *
+     * `docs/todo.md` section A accepts that the arbiter's rulings vary and that
+     * most of that is irreducible. What it does NOT accept is being unable to
+     * measure the variance: a playtest found the same act ruled three different
+     * ways across three turns, and that is an anecdote from one agent's notes
+     * because nothing anywhere records a ruling that decided *not* to charge.
+     *
+     * Filterable rather than hidden, for the reason `rejection` and `clamp`
+     * are: the interesting entries are the ones nothing else would show you.
+     */
+    'arbiter',
+  ]),
   factionId: z.string().nullable().default(null),
   text: z.string(),
   /**

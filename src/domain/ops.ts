@@ -143,6 +143,42 @@ export const SetTollPolicyOp = z.object({
  * conjure what does not. And refused when the actor is not the holder — you
  * cannot survey ore into somebody else's warehouse.
  */
+/**
+ * Write down what the arbiter ruled, and what became of the ruling.
+ *
+ * **Engine-only** — absent from `ModelOpSchema` — because it is the engine's
+ * account of a model's judgement, and a model writing its own report card is
+ * the confirmation bias this whole layer is shaped to avoid.
+ *
+ * Recorded on every ruling that named a line, INCLUDING the ones that charged
+ * nothing. Those are the valuable rows: a breach dropped by
+ * `verifyBreachRelevance`, or dropped because the quoted line matched nothing
+ * on the sheet, is invisible today, so "the same act was ruled three ways" can
+ * only ever be an anecdote. Four relevance failures in nine turns is a
+ * measurement; noticing four is a story.
+ */
+export const LogRulingOp = z.object({
+  op: z.literal('log_ruling'),
+  /** The act, as the player phrased it. Truncated — this is an index, not a transcript. */
+  action: z.string().min(1).max(200),
+  /** Whether it came from a declared order or from closing a channel. */
+  via: z.enum(['declared', 'accord']),
+  /** What the arbiter quoted, verbatim, before anything checked it. */
+  named: z.array(z.string()).max(3).default([]),
+  /** The line as the SHEET states it, once `classifyPrinciple` matched it. */
+  matched: z.string().nullable().default(null),
+  /** What list it turned out to be on. `null` when the quote matched nothing. */
+  kind: z.enum(['red_line', 'compulsion']).nullable().default(null),
+  /**
+   * `verifyBreachRelevance`'s verdict, or `null` when it did not run — which is
+   * itself worth recording, since a state-contradicting compulsion is dropped
+   * before the paid call.
+   */
+  relevant: z.boolean().nullable().default(null),
+  /** What actually happened, which is the column a drift report groups by. */
+  outcome: z.enum(['refused', 'charged', 'dropped_irrelevant', 'dropped_unmatched', 'dropped_contradicted']),
+});
+
 export const CreateAssetOp = z.object({
   op: z.literal('create_asset'),
   kind: z
@@ -669,6 +705,7 @@ export const OpSchema = z.discriminatedUnion('op', [
   AdjustCreditsOp,
   SetDoctrineOp,
   CreateAssetOp,
+  LogRulingOp,
   SetStanceOp,
   SetTollPolicyOp,
   SplitAssetOp,

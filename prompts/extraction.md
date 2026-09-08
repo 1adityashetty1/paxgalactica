@@ -218,6 +218,21 @@ a treaty is a campaign where diplomacy means nothing.
 All three are things powers in this galaxy really do, and all three are made
 of pieces that already exist — do not invent a mechanism for any of them.
 
+**A compact that names other powers must LIST them in `factionIds`.** A pact
+narrated as co-signed by four powers and recorded as `factionIds: ["ojjul"]`
+binds nobody — a one-party commitment is a standing policy over your own space,
+and its demilitarisation clause constrained no one at all. If a power did not
+agree in this conversation, it is not a party: you cannot accede somebody who
+was never in the room, and a clause deeming them acceded because their ships use
+a lane binds nothing.
+
+**An exclusivity clause goes in the commitment, not in the prose.** *"Sole
+possession, no resale"* written into a `log_narrative` is a sentence; written as
+`establish_commitment` with a reusable `kind` and `exclusive: true`, the reducer
+refuses the second sale with `commitment_conflict`. A playtest sold the same
+intelligence twice in one hour with the word "exclusive" on the paper, and
+nothing anywhere could tell.
+
 **A world changing hands is a `cession`, and only a `cession`.** A land transfer
 had no type of its own, so it used to be written into whatever treaty was to
 hand — and that borrowed label decides real things, so it did real damage: three

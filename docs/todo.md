@@ -35,11 +35,11 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~85~~ | ~~the concession ledger accumulates~~ | small | **FIXED** |
 | ~~86~~ | ~~a contingent payment~~ | medium | **BUILT** — and it moves assets, not only credits |
 | ~~81~~ | ~~assets~~ | subsystem | **BUILT** — 86 can now trigger on them |
-| **87** | log every breach ruling | small | the instrument that makes 88–90 measurable |
+| ~~87~~ | ~~log every breach ruling~~ | small | **BUILT** |
 | **88** | a `contract` treaty type | medium | cheap for the fiction it unblocks |
 | **89** | no op can raise a rival's dissent | medium | an axis with a fiction and no arithmetic |
 | **90** | loans of things that are not credits (incl. a hired squadron) | medium | the commonest arrangement in the genre |
-| **91** | seven small things | small | a quiet afternoon |
+| ~~91~~ | ~~seven small things~~ | small | **BUILT**, six of seven; severability is not small |
 | **80** | an advisor that costs an action | medium | not from the playtest; wanted |
 | **92** | two claims only a campaign can settle | — | needs play, not code |
 
@@ -165,7 +165,7 @@ condition that can end a deal is the kind of condition somebody insures against,
 and the polarity already matched, since `voidConditionMet` returns a reason
 exactly when a claim should pay. `world_lost` was added for it.
 
-## 87. Log every breach ruling
+## 87. BUILT — log every breach ruling
 
 Section **A** below accepts arbiter variance as irreducible and names this as
 the one thing left worth building. The playtest is the argument for it:
@@ -174,11 +174,37 @@ refused under the *debt* red line, the same act (forgiving a debt) ruled three
 different ways across three turns, and paying men to change sides charged as a
 *favour given for goodwill*. `[A-3, A-5, A-6]`
 
-Record the quoted line, the kind, and the relevance verdict on every ruling.
-Right now "the same act was ruled three ways" is an anecdote from one agent's
-notes; there is no way to ask a campaign how often it happens, and no way to
-tell whether a prompt change helped. Small, and it is the instrument that makes
-the rest of this measurable.
+**BUILT.** `recordRuling` builds one row per ruling that named a line, and
+`log_ruling` writes it to the event log under a new `arbiter` kind — filterable
+rather than hidden, for the reason `rejection` and `clamp` are.
+
+The row carries what the arbiter **quoted**, the line the sheet actually
+**matched**, which list it was on, the relevance verdict, and an `outcome` that
+distinguishes the four ways a named line comes to nothing:
+
+| outcome | means |
+|---|---|
+| `refused` / `charged` | it stood |
+| `dropped_irrelevant` | `verifyBreachRelevance` said the line is not about this act |
+| `dropped_unmatched` | the quote matched nothing on the sheet — an invented rule buys no price |
+| `dropped_contradicted` | a state-dependent compulsion the board contradicts, dropped before the paid call runs |
+
+**The rows that charge nothing are the point.** A ruling that decides not to
+charge left no trace anywhere, which is why "the same act was ruled three ways"
+could only ever be an anecdote from one agent's notes.
+
+Three things fell out of building it:
+
+- **`log_ruling` is engine-only**, guarded in the reducer as well as by absence
+  from `ModelOpSchema` — the same belt-and-braces `transfer_control` gets, and
+  necessary for the same reason: a hand-written batch parses against the full
+  vocabulary. A model writing its own report card is the confirmation bias this
+  layer exists to avoid.
+- **The entry is private to the actor.** `serializeRecentLog` would otherwise
+  hand every NPC a transcript of what the player was told they may not do.
+- **`opsStagedSince` now skips `engine` batches.** It answers *"what did my
+  action do"*, and an audit row is not something the action did — without the
+  filter a refused order reported `log_ruling` among its own results.
 
 > The **seventh** finding in that cluster is fixed: the Combine's proxy red line
 > was being read backwards verbatim, and the sentence was rewritten
@@ -289,32 +315,45 @@ is the units case and the command transfer.
 it should be built as `Loan`, not as `terms.command` bolted onto
 `mutual_defense`.
 
-## 91. Seven small things
+## 91. BUILT (six of seven) — small things
 
-- **an accord is refused whole when the offending clause is severable.** One
-  proxy-war clause destroyed a prize tithe, a letter of marque, a syndicate and
-  a hostage exchange with it. `[A-1]`
-- **repudiating your own multi-party commitment is free**, and pays the same. A
+- **NOT BUILT — an accord is refused whole when the offending clause is
+  severable.** One proxy-war clause destroyed a prize tithe, a letter of marque,
+  a syndicate and a hostage exchange with it. `[A-1]`
+
+  Left alone deliberately, and it does not belong in a list of small things.
+  Severing a clause means knowing which ops came from which clause, and
+  extraction emits a flat batch — there is no such mapping, and inventing one is
+  a feature. **82 also took most of the sting out of it**: a red line now lands
+  as a visible blocker in the turn the player walks toward it, so the whole
+  accord is no longer the first warning they get. Reopen with a proposal for how
+  a clause is identified, not as a small fix.
+- **BUILT — repudiating your own multi-party commitment is free**, and pays the same. A
   `Commitment` is not a `Treaty`, so `PACT_BREAKING_REPUTATION_COST` never
   applies; the replacement commitment paid the identical +20/turn. `[B-8]`
-- **route an exclusivity clause into an `exclusive` commitment** instead of a
+- **BUILT (prompt) — route an exclusivity clause into an `exclusive` commitment** instead of a
   `log_narrative`, and `commitment_conflict` catches a double sale for free. The
   same intelligence was sold twice in one hour with `exclusive` written into the
   paper. `[B-11]`
-- **refuse to write a multilateral compact as a one-party commitment.** A pact
+- **BUILT (prompt) — refuse to write a multilateral compact as a one-party commitment.** A pact
   narrated as co-signed by four powers recorded `factionIds: ["ojjul"]`, so it
   bound nobody — and a later one carried a deemed-accession clause binding two
   powers never asked. `[C-1, D-3]`
-- **surface a trimmed figure** back into the accord narrative. A number
+- **BUILT — surface a trimmed figure** back into the accord narrative, and into the **transcript**, which is what the persona actually reads back. A number
   bargained from 80 to 95 settled at 60 and neither persona was told; a headline
   33% toll share settles at one credit a turn. `[B-13]`
-- **reject a hostile-effect `deploy_agent` on the actor's own system.** 80
+- **BUILT — reject a hostile-effect `deploy_agent` on the actor's own system.** 80
   credits and an agent slot died permanently on a `stat_debuff` placed on the
   actor's own capital. `[C-4]`
-- **put `rejections` on the response**, and scope the "nothing was applied" note
+- **BUILT — put `rejections` on the response**, and scope the "nothing was applied" note
   to the batch it describes. Four rejections were logged and none reached the
   API, under a note saying nothing landed — while the correction pass had landed
   320 credits. `[E-2]`
+
+  Both halves were wrong in opposite directions, and both are fixed: the
+  response carries **both** batches' rejections in the order they happened, and
+  the first batch's all-or-nothing note is rewritten when the correction landed,
+  so it no longer says nothing was applied over a board that says otherwise.
 
 ## 92. Wants a playtest, not a patch — **19, 67.5**
 

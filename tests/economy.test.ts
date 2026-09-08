@@ -1425,3 +1425,85 @@ describe('a contingent payment', () => {
     expect(out.state.commitments.at(-1)!.contingencies).toHaveLength(0);
   });
 });
+
+/**
+ * Small things the creative playtest found, each cheap and each real.
+ */
+describe('seven small things', () => {
+  it('will not post a hostile operative on a world its owner already holds', () => {
+    // 80 credits and one of a small number of agent slots died permanently on a
+    // `stat_debuff` placed on the actor's own capital. `ledgerFor` skips an
+    // operative whose owner holds the host, so it could never have acted.
+    const s = createSeedState('meridian');
+    const mine = s.systems.find((x) => x.controllerFactionId === 'meridian')!;
+    const out = applyOps(
+      s,
+      [{ op: 'deploy_agent', ownerFactionId: 'meridian', systemId: mine.id,
+         mission: 'subversion', effect: { kind: 'stat_debuff', stat: 'guile', magnitude: 2 } } as Op],
+      'model',
+      'meridian',
+    );
+    expect(out.rejections[0]?.code).toBe('illegal_value');
+  });
+
+  it('still lets you watch your own space, which is what a watcher is for', () => {
+    // Only the HOSTILE effects are refused. An `intel` operative on your own
+    // world is counter-intelligence and reads exactly as it should.
+    const s = createSeedState('meridian');
+    const mine = s.systems.find((x) => x.controllerFactionId === 'meridian')!;
+    const out = applyOps(
+      s,
+      [{ op: 'deploy_agent', ownerFactionId: 'meridian', systemId: mine.id,
+         mission: 'surveillance', effect: { kind: 'intel', perTurn: 1 } } as Op],
+      'model',
+      'meridian',
+    );
+    expect(out.rejections).toEqual([]);
+  });
+
+  it('charges for tearing up an arrangement sworn to more than one power', () => {
+    // A compact sworn to four powers was repudiated in all three of its clauses
+    // one turn later and cost nothing with anybody: a Commitment is not a
+    // Treaty, so PACT_BREAKING_REPUTATION_COST never applied.
+    let s = applyOps(
+      createSeedState('ojjul'),
+      [{ op: 'establish_commitment', kind: 'free_port',
+         factionIds: ['ojjul', 'drajk', 'vigil', 'meridian'],
+         text: 'Vosk Marker is open to all and fortified by none.' } as Op],
+      'extraction',
+      'ojjul',
+    ).state;
+    const before = s.factions.find((f) => f.id === 'freeworlds')!.disposition.ojjul ?? 0;
+
+    const out = applyOps(
+      s,
+      [{ op: 'dissolve_commitment', commitmentId: s.commitments.at(-1)!.id, reason: 'It suits us now.' } as Op],
+      'model',
+      'ojjul',
+    );
+    // Everyone notices, including a power that was never a party.
+    expect(out.state.factions.find((f) => f.id === 'freeworlds')!.disposition.ojjul).toBeLessThan(
+      before,
+    );
+  });
+
+  it('leaves a two-party understanding to its own goodwill swing', () => {
+    // Ending a private arrangement between two is not public business, and the
+    // goodwill it takes back is already the whole price.
+    let s = applyOps(
+      createSeedState('ojjul'),
+      [{ op: 'establish_commitment', kind: 'quiet_understanding',
+         factionIds: ['ojjul', 'drajk'], text: 'Nothing is said about the Vosk run.' } as Op],
+      'extraction',
+      'ojjul',
+    ).state;
+    const before = s.factions.find((f) => f.id === 'vigil')!.disposition.ojjul ?? 0;
+    const out = applyOps(
+      s,
+      [{ op: 'dissolve_commitment', commitmentId: s.commitments.at(-1)!.id, reason: 'Done with it.' } as Op],
+      'model',
+      'ojjul',
+    );
+    expect(out.state.factions.find((f) => f.id === 'vigil')!.disposition.ojjul).toBe(before);
+  });
+});

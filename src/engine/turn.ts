@@ -18,6 +18,7 @@ import {
   narrateEpilogue,
   appraiseAgreement,
   extractAgreements,
+  recordRuling,
   verifyBreachRelevance,
   gatherReactions,
   resolveAction,
@@ -257,9 +258,31 @@ async function stageWithCorrection(
 
   const boundAgain = bind(revised.ops);
   const second = campaign.stage(boundAgain.ops, `${label}:correction`, '', source);
+
+  // BOTH batches' rejections reach the player, and the first batch's
+  // all-or-nothing note is rewritten when the correction landed.
+  //
+  // The response used to carry `second.rejections` alone, so a corrected action
+  // reported none at all — while `notes` still carried the first batch's
+  // "Nothing in this batch was applied: 4 of 10 ops were rejected", written by
+  // the atomic rollback of a batch that was then successfully replaced.
+  // Measured: a player was told nothing landed and given no reason, and the
+  // board said otherwise — the correction had applied 320 credits.
+  //
+  // Both halves were wrong from the player's seat, and in opposite directions.
+  const corrected = second.rejections.length === 0;
+  const firstNotes = corrected
+    ? first.notes.map((n) =>
+        n.startsWith('Nothing in this batch was applied')
+          ? `${n.replace(/\.$/, '')} — corrected and re-staged, and the second attempt landed.`
+          : n,
+      )
+    : first.notes;
   return {
-    rejections: second.rejections,
-    notes: [...bound.notes, ...first.notes, ...boundAgain.notes, ...second.notes],
+    // First then second: the order they happened, and the first is the one that
+    // explains why there was a correction at all.
+    rejections: [...first.rejections, ...second.rejections],
+    notes: [...bound.notes, ...firstNotes, ...boundAgain.notes, ...second.notes],
     costUsd: revised.costUsd,
   };
 }
@@ -322,6 +345,24 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
   // The salt keeps two declarations in the same turn from sharing a roll,
   // while staying a pure function of state so replay is unaffected.
   const resolution = await resolveAction(campaign.state, action, String(before));
+
+  // Every ruling that named a line is written down, including the ones that
+  // charged nothing. Staged as an engine op so it replays with the campaign and
+  // can be read back off any save — a drift report needs rows, not console
+  // output that scrolls away.
+  //
+  // Before the outcome branches, because a refusal stages nothing else and an
+  // inadmissible ruling returns before staging at all; putting it here is what
+  // makes the record cover the exits that produce no other trace.
+  if (resolution.ruling) {
+    campaign.stage(
+      [{ op: 'log_ruling', ...resolution.ruling }],
+      'arbiter ruling',
+      '',
+      'engine',
+      campaign.state.playerFactionId,
+    );
+  }
 
   // The player's own institutions may simply refuse. When they do, NOTHING is
   // staged: a faction is not a puppet, and an order the fleet will not carry
@@ -808,6 +849,7 @@ export async function closeChannel(
   // `classifyPrinciples`, and nothing proved it was about this act.
   let relevanceCost = 0;
   let breach = firstPass;
+  let firstPassRelevant: boolean | null = null;
   // A compulsion that carries a trigger is a question about the board, and the
   // board can answer it for free. `verifyBreachRelevance` is shown the act and
   // the line and deliberately no state, so it cannot notice that a
@@ -827,9 +869,31 @@ export async function closeChannel(
       firstPass.kind,
     );
     relevanceCost = check.costUsd;
+    firstPassRelevant = check.relevant;
     if (!check.relevant) breach = null;
   }
   const rulingCost = (ruling?.costUsd ?? 0) + relevanceCost;
+
+  // The same record the declared path writes. An accord's rulings drift exactly
+  // as an order's do — a playtest saw six treaty-emitting accords permitted and
+  // two refused, one of them on a debt, with no way to ask how often.
+  const rulingRow = recordRuling(
+    extraction.output.narrative,
+    'accord',
+    named,
+    firstPass,
+    firstPassRelevant,
+    breach !== null,
+  );
+  if (rulingRow) {
+    campaign.stage(
+      [{ op: 'log_ruling', ...rulingRow }],
+      'arbiter ruling',
+      '',
+      'engine',
+      campaign.state.playerFactionId,
+    );
+  }
 
   // A red line refuses the WHOLE agreement. A deal that requires you to cross
   // it is not a smaller deal, it is no deal — the same rule `submitAction`
@@ -936,6 +1000,14 @@ export async function closeChannel(
   // all-or-nothing), and transcripts are replayed into the persona — so the
   // other power goes on believing in a concession the world has no record of,
   // permanently blocking a deal the player is entitled to ask for again.
+  // A number that was trimmed is a number the parties did not agree to, and
+  // they should be arguing about the real one. Transcripts are replayed into
+  // the persona, so a trim that stays in `notes` is invisible to the very power
+  // that bargained over it — measured: an annuity haggled from 80 to 95 settled
+  // at 60 with neither side told, and a headline 33% toll share settles at one
+  // credit a turn.
+  const trims = staged.notes.filter((n) => /^Trimmed |^Dropped /.test(n));
+
   campaign.recordTranscript(
     factionId,
     staged.rejections.length > 0
@@ -948,7 +1020,15 @@ export async function closeChannel(
               .join(', ')}). Both parties are back where they started.]`,
           },
         ]
-      : history,
+      : trims.length > 0
+        ? [
+            ...history,
+            {
+              speaker: 'record' as const,
+              text: `[What actually took effect differs from what was said: ${trims.join(' ')} Both parties are working from the smaller figures now.]`,
+            },
+          ]
+        : history,
   );
 
   const notes = [...staged.notes];

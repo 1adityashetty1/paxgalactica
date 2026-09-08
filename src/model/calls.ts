@@ -238,6 +238,59 @@ export const BreachRelevanceSchema = z.object({
  * on an ordinary action. On a false positive the cost is one Haiku call and a
  * charge that should not have been made is dropped.
  */
+/**
+ * One breach ruling, recorded whether or not it cost anything.
+ *
+ * `docs/todo.md` section A accepts arbiter variance as irreducible; it does not
+ * accept being unable to *measure* it. A playtest found the same act ruled three
+ * different ways across three turns, and that could only ever be an anecdote,
+ * because a ruling that decides not to charge leaves no trace anywhere.
+ */
+export interface BreachRuling {
+  action: string;
+  via: 'declared' | 'accord';
+  named: string[];
+  matched: string | null;
+  kind: 'red_line' | 'compulsion' | null;
+  relevant: boolean | null;
+  outcome:
+    | 'refused'
+    | 'charged'
+    | 'dropped_irrelevant'
+    | 'dropped_unmatched'
+    | 'dropped_contradicted';
+}
+
+/** The ruling record for a pass that named lines, or `null` if it named none. */
+export function recordRuling(
+  action: string,
+  via: 'declared' | 'accord',
+  named: string[],
+  firstPass: { kind: 'red_line' | 'compulsion'; principle: string } | null,
+  relevant: boolean | null,
+  survived: boolean,
+): BreachRuling | null {
+  if (named.length === 0) return null;
+  const outcome: BreachRuling['outcome'] = survived
+    ? firstPass?.kind === 'red_line'
+      ? 'refused'
+      : 'charged'
+    : firstPass === null
+      ? 'dropped_unmatched'
+      : relevant === false
+        ? 'dropped_irrelevant'
+        : 'dropped_contradicted';
+  return {
+    action: action.slice(0, 200),
+    via,
+    named: named.slice(0, 3),
+    matched: firstPass?.principle ?? null,
+    kind: firstPass?.kind ?? null,
+    relevant,
+    outcome,
+  };
+}
+
 export async function verifyBreachRelevance(
   action: string,
   principle: string,
@@ -339,6 +392,12 @@ export async function resolveAction(
   roll: number;
   attempts: number;
   costUsd: number;
+  /**
+   * What the arbiter ruled about the actor's own principles, and what became of
+   * it — including the rulings that charged nothing, which are the ones nothing
+   * else records. `null` when no line was named at all.
+   */
+  ruling: BreachRuling | null;
 }> {
   /* --- 1. Arbitrate: admissible at all, and priced blind to the roll --- */
   const priced = await appraiseAction(state, action);
@@ -357,9 +416,11 @@ export async function resolveAction(
   // refused outright" on an assassination. Only fires when a breach was named.
   let relevanceCost = 0;
   let classified = firstPass;
+  let relevant: boolean | null = null;
   if (firstPass) {
     const check = await verifyBreachRelevance(action, firstPass.principle, firstPass.kind);
     relevanceCost = check.costUsd;
+    relevant = check.relevant;
     if (!check.relevant) classified = null;
   }
 
@@ -375,6 +436,10 @@ export async function resolveAction(
       ? classifyPrinciple(actor, priced.appraisal.reason)
       : null;
   const ruled = classified ?? smuggled;
+
+  // The ruling, recorded once and carried out of every exit — including the
+  // exits that charge nothing, which are exactly the rows a drift report needs.
+  const ruling = recordRuling(action, 'declared', named, firstPass, relevant, ruled !== null);
 
   // A ruling of inadmissible ends it here. No roll, no ops, no cost beyond
   // the arbitration — the action was not attempted, so there is nothing to
@@ -393,6 +458,7 @@ export async function resolveAction(
       roll: 0,
       attempts: priced.attempts,
       costUsd: priced.costUsd + relevanceCost,
+      ruling,
     };
   }
 
@@ -437,6 +503,7 @@ export async function resolveAction(
       roll: 0,
       attempts: priced.attempts,
       costUsd: priced.costUsd + relevanceCost,
+      ruling,
     };
   }
 
@@ -476,6 +543,7 @@ export async function resolveAction(
       roll: 0,
       attempts: priced.attempts,
       costUsd: priced.costUsd + relevanceCost,
+      ruling,
     };
   }
 
@@ -629,6 +697,7 @@ export async function resolveAction(
     output,
     check,
     roll,
+    ruling,
     attempts: priced.attempts + res.attempts,
     costUsd: priced.costUsd + relevanceCost + res.costUsd,
   };
