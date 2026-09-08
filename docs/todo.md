@@ -850,6 +850,87 @@ unchanged. That fails the moment somebody starts editing a log entry in place
 instead of appending a new one — which is exactly when sharing would stop being
 safe.
 
+## p.6 — `fleetlab` is 43.5s of embarrassingly parallel work
+
+170,100 battles, each independent and each seeded, run one after another on one
+core. It is the only genuinely CPU-bound thing in the repo and it is a dev-loop
+cost: a sweep is how `TORPEDO_STRIKE`, the lift axis and the loss order were all
+settled, so it gets run whenever combat is touched.
+
+`node:worker_threads` sharding the composition grid across cores is roughly 40
+lines and ~8x on this machine. Nothing about it risks determinism — each battle
+already derives its roll from `rollD20(turn, salt)` and shares no state with any
+other, which is the property that made the grid a grid in the first place.
+
+Worth doing before any of the alternatives in **p.8**, because it is a bigger
+speedup than any of them for a fraction of the work.
+
+## p.7 — `routeEarnings` is recomputed five times a tick from identical input
+
+`ledgerFor` calls `routeEarnings(state)`, and `tickTurn` calls `ledgerFor` once
+per faction — so every trade route in the galaxy is rebuilt five times per tick,
+plus a sixth for `TOLL_RESENTMENT`. Measured: `routeEarnings` is **0.34ms** of
+the **0.37ms** `ledgerFor` costs, and `ledgerFor` x5 is 1.5ms of a 4.0ms
+`tickTurn`.
+
+Memoising it per state cuts `tickTurn` by roughly a third.
+
+**The subtlety that makes this more than a cache.** `routeEarnings` is
+deliberately pure and recomputed rather than stored — *"routes are recomputed
+from the graph every time they are read, never stored, so there is no second
+source of truth"*. A memo must not become that second source: keyed on the state
+object identity and thrown away whenever the world changes, never persisted,
+never in `WorldState`, never surviving a `cloneState`. A `WeakMap<WorldState,
+RouteEarnings>` does exactly that and cannot outlive the world it describes.
+
+It is worth noting this is the kind of waste a rewrite in a faster language
+would have faithfully preserved while making each of the five copies quicker.
+
+## p.8 — ACCEPTED — why there is no WASM path, with the measurement
+
+Asked directly, and the first answer given was partly wrong. Recording both the
+correction and the number that actually settles it, so this is not re-litigated
+from intuition.
+
+**Two arguments that do NOT hold against WASM**, and were offered:
+
+- *"It would create two definitions of the domain, one for the server and one
+  for the browser."* False. WASM runs in Node and in the browser, so a compiled
+  reducer would be **one artifact loaded by both** — the same guarantee the
+  shared TypeScript gives today.
+- *"Cross-language float semantics would break byte-identical replay."* Also
+  false, and backwards. WASM specifies IEEE-754 with no x87 extended precision
+  and no FMA contraction; it is *more* deterministic across engines than
+  JavaScript, not less. The key-ordering scar this repo carries
+  (`normaliseStack`) is a data-structure problem and would exist either way.
+
+**The argument that does hold is Amdahl, and it is not close.**
+
+| | |
+|---|---|
+| a whole `tickTurn` | **4.0 ms** |
+| one model call in a real turn | **20,000–60,000 ms** |
+| `fleetlab`, per battle | 255.7 µs |
+| the pure hull arithmetic in a battle — `strikeStack`, `orbitalWeightOf`, `tonsIn`, counted four times each to be generous | **6.2 µs, or 2.4%** |
+
+So on the player-facing path the reducer is **0.007%** of a turn: making it
+infinitely fast saves four milliseconds against forty seconds of waiting for a
+model. And in the one CPU-bound tool, compiling the only genuinely liftable
+kernel to zero would take 43.5s to 42.5s.
+
+**There is no small pure kernel to lift.** `resolveBattle` reads `state.turn`,
+`state.factions`, `state.treaties` and `state.systems`, and calls `warsFor`,
+`effectiveStats` and `fleetBases` — which needs the hyperlane graph for retreat
+destinations. The 97.6% is `applyOps`/`tickTurn` overhead: cloning, Zod
+validation, array scans over string-keyed optional-field objects. Porting *that*
+is porting the whole domain, at which point the gain is however much faster WASM
+is than a JIT on allocation-heavy pointer-chasing — commonly 1–2x, not 10x.
+
+**So the wins here are algorithmic and structural, not language-level**, and
+p.6 and p.7 are both larger than anything WASM offers. Reopen this only if a
+profile shows a hot loop that is (a) arithmetic over flat numeric data, (b) a
+material share of something a person actually waits for.
+
 ## p.5 — `verifyReplay` is quadratic over a campaign
 
 Not in the server path, so it costs no player a turn. It does cost the suite and
