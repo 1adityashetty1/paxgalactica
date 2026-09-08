@@ -868,6 +868,8 @@ turn 90.
 
 So this is now **speculative rather than pending**: do it if a campaign runs to
 100 turns and the save size or memory becomes a real complaint, and not before.
+Re-checked 2026-09-08 — a 90-turn campaign holds a few hundred log entries and
+`save()` costs about a millisecond. Still nobody's complaint.
 
 Three constraints it has to respect if it is ever built, all following from
 where the log lives:
@@ -910,7 +912,7 @@ unchanged. That fails the moment somebody starts editing a log entry in place
 instead of appending a new one — which is exactly when sharing would stop being
 safe.
 
-## p.6 — `fleetlab` is 43.5s of embarrassingly parallel work
+## p.6 — BUILT — `fleetlab` was 43.5s of embarrassingly parallel work
 
 170,100 battles, each independent and each seeded, run one after another on one
 core. It is the only genuinely CPU-bound thing in the repo and it is a dev-loop
@@ -922,10 +924,25 @@ lines and ~8x on this machine. Nothing about it risks determinism — each battl
 already derives its roll from `rollD20(turn, salt)` and shares no state with any
 other, which is the property that made the grid a grid in the first place.
 
-Worth doing before any of the alternatives in **p.8**, because it is a bigger
-speedup than any of them for a fraction of the work.
+**BUILT: 43.5s → 6.9s on 10 cores, 6.3x.** `tournamentShard` takes a stride of
+the attacker axis and `mergeShards` sums the tallies; the driver falls back to
+the serial path on one core or on any worker failure, because a tuning tool that
+cannot run is worse than a slow one.
 
-## p.7 — `routeEarnings` is recomputed five times a tick from identical input
+**Exact, not approximate**, and that is the property worth more than the speed —
+a sweep is how `TORPEDO_STRIKE`, the lift axis and the loss order were all
+settled, so a parallel run that merely agreed roughly would be worse than a slow
+serial one. Two tests pin it: the merged tallies equal the serial ones at 1, 3
+and 7 shards, and every battle runs exactly once across a shard count that does
+not divide the axis.
+
+Shards return raw tallies rather than rates, because each shard holds part of
+every *defender's* record and a rate cannot be averaged back together.
+
+This was worth doing before anything in **p.8**: 6.3x for ~90 lines, against a
+2.4% ceiling for a WASM port of the arithmetic.
+
+## p.7 — BUILT — `routeEarnings` was recomputed five times a tick from identical input
 
 `ledgerFor` calls `routeEarnings(state)`, and `tickTurn` calls `ledgerFor` once
 per faction — so every trade route in the galaxy is rebuilt five times per tick,
@@ -933,15 +950,20 @@ plus a sixth for `TOLL_RESENTMENT`. Measured: `routeEarnings` is **0.34ms** of
 the **0.37ms** `ledgerFor` costs, and `ledgerFor` x5 is 1.5ms of a 4.0ms
 `tickTurn`.
 
-Memoising it per state cuts `tickTurn` by roughly a third.
+**BUILT: `tickTurn` 4.01ms → 2.39ms, 40%** — better than the third predicted.
 
-**The subtlety that makes this more than a cache.** `routeEarnings` is
-deliberately pure and recomputed rather than stored — *"routes are recomputed
-from the graph every time they are read, never stored, so there is no second
-source of truth"*. A memo must not become that second source: keyed on the state
-object identity and thrown away whenever the world changes, never persisted,
-never in `WorldState`, never surviving a `cloneState`. A `WeakMap<WorldState,
-RouteEarnings>` does exactly that and cannot outlive the world it describes.
+**Not with a memo**, which was this item's own suggestion and is the wrong fix.
+A `WeakMap` keyed on the state object goes stale the moment anything mutates
+that object, and `tickTurn` mutates constantly; the income loop happened to be
+safe only because `routeEarnings` does not read `credits`, which is an invariant
+held by luck rather than by construction.
+
+`ledgerFor` takes an optional settlement instead, and `tickTurn` computes one
+before the loop and passes it down. Nothing to invalidate, and it makes the
+real rule explicit: **incomes are paid from one settlement of the lanes**, so a
+power collecting early cannot change what a power collecting later is owed.
+`ledgersFor` is the helper for anything wanting all five, and `balance.ts` and
+`epilogue.ts` now reuse their settlement too.
 
 It is worth noting this is the kind of waste a rewrite in a faster language
 would have faithfully preserved while making each of the five copies quicker.
@@ -991,12 +1013,22 @@ p.6 and p.7 are both larger than anything WASM offers. Reopen this only if a
 profile shows a hot loop that is (a) arithmetic over flat numeric data, (b) a
 material share of something a person actually waits for.
 
-## p.5 — `verifyReplay` is quadratic over a campaign
+## p.5 — MEASURED, still not worth doing — `verifyReplay` over a campaign
 
-Not in the server path, so it costs no player a turn. It does cost the suite and
-an archive import: 508ms at turn 90, and every call starts at turn 0. Worth a
-cached replay checkpoint only if the suite gets slow enough to notice, which it
-has not — 1,007 tests in ~7s.
+Not in the server path, so it costs no player a turn. Re-measured 2026-09-08
+now that the suite is 1,113 tests in ~38s, since the original condition was
+"only if the suite gets slow enough to notice":
+
+| turn | `verifyReplay` | growth |
+|---|---|---|
+| 10 | 34 ms | — |
+| 30 | 93 ms | 2.76x for 3x the turns |
+| 60 | 173 ms | 1.86x for 2x |
+| 90 | 245 ms | 1.42x for 1.5x |
+
+**Nearer linear than quadratic in practice**, and 245ms once at turn 90 against
+a `maxTurns` ceiling of 100. The suite's 38s is agent ticks and tournaments, not
+this. Condition still unmet; leaving it.
 
 ---
 

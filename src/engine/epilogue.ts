@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isTreatyLive } from '../domain/diplomacy.js';
+import { routeEarnings } from '../domain/trade.js';
 import type { ControlChange } from './journal.js';
 import { isDebtLive } from '../domain/debt.js';
 import {
@@ -106,13 +107,15 @@ export function campaignOutcome(
   const turnovers = new Map<string, number>();
   for (const c of history) turnovers.set(c.systemId, (turnovers.get(c.systemId) ?? 0) + 1);
 
+  // One settlement of the lanes for all five slides, not five identical ones.
+  const settlement = routeEarnings(state);
   const factions: FactionOutcome[] = state.factions.map((f) => {
     const held = systemsOf(state, f.id);
     const heldStart = systemsOf(start, f.id);
     const endIds = new Set(held.map((s) => s.id));
     const startIds = new Set(heldStart.map((s) => s.id));
 
-    const ledger = ledgerFor(state, f.id);
+    const ledger = ledgerFor(state, f.id, settlement);
     const systemsDelta = held.length - heldStart.length;
     // A war is not one power's opinion. This read only the subject's OUTWARD
     // disposition, and disposition is asymmetric everywhere else in the game —

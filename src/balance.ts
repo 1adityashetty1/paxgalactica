@@ -68,7 +68,8 @@ export function runBalance(turns: number, onTurn?: (s: Snapshot) => void): Snaps
       ),
       perFaction: Object.fromEntries(
         state.factions.map((f) => {
-          const l = ledgerFor(state, f.id);
+          // One settlement of the lanes for all five, not five identical ones.
+          const l = ledgerFor(state, f.id, earnings);
           return [
             f.id,
             {
