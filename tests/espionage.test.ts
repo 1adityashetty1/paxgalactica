@@ -3,7 +3,7 @@ import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { MISSION_PROFILE, type AgentMission } from '../src/domain/diplomacy.js';
 import { ledgerFor, type WorldState } from '../src/domain/state.js';
-import { serializeStanding } from '../src/model/serialize.js';
+import { serializeCommitments, serializeStanding, serializeState } from '../src/model/serialize.js';
 import { routeCovertAction } from '../src/domain/development.js';
 import { eventsVisibleTo } from '../src/domain/intel.js';
 
@@ -492,5 +492,51 @@ describe('a private entry is written private', () => {
     for (const id of ['ojjul', 'drajk']) {
       expect(eventsVisibleTo(res.state, id).some((e) => e.text.includes('Verge run'))).toBe(true);
     }
+  });
+});
+
+/**
+ * A commitment is not public business, and the state block said otherwise.
+ *
+ * `serializeCommitments` took no viewer and rendered every live commitment into
+ * all five prompts — measured in a playtest as the Iron Vigil quoting the exact
+ * 7% share of an arrangement binding only the Combine and Drajk.
+ *
+ * The LOG half of this leak was closed earlier the same day and written up as
+ * fixed. `logEvent` was scoped and the state block one function away was not,
+ * so the fix looked complete and the prompt still carried the secret.
+ */
+describe('the commitments block is scoped to its parties', () => {
+  const bound = (): WorldState =>
+    applyOps(
+      createSeedState('drajk'),
+      [
+        {
+          op: 'establish_commitment',
+          kind: 'quiet_understanding',
+          factionIds: ['drajk', 'ojjul'],
+          text: 'Seven per cent of the Vosk run, and nothing said aloud.',
+        },
+      ],
+      'extraction',
+      'drajk',
+    ).state;
+
+  it('shows a two-party arrangement to its parties and nobody else', () => {
+    const s = bound();
+    for (const id of ['drajk', 'ojjul']) {
+      expect(serializeCommitments(s, id)).toContain('Seven per cent');
+    }
+    for (const id of ['vigil', 'meridian', 'freeworlds']) {
+      expect(serializeCommitments(s, id)).not.toContain('Seven per cent');
+    }
+  });
+
+  it('reaches the prompt block scoped, not just the helper', () => {
+    // The whole defect was that the scoped helper existed and the caller did
+    // not pass a viewer, so assert the block a model actually receives.
+    const s = bound();
+    expect(serializeState(s, 'vigil')).not.toContain('Seven per cent');
+    expect(serializeState(s, 'ojjul')).toContain('Seven per cent');
   });
 });

@@ -68,6 +68,9 @@ leaves a faction with nobody following it.
 | `set_doctrine` | the faction changes course — see Changing doctrine |
 | `set_stance` | what its fleets do when losing a defence — see Standing orders |
 | `set_toll_policy` | who pays to cross its space — see Tolls |
+| `create_asset` | a thing taken or made **because the attempt worked** — see Things |
+| `transfer_asset` | hand a thing you hold to somebody else |
+| `split_asset` | break a divisible holding into two lots |
 | `adjust_dissent` | **your own** institutions grow more restive — never less |
 | `cancel_order` | an existing order is called off |
 | `interrupt_order` | an order is disrupted by force or event |
@@ -396,6 +399,41 @@ opinion of them drops every turn it continues. Chasing a defaulter is an
 ordinary action — a fleet at their world, an operative in their space — and for
 the Combine, whose institutions demand that an unpaid debt be pursued, *not*
 chasing one is itself a drift the engine charges for.
+
+## Things that are neither credits nor ships
+
+Prisoners, a fostered heir, a seal held in escrow, a hundred tons of rare ore, a
+chart that is false, a dossier nobody else has. These are **assets**, and they
+exist so that a bargain can be about something other than money.
+
+**An asset is the payoff of an attempt that worked, never a thing anybody has.**
+If the action succeeded and its fiction produced a thing — a sweep of the
+wreckage brings back survivors, a survey finds ore, a raid takes a courier's
+satchel — emit `create_asset` for it. If the action failed, do not: the payload
+is stripped anyway, and narrating a prize the player did not win is the same
+error as narrating a battle they did not fight.
+
+```jsonc
+{ "op": "create_asset", "kind": "prisoners", "heldBy": "ojjul",
+  "text": "Vigil crews taken off Vantic, held at Shalka.",
+  "quantity": 40, "unit": "crew", "divisible": true,
+  "valuePerUnit": { "vigil": 12 }, "atSystemId": "ilv-2" }
+```
+
+**`valuePerUnit` is what one unit is worth to each power, and it is a claim, not
+money.** Nothing is paid, no ledger moves; it exists so both sides of a
+negotiation can see what they are arguing about. State it **only for powers it
+is actually worth something to** — that asymmetry is the whole point. Prisoners
+are worth a great deal to whoever lost them and nothing to anybody else; ore is
+worth something to whoever can use it. A value for every faction is almost
+always wrong.
+
+`divisible: false` for a thing that is one thing — an heirloom, a person, a
+title. `divisible: true` for a quantity that comes in lots.
+
+`atSystemId` is where it physically is, and it makes the thing **losable**: an
+asset at a world changes hands when the world does. A title or a charter has no
+location; leave it `null`.
 
 ## Tolls: who pays to cross your space
 

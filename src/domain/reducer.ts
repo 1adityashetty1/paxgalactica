@@ -665,6 +665,25 @@ function voidConditionMet(state: WorldState, condition: VoidCondition): string |
         ? `${name(condition.by)} is running at a loss (${net} a turn) and can no longer fund it`
         : null;
     }
+    case 'world_lost': {
+      const held = state.systems.find(
+        (sys) => sys.id === condition.target && sys.controllerFactionId === condition.by,
+      );
+      return held
+        ? null
+        : `${name(condition.by)} no longer holds ${state.systems.find((sys) => sys.id === condition.target)?.name ?? condition.target}`;
+    }
+    case 'asset_lost': {
+      // What makes a hostage a hostage: the pact holds while the thing is held.
+      // `target` is an asset id rather than a faction — the one condition kind
+      // where it is not a power, and the field is named for the common case.
+      const held = (state.assets ?? []).find(
+        (a) => a.id === condition.target && a.heldBy === condition.by,
+      );
+      return held
+        ? null
+        : `${name(condition.by)} no longer holds what this was written against`;
+    }
   }
 }
 
@@ -681,6 +700,48 @@ function voidConditionMet(state: WorldState, condition: VoidCondition): string |
  * with the receipts trimmed to match, exactly as `billConstruction` delivers
  * what was paid for rather than rejecting the order.
  */
+/**
+ * Pay out declared credits to other powers, but only out of what was paid in.
+ *
+ * The declared path already refuses to DEBIT another treasury; this is the
+ * matching rule for crediting one. A fiction shaped "the bench awards Meridian
+ * three hundred" is a transfer, and a transfer needs a payer — so the actor's
+ * own debits in the same batch fund it, pro-rata when they do not cover it, and
+ * nothing past that is applied.
+ *
+ * `moveConserved` is not reused because its rule is stricter than this one
+ * needs: it drops a credit whose batch nets positive, which is right for an
+ * accord where both sides' entries are present, and wrong here where the actor
+ * legitimately keeps its own capped narrative windfall alongside a payment.
+ */
+function settleDeclaredCredits(
+  state: WorldState,
+  owed: Record<string, number>,
+  funded: number,
+  notes: string[],
+): string[] {
+  const out: string[] = [];
+  const total = Object.values(owed).reduce((n, v) => n + v, 0);
+  if (total <= 0) return out;
+
+  const share = funded >= total ? 1 : funded / total;
+  for (const [id, amount] of Object.entries(owed)) {
+    const paid = Math.floor(amount * share);
+    const who = state.factions.find((f) => f.id === id);
+    if (who && paid > 0) who.credits += paid;
+    if (paid < amount) {
+      const note =
+        paid === 0
+          ? `${amount} credits for ${nameFor(state, id)} came from nobody's treasury and did not move. Pay it, and it arrives.`
+          : `Trimmed a payment to ${nameFor(state, id)} from ${amount} to ${paid}: only ${funded} was actually paid out this declaration.`;
+      out.push(note);
+      logEvent(state, 'clamp', note, id);
+    }
+  }
+  void notes;
+  return out;
+}
+
 function settleTreatyPayment(state: WorldState, treaty: Treaty): string[] {
   return moveConserved(state, treaty.terms.payment, treaty.summary, treaty.parties[0]!);
 }
@@ -910,6 +971,9 @@ export function applyOps(
    * a credit — the same rule `terms.payment` follows.
    */
   const negotiated: Record<string, number> = {};
+  /** Declared credits owed to powers other than the actor, and what funds them. */
+  const declaredCredits: Record<string, number> = {};
+  let declaredPaidOut = 0;
   /**
    * Which classes came off a faction's stacks earlier in this batch.
    *
@@ -1017,6 +1081,21 @@ export function applyOps(
         }
         const from = sys.controllerFactionId ?? 'nobody';
         sys.controllerFactionId = op.toFactionId;
+        // Whatever was sitting on the world changes hands with it. This is what
+        // makes an asset losable, and it is the difference between a hostage
+        // and a note saying somebody has a hostage: hold the world, hold the
+        // prisoners. An asset with no location — a title, a charter — travels
+        // with its holder and is untouched.
+        for (const asset of state.assets ?? []) {
+          if (asset.atSystemId !== sys.id) continue;
+          if (asset.heldBy === op.toFactionId) continue;
+          const wasHeldBy = asset.heldBy;
+          if (op.toFactionId === null) continue;
+          asset.heldBy = op.toFactionId;
+          const taken = `${nameFor(state, op.toFactionId)} takes ${asset.quantity} ${asset.unit} with ${sys.name}: ${asset.text}`;
+          notes.push(taken);
+          logEvent(state, 'system', taken, op.toFactionId, [wasHeldBy, op.toFactionId]);
+        }
         logEvent(
           state,
           'order',
@@ -1167,6 +1246,34 @@ export function applyOps(
             );
           }
         }
+        // A CREDIT TO SOMEBODY ELSE HAS TO COME FROM SOMEWHERE.
+        //
+        // Taking another power's money by declaration is already refused above.
+        // Giving it money was not, and that is the other half of the same hole:
+        // a one-sided `adjust_credits meridian +300` was capped and applied, so
+        // the cap bounded the SIZE of the invention rather than the fact of it.
+        // Measured on an arbitral award — the galaxy ended 320 credits richer
+        // and no treasury paid.
+        //
+        // Deferred rather than dropped here, because whether it is a transfer
+        // is a property of the whole batch: the actor may be paying for it two
+        // ops later. Funded at settle time out of what the actor actually paid
+        // out, and the surplus is minting and is dropped.
+        //
+        // A windfall to the actor's OWN treasury is untouched — the fiction
+        // paying you is a real thing and `MAX_NARRATIVE_CREDITS` is what bounds
+        // it. Only money appearing in somebody else's account needs a payer.
+        //
+        // Scoped to `model`. An `engine` batch is the reducer's own arithmetic
+        // paying out something it already priced, and an `extraction` one has
+        // returned above into `negotiated`, which conserves more strictly.
+        if (source === 'model' && actor !== undefined && op.factionId !== actor && delta > 0) {
+          declaredCredits[op.factionId] = (declaredCredits[op.factionId] ?? 0) + delta;
+          break;
+        }
+        if (source === 'model' && actor !== undefined && op.factionId === actor && delta < 0) {
+          declaredPaidOut += -delta;
+        }
         f.credits = Math.max(0, f.credits + delta);
         break;
       }
@@ -1279,6 +1386,142 @@ export function applyOps(
           notes.push(note);
           logEvent(state, 'system', note, f.id);
         }
+        break;
+      }
+
+      case 'create_asset': {
+        // An asset is the OUTCOME OF AN ATTEMPT, never a thing declared into
+        // existence. A player who says "I sell Meridian a hundred tons of rare
+        // ore" has not made the ore; the arbiter redirects that to an attempt,
+        // and `boundPayloadsToOutcome` strips this op when the attempt failed.
+        //
+        // Refused from an accord because a conversation trades what exists and
+        // cannot conjure what does not — the mirror of `transfer_asset`, which
+        // is reachable there precisely because it moves something real.
+        if (source === 'extraction') {
+          reject(
+            raw,
+            'declared_only',
+            'An accord can trade a thing that exists; it cannot bring one into being. Whatever produced this — a sweep, a survey, a seizure — is an action to attempt on your own turn.',
+          );
+          break;
+        }
+        if (!factionExists(op.heldBy)) {
+          reject(raw, 'unknown_faction', `No faction "${op.heldBy}".`);
+          break;
+        }
+        // You cannot survey ore into somebody else's warehouse.
+        if (actor !== undefined && op.heldBy !== actor) {
+          reject(
+            raw,
+            'illegal_value',
+            `${actor} cannot put something into ${op.heldBy}'s hands by declaring it. Take it, make it, or trade for it.`,
+          );
+          break;
+        }
+        if (op.atSystemId !== null && !state.systems.some((x) => x.id === op.atSystemId)) {
+          reject(raw, 'unknown_system', `No system "${op.atSystemId}".`);
+          break;
+        }
+        const asset = {
+          id: mintId(state, 'ast'),
+          kind: op.kind,
+          text: op.text,
+          heldBy: op.heldBy,
+          quantity: op.quantity,
+          unit: op.unit,
+          divisible: op.divisible,
+          // Trimmed to the powers that exist. A value quoted for a faction
+          // nobody has is not a price, it is noise in a document two personas
+          // are about to bargain over.
+          valuePerUnit: Object.fromEntries(
+            Object.entries(op.valuePerUnit).filter(([id]) => factionExists(id)),
+          ),
+          atSystemId: op.atSystemId,
+          acquiredTurn: state.turn,
+        };
+        state.assets.push(asset);
+        const note = `${nameFor(state, op.heldBy)} holds ${op.quantity} ${op.unit}: ${op.text}`;
+        notes.push(note);
+        // Visible to the holder alone. What you are sitting on is exactly the
+        // sort of thing a rival should have to find out.
+        logEvent(state, 'system', note, op.heldBy, [op.heldBy]);
+        break;
+      }
+
+      case 'transfer_asset': {
+        const asset = state.assets.find((a) => a.id === op.assetId);
+        if (!asset) {
+          reject(raw, 'unknown_asset', `No asset "${op.assetId}".`);
+          break;
+        }
+        if (!factionExists(op.toFactionId)) {
+          reject(raw, 'unknown_faction', `No faction "${op.toFactionId}".`);
+          break;
+        }
+        if (asset.heldBy === op.toFactionId) {
+          reject(raw, 'illegal_value', `${op.toFactionId} already holds ${asset.id}.`);
+          break;
+        }
+        // Giving your own away needs nobody. TAKING somebody else's needs them,
+        // so it is reachable from an accord and refused from a declaration —
+        // the same rule `terms.territory` follows.
+        if (source === 'model' && actor !== undefined && asset.heldBy !== actor) {
+          reject(
+            raw,
+            'needs_consent',
+            `${asset.id} is ${asset.heldBy}'s, and they have to agree to part with it. Open a channel with them (/talk), or take it by an act that could take it.`,
+          );
+          break;
+        }
+        const from = asset.heldBy;
+        asset.heldBy = op.toFactionId;
+        const note = `${nameFor(state, from)} hands ${asset.quantity} ${asset.unit} to ${nameFor(state, op.toFactionId)}: ${asset.text} ${op.reason}`.trim();
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, op.toFactionId, [from, op.toFactionId]);
+        break;
+      }
+
+      case 'split_asset': {
+        const asset = state.assets.find((a) => a.id === op.assetId);
+        if (!asset) {
+          reject(raw, 'unknown_asset', `No asset "${op.assetId}".`);
+          break;
+        }
+        if (actor !== undefined && asset.heldBy !== actor) {
+          reject(raw, 'illegal_value', `${asset.id} is ${asset.heldBy}'s to divide, not ${actor}'s.`);
+          break;
+        }
+        if (!asset.divisible) {
+          reject(
+            raw,
+            'illegal_value',
+            `${asset.text} is one thing and does not come apart. Trade it whole or not at all.`,
+          );
+          break;
+        }
+        if (op.quantity >= asset.quantity) {
+          reject(
+            raw,
+            'illegal_value',
+            `Splitting ${op.quantity} of ${asset.quantity} would leave nothing behind; that is the whole holding, not a lot off it.`,
+          );
+          break;
+        }
+        asset.quantity -= op.quantity;
+        // Value is stated PER UNIT, so the two lots are worth exactly what the
+        // one was. The split conserves because of the shape of the record, not
+        // because anything divided carefully.
+        state.assets.push({
+          ...asset,
+          id: mintId(state, 'ast'),
+          quantity: op.quantity,
+          valuePerUnit: { ...asset.valuePerUnit },
+          acquiredTurn: state.turn,
+        });
+        const note = `${nameFor(state, asset.heldBy)} sets aside ${op.quantity} ${asset.unit} of ${asset.text} ${op.reason}`.trim();
+        notes.push(note);
+        logEvent(state, 'system', note, asset.heldBy, [asset.heldBy]);
         break;
       }
 
@@ -2542,6 +2785,13 @@ export function applyOps(
           exclusive: op.exclusive,
           incomePerTurn: yieldPerTurn,
           ...(share === undefined ? {} : { share }),
+          // Bound to the parties, like everything else here: a contingency can
+          // only move what the powers who signed it have agreed to move.
+          contingencies: op.contingencies
+            .filter(
+              (c) => op.factionIds.includes(c.from) && op.factionIds.includes(c.to),
+            )
+            .map((c) => ({ ...c, firedTurn: null })),
           establishedTurn: state.turn,
           status: 'active',
         });
@@ -2944,6 +3194,7 @@ export function applyOps(
   // Before the yards bill, so a settlement received this batch can pay for
   // what the same accord commissioned.
   notes.push(...moveConserved(state, negotiated, 'the terms agreed', actor ?? 'engine'));
+  notes.push(...settleDeclaredCredits(state, declaredCredits, declaredPaidOut, notes));
   const pricedByYards = new Set<string>();
   billConstruction(state, hullsBefore, notes, pricedByYards);
   refundDuplicateCharges(state, chargedByNarrative, pricedByYards, notes);
@@ -3275,8 +3526,19 @@ export function tickTurn(input: WorldState): TickResult {
   /* --- Income, for every power, before anything is spent --------------- */
   // Applied here rather than by any model, so a campaign's economy is
   // arithmetic the journal reproduces exactly.
+  // Settled once for the galaxy rather than once per faction. `routeEarnings`
+  // is a pure function of the board and every faction's ledger reads the same
+  // settlement, so computing it five times was five identical passes over every
+  // trade route on the map — 1.5ms of a 4.0ms tick.
+  //
+  // Taken before the loop deliberately: incomes are paid from one settlement of
+  // the lanes, so a power collecting early cannot change what a power collecting
+  // later is owed. That was already true, since the loop only writes `credits`
+  // and `routeEarnings` does not read them — but it was true by luck rather
+  // than by construction, and now it is by construction.
+  const settlement = routeEarnings(state);
   for (const faction of state.factions) {
-    const ledger = ledgerFor(state, faction.id);
+    const ledger = ledgerFor(state, faction.id, settlement);
     const balance = faction.credits + ledger.net;
     faction.credits = Math.max(0, balance);
 
@@ -3407,6 +3669,56 @@ export function tickTurn(input: WorldState): TickResult {
     // comment says "the same two places".
     notes.push(...cedeTerritory(state, treaty));
     notes.push(...settleTreatyPayment(state, treaty));
+  }
+
+  /* --- Contingencies pay out when the thing they were written against happens --- */
+  // "If X happens, Y pays Z". Settled here, before void conditions and before
+  // income, for the same reason those are: a claim that came due this turn is
+  // due whether or not the arrangement carrying it survives the turn.
+  //
+  // Fires ONCE. A contingency that paid every turn its condition held would be
+  // a recurring flow, which is `incomePerTurn` and already exists — `firedTurn`
+  // is what makes this a claim rather than a subscription.
+  for (const commitment of state.commitments ?? []) {
+    if (commitment.status !== 'active') continue;
+    for (const c of commitment.contingencies ?? []) {
+      if (c.firedTurn !== null) continue;
+      const why = voidConditionMet(state, c.trigger);
+      if (!why) continue;
+      c.firedTurn = state.turn;
+
+      const payer = state.factions.find((f) => f.id === c.from);
+      const payee = state.factions.find((f) => f.id === c.to);
+      // Conserved, and trimmed to what the payer actually holds — the rule
+      // every money mechanism here has converged on. A transfer cannot invent a
+      // credit, so what needs guarding is its conservation and the payer's
+      // ability to fund it, never its size.
+      const paid = payer && payee ? Math.min(c.credits, payer.credits) : 0;
+      if (payer && payee && paid > 0) {
+        payer.credits -= paid;
+        payee.credits += paid;
+      }
+
+      // And the other half, which is why assets were built first: collateral
+      // forfeited, a bond surrendered, prisoners handed over when a world falls.
+      const asset = c.assetId ? (state.assets ?? []).find((a) => a.id === c.assetId) : undefined;
+      const moved = asset !== undefined && asset.heldBy === c.from;
+      if (asset && moved) asset.heldBy = c.to;
+
+      const parts = [
+        paid > 0 ? `${paid} credits` : null,
+        moved ? `${asset!.quantity} ${asset!.unit}` : null,
+      ].filter((x): x is string => x !== null);
+      const shortfall =
+        paid < c.credits
+          ? ` ${nameFor(state, c.from)} could only find ${paid} of the ${c.credits} agreed.`
+          : '';
+      const note = parts.length
+        ? `${c.text} — ${why}. ${nameFor(state, c.from)} pays ${nameFor(state, c.to)} ${parts.join(' and ')}.${shortfall}`
+        : `${c.text} — ${why}, and nothing was there to pay it with.`;
+      notes.push(note);
+      logEvent(state, 'diplomacy', note, c.to, [c.from, c.to]);
+    }
   }
 
   /* --- Void conditions fire before anything is paid out ---------------- */

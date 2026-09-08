@@ -20,7 +20,7 @@ import { playableFactions } from '../seed/scenario.js';
 import { ApiFailure, toApiFailure } from './errors.js';
 import { appraiseAgreement } from '../model/calls.js';
 import { classifyPrinciples } from '../domain/compulsions.js';
-import type { Concession, Retraction } from '../domain/diplomacy.js';
+import { mergeConcessions, type Concession, type Retraction } from '../domain/diplomacy.js';
 
 export type Emit = (event: ServerEvent) => void;
 
@@ -443,14 +443,11 @@ export class GameSession {
 
     this.channelHistory.push({ speaker: 'faction', text: result.reply });
 
-    // A retraction strikes a concession already on the table. Applied before
-    // the new ones so a persona can correct and re-offer in one breath.
-    for (const r of result.retractions) {
-      this.channelConcessions = this.channelConcessions.filter(
-        (c) => !(c.by === r.by && c.kind === r.kind),
-      );
-    }
-    this.channelConcessions.push(...result.concessions);
+    this.channelConcessions = mergeConcessions(
+      this.channelConcessions,
+      result.concessions,
+      result.retractions,
+    );
 
     // The player's own institutions get a view NOW, not at `/endtalk`. A red
     // line found at the end refuses the whole accord after both sides have

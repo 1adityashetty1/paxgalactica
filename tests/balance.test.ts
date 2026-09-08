@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { mergeShards, tournament, tournamentShard } from '../src/fleetlab.js';
 import { runBalance } from '../src/balance.js';
 
 /**
@@ -104,5 +105,54 @@ describe('each doctrine pays off when it is actually played', () => {
     // The three unaligned junctions are the map's standing invitation. If
     // this ever reaches zero, the neutral worlds have stopped being a prize.
     expect(last.uncollected).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Sharding the tournament across cores must be EXACT, not approximate.
+ *
+ * A sweep is how `TORPEDO_STRIKE`, the lift axis and the loss order were all
+ * settled, so a parallel run that merely agreed roughly would be worse than a
+ * slow serial one. It is exact by construction — every battle is a pure
+ * function of `(attacker, defender, garrison, turn, ethic)`, `trial` builds its
+ * own arena, and the roll comes from `rollD20(turn, salt)` — and this is the
+ * test that keeps it so.
+ */
+describe('the composition tournament shards exactly', () => {
+  // Small grid: the property is order-independence, not scale.
+  const opts = {
+    budget: 900,
+    defenceBudget: 600,
+    steps: 2,
+    lift: [0, 4] as const,
+    garrisons: [4, 10],
+    turns: [1, 3],
+  };
+
+  it('merges to the same answer however many ways it is split', () => {
+    const serial = tournament(opts);
+    for (const shards of [1, 3, 7]) {
+      const merged = mergeShards(
+        opts,
+        Array.from({ length: shards }, (_, i) => tournamentShard(opts, i, shards)),
+      );
+      expect(merged.battles, `${shards} shards`).toBe(serial.battles);
+      expect(merged.attackers.map((c) => [c.label, c.wins, c.trials])).toEqual(
+        serial.attackers.map((c) => [c.label, c.wins, c.trials]),
+      );
+      expect(merged.defenders.map((c) => [c.label, c.wins, c.trials])).toEqual(
+        serial.defenders.map((c) => [c.label, c.wins, c.trials]),
+      );
+    }
+  });
+
+  it('runs every battle exactly once across the shards', () => {
+    // The failure a stride-sharded loop invites: an attacker covered twice, or
+    // not at all, when the shard count does not divide the axis.
+    const total = [0, 1, 2, 3, 4].reduce(
+      (n, i) => n + tournamentShard(opts, i, 5).battles,
+      0,
+    );
+    expect(total).toBe(tournament(opts).battles);
   });
 });

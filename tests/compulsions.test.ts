@@ -297,7 +297,7 @@ describe('a faction states each of its principles once', () => {
     // than the sentence: the line was later reworded to stop forbidding a
     // garrison, which the engine grows passively on every world Drajk holds, and
     // this assertion is about the merge surviving, not about the phrasing.
-    expect(red('drajk')).toMatch(/besieged/);
+    expect(red('drajk')).toMatch(/siege/);
     // ...Meridian's contributed embargoes and closed borders...
     expect(red('meridian')).toMatch(/embargo/);
     // ...and the Free Worlds' contributed abandonment to occupation.

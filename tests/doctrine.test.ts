@@ -305,12 +305,56 @@ describe('adjust_credits is bounded narrative money', () => {
     expect(fac(out.state, 'vigil').credits).toBe(before);
   });
 
-  it('still lets one power pay another', () => {
+  it('still lets one power pay another — out of its own treasury', () => {
+    const state = fresh();
+    const them = fac(state, 'vigil').credits;
+    const mine = fac(state, 'meridian').credits;
+    const out = applyOps(
+      state,
+      [move('meridian', -100), move('vigil', 100)],
+      'model',
+      'meridian',
+    );
+    expect(out.rejections).toHaveLength(0);
+    expect(fac(out.state, 'vigil').credits).toBe(them + 100);
+    expect(fac(out.state, 'meridian').credits).toBe(mine - 100);
+  });
+
+  it('will not credit another power out of nothing', () => {
+    // The other half of "you cannot take a rival's money by narration", and it
+    // was open: a credit to somebody else with no payer was capped and applied,
+    // so the cap bounded the SIZE of the invention rather than the fact of it.
+    // Measured in a playtest — an arbitral award left the galaxy 320 credits
+    // richer with no treasury paying.
     const state = fresh();
     const before = fac(state, 'vigil').credits;
     const out = applyOps(state, [move('vigil', 100)], 'model', 'meridian');
     expect(out.rejections).toHaveLength(0);
-    expect(fac(out.state, 'vigil').credits).toBe(before + 100);
+    expect(fac(out.state, 'vigil').credits).toBe(before);
+    expect(out.notes.join(' ')).toMatch(/came from nobody's treasury/);
+  });
+
+  it('pays what the payer actually put up, and trims the rest', () => {
+    const state = fresh();
+    const them = fac(state, 'vigil').credits;
+    const out = applyOps(
+      state,
+      [move('meridian', -40), move('vigil', 100)],
+      'model',
+      'meridian',
+    );
+    expect(fac(out.state, 'vigil').credits).toBe(them + 40);
+    expect(out.notes.join(' ')).toMatch(/only 40 was actually paid out/);
+  });
+
+  it('leaves the actor\'s own windfall alone, which is what the cap is for', () => {
+    // Money appearing in YOUR account is the fiction paying you, and
+    // `MAX_NARRATIVE_CREDITS` is what bounds it. Only money appearing in
+    // somebody else's needs a payer.
+    const state = fresh();
+    const before = fac(state, 'meridian').credits;
+    const out = applyOps(state, [move('meridian', 120)], 'model', 'meridian');
+    expect(fac(out.state, 'meridian').credits).toBe(before + 120);
   });
 
   it('leaves engine ops and older journals unbounded, so replay is exact', () => {

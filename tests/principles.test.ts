@@ -537,7 +537,7 @@ describe('the most severe principle named is the one that applies', () => {
 
   it('takes the red line when both kinds are quoted', () => {
     const ruled = classifyPrinciples(combine(), [
-      'the Combine requires that every favour carry a price',
+      'the Combine requires that nothing be given away for nothing',
       'will not forgive an unpaid debt',
     ]);
     expect(ruled?.kind).toBe('red_line');
@@ -546,14 +546,14 @@ describe('the most severe principle named is the one that applies', () => {
   it('is order-independent', () => {
     const ruled = classifyPrinciples(combine(), [
       'will not forgive an unpaid debt',
-      'the Combine requires that every favour carry a price',
+      'the Combine requires that nothing be given away for nothing',
     ]);
     expect(ruled?.kind).toBe('red_line');
   });
 
   it('falls back to a compulsion when that is all there is', () => {
     const ruled = classifyPrinciples(combine(), [
-      'the Combine requires that every favour carry a price',
+      'the Combine requires that nothing be given away for nothing',
     ]);
     expect(ruled?.kind).toBe('compulsion');
   });
@@ -634,7 +634,7 @@ describe('an accord cannot launder a red line', () => {
         breach: {
           kind: 'compulsion',
           principles: [
-            'the Combine requires that every favour carry a price; giving something away for goodwill is refused as ruinous precedent',
+            'the Combine requires that nothing be given away for nothing; a gift, a waiver or a favour with no consideration is refused as ruinous precedent — a deal on any terms, however cheap, is not a gift',
           ],
           how: 'it gives something away for goodwill',
           by: 'the Council of Factors',
@@ -647,7 +647,7 @@ describe('an accord cannot launder a red line', () => {
     const outcome = await closeChannel(campaign, 'freeworlds', said);
 
     expect(outcome.refusal ?? null).toBeNull();
-    expect(outcome.defiance?.violated).toMatch(/every favour carry a price/);
+    expect(outcome.defiance?.violated).toMatch(/nothing be given away for nothing/);
     // The accord stands — that is the whole difference from a red line.
     const ops = outcome.ops as { op: string }[];
     expect(ops.some((o) => o.op === 'adjust_disposition')).toBe(true);
@@ -930,11 +930,17 @@ describe('no red line forbids a passive mechanic', () => {
 
   it('still refuses the thing the line is actually about', () => {
     const drajk = createSeedState('drajk').factions.find((f) => f.id === 'drajk')!;
-    const pinned = drajk.redLines.find((l) => /pinned in place/i.test(l));
+    const pinned = drajk.redLines.find((l) => /defensive line/i.test(l));
     expect(pinned).toBeDefined();
     // The choice, not the condition: committing the fleet to sit somewhere.
-    expect(pinned).toMatch(/siege line/i);
-    expect(pinned).toMatch(/besieged/i);
+    // Asserted on the INTENT rather than the old phrasing, which was narrowed
+    // after a playtest — it read on any multi-turn commitment, including a
+    // raid, which put the faction between this line and its own `no_plunder`
+    // compulsion with no move that satisfied both.
+    expect(pinned).toMatch(/siege/i);
+    expect(pinned).toMatch(/sit and wait/i);
+    // And it must still say plainly that an offensive is not this.
+    expect(pinned).toMatch(/never breaches it/i);
   });
 });
 

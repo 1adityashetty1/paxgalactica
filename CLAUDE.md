@@ -1162,6 +1162,115 @@ prompt rule.
 to station ships in friendly space at all.** Any movement into a partner's
 system resolved as an attack on them.
 
+## Assets: things that are neither credits nor ships
+
+`AssetSchema` in `src/domain/diplomacy.ts`. A creative playtest reached for
+prisoners, a fostered heir, a seal held in escrow, a hundred tons of rare
+material, a chart that was false and intelligence held exclusively — and the
+world had nowhere to put any of them. An accord would record *"fifty crews at
+forty a head"* and the game could not count one crew.
+
+```jsonc
+{ "kind": "prisoners", "heldBy": "ojjul", "quantity": 40, "unit": "crew",
+  "divisible": true, "valuePerUnit": { "vigil": 12 }, "atSystemId": "ilv-2" }
+```
+
+**Per-faction value is the idea.** It is what makes an asset worth *trading*
+rather than worth hoarding: prisoners are worth a great deal to the power that
+lost them and nothing to anybody else. Asymmetric valuation is the whole of
+gains-from-trade, and it is exactly what the playtest showed nobody at the table
+could see — a figure bargained from 80 to 95 settled at 60 with neither persona
+told, and the same intelligence was sold twice because nothing recorded who held
+it.
+
+**An asset has no intrinsic economic force**, and that is what keeps `kind`
+open. `valuePerUnit` is a claim about what somebody would pay, never money: it
+enters no ledger, is never income, and creating an asset mints nothing. It
+becomes credits only when a power actually pays, through `terms.payment` or a
+negotiated `adjust_credits`, both already conserved. The same bargain
+`Commitment.kind` strikes, and the opposite of `incomePerTurn`, which had to be
+capped twice precisely because it *is* money.
+
+**Value is stated per unit**, so a split conserves by construction — the
+arithmetic divides, rather than a model being trusted to. `divisible: false` is
+a thing that is one thing; `split_asset` refuses on it.
+
+### Nobody declares an asset into existence
+
+An asset is always the **outcome of a resolved attempt**, never a thing a player
+says they have. That closes the value-inflation question rather than answering
+it: the problem was never how much an invented asset is worth, it was that it
+could be invented at all.
+
+| origin | how |
+|---|---|
+| a successful attempt | `create_asset` from the resolution pass, stripped by `boundPayloadsToOutcome` on a failure and **halved** on a partial — an asset has a magnitude, unlike an operative, who is placed or is not |
+| a world changing hands | anything with that `atSystemId` goes with it |
+
+`create_asset` is refused from an **accord** (`declared_only`): a conversation
+trades what exists and cannot conjure what does not. It is also refused when the
+actor is not the holder — you cannot survey ore into somebody else's warehouse.
+
+`transfer_asset` runs the other way. Giving your own away needs nobody, so it is
+declarable; **taking** another power's needs them, so it is refused from a
+declaration with `needs_consent` and reachable from an accord — the same rule
+`terms.territory` follows.
+
+### What makes it bite
+
+The failure this had to avoid is the one the playtest found thirteen times: a
+record that sits in a list and changes nothing.
+
+- **`voidsOn: asset_lost`** is what makes a hostage a hostage. The pact holds
+  while the thing is held, and `target` names an asset rather than a faction —
+  the one condition kind where it is not a power.
+- **A world takes what sits on it.** `atSystemId` is what makes an asset
+  losable, and the difference between a hostage and a note saying somebody has
+  a hostage.
+- **It is priced in the prompt.** `serializeAssets` shows a power its own
+  holdings and, for each, which *other* powers value it and roughly at what — so
+  a persona can price a trade instead of inventing a number.
+
+### A contingency: "if X happens, Y pays Z"
+
+`ContingencySchema` in `src/domain/arbitration.ts`, carried on a `Commitment`.
+The largest single gap a creative playtest found: an underwriter wrote a
+900-credit indemnity on the fall of a world and laid 450 of it off as
+reinsurance, and what the world recorded was a commitment worth
+`incomePerTurn: 0` and a line of narrative. **Only the premium was real** — so
+the engine could price the flow *into* an insurer and never pay a claim *out* of
+one, which is a subscription with no liability rather than insurance.
+
+One feature, because *"if X then pay Y"* is the shape of **insurance, indemnity,
+bounty, ransom, escrow, surety, war subsidy, success fee and the performance
+clause of any bargain**. It was reached for unprompted in four separate turns of
+one campaign.
+
+**The trigger vocabulary is shared with `voidsOn`, not duplicated.** A condition
+that can *end* a deal is exactly the kind of condition somebody insures against,
+and the polarity already matched: `voidConditionMet` returns a reason when the
+bad thing has happened, which is precisely when a contingency should pay. Closed
+for the reason `OrderEffect` is closed — a predicate has to be right about every
+case that will ever exist, a list has to be edited, and the edit is where the
+thinking happens. `world_lost` was added for it.
+
+**It fires once.** `firedTurn` is what makes this a claim rather than a
+subscription; a thing that paid every turn its condition held would be
+`incomePerTurn`, which already exists.
+
+**It needs no ceiling**, by the rule every money mechanism here has converged
+on: a transfer cannot invent a credit, so what wants guarding is its
+conservation and the payer's ability to fund it, not its size. Trimmed to what
+the payer actually holds, exactly as `terms.payment` is, and the shortfall is
+said out loud.
+
+**`assetId` is why assets were built first.** A contingency that could only move
+credits is the narrow version — collateral forfeited on a default, a bond
+surrendered, prisoners handed over when a world falls are all this mechanism
+moving a *thing*. Both parties must have signed: a contingency naming a power
+that is not bound by the commitment is dropped, the same rule
+`Commitment.share` follows.
+
 ## Faction lines are enforced, not suggested
 
 Red lines stop a faction acting out of character. **Compulsions** stop it

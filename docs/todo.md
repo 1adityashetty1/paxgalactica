@@ -1,17 +1,524 @@
 # TODO — known bugs and open design questions
 
-Three sections. **Open work** is the current picture, grouped by root cause and
-pointing at the numbered detail below. **Performance** is its own track, `p.X`.
-**The detail** is every item ever raised, newest first, kept whether or not it
-is closed — the reasoning is the useful part, and a fixed item explains why the
-code looks the way it does.
+Four sections. **Open work** is the ranked list of what is actually outstanding.
+**Performance** is its own track, `p.X`. **Closed groupings** is the previous
+index, kept because its reasoning explains decisions the code still carries.
+**The detail** is every item ever raised, newest first, kept whether or not it is
+closed — the reasoning is the useful part, and a fixed item explains why the code
+looks the way it does.
 
 Statuses are checked against the code, not carried forward from the label. The
 last audit was **2026-09-07**.
 
 ---
 
-# Open work, grouped
+# Open work
+
+Ranked. Items 82–91 come from the creative playtest of 2026-09-07
+(`docs/playtest-2026-09-07-creative.md`, 40 findings over nine turns as the
+Combine); the bucket ids in brackets point into that report.
+
+**The diagnosis that orders this list:** thirteen findings were *allowed but
+inert* against six *wrongly denied*. This game is good at hearing anything and
+bad at doing anything with it — the arbiter said yes to a free port, a
+pretender, a bill of attainder, an insurance syndicate, a cartel and an
+arbitration bench, and eleven of those produced a `Commitment` with
+`incomePerTurn: 0` and a line of narrative. An inert success is worse than a
+refusal: a refusal teaches the boundary, an inert success teaches one that is
+not there. **So the priority is mechanics, not arbiter tuning.**
+
+| # | what | size | why now |
+|---|---|---|---|
+| ~~82~~ | ~~`channelBlockers` never fires~~ | small | **FIXED** — the filter dropped the player's own concessions |
+| ~~83~~ | ~~a declared action can mint credits~~ | small | **FIXED** |
+| ~~84~~ | ~~every private commitment is published~~ | small | **FIXED** |
+| ~~85~~ | ~~the concession ledger accumulates~~ | small | **FIXED** |
+| ~~86~~ | ~~a contingent payment~~ | medium | **BUILT** — and it moves assets, not only credits |
+| ~~81~~ | ~~assets~~ | subsystem | **BUILT** — 86 can now trigger on them |
+| **87** | log every breach ruling | small | the instrument that makes 88–90 measurable |
+| **88** | a `contract` treaty type | medium | cheap for the fiction it unblocks |
+| **89** | no op can raise a rival's dissent | medium | an axis with a fiction and no arithmetic |
+| **90** | loans of things that are not credits (incl. a hired squadron) | medium | the commonest arrangement in the genre |
+| **91** | seven small things | small | a quiet afternoon |
+| **80** | an advisor that costs an action | medium | not from the playtest; wanted |
+| **92** | two claims only a campaign can settle | — | needs play, not code |
+
+**Where frequency and cost disagree:** 81 and 89 were reached for in most turns
+and neither is small — they are the two that would most change what the game
+*is*. 91's contents are cheap and rare. And one finding is deliberately **not**
+on this list: the most-favoured-nation ratchet (`B-12`), because no arrangement
+can read another's terms and a clause whose whole content is *"track that other
+contract"* is structurally unrepresentable. The fix there is the arbiter *saying
+so* rather than recording it as though it bound something.
+
+## 82. FIXED — `channelBlockers` never fires
+
+Three deliberate, self-announced red-line crossings across four channels — one
+of them quoting the Combine's own line and then saying *"I am doing it
+anyway"* — and `channelBlockers` was `[]` at every read. Two messages later the
+close-time appraisal on the same transcript charged 15 dissent for it, so the
+breach **is** detectable and the per-message pass is not reaching the field.
+
+The whole stated purpose of moving this check per-message was *"a line lands as
+a visible blocker in the turn the player walks toward it … there is now a
+conversation left in which to steer around it"*. Across four channels the player
+was never once warned before signing. `[D-6]`
+
+**FIXED, and it was the wiring.** `diplomacyReply` filtered concessions to
+`c.by === factionId` — the **NPC's** id — so the player's were stripped before
+the session could see them, and the list the red-line pass appraises was always
+empty. It never ran.
+
+Both parties' concessions are kept now (`atThisTable`), third parties still
+dropped. The two halves are not the same kind of record and the code says so: a
+power's own concession **binds it** and is what `groundInConcessions` matches
+against; its record of what the player offered is only its understanding, and is
+useful precisely because it can be wrong out loud while there is still a
+conversation in which to correct it.
+
+## 83. FIXED — a declared action can mint credits
+
+`moveConserved` is scoped to extraction batches. On the **declared** path a
+one-sided `adjust_credits` is capped at `MAX_NARRATIVE_CREDITS` and applied — so
+the cap bounds the *size* of the invention, not the fact of it. Measured: an
+arbitral award left the galaxy 320 credits richer with no treasury paying
+(Meridian 2243 → 2483, Ojjul 4032 → 4052). `[E-1]`
+
+**FIXED**, though not with `moveConserved` — its rule is stricter than this
+needs. It drops a credit whose batch nets positive, which is right for an accord
+where both sides' entries are present and wrong here, where the actor
+legitimately keeps its own capped windfall alongside a payment.
+
+The rule is narrower: a credit to a power **other than the actor** is funded out
+of what the actor actually paid out in the same batch, pro-rata when it does not
+cover, and nothing past that lands. A windfall to your *own* treasury is
+untouched — the fiction paying you is real and `MAX_NARRATIVE_CREDITS` is what
+bounds it. Only money appearing in somebody else's account needs a payer.
+
+This is the mirror of the guard that already refuses to *take* a rival's money
+by narration; only one direction had been closed.
+
+## 84. FIXED — every private commitment is published to every power
+
+`serializeCommitments(state)` takes no viewer and renders every live commitment
+into all five prompts. Measured: the Vigil quoted the exact 7% share of a
+commitment binding only the Combine and Drajk. `[D-5]`
+
+**FIXED.** `serializeCommitments` takes a viewer and shows only arrangements
+binding them.
+
+The **log** half was closed earlier the same day and written up as fixed, which
+is the part worth keeping: `logEvent` was scoped and the state block one
+function away was not, so the fix looked complete and the prompt still carried
+the secret. A leak is a property of the whole payload — the same lesson
+`worldAsSeenBy` records about `observeOrders`.
+
+## 85. FIXED — the concession ledger accumulates instead of superseding
+
+One hire recorded four times, one recorded **backwards**
+(`{by: meridian, perTurn: 95}` when the flow is Combine → Meridian), and terms
+both parties struck still live in the list after a retraction — whose `kind`
+matched none of the three entries it was meant to strike, so even a kind-keyed
+removal would have missed. A withdrawal was itself recorded as a *concession*.
+`[D-8]`
+
+Extraction deduped all of it correctly this time, so nothing broke. But
+extraction is documented as a **matcher** against this list.
+
+**FIXED.** `mergeConcessions` supersedes on `(by, kind)`, applies retractions
+before the same message's concessions so a power can strike and re-offer in one
+breath, and falls back to a loose word match when a retraction's slug lines up
+with nothing — a persona striking *"the Kest arrangement"* having recorded it as
+`mutual_defense_kest` has plainly retracted it, and holding it to a slug it typed
+differently moments earlier is how a struck term survives to bind somebody. The
+prompt now also says a withdrawal is a retraction and never a concession.
+
+Pure, and in `domain/diplomacy.ts` rather than inside the request handler, for
+the reason `logview.ts` and `layout.ts` are pure: the suite has no server, so
+logic living in a handler is logic nothing checks.
+
+## 86. BUILT — a contingent payment, "if X then pay Y"
+
+**The largest single gap found.** A 900-credit indemnity on the fall of a world,
+with 450 of it laid off to a third power as reinsurance, landed as a
+`Commitment` with `incomePerTurn: 0` plus a `log_narrative`. Only the *premium*
+was real — so the engine can price the flow **into** an insurer and can never pay
+a claim **out** of one. An underwriter here is a subscription with no liability.
+`[B-10, C-8]`
+
+`Commitment.contingentPayment {trigger, amount, from, to}`, reusing the closed
+`voidsOn` trigger vocabulary (`treaty_with` / `attacks` / `insolvent`, plus
+`controller_changed`), settled in `tickTurn` by `moveConserved`. **Medium.**
+
+Ranked this high because *"if X then pay Y"* is the shape of **insurance,
+indemnity, bounty, ransom, escrow, surety, war subsidy, success fee and the
+performance clause of any treaty** — and it was reached for unprompted in four
+separate turns.
+
+**BUILT, after 81 rather than before it**, which was the right order: a
+contingency that can only move credits is the narrow version. `assetId` is what
+makes collateral, a forfeited bond and a ransom of prisoners the same mechanism
+as an insurance payout.
+
+The trigger vocabulary is **shared with `voidsOn`** rather than duplicated — a
+condition that can end a deal is the kind of condition somebody insures against,
+and the polarity already matched, since `voidConditionMet` returns a reason
+exactly when a claim should pay. `world_lost` was added for it.
+
+## 87. Log every breach ruling
+
+Section **A** below accepts arbiter variance as irreducible and names this as
+the one thing left worth building. The playtest is the argument for it:
+`verifyBreachRelevance` failed four times in nine turns — a prisoner release
+refused under the *debt* red line, the same act (forgiving a debt) ruled three
+different ways across three turns, and paying men to change sides charged as a
+*favour given for goodwill*. `[A-3, A-5, A-6]`
+
+Record the quoted line, the kind, and the relevance verdict on every ruling.
+Right now "the same act was ruled three ways" is an anecdote from one agent's
+notes; there is no way to ask a campaign how often it happens, and no way to
+tell whether a prompt change helped. Small, and it is the instrument that makes
+the rest of this measurable.
+
+> The **seventh** finding in that cluster is fixed: the Combine's proxy red line
+> was being read backwards verbatim, and the sentence was rewritten
+> prohibition-first after two prompt warnings and a worked example had failed to
+> stop it. A sweep of the other 21 principles found one more of the same shape
+> (the Vigil's pirate line) and two that were over-broad. See **79** and the
+> 2026-09-07 commits.
+
+## 88. A `contract` treaty type
+
+`tribute` is the only treaty type carrying `incomePerTurn`, so it is the sink
+for every recurring commercial flow regardless of fiction — a hire contract and
+a reinsurance annuity both landed as `tribute`. Two consequences. It is the
+**wrong word**, and words bind here: Arkane's own compulsion refuses tribute
+outright and it is now the payer on a live `tribute` treaty. And supersession
+keys on `(pair, type)`, so a second commercial contract with the same power
+silently retires the first. `[C-5]`
+
+Same `incomePerTurn` machinery, different label and supersession key. Pair it
+with running the accord appraisal against **both** parties' principles rather
+than only the actor's — the counterparty's sheet is currently never checked
+against the instrument its own concession lands in. **Medium**, and cheap for
+how much fiction it unblocks.
+
+## 89. No op can raise a rival's dissent
+
+Two successful legitimacy attacks — crowning a pretender, a bill of attainder —
+left the Iron Vigil **mechanically identical**. `adjust_dissent` is actor-only
+and upward-only by design, so there is no op in the game that can turn a rival's
+institutions against it; `adjust_disposition` measures their opinion of *you*,
+which is the wrong quantity, and it moved the wrong way. Net effect of two
+successes: −200 credits, +15 of the actor's own dissent, and the target liking
+them less. `[B-2]`
+
+A `sedition` agent effect under the same bounds `stat_debuff` already uses.
+**Medium**, and it opens the whole subversion axis, which currently has a
+fiction and no arithmetic.
+
+## 90. A hired squadron — which is a loan of units, and loans want generalising
+
+Twelve hulls offered under another power's flag, command and orders landed as
+`basing_rights` — permission for the *lender's* fleet to visit the borrower's
+space. The hulls stay the lender's: they fight when it says, count in its
+`fleetStrengthOf`, and the borrower cannot use them for anything. The commonest
+arrangement in the genre has no representation. `[C-6]`
+
+**Restated: a hired squadron is a loan whose principal is hulls.** And once it
+is put that way, credits are not special — a loan could be of ships, of an
+asset, of a world (a lease), of an operative. That is the right frame and it is
+worth building toward. But it is not a small edit to `Debt`, and the reason is
+worth writing down before somebody tries.
+
+### What `Debt` is today
+
+Entirely credit-denominated. `principal`, `balance` and `perTurn` are integers of
+credits; `establish_debt` moves `creditor.credits -> debtor.credits` at
+signature; `serviceDebts` moves `debtor.credits -> creditor.credits` each tick
+and does `debt.balance -= paid`.
+
+Two separable things are welded together in it:
+
+1. **The thing lent** — always credits, disbursed once.
+2. **The obligation** — a balance that **depletes through the flow**, with
+   `status`, `missedPayments`, `DEBT_DEFAULT_DISPOSITION_COST` and the
+   `debt_unpursued` compulsion hanging off it.
+
+### Half of it generalises and half of it does not
+
+**The obligation machinery is genuinely general.** Default, arrears that are
+never reset by catching up, a per-turn disposition cost while a debt runs
+delinquent, a compulsion that fires on a creditor who does not pursue — none of
+that cares what was lent. Reuse it.
+
+**The balance arithmetic does not, and forcing it would repeat a mistake this
+file already records.** A debt's balance *depletes through its flow*: you pay it
+down and it is gone. A hired squadron is the opposite shape — the hulls come
+**back whole** (or die), and the per-turn flow is **rent going the other way**,
+from borrower to lender. Modelling that as a `Debt` would make the hire fee look
+like repayment and the squadron's return look like a write-off.
+
+That is exactly the shape of **C-5**: `tribute` became the sink for every
+recurring commercial flow because it was the only treaty type carrying
+`incomePerTurn`, and it put Arkane on the paying end of an instrument its own
+sheet refuses. **A loan-for-repayment and a loan-for-hire are two instruments,
+and one of them being implemented is not a reason to file the other under it.**
+
+### The shape worth building
+
+A `Loan` beside `Debt` rather than inside it, sharing the default machinery:
+
+- **what was lent** — a discriminated union: `credits`, `hulls` (a `ShipStack`),
+  `assetId`, `systemId`. This is the axis the user is right about; nothing here
+  is credit-specific.
+- **who commands it while it is out.** For hulls this is the whole point of
+  C-6 — the borrower's orders, the borrower's `fleetStrengthOf` — and it is the
+  one part with no precedent in the codebase to copy.
+- **the flow, and its direction.** Rent from borrower to lender, which is
+  `incomePerTurn`'s shape but pointing the other way from a debt's.
+- **return terms** — a turn, or a trigger. **86 already built the trigger
+  half**: a contingency with `assetId` moves a thing when a condition fires, so
+  *"the charter comes back if you default"* is written today.
+
+Sequenced after **81** and **86** deliberately: assets gave loans something to
+lend besides money, and contingencies gave them a return condition. What is left
+is the units case and the command transfer.
+
+**Medium**, and unchanged in size by the restatement — but the restatement means
+it should be built as `Loan`, not as `terms.command` bolted onto
+`mutual_defense`.
+
+## 91. Seven small things
+
+- **an accord is refused whole when the offending clause is severable.** One
+  proxy-war clause destroyed a prize tithe, a letter of marque, a syndicate and
+  a hostage exchange with it. `[A-1]`
+- **repudiating your own multi-party commitment is free**, and pays the same. A
+  `Commitment` is not a `Treaty`, so `PACT_BREAKING_REPUTATION_COST` never
+  applies; the replacement commitment paid the identical +20/turn. `[B-8]`
+- **route an exclusivity clause into an `exclusive` commitment** instead of a
+  `log_narrative`, and `commitment_conflict` catches a double sale for free. The
+  same intelligence was sold twice in one hour with `exclusive` written into the
+  paper. `[B-11]`
+- **refuse to write a multilateral compact as a one-party commitment.** A pact
+  narrated as co-signed by four powers recorded `factionIds: ["ojjul"]`, so it
+  bound nobody — and a later one carried a deemed-accession clause binding two
+  powers never asked. `[C-1, D-3]`
+- **surface a trimmed figure** back into the accord narrative. A number
+  bargained from 80 to 95 settled at 60 and neither persona was told; a headline
+  33% toll share settles at one credit a turn. `[B-13]`
+- **reject a hostile-effect `deploy_agent` on the actor's own system.** 80
+  credits and an agent slot died permanently on a `stat_debuff` placed on the
+  actor's own capital. `[C-4]`
+- **put `rejections` on the response**, and scope the "nothing was applied" note
+  to the batch it describes. Four rejections were logged and none reached the
+  API, under a note saying nothing landed — while the correction pass had landed
+  320 credits. `[E-2]`
+
+## 92. Wants a playtest, not a patch — **19, 67.5**
+
+Both need a campaign played, not code written: each is a claim about what the
+model *reaches for*, which no test can settle.
+
+- Marriages and ceremonial arrangements down both routes, across disposition
+  (**19**).
+- Nobody suborned Meridian once in twelve turns despite resolve 9, the softest
+  target on the board (**67.5**). The mechanism works and is tested; the
+  question is whether an NPC ever chooses it.
+
+**Cleared from this section since it was written:** 41(b) and 41(d) (the
+epilogue now carries a control history, and the one remaining half does not
+reproduce) and 67.3 (`covert` is a list, so an appraisal naming three operations
+places three agents). Neither needed a playtest — both were readable off the
+code, which is worth noting because both had sat here on the assumption that
+they were not.
+
+## 81. BUILT — assets: things that are neither credits nor ships
+
+The playtest kept reaching for objects the world has no way to hold. Prisoners
+and hostages (**B-1**, **C-9**), a claimant's seal held in escrow (**B-4/5/6/7**),
+falsified navigational charts sold as genuine (**C-3**), a piece of intelligence
+sold exclusively and then sold again (**B-11**). Filed first as "prize crews",
+which is too narrow: the shape is **an arbitrary asset class**.
+
+```jsonc
+{
+  "id": "ast-3-0",
+  "kind": "prisoners",              // free-form slug, like Commitment.kind
+  "text": "Vigil crews taken off Vantic, 40 of them, held at Shalka.",
+  "heldBy": "ojjul",
+  "quantity": 40,
+  "unit": "crew",                   // "crew", "tons", "heirloom"
+  "divisible": true,
+  "valuePerUnit": { "vigil": 12, "meridian": 1 }
+}
+```
+
+**Per-faction value is the good idea in this**, and it is what makes an asset
+worth trading rather than worth hoarding. Prisoners are worth a great deal to the
+power that lost them and almost nothing to anyone else; an heirloom is worth
+something to the house it came from; a hundred tons of a rare material is worth
+whatever each power's industry can do with it. Asymmetric valuation is the whole
+of gains-from-trade, and it is exactly the thing the run showed nobody at the
+table can currently see — **B-13** (a figure bargained 80→95 settles at 60 and
+neither persona is told) and **B-11** (the same intelligence sold twice because
+nothing records who holds it).
+
+**Divisible vs atomic.** Forty prisoners split into two lots of twenty; one
+family heirloom does not. Splitting mints a second asset with the same `kind` and
+`valuePerUnit` and a share of the `quantity` — which is why value is stated **per
+unit** rather than as a total: a split then conserves by construction and cannot
+be used to manufacture worth.
+
+### The property that makes it safe
+
+**An asset has no intrinsic economic force.** `valuePerUnit` is a claim about
+what somebody would pay, not money — it never enters a ledger, is never income,
+and creating an asset mints nothing. It becomes credits only when a power
+actually pays, through `terms.payment` or a negotiated `adjust_credits`, both of
+which are already conserved.
+
+That is what lets the vocabulary stay open and lets a model create assets freely,
+the same bargain `Commitment.kind` already strikes. Compare `incomePerTurn`,
+which had to be capped twice over precisely because it *is* money.
+
+The corollary is the risk: **an asset that only sits in a list is another inert
+commitment**, which is the single most common defect in the whole playtest. It
+has to bite somewhere. Three cheap places, in order of value:
+
+1. **A treaty can be conditioned on one.** Add `asset_lost` / `asset_moved` to the
+   closed `voidsOn` vocabulary and a hostage against a treaty's performance works
+   with no new machinery — the pact voids when the hostage does.
+2. **The reducer creates them.** Prize crews out of `resolveBattle` on a decisive
+   win, which is also the first time in this game that a battle produces anything
+   but destruction. Assets held on a world are lost with it.
+3. **A debt can be collateralised**, and a default forfeits the collateral. This
+   is the Combine's entire doctrine and it currently has no instrument.
+
+### What it composes with
+
+Deliberately built **after or alongside item 5 in the playtest synthesis** (a
+contingent payment, *"if X then pay Y"*), because the two compose into most of
+what was missing:
+
+| arrangement | assets | contingent payment |
+|---|---|---|
+| ransom | transfer the prisoners | — (payment is immediate) |
+| hostage against performance | hold the hostage | `voidsOn: asset_lost` |
+| escrow / surety | hold the seal | pay out on the trigger |
+| insurance | — | the whole of it |
+| bounty | — | pay on `controller_changed` |
+
+### BUILT, 2026-09-07
+
+Shipped as specced, with one correction to this document: `create_asset` is
+**in** `ModelOpSchema` rather than absent from it. The spec said "absent, exactly
+as `transfer_control` is", which contradicts the rest of itself — a resolution
+pass has to be able to mint the prize an attempt just won. The bound is the
+outcome, not the vocabulary: `boundPayloadsToOutcome` strips it on a failure and
+halves it on a partial, which is the machinery that already exists for exactly
+this shape. What is genuinely closed is the *declaration* path — the op is
+refused from an accord, and refused when the actor is not the holder.
+
+### Size, honestly
+
+**A subsystem, not an op.** `WorldState.assets`, a schema change, a save-format
+change, `transfer_asset` / `split_asset` / `create_asset` ops with an actor
+guard, `voidsOn` extensions, a `resolveBattle` producer, serialization into the
+prompt so personas can price a trade, and a UI panel. Replay is unaffected —
+everything here is deterministic — and no journal version bump is needed, since
+old journals simply have no assets.
+
+### Nobody declares an asset into existence
+
+**Settled: there is no declaration path.** An asset is never something a player
+says they have; it is always the *outcome of a resolved attempt*. That closes the
+value-inflation question outright — a ceiling on an invented figure was the wrong
+answer to the wrong question, because the problem was never how much an invented
+asset is worth, it was that it could be invented at all.
+
+Two origins, and only two:
+
+1. **The reducer produces it.** Prize crews out of `resolveBattle` on a decisive
+   win — also the first time in this game that a battle produces anything but
+   destruction. Salvage off a wreck. Assets held on a world are lost with it.
+2. **A resolved action produces it, on a check that succeeded.** The player
+   spends an action point sweeping the wreckage for survivors, rolls `might` or
+   `industry`, and prisoners exist because the attempt worked. The asset is the
+   *payoff*, priced by the same action economy everything else is.
+
+`create_asset` is therefore **absent from `ModelOpSchema`**, exactly as
+`transfer_control` is and for exactly the same reason: control changes only when
+a fleet arrives, and an asset appears only when an attempt succeeds. The
+mechanism to bound it already exists — `boundPayloadsToOutcome` strips an
+`onComplete` payload on a failed check and halves it on a partial, and an asset
+minted by a resolution is the same kind of payoff wearing a different shape.
+
+**The arbiter redirects rather than refuses.** An action whose premise is holding
+something you do not hold — *"I sell Meridian a hundred tons of rare ore"* — is
+not inadmissible in the sense of contradicting the world; it is an act stated in
+the wrong tense. So it wants a third redirect beside `needs_consent` ("that is a
+conversation") and `declared_only` ("that is your own turn's work"): **"that is
+something you could try to get, not something you have."** The player is told to
+rephrase it as an attempt.
+
+Like `negotiation`, that redirect must cost **no action point**. A redirect is
+not an act, and charging for one makes the game feel like it is penalising the
+player for asking — which is already the stated rule for the other two.
+
+**The open `kind` survives this**, and is safer for it. A slug invented by a
+*successful check* is a thing the fiction earned; a slug invented by a
+declaration was the thing worth stopping. So a survey expedition can still bring
+back something nobody enumerated.
+
+## 80. An advisor: worked examples that know the board, and cost an action
+
+`exampleActions` in `web/src/App.tsx` writes worked examples against the
+player's **actual** position — their best-crewed world, a real neighbour they
+could reach, the nearest unaligned world by BFS rather than merely an adjacent
+one — with a one-line note under each teaching the rule nobody guesses: that a
+neutral world fights back, that raiding needs a squadron a jump out rather than
+a won battle, that suborning costs standing rather than hulls, and that the
+arbiter will rule on things with no mechanic at all.
+
+It is pure, client-side, free, and **reachable only by typing `:help`**.
+`helpLines` has exactly one call site, nothing surfaces it on a new campaign,
+and the input placeholder says only `Declare an action, or :help`. So the one
+piece of the game that tells a player the arbiter will hear anything is behind a
+command they have to know exists.
+
+**Wanted: an advisor on top of it.** A model call, against the real board, that
+answers "what should I be thinking about" rather than "what can I type" — and
+**costs an action point**, which is what stops it being a strictly-correct thing
+to open every turn.
+
+Design notes for whoever builds it:
+
+- **The action cost is the whole design.** Free advice is a solved-once optimum:
+  every player opens it every turn and the game plays itself. Charging one of
+  two makes asking a real decision, and it is the same argument that put
+  `ACTION_POINTS_PER_TURN` on `Campaign` rather than in state.
+- **What tier.** The flavour tier is probably enough — it is a bounded reading
+  of a board that is already serialized — and `serializeState` exists. If it
+  needs the reasoning tier, the action cost matters more, not less.
+- **It must not become a solver.** Advice that names the optimal line turns a
+  strategy game into a queue of instructions. The useful version names
+  *pressures* — what is undefended, who is about to be able to afford a fleet,
+  which lane is worth closing — and leaves the move to the player.
+- **Keep `exampleActions`.** It is free, deterministic and it teaches the
+  vocabulary; an advisor answers a different question. Surfacing the examples on
+  turn one of a new campaign is a separate and much cheaper win.
+
+
+---
+
+# Closed groupings
+
+The previous top-of-file index, kept because its reasoning explains decisions
+the code still carries — and because section **A** holds the standing position
+on arbiter variance that **87** is scoped against. Everything here is closed;
+what was still open in it (**H**) moved up to **92**.
 
 Every item below was checked against the code, not taken from its own label. The
 **2026-09-06** audit moved four: **10** and **56** were finished, **62** was
@@ -70,219 +577,40 @@ something instead of producing another anecdote.
 It is deliberately **not** a fix for the variance. It is the instrument that
 would tell us whether the variance is the size we are assuming it is.
 
-## B. CLOSED — a negotiated term the reducer cannot express — **51, 67.1, 67.2**
+## B–G. CLOSED — six groupings, kept as pointers
 
-Extraction agrees something and the world does not change, or changes by a
-sixth. Split on inspection: two halves needed no design input and are **built**,
-one is a new mechanic, and one turns out not to be a code problem at all.
+Each of these was a root-cause grouping over numbered items that are all now
+closed. The full reasoning lives in the numbered detail below; this is the index
+it was written as.
 
-**BUILT — an accord may now move money between the parties (67.1).** A
-450-credit settlement agreed with an NPC could not be written: the creditor's
-`adjust_credits -450` was refused by *"you cannot take credits out of another
-faction's treasury"*, and both sides left the table believing it had moved. That
-guard is right for a **declared** action — it is looting a treasury by narration
-— and wrong for an accord, because extraction is the one pass that has read a
-transcript and so the one place the other party's consent exists.
+- **B — a negotiated term the reducer cannot express (51, 67.1, 67.2).** An
+  accord may now move money between the parties, a commitment says when its
+  yield will not be paid, and a commitment can be written as a **rate** rather
+  than a figure — `Commitment.share`, whose whole design is that `of` names a
+  *lane flow*, so it can neither recurse through another faction's `ledgerFor`
+  nor become a claim on money nobody earned. The paragraph that argued against
+  building it was wrong on a premise: route income *is* money the payer holds.
+  → **51, 57, 67**
+- **C — a batch is a transaction, the hull case (62).** `adjust_fleet` and
+  `adjust_ships` both add hulls, so one squadron described twice was
+  commissioned twice. The first fix reproduced the bug inside itself by skipping
+  the relocation when the placement named the base — which is the *common* case.
+  → **62**
+- **D — composition is a decision for both sides once lift is on its own axis
+  (74, 77; 76 retired).** "A defender's best fleet is a pure battle line" was an
+  artefact of a grid where every composition carried enough lift to saturate the
+  effect — `no_lift` was 0.0% in every row. With lift on its own axis both sides
+  want a mix, and 77 is moot. → **74, 76, 77, 79**
+- **E — treaty terms are all-or-nothing (59, 60).** 59 was not a bug and the
+  "exploit" reported was a malformed fixture. 60 folded into A. → **59, 60**
+- **F — value destroyed rather than moved (67.4).** `income_penalty` showed the
+  victim's loss and nobody's gain; three sources called it theft and the code was
+  the odd one out. `Ledger.espionageGain` is the mirror. → **67**
+- **G — what survives a change of hands (73).** Ground improvements stay where
+  they were built; people and hulls do not. Filed as an asymmetry to fix; both
+  branches check, and their answers differ because the answers are right. → **73**
 
-Extraction-sourced credit movements are now held back and settled together
-through `moveConserved`, the helper `terms.payment` already used: nobody paying
-means the entries mint rather than move, so the term is dropped; a payer who
-agreed to more than it holds pays what it holds and the receipts trim pro-rata.
-**Uncapped, and it needs no cap** — a transfer cannot invent a credit, so what
-needs guarding is conservation, not size. A declared action reaching into
-another treasury is refused exactly as before, and a test pins that.
-
-**BUILT — a commitment now says when its yield will not be paid (51).** Two
-ceilings compound and only one of them ever spoke: `MAX_COMMITMENT_INCOME`
-trims at signature *with* a note, and then `ledgerFor` caps a faction's total
-commitment earnings by `maxCommitmentIncomeFor` at **read** time, every turn,
-which produces no note by construction and cannot. Measured: 60 agreed → 25
-stored → **10 paid**, with the negotiating party told of neither step, so an NPC
-bargained hard over a number that could not exist.
-
-`establish_commitment` now warns at signature when the faction's influence
-ceiling will withhold the yield. Said rather than enforced, deliberately: the
-ceiling is derived from `influence`, which dissent and a hostile `stat_debuff`
-both move, so freezing it into the record would be wrong the turn after. The
-arrangement is real at what it says; what it *pays* is what the reader decides.
-
-**CLOSED — the prize-share commitment was a missing prompt line, not a missing
-mechanic (51).** Filed twice as a design question and it was neither time.
-
-`prize_share_tribute` is not a thing in the codebase — zero hits in `src/`,
-`prompts/` or `tests/`. `Commitment.kind` is deliberately free-form so
-arrangements nobody enumerated can be held, and a model invented that slug
-mid-playtest.
-
-**And the commitment was not inert.** One carrying `incomePerTurn: 0` already
-moves disposition between the bound parties on establish and takes it back on
-dissolve, is serialized into the arbiter's prompt so it constrains later
-rulings, enforces exclusivity, and renders in the player's panel. "Pure
-decoration" in the playtest meant *credits only*.
-
-What was actually wrong: **`prompts/extraction.md` documents
-`establish_commitment` with `kind`, `factionIds`, `text` and `exclusive`, and
-never mentions `incomePerTurn` at all.** Nothing told the model to put a number
-on it, so it wrote zero — which reads as "this arrangement is worth nothing",
-which is not what was agreed. The prompt now says a deal with money in it must
-carry a figure, that a share of something variable is written as the agreed
-per-turn estimate rather than zero, and that zero is for arrangements which
-genuinely have no money in them.
-
-**BUILT — a proportional term, which the paragraph this replaces argued against
-on a premise that was simply false (51).** The argument was that *"a share of
-route income is a claim on money the payer never held"*. Route income is money
-the payer holds; it is the whole of what its lanes pay it. What is a claim on
-money nobody held is a share of `net` — which nets off upkeep and can be
-negative — or a flat figure a model invented, and that is what
-`MAX_COMMITMENT_INCOME` already exists to bound. The two cases were run
-together, and the wrong one was refused.
-
-The rest of the objection was a list of things to build, all four of which now
-exist: `Commitment.share` (`{ of, percent, from, to }`), a reader in
-`ledgerFor`, `MAX_COMMITMENT_SHARE` at 50%, and floored integer arithmetic that
-adds the identical credit to one party and subtracts it from the other.
-
-Two restrictions carry the design, and both fall out of the same choice —
-`of` names a **lane flow** (`raided`, `tolls`, `routes`) rather than a ledger
-line:
-
-- **It cannot recurse.** All three come off `routeEarnings`, which settles the
-  whole galaxy in one pass and does not read commitments — so pricing A's share
-  never calls B's `ledgerFor`. A share of `net` has no fixed point at all once
-  two powers hold shares of each other, and the stack is where you find that
-  out.
-- **It cannot be a claim on money nobody earned**, which is the actual version
-  of the objection above. A share is bounded by what the payer's lanes paid it
-  this turn, so a bad season pays nothing rather than paying a figure agreed in
-  a good one. That is what a share is *for*, and it is precisely the behaviour
-  an estimated `incomePerTurn` cannot have.
-
-Directional, unlike `incomePerTurn` — which is one scalar every bound party
-reads the same way, the defect `src/domain/debt.ts` was written to escape — and
-both parties must be bound by the commitment, so an arrangement cannot reach
-into the take of a power that never signed it. That last one is **rejected**
-rather than trimmed: there is no smaller version of *"and the Vigil pays for
-it"* that is still the deal.
-
-`incomePerTurn` keeps its job. It is right for a venture paying its members a
-steady rate, and it is the only term available for a proportion of anything the
-three lane flows do not cover — a harvest, a mine, a yard's output — where an
-agreed estimate still beats zero. `prompts/extraction.md` now says which to
-reach for, and says not to write both for one flow.
-
-**Re-scoped — a bargained `voidsOn` written as `[]` (67.2).** Not a code defect.
-The field exists, the reducer enforces it (item 50/60), and
-`prompts/extraction.md` documents all three kinds — the model simply did not
-emit one it had spent three messages agreeing. That is category **A**: a
-model-tier judgement that varies, with the mechanism already in place. Worth
-folding into A's logging rather than carrying here.
-
-## C. CLOSED — a batch is a transaction, the hull case — **62**
-
-`adjust_fleet` (build, based at the best holding) and `adjust_ships` (place at a
-named world) describing one squadron delivered **twice** the hulls and twice the
-bill. Closed the same way 58/61/63 were: within a batch, the two ops are one
-commissioning, so a placement **moves** what was just built instead of minting
-more. Both emission orders reconcile; two genuine `adjust_fleet` programmes and
-two different hull classes are untouched.
-
-> The first attempt failed on its own defect. It skipped the relocation when the
-> placement named the same system the hulls were based at — and that is the
-> common case, because `adjust_fleet` bases at the faction's best holding, which
-> is exactly the world a model then names. Removing unconditionally makes both
-> cases uniform. A test pins the same-system case specifically.
-
-## D. CLOSED — composition is a decision for both sides once lift is on its own axis — **74, 77** (76 retired)
-
-A defender's best fleet is a pure battle line at 80–84%, and every mix is
-monotonically worse — because a defender has one objective and one linear
-objective has a pure optimum. Measured with `pnpm fleetlab`.
-
-**A second objective was built and did not fix it.** `set_stance` gives a
-commander a standing order — `hold` never breaks off, `stand` breaks at two to
-one, `withdraw` breaks the moment it is outmatched. It changes behaviour
-measurably (84% held → 92% on `hold`, 70% on `withdraw`) and **pure battleship
-still wins every metric under every stance**, because a withdrawal costs a fixed
-*fraction of tonnage* and a screen only changes which hulls absorb it.
-Protecting a percentage of your own weight is still measured in weight.
-
-The stance ships as an expressive choice, honestly documented, not as a fix.
-Two items came out of measuring it:
-
-- **76** — **retired.** Re-measured in isolation: `hold` keeps 4t and holds 6/6,
-  `stand` keeps 30.7t and holds 0/6. Neither dominates; the fleetlab signal was
-  the tonnage dilution the item was filed with a warning about.
-- **77** — **MOOT.** It was the open half of 74, and 74 closed underneath it.
-  Making lift its own `fleetlab` axis showed a defender does want a mix after
-  all (margin +1.2 over the best pure fleet, against the attacker's +10.4) — the
-  earlier "pure battle line wins every metric" was an artefact of a grid where
-  every composition carried enough lift to saturate the effect. The item existed
-  to invent a second defensive objective; the defender already has one, and it
-  is the lift phase. No leaders, and no
-  hold-your-own-world ship type, are needed to make the choice real.
-
-## E. CLOSED — treaty terms are all-or-nothing — **59, 60**
-
-**59 is not a bug, and the "exploit" I reported was my own broken fixture.** I
-probed it by pushing a treaty with `treatyType: 'basing_rights'` — that is the
-field on the *op*; a `Treaty` carries `type`. With no valid treaty `guest()`
-never matched, the invader was an ordinary attacker, and I wrote it up as a
-verified hole. With a real grant the mechanism works: a guest is filtered out of
-the attackers entirely and simply puts in, and a partner who wants to attack has
-to repudiate first — which is the explicit, priced act it should be. Two tests
-now pin it, including that a `trade_accord` grants no such shelter.
-
-A guard was written and then reverted with it: adding `basing_rights` to the
-treaties an attack breaks is unreachable, because a guest can never be an
-attacker while the grant is live. Shipping it would have been the `monopolist`
-failure again — implemented, tested and dead.
-
-The remaining half — terms for *which* hulls, how many, for how long — is
-genuine design and deliberately dropped rather than queued.
-
-**60 is closed into A.** Writing a treaty that voids itself is not repudiation:
-the paper ends by its own terms, which is clever play rather than an exploit.
-Any fix would be the arbiter ruling on intent, which is exactly the varying
-model-tier judgement A accepts.
-
-## F. FIXED — value destroyed rather than moved — **67.4**
-
-`income_penalty` subtracted from the victim and credited nobody. Three sources
-disagreed and the code was the odd one out: the schema says *"credits denied to
-the target"*, `prompts/resolution.md` offers it as the honest way to **skim** a
-rival, and the mission placing one by default is called `theft`.
-
-`Ledger.espionageGain` mirrors `espionageLoss`, read in the same pass. An
-operative on a world its own owner holds steals from nobody. The transfer
-conserves; `AGENT_UPKEEP` is what still makes the network cost something.
-
-## G. CLOSED — an unwritten rule about what survives a change of hands — **73**
-
-Nothing to fix; the rule existed and was coherent, and the item's claim that
-`fortify` skipped its ownership check was wrong. All four branches check
-`stillOurs` and only their answers differ: **ground improvements land for
-whoever holds the world, people and hulls are withheld.** A wall does not care
-who stands behind it; a levy raised for one flag does not muster for the next.
-Written into CLAUDE.md so it is a decision rather than an accident.
-
-## H. Wants a playtest, not a patch — **19, 67.5**
-
-Both need a campaign played, not code written: each is a claim about what the
-model *reaches for*, which no test can settle.
-
-- Marriages and ceremonial arrangements down both routes, across disposition
-  (**19**).
-- Nobody suborned Meridian once in twelve turns despite resolve 9, the softest
-  target on the board (**67.5**). The mechanism works and is tested; the
-  question is whether an NPC ever chooses it.
-
-**Cleared from this section since it was written:** 41(b) and 41(d) (the
-epilogue now carries a control history, and the one remaining half does not
-reproduce) and 67.3 (`covert` is a list, so an appraisal naming three operations
-places three agents). Neither needed a playtest — both were readable off the
-code, which is worth noting because both had sat here on the assumption that
-they were not.
+---
 
 ## Retired this pass
 
@@ -540,6 +868,8 @@ turn 90.
 
 So this is now **speculative rather than pending**: do it if a campaign runs to
 100 turns and the save size or memory becomes a real complaint, and not before.
+Re-checked 2026-09-08 — a 90-turn campaign holds a few hundred log entries and
+`save()` costs about a millisecond. Still nobody's complaint.
 
 Three constraints it has to respect if it is ever built, all following from
 where the log lives:
@@ -582,12 +912,123 @@ unchanged. That fails the moment somebody starts editing a log entry in place
 instead of appending a new one — which is exactly when sharing would stop being
 safe.
 
-## p.5 — `verifyReplay` is quadratic over a campaign
+## p.6 — BUILT — `fleetlab` was 43.5s of embarrassingly parallel work
 
-Not in the server path, so it costs no player a turn. It does cost the suite and
-an archive import: 508ms at turn 90, and every call starts at turn 0. Worth a
-cached replay checkpoint only if the suite gets slow enough to notice, which it
-has not — 1,007 tests in ~7s.
+170,100 battles, each independent and each seeded, run one after another on one
+core. It is the only genuinely CPU-bound thing in the repo and it is a dev-loop
+cost: a sweep is how `TORPEDO_STRIKE`, the lift axis and the loss order were all
+settled, so it gets run whenever combat is touched.
+
+`node:worker_threads` sharding the composition grid across cores is roughly 40
+lines and ~8x on this machine. Nothing about it risks determinism — each battle
+already derives its roll from `rollD20(turn, salt)` and shares no state with any
+other, which is the property that made the grid a grid in the first place.
+
+**BUILT: 43.5s → 6.9s on 10 cores, 6.3x.** `tournamentShard` takes a stride of
+the attacker axis and `mergeShards` sums the tallies; the driver falls back to
+the serial path on one core or on any worker failure, because a tuning tool that
+cannot run is worse than a slow one.
+
+**Exact, not approximate**, and that is the property worth more than the speed —
+a sweep is how `TORPEDO_STRIKE`, the lift axis and the loss order were all
+settled, so a parallel run that merely agreed roughly would be worse than a slow
+serial one. Two tests pin it: the merged tallies equal the serial ones at 1, 3
+and 7 shards, and every battle runs exactly once across a shard count that does
+not divide the axis.
+
+Shards return raw tallies rather than rates, because each shard holds part of
+every *defender's* record and a rate cannot be averaged back together.
+
+This was worth doing before anything in **p.8**: 6.3x for ~90 lines, against a
+2.4% ceiling for a WASM port of the arithmetic.
+
+## p.7 — BUILT — `routeEarnings` was recomputed five times a tick from identical input
+
+`ledgerFor` calls `routeEarnings(state)`, and `tickTurn` calls `ledgerFor` once
+per faction — so every trade route in the galaxy is rebuilt five times per tick,
+plus a sixth for `TOLL_RESENTMENT`. Measured: `routeEarnings` is **0.34ms** of
+the **0.37ms** `ledgerFor` costs, and `ledgerFor` x5 is 1.5ms of a 4.0ms
+`tickTurn`.
+
+**BUILT: `tickTurn` 4.01ms → 2.39ms, 40%** — better than the third predicted.
+
+**Not with a memo**, which was this item's own suggestion and is the wrong fix.
+A `WeakMap` keyed on the state object goes stale the moment anything mutates
+that object, and `tickTurn` mutates constantly; the income loop happened to be
+safe only because `routeEarnings` does not read `credits`, which is an invariant
+held by luck rather than by construction.
+
+`ledgerFor` takes an optional settlement instead, and `tickTurn` computes one
+before the loop and passes it down. Nothing to invalidate, and it makes the
+real rule explicit: **incomes are paid from one settlement of the lanes**, so a
+power collecting early cannot change what a power collecting later is owed.
+`ledgersFor` is the helper for anything wanting all five, and `balance.ts` and
+`epilogue.ts` now reuse their settlement too.
+
+It is worth noting this is the kind of waste a rewrite in a faster language
+would have faithfully preserved while making each of the five copies quicker.
+
+## p.8 — ACCEPTED — why there is no WASM path, with the measurement
+
+Asked directly, and the first answer given was partly wrong. Recording both the
+correction and the number that actually settles it, so this is not re-litigated
+from intuition.
+
+**Two arguments that do NOT hold against WASM**, and were offered:
+
+- *"It would create two definitions of the domain, one for the server and one
+  for the browser."* False. WASM runs in Node and in the browser, so a compiled
+  reducer would be **one artifact loaded by both** — the same guarantee the
+  shared TypeScript gives today.
+- *"Cross-language float semantics would break byte-identical replay."* Also
+  false, and backwards. WASM specifies IEEE-754 with no x87 extended precision
+  and no FMA contraction; it is *more* deterministic across engines than
+  JavaScript, not less. The key-ordering scar this repo carries
+  (`normaliseStack`) is a data-structure problem and would exist either way.
+
+**The argument that does hold is Amdahl, and it is not close.**
+
+| | |
+|---|---|
+| a whole `tickTurn` | **4.0 ms** |
+| one model call in a real turn | **20,000–60,000 ms** |
+| `fleetlab`, per battle | 255.7 µs |
+| the pure hull arithmetic in a battle — `strikeStack`, `orbitalWeightOf`, `tonsIn`, counted four times each to be generous | **6.2 µs, or 2.4%** |
+
+So on the player-facing path the reducer is **0.007%** of a turn: making it
+infinitely fast saves four milliseconds against forty seconds of waiting for a
+model. And in the one CPU-bound tool, compiling the only genuinely liftable
+kernel to zero would take 43.5s to 42.5s.
+
+**There is no small pure kernel to lift.** `resolveBattle` reads `state.turn`,
+`state.factions`, `state.treaties` and `state.systems`, and calls `warsFor`,
+`effectiveStats` and `fleetBases` — which needs the hyperlane graph for retreat
+destinations. The 97.6% is `applyOps`/`tickTurn` overhead: cloning, Zod
+validation, array scans over string-keyed optional-field objects. Porting *that*
+is porting the whole domain, at which point the gain is however much faster WASM
+is than a JIT on allocation-heavy pointer-chasing — commonly 1–2x, not 10x.
+
+**So the wins here are algorithmic and structural, not language-level**, and
+p.6 and p.7 are both larger than anything WASM offers. Reopen this only if a
+profile shows a hot loop that is (a) arithmetic over flat numeric data, (b) a
+material share of something a person actually waits for.
+
+## p.5 — MEASURED, still not worth doing — `verifyReplay` over a campaign
+
+Not in the server path, so it costs no player a turn. Re-measured 2026-09-08
+now that the suite is 1,113 tests in ~38s, since the original condition was
+"only if the suite gets slow enough to notice":
+
+| turn | `verifyReplay` | growth |
+|---|---|---|
+| 10 | 34 ms | — |
+| 30 | 93 ms | 2.76x for 3x the turns |
+| 60 | 173 ms | 1.86x for 2x |
+| 90 | 245 ms | 1.42x for 1.5x |
+
+**Nearer linear than quadratic in practice**, and 245ms once at turn 90 against
+a `maxTurns` ceiling of 100. The suite's 38s is agent ticks and tournaments, not
+this. Condition still unmet; leaving it.
 
 ---
 

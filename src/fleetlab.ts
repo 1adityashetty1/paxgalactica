@@ -283,6 +283,113 @@ export interface TournamentOptions {
  * score is the share it held. They are the same battles read from both sides,
  * so the two tables are consistent by construction.
  */
+/**
+ * One worker's slice of the grid, and the reason the whole thing parallelises.
+ *
+ * Every battle is a pure function of `(attacker, defender, garrison, turn,
+ * ethic)` — `trial` builds its own two-system arena and the roll comes from
+ * `rollD20(turn, salt)` — so no battle can see another and the answer does not
+ * depend on the order they run in. Splitting the attacker axis across cores
+ * therefore produces byte-identical results, which is the property that makes
+ * this worth doing rather than merely faster.
+ *
+ * Returns raw tallies rather than rates: a shard holds part of each defender's
+ * record, and a rate cannot be averaged back together. `mergeShards` sums.
+ */
+export function tournamentShard(
+  opts: TournamentOptions,
+  shardIndex: number,
+  shardCount: number,
+): ShardTally {
+  const { atk, def, garrisons, turns, ethics } = grid(opts);
+  const atkTally = atk.map(() => blank());
+  const defTally = def.map(() => blank());
+
+  let battles = 0;
+  for (let i = shardIndex; i < atk.length; i += shardCount) {
+    for (let j = 0; j < def.length; j += 1) {
+      for (const garrison of garrisons) {
+        for (const turn of turns) {
+          for (const ethic of ethics) {
+            const r = trial(atk[i]!.stack, def[j]!.stack, garrison, turn, ethic);
+            battles += 1;
+            const a = atkTally[i]!;
+            const d = defTally[j]!;
+            a.trials += 1;
+            d.trials += 1;
+            if (r.took) a.wins += 1;
+            else d.wins += 1;
+            a.why[r.why] = (a.why[r.why] ?? 0) + 1;
+            d.why[r.why] = (d.why[r.why] ?? 0) + 1;
+          }
+        }
+      }
+    }
+  }
+  return { atk: atkTally, def: defTally, battles };
+}
+
+export interface Tally {
+  trials: number;
+  wins: number;
+  why: Record<string, number>;
+}
+export interface ShardTally {
+  atk: Tally[];
+  def: Tally[];
+  battles: number;
+}
+
+const blank = (): Tally => ({ trials: 0, wins: 0, why: {} });
+
+/** The grid every shard derives identically, from the same pure inputs. */
+function grid(opts: TournamentOptions) {
+  const budget = opts.budget ?? 1800;
+  const defenceBudget = opts.defenceBudget ?? budget;
+  const steps = opts.steps ?? 4;
+  const lift = opts.lift ?? LIFT_AXIS;
+  return {
+    atk: compositions(budget, steps, lift),
+    def: compositions(defenceBudget, steps, lift),
+    garrisons: opts.garrisons ?? [4, 10, 16],
+    turns: opts.turns ?? [1, 3, 5],
+    ethics: opts.ethics ?? (['profiteer', 'crusading'] as WarEthic[]),
+  };
+}
+
+/** Sum shard tallies into the finished result. Order-independent by construction. */
+export function mergeShards(opts: TournamentOptions, shards: ShardTally[]): TournamentResult {
+  const { atk, def, garrisons, ethics } = grid(opts);
+  const add = (into: Tally, from: Tally) => {
+    into.trials += from.trials;
+    into.wins += from.wins;
+    for (const [k, v] of Object.entries(from.why)) into.why[k] = (into.why[k] ?? 0) + v;
+  };
+  const atkT = atk.map(() => blank());
+  const defT = def.map(() => blank());
+  let battles = 0;
+  for (const shard of shards) {
+    battles += shard.battles;
+    shard.atk.forEach((t, i) => add(atkT[i]!, t));
+    shard.def.forEach((t, i) => add(defT[i]!, t));
+  }
+  const score = (comps: Composition[], tallies: Tally[]): Scored[] =>
+    comps
+      .map((c, i) => ({
+        ...c,
+        ...tallies[i]!,
+        rate: tallies[i]!.trials === 0 ? 0 : tallies[i]!.wins / tallies[i]!.trials,
+      }))
+      .sort((x, y) => y.rate - x.rate || x.label.localeCompare(y.label));
+  return {
+    attackers: score(atk, atkT),
+    defenders: score(def, defT),
+    battles,
+    garrisons,
+    ethics,
+  };
+}
+
 export function tournament(opts: TournamentOptions = {}): TournamentResult {
   const budget = opts.budget ?? 1800;
   const defenceBudget = opts.defenceBudget ?? budget;

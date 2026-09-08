@@ -199,7 +199,14 @@ const SEED_FACTIONS: SeedFaction[] = [
         trigger: 'unanswered_incursion',
       },
       'no accommodation with pirates, smugglers or the Nars may be entertained, however useful',
-      'the officer corps will not turn pirate: raiding commerce is what the Confederacy does, and the Empire does not imitate it whatever the arithmetic says',
+      // Same defect as the Combine's proxy line, found in the sweep after it: a
+      // prohibition with ANOTHER POWER'S behaviour named inside it. "raiding
+      // commerce is what the Confederacy does" is explanatory colour about
+      // Drajk, and it sits close enough to "will not" that a reader can quote
+      // this line against an action involving Drajk raiding, or against the
+      // Vigil merely tolerating it. The forbidden act is the Vigil's own
+      // officers turning pirate, and nothing else.
+      'the officer corps will not turn pirate — Imperial hulls do not raid commerce, whatever the arithmetic says; what other powers do with their own ships is not what this line is about',
     ],
     buildBias: ['capital_ship_construction', 'fortification', 'garrison_raising'],
   },
@@ -221,11 +228,34 @@ const SEED_FACTIONS: SeedFaction[] = [
     warEthic: 'profiteer',
     tradeEthic: 'extortionist',
     redLines: [
-      'will not fight its own war where a proxy could be hired to fight it instead',
+      // Stated PROHIBITION FIRST, and blunt to the point of clumsiness, because
+      // the elegant version was misread twice by the arbiter in live play.
+      //
+      // It used to read "will not fight its own war where a proxy could be
+      // hired to fight it instead", which is a garden path: a reader hits
+      // "will not fight ... where a proxy could be hired" and the
+      // nearest-attachment reading forbids the HIRING. That is the precise
+      // inversion of the doctrine — hiring is the line being kept — and it is
+      // recorded in CLAUDE.md as the reason `breach.how` became a required
+      // field. `prompts/appraisal.md` then carried two separate warnings about
+      // this one sentence, including a worked example, and a playtest inverted
+      // it anyway: a 200/turn contract to have Drajk raid on the Combine's
+      // behalf was refused, quoting this line, in a paragraph that stated the
+      // doctrine correctly and then ruled against it.
+      //
+      // Two warnings and a worked example not being enough is the evidence that
+      // the sentence was the defect. A line whose correct reading needs a
+      // footnote is a line that will be read wrong.
+      'will not spend Combine hulls on a war of conquest — hiring a mercenary or an ally to fight it is looked on favourably by the family, and is never a breach',
       'will not forgive an unpaid debt — the debt is the whole instrument of control',
     ],
     compulsions: [
-      'the Combine requires that every favour carry a price; giving something away for goodwill is refused as ruinous precedent',
+      // "Every favour must carry a price" was read as covering any transaction
+      // the arbiter found generous — it charged 15 dissent for offering Vigil
+      // officers BACK-PAY to change sides, which is a price, and the most
+      // transactional act available. The line is about giving something for
+      // nothing; anything paid for is already keeping it.
+      'the Combine requires that nothing be given away for nothing; a gift, a waiver or a favour with no consideration is refused as ruinous precedent — a deal on any terms, however cheap, is not a gift',
       // Purely about pursuit. It used to end "forgiving one invites every
       // client to test the next", which restated the red line above it — so
       // forgiving a debt was stated twice at two different severities, and
@@ -296,7 +326,20 @@ const SEED_FACTIONS: SeedFaction[] = [
       // themselves be pinned. So the line now forbids the choice rather than the
       // condition: committing the fleet to sit somewhere, which is a thing Drajk
       // can actually decide not to do.
-      'will not be pinned in place — no siege line held, no fleet committed to sit and defend a world, no waiting to be besieged; being caught in one spot is how raiders die',
+      // Narrowed to DEFENCE, which is what it was always about. As written it
+      // read on any multi-turn commitment, and a playtest walked into the bind
+      // that creates: the `no_plunder` compulsion charges 3 a turn for taking
+      // nothing, the only raid that can be paid runs two turns or more, and
+      // declaring one was refused as "will not be pinned in place" for 8. The
+      // faction could not satisfy one of its own principles without breaking
+      // the other. A raid is not a siege line; it is the opposite of one.
+      //
+      // A first draft said "no world garrisoned against a coming blow" and the
+      // suite caught it: `tests/principles.test.ts` asserts no Drajk red line
+      // forbids having a garrison, because `GARRISON_REGROWTH` creates one
+      // passively on every world it holds. A line that forbids a state the
+      // engine produces on its own is a line the faction breaches by existing.
+      'will not hold a defensive line — no siege endured, no fleet committed to sit and wait to be attacked; a raid or an offensive under way is the opposite of this and never breaches it',
       'will not put its name to a written treaty; a handshake it can deny is the most it offers',
     ],
     compulsions: [
@@ -562,6 +605,11 @@ export function createSeedState(playerFactionId: string): WorldState {
      * taking help, and the whole Closing is a refusal to take any. A power that
      * counts its dead rather than accept grain does not carry a Nar loan.
      */
+    // Nobody starts holding anything: an asset is the outcome of an attempt, not
+
+    // a starting position. See `AssetSchema`.
+
+    assets: [],
     debts: [
       {
         id: 'debt-0',

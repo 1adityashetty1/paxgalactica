@@ -105,6 +105,80 @@ export const RetractionSchema = z.object({
 });
 export type Retraction = z.infer<typeof RetractionSchema>;
 
+/**
+ * Fold a message's concessions and retractions into the running ledger.
+ *
+ * Pure and here rather than inside `GameSession`, for the reason `logview.ts`
+ * and `layout.ts` are pure: the suite has no server, so logic living inside a
+ * request handler is logic nothing checks.
+ *
+ * It appended before, and the list accumulated — one hire recorded four times
+ * under four slugs, one recorded backwards, and terms both parties had struck
+ * still live because the retraction's `kind` matched none of the entries it
+ * meant to remove. Extraction deduped it correctly that time and nothing broke,
+ * but extraction is documented as a MATCHER against this list, and a list that
+ * disagrees with itself is a matcher's problem waiting to happen.
+ */
+export function mergeConcessions(
+  held: readonly Concession[],
+  incoming: readonly Concession[],
+  retractions: readonly Retraction[],
+): Concession[] {
+  // Retractions first, so a power can strike and re-offer in one breath.
+  let out = [...held];
+  for (const r of retractions) {
+    const exact = out.some((c) => c.by === r.by && c.kind === r.kind);
+    out = out.filter((c) =>
+      c.by !== r.by ? true : exact ? c.kind !== r.kind : !looselyTheSame(r.kind, c.kind),
+    );
+  }
+  for (const c of incoming) {
+    // Supersede in place: a power restating a term is amending it, not adding a
+    // second one. Keying on (by, kind) is what makes this a position rather
+    // than a history of positions.
+    const at = out.findIndex((x) => x.by === c.by && x.kind === c.kind);
+    if (at >= 0) out[at] = c;
+    else out.push(c);
+  }
+  return out;
+}
+
+/**
+ * Whether a retraction with no exactly-matching `kind` still means this entry.
+ *
+ * Deliberately loose, and only ever applied within one party's own concessions.
+ * A persona that strikes "the Kest arrangement" having recorded it as
+ * `mutual_defense_kest` has plainly retracted it, and the alternative — leaving
+ * it standing because two slugs it invented moments apart do not match — is how
+ * a struck term survives to bind somebody.
+ */
+function looselyTheSame(a: string, b: string): boolean {
+  const words = (v: string) =>
+    v.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3);
+  const first = new Set(words(a));
+  return words(b).some((w) => first.has(w));
+}
+
+/**
+ * The concessions a reply may record: the two powers in the room, nobody else.
+ *
+ * The two halves are not the same kind of record. A power's own concession
+ * **binds it** — `groundInConcessions` grounds an op against the counterparty's
+ * and nothing else. Its record of what the player offered is only its
+ * understanding, and is useful precisely because it can be wrong out loud.
+ *
+ * This filtered to the speaker alone, which stripped the player's concessions
+ * before anything could appraise them — so the per-message red-line pass had
+ * nothing to look at and `channelBlockers` was empty at every read.
+ */
+export function atThisTable<T extends { by: string }>(
+  entries: readonly T[],
+  speakerId: string,
+  playerId: string,
+): T[] {
+  return entries.filter((e) => e.by === speakerId || e.by === playerId);
+}
+
 export const TREATY_TYPES = [
   'non_aggression',
   'mutual_defense',
@@ -159,6 +233,95 @@ export type IncomeShare = z.infer<typeof IncomeShareSchema>;
  * principle as `OrderEffect`: the vocabulary is small, it is arithmetic on
  * state, and nothing here can be argued into meaning something else.
  */
+/**
+ * A thing that is neither credits nor ships.
+ *
+ * Prisoners, a fostered heir, a claimant's seal held in escrow, a hundred tons
+ * of a rare material, a chart that is false, a piece of intelligence held
+ * exclusively. A creative playtest reached for all of these and the world had
+ * nowhere to put any of them: an accord would record *"fifty crews at forty a
+ * head"* and the game could not count a single crew.
+ *
+ * ## Per-faction value is the idea
+ *
+ * `valuePerUnit` is what makes an asset worth **trading** rather than worth
+ * hoarding. Prisoners are worth a great deal to the power that lost them and
+ * almost nothing to anyone else; an heirloom is worth something to the house it
+ * came from. Asymmetric valuation is the whole of gains-from-trade, and it is
+ * precisely what the playtest showed nobody at the table could see — a figure
+ * bargained from 80 to 95 settled at 60 with neither persona told, and the same
+ * intelligence was sold twice because nothing recorded who held it.
+ *
+ * ## An asset has no intrinsic economic force
+ *
+ * `valuePerUnit` is a **claim about what somebody would pay**, not money. It
+ * never enters a ledger, is never income, and creating an asset mints nothing.
+ * It becomes credits only when a power actually pays, through `terms.payment`
+ * or a negotiated `adjust_credits` — both already conserved.
+ *
+ * That is what lets `kind` stay open, the same bargain `Commitment.kind`
+ * strikes, and it is the opposite of `incomePerTurn`, which had to be capped
+ * twice over precisely because it *is* money.
+ *
+ * ## Value is per UNIT, and that is not cosmetic
+ *
+ * Forty prisoners split into two lots of twenty; one heirloom does not split.
+ * Stating value per unit rather than as a total means a split **conserves by
+ * construction** — the arithmetic does it, rather than a model being trusted to
+ * divide correctly.
+ */
+export const AssetSchema = z.object({
+  id: z.string().min(1),
+  /** A lower_snake_case slug, invented freely — `prisoners`, `heirloom`, `ore`. */
+  kind: z
+    .string()
+    .min(1)
+    .max(40)
+    .regex(/^[a-z][a-z0-9_]*$/, 'kind must be a lower_snake_case slug'),
+  /** One sentence, written to be read back to the player verbatim. */
+  text: z.string().min(1).max(240),
+  /** Who has it. An asset is always somebody's. */
+  heldBy: z.string().min(1),
+  quantity: z.number().int().min(1).max(100000),
+  /** What one of it is: `crew`, `ton`, `heirloom`, `dossier`. */
+  unit: z.string().min(1).max(24),
+  /**
+   * Whether it can be split into lots.
+   *
+   * Forty crews can be ransomed twenty at a time; a family heirloom cannot be
+   * halved. `split_asset` refuses on an atomic one.
+   */
+  divisible: z.boolean().default(true),
+  /**
+   * factionId -> what one unit is worth to that power, in credits.
+   *
+   * A claim, never money. Absent means worth nothing to them, which is the
+   * ordinary case and the point: prisoners are worth something to the power
+   * that lost them and nothing to anybody else.
+   */
+  valuePerUnit: z.record(z.string(), z.number().int().min(0).max(10000)).default({}),
+  /**
+   * Where it physically is, if anywhere.
+   *
+   * Optional, and it is what makes an asset losable: prisoners held at a world
+   * change hands when the world does. An asset with no location — a title, a
+   * charter, a debt of honour — is held by the faction and travels with it.
+   */
+  atSystemId: z.string().nullable().default(null),
+  acquiredTurn: z.number().int().min(0),
+});
+export type Asset = z.infer<typeof AssetSchema>;
+
+/** What an asset is worth to a power, in total. A claim, never a ledger entry. */
+export function assetWorthTo(asset: Asset, factionId: string): number {
+  return (asset.valuePerUnit[factionId] ?? 0) * asset.quantity;
+}
+
+/** Everything a faction is holding. */
+export function assetsOf(assets: readonly Asset[], factionId: string): Asset[] {
+  return assets.filter((a) => a.heldBy === factionId);
+}
+
 export const VoidConditionSchema = z.object({
   kind: z.enum([
     /** `by` must not hold a live treaty with `target`. */
@@ -174,6 +337,25 @@ export const VoidConditionSchema = z.object({
      * so a party cannot keep the benefits of a deal it has stopped funding.
      */
     'insolvent',
+    /**
+     * `by` must still hold the asset named in `target`.
+     *
+     * What makes a hostage a hostage. Without it an accord could record that
+     * someone was held against a treaty's performance and nothing anywhere
+     * could notice them being killed, released or taken back — which is what a
+     * playtest measured: hostages were offered twice, accepted once, and there
+     * was no object to hold.
+     */
+    'asset_lost',
+    /**
+     * `by` must still hold the system named in `target`.
+     *
+     * The trigger an indemnity is written against — *"if Pell Reach falls"* —
+     * and the reason this vocabulary is shared with `Commitment.contingencies`
+     * rather than duplicated: a condition that can end a treaty is exactly the
+     * kind of condition somebody insures against.
+     */
+    'world_lost',
   ]),
   /** The party the condition constrains. */
   by: z.string().min(1),

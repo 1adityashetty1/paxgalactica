@@ -291,6 +291,45 @@ export function boundPayloadsToOutcome(
   // `partial` places intact: an operative is in place or is not, so there is no
   // magnitude to halve, and a half-placed spy is not a thing the mechanic can
   // express.
+  // A PRIZE THE ATTEMPT DID NOT WIN.
+  //
+  // An asset is the payoff of an attempt, so it is bounded by the attempt's
+  // outcome exactly as an `onComplete` payload is: stripped on a failure,
+  // halved on a partial. Narrating survivors brought back from a sweep that
+  // went badly is the same error as narrating a battle the fleet did not fight.
+  //
+  // Halved rather than dropped on a partial because an asset HAS a magnitude —
+  // unlike an operative, who is placed or is not. Twenty crews off a sweep that
+  // half-worked is a reduced result and a bill, which is what `partial` means.
+  //
+  // Built by pushing rather than by mapping to a sentinel and filtering it out:
+  // `null` is a legitimate entry in this array — the pass runs on raw model
+  // output and a test passes one through deliberately — so any sentinel that
+  // could also be real data drops somebody else's op.
+  const assetBounded: unknown[] = [];
+  let droppedAPrize = false;
+  for (const op of ops) {
+    const o = op && typeof op === 'object' ? (op as Record<string, unknown>) : null;
+    if (o === null || o.op !== 'create_asset') {
+      assetBounded.push(op);
+      continue;
+    }
+    if (failed) {
+      droppedAPrize = true;
+      continue;
+    }
+    const had = Number(o.quantity ?? 1);
+    const left = Math.max(1, Math.floor(had / 2));
+    if (left !== had) {
+      notes.push(
+        `A partial result brings back ${left} ${String(o.unit ?? 'of it')} rather than ${had}.`,
+      );
+    }
+    assetBounded.push({ ...o, quantity: left });
+  }
+  if (droppedAPrize) notes.push('The attempt failed, so it came back with nothing.');
+  ops = assetBounded;
+
   const withoutFailedAgents = failed
     ? ops.filter((op) => {
         const isAgent =

@@ -15,7 +15,16 @@ is purely a **record** of the conversation:
 `form_treaty` · `break_treaty` · `establish_debt` · `assign_debt` ·
 `restructure_debt` · `establish_commitment` · `dissolve_commitment` ·
 `forgive_debt` · `settle_debt` · `adjust_disposition` · `adjust_credits` ·
-`log_narrative` · `spawn_event` · `set_toll_policy`
+`log_narrative` · `spawn_event` · `set_toll_policy` · `transfer_asset`
+
+**`transfer_asset` moves a thing that already exists** — prisoners ransomed
+back, an heirloom handed over, a lot of ore delivered. Taking another power's
+asset needs their agreement, which is why it is reachable from here at all; a
+declared action can only give one away.
+
+**You cannot create one here.** A conversation trades what exists and does not
+conjure what does not, so an accord promising *"a hundred tons of ore"* nobody
+holds produces nothing. That is not a gap: it is a thing to go and get.
 
 **`set_toll_policy` may only OPEN your lanes here, never close them.** Lifting a
 toll is a concession, and it is one of the few real ones you can make that takes
@@ -271,6 +280,35 @@ at a steady rate, and it is the only one available for anything the three flows
 above do not cover — a cut of a harvest, a mine, a shipyard's output — where an
 agreed per-turn estimate is still better than zero. Zero says the arrangement is
 worth nothing, which is not what was agreed.
+
+**If the parties agreed that something happens ONLY IF something else does, use
+`contingencies`.** This is insurance, indemnity, a bounty, a ransom paid on
+delivery, collateral forfeited on a default, a war subsidy, a success fee, and
+the performance clause of any bargain — *"nine hundred if Pell Reach falls"*,
+*"the charter is yours if I default"*, *"a hundred a head when the crews are
+handed over"*.
+
+```jsonc
+"contingencies": [{
+  "trigger": { "kind": "world_lost", "by": "freeworlds", "target": "ark-6" },
+  "from": "ojjul", "to": "freeworlds", "credits": 900, "assetId": null,
+  "text": "Nine hundred if Pell Reach falls."
+}]
+```
+
+`trigger.kind` is one of five, and no others exist: `world_lost` (`by` stops
+holding system `target`), `asset_lost` (`by` stops holding asset `target`),
+`treaty_with` (`by` signs with `target`), `attacks` (`by` goes to war with
+`target`), `insolvent` (`by` is running at a loss).
+
+`from` and `to` must **both** be parties to the commitment — a contingency
+cannot reach into the treasury of a power that never signed, and one that does
+is dropped. Set `assetId` to move a **thing** rather than, or as well as,
+credits: that is how collateral, a forfeited bond and a ransom of prisoners are
+written.
+
+It pays **once**, when the thing happens. Something that pays every turn a
+condition holds is `incomePerTurn`, not this.
 
 A commitment with no money in it is still real — it moves standing between the parties and the
 arbiter reads it — so leave `incomePerTurn` at 0 only when the deal genuinely
