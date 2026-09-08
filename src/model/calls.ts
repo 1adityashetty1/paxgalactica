@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  atThisTable,
   ConcessionSchema,
   RetractionSchema,
   type Concession,
@@ -881,11 +882,28 @@ export async function diplomacyReply(
   });
   return {
     reply: res.value.reply,
-    // Only this power may concede on its own behalf. A persona writing a
-    // concession `by` somebody else is either confused or being talked into
-    // speaking for a third party, and either way it is not consent.
-    concessions: res.value.concessions.filter((c) => c.by === factionId),
-    retractions: res.value.retractions.filter((r) => r.by === factionId),
+    // BOTH sides of the table, and third parties dropped.
+    //
+    // This filtered to `c.by === factionId` — the NPC's own — which is right
+    // about consent and was wrong about everything else: the player's
+    // concessions were stripped before the session could see them, so the
+    // per-message red-line appraisal had nothing to appraise and
+    // `channelBlockers` was `[]` at every read, across four channels and three
+    // deliberate self-announced crossings. The mechanism did not fail; it never
+    // ran.
+    //
+    // The two halves are not the same kind of record and it matters which is
+    // which. A power's own concession **binds it** — `groundInConcessions`
+    // grounds an op against `c.by === otherId` and nothing else. Its record of
+    // what the PLAYER offered is only its understanding, and it is useful
+    // precisely because it can be wrong out loud: the player sees the
+    // counterparty's reading of their own promise while there is still a
+    // conversation in which to correct it.
+    //
+    // A concession naming a third party is still dropped. Nobody at this table
+    // speaks for a power that is not in the room.
+    concessions: atThisTable(res.value.concessions, factionId, state.playerFactionId),
+    retractions: atThisTable(res.value.retractions, factionId, state.playerFactionId),
     costUsd: res.costUsd,
   };
 }

@@ -10,7 +10,7 @@ import { GameSession } from '../src/server/session.js';
 import { loadPrompt } from '../src/model/prompts.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { groundInConcessions } from '../src/engine/turn.js';
-import type { Concession } from '../src/domain/diplomacy.js';
+import { atThisTable, mergeConcessions, type Concession } from '../src/domain/diplomacy.js';
 import { applyOps, COERCION_RESENTMENT, tickTurn } from '../src/domain/reducer.js';
 import {
   hullsAt,
@@ -1071,5 +1071,94 @@ describe('an accord may only enact what was actually conceded', () => {
       'ojjul',
     );
     expect(out.ops).toHaveLength(0);
+  });
+});
+
+/**
+ * THE CONCESSION LEDGER IS A POSITION, NOT A HISTORY OF POSITIONS.
+ *
+ * It appended, so it accumulated: a playtest ended with one 10/turn hire
+ * recorded four times under four slugs, one recorded backwards, and terms both
+ * parties had struck still live — because the retraction's `kind` matched none
+ * of the three entries it meant to remove. Extraction deduped it correctly and
+ * nothing broke that time, but extraction is documented as a MATCHER against
+ * this list.
+ */
+describe('the concession ledger', () => {
+  const c = (over: Partial<Concession> = {}): Concession => ({
+    by: 'ojjul', kind: 'hire_hulls', text: 'Twelve hulls at ten a turn.',
+    systems: [], credits: 0, perTurn: 10, hulls: 12, ...over,
+  });
+
+  it('supersedes a restated term instead of recording it twice', () => {
+    const out = mergeConcessions([c()], [c({ perTurn: 14 })], []);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.perTurn).toBe(14);
+  });
+
+  it('keeps two genuinely different terms from the same power', () => {
+    const out = mergeConcessions([c()], [c({ kind: 'lane_toll_lifted', perTurn: 0 })], []);
+    expect(out).toHaveLength(2);
+  });
+
+  it('removes what a retraction strikes', () => {
+    const out = mergeConcessions([c()], [], [{ by: 'ojjul', kind: 'hire_hulls', why: 'A clerk.' }]);
+    expect(out).toHaveLength(0);
+  });
+
+  it('strikes a term whose slug the persona typed differently', () => {
+    // The measured case: a retraction of `kest_vantic` against three live
+    // entries including `mutual_defense_kest`. An exact-key removal misses, and
+    // a struck term surviving is how it ends up binding somebody.
+    const held = [
+      c({ kind: 'mutual_defense_kest' }),
+      c({ kind: 'reciprocal_kest_vantic' }),
+      c({ kind: 'hire_hulls' }),
+    ];
+    const out = mergeConcessions(held, [], [{ by: 'ojjul', kind: 'kest_vantic', why: 'Never on the table.' }]);
+    expect(out.map((x) => x.kind)).toEqual(['hire_hulls']);
+  });
+
+  it('never lets a retraction reach another power’s concessions', () => {
+    const held = [c({ by: 'meridian', kind: 'kest_pact' })];
+    const out = mergeConcessions(held, [], [{ by: 'ojjul', kind: 'kest_pact', why: 'Not mine to strike.' }]);
+    expect(out).toHaveLength(1);
+  });
+
+  it('applies a retraction before the concessions in the same message', () => {
+    // Strike and re-offer in one breath: the amended term survives.
+    const out = mergeConcessions(
+      [c({ perTurn: 10 })],
+      [c({ perTurn: 6 })],
+      [{ by: 'ojjul', kind: 'hire_hulls', why: 'My clerk wrote the old rate.' }],
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]!.perTurn).toBe(6);
+  });
+});
+
+/**
+ * Both powers in the room, and nobody else.
+ *
+ * This filtered to the speaker alone, so the player's concessions were stripped
+ * before anything could appraise them — the per-message red-line pass had
+ * nothing to look at, and `channelBlockers` was `[]` across four channels and
+ * three deliberate, self-announced crossings. The mechanism did not fail; it
+ * never ran.
+ */
+describe('whose concessions a reply may carry', () => {
+  const e = (by: string) => ({ by, kind: 'k', text: 't' });
+
+  it('keeps the speaker’s own', () => {
+    expect(atThisTable([e('ojjul')], 'ojjul', 'drajk').map((x) => x.by)).toEqual(['ojjul']);
+  });
+
+  it('keeps its reading of what the player offered', () => {
+    // Without this the red-line appraisal has nothing to appraise.
+    expect(atThisTable([e('drajk')], 'ojjul', 'drajk').map((x) => x.by)).toEqual(['drajk']);
+  });
+
+  it('drops a power that is not in the room', () => {
+    expect(atThisTable([e('vigil')], 'ojjul', 'drajk')).toEqual([]);
   });
 });

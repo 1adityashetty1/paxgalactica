@@ -307,7 +307,7 @@ export function serializeState(state: WorldState, viewerId: string): string {
     serializeStanding(state, viewerId),
     '',
     '## Standing commitments',
-    serializeCommitments(state),
+    serializeCommitments(state, viewerId),
     '',
     '## Debts',
     serializeDebts(state),
@@ -385,9 +385,28 @@ function shareWorth(state: WorldState, share: NonNullable<Commitment['share']>):
   return pot <= 0 ? 0 : Math.floor((pot * share.percent) / 100);
 }
 
-export function serializeCommitments(state: WorldState): string {
-  const live = (state.commitments ?? []).filter((c) => c.status === 'active');
-  if (live.length === 0) return '_None. Nothing beyond treaties currently binds anyone._';
+export function serializeCommitments(state: WorldState, viewerId?: string): string {
+  // SCOPED TO THE PARTIES, like `treatiesFor` already scopes the treaty list
+  // two blocks below it. This rendered every live commitment into all five
+  // prompts, so a private two-party arrangement was published to the whole
+  // galaxy — measured: the Iron Vigil quoted the exact 7% share of a commitment
+  // binding only the Combine and Drajk.
+  //
+  // The LOG half of this leak was closed earlier the same day and written up as
+  // fixed, which is the part worth remembering: `logEvent` was scoped and the
+  // state block one function away was not, so the fix looked complete and the
+  // prompt still carried the secret. A leak is a property of the whole payload.
+  //
+  // `viewerId` is optional so a caller without one gets the old behaviour
+  // rather than an empty block; every caller in the engine passes it.
+  const live = (state.commitments ?? []).filter(
+    (c) =>
+      c.status === 'active' && (viewerId === undefined || c.factionIds.includes(viewerId)),
+  );
+  if (live.length === 0)
+    return viewerId === undefined
+      ? '_None. Nothing beyond treaties currently binds anyone._'
+      : '_None. Nothing beyond treaties binds you._';
 
   return live
     .map((c) => {

@@ -148,10 +148,21 @@ Your reply carries two things besides your words: `concessions` and
 `retractions`. They are how a negotiation becomes a fact rather than a
 recollection.
 
-**A concession is something YOU are giving up, that you have actually decided to
-give.** Not what you are being asked for, not what you are weighing, not what
-the other side has offered you. Most messages concede nothing, and an empty list
-is the ordinary case — a conversation is mostly talk.
+**Record both sides of the table**, and only the two of you — never a power that
+is not in the room.
+
+**Your own concession is something YOU are giving up, that you have actually
+decided to give.** Not what you are being asked for, not what you are weighing.
+This one binds you: nothing you fail to write down here can be held against you.
+
+**Their concession is what you understood THEM to have just agreed to give**,
+written from your side of the table. This one does not bind them — it is your
+reading, and if you have read them too generously they will say so and strike
+it. Write it anyway: a deal neither party has written down is a deal that
+evaporates when the room empties.
+
+Most messages concede nothing, and an empty list is the ordinary case — a
+conversation is mostly talk.
 
 Record one the moment you commit to it, in the same message where you say so.
 Nothing you agree to takes effect until the channel closes, but nothing you did
@@ -196,3 +207,12 @@ correcting a diplomatic draft, not a database.
 
 You may also simply refuse to record what you never agreed to. Silence is
 sufficient; the retraction is for something already written.
+
+**A withdrawal is a retraction, never a concession.** Do not write a concession
+whose text says a term is off the table — that records the withdrawal as a thing
+being given, and leaves the original standing beside it.
+
+**Reuse the `kind` you first used** when you amend a term. Restating a
+concession under the same `kind` replaces it; a new slug for the same
+arrangement records it twice, and a deal counted twice is a deal one side did
+not agree to.

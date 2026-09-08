@@ -105,6 +105,80 @@ export const RetractionSchema = z.object({
 });
 export type Retraction = z.infer<typeof RetractionSchema>;
 
+/**
+ * Fold a message's concessions and retractions into the running ledger.
+ *
+ * Pure and here rather than inside `GameSession`, for the reason `logview.ts`
+ * and `layout.ts` are pure: the suite has no server, so logic living inside a
+ * request handler is logic nothing checks.
+ *
+ * It appended before, and the list accumulated — one hire recorded four times
+ * under four slugs, one recorded backwards, and terms both parties had struck
+ * still live because the retraction's `kind` matched none of the entries it
+ * meant to remove. Extraction deduped it correctly that time and nothing broke,
+ * but extraction is documented as a MATCHER against this list, and a list that
+ * disagrees with itself is a matcher's problem waiting to happen.
+ */
+export function mergeConcessions(
+  held: readonly Concession[],
+  incoming: readonly Concession[],
+  retractions: readonly Retraction[],
+): Concession[] {
+  // Retractions first, so a power can strike and re-offer in one breath.
+  let out = [...held];
+  for (const r of retractions) {
+    const exact = out.some((c) => c.by === r.by && c.kind === r.kind);
+    out = out.filter((c) =>
+      c.by !== r.by ? true : exact ? c.kind !== r.kind : !looselyTheSame(r.kind, c.kind),
+    );
+  }
+  for (const c of incoming) {
+    // Supersede in place: a power restating a term is amending it, not adding a
+    // second one. Keying on (by, kind) is what makes this a position rather
+    // than a history of positions.
+    const at = out.findIndex((x) => x.by === c.by && x.kind === c.kind);
+    if (at >= 0) out[at] = c;
+    else out.push(c);
+  }
+  return out;
+}
+
+/**
+ * Whether a retraction with no exactly-matching `kind` still means this entry.
+ *
+ * Deliberately loose, and only ever applied within one party's own concessions.
+ * A persona that strikes "the Kest arrangement" having recorded it as
+ * `mutual_defense_kest` has plainly retracted it, and the alternative — leaving
+ * it standing because two slugs it invented moments apart do not match — is how
+ * a struck term survives to bind somebody.
+ */
+function looselyTheSame(a: string, b: string): boolean {
+  const words = (v: string) =>
+    v.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3);
+  const first = new Set(words(a));
+  return words(b).some((w) => first.has(w));
+}
+
+/**
+ * The concessions a reply may record: the two powers in the room, nobody else.
+ *
+ * The two halves are not the same kind of record. A power's own concession
+ * **binds it** — `groundInConcessions` grounds an op against the counterparty's
+ * and nothing else. Its record of what the player offered is only its
+ * understanding, and is useful precisely because it can be wrong out loud.
+ *
+ * This filtered to the speaker alone, which stripped the player's concessions
+ * before anything could appraise them — so the per-message red-line pass had
+ * nothing to look at and `channelBlockers` was empty at every read.
+ */
+export function atThisTable<T extends { by: string }>(
+  entries: readonly T[],
+  speakerId: string,
+  playerId: string,
+): T[] {
+  return entries.filter((e) => e.by === speakerId || e.by === playerId);
+}
+
 export const TREATY_TYPES = [
   'non_aggression',
   'mutual_defense',

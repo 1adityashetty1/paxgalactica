@@ -681,6 +681,48 @@ function voidConditionMet(state: WorldState, condition: VoidCondition): string |
  * with the receipts trimmed to match, exactly as `billConstruction` delivers
  * what was paid for rather than rejecting the order.
  */
+/**
+ * Pay out declared credits to other powers, but only out of what was paid in.
+ *
+ * The declared path already refuses to DEBIT another treasury; this is the
+ * matching rule for crediting one. A fiction shaped "the bench awards Meridian
+ * three hundred" is a transfer, and a transfer needs a payer — so the actor's
+ * own debits in the same batch fund it, pro-rata when they do not cover it, and
+ * nothing past that is applied.
+ *
+ * `moveConserved` is not reused because its rule is stricter than this one
+ * needs: it drops a credit whose batch nets positive, which is right for an
+ * accord where both sides' entries are present, and wrong here where the actor
+ * legitimately keeps its own capped narrative windfall alongside a payment.
+ */
+function settleDeclaredCredits(
+  state: WorldState,
+  owed: Record<string, number>,
+  funded: number,
+  notes: string[],
+): string[] {
+  const out: string[] = [];
+  const total = Object.values(owed).reduce((n, v) => n + v, 0);
+  if (total <= 0) return out;
+
+  const share = funded >= total ? 1 : funded / total;
+  for (const [id, amount] of Object.entries(owed)) {
+    const paid = Math.floor(amount * share);
+    const who = state.factions.find((f) => f.id === id);
+    if (who && paid > 0) who.credits += paid;
+    if (paid < amount) {
+      const note =
+        paid === 0
+          ? `${amount} credits for ${nameFor(state, id)} came from nobody's treasury and did not move. Pay it, and it arrives.`
+          : `Trimmed a payment to ${nameFor(state, id)} from ${amount} to ${paid}: only ${funded} was actually paid out this declaration.`;
+      out.push(note);
+      logEvent(state, 'clamp', note, id);
+    }
+  }
+  void notes;
+  return out;
+}
+
 function settleTreatyPayment(state: WorldState, treaty: Treaty): string[] {
   return moveConserved(state, treaty.terms.payment, treaty.summary, treaty.parties[0]!);
 }
@@ -910,6 +952,9 @@ export function applyOps(
    * a credit — the same rule `terms.payment` follows.
    */
   const negotiated: Record<string, number> = {};
+  /** Declared credits owed to powers other than the actor, and what funds them. */
+  const declaredCredits: Record<string, number> = {};
+  let declaredPaidOut = 0;
   /**
    * Which classes came off a faction's stacks earlier in this batch.
    *
@@ -1166,6 +1211,34 @@ export function applyOps(
               (chargedByNarrative.get(op.factionId) ?? 0) + -delta,
             );
           }
+        }
+        // A CREDIT TO SOMEBODY ELSE HAS TO COME FROM SOMEWHERE.
+        //
+        // Taking another power's money by declaration is already refused above.
+        // Giving it money was not, and that is the other half of the same hole:
+        // a one-sided `adjust_credits meridian +300` was capped and applied, so
+        // the cap bounded the SIZE of the invention rather than the fact of it.
+        // Measured on an arbitral award — the galaxy ended 320 credits richer
+        // and no treasury paid.
+        //
+        // Deferred rather than dropped here, because whether it is a transfer
+        // is a property of the whole batch: the actor may be paying for it two
+        // ops later. Funded at settle time out of what the actor actually paid
+        // out, and the surplus is minting and is dropped.
+        //
+        // A windfall to the actor's OWN treasury is untouched — the fiction
+        // paying you is a real thing and `MAX_NARRATIVE_CREDITS` is what bounds
+        // it. Only money appearing in somebody else's account needs a payer.
+        //
+        // Scoped to `model`. An `engine` batch is the reducer's own arithmetic
+        // paying out something it already priced, and an `extraction` one has
+        // returned above into `negotiated`, which conserves more strictly.
+        if (source === 'model' && actor !== undefined && op.factionId !== actor && delta > 0) {
+          declaredCredits[op.factionId] = (declaredCredits[op.factionId] ?? 0) + delta;
+          break;
+        }
+        if (source === 'model' && actor !== undefined && op.factionId === actor && delta < 0) {
+          declaredPaidOut += -delta;
         }
         f.credits = Math.max(0, f.credits + delta);
         break;
@@ -2944,6 +3017,7 @@ export function applyOps(
   // Before the yards bill, so a settlement received this batch can pay for
   // what the same accord commissioned.
   notes.push(...moveConserved(state, negotiated, 'the terms agreed', actor ?? 'engine'));
+  notes.push(...settleDeclaredCredits(state, declaredCredits, declaredPaidOut, notes));
   const pricedByYards = new Set<string>();
   billConstruction(state, hullsBefore, notes, pricedByYards);
   refundDuplicateCharges(state, chargedByNarrative, pricedByYards, notes);

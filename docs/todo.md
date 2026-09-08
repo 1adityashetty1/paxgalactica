@@ -29,10 +29,10 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 
 | # | what | size | why now |
 |---|---|---|---|
-| **82** | `channelBlockers` never fires | small | defect in code from 2026-09-07 |
-| **83** | a declared action can mint credits | small | open economy loop |
-| **84** | every private commitment is published to every power | small | half-fixed and written up as closed |
-| **85** | the concession ledger accumulates instead of superseding | small | extraction matches against it |
+| ~~82~~ | ~~`channelBlockers` never fires~~ | small | **FIXED** — the filter dropped the player's own concessions |
+| ~~83~~ | ~~a declared action can mint credits~~ | small | **FIXED** |
+| ~~84~~ | ~~every private commitment is published~~ | small | **FIXED** |
+| ~~85~~ | ~~the concession ledger accumulates~~ | small | **FIXED** |
 | **86** | a contingent payment — *"if X then pay Y"* | medium | **the largest single gap** |
 | **81** | assets: things that are neither credits nor ships | subsystem | five findings, composes with 86 |
 | **87** | log every breach ruling | small | the instrument that makes 88–90 measurable |
@@ -51,7 +51,7 @@ can read another's terms and a clause whose whole content is *"track that other
 contract"* is structurally unrepresentable. The fix there is the arbiter *saying
 so* rather than recording it as though it bound something.
 
-## 82. `channelBlockers` never fires
+## 82. FIXED — `channelBlockers` never fires
 
 Three deliberate, self-announced red-line crossings across four channels — one
 of them quoting the Combine's own line and then saying *"I am doing it
@@ -64,9 +64,19 @@ a visible blocker in the turn the player walks toward it … there is now a
 conversation left in which to steer around it"*. Across four channels the player
 was never once warned before signing. `[D-6]`
 
-**Check the wiring before touching the prompt.** Small if that is all it is.
+**FIXED, and it was the wiring.** `diplomacyReply` filtered concessions to
+`c.by === factionId` — the **NPC's** id — so the player's were stripped before
+the session could see them, and the list the red-line pass appraises was always
+empty. It never ran.
 
-## 83. A declared action can mint credits
+Both parties' concessions are kept now (`atThisTable`), third parties still
+dropped. The two halves are not the same kind of record and the code says so: a
+power's own concession **binds it** and is what `groundInConcessions` matches
+against; its record of what the player offered is only its understanding, and is
+useful precisely because it can be wrong out loud while there is still a
+conversation in which to correct it.
+
+## 83. FIXED — a declared action can mint credits
 
 `moveConserved` is scoped to extraction batches. On the **declared** path a
 one-sided `adjust_credits` is capped at `MAX_NARRATIVE_CREDITS` and applied — so
@@ -74,19 +84,36 @@ the cap bounds the *size* of the invention, not the fact of it. Measured: an
 arbitral award left the galaxy 320 credits richer with no treasury paying
 (Meridian 2243 → 2483, Ojjul 4032 → 4052). `[E-1]`
 
-**Fix:** run `moveConserved` over declared batches too. Small, and it closes a
-loop — any fiction shaped *"X pays Y"* pays Y whether or not X can be charged.
+**FIXED**, though not with `moveConserved` — its rule is stricter than this
+needs. It drops a credit whose batch nets positive, which is right for an accord
+where both sides' entries are present and wrong here, where the actor
+legitimately keeps its own capped windfall alongside a payment.
 
-## 84. Every private commitment is published to every power
+The rule is narrower: a credit to a power **other than the actor** is funded out
+of what the actor actually paid out in the same batch, pro-rata when it does not
+cover, and nothing past that lands. A windfall to your *own* treasury is
+untouched — the fiction paying you is real and `MAX_NARRATIVE_CREDITS` is what
+bounds it. Only money appearing in somebody else's account needs a payer.
+
+This is the mirror of the guard that already refuses to *take* a rival's money
+by narration; only one direction had been closed.
+
+## 84. FIXED — every private commitment is published to every power
 
 `serializeCommitments(state)` takes no viewer and renders every live commitment
 into all five prompts. Measured: the Vigil quoted the exact 7% share of a
 commitment binding only the Combine and Drajk. `[D-5]`
 
-The **log** half of this was fixed on 2026-09-07 and written up as closed; the
-state block was not. Small — `treatiesFor`-style scoping.
+**FIXED.** `serializeCommitments` takes a viewer and shows only arrangements
+binding them.
 
-## 85. The concession ledger accumulates instead of superseding
+The **log** half was closed earlier the same day and written up as fixed, which
+is the part worth keeping: `logEvent` was scoped and the state block one
+function away was not, so the fix looked complete and the prompt still carried
+the secret. A leak is a property of the whole payload — the same lesson
+`worldAsSeenBy` records about `observeOrders`.
+
+## 85. FIXED — the concession ledger accumulates instead of superseding
 
 One hire recorded four times, one recorded **backwards**
 (`{by: meridian, perTurn: 95}` when the flow is Combine → Meridian), and terms
@@ -96,10 +123,19 @@ removal would have missed. A withdrawal was itself recorded as a *concession*.
 `[D-8]`
 
 Extraction deduped all of it correctly this time, so nothing broke. But
-extraction is documented as a **matcher** against this list. Fix: key by `kind`
-and supersede in place; make a retraction remove rather than append; never
-record a withdrawal as a concession. Small, and it is the difference between a
-ledger and a transcript with extra steps.
+extraction is documented as a **matcher** against this list.
+
+**FIXED.** `mergeConcessions` supersedes on `(by, kind)`, applies retractions
+before the same message's concessions so a power can strike and re-offer in one
+breath, and falls back to a loose word match when a retraction's slug lines up
+with nothing — a persona striking *"the Kest arrangement"* having recorded it as
+`mutual_defense_kest` has plainly retracted it, and holding it to a slug it typed
+differently moments earlier is how a struck term survives to bind somebody. The
+prompt now also says a withdrawal is a retraction and never a concession.
+
+Pure, and in `domain/diplomacy.ts` rather than inside the request handler, for
+the reason `logview.ts` and `layout.ts` are pure: the suite has no server, so
+logic living in a handler is logic nothing checks.
 
 ## 86. A contingent payment — "if X then pay Y"
 
