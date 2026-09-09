@@ -548,7 +548,7 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
             const lending = l.lenderFactionId === me;
             const other = lending ? l.borrowerFactionId : l.lenderFactionId;
             const name = state.factions.find((f) => f.id === other)?.name ?? other;
-            const overdue = l.dueTurn !== null && l.dueTurn <= state.turn;
+            const kept = l.status === 'defaulted';
             return (
               <div key={l.id} className="treaty">
                 <div className="treaty-head">
@@ -561,16 +561,28 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
                       {l.rentPerTurn}cr/turn
                     </span>
                   )}
-                  {overdue && (
-                    <span className="chip bad" title="The term has run out.">
-                      past due
+                  {kept && (
+                    <span
+                      className="chip bad"
+                      title="It did not come back. Whether that was refusal or bad luck is not a distinction the lender makes."
+                    >
+                      not returned
+                    </span>
+                  )}
+                  {l.status === 'delinquent' && (
+                    <span className="chip bad" title="Behind on the hire fee.">
+                      in arrears
                     </span>
                   )}
                 </div>
                 <p className="commitment-text">{l.text}</p>
                 <p className="muted">
                   {describeOutstanding(l)} outstanding
-                  {l.dueTurn === null ? ' · no term' : ` · due turn ${l.dueTurn}`}
+                  {kept
+                    ? ' · being kept'
+                    : l.dueTurn === null
+                      ? ' · no term'
+                      : ` · due turn ${l.dueTurn}`}
                   {l.missedPayments > 0 ? ` · ${l.missedPayments} missed` : ''}
                 </p>
               </div>

@@ -10,6 +10,7 @@ import {
   type WorldState,
 } from '../src/domain/state.js';
 import { drawMatching, isLoanLive } from '../src/domain/loan.js';
+import { driftingCompulsions } from '../src/domain/compulsions.js';
 import type { OpInput } from '../src/domain/ops.js';
 
 /**
@@ -122,36 +123,110 @@ describe('loans', () => {
     expect(hullsAt(home, 'drajk')).toBe(0);
   });
 
-  it('is a default when the squadron did not survive, and can be made good', () => {
+  it('is the same default whether the squadron died or the borrower kept it', () => {
     const { state, systemId } = withSquadron();
     let s = applyOps(state, [hire(systemId)], 'extraction', 'ojjul').state;
     // The hire is spent: the borrower has nothing of that class anywhere.
     for (const sys of s.systems) if (hullsAt(sys, 'drajk') > 0) setStackAt(sys, 'drajk', {});
     const disposedBefore = s.factions.find((f) => f.id === 'ojjul')!.disposition['drajk'] ?? 0;
 
+    const witnessBefore = s.factions.find((f) => f.id === 'meridian')!.disposition['drajk'] ?? 0;
+
     for (let i = 0; i < 3; i++) s = tickTurn(s).state;
-    expect(s.loans[0]!.status).toBe('delinquent');
+    // Bad luck and bad faith reach ONE state, deliberately: a lender does not
+    // care why twelve hulls did not come home, and every other obligation here
+    // charges for *unpaid* rather than for *unwilling*.
+    expect(s.loans[0]!.status).toBe('defaulted');
+    // Public, unlike missed rent — a squadron that never sailed home is
+    // observable, so onlookers charge too.
+    expect(s.factions.find((f) => f.id === 'meridian')!.disposition['drajk']).toBe(
+      witnessBefore - 10,
+    );
     expect(s.loans[0]!.outstanding).toEqual({
       kind: 'hulls',
       stack: { battleship: 4, escort: 2 },
       atSystemId: systemId,
     });
-    // A grievance that compounds, at the rate an unpaid debt's does.
-    expect(s.factions.find((f) => f.id === 'ojjul')!.disposition['drajk']!).toBeLessThan(
-      disposedBefore,
+    // The one-time hit on the turn the term ran out, and a bleed every turn
+    // after that for as long as it stays out.
+    expect(s.factions.find((f) => f.id === 'ojjul')!.disposition['drajk']!).toBe(
+      disposedBefore - 25,
     );
+    expect(
+      tickTurn(s).state.factions.find((f) => f.id === 'ojjul')!.disposition['drajk'],
+    ).toBe(disposedBefore - 25 - 6);
 
     // Hulls are fungible, so an equivalent squadron settles it — which is what
-    // "give it back" has to mean when nothing tracks a hull's history.
+    // "give it back" has to mean when nothing tracks a hull's history. But it
+    // is a deliberate act now, not the tick reaching in again: once the
+    // relationship is what broke, making good is a choice.
     const drajkWorld = s.systems.find((x) => x.controllerFactionId === 'drajk')!;
     setStackAt(drajkWorld, 'drajk', { battleship: 5, escort: 3 });
-    s = tickTurn(s).state;
+    expect(tickTurn(s).state.loans[0]!.status).toBe('defaulted');
+    s = applyOps(s, [{ op: 'return_loan', loanId: s.loans[0]!.id }], 'model', 'drajk').state;
     expect(s.loans[0]!.status).toBe('returned');
     expect(stackAt(s.systems.find((x) => x.id === systemId)!, 'ojjul')).toEqual({
       battleship: 8,
       escort: 6,
       lifter: 2,
     });
+    // Making it good clears the status and never the standing. Disposition has
+    // no decay, so a power that once failed to hand a squadron back is
+    // remembered for it whatever it returns afterwards.
+    expect(s.factions.find((f) => f.id === 'ojjul')!.disposition['drajk']!).toBeLessThan(
+      disposedBefore,
+    );
+  });
+
+  it('can be kept, which is what makes the term an obligation', () => {
+    const { state, systemId } = withSquadron();
+    const s = applyOps(state, [hire(systemId)], 'extraction', 'ojjul').state;
+    const id = s.loans[0]!.id;
+
+    // A lender cannot declare that its own property has been stolen.
+    const wrong = applyOps(s, [{ op: 'repudiate_loan', loanId: id }], 'model', 'ojjul');
+    expect(wrong.rejections[0]?.code).toBe('illegal_value');
+
+    // Without this op a loan is the one instrument in the game that cannot be
+    // betrayed — the tick hands the squadron back whether the borrower likes it
+    // or not, which makes it a scheduled transfer with a fee.
+    const before = s.factions.find((f) => f.id === 'ojjul')!.disposition['drajk'] ?? 0;
+    const kept = applyOps(s, [{ op: 'repudiate_loan', loanId: id }], 'model', 'drajk');
+    expect(kept.rejections).toEqual([]);
+    expect(kept.state.loans[0]!.status).toBe('defaulted');
+    expect(kept.state.factions.find((f) => f.id === 'ojjul')!.disposition['drajk']).toBe(
+      before - 25,
+    );
+    // The hulls stay with the borrower, and go on being theirs to command.
+    expect(hullsAt(kept.state.systems.find((x) => x.id === systemId)!, 'drajk')).toBe(6);
+
+    // And it bleeds every turn it stays out, whatever the term said — a
+    // squadron repudiated on turn 0 of a three-turn hire is out now.
+    const after = tickTurn(kept.state).state;
+    expect(after.factions.find((f) => f.id === 'ojjul')!.disposition['drajk']!).toBeLessThan(
+      before - 25,
+    );
+  });
+
+  it('charges for missed hire, privately', () => {
+    const { state, systemId } = withSquadron();
+    let s = applyOps(state, [hire(systemId, { termTurns: 20 })], 'extraction', 'ojjul').state;
+    s.factions.find((f) => f.id === 'drajk')!.credits = 0;
+    const lenderBefore = s.factions.find((f) => f.id === 'ojjul')!.disposition['drajk'] ?? 0;
+    const witnessBefore = s.factions.find((f) => f.id === 'meridian')!.disposition['drajk'] ?? 0;
+
+    const after = tickTurn(s).state;
+    expect(after.loans[0]!.status).toBe('delinquent');
+    expect(after.loans[0]!.missedPayments).toBe(1);
+    // A hire fee you could simply decline to pay cost a status flag and a
+    // counter. It bleeds with the lender now — but with nobody else, because a
+    // missed payment is not observable to anyone who is not owed it.
+    expect(after.factions.find((f) => f.id === 'ojjul')!.disposition['drajk']).toBe(
+      lenderBefore - 6,
+    );
+    expect(after.factions.find((f) => f.id === 'meridian')!.disposition['drajk']).toBe(
+      witnessBefore,
+    );
   });
 
   it('is handed back by the borrower and by nobody else', () => {
@@ -317,6 +392,43 @@ describe('loans', () => {
     );
     expect(taken).toEqual({ battleship: 2, escort: 2 });
     expect(short).toEqual({ battleship: 2 });
+  });
+
+  it('is something the Combine is obliged to pursue', () => {
+    // 94(a). `debt_unpursued` read `state.debts` alone, so a hired squadron
+    // three turns past due and unchased cost its lender nothing — against a
+    // sheet that says an unpaid debt must be PURSUED. The line says *unpaid*,
+    // and a borrower keeping your ships is exactly the client it describes.
+    const { state, systemId } = withSquadron();
+    // Clear the seeded debts, so what fires can only be the loan.
+    state.debts = [];
+    let s = applyOps(state, [hire(systemId)], 'extraction', 'ojjul').state;
+    for (const sys of s.systems) if (hullsAt(sys, 'drajk') > 0) setStackAt(sys, 'drajk', {});
+    expect(driftingCompulsions(s, 'ojjul').some((d) => d.trigger === 'debt_unpursued')).toBe(
+      false,
+    );
+
+    for (let i = 0; i < 3; i++) s = tickTurn(s).state;
+    expect(s.loans[0]!.status).toBe('defaulted');
+    const drifting = driftingCompulsions(s, 'ojjul');
+    expect(drifting.some((d) => d.trigger === 'debt_unpursued')).toBe(true);
+
+    // And pursuit is still read as pressure actually applied — an operative in
+    // their space answers it, exactly as it does for a debt.
+    const chased = {
+      ...s,
+      agents: [
+        {
+          id: 'agt-x', ownerFactionId: 'ojjul', targetFactionId: 'drajk',
+          systemId: s.systems.find((x) => x.controllerFactionId === 'drajk')!.id,
+          mission: 'surveillance' as const, effect: { kind: 'intel' as const, revealsOrders: true },
+          cover: 'a factor', deployedTurn: 0, exposed: false, successChance: 50,
+        },
+      ],
+    };
+    expect(
+      driftingCompulsions(chased, 'ojjul').some((d) => d.trigger === 'debt_unpursued'),
+    ).toBe(false);
   });
 
   it('stays live while anything is outstanding', () => {

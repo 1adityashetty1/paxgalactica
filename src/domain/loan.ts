@@ -59,8 +59,28 @@ import { HULL_CLASSES, TypedStackSchema, hullsIn, type HullClass, type ShipStack
 export const LoanStatusSchema = z.enum([
   /** Out on loan, rent current, not yet overdue. */
   'current',
-  /** Rent missed, or past due with something still out. */
+  /** Behind on the hire fee. A lesser thing, and a private one. */
   'delinquent',
+  /**
+   * The thing did not come back.
+   *
+   * **One status for both ways of getting here**, which is the correction that
+   * matters most in this module. The first version had the tick seize the
+   * squadron on the due turn whether the borrower liked it or not, so a loan
+   * was the one instrument in the game that could not be betrayed — and
+   * `delinquent` could then only ever mean the hulls were destroyed or the
+   * treasury was empty. That is bad luck, and it was being charged as bad
+   * faith.
+   *
+   * The fix is not to separate them. A lender does not care *why* twelve hulls
+   * did not come home, and the rest of the game already agrees: a debt bleeds
+   * `DEBT_DEFAULT_DISPOSITION_COST` every turn it goes unserviced whether or
+   * not the debtor could afford it, because the Combine's line says *unpaid*
+   * and not *unwilling*. **Taking on an obligation you cannot honour is a fact
+   * about your reliability**, and separating the two would have introduced a
+   * distinction nothing else here makes.
+   */
+  'defaulted',
   /** Everything came back. */
   'returned',
   /** The lender stopped asking. What was lent is the borrower's now. */
@@ -136,9 +156,37 @@ export type Loan = z.infer<typeof LoanSchema>;
 export const MAX_LOAN_CREDITS = 1200;
 export const MAX_LOAN_RENT = 60;
 
-/** Still out: being paid on, or overdue. */
+/**
+ * The price of not giving it back.
+ *
+ * Two precedents, and this is both of them at once because it is both things.
+ * `break_treaty` charges **25** with the other party for repudiating an
+ * arrangement, and `PACT_BREAKING_REPUTATION_COST` (10) is what onlookers charge
+ * for public bad faith — a squadron that did not come home is observable, since
+ * `system.ships` is never redacted. Then `DEBT_DEFAULT_DISPOSITION_COST` bleeds
+ * every turn it stays out, which is how a lender's patience runs out on its own.
+ *
+ * The one-time hits fire **once**, at the moment of default, and the standing
+ * damage does not heal even when the thing is finally returned: disposition has
+ * no decay at all. You can make it right materially and not in reputation,
+ * which is the correct asymmetry for a galaxy with no forgetting.
+ */
+export const LOAN_DEFAULT_DISPOSITION_COST = 25;
+
+/** Still out: being paid on, behind on the fee, or not given back. */
 export const isLoanLive = (l: Loan): boolean =>
-  l.status === 'current' || l.status === 'delinquent';
+  l.status === 'current' || l.status === 'delinquent' || l.status === 'defaulted';
+
+/** Borrowers who have failed to return something and still have not. */
+export function defaultedBorrowersOf(loans: Loan[], lenderId: string): string[] {
+  return [
+    ...new Set(
+      loans
+        .filter((l) => l.status === 'defaulted' && l.lenderFactionId === lenderId)
+        .map((l) => l.borrowerFactionId),
+    ),
+  ];
+}
 
 export function loansFor(loans: Loan[], factionId: string): Loan[] {
   return loans.filter(

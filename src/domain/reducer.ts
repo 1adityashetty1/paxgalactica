@@ -51,9 +51,11 @@ import {
 } from './diplomacy.js';
 import { jumpsBetween, neighboursOf, positionAlongPath, shortestPath } from './graph.js';
 import {
+  LOAN_DEFAULT_DISPOSITION_COST,
   MAX_LOAN_CREDITS,
   MAX_LOAN_RENT,
   assetOnLoan,
+  defaultedBorrowersOf,
   describeOutstanding,
   drawMatching,
   isLoanLive,
@@ -522,6 +524,43 @@ function reclaimHulls(
     owed = subtractStack(owed, got);
   }
   return { taken, short: owed };
+}
+
+/**
+ * The thing did not come back, and the price is the same whichever way.
+ *
+ * Fires once — `status` is the guard — and is reached from two places that used
+ * to be two different events: the borrower saying it is keeping the squadron,
+ * and the term running out with nothing to give. Folding them is deliberate and
+ * the argument is in `LoanStatus`: a lender does not care why twelve hulls did
+ * not come home, and every other obligation here already charges for *unpaid*
+ * rather than for *unwilling*.
+ *
+ * Public, unlike a missed hire payment. A squadron that never sailed home is
+ * observable to anybody with eyes on the system, because `system.ships` is not
+ * redacted — so onlookers charge `PACT_BREAKING_REPUTATION_COST` the same way
+ * they do for tearing up a compact.
+ */
+function defaultLoan(state: WorldState, loan: Loan, why: string, notes: string[]): void {
+  if (loan.status === 'defaulted') return;
+  loan.status = 'defaulted';
+  const lender = state.factions.find((f) => f.id === loan.lenderFactionId);
+  if (lender) {
+    lender.disposition[loan.borrowerFactionId] = Math.max(
+      -100,
+      (lender.disposition[loan.borrowerFactionId] ?? 0) - LOAN_DEFAULT_DISPOSITION_COST,
+    );
+  }
+  for (const witness of state.factions) {
+    if (witness.id === loan.borrowerFactionId || witness.id === loan.lenderFactionId) continue;
+    witness.disposition[loan.borrowerFactionId] = Math.max(
+      -100,
+      (witness.disposition[loan.borrowerFactionId] ?? 0) - PACT_BREAKING_REPUTATION_COST,
+    );
+  }
+  const note = `${nameFor(state, loan.borrowerFactionId)} does not return ${describeOutstanding(loan)} to ${nameFor(state, loan.lenderFactionId)} — ${why}. ${loan.text}`;
+  notes.push(note);
+  logEvent(state, 'diplomacy', note, loan.lenderFactionId);
 }
 
 /**
@@ -3434,6 +3473,9 @@ export function applyOps(
         const moved = settleReturn(state, loan, notes, (id, tons) => {
           hullsBefore.set(id, (hullsBefore.get(id) ?? 0) + tons);
         });
+        // Making it good clears the STATUS and never the standing: disposition
+        // has no decay, so a power that once kept somebody's squadron is
+        // remembered for it whatever it hands back afterwards.
         if (loan.outstanding === null) loan.status = 'returned';
         const note =
           moved === null
@@ -3444,6 +3486,30 @@ export function applyOps(
           loan.lenderFactionId,
           loan.borrowerFactionId,
         ]);
+        break;
+      }
+
+      case 'repudiate_loan': {
+        const loan = state.loans.find((l) => l.id === op.loanId);
+        if (!loan) {
+          reject(raw, 'unknown_loan', `No loan "${op.loanId}".`);
+          break;
+        }
+        // The borrower's act, and only the borrower's — a lender cannot declare
+        // that its own property has been stolen.
+        if (actor !== undefined && loan.borrowerFactionId !== actor) {
+          reject(
+            raw,
+            'illegal_value',
+            `Only ${loan.borrowerFactionId} can keep what it is holding. ${loan.lenderFactionId} can stop asking for it (forgive_loan), or go and take it.`,
+          );
+          break;
+        }
+        if (!isLoanLive(loan)) {
+          reject(raw, 'illegal_value', `That loan is already ${loan.status}.`);
+          break;
+        }
+        defaultLoan(state, loan, `${nameFor(state, loan.borrowerFactionId)} keeps it. ${op.reason}`.trim(), notes);
         break;
       }
 
@@ -4238,27 +4304,51 @@ export function tickTurn(input: WorldState): TickResult {
       lender.credits += paid;
       if (paid < loan.rentPerTurn) {
         loan.missedPayments += 1;
-        loan.status = 'delinquent';
+        // Behind on the fee is a lesser thing than not giving the thing back,
+        // and a PRIVATE one: a missed payment is not observable to anybody who
+        // is not owed it, so onlookers charge nothing. It still bleeds with the
+        // lender at an unpaid debt's rate, which it did not before — a hire fee
+        // you could simply decline to pay cost a status flag and a counter.
+        if (loan.status !== 'defaulted') loan.status = 'delinquent';
+        lender.disposition[loan.borrowerFactionId] = Math.max(
+          -100,
+          (lender.disposition[loan.borrowerFactionId] ?? 0) - DEBT_DEFAULT_DISPOSITION_COST,
+        );
         const note = `${borrower.name} misses ${loan.rentPerTurn - paid} of ${loan.rentPerTurn} due on ${loan.text}`;
         notes.push(note);
         logEvent(state, 'diplomacy', note, loan.lenderFactionId, [
           loan.lenderFactionId,
           loan.borrowerFactionId,
         ]);
-      } else if (loan.status === 'delinquent' && !(loan.dueTurn !== null && state.turn >= loan.dueTurn)) {
+      } else if (loan.status === 'delinquent') {
         // Catching up clears the STATUS and never the arrears, exactly as a
-        // debt's does — but not while the term has also run out, since the
-        // thing itself is still not back.
+        // debt's does. It cannot clear a `defaulted`, which is about the thing
+        // and not about the fee.
         loan.status = 'current';
       }
     }
 
+    // Already in default: the tick does NOT reach into the borrower's fleet
+    // again. It seized once, on the day the term ran out, and a squadron that
+    // did not come home then is being kept — taking it back automatically would
+    // undo a repudiation on the very next tick and make the op pointless.
+    // Handing it over afterwards is `return_loan`, a deliberate act, which is
+    // the right shape once the relationship is the thing that broke.
+    //
+    // The bleed continues for as long as it is out, whatever the term said, so
+    // a lender's patience runs out on its own.
+    if (loan.status === 'defaulted') {
+      lender.disposition[loan.borrowerFactionId] = Math.max(
+        -100,
+        (lender.disposition[loan.borrowerFactionId] ?? 0) - DEBT_DEFAULT_DISPOSITION_COST,
+      );
+      continue;
+    }
+
     if (loan.dueTurn === null || state.turn < loan.dueTurn) continue;
 
-    // The term is up. Retried every turn rather than failed once: hulls are
-    // fungible, so a borrower who lost the squadron can make it good by
-    // building an equivalent one — which is what "return an equivalent
-    // squadron" has to mean when nothing tracks a hull's history.
+    // The term is up, and the cooperative path is automatic: crews sail home
+    // and nobody spends an action point handing back what is not theirs.
     const moved = settleReturn(state, loan, notes);
     if (loan.outstanding === null) {
       loan.status = 'returned';
@@ -4271,24 +4361,14 @@ export function tickTurn(input: WorldState): TickResult {
       continue;
     }
 
-    loan.status = 'delinquent';
-    // A grievance that compounds, at the same rate an unpaid debt's does. This
-    // is the whole of what makes an overdue squadron cost anything.
-    lender.disposition[loan.borrowerFactionId] = Math.max(
-      -100,
-      Math.min(
-        100,
-        (lender.disposition[loan.borrowerFactionId] ?? 0) - DEBT_DEFAULT_DISPOSITION_COST,
-      ),
+    // Something is still out, and there is ONE outcome however it was reached —
+    // see `LoanStatus`. The one-time hits fire here; the bleed starts next turn.
+    defaultLoan(
+      state,
+      loan,
+      moved ? 'only part of it came back' : 'the term ran out and nothing came back',
+      notes,
     );
-    const note = moved
-      ? `${borrower.name} returns ${moved}, still owing ${describeOutstanding(loan)} on ${loan.text}`
-      : `${borrower.name} is past due on ${loan.text} — ${describeOutstanding(loan)} outstanding.`;
-    notes.push(note);
-    logEvent(state, 'diplomacy', note, loan.lenderFactionId, [
-      loan.lenderFactionId,
-      loan.borrowerFactionId,
-    ]);
   }
 
   /* --- Dissent cools ---------------------------------------------------- */

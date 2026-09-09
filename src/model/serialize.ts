@@ -511,10 +511,10 @@ export function serializeLoans(state: WorldState, viewerId: string): string {
       const what = describeOutstanding(l);
       const rent = l.rentPerTurn > 0 ? `, ${l.rentPerTurn}/turn` : ', for nothing';
       const due =
-        l.dueTurn === null
-          ? ', no term set'
-          : l.dueTurn <= state.turn
-            ? `, DUE AND NOT BACK (turn ${l.dueTurn})`
+        l.status === 'defaulted'
+          ? ', NOT RETURNED — it is being kept'
+          : l.dueTurn === null
+            ? ', no term set'
             : `, back by turn ${l.dueTurn}`;
       const behind =
         l.missedPayments > 0 ? ` — ${l.missedPayments} hire payment(s) missed` : '';

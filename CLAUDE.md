@@ -1646,6 +1646,11 @@ pressure actually applied: a fleet under way at one of their worlds, or an
 operative in their space. Diplomacy deliberately does not count; the line is
 about a client who has already learned that owing you costs nothing.
 
+It reads **defaulted loans** as well as delinquent debts, because the line says
+*unpaid* and a borrower keeping your squadron is exactly the client it
+describes. Arrears on a hire fee do not count — that is a smaller grievance and a
+private one, and the trigger is about the thing itself not coming back.
+
 The seed gives the Combine two debts so both halves are live from turn 0 — Drajk
 already in default, Meridian paying on schedule — which also gives the arbiter
 real state to rule against instead of a fiction. **Not Arkane, deliberately:**
@@ -1720,6 +1725,52 @@ read a change in a faction's tonnage as an event:
 Both are told the same thing, which is the rule worth remembering: **hulls that
 change flag under a signature are neither built nor lost.**
 
+#### Bad luck and bad faith are one outcome
+
+The first version had the tick **seize** the squadron on the due turn whether the
+borrower liked it or not. Two things were wrong with that, and they compound.
+
+A loan you cannot fail to return is not an obligation, it is a scheduled
+transfer with a fee — and it made this the one instrument in the game that
+**cannot be betrayed**, in a game whose diplomacy layer exists so that it can:
+*"Deception still counts as agreed — betrayal is a later move, not a reason to
+void the deal."* `break_treaty` is in the ordinary vocabulary for exactly this
+reason. So `repudiate_loan` is too.
+
+And because the return could not fail by choice, the delinquency it produced
+could only ever mean the hulls were destroyed or the treasury was empty — bad
+luck, charged as bad faith, every turn.
+
+**The fix is not to separate them.** A lender does not care *why* twelve hulls
+did not come home, and the rest of the game already agrees: a debt bleeds
+`DEBT_DEFAULT_DISPOSITION_COST` every turn it goes unserviced whether or not the
+debtor could afford it, because the Combine's line says *unpaid* and not
+*unwilling*. Taking on an obligation you cannot honour is a fact about your
+reliability. So there is **one** `defaulted` status, reached either way, at one
+price:
+
+| | with the lender | with onlookers |
+|---|---|---|
+| **not returned** — kept, or gone | 25 once (a `break_treaty`), then `DEBT_DEFAULT_DISPOSITION_COST` a turn while it is out | `PACT_BREAKING_REPUTATION_COST` once |
+| **behind on the hire** | `DEBT_DEFAULT_DISPOSITION_COST` a turn | nothing |
+
+The split between them is **observability**, which is the line this codebase
+already draws everywhere else: a squadron that never sailed home is visible to
+anybody with eyes on the system, because `system.ships` is not redacted, while a
+missed payment is not visible to anybody who is not owed it.
+
+**A default ends the automatic return.** The tick reaches into the borrower's
+fleet once, on the day the term runs out, and never again — otherwise a
+repudiation would be undone on the very next tick and the op would be pointless.
+Making good afterwards is `return_loan`, a deliberate act, which is the right
+shape once the thing that broke is the relationship. It clears the **status** and
+not the standing: disposition has no decay, so a power that once kept somebody's
+squadron is remembered for it whatever it hands back later.
+
+`debt_unpursued` reads defaulted loans as well as delinquent debts, which is what
+makes *"an unpaid debt must be pursued"* mean what it says. Arrears on the hire
+deliberately do not count — that is a smaller grievance, and a private one.
+
 #### A return is of their like, not of them
 
 These hulls can never come back. A stack merges into the borrower's the moment it
@@ -1731,14 +1782,15 @@ the borrower's richest: without that ordering a borrower with a bigger fleet
 elsewhere satisfies the return from home and leaves the actual squadron squatting
 in the lender's orbit forever.
 
-That fungibility is also what makes a default recoverable. **The return is
-retried every turn**, so a borrower who lost the squadron owes an equivalent one
-and can build it — which is what *"give it back"* has to mean here.
+That fungibility is also what makes a default recoverable: a borrower who lost
+the squadron owes an equivalent one and **can build it**, which is what *"give it
+back"* has to mean here. After a default it takes a `return_loan` to do it.
 
 | op | source | why |
 |---|---|---|
 | `establish_loan` | **extraction only** | it binds the *borrower* — to feed it, pay for it and return it |
 | `return_loan` | ordinary, **borrower only** | handing back what is not yours needs nobody, and the reducer moves the real hulls, so it cannot wish the obligation away |
+| `repudiate_loan` | ordinary, **borrower only** | keeping it is genuinely unilateral, the same argument `break_treaty` makes — and without it a loan cannot be betrayed at all |
 | `forgive_loan` | ordinary, **lender only** | a lender needs nobody's permission to make a gift of what is already in somebody else's hands |
 
 A lender **recalling** early is none of these: that is a conversation, or a
@@ -2600,6 +2652,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `establish_debt` | **extraction-only** — a principal that depletes; trimmed to `MAX_DEBT_PRINCIPAL` |
 | `establish_loan` | **extraction-only** — a thing that comes back: hulls, credits or a portable asset. Never a world, never a fixture |
 | `return_loan` | borrower only; the hulls really leave its stacks |
+| `repudiate_loan` | borrower only; keeping it, priced like breaking a pact |
 | `forgive_loan` | lender only; what was lent becomes the borrower's |
 | `forgive_debt` | creditor only; writes off the balance and buys goodwill |
 | `spawn_event` | |

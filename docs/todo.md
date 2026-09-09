@@ -41,7 +41,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~89~~ | ~~rival dissent~~ | medium | **BUILT** — an agent effect *and* a treaty consequence |
 | ~~90~~ | ~~a hired squadron, which is a loan of units~~ | medium | **BUILT** — as `Loan`, not as a `Debt` with extra fields |
 | ~~91~~ | ~~seven small things~~ | small | **BUILT**, six of seven; severability is not small |
-| **94** | loans, after the first one is signed | small | three gaps the build left, all cheap |
+| ~~94~~ | ~~loans, after the first one is signed~~ | small | **(a) BUILT**, with the default model it exposed; (b) wants a playtest, (c) settled |
 | **93** | three things the asset fields still cannot say | small–medium | one is a measured bug (an instrument exercised forever) |
 | **80** | an advisor that costs an action | medium | not from the playtest; wanted |
 | **92** | two claims only a campaign can settle | — | needs play, not code |
@@ -650,24 +650,43 @@ Vosk Company (a chartered subsidiary is an *entity*, not a thing — it wants
 agency, which is a faction-shaped problem), and a letter of marque naming
 permitted victims (a permission, which is a `Commitment`).
 
-## 94. Loans, after the first one is signed
+## 94. PARTLY BUILT — loans, after the first one is signed
 
-Three gaps the build left, listed so they are decisions rather than omissions.
-All small, none urgent, and the first is the only one with a live sheet behind
-it.
+Three gaps the build left. **(a) is built**, and building it turned up a
+larger design fault in 90 that is fixed with it. (b) wants a playtest and (c)
+was already settled.
 
-**a) `debt_unpursued` cannot see an overdue loan.** The Combine's compulsion is
+### The fault (a) uncovered — and the ruling on it
+
+Item 90 shipped with the tick **seizing** the squadron on the due turn whether
+the borrower liked it or not. So a loan was the one instrument in the game that
+could not be betrayed, and `delinquent` could only ever mean the hulls were
+destroyed or the treasury was empty — bad luck, charged as bad faith, every turn.
+
+The ruling, and it is the user's rather than mine: **fold them.** A lender does
+not care why twelve hulls did not come home, and the rest of the game already
+agrees — a debt bleeds every turn it goes unserviced whether or not the debtor
+could afford it, because the line says *unpaid* and not *unwilling*. Separating
+them would have introduced a distinction nothing else here makes.
+
+So: one `defaulted` status reached either way, `repudiate_loan` added so keeping
+it is reachable at all, one price (25 with the lender then 6 a turn, plus
+`PACT_BREAKING_REPUTATION_COST` with onlookers, because a squadron that never
+sailed home is observable), arrears on the hire given the private bleed they
+never had, and the automatic return ended by a default — otherwise a repudiation
+is undone on the next tick. Written up in `CLAUDE.md`, *"Bad luck and bad faith
+are one outcome"*.
+
+**a) BUILT — `debt_unpursued` could not see an overdue loan.** The Combine's compulsion is
 *"an unpaid debt must be pursued"*, and `driftingCompulsions` reads
 `state.debts` alone. A hired squadron three turns past due and unchased is the
 same fiction and the same failure of character, and it currently costs its
-creditor nothing to ignore. The predicate already exists and reads
-`delinquentDebtorsOf(state.debts, …)`; it needs the loan analogue beside it.
-One thing to decide while writing it: a loan goes `delinquent` for two different
-reasons — missed **rent**, and a term that ran out with the thing not back — and
-only the second is really *"an unpaid debt"* in the Combine's sense. The first is
-an arrears problem; the second is somebody keeping your ships.
+creditor nothing to ignore. `defaultedBorrowersOf` sits beside
+`delinquentDebtorsOf` and the trigger unions them. Only a `defaulted` loan
+counts, never arrears on the hire: the first is somebody keeping your ships and
+the second is an invoice.
 
-**b) There is no `assign_loan` and no `restructure_loan`.** `debt.ts` learned
+**b) NOT BUILT — there is no `assign_loan` and no `restructure_loan`.** `debt.ts` learned
 both the hard way — a debt that could only be *transferred* by minting a second
 copy left three standing against an original of 600, and a restructure routed
 through `forgive_debt` + `establish_debt` minted principal, paid goodwill for a
@@ -675,7 +694,7 @@ forgiveness that forgave nothing, and laundered a delinquency clean. Neither has
 been reached for on a loan yet, so neither is built; the lesson is written down
 so the next person does not rediscover it by shipping the same chain.
 
-**c) A lender cannot recall early, and that is currently a prompt rule.** The
+**c) SETTLED — a lender cannot recall early.** The
 op is borrower-only by design, and the honest instrument is a contingency
 written at signature — 86 built the trigger half, so *"the squadron comes home
 if you make peace with the Vigil"* is expressible today. What does not exist is

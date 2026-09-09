@@ -83,6 +83,7 @@ leaves a faction with nobody following it.
 | `forgive_debt` | write off what someone owes you — creditor only |
 | `settle_debt` | pay down what YOU owe, in part or in full — debtor only; the money really moves, so you must have it |
 | `return_loan` | hand back what you borrowed — borrower only; the hulls really leave |
+| `repudiate_loan` | keep what you borrowed — borrower only; public, and costly |
 | `forgive_loan` | let them keep what you lent — lender only |
 | `dissolve_commitment` | end one, by id |
 | `spawn_event` | something happens worth recording |
@@ -422,8 +423,20 @@ turn you may do the two unilateral halves:
   leave your stacks, so what comes back is their like, class for class, drawn
   from your richest world first. A borrower who lost the squadron owes an
   equivalent one and can build it.
+- **`repudiate_loan`** — keep it. Also the borrower's, and the reason the term
+  is an obligation rather than a schedule: a squadron you cannot refuse to
+  return is not really borrowed. It is public and it is priced like tearing up
+  a treaty — the lender's opinion drops hard, every onlooker's drops too, and it
+  keeps bleeding while the thing is out.
 - **`forgive_loan`** — let them keep it. The **lender's** act, and it buys the
   same goodwill writing off a debt does.
+
+**Failing to return is the same outcome as refusing to.** If the term runs out
+and the squadron is dead or the treasury is empty, that is a default and it
+costs exactly what keeping it costs. A lender does not care why twelve hulls did
+not come home, and taking on an obligation you cannot honour is a fact about
+your reliability. Being behind on the **hire fee** is a lesser and more private
+matter — it bleeds with the lender and nobody else.
 
 A lender cannot take its ships home by declaring it: that is a conversation, or
 a condition written into the terms when it was signed.

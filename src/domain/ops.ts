@@ -607,6 +607,26 @@ export const ReturnLoanOp = z.object({
  * else's hands. What was lent becomes the borrower's, and the goodwill is the
  * same `DEBT_FORGIVENESS_GOODWILL` a written-off debt buys.
  */
+/**
+ * Keeping what you borrowed.
+ *
+ * This exists because without it a loan is the one instrument in the game that
+ * **cannot be betrayed** — the tick hands the squadron back on the due turn
+ * whether the borrower likes it or not, which makes the arrangement a scheduled
+ * transfer with a fee rather than an obligation. `break_treaty` is in the
+ * ordinary vocabulary for exactly this reason: repudiation is genuinely
+ * unilateral, and the game's own rule is that *"betrayal is a later move, not a
+ * reason to void the deal."*
+ *
+ * It reaches the same state as simply failing to return — see `LoanStatus`,
+ * where the argument for one status rather than two is written down.
+ */
+export const RepudiateLoanOp = z.object({
+  op: z.literal('repudiate_loan'),
+  loanId: z.string().min(1),
+  reason: z.string().default(''),
+});
+
 export const ForgiveLoanOp = z.object({
   op: z.literal('forgive_loan'),
   loanId: z.string().min(1),
@@ -745,6 +765,7 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   // `establish_loan` is ABSENT for the same reason: lending under terms binds
   // the borrower. Giving it back and letting them keep it are unilateral.
   ReturnLoanOp,
+  RepudiateLoanOp,
   ForgiveLoanOp,
   SpawnEventOp,
   LogNarrativeOp,
@@ -809,6 +830,7 @@ export const OpSchema = z.discriminatedUnion('op', [
   SettleDebtOp,
   EstablishLoanOp,
   ReturnLoanOp,
+  RepudiateLoanOp,
   ForgiveLoanOp,
   SpawnEventOp,
   LogNarrativeOp,
