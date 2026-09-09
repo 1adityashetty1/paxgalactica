@@ -15,7 +15,8 @@ is purely a **record** of the conversation:
 `form_treaty` · `break_treaty` · `establish_debt` · `assign_debt` ·
 `restructure_debt` · `establish_commitment` · `dissolve_commitment` ·
 `forgive_debt` · `settle_debt` · `adjust_disposition` · `adjust_credits` ·
-`log_narrative` · `spawn_event` · `set_toll_policy` · `transfer_asset`
+`log_narrative` · `spawn_event` · `set_toll_policy` · `transfer_asset` ·
+`establish_loan` · `return_loan` · `forgive_loan`
 
 **`transfer_asset` moves a thing that already exists** — prisoners ransomed
 back, an heirloom handed over, a lot of ore delivered. Taking another power's
@@ -31,6 +32,42 @@ go with the ground.
 **You cannot create one here.** A conversation trades what exists and does not
 conjure what does not, so an accord promising *"a hundred tons of ore"* nobody
 holds produces nothing. That is not a gap: it is a thing to go and get.
+
+### A hired squadron is a loan, and so is everything else lent
+
+*"Twelve hulls under your flag for six turns, forty a turn"* is the commonest
+arrangement in the genre and it is **`establish_loan`**, not a treaty. It is
+here, and not on the declared path, because it binds the **borrower**: to feed
+the squadron, to pay the hire, and to give it back.
+
+```jsonc
+{ "op": "establish_loan", "lenderFactionId": "ojjul", "borrowerFactionId": "drajk",
+  "lent": { "kind": "hulls", "stack": { "battleship": 8, "escort": 4 }, "atSystemId": "ilv-2" },
+  "rentPerTurn": 40, "termTurns": 6,
+  "text": "The Sixteenth serves under Drajk colours for six turns." }
+```
+
+Three things can be lent and nothing else:
+
+- **`hulls`** — `stack` by class, and `atSystemId` where they are standing now.
+  The lender must actually have them there; the hire is trimmed to what is.
+  While it is out the **borrower commands it**: the ships are theirs to order,
+  count in their strength, and cost them upkeep. The rent is on top.
+- **`credits`** — an advance that comes back whole, with rent while it is out.
+  That is a different instrument from `establish_debt`, whose balance is paid
+  *down* until it is gone. Use a debt for borrowing, a loan for a facility.
+- **`asset`** — by `assetId`, and only a **portable** one.
+
+**A world cannot be lent, and neither can a fixture.** Handing over ground is a
+`cession`; letting somebody's fleet stand on it is `basing_rights`. A mine or an
+exchange goes with its world and by no other route.
+
+`rentPerTurn: 0` is a favour, which is a real arrangement. `termTurns: null` is
+"until somebody says otherwise" — nothing comes back on its own, so use a term
+whenever the parties named one.
+
+`return_loan` and `forgive_loan` are reachable here too, for a conversation that
+ends with the squadron going home or being made a gift of.
 
 **`set_toll_policy` may only OPEN your lanes here, never close them.** Lifting a
 toll is a concession, and it is one of the few real ones you can make that takes

@@ -4,6 +4,7 @@ import { FleetsPanel } from './FleetsPanel.js';
 import { TradePanel } from './TradePanel.js';
 import { STAT_NAMES } from '../../../src/domain/checks.js';
 import { debtsFor } from '../../../src/domain/debt.js';
+import { describeOutstanding, loansFor } from '../../../src/domain/loan.js';
 import { describeOrderEffect } from '../../../src/domain/development.js';
 import { describeEffect } from '../../../src/domain/diplomacy.js';
 import {
@@ -387,6 +388,7 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
   const commitments = commitmentsOf(state, me);
   const assets = (state.assets ?? []).filter((a) => a.heldBy === me);
   const debts = debtsFor(state.debts ?? [], me);
+  const loans = loansFor(state.loans ?? [], me);
 
   return (
     <div className="standing">
@@ -528,6 +530,48 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
                 <p className="muted">
                   {d.balance} of {d.principal} outstanding · {paid} repaid
                   {d.missedPayments > 0 ? ` · ${d.missedPayments} missed` : ''}
+                </p>
+              </div>
+            );
+          })}
+        </>
+      )}
+
+      {/* Beside the debts, and separate from them, because the two read
+          oppositely: a debt is money going out until it is gone, and a loan is
+          a thing that has to come back. The line a player needs here is which
+          it is, what is still out, and whether the term has run. */}
+      {loans.length > 0 && (
+        <>
+          <h4>Lent and borrowed</h4>
+          {loans.map((l) => {
+            const lending = l.lenderFactionId === me;
+            const other = lending ? l.borrowerFactionId : l.lenderFactionId;
+            const name = state.factions.find((f) => f.id === other)?.name ?? other;
+            const overdue = l.dueTurn !== null && l.dueTurn <= state.turn;
+            return (
+              <div key={l.id} className="treaty">
+                <div className="treaty-head">
+                  <button className="linkish" onClick={() => onSelect(other)}>
+                    {lending ? `${name} holds yours` : `you hold ${name}'s`}
+                  </button>
+                  {l.rentPerTurn > 0 && (
+                    <span className={lending ? 'chip good' : 'chip bad'}>
+                      {lending ? '+' : '-'}
+                      {l.rentPerTurn}cr/turn
+                    </span>
+                  )}
+                  {overdue && (
+                    <span className="chip bad" title="The term has run out.">
+                      past due
+                    </span>
+                  )}
+                </div>
+                <p className="commitment-text">{l.text}</p>
+                <p className="muted">
+                  {describeOutstanding(l)} outstanding
+                  {l.dueTurn === null ? ' · no term' : ` · due turn ${l.dueTurn}`}
+                  {l.missedPayments > 0 ? ` · ${l.missedPayments} missed` : ''}
                 </p>
               </div>
             );

@@ -1657,6 +1657,118 @@ Balance is unmoved (nets 24/90/232/71/32 before and after) because the transfer
 sits outside `net`, and the Combine's inflow is bounded by the principal rather
 than being another perpetual stream.
 
+### Loans: a thing that comes back, which is not a debt
+
+`src/domain/loan.ts`. Twelve hulls offered under another power's flag, command
+and orders landed as **`basing_rights`** — permission for the *lender's* fleet
+to visit the borrower's space, which is close to the opposite of a hire. The
+commonest arrangement in the genre had no representation at all.
+
+Restated, a hired squadron is a loan whose principal is hulls, and once it is
+put that way credits stop being special: a loan could be of money, of ships, or
+of a thing. That framing is right, and it is exactly why this is a second module
+rather than four fields on `Debt`.
+
+**The obligation machinery generalises; the balance arithmetic does not.**
+Default, arrears that catching up never erases, a per-turn disposition cost while
+something is overdue — none of that cares what was lent, and all of it is shared
+with `debt.ts` down to `DEBT_DEFAULT_DISPOSITION_COST` and
+`DEBT_FORGIVENESS_GOODWILL`. But a debt's balance *depletes through its flow*:
+you pay it down and it is gone. A loan is the opposite shape — what went out
+comes **back whole**, and the per-turn flow is rent running the other way,
+borrower to lender. Modelling that as a `Debt` would make the hire fee look like
+repayment and the squadron's return look like a write-off.
+
+That is the `tribute`/`contract` mistake exactly: `tribute` became the sink for
+every recurring commercial flow because it was the only type carrying
+`incomePerTurn`, and it put a power whose sheet refuses tribute on the paying end
+of one. **A loan-for-repayment and a loan-for-hire are two instruments, and one
+of them existing is not a reason to file the other under it.**
+
+#### What can be lent, and what cannot
+
+| kind | what it is |
+|---|---|
+| `hulls` | a `ShipStack` and the world it stands on. Trimmed to what the lender actually has there |
+| `credits` | an advance that returns whole with rent while it is out — a facility, where `Debt` is a mortgage |
+| `asset` | a **portable** one only |
+
+**A world cannot be lent, and neither can a fixture.** Handing over ground is a
+`cession` and letting somebody's fleet stand on it is `basing_rights`, so a lease
+would be a third answer to a question that already has two — and it would need
+control, garrison and income to disagree with each other for a term. A mine, an
+exchange or a theatre changes hands with its world and by no other route, so
+lending one is unrepresentable rather than merely unwise. There is no `systemId`
+in the union at all, so the first is closed by construction rather than by a
+guard somebody can forget.
+
+#### The command transfer is the whole point, and it is free
+
+A fleet in this game is `system.ships[factionId]` and nothing else, so changing
+the flag on a stack **is** the hire: the borrower's orders move it, the
+borrower's `fleetStrengthOf` counts it, the borrower's upkeep feeds it, and it
+fights when the borrower says. C-6's requirement needed no new mechanism.
+
+What it did need is an exemption on both sides, because two batch-level passes
+read a change in a faction's tonnage as an event:
+
+- `billConstruction` would charge the **borrower** the full purchase price for a
+  squadron it is renting;
+- `capSelfInflictedLosses` would read the **lender's** fleet shrinking as a
+  scuttling and put the squadron back — leaving two of it.
+
+Both are told the same thing, which is the rule worth remembering: **hulls that
+change flag under a signature are neither built nor lost.**
+
+#### A return is of their like, not of them
+
+These hulls can never come back. A stack merges into the borrower's the moment it
+changes flag and nothing tracks a hull's history, so what returns is an
+equivalent squadron, **class for class** — a lender who sent four battleships is
+not made whole by four lifters, and drawing by hull count would have handed back
+exactly that. It is looked for at the world it was handed over at first, then at
+the borrower's richest: without that ordering a borrower with a bigger fleet
+elsewhere satisfies the return from home and leaves the actual squadron squatting
+in the lender's orbit forever.
+
+That fungibility is also what makes a default recoverable. **The return is
+retried every turn**, so a borrower who lost the squadron owes an equivalent one
+and can build it — which is what *"give it back"* has to mean here.
+
+| op | source | why |
+|---|---|---|
+| `establish_loan` | **extraction only** | it binds the *borrower* — to feed it, pay for it and return it |
+| `return_loan` | ordinary, **borrower only** | handing back what is not yours needs nobody, and the reducer moves the real hulls, so it cannot wish the obligation away |
+| `forgive_loan` | ordinary, **lender only** | a lender needs nobody's permission to make a gift of what is already in somebody else's hands |
+
+A lender **recalling** early is none of these: that is a conversation, or a
+contingency written into the terms at signature — 86 already built the trigger
+half.
+
+Rent is settled as a transfer in `tickTurn` against what the borrower can
+actually find, and reported by `Ledger.loanRent` **outside `net`**, for the same
+reason `debtService` is: a rate would have a broke borrower "pay" money it never
+had and the lender receive it.
+
+A borrower cannot sell, split, re-lend or pledge what it holds on loan. That
+needed saying explicitly because the borrower **is** `heldBy` — that is what a
+loan of a thing means — so every guard that keys on the holder waves them
+through.
+
+**One consequence is deliberate and reads as a bug at first.** A hired squadron
+standing on the *lender's own world* contests that world's income, because it now
+flies a foreign flag and `systemIncome` splits by presence. The reducer cannot
+tell a hired squadron from an invasion fleet by looking at a stack, and it must
+not try — an exemption would exempt the invasion too. So hiring your fleet out
+at home costs you the contest, and handing it over at a border world does not.
+
+> Building this found an id collision shipped with assets the day before:
+> `mintId` scanned treaties, agents, commitments and debts and **not**
+> `state.assets`, so every asset created on turn N was `ast-N-0`. Two in one
+> batch collided outright, and `find` then handed the wrong one to
+> `transfer_asset` and to `voidsOn: asset_lost`. Every collection that mints an
+> id has to be in that pool.
+
 ### A treaty needs consent, so it is not a declared action
 
 `form_treaty` was in `ModelOpSchema` and the reducer checked that the two ids
@@ -2486,6 +2598,9 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `restructure_debt` | **extraction-only** — new terms need the creditor's agreement; keeps the id, the balance and the history |
 | `establish_commitment` | optional `incomePerTurn`, trimmed to `MAX_COMMITMENT_INCOME` |
 | `establish_debt` | **extraction-only** — a principal that depletes; trimmed to `MAX_DEBT_PRINCIPAL` |
+| `establish_loan` | **extraction-only** — a thing that comes back: hulls, credits or a portable asset. Never a world, never a fixture |
+| `return_loan` | borrower only; the hulls really leave its stacks |
+| `forgive_loan` | lender only; what was lent becomes the borrower's |
 | `forgive_debt` | creditor only; writes off the balance and buys goodwill |
 | `spawn_event` | |
 | `log_narrative` | |
@@ -2502,7 +2617,7 @@ Rejection codes: `unknown_op`, `schema_invalid`, `reducer_only`,
 `unknown_treaty`, `unknown_agent`, `commitment_conflict`, `no_presence`,
 `unreachable_target`, `missing_duration`, `insufficient_credits`,
 `not_interruptible`, `illegal_value`, `doctrine_refusal`, `needs_consent`,
-`declared_only`, `unknown_debt`.
+`declared_only`, `unknown_debt`, `unknown_loan`.
 
 ---
 
@@ -3487,7 +3602,7 @@ re-sends its context. A trivial call still takes ~7s for that reason.
 ```
 src/
   domain/     state, ops, hulls, duration, development, graph, checks,
-              diplomacy, arbitration, compulsions, debt, trade, intel,
+              diplomacy, arbitration, compulsions, debt, loan, trade, intel,
               battle, initiative, reducer
               ← pure. No I/O, no network, no imports from engine/model/ui.
   api/        contract.ts — Zod schemas shared by server and browser

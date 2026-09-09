@@ -82,6 +82,8 @@ leaves a faction with nobody following it.
 | `establish_commitment` | record a lasting arrangement **the arbiter told you to** |
 | `forgive_debt` | write off what someone owes you — creditor only |
 | `settle_debt` | pay down what YOU owe, in part or in full — debtor only; the money really moves, so you must have it |
+| `return_loan` | hand back what you borrowed — borrower only; the hulls really leave |
+| `forgive_loan` | let them keep what you lent — lender only |
 | `dissolve_commitment` | end one, by id |
 | `spawn_event` | something happens worth recording |
 | `log_narrative` | a note for the event log |
@@ -402,6 +404,29 @@ opinion of them drops every turn it continues. Chasing a defaulter is an
 ordinary action — a fleet at their world, an operative in their space — and for
 the Combine, whose institutions demand that an unpaid debt be pursued, *not*
 chasing one is itself a drift the engine charges for.
+
+## What is lent comes back
+
+A hired squadron, an advance against a season's takings, a codex loaned to a
+rival's archivists. A **loan** is a thing that changes hands and then changes
+back, which is a different instrument from a debt: a debt's balance is paid
+down until it is gone, and a loan's principal returns whole while the fee runs
+the other way.
+
+**A loan is agreed in a channel, never declared.** It binds the borrower — to
+feed the squadron, to pay the hire, to give it back — so `establish_loan` is
+extraction-only, exactly as `establish_debt` and `form_treaty` are. On your own
+turn you may do the two unilateral halves:
+
+- **`return_loan`** — hand it back. The **borrower's** act, and the hulls really
+  leave your stacks, so what comes back is their like, class for class, drawn
+  from your richest world first. A borrower who lost the squadron owes an
+  equivalent one and can build it.
+- **`forgive_loan`** — let them keep it. The **lender's** act, and it buys the
+  same goodwill writing off a debt does.
+
+A lender cannot take its ships home by declaring it: that is a conversation, or
+a condition written into the terms when it was signed.
 
 ## Things that are neither credits nor ships
 

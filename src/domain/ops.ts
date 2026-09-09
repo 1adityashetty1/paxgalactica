@@ -9,6 +9,7 @@ import {
   VoidConditionSchema,
 } from './diplomacy.js';
 import { FibScaleSchema } from './duration.js';
+import { LentSchema } from './loan.js';
 import { HullClassSchema, TypedStackSchema } from './hulls.js';
 import {
   OnInterruptSchema,
@@ -553,6 +554,65 @@ export const SettleDebtOp = z.object({
   reason: z.string().default(''),
 });
 
+/**
+ * Lending a thing out under terms.
+ *
+ * Extraction-only, for the reason `establish_debt` and `form_treaty` are: it
+ * binds the **borrower** — to feed the squadron, to pay the rent, to give it
+ * back — and a transcript is the only place that power's agreement exists. The
+ * lender giving something away would need nobody; the arrangement is not the
+ * gift.
+ *
+ * A world is not on the list of things that can be lent. The instrument for a
+ * world changing hands is a `cession` and the instrument for somebody else's
+ * fleet standing on one is `basing_rights`, so a lease would be a third answer
+ * to a question that already has two. Nor is a fixture — a mine, an exchange, a
+ * theatre change hands with their ground and by no other route.
+ */
+export const EstablishLoanOp = z.object({
+  op: z.literal('establish_loan'),
+  lenderFactionId: z.string().min(1),
+  borrowerFactionId: z.string().min(1),
+  lent: LentSchema,
+  /** The hire fee, borrower to lender, per turn. Trimmed to `MAX_LOAN_RENT`. */
+  rentPerTurn: z.number().int().min(0).max(10000).default(0),
+  /** Turns until it must be back. `null` is "until somebody says otherwise". */
+  termTurns: z.number().int().min(1).max(60).nullable().default(null),
+  text: z.string().min(1).max(240),
+});
+
+/**
+ * Handing back what you borrowed, in whole or in part.
+ *
+ * An ordinary op, and the **borrower's** alone. Giving back what is not yours
+ * needs nobody's permission, which is the same argument that keeps `settle_debt`
+ * off the negotiated path — and it is safe to leave open for the same reason,
+ * because the reducer moves the real thing: the hulls actually leave the
+ * borrower's stacks, so this cannot be used to wish an obligation away.
+ *
+ * A lender **recalling** early is not this op. That needs the borrower to agree,
+ * or a contingency written at signature — 86 already builds the trigger half.
+ */
+export const ReturnLoanOp = z.object({
+  op: z.literal('return_loan'),
+  loanId: z.string().min(1),
+  reason: z.string().default(''),
+});
+
+/**
+ * The lender stops asking for it back.
+ *
+ * Unilateral and therefore ordinary, exactly as `forgive_debt` is: a lender
+ * needs nobody's permission to make a gift of what is already in somebody
+ * else's hands. What was lent becomes the borrower's, and the goodwill is the
+ * same `DEBT_FORGIVENESS_GOODWILL` a written-off debt buys.
+ */
+export const ForgiveLoanOp = z.object({
+  op: z.literal('forgive_loan'),
+  loanId: z.string().min(1),
+  reason: z.string().default(''),
+});
+
 export const DissolveCommitmentOp = z.object({
   op: z.literal('dissolve_commitment'),
   commitmentId: z.string().min(1),
@@ -620,6 +680,12 @@ export const EXTRACTION_ALLOWED = new Set<string>([
   // Handing a thing over, or being handed one. Taking another power's asset
   // needs their agreement, and a transcript is the one place it exists.
   'transfer_asset',
+  // Lending binds the borrower to give it back; the two unilateral halves —
+  // handing it back, and letting them keep it — are reachable here too, since
+  // both are ordinary acts a conversation can perfectly well conclude with.
+  'establish_loan',
+  'return_loan',
+  'forgive_loan',
   // The record of what was said.
   'log_narrative',
   'spawn_event',
@@ -676,6 +742,10 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   // the debtor, and consent lives in a transcript. Forgiving is unilateral.
   ForgiveDebtOp,
   SettleDebtOp,
+  // `establish_loan` is ABSENT for the same reason: lending under terms binds
+  // the borrower. Giving it back and letting them keep it are unilateral.
+  ReturnLoanOp,
+  ForgiveLoanOp,
   SpawnEventOp,
   LogNarrativeOp,
 ]);
@@ -703,6 +773,7 @@ export const ExtractionOpSchema = z.union([
   // Rescheduling needs the creditor's agreement, so it belongs here with the
   // rest of the negotiated vocabulary rather than on the declared path.
   RestructureDebtOp,
+  EstablishLoanOp,
 ]);
 
 /** The full vocabulary, including ops only the reducer may originate. */
@@ -736,6 +807,9 @@ export const OpSchema = z.discriminatedUnion('op', [
   AssignDebtOp,
   RestructureDebtOp,
   SettleDebtOp,
+  EstablishLoanOp,
+  ReturnLoanOp,
+  ForgiveLoanOp,
   SpawnEventOp,
   LogNarrativeOp,
 ]);
@@ -1079,6 +1153,7 @@ export interface OpRejection {
     | 'unknown_treaty'
     | 'unknown_agent'
     | 'unknown_debt'
+    | 'unknown_loan'
     | 'unknown_asset'
     | 'doctrine_refusal'
     /** A treaty was declared rather than negotiated; the other party never agreed. */

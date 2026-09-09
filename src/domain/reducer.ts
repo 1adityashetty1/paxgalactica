@@ -50,6 +50,16 @@ import {
   type VoidCondition,
 } from './diplomacy.js';
 import { jumpsBetween, neighboursOf, positionAlongPath, shortestPath } from './graph.js';
+import {
+  MAX_LOAN_CREDITS,
+  MAX_LOAN_RENT,
+  assetOnLoan,
+  describeOutstanding,
+  drawMatching,
+  isLoanLive,
+  type Lent,
+  type Loan,
+} from './loan.js';
 import { routeEarnings, tollsOn, tradeRoutes } from './trade.js';
 import {
   CREDITS_PER_TON,
@@ -383,11 +393,18 @@ function mintOrderId(state: WorldState): string {
  */
 function mintId(state: WorldState, prefix: string): string {
   const stem = `${prefix}-${state.turn}-`;
+  // EVERY collection that mints an id has to be in this pool, and assets were
+  // not: nothing scanned `state.assets`, so every asset created on turn N was
+  // `ast-N-0` — two in one batch collided outright, and `find` then returned
+  // the wrong one to `transfer_asset` and to `voidsOn: asset_lost`. Caught by a
+  // loan test that happened to create two assets at once.
   const pool = [
     ...state.treaties.map((t) => t.id),
     ...state.agents.map((a) => a.id),
     ...(state.commitments ?? []).map((c) => c.id),
     ...(state.debts ?? []).map((d) => d.id),
+    ...(state.assets ?? []).map((a) => a.id),
+    ...(state.loans ?? []).map((l) => l.id),
   ];
   let highest = -1;
   for (const id of pool) {
@@ -461,6 +478,131 @@ function drawShips(
     owed -= take;
   }
   return drawn;
+}
+
+/**
+ * Pull an equivalent squadron back out of the borrower's fleet.
+ *
+ * **These** hulls can never come back: a stack merges into the borrower's the
+ * moment it changes flag, and nothing in this game tracks a hull's history.
+ * What comes back is their like, class for class, which is the honest reading
+ * anyway — a lender who sent four battleships is not made whole by four
+ * lifters, and drawing by hull count would have handed back exactly that.
+ *
+ * Richest world first, so the return is deterministic and replays.
+ */
+function reclaimHulls(
+  state: WorldState,
+  borrowerId: string,
+  want: ShipStack,
+  /** Where the squadron was handed over, which is where it is looked for first. */
+  handedOverAt?: string,
+): { taken: ShipStack; short: ShipStack } {
+  let owed: ShipStack = { ...want };
+  let taken: ShipStack = {};
+  // The world it was handed over at comes first, then the richest. Without
+  // that, a borrower with a bigger fleet elsewhere hands back equivalent hulls
+  // from home and leaves the actual squadron squatting in the lender's orbit —
+  // satisfied on paper, and a foreign flag over the lender's world forever.
+  const bases = [...state.systems]
+    .filter((sys) => hullsAt(sys, borrowerId) > 0)
+    .sort(
+      (a, b) =>
+        Number(b.id === handedOverAt) - Number(a.id === handedOverAt) ||
+        hullsAt(b, borrowerId) - hullsAt(a, borrowerId) ||
+        a.id.localeCompare(b.id),
+    );
+  for (const base of bases) {
+    if (hullsIn(owed) === 0) break;
+    const here = stackAt(base, borrowerId);
+    const { taken: got } = drawMatching(here, owed);
+    if (hullsIn(got) === 0) continue;
+    setStackAt(base, borrowerId, subtractStack(here, got));
+    taken = mergeStacks(taken, got);
+    owed = subtractStack(owed, got);
+  }
+  return { taken, short: owed };
+}
+
+/**
+ * Hand back as much of a loan as the borrower can currently find.
+ *
+ * One function for both paths that return anything — the borrower's own
+ * `return_loan`, and the tick when the term runs out — because a return that
+ * behaved differently depending on who noticed it was due is two mechanics
+ * wearing one name.
+ *
+ * `exempt` is how the batch path tells `billConstruction` and
+ * `capSelfInflictedLosses` that hulls changing flag under a signature are
+ * neither built nor lost. The tick path passes nothing: neither pass runs there.
+ */
+function settleReturn(
+  state: WorldState,
+  loan: Loan,
+  notes: string[],
+  exempt?: (factionId: string, tons: number) => void,
+): string | null {
+  const out = loan.outstanding;
+  if (out === null) return null;
+  const lender = state.factions.find((f) => f.id === loan.lenderFactionId);
+  const borrower = state.factions.find((f) => f.id === loan.borrowerFactionId);
+  if (!lender || !borrower) return null;
+
+  if (out.kind === 'credits') {
+    const paid = Math.max(0, Math.min(out.amount, borrower.credits));
+    if (paid > 0) {
+      borrower.credits -= paid;
+      lender.credits += paid;
+    }
+    const left = out.amount - paid;
+    loan.outstanding = left > 0 ? { kind: 'credits', amount: left } : null;
+    return paid > 0 ? `${paid} credits` : null;
+  }
+
+  if (out.kind === 'asset') {
+    const asset = (state.assets ?? []).find((a) => a.id === out.assetId);
+    // Gone with a world, or gone with a battle. The obligation stands; what it
+    // costs is the borrower's standing, every turn it is not made good.
+    if (!asset || asset.heldBy !== loan.borrowerFactionId) return null;
+    asset.heldBy = loan.lenderFactionId;
+    loan.outstanding = null;
+    return asset.text;
+  }
+
+  const { taken, short } = reclaimHulls(
+    state,
+    loan.borrowerFactionId,
+    out.stack,
+    out.atSystemId,
+  );
+  if (hullsIn(taken) === 0) {
+    loan.outstanding = { ...out, stack: short };
+    return null;
+  }
+  // Home is the world it was lent from if the lender still stands there, and
+  // otherwise its best holding — the same route a ceded world's garrison takes
+  // out, and instant for the same reason: leaving under a signature costs
+  // nothing.
+  const home =
+    state.systems.find(
+      (sys) =>
+        sys.id === out.atSystemId &&
+        (sys.controllerFactionId === loan.lenderFactionId ||
+          hullsAt(sys, loan.lenderFactionId) > 0),
+    ) ?? fleetBases(state, loan.lenderFactionId)[0];
+  if (!home) {
+    // Nowhere to send them. Put them back where they were rather than deleting
+    // a squadron because its owner has no ground left.
+    const anywhere = [...state.systems].find((sys) => hullsAt(sys, loan.borrowerFactionId) > 0);
+    if (anywhere) addStackAt(anywhere, loan.borrowerFactionId, taken);
+    return null;
+  }
+  addStackAt(home, loan.lenderFactionId, taken);
+  const tons = tonsIn(taken);
+  exempt?.(loan.lenderFactionId, tons);
+  exempt?.(loan.borrowerFactionId, -tons);
+  loan.outstanding = hullsIn(short) > 0 ? { ...out, stack: short } : null;
+  return `${describeStack(taken)} to ${home.name}`;
 }
 
 /**
@@ -1536,6 +1678,19 @@ export function applyOps(
         // Giving your own away needs nobody. TAKING somebody else's needs them,
         // so it is reachable from an accord and refused from a declaration —
         // the same rule `terms.territory` follows.
+        // You cannot sell what you have only borrowed. The borrower IS `heldBy`
+        // — that is what a loan of a thing means — so every guard that keys on
+        // the holder waves them through, and this is the one question left to
+        // ask.
+        const lentOut = assetOnLoan(state.loans ?? [], asset.id);
+        if (lentOut) {
+          reject(
+            raw,
+            'illegal_value',
+            `${asset.text} is ${nameFor(state, lentOut.lenderFactionId)}'s, held on loan. Give it back, or buy it outright from them.`,
+          );
+          break;
+        }
         // A fixture does not change hands on its own. A mine, an exchange, a
         // theatre are the world they stand on, and the instrument for giving
         // one away already exists and is called a cession — which needs no new
@@ -1573,6 +1728,16 @@ export function applyOps(
         }
         if (actor !== undefined && asset.heldBy !== actor) {
           reject(raw, 'illegal_value', `${asset.id} is ${asset.heldBy}'s to divide, not ${actor}'s.`);
+          break;
+        }
+        // Nor divide it. A borrower who split a borrowed holding would owe back
+        // a thing that no longer exists as one thing.
+        if (assetOnLoan(state.loans ?? [], asset.id)) {
+          reject(
+            raw,
+            'illegal_value',
+            `${asset.text} is held on loan and comes back whole.`,
+          );
           break;
         }
         // A mine does not come apart into two mines. Splitting a producer
@@ -2924,7 +3089,19 @@ export function applyOps(
             .filter((c) => {
               if (!c.assetId) return true;
               const pledged = (state.assets ?? []).find((a) => a.id === c.assetId);
-              if (!pledged || pledged.portable) return true;
+              if (!pledged) return true;
+              // Borrowed property is not collateral either, and for a sharper
+              // reason than a fixture: it is somebody else's, and pledging it
+              // would let a borrower forfeit a lender's squadron to a third
+              // power.
+              const onLoan = assetOnLoan(state.loans ?? [], pledged.id);
+              if (onLoan) {
+                notes.push(
+                  `${pledged.text} cannot be pledged: it is ${nameFor(state, onLoan.lenderFactionId)}'s, held on loan.`,
+                );
+                return false;
+              }
+              if (pledged.portable) return true;
               notes.push(
                 `${pledged.text} cannot be pledged: it changes hands only with ${
                   state.systems.find((x) => x.id === pledged.atSystemId)?.name ?? 'its world'
@@ -3079,6 +3256,237 @@ export function applyOps(
           // not.
           [op.creditorFactionId, op.debtorFactionId],
         );
+        break;
+      }
+
+      case 'establish_loan': {
+        // Lending under terms binds the BORROWER — to feed it, to pay the rent,
+        // to give it back — so it is negotiated, exactly as `establish_debt`
+        // and `form_treaty` are. The lender's half needs nobody; the
+        // arrangement is not the gift.
+        if (source === 'model') {
+          reject(
+            raw,
+            'needs_consent',
+            'A loan cannot be declared into existence: the borrower has to agree to hold it, pay for it and give it back. Open a channel with them (/talk) and settle the terms.',
+          );
+          break;
+        }
+        const missingParty = [op.lenderFactionId, op.borrowerFactionId].find(
+          (id) => !factionExists(id),
+        );
+        if (missingParty) {
+          reject(raw, 'unknown_faction', `No faction "${missingParty}".`);
+          break;
+        }
+        if (op.lenderFactionId === op.borrowerFactionId) {
+          reject(raw, 'illegal_value', 'A power cannot borrow from itself.');
+          break;
+        }
+
+        const rent = Math.min(op.rentPerTurn, MAX_LOAN_RENT);
+        if (rent < op.rentPerTurn) {
+          const trimmed = `Hire trimmed to ${rent} a turn (asked ${op.rentPerTurn}).`;
+          notes.push(trimmed);
+          logEvent(state, 'clamp', trimmed, op.lenderFactionId);
+        }
+
+        const asked = op.lent;
+        let lentOut: Lent;
+        if (asked.kind === 'credits') {
+          const lenderFaction = state.factions.find((f) => f.id === op.lenderFactionId)!;
+          const borrowerFaction = state.factions.find((f) => f.id === op.borrowerFactionId)!;
+          // Trimmed to `MAX_LOAN_CREDITS` and then to what the lender actually
+          // has, exactly as `establish_debt` is: a lender who cannot fund the
+          // whole advance lends what it holds, and the paper is written for it.
+          const amount = Math.max(
+            0,
+            Math.min(asked.amount, MAX_LOAN_CREDITS, lenderFaction.credits),
+          );
+          if (amount === 0) {
+            reject(
+              raw,
+              'insufficient_credits',
+              `${lenderFaction.name} has nothing to advance.`,
+            );
+            break;
+          }
+          lenderFaction.credits -= amount;
+          borrowerFaction.credits += amount;
+          lentOut = { kind: 'credits', amount };
+        } else if (asked.kind === 'asset') {
+          const asset = (state.assets ?? []).find((a) => a.id === asked.assetId);
+          if (!asset) {
+            reject(raw, 'unknown_asset', `No asset "${asked.assetId}".`);
+            break;
+          }
+          if (asset.heldBy !== op.lenderFactionId) {
+            reject(
+              raw,
+              'illegal_value',
+              `${asset.text} is ${asset.heldBy}'s to lend, not ${op.lenderFactionId}'s.`,
+            );
+            break;
+          }
+          // A fixture changes hands with its world and by no other route, so
+          // there is no version of lending one that is not a cession.
+          if (!asset.portable) {
+            reject(
+              raw,
+              'illegal_value',
+              `${asset.text} does not leave the ground it stands on, so it cannot be lent. Cede the world for a term, or lend something that travels.`,
+            );
+            break;
+          }
+          if (assetOnLoan(state.loans ?? [], asset.id)) {
+            reject(raw, 'illegal_value', `${asset.text} is already out on loan.`);
+            break;
+          }
+          asset.heldBy = op.borrowerFactionId;
+          lentOut = { kind: 'asset', assetId: asset.id };
+        } else {
+          const from = state.systems.find((sys) => sys.id === asked.atSystemId);
+          if (!from) {
+            reject(raw, 'unknown_system', `No system "${asked.atSystemId}".`);
+            break;
+          }
+          // Trimmed to what is actually standing there. The board is a better
+          // bound than a constant, and it is the reason a hull loan needs no
+          // ceiling of its own.
+          const have = stackAt(from, op.lenderFactionId);
+          const { taken } = drawMatching(have, asked.stack);
+          if (hullsIn(taken) === 0) {
+            reject(
+              raw,
+              'no_presence',
+              `${nameFor(state, op.lenderFactionId)} has no such ships at ${from.name} to lend.`,
+            );
+            break;
+          }
+          if (hullsIn(taken) < hullsIn(asked.stack)) {
+            const trimmed = `Only ${describeStack(taken)} were at ${from.name}; the hire is written for those.`;
+            notes.push(trimmed);
+            logEvent(state, 'clamp', trimmed, op.lenderFactionId);
+          }
+          setStackAt(from, op.lenderFactionId, subtractStack(have, taken));
+          addStackAt(from, op.borrowerFactionId, taken);
+          // Hulls that changed flag under a signature are neither built nor
+          // lost. Without both halves of this the borrower is billed the full
+          // purchase price for a squadron it is renting, and the lender's own
+          // fleet vanishing reads to `capSelfInflictedLosses` as a scuttling it
+          // should undo — which would put the squadron back and leave two.
+          const movedTons = tonsIn(taken);
+          hullsBefore.set(
+            op.borrowerFactionId,
+            (hullsBefore.get(op.borrowerFactionId) ?? 0) + movedTons,
+          );
+          hullsBefore.set(
+            op.lenderFactionId,
+            (hullsBefore.get(op.lenderFactionId) ?? 0) - movedTons,
+          );
+          lentOut = { kind: 'hulls', stack: taken, atSystemId: from.id };
+        }
+
+        const loan: Loan = {
+          id: mintId(state, 'loan'),
+          lenderFactionId: op.lenderFactionId,
+          borrowerFactionId: op.borrowerFactionId,
+          lent: lentOut,
+          outstanding: lentOut,
+          rentPerTurn: rent,
+          dueTurn: op.termTurns === null ? null : state.turn + op.termTurns,
+          status: 'current',
+          missedPayments: 0,
+          establishedTurn: state.turn,
+          text: op.text,
+        };
+        state.loans.push(loan);
+        const note = `${nameFor(state, op.lenderFactionId)} lends ${nameFor(state, op.borrowerFactionId)} ${describeOutstanding(loan)}${rent > 0 ? ` at ${rent} a turn` : ' for nothing'}${loan.dueTurn === null ? '' : `, back by turn ${loan.dueTurn}`}. ${op.text}`;
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, op.lenderFactionId, [
+          op.lenderFactionId,
+          op.borrowerFactionId,
+        ]);
+        break;
+      }
+
+      case 'return_loan': {
+        const loan = state.loans.find((l) => l.id === op.loanId);
+        if (!loan) {
+          reject(raw, 'unknown_loan', `No loan "${op.loanId}".`);
+          break;
+        }
+        // The borrower's act. A lender cannot reach into another power's fleet
+        // and take its ships home; recalling early is a conversation, or a
+        // contingency written at signature.
+        if (actor !== undefined && loan.borrowerFactionId !== actor) {
+          reject(
+            raw,
+            'illegal_value',
+            `Only ${loan.borrowerFactionId} can hand that back. Ask for it (/talk), or write the recall into the terms.`,
+          );
+          break;
+        }
+        if (!isLoanLive(loan)) {
+          reject(raw, 'illegal_value', `That loan is already ${loan.status}.`);
+          break;
+        }
+        const moved = settleReturn(state, loan, notes, (id, tons) => {
+          hullsBefore.set(id, (hullsBefore.get(id) ?? 0) + tons);
+        });
+        if (loan.outstanding === null) loan.status = 'returned';
+        const note =
+          moved === null
+            ? `${nameFor(state, loan.borrowerFactionId)} has nothing to hand back to ${nameFor(state, loan.lenderFactionId)}: ${describeOutstanding(loan)} still outstanding. ${op.reason}`.trim()
+            : `${nameFor(state, loan.borrowerFactionId)} returns ${moved} to ${nameFor(state, loan.lenderFactionId)}${loan.outstanding === null ? '' : `, ${describeOutstanding(loan)} still owing`}. ${op.reason}`.trim();
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, loan.borrowerFactionId, [
+          loan.lenderFactionId,
+          loan.borrowerFactionId,
+        ]);
+        break;
+      }
+
+      case 'forgive_loan': {
+        const loan = state.loans.find((l) => l.id === op.loanId);
+        if (!loan) {
+          reject(raw, 'unknown_loan', `No loan "${op.loanId}".`);
+          break;
+        }
+        // The lender's, and only the lender's — the same actor-shaped hazard
+        // `forgive_debt` is guarded against, and the sharper one here, since a
+        // borrower forgiving its own loan would simply be keeping the squadron.
+        if (actor !== undefined && loan.lenderFactionId !== actor) {
+          reject(
+            raw,
+            'illegal_value',
+            `Only ${loan.lenderFactionId} can make a gift of what it lent. A borrower does not write off what it is holding.`,
+          );
+          break;
+        }
+        if (!isLoanLive(loan)) {
+          reject(raw, 'illegal_value', `That loan is already ${loan.status}.`);
+          break;
+        }
+        const kept = describeOutstanding(loan);
+        loan.status = 'forgiven';
+        loan.outstanding = null;
+        const borrowerFaction = state.factions.find((f) => f.id === loan.borrowerFactionId);
+        if (borrowerFaction) {
+          borrowerFaction.disposition[loan.lenderFactionId] = Math.max(
+            -100,
+            Math.min(
+              100,
+              (borrowerFaction.disposition[loan.lenderFactionId] ?? 0) + DEBT_FORGIVENESS_GOODWILL,
+            ),
+          );
+        }
+        const note = `${nameFor(state, loan.lenderFactionId)} makes ${nameFor(state, loan.borrowerFactionId)} a gift of ${kept}. ${op.reason}`.trim();
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, loan.lenderFactionId, [
+          loan.lenderFactionId,
+          loan.borrowerFactionId,
+        ]);
         break;
       }
 
@@ -3806,6 +4214,81 @@ export function tickTurn(input: WorldState): TickResult {
       // remembers.
       debt.status = 'current';
     }
+  }
+
+  /* --- Loans: rent, and the day the term runs out ----------------------- */
+  // Beside the debts and sharing their default machinery, because the half of a
+  // debt that generalises is exactly this: arrears that catching up never
+  // erases, and a creditor whose patience runs out on its own. What does not
+  // generalise is the balance — a debt's depletes through its flow, and a
+  // loan's principal comes back whole while the flow runs the other way.
+  for (const loan of state.loans ?? []) {
+    if (!isLoanLive(loan)) continue;
+    const lender = state.factions.find((f) => f.id === loan.lenderFactionId);
+    const borrower = state.factions.find((f) => f.id === loan.borrowerFactionId);
+    if (!lender || !borrower) continue;
+
+    // The hire fee. Moved as a transfer against what the borrower can actually
+    // find rather than accrued as a rate, for the reason `serviceDebts` is: a
+    // treasury floors at zero, so a rate would have a broke borrower "pay" money
+    // it never had and the lender receive it.
+    if (loan.rentPerTurn > 0) {
+      const paid = Math.max(0, Math.min(loan.rentPerTurn, borrower.credits));
+      borrower.credits -= paid;
+      lender.credits += paid;
+      if (paid < loan.rentPerTurn) {
+        loan.missedPayments += 1;
+        loan.status = 'delinquent';
+        const note = `${borrower.name} misses ${loan.rentPerTurn - paid} of ${loan.rentPerTurn} due on ${loan.text}`;
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, loan.lenderFactionId, [
+          loan.lenderFactionId,
+          loan.borrowerFactionId,
+        ]);
+      } else if (loan.status === 'delinquent' && !(loan.dueTurn !== null && state.turn >= loan.dueTurn)) {
+        // Catching up clears the STATUS and never the arrears, exactly as a
+        // debt's does — but not while the term has also run out, since the
+        // thing itself is still not back.
+        loan.status = 'current';
+      }
+    }
+
+    if (loan.dueTurn === null || state.turn < loan.dueTurn) continue;
+
+    // The term is up. Retried every turn rather than failed once: hulls are
+    // fungible, so a borrower who lost the squadron can make it good by
+    // building an equivalent one — which is what "return an equivalent
+    // squadron" has to mean when nothing tracks a hull's history.
+    const moved = settleReturn(state, loan, notes);
+    if (loan.outstanding === null) {
+      loan.status = 'returned';
+      const note = `${borrower.name} returns ${moved ?? 'what was owed'} to ${lender.name}. ${loan.text}`;
+      notes.push(note);
+      logEvent(state, 'diplomacy', note, loan.lenderFactionId, [
+        loan.lenderFactionId,
+        loan.borrowerFactionId,
+      ]);
+      continue;
+    }
+
+    loan.status = 'delinquent';
+    // A grievance that compounds, at the same rate an unpaid debt's does. This
+    // is the whole of what makes an overdue squadron cost anything.
+    lender.disposition[loan.borrowerFactionId] = Math.max(
+      -100,
+      Math.min(
+        100,
+        (lender.disposition[loan.borrowerFactionId] ?? 0) - DEBT_DEFAULT_DISPOSITION_COST,
+      ),
+    );
+    const note = moved
+      ? `${borrower.name} returns ${moved}, still owing ${describeOutstanding(loan)} on ${loan.text}`
+      : `${borrower.name} is past due on ${loan.text} — ${describeOutstanding(loan)} outstanding.`;
+    notes.push(note);
+    logEvent(state, 'diplomacy', note, loan.lenderFactionId, [
+      loan.lenderFactionId,
+      loan.borrowerFactionId,
+    ]);
   }
 
   /* --- Dissent cools ---------------------------------------------------- */

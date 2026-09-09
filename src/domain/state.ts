@@ -37,6 +37,7 @@ import {
   AssetSchema,
 } from './diplomacy.js';
 import { DebtSchema, MAX_DEBT_PER_TURN, scheduledDebtService, type Debt } from './debt.js';
+import { LoanSchema, scheduledRent } from './loan.js';
 import { DurationCategorySchema, FibScaleSchema } from './duration.js';
 import { buildAdjacency } from './graph.js';
 // trade.ts imports only TYPES from here, so this edge is one-directional at
@@ -483,6 +484,15 @@ export const WorldStateSchema = z.object({
    */
   debts: z.array(DebtSchema).default([]),
   /**
+   * Things lent out that have to come back — see `loan.ts`.
+   *
+   * Beside `debts` rather than inside it: a debt's balance depletes through its
+   * flow, and a loan's principal comes back whole while the flow runs the other
+   * way as rent. Defaulted, so every campaign saved before loans existed loads
+   * as one with none.
+   */
+  loans: z.array(LoanSchema).default([]),
+  /**
    * Things that are neither credits nor ships — see `AssetSchema`.
    *
    * Defaulted, so every campaign saved before assets existed loads as one with
@@ -888,6 +898,14 @@ export const LedgerSchema = z.object({
    */
   assetYield: z.number().int(),
   /**
+   * Hire fees on things lent and borrowed: positive receives, negative pays.
+   *
+   * Reported and **not** summed into `net`, exactly as `debtService` is, because
+   * it is settled as a transfer during the tick against what the borrower can
+   * actually find rather than accrued as a rate.
+   */
+  loanRent: z.number().int(),
+  /**
    * A profiteer's take from other powers' wars — or, when it is in one itself,
    * what that costs it. Zero for everyone else.
    */
@@ -1093,7 +1111,7 @@ export function ledgerFor(
     return {
       gross: 0, upkeep: 0, net: 0, systems: 0, treatyFlow: 0,
       espionageLoss: 0, espionageGain: 0, garrisonUpkeep: 0, agentUpkeep: 0, commitmentFlow: 0, commitmentShare: 0, assetYield: 0, warProfit: 0,
-      territory: 0, routes: 0, tolls: 0, raided: 0, debtService: 0,
+      territory: 0, routes: 0, tolls: 0, raided: 0, debtService: 0, loanRent: 0,
     };
   }
 
@@ -1247,6 +1265,7 @@ export function ledgerFor(
     raided: earnings.raided[factionId] ?? 0,
     // Reported, never summed into `net` — see `Ledger.debtService`.
     debtService: scheduledDebtService(state.debts ?? [], factionId),
+    loanRent: scheduledRent(state.loans ?? [], factionId),
   };
 }
 

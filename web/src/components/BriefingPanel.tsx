@@ -101,6 +101,16 @@ export function BriefingPanel({
                   : `−${Math.abs(briefing.ledger.debtService)}/turn servicing debt, on top of net`}
               </span>
             )}
+            {/* Hire fees are the same shape and sit outside `net` for the same
+                reason: a transfer in the tick, against what the borrower can
+                actually find. */}
+            {briefing.ledger.loanRent !== 0 && (
+              <span className="sub">
+                {briefing.ledger.loanRent > 0
+                  ? `+${briefing.ledger.loanRent}/turn in hire on what you have lent`
+                  : `−${Math.abs(briefing.ledger.loanRent)}/turn in hire, on top of net`}
+              </span>
+            )}
           </div>
 
           {briefing.battles.length > 0 && (

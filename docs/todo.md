@@ -273,7 +273,7 @@ One extra Haiku call per accord, and only when the accord produced ops **and**
 the counterparty actually conceded something — agreeing to nothing costs nobody
 anything.
 
-## 90. A hired squadron — which is a loan of units, and loans want generalising
+## 90. BUILT — a hired squadron, which is a loan of units
 
 Twelve hulls offered under another power's flag, command and orders landed as
 `basing_rights` — permission for the *lender's* fleet to visit the borrower's
@@ -344,6 +344,42 @@ is the units case and the command transfer.
 **Medium**, and unchanged in size by the restatement — but the restatement means
 it should be built as `Loan`, not as `terms.command` bolted onto
 `mutual_defense`.
+
+### BUILT, 2026-09-08
+
+`src/domain/loan.ts`, built as specced with **one narrowing the user set**: a
+world cannot be lent, and neither can anything that cannot leave a world. So the
+`lent` union is `credits` · `hulls` · `asset` and there is no `systemId` in it —
+closed by construction rather than by a guard somebody can forget. A lease would
+have been a third answer to a question `cession` and `basing_rights` already
+answer twice, and it would have needed control, garrison and income to disagree
+with each other for a term.
+
+Everything the spec asked for is in: the discriminated union, the command
+transfer (free — a fleet here is `system.ships[factionId]` and nothing else),
+rent running borrower-to-lender, a term, and the shared default machinery down to
+the constants. See `CLAUDE.md`, *"Loans: a thing that comes back, which is not a
+debt"*.
+
+Two things the spec did not anticipate, both found by building it:
+
+- **Two batch passes read a change in tonnage as an event.**
+  `billConstruction` charges the borrower the full purchase price for hulls it is
+  renting, and `capSelfInflictedLosses` reads the lender's fleet shrinking as a
+  scuttling and puts the squadron back — leaving two of it. Both are told that
+  hulls changing flag under a signature are neither built nor lost.
+- **A returned squadron has to be looked for where it was handed over**, not
+  simply at the borrower's richest world. Otherwise a borrower with a bigger
+  fleet elsewhere settles the return from home and leaves the actual squadron
+  squatting in the lender's orbit.
+
+**Not built, and deliberately:** `assign_loan` and `restructure_loan`. Each is a
+separate lesson `debt.ts` already learned the hard way, and neither has been
+reached for yet.
+
+**One thing worth a later look:** `debt_unpursued` reads debts only. A loan
+overdue and unchased is the same fiction — *"an unpaid debt must be pursued"* —
+and the Combine's compulsion cannot currently see one.
 
 ## 91. BUILT (six of seven) — small things
 

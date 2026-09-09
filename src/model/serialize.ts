@@ -2,6 +2,7 @@ import { eventsVisibleTo, ordersVisibleTo } from '../domain/intel.js';
 import { describeStack, hullsIn } from '../domain/hulls.js';
 import { describeOrderEffect } from '../domain/development.js';
 import { describeEffect } from '../domain/diplomacy.js';
+import { describeOutstanding } from '../domain/loan.js';
 import { routeEarnings } from '../domain/trade.js';
 import type { Commitment } from '../domain/arbitration.js';
 import {
@@ -315,6 +316,9 @@ export function serializeState(state: WorldState, viewerId: string): string {
     '## Debts',
     serializeDebts(state),
     '',
+    '## Lent and borrowed',
+    serializeLoans(state, viewerId),
+    '',
     '## Recent events',
     serializeRecentLog(state, viewerId),
   ].join('\n');
@@ -482,6 +486,43 @@ export function serializeCommitments(state: WorldState, viewerId?: string): stri
  * for. It is also the state the arbiter needs in order to rule on the Combine's
  * two debt lines against something real rather than a fiction.
  */
+/**
+ * What is out on loan, to the parties only.
+ *
+ * Scoped like `serializeCommitments` rather than left open like
+ * `serializeDebts`, and the difference is worth stating: a debt is paper that
+ * circulates — it can be assigned, and a third power buying it is an ordinary
+ * move — while the terms of a hire are between the two who struck them. The
+ * *hulls* are visible to anyone with eyes on the system, because
+ * `system.ships` is never redacted; what they cost and when they go home is
+ * not.
+ */
+export function serializeLoans(state: WorldState, viewerId: string): string {
+  const live = (state.loans ?? []).filter(
+    (l) =>
+      (l.status === 'current' || l.status === 'delinquent') &&
+      (l.lenderFactionId === viewerId || l.borrowerFactionId === viewerId),
+  );
+  if (live.length === 0) return '_You have nothing out on loan, and hold nothing of anybody else’s._';
+  return live
+    .map((l) => {
+      const lender = getFaction(state, l.lenderFactionId)?.name ?? l.lenderFactionId;
+      const borrower = getFaction(state, l.borrowerFactionId)?.name ?? l.borrowerFactionId;
+      const what = describeOutstanding(l);
+      const rent = l.rentPerTurn > 0 ? `, ${l.rentPerTurn}/turn` : ', for nothing';
+      const due =
+        l.dueTurn === null
+          ? ', no term set'
+          : l.dueTurn <= state.turn
+            ? `, DUE AND NOT BACK (turn ${l.dueTurn})`
+            : `, back by turn ${l.dueTurn}`;
+      const behind =
+        l.missedPayments > 0 ? ` — ${l.missedPayments} hire payment(s) missed` : '';
+      return `  - \`${l.id}\` ${lender} has ${what} with ${borrower}${rent}${due}${behind}. ${l.text}`;
+    })
+    .join('\n');
+}
+
 export function serializeDebts(state: WorldState): string {
   const live = (state.debts ?? []).filter(
     (d) => d.status === 'current' || d.status === 'delinquent',
