@@ -42,13 +42,13 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~90~~ | ~~a hired squadron, which is a loan of units~~ | medium | **BUILT** — as `Loan`, not as a `Debt` with extra fields |
 | ~~91~~ | ~~seven small things~~ | small | **BUILT**, six of seven; severability is not small |
 | ~~94~~ | ~~loans, after the first one is signed~~ | small | **(a) BUILT**, with the default model it exposed; (b) wants a playtest, (c) settled |
-| **93** | ~~three~~ two things the asset fields still cannot say | small | **(b) SETTLED and BUILT** as `dossier`; (a) is a measured bug and needs no ruling; (c) wants one |
+| ~~93~~ | ~~three things the asset fields still cannot say~~ | small | **BUILT** — a catalogue, `consume_asset`, speculative value, assets at the table |
 | **80** | an advisor that costs an action | medium | not from the playtest; wanted |
 | **92** | two claims only a campaign can settle | — | needs play, not code |
 
-**What is actually left is small.** Every medium and every subsystem on this
-list is built; 93 and 94 are the residue of building the last two, and 80 is the
-only unstarted feature. The honest next move is not another item — it is a
+**What is actually left is a playtest and one feature.** Every medium and every
+subsystem on this list is built, 93 is closed and 94 is down to its one item that
+wants a campaign rather than a decision, so 80 is the only unstarted feature. The honest next move is not another item — it is a
 **playtest**, because nothing in 81, 86, 87, 88, 89, 90 or the consent work has
 been exercised by a live model. The personas have never seen an asset, a
 contingency, a contract or a hired squadron in a prompt, and `channelBlockers`
@@ -606,14 +606,50 @@ other half — `portable`, and a `yield` union of `credits` · `dissent` · `ass
 *"Cargo, fixture, and a thing that works"*, for the bounds and where each yield
 is applied.
 
-## 93. PARTLY BUILT — three things the asset fields could not say
+## 93. BUILT — the asset system, finished
+
+All three are closed, and the last two were closed by rulings that reframed them
+rather than by building what was filed. Written up in `CLAUDE.md` under *"The
+catalogue"*, *"A worth nobody has settled"* and *"Nothing could be destroyed"*.
+
+Shipped with it, from the same pass:
+
+- **A catalogue of sixteen archetypes** (`src/domain/assets.ts`) in four groups —
+  people, paper, stuff, works. Defaults rather than a menu: the slug stays open,
+  and the reducer only *corrects* `divisible` and `uses`, the two fields whose
+  being wrong breaks a later trade. Substituted into the prompt at call time so
+  the table and the prompt cannot drift.
+- **Rules for inventing a seventeenth**, in `prompts/resolution.md`: it has to be
+  a thing rather than a fact, it has to have come from the attempt that just
+  succeeded, somebody other than the holder has to want it, the shape has to be
+  stated honestly, and the slug has to be a reusable category. Plus the two
+  failure modes seen in play — never mint beside a mechanic that already models
+  it, and never mint for a consequence already paid.
+- **Assets at the table.** `serializeTheirAssets` shows a persona what the other
+  side holds that it wants, `Concession.assets` records the offer, and
+  `groundInConcessions` holds a transfer out of the other party's hands to the
+  same standard a world is held to.
+- **A simplified panel.** One line of qualifiers and a single best-offer chip,
+  replacing a chip per interested power — which on a four-way item was four chips
+  of near-identical text burying the only number a player acts on.
+- **32 tests** in `tests/assets.test.ts`: every archetype instantiated, every
+  forced field probed against a call that disagrees, both conservation properties
+  (worth under a split, worth under a transfer) asserted, and a well-formedness
+  check run over everything a full tick produces.
+
+## 93. (the original three)
 
 Swept against the creative playtest's own list after the `portable`/`yield`
 extension. Everything it reached for is now expressible **except** three, and
 each is a different shape rather than a missing column. None is urgent; all
 three are cheap next to the subsystem they sit on.
 
-**a) An instrument that is spent when it is exercised.** Measured, not
+**a) BUILT — an instrument that is spent when it is exercised.** `consume_asset`,
+plus a `uses` field. The gap was wider than the seal: **nothing in the game could
+destroy an asset at all**, so `voidsOn: asset_lost` could only fire because
+something changed hands. A hostage could not be killed.
+
+**a) (original)** Measured, not
 hypothesised: `com-1-4`, the claimant-seal surety, was exercised in prose — the
 seal couriered to the Vigil Legate — and *"the instrument was never consumed, so
 it can be exercised again forever"*. Nothing in `quantity`, `portable` or `yield`
@@ -656,7 +692,14 @@ hold it** — exclusivity *is* the price. The natural home is a flag on the asse
 (`kind: 'knowledge'` is not enough; it has to change what transfer does), plus a
 `valuePerUnit` that divides by the number of holders.
 
-**c) A thing whose stated worth is a lie.** *"A chart that is false"* (**C-3**)
+**c) BUILT, by reframing — a thing whose stated worth is a lie.** The ruling: do
+not put a lie in the state block. `speculative` with a per-faction `min`/`max`
+band says the honest thing instead — **nobody knows** — and the forgery needs no
+special case, because it is a wide band that resolves badly and both ends were
+arguable when it was sold. No discovery rule was needed, which was the expensive
+half of what was filed.
+
+**c) (original)** *"A chart that is false"* (**C-3**)
 is in the original spec's own list and is the one entry the schema cannot
 express: `valuePerUnit` is a single number both sides read, so a forgery is
 indistinguishable from the genuine article, and the deception has to live

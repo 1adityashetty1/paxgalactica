@@ -50,6 +50,7 @@ import {
   type Treaty,
   type VoidCondition,
 } from './diplomacy.js';
+import { archetypeFor } from './assets.js';
 import { jumpsBetween, neighboursOf, positionAlongPath, shortestPath } from './graph.js';
 import {
   LOAN_DEFAULT_DISPOSITION_COST,
@@ -1623,17 +1624,51 @@ export function applyOps(
         // is worse: an income stream nobody can raid, blockade or conquer. Both
         // of the new fields are ways of saying "this thing is somewhere", so
         // neither means anything without the somewhere.
+        // The catalogue fills in what the call did not say, and CORRECTS the two
+        // fields whose being wrong quietly breaks a later trade. The model is
+        // good at judging that a thing was taken and unreliable at remembering
+        // whether that kind of thing splits — the same division of labour as
+        // `classifyPrinciple`, where it names the line and code does the lookup.
+        //
+        // `divisible` and `uses` are forced, because a prisoner haul that will
+        // not divide cannot be ransomed in lots and an instrument with no
+        // `uses` is exercisable forever, which is the bug this shipped for.
+        // Everything else is a default: an open slug stays open, and a survey
+        // that brings back something nobody enumerated still works.
+        const shape = archetypeFor(op.kind);
+        const stated = (field: string): boolean =>
+          typeof raw === 'object' && raw !== null && field in (raw as Record<string, unknown>);
+        let divisible = op.divisible;
+        let uses = op.uses;
+        let speculative = op.speculative;
+        let portable = op.portable;
+        if (shape) {
+          if (divisible !== shape.divisible && stated('divisible')) {
+            notes.push(
+              `A ${op.kind} ${shape.divisible ? 'comes in lots' : 'is one thing'}; recorded that way.`,
+            );
+          }
+          divisible = shape.divisible;
+          uses = shape.uses;
+          if (!stated('speculative')) speculative = shape.speculative;
+          if (shape.fixture) portable = false;
+        }
+
         // A dossier has no location, so it can carry neither of the two fields
         // that need one. Settled here rather than by rejecting, since both are
         // meaningless on a file rather than wrong.
-        if (isDossier && (op.yield !== null || op.portable === false)) {
+        if (isDossier && (op.yield !== null || portable === false)) {
           notes.push(`A ${DOSSIER_KIND} is paper: it stands nowhere and produces nothing.`);
         }
-        if (!isDossier && (op.portable === false || op.yield !== null) && op.atSystemId === null) {
+        // Read off the RESOLVED shape rather than the raw op, because the
+        // catalogue is what decides that an `exchange` is a fixture. Checking
+        // `op.portable` here let a works archetype skip both this and the
+        // presence guard below and land on ground its owner had never reached.
+        if (!isDossier && (portable === false || op.yield !== null) && op.atSystemId === null) {
           reject(
             raw,
             'illegal_value',
-            op.portable === false
+            portable === false
               ? 'A thing that cannot be moved has to be somewhere. Give it an `atSystemId`, or make it portable.'
               : 'A thing that produces has to produce somewhere — set `atSystemId` to the world it stands on, so it can be taken.',
           );
@@ -1648,7 +1683,7 @@ export function applyOps(
           : undefined;
         if (
           site &&
-          (op.portable === false || op.yield !== null) &&
+          (portable === false || op.yield !== null) &&
           site.controllerFactionId !== op.heldBy &&
           hullsAt(site, op.heldBy) === 0
         ) {
@@ -1691,27 +1726,42 @@ export function applyOps(
             ),
           };
         }
+        // EXACTLY ONE of the two value fields survives, so there is never a
+        // second opinion about what a thing is worth. Both are trimmed to the
+        // powers that exist: a price quoted for a faction nobody has is not a
+        // price, it is noise in a document two personas are about to bargain
+        // over. A band written backwards is straightened rather than rejected.
+        const realFactions = <T>(rec: Record<string, T>): Record<string, T> =>
+          Object.fromEntries(Object.entries(rec).filter(([id]) => factionExists(id)));
+        const flatValue = speculative ? {} : realFactions(op.valuePerUnit);
+        const bandValue = speculative
+          ? Object.fromEntries(
+              Object.entries(realFactions(op.valueRange)).map(([id, b]) => [
+                id,
+                { min: Math.min(b.min, b.max), max: Math.max(b.min, b.max) },
+              ]),
+            )
+          : {};
+
         const asset = {
           id: mintId(state, 'ast'),
           kind: op.kind,
           text: op.text,
           heldBy: op.heldBy,
           quantity: op.quantity,
-          unit: op.unit,
+          unit: shape && !stated('unit') ? shape.unit : op.unit,
           // A file is one file. Forced rather than trusted, because atomicity
           // is what keeps a dossier simple: no half a file, so no question
           // about how value divides, so no decay model and no lineage.
-          divisible: isDossier ? false : op.divisible,
-          // Trimmed to the powers that exist. A value quoted for a faction
-          // nobody has is not a price, it is noise in a document two personas
-          // are about to bargain over.
-          valuePerUnit: Object.fromEntries(
-            Object.entries(op.valuePerUnit).filter(([id]) => factionExists(id)),
-          ),
+          divisible: isDossier ? false : divisible,
+          valuePerUnit: flatValue,
+          speculative,
+          valueRange: bandValue,
+          uses: isDossier ? null : uses,
           // And a record of a conversation is not standing on a world to be
           // taken with it.
           atSystemId: isDossier ? null : op.atSystemId,
-          portable: isDossier ? true : op.portable,
+          portable: isDossier ? true : portable,
           yield: assetYield,
           acquiredTurn: state.turn,
         };
@@ -1721,6 +1771,50 @@ export function applyOps(
         // Visible to the holder alone. What you are sitting on is exactly the
         // sort of thing a rival should have to find out.
         logEvent(state, 'system', note, op.heldBy, [op.heldBy]);
+        break;
+      }
+
+      case 'consume_asset': {
+        const asset = state.assets.find((a) => a.id === op.assetId);
+        if (!asset) {
+          reject(raw, 'unknown_asset', `No asset "${op.assetId}".`);
+          break;
+        }
+        if (actor !== undefined && asset.heldBy !== actor) {
+          reject(
+            raw,
+            'illegal_value',
+            `${asset.text} is ${asset.heldBy}'s to spend, not ${actor}'s.`,
+          );
+          break;
+        }
+        // You cannot burn what you have to give back.
+        const borrowed = assetOnLoan(state.loans ?? [], asset.id);
+        if (borrowed) {
+          reject(
+            raw,
+            'illegal_value',
+            `${asset.text} is ${nameFor(state, borrowed.lenderFactionId)}'s, held on loan. Return it or buy it; do not spend it.`,
+          );
+          break;
+        }
+        // An INSTRUMENT is played and ordinary stuff is spent, and which
+        // counter moves is a property of the thing rather than of the op — a
+        // writ is one writ however many times it is worth playing.
+        const instrument = asset.uses !== null;
+        const have = instrument ? asset.uses! : asset.quantity;
+        const spent = Math.min(op.quantity, have);
+        const left = have - spent;
+        if (instrument) asset.uses = left === 0 ? 1 : left;
+        else asset.quantity = left === 0 ? 1 : left;
+        if (left === 0) {
+          state.assets = state.assets.filter((a) => a.id !== asset.id);
+        }
+        const note = left === 0
+          ? `${nameFor(state, asset.heldBy)} spends the last of ${asset.text} ${op.reason}`.trim()
+          : `${nameFor(state, asset.heldBy)} spends ${spent} ${instrument ? 'of its plays' : asset.unit} of ${asset.text}; ${left} left. ${op.reason}`.trim();
+        notes.push(note);
+        logEvent(state, 'system', note, asset.heldBy, [asset.heldBy]);
         break;
       }
 
@@ -4463,6 +4557,11 @@ export function tickTurn(input: WorldState): TickResult {
           unit: made.unit,
           divisible: true,
           valuePerUnit: { ...made.valuePerUnit },
+          // What comes out of the ground has been seen and counted, so its
+          // worth is settled even when the seam's was not.
+          speculative: false,
+          valueRange: {},
+          uses: null,
           atSystemId: asset.atSystemId,
           // What a mine makes can be shipped; the mine cannot.
           portable: true,

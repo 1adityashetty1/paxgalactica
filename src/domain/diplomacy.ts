@@ -76,6 +76,20 @@ export const ConcessionSchema = z.object({
   perTurn: z.number().int().min(0).max(1000).default(0),
   /** Hulls pledged out of `by`'s own fleet. */
   hulls: z.number().int().min(0).max(1000).default(0),
+  /**
+   * Things `by` is handing over, **resolved to asset ids** by whoever holds
+   * them.
+   *
+   * The same argument `systems` makes, one layer along: *"you can have your
+   * people back"* names no id, and no downstream matcher can turn it into one
+   * without guessing which haul is meant. The power giving them up is looking at
+   * its own shelf and knows.
+   *
+   * Ids rather than a description because an asset is a **record**, not a
+   * quantity — the whole point of the class is that two lots of forty crews are
+   * two different lots, held in different places, worth different things.
+   */
+  assets: z.array(z.string().min(1)).max(8).default([]),
 });
 export type Concession = z.infer<typeof ConcessionSchema>;
 
@@ -447,6 +461,52 @@ export const AssetSchema = z.object({
    */
   valuePerUnit: z.record(z.string(), z.number().int().min(0).max(10000)).default({}),
   /**
+   * Whether anybody actually knows what it is worth.
+   *
+   * The answer to *"a chart that is false"*, and a better one than was filed.
+   * The obvious build was a **claimed** value beside a **true** one, shown
+   * differently to buyer and holder — which would have made this the first place
+   * in the game to put a deliberate lie into a document two personas bargain
+   * over, against the rule that makes the state block authoritative precisely
+   * because it never lies.
+   *
+   * A range says the honest thing instead: **nobody knows.** An unassayed seam,
+   * a chart of a passage nobody has run, a defector's claims, a relic of
+   * disputed provenance — each is worth somewhere between two numbers, and which
+   * end it lands on is what the parties are really arguing about. The forgery
+   * needs no special case: it is a wide band that resolves badly.
+   *
+   * Exactly one of `valuePerUnit` and `valueRange` is populated, and the reducer
+   * clears the other, so there is never a second opinion about what a thing is
+   * worth.
+   */
+  speculative: z.boolean().default(false),
+  /** factionId -> what one unit MIGHT be worth. Read only when `speculative`. */
+  valueRange: z
+    .record(
+      z.string(),
+      z.object({
+        min: z.number().int().min(0).max(10000),
+        max: z.number().int().min(0).max(10000),
+      }),
+    )
+    .default({}),
+  /**
+   * How many times it can be played before it is spent, or `null` for a thing
+   * that is simply stuff.
+   *
+   * A playtest wrote a claimant's seal into escrow against a performance and
+   * couriered it to a rival's Legate to force the issue — the best single move
+   * of that campaign — and **the instrument was never consumed**, so it could be
+   * exercised again every turn forever. Nothing in the record said *once*.
+   *
+   * `null` is the ordinary case: prisoners, ore and hulks are spent by
+   * `quantity` like anything else. A number is an *instrument* — a writ, a
+   * surety, a cipher key — and `consume_asset` draws it down. Both reach zero
+   * the same way, and the row is removed when they do.
+   */
+  uses: z.number().int().min(1).max(1000).nullable().default(null),
+  /**
    * Where it physically is, if anywhere.
    *
    * Optional, and it is what makes an asset losable: prisoners held at a world
@@ -488,7 +548,45 @@ export type Asset = z.infer<typeof AssetSchema>;
 
 /** What an asset is worth to a power, in total. A claim, never a ledger entry. */
 export function assetWorthTo(asset: Asset, factionId: string): number {
+  if (asset.speculative) {
+    const band = asset.valueRange[factionId];
+    if (!band) return 0;
+    // The MIDPOINT, because every caller of this wants one number and the
+    // middle of what is known is the least misleading one available. Anything
+    // that should show the uncertainty itself — a prompt, a panel — asks
+    // `assetWorthRangeTo` instead.
+    return Math.floor((band.min + band.max) / 2) * asset.quantity;
+  }
   return (asset.valuePerUnit[factionId] ?? 0) * asset.quantity;
+}
+
+/**
+ * The same, as a band. `min === max` for anything whose worth is settled.
+ *
+ * This is what a persona needs to bargain honestly over something nobody has
+ * assayed: an offer at the bottom of the band and a demand at the top are both
+ * defensible, and that argument is the whole content of trading a speculative
+ * holding.
+ */
+export function assetWorthRangeTo(
+  asset: Asset,
+  factionId: string,
+): { min: number; max: number } {
+  if (asset.speculative) {
+    const band = asset.valueRange[factionId];
+    if (!band) return { min: 0, max: 0 };
+    return { min: band.min * asset.quantity, max: band.max * asset.quantity };
+  }
+  const flat = (asset.valuePerUnit[factionId] ?? 0) * asset.quantity;
+  return { min: flat, max: flat };
+}
+
+/** Every power that has shown this is worth something to them. */
+export function wantedBy(asset: Asset, exceptId?: string): string[] {
+  const source = asset.speculative ? asset.valueRange : asset.valuePerUnit;
+  return Object.keys(source).filter(
+    (id) => id !== exceptId && assetWorthRangeTo(asset, id).max > 0,
+  );
 }
 
 /** Everything a faction is holding. */

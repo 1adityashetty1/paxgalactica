@@ -23,6 +23,11 @@ back, an heirloom handed over, a lot of ore delivered. Taking another power's
 asset needs their agreement, which is why it is reachable from here at all; a
 declared action can only give one away.
 
+**Match `transfer_asset` to the `assets` the holder named.** A thing coming out
+of the *other* power's hands moves only if that power put its id on the table,
+exactly as a world does — you are matching what was recorded, not judging what
+was meant. A power giving its own away needs no such record.
+
 **A fixture is not on the table.** A mine, an exchange, a theatre — anything the
 state block marks *"fixed here; changes hands only with the world"* — cannot be
 transferred on its own. Selling one is selling the world it stands on: write a

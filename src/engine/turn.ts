@@ -726,6 +726,7 @@ export function groundInConcessions(
   const offeredCredits = theirs.reduce((n, c) => n + c.credits, 0);
   const offeredPerTurn = theirs.reduce((n, c) => n + c.perTurn, 0);
   const offeredHulls = theirs.reduce((n, c) => n + c.hulls, 0);
+  const handedOver = new Set(theirs.flatMap((c) => c.assets));
   const saidAnything = theirs.length > 0;
   const dropped: string[] = [];
 
@@ -764,6 +765,22 @@ export function groundInConcessions(
       const pledged = (terms.shipsPledged ?? {}) as Record<string, number>;
       if ((pledged[otherId] ?? 0) > offeredHulls) {
         dropped.push(`${pledged[otherId]} hulls pledged by ${otherId}, which it never offered.`);
+        return false;
+      }
+      return true;
+    }
+
+    // A thing is exactly as sharp a case as a world, and for the same reason: an
+    // asset is a RECORD, so *"you can have your people back"* names no id and
+    // nothing downstream can pick which haul was meant. The power holding them
+    // resolved it when it said so.
+    if (op.op === 'transfer_asset' && typeof op.assetId === 'string') {
+      const asset = (state.assets ?? []).find((a) => a.id === op.assetId);
+      // Only when it is coming OUT of the other party's hands. The player
+      // giving their own away binds nobody and needs no record, which is the
+      // same rule that keeps one-sided concessions out of this whole check.
+      if (asset && asset.heldBy === otherId && !handedOver.has(asset.id)) {
+        dropped.push(`${asset.text} — ${otherId} never put it on the table.`);
         return false;
       }
       return true;

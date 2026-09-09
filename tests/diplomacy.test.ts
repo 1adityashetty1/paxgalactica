@@ -991,6 +991,7 @@ describe('an accord may only enact what was actually conceded', () => {
     credits: 0,
     perTurn: 0,
     hulls: 0,
+    assets: [],
     ...over,
   });
 
@@ -1093,7 +1094,7 @@ describe('an accord may only enact what was actually conceded', () => {
 describe('the concession ledger', () => {
   const c = (over: Partial<Concession> = {}): Concession => ({
     by: 'ojjul', kind: 'hire_hulls', text: 'Twelve hulls at ten a turn.',
-    systems: [], credits: 0, perTurn: 10, hulls: 12, ...over,
+    systems: [], credits: 0, perTurn: 10, hulls: 12, assets: [], ...over,
   });
 
   it('supersedes a restated term instead of recording it twice', () => {

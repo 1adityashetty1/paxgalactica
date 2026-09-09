@@ -71,6 +71,7 @@ leaves a faction with nobody following it.
 | `create_asset` | a thing taken or made **because the attempt worked** — see Things |
 | `transfer_asset` | hand a thing you hold to somebody else |
 | `split_asset` | break a divisible holding into two lots |
+| `consume_asset` | spend, release or destroy a thing you hold |
 | `adjust_dissent` | **your own** institutions grow more restive — never less |
 | `cancel_order` | an existing order is called off |
 | `interrupt_order` | an order is disrupted by force or event |
@@ -471,6 +472,60 @@ always wrong.
 
 `divisible: false` for a thing that is one thing — an heirloom, a person, a
 title. `divisible: true` for a quantity that comes in lots.
+
+### The shapes a thing usually takes
+
+Reach for one of these `kind` slugs when it fits. They are **defaults, not a
+menu**: the vocabulary is open, and a survey that brings back something nobody
+enumerated is exactly what this system is for. But when you use one of these
+slugs, the engine fills in what you left out and **corrects** `divisible` and
+`uses` to match the column — so a `prisoners` haul always divides and a `writ`
+is always spent when it is played, whatever the call said.
+
+<!-- ASSET_ARCHETYPES -->
+
+### When to invent one, and what it should look like
+
+Invent a slug when the fiction produced something real and **none of the shapes
+above is what happened**. Five rules, and they are the ones that make a thing
+tradeable rather than decorative:
+
+1. **It has to be a thing, not a fact.** If a power could hand it over by simply
+   saying it in a conversation, it is not an asset — see the note on operatives
+   above. Ask: *could this be put in a hold, a vault, a cell, or on a table?*
+2. **It has to have come from the attempt that just succeeded.** Never mint what
+   the player merely claims to have, and never mint on a failure. If the action
+   was *"sell them my ore"* and no ore exists, the ore is the thing to go and
+   get: that is an attempt, not an asset.
+3. **Somebody other than the holder has to want it**, and say roughly what for.
+   `valuePerUnit` for a settled price, `valueRange` with `speculative: true` when
+   nobody has assayed it. An asset nobody values is a piece of scenery — write it
+   as narrative instead.
+4. **State the shape honestly.** `divisible` if it comes in lots that could be
+   traded separately. `uses` if it is an instrument that gets played and is then
+   gone — a warrant, a favour owed, a one-time passcode. `atSystemId` if it
+   physically sits somewhere, which is what makes it losable with the world.
+5. **Keep the slug lower_snake_case and reusable.** `war_orphans`, not
+   `the_orphans_of_vashka`. The slug is a category; the specifics go in `text`.
+
+Two failure modes to avoid, both seen in play. Do **not** mint an asset for
+something the game already models — a treaty right, a debt, a standing
+arrangement, hulls, credits or ground all have their own ops, and an asset
+beside one of them is a second source of truth. And do **not** mint one for a
+consequence that has already been paid: if the narrative is *"their fleet is
+crippled"*, that is `adjust_ships`, not a `wreckage` asset, unless somebody is
+going to come and lift it.
+
+### Spending a thing
+
+`consume_asset` is how something leaves the world: prisoners released, ore fed
+into a yard, a writ played, a relic destroyed to deny it to somebody. It draws
+down an instrument's `uses` or ordinary stuff's `quantity`, and the record is
+removed when it reaches zero.
+
+Emit it for a **cost**, including on a failed attempt — powder burned on a
+demolition that did not work is still burned. What you must not do is emit it as
+a way of quietly disposing of an obligation: a borrowed holding is refused.
 
 `atSystemId` is where it physically is, and it makes the thing **losable**: an
 asset at a world changes hands when the world does. A title or a charter has no

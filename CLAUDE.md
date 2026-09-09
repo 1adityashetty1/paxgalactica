@@ -1196,6 +1196,82 @@ capped twice precisely because it *is* money.
 arithmetic divides, rather than a model being trusted to. `divisible: false` is
 a thing that is one thing; `split_asset` refuses on it.
 
+### The catalogue: sixteen shapes, and permission to invent a seventeenth
+
+`src/domain/assets.ts`. An open `kind` slug is right and stays — it is what let a
+playtest reach for a fostered heir, a claimant's seal and a hundred tons of rare
+material without anybody having enumerated them. But an open vocabulary with no
+anchors **drifts**: the same haul minted as `prisoners` one turn and `pows` the
+next, atomic here and divisible there, priced at 12 a head by one call and 400 by
+another — and every one of those is a difference the negotiation layer can see
+and cannot reconcile.
+
+`ASSET_ARCHETYPES` is the anchor, and it is the same division of labour as
+`classifyPrinciple`: **the model is good at judgement and unreliable at lookup**,
+so it decides *that a thing was taken* and the table decides *what that kind of
+thing is like*. Sixteen entries in four groups — **people** who can be ransomed
+or turned, **paper** that proves or authorises, **stuff** that is counted and
+consumed, and **works** that stand on a world and produce.
+
+An archetype is a **default, not a restriction**. `create_asset` accepts any
+slug; when the slug is a known one the reducer fills in what was not stated and
+**corrects** `divisible` and `uses`, which are the two fields whose being wrong
+quietly breaks a later trade — a prisoner haul that will not divide cannot be
+ransomed in lots, and an instrument with no `uses` is exercisable forever.
+
+The table is **substituted into the prompt at call time**, never pasted into the
+`.md`. A copy restated in Markdown is a second opinion that will eventually be
+wrong and will fail silently, which is exactly the drift `prompt-drift.test.ts`
+exists to catch for hull prices.
+
+> Ordering caught this the hard way: the archetype resolution originally ran
+> *after* the location and presence guards, which read the raw op. So an
+> `exchange` — a fixture by catalogue and not by declaration — skipped both and
+> landed on ground its owner had never reached. The guards read the resolved
+> shape now.
+
+### A worth nobody has settled
+
+`speculative` and `valueRange`, the answer to *"a chart that is false"*. The
+obvious build was a **claimed** value beside a **true** one, rendered differently
+to buyer and holder — which would have made this the first place in the game to
+put a deliberate lie into a document two personas bargain over, against the rule
+that makes the state block authoritative precisely *because* it never lies.
+
+A range says the honest thing instead: **nobody knows.** An unassayed seam, a
+chart of a passage nobody has run, a defector's claims, a relic of disputed
+provenance — each is worth somewhere between two numbers, and which end it lands
+on is what the parties are really arguing about. The forgery needs no special
+case at all: it is a wide band that resolves badly, and both ends were arguable
+when it was sold.
+
+Exactly one of `valuePerUnit` and `valueRange` survives `create_asset` — the
+reducer clears the other — so there is never a second opinion about what a thing
+is worth. `assetWorthTo` answers the **midpoint**, because every caller of it
+wants one number; `assetWorthRangeTo` answers the band, and that is what the
+prompts and the panel use, since the spread is the negotiation.
+
+### Nothing could be destroyed, which is why an instrument was immortal
+
+`state.assets` was only ever appended to and re-pointed — traded, ceded,
+conquered, forfeited on a contingency. So prisoners could not be released, ore
+could not be consumed, and `voidsOn: asset_lost` could only fire because
+something changed **hands**, never because it ceased to exist. A playtest wrote a
+claimant's seal into escrow and couriered it to a rival's Legate — the best move
+of that campaign — and the seal was still there the next turn, exercisable again
+forever.
+
+`consume_asset` closes it, and which counter it draws down is a property of the
+thing rather than of the op: an **instrument** (`uses !== null`) is played — a
+writ once, a set of cipher keys three times — and everything else is **stuff**,
+spent by `quantity`. Both reach zero the same way and the row is removed when
+they do.
+
+It is deliberately **not** bound by `boundPayloadsToOutcome`. Consuming is a
+*cost*, and the rule that pass enforces is that a failure emits what the attempt
+cost and not what the player wanted: powder burned on a demolition that did not
+work is still burned.
+
 ### Nobody declares an asset into existence
 
 An asset is always the **outcome of a resolved attempt**, never a thing a player
@@ -1228,9 +1304,21 @@ record that sits in a list and changes nothing.
 - **A world takes what sits on it.** `atSystemId` is what makes an asset
   losable, and the difference between a hostage and a note saying somebody has
   a hostage.
-- **It is priced in the prompt.** `serializeAssets` shows a power its own
-  holdings and, for each, which *other* powers value it and roughly at what — so
-  a persona can price a trade instead of inventing a number.
+- **It is priced in the prompt, on both sides of the table.** `serializeAssets`
+  shows a power its own holdings and which *other* powers value each and roughly
+  at what; `serializeTheirAssets` shows what the power across the table is
+  holding **that this one wants**. Without the second half a persona could put a
+  price on nothing — it saw its own shelf and had no way to know the Combine was
+  sitting on forty of its crews, so the only things it could ever bargain for
+  were worlds, hulls and money. Scoped by value to the viewer, which is sharper
+  than it looks: listing a rival's whole warehouse would be an intelligence leak
+  dressed up as a shopping list.
+- **A concession can name one.** `Concession.assets` carries ids, and
+  `groundInConcessions` holds a `transfer_asset` out of the *other* party's hands
+  to the same standard a world is held to — because an asset is a **record**, so
+  *"you can have your people back"* names no id and nothing downstream can pick
+  which haul was meant. The power holding them resolved it when it said so.
+  Giving your own away still needs no record at all.
 
 ### Cargo, fixture, and a thing that works
 
@@ -2689,6 +2777,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `adjust_credits` | floors at 0 |
 | `set_doctrine` | 1–240 chars; may move `warEthic`/`tradeEthic` and retire lines, charged in dissent; actor's own faction only |
 | `set_toll_policy` | who pays to cross your space; free, actor's own faction only. An accord may only **lift** a toll — adding one is `declared_only` |
+| `consume_asset` | spend, release or destroy a thing you hold; draws an instrument's `uses` or stuff's `quantity` |
 | `issue_order` | see Duration below; optional `onComplete` payload, paid at issue. `force` is a count (drawn proportionally) or a named composition |
 | `cancel_order` | returns the unspent part of a works payload |
 | `interrupt_order` | rejected when the order is not interruptible |

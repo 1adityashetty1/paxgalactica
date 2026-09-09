@@ -195,6 +195,20 @@ export const CreateAssetOp = z.object({
   divisible: z.boolean().default(true),
   /** factionId -> credits one unit is worth to them. A claim, never money. */
   valuePerUnit: z.record(z.string(), z.number().int().min(0).max(10000)).default({}),
+  /** `true` when nobody has settled what it is worth. Use `valueRange` then. */
+  speculative: z.boolean().default(false),
+  /** factionId -> the band one unit might be worth. Read only when speculative. */
+  valueRange: z
+    .record(
+      z.string(),
+      z.object({
+        min: z.number().int().min(0).max(10000),
+        max: z.number().int().min(0).max(10000),
+      }),
+    )
+    .default({}),
+  /** Plays before it is spent, for an instrument. `null` for ordinary stuff. */
+  uses: z.number().int().min(1).max(1000).nullable().default(null),
   /** Where it is, if anywhere. An asset at a world changes hands with it. */
   atSystemId: z.string().nullable().default(null),
   /**
@@ -219,6 +233,40 @@ export const TransferAssetOp = z.object({
   assetId: z.string().min(1),
   toFactionId: z.string().min(1),
   reason: z.string().default(''),
+});
+
+/**
+ * Spending a thing, or destroying it.
+ *
+ * **Nothing in the game could remove an asset.** `state.assets` was only ever
+ * appended to and re-pointed — traded, ceded, conquered, forfeited on a
+ * contingency — so prisoners could not be released, ore could not be consumed,
+ * and an instrument could not be played. A playtest wrote a claimant's seal into
+ * escrow and exercised it in prose, and the seal was still there the next turn,
+ * exercisable again forever.
+ *
+ * Which counter it draws down depends on what the thing is. An **instrument**
+ * (`uses !== null`) is played: a writ once, a set of cipher keys three times.
+ * Everything else is **stuff** and is spent by `quantity`. Both reach zero the
+ * same way and the row is removed when they do, which is also what finally lets
+ * `voidsOn: asset_lost` fire because something ceased to exist rather than only
+ * because it changed hands.
+ *
+ * An ordinary op: spending what is yours needs nobody's permission, and the
+ * reducer removes the real thing, so it cannot be used to wish an obligation
+ * away — a borrowed holding is refused outright.
+ *
+ * **Not bound by `boundPayloadsToOutcome`.** Consuming is a COST, and the rule
+ * that pass enforces is that a failure emits what the attempt cost and not what
+ * the player wanted. Powder burned on a failed demolition is still burned.
+ */
+export const ConsumeAssetOp = z.object({
+  op: z.literal('consume_asset'),
+  assetId: z.string().min(1),
+  /** Units, or plays of an instrument. Trimmed to what is left. */
+  quantity: z.number().int().min(1).max(100000).default(1),
+  /** What it was spent on, in a phrase. */
+  reason: z.string().max(240).default(''),
 });
 
 /**
@@ -704,6 +752,9 @@ export const EXTRACTION_ALLOWED = new Set<string>([
   // reducer refuses every other kind from here, which is where the rule lives —
   // see `DOSSIER_KIND` for why the paper is different from the ore.
   'create_asset',
+  // And spending one, because a conversation that ends "then the prisoners walk
+  // free" is a real outcome and the release binds nobody but the holder.
+  'consume_asset',
   // Lending binds the borrower to give it back; the two unilateral halves —
   // handing it back, and letting them keep it — are reachable here too, since
   // both are ordinary acts a conversation can perfectly well conclude with.
@@ -746,6 +797,7 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   SetStanceOp,
   SetTollPolicyOp,
   SplitAssetOp,
+  ConsumeAssetOp,
   TransferAssetOp,
   IssueOrderOp,
   CancelOrderOp,
@@ -813,6 +865,7 @@ export const OpSchema = z.discriminatedUnion('op', [
   SetStanceOp,
   SetTollPolicyOp,
   SplitAssetOp,
+  ConsumeAssetOp,
   TransferAssetOp,
   IssueOrderOp,
   CancelOrderOp,

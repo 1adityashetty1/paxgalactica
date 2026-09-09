@@ -1,7 +1,7 @@
 import { eventsVisibleTo, ordersVisibleTo } from '../domain/intel.js';
 import { describeStack, hullsIn } from '../domain/hulls.js';
 import { describeOrderEffect } from '../domain/development.js';
-import { describeEffect } from '../domain/diplomacy.js';
+import { assetWorthRangeTo, describeEffect, wantedBy } from '../domain/diplomacy.js';
 import { describeOutstanding } from '../domain/loan.js';
 import { routeEarnings } from '../domain/trade.js';
 import type { Commitment } from '../domain/arbitration.js';
@@ -403,20 +403,66 @@ function shareWorth(state: WorldState, share: NonNullable<Commitment['share']>):
  * intelligence twice and bargained a figure that settled 35 lower, both because
  * nobody at the table could see what was on it.
  */
+/**
+ * What the power across the table is holding that the viewer wants.
+ *
+ * Without this a persona could put a price on nothing: it saw its own shelf and
+ * had no way to know that the Combine was sitting on forty of its crews, so the
+ * only things it could ever offer for were worlds, hulls and money. A
+ * negotiation over objects needs both inventories on the table, and the fog
+ * argument does not apply — you know perfectly well who took your people.
+ *
+ * Scoped by **value to the viewer**, which is a sharper filter than it looks: an
+ * asset with no entry for you is one you have shown no interest in, and listing
+ * a rival's whole warehouse would be an intelligence leak dressed up as a
+ * shopping list.
+ */
+export function serializeTheirAssets(
+  state: WorldState,
+  viewerId: string,
+  holderId: string,
+): string {
+  const theirs = (state.assets ?? []).filter(
+    (a) => a.heldBy === holderId && assetWorthRangeTo(a, viewerId).max > 0,
+  );
+  if (theirs.length === 0) return '_Nothing of theirs that you have shown any interest in._';
+  return theirs
+    .map((a) => {
+      const band = assetWorthRangeTo(a, viewerId);
+      const worth =
+        band.min === band.max
+          ? `worth about ${band.max} to you`
+          : `worth somewhere between ${band.min} and ${band.max} to you — nobody has settled it`;
+      return `- \`${a.id}\` ${a.quantity} ${a.unit} — ${a.text}\n  ${worth}`;
+    })
+    .join('\n');
+}
+
 export function serializeAssets(state: WorldState, viewerId: string): string {
   const mine = (state.assets ?? []).filter((a) => a.heldBy === viewerId);
   if (mine.length === 0) return '_You hold nothing beyond credits, ships and ground._';
   return mine
     .map((a) => {
-      const wanted = Object.entries(a.valuePerUnit)
-        .filter(([id, v]) => v > 0 && id !== viewerId)
-        .map(([id, v]) => `${getFaction(state, id)?.name ?? id} would pay about ${v} a ${a.unit}`)
+      const wanted = wantedBy(a, viewerId)
+        .map((id) => {
+          const band = assetWorthRangeTo(a, id);
+          const per = a.quantity > 0 ? a.quantity : 1;
+          return band.min === band.max
+            ? `${getFaction(state, id)?.name ?? id} would pay about ${Math.floor(band.max / per)} a ${a.unit}`
+            : `${getFaction(state, id)?.name ?? id} might pay ${Math.floor(band.min / per)}–${Math.floor(band.max / per)} a ${a.unit}, unsettled`;
+        })
         .join('; ');
       const where = a.atSystemId ? ` · at ${getSystem(state, a.atSystemId)?.name ?? a.atSystemId}` : '';
       const split = a.divisible ? '' : ' · one thing, does not divide';
       // A fixture is the one thing on this list you cannot put on the table, so
       // it is said here rather than discovered by having the accord rejected.
       const fixed = a.portable ? '' : ' · fixed here; changes hands only with the world';
+      const plays =
+        a.uses === null
+          ? ''
+          : a.uses === 1
+            ? ' · played ONCE, then it is spent'
+            : ` · ${a.uses} plays left`;
       const does =
         a.yield === null
           ? ''
@@ -425,7 +471,7 @@ export function serializeAssets(state: WorldState, viewerId: string): string {
             : a.yield.kind === 'dissent'
               ? ` · moves your dissent ${a.yield.perTurn > 0 ? '+' : '−'}${Math.abs(a.yield.perTurn)} a turn`
               : ` · yields ${a.yield.perTurn} ${a.yield.unit} a turn`;
-      return `- \`${a.id}\` ${a.quantity} ${a.unit} — ${a.text}${where}${split}${fixed}${does}\n  ${
+      return `- \`${a.id}\` ${a.quantity} ${a.unit} — ${a.text}${where}${split}${fixed}${plays}${does}\n  ${
         wanted || 'nobody has shown it is worth anything to them'
       }`;
     })

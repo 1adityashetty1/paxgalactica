@@ -37,17 +37,36 @@ import {
 } from '../domain/state.js';
 import { classifyPrinciple, classifyPrinciples } from '../domain/compulsions.js';
 import { callStructured } from './client.js';
+import { serializeArchetypes } from '../domain/assets.js';
 import { loadPrompt } from './prompts.js';
 import {
   serializeCharacter,
   serializeOrders,
   serializePrinciples,
   serializeState,
+  serializeTheirAssets,
 } from './serialize.js';
 
 /** Resolution and extraction share the duration rules, so both get the rubric. */
 function withRubric(base: string): string {
   return `${base}\n\n---\n\n${loadPrompt('duration-rubric')}`;
+}
+
+/**
+ * The asset catalogue is substituted at call time, never pasted into the file.
+ *
+ * `ASSET_ARCHETYPES` decides what a `prisoners` haul is actually like — whether
+ * it divides, whether it is an instrument, whether its worth is a band — and the
+ * reducer *corrects* a call that disagrees. A table restated in Markdown beside
+ * it is a second opinion that will eventually be wrong and will fail silently,
+ * exactly the drift `tests/prompt-drift.test.ts` exists to catch for hull
+ * prices. Substituting means there is one table.
+ */
+const ARCHETYPE_MARKER = '<!-- ASSET_ARCHETYPES -->';
+function withArchetypes(base: string): string {
+  return base.includes(ARCHETYPE_MARKER)
+    ? base.replace(ARCHETYPE_MARKER, serializeArchetypes())
+    : base;
 }
 
 /* ------------------------------------------------------------------ */
@@ -597,7 +616,7 @@ export async function resolveAction(
   const res = await callStructured({
     kind: 'resolution',
     label: 'resolution',
-    system: withRubric(loadPrompt('resolution')),
+    system: withArchetypes(withRubric(loadPrompt('resolution'))),
     user: [
       serializeState(state, state.playerFactionId),
       '',
@@ -952,6 +971,12 @@ export async function diplomacyReply(
     '',
     '---',
     '',
+    `## What ${player?.name ?? state.playerFactionId} is holding that you want`,
+    '',
+    serializeTheirAssets(state, factionId, state.playerFactionId),
+    '',
+    '---',
+    '',
     '## This conversation so far',
     '',
     conversation,
@@ -1030,7 +1055,7 @@ export async function extractAgreements(
   const res = await callStructured({
     kind: 'extraction',
     label: 'extraction',
-    system: withRubric(loadPrompt('extraction')),
+    system: withArchetypes(withRubric(loadPrompt('extraction'))),
     user,
     // The extraction vocabulary, which is the ordinary one plus `form_treaty`.
     // This pass has read a transcript, so it is the only model-driven place in
