@@ -476,6 +476,19 @@ title. `divisible: true` for a quantity that comes in lots.
 asset at a world changes hands when the world does. A title or a charter has no
 location; leave it `null`.
 
+**What an operative finds is not an asset.** An `intel` agent produces
+*knowledge* — live, derived, and gone the moment the operative is burned — and
+knowledge is something a player can hand over by simply typing it into a
+channel. There is no version of an object you can give away by talking. So never
+write a rival's fleet dispositions, a rumour, or a watcher's report as
+`create_asset`; it is a thing to say, and it may be real consideration in a
+bargain without being a thing that changes hands.
+
+The tradeable version is a **`dossier`**: the paper rather than the knowledge, a
+file compiled and sealed. It is always atomic and always has no location, both
+forced, and it is the one asset kind an accord may bring into being — because
+the conversation itself supplies its substance.
+
 ### Cargo, fixture, and a thing that works
 
 `portable: false` is for a thing that **is** the world — a mine, an exchange, a

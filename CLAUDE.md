@@ -1294,6 +1294,54 @@ Bounds, each answering a specific way the field could be turned into free money:
   nothing. A going concern is one thing whatever its `quantity` says, and what it
   makes is the divisible half.
 
+### Intelligence is not an asset; a dossier is
+
+*"A piece of intelligence held exclusively"* was on the original asset list and
+cannot be an asset, for a reason that has nothing to do with schemas: **nothing
+prevents a player from simply saying it.** Diplomacy is free text. A power that
+knows where the Vantic keels are laid types that sentence into a channel and the
+knowledge has moved, whatever any record claims. An object you can hand over by
+talking is not an object.
+
+So the line is drawn at the source, and it is drawn cleanly:
+
+| | what it is | how it moves |
+|---|---|---|
+| the `intel` agent effect | **knowledge** — live, derived from an unexposed operative, gone when they are burned | disclosed, for nothing, by saying it |
+| a `dossier` asset | **paper** — a file compiled, sealed and handed over | `transfer_asset`, at a price |
+
+**What an operative produces is never an asset.** It may still be real
+consideration in a bargain — *"I'll tell you what my watcher saw"* is a genuine
+thing to offer — it is simply not a thing that changes hands, so
+`prompts/resolution.md` forbids writing it as one.
+
+**A dossier is the one asset kind an accord may create.** That looks like a
+loosening of *"a conversation trades what exists and cannot conjure what does
+not"* and is actually an application of it: nothing is being conjured, because
+the seller already had the knowledge for free and could have disclosed it in the
+channel. What the deal makes is the record.
+
+Three things are **forced** rather than trusted, and together they are why this
+stayed small:
+
+- **atomic**, so there is no half a file — which is what removes the question of
+  how value divides, and with it any need for a decay model;
+- **no location**, because a record of a conversation is not standing on a world
+  to be seized with it;
+- **no yield**, since paper produces nothing.
+
+What is left is exactly one thing: a natural per-faction value, which is the
+whole of what makes a file worth buying. `heldBy` may be either party when the
+op comes from an accord — across a table the other power said in its own voice
+that it holds the file — and on the declared path the ordinary rule stands, so
+you still cannot put a document into somebody else's hands by saying so.
+
+**What this deliberately does not do is make knowledge durable.** Buying a
+dossier grants no visibility: the fog is still *"a snapshot, not a memory"*, and
+a power that wants to see what a rival is building buys an operative, which is
+the mechanic that exists, costs credits and can be burned. A dossier trades in
+proof and leverage, not in sight.
+
 ### A contingency: "if X happens, Y pays Z"
 
 `ContingencySchema` in `src/domain/arbitration.ts`, carried on a `Commitment`.

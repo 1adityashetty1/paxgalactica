@@ -42,7 +42,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~90~~ | ~~a hired squadron, which is a loan of units~~ | medium | **BUILT** — as `Loan`, not as a `Debt` with extra fields |
 | ~~91~~ | ~~seven small things~~ | small | **BUILT**, six of seven; severability is not small |
 | ~~94~~ | ~~loans, after the first one is signed~~ | small | **(a) BUILT**, with the default model it exposed; (b) wants a playtest, (c) settled |
-| **93** | three things the asset fields still cannot say | small–medium | one is a measured bug (an instrument exercised forever) |
+| **93** | ~~three~~ two things the asset fields still cannot say | small | **(b) SETTLED and BUILT** as `dossier`; (a) is a measured bug and needs no ruling; (c) wants one |
 | **80** | an advisor that costs an action | medium | not from the playtest; wanted |
 | **92** | two claims only a campaign can settle | — | needs play, not code |
 
@@ -606,7 +606,7 @@ other half — `portable`, and a `yield` union of `credits` · `dissent` · `ass
 *"Cargo, fixture, and a thing that works"*, for the bounds and where each yield
 is applied.
 
-## 93. Three things the asset fields still cannot say
+## 93. PARTLY BUILT — three things the asset fields could not say
 
 Swept against the creative playtest's own list after the `portable`/`yield`
 extension. Everything it reached for is now expressible **except** three, and
@@ -623,7 +623,30 @@ rather than a thing being spent. The shape is small: a `consume_asset` op, or a
 a letter of marque, a writ, a single-shot favour — everything whose whole value
 is that it can be played once.
 
-**b) Information, which is copied rather than moved.** `transfer_asset` moves a
+**b) SETTLED, and built — information is not an asset at all.**
+
+The framing was wrong, and the ruling that fixed it is the user's: *nothing
+prevents a player from disclosing intelligence as a message.* Diplomacy is free
+text, so an operative's findings can be handed over by typing them, and an
+object you can give away by talking is not an object. Copy semantics, a
+`sourceId` lineage and a value that decays with the number of holders were all
+answers to a question that should not have been asked.
+
+So **what an agent produces is never an asset** — it is knowledge, disclosable
+for nothing, and may be consideration in a bargain without changing hands — and
+the tradeable thing is a **`dossier`**: the paper rather than the knowledge,
+forced atomic, forced placeless, forced inert, carrying a natural per-faction
+value and nothing else. It is the one asset kind an accord may create, which is
+an application of *"a conversation cannot conjure what does not exist"* rather
+than an exception to it: the seller already had the knowledge for free, and what
+the deal makes is the record. See `CLAUDE.md`, *"Intelligence is not an asset; a
+dossier is"*.
+
+Deliberately not done: buying a dossier grants **no visibility**. The fog stays
+a snapshot rather than a memory, and a power that wants to see a rival's yards
+buys an operative.
+
+**b) (original framing) Information, which is copied rather than moved.** `transfer_asset` moves a
 holding from one power to another, which is right for ore and wrong for a
 dossier: the playtest **sold the same intelligence twice** (**B-11**), and under
 today's fields that is either a bug (the seller still holds it) or a

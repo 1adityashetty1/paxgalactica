@@ -39,6 +39,7 @@ import {
 } from './development.js';
 import {
   AGENT_COST,
+  DOSSIER_KIND,
   MAX_ASSET_DISSENT,
   MAX_ASSET_YIELD,
   MISSION_PROFILE,
@@ -1581,11 +1582,19 @@ export function applyOps(
         // Refused from an accord because a conversation trades what exists and
         // cannot conjure what does not — the mirror of `transfer_asset`, which
         // is reachable there precisely because it moves something real.
-        if (source === 'extraction') {
+        //
+        // ONE exception, and it is not a loosening of that rule but an
+        // application of it: a **dossier** is the paper rather than the
+        // knowledge, and the knowledge was already the seller's, free, and
+        // disclosable in the channel by simply typing it. So nothing is
+        // conjured — the conversation supplies the substance and the accord
+        // makes the record. See `DOSSIER_KIND`.
+        const isDossier = op.kind === DOSSIER_KIND;
+        if (source === 'extraction' && !isDossier) {
           reject(
             raw,
             'declared_only',
-            'An accord can trade a thing that exists; it cannot bring one into being. Whatever produced this — a sweep, a survey, a seizure — is an action to attempt on your own turn.',
+            `An accord can trade a thing that exists; it cannot bring one into being. Whatever produced this — a sweep, a survey, a seizure — is an action to attempt on your own turn. (The one exception is a "${DOSSIER_KIND}": a file compiled out of what was said here.)`,
           );
           break;
         }
@@ -1593,8 +1602,12 @@ export function applyOps(
           reject(raw, 'unknown_faction', `No faction "${op.heldBy}".`);
           break;
         }
-        // You cannot survey ore into somebody else's warehouse.
-        if (actor !== undefined && op.heldBy !== actor) {
+        // You cannot survey ore into somebody else's warehouse — except across
+        // a table, where the other party said in its own voice that it holds
+        // the file and is selling it. That consent is the whole reason
+        // extraction exists, and it is the same argument that makes
+        // `transfer_asset` reachable there and nowhere else.
+        if (actor !== undefined && op.heldBy !== actor && !(source === 'extraction' && isDossier)) {
           reject(
             raw,
             'illegal_value',
@@ -1610,7 +1623,13 @@ export function applyOps(
         // is worse: an income stream nobody can raid, blockade or conquer. Both
         // of the new fields are ways of saying "this thing is somewhere", so
         // neither means anything without the somewhere.
-        if ((op.portable === false || op.yield !== null) && op.atSystemId === null) {
+        // A dossier has no location, so it can carry neither of the two fields
+        // that need one. Settled here rather than by rejecting, since both are
+        // meaningless on a file rather than wrong.
+        if (isDossier && (op.yield !== null || op.portable === false)) {
+          notes.push(`A ${DOSSIER_KIND} is paper: it stands nowhere and produces nothing.`);
+        }
+        if (!isDossier && (op.portable === false || op.yield !== null) && op.atSystemId === null) {
           reject(
             raw,
             'illegal_value',
@@ -1624,7 +1643,7 @@ export function applyOps(
         // suborning and a works payload draw, and here for the same reason: a
         // producing asset on a rival's world would be a claim on ground the
         // actor has never reached.
-        const site = op.atSystemId
+        const site = op.atSystemId && !isDossier
           ? state.systems.find((x) => x.id === op.atSystemId)!
           : undefined;
         if (
@@ -1645,7 +1664,7 @@ export function applyOps(
         // are still real at a smaller number, the same shape as
         // `MAX_COMMITMENT_INCOME` and `billConstruction`. Only the paying
         // direction: nothing needs protecting from a power agreeing to pay.
-        let assetYield = op.yield;
+        let assetYield = isDossier ? null : op.yield;
         if (assetYield?.kind === 'credits' && assetYield.perTurn > MAX_ASSET_YIELD) {
           notes.push(
             `${op.text} would pay ${assetYield.perTurn} a turn; trimmed to ${MAX_ASSET_YIELD}.`,
@@ -1679,15 +1698,20 @@ export function applyOps(
           heldBy: op.heldBy,
           quantity: op.quantity,
           unit: op.unit,
-          divisible: op.divisible,
+          // A file is one file. Forced rather than trusted, because atomicity
+          // is what keeps a dossier simple: no half a file, so no question
+          // about how value divides, so no decay model and no lineage.
+          divisible: isDossier ? false : op.divisible,
           // Trimmed to the powers that exist. A value quoted for a faction
           // nobody has is not a price, it is noise in a document two personas
           // are about to bargain over.
           valuePerUnit: Object.fromEntries(
             Object.entries(op.valuePerUnit).filter(([id]) => factionExists(id)),
           ),
-          atSystemId: op.atSystemId,
-          portable: op.portable,
+          // And a record of a conversation is not standing on a world to be
+          // taken with it.
+          atSystemId: isDossier ? null : op.atSystemId,
+          portable: isDossier ? true : op.portable,
           yield: assetYield,
           acquiredTurn: state.turn,
         };

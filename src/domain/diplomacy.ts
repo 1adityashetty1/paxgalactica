@@ -383,6 +383,39 @@ export type AssetYield = z.infer<typeof AssetYieldSchema>;
  * construction** — the arithmetic does it, rather than a model being trusted to
  * divide correctly.
  */
+/**
+ * The one asset kind an accord may bring into being.
+ *
+ * ## Why intelligence is not an asset, and a dossier is
+ *
+ * *"A piece of intelligence held exclusively"* looked like an asset and cannot
+ * be one, for a reason that has nothing to do with schemas: **nothing prevents a
+ * player from simply saying it.** Diplomacy is free text. A power that knows
+ * where the Vantic keels are laid types that sentence into a channel and the
+ * knowledge has moved, whatever any record says. An object you can hand over by
+ * talking is not an object.
+ *
+ * So the line is drawn at the source. **What an operative produces is never an
+ * asset** — it is knowledge, it is disclosable in conversation, and it may be
+ * real consideration in a bargain without being a thing that changes hands. The
+ * `intel` agent effect stays exactly what it is: live, derived from an unexposed
+ * operative, and gone when the operative is burned.
+ *
+ * A **dossier** is the other thing. It is the paper, not the knowledge — a file
+ * compiled, sealed and handed across a table — and it is the only asset kind
+ * that an accord may *create*, because it is the one whose substance the
+ * conversation itself supplies. Nothing is conjured: the seller already had the
+ * knowledge for free, and what the deal makes is the record.
+ *
+ * That distinction is also what lets it stay simple. A dossier is **atomic**, so
+ * there is no half a file and no question about how value divides; it has no
+ * decay and no copy semantics, so exclusivity needs no lineage field; and it has
+ * **no location**, because a record of a conversation is not standing on a world
+ * to be seized with it. What it has is a natural per-faction value, which is the
+ * whole of what makes it worth trading.
+ */
+export const DOSSIER_KIND = 'dossier';
+
 export const AssetSchema = z.object({
   id: z.string().min(1),
   /** A lower_snake_case slug, invented freely — `prisoners`, `heirloom`, `ore`. */

@@ -29,9 +29,34 @@ transferred on its own. Selling one is selling the world it stands on: write a
 `cession` naming that system, with `terms.payment` for the price, and the works
 go with the ground.
 
-**You cannot create one here.** A conversation trades what exists and does not
-conjure what does not, so an accord promising *"a hundred tons of ore"* nobody
-holds produces nothing. That is not a gap: it is a thing to go and get.
+**You cannot create one here, with one exception.** A conversation trades what
+exists and does not conjure what does not, so an accord promising *"a hundred
+tons of ore"* nobody holds produces nothing. That is not a gap: it is a thing to
+go and get.
+
+The exception is a **`dossier`** — a file, a compiled report, a sealed account of
+what somebody knows — and it is an exception because nothing is being conjured:
+the seller already had the knowledge, for free, and could have simply said it
+here. What the deal makes is the paper. So *"my file on the Vantic yards, three
+hundred, and you never had it from me"* is a real trade, written as
+`create_asset` with `kind: "dossier"` held by the seller, `transfer_asset` to
+the buyer, and the price as `adjust_credits` or `terms.payment`.
+
+```jsonc
+{ "op": "create_asset", "kind": "dossier", "heldBy": "ojjul",
+  "text": "The Combine's file on the Vantic keel-yards, sealed.",
+  "quantity": 1, "unit": "dossier", "valuePerUnit": { "drajk": 260 } }
+```
+
+A dossier is forced **atomic** and forced to have **no location** — it is paper,
+so there is no half of it and nothing standing on a world to be seized with it.
+`heldBy` may be either party here, because the other power said in its own voice
+that it holds the file.
+
+**What an operative found is not a dossier and not an asset.** Watching a rival
+is knowledge; a player who wants to tell somebody what they saw simply tells
+them, in the channel, for nothing. Only write a `dossier` when the parties
+actually bargained over a **document** and a **price**.
 
 ### A hired squadron is a loan, and so is everything else lent
 

@@ -1203,6 +1203,55 @@ describe('assets', () => {
     expect(out.state.assets).toHaveLength(0);
   });
 
+  it('makes one exception, and it is paper', () => {
+    // A dossier is the paper, not the knowledge. Nothing is conjured: the
+    // seller already had what is in it, for free, and could have said it in the
+    // channel — what the deal makes is the record. See `DOSSIER_KIND`.
+    const dossier = (over: Record<string, unknown> = {}) =>
+      make({
+        kind: 'dossier', unit: 'dossier', quantity: 1,
+        text: "The Combine's file on the Vantic keel-yards, sealed.",
+        valuePerUnit: { drajk: 260 }, ...over,
+      });
+    const out = applyOps(seedState(), [dossier()], 'extraction', 'ojjul');
+    expect(out.rejections).toEqual([]);
+    const file = out.state.assets[0]!;
+    // Atomic and placeless, both FORCED — that is what keeps it simple: no half
+    // a file, so no question about how value divides, so no decay and no
+    // lineage. And a record of a conversation is not standing on a world to be
+    // seized with it.
+    expect(file.divisible).toBe(false);
+    expect(file.atSystemId).toBeNull();
+    expect(file.yield).toBeNull();
+    expect(assetWorthTo(file, 'drajk')).toBe(260);
+
+    const forced = applyOps(
+      seedState(),
+      [dossier({ divisible: true, atSystemId: 'ilv-2', yield: { kind: 'credits', perTurn: 20 } })],
+      'extraction',
+      'ojjul',
+    );
+    expect(forced.rejections).toEqual([]);
+    expect(forced.state.assets[0]!.divisible).toBe(false);
+    expect(forced.state.assets[0]!.atSystemId).toBeNull();
+    expect(forced.state.assets[0]!.yield).toBeNull();
+
+    // The other power may be the one holding it: across a table it said so in
+    // its own voice, which is the whole reason extraction exists.
+    const theirs = applyOps(seedState(), [dossier({ heldBy: 'drajk' })], 'extraction', 'ojjul');
+    expect(theirs.rejections).toEqual([]);
+    expect(theirs.state.assets[0]!.heldBy).toBe('drajk');
+
+    // And it is still the only exception: ore is a thing to go and get.
+    const ore = applyOps(seedState(), [make({ kind: 'ore' })], 'extraction', 'ojjul');
+    expect(ore.rejections[0]?.code).toBe('declared_only');
+
+    // On the DECLARED path nothing changes: you still cannot put a file into
+    // somebody else's hands by saying so.
+    const declared = applyOps(seedState(), [dossier({ heldBy: 'drajk' })], 'model', 'ojjul');
+    expect(declared.rejections[0]?.code).toBe('illegal_value');
+  });
+
   it('is worth different things to different powers, and that is the point', () => {
     const s = applyOps(seedState(), [make()], 'model', 'ojjul').state;
     const a = s.assets[0]!;

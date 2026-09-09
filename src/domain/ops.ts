@@ -700,6 +700,10 @@ export const EXTRACTION_ALLOWED = new Set<string>([
   // Handing a thing over, or being handed one. Taking another power's asset
   // needs their agreement, and a transcript is the one place it exists.
   'transfer_asset',
+  // And ONE kind of asset an accord may bring into being: a dossier. The
+  // reducer refuses every other kind from here, which is where the rule lives —
+  // see `DOSSIER_KIND` for why the paper is different from the ore.
+  'create_asset',
   // Lending binds the borrower to give it back; the two unilateral halves —
   // handing it back, and letting them keep it — are reachable here too, since
   // both are ordinary acts a conversation can perfectly well conclude with.
