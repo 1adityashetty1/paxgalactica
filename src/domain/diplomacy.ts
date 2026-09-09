@@ -76,6 +76,20 @@ export const ConcessionSchema = z.object({
   perTurn: z.number().int().min(0).max(1000).default(0),
   /** Hulls pledged out of `by`'s own fleet. */
   hulls: z.number().int().min(0).max(1000).default(0),
+  /**
+   * Things `by` is handing over, **resolved to asset ids** by whoever holds
+   * them.
+   *
+   * The same argument `systems` makes, one layer along: *"you can have your
+   * people back"* names no id, and no downstream matcher can turn it into one
+   * without guessing which haul is meant. The power giving them up is looking at
+   * its own shelf and knows.
+   *
+   * Ids rather than a description because an asset is a **record**, not a
+   * quantity — the whole point of the class is that two lots of forty crews are
+   * two different lots, held in different places, worth different things.
+   */
+  assets: z.array(z.string().min(1)).max(8).default([]),
 });
 export type Concession = z.infer<typeof ConcessionSchema>;
 
@@ -194,12 +208,29 @@ export const TREATY_TYPES = [
   // raid-immunity pact between the same pair, because supersession keys on the
   // type. Naming the thing fixes both.
   'cession',
+  /**
+   * A commercial agreement that pays: a hire, an annuity, a charter fee, a
+   * retainer, a share of a season's take.
+   *
+   * `tribute` was the only type carrying `incomePerTurn`, so it became the sink
+   * for every recurring flow regardless of what the parties meant — and words
+   * bind here. A playtest recorded a hire contract and a reinsurance annuity as
+   * `tribute`, which put the **Arkane Free Worlds** on the paying end of an
+   * instrument their own sheet refuses outright: *"tribute is refused. The
+   * Drift does not pay to be left alone, whatever the arithmetic says."*
+   *
+   * It also fixes a quieter bug. Supersession keys on `(pair, type)`, so a
+   * second commercial deal with the same power silently retired the first — two
+   * unrelated contracts could not coexist because they had to share a label.
+   */
+  'contract',
 ] as const;
 export const TreatyTypeSchema = z.enum(TREATY_TYPES);
 export type TreatyType = z.infer<typeof TreatyTypeSchema>;
 
 export const TREATY_TYPE_MEANING: Record<TreatyType, string> = {
   cession: 'one party hands named worlds to the other, once and permanently; a price may ride with it',
+  contract: 'a commercial agreement that pays — a hire, an annuity, a charter fee; money for something given, not tribute',
   non_aggression: 'neither party attacks the other; breaking it is a betrayal everyone sees',
   mutual_defense: 'an attack on one obliges the other to answer',
   trade_accord: 'lanes stay open and income is shared on named systems',
@@ -233,6 +264,102 @@ export type IncomeShare = z.infer<typeof IncomeShareSchema>;
  * principle as `OrderEffect`: the vocabulary is small, it is arithmetic on
  * state, and nothing here can be argued into meaning something else.
  */
+/**
+ * The most a thing can pay its holder in a turn, before it is trimmed.
+ *
+ * A yield is the one part of an asset that is **money rather than a claim**, so
+ * it is the one part that needs a ceiling — the rule every money mechanism here
+ * has converged on. Set beside `MAX_COMMITMENT_INCOME` (25) because it is the
+ * same size of thing: a standing arrangement that pays a little, every turn,
+ * forever.
+ *
+ * Only the paying direction is capped. A thing that costs its holder to keep —
+ * prisoners eat, a garrisoned mine is guarded — is uncapped for the reason a
+ * commitment's costs are: nothing needs protecting from a power agreeing to pay.
+ */
+export const MAX_ASSET_YIELD = 25;
+
+/**
+ * The most a thing can move its holder's dissent in a turn.
+ *
+ * Deliberately tiny, and set at `DISSENT_DECAY`. Institutions are repaired by
+ * governing in character and by time, at a pace every other number here was
+ * tuned against — a theatre or a temple may **double** that rate and may not
+ * outrun it. One refusal costs 8 and one compulsion breach 15, so nothing built
+ * out of assets lets a leader buy their way out of governing badly.
+ */
+export const MAX_ASSET_DISSENT = 2;
+
+/**
+ * What a thing does every turn, if it does anything.
+ *
+ * Most assets are inert: a hundred tons of ore sits in a hold and is worth what
+ * somebody will pay for it. But a mine, an exchange and a theatre are all
+ * *things you can hold at a world*, and what makes them worth holding is that
+ * they produce — so an asset class with no per-tick vocabulary can name them and
+ * not model them, which is the failure this whole subsystem exists to end.
+ *
+ * A closed union of three, for the reason `OrderEffect` and `VoidCondition` are
+ * closed: a predicate has to be right about every case that will ever exist, a
+ * list has to be edited, and the edit is where the thinking happens.
+ *
+ * **Where each is applied follows the rule the agent effects already set.**
+ * `credits` is *read where it is used*, in `ledgerFor`, because a flow that
+ * mutated the treasury each tick would compound rather than recur. `dissent`
+ * and `asset` **mutate** in `tickTurn`, because both accumulate on their own
+ * clock — the same split that puts `hull_damage` and `sedition` on one side and
+ * `income_penalty` on the other.
+ */
+export const AssetYieldSchema = z.discriminatedUnion('kind', [
+  z.object({
+    /** An exchange, a customs house, a licenced dock. */
+    kind: z.literal('credits'),
+    /** To the holder, every turn. Negative is upkeep — prisoners eat. */
+    perTurn: z.number().int().min(-400).max(400),
+  }),
+  z.object({
+    /**
+     * A theatre, a temple, a grain dole — or a labour camp, which is the same
+     * field with the sign the other way.
+     *
+     * The holder's **own** dissent. Turning a *rival's* institutions against it
+     * is `sedition`, which is an operative's work and priced as such; an asset
+     * that could do it would be that mechanic at none of the cost.
+     */
+    kind: z.literal('dissent'),
+    /** Negative settles the population; positive inflames it. */
+    perTurn: z.number().int().min(-10).max(10),
+  }),
+  z.object({
+    /**
+     * A mine, a hatchery, a shipbreaker's yard — a thing that makes another
+     * thing.
+     *
+     * The output **merges into an existing holding** of the same kind at the
+     * same world rather than minting a row a turn: a mine run for thirty turns
+     * is one growing stockpile, not thirty piles of ore. Same lesson as
+     * `normaliseStack` — a record whose shape depends on its history is a
+     * record nobody can read.
+     */
+    kind: z.literal('asset'),
+    /** How many units come out a turn. */
+    perTurn: z.number().int().min(1).max(1000),
+    /** The slug of what it makes: `ore`, `hulls_scrap`, `foodstuffs`. */
+    assetKind: z
+      .string()
+      .min(1)
+      .max(40)
+      .regex(/^[a-z][a-z0-9_]*$/, 'assetKind must be a lower_snake_case slug'),
+    /** What one of it is. */
+    unit: z.string().min(1).max(24),
+    /** One sentence, read back to the player as the stockpile's description. */
+    text: z.string().min(1).max(240),
+    /** What a unit of the output is worth to whom. A claim, as ever. */
+    valuePerUnit: z.record(z.string(), z.number().int().min(0).max(10000)).default({}),
+  }),
+]);
+export type AssetYield = z.infer<typeof AssetYieldSchema>;
+
 /**
  * A thing that is neither credits nor ships.
  *
@@ -270,6 +397,39 @@ export type IncomeShare = z.infer<typeof IncomeShareSchema>;
  * construction** — the arithmetic does it, rather than a model being trusted to
  * divide correctly.
  */
+/**
+ * The one asset kind an accord may bring into being.
+ *
+ * ## Why intelligence is not an asset, and a dossier is
+ *
+ * *"A piece of intelligence held exclusively"* looked like an asset and cannot
+ * be one, for a reason that has nothing to do with schemas: **nothing prevents a
+ * player from simply saying it.** Diplomacy is free text. A power that knows
+ * where the Vantic keels are laid types that sentence into a channel and the
+ * knowledge has moved, whatever any record says. An object you can hand over by
+ * talking is not an object.
+ *
+ * So the line is drawn at the source. **What an operative produces is never an
+ * asset** — it is knowledge, it is disclosable in conversation, and it may be
+ * real consideration in a bargain without being a thing that changes hands. The
+ * `intel` agent effect stays exactly what it is: live, derived from an unexposed
+ * operative, and gone when the operative is burned.
+ *
+ * A **dossier** is the other thing. It is the paper, not the knowledge — a file
+ * compiled, sealed and handed across a table — and it is the only asset kind
+ * that an accord may *create*, because it is the one whose substance the
+ * conversation itself supplies. Nothing is conjured: the seller already had the
+ * knowledge for free, and what the deal makes is the record.
+ *
+ * That distinction is also what lets it stay simple. A dossier is **atomic**, so
+ * there is no half a file and no question about how value divides; it has no
+ * decay and no copy semantics, so exclusivity needs no lineage field; and it has
+ * **no location**, because a record of a conversation is not standing on a world
+ * to be seized with it. What it has is a natural per-faction value, which is the
+ * whole of what makes it worth trading.
+ */
+export const DOSSIER_KIND = 'dossier';
+
 export const AssetSchema = z.object({
   id: z.string().min(1),
   /** A lower_snake_case slug, invented freely — `prisoners`, `heirloom`, `ore`. */
@@ -301,6 +461,52 @@ export const AssetSchema = z.object({
    */
   valuePerUnit: z.record(z.string(), z.number().int().min(0).max(10000)).default({}),
   /**
+   * Whether anybody actually knows what it is worth.
+   *
+   * The answer to *"a chart that is false"*, and a better one than was filed.
+   * The obvious build was a **claimed** value beside a **true** one, shown
+   * differently to buyer and holder — which would have made this the first place
+   * in the game to put a deliberate lie into a document two personas bargain
+   * over, against the rule that makes the state block authoritative precisely
+   * because it never lies.
+   *
+   * A range says the honest thing instead: **nobody knows.** An unassayed seam,
+   * a chart of a passage nobody has run, a defector's claims, a relic of
+   * disputed provenance — each is worth somewhere between two numbers, and which
+   * end it lands on is what the parties are really arguing about. The forgery
+   * needs no special case: it is a wide band that resolves badly.
+   *
+   * Exactly one of `valuePerUnit` and `valueRange` is populated, and the reducer
+   * clears the other, so there is never a second opinion about what a thing is
+   * worth.
+   */
+  speculative: z.boolean().default(false),
+  /** factionId -> what one unit MIGHT be worth. Read only when `speculative`. */
+  valueRange: z
+    .record(
+      z.string(),
+      z.object({
+        min: z.number().int().min(0).max(10000),
+        max: z.number().int().min(0).max(10000),
+      }),
+    )
+    .default({}),
+  /**
+   * How many times it can be played before it is spent, or `null` for a thing
+   * that is simply stuff.
+   *
+   * A playtest wrote a claimant's seal into escrow against a performance and
+   * couriered it to a rival's Legate to force the issue — the best single move
+   * of that campaign — and **the instrument was never consumed**, so it could be
+   * exercised again every turn forever. Nothing in the record said *once*.
+   *
+   * `null` is the ordinary case: prisoners, ore and hulks are spent by
+   * `quantity` like anything else. A number is an *instrument* — a writ, a
+   * surety, a cipher key — and `consume_asset` draws it down. Both reach zero
+   * the same way, and the row is removed when they do.
+   */
+  uses: z.number().int().min(1).max(1000).nullable().default(null),
+  /**
    * Where it physically is, if anywhere.
    *
    * Optional, and it is what makes an asset losable: prisoners held at a world
@@ -308,13 +514,79 @@ export const AssetSchema = z.object({
    * charter, a debt of honour — is held by the faction and travels with it.
    */
   atSystemId: z.string().nullable().default(null),
+  /**
+   * Whether it can leave the world it sits on.
+   *
+   * `atSystemId` already made an asset **losable** — anything at a world changes
+   * hands when the world does — but it said nothing about whether the thing can
+   * be handed over on its own, and the difference is the whole of what separates
+   * a cargo from a fixture. A hundred tons of ore is at a world and can be
+   * shipped anywhere; survey robots are at a world and can be crated up and
+   * given away; a mine, an exchange, a theatre are *the world*, and the only way
+   * to give one away is to give away the ground it stands on.
+   *
+   * So `portable: false` is refused by `transfer_asset` and reachable only
+   * through `cession` or conquest — which needs no new code at all, because the
+   * transfer-of-control path already moves everything standing on a world.
+   *
+   * A fixture with no world is nonsense and the reducer rejects it.
+   */
+  portable: z.boolean().default(true),
+  /**
+   * What it does every turn, if it does anything. See `AssetYieldSchema`.
+   *
+   * A yield **requires** `atSystemId`, and that is a design rule rather than a
+   * technicality: a thing that pays must sit somewhere it can be taken. Without
+   * it an asset that produced credits would be a perpetual income stream with no
+   * counterplay whatever — unraidable, unblockadeable, unconquerable — which is
+   * the one shape the economy here has consistently refused.
+   */
+  yield: AssetYieldSchema.nullable().default(null),
   acquiredTurn: z.number().int().min(0),
 });
 export type Asset = z.infer<typeof AssetSchema>;
 
 /** What an asset is worth to a power, in total. A claim, never a ledger entry. */
 export function assetWorthTo(asset: Asset, factionId: string): number {
+  if (asset.speculative) {
+    const band = asset.valueRange[factionId];
+    if (!band) return 0;
+    // The MIDPOINT, because every caller of this wants one number and the
+    // middle of what is known is the least misleading one available. Anything
+    // that should show the uncertainty itself — a prompt, a panel — asks
+    // `assetWorthRangeTo` instead.
+    return Math.floor((band.min + band.max) / 2) * asset.quantity;
+  }
   return (asset.valuePerUnit[factionId] ?? 0) * asset.quantity;
+}
+
+/**
+ * The same, as a band. `min === max` for anything whose worth is settled.
+ *
+ * This is what a persona needs to bargain honestly over something nobody has
+ * assayed: an offer at the bottom of the band and a demand at the top are both
+ * defensible, and that argument is the whole content of trading a speculative
+ * holding.
+ */
+export function assetWorthRangeTo(
+  asset: Asset,
+  factionId: string,
+): { min: number; max: number } {
+  if (asset.speculative) {
+    const band = asset.valueRange[factionId];
+    if (!band) return { min: 0, max: 0 };
+    return { min: band.min * asset.quantity, max: band.max * asset.quantity };
+  }
+  const flat = (asset.valuePerUnit[factionId] ?? 0) * asset.quantity;
+  return { min: flat, max: flat };
+}
+
+/** Every power that has shown this is worth something to them. */
+export function wantedBy(asset: Asset, exceptId?: string): string[] {
+  const source = asset.speculative ? asset.valueRange : asset.valuePerUnit;
+  return Object.keys(source).filter(
+    (id) => id !== exceptId && assetWorthRangeTo(asset, id).max > 0,
+  );
 }
 
 /** Everything a faction is holding. */
@@ -565,6 +837,29 @@ export const AgentEffectSchema = z.discriminatedUnion('kind', [
     perTurn: z.number().int().min(0).max(20),
   }),
   z.object({
+    /**
+     * Turn a rival's own institutions against it.
+     *
+     * **There was no op in the game that could raise another power's dissent.**
+     * `adjust_dissent` is actor-only and upward-only by design — the guard that
+     * stops it being the cheapest hostile act available — and
+     * `adjust_disposition` measures the wrong quantity: how they feel about
+     * *you*, not how their own people feel about them.
+     *
+     * So a playtest crowned a pretender and passed a bill of attainder against
+     * the Iron Vigil, both successfully, and left it **mechanically identical**:
+     * −200 credits and +15 of the actor's own dissent, for a legitimacy attack
+     * the fiction described in detail and the arithmetic could not express.
+     *
+     * Mutates rather than being read where it is used, like `hull_damage` and
+     * unlike `stat_debuff`: dissent accumulates and decays on its own clock, so
+     * a value read fresh each turn would not accumulate at all.
+     */
+    kind: z.literal('sedition'),
+    /** Dissent added to the target per turn on success. */
+    perTurn: z.number().int().min(1).max(6),
+  }),
+  z.object({
     kind: z.literal('income_penalty'),
     /** Credits denied to the target per turn on success. */
     perTurn: z.number().int().min(0).max(400),
@@ -641,6 +936,8 @@ export function describeEffect(effect: AgentEffect): string {
       return `−${effect.magnitude} ${effect.stat}`;
     case 'crew_defection':
       return `talks up to ${effect.perTurn} hull(s) a turn out of the target's service, as far as guile beats resolve`;
+    case 'sedition':
+      return `+${effect.perTurn} dissent a turn in the target's own institutions`;
     case 'intel':
       return 'reveals hidden orders';
   }

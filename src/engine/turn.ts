@@ -9,6 +9,7 @@ import {
 import type { TurnReport } from '../domain/reducer.js';
 import {
   COMPULSION_BREACH_DISSENT,
+  COUNTERPARTY_BREACH_DISSENT,
   dissentPenalty,
   getFaction,
   MAX_DISSENT_PENALTY,
@@ -18,6 +19,7 @@ import {
   narrateEpilogue,
   appraiseAgreement,
   extractAgreements,
+  recordRuling,
   verifyBreachRelevance,
   gatherReactions,
   resolveAction,
@@ -257,9 +259,31 @@ async function stageWithCorrection(
 
   const boundAgain = bind(revised.ops);
   const second = campaign.stage(boundAgain.ops, `${label}:correction`, '', source);
+
+  // BOTH batches' rejections reach the player, and the first batch's
+  // all-or-nothing note is rewritten when the correction landed.
+  //
+  // The response used to carry `second.rejections` alone, so a corrected action
+  // reported none at all — while `notes` still carried the first batch's
+  // "Nothing in this batch was applied: 4 of 10 ops were rejected", written by
+  // the atomic rollback of a batch that was then successfully replaced.
+  // Measured: a player was told nothing landed and given no reason, and the
+  // board said otherwise — the correction had applied 320 credits.
+  //
+  // Both halves were wrong from the player's seat, and in opposite directions.
+  const corrected = second.rejections.length === 0;
+  const firstNotes = corrected
+    ? first.notes.map((n) =>
+        n.startsWith('Nothing in this batch was applied')
+          ? `${n.replace(/\.$/, '')} — corrected and re-staged, and the second attempt landed.`
+          : n,
+      )
+    : first.notes;
   return {
-    rejections: second.rejections,
-    notes: [...bound.notes, ...first.notes, ...boundAgain.notes, ...second.notes],
+    // First then second: the order they happened, and the first is the one that
+    // explains why there was a correction at all.
+    rejections: [...first.rejections, ...second.rejections],
+    notes: [...bound.notes, ...firstNotes, ...boundAgain.notes, ...second.notes],
     costUsd: revised.costUsd,
   };
 }
@@ -322,6 +346,24 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
   // The salt keeps two declarations in the same turn from sharing a roll,
   // while staying a pure function of state so replay is unaffected.
   const resolution = await resolveAction(campaign.state, action, String(before));
+
+  // Every ruling that named a line is written down, including the ones that
+  // charged nothing. Staged as an engine op so it replays with the campaign and
+  // can be read back off any save — a drift report needs rows, not console
+  // output that scrolls away.
+  //
+  // Before the outcome branches, because a refusal stages nothing else and an
+  // inadmissible ruling returns before staging at all; putting it here is what
+  // makes the record cover the exits that produce no other trace.
+  if (resolution.ruling) {
+    campaign.stage(
+      [{ op: 'log_ruling', ...resolution.ruling }],
+      'arbiter ruling',
+      '',
+      'engine',
+      campaign.state.playerFactionId,
+    );
+  }
 
   // The player's own institutions may simply refuse. When they do, NOTHING is
   // staged: a faction is not a puppet, and an order the fleet will not carry
@@ -684,6 +726,7 @@ export function groundInConcessions(
   const offeredCredits = theirs.reduce((n, c) => n + c.credits, 0);
   const offeredPerTurn = theirs.reduce((n, c) => n + c.perTurn, 0);
   const offeredHulls = theirs.reduce((n, c) => n + c.hulls, 0);
+  const handedOver = new Set(theirs.flatMap((c) => c.assets));
   const saidAnything = theirs.length > 0;
   const dropped: string[] = [];
 
@@ -722,6 +765,22 @@ export function groundInConcessions(
       const pledged = (terms.shipsPledged ?? {}) as Record<string, number>;
       if ((pledged[otherId] ?? 0) > offeredHulls) {
         dropped.push(`${pledged[otherId]} hulls pledged by ${otherId}, which it never offered.`);
+        return false;
+      }
+      return true;
+    }
+
+    // A thing is exactly as sharp a case as a world, and for the same reason: an
+    // asset is a RECORD, so *"you can have your people back"* names no id and
+    // nothing downstream can pick which haul was meant. The power holding them
+    // resolved it when it said so.
+    if (op.op === 'transfer_asset' && typeof op.assetId === 'string') {
+      const asset = (state.assets ?? []).find((a) => a.id === op.assetId);
+      // Only when it is coming OUT of the other party's hands. The player
+      // giving their own away binds nobody and needs no record, which is the
+      // same rule that keeps one-sided concessions out of this whole check.
+      if (asset && asset.heldBy === otherId && !handedOver.has(asset.id)) {
+        dropped.push(`${asset.text} — ${otherId} never put it on the table.`);
         return false;
       }
       return true;
@@ -808,6 +867,7 @@ export async function closeChannel(
   // `classifyPrinciples`, and nothing proved it was about this act.
   let relevanceCost = 0;
   let breach = firstPass;
+  let firstPassRelevant: boolean | null = null;
   // A compulsion that carries a trigger is a question about the board, and the
   // board can answer it for free. `verifyBreachRelevance` is shown the act and
   // the line and deliberately no state, so it cannot notice that a
@@ -827,9 +887,82 @@ export async function closeChannel(
       firstPass.kind,
     );
     relevanceCost = check.costUsd;
+    firstPassRelevant = check.relevant;
     if (!check.relevant) breach = null;
   }
   const rulingCost = (ruling?.costUsd ?? 0) + relevanceCost;
+
+  // The same record the declared path writes. An accord's rulings drift exactly
+  // as an order's do — a playtest saw six treaty-emitting accords permitted and
+  // two refused, one of them on a debt, with no way to ask how often.
+  // AND THE OTHER POWER'S OWN INSTITUTIONS GET A VIEW.
+  //
+  // `appraiseAgreement` is scoped to the acting faction by construction, on the
+  // correct ground that the counterparty's concessions cannot trip the PLAYER's
+  // lines. They should trip their own, and nothing checked: measured, the Iron
+  // Vigil negotiated three messages and signed an accommodation with the Nars
+  // against a sheet that forbids exactly that, at no cost to itself.
+  //
+  // A price rather than a veto — an NPC backing out at signature would destroy a
+  // deal the player negotiated in good faith, with none of the warning the
+  // player gets from a blocker. A leader may agree to what its people hate, and
+  // its people notice.
+  //
+  // Only when the accord produced ops AND the other power actually conceded
+  // something: agreeing to nothing costs nobody anything, and a conversation
+  // that agreed nothing must not cost a call to discover that.
+  let counterpartyCost = 0;
+  const counterpartyNotes: string[] = [];
+  const theirs = conceded.filter((c) => c.by === factionId);
+  if (extraction.output.ops.length > 0 && theirs.length > 0) {
+    const other = getFaction(campaign.state, factionId);
+    const theirRuling = await appraiseAgreement(
+      campaign.state,
+      campaign.state.playerFactionId,
+      theirs.map((c) => c.text).join(' '),
+      factionId,
+    );
+    counterpartyCost = theirRuling.costUsd;
+    const theirNamed = theirRuling.appraisal.breach?.principles ?? [];
+    const theirBreach =
+      other && theirNamed.length > 0 ? classifyPrinciples(other, theirNamed) : null;
+    if (theirBreach) {
+      campaign.stage(
+        [
+          {
+            op: 'adjust_dissent',
+            factionId,
+            delta: COUNTERPARTY_BREACH_DISSENT[theirBreach.kind],
+            reason: theirBreach.principle,
+          },
+        ],
+        `${factionId} signs against its own line`,
+        '',
+        'engine',
+        factionId,
+      );
+      const said = `${other?.name ?? factionId} signs anyway, against its own standing: "${theirBreach.principle}". Its institutions will remember.`;
+      counterpartyNotes.push(said);
+    }
+  }
+
+  const rulingRow = recordRuling(
+    extraction.output.narrative,
+    'accord',
+    named,
+    firstPass,
+    firstPassRelevant,
+    breach !== null,
+  );
+  if (rulingRow) {
+    campaign.stage(
+      [{ op: 'log_ruling', ...rulingRow }],
+      'arbiter ruling',
+      '',
+      'engine',
+      campaign.state.playerFactionId,
+    );
+  }
 
   // A red line refuses the WHOLE agreement. A deal that requires you to cross
   // it is not a smaller deal, it is no deal — the same rule `submitAction`
@@ -936,6 +1069,14 @@ export async function closeChannel(
   // all-or-nothing), and transcripts are replayed into the persona — so the
   // other power goes on believing in a concession the world has no record of,
   // permanently blocking a deal the player is entitled to ask for again.
+  // A number that was trimmed is a number the parties did not agree to, and
+  // they should be arguing about the real one. Transcripts are replayed into
+  // the persona, so a trim that stays in `notes` is invisible to the very power
+  // that bargained over it — measured: an annuity haggled from 80 to 95 settled
+  // at 60 with neither side told, and a headline 33% toll share settles at one
+  // credit a turn.
+  const trims = staged.notes.filter((n) => /^Trimmed |^Dropped /.test(n));
+
   campaign.recordTranscript(
     factionId,
     staged.rejections.length > 0
@@ -948,10 +1089,18 @@ export async function closeChannel(
               .join(', ')}). Both parties are back where they started.]`,
           },
         ]
-      : history,
+      : trims.length > 0
+        ? [
+            ...history,
+            {
+              speaker: 'record' as const,
+              text: `[What actually took effect differs from what was said: ${trims.join(' ')} Both parties are working from the smaller figures now.]`,
+            },
+          ]
+        : history,
   );
 
-  const notes = [...staged.notes];
+  const notes = [...staged.notes, ...counterpartyNotes];
   let defiance: ActionOutcome['defiance'] = null;
   if (breach?.kind === 'compulsion') {
     const by = ruling?.appraisal.breach?.by ?? 'your own institutions';
@@ -999,7 +1148,7 @@ export async function closeChannel(
     staged: campaign.stagedCount - before,
     notes,
     rejections: staged.rejections,
-    costUsd: extraction.costUsd + staged.costUsd + rulingCost,
+    costUsd: extraction.costUsd + staged.costUsd + rulingCost + counterpartyCost,
     // Extraction is the one pass that can turn conversation into ops, so seeing
     // exactly what it read out of a transcript matters more here than anywhere.
     ops: campaign.opsStagedSince(before),

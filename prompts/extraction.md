@@ -15,16 +15,89 @@ is purely a **record** of the conversation:
 `form_treaty` · `break_treaty` · `establish_debt` · `assign_debt` ·
 `restructure_debt` · `establish_commitment` · `dissolve_commitment` ·
 `forgive_debt` · `settle_debt` · `adjust_disposition` · `adjust_credits` ·
-`log_narrative` · `spawn_event` · `set_toll_policy` · `transfer_asset`
+`log_narrative` · `spawn_event` · `set_toll_policy` · `transfer_asset` ·
+`establish_loan` · `return_loan` · `forgive_loan`
 
 **`transfer_asset` moves a thing that already exists** — prisoners ransomed
 back, an heirloom handed over, a lot of ore delivered. Taking another power's
 asset needs their agreement, which is why it is reachable from here at all; a
 declared action can only give one away.
 
-**You cannot create one here.** A conversation trades what exists and does not
-conjure what does not, so an accord promising *"a hundred tons of ore"* nobody
-holds produces nothing. That is not a gap: it is a thing to go and get.
+**Match `transfer_asset` to the `assets` the holder named.** A thing coming out
+of the *other* power's hands moves only if that power put its id on the table,
+exactly as a world does — you are matching what was recorded, not judging what
+was meant. A power giving its own away needs no such record.
+
+**A fixture is not on the table.** A mine, an exchange, a theatre — anything the
+state block marks *"fixed here; changes hands only with the world"* — cannot be
+transferred on its own. Selling one is selling the world it stands on: write a
+`cession` naming that system, with `terms.payment` for the price, and the works
+go with the ground.
+
+**You cannot create one here, with one exception.** A conversation trades what
+exists and does not conjure what does not, so an accord promising *"a hundred
+tons of ore"* nobody holds produces nothing. That is not a gap: it is a thing to
+go and get.
+
+The exception is a **`dossier`** — a file, a compiled report, a sealed account of
+what somebody knows — and it is an exception because nothing is being conjured:
+the seller already had the knowledge, for free, and could have simply said it
+here. What the deal makes is the paper. So *"my file on the Vantic yards, three
+hundred, and you never had it from me"* is a real trade, written as
+`create_asset` with `kind: "dossier"` held by the seller, `transfer_asset` to
+the buyer, and the price as `adjust_credits` or `terms.payment`.
+
+```jsonc
+{ "op": "create_asset", "kind": "dossier", "heldBy": "ojjul",
+  "text": "The Combine's file on the Vantic keel-yards, sealed.",
+  "quantity": 1, "unit": "dossier", "valuePerUnit": { "drajk": 260 } }
+```
+
+A dossier is forced **atomic** and forced to have **no location** — it is paper,
+so there is no half of it and nothing standing on a world to be seized with it.
+`heldBy` may be either party here, because the other power said in its own voice
+that it holds the file.
+
+**What an operative found is not a dossier and not an asset.** Watching a rival
+is knowledge; a player who wants to tell somebody what they saw simply tells
+them, in the channel, for nothing. Only write a `dossier` when the parties
+actually bargained over a **document** and a **price**.
+
+### A hired squadron is a loan, and so is everything else lent
+
+*"Twelve hulls under your flag for six turns, forty a turn"* is the commonest
+arrangement in the genre and it is **`establish_loan`**, not a treaty. It is
+here, and not on the declared path, because it binds the **borrower**: to feed
+the squadron, to pay the hire, and to give it back.
+
+```jsonc
+{ "op": "establish_loan", "lenderFactionId": "ojjul", "borrowerFactionId": "drajk",
+  "lent": { "kind": "hulls", "stack": { "battleship": 8, "escort": 4 }, "atSystemId": "ilv-2" },
+  "rentPerTurn": 40, "termTurns": 6,
+  "text": "The Sixteenth serves under Drajk colours for six turns." }
+```
+
+Three things can be lent and nothing else:
+
+- **`hulls`** — `stack` by class, and `atSystemId` where they are standing now.
+  The lender must actually have them there; the hire is trimmed to what is.
+  While it is out the **borrower commands it**: the ships are theirs to order,
+  count in their strength, and cost them upkeep. The rent is on top.
+- **`credits`** — an advance that comes back whole, with rent while it is out.
+  That is a different instrument from `establish_debt`, whose balance is paid
+  *down* until it is gone. Use a debt for borrowing, a loan for a facility.
+- **`asset`** — by `assetId`, and only a **portable** one.
+
+**A world cannot be lent, and neither can a fixture.** Handing over ground is a
+`cession`; letting somebody's fleet stand on it is `basing_rights`. A mine or an
+exchange goes with its world and by no other route.
+
+`rentPerTurn: 0` is a favour, which is a real arrangement. `termTurns: null` is
+"until somebody says otherwise" — nothing comes back on its own, so use a term
+whenever the parties named one.
+
+`return_loan` and `forgive_loan` are reachable here too, for a conversation that
+ends with the squadron going home or being made a gift of.
 
 **`set_toll_policy` may only OPEN your lanes here, never close them.** Lifting a
 toll is a concession, and it is one of the few real ones you can make that takes
@@ -120,7 +193,17 @@ Specifically:
   | `mutual_defense` | the above, plus `shipsPledged` are really dispatched to fight |
   | `trade_accord` | mutual immunity from each other's blockades and commerce raiding |
   | `basing_rights` | their fleets may enter your systems without it being an attack — the ONLY way to station ships in friendly space |
-  | `tribute` | `incomePerTurn` moves every turn |
+  | `tribute` | `incomePerTurn` moves every turn — **only when it really is tribute**: money paid to be left alone, not money paid for something |
+  | `contract` | the same `incomePerTurn` machinery for a **commercial** deal: a hire, an annuity, a charter fee, a retainer, a share of a season |
+
+  **`tribute` and `contract` carry the same machinery and are not the same
+  word, and words bind here.** Tribute is money paid to be left alone; a
+  contract is money paid for something given. The Arkane Free Worlds refuse
+  tribute outright — *"the Drift does not pay to be left alone, whatever the
+  arithmetic says"* — and a hire they agreed to, written as `tribute`, puts them
+  on the paying end of the one instrument their sheet forbids. Two commercial
+  deals with the same power are also two deals: supersession keys on the type,
+  so filing both as `tribute` silently retires the first.
 
   **Money in a deal has four homes, and the wrong one gets trimmed.** Read
   what the parties actually agreed and pick by *where the money comes from* and
@@ -129,7 +212,7 @@ Specifically:
   | the deal | write it as |
   |---|---|
   | a price paid **once** — a cession, an indemnity, a lump settlement, a ransom | `payment`, and it must **balance**: `{"buyer": -3000, "seller": 3000}` |
-  | one side pays the other **every turn** — tribute, a subsidy, a retainer, debt service | `incomePerTurn`, and it must **balance**: `{"payer": -40, "payee": 40}` |
+  | one side pays the other **every turn** | `incomePerTurn`, and it must **balance**: `{"payer": -40, "payee": 40}` — on a `tribute` if it is money for nothing, on a `contract` if it buys something |
   | both sides share what a **named world** earns | `incomeShares`, which comes off that system's own take |
   | a venture, charter or operation that **makes** money for both | **not a treaty at all** — `establish_commitment`, which prices what an arrangement is worth |
 
@@ -217,6 +300,21 @@ a treaty is a campaign where diplomacy means nothing.
 
 All three are things powers in this galaxy really do, and all three are made
 of pieces that already exist — do not invent a mechanism for any of them.
+
+**A compact that names other powers must LIST them in `factionIds`.** A pact
+narrated as co-signed by four powers and recorded as `factionIds: ["ojjul"]`
+binds nobody — a one-party commitment is a standing policy over your own space,
+and its demilitarisation clause constrained no one at all. If a power did not
+agree in this conversation, it is not a party: you cannot accede somebody who
+was never in the room, and a clause deeming them acceded because their ships use
+a lane binds nothing.
+
+**An exclusivity clause goes in the commitment, not in the prose.** *"Sole
+possession, no resale"* written into a `log_narrative` is a sentence; written as
+`establish_commitment` with a reusable `kind` and `exclusive: true`, the reducer
+refuses the second sale with `commitment_conflict`. A playtest sold the same
+intelligence twice in one hour with the word "exclusive" on the paper, and
+nothing anywhere could tell.
 
 **A world changing hands is a `cession`, and only a `cession`.** A land transfer
 had no type of its own, so it used to be written into whatever treaty was to

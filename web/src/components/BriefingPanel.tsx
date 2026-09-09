@@ -79,6 +79,10 @@ export function BriefingPanel({
                 ` · ${briefing.ledger.commitmentShare > 0 ? '+' : '−'}${Math.abs(
                   briefing.ledger.commitmentShare,
                 )} shares`}
+              {briefing.ledger.assetYield !== 0 &&
+                ` · ${briefing.ledger.assetYield > 0 ? '+' : '−'}${Math.abs(
+                  briefing.ledger.assetYield,
+                )} holdings`}
               {briefing.ledger.warProfit !== 0 &&
                 ` · ${briefing.ledger.warProfit > 0 ? '+' : '−'}${Math.abs(
                   briefing.ledger.warProfit,
@@ -95,6 +99,16 @@ export function BriefingPanel({
                 {briefing.ledger.debtService > 0
                   ? `+${briefing.ledger.debtService}/turn in debt repayments owed to you`
                   : `−${Math.abs(briefing.ledger.debtService)}/turn servicing debt, on top of net`}
+              </span>
+            )}
+            {/* Hire fees are the same shape and sit outside `net` for the same
+                reason: a transfer in the tick, against what the borrower can
+                actually find. */}
+            {briefing.ledger.loanRent !== 0 && (
+              <span className="sub">
+                {briefing.ledger.loanRent > 0
+                  ? `+${briefing.ledger.loanRent}/turn in hire on what you have lent`
+                  : `−${Math.abs(briefing.ledger.loanRent)}/turn in hire, on top of net`}
               </span>
             )}
           </div>

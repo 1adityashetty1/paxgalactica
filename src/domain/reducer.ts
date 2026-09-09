@@ -39,6 +39,9 @@ import {
 } from './development.js';
 import {
   AGENT_COST,
+  DOSSIER_KIND,
+  MAX_ASSET_DISSENT,
+  MAX_ASSET_YIELD,
   MISSION_PROFILE,
   PACT_BREAKING_REPUTATION_COST,
   PEACE_TREATIES,
@@ -47,7 +50,20 @@ import {
   type Treaty,
   type VoidCondition,
 } from './diplomacy.js';
+import { archetypeFor } from './assets.js';
 import { jumpsBetween, neighboursOf, positionAlongPath, shortestPath } from './graph.js';
+import {
+  LOAN_DEFAULT_DISPOSITION_COST,
+  MAX_LOAN_CREDITS,
+  MAX_LOAN_RENT,
+  assetOnLoan,
+  defaultedBorrowersOf,
+  describeOutstanding,
+  drawMatching,
+  isLoanLive,
+  type Lent,
+  type Loan,
+} from './loan.js';
 import { routeEarnings, tollsOn, tradeRoutes } from './trade.js';
 import {
   CREDITS_PER_TON,
@@ -381,11 +397,18 @@ function mintOrderId(state: WorldState): string {
  */
 function mintId(state: WorldState, prefix: string): string {
   const stem = `${prefix}-${state.turn}-`;
+  // EVERY collection that mints an id has to be in this pool, and assets were
+  // not: nothing scanned `state.assets`, so every asset created on turn N was
+  // `ast-N-0` — two in one batch collided outright, and `find` then returned
+  // the wrong one to `transfer_asset` and to `voidsOn: asset_lost`. Caught by a
+  // loan test that happened to create two assets at once.
   const pool = [
     ...state.treaties.map((t) => t.id),
     ...state.agents.map((a) => a.id),
     ...(state.commitments ?? []).map((c) => c.id),
     ...(state.debts ?? []).map((d) => d.id),
+    ...(state.assets ?? []).map((a) => a.id),
+    ...(state.loans ?? []).map((l) => l.id),
   ];
   let highest = -1;
   for (const id of pool) {
@@ -459,6 +482,168 @@ function drawShips(
     owed -= take;
   }
   return drawn;
+}
+
+/**
+ * Pull an equivalent squadron back out of the borrower's fleet.
+ *
+ * **These** hulls can never come back: a stack merges into the borrower's the
+ * moment it changes flag, and nothing in this game tracks a hull's history.
+ * What comes back is their like, class for class, which is the honest reading
+ * anyway — a lender who sent four battleships is not made whole by four
+ * lifters, and drawing by hull count would have handed back exactly that.
+ *
+ * Richest world first, so the return is deterministic and replays.
+ */
+function reclaimHulls(
+  state: WorldState,
+  borrowerId: string,
+  want: ShipStack,
+  /** Where the squadron was handed over, which is where it is looked for first. */
+  handedOverAt?: string,
+): { taken: ShipStack; short: ShipStack } {
+  let owed: ShipStack = { ...want };
+  let taken: ShipStack = {};
+  // The world it was handed over at comes first, then the richest. Without
+  // that, a borrower with a bigger fleet elsewhere hands back equivalent hulls
+  // from home and leaves the actual squadron squatting in the lender's orbit —
+  // satisfied on paper, and a foreign flag over the lender's world forever.
+  const bases = [...state.systems]
+    .filter((sys) => hullsAt(sys, borrowerId) > 0)
+    .sort(
+      (a, b) =>
+        Number(b.id === handedOverAt) - Number(a.id === handedOverAt) ||
+        hullsAt(b, borrowerId) - hullsAt(a, borrowerId) ||
+        a.id.localeCompare(b.id),
+    );
+  for (const base of bases) {
+    if (hullsIn(owed) === 0) break;
+    const here = stackAt(base, borrowerId);
+    const { taken: got } = drawMatching(here, owed);
+    if (hullsIn(got) === 0) continue;
+    setStackAt(base, borrowerId, subtractStack(here, got));
+    taken = mergeStacks(taken, got);
+    owed = subtractStack(owed, got);
+  }
+  return { taken, short: owed };
+}
+
+/**
+ * The thing did not come back, and the price is the same whichever way.
+ *
+ * Fires once — `status` is the guard — and is reached from two places that used
+ * to be two different events: the borrower saying it is keeping the squadron,
+ * and the term running out with nothing to give. Folding them is deliberate and
+ * the argument is in `LoanStatus`: a lender does not care why twelve hulls did
+ * not come home, and every other obligation here already charges for *unpaid*
+ * rather than for *unwilling*.
+ *
+ * Public, unlike a missed hire payment. A squadron that never sailed home is
+ * observable to anybody with eyes on the system, because `system.ships` is not
+ * redacted — so onlookers charge `PACT_BREAKING_REPUTATION_COST` the same way
+ * they do for tearing up a compact.
+ */
+function defaultLoan(state: WorldState, loan: Loan, why: string, notes: string[]): void {
+  if (loan.status === 'defaulted') return;
+  loan.status = 'defaulted';
+  const lender = state.factions.find((f) => f.id === loan.lenderFactionId);
+  if (lender) {
+    lender.disposition[loan.borrowerFactionId] = Math.max(
+      -100,
+      (lender.disposition[loan.borrowerFactionId] ?? 0) - LOAN_DEFAULT_DISPOSITION_COST,
+    );
+  }
+  for (const witness of state.factions) {
+    if (witness.id === loan.borrowerFactionId || witness.id === loan.lenderFactionId) continue;
+    witness.disposition[loan.borrowerFactionId] = Math.max(
+      -100,
+      (witness.disposition[loan.borrowerFactionId] ?? 0) - PACT_BREAKING_REPUTATION_COST,
+    );
+  }
+  const note = `${nameFor(state, loan.borrowerFactionId)} does not return ${describeOutstanding(loan)} to ${nameFor(state, loan.lenderFactionId)} — ${why}. ${loan.text}`;
+  notes.push(note);
+  logEvent(state, 'diplomacy', note, loan.lenderFactionId);
+}
+
+/**
+ * Hand back as much of a loan as the borrower can currently find.
+ *
+ * One function for both paths that return anything — the borrower's own
+ * `return_loan`, and the tick when the term runs out — because a return that
+ * behaved differently depending on who noticed it was due is two mechanics
+ * wearing one name.
+ *
+ * `exempt` is how the batch path tells `billConstruction` and
+ * `capSelfInflictedLosses` that hulls changing flag under a signature are
+ * neither built nor lost. The tick path passes nothing: neither pass runs there.
+ */
+function settleReturn(
+  state: WorldState,
+  loan: Loan,
+  notes: string[],
+  exempt?: (factionId: string, tons: number) => void,
+): string | null {
+  const out = loan.outstanding;
+  if (out === null) return null;
+  const lender = state.factions.find((f) => f.id === loan.lenderFactionId);
+  const borrower = state.factions.find((f) => f.id === loan.borrowerFactionId);
+  if (!lender || !borrower) return null;
+
+  if (out.kind === 'credits') {
+    const paid = Math.max(0, Math.min(out.amount, borrower.credits));
+    if (paid > 0) {
+      borrower.credits -= paid;
+      lender.credits += paid;
+    }
+    const left = out.amount - paid;
+    loan.outstanding = left > 0 ? { kind: 'credits', amount: left } : null;
+    return paid > 0 ? `${paid} credits` : null;
+  }
+
+  if (out.kind === 'asset') {
+    const asset = (state.assets ?? []).find((a) => a.id === out.assetId);
+    // Gone with a world, or gone with a battle. The obligation stands; what it
+    // costs is the borrower's standing, every turn it is not made good.
+    if (!asset || asset.heldBy !== loan.borrowerFactionId) return null;
+    asset.heldBy = loan.lenderFactionId;
+    loan.outstanding = null;
+    return asset.text;
+  }
+
+  const { taken, short } = reclaimHulls(
+    state,
+    loan.borrowerFactionId,
+    out.stack,
+    out.atSystemId,
+  );
+  if (hullsIn(taken) === 0) {
+    loan.outstanding = { ...out, stack: short };
+    return null;
+  }
+  // Home is the world it was lent from if the lender still stands there, and
+  // otherwise its best holding — the same route a ceded world's garrison takes
+  // out, and instant for the same reason: leaving under a signature costs
+  // nothing.
+  const home =
+    state.systems.find(
+      (sys) =>
+        sys.id === out.atSystemId &&
+        (sys.controllerFactionId === loan.lenderFactionId ||
+          hullsAt(sys, loan.lenderFactionId) > 0),
+    ) ?? fleetBases(state, loan.lenderFactionId)[0];
+  if (!home) {
+    // Nowhere to send them. Put them back where they were rather than deleting
+    // a squadron because its owner has no ground left.
+    const anywhere = [...state.systems].find((sys) => hullsAt(sys, loan.borrowerFactionId) > 0);
+    if (anywhere) addStackAt(anywhere, loan.borrowerFactionId, taken);
+    return null;
+  }
+  addStackAt(home, loan.lenderFactionId, taken);
+  const tons = tonsIn(taken);
+  exempt?.(loan.lenderFactionId, tons);
+  exempt?.(loan.borrowerFactionId, -tons);
+  loan.outstanding = hullsIn(short) > 0 ? { ...out, stack: short } : null;
+  return `${describeStack(taken)} to ${home.name}`;
 }
 
 /**
@@ -1398,11 +1583,19 @@ export function applyOps(
         // Refused from an accord because a conversation trades what exists and
         // cannot conjure what does not — the mirror of `transfer_asset`, which
         // is reachable there precisely because it moves something real.
-        if (source === 'extraction') {
+        //
+        // ONE exception, and it is not a loosening of that rule but an
+        // application of it: a **dossier** is the paper rather than the
+        // knowledge, and the knowledge was already the seller's, free, and
+        // disclosable in the channel by simply typing it. So nothing is
+        // conjured — the conversation supplies the substance and the accord
+        // makes the record. See `DOSSIER_KIND`.
+        const isDossier = op.kind === DOSSIER_KIND;
+        if (source === 'extraction' && !isDossier) {
           reject(
             raw,
             'declared_only',
-            'An accord can trade a thing that exists; it cannot bring one into being. Whatever produced this — a sweep, a survey, a seizure — is an action to attempt on your own turn.',
+            `An accord can trade a thing that exists; it cannot bring one into being. Whatever produced this — a sweep, a survey, a seizure — is an action to attempt on your own turn. (The one exception is a "${DOSSIER_KIND}": a file compiled out of what was said here.)`,
           );
           break;
         }
@@ -1410,8 +1603,12 @@ export function applyOps(
           reject(raw, 'unknown_faction', `No faction "${op.heldBy}".`);
           break;
         }
-        // You cannot survey ore into somebody else's warehouse.
-        if (actor !== undefined && op.heldBy !== actor) {
+        // You cannot survey ore into somebody else's warehouse — except across
+        // a table, where the other party said in its own voice that it holds
+        // the file and is selling it. That consent is the whole reason
+        // extraction exists, and it is the same argument that makes
+        // `transfer_asset` reachable there and nowhere else.
+        if (actor !== undefined && op.heldBy !== actor && !(source === 'extraction' && isDossier)) {
           reject(
             raw,
             'illegal_value',
@@ -1423,21 +1620,149 @@ export function applyOps(
           reject(raw, 'unknown_system', `No system "${op.atSystemId}".`);
           break;
         }
+        // A fixture with no world is a contradiction, and a yield with no world
+        // is worse: an income stream nobody can raid, blockade or conquer. Both
+        // of the new fields are ways of saying "this thing is somewhere", so
+        // neither means anything without the somewhere.
+        // The catalogue fills in what the call did not say, and CORRECTS the two
+        // fields whose being wrong quietly breaks a later trade. The model is
+        // good at judging that a thing was taken and unreliable at remembering
+        // whether that kind of thing splits — the same division of labour as
+        // `classifyPrinciple`, where it names the line and code does the lookup.
+        //
+        // `divisible` and `uses` are forced, because a prisoner haul that will
+        // not divide cannot be ransomed in lots and an instrument with no
+        // `uses` is exercisable forever, which is the bug this shipped for.
+        // Everything else is a default: an open slug stays open, and a survey
+        // that brings back something nobody enumerated still works.
+        const shape = archetypeFor(op.kind);
+        const stated = (field: string): boolean =>
+          typeof raw === 'object' && raw !== null && field in (raw as Record<string, unknown>);
+        let divisible = op.divisible;
+        let uses = op.uses;
+        let speculative = op.speculative;
+        let portable = op.portable;
+        if (shape) {
+          if (divisible !== shape.divisible && stated('divisible')) {
+            notes.push(
+              `A ${op.kind} ${shape.divisible ? 'comes in lots' : 'is one thing'}; recorded that way.`,
+            );
+          }
+          divisible = shape.divisible;
+          uses = shape.uses;
+          if (!stated('speculative')) speculative = shape.speculative;
+          if (shape.fixture) portable = false;
+        }
+
+        // A dossier has no location, so it can carry neither of the two fields
+        // that need one. Settled here rather than by rejecting, since both are
+        // meaningless on a file rather than wrong.
+        if (isDossier && (op.yield !== null || portable === false)) {
+          notes.push(`A ${DOSSIER_KIND} is paper: it stands nowhere and produces nothing.`);
+        }
+        // Read off the RESOLVED shape rather than the raw op, because the
+        // catalogue is what decides that an `exchange` is a fixture. Checking
+        // `op.portable` here let a works archetype skip both this and the
+        // presence guard below and land on ground its owner had never reached.
+        if (!isDossier && (portable === false || op.yield !== null) && op.atSystemId === null) {
+          reject(
+            raw,
+            'illegal_value',
+            portable === false
+              ? 'A thing that cannot be moved has to be somewhere. Give it an `atSystemId`, or make it portable.'
+              : 'A thing that produces has to produce somewhere — set `atSystemId` to the world it stands on, so it can be taken.',
+          );
+          break;
+        }
+        // And you can only build where you stand. The same line interdiction,
+        // suborning and a works payload draw, and here for the same reason: a
+        // producing asset on a rival's world would be a claim on ground the
+        // actor has never reached.
+        const site = op.atSystemId && !isDossier
+          ? state.systems.find((x) => x.id === op.atSystemId)!
+          : undefined;
+        if (
+          site &&
+          (portable === false || op.yield !== null) &&
+          site.controllerFactionId !== op.heldBy &&
+          hullsAt(site, op.heldBy) === 0
+        ) {
+          reject(
+            raw,
+            'no_presence',
+            `${nameFor(state, op.heldBy)} neither holds ${site.name} nor has ships there; a thing that stands on a world needs the world, or at least a fleet over it.`,
+          );
+          break;
+        }
+        // The one part of an asset that is money rather than a claim is the one
+        // part that needs a ceiling. Trimmed rather than rejected — the works
+        // are still real at a smaller number, the same shape as
+        // `MAX_COMMITMENT_INCOME` and `billConstruction`. Only the paying
+        // direction: nothing needs protecting from a power agreeing to pay.
+        let assetYield = isDossier ? null : op.yield;
+        if (assetYield?.kind === 'credits' && assetYield.perTurn > MAX_ASSET_YIELD) {
+          notes.push(
+            `${op.text} would pay ${assetYield.perTurn} a turn; trimmed to ${MAX_ASSET_YIELD}.`,
+          );
+          assetYield = { ...assetYield, perTurn: MAX_ASSET_YIELD };
+        }
+        if (assetYield?.kind === 'dissent') {
+          const clamped = Math.max(
+            -MAX_ASSET_DISSENT,
+            Math.min(MAX_ASSET_DISSENT, assetYield.perTurn),
+          );
+          if (clamped !== assetYield.perTurn) {
+            notes.push(
+              `${op.text} would move dissent ${assetYield.perTurn} a turn; institutions do not turn that fast — trimmed to ${clamped}.`,
+            );
+            assetYield = { ...assetYield, perTurn: clamped };
+          }
+        }
+        if (assetYield?.kind === 'asset') {
+          assetYield = {
+            ...assetYield,
+            valuePerUnit: Object.fromEntries(
+              Object.entries(assetYield.valuePerUnit).filter(([id]) => factionExists(id)),
+            ),
+          };
+        }
+        // EXACTLY ONE of the two value fields survives, so there is never a
+        // second opinion about what a thing is worth. Both are trimmed to the
+        // powers that exist: a price quoted for a faction nobody has is not a
+        // price, it is noise in a document two personas are about to bargain
+        // over. A band written backwards is straightened rather than rejected.
+        const realFactions = <T>(rec: Record<string, T>): Record<string, T> =>
+          Object.fromEntries(Object.entries(rec).filter(([id]) => factionExists(id)));
+        const flatValue = speculative ? {} : realFactions(op.valuePerUnit);
+        const bandValue = speculative
+          ? Object.fromEntries(
+              Object.entries(realFactions(op.valueRange)).map(([id, b]) => [
+                id,
+                { min: Math.min(b.min, b.max), max: Math.max(b.min, b.max) },
+              ]),
+            )
+          : {};
+
         const asset = {
           id: mintId(state, 'ast'),
           kind: op.kind,
           text: op.text,
           heldBy: op.heldBy,
           quantity: op.quantity,
-          unit: op.unit,
-          divisible: op.divisible,
-          // Trimmed to the powers that exist. A value quoted for a faction
-          // nobody has is not a price, it is noise in a document two personas
-          // are about to bargain over.
-          valuePerUnit: Object.fromEntries(
-            Object.entries(op.valuePerUnit).filter(([id]) => factionExists(id)),
-          ),
-          atSystemId: op.atSystemId,
+          unit: shape && !stated('unit') ? shape.unit : op.unit,
+          // A file is one file. Forced rather than trusted, because atomicity
+          // is what keeps a dossier simple: no half a file, so no question
+          // about how value divides, so no decay model and no lineage.
+          divisible: isDossier ? false : divisible,
+          valuePerUnit: flatValue,
+          speculative,
+          valueRange: bandValue,
+          uses: isDossier ? null : uses,
+          // And a record of a conversation is not standing on a world to be
+          // taken with it.
+          atSystemId: isDossier ? null : op.atSystemId,
+          portable: isDossier ? true : portable,
+          yield: assetYield,
           acquiredTurn: state.turn,
         };
         state.assets.push(asset);
@@ -1446,6 +1771,50 @@ export function applyOps(
         // Visible to the holder alone. What you are sitting on is exactly the
         // sort of thing a rival should have to find out.
         logEvent(state, 'system', note, op.heldBy, [op.heldBy]);
+        break;
+      }
+
+      case 'consume_asset': {
+        const asset = state.assets.find((a) => a.id === op.assetId);
+        if (!asset) {
+          reject(raw, 'unknown_asset', `No asset "${op.assetId}".`);
+          break;
+        }
+        if (actor !== undefined && asset.heldBy !== actor) {
+          reject(
+            raw,
+            'illegal_value',
+            `${asset.text} is ${asset.heldBy}'s to spend, not ${actor}'s.`,
+          );
+          break;
+        }
+        // You cannot burn what you have to give back.
+        const borrowed = assetOnLoan(state.loans ?? [], asset.id);
+        if (borrowed) {
+          reject(
+            raw,
+            'illegal_value',
+            `${asset.text} is ${nameFor(state, borrowed.lenderFactionId)}'s, held on loan. Return it or buy it; do not spend it.`,
+          );
+          break;
+        }
+        // An INSTRUMENT is played and ordinary stuff is spent, and which
+        // counter moves is a property of the thing rather than of the op — a
+        // writ is one writ however many times it is worth playing.
+        const instrument = asset.uses !== null;
+        const have = instrument ? asset.uses! : asset.quantity;
+        const spent = Math.min(op.quantity, have);
+        const left = have - spent;
+        if (instrument) asset.uses = left === 0 ? 1 : left;
+        else asset.quantity = left === 0 ? 1 : left;
+        if (left === 0) {
+          state.assets = state.assets.filter((a) => a.id !== asset.id);
+        }
+        const note = left === 0
+          ? `${nameFor(state, asset.heldBy)} spends the last of ${asset.text} ${op.reason}`.trim()
+          : `${nameFor(state, asset.heldBy)} spends ${spent} ${instrument ? 'of its plays' : asset.unit} of ${asset.text}; ${left} left. ${op.reason}`.trim();
+        notes.push(note);
+        logEvent(state, 'system', note, asset.heldBy, [asset.heldBy]);
         break;
       }
 
@@ -1466,6 +1835,32 @@ export function applyOps(
         // Giving your own away needs nobody. TAKING somebody else's needs them,
         // so it is reachable from an accord and refused from a declaration —
         // the same rule `terms.territory` follows.
+        // You cannot sell what you have only borrowed. The borrower IS `heldBy`
+        // — that is what a loan of a thing means — so every guard that keys on
+        // the holder waves them through, and this is the one question left to
+        // ask.
+        const lentOut = assetOnLoan(state.loans ?? [], asset.id);
+        if (lentOut) {
+          reject(
+            raw,
+            'illegal_value',
+            `${asset.text} is ${nameFor(state, lentOut.lenderFactionId)}'s, held on loan. Give it back, or buy it outright from them.`,
+          );
+          break;
+        }
+        // A fixture does not change hands on its own. A mine, an exchange, a
+        // theatre are the world they stand on, and the instrument for giving
+        // one away already exists and is called a cession — which needs no new
+        // code, because the transfer-of-control path already moves everything
+        // standing on a world.
+        if (!asset.portable) {
+          reject(
+            raw,
+            'illegal_value',
+            `${asset.text} does not leave ${asset.atSystemId ? (state.systems.find((x) => x.id === asset.atSystemId)?.name ?? asset.atSystemId) : 'the ground it stands on'}. It changes hands when the world does — cede the world, or take it.`,
+          );
+          break;
+        }
         if (source === 'model' && actor !== undefined && asset.heldBy !== actor) {
           reject(
             raw,
@@ -1490,6 +1885,28 @@ export function applyOps(
         }
         if (actor !== undefined && asset.heldBy !== actor) {
           reject(raw, 'illegal_value', `${asset.id} is ${asset.heldBy}'s to divide, not ${actor}'s.`);
+          break;
+        }
+        // Nor divide it. A borrower who split a borrowed holding would owe back
+        // a thing that no longer exists as one thing.
+        if (assetOnLoan(state.loans ?? [], asset.id)) {
+          reject(
+            raw,
+            'illegal_value',
+            `${asset.text} is held on loan and comes back whole.`,
+          );
+          break;
+        }
+        // A mine does not come apart into two mines. Splitting a producer
+        // would double what it produces for nothing — the clean answer is that
+        // a thing which makes things is one thing, whatever its `quantity`
+        // says, and what it makes is the divisible half.
+        if (asset.yield !== null) {
+          reject(
+            raw,
+            'illegal_value',
+            `${asset.text} is a going concern, not a stock to divide. Split what it produces instead.`,
+          );
           break;
         }
         if (!asset.divisible) {
@@ -2346,6 +2763,35 @@ export function applyOps(
           );
           break;
         }
+        // A hostile effect on your OWN world does nothing and can never do
+        // anything: `ledgerFor` skips an operative whose owner holds the host,
+        // `effectiveStats` reads a debuff against its target, and the tick
+        // reports "nothing to report" forever. Measured: a forged-evidence
+        // action put one of its two operatives on the actor's own capital, and
+        // 80 credits plus one of a small number of agent slots died there
+        // permanently.
+        //
+        // Rejected rather than trimmed, because there is no smaller version of
+        // it — the posting is either somewhere it can act or it is nowhere.
+        // `intel` and `counter_intelligence` are exempt: watching your own
+        // space is what counter-intelligence IS.
+        //
+        // Scoped to a live actor, like the ownership guard above it: an
+        // actorless batch is an engine op or a journal written before the guard
+        // existed, and those replay exactly as they ran.
+        const hostileHere =
+          actor !== undefined &&
+          op.effect.kind !== 'intel' &&
+          state.systems.find((x) => x.id === op.systemId)?.controllerFactionId ===
+            op.ownerFactionId;
+        if (hostileHere) {
+          reject(
+            raw,
+            'illegal_value',
+            `A ${op.effect.kind.replace(/_/g, ' ')} operative on ${op.systemId}, which ${op.ownerFactionId} already holds, has nobody to work against. Post them somewhere a rival is.`,
+          );
+          break;
+        }
         const host = state.systems.find((x) => x.id === op.systemId);
         if (!host) {
           reject(raw, 'unknown_system', `No system "${op.systemId}".`);
@@ -2791,6 +3237,35 @@ export function applyOps(
             .filter(
               (c) => op.factionIds.includes(c.from) && op.factionIds.includes(c.to),
             )
+            // Collateral has to be something that can actually be handed over.
+            // A fixture cannot: it changes hands with its world and nothing
+            // else, so a bond written against a mine would have teleported it
+            // out of the ground on settlement. Dropped with a note rather than
+            // failing the whole commitment, and the note says the true thing —
+            // the world already carries the mine, so pledge the world.
+            .filter((c) => {
+              if (!c.assetId) return true;
+              const pledged = (state.assets ?? []).find((a) => a.id === c.assetId);
+              if (!pledged) return true;
+              // Borrowed property is not collateral either, and for a sharper
+              // reason than a fixture: it is somebody else's, and pledging it
+              // would let a borrower forfeit a lender's squadron to a third
+              // power.
+              const onLoan = assetOnLoan(state.loans ?? [], pledged.id);
+              if (onLoan) {
+                notes.push(
+                  `${pledged.text} cannot be pledged: it is ${nameFor(state, onLoan.lenderFactionId)}'s, held on loan.`,
+                );
+                return false;
+              }
+              if (pledged.portable) return true;
+              notes.push(
+                `${pledged.text} cannot be pledged: it changes hands only with ${
+                  state.systems.find((x) => x.id === pledged.atSystemId)?.name ?? 'its world'
+                }. Pledge the world, or pledge credits.`,
+              );
+              return false;
+            })
             .map((c) => ({ ...c, firedTurn: null })),
           establishedTurn: state.turn,
           status: 'active',
@@ -2823,6 +3298,30 @@ export function applyOps(
         // Walking away takes the goodwill back, which is what makes a
         // commitment cost something to have made.
         adjustCommitmentGoodwill(state, found.factionIds, -COMMITMENT_GOODWILL, notes);
+
+        // And tearing up a MULTI-PARTY arrangement is public business, which
+        // walking away from a two-party understanding is not. A playtest
+        // repudiated a compact sworn to four powers one turn earlier, in all
+        // three of its clauses, and paid nothing at all with anybody: a
+        // `Commitment` is not a `Treaty`, so `PACT_BREAKING_REPUTATION_COST`
+        // never applied, and the replacement commitment paid the identical
+        // +20/turn. Repudiation was strictly free.
+        //
+        // Charged only to the party doing the tearing, and only when more than
+        // two powers were bound — the goodwill swing above is already the whole
+        // price of ending a private understanding between two.
+        if (actor !== undefined && found.factionIds.length > 2 && found.factionIds.includes(actor)) {
+          for (const witness of state.factions) {
+            if (witness.id === actor) continue;
+            witness.disposition[actor] = Math.max(
+              -100,
+              (witness.disposition[actor] ?? 0) - PACT_BREAKING_REPUTATION_COST,
+            );
+          }
+          const seen = `${nameFor(state, actor)} tears up an arrangement it swore to ${found.factionIds.length - 1} other powers; everyone notices.`;
+          notes.push(seen);
+          logEvent(state, 'diplomacy', seen, actor);
+        }
         logEvent(state, 'diplomacy', `Ended: ${found.text}. ${op.reason}`.trim());
         break;
       }
@@ -2914,6 +3413,264 @@ export function applyOps(
           // not.
           [op.creditorFactionId, op.debtorFactionId],
         );
+        break;
+      }
+
+      case 'establish_loan': {
+        // Lending under terms binds the BORROWER — to feed it, to pay the rent,
+        // to give it back — so it is negotiated, exactly as `establish_debt`
+        // and `form_treaty` are. The lender's half needs nobody; the
+        // arrangement is not the gift.
+        if (source === 'model') {
+          reject(
+            raw,
+            'needs_consent',
+            'A loan cannot be declared into existence: the borrower has to agree to hold it, pay for it and give it back. Open a channel with them (/talk) and settle the terms.',
+          );
+          break;
+        }
+        const missingParty = [op.lenderFactionId, op.borrowerFactionId].find(
+          (id) => !factionExists(id),
+        );
+        if (missingParty) {
+          reject(raw, 'unknown_faction', `No faction "${missingParty}".`);
+          break;
+        }
+        if (op.lenderFactionId === op.borrowerFactionId) {
+          reject(raw, 'illegal_value', 'A power cannot borrow from itself.');
+          break;
+        }
+
+        const rent = Math.min(op.rentPerTurn, MAX_LOAN_RENT);
+        if (rent < op.rentPerTurn) {
+          const trimmed = `Hire trimmed to ${rent} a turn (asked ${op.rentPerTurn}).`;
+          notes.push(trimmed);
+          logEvent(state, 'clamp', trimmed, op.lenderFactionId);
+        }
+
+        const asked = op.lent;
+        let lentOut: Lent;
+        if (asked.kind === 'credits') {
+          const lenderFaction = state.factions.find((f) => f.id === op.lenderFactionId)!;
+          const borrowerFaction = state.factions.find((f) => f.id === op.borrowerFactionId)!;
+          // Trimmed to `MAX_LOAN_CREDITS` and then to what the lender actually
+          // has, exactly as `establish_debt` is: a lender who cannot fund the
+          // whole advance lends what it holds, and the paper is written for it.
+          const amount = Math.max(
+            0,
+            Math.min(asked.amount, MAX_LOAN_CREDITS, lenderFaction.credits),
+          );
+          if (amount === 0) {
+            reject(
+              raw,
+              'insufficient_credits',
+              `${lenderFaction.name} has nothing to advance.`,
+            );
+            break;
+          }
+          lenderFaction.credits -= amount;
+          borrowerFaction.credits += amount;
+          lentOut = { kind: 'credits', amount };
+        } else if (asked.kind === 'asset') {
+          const asset = (state.assets ?? []).find((a) => a.id === asked.assetId);
+          if (!asset) {
+            reject(raw, 'unknown_asset', `No asset "${asked.assetId}".`);
+            break;
+          }
+          if (asset.heldBy !== op.lenderFactionId) {
+            reject(
+              raw,
+              'illegal_value',
+              `${asset.text} is ${asset.heldBy}'s to lend, not ${op.lenderFactionId}'s.`,
+            );
+            break;
+          }
+          // A fixture changes hands with its world and by no other route, so
+          // there is no version of lending one that is not a cession.
+          if (!asset.portable) {
+            reject(
+              raw,
+              'illegal_value',
+              `${asset.text} does not leave the ground it stands on, so it cannot be lent. Cede the world for a term, or lend something that travels.`,
+            );
+            break;
+          }
+          if (assetOnLoan(state.loans ?? [], asset.id)) {
+            reject(raw, 'illegal_value', `${asset.text} is already out on loan.`);
+            break;
+          }
+          asset.heldBy = op.borrowerFactionId;
+          lentOut = { kind: 'asset', assetId: asset.id };
+        } else {
+          const from = state.systems.find((sys) => sys.id === asked.atSystemId);
+          if (!from) {
+            reject(raw, 'unknown_system', `No system "${asked.atSystemId}".`);
+            break;
+          }
+          // Trimmed to what is actually standing there. The board is a better
+          // bound than a constant, and it is the reason a hull loan needs no
+          // ceiling of its own.
+          const have = stackAt(from, op.lenderFactionId);
+          const { taken } = drawMatching(have, asked.stack);
+          if (hullsIn(taken) === 0) {
+            reject(
+              raw,
+              'no_presence',
+              `${nameFor(state, op.lenderFactionId)} has no such ships at ${from.name} to lend.`,
+            );
+            break;
+          }
+          if (hullsIn(taken) < hullsIn(asked.stack)) {
+            const trimmed = `Only ${describeStack(taken)} were at ${from.name}; the hire is written for those.`;
+            notes.push(trimmed);
+            logEvent(state, 'clamp', trimmed, op.lenderFactionId);
+          }
+          setStackAt(from, op.lenderFactionId, subtractStack(have, taken));
+          addStackAt(from, op.borrowerFactionId, taken);
+          // Hulls that changed flag under a signature are neither built nor
+          // lost. Without both halves of this the borrower is billed the full
+          // purchase price for a squadron it is renting, and the lender's own
+          // fleet vanishing reads to `capSelfInflictedLosses` as a scuttling it
+          // should undo — which would put the squadron back and leave two.
+          const movedTons = tonsIn(taken);
+          hullsBefore.set(
+            op.borrowerFactionId,
+            (hullsBefore.get(op.borrowerFactionId) ?? 0) + movedTons,
+          );
+          hullsBefore.set(
+            op.lenderFactionId,
+            (hullsBefore.get(op.lenderFactionId) ?? 0) - movedTons,
+          );
+          lentOut = { kind: 'hulls', stack: taken, atSystemId: from.id };
+        }
+
+        const loan: Loan = {
+          id: mintId(state, 'loan'),
+          lenderFactionId: op.lenderFactionId,
+          borrowerFactionId: op.borrowerFactionId,
+          lent: lentOut,
+          outstanding: lentOut,
+          rentPerTurn: rent,
+          dueTurn: op.termTurns === null ? null : state.turn + op.termTurns,
+          status: 'current',
+          missedPayments: 0,
+          establishedTurn: state.turn,
+          text: op.text,
+        };
+        state.loans.push(loan);
+        const note = `${nameFor(state, op.lenderFactionId)} lends ${nameFor(state, op.borrowerFactionId)} ${describeOutstanding(loan)}${rent > 0 ? ` at ${rent} a turn` : ' for nothing'}${loan.dueTurn === null ? '' : `, back by turn ${loan.dueTurn}`}. ${op.text}`;
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, op.lenderFactionId, [
+          op.lenderFactionId,
+          op.borrowerFactionId,
+        ]);
+        break;
+      }
+
+      case 'return_loan': {
+        const loan = state.loans.find((l) => l.id === op.loanId);
+        if (!loan) {
+          reject(raw, 'unknown_loan', `No loan "${op.loanId}".`);
+          break;
+        }
+        // The borrower's act. A lender cannot reach into another power's fleet
+        // and take its ships home; recalling early is a conversation, or a
+        // contingency written at signature.
+        if (actor !== undefined && loan.borrowerFactionId !== actor) {
+          reject(
+            raw,
+            'illegal_value',
+            `Only ${loan.borrowerFactionId} can hand that back. Ask for it (/talk), or write the recall into the terms.`,
+          );
+          break;
+        }
+        if (!isLoanLive(loan)) {
+          reject(raw, 'illegal_value', `That loan is already ${loan.status}.`);
+          break;
+        }
+        const moved = settleReturn(state, loan, notes, (id, tons) => {
+          hullsBefore.set(id, (hullsBefore.get(id) ?? 0) + tons);
+        });
+        // Making it good clears the STATUS and never the standing: disposition
+        // has no decay, so a power that once kept somebody's squadron is
+        // remembered for it whatever it hands back afterwards.
+        if (loan.outstanding === null) loan.status = 'returned';
+        const note =
+          moved === null
+            ? `${nameFor(state, loan.borrowerFactionId)} has nothing to hand back to ${nameFor(state, loan.lenderFactionId)}: ${describeOutstanding(loan)} still outstanding. ${op.reason}`.trim()
+            : `${nameFor(state, loan.borrowerFactionId)} returns ${moved} to ${nameFor(state, loan.lenderFactionId)}${loan.outstanding === null ? '' : `, ${describeOutstanding(loan)} still owing`}. ${op.reason}`.trim();
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, loan.borrowerFactionId, [
+          loan.lenderFactionId,
+          loan.borrowerFactionId,
+        ]);
+        break;
+      }
+
+      case 'repudiate_loan': {
+        const loan = state.loans.find((l) => l.id === op.loanId);
+        if (!loan) {
+          reject(raw, 'unknown_loan', `No loan "${op.loanId}".`);
+          break;
+        }
+        // The borrower's act, and only the borrower's — a lender cannot declare
+        // that its own property has been stolen.
+        if (actor !== undefined && loan.borrowerFactionId !== actor) {
+          reject(
+            raw,
+            'illegal_value',
+            `Only ${loan.borrowerFactionId} can keep what it is holding. ${loan.lenderFactionId} can stop asking for it (forgive_loan), or go and take it.`,
+          );
+          break;
+        }
+        if (!isLoanLive(loan)) {
+          reject(raw, 'illegal_value', `That loan is already ${loan.status}.`);
+          break;
+        }
+        defaultLoan(state, loan, `${nameFor(state, loan.borrowerFactionId)} keeps it. ${op.reason}`.trim(), notes);
+        break;
+      }
+
+      case 'forgive_loan': {
+        const loan = state.loans.find((l) => l.id === op.loanId);
+        if (!loan) {
+          reject(raw, 'unknown_loan', `No loan "${op.loanId}".`);
+          break;
+        }
+        // The lender's, and only the lender's — the same actor-shaped hazard
+        // `forgive_debt` is guarded against, and the sharper one here, since a
+        // borrower forgiving its own loan would simply be keeping the squadron.
+        if (actor !== undefined && loan.lenderFactionId !== actor) {
+          reject(
+            raw,
+            'illegal_value',
+            `Only ${loan.lenderFactionId} can make a gift of what it lent. A borrower does not write off what it is holding.`,
+          );
+          break;
+        }
+        if (!isLoanLive(loan)) {
+          reject(raw, 'illegal_value', `That loan is already ${loan.status}.`);
+          break;
+        }
+        const kept = describeOutstanding(loan);
+        loan.status = 'forgiven';
+        loan.outstanding = null;
+        const borrowerFaction = state.factions.find((f) => f.id === loan.borrowerFactionId);
+        if (borrowerFaction) {
+          borrowerFaction.disposition[loan.lenderFactionId] = Math.max(
+            -100,
+            Math.min(
+              100,
+              (borrowerFaction.disposition[loan.lenderFactionId] ?? 0) + DEBT_FORGIVENESS_GOODWILL,
+            ),
+          );
+        }
+        const note = `${nameFor(state, loan.lenderFactionId)} makes ${nameFor(state, loan.borrowerFactionId)} a gift of ${kept}. ${op.reason}`.trim();
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, loan.lenderFactionId, [
+          loan.lenderFactionId,
+          loan.borrowerFactionId,
+        ]);
         break;
       }
 
@@ -3157,6 +3914,41 @@ export function applyOps(
           break;
         }
         logEvent(state, 'system', op.text, op.factionId);
+        break;
+      }
+
+      case 'log_ruling': {
+        // Guarded here as well as by absence from `ModelOpSchema`, the same
+        // belt-and-braces `transfer_control` gets — a hand-written batch parses
+        // against the full vocabulary, so the schema alone does not refuse it.
+        if (source !== 'engine') {
+          reject(
+            raw,
+            'reducer_only',
+            'A ruling is the engine\'s account of a judgement, not something the judgement writes about itself.',
+          );
+          break;
+        }
+        // The engine's account of a model's judgement, written whether or not
+        // the judgement cost anything. A ruling that charged nothing is the row
+        // that makes drift measurable — it is the one nothing else records.
+        const summary =
+          op.kind === null
+            ? `named "${op.named[0] ?? '(nothing)'}" — matched no line on the sheet`
+            : `${op.kind.replace('_', ' ')}: "${op.matched ?? op.named[0] ?? ''}"`;
+        const verdict =
+          op.relevant === null ? 'relevance not checked' : op.relevant ? 'relevant' : 'not relevant';
+        logEvent(
+          state,
+          'arbiter',
+          `[${op.via}] "${op.action}" — ${summary} · ${verdict} · ${op.outcome.replace(/_/g, ' ')}`,
+          actor ?? null,
+          // The player's own institutions ruling on the player's own act. A
+          // rival has no business reading it, and `serializeRecentLog` would
+          // otherwise hand every NPC a transcript of what the player was told
+          // they may not do.
+          actor === undefined ? null : [actor],
+        );
         break;
       }
 
@@ -3608,12 +4400,179 @@ export function tickTurn(input: WorldState): TickResult {
     }
   }
 
+  /* --- Loans: rent, and the day the term runs out ----------------------- */
+  // Beside the debts and sharing their default machinery, because the half of a
+  // debt that generalises is exactly this: arrears that catching up never
+  // erases, and a creditor whose patience runs out on its own. What does not
+  // generalise is the balance — a debt's depletes through its flow, and a
+  // loan's principal comes back whole while the flow runs the other way.
+  for (const loan of state.loans ?? []) {
+    if (!isLoanLive(loan)) continue;
+    const lender = state.factions.find((f) => f.id === loan.lenderFactionId);
+    const borrower = state.factions.find((f) => f.id === loan.borrowerFactionId);
+    if (!lender || !borrower) continue;
+
+    // The hire fee. Moved as a transfer against what the borrower can actually
+    // find rather than accrued as a rate, for the reason `serviceDebts` is: a
+    // treasury floors at zero, so a rate would have a broke borrower "pay" money
+    // it never had and the lender receive it.
+    if (loan.rentPerTurn > 0) {
+      const paid = Math.max(0, Math.min(loan.rentPerTurn, borrower.credits));
+      borrower.credits -= paid;
+      lender.credits += paid;
+      if (paid < loan.rentPerTurn) {
+        loan.missedPayments += 1;
+        // Behind on the fee is a lesser thing than not giving the thing back,
+        // and a PRIVATE one: a missed payment is not observable to anybody who
+        // is not owed it, so onlookers charge nothing. It still bleeds with the
+        // lender at an unpaid debt's rate, which it did not before — a hire fee
+        // you could simply decline to pay cost a status flag and a counter.
+        if (loan.status !== 'defaulted') loan.status = 'delinquent';
+        lender.disposition[loan.borrowerFactionId] = Math.max(
+          -100,
+          (lender.disposition[loan.borrowerFactionId] ?? 0) - DEBT_DEFAULT_DISPOSITION_COST,
+        );
+        const note = `${borrower.name} misses ${loan.rentPerTurn - paid} of ${loan.rentPerTurn} due on ${loan.text}`;
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, loan.lenderFactionId, [
+          loan.lenderFactionId,
+          loan.borrowerFactionId,
+        ]);
+      } else if (loan.status === 'delinquent') {
+        // Catching up clears the STATUS and never the arrears, exactly as a
+        // debt's does. It cannot clear a `defaulted`, which is about the thing
+        // and not about the fee.
+        loan.status = 'current';
+      }
+    }
+
+    // Already in default: the tick does NOT reach into the borrower's fleet
+    // again. It seized once, on the day the term ran out, and a squadron that
+    // did not come home then is being kept — taking it back automatically would
+    // undo a repudiation on the very next tick and make the op pointless.
+    // Handing it over afterwards is `return_loan`, a deliberate act, which is
+    // the right shape once the relationship is the thing that broke.
+    //
+    // The bleed continues for as long as it is out, whatever the term said, so
+    // a lender's patience runs out on its own.
+    if (loan.status === 'defaulted') {
+      lender.disposition[loan.borrowerFactionId] = Math.max(
+        -100,
+        (lender.disposition[loan.borrowerFactionId] ?? 0) - DEBT_DEFAULT_DISPOSITION_COST,
+      );
+      continue;
+    }
+
+    if (loan.dueTurn === null || state.turn < loan.dueTurn) continue;
+
+    // The term is up, and the cooperative path is automatic: crews sail home
+    // and nobody spends an action point handing back what is not theirs.
+    const moved = settleReturn(state, loan, notes);
+    if (loan.outstanding === null) {
+      loan.status = 'returned';
+      const note = `${borrower.name} returns ${moved ?? 'what was owed'} to ${lender.name}. ${loan.text}`;
+      notes.push(note);
+      logEvent(state, 'diplomacy', note, loan.lenderFactionId, [
+        loan.lenderFactionId,
+        loan.borrowerFactionId,
+      ]);
+      continue;
+    }
+
+    // Something is still out, and there is ONE outcome however it was reached —
+    // see `LoanStatus`. The one-time hits fire here; the bleed starts next turn.
+    defaultLoan(
+      state,
+      loan,
+      moved ? 'only part of it came back' : 'the term ran out and nothing came back',
+      notes,
+    );
+  }
+
   /* --- Dissent cools ---------------------------------------------------- */
   // Institutions forgive slowly. A single refusal fades in a few turns; a
   // leader who keeps overruling their own people accumulates faster than this
   // can drain, and every stat suffers for it.
   for (const faction of state.factions) {
     if (faction.dissent > 0) faction.dissent = Math.max(0, faction.dissent - DISSENT_DECAY);
+  }
+
+  /* --- Things that do something ---------------------------------------- */
+  // A mine, an exchange, a theatre. The `credits` yield is deliberately absent
+  // here: it is read in `ledgerFor` as `assetYield`, because a flow that
+  // mutated the treasury every tick would compound instead of recurring — the
+  // same split that puts `income_penalty` in the ledger and `hull_damage` in
+  // the tick. Dissent and production accumulate on their own clock, so they
+  // belong here.
+  //
+  // A yield pays only while its holder still stands over the world. Otherwise
+  // an abandoned mine would pay forever to a power with nothing there, and the
+  // "an asset that produces must sit somewhere it can be taken" rule would buy
+  // exactly nothing: taking the ground has to be the answer to it.
+  for (const asset of state.assets ?? []) {
+    if (asset.yield === null) continue;
+    const where = state.systems.find((x) => x.id === asset.atSystemId);
+    if (!where) continue;
+    const worked =
+      where.controllerFactionId === asset.heldBy || hullsAt(where, asset.heldBy) > 0;
+    if (!worked) {
+      const idle = `${asset.text} stands idle at ${where.name}: ${nameFor(state, asset.heldBy)} has nobody there.`;
+      notes.push(idle);
+      logEvent(state, 'system', idle, asset.heldBy, [asset.heldBy]);
+      continue;
+    }
+    if (asset.yield.kind === 'dissent') {
+      const holder = state.factions.find((f) => f.id === asset.heldBy);
+      if (!holder) continue;
+      const before = holder.dissent;
+      holder.dissent = Math.max(0, Math.min(100, before + asset.yield.perTurn));
+      if (holder.dissent === before) continue;
+      const moved = holder.dissent - before;
+      const note = `${asset.text}: dissent ${moved > 0 ? '+' : '−'}${Math.abs(moved)} (now ${holder.dissent}/100).`;
+      notes.push(note);
+      logEvent(state, 'system', note, asset.heldBy, [asset.heldBy]);
+      continue;
+    }
+    if (asset.yield.kind === 'asset') {
+      const made = asset.yield;
+      // Merged into an existing holding rather than minted as a row a turn.
+      // Thirty turns of a mine is one growing stockpile; thirty piles of ore is
+      // a state document nobody can read and a negotiation nobody can price.
+      const stock = (state.assets ?? []).find(
+        (a) =>
+          a.heldBy === asset.heldBy &&
+          a.atSystemId === asset.atSystemId &&
+          a.kind === made.assetKind &&
+          a.yield === null,
+      );
+      if (stock) {
+        stock.quantity = Math.min(100000, stock.quantity + made.perTurn);
+      } else {
+        state.assets.push({
+          id: mintId(state, 'ast'),
+          kind: made.assetKind,
+          text: made.text,
+          heldBy: asset.heldBy,
+          quantity: made.perTurn,
+          unit: made.unit,
+          divisible: true,
+          valuePerUnit: { ...made.valuePerUnit },
+          // What comes out of the ground has been seen and counted, so its
+          // worth is settled even when the seam's was not.
+          speculative: false,
+          valueRange: {},
+          uses: null,
+          atSystemId: asset.atSystemId,
+          // What a mine makes can be shipped; the mine cannot.
+          portable: true,
+          yield: null,
+          acquiredTurn: state.turn,
+        });
+      }
+      const note = `${asset.text} yields ${made.perTurn} ${made.unit} at ${where.name}.`;
+      notes.push(note);
+      logEvent(state, 'system', note, asset.heldBy, [asset.heldBy]);
+    }
   }
 
   /* --- Compulsions ignored --------------------------------------------- */
@@ -3995,6 +4954,32 @@ export function tickTurn(input: WorldState): TickResult {
         );
       } else {
         watchNotes.set(agent.id, `found no ${target.name} crews left at ${host.name} to approach.`);
+      }
+      continue;
+    }
+
+    if (agent.effect.kind === 'sedition') {
+      // Bounded by the same ceiling a leader's own refusals are, so a spy
+      // network cannot do to a rival what the rival could not do to itself.
+      const before = target.dissent;
+      target.dissent = Math.min(100, before + agent.effect.perTurn * profile.effectMultiplier);
+      const gained = target.dissent - before;
+      watchNotes.set(
+        agent.id,
+        gained > 0
+          ? `is turning ${target.name}'s own people against it (+${gained} dissent, now ${target.dissent}).`
+          : `finds ${target.name}'s institutions already past listening to anyone.`,
+      );
+      if (gained > 0) {
+        logEvent(
+          state,
+          'system',
+          `Sedition in ${target.name}: its own institutions are ${target.dissent}/100 out of patience.`,
+          target.id,
+          // The victim knows its own house is restive; it does not know who is
+          // doing it. `intel` is where the owner reads the attribution.
+          [target.id, agent.ownerFactionId],
+        );
       }
       continue;
     }

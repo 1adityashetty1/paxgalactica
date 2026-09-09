@@ -1014,6 +1014,7 @@ and nothing implemented it.
 | `basing_rights` | the other party's fleets may enter without it being an attack |
 | `tribute` | `incomePerTurn` moves every turn |
 | `cession` | the named systems **change hands**, once and permanently; the only type `terms.territory` is legal on |
+| `contract` | the same `incomePerTurn` machinery as `tribute`, for a **commercial** deal — a hire, an annuity, a charter fee |
 | `territory` (a term, not a type) | the named systems **change hands** when the treaty takes force |
 | `payment` (a term, not a type) | credits move **once**, when the treaty takes force — the price of a cession, an indemnity, a lump settlement |
 | `voidsOn` (a term, not a type) | typed conditions that **end** the treaty when they come true — and one already true at signature is **refused**, not signed |
@@ -1195,6 +1196,82 @@ capped twice precisely because it *is* money.
 arithmetic divides, rather than a model being trusted to. `divisible: false` is
 a thing that is one thing; `split_asset` refuses on it.
 
+### The catalogue: sixteen shapes, and permission to invent a seventeenth
+
+`src/domain/assets.ts`. An open `kind` slug is right and stays — it is what let a
+playtest reach for a fostered heir, a claimant's seal and a hundred tons of rare
+material without anybody having enumerated them. But an open vocabulary with no
+anchors **drifts**: the same haul minted as `prisoners` one turn and `pows` the
+next, atomic here and divisible there, priced at 12 a head by one call and 400 by
+another — and every one of those is a difference the negotiation layer can see
+and cannot reconcile.
+
+`ASSET_ARCHETYPES` is the anchor, and it is the same division of labour as
+`classifyPrinciple`: **the model is good at judgement and unreliable at lookup**,
+so it decides *that a thing was taken* and the table decides *what that kind of
+thing is like*. Sixteen entries in four groups — **people** who can be ransomed
+or turned, **paper** that proves or authorises, **stuff** that is counted and
+consumed, and **works** that stand on a world and produce.
+
+An archetype is a **default, not a restriction**. `create_asset` accepts any
+slug; when the slug is a known one the reducer fills in what was not stated and
+**corrects** `divisible` and `uses`, which are the two fields whose being wrong
+quietly breaks a later trade — a prisoner haul that will not divide cannot be
+ransomed in lots, and an instrument with no `uses` is exercisable forever.
+
+The table is **substituted into the prompt at call time**, never pasted into the
+`.md`. A copy restated in Markdown is a second opinion that will eventually be
+wrong and will fail silently, which is exactly the drift `prompt-drift.test.ts`
+exists to catch for hull prices.
+
+> Ordering caught this the hard way: the archetype resolution originally ran
+> *after* the location and presence guards, which read the raw op. So an
+> `exchange` — a fixture by catalogue and not by declaration — skipped both and
+> landed on ground its owner had never reached. The guards read the resolved
+> shape now.
+
+### A worth nobody has settled
+
+`speculative` and `valueRange`, the answer to *"a chart that is false"*. The
+obvious build was a **claimed** value beside a **true** one, rendered differently
+to buyer and holder — which would have made this the first place in the game to
+put a deliberate lie into a document two personas bargain over, against the rule
+that makes the state block authoritative precisely *because* it never lies.
+
+A range says the honest thing instead: **nobody knows.** An unassayed seam, a
+chart of a passage nobody has run, a defector's claims, a relic of disputed
+provenance — each is worth somewhere between two numbers, and which end it lands
+on is what the parties are really arguing about. The forgery needs no special
+case at all: it is a wide band that resolves badly, and both ends were arguable
+when it was sold.
+
+Exactly one of `valuePerUnit` and `valueRange` survives `create_asset` — the
+reducer clears the other — so there is never a second opinion about what a thing
+is worth. `assetWorthTo` answers the **midpoint**, because every caller of it
+wants one number; `assetWorthRangeTo` answers the band, and that is what the
+prompts and the panel use, since the spread is the negotiation.
+
+### Nothing could be destroyed, which is why an instrument was immortal
+
+`state.assets` was only ever appended to and re-pointed — traded, ceded,
+conquered, forfeited on a contingency. So prisoners could not be released, ore
+could not be consumed, and `voidsOn: asset_lost` could only fire because
+something changed **hands**, never because it ceased to exist. A playtest wrote a
+claimant's seal into escrow and couriered it to a rival's Legate — the best move
+of that campaign — and the seal was still there the next turn, exercisable again
+forever.
+
+`consume_asset` closes it, and which counter it draws down is a property of the
+thing rather than of the op: an **instrument** (`uses !== null`) is played — a
+writ once, a set of cipher keys three times — and everything else is **stuff**,
+spent by `quantity`. Both reach zero the same way and the row is removed when
+they do.
+
+It is deliberately **not** bound by `boundPayloadsToOutcome`. Consuming is a
+*cost*, and the rule that pass enforces is that a failure emits what the attempt
+cost and not what the player wanted: powder burned on a demolition that did not
+work is still burned.
+
 ### Nobody declares an asset into existence
 
 An asset is always the **outcome of a resolved attempt**, never a thing a player
@@ -1227,9 +1304,131 @@ record that sits in a list and changes nothing.
 - **A world takes what sits on it.** `atSystemId` is what makes an asset
   losable, and the difference between a hostage and a note saying somebody has
   a hostage.
-- **It is priced in the prompt.** `serializeAssets` shows a power its own
-  holdings and, for each, which *other* powers value it and roughly at what — so
-  a persona can price a trade instead of inventing a number.
+- **It is priced in the prompt, on both sides of the table.** `serializeAssets`
+  shows a power its own holdings and which *other* powers value each and roughly
+  at what; `serializeTheirAssets` shows what the power across the table is
+  holding **that this one wants**. Without the second half a persona could put a
+  price on nothing — it saw its own shelf and had no way to know the Combine was
+  sitting on forty of its crews, so the only things it could ever bargain for
+  were worlds, hulls and money. Scoped by value to the viewer, which is sharper
+  than it looks: listing a rival's whole warehouse would be an intelligence leak
+  dressed up as a shopping list.
+- **A concession can name one.** `Concession.assets` carries ids, and
+  `groundInConcessions` holds a `transfer_asset` out of the *other* party's hands
+  to the same standard a world is held to — because an asset is a **record**, so
+  *"you can have your people back"* names no id and nothing downstream can pick
+  which haul was meant. The power holding them resolved it when it said so.
+  Giving your own away still needs no record at all.
+
+### Cargo, fixture, and a thing that works
+
+The class started as cargo. Everything it could describe was something you
+carried — prisoners, ore, an heirloom — and that is only half of what a campaign
+reaches for: **a mine, an exchange, a theatre are assets too**, and they differ
+from cargo on exactly two axes. They cannot leave the world, and they *do*
+something every turn. Two fields, and each closes a hole the first version had.
+
+**`portable: false` is a thing that IS the world.** `atSystemId` already made an
+asset losable, and said nothing about whether the thing can be handed over on
+its own — the difference between a hold full of ore, survey robots that can be
+crated up, and a mine. A fixture is refused by `transfer_asset` from both the
+declared and the negotiated path, and changes hands **only** through cession or
+conquest, which needed no new code at all: the transfer-of-control path already
+moves everything standing on a world. It also cannot be pledged as collateral —
+a contingency naming one is dropped with a note saying the true thing, which is
+that the world already carries the mine, so pledge the world.
+
+A fixture with no world is rejected. So is a yield with no world, and that one
+is a design rule rather than a technicality: **a thing that pays must sit
+somewhere it can be taken.** Without it a producing asset would be a perpetual
+income stream with no counterplay whatever — unraidable, unblockadeable,
+unconquerable — the one shape this economy has consistently refused.
+
+**`yield` is what it does every turn**, a closed union of three for the reason
+`OrderEffect` and `VoidCondition` are closed. Where each is applied follows the
+rule the agent effects already set, rather than being decided afresh:
+
+| kind | applied | why there |
+|---|---|---|
+| `credits` | `ledgerFor`, as `assetYield` | a flow that mutated the treasury each tick would compound instead of recurring — the same argument as `commitmentFlow` and `income_penalty` |
+| `dissent` | `tickTurn` | accumulates and decays on its own clock, like `sedition` and `hull_damage` |
+| `asset` | `tickTurn` | a stockpile grows; it is not a figure read fresh |
+
+Bounds, each answering a specific way the field could be turned into free money:
+
+- **`MAX_ASSET_YIELD` (25), trimmed not rejected**, set beside
+  `MAX_COMMITMENT_INCOME` because it is the same size of thing: a standing
+  arrangement paying a little, forever. **Only the paying direction** — a thing
+  that costs its holder to keep is uncapped, for the reason a commitment's costs
+  are.
+- **`MAX_ASSET_DISSENT` (2), clamped**, set at `DISSENT_DECAY`. A theatre may
+  **double** the natural repair rate and may not outrun it; one refusal costs 8
+  and a compulsion breach 15, so nothing built out of assets buys a leader out of
+  governing badly. It moves the holder's **own** dissent only: turning a rival's
+  people against it is `sedition`, an operative's work, and an asset that could
+  do it would be that mechanic at none of the cost.
+- **A producer merges into one growing stockpile** at the same world rather than
+  minting a row a turn — thirty turns of a mine is one pile of ore, not thirty.
+  Same lesson as `normaliseStack`: a record whose shape depends on its history is
+  a record nobody can read. What a mine makes is portable even though the mine is
+  not.
+- **A yield pays only while its holder still stands over the world** — holds it,
+  or has ships there — and one can only be created where the actor already
+  stands, the same presence line interdiction, suborning and a works payload
+  draw. Without the first, an abandoned mine pays forever to a power with nothing
+  there and "it must sit somewhere it can be taken" buys nothing; without the
+  second, a power surveys a mine into a rival's ground it has never reached.
+- **A producer does not split.** Halving a mine would double what it produces for
+  nothing. A going concern is one thing whatever its `quantity` says, and what it
+  makes is the divisible half.
+
+### Intelligence is not an asset; a dossier is
+
+*"A piece of intelligence held exclusively"* was on the original asset list and
+cannot be an asset, for a reason that has nothing to do with schemas: **nothing
+prevents a player from simply saying it.** Diplomacy is free text. A power that
+knows where the Vantic keels are laid types that sentence into a channel and the
+knowledge has moved, whatever any record claims. An object you can hand over by
+talking is not an object.
+
+So the line is drawn at the source, and it is drawn cleanly:
+
+| | what it is | how it moves |
+|---|---|---|
+| the `intel` agent effect | **knowledge** — live, derived from an unexposed operative, gone when they are burned | disclosed, for nothing, by saying it |
+| a `dossier` asset | **paper** — a file compiled, sealed and handed over | `transfer_asset`, at a price |
+
+**What an operative produces is never an asset.** It may still be real
+consideration in a bargain — *"I'll tell you what my watcher saw"* is a genuine
+thing to offer — it is simply not a thing that changes hands, so
+`prompts/resolution.md` forbids writing it as one.
+
+**A dossier is the one asset kind an accord may create.** That looks like a
+loosening of *"a conversation trades what exists and cannot conjure what does
+not"* and is actually an application of it: nothing is being conjured, because
+the seller already had the knowledge for free and could have disclosed it in the
+channel. What the deal makes is the record.
+
+Three things are **forced** rather than trusted, and together they are why this
+stayed small:
+
+- **atomic**, so there is no half a file — which is what removes the question of
+  how value divides, and with it any need for a decay model;
+- **no location**, because a record of a conversation is not standing on a world
+  to be seized with it;
+- **no yield**, since paper produces nothing.
+
+What is left is exactly one thing: a natural per-faction value, which is the
+whole of what makes a file worth buying. `heldBy` may be either party when the
+op comes from an accord — across a table the other power said in its own voice
+that it holds the file — and on the declared path the ordinary rule stands, so
+you still cannot put a document into somebody else's hands by saying so.
+
+**What this deliberately does not do is make knowledge durable.** Buying a
+dossier grants no visibility: the fog is still *"a snapshot, not a memory"*, and
+a power that wants to see what a rival is building buys an operative, which is
+the mechanic that exists, costs credits and can be burned. A dossier trades in
+proof and leverage, not in sight.
 
 ### A contingency: "if X happens, Y pays Z"
 
@@ -1583,6 +1782,11 @@ pressure actually applied: a fleet under way at one of their worlds, or an
 operative in their space. Diplomacy deliberately does not count; the line is
 about a client who has already learned that owing you costs nothing.
 
+It reads **defaulted loans** as well as delinquent debts, because the line says
+*unpaid* and a borrower keeping your squadron is exactly the client it
+describes. Arrears on a hire fee do not count — that is a smaller grievance and a
+private one, and the trigger is about the thing itself not coming back.
+
 The seed gives the Combine two debts so both halves are live from turn 0 — Drajk
 already in default, Meridian paying on schedule — which also gives the arbiter
 real state to rule against instead of a fiction. **Not Arkane, deliberately:**
@@ -1593,6 +1797,165 @@ does not carry a Nar loan.
 Balance is unmoved (nets 24/90/232/71/32 before and after) because the transfer
 sits outside `net`, and the Combine's inflow is bounded by the principal rather
 than being another perpetual stream.
+
+### Loans: a thing that comes back, which is not a debt
+
+`src/domain/loan.ts`. Twelve hulls offered under another power's flag, command
+and orders landed as **`basing_rights`** — permission for the *lender's* fleet
+to visit the borrower's space, which is close to the opposite of a hire. The
+commonest arrangement in the genre had no representation at all.
+
+Restated, a hired squadron is a loan whose principal is hulls, and once it is
+put that way credits stop being special: a loan could be of money, of ships, or
+of a thing. That framing is right, and it is exactly why this is a second module
+rather than four fields on `Debt`.
+
+**The obligation machinery generalises; the balance arithmetic does not.**
+Default, arrears that catching up never erases, a per-turn disposition cost while
+something is overdue — none of that cares what was lent, and all of it is shared
+with `debt.ts` down to `DEBT_DEFAULT_DISPOSITION_COST` and
+`DEBT_FORGIVENESS_GOODWILL`. But a debt's balance *depletes through its flow*:
+you pay it down and it is gone. A loan is the opposite shape — what went out
+comes **back whole**, and the per-turn flow is rent running the other way,
+borrower to lender. Modelling that as a `Debt` would make the hire fee look like
+repayment and the squadron's return look like a write-off.
+
+That is the `tribute`/`contract` mistake exactly: `tribute` became the sink for
+every recurring commercial flow because it was the only type carrying
+`incomePerTurn`, and it put a power whose sheet refuses tribute on the paying end
+of one. **A loan-for-repayment and a loan-for-hire are two instruments, and one
+of them existing is not a reason to file the other under it.**
+
+#### What can be lent, and what cannot
+
+| kind | what it is |
+|---|---|
+| `hulls` | a `ShipStack` and the world it stands on. Trimmed to what the lender actually has there |
+| `credits` | an advance that returns whole with rent while it is out — a facility, where `Debt` is a mortgage |
+| `asset` | a **portable** one only |
+
+**A world cannot be lent, and neither can a fixture.** Handing over ground is a
+`cession` and letting somebody's fleet stand on it is `basing_rights`, so a lease
+would be a third answer to a question that already has two — and it would need
+control, garrison and income to disagree with each other for a term. A mine, an
+exchange or a theatre changes hands with its world and by no other route, so
+lending one is unrepresentable rather than merely unwise. There is no `systemId`
+in the union at all, so the first is closed by construction rather than by a
+guard somebody can forget.
+
+#### The command transfer is the whole point, and it is free
+
+A fleet in this game is `system.ships[factionId]` and nothing else, so changing
+the flag on a stack **is** the hire: the borrower's orders move it, the
+borrower's `fleetStrengthOf` counts it, the borrower's upkeep feeds it, and it
+fights when the borrower says. C-6's requirement needed no new mechanism.
+
+What it did need is an exemption on both sides, because two batch-level passes
+read a change in a faction's tonnage as an event:
+
+- `billConstruction` would charge the **borrower** the full purchase price for a
+  squadron it is renting;
+- `capSelfInflictedLosses` would read the **lender's** fleet shrinking as a
+  scuttling and put the squadron back — leaving two of it.
+
+Both are told the same thing, which is the rule worth remembering: **hulls that
+change flag under a signature are neither built nor lost.**
+
+#### Bad luck and bad faith are one outcome
+
+The first version had the tick **seize** the squadron on the due turn whether the
+borrower liked it or not. Two things were wrong with that, and they compound.
+
+A loan you cannot fail to return is not an obligation, it is a scheduled
+transfer with a fee — and it made this the one instrument in the game that
+**cannot be betrayed**, in a game whose diplomacy layer exists so that it can:
+*"Deception still counts as agreed — betrayal is a later move, not a reason to
+void the deal."* `break_treaty` is in the ordinary vocabulary for exactly this
+reason. So `repudiate_loan` is too.
+
+And because the return could not fail by choice, the delinquency it produced
+could only ever mean the hulls were destroyed or the treasury was empty — bad
+luck, charged as bad faith, every turn.
+
+**The fix is not to separate them.** A lender does not care *why* twelve hulls
+did not come home, and the rest of the game already agrees: a debt bleeds
+`DEBT_DEFAULT_DISPOSITION_COST` every turn it goes unserviced whether or not the
+debtor could afford it, because the Combine's line says *unpaid* and not
+*unwilling*. Taking on an obligation you cannot honour is a fact about your
+reliability. So there is **one** `defaulted` status, reached either way, at one
+price:
+
+| | with the lender | with onlookers |
+|---|---|---|
+| **not returned** — kept, or gone | 25 once (a `break_treaty`), then `DEBT_DEFAULT_DISPOSITION_COST` a turn while it is out | `PACT_BREAKING_REPUTATION_COST` once |
+| **behind on the hire** | `DEBT_DEFAULT_DISPOSITION_COST` a turn | nothing |
+
+The split between them is **observability**, which is the line this codebase
+already draws everywhere else: a squadron that never sailed home is visible to
+anybody with eyes on the system, because `system.ships` is not redacted, while a
+missed payment is not visible to anybody who is not owed it.
+
+**A default ends the automatic return.** The tick reaches into the borrower's
+fleet once, on the day the term runs out, and never again — otherwise a
+repudiation would be undone on the very next tick and the op would be pointless.
+Making good afterwards is `return_loan`, a deliberate act, which is the right
+shape once the thing that broke is the relationship. It clears the **status** and
+not the standing: disposition has no decay, so a power that once kept somebody's
+squadron is remembered for it whatever it hands back later.
+
+`debt_unpursued` reads defaulted loans as well as delinquent debts, which is what
+makes *"an unpaid debt must be pursued"* mean what it says. Arrears on the hire
+deliberately do not count — that is a smaller grievance, and a private one.
+
+#### A return is of their like, not of them
+
+These hulls can never come back. A stack merges into the borrower's the moment it
+changes flag and nothing tracks a hull's history, so what returns is an
+equivalent squadron, **class for class** — a lender who sent four battleships is
+not made whole by four lifters, and drawing by hull count would have handed back
+exactly that. It is looked for at the world it was handed over at first, then at
+the borrower's richest: without that ordering a borrower with a bigger fleet
+elsewhere satisfies the return from home and leaves the actual squadron squatting
+in the lender's orbit forever.
+
+That fungibility is also what makes a default recoverable: a borrower who lost
+the squadron owes an equivalent one and **can build it**, which is what *"give it
+back"* has to mean here. After a default it takes a `return_loan` to do it.
+
+| op | source | why |
+|---|---|---|
+| `establish_loan` | **extraction only** | it binds the *borrower* — to feed it, pay for it and return it |
+| `return_loan` | ordinary, **borrower only** | handing back what is not yours needs nobody, and the reducer moves the real hulls, so it cannot wish the obligation away |
+| `repudiate_loan` | ordinary, **borrower only** | keeping it is genuinely unilateral, the same argument `break_treaty` makes — and without it a loan cannot be betrayed at all |
+| `forgive_loan` | ordinary, **lender only** | a lender needs nobody's permission to make a gift of what is already in somebody else's hands |
+
+A lender **recalling** early is none of these: that is a conversation, or a
+contingency written into the terms at signature — 86 already built the trigger
+half.
+
+Rent is settled as a transfer in `tickTurn` against what the borrower can
+actually find, and reported by `Ledger.loanRent` **outside `net`**, for the same
+reason `debtService` is: a rate would have a broke borrower "pay" money it never
+had and the lender receive it.
+
+A borrower cannot sell, split, re-lend or pledge what it holds on loan. That
+needed saying explicitly because the borrower **is** `heldBy` — that is what a
+loan of a thing means — so every guard that keys on the holder waves them
+through.
+
+**One consequence is deliberate and reads as a bug at first.** A hired squadron
+standing on the *lender's own world* contests that world's income, because it now
+flies a foreign flag and `systemIncome` splits by presence. The reducer cannot
+tell a hired squadron from an invasion fleet by looking at a stack, and it must
+not try — an exemption would exempt the invasion too. So hiring your fleet out
+at home costs you the contest, and handing it over at a border world does not.
+
+> Building this found an id collision shipped with assets the day before:
+> `mintId` scanned treaties, agents, commitments and debts and **not**
+> `state.assets`, so every asset created on turn N was `ast-N-0`. Two in one
+> batch collided outright, and `find` then handed the wrong one to
+> `transfer_asset` and to `voidsOn: asset_lost`. Every collection that mints an
+> id has to be in that pool.
 
 ### A treaty needs consent, so it is not a declared action
 
@@ -1769,7 +2132,8 @@ costs the breaker 25 disposition with the other party.
 
 - the **effect** is what happens — `hull_damage` (mutates fleet strength),
   `income_penalty` (read in `ledgerFor`), `stat_debuff` (read in
-  `effectiveStats`), `intel` (read in `ordersVisibleTo`, revealing hidden
+  `effectiveStats`), `sedition` (raises the target's own dissent, and is the
+  only thing in the game that can), `intel` (read in `ordersVisibleTo`, revealing hidden
   orders on the watched system).
 - the **mission** is risk and persistence, via `MISSION_PROFILE`:
 
@@ -2413,6 +2777,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `adjust_credits` | floors at 0 |
 | `set_doctrine` | 1–240 chars; may move `warEthic`/`tradeEthic` and retire lines, charged in dissent; actor's own faction only |
 | `set_toll_policy` | who pays to cross your space; free, actor's own faction only. An accord may only **lift** a toll — adding one is `declared_only` |
+| `consume_asset` | spend, release or destroy a thing you hold; draws an instrument's `uses` or stuff's `quantity` |
 | `issue_order` | see Duration below; optional `onComplete` payload, paid at issue. `force` is a count (drawn proportionally) or a named composition |
 | `cancel_order` | returns the unspent part of a works payload |
 | `interrupt_order` | rejected when the order is not interruptible |
@@ -2422,6 +2787,10 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `restructure_debt` | **extraction-only** — new terms need the creditor's agreement; keeps the id, the balance and the history |
 | `establish_commitment` | optional `incomePerTurn`, trimmed to `MAX_COMMITMENT_INCOME` |
 | `establish_debt` | **extraction-only** — a principal that depletes; trimmed to `MAX_DEBT_PRINCIPAL` |
+| `establish_loan` | **extraction-only** — a thing that comes back: hulls, credits or a portable asset. Never a world, never a fixture |
+| `return_loan` | borrower only; the hulls really leave its stacks |
+| `repudiate_loan` | borrower only; keeping it, priced like breaking a pact |
+| `forgive_loan` | lender only; what was lent becomes the borrower's |
 | `forgive_debt` | creditor only; writes off the balance and buys goodwill |
 | `spawn_event` | |
 | `log_narrative` | |
@@ -2438,7 +2807,7 @@ Rejection codes: `unknown_op`, `schema_invalid`, `reducer_only`,
 `unknown_treaty`, `unknown_agent`, `commitment_conflict`, `no_presence`,
 `unreachable_target`, `missing_duration`, `insufficient_credits`,
 `not_interruptible`, `illegal_value`, `doctrine_refusal`, `needs_consent`,
-`declared_only`, `unknown_debt`.
+`declared_only`, `unknown_debt`, `unknown_loan`.
 
 ---
 
@@ -3423,7 +3792,7 @@ re-sends its context. A trivial call still takes ~7s for that reason.
 ```
 src/
   domain/     state, ops, hulls, duration, development, graph, checks,
-              diplomacy, arbitration, compulsions, debt, trade, intel,
+              diplomacy, arbitration, compulsions, debt, loan, trade, intel,
               battle, initiative, reducer
               ← pure. No I/O, no network, no imports from engine/model/ui.
   api/        contract.ts — Zod schemas shared by server and browser

@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { recordRuling } from '../src/model/calls.js';
+import { effectiveStats } from '../src/domain/state.js';
+import { applyOps, tickTurn } from '../src/domain/reducer.js';
 
 /**
  * Who rules on a faction's own principles.
@@ -1000,5 +1003,152 @@ describe('an accord is judged on what it obliges, not only what it enacts', () =
     expect(text).toMatch(/A promise to cross a line is crossing it/);
     // And the guard against over-firing travels with it.
     expect(text).toMatch(/do not start treating every conditional clause as suspect/i);
+  });
+});
+
+/**
+ * EVERY BREACH RULING IS WRITTEN DOWN, INCLUDING THE ONES THAT CHARGE NOTHING.
+ *
+ * `docs/todo.md` section A accepts that the arbiter's rulings vary and that most
+ * of that is irreducible. It does not accept being unable to measure it: a
+ * playtest found the same act ruled three different ways across three turns, and
+ * that could only ever be an anecdote, because a ruling that decides *not* to
+ * charge leaves no trace anywhere.
+ */
+describe('the arbiter leaves a record', () => {
+  const line: { kind: 'red_line' | 'compulsion'; principle: string } = {
+    kind: 'red_line',
+    principle: 'will not close a lane',
+  };
+
+  it('records nothing when no line was named', () => {
+    expect(recordRuling('sail to Vantic', 'declared', [], null, null, false)).toBeNull();
+  });
+
+  it('distinguishes the four ways a named line comes to nothing', () => {
+    const r = (
+      first: { kind: 'red_line' | 'compulsion'; principle: string } | null,
+      relevant: boolean | null,
+      survived: boolean,
+    ) => recordRuling('a', 'declared', ['quoted'], first, relevant, survived)!.outcome;
+
+    // Matched the sheet, judged relevant, and it stood.
+    expect(r(line, true, true)).toBe('refused');
+    expect(r({ kind: 'compulsion', principle: 'x' }, true, true)).toBe('charged');
+    // Matched, and the second opinion said the line is not about this act.
+    expect(r(line, false, false)).toBe('dropped_irrelevant');
+    // Quoted something that is on nobody's sheet — an invented rule buys no price.
+    expect(r(null, null, false)).toBe('dropped_unmatched');
+    // A state-dependent compulsion the board contradicts, dropped before the
+    // paid call ever runs — which is why `relevant` is null rather than false.
+    expect(r(line, null, false)).toBe('dropped_contradicted');
+  });
+
+  it('keeps the arbiter’s own words beside the line it actually matched', () => {
+    // Both, because the interesting drift is the gap between them.
+    const row = recordRuling('a', 'accord', ['roughly the lane one'], line, true, true)!;
+    expect(row.named).toEqual(['roughly the lane one']);
+    expect(row.matched).toBe('will not close a lane');
+    expect(row.via).toBe('accord');
+  });
+
+  it('lands in the log as a filterable, private entry', () => {
+    const res = applyOps(
+      createSeedState('meridian'),
+      [
+        {
+          op: 'log_ruling', action: 'close the Sennex lane', via: 'declared',
+          named: ['will not close a lane'], matched: 'will not close a lane',
+          kind: 'red_line', relevant: true, outcome: 'refused',
+        },
+      ],
+      'engine',
+      'meridian',
+    );
+    expect(res.rejections).toEqual([]);
+    const entry = res.state.eventLog.find((e) => e.kind === 'arbiter');
+    expect(entry).toBeDefined();
+    // The player's own institutions ruling on the player's own act. A rival
+    // reading it would be handed a transcript of what the player was told they
+    // may not do.
+    expect(entry!.visibleTo).toEqual(['meridian']);
+  });
+
+  it('is not something a model can write about itself', () => {
+    // A model writing its own report card is the confirmation bias this whole
+    // layer is shaped to avoid.
+    const res = applyOps(
+      createSeedState('meridian'),
+      [
+        {
+          op: 'log_ruling', action: 'a', via: 'declared', named: [],
+          matched: null, kind: null, relevant: null, outcome: 'charged',
+        },
+      ],
+      'model',
+      'meridian',
+    );
+    expect(res.rejections[0]?.code).toBe('reducer_only');
+  });
+});
+
+/**
+ * A RIVAL'S OWN INSTITUTIONS CAN BE TURNED AGAINST IT.
+ *
+ * There was no op in the game that could raise another power's dissent:
+ * `adjust_dissent` is actor-only and upward-only by design, and
+ * `adjust_disposition` measures how they feel about *you*, which is the wrong
+ * quantity. So two successful legitimacy attacks — a crowned pretender and a
+ * bill of attainder — left the Iron Vigil mechanically identical.
+ */
+describe('sedition', () => {
+  const place = (perTurn: number) =>
+    applyOps(
+      createSeedState('ojjul'),
+      [
+        {
+          op: 'deploy_agent', ownerFactionId: 'ojjul',
+          systemId: createSeedState('ojjul').systems.find(
+            (x) => x.controllerFactionId === 'vigil',
+          )!.id,
+          mission: 'subversion', effect: { kind: 'sedition', perTurn },
+        },
+      ],
+      'engine',
+    ).state;
+
+  it('raises the target’s dissent, which nothing else could do', () => {
+    const s = place(3);
+    const before = s.factions.find((f) => f.id === 'vigil')!.dissent;
+    const after = tickTurn(s).state.factions.find((f) => f.id === 'vigil')!;
+    // DISSENT_DECAY runs in the same tick, so assert it outran the decay.
+    expect(after.dissent).toBeGreaterThan(before);
+  });
+
+  it('degrades the stats the target actually rolls with', () => {
+    // The whole point: dissent subtracts from every stat via `effectiveStats`,
+    // so a legitimacy attack finally reaches the dice.
+    let s = place(6);
+    const before = effectiveStats(s, 'vigil').might;
+    for (let i = 0; i < 6; i++) s = tickTurn(s).state;
+    expect(effectiveStats(s, 'vigil').might).toBeLessThan(before);
+  });
+
+  it('cannot push a rival past the ceiling its own refusals stop at', () => {
+    let s = place(6);
+    s.factions.find((f) => f.id === 'vigil')!.dissent = 99;
+    for (let i = 0; i < 3; i++) s = tickTurn(s).state;
+    expect(s.factions.find((f) => f.id === 'vigil')!.dissent).toBeLessThanOrEqual(100);
+  });
+
+  it('is still not something a faction can do to a rival by declaring it', () => {
+    // The guard that makes sedition worth having: the cheap path stays closed.
+    const out = applyOps(
+      createSeedState('ojjul'),
+      [{ op: 'adjust_dissent', factionId: 'vigil', delta: 20, reason: 'x' }],
+      'model',
+      'ojjul',
+    );
+    expect(out.state.factions.find((f) => f.id === 'vigil')!.dissent).toBe(0);
   });
 });

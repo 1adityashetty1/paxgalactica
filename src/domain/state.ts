@@ -37,6 +37,7 @@ import {
   AssetSchema,
 } from './diplomacy.js';
 import { DebtSchema, MAX_DEBT_PER_TURN, scheduledDebtService, type Debt } from './debt.js';
+import { LoanSchema, scheduledRent } from './loan.js';
 import { DurationCategorySchema, FibScaleSchema } from './duration.js';
 import { buildAdjacency } from './graph.js';
 // trade.ts imports only TYPES from here, so this edge is one-directional at
@@ -420,7 +421,28 @@ export const EventLogEntrySchema = z.object({
    * must never contain something the player could not know. Only the player's
    * own agents write these. See `reportWatch` in the reducer.
    */
-  kind: z.enum(['narrative', 'system', 'order', 'diplomacy', 'rejection', 'clamp', 'intel']),
+  kind: z.enum([
+    'narrative',
+    'system',
+    'order',
+    'diplomacy',
+    'rejection',
+    'clamp',
+    'intel',
+    /**
+     * A breach ruling, recorded whether or not it charged anything.
+     *
+     * `docs/todo.md` section A accepts that the arbiter's rulings vary and that
+     * most of that is irreducible. What it does NOT accept is being unable to
+     * measure the variance: a playtest found the same act ruled three different
+     * ways across three turns, and that is an anecdote from one agent's notes
+     * because nothing anywhere records a ruling that decided *not* to charge.
+     *
+     * Filterable rather than hidden, for the reason `rejection` and `clamp`
+     * are: the interesting entries are the ones nothing else would show you.
+     */
+    'arbiter',
+  ]),
   factionId: z.string().nullable().default(null),
   text: z.string(),
   /**
@@ -461,6 +483,15 @@ export const WorldStateSchema = z.object({
    * debts existed still loads.
    */
   debts: z.array(DebtSchema).default([]),
+  /**
+   * Things lent out that have to come back — see `loan.ts`.
+   *
+   * Beside `debts` rather than inside it: a debt's balance depletes through its
+   * flow, and a loan's principal comes back whole while the flow runs the other
+   * way as rent. Defaulted, so every campaign saved before loans existed loads
+   * as one with none.
+   */
+  loans: z.array(LoanSchema).default([]),
   /**
    * Things that are neither credits nor ships — see `AssetSchema`.
    *
@@ -857,6 +888,24 @@ export const LedgerSchema = z.object({
   /** Proportional commitment terms — a slice of a lane flow, either way. */
   commitmentShare: z.number().int(),
   /**
+   * What things you hold pay you — an exchange, a licenced dock — less what
+   * they cost to keep.
+   *
+   * Read here rather than paid out each tick, for the reason `commitmentFlow`
+   * is: a per-turn mutation would compound instead of recurring. Only assets
+   * whose holder still stands over the world count, so this is a figure a rival
+   * can attack by taking the ground.
+   */
+  assetYield: z.number().int(),
+  /**
+   * Hire fees on things lent and borrowed: positive receives, negative pays.
+   *
+   * Reported and **not** summed into `net`, exactly as `debtService` is, because
+   * it is settled as a transfer during the tick against what the borrower can
+   * actually find rather than accrued as a rate.
+   */
+  loanRent: z.number().int(),
+  /**
    * A profiteer's take from other powers' wars — or, when it is in one itself,
    * what that costs it. Zero for everyone else.
    */
@@ -1061,8 +1110,8 @@ export function ledgerFor(
   if (!faction) {
     return {
       gross: 0, upkeep: 0, net: 0, systems: 0, treatyFlow: 0,
-      espionageLoss: 0, espionageGain: 0, garrisonUpkeep: 0, agentUpkeep: 0, commitmentFlow: 0, commitmentShare: 0, warProfit: 0,
-      territory: 0, routes: 0, tolls: 0, raided: 0, debtService: 0,
+      espionageLoss: 0, espionageGain: 0, garrisonUpkeep: 0, agentUpkeep: 0, commitmentFlow: 0, commitmentShare: 0, assetYield: 0, warProfit: 0,
+      territory: 0, routes: 0, tolls: 0, raided: 0, debtService: 0, loanRent: 0,
     };
   }
 
@@ -1169,6 +1218,20 @@ export function ledgerFor(
           : (earnings.raided[id] ?? 0),
   );
 
+  // What a thing you hold pays you. Only while you are actually standing over
+  // it: an exchange on a world you have lost or walked away from pays the power
+  // that holds the ground, which is what makes a producing asset a target
+  // rather than an annuity.
+  let assetYield = 0;
+  for (const asset of state.assets ?? []) {
+    if (asset.heldBy !== factionId || asset.yield === null) continue;
+    if (asset.yield.kind !== 'credits') continue;
+    const where = state.systems.find((x) => x.id === asset.atSystemId);
+    if (!where) continue;
+    if (where.controllerFactionId !== factionId && hullsAt(where, factionId) === 0) continue;
+    assetYield += asset.yield.perTurn;
+  }
+
   const warProfit = warProfitFor(state, factionId);
 
   return {
@@ -1184,6 +1247,7 @@ export function ledgerFor(
       agentUpkeep +
       commitmentFlow +
       commitmentShare +
+      assetYield +
       warProfit,
     systems: counted,
     treatyFlow,
@@ -1193,6 +1257,7 @@ export function ledgerFor(
     agentUpkeep,
     commitmentFlow,
     commitmentShare,
+    assetYield,
     warProfit,
     territory,
     routes,
@@ -1200,6 +1265,7 @@ export function ledgerFor(
     raided: earnings.raided[factionId] ?? 0,
     // Reported, never summed into `net` — see `Ledger.debtService`.
     debtService: scheduledDebtService(state.debts ?? [], factionId),
+    loanRent: scheduledRent(state.loans ?? [], factionId),
   };
 }
 
@@ -1495,6 +1561,31 @@ export const DOCTRINE_ETHIC_DISSENT = 20;
  * twice for one decision.
  */
 export const COMPULSION_BREACH_DISSENT = 15;
+
+/**
+ * What it costs a power to sign something its own sheet forbids.
+ *
+ * Nothing held an NPC to its own character inside a channel. `ReactionSchema`
+ * has no `refusal` field, blockers are scoped to the player's lines by design,
+ * and the accord appraisal runs from the player's viewpoint by construction —
+ * so the Iron Vigil negotiated for three messages and signed an accommodation
+ * with the Nars against a sheet reading *"no accommodation with pirates,
+ * smugglers or the Nars may be entertained, however useful"*, and paid nothing.
+ *
+ * **The answer is a price, not a veto**, and the asymmetry with the player is
+ * deliberate. A player's red line refuses the accord outright because they are
+ * the one being told what their own institutions will bear, and they get to
+ * argue with it — a blocker in the turn they approach it, and a conversation
+ * left in which to steer around. An NPC that backed out at signature would
+ * destroy a deal the player negotiated in good faith, with no such warning and
+ * no way to renegotiate. So a leader may agree to what its people hate, and its
+ * people notice.
+ *
+ * Priced above `COMPULSION_BREACH_DISSENT` for a red line and level with it for
+ * a compulsion, for the reason the player's own scale is set that way: crossing
+ * an absolute refusal is worse than overruling a demand.
+ */
+export const COUNTERPARTY_BREACH_DISSENT = { red_line: 20, compulsion: 15 } as const;
 
 /**
  * Dissent at or above which a faction will not be reoriented at all.

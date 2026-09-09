@@ -1,4 +1,5 @@
 import { delinquentDebtorsOf } from './debt.js';
+import { defaultedBorrowersOf } from './loan.js';
 import {
   presentAt,
   isGuestOf,
@@ -245,7 +246,17 @@ function evaluate(
       // a fleet under way toward one of their worlds, or an operative placed in
       // their space. Diplomacy is deliberately not enough — the line is about a
       // client who has already learned that owing you costs nothing.
-      const defaulters = delinquentDebtorsOf(state.debts ?? [], factionId);
+      // Loans count, and that is item 94(a): the line says *unpaid*, and a
+      // squadron three turns past due and unchased is the same failure of
+      // character as a debtor who has learned that owing you costs nothing.
+      // Only a `defaulted` loan — the thing itself is out — never mere arrears
+      // on the hire, which is a smaller grievance and a private one.
+      const defaulters = [
+        ...new Set([
+          ...delinquentDebtorsOf(state.debts ?? [], factionId),
+          ...defaultedBorrowersOf(state.loans ?? [], factionId),
+        ]),
+      ];
       if (defaulters.length === 0) return null;
 
       const unpursued = defaulters.filter((debtorId) => {

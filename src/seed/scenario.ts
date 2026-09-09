@@ -610,6 +610,11 @@ export function createSeedState(playerFactionId: string): WorldState {
     // a starting position. See `AssetSchema`.
 
     assets: [],
+    // Nor does anybody start owing a squadron. A loan moves real hulls between
+    // powers, so seeding one would move the opening board — every fleet
+    // threshold, every balance figure — to demonstrate a mechanic the first
+    // negotiated hire will demonstrate for free.
+    loans: [],
     debts: [
       {
         id: 'debt-0',

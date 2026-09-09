@@ -57,7 +57,7 @@ export interface StagedBatch {
    * struck in a channel would be rejected the moment the turn lands. Optional
    * so a batch restored from an older shape still works.
    */
-  source?: Extract<OpSource, 'model' | 'extraction'>;
+  source?: Extract<OpSource, 'model' | 'extraction' | 'engine'>;
 }
 
 /**
@@ -187,10 +187,19 @@ export class Campaign {
      * only model-driven source that may form a treaty — the other party said
      * yes in its own voice, which is the thing a declared action cannot supply.
      */
-    source: Extract<OpSource, 'model' | 'extraction'> = 'model',
+    source: Extract<OpSource, 'model' | 'extraction' | 'engine'> = 'model',
+    /**
+     * Whose act this is. Defaults to the player, which is right for every
+     * declared action and every accord they close.
+     *
+     * `engine` batches pass it explicitly: the arbiter's ruling on a player's
+     * order is the player's row, and it is written by the engine rather than
+     * proposed by a model — which is the whole point, since a model writing its
+     * own report card is the confirmation bias this layer exists to avoid.
+     */
+    actorId: string = this.committed.playerFactionId,
   ): { rejections: ApplyResult['rejections']; notes: string[] } {
-    // The player's own faction is always the actor for a declared action.
-    const actor = this.committed.playerFactionId;
+    const actor = actorId;
     const res = applyOps(this.state, ops, source, actor, true);
     this.state = res.state;
     // `ops` is what was PROPOSED and is what gets journaled, because replay must
@@ -253,7 +262,14 @@ export class Campaign {
    * this field exists to expose.
    */
   opsStagedSince(index: number): unknown[] {
-    return this.stagedBatches.slice(index).flatMap((b) => b.applied ?? b.ops);
+    // `engine` batches are excluded: this answers "what did my action do", and
+    // an audit row the engine wrote about the ruling is not something the action
+    // did. Without this a refused order reported `log_ruling` among its ops, so
+    // the player's own report card showed up in their results.
+    return this.stagedBatches
+      .slice(index)
+      .filter((b) => b.source !== 'engine')
+      .flatMap((b) => b.applied ?? b.ops);
   }
 
   stagedSummary(): string {

@@ -991,6 +991,7 @@ describe('an accord may only enact what was actually conceded', () => {
     credits: 0,
     perTurn: 0,
     hulls: 0,
+    assets: [],
     ...over,
   });
 
@@ -1093,7 +1094,7 @@ describe('an accord may only enact what was actually conceded', () => {
 describe('the concession ledger', () => {
   const c = (over: Partial<Concession> = {}): Concession => ({
     by: 'ojjul', kind: 'hire_hulls', text: 'Twelve hulls at ten a turn.',
-    systems: [], credits: 0, perTurn: 10, hulls: 12, ...over,
+    systems: [], credits: 0, perTurn: 10, hulls: 12, assets: [], ...over,
   });
 
   it('supersedes a restated term instead of recording it twice', () => {
@@ -1203,6 +1204,55 @@ describe('assets', () => {
     expect(out.state.assets).toHaveLength(0);
   });
 
+  it('makes one exception, and it is paper', () => {
+    // A dossier is the paper, not the knowledge. Nothing is conjured: the
+    // seller already had what is in it, for free, and could have said it in the
+    // channel — what the deal makes is the record. See `DOSSIER_KIND`.
+    const dossier = (over: Record<string, unknown> = {}) =>
+      make({
+        kind: 'dossier', unit: 'dossier', quantity: 1,
+        text: "The Combine's file on the Vantic keel-yards, sealed.",
+        valuePerUnit: { drajk: 260 }, ...over,
+      });
+    const out = applyOps(seedState(), [dossier()], 'extraction', 'ojjul');
+    expect(out.rejections).toEqual([]);
+    const file = out.state.assets[0]!;
+    // Atomic and placeless, both FORCED — that is what keeps it simple: no half
+    // a file, so no question about how value divides, so no decay and no
+    // lineage. And a record of a conversation is not standing on a world to be
+    // seized with it.
+    expect(file.divisible).toBe(false);
+    expect(file.atSystemId).toBeNull();
+    expect(file.yield).toBeNull();
+    expect(assetWorthTo(file, 'drajk')).toBe(260);
+
+    const forced = applyOps(
+      seedState(),
+      [dossier({ divisible: true, atSystemId: 'ilv-2', yield: { kind: 'credits', perTurn: 20 } })],
+      'extraction',
+      'ojjul',
+    );
+    expect(forced.rejections).toEqual([]);
+    expect(forced.state.assets[0]!.divisible).toBe(false);
+    expect(forced.state.assets[0]!.atSystemId).toBeNull();
+    expect(forced.state.assets[0]!.yield).toBeNull();
+
+    // The other power may be the one holding it: across a table it said so in
+    // its own voice, which is the whole reason extraction exists.
+    const theirs = applyOps(seedState(), [dossier({ heldBy: 'drajk' })], 'extraction', 'ojjul');
+    expect(theirs.rejections).toEqual([]);
+    expect(theirs.state.assets[0]!.heldBy).toBe('drajk');
+
+    // And it is still the only exception: ore is a thing to go and get.
+    const ore = applyOps(seedState(), [make({ kind: 'ore' })], 'extraction', 'ojjul');
+    expect(ore.rejections[0]?.code).toBe('declared_only');
+
+    // On the DECLARED path nothing changes: you still cannot put a file into
+    // somebody else's hands by saying so.
+    const declared = applyOps(seedState(), [dossier({ heldBy: 'drajk' })], 'model', 'ojjul');
+    expect(declared.rejections[0]?.code).toBe('illegal_value');
+  });
+
   it('is worth different things to different powers, and that is the point', () => {
     const s = applyOps(seedState(), [make()], 'model', 'ojjul').state;
     const a = s.assets[0]!;
@@ -1287,5 +1337,228 @@ describe('assets', () => {
 
     const released = applyOps(s, [{ op: 'transfer_asset', assetId, toFactionId: 'vigil' }], 'model', 'ojjul').state;
     expect(tickTurn(released).state.treaties[0]!.status).toBe('voided');
+  });
+});
+
+/**
+ * Fixtures and yields — the extension that lets an asset be a *place* rather
+ * than only a thing in a hold.
+ *
+ * The class started as cargo: prisoners, ore, an heirloom. Everything it could
+ * describe was something you carried. But the objects a campaign reaches for
+ * are as often improvements — a mine, an exchange, a theatre — and those differ
+ * on exactly two axes: they cannot leave the world, and they *do* something
+ * every turn.
+ */
+describe('assets that stand on a world', () => {
+  const seedState = () => createSeedState('ojjul');
+  const home = (s: WorldState) => s.systems.find((x) => x.controllerFactionId === 'ojjul')!;
+  const mine = (over: Record<string, unknown> = {}) => ({
+    op: 'create_asset', kind: 'mine', heldBy: 'ojjul',
+    text: 'The Halland cut.', quantity: 1, unit: 'works', divisible: false,
+    valuePerUnit: {}, ...over,
+  });
+
+  it('a fixture cannot be handed over, and changes hands with the ground', () => {
+    const s0 = seedState();
+    const world = home(s0);
+    const s = applyOps(s0, [mine({ atSystemId: world.id, portable: false })], 'model', 'ojjul').state;
+    const id = s.assets[0]!.id;
+
+    // Not on its own, in either direction — this is the whole content of
+    // `portable`, and the message has to name the instrument that does work.
+    const gift = applyOps(s, [{ op: 'transfer_asset', assetId: id, toFactionId: 'drajk' }], 'model', 'ojjul');
+    expect(gift.rejections[0]?.code).toBe('illegal_value');
+    const sold = applyOps(s, [{ op: 'transfer_asset', assetId: id, toFactionId: 'drajk' }], 'extraction', 'ojjul');
+    expect(sold.rejections[0]?.code).toBe('illegal_value');
+
+    // And with the ground, for free, because that path already moves
+    // everything standing on a world.
+    const taken = applyOps(
+      s,
+      [{ op: 'transfer_control', systemId: world.id, toFactionId: 'vigil', reason: 'stormed' }],
+      'engine',
+    );
+    expect(taken.state.assets[0]!.heldBy).toBe('vigil');
+  });
+
+  it('refuses a fixture or a producer with nowhere to stand', () => {
+    const fixture = applyOps(seedState(), [mine({ portable: false })], 'model', 'ojjul');
+    expect(fixture.rejections[0]?.code).toBe('illegal_value');
+
+    // A yield with no world would be an income stream nobody can raid,
+    // blockade or conquer — the one shape this economy has always refused.
+    const floating = applyOps(
+      seedState(),
+      [mine({ yield: { kind: 'credits', perTurn: 10 } })],
+      'model',
+      'ojjul',
+    );
+    expect(floating.rejections[0]?.code).toBe('illegal_value');
+  });
+
+  it('cannot be built on a world you have never reached', () => {
+    const s = seedState();
+    const theirs = s.systems.find((x) => x.controllerFactionId === 'vigil')!;
+    expect(hullsAt(theirs, 'ojjul')).toBe(0);
+    const out = applyOps(
+      s,
+      [mine({ atSystemId: theirs.id, portable: false, yield: { kind: 'credits', perTurn: 10 } })],
+      'model',
+      'ojjul',
+    );
+    expect(out.rejections[0]?.code).toBe('no_presence');
+  });
+
+  it('pays into the ledger, and stops paying when the ground is lost', () => {
+    const s0 = seedState();
+    const world = home(s0);
+    const before = ledgerFor(s0, 'ojjul').net;
+    const s = applyOps(
+      s0,
+      [mine({ kind: 'exchange', text: 'The Shalka exchange.', atSystemId: world.id, portable: false, yield: { kind: 'credits', perTurn: 14 } })],
+      'model',
+      'ojjul',
+    ).state;
+    expect(ledgerFor(s, 'ojjul').assetYield).toBe(14);
+    expect(ledgerFor(s, 'ojjul').net).toBe(before + 14);
+
+    // Taking the ground takes the exchange with it, so the figure moves to
+    // whoever holds the world — which is what makes it a target rather than an
+    // annuity.
+    const lost = applyOps(
+      s,
+      [{ op: 'transfer_control', systemId: world.id, toFactionId: 'vigil', reason: 'stormed' }],
+      'engine',
+    ).state;
+    expect(ledgerFor(lost, 'ojjul').assetYield).toBe(0);
+    expect(ledgerFor(lost, 'vigil').assetYield).toBe(14);
+  });
+
+  it('trims what it pays, and clamps what it does to institutions', () => {
+    const s0 = seedState();
+    const world = home(s0);
+    const rich = applyOps(
+      s0,
+      [mine({ atSystemId: world.id, portable: false, yield: { kind: 'credits', perTurn: 300 } })],
+      'model',
+      'ojjul',
+    );
+    expect(rich.rejections).toEqual([]);
+    expect(ledgerFor(rich.state, 'ojjul').assetYield).toBe(25);
+
+    // A theatre may double the natural repair rate and may not outrun it. One
+    // refusal costs 8 and a compulsion breach 15, so nothing built out of
+    // assets buys a leader out of governing badly.
+    const theatre = applyOps(
+      s0,
+      [mine({ kind: 'theatre', text: 'The Shalka amphitheatre.', atSystemId: world.id, portable: false, yield: { kind: 'dissent', perTurn: -9 } })],
+      'model',
+      'ojjul',
+    ).state;
+    expect(theatre.assets[0]!.yield).toEqual({ kind: 'dissent', perTurn: -2 });
+  });
+
+  it('settles a population on the tick, on top of the natural decay', () => {
+    const s0 = seedState();
+    const world = home(s0);
+    let s = applyOps(
+      s0,
+      [mine({ kind: 'theatre', text: 'The Shalka amphitheatre.', atSystemId: world.id, portable: false, yield: { kind: 'dissent', perTurn: -2 } })],
+      'model',
+      'ojjul',
+    ).state;
+    s = applyOps(s, [{ op: 'adjust_dissent', factionId: 'ojjul', delta: 40 }], 'model', 'ojjul').state;
+    const before = s.factions.find((f) => f.id === 'ojjul')!.dissent;
+    const after = tickTurn(s).state.factions.find((f) => f.id === 'ojjul')!.dissent;
+    // DISSENT_DECAY (2) and the theatre (2). Mutated rather than read where it
+    // is used, because dissent accumulates on its own clock.
+    expect(after).toBe(before - 4);
+  });
+
+  it('produces into one growing stockpile rather than a row a turn', () => {
+    const s0 = seedState();
+    const world = home(s0);
+    let s = applyOps(
+      s0,
+      [mine({
+        atSystemId: world.id, portable: false,
+        yield: { kind: 'asset', perTurn: 20, assetKind: 'ore', unit: 'ton', text: 'Ore off the Halland cut.', valuePerUnit: { meridian: 4 } },
+      })],
+      'model',
+      'ojjul',
+    ).state;
+    s = tickTurn(s).state;
+    s = tickTurn(s).state;
+    s = tickTurn(s).state;
+
+    const ore = s.assets.filter((a) => a.kind === 'ore');
+    expect(ore).toHaveLength(1);
+    expect(ore[0]!.quantity).toBe(60);
+    // What a mine makes can be shipped even though the mine cannot.
+    expect(ore[0]!.portable).toBe(true);
+    expect(ore[0]!.yield).toBeNull();
+    expect(assetWorthTo(ore[0]!, 'meridian')).toBe(240);
+  });
+
+  it('stands idle when nobody is there to work it', () => {
+    const s0 = seedState();
+    // A portable producer left behind on ground its owner does not hold: the
+    // case that would otherwise pay forever to a power with nothing there.
+    const theirs = s0.systems.find((x) => x.controllerFactionId === 'vigil')!;
+    setShipsAt(theirs, 'ojjul', 2);
+    let s = applyOps(
+      s0,
+      [mine({
+        kind: 'surveyors', text: 'Survey robots on the Vantic slopes.', atSystemId: theirs.id,
+        yield: { kind: 'asset', perTurn: 5, assetKind: 'ore', unit: 'ton', text: 'Ore off the Vantic slopes.', valuePerUnit: {} },
+      })],
+      'model',
+      'ojjul',
+    ).state;
+    expect(tickTurn(s).state.assets.filter((a) => a.kind === 'ore')).toHaveLength(1);
+
+    setShipsAt(s.systems.find((x) => x.id === theirs.id)!, 'ojjul', 0);
+    const idle = tickTurn(s);
+    expect(idle.state.assets.filter((a) => a.kind === 'ore')).toHaveLength(0);
+    expect(idle.notes.some((n) => n.includes('stands idle'))).toBe(true);
+  });
+
+  it('does not come apart into two of itself', () => {
+    const s0 = seedState();
+    const world = home(s0);
+    const s = applyOps(
+      s0,
+      [mine({ quantity: 4, unit: 'shaft', divisible: true, atSystemId: world.id, portable: false, yield: { kind: 'credits', perTurn: 10 } })],
+      'model',
+      'ojjul',
+    ).state;
+    // Splitting a producer would double what it produces for nothing. A going
+    // concern is one thing whatever its `quantity` says.
+    const out = applyOps(s, [{ op: 'split_asset', assetId: s.assets[0]!.id, quantity: 2 }], 'model', 'ojjul');
+    expect(out.rejections[0]?.code).toBe('illegal_value');
+  });
+
+  it('cannot be pledged as collateral, because it cannot be handed over', () => {
+    const s0 = seedState();
+    const world = home(s0);
+    const s = applyOps(s0, [mine({ atSystemId: world.id, portable: false })], 'model', 'ojjul').state;
+    const out = applyOps(
+      s,
+      [{
+        op: 'establish_commitment', kind: 'underwriting', factionIds: ['ojjul', 'drajk'],
+        text: 'The Combine stands behind the Halland works.',
+        contingencies: [{
+          trigger: { kind: 'world_lost', by: 'drajk', target: world.id },
+          from: 'ojjul', to: 'drajk', credits: 0, assetId: s.assets[0]!.id,
+          text: 'the cut is surrendered',
+        }],
+      }],
+      'extraction',
+      'ojjul',
+    );
+    expect(out.rejections).toEqual([]);
+    expect(out.state.commitments[0]!.contingencies).toEqual([]);
+    expect(out.notes.some((n) => n.includes('cannot be pledged'))).toBe(true);
   });
 });

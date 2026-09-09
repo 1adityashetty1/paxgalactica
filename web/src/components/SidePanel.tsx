@@ -4,6 +4,8 @@ import { FleetsPanel } from './FleetsPanel.js';
 import { TradePanel } from './TradePanel.js';
 import { STAT_NAMES } from '../../../src/domain/checks.js';
 import { debtsFor } from '../../../src/domain/debt.js';
+import { describeOutstanding, loansFor } from '../../../src/domain/loan.js';
+import { assetWorthRangeTo } from '../../../src/domain/diplomacy.js';
 import { describeOrderEffect } from '../../../src/domain/development.js';
 import { describeEffect } from '../../../src/domain/diplomacy.js';
 import {
@@ -387,22 +389,44 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
   const commitments = commitmentsOf(state, me);
   const assets = (state.assets ?? []).filter((a) => a.heldBy === me);
   const debts = debtsFor(state.debts ?? [], me);
+  const loans = loansFor(state.loans ?? [], me);
 
   return (
     <div className="standing">
       {/* Commitments first: they are the things most likely to block an
           action the player is about to try, and a ruling of "you are already
           bound" only reads as fair if the binding was visible beforehand. */}
-      {/* What this power is holding. A thing with a price beside it is a thing
-          the player can think about trading; without the panel an asset is a
-          line in a log that scrolls away. */}
+      {/* What this power is holding.
+
+          Deliberately ONE line of qualifiers rather than a chip per interested
+          power. The first version rendered a chip for every faction that valued
+          a thing, which on a four-way item was four chips of near-identical text
+          and buried the only number a player acts on — the best price on offer,
+          and who is offering it. Everything else about the thing is either in
+          its own sentence or is a qualifier that only matters when it is true. */}
       {assets.length > 0 && (
         <>
           <h4>Held</h4>
           {assets.map((a) => {
-            const wanted = Object.entries(a.valuePerUnit).filter(
-              ([id, v]) => v > 0 && id !== me,
-            );
+            const offers = state.factions
+              .filter((f) => f.id !== me)
+              .map((f) => ({ f, band: assetWorthRangeTo(a, f.id) }))
+              .filter((o) => o.band.max > 0)
+              .sort((x, y) => y.band.max - x.band.max);
+            const best = offers[0];
+            const qualifiers = [
+              !a.portable && a.atSystemId
+                ? `fixed at ${getSystem(state, a.atSystemId)?.name ?? a.atSystemId}`
+                : a.atSystemId
+                  ? `at ${getSystem(state, a.atSystemId)?.name ?? a.atSystemId} — lost with the world`
+                  : null,
+              a.uses !== null ? (a.uses === 1 ? 'one play left' : `${a.uses} plays left`) : null,
+              !a.divisible && a.quantity > 1 ? 'does not divide' : null,
+              a.yield?.kind === 'credits' ? `pays ${a.yield.perTurn}/turn` : null,
+              a.yield?.kind === 'dissent' ? `settles the population` : null,
+              a.yield?.kind === 'asset' ? `yields ${a.yield.perTurn} ${a.yield.unit}/turn` : null,
+              offers.length > 1 ? `${offers.length} powers want it` : null,
+            ].filter((x): x is string => x !== null);
             return (
               <div key={a.id} className="commitment">
                 <div className="commitment-head">
@@ -410,27 +434,24 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
                     {a.quantity} {a.unit}
                     {a.quantity === 1 ? '' : 's'}
                   </span>
-                  {!a.divisible && (
-                    <span className="chip" title="One thing. It does not come apart.">
-                      indivisible
+                  {best && (
+                    <span
+                      className="chip good"
+                      title={
+                        a.speculative
+                          ? 'Nobody has settled what this is worth. Both ends of the band are arguable.'
+                          : 'What the keenest buyer would pay for the whole holding.'
+                      }
+                    >
+                      {best.f.name} ·{' '}
+                      {a.speculative && best.band.min !== best.band.max
+                        ? `${best.band.min}–${best.band.max}cr`
+                        : `${best.band.max}cr`}
                     </span>
                   )}
-                  {wanted.map(([id, v]) => (
-                    <span
-                      key={id}
-                      className="chip good"
-                      title={`${state.factions.find((f) => f.id === id)?.name ?? id} values this at about ${v} a ${a.unit}`}
-                    >
-                      {state.factions.find((f) => f.id === id)?.name ?? id} · {v * a.quantity}cr
-                    </span>
-                  ))}
                 </div>
                 <p className="commitment-text">{a.text}</p>
-                {a.atSystemId && (
-                  <p className="muted">
-                    at {getSystem(state, a.atSystemId)?.name ?? a.atSystemId} — lost with the world
-                  </p>
-                )}
+                {qualifiers.length > 0 && <p className="muted">{qualifiers.join(' · ')}</p>}
               </div>
             );
           })}
@@ -528,6 +549,60 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
                 <p className="muted">
                   {d.balance} of {d.principal} outstanding · {paid} repaid
                   {d.missedPayments > 0 ? ` · ${d.missedPayments} missed` : ''}
+                </p>
+              </div>
+            );
+          })}
+        </>
+      )}
+
+      {/* Beside the debts, and separate from them, because the two read
+          oppositely: a debt is money going out until it is gone, and a loan is
+          a thing that has to come back. The line a player needs here is which
+          it is, what is still out, and whether the term has run. */}
+      {loans.length > 0 && (
+        <>
+          <h4>Lent and borrowed</h4>
+          {loans.map((l) => {
+            const lending = l.lenderFactionId === me;
+            const other = lending ? l.borrowerFactionId : l.lenderFactionId;
+            const name = state.factions.find((f) => f.id === other)?.name ?? other;
+            const kept = l.status === 'defaulted';
+            return (
+              <div key={l.id} className="treaty">
+                <div className="treaty-head">
+                  <button className="linkish" onClick={() => onSelect(other)}>
+                    {lending ? `${name} holds yours` : `you hold ${name}'s`}
+                  </button>
+                  {l.rentPerTurn > 0 && (
+                    <span className={lending ? 'chip good' : 'chip bad'}>
+                      {lending ? '+' : '-'}
+                      {l.rentPerTurn}cr/turn
+                    </span>
+                  )}
+                  {kept && (
+                    <span
+                      className="chip bad"
+                      title="It did not come back. Whether that was refusal or bad luck is not a distinction the lender makes."
+                    >
+                      not returned
+                    </span>
+                  )}
+                  {l.status === 'delinquent' && (
+                    <span className="chip bad" title="Behind on the hire fee.">
+                      in arrears
+                    </span>
+                  )}
+                </div>
+                <p className="commitment-text">{l.text}</p>
+                <p className="muted">
+                  {describeOutstanding(l)} outstanding
+                  {kept
+                    ? ' · being kept'
+                    : l.dueTurn === null
+                      ? ' · no term'
+                      : ` · due turn ${l.dueTurn}`}
+                  {l.missedPayments > 0 ? ` · ${l.missedPayments} missed` : ''}
                 </p>
               </div>
             );

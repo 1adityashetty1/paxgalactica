@@ -71,6 +71,7 @@ leaves a faction with nobody following it.
 | `create_asset` | a thing taken or made **because the attempt worked** — see Things |
 | `transfer_asset` | hand a thing you hold to somebody else |
 | `split_asset` | break a divisible holding into two lots |
+| `consume_asset` | spend, release or destroy a thing you hold |
 | `adjust_dissent` | **your own** institutions grow more restive — never less |
 | `cancel_order` | an existing order is called off |
 | `interrupt_order` | an order is disrupted by force or event |
@@ -82,6 +83,9 @@ leaves a faction with nobody following it.
 | `establish_commitment` | record a lasting arrangement **the arbiter told you to** |
 | `forgive_debt` | write off what someone owes you — creditor only |
 | `settle_debt` | pay down what YOU owe, in part or in full — debtor only; the money really moves, so you must have it |
+| `return_loan` | hand back what you borrowed — borrower only; the hulls really leave |
+| `repudiate_loan` | keep what you borrowed — borrower only; public, and costly |
+| `forgive_loan` | let them keep what you lent — lender only |
 | `dissolve_commitment` | end one, by id |
 | `spawn_event` | something happens worth recording |
 | `log_narrative` | a note for the event log |
@@ -112,8 +116,11 @@ credits out of a rival's treasury is rejected outright. Skim a rival with an
 power's standing with its own institutions: it falls by 2 a turn on its own and
 in no other way, so it cannot be talked down by a leader who has just been
 refused. To turn a *rival's* institutions against it, deploy an agent on a
-`subversion` mission with a `stat_debuff` effect — that path costs credits,
-risks exposure and is capped, and it is the only one there is.
+`subversion` mission — with a `stat_debuff` effect to blunt one stat, or a
+**`sedition`** effect to raise their dissent directly, which reaches every stat
+at once and is what a legitimacy attack actually does: crowning a pretender,
+proclaiming an attainder, buying their officer corps. Those paths cost credits,
+risk exposure and are capped, and they are the only ones there is.
 
 An `establish_commitment` that earns or costs money should say so with
 `incomePerTurn` — a mining concession or a smuggling operation is worth
@@ -400,6 +407,41 @@ ordinary action — a fleet at their world, an operative in their space — and 
 the Combine, whose institutions demand that an unpaid debt be pursued, *not*
 chasing one is itself a drift the engine charges for.
 
+## What is lent comes back
+
+A hired squadron, an advance against a season's takings, a codex loaned to a
+rival's archivists. A **loan** is a thing that changes hands and then changes
+back, which is a different instrument from a debt: a debt's balance is paid
+down until it is gone, and a loan's principal returns whole while the fee runs
+the other way.
+
+**A loan is agreed in a channel, never declared.** It binds the borrower — to
+feed the squadron, to pay the hire, to give it back — so `establish_loan` is
+extraction-only, exactly as `establish_debt` and `form_treaty` are. On your own
+turn you may do the two unilateral halves:
+
+- **`return_loan`** — hand it back. The **borrower's** act, and the hulls really
+  leave your stacks, so what comes back is their like, class for class, drawn
+  from your richest world first. A borrower who lost the squadron owes an
+  equivalent one and can build it.
+- **`repudiate_loan`** — keep it. Also the borrower's, and the reason the term
+  is an obligation rather than a schedule: a squadron you cannot refuse to
+  return is not really borrowed. It is public and it is priced like tearing up
+  a treaty — the lender's opinion drops hard, every onlooker's drops too, and it
+  keeps bleeding while the thing is out.
+- **`forgive_loan`** — let them keep it. The **lender's** act, and it buys the
+  same goodwill writing off a debt does.
+
+**Failing to return is the same outcome as refusing to.** If the term runs out
+and the squadron is dead or the treasury is empty, that is a default and it
+costs exactly what keeping it costs. A lender does not care why twelve hulls did
+not come home, and taking on an obligation you cannot honour is a fact about
+your reliability. Being behind on the **hire fee** is a lesser and more private
+matter — it bleeds with the lender and nobody else.
+
+A lender cannot take its ships home by declaring it: that is a conversation, or
+a condition written into the terms when it was signed.
+
 ## Things that are neither credits nor ships
 
 Prisoners, a fostered heir, a seal held in escrow, a hundred tons of rare ore, a
@@ -431,9 +473,109 @@ always wrong.
 `divisible: false` for a thing that is one thing — an heirloom, a person, a
 title. `divisible: true` for a quantity that comes in lots.
 
+### The shapes a thing usually takes
+
+Reach for one of these `kind` slugs when it fits. They are **defaults, not a
+menu**: the vocabulary is open, and a survey that brings back something nobody
+enumerated is exactly what this system is for. But when you use one of these
+slugs, the engine fills in what you left out and **corrects** `divisible` and
+`uses` to match the column — so a `prisoners` haul always divides and a `writ`
+is always spent when it is played, whatever the call said.
+
+<!-- ASSET_ARCHETYPES -->
+
+### When to invent one, and what it should look like
+
+Invent a slug when the fiction produced something real and **none of the shapes
+above is what happened**. Five rules, and they are the ones that make a thing
+tradeable rather than decorative:
+
+1. **It has to be a thing, not a fact.** If a power could hand it over by simply
+   saying it in a conversation, it is not an asset — see the note on operatives
+   above. Ask: *could this be put in a hold, a vault, a cell, or on a table?*
+2. **It has to have come from the attempt that just succeeded.** Never mint what
+   the player merely claims to have, and never mint on a failure. If the action
+   was *"sell them my ore"* and no ore exists, the ore is the thing to go and
+   get: that is an attempt, not an asset.
+3. **Somebody other than the holder has to want it**, and say roughly what for.
+   `valuePerUnit` for a settled price, `valueRange` with `speculative: true` when
+   nobody has assayed it. An asset nobody values is a piece of scenery — write it
+   as narrative instead.
+4. **State the shape honestly.** `divisible` if it comes in lots that could be
+   traded separately. `uses` if it is an instrument that gets played and is then
+   gone — a warrant, a favour owed, a one-time passcode. `atSystemId` if it
+   physically sits somewhere, which is what makes it losable with the world.
+5. **Keep the slug lower_snake_case and reusable.** `war_orphans`, not
+   `the_orphans_of_vashka`. The slug is a category; the specifics go in `text`.
+
+Two failure modes to avoid, both seen in play. Do **not** mint an asset for
+something the game already models — a treaty right, a debt, a standing
+arrangement, hulls, credits or ground all have their own ops, and an asset
+beside one of them is a second source of truth. And do **not** mint one for a
+consequence that has already been paid: if the narrative is *"their fleet is
+crippled"*, that is `adjust_ships`, not a `wreckage` asset, unless somebody is
+going to come and lift it.
+
+### Spending a thing
+
+`consume_asset` is how something leaves the world: prisoners released, ore fed
+into a yard, a writ played, a relic destroyed to deny it to somebody. It draws
+down an instrument's `uses` or ordinary stuff's `quantity`, and the record is
+removed when it reaches zero.
+
+Emit it for a **cost**, including on a failed attempt — powder burned on a
+demolition that did not work is still burned. What you must not do is emit it as
+a way of quietly disposing of an obligation: a borrowed holding is refused.
+
 `atSystemId` is where it physically is, and it makes the thing **losable**: an
 asset at a world changes hands when the world does. A title or a charter has no
 location; leave it `null`.
+
+**What an operative finds is not an asset.** An `intel` agent produces
+*knowledge* — live, derived, and gone the moment the operative is burned — and
+knowledge is something a player can hand over by simply typing it into a
+channel. There is no version of an object you can give away by talking. So never
+write a rival's fleet dispositions, a rumour, or a watcher's report as
+`create_asset`; it is a thing to say, and it may be real consideration in a
+bargain without being a thing that changes hands.
+
+The tradeable version is a **`dossier`**: the paper rather than the knowledge, a
+file compiled and sealed. It is always atomic and always has no location, both
+forced, and it is the one asset kind an accord may bring into being — because
+the conversation itself supplies its substance.
+
+### Cargo, fixture, and a thing that works
+
+`portable: false` is for a thing that **is** the world — a mine, an exchange, a
+dry dock, a theatre. It cannot be handed over on its own, only with the ground
+it stands on, so it needs an `atSystemId`. Everything else is `true`: a hundred
+tons of ore can be shipped, and survey robots can be crated up and given away
+(and, being at a world, still go with it if the world falls).
+
+`yield` is what it does every turn, and most things do nothing — leave it
+`null`. Three kinds, and a yield always needs an `atSystemId`, because a thing
+that produces must sit somewhere a rival can come and take it:
+
+```jsonc
+{ "kind": "credits",  "perTurn": 14 }
+{ "kind": "dissent",  "perTurn": -1 }
+{ "kind": "asset", "perTurn": 20, "assetKind": "ore", "unit": "ton",
+  "text": "Ore off the Halland cut.", "valuePerUnit": { "meridian": 4 } }
+```
+
+- **`credits`** — an exchange, a customs house. Trimmed to 25 a turn. Negative
+  is upkeep: prisoners eat, a mine wants guarding.
+- **`dissent`** — a theatre, a temple, a grain dole. Your **own** dissent, and
+  clamped to 2 a turn either way: institutions do not turn faster than that, and
+  nothing built out of assets should let a leader buy their way out of governing
+  badly. Turning a *rival's* people against it is an operative's work.
+- **`asset`** — a mine, a hatchery. The output piles up as one growing
+  stockpile at the same world, and what a mine makes is portable even though the
+  mine is not.
+
+A yielding asset **pays only while you hold the world or have ships over it**,
+and you can only create one where you already stand. It also does not split: a
+mine is one going concern whatever its `quantity` says. Split the ore instead.
 
 ## Tolls: who pays to cross your space
 

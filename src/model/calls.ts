@@ -37,17 +37,36 @@ import {
 } from '../domain/state.js';
 import { classifyPrinciple, classifyPrinciples } from '../domain/compulsions.js';
 import { callStructured } from './client.js';
+import { serializeArchetypes } from '../domain/assets.js';
 import { loadPrompt } from './prompts.js';
 import {
   serializeCharacter,
   serializeOrders,
   serializePrinciples,
   serializeState,
+  serializeTheirAssets,
 } from './serialize.js';
 
 /** Resolution and extraction share the duration rules, so both get the rubric. */
 function withRubric(base: string): string {
   return `${base}\n\n---\n\n${loadPrompt('duration-rubric')}`;
+}
+
+/**
+ * The asset catalogue is substituted at call time, never pasted into the file.
+ *
+ * `ASSET_ARCHETYPES` decides what a `prisoners` haul is actually like — whether
+ * it divides, whether it is an instrument, whether its worth is a band — and the
+ * reducer *corrects* a call that disagrees. A table restated in Markdown beside
+ * it is a second opinion that will eventually be wrong and will fail silently,
+ * exactly the drift `tests/prompt-drift.test.ts` exists to catch for hull
+ * prices. Substituting means there is one table.
+ */
+const ARCHETYPE_MARKER = '<!-- ASSET_ARCHETYPES -->';
+function withArchetypes(base: string): string {
+  return base.includes(ARCHETYPE_MARKER)
+    ? base.replace(ARCHETYPE_MARKER, serializeArchetypes())
+    : base;
 }
 
 /* ------------------------------------------------------------------ */
@@ -76,20 +95,34 @@ function withRubric(base: string): string {
 export async function appraiseAction(
   state: WorldState,
   action: string,
+  /**
+   * Whose institutions are ruling. Defaults to the player, which is right for
+   * every declared action and every accord they close.
+   *
+   * Passed explicitly when the question is *"would the OTHER power's own people
+   * stand for this"* — the half `appraiseAgreement` deliberately never asked,
+   * on the correct ground that the counterparty's concessions cannot trip the
+   * player's lines. It turns out they should trip their own: a playtest watched
+   * the Iron Vigil negotiate for three messages and sign an accommodation with
+   * the Nars against a sheet that says *"no accommodation with pirates,
+   * smugglers or the Nars may be entertained, however useful"*, at no cost to
+   * itself whatsoever.
+   */
+  viewerId: string = state.playerFactionId,
 ): Promise<{ appraisal: Appraisal; attempts: number; costUsd: number }> {
-  const stats = effectiveStats(state, state.playerFactionId);
+  const stats = effectiveStats(state, viewerId);
   const bands = DIFFICULTY_BANDS.map((b) => `  DC ${b.dc} ${b.label} — ${b.example}`).join('\n');
   const statLines = STAT_NAMES.map(
     (s) => `  ${s} ${stats[s]} (${formatModifier(statModifier(stats[s]))}) — ${STAT_MEANINGS[s]}`,
   ).join('\n');
-  const actor = getFaction(state, state.playerFactionId);
+  const actor = getFaction(state, viewerId);
 
   const res = await callStructured({
     kind: 'appraisal',
     label: 'the arbiter considers it',
     system: loadPrompt('appraisal'),
     user: [
-      serializeState(state, state.playerFactionId),
+      serializeState(state, viewerId),
       '',
       '---',
       '',
@@ -166,6 +199,8 @@ export async function appraiseAgreement(
   state: WorldState,
   withFactionId: string,
   agreed: string,
+  /** Whose institutions are ruling. Defaults to the player — see `appraiseAction`. */
+  viewerId?: string,
 ): Promise<{ appraisal: Appraisal; costUsd: number }> {
   const other = getFaction(state, withFactionId)?.name ?? withFactionId;
   const res = await appraiseAction(
@@ -204,6 +239,7 @@ export async function appraiseAgreement(
       'world is a breach for a power whose lines forbid those things, whatever',
       'the trigger.',
     ].join('\n'),
+    viewerId,
   );
   return { appraisal: res.appraisal, costUsd: res.costUsd };
 }
@@ -238,6 +274,59 @@ export const BreachRelevanceSchema = z.object({
  * on an ordinary action. On a false positive the cost is one Haiku call and a
  * charge that should not have been made is dropped.
  */
+/**
+ * One breach ruling, recorded whether or not it cost anything.
+ *
+ * `docs/todo.md` section A accepts arbiter variance as irreducible; it does not
+ * accept being unable to *measure* it. A playtest found the same act ruled three
+ * different ways across three turns, and that could only ever be an anecdote,
+ * because a ruling that decides not to charge leaves no trace anywhere.
+ */
+export interface BreachRuling {
+  action: string;
+  via: 'declared' | 'accord';
+  named: string[];
+  matched: string | null;
+  kind: 'red_line' | 'compulsion' | null;
+  relevant: boolean | null;
+  outcome:
+    | 'refused'
+    | 'charged'
+    | 'dropped_irrelevant'
+    | 'dropped_unmatched'
+    | 'dropped_contradicted';
+}
+
+/** The ruling record for a pass that named lines, or `null` if it named none. */
+export function recordRuling(
+  action: string,
+  via: 'declared' | 'accord',
+  named: string[],
+  firstPass: { kind: 'red_line' | 'compulsion'; principle: string } | null,
+  relevant: boolean | null,
+  survived: boolean,
+): BreachRuling | null {
+  if (named.length === 0) return null;
+  const outcome: BreachRuling['outcome'] = survived
+    ? firstPass?.kind === 'red_line'
+      ? 'refused'
+      : 'charged'
+    : firstPass === null
+      ? 'dropped_unmatched'
+      : relevant === false
+        ? 'dropped_irrelevant'
+        : 'dropped_contradicted';
+  return {
+    action: action.slice(0, 200),
+    via,
+    named: named.slice(0, 3),
+    matched: firstPass?.principle ?? null,
+    kind: firstPass?.kind ?? null,
+    relevant,
+    outcome,
+  };
+}
+
 export async function verifyBreachRelevance(
   action: string,
   principle: string,
@@ -339,6 +428,12 @@ export async function resolveAction(
   roll: number;
   attempts: number;
   costUsd: number;
+  /**
+   * What the arbiter ruled about the actor's own principles, and what became of
+   * it — including the rulings that charged nothing, which are the ones nothing
+   * else records. `null` when no line was named at all.
+   */
+  ruling: BreachRuling | null;
 }> {
   /* --- 1. Arbitrate: admissible at all, and priced blind to the roll --- */
   const priced = await appraiseAction(state, action);
@@ -357,9 +452,11 @@ export async function resolveAction(
   // refused outright" on an assassination. Only fires when a breach was named.
   let relevanceCost = 0;
   let classified = firstPass;
+  let relevant: boolean | null = null;
   if (firstPass) {
     const check = await verifyBreachRelevance(action, firstPass.principle, firstPass.kind);
     relevanceCost = check.costUsd;
+    relevant = check.relevant;
     if (!check.relevant) classified = null;
   }
 
@@ -375,6 +472,10 @@ export async function resolveAction(
       ? classifyPrinciple(actor, priced.appraisal.reason)
       : null;
   const ruled = classified ?? smuggled;
+
+  // The ruling, recorded once and carried out of every exit — including the
+  // exits that charge nothing, which are exactly the rows a drift report needs.
+  const ruling = recordRuling(action, 'declared', named, firstPass, relevant, ruled !== null);
 
   // A ruling of inadmissible ends it here. No roll, no ops, no cost beyond
   // the arbitration — the action was not attempted, so there is nothing to
@@ -393,6 +494,7 @@ export async function resolveAction(
       roll: 0,
       attempts: priced.attempts,
       costUsd: priced.costUsd + relevanceCost,
+      ruling,
     };
   }
 
@@ -437,6 +539,7 @@ export async function resolveAction(
       roll: 0,
       attempts: priced.attempts,
       costUsd: priced.costUsd + relevanceCost,
+      ruling,
     };
   }
 
@@ -476,6 +579,7 @@ export async function resolveAction(
       roll: 0,
       attempts: priced.attempts,
       costUsd: priced.costUsd + relevanceCost,
+      ruling,
     };
   }
 
@@ -512,7 +616,7 @@ export async function resolveAction(
   const res = await callStructured({
     kind: 'resolution',
     label: 'resolution',
-    system: withRubric(loadPrompt('resolution')),
+    system: withArchetypes(withRubric(loadPrompt('resolution'))),
     user: [
       serializeState(state, state.playerFactionId),
       '',
@@ -629,6 +733,7 @@ export async function resolveAction(
     output,
     check,
     roll,
+    ruling,
     attempts: priced.attempts + res.attempts,
     costUsd: priced.costUsd + relevanceCost + res.costUsd,
   };
@@ -866,6 +971,12 @@ export async function diplomacyReply(
     '',
     '---',
     '',
+    `## What ${player?.name ?? state.playerFactionId} is holding that you want`,
+    '',
+    serializeTheirAssets(state, factionId, state.playerFactionId),
+    '',
+    '---',
+    '',
     '## This conversation so far',
     '',
     conversation,
@@ -944,7 +1055,7 @@ export async function extractAgreements(
   const res = await callStructured({
     kind: 'extraction',
     label: 'extraction',
-    system: withRubric(loadPrompt('extraction')),
+    system: withArchetypes(withRubric(loadPrompt('extraction'))),
     user,
     // The extraction vocabulary, which is the ordinary one plus `form_treaty`.
     // This pass has read a transcript, so it is the only model-driven place in

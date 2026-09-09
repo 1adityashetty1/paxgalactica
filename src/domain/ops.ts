@@ -3,11 +3,13 @@ import { StatNameSchema } from './checks.js';
 import {
   AgentEffectSchema,
   AgentMissionSchema,
+  AssetYieldSchema,
   TreatyTermsSchema,
   TreatyTypeSchema,
   VoidConditionSchema,
 } from './diplomacy.js';
 import { FibScaleSchema } from './duration.js';
+import { LentSchema } from './loan.js';
 import { HullClassSchema, TypedStackSchema } from './hulls.js';
 import {
   OnInterruptSchema,
@@ -143,6 +145,42 @@ export const SetTollPolicyOp = z.object({
  * conjure what does not. And refused when the actor is not the holder — you
  * cannot survey ore into somebody else's warehouse.
  */
+/**
+ * Write down what the arbiter ruled, and what became of the ruling.
+ *
+ * **Engine-only** — absent from `ModelOpSchema` — because it is the engine's
+ * account of a model's judgement, and a model writing its own report card is
+ * the confirmation bias this whole layer is shaped to avoid.
+ *
+ * Recorded on every ruling that named a line, INCLUDING the ones that charged
+ * nothing. Those are the valuable rows: a breach dropped by
+ * `verifyBreachRelevance`, or dropped because the quoted line matched nothing
+ * on the sheet, is invisible today, so "the same act was ruled three ways" can
+ * only ever be an anecdote. Four relevance failures in nine turns is a
+ * measurement; noticing four is a story.
+ */
+export const LogRulingOp = z.object({
+  op: z.literal('log_ruling'),
+  /** The act, as the player phrased it. Truncated — this is an index, not a transcript. */
+  action: z.string().min(1).max(200),
+  /** Whether it came from a declared order or from closing a channel. */
+  via: z.enum(['declared', 'accord']),
+  /** What the arbiter quoted, verbatim, before anything checked it. */
+  named: z.array(z.string()).max(3).default([]),
+  /** The line as the SHEET states it, once `classifyPrinciple` matched it. */
+  matched: z.string().nullable().default(null),
+  /** What list it turned out to be on. `null` when the quote matched nothing. */
+  kind: z.enum(['red_line', 'compulsion']).nullable().default(null),
+  /**
+   * `verifyBreachRelevance`'s verdict, or `null` when it did not run — which is
+   * itself worth recording, since a state-contradicting compulsion is dropped
+   * before the paid call.
+   */
+  relevant: z.boolean().nullable().default(null),
+  /** What actually happened, which is the column a drift report groups by. */
+  outcome: z.enum(['refused', 'charged', 'dropped_irrelevant', 'dropped_unmatched', 'dropped_contradicted']),
+});
+
 export const CreateAssetOp = z.object({
   op: z.literal('create_asset'),
   kind: z
@@ -157,8 +195,29 @@ export const CreateAssetOp = z.object({
   divisible: z.boolean().default(true),
   /** factionId -> credits one unit is worth to them. A claim, never money. */
   valuePerUnit: z.record(z.string(), z.number().int().min(0).max(10000)).default({}),
+  /** `true` when nobody has settled what it is worth. Use `valueRange` then. */
+  speculative: z.boolean().default(false),
+  /** factionId -> the band one unit might be worth. Read only when speculative. */
+  valueRange: z
+    .record(
+      z.string(),
+      z.object({
+        min: z.number().int().min(0).max(10000),
+        max: z.number().int().min(0).max(10000),
+      }),
+    )
+    .default({}),
+  /** Plays before it is spent, for an instrument. `null` for ordinary stuff. */
+  uses: z.number().int().min(1).max(1000).nullable().default(null),
   /** Where it is, if anywhere. An asset at a world changes hands with it. */
   atSystemId: z.string().nullable().default(null),
+  /**
+   * `false` for a thing that IS the world — a mine, an exchange, a theatre.
+   * It changes hands only when the ground does, and needs `atSystemId`.
+   */
+  portable: z.boolean().default(true),
+  /** What it does every turn, if anything. Needs `atSystemId`. */
+  yield: AssetYieldSchema.nullable().default(null),
 });
 
 /**
@@ -174,6 +233,40 @@ export const TransferAssetOp = z.object({
   assetId: z.string().min(1),
   toFactionId: z.string().min(1),
   reason: z.string().default(''),
+});
+
+/**
+ * Spending a thing, or destroying it.
+ *
+ * **Nothing in the game could remove an asset.** `state.assets` was only ever
+ * appended to and re-pointed — traded, ceded, conquered, forfeited on a
+ * contingency — so prisoners could not be released, ore could not be consumed,
+ * and an instrument could not be played. A playtest wrote a claimant's seal into
+ * escrow and exercised it in prose, and the seal was still there the next turn,
+ * exercisable again forever.
+ *
+ * Which counter it draws down depends on what the thing is. An **instrument**
+ * (`uses !== null`) is played: a writ once, a set of cipher keys three times.
+ * Everything else is **stuff** and is spent by `quantity`. Both reach zero the
+ * same way and the row is removed when they do, which is also what finally lets
+ * `voidsOn: asset_lost` fire because something ceased to exist rather than only
+ * because it changed hands.
+ *
+ * An ordinary op: spending what is yours needs nobody's permission, and the
+ * reducer removes the real thing, so it cannot be used to wish an obligation
+ * away — a borrowed holding is refused outright.
+ *
+ * **Not bound by `boundPayloadsToOutcome`.** Consuming is a COST, and the rule
+ * that pass enforces is that a failure emits what the attempt cost and not what
+ * the player wanted. Powder burned on a failed demolition is still burned.
+ */
+export const ConsumeAssetOp = z.object({
+  op: z.literal('consume_asset'),
+  assetId: z.string().min(1),
+  /** Units, or plays of an instrument. Trimmed to what is left. */
+  quantity: z.number().int().min(1).max(100000).default(1),
+  /** What it was spent on, in a phrase. */
+  reason: z.string().max(240).default(''),
 });
 
 /**
@@ -509,6 +602,85 @@ export const SettleDebtOp = z.object({
   reason: z.string().default(''),
 });
 
+/**
+ * Lending a thing out under terms.
+ *
+ * Extraction-only, for the reason `establish_debt` and `form_treaty` are: it
+ * binds the **borrower** — to feed the squadron, to pay the rent, to give it
+ * back — and a transcript is the only place that power's agreement exists. The
+ * lender giving something away would need nobody; the arrangement is not the
+ * gift.
+ *
+ * A world is not on the list of things that can be lent. The instrument for a
+ * world changing hands is a `cession` and the instrument for somebody else's
+ * fleet standing on one is `basing_rights`, so a lease would be a third answer
+ * to a question that already has two. Nor is a fixture — a mine, an exchange, a
+ * theatre change hands with their ground and by no other route.
+ */
+export const EstablishLoanOp = z.object({
+  op: z.literal('establish_loan'),
+  lenderFactionId: z.string().min(1),
+  borrowerFactionId: z.string().min(1),
+  lent: LentSchema,
+  /** The hire fee, borrower to lender, per turn. Trimmed to `MAX_LOAN_RENT`. */
+  rentPerTurn: z.number().int().min(0).max(10000).default(0),
+  /** Turns until it must be back. `null` is "until somebody says otherwise". */
+  termTurns: z.number().int().min(1).max(60).nullable().default(null),
+  text: z.string().min(1).max(240),
+});
+
+/**
+ * Handing back what you borrowed, in whole or in part.
+ *
+ * An ordinary op, and the **borrower's** alone. Giving back what is not yours
+ * needs nobody's permission, which is the same argument that keeps `settle_debt`
+ * off the negotiated path — and it is safe to leave open for the same reason,
+ * because the reducer moves the real thing: the hulls actually leave the
+ * borrower's stacks, so this cannot be used to wish an obligation away.
+ *
+ * A lender **recalling** early is not this op. That needs the borrower to agree,
+ * or a contingency written at signature — 86 already builds the trigger half.
+ */
+export const ReturnLoanOp = z.object({
+  op: z.literal('return_loan'),
+  loanId: z.string().min(1),
+  reason: z.string().default(''),
+});
+
+/**
+ * The lender stops asking for it back.
+ *
+ * Unilateral and therefore ordinary, exactly as `forgive_debt` is: a lender
+ * needs nobody's permission to make a gift of what is already in somebody
+ * else's hands. What was lent becomes the borrower's, and the goodwill is the
+ * same `DEBT_FORGIVENESS_GOODWILL` a written-off debt buys.
+ */
+/**
+ * Keeping what you borrowed.
+ *
+ * This exists because without it a loan is the one instrument in the game that
+ * **cannot be betrayed** — the tick hands the squadron back on the due turn
+ * whether the borrower likes it or not, which makes the arrangement a scheduled
+ * transfer with a fee rather than an obligation. `break_treaty` is in the
+ * ordinary vocabulary for exactly this reason: repudiation is genuinely
+ * unilateral, and the game's own rule is that *"betrayal is a later move, not a
+ * reason to void the deal."*
+ *
+ * It reaches the same state as simply failing to return — see `LoanStatus`,
+ * where the argument for one status rather than two is written down.
+ */
+export const RepudiateLoanOp = z.object({
+  op: z.literal('repudiate_loan'),
+  loanId: z.string().min(1),
+  reason: z.string().default(''),
+});
+
+export const ForgiveLoanOp = z.object({
+  op: z.literal('forgive_loan'),
+  loanId: z.string().min(1),
+  reason: z.string().default(''),
+});
+
 export const DissolveCommitmentOp = z.object({
   op: z.literal('dissolve_commitment'),
   commitmentId: z.string().min(1),
@@ -576,6 +748,19 @@ export const EXTRACTION_ALLOWED = new Set<string>([
   // Handing a thing over, or being handed one. Taking another power's asset
   // needs their agreement, and a transcript is the one place it exists.
   'transfer_asset',
+  // And ONE kind of asset an accord may bring into being: a dossier. The
+  // reducer refuses every other kind from here, which is where the rule lives —
+  // see `DOSSIER_KIND` for why the paper is different from the ore.
+  'create_asset',
+  // And spending one, because a conversation that ends "then the prisoners walk
+  // free" is a real outcome and the release binds nobody but the holder.
+  'consume_asset',
+  // Lending binds the borrower to give it back; the two unilateral halves —
+  // handing it back, and letting them keep it — are reachable here too, since
+  // both are ordinary acts a conversation can perfectly well conclude with.
+  'establish_loan',
+  'return_loan',
+  'forgive_loan',
   // The record of what was said.
   'log_narrative',
   'spawn_event',
@@ -612,6 +797,7 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   SetStanceOp,
   SetTollPolicyOp,
   SplitAssetOp,
+  ConsumeAssetOp,
   TransferAssetOp,
   IssueOrderOp,
   CancelOrderOp,
@@ -632,6 +818,11 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   // the debtor, and consent lives in a transcript. Forgiving is unilateral.
   ForgiveDebtOp,
   SettleDebtOp,
+  // `establish_loan` is ABSENT for the same reason: lending under terms binds
+  // the borrower. Giving it back and letting them keep it are unilateral.
+  ReturnLoanOp,
+  RepudiateLoanOp,
+  ForgiveLoanOp,
   SpawnEventOp,
   LogNarrativeOp,
 ]);
@@ -659,6 +850,7 @@ export const ExtractionOpSchema = z.union([
   // Rescheduling needs the creditor's agreement, so it belongs here with the
   // rest of the negotiated vocabulary rather than on the declared path.
   RestructureDebtOp,
+  EstablishLoanOp,
 ]);
 
 /** The full vocabulary, including ops only the reducer may originate. */
@@ -669,9 +861,11 @@ export const OpSchema = z.discriminatedUnion('op', [
   AdjustCreditsOp,
   SetDoctrineOp,
   CreateAssetOp,
+  LogRulingOp,
   SetStanceOp,
   SetTollPolicyOp,
   SplitAssetOp,
+  ConsumeAssetOp,
   TransferAssetOp,
   IssueOrderOp,
   CancelOrderOp,
@@ -691,6 +885,10 @@ export const OpSchema = z.discriminatedUnion('op', [
   AssignDebtOp,
   RestructureDebtOp,
   SettleDebtOp,
+  EstablishLoanOp,
+  ReturnLoanOp,
+  RepudiateLoanOp,
+  ForgiveLoanOp,
   SpawnEventOp,
   LogNarrativeOp,
 ]);
@@ -1034,6 +1232,7 @@ export interface OpRejection {
     | 'unknown_treaty'
     | 'unknown_agent'
     | 'unknown_debt'
+    | 'unknown_loan'
     | 'unknown_asset'
     | 'doctrine_refusal'
     /** A treaty was declared rather than negotiated; the other party never agreed. */

@@ -172,7 +172,12 @@ gives you. A power cannot later be told it agreed to something it never wrote.
 
 ```jsonc
 { "by": "ojjul", "kind": "cede_worlds", "text": "Oridin passes to the Confederacy.",
-  "systems": ["ilv-5"], "credits": 0, "perTurn": 0, "hulls": 0 }
+  "systems": ["ilv-5"], "credits": 0, "perTurn": 0, "hulls": 0, "assets": [] }
+```
+
+```jsonc
+{ "by": "ojjul", "kind": "return_prisoners", "text": "Your crews walk out of Shalka.",
+  "systems": [], "credits": 0, "perTurn": 0, "hulls": 0, "assets": ["ast-3-0"] }
 ```
 
 `kind` is yours to invent — a lower_snake_case slug naming the sort of thing it
@@ -185,8 +190,34 @@ put their ids in `systems`. Nothing downstream can work that out, and a world
 you do not name does not move.
 
 Fill `credits` for a one-time payment out of your treasury, `perTurn` for a
-standing one, `hulls` for ships out of your own fleet. All of them are **what
-you give**, never what you receive.
+standing one, `hulls` for ships out of your own fleet, `assets` for things off
+your own shelf. All of them are **what you give**, never what you receive.
+
+### Trade things, not only worlds and money
+
+You are shown two inventories: what you hold, and what the other power holds
+that **you** have a use for. Both are on the table, and a bargain made of objects
+is usually a better bargain than one made of credits — because a thing is worth
+different amounts to different powers, and that difference is where the profit
+is. Their crews are worth a fortune to whoever lost them and scrap to everybody
+else.
+
+So: ask for what they have. Offer what you have. *"Your forty crews for my file
+on the Vantic yards, and neither of us pays a credit"* is a real deal, and it is
+the sort this table exists for.
+
+Three things to hold on to:
+
+- **Name the id in `assets`.** *"You can have your people back"* moves nothing.
+  You are looking at your own shelf, so you know which lot you mean.
+- **Something unassayed is worth a range, and the range is the argument.** When
+  a thing shows as *"might pay 200–400, unsettled"*, the low end and the high end
+  are both defensible and neither of you can prove it. Push for your end. A power
+  buying an unproven seam is buying a hope, and should say so or exploit it.
+- **What your operatives found is not a thing.** You can tell them what you know
+  for nothing — that is a real concession and a real chip — but knowledge is not
+  an object and does not go in `assets`. What goes there is the **file**: paper,
+  sealed, handed over, and gone from your hands once it is.
 
 ### Striking something out
 

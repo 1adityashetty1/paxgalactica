@@ -8,7 +8,7 @@ closed — the reasoning is the useful part, and a fixed item explains why the c
 looks the way it does.
 
 Statuses are checked against the code, not carried forward from the label. The
-last audit was **2026-09-07**.
+last audit was **2026-09-08**.
 
 ---
 
@@ -16,7 +16,8 @@ last audit was **2026-09-07**.
 
 Ranked. Items 82–91 come from the creative playtest of 2026-09-07
 (`docs/playtest-2026-09-07-creative.md`, 40 findings over nine turns as the
-Combine); the bucket ids in brackets point into that report.
+Combine); the bucket ids in brackets point into that report. 93 and 94 are
+follow-ons from building 81 and 90 rather than playtest findings.
 
 **The diagnosis that orders this list:** thirteen findings were *allowed but
 inert* against six *wrongly denied*. This game is good at hearing anything and
@@ -34,14 +35,25 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~84~~ | ~~every private commitment is published~~ | small | **FIXED** |
 | ~~85~~ | ~~the concession ledger accumulates~~ | small | **FIXED** |
 | ~~86~~ | ~~a contingent payment~~ | medium | **BUILT** — and it moves assets, not only credits |
-| ~~81~~ | ~~assets~~ | subsystem | **BUILT** — 86 can now trigger on them |
-| **87** | log every breach ruling | small | the instrument that makes 88–90 measurable |
-| **88** | a `contract` treaty type | medium | cheap for the fiction it unblocks |
-| **89** | no op can raise a rival's dissent | medium | an axis with a fiction and no arithmetic |
-| **90** | loans of things that are not credits (incl. a hired squadron) | medium | the commonest arrangement in the genre |
-| **91** | seven small things | small | a quiet afternoon |
+| ~~81~~ | ~~assets~~ | subsystem | **BUILT**, then **EXTENDED** with fixtures and per-tick yields |
+| ~~87~~ | ~~log every breach ruling~~ | small | **BUILT** |
+| ~~88~~ | ~~a `contract` treaty type~~ | medium | **BUILT** |
+| ~~89~~ | ~~rival dissent~~ | medium | **BUILT** — an agent effect *and* a treaty consequence |
+| ~~90~~ | ~~a hired squadron, which is a loan of units~~ | medium | **BUILT** — as `Loan`, not as a `Debt` with extra fields |
+| ~~91~~ | ~~seven small things~~ | small | **BUILT**, six of seven; severability is not small |
+| ~~94~~ | ~~loans, after the first one is signed~~ | small | **(a) BUILT**, with the default model it exposed; (b) wants a playtest, (c) settled |
+| ~~93~~ | ~~three things the asset fields still cannot say~~ | small | **BUILT** — a catalogue, `consume_asset`, speculative value, assets at the table |
 | **80** | an advisor that costs an action | medium | not from the playtest; wanted |
 | **92** | two claims only a campaign can settle | — | needs play, not code |
+
+**What is actually left is a playtest and one feature.** Every medium and every
+subsystem on this list is built, 93 is closed and 94 is down to its one item that
+wants a campaign rather than a decision, so 80 is the only unstarted feature. The honest next move is not another item — it is a
+**playtest**, because nothing in 81, 86, 87, 88, 89, 90 or the consent work has
+been exercised by a live model. The personas have never seen an asset, a
+contingency, a contract or a hired squadron in a prompt, and `channelBlockers`
+has never been observed firing. That is item **92**'s argument too, and it now
+covers far more than the two claims it was filed for.
 
 **Where frequency and cost disagree:** 81 and 89 were reached for in most turns
 and neither is small — they are the two that would most change what the game
@@ -165,7 +177,7 @@ condition that can end a deal is the kind of condition somebody insures against,
 and the polarity already matched, since `voidConditionMet` returns a reason
 exactly when a claim should pay. `world_lost` was added for it.
 
-## 87. Log every breach ruling
+## 87. BUILT — log every breach ruling
 
 Section **A** below accepts arbiter variance as irreducible and names this as
 the one thing left worth building. The playtest is the argument for it:
@@ -174,11 +186,37 @@ refused under the *debt* red line, the same act (forgiving a debt) ruled three
 different ways across three turns, and paying men to change sides charged as a
 *favour given for goodwill*. `[A-3, A-5, A-6]`
 
-Record the quoted line, the kind, and the relevance verdict on every ruling.
-Right now "the same act was ruled three ways" is an anecdote from one agent's
-notes; there is no way to ask a campaign how often it happens, and no way to
-tell whether a prompt change helped. Small, and it is the instrument that makes
-the rest of this measurable.
+**BUILT.** `recordRuling` builds one row per ruling that named a line, and
+`log_ruling` writes it to the event log under a new `arbiter` kind — filterable
+rather than hidden, for the reason `rejection` and `clamp` are.
+
+The row carries what the arbiter **quoted**, the line the sheet actually
+**matched**, which list it was on, the relevance verdict, and an `outcome` that
+distinguishes the four ways a named line comes to nothing:
+
+| outcome | means |
+|---|---|
+| `refused` / `charged` | it stood |
+| `dropped_irrelevant` | `verifyBreachRelevance` said the line is not about this act |
+| `dropped_unmatched` | the quote matched nothing on the sheet — an invented rule buys no price |
+| `dropped_contradicted` | a state-dependent compulsion the board contradicts, dropped before the paid call runs |
+
+**The rows that charge nothing are the point.** A ruling that decides not to
+charge left no trace anywhere, which is why "the same act was ruled three ways"
+could only ever be an anecdote from one agent's notes.
+
+Three things fell out of building it:
+
+- **`log_ruling` is engine-only**, guarded in the reducer as well as by absence
+  from `ModelOpSchema` — the same belt-and-braces `transfer_control` gets, and
+  necessary for the same reason: a hand-written batch parses against the full
+  vocabulary. A model writing its own report card is the confirmation bias this
+  layer exists to avoid.
+- **The entry is private to the actor.** `serializeRecentLog` would otherwise
+  hand every NPC a transcript of what the player was told they may not do.
+- **`opsStagedSince` now skips `engine` batches.** It answers *"what did my
+  action do"*, and an audit row is not something the action did — without the
+  filter a refused order reported `log_ruling` among its own results.
 
 > The **seventh** finding in that cluster is fixed: the Combine's proxy red line
 > was being read backwards verbatim, and the sentence was rewritten
@@ -187,7 +225,7 @@ the rest of this measurable.
 > (the Vigil's pirate line) and two that were over-broad. See **79** and the
 > 2026-09-07 commits.
 
-## 88. A `contract` treaty type
+## 88. BUILT — a `contract` treaty type
 
 `tribute` is the only treaty type carrying `incomePerTurn`, so it is the sink
 for every recurring commercial flow regardless of fiction — a hire contract and
@@ -197,13 +235,16 @@ outright and it is now the payer on a live `tribute` treaty. And supersession
 keys on `(pair, type)`, so a second commercial contract with the same power
 silently retires the first. `[C-5]`
 
-Same `incomePerTurn` machinery, different label and supersession key. Pair it
-with running the accord appraisal against **both** parties' principles rather
-than only the actor's — the counterparty's sheet is currently never checked
-against the instrument its own concession lands in. **Medium**, and cheap for
-how much fiction it unblocks.
+**BUILT.** Same `incomePerTurn` machinery, different label and supersession
+key, so two commercial deals with one power are two deals. The prompt now says
+plainly what separates them: tribute is money paid to be left alone, a contract
+is money paid for something given.
 
-## 89. No op can raise a rival's dissent
+The both-parties appraisal it wanted shipped with **89**, since they are the
+same call — `appraiseAction` takes a viewer now, so the arbiter can rule from
+the counterparty's chair.
+
+## 89. BUILT — no op can raise a rival's dissent
 
 Two successful legitimacy attacks — crowning a pretender, a bill of attainder —
 left the Iron Vigil **mechanically identical**. `adjust_dissent` is actor-only
@@ -213,11 +254,38 @@ which is the wrong quantity, and it moved the wrong way. Net effect of two
 successes: −200 credits, +15 of the actor's own dissent, and the target liking
 them less. `[B-2]`
 
-A `sedition` agent effect under the same bounds `stat_debuff` already uses.
-**Medium**, and it opens the whole subversion axis, which currently has a
-fiction and no arithmetic.
+**BUILT, and along two paths rather than one.**
 
-## 90. A hired squadron — which is a loan of units, and loans want generalising
+**As an agent effect.** `sedition` raises the target's dissent on the tick, and
+it **mutates** rather than being read where it is used — like `hull_damage` and
+unlike `stat_debuff` — because dissent accumulates and decays on its own clock,
+so a value read fresh each turn would never accumulate. It reaches every stat at
+once through `effectiveStats`, which is what a legitimacy attack actually does.
+`adjust_dissent` stays actor-only and upward-only: the cheap path is still shut,
+and this one costs credits, risks exposure and is capped.
+
+**As a consequence of a treaty.** Nothing held an NPC to its own sheet inside a
+channel — `ReactionSchema` has no `refusal` field, blockers are scoped to the
+player's lines, and the accord appraisal runs from the player's viewpoint by
+construction. So the Iron Vigil negotiated three messages and signed an
+accommodation with the Nars against a sheet reading *"no accommodation with
+pirates, smugglers or the Nars may be entertained, however useful"*, and paid
+nothing at all. `closeChannel` now appraises **the other power's own
+concessions against their own principles** and charges
+`COUNTERPARTY_BREACH_DISSENT`.
+
+**A price, not a veto**, and the asymmetry with the player is deliberate. A
+player's red line refuses the accord because they are the one being told what
+their institutions will bear, and they get a blocker in the turn they approach
+it and a conversation in which to steer around. An NPC backing out at signature
+would destroy a deal the player negotiated in good faith with no such warning.
+So a leader may agree to what its people hate, and its people notice.
+
+One extra Haiku call per accord, and only when the accord produced ops **and**
+the counterparty actually conceded something — agreeing to nothing costs nobody
+anything.
+
+## 90. BUILT — a hired squadron, which is a loan of units
 
 Twelve hulls offered under another power's flag, command and orders landed as
 `basing_rights` — permission for the *lender's* fleet to visit the borrower's
@@ -289,32 +357,81 @@ is the units case and the command transfer.
 it should be built as `Loan`, not as `terms.command` bolted onto
 `mutual_defense`.
 
-## 91. Seven small things
+### BUILT, 2026-09-08
 
-- **an accord is refused whole when the offending clause is severable.** One
-  proxy-war clause destroyed a prize tithe, a letter of marque, a syndicate and
-  a hostage exchange with it. `[A-1]`
-- **repudiating your own multi-party commitment is free**, and pays the same. A
+`src/domain/loan.ts`, built as specced with **one narrowing the user set**: a
+world cannot be lent, and neither can anything that cannot leave a world. So the
+`lent` union is `credits` · `hulls` · `asset` and there is no `systemId` in it —
+closed by construction rather than by a guard somebody can forget. A lease would
+have been a third answer to a question `cession` and `basing_rights` already
+answer twice, and it would have needed control, garrison and income to disagree
+with each other for a term.
+
+Everything the spec asked for is in: the discriminated union, the command
+transfer (free — a fleet here is `system.ships[factionId]` and nothing else),
+rent running borrower-to-lender, a term, and the shared default machinery down to
+the constants. See `CLAUDE.md`, *"Loans: a thing that comes back, which is not a
+debt"*.
+
+Two things the spec did not anticipate, both found by building it:
+
+- **Two batch passes read a change in tonnage as an event.**
+  `billConstruction` charges the borrower the full purchase price for hulls it is
+  renting, and `capSelfInflictedLosses` reads the lender's fleet shrinking as a
+  scuttling and puts the squadron back — leaving two of it. Both are told that
+  hulls changing flag under a signature are neither built nor lost.
+- **A returned squadron has to be looked for where it was handed over**, not
+  simply at the borrower's richest world. Otherwise a borrower with a bigger
+  fleet elsewhere settles the return from home and leaves the actual squadron
+  squatting in the lender's orbit.
+
+**Not built, and deliberately:** `assign_loan` and `restructure_loan`. Each is a
+separate lesson `debt.ts` already learned the hard way, and neither has been
+reached for yet.
+
+**One thing worth a later look:** `debt_unpursued` reads debts only. A loan
+overdue and unchased is the same fiction — *"an unpaid debt must be pursued"* —
+and the Combine's compulsion cannot currently see one.
+
+## 91. BUILT (six of seven) — small things
+
+- **NOT BUILT — an accord is refused whole when the offending clause is
+  severable.** One proxy-war clause destroyed a prize tithe, a letter of marque,
+  a syndicate and a hostage exchange with it. `[A-1]`
+
+  Left alone deliberately, and it does not belong in a list of small things.
+  Severing a clause means knowing which ops came from which clause, and
+  extraction emits a flat batch — there is no such mapping, and inventing one is
+  a feature. **82 also took most of the sting out of it**: a red line now lands
+  as a visible blocker in the turn the player walks toward it, so the whole
+  accord is no longer the first warning they get. Reopen with a proposal for how
+  a clause is identified, not as a small fix.
+- **BUILT — repudiating your own multi-party commitment is free**, and pays the same. A
   `Commitment` is not a `Treaty`, so `PACT_BREAKING_REPUTATION_COST` never
   applies; the replacement commitment paid the identical +20/turn. `[B-8]`
-- **route an exclusivity clause into an `exclusive` commitment** instead of a
+- **BUILT (prompt) — route an exclusivity clause into an `exclusive` commitment** instead of a
   `log_narrative`, and `commitment_conflict` catches a double sale for free. The
   same intelligence was sold twice in one hour with `exclusive` written into the
   paper. `[B-11]`
-- **refuse to write a multilateral compact as a one-party commitment.** A pact
+- **BUILT (prompt) — refuse to write a multilateral compact as a one-party commitment.** A pact
   narrated as co-signed by four powers recorded `factionIds: ["ojjul"]`, so it
   bound nobody — and a later one carried a deemed-accession clause binding two
   powers never asked. `[C-1, D-3]`
-- **surface a trimmed figure** back into the accord narrative. A number
+- **BUILT — surface a trimmed figure** back into the accord narrative, and into the **transcript**, which is what the persona actually reads back. A number
   bargained from 80 to 95 settled at 60 and neither persona was told; a headline
   33% toll share settles at one credit a turn. `[B-13]`
-- **reject a hostile-effect `deploy_agent` on the actor's own system.** 80
+- **BUILT — reject a hostile-effect `deploy_agent` on the actor's own system.** 80
   credits and an agent slot died permanently on a `stat_debuff` placed on the
   actor's own capital. `[C-4]`
-- **put `rejections` on the response**, and scope the "nothing was applied" note
+- **BUILT — put `rejections` on the response**, and scope the "nothing was applied" note
   to the batch it describes. Four rejections were logged and none reached the
   API, under a note saying nothing landed — while the correction pass had landed
   320 credits. `[E-2]`
+
+  Both halves were wrong in opposite directions, and both are fixed: the
+  response carries **both** batches' rejections in the order they happened, and
+  the first batch's all-or-nothing note is rewritten when the correction landed,
+  so it no longer says nothing was applied over a board that says otherwise.
 
 ## 92. Wants a playtest, not a patch — **19, 67.5**
 
@@ -333,6 +450,15 @@ reproduce) and 67.3 (`covert` is a list, so an appraisal naming three operations
 places three agents). Neither needed a playtest — both were readable off the
 code, which is worth noting because both had sat here on the assumption that
 they were not.
+
+**And it has grown, which is the real argument for playing one now.** Nothing
+built since 2026-09-07 has been exercised by a live model: no persona has seen
+an asset, a fixture, a per-tick yield, a contingency, a `contract` treaty, a
+hired squadron or a counterparty breach charge in a prompt, and
+`channelBlockers` — fixed as item 82 — has never been *observed* firing. Every
+one of those is a mechanism whose failure mode is silence, which is exactly the
+class of defect the suite cannot see and a campaign finds in one turn. The two
+claims above are now the smaller half of what a run would settle.
 
 ## 81. BUILT — assets: things that are neither credits nor ships
 
@@ -471,6 +597,176 @@ player for asking — which is already the stated rule for the other two.
 *successful check* is a thing the fiction earned; a slug invented by a
 declaration was the thing worth stopping. So a survey expedition can still bring
 back something nobody enumerated.
+
+### EXTENDED, 2026-09-08 — cargo, fixture, and a thing that works
+
+The first version could only describe things you **carry**. Two fields close the
+other half — `portable`, and a `yield` union of `credits` · `dissent` · `asset`
+— so a mine, an exchange and a theatre are now sayable. See `CLAUDE.md`,
+*"Cargo, fixture, and a thing that works"*, for the bounds and where each yield
+is applied.
+
+## 93. BUILT — the asset system, finished
+
+All three are closed, and the last two were closed by rulings that reframed them
+rather than by building what was filed. Written up in `CLAUDE.md` under *"The
+catalogue"*, *"A worth nobody has settled"* and *"Nothing could be destroyed"*.
+
+Shipped with it, from the same pass:
+
+- **A catalogue of sixteen archetypes** (`src/domain/assets.ts`) in four groups —
+  people, paper, stuff, works. Defaults rather than a menu: the slug stays open,
+  and the reducer only *corrects* `divisible` and `uses`, the two fields whose
+  being wrong breaks a later trade. Substituted into the prompt at call time so
+  the table and the prompt cannot drift.
+- **Rules for inventing a seventeenth**, in `prompts/resolution.md`: it has to be
+  a thing rather than a fact, it has to have come from the attempt that just
+  succeeded, somebody other than the holder has to want it, the shape has to be
+  stated honestly, and the slug has to be a reusable category. Plus the two
+  failure modes seen in play — never mint beside a mechanic that already models
+  it, and never mint for a consequence already paid.
+- **Assets at the table.** `serializeTheirAssets` shows a persona what the other
+  side holds that it wants, `Concession.assets` records the offer, and
+  `groundInConcessions` holds a transfer out of the other party's hands to the
+  same standard a world is held to.
+- **A simplified panel.** One line of qualifiers and a single best-offer chip,
+  replacing a chip per interested power — which on a four-way item was four chips
+  of near-identical text burying the only number a player acts on.
+- **32 tests** in `tests/assets.test.ts`: every archetype instantiated, every
+  forced field probed against a call that disagrees, both conservation properties
+  (worth under a split, worth under a transfer) asserted, and a well-formedness
+  check run over everything a full tick produces.
+
+## 93. (the original three)
+
+Swept against the creative playtest's own list after the `portable`/`yield`
+extension. Everything it reached for is now expressible **except** three, and
+each is a different shape rather than a missing column. None is urgent; all
+three are cheap next to the subsystem they sit on.
+
+**a) BUILT — an instrument that is spent when it is exercised.** `consume_asset`,
+plus a `uses` field. The gap was wider than the seal: **nothing in the game could
+destroy an asset at all**, so `voidsOn: asset_lost` could only fire because
+something changed hands. A hostage could not be killed.
+
+**a) (original)** Measured, not
+hypothesised: `com-1-4`, the claimant-seal surety, was exercised in prose — the
+seal couriered to the Vigil Legate — and *"the instrument was never consumed, so
+it can be exercised again forever"*. Nothing in `quantity`, `portable` or `yield`
+says **one use**. Neither does a contingency, which fires once but is a *payment*
+rather than a thing being spent. The shape is small: a `consume_asset` op, or a
+`uses` count that `transfer_asset` and a resolution can draw down. Covers escrow,
+a letter of marque, a writ, a single-shot favour — everything whose whole value
+is that it can be played once.
+
+**b) SETTLED, and built — information is not an asset at all.**
+
+The framing was wrong, and the ruling that fixed it is the user's: *nothing
+prevents a player from disclosing intelligence as a message.* Diplomacy is free
+text, so an operative's findings can be handed over by typing them, and an
+object you can give away by talking is not an object. Copy semantics, a
+`sourceId` lineage and a value that decays with the number of holders were all
+answers to a question that should not have been asked.
+
+So **what an agent produces is never an asset** — it is knowledge, disclosable
+for nothing, and may be consideration in a bargain without changing hands — and
+the tradeable thing is a **`dossier`**: the paper rather than the knowledge,
+forced atomic, forced placeless, forced inert, carrying a natural per-faction
+value and nothing else. It is the one asset kind an accord may create, which is
+an application of *"a conversation cannot conjure what does not exist"* rather
+than an exception to it: the seller already had the knowledge for free, and what
+the deal makes is the record. See `CLAUDE.md`, *"Intelligence is not an asset; a
+dossier is"*.
+
+Deliberately not done: buying a dossier grants **no visibility**. The fog stays
+a snapshot rather than a memory, and a power that wants to see a rival's yards
+buys an operative.
+
+**b) (original framing) Information, which is copied rather than moved.** `transfer_asset` moves a
+holding from one power to another, which is right for ore and wrong for a
+dossier: the playtest **sold the same intelligence twice** (**B-11**), and under
+today's fields that is either a bug (the seller still holds it) or a
+mispricing (the seller does not, but knows it anyway). Two properties nothing
+carries: a transfer that **copies**, and a value that **falls as more powers
+hold it** — exclusivity *is* the price. The natural home is a flag on the asset
+(`kind: 'knowledge'` is not enough; it has to change what transfer does), plus a
+`valuePerUnit` that divides by the number of holders.
+
+**c) BUILT, by reframing — a thing whose stated worth is a lie.** The ruling: do
+not put a lie in the state block. `speculative` with a per-faction `min`/`max`
+band says the honest thing instead — **nobody knows** — and the forgery needs no
+special case, because it is a wide band that resolves badly and both ends were
+arguable when it was sold. No discovery rule was needed, which was the expensive
+half of what was filed.
+
+**c) (original)** *"A chart that is false"* (**C-3**)
+is in the original spec's own list and is the one entry the schema cannot
+express: `valuePerUnit` is a single number both sides read, so a forgery is
+indistinguishable from the genuine article, and the deception has to live
+entirely in prose. The honest version is a **claimed** value beside a **true**
+one, with the claimed figure serialized to the buyer and the true one to the
+holder — which is a real privacy change to `serializeAssets`, not a field.
+Worth noting that this is the only one of the three that adds a *lie* to a
+document two personas bargain over, so it wants the most care.
+
+**Not gaps, recorded so they are not re-filed:** a hostage (asset +
+`voidsOn: asset_lost`, built), an indemnity or ransom (contingency, built), a
+hired squadron (item **90**, a loan of units and deliberately not an asset), the
+Vosk Company (a chartered subsidiary is an *entity*, not a thing — it wants
+agency, which is a faction-shaped problem), and a letter of marque naming
+permitted victims (a permission, which is a `Commitment`).
+
+## 94. PARTLY BUILT — loans, after the first one is signed
+
+Three gaps the build left. **(a) is built**, and building it turned up a
+larger design fault in 90 that is fixed with it. (b) wants a playtest and (c)
+was already settled.
+
+### The fault (a) uncovered — and the ruling on it
+
+Item 90 shipped with the tick **seizing** the squadron on the due turn whether
+the borrower liked it or not. So a loan was the one instrument in the game that
+could not be betrayed, and `delinquent` could only ever mean the hulls were
+destroyed or the treasury was empty — bad luck, charged as bad faith, every turn.
+
+The ruling, and it is the user's rather than mine: **fold them.** A lender does
+not care why twelve hulls did not come home, and the rest of the game already
+agrees — a debt bleeds every turn it goes unserviced whether or not the debtor
+could afford it, because the line says *unpaid* and not *unwilling*. Separating
+them would have introduced a distinction nothing else here makes.
+
+So: one `defaulted` status reached either way, `repudiate_loan` added so keeping
+it is reachable at all, one price (25 with the lender then 6 a turn, plus
+`PACT_BREAKING_REPUTATION_COST` with onlookers, because a squadron that never
+sailed home is observable), arrears on the hire given the private bleed they
+never had, and the automatic return ended by a default — otherwise a repudiation
+is undone on the next tick. Written up in `CLAUDE.md`, *"Bad luck and bad faith
+are one outcome"*.
+
+**a) BUILT — `debt_unpursued` could not see an overdue loan.** The Combine's compulsion is
+*"an unpaid debt must be pursued"*, and `driftingCompulsions` reads
+`state.debts` alone. A hired squadron three turns past due and unchased is the
+same fiction and the same failure of character, and it currently costs its
+creditor nothing to ignore. `defaultedBorrowersOf` sits beside
+`delinquentDebtorsOf` and the trigger unions them. Only a `defaulted` loan
+counts, never arrears on the hire: the first is somebody keeping your ships and
+the second is an invoice.
+
+**b) NOT BUILT — there is no `assign_loan` and no `restructure_loan`.** `debt.ts` learned
+both the hard way — a debt that could only be *transferred* by minting a second
+copy left three standing against an original of 600, and a restructure routed
+through `forgive_debt` + `establish_debt` minted principal, paid goodwill for a
+forgiveness that forgave nothing, and laundered a delinquency clean. Neither has
+been reached for on a loan yet, so neither is built; the lesson is written down
+so the next person does not rediscover it by shipping the same chain.
+
+**c) SETTLED — a lender cannot recall early.** The
+op is borrower-only by design, and the honest instrument is a contingency
+written at signature — 86 built the trigger half, so *"the squadron comes home
+if you make peace with the Vigil"* is expressible today. What does not exist is
+a way to say it **after** the fact except by opening a channel. That is probably
+correct and is recorded here rather than fixed, because the alternative is a
+lender reaching into another power's fleet.
 
 ## 80. An advisor: worked examples that know the board, and cost an action
 
