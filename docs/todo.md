@@ -8,7 +8,7 @@ closed — the reasoning is the useful part, and a fixed item explains why the c
 looks the way it does.
 
 Statuses are checked against the code, not carried forward from the label. The
-last audit was **2026-09-07**.
+last audit was **2026-09-08**.
 
 ---
 
@@ -16,7 +16,8 @@ last audit was **2026-09-07**.
 
 Ranked. Items 82–91 come from the creative playtest of 2026-09-07
 (`docs/playtest-2026-09-07-creative.md`, 40 findings over nine turns as the
-Combine); the bucket ids in brackets point into that report.
+Combine); the bucket ids in brackets point into that report. 93 and 94 are
+follow-ons from building 81 and 90 rather than playtest findings.
 
 **The diagnosis that orders this list:** thirteen findings were *allowed but
 inert* against six *wrongly denied*. This game is good at hearing anything and
@@ -34,14 +35,25 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~84~~ | ~~every private commitment is published~~ | small | **FIXED** |
 | ~~85~~ | ~~the concession ledger accumulates~~ | small | **FIXED** |
 | ~~86~~ | ~~a contingent payment~~ | medium | **BUILT** — and it moves assets, not only credits |
-| ~~81~~ | ~~assets~~ | subsystem | **BUILT** — 86 can now trigger on them |
+| ~~81~~ | ~~assets~~ | subsystem | **BUILT**, then **EXTENDED** with fixtures and per-tick yields |
 | ~~87~~ | ~~log every breach ruling~~ | small | **BUILT** |
 | ~~88~~ | ~~a `contract` treaty type~~ | medium | **BUILT** |
 | ~~89~~ | ~~rival dissent~~ | medium | **BUILT** — an agent effect *and* a treaty consequence |
-| **90** | loans of things that are not credits (incl. a hired squadron) | medium | the commonest arrangement in the genre |
+| ~~90~~ | ~~a hired squadron, which is a loan of units~~ | medium | **BUILT** — as `Loan`, not as a `Debt` with extra fields |
 | ~~91~~ | ~~seven small things~~ | small | **BUILT**, six of seven; severability is not small |
+| **94** | loans, after the first one is signed | small | three gaps the build left, all cheap |
+| **93** | three things the asset fields still cannot say | small–medium | one is a measured bug (an instrument exercised forever) |
 | **80** | an advisor that costs an action | medium | not from the playtest; wanted |
 | **92** | two claims only a campaign can settle | — | needs play, not code |
+
+**What is actually left is small.** Every medium and every subsystem on this
+list is built; 93 and 94 are the residue of building the last two, and 80 is the
+only unstarted feature. The honest next move is not another item — it is a
+**playtest**, because nothing in 81, 86, 87, 88, 89, 90 or the consent work has
+been exercised by a live model. The personas have never seen an asset, a
+contingency, a contract or a hired squadron in a prompt, and `channelBlockers`
+has never been observed firing. That is item **92**'s argument too, and it now
+covers far more than the two claims it was filed for.
 
 **Where frequency and cost disagree:** 81 and 89 were reached for in most turns
 and neither is small — they are the two that would most change what the game
@@ -439,6 +451,15 @@ places three agents). Neither needed a playtest — both were readable off the
 code, which is worth noting because both had sat here on the assumption that
 they were not.
 
+**And it has grown, which is the real argument for playing one now.** Nothing
+built since 2026-09-07 has been exercised by a live model: no persona has seen
+an asset, a fixture, a per-tick yield, a contingency, a `contract` treaty, a
+hired squadron or a counterparty breach charge in a prompt, and
+`channelBlockers` — fixed as item 82 — has never been *observed* firing. Every
+one of those is a mechanism whose failure mode is silence, which is exactly the
+class of defect the suite cannot see and a campaign finds in one turn. The two
+claims above are now the smaller half of what a run would settle.
+
 ## 81. BUILT — assets: things that are neither credits nor ships
 
 The playtest kept reaching for objects the world has no way to hold. Prisoners
@@ -628,6 +649,39 @@ hired squadron (item **90**, a loan of units and deliberately not an asset), the
 Vosk Company (a chartered subsidiary is an *entity*, not a thing — it wants
 agency, which is a faction-shaped problem), and a letter of marque naming
 permitted victims (a permission, which is a `Commitment`).
+
+## 94. Loans, after the first one is signed
+
+Three gaps the build left, listed so they are decisions rather than omissions.
+All small, none urgent, and the first is the only one with a live sheet behind
+it.
+
+**a) `debt_unpursued` cannot see an overdue loan.** The Combine's compulsion is
+*"an unpaid debt must be pursued"*, and `driftingCompulsions` reads
+`state.debts` alone. A hired squadron three turns past due and unchased is the
+same fiction and the same failure of character, and it currently costs its
+creditor nothing to ignore. The predicate already exists and reads
+`delinquentDebtorsOf(state.debts, …)`; it needs the loan analogue beside it.
+One thing to decide while writing it: a loan goes `delinquent` for two different
+reasons — missed **rent**, and a term that ran out with the thing not back — and
+only the second is really *"an unpaid debt"* in the Combine's sense. The first is
+an arrears problem; the second is somebody keeping your ships.
+
+**b) There is no `assign_loan` and no `restructure_loan`.** `debt.ts` learned
+both the hard way — a debt that could only be *transferred* by minting a second
+copy left three standing against an original of 600, and a restructure routed
+through `forgive_debt` + `establish_debt` minted principal, paid goodwill for a
+forgiveness that forgave nothing, and laundered a delinquency clean. Neither has
+been reached for on a loan yet, so neither is built; the lesson is written down
+so the next person does not rediscover it by shipping the same chain.
+
+**c) A lender cannot recall early, and that is currently a prompt rule.** The
+op is borrower-only by design, and the honest instrument is a contingency
+written at signature — 86 built the trigger half, so *"the squadron comes home
+if you make peace with the Vigil"* is expressible today. What does not exist is
+a way to say it **after** the fact except by opening a channel. That is probably
+correct and is recorded here rather than fixed, because the alternative is a
+lender reaching into another power's fleet.
 
 ## 80. An advisor: worked examples that know the board, and cost an action
 
