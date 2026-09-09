@@ -296,6 +296,35 @@ export function useGame() {
     [guard, say, view],
   );
 
+  /**
+   * Ask the power's own counsellor what it is worried about.
+   *
+   * Rendered as `faction` rather than `system`, because it is somebody
+   * speaking — the same class of thing as a diplomatic reply, and the opposite
+   * of the grey machine notes around it. The one line of chrome is who said it:
+   * without a speaker the counsel reads as the game explaining itself, which is
+   * exactly the register it is written to avoid.
+   */
+  const advisor = useCallback(
+    () =>
+      guard(async () => {
+        say('> counsel', 'you');
+        const outcome = await api.advisor();
+        if (outcome.outOfActions) {
+          sayWithArt(
+            outcome.counsel,
+            'system',
+            'out-of-actions',
+            `No actions left this turn (${outcome.outOfActions.perTurn} per turn). End the turn to continue.`,
+          );
+          return;
+        }
+        say(`${outcome.speaker} — to the ${outcome.title}`, 'brief');
+        say(outcome.counsel, 'faction');
+      }),
+    [guard, say, sayWithArt],
+  );
+
   const endTalk = useCallback(
     (factionId: string) =>
       guard(async () => {
@@ -379,6 +408,7 @@ export function useGame() {
     view,
     needsCampaign,
     exportCampaign,
+    advisor,
     importCampaign,
     busy,
     messages,

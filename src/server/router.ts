@@ -86,6 +86,10 @@ async function route(
     return ok(await session.action(text));
   }
 
+  if (method === 'POST' && path === ROUTES.advisor) {
+    return ok(await session.advisor());
+  }
+
   if (method === 'POST' && path === ROUTES.endturn) {
     return ok(await session.endTurn());
   }

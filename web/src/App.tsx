@@ -14,7 +14,7 @@ import { SidePanel } from './components/SidePanel.js';
 import { useGame, useStickToBottom } from './useGame.js';
 
 /**
- * Worked examples, written against the player's ACTUAL position.
+ * Four worked examples, written against the player's ACTUAL position.
  *
  * A blank prompt that accepts any English sentence is the hardest kind of
  * interface to start using: the player has no idea what the game can hear.
@@ -23,64 +23,41 @@ import { useGame, useStickToBottom } from './useGame.js';
  * the player really holds and real neighbours they could really reach, so they
  * can be typed verbatim on turn one.
  *
- * Chosen to cover the verbs nobody guesses — that a neutral world has a
- * garrison, that you can strangle trade without a battle, that you can talk a
- * crew into changing sides, and that the arbiter will rule on things with no
- * mechanic at all.
+ * Their job is the SHAPE of a sentence the game can hear, and nothing else.
+ * They used to carry a gloss under each — that a neutral world fights back,
+ * that raiding needs a squadron a jump out — which made the block twice as
+ * long and taught rules the help text is a better place for. A list where
+ * every entry has a footnote is a list nobody finishes.
  */
 function exampleActions(state: WorldState | null): string[] {
   if (!state) return [];
   const me = state.playerFactionId;
   const mine = state.systems.filter((s) => s.controllerFactionId === me);
-  const withShips = [...mine].sort((a, b) => hullsAt(b, me) - hullsAt(a, me));
-  const base = withShips[0] ?? mine[0];
+  const base = [...mine].sort((a, b) => hullsAt(b, me) - hullsAt(a, me))[0] ?? mine[0];
   if (!base) return [];
 
-  const nameOf = (id: string) => state.systems.find((s) => s.id === id)?.name ?? id;
-  const factionName = (id: string) =>
-    state.factions.find((f) => f.id === id)?.name ?? id;
-
-  // A neighbour we do not hold: somewhere an order could actually go.
-  const neighbours = mine.flatMap((s) => neighboursOf(state, s.id));
-  const outward = [...new Set(neighbours)]
+  const neighbours = [...new Set(mine.flatMap((s) => neighboursOf(state, s.id)))]
     .map((id) => state.systems.find((s) => s.id === id)!)
     .filter((s) => s && s.controllerFactionId !== me);
-
-  // Nearest unaligned world, not merely an adjacent one. Drajk borders no
-  // neutral at all, and lawless junctions are the whole of its economy — the
-  // example it most needs is the one it would otherwise never be shown.
-  const neutral = outward.find((s) => s.controllerFactionId === null) ?? nearestNeutral(state, mine);
-  const rival = outward.find((s) => s.controllerFactionId !== null);
-  const someoneElse =
-    state.factions.find((f) => f.id !== me && f.id === rival?.controllerFactionId) ??
+  const neutral =
+    neighbours.find((s) => s.controllerFactionId === null) ?? nearestNeutral(state, mine);
+  const rival = neighbours.find((s) => s.controllerFactionId !== null);
+  const other =
+    state.factions.find((f) => f.id === rival?.controllerFactionId) ??
     state.factions.find((f) => f.id !== me)!;
-
   const force = Math.max(4, Math.floor((hullsAt(base, me) || 8) / 2));
-  const lines: string[] = [];
-  // "the Free Worlds's crews" is a mouthful nobody would type.
-  const possessive = (name: string) => (name.endsWith('s') ? `${name}'` : `${name}'s`);
 
-  if (neutral) {
-    lines.push(
-      `  Send ${force} ships from ${base.name} to take ${neutral.name}.`,
-      `      — neutral worlds have garrisons and fight back; say how many ships you send`,
-    );
-  }
-  if (rival) {
-    lines.push(
-      `  Move ${force} ships to ${rival.name} and raid the shipping on that lane.`,
-      `      — commerce raiding needs a squadron within one jump, not a won battle`,
-      `  Offer ${possessive(factionName(rival.controllerFactionId!))} crews at ${rival.name} a better berth.`,
-      `      — suborning fights nobody; you pay for it in standing, not hulls`,
-    );
-  }
-  lines.push(
+  // Four lines, one per verb worth knowing, and no gloss under any of them.
+  // The notes that used to hang off each of these said things the help text
+  // now says once in its own section — and a list where every entry carries a
+  // footnote is a list nobody finishes reading. What these are for is the
+  // shape of a sentence the game can hear, against worlds that really exist.
+  return [
+    ...(neutral ? [`  Send ${force} ships from ${base.name} to take ${neutral.name}.`] : []),
+    ...(rival ? [`  Move ${force} ships to ${rival.name} and raid the shipping on that lane.`] : []),
     `  Put the yards at ${base.name} to work on a squadron of corvettes.`,
-    `      — hulls cost 60 credits each and 4 a turn after that`,
-    `  Offer ${someoneElse.name} a dynastic marriage to seal an alliance.`,
-    `      — no op covers this; the arbiter rules on it, and you may only hold one`,
-  );
-  return lines;
+    `  Offer ${other.name} a dynastic marriage to seal an alliance.`,
+  ];
 }
 
 /** Closest unaligned world to anything the player holds, by hyperlane. */
@@ -99,20 +76,27 @@ function nearestNeutral(state: WorldState, mine: WorldState['systems']) {
 }
 
 /**
- * Help text, including what the five stats actually govern.
+ * Help text: the commands, the shape of a declaration, and what the game can
+ * actually hear.
  *
- * Without this the stat bars are decoration: a player cannot aim an action at
+ * Without this the stat bars are decoration — a player cannot aim an action at
  * their strengths if nothing says that `guile` covers bribery and `industry`
- * covers anything that must be built.
+ * covers anything that must be built. And without the WHAT YOU CAN REACH FOR
+ * section, most of what has been built since is invisible: a player who does
+ * not know a thing can be lent, tolled, insured or held hostage will never
+ * type the sentence that reaches it, and the arbiter only rules on what
+ * somebody thought to attempt.
  */
 function helpLines(state: WorldState | null): string[] {
   return [
     'COMMANDS',
     '  (free text)      declare an action — it lands when you end the turn',
-    '  :endturn         land everything declared, hear the powers respond, advance time',
-    '  :discard         clear what you have declared this turn',
+    '  /advisor         ask your own counsellor what they are worried about',
+    '                   — costs one of your two actions, like anything else',
     '  /talk <faction>  open a diplomatic channel',
     '  /endtalk         close it — only then is anything you agreed made real',
+    '  :endturn         land everything declared, hear the powers respond, advance time',
+    '  :discard         clear what you have declared this turn',
     '  :export          download this campaign as a .tar.gz you can resume anywhere',
     '  :help            this',
     '',
@@ -121,12 +105,13 @@ function helpLines(state: WorldState | null): string[] {
           'TRY THESE — plain English, no syntax, and these name your actual worlds',
           ...exampleActions(state),
           '',
-          '  Anything you can say, you can attempt. An arbiter decides whether it',
-          '  can be tried at all and how hard it is, before any dice are rolled.',
-          '',
         ]
       : []),
     'HOW ACTIONS RESOLVE',
+    '  Two actions a turn. Anything you can say, you can attempt: an arbiter',
+    '  rules on whether it can be tried at all and how hard it is, before any',
+    '  dice are rolled. Being told "that is a conversation" costs you nothing.',
+    '',
     '  Every action is tested against one of your five stats. A d20 is rolled',
     '  before the model is asked anything, your stat modifier is added, and the',
     '  total is compared to a difficulty. Beat it by 5+ for a critical success;',
@@ -138,6 +123,43 @@ function helpLines(state: WorldState | null): string[] {
     '',
     '  Aim actions at what you are good at. A power with high guile buys a',
     '  border rather than storming it; one with high might does the reverse.',
+    '',
+    'YOUR OWN PEOPLE CAN REFUSE',
+    '  Your power has red lines it will not cross and compulsions it demands of',
+    '  you. An order across a red line is refused outright — nothing happens,',
+    '  and it still costs you the action. Defying a compulsion goes ahead and',
+    '  costs standing at home. Enough of either and your institutions stop',
+    '  following you, which comes off every stat you roll.',
+    '',
+    'FLEETS AND WORLDS',
+    '  Four hull classes, and the mix decides battles: escorts screen, lifters',
+    '  are the only way to put troops on a world, torpedo boats fire once before',
+    '  the fleets close, battleships win the exchange. A fleet of pure warships',
+    '  can sterilise an orbit and take nothing. Ships cost 15 credits a ton and',
+    '  1 a ton every turn after; a navy you cannot pay for lays itself up.',
+    '  Parking ships over a world you do not own splits its income, closes its',
+    '  lanes and lets you talk to its crews — presence is not ownership, and it',
+    '  is not nothing either.',
+    '',
+    'MONEY',
+    '  Territory pays, and so does the lane network. You may charge any power',
+    '  for crossing your space, and lifting that toll is a real concession to',
+    '  offer. Blockades sever lanes; commerce raiding takes the cargo, and both',
+    '  need a fleet already there.',
+    '',
+    'WHAT YOU CAN REACH FOR',
+    '  Most of what follows has no command. You type the sentence and the',
+    '  arbiter decides — that is the point of it.',
+    '  · things — prisoners, a dossier, a relic, ore, a mine that pays you every',
+    '    turn. Worth different amounts to different powers, which is what makes',
+    '    them worth trading. Won by attempting something, never by claiming it.',
+    '  · debts and loans — money owed and paid down, or a squadron hired out',
+    '    under someone else\'s flag and expected back.',
+    '  · arrangements — a marriage, a charter, a share of what a lane earns, and',
+    '    "if this happens, you pay me that". A treaty binds the other power, so',
+    '    it can only be agreed in a channel and never declared.',
+    '  · operatives — watchers, thieves, saboteurs, assassins. Everything you',
+    '    cannot see is a rumour until somebody of yours is standing in it.',
     '',
     'TIME',
     '  Nothing takes longer than 5 turns. Fleet movement costs one turn per',
@@ -173,6 +195,11 @@ export function App() {
           // `view` is non-null by the time a command can be typed, but the
           // examples are grounded in real systems so degrade rather than throw.
           helpLines(view?.state ?? null).forEach((h) => say(h, 'system'));
+          return;
+        case 'advisor':
+        case 'advise':
+        case 'counsel':
+          await game.advisor();
           return;
         case 'endturn':
           await game.endTurn();
@@ -336,7 +363,7 @@ export function App() {
                     ? 'Close the channel to declare actions'
                     : view.actionPoints.left === 0
                       ? 'No actions left — end the turn'
-                      : 'Declare an action, or :help'
+                      : 'Declare an action, /advisor for counsel, or :help'
               }
               disabled={!!busy || !!activeChannel}
               autoFocus

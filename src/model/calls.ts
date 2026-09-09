@@ -844,6 +844,109 @@ export async function gatherReactions(
  */
 export const STUB_REPLY_MAX_CHARS = 240;
 
+/* ------------------------------------------------------------------ */
+/* The advisor                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Whether a counsel has turned into a queue of instructions.
+ *
+ * The one rule this call has that a prompt cannot be trusted with. *"It must
+ * not become a solver"* is the design note item 80 leads with, and a solver
+ * announces itself structurally: it enumerates. A numbered list, a bulleted
+ * list, or a sequence of `First … Second … Third` is a plan, and a plan is the
+ * thing a leader is supposed to be making.
+ *
+ * Deliberately shape-based rather than semantic. Asking a second model whether
+ * the first was too prescriptive is the confirmation bias `verifyBreachRelevance`
+ * exists to avoid; counting list markers is a lookup, and code does lookups.
+ */
+export function looksLikeAPlan(counsel: string): boolean {
+  const text = counsel.trim();
+  // Two or more lines opening with a marker. One is a stray dash mid-sentence.
+  const markers = text
+    .split(/\n/)
+    .filter((line) => /^\s*(?:[-*•]|\d+[.)]|(?:First|Second|Third|Then|Finally)\b[,:]?\s)/i.test(line));
+  if (markers.length >= 2) return true;
+  // Or the same enumeration run together in prose.
+  return /\bfirst\b[^.]*\.[^.]*\bsecond\b[^.]*\.[^.]*\b(third|finally|lastly)\b/i.test(text);
+}
+
+export const AdvisorReplySchema = z.object({
+  /**
+   * What the counsellor actually says, out loud, to their leader.
+   *
+   * One field and no second one, which is the design. A `pressures: []` beside
+   * it would render as a checklist however it was worded, and a checklist is a
+   * queue of instructions wearing a different label — the exact failure item 80
+   * names. The prose has to carry it, and the refine below is what stops the
+   * prose becoming the list anyway.
+   */
+  counsel: z
+    .string()
+    .min(1)
+    .max(1600)
+    .refine((c) => !looksLikeAPlan(c), {
+      message:
+        'This is a plan, not counsel. Do not enumerate steps or list actions — name what is pressing on your leader, in your own voice, and let them decide what to do about it.',
+    }),
+});
+export type AdvisorReply = z.infer<typeof AdvisorReplySchema>;
+
+/**
+ * Ask the power's own counsellor what it is worried about.
+ *
+ * Everything here already existed: `serializeState` is the board a reaction
+ * call reads, `serializeCharacter` is the voice a persona speaks in, and
+ * `serializePrinciples` is the sheet the arbiter rules against. The advisor is
+ * those three pointed inward — the same power, talking to its own leader rather
+ * than to a rival or a referee — which is why it is one function and not a
+ * subsystem.
+ *
+ * It gets `serializeCharacter` in full, unlike the arbiter, which deliberately
+ * does not: a bounded classification does not need thousands of tokens of
+ * dialect notes and this does, because sounding like the Combine rather than
+ * like a briefing document is most of what the call is for.
+ */
+export async function askAdvisor(
+  state: WorldState,
+  viewerId: string = state.playerFactionId,
+): Promise<{ counsel: string; attempts: number; costUsd: number }> {
+  const faction = getFaction(state, viewerId);
+  if (!faction) throw new Error(`No faction ${viewerId}`);
+
+  const res = await callStructured({
+    kind: 'advisor',
+    label: 'your counsellor reads the board',
+    system: loadPrompt('advisor'),
+    user: [
+      `You advise the ${faction.name}. Your leader is addressed as **${faction.title}**.`,
+      '',
+      '---',
+      '',
+      '## The voice you speak in',
+      '',
+      serializeCharacter(faction),
+      '',
+      '---',
+      '',
+      '## What your power will and will not do',
+      '',
+      serializePrinciples(faction),
+      '',
+      '---',
+      '',
+      serializeState(state, viewerId),
+      '',
+      '---',
+      '',
+      `Speak to the ${faction.title}. Name what is pressing, in your own voice. Do not tell them what to do.`,
+    ].join('\n'),
+    schema: AdvisorReplySchema,
+  });
+  return { counsel: res.value.counsel, attempts: res.attempts, costUsd: res.costUsd };
+}
+
 /**
  * A reply that *describes* itself instead of *being* itself.
  *

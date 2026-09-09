@@ -123,7 +123,7 @@ load and save.
 
 | Field | Shape |
 |---|---|
-| `factions[]` | `id`, `name`, `displayColor` (ANSI 256), `disposition` (factionId → −100..100), `credits`, `doctrine`, `stats`, `voice`, `warEthic`, `tradeEthic`, `redLines[]`, `compulsions[]`, `dissent`, `buildBias[]` — **no `fleetStrength`; it is derived from ships** |
+| `factions[]` | `id`, `name`, `displayColor` (ANSI 256), `disposition` (factionId → −100..100), `credits`, `doctrine`, `stats`, `voice`, `warEthic`, `tradeEthic`, `redLines[]`, `compulsions[]`, `dissent`, `buildBias[]`, `title` — **no `fleetStrength`; it is derived from ships** |
 | `systems[]` | `id`, `name`, `sector`, `coords {x,y}`, `controllerFactionId` (nullable = unaligned), `garrison`, `garrisonMax`, `strategicValue` 0–10, `hyperlaneEdges[]`, `ships` (factionId → count) |
 | `pendingOrders[]` | `id`, `factionId`, `type`, `originId`, `targetId`, `durationTurns`, `progress`, `interruptible`, `onInterrupt`, `visibility[]`, `label`, `durationRationale`, `path[]`, `onComplete?`, `investedCredits` |
 | `playerFactionId` | string |
@@ -3244,6 +3244,7 @@ is a reviewable diff that can be replayed against a recorded campaign.
 | `diplomacy-persona.md` | in-channel dialogue (emits no ops) |
 | `extraction.md` | turning a transcript into ops |
 | `duration-rubric.md` | appended to every prompt that estimates duration |
+| `advisor.md` | the counsellor at the leader's shoulder |
 | `flavor.md` | Haiku-tier colour text |
 
 ### Prompt contract
@@ -3274,7 +3275,7 @@ Two layers of defence against malformed output:
 
 | Call | Tier | Model |
 |---|---|---|
-| resolution, reaction, diplomacy, extraction | `reasoning` | `claude-sonnet-5` |
+| resolution, reaction, diplomacy, extraction, advisor | `reasoning` | `claude-sonnet-5` |
 | breach relevance | `flavor` | `claude-haiku-4-5-20251001` |
 | flavour text | `flavor` | `claude-haiku-4-5-20251001` |
 
@@ -3484,6 +3485,7 @@ automatically.
 | `POST /api/campaign/new` · `/resume` | start or load |
 | `GET /api/factions` | playable powers + saved campaigns |
 | `POST /api/action` | declare — resolves now, lands on `:endturn` |
+| `POST /api/advisor` | ask your own counsellor; costs an action point |
 | `POST /api/endturn` | commit, react, tick |
 | `POST /api/staged/discard` | all, or one by `index` |
 | `POST /api/talk/:id` · `/api/endtalk/:id` | dialogue, then extraction |
@@ -3662,6 +3664,84 @@ component is logic nothing checks.
 
 `src/ui/` holds `layout.ts`, `portrait.ts` and `ansi256.ts` (faction colours are ANSI
 256 indices; the browser needs hex).
+
+## The advisor: a counsellor, priced like an action
+
+`exampleActions` in `web/src/App.tsx` writes worked examples against the
+player's **actual** position — their best-crewed world, a real neighbour, the
+nearest unaligned world by BFS rather than merely an adjacent one — so they can
+be typed verbatim on turn one. That teaches the *vocabulary*: what shape of
+sentence the game can hear. It is pure, client-side and free.
+
+`/advisor` answers a different question — *what should I be worrying about* —
+and it is the same three serializers the rest of the game already uses, pointed
+inward: `serializeState` is the board a reaction call reads, `serializeCharacter`
+is the voice a persona speaks in, and `serializePrinciples` is the sheet the
+arbiter rules against. The same power, talking to its own leader rather than to
+a rival or a referee, which is why it is one function and not a subsystem.
+
+**It costs an action point, and that is the whole design rather than a balance
+knob.** Free advice is a solved-once optimum: every player opens it every turn,
+the counsellor reads the board better than they do, and the game plays itself.
+Charging one of two makes asking a real decision — the same argument that prices
+a refusal, which also produces nothing and is also spent. Checked before the
+call, so running out of turn is free to discover, and the point is spent *after*
+the counsel arrives, so a failed call charges nothing.
+
+### It must not become a solver, and that is enforced structurally
+
+Advice that names the optimal line turns a campaign into a queue of
+instructions, and a leader who follows one has stopped playing. The prompt says
+so at length; a prompt can be argued out of its own rules, so `looksLikeAPlan`
+says it in code.
+
+A solver **announces itself structurally: it enumerates.** Two or more lines
+opening with a bullet, a number or a `First … Second … Third`, or the same
+enumeration run together in prose, is a plan. Deliberately shape-based rather
+than semantic — asking a second model whether the first was too prescriptive
+gets back the answer it already gave, which is the confirmation bias
+`verifyBreachRelevance` is shaped to avoid. Counting list markers is a lookup,
+and code does lookups. One marker is not enough to fire, because a single dash
+mid-sentence is ordinary speech and rejecting it would cost a retry every time.
+
+`AdvisorReplySchema` has **one field and no second one**, and that is the other
+half. A `pressures: []` beside the prose would render as a checklist however it
+was worded, and a checklist is a queue of instructions wearing a different
+label.
+
+### `Faction.title`
+
+*Highwarden · Chief Executive · Grand Admiral · Huntmaster · First Elder.*
+
+Faction character rather than a fact about the player, which is why it sits on
+the faction and not in a lookup: the Iron Vigil's leader is the Grand Admiral
+whether a person or a bot is running it. It does more work than any amount of
+description — three syllables that tell the player which power they are running
+— and it is the first thing the counsellor says. Defaulted to `Commander`, so a
+campaign saved before titles existed loads as the neutral form rather than
+failing.
+
+The counsel is rendered as a `faction` message rather than a `system` one,
+because it is somebody speaking: the same class of thing as a diplomatic reply
+and the opposite of the grey machine notes around it. Without a speaker line it
+reads as the game explaining itself, which is exactly the register it is written
+to avoid.
+
+### What the help text is for
+
+It was the only place that told a player the arbiter will hear anything, and it
+had drifted a long way behind the game: no mention of assets, loans, tolls,
+contingencies, operatives, or that your own institutions can refuse you. **A
+player who does not know a thing can be lent, tolled, insured or held hostage
+will never type the sentence that reaches it**, and the arbiter only rules on
+what somebody thought to attempt. The rewrite adds those as *"what you can reach
+for"* — deliberately as prose about what exists rather than as commands, since
+most of it has no command.
+
+The examples were cut from ten lines to four and lost the gloss under each. A
+list where every entry carries a footnote is a list nobody finishes, and what
+those footnotes taught belongs in the help text once rather than under every
+example.
 
 ## A campaign has a length, and an ending
 

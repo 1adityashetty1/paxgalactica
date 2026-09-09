@@ -43,12 +43,12 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~91~~ | ~~seven small things~~ | small | **BUILT**, six of seven; severability is not small |
 | ~~94~~ | ~~loans, after the first one is signed~~ | small | **(a) BUILT**, with the default model it exposed; (b) wants a playtest, (c) settled |
 | ~~93~~ | ~~three things the asset fields still cannot say~~ | small | **BUILT** — a catalogue, `consume_asset`, speculative value, assets at the table |
-| **80** | an advisor that costs an action | medium | not from the playtest; wanted |
+| ~~80~~ | ~~an advisor that costs an action~~ | medium | **BUILT** — with a structural guard against it becoming a solver |
 | **92** | two claims only a campaign can settle | — | needs play, not code |
 
-**What is actually left is a playtest and one feature.** Every medium and every
-subsystem on this list is built, 93 is closed and 94 is down to its one item that
-wants a campaign rather than a decision, so 80 is the only unstarted feature. The honest next move is not another item — it is a
+**What is actually left is a playtest.** Every item on this list is built or
+closed except **92**, and **94(b)**, which is itself a claim only a campaign can
+settle. There is no unstarted feature. The honest next move is not another item — it is a
 **playtest**, because nothing in 81, 86, 87, 88, 89, 90 or the consent work has
 been exercised by a live model. The personas have never seen an asset, a
 contingency, a contract or a hired squadron in a prompt, and `channelBlockers`
@@ -768,7 +768,7 @@ a way to say it **after** the fact except by opening a channel. That is probably
 correct and is recorded here rather than fixed, because the alternative is a
 lender reaching into another power's fleet.
 
-## 80. An advisor: worked examples that know the board, and cost an action
+## 80. BUILT — an advisor: worked examples that know the board, and cost an action
 
 `exampleActions` in `web/src/App.tsx` writes worked examples against the
 player's **actual** position — their best-crewed world, a real neighbour they
@@ -805,6 +805,39 @@ Design notes for whoever builds it:
 - **Keep `exampleActions`.** It is free, deterministic and it teaches the
   vocabulary; an advisor answers a different question. Surfacing the examples on
   turn one of a new campaign is a separate and much cheaper win.
+
+### BUILT, 2026-09-09
+
+`/advisor` (also `/advise`, `/counsel`), `prompts/advisor.md`, `askAdvisor` in
+`calls.ts`, `POST /api/advisor`. Built as specced, on the **reasoning** tier —
+the job is a judgement about a whole board rather than a bounded classification
+against a rubric, and the note above already answers that: if it needs the
+reasoning tier the action cost matters more, not less. Its own `CallKind`, so
+re-tiering is one line.
+
+Three things the design notes did not anticipate:
+
+- **"Must not become a solver" needed teeth.** It was written as a prompt rule,
+  and a prompt can be argued out of its own rules. `looksLikeAPlan` is the
+  structural half: a solver *enumerates*, so two or more lines opening with a
+  bullet, a number or a `First … Second … Third` is rejected by a refine on the
+  schema. Shape-based rather than semantic, for the reason
+  `verifyBreachRelevance` is shaped as it is.
+- **The schema has one field, and that is load-bearing.** The obvious build was
+  `counsel` plus a `pressures: []`, which would have rendered as a checklist
+  however it was worded — a queue of instructions wearing a different label.
+- **`Faction.title`**, which was not in the spec at all and turned out to be the
+  cheapest thing in it. Highwarden, Chief Executive, Grand Admiral, Huntmaster,
+  First Elder. On the faction rather than in a lookup, because a leader's title
+  is faction character regardless of who is running it, and defaulted so old
+  saves load.
+
+**Also in this pass, and the reason it was worth doing now:** the help text had
+drifted a long way behind the game — no assets, no loans, no tolls, no
+contingencies, no operatives, and no mention that your own institutions can
+refuse you. A player who does not know a thing can be lent or held hostage never
+types the sentence that reaches it. The examples were cut from ten lines to four
+and lost the gloss under each, which the help text now says once.
 
 
 ---

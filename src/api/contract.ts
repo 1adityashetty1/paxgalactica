@@ -447,6 +447,26 @@ export const ServerEventSchema = z.discriminatedUnion('type', [
 ]);
 export type ServerEvent = z.infer<typeof ServerEventSchema>;
 
+/**
+ * What the counsellor said, and what it cost.
+ *
+ * Its own response rather than an `ActionOutcome` with the fields blanked. An
+ * advisor stages nothing, rolls nothing and can neither be refused nor ruled
+ * inadmissible, so eleven of that shape's twelve fields would be permanently
+ * null — and `outOfActions` is the one it genuinely shares, which is why that
+ * field is here in the same shape rather than reinvented.
+ */
+export const AdvisorOutcomeSchema = z.object({
+  counsel: z.string(),
+  /** Who is speaking, and to whom — the panel says both. */
+  speaker: z.string(),
+  title: z.string(),
+  /** The turn's actions are spent, so nothing was asked and nothing was paid. */
+  outOfActions: z.object({ perTurn: z.number().int().min(1) }).nullable().default(null),
+  costUsd: z.number(),
+});
+export type AdvisorOutcomeResponse = z.infer<typeof AdvisorOutcomeSchema>;
+
 /* ------------------------------------------------------------------ */
 /* Routes                                                               */
 /* ------------------------------------------------------------------ */
@@ -460,6 +480,7 @@ export const ROUTES = {
   importCampaign: '/api/campaign/import',
   factions: '/api/factions',
   action: '/api/action',
+  advisor: '/api/advisor',
   endturn: '/api/endturn',
   discardStaged: '/api/staged/discard',
   talk: (factionId: string) => `/api/talk/${factionId}`,
