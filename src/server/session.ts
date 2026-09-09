@@ -1,5 +1,6 @@
 import type {
   ActionOutcomeResponse,
+  AdvisorOutcomeResponse,
   CampaignView,
   ImportOutcome,
   ServerEvent,
@@ -14,7 +15,7 @@ import {
 import { Campaign, ACTION_POINTS_PER_TURN } from '../engine/campaign.js';
 import { FileCampaignStore, type CampaignStore } from '../engine/store.js';
 import { closeChannel, endTurn, writeEpilogue, submitAction } from '../engine/turn.js';
-import { diplomacyReply, type ChatMessage } from '../model/calls.js';
+import { askAdvisor, diplomacyReply, type ChatMessage } from '../model/calls.js';
 import { getFaction } from '../domain/state.js';
 import { playableFactions } from '../seed/scenario.js';
 import { ApiFailure, toApiFailure } from './errors.js';
@@ -332,6 +333,54 @@ export class GameSession {
       rejections: outcome.rejections,
       check: outcome.check ?? null,
       costUsd: outcome.costUsd,
+    };
+  }
+
+  /**
+   * Ask the power's own counsellor what it is worried about.
+   *
+   * **Costs an action point**, and that is the whole design rather than a
+   * balance knob. Free advice is a solved-once optimum: every player opens it
+   * every turn, the counsellor reads the board better than they do, and the
+   * game plays itself. Charging one of two makes asking a real decision — the
+   * same argument that priced a refusal, which also produces nothing and is
+   * also spent.
+   *
+   * Checked before the call, so running out of turn is free to discover, and
+   * refused while a channel is open for the reason a declared action is: the
+   * board the counsellor would read is not the board that will exist once the
+   * accord lands.
+   */
+  async advisor(): Promise<AdvisorOutcomeResponse> {
+    const campaign = this.requirePlayable();
+    if (this.openChannel) {
+      throw new ApiFailure(
+        'conflict',
+        `A channel with ${this.openChannel} is open. Close it before asking for counsel.`,
+      );
+    }
+    const faction = campaign.state.factions.find(
+      (f) => f.id === campaign.state.playerFactionId,
+    );
+    if (campaign.actionPointsLeft <= 0) {
+      return {
+        counsel: `There is no more of the day to spend, ${faction?.title ?? 'Commander'}. Let the turn close.`,
+        speaker: faction?.name ?? campaign.state.playerFactionId,
+        title: faction?.title ?? 'Commander',
+        outOfActions: { perTurn: ACTION_POINTS_PER_TURN },
+        costUsd: 0,
+      };
+    }
+
+    const result = await this.exclusive('Consulting', () => askAdvisor(campaign.state));
+    campaign.spendActionPoint();
+    this.pushState();
+    return {
+      counsel: result.counsel,
+      speaker: faction?.name ?? campaign.state.playerFactionId,
+      title: faction?.title ?? 'Commander',
+      outOfActions: null,
+      costUsd: result.costUsd,
     };
   }
 

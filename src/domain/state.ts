@@ -220,6 +220,19 @@ export const FactionSchema = z.object({
    * are one faction wearing five colours.
    */
   voice: z.string(),
+  /**
+   * What this power's leader is called — the Grand Admiral, the First Elder.
+   *
+   * Faction character rather than a fact about the player, which is why it
+   * lives here and not in a lookup: the Iron Vigil's leader is the Grand
+   * Admiral whether a person or a bot is running it. It reaches the player
+   * through the advisor, who has to address somebody, and a generic "Commander"
+   * would undo in one word the four axes these sheets differ on.
+   *
+   * Defaulted so a campaign saved before titles existed still loads, reading as
+   * the neutral form rather than failing.
+   */
+  title: z.string().min(1).max(40).default('Commander'),
   warEthic: WarEthicSchema,
   tradeEthic: TradeEthicSchema,
   /** Things this power will not do, whatever the incentive. */

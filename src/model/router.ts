@@ -24,6 +24,17 @@ export type CallKind =
    * `fallbackEpilogue`.
    */
   | 'epilogue'
+  /**
+   * The counsellor at the leader's shoulder.
+   *
+   * Its own kind so it can be re-tiered in one line, which is the argument for
+   * every entry on this list. It sits on the **reasoning** tier because the job
+   * is a judgement about a whole board rather than a bounded classification
+   * against a rubric — and because it costs the player an action point, which
+   * is the design's own answer to it being expensive: advice that were free
+   * would be a solved-once optimum every player opens every turn.
+   */
+  | 'advisor'
   | 'flavor';
 
 export interface TierConfig {
@@ -94,6 +105,7 @@ export const ROUTES: Record<CallKind, ModelTier> = {
   // Once per campaign, and it is the last thing the player reads. The one call
   // where paying for the better tier is unarguable.
   epilogue: 'reasoning',
+  advisor: 'reasoning',
   flavor: 'flavor',
 };
 

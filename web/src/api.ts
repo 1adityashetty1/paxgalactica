@@ -1,5 +1,6 @@
 import {
   ActionOutcomeSchema,
+  AdvisorOutcomeSchema,
   ApiErrorSchema,
   CampaignViewSchema,
   FactionListSchema,
@@ -7,6 +8,7 @@ import {
   ROUTES,
   TurnOutcomeSchema,
   type ActionOutcomeResponse,
+  type AdvisorOutcomeResponse,
   type CampaignView,
   type TurnOutcomeResponse,
 } from '../../src/api/contract.js';
@@ -96,6 +98,9 @@ export const api = {
 
   action: (text: string): Promise<ActionOutcomeResponse> =>
     request(ROUTES.action, ActionOutcomeSchema, post({ text })),
+
+  advisor: (): Promise<AdvisorOutcomeResponse> =>
+    request(ROUTES.advisor, AdvisorOutcomeSchema, post()),
 
   endTurn: (): Promise<TurnOutcomeResponse> =>
     request(ROUTES.endturn, TurnOutcomeSchema, post()),
