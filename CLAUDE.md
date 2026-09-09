@@ -1232,6 +1232,68 @@ record that sits in a list and changes nothing.
   holdings and, for each, which *other* powers value it and roughly at what — so
   a persona can price a trade instead of inventing a number.
 
+### Cargo, fixture, and a thing that works
+
+The class started as cargo. Everything it could describe was something you
+carried — prisoners, ore, an heirloom — and that is only half of what a campaign
+reaches for: **a mine, an exchange, a theatre are assets too**, and they differ
+from cargo on exactly two axes. They cannot leave the world, and they *do*
+something every turn. Two fields, and each closes a hole the first version had.
+
+**`portable: false` is a thing that IS the world.** `atSystemId` already made an
+asset losable, and said nothing about whether the thing can be handed over on
+its own — the difference between a hold full of ore, survey robots that can be
+crated up, and a mine. A fixture is refused by `transfer_asset` from both the
+declared and the negotiated path, and changes hands **only** through cession or
+conquest, which needed no new code at all: the transfer-of-control path already
+moves everything standing on a world. It also cannot be pledged as collateral —
+a contingency naming one is dropped with a note saying the true thing, which is
+that the world already carries the mine, so pledge the world.
+
+A fixture with no world is rejected. So is a yield with no world, and that one
+is a design rule rather than a technicality: **a thing that pays must sit
+somewhere it can be taken.** Without it a producing asset would be a perpetual
+income stream with no counterplay whatever — unraidable, unblockadeable,
+unconquerable — the one shape this economy has consistently refused.
+
+**`yield` is what it does every turn**, a closed union of three for the reason
+`OrderEffect` and `VoidCondition` are closed. Where each is applied follows the
+rule the agent effects already set, rather than being decided afresh:
+
+| kind | applied | why there |
+|---|---|---|
+| `credits` | `ledgerFor`, as `assetYield` | a flow that mutated the treasury each tick would compound instead of recurring — the same argument as `commitmentFlow` and `income_penalty` |
+| `dissent` | `tickTurn` | accumulates and decays on its own clock, like `sedition` and `hull_damage` |
+| `asset` | `tickTurn` | a stockpile grows; it is not a figure read fresh |
+
+Bounds, each answering a specific way the field could be turned into free money:
+
+- **`MAX_ASSET_YIELD` (25), trimmed not rejected**, set beside
+  `MAX_COMMITMENT_INCOME` because it is the same size of thing: a standing
+  arrangement paying a little, forever. **Only the paying direction** — a thing
+  that costs its holder to keep is uncapped, for the reason a commitment's costs
+  are.
+- **`MAX_ASSET_DISSENT` (2), clamped**, set at `DISSENT_DECAY`. A theatre may
+  **double** the natural repair rate and may not outrun it; one refusal costs 8
+  and a compulsion breach 15, so nothing built out of assets buys a leader out of
+  governing badly. It moves the holder's **own** dissent only: turning a rival's
+  people against it is `sedition`, an operative's work, and an asset that could
+  do it would be that mechanic at none of the cost.
+- **A producer merges into one growing stockpile** at the same world rather than
+  minting a row a turn — thirty turns of a mine is one pile of ore, not thirty.
+  Same lesson as `normaliseStack`: a record whose shape depends on its history is
+  a record nobody can read. What a mine makes is portable even though the mine is
+  not.
+- **A yield pays only while its holder still stands over the world** — holds it,
+  or has ships there — and one can only be created where the actor already
+  stands, the same presence line interdiction, suborning and a works payload
+  draw. Without the first, an abandoned mine pays forever to a power with nothing
+  there and "it must sit somewhere it can be taken" buys nothing; without the
+  second, a power surveys a mine into a rival's ground it has never reached.
+- **A producer does not split.** Halving a mine would double what it produces for
+  nothing. A going concern is one thing whatever its `quantity` says, and what it
+  makes is the divisible half.
+
 ### A contingency: "if X happens, Y pays Z"
 
 `ContingencySchema` in `src/domain/arbitration.ts`, carried on a `Commitment`.

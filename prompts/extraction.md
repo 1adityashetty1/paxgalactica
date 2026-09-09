@@ -22,6 +22,12 @@ back, an heirloom handed over, a lot of ore delivered. Taking another power's
 asset needs their agreement, which is why it is reachable from here at all; a
 declared action can only give one away.
 
+**A fixture is not on the table.** A mine, an exchange, a theatre — anything the
+state block marks *"fixed here; changes hands only with the world"* — cannot be
+transferred on its own. Selling one is selling the world it stands on: write a
+`cession` naming that system, with `terms.payment` for the price, and the works
+go with the ground.
+
 **You cannot create one here.** A conversation trades what exists and does not
 conjure what does not, so an accord promising *"a hundred tons of ore"* nobody
 holds produces nothing. That is not a gap: it is a thing to go and get.

@@ -438,6 +438,39 @@ title. `divisible: true` for a quantity that comes in lots.
 asset at a world changes hands when the world does. A title or a charter has no
 location; leave it `null`.
 
+### Cargo, fixture, and a thing that works
+
+`portable: false` is for a thing that **is** the world — a mine, an exchange, a
+dry dock, a theatre. It cannot be handed over on its own, only with the ground
+it stands on, so it needs an `atSystemId`. Everything else is `true`: a hundred
+tons of ore can be shipped, and survey robots can be crated up and given away
+(and, being at a world, still go with it if the world falls).
+
+`yield` is what it does every turn, and most things do nothing — leave it
+`null`. Three kinds, and a yield always needs an `atSystemId`, because a thing
+that produces must sit somewhere a rival can come and take it:
+
+```jsonc
+{ "kind": "credits",  "perTurn": 14 }
+{ "kind": "dissent",  "perTurn": -1 }
+{ "kind": "asset", "perTurn": 20, "assetKind": "ore", "unit": "ton",
+  "text": "Ore off the Halland cut.", "valuePerUnit": { "meridian": 4 } }
+```
+
+- **`credits`** — an exchange, a customs house. Trimmed to 25 a turn. Negative
+  is upkeep: prisoners eat, a mine wants guarding.
+- **`dissent`** — a theatre, a temple, a grain dole. Your **own** dissent, and
+  clamped to 2 a turn either way: institutions do not turn faster than that, and
+  nothing built out of assets should let a leader buy their way out of governing
+  badly. Turning a *rival's* people against it is an operative's work.
+- **`asset`** — a mine, a hatchery. The output piles up as one growing
+  stockpile at the same world, and what a mine makes is portable even though the
+  mine is not.
+
+A yielding asset **pays only while you hold the world or have ships over it**,
+and you can only create one where you already stand. It also does not split: a
+mine is one going concern whatever its `quantity` says. Split the ore instead.
+
 ## Tolls: who pays to cross your space
 
 **Any power may charge for passage** — this is not an extortionist's privilege.

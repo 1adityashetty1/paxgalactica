@@ -541,6 +541,58 @@ player for asking — which is already the stated rule for the other two.
 declaration was the thing worth stopping. So a survey expedition can still bring
 back something nobody enumerated.
 
+### EXTENDED, 2026-09-08 — cargo, fixture, and a thing that works
+
+The first version could only describe things you **carry**. Two fields close the
+other half — `portable`, and a `yield` union of `credits` · `dissent` · `asset`
+— so a mine, an exchange and a theatre are now sayable. See `CLAUDE.md`,
+*"Cargo, fixture, and a thing that works"*, for the bounds and where each yield
+is applied.
+
+## 93. Three things the asset fields still cannot say
+
+Swept against the creative playtest's own list after the `portable`/`yield`
+extension. Everything it reached for is now expressible **except** three, and
+each is a different shape rather than a missing column. None is urgent; all
+three are cheap next to the subsystem they sit on.
+
+**a) An instrument that is spent when it is exercised.** Measured, not
+hypothesised: `com-1-4`, the claimant-seal surety, was exercised in prose — the
+seal couriered to the Vigil Legate — and *"the instrument was never consumed, so
+it can be exercised again forever"*. Nothing in `quantity`, `portable` or `yield`
+says **one use**. Neither does a contingency, which fires once but is a *payment*
+rather than a thing being spent. The shape is small: a `consume_asset` op, or a
+`uses` count that `transfer_asset` and a resolution can draw down. Covers escrow,
+a letter of marque, a writ, a single-shot favour — everything whose whole value
+is that it can be played once.
+
+**b) Information, which is copied rather than moved.** `transfer_asset` moves a
+holding from one power to another, which is right for ore and wrong for a
+dossier: the playtest **sold the same intelligence twice** (**B-11**), and under
+today's fields that is either a bug (the seller still holds it) or a
+mispricing (the seller does not, but knows it anyway). Two properties nothing
+carries: a transfer that **copies**, and a value that **falls as more powers
+hold it** — exclusivity *is* the price. The natural home is a flag on the asset
+(`kind: 'knowledge'` is not enough; it has to change what transfer does), plus a
+`valuePerUnit` that divides by the number of holders.
+
+**c) A thing whose stated worth is a lie.** *"A chart that is false"* (**C-3**)
+is in the original spec's own list and is the one entry the schema cannot
+express: `valuePerUnit` is a single number both sides read, so a forgery is
+indistinguishable from the genuine article, and the deception has to live
+entirely in prose. The honest version is a **claimed** value beside a **true**
+one, with the claimed figure serialized to the buyer and the true one to the
+holder — which is a real privacy change to `serializeAssets`, not a field.
+Worth noting that this is the only one of the three that adds a *lie* to a
+document two personas bargain over, so it wants the most care.
+
+**Not gaps, recorded so they are not re-filed:** a hostage (asset +
+`voidsOn: asset_lost`, built), an indemnity or ransom (contingency, built), a
+hired squadron (item **90**, a loan of units and deliberately not an asset), the
+Vosk Company (a chartered subsidiary is an *entity*, not a thing — it wants
+agency, which is a faction-shaped problem), and a letter of marque naming
+permitted victims (a permission, which is a `Commitment`).
+
 ## 80. An advisor: worked examples that know the board, and cost an action
 
 `exampleActions` in `web/src/App.tsx` writes worked examples against the

@@ -251,6 +251,102 @@ export type IncomeShare = z.infer<typeof IncomeShareSchema>;
  * state, and nothing here can be argued into meaning something else.
  */
 /**
+ * The most a thing can pay its holder in a turn, before it is trimmed.
+ *
+ * A yield is the one part of an asset that is **money rather than a claim**, so
+ * it is the one part that needs a ceiling — the rule every money mechanism here
+ * has converged on. Set beside `MAX_COMMITMENT_INCOME` (25) because it is the
+ * same size of thing: a standing arrangement that pays a little, every turn,
+ * forever.
+ *
+ * Only the paying direction is capped. A thing that costs its holder to keep —
+ * prisoners eat, a garrisoned mine is guarded — is uncapped for the reason a
+ * commitment's costs are: nothing needs protecting from a power agreeing to pay.
+ */
+export const MAX_ASSET_YIELD = 25;
+
+/**
+ * The most a thing can move its holder's dissent in a turn.
+ *
+ * Deliberately tiny, and set at `DISSENT_DECAY`. Institutions are repaired by
+ * governing in character and by time, at a pace every other number here was
+ * tuned against — a theatre or a temple may **double** that rate and may not
+ * outrun it. One refusal costs 8 and one compulsion breach 15, so nothing built
+ * out of assets lets a leader buy their way out of governing badly.
+ */
+export const MAX_ASSET_DISSENT = 2;
+
+/**
+ * What a thing does every turn, if it does anything.
+ *
+ * Most assets are inert: a hundred tons of ore sits in a hold and is worth what
+ * somebody will pay for it. But a mine, an exchange and a theatre are all
+ * *things you can hold at a world*, and what makes them worth holding is that
+ * they produce — so an asset class with no per-tick vocabulary can name them and
+ * not model them, which is the failure this whole subsystem exists to end.
+ *
+ * A closed union of three, for the reason `OrderEffect` and `VoidCondition` are
+ * closed: a predicate has to be right about every case that will ever exist, a
+ * list has to be edited, and the edit is where the thinking happens.
+ *
+ * **Where each is applied follows the rule the agent effects already set.**
+ * `credits` is *read where it is used*, in `ledgerFor`, because a flow that
+ * mutated the treasury each tick would compound rather than recur. `dissent`
+ * and `asset` **mutate** in `tickTurn`, because both accumulate on their own
+ * clock — the same split that puts `hull_damage` and `sedition` on one side and
+ * `income_penalty` on the other.
+ */
+export const AssetYieldSchema = z.discriminatedUnion('kind', [
+  z.object({
+    /** An exchange, a customs house, a licenced dock. */
+    kind: z.literal('credits'),
+    /** To the holder, every turn. Negative is upkeep — prisoners eat. */
+    perTurn: z.number().int().min(-400).max(400),
+  }),
+  z.object({
+    /**
+     * A theatre, a temple, a grain dole — or a labour camp, which is the same
+     * field with the sign the other way.
+     *
+     * The holder's **own** dissent. Turning a *rival's* institutions against it
+     * is `sedition`, which is an operative's work and priced as such; an asset
+     * that could do it would be that mechanic at none of the cost.
+     */
+    kind: z.literal('dissent'),
+    /** Negative settles the population; positive inflames it. */
+    perTurn: z.number().int().min(-10).max(10),
+  }),
+  z.object({
+    /**
+     * A mine, a hatchery, a shipbreaker's yard — a thing that makes another
+     * thing.
+     *
+     * The output **merges into an existing holding** of the same kind at the
+     * same world rather than minting a row a turn: a mine run for thirty turns
+     * is one growing stockpile, not thirty piles of ore. Same lesson as
+     * `normaliseStack` — a record whose shape depends on its history is a
+     * record nobody can read.
+     */
+    kind: z.literal('asset'),
+    /** How many units come out a turn. */
+    perTurn: z.number().int().min(1).max(1000),
+    /** The slug of what it makes: `ore`, `hulls_scrap`, `foodstuffs`. */
+    assetKind: z
+      .string()
+      .min(1)
+      .max(40)
+      .regex(/^[a-z][a-z0-9_]*$/, 'assetKind must be a lower_snake_case slug'),
+    /** What one of it is. */
+    unit: z.string().min(1).max(24),
+    /** One sentence, read back to the player as the stockpile's description. */
+    text: z.string().min(1).max(240),
+    /** What a unit of the output is worth to whom. A claim, as ever. */
+    valuePerUnit: z.record(z.string(), z.number().int().min(0).max(10000)).default({}),
+  }),
+]);
+export type AssetYield = z.infer<typeof AssetYieldSchema>;
+
+/**
  * A thing that is neither credits nor ships.
  *
  * Prisoners, a fostered heir, a claimant's seal held in escrow, a hundred tons
@@ -325,6 +421,34 @@ export const AssetSchema = z.object({
    * charter, a debt of honour — is held by the faction and travels with it.
    */
   atSystemId: z.string().nullable().default(null),
+  /**
+   * Whether it can leave the world it sits on.
+   *
+   * `atSystemId` already made an asset **losable** — anything at a world changes
+   * hands when the world does — but it said nothing about whether the thing can
+   * be handed over on its own, and the difference is the whole of what separates
+   * a cargo from a fixture. A hundred tons of ore is at a world and can be
+   * shipped anywhere; survey robots are at a world and can be crated up and
+   * given away; a mine, an exchange, a theatre are *the world*, and the only way
+   * to give one away is to give away the ground it stands on.
+   *
+   * So `portable: false` is refused by `transfer_asset` and reachable only
+   * through `cession` or conquest — which needs no new code at all, because the
+   * transfer-of-control path already moves everything standing on a world.
+   *
+   * A fixture with no world is nonsense and the reducer rejects it.
+   */
+  portable: z.boolean().default(true),
+  /**
+   * What it does every turn, if it does anything. See `AssetYieldSchema`.
+   *
+   * A yield **requires** `atSystemId`, and that is a design rule rather than a
+   * technicality: a thing that pays must sit somewhere it can be taken. Without
+   * it an asset that produced credits would be a perpetual income stream with no
+   * counterplay whatever — unraidable, unblockadeable, unconquerable — which is
+   * the one shape the economy here has consistently refused.
+   */
+  yield: AssetYieldSchema.nullable().default(null),
   acquiredTurn: z.number().int().min(0),
 });
 export type Asset = z.infer<typeof AssetSchema>;

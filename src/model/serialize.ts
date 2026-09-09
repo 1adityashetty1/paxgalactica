@@ -410,7 +410,18 @@ export function serializeAssets(state: WorldState, viewerId: string): string {
         .join('; ');
       const where = a.atSystemId ? ` · at ${getSystem(state, a.atSystemId)?.name ?? a.atSystemId}` : '';
       const split = a.divisible ? '' : ' · one thing, does not divide';
-      return `- \`${a.id}\` ${a.quantity} ${a.unit} — ${a.text}${where}${split}\n  ${
+      // A fixture is the one thing on this list you cannot put on the table, so
+      // it is said here rather than discovered by having the accord rejected.
+      const fixed = a.portable ? '' : ' · fixed here; changes hands only with the world';
+      const does =
+        a.yield === null
+          ? ''
+          : a.yield.kind === 'credits'
+            ? ` · pays ${a.yield.perTurn} a turn`
+            : a.yield.kind === 'dissent'
+              ? ` · moves your dissent ${a.yield.perTurn > 0 ? '+' : '−'}${Math.abs(a.yield.perTurn)} a turn`
+              : ` · yields ${a.yield.perTurn} ${a.yield.unit} a turn`;
+      return `- \`${a.id}\` ${a.quantity} ${a.unit} — ${a.text}${where}${split}${fixed}${does}\n  ${
         wanted || 'nobody has shown it is worth anything to them'
       }`;
     })

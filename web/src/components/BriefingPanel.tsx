@@ -79,6 +79,10 @@ export function BriefingPanel({
                 ` · ${briefing.ledger.commitmentShare > 0 ? '+' : '−'}${Math.abs(
                   briefing.ledger.commitmentShare,
                 )} shares`}
+              {briefing.ledger.assetYield !== 0 &&
+                ` · ${briefing.ledger.assetYield > 0 ? '+' : '−'}${Math.abs(
+                  briefing.ledger.assetYield,
+                )} holdings`}
               {briefing.ledger.warProfit !== 0 &&
                 ` · ${briefing.ledger.warProfit > 0 ? '+' : '−'}${Math.abs(
                   briefing.ledger.warProfit,

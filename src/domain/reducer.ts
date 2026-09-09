@@ -39,6 +39,8 @@ import {
 } from './development.js';
 import {
   AGENT_COST,
+  MAX_ASSET_DISSENT,
+  MAX_ASSET_YIELD,
   MISSION_PROFILE,
   PACT_BREAKING_REPUTATION_COST,
   PEACE_TREATIES,
@@ -1423,6 +1425,72 @@ export function applyOps(
           reject(raw, 'unknown_system', `No system "${op.atSystemId}".`);
           break;
         }
+        // A fixture with no world is a contradiction, and a yield with no world
+        // is worse: an income stream nobody can raid, blockade or conquer. Both
+        // of the new fields are ways of saying "this thing is somewhere", so
+        // neither means anything without the somewhere.
+        if ((op.portable === false || op.yield !== null) && op.atSystemId === null) {
+          reject(
+            raw,
+            'illegal_value',
+            op.portable === false
+              ? 'A thing that cannot be moved has to be somewhere. Give it an `atSystemId`, or make it portable.'
+              : 'A thing that produces has to produce somewhere — set `atSystemId` to the world it stands on, so it can be taken.',
+          );
+          break;
+        }
+        // And you can only build where you stand. The same line interdiction,
+        // suborning and a works payload draw, and here for the same reason: a
+        // producing asset on a rival's world would be a claim on ground the
+        // actor has never reached.
+        const site = op.atSystemId
+          ? state.systems.find((x) => x.id === op.atSystemId)!
+          : undefined;
+        if (
+          site &&
+          (op.portable === false || op.yield !== null) &&
+          site.controllerFactionId !== op.heldBy &&
+          hullsAt(site, op.heldBy) === 0
+        ) {
+          reject(
+            raw,
+            'no_presence',
+            `${nameFor(state, op.heldBy)} neither holds ${site.name} nor has ships there; a thing that stands on a world needs the world, or at least a fleet over it.`,
+          );
+          break;
+        }
+        // The one part of an asset that is money rather than a claim is the one
+        // part that needs a ceiling. Trimmed rather than rejected — the works
+        // are still real at a smaller number, the same shape as
+        // `MAX_COMMITMENT_INCOME` and `billConstruction`. Only the paying
+        // direction: nothing needs protecting from a power agreeing to pay.
+        let assetYield = op.yield;
+        if (assetYield?.kind === 'credits' && assetYield.perTurn > MAX_ASSET_YIELD) {
+          notes.push(
+            `${op.text} would pay ${assetYield.perTurn} a turn; trimmed to ${MAX_ASSET_YIELD}.`,
+          );
+          assetYield = { ...assetYield, perTurn: MAX_ASSET_YIELD };
+        }
+        if (assetYield?.kind === 'dissent') {
+          const clamped = Math.max(
+            -MAX_ASSET_DISSENT,
+            Math.min(MAX_ASSET_DISSENT, assetYield.perTurn),
+          );
+          if (clamped !== assetYield.perTurn) {
+            notes.push(
+              `${op.text} would move dissent ${assetYield.perTurn} a turn; institutions do not turn that fast — trimmed to ${clamped}.`,
+            );
+            assetYield = { ...assetYield, perTurn: clamped };
+          }
+        }
+        if (assetYield?.kind === 'asset') {
+          assetYield = {
+            ...assetYield,
+            valuePerUnit: Object.fromEntries(
+              Object.entries(assetYield.valuePerUnit).filter(([id]) => factionExists(id)),
+            ),
+          };
+        }
         const asset = {
           id: mintId(state, 'ast'),
           kind: op.kind,
@@ -1438,6 +1506,8 @@ export function applyOps(
             Object.entries(op.valuePerUnit).filter(([id]) => factionExists(id)),
           ),
           atSystemId: op.atSystemId,
+          portable: op.portable,
+          yield: assetYield,
           acquiredTurn: state.turn,
         };
         state.assets.push(asset);
@@ -1466,6 +1536,19 @@ export function applyOps(
         // Giving your own away needs nobody. TAKING somebody else's needs them,
         // so it is reachable from an accord and refused from a declaration —
         // the same rule `terms.territory` follows.
+        // A fixture does not change hands on its own. A mine, an exchange, a
+        // theatre are the world they stand on, and the instrument for giving
+        // one away already exists and is called a cession — which needs no new
+        // code, because the transfer-of-control path already moves everything
+        // standing on a world.
+        if (!asset.portable) {
+          reject(
+            raw,
+            'illegal_value',
+            `${asset.text} does not leave ${asset.atSystemId ? (state.systems.find((x) => x.id === asset.atSystemId)?.name ?? asset.atSystemId) : 'the ground it stands on'}. It changes hands when the world does — cede the world, or take it.`,
+          );
+          break;
+        }
         if (source === 'model' && actor !== undefined && asset.heldBy !== actor) {
           reject(
             raw,
@@ -1490,6 +1573,18 @@ export function applyOps(
         }
         if (actor !== undefined && asset.heldBy !== actor) {
           reject(raw, 'illegal_value', `${asset.id} is ${asset.heldBy}'s to divide, not ${actor}'s.`);
+          break;
+        }
+        // A mine does not come apart into two mines. Splitting a producer
+        // would double what it produces for nothing — the clean answer is that
+        // a thing which makes things is one thing, whatever its `quantity`
+        // says, and what it makes is the divisible half.
+        if (asset.yield !== null) {
+          reject(
+            raw,
+            'illegal_value',
+            `${asset.text} is a going concern, not a stock to divide. Split what it produces instead.`,
+          );
           break;
         }
         if (!asset.divisible) {
@@ -2820,6 +2915,23 @@ export function applyOps(
             .filter(
               (c) => op.factionIds.includes(c.from) && op.factionIds.includes(c.to),
             )
+            // Collateral has to be something that can actually be handed over.
+            // A fixture cannot: it changes hands with its world and nothing
+            // else, so a bond written against a mine would have teleported it
+            // out of the ground on settlement. Dropped with a note rather than
+            // failing the whole commitment, and the note says the true thing —
+            // the world already carries the mine, so pledge the world.
+            .filter((c) => {
+              if (!c.assetId) return true;
+              const pledged = (state.assets ?? []).find((a) => a.id === c.assetId);
+              if (!pledged || pledged.portable) return true;
+              notes.push(
+                `${pledged.text} cannot be pledged: it changes hands only with ${
+                  state.systems.find((x) => x.id === pledged.atSystemId)?.name ?? 'its world'
+                }. Pledge the world, or pledge credits.`,
+              );
+              return false;
+            })
             .map((c) => ({ ...c, firedTurn: null })),
           establishedTurn: state.turn,
           status: 'active',
@@ -3702,6 +3814,79 @@ export function tickTurn(input: WorldState): TickResult {
   // can drain, and every stat suffers for it.
   for (const faction of state.factions) {
     if (faction.dissent > 0) faction.dissent = Math.max(0, faction.dissent - DISSENT_DECAY);
+  }
+
+  /* --- Things that do something ---------------------------------------- */
+  // A mine, an exchange, a theatre. The `credits` yield is deliberately absent
+  // here: it is read in `ledgerFor` as `assetYield`, because a flow that
+  // mutated the treasury every tick would compound instead of recurring — the
+  // same split that puts `income_penalty` in the ledger and `hull_damage` in
+  // the tick. Dissent and production accumulate on their own clock, so they
+  // belong here.
+  //
+  // A yield pays only while its holder still stands over the world. Otherwise
+  // an abandoned mine would pay forever to a power with nothing there, and the
+  // "an asset that produces must sit somewhere it can be taken" rule would buy
+  // exactly nothing: taking the ground has to be the answer to it.
+  for (const asset of state.assets ?? []) {
+    if (asset.yield === null) continue;
+    const where = state.systems.find((x) => x.id === asset.atSystemId);
+    if (!where) continue;
+    const worked =
+      where.controllerFactionId === asset.heldBy || hullsAt(where, asset.heldBy) > 0;
+    if (!worked) {
+      const idle = `${asset.text} stands idle at ${where.name}: ${nameFor(state, asset.heldBy)} has nobody there.`;
+      notes.push(idle);
+      logEvent(state, 'system', idle, asset.heldBy, [asset.heldBy]);
+      continue;
+    }
+    if (asset.yield.kind === 'dissent') {
+      const holder = state.factions.find((f) => f.id === asset.heldBy);
+      if (!holder) continue;
+      const before = holder.dissent;
+      holder.dissent = Math.max(0, Math.min(100, before + asset.yield.perTurn));
+      if (holder.dissent === before) continue;
+      const moved = holder.dissent - before;
+      const note = `${asset.text}: dissent ${moved > 0 ? '+' : '−'}${Math.abs(moved)} (now ${holder.dissent}/100).`;
+      notes.push(note);
+      logEvent(state, 'system', note, asset.heldBy, [asset.heldBy]);
+      continue;
+    }
+    if (asset.yield.kind === 'asset') {
+      const made = asset.yield;
+      // Merged into an existing holding rather than minted as a row a turn.
+      // Thirty turns of a mine is one growing stockpile; thirty piles of ore is
+      // a state document nobody can read and a negotiation nobody can price.
+      const stock = (state.assets ?? []).find(
+        (a) =>
+          a.heldBy === asset.heldBy &&
+          a.atSystemId === asset.atSystemId &&
+          a.kind === made.assetKind &&
+          a.yield === null,
+      );
+      if (stock) {
+        stock.quantity = Math.min(100000, stock.quantity + made.perTurn);
+      } else {
+        state.assets.push({
+          id: mintId(state, 'ast'),
+          kind: made.assetKind,
+          text: made.text,
+          heldBy: asset.heldBy,
+          quantity: made.perTurn,
+          unit: made.unit,
+          divisible: true,
+          valuePerUnit: { ...made.valuePerUnit },
+          atSystemId: asset.atSystemId,
+          // What a mine makes can be shipped; the mine cannot.
+          portable: true,
+          yield: null,
+          acquiredTurn: state.turn,
+        });
+      }
+      const note = `${asset.text} yields ${made.perTurn} ${made.unit} at ${where.name}.`;
+      notes.push(note);
+      logEvent(state, 'system', note, asset.heldBy, [asset.heldBy]);
+    }
   }
 
   /* --- Compulsions ignored --------------------------------------------- */

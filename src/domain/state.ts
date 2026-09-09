@@ -878,6 +878,16 @@ export const LedgerSchema = z.object({
   /** Proportional commitment terms — a slice of a lane flow, either way. */
   commitmentShare: z.number().int(),
   /**
+   * What things you hold pay you — an exchange, a licenced dock — less what
+   * they cost to keep.
+   *
+   * Read here rather than paid out each tick, for the reason `commitmentFlow`
+   * is: a per-turn mutation would compound instead of recurring. Only assets
+   * whose holder still stands over the world count, so this is a figure a rival
+   * can attack by taking the ground.
+   */
+  assetYield: z.number().int(),
+  /**
    * A profiteer's take from other powers' wars — or, when it is in one itself,
    * what that costs it. Zero for everyone else.
    */
@@ -1082,7 +1092,7 @@ export function ledgerFor(
   if (!faction) {
     return {
       gross: 0, upkeep: 0, net: 0, systems: 0, treatyFlow: 0,
-      espionageLoss: 0, espionageGain: 0, garrisonUpkeep: 0, agentUpkeep: 0, commitmentFlow: 0, commitmentShare: 0, warProfit: 0,
+      espionageLoss: 0, espionageGain: 0, garrisonUpkeep: 0, agentUpkeep: 0, commitmentFlow: 0, commitmentShare: 0, assetYield: 0, warProfit: 0,
       territory: 0, routes: 0, tolls: 0, raided: 0, debtService: 0,
     };
   }
@@ -1190,6 +1200,20 @@ export function ledgerFor(
           : (earnings.raided[id] ?? 0),
   );
 
+  // What a thing you hold pays you. Only while you are actually standing over
+  // it: an exchange on a world you have lost or walked away from pays the power
+  // that holds the ground, which is what makes a producing asset a target
+  // rather than an annuity.
+  let assetYield = 0;
+  for (const asset of state.assets ?? []) {
+    if (asset.heldBy !== factionId || asset.yield === null) continue;
+    if (asset.yield.kind !== 'credits') continue;
+    const where = state.systems.find((x) => x.id === asset.atSystemId);
+    if (!where) continue;
+    if (where.controllerFactionId !== factionId && hullsAt(where, factionId) === 0) continue;
+    assetYield += asset.yield.perTurn;
+  }
+
   const warProfit = warProfitFor(state, factionId);
 
   return {
@@ -1205,6 +1229,7 @@ export function ledgerFor(
       agentUpkeep +
       commitmentFlow +
       commitmentShare +
+      assetYield +
       warProfit,
     systems: counted,
     treatyFlow,
@@ -1214,6 +1239,7 @@ export function ledgerFor(
     agentUpkeep,
     commitmentFlow,
     commitmentShare,
+    assetYield,
     warProfit,
     territory,
     routes,

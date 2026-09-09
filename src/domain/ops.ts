@@ -3,6 +3,7 @@ import { StatNameSchema } from './checks.js';
 import {
   AgentEffectSchema,
   AgentMissionSchema,
+  AssetYieldSchema,
   TreatyTermsSchema,
   TreatyTypeSchema,
   VoidConditionSchema,
@@ -195,6 +196,13 @@ export const CreateAssetOp = z.object({
   valuePerUnit: z.record(z.string(), z.number().int().min(0).max(10000)).default({}),
   /** Where it is, if anywhere. An asset at a world changes hands with it. */
   atSystemId: z.string().nullable().default(null),
+  /**
+   * `false` for a thing that IS the world — a mine, an exchange, a theatre.
+   * It changes hands only when the ground does, and needs `atSystemId`.
+   */
+  portable: z.boolean().default(true),
+  /** What it does every turn, if anything. Needs `atSystemId`. */
+  yield: AssetYieldSchema.nullable().default(null),
 });
 
 /**
