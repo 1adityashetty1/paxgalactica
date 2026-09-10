@@ -651,6 +651,32 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
                     {flow}/turn
                   </li>
                 )}
+                {/*
+                  A sale's two halves, shown together or not at all.
+                  `terms.payment` was never rendered either, so a cession's
+                  price was invisible on screen exactly as an asset's transfer
+                  was invisible in the reducer — and showing what moves without
+                  what was paid for it is the same half-a-transaction the term
+                  itself exists to prevent.
+                */}
+                {(t.terms.assets ?? []).map((a) => {
+                  const asset = (state.assets ?? []).find((x) => x.id === a.assetId);
+                  return (
+                    <li key={a.assetId}>
+                      hands over:{' '}
+                      {asset ? `${asset.quantity} ${asset.unit} of ${asset.kind}` : a.assetId} →{' '}
+                      {getFaction(state, a.toFactionId)?.name ?? a.toFactionId}
+                    </li>
+                  );
+                })}
+                {Object.entries(t.terms.payment ?? {})
+                  .filter(([, n]) => n !== 0)
+                  .map(([id, n]) => (
+                    <li key={`pay-${id}`} className={id === me ? (n > 0 ? 'good' : 'bad') : undefined}>
+                      paid once: {getFaction(state, id)?.name ?? id} {n > 0 ? 'receives' : 'pays'}{' '}
+                      {Math.abs(n)}
+                    </li>
+                  ))}
                 {t.terms.incomeShares.map((share, i) => (
                   <li key={i}>
                     {Math.round(share.share * 100)}% of{' '}

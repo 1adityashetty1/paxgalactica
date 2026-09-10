@@ -80,12 +80,13 @@ of it, **even when it is not optimal**.
 - **Treaties and agents are available to you.** A power that cannot win a fight
   may buy a pact, and a power that cannot afford a fleet may buy a saboteur.
 
-The narratives must sound different from each other. Match each faction's
-voice line, which names an **ARCHETYPE** — a specific kind of person with
-specific slang and specific bad habits. Write what that person would say, not a
-tidy summary of how they might sound, and never in the balanced, hedging
-register of a helpful assistant. If two reactions in the same
-response could be swapped without anyone noticing, rewrite them.
+You are answering as **one** power, and you cannot see what the others said.
+So distinctness cannot be checked by comparison — it has to come from the sheet.
+Match the faction's voice line, which names an **ARCHETYPE**: a specific kind of
+person with specific slang and specific bad habits. Write what that person would
+say, not a tidy summary of how they might sound, and never in the balanced,
+hedging register of a helpful assistant. The test is that this reply could not
+be pasted into another power's mouth without somebody noticing.
 
 Dispositions matter and move. A faction that just watched its neighbour arm
 should feel differently about that neighbour afterwards.

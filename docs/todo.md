@@ -970,6 +970,77 @@ as `unknown_faction`, but a playtest in which every accord produces nothing is
 not a playtest.
 
 
+## 96. CLOSED and DECIDED — three things the playtest of 2026-09-09 left open
+
+**A red line the player only PROPOSES is not warned about. Closed, not fixed.**
+`channelBlockers` fires on *recorded concessions*, and in the measured case the
+Free Worlds declined, so there was none to appraise. The persona is following
+its instructions correctly — *"their concession is what you understood THEM to
+have just agreed to give"* — and a proposal that was refused is not that.
+Making it record declined proposals would corrupt the ledger
+`groundInConcessions` relies on to authorise real ops, which is a worse trade
+than the warning is worth.
+
+Walked the paths before closing it, and there is no hole:
+
+- the counterparty **agrees and records it** → `sendMessage` appraises → blocker
+  → the accord is refused at close, which is item 82 working;
+- the counterparty **agrees and records nothing** → `closeChannel` appraises what
+  was agreed and refuses the whole accord. Later than item 82 promised, but
+  charged;
+- the counterparty **declines** → nothing is agreed, so nothing binds.
+
+**One residual, and it is a consequence of the fix above it.** Since a
+close-time appraisal that cannot be obtained now lets the accord stand rather
+than destroying it, an accord crossing a red line could survive if the appraisal
+fails three times *and* no concession was ever recorded. Measured once in seven
+`/endtalk` calls, and it needs both. The alternative was a model glitch deleting
+completed negotiations, which is worse and was observed. Written down rather
+than guarded.
+
+**The reaction split is kept, and run in SEQUENCE.** It is a correctness change
+that happened to be faster, and the speed is the part that was given back. What
+it buys: no power reads another's observation block (the merged call put every
+faction's scoped view in one context, which is the `worldAsSeenBy` lesson
+unlearned); a reaction written under the wrong flag becomes detectable, which
+matters because a reaction commits with its own faction as `actor`; and one bad
+response costs one voice rather than the turn's reactions entire.
+
+Run in parallel it took a measured 20% off end-of-turn — 63.4s to 51.0s median —
+and that is **not** why it is shaped this way. Concurrency spawns N copies of
+the Claude Code binary, which contend: three calls averaging 30.8s landed in
+~40s rather than ~31s. And N calls each re-send `serializeState` and the whole
+reaction prompt, which measured **2.8x** the merged call's cost, $0.17 to ~$0.45
+an end-of-turn. The cost is a property of there being N calls and not of running
+them at once, so the sequence keeps every correctness gain and returns only the
+20%. Caching would recover most of it, which is one more argument for **95**.
+
+`prompts/reaction.md` had to be amended: it told the model *"if two reactions in
+the same response could be swapped without anyone noticing, rewrite them"*,
+which a call answering as one power cannot do. Distinctness now rests where it
+always actually rested, on the archetype in the voice line.
+
+**`terms.assets` and `terms.payment` are on screen.** Neither was rendered, so a
+negotiated sale was invisible in the browser — and showing what moves without
+what was paid for it is the same half-a-transaction the term itself exists to
+prevent. `terms.voidsOn` is still unrendered; a treaty's ending conditions are
+worth showing and nobody has asked yet.
+
+### Still open from that campaign
+
+- **`return_loan` and `repudiate_loan` have never been exercised live.** The
+  automatic return at `dueTurn` beat both attempts. The fixture-transfer refusal
+  is tested in the suite and never seen in a campaign.
+- **Two stalls are unexplained**: a call that returned HTTP 000 after **923s**,
+  and a 117s action that cost $0.10 — neither was generation, and both killed a
+  playtest agent. This is a bigger threat to a long campaign than baseline
+  latency, which does not grow: the end-of-turn sequence across ten turns was
+  63, 67, 80, 62, 113, 50, 33 with no trend, and `GET /api/campaign` stayed flat
+  at ~2ms with the payload at 92KB.
+- **`callStructured` does not log its validation failures.** Appraisal retried
+  twice in six calls and there is no way to say why; each retry is ~12s.
+
+
 ---
 
 # Closed groupings

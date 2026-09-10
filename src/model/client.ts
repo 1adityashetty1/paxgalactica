@@ -70,9 +70,40 @@ export interface CallStats {
   calls: number;
   costUsd: number;
   retries: number;
+  /**
+   * The same figures split by call kind, plus the wall clock each kind spent.
+   *
+   * Latency in this game is almost entirely model latency, and until this
+   * existed there was no way to say WHICH call a slow turn was waiting on —
+   * the playtest of 2026-09-09 had to derive it from curl timings outside the
+   * process, which cannot see a retry. A retried call looks exactly like a slow
+   * one from the outside, and the two want opposite fixes.
+   */
+  byKind: Record<string, { calls: number; seconds: number; costUsd: number; retries: number }>;
 }
 
-export const stats: CallStats = { calls: 0, costUsd: 0, retries: 0 };
+export const stats: CallStats = { calls: 0, costUsd: 0, retries: 0, byKind: {} };
+
+function record(kind: CallKind, seconds: number, costUsd: number, retries: number): void {
+  const row = (stats.byKind[kind] ??= { calls: 0, seconds: 0, costUsd: 0, retries: 0 });
+  row.calls += 1;
+  row.seconds += seconds;
+  row.costUsd += costUsd;
+  row.retries += retries;
+}
+
+/** Wall clock and retries per call kind, slowest first. */
+export function timingReport(): string {
+  const rows = Object.entries(stats.byKind).sort((a, b) => b[1].seconds - a[1].seconds);
+  if (rows.length === 0) return 'No model calls yet.';
+  return [
+    'kind             calls   total s    med s   retries    cost',
+    ...rows.map(
+      ([kind, r]) =>
+        `${kind.padEnd(17)}${String(r.calls).padStart(4)}${r.seconds.toFixed(1).padStart(10)}${(r.seconds / r.calls).toFixed(1).padStart(9)}${String(r.retries).padStart(10)}${('$' + r.costUsd.toFixed(3)).padStart(9)}`,
+    ),
+  ].join('\n');
+}
 
 function assertNetworkAllowed(): void {
   if (process.env.PAXGALACTICA_NO_NETWORK === '1') {
@@ -175,6 +206,8 @@ function formatIssues(error: z.ZodError): string {
 
 export async function callStructured<T>(call: StructuredCall<T>): Promise<StructuredResult<T>> {
   assertNetworkAllowed();
+  const startedAt = Date.now();
+  const retriesBefore = stats.retries;
 
   const maxRetries = call.maxRetries ?? 2;
   const label = call.label ?? call.kind;
@@ -216,6 +249,7 @@ export async function callStructured<T>(call: StructuredCall<T>): Promise<Struct
     lastRaw = coerce(result);
     const parsed = call.schema.safeParse(lastRaw);
     if (parsed.success) {
+      record(call.kind, (Date.now() - startedAt) / 1000, totalCost, stats.retries - retriesBefore);
       return { value: parsed.data, attempts: attempt, costUsd: totalCost };
     }
 
