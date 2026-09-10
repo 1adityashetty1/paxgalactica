@@ -376,6 +376,26 @@ function Orders({ state, briefing }: { state: WorldState; briefing: Briefing | n
   );
 }
 
+/** A void condition in words. The shapes are closed, so this is a lookup. */
+function voidText(state: WorldState, v: { kind: string; by: string; target: string }): string {
+  const who = getFaction(state, v.by)?.name ?? v.by;
+  const them = getFaction(state, v.target)?.name ?? v.target;
+  switch (v.kind) {
+    case 'treaty_with':
+      return `${who} signs with ${them}`;
+    case 'attacks':
+      return `${who} attacks ${them}`;
+    case 'insolvent':
+      return `${who} is running at a loss`;
+    case 'world_lost':
+      return `${who} loses ${getSystem(state, v.target)?.name ?? v.target}`;
+    case 'asset_lost':
+      return `${who} no longer holds what this was written against`;
+    default:
+      return `${v.kind}: ${who}`;
+  }
+}
+
 function colourOf(state: WorldState, factionId: string): string {
   const f = getFaction(state, factionId);
   return f ? ansi256ToHex(f.displayColor) : NEUTRAL;
@@ -696,6 +716,19 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
                 {t.terms.mutualDefenseTrigger && (
                   <li className="trigger">triggers on: {t.terms.mutualDefenseTrigger}</li>
                 )}
+                {/*
+                  What ENDS the paper. A treaty carrying a condition it can die
+                  of is a treaty the player should be able to read, and this was
+                  the last term with real force that the panel did not show —
+                  the reducer voids on these every tick, and a deal that
+                  evaporated for a reason nobody could see on screen is the same
+                  class of surprise as an unpriced concession.
+                */}
+                {(t.terms.voidsOn ?? []).map((v, i) => (
+                  <li key={`void-${i}`} className="trigger">
+                    ends if {voidText(state, v)}
+                  </li>
+                ))}
               </ul>
             </div>
           );

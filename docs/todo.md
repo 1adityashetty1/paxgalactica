@@ -1026,19 +1026,39 @@ what was paid for it is the same half-a-transaction the term itself exists to
 prevent. `terms.voidsOn` is still unrendered; a treaty's ending conditions are
 worth showing and nobody has asked yet.
 
+### Closed since, without a playtest
+
+- **The stalls have a cause and a guard.** `query()` carries no timeout, so a
+  wedged child process is waited on forever — which is what the 923s HTTP 000
+  and the 117s $0.10 call were, neither of them generation. `CALL_TIMEOUT_MS`
+  is a **per-message** deadline of 180s: a long call that is still streaming is
+  healthy and a silent one is not, and one budget for the whole call cannot
+  tell those apart. An abandoned attempt is retried like any other transient
+  failure, and the child is released in a `finally` so it does not linger.
+- **A retry now says why.** `stats.failures` is a bounded record of what each
+  retried call failed on, printed by `timingReport()`. From outside the process
+  a retry is indistinguishable from a slow call, and the two want opposite
+  fixes — which is why "appraisal retried twice in six calls" could be measured
+  and not explained.
+- **`terms.voidsOn` is on screen.** The last term with real force that the
+  treaty panel did not render. The reducer voids on these every tick, and a
+  deal that evaporated for a reason nobody could read is the same class of
+  surprise as an unpriced concession.
+- **The campaign is written up** in `docs/playtest-2026-09-09.md`.
+
 ### Still open from that campaign
 
 - **`return_loan` and `repudiate_loan` have never been exercised live.** The
   automatic return at `dueTurn` beat both attempts. The fixture-transfer refusal
   is tested in the suite and never seen in a campaign.
-- **Two stalls are unexplained**: a call that returned HTTP 000 after **923s**,
-  and a 117s action that cost $0.10 — neither was generation, and both killed a
-  playtest agent. This is a bigger threat to a long campaign than baseline
-  latency, which does not grow: the end-of-turn sequence across ten turns was
-  63, 67, 80, 62, 113, 50, 33 with no trend, and `GET /api/campaign` stayed flat
-  at ~2ms with the payload at 92KB.
-- **`callStructured` does not log its validation failures.** Appraisal retried
-  twice in six calls and there is no way to say why; each retry is ~12s.
+- **Baseline latency is ~150s a turn and does not grow.** The end-of-turn
+  sequence across ten turns was 63, 67, 80, 62, 113, 50, 33 with no trend, and
+  `GET /api/campaign` stayed flat at ~2ms with the payload at 92KB. The floor is
+  transport — appraisal takes 12–15s to return two numbers with thinking already
+  off — so **95** is the only thing that moves it.
+- **A loan's stored `text` can contradict its own stack.** `loan-3-0` reads "Ten
+  Combine hulls" and lent four; the reducer trimmed correctly and the narrative
+  did not follow. That text is what reaches the player and the personas.
 
 
 ---
