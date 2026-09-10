@@ -95,6 +95,21 @@ describe('the advisor', () => {
       }
     });
 
+    it('rejects an enumeration spread over whole paragraphs', () => {
+      // The shape that escaped in the playtest of 2026-09-09. Three headings in
+      // one unbroken paragraph, several sentences under each: the line branch
+      // saw no line beginning with a marker because there are no line breaks,
+      // and the prose branch allowed exactly one full stop between markers.
+      const counsel =
+        'Three things, Chief Executive, and then I will stop. First — Shalka. We are holding ' +
+        'it with four battleships that are not ours. That is an exposure sitting on contested ' +
+        'ground. Second, the Combine ledger generally — two facilities running against us. ' +
+        'None of it is unprofitable on its own. Third — the Drajk. We are at daggers drawn ' +
+        'with them, and none of it costs us today.';
+      expect(looksLikeAPlan(counsel)).toBe(true);
+      expect(AdvisorReplySchema.safeParse({ counsel }).success).toBe(false);
+    });
+
     it('does not read a single dash or a lone "first" as a plan', () => {
       // One marker is a stray dash mid-sentence, not an enumeration. Firing on
       // it would reject ordinary speech and cost a retry every time.

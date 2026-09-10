@@ -122,8 +122,18 @@ at once and is what a legitimacy attack actually does: crowning a pretender,
 proclaiming an attainder, buying their officer corps. Those paths cost credits,
 risk exposure and are capped, and they are the only ones there is.
 
+**A commitment is an arrangement; a works is an asset.** If the thing built is
+a *physical installation standing on a world* — a mine, an exchange floor, a dry
+dock, a theatre, a refinery — it is `create_asset` with `portable: false`, an
+`atSystemId` and a `yield`, NOT an `establish_commitment` with `incomePerTurn`.
+Use a commitment for what is agreed between powers or declared as policy: a
+concession, a charter, a marriage, a standing duty. The test is whether an enemy
+could come and take it: if holding the world means holding the thing, it is an
+asset on that world. Written as a commitment it can never be raided, conquered,
+sold or lost, which is exactly what a mine should be exposed to.
+
 An `establish_commitment` that earns or costs money should say so with
-`incomePerTurn` — a mining concession or a smuggling operation is worth
+`incomePerTurn` — a mining *concession* or a smuggling operation is worth
 something every turn, tribute paid is worth something negative. Up to 25 either
 way; more is trimmed. A deal written as a RATE rather than a figure — *"a tenth
 of every prize"* — uses `share` instead: `{ of, percent, from, to }`, where `of`

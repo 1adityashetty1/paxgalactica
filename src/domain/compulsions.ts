@@ -103,18 +103,54 @@ function contentTokens(text: string): Set<string> {
   return new Set(normalize(text).split(' ').filter((w) => w.length > 2 && !STOP_WORDS.has(w)));
 }
 
+/**
+ * Characters of a word that have to agree for two forms to count as one.
+ *
+ * The arbiter paraphrases rather than quotes, and it inflects while doing it:
+ * a sheet that says "will not **repudiate** a **contract**" comes back as
+ * "forbids **repudiating** **contracts**". Exact token equality scored that
+ * pairing at 0.44 against a threshold of 0.6, so the most flagrant red-line
+ * breach of a live playtest was classified as no principle at all and exited
+ * through `admissible: false`, which charges nothing.
+ *
+ * Six characters rather than a stemmer: it is the shortest prefix that keeps
+ * every distinctive word on the five sheets distinct, and a stemmer is a
+ * dependency and a second vocabulary to be wrong about.
+ */
+const INFLECTION_PREFIX = 6;
+
+/** One word, allowing for the arbiter having inflected it. */
+function sameWord(word: string, quoted: Set<string>): boolean {
+  if (quoted.has(word)) return true;
+  if (word.length < INFLECTION_PREFIX) return false;
+  const stem = word.slice(0, INFLECTION_PREFIX);
+  for (const q of quoted) {
+    if (q.length >= INFLECTION_PREFIX && q.slice(0, INFLECTION_PREFIX) === stem) return true;
+  }
+  return false;
+}
+
 /** How much of the sheet's line the quote actually reproduces, 0–1. */
 function overlap(quoted: string, actual: string): number {
   const a = contentTokens(actual);
   if (a.size === 0) return 0;
   const q = contentTokens(quoted);
   let hit = 0;
-  for (const word of a) if (q.has(word)) hit += 1;
+  for (const word of a) if (sameWord(word, q)) hit += 1;
   return hit / a.size;
 }
 
-/** Enough shared content to be the same line, in either direction. */
-const PRINCIPLE_MATCH_THRESHOLD = 0.6;
+/**
+ * Enough shared content to be the same line, in either direction.
+ *
+ * Swept against the seed rather than chosen. With inflection matching, the
+ * live paraphrase that missed scores **0.556**, and the worst overlap between
+ * any two lines belonging to DIFFERENT factions is **0.286** — the number that
+ * has to stay below the threshold, since matching a rival's line is the error
+ * that would price an act against a principle its power does not hold. 0.5
+ * sits in that gap with room on both sides; 0.6 sat above the true positive.
+ */
+const PRINCIPLE_MATCH_THRESHOLD = 0.5;
 
 function matches(quoted: string, actual: string): boolean {
   const q = normalize(quoted);
