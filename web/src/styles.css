@@ -625,3 +625,10 @@ ul { margin: 0; padding-left: 1.1em; }
 .channel-blockers h5 { color: var(--bad); }
 .channel-term { margin: 0 0 4px; font-size: 12px; line-height: 1.45; }
 .channel-term.bad { color: var(--bad); }
+
+/* A world's face beside its name. The sprite is fixed-size and the text flows
+   beside it, because the panel is ~310px whatever the window is doing. */
+.world-head { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 6px; }
+.world-head h3 { margin: 0 0 2px; }
+.world-head .meta { margin: 0; }
+.world-sprite { flex: 0 0 auto; image-rendering: pixelated; }

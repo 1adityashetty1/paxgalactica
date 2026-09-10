@@ -1,5 +1,6 @@
 import type { FactionStats } from '../domain/checks.js';
 import type { DurationCategory } from '../domain/duration.js';
+import type { WorldType } from '../domain/state.js';
 import {
   HULL_SPEC,
   normaliseStack,
@@ -51,41 +52,48 @@ interface SeedSystem {
   controller: string | null;
   garrison: number;
   value: number;
+  /**
+   * What the place looks like. Assigned by hand rather than derived from
+   * `value`: the four great junctions happen to be inhabited and lit, but a
+   * backwater is allowed to be an ocean world and a rich market is allowed to
+   * sit on a rock.
+   */
+  world: WorldType;
 }
 
 const SEED_SYSTEMS: SeedSystem[] = [
   // --- Arkane Drift (west): the Free Worlds heartland, poor and stubborn ---
-  { id: 'ark-1', name: 'Arkane Prime', sector: 'Arkane Drift', x: 8, y: 6, controller: 'freeworlds', garrison: 14, value: 7 },
-  { id: 'ark-2', name: 'Sennex', sector: 'Arkane Drift', x: 18, y: 3, controller: null, garrison: 4, value: 4 },
-  { id: 'ark-3', name: 'Delvane', sector: 'Arkane Drift', x: 10, y: 14, controller: 'freeworlds', garrison: 9, value: 5 },
-  { id: 'ark-4', name: 'Vashka', sector: 'Arkane Drift', x: 22, y: 11, controller: 'freeworlds', garrison: 11, value: 6 },
-  { id: 'ark-5', name: 'Tulgarn', sector: 'Arkane Drift', x: 6, y: 21, controller: 'drajk', garrison: 7, value: 3 },
-  { id: 'ark-6', name: 'Pell Reach', sector: 'Arkane Drift', x: 20, y: 20, controller: 'freeworlds', garrison: 6, value: 4 },
+  { id: 'ark-1', name: 'Arkane Prime', sector: 'Arkane Drift', x: 8, y: 6, controller: 'freeworlds', garrison: 14, value: 7, world: 'earthnight' },
+  { id: 'ark-2', name: 'Sennex', sector: 'Arkane Drift', x: 18, y: 3, controller: null, garrison: 4, value: 4, world: 'ice' },
+  { id: 'ark-3', name: 'Delvane', sector: 'Arkane Drift', x: 10, y: 14, controller: 'freeworlds', garrison: 9, value: 5, world: 'earthlike' },
+  { id: 'ark-4', name: 'Vashka', sector: 'Arkane Drift', x: 22, y: 11, controller: 'freeworlds', garrison: 11, value: 6, world: 'oceanic' },
+  { id: 'ark-5', name: 'Tulgarn', sector: 'Arkane Drift', x: 6, y: 21, controller: 'drajk', garrison: 7, value: 3, world: 'industrialmoon' },
+  { id: 'ark-6', name: 'Pell Reach', sector: 'Arkane Drift', x: 20, y: 20, controller: 'freeworlds', garrison: 6, value: 4, world: 'arid' },
 
   // --- Sekkar Verge (north centre): Meridian's trade spine ---
-  { id: 'sek-1', name: 'Sekkar Gate', sector: 'Sekkar Verge', x: 34, y: 7, controller: 'meridian', garrison: 16, value: 9 },
-  { id: 'sek-2', name: 'Corvid', sector: 'Sekkar Verge', x: 45, y: 3, controller: 'meridian', garrison: 10, value: 6 },
-  { id: 'sek-3', name: 'Ithaal', sector: 'Sekkar Verge', x: 40, y: 13, controller: null, garrison: 5, value: 5 },
-  { id: 'sek-4', name: 'Brannix', sector: 'Sekkar Verge', x: 53, y: 8, controller: 'meridian', garrison: 13, value: 6 },
-  { id: 'sek-5', name: 'Var Hollow', sector: 'Sekkar Verge', x: 50, y: 17, controller: null, garrison: 3, value: 4 },
-  { id: 'sek-6', name: 'Neth', sector: 'Sekkar Verge', x: 31, y: 16, controller: null, garrison: 4, value: 3 },
+  { id: 'sek-1', name: 'Sekkar Gate', sector: 'Sekkar Verge', x: 34, y: 7, controller: 'meridian', garrison: 16, value: 9, world: 'earthnight' },
+  { id: 'sek-2', name: 'Corvid', sector: 'Sekkar Verge', x: 45, y: 3, controller: 'meridian', garrison: 10, value: 6, world: 'industrialmoon' },
+  { id: 'sek-3', name: 'Ithaal', sector: 'Sekkar Verge', x: 40, y: 13, controller: null, garrison: 5, value: 5, world: 'arid' },
+  { id: 'sek-4', name: 'Brannix', sector: 'Sekkar Verge', x: 53, y: 8, controller: 'meridian', garrison: 13, value: 6, world: 'earthlike' },
+  { id: 'sek-5', name: 'Var Hollow', sector: 'Sekkar Verge', x: 50, y: 17, controller: null, garrison: 3, value: 4, world: 'ice' },
+  { id: 'sek-6', name: 'Neth', sector: 'Sekkar Verge', x: 31, y: 16, controller: null, garrison: 4, value: 3, world: 'gasgiant' },
 
   // --- Torrek Marches (east): the Iron Vigil, an Empire that never heard it lost ---
-  { id: 'tor-1', name: 'Torrek Anchorage', sector: 'Torrek Marches', x: 66, y: 6, controller: 'meridian', garrison: 9, value: 7 },
-  { id: 'tor-2', name: 'Kalzir', sector: 'Torrek Marches', x: 78, y: 3, controller: 'vigil', garrison: 15, value: 6 },
-  { id: 'tor-3', name: 'Vantic', sector: 'Torrek Marches', x: 72, y: 14, controller: 'vigil', garrison: 18, value: 9 },
-  { id: 'tor-4', name: 'Gorrun Deep', sector: 'Torrek Marches', x: 89, y: 9, controller: 'vigil', garrison: 12, value: 7 },
-  { id: 'tor-5', name: 'Sarsuma', sector: 'Torrek Marches', x: 98, y: 16, controller: 'vigil', garrison: 8, value: 5 },
-  { id: 'tor-6', name: 'Threx', sector: 'Torrek Marches', x: 83, y: 19, controller: 'drajk', garrison: 6, value: 4 },
+  { id: 'tor-1', name: 'Torrek Anchorage', sector: 'Torrek Marches', x: 66, y: 6, controller: 'meridian', garrison: 9, value: 7, world: 'industrialmoon' },
+  { id: 'tor-2', name: 'Kalzir', sector: 'Torrek Marches', x: 78, y: 3, controller: 'vigil', garrison: 15, value: 6, world: 'arid' },
+  { id: 'tor-3', name: 'Vantic', sector: 'Torrek Marches', x: 72, y: 14, controller: 'vigil', garrison: 18, value: 9, world: 'earthnight' },
+  { id: 'tor-4', name: 'Gorrun Deep', sector: 'Torrek Marches', x: 89, y: 9, controller: 'vigil', garrison: 12, value: 7, world: 'gasgiant' },
+  { id: 'tor-5', name: 'Sarsuma', sector: 'Torrek Marches', x: 98, y: 16, controller: 'vigil', garrison: 8, value: 5, world: 'earthlike' },
+  { id: 'tor-6', name: 'Threx', sector: 'Torrek Marches', x: 83, y: 19, controller: 'drajk', garrison: 6, value: 4, world: 'ice' },
 
   // --- Ilvenn Fringe (south): Nar narcotics country and the raider lanes ---
-  { id: 'ilv-1', name: 'Ilvenn Approach', sector: 'Ilvenn Fringe', x: 25, y: 28, controller: 'ojjul', garrison: 11, value: 8 },
-  { id: 'ilv-2', name: 'Shalka', sector: 'Ilvenn Fringe', x: 37, y: 32, controller: 'ojjul', garrison: 14, value: 9 },
-  { id: 'ilv-3', name: 'Riqel', sector: 'Ilvenn Fringe', x: 49, y: 26, controller: 'ojjul', garrison: 8, value: 6 },
-  { id: 'ilv-4', name: 'Vosk Marker', sector: 'Ilvenn Fringe', x: 61, y: 32, controller: null, garrison: 2, value: 3 },
-  { id: 'ilv-5', name: 'Oridin', sector: 'Ilvenn Fringe', x: 73, y: 27, controller: 'ojjul', garrison: 7, value: 5 },
-  { id: 'ilv-6', name: 'Vergesse', sector: 'Ilvenn Fringe', x: 87, y: 31, controller: 'drajk', garrison: 9, value: 7 },
-  { id: 'ilv-7', name: 'Hollow Star', sector: 'Ilvenn Fringe', x: 13, y: 32, controller: 'drajk', garrison: 5, value: 3 },
+  { id: 'ilv-1', name: 'Ilvenn Approach', sector: 'Ilvenn Fringe', x: 25, y: 28, controller: 'ojjul', garrison: 11, value: 8, world: 'earthlike' },
+  { id: 'ilv-2', name: 'Shalka', sector: 'Ilvenn Fringe', x: 37, y: 32, controller: 'ojjul', garrison: 14, value: 9, world: 'earthnight' },
+  { id: 'ilv-3', name: 'Riqel', sector: 'Ilvenn Fringe', x: 49, y: 26, controller: 'ojjul', garrison: 8, value: 6, world: 'oceanic' },
+  { id: 'ilv-4', name: 'Vosk Marker', sector: 'Ilvenn Fringe', x: 61, y: 32, controller: null, garrison: 2, value: 3, world: 'ice' },
+  { id: 'ilv-5', name: 'Oridin', sector: 'Ilvenn Fringe', x: 73, y: 27, controller: 'ojjul', garrison: 7, value: 5, world: 'arid' },
+  { id: 'ilv-6', name: 'Vergesse', sector: 'Ilvenn Fringe', x: 87, y: 31, controller: 'drajk', garrison: 9, value: 7, world: 'oceanic' },
+  { id: 'ilv-7', name: 'Hollow Star', sector: 'Ilvenn Fringe', x: 13, y: 32, controller: 'drajk', garrison: 5, value: 3, world: 'gasgiant' },
 ];
 
 /** Undirected hyperlanes. Declared once; the graph builder symmetrises them. */
@@ -509,6 +517,7 @@ function buildSystems(): StarSystem[] {
     // heavily it can arm itself, and a captured one regrows toward that.
     garrisonMax: s.garrison,
     strategicValue: s.value,
+    worldType: s.world,
     hyperlaneEdges: [...(edges.get(s.id) ?? [])].sort(),
     // A controller starts with a token squadron in orbit, scaled to how much
     // the world is worth holding, and composed the way that power's own

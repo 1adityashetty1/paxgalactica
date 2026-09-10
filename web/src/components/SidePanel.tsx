@@ -1,3 +1,4 @@
+import { WorldSprite, worldTypeLabel } from './WorldSprite.js';
 import { useState } from 'react';
 import { FactionAvatar } from './FactionAvatar.js';
 import { FleetsPanel } from './FleetsPanel.js';
@@ -236,8 +237,14 @@ function SystemTab({
 
   return (
     <div className="system-detail">
-      <h3 style={{ color }}>{sys.name}</h3>
-      <p className="meta">{sys.sector}</p>
+      <div className="world-head">
+        <WorldSprite type={sys.worldType} size={84} />
+        <div>
+          <h3 style={{ color }}>{sys.name}</h3>
+          <p className="meta">{sys.sector}</p>
+          <p className="meta">{worldTypeLabel(sys.worldType)}</p>
+        </div>
+      </div>
       <dl>
         <dt>Held by</dt>
         <dd style={{ color }}>{controller?.name ?? 'unaligned'}</dd>
