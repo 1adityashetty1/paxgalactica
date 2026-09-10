@@ -45,10 +45,12 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~93~~ | ~~three things the asset fields still cannot say~~ | small | **BUILT** — a catalogue, `consume_asset`, speculative value, assets at the table |
 | ~~80~~ | ~~an advisor that costs an action~~ | medium | **BUILT** — with a structural guard against it becoming a solver |
 | **92** | two claims only a campaign can settle | — | needs play, not code |
+| **95** | the model layer is welded to one provider | medium | a playtest spends subscription usage, and the driver is the expensive half |
 
 **What is actually left is a playtest.** Every item on this list is built or
 closed except **92**, and **94(b)**, which is itself a claim only a campaign can
-settle. There is no unstarted feature. The honest next move is not another item — it is a
+settle. **95** is infrastructure rather than a feature — nothing in the game
+gets better for building it. The honest next move is not another item — it is a
 **playtest**, because nothing in 81, 86, 87, 88, 89, 90 or the consent work has
 been exercised by a live model. The personas have never seen an asset, a
 contingency, a contract or a hired squadron in a prompt, and `channelBlockers`
@@ -838,6 +840,134 @@ contingencies, no operatives, and no mention that your own institutions can
 refuse you. A player who does not know a thing can be lent or held hostage never
 types the sentence that reaches it. The examples were cut from ten lines to four
 and lost the gloss under each, which the help text now says once.
+
+
+## 95. FILED — the model layer is welded to one provider
+
+Every model call in the game reaches Anthropic through `rawCall` in
+`src/model/client.ts`, which spawns the bundled Claude Code binary under
+subscription auth. There is no way to point the game at anything else, so the
+cost of playing it is denominated in Claude usage and in nothing else. That is
+fine while the game is being *played* and wrong while it is being *tested*,
+which is most of what happens to it.
+
+**Two costs, and they are not the same size.** The measured figure this repo
+quotes — about $3 for a ten-turn campaign — is the game's own calls: resolution,
+reaction, extraction, the arbiter. The **driver** is separate and larger.
+`.claude/agents/adversarial-player.md` carries `model: opus` in its frontmatter
+and holds a transcript that grows for the whole campaign, so a 27-turn playtest
+re-sends an accumulating context to Opus on every turn. None of that appears in
+any cost figure recorded here, and none of it is reachable from `router.ts`.
+**The expensive half of a playtest is the half the tiering table cannot see.**
+
+### The seam already exists
+
+`rawCall` is the only function in the codebase that touches the Agent SDK — about
+seventy lines — and it has exactly two importers. Everything above it is already
+provider-agnostic: the retry budget, the Zod re-validation, the correction
+prompt, `stats`. So this is an extraction, not a rewrite.
+
+- **`src/model/provider.ts`** — `interface Provider { call(tier, system, user,
+  jsonSchema) }`, with `claudeProvider` (today's `rawCall` body, moved) and
+  `openaiProvider` (a `fetch` to `${baseUrl}/chat/completions`). Chosen by env.
+- **`router.ts`** — `TierConfig` currently mixes shared config (`model`) with
+  SDK-only fields (`maxTurns`, `effort`, `thinking`). Split it, and put a
+  `TIERS_LOCAL` beside `TIERS` so the file's own promise — *tiering is a
+  one-line edit* — holds for both.
+- **Structured output maps directly.** `z.toJSONSchema(schema, { target:
+  'draft-7', io: 'input' })` becomes `response_format: { type: 'json_schema',
+  json_schema: { name, schema } }`. **Do not set `strict: true`**: OpenAI-strict
+  mode requires every property in `required` and `additionalProperties: false`,
+  which directly contradicts `io: 'input'` advertising defaulted fields as
+  optional. The lenient grammar-constrained path is the one that matches this
+  codebase's schemas.
+- **`costUsd`** from the response's token usage against a price table; zero for
+  a local endpoint. `stats` is unchanged.
+- **`preflight.ts`** calls `assertLoggedIn` unconditionally. Gate it on the
+  provider, and substitute a `GET ${baseUrl}/models` probe whose failure message
+  has the same shape as the auth one.
+- **`PAXGALACTICA_NO_NETWORK=1` still throws**, localhost included. That guard is
+  about the suite being pure, not about the wire.
+
+Replay is untouched: the journal records ops, not reasoning, so a campaign played
+against any provider replays byte-identically under `pnpm replay`. That property
+is what makes this safe to try rather than a commitment.
+
+### The decision that is not made
+
+**OpenRouter, or a direct provider key?** The adapter is the same either way —
+both are OpenAI-compatible endpoints — so this is a question about billing and
+caching, not about code.
+
+- **OpenRouter** is one key and one billing relationship across every vendor,
+  which is what `ROUTES` actually wants: naming a different vendor per `CallKind`
+  costs no extra plumbing. A cheap small model for `appraisal` and
+  `breach_relevance` beside a strong one for `resolution` is the configuration
+  worth having, and three of the seven call kinds do not need a frontier model.
+- **A direct key** is one fewer intermediary, and may be the only place a
+  provider's cached-input tier is honoured.
+
+**Caching is the lever, so resolve that before choosing.** The system prompts are
+large, fixed, and identical across every call of a given kind — `resolution.md`
+alone is ~8.5k tokens — which is the ideal caching shape, and a 90% cached-input
+discount is worth more than any plausible difference in base rate. Sources
+conflict on whether OpenRouter passes Moonshot's $0.30 cache tier through;
+**verify against the live model page rather than trusting this note.**
+
+One thing the adapter buys for free: the SDK's end-turn carrier goes away. Under
+`outputFormat: json_schema` every call today costs two agentic round trips and
+re-sends its context; a plain HTTP call does not, so a direct call sends roughly
+half the input tokens the current path does.
+
+### What this does not solve
+
+**The driver.** The Agent tool takes `sonnet`/`opus`/`haiku`/`fable` and has no
+hook for an external provider, so a provider seam in `src/model/` cannot re-point
+the playtest agent. Driving 92 with a third-party model means writing the harness
+instead: `dispatch(method, path, body)` is already the seam, and the loop is
+`GET /api/campaign` → build a prompt → `POST /api/action` or `/api/talk/:id` →
+`POST /api/endturn`. Call it 150 lines.
+
+That harness earns its keep on a second axis, which is the better argument for
+it: **it is repeatable.** A scripted playtest can be re-run against the same seed
+after a prompt edit, which is the thing prompt versioning exists to enable and
+which an interactive agent session cannot do. But it also reimplements the
+agent's strategic prompting by hand, and that prompting is where the last few
+playtests found their exploits — the escrowed seal, the double-sold
+intelligence. A harness will exercise the mechanics and find fewer degenerate
+lines.
+
+**The cheap version of all of this is one line:** `model: sonnet` in the agent's
+frontmatter, or `model: "sonnet"` passed at spawn. Do that first. Build 95 when
+92 is being run repeatedly rather than twice.
+
+### On Kimi K3 specifically, since it prompted this
+
+Recorded so the question does not have to be re-researched. Figures are from
+secondary aggregators, September 2026, and are directionally reliable at best.
+
+- 2.8T parameters, 104B active (16 of 896 routed experts), MXFP4, 1M context.
+  **Active parameters set compute; total parameters set memory** — it generates
+  about as fast as a 104B dense model and needs every expert resident.
+- Near-frontier: ~60 on the Artificial Analysis index against Opus 5's 63, and
+  93.4% SWE-bench Verified against 95–96% for the closed leaders. It *leads*
+  SWE Marathon, the long-session benchmark — which is the one that resembles a
+  playtest.
+- **$3 / $15 per M, $0.30 cached** — essentially Sonnet's list price. Hosted K3
+  is not a cost reduction; it is a conversion of subscription usage into dollars.
+- **No free API tier.** Adagio is the consumer chat plan, not an API plan, and
+  there is no `:free` variant on OpenRouter.
+- **Self-hosting is out.** ~594 GB of weights, so eight H100s merely to load them
+  and ~1,680 GB by vLLM's own estimate to serve them; Moonshot suggests ≥64
+  accelerators. Renting that for an hour costs more than many campaigns of API.
+
+The call kinds do not degrade equally on a weaker model, which matters if the
+seam is used to run a cheap tier. `flavor`, `appraisal` and `breach_relevance`
+are bounded classifications against a rubric and should hold up. `extraction` is
+the one to watch: it must emit real faction, system and treaty ids from a
+transcript, and no JSON schema constrains that — the reducer rejects them cleanly
+as `unknown_faction`, but a playtest in which every accord produces nothing is
+not a playtest.
 
 
 ---

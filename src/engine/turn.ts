@@ -767,6 +767,27 @@ export function groundInConcessions(
         dropped.push(`${pledged[otherId]} hulls pledged by ${otherId}, which it never offered.`);
         return false;
       }
+      // A thing written into the paper is held to exactly the standard a world
+      // is, and by the same argument: it comes out of that power's hands, so
+      // that power has to have put it on the table. Restated here rather than
+      // shared with the `transfer_asset` branch below because the check runs on
+      // a TERM inside a treaty rather than on a standalone op, and dropping the
+      // treaty is the remedy — a sale with an ungranted half is not a smaller
+      // sale, it is somebody else's property written into a contract.
+      const assetTerms = Array.isArray(terms.assets)
+        ? (terms.assets as { assetId?: unknown }[])
+        : [];
+      const takenFromThem = assetTerms
+        .map((t) => (typeof t?.assetId === 'string' ? t.assetId : null))
+        .filter((id): id is string => id !== null)
+        .filter((id) => (state.assets ?? []).find((a) => a.id === id)?.heldBy === otherId);
+      const unoffered = takenFromThem.filter((id) => !handedOver.has(id));
+      if (unoffered.length > 0) {
+        dropped.push(
+          `${unoffered.join(', ')} — ${otherId} never put ${unoffered.length === 1 ? 'it' : 'them'} on the table.`,
+        );
+        return false;
+      }
       return true;
     }
 
@@ -855,9 +876,33 @@ export async function closeChannel(
   //
   // Only when the transcript actually produced ops. A conversation that agreed
   // nothing changes nothing, and must not cost a call to discover that.
+  //
+  // An appraisal that CANNOT BE OBTAINED must not delete the accord it guards.
+  // Measured live: this call exhausted its three attempts on a malformed
+  // arbiter response ("expected object, received string"), the error propagated
+  // out of `closeChannel`, and `/endtalk` answered 502 — with `endTalk` having
+  // already cleared the channel, the history and the concessions before
+  // awaiting this. A completed negotiation was destroyed by a model glitch that
+  // had nothing to do with it: no ops, no transcript, no channel to retry.
+  //
+  // Failing open here is safe in a way it would not be as the only guard,
+  // because it is not the only guard. `sendMessage` appraises every one of the
+  // player's own concessions as it is made, and the `blockers` that pass
+  // produces are checked below and refuse the whole accord. What is lost is a
+  // ruling on the accord AS A WHOLE, and that is said out loud rather than
+  // quietly skipped — the same shape as `fallbackEpilogue` carrying
+  // `fallback: true` rather than pretending it wrote the ending.
+  const unappraised: string[] = [];
   const ruling =
     extraction.output.ops.length > 0
-      ? await appraiseAgreement(campaign.state, factionId, extraction.output.narrative)
+      ? await appraiseAgreement(campaign.state, factionId, extraction.output.narrative).catch(
+          (err: unknown) => {
+            unappraised.push(
+              `Your institutions could not be reached for a ruling on this accord (${err instanceof Error ? err.message : String(err)}). It stands as agreed; anything flagged during the conversation still applies.`,
+            );
+            return null;
+          },
+        )
       : null;
   const actor = getFaction(campaign.state, campaign.state.playerFactionId);
   const named = ruling?.appraisal.breach?.principles ?? [];
@@ -916,14 +961,17 @@ export async function closeChannel(
   const theirs = conceded.filter((c) => c.by === factionId);
   if (extraction.output.ops.length > 0 && theirs.length > 0) {
     const other = getFaction(campaign.state, factionId);
+    // Same reason as above: a ruling on the OTHER power's concessions that
+    // cannot be obtained is a ruling that did not happen, not grounds to throw
+    // away a negotiation both sides completed.
     const theirRuling = await appraiseAgreement(
       campaign.state,
       campaign.state.playerFactionId,
       theirs.map((c) => c.text).join(' '),
       factionId,
-    );
-    counterpartyCost = theirRuling.costUsd;
-    const theirNamed = theirRuling.appraisal.breach?.principles ?? [];
+    ).catch(() => null);
+    counterpartyCost = theirRuling?.costUsd ?? 0;
+    const theirNamed = theirRuling?.appraisal.breach?.principles ?? [];
     const theirBreach =
       other && theirNamed.length > 0 ? classifyPrinciples(other, theirNamed) : null;
     if (theirBreach) {
@@ -1100,7 +1148,7 @@ export async function closeChannel(
         : history,
   );
 
-  const notes = [...staged.notes, ...counterpartyNotes];
+  const notes = [...staged.notes, ...counterpartyNotes, ...unappraised];
   let defiance: ActionOutcome['defiance'] = null;
   if (breach?.kind === 'compulsion') {
     const by = ruling?.appraisal.breach?.by ?? 'your own institutions';

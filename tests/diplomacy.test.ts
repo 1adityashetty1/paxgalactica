@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { DiplomacyReplySchema, looksLikeStubReply } from '../src/model/calls.js';
 import { ModelOpSchema, ModelTurnOutputSchema, ReactionSchema } from '../src/domain/ops.js';
+import type { OpInput } from '../src/domain/ops.js';
 import { ReactionViewSchema } from '../src/api/contract.js';
 import { Campaign } from '../src/engine/campaign.js';
 import { MemoryCampaignStore } from '../src/engine/store.js';
@@ -311,7 +312,7 @@ describe('war is a property of the relationship, not one opinion', () => {
     state.factions.find((f) => f.id === 'freeworlds')!.disposition['drajk'] = -90;
     state.treaties.push({
       id: 't1', type: 'non_aggression', parties: ['freeworlds', 'drajk'],
-      terms: { territory: [], shipsPledged: {}, incomePerTurn: {}, payment: {}, incomeShares: [], mutualDefenseTrigger: '', voidsOn: [] },
+      terms: { territory: [], shipsPledged: {}, incomePerTurn: {}, payment: {}, assets: [], incomeShares: [], mutualDefenseTrigger: '', voidsOn: [] },
       signedTurn: 0, expiresTurn: null, effectiveTurn: null, status: 'active', summary: 'na',
     });
     expect(warsFor(state, 'freeworlds')).not.toContain('drajk');
@@ -1560,5 +1561,214 @@ describe('assets that stand on a world', () => {
     expect(out.rejections).toEqual([]);
     expect(out.state.commitments[0]!.contingencies).toEqual([]);
     expect(out.notes.some((n) => n.includes('cannot be pledged'))).toBe(true);
+  });
+});
+
+/**
+ * A world you signed away is not a world lost.
+ *
+ * `world_lost` is a pure state predicate — "does this power still hold it" —
+ * and the tick cedes territory immediately before it settles contingencies, so
+ * for its whole existence a voluntary sale fired an indemnity written against
+ * losing the world. Measured in the playtest of 2026-09-09: Meridian sold
+ * tor-1 to the Vigil for 250 credits under a `cession` and collected a
+ * 300-credit indemnity from the Combine on the same tick, netting **+550 for
+ * handing over a world**. Insurance is not a hedge on your own decision.
+ */
+describe('a contingency written against losing a world', () => {
+  function underwritten(): WorldState {
+    const s = createSeedState('meridian');
+    const world = s.systems.find((y) => y.controllerFactionId === 'meridian')!;
+    s.commitments = [
+      {
+        id: 'com-t-0',
+        kind: 'war_indemnity',
+        factionIds: ['meridian', 'ojjul'],
+        text: 'The Combine indemnifies Meridian against the fall of the world.',
+        exclusive: false,
+        incomePerTurn: 0,
+        contingencies: [
+          {
+            trigger: { kind: 'world_lost', by: 'meridian', target: world.id },
+            from: 'ojjul',
+            to: 'meridian',
+            credits: 300,
+            assetId: null,
+            text: 'Indemnity on the fall of the world.',
+            firedTurn: null,
+          },
+        ],
+        establishedTurn: 0,
+        status: 'active',
+      },
+    ];
+    return s;
+  }
+
+  const fired = (s: WorldState) => s.commitments[0]!.contingencies[0]!.firedTurn;
+
+  it('pays when the world is taken', () => {
+    const s = underwritten();
+    const world = s.systems.find((y) => y.controllerFactionId === 'meridian')!;
+    const purse = s.factions.find((f) => f.id === 'meridian')!.credits;
+    world.controllerFactionId = 'vigil';
+    const out = tickTurn(s);
+    expect(fired(out.state)).not.toBeNull();
+    expect(out.state.factions.find((f) => f.id === 'meridian')!.credits).toBeGreaterThan(purse);
+  });
+
+  it('does not pay when the world was sold', () => {
+    const s = underwritten();
+    const world = s.systems.find((y) => y.controllerFactionId === 'meridian')!;
+    // The same board, reached by signature instead of by force. A live cession
+    // naming the world IS the proof it changed hands by agreement, which is
+    // why this needs no per-turn set and no schema change.
+    s.treaties.push({
+      id: 'tre-t-0',
+      type: 'cession',
+      parties: ['meridian', 'vigil'],
+      terms: {
+        voidsOn: [],
+        territory: [world.id],
+        shipsPledged: {},
+        incomePerTurn: {},
+        payment: { meridian: 250, vigil: -250 },
+        assets: [],
+        incomeShares: [],
+        mutualDefenseTrigger: '',
+      },
+      signedTurn: 0,
+      expiresTurn: null,
+      effectiveTurn: 0,
+      status: 'active',
+      summary: 'Meridian cedes the world to the Vigil for 250.',
+    });
+    world.controllerFactionId = 'vigil';
+    expect(fired(tickTurn(s).state)).toBeNull();
+  });
+});
+
+/**
+ * A sale is one object, so its two halves cannot come apart.
+ *
+ * `terms.payment` exists because a one-time PRICE had no home and a negotiated
+ * purchase could only be written as narrative credits — which is how a world
+ * came to cost 240. `terms.assets` exists for the mirror of it: the one-time
+ * CONSIDERATION had no home, so a sale was a loose `transfer_asset` beside a
+ * loose `adjust_credits` with nothing binding them. Measured in the playtest of
+ * 2026-09-09: an accord to sell fifteen tons of ore for ninety credits emitted
+ * both credit entries, no transfer, and no rejection — the buyer paid ninety
+ * for nothing, and the narrative invented a reason.
+ */
+describe('a thing sold under a treaty', () => {
+  const board = () => {
+    const s = createSeedState('meridian');
+    const world = s.systems.find((y) => y.controllerFactionId === 'ojjul')!;
+    return applyOps(
+      s,
+      [
+        {
+          op: 'create_asset', kind: 'ore', heldBy: 'ojjul',
+          text: 'Fifteen tons off the Ithaal strata.', quantity: 15, unit: 'ton',
+          valuePerUnit: { meridian: 6 }, atSystemId: world.id,
+        },
+      ],
+      'model',
+      'ojjul',
+    ).state;
+  };
+
+  const sale = (over: Record<string, unknown> = {}) =>
+    ({
+      op: 'form_treaty', treatyType: 'contract', parties: ['meridian', 'ojjul'],
+      terms: {
+        assets: [{ assetId: 'ast-0-0', toFactionId: 'meridian' }],
+        payment: { meridian: -90, ojjul: 90 },
+      },
+      summary: 'The Ithaal assay sold to Meridian for ninety.',
+      ...over,
+    }) as OpInput;
+
+  const heldBy = (s: WorldState) => s.assets[0]!.heldBy;
+  const purse = (s: WorldState, id: string) => s.factions.find((f) => f.id === id)!.credits;
+
+  it('moves the thing and the money together', () => {
+    const s0 = board();
+    const before = purse(s0, 'meridian');
+    const out = applyOps(s0, [sale()], 'extraction', 'meridian', true);
+    expect(out.rejections).toEqual([]);
+    expect(heldBy(out.state)).toBe('meridian');
+    expect(purse(out.state, 'meridian')).toBe(before - 90);
+    expect(purse(out.state, 'ojjul')).toBe(purse(s0, 'ojjul') + 90);
+  });
+
+  it('will not hand over a fixture on its own', () => {
+    // A mine changes hands with its world and by no other route, so the term is
+    // dropped and the note says the true thing: cede the world.
+    const s0 = createSeedState('meridian');
+    const world = s0.systems.find((y) => y.controllerFactionId === 'ojjul')!;
+    const withMine = applyOps(
+      s0,
+      [
+        {
+          op: 'create_asset', kind: 'mine', heldBy: 'ojjul', text: 'The Ithaal cut.',
+          quantity: 1, unit: 'works', valuePerUnit: { meridian: 300 },
+          atSystemId: world.id, portable: false, divisible: false,
+        },
+      ],
+      'model',
+      'ojjul',
+    ).state;
+    const out = applyOps(withMine, [sale()], 'extraction', 'meridian', true);
+    expect(heldBy(out.state)).toBe('ojjul');
+    expect(out.notes.some((n) => n.includes('changes hands with it'))).toBe(true);
+  });
+
+  it('will not sell what is out on loan', () => {
+    // The borrower IS `heldBy` — that is what a loan of a thing means — so every
+    // guard keyed on the holder waves them through, and this one has to say it.
+    let s = board();
+    s = applyOps(
+      s,
+      [
+        {
+          op: 'establish_loan', lenderFactionId: 'ojjul', borrowerFactionId: 'meridian',
+          lent: { kind: 'asset', assetId: 'ast-0-0' }, rentPerTurn: 5, dueTurn: s.turn + 4,
+          text: 'The assay, lent for the season.',
+        },
+      ],
+      'extraction',
+      'meridian',
+      true,
+    ).state;
+    const out = applyOps(
+      s,
+      [sale({ terms: { assets: [{ assetId: 'ast-0-0', toFactionId: 'vigil' }], payment: {} }, parties: ['meridian', 'vigil'] })],
+      'extraction',
+      'meridian',
+      true,
+    );
+    expect(out.state.assets[0]!.heldBy).toBe('meridian');
+    expect(out.notes.some((n) => n.includes('out on loan'))).toBe(true);
+  });
+
+  it('cannot write the other party’s property into the paper unasked', () => {
+    // Held to exactly the standard a world is: it comes out of that power's
+    // hands, so that power has to have put it on the table.
+    const s = board();
+    const { ops, dropped } = groundInConcessions(s, [sale()], [], 'ojjul');
+    expect(ops).toHaveLength(0);
+    expect(dropped[0]).toMatch(/never put it on the table/);
+  });
+
+  it('lets it through when they put it on the table', () => {
+    const s = board();
+    const conceded: Concession[] = [
+      {
+        by: 'ojjul', kind: 'asset_sale', text: 'The Ithaal assay, ninety, one payment.',
+        systems: [], credits: 0, perTurn: 0, hulls: 0, assets: ['ast-0-0'],
+      },
+    ];
+    expect(groundInConcessions(s, [sale()], conceded, 'ojjul').ops).toHaveLength(1);
   });
 });

@@ -854,9 +854,29 @@ function voidConditionMet(state: WorldState, condition: VoidCondition): string |
       const held = state.systems.find(
         (sys) => sys.id === condition.target && sys.controllerFactionId === condition.by,
       );
-      return held
-        ? null
-        : `${name(condition.by)} no longer holds ${state.systems.find((sys) => sys.id === condition.target)?.name ?? condition.target}`;
+      if (held) return null;
+      // A world you signed away is not a world lost.
+      //
+      // The predicate is pure state — "does this power still hold it" — so it
+      // could not tell a conquest from a signature, and the tick cedes
+      // territory immediately before it settles contingencies. Measured live:
+      // Meridian sold tor-1 to the Vigil for 250 under a `cession` and
+      // collected a 300-credit indemnity written against losing it, netting
+      // +550 for handing over a world. That is a claim on your own decision.
+      //
+      // Derived rather than recorded, for the reason `controlHistory` is: a
+      // live cession naming this world, signed by the power the condition is
+      // written against, IS the proof it changed hands by agreement — so no
+      // per-turn set, no schema change, and it holds whether the handover ran
+      // at signature or at ratification.
+      const sold = state.treaties.some(
+        (t) =>
+          t.type === 'cession' &&
+          t.parties.includes(condition.by) &&
+          (t.terms.territory ?? []).includes(condition.target),
+      );
+      if (sold) return null;
+      return `${name(condition.by)} no longer holds ${state.systems.find((sys) => sys.id === condition.target)?.name ?? condition.target}`;
     }
     case 'asset_lost': {
       // What makes a hostage a hostage: the pact holds while the thing is held.
@@ -986,6 +1006,57 @@ function moveConserved(
   }
 
   for (const note of notes) logEvent(state, 'diplomacy', note, logTo);
+  return notes;
+}
+
+/**
+ * Move the things a treaty says change hands, once, when it takes force.
+ *
+ * The third of the one-time settlers, and it is called from the same two places
+ * as the other two for the reason stated there: a sale and its price are two
+ * halves of one transaction, and calling one without the other is the defect.
+ * Written as loose ops the two halves came apart in a live playtest — the money
+ * moved and the ore did not.
+ *
+ * Every guard here already exists somewhere else and is restated rather than
+ * reached for, because a term is applied by the reducer while an op is checked
+ * at the door:
+ *
+ * - **Only what a party holds moves.** A treaty naming somebody else's property
+ *   is a claim, not a transfer, exactly as `cedeTerritory` treats a world
+ *   neither party controls.
+ * - **A fixture never moves on its own.** A mine, an exchange or a theatre
+ *   changes hands with its world and by no other route, so a term naming one is
+ *   dropped with the true thing said: cede the world.
+ * - **What is out on loan is not yours to sell.** The borrower IS `heldBy` —
+ *   that is what a loan of a thing means — so every guard keyed on the holder
+ *   waves them through, and this one has to say it.
+ */
+function settleAssetTerms(state: WorldState, treaty: Treaty): string[] {
+  const notes: string[] = [];
+  for (const term of treaty.terms.assets ?? []) {
+    const asset = (state.assets ?? []).find((a) => a.id === term.assetId);
+    if (!asset) continue;
+    const holder = asset.heldBy;
+    if (!treaty.parties.includes(holder)) continue;
+    const receiver = treaty.parties.find((party: string) => party !== holder);
+    if (!receiver || receiver !== term.toFactionId) continue;
+
+    if (!asset.portable) {
+      notes.push(
+        `${asset.kind} cannot be handed over on its own — it stands on the world and changes hands with it. Cede the world.`,
+      );
+      continue;
+    }
+    if (assetOnLoan(state.loans ?? [], asset.id)) {
+      notes.push(`${asset.kind} is out on loan and is not ${holder}'s to part with.`);
+      continue;
+    }
+
+    asset.heldBy = receiver;
+    notes.push(`${asset.quantity} ${asset.unit} of ${asset.kind} passes to ${receiver} under ${treaty.summary}.`);
+  }
+  for (const note of notes) logEvent(state, 'diplomacy', note, treaty.parties[0]!);
   return notes;
 }
 
@@ -2717,6 +2788,7 @@ export function applyOps(
         // hands once, and taking it back is a fresh act.
         if (!pending) {
           notes.push(...cedeTerritory(state, treaty));
+          notes.push(...settleAssetTerms(state, treaty));
           notes.push(...settleTreatyPayment(state, treaty));
         }
         break;
@@ -4627,6 +4699,7 @@ export function tickTurn(input: WorldState): TickResult {
     // two calls belong together at BOTH sites, which is the whole reason that
     // comment says "the same two places".
     notes.push(...cedeTerritory(state, treaty));
+    notes.push(...settleAssetTerms(state, treaty));
     notes.push(...settleTreatyPayment(state, treaty));
   }
 

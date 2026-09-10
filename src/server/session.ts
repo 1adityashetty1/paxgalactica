@@ -15,6 +15,7 @@ import {
 import { Campaign, ACTION_POINTS_PER_TURN } from '../engine/campaign.js';
 import { FileCampaignStore, type CampaignStore } from '../engine/store.js';
 import { closeChannel, endTurn, writeEpilogue, submitAction } from '../engine/turn.js';
+import type { ActionOutcome } from '../engine/turn.js';
 import { askAdvisor, diplomacyReply, type ChatMessage } from '../model/calls.js';
 import { getFaction } from '../domain/state.js';
 import { playableFactions } from '../seed/scenario.js';
@@ -542,12 +543,28 @@ export class GameSession {
     this.channelHistory = [];
     this.channelConcessions = [];
     this.channelBlockers = [];
-    this.channelConcessions = [];
-    this.channelBlockers = [];
 
-    const outcome = await this.exclusive('Reading the transcript', () =>
-      closeChannel(campaign, factionId, history, conceded, blockers),
-    );
+    // ...but a call that THREW returned nothing at all, and clearing first made
+    // that unrecoverable: measured live, an arbiter response that failed its
+    // schema three times answered 502 and took the transcript, the concessions
+    // and the channel with it, so a finished negotiation could not even be
+    // closed again. `closeChannel` no longer throws for a failed ruling, and
+    // this is the backstop for every other reason a model call can die — an
+    // overloaded tier, a dropped stream. The conversation is restored exactly
+    // as it stood and the player can simply `/endtalk` again.
+    let outcome: ActionOutcome;
+    try {
+      outcome = await this.exclusive('Reading the transcript', () =>
+        closeChannel(campaign, factionId, history, conceded, blockers),
+      );
+    } catch (err) {
+      this.openChannel = factionId;
+      this.channelHistory = history;
+      this.channelConcessions = conceded;
+      this.channelBlockers = blockers;
+      this.pushState();
+      throw err;
+    }
     this.pushState();
 
     return {

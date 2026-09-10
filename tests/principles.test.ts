@@ -409,6 +409,24 @@ describe('the matcher is loose about quoting and strict about identity', () => {
     }
   });
 
+  it('matches a line the arbiter paraphrased and inflected', () => {
+    // The arbiter does not quote, it restates — and it conjugates while doing
+    // it. Measured in the playtest of 2026-09-09: Meridian's sheet says "will
+    // not **repudiate** a **contract** it has signed" and the ruling came back
+    // "Meridian's red line forbids **repudiating contracts** it has signed",
+    // which exact token equality scored at 0.44 against a threshold of 0.6.
+    // The line went unmatched, so the flagrant breach exited through
+    // `admissible: false` — the one ruling that charges nothing at all.
+    const meridian = createSeedState('meridian').factions.find((f) => f.id === 'meridian')!;
+    const ruled = classifyPrinciple(
+      meridian,
+      "Meridian's red line forbids repudiating contracts it has signed, because the " +
+        "Authority's entire value in this galaxy rests on its word being good.",
+    );
+    expect(ruled?.kind).toBe('red_line');
+    expect(ruled?.principle).toMatch(/repudiate a contract/);
+  });
+
   it('never matches another power’s line', () => {
     // The five sheets have almost nothing in common, which is what lets the
     // matcher be forgiving about wording without ever charging the wrong power

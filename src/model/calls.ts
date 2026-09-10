@@ -869,7 +869,24 @@ export function looksLikeAPlan(counsel: string): boolean {
     .filter((line) => /^\s*(?:[-*•]|\d+[.)]|(?:First|Second|Third|Then|Finally)\b[,:]?\s)/i.test(line));
   if (markers.length >= 2) return true;
   // Or the same enumeration run together in prose.
-  return /\bfirst\b[^.]*\.[^.]*\bsecond\b[^.]*\.[^.]*\b(third|finally|lastly)\b/i.test(text);
+  //
+  // Counted as ordinals-followed-by-punctuation rather than as one regex over
+  // the whole run, because the first version required the markers to sit within
+  // one sentence of each other (`\bfirst\b[^.]*\.[^.]*\bsecond\b`) and real
+  // enumerated counsel puts several sentences under each heading. Measured live:
+  // "Three things, Chief Executive... First — Shalka. <four sentences> Second,
+  // the Combine ledger... <three sentences> Third — the Drajk." — three headings
+  // in one unbroken paragraph, which passed both branches. The line branch saw
+  // no line starting with a marker because there are no line breaks, and the
+  // prose branch allowed exactly one full stop between markers.
+  //
+  // The punctuation is what separates an enumeration from ordinary speech: a
+  // heading is written "First —" or "Second,", while a sentence says "the first
+  // time" or "First Elder" with a word next. Two are required for the same
+  // reason two line markers are — one is a turn of phrase.
+  const ordinals =
+    text.match(/\b(?:first|second|third|fourth|fifth|finally|lastly)\b\s*[—–\-:,;]/gi) ?? [];
+  return ordinals.length >= 2;
 }
 
 export const AdvisorReplySchema = z.object({
