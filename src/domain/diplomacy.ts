@@ -636,6 +636,19 @@ export const VoidConditionSchema = z.object({
 });
 export type VoidCondition = z.infer<typeof VoidConditionSchema>;
 
+/**
+ * One thing changing hands under a treaty.
+ *
+ * Mirrors `transfer_asset` rather than inventing a shape: the same two fields,
+ * so the term and the op cannot disagree about what a transfer is.
+ */
+export const AssetTermSchema = z.object({
+  assetId: z.string().min(1),
+  /** Who ends up holding it. Must be the other party — you cannot sell to a third power. */
+  toFactionId: z.string().min(1),
+});
+export type AssetTerm = z.infer<typeof AssetTermSchema>;
+
 export const TreatyTermsSchema = z.object({
   /**
    * Conditions that end this treaty when they come true. Evaluated every tick.
@@ -664,6 +677,29 @@ export const TreatyTermsSchema = z.object({
    * credit. Only a flow into existence needs a cap.
    */
   payment: z.record(z.string(), z.number().int()).default({}),
+  /**
+   * Things that change hands when the treaty takes force, once.
+   *
+   * The third one-time term, beside `territory` and `payment`, and it exists
+   * for the reason `payment` does. A one-time PRICE had no home, so a
+   * negotiated purchase could only be written as narrative credits and a world
+   * cost 240; a one-time CONSIDERATION had no home either, so a negotiated sale
+   * could only be written as a loose `transfer_asset` beside a loose
+   * `adjust_credits` — with nothing binding the two halves together.
+   *
+   * Measured in the playtest of 2026-09-09: an accord to sell fifteen tons of
+   * ore for ninety credits emitted both `adjust_credits` entries, no
+   * `transfer_asset`, and no rejection. Meridian paid ninety credits for
+   * nothing, and the narrative invented a reason — *"against the file already
+   * sitting on Meridian's ledger"*. `cedeTerritory` and `settleTreatyPayment`
+   * are called from the same two places precisely so that a cession and its
+   * price cannot come apart; this puts an asset sale on the same footing.
+   *
+   * Whole rows, like `territory` names whole systems. A party meaning to sell
+   * part of a haul splits it first — `split_asset` is what divides, and having
+   * the term divide too would be a second opinion about how value splits.
+   */
+  assets: z.array(AssetTermSchema).default([]),
   /** Claims on system income — the mechanism for neutral and shared worlds. */
   incomeShares: z.array(IncomeShareSchema).default([]),
   /** What obliges the signatories to act. Empty for treaties with no trigger. */

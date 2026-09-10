@@ -28,6 +28,27 @@ of the *other* power's hands moves only if that power put its id on the table,
 exactly as a world does — you are matching what was recorded, not judging what
 was meant. A power giving its own away needs no such record.
 
+**A SALE is one treaty, never two loose ops.** If a thing was agreed to change
+hands *for a price*, write a treaty carrying both halves — `terms.assets` for
+what moves and `terms.payment` for what is paid — exactly as a cession carries
+the world and its price. Do NOT write `transfer_asset` beside a pair of
+`adjust_credits` entries: nothing binds those two together, and a live accord to
+sell fifteen tons of ore for ninety credits emitted the money and not the ore,
+leaving the buyer ninety credits poorer and holding nothing.
+
+```jsonc
+{ "op": "form_treaty", "type": "contract", "parties": ["meridian", "ojjul"],
+  "terms": {
+    "assets": [{ "assetId": "ast-0-0", "toFactionId": "meridian" }],
+    "payment": { "meridian": -90, "ojjul": 90 }
+  },
+  "summary": "The Ithaal assay sold to Meridian for ninety." }
+```
+
+`transfer_asset` on its own is still right for a thing handed over for
+**nothing** — a hostage released, a gift, a debt of honour settled. The moment a
+price is named, it is a treaty.
+
 **A fixture is not on the table.** A mine, an exchange, a theatre — anything the
 state block marks *"fixed here; changes hands only with the world"* — cannot be
 transferred on its own. Selling one is selling the world it stands on: write a
@@ -44,8 +65,9 @@ what somebody knows — and it is an exception because nothing is being conjured
 the seller already had the knowledge, for free, and could have simply said it
 here. What the deal makes is the paper. So *"my file on the Vantic yards, three
 hundred, and you never had it from me"* is a real trade, written as
-`create_asset` with `kind: "dossier"` held by the seller, `transfer_asset` to
-the buyer, and the price as `adjust_credits` or `terms.payment`.
+`create_asset` with `kind: "dossier"` held by the seller, and then the sale
+itself as a treaty carrying `terms.assets` and `terms.payment` — the paper has a
+price, so it follows the rule above.
 
 ```jsonc
 { "op": "create_asset", "kind": "dossier", "heldBy": "ojjul",
