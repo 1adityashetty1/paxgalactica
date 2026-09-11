@@ -9,7 +9,7 @@ import {
   stackAt,
   type WorldState,
 } from '../src/domain/state.js';
-import { drawMatching, isLoanLive } from '../src/domain/loan.js';
+import { drawMatching, isLoanLive, LoanSchema } from '../src/domain/loan.js';
 import { driftingCompulsions } from '../src/domain/compulsions.js';
 import type { OpInput } from '../src/domain/ops.js';
 
@@ -435,5 +435,80 @@ describe('loans', () => {
     const { state, systemId } = withSquadron();
     const s = applyOps(state, [hire(systemId)], 'extraction', 'ojjul').state;
     expect(isLoanLive(s.loans[0]!)).toBe(true);
+  });
+});
+
+/**
+ * A record that argues with itself.
+ *
+ * Measured in the playtest of 2026-09-09: `loan-3-0.text` read "Ten Combine
+ * hulls sail under Meridian colours" over a `lent.stack` of four battleships.
+ * The reducer trimmed correctly to what the lender actually had standing there
+ * and the prose did not follow — and the prose is what `serializeLoans` hands
+ * the personas and what they replay at the next table.
+ */
+describe('a trimmed loan corrects its own paper', () => {
+  function board(): WorldState {
+    const s = createSeedState('meridian');
+    const where = s.systems.find((y) => y.controllerFactionId === 'ojjul')!;
+    setStackAt(where, 'ojjul', { battleship: 4 });
+    return s;
+  }
+
+  const hire = (systemId: string, want: number) =>
+    ({
+      op: 'establish_loan',
+      lenderFactionId: 'ojjul',
+      borrowerFactionId: 'meridian',
+      lent: { kind: 'hulls', stack: { battleship: want }, atSystemId: systemId },
+      rentPerTurn: 55,
+      termTurns: 5,
+      text: `Ten Combine hulls sail under Meridian colours for five turns, at 55/turn.`,
+    }) as OpInput;
+
+  it('says what actually changed flag when fewer were there', () => {
+    const s = board();
+    const where = s.systems.find((y) => y.controllerFactionId === 'ojjul')!;
+    const out = applyOps(s, [hire(where.id, 10)], 'extraction', 'meridian', true);
+    expect(out.rejections).toEqual([]);
+    const loan = out.state.loans[0]!;
+    expect(loan.lent.kind === 'hulls' && loan.lent.stack.battleship).toBe(4);
+    // The correction has to live on the LOAN. A note dies with the turn; this
+    // sentence is replayed into a persona for as long as the loan is live.
+    expect(loan.text).toMatch(/Corrected at signature/);
+    expect(loan.text).toMatch(/4 battleship/);
+  });
+
+  it('leaves the prose alone when nothing was trimmed', () => {
+    const s = board();
+    const where = s.systems.find((y) => y.controllerFactionId === 'ojjul')!;
+    const out = applyOps(s, [hire(where.id, 4)], 'extraction', 'meridian', true);
+    expect(out.state.loans[0]!.text).not.toMatch(/Corrected/);
+  });
+
+  it('keeps the correction when the description is already at the limit', () => {
+    // `text` is capped by its schema, so appending an amendment to a long
+    // enough description pushes it past the limit and the journal fails to
+    // parse on REPLAY — which is a campaign that no longer opens, found by
+    // exactly this. The half that gets cut is the description, because the
+    // description is the half that was wrong.
+    const s = board();
+    const where = s.systems.find((y) => y.controllerFactionId === 'ojjul')!;
+    const long = { ...(hire(where.id, 10) as Record<string, unknown>), text: 'x'.repeat(238) } as OpInput;
+    const out = applyOps(s, [long], 'extraction', 'meridian', true);
+    expect(out.rejections).toEqual([]);
+    const loan = out.state.loans[0]!;
+    expect(loan.text.length).toBeLessThanOrEqual(240);
+    expect(loan.text).toMatch(/Corrected at signature/);
+    // And the whole thing still round-trips through the schema it is stored by.
+    expect(LoanSchema.safeParse(loan).success).toBe(true);
+  });
+
+  it('records a trimmed hire on the paper too', () => {
+    const s = board();
+    const where = s.systems.find((y) => y.controllerFactionId === 'ojjul')!;
+    const op = { ...(hire(where.id, 4) as Record<string, unknown>), rentPerTurn: 400 } as OpInput;
+    const out = applyOps(s, [op], 'extraction', 'meridian', true);
+    expect(out.state.loans[0]!.text).toMatch(/the hire is \d+ a turn, not 400/);
   });
 });

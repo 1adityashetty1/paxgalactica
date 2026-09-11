@@ -1045,6 +1045,18 @@ worth showing and nobody has asked yet.
   deal that evaporated for a reason nobody could read is the same class of
   surprise as an unpriced concession.
 - **The campaign is written up** in `docs/playtest-2026-09-09.md`.
+- **A record no longer argues with itself.** `loan-3-0.text` read "Ten Combine
+  hulls" over a `lent.stack` of four: the reducer trimmed correctly and the
+  prose did not follow, and the prose is what the personas replay. Two halves,
+  because one alone would not have closed it. A trim now **amends the paper**
+  rather than only the turn's notes — the same answer `closeChannel` gives when
+  it appends a `record` line to a transcript. And the serializers put the
+  figures on one line and the prose on the next, marked *as agreed, in their
+  words*, because they used to run together in a single sentence with nothing
+  to say which was the term. `diplomacy-persona.md` already ruled that the state
+  block beats a transcript; it now says the same thing one level down, inside
+  the block, where it could not previously reach. Applies to debts and
+  commitments too — identical shape, same defect waiting.
 
 ### Still open from that campaign
 
@@ -1056,9 +1068,6 @@ worth showing and nobody has asked yet.
   `GET /api/campaign` stayed flat at ~2ms with the payload at 92KB. The floor is
   transport — appraisal takes 12–15s to return two numbers with thinking already
   off — so **95** is the only thing that moves it.
-- **A loan's stored `text` can contradict its own stack.** `loan-3-0` reads "Ten
-  Combine hulls" and lent four; the reducer trimmed correctly and the narrative
-  did not follow. That text is what reaches the player and the personas.
 
 
 ---

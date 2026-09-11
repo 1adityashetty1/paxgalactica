@@ -518,7 +518,7 @@ export function serializeCommitments(state: WorldState, viewerId?: string): stri
         c.share === undefined
           ? ''
           : ` · ${c.share.percent}% of ${getFaction(state, c.share.from)?.name ?? c.share.from}'s ${c.share.of} to ${getFaction(state, c.share.to)?.name ?? c.share.to} (currently worth ${shareWorth(state, c.share)} a turn)`;
-      return `- \`${c.id}\` ${c.kind.replace(/_/g, ' ')} · ${who} · since turn ${c.establishedTurn}${worth}${cut}${flag}\n  ${c.text}`;
+      return `- \`${c.id}\` ${c.kind.replace(/_/g, ' ')} · ${who} · since turn ${c.establishedTurn}${worth}${cut}${flag}\n  _as agreed, in their words: ${c.text}_`;
     })
     .join('\n');
 }
@@ -564,7 +564,14 @@ export function serializeLoans(state: WorldState, viewerId: string): string {
             : `, back by turn ${l.dueTurn}`;
       const behind =
         l.missedPayments > 0 ? ` — ${l.missedPayments} hire payment(s) missed` : '';
-      return `  - \`${l.id}\` ${lender} has ${what} with ${borrower}${rent}${due}${behind}. ${l.text}`;
+      // The figures first, then the prose on its own line and clearly labelled
+      // as prose. They used to run together in one sentence, so a loan trimmed
+      // at signature read "4 battleships … Ten Combine hulls sail under
+      // Meridian colours" with nothing to say which was the term and which was
+      // the description. `diplomacy-persona.md` already rules that the state
+      // block beats a transcript; this is that rule one level down, inside the
+      // block, where it could not previously reach.
+      return `  - \`${l.id}\` ${lender} has ${what} with ${borrower}${rent}${due}${behind}.\n    _as agreed, in their words: ${l.text}_`;
     })
     .join('\n');
 }
@@ -582,7 +589,7 @@ export function serializeDebts(state: WorldState): string {
         d.status === 'delinquent'
           ? ` — IN DEFAULT, ${d.missedPayments} payment(s) missed`
           : '';
-      return `  - \`${d.id}\` ${debtor} owes ${creditor} ${d.balance} of ${d.principal}, at ${d.perTurn}/turn${behind}. ${d.text}`;
+      return `  - \`${d.id}\` ${debtor} owes ${creditor} ${d.balance} of ${d.principal}, at ${d.perTurn}/turn${behind}.\n    _as agreed, in their words: ${d.text}_`;
     })
     .join('\n');
 }

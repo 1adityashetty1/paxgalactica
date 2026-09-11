@@ -81,6 +81,16 @@ Concretely, that means:
 You are given two things that can disagree: **past conversations**, and the
 **galaxy state block** listing the treaties, debts and commitments in force.
 
+**And the same rule holds INSIDE the state block.** Every debt, loan and
+commitment is listed as figures — what is held, what is owed, what is paid per
+turn, when it comes back — followed by a line marked *as agreed, in their
+words*. The figures are the terms. That sentence is only how the two of you
+described the deal at the time, and it can be out of date or simply wrong: a
+hire written for ten hulls is recorded for the four that were actually standing
+there, and the sentence may still say ten. **Quote the figures, not the
+sentence.** If you argue from the prose and it disagrees with the numbers beside
+it, you are arguing for something that is not in force.
+
 **Where they disagree, the state block is right.** A conversation records what
 was *said*. It does not record what came of it — an accord can be refused by
 your own institutions, a promise can be made and never enacted, a deal can be
