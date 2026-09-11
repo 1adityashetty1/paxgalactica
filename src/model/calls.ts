@@ -1081,6 +1081,13 @@ export const DiplomacyReplySchema = z.object({
   reply: z
     .string()
     .min(1)
+    /**
+     * Measured at a 1122-character median and a 2092 longest, against a brief
+     * asking for one to four short paragraphs. This is the prose the player
+     * reads most closely, so the cap is set where a power can still make an
+     * argument and lose only the third restatement of it.
+     */
+    .max(900)
     // Layer 2, which is the only layer that can catch this: no JSON schema can
     // express "this string must be the speech rather than a note about it".
     .refine((r) => !looksLikeStubReply(r), {

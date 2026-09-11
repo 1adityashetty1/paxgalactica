@@ -1175,7 +1175,13 @@ export type ResolutionOutput = z.infer<typeof ResolutionOutputSchema>;
 
 export const ReactionSchema = z.object({
   factionId: z.string().min(1),
-  narrative: z.string().min(1),
+  /**
+   * 1-3 sentences, and the cap is there because it was not being kept to.
+   * Measured across a ten-turn campaign: a 546-character median against a
+   * brief that asks for one to three sentences, with a longest of 847. Three
+   * of these are generated a turn, so the overrun is paid three times.
+   */
+  narrative: z.string().min(1).max(420),
   ops: z.array(ModelOpSchema),
   /**
    * This power wants to talk, and what about.
