@@ -772,41 +772,53 @@ export async function gatherReactions(
     return { output: { reactions: [] }, attempts: 0, costUsd: 0 };
   }
 
-  // ONE CALL PER FACTION — not one call listing them all, and deliberately in
-  // SEQUENCE rather than at once.
+  // ONE CALL PER FACTION, ISSUED AT ONCE — not one call listing them all, and
+  // not one after another.
   //
-  // The split is a correctness change that happens to be faster, not the other
-  // way round. Three things it buys, none of which are about speed:
+  // The split is a correctness change that happens to be faster, and three of
+  // its four arguments have nothing to do with speed:
   //
   // - **No power reads another's observation block.** Every faction's scoped
   //   view used to sit in one context, so the model writing the Vigil's
   //   reaction could read what the Combine can see. The prompt asked for
   //   separation; nothing enforced it. Same lesson `worldAsSeenBy` records — a
-  //   leak is a property of the whole payload.
+  //   leak is a property of the whole payload. Running them concurrently is the
+  //   strongest form of it: no power can be influenced by what another was just
+  //   made to say, because nothing has been said yet.
   // - **A misattributed reaction becomes detectable.** The merged call
   //   legitimately expected every id in the batch, so nothing could tell a
   //   reaction written under the wrong flag from a correct one — and a reaction
   //   commits with its own faction as `actor`, so that acts with another
   //   power's hand.
   // - **One bad response costs one voice**, not the turn's reactions entire.
+  // - And the fourth: end-of-turn was the largest single wait in the game at a
+  //   66.7s median. Three calls averaging ~22s sum to 67s in sequence and land
+  //   together in ~40s at once.
   //
-  // Run in parallel it also took a measured 20% off end-of-turn, and that is
-  // NOT why it is shaped this way. Concurrency here spawns N copies of the
-  // Claude Code binary, which contend (three calls averaging 30.8s landed in
-  // ~40s rather than ~31s), and the wall-clock saving does not pay for the
-  // usage: N calls each re-send `serializeState` and the whole reaction prompt,
-  // which measured 2.8x the cost of the merged call. The cost is a property of
-  // there being N calls, not of running them at once — so the sequence keeps
-  // every correctness gain and gives back only the 20%.
-  const spoke: { output: ReactionSet; attempts: number; costUsd: number }[] = [];
-  for (const id of factionIds) {
-    try {
-      spoke.push(await reactAs(state, id, whatHappened));
-    } catch {
-      // A power that could not be reached simply does not speak this turn.
-      // Losing every reaction because one failed is what the split ends.
-    }
-  }
+  // **Cost is the same either way**, which is what settles it: N calls each
+  // re-send `serializeState` and the whole reaction prompt, measured at 2.8x
+  // the merged call — a property of there being N calls, not of running them
+  // together. What concurrency does cost is contention, since each call spawns
+  // its own copy of the Claude Code binary and three at once on a laptop is why
+  // ~22s each becomes ~40s rather than ~22s. That is a property of the
+  // transport rather than of this design, and it is one of the things a direct
+  // HTTP client would remove.
+  //
+  // `Promise.all` preserves input order, and the caller commits in that order,
+  // so the journal records the same batch sequence on every run — the ops are
+  // deterministic even though the calls are not.
+  const settled = await Promise.all(
+    factionIds.map(async (id) => {
+      try {
+        return await reactAs(state, id, whatHappened);
+      } catch {
+        // A power that could not be reached simply does not speak this turn.
+        // Losing every reaction because one failed is what the split ends.
+        return null;
+      }
+    }),
+  );
+  const spoke = settled.filter((r): r is NonNullable<typeof r> => r !== null);
   return {
     output: { reactions: spoke.flatMap((r) => r.output.reactions) },
     attempts: spoke.reduce((n, r) => Math.max(n, r.attempts), 0),
