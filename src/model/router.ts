@@ -3,7 +3,7 @@
  * resolution, reaction, diplomacy or flavour is a one-line edit in this file.
  */
 
-export type ModelTier = 'reasoning' | 'flavor';
+export type ModelTier = 'reasoning' | 'narrative' | 'flavor';
 
 export type CallKind =
   | 'resolution'
@@ -79,6 +79,25 @@ export const TIERS: Record<ModelTier, TierConfig> = {
   // Narrative and ops: real judgement, but a bounded one against a state
   // document that already tells it the outcome.
   reasoning: { model: 'claude-sonnet-5', maxTurns: 6, effort: 'medium' },
+  /**
+   * The same model, thinking less hard.
+   *
+   * Measured: the whole reasoning tier at `low` took a turn from ~118s to
+   * ~72s, with resolution going 30.6s -> 7.0s and each reaction 24.3s -> 13.7s
+   * — and on that sample there were no rejections, the check and the ops were
+   * sound, and the prose stayed in voice. The bulk of what these calls
+   * generate is thinking, not narrative, which is why effort moves them and
+   * capping their prose barely does.
+   *
+   * It is a tier rather than a blanket change because the exposure is not the
+   * same everywhere. A reaction is narrative plus a modest op or two, and
+   * three of them run every turn — most of the saving, on the calls that can
+   * afford it. Resolution decides what the player's own action actually did,
+   * and extraction decides what a negotiation bound anybody to; those keep
+   * `medium`, where a worse judgement is a worse world rather than a flatter
+   * sentence.
+   */
+  narrative: { model: 'claude-sonnet-5', maxTurns: 6, effort: 'low' },
   // Colour that must be cheap and fast: system descriptions, NPC names.
   // Classification and colour. Arbitration lives here too: it returns two
   // numbers and a clause, which is not a thinking problem.
@@ -96,7 +115,7 @@ export const ROUTES: Record<CallKind, ModelTier> = {
   // clause — so it does not need the reasoning tier. Splitting it out costs
   // about a tenth of a cent and is what makes the roll honest.
   appraisal: 'flavor',
-  reaction: 'reasoning',
+  reaction: 'narrative',
   diplomacy: 'reasoning',
   extraction: 'reasoning',
   // A yes/no about whether two sentences are about the same thing. Cheap tier,
