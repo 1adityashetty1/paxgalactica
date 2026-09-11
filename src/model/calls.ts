@@ -41,7 +41,6 @@ import { serializeArchetypes } from '../domain/assets.js';
 import { loadPrompt } from './prompts.js';
 import {
   serializeCharacter,
-  serializeOrders,
   serializePrinciples,
   serializeState,
   serializeTheirAssets,
@@ -843,26 +842,39 @@ async function reactAs(
         '',
         serializeCharacter(f),
         '',
-        // Hulls AND tons. A bare hull count was the whole fleet a model saw,
-        // and it means different things by class: thirty escorts and thirty
-        // battleships are the same number and a third of the fighting weight
-        // apart. `serializeState` has reported both since classes shipped;
-        // these two call sites were left behind.
-        `Fleet ${fleetStrengthOf(state, f.id)} hulls / ${fleetTonsOf(state, f.id)} tons · credits ${f.credits} · disposition toward the player (${state.playerFactionId}): ${dispositionBetween(
+        // Not fleet/credits/orders — the state block below now IS this
+        // faction's own view (`serializeState(state, factionId)`), which
+        // already carries its self bullet in `## Factions` (fleet, tons,
+        // credits) and its own `## Orders in progress`. Restating them here,
+        // keyed on the SAME id, was never a second opinion; it was the same
+        // text twice under a different heading. What is NOT duplicated is
+        // this faction's own disposition toward the player —
+        // `serializeFactions` suppresses the "toward" column on a viewer's
+        // self-row, so nowhere else says how THIS power feels about the one
+        // it is reacting to.
+        `Disposition toward the player (${state.playerFactionId}): ${dispositionBetween(
           state,
           id,
           state.playerFactionId,
         )}`,
-        '',
-        'What this faction can observe of orders in progress:',
-        serializeOrders(state, id),
       ].join('\n');
     })
     .filter(Boolean)
     .join('\n\n');
 
+  // The state block is THIS FACTION'S board, not the player's.
+  //
+  // Every reaction call sent `serializeState(state, state.playerFactionId)` —
+  // the player's fog, not the reacting faction's — so an NPC reasoned from
+  // what MERIDIAN can see: it read the player's own observable orders, and it
+  // read every other power's disposition toward the PLAYER rather than toward
+  // itself. `serializeOrders(state, id)` two lines below was already scoped
+  // correctly; the much larger block built from it was not. Same class of
+  // defect `worldAsSeenBy` exists to name: fog is a property of the whole
+  // payload, and half of it was leaking the player's view into five other
+  // factions' heads.
   const user = [
-    serializeState(state, state.playerFactionId),
+    serializeState(state, factionId),
     '',
     '---',
     '',
