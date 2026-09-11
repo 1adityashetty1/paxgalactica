@@ -1134,6 +1134,13 @@ export async function diplomacyReply(
       factionId,
       state.playerFactionId,
     )} (scale −100 to 100).`,
+    // What to call them. `Faction.title` named every leader in the game and
+    // then reached exactly one call — the advisor, which addresses the player's
+    // own — so across a table the powers had no form of address for each other
+    // and fell back on faction names, which is how nobody has ever spoken to a
+    // head of state. The office is also a lever: using it, pointedly not using
+    // it, and using the wrong one are three different moves.
+    `They are addressed as the ${player?.title ?? 'Commander'}. You are the ${faction.title}.`,
     '',
     '---',
     '',

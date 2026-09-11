@@ -134,6 +134,21 @@ describe('a faction says which pronouns its leader takes', () => {
     });
   }
 
+  it('names the office its leader actually holds', () => {
+    // `Faction.title` named every leader in the game and the voice sheets went
+    // on describing an unnamed functionary — the Vigil answered as "a Legate"
+    // while its leader is the Grand Admiral, so the player, who is addressed by
+    // title everywhere else, was negotiating with somebody who had none.
+    //
+    // The role nouns survive alongside the office, and deliberately: the
+    // Huntmaster IS a korvan and the Grand Admiral IS a legate, which is what
+    // keeps the cross-references between sheets ("unlike the legate and the
+    // korvan") reading true.
+    for (const f of state.factions) {
+      expect(f.voice, f.id).toContain(`ARCHETYPE: the ${f.title},`);
+    }
+  });
+
   it('never has a voice contradict its own declaration', () => {
     // A sheet that says she/her and then narrates its speaker as "he" is worse
     // than one that says nothing: both halves reach the persona.
