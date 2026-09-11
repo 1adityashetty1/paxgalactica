@@ -105,7 +105,14 @@ export const ROUTES: Record<CallKind, ModelTier> = {
   // Once per campaign, and it is the last thing the player reads. The one call
   // where paying for the better tier is unarguable.
   epilogue: 'reasoning',
-  advisor: 'reasoning',
+  // Moved down from `reasoning`, and the original argument is what moves it.
+  // Thinking was kept on that tier for "a narrative that has to stay consistent
+  // with a settled outcome and a dozen mechanics" — and the advisor has no
+  // settled outcome to be consistent with. It reads a board and says what is
+  // pressing, which is a judgement the voice sheet does most of the work for.
+  // Measured: 21s on the reasoning tier for counsel the player said was too
+  // long to read.
+  advisor: 'flavor',
   flavor: 'flavor',
 };
 

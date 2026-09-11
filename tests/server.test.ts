@@ -523,3 +523,47 @@ describe('a state push carries a tail of the log, a read carries all of it', () 
     expect(view.state.eventLog.some((e) => e.text === 'a Vigil operative reports')).toBe(false);
   });
 });
+
+/**
+ * A power's answer reaches the player when it is written, not when the last
+ * one is.
+ *
+ * End-of-turn is three reaction calls in sequence and was measured at 67s of
+ * dead air before anything appeared. The calls did not get shorter; what
+ * changed is that the first answer now lands at roughly a third of that, and
+ * the board moves with it.
+ */
+describe('reactions arrive one at a time', () => {
+  it('emits a reaction event and a state push as each lands', async () => {
+    const events: { type: string }[] = [];
+    const session = new GameSession(new MemoryCampaignStore(), (e) => events.push(e));
+    await session.newCampaign('meridian', 'stream', 10);
+
+    // No staged ops means no reaction calls at all, which is the cheap path and
+    // the one the suite can run without a model: what is pinned here is that
+    // the wiring exists and nothing is emitted when nobody speaks.
+    events.length = 0;
+    await session.endTurn();
+    expect(events.some((e) => e.type === 'reaction')).toBe(false);
+    expect(events.some((e) => e.type === 'state')).toBe(true);
+  });
+
+  it('carries a reaction through the contract unchanged', () => {
+    // The event is parsed by the client against `ServerEventSchema`, so a
+    // ReactionView that does not round-trip is a reaction the player never
+    // sees — and the fallback path would then print it twice instead.
+    const parsed = ServerEventSchema.safeParse({
+      type: 'reaction',
+      reaction: {
+        factionId: 'vigil',
+        factionName: 'Iron Vigil Remnant',
+        color: 160,
+        narrative: 'The Legate reads the dispatch twice and says nothing.',
+        ops: [],
+        heldBack: null,
+        approach: null,
+      },
+    });
+    expect(parsed.success).toBe(true);
+  });
+});

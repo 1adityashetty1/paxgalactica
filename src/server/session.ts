@@ -395,7 +395,16 @@ export class GameSession {
       );
     }
 
-    const outcome = await this.exclusive('The galaxy turns', () => endTurn(campaign));
+    const outcome = await this.exclusive('The galaxy turns', () =>
+      endTurn(campaign, (reaction) => {
+        // Pushed as it is written, not with the other two at the end. The
+        // board moves with it, and the progress line names the power that is
+        // answering rather than sitting on one label for a minute.
+        this.emit({ type: 'reaction', reaction });
+        this.pushState();
+        this.emit({ type: 'progress', label: `${reaction.factionName} answers`, busy: true });
+      }),
+    );
     this.lastBriefing = buildBriefing(campaign.state, outcome.report);
 
     // Time ran out on this turn. The ending is written once, here, and cached

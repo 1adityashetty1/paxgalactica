@@ -91,6 +91,14 @@ export function useGame() {
 
   /* ---------------- server-sent events ---------------- */
 
+  /**
+   * Powers whose answer already arrived over the stream this turn.
+   *
+   * A ref rather than state: it is read inside the SSE handler and inside the
+   * end-turn callback, and changing it must not re-render or re-subscribe.
+   */
+  const spokenLive = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     const source = new EventSource(ROUTES.events);
 
@@ -108,6 +116,18 @@ export function useGame() {
       } else if (event.type === 'state') {
         setView((prev) => spliceLog(prev, event.view));
         setNeedsCampaign(false);
+      } else if (event.type === 'reaction') {
+        // Said the moment it arrives. `endTurn` also returns the full set, so
+        // the ids that came through live are remembered and skipped there —
+        // otherwise every answer would appear twice, and a stream that
+        // duplicates is worse than one that waits.
+        const r = event.reaction;
+        spokenLive.current.add(r.factionId);
+        say(`${r.factionName}: ${r.narrative}`, 'faction', r.color);
+        if (r.approach) {
+          say(`${r.factionName} asks to talk: ${r.approach.opening}`, 'faction', r.color);
+          say(`→ /talk ${r.factionId} — ${r.approach.about}`, 'brief');
+        }
       } else if (event.type === 'error') {
         say(event.message, 'error');
       }
@@ -252,6 +272,7 @@ export function useGame() {
   const endTurn = useCallback(
     () =>
       guard(async () => {
+        spokenLive.current.clear();
         const outcome = await api.endTurn();
         say(`── Turn ${outcome.briefing.turn} ──`, 'system');
         say(
@@ -261,6 +282,9 @@ export function useGame() {
           'system',
         );
         for (const r of outcome.reactions) {
+          // Already said, as it landed. Only a client that missed the stream —
+          // a dropped connection, a reload mid-turn — falls through to here.
+          if (spokenLive.current.has(r.factionId)) continue;
           say(`${r.factionName}: ${r.narrative}`, 'faction', r.color);
           // An approach is an invitation, never a channel opened on the
           // player's behalf: a channel disables the command line and End Turn,

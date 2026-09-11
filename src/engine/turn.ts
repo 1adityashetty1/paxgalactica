@@ -549,7 +549,11 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
  * Advance time. Everything declared this turn lands, the affected powers
  * respond to the settled world, and then every pending order ticks.
  */
-export async function endTurn(campaign: Campaign): Promise<TurnOutcome> {
+export async function endTurn(
+  campaign: Campaign,
+  /** Called as each power's answer lands, so the client need not wait for all three. */
+  onReaction?: (view: ReactionView) => void,
+): Promise<TurnOutcome> {
   const notes: string[] = [];
   const rejections: OpRejection[] = [];
   let costUsd = 0;
@@ -610,7 +614,7 @@ export async function endTurn(campaign: Campaign): Promise<TurnOutcome> {
           costUsd += applied.costUsd;
           notes.push(...applied.notes);
           rejections.push(...applied.rejections);
-          reactionViews.push({
+          const view: ReactionView = {
             factionId: faction.id,
             factionName: faction.name,
             color: faction.displayColor,
@@ -620,7 +624,12 @@ export async function endTurn(campaign: Campaign): Promise<TurnOutcome> {
             // An invitation to talk, if this power wants something. Passed
             // through rather than acted on: the player opens the channel.
             approach: reaction.approach ?? null,
-          });
+          };
+          reactionViews.push(view);
+          // Handed over as it lands. The reactions are generated one power at a
+          // time, so the last of them is the only one that has to wait for all
+          // three — and until this existed, so did the first two.
+          onReaction?.(view);
         }
       } catch (err) {
         notes.push(

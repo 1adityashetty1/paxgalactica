@@ -956,7 +956,11 @@ export const AdvisorReplySchema = z.object({
   counsel: z
     .string()
     .min(1)
-    .max(1600)
+    // 1600 was three paragraphs, and a counsellor who talks for three
+    // paragraphs every turn is one the player stops reading. Output tokens are
+    // also most of what the call spends its time generating, so the cap is the
+    // cheapest latency lever there is.
+    .max(560)
     .refine((c) => !looksLikeAPlan(c), {
       message:
         'This is a plan, not counsel. Do not enumerate steps or list actions — name what is pressing on your leader, in your own voice, and let them decide what to do about it.',
