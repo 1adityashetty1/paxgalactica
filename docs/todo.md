@@ -970,6 +970,106 @@ as `unknown_faction`, but a playtest in which every accord produces nothing is
 not a playtest.
 
 
+## 96. CLOSED and DECIDED — three things the playtest of 2026-09-09 left open
+
+**A red line the player only PROPOSES is not warned about. Closed, not fixed.**
+`channelBlockers` fires on *recorded concessions*, and in the measured case the
+Free Worlds declined, so there was none to appraise. The persona is following
+its instructions correctly — *"their concession is what you understood THEM to
+have just agreed to give"* — and a proposal that was refused is not that.
+Making it record declined proposals would corrupt the ledger
+`groundInConcessions` relies on to authorise real ops, which is a worse trade
+than the warning is worth.
+
+Walked the paths before closing it, and there is no hole:
+
+- the counterparty **agrees and records it** → `sendMessage` appraises → blocker
+  → the accord is refused at close, which is item 82 working;
+- the counterparty **agrees and records nothing** → `closeChannel` appraises what
+  was agreed and refuses the whole accord. Later than item 82 promised, but
+  charged;
+- the counterparty **declines** → nothing is agreed, so nothing binds.
+
+**One residual, and it is a consequence of the fix above it.** Since a
+close-time appraisal that cannot be obtained now lets the accord stand rather
+than destroying it, an accord crossing a red line could survive if the appraisal
+fails three times *and* no concession was ever recorded. Measured once in seven
+`/endtalk` calls, and it needs both. The alternative was a model glitch deleting
+completed negotiations, which is worse and was observed. Written down rather
+than guarded.
+
+**The reaction split is kept, and run in SEQUENCE.** It is a correctness change
+that happened to be faster, and the speed is the part that was given back. What
+it buys: no power reads another's observation block (the merged call put every
+faction's scoped view in one context, which is the `worldAsSeenBy` lesson
+unlearned); a reaction written under the wrong flag becomes detectable, which
+matters because a reaction commits with its own faction as `actor`; and one bad
+response costs one voice rather than the turn's reactions entire.
+
+Run in parallel it took a measured 20% off end-of-turn — 63.4s to 51.0s median —
+and that is **not** why it is shaped this way. Concurrency spawns N copies of
+the Claude Code binary, which contend: three calls averaging 30.8s landed in
+~40s rather than ~31s. And N calls each re-send `serializeState` and the whole
+reaction prompt, which measured **2.8x** the merged call's cost, $0.17 to ~$0.45
+an end-of-turn. The cost is a property of there being N calls and not of running
+them at once, so the sequence keeps every correctness gain and returns only the
+20%. Caching would recover most of it, which is one more argument for **95**.
+
+`prompts/reaction.md` had to be amended: it told the model *"if two reactions in
+the same response could be swapped without anyone noticing, rewrite them"*,
+which a call answering as one power cannot do. Distinctness now rests where it
+always actually rested, on the archetype in the voice line.
+
+**`terms.assets` and `terms.payment` are on screen.** Neither was rendered, so a
+negotiated sale was invisible in the browser — and showing what moves without
+what was paid for it is the same half-a-transaction the term itself exists to
+prevent. `terms.voidsOn` is still unrendered; a treaty's ending conditions are
+worth showing and nobody has asked yet.
+
+### Closed since, without a playtest
+
+- **The stalls have a cause and a guard.** `query()` carries no timeout, so a
+  wedged child process is waited on forever — which is what the 923s HTTP 000
+  and the 117s $0.10 call were, neither of them generation. `CALL_TIMEOUT_MS`
+  is a **per-message** deadline of 180s: a long call that is still streaming is
+  healthy and a silent one is not, and one budget for the whole call cannot
+  tell those apart. An abandoned attempt is retried like any other transient
+  failure, and the child is released in a `finally` so it does not linger.
+- **A retry now says why.** `stats.failures` is a bounded record of what each
+  retried call failed on, printed by `timingReport()`. From outside the process
+  a retry is indistinguishable from a slow call, and the two want opposite
+  fixes — which is why "appraisal retried twice in six calls" could be measured
+  and not explained.
+- **`terms.voidsOn` is on screen.** The last term with real force that the
+  treaty panel did not render. The reducer voids on these every tick, and a
+  deal that evaporated for a reason nobody could read is the same class of
+  surprise as an unpriced concession.
+- **The campaign is written up** in `docs/playtest-2026-09-09.md`.
+- **A record no longer argues with itself.** `loan-3-0.text` read "Ten Combine
+  hulls" over a `lent.stack` of four: the reducer trimmed correctly and the
+  prose did not follow, and the prose is what the personas replay. Two halves,
+  because one alone would not have closed it. A trim now **amends the paper**
+  rather than only the turn's notes — the same answer `closeChannel` gives when
+  it appends a `record` line to a transcript. And the serializers put the
+  figures on one line and the prose on the next, marked *as agreed, in their
+  words*, because they used to run together in a single sentence with nothing
+  to say which was the term. `diplomacy-persona.md` already ruled that the state
+  block beats a transcript; it now says the same thing one level down, inside
+  the block, where it could not previously reach. Applies to debts and
+  commitments too — identical shape, same defect waiting.
+
+### Still open from that campaign
+
+- **`return_loan` and `repudiate_loan` have never been exercised live.** The
+  automatic return at `dueTurn` beat both attempts. The fixture-transfer refusal
+  is tested in the suite and never seen in a campaign.
+- **Baseline latency is ~150s a turn and does not grow.** The end-of-turn
+  sequence across ten turns was 63, 67, 80, 62, 113, 50, 33 with no trend, and
+  `GET /api/campaign` stayed flat at ~2ms with the payload at 92KB. The floor is
+  transport — appraisal takes 12–15s to return two numbers with thinking already
+  off — so **95** is the only thing that moves it.
+
+
 ---
 
 # Closed groupings

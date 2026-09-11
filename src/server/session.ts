@@ -21,6 +21,7 @@ import { getFaction } from '../domain/state.js';
 import { playableFactions } from '../seed/scenario.js';
 import { ApiFailure, toApiFailure } from './errors.js';
 import { appraiseAgreement } from '../model/calls.js';
+import { timingReport } from '../model/client.js';
 import { classifyPrinciples } from '../domain/compulsions.js';
 import { mergeConcessions, type Concession, type Retraction } from '../domain/diplomacy.js';
 
@@ -411,6 +412,14 @@ export class GameSession {
     await campaign.save();
     this.pushState();
 
+    // Where the turn's time actually went, cumulative for the process. Latency
+    // here is almost entirely model latency, and a retried call is
+    // indistinguishable from a slow one when timed from outside — which is what
+    // made the performance question guesswork until this existed.
+    if (process.env.PAXGALACTICA_TIMING === '1') {
+      console.log(`\n── model time after turn ${campaign.state.turn} ──\n${timingReport()}\n`);
+    }
+
     return {
       applied: outcome.applied,
       reactions: outcome.reactions,
@@ -507,8 +516,14 @@ export class GameSession {
     // line, which `appraiseAgreement` already guarantees by construction.
     let costUsd = result.costUsd;
     const mine = result.concessions.filter((c) => c.by === campaign.state.playerFactionId);
-    for (const c of mine) {
-      const ruled = await appraiseAgreement(campaign.state, factionId, c.text);
+    // In parallel: these are independent rulings on separate concessions, and
+    // awaiting them in a loop made a message carrying three offers three times
+    // slower to answer than one carrying a single offer. Order is preserved by
+    // `Promise.all`, so the blockers still read in the order they were conceded.
+    const rulings = await Promise.all(
+      mine.map(async (c) => ({ c, ruled: await appraiseAgreement(campaign.state, factionId, c.text) })),
+    );
+    for (const { c, ruled } of rulings) {
       costUsd += ruled.costUsd;
       const named = ruled.appraisal.breach?.principles ?? [];
       const me = getFaction(campaign.state, campaign.state.playerFactionId);

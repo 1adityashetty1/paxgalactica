@@ -1060,6 +1060,30 @@ function settleAssetTerms(state: WorldState, treaty: Treaty): string[] {
   return notes;
 }
 
+/**
+ * The prose of a record, made to agree with the terms it sits beside.
+ *
+ * A trim reported only in `notes` dies with the turn, while the sentence it
+ * contradicts is replayed into a persona for as long as the arrangement is
+ * live — which is how `loan-3-0` came to read "Ten Combine hulls" over a stack
+ * of four. Same defect `closeChannel` fixes by appending a `record` line to a
+ * transcript, and the same answer.
+ *
+ * The correction wins the space. `text` is capped by its schema, so a long
+ * enough description would push the amendment past the limit and fail the
+ * parse on replay — measured, by exactly that. Trimming the DESCRIPTION is
+ * right rather than merely convenient: the half being cut is the half that was
+ * wrong.
+ */
+function amendRecord(text: string, corrections: string[], max = 240): string {
+  if (corrections.length === 0) return text;
+  const note = ` [Corrected at signature: ${corrections.join('; ')}.]`;
+  if (note.length >= max) return note.trim().slice(0, max);
+  const room = max - note.length;
+  const kept = text.length <= room ? text : `${text.slice(0, Math.max(1, room - 1))}…`;
+  return `${kept}${note}`;
+}
+
 function cedeTerritory(state: WorldState, treaty: Treaty): string[] {
   const notes: string[] = [];
   if (treaty.terms.territory.length === 0) return notes;
@@ -3513,10 +3537,22 @@ export function applyOps(
           break;
         }
 
+        // Corrections the paper has to carry, not merely the turn's notes.
+        //
+        // A trimmed loan stored the model's prose verbatim, so `loan-3-0` read
+        // "Ten Combine hulls sail under Meridian colours" over a `lent.stack`
+        // of four battleships. The reducer trimmed correctly; the sentence did
+        // not follow, and the sentence is what the personas replay. A note in
+        // `notes` dies with the turn — this is the same defect `closeChannel`
+        // fixes by appending a `record` line to a transcript when a term was
+        // trimmed, and it wants the same answer.
+        const corrections: string[] = [];
+
         const rent = Math.min(op.rentPerTurn, MAX_LOAN_RENT);
         if (rent < op.rentPerTurn) {
           const trimmed = `Hire trimmed to ${rent} a turn (asked ${op.rentPerTurn}).`;
           notes.push(trimmed);
+          corrections.push(`the hire is ${rent} a turn, not ${op.rentPerTurn}`);
           logEvent(state, 'clamp', trimmed, op.lenderFactionId);
         }
 
@@ -3595,6 +3631,7 @@ export function applyOps(
           if (hullsIn(taken) < hullsIn(asked.stack)) {
             const trimmed = `Only ${describeStack(taken)} were at ${from.name}; the hire is written for those.`;
             notes.push(trimmed);
+            corrections.push(`what actually changed flag was ${describeStack(taken)}, not ${describeStack(asked.stack)}`);
             logEvent(state, 'clamp', trimmed, op.lenderFactionId);
           }
           setStackAt(from, op.lenderFactionId, subtractStack(have, taken));
@@ -3627,7 +3664,10 @@ export function applyOps(
           status: 'current',
           missedPayments: 0,
           establishedTurn: state.turn,
-          text: op.text,
+          // The prose, made to agree with the terms it sits beside. A record
+          // that argues with itself is worse than one with no prose at all:
+          // both halves reach the personas, and only one of them is true.
+          text: amendRecord(op.text, corrections),
         };
         state.loans.push(loan);
         const note = `${nameFor(state, op.lenderFactionId)} lends ${nameFor(state, op.borrowerFactionId)} ${describeOutstanding(loan)}${rent > 0 ? ` at ${rent} a turn` : ' for nothing'}${loan.dueTurn === null ? '' : `, back by turn ${loan.dueTurn}`}. ${op.text}`;

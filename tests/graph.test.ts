@@ -9,6 +9,7 @@ const mk = (id: string, edges: string[]): StarSystem => ({
   id,
   name: id,
   sector: 'test',
+  worldType: 'arid',
   coords: { x: 0, y: 0 },
   controllerFactionId: null,
   garrison: 0,

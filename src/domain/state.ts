@@ -303,6 +303,34 @@ export const FactionSchema = z.object({
 });
 export type Faction = z.infer<typeof FactionSchema>;
 
+/**
+ * What kind of world this is.
+ *
+ * A fact about the system, not a function of anything else. It is tempting to
+ * derive it — `strategicValue >= 7` looks like it ought to mean "inhabited" —
+ * and that would be wrong in the way the whole file argues against: a backwater
+ * can be an ocean world without being worth anything, and a great market can
+ * sit on a rock. So it is seeded and stored.
+ *
+ * Nothing in the reducer reads it. It changes no income, no combat and no
+ * check; it is what the system panel draws, and a name the arbiter and the
+ * personas can see in the state block. If it ever earns a mechanic — a gas
+ * giant that cannot be invaded, an ice world that costs more to garrison —
+ * that mechanic goes in the reducer beside the others, and this stays the fact
+ * it reads.
+ */
+export const WORLD_TYPES = [
+  'earthlike',
+  'earthnight',
+  'oceanic',
+  'arid',
+  'ice',
+  'industrialmoon',
+  'gasgiant',
+] as const;
+export const WorldTypeSchema = z.enum(WORLD_TYPES);
+export type WorldType = z.infer<typeof WorldTypeSchema>;
+
 export const SystemSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -328,6 +356,11 @@ export const SystemSchema = z.object({
    * taking a cut whether or not anyone has fired.
    */
   ships: z.record(z.string(), ShipStackSchema).default({}),
+  /**
+   * Defaulted, so every campaign saved before worlds had a face still loads —
+   * as a rock, which is the least presumptuous thing to be wrong about.
+   */
+  worldType: WorldTypeSchema.default('arid'),
 });
 export type StarSystem = z.infer<typeof SystemSchema>;
 

@@ -1,3 +1,4 @@
+import { WorldSprite, worldTypeLabel } from './WorldSprite.js';
 import { useState } from 'react';
 import { FactionAvatar } from './FactionAvatar.js';
 import { FleetsPanel } from './FleetsPanel.js';
@@ -236,8 +237,14 @@ function SystemTab({
 
   return (
     <div className="system-detail">
-      <h3 style={{ color }}>{sys.name}</h3>
-      <p className="meta">{sys.sector}</p>
+      <div className="world-head">
+        <WorldSprite type={sys.worldType} size={84} />
+        <div>
+          <h3 style={{ color }}>{sys.name}</h3>
+          <p className="meta">{sys.sector}</p>
+          <p className="meta">{worldTypeLabel(sys.worldType)}</p>
+        </div>
+      </div>
       <dl>
         <dt>Held by</dt>
         <dd style={{ color }}>{controller?.name ?? 'unaligned'}</dd>
@@ -367,6 +374,26 @@ function Orders({ state, briefing }: { state: WorldState; briefing: Briefing | n
       })}
     </div>
   );
+}
+
+/** A void condition in words. The shapes are closed, so this is a lookup. */
+function voidText(state: WorldState, v: { kind: string; by: string; target: string }): string {
+  const who = getFaction(state, v.by)?.name ?? v.by;
+  const them = getFaction(state, v.target)?.name ?? v.target;
+  switch (v.kind) {
+    case 'treaty_with':
+      return `${who} signs with ${them}`;
+    case 'attacks':
+      return `${who} attacks ${them}`;
+    case 'insolvent':
+      return `${who} is running at a loss`;
+    case 'world_lost':
+      return `${who} loses ${getSystem(state, v.target)?.name ?? v.target}`;
+    case 'asset_lost':
+      return `${who} no longer holds what this was written against`;
+    default:
+      return `${v.kind}: ${who}`;
+  }
 }
 
 function colourOf(state: WorldState, factionId: string): string {
@@ -651,6 +678,32 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
                     {flow}/turn
                   </li>
                 )}
+                {/*
+                  A sale's two halves, shown together or not at all.
+                  `terms.payment` was never rendered either, so a cession's
+                  price was invisible on screen exactly as an asset's transfer
+                  was invisible in the reducer — and showing what moves without
+                  what was paid for it is the same half-a-transaction the term
+                  itself exists to prevent.
+                */}
+                {(t.terms.assets ?? []).map((a) => {
+                  const asset = (state.assets ?? []).find((x) => x.id === a.assetId);
+                  return (
+                    <li key={a.assetId}>
+                      hands over:{' '}
+                      {asset ? `${asset.quantity} ${asset.unit} of ${asset.kind}` : a.assetId} →{' '}
+                      {getFaction(state, a.toFactionId)?.name ?? a.toFactionId}
+                    </li>
+                  );
+                })}
+                {Object.entries(t.terms.payment ?? {})
+                  .filter(([, n]) => n !== 0)
+                  .map(([id, n]) => (
+                    <li key={`pay-${id}`} className={id === me ? (n > 0 ? 'good' : 'bad') : undefined}>
+                      paid once: {getFaction(state, id)?.name ?? id} {n > 0 ? 'receives' : 'pays'}{' '}
+                      {Math.abs(n)}
+                    </li>
+                  ))}
                 {t.terms.incomeShares.map((share, i) => (
                   <li key={i}>
                     {Math.round(share.share * 100)}% of{' '}
@@ -663,6 +716,19 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
                 {t.terms.mutualDefenseTrigger && (
                   <li className="trigger">triggers on: {t.terms.mutualDefenseTrigger}</li>
                 )}
+                {/*
+                  What ENDS the paper. A treaty carrying a condition it can die
+                  of is a treaty the player should be able to read, and this was
+                  the last term with real force that the panel did not show —
+                  the reducer voids on these every tick, and a deal that
+                  evaporated for a reason nobody could see on screen is the same
+                  class of surprise as an unpriced concession.
+                */}
+                {(t.terms.voidsOn ?? []).map((v, i) => (
+                  <li key={`void-${i}`} className="trigger">
+                    ends if {voidText(state, v)}
+                  </li>
+                ))}
               </ul>
             </div>
           );

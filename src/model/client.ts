@@ -70,9 +70,65 @@ export interface CallStats {
   calls: number;
   costUsd: number;
   retries: number;
+  /**
+   * The same figures split by call kind, plus the wall clock each kind spent.
+   *
+   * Latency in this game is almost entirely model latency, and until this
+   * existed there was no way to say WHICH call a slow turn was waiting on —
+   * the playtest of 2026-09-09 had to derive it from curl timings outside the
+   * process, which cannot see a retry. A retried call looks exactly like a slow
+   * one from the outside, and the two want opposite fixes.
+   */
+  byKind: Record<string, { calls: number; seconds: number; costUsd: number; retries: number }>;
+  /** What went wrong on each retried call, bounded and newest last. */
+  failures: { kind: string; label: string; why: string }[];
 }
 
-export const stats: CallStats = { calls: 0, costUsd: 0, retries: 0 };
+export const stats: CallStats = { calls: 0, costUsd: 0, retries: 0, byKind: {}, failures: [] };
+
+/**
+ * Why a call had to be retried, most recent last.
+ *
+ * A retry is invisible from outside the process — it looks exactly like one
+ * slow call — so the playtest of 2026-09-09 could see that appraisal retried
+ * twice in six calls and had no way to find out why. Each retry is another full
+ * round trip, so this is the difference between "the tier is slow" and "the
+ * schema is wrong", which want opposite fixes.
+ *
+ * Bounded, because a long campaign should not accumulate a leak in the name of
+ * diagnostics.
+ */
+const MAX_RECORDED_FAILURES = 40;
+
+function recordFailure(kind: CallKind, label: string, why: string): void {
+  stats.failures.push({ kind, label, why: why.replace(/\s+/g, ' ').trim().slice(0, 300) });
+  if (stats.failures.length > MAX_RECORDED_FAILURES) stats.failures.shift();
+}
+
+function record(kind: CallKind, seconds: number, costUsd: number, retries: number): void {
+  const row = (stats.byKind[kind] ??= { calls: 0, seconds: 0, costUsd: 0, retries: 0 });
+  row.calls += 1;
+  row.seconds += seconds;
+  row.costUsd += costUsd;
+  row.retries += retries;
+}
+
+/** Wall clock and retries per call kind, slowest first. */
+export function timingReport(): string {
+  const rows = Object.entries(stats.byKind).sort((a, b) => b[1].seconds - a[1].seconds);
+  if (rows.length === 0) return 'No model calls yet.';
+  return [
+    'kind             calls   total s    med s   retries    cost',
+    ...rows.map(
+      ([kind, r]) =>
+        `${kind.padEnd(17)}${String(r.calls).padStart(4)}${r.seconds.toFixed(1).padStart(10)}${(r.seconds / r.calls).toFixed(1).padStart(9)}${String(r.retries).padStart(10)}${('$' + r.costUsd.toFixed(3)).padStart(9)}`,
+    ),
+    ...(stats.failures.length > 0
+      ? ['', 'why calls were retried (newest last):',
+         ...stats.failures.map((f) => `  ${f.label}: ${f.why}`)]
+      : []),
+  ].join('\n');
+}
 
 function assertNetworkAllowed(): void {
   if (process.env.PAXGALACTICA_NO_NETWORK === '1') {
@@ -81,6 +137,24 @@ function assertNetworkAllowed(): void {
     );
   }
 }
+
+/**
+ * How long one attempt may take before it is abandoned.
+ *
+ * The SDK's `query()` has no timeout of its own: if the spawned binary hangs —
+ * a dropped stream, a wedged child process — the await never settles and the
+ * turn waits forever. Measured in the playtest of 2026-09-09: one declared
+ * action sat for **923 seconds** and returned no response at all, and a second
+ * took 117s while costing $0.10, which is a tenth of the money for four times
+ * the time and therefore not generation. Both killed the agent driving the
+ * campaign.
+ *
+ * 180s against measured medians of 15s (appraisal), 24s (resolution) and 30s
+ * (reaction) — six times the slowest legitimate call, so a timeout means
+ * something is wrong rather than something is slow. Abandoning is safe because
+ * `callStructured` treats it as any other transient failure and retries.
+ */
+export const CALL_TIMEOUT_MS = 180_000;
 
 /** Raw single-shot call. Returns whatever the model produced, unvalidated. */
 async function rawCall(
@@ -122,8 +196,26 @@ async function rawCall(
     },
   });
 
+  // A hung call has to be abandoned rather than waited on. Racing each `next()`
+  // rather than the whole loop, so the deadline is per MESSAGE: a long call that
+  // is still streaming is healthy and a silent one is not, and a single budget
+  // for the whole call cannot tell those apart.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = () =>
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new ModelCallError(`the call went silent for ${CALL_TIMEOUT_MS / 1000}s and was abandoned`, 1)),
+        CALL_TIMEOUT_MS,
+      );
+    });
+
   try {
-    for await (const message of q) {
+    const it = q[Symbol.asyncIterator]();
+    for (;;) {
+      const step = await Promise.race([it.next(), deadline()]);
+      clearTimeout(timer);
+      if (step.done) break;
+      const message = step.value;
       if (message.type === 'result') {
         costUsd = message.total_cost_usd ?? 0;
         if (message.subtype === 'success') {
@@ -145,6 +237,15 @@ async function rawCall(
     const text = err instanceof Error ? err.message : String(err);
     if (/not logged in|\/login/i.test(text)) throw new NotLoggedInError();
     if (errorText === undefined) throw err;
+  } finally {
+    clearTimeout(timer);
+    // Release the child process. Without this an abandoned call leaves a
+    // binary running and its output going nowhere.
+    try {
+      await q.return?.(undefined);
+    } catch {
+      // Nothing useful to do if the teardown itself fails.
+    }
   }
 
   if (errorText !== undefined) {
@@ -175,6 +276,8 @@ function formatIssues(error: z.ZodError): string {
 
 export async function callStructured<T>(call: StructuredCall<T>): Promise<StructuredResult<T>> {
   assertNetworkAllowed();
+  const startedAt = Date.now();
+  const retriesBefore = stats.retries;
 
   const maxRetries = call.maxRetries ?? 2;
   const label = call.label ?? call.kind;
@@ -204,6 +307,7 @@ export async function callStructured<T>(call: StructuredCall<T>): Promise<Struct
       if (err instanceof NotLoggedInError) throw err;
       lastError = err;
       stats.calls += 1;
+      recordFailure(call.kind, label, err instanceof Error ? err.message : String(err));
       if (attempt > maxRetries) break;
       stats.retries += 1;
       continue;
@@ -216,6 +320,7 @@ export async function callStructured<T>(call: StructuredCall<T>): Promise<Struct
     lastRaw = coerce(result);
     const parsed = call.schema.safeParse(lastRaw);
     if (parsed.success) {
+      record(call.kind, (Date.now() - startedAt) / 1000, totalCost, stats.retries - retriesBefore);
       return { value: parsed.data, attempts: attempt, costUsd: totalCost };
     }
 
@@ -228,6 +333,7 @@ export async function callStructured<T>(call: StructuredCall<T>): Promise<Struct
     }
 
     stats.retries += 1;
+    recordFailure(call.kind, label, formatIssues(parsed.error));
     prompt = [
       call.user,
       '',
