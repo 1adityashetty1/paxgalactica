@@ -68,6 +68,25 @@ export const AdjustDissentOp = z.object({
 });
 
 /**
+ * The same op as the model may write it: upward only.
+ *
+ * A model-sourced `adjust_dissent` has never been allowed to lower anybody's
+ * standing — the reducer rejects it with "dissent cannot be talked down", and
+ * for good reason, since the same call that earns a refusal could otherwise
+ * erase the penalty it just earned. But the model was handed a schema saying
+ * `-100..100`, so it kept writing the one half it could never use.
+ *
+ * Constrained here rather than only in the reducer because `ModelOpSchema` is
+ * what becomes the JSON schema handed to the model: a floor of zero makes the
+ * rejected half **ungeneratable**, which is layer 1 doing the work layer 2 was
+ * paying a correction call for. `AdjustDissentOp` keeps the full range, so
+ * journals written before this still parse and still reach the same verdicts.
+ */
+export const ModelAdjustDissentOp = AdjustDissentOp.extend({
+  delta: z.number().int().min(0).max(100),
+});
+
+/**
  * A change of standing posture — and, optionally, of the axes that give a
  * posture mechanical force.
  *
@@ -830,7 +849,7 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   DeployAgentOp,
   RecallAgentOp,
   AdjustShipsOp,
-  AdjustDissentOp,
+  ModelAdjustDissentOp,
   EstablishCommitmentOp,
   DissolveCommitmentOp,
   // `establish_debt` is deliberately ABSENT, like `form_treaty`: lending binds

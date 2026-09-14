@@ -103,3 +103,31 @@ describe('the duration rubric goes to the passes that set durations', () => {
     expect(calls[0]!.system).toContain(RUBRIC_MARK);
   });
 });
+
+describe('the model is not offered values it can never use', () => {
+  it('cannot express a downward dissent adjustment at all', async () => {
+    const { ModelOpSchema, OpSchema } = await import('../src/domain/ops.js');
+    const down = { op: 'adjust_dissent', factionId: 'meridian', delta: -10 };
+
+    // Layer 1: ungeneratable. `ModelOpSchema` becomes the JSON schema handed
+    // to the model, so a floor of zero means the rejected half never appears.
+    expect(ModelOpSchema.safeParse(down).success).toBe(false);
+    expect(
+      ModelOpSchema.safeParse({ op: 'adjust_dissent', factionId: 'meridian', delta: 8 }).success,
+    ).toBe(true);
+
+    // Layer 2 keeps the full range: journals written before this carry
+    // negative deltas that were rejected, and replay has to parse them to
+    // reach the same verdict rather than failing to load.
+    expect(OpSchema.safeParse(down).success).toBe(true);
+  });
+
+  it('advertises the floor in the schema the model actually receives', async () => {
+    const { z } = await import('zod');
+    const { ModelOpSchema } = await import('../src/domain/ops.js');
+    const json = JSON.stringify(z.toJSONSchema(ModelOpSchema, { target: 'draft-7', io: 'input' }));
+    // The constraint is worthless if it does not survive into the JSON schema,
+    // which is the artefact that does the enforcing.
+    expect(json).toMatch(/"adjust_dissent"[\s\S]{0,400}?"minimum":0/);
+  });
+});

@@ -1772,3 +1772,67 @@ describe('a thing sold under a treaty', () => {
     expect(groundInConcessions(s, [sale()], conceded, 'ojjul').ops).toHaveLength(1);
   });
 });
+
+/**
+ * The dossier sale the model kept failing to write.
+ *
+ * Measured in the playtest of 2026-09-09: an accord selling a compiled file
+ * emitted `"NEW:dossier:ojjul:ithaal_chart"` as an asset id and was rejected
+ * as `unknown_asset`. The model was not being careless — it was being asked
+ * for something unwritable. A dossier is minted by the accord, so it has no
+ * id until the reducer assigns one, and both `transfer_asset` and
+ * `terms.assets` need an id to name. There was no id to give.
+ *
+ * The escape hatch already existed: a dossier is the one asset an accord may
+ * create AND the one whose `heldBy` may be either party, so the seller writes
+ * it straight into the buyer's hands in a single op. `extraction.md` now says
+ * so; this pins that the path it points at actually works.
+ */
+describe('a dossier sold across a table', () => {
+  it('is one op into the buyer’s hands, with the price beside it', () => {
+    const s = createSeedState('meridian');
+    const before = s.factions.find((f) => f.id === 'meridian')!.credits;
+
+    const out = applyOps(
+      s,
+      [
+        {
+          op: 'create_asset',
+          kind: 'dossier',
+          // The BUYER, written by the seller — the thing only an accord may do.
+          heldBy: 'meridian',
+          text: "The Combine's file on the Vantic keel-yards, sealed.",
+          quantity: 1,
+          unit: 'dossier',
+          valuePerUnit: { meridian: 300 },
+        },
+        { op: 'adjust_credits', factionId: 'meridian', delta: -300, reason: 'for the file' },
+        { op: 'adjust_credits', factionId: 'ojjul', delta: 300, reason: 'for the file' },
+      ] as OpInput[],
+      'extraction',
+      'meridian',
+      true,
+    );
+
+    expect(out.rejections).toEqual([]);
+    expect(out.state.assets).toHaveLength(1);
+    expect(out.state.assets[0]!.heldBy).toBe('meridian');
+    expect(out.state.assets[0]!.kind).toBe('dossier');
+    // Conserved, as any extraction-sourced money movement must be.
+    expect(out.state.factions.find((f) => f.id === 'meridian')!.credits).toBe(before - 300);
+  });
+
+  it('still refuses an id that was never minted', () => {
+    // The shape the model reached for, and why the guidance had to change
+    // rather than the guard.
+    const s = createSeedState('meridian');
+    const out = applyOps(
+      s,
+      [{ op: 'transfer_asset', assetId: 'NEW:dossier:ojjul:ithaal_chart', toFactionId: 'meridian' }] as OpInput[],
+      'extraction',
+      'meridian',
+      true,
+    );
+    expect(out.rejections[0]?.code).toBe('unknown_asset');
+  });
+});

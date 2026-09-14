@@ -65,9 +65,18 @@ what somebody knows — and it is an exception because nothing is being conjured
 the seller already had the knowledge, for free, and could have simply said it
 here. What the deal makes is the paper. So *"my file on the Vantic yards, three
 hundred, and you never had it from me"* is a real trade, written as
-`create_asset` with `kind: "dossier"` held by the seller, and then the sale
-itself as a treaty carrying `terms.assets` and `terms.payment` — the paper has a
-price, so it follows the rule above.
+a single `create_asset` with `kind: "dossier"`, and the price beside it.
+
+**Write it straight into the buyer's hands.** A dossier is the one asset an
+accord may create, and the one whose `heldBy` may be either party — so a sale is
+a single `create_asset` with the BUYER as `heldBy`, and the price as
+`adjust_credits` in both directions. Do not create it for the seller and then
+try to move it: the id does not exist until the reducer mints it, so there is
+nothing for `terms.assets` or `transfer_asset` to name, and inventing a
+placeholder like `"NEW:dossier:..."` is rejected as an unknown asset. (That is
+measured, not hypothetical.) The two-halves rule still holds — the paper and the
+payment are one batch, and a batch that moves money without conserving it is
+dropped.
 
 ```jsonc
 { "op": "create_asset", "kind": "dossier", "heldBy": "ojjul",
