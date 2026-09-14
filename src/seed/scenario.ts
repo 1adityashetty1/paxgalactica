@@ -613,52 +613,221 @@ export function createSeedState(playerFactionId: string): WorldState {
     commitments: [],
     agents: [],
     /**
-     * The Combine's sheet is built on debt — *"the debt is the whole instrument
-     * of control"* — and until there was a debt mechanic those lines had nothing
-     * to point at. Two, chosen so both halves of the mechanism are live from
-     * turn 0 and so the arbiter has state to rule against rather than a fiction.
+     * Every power starts holding one thing worth bargaining over.
      *
-     * Not Arkane, deliberately: *stone-debt* is their word for what is owed for
-     * taking help, and the whole Closing is a refusal to take any. A power that
-     * counts its dead rather than accept grain does not carry a Nar loan.
+     * The rule this looks like it breaks is *"nobody declares an asset into
+     * existence"*, and it does not: that rule is about what a MODEL may do —
+     * `create_asset` is refused from an accord and refused when the actor is not
+     * the holder — because the problem was never how much an invented asset is
+     * worth, it was that a persona could invent one. The seed is not a model. It
+     * already authors treaties, commitments and debts, and an authored asset is
+     * the same kind of thing.
+     *
+     * What it buys is the thing the diplomacy layer was worst at. Assets shipped
+     * with an empty board, so for the first several turns of every campaign the
+     * only things two powers could bargain over were worlds, hulls and money —
+     * and `serializeTheirAssets` showed each persona an empty shelf, which is
+     * the state it was built to replace. Nothing could be ransomed, no file
+     * could be bought, and the whole gains-from-trade argument for per-faction
+     * value had nothing to price.
+     *
+     * Four properties, each deliberate:
+     *
+     * - **Portable, and none of them pays.** No `yield` anywhere: these exist to
+     *   be TRADED, not to change the economy. A seeded income stream would be
+     *   four new `MAX_ASSET_YIELD` flows on a board whose balance is already
+     *   measured, to demonstrate a mechanic a single survey demonstrates.
+     * - **Asymmetrically valued**, which is the whole of why an asset is worth
+     *   trading rather than hoarding. Each is worth several times more to a
+     *   specific rival than to the power sitting on it.
+     * - **Placed on a world**, so conquest can take them. An asset with no
+     *   `atSystemId` is a note saying somebody has a thing; one standing
+     *   somewhere is a thing.
+     * - **Roughly equal**, at 400-500 to the best buyer — about two battleships,
+     *   and the same order as a debt balance, so no opening position is decided
+     *   by what it happens to be holding.
+     *
+     * The Combine holds none, and that is not an oversight. Its shelf is the
+     * paper below: three debts, and `assign_debt` is how a creditor sells one.
+     * The richest power on the board is the one whose tradeable inventory is
+     * claims on everybody else, which is the faction stated as a balance sheet.
      */
-    // Nobody starts holding anything: an asset is the outcome of an attempt, not
-
-    // a starting position. See `AssetSchema`.
-
-    assets: [],
+    assets: [
+      {
+        // Meridian insures cargo and breaks the hulls that do not come home.
+        // Worth most to the Vigil: a remnant maintaining Imperial capital ships
+        // with no yard left that can make the parts.
+        id: 'ast-0-0',
+        kind: 'salvage',
+        text: 'Sorted hull plate and reactor casing on the Corvid breaking grounds, bought off wrecks the Authority had underwritten.',
+        heldBy: 'meridian',
+        quantity: 120,
+        unit: 'ton',
+        divisible: true,
+        valuePerUnit: { vigil: 4, ojjul: 3, drajk: 2, meridian: 1 },
+        speculative: false,
+        valueRange: {},
+        uses: null,
+        atSystemId: 'sek-2',
+        portable: true,
+        yield: null,
+        acquiredTurn: 0,
+      },
+      {
+        // Speculative on purpose, and the one seeded thing that is: `valueRange`
+        // had never been seen in a campaign, and a set of drawings nobody has
+        // built from is exactly the honest case for it — the argument is whether
+        // they can be used at all, not what a ton of something costs.
+        id: 'ast-0-1',
+        kind: 'blueprints',
+        text: 'Imperial line-of-battle drawings held at Vantic, complete but for the yard notes that made them buildable.',
+        heldBy: 'vigil',
+        quantity: 1,
+        unit: 'set',
+        divisible: false,
+        valuePerUnit: {},
+        speculative: true,
+        valueRange: { meridian: { min: 280, max: 700 }, ojjul: { min: 200, max: 520 } },
+        uses: null,
+        atSystemId: 'tor-3',
+        portable: true,
+        yield: null,
+        acquiredTurn: 0,
+      },
+      {
+        // The Drift does not raid, so the only crews it holds are off ships that
+        // came at it and lost — which is what a faction built on *"make
+        // occupation cost more than it is worth"* would have. It also hands the
+        // one power that can never borrow something real to bargain with, and
+        // gives Drajk and the Vigil a reason to open a channel with it at all.
+        id: 'ast-0-2',
+        kind: 'prisoners',
+        text: 'Crews off hulls that ran at the Drift and did not come off it, held under guard at Arkane Prime.',
+        heldBy: 'freeworlds',
+        quantity: 24,
+        unit: 'crew',
+        divisible: true,
+        valuePerUnit: { drajk: 20, vigil: 18, ojjul: 4, freeworlds: 2 },
+        speculative: false,
+        valueRange: {},
+        uses: null,
+        atSystemId: 'ark-1',
+        portable: true,
+        yield: null,
+        acquiredTurn: 0,
+      },
+      {
+        // A prize hold with one buyer, which is the interesting shape rather
+        // than a flaw: Meridian's own red line refuses narcotics, slaves and
+        // proscribed weapons outright, so the richest customer on the board is
+        // barred by its own sheet from taking it. That is a negotiation problem
+        // the seed can pose and no mechanic has to enforce.
+        //
+        // Worth little to Drajk itself despite Drajk being the power that CAN
+        // move contraband, and the text says why: it is still bonded, so it is
+        // traceable to the house it came off. A smuggler's own hold is worth
+        // what a buyer will pay for it, not what it cost somebody else.
+        id: 'ast-0-3',
+        kind: 'contraband',
+        text: 'A prize hold off a Combine-flagged runner, still crated and still bonded, sitting at Vergesse.',
+        heldBy: 'drajk',
+        quantity: 60,
+        unit: 'crate',
+        divisible: true,
+        valuePerUnit: { ojjul: 8, drajk: 2, vigil: 1 },
+        speculative: false,
+        valueRange: {},
+        uses: null,
+        atSystemId: 'ilv-6',
+        portable: true,
+        yield: null,
+        acquiredTurn: 0,
+      },
+    ],
     // Nor does anybody start owing a squadron. A loan moves real hulls between
     // powers, so seeding one would move the opening board — every fleet
     // threshold, every balance figure — to demonstrate a mechanic the first
     // negotiated hire will demonstrate for free.
     loans: [],
+    /**
+     * The Combine's sheet is built on debt — *"the debt is the whole instrument
+     * of control"* — and until there was a debt mechanic those lines had nothing
+     * to point at. Three now, chosen so both halves of the mechanism are live
+     * from turn 0 and so the arbiter has state to rule against rather than a
+     * fiction.
+     *
+     * **Sized by burden, not by figure, which is what the first version got
+     * wrong.** It gave Drajk 40 a turn and Meridian 25, which reads as roughly
+     * comparable and is not: measured on the opening board, Drajk nets 73 and
+     * Meridian 307, so the same arrangement took **55% of one income and 8% of
+     * the other**. The poorest power on the map — 700 credits, industry 7 — was
+     * also the only one carrying a real obligation, and it was crippling in a
+     * way nothing in the design intended or said out loud. The instalments are
+     * now a tenth of each debtor's net, which is a burden that bites without
+     * deciding the game.
+     *
+     * Spreading it also fixes the thing that made Drajk's debt read as a
+     * punishment rather than a position: **it was unique.** One power in five
+     * owed anything, so the mechanic was a fact about Drajk rather than a fact
+     * about the Rim. Three debtors makes the Combine what its doctrine says it
+     * is — the power everybody owes — and the total flowing to it went DOWN, from
+     * 65 a turn to 55, and outstanding from 880 to 670. Being owed by everyone
+     * is worth more to the Combine than being owed a lot by one debtor, and it
+     * costs the board less.
+     *
+     * Not Arkane, deliberately: *stone-debt* is their word for what is owed for
+     * taking help, the whole Closing is a refusal to take any, and their own red
+     * line is *"tribute is refused — the Drift does not pay to be left alone"*.
+     * A power that counts its dead rather than accept grain does not carry a Nar
+     * loan. What they carry instead is the prisoners above.
+     */
     debts: [
       {
         id: 'debt-0',
         creditorFactionId: 'ojjul',
         debtorFactionId: 'drajk',
-        principal: 600,
-        // Already in default at turn 0, which is what makes the Combine's
-        // `debt_unpursued` compulsion a live question on the first turn rather
-        // than a rule waiting for something to happen.
-        balance: 480,
-        perTurn: 40,
+        principal: 150,
+        // Still in default at turn 0, and that is the part worth keeping: it is
+        // what makes the Combine's `debt_unpursued` compulsion a live question
+        // on the first turn rather than a rule waiting for something to happen.
+        // The default is the drama; the 480 was the mistake.
+        balance: 120,
+        perTurn: 10,
         status: 'delinquent',
         missedPayments: 2,
         establishedTurn: 0,
-        text: 'The Drajk Confederacy owes the Combine 600 against refitted hulls, and has stopped paying.',
+        text: 'The Drajk Confederacy owes the Combine 150 against a refit at Shalka, and has stopped paying.',
       },
       {
         id: 'debt-1',
         creditorFactionId: 'ojjul',
         debtorFactionId: 'meridian',
-        principal: 400,
-        balance: 400,
+        principal: 300,
+        balance: 300,
         perTurn: 25,
         status: 'current',
         missedPayments: 0,
         establishedTurn: 0,
-        text: 'Meridian carries 400 of Combine paper against the Sekkar yards, serviced on schedule.',
+        text: 'Meridian carries 300 of Combine paper against the Sekkar yards, serviced on schedule.',
+      },
+      {
+        // A remnant maintaining capital ships it has no yard to build parts for
+        // has to buy them from somebody, and the Combine sells to everyone —
+        // that is its whole identity. The tension is the point: the Vigil's own
+        // line is *"will not accept payment to stand down; being bought is the
+        // insult, not the price"*, which is about being bribed and says nothing
+        // about owing a chandler. A proud power that cannot pay its bills is a
+        // better position than a proud power with no bills.
+        id: 'debt-2',
+        creditorFactionId: 'ojjul',
+        debtorFactionId: 'vigil',
+        principal: 250,
+        balance: 250,
+        perTurn: 20,
+        status: 'current',
+        missedPayments: 0,
+        establishedTurn: 0,
+        text: 'The Vigil owes the Combine 250 against reactor parts the Torrek yards can no longer make, and pays on time.',
       },
     ],
     playerFactionId,

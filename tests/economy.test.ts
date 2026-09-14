@@ -1390,7 +1390,7 @@ describe('a contingent payment', () => {
       'model',
       'ojjul',
     ).state;
-    const assetId = s.assets[0]!.id;
+    const assetId = s.assets.find((a) => a.kind === 'collateral')!.id;
     s = applyOps(
       s,
       [indemnity({ contingencies: [{

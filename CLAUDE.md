@@ -1283,10 +1283,48 @@ could be invented at all.
 |---|---|
 | a successful attempt | `create_asset` from the resolution pass, stripped by `boundPayloadsToOutcome` on a failure and **halved** on a partial — an asset has a magnitude, unlike an operative, who is placed or is not |
 | a world changing hands | anything with that `atSystemId` goes with it |
+| **the seed** | four, authored — one per power except the Combine |
 
 `create_asset` is refused from an **accord** (`declared_only`): a conversation
 trades what exists and cannot conjure what does not. It is also refused when the
 actor is not the holder — you cannot survey ore into somebody else's warehouse.
+
+**The seed is not an exception to the rule, and the distinction is the whole
+of it.** The rule governs what a *model* may do, because the problem was never
+how much an invented asset is worth — it was that a persona could invent one.
+The seed already authors treaties, commitments and debts; an authored asset is
+the same kind of thing, and it passes through no model at all.
+
+They ship because the opening board was empty, and an empty board defeated the
+feature. For the first several turns of every campaign the only things two
+powers could bargain over were worlds, hulls and money, and
+`serializeTheirAssets` showed each persona an empty shelf — which is precisely
+the state it was built to replace. Nothing could be ransomed, no file bought,
+and the gains-from-trade argument that makes `valuePerUnit` per-faction had
+nothing to price.
+
+Four properties, each load-bearing:
+
+- **None of them pays.** No `yield` anywhere. These exist to be traded, not to
+  change the economy: four seeded income streams would be four new
+  `MAX_ASSET_YIELD` flows on a board whose balance is already measured.
+- **Each is worth several times more to a rival than to its holder** — the whole
+  of why an asset is worth trading rather than hoarding.
+- **Each stands on a world its holder controls**, so conquest can take it. An
+  asset with no `atSystemId` is a note saying somebody has a thing.
+- **Roughly equal**, at 400–500 to the best buyer, so no opening position is
+  decided by what a power happens to be holding.
+
+The Combine holds none, and that is not an oversight: its shelf is the paper —
+three debts, and `assign_debt` is how a creditor sells one. The richest power on
+the board is the one whose tradeable inventory is claims on everybody else,
+which is that faction stated as a balance sheet.
+
+One of the four is **speculative**, which had never been seen in a campaign: a
+set of Imperial line-of-battle drawings complete but for the yard notes that
+made them buildable. What that mechanic is for is a thing whose worth nobody has
+settled, and a design nobody has built from is the honest case — the argument is
+whether they can be used at all, not what a ton of something costs.
 
 `transfer_asset` runs the other way. Giving your own away needs nobody, so it is
 declarable; **taking** another power's needs them, so it is refused from a
@@ -1787,16 +1825,41 @@ It reads **defaulted loans** as well as delinquent debts, because the line says
 describes. Arrears on a hire fee do not count — that is a smaller grievance and a
 private one, and the trigger is about the thing itself not coming back.
 
-The seed gives the Combine two debts so both halves are live from turn 0 — Drajk
-already in default, Meridian paying on schedule — which also gives the arbiter
-real state to rule against instead of a fiction. **Not Arkane, deliberately:**
-*stone-debt* is their word for what is owed for taking help, and the Closing is
-a refusal to take any. A power that counts its dead rather than accept grain
-does not carry a Nar loan.
+The seed gives the Combine **three** debts so both halves are live from turn 0 —
+Drajk in default, Meridian and the Vigil paying on schedule — which also gives
+the arbiter real state to rule against instead of a fiction. **Not Arkane,
+deliberately:** *stone-debt* is their word for what is owed for taking help, and
+the Closing is a refusal to take any. A power that counts its dead rather than
+accept grain does not carry a Nar loan.
 
-Balance is unmoved (nets 24/90/232/71/32 before and after) because the transfer
-sits outside `net`, and the Combine's inflow is bounded by the principal rather
-than being another perpetual stream.
+**They are sized by burden, not by figure, and the first version was not.** It
+gave Drajk 40 a turn and Meridian 25, which reads as roughly comparable and is
+not: on the opening board Drajk nets **73** and Meridian **307**, so one
+arrangement took **55% of an income and the other 8%** — and Drajk is also the
+poorest power on the map at 700 credits and industry 7, and was the only power
+that owed anything at all. A mechanic meant to give the Combine's sheet
+something to point at had quietly become a handicap on one faction, stated
+nowhere and intended by nobody. Instalments are now about **a tenth of each
+debtor's net**.
+
+Spreading it fixes the other half, which is that the debt was *unique*: one
+power in five owing anything made it a fact about Drajk rather than a fact about
+the Rim. Three debtors is what the Combine's doctrine actually describes — and
+the total flowing to it went **down**, 65 a turn to 55, and outstanding 880 to
+670. Being owed by everybody is worth more to that faction than being owed a lot
+by one debtor, and it costs the board less.
+
+The Vigil's is the one that needed an argument. Its own line is *"will not
+accept payment to stand down; being bought is the insult, not the price"* —
+which is about being bribed and says nothing about owing a chandler. A remnant
+maintaining capital ships it has no yard left to make parts for has to buy them
+from somebody, and the Combine sells to everyone. A proud power that cannot pay
+its bills is a better position than a proud power with no bills.
+
+Balance is unmoved because the transfer sits outside `net` and the Combine's
+inflow is bounded by the principal rather than being another perpetual stream.
+`pnpm balance 30` is byte-identical across the resize: 3/6/5/4/4, 567 tolls, a
+58/42 income mix.
 
 ### Loans: a thing that comes back, which is not a debt
 

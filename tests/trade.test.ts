@@ -882,10 +882,17 @@ describe('the defection agent mission', () => {
   });
 
   it('charges for the hulls, so it is not a free shipyard', () => {
+    // Against a control rather than against the opening purse. Income settles
+    // on the same tick, so "ended the turn poorer" is a statement about the
+    // seed's economy and not about the defection: what this test is for is
+    // that turning crews costs the suborner what the yards would have charged.
     const { state } = withAgent(2);
-    const purse = fac(state, 'drajk').credits;
+    const control = fresh('drajk');
+
     const after = tickTurn(state).state;
-    expect(fac(after, 'drajk').credits).toBeLessThan(purse);
+    const withoutAgent = tickTurn(control).state;
+
+    expect(fac(after, 'drajk').credits).toBeLessThan(fac(withoutAgent, 'drajk').credits);
   });
 
   it('finds no takers against a resolute power', () => {

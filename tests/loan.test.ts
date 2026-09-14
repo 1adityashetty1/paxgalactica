@@ -22,7 +22,16 @@ import type { OpInput } from '../src/domain/ops.js';
  * powers could quietly cost or mint a fleet.
  */
 describe('loans', () => {
-  const seed = () => createSeedState('ojjul');
+  /**
+   * Assets stripped: the tests below index `state.assets` positionally, which
+   * is only meaningful against a board this file created. The seed's own four
+   * are pinned in `tests/assets.test.ts`.
+   */
+  const seed = () => {
+    const s = createSeedState('ojjul');
+    s.assets = [];
+    return s;
+  };
   /** A world the Combine holds, with a mixed squadron standing on it. */
   const withSquadron = (): { state: WorldState; systemId: string } => {
     const state = seed();
@@ -210,7 +219,16 @@ describe('loans', () => {
 
   it('charges for missed hire, privately', () => {
     const { state, systemId } = withSquadron();
-    let s = applyOps(state, [hire(systemId, { termTurns: 20 })], 'extraction', 'ojjul').state;
+    // The rent is set past anything the borrower can find rather than merely
+    // emptying its treasury: income settles before the hire does, so a purse
+    // zeroed here is refilled by the same tick, and how much it refills by is a
+    // property of the seed rather than of this test.
+    let s = applyOps(
+      state,
+      [hire(systemId, { termTurns: 20, rentPerTurn: 4000 })],
+      'extraction',
+      'ojjul',
+    ).state;
     s.factions.find((f) => f.id === 'drajk')!.credits = 0;
     const lenderBefore = s.factions.find((f) => f.id === 'ojjul')!.disposition['drajk'] ?? 0;
     const witnessBefore = s.factions.find((f) => f.id === 'meridian')!.disposition['drajk'] ?? 0;
