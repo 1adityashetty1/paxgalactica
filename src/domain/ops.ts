@@ -1211,6 +1211,32 @@ export const ResolutionOutputSchema = ModelTurnOutputSchema.extend({
 });
 export type ResolutionOutput = z.infer<typeof ResolutionOutputSchema>;
 
+/**
+ * A prose field that is trimmed rather than rejected when it runs long.
+ *
+ * A length cap on NARRATIVE is a readability rule, not a correctness one — so
+ * paying a whole correction call to re-generate a sentence that was forty
+ * characters over is the wrong trade. Under `outputFormat: json_schema` it
+ * never came up, because constrained decoding enforced the cap while the model
+ * wrote. Measured the moment structured output was taken away: three of three
+ * reaction calls retried on exactly this, turning the fastest configuration
+ * into the slowest.
+ *
+ * Trimmed at a sentence end where there is one in the last quarter, so the cut
+ * reads as a full stop rather than a truncation.
+ */
+export function cappedProse(max: number) {
+  return z
+    .string()
+    .min(1)
+    .transform((t) => {
+      if (t.length <= max) return t;
+      const cut = t.slice(0, max);
+      const stop = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '));
+      return stop > max * 0.75 ? cut.slice(0, stop + 1) : `${cut.slice(0, max - 1)}…`;
+    });
+}
+
 export const ReactionSchema = z.object({
   factionId: z.string().min(1),
   /**
@@ -1219,7 +1245,7 @@ export const ReactionSchema = z.object({
    * brief that asks for one to three sentences, with a longest of 847. Three
    * of these are generated a turn, so the overrun is paid three times.
    */
-  narrative: z.string().min(1).max(420),
+  narrative: cappedProse(420),
   ops: z.array(ModelOpSchema),
   /**
    * This power wants to talk, and what about.

@@ -131,3 +131,31 @@ describe('the model is not offered values it can never use', () => {
     expect(json).toMatch(/"adjust_dissent"[\s\S]{0,400}?"minimum":0/);
   });
 });
+
+describe('a prose cap trims rather than costs a call', () => {
+  it('trims an over-long narrative at a sentence end', async () => {
+    const { ReactionSchema } = await import('../src/domain/ops.js');
+    const long = 'The Legate reads it twice. '.repeat(30);
+    const out = ReactionSchema.parse({ factionId: 'vigil', narrative: long, ops: [] });
+    expect(out.narrative.length).toBeLessThanOrEqual(421);
+    expect(out.narrative.endsWith('.')).toBe(true);
+  });
+
+  it('leaves prose inside the cap exactly as written', async () => {
+    const { ReactionSchema } = await import('../src/domain/ops.js');
+    const said = 'The Legate reads the dispatch twice and says nothing.';
+    expect(ReactionSchema.parse({ factionId: 'vigil', narrative: said, ops: [] }).narrative).toBe(said);
+  });
+
+  it('never rejects on length, which is the whole point', async () => {
+    // Under `outputFormat: json_schema` the cap was enforced while the model
+    // wrote, so overrunning was impossible and rejecting on it cost nothing.
+    // Without structured output it became the single largest source of
+    // retries — three of three reaction calls, measured — and a retry is a
+    // whole extra model call to re-say a sentence that was forty characters
+    // long. A readability rule must not be able to do that.
+    const { ReactionSchema } = await import('../src/domain/ops.js');
+    const huge = 'x'.repeat(5000);
+    expect(ReactionSchema.safeParse({ factionId: 'vigil', narrative: huge, ops: [] }).success).toBe(true);
+  });
+});
