@@ -51,6 +51,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~80~~ | ~~an advisor that costs an action~~ | medium | **BUILT** — with a structural guard against it becoming a solver |
 | **92** | two claims only a campaign can settle | — | needs play, not code |
 | ~~95~~ | ~~playtests are billed to the subscription~~ | medium | **MOVED** to `docs/architecture.md` A.1 — an architecture item, and step 1 of packaging the game |
+| **97** | five features wanted — world modifiers, tolls and agents in the UI, conquest upkeep, battle leaders, non-combat hulls | five sizes | **FILED, NOT DESIGNED** — (b) and (e) are buildable now, (a) and (c) need a balance decision, (d) needs a design |
 
 **What is actually left is a playtest — a different one from the last.** Every
 item on this list is built or closed except **92**, and **94(b)**, which is
@@ -978,6 +979,202 @@ worth showing and nobody has asked yet.
   `GET /api/campaign` stayed flat at ~2ms with the payload at 92KB. The floor is
   transport — appraisal takes 12–15s to return two numbers with thinking already
   off — so **95** is the only thing that moves it.
+
+
+## 97. FILED, NOT DESIGNED — five features wanted, raised 2026-09-14
+
+**Raised as wants, not specs.** Recorded in the shape they were raised in, with
+what each would touch and the trap each carries, so the thinking survives until
+there is time to do it properly. Nothing here is decided. Where a note says a
+thing is true of the code today it was checked; where it asks a question the
+question is genuinely open.
+
+They are not one feature and should not be built as one. (b) and (e) are
+buildable now; (a) and (c) need a balance decision first; (d) needs a design.
+
+### (a) Worlds carry modifiers that reach faction stats
+
+*"Planets themselves have modifiers that affect faction stats so capturing them
+is more than set dressing."*
+
+**The hook already exists and is inert.** `StarSystem.worldType` was added with
+the pixel-art system views and has exactly one reader in the whole codebase —
+`WorldSprite` in the client. It is set dressing *by construction*, which makes
+it the obvious thing to give force to.
+
+Two questions have to be answered before any of it is buildable, and they are
+independent:
+
+**Does the modifier belong to the type or to the world?** A type modifier
+(volcanic worlds pay industry) is cheap, needs no new seeding, and is legible —
+a player reads the map and knows what taking a world buys. A per-world modifier
+is richer and costs 25 seed entries plus a place in the UI to show it. The type
+answer is also self-documenting in a way the per-world answer is not.
+
+**Does it move stats, or the things stats feed?** This is the larger question
+and the request says *stats* — but a stat reaches **every** check in the game
+through `effectiveStats`, including checks with nothing to do with any world. A
+world that makes you better at diplomacy because it has good foundries is the
+kind of result nobody designed and everybody then has to live with. Income,
+garrison ceiling, build cost and route volume are narrower, and are probably
+what *"more than set dressing"* actually wants.
+
+**The trap, if it is stats: it cannot be a sum.** Dissent's ceiling is
+`MAX_DISSENT_PENALTY` (8) on a 1–20 scale, and this file already describes −4 on
+every modifier as *"the difference between a power that functions and one that
+does not"*. A per-world bonus summed over territory blows past that by turn ten
+and is unbounded in principle. The shape has to be a cap, a best-of, or a
+diminishing curve — decided up front, not discovered in a balance run.
+
+### (b) Tolls on the map, and agents in the System tab
+
+*"Tolls set are visible in the UI for the map itself. Your Agents + discovered
+Agents are visible in the System Tab."*
+
+Both are real gaps and both were checked. **This is the cheapest item of the
+five and the only one that is pure UI** — no schema change, no balance
+question, nothing the reducer has to learn.
+
+**Tolls.** `Faction.tollTargets` is read by `trade.ts` (who pays), `reducer.ts`
+(`set_toll_policy`), `serialize.ts` (so every *model* can see it) and
+`SidePanel.tsx` — but only in the **Factions** rows, as *"charges you for
+passage"*. `GalaxyMap.tsx` never mentions it. So a player can see **that** the
+Combine tolls them and not **which lanes** it costs them on, which is the half
+they would act on. The map already colours lanes by territory, so there is a
+place for it to go and a convention to extend rather than invent.
+
+That gap has a history worth remembering: tolls became a policy in the first
+place because *"a toll share became a negotiable instrument whose value nobody
+at the table could see"*. The personas can see it now. The player still cannot.
+
+**Agents.** `agentsVisibleTo(state, me)` renders under **Treaties**
+(`SidePanel.tsx:751`), and the System panel carries *Ships present*, *Income per
+turn*, *Hyperlanes* and *Orders here* — no agents at all. That is backwards for
+a mechanic whose entire nature is that it is **somewhere**: an operative has an
+`atSystemId`, its effects are read per-system, and the question a player asks is
+*"who is working on this world"*. Answering it only in a global list means
+reading a treaty panel to learn something about a planet.
+
+Open: what `agentsVisibleTo` returns for an **exposed** rival operative needs
+checking before "discovered Agents" is specified. If exposure does not already
+put a rival's agent into the player's view, that is a separate finding and
+possibly a bug — being caught should be worth something to the catcher.
+
+### (c) Worlds you did not start with cost more to hold
+
+*"Planets have an upkeep penalty if they are not a faction's starting planet."*
+
+Occupation costs more than administration — the same intuition
+`systemIncome`'s **2× administrator's edge** already encodes from the other
+direction, which is an argument that the game agrees with the premise.
+
+**Nothing in state records a starting owner.** `StarSystem` carries
+`controllerFactionId` and no history whatever. So this needs one of two things,
+and the choice is the whole of the work:
+
+- **A durable field**, written at seed. Costs a schema change, a save-format
+  change and a default for campaigns saved before it existed — all three of
+  which this project has done before and has a convention for.
+- **Derive it from the journal.** `controlHistory(journal)` already replays
+  every change of control for the epilogue, so the data exists and is free. But
+  `ledgerFor` is pure over `WorldState` and cannot read a journal, and giving it
+  one would be a much larger change than the field it was trying to avoid.
+
+The field is almost certainly right. Recording the alternative because the
+epilogue work makes it look tempting and it is a trap.
+
+**The trap is `expansionist`.** Meridian's entire doctrine is that expansion
+compounds — `EXPANSIONIST_TERRITORY_BONUS` per world held, applied to all its
+territory income, plus a cheaper landing. A flat penalty on conquered worlds is
+a direct nerf to one faction's identity, and possibly a correct counterweight,
+but that is a claim `pnpm balance 30` has to settle rather than an argument.
+
+**And cession has to be answered explicitly.** A world handed over under a
+signature was not occupied by force, and the reducer already treats the two
+differently everywhere else — the garrison transfers intact, the ceder's ships
+withdraw without loss. If a bought world carries the penalty, buying land is
+worse than it looks; if it does not, the penalty is one treaty away from being
+optional, which is worse.
+
+### (d) Leaders, assigned per battle
+
+*"Leaders. Assigned per Battle with varying effects. Not sure if we have
+archetypes or procedurally generated."*
+
+Nothing of the kind exists. Two pieces of the machinery do:
+
+- **`BattleReport.doctrinesFired`** already names only the doctrines that
+  **changed** something in an engagement, so there is a built, tested place to
+  report a leader's effect and a convention for reporting it honestly.
+- **`ASSET_ARCHETYPES`** is the answer to the question actually asked. Sixteen
+  named shapes behind an open slug: the model judges *that* a thing happened and
+  the table decides *what that kind of thing is like*, on the stated grounds
+  that **the model is good at judgement and unreliable at lookup**.
+
+**So: archetypes, with procedurally generated names and flavour.** Procedurally
+generated *effects* is the failure this codebase closes everywhere — a leader
+whose bonus is invented is a leader whose bonus can be invented favourably,
+which is `onComplete` before `boundPayloadsToOutcome` and `set_doctrine` before
+the actor check. A closed vocabulary of effects with generated identity gets
+the variety at none of the cost.
+
+What is genuinely undesigned:
+
+- **Where a leader lives.** A faction-level roster that persists and improves is
+  a different game from a name attached to one `fleet_movement`.
+- **"Per battle" is ambiguous, because battles are coalitions.** Everything
+  arriving at one world in one turn fights a single battle with several
+  contingents, and doctrine is already read off the **largest contingent** so a
+  one-ship junior partner cannot decide nobody retreats. A leader has to attach
+  to a *contingent*, and then the same question returns: whose leader runs the
+  coalition?
+- **Do they die?** A leader lost with a fleet is the version with stakes, and it
+  is also the version that needs a replacement mechanism, a UI, and an answer to
+  what happens when a power runs out.
+- **Who assigns.** Player choice is a decision; doctrine choice is free and
+  applies to the four NPCs, who otherwise get nothing out of this feature.
+
+### (e) Hulls that do not fight but do something else
+
+*"Units that are not combat units (.01 power) but have other modifiers, such as
+trade ships or SIGINT ships."*
+
+**This is the most buildable of the five, because the hard part is already done
+and measured.** `HULL_SPEC` runs `lifter` at `orbitalWeight: 0.01` and
+`torpedo_boat` at `0.1` against a battleship's 3, and this file records the
+sweep proving the nominal value is load-bearing: at 0.5 the best attacking fleet
+is 96 torpedo boats and nothing else at 98%, at 0.1 it is still the four-class
+mix. The game already knows how to price a hull that is **present, killable,
+and worth nothing in a fight** — which is exactly the class being asked for, and
+the `.01` in the request is the lifter's real value rather than a guess.
+
+The build checklist exists in CLAUDE.md's conventions and is short: add to
+`HULL_CLASSES` and `HULL_SPEC`, write the key into `TypedStackSchema`
+(`STACK_KEYS` is pinned against `HULL_CLASSES`, so they cannot drift), give it a
+glyph in `BattleIcons.tsx` and a `case` in `HullIcon`, and state its price in
+`prompts/resolution.md` — `prompt-drift.test.ts` checks the quoted price is the
+charged price.
+
+**The design question is where the modifier is read, and there is one right
+answer.** Every effect in this game is read where it is used rather than applied
+each tick, because a per-turn mutation compounds instead of recurring —
+`commitmentFlow`, `income_penalty`, `assetYield` and `stat_debuff` all follow
+it. So a trade hull reads in `ledgerFor` or `trade.ts`, and a SIGINT hull reads
+in `ordersVisibleTo`.
+
+**And that last one is the thing to get right.** A SIGINT hull read in
+`ordersVisibleTo` is doing the `intel` operative's job, and this project's own
+rule is that *two paths to one outcome that cost differently means only the
+cheaper one is ever used* — the argument that priced suborning against the
+`defection` agent and routed declared assassination into `deploy_agent`. It must
+be priced against `AGENT_COST` deliberately.
+
+There is a real distinction to price *from*, which is the argument for both
+existing: **a ship is visible and destroyable; an operative is hidden and
+burnable.** `system.ships` is never redacted, so a SIGINT hull announces itself
+by being there and can be killed by anyone willing to come and do it, where an
+operative is invisible until it is exposed and cannot be attacked at all. Those
+are different instruments, not two prices for one.
 
 
 ---
