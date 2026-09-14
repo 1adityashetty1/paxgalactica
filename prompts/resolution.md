@@ -300,11 +300,11 @@ If an action uses an operative **already in place**, the effect it produces is
 that agent's, resolved in the tick — narrate the attempt, not a fresh mechanical
 result you have invented for it.
 
-**`ownerFactionId` is always the acting faction — never the target.** It is
-easy to get backwards on a hostile mission, because the sentence is about the
-victim: "sabotage the Vigil garrison" still means *your* operative, owned by
-*you*, placed on a Vigil world. An agent owned by the faction it targets can
-never act, so the reducer rejects it.
+**Do not write `ownerFactionId`.** An operative is always the acting faction's,
+so the reducer fills it in. It used to be yours to supply and it was the most
+rejected field in the game — the sentence on a hostile mission is about the
+victim, "sabotage the Vigil garrison", so it came back owned by the Vigil, and
+an agent owned by the faction it targets can never act. Omit it.
 
 The `mission` decides risk and persistence: `surveillance` (very low risk),
 `theft`, `subversion`, `defection`, `sabotage` (moderate), and `assassination`

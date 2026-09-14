@@ -382,7 +382,26 @@ export const BreakTreatyOp = z.object({
 
 export const DeployAgentOp = z.object({
   op: z.literal('deploy_agent'),
-  ownerFactionId: z.string().min(1),
+  /**
+   * Whose operative it is — and there is exactly one right answer, so it is
+   * optional and defaults to the acting faction.
+   *
+   * It used to be required, and it is the single largest source of rejected
+   * ops in the game: 31 across 129 played turns, every one of them the same
+   * mistake. On a hostile mission the sentence is about the VICTIM —
+   * "sabotage the Vigil garrison" — so the field gets anchored to the Vigil,
+   * and an operative owned by its own target can never act. `resolution.md`
+   * has warned about it in bold for as long as the guard has existed and the
+   * rate did not move, which is the evidence that prose was not the fix: the
+   * model was being asked to restate a fact `applyOps` already holds as
+   * `actor`, and a field that can only ever have one correct value should not
+   * be asked for at all.
+   *
+   * Still accepted when supplied, and still rejected when it disagrees with
+   * the actor — journals written before this carry it, and replay has to
+   * reach the same verdicts it did then.
+   */
+  ownerFactionId: z.string().min(1).optional(),
   systemId: z.string().min(1),
   mission: AgentMissionSchema,
   effect: AgentEffectSchema,

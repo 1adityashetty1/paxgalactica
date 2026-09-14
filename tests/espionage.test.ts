@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
+import type { OpInput } from '../src/domain/ops.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { MISSION_PROFILE, type AgentMission } from '../src/domain/diplomacy.js';
 import { ledgerFor, type WorldState } from '../src/domain/state.js';
@@ -538,5 +539,68 @@ describe('the commitments block is scoped to its parties', () => {
     const s = bound();
     expect(serializeState(s, 'vigil')).not.toContain('Seven per cent');
     expect(serializeState(s, 'ojjul')).toContain('Seven per cent');
+  });
+});
+
+/**
+ * The field that was the game's most rejected.
+ *
+ * `ownerFactionId` had exactly one valid value — the acting faction — and the
+ * reducer rejected everything else. It was still supplied by the model and
+ * still got it backwards 31 times across 129 played turns, the single largest
+ * source of rejected ops in the game: on a hostile mission the sentence is
+ * about the victim ("sabotage the Vigil garrison"), so the field came back
+ * owned by the Vigil, and an operative owned by its own target can never act.
+ * `resolution.md` had warned about it in bold for as long as the guard
+ * existed and the rate did not move.
+ *
+ * Each rejection costs a full correction call on the reasoning tier, so this
+ * is a field that was buying nothing and being paid for once a turn.
+ */
+describe('an operative belongs to whoever deployed it', () => {
+  const deploy = (over: Record<string, unknown> = {}) => {
+    const state = createSeedState('meridian');
+    const target = state.systems.find((s) => s.controllerFactionId === 'vigil')!;
+    return {
+      state,
+      op: {
+        op: 'deploy_agent',
+        systemId: target.id,
+        mission: 'sabotage',
+        effect: { kind: 'hull_damage', perTurn: 2 },
+        ...over,
+      } as OpInput,
+    };
+  };
+
+  it('infers the owner from the actor when it is not given', () => {
+    const { state, op } = deploy();
+    const out = applyOps(state, [op], 'model', 'meridian');
+    expect(out.rejections).toEqual([]);
+    expect(out.state.agents).toHaveLength(1);
+    expect(out.state.agents[0]!.ownerFactionId).toBe('meridian');
+  });
+
+  it('still refuses one stated for somebody else', () => {
+    // Journals written before the field went optional carry it, so replay has
+    // to reach the same verdict it reached then. Omitting it can no longer be
+    // wrong; stating it wrongly still is.
+    const { state, op } = deploy({ ownerFactionId: 'vigil' });
+    const out = applyOps(state, [op], 'model', 'meridian');
+    expect(out.rejections[0]?.code).toBe('illegal_value');
+    expect(out.state.agents).toHaveLength(0);
+  });
+
+  it('still accepts one stated correctly', () => {
+    const { state, op } = deploy({ ownerFactionId: 'meridian' });
+    const out = applyOps(state, [op], 'model', 'meridian');
+    expect(out.rejections).toEqual([]);
+    expect(out.state.agents[0]!.ownerFactionId).toBe('meridian');
+  });
+
+  it('refuses when there is neither a field nor an actor to infer from', () => {
+    const { state, op } = deploy();
+    const out = applyOps(state, [op], 'model');
+    expect(out.rejections[0]?.code).toBe('illegal_value');
   });
 });

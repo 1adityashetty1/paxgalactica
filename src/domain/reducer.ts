@@ -2840,8 +2840,22 @@ export function applyOps(
       }
 
       case 'deploy_agent': {
-        if (!factionExists(op.ownerFactionId)) {
-          reject(raw, 'unknown_faction', `No faction "${op.ownerFactionId}".`);
+        // Whose operative it is, resolved once. The field is optional because
+        // it has exactly one right answer and was the game's largest single
+        // source of rejected ops when the model had to supply it — see
+        // `DeployAgentOp.ownerFactionId`. A batch that omits it is deploying
+        // for whoever is acting, which is the only thing it could have meant.
+        const ownerId = op.ownerFactionId ?? actor;
+        if (ownerId === undefined) {
+          reject(
+            raw,
+            'illegal_value',
+            'An operative needs an owner, and this batch names no acting faction to infer one from.',
+          );
+          break;
+        }
+        if (!factionExists(ownerId)) {
+          reject(raw, 'unknown_faction', `No faction "${ownerId}".`);
           break;
         }
         // You may only run your own operatives. Reproduced three times in
@@ -2851,7 +2865,11 @@ export function applyOps(
         // skips any agent whose owner is its own target, so such an agent is
         // silently inert forever — no rejection, no warning, and invisible in
         // the UI. Rejecting is strictly better than accepting a dead operative.
-        if (actor !== undefined && op.ownerFactionId !== actor) {
+        // Only when it was SUPPLIED and disagrees. Omitting it can no longer
+        // be wrong; stating it wrongly still is, and journals written before
+        // the field went optional carry it — replay has to reach the same
+        // verdicts it reached then.
+        if (op.ownerFactionId !== undefined && actor !== undefined && op.ownerFactionId !== actor) {
           reject(
             raw,
             'illegal_value',
@@ -2879,12 +2897,12 @@ export function applyOps(
           actor !== undefined &&
           op.effect.kind !== 'intel' &&
           state.systems.find((x) => x.id === op.systemId)?.controllerFactionId ===
-            op.ownerFactionId;
+            ownerId;
         if (hostileHere) {
           reject(
             raw,
             'illegal_value',
-            `A ${op.effect.kind.replace(/_/g, ' ')} operative on ${op.systemId}, which ${op.ownerFactionId} already holds, has nobody to work against. Post them somewhere a rival is.`,
+            `A ${op.effect.kind.replace(/_/g, ' ')} operative on ${op.systemId}, which ${ownerId} already holds, has nobody to work against. Post them somewhere a rival is.`,
           );
           break;
         }
@@ -2893,7 +2911,7 @@ export function applyOps(
           reject(raw, 'unknown_system', `No system "${op.systemId}".`);
           break;
         }
-        const owner = state.factions.find((f) => f.id === op.ownerFactionId)!;
+        const owner = state.factions.find((f) => f.id === ownerId)!;
         const target = host.controllerFactionId
           ? state.factions.find((f) => f.id === host.controllerFactionId)
           : undefined;
@@ -2906,7 +2924,7 @@ export function applyOps(
         // playtest produced exactly this (Drajk guile 14 vs Arkane resolve 19)
         // and the operative sat there doing nothing for the rest of the run.
         if (op.effect.kind === 'crew_defection' && target) {
-          if (subornLimit(state, op.ownerFactionId, target.id) <= 0) {
+          if (subornLimit(state, ownerId, target.id) <= 0) {
             reject(
               raw,
               'illegal_value',
@@ -2920,13 +2938,13 @@ export function applyOps(
         // is a price to place an operative, a per-turn cost to run one, and a
         // ceiling on how many a faction can handle at once. All three were
         // missing, which made an unbounded spy network strictly dominant.
-        const cap = maxAgentsFor(state, op.ownerFactionId);
-        const running = liveAgentsOf(state, op.ownerFactionId).length;
+        const cap = maxAgentsFor(state, ownerId);
+        const running = liveAgentsOf(state, ownerId).length;
         if (running >= cap) {
           reject(
             raw,
             'illegal_value',
-            `${owner.name} is already running ${running} operatives, its limit at guile ${effectiveStats(state, op.ownerFactionId).guile}. Recall one before placing another.`,
+            `${owner.name} is already running ${running} operatives, its limit at guile ${effectiveStats(state, ownerId).guile}. Recall one before placing another.`,
           );
           break;
         }
@@ -2944,7 +2962,7 @@ export function applyOps(
 
         state.agents.push({
           id: mintId(state, 'agt'),
-          ownerFactionId: op.ownerFactionId,
+          ownerFactionId: ownerId,
           systemId: op.systemId,
           mission: op.mission,
           effect: op.effect,
@@ -2959,12 +2977,12 @@ export function applyOps(
           state,
           'order',
           `${owner.name} places an agent on ${host.name} (${op.mission}) for ${price} credits.`,
-          op.ownerFactionId,
+          ownerId,
           // A covert placement is the acting power's business alone. This told
           // the world's holder that a rival operative had just arrived on it,
           // with the mission and the price — the one thing an operative exists
           // not to announce.
-          [op.ownerFactionId],
+          [ownerId],
         );
         break;
       }
