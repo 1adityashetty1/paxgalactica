@@ -53,10 +53,32 @@ export function serializeStats(stats: FactionStats): string {
   ).join(' · ');
 }
 
-export function serializeFactions(state: WorldState, viewerId: string): string {
+/**
+ * How much of a power to render.
+ *
+ * `positions` is where every power stands — fleet, treasury, territory,
+ * stats, tolls, disposition. `full` adds who it IS: its war and trade ethics
+ * spelled out, and its doctrine paragraph.
+ *
+ * The split exists for the arbiter. It rules on whether the ACTING power may
+ * attempt a thing, what that tests and how hard — and it is handed that
+ * power's own red lines and compulsions separately, by `serializePrinciples`.
+ * Four other powers' doctrine paragraphs decide none of those questions, and
+ * they were 1.6k characters of every appraisal call, which is the most
+ * frequent call in the game.
+ */
+export type FactionDetail = 'positions' | 'full';
+
+export function serializeFactions(
+  state: WorldState,
+  viewerId: string,
+  /** Non-viewer rows. The viewer's own row is always rendered in full. */
+  detail: FactionDetail = 'full',
+): string {
   const lines = state.factions.map((f) => {
     const held = state.systems.filter((s) => s.controllerFactionId === f.id).length;
-    const self = f.id === viewerId ? ' — THIS IS YOU' : '';
+    const isViewer = f.id === viewerId;
+    const self = isViewer ? ' — THIS IS YOU' : '';
     const toward =
       f.id === viewerId
         ? ''
@@ -65,8 +87,16 @@ export function serializeFactions(state: WorldState, viewerId: string): string {
       `- **${f.name}** (id: \`${f.id}\`)${self}`,
       `  fleet ${fleetStrengthOf(state, f.id)} hulls / ${fleetTonsOf(state, f.id)} tons | credits ${f.credits} | ${held} systems${toward}`,
       `  stats: ${serializeStats(f.stats)}`,
-      `  war: ${f.warEthic} — ${WAR_ETHIC_MEANING[f.warEthic]}`,
-      `  trade: ${f.tradeEthic} — ${TRADE_ETHIC_MEANING[f.tradeEthic]}`,
+      // The ethics keep their labels even when trimmed: `expansionist` and
+      // `monopolist` are what a power IS, and the arbiter does price an action
+      // against them. What goes is the sentence explaining each one, which the
+      // model does not need spelled out five times a call.
+      isViewer || detail === 'full'
+        ? `  war: ${f.warEthic} — ${WAR_ETHIC_MEANING[f.warEthic]}`
+        : `  war: ${f.warEthic}`,
+      isViewer || detail === 'full'
+        ? `  trade: ${f.tradeEthic} — ${TRADE_ETHIC_MEANING[f.tradeEthic]}`
+        : `  trade: ${f.tradeEthic}`,
       // Public by design: a tariff is announced, not discovered. It is also the
       // single most negotiable thing on this sheet, so a power that cannot read
       // who charges it cannot come and argue about it.
@@ -75,8 +105,10 @@ export function serializeFactions(state: WorldState, viewerId: string): string {
           ? 'charges nobody for passage'
           : `charges ${f.tollTargets.map((id) => getFaction(state, id)?.name ?? id).join(', ')} for passage`
       }`,
-      `  doctrine: ${f.doctrine}`,
-    ].join('\n');
+      isViewer || detail === 'full' ? `  doctrine: ${f.doctrine}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
   });
   return lines.join('\n');
 }
@@ -278,7 +310,15 @@ export function serializeRecentLog(state: WorldState, viewerId: string, limit = 
 }
 
 /** The full state block handed to a model call, from one faction's viewpoint. */
-export function serializeState(state: WorldState, viewerId: string): string {
+export function serializeState(
+  state: WorldState,
+  viewerId: string,
+  /**
+   * How much of the OTHER powers to render. `full` everywhere except the
+   * arbiter — see `FactionDetail`.
+   */
+  detail: FactionDetail = 'full',
+): string {
   const viewer = getFaction(state, viewerId);
   const ledger = ledgerFor(state, viewerId);
   return [
@@ -296,7 +336,7 @@ export function serializeState(state: WorldState, viewerId: string): string {
       : '',
     '',
     '## Factions',
-    serializeFactions(state, viewerId),
+    serializeFactions(state, viewerId, detail),
     '',
     '## Systems by sector',
     serializeSystems(state),

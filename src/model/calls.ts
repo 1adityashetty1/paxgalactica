@@ -46,7 +46,16 @@ import {
   serializeTheirAssets,
 } from './serialize.js';
 
-/** Resolution and extraction share the duration rules, so both get the rubric. */
+/**
+ * The duration rubric, for the passes that actually set a duration.
+ *
+ * That is resolution and reaction — the two that emit `issue_order`. It was
+ * also appended to **extraction**, which cannot: `issue_order` is not in
+ * `EXTRACTION_ALLOWED`, and the reducer refuses it with "an order is your own
+ * work and costs an action to give". So the one pass that could never write a
+ * `durationTurns` was carrying 944 tokens of anchors telling it how, on every
+ * accord closed in the game.
+ */
 function withRubric(base: string): string {
   return `${base}\n\n---\n\n${loadPrompt('duration-rubric')}`;
 }
@@ -121,7 +130,11 @@ export async function appraiseAction(
     label: 'the arbiter considers it',
     system: loadPrompt('appraisal'),
     user: [
-      serializeState(state, viewerId),
+      // `positions`, not `full`: the arbiter rules on what the ACTING power may
+      // attempt, what it tests and how hard, and it is handed that power's own
+      // red lines and compulsions below. Four rivals' doctrine paragraphs
+      // decide none of that, and this is the most frequent call in the game.
+      serializeState(state, viewerId, 'positions'),
       '',
       '---',
       '',
@@ -1271,7 +1284,7 @@ export async function extractAgreements(
   const res = await callStructured({
     kind: 'extraction',
     label: 'extraction',
-    system: withArchetypes(withRubric(loadPrompt('extraction'))),
+    system: withArchetypes(loadPrompt('extraction')),
     user,
     // The extraction vocabulary, which is the ordinary one plus `form_treaty`.
     // This pass has read a transcript, so it is the only model-driven place in
