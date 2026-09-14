@@ -1,5 +1,10 @@
 # TODO — known bugs and open design questions
 
+**This file is about the game.** Questions about the shape of the *program* —
+how it is built, what it depends on, how it is delivered, who pays for the model
+calls — live in `docs/architecture.md`, because ranking them against mechanics
+meant they always came last and never got thought about.
+
 Four sections. **Open work** is the ranked list of what is actually outstanding.
 **Performance** is its own track, `p.X`. **Closed groupings** is the previous
 index, kept because its reasoning explains decisions the code still carries.
@@ -45,12 +50,15 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~93~~ | ~~three things the asset fields still cannot say~~ | small | **BUILT** — a catalogue, `consume_asset`, speculative value, assets at the table |
 | ~~80~~ | ~~an advisor that costs an action~~ | medium | **BUILT** — with a structural guard against it becoming a solver |
 | **92** | two claims only a campaign can settle | — | needs play, not code |
-| **95** | playtests are billed to the subscription, with no way to pay otherwise | medium | **usage, not speed** — raw JSON took the latency argument; needs a credential, and a local model cannot do `extraction` |
+| ~~95~~ | ~~playtests are billed to the subscription~~ | medium | **MOVED** to `docs/architecture.md` A.1 — an architecture item, and step 1 of packaging the game |
 
 **What is actually left is a playtest — a different one from the last.** Every
 item on this list is built or closed except **92**, and **94(b)**, which is
-itself a claim only a campaign can settle. **95** is infrastructure rather than
-a feature: nothing in the game gets better for building it.
+itself a claim only a campaign can settle. **95 has left this file**: it was
+infrastructure rather than a feature — nothing in the game gets better for
+building it — and questions of that kind now live in `docs/architecture.md`,
+where they can be ranked against each other instead of losing to mechanics
+forever.
 
 The 2026-09-09 campaign discharged the argument this paragraph used to make.
 The personas have now seen an asset, a fixture, a contingency, a `contract` and
@@ -855,145 +863,23 @@ types the sentence that reaches it. The examples were cut from ten lines to four
 and lost the gloss under each, which the help text now says once.
 
 
-## 95. FILED — playtests are billed to the subscription, with no way to pay otherwise
+## 95. MOVED — see `docs/architecture.md` A.1
 
-**This is a usage item, not a performance one.** It was filed as both and the
-performance half has since been measured away — see "what the raw-JSON result
-did to this" below. What remains is the thing it was actually filed for: every
-model call in the game reaches Anthropic through `rawCall` in
-`src/model/client.ts`, which spawns the bundled Claude Code binary under
-subscription auth, and there is no way to point it anywhere else. So the cost of
-playing is denominated in Claude usage and in nothing else — fine while the game
-is being *played*, wrong while it is being *tested*, which is most of what
-happens to it.
+**The provider seam is an architecture item, not a game item.** It was ranked
+against mechanics for its whole life and always came last, for the good reason
+that nothing in the game gets better for building it — which is exactly why it
+does not belong on this list. It is now **A.1** in `docs/architecture.md`,
+where it is the first item and everything else in that document depends on it.
 
-### The scope that serves that
+Moved whole, with its reasoning intact: the seventy-line `rawCall` extraction,
+why a local model cannot do `extraction` on 16GB, what `PAXGALACTICA_RAW_JSON=1`
+did to the latency argument, the two API details a naive port gets wrong, and
+the Kimi K3 research that prompted the original filing.
 
-`rawCall` is the only function in the codebase that touches the Agent SDK, about
-seventy lines, with two importers. Everything above it is already
-provider-agnostic: the retry budget, the Zod re-validation, the correction
-prompt, `stats`, the per-message deadline. So this is an extraction, not a
-rewrite.
+What `architecture.md` adds is the thing this file had no place for: what it
+would take to ship Pax Galactica as a packaged executable a player pastes their
+own OpenRouter or Anthropic key into. The seam is step 1 of five.
 
-- **`src/model/provider.ts`** — `interface Provider { call(tier, system, user,
-  jsonSchema) }` with today's `rawCall` body as one implementation and an HTTP
-  client as the other. Chosen by env, defaulting to today's path.
-- **`router.ts`** — `TierConfig` mixes shared config (`model`) with SDK-only
-  fields (`maxTurns`, `effort`, `thinking`). Split it, and put the alternate
-  tier table beside `TIERS` so the file's own promise — *tiering is a one-line
-  edit* — holds for both.
-- **`costUsd`** from the response's token usage against a price table. `stats`
-  and `timingReport` are unchanged.
-- **`preflight.ts`** calls `assertLoggedIn` unconditionally. Gate it on the
-  provider and substitute a reachability probe whose failure message has the
-  same shape as the auth one.
-- **`PAXGALACTICA_NO_NETWORK=1` still throws**, localhost included. That guard
-  is about the suite being pure, not about the wire.
-
-Replay is untouched: the journal records ops, not reasoning, so a campaign
-played against any provider replays byte-identically under `pnpm replay`.
-
-### It needs a credential, and the local escape hatch does not survive contact
-
-"OpenAI-compatible" is a wire format rather than a vendor — Ollama, LM Studio
-and `llama-server` all speak `POST /v1/chat/completions`, and a local server
-needs no key. That was the original hope, and it does not work here for two
-reasons, both checked rather than assumed:
-
-- **Nothing local is installed** on the machine this is developed on, and no
-  listener answers on :11434 or :1234.
-- **16GB of unified memory caps the model** at roughly `gpt-oss-20b` at MXFP4.
-  That is enough for `appraisal`, `breach_relevance` and `flavor`, which are
-  bounded classifications against a rubric. It is not enough for `extraction`,
-  which must emit real faction, system and treaty ids read out of a transcript
-  — and a playtest in which every accord produces nothing is not a playtest.
-
-So covering the whole call set means a hosted endpoint and a key: OpenRouter, a
-direct provider, or Anthropic. A **split** is the configuration worth having and
-`ROUTES` already expresses it — a cheap model for the three bounded kinds beside
-a strong one for `resolution` and `extraction`.
-
-### What the raw-JSON result did to this
-
-The argument for 95 used to be ~7-8s of transport on every call, roughly 50s a
-turn. Most of that was the SDK's end-turn carrier: under `outputFormat:
-json_schema` the result comes back through a `tool_use`/`tool_result` pair,
-which is a second agentic round trip that re-sends the whole context.
-
-`PAXGALACTICA_RAW_JSON=1` removes that carrier **without leaving the
-subscription**, and measured a turn from ~98s to ~37s. What is left of the
-transport floor is the process spawn — appraisal runs 4.5s for ~7.6k in and
-~200 Haiku tokens out, of which generation is maybe 2s — so about 2.5s a call,
-15-18s a turn rather than 50s.
-
-That reshapes what 95 is worth:
-
-| | still worth it |
-|---|---|
-| **usage** — playtests stop billing the subscription | yes, and it is the reason this exists |
-| **caching** — identical prefixes per call kind, `resolution.md` alone is ~8.5k tokens | yes, now the main cost lever |
-| **latency** — spawn removal | ~15-18s a turn, down from ~50s |
-
-**Caching is the lever, so resolve it before choosing a vendor.** Sources
-conflict on whether OpenRouter passes a provider's cached-input tier through;
-verify against the live model page rather than trusting this note.
-
-### Two things to get right that a naive port would not
-
-Checked against the current API rather than recalled:
-
-- **`output_config.format`** is the parameter, not the deprecated
-  `output_format`. Do **not** set `strict: true`: it requires every property in
-  `required` and `additionalProperties: false`, which contradicts
-  `z.toJSONSchema(..., { io: 'input' })` advertising defaulted fields as
-  optional.
-- **The tier config does not port as-is.** `output_config.effort` errors on
-  Haiku 4.5, and the flavour tier sets `effort: 'low'` today. `thinking:
-  {type:'disabled'}` is not the Haiku form — omit `thinking` there. On Sonnet 5
-  `budget_tokens` is removed and returns a 400. And the model id has drifted:
-  the router says `claude-haiku-4-5-20251001` where the current id is
-  `claude-haiku-4-5`, no date suffix.
-
-### What this does not solve
-
-**The driver.** The Agent tool takes `sonnet`/`opus`/`haiku`/`fable` and has no
-hook for an external provider, so a seam in `src/model/` cannot re-point the
-playtest agent. Driving 92 with a third-party model means writing the harness:
-`dispatch(method, path, body)` is already the seam, and the loop is
-`GET /api/campaign` → build a prompt → `POST /api/action` or `/api/talk/:id` →
-`POST /api/endturn`. Call it 150 lines.
-
-That harness earns its keep on a second axis, which is the better argument for
-it: **it is repeatable.** A scripted playtest can be re-run against the same
-seed after a prompt edit, which is what prompt versioning exists to enable and
-what an interactive agent session cannot do. It also reimplements the agent's
-strategic prompting by hand, and that prompting is where the last few playtests
-found their exploits — the escrowed seal, the double-sold intelligence.
-
-**The cheap version is one line:** `model: sonnet` in the agent's frontmatter,
-or passed at spawn. Do that first. Build 95 when 92 is run repeatedly rather
-than twice.
-
-### On Kimi K3 specifically, since it prompted this
-
-Recorded so the question need not be re-researched. Figures are from secondary
-aggregators, September 2026, and are directionally reliable at best.
-
-- 2.8T parameters, 104B active (16 of 896 routed experts), MXFP4, 1M context.
-  **Active parameters set compute; total parameters set memory** — it generates
-  about as fast as a 104B dense model and needs every expert resident.
-- Near-frontier: ~60 on the Artificial Analysis index against Opus 5's 63, and
-  93.4% SWE-bench Verified against 95-96% for the closed leaders. It *leads*
-  SWE Marathon, the long-session benchmark — the one that resembles a playtest.
-- **$3 / $15 per M, $0.30 cached** — essentially Sonnet's list price. Hosted K3
-  is not a cost reduction; it is a conversion of subscription usage into
-  dollars.
-- **No free API tier.** Adagio is the consumer chat plan, not an API plan, and
-  there is no `:free` variant on OpenRouter.
-- **Self-hosting is out.** ~594 GB of weights, so eight H100s merely to load
-  them and ~1,680 GB by vLLM's own estimate to serve them; Moonshot suggests
-  ≥64 accelerators. Renting that for an hour costs more than many campaigns of
-  API.
 ## 96. CLOSED and DECIDED — three things the playtest of 2026-09-09 left open
 
 **A red line the player only PROPOSES is not warned about. Closed, not fixed.**
