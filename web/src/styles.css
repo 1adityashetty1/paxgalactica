@@ -378,6 +378,15 @@ ul { margin: 0; padding-left: 1.1em; }
   border: 1px solid var(--line);
   opacity: 0.92;
 }
+/* The drawn pair is already in the panel's own palette, so it needs neither
+   the knock-down nor the crop: `object-fit` does nothing to an SVG, and dimming
+   art built from these greys only makes it muddy. `image-rendering` is belt and
+   braces beside `shapeRendering` on the element — some engines resample an
+   `<svg>` when it is scaled by CSS rather than by its viewBox. */
+svg.outcome-art {
+  opacity: 1;
+  image-rendering: pixelated;
+}
 /* Refusal and defiance are your own institutions; negotiation is somebody
    else's assent. Edging them the way `.msg.refusal` is edged keeps the
    picture and its line reading as one thing. */

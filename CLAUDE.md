@@ -3969,8 +3969,39 @@ component is logic nothing checks.
   These five are the ways an action produces *nothing*, which is what is worth
   marking.
 
-  They deliberately do **not** match the portrait set's painterly register, and
-  all three carry text. A portrait exists to be recognised as a person you are
+  **Two of the three are pixel art now, and the pair is the reason.** `refusal`
+  and `defiance` were painterly 16:9 renders and failed twice over: they sat in
+  a contemporary corporate register — an office worker holding a page stamped
+  VETO, a television news desk reading APPROVAL NUMBERS CRASH — against a game
+  whose whole visual language is pixel sprites and SVG glyphs, and the second
+  was about the wrong thing entirely, since `defiance` is a leader overruling
+  their own institutions and being charged for it rather than a collapse in
+  polling.
+
+  They are now **one door in two states**, drawn in `src/ui/outcomeart.ts`:
+  shut and whole with the seal unbroken, then shut and broken through with the
+  bar snapped, the seal in shards and the way beyond lit. That pairing is the
+  argument for drawing them together at all — `classifyPrinciple` decides
+  between the two by reading which list the quoted line is on, and what a
+  player feels is that one **stops** the order and the other **prices** it. So
+  recognising the second is free once the first has been seen, which two
+  unrelated illustrations cannot do however good they are.
+
+  `negotiation` keeps its illustration, because it is not part of that pair: it
+  is not a breach of anything, it is being told the thing needs another power's
+  signature, and there is no second state of a door that says so.
+
+  Geometry in `src/ui/`, pure and tested, the same split `WorldSprite` uses —
+  and drawn in **code** rather than typed as a character grid, unlike
+  `worlds.ts`. Continents are organic and editing one should be typing; an arch
+  and a bar are not, and thirty-six rows of sixty-four characters would be a
+  worse diff and an easier place to hide a mistake.
+
+  > One bug that would have shipped unseen: the arch spans x 20–43, so its
+  > centre is **31.5**, and a loop written off that steps 24.5, 25.5 — which
+  > JavaScript writes as string keys on the row array. The pixels went nowhere,
+  > nothing threw, and `defiance` simply rendered with no light in the doorway
+  > at all. Found by looking at it. A portrait exists to be recognised as a person you are
   negotiating with; these exist to communicate an idea — *this was vetoed*,
   *this cost you standing*, *this needs someone else in the room* — and reading
   in a second is worth more here than matching a house style.

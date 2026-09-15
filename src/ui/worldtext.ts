@@ -68,10 +68,10 @@ const FLAVOUR: Partial<Record<Key, string[]>> = {
     'Ten million lights and not one of them official. The Nar keep no ledger on Shalka a stranger could read, which is the point of Shalka.',
   ],
   'earthnight|freeworlds': [
-    'The Drift’s own, lit end to end and awake at every hour. Nothing here stays secret for long, and nothing is ever said where it can be heard.',
+    'The Drift’s own, lit end to end and awake at every hour. Arkane independence sprouted from whispers in gamehouses that dot its surface.',
   ],
   'earthnight|vigil': [
-    'Imperial by daylight and something else after it. The Legates hold the orbitals and stopped asking years ago what the lower quarters do with the dark.',
+    'Imperial by daylight and something else after it. The Legates usurped the local crime lords, and found new uses their talents.',
   ],
 
   /* --- industrialmoon / gasgiant: industry. Extraction and production. - */
@@ -94,7 +94,7 @@ const FLAVOUR: Partial<Record<Key, string[]>> = {
 
   /* --- ice / oceanic: resolve. Hard to live on, hard to break. --------- */
   'ice|drajk': [
-    'Frozen through and honeycombed with holds. Drajk crews winter here because nothing follows them in and nothing profitable comes out.',
+    'Frozen through and honeycombed with holds. Drajk crews waylay here because nothing follows them in and nothing profitable comes out.',
   ],
   'ice|unaligned': [
     'Ice, and a settlement that has outlasted three flags by never flying one.',
@@ -102,7 +102,7 @@ const FLAVOUR: Partial<Record<Key, string[]>> = {
     'Nine metres of ice over everything that matters. Whatever you bring, it has already been colder.',
   ],
   'oceanic|freeworlds': [
-    'Deep water and floating townships, fed by what it can catch. The Arkane cannot be starved off Vashka, which is the entire strategic fact about it.',
+    'Deep water and floating townships, fed by what it can catch. The Arkane cannot be starved off Vashka, and they will drown those who try.',
   ],
   'oceanic|ojjul': [
     'Warm ocean and shallow banks the Combine has farmed for six generations. It feeds itself, so it has never needed to be reasonable.',

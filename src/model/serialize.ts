@@ -296,6 +296,11 @@ export function serializeStanding(state: WorldState, viewerId: string): string {
   return lines.join('\n');
 }
 
+/** A faction's display name, never its id. See `serializeSystems`. */
+function nameOfFaction(state: WorldState, id: string): string {
+  return getFaction(state, id)?.name ?? id;
+}
+
 export function serializeSystems(state: WorldState): string {
   const bySector = new Map<string, string[]>();
   for (const s of state.systems) {
@@ -309,15 +314,29 @@ export function serializeSystems(state: WorldState): string {
     // rule would be unactionable exactly where it matters.
     const ships = Object.entries(s.ships ?? {})
       .filter(([, stack]) => hullsIn(stack) > 0)
-      .map(([id, stack]) => `${id} ${describeStack(stack)}`)
+      .map(([id, stack]) => `${nameOfFaction(state, id)} ${describeStack(stack)}`)
       .join(', ');
     const payout = Object.entries(income.shares)
       .filter(([, v]) => v > 0)
-      .map(([id, v]) => `${id} ${v}`)
+      .map(([id, v]) => `${nameOfFaction(state, id)} ${v}`)
+      .join(', ');
+    // **Lanes carry the name as well as the id, and that is a bug fix.** This
+    // joined `hyperlaneEdges` raw, so the state document told every persona
+    // that Vergesse connects to "ilv-6, ilv-7" and nothing anywhere gave those
+    // strings a name — so the model wrote the ids into prose and the player
+    // read `ilv-6/ilv-7` in a narrative. Exactly the lesson the faction rename
+    // records: **ids are not private**, and a document that publishes one
+    // without its name has published the id.
+    //
+    // Both, not the name alone: the id is what a `fleet_movement` has to
+    // address, and making the model resolve a name back to an id through
+    // another block is a step it can get wrong.
+    const lanes = s.hyperlaneEdges
+      .map((id) => `${getSystem(state, id)?.name ?? id} (\`${id}\`)`)
       .join(', ');
     const line = [
       `  - \`${s.id}\` ${s.name} — held by ${controller}, garrison ${s.garrison}, value ${s.strategicValue}${income.contested ? ', CONTESTED' : ''}`,
-      `      ships: ${ships || 'none'} | pays: ${payout || 'nobody'} | lanes: ${s.hyperlaneEdges.join(', ') || 'none'}`,
+      `      ships: ${ships || 'none'} | pays: ${payout || 'nobody'} | lanes: ${lanes || 'none'}`,
     ].join('\n');
     const list = bySector.get(s.sector) ?? [];
     list.push(line);
