@@ -346,14 +346,23 @@ export function ListenerIcon({ size = 18, title }: IconProps) {
       <path d="M23.6 13.6 L11 11.8 L4.2 11.6 L3.2 12.4 L3.2 15.2 L4.2 15.9 L11 15.6 Z" />
       {/* Mast. Short and thick enough to survive the scale — a thin one snaps
           and leaves the dish floating. */}
-      <path d="M6.3 7.6 L8.1 7.6 L8.1 12.2 L6.3 12.2 Z" />
-      {/* The dish: a shallow bowl, thin by design and drawn as a filled
-          crescent rather than a stroked arc, because a stroke thin enough to
-          look like a dish at 24 units is gone entirely at 18px. */}
-      <path d="M2.4 8.6 A4.8 4.8 0 0 1 12.0 8.6 L10.1 8.6 A2.9 2.9 0 0 0 4.3 8.6 Z" />
-      {/* The feed at its focus, which is what makes the crescent a dish and
-          not a smile. */}
-      <circle cx="7.2" cy="6.9" r="1.1" />
+      <path d="M6.0 9.8 L8.2 9.8 L8.2 12.6 L6.0 12.6 Z" />
+      {/* The dish, opening RIGHT — the way the hull is pointing.
+          
+          The first version of this arced over the mast, which put the bowl's
+          concave face downward: a dish aimed at its own deck. Every glyph in
+          this fleet faces right, and a dish is the one part whose ORIENTATION
+          carries meaning rather than style, because a dish says what it is by
+          saying where it is looking.
+          
+          Drawn as a filled crescent rather than a stroked arc, because a stroke
+          thin enough to look like a dish at 24 units is gone entirely at
+          18px. */}
+      <path d="M7.4 2.2 A4.3 4.3 0 0 0 7.4 10.8 L7.4 8.9 A2.1 2.1 0 0 1 7.4 4.1 Z" />
+      {/* The feed, at the focus — out in FRONT of the bowl, which is the other
+          half of saying which way it is aimed. */}
+      <path d="M7.2 5.9 L9.6 5.9 L9.6 7.1 L7.2 7.1 Z" />
+      <circle cx="10.4" cy="6.5" r="1.4" />
       <path d="M1.2 12.6 L3.2 12.2 L3.2 15.4 L1.2 15 Z" />
     </svg>
   );
