@@ -5,6 +5,7 @@ import { CATEGORY_FLOORS } from '../src/domain/duration.js';
 import {
   hullsAt,
   setShipsAt,
+  setStackAt,
   ledgerFor,
   subornLimit,
   systemIncome,
@@ -882,10 +883,17 @@ describe('the defection agent mission', () => {
   });
 
   it('charges for the hulls, so it is not a free shipyard', () => {
+    // Against a control rather than against the opening purse. Income settles
+    // on the same tick, so "ended the turn poorer" is a statement about the
+    // seed's economy and not about the defection: what this test is for is
+    // that turning crews costs the suborner what the yards would have charged.
     const { state } = withAgent(2);
-    const purse = fac(state, 'drajk').credits;
+    const control = fresh('drajk');
+
     const after = tickTurn(state).state;
-    expect(fac(after, 'drajk').credits).toBeLessThan(purse);
+    const withoutAgent = tickTurn(control).state;
+
+    expect(fac(after, 'drajk').credits).toBeLessThan(fac(withoutAgent, 'drajk').credits);
   });
 
   it('finds no takers against a resolute power', () => {
@@ -1141,6 +1149,77 @@ describe('a guest is paid by its treaty, never by presence', () => {
  * playtest sold the Combine 50% of a *smuggler's* tolls, structurally zero
  * forever, and neither the persona nor the arbiter could tell.
  */
+/**
+ * A hull that does not fight, and earns where nobody owns the ground.
+ *
+ * The only place `laneWeightsAt` is read. A contested WORLD still splits by
+ * flat tons, because that contest is over force — and a freighter is not
+ * force.
+ */
+describe('a freighter takes more of a lawless junction', () => {
+  /** An unaligned system that a live route actually crosses. */
+  const junction = (s: WorldState): string => {
+    for (const r of tradeRoutes(s)) {
+      for (const id of r.path.slice(1, -1)) {
+        if (s.systems.find((x) => x.id === id)!.controllerFactionId === null) return id;
+      }
+    }
+    throw new Error('the seed has no unaligned hop on a route');
+  };
+
+  /**
+   * Meridian's take at a contested lawless hop, holding 12 tons of one hull
+   * against a rival's fixed 12 tons of warship.
+   *
+   * Contested on purpose: `distributeUnclaimed` divides the hop among everyone
+   * present, so a sole occupant takes all of it whatever it is flying, and a
+   * weighting can only show up against somebody else's claim. That is the
+   * mechanic, not a quirk of the test.
+   */
+  const earnAt = (hull: 'freighter' | 'battleship', n: number): number => {
+    const s = createSeedState('drajk');
+    const at = s.systems.find((x) => x.id === junction(s))!;
+    setStackAt(at, 'meridian', { [hull]: n });
+    setStackAt(at, 'vigil', { battleship: 3 });
+    return routeEarnings(s).shares['meridian'] ?? 0;
+  };
+
+  it('outearns a warship of the same displacement, parked on the same hop', () => {
+    // 4 freighters and 3 battleships are both 12 tons, so the only difference
+    // is what the hull is for.
+    expect(earnAt('freighter', 4)).toBeGreaterThan(earnAt('battleship', 3));
+  });
+
+  it('cannot mint a credit doing it', () => {
+    // `distributeUnclaimed` divides a fixed pot, so a heavier weight can only
+    // take a larger slice of money the lane already paid. The galaxy's total
+    // is the property that matters, not one power's share.
+    const bare = createSeedState('drajk');
+    const total = (s: WorldState) => {
+      const e = routeEarnings(s);
+      return Object.values(e.shares).reduce((n, v) => n + v, 0) + e.uncollected;
+    };
+    const loaded = createSeedState('drajk');
+    setStackAt(loaded.systems.find((x) => x.id === junction(loaded))!, 'meridian', {
+      freighter: 40,
+    });
+    expect(total(loaded)).toBeCloseTo(total(bare), 6);
+  });
+
+  it('earns nothing extra on ground somebody owns', () => {
+    // The narrowness is the point: it is a hull for the lawless middle of the
+    // map, not a second way to be rich.
+    const held = (hull: 'freighter' | 'battleship') => {
+      const s = createSeedState('drajk');
+      const owned = s.systems.find((x) => x.controllerFactionId === 'ojjul')!;
+      setStackAt(owned, 'meridian', { [hull]: 4 });
+      setStackAt(owned, 'vigil', { battleship: 3 });
+      return routeEarnings(s).shares['meridian'] ?? 0;
+    };
+    expect(held('freighter')).toBeCloseTo(held('battleship'), 6);
+  });
+});
+
 describe('tolls are charged by policy', () => {
   it('opens the seed exactly as it always was', () => {
     // The Combine seeds tolling all four at the unchanged `TOLL_RATE`, and it
@@ -1160,6 +1239,58 @@ describe('tolls are charged by policy', () => {
     for (const id of ['meridian', 'vigil', 'freeworlds', 'drajk']) {
       expect(earnings.tolls[id] ?? 0).toBe(0);
     }
+  });
+
+  /**
+   * A toll is a fact about a PLACE, and until this the game could only say how
+   * much. `tolls` answered the ledger's question; nothing answered the
+   * player's, which is *which junction is costing me*.
+   */
+  describe('and each one is recorded at the world it was taken at', () => {
+    it('attributes every credit, so the map cannot disagree with the ledger', () => {
+      const s = createSeedState('drajk');
+      const e = routeEarnings(s);
+      // Unrounded, because `tolls` is rounded on the way out and the by-system
+      // figures are not — the invariant is that nothing is levied without being
+      // placed, which is exact before that rounding.
+      for (const id of Object.keys(e.tolls)) {
+        const placed = Object.values(e.tollsBySystem[id] ?? {}).reduce((n, v) => n + v, 0);
+        expect(Math.round(placed)).toBe(e.tolls[id]);
+      }
+      for (const id of Object.keys(e.tollsPaid)) {
+        const placed = Object.values(e.tollsPaidBySystem[id] ?? {}).reduce((n, v) => n + v, 0);
+        expect(Math.round(placed)).toBe(e.tollsPaid[id]);
+      }
+    });
+
+    it('places a transit toll on a world the collector actually holds', () => {
+      const s = createSeedState('drajk');
+      const e = routeEarnings(s);
+      const where = Object.keys(e.tollsBySystem['ojjul'] ?? {});
+      expect(where.length).toBeGreaterThan(0);
+      for (const id of where) {
+        expect(s.systems.find((x) => x.id === id)!.controllerFactionId).toBe('ojjul');
+      }
+    });
+
+    it('goes quiet when the policy is lifted', () => {
+      const s = createSeedState('drajk');
+      s.factions.find((f) => f.id === 'ojjul')!.tollTargets = [];
+      const e = routeEarnings(s);
+      expect(e.tollsBySystem['ojjul'] ?? {}).toEqual({});
+      expect(e.tollsPaidBySystem['drajk'] ?? {}).toEqual({});
+    });
+
+    it('names the payer, not merely that somebody paid', () => {
+      // Waiving one power's toll must leave the others' attribution intact —
+      // the mirror of the rule that a waiver does not double the other half.
+      const s = createSeedState('drajk');
+      s.factions.find((f) => f.id === 'ojjul')!.tollTargets = ['meridian'];
+      const e = routeEarnings(s);
+      expect(Object.keys(e.tollsPaidBySystem['meridian'] ?? {}).length).toBeGreaterThan(0);
+      expect(e.tollsPaidBySystem['drajk'] ?? {}).toEqual({});
+      expect(e.tollsPaidBySystem['vigil'] ?? {}).toEqual({});
+    });
   });
 
   it('charges nobody until a power decides to', () => {

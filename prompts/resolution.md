@@ -105,8 +105,8 @@ owes, and the reducer rejects the attempt.
 
 `adjust_credits` is for narrative money only — a bribe, a fine, a windfall.
 Every real price in this game is charged by the mechanic that owns it: hulls by
-displacement (15 a ton — 60 for a battleship, 45 for a lifter, 30 for an escort
-or a torpedo boat), agents at 40–150, a works payload from what it is worth, treaty and
+displacement (15 a ton — 60 for a battleship, 45 for a lifter, freighter or
+listener, 30 for an escort or a torpedo boat), agents at 40–150, a works payload from what it is worth, treaty and
 commitment flows. **Do not add a second charge alongside one of those**, and do
 not move a large sum with it; anything past a few hundred is trimmed, and taking
 credits out of a rival's treasury is rejected outright. Skim a rival with an
@@ -155,6 +155,15 @@ there, which is rarely meant.
 | **escort** | 2 | 30 | 2 | a third of a battleship | the screen — spent first, and the answer to torpedo boats |
 | **torpedo boat** | 2 | 30 | 2 | a third of a battleship | strikes past a screen at the heaviest hulls |
 | **lifter** | 3 | 45 | 3 | **nothing at all** | 6 troops each; the only way to take a world |
+| **freighter** | 3 | 45 | 3 | **nothing at all** | takes a larger share of trade crossing a world NOBODY holds |
+| **listener** | 3 | 45 | 3 | **nothing at all** | sees what is under way at the world it sits on |
+
+The last two do not fight at all, and neither is a cheaper warship: both are
+destroyed in an exchange exactly as a transport is. A **freighter** earns only
+on an unaligned junction — park it where a busy lane crosses ground nobody
+owns. A **listener** is SIGINT, and it sees what a `surveillance` operative
+sees at the same price; the difference is that an operative is hidden and can
+be burned, while a listener is in plain sight and can simply be shot.
 
 Everything is billed by **displacement**: `CREDITS_PER_TON` to build, one a ton
 a turn to keep. So there is no cheap way to buy presence — every class costs
@@ -183,6 +192,18 @@ Ordering more than the treasury covers is not rejected — the yards deliver wha
 was paid for and the rest is trimmed, and you are told. Repositioning is free:
 `-5` here and `+5` there nets to zero and costs nothing. A power that cannot
 meet upkeep lays ships up.
+
+### Every fleet has a named officer
+
+Each power has one commander, and they take that power's side of any battle it
+fights. **You do not choose them and you do not apply their effect** — the
+reducer does both, off a roster in the state block, and the battle report names
+whichever officer actually changed something.
+
+What they are for is the narrative: an engagement between two rival powers reads
+as arithmetic, and a name on it does not. Use theirs. They are real people with
+a record — *"three engagements behind them"* means three — and one who loses a
+battle badly may not survive it, which is worth a sentence when it happens.
 
 ### Battles are never resolved here
 
@@ -230,6 +251,22 @@ scales with how open the whole galaxy is, `extortionist` charges a **premium
 rate** on foreign cargo crossing its space, `autarkic` earns at home and cannot
 be strangled, `smuggler` ignores blockades and raids at double effect,
 `monopolist` takes a premium on lanes it owns both ends of.
+
+**A world is worth two things beyond its income, and both are arithmetic in the
+reducer.** You do not apply either; narrate their consequences and let the
+ledger charge them.
+
+- **What kind of world it is now matters.** Each type feeds one stat — arid
+  might, earthnight guile, industrialmoon and gasgiant industry, earthlike
+  influence, ice and oceanic resolve — and worlds of a kind count **together**:
+  two buy a point, four buy two, six buy three, which is the ceiling. One world
+  of a kind buys nothing at all, so concentration is what pays and a conquest
+  is a choice between worlds rather than a count of them.
+- **Ground that was never yours costs to keep.** A world whose original owner
+  was somebody else charges its holder a standing share of what it pays, every
+  turn, whoever signed what — a cession carries it exactly as a conquest does.
+  An unaligned world was nobody's and is free. So an occupied world is worth
+  *less*, never negative, and a conqueror's expansion decelerates on its own.
 
 Two ways to attack an economy without a battle, **both needing real ships**:
 
@@ -300,11 +337,11 @@ If an action uses an operative **already in place**, the effect it produces is
 that agent's, resolved in the tick — narrate the attempt, not a fresh mechanical
 result you have invented for it.
 
-**`ownerFactionId` is always the acting faction — never the target.** It is
-easy to get backwards on a hostile mission, because the sentence is about the
-victim: "sabotage the Vigil garrison" still means *your* operative, owned by
-*you*, placed on a Vigil world. An agent owned by the faction it targets can
-never act, so the reducer rejects it.
+**Do not write `ownerFactionId`.** An operative is always the acting faction's,
+so the reducer fills it in. It used to be yours to supply and it was the most
+rejected field in the game — the sentence on a hostile mission is about the
+victim, "sabotage the Vigil garrison", so it came back owned by the Vigil, and
+an agent owned by the faction it targets can never act. Omit it.
 
 The `mission` decides risk and persistence: `surveillance` (very low risk),
 `theft`, `subversion`, `defection`, `sabotage` (moderate), and `assassination`
@@ -349,7 +386,8 @@ order types listed:
 | `commission_ships` | hulls delivered at the target on completion | `capital_ship_construction`, `refit`, `retooling` |
 
 It is **paid for when the order is issued**: hulls by displacement at 15 a ton
-(so 60 for a battleship, 45 for a lifter, 30 for an escort or torpedo boat —
+(so 60 for a battleship, 45 for a lifter, freighter or listener, 30 for an
+escort or torpedo boat —
 name the class with `hull`), 45 a point of garrison ceiling, 15 a garrison
 point. `develop_system` is priced from what it
 is worth on that particular world — twelve turns of the income it would create —

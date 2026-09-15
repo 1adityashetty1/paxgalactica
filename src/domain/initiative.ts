@@ -211,11 +211,68 @@ function buy(ctx: Ctx, appetite: number, reserve: number, doctrine: BuyDoctrine 
     tonsToSpend -= buyScreen * escortTons;
   }
 
+  // **A hull nobody builds is a hull nobody has measured**, which is how
+  // `monopolist` stayed implemented, tested and dead for the life of the
+  // project. Both auxiliaries are therefore bought for a stated reason rather
+  // than to a quota, the way lift is sized from the board and not from the
+  // fleet — and both are capped low, because neither wins a battle and tonnage
+  // spent here is tonnage not in the line.
+
+  // A freighter earns only where a lane crosses ground nobody owns, so it is
+  // sized from how much lawless ground this power actually sits next to.
+  const junctions = frontier(ctx.state, ctx.me).filter(
+    (t) => t.controllerFactionId === null,
+  ).length;
+  const wantHaul = Math.min(BOT_MAX_FREIGHTERS, junctions);
+  const haul = hullEverywhere(ctx.state, ctx.me, 'freighter');
+  const haulTons = HULL_SPEC.freighter.tonnage;
+  const buyHaul = Math.min(Math.max(0, wantHaul - haul), Math.floor(tonsToSpend / haulTons));
+  if (buyHaul > 0) {
+    ops.push({ op: 'adjust_fleet', factionId: ctx.me, delta: buyHaul, hull: 'freighter', reason: 'hauling' });
+    tonsToSpend -= buyHaul * haulTons;
+  }
+
+  // SIGINT is how a power with no spies sees. `maxAgentsFor` comes off guile,
+  // so a faction below the median is bad at operatives by construction — and
+  // buys ears instead, which is the whole argument for the class existing
+  // beside the `surveillance` operative it duplicates.
+  const guile = getFaction(ctx.state, ctx.me)?.stats.guile ?? 10;
+  const wantEars = guile <= BOT_SIGINT_GUILE ? BOT_MAX_LISTENERS : 0;
+  const ears = hullEverywhere(ctx.state, ctx.me, 'listener');
+  const earTons = HULL_SPEC.listener.tonnage;
+  const buyEars = Math.min(Math.max(0, wantEars - ears), Math.floor(tonsToSpend / earTons));
+  if (buyEars > 0) {
+    ops.push({ op: 'adjust_fleet', factionId: ctx.me, delta: buyEars, hull: 'listener', reason: 'sigint' });
+    tonsToSpend -= buyEars * earTons;
+  }
+
   const buyLine = Math.floor(tonsToSpend / HULL_SPEC[line].tonnage);
   if (buyLine > 0) {
     ops.push({ op: 'adjust_fleet', factionId: ctx.me, delta: buyLine, hull: line, reason: 'yards' });
   }
   return ops;
+}
+
+/**
+ * How many freighters a bot will run, and how many ears.
+ *
+ * Both small on purpose. Neither hull wins an engagement, so every ton here is
+ * a ton not in the line — the caps exist so that the classes are exercised on
+ * a live board without the harness measuring a galaxy that forgot to build a
+ * navy.
+ */
+const BOT_MAX_FREIGHTERS = 3;
+const BOT_MAX_LISTENERS = 2;
+/** At or below this guile, a power is bad enough at spies to buy ears instead. */
+const BOT_SIGINT_GUILE = 13;
+
+/** Hulls of one class a faction has, in systems and under way. */
+function hullEverywhere(s: WorldState, me: string, hull: HullClass): number {
+  const inSystems = s.systems.reduce((n, sys) => n + (stackAt(sys, me)[hull] ?? 0), 0);
+  const inTransit = s.pendingOrders
+    .filter((o) => o.factionId === me && o.force)
+    .reduce((n, o) => n + (o.force[hull] ?? 0), 0);
+  return inSystems + inTransit;
 }
 
 /** Escorts a faction has, everywhere. */

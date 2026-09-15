@@ -45,7 +45,14 @@ import { z } from 'zod';
  * expressed only as a number gets solved once and then ignored.
  */
 
-export const HULL_CLASSES = ['battleship', 'escort', 'torpedo_boat', 'lifter'] as const;
+export const HULL_CLASSES = [
+  'battleship',
+  'escort',
+  'torpedo_boat',
+  'lifter',
+  'freighter',
+  'listener',
+] as const;
 export const HullClassSchema = z.enum(HULL_CLASSES);
 export type HullClass = (typeof HULL_CLASSES)[number];
 
@@ -142,7 +149,7 @@ export const HULL_SPEC: Record<HullClass, HullSpec> = {
   // Useless in orbit and the only way to take ground. High carry is what pays
   // for that uselessness — and being second in the loss order is what it pays
   // in return: unarmed, unarmoured, and dead the moment the screen is gone.
-  lifter: { tonnage: 3, orbitalWeight: 0.01, carry: LIFTER_CARRY, lossOrder: 1, label: 'lifter' },
+  lifter: { tonnage: 3, orbitalWeight: 0.01, carry: LIFTER_CARRY, lossOrder: 2, label: 'lifter' },
   // Cheap, fragile, and built to kill things far above its weight — the Jeune
   // École boat, and the reason destroyers were originally called "torpedo boat
   // destroyers".
@@ -158,9 +165,70 @@ export const HULL_SPEC: Record<HullClass, HullSpec> = {
   // per-class figures and can never beat the best single class — every
   // reweighting just moves which PURE fleet wins. A mixed optimum needs an
   // effect that is superadditive, and firing first is one.
-  torpedo_boat: { tonnage: 2, orbitalWeight: 0.1, carry: 0, lossOrder: 2, label: 'torpedo boat' },
-  battleship: { tonnage: 4, orbitalWeight: 3, carry: 0, lossOrder: 3, label: 'battleship' },
+  torpedo_boat: { tonnage: 2, orbitalWeight: 0.1, carry: 0, lossOrder: 4, label: 'torpedo boat' },
+  battleship: { tonnage: 4, orbitalWeight: 3, carry: 0, lossOrder: 5, label: 'battleship' },
+
+  /* --- hulls that do not fight ------------------------------------------ */
+  //
+  // Both carry the lifter's nominal 0.01: present, killable, and worth nothing
+  // in an exchange of fire. That value is not a rounding of zero — at exactly
+  // zero a fleet of nothing but these read as "nothing to fight" to every
+  // branch of the resolver, which needed an exception to annihilate them where
+  // they lay. Something that is THERE should be fought and destroyed by the
+  // ordinary arithmetic.
+  //
+  // Neither is priced as a discount. `CREDITS_PER_TON` is uniform, so a
+  // freighter parked on a rival's world skims exactly what its credits bought
+  // and no more — the same construction that stops a cheap class becoming the
+  // efficient way to buy presence.
+
+  // Built to carry, which is worth something precisely where nobody owns the
+  // ground: a freighter takes a larger share of an UNALIGNED hop's trade than a
+  // warship of the same tonnage does. See `FREIGHTER_LANE_WEIGHT`. It earns
+  // nothing anywhere else, and that narrowness is the point — it is a hull for
+  // the lawless middle of the map rather than a second way to be rich.
+  freighter: { tonnage: 3, orbitalWeight: 0.01, carry: 0, lossOrder: 1, label: 'freighter' },
+
+  // SIGINT: it sees what an `intel` operative sees, at the world it sits on.
+  //
+  // Priced deliberately against the operative it duplicates, because two paths
+  // to one outcome that cost differently means only the cheaper is ever used.
+  // A `surveillance` operative is `AGENT_COST` 40 plus `AGENT_UPKEEP` 3; a
+  // listener is 45 plus 3. Near enough identical, and everything else about
+  // them is opposite:
+  //
+  //   operative   hidden until exposed, cannot be attacked, CAN be burned,
+  //               counts against `maxAgentsFor` — which is derived from guile
+  //   listener    visible in `system.ships` and killable by anyone willing to
+  //               come and do it, never burned, against no cap at all
+  //
+  // That last line is what earns it a place rather than making it a duplicate:
+  // `maxAgentsFor` means a power with poor guile is bad at spies, and the Vigil
+  // at 11 and Arkane at 12 are exactly that. A listener is bought with credits
+  // and industry instead, so SIGINT is how a power with no spies sees.
+  listener: { tonnage: 3, orbitalWeight: 0.01, carry: 0, lossOrder: 3, label: 'listener' },
 };
+
+/**
+ * How much more of an unaligned hop's trade a freighter takes than a warship of
+ * the same tonnage.
+ *
+ * Applied in `distributeUnclaimed`, which is where the game already splits a
+ * lawless junction by tons — so this is a weighting of an existing division
+ * rather than a new flow. Two consequences follow from putting it there and
+ * nowhere else, and both are why it is safe:
+ *
+ * - **It cannot mint credits.** `distributeUnclaimed` divides a fixed pot, so a
+ *   freighter can only take a larger slice of money the lane already paid.
+ * - **It cannot compound.** Read where it is used, like every other effect
+ *   here, rather than applied to a treasury each tick.
+ *
+ * It multiplies with `SMUGGLER_UNCLAIMED_WEIGHT` rather than replacing it,
+ * because the two make different claims: one is about the power, one about the
+ * hull. A smuggler running freighters through the lawless middle is the best
+ * version of that trade, which is the correct answer.
+ */
+export const FREIGHTER_LANE_WEIGHT = 2;
 
 /** What a hull of this class costs to lay down. */
 export const hullCost = (hull: HullClass): number => HULL_SPEC[hull].tonnage * CREDITS_PER_TON;
@@ -187,6 +255,8 @@ export const TypedStackSchema = z.object({
   escort: count,
   torpedo_boat: count,
   lifter: count,
+  freighter: count,
+  listener: count,
 });
 
 export const ShipStackSchema = z
@@ -228,6 +298,26 @@ export function hullsIn(stack: ShipStack | undefined): number {
 export function tonsIn(stack: ShipStack | undefined): number {
   if (!stack) return 0;
   return HULL_CLASSES.reduce((n, hull) => n + (stack[hull] ?? 0) * HULL_SPEC[hull].tonnage, 0);
+}
+
+/**
+ * Tons, with a freighter's counting for more.
+ *
+ * The weight used to split an UNALIGNED hop's trade, and nowhere else. It is
+ * deliberately a separate function from `tonsIn` rather than a flag on it:
+ * every other rule in the game counts tons flat, and a hull that quietly
+ * weighed more everywhere would be the escort-spam mistake in a new place.
+ */
+export function laneWeightOf(stack: ShipStack | undefined): number {
+  if (!stack) return 0;
+  return HULL_CLASSES.reduce(
+    (n, hull) =>
+      n +
+      (stack[hull] ?? 0) *
+        HULL_SPEC[hull].tonnage *
+        (hull === 'freighter' ? FREIGHTER_LANE_WEIGHT : 1),
+    0,
+  );
 }
 
 /** What a stack is worth in an orbital exchange. */

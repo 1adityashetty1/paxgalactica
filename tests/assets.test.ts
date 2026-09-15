@@ -25,7 +25,19 @@ import type { OpInput } from '../src/domain/ops.js';
  * value under a transfer — asserted rather than assumed.
  */
 describe('assets', () => {
-  const seed = () => createSeedState('ojjul');
+  /**
+   * The seed ships four assets — one per power except the Combine, which holds
+   * paper instead. They are stripped here on purpose: every test in this file
+   * is about the mechanic in isolation, and several count or index
+   * `state.assets` whole, which is only meaningful against a board this file
+   * put there itself. The seeded four are pinned in their own test at the
+   * bottom, so removing them here does not remove the coverage.
+   */
+  const seed = () => {
+    const s = createSeedState('ojjul');
+    s.assets = [];
+    return s;
+  };
   const world = (s: WorldState, f = 'ojjul') =>
     s.systems.find((x) => x.controllerFactionId === f)!;
   const mint = (over: Record<string, unknown> = {}): OpInput =>
@@ -561,6 +573,82 @@ describe('assets', () => {
       for (const a of s.assets) expectWellFormed(a);
       expect(s.assets.some((a) => a.kind === 'ore' && a.quantity === 40)).toBe(true);
     });
+  });
+});
+
+/**
+ * The four the seed ships, pinned.
+ *
+ * Every other test in this file strips them, so without this nothing would
+ * check that the opening board is well-formed — and a seeded asset is the one
+ * kind that never passes through `create_asset`, so the reducer's own
+ * corrections are not there to catch a malformed one.
+ */
+describe('the opening board gives every power something to bargain with', () => {
+  const opening = () => createSeedState('drajk');
+
+  it('holds one each, and nothing for the Combine', () => {
+    const s = opening();
+    const holders = s.assets.map((a) => a.heldBy).sort();
+    expect(holders).toEqual(['drajk', 'freeworlds', 'meridian', 'vigil']);
+    // Its shelf is the paper: three debts, and `assign_debt` sells one.
+    expect(s.assets.some((a) => a.heldBy === 'ojjul')).toBe(false);
+    expect(s.debts.filter((d) => d.creditorFactionId === 'ojjul')).toHaveLength(3);
+  });
+
+  it('is well-formed, which nothing else would catch', () => {
+    for (const a of opening().assets) expectWellFormed(a);
+  });
+
+  it('pays nobody, because these exist to be traded and not to earn', () => {
+    // A seeded yield would be four new income streams on a board whose balance
+    // is already measured. `ledgerFor` reads `assetYield`, so this is the line
+    // between "something to trade" and "a change to the economy".
+    for (const a of opening().assets) expect(a.yield).toBeNull();
+  });
+
+  it('can be taken, because each one stands on a world', () => {
+    const s = opening();
+    for (const a of s.assets) {
+      expect(a.atSystemId).not.toBeNull();
+      // And on a world its own holder controls, or it would already be lost.
+      const at = s.systems.find((x) => x.id === a.atSystemId)!;
+      expect(at.controllerFactionId).toBe(a.heldBy);
+    }
+  });
+
+  it('is worth several times more to somebody else than to its holder', () => {
+    // The whole of gains-from-trade, and the reason `valuePerUnit` is keyed by
+    // faction at all. A shelf of things worth the same to everyone is a shelf
+    // nobody has a reason to bargain over.
+    for (const a of opening().assets) {
+      if (a.speculative) {
+        const bands = Object.entries(a.valueRange);
+        expect(bands.length).toBeGreaterThan(0);
+        // Nobody values it who is not a rival: a band for its own holder would
+        // be the holder pricing its own shelf.
+        expect(bands.map(([id]) => id)).not.toContain(a.heldBy);
+        continue;
+      }
+      const mine = a.valuePerUnit[a.heldBy] ?? 0;
+      const best = Math.max(...Object.values(a.valuePerUnit));
+      expect(best).toBeGreaterThanOrEqual(mine * 3);
+    }
+  });
+
+  it('is worth roughly the same to each best buyer, so nobody opens ahead', () => {
+    const worth = opening().assets.map((a) =>
+      a.speculative
+        ? Math.max(...Object.values(a.valueRange).map((b) => ((b.min + b.max) / 2) * a.quantity))
+        : Math.max(...Object.values(a.valuePerUnit)) * a.quantity,
+    );
+    // About two battleships each. Loose on purpose — the property is that no
+    // opening position is decided by what it happens to be holding, not that
+    // the four are equal to the credit.
+    for (const w of worth) {
+      expect(w).toBeGreaterThan(400);
+      expect(w).toBeLessThan(560);
+    }
   });
 });
 

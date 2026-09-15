@@ -13,11 +13,13 @@ import {
   takeHulls,
   inLossOrder,
   orbitalWeightOf,
+  laneWeightOf,
   tonsIn,
   type HullClass,
   type ShipStack,
 } from './hulls.js';
-import { FactionStatsSchema, STAT_NAMES, statModifier, type FactionStats } from './checks.js';
+import { FactionStatsSchema, STAT_NAMES, statModifier, type FactionStats, type StatName } from './checks.js';
+import { CommanderSchema } from './command.js';
 import {
   COMMITMENT_INCOME_BASE,
   COMMITMENT_INCOME_PER_INFLUENCE,
@@ -331,6 +333,115 @@ export const WORLD_TYPES = [
 export const WorldTypeSchema = z.enum(WORLD_TYPES);
 export type WorldType = z.infer<typeof WorldTypeSchema>;
 
+/**
+ * What kind of world makes a power better at.
+ *
+ * `worldType` shipped with the pixel-art system views and had exactly one
+ * reader — `WorldSprite` in the client — so for its whole existence the map
+ * told a player what a world looked like and nothing about what taking it was
+ * worth. This is what makes a conquest a choice between worlds rather than a
+ * choice of how many.
+ *
+ * **Keyed on the type, not on the world.** A per-world modifier is richer and
+ * costs 25 seed entries plus somewhere in the UI to show them; a type modifier
+ * is legible from the map itself — you can see what a world is, so you can see
+ * what it buys, and nothing has to be looked up. Two types share a stat where
+ * the fiction says the same thing twice.
+ */
+export const WORLD_TYPE_STAT: Record<WorldType, StatName> = {
+  // Hard ground, and the people it makes.
+  arid: 'might',
+  // A world that never sleeps: dense, lit, and unpoliceable at street level.
+  earthnight: 'guile',
+  // Extraction and production, which is the whole of what these are for.
+  industrialmoon: 'industry',
+  gasgiant: 'industry',
+  // Where the populations and the politics are.
+  earthlike: 'influence',
+  // Places that are difficult to live in and therefore difficult to break.
+  ice: 'resolve',
+  oceanic: 'resolve',
+};
+
+/**
+ * Worlds of one kind needed for the first, second and third point.
+ *
+ * **Two, not one**, and that is the whole shape of the mechanic. At a threshold
+ * of one every power would open with a point on three or four stats — measured
+ * on the seed — and a modifier everybody has is not a modifier, it is
+ * inflation. At two the opening board grants exactly three points in total, and
+ * every further one has to be taken from somebody.
+ *
+ * Rising gaps because the alternative is a sum, and a per-world bonus summed
+ * over territory is unbounded in principle: `MAX_DISSENT_PENALTY` is 8 on a
+ * 1-20 scale and this file already calls -4 on every modifier the difference
+ * between a power that functions and one that does not. Three points is the
+ * ceiling, and it costs six worlds of one kind to reach — a quarter of the map.
+ */
+/**
+ * What a share of a world's income costs to hold when the world was somebody
+ * else's to begin with.
+ *
+ * Conquest was permanently cheap in one specific way: a world taken is a world
+ * that pays exactly what it paid its previous owner, forever, with no standing
+ * cost for the fact that its institutions, its records and its people belong to
+ * a state you destroyed. Garrison regrowth is the *military* answer to that and
+ * has always existed; this is the administrative one.
+ *
+ * A **fraction of what the world actually pays you** rather than a flat figure,
+ * so it scales with the board and needs no tuning per era: a rich world is
+ * harder to hold down than a poor one, which is the fact the mechanic is about.
+ * It also cannot exceed the income it is charged against, so occupying can
+ * never cost more than it earns — a conquest is worth less, not negative.
+ */
+export const OCCUPATION_COST = 0.15;
+
+/*
+ * **Swept, not chosen**, and the response is a cliff rather than a gradient —
+ * the same shape `MONOPOLY_BONUS` turned out to have, and for the same reason:
+ * the outcome hangs on one discrete question, so everything either side of it
+ * is identical.
+ *
+ *   0.10  3/6/5/4/4   the historical board
+ *   0.15  3/6/5/4/4
+ *   0.20  3/6/5/4/4
+ *   0.25  4/5/5/4/4   the Vigil's late conquest of tor-1 never happens
+ *
+ * At 0.25 a power that has taken foreign ground is poor enough that its fleet
+ * stops growing, and the one territorial change after turn 20 disappears. That
+ * is the mechanic working, and it is still too much: `territory changes through
+ * turn 24` is a measured property of this galaxy, and a standing cost that
+ * ENDS conquest rather than pricing it has overshot.
+ *
+ * 0.15 is taken from the middle of the flat region rather than 0.20, which also
+ * passes — a tuning value on a cliff edge is one unrelated change away from
+ * tipping over it, and the margin is free because the board is identical across
+ * the whole range.
+ */
+
+export const WORLD_BONUS_THRESHOLDS = [2, 4, 6] as const;
+export const MAX_WORLD_BONUS = WORLD_BONUS_THRESHOLDS.length;
+
+/**
+ * What the ground a power holds adds to its stats.
+ *
+ * Counted over worlds it **controls**, so it is lost with the world — the same
+ * property that makes a producing asset a target rather than an annuity.
+ */
+export function terrainBonus(state: WorldState, factionId: string): Record<StatName, number> {
+  const held: Record<StatName, number> = { might: 0, guile: 0, industry: 0, influence: 0, resolve: 0 };
+  for (const system of state.systems) {
+    if (system.controllerFactionId !== factionId) continue;
+    const stat = WORLD_TYPE_STAT[system.worldType];
+    held[stat] = (held[stat] ?? 0) + 1;
+  }
+  const out: Record<StatName, number> = { might: 0, guile: 0, industry: 0, influence: 0, resolve: 0 };
+  for (const stat of STAT_NAMES) {
+    out[stat] = WORLD_BONUS_THRESHOLDS.filter((need) => (held[stat] ?? 0) >= need).length;
+  }
+  return out;
+}
+
 export const SystemSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -338,6 +449,30 @@ export const SystemSchema = z.object({
   coords: z.object({ x: z.number(), y: z.number() }),
   /** null means unaligned/independent, not "unknown". */
   controllerFactionId: z.string().nullable(),
+  /**
+   * Who held this world when the campaign opened, and therefore whose
+   * institutions run it whoever is standing over it now.
+   *
+   * Written once by the seed and never again. It is what makes *occupation*
+   * distinguishable from *administration*, which the economy already asserts
+   * from the other direction — `systemIncome` gives a holder a **2x
+   * administrator's edge** over a rival parked in orbit on the stated grounds
+   * that occupying a world you do not administer yields less. This is the
+   * matching cost.
+   *
+   * **null means nobody's**, and it is not the same as "unknown":
+   *
+   * - An **unaligned** world is `null` in the seed, so taking neutral ground
+   *   costs nothing extra. There is no displaced administration to resent you,
+   *   and the distinction is worth having — settling unclaimed space and
+   *   holding down a conquered rival are different undertakings.
+   * - A save written **before this field existed** parses every world to
+   *   `null`, so an old campaign carries no occupation costs at all and
+   *   replays as the game it was actually played as. That is the same choice
+   *   `CompulsionSchema` and `Faction.title` made, and it is why the default
+   *   has to be the inert value rather than a guess at the controller.
+   */
+  homeFactionId: z.string().nullable().default(null),
   garrison: z.number().int().min(0),
   /**
    * What the garrison regrows to. Ground forces are raised locally and cost
@@ -546,6 +681,15 @@ export const WorldStateSchema = z.object({
    * reason: an old journal simply never creates any.
    */
   assets: z.array(AssetSchema).default([]),
+  /**
+   * Named officers, one per power, who take a side of a battle.
+   *
+   * `.default([])` so a campaign saved before commanders existed loads with an
+   * empty roster and fights exactly the battles it always fought — the same
+   * choice `CompulsionSchema` and `Faction.title` made, and the reason a
+   * mechanic that reads an empty list has to be inert rather than absent.
+   */
+  commanders: z.array(CommanderSchema).default([]),
   playerFactionId: z.string().min(1),
   /** Abstract unit. There is no calendar in this game, deliberately. */
   turn: z.number().int().min(0),
@@ -956,6 +1100,15 @@ export const LedgerSchema = z.object({
    * what that costs it. Zero for everyone else.
    */
   warProfit: z.number().int(),
+  /**
+   * What holding somebody else's ground costs, per turn.
+   *
+   * A fraction of what each foreign world actually pays this power, so it is
+   * bounded by that world's income: a conquest is worth less, never negative.
+   * `null` on `homeFactionId` — an unaligned world, or any world in a save
+   * written before the field existed — is free.
+   */
+  occupation: z.number().int(),
   /** Territory: what the systems themselves pay. */
   territory: z.number().int(),
   /** Trade: what the lane network pays, after tolls and raids. */
@@ -1002,6 +1155,19 @@ export interface SystemIncome {
 export const tonsPresentAt = (system: StarSystem): [string, number][] =>
   Object.entries(system.ships ?? {})
     .map(([id, stack]) => [id, tonsIn(stack)] as [string, number])
+    .filter(([, t]) => t > 0);
+
+/**
+ * The same, weighted for cargo — `tonsPresentAt`'s sibling for the one split
+ * that is about carrying rather than about force.
+ *
+ * Only `distributeUnclaimed` reads it. A contested WORLD still divides by flat
+ * tons, because that contest is over how much force is sitting on it, and a
+ * freighter is not force.
+ */
+export const laneWeightsAt = (system: StarSystem): [string, number][] =>
+  Object.entries(system.ships ?? {})
+    .map(([id, stack]) => [id, laneWeightOf(stack)] as [string, number])
     .filter(([, t]) => t > 0);
 
 /**
@@ -1156,7 +1322,7 @@ export function ledgerFor(
   if (!faction) {
     return {
       gross: 0, upkeep: 0, net: 0, systems: 0, treatyFlow: 0,
-      espionageLoss: 0, espionageGain: 0, garrisonUpkeep: 0, agentUpkeep: 0, commitmentFlow: 0, commitmentShare: 0, assetYield: 0, warProfit: 0,
+      espionageLoss: 0, espionageGain: 0, garrisonUpkeep: 0, agentUpkeep: 0, commitmentFlow: 0, commitmentShare: 0, assetYield: 0, warProfit: 0, occupation: 0,
       territory: 0, routes: 0, tolls: 0, raided: 0, debtService: 0, loanRent: 0,
     };
   }
@@ -1193,6 +1359,24 @@ export function ledgerFor(
   // performs stays a conserved division of what the network is worth — the same
   // treatment the free trader's openness bonus gets, two lines up.
   routes += earnings.monopolyPremium[factionId] ?? 0;
+
+  // **Ground that was never yours costs something to keep.** Charged on the
+  // share each foreign world actually pays, so it is bounded by that world's
+  // income and a conquest is worth less rather than worth negative.
+  //
+  // A **ceded** world carries it too, and that is deliberate rather than an
+  // oversight: the cost is about administering a population whose institutions
+  // are not yours, which is equally true however the paper was signed. The
+  // alternative makes the penalty one treaty away from optional — conquer,
+  // then have it handed over — and a mechanic with a free bypass is a mechanic
+  // that only taxes the players who did not notice.
+  let occupation = 0;
+  for (const system of state.systems) {
+    if (system.controllerFactionId !== factionId) continue;
+    if (system.homeFactionId === null || system.homeFactionId === factionId) continue;
+    occupation += (systemIncome(state, system).shares[factionId] ?? 0) * OCCUPATION_COST;
+  }
+  occupation = Math.round(occupation);
 
   const gross = territory + routes;
   const upkeep = fleetTonsOf(state, factionId) * UPKEEP_PER_TON;
@@ -1294,8 +1478,10 @@ export function ledgerFor(
       commitmentFlow +
       commitmentShare +
       assetYield +
-      warProfit,
+      warProfit -
+      occupation,
     systems: counted,
+    occupation,
     treatyFlow,
     espionageLoss,
     espionageGain,
@@ -1662,6 +1848,17 @@ export function effectiveStats(state: WorldState, factionId: string): FactionSta
   const base: FactionStats = faction
     ? { ...faction.stats }
     : { might: 10, guile: 10, industry: 10, influence: 10, resolve: 10 };
+
+  // Ground first, then what is wrong at home. Applied in this order so good
+  // territory can offset dissent rather than being cancelled by the floor —
+  // a badly-governed power standing on good ground is still standing on it.
+  // Clamped to 20 because that is the top of the scale every modifier is read
+  // off; a 21 would be a number the curve has no answer for.
+  const terrain = terrainBonus(state, factionId);
+  for (const stat of STAT_NAMES) {
+    const bonus = terrain[stat] ?? 0;
+    if (bonus > 0) base[stat] = Math.min(20, base[stat] + bonus);
+  }
 
   const penalty = dissentPenalty(faction?.dissent ?? 0);
   if (penalty > 0) {

@@ -1179,8 +1179,21 @@ describe('whose concessions a reply may carry', () => {
  * held exclusively. The world had nowhere to put any of them: an accord would
  * record "fifty crews at forty a head" and the game could not count one crew.
  */
+/**
+ * The seed with its four starting assets removed.
+ *
+ * Every asset test below counts or indexes `state.assets` whole, which is only
+ * meaningful against a board the test put there itself. The seeded four are
+ * pinned in `tests/assets.test.ts`, so stripping them here costs no coverage.
+ */
+function seedWithoutAssets(player: string) {
+  const s = createSeedState(player);
+  s.assets = [];
+  return s;
+}
+
 describe('assets', () => {
-  const seedState = () => createSeedState('ojjul');
+  const seedState = () => seedWithoutAssets('ojjul');
   const make = (over: Record<string, unknown> = {}) => ({
     op: 'create_asset', kind: 'prisoners', heldBy: 'ojjul',
     text: 'Vigil crews taken off Vantic.', quantity: 40, unit: 'crew',
@@ -1352,7 +1365,7 @@ describe('assets', () => {
  * every turn.
  */
 describe('assets that stand on a world', () => {
-  const seedState = () => createSeedState('ojjul');
+  const seedState = () => seedWithoutAssets('ojjul');
   const home = (s: WorldState) => s.systems.find((x) => x.controllerFactionId === 'ojjul')!;
   const mine = (over: Record<string, unknown> = {}) => ({
     op: 'create_asset', kind: 'mine', heldBy: 'ojjul',
@@ -1662,7 +1675,7 @@ describe('a contingency written against losing a world', () => {
  */
 describe('a thing sold under a treaty', () => {
   const board = () => {
-    const s = createSeedState('meridian');
+    const s = seedWithoutAssets('meridian');
     const world = s.systems.find((y) => y.controllerFactionId === 'ojjul')!;
     return applyOps(
       s,
@@ -1705,7 +1718,7 @@ describe('a thing sold under a treaty', () => {
   it('will not hand over a fixture on its own', () => {
     // A mine changes hands with its world and by no other route, so the term is
     // dropped and the note says the true thing: cede the world.
-    const s0 = createSeedState('meridian');
+    const s0 = seedWithoutAssets('meridian');
     const world = s0.systems.find((y) => y.controllerFactionId === 'ojjul')!;
     const withMine = applyOps(
       s0,
@@ -1770,5 +1783,69 @@ describe('a thing sold under a treaty', () => {
       },
     ];
     expect(groundInConcessions(s, [sale()], conceded, 'ojjul').ops).toHaveLength(1);
+  });
+});
+
+/**
+ * The dossier sale the model kept failing to write.
+ *
+ * Measured in the playtest of 2026-09-09: an accord selling a compiled file
+ * emitted `"NEW:dossier:ojjul:ithaal_chart"` as an asset id and was rejected
+ * as `unknown_asset`. The model was not being careless — it was being asked
+ * for something unwritable. A dossier is minted by the accord, so it has no
+ * id until the reducer assigns one, and both `transfer_asset` and
+ * `terms.assets` need an id to name. There was no id to give.
+ *
+ * The escape hatch already existed: a dossier is the one asset an accord may
+ * create AND the one whose `heldBy` may be either party, so the seller writes
+ * it straight into the buyer's hands in a single op. `extraction.md` now says
+ * so; this pins that the path it points at actually works.
+ */
+describe('a dossier sold across a table', () => {
+  it('is one op into the buyer’s hands, with the price beside it', () => {
+    const s = seedWithoutAssets('meridian');
+    const before = s.factions.find((f) => f.id === 'meridian')!.credits;
+
+    const out = applyOps(
+      s,
+      [
+        {
+          op: 'create_asset',
+          kind: 'dossier',
+          // The BUYER, written by the seller — the thing only an accord may do.
+          heldBy: 'meridian',
+          text: "The Combine's file on the Vantic keel-yards, sealed.",
+          quantity: 1,
+          unit: 'dossier',
+          valuePerUnit: { meridian: 300 },
+        },
+        { op: 'adjust_credits', factionId: 'meridian', delta: -300, reason: 'for the file' },
+        { op: 'adjust_credits', factionId: 'ojjul', delta: 300, reason: 'for the file' },
+      ] as OpInput[],
+      'extraction',
+      'meridian',
+      true,
+    );
+
+    expect(out.rejections).toEqual([]);
+    expect(out.state.assets).toHaveLength(1);
+    expect(out.state.assets[0]!.heldBy).toBe('meridian');
+    expect(out.state.assets[0]!.kind).toBe('dossier');
+    // Conserved, as any extraction-sourced money movement must be.
+    expect(out.state.factions.find((f) => f.id === 'meridian')!.credits).toBe(before - 300);
+  });
+
+  it('still refuses an id that was never minted', () => {
+    // The shape the model reached for, and why the guidance had to change
+    // rather than the guard.
+    const s = createSeedState('meridian');
+    const out = applyOps(
+      s,
+      [{ op: 'transfer_asset', assetId: 'NEW:dossier:ojjul:ithaal_chart', toFactionId: 'meridian' }] as OpInput[],
+      'extraction',
+      'meridian',
+      true,
+    );
+    expect(out.rejections[0]?.code).toBe('unknown_asset');
   });
 });

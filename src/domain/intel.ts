@@ -161,13 +161,32 @@ function ownSpace(state: WorldState, factionId: string): Set<string> {
   return ids;
 }
 
-/** Systems a faction has an unexposed `intel` operative in. */
+/**
+ * Systems a faction is actually watching — by an unexposed `intel` operative,
+ * or by a `listener` hull standing in the orbit.
+ *
+ * The two are deliberately the same sight at the same price, and opposite in
+ * every other respect. An operative is hidden, unattackable, burnable, and
+ * bounded by `maxAgentsFor`, which comes off guile; a listener is in
+ * `system.ships` where everybody can see it, killable by anyone willing to come
+ * and do it, never burned, and bounded by nothing but money.
+ *
+ * That is what stops this being the "two paths to one outcome that cost
+ * differently" defect the suborning and assassination routes were both fixed
+ * for. It also gives the mechanic to the powers that could never reach it: the
+ * Vigil at guile 11 and Arkane at 12 are bad at operatives by construction, and
+ * SIGINT is bought with credits instead.
+ */
 function watchedSystems(state: WorldState, factionId: string): Set<string> {
-  return new Set(
+  const ids = new Set(
     (state.agents ?? [])
       .filter((a) => a.ownerFactionId === factionId && !a.exposed && a.effect.kind === 'intel')
       .map((a) => a.systemId),
   );
+  for (const system of state.systems) {
+    if ((system.ships?.[factionId]?.listener ?? 0) > 0) ids.add(system.id);
+  }
+  return ids;
 }
 
 /**

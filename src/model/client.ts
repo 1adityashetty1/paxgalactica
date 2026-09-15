@@ -164,6 +164,23 @@ async function rawCall(
   jsonSchema: Record<string, unknown>,
 ): Promise<{ result: unknown; costUsd: number }> {
   const tier = modelFor(kind);
+  const rawJson = process.env.PAXGALACTICA_RAW_JSON === '1';
+  if (rawJson) {
+    system = [
+      system,
+      '',
+      '---',
+      '',
+      '## Output format',
+      '',
+      'Reply with a single JSON object and nothing else — no prose before or',
+      'after it, no markdown fence. It must validate against this schema:',
+      '',
+      '```json',
+      JSON.stringify(jsonSchema),
+      '```',
+    ].join('\n');
+  }
 
   let result: unknown;
   let costUsd = 0;
@@ -192,7 +209,20 @@ async function rawCall(
       // a key exported from the user's shell profile can neither shadow the
       // subscription nor bill an API account.
       env: buildAuthEnv(),
-      outputFormat: { type: 'json_schema', schema: jsonSchema },
+      // EXPERIMENT (PAXGALACTICA_RAW_JSON=1): drop structured output and ask
+      // for JSON in the prompt instead.
+      //
+      // Under `outputFormat: json_schema` the SDK returns the result through
+      // an end-turn tool — a tool_use/tool_result pair — which costs a second
+      // agentic round trip that re-sends the whole context. That carrier is
+      // most of the ~7-8s floor on every call. Without it the model answers in
+      // one turn, and `coerce` + the Zod retry loop become the only validator:
+      // layer 1 is traded for however many extra corrections layer 2 then has
+      // to make.
+      //
+      // Roughly cost-neutral on input either way — the schema is sent as
+      // `outputFormat` today and inlined into the system prompt here.
+      ...(rawJson ? {} : { outputFormat: { type: 'json_schema', schema: jsonSchema } }),
     },
   });
 

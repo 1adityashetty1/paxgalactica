@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { WorldState } from '../../../src/domain/state.js';
 import { layoutGalaxy, sectorsOf } from '../../../src/ui/layout.js';
-import { blockadesOn, tradeRoutes } from '../../../src/domain/trade.js';
+import { blockadesOn, routeEarnings, tradeRoutes } from '../../../src/domain/trade.js';
 import { ansi256ToHex, NEUTRAL } from '../color.js';
 
 /**
@@ -55,6 +55,23 @@ export function GalaxyMap({ state, selectedId, onSelect }: Props) {
       }
     }
     return { tradeOnLane: carried, severed: cut };
+  }, [state]);
+
+  /**
+   * Where the player's tolls are actually levied.
+   *
+   * `tollTargets` was readable in the Factions panel, so a player could see
+   * THAT the Combine charged them and never which junction it cost them on —
+   * the actionable half of the mechanic was the invisible half. These come off
+   * `routeEarnings`, the same function the reducer pays out from, for the
+   * reason the lane volumes above do.
+   */
+  const { tollPaidAt, tollTakenAt } = useMemo(() => {
+    const e = routeEarnings(state);
+    return {
+      tollPaidAt: e.tollsPaidBySystem[state.playerFactionId] ?? {},
+      tollTakenAt: e.tollsBySystem[state.playerFactionId] ?? {},
+    };
   }, [state]);
 
   const W = SCALE;
@@ -221,6 +238,8 @@ export function GalaxyMap({ state, selectedId, onSelect }: Props) {
             const isPlayer = s.controllerFactionId === state.playerFactionId;
             const selected = s.id === selectedId;
             const isContested = contested(s.id, s.controllerFactionId);
+            const paid = tollPaidAt[s.id] ?? 0;
+            const taken = tollTakenAt[s.id] ?? 0;
             const r = 6 + s.strategicValue * 0.55;
             return (
               <g
@@ -249,6 +268,30 @@ export function GalaxyMap({ state, selectedId, onSelect }: Props) {
                   stroke={color}
                   strokeWidth={isPlayer ? 3.5 : 2}
                 />
+                {/* A toll is a fact about a place. Paying and collecting are
+                    the same mechanic pointed two ways, so they share a glyph
+                    and differ only in colour — and the figure is in the title,
+                    because the ring says "here" and the number says "how much".
+
+                    A RING rather than a dot, and the arithmetic is why: the
+                    viewBox is ~1220 units wide into roughly 490 css pixels, so
+                    a marker is drawn at about 0.4x. A 4-unit dot lands under
+                    two pixels — present in the DOM, invisible on the screen,
+                    which is the failure mode the battle glyphs already taught.
+                    A ring is read from its outline and survives the scale, the
+                    way `contested-ring` does. */}
+                {(paid > 0 || taken > 0) && (
+                  <circle
+                    r={r + 3.5}
+                    className={paid > 0 ? 'toll-paid' : 'toll-taken'}
+                  >
+                    <title>
+                      {paid > 0
+                        ? `You pay ${Math.round(paid)} a turn in tolls here.`
+                        : `You collect ${Math.round(taken)} a turn in tolls here.`}
+                    </title>
+                  </circle>
+                )}
                 <text x={r + 7} y={4.5} className="label" fill={color}>
                   {s.name}
                 </text>
@@ -272,6 +315,16 @@ export function GalaxyMap({ state, selectedId, onSelect }: Props) {
               ? state.factions.find((f) => f.id === hovered.system.controllerFactionId)?.name
               : 'unaligned'}
           </span>
+          {(tollPaidAt[hovered.system.id] ?? 0) > 0 && (
+            <span className="toll-note bad">
+              toll: you pay {Math.round(tollPaidAt[hovered.system.id]!)} a turn crossing here
+            </span>
+          )}
+          {(tollTakenAt[hovered.system.id] ?? 0) > 0 && (
+            <span className="toll-note good">
+              toll: you collect {Math.round(tollTakenAt[hovered.system.id]!)} a turn here
+            </span>
+          )}
         </div>
       )}
     </div>

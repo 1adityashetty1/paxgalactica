@@ -378,6 +378,15 @@ ul { margin: 0; padding-left: 1.1em; }
   border: 1px solid var(--line);
   opacity: 0.92;
 }
+/* The drawn pair is already in the panel's own palette, so it needs neither
+   the knock-down nor the crop: `object-fit` does nothing to an SVG, and dimming
+   art built from these greys only makes it muddy. `image-rendering` is belt and
+   braces beside `shapeRendering` on the element — some engines resample an
+   `<svg>` when it is scaled by CSS rather than by its viewBox. */
+svg.outcome-art {
+  opacity: 1;
+  image-rendering: pixelated;
+}
 /* Refusal and defiance are your own institutions; negotiation is somebody
    else's assent. Edging them the way `.msg.refusal` is edged keeps the
    picture and its line reading as one thing. */
@@ -632,3 +641,40 @@ ul { margin: 0; padding-left: 1.1em; }
 .world-head h3 { margin: 0 0 2px; }
 .world-head .meta { margin: 0; }
 .world-sprite { flex: 0 0 auto; image-rendering: pixelated; }
+
+/* A toll is a fact about a place: one ring, two directions, colour carries
+   which. Gold rather than red for paying, because the contested ring is
+   already red-and-dashed and two red rings on one node say nothing. */
+.map .toll-paid { fill: none; stroke: #f59e0b; stroke-width: 2.2; }
+.map .toll-taken { fill: none; stroke: #4ade80; stroke-width: 2.2; }
+.map-tooltip .toll-note.bad { color: #f87171; }
+.map-tooltip .toll-note.good { color: #4ade80; }
+
+/* A burned operative still occupies the list — knowing a rival's network was
+   here and is no longer is worth as much as knowing it is. */
+.agent-row.burned { opacity: 0.55; text-decoration: line-through; }
+
+/* An officer's name sits between the ethics chips and the doctrine: she is a
+   fact about the faction, not a panel of her own. */
+.faction .commander { color: var(--dim); font-style: normal; margin: 2px 0 4px; }
+.battle-commanders { margin: 4px 0 0; padding-left: 16px; color: var(--dim); }
+.battle-commanders li { font-style: italic; }
+
+/* A world's own line, under its type. Sits apart from the dl of figures below
+   it: this is the only prose on the panel and it should read like prose. */
+.world-flavour {
+  color: var(--dim);
+  font-style: italic;
+  line-height: 1.45;
+  margin: 6px 0 0;
+  max-width: 34em;
+}
+
+/* Command: one block per power, the officer named large enough to be
+   recognised rather than read. */
+.command-faction { border-bottom: 1px solid var(--line); padding: 10px 0; }
+.command-faction:last-child { border-bottom: none; }
+.command-faction h4 { margin: 0 0 4px; font-size: 11px; letter-spacing: 0.04em; }
+.command-name { margin: 0; font-size: 14px; font-weight: 600; }
+.command-effect { margin: 2px 0 4px; color: var(--fg); }
+.command-fallen { margin-top: 6px; opacity: 0.7; text-decoration: line-through; }

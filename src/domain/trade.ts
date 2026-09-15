@@ -1,5 +1,5 @@
 import { shortestPath } from './graph.js';
-import { getFaction, tonsPresentAt, type StarSystem, type WorldState } from './state.js';
+import { getFaction, laneWeightsAt, type StarSystem, type WorldState } from './state.js';
 
 /**
  * Trade as a network on the hyperlane graph.
@@ -285,6 +285,25 @@ export interface RouteEarnings {
    * free trader's openness bonus is already applied, for the same reason.
    */
   monopolyPremium: Record<string, number>;
+  /**
+   * Where each toll was actually levied: `collectorId -> systemId -> credits`,
+   * and its mirror for the payer.
+   *
+   * `tolls` answers *how much*, which is what a ledger needs. It cannot answer
+   * *where*, which is what a player needs in order to do anything about it —
+   * and a toll is emphatically a fact about a place, levied either on a hop a
+   * lane crosses or at a hub it arrives at. Before this the map could show a
+   * player that the Combine charged them and not which junction it cost them
+   * on, so the one actionable half of the mechanic was the invisible half.
+   *
+   * Recorded in this pass rather than recomputed by the UI, for the reason the
+   * map already states about trade volume: derived from the same function the
+   * reducer pays out from, so the picture cannot disagree with the ledger. A
+   * second pass applying the same rules is a second set of rules.
+   */
+  tollsBySystem: Record<string, Record<string, number>>;
+  /** `payerId -> systemId -> credits paid there`. The mirror of the above. */
+  tollsPaidBySystem: Record<string, Record<string, number>>;
   /** Fraction of all routes running unimpeded, 0–1. What free traders live on. */
   openness: number;
 }
@@ -305,6 +324,16 @@ export function routeEarnings(state: WorldState): RouteEarnings {
   const shares: Record<string, number> = {};
   const tolls: Record<string, number> = {};
   const tollsPaid: Record<string, number> = {};
+  const tollsBySystem: Record<string, Record<string, number>> = {};
+  const tollsPaidBySystem: Record<string, Record<string, number>> = {};
+  /** Record one levy against the world it was actually taken at. */
+  const levy = (collector: string, payer: string, systemId: string, amount: number): void => {
+    if (amount === 0) return;
+    (tollsBySystem[collector] ??= {})[systemId] =
+      (tollsBySystem[collector]?.[systemId] ?? 0) + amount;
+    (tollsPaidBySystem[payer] ??= {})[systemId] =
+      (tollsPaidBySystem[payer]?.[systemId] ?? 0) + amount;
+  };
   const raided: Record<string, number> = {};
   const monopolyPremium: Record<string, number> = {};
   let uncollected = 0;
@@ -409,6 +438,9 @@ export function routeEarnings(state: WorldState): RouteEarnings {
       add(shares, holder, toll);
       add(tolls, holder, toll);
       add(received, holder, toll);
+      // At the collector's own hub: this is a tariff charged at a market, so
+      // the world it belongs to is the market, not the far end paying it.
+      levy(holder, other, holderOf(aId) === holder ? aId : bId, toll);
     }
 
     /* --- a raider may take a lane's cargo at either end of it --- */
@@ -492,6 +524,7 @@ export function routeEarnings(state: WorldState): RouteEarnings {
         for (const payer of charged) {
           add(shares, payer, -each);
           add(tollsPaid, payer, each);
+          levy(holder, payer, hopId, each);
         }
         add(tolls, holder, toll);
         earned += toll;
@@ -535,6 +568,8 @@ export function routeEarnings(state: WorldState): RouteEarnings {
     uncollected: Math.round(uncollected),
     tolls,
     tollsPaid,
+    tollsBySystem,
+    tollsPaidBySystem,
     raided,
     monopolyPremium,
     openness: routes.length === 0 ? 1 : live / routes.length,
@@ -562,7 +597,11 @@ function distributeUnclaimed(
   // half the price and a third of the fighting weight — 2x income per credit,
   // and a lifter 1.33x while contributing nothing to a fight. Two conventions
   // for one rule, and the tonnage half is the one the rest of the game uses.
-  const present = tonsPresentAt(system!);
+  // Cargo-weighted rather than flat tons: a hull built to carry takes more of a
+  // lawless junction than a warship of the same displacement. `laneWeightsAt`
+  // is the only reader of that weighting — a contested WORLD still splits by
+  // flat tons, because that contest is over force and a freighter is not force.
+  const present = laneWeightsAt(system!);
   if (present.length === 0) {
     spill(amount);
     return;

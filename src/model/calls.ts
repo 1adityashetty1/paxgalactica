@@ -26,6 +26,7 @@ import {
   type ExtractionOutput,
   type ReactionSet,
   type ResolutionOutput,
+  cappedProse,
 } from '../domain/ops.js';
 import {
   effectiveStats,
@@ -41,13 +42,21 @@ import { serializeArchetypes } from '../domain/assets.js';
 import { loadPrompt } from './prompts.js';
 import {
   serializeCharacter,
-  serializeOrders,
   serializePrinciples,
   serializeState,
   serializeTheirAssets,
 } from './serialize.js';
 
-/** Resolution and extraction share the duration rules, so both get the rubric. */
+/**
+ * The duration rubric, for the passes that actually set a duration.
+ *
+ * That is resolution and reaction — the two that emit `issue_order`. It was
+ * also appended to **extraction**, which cannot: `issue_order` is not in
+ * `EXTRACTION_ALLOWED`, and the reducer refuses it with "an order is your own
+ * work and costs an action to give". So the one pass that could never write a
+ * `durationTurns` was carrying 944 tokens of anchors telling it how, on every
+ * accord closed in the game.
+ */
 function withRubric(base: string): string {
   return `${base}\n\n---\n\n${loadPrompt('duration-rubric')}`;
 }
@@ -122,7 +131,11 @@ export async function appraiseAction(
     label: 'the arbiter considers it',
     system: loadPrompt('appraisal'),
     user: [
-      serializeState(state, viewerId),
+      // `positions`, not `full`: the arbiter rules on what the ACTING power may
+      // attempt, what it tests and how hard, and it is handed that power's own
+      // red lines and compulsions below. Four rivals' doctrine paragraphs
+      // decide none of that, and this is the most frequent call in the game.
+      serializeState(state, viewerId, 'positions'),
       '',
       '---',
       '',
@@ -772,41 +785,53 @@ export async function gatherReactions(
     return { output: { reactions: [] }, attempts: 0, costUsd: 0 };
   }
 
-  // ONE CALL PER FACTION — not one call listing them all, and deliberately in
-  // SEQUENCE rather than at once.
+  // ONE CALL PER FACTION, ISSUED AT ONCE — not one call listing them all, and
+  // not one after another.
   //
-  // The split is a correctness change that happens to be faster, not the other
-  // way round. Three things it buys, none of which are about speed:
+  // The split is a correctness change that happens to be faster, and three of
+  // its four arguments have nothing to do with speed:
   //
   // - **No power reads another's observation block.** Every faction's scoped
   //   view used to sit in one context, so the model writing the Vigil's
   //   reaction could read what the Combine can see. The prompt asked for
   //   separation; nothing enforced it. Same lesson `worldAsSeenBy` records — a
-  //   leak is a property of the whole payload.
+  //   leak is a property of the whole payload. Running them concurrently is the
+  //   strongest form of it: no power can be influenced by what another was just
+  //   made to say, because nothing has been said yet.
   // - **A misattributed reaction becomes detectable.** The merged call
   //   legitimately expected every id in the batch, so nothing could tell a
   //   reaction written under the wrong flag from a correct one — and a reaction
   //   commits with its own faction as `actor`, so that acts with another
   //   power's hand.
   // - **One bad response costs one voice**, not the turn's reactions entire.
+  // - And the fourth: end-of-turn was the largest single wait in the game at a
+  //   66.7s median. Three calls averaging ~22s sum to 67s in sequence and land
+  //   together in ~40s at once.
   //
-  // Run in parallel it also took a measured 20% off end-of-turn, and that is
-  // NOT why it is shaped this way. Concurrency here spawns N copies of the
-  // Claude Code binary, which contend (three calls averaging 30.8s landed in
-  // ~40s rather than ~31s), and the wall-clock saving does not pay for the
-  // usage: N calls each re-send `serializeState` and the whole reaction prompt,
-  // which measured 2.8x the cost of the merged call. The cost is a property of
-  // there being N calls, not of running them at once — so the sequence keeps
-  // every correctness gain and gives back only the 20%.
-  const spoke: { output: ReactionSet; attempts: number; costUsd: number }[] = [];
-  for (const id of factionIds) {
-    try {
-      spoke.push(await reactAs(state, id, whatHappened));
-    } catch {
-      // A power that could not be reached simply does not speak this turn.
-      // Losing every reaction because one failed is what the split ends.
-    }
-  }
+  // **Cost is the same either way**, which is what settles it: N calls each
+  // re-send `serializeState` and the whole reaction prompt, measured at 2.8x
+  // the merged call — a property of there being N calls, not of running them
+  // together. What concurrency does cost is contention, since each call spawns
+  // its own copy of the Claude Code binary and three at once on a laptop is why
+  // ~22s each becomes ~40s rather than ~22s. That is a property of the
+  // transport rather than of this design, and it is one of the things a direct
+  // HTTP client would remove.
+  //
+  // `Promise.all` preserves input order, and the caller commits in that order,
+  // so the journal records the same batch sequence on every run — the ops are
+  // deterministic even though the calls are not.
+  const settled = await Promise.all(
+    factionIds.map(async (id) => {
+      try {
+        return await reactAs(state, id, whatHappened);
+      } catch {
+        // A power that could not be reached simply does not speak this turn.
+        // Losing every reaction because one failed is what the split ends.
+        return null;
+      }
+    }),
+  );
+  const spoke = settled.filter((r): r is NonNullable<typeof r> => r !== null);
   return {
     output: { reactions: spoke.flatMap((r) => r.output.reactions) },
     attempts: spoke.reduce((n, r) => Math.max(n, r.attempts), 0),
@@ -831,26 +856,39 @@ async function reactAs(
         '',
         serializeCharacter(f),
         '',
-        // Hulls AND tons. A bare hull count was the whole fleet a model saw,
-        // and it means different things by class: thirty escorts and thirty
-        // battleships are the same number and a third of the fighting weight
-        // apart. `serializeState` has reported both since classes shipped;
-        // these two call sites were left behind.
-        `Fleet ${fleetStrengthOf(state, f.id)} hulls / ${fleetTonsOf(state, f.id)} tons · credits ${f.credits} · disposition toward the player (${state.playerFactionId}): ${dispositionBetween(
+        // Not fleet/credits/orders — the state block below now IS this
+        // faction's own view (`serializeState(state, factionId)`), which
+        // already carries its self bullet in `## Factions` (fleet, tons,
+        // credits) and its own `## Orders in progress`. Restating them here,
+        // keyed on the SAME id, was never a second opinion; it was the same
+        // text twice under a different heading. What is NOT duplicated is
+        // this faction's own disposition toward the player —
+        // `serializeFactions` suppresses the "toward" column on a viewer's
+        // self-row, so nowhere else says how THIS power feels about the one
+        // it is reacting to.
+        `Disposition toward the player (${state.playerFactionId}): ${dispositionBetween(
           state,
           id,
           state.playerFactionId,
         )}`,
-        '',
-        'What this faction can observe of orders in progress:',
-        serializeOrders(state, id),
       ].join('\n');
     })
     .filter(Boolean)
     .join('\n\n');
 
+  // The state block is THIS FACTION'S board, not the player's.
+  //
+  // Every reaction call sent `serializeState(state, state.playerFactionId)` —
+  // the player's fog, not the reacting faction's — so an NPC reasoned from
+  // what MERIDIAN can see: it read the player's own observable orders, and it
+  // read every other power's disposition toward the PLAYER rather than toward
+  // itself. `serializeOrders(state, id)` two lines below was already scoped
+  // correctly; the much larger block built from it was not. Same class of
+  // defect `worldAsSeenBy` exists to name: fog is a property of the whole
+  // payload, and half of it was leaking the player's view into five other
+  // factions' heads.
   const user = [
-    serializeState(state, state.playerFactionId),
+    serializeState(state, factionId),
     '',
     '---',
     '',
@@ -953,10 +991,7 @@ export const AdvisorReplySchema = z.object({
    * names. The prose has to carry it, and the refine below is what stops the
    * prose becoming the list anyway.
    */
-  counsel: z
-    .string()
-    .min(1)
-    .max(1600)
+  counsel: cappedProse(560)
     .refine((c) => !looksLikeAPlan(c), {
       message:
         'This is a plan, not counsel. Do not enumerate steps or list actions — name what is pressing on your leader, in your own voice, and let them decide what to do about it.',
@@ -1062,9 +1097,7 @@ export const DiplomacyReplySchema = z.object({
   concessions: z.array(ConcessionSchema).max(6).default([]),
   /** Concessions being struck, with an in-character reason. */
   retractions: z.array(RetractionSchema).max(6).default([]),
-  reply: z
-    .string()
-    .min(1)
+  reply: cappedProse(900)
     // Layer 2, which is the only layer that can catch this: no JSON schema can
     // express "this string must be the speech rather than a note about it".
     .refine((r) => !looksLikeStubReply(r), {
@@ -1236,7 +1269,7 @@ export async function extractAgreements(
   const res = await callStructured({
     kind: 'extraction',
     label: 'extraction',
-    system: withArchetypes(withRubric(loadPrompt('extraction'))),
+    system: withArchetypes(loadPrompt('extraction')),
     user,
     // The extraction vocabulary, which is the ordinary one plus `form_treaty`.
     // This pass has read a transcript, so it is the only model-driven place in

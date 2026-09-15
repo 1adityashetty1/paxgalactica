@@ -263,10 +263,15 @@ describe('lending needs consent; forgiving does not', () => {
 describe('the ledger reports debt service without charging for it', () => {
   it('shows what is scheduled, on both sides', () => {
     const state = fresh();
-    // 40 from Drajk plus 25 from Meridian, both owed to the Combine.
-    expect(ledgerFor(state, 'ojjul').debtService).toBe(65);
+    // 10 from Drajk, 25 from Meridian and 20 from the Vigil, all owed to the
+    // Combine. Sized by BURDEN rather than by figure: the instalments are each
+    // about a tenth of the debtor's net, which is why Drajk's is the smallest
+    // of the three despite being the only one in default — it nets 73 where
+    // Meridian nets 307.
+    expect(ledgerFor(state, 'ojjul').debtService).toBe(55);
     expect(ledgerFor(state, 'meridian').debtService).toBe(-25);
-    expect(ledgerFor(state, 'drajk').debtService).toBe(-40);
+    expect(ledgerFor(state, 'vigil').debtService).toBe(-20);
+    expect(ledgerFor(state, 'drajk').debtService).toBe(-10);
   });
 
   it('keeps it out of net, because the tick is what moves it', () => {
@@ -290,10 +295,23 @@ describe('the ledger reports debt service without charging for it', () => {
 });
 
 describe('the seed makes the Combine’s sheet live from turn 0', () => {
-  it('gives it a debtor in default and one paying on schedule', () => {
+  it('gives it three debtors, one of them in default', () => {
     const state = fresh();
-    expect(debtsOwedTo(state.debts, 'ojjul')).toHaveLength(2);
+    expect(debtsOwedTo(state.debts, 'ojjul')).toHaveLength(3);
     expect(delinquentDebtorsOf(state.debts, 'ojjul')).toEqual(['drajk']);
+  });
+
+  it('leaves no debtor carrying a burden that decides its game', () => {
+    // The first version gave Drajk 40 a turn and Meridian 25, which reads as
+    // comparable and is not: Drajk nets 73 and Meridian 307, so it took 55% of
+    // one income and 8% of the other — and Drajk was also the poorest power on
+    // the board and the only one that owed anything at all. Instalments are
+    // now sized against the debtor's own ledger.
+    const state = fresh();
+    for (const d of state.debts) {
+      const net = ledgerFor(state, d.debtorFactionId).net;
+      expect(d.perTurn / net).toBeLessThan(0.2);
+    }
   });
 
   it('leaves Arkane owing nobody, because stone-debt is the point', () => {
@@ -376,8 +394,10 @@ describe('assigning a debt moves it rather than minting another', () => {
     expect(moved.creditorFactionId).toBe('freeworlds');
     expect(moved.debtorFactionId).toBe('meridian');
     // It keeps its balance and instalment; only who it answers to changed.
-    expect(moved.balance).toBe(400);
-    expect(moved.perTurn).toBe(25);
+    // Read off the seed rather than hardcoded, so re-sizing a seeded debt is
+    // not a test edit — the property is that the figure does not MOVE.
+    expect(moved.balance).toBe(debtOf(fresh(), 'debt-1').balance);
+    expect(moved.perTurn).toBe(debtOf(fresh(), 'debt-1').perTurn);
   });
 
   it('is rejected from a declared action, because the holder must agree to sell', () => {
@@ -414,33 +434,35 @@ describe('a debtor can pay a debt down, and the money really moves', () => {
 
   it('settles the debt and moves the credits when paid in full', () => {
     const state = fresh();
+    const owed = debtOf(state, 'debt-1').balance;
     const debtorBefore = creditsOf(state, 'meridian');
     const creditorBefore = creditsOf(state, 'ojjul');
 
     const out = applyOps(
       state,
-      [{ op: 'settle_debt', debtId: 'debt-1', amount: 400 }],
+      [{ op: 'settle_debt', debtId: 'debt-1', amount: owed }],
       'model',
       'meridian',
     );
     expect(out.rejections).toHaveLength(0);
     expect(debtOf(out.state, 'debt-1').balance).toBe(0);
     expect(debtOf(out.state, 'debt-1').status).toBe('settled');
-    expect(creditsOf(out.state, 'meridian')).toBe(debtorBefore - 400);
-    expect(creditsOf(out.state, 'ojjul')).toBe(creditorBefore + 400);
+    expect(creditsOf(out.state, 'meridian')).toBe(debtorBefore - owed);
+    expect(creditsOf(out.state, 'ojjul')).toBe(creditorBefore + owed);
   });
 
   it('trims a payment to what the debtor actually holds', () => {
     const state = fresh();
+    const owed = debtOf(state, 'debt-1').balance;
     state.factions.find((f) => f.id === 'meridian')!.credits = 50;
 
     const out = applyOps(
       state,
-      [{ op: 'settle_debt', debtId: 'debt-1', amount: 400 }],
+      [{ op: 'settle_debt', debtId: 'debt-1', amount: owed }],
       'model',
       'meridian',
     );
-    expect(debtOf(out.state, 'debt-1').balance).toBe(350);
+    expect(debtOf(out.state, 'debt-1').balance).toBe(owed - 50);
     expect(debtOf(out.state, 'debt-1').status).not.toBe('settled');
     expect(creditsOf(out.state, 'meridian')).toBe(0);
     expect(out.notes.join(' ')).toMatch(/Trimmed a payment/);
@@ -454,7 +476,7 @@ describe('a debtor can pay a debt down, and the money really moves', () => {
       'ojjul',
     );
     expect(out.rejections.map((r) => r.code)).toEqual(['illegal_value']);
-    expect(debtOf(out.state, 'debt-1').balance).toBe(400);
+    expect(debtOf(out.state, 'debt-1').balance).toBe(debtOf(fresh(), 'debt-1').balance);
   });
 
   it('brings a delinquent debt back into good standing', () => {

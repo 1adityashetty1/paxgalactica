@@ -24,6 +24,13 @@ import {
   AGENT_UPKEEP,
   maxAgentsFor,
   MAX_TREATY_INCOME_PER_TURN,
+  OCCUPATION_COST,
+  MAX_WORLD_BONUS,
+  WORLD_TYPES,
+  WORLD_TYPE_STAT,
+  terrainBonus,
+  dissentPenalty,
+  type WorldType,
 } from '../src/domain/state.js';
 import type { OpInput as Op } from '../src/domain/ops.js';
 
@@ -1390,7 +1397,7 @@ describe('a contingent payment', () => {
       'model',
       'ojjul',
     ).state;
-    const assetId = s.assets[0]!.id;
+    const assetId = s.assets.find((a) => a.kind === 'collateral')!.id;
     s = applyOps(
       s,
       [indemnity({ contingencies: [{
@@ -1505,5 +1512,207 @@ describe('seven small things', () => {
       'ojjul',
     );
     expect(out.state.factions.find((f) => f.id === 'vigil')!.disposition.ojjul).toBe(before);
+  });
+});
+
+/**
+ * Ground that was never yours costs something to keep.
+ *
+ * The economy already asserted this from the other side — `systemIncome` gives
+ * a holder a 2x administrator's edge over a rival in orbit, on the stated
+ * grounds that occupying a world you do not administer yields less. This is
+ * the matching cost, and until it existed a conquered world paid its conqueror
+ * exactly what it had paid the state it was taken from, forever.
+ */
+describe('holding somebody else’s ground', () => {
+  const seed = () => createSeedState('meridian');
+  /** A world `owner` holds that started as theirs. */
+  const own = (s: WorldState, owner: string) =>
+    s.systems.find((x) => x.controllerFactionId === owner && x.homeFactionId === owner)!;
+
+  /**
+   * Take a world the way a conquest does — the flag changes AND the previous
+   * owner's fleet is gone.
+   *
+   * Flipping the controller alone leaves the loser's ships in orbit, which
+   * `systemIncome` reads as contested: the world then pays its new holder
+   * almost nothing, so occupying it costs almost nothing. That is the bound
+   * working rather than a bug, and it is asserted on its own below — but it
+   * makes the flag-flip a bad way to stage a conquest.
+   */
+  const conquer = (s: WorldState, sys: { id: string }, by: string) => {
+    const world = s.systems.find((x) => x.id === sys.id)!;
+    world.ships = {};
+    world.controllerFactionId = by;
+    return world;
+  };
+
+  it('costs nothing on the opening board, because nobody has taken anything', () => {
+    const s = seed();
+    for (const f of s.factions) expect(ledgerFor(s, f.id).occupation).toBe(0);
+  });
+
+  it('charges a share of what the taken world actually pays', () => {
+    const s = seed();
+    const theirs = own(s, 'ojjul');
+    const worth = systemIncome(s, theirs).shares['ojjul'] ?? 0;
+    expect(worth).toBeGreaterThan(0);
+
+    conquer(s, theirs, 'meridian');
+    const after = ledgerFor(s, 'meridian');
+    expect(after.occupation).toBe(
+      Math.round((systemIncome(s, theirs).shares['meridian'] ?? 0) * OCCUPATION_COST),
+    );
+    expect(after.occupation).toBeGreaterThan(0);
+  });
+
+  it('is worth less rather than worth negative', () => {
+    // Bounded by the income it is charged against, so a conquest can never cost
+    // more than it earns however rich the world is.
+    const s = seed();
+    const theirs = own(s, 'ojjul');
+    const before = ledgerFor(s, 'meridian').net;
+    conquer(s, theirs, 'meridian');
+    const after = ledgerFor(s, 'meridian');
+    expect(after.net).toBeGreaterThan(before);
+    expect(after.occupation).toBeLessThan(systemIncome(s, theirs).shares['meridian'] ?? 0);
+  });
+
+  it('costs next to nothing on a world it cannot actually control', () => {
+    // Bounded by what the world PAYS, and a world whose previous owner still
+    // has a fleet in orbit pays its new holder almost nothing. Holding a
+    // contested world is its own punishment; the occupation cost does not pile
+    // on top of one.
+    const s = seed();
+    const theirs = own(s, 'ojjul');
+    theirs.controllerFactionId = 'meridian';
+    expect(systemIncome(s, theirs).shares['meridian'] ?? 0).toBeLessThan(10);
+    expect(ledgerFor(s, 'meridian').occupation).toBe(0);
+  });
+
+  it('is free on ground that was never anybody’s', () => {
+    // An unaligned world has no displaced administration to resent you.
+    // Settling unclaimed space and holding down a conquered rival are
+    // different undertakings.
+    const s = seed();
+    const neutral = s.systems.find((x) => x.controllerFactionId === null)!;
+    expect(neutral.homeFactionId).toBeNull();
+    neutral.controllerFactionId = 'meridian';
+    expect(ledgerFor(s, 'meridian').occupation).toBe(0);
+  });
+
+  it('follows the world back when it is retaken', () => {
+    const s = seed();
+    const mine = own(s, 'meridian');
+    conquer(s, mine, 'vigil');
+    expect(ledgerFor(s, 'vigil').occupation).toBeGreaterThan(0);
+    // And costs its rightful owner nothing when it comes home.
+    conquer(s, mine, 'meridian');
+    expect(ledgerFor(s, 'meridian').occupation).toBe(0);
+  });
+
+  it('is carried by a world that changed hands under a signature', () => {
+    // Deliberate: the cost is about administering a population whose
+    // institutions are not yours, which is equally true however the paper was
+    // signed. Otherwise the penalty is one treaty away from optional.
+    const s = seed();
+    const bought = own(s, 'ojjul');
+    conquer(s, bought, 'meridian');
+    expect(ledgerFor(s, 'meridian').occupation).toBeGreaterThan(0);
+  });
+
+  it('is inert in a campaign saved before the field existed', () => {
+    // `homeFactionId` defaults to null, so an old save carries no occupation
+    // at all and replays as the game it was actually played as.
+    const s = seed();
+    for (const sys of s.systems) sys.homeFactionId = null;
+    for (const f of s.factions) expect(ledgerFor(s, f.id).occupation).toBe(0);
+  });
+});
+
+/**
+ * What a world IS, finally worth something.
+ *
+ * `worldType` shipped with the system art and had one reader — the sprite — so
+ * the map said what a world looked like and nothing about what taking it was
+ * worth.
+ */
+describe('the ground a power holds reaches its stats', () => {
+  const seed = () => createSeedState('meridian');
+  /** Give `me` `n` worlds of one type, taken from whoever holds them. */
+  const stock = (s: WorldState, me: string, type: WorldType, n: number) => {
+    let given = 0;
+    for (const sys of s.systems) {
+      if (given >= n) break;
+      sys.worldType = type;
+      sys.controllerFactionId = me;
+      given += 1;
+    }
+  };
+
+  it('grants nothing for a single world, which is the whole shape of it', () => {
+    // At a threshold of one, every power opens with a point on three or four
+    // stats — and a modifier everybody has is inflation, not a modifier.
+    const s = seed();
+    for (const sys of s.systems) sys.controllerFactionId = null;
+    s.systems[0]!.worldType = 'industrialmoon';
+    s.systems[0]!.controllerFactionId = 'meridian';
+    expect(terrainBonus(s, 'meridian').industry).toBe(0);
+  });
+
+  it('pays on concentration, on a rising curve', () => {
+    for (const [worlds, want] of [[2, 1], [4, 2], [6, 3]] as const) {
+      const s = seed();
+      for (const sys of s.systems) sys.controllerFactionId = null;
+      stock(s, 'meridian', 'industrialmoon', worlds);
+      expect(terrainBonus(s, 'meridian').industry, `${worlds} worlds`).toBe(want);
+    }
+  });
+
+  it('is capped, because a sum over territory is unbounded', () => {
+    const s = seed();
+    stock(s, 'meridian', 'industrialmoon', s.systems.length);
+    expect(terrainBonus(s, 'meridian').industry).toBe(MAX_WORLD_BONUS);
+  });
+
+  it('reaches the stats the game actually rolls against', () => {
+    const s = seed();
+    const base = s.factions.find((f) => f.id === 'meridian')!.stats.industry;
+    for (const sys of s.systems) sys.controllerFactionId = null;
+    stock(s, 'meridian', 'industrialmoon', 4);
+    expect(effectiveStats(s, 'meridian').industry).toBe(base + 2);
+  });
+
+  it('is lost with the world, so it is a target and not an endowment', () => {
+    const s = seed();
+    for (const sys of s.systems) sys.controllerFactionId = null;
+    stock(s, 'meridian', 'industrialmoon', 4);
+    const held = effectiveStats(s, 'meridian').industry;
+    s.systems.filter((x) => x.controllerFactionId === 'meridian')[0]!.controllerFactionId = 'vigil';
+    expect(effectiveStats(s, 'meridian').industry).toBeLessThan(held);
+  });
+
+  it('never pushes a stat past the top of the scale', () => {
+    const s = seed();
+    s.factions.find((f) => f.id === 'meridian')!.stats.industry = 20;
+    stock(s, 'meridian', 'industrialmoon', 8);
+    expect(effectiveStats(s, 'meridian').industry).toBe(20);
+  });
+
+  it('helps a badly governed power rather than being cancelled by the floor', () => {
+    // Ground is applied before dissent, so good territory offsets a bad leader
+    // instead of disappearing under the clamp.
+    const s = seed();
+    for (const sys of s.systems) sys.controllerFactionId = null;
+    stock(s, 'meridian', 'industrialmoon', 4);
+    const settled = effectiveStats(s, 'meridian').industry;
+    s.factions.find((f) => f.id === 'meridian')!.dissent = 100;
+    expect(effectiveStats(s, 'meridian').industry).toBe(
+      Math.max(1, settled - dissentPenalty(100)),
+    );
+  });
+
+  it('gives every world type a stat, so none of them is decoration', () => {
+    for (const type of WORLD_TYPES) expect(WORLD_TYPE_STAT[type]).toBeDefined();
   });
 });

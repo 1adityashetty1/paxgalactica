@@ -124,7 +124,7 @@ load and save.
 | Field | Shape |
 |---|---|
 | `factions[]` | `id`, `name`, `displayColor` (ANSI 256), `disposition` (factionId → −100..100), `credits`, `doctrine`, `stats`, `voice`, `warEthic`, `tradeEthic`, `redLines[]`, `compulsions[]`, `dissent`, `buildBias[]`, `title` — **no `fleetStrength`; it is derived from ships** |
-| `systems[]` | `id`, `name`, `sector`, `coords {x,y}`, `controllerFactionId` (nullable = unaligned), `garrison`, `garrisonMax`, `strategicValue` 0–10, `hyperlaneEdges[]`, `ships` (factionId → count) |
+| `systems[]` | `id`, `name`, `sector`, `coords {x,y}`, `controllerFactionId` (nullable = unaligned), `homeFactionId` (who held it at turn 0; nullable), `worldType`, `garrison`, `garrisonMax`, `strategicValue` 0–10, `hyperlaneEdges[]`, `ships` (factionId → count) |
 | `pendingOrders[]` | `id`, `factionId`, `type`, `originId`, `targetId`, `durationTurns`, `progress`, `interruptible`, `onInterrupt`, `visibility[]`, `label`, `durationRationale`, `path[]`, `onComplete?`, `investedCredits` |
 | `playerFactionId` | string |
 | `turn` | integer — an abstract unit. There is no calendar, deliberately. |
@@ -444,6 +444,81 @@ in order:
 Treaty `incomeShares` come off the top before any of that, capped so a system
 can never pay out more than it is worth.
 
+### A world is worth what it is, and costs what it was
+
+Two facts about a world beyond its income, and both were latent in data the game
+already carried.
+
+**`worldType` reaches faction stats.** It shipped with the pixel-art system
+views and had exactly one reader — `WorldSprite` in the client — so the map told
+a player what a world looked like and nothing about what taking it was worth.
+`WORLD_TYPE_STAT` maps each kind to one stat (arid → might, earthnight → guile,
+industrialmoon and gasgiant → industry, earthlike → influence, ice and oceanic →
+resolve), `terrainBonus` counts what a power holds, and `effectiveStats` adds it.
+
+**Keyed on the type rather than on the world**, because a type modifier is
+legible from the map itself: you can see what a world is, so you can see what it
+buys, and nothing has to be looked up. A per-world modifier is richer and costs
+25 seed entries plus somewhere to display them.
+
+**Two worlds for the first point, and that is the whole shape of it.** At a
+threshold of one, every power opens with a point on three or four stats —
+measured on the seed — and a modifier everybody has is inflation rather than a
+modifier. At two, the opening board grants exactly three points in total
+(Meridian +1 industry, Drajk +1 industry and +1 resolve) and every further one
+has to be taken from somebody. Thresholds rise (2/4/6) and the bonus caps at
+**3**, because a per-world bonus summed over territory is unbounded in principle
+and `MAX_DISSENT_PENALTY` is 8 on the same 1–20 scale. Applied *before* dissent,
+so good ground offsets a bad leader rather than vanishing under the floor, and
+clamped at 20 because that is the top of the curve every modifier is read off.
+
+**And ground that was never yours costs something to keep.** `homeFactionId` is
+written once by the seed and never again; `ledgerFor` charges `OCCUPATION_COST`
+of what each foreign world actually pays its holder. The economy already
+asserted this from the other direction — a holder gets a **2× administrator's
+edge** over a rival in orbit, on the stated grounds that occupying a world you
+do not administer yields less — and this is the matching cost. Until it existed,
+a conquered world paid its conqueror exactly what it had paid the state it was
+taken from, forever.
+
+A **fraction of the world's own income** rather than a flat figure, so it scales
+with the board and needs no per-era tuning: a rich world is harder to hold down
+than a poor one, which is the fact the mechanic is about. It is also bounded by
+that income, so **a conquest is worth less, never negative** — and a world whose
+previous owner still has a fleet in orbit pays its new holder almost nothing, so
+occupying it costs almost nothing. Holding a contested world is its own
+punishment; this does not pile on top of one.
+
+Three cases are decided rather than left to fall out:
+
+- **An unaligned world is nobody's** (`homeFactionId: null` in the seed), so
+  taking neutral ground is free. There is no displaced administration to resent
+  you, and settling unclaimed space is not the same undertaking as holding down
+  a conquered rival.
+- **A ceded world carries it too.** The cost is about administering a population
+  whose institutions are not yours, which is equally true however the paper was
+  signed — and the alternative puts a free bypass one treaty away, so the
+  mechanic would only tax players who had not noticed.
+- **A save written before the field existed** parses every world to `null` and
+  carries no occupation at all, replaying as the game it was actually played as.
+  The same choice `CompulsionSchema` and `Faction.title` made, and the reason
+  the default has to be the inert value rather than a guess at the controller.
+
+**`OCCUPATION_COST` was swept, not chosen**, and the response is a cliff — the
+shape `MONOPOLY_BONUS` also turned out to have, because the outcome hangs on one
+discrete question. At 0.10, 0.15 and 0.20 the board is the historical
+3/6/5/4/4; at **0.25** the Vigil's late conquest of `tor-1` never happens at
+all, because a power holding foreign ground is poor enough that its fleet stops
+growing. That is the mechanic working and it is still too much — *territory
+changes through turn 24* is a measured property of this galaxy, and a standing
+cost that **ends** conquest rather than pricing it has overshot. 0.15 is taken
+from the middle of the flat region rather than the 0.20 that also passes, on the
+same margin argument.
+
+Measured separately, which is worth recording: **the stat bonuses move the
+harness not at all** (board identical with occupation switched off), so the
+entire territorial effect is the occupation cost.
+
 ### Ships are bought, and a navy you cannot pay for shrinks
 
 `CREDITS_PER_TON` is **15**; `UPKEEP_PER_TON` is **1 a turn**. A battleship is
@@ -512,9 +587,70 @@ had no reason to agree.
 | class | tons | cost | upkeep | orbital weight | carry | loss order | job |
 |---|---|---|---|---|---|---|---|
 | **escort** | 2 | 30 | 2 | 1 | — | 0 | the screen, and the answer to boats |
-| **lifter** | 3 | 45 | 3 | **0.1** | **6** | 1 | the only way to take ground |
-| **torpedo boat** | 2 | 30 | 2 | **0.1** | — | 2 | strikes past a screen at the heaviest hulls |
-| **battleship** | 4 | 60 | 4 | 3 | — | 3 | the line; it wins the exchange |
+| **freighter** | 3 | 45 | 3 | **0.01** | — | 1 | takes more of a lane crossing ground nobody owns |
+| **lifter** | 3 | 45 | 3 | **0.01** | **6** | 2 | the only way to take ground |
+| **listener** | 3 | 45 | 3 | **0.01** | — | 3 | SIGINT: reads what is under way where it stands |
+| **torpedo boat** | 2 | 30 | 2 | **0.1** | — | 4 | strikes past a screen at the heaviest hulls |
+| **battleship** | 4 | 60 | 4 | 3 | — | 5 | the line; it wins the exchange |
+
+**Three of the six cannot fight**, and that is a category rather than a
+weakness: a lifter takes ground, a freighter carries, a listener listens. All
+three are destroyed in an exchange exactly as a transport is, and none of them
+is a cheaper warship — `CREDITS_PER_TON` is uniform, so a freighter parked on a
+rival's world skims precisely what its credits bought.
+
+### The two that do not fight and do not land
+
+**A freighter earns only where nobody owns the ground.** `distributeUnclaimed`
+already splits an unaligned hop's trade by tons; `laneWeightOf` weights a
+freighter's tons by `FREIGHTER_LANE_WEIGHT`, and that is its entire mechanical
+existence. Two properties follow from putting it *there* and nowhere else, and
+both are why it is safe: it **cannot mint a credit**, because that function
+divides a fixed pot, and it **cannot compound**, because it is read where it is
+used rather than applied to a treasury each tick. A contested *world* still
+splits by flat tons — that contest is over force, and a freighter is not force.
+
+The narrowness is the design. It is a hull for the lawless middle of the map
+rather than a second way to be rich, and it multiplies with
+`SMUGGLER_UNCLAIMED_WEIGHT` rather than replacing it, because the two make
+different claims — one about the power, one about the hull.
+
+**A listener sees what a `surveillance` operative sees, at the same price.** It
+joins `watchedSystems` in `intel.ts`, so it outranks the covert rule exactly as
+an operative does. Priced deliberately, because *two paths to one outcome that
+cost differently means only the cheaper one is ever used*: `AGENT_COST` 40 plus
+`AGENT_UPKEEP` 3, against 45 plus 3.
+
+Everything else about them is opposite, and that is what makes it a second
+instrument rather than a duplicate:
+
+| | operative | listener |
+|---|---|---|
+| seen | hidden until exposed | in `system.ships`, always |
+| removed by | being **burned** on a failed roll | being **shot**, by anyone willing to come |
+| bounded by | `maxAgentsFor`, off **guile** | money |
+
+That last row is what earns it a place. `maxAgentsFor` means a power with poor
+guile is bad at spies **by construction** — the Vigil at 11 and Arkane at 12 —
+so before this there was no way for such a power to buy sight at all. SIGINT is
+how a power with no spies sees.
+
+**The bots buy both, for stated reasons**, because a class nobody builds is a
+class nobody has measured — which is how `monopolist` stayed implemented,
+tested and dead for the life of the project. Freighters are sized from how much
+unaligned ground a power actually sits next to; ears are bought only by a power
+at or below `BOT_SIGINT_GUILE`. Both caps are low, since tonnage spent here is
+tonnage not in the line.
+
+**`pnpm fleetlab` excludes them from the sweep**, and that is a statement rather
+than an optimisation (though the simplex is exponential in the class count, so
+it is also that). The harness asks *at equal credits, which **fighting**
+composition wins*, and neither hull's job exists in a two-system arena with the
+galaxy stripped out. Including them would have the sweep answer "spend nothing
+on these" at great length, and then report a class count meaning something
+different from the one every earlier result was stated in. Verified: the best
+attacker is still `escort:24 torpedo_boat:72 lifter:16` at 64% with a 10.4-point
+margin, and the best defender still `battleship:9 escort:6 lifter:10` at 85%.
 
 **Tonnage is the single primitive.** Cost, upkeep, insolvency attrition,
 `capSelfInflictedLosses`, the income contest and the price of a suborned crew
@@ -1283,10 +1419,48 @@ could be invented at all.
 |---|---|
 | a successful attempt | `create_asset` from the resolution pass, stripped by `boundPayloadsToOutcome` on a failure and **halved** on a partial — an asset has a magnitude, unlike an operative, who is placed or is not |
 | a world changing hands | anything with that `atSystemId` goes with it |
+| **the seed** | four, authored — one per power except the Combine |
 
 `create_asset` is refused from an **accord** (`declared_only`): a conversation
 trades what exists and cannot conjure what does not. It is also refused when the
 actor is not the holder — you cannot survey ore into somebody else's warehouse.
+
+**The seed is not an exception to the rule, and the distinction is the whole
+of it.** The rule governs what a *model* may do, because the problem was never
+how much an invented asset is worth — it was that a persona could invent one.
+The seed already authors treaties, commitments and debts; an authored asset is
+the same kind of thing, and it passes through no model at all.
+
+They ship because the opening board was empty, and an empty board defeated the
+feature. For the first several turns of every campaign the only things two
+powers could bargain over were worlds, hulls and money, and
+`serializeTheirAssets` showed each persona an empty shelf — which is precisely
+the state it was built to replace. Nothing could be ransomed, no file bought,
+and the gains-from-trade argument that makes `valuePerUnit` per-faction had
+nothing to price.
+
+Four properties, each load-bearing:
+
+- **None of them pays.** No `yield` anywhere. These exist to be traded, not to
+  change the economy: four seeded income streams would be four new
+  `MAX_ASSET_YIELD` flows on a board whose balance is already measured.
+- **Each is worth several times more to a rival than to its holder** — the whole
+  of why an asset is worth trading rather than hoarding.
+- **Each stands on a world its holder controls**, so conquest can take it. An
+  asset with no `atSystemId` is a note saying somebody has a thing.
+- **Roughly equal**, at 400–500 to the best buyer, so no opening position is
+  decided by what a power happens to be holding.
+
+The Combine holds none, and that is not an oversight: its shelf is the paper —
+three debts, and `assign_debt` is how a creditor sells one. The richest power on
+the board is the one whose tradeable inventory is claims on everybody else,
+which is that faction stated as a balance sheet.
+
+One of the four is **speculative**, which had never been seen in a campaign: a
+set of Imperial line-of-battle drawings complete but for the yard notes that
+made them buildable. What that mechanic is for is a thing whose worth nobody has
+settled, and a design nobody has built from is the honest case — the argument is
+whether they can be used at all, not what a ton of something costs.
 
 `transfer_asset` runs the other way. Giving your own away needs nobody, so it is
 declarable; **taking** another power's needs them, so it is refused from a
@@ -1787,16 +1961,41 @@ It reads **defaulted loans** as well as delinquent debts, because the line says
 describes. Arrears on a hire fee do not count — that is a smaller grievance and a
 private one, and the trigger is about the thing itself not coming back.
 
-The seed gives the Combine two debts so both halves are live from turn 0 — Drajk
-already in default, Meridian paying on schedule — which also gives the arbiter
-real state to rule against instead of a fiction. **Not Arkane, deliberately:**
-*stone-debt* is their word for what is owed for taking help, and the Closing is
-a refusal to take any. A power that counts its dead rather than accept grain
-does not carry a Nar loan.
+The seed gives the Combine **three** debts so both halves are live from turn 0 —
+Drajk in default, Meridian and the Vigil paying on schedule — which also gives
+the arbiter real state to rule against instead of a fiction. **Not Arkane,
+deliberately:** *stone-debt* is their word for what is owed for taking help, and
+the Closing is a refusal to take any. A power that counts its dead rather than
+accept grain does not carry a Nar loan.
 
-Balance is unmoved (nets 24/90/232/71/32 before and after) because the transfer
-sits outside `net`, and the Combine's inflow is bounded by the principal rather
-than being another perpetual stream.
+**They are sized by burden, not by figure, and the first version was not.** It
+gave Drajk 40 a turn and Meridian 25, which reads as roughly comparable and is
+not: on the opening board Drajk nets **73** and Meridian **307**, so one
+arrangement took **55% of an income and the other 8%** — and Drajk is also the
+poorest power on the map at 700 credits and industry 7, and was the only power
+that owed anything at all. A mechanic meant to give the Combine's sheet
+something to point at had quietly become a handicap on one faction, stated
+nowhere and intended by nobody. Instalments are now about **a tenth of each
+debtor's net**.
+
+Spreading it fixes the other half, which is that the debt was *unique*: one
+power in five owing anything made it a fact about Drajk rather than a fact about
+the Rim. Three debtors is what the Combine's doctrine actually describes — and
+the total flowing to it went **down**, 65 a turn to 55, and outstanding 880 to
+670. Being owed by everybody is worth more to that faction than being owed a lot
+by one debtor, and it costs the board less.
+
+The Vigil's is the one that needed an argument. Its own line is *"will not
+accept payment to stand down; being bought is the insult, not the price"* —
+which is about being bribed and says nothing about owing a chandler. A remnant
+maintaining capital ships it has no yard left to make parts for has to buy them
+from somebody, and the Combine sells to everyone. A proud power that cannot pay
+its bills is a better position than a proud power with no bills.
+
+Balance is unmoved because the transfer sits outside `net` and the Combine's
+inflow is bounded by the principal rather than being another perpetual stream.
+`pnpm balance 30` is byte-identical across the resize: 3/6/5/4/4, 567 tolls, a
+58/42 income mix.
 
 ### Loans: a thing that comes back, which is not a debt
 
@@ -2652,6 +2851,77 @@ it the peace it profits from.
 > sovereignty"*; Arkane is the defensive faction par excellence — *"take no
 > master"*, *"will never accept occupation"* — and giving it an expansion-pays
 > mechanic would have contradicted its whole sheet.
+
+## Commanders: a named officer on one side of one battle
+
+`src/domain/command.ts`. A battle between two rival powers resolves as
+arithmetic, and a name on it is the cheapest thing that makes it a story. Each
+power carries one; `commanderFor` picks the senior active officer by battles
+fought, so a power's best-known name keeps turning up and losing one costs
+something a player can feel.
+
+**Archetypes with generated names, and the split is the whole design.** The same
+division of labour as `ASSET_ARCHETYPES`: the table decides what a kind of thing
+is like, and generation only ever touches identity. A commander's *effect* comes
+from a closed list of three; their name, and nothing else, is procedural.
+Generated *effects* is the failure this codebase closes everywhere — a leader
+whose bonus is invented is a leader whose bonus can be invented favourably,
+which is `onComplete` before `boundPayloadsToOutcome`. So a hundred campaigns
+produce a hundred different Grand Admirals and not one new rule.
+
+**The first draft claimed one archetype per phase of a battle, and that was a
+tidy story the code does not support**: `attackMod` is read by the orbital
+exchange *and* by the landing, since `assault` is troops scaled by it. A combat
+test flipped and said so. The framing was corrected rather than the arithmetic
+contorted to protect it — what actually distinguishes the three is the **shape**
+of the help:
+
+| archetype | shape | what it does |
+|---|---|---|
+| `lineofbattle` | small, unconditional | `COMMANDER_MIGHT` (1) on the might modifier, which every fight reads |
+| `gunnery` | large, conditional on a **class** | multiplies the opening salvo by `COMMANDER_STRIKE_BONUS`, so she is worth a great deal to a power that builds torpedo boats and nothing to one that brought none |
+| `convoy` | large, conditional on **losing** | `COMMANDER_WITHDRAW_RELIEF` (8) points off the retreat loss — worth nothing until the day you have to run |
+
+That is a better set than one-per-phase: they are not substitutes, so which one
+you want depends on the fleet you build and the war you are losing.
+
+**None of the three duplicates a war ethic**, which was the real constraint.
+`crusading` already refuses to break off and `opportunist` already takes a
+conditional might bonus, so a commander who did either would flatten a doctrine
+rather than add to one — the same argument that prices suborning against the
+`defection` agent. The withdrawal is the clearest case: the retreat loss is a
+band **nothing else in the game touches**. A screen changes *which* hulls are
+spent getting clear, not how many; a stance changes whether you run at all.
+
+**Read off the largest contingent**, exactly as doctrine is, so a one-ship
+junior partner's officer does not run the coalition. **Doctrine picks who it
+is**, not the player — a commander a player has to assign is a commander the
+four NPCs never get, and a battle between two rivals looking like arithmetic is
+the thing this was built to fix. Letting the player *name* one is a real
+decision and a good follow-on; it is not what makes the mechanic exist.
+
+**Reported like a doctrine, in its own list.** `BattleReport.commandersFired`
+names only officers who actually changed something, and it is separate from
+`doctrinesFired` because they are different kinds of fact: a doctrine is what a
+power IS and is true of every battle it fights, where an officer is who happened
+to be aboard this one. That convention caught a real bug — the first version
+credited a `convoy` officer in a battle nobody lost, and the note is now pushed
+from `bleed`, on use.
+
+**They die, and only on a defeat**, on the battle's own seeded roll rather than
+a new one (`COMMANDER_LOSS_ROLL`). An officer who wins does not die at a rate
+worth modelling, and a death roll on every engagement would churn the roster
+faster than a player could learn a name. `tickTurn` appoints a replacement — a
+different person, new name, new archetype, no battles — and the dead stay on the
+roster, since a power's history of commanders is worth more than the bytes of
+removing them.
+
+Names are per faction and shaped differently per faction, because five powers
+that should never be mistaken for one another is a rule this project applies to
+voice, ethics, red lines and build bias, and a generated name that could belong
+to any of them would be the one place it lapsed. Built on `rollD20`'s hash, so a
+replayed campaign appoints the same people — a roster that differed between a
+campaign and its replay would break `verifyReplay` on a string comparison.
 
 ## A commander decides whether the world is worth the fleet
 
@@ -3566,11 +3836,75 @@ component is logic nothing checks.
   mine". Hulls in a system their owner does not hold are marked `*`.
   (Class is `.fleet-panel`, not `.fleets` — the SVG map layer already owns that.)
 - **Panels** — Factions (a portrait thumbnail ringed in the faction's colour,
-  stat bars, ethics, disposition, `talk`), System (ships
-  and income *per faction*, lanes, orders), Orders (progress + ETA), Treaties
-  (terms, turn limits, wars, agents with effect and success chance), Log
-  (filterable — `rejection` and `clamp` entries are debugging gold, so they are
-  filterable rather than hidden).
+  stat bars, ethics, disposition, `talk`), System (ships and income *per
+  faction*, **operatives here**, lanes, orders), **Command** (who takes each
+  power's next battle), Orders (progress + ETA), Treaties (terms, turn limits,
+  wars, agents with effect and success chance), Log (filterable — `rejection`
+  and `clamp` entries are debugging gold, so they are filterable rather than
+  hidden).
+
+  **Command is its own tab because it was confusing as a line in Factions.** An
+  officer began as a line under each faction's ethics chips, and *"fights a
+  point harder, everywhere"* sitting directly beneath `expansionist` and
+  `free trade` reads as another doctrine — a claim about what the power **is**,
+  which is exactly what the chips above it are for. It is not: it is a fact
+  about a fleet, and about a person who may not be there next turn. Placed
+  beside Fleets rather than beside Factions for the same reason, and the roster
+  is the other half of it — a faction row has space for one line, and the
+  interesting thing about a commander is the record: engagements fought, when
+  they were appointed, and who came before them.
+
+  **A world says what it is.** `src/ui/worldtext.ts` gives every system a line
+  keyed on **(type, founder)** — what kind of world it is, and who built on it.
+  The panel used to print `Arid` and `Ground counts toward: might` and join
+  neither to the other, leaving a player to take on faith that dry ground
+  produces hard soldiers. The line is what makes the modifier legible.
+
+  Keyed on `homeFactionId` rather than the current controller, because that
+  never moves: a world does not stop being an Imperial fuel depot because Drajk
+  took it, which is precisely what the occupation cost is charging for. Authored
+  rather than generated, the same call `ASSET_ARCHETYPES` and
+  `COMMANDER_ARCHETYPES` make — generation is right where the only thing varied
+  is identity, and wrong where the line has to say something true about one
+  power's relationship to one kind of ground. Twenty-two pairs cover the seed's
+  twenty-five worlds, and a test holds the table to the seed so a new world
+  fails rather than quietly falling back.
+
+  Variants exist only where one pair covers several worlds — the seed has three
+  unaligned ice worlds, and three identical paragraphs read as a bug. Picked by
+  a hash of the **system id** and deliberately not `rollD20`, which is seeded on
+  the turn: a world's character must not change because time passed.
+
+  **Operatives are listed per world as well as globally**, and the per-world
+  list is the one a player actually asks for. An operative has an `atSystemId`,
+  its effects are read per system, and the question is *who is working on this
+  world* — which was answerable only from the Treaties panel, so learning
+  something about a planet meant reading a treaty list. `agentsVisibleTo` is
+  already exactly "mine, plus anyone's that has been burned", so "discovered"
+  needed no second definition, and a burned operative stays on the list struck
+  through: knowing a rival's network *was* here is worth nearly as much as
+  knowing it is.
+
+- **Tolls are drawn on the map**, as a gold ring on a world you pay at and a
+  green one on a world you collect at, with the figure in the tooltip.
+  `tollTargets` was legible in the Factions panel, so a player could see **that**
+  the Combine charged them and never **which junction** it cost them on — the
+  actionable half of the mechanic was the invisible half. That gap has a
+  history: tolling became a policy in the first place because *"a toll share
+  became a negotiable instrument whose value nobody at the table could see"*,
+  and the personas could see it long before the player could.
+
+  `RouteEarnings` carries `tollsBySystem` / `tollsPaidBySystem`, recorded in the
+  same pass that pays the tolls out, so the picture cannot disagree with the
+  ledger — the rule the lane volumes on the same map already follow. A second
+  pass applying the same rules is a second set of rules.
+
+  > **A ring rather than a dot, and the arithmetic decided it.** The viewBox is
+  > ~1220 units into roughly 490 css pixels, so a marker draws at about 0.4x: a
+  > 4-unit dot lands under two pixels — in the DOM, invisible on screen. Same
+  > lesson the battle glyphs took four passes to learn, and the same answer, a
+  > shape read from its outline. Gold rather than red because `contested-ring`
+  > is already red and dashed, and two red rings on one node say nothing.
 - **Briefing** — persistent, not printed once. Treasury, net income, what
   completed, what is under way with ETA, observable enemy work. Reconstructed
   from state on resume via `briefingFromState`.
@@ -3635,8 +3969,61 @@ component is logic nothing checks.
   These five are the ways an action produces *nothing*, which is what is worth
   marking.
 
-  They deliberately do **not** match the portrait set's painterly register, and
-  all three carry text. A portrait exists to be recognised as a person you are
+  **Two of the three are pixel art now, and the pair is the reason.** `refusal`
+  and `defiance` were painterly 16:9 renders and failed twice over: they sat in
+  a contemporary corporate register — an office worker holding a page stamped
+  VETO, a television news desk reading APPROVAL NUMBERS CRASH — against a game
+  whose whole visual language is pixel sprites and SVG glyphs, and the second
+  was about the wrong thing entirely, since `defiance` is a leader overruling
+  their own institutions and being charged for it rather than a collapse in
+  polling.
+
+  They are now drawn in `src/ui/outcomeart.ts`: **refusal is the order itself,
+  stamped** — letterhead, body text, a seal at the foot, a signature line it was
+  never signed on, and a band driven across the page and off both edges — and
+  **defiance is a line falling off a chart**, with a smile at the top of the
+  axis so the chart is legibly one of mood.
+
+  Both say what the mechanic says. `submitAction` stages **nothing** on a
+  refusal, so the order exists, was put in front of somebody, and came back
+  marked. A defiance costs `COMPULSION_BREACH_DISSENT` (15), about eight reach
+  the cap, and `DISSENT_DECAY` is 2 a turn — so what is falling is how your own
+  people feel about you, and it does not come back on its own.
+
+  > **The first version of these was a matched pair and it was wrong.** They
+  > were a barred door and a broken one, on the argument that the two rulings
+  > are one thing in two states — `classifyPrinciple` decides between them by
+  > reading which list the quoted line is on, so recognising the second would be
+  > free once the first had been seen. The argument holds and the pictures did
+  > not: at feed size a stone arch is an abstraction, and a reader who has to
+  > work out that the shape is a doorway has already stopped reading the line
+  > underneath it. A conventional image understood before the sentence is worth
+  > more here than a clever one understood after it.
+
+  `negotiation` keeps its illustration, because it is not part of that pair: it
+  is not a breach of anything, it is being told the thing needs another power's
+  signature, and there is no second state of a door that says so.
+
+  Geometry in `src/ui/`, pure and tested, the same split `WorldSprite` uses —
+  and drawn in **code** rather than typed as a character grid, unlike
+  `worlds.ts`. Continents are organic and editing one should be typing; an arch
+  and a bar are not, and thirty-six rows of sixty-four characters would be a
+  worse diff and an easier place to hide a mistake.
+
+  > **Everything wrong with these was found by looking**, which is the whole
+  > argument for rendering art out and opening it rather than trusting a test.
+  > The stamp had a lighter core running its length and read as a *tube* laid on
+  > the page — a highlight down the middle of a band is what tells an eye the
+  > band is round. The smile was a straight five-pixel bar with notches at the
+  > cheeks and cut the disc in half. And two arrowheads were tried on the
+  > trendline, a filled wedge and a pair of barbs, and both came out as a blob
+  > of red in the corner: any head large enough to read at 64 pixels is large
+  > enough to stop reading as a *point*. The line runs off the right edge
+  > instead, which says the same thing with shape that is already there.
+  >
+  > None of that is reachable from a unit test, so what the suite pins is the
+  > handful of claims each picture makes — a stamp that runs off the page, a
+  > line that only falls, a face beside the scale and not in the plot. A portrait exists to be recognised as a person you are
   negotiating with; these exist to communicate an idea — *this was vetoed*,
   *this cost you standing*, *this needs someone else in the room* — and reading
   in a second is worth more here than matching a house style.

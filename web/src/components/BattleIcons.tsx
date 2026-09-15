@@ -1,4 +1,4 @@
-import { HULL_CLASSES, HULL_SPEC, type ShipStack } from '../../../src/domain/hulls.js';
+import { HULL_CLASSES, HULL_SPEC, type HullClass, type ShipStack } from '../../../src/domain/hulls.js';
 /**
  * Glyphs for the order of battle: one per hull class, and a tracked gun.
  *
@@ -289,12 +289,91 @@ export function LifterIcon({ size = 18, title }: IconProps) {
   );
 }
 
+export function FreighterIcon({ size = 18, title }: IconProps) {
+  return (
+    <svg
+      className="ob-icon"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden={title ? undefined : true}
+      role={title ? 'img' : undefined}
+    >
+      {title && <title>{title}</title>}
+      {/* Deck cargo, and the whole glyph rests on it: at 18px only the OUTLINE
+          survives, so the thing that has to be unmistakable is the stepped top
+          edge. A flat-topped hull would read as the lifter, which is the one
+          silhouette this must never be confused with — they are both blunt,
+          both unarmed, and they do completely different jobs.
+
+          Three blocks of different heights rather than an even row, because an
+          even row closes back into a rectangle at small sizes. */}
+      <path d="M6.2 9.4 L9.6 9.4 L9.6 13 L6.2 13 Z" />
+      <path d="M10.4 7.2 L13.8 7.2 L13.8 13 L10.4 13 Z" />
+      <path d="M14.6 10.2 L18 10.2 L18 13 L14.6 13 Z" />
+      {/* A slab hull with a blunt bow — it carries, it does not cut. */}
+      <path d="M3.4 13 L20.4 13 L22.4 15 L20 18 L5 18 L3.4 16.4 Z" />
+      {/* The drive meets the hull rather than floating a unit off it. Detached,
+          it read as a separate speck at 18px — the same failure the first
+          battleship had, where engine pods became two bars beside a lozenge. */}
+      <path d="M0.7 13.8 L3.6 13.1 L3.6 16.3 L0.7 15.6 Z" />
+    </svg>
+  );
+}
+
+export function ListenerIcon({ size = 18, title }: IconProps) {
+  return (
+    <svg
+      className="ob-icon"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden={title ? undefined : true}
+      role={title ? 'img' : undefined}
+    >
+      {title && <title>{title}</title>}
+      {/* The torpedo boat's hull and drive, exactly — a small fast hull is a
+          small fast hull, and two classes built on the same yard should look it.
+          What changes is what is mounted on top, which is the only thing that
+          differs about them.
+
+          The first version drew a whole ship around a big solid half-disc and
+          read as a symbol rather than a vessel. Sharing a hull fixes that and
+          costs nothing: the dish is doing all of the identifying work, and it
+          only has to be different from a swept fin. */}
+      <path d="M23.6 13.6 L11 11.8 L4.2 11.6 L3.2 12.4 L3.2 15.2 L4.2 15.9 L11 15.6 Z" />
+      {/* Mast. Short and thick enough to survive the scale — a thin one snaps
+          and leaves the dish floating. */}
+      <path d="M6.0 9.8 L8.2 9.8 L8.2 12.6 L6.0 12.6 Z" />
+      {/* The dish, opening RIGHT — the way the hull is pointing.
+          
+          The first version of this arced over the mast, which put the bowl's
+          concave face downward: a dish aimed at its own deck. Every glyph in
+          this fleet faces right, and a dish is the one part whose ORIENTATION
+          carries meaning rather than style, because a dish says what it is by
+          saying where it is looking.
+          
+          Drawn as a filled crescent rather than a stroked arc, because a stroke
+          thin enough to look like a dish at 24 units is gone entirely at
+          18px. */}
+      <path d="M7.4 2.2 A4.3 4.3 0 0 0 7.4 10.8 L7.4 8.9 A2.1 2.1 0 0 1 7.4 4.1 Z" />
+      {/* The feed, at the focus — out in FRONT of the bowl, which is the other
+          half of saying which way it is aimed. */}
+      <path d="M7.2 5.9 L9.6 5.9 L9.6 7.1 L7.2 7.1 Z" />
+      <circle cx="10.4" cy="6.5" r="1.4" />
+      <path d="M1.2 12.6 L3.2 12.2 L3.2 15.4 L1.2 15 Z" />
+    </svg>
+  );
+}
+
 /** Pick the glyph for a hull class. One place, so a new class cannot be missed. */
 export function HullIcon({
   hull,
   size = 18,
   title,
-}: IconProps & { hull: 'battleship' | 'escort' | 'torpedo_boat' | 'lifter' }) {
+}: IconProps & { hull: HullClass }) {
   switch (hull) {
     case 'escort':
       return <EscortIcon size={size} title={title} />;
@@ -302,6 +381,10 @@ export function HullIcon({
       return <TorpedoBoatIcon size={size} title={title} />;
     case 'lifter':
       return <LifterIcon size={size} title={title} />;
+    case 'freighter':
+      return <FreighterIcon size={size} title={title} />;
+    case 'listener':
+      return <ListenerIcon size={size} title={title} />;
     case 'battleship':
       return <ShipIcon size={size} title={title} />;
   }

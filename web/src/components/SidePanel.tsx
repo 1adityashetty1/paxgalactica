@@ -9,6 +9,8 @@ import { describeOutstanding, loansFor } from '../../../src/domain/loan.js';
 import { assetWorthRangeTo } from '../../../src/domain/diplomacy.js';
 import { describeOrderEffect } from '../../../src/domain/development.js';
 import { describeEffect } from '../../../src/domain/diplomacy.js';
+import { archetypeOf, commanderFor } from '../../../src/domain/command.js';
+import { worldFlavour } from '../../../src/ui/worldtext.js';
 import {
   presentAt,
   agentsVisibleTo,
@@ -17,6 +19,7 @@ import {
   getFaction,
   getSystem,
   ledgerFor,
+  WORLD_TYPE_STAT,
   commitmentsOf,
   dissentPenalty,
   MAX_DISSENT_PENALTY,
@@ -30,12 +33,17 @@ import type { Briefing } from '../../../src/engine/briefing.js';
 import { ansi256ToHex, NEUTRAL } from '../color.js';
 import { logWindow } from '../../../src/ui/logview.js';
 
-type Tab = 'factions' | 'system' | 'fleets' | 'trade' | 'orders' | 'standing' | 'log';
+type Tab = 'factions' | 'system' | 'fleets' | 'commanders' | 'trade' | 'orders' | 'standing' | 'log';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'factions', label: 'Factions' },
   { id: 'system', label: 'System' },
   { id: 'fleets', label: 'Fleets' },
+  // Beside Fleets, not beside Factions. An officer is a fact about a FLEET —
+  // who takes it into its next battle — and putting the line under a faction's
+  // doctrine read as a claim about the power itself, which is what the ethics
+  // chips directly above it are for.
+  { id: 'commanders', label: 'Command' },
   { id: 'trade', label: 'Trade' },
   { id: 'orders', label: 'Orders' },
   { id: 'standing', label: 'Treaties' },
@@ -74,6 +82,7 @@ export function SidePanel({
         )}
         {tab === 'system' && <SystemTab state={state} selectedId={selectedId} onSelect={onSelect} />}
         {tab === 'fleets' && <FleetsPanel state={state} onSelect={onSelect} />}
+        {tab === 'commanders' && <Command state={state} />}
         {tab === 'trade' && <TradePanel state={state} onSelect={onSelect} />}
         {tab === 'orders' && <Orders state={state} briefing={briefing} />}
         {tab === 'standing' && <Standing state={state} onSelect={onSelect} />}
@@ -234,6 +243,20 @@ function SystemTab({
   const income = systemIncome(state, sys);
   const shipRows = presentAt(sys);
   const incomeRows = Object.entries(income.shares).filter(([, v]) => v > 0);
+  /**
+   * Operatives working this world — yours, plus any rival's that has been
+   * burned. `agentsVisibleTo` is already exactly that rule, so "discovered"
+   * needs no second definition.
+   *
+   * It rendered only under Treaties, which is backwards for a mechanic whose
+   * whole nature is that it is SOMEWHERE: an operative has an `atSystemId`, its
+   * effects are read per system, and the question a player asks is *who is
+   * working on this world*. Answering it only in a global list meant reading a
+   * treaty panel to learn something about a planet.
+   */
+  const operatives = agentsVisibleTo(state, state.playerFactionId).filter(
+    (a) => a.systemId === sys.id,
+  );
 
   return (
     <div className="system-detail">
@@ -245,6 +268,17 @@ function SystemTab({
           <p className="meta">{worldTypeLabel(sys.worldType)}</p>
         </div>
       </div>
+      {/* The line that joins the type to the modifier. Without it the panel
+          said "Arid" and "counts toward: might" and left the player to take on
+          faith that one produced the other.
+
+          Below the head rather than beside the sprite: the head is a flex row
+          about 190px wide once the 84px sprite has its share, which wrapped
+          three sentences to twenty-odd characters a line. This is the only
+          prose on the panel and it should get the panel's width. */}
+      <p className="world-flavour">
+        {worldFlavour(sys.id, sys.worldType, sys.homeFactionId)}
+      </p>
       <dl>
         <dt>Held by</dt>
         <dd style={{ color }}>{controller?.name ?? 'unaligned'}</dd>
@@ -257,6 +291,20 @@ function SystemTab({
         </dd>
         <dt>Strategic value</dt>
         <dd>{sys.strategicValue}/10</dd>
+        <dt title="Worlds of a kind count together: two buy a point of that stat, four buy two, six buy three. Concentration pays — a single world of a kind buys nothing.">
+          Ground counts toward
+        </dt>
+        <dd>{WORLD_TYPE_STAT[sys.worldType]}</dd>
+        {sys.homeFactionId !== null && sys.homeFactionId !== sys.controllerFactionId && (
+          <>
+            <dt title="A share of what this world pays its holder, charged every turn. Institutions built for another state do not administer themselves.">
+              Occupied
+            </dt>
+            <dd className="bad">
+              taken from {getFaction(state, sys.homeFactionId)?.name ?? sys.homeFactionId}
+            </dd>
+          </>
+        )}
         <dt>Base income</dt>
         <dd>{income.base}/turn</dd>
       </dl>
@@ -295,6 +343,30 @@ function SystemTab({
           ))}
         </ul>
       )}
+      <h4>Operatives here</h4>
+      {operatives.length === 0 ? (
+        <p className="empty">None of yours, and nobody else's has been caught.</p>
+      ) : (
+        <ul className="ship-list">
+          {operatives.map((a) => {
+            const mine = a.ownerFactionId === state.playerFactionId;
+            return (
+              <li key={a.id} className={a.exposed ? 'agent-row burned' : 'agent-row'}>
+                <span className="swatch" style={{ background: colourOf(state, a.ownerFactionId) }} />
+                <span style={{ color: colourOf(state, a.ownerFactionId) }}>
+                  {mine ? 'Yours' : (getFaction(state, a.ownerFactionId)?.name ?? a.ownerFactionId)}
+                  {' · '}
+                  {a.mission}
+                </span>
+                <span className="count">
+                  {a.exposed ? 'burned' : `${a.successChance}%`}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
       <h4>Hyperlanes</h4>
       <ul className="lanes-list">
         {sys.hyperlaneEdges.map((id) => (
@@ -317,6 +389,67 @@ function SystemTab({
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/**
+ * Who takes each power's next battle, and who took the last ones.
+ *
+ * It began as a line under each faction's ethics chips and read as a claim
+ * about the POWER — which is exactly what the chips immediately above it are
+ * for, so a reader arriving at "fights a point harder, everywhere" had every
+ * reason to think it was another doctrine. It is not: it is a fact about a
+ * fleet, and about a specific person who may not be there next turn.
+ *
+ * The roster is the other half of why this wants its own surface. A faction row
+ * has space for one line, and the interesting thing about a commander is the
+ * record — how many engagements, and who came before.
+ */
+function Command({ state }: { state: WorldState }) {
+  return (
+    <div className="command-panel">
+      {state.factions.map((f) => {
+        const colour = colourOf(state, f.id);
+        const officer = commanderFor(state.commanders, f.id);
+        // Everyone this power has lost, newest first — a short history, and the
+        // reason losing one is worth anything.
+        const fallen = (state.commanders ?? [])
+          .filter((c) => c.factionId === f.id && c.status === 'lost')
+          .reverse();
+        return (
+          <section key={f.id} className="command-faction">
+            <h4 style={{ color: colour }}>{f.name}</h4>
+            {officer ? (
+              <>
+                <p className="command-name" style={{ color: colour }}>
+                  {officer.name}
+                </p>
+                <p className="command-effect">
+                  {archetypeOf(officer.archetype).effect}
+                </p>
+                <p className="meta">
+                  known for {archetypeOf(officer.archetype).known}
+                </p>
+                <p className="meta">
+                  {officer.battles === 0
+                    ? 'untested'
+                    : `${officer.battles} engagement${officer.battles === 1 ? '' : 's'}`}
+                  {' · appointed turn '}
+                  {officer.appointedTurn}
+                </p>
+              </>
+            ) : (
+              <p className="empty">No officer. The fleet answers to nobody in particular.</p>
+            )}
+            {fallen.length > 0 && (
+              <p className="meta command-fallen">
+                lost: {fallen.map((c) => c.name).join(', ')}
+              </p>
+            )}
+          </section>
+        );
+      })}
     </div>
   );
 }

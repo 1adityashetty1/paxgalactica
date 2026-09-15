@@ -2,6 +2,7 @@ import { applyOps, tickTurn } from './domain/reducer.js';
 import { createSeedState } from './seed/scenario.js';
 import {
   HULL_CLASSES,
+  HULL_SPEC,
   battleshipEquivalents,
   hullCost,
   type HullClass,
@@ -189,8 +190,25 @@ export const LIFT_AXIS = [0, 2, 4, 6, 10, 16, 30] as const;
  */
 export const LIFT_AXIS_FINE = [0, 1, 2, 3, 4, 6, 8, 10, 14, 20, 30, 45] as const;
 
-/** Classes the simplex still divides between, once lift is drawn separately. */
-const FIGHTING_CLASSES = HULL_CLASSES.filter((h) => h !== 'lifter');
+/**
+ * Classes the simplex still divides between, once lift is drawn separately.
+ *
+ * Lift comes off its own axis, and the two hulls that **cannot fight at all**
+ * are excluded outright. That is not an optimisation, though it is also that —
+ * the simplex is exponential in the number of classes, and adding two classes
+ * that can never appear in a winning fleet multiplied the sweep for nothing.
+ *
+ * It is a statement of what this harness asks. The question is *at equal
+ * credits, which FIGHTING composition wins*, and a freighter earns on an
+ * unaligned lane while a listener reads pending orders — neither of which
+ * exists in a two-system arena with the galaxy stripped out. Including them
+ * would have the sweep answer "spend nothing on them", at great length, and
+ * then report a best fleet whose class count means something different from
+ * the one every earlier result was stated in.
+ */
+const FIGHTING_CLASSES = HULL_CLASSES.filter(
+  (h) => h !== 'lifter' && HULL_SPEC[h].orbitalWeight > 0.05,
+);
 
 /**
  * Every composition that spends about `budget`.

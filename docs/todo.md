@@ -1,5 +1,10 @@
 # TODO — known bugs and open design questions
 
+**This file is about the game.** Questions about the shape of the *program* —
+how it is built, what it depends on, how it is delivered, who pays for the model
+calls — live in `docs/architecture.md`, because ranking them against mechanics
+meant they always came last and never got thought about.
+
 Four sections. **Open work** is the ranked list of what is actually outstanding.
 **Performance** is its own track, `p.X`. **Closed groupings** is the previous
 index, kept because its reasoning explains decisions the code still carries.
@@ -8,7 +13,7 @@ closed — the reasoning is the useful part, and a fixed item explains why the c
 looks the way it does.
 
 Statuses are checked against the code, not carried forward from the label. The
-last audit was **2026-09-08**.
+last audit was **2026-09-15**.
 
 ---
 
@@ -45,17 +50,50 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~93~~ | ~~three things the asset fields still cannot say~~ | small | **BUILT** — a catalogue, `consume_asset`, speculative value, assets at the table |
 | ~~80~~ | ~~an advisor that costs an action~~ | medium | **BUILT** — with a structural guard against it becoming a solver |
 | **92** | two claims only a campaign can settle | — | needs play, not code |
-| **95** | the model layer is welded to one provider | medium | a playtest spends subscription usage, and the driver is the expensive half |
+| ~~95~~ | ~~playtests are billed to the subscription~~ | medium | **MOVED** to `docs/architecture.md` A.1 — an architecture item, and step 1 of packaging the game |
+| ~~97~~ | ~~tolls on the map, agents in the System tab~~ | small | **BUILT** — and the toll attribution had to be recorded in `routeEarnings`, not recomputed |
+| ~~103~~ | ~~hulls that do not fight but do something else~~ | medium | **BUILT** — `freighter` and `listener`; board and composition sweep both unchanged |
+| ~~100~~ | ~~worlds carry modifiers that reach faction stats~~ | medium | **BUILT** — keyed on the type, two worlds for the first point, capped at 3 |
+| ~~101~~ | ~~worlds you did not start with cost more to hold~~ | medium | **BUILT** — `homeFactionId` + `OCCUPATION_COST`, swept to 0.15 off a cliff at 0.25 |
+| ~~102~~ | ~~leaders, assigned per battle~~ | subsystem | **BUILT** — archetypes with generated names; the one-per-phase framing was wrong and is recorded as such |
+| **98** | the doctrine bots cannot tell a friend from an enemy | medium | `initiative.ts` reads no disposition, and it now runs in `endTurn` for most of the galaxy most turns — the excuse for it was written when it only ran in the harness |
+| **99** | a marriage is a treaty, and treaties cannot say two things it needs | small | there is no marriage scaffolding to delete — the gap is cross-partner **exclusivity** and **signature goodwill**. A two-party commitment is free to repudiate today |
+| ~~104~~ | ~~the state document published raw ids~~ | small | **FIXED** — `lanes:` joined `hyperlaneEdges` with nothing giving them a name, so the model wrote `ilv-6` into prose |
 
-**What is actually left is a playtest.** Every item on this list is built or
-closed except **92**, and **94(b)**, which is itself a claim only a campaign can
-settle. **95** is infrastructure rather than a feature — nothing in the game
-gets better for building it. The honest next move is not another item — it is a
-**playtest**, because nothing in 81, 86, 87, 88, 89, 90 or the consent work has
-been exercised by a live model. The personas have never seen an asset, a
-contingency, a contract or a hired squadron in a prompt, and `channelBlockers`
-has never been observed firing. That is item **92**'s argument too, and it now
-covers far more than the two claims it was filed for.
+**What is left is a playtest and two design items.** Everything from the
+2026-09-07 batch is built or closed, and so are all five of the features raised
+on 2026-09-14 (**97**, **100**–**103**). What remains is **92** and **94(b)**,
+which are claims only a campaign can settle, plus two things filed since:
+
+- **98** — the doctrine bots read no disposition at all, and they now run in
+  `endTurn` for most of the galaxy most turns. Wants a measurement before a
+  design, and `src/balance.ts` can supply it for free.
+- **99** — a marriage belongs in the treaty system, which needs treaties to
+  learn cross-partner exclusivity and signature goodwill. Two decisions are
+  named in the item and neither is made.
+
+**95 has left this file**: it was infrastructure rather than a feature — nothing
+in the game gets better for building it — and questions of that kind now live in
+`docs/architecture.md`, where they can be ranked against each other instead of
+losing to mechanics forever.
+
+The 2026-09-09 campaign discharged the argument this paragraph used to make.
+The personas have now seen an asset, a fixture, a contingency, a `contract` and
+a hired squadron in a prompt, and it found six things — see
+`docs/playtest-2026-09-09.md`. What it did **not** settle is what 92 was
+originally filed for (marriages and ceremonial arrangements across disposition;
+whether an NPC ever chooses to suborn Meridian at resolve 9), plus three things
+that campaign could not reach: `return_loan` and `repudiate_loan`, which the
+automatic return at `dueTurn` beat to it both times, and the fixture-transfer
+refusal, which is tested in the suite and never seen in play.
+
+**And there is now a second question only a campaign can answer.**
+`PAXGALACTICA_RAW_JSON=1` drops structured output and measured a turn from ~98s
+to ~37s — but that trades away layer 1 of the two-layer defence, and the
+evidence is eight calls with no retries. A ten-turn run with the flag on,
+counting retries and rejections against the baseline, decides whether it becomes
+the default. `extraction` is the one to watch: it has the most ids to get right
+and the least help from a schema once constrained decoding is gone.
 
 **Where frequency and cost disagree:** 81 and 89 were reached for in most turns
 and neither is small — they are the two that would most change what the game
@@ -842,133 +880,22 @@ types the sentence that reaches it. The examples were cut from ten lines to four
 and lost the gloss under each, which the help text now says once.
 
 
-## 95. FILED — the model layer is welded to one provider
+## 95. MOVED — see `docs/architecture.md` A.1
 
-Every model call in the game reaches Anthropic through `rawCall` in
-`src/model/client.ts`, which spawns the bundled Claude Code binary under
-subscription auth. There is no way to point the game at anything else, so the
-cost of playing it is denominated in Claude usage and in nothing else. That is
-fine while the game is being *played* and wrong while it is being *tested*,
-which is most of what happens to it.
+**The provider seam is an architecture item, not a game item.** It was ranked
+against mechanics for its whole life and always came last, for the good reason
+that nothing in the game gets better for building it — which is exactly why it
+does not belong on this list. It is now **A.1** in `docs/architecture.md`,
+where it is the first item and everything else in that document depends on it.
 
-**Two costs, and they are not the same size.** The measured figure this repo
-quotes — about $3 for a ten-turn campaign — is the game's own calls: resolution,
-reaction, extraction, the arbiter. The **driver** is separate and larger.
-`.claude/agents/adversarial-player.md` carries `model: opus` in its frontmatter
-and holds a transcript that grows for the whole campaign, so a 27-turn playtest
-re-sends an accumulating context to Opus on every turn. None of that appears in
-any cost figure recorded here, and none of it is reachable from `router.ts`.
-**The expensive half of a playtest is the half the tiering table cannot see.**
+Moved whole, with its reasoning intact: the seventy-line `rawCall` extraction,
+why a local model cannot do `extraction` on 16GB, what `PAXGALACTICA_RAW_JSON=1`
+did to the latency argument, the two API details a naive port gets wrong, and
+the Kimi K3 research that prompted the original filing.
 
-### The seam already exists
-
-`rawCall` is the only function in the codebase that touches the Agent SDK — about
-seventy lines — and it has exactly two importers. Everything above it is already
-provider-agnostic: the retry budget, the Zod re-validation, the correction
-prompt, `stats`. So this is an extraction, not a rewrite.
-
-- **`src/model/provider.ts`** — `interface Provider { call(tier, system, user,
-  jsonSchema) }`, with `claudeProvider` (today's `rawCall` body, moved) and
-  `openaiProvider` (a `fetch` to `${baseUrl}/chat/completions`). Chosen by env.
-- **`router.ts`** — `TierConfig` currently mixes shared config (`model`) with
-  SDK-only fields (`maxTurns`, `effort`, `thinking`). Split it, and put a
-  `TIERS_LOCAL` beside `TIERS` so the file's own promise — *tiering is a
-  one-line edit* — holds for both.
-- **Structured output maps directly.** `z.toJSONSchema(schema, { target:
-  'draft-7', io: 'input' })` becomes `response_format: { type: 'json_schema',
-  json_schema: { name, schema } }`. **Do not set `strict: true`**: OpenAI-strict
-  mode requires every property in `required` and `additionalProperties: false`,
-  which directly contradicts `io: 'input'` advertising defaulted fields as
-  optional. The lenient grammar-constrained path is the one that matches this
-  codebase's schemas.
-- **`costUsd`** from the response's token usage against a price table; zero for
-  a local endpoint. `stats` is unchanged.
-- **`preflight.ts`** calls `assertLoggedIn` unconditionally. Gate it on the
-  provider, and substitute a `GET ${baseUrl}/models` probe whose failure message
-  has the same shape as the auth one.
-- **`PAXGALACTICA_NO_NETWORK=1` still throws**, localhost included. That guard is
-  about the suite being pure, not about the wire.
-
-Replay is untouched: the journal records ops, not reasoning, so a campaign played
-against any provider replays byte-identically under `pnpm replay`. That property
-is what makes this safe to try rather than a commitment.
-
-### The decision that is not made
-
-**OpenRouter, or a direct provider key?** The adapter is the same either way —
-both are OpenAI-compatible endpoints — so this is a question about billing and
-caching, not about code.
-
-- **OpenRouter** is one key and one billing relationship across every vendor,
-  which is what `ROUTES` actually wants: naming a different vendor per `CallKind`
-  costs no extra plumbing. A cheap small model for `appraisal` and
-  `breach_relevance` beside a strong one for `resolution` is the configuration
-  worth having, and three of the seven call kinds do not need a frontier model.
-- **A direct key** is one fewer intermediary, and may be the only place a
-  provider's cached-input tier is honoured.
-
-**Caching is the lever, so resolve that before choosing.** The system prompts are
-large, fixed, and identical across every call of a given kind — `resolution.md`
-alone is ~8.5k tokens — which is the ideal caching shape, and a 90% cached-input
-discount is worth more than any plausible difference in base rate. Sources
-conflict on whether OpenRouter passes Moonshot's $0.30 cache tier through;
-**verify against the live model page rather than trusting this note.**
-
-One thing the adapter buys for free: the SDK's end-turn carrier goes away. Under
-`outputFormat: json_schema` every call today costs two agentic round trips and
-re-sends its context; a plain HTTP call does not, so a direct call sends roughly
-half the input tokens the current path does.
-
-### What this does not solve
-
-**The driver.** The Agent tool takes `sonnet`/`opus`/`haiku`/`fable` and has no
-hook for an external provider, so a provider seam in `src/model/` cannot re-point
-the playtest agent. Driving 92 with a third-party model means writing the harness
-instead: `dispatch(method, path, body)` is already the seam, and the loop is
-`GET /api/campaign` → build a prompt → `POST /api/action` or `/api/talk/:id` →
-`POST /api/endturn`. Call it 150 lines.
-
-That harness earns its keep on a second axis, which is the better argument for
-it: **it is repeatable.** A scripted playtest can be re-run against the same seed
-after a prompt edit, which is the thing prompt versioning exists to enable and
-which an interactive agent session cannot do. But it also reimplements the
-agent's strategic prompting by hand, and that prompting is where the last few
-playtests found their exploits — the escrowed seal, the double-sold
-intelligence. A harness will exercise the mechanics and find fewer degenerate
-lines.
-
-**The cheap version of all of this is one line:** `model: sonnet` in the agent's
-frontmatter, or `model: "sonnet"` passed at spawn. Do that first. Build 95 when
-92 is being run repeatedly rather than twice.
-
-### On Kimi K3 specifically, since it prompted this
-
-Recorded so the question does not have to be re-researched. Figures are from
-secondary aggregators, September 2026, and are directionally reliable at best.
-
-- 2.8T parameters, 104B active (16 of 896 routed experts), MXFP4, 1M context.
-  **Active parameters set compute; total parameters set memory** — it generates
-  about as fast as a 104B dense model and needs every expert resident.
-- Near-frontier: ~60 on the Artificial Analysis index against Opus 5's 63, and
-  93.4% SWE-bench Verified against 95–96% for the closed leaders. It *leads*
-  SWE Marathon, the long-session benchmark — which is the one that resembles a
-  playtest.
-- **$3 / $15 per M, $0.30 cached** — essentially Sonnet's list price. Hosted K3
-  is not a cost reduction; it is a conversion of subscription usage into dollars.
-- **No free API tier.** Adagio is the consumer chat plan, not an API plan, and
-  there is no `:free` variant on OpenRouter.
-- **Self-hosting is out.** ~594 GB of weights, so eight H100s merely to load them
-  and ~1,680 GB by vLLM's own estimate to serve them; Moonshot suggests ≥64
-  accelerators. Renting that for an hour costs more than many campaigns of API.
-
-The call kinds do not degrade equally on a weaker model, which matters if the
-seam is used to run a cheap tier. `flavor`, `appraisal` and `breach_relevance`
-are bounded classifications against a rubric and should hold up. `extraction` is
-the one to watch: it must emit real faction, system and treaty ids from a
-transcript, and no JSON schema constrains that — the reducer rejects them cleanly
-as `unknown_faction`, but a playtest in which every accord produces nothing is
-not a playtest.
-
+What `architecture.md` adds is the thing this file had no place for: what it
+would take to ship Pax Galactica as a packaged executable a player pastes their
+own OpenRouter or Anthropic key into. The seam is step 1 of five.
 
 ## 96. CLOSED and DECIDED — three things the playtest of 2026-09-09 left open
 
@@ -1068,6 +995,634 @@ worth showing and nobody has asked yet.
   `GET /api/campaign` stayed flat at ~2ms with the payload at 92KB. The floor is
   transport — appraisal takes 12–15s to return two numbers with thinking already
   off — so **95** is the only thing that moves it.
+
+
+## 97. BUILT — tolls on the map, and agents in the System tab
+
+Split out of the five features raised 2026-09-14, which were filed as one
+item and are not one feature. The other four are **100** (world modifiers),
+**101** (conquest upkeep), **102** (battle leaders) and **103** (non-combat
+hulls). This one and 103 are being built; the rest need a decision first.
+
+*"Tolls set are visible in the UI for the map itself. Your Agents + discovered
+Agents are visible in the System Tab."*
+
+Both are real gaps and both were checked. **This is the cheapest item of the
+five and the only one that is pure UI** — no schema change, no balance
+question, nothing the reducer has to learn.
+
+**Tolls.** `Faction.tollTargets` is read by `trade.ts` (who pays), `reducer.ts`
+(`set_toll_policy`), `serialize.ts` (so every *model* can see it) and
+`SidePanel.tsx` — but only in the **Factions** rows, as *"charges you for
+passage"*. `GalaxyMap.tsx` never mentions it. So a player can see **that** the
+Combine tolls them and not **which lanes** it costs them on, which is the half
+they would act on. The map already colours lanes by territory, so there is a
+place for it to go and a convention to extend rather than invent.
+
+That gap has a history worth remembering: tolls became a policy in the first
+place because *"a toll share became a negotiable instrument whose value nobody
+at the table could see"*. The personas can see it now. The player still cannot.
+
+**Agents.** `agentsVisibleTo(state, me)` renders under **Treaties**
+(`SidePanel.tsx:751`), and the System panel carries *Ships present*, *Income per
+turn*, *Hyperlanes* and *Orders here* — no agents at all. That is backwards for
+a mechanic whose entire nature is that it is **somewhere**: an operative has an
+`atSystemId`, its effects are read per-system, and the question a player asks is
+*"who is working on this world"*. Answering it only in a global list means
+reading a treaty panel to learn something about a planet.
+
+Open: what `agentsVisibleTo` returns for an **exposed** rival operative needs
+checking before "discovered Agents" is specified. If exposure does not already
+put a rival's agent into the player's view, that is a separate finding and
+possibly a bug — being caught should be worth something to the catcher.
+
+
+
+### What building it actually took
+
+Not the pure-UI job it was filed as, in one respect. A toll is levied per
+**route**, and the map draws **hyperlane edges** — so "which lane costs me"
+had no answer at the resolution the map has. Recomputing the attribution in the
+client would have meant a second copy of the toll rules, which is the defect
+this codebase names everywhere.
+
+`RouteEarnings` now carries `tollsBySystem` and `tollsPaidBySystem`, recorded in
+the same pass that pays the tolls out. One set of rules, and the map derives
+from the function the reducer pays from — the property the lane volumes on that
+same map already had.
+
+**A ring, not a dot, and the arithmetic decided it rather than taste.** The
+viewBox is ~1220 units drawn into roughly 490 css pixels, so a marker renders at
+about 0.4x and a 4-unit dot lands under two pixels: present in the DOM,
+invisible on the screen. That was verified by looking, after the DOM check said
+it was there. Gold rather than red, because `contested-ring` is already red and
+dashed.
+
+`agentsVisibleTo` turned out to be exactly "mine, plus anyone's that has been
+burned", so **"discovered agents" needed no new rule at all** — only a per-world
+filter and a struck-through row for a burned one.
+
+## 98. OPEN — the doctrine bots cannot tell a friend from an enemy
+
+**`src/domain/initiative.ts` contains no reading of `disposition` at all.** Not a
+weighting, not a threshold, not a tiebreak — the word appears once, in a comment
+about a cost the *reducer* charges. The only relationship any bot consults is
+`honourTreaties`, which withholds an attack on a `non_aggression`, `ceasefire`
+or `mutual_defense` partner and interdiction against a `trade_accord` partner.
+
+So a power that loathes you at −95 with no paper between you picks its targets
+exactly as one that likes you at +50 does: `lineStrength`, garrison, adjacency.
+Standing is invisible to it.
+
+### This was a correct decision that stopped being correct
+
+CLAUDE.md files it, honestly, as a limitation of the balance harness:
+
+> **What the harness cannot model:** the bots do not react to disposition. The
+> Nars finish hated by everyone and nobody invades them, so the harness
+> overstates their runaway — the counterplay their position invites is political,
+> and politics is what the model-driven game supplies.
+
+Every word of that was true when the bots lived in `src/balance.ts` and played
+nobody but each other. It is the justification and the deployment that drifted:
+the bots **moved into the domain and now run in `endTurn` for every faction the
+model did not speak for**, which on an ordinary turn is most of the galaxy. The
+sentence that excused the gap — *politics is what the model-driven game
+supplies* — is now an argument about the three or four factions that get a
+reaction call, and it is silent about the rest.
+
+The defect is narrow and worth stating precisely. It is **not** that disposition
+is inert: crossing `WAR_DISPOSITION_THRESHOLD` (−60) changes five things, and
+two of them matter strategically — `opportunist` takes
+`OPPORTUNIST_MIGHT_BONUS` against a holder *distracted* by a war with somebody
+else, and `warProfitFor` flips the Combine's entire economy the moment it is in
+one. What is inert is **the whole range between neutral and war**, for the half
+of the galaxy that is being played by arithmetic.
+
+### What it would take
+
+`honourTreaties` is the shape to copy, and not only by analogy: it is a
+**post-filter over the proposed ops** rather than a check threaded through five
+bots, which is what makes it total — *"a bot added later inherits the guard
+without knowing it exists."* A second filter beside it inherits the same way.
+
+Three candidate designs, cheapest first:
+
+- **A standing gate.** Withhold an attack on a power you are not at war with and
+  do not dislike — the mirror of `honourTreaties`, keyed on disposition instead
+  of paper. Smallest change, and it answers the complaint directly: a bot stops
+  attacking its friends.
+- **Weighted targeting.** Score candidate targets by standing as well as by
+  weakness. Richer, and the one that can go wrong: *always* attacking whoever
+  you hate most makes the board deterministic and flattens the difference
+  between `opportunist` (hits the weak) and `crusading` (hits regardless), which
+  are distinctions the harness was built to keep visible.
+- **Narrower still: reinforcement, not aggression.** Let standing decide which
+  frontier a bot garrisons rather than whom it attacks. Least likely to disturb
+  the board, and least likely to be noticed.
+
+Whichever, it must **report what it withheld**, for the reason the existing
+filter does: a power that quietly does less than its doctrine demands is the bug
+that module exists to fix.
+
+### Three traps, and the third is the real one
+
+- **Replay is safe.** Disposition is on `WorldState` and the bots are pure, so
+  any of this replays exactly. No new state, no clock, no dice.
+- **`pnpm balance 30` will move**, and the direction to watch is a board that
+  *freezes*. `tests/balance.test.ts` asserts nobody is eliminated and nobody
+  holds half the map, and both of those get easier when bots attack less — the
+  test that would actually catch over-firing is the one that says territory
+  keeps changing, which is currently an observation in CLAUDE.md (*"territory
+  changes through turn 24"*) rather than an assertion. The lift-as-a-fraction
+  experiment already produced exactly this failure, and CLAUDE.md records how it
+  read: *"a galaxy where nobody attacks."*
+- **Disposition has no decay, and this closes a positive feedback loop.**
+  Attacking costs the attacker standing with the victim; if standing then
+  selects targets, the first war is self-reinforcing and permanent. Every
+  existing disposition cost is small precisely *because* nothing ever fades —
+  and none of them currently feeds back into the thing that generates them.
+  Reading `warsFor` rather than the raw number mitigates it, since that is
+  bilateral and already exists for this reason; a raw-number weighting does not,
+  and is the version most likely to produce a galaxy at total war by turn 12.
+
+**Wants a measurement before a design.** The cheap first step is to run the
+harness with a disposition-blind bot against a disposition-aware one and read
+the two boards, which is what `src/balance.ts` is for and costs no model calls.
+
+
+## 99. OPEN — a marriage is a treaty, and treaties cannot say two things it needs
+
+Raised 2026-09-14 as *"we have a lot of custom scaffolding and tests for
+political marriages; I think this is wrong and weak."*
+
+### First, the correction, because it changes what the work is
+
+**There is no marriage-specific code.** Fifty-five mentions across the repo, and
+every one in `src/` is a comment, a doc-string, a faction voice sheet, or a
+single line of help text. In the tests `dynastic_marriage` is a *string* passed
+to the generic `establish_commitment`. In the prompts it is the worked example
+teaching a generic mechanism.
+
+`Commitment.kind` is `z.string().max(40).regex(/^[a-z][a-z0-9_]*$/)` —
+deliberately free-form, *"the whole point is to hold arrangements nobody
+enumerated in advance."* Marriage is one slug beside `exclusive_charter`,
+`hostage_exchange`, `mining_operation` and `intel_sharing_drajk`.
+
+So there is nothing to delete. Removing the word would cost the prompts their
+best worked example and buy nothing. **Anyone reading this item looking for a
+marriage subsystem to tear out will not find one.**
+
+### What is actually true, and it is a better finding
+
+The proposition raised was that a marriage is *a treaty with no expiry, an
+exclusivity clause, a conditional breakage clause, and the effect of positive
+disposition on both sides*. That definition names exactly the two things a
+treaty cannot express:
+
+| property | treaty today |
+|---|---|
+| no expiration | **yes** — `expiresTurn` is nullable |
+| conditional breakage | **yes** — `voidsOn`, a closed five-kind vocabulary |
+| **exclusivity** | **no.** Supersession is *pair-level*: it retires a live treaty between the **same two parties**. *"I cannot marry Meridian because I am bound to the Nars"* is unsayable |
+| **goodwill on signature** | **no.** Nothing in the treaty path moves disposition upward. `COMMITMENT_GOODWILL` (5) does, and is commitment-only |
+
+So the "custom system" is not marriage. It is **cross-partner exclusivity and
+signature goodwill**, and those two fields are the whole reason `Commitment`
+exists as a separate record.
+
+### The public/private argument, which is the strongest one
+
+`COMMITMENT_GOODWILL` moves disposition **between the bound parties only**,
+because *"unlike a treaty, a commitment is not public business, so onlookers
+have no view."* That is a deliberate and well-argued rule.
+
+It is also the wrong rule for a marriage, which is about the most public act in
+the genre. Marriage is not mis-filed because commitments are marriage
+scaffolding — it is mis-filed because **marriage is public and commitments are
+private.**
+
+### And there is a live hole underneath it
+
+`adjustCommitmentGoodwill` pays `+5` on establish and takes `−5` on dissolve, so
+the two net to **zero** — and disposition has no decay, which makes this the
+only reversible disposition movement in the game. CLAUDE.md frames the refund as
+*"what makes a commitment cost something to have made."* For two parties it does
+not: the `+5` was free to acquire, so returning it leaves both sides exactly
+where they started.
+
+| ending the same arrangement | costs |
+|---|---|
+| dynastic marriage as a **commitment** | −5, privately, between the parties, net zero against what it paid |
+| `non_aggression` as a **treaty** | −25 with the party, plus `PACT_BREAKING_REPUTATION_COST` with every onlooker, permanent |
+
+So a power can swear a dynastic marriage and repudiate it the next turn for no
+net standing loss and no public consequence. The **multi-party** case was
+already patched — a playtest repudiated a four-power compact in all three
+clauses and paid nothing, so `dissolve_commitment` now charges pact-breaking
+when more than two powers are bound. The two-party case is the same hole, still
+open, and it is exactly the shape a marriage is.
+
+### The design: exclusivity is a FIELD, not a condition
+
+Both forms were considered. The condition form — *"this treaty voids if you sign
+the same type with anyone else"* — is wrong, and not on taste:
+
+`voidsOn` ends a treaty as `voided`, and that status exists **because it carries
+no penalty**: *"nobody repudiated it, the condition simply came true, so it
+carries no pact-breaking reputation cost."* So exclusivity-as-a-condition makes
+signing a second marriage **silently dissolve the first, for free**, dodging the
+−25 and the public cost that `break_treaty` charges. It converts a betrayal into
+an automatic administrative event with no injured party, which is the opposite
+of what exclusivity is for.
+
+|  | the second treaty | the first | cost of the swap |
+|---|---|---|---|
+| condition (`voidsOn`) | allowed | voids automatically | **nothing** |
+| field (`exclusive`) | refused at signature | stands | break it deliberately, and pay |
+
+A smaller blocker points the same way: `voidsOn.treaty_with` takes a **named**
+`target`, so it can only say *"voids if you sign with the Vigil"*, never *"with
+anyone"*. Wildcarding needs a sentinel in a field that is otherwise always a
+faction id — the kind of thing that reads fine and breaks a reader later.
+
+The field form also reproduces the ruling already verified live on the
+commitment path, which is an answer a player can act on: *"You are already bound
+by the exclusive dynastic marriage to the Ojjul Nar Combine (com-0-0). That
+marriage must be dissolved before you can enter another."*
+
+**A boolean, not a list of permitted partners.** Every arrangement that wants
+exclusivity here wants it against everyone: a marriage, a sole charter, an
+exclusive supply deal. *"Exclusive except the Combine"* is expressed by not
+setting the flag and writing the carve-out in `text`. Same rule as `OrderEffect`
+and `VoidCondition` — a closed thing edited when a case appears beats a general
+thing that has to be right in advance.
+
+Mirror `conflictingCommitment`: return the **blocking treaty** rather than a
+boolean, so the rejection can quote it.
+
+### Two decisions to make before writing any of it
+
+**1. What exclusivity keys on.** `Commitment.exclusive` keys on the free-form
+`kind`, which is why the slug has to be stable — an inconsistent one silently
+disables the mechanism, and the `prisoners`/`pows` drift that produced
+`ASSET_ARCHETYPES` is the same failure. A treaty's `type` is closed and cannot
+drift, which is safer and **coarser**: an exclusive `trade_accord` would block
+*all* trade accords, and a test already pins that two accords granting different
+lanes are two legitimate deals.
+
+Leaning: accept the coarseness and let the **arbiter** decide when to set the
+flag, which is the division that already works — *the arbiter rules that a
+marriage is exclusive; the reducer enforces it.* A dedicated `bond`/`union`
+treaty type is the alternative and recreates the type-explosion that the
+`tribute`-versus-`contract` split already taught against.
+
+**2. The ordering against supersession**, because this becomes a *third*
+retirement rule beside expiry and pair-level footprint clash:
+
+- **same pair → supersede.** A renegotiation is legitimate and must not be
+  blocked by the treaty it replaces.
+- **different partner → refuse.**
+
+Backwards, and either you cannot renegotiate your own marriage, or exclusivity
+does nothing.
+
+### Scope
+
+Small, and deliberately not a merge. `Commitment` still earns its place for
+one-party standing vows (`factionIds` min 1, where a treaty requires exactly 2),
+for `share` — directional proportional lane flows — and for arrangements with no
+counterparty at all. What moves to treaties is the **public bilateral bargain**:
+marriages, charters naming a partner, hostage exchanges.
+
+The full merge into one `Arrangement` record was considered and rejected: it
+touches the schema, the save format, the journal, replay, every prompt,
+`EXTRACTION_ALLOWED`, supersession and the UI panel — and it would still need a
+public/private flag, so it moves the distinction rather than removing it.
+
+**Prompt work is most of the cost.** `appraisal.md` mentions marriage twelve
+times, `extraction.md` four, and both currently teach it as the canonical
+commitment. Those are the files that decide where a negotiated marriage actually
+lands, so they change with the code or the feature does not exist.
+
+
+## 100. BUILT — worlds carry modifiers that reach faction stats
+
+Split out of 97, raised 2026-09-14. Both questions below were answered by
+building it; the filing is kept because the reasoning is the useful part.
+
+**Answered: the type, not the world.** A type modifier is legible from the map —
+you can see what a world is, so you can see what it buys.
+
+**Answered: stats, as asked, but bounded so the concern was addressed rather
+than overruled.** The worry filed below was that a stat reaches every check
+through `effectiveStats`, including checks about no world at all. That is still
+true and it is now the *point* — good ground makes a power broadly more capable
+— and the unbounded-sum half is closed by a cap of 3 and a rising threshold.
+
+**The threshold is the thing that made it work.** At one world per point, every
+power opens with a point on three or four stats, measured on the seed, and a
+modifier everybody has is inflation. At two the opening grants three points in
+total and every further one has to be taken from somebody.
+
+**It moves the balance harness not at all** — verified by running with the
+occupation cost of 101 switched off, and the board is identical. Worth knowing:
+this is a mechanic whose whole effect is on the model-driven game.
+
+*"Planets themselves have modifiers that affect faction stats so capturing them
+is more than set dressing."*
+
+**The hook already exists and is inert.** `StarSystem.worldType` was added with
+the pixel-art system views and has exactly one reader in the whole codebase —
+`WorldSprite` in the client. It is set dressing *by construction*, which makes
+it the obvious thing to give force to.
+
+Two questions have to be answered before any of it is buildable, and they are
+independent:
+
+**Does the modifier belong to the type or to the world?** A type modifier
+(volcanic worlds pay industry) is cheap, needs no new seeding, and is legible —
+a player reads the map and knows what taking a world buys. A per-world modifier
+is richer and costs 25 seed entries plus a place in the UI to show it. The type
+answer is also self-documenting in a way the per-world answer is not.
+
+**Does it move stats, or the things stats feed?** This is the larger question
+and the request says *stats* — but a stat reaches **every** check in the game
+through `effectiveStats`, including checks with nothing to do with any world. A
+world that makes you better at diplomacy because it has good foundries is the
+kind of result nobody designed and everybody then has to live with. Income,
+garrison ceiling, build cost and route volume are narrower, and are probably
+what *"more than set dressing"* actually wants.
+
+**The trap, if it is stats: it cannot be a sum.** Dissent's ceiling is
+`MAX_DISSENT_PENALTY` (8) on a 1–20 scale, and this file already describes −4 on
+every modifier as *"the difference between a power that functions and one that
+does not"*. A per-world bonus summed over territory blows past that by turn ten
+and is unbounded in principle. The shape has to be a cap, a best-of, or a
+diminishing curve — decided up front, not discovered in a balance run.
+
+
+## 101. BUILT — worlds you did not start with cost more to hold
+
+Split out of 97, raised 2026-09-14. The balance question below was settled by
+the harness, and it mattered.
+
+**Answered: a durable field.** `StarSystem.homeFactionId`, written once by the
+seed. `controlHistory` was the tempting alternative and is the trap the item
+already named — `ledgerFor` is pure over `WorldState` and cannot read a journal.
+
+**Answered: a cession carries it.** The cost is about administering a population
+whose institutions are not yours, which is equally true however the paper was
+signed. The alternative puts a free bypass one treaty away.
+
+**Answered: an unaligned world is free.** It was never anybody's, so there is no
+displaced administration — and settling unclaimed space is a different
+undertaking from holding down a conquered rival.
+
+**The `expansionist` worry was real and the number is where it bit.** Swept, and
+the response is a cliff rather than a gradient: 0.10, 0.15 and 0.20 all leave
+the historical 3/6/5/4/4 board, and at **0.25** the Vigil's late conquest of
+`tor-1` never happens — a power holding foreign ground is poor enough that its
+fleet stops growing. That is the mechanic working and it is still too much, for
+the reason 98 names: *territory changes through turn 24* is a measured property
+of this galaxy, and a standing cost that ends conquest rather than pricing it
+has overshot. 0.15, from the middle of the flat region.
+
+*"Planets have an upkeep penalty if they are not a faction's starting planet."*
+
+Occupation costs more than administration — the same intuition
+`systemIncome`'s **2× administrator's edge** already encodes from the other
+direction, which is an argument that the game agrees with the premise.
+
+**Nothing in state records a starting owner.** `StarSystem` carries
+`controllerFactionId` and no history whatever. So this needs one of two things,
+and the choice is the whole of the work:
+
+- **A durable field**, written at seed. Costs a schema change, a save-format
+  change and a default for campaigns saved before it existed — all three of
+  which this project has done before and has a convention for.
+- **Derive it from the journal.** `controlHistory(journal)` already replays
+  every change of control for the epilogue, so the data exists and is free. But
+  `ledgerFor` is pure over `WorldState` and cannot read a journal, and giving it
+  one would be a much larger change than the field it was trying to avoid.
+
+The field is almost certainly right. Recording the alternative because the
+epilogue work makes it look tempting and it is a trap.
+
+**The trap is `expansionist`.** Meridian's entire doctrine is that expansion
+compounds — `EXPANSIONIST_TERRITORY_BONUS` per world held, applied to all its
+territory income, plus a cheaper landing. A flat penalty on conquered worlds is
+a direct nerf to one faction's identity, and possibly a correct counterweight,
+but that is a claim `pnpm balance 30` has to settle rather than an argument.
+
+**And cession has to be answered explicitly.** A world handed over under a
+signature was not occupied by force, and the reducer already treats the two
+differently everywhere else — the garrison transfers intact, the ceder's ships
+withdraw without loss. If a bought world carries the penalty, buying land is
+worse than it looks; if it does not, the penalty is one treaty away from being
+optional, which is worse.
+
+
+## 102. BUILT — leaders, assigned per battle
+
+Split out of 97, raised 2026-09-14. The largest of the five, and the design
+questions below were all answered by building it.
+
+**Answered: a roster on `WorldState`, one officer per power**, not a name on an
+order. A name on an order is a label; a roster persists, fights, is counted, and
+can die.
+
+**Answered: doctrine assigns, not the player.** A commander a player has to
+assign is a commander the four NPCs never get, and a battle between two rival
+powers reading as arithmetic is the thing this was filed to fix. Player naming
+is a real follow-on and is not what makes the mechanic exist.
+
+**Answered: they die, and only on a defeat**, on the battle's own roll. A death
+roll on every engagement would churn the roster faster than a player could learn
+a name.
+
+**Answered: "per battle" means per CONTINGENT**, read off the largest, exactly
+as doctrine already is.
+
+**Where it surfaced, and one thing that moved after.** It began as a line under
+each faction's ethics chips and that was wrong — *"fights a point harder,
+everywhere"* sitting directly beneath `expansionist` and `free trade` reads as
+another doctrine, a claim about what the power **is**, which is exactly what the
+chips above it are for. An officer is a fact about a fleet and about a person
+who may not be there next turn. It has its own **Command** tab now, placed
+beside Fleets, which also gives the record somewhere to live: what she is known
+for, engagements fought, when she was appointed, and a struck-through list of a
+power's fallen.
+
+**Still open, deliberately:** the player cannot *name* an officer to a battle.
+That is a real decision and a good follow-on; it is not what makes the mechanic
+exist, and building it first would have given the four NPCs nothing.
+
+**And one answer was wrong, which is the useful part.** The design said one
+archetype per phase of a battle — strike, exchange, withdrawal — which is a tidy
+story the code does not support: `attackMod` is read by the exchange *and* by
+the landing, since `assault` is troops scaled by it. A combat test flipped and
+said so. The framing was corrected rather than the arithmetic contorted to
+protect it; what distinguishes the three is the **shape** of the help (small and
+unconditional, large and conditional on a hull class, large and conditional on
+losing), which is a better set because they are not substitutes.
+
+*"Leaders. Assigned per Battle with varying effects. Not sure if we have
+archetypes or procedurally generated."*
+
+Nothing of the kind exists. Two pieces of the machinery do:
+
+- **`BattleReport.doctrinesFired`** already names only the doctrines that
+  **changed** something in an engagement, so there is a built, tested place to
+  report a leader's effect and a convention for reporting it honestly.
+- **`ASSET_ARCHETYPES`** is the answer to the question actually asked. Sixteen
+  named shapes behind an open slug: the model judges *that* a thing happened and
+  the table decides *what that kind of thing is like*, on the stated grounds
+  that **the model is good at judgement and unreliable at lookup**.
+
+**So: archetypes, with procedurally generated names and flavour.** Procedurally
+generated *effects* is the failure this codebase closes everywhere — a leader
+whose bonus is invented is a leader whose bonus can be invented favourably,
+which is `onComplete` before `boundPayloadsToOutcome` and `set_doctrine` before
+the actor check. A closed vocabulary of effects with generated identity gets
+the variety at none of the cost.
+
+What is genuinely undesigned:
+
+- **Where a leader lives.** A faction-level roster that persists and improves is
+  a different game from a name attached to one `fleet_movement`.
+- **"Per battle" is ambiguous, because battles are coalitions.** Everything
+  arriving at one world in one turn fights a single battle with several
+  contingents, and doctrine is already read off the **largest contingent** so a
+  one-ship junior partner cannot decide nobody retreats. A leader has to attach
+  to a *contingent*, and then the same question returns: whose leader runs the
+  coalition?
+- **Do they die?** A leader lost with a fleet is the version with stakes, and it
+  is also the version that needs a replacement mechanism, a UI, and an answer to
+  what happens when a power runs out.
+- **Who assigns.** Player choice is a decision; doctrine choice is free and
+  applies to the four NPCs, who otherwise get nothing out of this feature.
+
+
+## 103. BUILT — hulls that do not fight but do something else
+
+Split out of 97, raised 2026-09-14. Built alongside **97**.
+
+*"Units that are not combat units (.01 power) but have other modifiers, such as
+trade ships or SIGINT ships."*
+
+**This is the most buildable of the five, because the hard part is already done
+and measured.** `HULL_SPEC` runs `lifter` at `orbitalWeight: 0.01` and
+`torpedo_boat` at `0.1` against a battleship's 3, and this file records the
+sweep proving the nominal value is load-bearing: at 0.5 the best attacking fleet
+is 96 torpedo boats and nothing else at 98%, at 0.1 it is still the four-class
+mix. The game already knows how to price a hull that is **present, killable,
+and worth nothing in a fight** — which is exactly the class being asked for, and
+the `.01` in the request is the lifter's real value rather than a guess.
+
+The build checklist exists in CLAUDE.md's conventions and is short: add to
+`HULL_CLASSES` and `HULL_SPEC`, write the key into `TypedStackSchema`
+(`STACK_KEYS` is pinned against `HULL_CLASSES`, so they cannot drift), give it a
+glyph in `BattleIcons.tsx` and a `case` in `HullIcon`, and state its price in
+`prompts/resolution.md` — `prompt-drift.test.ts` checks the quoted price is the
+charged price.
+
+**The design question is where the modifier is read, and there is one right
+answer.** Every effect in this game is read where it is used rather than applied
+each tick, because a per-turn mutation compounds instead of recurring —
+`commitmentFlow`, `income_penalty`, `assetYield` and `stat_debuff` all follow
+it. So a trade hull reads in `ledgerFor` or `trade.ts`, and a SIGINT hull reads
+in `ordersVisibleTo`.
+
+**And that last one is the thing to get right.** A SIGINT hull read in
+`ordersVisibleTo` is doing the `intel` operative's job, and this project's own
+rule is that *two paths to one outcome that cost differently means only the
+cheaper one is ever used* — the argument that priced suborning against the
+`defection` agent and routed declared assassination into `deploy_agent`. It must
+be priced against `AGENT_COST` deliberately.
+
+There is a real distinction to price *from*, which is the argument for both
+existing: **a ship is visible and destroyable; an operative is hidden and
+burnable.** `system.ships` is never redacted, so a SIGINT hull announces itself
+by being there and can be killed by anyone willing to come and do it, where an
+operative is invisible until it is exposed and cannot be attacked at all. Those
+are different instruments, not two prices for one.
+
+
+### What building it actually took
+
+**The design question answered itself once the rule was applied.** Every effect
+in this game is read where it is used rather than applied each tick, so a
+freighter reads in `distributeUnclaimed` and a listener in `watchedSystems` —
+and both inherit that rule's guarantees. The freighter cannot mint a credit
+(the function divides a fixed pot) and cannot compound (it is read, not
+applied); the listener is a set membership and nothing more.
+
+**The listener had to be priced against the operative it duplicates**, which
+was the one genuinely open question. A `surveillance` operative is `AGENT_COST`
+40 plus `AGENT_UPKEEP` 3; a listener is 45 plus 3. What justifies both existing
+is that everything else about them is opposite — hidden and burnable against
+visible and killable — and, more than that, that `maxAgentsFor` comes off
+**guile**, so a power with poor guile could not buy sight at all before this.
+
+Three things the build turned up that the filing did not predict:
+
+- **`fleetlab` had to exclude them**, and that is a statement about what the
+  harness asks rather than an optimisation — though the simplex is exponential
+  in the class count and the suite went from 34s to over two minutes before the
+  filter went in. Verified afterwards that the composition conclusions are
+  byte-identical: attacker `escort:24 torpedo_boat:72 lifter:16` at 64%, margin
+  10.4; defender `battleship:9 escort:6 lifter:10` at 85%, margin 1.2.
+- **The bots had to learn to buy both**, because `initiative.test.ts` asserts
+  every hull class reaches the board inside twelve turns — which is the test
+  that exists because `monopolist` stayed implemented, tested and owned by
+  nobody for the life of the project. Both buys are sized from a reason
+  (unaligned ground next door; guile at or below `BOT_SIGINT_GUILE`) rather
+  than to a quota, the way lift is sized from the board.
+- **A freighter's weighting is invisible on an uncontested hop**, because
+  `distributeUnclaimed` gives a sole occupant everything whatever it is flying.
+  That is the mechanic and not a quirk, and the test says so.
+
+`pnpm balance 30` is unmoved: 3/6/5/4/4, a 58/42 income mix, tolls 558 against
+567 — the small drop being freighters taking a larger share of the unaligned
+hops that some tolled traffic crosses.
+
+
+## 104. FIXED — the state document published raw ids, and the model read them back
+
+Reported from play on 2026-09-15: *"the lanes are sometimes leaked as
+`ilv-6/ilv-7`"*.
+
+`serializeSystems` joined `hyperlaneEdges` straight into the block every model
+call reads, so each world's row said `lanes: ilv-6, ilv-7` and **nothing
+anywhere in the document gave those strings a name**. A persona asked to
+describe a border had no other word for the place, so it used the id, and the id
+reached the player in prose.
+
+Two more in the same two lines, found while fixing it: `ships:` and `pays:` were
+both keyed by raw **faction** id. Those were less visible only because the
+Factions block names all five prominently a few hundred tokens earlier — the
+model could resolve them and usually did, which is exactly the kind of "works by
+luck" this file keeps finding.
+
+**Exactly the lesson the faction rename already records: ids are not private.**
+`hutt` displaying as "Ojjul Nar Combine" did not hide the old name, it published
+it in five places and let the display name argue with it. A document that hands
+a model an id with no name attached has published the id.
+
+The fix is names everywhere the row is not addressing itself:
+
+- **lanes** carry `Vergesse (\`ilv-6\`)` — **both**, because the id is what a
+  `fleet_movement` has to address, and making the model resolve a name back to
+  an id through another block is a step it can get wrong;
+- **ships** and **pays** carry faction names, since nothing downstream needs the
+  id from those fields;
+- the system's own id stays backticked at the head of its row, which is the one
+  place it is genuinely the subject.
+
+Verified by scanning the whole serialized block for any system id appearing on a
+line that does not also carry that system's name: **zero**, against a payload of
+11,178 characters.
 
 
 ---
@@ -5098,6 +5653,27 @@ five check bands. Every rolled action produces one, so imagery there becomes
 wallpaper and stops meaning anything.
 
 ## 17. DONE — art for the three ways an action does not simply happen
+
+> **Two of the three were redrawn as pixel art on 2026-09-15**, and the
+> illustrations for them are deleted. They sat in a contemporary corporate
+> register — an office worker holding a page stamped VETO, a television news
+> desk reading APPROVAL NUMBERS CRASH — against a game made of pixel sprites
+> and SVG glyphs, and the second was about the wrong thing besides: `defiance`
+> is a leader overruling their own institutions and being charged for it, not a
+> collapse in polling.
+>
+> `refusal` is now the order itself, stamped; `defiance` is a line falling off a
+> chart with a smile at the top of the axis. Geometry in
+> `src/ui/outcomeart.ts`, pure and tested, rendered as SVG rects — the split
+> `WorldSprite` uses. **`negotiation` keeps its `.jpeg`**: it is not a breach of
+> anything, so it is not part of a pair, and there is no second state of an
+> object that says "this needs somebody else to sign".
+>
+> An intermediate version drew the pair as a barred door and a broken one, on
+> the argument that the two rulings are one thing in two states. The argument
+> holds and the pictures did not: at feed size a stone arch is an abstraction,
+> and a reader who has to work out that the shape is a doorway has stopped
+> reading the line underneath it.
 
 **Built and on screen (2026-08-18).** `web/src/components/OutcomeArt.tsx` draws
 one image per typed non-outcome in the feed; `refusal.jpeg`, `defiance.jpeg` and

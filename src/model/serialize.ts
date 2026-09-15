@@ -4,6 +4,7 @@ import { describeOrderEffect } from '../domain/development.js';
 import { assetWorthRangeTo, describeEffect, wantedBy } from '../domain/diplomacy.js';
 import { describeOutstanding } from '../domain/loan.js';
 import { routeEarnings } from '../domain/trade.js';
+import { archetypeOf, commanderFor } from '../domain/command.js';
 import type { Commitment } from '../domain/arbitration.js';
 import {
   formatModifier,
@@ -14,6 +15,9 @@ import {
 import {
   presentAt,
   dissentPenalty,
+  terrainBonus,
+  WORLD_TYPES,
+  WORLD_TYPE_STAT,
   dispositionBetween,
   getFaction,
   getSystem,
@@ -53,10 +57,32 @@ export function serializeStats(stats: FactionStats): string {
   ).join(' · ');
 }
 
-export function serializeFactions(state: WorldState, viewerId: string): string {
+/**
+ * How much of a power to render.
+ *
+ * `positions` is where every power stands — fleet, treasury, territory,
+ * stats, tolls, disposition. `full` adds who it IS: its war and trade ethics
+ * spelled out, and its doctrine paragraph.
+ *
+ * The split exists for the arbiter. It rules on whether the ACTING power may
+ * attempt a thing, what that tests and how hard — and it is handed that
+ * power's own red lines and compulsions separately, by `serializePrinciples`.
+ * Four other powers' doctrine paragraphs decide none of those questions, and
+ * they were 1.6k characters of every appraisal call, which is the most
+ * frequent call in the game.
+ */
+export type FactionDetail = 'positions' | 'full';
+
+export function serializeFactions(
+  state: WorldState,
+  viewerId: string,
+  /** Non-viewer rows. The viewer's own row is always rendered in full. */
+  detail: FactionDetail = 'full',
+): string {
   const lines = state.factions.map((f) => {
     const held = state.systems.filter((s) => s.controllerFactionId === f.id).length;
-    const self = f.id === viewerId ? ' — THIS IS YOU' : '';
+    const isViewer = f.id === viewerId;
+    const self = isViewer ? ' — THIS IS YOU' : '';
     const toward =
       f.id === viewerId
         ? ''
@@ -65,8 +91,16 @@ export function serializeFactions(state: WorldState, viewerId: string): string {
       `- **${f.name}** (id: \`${f.id}\`)${self}`,
       `  fleet ${fleetStrengthOf(state, f.id)} hulls / ${fleetTonsOf(state, f.id)} tons | credits ${f.credits} | ${held} systems${toward}`,
       `  stats: ${serializeStats(f.stats)}`,
-      `  war: ${f.warEthic} — ${WAR_ETHIC_MEANING[f.warEthic]}`,
-      `  trade: ${f.tradeEthic} — ${TRADE_ETHIC_MEANING[f.tradeEthic]}`,
+      // The ethics keep their labels even when trimmed: `expansionist` and
+      // `monopolist` are what a power IS, and the arbiter does price an action
+      // against them. What goes is the sentence explaining each one, which the
+      // model does not need spelled out five times a call.
+      isViewer || detail === 'full'
+        ? `  war: ${f.warEthic} — ${WAR_ETHIC_MEANING[f.warEthic]}`
+        : `  war: ${f.warEthic}`,
+      isViewer || detail === 'full'
+        ? `  trade: ${f.tradeEthic} — ${TRADE_ETHIC_MEANING[f.tradeEthic]}`
+        : `  trade: ${f.tradeEthic}`,
       // Public by design: a tariff is announced, not discovered. It is also the
       // single most negotiable thing on this sheet, so a power that cannot read
       // who charges it cannot come and argue about it.
@@ -75,8 +109,10 @@ export function serializeFactions(state: WorldState, viewerId: string): string {
           ? 'charges nobody for passage'
           : `charges ${f.tollTargets.map((id) => getFaction(state, id)?.name ?? id).join(', ')} for passage`
       }`,
-      `  doctrine: ${f.doctrine}`,
-    ].join('\n');
+      isViewer || detail === 'full' ? `  doctrine: ${f.doctrine}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
   });
   return lines.join('\n');
 }
@@ -85,6 +121,55 @@ export function serializeFactions(state: WorldState, viewerId: string): string {
  * The full character sheet for one power, used wherever a faction has to ACT
  * or SPEAK as itself rather than merely be observed.
  */
+/**
+ * Who takes this power's next battle.
+ *
+ * A named officer is the cheapest thing that turns an engagement between two
+ * rivals from arithmetic into a story, and a persona that cannot name its own
+ * fleet commander cannot tell that story.
+ */
+function commanderLine(state: WorldState, viewerId: string): string {
+  const officer = commanderFor(state.commanders, viewerId);
+  if (!officer) return '';
+  const shape = archetypeOf(officer.archetype);
+  const seen = officer.battles > 0 ? `, ${officer.battles} engagement${officer.battles === 1 ? '' : 's'} behind them` : ', untested';
+  return `Your fleet is commanded by ${officer.name}${seen} — known for ${shape.known}. In a battle, ${shape.effect}.`;
+}
+
+/** Worlds a power holds that began as somebody else's, by name. */
+function occupiedNames(state: WorldState, viewerId: string): string {
+  const names = state.systems
+    .filter(
+      (sys) =>
+        sys.controllerFactionId === viewerId &&
+        sys.homeFactionId !== null &&
+        sys.homeFactionId !== viewerId,
+    )
+    .map((sys) => sys.name);
+  return names.length > 0 ? names.join(', ') : 'worlds taken from others';
+}
+
+/**
+ * What the ground itself is worth to this power, if anything.
+ *
+ * Stated as the worlds rather than as a number, because the actionable half is
+ * *which kind of world to take next* — a bonus a player cannot trace to a place
+ * on the map is a number that happens to them.
+ */
+function terrainLine(state: WorldState, viewerId: string): string {
+  const bonus = terrainBonus(state, viewerId);
+  const gained = STAT_NAMES.filter((stat) => (bonus[stat] ?? 0) > 0);
+  if (gained.length === 0) return '';
+  const parts = gained.map((stat) => {
+    const kinds = WORLD_TYPES.filter((t) => WORLD_TYPE_STAT[t] === stat);
+    const held = state.systems.filter(
+      (sys) => sys.controllerFactionId === viewerId && kinds.includes(sys.worldType),
+    ).length;
+    return `${stat} +${bonus[stat]} (${held} ${kinds.join('/')} worlds)`;
+  });
+  return `What your ground is worth: ${parts.join(' · ')}. Taking more of one kind is worth more than taking more.`;
+}
+
 /**
  * A faction's stats after its own dissent, which is all `serializeCharacter`
  * can account for — it has no world state, so hostile stat_debuffs are not
@@ -211,6 +296,11 @@ export function serializeStanding(state: WorldState, viewerId: string): string {
   return lines.join('\n');
 }
 
+/** A faction's display name, never its id. See `serializeSystems`. */
+function nameOfFaction(state: WorldState, id: string): string {
+  return getFaction(state, id)?.name ?? id;
+}
+
 export function serializeSystems(state: WorldState): string {
   const bySector = new Map<string, string[]>();
   for (const s of state.systems) {
@@ -224,15 +314,29 @@ export function serializeSystems(state: WorldState): string {
     // rule would be unactionable exactly where it matters.
     const ships = Object.entries(s.ships ?? {})
       .filter(([, stack]) => hullsIn(stack) > 0)
-      .map(([id, stack]) => `${id} ${describeStack(stack)}`)
+      .map(([id, stack]) => `${nameOfFaction(state, id)} ${describeStack(stack)}`)
       .join(', ');
     const payout = Object.entries(income.shares)
       .filter(([, v]) => v > 0)
-      .map(([id, v]) => `${id} ${v}`)
+      .map(([id, v]) => `${nameOfFaction(state, id)} ${v}`)
+      .join(', ');
+    // **Lanes carry the name as well as the id, and that is a bug fix.** This
+    // joined `hyperlaneEdges` raw, so the state document told every persona
+    // that Vergesse connects to "ilv-6, ilv-7" and nothing anywhere gave those
+    // strings a name — so the model wrote the ids into prose and the player
+    // read `ilv-6/ilv-7` in a narrative. Exactly the lesson the faction rename
+    // records: **ids are not private**, and a document that publishes one
+    // without its name has published the id.
+    //
+    // Both, not the name alone: the id is what a `fleet_movement` has to
+    // address, and making the model resolve a name back to an id through
+    // another block is a step it can get wrong.
+    const lanes = s.hyperlaneEdges
+      .map((id) => `${getSystem(state, id)?.name ?? id} (\`${id}\`)`)
       .join(', ');
     const line = [
       `  - \`${s.id}\` ${s.name} — held by ${controller}, garrison ${s.garrison}, value ${s.strategicValue}${income.contested ? ', CONTESTED' : ''}`,
-      `      ships: ${ships || 'none'} | pays: ${payout || 'nobody'} | lanes: ${s.hyperlaneEdges.join(', ') || 'none'}`,
+      `      ships: ${ships || 'none'} | pays: ${payout || 'nobody'} | lanes: ${lanes || 'none'}`,
     ].join('\n');
     const list = bySector.get(s.sector) ?? [];
     list.push(line);
@@ -278,7 +382,15 @@ export function serializeRecentLog(state: WorldState, viewerId: string, limit = 
 }
 
 /** The full state block handed to a model call, from one faction's viewpoint. */
-export function serializeState(state: WorldState, viewerId: string): string {
+export function serializeState(
+  state: WorldState,
+  viewerId: string,
+  /**
+   * How much of the OTHER powers to render. `full` everywhere except the
+   * arbiter — see `FactionDetail`.
+   */
+  detail: FactionDetail = 'full',
+): string {
   const viewer = getFaction(state, viewerId);
   const ledger = ledgerFor(state, viewerId);
   return [
@@ -288,6 +400,14 @@ export function serializeState(state: WorldState, viewerId: string): string {
     `Treasury: ${viewer?.credits ?? 0} credits · income ${ledger.gross}/turn (${ledger.territory} territory + ${ledger.routes} trade lanes), upkeep ${ledger.upkeep}/turn (net ${ledger.net >= 0 ? '+' : ''}${ledger.net})`,
     ledger.tolls > 0 ? `Tolls levied on other powers' cargo: ${ledger.tolls}/turn.` : '',
     ledger.raided > 0 ? `Taken by commerce raiding: ${ledger.raided}/turn.` : '',
+    // A standing cost with no visible cause is a number the leader cannot act
+    // on. Naming the worlds is the point: this is the line that tells a player
+    // which conquest is not paying for itself.
+    ledger.occupation > 0
+      ? `Holding ground that was never yours: ${ledger.occupation}/turn, on ${occupiedNames(state, viewerId)}. Institutions built for another state do not administer themselves.`
+      : '',
+    terrainLine(state, viewerId),
+    commanderLine(state, viewerId),
     // Dissent reduces every stat the model is reasoning about. Omitting it
     // meant a leader could be told its own odds had worsened with no way to
     // know why, and could not narrate the reason to the player either.
@@ -296,7 +416,7 @@ export function serializeState(state: WorldState, viewerId: string): string {
       : '',
     '',
     '## Factions',
-    serializeFactions(state, viewerId),
+    serializeFactions(state, viewerId, detail),
     '',
     '## Systems by sector',
     serializeSystems(state),

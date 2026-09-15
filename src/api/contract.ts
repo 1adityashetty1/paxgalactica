@@ -442,6 +442,16 @@ export type ImportOutcome = z.infer<typeof ImportOutcomeSchema>;
 export const ServerEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('progress'), label: z.string(), busy: z.boolean() }),
   z.object({ type: z.literal('state'), view: CampaignViewSchema }),
+  /**
+   * One power's answer, pushed the moment it is written rather than with the
+   * other two at the end.
+   *
+   * End-of-turn is three reaction calls in sequence and was measured at 67s of
+   * dead air before anything appeared. The calls are the same length; what
+   * changes is that the first answer lands at ~22s instead of ~67s, and the
+   * board moves with it.
+   */
+  z.object({ type: z.literal('reaction'), reaction: ReactionViewSchema }),
   z.object({ type: z.literal('error'), message: z.string() }),
   z.object({ type: z.literal('hello'), turn: z.number().int() }),
 ]);

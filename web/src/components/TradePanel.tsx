@@ -70,6 +70,14 @@ export function TradePanel({
             <span className="good">+{ledger.raided}</span>
           </div>
         )}
+        {ledger.occupation > 0 && (
+          <div className="ledger-row">
+            <span title="A share of what each world you took from somebody else pays you. Institutions built for another state do not administer themselves.">
+              Occupied ground
+            </span>
+            <span className="bad">−{ledger.occupation}/turn</span>
+          </div>
+        )}
         <div className="ledger-row sub">
           <span>Galaxy lanes open</span>
           <span>{Math.round(earnings.openness * 100)}%</span>

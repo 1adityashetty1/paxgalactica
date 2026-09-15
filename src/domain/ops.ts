@@ -68,6 +68,25 @@ export const AdjustDissentOp = z.object({
 });
 
 /**
+ * The same op as the model may write it: upward only.
+ *
+ * A model-sourced `adjust_dissent` has never been allowed to lower anybody's
+ * standing — the reducer rejects it with "dissent cannot be talked down", and
+ * for good reason, since the same call that earns a refusal could otherwise
+ * erase the penalty it just earned. But the model was handed a schema saying
+ * `-100..100`, so it kept writing the one half it could never use.
+ *
+ * Constrained here rather than only in the reducer because `ModelOpSchema` is
+ * what becomes the JSON schema handed to the model: a floor of zero makes the
+ * rejected half **ungeneratable**, which is layer 1 doing the work layer 2 was
+ * paying a correction call for. `AdjustDissentOp` keeps the full range, so
+ * journals written before this still parse and still reach the same verdicts.
+ */
+export const ModelAdjustDissentOp = AdjustDissentOp.extend({
+  delta: z.number().int().min(0).max(100),
+});
+
+/**
  * A change of standing posture — and, optionally, of the axes that give a
  * posture mechanical force.
  *
@@ -382,7 +401,26 @@ export const BreakTreatyOp = z.object({
 
 export const DeployAgentOp = z.object({
   op: z.literal('deploy_agent'),
-  ownerFactionId: z.string().min(1),
+  /**
+   * Whose operative it is — and there is exactly one right answer, so it is
+   * optional and defaults to the acting faction.
+   *
+   * It used to be required, and it is the single largest source of rejected
+   * ops in the game: 31 across 129 played turns, every one of them the same
+   * mistake. On a hostile mission the sentence is about the VICTIM —
+   * "sabotage the Vigil garrison" — so the field gets anchored to the Vigil,
+   * and an operative owned by its own target can never act. `resolution.md`
+   * has warned about it in bold for as long as the guard has existed and the
+   * rate did not move, which is the evidence that prose was not the fix: the
+   * model was being asked to restate a fact `applyOps` already holds as
+   * `actor`, and a field that can only ever have one correct value should not
+   * be asked for at all.
+   *
+   * Still accepted when supplied, and still rejected when it disagrees with
+   * the actor — journals written before this carry it, and replay has to
+   * reach the same verdicts it did then.
+   */
+  ownerFactionId: z.string().min(1).optional(),
   systemId: z.string().min(1),
   mission: AgentMissionSchema,
   effect: AgentEffectSchema,
@@ -811,7 +849,7 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   DeployAgentOp,
   RecallAgentOp,
   AdjustShipsOp,
-  AdjustDissentOp,
+  ModelAdjustDissentOp,
   EstablishCommitmentOp,
   DissolveCommitmentOp,
   // `establish_debt` is deliberately ABSENT, like `form_treaty`: lending binds
@@ -1173,9 +1211,41 @@ export const ResolutionOutputSchema = ModelTurnOutputSchema.extend({
 });
 export type ResolutionOutput = z.infer<typeof ResolutionOutputSchema>;
 
+/**
+ * A prose field that is trimmed rather than rejected when it runs long.
+ *
+ * A length cap on NARRATIVE is a readability rule, not a correctness one — so
+ * paying a whole correction call to re-generate a sentence that was forty
+ * characters over is the wrong trade. Under `outputFormat: json_schema` it
+ * never came up, because constrained decoding enforced the cap while the model
+ * wrote. Measured the moment structured output was taken away: three of three
+ * reaction calls retried on exactly this, turning the fastest configuration
+ * into the slowest.
+ *
+ * Trimmed at a sentence end where there is one in the last quarter, so the cut
+ * reads as a full stop rather than a truncation.
+ */
+export function cappedProse(max: number) {
+  return z
+    .string()
+    .min(1)
+    .transform((t) => {
+      if (t.length <= max) return t;
+      const cut = t.slice(0, max);
+      const stop = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '));
+      return stop > max * 0.75 ? cut.slice(0, stop + 1) : `${cut.slice(0, max - 1)}…`;
+    });
+}
+
 export const ReactionSchema = z.object({
   factionId: z.string().min(1),
-  narrative: z.string().min(1),
+  /**
+   * 1-3 sentences, and the cap is there because it was not being kept to.
+   * Measured across a ten-turn campaign: a 546-character median against a
+   * brief that asks for one to three sentences, with a longest of 847. Three
+   * of these are generated a turn, so the overrun is paid three times.
+   */
+  narrative: cappedProse(420),
   ops: z.array(ModelOpSchema),
   /**
    * This power wants to talk, and what about.
