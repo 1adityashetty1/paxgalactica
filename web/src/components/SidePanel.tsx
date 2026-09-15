@@ -10,6 +10,7 @@ import { assetWorthRangeTo } from '../../../src/domain/diplomacy.js';
 import { describeOrderEffect } from '../../../src/domain/development.js';
 import { describeEffect } from '../../../src/domain/diplomacy.js';
 import { archetypeOf, commanderFor } from '../../../src/domain/command.js';
+import { worldFlavour } from '../../../src/ui/worldtext.js';
 import {
   presentAt,
   agentsVisibleTo,
@@ -278,6 +279,17 @@ function SystemTab({
           <p className="meta">{worldTypeLabel(sys.worldType)}</p>
         </div>
       </div>
+      {/* The line that joins the type to the modifier. Without it the panel
+          said "Arid" and "counts toward: might" and left the player to take on
+          faith that one produced the other.
+
+          Below the head rather than beside the sprite: the head is a flex row
+          about 190px wide once the 84px sprite has its share, which wrapped
+          three sentences to twenty-odd characters a line. This is the only
+          prose on the panel and it should get the panel's width. */}
+      <p className="world-flavour">
+        {worldFlavour(sys.id, sys.worldType, sys.homeFactionId)}
+      </p>
       <dl>
         <dt>Held by</dt>
         <dd style={{ color }}>{controller?.name ?? 'unaligned'}</dd>

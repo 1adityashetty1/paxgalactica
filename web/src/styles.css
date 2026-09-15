@@ -650,3 +650,13 @@ ul { margin: 0; padding-left: 1.1em; }
 .faction .commander { color: var(--dim); font-style: normal; margin: 2px 0 4px; }
 .battle-commanders { margin: 4px 0 0; padding-left: 16px; color: var(--dim); }
 .battle-commanders li { font-style: italic; }
+
+/* A world's own line, under its type. Sits apart from the dl of figures below
+   it: this is the only prose on the panel and it should read like prose. */
+.world-flavour {
+  color: var(--dim);
+  font-style: italic;
+  line-height: 1.45;
+  margin: 6px 0 0;
+  max-width: 34em;
+}

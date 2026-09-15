@@ -3842,6 +3842,27 @@ component is logic nothing checks.
   Log (filterable — `rejection` and `clamp` entries are debugging gold, so they
   are filterable rather than hidden).
 
+  **A world says what it is.** `src/ui/worldtext.ts` gives every system a line
+  keyed on **(type, founder)** — what kind of world it is, and who built on it.
+  The panel used to print `Arid` and `Ground counts toward: might` and join
+  neither to the other, leaving a player to take on faith that dry ground
+  produces hard soldiers. The line is what makes the modifier legible.
+
+  Keyed on `homeFactionId` rather than the current controller, because that
+  never moves: a world does not stop being an Imperial fuel depot because Drajk
+  took it, which is precisely what the occupation cost is charging for. Authored
+  rather than generated, the same call `ASSET_ARCHETYPES` and
+  `COMMANDER_ARCHETYPES` make — generation is right where the only thing varied
+  is identity, and wrong where the line has to say something true about one
+  power's relationship to one kind of ground. Twenty-two pairs cover the seed's
+  twenty-five worlds, and a test holds the table to the seed so a new world
+  fails rather than quietly falling back.
+
+  Variants exist only where one pair covers several worlds — the seed has three
+  unaligned ice worlds, and three identical paragraphs read as a bug. Picked by
+  a hash of the **system id** and deliberately not `rollD20`, which is seeded on
+  the turn: a world's character must not change because time passed.
+
   **Operatives are listed per world as well as globally**, and the per-world
   list is the one a player actually asks for. An operative has an `atSystemId`,
   its effects are read per system, and the question is *who is working on this
