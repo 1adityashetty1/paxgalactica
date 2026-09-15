@@ -13,7 +13,7 @@ closed — the reasoning is the useful part, and a fixed item explains why the c
 looks the way it does.
 
 Statuses are checked against the code, not carried forward from the label. The
-last audit was **2026-09-08**.
+last audit was **2026-09-15**.
 
 ---
 
@@ -58,14 +58,24 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~102~~ | ~~leaders, assigned per battle~~ | subsystem | **BUILT** — archetypes with generated names; the one-per-phase framing was wrong and is recorded as such |
 | **98** | the doctrine bots cannot tell a friend from an enemy | medium | `initiative.ts` reads no disposition, and it now runs in `endTurn` for most of the galaxy most turns — the excuse for it was written when it only ran in the harness |
 | **99** | a marriage is a treaty, and treaties cannot say two things it needs | small | there is no marriage scaffolding to delete — the gap is cross-partner **exclusivity** and **signature goodwill**. A two-party commitment is free to repudiate today |
+| ~~104~~ | ~~the state document published raw ids~~ | small | **FIXED** — `lanes:` joined `hyperlaneEdges` with nothing giving them a name, so the model wrote `ilv-6` into prose |
 
-**What is actually left is a playtest — a different one from the last.** Every
-item on this list is built or closed except **92**, and **94(b)**, which is
-itself a claim only a campaign can settle. **95 has left this file**: it was
-infrastructure rather than a feature — nothing in the game gets better for
-building it — and questions of that kind now live in `docs/architecture.md`,
-where they can be ranked against each other instead of losing to mechanics
-forever.
+**What is left is a playtest and two design items.** Everything from the
+2026-09-07 batch is built or closed, and so are all five of the features raised
+on 2026-09-14 (**97**, **100**–**103**). What remains is **92** and **94(b)**,
+which are claims only a campaign can settle, plus two things filed since:
+
+- **98** — the doctrine bots read no disposition at all, and they now run in
+  `endTurn` for most of the galaxy most turns. Wants a measurement before a
+  design, and `src/balance.ts` can supply it for free.
+- **99** — a marriage belongs in the treaty system, which needs treaties to
+  learn cross-partner exclusivity and signature goodwill. Two decisions are
+  named in the item and neither is made.
+
+**95 has left this file**: it was infrastructure rather than a feature — nothing
+in the game gets better for building it — and questions of that kind now live in
+`docs/architecture.md`, where they can be ranked against each other instead of
+losing to mechanics forever.
 
 The 2026-09-09 campaign discharged the argument this paragraph used to make.
 The personas have now seen an asset, a fixture, a contingency, a `contract` and
@@ -1434,6 +1444,20 @@ a name.
 **Answered: "per battle" means per CONTINGENT**, read off the largest, exactly
 as doctrine already is.
 
+**Where it surfaced, and one thing that moved after.** It began as a line under
+each faction's ethics chips and that was wrong — *"fights a point harder,
+everywhere"* sitting directly beneath `expansionist` and `free trade` reads as
+another doctrine, a claim about what the power **is**, which is exactly what the
+chips above it are for. An officer is a fact about a fleet and about a person
+who may not be there next turn. It has its own **Command** tab now, placed
+beside Fleets, which also gives the record somewhere to live: what she is known
+for, engagements fought, when she was appointed, and a struck-through list of a
+power's fallen.
+
+**Still open, deliberately:** the player cannot *name* an officer to a battle.
+That is a real decision and a good follow-on; it is not what makes the mechanic
+exist, and building it first would have given the four NPCs nothing.
+
 **And one answer was wrong, which is the useful part.** The design said one
 archetype per phase of a battle — strike, exchange, withdrawal — which is a tidy
 story the code does not support: `attackMod` is read by the exchange *and* by
@@ -1562,6 +1586,44 @@ Three things the build turned up that the filing did not predict:
 `pnpm balance 30` is unmoved: 3/6/5/4/4, a 58/42 income mix, tolls 558 against
 567 — the small drop being freighters taking a larger share of the unaligned
 hops that some tolled traffic crosses.
+
+
+## 104. FIXED — the state document published raw ids, and the model read them back
+
+Reported from play on 2026-09-15: *"the lanes are sometimes leaked as
+`ilv-6/ilv-7`"*.
+
+`serializeSystems` joined `hyperlaneEdges` straight into the block every model
+call reads, so each world's row said `lanes: ilv-6, ilv-7` and **nothing
+anywhere in the document gave those strings a name**. A persona asked to
+describe a border had no other word for the place, so it used the id, and the id
+reached the player in prose.
+
+Two more in the same two lines, found while fixing it: `ships:` and `pays:` were
+both keyed by raw **faction** id. Those were less visible only because the
+Factions block names all five prominently a few hundred tokens earlier — the
+model could resolve them and usually did, which is exactly the kind of "works by
+luck" this file keeps finding.
+
+**Exactly the lesson the faction rename already records: ids are not private.**
+`hutt` displaying as "Ojjul Nar Combine" did not hide the old name, it published
+it in five places and let the display name argue with it. A document that hands
+a model an id with no name attached has published the id.
+
+The fix is names everywhere the row is not addressing itself:
+
+- **lanes** carry `Vergesse (\`ilv-6\`)` — **both**, because the id is what a
+  `fleet_movement` has to address, and making the model resolve a name back to
+  an id through another block is a step it can get wrong;
+- **ships** and **pays** carry faction names, since nothing downstream needs the
+  id from those fields;
+- the system's own id stays backticked at the head of its row, which is the one
+  place it is genuinely the subject.
+
+Verified by scanning the whole serialized block for any system id appearing on a
+line that does not also carry that system's name: **zero**, against a payload of
+11,178 characters.
+
 
 ---
 
@@ -5591,6 +5653,27 @@ five check bands. Every rolled action produces one, so imagery there becomes
 wallpaper and stops meaning anything.
 
 ## 17. DONE — art for the three ways an action does not simply happen
+
+> **Two of the three were redrawn as pixel art on 2026-09-15**, and the
+> illustrations for them are deleted. They sat in a contemporary corporate
+> register — an office worker holding a page stamped VETO, a television news
+> desk reading APPROVAL NUMBERS CRASH — against a game made of pixel sprites
+> and SVG glyphs, and the second was about the wrong thing besides: `defiance`
+> is a leader overruling their own institutions and being charged for it, not a
+> collapse in polling.
+>
+> `refusal` is now the order itself, stamped; `defiance` is a line falling off a
+> chart with a smile at the top of the axis. Geometry in
+> `src/ui/outcomeart.ts`, pure and tested, rendered as SVG rects — the split
+> `WorldSprite` uses. **`negotiation` keeps its `.jpeg`**: it is not a breach of
+> anything, so it is not part of a pair, and there is no second state of an
+> object that says "this needs somebody else to sign".
+>
+> An intermediate version drew the pair as a barred door and a broken one, on
+> the argument that the two rulings are one thing in two states. The argument
+> holds and the pictures did not: at feed size a stone arch is an abstraction,
+> and a reader who has to work out that the shape is a doorway has stopped
+> reading the line underneath it.
 
 **Built and on screen (2026-08-18).** `web/src/components/OutcomeArt.tsx` draws
 one image per typed non-outcome in the feed; `refusal.jpeg`, `defiance.jpeg` and
