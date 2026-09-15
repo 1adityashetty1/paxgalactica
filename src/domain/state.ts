@@ -19,6 +19,7 @@ import {
   type ShipStack,
 } from './hulls.js';
 import { FactionStatsSchema, STAT_NAMES, statModifier, type FactionStats, type StatName } from './checks.js';
+import { CommanderSchema } from './command.js';
 import {
   COMMITMENT_INCOME_BASE,
   COMMITMENT_INCOME_PER_INFLUENCE,
@@ -680,6 +681,15 @@ export const WorldStateSchema = z.object({
    * reason: an old journal simply never creates any.
    */
   assets: z.array(AssetSchema).default([]),
+  /**
+   * Named officers, one per power, who take a side of a battle.
+   *
+   * `.default([])` so a campaign saved before commanders existed loads with an
+   * empty roster and fights exactly the battles it always fought — the same
+   * choice `CompulsionSchema` and `Faction.title` made, and the reason a
+   * mechanic that reads an empty list has to be inert rather than absent.
+   */
+  commanders: z.array(CommanderSchema).default([]),
   playerFactionId: z.string().min(1),
   /** Abstract unit. There is no calendar in this game, deliberately. */
   turn: z.number().int().min(0),

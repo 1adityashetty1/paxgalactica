@@ -193,6 +193,18 @@ was paid for and the rest is trimmed, and you are told. Repositioning is free:
 `-5` here and `+5` there nets to zero and costs nothing. A power that cannot
 meet upkeep lays ships up.
 
+### Every fleet has a named officer
+
+Each power has one commander, and they take that power's side of any battle it
+fights. **You do not choose them and you do not apply their effect** — the
+reducer does both, off a roster in the state block, and the battle report names
+whichever officer actually changed something.
+
+What they are for is the narrative: an engagement between two rival powers reads
+as arithmetic, and a name on it does not. Use theirs. They are real people with
+a record — *"three engagements behind them"* means three — and one who loses a
+battle badly may not survive it, which is worth a sentence when it happens.
+
 ### Battles are never resolved here
 
 Combat, garrison regrowth and every loss on either side are resolved by the

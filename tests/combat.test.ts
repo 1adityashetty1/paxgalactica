@@ -17,6 +17,11 @@ import {
   shipsInTransit,
   type WorldState,
 } from '../src/domain/state.js';
+import {
+  COMMANDER_ARCHETYPES,
+  commanderFor,
+  type CommanderArchetype,
+} from '../src/domain/command.js';
 
 const fresh = (): WorldState => createSeedState('freeworlds');
 const sys = (s: WorldState, id: string) => s.systems.find((x) => x.id === id)!;
@@ -330,8 +335,11 @@ describe('retreat costs ships only when opposed', () => {
       const t = sys(s, 'sek-6');
       t.controllerFactionId = null;
       t.ships = {};
-      t.garrison = 8;
-      t.garrisonMax = 8;
+      // Deep enough that the property survives a point either way. At 8 this
+      // was decided by a single modifier, and a commander with +1 might flipped
+      // it — the test was pinning an outcome while claiming to pin a rule.
+      t.garrison = 16;
+      t.garrisonMax = 16;
     }, 3, 1);
     expect(repulsed.notes.join(' ')).toMatch(/thrown back/);
     expect(repulsed.state.systems.find((x) => x.id === 'sek-6')!.controllerFactionId).toBeNull();
@@ -970,5 +978,127 @@ describe('the order hulls are spent in a battle', () => {
     // And the screen still stands in front of the lift arm, which is the whole
     // of the argument the table was carrying.
     expect(HULL_SPEC.escort.lossOrder).toBeLessThan(HULL_SPEC.lifter.lossOrder);
+  });
+});
+
+/**
+ * Commanders: a named officer on one side of one battle.
+ *
+ * The mechanic exists because a battle between two rival powers reads as
+ * arithmetic, and a name on it is the cheapest thing that makes it a story.
+ * What these pin is that the name is the ONLY generated part.
+ */
+describe('the officer on the field', () => {
+  const setArchetype = (s: WorldState, factionId: string, kind: CommanderArchetype) => {
+    s.commanders.find((c) => c.factionId === factionId)!.archetype = kind;
+  };
+
+  it('gives every power one from the opening board', () => {
+    const s = fresh();
+    for (const f of s.factions) {
+      expect(commanderFor(s.commanders, f.id), f.id).toBeDefined();
+    }
+  });
+
+  it('generates the name and never the effect', () => {
+    // The whole design. A hundred campaigns produce a hundred different
+    // officers and not one new rule.
+    const s = fresh();
+    for (const c of s.commanders) {
+      expect(COMMANDER_ARCHETYPES.map((a) => a.kind)).toContain(c.archetype);
+      expect(c.name.length).toBeGreaterThan(3);
+    }
+  });
+
+  it('names the same officers on a replay, because the seed is a hash', () => {
+    const a = createSeedState('drajk').commanders.map((c) => `${c.name}/${c.archetype}`);
+    const b = createSeedState('drajk').commanders.map((c) => `${c.name}/${c.archetype}`);
+    expect(a).toEqual(b);
+    // And a different power gets different people.
+    expect(new Set(a).size).toBe(a.length);
+  });
+
+  it('reports only what actually changed something', () => {
+    // Same convention as `doctrinesFired`: an officer whose speciality never
+    // came up does not appear.
+    const out = attack((s) => {
+      setArchetype(s, 'freeworlds', 'convoy');
+      const t = sys(s, 'sek-6');
+      t.controllerFactionId = null;
+      t.ships = {};
+      t.garrison = 1;
+      t.garrisonMax = 1;
+    }, 20, 4);
+    const fired = out.report?.battles?.[0]?.commandersFired ?? [];
+    // Nobody withdrew, so the convoy officer did nothing worth telling anyone.
+    expect(fired.join(' ')).not.toMatch(/withdrawal/);
+  });
+
+  it('fights a point harder, and says so', () => {
+    const out = attack((s) => {
+      setArchetype(s, 'freeworlds', 'lineofbattle');
+      const t = sys(s, 'sek-6');
+      t.controllerFactionId = 'vigil';
+      setStackAt(t, 'vigil', { battleship: 6 });
+    }, 10, 2);
+    const report = out.report?.battles?.[0];
+    expect(report?.commandersFired.join(' ')).toMatch(/might in the exchange/);
+  });
+
+  it('brings more of a beaten fleet home', () => {
+    // The only thing in the game that touches the retreat loss. A screen
+    // changes WHICH hulls are spent getting clear, not how many.
+    const survivors = (kind: CommanderArchetype) => {
+      const out = attack((s) => {
+        setArchetype(s, 'freeworlds', kind);
+        const t = sys(s, 'sek-6');
+        t.controllerFactionId = 'vigil';
+        setStackAt(t, 'vigil', { battleship: 400 });
+      }, 40, 0);
+      return out.state.systems.reduce((n, x) => n + hullsAt(x, 'freeworlds'), 0);
+    };
+    expect(survivors('convoy')).toBeGreaterThan(survivors('lineofbattle'));
+  });
+
+  it('is worth nothing to a fleet with no boats, and something to one with them', () => {
+    // `gunnery` multiplies the salvo rather than adding to it, so it cannot
+    // conjure one out of a fleet that brought no torpedo boats.
+    const out = attack((s) => {
+      setArchetype(s, 'freeworlds', 'gunnery');
+      const t = sys(s, 'sek-6');
+      t.controllerFactionId = 'vigil';
+      setStackAt(t, 'vigil', { battleship: 6 });
+    }, 10, 2);
+    expect(out.report?.battles?.[0]?.commandersFired.join(' ') ?? '').not.toMatch(/salvo/);
+  });
+
+  it('counts the engagement, so seniority is earned', () => {
+    const out = attack((s) => {
+      const t = sys(s, 'sek-6');
+      t.controllerFactionId = 'vigil';
+      setStackAt(t, 'vigil', { battleship: 4 });
+    }, 12, 3);
+    expect(commanderFor(out.state.commanders, 'freeworlds')!.battles).toBeGreaterThan(0);
+  });
+
+  it('replaces one that is lost, with a different person', () => {
+    const s = fresh();
+    const was = commanderFor(s.commanders, 'drajk')!;
+    was.status = 'lost';
+    const after = tickTurn(s).state;
+    const now = commanderFor(after.commanders, 'drajk')!;
+    expect(now.id).not.toBe(was.id);
+    expect(now.battles).toBe(0);
+    // The dead stay on the roster — a power's history of commanders is worth
+    // more than the bytes of removing them.
+    expect(after.commanders.some((c) => c.id === was.id && c.status === 'lost')).toBe(true);
+  });
+
+  it('is inert in a campaign saved before commanders existed', () => {
+    const s = fresh();
+    s.commanders = [];
+    const out = attack(() => {}, 8, 0);
+    expect(out.state).toBeDefined();
+    expect(commanderFor([], 'drajk')).toBeUndefined();
   });
 });

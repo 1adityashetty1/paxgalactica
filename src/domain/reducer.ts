@@ -51,6 +51,16 @@ import {
   type VoidCondition,
 } from './diplomacy.js';
 import { archetypeFor } from './assets.js';
+import {
+  COMMANDER_MIGHT,
+  COMMANDER_STRIKE_BONUS,
+  COMMANDER_WITHDRAW_RELIEF,
+  commanderArchetype,
+  commanderFor,
+  commanderLost,
+  commanderName,
+  type Commander,
+} from './command.js';
 import { jumpsBetween, neighboursOf, positionAlongPath, shortestPath } from './graph.js';
 import {
   LOAN_DEFAULT_DISPOSITION_COST,
@@ -4445,6 +4455,35 @@ export function tickTurn(input: WorldState): TickResult {
 
   state.turn += 1;
 
+  /* --- The fallen are replaced ----------------------------------------- */
+  // A power without an officer is a power the mechanic has stopped applying to,
+  // so losing one has to be a setback rather than a permanent removal — and a
+  // replacement has to be an ordinary appointment, not a resurrection: the new
+  // officer is a different person, with a new name, a new archetype and no
+  // battles behind her.
+  //
+  // Seeded from the turn, so a replayed campaign appoints the same successor.
+  // The dead stay on the roster: a faction's history of commanders is worth
+  // more than the two bytes of removing them, and `commanderFor` already
+  // filters on `status`.
+  for (const faction of state.factions) {
+    if (commanderFor(state.commanders, faction.id)) continue;
+    const salt = `replace:${faction.id}:${state.turn}`;
+    const appointed: Commander = {
+      id: `cmd-${faction.id}-${state.turn}`,
+      factionId: faction.id,
+      name: commanderName(faction.id, state.turn, salt),
+      archetype: commanderArchetype(faction.id, state.turn, salt),
+      appointedTurn: state.turn,
+      battles: 0,
+      status: 'active',
+    };
+    (state.commanders ??= []).push(appointed);
+    const note = `${nameFor(state, faction.id)} gives the fleet to ${appointed.name}.`;
+    notes.push(note);
+    logEvent(state, 'narrative', note, faction.id);
+  }
+
   /* --- Income, for every power, before anything is spent --------------- */
   // Applied here rather than by any model, so a campaign's economy is
   // arithmetic the journal reproduces exactly.
@@ -5412,6 +5451,7 @@ function resolveBattle(
   const garrisonBefore = target.garrison;
   const rounds: BattleRound[] = [];
   const doctrinesFired: string[] = [];
+  const commandersFired: string[] = [];
   let roll = 0;
   let attackModOut = 0;
   let defendModOut = 0;
@@ -5423,8 +5463,34 @@ function resolveBattle(
   let attackSnapshot = new Map<string, ShipStack>();
   let defendSnapshot = new Map<string, ShipStack>();
 
+  /**
+   * Officers who were on the field, and which of them lost.
+   *
+   * Filled by `resolveBattle` as the engagement settles, and applied once in
+   * `finish` — so a commander is counted exactly once however the battle ends,
+   * including the early exits that never reach the exchange.
+   */
+  const onField: { officer: Commander; side: 'attack' | 'defend' }[] = [];
+  let beatenSide: 'attack' | 'defend' | null = null;
+
   /** Close the engagement: snapshot the result and hand back both forms. */
-  const finish = (note: string): BattleOutcomeResult => ({
+  const finish = (note: string): BattleOutcomeResult => {
+    for (const { officer, side } of onField) {
+      const live = (state.commanders ?? []).find((c) => c.id === officer.id);
+      if (!live || live.status !== 'active') continue;
+      live.battles += 1;
+      // Lost only on a DEFEAT, and on the battle's own roll rather than a new
+      // one. An officer who wins does not die at a rate worth modelling, and a
+      // death roll on every engagement would churn the roster faster than a
+      // player could learn a name.
+      if (side === beatenSide && commanderLost(roll)) {
+        live.status = 'lost';
+        const gone = `${live.name} is lost with the ${nameOf(live.factionId)} fleet over ${target.name}.`;
+        commandersFired.push(gone);
+        logEvent(state, 'narrative', gone, live.factionId);
+      }
+    }
+    return {
     note,
     report: {
       id: `${systemId}:${state.turn}`,
@@ -5435,6 +5501,7 @@ function resolveBattle(
       attackMod: attackModOut,
       defendMod: defendModOut,
       doctrinesFired,
+      commandersFired,
       holderBefore: holder,
       holderAfter: target.controllerFactionId,
       garrisonBefore,
@@ -5443,7 +5510,8 @@ function resolveBattle(
       status: 'resolved',
       note,
     },
-  });
+    };
+  };
 
   // Ships arriving, per faction — composed, because the ground phase asks what
   // is aboard and not merely how much.
@@ -5667,8 +5735,13 @@ function resolveBattle(
       ? 0
       : Math.max(...ids.map((id) => statModifier(effectiveStats(state, id).might)));
   let attackMod = bestMod([...attackerIds]);
-  const defendMod = bestMod(defenders.map(([id]) => id));
-  defendModOut = defendMod;
+  let defendMod = bestMod(defenders.map(([id]) => id));
+  /** Points off a withdrawal, per side. Filled in by a `convoy` officer. */
+  const convoyRelief: { attack: number; defend: number } = { attack: 0, defend: 0 };
+  /** Extra weight on the opening salvo, per side. Filled in by `gunnery`. */
+  const strikeBonus: { attack: number; defend: number } = { attack: 0, defend: 0 };
+  /** Who to credit if that side ends up running. Reported on first use. */
+  const convoyOfficer: { attack?: Commander; defend?: Commander } = {};
 
   // --- War ethics -------------------------------------------------------
   // Whose doctrine applies in a coalition is a real question: `bestMod` takes
@@ -5699,10 +5772,71 @@ function resolveBattle(
       );
     }
   }
+  // --- Officers ---------------------------------------------------------
+  // Read off the LARGEST contingent, exactly as doctrine is, and for the same
+  // reason: a one-ship junior partner's commander does not run the coalition.
+  // Doctrine picks who it is (`commanderFor` is seniority by battles fought),
+  // because a commander the player has to assign is a commander the four NPCs
+  // never get — and a battle between two rivals looking like arithmetic is the
+  // thing this was built to fix.
+  const largestDefender =
+    [...defenders]
+      .sort((a, b) => tonsIn(b[1]) - tonsIn(a[1]) || a[0].localeCompare(b[0]))[0]?.[0] ??
+    holder;
+  const attackOfficer = largestAttacker
+    ? commanderFor(state.commanders, largestAttacker)
+    : undefined;
+  const defendOfficer = largestDefender
+    ? commanderFor(state.commanders, largestDefender)
+    : undefined;
+  const officerNote = (c: Commander, what: string): void => {
+    commandersFired.push(`${c.name} (${nameOf(c.factionId)}): ${what}`);
+  };
+  if (attackOfficer) onField.push({ officer: attackOfficer, side: 'attack' });
+  if (defendOfficer) onField.push({ officer: defendOfficer, side: 'defend' });
+
+  if (attackOfficer?.archetype === 'lineofbattle') {
+    attackMod += COMMANDER_MIGHT;
+    officerNote(attackOfficer, `+${COMMANDER_MIGHT} might in the exchange`);
+  }
+  if (defendOfficer?.archetype === 'lineofbattle') {
+    defendMod += COMMANDER_MIGHT;
+    officerNote(defendOfficer, `+${COMMANDER_MIGHT} might in the exchange`);
+  }
+  defendModOut = defendMod;
+
   attackModOut = attackMod;
 
-  // A retreating force loses 10–35% getting clear; bad luck costs more.
-  const retreatLossPct = 10 + ((21 - roll) % 6) * 5;
+  // A retreating force loses 10–35% getting clear; bad luck costs more — and a
+  // `convoy` officer is the only thing in the game that touches this number. A
+  // screen changes WHICH hulls are spent getting clear, not how many; a stance
+  // changes whether you run at all.
+  let retreatLossPct = 10 + ((21 - roll) % 6) * 5;
+  for (const [side, officer] of [
+    ['attack', attackOfficer],
+    ['defend', defendOfficer],
+  ] as const) {
+    if (officer?.archetype !== 'convoy') continue;
+    // The relief is armed now, because `bleed` needs it, and REPORTED only if
+    // somebody actually runs — `commandersFired` follows `doctrinesFired`'s
+    // convention that a thing which changed nothing does not appear, and a
+    // convoy officer in a battle nobody lost changed nothing.
+    convoyRelief[side] = COMMANDER_WITHDRAW_RELIEF;
+    convoyOfficer[side] = officer;
+  }
+  for (const [side, officer] of [
+    ['attack', attackOfficer],
+    ['defend', defendOfficer],
+  ] as const) {
+    if (officer?.archetype !== 'gunnery') continue;
+    // Only worth recording when there is a salvo to make heavier.
+    const boats = side === 'attack'
+      ? [...attackShare.values()]
+      : defenders.map(([, st]) => st);
+    if (torpedoStrike(boats) <= 0) continue;
+    strikeBonus[side] = COMMANDER_STRIKE_BONUS;
+    officerNote(officer, `+${Math.round(COMMANDER_STRIKE_BONUS * 100)}% on the opening salvo`);
+  }
   /**
    * What survives a withdrawal, spending the loss order.
    *
@@ -5716,8 +5850,19 @@ function resolveBattle(
    * a withdrawal costs 10–35% — and that a screen can cover outright, which is
    * what brings a convoy home from a battle it should not have fought.
    */
-  const bleed = (stack: ShipStack): ShipStack =>
-    strikeStack(stack, (tonsIn(stack) * retreatLossPct) / 100).left;
+  const bleed = (stack: ShipStack, side: 'attack' | 'defend'): ShipStack => {
+    const officer = convoyOfficer[side];
+    if (officer) {
+      officerNote(officer, `-${COMMANDER_WITHDRAW_RELIEF}% off a withdrawal`);
+      delete convoyOfficer[side];
+    }
+    // Floored at 5%: a withdrawal under fire is never free, however good the
+    // officer running it. A relief that could reach zero would make a `convoy`
+    // commander a way to retreat at no cost at all, which is the shape of thing
+    // `extend_order` had to be clamped for.
+    const pct = Math.max(5, retreatLossPct - convoyRelief[side]);
+    return strikeStack(stack, (tonsIn(stack) * pct) / 100).left;
+  };
   const notes: string[] = [];
 
   /* ---------- Phase 0: the torpedo strike ---------- */
@@ -5737,16 +5882,22 @@ function resolveBattle(
   const strikeOn = (
     firing: ShipStack[],
     targetSide: ShipStack[],
+    side: 'attack' | 'defend',
   ): { tons: number; deep: number } => ({
-    tons: torpedoStrike(firing),
+    // A `gunnery` officer multiplies the salvo rather than adding to it, so she
+    // is worth exactly as much as the boats she has — worth a great deal to
+    // Drajk, who build them, and worth nothing to a power that brought none.
+    // An additive bonus would have conjured a salvo out of a fleet with no
+    // torpedo boats in it at all.
+    tons: torpedoStrike(firing) * (1 + strikeBonus[side]),
     deep: pastScreen(firing, targetSide),
   });
 
   {
     const attackerStacks = [...attackShare.values()];
     const defenderStacks = defenders.map(([, st]) => st);
-    const onDefenders = strikeOn(attackerStacks, defenderStacks);
-    const onAttackers = strikeOn(defenderStacks, attackerStacks);
+    const onDefenders = strikeOn(attackerStacks, defenderStacks, 'attack');
+    const onAttackers = strikeOn(defenderStacks, attackerStacks, 'defend');
 
     if (onDefenders.tons > 0 || onAttackers.tons > 0) {
       const beforeAtk = attackHulls();
@@ -5928,7 +6079,7 @@ function resolveBattle(
     if (attackPower >= defendPower * breakAt && !defenderStands) {
       let lost = 0;
       for (const [id, present] of defenders) {
-        const escaped = bleed(present);
+        const escaped = bleed(present, 'defend');
         lost += hullsIn(present) - hullsIn(escaped);
         setStackAt(target, id, {});
         const refuge = fleetBases(state, id).find(
@@ -5936,16 +6087,18 @@ function resolveBattle(
         );
         if (refuge && hullsIn(escaped) > 0) addStackAt(refuge, id, escaped);
       }
+      beatenSide = 'defend';
       const broke = `${defenders.map(([id]) => nameOf(id)).join(' and ')} breaks off over ${target.name}, losing ${lost} ships between them.`;
       notes.push(broke);
       orbital('defender_broke_off', broke);
       defenceForce = 0;
     } else if (attackPower * 2 <= defendPower && !attackerStands) {
       // The coalition withdraws, each contingent back down its own path.
+      beatenSide = 'attack';
       let lost = 0;
       for (const order of orders) {
         if (!attackerIds.has(order.factionId)) continue;
-        const escaped = bleed(order.force);
+        const escaped = bleed(order.force, 'attack');
         lost += hullsIn(order.force) - hullsIn(escaped);
         const fallback = order.path[Math.max(0, order.path.length - 2)] ?? order.originId;
         const refuge = state.systems.find((x) => x.id === fallback);

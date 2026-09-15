@@ -1,6 +1,7 @@
 import type { FactionStats } from '../domain/checks.js';
 import type { DurationCategory } from '../domain/duration.js';
 import type { WorldType } from '../domain/state.js';
+import { commanderArchetype, commanderName } from '../domain/command.js';
 import {
   HULL_SPEC,
   normaliseStack,
@@ -753,6 +754,24 @@ export function createSeedState(playerFactionId: string): WorldState {
     // powers, so seeding one would move the opening board — every fleet
     // threshold, every balance figure — to demonstrate a mechanic the first
     // negotiated hire will demonstrate for free.
+    /**
+     * One officer each, generated rather than written.
+     *
+     * Seeded so the mechanic is live from the first battle instead of waiting
+     * for somebody to die — the same argument the Combine's opening debts
+     * make. The names and the archetypes come out of `commanderName` and
+     * `commanderArchetype`, which are seeded hashes, so a replayed campaign
+     * appoints the same five people.
+     */
+    commanders: SEED_FACTIONS.map((f) => ({
+      id: `cmd-${f.id}`,
+      factionId: f.id,
+      name: commanderName(f.id, 0, 'seed'),
+      archetype: commanderArchetype(f.id, 0, 'seed'),
+      appointedTurn: 0,
+      battles: 0,
+      status: 'active' as const,
+    })),
     loans: [],
     /**
      * The Combine's sheet is built on debt — *"the debt is the whole instrument

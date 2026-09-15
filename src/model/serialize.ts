@@ -4,6 +4,7 @@ import { describeOrderEffect } from '../domain/development.js';
 import { assetWorthRangeTo, describeEffect, wantedBy } from '../domain/diplomacy.js';
 import { describeOutstanding } from '../domain/loan.js';
 import { routeEarnings } from '../domain/trade.js';
+import { archetypeOf, commanderFor } from '../domain/command.js';
 import type { Commitment } from '../domain/arbitration.js';
 import {
   formatModifier,
@@ -120,6 +121,21 @@ export function serializeFactions(
  * The full character sheet for one power, used wherever a faction has to ACT
  * or SPEAK as itself rather than merely be observed.
  */
+/**
+ * Who takes this power's next battle.
+ *
+ * A named officer is the cheapest thing that turns an engagement between two
+ * rivals from arithmetic into a story, and a persona that cannot name its own
+ * fleet commander cannot tell that story.
+ */
+function commanderLine(state: WorldState, viewerId: string): string {
+  const officer = commanderFor(state.commanders, viewerId);
+  if (!officer) return '';
+  const shape = archetypeOf(officer.archetype);
+  const seen = officer.battles > 0 ? `, ${officer.battles} engagement${officer.battles === 1 ? '' : 's'} behind them` : ', untested';
+  return `Your fleet is commanded by ${officer.name}${seen} — known for ${shape.known}. In a battle, ${shape.effect}.`;
+}
+
 /** Worlds a power holds that began as somebody else's, by name. */
 function occupiedNames(state: WorldState, viewerId: string): string {
   const names = state.systems
@@ -372,6 +388,7 @@ export function serializeState(
       ? `Holding ground that was never yours: ${ledger.occupation}/turn, on ${occupiedNames(state, viewerId)}. Institutions built for another state do not administer themselves.`
       : '',
     terrainLine(state, viewerId),
+    commanderLine(state, viewerId),
     // Dissent reduces every stat the model is reasoning about. Omitting it
     // meant a leader could be told its own odds had worsened with no way to
     // know why, and could not narrate the reason to the player either.

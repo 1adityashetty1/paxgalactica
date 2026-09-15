@@ -644,3 +644,9 @@ ul { margin: 0; padding-left: 1.1em; }
 /* A burned operative still occupies the list — knowing a rival's network was
    here and is no longer is worth as much as knowing it is. */
 .agent-row.burned { opacity: 0.55; text-decoration: line-through; }
+
+/* An officer's name sits between the ethics chips and the doctrine: she is a
+   fact about the faction, not a panel of her own. */
+.faction .commander { color: var(--dim); font-style: normal; margin: 2px 0 4px; }
+.battle-commanders { margin: 4px 0 0; padding-left: 16px; color: var(--dim); }
+.battle-commanders li { font-style: italic; }

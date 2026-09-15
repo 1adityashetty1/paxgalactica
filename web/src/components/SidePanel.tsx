@@ -9,6 +9,7 @@ import { describeOutstanding, loansFor } from '../../../src/domain/loan.js';
 import { assetWorthRangeTo } from '../../../src/domain/diplomacy.js';
 import { describeOrderEffect } from '../../../src/domain/development.js';
 import { describeEffect } from '../../../src/domain/diplomacy.js';
+import { archetypeOf, commanderFor } from '../../../src/domain/command.js';
 import {
   presentAt,
   agentsVisibleTo,
@@ -209,6 +210,23 @@ function Factions({
                 </span>
               )}
             </div>
+            {(() => {
+              // Who takes this power's next battle. Named here rather than in a
+              // panel of its own, because an officer is a fact about a faction
+              // and the point of naming her is that she is recognised before
+              // the engagement rather than looked up after it.
+              const officer = commanderFor(state.commanders, f.id);
+              if (!officer) return null;
+              const shape = archetypeOf(officer.archetype);
+              return (
+                <p className="meta commander" title={`Known for ${shape.known}. In a battle: ${shape.effect}.`}>
+                  {officer.name} · {shape.effect}
+                  {officer.battles > 0 && (
+                    <span className="meta"> · {officer.battles} engagement{officer.battles === 1 ? '' : 's'}</span>
+                  )}
+                </p>
+              );
+            })()}
             <p className="doctrine">{f.doctrine}</p>
           </section>
         );

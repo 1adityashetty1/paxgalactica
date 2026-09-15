@@ -55,7 +55,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~103~~ | ~~hulls that do not fight but do something else~~ | medium | **BUILT** — `freighter` and `listener`; board and composition sweep both unchanged |
 | ~~100~~ | ~~worlds carry modifiers that reach faction stats~~ | medium | **BUILT** — keyed on the type, two worlds for the first point, capped at 3 |
 | ~~101~~ | ~~worlds you did not start with cost more to hold~~ | medium | **BUILT** — `homeFactionId` + `OCCUPATION_COST`, swept to 0.15 off a cliff at 0.25 |
-| **102** | leaders, assigned per battle | subsystem | the only one of the five that is a design rather than a build |
+| ~~102~~ | ~~leaders, assigned per battle~~ | subsystem | **BUILT** — archetypes with generated names; the one-per-phase framing was wrong and is recorded as such |
 | **98** | the doctrine bots cannot tell a friend from an enemy | medium | `initiative.ts` reads no disposition, and it now runs in `endTurn` for most of the galaxy most turns — the excuse for it was written when it only ran in the harness |
 | **99** | a marriage is a treaty, and treaties cannot say two things it needs | small | there is no marriage scaffolding to delete — the gap is cross-partner **exclusivity** and **signature goodwill**. A two-party commitment is free to repudiate today |
 
@@ -1413,10 +1413,35 @@ worse than it looks; if it does not, the penalty is one treaty away from being
 optional, which is worse.
 
 
-## 102. OPEN — leaders, assigned per battle
+## 102. BUILT — leaders, assigned per battle
 
-Split out of 97, raised 2026-09-14. The largest of the five and the only one
-that is a **design** rather than a build.
+Split out of 97, raised 2026-09-14. The largest of the five, and the design
+questions below were all answered by building it.
+
+**Answered: a roster on `WorldState`, one officer per power**, not a name on an
+order. A name on an order is a label; a roster persists, fights, is counted, and
+can die.
+
+**Answered: doctrine assigns, not the player.** A commander a player has to
+assign is a commander the four NPCs never get, and a battle between two rival
+powers reading as arithmetic is the thing this was filed to fix. Player naming
+is a real follow-on and is not what makes the mechanic exist.
+
+**Answered: they die, and only on a defeat**, on the battle's own roll. A death
+roll on every engagement would churn the roster faster than a player could learn
+a name.
+
+**Answered: "per battle" means per CONTINGENT**, read off the largest, exactly
+as doctrine already is.
+
+**And one answer was wrong, which is the useful part.** The design said one
+archetype per phase of a battle — strike, exchange, withdrawal — which is a tidy
+story the code does not support: `attackMod` is read by the exchange *and* by
+the landing, since `assault` is troops scaled by it. A combat test flipped and
+said so. The framing was corrected rather than the arithmetic contorted to
+protect it; what distinguishes the three is the **shape** of the help (small and
+unconditional, large and conditional on a hull class, large and conditional on
+losing), which is a better set because they are not substitutes.
 
 *"Leaders. Assigned per Battle with varying effects. Not sure if we have
 archetypes or procedurally generated."*

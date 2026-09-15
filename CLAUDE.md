@@ -2852,6 +2852,77 @@ it the peace it profits from.
 > master"*, *"will never accept occupation"* — and giving it an expansion-pays
 > mechanic would have contradicted its whole sheet.
 
+## Commanders: a named officer on one side of one battle
+
+`src/domain/command.ts`. A battle between two rival powers resolves as
+arithmetic, and a name on it is the cheapest thing that makes it a story. Each
+power carries one; `commanderFor` picks the senior active officer by battles
+fought, so a power's best-known name keeps turning up and losing one costs
+something a player can feel.
+
+**Archetypes with generated names, and the split is the whole design.** The same
+division of labour as `ASSET_ARCHETYPES`: the table decides what a kind of thing
+is like, and generation only ever touches identity. A commander's *effect* comes
+from a closed list of three; their name, and nothing else, is procedural.
+Generated *effects* is the failure this codebase closes everywhere — a leader
+whose bonus is invented is a leader whose bonus can be invented favourably,
+which is `onComplete` before `boundPayloadsToOutcome`. So a hundred campaigns
+produce a hundred different Grand Admirals and not one new rule.
+
+**The first draft claimed one archetype per phase of a battle, and that was a
+tidy story the code does not support**: `attackMod` is read by the orbital
+exchange *and* by the landing, since `assault` is troops scaled by it. A combat
+test flipped and said so. The framing was corrected rather than the arithmetic
+contorted to protect it — what actually distinguishes the three is the **shape**
+of the help:
+
+| archetype | shape | what it does |
+|---|---|---|
+| `lineofbattle` | small, unconditional | `COMMANDER_MIGHT` (1) on the might modifier, which every fight reads |
+| `gunnery` | large, conditional on a **class** | multiplies the opening salvo by `COMMANDER_STRIKE_BONUS`, so she is worth a great deal to a power that builds torpedo boats and nothing to one that brought none |
+| `convoy` | large, conditional on **losing** | `COMMANDER_WITHDRAW_RELIEF` (8) points off the retreat loss — worth nothing until the day you have to run |
+
+That is a better set than one-per-phase: they are not substitutes, so which one
+you want depends on the fleet you build and the war you are losing.
+
+**None of the three duplicates a war ethic**, which was the real constraint.
+`crusading` already refuses to break off and `opportunist` already takes a
+conditional might bonus, so a commander who did either would flatten a doctrine
+rather than add to one — the same argument that prices suborning against the
+`defection` agent. The withdrawal is the clearest case: the retreat loss is a
+band **nothing else in the game touches**. A screen changes *which* hulls are
+spent getting clear, not how many; a stance changes whether you run at all.
+
+**Read off the largest contingent**, exactly as doctrine is, so a one-ship
+junior partner's officer does not run the coalition. **Doctrine picks who it
+is**, not the player — a commander a player has to assign is a commander the
+four NPCs never get, and a battle between two rivals looking like arithmetic is
+the thing this was built to fix. Letting the player *name* one is a real
+decision and a good follow-on; it is not what makes the mechanic exist.
+
+**Reported like a doctrine, in its own list.** `BattleReport.commandersFired`
+names only officers who actually changed something, and it is separate from
+`doctrinesFired` because they are different kinds of fact: a doctrine is what a
+power IS and is true of every battle it fights, where an officer is who happened
+to be aboard this one. That convention caught a real bug — the first version
+credited a `convoy` officer in a battle nobody lost, and the note is now pushed
+from `bleed`, on use.
+
+**They die, and only on a defeat**, on the battle's own seeded roll rather than
+a new one (`COMMANDER_LOSS_ROLL`). An officer who wins does not die at a rate
+worth modelling, and a death roll on every engagement would churn the roster
+faster than a player could learn a name. `tickTurn` appoints a replacement — a
+different person, new name, new archetype, no battles — and the dead stay on the
+roster, since a power's history of commanders is worth more than the bytes of
+removing them.
+
+Names are per faction and shaped differently per faction, because five powers
+that should never be mistaken for one another is a rule this project applies to
+voice, ethics, red lines and build bias, and a generated name that could belong
+to any of them would be the one place it lapsed. Built on `rollD20`'s hash, so a
+replayed campaign appoints the same people — a roster that differed between a
+campaign and its replay would break `verifyReplay` on a string comparison.
+
 ## A commander decides whether the world is worth the fleet
 
 `set_stance` — `hold` never breaks off, `stand` breaks at two to one (the
