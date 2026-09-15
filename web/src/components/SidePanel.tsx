@@ -33,12 +33,17 @@ import type { Briefing } from '../../../src/engine/briefing.js';
 import { ansi256ToHex, NEUTRAL } from '../color.js';
 import { logWindow } from '../../../src/ui/logview.js';
 
-type Tab = 'factions' | 'system' | 'fleets' | 'trade' | 'orders' | 'standing' | 'log';
+type Tab = 'factions' | 'system' | 'fleets' | 'commanders' | 'trade' | 'orders' | 'standing' | 'log';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'factions', label: 'Factions' },
   { id: 'system', label: 'System' },
   { id: 'fleets', label: 'Fleets' },
+  // Beside Fleets, not beside Factions. An officer is a fact about a FLEET —
+  // who takes it into its next battle — and putting the line under a faction's
+  // doctrine read as a claim about the power itself, which is what the ethics
+  // chips directly above it are for.
+  { id: 'commanders', label: 'Command' },
   { id: 'trade', label: 'Trade' },
   { id: 'orders', label: 'Orders' },
   { id: 'standing', label: 'Treaties' },
@@ -77,6 +82,7 @@ export function SidePanel({
         )}
         {tab === 'system' && <SystemTab state={state} selectedId={selectedId} onSelect={onSelect} />}
         {tab === 'fleets' && <FleetsPanel state={state} onSelect={onSelect} />}
+        {tab === 'commanders' && <Command state={state} />}
         {tab === 'trade' && <TradePanel state={state} onSelect={onSelect} />}
         {tab === 'orders' && <Orders state={state} briefing={briefing} />}
         {tab === 'standing' && <Standing state={state} onSelect={onSelect} />}
@@ -211,23 +217,6 @@ function Factions({
                 </span>
               )}
             </div>
-            {(() => {
-              // Who takes this power's next battle. Named here rather than in a
-              // panel of its own, because an officer is a fact about a faction
-              // and the point of naming her is that she is recognised before
-              // the engagement rather than looked up after it.
-              const officer = commanderFor(state.commanders, f.id);
-              if (!officer) return null;
-              const shape = archetypeOf(officer.archetype);
-              return (
-                <p className="meta commander" title={`Known for ${shape.known}. In a battle: ${shape.effect}.`}>
-                  {officer.name} · {shape.effect}
-                  {officer.battles > 0 && (
-                    <span className="meta"> · {officer.battles} engagement{officer.battles === 1 ? '' : 's'}</span>
-                  )}
-                </p>
-              );
-            })()}
             <p className="doctrine">{f.doctrine}</p>
           </section>
         );
@@ -400,6 +389,67 @@ function SystemTab({
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/**
+ * Who takes each power's next battle, and who took the last ones.
+ *
+ * It began as a line under each faction's ethics chips and read as a claim
+ * about the POWER — which is exactly what the chips immediately above it are
+ * for, so a reader arriving at "fights a point harder, everywhere" had every
+ * reason to think it was another doctrine. It is not: it is a fact about a
+ * fleet, and about a specific person who may not be there next turn.
+ *
+ * The roster is the other half of why this wants its own surface. A faction row
+ * has space for one line, and the interesting thing about a commander is the
+ * record — how many engagements, and who came before.
+ */
+function Command({ state }: { state: WorldState }) {
+  return (
+    <div className="command-panel">
+      {state.factions.map((f) => {
+        const colour = colourOf(state, f.id);
+        const officer = commanderFor(state.commanders, f.id);
+        // Everyone this power has lost, newest first — a short history, and the
+        // reason losing one is worth anything.
+        const fallen = (state.commanders ?? [])
+          .filter((c) => c.factionId === f.id && c.status === 'lost')
+          .reverse();
+        return (
+          <section key={f.id} className="command-faction">
+            <h4 style={{ color: colour }}>{f.name}</h4>
+            {officer ? (
+              <>
+                <p className="command-name" style={{ color: colour }}>
+                  {officer.name}
+                </p>
+                <p className="command-effect">
+                  {archetypeOf(officer.archetype).effect}
+                </p>
+                <p className="meta">
+                  known for {archetypeOf(officer.archetype).known}
+                </p>
+                <p className="meta">
+                  {officer.battles === 0
+                    ? 'untested'
+                    : `${officer.battles} engagement${officer.battles === 1 ? '' : 's'}`}
+                  {' · appointed turn '}
+                  {officer.appointedTurn}
+                </p>
+              </>
+            ) : (
+              <p className="empty">No officer. The fleet answers to nobody in particular.</p>
+            )}
+            {fallen.length > 0 && (
+              <p className="meta command-fallen">
+                lost: {fallen.map((c) => c.name).join(', ')}
+              </p>
+            )}
+          </section>
+        );
+      })}
     </div>
   );
 }

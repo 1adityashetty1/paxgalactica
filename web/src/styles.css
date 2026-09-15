@@ -660,3 +660,12 @@ ul { margin: 0; padding-left: 1.1em; }
   margin: 6px 0 0;
   max-width: 34em;
 }
+
+/* Command: one block per power, the officer named large enough to be
+   recognised rather than read. */
+.command-faction { border-bottom: 1px solid var(--line); padding: 10px 0; }
+.command-faction:last-child { border-bottom: none; }
+.command-faction h4 { margin: 0 0 4px; font-size: 11px; letter-spacing: 0.04em; }
+.command-name { margin: 0; font-size: 14px; font-weight: 600; }
+.command-effect { margin: 2px 0 4px; color: var(--fg); }
+.command-fallen { margin-top: 6px; opacity: 0.7; text-decoration: line-through; }

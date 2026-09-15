@@ -3837,10 +3837,22 @@ component is logic nothing checks.
   (Class is `.fleet-panel`, not `.fleets` — the SVG map layer already owns that.)
 - **Panels** — Factions (a portrait thumbnail ringed in the faction's colour,
   stat bars, ethics, disposition, `talk`), System (ships and income *per
-  faction*, **operatives here**, lanes, orders), Orders (progress + ETA),
-  Treaties (terms, turn limits, wars, agents with effect and success chance),
-  Log (filterable — `rejection` and `clamp` entries are debugging gold, so they
-  are filterable rather than hidden).
+  faction*, **operatives here**, lanes, orders), **Command** (who takes each
+  power's next battle), Orders (progress + ETA), Treaties (terms, turn limits,
+  wars, agents with effect and success chance), Log (filterable — `rejection`
+  and `clamp` entries are debugging gold, so they are filterable rather than
+  hidden).
+
+  **Command is its own tab because it was confusing as a line in Factions.** An
+  officer began as a line under each faction's ethics chips, and *"fights a
+  point harder, everywhere"* sitting directly beneath `expansionist` and
+  `free trade` reads as another doctrine — a claim about what the power **is**,
+  which is exactly what the chips above it are for. It is not: it is a fact
+  about a fleet, and about a person who may not be there next turn. Placed
+  beside Fleets rather than beside Factions for the same reason, and the roster
+  is the other half of it — a faction row has space for one line, and the
+  interesting thing about a commander is the record: engagements fought, when
+  they were appointed, and who came before them.
 
   **A world says what it is.** `src/ui/worldtext.ts` gives every system a line
   keyed on **(type, founder)** — what kind of world it is, and who built on it.
