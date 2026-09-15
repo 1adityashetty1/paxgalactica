@@ -53,8 +53,8 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~95~~ | ~~playtests are billed to the subscription~~ | medium | **MOVED** to `docs/architecture.md` A.1 — an architecture item, and step 1 of packaging the game |
 | ~~97~~ | ~~tolls on the map, agents in the System tab~~ | small | **BUILT** — and the toll attribution had to be recorded in `routeEarnings`, not recomputed |
 | ~~103~~ | ~~hulls that do not fight but do something else~~ | medium | **BUILT** — `freighter` and `listener`; board and composition sweep both unchanged |
-| **100** | worlds carry modifiers that reach faction stats | medium | needs two answers first: type or world, and stats or the things stats feed |
-| **101** | worlds you did not start with cost more to hold | medium | runs against `expansionist`; `pnpm balance 30` decides it, not an argument |
+| ~~100~~ | ~~worlds carry modifiers that reach faction stats~~ | medium | **BUILT** — keyed on the type, two worlds for the first point, capped at 3 |
+| ~~101~~ | ~~worlds you did not start with cost more to hold~~ | medium | **BUILT** — `homeFactionId` + `OCCUPATION_COST`, swept to 0.15 off a cliff at 0.25 |
 | **102** | leaders, assigned per battle | subsystem | the only one of the five that is a design rather than a build |
 | **98** | the doctrine bots cannot tell a friend from an enemy | medium | `initiative.ts` reads no disposition, and it now runs in `endTurn` for most of the galaxy most turns — the excuse for it was written when it only ran in the harness |
 | **99** | a marriage is a treaty, and treaties cannot say two things it needs | small | there is no marriage scaffolding to delete — the gap is cross-partner **exclusivity** and **signature goodwill**. A two-party commitment is free to repudiate today |
@@ -1296,10 +1296,28 @@ commitment. Those are the files that decide where a negotiated marriage actually
 lands, so they change with the code or the feature does not exist.
 
 
-## 100. OPEN — worlds carry modifiers that reach faction stats
+## 100. BUILT — worlds carry modifiers that reach faction stats
 
-Split out of 97, raised 2026-09-14. **Not designed.** Needs the two questions
-below answered before any of it is buildable.
+Split out of 97, raised 2026-09-14. Both questions below were answered by
+building it; the filing is kept because the reasoning is the useful part.
+
+**Answered: the type, not the world.** A type modifier is legible from the map —
+you can see what a world is, so you can see what it buys.
+
+**Answered: stats, as asked, but bounded so the concern was addressed rather
+than overruled.** The worry filed below was that a stat reaches every check
+through `effectiveStats`, including checks about no world at all. That is still
+true and it is now the *point* — good ground makes a power broadly more capable
+— and the unbounded-sum half is closed by a cap of 3 and a rising threshold.
+
+**The threshold is the thing that made it work.** At one world per point, every
+power opens with a point on three or four stats, measured on the seed, and a
+modifier everybody has is inflation. At two the opening grants three points in
+total and every further one has to be taken from somebody.
+
+**It moves the balance harness not at all** — verified by running with the
+occupation cost of 101 switched off, and the board is identical. Worth knowing:
+this is a mechanic whose whole effect is on the model-driven game.
 
 *"Planets themselves have modifiers that affect faction stats so capturing them
 is more than set dressing."*
@@ -1334,10 +1352,31 @@ and is unbounded in principle. The shape has to be a cap, a best-of, or a
 diminishing curve — decided up front, not discovered in a balance run.
 
 
-## 101. OPEN — worlds you did not start with cost more to hold
+## 101. BUILT — worlds you did not start with cost more to hold
 
-Split out of 97, raised 2026-09-14. **Not designed**, and the balance question
-below has to be settled by the harness rather than by argument.
+Split out of 97, raised 2026-09-14. The balance question below was settled by
+the harness, and it mattered.
+
+**Answered: a durable field.** `StarSystem.homeFactionId`, written once by the
+seed. `controlHistory` was the tempting alternative and is the trap the item
+already named — `ledgerFor` is pure over `WorldState` and cannot read a journal.
+
+**Answered: a cession carries it.** The cost is about administering a population
+whose institutions are not yours, which is equally true however the paper was
+signed. The alternative puts a free bypass one treaty away.
+
+**Answered: an unaligned world is free.** It was never anybody's, so there is no
+displaced administration — and settling unclaimed space is a different
+undertaking from holding down a conquered rival.
+
+**The `expansionist` worry was real and the number is where it bit.** Swept, and
+the response is a cliff rather than a gradient: 0.10, 0.15 and 0.20 all leave
+the historical 3/6/5/4/4 board, and at **0.25** the Vigil's late conquest of
+`tor-1` never happens — a power holding foreign ground is poor enough that its
+fleet stops growing. That is the mechanic working and it is still too much, for
+the reason 98 names: *territory changes through turn 24* is a measured property
+of this galaxy, and a standing cost that ends conquest rather than pricing it
+has overshot. 0.15, from the middle of the flat region.
 
 *"Planets have an upkeep penalty if they are not a faction's starting planet."*
 

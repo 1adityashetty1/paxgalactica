@@ -512,6 +512,11 @@ function buildSystems(): StarSystem[] {
     sector: s.sector,
     coords: { x: s.x, y: s.y },
     controllerFactionId: s.controller,
+    // Whoever holds it at turn 0 is whose institutions run it, permanently.
+    // Written once here and never again — it is what tells `ledgerFor` the
+    // difference between administering a world and occupying one, and an
+    // unaligned world is nobody's, so taking neutral ground stays free.
+    homeFactionId: s.controller,
     garrison: s.garrison,
     // The seeded garrison IS the ceiling: each world's own design decides how
     // heavily it can arm itself, and a captured one regrows toward that.

@@ -240,6 +240,22 @@ rate** on foreign cargo crossing its space, `autarkic` earns at home and cannot
 be strangled, `smuggler` ignores blockades and raids at double effect,
 `monopolist` takes a premium on lanes it owns both ends of.
 
+**A world is worth two things beyond its income, and both are arithmetic in the
+reducer.** You do not apply either; narrate their consequences and let the
+ledger charge them.
+
+- **What kind of world it is now matters.** Each type feeds one stat — arid
+  might, earthnight guile, industrialmoon and gasgiant industry, earthlike
+  influence, ice and oceanic resolve — and worlds of a kind count **together**:
+  two buy a point, four buy two, six buy three, which is the ceiling. One world
+  of a kind buys nothing at all, so concentration is what pays and a conquest
+  is a choice between worlds rather than a count of them.
+- **Ground that was never yours costs to keep.** A world whose original owner
+  was somebody else charges its holder a standing share of what it pays, every
+  turn, whoever signed what — a cession carries it exactly as a conquest does.
+  An unaligned world was nobody's and is free. So an occupied world is worth
+  *less*, never negative, and a conqueror's expansion decelerates on its own.
+
 Two ways to attack an economy without a battle, **both needing real ships**:
 
 - **`blockade`** severs every lane through a system and must sit **on** it. It

@@ -124,7 +124,7 @@ load and save.
 | Field | Shape |
 |---|---|
 | `factions[]` | `id`, `name`, `displayColor` (ANSI 256), `disposition` (factionId → −100..100), `credits`, `doctrine`, `stats`, `voice`, `warEthic`, `tradeEthic`, `redLines[]`, `compulsions[]`, `dissent`, `buildBias[]`, `title` — **no `fleetStrength`; it is derived from ships** |
-| `systems[]` | `id`, `name`, `sector`, `coords {x,y}`, `controllerFactionId` (nullable = unaligned), `garrison`, `garrisonMax`, `strategicValue` 0–10, `hyperlaneEdges[]`, `ships` (factionId → count) |
+| `systems[]` | `id`, `name`, `sector`, `coords {x,y}`, `controllerFactionId` (nullable = unaligned), `homeFactionId` (who held it at turn 0; nullable), `worldType`, `garrison`, `garrisonMax`, `strategicValue` 0–10, `hyperlaneEdges[]`, `ships` (factionId → count) |
 | `pendingOrders[]` | `id`, `factionId`, `type`, `originId`, `targetId`, `durationTurns`, `progress`, `interruptible`, `onInterrupt`, `visibility[]`, `label`, `durationRationale`, `path[]`, `onComplete?`, `investedCredits` |
 | `playerFactionId` | string |
 | `turn` | integer — an abstract unit. There is no calendar, deliberately. |
@@ -443,6 +443,81 @@ in order:
 
 Treaty `incomeShares` come off the top before any of that, capped so a system
 can never pay out more than it is worth.
+
+### A world is worth what it is, and costs what it was
+
+Two facts about a world beyond its income, and both were latent in data the game
+already carried.
+
+**`worldType` reaches faction stats.** It shipped with the pixel-art system
+views and had exactly one reader — `WorldSprite` in the client — so the map told
+a player what a world looked like and nothing about what taking it was worth.
+`WORLD_TYPE_STAT` maps each kind to one stat (arid → might, earthnight → guile,
+industrialmoon and gasgiant → industry, earthlike → influence, ice and oceanic →
+resolve), `terrainBonus` counts what a power holds, and `effectiveStats` adds it.
+
+**Keyed on the type rather than on the world**, because a type modifier is
+legible from the map itself: you can see what a world is, so you can see what it
+buys, and nothing has to be looked up. A per-world modifier is richer and costs
+25 seed entries plus somewhere to display them.
+
+**Two worlds for the first point, and that is the whole shape of it.** At a
+threshold of one, every power opens with a point on three or four stats —
+measured on the seed — and a modifier everybody has is inflation rather than a
+modifier. At two, the opening board grants exactly three points in total
+(Meridian +1 industry, Drajk +1 industry and +1 resolve) and every further one
+has to be taken from somebody. Thresholds rise (2/4/6) and the bonus caps at
+**3**, because a per-world bonus summed over territory is unbounded in principle
+and `MAX_DISSENT_PENALTY` is 8 on the same 1–20 scale. Applied *before* dissent,
+so good ground offsets a bad leader rather than vanishing under the floor, and
+clamped at 20 because that is the top of the curve every modifier is read off.
+
+**And ground that was never yours costs something to keep.** `homeFactionId` is
+written once by the seed and never again; `ledgerFor` charges `OCCUPATION_COST`
+of what each foreign world actually pays its holder. The economy already
+asserted this from the other direction — a holder gets a **2× administrator's
+edge** over a rival in orbit, on the stated grounds that occupying a world you
+do not administer yields less — and this is the matching cost. Until it existed,
+a conquered world paid its conqueror exactly what it had paid the state it was
+taken from, forever.
+
+A **fraction of the world's own income** rather than a flat figure, so it scales
+with the board and needs no per-era tuning: a rich world is harder to hold down
+than a poor one, which is the fact the mechanic is about. It is also bounded by
+that income, so **a conquest is worth less, never negative** — and a world whose
+previous owner still has a fleet in orbit pays its new holder almost nothing, so
+occupying it costs almost nothing. Holding a contested world is its own
+punishment; this does not pile on top of one.
+
+Three cases are decided rather than left to fall out:
+
+- **An unaligned world is nobody's** (`homeFactionId: null` in the seed), so
+  taking neutral ground is free. There is no displaced administration to resent
+  you, and settling unclaimed space is not the same undertaking as holding down
+  a conquered rival.
+- **A ceded world carries it too.** The cost is about administering a population
+  whose institutions are not yours, which is equally true however the paper was
+  signed — and the alternative puts a free bypass one treaty away, so the
+  mechanic would only tax players who had not noticed.
+- **A save written before the field existed** parses every world to `null` and
+  carries no occupation at all, replaying as the game it was actually played as.
+  The same choice `CompulsionSchema` and `Faction.title` made, and the reason
+  the default has to be the inert value rather than a guess at the controller.
+
+**`OCCUPATION_COST` was swept, not chosen**, and the response is a cliff — the
+shape `MONOPOLY_BONUS` also turned out to have, because the outcome hangs on one
+discrete question. At 0.10, 0.15 and 0.20 the board is the historical
+3/6/5/4/4; at **0.25** the Vigil's late conquest of `tor-1` never happens at
+all, because a power holding foreign ground is poor enough that its fleet stops
+growing. That is the mechanic working and it is still too much — *territory
+changes through turn 24* is a measured property of this galaxy, and a standing
+cost that **ends** conquest rather than pricing it has overshot. 0.15 is taken
+from the middle of the flat region rather than the 0.20 that also passes, on the
+same margin argument.
+
+Measured separately, which is worth recording: **the stat bonuses move the
+harness not at all** (board identical with occupation switched off), so the
+entire territorial effect is the occupation cost.
 
 ### Ships are bought, and a navy you cannot pay for shrinks
 

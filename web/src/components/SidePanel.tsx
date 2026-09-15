@@ -17,6 +17,7 @@ import {
   getFaction,
   getSystem,
   ledgerFor,
+  WORLD_TYPE_STAT,
   commitmentsOf,
   dissentPenalty,
   MAX_DISSENT_PENALTY,
@@ -271,6 +272,20 @@ function SystemTab({
         </dd>
         <dt>Strategic value</dt>
         <dd>{sys.strategicValue}/10</dd>
+        <dt title="Worlds of a kind count together: two buy a point of that stat, four buy two, six buy three. Concentration pays — a single world of a kind buys nothing.">
+          Ground counts toward
+        </dt>
+        <dd>{WORLD_TYPE_STAT[sys.worldType]}</dd>
+        {sys.homeFactionId !== null && sys.homeFactionId !== sys.controllerFactionId && (
+          <>
+            <dt title="A share of what this world pays its holder, charged every turn. Institutions built for another state do not administer themselves.">
+              Occupied
+            </dt>
+            <dd className="bad">
+              taken from {getFaction(state, sys.homeFactionId)?.name ?? sys.homeFactionId}
+            </dd>
+          </>
+        )}
         <dt>Base income</dt>
         <dd>{income.base}/turn</dd>
       </dl>

@@ -14,6 +14,9 @@ import {
 import {
   presentAt,
   dissentPenalty,
+  terrainBonus,
+  WORLD_TYPES,
+  WORLD_TYPE_STAT,
   dispositionBetween,
   getFaction,
   getSystem,
@@ -117,6 +120,40 @@ export function serializeFactions(
  * The full character sheet for one power, used wherever a faction has to ACT
  * or SPEAK as itself rather than merely be observed.
  */
+/** Worlds a power holds that began as somebody else's, by name. */
+function occupiedNames(state: WorldState, viewerId: string): string {
+  const names = state.systems
+    .filter(
+      (sys) =>
+        sys.controllerFactionId === viewerId &&
+        sys.homeFactionId !== null &&
+        sys.homeFactionId !== viewerId,
+    )
+    .map((sys) => sys.name);
+  return names.length > 0 ? names.join(', ') : 'worlds taken from others';
+}
+
+/**
+ * What the ground itself is worth to this power, if anything.
+ *
+ * Stated as the worlds rather than as a number, because the actionable half is
+ * *which kind of world to take next* — a bonus a player cannot trace to a place
+ * on the map is a number that happens to them.
+ */
+function terrainLine(state: WorldState, viewerId: string): string {
+  const bonus = terrainBonus(state, viewerId);
+  const gained = STAT_NAMES.filter((stat) => (bonus[stat] ?? 0) > 0);
+  if (gained.length === 0) return '';
+  const parts = gained.map((stat) => {
+    const kinds = WORLD_TYPES.filter((t) => WORLD_TYPE_STAT[t] === stat);
+    const held = state.systems.filter(
+      (sys) => sys.controllerFactionId === viewerId && kinds.includes(sys.worldType),
+    ).length;
+    return `${stat} +${bonus[stat]} (${held} ${kinds.join('/')} worlds)`;
+  });
+  return `What your ground is worth: ${parts.join(' · ')}. Taking more of one kind is worth more than taking more.`;
+}
+
 /**
  * A faction's stats after its own dissent, which is all `serializeCharacter`
  * can account for — it has no world state, so hostile stat_debuffs are not
@@ -328,6 +365,13 @@ export function serializeState(
     `Treasury: ${viewer?.credits ?? 0} credits · income ${ledger.gross}/turn (${ledger.territory} territory + ${ledger.routes} trade lanes), upkeep ${ledger.upkeep}/turn (net ${ledger.net >= 0 ? '+' : ''}${ledger.net})`,
     ledger.tolls > 0 ? `Tolls levied on other powers' cargo: ${ledger.tolls}/turn.` : '',
     ledger.raided > 0 ? `Taken by commerce raiding: ${ledger.raided}/turn.` : '',
+    // A standing cost with no visible cause is a number the leader cannot act
+    // on. Naming the worlds is the point: this is the line that tells a player
+    // which conquest is not paying for itself.
+    ledger.occupation > 0
+      ? `Holding ground that was never yours: ${ledger.occupation}/turn, on ${occupiedNames(state, viewerId)}. Institutions built for another state do not administer themselves.`
+      : '',
+    terrainLine(state, viewerId),
     // Dissent reduces every stat the model is reasoning about. Omitting it
     // meant a leader could be told its own odds had worsened with no way to
     // know why, and could not narrate the reason to the player either.
