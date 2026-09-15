@@ -52,6 +52,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | **92** | two claims only a campaign can settle | — | needs play, not code |
 | ~~95~~ | ~~playtests are billed to the subscription~~ | medium | **MOVED** to `docs/architecture.md` A.1 — an architecture item, and step 1 of packaging the game |
 | **97** | five features wanted — world modifiers, tolls and agents in the UI, conquest upkeep, battle leaders, non-combat hulls | five sizes | **FILED, NOT DESIGNED** — (b) and (e) are buildable now, (a) and (c) need a balance decision, (d) needs a design |
+| **98** | the doctrine bots cannot tell a friend from an enemy | medium | `initiative.ts` reads no disposition, and it now runs in `endTurn` for most of the galaxy most turns — the excuse for it was written when it only ran in the harness |
 
 **What is actually left is a playtest — a different one from the last.** Every
 item on this list is built or closed except **92**, and **94(b)**, which is
@@ -1175,6 +1176,95 @@ burnable.** `system.ships` is never redacted, so a SIGINT hull announces itself
 by being there and can be killed by anyone willing to come and do it, where an
 operative is invisible until it is exposed and cannot be attacked at all. Those
 are different instruments, not two prices for one.
+
+
+## 98. OPEN — the doctrine bots cannot tell a friend from an enemy
+
+**`src/domain/initiative.ts` contains no reading of `disposition` at all.** Not a
+weighting, not a threshold, not a tiebreak — the word appears once, in a comment
+about a cost the *reducer* charges. The only relationship any bot consults is
+`honourTreaties`, which withholds an attack on a `non_aggression`, `ceasefire`
+or `mutual_defense` partner and interdiction against a `trade_accord` partner.
+
+So a power that loathes you at −95 with no paper between you picks its targets
+exactly as one that likes you at +50 does: `lineStrength`, garrison, adjacency.
+Standing is invisible to it.
+
+### This was a correct decision that stopped being correct
+
+CLAUDE.md files it, honestly, as a limitation of the balance harness:
+
+> **What the harness cannot model:** the bots do not react to disposition. The
+> Nars finish hated by everyone and nobody invades them, so the harness
+> overstates their runaway — the counterplay their position invites is political,
+> and politics is what the model-driven game supplies.
+
+Every word of that was true when the bots lived in `src/balance.ts` and played
+nobody but each other. It is the justification and the deployment that drifted:
+the bots **moved into the domain and now run in `endTurn` for every faction the
+model did not speak for**, which on an ordinary turn is most of the galaxy. The
+sentence that excused the gap — *politics is what the model-driven game
+supplies* — is now an argument about the three or four factions that get a
+reaction call, and it is silent about the rest.
+
+The defect is narrow and worth stating precisely. It is **not** that disposition
+is inert: crossing `WAR_DISPOSITION_THRESHOLD` (−60) changes five things, and
+two of them matter strategically — `opportunist` takes
+`OPPORTUNIST_MIGHT_BONUS` against a holder *distracted* by a war with somebody
+else, and `warProfitFor` flips the Combine's entire economy the moment it is in
+one. What is inert is **the whole range between neutral and war**, for the half
+of the galaxy that is being played by arithmetic.
+
+### What it would take
+
+`honourTreaties` is the shape to copy, and not only by analogy: it is a
+**post-filter over the proposed ops** rather than a check threaded through five
+bots, which is what makes it total — *"a bot added later inherits the guard
+without knowing it exists."* A second filter beside it inherits the same way.
+
+Three candidate designs, cheapest first:
+
+- **A standing gate.** Withhold an attack on a power you are not at war with and
+  do not dislike — the mirror of `honourTreaties`, keyed on disposition instead
+  of paper. Smallest change, and it answers the complaint directly: a bot stops
+  attacking its friends.
+- **Weighted targeting.** Score candidate targets by standing as well as by
+  weakness. Richer, and the one that can go wrong: *always* attacking whoever
+  you hate most makes the board deterministic and flattens the difference
+  between `opportunist` (hits the weak) and `crusading` (hits regardless), which
+  are distinctions the harness was built to keep visible.
+- **Narrower still: reinforcement, not aggression.** Let standing decide which
+  frontier a bot garrisons rather than whom it attacks. Least likely to disturb
+  the board, and least likely to be noticed.
+
+Whichever, it must **report what it withheld**, for the reason the existing
+filter does: a power that quietly does less than its doctrine demands is the bug
+that module exists to fix.
+
+### Three traps, and the third is the real one
+
+- **Replay is safe.** Disposition is on `WorldState` and the bots are pure, so
+  any of this replays exactly. No new state, no clock, no dice.
+- **`pnpm balance 30` will move**, and the direction to watch is a board that
+  *freezes*. `tests/balance.test.ts` asserts nobody is eliminated and nobody
+  holds half the map, and both of those get easier when bots attack less — the
+  test that would actually catch over-firing is the one that says territory
+  keeps changing, which is currently an observation in CLAUDE.md (*"territory
+  changes through turn 24"*) rather than an assertion. The lift-as-a-fraction
+  experiment already produced exactly this failure, and CLAUDE.md records how it
+  read: *"a galaxy where nobody attacks."*
+- **Disposition has no decay, and this closes a positive feedback loop.**
+  Attacking costs the attacker standing with the victim; if standing then
+  selects targets, the first war is self-reinforcing and permanent. Every
+  existing disposition cost is small precisely *because* nothing ever fades —
+  and none of them currently feeds back into the thing that generates them.
+  Reading `warsFor` rather than the raw number mitigates it, since that is
+  bilateral and already exists for this reason; a raw-number weighting does not,
+  and is the version most likely to produce a galaxy at total war by turn 12.
+
+**Wants a measurement before a design.** The cheap first step is to run the
+harness with a disposition-blind bot against a disposition-aware one and read
+the two boards, which is what `src/balance.ts` is for and costs no model calls.
 
 
 ---
