@@ -512,9 +512,70 @@ had no reason to agree.
 | class | tons | cost | upkeep | orbital weight | carry | loss order | job |
 |---|---|---|---|---|---|---|---|
 | **escort** | 2 | 30 | 2 | 1 | — | 0 | the screen, and the answer to boats |
-| **lifter** | 3 | 45 | 3 | **0.1** | **6** | 1 | the only way to take ground |
-| **torpedo boat** | 2 | 30 | 2 | **0.1** | — | 2 | strikes past a screen at the heaviest hulls |
-| **battleship** | 4 | 60 | 4 | 3 | — | 3 | the line; it wins the exchange |
+| **freighter** | 3 | 45 | 3 | **0.01** | — | 1 | takes more of a lane crossing ground nobody owns |
+| **lifter** | 3 | 45 | 3 | **0.01** | **6** | 2 | the only way to take ground |
+| **listener** | 3 | 45 | 3 | **0.01** | — | 3 | SIGINT: reads what is under way where it stands |
+| **torpedo boat** | 2 | 30 | 2 | **0.1** | — | 4 | strikes past a screen at the heaviest hulls |
+| **battleship** | 4 | 60 | 4 | 3 | — | 5 | the line; it wins the exchange |
+
+**Three of the six cannot fight**, and that is a category rather than a
+weakness: a lifter takes ground, a freighter carries, a listener listens. All
+three are destroyed in an exchange exactly as a transport is, and none of them
+is a cheaper warship — `CREDITS_PER_TON` is uniform, so a freighter parked on a
+rival's world skims precisely what its credits bought.
+
+### The two that do not fight and do not land
+
+**A freighter earns only where nobody owns the ground.** `distributeUnclaimed`
+already splits an unaligned hop's trade by tons; `laneWeightOf` weights a
+freighter's tons by `FREIGHTER_LANE_WEIGHT`, and that is its entire mechanical
+existence. Two properties follow from putting it *there* and nowhere else, and
+both are why it is safe: it **cannot mint a credit**, because that function
+divides a fixed pot, and it **cannot compound**, because it is read where it is
+used rather than applied to a treasury each tick. A contested *world* still
+splits by flat tons — that contest is over force, and a freighter is not force.
+
+The narrowness is the design. It is a hull for the lawless middle of the map
+rather than a second way to be rich, and it multiplies with
+`SMUGGLER_UNCLAIMED_WEIGHT` rather than replacing it, because the two make
+different claims — one about the power, one about the hull.
+
+**A listener sees what a `surveillance` operative sees, at the same price.** It
+joins `watchedSystems` in `intel.ts`, so it outranks the covert rule exactly as
+an operative does. Priced deliberately, because *two paths to one outcome that
+cost differently means only the cheaper one is ever used*: `AGENT_COST` 40 plus
+`AGENT_UPKEEP` 3, against 45 plus 3.
+
+Everything else about them is opposite, and that is what makes it a second
+instrument rather than a duplicate:
+
+| | operative | listener |
+|---|---|---|
+| seen | hidden until exposed | in `system.ships`, always |
+| removed by | being **burned** on a failed roll | being **shot**, by anyone willing to come |
+| bounded by | `maxAgentsFor`, off **guile** | money |
+
+That last row is what earns it a place. `maxAgentsFor` means a power with poor
+guile is bad at spies **by construction** — the Vigil at 11 and Arkane at 12 —
+so before this there was no way for such a power to buy sight at all. SIGINT is
+how a power with no spies sees.
+
+**The bots buy both, for stated reasons**, because a class nobody builds is a
+class nobody has measured — which is how `monopolist` stayed implemented,
+tested and dead for the life of the project. Freighters are sized from how much
+unaligned ground a power actually sits next to; ears are bought only by a power
+at or below `BOT_SIGINT_GUILE`. Both caps are low, since tonnage spent here is
+tonnage not in the line.
+
+**`pnpm fleetlab` excludes them from the sweep**, and that is a statement rather
+than an optimisation (though the simplex is exponential in the class count, so
+it is also that). The harness asks *at equal credits, which **fighting**
+composition wins*, and neither hull's job exists in a two-system arena with the
+galaxy stripped out. Including them would have the sweep answer "spend nothing
+on these" at great length, and then report a class count meaning something
+different from the one every earlier result was stated in. Verified: the best
+attacker is still `escort:24 torpedo_boat:72 lifter:16` at 64% with a 10.4-point
+margin, and the best defender still `battleship:9 escort:6 lifter:10` at 85%.
 
 **Tonnage is the single primitive.** Cost, upkeep, insolvency attrition,
 `capSelfInflictedLosses`, the income contest and the price of a suborned crew
@@ -3629,11 +3690,42 @@ component is logic nothing checks.
   mine". Hulls in a system their owner does not hold are marked `*`.
   (Class is `.fleet-panel`, not `.fleets` — the SVG map layer already owns that.)
 - **Panels** — Factions (a portrait thumbnail ringed in the faction's colour,
-  stat bars, ethics, disposition, `talk`), System (ships
-  and income *per faction*, lanes, orders), Orders (progress + ETA), Treaties
-  (terms, turn limits, wars, agents with effect and success chance), Log
-  (filterable — `rejection` and `clamp` entries are debugging gold, so they are
-  filterable rather than hidden).
+  stat bars, ethics, disposition, `talk`), System (ships and income *per
+  faction*, **operatives here**, lanes, orders), Orders (progress + ETA),
+  Treaties (terms, turn limits, wars, agents with effect and success chance),
+  Log (filterable — `rejection` and `clamp` entries are debugging gold, so they
+  are filterable rather than hidden).
+
+  **Operatives are listed per world as well as globally**, and the per-world
+  list is the one a player actually asks for. An operative has an `atSystemId`,
+  its effects are read per system, and the question is *who is working on this
+  world* — which was answerable only from the Treaties panel, so learning
+  something about a planet meant reading a treaty list. `agentsVisibleTo` is
+  already exactly "mine, plus anyone's that has been burned", so "discovered"
+  needed no second definition, and a burned operative stays on the list struck
+  through: knowing a rival's network *was* here is worth nearly as much as
+  knowing it is.
+
+- **Tolls are drawn on the map**, as a gold ring on a world you pay at and a
+  green one on a world you collect at, with the figure in the tooltip.
+  `tollTargets` was legible in the Factions panel, so a player could see **that**
+  the Combine charged them and never **which junction** it cost them on — the
+  actionable half of the mechanic was the invisible half. That gap has a
+  history: tolling became a policy in the first place because *"a toll share
+  became a negotiable instrument whose value nobody at the table could see"*,
+  and the personas could see it long before the player could.
+
+  `RouteEarnings` carries `tollsBySystem` / `tollsPaidBySystem`, recorded in the
+  same pass that pays the tolls out, so the picture cannot disagree with the
+  ledger — the rule the lane volumes on the same map already follow. A second
+  pass applying the same rules is a second set of rules.
+
+  > **A ring rather than a dot, and the arithmetic decided it.** The viewBox is
+  > ~1220 units into roughly 490 css pixels, so a marker draws at about 0.4x: a
+  > 4-unit dot lands under two pixels — in the DOM, invisible on screen. Same
+  > lesson the battle glyphs took four passes to learn, and the same answer, a
+  > shape read from its outline. Gold rather than red because `contested-ring`
+  > is already red and dashed, and two red rings on one node say nothing.
 - **Briefing** — persistent, not printed once. Treasury, net income, what
   completed, what is under way with ETA, observable enemy work. Reconstructed
   from state on resume via `briefingFromState`.

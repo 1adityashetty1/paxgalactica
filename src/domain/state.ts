@@ -13,6 +13,7 @@ import {
   takeHulls,
   inLossOrder,
   orbitalWeightOf,
+  laneWeightOf,
   tonsIn,
   type HullClass,
   type ShipStack,
@@ -1002,6 +1003,19 @@ export interface SystemIncome {
 export const tonsPresentAt = (system: StarSystem): [string, number][] =>
   Object.entries(system.ships ?? {})
     .map(([id, stack]) => [id, tonsIn(stack)] as [string, number])
+    .filter(([, t]) => t > 0);
+
+/**
+ * The same, weighted for cargo — `tonsPresentAt`'s sibling for the one split
+ * that is about carrying rather than about force.
+ *
+ * Only `distributeUnclaimed` reads it. A contested WORLD still divides by flat
+ * tons, because that contest is over how much force is sitting on it, and a
+ * freighter is not force.
+ */
+export const laneWeightsAt = (system: StarSystem): [string, number][] =>
+  Object.entries(system.ships ?? {})
+    .map(([id, stack]) => [id, laneWeightOf(stack)] as [string, number])
     .filter(([, t]) => t > 0);
 
 /**

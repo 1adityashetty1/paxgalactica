@@ -936,8 +936,18 @@ describe('the order hulls are spent in a battle', () => {
     const order = HULL_CLASSES.map((h) => ({ h, n: HULL_SPEC[h].lossOrder })).sort(
       (a, b) => a.n - b.n,
     );
-    // Documented order, still true of a NON-combat removal.
-    expect(order.map((x) => x.h)).toEqual(['escort', 'lifter', 'torpedo_boat', 'battleship']);
+    // Documented order, still true of a NON-combat removal. The two hulls that
+    // do not fight sit where their softness puts them: a freighter is the
+    // biggest unarmoured target in any fleet and goes before the lift arm, and
+    // a listener is small enough to be picked out late.
+    expect(order.map((x) => x.h)).toEqual([
+      'escort',
+      'freighter',
+      'lifter',
+      'listener',
+      'torpedo_boat',
+      'battleship',
+    ]);
 
     // Combat order, which is what a battle actually uses.
     const stack = { escort: 4, lifter: 4, torpedo_boat: 4, battleship: 4 };
@@ -948,6 +958,14 @@ describe('the order hulls are spent in a battle', () => {
     const upToBoats = strikeStack(stack, 2 * 4 + 3 * 4 + 4 * 4).taken;
     expect(upToBoats.torpedo_boat ?? 0).toBe(0);
     expect(upToBoats).toEqual({ escort: 4, lifter: 4, battleship: 4 });
+
+    // And a fleet carrying auxiliaries spends them before its battle line: a
+    // freighter ahead of the transports, a listener behind them, both ahead of
+    // anything that can shoot back.
+    const mixed = { escort: 2, freighter: 2, lifter: 2, listener: 2, battleship: 4 };
+    const soft = strikeStack(mixed, 2 * 2 + 3 * 2 + 3 * 2 + 3 * 2).taken;
+    expect(soft).toEqual({ escort: 2, freighter: 2, lifter: 2, listener: 2 });
+    expect(soft.battleship ?? 0).toBe(0);
 
     // And the screen still stands in front of the lift arm, which is the whole
     // of the argument the table was carrying.

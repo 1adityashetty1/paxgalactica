@@ -234,6 +234,20 @@ function SystemTab({
   const income = systemIncome(state, sys);
   const shipRows = presentAt(sys);
   const incomeRows = Object.entries(income.shares).filter(([, v]) => v > 0);
+  /**
+   * Operatives working this world — yours, plus any rival's that has been
+   * burned. `agentsVisibleTo` is already exactly that rule, so "discovered"
+   * needs no second definition.
+   *
+   * It rendered only under Treaties, which is backwards for a mechanic whose
+   * whole nature is that it is SOMEWHERE: an operative has an `atSystemId`, its
+   * effects are read per system, and the question a player asks is *who is
+   * working on this world*. Answering it only in a global list meant reading a
+   * treaty panel to learn something about a planet.
+   */
+  const operatives = agentsVisibleTo(state, state.playerFactionId).filter(
+    (a) => a.systemId === sys.id,
+  );
 
   return (
     <div className="system-detail">
@@ -295,6 +309,30 @@ function SystemTab({
           ))}
         </ul>
       )}
+      <h4>Operatives here</h4>
+      {operatives.length === 0 ? (
+        <p className="empty">None of yours, and nobody else's has been caught.</p>
+      ) : (
+        <ul className="ship-list">
+          {operatives.map((a) => {
+            const mine = a.ownerFactionId === state.playerFactionId;
+            return (
+              <li key={a.id} className={a.exposed ? 'agent-row burned' : 'agent-row'}>
+                <span className="swatch" style={{ background: colourOf(state, a.ownerFactionId) }} />
+                <span style={{ color: colourOf(state, a.ownerFactionId) }}>
+                  {mine ? 'Yours' : (getFaction(state, a.ownerFactionId)?.name ?? a.ownerFactionId)}
+                  {' · '}
+                  {a.mission}
+                </span>
+                <span className="count">
+                  {a.exposed ? 'burned' : `${a.successChance}%`}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
       <h4>Hyperlanes</h4>
       <ul className="lanes-list">
         {sys.hyperlaneEdges.map((id) => (

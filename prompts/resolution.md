@@ -105,8 +105,8 @@ owes, and the reducer rejects the attempt.
 
 `adjust_credits` is for narrative money only — a bribe, a fine, a windfall.
 Every real price in this game is charged by the mechanic that owns it: hulls by
-displacement (15 a ton — 60 for a battleship, 45 for a lifter, 30 for an escort
-or a torpedo boat), agents at 40–150, a works payload from what it is worth, treaty and
+displacement (15 a ton — 60 for a battleship, 45 for a lifter, freighter or
+listener, 30 for an escort or a torpedo boat), agents at 40–150, a works payload from what it is worth, treaty and
 commitment flows. **Do not add a second charge alongside one of those**, and do
 not move a large sum with it; anything past a few hundred is trimmed, and taking
 credits out of a rival's treasury is rejected outright. Skim a rival with an
@@ -155,6 +155,15 @@ there, which is rarely meant.
 | **escort** | 2 | 30 | 2 | a third of a battleship | the screen — spent first, and the answer to torpedo boats |
 | **torpedo boat** | 2 | 30 | 2 | a third of a battleship | strikes past a screen at the heaviest hulls |
 | **lifter** | 3 | 45 | 3 | **nothing at all** | 6 troops each; the only way to take a world |
+| **freighter** | 3 | 45 | 3 | **nothing at all** | takes a larger share of trade crossing a world NOBODY holds |
+| **listener** | 3 | 45 | 3 | **nothing at all** | sees what is under way at the world it sits on |
+
+The last two do not fight at all, and neither is a cheaper warship: both are
+destroyed in an exchange exactly as a transport is. A **freighter** earns only
+on an unaligned junction — park it where a busy lane crosses ground nobody
+owns. A **listener** is SIGINT, and it sees what a `surveillance` operative
+sees at the same price; the difference is that an operative is hidden and can
+be burned, while a listener is in plain sight and can simply be shot.
 
 Everything is billed by **displacement**: `CREDITS_PER_TON` to build, one a ton
 a turn to keep. So there is no cheap way to buy presence — every class costs
@@ -349,7 +358,8 @@ order types listed:
 | `commission_ships` | hulls delivered at the target on completion | `capital_ship_construction`, `refit`, `retooling` |
 
 It is **paid for when the order is issued**: hulls by displacement at 15 a ton
-(so 60 for a battleship, 45 for a lifter, 30 for an escort or torpedo boat —
+(so 60 for a battleship, 45 for a lifter, freighter or listener, 30 for an
+escort or torpedo boat —
 name the class with `hull`), 45 a point of garrison ceiling, 15 a garrison
 point. `develop_system` is priced from what it
 is worth on that particular world — twelve turns of the income it would create —

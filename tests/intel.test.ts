@@ -13,7 +13,7 @@ import {
 import { DURATION_CATEGORIES } from '../src/domain/duration.js';
 import {
   hullsAt,
-  setShipsAt, fleetStrengthOf, shipsInTransit, type OrderType, type WorldState } from '../src/domain/state.js';
+  setShipsAt, setStackAt, fleetStrengthOf, shipsInTransit, type OrderType, type WorldState } from '../src/domain/state.js';
 
 /**
  * Intelligence, from the player's side.
@@ -168,6 +168,54 @@ describe('what an operative buys', () => {
   it('stops seeing once burned', () => {
     const s = watch(withOrder('espionage'), FOREIGN);
     s.agents[0]!.exposed = true;
+    expect(seeOne(s)).toBe('rumour');
+  });
+});
+
+/**
+ * SIGINT: the same sight as an operative, at the same price, with every other
+ * property inverted. A hull nobody could see through would be a cheaper
+ * operative, and a hull that could not be shot would be a free one.
+ */
+describe('what a listener buys', () => {
+  const ears = (s: WorldState, systemId: string): WorldState => {
+    const sys = s.systems.find((x) => x.id === systemId)!;
+    setStackAt(sys, 'ojjul', { listener: 1 });
+    return s;
+  };
+
+  it('sees through secret work, exactly as an operative does', () => {
+    expect(seeOne(ears(withOrder('capital_ship_construction'), FOREIGN))).toBe('full');
+  });
+
+  it('sees through covert work too', () => {
+    expect(seeOne(ears(withOrder('espionage'), FOREIGN))).toBe('full');
+  });
+
+  it('sees only the world it is standing on', () => {
+    // An operative is posted to one system and so is a hull. Buying ears at
+    // home does not read a rival's yards a sector away.
+    const s = withOrder('espionage');
+    const elsewhere = s.systems.find(
+      (x) => x.id !== FOREIGN && x.controllerFactionId === 'ojjul',
+    )!;
+    setStackAt(elsewhere, 'ojjul', { listener: 1 });
+    expect(seeOne(s)).toBe('rumour');
+  });
+
+  it('stops seeing when the ship is gone, which is the whole trade', () => {
+    // An operative is burned by being caught; a listener is simply killed, and
+    // it was visible in `system.ships` the entire time it was working.
+    const s = ears(withOrder('espionage'), FOREIGN);
+    setStackAt(s.systems.find((x) => x.id === FOREIGN)!, 'ojjul', {});
+    expect(seeOne(s)).toBe('rumour');
+  });
+
+  it('is not a warship wearing a different name', () => {
+    // A battleship parked on the same world sees only what presence sees, and
+    // presence is explicitly NOT enough for a covert order.
+    const s = withOrder('espionage');
+    setStackAt(s.systems.find((x) => x.id === FOREIGN)!, 'ojjul', { battleship: 4 });
     expect(seeOne(s)).toBe('rumour');
   });
 });

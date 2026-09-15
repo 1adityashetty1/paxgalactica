@@ -1,4 +1,4 @@
-import { HULL_CLASSES, HULL_SPEC, type ShipStack } from '../../../src/domain/hulls.js';
+import { HULL_CLASSES, HULL_SPEC, type HullClass, type ShipStack } from '../../../src/domain/hulls.js';
 /**
  * Glyphs for the order of battle: one per hull class, and a tracked gun.
  *
@@ -289,12 +289,77 @@ export function LifterIcon({ size = 18, title }: IconProps) {
   );
 }
 
+export function FreighterIcon({ size = 18, title }: IconProps) {
+  return (
+    <svg
+      className="ob-icon"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden={title ? undefined : true}
+      role={title ? 'img' : undefined}
+    >
+      {title && <title>{title}</title>}
+      {/* Deck cargo, and the whole glyph rests on it: at 18px only the OUTLINE
+          survives, so the thing that has to be unmistakable is the stepped top
+          edge. A flat-topped hull would read as the lifter, which is the one
+          silhouette this must never be confused with — they are both blunt,
+          both unarmed, and they do completely different jobs.
+
+          Three blocks of different heights rather than an even row, because an
+          even row closes back into a rectangle at small sizes. */}
+      <path d="M6.2 9.4 L9.6 9.4 L9.6 13 L6.2 13 Z" />
+      <path d="M10.4 7.2 L13.8 7.2 L13.8 13 L10.4 13 Z" />
+      <path d="M14.6 10.2 L18 10.2 L18 13 L14.6 13 Z" />
+      {/* A slab hull with a blunt bow — it carries, it does not cut. */}
+      <path d="M3.4 13 L20.4 13 L22.4 15 L20 18 L5 18 L3.4 16.4 Z" />
+      <path d="M0.7 13.6 L2.3 13 L2.3 16 L0.7 15.4 Z" />
+    </svg>
+  );
+}
+
+export function ListenerIcon({ size = 18, title }: IconProps) {
+  return (
+    <svg
+      className="ob-icon"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden={title ? undefined : true}
+      role={title ? 'img' : undefined}
+    >
+      {title && <title>{title}</title>}
+      {/* The dish IS the glyph. A hull with something small bolted on reads as
+          a hull; a dish that happens to have a hull under it reads as a
+          listening post, and at 18px only one of those two can win.
+
+          Drawn as a filled crescent rather than a stroked arc, because a stroke
+          thin enough to look like a dish at 24 units disappears entirely at
+          18px — the same failure that turned the first battleship into a
+          lozenge. */}
+      <path
+        fillRule="evenodd"
+        d="M15.6 2.6 a8 8 0 0 1 0 15.2 L14 15.2 a5.2 5.2 0 0 0 0 -9.6 Z"
+      />
+      {/* The feed arm and its receiver, which is what makes the crescent a dish
+          and not a bracket. */}
+      <path d="M13 9.4 L9.2 9.4 L9.2 11 L13 11 Z" />
+      <circle cx="8.6" cy="10.2" r="1.9" />
+      {/* A small hull slung below: this is a ship, and it can be killed. */}
+      <path d="M3.6 17.4 L17 17.4 L15.4 21 L5.2 21 Z" />
+      <path d="M1 18.2 L2.6 17.6 L2.6 20.4 L1 19.8 Z" />
+    </svg>
+  );
+}
+
 /** Pick the glyph for a hull class. One place, so a new class cannot be missed. */
 export function HullIcon({
   hull,
   size = 18,
   title,
-}: IconProps & { hull: 'battleship' | 'escort' | 'torpedo_boat' | 'lifter' }) {
+}: IconProps & { hull: HullClass }) {
   switch (hull) {
     case 'escort':
       return <EscortIcon size={size} title={title} />;
@@ -302,6 +367,10 @@ export function HullIcon({
       return <TorpedoBoatIcon size={size} title={title} />;
     case 'lifter':
       return <LifterIcon size={size} title={title} />;
+    case 'freighter':
+      return <FreighterIcon size={size} title={title} />;
+    case 'listener':
+      return <ListenerIcon size={size} title={title} />;
     case 'battleship':
       return <ShipIcon size={size} title={title} />;
   }

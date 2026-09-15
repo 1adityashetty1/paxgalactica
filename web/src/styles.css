@@ -632,3 +632,15 @@ ul { margin: 0; padding-left: 1.1em; }
 .world-head h3 { margin: 0 0 2px; }
 .world-head .meta { margin: 0; }
 .world-sprite { flex: 0 0 auto; image-rendering: pixelated; }
+
+/* A toll is a fact about a place: one ring, two directions, colour carries
+   which. Gold rather than red for paying, because the contested ring is
+   already red-and-dashed and two red rings on one node say nothing. */
+.map .toll-paid { fill: none; stroke: #f59e0b; stroke-width: 2.2; }
+.map .toll-taken { fill: none; stroke: #4ade80; stroke-width: 2.2; }
+.map-tooltip .toll-note.bad { color: #f87171; }
+.map-tooltip .toll-note.good { color: #4ade80; }
+
+/* A burned operative still occupies the list — knowing a rival's network was
+   here and is no longer is worth as much as knowing it is. */
+.agent-row.burned { opacity: 0.55; text-decoration: line-through; }
