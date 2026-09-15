@@ -314,7 +314,10 @@ export function FreighterIcon({ size = 18, title }: IconProps) {
       <path d="M14.6 10.2 L18 10.2 L18 13 L14.6 13 Z" />
       {/* A slab hull with a blunt bow — it carries, it does not cut. */}
       <path d="M3.4 13 L20.4 13 L22.4 15 L20 18 L5 18 L3.4 16.4 Z" />
-      <path d="M0.7 13.6 L2.3 13 L2.3 16 L0.7 15.4 Z" />
+      {/* The drive meets the hull rather than floating a unit off it. Detached,
+          it read as a separate speck at 18px — the same failure the first
+          battleship had, where engine pods became two bars beside a lozenge. */}
+      <path d="M0.7 13.8 L3.6 13.1 L3.6 16.3 L0.7 15.6 Z" />
     </svg>
   );
 }
@@ -331,25 +334,27 @@ export function ListenerIcon({ size = 18, title }: IconProps) {
       role={title ? 'img' : undefined}
     >
       {title && <title>{title}</title>}
-      {/* The dish IS the glyph. A hull with something small bolted on reads as
-          a hull; a dish that happens to have a hull under it reads as a
-          listening post, and at 18px only one of those two can win.
+      {/* The torpedo boat's hull and drive, exactly — a small fast hull is a
+          small fast hull, and two classes built on the same yard should look it.
+          What changes is what is mounted on top, which is the only thing that
+          differs about them.
 
-          Drawn as a filled crescent rather than a stroked arc, because a stroke
-          thin enough to look like a dish at 24 units disappears entirely at
-          18px — the same failure that turned the first battleship into a
-          lozenge. */}
-      <path
-        fillRule="evenodd"
-        d="M15.6 2.6 a8 8 0 0 1 0 15.2 L14 15.2 a5.2 5.2 0 0 0 0 -9.6 Z"
-      />
-      {/* The feed arm and its receiver, which is what makes the crescent a dish
-          and not a bracket. */}
-      <path d="M13 9.4 L9.2 9.4 L9.2 11 L13 11 Z" />
-      <circle cx="8.6" cy="10.2" r="1.9" />
-      {/* A small hull slung below: this is a ship, and it can be killed. */}
-      <path d="M3.6 17.4 L17 17.4 L15.4 21 L5.2 21 Z" />
-      <path d="M1 18.2 L2.6 17.6 L2.6 20.4 L1 19.8 Z" />
+          The first version drew a whole ship around a big solid half-disc and
+          read as a symbol rather than a vessel. Sharing a hull fixes that and
+          costs nothing: the dish is doing all of the identifying work, and it
+          only has to be different from a swept fin. */}
+      <path d="M23.6 13.6 L11 11.8 L4.2 11.6 L3.2 12.4 L3.2 15.2 L4.2 15.9 L11 15.6 Z" />
+      {/* Mast. Short and thick enough to survive the scale — a thin one snaps
+          and leaves the dish floating. */}
+      <path d="M6.3 7.6 L8.1 7.6 L8.1 12.2 L6.3 12.2 Z" />
+      {/* The dish: a shallow bowl, thin by design and drawn as a filled
+          crescent rather than a stroked arc, because a stroke thin enough to
+          look like a dish at 24 units is gone entirely at 18px. */}
+      <path d="M2.4 8.6 A4.8 4.8 0 0 1 12.0 8.6 L10.1 8.6 A2.9 2.9 0 0 0 4.3 8.6 Z" />
+      {/* The feed at its focus, which is what makes the crescent a dish and
+          not a smile. */}
+      <circle cx="7.2" cy="6.9" r="1.1" />
+      <path d="M1.2 12.6 L3.2 12.2 L3.2 15.4 L1.2 15 Z" />
     </svg>
   );
 }
