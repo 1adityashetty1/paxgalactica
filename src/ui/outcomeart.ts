@@ -56,17 +56,20 @@ export type OutcomeArtKind = (typeof OUTCOME_ART_KINDS)[number];
 /* ------------------------------------------------------------------ */
 
 const VOID = '#0b0f14';
-const STONE_DARK = '#232a34';
-const STONE = '#39434f';
-const STONE_LIT = '#4d5a68';
-const IRON = '#6b7785';
-const IRON_DARK = '#4a535e';
+const DESK_DARK = '#1a212b';
+const DESK = '#2b3440';
+const DESK_LIT = '#3a4552';
+const PAPER = '#cbc4b4';
+const PAPER_LIT = '#e4ded1';
+const INK = '#2f3640';
+const INK_PALE = '#6d7480';
 const SEAL = '#b3372e';
 const SEAL_DARK = '#7a2620';
-const COLD = '#16202b';
-const WAY_OUT = '#c9a227';
-const WAY_OUT_PALE = '#e8cd76';
-const PAPER = '#cbc4b4';
+const CHART_BG = '#131a23';
+const GRID = '#1f2833';
+const AXIS = '#48525f';
+/** The face on the axis. Warm, so it reads as a mood and not as a datum. */
+const MOOD = '#c9a227';
 
 /* ------------------------------------------------------------------ */
 /* A very small painter                                                */
@@ -86,219 +89,161 @@ const rect = (g: Grid, x0: number, y0: number, x1: number, y1: number, c: string
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) put(g, x, y, c);
 };
 
-/**
- * The doorway both rulings are drawn in.
- *
- * A rounded arch rather than a square opening, because a square one reads as a
- * window and the whole point is that this is a way THROUGH that somebody has
- * closed.
- */
-const ARCH = { x0: 20, x1: 43, top: 5, floor: 33 } as const;
-/**
- * The middle column of the doorway, as an integer.
- *
- * `(x0 + x1) / 2` is 31.5, and a loop written off that steps 24.5, 25.5, … —
- * which `put` happily writes as string keys on the row array, so the pixels go
- * nowhere and the scene renders without them. That is exactly what happened to
- * the light behind the broken door: the whole effect was missing and nothing
- * errored.
- */
-const ARCH_MID = Math.round((ARCH.x0 + ARCH.x1) / 2);
-
-function archway(g: Grid): void {
-  const cx = (ARCH.x0 + ARCH.x1) / 2;
-  const rx = (ARCH.x1 - ARCH.x0) / 2;
-  const springLine = ARCH.top + rx; // where the curve meets the jambs
-
-  const insideArch = (x: number, y: number): boolean => {
-    if (y > ARCH.floor) return false;
-    if (y >= springLine) return x >= ARCH.x0 && x <= ARCH.x1;
-    const dx = (x - cx) / rx;
-    const dy = (y - springLine) / rx;
-    return dx * dx + dy * dy <= 1;
-  };
-
-  // The wall the arch is cut into. Courses run the full width and the vertical
-  // joints break every other row, which is what makes it read as masonry — the
-  // first version drew both at once and produced a field of plus signs.
-  rect(g, 4, 1, 59, ARCH.floor, STONE_DARK);
-  for (let y = 1; y <= ARCH.floor; y += 5) {
-    rect(g, 4, y, 59, y, STONE);
-    const offset = ((y - 1) / 5) % 2 === 0 ? 0 : 6;
-    for (let x = 4 + offset; x <= 59; x += 12) rect(g, x, y + 1, x, Math.min(y + 4, ARCH.floor), STONE);
-  }
-
-  // The opening. Deliberately DARKER than the wall rather than lighter: a bright
-  // slab reads as a window with something behind it, and a dark one reads as a
-  // way through — which is what has been closed.
-  for (let y = 0; y <= ARCH.floor; y++) {
-    for (let x = 0; x < OUTCOME_W; x++) {
-      if (insideArch(x, y)) put(g, x, y, y > 27 ? VOID : COLD);
-    }
-  }
-
-  // A lit edge on the left jamb and voussoirs, so the arch has depth.
-  for (let y = 0; y <= ARCH.floor; y++) {
-    for (let x = 0; x < OUTCOME_W; x++) {
-      if (!insideArch(x, y)) continue;
-      if (!insideArch(x - 1, y) || !insideArch(x, y - 1)) put(g, x, y, STONE_LIT);
-    }
-  }
-
-  // Floor.
-  rect(g, 0, ARCH.floor + 1, OUTCOME_W - 1, OUTCOME_H - 1, STONE_DARK);
-  rect(g, 0, ARCH.floor + 1, OUTCOME_W - 1, ARCH.floor + 1, STONE);
-}
-
-/** Portcullis bars in the opening. `broken` leaves a torn gap in the middle. */
-function portcullis(g: Grid, broken: boolean): void {
-  const cx = ARCH_MID;
-  const rx = (ARCH.x1 - ARCH.x0) / 2;
-  const springLine = ARCH.top + rx;
-  const inside = (x: number, y: number): boolean => {
-    if (y > ARCH.floor) return false;
-    if (y >= springLine) return x >= ARCH.x0 + 1 && x <= ARCH.x1 - 1;
-    const dx = (x - cx) / rx;
-    const dy = (y - springLine) / rx;
-    return dx * dx + dy * dy <= 0.86;
-  };
-  for (let x = ARCH.x0 + 2; x <= ARCH.x1 - 2; x += 4) {
-    for (let y = ARCH.top; y <= ARCH.floor; y++) {
-      if (!inside(x, y)) continue;
-      // The way out, torn open in the middle and bent aside.
-      if (broken && x > cx - 7 && x < cx + 7 && y > 14) continue;
-      put(g, x, y, IRON_DARK);
-    }
-  }
-  // Two cross-members, which is what makes it a grate and not a fence.
-  for (const y of [12, 22]) {
-    for (let x = ARCH.x0 + 1; x <= ARCH.x1 - 1; x++) {
-      if (!inside(x, y)) continue;
-      if (broken && y === 22 && x > cx - 7 && x < cx + 7) continue;
-      put(g, x, y, IRON_DARK);
-    }
-  }
-}
-
 /* ------------------------------------------------------------------ */
 /* The scenes                                                          */
 /* ------------------------------------------------------------------ */
 
 /**
- * REFUSAL — the door does not open, and the seal on it is whole.
+ * REFUSAL — the order, stamped.
  *
- * The order was never carried out, so nothing about this picture is damaged.
- * That is the reading the mechanic wants: a refusal is not a failure, it is an
- * order that never went out, and `submitAction` stages nothing at all.
+ * An earlier version drew a barred door, paired with a broken one for
+ * `defiance`, on the argument that the two rulings are one thing in two states.
+ * The argument was sound and the pictures were not: at feed size a stone arch
+ * is an abstraction, and a reader who has to work out that the shape is a
+ * doorway has already stopped reading the line underneath it.
+ *
+ * A document with a stamp across it needs no working out. It is also literally
+ * what happened: `submitAction` stages **nothing** on a refusal, so the order
+ * exists, it was put in front of somebody, and it came back marked.
  */
 function refusal(): Grid {
   const g = blank();
-  archway(g);
-  portcullis(g, false);
 
-  // The bar: iron, unbroken, straight across the whole doorway and into the
-  // jambs either side — held by the wall, not resting against it.
-  rect(g, 13, 19, 50, 22, IRON);
-  rect(g, 13, 19, 50, 19, STONE_LIT);
-  rect(g, 13, 22, 50, 22, IRON_DARK);
-  // Brackets in the stone.
-  rect(g, 12, 18, 14, 23, STONE_LIT);
-  rect(g, 49, 18, 51, 23, STONE_LIT);
+  // The desk it is lying on.
+  rect(g, 0, 0, OUTCOME_W - 1, OUTCOME_H - 1, DESK_DARK);
+  rect(g, 0, 26, OUTCOME_W - 1, OUTCOME_H - 1, DESK);
+  rect(g, 0, 26, OUTCOME_W - 1, 26, DESK_LIT);
 
-  // The seal over the join: whole, and the colour of an institution saying no.
-  rect(g, 28, 16, 35, 25, SEAL_DARK);
-  rect(g, 29, 17, 34, 24, SEAL);
-  rect(g, 31, 19, 32, 22, SEAL_DARK);
+  // The page, with a shadow under it so it sits ON something.
+  rect(g, 18, 4, 48, 34, VOID);
+  rect(g, 16, 2, 46, 32, PAPER);
+  rect(g, 16, 2, 46, 2, PAPER_LIT);
+  rect(g, 16, 2, 16, 32, PAPER_LIT);
 
-  // The order itself, put down at the foot of the door.
-  rect(g, 16, 29, 26, 33, PAPER);
-  rect(g, 16, 29, 26, 29, STONE_LIT);
-  rect(g, 18, 31, 24, 31, STONE_DARK);
-  rect(g, 18, 32, 22, 32, STONE_DARK);
-  rect(g, 25, 29, 26, 33, IRON_DARK);
+  // Letterhead: a heavy rule, a block of title, and a seal in the corner. This
+  // is the part that says OFFICIAL rather than "a rectangle".
+  rect(g, 20, 6, 38, 8, INK);
+  rect(g, 20, 10, 42, 10, INK_PALE);
+  rect(g, 16, 12, 46, 12, INK);
+
+  // Body text: lines of varying length, with a gap where a paragraph breaks.
+  for (const [y, x1] of [[15, 41], [17, 43], [19, 38], [23, 42], [25, 40], [27, 33]] as const) {
+    rect(g, 20, y, x1, y, INK_PALE);
+  }
+
+  // The seal at the foot, and a signature line it was never signed on.
+  rect(g, 20, 29, 27, 30, INK_PALE);
+  rect(g, 37, 26, 43, 31, SEAL_DARK);
+  rect(g, 38, 27, 42, 30, SEAL);
+  rect(g, 39, 28, 41, 29, SEAL_DARK);
+
+  // The stamp: a band driven across the whole page and off both edges, so it
+  // reads as something done TO the document rather than as part of it. Stepped
+  // rather than level, because a rubber stamp is never put down square.
+  for (let x = 10; x <= 54; x++) {
+    const y = 24 - Math.floor((x - 10) * 0.28);
+    rect(g, x, y, x, y + 3, SEAL);
+    // Flat, with only the edges darkened. A lighter core down the middle was
+    // tried first and it read as a TUBE — a rod laid on the page rather than
+    // ink pressed into it, because a highlight running the length of a band is
+    // what tells an eye the band is round.
+    rect(g, x, y, x, y, SEAL_DARK);
+    rect(g, x, y + 3, x, y + 3, SEAL_DARK);
+    // Where the impression skipped. Punched back to whatever is underneath, so
+    // the page shows through — that is what ink does and paint does not.
+    if (x % 11 === 3) {
+      put(g, x, y + 1, x >= 16 && x <= 46 ? PAPER : DESK);
+      put(g, x + 1, y + 2, x + 1 >= 16 && x + 1 <= 46 ? PAPER : DESK);
+    }
+  }
   return g;
 }
 
 /**
- * DEFIANCE — the same door, gone through.
+ * DEFIANCE — they objected, it went out anyway, and this is what it cost.
  *
- * The bar is snapped and its halves hang; the seal is in pieces on the floor;
- * the way beyond is lit rather than cold. Nothing here says the order failed,
- * because it did not — a compulsion breach lets the ops land and charges
- * `COMPULSION_BREACH_DISSENT` for having insisted.
+ * A line falling off a chart. `COMPULSION_BREACH_DISSENT` is 15 and around
+ * eight of them reach the cap, so what a player is actually being told is that
+ * standing behind them has just dropped and will not come back on its own —
+ * `DISSENT_DECAY` is 2 a turn and disposition has no decay at all.
+ *
+ * Deliberately the most conventional image in the game. Every other picture
+ * here is trying to say something a sentence cannot; this one is trying to be
+ * understood before the sentence is read, and a falling red line is the fastest
+ * thing there is.
  */
 function defiance(): Grid {
   const g = blank();
-  archway(g);
+  rect(g, 0, 0, OUTCOME_W - 1, OUTCOME_H - 1, CHART_BG);
 
-  // The way beyond, lit. The whole opening below the upper cross-member goes
-  // warm — the first version lit a band and then drew the figure and the bars
-  // over it, which left two gold lobes either side of a silhouette and read as
-  // curtains. An open door is open all the way across.
-  const rx = (ARCH.x1 - ARCH.x0) / 2;
-  const springLine = ARCH.top + rx;
-  // **The WHOLE opening goes warm, including the head of the arch.** Lighting
-  // it from a band downward leaves the dark curve above the light, and that
-  // curve then reads as a helmet sitting on a lit robe rather than as a door
-  // standing open. An open door is open to the top.
-  for (let y = ARCH.top; y <= ARCH.floor; y++) {
-    for (let x = ARCH.x0 + 1; x <= ARCH.x1 - 1; x++) {
-      if (y < springLine) {
-        const dx = (x - ARCH_MID) / rx;
-        const dy = (y - springLine) / rx;
-        if (dx * dx + dy * dy > 0.9) continue;
-      }
-      put(g, x, y, y > 27 ? WAY_OUT : WAY_OUT_PALE);
+  /**
+   * A face on the axis, which is what makes this a chart OF something.
+   *
+   * A falling red line says "down" and nothing at all about what. The whole
+   * content of a defiance is that your own institutions objected and you went
+   * ahead — so what is falling is how your own people feel about you, and a
+   * smile at the top of the scale says that in less time than the word
+   * "dissent" takes to read.
+   *
+   * At the TOP because that is where the line starts. It is a label for the
+   * high end of the axis, so it reads as the thing being left behind.
+   */
+  const fx = 6;
+  const fy = 8;
+  for (let y = fy - 4; y <= fy + 4; y++) {
+    for (let x = fx - 4; x <= fx + 4; x++) {
+      const dx = x - fx;
+      const dy = y - fy;
+      if (dx * dx + dy * dy <= 17) put(g, x, y, MOOD);
+    }
+  }
+  put(g, fx - 2, fy - 2, CHART_BG);
+  put(g, fx + 2, fy - 2, CHART_BG);
+  // A curve, not a bar. A straight five-pixel mouth with notches at the cheeks
+  // cut the disc in half and read as a slot rather than a smile — the corners
+  // have to come UP or there is no expression in it.
+  put(g, fx - 2, fy + 1, CHART_BG);
+  rect(g, fx - 1, fy + 2, fx + 1, fy + 2, CHART_BG);
+  put(g, fx + 2, fy + 1, CHART_BG);
+
+  // Gridlines, faint enough to be a surface rather than a subject.
+  for (let y = 5; y <= 29; y += 6) rect(g, 13, y, 61, y, GRID);
+  for (let x = 13; x <= 61; x += 9) rect(g, x, 3, x, 31, GRID);
+
+  // Axes. Ticks only below the face, which owns the top of the gutter.
+  rect(g, 11, 3, 12, 32, AXIS);
+  rect(g, 11, 31, 61, 32, AXIS);
+  for (const y of [17, 23, 29]) rect(g, 9, y, 10, y, AXIS);
+
+  /**
+   * The line itself: high at the left, ragged, and off the bottom by the right.
+   *
+   * Plotted from a fixed table rather than a curve, because a curve that looks
+   * like a collapse at 64 pixels wide has to be drawn by eye anyway — and a
+   * table is something a reader of this file can adjust without solving for it.
+   */
+  const points: [number, number][] = [
+    [14, 7], [19, 6], [25, 9], [30, 8], [35, 13], [40, 12], [45, 18], [49, 22], [54, 25], [61, 29],
+  ];
+  for (let i = 0; i < points.length - 1; i++) {
+    const [x0, y0] = points[i]!;
+    const [x1, y1] = points[i + 1]!;
+    const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+    for (let st = 0; st <= steps; st++) {
+      const x = Math.round(x0 + ((x1 - x0) * st) / steps);
+      const y = Math.round(y0 + ((y1 - y0) * st) / steps);
+      // Two pixels thick, so it survives being shown small.
+      rect(g, x, y, x, y + 1, SEAL);
     }
   }
 
-  // What is left of the grate: stubs hanging at the jambs, torn out of the
-  // middle. Kept OFF the lit centre, because iron drawn across the light is
-  // read as pattern on a surface and not as wreckage in front of a gap.
-  rect(g, ARCH.x0 + 1, ARCH.top + 6, ARCH.x0 + 2, 17, IRON_DARK);
-  rect(g, ARCH.x1 - 2, ARCH.top + 6, ARCH.x1 - 1, 15, IRON_DARK);
-  rect(g, ARCH.x0 + 1, 11, ARCH.x0 + 6, 12, IRON_DARK);
-  rect(g, ARCH.x1 - 6, 11, ARCH.x1 - 1, 12, IRON_DARK);
-  rect(g, ARCH.x0 + 5, 13, ARCH.x0 + 6, 18, IRON_DARK);
-  rect(g, ARCH.x1 - 6, 13, ARCH.x1 - 5, 16, IRON_DARK);
-
-  // Whoever insisted, walking out through it. A silhouette rather than a face:
-  // this is the player, and the player has no portrait in this game. Read as a
-  // hole in the light, which is why the light had to be whole first.
-  const m = ARCH_MID;
-  rect(g, m - 2, 13, m + 1, 17, VOID);         // head
-  rect(g, m - 1, 18, m, 18, VOID);             // neck
-  rect(g, m - 4, 19, m + 3, 27, VOID);         // shoulders and torso
-  rect(g, m - 5, 20, m - 5, 26, VOID);         // arms, clear of the body
-  rect(g, m + 4, 20, m + 4, 26, VOID);
-  rect(g, m - 4, 28, m - 2, ARCH.floor, VOID); // legs, mid-stride
-  rect(g, m + 2, 28, m + 3, ARCH.floor - 2, VOID);
-
-  // The bar, snapped. Drawn LAST so the break sits in front of the light, and
-  // with a real gap either side of the middle — the halves droop toward it and
-  // end ragged.
-  for (let x = 11; x <= 26; x++) {
-    const drop = Math.max(0, Math.floor((x - 18) / 2));
-    const ragged = x > 24 ? 1 : 0;
-    rect(g, x, 19 + drop, x, 22 + drop - ragged, IRON);
-    put(g, x, 19 + drop, STONE_LIT);
-  }
-  for (let x = 37; x <= 52; x++) {
-    const drop = Math.max(0, Math.floor((45 - x) / 2));
-    const ragged = x < 39 ? 1 : 0;
-    rect(g, x, 19 + drop, x, 22 + drop - ragged, IRON);
-    put(g, x, 19 + drop, STONE_LIT);
-  }
-  rect(g, 10, 18, 12, 23, STONE_LIT);
-  rect(g, 51, 18, 53, 23, STONE_LIT);
-
-  // The seal that was over the join, in pieces: still falling, and on the floor.
-  put(g, 28, 16, SEAL);
-  put(g, 35, 14, SEAL_DARK);
-  put(g, 27, 24, SEAL);
-  put(g, 36, 26, SEAL_DARK);
-  rect(g, 24, 32, 27, 33, SEAL_DARK);
-  rect(g, 37, 33, 40, 33, SEAL);
+  // **No arrowhead.** Two were tried — a filled wedge, then a pair of barbs —
+  // and both came out as a blob of red in the corner: any head large enough to
+  // read at 64 pixels is large enough to stop reading as a point, and this one
+  // sat against the axis where it merged with it besides.
+  //
+  // The line runs off the right edge instead, which says the same thing and
+  // says it with the shape already there: it has not levelled off, it has left.
   return g;
 }
 

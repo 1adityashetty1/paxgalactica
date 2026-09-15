@@ -3978,14 +3978,27 @@ component is logic nothing checks.
   their own institutions and being charged for it rather than a collapse in
   polling.
 
-  They are now **one door in two states**, drawn in `src/ui/outcomeart.ts`:
-  shut and whole with the seal unbroken, then shut and broken through with the
-  bar snapped, the seal in shards and the way beyond lit. That pairing is the
-  argument for drawing them together at all — `classifyPrinciple` decides
-  between the two by reading which list the quoted line is on, and what a
-  player feels is that one **stops** the order and the other **prices** it. So
-  recognising the second is free once the first has been seen, which two
-  unrelated illustrations cannot do however good they are.
+  They are now drawn in `src/ui/outcomeart.ts`: **refusal is the order itself,
+  stamped** — letterhead, body text, a seal at the foot, a signature line it was
+  never signed on, and a band driven across the page and off both edges — and
+  **defiance is a line falling off a chart**, with a smile at the top of the
+  axis so the chart is legibly one of mood.
+
+  Both say what the mechanic says. `submitAction` stages **nothing** on a
+  refusal, so the order exists, was put in front of somebody, and came back
+  marked. A defiance costs `COMPULSION_BREACH_DISSENT` (15), about eight reach
+  the cap, and `DISSENT_DECAY` is 2 a turn — so what is falling is how your own
+  people feel about you, and it does not come back on its own.
+
+  > **The first version of these was a matched pair and it was wrong.** They
+  > were a barred door and a broken one, on the argument that the two rulings
+  > are one thing in two states — `classifyPrinciple` decides between them by
+  > reading which list the quoted line is on, so recognising the second would be
+  > free once the first had been seen. The argument holds and the pictures did
+  > not: at feed size a stone arch is an abstraction, and a reader who has to
+  > work out that the shape is a doorway has already stopped reading the line
+  > underneath it. A conventional image understood before the sentence is worth
+  > more here than a clever one understood after it.
 
   `negotiation` keeps its illustration, because it is not part of that pair: it
   is not a breach of anything, it is being told the thing needs another power's
@@ -3997,11 +4010,20 @@ component is logic nothing checks.
   and a bar are not, and thirty-six rows of sixty-four characters would be a
   worse diff and an easier place to hide a mistake.
 
-  > One bug that would have shipped unseen: the arch spans x 20–43, so its
-  > centre is **31.5**, and a loop written off that steps 24.5, 25.5 — which
-  > JavaScript writes as string keys on the row array. The pixels went nowhere,
-  > nothing threw, and `defiance` simply rendered with no light in the doorway
-  > at all. Found by looking at it. A portrait exists to be recognised as a person you are
+  > **Everything wrong with these was found by looking**, which is the whole
+  > argument for rendering art out and opening it rather than trusting a test.
+  > The stamp had a lighter core running its length and read as a *tube* laid on
+  > the page — a highlight down the middle of a band is what tells an eye the
+  > band is round. The smile was a straight five-pixel bar with notches at the
+  > cheeks and cut the disc in half. And two arrowheads were tried on the
+  > trendline, a filled wedge and a pair of barbs, and both came out as a blob
+  > of red in the corner: any head large enough to read at 64 pixels is large
+  > enough to stop reading as a *point*. The line runs off the right edge
+  > instead, which says the same thing with shape that is already there.
+  >
+  > None of that is reachable from a unit test, so what the suite pins is the
+  > handful of claims each picture makes — a stamp that runs off the page, a
+  > line that only falls, a face beside the scale and not in the plot. A portrait exists to be recognised as a person you are
   negotiating with; these exist to communicate an idea — *this was vetoed*,
   *this cost you standing*, *this needs someone else in the room* — and reading
   in a second is worth more here than matching a house style.
