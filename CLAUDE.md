@@ -2897,11 +2897,67 @@ band **nothing else in the game touches**. A screen changes *which* hulls are
 spent getting clear, not how many; a stance changes whether you run at all.
 
 **Read off the largest contingent**, exactly as doctrine is, so a one-ship
-junior partner's officer does not run the coalition. **Doctrine picks who it
-is**, not the player — a commander a player has to assign is a commander the
-four NPCs never get, and a battle between two rivals looking like arithmetic is
-the thing this was built to fix. Letting the player *name* one is a real
-decision and a good follow-on; it is not what makes the mechanic exist.
+junior partner's officer does not run the coalition.
+
+### She sails with a fleet, and commands only the battle she is at
+
+An officer has a location, and it decides everything: `Commander.atSystemId`
+while she is standing somewhere, `PendingOrder.commanderId` while she is under
+way. Two fields rather than one because they answer different questions, and
+the split is **the same convention her ships already follow** — a fleet under
+way is in `order.force` and not in `system.ships`, and `shipsInTransit` derives
+from `pendingOrders`. A person in transit belongs to the voyage.
+
+An attacker's officer is the one who **sailed**; a defender's is whoever is
+standing on the world. Before this, a power's single commander fought every
+engagement it had, simultaneously, wherever they were.
+
+**She is in a fleet without being tonnage**, which is the whole shape of it. She
+is not a `ShipStack` entry and never enters the loss order: everything in that
+order is denominated in tons, so a person there would need an `orbitalWeight` —
+and *nothing may weigh exactly nothing*, because a side with no weight reads as
+"nothing to fight" to every branch of the resolver. "Last in the loss order" is
+also precisely the bug `lifter` shipped with, which made transports the safest
+thing in a fleet and left the escort nothing to protect. The only thing that can
+kill her is `commanderLost` on a defeat — a considered rule rather than an
+emergent one needing an exception to stop being a coin flip.
+
+**Being present is what risks you; commanding is what helps.** Every officer on
+the field takes the death roll if her side breaks, while only the largest
+contingent's applies her effects. Where she ends up is tracked per contingent
+through `onField`, so a coalition's officers fall back down their **own** paths
+rather than all landing on one world.
+
+`issue_order` takes an optional `commanderId`, guarded three ways — yours,
+active, and standing at the origin. A name that fails any of them is **dropped
+with a note rather than rejecting the order**: the fleet still sails, it just
+sails under nobody in particular.
+
+> Two bugs, both the same bug. `resolveBattle` returns from ten places and the
+> **unopposed walk-in is above all of them**, so an officer who took an empty
+> world was never registered at all — left in transit, at no system, on a voyage
+> that had already ended. And `cancel_order` has its own ship-return path, whose
+> comment already says *"splicing the order out without this quietly destroyed
+> the fleet it was carrying"* — and it destroyed the officer the same way.
+> Registration now happens before the first exit, and a campaign-long invariant
+> check (no active officer is ever at no system and on no order) runs clean over
+> thirty turns.
+
+**The bots name their officer too**, when she is standing at the port a sortie
+leaves from. Without that, giving her a location would have made commanders a
+**player-only mechanic** — the thing 102 was explicitly built to avoid — since
+the bots drive four of the five powers. Measured exactly that way before it was
+added: every officer on the board finished thirty turns at zero engagements,
+where the same run had produced 3/2/1/0/0. It is deliberately not a reason to
+*move* her: the bots pick a port for the fleet, not for the officer.
+
+Her **passives** are hers wherever she is, because she runs the power's
+establishment; only the battle effect needs her present.
+
+**Doctrine still picks who it is** when nobody is named, and a player naming one
+is now the whole of officer assignment. What is still missing is a roster to
+choose from: a power can never hold two officers, so the menu has one item until
+recruitment exists.
 
 **Reported like a doctrine, in its own list.** `BattleReport.commandersFired`
 names only officers who actually changed something, and it is separate from

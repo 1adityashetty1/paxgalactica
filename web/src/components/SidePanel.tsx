@@ -9,6 +9,7 @@ import { describeOutstanding, loansFor } from '../../../src/domain/loan.js';
 import { assetWorthRangeTo } from '../../../src/domain/diplomacy.js';
 import { describeOrderEffect } from '../../../src/domain/development.js';
 import { describeEffect } from '../../../src/domain/diplomacy.js';
+import { CommanderIcon } from './BattleIcons.js';
 import {
   archetypeOf,
   commanderEffect,
@@ -264,6 +265,9 @@ function SystemTab({
   const operatives = agentsVisibleTo(state, state.playerFactionId).filter(
     (a) => a.systemId === sys.id,
   );
+  const officersHere = (state.commanders ?? []).filter(
+    (c) => c.status === 'active' && c.atSystemId === sys.id,
+  );
 
   return (
     <div className="system-detail">
@@ -349,6 +353,26 @@ function SystemTab({
             </li>
           ))}
         </ul>
+      )}
+      {/* Officers standing on this world.
+          Not redacted, for the reason `system.ships` is not: she is aboard a
+          fleet, and a fleet in orbit is a thing anybody with eyes can see. What
+          stays hidden is her power's ORDERS, which is a different question. */}
+      {officersHere.length > 0 && (
+        <>
+          <h4>Officers here</h4>
+          <ul className="ship-list">
+            {officersHere.map((c) => (
+              <li key={c.id} className="agent-row">
+                <span style={{ color: colourOf(state, c.factionId), display: 'flex' }}>
+                  <CommanderIcon title={archetypeOf(c.archetype).effect} />
+                </span>
+                <span style={{ color: colourOf(state, c.factionId) }}>{c.name}</span>
+                <span className="count">{veterancyLabel(c.battles)}</span>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
       <h4>Operatives here</h4>
       {operatives.length === 0 ? (
@@ -451,6 +475,20 @@ function Command({ state }: { state: WorldState }) {
                 {/* Where she stands on the ladder, because a cost a player
                     cannot read coming is a cost they cannot weigh — and this
                     one is paid by losing her, not by spending credits. */}
+                {/* Where she is standing, or the fleet she is aboard — the
+                    thing that decides which battles she commands at all. */}
+                <p className="meta command-where">
+                  {officer.atSystemId
+                    ? `at ${state.systems.find((x) => x.id === officer.atSystemId)?.name ?? officer.atSystemId}`
+                    : (() => {
+                        const o = state.pendingOrders.find(
+                          (x) => x.commanderId === officer.id,
+                        );
+                        return o
+                          ? `under way to ${state.systems.find((x) => x.id === o.targetId)?.name ?? o.targetId}`
+                          : 'unposted';
+                      })()}
+                </p>
                 <p className="meta command-ladder">
                   {toNextVeterancy(officer.battles) === null
                     ? 'as good as an officer gets'

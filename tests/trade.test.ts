@@ -1449,7 +1449,8 @@ describe('a raid can actually be paid', () => {
           originId: target, targetId: target, durationTurns: 2, progress: 1,
           interruptible: true, onInterrupt: 'cancel', visibility: [],
           label: 'prizes at the terminus', durationRationale: '', path: [],
-          investedCredits: 0, force: {},
+          investedCredits: 0,
+          commanderId: null, force: {},
         },
       ],
     };
@@ -1471,7 +1472,8 @@ describe('a raid can actually be paid', () => {
           originId: target, targetId: target, durationTurns: 2, progress: 1,
           interruptible: true, onInterrupt: 'cancel', visibility: [],
           label: 'prizes at the terminus', durationRationale: '', path: [],
-          investedCredits: 0, force: {},
+          investedCredits: 0,
+          commanderId: null, force: {},
         },
       ],
     };

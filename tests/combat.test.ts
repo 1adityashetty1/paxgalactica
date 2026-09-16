@@ -66,11 +66,21 @@ function attack(setup: (s: WorldState) => void, force = 8, lift = 0) {
   addShipsAt(sys(state, 'ark-3'), 'freeworlds', force, 'battleship');
   if (lift > 0) addShipsAt(sys(state, 'ark-3'), 'freeworlds', lift, 'lifter');
   setup(state);
+  // The officer sails WITH the fleet, which is the only way she reaches the
+  // battle now that she has a location — before, a power's commander fought
+  // every engagement it had, simultaneously, wherever they were. `setup` runs
+  // first so a test that names a different archetype still gets the right
+  // person aboard.
+  const aboard = state.commanders.find(
+    (c) => c.factionId === 'freeworlds' && c.status === 'active',
+  );
+  if (aboard) aboard.atSystemId = 'ark-3';
   const issued = applyOps(state, [
     {
       op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
       originId: 'ark-3', targetId: 'sek-6',
       force: { battleship: force, lifter: lift },
+      commanderId: aboard?.id ?? null,
     },
   ]);
   expect(issued.rejections).toHaveLength(0);
@@ -1360,6 +1370,161 @@ describe('the officer on the field', () => {
           expect(live, kind).toHaveLength(1);
           expect(commanderPassive(c)).toMatch(/\d/);
         }
+      });
+    });
+
+    /**
+     * An officer is IN a fleet without being tonnage: she rides the order, has
+     * a location, and the only thing that can kill her is the death roll. What
+     * these pin is the edges of naming her to one.
+     */
+    describe('and where she actually is', () => {
+      const sail = (
+        s: WorldState,
+        commanderId: string | null,
+        originId = 'ark-3',
+        force: Record<string, number> | undefined = { battleship: 5 },
+      ) =>
+        applyOps(
+          s,
+          [
+            {
+              op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
+              originId, targetId: 'sek-6', force, commanderId,
+            },
+          ],
+          'model',
+          'freeworlds',
+        );
+
+      const ours = (s: WorldState) =>
+        s.commanders.find((c) => c.factionId === 'freeworlds' && c.status === 'active')!;
+
+      it('takes her off the board while she is under way', () => {
+        // In transit she belongs to the ORDER, exactly as her ships do: a fleet
+        // under way is in `order.force` and not in `system.ships`.
+        const s = fresh();
+        const c = ours(s);
+        c.atSystemId = 'ark-3';
+        const out = sail(s, c.id);
+        expect(out.rejections).toHaveLength(0);
+        expect(out.state.pendingOrders[0]!.commanderId).toBe(c.id);
+        expect(ours(out.state).atSystemId).toBeNull();
+      });
+
+      it('cannot be aboard two fleets at once', () => {
+        // Closed by the location model rather than by a guard: the first order
+        // takes her off the board, so the second cannot find her at the origin.
+        const s = fresh();
+        const c = ours(s);
+        c.atSystemId = 'ark-3';
+        addShipsAt(sys(s, 'ark-3'), 'freeworlds', 20, 'battleship');
+        const out = applyOps(
+          s,
+          [
+            { op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
+              originId: 'ark-3', targetId: 'sek-6', force: { battleship: 5 }, commanderId: c.id },
+            { op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
+              originId: 'ark-3', targetId: 'ark-4', force: { battleship: 5 }, commanderId: c.id },
+          ],
+          'model',
+          'freeworlds',
+        );
+        const carrying = out.state.pendingOrders.filter((o) => o.commanderId === c.id);
+        expect(carrying).toHaveLength(1);
+        expect(out.notes.join(' ')).toMatch(/without a named officer/);
+      });
+
+      it('cannot sail with no ships at all', () => {
+        // A bodiless voyage is unrepresentable: an explicit empty force is an
+        // `illegal_value`, and omitting it draws a real squadron from the
+        // origin. There is no third way to put an officer alone in space.
+        const s = fresh();
+        const c = ours(s);
+        c.atSystemId = 'ark-3';
+        const empty = sail(s, c.id, 'ark-3', { battleship: 0 });
+        expect(empty.rejections.map((r) => r.code)).toContain('illegal_value');
+        expect(ours(empty.state).atSystemId).toBe('ark-3');
+
+        const drawn = sail(fresh(), null, 'ark-3', undefined);
+        expect(hullsIn(drawn.state.pendingOrders[0]!.force)).toBeGreaterThan(0);
+      });
+
+      it('refuses a name that is not hers to give', () => {
+        for (const [why, mutate] of [
+          ['another power', (s: WorldState) => {
+            const theirs = s.commanders.find((c) => c.factionId === 'drajk')!;
+            theirs.atSystemId = 'ark-3';
+            return theirs.id;
+          }],
+          ['somebody who is lost', (s: WorldState) => {
+            const c = ours(s);
+            c.atSystemId = 'ark-3';
+            c.status = 'lost';
+            return c.id;
+          }],
+          ['somebody who is elsewhere', (s: WorldState) => {
+            const c = ours(s);
+            c.atSystemId = 'ark-4';
+            return c.id;
+          }],
+          ['nobody at all', () => 'cmd-invented'],
+        ] as const) {
+          const s = fresh();
+          const id = mutate(s);
+          const out = sail(s, id);
+          expect(out.state.pendingOrders[0]!.commanderId, why).toBeNull();
+          expect(out.notes.join(' '), why).toMatch(/without a named officer/);
+        }
+      });
+
+      it('commands the battle she is at, and no other', () => {
+        // Before she had a location a power's officer fought every engagement
+        // it had, simultaneously, wherever they were.
+        const s = fresh();
+        ours(s).atSystemId = 'ark-4';
+        setArchetype(s, 'freeworlds', 'lineofbattle');
+        const t = sys(s, 'sek-6');
+        t.controllerFactionId = 'vigil';
+        setStackAt(t, 'vigil', { battleship: 6 });
+        const out = sail(s, null);
+        let res = tickTurn(out.state);
+        while (res.state.pendingOrders.some((o) => o.id === 'ord-0-0')) res = tickTurn(res.state);
+        const fired = res.report.battles[0]?.commandersFired.join(' ') ?? '';
+        expect(fired).not.toMatch(/might in the exchange/);
+        // And she never left home.
+        expect(ours(res.state).atSystemId).toBe('ark-4');
+      });
+
+      it('comes home with a fleet that is recalled', () => {
+        const s = fresh();
+        const c = ours(s);
+        c.atSystemId = 'ark-3';
+        const out = sail(s, c.id);
+        expect(ours(out.state).atSystemId).toBeNull();
+        const back = applyOps(
+          out.state,
+          [{ op: 'cancel_order', orderId: out.state.pendingOrders[0]!.id }],
+          'model',
+          'freeworlds',
+        );
+        // The ships were never destroyed and neither was she — an officer left
+        // in transit on an order that no longer exists is an officer nowhere.
+        expect(ours(back.state).atSystemId).toBe('ark-3');
+      });
+
+      it('stands where the fighting left her', () => {
+        const s = fresh();
+        const c = ours(s);
+        c.atSystemId = 'ark-3';
+        const t = sys(s, 'sek-6');
+        t.controllerFactionId = null;
+        t.ships = {};
+        t.garrison = 0;
+        const out = sail(s, c.id);
+        let res = tickTurn(out.state);
+        while (res.state.pendingOrders.some((o) => o.id === 'ord-0-0')) res = tickTurn(res.state);
+        expect(ours(res.state).atSystemId).toBe('sek-6');
       });
     });
 

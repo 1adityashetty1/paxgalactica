@@ -61,11 +61,12 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~104~~ | ~~the state document published raw ids~~ | small | **FIXED** — `lanes:` joined `hyperlaneEdges` with nothing giving them a name, so the model wrote `ilv-6` into prose |
 | ~~105~~ | ~~a commander's death cost nothing, and usually paid~~ | medium | **BUILT** — veterancy, and a successor who inherits the speciality. The thresholds had to be swept: the first guess was unreachable in a whole campaign |
 | ~~106~~ | ~~officers are five hand-written characters, and do nothing on a quiet turn~~ | medium | **BUILT** — generated names carrying the school as a title, and one passive each. A prerequisite for recruitment: choosing between officers needs them to differ off the battlefield |
+| ~~107~~ | ~~an officer commanded every battle her power fought, everywhere at once~~ | medium | **BUILT** — she has a location, rides a fleet, and commands only the battle she is at. Not tonnage, not in the loss order; killable by the death roll alone |
 
 **What is left is a playtest and two design items.** Everything from the
 2026-09-07 batch is built or closed, and so are all five of the features raised
-on 2026-09-14 (**97**, **100**–**103**), along with **104**, **105** and
-**106**, all raised and closed on 2026-09-15. What remains is **92** and **94(b)**, which are
+on 2026-09-14 (**97**, **100**–**103**), along with **104**–**107**,
+all raised and closed on 2026-09-15. What remains is **92** and **94(b)**, which are
 claims only a campaign can settle, plus two things filed since:
 
 - **98** — the doctrine bots read no disposition at all, and they now run in
@@ -1594,6 +1595,86 @@ Three things the build turned up that the filing did not predict:
 567 — the small drop being freighters taking a larger share of the unaligned
 hops that some tolled traffic crosses.
 
+
+## 107. BUILT — an officer is in a fleet, without being tonnage
+
+Raised 2026-09-15. Two designs were on the table: a per-battle choice, or
+officers as units that sail with their fleets. The second, with one constraint
+from the first — **a per-battle choice is really a per-ORDER choice**, because a
+battle resolves inside `tickTurn` with no player present, so the only moment a
+choice can be made is when the fleet is sent.
+
+**The location model.** `Commander.atSystemId` while she is standing somewhere,
+`PendingOrder.commanderId` while she is under way — two fields because they
+answer different questions, and the split is the convention her ships already
+follow: a fleet under way is in `order.force` and not in `system.ships`. An
+attacker's officer is the one who **sailed**; a defender's is whoever is
+standing on the world.
+
+**Not tonnage, and never in the loss order.** Everything in that order is
+denominated in tons, so a person there would need an `orbitalWeight` — and
+nothing may weigh exactly nothing, because a side with no weight reads as
+"nothing to fight" to every branch of the resolver. "Last in the loss order" is
+also exactly the bug `lifter` shipped with, which made transports the safest
+thing in a fleet. She is killable by `commanderLost` on a defeat and by nothing
+else.
+
+**Being present is what risks you; commanding is what helps.** Every officer on
+the field takes the death roll if her side breaks; only the largest contingent's
+applies her effects. Coalition officers fall back down their **own** paths.
+
+### The edge cases, all probed rather than reasoned about
+
+- **Two officers on one fleet** is unrepresentable — one field. The same officer
+  named twice is closed by the location model itself: the first order takes her
+  off the board, so the second cannot find her at the origin.
+- **Two different officers reaching one battle** cannot happen while a power
+  holds one — and is exactly what recruitment makes reachable, so the tie-break
+  is seniority rather than array order. Otherwise *who commanded* would depend on
+  the order the fleets were issued in.
+- **An officer with no ships** is unrepresentable: an explicit empty force is an
+  `illegal_value`, and omitting force draws a real squadron.
+- Another power's officer, a lost one, a fabricated id, a non-movement order:
+  all dropped **with a note rather than a rejection**, so the fleet still sails.
+
+### Two bugs found in the building, and they were one bug
+
+`resolveBattle` returns from ten places and the **unopposed walk-in is above all
+of them**, so an officer who took an empty world was never registered — stranded
+at no system, on a voyage that had ended. And `cancel_order` has its own
+ship-return path whose comment already reads *"splicing the order out without
+this quietly destroyed the fleet it was carrying"* — it destroyed the officer
+identically. Registration now happens before the first exit, and a campaign-long
+invariant (no active officer at no system and on no order) runs clean.
+
+### The balance catch, which was bigger than either
+
+Presence deciding the battle made commanders a **player-only mechanic** — the
+thing 102 was explicitly built to avoid — because the bots drive four of five
+powers and did not know how to name one. Measured: every officer finished thirty
+turns at **zero** engagements, where the same run had produced 3/2/1/0/0. The
+bots now name their officer when she is standing at the port a sortie leaves
+from, and the run reads 1/1/1/0/0 — lower than before, correctly, because she
+only fights where she goes. Deliberately not a reason to *move* her: the bots
+pick a port for the fleet, not for the officer.
+
+### The glyph took three passes and ended by abandoning the rule
+
+`BattleIcons.tsx` earns legibility by drawing silhouettes of real things, and
+that rule is what killed both attempts at a person. Face-on, a cap over a brim
+with the badge cut out is a **hut with a doorway**. In profile it survived at
+110px and turned to mush at the 13–18px it is used at, because the visor doing
+all the work is the first thing to go. It is a **star in a ring** now — not a
+picture of anything, so there is no object to fail to recognise, and it reads as
+rank by convention. Conventions do not blur.
+
+**One consequence worth knowing:** a journal replayed under this rule produces a
+different roster, because its orders carry no `commanderId` and those officers
+therefore commanded nothing. Replay is still exact — both sides run the same
+code — but `classes_playtest` now shows five untested officers where it showed
+two veterans.
+
+Board unchanged at 3/6/5/4/4, tolls 558, mix 58/42.
 
 ## 106. BUILT — names that generate, and a passive for a quiet turn
 

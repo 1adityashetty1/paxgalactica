@@ -1,3 +1,4 @@
+import { commanderAt } from './command.js';
 import { neighboursOf, shortestPath } from './graph.js';
 import { isTreatyLive } from './diplomacy.js';
 import {
@@ -387,6 +388,22 @@ function sortie(ctx: Ctx, targetId: string, force: number, label: string): Ops {
       op: 'issue_order', factionId: ctx.me, type: 'fleet_movement',
       originId: from.id, targetId,
       force: mergeStacks(drawToWeight(warships, force), { lifter }),
+      // The officer sails if she is standing at the port the sortie leaves
+      // from, and otherwise the fleet goes without one.
+      //
+      // **This is what keeps commanders from becoming a player-only mechanic.**
+      // Giving an officer a location made presence the thing that decides which
+      // battle she commands, and the bots drive four of the five powers — so
+      // without this an NPC officer would never reach a fight, never accrue a
+      // `battles`, and never be worth losing. Measured exactly that way before
+      // it was added: every officer on the board ended thirty turns at zero
+      // engagements, where the same run had produced 3/2/1/0/0.
+      //
+      // Deliberately not a reason to MOVE her: the bots pick a port for the
+      // fleet, not for the officer, so she is either there or she is not. A bot
+      // that repositioned its commander to catch a sortie would be playing the
+      // mechanic rather than its doctrine.
+      commanderId: commanderAt(ctx.state.commanders, ctx.me, from.id)?.id ?? null,
       label,
     },
   ];

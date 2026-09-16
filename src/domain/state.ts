@@ -561,6 +561,15 @@ export const PendingOrderSchema = z.object({
   durationTurns: z.number().int().min(1),
   progress: z.number().int().min(0),
   interruptible: z.boolean(),
+  /**
+   * An officer riding with this fleet, if one was named to it.
+   *
+   * She is carried by the order for the same reason her ships are: a fleet
+   * under way is in `order.force` rather than in `system.ships`, so a person
+   * under way is here rather than in `Commander.atSystemId`. Nullable and
+   * defaulted, so every order written before officers could sail still loads.
+   */
+  commanderId: z.string().nullable().default(null),
   onInterrupt: OnInterruptSchema,
   /** Which factions can observe this order. Drives NPC reaction context. */
   visibility: z.array(z.string()),

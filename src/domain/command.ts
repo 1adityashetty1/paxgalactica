@@ -383,6 +383,29 @@ export const CommanderSchema = z.object({
    */
   battles: z.number().int().min(0).default(0),
   status: z.enum(['active', 'lost']).default('active'),
+  /**
+   * Where she is standing, or `null` while she is in transit with a fleet.
+   *
+   * **An officer is in a fleet without being tonnage**, which is the whole
+   * shape of this. She is not a `ShipStack` entry and never enters the loss
+   * order: everything in that order is denominated in tons, and putting a
+   * person there would need an `orbitalWeight` — where the codebase has already
+   * established that nothing may weigh exactly nothing, because a side with no
+   * weight reads as "nothing to fight" to every branch of the resolver. "Last
+   * in the loss order" is also precisely the bug `lifter` shipped with, which
+   * made transports the safest thing in a fleet.
+   *
+   * So she rides alongside the hulls rather than among them, and the only thing
+   * that can kill her is `commanderLost` on a defeat — a considered rule rather
+   * than an emergent one that would need an exception to stop being a coin
+   * flip.
+   *
+   * In transit she belongs to the ORDER (`PendingOrder.commanderId`) and this
+   * is `null`, which is exactly how her ships work: a fleet under way is in
+   * `order.force` and not in `system.ships`, and `shipsInTransit` derives from
+   * `pendingOrders`. One convention, not two.
+   */
+  atSystemId: z.string().nullable().default(null),
 });
 export type Commander = z.infer<typeof CommanderSchema>;
 
@@ -601,6 +624,26 @@ export function successorArchetype(
  * and replays exactly. The effect is that a power's best-known officer keeps
  * turning up, which is what makes losing one cost something a player can feel.
  */
+/**
+ * The officer of this power standing at this system, if any.
+ *
+ * What `commanderFor` is to a power, this is to a place — and the split is the
+ * point of giving an officer a location at all: her **passives** are hers
+ * wherever she is, because she runs the power's establishment, while her
+ * **battle** effect reaches only the engagement she is actually present for.
+ * Before this she commanded every battle her power fought, simultaneously,
+ * across the galaxy.
+ */
+export function commanderAt(
+  commanders: Commander[] | undefined,
+  factionId: string,
+  systemId: string,
+): Commander | undefined {
+  return (commanders ?? []).find(
+    (c) => c.factionId === factionId && c.status === 'active' && c.atSystemId === systemId,
+  );
+}
+
 export function commanderFor(
   commanders: Commander[] | undefined,
   factionId: string,

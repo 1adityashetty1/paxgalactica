@@ -52,6 +52,7 @@ import {
 } from './diplomacy.js';
 import { archetypeFor } from './assets.js';
 import {
+  commanderAt,
   commanderFor,
   commanderLost,
   commanderMight,
@@ -178,6 +179,20 @@ export const DEBT_DEFAULT_DISPOSITION_COST = 6;
 
 /** Ground forces rebuilt per turn, toward the system's ceiling. */
 export const GARRISON_REGROWTH = 1;
+
+/**
+ * Put an officer riding a cancelled or interrupted order back on the board.
+ *
+ * An order that leaves `pendingOrders` takes its `commanderId` with it, so
+ * without this she is in transit on a voyage that no longer exists — `null`
+ * location, `null` order, commanding nothing anywhere. The same reason the
+ * ships are returned: they were never destroyed.
+ */
+function returnRider(state: WorldState, order: PendingOrder, where: string): void {
+  if (!order.commanderId) return;
+  const rider = (state.commanders ?? []).find((c) => c.id === order.commanderId);
+  if (rider && rider.status === 'active') rider.atSystemId = where;
+}
 
 /** Dissent bled off per quiet turn. Refusals add 8, so defiance compounds. */
 export const DISSENT_DECAY = 2;
@@ -2349,6 +2364,40 @@ export function applyOps(
           }
         }
 
+        // An officer named to this fleet. Three guards, because a model asked
+        // for an id will eventually invent one: she must be this faction's, she
+        // must be alive, and she must be standing at the origin — a commander
+        // cannot join a squadron she is nowhere near. A name that fails any of
+        // them is dropped with a note rather than rejecting the whole order:
+        // the fleet still sails, it just sails under nobody in particular.
+        let riding: string | null = null;
+        if (op.commanderId !== null) {
+          const named = (state.commanders ?? []).find((c) => c.id === op.commanderId);
+          const ok =
+            named &&
+            named.factionId === op.factionId &&
+            named.status === 'active' &&
+            named.atSystemId === op.originId &&
+            isMovementType(op.type);
+          if (ok) {
+            riding = named.id;
+            named.atSystemId = null;
+          } else {
+            const why = !named
+              ? 'no such officer'
+              : named.factionId !== op.factionId
+                ? 'that officer serves another power'
+                : named.status !== 'active'
+                  ? 'that officer is lost'
+                  : !isMovementType(op.type)
+                    ? 'only a fleet movement carries an officer'
+                    : `${named.name} is not at ${nameFor(state, op.originId)}`;
+            const note = `Fleet sails without a named officer: ${why}.`;
+            notes.push(note);
+            logEvent(state, 'clamp', note, op.factionId);
+          }
+        }
+
         const order: PendingOrder = {
           id: mintOrderId(state),
           factionId: op.factionId,
@@ -2358,6 +2407,7 @@ export function applyOps(
           durationTurns: duration,
           progress: 0,
           interruptible: op.interruptible,
+          commanderId: riding,
           onInterrupt: op.onInterrupt,
           visibility: [...new Set(op.visibility.filter(factionExists))],
           label: op.label || op.type.replace(/_/g, ' '),
@@ -2400,6 +2450,10 @@ export function applyOps(
             addStackAt(home, removed!.factionId, removed!.force);
           }
         }
+        // And the officer aboard it, for the same reason and with the same
+        // failure if it is forgotten: the order carries her, so splicing it out
+        // leaves her in transit on a voyage that no longer exists.
+        returnRider(state, removed!, removed!.originId);
         // Recalling your own order is orderly, so the works return what they
         // have not yet cut into — the same principle that brings a recalled
         // fleet's ships home rather than destroying them. An *interruption* is
@@ -4373,6 +4427,9 @@ function resolveInterrupt(state: WorldState, order: PendingOrder, reason: string
       const home = state.systems.find((s) => s.id === order.originId);
       if (home) addStackAt(home, order.factionId, order.force);
     }
+    // She was never destroyed either, and an officer left in transit on an
+    // order that no longer exists is an officer nowhere.
+    returnRider(state, order, order.originId);
     // `cancel` means the work is lost entirely, so money sunk into the works is
     // sunk. Said out loud rather than deducted silently: a player who abandons a
     // shipyard should be told what it cost them.
@@ -4390,6 +4447,7 @@ function resolveInterrupt(state: WorldState, order: PendingOrder, reason: string
     if (sys && hullsIn(order.force) > 0) {
       addStackAt(sys, order.factionId, order.force);
     }
+    returnRider(state, order, sys?.id ?? order.originId);
     const note = `${order.label} halted mid-transit at ${sys?.name ?? halted} with ${hullsIn(order.force)} ships. ${reason}`.trim();
     logEvent(state, 'order', note, order.factionId);
     return note;
@@ -4488,6 +4546,11 @@ export function tickTurn(input: WorldState): TickResult {
       appointedTurn: state.turn,
       battles: 0,
       status: 'active',
+      // A successor reports to the power's best world, the same ordering
+      // `fleetBases` uses. A power with nothing left to stand on gets an
+      // officer with nowhere to be, which is honest: she commands no battle
+      // until there is somewhere to command it from.
+      atSystemId: fleetBases(state, faction.id)[0]?.id ?? null,
     };
     (state.commanders ??= []).push(appointed);
     const note = `${nameFor(state, faction.id)} gives the fleet to ${appointed.name}.`;
@@ -5481,21 +5544,31 @@ function resolveBattle(
    * `finish` — so a commander is counted exactly once however the battle ends,
    * including the early exits that never reach the exchange.
    */
-  const onField: { officer: Commander; side: 'attack' | 'defend' }[] = [];
+  const onField: {
+    officer: Commander;
+    side: 'attack' | 'defend';
+    /** Where she stands when this is over. Retreat branches overwrite it. */
+    lands: string | null;
+  }[] = [];
   let beatenSide: 'attack' | 'defend' | null = null;
+
 
   /** Close the engagement: snapshot the result and hand back both forms. */
   const finish = (note: string): BattleOutcomeResult => {
-    for (const { officer, side } of onField) {
+    for (const { officer, side, lands } of onField) {
       const live = (state.commanders ?? []).find((c) => c.id === officer.id);
       if (!live || live.status !== 'active') continue;
       live.battles += 1;
+      // She came off the order and onto the board. Done before the death roll
+      // so a survivor is standing somewhere and a casualty is cleared below.
+      live.atSystemId = lands;
       // Lost only on a DEFEAT, and on the battle's own roll rather than a new
       // one. An officer who wins does not die at a rate worth modelling, and a
       // death roll on every engagement would churn the roster faster than a
       // player could learn a name.
       if (side === beatenSide && commanderLost(roll)) {
         live.status = 'lost';
+        live.atSystemId = null;
         const gone = `${live.name} is lost with the ${nameOf(live.factionId)} fleet over ${target.name}.`;
         commandersFired.push(gone);
         logEvent(state, 'narrative', gone, live.factionId);
@@ -5708,6 +5781,38 @@ function resolveBattle(
   let defenceForce = defenders.reduce((sum, [, st]) => sum + hullsIn(st), 0);
   defendSnapshot = new Map(defenders);
 
+  // Registered BEFORE the first exit, which is what this being up here is for:
+  // `resolveBattle` returns from ten places and the unopposed walk-in is
+  // above all of them, so an officer who took an empty world was never put on
+  // the board at all — left in transit, at no system, on a voyage that had
+  // already ended. Every path out now goes through `finish` with the officers
+  // already known.
+  //
+  // **Presence, not possession.** An officer commands the battle she is at, and
+  // no other — before she had a location she commanded every engagement her
+  // power fought, simultaneously, wherever they were. An attacker's officer is
+  // the one who SAILED: she rides `order.commanderId`, exactly as her ships
+  // ride `order.force`. A defender's is whoever is standing on the world.
+  const riders = orders
+    .map((o) =>
+      o.commanderId
+        ? (state.commanders ?? []).find((c) => c.id === o.commanderId && c.status === 'active')
+        : undefined,
+    )
+    .filter((c): c is Commander => c !== undefined);
+  const defendersPresent = defenders
+    .map(([id]) => commanderAt(state.commanders, id, systemId))
+    .filter((c): c is Commander => c !== undefined);
+
+  // Being present is what risks you; commanding is what helps. So every officer
+  // on the field takes the death roll if her side is broken, while only the
+  // largest contingent's applies her effects — the same rule doctrine follows,
+  // so a one-ship junior partner's officer does not run the coalition.
+  for (const officer of riders) onField.push({ officer, side: 'attack', lands: systemId });
+  for (const officer of defendersPresent) {
+    onField.push({ officer, side: 'defend', lands: systemId });
+  }
+
   // Genuinely undefended: nobody in orbit AND nobody on the ground. An
   // unaligned world is NOT automatically this — the seed gives neutral worlds
   // garrisons of 2–5, and skipping the ground phase for them made every
@@ -5794,21 +5899,26 @@ function resolveBattle(
     [...defenders]
       .sort((a, b) => tonsIn(b[1]) - tonsIn(a[1]) || a[0].localeCompare(b[0]))[0]?.[0] ??
     holder;
-  const attackOfficer = largestAttacker
-    ? commanderFor(state.commanders, largestAttacker)
-    : undefined;
-  const defendOfficer = largestDefender
-    ? commanderFor(state.commanders, largestDefender)
-    : undefined;
+  // Seniority decides which of a power's officers commands, the same rule
+  // `commanderFor` uses. Unreachable while a power holds one officer — and it
+  // is exactly what recruitment makes reachable, at which point picking by
+  // array order would make "who commanded" depend on the order the fleets were
+  // issued in. A tie-break that costs nothing now is a bug that does not
+  // happen later.
+  const senior = (a: Commander, b: Commander): number =>
+    b.battles - a.battles || a.id.localeCompare(b.id);
+  const attackOfficer = riders
+    .filter((c) => c.factionId === largestAttacker)
+    .sort(senior)[0];
+  const defendOfficer = defendersPresent
+    .filter((c) => c.factionId === largestDefender)
+    .sort(senior)[0];
   // `c.battles` is the record she brought TO this engagement — `finish`
   // increments it afterwards — so an officer fights her tenth battle at the
   // standing nine wins earned her, and reads as a veteran from the eleventh.
   const officerNote = (c: Commander, what: string): void => {
     commandersFired.push(`${c.name} (${nameOf(c.factionId)}, ${veterancyLabel(c.battles)}): ${what}`);
   };
-  if (attackOfficer) onField.push({ officer: attackOfficer, side: 'attack' });
-  if (defendOfficer) onField.push({ officer: defendOfficer, side: 'defend' });
-
   if (attackOfficer?.archetype === 'lineofbattle') {
     const might = commanderMight(attackOfficer);
     attackMod += might;
@@ -6102,6 +6212,14 @@ function resolveBattle(
           (x) => x.id !== target.id && x.controllerFactionId === id,
         );
         if (refuge && hullsIn(escaped) > 0) addStackAt(refuge, id, escaped);
+        // She leaves with her own contingent. With nowhere to run she stays in
+        // orbit over a world she no longer holds, which is exactly what the
+        // ships that had no refuge do.
+        for (const entry of onField) {
+          if (entry.side === 'defend' && entry.officer.factionId === id) {
+            entry.lands = refuge?.id ?? target.id;
+          }
+        }
       }
       beatenSide = 'defend';
       const broke = `${defenders.map(([id]) => nameOf(id)).join(' and ')} breaks off over ${target.name}, losing ${lost} ships between them.`;
@@ -6120,6 +6238,13 @@ function resolveBattle(
         const refuge = state.systems.find((x) => x.id === fallback);
         if (refuge && hullsIn(escaped) > 0) {
           addStackAt(refuge, order.factionId, escaped);
+        }
+        // An officer falls back down the path her own fleet took, not the
+        // coalition's — one shared refuge would land them all on one world.
+        for (const entry of onField) {
+          if (entry.side === 'attack' && entry.officer.id === order.commanderId) {
+            entry.lands = refuge?.id ?? order.originId;
+          }
         }
       }
       for (const [id] of attackShare) attackShare.set(id, {});

@@ -580,6 +580,19 @@ export function playableFactions(): { id: string; name: string; color: number; d
  * Top a faction up to its `OPENING_FLOOR`, paying out of its own battle line so
  * the world's displacement is unchanged.
  */
+/**
+ * The world a power's officer starts on: its best holding by strategic value.
+ *
+ * Read off `SEED_SYSTEMS` rather than off the built state because the roster is
+ * constructed in the same literal as the systems. Ties break on id, so it is a
+ * pure function of the seed and replays identically.
+ */
+function seedBase(factionId: string): string {
+  return [...SEED_SYSTEMS]
+    .filter((s) => s.controller === factionId)
+    .sort((a, b) => b.value - a.value || a.id.localeCompare(b.id))[0]!.id;
+}
+
 function applyOpeningFloors(systems: StarSystem[]): void {
   for (const [who, floors] of Object.entries(OPENING_FLOOR)) {
     const held = systems.filter((sys) => sys.ships?.[who] !== undefined);
@@ -771,6 +784,11 @@ export function createSeedState(playerFactionId: string): WorldState {
       appointedTurn: 0,
       battles: 0,
       status: 'active' as const,
+      // Standing on the power's best world, the same rule `fleetBases` orders
+      // by and `tickTurn` appoints to — an officer has to be SOMEWHERE now that
+      // where she is decides which battles she commands, and the seed cannot
+      // leave five of them nowhere.
+      atSystemId: seedBase(f.id),
     })),
     loans: [],
     /**

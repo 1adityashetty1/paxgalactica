@@ -194,6 +194,7 @@ describe('turn report', () => {
           progress: 0,
           force: {},
           investedCredits: 0,
+          commanderId: null,
           interruptible: true,
           onInterrupt: 'partial',
           visibility: [],
