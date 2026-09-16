@@ -33,7 +33,7 @@ import { rollD20 } from './checks.js';
  * - `lineofbattle` is **small and unconditional** — one point of might, which
  *   every fight reads.
  * - `gunnery` is **large and conditional on a class** — it multiplies the
- *   opening salvo, so she is worth a great deal to a power that builds torpedo
+ *   opening salvo, so they are worth a great deal to a power that builds torpedo
  *   boats and exactly nothing to one that brought none.
  * - `convoy` is **large and conditional on losing** — it is worth nothing at
  *   all until the day you have to run, and a great deal on that day.
@@ -65,7 +65,7 @@ export const COMMANDER_ARCHETYPES = [
     kind: 'gunnery',
     phase: 'the torpedo strike',
     effect: 'opens with a heavier salvo',
-    known: 'the opening salvo — she fires before the fleets close, and well',
+    known: 'the opening salvo — they fire before the fleets close, and well',
   },
   {
     kind: 'convoy',
@@ -95,7 +95,7 @@ export function archetypeOf(kind: CommanderArchetype) {
  * Before this, losing a commander was free and, worse, **profitable**. The
  * replacement arrived on the next tick with a new name, no bill, and a freshly
  * rolled archetype — so a power whose doctrine had dealt it a `convoy` officer
- * and whose yards built torpedo boats was better off losing her, two times in
+ * and whose yards built torpedo boats was better off losing them, two times in
  * three. The one mechanically live consequence of the death mechanic paid out
  * on average.
  *
@@ -159,7 +159,7 @@ export function veterancyOf(battles: number): number {
  * to write down.
  *
  * Scaling each archetype's own effect rather than adding a flat might bonus on
- * top keeps the three distinct. A veteran's bonus being might whatever she is
+ * top keeps the three distinct. A veteran's bonus being might whatever they are
  * known for would make every officer partly a `lineofbattle` officer, and that
  * archetype's whole claim is that its help is the small unconditional kind.
  */
@@ -258,20 +258,66 @@ export function activeCommanders(
 }
 
 /**
- * What a captured officer is worth, to her own power and to anybody else.
+ * What a captured officer is worth, to their own power and to anybody else.
  *
- * Worth most to the power that lost her, which is the whole of why an asset is
+ * Worth most to the power that lost them, which is the whole of why an asset is
  * worth trading rather than hoarding — and the same claim `prisoners` makes.
- * Scaled by her record, because a veteran is the officer a power actually wants
- * back: losing her cost them a ladder that took engagements to climb.
+ * Scaled by their record, because a veteran is the officer a power actually wants
+ * back: losing their cost them a ladder that took engagements to climb.
  *
  * Everyone else pays a flat, small figure. An enemy admiral is worth something
  * to a third party — as leverage, or as a thing to sell on — and nothing like
- * what she is worth at home.
+ * what they are worth at home.
  */
-export function officerRansom(c: Commander): Record<string, number> {
-  return { [c.factionId]: 150 + veterancyOf(c.battles) * 150 };
+export const OFFICER_LEVERAGE = 60;
+
+/**
+ * What a power will pay to get its own operative back.
+ *
+ * Below an officer's, and the gap is the point: a commander is a post, and a
+ * spy is a person who can be replaced by deploying another at `AGENT_COST`.
+ * What makes them worth anything at all is what they know, which is why the
+ * file made out of them is worth a share of this rather than of nothing.
+ */
+export const OPERATIVE_RANSOM = 120;
+
+/**
+ * What a prisoner's file is worth against the prisoner.
+ *
+ * A fraction, because interrogating them **spends** them: the ransom goes and
+ * what is left is paper worth a share of it, only to the power that did the
+ * questioning. That is the whole decision — a veteran is worth 450 alive to the
+ * power that wants them back, and a file on them is worth 180 to you.
+ */
+export const INTERROGATION_SHARE = 0.4;
+
+export function officerRansom(
+  c: Commander,
+  factionIds: readonly string[],
+): Record<string, number> {
+  const worth: Record<string, number> = {};
+  for (const id of factionIds) {
+    worth[id] = id === c.factionId ? 150 + veterancyOf(c.battles) * 150 : OFFICER_LEVERAGE;
+  }
+  return worth;
 }
+
+/**
+ * Killing one outright takes a **17 or better**, on a roll of its own.
+ *
+ * A separate die from the operation's, which is unavoidable rather than
+ * careless: the success test reads the BOTTOM of the d20 (`roll * 5 <=
+ * successChance`) and this has to read the top, so one roll cannot carry both.
+ * It is seeded on the agent and the turn like everything else, so it replays.
+ *
+ * Deliberately long odds on top of everything an assassination already costs —
+ * 150 credits, a slot against `maxAgentsFor`, spent after one attempt either
+ * way, and caught nearly half the time. A commander is the most concentrated
+ * thing on the board now that a veteran is worth three points of might or a
+ * seventh of a fleet's upkeep, and a reliable way to remove one would make
+ * every other use of an operative a mistake.
+ */
+export const ASSASSINATION_KILL_ROLL = 17;
 
 /* ------------------------------------------------------------------ */
 /* Passives: what an officer is worth on a turn with no battle         */
@@ -291,7 +337,7 @@ export function officerRansom(c: Commander): Record<string, number> {
  *
  * | | in battle | out of it |
  * |---|---|---|
- * | `lineofbattle` | always | least — she is already earning every fight |
+ * | `lineofbattle` | always | least — they are already earning every fight |
  * | `gunnery` | only with boats | middling |
  * | `convoy` | only when losing | **most**, and it is the largest recurring number in the ledger |
  *
@@ -300,7 +346,7 @@ export function officerRansom(c: Commander): Record<string, number> {
  * follow: a per-turn mutation compounds instead of recurring.
  *
  * They scale with veterancy like everything else here, so the officer a power
- * has kept alive is worth more at home as well as in the line — and losing her
+ * has kept alive is worth more at home as well as in the line — and losing them
  * costs something on a turn nobody fought at all, which is the whole of what
  * `battles` was supposed to mean.
  */
@@ -308,11 +354,11 @@ export function officerRansom(c: Commander): Record<string, number> {
 /**
  * `lineofbattle`: points of **resolve**, added like terrain and clamped the same.
  *
- * Her crews do not come apart, which is what `resolve` defends: `subornLimit`
+ * Their crews do not come apart, which is what `resolve` defends: `subornLimit`
  * is the suborner's guile modifier against the target's, so an officer known
  * for holding formation under fire makes a power's ships harder to turn. Never
  * might, for the reason the gunner's is never might — `bestMod` reads
- * `effectiveStats().might`, so it would pay her twice for the same battle.
+ * `effectiveStats().might`, so it would pay their twice for the same battle.
  *
  * **The first version of this was occupation relief and it was worth nothing.**
  * Discipline holding ground that is not yours is a better sentence, and it was
@@ -327,15 +373,15 @@ export const COMMANDER_RESOLVE = [1, 2, 3] as const;
 /**
  * `gunnery`: points of **industry**, added like terrain and clamped the same.
  *
- * An ordnance officer runs the establishment that makes the guns, so what she
+ * An ordnance officer runs the establishment that makes the guns, so what they
  * is worth at home is the industrial base rather than money. Industry
  * deliberately, and never might: `bestMod` reads `effectiveStats().might`, so a
- * might passive would pay her twice for the same battle.
+ * might passive would pay their twice for the same battle.
  */
 export const COMMANDER_INDUSTRY = [1, 2, 3] as const;
 
 /**
- * `convoy`: the share of fleet upkeep her logistics save. The big one.
+ * `convoy`: the share of fleet upkeep their logistics save. The big one.
  *
  * Upkeep is the largest standing charge any power carries — on the opening
  * board it is roughly a third of gross — so this is the only passive here that
@@ -359,7 +405,7 @@ export function commanderUpkeepRelief(c: Commander): number {
  *
  * Unlike `commanderEffect`, these accessors gate on the archetype themselves —
  * a ledger asks "what relief does this power's officer give me" without caring
- * which school she is from, and making every caller test the archetype first is
+ * which school they are from, and making every caller test the archetype first is
  * how one of them eventually forgets.
  */
 export function commanderPassive(c: Commander): string {
@@ -374,11 +420,11 @@ export function commanderPassive(c: Commander): string {
 }
 
 /* ------------------------------------------------------------------ */
-/* What an officer is worth, given her record                          */
+/* What an officer is worth, given their record                          */
 /* ------------------------------------------------------------------ */
 
 /**
- * The three ladders, read at the step the officer's own record puts her on.
+ * The three ladders, read at the step the officer's own record puts their on.
  *
  * Separate accessors rather than one `effectOf`, because the three are
  * denominated in three different things — a might modifier, a percentage off a
@@ -430,7 +476,7 @@ export function commanderEffect(c: Commander): string {
  * Engagements still owed before the next step, or `null` at the cap.
  *
  * Shown because the ladder is only a reason to protect an officer if a player
- * can see where she is on it — a cost you cannot read coming is a cost you
+ * can see where they are on it — a cost you cannot read coming is a cost you
  * cannot weigh.
  */
 export function toNextVeterancy(battles: number): number | null {
@@ -458,17 +504,17 @@ export const CommanderSchema = z.object({
   /**
    * `lost` is dead; `captured` is alive and in somebody else's hands.
    *
-   * A captured officer is **not on anybody's roster** — she counts against no
-   * cap, commands nothing, and draws no pay — but she still exists, which is
-   * what lets her come home. The `Asset` holding her is the thing that moves;
-   * this record is what she IS.
+   * A captured officer is **not on anybody's roster** — they count against no
+   * cap, commands nothing, and draws no pay — but they still exists, which is
+   * what lets their come home. The `Asset` holding their is the thing that moves;
+   * this record is what they IS.
    */
   status: z.enum(['active', 'lost', 'captured']).default('active'),
   /**
-   * Where she is standing, or `null` while she is in transit with a fleet.
+   * Where they are standing, or `null` while they are in transit with a fleet.
    *
    * **An officer is in a fleet without being tonnage**, which is the whole
-   * shape of this. She is not a `ShipStack` entry and never enters the loss
+   * shape of this. They are not a `ShipStack` entry and never enters the loss
    * order: everything in that order is denominated in tons, and putting a
    * person there would need an `orbitalWeight` — where the codebase has already
    * established that nothing may weigh exactly nothing, because a side with no
@@ -476,13 +522,13 @@ export const CommanderSchema = z.object({
    * in the loss order" is also precisely the bug `lifter` shipped with, which
    * made transports the safest thing in a fleet.
    *
-   * So she rides alongside the hulls rather than among them, and the only thing
-   * that can kill her is `commanderLost` on a defeat — a considered rule rather
+   * So they ride alongside the hulls rather than among them, and the only thing
+   * that can kill their is `commanderLost` on a defeat — a considered rule rather
    * than an emergent one that would need an exception to stop being a coin
    * flip.
    *
-   * In transit she belongs to the ORDER (`PendingOrder.commanderId`) and this
-   * is `null`, which is exactly how her ships work: a fleet under way is in
+   * In transit they belong to the ORDER (`PendingOrder.commanderId`) and this
+   * is `null`, which is exactly how their ships work: a fleet under way is in
    * `order.force` and not in `system.ships`, and `shipsInTransit` derives from
    * `pendingOrders`. One convention, not two.
    */
@@ -637,6 +683,60 @@ export function commanderName(
   return stock.place === 'prefix' ? `${title} ${person}` : `${person}, ${title}`;
 }
 
+/**
+ * A name nobody in this campaign is already using.
+ *
+ * Eighty officers per power sounds like plenty and is not: the birthday problem
+ * bites at five on a roster and again every time one is replaced, and a
+ * campaign that fields *Kess Coldwake* twice has told the player the generator
+ * is a generator. Measured before this: two of six draws collided in one power.
+ *
+ * Resolved by **bumping the salt and drawing again**, not by editing the name —
+ * a suffixed *"Kess Coldwake II"* is a worse answer than a different person.
+ * Deterministic, because the retry is a pure function of the taken set and the
+ * taken set is a pure function of state, so a replay walks the same path.
+ *
+ * Gives up after `TRIES` and returns the collision, which is right rather than
+ * defensive: exhausting eighty names means a power has fielded eighty officers
+ * and a repeat is no longer the surprising thing.
+ */
+export function unusedName(
+  taken: ReadonlySet<string>,
+  draw: (attempt: number) => string,
+): string {
+  const TRIES = 24;
+  let name = draw(0);
+  for (let i = 1; i < TRIES && taken.has(name); i++) name = draw(i);
+  return name;
+}
+
+/** Every name this campaign has already used, officers and operatives alike. */
+export function namesInUse(state: {
+  commanders?: Commander[];
+  agents?: { name?: string }[];
+}): Set<string> {
+  const taken = new Set<string>();
+  for (const c of state.commanders ?? []) taken.add(c.name);
+  for (const a of state.agents ?? []) if (a.name) taken.add(a.name);
+  return taken;
+}
+
+/**
+ * An operative's name: the same stock, and no title.
+ *
+ * Same people, so the same given and family names — an operative is one of the
+ * power's own, not a separate species. **No rank**, because a title here names
+ * a school of command and an operative commands nothing; what they have instead
+ * is a `cover`, which the game already asks for and which is the thing a rival
+ * actually sees.
+ */
+export function agentName(factionId: string, turn: number, salt: string): string {
+  const stock = NAME_STOCK[factionId] ?? FALLBACK;
+  const a = rollD20(turn, `agent-first:${factionId}:${salt}`) - 1;
+  const b = rollD20(turn, `agent-last:${factionId}:${salt}`) - 1;
+  return `${stock.first[a % stock.first.length]} ${stock.last[b % stock.last.length]}`;
+}
+
 /** Exported so a test can hold the stocks to the archetypes rather than to itself. */
 export const NAME_STOCK_FACTIONS = Object.keys(NAME_STOCK);
 export function titlesFor(factionId: string): Record<CommanderArchetype, string> {
@@ -670,9 +770,9 @@ export function commanderArchetype(factionId: string, turn: number, salt: string
  * **A successor inherits the archetype and never the record**, and the split is
  * the whole of what makes a death a loss. Re-rolling the specialty made a
  * defeat a free lottery ticket — a power stuck with an officer its fleet had no
- * use for was better off losing her — so the one live consequence of the death
+ * use for was better off losing them — so the one live consequence of the death
  * mechanic ran backwards. Inheriting it means what a defeat costs is the
- * `battles` behind her, which is a thing that took turns of winning to build
+ * `battles` behind them, which is a thing that took turns of winning to build
  * and cannot be bought at any price.
  *
  * It reads as the institution rather than the person, which is the right shape:
@@ -724,10 +824,10 @@ export function successorArchetype(
  * The officer of this power standing at this system, if any.
  *
  * What `commanderFor` is to a power, this is to a place — and the split is the
- * point of giving an officer a location at all: her **passives** are hers
- * wherever she is, because she runs the power's establishment, while her
- * **battle** effect reaches only the engagement she is actually present for.
- * Before this she commanded every battle her power fought, simultaneously,
+ * point of giving an officer a location at all: their **passives** are theirs
+ * wherever they are, because they run the power's establishment, while them
+ * **battle** effect reaches only the engagement they are actually present for.
+ * Before this they commanded every battle their power fought, simultaneously,
  * across the galaxy.
  */
 export function commanderAt(

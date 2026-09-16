@@ -265,10 +265,16 @@ describe('agents', () => {
   it('computes success chance in code, not from the model', () => {
     const res = withAgent({ kind: 'hull_damage', perTurn: 3 });
     const agent = res.state.agents[0]!;
-    // Nar guile 18 vs Free Worlds resolve 19 → slightly unfavourable.
+    // Nar guile against Free Worlds resolve — slightly unfavourable.
     expect(agent.successChance).toBeGreaterThan(0);
     expect(agent.successChance).toBeLessThan(100);
-    expect(agent.successChance).toBe(50 + (18 - 19) * 6);
+    // Read off EFFECTIVE stats on both sides, the same numbers `subornLimit`
+    // compares. It used to read the base sheet, so terrain, dissent, a rival's
+    // `stat_debuff` and an officer's passive reached the suborning contest and
+    // none of them reached this one.
+    const g = effectiveStats(res.state, 'ojjul').guile;
+    const r = effectiveStats(res.state, 'freeworlds').resolve;
+    expect(agent.successChance).toBe(50 + (g - r) * 6);
   });
 
   it('debuffs a stat while in place, and only for the target', () => {

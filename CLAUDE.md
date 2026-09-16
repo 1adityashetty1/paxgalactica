@@ -2879,7 +2879,7 @@ of the help:
 | archetype | shape | what it does |
 |---|---|---|
 | `lineofbattle` | small, unconditional | `COMMANDER_MIGHT` on the might modifier, which every fight reads |
-| `gunnery` | large, conditional on a **class** | multiplies the opening salvo by `COMMANDER_STRIKE_BONUS`, so she is worth a great deal to a power that builds torpedo boats and nothing to one that brought none |
+| `gunnery` | large, conditional on a **class** | multiplies the opening salvo by `COMMANDER_STRIKE_BONUS`, so they are worth a great deal to a power that builds torpedo boats and nothing to one that brought none |
 | `convoy` | large, conditional on **losing** | `COMMANDER_WITHDRAW_RELIEF` points off the retreat loss — worth nothing until the day you have to run |
 
 Each is a **ladder indexed by veterancy** rather than a single figure — see "A
@@ -2899,12 +2899,12 @@ spent getting clear, not how many; a stance changes whether you run at all.
 **Read off the largest contingent**, exactly as doctrine is, so a one-ship
 junior partner's officer does not run the coalition.
 
-### She sails with a fleet, and commands only the battle she is at
+### They sail with a fleet, and command only the battle they are at
 
 An officer has a location, and it decides everything: `Commander.atSystemId`
-while she is standing somewhere, `PendingOrder.commanderId` while she is under
+while they are standing somewhere, `PendingOrder.commanderId` while they are under
 way. Two fields rather than one because they answer different questions, and
-the split is **the same convention her ships already follow** — a fleet under
+the split is **the same convention their ships already follow** — a fleet under
 way is in `order.force` and not in `system.ships`, and `shipsInTransit` derives
 from `pendingOrders`. A person in transit belongs to the voyage.
 
@@ -2912,19 +2912,19 @@ An attacker's officer is the one who **sailed**; a defender's is whoever is
 standing on the world. Before this, a power's single commander fought every
 engagement it had, simultaneously, wherever they were.
 
-**She is in a fleet without being tonnage**, which is the whole shape of it. She
+**They are in a fleet without being tonnage**, which is the whole shape of it. They
 is not a `ShipStack` entry and never enters the loss order: everything in that
 order is denominated in tons, so a person there would need an `orbitalWeight` —
 and *nothing may weigh exactly nothing*, because a side with no weight reads as
 "nothing to fight" to every branch of the resolver. "Last in the loss order" is
 also precisely the bug `lifter` shipped with, which made transports the safest
 thing in a fleet and left the escort nothing to protect. The only thing that can
-kill her is `commanderLost` on a defeat — a considered rule rather than an
+kill their is `commanderLost` on a defeat — a considered rule rather than an
 emergent one needing an exception to stop being a coin flip.
 
 **Being present is what risks you; commanding is what helps.** Every officer on
-the field takes the death roll if her side breaks, while only the largest
-contingent's applies her effects. Where she ends up is tracked per contingent
+the field takes the death roll if their side breaks, while only the largest
+contingent's applies their effects. Where they end up is tracked per contingent
 through `onField`, so a coalition's officers fall back down their **own** paths
 rather than all landing on one world.
 
@@ -2943,16 +2943,16 @@ sails under nobody in particular.
 > check (no active officer is ever at no system and on no order) runs clean over
 > thirty turns.
 
-**The bots name their officer too**, when she is standing at the port a sortie
-leaves from. Without that, giving her a location would have made commanders a
+**The bots name their officer too**, when they are standing at the port a sortie
+leaves from. Without that, giving their a location would have made commanders a
 **player-only mechanic** — the thing 102 was explicitly built to avoid — since
 the bots drive four of the five powers. Measured exactly that way before it was
 added: every officer on the board finished thirty turns at zero engagements,
 where the same run had produced 3/2/1/0/0. It is deliberately not a reason to
-*move* her: the bots pick a port for the fleet, not for the officer.
+*move* them: the bots pick a port for the fleet, not for the officer.
 
-Her **passives** are hers wherever she is, because she runs the power's
-establishment; only the battle effect needs her present.
+Their **passives** are theirs wherever they are, because they run the power's
+establishment; only the battle effect needs their present.
 
 **Doctrine still picks who it is** when nobody is named, and a player naming one
 is the whole of officer assignment.
@@ -2998,17 +2998,17 @@ first two were battle presence and assignment.
 ### Taken alive
 
 An officer who does not walk away from a defeat is killed **or captured**, split
-out of the roll that was already there: `1–2` kills, `3–4` takes her alive. No
+out of the roll that was already there: `1–2` kills, `3–4` takes their alive. No
 second die, so it replays exactly. A capture needs a **captor**, so a fleet
 driven off by an unaligned world's militia is killed instead — ground with no
 flag over it does not run a prison.
 
 A captured officer becomes an `Asset` of kind `officer` in the victor's hands,
-held at the world where she was taken, so she travels with it when it changes
-hands. From there she needs **no second mechanism**: she is ransomed, traded,
+held at the world where they were taken, so they travel with it when it changes
+hands. From there they need **no second mechanism**: they are ransomed, traded,
 ceded or won back exactly as any other asset is, and `recruit_commander` with a
-`fromAssetId` puts her back in post with her record intact and spends the asset.
-Worth most to the power that lost her — the same claim `prisoners` makes, scaled
+`fromAssetId` puts their back in post with their record intact and spends the asset.
+Worth most to the power that lost them — the same claim `prisoners` makes, scaled
 by veterancy, because the officer a power actually wants back is the one whose
 ladder took engagements to climb.
 
@@ -3019,8 +3019,94 @@ came home would be whichever the code happened to read.
 Only your own come back. Turning somebody else's admiral is a far larger idea
 and nothing here should make it look built. A captured officer counts against no
 cap and draws no pay, which is what lets a power that lost one appoint a
-replacement — and what makes getting her back a real bargain rather than a
+replacement — and what makes getting their back a real bargain rather than a
 formality.
+
+### People, on both sides of the fog
+
+An officer and an operative are the same kind of thing once they are caught, and
+the machinery now says so.
+
+**Both are named, from the same stock.** An operative gets a given and family
+name and **no title** — a title here names a school of command and an operative
+commands nothing; what they have instead is a `cover`, which is the thing a
+rival actually sees. Names reach the System panel and the model's own block,
+where the operative line had been printing a raw `ownerFactionId` — the same
+leak item 104 closed two lines above it in the same file.
+
+**No campaign fields the same person twice.** `unusedName` bumps the salt and
+draws again rather than suffixing a duplicate: a second *Kess Coldwake II* is a
+worse answer than a different person, and eighty names per power collides sooner
+than it sounds — the birthday problem bites at five on a roster and again on
+every replacement. Deterministic, because the taken set is a pure function of
+state, so a replay walks the same path.
+
+**A burned operative is taken, not merely flagged.** Exposure used to set a
+boolean: the line closed, the person evaporated, and the power that caught them
+held nothing to show for it. They become an `operative` asset held at the world
+where they were caught, worth `OPERATIVE_RANSOM` to the power that ran them and
+`OFFICER_LEVERAGE` to everybody else — ransomed, traded, ceded or questioned
+with no second mechanism for any of it.
+
+`Asset.agentId` is the twin of `commanderId` and deliberately a **second field
+rather than one generalised `personId`**: the two are identical in the warehouse
+and completely different on the way out, since an officer goes back into post
+through `recruit_commander` and an operative back into the field through
+`deploy_agent`. One pointer would need disambiguating by `kind` at every read.
+
+**Spending a prisoner is interrogating them**, and what it makes is paper.
+`consume_asset` on either kind removes the person and mints a `dossier` worth
+`INTERROGATION_SHARE` of what they were worth. That is the only shape this could
+take without becoming the operative mechanic at none of its cost: a dossier
+grants **no visibility at all**, because the fog is a snapshot rather than a
+memory and a power that wants to see what a rival is building buys an operative.
+A prisoner who granted `watchedSystems` would be sight with no upkeep, no cap
+and nothing to burn.
+
+**A captured officer is worth something to everyone.** `officerRansom` writes a
+real figure for every power, not just the one that lost them — otherwise
+`serializeTheirAssets`, which filters a counterparty's shelf by what the *viewer*
+would pay, hides them from every third party and they cannot be bargained over
+at all. Home pays for the person; everybody else pays for the leverage.
+
+### The knife, and the stat contest it is judged by
+
+**`assassination` can be aimed at a person.** It could not be, which made
+*"assassinate their Iron Marshal"* admissible, priced, rolled — and then it
+damaged some hulls while the officer went on commanding battles. The inert
+success this codebase closes everywhere else.
+
+`Agent.targetCommanderId` names them, and two things bound it. They must be
+**standing at the operative's system** when the attempt resolves, so an officer
+who has sailed is one the knife does not find — the location model is the
+counterplay rather than a new stat. And killing takes `ASSASSINATION_KILL_ROLL`
+(17+) on a roll of its **own**, which is forced rather than careless: the
+operation's success test reads the bottom of the d20 (`roll * 5 <=
+successChance`) and this has to read the top, so one roll cannot carry both.
+Long odds on top of 150 credits, a slot against `maxAgentsFor`, one attempt
+either way and a 45% catch rate — a commander is the most concentrated thing on
+the board now that a veteran is worth three points of might, and a reliable way
+to remove one would make every other use of an operative a mistake.
+
+**`agentSuccessChance` reads `effectiveStats` on both sides**, which it did not.
+It read the base sheet while `subornLimit` two functions away reads the
+effective one — the same contest between the same two numbers, judged by
+different figures. So terrain, dissent, a rival's `stat_debuff` and an officer's
+passive all reached the suborning contest and **none of them reached the spy
+contest**: a power whose institutions had stopped following it recruited spies
+exactly as well as one at peace. Precisely the defect `effectiveStats` was
+introduced to fix for the d20, left behind in the one other place two stats are
+compared.
+
+### Officers are they/them
+
+Their names are generated, so there is nobody for a pronoun to be about: a
+commander is whoever the hash produced this campaign, and writing them as "she"
+made a claim the generator never makes. The five faction **leaders** are the
+opposite case — authored, with pronouns stated on their own sheets — and
+`naming.test.ts` pins those separately. A test pins this one too, because it is
+exactly the kind of convention that decays: the next person to write a paragraph
+about a commander will reach for a pronoun, and nothing else would notice.
 
 > **The board moves, and it is a cliff rather than a gradient.** Bots keeping two
 > officers instead of one diverts roughly 420 credits a power over thirty turns
@@ -3056,7 +3142,7 @@ The replacement also **re-rolled the archetype**, and that made losing an
 officer free in the only sense that matters: the successor was exactly as good,
 one turn later, at no charge. Worse than free, in fact — a power whose yards
 built torpedo boats and whose doctrine had dealt it a `convoy` officer was
-better off losing her, two times in three. The one mechanically live consequence
+better off losing them, two times in three. The one mechanically live consequence
 of the death mechanic paid out on average.
 
 `battles` was already being counted and had **no mechanical reader at all**: two
@@ -3079,7 +3165,7 @@ Two changes, and they are halves of one idea:
   It also removes the free re-roll.
 - **The record is worth something.** `veterancyOf` puts an officer on one of
   three steps and each archetype's own effect scales with it, so what a defeat
-  costs is the `battles` behind her — a thing that takes turns of winning to
+  costs is the `battles` behind them — a thing that takes turns of winning to
   build and **cannot be bought back at any price**.
 
 | step | at | `lineofbattle` | `gunnery` | `convoy` |
@@ -3123,7 +3209,7 @@ played campaign put Meridian's officer on **ten** engagements and the Vigil's on
 eight — two veterans at the cap, against a bot galaxy where nobody reaches five.
 
 The ladder is shown where it can be acted on: the Command tab says what **this**
-officer is worth and how far off the next step she is, because a cost a player
+officer is worth and how far off the next step they are, because a cost a player
 cannot read coming is a cost they cannot weigh. `COMMANDER_ARCHETYPES[].effect`
 quotes no number any more — it used to say *"fights a point harder"*, which
 stopped being true the moment a record could make it two.
@@ -3180,7 +3266,7 @@ parse.
 > murmur3 finalizer already guarantees, and padding a name list to 20 to flatten
 > it would be arithmetic driving the fiction.
 
-### And what she is worth on a turn with no battle
+### And what they are worth on a turn with no battle
 
 Each archetype also has a passive, and the sizes run **opposite to how
 conditional its battle effect is**. The problem being answered is `convoy`:
@@ -3191,8 +3277,8 @@ it.
 
 | archetype | in battle | out of it | at the cap |
 |---|---|---|---|
-| `lineofbattle` | always | **+resolve** — her crews do not come apart, so `subornLimit` against the power falls | +3 |
-| `gunnery` | only with boats | **+industry** — she runs the establishment that makes the guns | +3 |
+| `lineofbattle` | always | **+resolve** — their crews do not come apart, so `subornLimit` against the power falls | +3 |
+| `gunnery` | only with boats | **+industry** — they run the establishment that makes the guns | +3 |
 | `convoy` | only when losing | **−% fleet upkeep**, the largest standing charge any power carries | −14% |
 
 **Neither stat passive is might**, which is the one constraint that shapes the

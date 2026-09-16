@@ -463,6 +463,18 @@ export const AssetSchema = z.object({
    * `null` for every other kind of asset, which is all of them but one.
    */
   commanderId: z.string().nullable().default(null),
+  /**
+   * The operative this asset IS, when it is one taken alive.
+   *
+   * The twin of `commanderId` and deliberately a **second field rather than one
+   * generalised `personId`**: the two are the same kind of thing in the
+   * warehouse and completely different flows out of it — an officer goes back
+   * into post through `recruit_commander`, an operative back into the field
+   * through `deploy_agent`. A single pointer would have to be disambiguated by
+   * the asset's `kind` at every read, which is the sort of implicit contract
+   * that holds right up until somebody adds a third.
+   */
+  agentId: z.string().nullable().default(null),
   divisible: z.boolean().default(true),
   /**
    * factionId -> what one unit is worth to that power, in credits.
@@ -971,6 +983,25 @@ export const AgentSchema = z.object({
   /** Exposed agents are visible to the target and stop producing effects. */
   exposed: z.boolean().default(false),
   cover: z.string().default(''),
+  /**
+   * Who they are. Generated like an officer's and from the same stock, because
+   * an operative is one of the power's own people rather than a separate
+   * species — and without a name a burned network is a row of ids.
+   *
+   * Defaulted to empty so every agent written before operatives had names still
+   * loads; the readers fall back to the cover, then to the mission.
+   */
+  name: z.string().default(''),
+  /**
+   * The officer an `assassination` is aimed at, if it is aimed at one.
+   *
+   * `null` for every other mission and for an assassination aimed at a power
+   * rather than a person. The officer must be **standing at this operative's
+   * system** when the attempt resolves — which is what makes the attempt
+   * counterable: an officer who has sailed is an officer the knife does not
+   * find, so the location model is the defence rather than a new stat.
+   */
+  targetCommanderId: z.string().nullable().default(null),
 });
 export type Agent = z.infer<typeof AgentSchema>;
 

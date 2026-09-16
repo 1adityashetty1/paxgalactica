@@ -566,7 +566,7 @@ export const PendingOrderSchema = z.object({
   /**
    * An officer riding with this fleet, if one was named to it.
    *
-   * She is carried by the order for the same reason her ships are: a fleet
+   * They are carried by the order for the same reason their ships are: a fleet
    * under way is in `order.force` rather than in `system.ships`, so a person
    * under way is here rather than in `Commander.atSystemId`. Nullable and
    * defaulted, so every order written before officers could sail still loads.
@@ -1460,7 +1460,7 @@ export function ledgerFor(
 
   const agentUpkeep = liveAgentsOf(state, factionId).length * AGENT_UPKEEP;
   // Officers in post draw pay. Captured and lost do not — a power stops paying
-  // a commander the day it stops having her, which is also what stops a roster
+  // a commander the day it stops having them, which is also what stops a roster
   // of the fallen costing anything.
   const commanderUpkeep =
     activeCommanders(state.commanders, factionId).length * COMMANDER_UPKEEP;
@@ -1904,7 +1904,7 @@ export function effectiveStats(state: WorldState, factionId: string): FactionSta
   }
 
   // The officer's passive, on one stat and never on might: `bestMod` reads
-  // `effectiveStats().might`, so a might passive would pay her twice for the
+  // `effectiveStats().might`, so a might passive would pay their twice for the
   // same battle. A gunner runs the establishment that makes the guns; a line
   // officer's crews do not come apart, which is what `resolve` defends. Added
   // beside terrain and before dissent for terrain's own reason — a good officer

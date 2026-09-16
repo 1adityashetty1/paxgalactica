@@ -272,7 +272,7 @@ export function BattleCard({ report, state }: { report: BattleReport; state: Wor
           {/* Its own list rather than more entries in that one: a doctrine is
               what a power IS and is true of every battle it fights, where an
               officer is who happened to be aboard this one — and the
-              interesting thing about her is that next turn she might not be. */}
+              interesting thing about them is that next turn they might not be. */}
           {(report.commandersFired ?? []).length > 0 && (
             <ul className="battle-commanders">
               {report.commandersFired.map((c, i) => (

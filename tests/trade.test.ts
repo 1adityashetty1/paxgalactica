@@ -792,6 +792,7 @@ describe('suborning crews: presence and a stat contest, not a sentence', () => {
       id: 'a1', ownerFactionId: 'drajk', systemId: 'ilv-2', mission: 'defection',
       effect: { kind: 'crew_defection', perTurn: 2 },
       successChance: 60, exposed: false, deployedTurn: 0, cover: 'a quiet word',
+      targetCommanderId: null, name: '',
     });
     const res = suborn(state, 'ilv-2', 'ojjul', 2);
     expect(res.rejections).toHaveLength(0);
@@ -857,6 +858,7 @@ describe('the defection agent mission', () => {
       id: 'a1', ownerFactionId: 'drajk', systemId: at, mission: 'defection',
       effect: { kind: 'crew_defection', perTurn },
       successChance: 100, exposed: false, deployedTurn: 0, cover: 'quiet words',
+      targetCommanderId: null, name: '',
     });
     return { state, target };
   };
@@ -1068,6 +1070,7 @@ describe('suborning is statecraft, not combat', () => {
       id: 'a1', ownerFactionId: 'drajk', systemId: 'ilv-2', mission: 'defection',
       effect: { kind: 'crew_defection', perTurn: 2 },
       successChance: 100, exposed: false, deployedTurn: 0, cover: 'quiet words',
+      targetCommanderId: null, name: '',
     });
     const beforeAgent = disp(withAgent, 'ojjul', 'drajk');
     const ticked = tickTurn(withAgent).state;

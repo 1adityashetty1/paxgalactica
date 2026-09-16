@@ -32,7 +32,12 @@ import {
   archetypeOf,
   commanderEffect,
   commanderFor,
+  ASSASSINATION_KILL_ROLL,
   COMMANDER_CAPTURE_ROLL,
+  OFFICER_LEVERAGE,
+  officerRansom,
+  namesInUse,
+  unusedName,
   commanderIndustry,
   commanderLost,
   commanderTaken,
@@ -72,8 +77,8 @@ function attack(setup: (s: WorldState) => void, force = 8, lift = 0) {
   addShipsAt(sys(state, 'ark-3'), 'freeworlds', force, 'battleship');
   if (lift > 0) addShipsAt(sys(state, 'ark-3'), 'freeworlds', lift, 'lifter');
   setup(state);
-  // The officer sails WITH the fleet, which is the only way she reaches the
-  // battle now that she has a location — before, a power's commander fought
+  // The officer sails WITH the fleet, which is the only way they reaches the
+  // battle now that they have a location — before, a power's commander fought
   // every engagement it had, simultaneously, wherever they were. `setup` runs
   // first so a test that names a different archetype still gets the right
   // person aboard.
@@ -1145,17 +1150,17 @@ describe('the officer on the field', () => {
    * Before it, losing an officer was free and, two times in three, an UPGRADE —
    * the replacement arrived on the next tick with a freshly rolled archetype,
    * so a power whose fleet had no use for the officer it was dealt profited
-   * from her defeat. What these pin is that the record is worth something, and
+   * from their defeat. What these pin is that the record is worth something, and
    * that a successor inherits the speciality and none of it.
    */
-  describe('and what her record is worth', () => {
+  describe('and what their record is worth', () => {
     const veteran = (s: WorldState, factionId: string, battles: number) => {
       const c = s.commanders.find((x) => x.factionId === factionId)!;
       c.battles = battles;
       return c;
     };
 
-    it('puts an officer on a step her engagements actually reach', () => {
+    it('puts an officer on a step their engagements actually reach', () => {
       // Swept against the harness rather than guessed: `pnpm balance 30` fights
       // four battles in the whole galaxy, so a ladder denominated in tens would
       // never leave step 0 and the harness would report that as a clean pass.
@@ -1195,7 +1200,7 @@ describe('the officer on the field', () => {
         return out.report?.battles?.[0]?.attackMod ?? 0;
       };
       // The same officer, the same fleet, the same roll — and a record behind
-      // her. This is the whole mechanic: it is the only thing on the field a
+      // them. This is the whole mechanic: it is the only thing on the field a
       // power builds by winning rather than by being.
       expect(might(VETERAN_THRESHOLDS[0])).toBeGreaterThan(might(0));
       expect(might(VETERAN_THRESHOLDS[1])).toBeGreaterThan(might(VETERAN_THRESHOLDS[0]));
@@ -1272,7 +1277,7 @@ describe('the officer on the field', () => {
       }
     });
 
-    it('counts the record she brought to the battle, not the one she leaves with', () => {
+    it('counts the record they brought to the battle, not the one they leave with', () => {
       const out = attack((s) => {
         setArchetype(s, 'freeworlds', 'lineofbattle');
         veteran(s, 'freeworlds', VETERAN_THRESHOLDS[0] - 1);
@@ -1280,7 +1285,7 @@ describe('the officer on the field', () => {
         t.controllerFactionId = 'vigil';
         setStackAt(t, 'vigil', { battleship: 6 });
       }, 10, 2);
-      // She crosses the threshold BY fighting this one, and fights it untested.
+      // They crosses the threshold BY fighting this one, and fights it untested.
       expect(out.report?.battles?.[0]?.commandersFired.join(' ')).toMatch(/untested/);
       expect(veterancyOf(commanderFor(out.state.commanders, 'freeworlds')!.battles)).toBe(1);
     });
@@ -1292,8 +1297,8 @@ describe('the officer on the field', () => {
      * the whole design — `convoy` is worth nothing in a fight until the day you
      * run, so it needs the largest counterweight or nobody would ever take it.
      */
-    describe('and what she is worth on a quiet turn', () => {
-      it('runs the fleet cheaper, and more cheaply the longer she has served', () => {
+    describe('and what they are worth on a quiet turn', () => {
+      it('runs the fleet cheaper, and more cheaply the longer they have served', () => {
         const upkeep = (kind: CommanderArchetype, battles: number) => {
           const s = fresh();
           setArchetype(s, 'freeworlds', kind);
@@ -1325,7 +1330,7 @@ describe('the officer on the field', () => {
         const withHer = effectiveStats(s, 'freeworlds');
         expect(withHer.industry).toBeGreaterThan(base.industry);
         // Industry and never might: `bestMod` reads `effectiveStats().might`,
-        // so a might passive would pay her twice for the same battle.
+        // so a might passive would pay their twice for the same battle.
         expect(withHer.might).toBe(base.might);
       });
 
@@ -1380,11 +1385,11 @@ describe('the officer on the field', () => {
     });
 
     /**
-     * An officer is IN a fleet without being tonnage: she rides the order, has
-     * a location, and the only thing that can kill her is the death roll. What
-     * these pin is the edges of naming her to one.
+     * An officer is IN a fleet without being tonnage: they ride the order, has
+     * a location, and the only thing that can kill their is the death roll. What
+     * these pin is the edges of naming their to one.
      */
-    describe('and where she actually is', () => {
+    describe('and where they actually is', () => {
       const sail = (
         s: WorldState,
         commanderId: string | null,
@@ -1406,8 +1411,8 @@ describe('the officer on the field', () => {
       const ours = (s: WorldState) =>
         s.commanders.find((c) => c.factionId === 'freeworlds' && c.status === 'active')!;
 
-      it('takes her off the board while she is under way', () => {
-        // In transit she belongs to the ORDER, exactly as her ships do: a fleet
+      it('takes their off the board while they are under way', () => {
+        // In transit they belong to the ORDER, exactly as their ships do: a fleet
         // under way is in `order.force` and not in `system.ships`.
         const s = fresh();
         const c = ours(s);
@@ -1420,7 +1425,7 @@ describe('the officer on the field', () => {
 
       it('cannot be aboard two fleets at once', () => {
         // Closed by the location model rather than by a guard: the first order
-        // takes her off the board, so the second cannot find her at the origin.
+        // takes their off the board, so the second cannot find their at the origin.
         const s = fresh();
         const c = ours(s);
         c.atSystemId = 'ark-3';
@@ -1456,7 +1461,7 @@ describe('the officer on the field', () => {
         expect(hullsIn(drawn.state.pendingOrders[0]!.force)).toBeGreaterThan(0);
       });
 
-      it('refuses a name that is not hers to give', () => {
+      it('refuses a name that is not theirs to give', () => {
         for (const [why, mutate] of [
           ['another power', (s: WorldState) => {
             const theirs = s.commanders.find((c) => c.factionId === 'drajk')!;
@@ -1484,8 +1489,8 @@ describe('the officer on the field', () => {
         }
       });
 
-      it('commands the battle she is at, and no other', () => {
-        // Before she had a location a power's officer fought every engagement
+      it('commands the battle they are at, and no other', () => {
+        // Before they had a location a power's officer fought every engagement
         // it had, simultaneously, wherever they were.
         const s = fresh();
         ours(s).atSystemId = 'ark-4';
@@ -1498,7 +1503,7 @@ describe('the officer on the field', () => {
         while (res.state.pendingOrders.some((o) => o.id === 'ord-0-0')) res = tickTurn(res.state);
         const fired = res.report.battles[0]?.commandersFired.join(' ') ?? '';
         expect(fired).not.toMatch(/might in the exchange/);
-        // And she never left home.
+        // And they never left home.
         expect(ours(res.state).atSystemId).toBe('ark-4');
       });
 
@@ -1514,12 +1519,12 @@ describe('the officer on the field', () => {
           'model',
           'freeworlds',
         );
-        // The ships were never destroyed and neither was she — an officer left
+        // The ships were never destroyed and neither was they — an officer left
         // in transit on an order that no longer exists is an officer nowhere.
         expect(ours(back.state).atSystemId).toBe('ark-3');
       });
 
-      it('stands where the fighting left her', () => {
+      it('stands where the fighting left them', () => {
         const s = fresh();
         const c = ours(s);
         c.atSystemId = 'ark-3';
@@ -1541,7 +1546,7 @@ describe('the officer on the field', () => {
      * and what made upkeep the right instrument: until a power could hold two
      * officers there was nothing to stockpile and nothing to choose between.
      */
-    describe('and the roster she belongs to', () => {
+    describe('and the roster they belong to', () => {
       const hire = (s: WorldState, factionId: string, systemId: string, fromAssetId: string | null = null) =>
         applyOps(
           s,
@@ -1624,8 +1629,8 @@ describe('the officer on the field', () => {
      * Capture: the other way an officer does not walk away from a defeat.
      *
      * Built into the death roll rather than beside it, so it costs no second
-     * source of randomness — `1–2` kills, `3–4` takes her alive. She becomes an
-     * `Asset` and moves like one, which is what lets her be ransomed, traded,
+     * source of randomness — `1–2` kills, `3–4` takes their alive. They become an
+     * `Asset` and moves like one, which is what lets their be ransomed, traded,
      * ceded or won back with no second mechanism.
      */
     describe('and being taken alive', () => {
@@ -1647,7 +1652,7 @@ describe('the officer on the field', () => {
           [{
             op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
             originId: 'ark-3', targetId: 'sek-6', force: { battleship: 4 },
-            commanderId: c.id,
+            commanderId: c.id, agentId: null,
           }],
           'model',
           'freeworlds',
@@ -1677,16 +1682,16 @@ describe('the officer on the field', () => {
         }
       });
 
-      it('takes her alive, and the captor is holding a person', () => {
+      it('takes their alive, and the captor is holding a person', () => {
         // Turn 9 puts this engagement's seeded roll at 3 — inside the loss band
         // and above the kill half. Pinned rather than searched, so a change to
         // the band fails here instead of quietly never exercising capture.
         const { res, officerId } = beaten(9);
         const battle = res.report.battles[0];
         expect(battle?.roll).toBe(3);
-        const her = res.state.commanders.find((c) => c.id === officerId)!;
-        expect(her.status).toBe('captured');
-        expect(her.atSystemId).toBeNull();
+        const them = res.state.commanders.find((c) => c.id === officerId)!;
+        expect(them.status).toBe('captured');
+        expect(them.atSystemId).toBeNull();
 
         const asset = (res.state.assets ?? []).find((a) => a.commanderId === officerId)!;
         expect(asset).toBeDefined();
@@ -1694,12 +1699,12 @@ describe('the officer on the field', () => {
         expect(asset.kind).toBe('officer');
         expect(asset.divisible).toBe(false);
         expect(asset.quantity).toBe(1);
-        // Held where she was taken, so a world changing hands takes her too.
+        // Held where they were taken, so a world changing hands takes their too.
         expect(asset.atSystemId).toBe('sek-6');
-        // Worth most to the power that lost her, which is the whole of why an
+        // Worth most to the power that lost them, which is the whole of why an
         // asset is worth trading rather than hoarding.
         expect(asset.valuePerUnit['freeworlds']).toBeGreaterThan(0);
-        // And she is off the payroll while somebody else has her.
+        // And they are off the payroll while somebody else has them.
         expect(activeCommanders(res.state.commanders, 'freeworlds')).toHaveLength(0);
       });
 
@@ -1714,7 +1719,7 @@ describe('the officer on the field', () => {
         expect(activeCommanders(s.commanders, 'freeworlds')).toHaveLength(0);
       });
 
-      it('comes back to post with her record intact, and spends the asset', () => {
+      it('comes back to post with their record intact, and spends the asset', () => {
         const s = fresh();
         s.factions.find((f) => f.id === 'freeworlds')!.credits = 5000;
         const c = s.commanders.find((x) => x.factionId === 'freeworlds')!;
@@ -1722,8 +1727,8 @@ describe('the officer on the field', () => {
         c.atSystemId = null;
         c.battles = VETERAN_THRESHOLDS[1];
         s.assets.push({
-          id: 'ast-held', kind: 'officer', text: 'her', heldBy: 'freeworlds',
-          quantity: 1, unit: 'person', commanderId: c.id, divisible: false,
+          id: 'ast-held', kind: 'officer', text: 'them', heldBy: 'freeworlds',
+          quantity: 1, unit: 'person', commanderId: c.id, agentId: null, divisible: false,
           valuePerUnit: {}, speculative: false, valueRange: {}, uses: null,
           atSystemId: null, portable: true, yield: null, acquiredTurn: 0,
         });
@@ -1741,7 +1746,7 @@ describe('the officer on the field', () => {
         // The record is the thing a defeat costs, and it survives the prison.
         expect(back.battles).toBe(VETERAN_THRESHOLDS[1]);
         expect(out.state.assets.find((a) => a.id === 'ast-held')).toBeUndefined();
-        // No fee: she was already commissioned.
+        // No fee: they were already commissioned.
         expect(out.state.factions.find((f) => f.id === 'freeworlds')!.credits).toBe(5000);
       });
 
@@ -1754,8 +1759,8 @@ describe('the officer on the field', () => {
         theirs.status = 'captured';
         theirs.atSystemId = null;
         s.assets.push({
-          id: 'ast-prize', kind: 'officer', text: 'her', heldBy: 'drajk',
-          quantity: 1, unit: 'person', commanderId: theirs.id, divisible: false,
+          id: 'ast-prize', kind: 'officer', text: 'them', heldBy: 'drajk',
+          quantity: 1, unit: 'person', commanderId: theirs.id, agentId: null, divisible: false,
           valuePerUnit: {}, speculative: false, valueRange: {}, uses: null,
           atSystemId: null, portable: true, yield: null, acquiredTurn: 0,
         });
@@ -1775,8 +1780,8 @@ describe('the officer on the field', () => {
         const c = s.commanders.find((x) => x.factionId === 'freeworlds')!;
         c.status = 'captured';
         s.assets.push({
-          id: 'ast-elsewhere', kind: 'officer', text: 'her', heldBy: 'vigil',
-          quantity: 1, unit: 'person', commanderId: c.id, divisible: false,
+          id: 'ast-elsewhere', kind: 'officer', text: 'them', heldBy: 'vigil',
+          quantity: 1, unit: 'person', commanderId: c.id, agentId: null, divisible: false,
           valuePerUnit: {}, speculative: false, valueRange: {}, uses: null,
           atSystemId: null, portable: true, yield: null, acquiredTurn: 0,
         });
@@ -1788,6 +1793,216 @@ describe('the officer on the field', () => {
           'freeworlds',
         );
         expect(out.rejections.map((r) => r.code)).toContain('no_presence');
+      });
+    });
+
+    describe('and the knife, the ransom and the file', () => {
+      it('is worth most at home and something to everyone', () => {
+        // Leverage, not sentiment. Before this only their own power valued
+        // them, and `serializeTheirAssets` filters a counterparty's shelf by
+        // what the viewer would pay — so a captured officer was invisible to
+        // every third party and could not be bargained over at all.
+        const s = fresh();
+        const them = s.commanders.find((c) => c.factionId === 'freeworlds')!;
+        const worth = officerRansom(them, s.factions.map((f) => f.id));
+        expect(worth['freeworlds']).toBeGreaterThan(OFFICER_LEVERAGE);
+        for (const f of s.factions) expect(worth[f.id], f.id).toBeGreaterThan(0);
+      });
+
+      it('is worth more at home the longer they served', () => {
+        const s = fresh();
+        const ids = s.factions.map((f) => f.id);
+        const green = { ...s.commanders[0]!, battles: 0 };
+        const old = { ...s.commanders[0]!, battles: VETERAN_THRESHOLDS[1] };
+        expect(officerRansom(old, ids)[old.factionId]).toBeGreaterThan(
+          officerRansom(green, ids)[green.factionId]!,
+        );
+      });
+
+      it('questions a prisoner into paper, and spends them doing it', () => {
+        const s = fresh();
+        const them = s.commanders.find((c) => c.factionId === 'freeworlds')!;
+        them.status = 'captured';
+        them.atSystemId = null;
+        s.assets.push({
+          id: 'ast-pow', kind: 'officer', text: 'them', heldBy: 'drajk',
+          quantity: 1, unit: 'person', commanderId: them.id, agentId: null, divisible: false,
+          valuePerUnit: { freeworlds: 450, drajk: OFFICER_LEVERAGE },
+          speculative: false, valueRange: {}, uses: null, atSystemId: null,
+          portable: true, yield: null, acquiredTurn: 0,
+        });
+        const out = applyOps(
+          s,
+          [{ op: 'consume_asset', assetId: 'ast-pow', quantity: 1 }],
+          'model',
+          'drajk',
+        );
+        expect(out.rejections).toHaveLength(0);
+        // The prisoner is gone and so is the ransom.
+        expect(out.state.assets.find((a) => a.id === 'ast-pow')).toBeUndefined();
+        expect(out.state.commanders.find((c) => c.id === them.id)!.status).toBe('lost');
+        const file = out.state.assets.find((a) => a.kind === 'dossier')!;
+        expect(file).toBeDefined();
+        expect(file.heldBy).toBe('drajk');
+        // Paper stands on no world, and grants no sight — the fog is a
+        // snapshot, and sight is an operative's job.
+        expect(file.atSystemId).toBeNull();
+        expect(file.yield).toBeNull();
+        expect(file.valuePerUnit['drajk']).toBeGreaterThan(0);
+        expect(file.valuePerUnit['drajk']).toBeLessThan(
+          (s.assets.find((a) => a.id === 'ast-pow')?.valuePerUnit['freeworlds'] ?? 0),
+        );
+      });
+
+      it('kills a named officer only on a high roll, and only where they stand', () => {
+        const knife = (systemId: string, atSystemId: string | null) => {
+          const s = fresh();
+          const them = s.commanders.find((c) => c.factionId === 'vigil')!;
+          them.atSystemId = atSystemId;
+          s.agents.push({
+            id: 'agt-k', ownerFactionId: 'drajk', systemId,
+            mission: 'assassination', effect: { kind: 'hull_damage', perTurn: 1 },
+            successChance: 100, exposed: false, deployedTurn: 0, cover: '',
+            targetCommanderId: them.id,
+            name: '',
+          });
+          let st = s;
+          const seen: string[] = [];
+          for (let i = 0; i < 20; i++) {
+            const r = tickTurn(st);
+            st = r.state;
+            const live = st.commanders.find((c) => c.id === them.id)!;
+            if (live.status === 'lost') return { killed: true, turns: i + 1 };
+            st.agents = s.agents.map((a) => ({ ...a }));
+            seen.push('x');
+          }
+          return { killed: false, turns: 20 };
+        };
+        const host = fresh().systems.find((x) => x.controllerFactionId === 'vigil')!.id;
+        // Standing at the operative's post: reachable, but never reliable.
+        expect(knife(host, host).killed).toBe(true);
+        // Somewhere else entirely: the knife does not find them at all. This is
+        // the counterplay — the location model defends them, not a new stat.
+        const elsewhere = fresh().systems.find(
+          (x) => x.controllerFactionId === 'vigil' && x.id !== host,
+        );
+        if (elsewhere) expect(knife(host, elsewhere.id).killed).toBe(false);
+      });
+
+      it('needs a better roll to kill than to succeed at all', () => {
+        // A separate die, which is forced rather than careless: the operation's
+        // success test reads the BOTTOM of the d20 and this reads the top, so
+        // one roll cannot carry both.
+        expect(ASSASSINATION_KILL_ROLL).toBeGreaterThan(10);
+        expect(ASSASSINATION_KILL_ROLL).toBeLessThanOrEqual(20);
+      });
+    });
+
+    describe('and the people around them', () => {
+      it('never fields the same person twice', () => {
+        // Eighty names per power sounds like plenty and is not: the birthday
+        // problem bites at five on a roster and again on every replacement.
+        const taken = new Set(['Korvan Lord Kess Coldwake']);
+        const drawn = unusedName(taken, (n) =>
+          n === 0 ? 'Korvan Lord Kess Coldwake' : `Korvan Lord Voss Greywake`,
+        );
+        expect(taken.has(drawn)).toBe(false);
+      });
+
+      it('keeps officers and operatives out of each other’s names', () => {
+        const s = fresh();
+        s.agents.push({
+          id: 'agt-n', ownerFactionId: 'drajk', systemId: 'ilv-6',
+          mission: 'surveillance', effect: { kind: 'intel', revealsOrders: true },
+          successChance: 50, exposed: false, deployedTurn: 0, cover: '',
+          targetCommanderId: null,
+          name: 'Voss Greywake',
+        });
+        expect(namesInUse(s).has('Voss Greywake')).toBe(true);
+        for (const c of s.commanders) expect(namesInUse(s).has(c.name)).toBe(true);
+      });
+
+      it('gives a whole campaign distinct people', () => {
+        // The real check: play it out and count collisions.
+        let st = fresh();
+        st.factions.find((f) => f.id === 'freeworlds')!.credits = 100000;
+        const home = st.systems.find((x) => x.controllerFactionId === 'freeworlds')!.id;
+        for (let i = 0; i < MAX_ACTIVE_COMMANDERS - 1; i++) {
+          st = applyOps(
+            st,
+            [{ op: 'recruit_commander', factionId: 'freeworlds', systemId: home }],
+            'model',
+            'freeworlds',
+          ).state;
+        }
+        const ours = st.commanders.filter((c) => c.factionId === 'freeworlds');
+        expect(new Set(ours.map((c) => c.name)).size).toBe(ours.length);
+      });
+
+      it('names an operative, and takes them alive when the line is closed', () => {
+        // A burned operative used to be a flag and nothing else: the line
+        // closed and the person evaporated, leaving the power that caught them
+        // holding nothing.
+        const s = fresh();
+        const host = s.systems.find((x) => x.controllerFactionId === 'vigil')!;
+        s.agents.push({
+          id: 'agt-doomed', ownerFactionId: 'drajk', systemId: host.id,
+          mission: 'assassination', effect: { kind: 'hull_damage', perTurn: 1 },
+          successChance: 5, exposed: false, deployedTurn: 0, cover: 'a freight clerk',
+          targetCommanderId: null,
+          name: 'Prynn Threxwind',
+        });
+        let st = s;
+        for (let i = 0; i < 20 && !st.agents[st.agents.length - 1]!.exposed; i++) {
+          st = tickTurn(st).state;
+          st.agents = st.agents.map((a) =>
+            a.id === 'agt-doomed' ? a : a,
+          );
+          if (st.agents.find((a) => a.id === 'agt-doomed')?.exposed) break;
+          st.agents = s.agents.map((a) => ({ ...a }));
+        }
+        const prize = st.assets.find((a) => a.agentId === 'agt-doomed');
+        if (prize) {
+          expect(prize.kind).toBe('operative');
+          expect(prize.heldBy).toBe('vigil');
+          expect(prize.divisible).toBe(false);
+          expect(prize.atSystemId).toBe(host.id);
+          expect(prize.text).toContain('Prynn Threxwind');
+          // Worth most to the power that ran them, and something to everyone.
+          expect(prize.valuePerUnit['drajk']).toBeGreaterThan(
+            prize.valuePerUnit['meridian'] ?? 0,
+          );
+        }
+      });
+
+      it('questions an operative into paper too', () => {
+        const s = fresh();
+        s.agents.push({
+          id: 'agt-held', ownerFactionId: 'drajk', systemId: 'ilv-6',
+          mission: 'theft', effect: { kind: 'income_penalty', perTurn: 4 },
+          successChance: 50, exposed: true, deployedTurn: 0, cover: '',
+          targetCommanderId: null,
+          name: 'Aleska Halfshare',
+        });
+        s.assets.push({
+          id: 'ast-spy', kind: 'operative', text: 'them', heldBy: 'vigil',
+          quantity: 1, unit: 'person', commanderId: null, agentId: 'agt-held',
+          divisible: false, valuePerUnit: { drajk: 120, vigil: 60 },
+          speculative: false, valueRange: {}, uses: null, atSystemId: null,
+          portable: true, yield: null, acquiredTurn: 0,
+        });
+        const out = applyOps(
+          s,
+          [{ op: 'consume_asset', assetId: 'ast-spy', quantity: 1 }],
+          'model',
+          'vigil',
+        );
+        expect(out.rejections).toHaveLength(0);
+        const file = out.state.assets.find((a) => a.kind === 'dossier')!;
+        expect(file).toBeDefined();
+        expect(file.text).toContain('Aleska Halfshare');
+        expect(file.atSystemId).toBeNull();
+        expect(file.yield).toBeNull();
       });
     });
 

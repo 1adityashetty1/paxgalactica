@@ -357,9 +357,9 @@ function SystemTab({
         </ul>
       )}
       {/* Officers standing on this world.
-          Not redacted, for the reason `system.ships` is not: she is aboard a
+          Not redacted, for the reason `system.ships` is not: they are aboard a
           fleet, and a fleet in orbit is a thing anybody with eyes can see. What
-          stays hidden is her power's ORDERS, which is a different question. */}
+          stays hidden is their power's ORDERS, which is a different question. */}
       {officersHere.length > 0 && (
         <>
           <h4>Officers here</h4>
@@ -387,7 +387,14 @@ function SystemTab({
               <li key={a.id} className={a.exposed ? 'agent-row burned' : 'agent-row'}>
                 <span className="swatch" style={{ background: colourOf(state, a.ownerFactionId) }} />
                 <span style={{ color: colourOf(state, a.ownerFactionId) }}>
-                  {mine ? 'Yours' : (getFaction(state, a.ownerFactionId)?.name ?? a.ownerFactionId)}
+                  {/* The name first, because that is what a player remembers
+                      about a network — and a burned line reads as somebody
+                      caught rather than a row going grey. Falls back to the
+                      cover and then the owner, so an operative from a campaign
+                      saved before they had names still renders. */}
+                  {a.name || a.cover || (mine ? 'Yours' : (getFaction(state, a.ownerFactionId)?.name ?? a.ownerFactionId))}
+                  {' · '}
+                  {mine ? 'yours' : (getFaction(state, a.ownerFactionId)?.name ?? a.ownerFactionId)}
                   {' · '}
                   {a.mission}
                 </span>
@@ -467,10 +474,10 @@ function Command({ state }: { state: WorldState }) {
                   {officer.name}
                 </p>
                 <p className="command-effect">{commanderEffect(officer)}</p>
-                {/* What she is worth on a turn with nobody fighting. Shown
+                {/* What they are worth on a turn with nobody fighting. Shown
                     beside the battle effect rather than under the record,
                     because the two together are the officer — and for `convoy`
-                    this line is the whole reason to want her. */}
+                    this line is the whole reason to want them. */}
                 <p className="command-effect">{commanderPassive(officer)}</p>
                 <p className="meta">
                   known for {archetypeOf(officer.archetype).known}
@@ -482,11 +489,11 @@ function Command({ state }: { state: WorldState }) {
                   {' · appointed turn '}
                   {officer.appointedTurn}
                 </p>
-                {/* Where she stands on the ladder, because a cost a player
+                {/* Where they stand on the ladder, because a cost a player
                     cannot read coming is a cost they cannot weigh — and this
-                    one is paid by losing her, not by spending credits. */}
-                {/* Where she is standing, or the fleet she is aboard — the
-                    thing that decides which battles she commands at all. */}
+                    one is paid by losing them, not by spending credits. */}
+                {/* Where they are standing, or the fleet they are aboard — the
+                    thing that decides which battles they command at all. */}
                 <p className="meta command-where">
                   {officer.atSystemId
                     ? `at ${state.systems.find((x) => x.id === officer.atSystemId)?.name ?? officer.atSystemId}`

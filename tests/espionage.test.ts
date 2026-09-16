@@ -288,7 +288,8 @@ describe('a thief receives what it steals', () => {
         id: 'a1', ownerFactionId: 'meridian', targetFactionId: 'vigil',
         systemId: 'tor-3', mission: 'theft',
         effect: { kind: 'income_penalty', perTurn: 10 },
-        cover: 'a factor', deployedTurn: 0, exposed: false, successChance: 50,
+        cover: 'a factor',
+        targetCommanderId: null, name: '', deployedTurn: 0, exposed: false, successChance: 50,
       },
     ] as never;
     return s;
@@ -351,6 +352,7 @@ describe('every covert operation in one declaration is routed', () => {
         mission: 'assassination',
         effect: { kind: 'stat_debuff', stat: 'resolve', magnitude: 1 },
         cover: 'a factor',
+        targetCommanderId: null, name: '',
       },
     ];
     const out = routeCovertAction(ops, 'success', both, 'meridian');

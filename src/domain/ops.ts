@@ -338,7 +338,7 @@ export const IssueOrderOp = z.object({
    *
    * The whole of officer assignment: a battle resolves inside `tickTurn` with
    * no player present, so a per-battle choice can only be made when the order
-   * goes out. She must be yours, active, and standing at the origin — the
+   * goes out. They must be yours, active, and standing at the origin — the
    * reducer checks all three, because a model asked for an officer id will
    * eventually invent one.
    */
@@ -435,6 +435,17 @@ export const DeployAgentOp = z.object({
   mission: AgentMissionSchema,
   effect: AgentEffectSchema,
   cover: z.string().default(''),
+  /**
+   * An officer to aim an `assassination` at, by id.
+   *
+   * Ignored by every other mission. Killing one takes a **17 or better** on a
+   * roll of its own, on top of the operation succeeding at all — see
+   * `ASSASSINATION_KILL_ROLL`. Before this, "assassinate their Iron Marshal"
+   * was admissible, priced, rolled, and then damaged some hulls: the officer
+   * named in the sentence went on commanding battles, which is the inert
+   * success this codebase closes everywhere else.
+   */
+  targetCommanderId: z.string().nullable().default(null),
 });
 
 export const RecallAgentOp = z.object({
@@ -730,23 +741,23 @@ export const ForgiveLoanOp = z.object({
 });
 
 /**
- * Hire an officer, or bring a captured one home to her post.
+ * Hire an officer, or bring a captured one home to their post.
  *
  * **Ordinary, not extraction-only.** Appointing your own officers needs nobody
  * else's agreement — the same argument that makes `settle_debt` and
  * `forgive_debt` ordinary while `establish_debt` is not.
  *
  * `fromAssetId` names a captured officer you are **holding**, which is the whole
- * of how a taken commander comes back: she is an `Asset` from the moment she is
- * taken, she moves like one — ransomed, traded, ceded, won back — and she only
- * stops being one when the power she belongs to puts her back in post. So the
+ * of how a taken commander comes back: they are an `Asset` from the moment they are
+ * taken, they move like one — ransomed, traded, ceded, won back — and they only
+ * stops being one when the power they belong to puts their back in post. So the
  * return trip needs no second mechanism; it is this op reading an asset instead
  * of minting a person.
  */
 export const RecruitCommanderOp = z.object({
   op: z.literal('recruit_commander'),
   factionId: z.string().min(1),
-  /** Where she reports. Must be a world the faction holds. */
+  /** Where they report. Must be a world the faction holds. */
   systemId: z.string().min(1),
   /**
    * A captured officer to restore, rather than a new one to hire.
