@@ -20,7 +20,9 @@ import {
 } from './hulls.js';
 import { FactionStatsSchema, STAT_NAMES, statModifier, type FactionStats, type StatName } from './checks.js';
 import {
+  COMMANDER_UPKEEP,
   CommanderSchema,
+  activeCommanders,
   commanderFor,
   commanderIndustry,
   commanderResolve,
@@ -1086,6 +1088,15 @@ export const LedgerSchema = z.object({
   /** What this faction's own live operatives cost it per turn. */
   agentUpkeep: z.number().int(),
   /**
+   * What the officers in post cost a turn.
+   *
+   * Its own line rather than folded into fleet upkeep, because it is a
+   * different decision: a power cuts hulls by laying them up and cuts this by
+   * having fewer officers, and a ledger that ran them together would tell a
+   * player neither.
+   */
+  commanderUpkeep: z.number().int(),
+  /**
    * Standing arrangements: charters, smuggling operations, tribute paid.
    * Positive receives, negative pays.
    */
@@ -1337,7 +1348,7 @@ export function ledgerFor(
   if (!faction) {
     return {
       gross: 0, upkeep: 0, net: 0, systems: 0, treatyFlow: 0,
-      espionageLoss: 0, espionageGain: 0, garrisonUpkeep: 0, agentUpkeep: 0, commitmentFlow: 0, commitmentShare: 0, assetYield: 0, warProfit: 0, occupation: 0,
+      espionageLoss: 0, espionageGain: 0, garrisonUpkeep: 0, agentUpkeep: 0, commanderUpkeep: 0, commitmentFlow: 0, commitmentShare: 0, assetYield: 0, warProfit: 0, occupation: 0,
       territory: 0, routes: 0, tolls: 0, raided: 0, debtService: 0, loanRent: 0,
     };
   }
@@ -1448,6 +1459,11 @@ export function ledgerFor(
   }
 
   const agentUpkeep = liveAgentsOf(state, factionId).length * AGENT_UPKEEP;
+  // Officers in post draw pay. Captured and lost do not — a power stops paying
+  // a commander the day it stops having her, which is also what stops a roster
+  // of the fallen costing anything.
+  const commanderUpkeep =
+    activeCommanders(state.commanders, factionId).length * COMMANDER_UPKEEP;
 
   // Standing arrangements finally reach the books. Read here rather than paid
   // out each tick, for the same reason agent effects are read where they are
@@ -1499,7 +1515,8 @@ export function ledgerFor(
       treatyFlow -
       espionageLoss +
       espionageGain -
-      agentUpkeep +
+      agentUpkeep -
+      commanderUpkeep +
       commitmentFlow +
       commitmentShare +
       assetYield +
@@ -1512,6 +1529,7 @@ export function ledgerFor(
     espionageGain,
     garrisonUpkeep,
     agentUpkeep,
+    commanderUpkeep,
     commitmentFlow,
     commitmentShare,
     assetYield,

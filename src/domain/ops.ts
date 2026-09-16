@@ -729,6 +729,35 @@ export const ForgiveLoanOp = z.object({
   reason: z.string().default(''),
 });
 
+/**
+ * Hire an officer, or bring a captured one home to her post.
+ *
+ * **Ordinary, not extraction-only.** Appointing your own officers needs nobody
+ * else's agreement — the same argument that makes `settle_debt` and
+ * `forgive_debt` ordinary while `establish_debt` is not.
+ *
+ * `fromAssetId` names a captured officer you are **holding**, which is the whole
+ * of how a taken commander comes back: she is an `Asset` from the moment she is
+ * taken, she moves like one — ransomed, traded, ceded, won back — and she only
+ * stops being one when the power she belongs to puts her back in post. So the
+ * return trip needs no second mechanism; it is this op reading an asset instead
+ * of minting a person.
+ */
+export const RecruitCommanderOp = z.object({
+  op: z.literal('recruit_commander'),
+  factionId: z.string().min(1),
+  /** Where she reports. Must be a world the faction holds. */
+  systemId: z.string().min(1),
+  /**
+   * A captured officer to restore, rather than a new one to hire.
+   *
+   * Only ever your own: turning somebody else's admiral is a different idea and
+   * a much larger one, and nothing here should make it look built.
+   */
+  fromAssetId: z.string().nullable().default(null),
+  reason: z.string().default(''),
+});
+
 export const DissolveCommitmentOp = z.object({
   op: z.literal('dissolve_commitment'),
   commitmentId: z.string().min(1),
@@ -871,6 +900,7 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   ReturnLoanOp,
   RepudiateLoanOp,
   ForgiveLoanOp,
+  RecruitCommanderOp,
   SpawnEventOp,
   LogNarrativeOp,
 ]);
@@ -937,6 +967,7 @@ export const OpSchema = z.discriminatedUnion('op', [
   ReturnLoanOp,
   RepudiateLoanOp,
   ForgiveLoanOp,
+  RecruitCommanderOp,
   SpawnEventOp,
   LogNarrativeOp,
 ]);

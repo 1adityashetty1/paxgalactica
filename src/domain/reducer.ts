@@ -47,13 +47,20 @@ import {
   PEACE_TREATIES,
   isTreatyLive,
   treatyBetween,
+  type Asset,
   type Treaty,
   type VoidCondition,
 } from './diplomacy.js';
 import { archetypeFor } from './assets.js';
 import {
+  COMMANDER_COST,
+  MAX_ACTIVE_COMMANDERS,
+  activeCommanders,
+  commanderArchetype,
   commanderAt,
   commanderFor,
+  commanderTaken,
+  officerRansom,
   commanderLost,
   commanderMight,
   commanderName,
@@ -1885,6 +1892,7 @@ export function applyOps(
           portable: isDossier ? true : portable,
           yield: assetYield,
           acquiredTurn: state.turn,
+          commanderId: null,
         };
         state.assets.push(asset);
         const note = `${nameFor(state, op.heldBy)} holds ${op.quantity} ${op.unit}: ${op.text}`;
@@ -2056,6 +2064,7 @@ export function applyOps(
           quantity: op.quantity,
           valuePerUnit: { ...asset.valuePerUnit },
           acquiredTurn: state.turn,
+          commanderId: null,
         });
         const note = `${nameFor(state, asset.heldBy)} sets aside ${op.quantity} ${asset.unit} of ${asset.text} ${op.reason}`.trim();
         notes.push(note);
@@ -2432,6 +2441,104 @@ export function applyOps(
           op.factionId,
           isPublicOrderType(order.type) ? null : [op.factionId, ...order.visibility],
         );
+        break;
+      }
+
+      case 'recruit_commander': {
+        if (actor && op.factionId !== actor) {
+          reject(raw, 'illegal_value', 'A power appoints only its own officers.');
+          break;
+        }
+        const faction = state.factions.find((f) => f.id === op.factionId);
+        if (!faction) {
+          reject(raw, 'unknown_faction', `No faction "${op.factionId}".`);
+          break;
+        }
+        const post = getSystem(state, op.systemId);
+        if (!post || post.controllerFactionId !== op.factionId) {
+          reject(
+            raw,
+            'no_presence',
+            `An officer reports to a world you hold; ${op.systemId} is not one.`,
+          );
+          break;
+        }
+        if (activeCommanders(state.commanders, op.factionId).length >= MAX_ACTIVE_COMMANDERS) {
+          reject(
+            raw,
+            'illegal_value',
+            `${faction.name} already has ${MAX_ACTIVE_COMMANDERS} officers in post.`,
+          );
+          break;
+        }
+
+        // Bringing one home: she is already a person the world knows about, so
+        // the asset is spent and the record she built is restored intact. That
+        // is the point of the pointer — a copy would have made the roster and
+        // the warehouse disagree about the same woman.
+        if (op.fromAssetId !== null) {
+          const held = (state.assets ?? []).find((a) => a.id === op.fromAssetId);
+          if (!held || held.commanderId === null) {
+            reject(raw, 'illegal_value', `Asset "${op.fromAssetId}" is not a captured officer.`);
+            break;
+          }
+          if (held.heldBy !== op.factionId) {
+            reject(raw, 'no_presence', 'You are not holding that officer.');
+            break;
+          }
+          const her = (state.commanders ?? []).find((c) => c.id === held.commanderId);
+          if (!her || her.status !== 'captured') {
+            reject(raw, 'illegal_value', 'That officer is not in anybody’s hands.');
+            break;
+          }
+          // Only your own come back. Turning somebody else's admiral is a far
+          // larger idea, and nothing here should make it look built.
+          if (her.factionId !== op.factionId) {
+            reject(
+              raw,
+              'illegal_value',
+              `${her.name} serves ${nameFor(state, her.factionId)}; releasing her is not appointing her.`,
+            );
+            break;
+          }
+          her.status = 'active';
+          her.atSystemId = post.id;
+          state.assets = (state.assets ?? []).filter((a) => a.id !== held.id);
+          const back = `${her.name} is restored to post at ${post.name}, ${her.battles} engagement${her.battles === 1 ? '' : 's'} behind her.`;
+          notes.push(back);
+          logEvent(state, 'narrative', back, op.factionId);
+          break;
+        }
+
+        if (faction.credits < COMMANDER_COST) {
+          reject(
+            raw,
+            'insufficient_credits',
+            `Appointing an officer costs ${COMMANDER_COST}; ${faction.name} holds ${faction.credits}.`,
+          );
+          break;
+        }
+        faction.credits -= COMMANDER_COST;
+        const salt = `recruit:${op.factionId}:${state.turn}:${(state.commanders ?? []).length}`;
+        // A fresh appointment ROLLS a school, where a successor inherits one:
+        // hiring is where a power changes what it is good at, and inheritance is
+        // where an institution carries on. If hiring inherited too, a power
+        // would be locked to its opening archetype for the whole campaign.
+        const school = commanderArchetype(op.factionId, state.turn, salt);
+        const hired: Commander = {
+          id: `cmd-${op.factionId}-${state.turn}-${(state.commanders ?? []).length}`,
+          factionId: op.factionId,
+          name: commanderName(op.factionId, state.turn, salt, school),
+          archetype: school,
+          appointedTurn: state.turn,
+          battles: 0,
+          status: 'active',
+          atSystemId: post.id,
+        };
+        (state.commanders ??= []).push(hired);
+        const note = `${faction.name} commissions ${hired.name} at ${post.name}.`;
+        notes.push(note);
+        logEvent(state, 'narrative', note, op.factionId);
         break;
       }
 
@@ -4810,6 +4917,7 @@ export function tickTurn(input: WorldState): TickResult {
           portable: true,
           yield: null,
           acquiredTurn: state.turn,
+          commanderId: null,
         });
       }
       const note = `${asset.text} yields ${made.perTurn} ${made.unit} at ${where.name}.`;
@@ -5567,11 +5675,46 @@ function resolveBattle(
       // death roll on every engagement would churn the roster faster than a
       // player could learn a name.
       if (side === beatenSide && commanderLost(roll)) {
-        live.status = 'lost';
         live.atSystemId = null;
-        const gone = `${live.name} is lost with the ${nameOf(live.factionId)} fleet over ${target.name}.`;
-        commandersFired.push(gone);
-        logEvent(state, 'narrative', gone, live.factionId);
+        // Taken alive, if there is anybody to take her. A capture needs a
+        // CAPTOR — the side that did not break — so a fleet driven off by an
+        // unaligned world's militia is killed instead: ground with no flag over
+        // it does not run a prison.
+        const captor = side === 'attack' ? (holder ?? largestDefender) : largestAttacker;
+        if (commanderTaken(roll) && captor && captor !== live.factionId) {
+          live.status = 'captured';
+          const held: Asset = {
+            id: mintId(state, 'ast'),
+            kind: 'officer',
+            text: `${live.name}, ${nameOf(live.factionId)}, taken over ${target.name}`,
+            heldBy: captor,
+            quantity: 1,
+            unit: 'person',
+            commanderId: live.id,
+            divisible: false,
+            valuePerUnit: officerRansom(live),
+            speculative: false,
+            valueRange: {},
+            uses: null,
+            // She is held where she was taken, so a world changing hands takes
+            // her with it — the rule every other asset with a location follows,
+            // and the thing that makes a prisoner worth guarding.
+            atSystemId: target.id,
+            portable: true,
+            yield: null,
+            acquiredTurn: state.turn,
+          };
+          (state.assets ??= []).push(held);
+          const taken = `${live.name} is taken alive over ${target.name} and held by ${nameOf(captor)}.`;
+          commandersFired.push(taken);
+          logEvent(state, 'narrative', taken, live.factionId);
+          logEvent(state, 'narrative', taken, captor);
+        } else {
+          live.status = 'lost';
+          const gone = `${live.name} is lost with the ${nameOf(live.factionId)} fleet over ${target.name}.`;
+          commandersFired.push(gone);
+          logEvent(state, 'narrative', gone, live.factionId);
+        }
       }
     }
     return {

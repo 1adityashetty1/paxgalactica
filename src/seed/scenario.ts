@@ -691,6 +691,7 @@ export function createSeedState(playerFactionId: string): WorldState {
         portable: true,
         yield: null,
         acquiredTurn: 0,
+        commanderId: null,
       },
       {
         // Speculative on purpose, and the one seeded thing that is: `valueRange`
@@ -712,6 +713,7 @@ export function createSeedState(playerFactionId: string): WorldState {
         portable: true,
         yield: null,
         acquiredTurn: 0,
+        commanderId: null,
       },
       {
         // The Drift does not raid, so the only crews it holds are off ships that
@@ -734,6 +736,7 @@ export function createSeedState(playerFactionId: string): WorldState {
         portable: true,
         yield: null,
         acquiredTurn: 0,
+        commanderId: null,
       },
       {
         // A prize hold with one buyer, which is the interesting shape rather
@@ -761,6 +764,7 @@ export function createSeedState(playerFactionId: string): WorldState {
         portable: true,
         yield: null,
         acquiredTurn: 0,
+        commanderId: null,
       },
     ],
     // Nor does anybody start owing a squadron. A loan moves real hulls between

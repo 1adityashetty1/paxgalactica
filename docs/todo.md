@@ -13,7 +13,7 @@ closed — the reasoning is the useful part, and a fixed item explains why the c
 looks the way it does.
 
 Statuses are checked against the code, not carried forward from the label. The
-last audit was **2026-09-15**.
+last audit was **2026-09-16**.
 
 ---
 
@@ -62,11 +62,12 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~105~~ | ~~a commander's death cost nothing, and usually paid~~ | medium | **BUILT** — veterancy, and a successor who inherits the speciality. The thresholds had to be swept: the first guess was unreachable in a whole campaign |
 | ~~106~~ | ~~officers are five hand-written characters, and do nothing on a quiet turn~~ | medium | **BUILT** — generated names carrying the school as a title, and one passive each. A prerequisite for recruitment: choosing between officers needs them to differ off the battlefield |
 | ~~107~~ | ~~an officer commanded every battle her power fought, everywhere at once~~ | medium | **BUILT** — she has a location, rides a fleet, and commands only the battle she is at. Not tonnage, not in the loss order; killable by the death roll alone |
+| ~~108~~ | ~~a power could never hold two officers, and a beaten one could only die~~ | subsystem | **BUILT** — `recruit_commander`, a cap of five with upkeep, and capture as an asset that comes home through the same op |
 
 **What is left is a playtest and two design items.** Everything from the
 2026-09-07 batch is built or closed, and so are all five of the features raised
-on 2026-09-14 (**97**, **100**–**103**), along with **104**–**107**,
-all raised and closed on 2026-09-15. What remains is **92** and **94(b)**, which are
+on 2026-09-14 (**97**, **100**–**103**), along with **104**–**108**,
+raised and closed on 2026-09-15 and 2026-09-16. What remains is **92** and **94(b)**, which are
 claims only a campaign can settle, plus two things filed since:
 
 - **98** — the doctrine bots read no disposition at all, and they now run in
@@ -1595,6 +1596,83 @@ Three things the build turned up that the filing did not predict:
 567 — the small drop being freighters taking a larger share of the unaligned
 hops that some tolled traffic crosses.
 
+
+## 108. BUILT — a roster of five, and officers taken alive
+
+Raised 2026-09-15, built 2026-09-16. The last two items were explicitly the
+groundwork: officers differ in battle, differ off it, and differ by where they
+are, so a menu of them is finally a decision.
+
+### Recruitment
+
+`recruit_commander` appoints one to a world you hold, up to
+`MAX_ACTIVE_COMMANDERS` (5). Ordinary rather than extraction-only — appointing
+your own officers needs nobody's agreement.
+
+**Upkeep is the right instrument now and was the wrong one before.** 105
+rejected it on the grounds that upkeep bounds a roster you can stockpile and a
+power could never hold two officers. Recruitment is the change that makes the
+premise true, so the charge arrives with the thing it was always the answer to.
+
+**Only the senior officer's passive applies** — one person runs the
+establishment, the rest command battles. Without it, five convoy officers would
+be −70% fleet upkeep and the passive would stop being a reason to keep a *good*
+officer and become a reason to keep *five*.
+
+**A hire rolls a school; a successor inherits one.** Otherwise a power is locked
+to its opening archetype for a whole campaign.
+
+**The draw had to be fixed to make that fair.** `rollD20` returns 1–20, so `% 3`
+lands 7/7/6 and `convoy` came up **30% against 35%** — tolerable at one officer
+a campaign, not at five, because the under-drawn archetype carries the largest
+passive. Two rolls give 400 values and a quarter-percent residual.
+
+**The bots keep a roster too**, one plus one per three worlds. A cap only the
+player reaches is a cap on nothing — the third time this same omission has been
+caught in this mechanic, after battle presence and assignment.
+
+### Capture
+
+Split out of the roll that was already there: `1–2` kills, `3–4` takes her
+alive. No second die. A capture needs a **captor**, so a fleet driven off by an
+unaligned world's militia is killed instead.
+
+She becomes an `Asset` of kind `officer` held at the world where she was taken,
+so she travels with it when it changes hands — and from there needs **no second
+mechanism**: ransomed, traded, ceded or won back like anything else.
+`recruit_commander` with a `fromAssetId` restores her with her record intact and
+spends the asset. `Asset.commanderId` is a pointer rather than a copy, so the
+roster and the warehouse cannot disagree about the same woman.
+
+Only your own come back; turning somebody else's admiral is a much larger idea.
+A captured officer counts against no cap and draws no pay, which is what lets a
+power replace her — and what makes getting her back a bargain rather than a
+formality.
+
+**Capture fires in no harness run at all** — thirty bot turns produce four
+battles and zero defeats in the band — so it is pinned by a deterministic
+end-to-end case at turn 9, where the seeded roll is 3, rather than by a
+conditional assertion that would have passed while never exercising it.
+
+### The board, honestly
+
+Bots keeping two officers diverts ~420 credits a power over thirty turns from
+hulls to officers, felt hardest by the Vigil at 0.85 buy appetite: the run read
+**5/4/5/4/4** for a while, its late conquests failing. `COMMANDER_COST` swept
+100–200 gave that same board every time and 300 reverted it (nobody could
+afford to hire). It then returned to **3/6/5/4/4** on the unrelated archetype-draw
+fix. Both satisfy every property the balance test asserts, and neither is
+evidence the mechanic is neutral — the discrete question of whether one marginal
+conquest happens swamps the arithmetic, as it did for `MONOPOLY_BONUS`.
+`pnpm fleetlab` is byte-identical throughout.
+
+### A test that would have passed while asserting nothing
+
+Six existing tests have now broken across 106–108 by pinning `effectiveStats` or
+`ledgerFor` against a faction's **base** stats, which compose terrain, the
+officer's passive and dissent. Each was isolated or derived rather than having
+its expected value nudged — a test asserting three rules at once fails without
+saying which one moved.
 
 ## 107. BUILT — an officer is in a fleet, without being tonnage
 

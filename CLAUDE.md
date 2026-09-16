@@ -2955,9 +2955,84 @@ Her **passives** are hers wherever she is, because she runs the power's
 establishment; only the battle effect needs her present.
 
 **Doctrine still picks who it is** when nobody is named, and a player naming one
-is now the whole of officer assignment. What is still missing is a roster to
-choose from: a power can never hold two officers, so the menu has one item until
-recruitment exists.
+is the whole of officer assignment.
+
+### A roster of five, and what it costs to keep one
+
+`recruit_commander` appoints an officer to a world you hold, up to
+`MAX_ACTIVE_COMMANDERS` (5). Ordinary rather than extraction-only: appointing
+your own officers needs nobody else's agreement, the same argument that makes
+`settle_debt` ordinary while `establish_debt` is not.
+
+**Upkeep is the right instrument now, and it was the wrong one before.** The
+argument against it when a death was free was that upkeep bounds a roster you
+can *stockpile*, and a power could never hold two officers — so there was
+nothing to stockpile and a per-turn charge was noise. Recruitment is exactly the
+change that makes the premise true, so `COMMANDER_UPKEEP` arrives with the thing
+it was always the answer to, on its own `Ledger` line because a power cuts hulls
+by laying them up and cuts this by having fewer officers.
+
+**Only the senior officer's passive applies.** One person runs the
+establishment; the rest command battles. Without that rule five convoy officers
+would be −70% fleet upkeep, and the passive would stop being a reason to keep a
+*good* officer and become a reason to keep *five*.
+
+**A hire rolls a school; a successor inherits one.** Hiring is where a power
+changes what it is good at, and inheritance is where an institution carries on —
+if a hire inherited too, a power would be locked to its opening archetype for a
+whole campaign.
+
+> The draw had to be fixed to make that fair. `rollD20` returns 1–20, so a
+> single roll taken `% 3` lands 7/7/6 and **`convoy` came up 30% against 35%** —
+> tolerable when a power had one officer for a whole campaign, and not once
+> recruitment draws five, because the under-drawn archetype is the one carrying
+> the largest passive. Two rolls give 400 values and a residual bias of a
+> quarter of a percent.
+
+**The bots keep a roster too** — one officer, plus one per three worlds held —
+because a cap of five that only the player ever reaches is a cap on nothing.
+Sized off territory rather than treasury, since officers are bought for fronts.
+This is the third time the same omission has been caught in this mechanic; the
+first two were battle presence and assignment.
+
+### Taken alive
+
+An officer who does not walk away from a defeat is killed **or captured**, split
+out of the roll that was already there: `1–2` kills, `3–4` takes her alive. No
+second die, so it replays exactly. A capture needs a **captor**, so a fleet
+driven off by an unaligned world's militia is killed instead — ground with no
+flag over it does not run a prison.
+
+A captured officer becomes an `Asset` of kind `officer` in the victor's hands,
+held at the world where she was taken, so she travels with it when it changes
+hands. From there she needs **no second mechanism**: she is ransomed, traded,
+ceded or won back exactly as any other asset is, and `recruit_commander` with a
+`fromAssetId` puts her back in post with her record intact and spends the asset.
+Worth most to the power that lost her — the same claim `prisoners` makes, scaled
+by veterancy, because the officer a power actually wants back is the one whose
+ladder took engagements to climb.
+
+`Asset.commanderId` is a **pointer, not a copy**: copying would make the roster
+and the warehouse two sources of truth about the same woman, and the one who
+came home would be whichever the code happened to read.
+
+Only your own come back. Turning somebody else's admiral is a far larger idea
+and nothing here should make it look built. A captured officer counts against no
+cap and draws no pay, which is what lets a power that lost one appoint a
+replacement — and what makes getting her back a real bargain rather than a
+formality.
+
+> **The board moves, and it is a cliff rather than a gradient.** Bots keeping two
+> officers instead of one diverts roughly 420 credits a power over thirty turns
+> from hulls to officers, and the Vigil — buying at 0.85 appetite — feels it
+> most: the run read 5/4/5/4/4 for a while, with its late conquests failing.
+> Sweeping `COMMANDER_COST` from 100 to 200 gave that same board every time and
+> 300 reverted it, since nobody could afford to hire at all. It then went back
+> to **3/6/5/4/4** on an unrelated fix to the archetype draw. Both boards satisfy
+> every property the balance test asserts, and neither is evidence the mechanic
+> is neutral — the discrete question of whether one marginal conquest happens
+> swamps the arithmetic, exactly as it did for `MONOPOLY_BONUS`. `pnpm fleetlab`
+> is byte-identical throughout.
 
 **Reported like a doctrine, in its own list.** `BattleReport.commandersFired`
 names only officers who actually changed something, and it is separate from
@@ -3287,6 +3362,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `repudiate_loan` | borrower only; keeping it, priced like breaking a pact |
 | `forgive_loan` | lender only; what was lent becomes the borrower's |
 | `forgive_debt` | creditor only; writes off the balance and buys goodwill |
+| `recruit_commander` | appoint an officer to a world you hold, up to five; `fromAssetId` brings a captured one home |
 | `spawn_event` | |
 | `log_narrative` | |
 

@@ -11,6 +11,8 @@ import { describeOrderEffect } from '../../../src/domain/development.js';
 import { describeEffect } from '../../../src/domain/diplomacy.js';
 import { CommanderIcon } from './BattleIcons.js';
 import {
+  MAX_ACTIVE_COMMANDERS,
+  activeCommanders,
   archetypeOf,
   commanderEffect,
   commanderFor,
@@ -442,16 +444,24 @@ function Command({ state }: { state: WorldState }) {
     <div className="command-panel">
       {state.factions.map((f) => {
         const colour = colourOf(state, f.id);
-        const officer = commanderFor(state.commanders, f.id);
-        // Everyone this power has lost, newest first — a short history, and the
-        // reason losing one is worth anything.
+        // The whole roster, senior first — the same order `commanderFor` picks
+        // by, so the officer at the top is the one running the establishment.
+        const roster = activeCommanders(state.commanders, f.id).sort(
+          (a, b) => b.battles - a.battles || a.id.localeCompare(b.id),
+        );
+        const officer = roster[0];
         const fallen = (state.commanders ?? [])
           .filter((c) => c.factionId === f.id && c.status === 'lost')
           .reverse();
+        // Alive, and in somebody else's hands. Worth its own line rather than
+        // being run in with the dead: one of these can be bought back.
+        const held = (state.commanders ?? []).filter(
+          (c) => c.factionId === f.id && c.status === 'captured',
+        );
         return (
           <section key={f.id} className="command-faction">
             <h4 style={{ color: colour }}>{f.name}</h4>
-            {officer ? (
+            {officer !== undefined ? (
               <>
                 <p className="command-name" style={{ color: colour }}>
                   {officer.name}
@@ -497,6 +507,30 @@ function Command({ state }: { state: WorldState }) {
               </>
             ) : (
               <p className="empty">No officer. The fleet answers to nobody in particular.</p>
+            )}
+            {roster.length > 1 && (
+              <ul className="ship-list command-roster">
+                {roster.slice(1).map((c) => (
+                  <li key={c.id} className="agent-row">
+                    <span style={{ color: colour, display: 'flex' }}>
+                      <CommanderIcon title={archetypeOf(c.archetype).effect} />
+                    </span>
+                    <span style={{ color: colour }}>{c.name}</span>
+                    <span className="count">{commanderEffect(c)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="meta">
+              {roster.length} of {MAX_ACTIVE_COMMANDERS} in post
+              {/* Only the senior officer's passive applies: one person runs the
+                  establishment, and the rest command battles. */}
+              {roster.length > 1 && ' · the senior officer’s passive is the one that applies'}
+            </p>
+            {held.length > 0 && (
+              <p className="meta command-held">
+                held prisoner: {held.map((c) => c.name).join(', ')}
+              </p>
             )}
             {fallen.length > 0 && (
               <p className="meta command-fallen">

@@ -451,6 +451,18 @@ export const AssetSchema = z.object({
    * Forty crews can be ransomed twenty at a time; a family heirloom cannot be
    * halved. `split_asset` refuses on an atomic one.
    */
+  /**
+   * The officer this asset IS, when it is a captured commander.
+   *
+   * A captured officer is a person the world already has a record of — a name,
+   * an archetype, a record of engagements — so the asset carries a pointer
+   * rather than a copy. Copying would make the roster and the warehouse two
+   * sources of truth about the same woman, and the one that came home would be
+   * whichever the code happened to read.
+   *
+   * `null` for every other kind of asset, which is all of them but one.
+   */
+  commanderId: z.string().nullable().default(null),
   divisible: z.boolean().default(true),
   /**
    * factionId -> what one unit is worth to that power, in credits.

@@ -69,6 +69,16 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     wanted: 'the power that lost them, and almost nobody else',
   },
   {
+    kind: 'officer',
+    unit: 'person',
+    divisible: false,
+    uses: null,
+    speculative: false,
+    fixture: false,
+    from: 'taking her alive when the fleet she commanded was broken',
+    wanted: 'the power that lost her, badly; anybody else only as leverage',
+  },
+  {
     kind: 'hostage',
     unit: 'person',
     divisible: false,

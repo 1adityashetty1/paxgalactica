@@ -21,7 +21,10 @@ import {
 } from '../src/domain/state.js';
 import {
   COMMANDER_ARCHETYPES,
+  COMMANDER_COST,
   COMMANDER_MIGHT,
+  MAX_ACTIVE_COMMANDERS,
+  activeCommanders,
   COMMANDER_STRIKE_BONUS,
   COMMANDER_WITHDRAW_RELIEF,
   MAX_VETERANCY,
@@ -29,7 +32,10 @@ import {
   archetypeOf,
   commanderEffect,
   commanderFor,
+  COMMANDER_CAPTURE_ROLL,
   commanderIndustry,
+  commanderLost,
+  commanderTaken,
   commanderResolve,
   commanderPassive,
   commanderUpkeepRelief,
@@ -1525,6 +1531,263 @@ describe('the officer on the field', () => {
         let res = tickTurn(out.state);
         while (res.state.pendingOrders.some((o) => o.id === 'ord-0-0')) res = tickTurn(res.state);
         expect(ours(res.state).atSystemId).toBe('sek-6');
+      });
+    });
+
+    /**
+     * A roster, and what happens to an officer who does not walk away.
+     *
+     * Recruitment is what made `commanderFor`'s seniority sort mean anything
+     * and what made upkeep the right instrument: until a power could hold two
+     * officers there was nothing to stockpile and nothing to choose between.
+     */
+    describe('and the roster she belongs to', () => {
+      const hire = (s: WorldState, factionId: string, systemId: string, fromAssetId: string | null = null) =>
+        applyOps(
+          s,
+          [{ op: 'recruit_commander', factionId, systemId, fromAssetId }],
+          'model',
+          factionId,
+        );
+
+      const mine = (s: WorldState, id: string) =>
+        s.systems.find((x) => x.controllerFactionId === id)!.id;
+
+      it('fills a roster up to the cap and no further', () => {
+        const s = fresh();
+        s.factions.find((f) => f.id === 'freeworlds')!.credits = 100000;
+        let st = s;
+        for (let i = activeCommanders(st.commanders, 'freeworlds').length; i < MAX_ACTIVE_COMMANDERS; i++) {
+          const out = hire(st, 'freeworlds', mine(st, 'freeworlds'));
+          expect(out.rejections, `hire ${i}`).toHaveLength(0);
+          st = out.state;
+        }
+        expect(activeCommanders(st.commanders, 'freeworlds')).toHaveLength(MAX_ACTIVE_COMMANDERS);
+        const over = hire(st, 'freeworlds', mine(st, 'freeworlds'));
+        expect(over.rejections.map((r) => r.code)).toContain('illegal_value');
+      });
+
+      it('charges for the commission and draws pay every turn after', () => {
+        const s = fresh();
+        s.factions.find((f) => f.id === 'freeworlds')!.credits = 5000;
+        const before = ledgerFor(s, 'freeworlds').commanderUpkeep;
+        const out = hire(s, 'freeworlds', mine(s, 'freeworlds'));
+        expect(out.state.factions.find((f) => f.id === 'freeworlds')!.credits).toBe(
+          5000 - COMMANDER_COST,
+        );
+        expect(ledgerFor(out.state, 'freeworlds').commanderUpkeep).toBeGreaterThan(before);
+      });
+
+      it('appoints only your own, and only to ground you hold', () => {
+        const s = fresh();
+        s.factions.find((f) => f.id === 'freeworlds')!.credits = 5000;
+        // Somebody else's faction.
+        expect(
+          applyOps(
+            s,
+            [{ op: 'recruit_commander', factionId: 'drajk', systemId: mine(s, 'drajk') }],
+            'model',
+            'freeworlds',
+          ).rejections.map((r) => r.code),
+        ).toContain('illegal_value');
+        // Somebody else's world.
+        expect(hire(s, 'freeworlds', mine(s, 'vigil')).rejections.map((r) => r.code)).toContain(
+          'no_presence',
+        );
+      });
+
+      it('refuses a commission the treasury cannot cover', () => {
+        const s = fresh();
+        s.factions.find((f) => f.id === 'freeworlds')!.credits = COMMANDER_COST - 1;
+        expect(hire(s, 'freeworlds', mine(s, 'freeworlds')).rejections.map((r) => r.code)).toContain(
+          'insufficient_credits',
+        );
+      });
+
+      it('rolls a school for a hire and inherits one for a successor', () => {
+        // Hiring is where a power changes what it is good at; inheritance is
+        // where an institution carries on. If a hire inherited too, a power
+        // would be locked to its opening archetype for the whole campaign.
+        const s = fresh();
+        s.factions.find((f) => f.id === 'freeworlds')!.credits = 100000;
+        setArchetype(s, 'freeworlds', 'convoy');
+        const out = hire(s, 'freeworlds', mine(s, 'freeworlds'));
+        const hired = activeCommanders(out.state.commanders, 'freeworlds').find(
+          (c) => c.battles === 0 && c.appointedTurn === out.state.turn,
+        );
+        expect(hired).toBeDefined();
+        expect(COMMANDER_ARCHETYPES.map((a) => a.kind)).toContain(hired!.archetype);
+      });
+    });
+
+    /**
+     * Capture: the other way an officer does not walk away from a defeat.
+     *
+     * Built into the death roll rather than beside it, so it costs no second
+     * source of randomness — `1–2` kills, `3–4` takes her alive. She becomes an
+     * `Asset` and moves like one, which is what lets her be ransomed, traded,
+     * ceded or won back with no second mechanism.
+     */
+    describe('and being taken alive', () => {
+      /**
+       * Send a small fleet under its officer against an overwhelming defender,
+       * `skip` turns into the campaign. The turn is what moves the seeded roll,
+       * so this is how a specific band is reached without a second die.
+       */
+      const beaten = (skip: number) => {
+        let s = fresh();
+        for (let i = 0; i < skip; i++) s = tickTurn(s).state;
+        const c = s.commanders.find((x) => x.factionId === 'freeworlds' && x.status === 'active')!;
+        c.atSystemId = 'ark-3';
+        const t = sys(s, 'sek-6');
+        t.controllerFactionId = 'vigil';
+        setStackAt(t, 'vigil', { battleship: 400 });
+        const out = applyOps(
+          s,
+          [{
+            op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
+            originId: 'ark-3', targetId: 'sek-6', force: { battleship: 4 },
+            commanderId: c.id,
+          }],
+          'model',
+          'freeworlds',
+        );
+        expect(out.rejections).toHaveLength(0);
+        let res = tickTurn(out.state);
+        let guard = 0;
+        while (
+          res.state.pendingOrders.some(
+            (o) => o.factionId === 'freeworlds' && o.type === 'fleet_movement',
+          ) &&
+          guard++ < 8
+        ) {
+          res = tickTurn(res.state);
+        }
+        return { res, officerId: c.id };
+      };
+
+      it('splits the loss band rather than rolling again', () => {
+        // The same roll decides both, so capture costs no second source of
+        // randomness and replays exactly.
+        for (let roll = 1; roll <= 20; roll++) {
+          const lost = commanderLost(roll);
+          const taken = commanderTaken(roll);
+          expect(taken && !lost, `roll ${roll}`).toBe(false);
+          expect(taken, `roll ${roll}`).toBe(lost && roll > COMMANDER_CAPTURE_ROLL);
+        }
+      });
+
+      it('takes her alive, and the captor is holding a person', () => {
+        // Turn 9 puts this engagement's seeded roll at 3 — inside the loss band
+        // and above the kill half. Pinned rather than searched, so a change to
+        // the band fails here instead of quietly never exercising capture.
+        const { res, officerId } = beaten(9);
+        const battle = res.report.battles[0];
+        expect(battle?.roll).toBe(3);
+        const her = res.state.commanders.find((c) => c.id === officerId)!;
+        expect(her.status).toBe('captured');
+        expect(her.atSystemId).toBeNull();
+
+        const asset = (res.state.assets ?? []).find((a) => a.commanderId === officerId)!;
+        expect(asset).toBeDefined();
+        expect(asset.heldBy).toBe('vigil');
+        expect(asset.kind).toBe('officer');
+        expect(asset.divisible).toBe(false);
+        expect(asset.quantity).toBe(1);
+        // Held where she was taken, so a world changing hands takes her too.
+        expect(asset.atSystemId).toBe('sek-6');
+        // Worth most to the power that lost her, which is the whole of why an
+        // asset is worth trading rather than hoarding.
+        expect(asset.valuePerUnit['freeworlds']).toBeGreaterThan(0);
+        // And she is off the payroll while somebody else has her.
+        expect(activeCommanders(res.state.commanders, 'freeworlds')).toHaveLength(0);
+      });
+
+      it('costs nothing to keep an officer nobody has', () => {
+        // Captured and lost draw no pay and count against no cap, which is what
+        // lets a power that lost one hire a replacement.
+        const s = fresh();
+        const c = s.commanders.find((x) => x.factionId === 'freeworlds')!;
+        const paid = ledgerFor(s, 'freeworlds').commanderUpkeep;
+        c.status = 'captured';
+        expect(ledgerFor(s, 'freeworlds').commanderUpkeep).toBeLessThan(paid);
+        expect(activeCommanders(s.commanders, 'freeworlds')).toHaveLength(0);
+      });
+
+      it('comes back to post with her record intact, and spends the asset', () => {
+        const s = fresh();
+        s.factions.find((f) => f.id === 'freeworlds')!.credits = 5000;
+        const c = s.commanders.find((x) => x.factionId === 'freeworlds')!;
+        c.status = 'captured';
+        c.atSystemId = null;
+        c.battles = VETERAN_THRESHOLDS[1];
+        s.assets.push({
+          id: 'ast-held', kind: 'officer', text: 'her', heldBy: 'freeworlds',
+          quantity: 1, unit: 'person', commanderId: c.id, divisible: false,
+          valuePerUnit: {}, speculative: false, valueRange: {}, uses: null,
+          atSystemId: null, portable: true, yield: null, acquiredTurn: 0,
+        });
+        const home = s.systems.find((x) => x.controllerFactionId === 'freeworlds')!.id;
+        const out = applyOps(
+          s,
+          [{ op: 'recruit_commander', factionId: 'freeworlds', systemId: home, fromAssetId: 'ast-held' }],
+          'model',
+          'freeworlds',
+        );
+        expect(out.rejections).toHaveLength(0);
+        const back = out.state.commanders.find((x) => x.id === c.id)!;
+        expect(back.status).toBe('active');
+        expect(back.atSystemId).toBe(home);
+        // The record is the thing a defeat costs, and it survives the prison.
+        expect(back.battles).toBe(VETERAN_THRESHOLDS[1]);
+        expect(out.state.assets.find((a) => a.id === 'ast-held')).toBeUndefined();
+        // No fee: she was already commissioned.
+        expect(out.state.factions.find((f) => f.id === 'freeworlds')!.credits).toBe(5000);
+      });
+
+      it('will not let a captor simply enlist somebody else\'s admiral', () => {
+        // Turning an enemy commander is a far larger idea, and nothing here
+        // should make it look built.
+        const s = fresh();
+        s.factions.find((f) => f.id === 'drajk')!.credits = 5000;
+        const theirs = s.commanders.find((x) => x.factionId === 'freeworlds')!;
+        theirs.status = 'captured';
+        theirs.atSystemId = null;
+        s.assets.push({
+          id: 'ast-prize', kind: 'officer', text: 'her', heldBy: 'drajk',
+          quantity: 1, unit: 'person', commanderId: theirs.id, divisible: false,
+          valuePerUnit: {}, speculative: false, valueRange: {}, uses: null,
+          atSystemId: null, portable: true, yield: null, acquiredTurn: 0,
+        });
+        const home = s.systems.find((x) => x.controllerFactionId === 'drajk')!.id;
+        const out = applyOps(
+          s,
+          [{ op: 'recruit_commander', factionId: 'drajk', systemId: home, fromAssetId: 'ast-prize' }],
+          'model',
+          'drajk',
+        );
+        expect(out.rejections.map((r) => r.code)).toContain('illegal_value');
+        expect(out.state.commanders.find((x) => x.id === theirs.id)!.status).toBe('captured');
+      });
+
+      it('will not restore one you are not holding', () => {
+        const s = fresh();
+        const c = s.commanders.find((x) => x.factionId === 'freeworlds')!;
+        c.status = 'captured';
+        s.assets.push({
+          id: 'ast-elsewhere', kind: 'officer', text: 'her', heldBy: 'vigil',
+          quantity: 1, unit: 'person', commanderId: c.id, divisible: false,
+          valuePerUnit: {}, speculative: false, valueRange: {}, uses: null,
+          atSystemId: null, portable: true, yield: null, acquiredTurn: 0,
+        });
+        const home = s.systems.find((x) => x.controllerFactionId === 'freeworlds')!.id;
+        const out = applyOps(
+          s,
+          [{ op: 'recruit_commander', factionId: 'freeworlds', systemId: home, fromAssetId: 'ast-elsewhere' }],
+          'model',
+          'freeworlds',
+        );
+        expect(out.rejections.map((r) => r.code)).toContain('no_presence');
       });
     });
 

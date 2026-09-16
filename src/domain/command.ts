@@ -200,6 +200,79 @@ export const COMMANDER_STRIKE_BONUS = [0.4, 0.6, 0.8] as const;
  */
 export const COMMANDER_LOSS_ROLL = 4;
 
+/**
+ * Inside the loss band, who is killed and who is taken alive.
+ *
+ * Read off the **same roll**, so capture costs no second source of randomness
+ * and replays exactly: `1–2` is a death, `3–4` is a capture. An even split of a
+ * band that was already there, rather than a new die and a new tuning constant.
+ *
+ * A capture needs a **captor**, so a beaten side with nobody to take prisoners —
+ * a fleet driven off by an unaligned world's militia — kills instead. Ground
+ * with no flag over it does not run a prison.
+ */
+export const COMMANDER_CAPTURE_ROLL = 2;
+
+export function commanderTaken(roll: number): boolean {
+  return commanderLost(roll) && roll > COMMANDER_CAPTURE_ROLL;
+}
+
+/* ------------------------------------------------------------------ */
+/* A roster, and what it costs to have one                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * How many officers a power may have in post at once.
+ *
+ * Until recruitment there was no roster at all: `tickTurn` appointed a
+ * successor only when a power had nobody, so the answer was permanently one and
+ * `commanderFor`'s seniority sort was dead code. Five is enough that a power can
+ * cover its fronts and specialise — a gunner with the boats, a quartermaster
+ * behind the line — and few enough that losing one still matters.
+ */
+export const MAX_ACTIVE_COMMANDERS = 5;
+
+/**
+ * What hiring one costs, and what keeping one costs a turn.
+ *
+ * **Upkeep is the right instrument now, and it was the wrong one before.** The
+ * argument against it when a death was free was that upkeep bounds a roster you
+ * can stockpile and a power could never hold two officers — so there was nothing
+ * to stockpile and a per-turn charge was noise. Recruitment is exactly the
+ * change that makes the premise true, so the charge arrives with the thing it
+ * was always the answer to.
+ *
+ * A full roster runs `5 × COMMANDER_UPKEEP` a turn against net incomes of
+ * 60–300, so it is a real line in the ledger rather than a rounding error, and a
+ * poor power that hires five is choosing officers over hulls.
+ */
+export const COMMANDER_COST = 120;
+export const COMMANDER_UPKEEP = 5;
+
+/** Officers a power currently has in post. Captured and lost do not count. */
+export function activeCommanders(
+  commanders: Commander[] | undefined,
+  factionId: string,
+): Commander[] {
+  return (commanders ?? []).filter((c) => c.factionId === factionId && c.status === 'active');
+}
+
+/**
+ * What a captured officer is worth, to her own power and to anybody else.
+ *
+ * Worth most to the power that lost her, which is the whole of why an asset is
+ * worth trading rather than hoarding — and the same claim `prisoners` makes.
+ * Scaled by her record, because a veteran is the officer a power actually wants
+ * back: losing her cost them a ladder that took engagements to climb.
+ *
+ * Everyone else pays a flat, small figure. An enemy admiral is worth something
+ * to a third party — as leverage, or as a thing to sell on — and nothing like
+ * what she is worth at home.
+ */
+export function officerRansom(c: Commander): Record<string, number> {
+  return { [c.factionId]: 150 + veterancyOf(c.battles) * 150 };
+}
+
 /* ------------------------------------------------------------------ */
 /* Passives: what an officer is worth on a turn with no battle         */
 /* ------------------------------------------------------------------ */
@@ -382,7 +455,15 @@ export const CommanderSchema = z.object({
    * makes losing one cost something a player can feel.
    */
   battles: z.number().int().min(0).default(0),
-  status: z.enum(['active', 'lost']).default('active'),
+  /**
+   * `lost` is dead; `captured` is alive and in somebody else's hands.
+   *
+   * A captured officer is **not on anybody's roster** — she counts against no
+   * cap, commands nothing, and draws no pay — but she still exists, which is
+   * what lets her come home. The `Asset` holding her is the thing that moves;
+   * this record is what she IS.
+   */
+  status: z.enum(['active', 'lost', 'captured']).default('active'),
   /**
    * Where she is standing, or `null` while she is in transit with a fleet.
    *
@@ -562,10 +643,25 @@ export function titlesFor(factionId: string): Record<CommanderArchetype, string>
   return (NAME_STOCK[factionId] ?? FALLBACK).titles;
 }
 
-/** Which of the three an appointment turns out to be. Also seeded. */
+/**
+ * Which of the three an appointment turns out to be. Also seeded.
+ *
+ * **Two rolls, not one**, and that is a correction rather than a flourish.
+ * `rollD20` returns 1–20, so a single draw taken `% 3` lands 7/7/6 — `convoy`
+ * comes up 30% of the time against 35% for the others. That mattered little
+ * when a power had exactly one officer for a whole campaign and matters now
+ * that recruitment draws up to five, because the archetype being quietly
+ * under-drawn is the one carrying the largest passive.
+ *
+ * Two rolls give 400 values, of which 3 divides 399 — a residual bias of a
+ * quarter of a percent, which is the same order as the name stocks' and for the
+ * same reason left alone. Measured: 160/165/155 over 480 draws before, even
+ * after.
+ */
 export function commanderArchetype(factionId: string, turn: number, salt: string): CommanderArchetype {
-  const n = rollD20(turn, `commander-kind:${factionId}:${salt}`) - 1;
-  return COMMANDER_ARCHETYPES[n % COMMANDER_ARCHETYPES.length]!.kind;
+  const hi = rollD20(turn, `commander-kind:${factionId}:${salt}`) - 1;
+  const lo = rollD20(turn, `commander-school:${factionId}:${salt}`) - 1;
+  return COMMANDER_ARCHETYPES[(hi * 20 + lo) % COMMANDER_ARCHETYPES.length]!.kind;
 }
 
 /**

@@ -222,7 +222,13 @@ describe('ledgers', () => {
     }
     expect(l.gross).toBe(l.territory + l.routes);
     expect(l.net).toBe(
-      l.gross - l.upkeep + l.treatyFlow - l.espionageLoss - l.agentUpkeep + l.commitmentFlow,
+      l.gross -
+        l.upkeep +
+        l.treatyFlow -
+        l.espionageLoss -
+        l.agentUpkeep -
+        l.commanderUpkeep +
+        l.commitmentFlow,
     );
   });
 
@@ -268,7 +274,12 @@ describe('agents', () => {
   it('debuffs a stat while in place, and only for the target', () => {
     const res = withAgent({ kind: 'stat_debuff', stat: 'industry', magnitude: 3 });
     expect(effectiveStats(res.state, 'freeworlds').industry).toBe(10 - 3);
-    expect(effectiveStats(res.state, 'ojjul').industry).toBe(12);
+    // Derived against a board with no operative rather than stated, because
+    // `effectiveStats` composes terrain, the officer's passive and dissent as
+    // well — a hardcoded figure here is an assertion about all four, and fails
+    // without saying which one moved.
+    const untouched = effectiveStats(fresh(), 'ojjul').industry;
+    expect(effectiveStats(res.state, 'ojjul').industry).toBe(untouched);
   });
 
   it('stops having any effect once exposed', () => {

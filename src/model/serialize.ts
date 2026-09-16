@@ -5,6 +5,8 @@ import { assetWorthRangeTo, describeEffect, wantedBy } from '../domain/diplomacy
 import { describeOutstanding } from '../domain/loan.js';
 import { routeEarnings } from '../domain/trade.js';
 import {
+  MAX_ACTIVE_COMMANDERS,
+  activeCommanders,
   archetypeOf,
   commanderEffect,
   commanderFor,
@@ -137,7 +139,16 @@ export function serializeFactions(
  */
 function commanderLine(state: WorldState, viewerId: string): string {
   const officer = commanderFor(state.commanders, viewerId);
-  if (!officer) return '';
+  if (!officer) {
+    const held = (state.commanders ?? []).filter(
+      (c) => c.factionId === viewerId && c.status === 'captured',
+    );
+    // A power with nobody in post is a power that can appoint one, and saying
+    // so is the difference between a gap and a mystery.
+    return held.length > 0
+      ? `You have no officer in post. ${held.map((c) => c.name).join(' and ')} ${held.length === 1 ? 'is' : 'are'} in enemy hands.`
+      : 'You have no officer in post.';
+  }
   const shape = archetypeOf(officer.archetype);
   const seen =
     officer.battles > 0
@@ -146,6 +157,15 @@ function commanderLine(state: WorldState, viewerId: string): string {
   // What losing her would cost, said plainly. A power that cannot tell a
   // veteran from a replacement has no reason to fight shy of spending her, and
   // the successor arrives with the same speciality and none of the record.
+  // The rest of the roster, and the room left in it. A power that cannot see it
+  // has five officers' worth of decision it does not know it has.
+  const others = activeCommanders(state.commanders, viewerId).filter((c) => c.id !== officer.id);
+  const room = MAX_ACTIVE_COMMANDERS - (others.length + 1);
+  const roster =
+    (others.length > 0
+      ? ` Also in post: ${others.map((c) => `${c.name} (${commanderEffect(c)})`).join('; ')}.`
+      : '') +
+    (room > 0 ? ` You may appoint ${room} more.` : ' Your roster is full.');
   const owed = toNextVeterancy(officer.battles);
   const ladder =
     owed === null
@@ -162,7 +182,7 @@ function commanderLine(state: WorldState, viewerId: string): string {
           ? ` She is under way to ${getSystem(state, o.targetId)?.name ?? o.targetId}`
           : ' She is unposted';
       })();
-  return `Your fleet is commanded by ${officer.name}${seen} — known for ${shape.known}. In a battle, ${commanderEffect(officer)}; the rest of the time, ${commanderPassive(officer)}.${posted}, and commands only the battle she is at.${ladder}`;
+  return `Your fleet is commanded by ${officer.name}${seen} — known for ${shape.known}. In a battle, ${commanderEffect(officer)}; the rest of the time, ${commanderPassive(officer)}.${posted}, and commands only the battle she is at.${ladder}${roster}`;
 }
 
 /** Worlds a power holds that began as somebody else's, by name. */
