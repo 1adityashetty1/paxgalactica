@@ -440,7 +440,9 @@ describe('loans', () => {
           id: 'agt-x', ownerFactionId: 'ojjul', targetFactionId: 'drajk',
           systemId: s.systems.find((x) => x.controllerFactionId === 'drajk')!.id,
           mission: 'surveillance' as const, effect: { kind: 'intel' as const, revealsOrders: true },
-          cover: 'a factor', deployedTurn: 0, exposed: false, successChance: 50,
+          cover: 'a factor',
+          targetCommanderId: null,
+          name: '', operations: 0, timesCaught: 0, deployedTurn: 0, exposed: false, successChance: 50,
         },
       ],
     };

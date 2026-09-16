@@ -19,7 +19,15 @@ import {
   type ShipStack,
 } from './hulls.js';
 import { FactionStatsSchema, STAT_NAMES, statModifier, type FactionStats, type StatName } from './checks.js';
-import { CommanderSchema } from './command.js';
+import {
+  COMMANDER_UPKEEP,
+  CommanderSchema,
+  activeCommanders,
+  commanderFor,
+  commanderIndustry,
+  commanderResolve,
+  commanderUpkeepRelief,
+} from './command.js';
 import {
   COMMITMENT_INCOME_BASE,
   COMMITMENT_INCOME_PER_INFLUENCE,
@@ -555,6 +563,15 @@ export const PendingOrderSchema = z.object({
   durationTurns: z.number().int().min(1),
   progress: z.number().int().min(0),
   interruptible: z.boolean(),
+  /**
+   * An officer riding with this fleet, if one was named to it.
+   *
+   * They are carried by the order for the same reason their ships are: a fleet
+   * under way is in `order.force` rather than in `system.ships`, so a person
+   * under way is here rather than in `Commander.atSystemId`. Nullable and
+   * defaulted, so every order written before officers could sail still loads.
+   */
+  commanderId: z.string().nullable().default(null),
   onInterrupt: OnInterruptSchema,
   /** Which factions can observe this order. Drives NPC reaction context. */
   visibility: z.array(z.string()),
@@ -1071,6 +1088,15 @@ export const LedgerSchema = z.object({
   /** What this faction's own live operatives cost it per turn. */
   agentUpkeep: z.number().int(),
   /**
+   * What the officers in post cost a turn.
+   *
+   * Its own line rather than folded into fleet upkeep, because it is a
+   * different decision: a power cuts hulls by laying them up and cuts this by
+   * having fewer officers, and a ledger that ran them together would tell a
+   * player neither.
+   */
+  commanderUpkeep: z.number().int(),
+  /**
    * Standing arrangements: charters, smuggling operations, tribute paid.
    * Positive receives, negative pays.
    */
@@ -1322,7 +1348,7 @@ export function ledgerFor(
   if (!faction) {
     return {
       gross: 0, upkeep: 0, net: 0, systems: 0, treatyFlow: 0,
-      espionageLoss: 0, espionageGain: 0, garrisonUpkeep: 0, agentUpkeep: 0, commitmentFlow: 0, commitmentShare: 0, assetYield: 0, warProfit: 0, occupation: 0,
+      espionageLoss: 0, espionageGain: 0, garrisonUpkeep: 0, agentUpkeep: 0, commanderUpkeep: 0, commitmentFlow: 0, commitmentShare: 0, assetYield: 0, warProfit: 0, occupation: 0,
       territory: 0, routes: 0, tolls: 0, raided: 0, debtService: 0, loanRent: 0,
     };
   }
@@ -1378,8 +1404,18 @@ export function ledgerFor(
   }
   occupation = Math.round(occupation);
 
+  const officer = commanderFor(state.commanders, factionId);
+
   const gross = territory + routes;
-  const upkeep = fleetTonsOf(state, factionId) * UPKEEP_PER_TON;
+  // A `convoy` officer's passive, and the largest of the three: upkeep is the
+  // biggest standing charge any power carries, so this is the only passive that
+  // changes what a power can afford to build. It is the counterweight to a
+  // battle effect worth nothing until the day you lose.
+  const upkeep = Math.round(
+    fleetTonsOf(state, factionId) *
+      UPKEEP_PER_TON *
+      (officer ? 1 - commanderUpkeepRelief(officer) : 1),
+  );
   // Troops a world cannot quarter are billed. Everything inside the ceiling is
   // still free — see `SURPLUS_GARRISON_UPKEEP`.
   // Rounded UP, and once, on the total rather than per world: the rate is a
@@ -1423,6 +1459,11 @@ export function ledgerFor(
   }
 
   const agentUpkeep = liveAgentsOf(state, factionId).length * AGENT_UPKEEP;
+  // Officers in post draw pay. Captured and lost do not — a power stops paying
+  // a commander the day it stops having them, which is also what stops a roster
+  // of the fallen costing anything.
+  const commanderUpkeep =
+    activeCommanders(state.commanders, factionId).length * COMMANDER_UPKEEP;
 
   // Standing arrangements finally reach the books. Read here rather than paid
   // out each tick, for the same reason agent effects are read where they are
@@ -1474,7 +1515,8 @@ export function ledgerFor(
       treatyFlow -
       espionageLoss +
       espionageGain -
-      agentUpkeep +
+      agentUpkeep -
+      commanderUpkeep +
       commitmentFlow +
       commitmentShare +
       assetYield +
@@ -1487,6 +1529,7 @@ export function ledgerFor(
     espionageGain,
     garrisonUpkeep,
     agentUpkeep,
+    commanderUpkeep,
     commitmentFlow,
     commitmentShare,
     assetYield,
@@ -1858,6 +1901,18 @@ export function effectiveStats(state: WorldState, factionId: string): FactionSta
   for (const stat of STAT_NAMES) {
     const bonus = terrain[stat] ?? 0;
     if (bonus > 0) base[stat] = Math.min(20, base[stat] + bonus);
+  }
+
+  // The officer's passive, on one stat and never on might: `bestMod` reads
+  // `effectiveStats().might`, so a might passive would pay their twice for the
+  // same battle. A gunner runs the establishment that makes the guns; a line
+  // officer's crews do not come apart, which is what `resolve` defends. Added
+  // beside terrain and before dissent for terrain's own reason — a good officer
+  // should offset bad governance rather than vanish under the floor.
+  const officer = commanderFor(state.commanders, factionId);
+  if (officer) {
+    base.industry = Math.min(20, base.industry + commanderIndustry(officer));
+    base.resolve = Math.min(20, base.resolve + commanderResolve(officer));
   }
 
   const penalty = dissentPenalty(faction?.dissent ?? 0);

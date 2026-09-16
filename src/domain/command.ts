@@ -33,7 +33,7 @@ import { rollD20 } from './checks.js';
  * - `lineofbattle` is **small and unconditional** — one point of might, which
  *   every fight reads.
  * - `gunnery` is **large and conditional on a class** — it multiplies the
- *   opening salvo, so she is worth a great deal to a power that builds torpedo
+ *   opening salvo, so they are worth a great deal to a power that builds torpedo
  *   boats and exactly nothing to one that brought none.
  * - `convoy` is **large and conditional on losing** — it is worth nothing at
  *   all until the day you have to run, and a great deal on that day.
@@ -57,7 +57,7 @@ export const COMMANDER_ARCHETYPES = [
     kind: 'lineofbattle',
     phase: 'every exchange, and the landing',
     /** What it reads as in a battle report. */
-    effect: 'fights a point harder, everywhere',
+    effect: 'fights harder, everywhere',
     /** Voice for a prompt: what this officer is known for. */
     known: 'holding formation under fire, and for being dull about it',
   },
@@ -65,7 +65,7 @@ export const COMMANDER_ARCHETYPES = [
     kind: 'gunnery',
     phase: 'the torpedo strike',
     effect: 'opens with a heavier salvo',
-    known: 'the opening salvo — she fires before the fleets close, and well',
+    known: 'the opening salvo — they fire before the fleets close, and well',
   },
   {
     kind: 'convoy',
@@ -89,38 +89,400 @@ export function archetypeOf(kind: CommanderArchetype) {
 /* ------------------------------------------------------------------ */
 
 /**
- * What a `lineofbattle` officer adds to her side's might modifier.
+ * Veterancy: what an officer's own record is worth, and the whole reason a
+ * death costs anything.
  *
- * One point, against a modifier that runs -1 to +5 across the five powers and
- * an `OPPORTUNIST_MIGHT_BONUS` of 2. Deliberately smaller than a doctrine: a
- * doctrine is what a power *is* and a commander is who happened to be aboard.
+ * Before this, losing a commander was free and, worse, **profitable**. The
+ * replacement arrived on the next tick with a new name, no bill, and a freshly
+ * rolled archetype — so a power whose doctrine had dealt it a `convoy` officer
+ * and whose yards built torpedo boats was better off losing them, two times in
+ * three. The one mechanically live consequence of the death mechanic paid out
+ * on average.
+ *
+ * `battles` was already counted and had no mechanical reader at all: two
+ * display strings and a sort that is a no-op while a power holds one officer.
+ * So the thing a defeat destroyed was a name and a counter.
+ *
+ * It is the officer's OWN record that is worth something, which is what makes
+ * this a cost rather than a fee. **A replacement cannot be bought at any
+ * price** — the successor is a real officer with a real specialty and no
+ * history, and the only way back up the ladder is to fight and win. That is
+ * also why upkeep is the wrong instrument here: upkeep bounds a roster you can
+ * stockpile, and a power can never hold two officers, so what needed fixing
+ * was never the price of the replacement but its QUALITY.
  */
-export const COMMANDER_MIGHT = 1;
+/**
+ * **Swept against the harness, and the first guess was dead on arrival.**
+ *
+ * 4 and 10 read like modest numbers and are unreachable: `pnpm balance 30`
+ * fights **four battles in the whole galaxy over thirty turns**, and the
+ * busiest officer on the board — Meridian's, who is in three of them — ends the
+ * run at 3. At 4/10 not one power in a full campaign ever leaves step 0, so the
+ * ladder would have been decoration and the harness would have reported that as
+ * a clean pass, since a mechanic that never fires moves nothing.
+ *
+ * A war in this game is rare and decisive rather than continuous, which is a
+ * fact about the map and the 2:1 break-off band rather than about the bots. So
+ * the ladder has to be denominated in the engagements a campaign actually
+ * contains: **2 makes an officer who has fought at all worth more than a
+ * replacement, and 5 is a career.** Measured at 2/5, Adrienne Vance is seasoned
+ * by turn 24 and takes +2 might into the defence of Corvid.
+ */
+export const VETERAN_THRESHOLDS = [2, 5] as const;
+
+/** The top of the ladder, and the answer to a power that only ever wins. */
+export const MAX_VETERANCY = VETERAN_THRESHOLDS.length;
 
 /**
- * Points off the withdrawal loss, which runs 10–35%.
+ * Which step of the ladder an officer stands on: 0 (untested), 1, or 2.
  *
- * The largest of the three in absolute terms, and it is the one worth having
- * because **nothing else in the game reaches this number**. A screen changes
- * *which* hulls are spent getting clear and not how many; a stance changes
- * whether you run at all. This is the only thing that changes the price of
- * running.
+ * Thresholds rather than a rate, the same shape as `WORLD_BONUS_THRESHOLDS`
+ * and for the same reason: a bonus that rises with every engagement is
+ * unbounded in principle and compounds with itself, since the officer who wins
+ * is the officer who keeps being sent.
  */
-export const COMMANDER_WITHDRAW_RELIEF = 8;
+export function veterancyOf(battles: number): number {
+  let step = 0;
+  for (const at of VETERAN_THRESHOLDS) if (battles >= at) step += 1;
+  return step;
+}
+
+/**
+ * What each archetype is worth at each step, indexed by veterancy.
+ *
+ * **Three ladders rather than one multiplier**, which is not a stylistic
+ * choice: a shared scale cannot express this, because might is integer-valued
+ * and its base is 1. At x1.5 and x2 the ladder rounds to 1, 2, 2 and the
+ * second step buys nothing at all — the same defect as halving a one-hull lift
+ * loss, where `floor(1 / 2)` shipped a 100% discount wearing a 50% label.
+ * Where the granularity cannot carry a fraction, the fraction is not the thing
+ * to write down.
+ *
+ * Scaling each archetype's own effect rather than adding a flat might bonus on
+ * top keeps the three distinct. A veteran's bonus being might whatever they are
+ * known for would make every officer partly a `lineofbattle` officer, and that
+ * archetype's whole claim is that its help is the small unconditional kind.
+ */
+/**
+ * Might added by a `lineofbattle` officer, against a modifier running -1..+5.
+ *
+ * The top of this ladder is deliberately larger than `OPPORTUNIST_MIGHT_BONUS`,
+ * which revises a claim this file used to make — that a commander is *always*
+ * worth less than a doctrine, because a doctrine is what a power IS and an
+ * officer is who happened to be aboard. That is right about a **fresh** officer
+ * and wrong about a veteran, and the distinction is the whole point of having a
+ * ladder: a doctrine is given, and this is the one thing on the field a power
+ * builds by winning. It also takes five engagements and is destroyed by a
+ * single bad defeat, which no doctrine ever is.
+ */
+export const COMMANDER_MIGHT = [1, 2, 3] as const;
+
+/**
+ * Points off the withdrawal loss, which runs 10-35%.
+ *
+ * Still floored at 5% in `bleed` whatever the step, because a withdrawal under
+ * fire is never free however good the officer running it — the top of this
+ * ladder would otherwise clear the bottom of the band outright.
+ */
+export const COMMANDER_WITHDRAW_RELIEF = [8, 12, 16] as const;
 
 /** How much heavier a `gunnery` officer's opening salvo lands. */
-export const COMMANDER_STRIKE_BONUS = 0.4;
+export const COMMANDER_STRIKE_BONUS = [0.4, 0.6, 0.8] as const;
 
 /**
  * A commander is lost when their side is broken and the die is against them.
  *
- * Only on a **defeat** — a routed fleet, or one driven off — because an officer
+ * Only on a **defeat** - a routed fleet, or one driven off - because an officer
  * who wins does not die at a rate worth modelling, and because a death roll on
  * every battle would make the roster churn faster than a player could learn a
  * name. `roll <= 4` on the battle's own seeded d20, so it is reproducible and
  * needs no second source of randomness.
  */
 export const COMMANDER_LOSS_ROLL = 4;
+
+/**
+ * Inside the loss band, who is killed and who is taken alive.
+ *
+ * Read off the **same roll**, so capture costs no second source of randomness
+ * and replays exactly: `1–2` is a death, `3–4` is a capture. An even split of a
+ * band that was already there, rather than a new die and a new tuning constant.
+ *
+ * A capture needs a **captor**, so a beaten side with nobody to take prisoners —
+ * a fleet driven off by an unaligned world's militia — kills instead. Ground
+ * with no flag over it does not run a prison.
+ */
+export const COMMANDER_CAPTURE_ROLL = 2;
+
+export function commanderTaken(roll: number): boolean {
+  return commanderLost(roll) && roll > COMMANDER_CAPTURE_ROLL;
+}
+
+/* ------------------------------------------------------------------ */
+/* A roster, and what it costs to have one                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * How many officers a power may have in post at once.
+ *
+ * Until recruitment there was no roster at all: `tickTurn` appointed a
+ * successor only when a power had nobody, so the answer was permanently one and
+ * `commanderFor`'s seniority sort was dead code. Five is enough that a power can
+ * cover its fronts and specialise — a gunner with the boats, a quartermaster
+ * behind the line — and few enough that losing one still matters.
+ */
+export const MAX_ACTIVE_COMMANDERS = 5;
+
+/**
+ * What hiring one costs, and what keeping one costs a turn.
+ *
+ * **Upkeep is the right instrument now, and it was the wrong one before.** The
+ * argument against it when a death was free was that upkeep bounds a roster you
+ * can stockpile and a power could never hold two officers — so there was nothing
+ * to stockpile and a per-turn charge was noise. Recruitment is exactly the
+ * change that makes the premise true, so the charge arrives with the thing it
+ * was always the answer to.
+ *
+ * A full roster runs `5 × COMMANDER_UPKEEP` a turn against net incomes of
+ * 60–300, so it is a real line in the ledger rather than a rounding error, and a
+ * poor power that hires five is choosing officers over hulls.
+ */
+export const COMMANDER_COST = 120;
+export const COMMANDER_UPKEEP = 5;
+
+/** Officers a power currently has in post. Captured and lost do not count. */
+export function activeCommanders(
+  commanders: Commander[] | undefined,
+  factionId: string,
+): Commander[] {
+  return (commanders ?? []).filter((c) => c.factionId === factionId && c.status === 'active');
+}
+
+/**
+ * What a captured officer is worth, to their own power and to anybody else.
+ *
+ * Worth most to the power that lost them, which is the whole of why an asset is
+ * worth trading rather than hoarding — and the same claim `prisoners` makes.
+ * Scaled by their record, because a veteran is the officer a power actually wants
+ * back: losing their cost them a ladder that took engagements to climb.
+ *
+ * Everyone else pays a flat, small figure. An enemy admiral is worth something
+ * to a third party — as leverage, or as a thing to sell on — and nothing like
+ * what they are worth at home.
+ */
+export const OFFICER_LEVERAGE = 60;
+
+/**
+ * What a power will pay to get its own operative back.
+ *
+ * Below an officer's, and the gap is the point: a commander is a post, and a
+ * spy is a person who can be replaced by deploying another at `AGENT_COST`.
+ * What makes them worth anything at all is what they know, which is why the
+ * file made out of them is worth a share of this rather than of nothing.
+ */
+export const OPERATIVE_RANSOM = 120;
+
+/**
+ * What a prisoner's file is worth against the prisoner.
+ *
+ * A fraction, because interrogating them **spends** them: the ransom goes and
+ * what is left is paper worth a share of it, only to the power that did the
+ * questioning. That is the whole decision — a veteran is worth 450 alive to the
+ * power that wants them back, and a file on them is worth 180 to you.
+ */
+export const INTERROGATION_SHARE = 0.4;
+
+export function officerRansom(
+  c: Commander,
+  factionIds: readonly string[],
+): Record<string, number> {
+  const worth: Record<string, number> = {};
+  for (const id of factionIds) {
+    worth[id] = id === c.factionId ? 150 + veterancyOf(c.battles) * 150 : OFFICER_LEVERAGE;
+  }
+  return worth;
+}
+
+/**
+ * Killing one outright takes a **17 or better**, on a roll of its own.
+ *
+ * A separate die from the operation's, which is unavoidable rather than
+ * careless: the success test reads the BOTTOM of the d20 (`roll * 5 <=
+ * successChance`) and this has to read the top, so one roll cannot carry both.
+ * It is seeded on the agent and the turn like everything else, so it replays.
+ *
+ * Deliberately long odds on top of everything an assassination already costs —
+ * 150 credits, a slot against `maxAgentsFor`, spent after one attempt either
+ * way, and caught nearly half the time. A commander is the most concentrated
+ * thing on the board now that a veteran is worth three points of might or a
+ * seventh of a fleet's upkeep, and a reliable way to remove one would make
+ * every other use of an operative a mistake.
+ */
+export const ASSASSINATION_KILL_ROLL = 17;
+
+/* ------------------------------------------------------------------ */
+/* Passives: what an officer is worth on a turn with no battle         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Each archetype also does something outside a battle, and the sizes are
+ * deliberately uneven.
+ *
+ * The problem this answers is `convoy`. Its battle effect is the most
+ * conditional thing in the set — worth **nothing at all** until the turn you
+ * have to run — so on any turn a player is choosing an officer it reads as the
+ * weak pick, right up to the campaign where it isn't. A conditional effect
+ * needs an unconditional counterweight or nobody ever takes it.
+ *
+ * So the passive runs **opposite to the battle effect's conditionality**:
+ *
+ * | | in battle | out of it |
+ * |---|---|---|
+ * | `lineofbattle` | always | least — they are already earning every fight |
+ * | `gunnery` | only with boats | middling |
+ * | `convoy` | only when losing | **most**, and it is the largest recurring number in the ledger |
+ *
+ * All three are **read where they are used** rather than applied on the tick,
+ * which is the rule `commitmentFlow`, `assetYield` and the agent effects all
+ * follow: a per-turn mutation compounds instead of recurring.
+ *
+ * They scale with veterancy like everything else here, so the officer a power
+ * has kept alive is worth more at home as well as in the line — and losing them
+ * costs something on a turn nobody fought at all, which is the whole of what
+ * `battles` was supposed to mean.
+ */
+
+/**
+ * `lineofbattle`: points of **resolve**, added like terrain and clamped the same.
+ *
+ * Their crews do not come apart, which is what `resolve` defends: `subornLimit`
+ * is the suborner's guile modifier against the target's, so an officer known
+ * for holding formation under fire makes a power's ships harder to turn. Never
+ * might, for the reason the gunner's is never might — `bestMod` reads
+ * `effectiveStats().might`, so it would pay their twice for the same battle.
+ *
+ * **The first version of this was occupation relief and it was worth nothing.**
+ * Discipline holding ground that is not yours is a better sentence, and it was
+ * measured at **zero credits for every power holding a line officer** over
+ * thirty harness turns: three of the four occupy no foreign ground at all. Same
+ * failure as the first veterancy thresholds, caught the same way — by checking
+ * the mechanic fired rather than that the board was unchanged. A passive
+ * conditional on conquest is not a passive.
+ */
+export const COMMANDER_RESOLVE = [1, 2, 3] as const;
+
+/**
+ * `gunnery`: points of **industry**, added like terrain and clamped the same.
+ *
+ * An ordnance officer runs the establishment that makes the guns, so what they
+ * is worth at home is the industrial base rather than money. Industry
+ * deliberately, and never might: `bestMod` reads `effectiveStats().might`, so a
+ * might passive would pay their twice for the same battle.
+ */
+export const COMMANDER_INDUSTRY = [1, 2, 3] as const;
+
+/**
+ * `convoy`: the share of fleet upkeep their logistics save. The big one.
+ *
+ * Upkeep is the largest standing charge any power carries — on the opening
+ * board it is roughly a third of gross — so this is the only passive here that
+ * changes what a power can afford to build. That is the point: it is the
+ * counterweight to a battle effect that does nothing until the day you lose.
+ */
+export const COMMANDER_UPKEEP_RELIEF = [0.06, 0.1, 0.14] as const;
+
+export function commanderResolve(c: Commander): number {
+  return c.archetype === 'lineofbattle' ? COMMANDER_RESOLVE[veterancyOf(c.battles)]! : 0;
+}
+export function commanderIndustry(c: Commander): number {
+  return c.archetype === 'gunnery' ? COMMANDER_INDUSTRY[veterancyOf(c.battles)]! : 0;
+}
+export function commanderUpkeepRelief(c: Commander): number {
+  return c.archetype === 'convoy' ? COMMANDER_UPKEEP_RELIEF[veterancyOf(c.battles)]! : 0;
+}
+
+/**
+ * The passive, in the words a panel uses.
+ *
+ * Unlike `commanderEffect`, these accessors gate on the archetype themselves —
+ * a ledger asks "what relief does this power's officer give me" without caring
+ * which school they are from, and making every caller test the archetype first is
+ * how one of them eventually forgets.
+ */
+export function commanderPassive(c: Commander): string {
+  switch (c.archetype) {
+    case 'lineofbattle':
+      return `+${commanderResolve(c)} resolve`;
+    case 'gunnery':
+      return `+${commanderIndustry(c)} industry`;
+    case 'convoy':
+      return `-${Math.round(commanderUpkeepRelief(c) * 100)}% fleet upkeep`;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* What an officer is worth, given their record                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The three ladders, read at the step the officer's own record puts their on.
+ *
+ * Separate accessors rather than one `effectOf`, because the three are
+ * denominated in three different things — a might modifier, a percentage off a
+ * loss, and a multiplier on a salvo — and one function returning a bare number
+ * for all of them is the units drift this codebase keeps having to undo.
+ *
+ * Each is read only after the caller has gated on the archetype, exactly as the
+ * flat constants were, so the accessor answers "how much" and never "whether".
+ */
+export function commanderMight(c: Commander): number {
+  return COMMANDER_MIGHT[veterancyOf(c.battles)]!;
+}
+
+export function commanderRelief(c: Commander): number {
+  return COMMANDER_WITHDRAW_RELIEF[veterancyOf(c.battles)]!;
+}
+
+export function commanderStrike(c: Commander): number {
+  return COMMANDER_STRIKE_BONUS[veterancyOf(c.battles)]!;
+}
+
+/** What a battle report calls an officer of this standing. */
+export function veterancyLabel(battles: number): string {
+  return ['untested', 'seasoned', 'veteran'][veterancyOf(battles)]!;
+}
+
+/**
+ * What THIS officer is worth, in the same words a battle report uses.
+ *
+ * `COMMANDER_ARCHETYPES[].effect` describes the SHAPE of an archetype's help
+ * and deliberately quotes no number any more — it used to say *"fights a point
+ * harder"*, which stopped being true the moment a record could make it two.
+ * A screen that says what a kind of officer does is a different thing from one
+ * that says what this one does, and only the second can be checked against the
+ * arithmetic in the battle card.
+ */
+export function commanderEffect(c: Commander): string {
+  switch (c.archetype) {
+    case 'lineofbattle':
+      return `+${commanderMight(c)} might in every exchange, and the landing`;
+    case 'gunnery':
+      return `+${Math.round(commanderStrike(c) * 100)}% on the opening salvo`;
+    case 'convoy':
+      return `-${commanderRelief(c)}% off a withdrawal`;
+  }
+}
+
+/**
+ * Engagements still owed before the next step, or `null` at the cap.
+ *
+ * Shown because the ladder is only a reason to protect an officer if a player
+ * can see where they are on it — a cost you cannot read coming is a cost you
+ * cannot weigh.
+ */
+export function toNextVeterancy(battles: number): number | null {
+  const next = VETERAN_THRESHOLDS[veterancyOf(battles)];
+  return next === undefined ? null : next - battles;
+}
 
 /* ------------------------------------------------------------------ */
 /* The record                                                          */
@@ -139,7 +501,38 @@ export const CommanderSchema = z.object({
    * makes losing one cost something a player can feel.
    */
   battles: z.number().int().min(0).default(0),
-  status: z.enum(['active', 'lost']).default('active'),
+  /**
+   * `lost` is dead; `captured` is alive and in somebody else's hands.
+   *
+   * A captured officer is **not on anybody's roster** — they count against no
+   * cap, commands nothing, and draws no pay — but they still exists, which is
+   * what lets their come home. The `Asset` holding their is the thing that moves;
+   * this record is what they IS.
+   */
+  status: z.enum(['active', 'lost', 'captured']).default('active'),
+  /**
+   * Where they are standing, or `null` while they are in transit with a fleet.
+   *
+   * **An officer is in a fleet without being tonnage**, which is the whole
+   * shape of this. They are not a `ShipStack` entry and never enters the loss
+   * order: everything in that order is denominated in tons, and putting a
+   * person there would need an `orbitalWeight` — where the codebase has already
+   * established that nothing may weigh exactly nothing, because a side with no
+   * weight reads as "nothing to fight" to every branch of the resolver. "Last
+   * in the loss order" is also precisely the bug `lifter` shipped with, which
+   * made transports the safest thing in a fleet.
+   *
+   * So they ride alongside the hulls rather than among them, and the only thing
+   * that can kill their is `commanderLost` on a defeat — a considered rule rather
+   * than an emergent one that would need an exception to stop being a coin
+   * flip.
+   *
+   * In transit they belong to the ORDER (`PendingOrder.commanderId`) and this
+   * is `null`, which is exactly how their ships work: a fleet under way is in
+   * `order.force` and not in `system.ships`, and `shipsInTransit` derives from
+   * `pendingOrders`. One convention, not two.
+   */
+  atSystemId: z.string().nullable().default(null),
 });
 export type Commander = z.infer<typeof CommanderSchema>;
 
@@ -148,47 +541,108 @@ export type Commander = z.infer<typeof CommanderSchema>;
 /* ------------------------------------------------------------------ */
 
 /**
- * Per-faction name stock.
+ * Per-faction name stock: a given name, a family name, and a title.
+ *
+ * **Three parts, generated independently**, which is what makes the set large
+ * enough to feel like a service rather than a list. Eight firsts against ten
+ * lasts is eighty people per power before the title, where a first-plus-epithet
+ * pair read as the same handful of characters recurring.
+ *
+ * **The title is the archetype, said out loud.** One per school per power, so
+ * a Line Captain and a Master Gunner are visibly different appointments and a
+ * player learns what a school is called before learning what it does. It is not
+ * a leak: an officer's archetype is already on the Command tab for every power,
+ * and it is a fact about a fleet rather than about a plan. It also does the
+ * work inheritance needs — a successor holds the same school and therefore the
+ * same title, so the continuity of the institution is legible in the name
+ * itself while the person is plainly somebody new.
  *
  * Five powers that should never be mistaken for one another is a rule this
- * project already applies to voice, ethics, red lines and build bias — a
- * generated name that could belong to any of them would be the one place that
- * rule lapsed. So the stock is per faction and the shape of the name differs
- * too: the Vigil takes a cognomen, the Combine a house, the Arkane a patronym
- * off the ground they hold.
+ * project applies to voice, ethics, red lines and build bias, so the stocks are
+ * per faction and so is the SHAPE: the Vigil and the Arkane wear the title in
+ * front, the Combine carries it behind the house name the way it carries every
+ * other obligation.
  */
-const NAME_STOCK: Record<string, { first: string[]; second: string[]; join: string }> = {
+interface NameStock {
+  first: string[];
+  last: string[];
+  /** One per archetype. The name a power gives that school of officer. */
+  titles: Record<CommanderArchetype, string>;
+  /** Where the title sits relative to the name. */
+  place: 'prefix' | 'suffix';
+}
+
+const NAME_STOCK: Record<string, NameStock> = {
+  /* A chartered company, and it does not pretend to be a navy: the ranks are
+     the ones on the org chart, because that is what the Authority is. */
   meridian: {
     first: ['Adrienne', 'Caspar', 'Teodor', 'Lira', 'Odile', 'Marcus', 'Sabine', 'Yusuf'],
-    second: ['Vance', 'Okonjo', 'Reyes', 'Haldane', 'Brandt', 'Sorel', 'Achebe', 'Marchetti'],
-    join: ' ',
+    last: ['Vance', 'Okonjo', 'Reyes', 'Haldane', 'Brandt', 'Sorel', 'Achebe',
+           'Marchetti', 'Delacroix', 'Ferreira'],
+    titles: {
+      lineofbattle: 'Operations Executive',
+      gunnery: 'Senior Director',
+      convoy: 'Comptroller',
+    },
+    place: 'prefix',
   },
+  /* The remnant of a state: praenomen and cognomen, and the flag ranks of a
+     service that still keeps its establishment on paper. */
   vigil: {
-    first: ['Legate Caius', 'Legate Valeria', 'Legate Drusus', 'Legate Marcia',
-            'Legate Aulus', 'Legate Livia', 'Legate Quintus', 'Legate Sabina'],
-    second: ['Ferrata', 'the Elder', 'Corvinus', 'Nasica', 'the Steadfast',
-             'Longinus', 'Severa', 'of the Ninth'],
-    join: ' ',
+    first: ['Caius', 'Valeria', 'Drusus', 'Marcia', 'Aulus', 'Livia', 'Quintus', 'Sabina'],
+    last: ['Ferrata', 'Corvinus', 'Nasica', 'Longinus', 'Severa', 'Galba',
+           'Cinna', 'Rufus', 'Varro', 'Scaeva'],
+    titles: {
+      lineofbattle: 'Iron Marshal',
+      gunnery: 'Commodore',
+      convoy: 'Rear Admiral',
+    },
+    place: 'prefix',
   },
+  /* A family before it is a fleet: the given name is yours, the house name is
+     what you answer to, and the office comes last because it is what you are
+     owed rather than what you are called. */
   ojjul: {
-    first: ['Nar Vessine', 'Nar Ojjuk', 'Nar Tallim', 'Nar Serek',
-            'Nar Halvane', 'Nar Osk', 'Nar Dovic', 'Nar Ruille'],
-    second: ['the Patient', 'of Shalka', 'the Younger', 'Two-Ledgers',
-             'of Riqel', 'the Quiet', 'Cousin-of-Cousins', 'the Debt-Holder'],
-    join: ', ',
+    first: ['Serek', 'Halvane', 'Dovic', 'Ruille', 'Tallim', 'Osk', 'Vessine', 'Miral'],
+    last: ['Nar Kheline', 'Nar Ossik', 'Nar Duvane', 'Nar Serrel', 'Nar Halq',
+           'Nar Ojjuk', 'Nar Tevin', 'Nar Rissa', 'Nar Belline', 'Nar Aquen'],
+    titles: {
+      lineofbattle: 'Underboss',
+      gunnery: 'Second Elder',
+      convoy: 'Hand of the Family',
+    },
+    place: 'suffix',
   },
+  /* Elected, and the office is the name: an Arkane officer is introduced by
+     what the councils asked them to do, not by a rank they hold. Every one of
+     them is a -warden under the Highwarden, so an Arkane officer is placeable
+     from the title alone even before the name. */
   freeworlds: {
-    first: ['Watch Oria', 'Watch Kell', 'Watch Devain', 'Watch Sarn',
-            'Watch Mira', 'Watch Tolen', 'Watch Ysra', 'Watch Bran'],
-    second: ['of Arkane Prime', 'Stonecount', 'of the Second Mark', 'Vesskeeper',
-             'of Pell Reach', 'Throatholder', 'of Delvane', 'Nine-Generations'],
-    join: ' ',
+    first: ['Oria', 'Kell', 'Devain', 'Sarn', 'Mira', 'Tolen', 'Ysra', 'Bran'],
+    last: ['Stonecount', 'Vesskeeper', 'Throatholder', 'Ninefold', 'Dustborn',
+           'Marklen', 'Pellrun', 'Delvane', 'Ashkeep', 'Windward'],
+    titles: {
+      lineofbattle: 'Fleetwarden',
+      gunnery: 'Gunwarden',
+      convoy: 'Lanewarden',
+    },
+    place: 'prefix',
   },
+  /* No commissions and no register: a Drajk title is a thing crews call
+     somebody until it sticks, and half of them started as insults. The -master
+     suffix is theirs the way -warden is the Arkane's, and it runs up to the
+     Huntmaster — a quartermaster on a raiding crew is elected and answers to
+     the hold rather than to the captain, which is the Confederacy exactly. */
   drajk: {
     first: ['Kess', 'Ravel', 'Tannic', 'Voss', 'Sherrin', 'Doram', 'Aleska', 'Prynn'],
-    second: ['Longburn', 'the Hollow', 'Deeprunner', 'Coldwake',
-             'Vergesse-Born', 'Halfshare', 'the Unlit', 'Threxwind'],
-    join: ' ',
+    last: ['Longburn', 'Deeprunner', 'Coldwake', 'Halfshare', 'Threxwind',
+           'Ashlott', 'Greywake', 'Skeln', 'Hollowmark', 'Sundrift'],
+    titles: {
+      lineofbattle: 'Korvan Lord',
+      gunnery: 'Packmaster',
+      convoy: 'Quartermaster',
+    },
+    place: 'prefix',
   },
 };
 
@@ -197,24 +651,156 @@ const FALLBACK = NAME_STOCK['drajk']!;
 /**
  * A name from a seed, deterministic and therefore replayable.
  *
- * Built on `rollD20`'s hash rather than a second generator, so a commander
- * appointed on turn 9 of a replayed campaign is the same person with the same
- * name as in the live one. Nothing here may reach for a clock or `Math.random`
- * — a roster that differs between a campaign and its replay would break
- * `verifyReplay` on a string comparison, which is exactly the class of bug key
- * ordering already caused once.
+ * Three independent draws off `rollD20`'s hash — given name, family name, and
+ * the title that comes with the school. Nothing here may reach for a clock or
+ * `Math.random`: a roster that differed between a campaign and its replay would
+ * break `verifyReplay` on a string comparison, which is exactly the class of bug
+ * key ordering already caused once.
+ *
+ * The archetype is an argument rather than something this rolls for itself,
+ * because a successor **inherits** one and a seeded officer is **dealt** one,
+ * and a name that disagreed with the record would be a second source of truth
+ * about what an officer is.
+ *
+ * `rollD20` returns 1..20 and the stocks are 8 and 10 long, so the modulo is
+ * not uniform — 20 % 8 is 4, and half the given names are drawn slightly more
+ * often. That is a cosmetic bias on a cosmetic field and is left alone
+ * deliberately: the uniformity that matters is the die's, which the murmur3
+ * finalizer already guarantees, and widening a name list to 20 to flatten it
+ * would be arithmetic driving the fiction.
  */
-export function commanderName(factionId: string, turn: number, salt: string): string {
+export function commanderName(
+  factionId: string,
+  turn: number,
+  salt: string,
+  archetype: CommanderArchetype,
+): string {
   const stock = NAME_STOCK[factionId] ?? FALLBACK;
   const a = rollD20(turn, `commander-first:${factionId}:${salt}`) - 1;
-  const b = rollD20(turn, `commander-second:${factionId}:${salt}`) - 1;
-  return `${stock.first[a % stock.first.length]}${stock.join}${stock.second[b % stock.second.length]}`;
+  const b = rollD20(turn, `commander-last:${factionId}:${salt}`) - 1;
+  const person = `${stock.first[a % stock.first.length]} ${stock.last[b % stock.last.length]}`;
+  const title = stock.titles[archetype];
+  return stock.place === 'prefix' ? `${title} ${person}` : `${person}, ${title}`;
 }
 
-/** Which of the three an appointment turns out to be. Also seeded. */
+/**
+ * A name nobody in this campaign is already using.
+ *
+ * Eighty officers per power sounds like plenty and is not: the birthday problem
+ * bites at five on a roster and again every time one is replaced, and a
+ * campaign that fields *Kess Coldwake* twice has told the player the generator
+ * is a generator. Measured before this: two of six draws collided in one power.
+ *
+ * Resolved by **bumping the salt and drawing again**, not by editing the name —
+ * a suffixed *"Kess Coldwake II"* is a worse answer than a different person.
+ * Deterministic, because the retry is a pure function of the taken set and the
+ * taken set is a pure function of state, so a replay walks the same path.
+ *
+ * Gives up after `TRIES` and returns the collision, which is right rather than
+ * defensive: exhausting eighty names means a power has fielded eighty officers
+ * and a repeat is no longer the surprising thing.
+ */
+export function unusedName(
+  taken: ReadonlySet<string>,
+  draw: (attempt: number) => string,
+): string {
+  const TRIES = 24;
+  let name = draw(0);
+  for (let i = 1; i < TRIES && taken.has(name); i++) name = draw(i);
+  return name;
+}
+
+/** Every name this campaign has already used, officers and operatives alike. */
+export function namesInUse(state: {
+  commanders?: Commander[];
+  agents?: { name?: string }[];
+}): Set<string> {
+  const taken = new Set<string>();
+  for (const c of state.commanders ?? []) taken.add(c.name);
+  for (const a of state.agents ?? []) if (a.name) taken.add(a.name);
+  return taken;
+}
+
+/**
+ * An operative's name: the same stock, and no title.
+ *
+ * Same people, so the same given and family names — an operative is one of the
+ * power's own, not a separate species. **No rank**, because a title here names
+ * a school of command and an operative commands nothing; what they have instead
+ * is a `cover`, which the game already asks for and which is the thing a rival
+ * actually sees.
+ */
+export function agentName(factionId: string, turn: number, salt: string): string {
+  const stock = NAME_STOCK[factionId] ?? FALLBACK;
+  const a = rollD20(turn, `agent-first:${factionId}:${salt}`) - 1;
+  const b = rollD20(turn, `agent-last:${factionId}:${salt}`) - 1;
+  return `${stock.first[a % stock.first.length]} ${stock.last[b % stock.last.length]}`;
+}
+
+/** Exported so a test can hold the stocks to the archetypes rather than to itself. */
+export const NAME_STOCK_FACTIONS = Object.keys(NAME_STOCK);
+export function titlesFor(factionId: string): Record<CommanderArchetype, string> {
+  return (NAME_STOCK[factionId] ?? FALLBACK).titles;
+}
+
+/**
+ * Which of the three an appointment turns out to be. Also seeded.
+ *
+ * **Two rolls, not one**, and that is a correction rather than a flourish.
+ * `rollD20` returns 1–20, so a single draw taken `% 3` lands 7/7/6 — `convoy`
+ * comes up 30% of the time against 35% for the others. That mattered little
+ * when a power had exactly one officer for a whole campaign and matters now
+ * that recruitment draws up to five, because the archetype being quietly
+ * under-drawn is the one carrying the largest passive.
+ *
+ * Two rolls give 400 values, of which 3 divides 399 — a residual bias of a
+ * quarter of a percent, which is the same order as the name stocks' and for the
+ * same reason left alone. Measured: 160/165/155 over 480 draws before, even
+ * after.
+ */
 export function commanderArchetype(factionId: string, turn: number, salt: string): CommanderArchetype {
-  const n = rollD20(turn, `commander-kind:${factionId}:${salt}`) - 1;
-  return COMMANDER_ARCHETYPES[n % COMMANDER_ARCHETYPES.length]!.kind;
+  const hi = rollD20(turn, `commander-kind:${factionId}:${salt}`) - 1;
+  const lo = rollD20(turn, `commander-school:${factionId}:${salt}`) - 1;
+  return COMMANDER_ARCHETYPES[(hi * 20 + lo) % COMMANDER_ARCHETYPES.length]!.kind;
+}
+
+/**
+ * What the next officer is known for: the same thing the last one was.
+ *
+ * **A successor inherits the archetype and never the record**, and the split is
+ * the whole of what makes a death a loss. Re-rolling the specialty made a
+ * defeat a free lottery ticket — a power stuck with an officer its fleet had no
+ * use for was better off losing them — so the one live consequence of the death
+ * mechanic ran backwards. Inheriting it means what a defeat costs is the
+ * `battles` behind them, which is a thing that took turns of winning to build
+ * and cannot be bought at any price.
+ *
+ * It reads as the institution rather than the person, which is the right shape:
+ * a power that fights its wars in the line goes on fighting them in the line,
+ * and the officer it promotes is the one that school produced. What it does NOT
+ * mean is that a power is locked to a specialty forever — an archetype is fixed
+ * at the seed and inherited down from there, and moving off it is what an
+ * appointment op would be for, if the player ever gets one.
+ *
+ * Falls back to a fresh roll when there is no predecessor at all — a faction
+ * added mid-campaign, or a save written before commanders existed — so the
+ * appointment always has an answer.
+ */
+export function successorArchetype(
+  commanders: Commander[] | undefined,
+  factionId: string,
+  turn: number,
+  salt: string,
+): CommanderArchetype {
+  // Scanned from the end: the array is append-ordered, so the last entry for a
+  // faction is the officer most recently in post. Every one of them is `lost`
+  // by the time this is asked, since an active officer is what stops the
+  // appointment happening at all.
+  const all = commanders ?? [];
+  for (let i = all.length - 1; i >= 0; i--) {
+    if (all[i]!.factionId === factionId) return all[i]!.archetype;
+  }
+  return commanderArchetype(factionId, turn, salt);
 }
 
 /* ------------------------------------------------------------------ */
@@ -234,6 +820,26 @@ export function commanderArchetype(factionId: string, turn: number, salt: string
  * and replays exactly. The effect is that a power's best-known officer keeps
  * turning up, which is what makes losing one cost something a player can feel.
  */
+/**
+ * The officer of this power standing at this system, if any.
+ *
+ * What `commanderFor` is to a power, this is to a place — and the split is the
+ * point of giving an officer a location at all: their **passives** are theirs
+ * wherever they are, because they run the power's establishment, while them
+ * **battle** effect reaches only the engagement they are actually present for.
+ * Before this they commanded every battle their power fought, simultaneously,
+ * across the galaxy.
+ */
+export function commanderAt(
+  commanders: Commander[] | undefined,
+  factionId: string,
+  systemId: string,
+): Commander | undefined {
+  return (commanders ?? []).find(
+    (c) => c.factionId === factionId && c.status === 'active' && c.atSystemId === systemId,
+  );
+}
+
 export function commanderFor(
   commanders: Commander[] | undefined,
   factionId: string,

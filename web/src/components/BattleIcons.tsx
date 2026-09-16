@@ -369,6 +369,47 @@ export function ListenerIcon({ size = 18, title }: IconProps) {
 }
 
 /** Pick the glyph for a hull class. One place, so a new class cannot be missed. */
+/**
+ * A commander: a five-pointed star in a circle.
+ *
+ * The only glyph here that is not a machine, and deliberately **not a thing** —
+ * a notional badge rather than an object. Everything else in this set earns its
+ * legibility by being a silhouette of something real, which is the rule the
+ * four failed passes above established. That rule is what made the two attempts
+ * at drawing a *person* fail: face-on, a cap over a symmetric brim with the
+ * badge cut out is unmistakably a **hut with a doorway** at any size worth
+ * looking at, and in profile the cap survived at 110px and turned to mush at
+ * the 13–18px it is actually used at, because the visor doing all the work is
+ * the first thing to go.
+ *
+ * An insignia escapes the problem instead of solving it. A star in a ring is
+ * not a picture of anything, so there is no object for a reader to fail to
+ * recognise — it is read as *rank* the way a chevron or a pip is, by
+ * convention, and conventions do not blur.
+ *
+ * The star is drawn as large as the ring allows, with its points touching the
+ * ring's inner edge: at row size the gaps between the points are what keep it a
+ * star rather than a blob, so the star gets the space and the ring stays thin.
+ */
+export function CommanderIcon({ size = 18, title }: IconProps) {
+  return (
+    <svg
+      className="ob-icon"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden={title ? undefined : true}
+      role={title ? 'img' : undefined}
+    >
+      {title && <title>{title}</title>}
+      <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.7" />
+      {/* A regular pentagram: outer radius 8.15, inner 0.382 of it. */}
+      <path d="M12 3.85 L13.83 9.48 L19.75 9.48 L14.96 12.96 L16.79 18.59 L12 15.11 L7.21 18.59 L9.04 12.96 L4.25 9.48 L10.17 9.48 Z" />
+    </svg>
+  );
+}
+
 export function HullIcon({
   hull,
   size = 18,

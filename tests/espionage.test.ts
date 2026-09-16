@@ -1,8 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import { applyOps, tickTurn } from '../src/domain/reducer.js';
+import { agentSuccessChance, applyOps, tickTurn } from '../src/domain/reducer.js';
 import type { OpInput } from '../src/domain/ops.js';
 import { createSeedState } from '../src/seed/scenario.js';
-import { MISSION_PROFILE, type AgentMission } from '../src/domain/diplomacy.js';
+import {
+  AGENT_VETERAN_THRESHOLDS,
+  MISSION_PROFILE,
+  agentStanding,
+  agentVeterancy,
+  type AgentMission,
+} from '../src/domain/diplomacy.js';
 import { ledgerFor, type WorldState } from '../src/domain/state.js';
 import { serializeCommitments, serializeStanding, serializeState } from '../src/model/serialize.js';
 import { routeCovertAction } from '../src/domain/development.js';
@@ -288,7 +294,8 @@ describe('a thief receives what it steals', () => {
         id: 'a1', ownerFactionId: 'meridian', targetFactionId: 'vigil',
         systemId: 'tor-3', mission: 'theft',
         effect: { kind: 'income_penalty', perTurn: 10 },
-        cover: 'a factor', deployedTurn: 0, exposed: false, successChance: 50,
+        cover: 'a factor',
+        targetCommanderId: null, name: '', operations: 0, timesCaught: 0, deployedTurn: 0, exposed: false, successChance: 50,
       },
     ] as never;
     return s;
@@ -351,6 +358,7 @@ describe('every covert operation in one declaration is routed', () => {
         mission: 'assassination',
         effect: { kind: 'stat_debuff', stat: 'resolve', magnitude: 1 },
         cover: 'a factor',
+        targetCommanderId: null, name: '', operations: 0, timesCaught: 0,
       },
     ];
     const out = routeCovertAction(ops, 'success', both, 'meridian');
@@ -602,5 +610,139 @@ describe('an operative belongs to whoever deployed it', () => {
     const { state, op } = deploy();
     const out = applyOps(state, [op], 'model');
     expect(out.rejections[0]?.code).toBe('illegal_value');
+  });
+});
+
+/**
+ * An operative's record, and the face a rival has already photographed.
+ *
+ * The twin of a commander's veterancy, on the one number this side of the game
+ * owns: `successChance` is computed in code, where the `effect` magnitude is
+ * model-chosen and capped — scaling that would hand a model a lever on its own
+ * payoff.
+ */
+describe('an operative gets better, and being caught is permanent', () => {
+  it('climbs a ladder denominated in what a campaign contains', () => {
+    // 4 and 10 against a commander's 2 and 5, because the two accrue at
+    // completely different rates: a galaxy fights four battles in thirty turns
+    // and a posted watcher resolves an operation every turn.
+    expect(agentVeterancy(0)).toBe(0);
+    expect(agentVeterancy(AGENT_VETERAN_THRESHOLDS[0])).toBe(1);
+    expect(agentVeterancy(AGENT_VETERAN_THRESHOLDS[1])).toBe(2);
+    expect(agentVeterancy(AGENT_VETERAN_THRESHOLDS[1] * 5)).toBe(2);
+    for (let n = 0; n <= AGENT_VETERAN_THRESHOLDS[1] + 1; n++) {
+      expect(agentStanding(n), `${n}`).toMatch(/^[a-z]+$/);
+    }
+  });
+
+  it('pays for a record and charges for a known face', () => {
+    const fresh = agentSuccessChance(12, 14, 0, 0);
+    const veteran = agentSuccessChance(12, 14, AGENT_VETERAN_THRESHOLDS[1], 0);
+    expect(veteran).toBeGreaterThan(fresh);
+    // One capture costs EXACTLY the whole ladder, so a veteran ransomed home is
+    // worth precisely what a stranger is worth. Tying the penalty to the ladder
+    // rather than picking a figure makes that cancellation exact at every
+    // pairing — it was 12 first, and because `successChance` clamps at 95 a
+    // veteran caught once came out at 90 against a fresh operative's 86. Being
+    // captured made them better.
+    expect(agentSuccessChance(12, 14, AGENT_VETERAN_THRESHOLDS[1], 1)).toBe(fresh);
+    // And a second capture is strictly worse than hiring a stranger.
+    expect(agentSuccessChance(12, 14, AGENT_VETERAN_THRESHOLDS[1], 2)).toBeLessThan(fresh);
+  });
+
+  it('holds at the top of the range too, where the clamp hides the ladder', () => {
+    const strong = (ops: number, caught: number) => agentSuccessChance(18, 9, ops, caught);
+    expect(strong(AGENT_VETERAN_THRESHOLDS[1], 1)).toBe(strong(0, 0));
+  });
+
+  it('goes back out off the exposed list, with the record and the mark', () => {
+    const s = createSeedState('drajk');
+    const host = s.systems.find((x) => x.controllerFactionId === 'vigil')!;
+    s.agents.push({
+      id: 'agt-home', ownerFactionId: 'drajk', systemId: host.id,
+      mission: 'theft', effect: { kind: 'income_penalty', perTurn: 4 },
+      successChance: 40, exposed: true, deployedTurn: 0, cover: '',
+      targetCommanderId: null, name: 'Ravel Coldwake',
+      operations: AGENT_VETERAN_THRESHOLDS[1], timesCaught: 1,
+    });
+    s.assets.push({
+      id: 'ast-home', kind: 'operative', text: 'them', heldBy: 'drajk',
+      quantity: 1, unit: 'person', commanderId: null, agentId: 'agt-home',
+      divisible: false, valuePerUnit: {}, speculative: false, valueRange: {},
+      uses: null, atSystemId: null, portable: true, yield: null, acquiredTurn: 0,
+    });
+    const out = applyOps(
+      s,
+      [{
+        op: 'deploy_agent', systemId: host.id, mission: 'theft',
+        effect: { kind: 'income_penalty', perTurn: 4 }, fromAssetId: 'ast-home',
+      }],
+      'model',
+      'drajk',
+    );
+    expect(out.rejections).toHaveLength(0);
+    const back = out.state.agents.find((a) => a.id === 'agt-home')!;
+    // Off the exposed list — a face the enemy caught is not a person who has
+    // stopped existing.
+    expect(back.exposed).toBe(false);
+    expect(back.operations).toBe(AGENT_VETERAN_THRESHOLDS[1]);
+    // The mark survives the round trip, which is what makes a second ransom a
+    // worse bargain than the first.
+    expect(back.timesCaught).toBe(1);
+    expect(out.state.assets.find((a) => a.id === 'ast-home')).toBeUndefined();
+  });
+
+  it('will not run somebody else’s caught operative', () => {
+    const s = createSeedState('drajk');
+    const host = s.systems.find((x) => x.controllerFactionId === 'vigil')!;
+    s.agents.push({
+      id: 'agt-theirs', ownerFactionId: 'meridian', systemId: host.id,
+      mission: 'theft', effect: { kind: 'income_penalty', perTurn: 4 },
+      successChance: 40, exposed: true, deployedTurn: 0, cover: '',
+      targetCommanderId: null, name: 'Odile Brandt', operations: 3, timesCaught: 1,
+    });
+    s.assets.push({
+      id: 'ast-theirs', kind: 'operative', text: 'them', heldBy: 'drajk',
+      quantity: 1, unit: 'person', commanderId: null, agentId: 'agt-theirs',
+      divisible: false, valuePerUnit: {}, speculative: false, valueRange: {},
+      uses: null, atSystemId: null, portable: true, yield: null, acquiredTurn: 0,
+    });
+    const out = applyOps(
+      s,
+      [{
+        op: 'deploy_agent', systemId: host.id, mission: 'theft',
+        effect: { kind: 'income_penalty', perTurn: 4 }, fromAssetId: 'ast-theirs',
+      }],
+      'model',
+      'drajk',
+    );
+    expect(out.rejections.map((r) => r.code)).toContain('illegal_value');
+    expect(out.state.agents.find((a) => a.id === 'agt-theirs')!.exposed).toBe(true);
+  });
+
+  it('refuses to question its own people', () => {
+    // Reachable the moment a round trip existed: ransom one home and this would
+    // have a power sell itself intelligence about its own network.
+    const s = createSeedState('drajk');
+    s.agents.push({
+      id: 'agt-ours', ownerFactionId: 'drajk', systemId: 'ilv-6',
+      mission: 'theft', effect: { kind: 'income_penalty', perTurn: 4 },
+      successChance: 40, exposed: true, deployedTurn: 0, cover: '',
+      targetCommanderId: null, name: 'Kess Skeln', operations: 2, timesCaught: 1,
+    });
+    s.assets.push({
+      id: 'ast-ours', kind: 'operative', text: 'them', heldBy: 'drajk',
+      quantity: 1, unit: 'person', commanderId: null, agentId: 'agt-ours',
+      divisible: false, valuePerUnit: {}, speculative: false, valueRange: {},
+      uses: null, atSystemId: null, portable: true, yield: null, acquiredTurn: 0,
+    });
+    const out = applyOps(
+      s,
+      [{ op: 'consume_asset', assetId: 'ast-ours', quantity: 1 }],
+      'model',
+      'drajk',
+    );
+    expect(out.rejections.map((r) => r.code)).toContain('illegal_value');
+    expect(out.state.assets.find((a) => a.kind === 'dossier')).toBeUndefined();
   });
 });

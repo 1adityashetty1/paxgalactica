@@ -333,6 +333,16 @@ export const IssueOrderOp = z.object({
    */
   force: z.union([z.number().int().min(1), TypedStackSchema]).optional(),
   interruptible: z.boolean().default(true),
+  /**
+   * An officer named to this fleet. `fleet_movement` only.
+   *
+   * The whole of officer assignment: a battle resolves inside `tickTurn` with
+   * no player present, so a per-battle choice can only be made when the order
+   * goes out. They must be yours, active, and standing at the origin — the
+   * reducer checks all three, because a model asked for an officer id will
+   * eventually invent one.
+   */
+  commanderId: z.string().nullable().default(null),
   onInterrupt: OnInterruptSchema.default('cancel'),
   visibility: z.array(z.string()).default([]),
   label: z.string().default(''),
@@ -425,6 +435,30 @@ export const DeployAgentOp = z.object({
   mission: AgentMissionSchema,
   effect: AgentEffectSchema,
   cover: z.string().default(''),
+  /**
+   * An officer to aim an `assassination` at, by id.
+   *
+   * Ignored by every other mission. Killing one takes a **17 or better** on a
+   * roll of its own, on top of the operation succeeding at all — see
+   * `ASSASSINATION_KILL_ROLL`. Before this, "assassinate their Iron Marshal"
+   * was admissible, priced, rolled, and then damaged some hulls: the officer
+   * named in the sentence went on commanding battles, which is the inert
+   * success this codebase closes everywhere else.
+   */
+  targetCommanderId: z.string().nullable().default(null),
+  /**
+   * A captured operative of your own to put back in the field, rather than a
+   * new one to recruit.
+   *
+   * The twin of `recruit_commander`'s `fromAssetId`, and the half that was
+   * missing: an officer could be ransomed home and restored to post, while a
+   * ransomed operative sat in the warehouse as a person you owned and could not
+   * employ. **Redeployment clears `exposed`** — a face the enemy caught is not
+   * a person who has stopped existing — and charges no `AGENT_COST`, because
+   * the ransom was the cost and they are already trained. Their record comes
+   * with them, and so does the mark.
+   */
+  fromAssetId: z.string().nullable().default(null),
 });
 
 export const RecallAgentOp = z.object({
@@ -719,6 +753,35 @@ export const ForgiveLoanOp = z.object({
   reason: z.string().default(''),
 });
 
+/**
+ * Hire an officer, or bring a captured one home to their post.
+ *
+ * **Ordinary, not extraction-only.** Appointing your own officers needs nobody
+ * else's agreement — the same argument that makes `settle_debt` and
+ * `forgive_debt` ordinary while `establish_debt` is not.
+ *
+ * `fromAssetId` names a captured officer you are **holding**, which is the whole
+ * of how a taken commander comes back: they are an `Asset` from the moment they are
+ * taken, they move like one — ransomed, traded, ceded, won back — and they only
+ * stops being one when the power they belong to puts their back in post. So the
+ * return trip needs no second mechanism; it is this op reading an asset instead
+ * of minting a person.
+ */
+export const RecruitCommanderOp = z.object({
+  op: z.literal('recruit_commander'),
+  factionId: z.string().min(1),
+  /** Where they report. Must be a world the faction holds. */
+  systemId: z.string().min(1),
+  /**
+   * A captured officer to restore, rather than a new one to hire.
+   *
+   * Only ever your own: turning somebody else's admiral is a different idea and
+   * a much larger one, and nothing here should make it look built.
+   */
+  fromAssetId: z.string().nullable().default(null),
+  reason: z.string().default(''),
+});
+
 export const DissolveCommitmentOp = z.object({
   op: z.literal('dissolve_commitment'),
   commitmentId: z.string().min(1),
@@ -861,6 +924,7 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   ReturnLoanOp,
   RepudiateLoanOp,
   ForgiveLoanOp,
+  RecruitCommanderOp,
   SpawnEventOp,
   LogNarrativeOp,
 ]);
@@ -927,6 +991,7 @@ export const OpSchema = z.discriminatedUnion('op', [
   ReturnLoanOp,
   RepudiateLoanOp,
   ForgiveLoanOp,
+  RecruitCommanderOp,
   SpawnEventOp,
   LogNarrativeOp,
 ]);

@@ -451,6 +451,30 @@ export const AssetSchema = z.object({
    * Forty crews can be ransomed twenty at a time; a family heirloom cannot be
    * halved. `split_asset` refuses on an atomic one.
    */
+  /**
+   * The officer this asset IS, when it is a captured commander.
+   *
+   * A captured officer is a person the world already has a record of — a name,
+   * an archetype, a record of engagements — so the asset carries a pointer
+   * rather than a copy. Copying would make the roster and the warehouse two
+   * sources of truth about the same woman, and the one that came home would be
+   * whichever the code happened to read.
+   *
+   * `null` for every other kind of asset, which is all of them but one.
+   */
+  commanderId: z.string().nullable().default(null),
+  /**
+   * The operative this asset IS, when it is one taken alive.
+   *
+   * The twin of `commanderId` and deliberately a **second field rather than one
+   * generalised `personId`**: the two are the same kind of thing in the
+   * warehouse and completely different flows out of it — an officer goes back
+   * into post through `recruit_commander`, an operative back into the field
+   * through `deploy_agent`. A single pointer would have to be disambiguated by
+   * the asset's `kind` at every read, which is the sort of implicit contract
+   * that holds right up until somebody adds a third.
+   */
+  agentId: z.string().nullable().default(null),
   divisible: z.boolean().default(true),
   /**
    * factionId -> what one unit is worth to that power, in credits.
@@ -959,8 +983,97 @@ export const AgentSchema = z.object({
   /** Exposed agents are visible to the target and stop producing effects. */
   exposed: z.boolean().default(false),
   cover: z.string().default(''),
+  /**
+   * Who they are. Generated like an officer's and from the same stock, because
+   * an operative is one of the power's own people rather than a separate
+   * species — and without a name a burned network is a row of ids.
+   *
+   * Defaulted to empty so every agent written before operatives had names still
+   * loads; the readers fall back to the cover, then to the mission.
+   */
+  name: z.string().default(''),
+  /**
+   * Operations brought off. The operative's own record, and the twin of a
+   * commander's `battles`.
+   *
+   * Counted per successful resolution, so a watcher who sits for ten turns has
+   * ten and a saboteur caught on its second attempt has one. That asymmetry is
+   * the point: the operative who survives is the operative who gets good.
+   */
+  operations: z.number().int().min(0).default(0),
+  /**
+   * How many times this face has been caught. **Permanent, and it never
+   * decays.**
+   *
+   * What makes redeploying a ransomed operative a decision rather than a
+   * formality: they come back with everything they learned and a face a rival's
+   * counter-intelligence has already photographed. Two captures and the record
+   * stops paying for the risk, which is the moment to leave them home and hire
+   * somebody nobody knows.
+   */
+  timesCaught: z.number().int().min(0).default(0),
+  /**
+   * The officer an `assassination` is aimed at, if it is aimed at one.
+   *
+   * `null` for every other mission and for an assassination aimed at a power
+   * rather than a person. The officer must be **standing at this operative's
+   * system** when the attempt resolves — which is what makes the attempt
+   * counterable: an officer who has sailed is an officer the knife does not
+   * find, so the location model is the defence rather than a new stat.
+   */
+  targetCommanderId: z.string().nullable().default(null),
 });
 export type Agent = z.infer<typeof AgentSchema>;
+
+/**
+ * Veterancy for operatives: the same idea as a commander's, on the one number
+ * this side of the game owns.
+ *
+ * A commander's record scales their archetype's own effect; an operative's
+ * scales `successChance`, because that is the figure **code computes** here.
+ * The `effect` magnitude is model-chosen and capped, so scaling that would hand
+ * a model a lever on its own payoff — the failure `onComplete` had before
+ * `boundPayloadsToOutcome`.
+ *
+ * Thresholds are 4 and 10 against a commander's 2 and 5, because the two accrue
+ * at completely different rates: a galaxy fights four battles in thirty turns
+ * and a posted watcher resolves an operation **every** turn. A ladder is only
+ * meaningful denominated in what the campaign actually contains, which is the
+ * lesson the commander thresholds had to learn by being unreachable.
+ */
+export const AGENT_VETERAN_THRESHOLDS = [4, 10] as const;
+export const AGENT_VETERAN_BONUS = [0, 8, 16] as const;
+
+/**
+ * What a caught face costs, for good: **exactly the whole ladder.**
+ *
+ * So one capture erases everything an operative learned — a veteran ransomed
+ * home is worth precisely what a stranger is worth, and a second capture puts
+ * them below one. That is a rule a player can hold in their head, and it is the
+ * decision the round trip is for: pay to get the record back, or leave them and
+ * hire a face nobody has photographed.
+ *
+ * It was 12 first, which is a number rather than a rule, and it produced the
+ * opposite of the intent at the top of the range. `successChance` clamps at 95,
+ * so against a weak target a strong power's ladder is mostly cut off by the
+ * ceiling — and a veteran caught once came out at 90 against a fresh
+ * operative's 86. Being captured made them **better**. Tying the penalty to the
+ * ladder rather than picking a figure makes the cancellation exact at every
+ * pairing, clamp or no clamp.
+ */
+export const AGENT_CAUGHT_PENALTY = AGENT_VETERAN_BONUS[AGENT_VETERAN_BONUS.length - 1]!;
+
+export function agentVeterancy(operations: number): number {
+  let step = 0;
+  for (const at of AGENT_VETERAN_THRESHOLDS) if (operations >= at) step += 1;
+  return step;
+}
+
+/** What a report calls an operative of this standing. */
+export function agentStanding(operations: number): string {
+  return ['unproven', 'practised', 'veteran'][agentVeterancy(operations)]!;
+}
+
 
 export function describeEffect(effect: AgentEffect): string {
   switch (effect.kind) {

@@ -2878,9 +2878,12 @@ of the help:
 
 | archetype | shape | what it does |
 |---|---|---|
-| `lineofbattle` | small, unconditional | `COMMANDER_MIGHT` (1) on the might modifier, which every fight reads |
-| `gunnery` | large, conditional on a **class** | multiplies the opening salvo by `COMMANDER_STRIKE_BONUS`, so she is worth a great deal to a power that builds torpedo boats and nothing to one that brought none |
-| `convoy` | large, conditional on **losing** | `COMMANDER_WITHDRAW_RELIEF` (8) points off the retreat loss — worth nothing until the day you have to run |
+| `lineofbattle` | small, unconditional | `COMMANDER_MIGHT` on the might modifier, which every fight reads |
+| `gunnery` | large, conditional on a **class** | multiplies the opening salvo by `COMMANDER_STRIKE_BONUS`, so they are worth a great deal to a power that builds torpedo boats and nothing to one that brought none |
+| `convoy` | large, conditional on **losing** | `COMMANDER_WITHDRAW_RELIEF` points off the retreat loss — worth nothing until the day you have to run |
+
+Each is a **ladder indexed by veterancy** rather than a single figure — see "A
+death has to cost something" below for the values and for why.
 
 That is a better set than one-per-phase: they are not substitutes, so which one
 you want depends on the fleet you build and the war you are losing.
@@ -2894,11 +2897,273 @@ band **nothing else in the game touches**. A screen changes *which* hulls are
 spent getting clear, not how many; a stance changes whether you run at all.
 
 **Read off the largest contingent**, exactly as doctrine is, so a one-ship
-junior partner's officer does not run the coalition. **Doctrine picks who it
-is**, not the player — a commander a player has to assign is a commander the
-four NPCs never get, and a battle between two rivals looking like arithmetic is
-the thing this was built to fix. Letting the player *name* one is a real
-decision and a good follow-on; it is not what makes the mechanic exist.
+junior partner's officer does not run the coalition.
+
+### They sail with a fleet, and command only the battle they are at
+
+An officer has a location, and it decides everything: `Commander.atSystemId`
+while they are standing somewhere, `PendingOrder.commanderId` while they are under
+way. Two fields rather than one because they answer different questions, and
+the split is **the same convention their ships already follow** — a fleet under
+way is in `order.force` and not in `system.ships`, and `shipsInTransit` derives
+from `pendingOrders`. A person in transit belongs to the voyage.
+
+An attacker's officer is the one who **sailed**; a defender's is whoever is
+standing on the world. Before this, a power's single commander fought every
+engagement it had, simultaneously, wherever they were.
+
+**They are in a fleet without being tonnage**, which is the whole shape of it. They
+is not a `ShipStack` entry and never enters the loss order: everything in that
+order is denominated in tons, so a person there would need an `orbitalWeight` —
+and *nothing may weigh exactly nothing*, because a side with no weight reads as
+"nothing to fight" to every branch of the resolver. "Last in the loss order" is
+also precisely the bug `lifter` shipped with, which made transports the safest
+thing in a fleet and left the escort nothing to protect. The only thing that can
+kill their is `commanderLost` on a defeat — a considered rule rather than an
+emergent one needing an exception to stop being a coin flip.
+
+**Being present is what risks you; commanding is what helps.** Every officer on
+the field takes the death roll if their side breaks, while only the largest
+contingent's applies their effects. Where they end up is tracked per contingent
+through `onField`, so a coalition's officers fall back down their **own** paths
+rather than all landing on one world.
+
+`issue_order` takes an optional `commanderId`, guarded three ways — yours,
+active, and standing at the origin. A name that fails any of them is **dropped
+with a note rather than rejecting the order**: the fleet still sails, it just
+sails under nobody in particular.
+
+> Two bugs, both the same bug. `resolveBattle` returns from ten places and the
+> **unopposed walk-in is above all of them**, so an officer who took an empty
+> world was never registered at all — left in transit, at no system, on a voyage
+> that had already ended. And `cancel_order` has its own ship-return path, whose
+> comment already says *"splicing the order out without this quietly destroyed
+> the fleet it was carrying"* — and it destroyed the officer the same way.
+> Registration now happens before the first exit, and a campaign-long invariant
+> check (no active officer is ever at no system and on no order) runs clean over
+> thirty turns.
+
+**The bots name their officer too**, when they are standing at the port a sortie
+leaves from. Without that, giving their a location would have made commanders a
+**player-only mechanic** — the thing 102 was explicitly built to avoid — since
+the bots drive four of the five powers. Measured exactly that way before it was
+added: every officer on the board finished thirty turns at zero engagements,
+where the same run had produced 3/2/1/0/0. It is deliberately not a reason to
+*move* them: the bots pick a port for the fleet, not for the officer.
+
+Their **passives** are theirs wherever they are, because they run the power's
+establishment; only the battle effect needs their present.
+
+**Doctrine still picks who it is** when nobody is named, and a player naming one
+is the whole of officer assignment.
+
+### A roster of five, and what it costs to keep one
+
+`recruit_commander` appoints an officer to a world you hold, up to
+`MAX_ACTIVE_COMMANDERS` (5). Ordinary rather than extraction-only: appointing
+your own officers needs nobody else's agreement, the same argument that makes
+`settle_debt` ordinary while `establish_debt` is not.
+
+**Upkeep is the right instrument now, and it was the wrong one before.** The
+argument against it when a death was free was that upkeep bounds a roster you
+can *stockpile*, and a power could never hold two officers — so there was
+nothing to stockpile and a per-turn charge was noise. Recruitment is exactly the
+change that makes the premise true, so `COMMANDER_UPKEEP` arrives with the thing
+it was always the answer to, on its own `Ledger` line because a power cuts hulls
+by laying them up and cuts this by having fewer officers.
+
+**Only the senior officer's passive applies.** One person runs the
+establishment; the rest command battles. Without that rule five convoy officers
+would be −70% fleet upkeep, and the passive would stop being a reason to keep a
+*good* officer and become a reason to keep *five*.
+
+**A hire rolls a school; a successor inherits one.** Hiring is where a power
+changes what it is good at, and inheritance is where an institution carries on —
+if a hire inherited too, a power would be locked to its opening archetype for a
+whole campaign.
+
+> The draw had to be fixed to make that fair. `rollD20` returns 1–20, so a
+> single roll taken `% 3` lands 7/7/6 and **`convoy` came up 30% against 35%** —
+> tolerable when a power had one officer for a whole campaign, and not once
+> recruitment draws five, because the under-drawn archetype is the one carrying
+> the largest passive. Two rolls give 400 values and a residual bias of a
+> quarter of a percent.
+
+**The bots keep a roster too** — one officer, plus one per three worlds held —
+because a cap of five that only the player ever reaches is a cap on nothing.
+Sized off territory rather than treasury, since officers are bought for fronts.
+This is the third time the same omission has been caught in this mechanic; the
+first two were battle presence and assignment.
+
+### Taken alive
+
+An officer who does not walk away from a defeat is killed **or captured**, split
+out of the roll that was already there: `1–2` kills, `3–4` takes their alive. No
+second die, so it replays exactly. A capture needs a **captor**, so a fleet
+driven off by an unaligned world's militia is killed instead — ground with no
+flag over it does not run a prison.
+
+A captured officer becomes an `Asset` of kind `officer` in the victor's hands,
+held at the world where they were taken, so they travel with it when it changes
+hands. From there they need **no second mechanism**: they are ransomed, traded,
+ceded or won back exactly as any other asset is, and `recruit_commander` with a
+`fromAssetId` puts their back in post with their record intact and spends the asset.
+Worth most to the power that lost them — the same claim `prisoners` makes, scaled
+by veterancy, because the officer a power actually wants back is the one whose
+ladder took engagements to climb.
+
+`Asset.commanderId` is a **pointer, not a copy**: copying would make the roster
+and the warehouse two sources of truth about the same woman, and the one who
+came home would be whichever the code happened to read.
+
+Only your own come back. Turning somebody else's admiral is a far larger idea
+and nothing here should make it look built. A captured officer counts against no
+cap and draws no pay, which is what lets a power that lost one appoint a
+replacement — and what makes getting their back a real bargain rather than a
+formality.
+
+### People, on both sides of the fog
+
+An officer and an operative are the same kind of thing once they are caught, and
+the machinery now says so.
+
+**Both are named, from the same stock.** An operative gets a given and family
+name and **no title** — a title here names a school of command and an operative
+commands nothing; what they have instead is a `cover`, which is the thing a
+rival actually sees. Names reach the System panel and the model's own block,
+where the operative line had been printing a raw `ownerFactionId` — the same
+leak item 104 closed two lines above it in the same file.
+
+**No campaign fields the same person twice.** `unusedName` bumps the salt and
+draws again rather than suffixing a duplicate: a second *Kess Coldwake II* is a
+worse answer than a different person, and eighty names per power collides sooner
+than it sounds — the birthday problem bites at five on a roster and again on
+every replacement. Deterministic, because the taken set is a pure function of
+state, so a replay walks the same path.
+
+**A burned operative is taken, not merely flagged.** Exposure used to set a
+boolean: the line closed, the person evaporated, and the power that caught them
+held nothing to show for it. They become an `operative` asset held at the world
+where they were caught, worth `OPERATIVE_RANSOM` to the power that ran them and
+`OFFICER_LEVERAGE` to everybody else — ransomed, traded, ceded or questioned
+with no second mechanism for any of it.
+
+`Asset.agentId` is the twin of `commanderId` and deliberately a **second field
+rather than one generalised `personId`**: the two are identical in the warehouse
+and completely different on the way out, since an officer goes back into post
+through `recruit_commander` and an operative back into the field through
+`deploy_agent`. One pointer would need disambiguating by `kind` at every read.
+
+**Spending a prisoner is interrogating them**, and what it makes is paper.
+`consume_asset` on either kind removes the person and mints a `dossier` worth
+`INTERROGATION_SHARE` of what they were worth. That is the only shape this could
+take without becoming the operative mechanic at none of its cost: a dossier
+grants **no visibility at all**, because the fog is a snapshot rather than a
+memory and a power that wants to see what a rival is building buys an operative.
+A prisoner who granted `watchedSystems` would be sight with no upkeep, no cap
+and nothing to burn.
+
+**A captured officer is worth something to everyone.** `officerRansom` writes a
+real figure for every power, not just the one that lost them — otherwise
+`serializeTheirAssets`, which filters a counterparty's shelf by what the *viewer*
+would pay, hides them from every third party and they cannot be bargained over
+at all. Home pays for the person; everybody else pays for the leverage.
+
+### The knife, and the stat contest it is judged by
+
+**`assassination` can be aimed at a person.** It could not be, which made
+*"assassinate their Iron Marshal"* admissible, priced, rolled — and then it
+damaged some hulls while the officer went on commanding battles. The inert
+success this codebase closes everywhere else.
+
+`Agent.targetCommanderId` names them, and two things bound it. They must be
+**standing at the operative's system** when the attempt resolves, so an officer
+who has sailed is one the knife does not find — the location model is the
+counterplay rather than a new stat. And killing takes `ASSASSINATION_KILL_ROLL`
+(17+) on a roll of its **own**, which is forced rather than careless: the
+operation's success test reads the bottom of the d20 (`roll * 5 <=
+successChance`) and this has to read the top, so one roll cannot carry both.
+Long odds on top of 150 credits, a slot against `maxAgentsFor`, one attempt
+either way and a 45% catch rate — a commander is the most concentrated thing on
+the board now that a veteran is worth three points of might, and a reliable way
+to remove one would make every other use of an operative a mistake.
+
+**`agentSuccessChance` reads `effectiveStats` on both sides**, which it did not.
+It read the base sheet while `subornLimit` two functions away reads the
+effective one — the same contest between the same two numbers, judged by
+different figures. So terrain, dissent, a rival's `stat_debuff` and an officer's
+passive all reached the suborning contest and **none of them reached the spy
+contest**: a power whose institutions had stopped following it recruited spies
+exactly as well as one at peace. Precisely the defect `effectiveStats` was
+introduced to fix for the d20, left behind in the one other place two stats are
+compared.
+
+### An operative has a record too, and a face that can be photographed
+
+A burned operative was permanently burned, so ransoming one home bought a person
+you owned and could not employ. Two fields close it, and they pull against each
+other on purpose:
+
+- **`operations`** — one per successful resolution, so a watcher who sits for
+  ten turns has ten and a saboteur caught on its second attempt has one. That
+  asymmetry is the point: the operative who survives is the one who gets good.
+  It scales `successChance`, because that is the figure **code computes** here;
+  the `effect` magnitude is model-chosen and capped, so scaling it would hand a
+  model a lever on its own payoff.
+- **`timesCaught`** — permanent, and it never decays.
+
+Thresholds are **4 and 10** against a commander's 2 and 5, because the two
+accrue at completely different rates: a galaxy fights four battles in thirty
+turns and a posted watcher resolves an operation every turn. A ladder is only
+meaningful denominated in what a campaign actually contains — the lesson the
+commander thresholds learned by being unreachable.
+
+**A capture costs exactly the whole ladder**, so a veteran ransomed home is worth
+precisely what a stranger is worth and a second capture puts them below one.
+That is a rule a player can hold in their head, and it is the decision the round
+trip is for.
+
+> It was a flat 12 first, which is a number rather than a rule, and it produced
+> the **opposite** of the intent at the top of the range. `successChance` clamps
+> at 95, so a strong power's ladder is mostly cut off by the ceiling — and a
+> veteran caught once came out at 90 against a fresh operative's 86. Being
+> captured made them *better*. Tying the penalty to the ladder makes the
+> cancellation exact at every pairing, clamp or no clamp, and a test pins it at
+> both ends of the range.
+
+`deploy_agent` takes `fromAssetId`, the twin of `recruit_commander`'s. It
+**clears `exposed`** — a face the enemy caught is not a person who has stopped
+existing — charges no `AGENT_COST`, since the ransom was the cost and they are
+already trained, and still checks `maxAgentsFor`, because the ceiling is about
+how many lines you can run rather than how many people you have hired. Only your
+own go back out.
+
+**And you cannot question your own people.** `consume_asset` on a person your own
+power ran would have you file what they gave up and sell yourself intelligence
+about your own network — reachable the moment a round trip existed, and
+incoherent rather than merely unbalanced.
+
+### Officers are they/them
+
+Their names are generated, so there is nobody for a pronoun to be about: a
+commander is whoever the hash produced this campaign, and writing them as "she"
+made a claim the generator never makes. The five faction **leaders** are the
+opposite case — authored, with pronouns stated on their own sheets — and
+`naming.test.ts` pins those separately. A test pins this one too, because it is
+exactly the kind of convention that decays: the next person to write a paragraph
+about a commander will reach for a pronoun, and nothing else would notice.
+
+> **The board moves, and it is a cliff rather than a gradient.** Bots keeping two
+> officers instead of one diverts roughly 420 credits a power over thirty turns
+> from hulls to officers, and the Vigil — buying at 0.85 appetite — feels it
+> most: the run read 5/4/5/4/4 for a while, with its late conquests failing.
+> Sweeping `COMMANDER_COST` from 100 to 200 gave that same board every time and
+> 300 reverted it, since nobody could afford to hire at all. It then went back
+> to **3/6/5/4/4** on an unrelated fix to the archetype draw. Both boards satisfy
+> every property the balance test asserts, and neither is evidence the mechanic
+> is neutral — the discrete question of whether one marginal conquest happens
+> swamps the arithmetic, exactly as it did for `MONOPOLY_BONUS`. `pnpm fleetlab`
+> is byte-identical throughout.
 
 **Reported like a doctrine, in its own list.** `BattleReport.commandersFired`
 names only officers who actually changed something, and it is separate from
@@ -2912,9 +3177,89 @@ from `bleed`, on use.
 a new one (`COMMANDER_LOSS_ROLL`). An officer who wins does not die at a rate
 worth modelling, and a death roll on every engagement would churn the roster
 faster than a player could learn a name. `tickTurn` appoints a replacement — a
-different person, new name, new archetype, no battles — and the dead stay on the
+different person, with a new name and no battles — and the dead stay on the
 roster, since a power's history of commanders is worth more than the bytes of
 removing them.
+
+### A death has to cost something, and for a while it paid out
+
+The replacement also **re-rolled the archetype**, and that made losing an
+officer free in the only sense that matters: the successor was exactly as good,
+one turn later, at no charge. Worse than free, in fact — a power whose yards
+built torpedo boats and whose doctrine had dealt it a `convoy` officer was
+better off losing them, two times in three. The one mechanically live consequence
+of the death mechanic paid out on average.
+
+`battles` was already being counted and had **no mechanical reader at all**: two
+display strings and a sort that is a no-op while a power holds one officer. So
+what a defeat destroyed was a name and a counter.
+
+**Upkeep is the wrong instrument here**, which is worth stating because it is
+the obvious one. Upkeep bounds a roster you can stockpile, and the appointment
+loop skips any power that already has an active officer — so a power can never
+hold two, there is nothing to stockpile, and a per-turn charge against incomes
+of 87–300 would be noise. A replacement fee is worse: an appointment the power
+never chose, billed to it anyway. What needed fixing was never the replacement's
+**price** but its **quality**.
+
+Two changes, and they are halves of one idea:
+
+- **A successor inherits the speciality.** It reads as the institution rather
+  than the person — a power that fights its wars in the line goes on fighting
+  them in the line, and the officer it promotes is the one that school produced.
+  It also removes the free re-roll.
+- **The record is worth something.** `veterancyOf` puts an officer on one of
+  three steps and each archetype's own effect scales with it, so what a defeat
+  costs is the `battles` behind them — a thing that takes turns of winning to
+  build and **cannot be bought back at any price**.
+
+| step | at | `lineofbattle` | `gunnery` | `convoy` |
+|---|---|---|---|---|
+| untested | 0–1 | +1 might | +40% salvo | −8% withdrawal |
+| seasoned | 2–4 | +2 | +60% | −12% |
+| veteran | 5+ | +3 | +80% | −16% |
+
+**Three ladders rather than one multiplier**, and that is not a style
+preference: might is integer-valued with a base of 1, so a shared ×1.5/×2 scale
+rounds to 1, 2, 2 and the middle step buys nothing. Exactly the defect that
+shipped a 100% discount wearing a 50% label when a one-hull lift loss was
+halved — where the granularity cannot carry a fraction, the fraction is not the
+thing to write down. Scaling each archetype's own effect also keeps the three
+distinct, where a flat might bonus for veterancy would make every officer partly
+a `lineofbattle` officer and flatten the one archetype whose claim is that its
+help is small and unconditional.
+
+A veteran at the cap is worth **more than any doctrine's might bonus**, which
+revises a claim this section used to make. That claim is right about a *fresh*
+officer and wrong about a veteran, and the distinction is the point of having a
+ladder at all: a doctrine is given, and this is the one thing on the field a
+power builds by winning. It also takes five engagements and is destroyed by a
+single bad defeat, which no doctrine ever is.
+
+**The thresholds were swept, and the first guess was dead on arrival.** 4 and 10
+read like modest numbers and are unreachable: `pnpm balance 30` fights **four
+battles in the whole galaxy over thirty turns**, and the busiest officer on the
+board ends the run at 3. At 4/10 not one power ever leaves step 0 — and the
+harness would have reported that as a clean pass, because a mechanic that never
+fires moves nothing. A war here is rare and decisive rather than continuous,
+which is a fact about the map and the 2:1 break-off band rather than about the
+bots, so the ladder has to be denominated in the engagements a campaign actually
+contains. At 2/5 it fires once in the harness — Meridian's Adrienne Vance is
+seasoned by turn 24 and takes +2 might into the defence of Corvid, and still
+loses it, so the board is unchanged at 3/6/5/4/4 with the 58/42 mix.
+
+A **model-driven** campaign is far busier than the bots, which is the case the
+thresholds are really for: replaying `classes_playtest`, twelve turns of a
+played campaign put Meridian's officer on **ten** engagements and the Vigil's on
+eight — two veterans at the cap, against a bot galaxy where nobody reaches five.
+
+The ladder is shown where it can be acted on: the Command tab says what **this**
+officer is worth and how far off the next step they are, because a cost a player
+cannot read coming is a cost they cannot weigh. `COMMANDER_ARCHETYPES[].effect`
+quotes no number any more — it used to say *"fights a point harder"*, which
+stopped being true the moment a record could make it two.
+
+### A name is three parts, and one of them is the school
 
 Names are per faction and shaped differently per faction, because five powers
 that should never be mistaken for one another is a rule this project applies to
@@ -2922,6 +3267,92 @@ voice, ethics, red lines and build bias, and a generated name that could belong
 to any of them would be the one place it lapsed. Built on `rollD20`'s hash, so a
 replayed campaign appoints the same people — a roster that differed between a
 campaign and its replay would break `verifyReplay` on a string comparison.
+
+A given name, a family name and a **title**, drawn independently. Eight firsts
+against ten lasts is eighty officers per power before the title, where the first
+version paired a first name with an epithet and read as the same handful of
+characters recurring.
+
+**The title is the archetype, said out loud.** One per school per power, so a
+Commodore and an Iron Marshal are visibly different appointments and a player
+learns what a school is called before learning what it does. It is not a leak —
+an officer's archetype is already on the Command tab for every power, and it is
+a fact about a fleet rather than about a plan. It also does the work inheritance
+needs: a successor holds the same school and therefore the same title, so the
+continuity of the institution is legible in the name while the person is plainly
+somebody new.
+
+| | `lineofbattle` | `gunnery` | `convoy` | leader |
+|---|---|---|---|---|
+| Meridian | Operations Executive | Senior Director | Comptroller | Chief Executive |
+| Iron Vigil | Iron Marshal | Commodore | Rear Admiral | Grand Admiral |
+| Ojjul Nar | Underboss | Second Elder | Hand of the Family | First Elder |
+| Arkane | Fleetwarden | Gunwarden | Lanewarden | Highwarden |
+| Drajk | Korvan Lord | Packmaster | Quartermaster | Huntmaster |
+
+They ladder off `Faction.title`, which is what makes an officer placeable
+without the name: the Combine's Second Elder is **family** rather than staff,
+and Arkane's wardens and Drajk's masters are each a suffix that power owns
+outright. That last rule had to be enforced rather than assumed — a
+Quartermaster sat in the Arkane column first, and `-master` is Drajk's the way
+`-warden` is Arkane's, so it read as the wrong faction's officer. Moving it
+turned out better than neutral: on a raiding crew a quartermaster is *elected*
+and answers to the hold rather than the captain, which is the Confederacy's
+structure exactly.
+
+The Combine wears its title **behind** the house name and everyone else in
+front, because an office there is something you are owed rather than something
+you are called — and because *"Hand of the Family Miral Nar Halq"* does not
+parse.
+
+> `rollD20` returns 1–20 and the given-name stocks are 8 long, so `% 8` draws
+> the first four slightly more often. That is a cosmetic bias on a cosmetic
+> field and is left alone: the uniformity that matters is the die's, which the
+> murmur3 finalizer already guarantees, and padding a name list to 20 to flatten
+> it would be arithmetic driving the fiction.
+
+### And what they are worth on a turn with no battle
+
+Each archetype also has a passive, and the sizes run **opposite to how
+conditional its battle effect is**. The problem being answered is `convoy`:
+worth nothing at all until the turn you have to run, so on any turn a player is
+choosing an officer it reads as the weak pick, right up to the campaign where it
+isn't. A conditional effect needs an unconditional counterweight or nobody takes
+it.
+
+| archetype | in battle | out of it | at the cap |
+|---|---|---|---|
+| `lineofbattle` | always | **+resolve** — their crews do not come apart, so `subornLimit` against the power falls | +3 |
+| `gunnery` | only with boats | **+industry** — they run the establishment that makes the guns | +3 |
+| `convoy` | only when losing | **−% fleet upkeep**, the largest standing charge any power carries | −14% |
+
+**Neither stat passive is might**, which is the one constraint that shapes the
+set: `bestMod` reads `effectiveStats().might`, so a might passive would pay an
+officer twice for the same battle. All three are **read where they are used**
+rather than applied on the tick — the rule `commitmentFlow`, `assetYield` and
+the agent effects all follow, because a per-turn mutation compounds instead of
+recurring.
+
+Measured at turn 30 of the harness, every passive fires for every power: the
+Vigil's convoy officer takes upkeep from 490 to 441, and Meridian's line officer
+takes resolve from 9 to 11 — which matters, because resolve 9 is the seed's
+stated vulnerability and this is what patches it. The board is unchanged at
+3/6/5/4/4 with the 58/42 mix.
+
+> **`lineofbattle`'s passive was occupation relief first, and it was worth
+> exactly nothing.** *Discipline is what holds ground that is not yours* is a
+> better sentence than the one that replaced it, and it measured at **zero
+> credits for every power holding a line officer** over thirty turns, because
+> three of the four occupy no foreign ground at all. Same failure as the first
+> veterancy thresholds and caught the same way — by checking that the mechanic
+> fired rather than that the board was unchanged. A passive conditional on
+> conquest is not a passive.
+
+Four existing tests broke on the passives and all four were right to: they pinned
+`effectiveStats` and `ledgerFor` against a faction's **base** stats, and those
+now compose a commander term as well as terrain and dissent. Each was isolated by
+clearing `commanders` rather than by adjusting its expected value, so each still
+pins one rule; the interactions are pinned separately.
 
 ## A commander decides whether the world is worth the fleet
 
@@ -3062,6 +3493,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `repudiate_loan` | borrower only; keeping it, priced like breaking a pact |
 | `forgive_loan` | lender only; what was lent becomes the borrower's |
 | `forgive_debt` | creditor only; writes off the balance and buys goodwill |
+| `recruit_commander` | appoint an officer to a world you hold, up to five; `fromAssetId` brings a captured one home |
 | `spawn_event` | |
 | `log_narrative` | |
 

@@ -161,3 +161,35 @@ describe('a faction says which pronouns its leader takes', () => {
     }
   });
 });
+
+/**
+ * Officers are they/them, everywhere.
+ *
+ * Their names are generated, so there is nobody for a pronoun to be about: a
+ * commander is whoever the hash produced this campaign, and writing them as
+ * "she" made a claim the generator never makes. The five faction LEADERS are
+ * the opposite case — authored, with pronouns stated on their own sheets — and
+ * `naming.test.ts` already pins those, so this rule is scoped to the commander
+ * code and the text it produces.
+ *
+ * Pinned because it is exactly the kind of convention that decays: the next
+ * person to write a paragraph about a commander will reach for a pronoun, and
+ * nothing else would notice.
+ */
+describe('officers are they/them', () => {
+  const SCOPED = [
+    join(ROOT, 'src', 'domain', 'command.ts'),
+    join(ROOT, 'src', 'domain', 'battle.ts'),
+    join(ROOT, 'web', 'src', 'components', 'SidePanel.tsx'),
+    join(ROOT, 'web', 'src', 'components', 'BattleCard.tsx'),
+  ];
+
+  it.each(SCOPED)('%s carries no gendered pronoun', (file) => {
+    const hits = readFileSync(file, 'utf8')
+      .split('\n')
+      .map((line, i) => [i + 1, line] as const)
+      .filter(([, line]) => /\b(she|her|hers|herself)\b/i.test(line))
+      .map(([n, line]) => `${n}: ${line.trim()}`);
+    expect(hits).toEqual([]);
+  });
+});

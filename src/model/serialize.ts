@@ -1,10 +1,19 @@
 import { eventsVisibleTo, ordersVisibleTo } from '../domain/intel.js';
 import { describeStack, hullsIn } from '../domain/hulls.js';
 import { describeOrderEffect } from '../domain/development.js';
-import { assetWorthRangeTo, describeEffect, wantedBy } from '../domain/diplomacy.js';
+import { agentStanding, assetWorthRangeTo, describeEffect, wantedBy } from '../domain/diplomacy.js';
 import { describeOutstanding } from '../domain/loan.js';
 import { routeEarnings } from '../domain/trade.js';
-import { archetypeOf, commanderFor } from '../domain/command.js';
+import {
+  MAX_ACTIVE_COMMANDERS,
+  activeCommanders,
+  archetypeOf,
+  commanderEffect,
+  commanderFor,
+  commanderPassive,
+  toNextVeterancy,
+  veterancyLabel,
+} from '../domain/command.js';
 import type { Commitment } from '../domain/arbitration.js';
 import {
   formatModifier,
@@ -130,10 +139,50 @@ export function serializeFactions(
  */
 function commanderLine(state: WorldState, viewerId: string): string {
   const officer = commanderFor(state.commanders, viewerId);
-  if (!officer) return '';
+  if (!officer) {
+    const held = (state.commanders ?? []).filter(
+      (c) => c.factionId === viewerId && c.status === 'captured',
+    );
+    // A power with nobody in post is a power that can appoint one, and saying
+    // so is the difference between a gap and a mystery.
+    return held.length > 0
+      ? `You have no officer in post. ${held.map((c) => c.name).join(' and ')} ${held.length === 1 ? 'is' : 'are'} in enemy hands.`
+      : 'You have no officer in post.';
+  }
   const shape = archetypeOf(officer.archetype);
-  const seen = officer.battles > 0 ? `, ${officer.battles} engagement${officer.battles === 1 ? '' : 's'} behind them` : ', untested';
-  return `Your fleet is commanded by ${officer.name}${seen} — known for ${shape.known}. In a battle, ${shape.effect}.`;
+  const seen =
+    officer.battles > 0
+      ? `, ${veterancyLabel(officer.battles)} at ${officer.battles} engagement${officer.battles === 1 ? '' : 's'}`
+      : ', untested';
+  // What losing their would cost, said plainly. A power that cannot tell a
+  // veteran from a replacement has no reason to fight shy of spending them, and
+  // the successor arrives with the same speciality and none of the record.
+  // The rest of the roster, and the room left in it. A power that cannot see it
+  // has five officers' worth of decision it does not know it has.
+  const others = activeCommanders(state.commanders, viewerId).filter((c) => c.id !== officer.id);
+  const room = MAX_ACTIVE_COMMANDERS - (others.length + 1);
+  const roster =
+    (others.length > 0
+      ? ` Also in post: ${others.map((c) => `${c.name} (${commanderEffect(c)})`).join('; ')}.`
+      : '') +
+    (room > 0 ? ` You may appoint ${room} more.` : ' Your roster is full.');
+  const owed = toNextVeterancy(officer.battles);
+  const ladder =
+    owed === null
+      ? ' They are as good as an officer gets; a successor would start again from nothing.'
+      : ` ${owed} more engagement${owed === 1 ? '' : 's'} and they improve again. A successor inherits the speciality and none of the record.`;
+  // Where they are, because it now decides which battles they are in at all — a
+  // power told it has a commander and not told they are three jumps from the
+  // fighting has been told something misleading.
+  const posted = officer.atSystemId
+    ? ` They are at ${getSystem(state, officer.atSystemId)?.name ?? officer.atSystemId}`
+    : (() => {
+        const o = (state.pendingOrders ?? []).find((x) => x.commanderId === officer.id);
+        return o
+          ? ` They are under way to ${getSystem(state, o.targetId)?.name ?? o.targetId}`
+          : ' They are unposted';
+      })();
+  return `Your fleet is commanded by ${officer.name}${seen} — known for ${shape.known}. In a battle, ${commanderEffect(officer)}; the rest of the time, ${commanderPassive(officer)}.${posted}, and command only the battle they are at.${ladder}${roster}`;
 }
 
 /** Worlds a power holds that began as somebody else's, by name. */
@@ -289,7 +338,10 @@ export function serializeStanding(state: WorldState, viewerId: string): string {
     const mine = a.ownerFactionId === viewerId;
     const where = getSystem(state, a.systemId)?.name ?? a.systemId;
     lines.push(
-      `  - \`${a.id}\` ${mine ? 'YOURS' : `${a.ownerFactionId} (exposed)`} on ${where}: ${a.mission}, ${describeEffect(a.effect)}, ${a.successChance}% per turn${a.exposed ? ' — BURNED' : ''}`,
+      // The operative's NAME, and their power's display name rather than its
+      // id — the same leak item 104 closed two lines further up this file, left
+      // behind here because nothing reads this block back except the model.
+      `  - \`${a.id}\` ${a.name || a.cover || 'an operative'}, ${mine ? 'YOURS' : `${nameOfFaction(state, a.ownerFactionId)} (exposed)`} on ${where}: ${a.mission}, ${describeEffect(a.effect)}, ${a.successChance}% per turn — ${agentStanding(a.operations)}${a.timesCaught > 0 ? `, caught ${a.timesCaught} time${a.timesCaught === 1 ? '' : 's'}` : ''}${a.exposed ? ' — BURNED' : ''}`,
     );
   }
 

@@ -222,7 +222,13 @@ describe('ledgers', () => {
     }
     expect(l.gross).toBe(l.territory + l.routes);
     expect(l.net).toBe(
-      l.gross - l.upkeep + l.treatyFlow - l.espionageLoss - l.agentUpkeep + l.commitmentFlow,
+      l.gross -
+        l.upkeep +
+        l.treatyFlow -
+        l.espionageLoss -
+        l.agentUpkeep -
+        l.commanderUpkeep +
+        l.commitmentFlow,
     );
   });
 
@@ -259,16 +265,27 @@ describe('agents', () => {
   it('computes success chance in code, not from the model', () => {
     const res = withAgent({ kind: 'hull_damage', perTurn: 3 });
     const agent = res.state.agents[0]!;
-    // Nar guile 18 vs Free Worlds resolve 19 → slightly unfavourable.
+    // Nar guile against Free Worlds resolve — slightly unfavourable.
     expect(agent.successChance).toBeGreaterThan(0);
     expect(agent.successChance).toBeLessThan(100);
-    expect(agent.successChance).toBe(50 + (18 - 19) * 6);
+    // Read off EFFECTIVE stats on both sides, the same numbers `subornLimit`
+    // compares. It used to read the base sheet, so terrain, dissent, a rival's
+    // `stat_debuff` and an officer's passive reached the suborning contest and
+    // none of them reached this one.
+    const g = effectiveStats(res.state, 'ojjul').guile;
+    const r = effectiveStats(res.state, 'freeworlds').resolve;
+    expect(agent.successChance).toBe(50 + (g - r) * 6);
   });
 
   it('debuffs a stat while in place, and only for the target', () => {
     const res = withAgent({ kind: 'stat_debuff', stat: 'industry', magnitude: 3 });
     expect(effectiveStats(res.state, 'freeworlds').industry).toBe(10 - 3);
-    expect(effectiveStats(res.state, 'ojjul').industry).toBe(12);
+    // Derived against a board with no operative rather than stated, because
+    // `effectiveStats` composes terrain, the officer's passive and dissent as
+    // well — a hardcoded figure here is an assertion about all four, and fails
+    // without saying which one moved.
+    const untouched = effectiveStats(fresh(), 'ojjul').industry;
+    expect(effectiveStats(res.state, 'ojjul').industry).toBe(untouched);
   });
 
   it('stops having any effect once exposed', () => {
@@ -1554,6 +1571,11 @@ describe('holding somebody else’s ground', () => {
 
   it('charges a share of what the taken world actually pays', () => {
     const s = seed();
+    // No officer, so this pins the occupation rule and nothing else. A
+    // `lineofbattle` commander relieves a share of it, and that interaction is
+    // pinned in the commander suite where it belongs — a test asserting two
+    // rules at once fails without saying which one moved.
+    s.commanders = [];
     const theirs = own(s, 'ojjul');
     const worth = systemIncome(s, theirs).shares['ojjul'] ?? 0;
     expect(worth).toBeGreaterThan(0);

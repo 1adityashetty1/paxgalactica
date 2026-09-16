@@ -1,9 +1,16 @@
+import {
+  COMMANDER_COST,
+  MAX_ACTIVE_COMMANDERS,
+  activeCommanders,
+  commanderAt,
+} from './command.js';
 import { neighboursOf, shortestPath } from './graph.js';
 import { isTreatyLive } from './diplomacy.js';
 import {
   hullsAt,
   presentAt,
   fleetStrengthOf,
+  fleetBases,
   fleetTonsOf,
   ledgerFor,
   stackAt,
@@ -152,6 +159,45 @@ interface BuyDoctrine {
    * its yards never laid down a warship.
    */
   screen?: boolean;
+}
+
+/**
+ * How many officers a bot wants in post: one, plus one per three worlds held.
+ *
+ * **A class nobody builds is a class nobody has measured**, and the same is
+ * true of a roster nobody keeps. Without this, recruitment would be a
+ * player-only mechanic — the bots drive four of the five powers, so a cap of
+ * five that only one power ever reaches is a cap on nothing. It is the same
+ * mistake giving an officer a location made, caught the same way.
+ *
+ * Sized off **territory rather than treasury**, because officers are bought for
+ * fronts: a power holding six worlds has more places a battle can happen than
+ * one holding three, and hoarding commanders it cannot post is the shape of
+ * error `lift` already made when it was a fraction of tonnage.
+ *
+ * Deliberately short of the cap at any realistic board size. Five is what the
+ * rules allow, not what doctrine wants, and a bot that always maxes a limit
+ * tells you nothing about whether the limit is right.
+ */
+function wantedOfficers(ctx: Ctx): number {
+  const held = ctx.state.systems.filter((s) => s.controllerFactionId === ctx.me).length;
+  return Math.min(MAX_ACTIVE_COMMANDERS, 1 + Math.floor(held / 3));
+}
+
+/**
+ * Hire one officer a turn, at most, while short-handed and comfortably solvent.
+ *
+ * One at a time because a roster is a standing cost and a bot that filled it in
+ * a single turn would be making an irreversible decision on one turn's
+ * treasury. The reserve is deliberately several times the fee: an officer is
+ * worth having and is never worth going short of hulls for.
+ */
+function hire(ctx: Ctx): Ops {
+  if (activeCommanders(ctx.state.commanders, ctx.me).length >= wantedOfficers(ctx)) return [];
+  if (purse(ctx.state, ctx.me) < COMMANDER_COST * 3) return [];
+  const post = fleetBases(ctx.state, ctx.me).find((s) => s.controllerFactionId === ctx.me);
+  if (!post) return [];
+  return [{ op: 'recruit_commander', factionId: ctx.me, systemId: post.id }];
 }
 
 function buy(ctx: Ctx, appetite: number, reserve: number, doctrine: BuyDoctrine = {}): Ops {
@@ -387,6 +433,22 @@ function sortie(ctx: Ctx, targetId: string, force: number, label: string): Ops {
       op: 'issue_order', factionId: ctx.me, type: 'fleet_movement',
       originId: from.id, targetId,
       force: mergeStacks(drawToWeight(warships, force), { lifter }),
+      // The officer sails if they are standing at the port the sortie leaves
+      // from, and otherwise the fleet goes without one.
+      //
+      // **This is what keeps commanders from becoming a player-only mechanic.**
+      // Giving an officer a location made presence the thing that decides which
+      // battle they command, and the bots drive four of the five powers — so
+      // without this an NPC officer would never reach a fight, never accrue a
+      // `battles`, and never be worth losing. Measured exactly that way before
+      // it was added: every officer on the board ended thirty turns at zero
+      // engagements, where the same run had produced 3/2/1/0/0.
+      //
+      // Deliberately not a reason to MOVE them: the bots pick a port for the
+      // fleet, not for the officer, so they are either there or they are not. A bot
+      // that repositioned its commander to catch a sortie would be playing the
+      // mechanic rather than its doctrine.
+      commanderId: commanderAt(ctx.state.commanders, ctx.me, from.id)?.id ?? null,
       label,
     },
   ];
@@ -430,6 +492,7 @@ const meridian: Bot = (ctx) => {
   const ops: Ops = [];
   // A defensive power keeps a modest navy and banks the rest.
   ops.push(...buy(ctx, 0.55, 600));
+  ops.push(...hire(ctx));
 
   const free = frontier(ctx.state, ctx.me)
     .filter((t) => t.controllerFactionId === null && t.garrison <= 3)
@@ -447,7 +510,8 @@ const meridian: Bot = (ctx) => {
  */
 const vigil: Bot = (ctx) => {
   const ops: Ops = [];
-  ops.push(...buy(ctx, 0.85, 200)); // crusading: spends most of its income on hulls
+  ops.push(...buy(ctx, 0.85, 200));
+  ops.push(...hire(ctx)); // crusading: spends most of its income on hulls
 
   if (hasOrder(ctx.state, ctx.me, 'fleet_movement')) return ops;
 
@@ -489,7 +553,8 @@ const vigil: Bot = (ctx) => {
  */
 const ojjul: Bot = (ctx) => {
   const ops: Ops = [];
-  ops.push(...buy(ctx, 0.5, 800)); // will not spend its own hulls freely
+  ops.push(...buy(ctx, 0.5, 800));
+  ops.push(...hire(ctx)); // will not spend its own hulls freely
 
   // Occupy the neutral junction it is already next to: income without a war.
   const junction = frontier(ctx.state, ctx.me)
@@ -521,6 +586,7 @@ const ojjul: Bot = (ctx) => {
 const freeworlds: Bot = (ctx) => {
   const ops: Ops = [];
   ops.push(...buy(ctx, 0.6, 300));
+  ops.push(...hire(ctx));
 
   // The Drift takes what is on its own doorstep and nothing beyond it.
   const home = frontier(ctx.state, ctx.me)
@@ -564,6 +630,7 @@ const drajk: Bot = (ctx) => {
   // what its yards lay down, and it is what gives the class an owner in the
   // harness the way each ethic has one.
   ops.push(...buy(ctx, 0.7, 150, { line: 'torpedo_boat', screen: false }));
+  ops.push(...hire(ctx));
 
   // Park on the richest unaligned junction — trade nobody else is carrying.
   const lawless = ctx.state.systems

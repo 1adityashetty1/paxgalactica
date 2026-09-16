@@ -792,6 +792,7 @@ describe('suborning crews: presence and a stat contest, not a sentence', () => {
       id: 'a1', ownerFactionId: 'drajk', systemId: 'ilv-2', mission: 'defection',
       effect: { kind: 'crew_defection', perTurn: 2 },
       successChance: 60, exposed: false, deployedTurn: 0, cover: 'a quiet word',
+      targetCommanderId: null, name: '', operations: 0, timesCaught: 0,
     });
     const res = suborn(state, 'ilv-2', 'ojjul', 2);
     expect(res.rejections).toHaveLength(0);
@@ -857,6 +858,7 @@ describe('the defection agent mission', () => {
       id: 'a1', ownerFactionId: 'drajk', systemId: at, mission: 'defection',
       effect: { kind: 'crew_defection', perTurn },
       successChance: 100, exposed: false, deployedTurn: 0, cover: 'quiet words',
+      targetCommanderId: null, name: '', operations: 0, timesCaught: 0,
     });
     return { state, target };
   };
@@ -1007,6 +1009,12 @@ describe('suborning is statecraft, not combat', () => {
   /** Drajk lurking at the unaligned ilv-4, which is adjacent to Nar ilv-3. */
   const fromNextDoor = (n = 3) => {
     const state = fresh('drajk');
+    // No officers, so these pin the suborning rules against the factions' own
+    // stats. A `lineofbattle` commander's passive raises the victim's resolve
+    // and therefore lowers `subornLimit` — which is the point of it, and is
+    // pinned in the commander suite rather than tangled through every case
+    // here.
+    state.commanders = [];
     setShipsAt(sys(state, 'ilv-4'), 'drajk', 8);
     return {
       before: state,
@@ -1062,6 +1070,7 @@ describe('suborning is statecraft, not combat', () => {
       id: 'a1', ownerFactionId: 'drajk', systemId: 'ilv-2', mission: 'defection',
       effect: { kind: 'crew_defection', perTurn: 2 },
       successChance: 100, exposed: false, deployedTurn: 0, cover: 'quiet words',
+      targetCommanderId: null, name: '', operations: 0, timesCaught: 0,
     });
     const beforeAgent = disp(withAgent, 'ojjul', 'drajk');
     const ticked = tickTurn(withAgent).state;
@@ -1443,7 +1452,8 @@ describe('a raid can actually be paid', () => {
           originId: target, targetId: target, durationTurns: 2, progress: 1,
           interruptible: true, onInterrupt: 'cancel', visibility: [],
           label: 'prizes at the terminus', durationRationale: '', path: [],
-          investedCredits: 0, force: {},
+          investedCredits: 0,
+          commanderId: null, force: {},
         },
       ],
     };
@@ -1465,7 +1475,8 @@ describe('a raid can actually be paid', () => {
           originId: target, targetId: target, durationTurns: 2, progress: 1,
           interruptible: true, onInterrupt: 'cancel', visibility: [],
           label: 'prizes at the terminus', durationRationale: '', path: [],
-          investedCredits: 0, force: {},
+          investedCredits: 0,
+          commanderId: null, force: {},
         },
       ],
     };

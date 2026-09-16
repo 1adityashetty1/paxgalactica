@@ -86,6 +86,7 @@ leaves a faction with nobody following it.
 | `return_loan` | hand back what you borrowed — borrower only; the hulls really leave |
 | `repudiate_loan` | keep what you borrowed — borrower only; public, and costly |
 | `forgive_loan` | let them keep what you lent — lender only |
+| `recruit_commander` | appoint an officer to a world you hold — up to five in post |
 | `dissolve_commitment` | end one, by id |
 | `spawn_event` | something happens worth recording |
 | `log_narrative` | a note for the event log |
@@ -195,15 +196,26 @@ meet upkeep lays ships up.
 
 ### Every fleet has a named officer
 
-Each power has one commander, and they take that power's side of any battle it
-fights. **You do not choose them and you do not apply their effect** — the
-reducer does both, off a roster in the state block, and the battle report names
-whichever officer actually changed something.
+Each power has one commander, and they take that power's side of **the battle
+they are actually at** — they stand on a world, or sails with a fleet that was
+sent with them. A fleet they did not sail with fights under nobody in particular.
+**You do not choose their and you do not apply their effect** — the reducer does
+both, off a roster in the state block, and the battle report names whichever
+officer actually changed something.
+
+A power may keep **up to five** in post, and `recruit_commander` appoints one to
+a world it holds. Officers cost credits to commission and draw pay every turn,
+so a full roster is a real choice against hulls rather than a free upgrade.
+
+An officer who loses a battle badly may not walk away from it, and there are two
+ways not to: killed, or **taken alive**. A captured officer becomes an asset in
+the victor's hands — they can be ransomed, traded, or won back like any other,
+and the power they belong to puts their back in post with their record intact. That
+is a story worth telling when it happens, on both sides of it.
 
 What they are for is the narrative: an engagement between two rival powers reads
 as arithmetic, and a name on it does not. Use theirs. They are real people with
-a record — *"three engagements behind them"* means three — and one who loses a
-battle badly may not survive it, which is worth a sentence when it happens.
+a record — *"three engagements behind them"* means three.
 
 ### Battles are never resolved here
 

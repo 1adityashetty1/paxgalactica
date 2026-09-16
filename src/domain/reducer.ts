@@ -47,18 +47,37 @@ import {
   PEACE_TREATIES,
   isTreatyLive,
   treatyBetween,
+  type Asset,
   type Treaty,
   type VoidCondition,
+  AGENT_CAUGHT_PENALTY,
+  AGENT_VETERAN_BONUS,
+  agentVeterancy,
 } from './diplomacy.js';
 import { archetypeFor } from './assets.js';
 import {
-  COMMANDER_MIGHT,
-  COMMANDER_STRIKE_BONUS,
-  COMMANDER_WITHDRAW_RELIEF,
+  COMMANDER_COST,
+  MAX_ACTIVE_COMMANDERS,
+  activeCommanders,
   commanderArchetype,
+  commanderAt,
   commanderFor,
+  commanderTaken,
+  ASSASSINATION_KILL_ROLL,
+  INTERROGATION_SHARE,
+  OFFICER_LEVERAGE,
+  OPERATIVE_RANSOM,
+  officerRansom,
   commanderLost,
+  commanderMight,
+  agentName,
   commanderName,
+  namesInUse,
+  unusedName,
+  commanderRelief,
+  commanderStrike,
+  successorArchetype,
+  veterancyLabel,
   type Commander,
 } from './command.js';
 import { jumpsBetween, neighboursOf, positionAlongPath, shortestPath } from './graph.js';
@@ -177,6 +196,20 @@ export const DEBT_DEFAULT_DISPOSITION_COST = 6;
 
 /** Ground forces rebuilt per turn, toward the system's ceiling. */
 export const GARRISON_REGROWTH = 1;
+
+/**
+ * Put an officer riding a cancelled or interrupted order back on the board.
+ *
+ * An order that leaves `pendingOrders` takes its `commanderId` with it, so
+ * without this they are in transit on a voyage that no longer exists — `null`
+ * location, `null` order, commanding nothing anywhere. The same reason the
+ * ships are returned: they were never destroyed.
+ */
+function returnRider(state: WorldState, order: PendingOrder, where: string): void {
+  if (!order.commanderId) return;
+  const rider = (state.commanders ?? []).find((c) => c.id === order.commanderId);
+  if (rider && rider.status === 'active') rider.atSystemId = where;
+}
 
 /** Dissent bled off per quiet turn. Refusals add 8, so defiance compounds. */
 export const DISSENT_DECAY = 2;
@@ -434,9 +467,25 @@ function mintId(state: WorldState, prefix: string): string {
  * counter-intelligence. Computed in code so a model cannot talk its spy into
  * being better than its faction is.
  */
-export function agentSuccessChance(guile: number, counterIntel: number): number {
-  return Math.max(5, Math.min(95, 50 + (guile - counterIntel) * 6));
+export function agentSuccessChance(
+  guile: number,
+  counterIntel: number,
+  operations = 0,
+  timesCaught = 0,
+): number {
+  return Math.max(
+    5,
+    Math.min(
+      95,
+      50 +
+        (guile - counterIntel) * 6 +
+        AGENT_VETERAN_BONUS[agentVeterancy(operations)]! -
+        timesCaught * AGENT_CAUGHT_PENALTY,
+    ),
+  );
 }
+
+
 
 /**
  * Take `count` hulls off a faction, largest concentration first.
@@ -1869,6 +1918,8 @@ export function applyOps(
           portable: isDossier ? true : portable,
           yield: assetYield,
           acquiredTurn: state.turn,
+          commanderId: null,
+          agentId: null,
         };
         state.assets.push(asset);
         const note = `${nameFor(state, op.heldBy)} holds ${op.quantity} ${op.unit}: ${op.text}`;
@@ -1903,6 +1954,72 @@ export function applyOps(
           );
           break;
         }
+        // **Spending a prisoner is interrogating them**, and what it makes is
+        // paper. That is the one shape this could take without becoming the
+        // operative mechanic at none of its cost: a `dossier` is proof and
+        // leverage and grants **no visibility at all**, because the fog is a
+        // snapshot rather than a memory and a power that wants to see what a
+        // rival is building buys an operative. A prisoner who granted
+        // `watchedSystems` would be sight with no upkeep, no cap and nothing to
+        // burn.
+        //
+        // It costs their ransom to do it, which is the decision: what they know
+        // is worth having once, and they are worth more alive to the power that
+        // wants them back. The file is worth a fraction of the person, and only
+        // to the power that took them — nobody else was in the room.
+        if (asset.commanderId !== null || asset.agentId !== null) {
+          const them = (state.commanders ?? []).find((c) => c.id === asset.commanderId);
+          const theirSpy = (state.agents ?? []).find((a) => a.id === asset.agentId);
+          const theirs = them?.factionId ?? theirSpy?.ownerFactionId;
+          // **Not your own people.** Ransom one home and this would have you
+          // question them and file what they gave up — a power selling itself
+          // intelligence about its own network, worth credits to the power that
+          // already had it. Reachable the moment a round trip existed, and
+          // incoherent rather than merely unbalanced.
+          if (theirs === asset.heldBy) {
+            reject(
+              raw,
+              'illegal_value',
+              `${them?.name ?? theirSpy?.name ?? 'That person'} is one of yours. There is nothing to be learned by questioning them.`,
+            );
+            break;
+          }
+          const spy = theirSpy;
+          const who = them?.name || spy?.name || 'the prisoner';
+          state.assets = state.assets.filter((a) => a.id !== asset.id);
+          // Spent either way: an officer is dead to their power and an
+          // operative's line was already closed the day they were caught.
+          if (them) them.status = 'lost';
+          if (spy) spy.exposed = true;
+          const file: Asset = {
+            id: mintId(state, 'ast'),
+            kind: 'dossier',
+            text: `What ${who} gave up under questioning`,
+            heldBy: asset.heldBy,
+            quantity: 1,
+            unit: 'file',
+            commanderId: null,
+            agentId: null,
+            divisible: false,
+            valuePerUnit: { [asset.heldBy]: Math.round(INTERROGATION_SHARE * (asset.valuePerUnit[asset.heldBy] ?? OFFICER_LEVERAGE)) },
+            speculative: false,
+            valueRange: {},
+            uses: null,
+            // Paper, so it stands on no world — a record of a conversation is
+            // not a thing to be seized with a planet.
+            atSystemId: null,
+            portable: true,
+            yield: null,
+            acquiredTurn: state.turn,
+          };
+          (state.assets ??= []).push(file);
+          const note = `${nameFor(state, asset.heldBy)} questions ${who} and files what they gave up.`;
+          notes.push(note);
+          logEvent(state, 'narrative', note, asset.heldBy);
+          if (theirs) logEvent(state, 'narrative', note, theirs);
+          break;
+        }
+
         // An INSTRUMENT is played and ordinary stuff is spent, and which
         // counter moves is a property of the thing rather than of the op — a
         // writ is one writ however many times it is worth playing.
@@ -2040,6 +2157,8 @@ export function applyOps(
           quantity: op.quantity,
           valuePerUnit: { ...asset.valuePerUnit },
           acquiredTurn: state.turn,
+          commanderId: null,
+          agentId: null,
         });
         const note = `${nameFor(state, asset.heldBy)} sets aside ${op.quantity} ${asset.unit} of ${asset.text} ${op.reason}`.trim();
         notes.push(note);
@@ -2348,6 +2467,40 @@ export function applyOps(
           }
         }
 
+        // An officer named to this fleet. Three guards, because a model asked
+        // for an id will eventually invent one: they must be this faction's, they
+        // must be alive, and they must be standing at the origin — a commander
+        // cannot join a squadron they are nowhere near. A name that fails any of
+        // them is dropped with a note rather than rejecting the whole order:
+        // the fleet still sails, it just sails under nobody in particular.
+        let riding: string | null = null;
+        if (op.commanderId !== null) {
+          const named = (state.commanders ?? []).find((c) => c.id === op.commanderId);
+          const ok =
+            named &&
+            named.factionId === op.factionId &&
+            named.status === 'active' &&
+            named.atSystemId === op.originId &&
+            isMovementType(op.type);
+          if (ok) {
+            riding = named.id;
+            named.atSystemId = null;
+          } else {
+            const why = !named
+              ? 'no such officer'
+              : named.factionId !== op.factionId
+                ? 'that officer serves another power'
+                : named.status !== 'active'
+                  ? 'that officer is lost'
+                  : !isMovementType(op.type)
+                    ? 'only a fleet movement carries an officer'
+                    : `${named.name} is not at ${nameFor(state, op.originId)}`;
+            const note = `Fleet sails without a named officer: ${why}.`;
+            notes.push(note);
+            logEvent(state, 'clamp', note, op.factionId);
+          }
+        }
+
         const order: PendingOrder = {
           id: mintOrderId(state),
           factionId: op.factionId,
@@ -2357,6 +2510,7 @@ export function applyOps(
           durationTurns: duration,
           progress: 0,
           interruptible: op.interruptible,
+          commanderId: riding,
           onInterrupt: op.onInterrupt,
           visibility: [...new Set(op.visibility.filter(factionExists))],
           label: op.label || op.type.replace(/_/g, ' '),
@@ -2384,6 +2538,106 @@ export function applyOps(
         break;
       }
 
+      case 'recruit_commander': {
+        if (actor && op.factionId !== actor) {
+          reject(raw, 'illegal_value', 'A power appoints only its own officers.');
+          break;
+        }
+        const faction = state.factions.find((f) => f.id === op.factionId);
+        if (!faction) {
+          reject(raw, 'unknown_faction', `No faction "${op.factionId}".`);
+          break;
+        }
+        const post = getSystem(state, op.systemId);
+        if (!post || post.controllerFactionId !== op.factionId) {
+          reject(
+            raw,
+            'no_presence',
+            `An officer reports to a world you hold; ${op.systemId} is not one.`,
+          );
+          break;
+        }
+        if (activeCommanders(state.commanders, op.factionId).length >= MAX_ACTIVE_COMMANDERS) {
+          reject(
+            raw,
+            'illegal_value',
+            `${faction.name} already has ${MAX_ACTIVE_COMMANDERS} officers in post.`,
+          );
+          break;
+        }
+
+        // Bringing one home: they are already a person the world knows about, so
+        // the asset is spent and the record they built is restored intact. That
+        // is the point of the pointer — a copy would have made the roster and
+        // the warehouse disagree about the same woman.
+        if (op.fromAssetId !== null) {
+          const held = (state.assets ?? []).find((a) => a.id === op.fromAssetId);
+          if (!held || held.commanderId === null) {
+            reject(raw, 'illegal_value', `Asset "${op.fromAssetId}" is not a captured officer.`);
+            break;
+          }
+          if (held.heldBy !== op.factionId) {
+            reject(raw, 'no_presence', 'You are not holding that officer.');
+            break;
+          }
+          const them = (state.commanders ?? []).find((c) => c.id === held.commanderId);
+          if (!them || them.status !== 'captured') {
+            reject(raw, 'illegal_value', 'That officer is not in anybody’s hands.');
+            break;
+          }
+          // Only your own come back. Turning somebody else's admiral is a far
+          // larger idea, and nothing here should make it look built.
+          if (them.factionId !== op.factionId) {
+            reject(
+              raw,
+              'illegal_value',
+              `${them.name} serves ${nameFor(state, them.factionId)}; releasing their is not appointing them.`,
+            );
+            break;
+          }
+          them.status = 'active';
+          them.atSystemId = post.id;
+          state.assets = (state.assets ?? []).filter((a) => a.id !== held.id);
+          const back = `${them.name} is restored to post at ${post.name}, ${them.battles} engagement${them.battles === 1 ? '' : 's'} behind them.`;
+          notes.push(back);
+          logEvent(state, 'narrative', back, op.factionId);
+          break;
+        }
+
+        if (faction.credits < COMMANDER_COST) {
+          reject(
+            raw,
+            'insufficient_credits',
+            `Appointing an officer costs ${COMMANDER_COST}; ${faction.name} holds ${faction.credits}.`,
+          );
+          break;
+        }
+        faction.credits -= COMMANDER_COST;
+        const salt = `recruit:${op.factionId}:${state.turn}:${(state.commanders ?? []).length}`;
+        // A fresh appointment ROLLS a school, where a successor inherits one:
+        // hiring is where a power changes what it is good at, and inheritance is
+        // where an institution carries on. If hiring inherited too, a power
+        // would be locked to its opening archetype for the whole campaign.
+        const school = commanderArchetype(op.factionId, state.turn, salt);
+        const hired: Commander = {
+          id: `cmd-${op.factionId}-${state.turn}-${(state.commanders ?? []).length}`,
+          factionId: op.factionId,
+          name: unusedName(namesInUse(state), (n) =>
+            commanderName(op.factionId, state.turn, `${salt}:${n}`, school),
+          ),
+          archetype: school,
+          appointedTurn: state.turn,
+          battles: 0,
+          status: 'active',
+          atSystemId: post.id,
+        };
+        (state.commanders ??= []).push(hired);
+        const note = `${faction.name} commissions ${hired.name} at ${post.name}.`;
+        notes.push(note);
+        logEvent(state, 'narrative', note, op.factionId);
+        break;
+      }
+
       case 'cancel_order': {
         const idx = state.pendingOrders.findIndex((o) => o.id === op.orderId);
         if (idx === -1) {
@@ -2399,6 +2653,10 @@ export function applyOps(
             addStackAt(home, removed!.factionId, removed!.force);
           }
         }
+        // And the officer aboard it, for the same reason and with the same
+        // failure if it is forgotten: the order carries them, so splicing it out
+        // leaves their in transit on a voyage that no longer exists.
+        returnRider(state, removed!, removed!.originId);
         // Recalling your own order is orderly, so the works return what they
         // have not yet cut into — the same principle that brings a recalled
         // fleet's ships home rather than destroying them. An *interruption* is
@@ -2970,18 +3228,104 @@ export function applyOps(
         }
         owner.credits -= price;
 
+        // Putting a ransomed operative back in the field. Resolved after the
+        // ordinary guards, so a redeployment is held to the same rules about
+        // whose operative it is and where they may be posted — a returning
+        // agent is an agent.
+        if (op.fromAssetId !== null) {
+          const held = (state.assets ?? []).find((a) => a.id === op.fromAssetId);
+          if (!held || held.agentId === null) {
+            reject(raw, 'illegal_value', `Asset "${op.fromAssetId}" is not a captured operative.`);
+            break;
+          }
+          if (held.heldBy !== ownerId) {
+            reject(raw, 'no_presence', 'You are not holding that operative.');
+            break;
+          }
+          const spy = (state.agents ?? []).find((a) => a.id === held.agentId);
+          if (!spy) {
+            reject(raw, 'unknown_agent', 'That operative is no longer on the books.');
+            break;
+          }
+          // Only your own go back out. Running somebody else's caught agent is
+          // turning them, which is the larger idea `recruit_commander` refuses
+          // for officers and refuses here for the same reason.
+          if (spy.ownerFactionId !== ownerId) {
+            reject(
+              raw,
+              'illegal_value',
+              `That operative answers to ${nameFor(state, spy.ownerFactionId)}; releasing them is not running them.`,
+            );
+            break;
+          }
+          if (liveAgentsOf(state, ownerId).length >= maxAgentsFor(state, ownerId)) {
+            reject(raw, 'illegal_value', `${nameFor(state, ownerId)} is at its operative ceiling.`);
+            break;
+          }
+          // **Off the exposed list**, which is the whole of redeployment: a
+          // face the enemy caught is not a person who has stopped existing.
+          // The record comes with them and so does the mark — `timesCaught`
+          // never decays, so the second ransom is worth much less than the
+          // first and the third is worth nothing.
+          spy.exposed = false;
+          spy.systemId = op.systemId;
+          spy.mission = op.mission;
+          spy.effect = op.effect;
+          spy.cover = op.cover;
+          spy.deployedTurn = state.turn;
+          spy.successChance = agentSuccessChance(
+            effectiveStats(state, ownerId).guile,
+            host.controllerFactionId
+              ? effectiveStats(state, host.controllerFactionId).resolve
+              : 8,
+            spy.operations,
+            spy.timesCaught,
+          );
+          state.assets = (state.assets ?? []).filter((a) => a.id !== held.id);
+          const back = `${spy.name || 'A returned operative'} goes back out on ${host.name}, ${spy.operations} operation${spy.operations === 1 ? '' : 's'} behind them and a face ${nameFor(state, held.heldBy === ownerId ? ownerId : held.heldBy)}'s rivals have seen ${spy.timesCaught} time${spy.timesCaught === 1 ? '' : 's'}.`;
+          notes.push(back);
+          logEvent(state, 'narrative', back, ownerId);
+          break;
+        }
+
+        const taken = namesInUse(state);
+        const who = unusedName(taken, (n) =>
+          agentName(ownerId, state.turn, `agent:${op.systemId}:${state.agents.length}:${n}`),
+        );
         state.agents.push({
           id: mintId(state, 'agt'),
+          name: who,
           ownerFactionId: ownerId,
           systemId: op.systemId,
           mission: op.mission,
           effect: op.effect,
           // Computed here, never chosen by a model: guile against the target's
           // counter-intelligence, which is its resolve.
-          successChance: agentSuccessChance(owner.stats.guile, target?.stats.resolve ?? 8),
+          //
+          // **Effective stats on both sides, which they were not.** This read
+          // `owner.stats` and `target.stats` — the BASE sheet — while
+          // `subornLimit` two functions away reads `effectiveStats` for the
+          // same contest between the same two numbers. So terrain, dissent, a
+          // rival's `stat_debuff` and an officer's passive all reached one and
+          // none of them reached the other: a power whose institutions had
+          // stopped following it recruited spies exactly as well as one at
+          // peace, and a `lineofbattle` officer made their power harder to suborn
+          // and no harder to infiltrate. Exactly the defect `effectiveStats`
+          // was introduced to fix for the d20, left behind in the one other
+          // place two stats are compared.
+          successChance: agentSuccessChance(
+            effectiveStats(state, ownerId).guile,
+            target ? effectiveStats(state, target.id).resolve : 8,
+          ),
           deployedTurn: state.turn,
           exposed: false,
+          operations: 0,
+          timesCaught: 0,
           cover: op.cover,
+          // Only an assassination can be aimed at a person; every other mission
+          // works against a power. Silently dropped rather than rejected, the
+          // same shape as a fleet naming an officer it cannot carry.
+          targetCommanderId: op.mission === 'assassination' ? op.targetCommanderId : null,
         });
         logEvent(
           state,
@@ -4372,6 +4716,9 @@ function resolveInterrupt(state: WorldState, order: PendingOrder, reason: string
       const home = state.systems.find((s) => s.id === order.originId);
       if (home) addStackAt(home, order.factionId, order.force);
     }
+    // They were never destroyed either, and an officer left in transit on an
+    // order that no longer exists is an officer nowhere.
+    returnRider(state, order, order.originId);
     // `cancel` means the work is lost entirely, so money sunk into the works is
     // sunk. Said out loud rather than deducted silently: a player who abandons a
     // shipyard should be told what it cost them.
@@ -4389,6 +4736,7 @@ function resolveInterrupt(state: WorldState, order: PendingOrder, reason: string
     if (sys && hullsIn(order.force) > 0) {
       addStackAt(sys, order.factionId, order.force);
     }
+    returnRider(state, order, sys?.id ?? order.originId);
     const note = `${order.label} halted mid-transit at ${sys?.name ?? halted} with ${hullsIn(order.force)} ships. ${reason}`.trim();
     logEvent(state, 'order', note, order.factionId);
     return note;
@@ -4460,7 +4808,7 @@ export function tickTurn(input: WorldState): TickResult {
   // so losing one has to be a setback rather than a permanent removal — and a
   // replacement has to be an ordinary appointment, not a resurrection: the new
   // officer is a different person, with a new name, a new archetype and no
-  // battles behind her.
+  // battles behind them.
   //
   // Seeded from the turn, so a replayed campaign appoints the same successor.
   // The dead stay on the roster: a faction's history of commanders is worth
@@ -4469,14 +4817,31 @@ export function tickTurn(input: WorldState): TickResult {
   for (const faction of state.factions) {
     if (commanderFor(state.commanders, faction.id)) continue;
     const salt = `replace:${faction.id}:${state.turn}`;
+    // The school is settled BEFORE the name, because the title is part of the
+    // name and names the school — a successor of the same school wears the same
+    // title, which is what makes the continuity of the institution legible
+    // while the person is plainly somebody new.
+    const school = successorArchetype(state.commanders, faction.id, state.turn, salt);
+    // The successor inherits the SPECIALITY and none of the record. Re-rolling
+    // the archetype made a defeat a free lottery ticket — a power whose fleet
+    // had no use for the officer it was dealt was better off losing them — so
+    // the one live consequence of the death mechanic ran backwards. What a
+    // defeat costs is the `battles`, which cannot be bought back at any price.
     const appointed: Commander = {
       id: `cmd-${faction.id}-${state.turn}`,
       factionId: faction.id,
-      name: commanderName(faction.id, state.turn, salt),
-      archetype: commanderArchetype(faction.id, state.turn, salt),
+      name: unusedName(namesInUse(state), (n) =>
+        commanderName(faction.id, state.turn, `${salt}:${n}`, school),
+      ),
+      archetype: school,
       appointedTurn: state.turn,
       battles: 0,
       status: 'active',
+      // A successor reports to the power's best world, the same ordering
+      // `fleetBases` uses. A power with nothing left to stand on gets an
+      // officer with nowhere to be, which is honest: they command no battle
+      // until there is somewhere to command it from.
+      atSystemId: fleetBases(state, faction.id)[0]?.id ?? null,
     };
     (state.commanders ??= []).push(appointed);
     const note = `${nameFor(state, faction.id)} gives the fleet to ${appointed.name}.`;
@@ -4736,6 +5101,8 @@ export function tickTurn(input: WorldState): TickResult {
           portable: true,
           yield: null,
           acquiredTurn: state.turn,
+          commanderId: null,
+          agentId: null,
         });
       }
       const note = `${asset.text} yields ${made.perTurn} ${made.unit} at ${where.name}.`;
@@ -5054,6 +5421,49 @@ export function tickTurn(input: WorldState): TickResult {
       if (roll >= 21 - profile.exposureRisk) {
         agent.exposed = true;
         watchNotes.set(agent.id, `was taken on ${host.name}. That line is closed.`);
+        // **Taken, not merely burned.** An exposed operative used to be a flag
+        // and nothing else: the line closed, the person evaporated, and the
+        // power that caught them held nothing to show for it. They are a person
+        // the world has a record of, exactly as a captured officer is, so they
+        // become the same kind of thing — an asset that can be ransomed,
+        // traded, ceded or questioned, with no second mechanism for any of it.
+        //
+        // Worth most to the power that ran them, and something to everybody,
+        // for the reason an officer is: what they know is leverage over more
+        // than one table.
+        // A caught face is caught for good. Recorded on the agent rather than
+        // on the asset, because it has to survive the round trip: they are
+        // ransomed home as an asset and redeployed as an agent, and the mark is
+        // the whole reason that second act is a decision.
+        agent.timesCaught += 1;
+
+        const prize: Asset = {
+          id: mintId(state, 'ast'),
+          kind: 'operative',
+          text: `${agent.name || 'An operative'}, ${owner?.name ?? agent.ownerFactionId}'s ${agent.mission} agent, taken on ${host.name}`,
+          heldBy: target.id,
+          quantity: 1,
+          unit: 'person',
+          commanderId: null,
+          agentId: agent.id,
+          divisible: false,
+          valuePerUnit: Object.fromEntries(
+            state.factions.map((f) => [
+              f.id,
+              f.id === agent.ownerFactionId ? OPERATIVE_RANSOM : OFFICER_LEVERAGE,
+            ]),
+          ),
+          speculative: false,
+          valueRange: {},
+          uses: null,
+          // Held where they were caught, so a world changing hands takes them
+          // with it — the rule every other asset with a location follows.
+          atSystemId: host.id,
+          portable: true,
+          yield: null,
+          acquiredTurn: state.turn,
+        };
+        (state.assets ??= []).push(prize);
         logEvent(
           state,
           'system',
@@ -5069,6 +5479,45 @@ export function tickTurn(input: WorldState): TickResult {
         }
       }
       continue;
+    }
+
+    // The operation came off, so it goes on their record — counted here rather
+    // than per posting, because a watcher who sits for ten turns has learned
+    // ten turns' worth and a saboteur caught on its second attempt has not.
+    agent.operations += 1;
+
+    // An assassination aimed at a PERSON, resolved before the effect — the
+    // effect still lands, because an operation that got close enough to try is
+    // an operation that did some damage whether or not the knife found them.
+    //
+    // The officer must be standing at this operative's system. That is the
+    // whole counterplay: an officer who has sailed is one the knife does not
+    // find, so the location model defends their rather than a new stat.
+    if (agent.mission === 'assassination' && agent.targetCommanderId !== null) {
+      const mark = (state.commanders ?? []).find(
+        (c) =>
+          c.id === agent.targetCommanderId &&
+          c.status === 'active' &&
+          c.atSystemId === agent.systemId,
+      );
+      if (!mark) {
+        watchNotes.set(agent.id, `reached ${host.name} and found the post empty.`);
+      } else {
+        // A roll of its OWN, which is forced rather than careless: the success
+        // test above reads the bottom of the d20 and this reads the top, so one
+        // roll cannot carry both.
+        const knife = rollD20(state.turn, `assassinate:${agent.id}`);
+        if (knife >= ASSASSINATION_KILL_ROLL) {
+          mark.status = 'lost';
+          mark.atSystemId = null;
+          const done = `${mark.name} is killed on ${host.name}.`;
+          watchNotes.set(agent.id, `killed ${mark.name} on ${host.name}.`);
+          logEvent(state, 'narrative', done, mark.factionId);
+          logEvent(state, 'narrative', done, agent.ownerFactionId);
+        } else {
+          watchNotes.set(agent.id, `came close to ${mark.name} on ${host.name} and no closer.`);
+        }
+      }
     }
 
     if (agent.effect.kind === 'crew_defection') {
@@ -5470,24 +5919,70 @@ function resolveBattle(
    * `finish` — so a commander is counted exactly once however the battle ends,
    * including the early exits that never reach the exchange.
    */
-  const onField: { officer: Commander; side: 'attack' | 'defend' }[] = [];
+  const onField: {
+    officer: Commander;
+    side: 'attack' | 'defend';
+    /** Where they stand when this is over. Retreat branches overwrite it. */
+    lands: string | null;
+  }[] = [];
   let beatenSide: 'attack' | 'defend' | null = null;
+
 
   /** Close the engagement: snapshot the result and hand back both forms. */
   const finish = (note: string): BattleOutcomeResult => {
-    for (const { officer, side } of onField) {
+    for (const { officer, side, lands } of onField) {
       const live = (state.commanders ?? []).find((c) => c.id === officer.id);
       if (!live || live.status !== 'active') continue;
       live.battles += 1;
+      // They came off the order and onto the board. Done before the death roll
+      // so a survivor is standing somewhere and a casualty is cleared below.
+      live.atSystemId = lands;
       // Lost only on a DEFEAT, and on the battle's own roll rather than a new
       // one. An officer who wins does not die at a rate worth modelling, and a
       // death roll on every engagement would churn the roster faster than a
       // player could learn a name.
       if (side === beatenSide && commanderLost(roll)) {
-        live.status = 'lost';
-        const gone = `${live.name} is lost with the ${nameOf(live.factionId)} fleet over ${target.name}.`;
-        commandersFired.push(gone);
-        logEvent(state, 'narrative', gone, live.factionId);
+        live.atSystemId = null;
+        // Taken alive, if there is anybody to take them. A capture needs a
+        // CAPTOR — the side that did not break — so a fleet driven off by an
+        // unaligned world's militia is killed instead: ground with no flag over
+        // it does not run a prison.
+        const captor = side === 'attack' ? (holder ?? largestDefender) : largestAttacker;
+        if (commanderTaken(roll) && captor && captor !== live.factionId) {
+          live.status = 'captured';
+          const held: Asset = {
+            id: mintId(state, 'ast'),
+            kind: 'officer',
+            text: `${live.name}, ${nameOf(live.factionId)}, taken over ${target.name}`,
+            heldBy: captor,
+            quantity: 1,
+            unit: 'person',
+            commanderId: live.id,
+            agentId: null,
+            divisible: false,
+            valuePerUnit: officerRansom(live, state.factions.map((f) => f.id)),
+            speculative: false,
+            valueRange: {},
+            uses: null,
+            // They are held where they were taken, so a world changing hands takes
+            // their with it — the rule every other asset with a location follows,
+            // and the thing that makes a prisoner worth guarding.
+            atSystemId: target.id,
+            portable: true,
+            yield: null,
+            acquiredTurn: state.turn,
+          };
+          (state.assets ??= []).push(held);
+          const taken = `${live.name} is taken alive over ${target.name} and held by ${nameOf(captor)}.`;
+          commandersFired.push(taken);
+          logEvent(state, 'narrative', taken, live.factionId);
+          logEvent(state, 'narrative', taken, captor);
+        } else {
+          live.status = 'lost';
+          const gone = `${live.name} is lost with the ${nameOf(live.factionId)} fleet over ${target.name}.`;
+          commandersFired.push(gone);
+          logEvent(state, 'narrative', gone, live.factionId);
+        }
       }
     }
     return {
@@ -5697,6 +6192,38 @@ function resolveBattle(
   let defenceForce = defenders.reduce((sum, [, st]) => sum + hullsIn(st), 0);
   defendSnapshot = new Map(defenders);
 
+  // Registered BEFORE the first exit, which is what this being up here is for:
+  // `resolveBattle` returns from ten places and the unopposed walk-in is
+  // above all of them, so an officer who took an empty world was never put on
+  // the board at all — left in transit, at no system, on a voyage that had
+  // already ended. Every path out now goes through `finish` with the officers
+  // already known.
+  //
+  // **Presence, not possession.** An officer commands the battle they are at, and
+  // no other — before they had a location they commanded every engagement them
+  // power fought, simultaneously, wherever they were. An attacker's officer is
+  // the one who SAILED: they ride `order.commanderId`, exactly as their ships
+  // ride `order.force`. A defender's is whoever is standing on the world.
+  const riders = orders
+    .map((o) =>
+      o.commanderId
+        ? (state.commanders ?? []).find((c) => c.id === o.commanderId && c.status === 'active')
+        : undefined,
+    )
+    .filter((c): c is Commander => c !== undefined);
+  const defendersPresent = defenders
+    .map(([id]) => commanderAt(state.commanders, id, systemId))
+    .filter((c): c is Commander => c !== undefined);
+
+  // Being present is what risks you; commanding is what helps. So every officer
+  // on the field takes the death roll if their side is broken, while only the
+  // largest contingent's applies their effects — the same rule doctrine follows,
+  // so a one-ship junior partner's officer does not run the coalition.
+  for (const officer of riders) onField.push({ officer, side: 'attack', lands: systemId });
+  for (const officer of defendersPresent) {
+    onField.push({ officer, side: 'defend', lands: systemId });
+  }
+
   // Genuinely undefended: nobody in orbit AND nobody on the ground. An
   // unaligned world is NOT automatically this — the seed gives neutral worlds
   // garrisons of 2–5, and skipping the ground phase for them made every
@@ -5783,25 +6310,35 @@ function resolveBattle(
     [...defenders]
       .sort((a, b) => tonsIn(b[1]) - tonsIn(a[1]) || a[0].localeCompare(b[0]))[0]?.[0] ??
     holder;
-  const attackOfficer = largestAttacker
-    ? commanderFor(state.commanders, largestAttacker)
-    : undefined;
-  const defendOfficer = largestDefender
-    ? commanderFor(state.commanders, largestDefender)
-    : undefined;
+  // Seniority decides which of a power's officers commands, the same rule
+  // `commanderFor` uses. Unreachable while a power holds one officer — and it
+  // is exactly what recruitment makes reachable, at which point picking by
+  // array order would make "who commanded" depend on the order the fleets were
+  // issued in. A tie-break that costs nothing now is a bug that does not
+  // happen later.
+  const senior = (a: Commander, b: Commander): number =>
+    b.battles - a.battles || a.id.localeCompare(b.id);
+  const attackOfficer = riders
+    .filter((c) => c.factionId === largestAttacker)
+    .sort(senior)[0];
+  const defendOfficer = defendersPresent
+    .filter((c) => c.factionId === largestDefender)
+    .sort(senior)[0];
+  // `c.battles` is the record they brought TO this engagement — `finish`
+  // increments it afterwards — so an officer fights their tenth battle at the
+  // standing nine wins earned them, and reads as a veteran from the eleventh.
   const officerNote = (c: Commander, what: string): void => {
-    commandersFired.push(`${c.name} (${nameOf(c.factionId)}): ${what}`);
+    commandersFired.push(`${c.name} (${nameOf(c.factionId)}, ${veterancyLabel(c.battles)}): ${what}`);
   };
-  if (attackOfficer) onField.push({ officer: attackOfficer, side: 'attack' });
-  if (defendOfficer) onField.push({ officer: defendOfficer, side: 'defend' });
-
   if (attackOfficer?.archetype === 'lineofbattle') {
-    attackMod += COMMANDER_MIGHT;
-    officerNote(attackOfficer, `+${COMMANDER_MIGHT} might in the exchange`);
+    const might = commanderMight(attackOfficer);
+    attackMod += might;
+    officerNote(attackOfficer, `+${might} might in the exchange`);
   }
   if (defendOfficer?.archetype === 'lineofbattle') {
-    defendMod += COMMANDER_MIGHT;
-    officerNote(defendOfficer, `+${COMMANDER_MIGHT} might in the exchange`);
+    const might = commanderMight(defendOfficer);
+    defendMod += might;
+    officerNote(defendOfficer, `+${might} might in the exchange`);
   }
   defendModOut = defendMod;
 
@@ -5821,7 +6358,7 @@ function resolveBattle(
     // somebody actually runs — `commandersFired` follows `doctrinesFired`'s
     // convention that a thing which changed nothing does not appear, and a
     // convoy officer in a battle nobody lost changed nothing.
-    convoyRelief[side] = COMMANDER_WITHDRAW_RELIEF;
+    convoyRelief[side] = commanderRelief(officer);
     convoyOfficer[side] = officer;
   }
   for (const [side, officer] of [
@@ -5834,8 +6371,8 @@ function resolveBattle(
       ? [...attackShare.values()]
       : defenders.map(([, st]) => st);
     if (torpedoStrike(boats) <= 0) continue;
-    strikeBonus[side] = COMMANDER_STRIKE_BONUS;
-    officerNote(officer, `+${Math.round(COMMANDER_STRIKE_BONUS * 100)}% on the opening salvo`);
+    strikeBonus[side] = commanderStrike(officer);
+    officerNote(officer, `+${Math.round(strikeBonus[side] * 100)}% on the opening salvo`);
   }
   /**
    * What survives a withdrawal, spending the loss order.
@@ -5853,7 +6390,7 @@ function resolveBattle(
   const bleed = (stack: ShipStack, side: 'attack' | 'defend'): ShipStack => {
     const officer = convoyOfficer[side];
     if (officer) {
-      officerNote(officer, `-${COMMANDER_WITHDRAW_RELIEF}% off a withdrawal`);
+      officerNote(officer, `-${convoyRelief[side]}% off a withdrawal`);
       delete convoyOfficer[side];
     }
     // Floored at 5%: a withdrawal under fire is never free, however good the
@@ -5884,8 +6421,8 @@ function resolveBattle(
     targetSide: ShipStack[],
     side: 'attack' | 'defend',
   ): { tons: number; deep: number } => ({
-    // A `gunnery` officer multiplies the salvo rather than adding to it, so she
-    // is worth exactly as much as the boats she has — worth a great deal to
+    // A `gunnery` officer multiplies the salvo rather than adding to it, so they
+    // is worth exactly as much as the boats they have — worth a great deal to
     // Drajk, who build them, and worth nothing to a power that brought none.
     // An additive bonus would have conjured a salvo out of a fleet with no
     // torpedo boats in it at all.
@@ -6086,6 +6623,14 @@ function resolveBattle(
           (x) => x.id !== target.id && x.controllerFactionId === id,
         );
         if (refuge && hullsIn(escaped) > 0) addStackAt(refuge, id, escaped);
+        // They leave with their own contingent. With nowhere to run they stay in
+        // orbit over a world they no longer holds, which is exactly what the
+        // ships that had no refuge do.
+        for (const entry of onField) {
+          if (entry.side === 'defend' && entry.officer.factionId === id) {
+            entry.lands = refuge?.id ?? target.id;
+          }
+        }
       }
       beatenSide = 'defend';
       const broke = `${defenders.map(([id]) => nameOf(id)).join(' and ')} breaks off over ${target.name}, losing ${lost} ships between them.`;
@@ -6104,6 +6649,13 @@ function resolveBattle(
         const refuge = state.systems.find((x) => x.id === fallback);
         if (refuge && hullsIn(escaped) > 0) {
           addStackAt(refuge, order.factionId, escaped);
+        }
+        // An officer falls back down the path their own fleet took, not the
+        // coalition's — one shared refuge would land them all on one world.
+        for (const entry of onField) {
+          if (entry.side === 'attack' && entry.officer.id === order.commanderId) {
+            entry.lands = refuge?.id ?? order.originId;
+          }
         }
       }
       for (const [id] of attackShare) attackShare.set(id, {});

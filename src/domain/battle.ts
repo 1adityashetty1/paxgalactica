@@ -147,7 +147,7 @@ export const BattleReportSchema = z.object({
    * Its own list rather than more strings in that one, because they are
    * different kinds of fact. A doctrine is what a power IS and is true of every
    * battle it fights; a commander is who happened to be aboard this one, and
-   * the interesting thing about her is that next turn she might not be.
+   * the interesting thing about them is that next turn they might not be.
    */
   commandersFired: z.array(z.string()).default([]),
   holderBefore: z.string().nullable(),
