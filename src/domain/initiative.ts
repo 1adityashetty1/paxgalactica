@@ -525,7 +525,21 @@ const vigil: Bot = (ctx) => {
       return { t, defence, prize: t.strategicValue };
     })
     .filter(({ defence }) => defence > 0)
-    .sort((a, b) => b.prize - a.prize || a.t.id.localeCompare(b.t.id))[0];
+    // Prize first, then **grievance**: among worlds worth the same, it moves
+    // against the power it likes least. The only place in the bots where a held
+    // world is chosen to attack — every other target sort picks unaligned
+    // ground, where there is nobody to resent.
+    //
+    // A tie-break rather than a term added into the prize, because a doctrine
+    // that weighed feeling against strategic value would stop being the
+    // doctrine: the Vigil takes the corridor it needs, and *which* enemy it
+    // takes it from is where its temper gets a say.
+    .sort(
+      (a, b) =>
+        b.prize - a.prize ||
+        regardFor(ctx.state, ctx.me, a.t.id) - regardFor(ctx.state, ctx.me, b.t.id) ||
+        a.t.id.localeCompare(b.t.id),
+    )[0];
 
   if (target) {
     const need = Math.ceil(target.defence * 2.2);
@@ -708,6 +722,79 @@ export interface Proposal {
 }
 
 /** Strip acts that would break a pact this faction has actually signed. */
+/**
+ * How a power feels about whoever holds a world, for ordering targets.
+ *
+ * Lower is worse-disposed, so sorting **ascending** puts the power you like
+ * least at the front. An unaligned world scores 0 — nobody to resent and nobody
+ * to spare.
+ */
+function regardFor(state: WorldState, me: string, systemId: string): number {
+  const holder = sys(state, systemId)?.controllerFactionId;
+  if (!holder || holder === me) return 0;
+  return state.factions.find((f) => f.id === me)?.disposition[holder] ?? 0;
+}
+
+/**
+ * Above this, a bot will not open an attack on a power it holds no grievance
+ * with.
+ *
+ * **Not a peace treaty** — `honourTreaties` does that, and does it on paper
+ * that exists. This is the softer thing a doctrine ought to have on its own: a
+ * power does not invade a neighbour it is on good terms with merely because the
+ * world was the richest one on its frontier.
+ *
+ * Set well above zero so it bites only on genuine goodwill. The opening board
+ * has one pair above it, and thirty harness turns produce three.
+ */
+const BOT_PEACE_FLOOR = 20;
+
+/**
+ * Doctrine reads how it feels about people, at last.
+ *
+ * **The measurement came first, and it said something sharper than the item
+ * did.** 98 was filed as "the bots cannot tell a friend from an enemy", which
+ * implies they attack friends. They do not — over thirty turns the harness
+ * produces **two** attacks on a held world, both the Vigil against Meridian at
+ * -20, which is a power it dislikes. The real defect is the other half: the
+ * final matrix carries -75 (the Vigil toward the Combine), -75 (Arkane toward
+ * the Vigil) and -70 (the Vigil toward Drajk), and **none of it produces
+ * anything at all.** The bots hate each other and do nothing about it.
+ *
+ * That is precisely the failure the bots were built to fix one layer up, where
+ * the model produced "wars on paper that nobody fought" — arrived at from the
+ * other direction. The model had motives and no initiative; the bots have
+ * initiative and no motives.
+ *
+ * So this is a **preference, not a veto**: a bot still picks targets by prize
+ * and by weakness, and disposition breaks the ties and vetoes the one case that
+ * reads as nonsense — opening a war on somebody you are on good terms with. A
+ * post-filter beside `honourTreaties` rather than a test threaded through five
+ * bots, which is what makes it total: a bot added later inherits it without
+ * knowing it exists.
+ */
+function actOnGrievance(
+  state: WorldState,
+  me: string,
+  ops: Record<string, unknown>[],
+): { ops: Record<string, unknown>[]; withheld: string[] } {
+  const withheld: string[] = [];
+  const kept = ops.filter((op) => {
+    if (op.op !== 'issue_order' || op.type !== 'fleet_movement') return true;
+    const target = sys(state, String(op.targetId ?? ''));
+    const holder = target?.controllerFactionId;
+    if (!holder || holder === me) return true;
+    if (regardFor(state, me, target.id) >= BOT_PEACE_FLOOR) {
+      withheld.push(
+        `an attack on ${target.name}, which it has no quarrel with ${state.factions.find((f) => f.id === holder)?.name ?? holder} to justify`,
+      );
+      return false;
+    }
+    return true;
+  });
+  return { ops: kept, withheld };
+}
+
 function honourTreaties(
   state: WorldState,
   me: string,
@@ -789,7 +876,13 @@ export function proposeFor(state: WorldState, factionId: string): Proposal | nul
   if (!bot) return null;
 
   const raw = bot({ state, me: factionId });
-  const { ops, withheld } = honourTreaties(state, factionId, raw);
+  // Paper first, then grievance. A standing pact forbids an attack outright; a
+  // good relationship merely makes one unreasonable, so the harder rule runs
+  // first and the softer one only sees what survived it.
+  const pact = honourTreaties(state, factionId, raw);
+  const felt = actOnGrievance(state, factionId, pact.ops);
+  const ops = felt.ops;
+  const withheld = [...pact.withheld, ...felt.withheld];
   if (ops.length === 0) return null;
 
   return { factionId, ops, rationale: describeProposal(state, factionId, ops), withheld };

@@ -291,6 +291,35 @@ export const OPERATIVE_RANSOM = 120;
  */
 export const INTERROGATION_SHARE = 0.4;
 
+/* ------------------------------------------------------------------ */
+/* What trafficking in people costs, and what handing them back buys   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Disposition moved by what a power does with the people it is holding.
+ *
+ * Assets have been tradeable since they existed and **moving one has never
+ * cost anybody anything** — a power could sell another's admiral to their worst
+ * enemy, or question one and throw them away, and the only thing that moved was
+ * credits. That is the same defect `COERCION_RESENTMENT` was added for: a
+ * mechanism that is obviously an insult, priced at nothing, because nothing
+ * read it.
+ *
+ * Four figures, and the asymmetry between them is the design. **Giving somebody
+ * back is worth more than taking them was worth costing you**, because a
+ * repatriation is a choice and a capture is a battle — which is what makes the
+ * prisoner mechanic a diplomatic instrument rather than a scoreboard.
+ *
+ * Only for **people**. Selling a hold of ore to somebody's enemy is commerce;
+ * selling their Grand Admiral is not, and the distinction is exactly the one
+ * `Asset.commanderId` and `Asset.agentId` already draw.
+ */
+export const REPATRIATION_GOODWILL = 25;
+export const TRAFFICKING_RESENTMENT = 15;
+export const INTERROGATION_RESENTMENT = 20;
+/** What a third party thinks of a power that deals in prisoners at all. */
+export const TRAFFICKING_REPUTATION_COST = 4;
+
 export function officerRansom(
   c: Commander,
   factionIds: readonly string[],

@@ -2006,6 +2006,90 @@ describe('the officer on the field', () => {
       });
     });
 
+    describe('and what a power does with the people it holds', () => {
+      const withPrisoner = (heldBy: string) => {
+        const s = fresh();
+        const them = s.commanders.find((c) => c.factionId === 'freeworlds')!;
+        them.status = 'captured';
+        them.atSystemId = null;
+        s.assets.push({
+          id: 'ast-p', kind: 'officer', text: 'them', heldBy,
+          quantity: 1, unit: 'person', commanderId: them.id, agentId: null,
+          divisible: false, valuePerUnit: { freeworlds: 450 }, speculative: false,
+          valueRange: {}, uses: null, atSystemId: null, portable: true,
+          yield: null, acquiredTurn: 0,
+        });
+        return { s, them };
+      };
+      const regard = (s: WorldState, who: string, of: string) =>
+        s.factions.find((f) => f.id === who)!.disposition[of] ?? 0;
+
+      it('buys real goodwill for handing somebody back', () => {
+        // Assets have been tradeable since they existed and moving one has
+        // never cost or bought anybody anything. Worth more than the taking
+        // cost, because a repatriation is a choice and a capture was a battle.
+        const { s } = withPrisoner('drajk');
+        const before = regard(s, 'freeworlds', 'drajk');
+        const out = applyOps(
+          s,
+          [{ op: 'transfer_asset', assetId: 'ast-p', toFactionId: 'freeworlds' }],
+          'model',
+          'drajk',
+        );
+        expect(out.rejections).toHaveLength(0);
+        expect(regard(out.state, 'freeworlds', 'drajk')).toBeGreaterThan(before);
+      });
+
+      it('costs standing to sell somebody over their head', () => {
+        const { s } = withPrisoner('drajk');
+        const before = regard(s, 'freeworlds', 'drajk');
+        const onlooker = regard(s, 'meridian', 'drajk');
+        const out = applyOps(
+          s,
+          [{ op: 'transfer_asset', assetId: 'ast-p', toFactionId: 'vigil' }],
+          'model',
+          'drajk',
+        );
+        expect(regard(out.state, 'freeworlds', 'drajk')).toBeLessThan(before);
+        // Some acts are visible to everybody — the same shape as
+        // `PACT_BREAKING_REPUTATION_COST`.
+        expect(regard(out.state, 'meridian', 'drajk')).toBeLessThan(onlooker);
+      });
+
+      it('costs more standing to question them than to sell them', () => {
+        const { s } = withPrisoner('drajk');
+        const before = regard(s, 'freeworlds', 'drajk');
+        const out = applyOps(
+          s,
+          [{ op: 'consume_asset', assetId: 'ast-p', quantity: 1 }],
+          'model',
+          'drajk',
+        );
+        expect(out.rejections).toHaveLength(0);
+        expect(regard(out.state, 'freeworlds', 'drajk')).toBeLessThan(before);
+      });
+
+      it('says nothing about a cargo of ore', () => {
+        // Selling a hold of ore to somebody's enemy is commerce; selling their
+        // Grand Admiral is not, and the distinction is the one `commanderId`
+        // and `agentId` already draw.
+        const s = fresh();
+        const ore = s.assets.find((a) => a.commanderId === null && a.agentId === null);
+        expect(ore, 'the seed should carry a non-person asset').toBeDefined();
+        const holder = ore!.heldBy;
+        const others = s.factions.filter((f) => f.id !== holder).map((f) => f.id);
+        const before = others.map((o) => regard(s, o, holder));
+        const to = others.find((o) => o !== holder)!;
+        const out = applyOps(
+          s,
+          [{ op: 'transfer_asset', assetId: ore!.id, toFactionId: to }],
+          'model',
+          holder,
+        );
+        expect(others.map((o) => regard(out.state, o, holder))).toEqual(before);
+      });
+    });
+
     it('tells a power what it would be losing', () => {
       // A cost a player cannot read coming is a cost they cannot weigh.
       expect(toNextVeterancy(0)).toBe(VETERAN_THRESHOLDS[0]);

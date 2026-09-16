@@ -287,3 +287,95 @@ describe('the bots field composed navies', () => {
     }
   });
 });
+
+/**
+ * Doctrine reads how a power feels about people.
+ *
+ * **The measurement came first and said something sharper than the item did.**
+ * 98 was filed as "the bots cannot tell a friend from an enemy", which implies
+ * they attack friends. They do not: thirty harness turns produce **two** attacks
+ * on a held world, both the Vigil against Meridian at -20 — somebody it
+ * dislikes. The real defect is the other half. The final matrix carries -75, -75
+ * and -70 between various pairs and **none of it produces anything at all**:
+ * the bots hate each other and do nothing about it. Exactly the failure the bots
+ * were built to fix one layer up, reached from the other side — the model had
+ * motives and no initiative, the bots had initiative and no motives.
+ */
+describe('a bot acts on its grievances', () => {
+  /**
+   * A board where the Vigil can actually attack. Three things gate it, and each
+   * one cost a probe to find: the seed has a pending Vigil movement (which
+   * short-circuits the branch), `sortie` needs a staging base holding the whole
+   * blow, and it needs **lift** there — a bot that sails with guns only wins the
+   * orbitals and hands the world back.
+   */
+  const armed = (): WorldState => {
+    const s = createSeedState('freeworlds');
+    s.pendingOrders = [];
+    s.factions.find((f) => f.id === 'vigil')!.credits = 30000;
+    for (const sys of s.systems) {
+      if (sys.controllerFactionId === 'vigil') {
+        setShipsAt(sys, 'vigil', 0);
+        addShipsAt(sys, 'vigil', 300, 'battleship');
+        addShipsAt(sys, 'vigil', 40, 'lifter');
+      } else if (sys.controllerFactionId) {
+        sys.garrison = 2;
+        // Equal prizes, so nothing but grievance can break the tie.
+        sys.strategicValue = 9;
+      }
+    }
+    return s;
+  };
+
+  const feels = (s: WorldState, about: Record<string, number>) => {
+    const v = s.factions.find((f) => f.id === 'vigil')!;
+    for (const f of s.factions) if (f.id !== 'vigil') v.disposition[f.id] = -10;
+    for (const [id, n] of Object.entries(about)) v.disposition[id] = n;
+  };
+
+  const attackOf = (s: WorldState) => {
+    const p = proposeFor(s, 'vigil');
+    const mv = (p?.ops ?? []).find(
+      (o) => (o as { type?: string }).type === 'fleet_movement',
+    ) as { targetId?: string } | undefined;
+    return { target: mv?.targetId, withheld: p?.withheld ?? [] };
+  };
+
+  it('moves against the power it likes least, among equal prizes', () => {
+    for (const hated of ['ojjul', 'drajk']) {
+      const s = armed();
+      feels(s, { [hated]: -90 });
+      const { target } = attackOf(s);
+      expect(target, hated).toBeDefined();
+      expect(
+        s.systems.find((x) => x.id === target)?.controllerFactionId,
+        `hating ${hated}`,
+      ).toBe(hated);
+    }
+  });
+
+  it('will not open a war on somebody it is on good terms with', () => {
+    // Not a treaty — `honourTreaties` does paper that exists. This is the
+    // softer thing a doctrine ought to have on its own: a power does not invade
+    // a neighbour it likes merely because the world was the richest on its
+    // frontier.
+    const hostile = armed();
+    feels(hostile, {});
+    expect(attackOf(hostile).target).toBeDefined();
+
+    const friendly = armed();
+    feels(friendly, { meridian: 60, ojjul: 60, drajk: 60, freeworlds: 60 });
+    const { target, withheld } = attackOf(friendly);
+    expect(target).toBeUndefined();
+    expect(withheld.join(' ')).toMatch(/no quarrel/);
+  });
+
+  it('says whose name it had no quarrel with, not their id', () => {
+    const s = armed();
+    feels(s, { meridian: 60, ojjul: 60, drajk: 60, freeworlds: 60 });
+    const note = attackOf(s).withheld.find((w) => /no quarrel/.test(w)) ?? '';
+    for (const id of ['meridian', 'ojjul', 'drajk', 'freeworlds', 'vigil']) {
+      expect(note, id).not.toContain(`${id}`);
+    }
+  });
+});

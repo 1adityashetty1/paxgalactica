@@ -56,7 +56,8 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~100~~ | ~~worlds carry modifiers that reach faction stats~~ | medium | **BUILT** — keyed on the type, two worlds for the first point, capped at 3 |
 | ~~101~~ | ~~worlds you did not start with cost more to hold~~ | medium | **BUILT** — `homeFactionId` + `OCCUPATION_COST`, swept to 0.15 off a cliff at 0.25 |
 | ~~102~~ | ~~leaders, assigned per battle~~ | subsystem | **BUILT** — archetypes with generated names; the one-per-phase framing was wrong and is recorded as such |
-| **98** | the doctrine bots cannot tell a friend from an enemy | medium | `initiative.ts` reads no disposition, and it now runs in `endTurn` for most of the galaxy most turns — the excuse for it was written when it only ran in the harness |
+| ~~98~~ | ~~the doctrine bots cannot tell a friend from an enemy~~ | medium | **BUILT** — and the measurement said something sharper than the item: they do not attack friends, they fail to act on hatred. A peace floor and a grievance tie-break |
+| ~~111~~ | ~~trading a person cost nobody anything~~ | small | **BUILT** — repatriation buys goodwill, selling somebody on costs it with their power and with every onlooker, interrogation costs most |
 | **99** | a marriage is a treaty, and treaties cannot say two things it needs | small | there is no marriage scaffolding to delete — the gap is cross-partner **exclusivity** and **signature goodwill**. A two-party commitment is free to repudiate today |
 | ~~104~~ | ~~the state document published raw ids~~ | small | **FIXED** — `lanes:` joined `hyperlaneEdges` with nothing giving them a name, so the model wrote `ilv-6` into prose |
 | ~~105~~ | ~~a commander's death cost nothing, and usually paid~~ | medium | **BUILT** — veterancy, and a successor who inherits the speciality. The thresholds had to be swept: the first guess was unreachable in a whole campaign |
@@ -66,15 +67,12 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~109~~ | ~~five design questions about officers, and three of them were defects~~ | medium | **FIXED/BUILT** — the spy contest read base stats where suborning read effective; a captured officer was invisible to third parties; assassination could not reach a person. Plus named operatives, unique names, and operatives taken alive |
 | ~~110~~ | ~~a ransomed operative was a person you owned and could not employ~~ | small | **BUILT** — `deploy_agent` takes `fromAssetId` and clears `exposed`; operatives get a record and a permanent mark for being caught, with a capture costing exactly one full ladder |
 
-**What is left is a playtest and two design items.** Everything from the
+**What is left is a playtest and one design item.** Everything from the
 2026-09-07 batch is built or closed, and so are all five of the features raised
 on 2026-09-14 (**97**, **100**–**103**), along with **104**–**110**,
 raised and closed on 2026-09-15 and 2026-09-16. What remains is **92** and **94(b)**, which are
 claims only a campaign can settle, plus two things filed since:
 
-- **98** — the doctrine bots read no disposition at all, and they now run in
-  `endTurn` for most of the galaxy most turns. Wants a measurement before a
-  design, and `src/balance.ts` can supply it for free.
 - **99** — a marriage belongs in the treaty system, which needs treaties to
   learn cross-partner exclusivity and signature goodwill. Two decisions are
   named in the item and neither is made.
@@ -1641,6 +1639,93 @@ The ladder moved `agentVeterancy`/`agentStanding` into `diplomacy.ts` beside
 reducer into the serializer is a cycle waiting to happen.
 
 Board unchanged at 3/6/5/4/4.
+
+## 111. BUILT — a bot with grievances, and a price on trading people
+
+Built 2026-09-16, closing **98** and adding its neighbour.
+
+### 98, and why the measurement mattered
+
+Filed as *"the bots cannot tell a friend from an enemy"*, which implies they
+attack friends. **They do not.** Thirty harness turns produce **two** attacks on
+a held world, both the Vigil against Meridian at -20 — a power it dislikes. The
+real defect is the other half: the final matrix carries -75 (Vigil toward the
+Combine), -75 (Arkane toward the Vigil) and -70 (Vigil toward Drajk), and **none
+of it produces anything at all.** The bots hate each other and do nothing about
+it.
+
+That is the failure the bots were built to fix one layer up, reached from the
+other side. The model had motives and no initiative; the bots had initiative and
+no motives.
+
+Two pieces, and both are **preferences rather than vetoes** except in the one
+case that reads as nonsense:
+
+- `BOT_PEACE_FLOOR` (20) withholds an attack on a power a bot is on good terms
+  with. Not a treaty — `honourTreaties` does paper that exists; this is the
+  softer thing a doctrine ought to have on its own. A post-filter beside it, so
+  a bot added later inherits it without knowing it exists.
+- Grievance **breaks the tie** on target choice. A tie-break rather than a term
+  in the prize, because a doctrine that weighed feeling against strategic value
+  would stop being the doctrine: the Vigil takes the corridor it needs, and
+  *which* enemy it takes it from is where its temper gets a say.
+
+Only one sort in the bots picks a **held** world to attack; every other target
+sort takes unaligned ground, where there is nobody to resent.
+
+**Verifying it fires cost three probes**, which is the useful part. The harness
+is unchanged, because Meridian holds the only worlds worth taking on the Vigil's
+frontier and the tie-break never has a tie. Making it fire needed a board where
+three gates were open at once: the seed carries a pending Vigil movement that
+short-circuits the branch, `sortie` needs a staging base holding the whole blow,
+and it needs **lift** there. Both halves are now pinned by tests on such a board
+rather than by a harness run that proves nothing.
+
+### 111 — trading a person cost nobody anything
+
+Assets have been tradeable since they existed and moving one has **never cost or
+bought anybody anything**: a power could sell another's admiral to their worst
+enemy and the only thing that moved was credits. The same defect
+`COERCION_RESENTMENT` was added for — an act that is obviously an insult, priced
+at nothing because nothing read it.
+
+| | |
+|---|---|
+| handing somebody home | `REPATRIATION_GOODWILL` (25) with their power |
+| selling them on | `TRAFFICKING_RESENTMENT` (15) with their power, `TRAFFICKING_REPUTATION_COST` (4) with every onlooker |
+| questioning them | `INTERROGATION_RESENTMENT` (20) with their power |
+
+Giving somebody back is worth **more** than taking them cost, because a
+repatriation is a choice and a capture was a battle — which is what makes a
+prisoner a diplomatic instrument rather than a scoreboard.
+
+**Only for people.** Selling a hold of ore to somebody's enemy is commerce;
+selling their Grand Admiral is not, and the distinction is the one
+`Asset.commanderId` and `Asset.agentId` already draw. A test pins that ore moves
+nobody's opinion.
+
+> The first version of this landed in the wrong handler — the transfer-of-control
+> path, where assets follow a world that changes hands — and so charged
+> **trafficking for taking a prisoner in battle**. A conquest is not a sale; the
+> fighting already priced it. Caught by the tests, which failed with no
+> disposition movement at all because that path's `asset` is a different
+> variable in a different loop.
+
+### And a loading animation
+
+A model call is 5–15 seconds and an end-turn nearer 38, and what the player had
+was a **static italic line**. A label that does not move is indistinguishable
+from one that is stuck — the same failure the progress labels were added to fix,
+one level up.
+
+Three blocks lighting in sequence, in CSS, on both surfaces a player waits
+(the feed and a diplomacy channel). **Squares, not a spinner**: everything drawn
+in this game is pixels and crisp-edged SVG, and a rotating arc belongs to a
+different program. `aria-live` on the label, the pips hidden from it, and they
+hold at half opacity under `prefers-reduced-motion` — motion is the whole point,
+so when it is unwelcome they still have to read as *waiting* rather than vanish.
+
+Board unchanged at 3/6/5/4/4, tolls 558, mix 58/42.
 
 ## 109. FIXED/BUILT — five design questions, three of them defects
 

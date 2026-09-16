@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { Waiting } from './components/Waiting.js';
 import { STAT_MEANINGS, STAT_NAMES } from '../../src/domain/checks.js';
 import { neighboursOf, shortestPath } from '../../src/domain/graph.js';
 import { hullsAt, type WorldState } from '../../src/domain/state.js';
@@ -332,7 +333,11 @@ export function App() {
                 </p>
               </div>
             ))}
-            {busy && <p className="msg busy">{busy}…</p>}
+            {busy && (
+              <p className="msg busy" role="status" aria-live="polite">
+                <Waiting label={busy} />
+              </p>
+            )}
           </div>
           <form
             className="commandline"

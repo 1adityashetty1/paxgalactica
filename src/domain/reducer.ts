@@ -64,7 +64,11 @@ import {
   commanderFor,
   commanderTaken,
   ASSASSINATION_KILL_ROLL,
+  INTERROGATION_RESENTMENT,
   INTERROGATION_SHARE,
+  REPATRIATION_GOODWILL,
+  TRAFFICKING_REPUTATION_COST,
+  TRAFFICKING_RESENTMENT,
   OFFICER_LEVERAGE,
   OPERATIVE_RANSOM,
   officerRansom,
@@ -773,6 +777,45 @@ function settleReturn(
  * mutual and pairwise. A one-party commitment — a standing policy, a charter
  * over your own space — binds nobody else and moves nothing.
  */
+/**
+ * Move one power's regard for another, clamped, with a line in the log.
+ *
+ * The plain version of what `adjustCommitmentGoodwill` does pairwise. Used by
+ * everything that happens **to a person** somebody is holding, where the
+ * feeling runs one way: the power whose officer was questioned resents the
+ * questioner, and the questioner has no view about it.
+ */
+function moveRegard(
+  state: WorldState,
+  who: string,
+  toward: string,
+  delta: number,
+): void {
+  if (who === toward) return;
+  const faction = state.factions.find((f) => f.id === who);
+  if (!faction || !state.factions.some((f) => f.id === toward)) return;
+  faction.disposition[toward] = Math.max(
+    -100,
+    Math.min(100, (faction.disposition[toward] ?? 0) + delta),
+  );
+}
+
+/**
+ * Who a held asset actually belongs to, when it is a person.
+ *
+ * `heldBy` is who has them; this is whose they are. `null` for everything that
+ * is not a person, which is every asset kind but two.
+ */
+function personsPower(state: WorldState, asset: Asset): string | null {
+  if (asset.commanderId !== null) {
+    return (state.commanders ?? []).find((c) => c.id === asset.commanderId)?.factionId ?? null;
+  }
+  if (asset.agentId !== null) {
+    return (state.agents ?? []).find((a) => a.id === asset.agentId)?.ownerFactionId ?? null;
+  }
+  return null;
+}
+
 function adjustCommitmentGoodwill(
   state: WorldState,
   factionIds: string[],
@@ -1430,6 +1473,9 @@ export function applyOps(
           if (asset.heldBy === op.toFactionId) continue;
           const wasHeldBy = asset.heldBy;
           if (op.toFactionId === null) continue;
+          // A prisoner on a world that changes hands is **taken, not
+          // trafficked** — no disposition moves here, because that is a
+          // conquest and the fighting already priced it.
           asset.heldBy = op.toFactionId;
           const taken = `${nameFor(state, op.toFactionId)} takes ${asset.quantity} ${asset.unit} with ${sys.name}: ${asset.text}`;
           notes.push(taken);
@@ -2016,7 +2062,13 @@ export function applyOps(
           const note = `${nameFor(state, asset.heldBy)} questions ${who} and files what they gave up.`;
           notes.push(note);
           logEvent(state, 'narrative', note, asset.heldBy);
-          if (theirs) logEvent(state, 'narrative', note, theirs);
+          if (theirs) {
+            logEvent(state, 'narrative', note, theirs);
+            // Their power hears about it, and does not forgive it. Disposition
+            // has no decay, so this is a grievance rather than a mood — which
+            // is the price of choosing the file over the ransom.
+            moveRegard(state, theirs, asset.heldBy, -INTERROGATION_RESENTMENT);
+          }
           break;
         }
 
@@ -2092,7 +2144,29 @@ export function applyOps(
           break;
         }
         const from = asset.heldBy;
+        // **Handing over a person is not the same as handing over ore.** Whose
+        // they are is read before the transfer lands, because afterwards
+        // `heldBy` is the new holder and the question is about the old one.
+        const whose = personsPower(state, asset);
         asset.heldBy = op.toFactionId;
+        if (whose !== null && whose !== from) {
+          if (op.toFactionId === whose) {
+            // Home. Worth more than the taking cost, because a repatriation is
+            // a choice and a capture was a battle — which is what makes a
+            // prisoner a diplomatic instrument rather than a scoreboard.
+            moveRegard(state, whose, from, REPATRIATION_GOODWILL);
+          } else {
+            // Sold on, over their head. Their power resents the seller, and
+            // every onlooker marks down somebody who deals in people at all —
+            // the same shape as `PACT_BREAKING_REPUTATION_COST`, and for the
+            // same reason: some acts are visible to everybody.
+            moveRegard(state, whose, from, -TRAFFICKING_RESENTMENT);
+            for (const f of state.factions) {
+              if (f.id === from || f.id === whose || f.id === op.toFactionId) continue;
+              moveRegard(state, f.id, from, -TRAFFICKING_REPUTATION_COST);
+            }
+          }
+        }
         const note = `${nameFor(state, from)} hands ${asset.quantity} ${asset.unit} to ${nameFor(state, op.toFactionId)}: ${asset.text} ${op.reason}`.trim();
         notes.push(note);
         logEvent(state, 'diplomacy', note, op.toFactionId, [from, op.toFactionId]);
