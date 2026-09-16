@@ -201,6 +201,106 @@ export const COMMANDER_STRIKE_BONUS = [0.4, 0.6, 0.8] as const;
 export const COMMANDER_LOSS_ROLL = 4;
 
 /* ------------------------------------------------------------------ */
+/* Passives: what an officer is worth on a turn with no battle         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Each archetype also does something outside a battle, and the sizes are
+ * deliberately uneven.
+ *
+ * The problem this answers is `convoy`. Its battle effect is the most
+ * conditional thing in the set — worth **nothing at all** until the turn you
+ * have to run — so on any turn a player is choosing an officer it reads as the
+ * weak pick, right up to the campaign where it isn't. A conditional effect
+ * needs an unconditional counterweight or nobody ever takes it.
+ *
+ * So the passive runs **opposite to the battle effect's conditionality**:
+ *
+ * | | in battle | out of it |
+ * |---|---|---|
+ * | `lineofbattle` | always | least — she is already earning every fight |
+ * | `gunnery` | only with boats | middling |
+ * | `convoy` | only when losing | **most**, and it is the largest recurring number in the ledger |
+ *
+ * All three are **read where they are used** rather than applied on the tick,
+ * which is the rule `commitmentFlow`, `assetYield` and the agent effects all
+ * follow: a per-turn mutation compounds instead of recurring.
+ *
+ * They scale with veterancy like everything else here, so the officer a power
+ * has kept alive is worth more at home as well as in the line — and losing her
+ * costs something on a turn nobody fought at all, which is the whole of what
+ * `battles` was supposed to mean.
+ */
+
+/**
+ * `lineofbattle`: points of **resolve**, added like terrain and clamped the same.
+ *
+ * Her crews do not come apart, which is what `resolve` defends: `subornLimit`
+ * is the suborner's guile modifier against the target's, so an officer known
+ * for holding formation under fire makes a power's ships harder to turn. Never
+ * might, for the reason the gunner's is never might — `bestMod` reads
+ * `effectiveStats().might`, so it would pay her twice for the same battle.
+ *
+ * **The first version of this was occupation relief and it was worth nothing.**
+ * Discipline holding ground that is not yours is a better sentence, and it was
+ * measured at **zero credits for every power holding a line officer** over
+ * thirty harness turns: three of the four occupy no foreign ground at all. Same
+ * failure as the first veterancy thresholds, caught the same way — by checking
+ * the mechanic fired rather than that the board was unchanged. A passive
+ * conditional on conquest is not a passive.
+ */
+export const COMMANDER_RESOLVE = [1, 2, 3] as const;
+
+/**
+ * `gunnery`: points of **industry**, added like terrain and clamped the same.
+ *
+ * An ordnance officer runs the establishment that makes the guns, so what she
+ * is worth at home is the industrial base rather than money. Industry
+ * deliberately, and never might: `bestMod` reads `effectiveStats().might`, so a
+ * might passive would pay her twice for the same battle.
+ */
+export const COMMANDER_INDUSTRY = [1, 2, 3] as const;
+
+/**
+ * `convoy`: the share of fleet upkeep her logistics save. The big one.
+ *
+ * Upkeep is the largest standing charge any power carries — on the opening
+ * board it is roughly a third of gross — so this is the only passive here that
+ * changes what a power can afford to build. That is the point: it is the
+ * counterweight to a battle effect that does nothing until the day you lose.
+ */
+export const COMMANDER_UPKEEP_RELIEF = [0.06, 0.1, 0.14] as const;
+
+export function commanderResolve(c: Commander): number {
+  return c.archetype === 'lineofbattle' ? COMMANDER_RESOLVE[veterancyOf(c.battles)]! : 0;
+}
+export function commanderIndustry(c: Commander): number {
+  return c.archetype === 'gunnery' ? COMMANDER_INDUSTRY[veterancyOf(c.battles)]! : 0;
+}
+export function commanderUpkeepRelief(c: Commander): number {
+  return c.archetype === 'convoy' ? COMMANDER_UPKEEP_RELIEF[veterancyOf(c.battles)]! : 0;
+}
+
+/**
+ * The passive, in the words a panel uses.
+ *
+ * Unlike `commanderEffect`, these accessors gate on the archetype themselves —
+ * a ledger asks "what relief does this power's officer give me" without caring
+ * which school she is from, and making every caller test the archetype first is
+ * how one of them eventually forgets.
+ */
+export function commanderPassive(c: Commander): string {
+  switch (c.archetype) {
+    case 'lineofbattle':
+      return `+${commanderResolve(c)} resolve`;
+    case 'gunnery':
+      return `+${commanderIndustry(c)} industry`;
+    case 'convoy':
+      return `-${Math.round(commanderUpkeepRelief(c) * 100)}% fleet upkeep`;
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* What an officer is worth, given her record                          */
 /* ------------------------------------------------------------------ */
 
@@ -291,47 +391,108 @@ export type Commander = z.infer<typeof CommanderSchema>;
 /* ------------------------------------------------------------------ */
 
 /**
- * Per-faction name stock.
+ * Per-faction name stock: a given name, a family name, and a title.
+ *
+ * **Three parts, generated independently**, which is what makes the set large
+ * enough to feel like a service rather than a list. Eight firsts against ten
+ * lasts is eighty people per power before the title, where a first-plus-epithet
+ * pair read as the same handful of characters recurring.
+ *
+ * **The title is the archetype, said out loud.** One per school per power, so
+ * a Line Captain and a Master Gunner are visibly different appointments and a
+ * player learns what a school is called before learning what it does. It is not
+ * a leak: an officer's archetype is already on the Command tab for every power,
+ * and it is a fact about a fleet rather than about a plan. It also does the
+ * work inheritance needs — a successor holds the same school and therefore the
+ * same title, so the continuity of the institution is legible in the name
+ * itself while the person is plainly somebody new.
  *
  * Five powers that should never be mistaken for one another is a rule this
- * project already applies to voice, ethics, red lines and build bias — a
- * generated name that could belong to any of them would be the one place that
- * rule lapsed. So the stock is per faction and the shape of the name differs
- * too: the Vigil takes a cognomen, the Combine a house, the Arkane a patronym
- * off the ground they hold.
+ * project applies to voice, ethics, red lines and build bias, so the stocks are
+ * per faction and so is the SHAPE: the Vigil and the Arkane wear the title in
+ * front, the Combine carries it behind the house name the way it carries every
+ * other obligation.
  */
-const NAME_STOCK: Record<string, { first: string[]; second: string[]; join: string }> = {
+interface NameStock {
+  first: string[];
+  last: string[];
+  /** One per archetype. The name a power gives that school of officer. */
+  titles: Record<CommanderArchetype, string>;
+  /** Where the title sits relative to the name. */
+  place: 'prefix' | 'suffix';
+}
+
+const NAME_STOCK: Record<string, NameStock> = {
+  /* A chartered company, and it does not pretend to be a navy: the ranks are
+     the ones on the org chart, because that is what the Authority is. */
   meridian: {
     first: ['Adrienne', 'Caspar', 'Teodor', 'Lira', 'Odile', 'Marcus', 'Sabine', 'Yusuf'],
-    second: ['Vance', 'Okonjo', 'Reyes', 'Haldane', 'Brandt', 'Sorel', 'Achebe', 'Marchetti'],
-    join: ' ',
+    last: ['Vance', 'Okonjo', 'Reyes', 'Haldane', 'Brandt', 'Sorel', 'Achebe',
+           'Marchetti', 'Delacroix', 'Ferreira'],
+    titles: {
+      lineofbattle: 'Operations Executive',
+      gunnery: 'Senior Director',
+      convoy: 'Comptroller',
+    },
+    place: 'prefix',
   },
+  /* The remnant of a state: praenomen and cognomen, and the flag ranks of a
+     service that still keeps its establishment on paper. */
   vigil: {
-    first: ['Legate Caius', 'Legate Valeria', 'Legate Drusus', 'Legate Marcia',
-            'Legate Aulus', 'Legate Livia', 'Legate Quintus', 'Legate Sabina'],
-    second: ['Ferrata', 'the Elder', 'Corvinus', 'Nasica', 'the Steadfast',
-             'Longinus', 'Severa', 'of the Ninth'],
-    join: ' ',
+    first: ['Caius', 'Valeria', 'Drusus', 'Marcia', 'Aulus', 'Livia', 'Quintus', 'Sabina'],
+    last: ['Ferrata', 'Corvinus', 'Nasica', 'Longinus', 'Severa', 'Galba',
+           'Cinna', 'Rufus', 'Varro', 'Scaeva'],
+    titles: {
+      lineofbattle: 'Iron Marshal',
+      gunnery: 'Commodore',
+      convoy: 'Rear Admiral',
+    },
+    place: 'prefix',
   },
+  /* A family before it is a fleet: the given name is yours, the house name is
+     what you answer to, and the office comes last because it is what you are
+     owed rather than what you are called. */
   ojjul: {
-    first: ['Nar Vessine', 'Nar Ojjuk', 'Nar Tallim', 'Nar Serek',
-            'Nar Halvane', 'Nar Osk', 'Nar Dovic', 'Nar Ruille'],
-    second: ['the Patient', 'of Shalka', 'the Younger', 'Two-Ledgers',
-             'of Riqel', 'the Quiet', 'Cousin-of-Cousins', 'the Debt-Holder'],
-    join: ', ',
+    first: ['Serek', 'Halvane', 'Dovic', 'Ruille', 'Tallim', 'Osk', 'Vessine', 'Miral'],
+    last: ['Nar Kheline', 'Nar Ossik', 'Nar Duvane', 'Nar Serrel', 'Nar Halq',
+           'Nar Ojjuk', 'Nar Tevin', 'Nar Rissa', 'Nar Belline', 'Nar Aquen'],
+    titles: {
+      lineofbattle: 'Underboss',
+      gunnery: 'Second Elder',
+      convoy: 'Hand of the Family',
+    },
+    place: 'suffix',
   },
+  /* Elected, and the office is the name: an Arkane officer is introduced by
+     what the councils asked them to do, not by a rank they hold. Every one of
+     them is a -warden under the Highwarden, so an Arkane officer is placeable
+     from the title alone even before the name. */
   freeworlds: {
-    first: ['Watch Oria', 'Watch Kell', 'Watch Devain', 'Watch Sarn',
-            'Watch Mira', 'Watch Tolen', 'Watch Ysra', 'Watch Bran'],
-    second: ['of Arkane Prime', 'Stonecount', 'of the Second Mark', 'Vesskeeper',
-             'of Pell Reach', 'Throatholder', 'of Delvane', 'Nine-Generations'],
-    join: ' ',
+    first: ['Oria', 'Kell', 'Devain', 'Sarn', 'Mira', 'Tolen', 'Ysra', 'Bran'],
+    last: ['Stonecount', 'Vesskeeper', 'Throatholder', 'Ninefold', 'Dustborn',
+           'Marklen', 'Pellrun', 'Delvane', 'Ashkeep', 'Windward'],
+    titles: {
+      lineofbattle: 'Fleetwarden',
+      gunnery: 'Gunwarden',
+      convoy: 'Lanewarden',
+    },
+    place: 'prefix',
   },
+  /* No commissions and no register: a Drajk title is a thing crews call
+     somebody until it sticks, and half of them started as insults. The -master
+     suffix is theirs the way -warden is the Arkane's, and it runs up to the
+     Huntmaster — a quartermaster on a raiding crew is elected and answers to
+     the hold rather than to the captain, which is the Confederacy exactly. */
   drajk: {
     first: ['Kess', 'Ravel', 'Tannic', 'Voss', 'Sherrin', 'Doram', 'Aleska', 'Prynn'],
-    second: ['Longburn', 'the Hollow', 'Deeprunner', 'Coldwake',
-             'Vergesse-Born', 'Halfshare', 'the Unlit', 'Threxwind'],
-    join: ' ',
+    last: ['Longburn', 'Deeprunner', 'Coldwake', 'Halfshare', 'Threxwind',
+           'Ashlott', 'Greywake', 'Skeln', 'Hollowmark', 'Sundrift'],
+    titles: {
+      lineofbattle: 'Korvan Lord',
+      gunnery: 'Packmaster',
+      convoy: 'Quartermaster',
+    },
+    place: 'prefix',
   },
 };
 
@@ -340,18 +501,42 @@ const FALLBACK = NAME_STOCK['drajk']!;
 /**
  * A name from a seed, deterministic and therefore replayable.
  *
- * Built on `rollD20`'s hash rather than a second generator, so a commander
- * appointed on turn 9 of a replayed campaign is the same person with the same
- * name as in the live one. Nothing here may reach for a clock or `Math.random`
- * — a roster that differs between a campaign and its replay would break
- * `verifyReplay` on a string comparison, which is exactly the class of bug key
- * ordering already caused once.
+ * Three independent draws off `rollD20`'s hash — given name, family name, and
+ * the title that comes with the school. Nothing here may reach for a clock or
+ * `Math.random`: a roster that differed between a campaign and its replay would
+ * break `verifyReplay` on a string comparison, which is exactly the class of bug
+ * key ordering already caused once.
+ *
+ * The archetype is an argument rather than something this rolls for itself,
+ * because a successor **inherits** one and a seeded officer is **dealt** one,
+ * and a name that disagreed with the record would be a second source of truth
+ * about what an officer is.
+ *
+ * `rollD20` returns 1..20 and the stocks are 8 and 10 long, so the modulo is
+ * not uniform — 20 % 8 is 4, and half the given names are drawn slightly more
+ * often. That is a cosmetic bias on a cosmetic field and is left alone
+ * deliberately: the uniformity that matters is the die's, which the murmur3
+ * finalizer already guarantees, and widening a name list to 20 to flatten it
+ * would be arithmetic driving the fiction.
  */
-export function commanderName(factionId: string, turn: number, salt: string): string {
+export function commanderName(
+  factionId: string,
+  turn: number,
+  salt: string,
+  archetype: CommanderArchetype,
+): string {
   const stock = NAME_STOCK[factionId] ?? FALLBACK;
   const a = rollD20(turn, `commander-first:${factionId}:${salt}`) - 1;
-  const b = rollD20(turn, `commander-second:${factionId}:${salt}`) - 1;
-  return `${stock.first[a % stock.first.length]}${stock.join}${stock.second[b % stock.second.length]}`;
+  const b = rollD20(turn, `commander-last:${factionId}:${salt}`) - 1;
+  const person = `${stock.first[a % stock.first.length]} ${stock.last[b % stock.last.length]}`;
+  const title = stock.titles[archetype];
+  return stock.place === 'prefix' ? `${title} ${person}` : `${person}, ${title}`;
+}
+
+/** Exported so a test can hold the stocks to the archetypes rather than to itself. */
+export const NAME_STOCK_FACTIONS = Object.keys(NAME_STOCK);
+export function titlesFor(factionId: string): Record<CommanderArchetype, string> {
+  return (NAME_STOCK[factionId] ?? FALLBACK).titles;
 }
 
 /** Which of the three an appointment turns out to be. Also seeded. */

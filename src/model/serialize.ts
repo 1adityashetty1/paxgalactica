@@ -8,6 +8,7 @@ import {
   archetypeOf,
   commanderEffect,
   commanderFor,
+  commanderPassive,
   toNextVeterancy,
   veterancyLabel,
 } from '../domain/command.js';
@@ -150,7 +151,7 @@ function commanderLine(state: WorldState, viewerId: string): string {
     owed === null
       ? ' She is as good as an officer gets; a successor would start again from nothing.'
       : ` ${owed} more engagement${owed === 1 ? '' : 's'} and she improves again. A successor inherits the speciality and none of the record.`;
-  return `Your fleet is commanded by ${officer.name}${seen} — known for ${shape.known}. In a battle, ${commanderEffect(officer)}.${ladder}`;
+  return `Your fleet is commanded by ${officer.name}${seen} — known for ${shape.known}. In a battle, ${commanderEffect(officer)}; the rest of the time, ${commanderPassive(officer)}.${ladder}`;
 }
 
 /** Worlds a power holds that began as somebody else's, by name. */

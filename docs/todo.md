@@ -60,11 +60,12 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | **99** | a marriage is a treaty, and treaties cannot say two things it needs | small | there is no marriage scaffolding to delete — the gap is cross-partner **exclusivity** and **signature goodwill**. A two-party commitment is free to repudiate today |
 | ~~104~~ | ~~the state document published raw ids~~ | small | **FIXED** — `lanes:` joined `hyperlaneEdges` with nothing giving them a name, so the model wrote `ilv-6` into prose |
 | ~~105~~ | ~~a commander's death cost nothing, and usually paid~~ | medium | **BUILT** — veterancy, and a successor who inherits the speciality. The thresholds had to be swept: the first guess was unreachable in a whole campaign |
+| ~~106~~ | ~~officers are five hand-written characters, and do nothing on a quiet turn~~ | medium | **BUILT** — generated names carrying the school as a title, and one passive each. A prerequisite for recruitment: choosing between officers needs them to differ off the battlefield |
 
 **What is left is a playtest and two design items.** Everything from the
 2026-09-07 batch is built or closed, and so are all five of the features raised
-on 2026-09-14 (**97**, **100**–**103**), along with **104** and **105**, both
-raised and closed on 2026-09-15. What remains is **92** and **94(b)**, which are
+on 2026-09-14 (**97**, **100**–**103**), along with **104**, **105** and
+**106**, all raised and closed on 2026-09-15. What remains is **92** and **94(b)**, which are
 claims only a campaign can settle, plus two things filed since:
 
 - **98** — the doctrine bots read no disposition at all, and they now run in
@@ -1593,6 +1594,77 @@ Three things the build turned up that the filing did not predict:
 567 — the small drop being freighters taking a larger share of the unaligned
 hops that some tolled traffic crosses.
 
+
+## 106. BUILT — names that generate, and a passive for a quiet turn
+
+Raised 2026-09-15 as the groundwork for recruitment: **choosing between two
+officers is not a choice unless they differ when nobody is fighting**, and it is
+not a choice a player can feel unless the names sound like people rather than
+like a list.
+
+### Three-part names
+
+A given name, a family name and a title, drawn independently off `rollD20`'s
+hash. Eighty officers per power before the title, against a first-version pair
+of a first name and an epithet that read as the same few characters recurring.
+
+**The title is the archetype, said out loud** — one per school per power. Not a
+leak: an archetype is already on the Command tab for every power. It also does
+the work inheritance needs, since a successor holds the same school and wears the
+same title, so the institution's continuity is in the name while the person is
+plainly new.
+
+| | `lineofbattle` | `gunnery` | `convoy` | leader |
+|---|---|---|---|---|
+| Meridian | Operations Executive | Senior Director | Comptroller | Chief Executive |
+| Iron Vigil | Iron Marshal | Commodore | Rear Admiral | Grand Admiral |
+| Ojjul Nar | Underboss | Second Elder | Hand of the Family | First Elder |
+| Arkane | Fleetwarden | Gunwarden | Lanewarden | Highwarden |
+| Drajk | Korvan Lord | Packmaster | Quartermaster | Huntmaster |
+
+They ladder off `Faction.title`, and **each suffix family belongs to one power**
+— Arkane's wardens, Drajk's masters. That had to be enforced rather than
+assumed: a Quartermaster sat in the Arkane column first and read as the wrong
+faction's officer, because `-master` runs up to the Huntmaster. Moving it to
+Drajk was better than neutral — on a raiding crew a quartermaster is elected and
+answers to the hold rather than the captain.
+
+The Combine wears its title behind the house name, everyone else in front.
+
+### One passive each, sized against how conditional the battle effect is
+
+| archetype | in battle | out of it | at the cap |
+|---|---|---|---|
+| `lineofbattle` | always | +resolve — crews do not come apart, so `subornLimit` falls | +3 |
+| `gunnery` | only with boats | +industry | +3 |
+| `convoy` | only when losing | −% fleet upkeep | −14% |
+
+`convoy` gets the biggest because its battle effect is the most conditional
+thing in the set: on any turn a player is choosing, it reads as the weak pick
+right up to the campaign where it isn't.
+
+**Neither stat passive is might** — `bestMod` reads `effectiveStats().might`, so
+that would pay an officer twice for one battle. All three are read where they are
+used, the rule `commitmentFlow` and the agent effects follow.
+
+**`lineofbattle`'s passive was occupation relief first, and it measured at zero
+credits for every power that had one** across thirty harness turns, because three
+of the four occupy no foreign ground at all. Same failure as 105's first
+thresholds, caught the same way. *A passive conditional on conquest is not a
+passive.*
+
+**Four existing tests broke and all four were right to**: they pinned
+`effectiveStats` and `ledgerFor` against base stats, which now compose a
+commander term alongside terrain and dissent. Each was isolated by clearing
+`commanders` rather than by adjusting its expected value, so each still pins one
+rule — a test asserting three at once fails without saying which moved.
+
+Board unchanged at 3/6/5/4/4, tolls 558, mix 58/42, with every passive verified
+as actually firing.
+
+**Next**, and the reason this was built: recruitment. A player cannot hire, hold
+two officers, or name one to a battle. All three want the same op, and they are
+now worth arguing about.
 
 ## 105. BUILT — a commander's death cost nothing, and usually paid
 

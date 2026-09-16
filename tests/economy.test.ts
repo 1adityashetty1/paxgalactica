@@ -1554,6 +1554,11 @@ describe('holding somebody else’s ground', () => {
 
   it('charges a share of what the taken world actually pays', () => {
     const s = seed();
+    // No officer, so this pins the occupation rule and nothing else. A
+    // `lineofbattle` commander relieves a share of it, and that interaction is
+    // pinned in the commander suite where it belongs — a test asserting two
+    // rules at once fails without saying which one moved.
+    s.commanders = [];
     const theirs = own(s, 'ojjul');
     const worth = systemIncome(s, theirs).shares['ojjul'] ?? 0;
     expect(worth).toBeGreaterThan(0);

@@ -2997,12 +2997,100 @@ cannot read coming is a cost they cannot weigh. `COMMANDER_ARCHETYPES[].effect`
 quotes no number any more — it used to say *"fights a point harder"*, which
 stopped being true the moment a record could make it two.
 
+### A name is three parts, and one of them is the school
+
 Names are per faction and shaped differently per faction, because five powers
 that should never be mistaken for one another is a rule this project applies to
 voice, ethics, red lines and build bias, and a generated name that could belong
 to any of them would be the one place it lapsed. Built on `rollD20`'s hash, so a
 replayed campaign appoints the same people — a roster that differed between a
 campaign and its replay would break `verifyReplay` on a string comparison.
+
+A given name, a family name and a **title**, drawn independently. Eight firsts
+against ten lasts is eighty officers per power before the title, where the first
+version paired a first name with an epithet and read as the same handful of
+characters recurring.
+
+**The title is the archetype, said out loud.** One per school per power, so a
+Commodore and an Iron Marshal are visibly different appointments and a player
+learns what a school is called before learning what it does. It is not a leak —
+an officer's archetype is already on the Command tab for every power, and it is
+a fact about a fleet rather than about a plan. It also does the work inheritance
+needs: a successor holds the same school and therefore the same title, so the
+continuity of the institution is legible in the name while the person is plainly
+somebody new.
+
+| | `lineofbattle` | `gunnery` | `convoy` | leader |
+|---|---|---|---|---|
+| Meridian | Operations Executive | Senior Director | Comptroller | Chief Executive |
+| Iron Vigil | Iron Marshal | Commodore | Rear Admiral | Grand Admiral |
+| Ojjul Nar | Underboss | Second Elder | Hand of the Family | First Elder |
+| Arkane | Fleetwarden | Gunwarden | Lanewarden | Highwarden |
+| Drajk | Korvan Lord | Packmaster | Quartermaster | Huntmaster |
+
+They ladder off `Faction.title`, which is what makes an officer placeable
+without the name: the Combine's Second Elder is **family** rather than staff,
+and Arkane's wardens and Drajk's masters are each a suffix that power owns
+outright. That last rule had to be enforced rather than assumed — a
+Quartermaster sat in the Arkane column first, and `-master` is Drajk's the way
+`-warden` is Arkane's, so it read as the wrong faction's officer. Moving it
+turned out better than neutral: on a raiding crew a quartermaster is *elected*
+and answers to the hold rather than the captain, which is the Confederacy's
+structure exactly.
+
+The Combine wears its title **behind** the house name and everyone else in
+front, because an office there is something you are owed rather than something
+you are called — and because *"Hand of the Family Miral Nar Halq"* does not
+parse.
+
+> `rollD20` returns 1–20 and the given-name stocks are 8 long, so `% 8` draws
+> the first four slightly more often. That is a cosmetic bias on a cosmetic
+> field and is left alone: the uniformity that matters is the die's, which the
+> murmur3 finalizer already guarantees, and padding a name list to 20 to flatten
+> it would be arithmetic driving the fiction.
+
+### And what she is worth on a turn with no battle
+
+Each archetype also has a passive, and the sizes run **opposite to how
+conditional its battle effect is**. The problem being answered is `convoy`:
+worth nothing at all until the turn you have to run, so on any turn a player is
+choosing an officer it reads as the weak pick, right up to the campaign where it
+isn't. A conditional effect needs an unconditional counterweight or nobody takes
+it.
+
+| archetype | in battle | out of it | at the cap |
+|---|---|---|---|
+| `lineofbattle` | always | **+resolve** — her crews do not come apart, so `subornLimit` against the power falls | +3 |
+| `gunnery` | only with boats | **+industry** — she runs the establishment that makes the guns | +3 |
+| `convoy` | only when losing | **−% fleet upkeep**, the largest standing charge any power carries | −14% |
+
+**Neither stat passive is might**, which is the one constraint that shapes the
+set: `bestMod` reads `effectiveStats().might`, so a might passive would pay an
+officer twice for the same battle. All three are **read where they are used**
+rather than applied on the tick — the rule `commitmentFlow`, `assetYield` and
+the agent effects all follow, because a per-turn mutation compounds instead of
+recurring.
+
+Measured at turn 30 of the harness, every passive fires for every power: the
+Vigil's convoy officer takes upkeep from 490 to 441, and Meridian's line officer
+takes resolve from 9 to 11 — which matters, because resolve 9 is the seed's
+stated vulnerability and this is what patches it. The board is unchanged at
+3/6/5/4/4 with the 58/42 mix.
+
+> **`lineofbattle`'s passive was occupation relief first, and it was worth
+> exactly nothing.** *Discipline is what holds ground that is not yours* is a
+> better sentence than the one that replaced it, and it measured at **zero
+> credits for every power holding a line officer** over thirty turns, because
+> three of the four occupy no foreign ground at all. Same failure as the first
+> veterancy thresholds and caught the same way — by checking that the mechanic
+> fired rather than that the board was unchanged. A passive conditional on
+> conquest is not a passive.
+
+Four existing tests broke on the passives and all four were right to: they pinned
+`effectiveStats` and `ledgerFor` against a faction's **base** stats, and those
+now compose a commander term as well as terrain and dissent. Each was isolated by
+clearing `commanders` rather than by adjusting its expected value, so each still
+pins one rule; the interactions are pinned separately.
 
 ## A commander decides whether the world is worth the fleet
 

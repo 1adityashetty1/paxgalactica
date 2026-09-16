@@ -1007,6 +1007,12 @@ describe('suborning is statecraft, not combat', () => {
   /** Drajk lurking at the unaligned ilv-4, which is adjacent to Nar ilv-3. */
   const fromNextDoor = (n = 3) => {
     const state = fresh('drajk');
+    // No officers, so these pin the suborning rules against the factions' own
+    // stats. A `lineofbattle` commander's passive raises the victim's resolve
+    // and therefore lowers `subornLimit` — which is the point of it, and is
+    // pinned in the commander suite rather than tangled through every case
+    // here.
+    state.commanders = [];
     setShipsAt(sys(state, 'ilv-4'), 'drajk', 8);
     return {
       before: state,

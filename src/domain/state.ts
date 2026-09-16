@@ -19,7 +19,13 @@ import {
   type ShipStack,
 } from './hulls.js';
 import { FactionStatsSchema, STAT_NAMES, statModifier, type FactionStats, type StatName } from './checks.js';
-import { CommanderSchema } from './command.js';
+import {
+  CommanderSchema,
+  commanderFor,
+  commanderIndustry,
+  commanderResolve,
+  commanderUpkeepRelief,
+} from './command.js';
 import {
   COMMITMENT_INCOME_BASE,
   COMMITMENT_INCOME_PER_INFLUENCE,
@@ -1378,8 +1384,18 @@ export function ledgerFor(
   }
   occupation = Math.round(occupation);
 
+  const officer = commanderFor(state.commanders, factionId);
+
   const gross = territory + routes;
-  const upkeep = fleetTonsOf(state, factionId) * UPKEEP_PER_TON;
+  // A `convoy` officer's passive, and the largest of the three: upkeep is the
+  // biggest standing charge any power carries, so this is the only passive that
+  // changes what a power can afford to build. It is the counterweight to a
+  // battle effect worth nothing until the day you lose.
+  const upkeep = Math.round(
+    fleetTonsOf(state, factionId) *
+      UPKEEP_PER_TON *
+      (officer ? 1 - commanderUpkeepRelief(officer) : 1),
+  );
   // Troops a world cannot quarter are billed. Everything inside the ceiling is
   // still free — see `SURPLUS_GARRISON_UPKEEP`.
   // Rounded UP, and once, on the total rather than per world: the rate is a
@@ -1858,6 +1874,18 @@ export function effectiveStats(state: WorldState, factionId: string): FactionSta
   for (const stat of STAT_NAMES) {
     const bonus = terrain[stat] ?? 0;
     if (bonus > 0) base[stat] = Math.min(20, base[stat] + bonus);
+  }
+
+  // The officer's passive, on one stat and never on might: `bestMod` reads
+  // `effectiveStats().might`, so a might passive would pay her twice for the
+  // same battle. A gunner runs the establishment that makes the guns; a line
+  // officer's crews do not come apart, which is what `resolve` defends. Added
+  // beside terrain and before dissent for terrain's own reason — a good officer
+  // should offset bad governance rather than vanish under the floor.
+  const officer = commanderFor(state.commanders, factionId);
+  if (officer) {
+    base.industry = Math.min(20, base.industry + commanderIndustry(officer));
+    base.resolve = Math.min(20, base.resolve + commanderResolve(officer));
   }
 
   const penalty = dissentPenalty(faction?.dissent ?? 0);

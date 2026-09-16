@@ -13,6 +13,7 @@ import {
   archetypeOf,
   commanderEffect,
   commanderFor,
+  commanderPassive,
   toNextVeterancy,
   veterancyLabel,
 } from '../../../src/domain/command.js';
@@ -432,6 +433,11 @@ function Command({ state }: { state: WorldState }) {
                   {officer.name}
                 </p>
                 <p className="command-effect">{commanderEffect(officer)}</p>
+                {/* What she is worth on a turn with nobody fighting. Shown
+                    beside the battle effect rather than under the record,
+                    because the two together are the officer — and for `convoy`
+                    this line is the whole reason to want her. */}
+                <p className="command-effect">{commanderPassive(officer)}</p>
                 <p className="meta">
                   known for {archetypeOf(officer.archetype).known}
                 </p>

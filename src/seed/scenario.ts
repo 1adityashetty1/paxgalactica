@@ -766,7 +766,7 @@ export function createSeedState(playerFactionId: string): WorldState {
     commanders: SEED_FACTIONS.map((f) => ({
       id: `cmd-${f.id}`,
       factionId: f.id,
-      name: commanderName(f.id, 0, 'seed'),
+      name: commanderName(f.id, 0, 'seed', commanderArchetype(f.id, 0, 'seed')),
       archetype: commanderArchetype(f.id, 0, 'seed'),
       appointedTurn: 0,
       battles: 0,

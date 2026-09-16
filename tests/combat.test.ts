@@ -12,6 +12,8 @@ import {
   dissentPenalty,
   DISSENT_PER_PENALTY_POINT,
   effectiveStats,
+  ledgerFor,
+  subornLimit,
   fleetStrengthOf,
   MAX_DISSENT_PENALTY,
   shipsInTransit,
@@ -27,6 +29,10 @@ import {
   archetypeOf,
   commanderEffect,
   commanderFor,
+  commanderIndustry,
+  commanderResolve,
+  commanderPassive,
+  commanderUpkeepRelief,
   toNextVeterancy,
   veterancyLabel,
   veterancyOf,
@@ -645,6 +651,10 @@ describe('dissent has teeth', () => {
     // Stats run 1-20, so the ceiling has to be a large fraction of the scale
     // for "nobody follows you any more" to mean anything.
     const state = fresh();
+    // No officer: `effectiveStats` composes terrain, the commander's passive
+    // and dissent, and a test asserting all three at once fails without saying
+    // which one moved. The passive is pinned in the commander suite.
+    state.commanders = [];
     const me = state.factions.find((f) => f.id === 'freeworlds')!;
     const base = { ...me.stats };
     me.dissent = 100;
@@ -657,6 +667,7 @@ describe('dissent has teeth', () => {
 
   it('does nothing below the first threshold', () => {
     const state = fresh();
+    state.commanders = [];
     const under = Math.ceil(DISSENT_PER_PENALTY_POINT) - 1;
     state.factions.find((f) => f.id === 'freeworlds')!.dissent = under;
     expect(dissentPenalty(under)).toBe(0);
@@ -1256,6 +1267,100 @@ describe('the officer on the field', () => {
       // She crosses the threshold BY fighting this one, and fights it untested.
       expect(out.report?.battles?.[0]?.commandersFired.join(' ')).toMatch(/untested/);
       expect(veterancyOf(commanderFor(out.state.commanders, 'freeworlds')!.battles)).toBe(1);
+    });
+
+    /**
+     * Passives: what an officer is worth on a turn with no battle.
+     *
+     * The sizes run OPPOSITE to how conditional each battle effect is, which is
+     * the whole design — `convoy` is worth nothing in a fight until the day you
+     * run, so it needs the largest counterweight or nobody would ever take it.
+     */
+    describe('and what she is worth on a quiet turn', () => {
+      it('runs the fleet cheaper, and more cheaply the longer she has served', () => {
+        const upkeep = (kind: CommanderArchetype, battles: number) => {
+          const s = fresh();
+          setArchetype(s, 'freeworlds', kind);
+          veteran(s, 'freeworlds', battles);
+          return ledgerFor(s, 'freeworlds').upkeep;
+        };
+        expect(upkeep('convoy', 0)).toBeLessThan(upkeep('lineofbattle', 0));
+        expect(upkeep('convoy', VETERAN_THRESHOLDS[1])).toBeLessThan(upkeep('convoy', 0));
+      });
+
+      it('is read where it is used, so it recurs instead of compounding', () => {
+        // The rule `commitmentFlow`, `assetYield` and the agent effects all
+        // follow. A passive applied on the tick would take the same relief off
+        // an already-relieved figure every turn.
+        const s = fresh();
+        setArchetype(s, 'freeworlds', 'convoy');
+        veteran(s, 'freeworlds', VETERAN_THRESHOLDS[1]);
+        const once = ledgerFor(s, 'freeworlds').upkeep;
+        expect(ledgerFor(s, 'freeworlds').upkeep).toBe(once);
+        expect(tickTurn(s).state.factions).toBeDefined();
+        expect(ledgerFor(s, 'freeworlds').upkeep).toBe(once);
+      });
+
+      it('builds better under a gunner, and fights no better for it', () => {
+        const s = fresh();
+        const base = effectiveStats(s, 'freeworlds');
+        setArchetype(s, 'freeworlds', 'gunnery');
+        veteran(s, 'freeworlds', VETERAN_THRESHOLDS[1]);
+        const withHer = effectiveStats(s, 'freeworlds');
+        expect(withHer.industry).toBeGreaterThan(base.industry);
+        // Industry and never might: `bestMod` reads `effectiveStats().might`,
+        // so a might passive would pay her twice for the same battle.
+        expect(withHer.might).toBe(base.might);
+      });
+
+      it('cannot push a stat off the top of the curve', () => {
+        const s = fresh();
+        setArchetype(s, 'freeworlds', 'gunnery');
+        veteran(s, 'freeworlds', VETERAN_THRESHOLDS[1]);
+        s.factions.find((f) => f.id === 'freeworlds')!.stats.industry = 20;
+        expect(effectiveStats(s, 'freeworlds').industry).toBe(20);
+      });
+
+      it('keeps crews from being turned under a line officer', () => {
+        // `subornLimit` is the suborner's guile modifier against the target's
+        // resolve, so an officer known for holding formation under fire makes
+        // a power's ships harder to buy. Meridian's resolve of 9 is the seed's
+        // stated vulnerability, and this is what patches it.
+        const s = fresh();
+        setArchetype(s, 'meridian', 'lineofbattle');
+        const before = subornLimit(s, 'ojjul', 'meridian');
+        veteran(s, 'meridian', VETERAN_THRESHOLDS[1]);
+        expect(subornLimit(s, 'ojjul', 'meridian')).toBeLessThan(before);
+      });
+
+      it('is worth something to every power that has one, conquest or not', () => {
+        // The first version of this was occupation relief, and it measured at
+        // zero credits for every power holding a line officer over thirty
+        // harness turns — three of the four occupy no foreign ground at all. A
+        // passive conditional on conquest is not a passive.
+        const s = fresh();
+        for (const sys of s.systems) sys.homeFactionId = sys.controllerFactionId;
+        setArchetype(s, 'freeworlds', 'lineofbattle');
+        const base = effectiveStats({ ...s, commanders: [] }, 'freeworlds');
+        expect(effectiveStats(s, 'freeworlds').resolve).toBeGreaterThan(base.resolve);
+      });
+
+      it('gives each school exactly one of the three', () => {
+        // A passive that fired for the wrong archetype would make the choice
+        // between officers no choice at all.
+        const s = fresh();
+        for (const kind of COMMANDER_ARCHETYPES.map((a) => a.kind)) {
+          setArchetype(s, 'drajk', kind);
+          const c = commanderFor(s.commanders, 'drajk')!;
+          const live = [
+            commanderResolve(c),
+            commanderIndustry(c),
+            commanderUpkeepRelief(c),
+          ].filter((n) => n > 0);
+          expect(live, kind).toHaveLength(1);
+          expect(commanderPassive(c)).toMatch(/\d/);
+        }
+      });
     });
 
     it('tells a power what it would be losing', () => {

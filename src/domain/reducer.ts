@@ -4470,6 +4470,11 @@ export function tickTurn(input: WorldState): TickResult {
   for (const faction of state.factions) {
     if (commanderFor(state.commanders, faction.id)) continue;
     const salt = `replace:${faction.id}:${state.turn}`;
+    // The school is settled BEFORE the name, because the title is part of the
+    // name and names the school — a successor of the same school wears the same
+    // title, which is what makes the continuity of the institution legible
+    // while the person is plainly somebody new.
+    const school = successorArchetype(state.commanders, faction.id, state.turn, salt);
     // The successor inherits the SPECIALITY and none of the record. Re-rolling
     // the archetype made a defeat a free lottery ticket — a power whose fleet
     // had no use for the officer it was dealt was better off losing her — so
@@ -4478,8 +4483,8 @@ export function tickTurn(input: WorldState): TickResult {
     const appointed: Commander = {
       id: `cmd-${faction.id}-${state.turn}`,
       factionId: faction.id,
-      name: commanderName(faction.id, state.turn, salt),
-      archetype: successorArchetype(state.commanders, faction.id, state.turn, salt),
+      name: commanderName(faction.id, state.turn, salt, school),
+      archetype: school,
       appointedTurn: state.turn,
       battles: 0,
       status: 'active',
