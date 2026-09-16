@@ -52,13 +52,14 @@ import {
 } from './diplomacy.js';
 import { archetypeFor } from './assets.js';
 import {
-  COMMANDER_MIGHT,
-  COMMANDER_STRIKE_BONUS,
-  COMMANDER_WITHDRAW_RELIEF,
-  commanderArchetype,
   commanderFor,
   commanderLost,
+  commanderMight,
   commanderName,
+  commanderRelief,
+  commanderStrike,
+  successorArchetype,
+  veterancyLabel,
   type Commander,
 } from './command.js';
 import { jumpsBetween, neighboursOf, positionAlongPath, shortestPath } from './graph.js';
@@ -4469,11 +4470,16 @@ export function tickTurn(input: WorldState): TickResult {
   for (const faction of state.factions) {
     if (commanderFor(state.commanders, faction.id)) continue;
     const salt = `replace:${faction.id}:${state.turn}`;
+    // The successor inherits the SPECIALITY and none of the record. Re-rolling
+    // the archetype made a defeat a free lottery ticket — a power whose fleet
+    // had no use for the officer it was dealt was better off losing her — so
+    // the one live consequence of the death mechanic ran backwards. What a
+    // defeat costs is the `battles`, which cannot be bought back at any price.
     const appointed: Commander = {
       id: `cmd-${faction.id}-${state.turn}`,
       factionId: faction.id,
       name: commanderName(faction.id, state.turn, salt),
-      archetype: commanderArchetype(faction.id, state.turn, salt),
+      archetype: successorArchetype(state.commanders, faction.id, state.turn, salt),
       appointedTurn: state.turn,
       battles: 0,
       status: 'active',
@@ -5789,19 +5795,24 @@ function resolveBattle(
   const defendOfficer = largestDefender
     ? commanderFor(state.commanders, largestDefender)
     : undefined;
+  // `c.battles` is the record she brought TO this engagement — `finish`
+  // increments it afterwards — so an officer fights her tenth battle at the
+  // standing nine wins earned her, and reads as a veteran from the eleventh.
   const officerNote = (c: Commander, what: string): void => {
-    commandersFired.push(`${c.name} (${nameOf(c.factionId)}): ${what}`);
+    commandersFired.push(`${c.name} (${nameOf(c.factionId)}, ${veterancyLabel(c.battles)}): ${what}`);
   };
   if (attackOfficer) onField.push({ officer: attackOfficer, side: 'attack' });
   if (defendOfficer) onField.push({ officer: defendOfficer, side: 'defend' });
 
   if (attackOfficer?.archetype === 'lineofbattle') {
-    attackMod += COMMANDER_MIGHT;
-    officerNote(attackOfficer, `+${COMMANDER_MIGHT} might in the exchange`);
+    const might = commanderMight(attackOfficer);
+    attackMod += might;
+    officerNote(attackOfficer, `+${might} might in the exchange`);
   }
   if (defendOfficer?.archetype === 'lineofbattle') {
-    defendMod += COMMANDER_MIGHT;
-    officerNote(defendOfficer, `+${COMMANDER_MIGHT} might in the exchange`);
+    const might = commanderMight(defendOfficer);
+    defendMod += might;
+    officerNote(defendOfficer, `+${might} might in the exchange`);
   }
   defendModOut = defendMod;
 
@@ -5821,7 +5832,7 @@ function resolveBattle(
     // somebody actually runs — `commandersFired` follows `doctrinesFired`'s
     // convention that a thing which changed nothing does not appear, and a
     // convoy officer in a battle nobody lost changed nothing.
-    convoyRelief[side] = COMMANDER_WITHDRAW_RELIEF;
+    convoyRelief[side] = commanderRelief(officer);
     convoyOfficer[side] = officer;
   }
   for (const [side, officer] of [
@@ -5834,8 +5845,8 @@ function resolveBattle(
       ? [...attackShare.values()]
       : defenders.map(([, st]) => st);
     if (torpedoStrike(boats) <= 0) continue;
-    strikeBonus[side] = COMMANDER_STRIKE_BONUS;
-    officerNote(officer, `+${Math.round(COMMANDER_STRIKE_BONUS * 100)}% on the opening salvo`);
+    strikeBonus[side] = commanderStrike(officer);
+    officerNote(officer, `+${Math.round(strikeBonus[side] * 100)}% on the opening salvo`);
   }
   /**
    * What survives a withdrawal, spending the loss order.
@@ -5853,7 +5864,7 @@ function resolveBattle(
   const bleed = (stack: ShipStack, side: 'attack' | 'defend'): ShipStack => {
     const officer = convoyOfficer[side];
     if (officer) {
-      officerNote(officer, `-${COMMANDER_WITHDRAW_RELIEF}% off a withdrawal`);
+      officerNote(officer, `-${convoyRelief[side]}% off a withdrawal`);
       delete convoyOfficer[side];
     }
     // Floored at 5%: a withdrawal under fire is never free, however good the

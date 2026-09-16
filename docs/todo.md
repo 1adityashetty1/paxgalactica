@@ -59,11 +59,13 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | **98** | the doctrine bots cannot tell a friend from an enemy | medium | `initiative.ts` reads no disposition, and it now runs in `endTurn` for most of the galaxy most turns — the excuse for it was written when it only ran in the harness |
 | **99** | a marriage is a treaty, and treaties cannot say two things it needs | small | there is no marriage scaffolding to delete — the gap is cross-partner **exclusivity** and **signature goodwill**. A two-party commitment is free to repudiate today |
 | ~~104~~ | ~~the state document published raw ids~~ | small | **FIXED** — `lanes:` joined `hyperlaneEdges` with nothing giving them a name, so the model wrote `ilv-6` into prose |
+| ~~105~~ | ~~a commander's death cost nothing, and usually paid~~ | medium | **BUILT** — veterancy, and a successor who inherits the speciality. The thresholds had to be swept: the first guess was unreachable in a whole campaign |
 
 **What is left is a playtest and two design items.** Everything from the
 2026-09-07 batch is built or closed, and so are all five of the features raised
-on 2026-09-14 (**97**, **100**–**103**). What remains is **92** and **94(b)**,
-which are claims only a campaign can settle, plus two things filed since:
+on 2026-09-14 (**97**, **100**–**103**), along with **104** and **105**, both
+raised and closed on 2026-09-15. What remains is **92** and **94(b)**, which are
+claims only a campaign can settle, plus two things filed since:
 
 - **98** — the doctrine bots read no disposition at all, and they now run in
   `endTurn` for most of the galaxy most turns. Wants a measurement before a
@@ -1458,6 +1460,10 @@ power's fallen.
 That is a real decision and a good follow-on; it is not what makes the mechanic
 exist, and building it first would have given the four NPCs nothing.
 
+**And one thing shipped inert, which 105 fixes.** `battles` was counted from the
+first commit and read by nothing mechanical, so a death cost a name and a
+counter — and re-rolling the successor's archetype meant it usually *paid*.
+
 **And one answer was wrong, which is the useful part.** The design said one
 archetype per phase of a battle — strike, exchange, withdrawal — which is a tidy
 story the code does not support: `attackMod` is read by the exchange *and* by
@@ -1587,6 +1593,83 @@ Three things the build turned up that the filing did not predict:
 567 — the small drop being freighters taking a larger share of the unaligned
 hops that some tolled traffic crosses.
 
+
+## 105. BUILT — a commander's death cost nothing, and usually paid
+
+Raised 2026-09-15, off four questions about leaders: can they die, can a player
+recruit, do they cost upkeep, can a player assign one. The answers were **yes,
+no, no, no** — and the first one turned out to be the defect.
+
+**A death was free, and two times in three it was an upgrade.** `tickTurn`
+appointed a replacement on the next tick with a new name, no bill, and a freshly
+rolled archetype. So a power whose yards built torpedo boats and whose doctrine
+had dealt it a `convoy` officer was better off losing her. The one mechanically
+live consequence of the death mechanic paid out on average.
+
+**What a death destroyed was a name and a counter.** `battles` had two readers
+outside `command.ts` — a prompt string and a panel string — and a sort in
+`commanderFor` that is a no-op while a power holds one officer.
+
+**Upkeep is the wrong instrument, which is worth recording because it was the
+obvious one.** It bounds a roster you can stockpile; the appointment loop skips
+any power that already has an active officer, so there is nothing to stockpile,
+and a per-turn charge against incomes of 87–300 is noise. A replacement *fee* is
+worse — an appointment the power never chose, billed to it anyway. The defect
+was never the replacement's price but its **quality**.
+
+Two halves of one idea:
+
+- **A successor inherits the speciality** (`successorArchetype`), which reads as
+  the institution rather than the person and removes the free re-roll. Falls
+  back to a fresh roll only when there is no predecessor at all — a save written
+  before commanders existed.
+- **The record is worth something.** Three steps, and each archetype's *own*
+  effect scales with it, so what a defeat costs is the `battles` behind her.
+
+| step | at | `lineofbattle` | `gunnery` | `convoy` |
+|---|---|---|---|---|
+| untested | 0–1 | +1 might | +40% salvo | −8% withdrawal |
+| seasoned | 2–4 | +2 | +60% | −12% |
+| veteran | 5+ | +3 | +80% | −16% |
+
+**Three ladders rather than one multiplier**, because a shared scale cannot
+express this: might is integer-valued with a base of 1, so ×1.5/×2 rounds to
+1, 2, 2 and the middle step buys nothing — the same defect that shipped a 100%
+discount wearing a 50% label when a one-hull lift loss was halved.
+
+**The thresholds were swept and the first guess was dead on arrival.** 4 and 10
+read like modest numbers and are unreachable: `pnpm balance 30` fights **four
+battles in the whole galaxy over thirty turns** and the busiest officer ends at
+3. At 4/10 nobody ever leaves step 0 — and the harness reports that as a clean
+pass, because a mechanic that never fires moves nothing. That is the trap worth
+remembering: *an unchanged board is evidence of nothing until you have checked
+the mechanic fired at all.* Measured at 2/5 it fires once, Meridian's officer
+taking +2 might into the defence of Corvid and still losing it, so the board
+stays 3/6/5/4/4 with the 58/42 mix.
+
+**A played campaign is far busier than the bots**, which is the case the ladder
+is really for: replaying `classes_playtest`, twelve turns put Meridian's officer
+on **ten** engagements and the Vigil's on eight — two veterans at the cap in a
+campaign a third the length of the bot run that produces none.
+
+**A veteran at the cap outweighs any doctrine's might bonus**, which revises
+102's claim that a commander is always worth less than a doctrine. That is right
+about a *fresh* officer and wrong about a veteran, and the distinction is the
+point of a ladder: a doctrine is given, and this is the one thing on the field a
+power builds by winning. It also takes five engagements and one bad defeat
+destroys it.
+
+Shown on the Command tab as what **this** officer is worth and how far off the
+next step she is, because a cost a player cannot read coming is a cost they
+cannot weigh. `COMMANDER_ARCHETYPES[].effect` quotes no number any more — it
+said *"fights a point harder"*, which stopped being true the moment a record
+could make it two — and a test pins that, alongside one holding the three
+ladders to the same length as the ladder itself.
+
+**Still open**, and unchanged by this: a player cannot recruit, cannot hold two
+officers, and cannot name one to a battle. All three want the same op and are
+the natural next item; veterancy is what would make choosing between two
+officers a decision rather than a coin toss.
 
 ## 104. FIXED — the state document published raw ids, and the model read them back
 

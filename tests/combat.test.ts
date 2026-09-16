@@ -19,7 +19,17 @@ import {
 } from '../src/domain/state.js';
 import {
   COMMANDER_ARCHETYPES,
+  COMMANDER_MIGHT,
+  COMMANDER_STRIKE_BONUS,
+  COMMANDER_WITHDRAW_RELIEF,
+  MAX_VETERANCY,
+  VETERAN_THRESHOLDS,
+  archetypeOf,
+  commanderEffect,
   commanderFor,
+  toNextVeterancy,
+  veterancyLabel,
+  veterancyOf,
   type CommanderArchetype,
 } from '../src/domain/command.js';
 
@@ -1100,5 +1110,158 @@ describe('the officer on the field', () => {
     const out = attack(() => {}, 8, 0);
     expect(out.state).toBeDefined();
     expect(commanderFor([], 'drajk')).toBeUndefined();
+  });
+
+  /**
+   * Veterancy: the reason a death costs anything.
+   *
+   * Before it, losing an officer was free and, two times in three, an UPGRADE —
+   * the replacement arrived on the next tick with a freshly rolled archetype,
+   * so a power whose fleet had no use for the officer it was dealt profited
+   * from her defeat. What these pin is that the record is worth something, and
+   * that a successor inherits the speciality and none of it.
+   */
+  describe('and what her record is worth', () => {
+    const veteran = (s: WorldState, factionId: string, battles: number) => {
+      const c = s.commanders.find((x) => x.factionId === factionId)!;
+      c.battles = battles;
+      return c;
+    };
+
+    it('puts an officer on a step her engagements actually reach', () => {
+      // Swept against the harness rather than guessed: `pnpm balance 30` fights
+      // four battles in the whole galaxy, so a ladder denominated in tens would
+      // never leave step 0 and the harness would report that as a clean pass.
+      expect(veterancyOf(0)).toBe(0);
+      expect(veterancyOf(VETERAN_THRESHOLDS[0] - 1)).toBe(0);
+      expect(veterancyOf(VETERAN_THRESHOLDS[0])).toBe(1);
+      expect(veterancyOf(VETERAN_THRESHOLDS[1])).toBe(MAX_VETERANCY);
+      // It is a CAP, not a rate: nothing past the last threshold buys anything.
+      expect(veterancyOf(VETERAN_THRESHOLDS[1] * 10)).toBe(MAX_VETERANCY);
+    });
+
+    it('keeps every ladder the same length as the ladder itself', () => {
+      // The same pinning `STACK_KEYS` does against `HULL_CLASSES`. Adding a
+      // threshold without extending all three ladders would put `undefined`
+      // behind a non-null assertion, which reads as a missing bonus and throws
+      // nothing — so the drift has to fail here rather than in a battle.
+      for (const ladder of [COMMANDER_MIGHT, COMMANDER_WITHDRAW_RELIEF, COMMANDER_STRIKE_BONUS]) {
+        expect(ladder).toHaveLength(MAX_VETERANCY + 1);
+      }
+    });
+
+    it('has a name for every step, so a report can never say undefined', () => {
+      for (let b = 0; b <= VETERAN_THRESHOLDS[1] + 1; b++) {
+        expect(veterancyLabel(b), `${b}`).toMatch(/^[a-z]+$/);
+      }
+    });
+
+    it('fights harder for having fought before', () => {
+      const might = (battles: number) => {
+        const out = attack((s) => {
+          setArchetype(s, 'freeworlds', 'lineofbattle');
+          veteran(s, 'freeworlds', battles);
+          const t = sys(s, 'sek-6');
+          t.controllerFactionId = 'vigil';
+          setStackAt(t, 'vigil', { battleship: 6 });
+        }, 10, 2);
+        return out.report?.battles?.[0]?.attackMod ?? 0;
+      };
+      // The same officer, the same fleet, the same roll — and a record behind
+      // her. This is the whole mechanic: it is the only thing on the field a
+      // power builds by winning rather than by being.
+      expect(might(VETERAN_THRESHOLDS[0])).toBeGreaterThan(might(0));
+      expect(might(VETERAN_THRESHOLDS[1])).toBeGreaterThan(might(VETERAN_THRESHOLDS[0]));
+    });
+
+    it('says which standing it was fought at', () => {
+      const out = attack((s) => {
+        setArchetype(s, 'freeworlds', 'lineofbattle');
+        veteran(s, 'freeworlds', VETERAN_THRESHOLDS[1]);
+        const t = sys(s, 'sek-6');
+        t.controllerFactionId = 'vigil';
+        setStackAt(t, 'vigil', { battleship: 6 });
+      }, 10, 2);
+      expect(out.report?.battles?.[0]?.commandersFired.join(' ')).toMatch(/veteran/);
+    });
+
+    it('never lets even the best officer retreat for free', () => {
+      // The relief is floored at 5% in `bleed`, and the top of the ladder would
+      // otherwise clear the bottom of the 10-35% band outright.
+      const home = (battles: number) => {
+        const out = attack((s) => {
+          setArchetype(s, 'freeworlds', 'convoy');
+          veteran(s, 'freeworlds', battles);
+          const t = sys(s, 'sek-6');
+          t.controllerFactionId = 'vigil';
+          setStackAt(t, 'vigil', { battleship: 400 });
+        }, 40, 0);
+        return out.state.systems.reduce((n, x) => n + hullsAt(x, 'freeworlds'), 0);
+      };
+      // The control is the fleet as it stood when the order went out — `attack`
+      // reinforces ark-3, so the seed's own total is not it.
+      const before = (() => {
+        const s = fresh();
+        setShipsAt(sys(s, 'ark-3'), 'freeworlds', 0);
+        addShipsAt(sys(s, 'ark-3'), 'freeworlds', 40, 'battleship');
+        return s.systems.reduce((n, x) => n + hullsAt(x, 'freeworlds'), 0);
+      })();
+      expect(home(VETERAN_THRESHOLDS[1])).toBeGreaterThan(home(0));
+      expect(home(VETERAN_THRESHOLDS[1])).toBeLessThan(before);
+    });
+
+    it('quotes the number this officer is actually worth', () => {
+      // `COMMANDER_ARCHETYPES[].effect` describes the SHAPE and quotes no
+      // number, because the number moves. A panel that says what a kind of
+      // officer does is a different thing from one that says what this one does.
+      const s = fresh();
+      setArchetype(s, 'drajk', 'lineofbattle');
+      const c = veteran(s, 'drajk', VETERAN_THRESHOLDS[1]);
+      expect(commanderEffect(c)).toContain(String(COMMANDER_MIGHT[MAX_VETERANCY]));
+      expect(archetypeOf('lineofbattle').effect).not.toMatch(/\d/);
+    });
+
+    it('promotes a successor of the same school', () => {
+      // The speciality is the institution and survives; the record is the
+      // person and does not. Re-rolling it made a defeat a free lottery ticket.
+      const s = fresh();
+      const was = commanderFor(s.commanders, 'drajk')!;
+      was.archetype = 'gunnery';
+      was.battles = VETERAN_THRESHOLDS[1];
+      was.status = 'lost';
+      const now = commanderFor(tickTurn(s).state.commanders, 'drajk')!;
+      expect(now.archetype).toBe('gunnery');
+      expect(now.battles).toBe(0);
+      expect(veterancyOf(now.battles)).toBe(0);
+    });
+
+    it('rolls a speciality only when there is no predecessor at all', () => {
+      // A save written before commanders existed, or a faction added later.
+      const s = fresh();
+      s.commanders = [];
+      const after = tickTurn(s).state;
+      for (const f of after.factions) {
+        expect(commanderFor(after.commanders, f.id), f.id).toBeDefined();
+      }
+    });
+
+    it('counts the record she brought to the battle, not the one she leaves with', () => {
+      const out = attack((s) => {
+        setArchetype(s, 'freeworlds', 'lineofbattle');
+        veteran(s, 'freeworlds', VETERAN_THRESHOLDS[0] - 1);
+        const t = sys(s, 'sek-6');
+        t.controllerFactionId = 'vigil';
+        setStackAt(t, 'vigil', { battleship: 6 });
+      }, 10, 2);
+      // She crosses the threshold BY fighting this one, and fights it untested.
+      expect(out.report?.battles?.[0]?.commandersFired.join(' ')).toMatch(/untested/);
+      expect(veterancyOf(commanderFor(out.state.commanders, 'freeworlds')!.battles)).toBe(1);
+    });
+
+    it('tells a power what it would be losing', () => {
+      // A cost a player cannot read coming is a cost they cannot weigh.
+      expect(toNextVeterancy(0)).toBe(VETERAN_THRESHOLDS[0]);
+      expect(toNextVeterancy(VETERAN_THRESHOLDS[1])).toBeNull();
+    });
   });
 });

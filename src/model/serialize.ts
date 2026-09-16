@@ -4,7 +4,13 @@ import { describeOrderEffect } from '../domain/development.js';
 import { assetWorthRangeTo, describeEffect, wantedBy } from '../domain/diplomacy.js';
 import { describeOutstanding } from '../domain/loan.js';
 import { routeEarnings } from '../domain/trade.js';
-import { archetypeOf, commanderFor } from '../domain/command.js';
+import {
+  archetypeOf,
+  commanderEffect,
+  commanderFor,
+  toNextVeterancy,
+  veterancyLabel,
+} from '../domain/command.js';
 import type { Commitment } from '../domain/arbitration.js';
 import {
   formatModifier,
@@ -132,8 +138,19 @@ function commanderLine(state: WorldState, viewerId: string): string {
   const officer = commanderFor(state.commanders, viewerId);
   if (!officer) return '';
   const shape = archetypeOf(officer.archetype);
-  const seen = officer.battles > 0 ? `, ${officer.battles} engagement${officer.battles === 1 ? '' : 's'} behind them` : ', untested';
-  return `Your fleet is commanded by ${officer.name}${seen} — known for ${shape.known}. In a battle, ${shape.effect}.`;
+  const seen =
+    officer.battles > 0
+      ? `, ${veterancyLabel(officer.battles)} at ${officer.battles} engagement${officer.battles === 1 ? '' : 's'}`
+      : ', untested';
+  // What losing her would cost, said plainly. A power that cannot tell a
+  // veteran from a replacement has no reason to fight shy of spending her, and
+  // the successor arrives with the same speciality and none of the record.
+  const owed = toNextVeterancy(officer.battles);
+  const ladder =
+    owed === null
+      ? ' She is as good as an officer gets; a successor would start again from nothing.'
+      : ` ${owed} more engagement${owed === 1 ? '' : 's'} and she improves again. A successor inherits the speciality and none of the record.`;
+  return `Your fleet is commanded by ${officer.name}${seen} — known for ${shape.known}. In a battle, ${commanderEffect(officer)}.${ladder}`;
 }
 
 /** Worlds a power holds that began as somebody else's, by name. */

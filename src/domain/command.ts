@@ -57,7 +57,7 @@ export const COMMANDER_ARCHETYPES = [
     kind: 'lineofbattle',
     phase: 'every exchange, and the landing',
     /** What it reads as in a battle report. */
-    effect: 'fights a point harder, everywhere',
+    effect: 'fights harder, everywhere',
     /** Voice for a prompt: what this officer is known for. */
     known: 'holding formation under fire, and for being dull about it',
   },
@@ -89,38 +89,181 @@ export function archetypeOf(kind: CommanderArchetype) {
 /* ------------------------------------------------------------------ */
 
 /**
- * What a `lineofbattle` officer adds to her side's might modifier.
+ * Veterancy: what an officer's own record is worth, and the whole reason a
+ * death costs anything.
  *
- * One point, against a modifier that runs -1 to +5 across the five powers and
- * an `OPPORTUNIST_MIGHT_BONUS` of 2. Deliberately smaller than a doctrine: a
- * doctrine is what a power *is* and a commander is who happened to be aboard.
+ * Before this, losing a commander was free and, worse, **profitable**. The
+ * replacement arrived on the next tick with a new name, no bill, and a freshly
+ * rolled archetype — so a power whose doctrine had dealt it a `convoy` officer
+ * and whose yards built torpedo boats was better off losing her, two times in
+ * three. The one mechanically live consequence of the death mechanic paid out
+ * on average.
+ *
+ * `battles` was already counted and had no mechanical reader at all: two
+ * display strings and a sort that is a no-op while a power holds one officer.
+ * So the thing a defeat destroyed was a name and a counter.
+ *
+ * It is the officer's OWN record that is worth something, which is what makes
+ * this a cost rather than a fee. **A replacement cannot be bought at any
+ * price** — the successor is a real officer with a real specialty and no
+ * history, and the only way back up the ladder is to fight and win. That is
+ * also why upkeep is the wrong instrument here: upkeep bounds a roster you can
+ * stockpile, and a power can never hold two officers, so what needed fixing
+ * was never the price of the replacement but its QUALITY.
  */
-export const COMMANDER_MIGHT = 1;
+/**
+ * **Swept against the harness, and the first guess was dead on arrival.**
+ *
+ * 4 and 10 read like modest numbers and are unreachable: `pnpm balance 30`
+ * fights **four battles in the whole galaxy over thirty turns**, and the
+ * busiest officer on the board — Meridian's, who is in three of them — ends the
+ * run at 3. At 4/10 not one power in a full campaign ever leaves step 0, so the
+ * ladder would have been decoration and the harness would have reported that as
+ * a clean pass, since a mechanic that never fires moves nothing.
+ *
+ * A war in this game is rare and decisive rather than continuous, which is a
+ * fact about the map and the 2:1 break-off band rather than about the bots. So
+ * the ladder has to be denominated in the engagements a campaign actually
+ * contains: **2 makes an officer who has fought at all worth more than a
+ * replacement, and 5 is a career.** Measured at 2/5, Adrienne Vance is seasoned
+ * by turn 24 and takes +2 might into the defence of Corvid.
+ */
+export const VETERAN_THRESHOLDS = [2, 5] as const;
+
+/** The top of the ladder, and the answer to a power that only ever wins. */
+export const MAX_VETERANCY = VETERAN_THRESHOLDS.length;
 
 /**
- * Points off the withdrawal loss, which runs 10–35%.
+ * Which step of the ladder an officer stands on: 0 (untested), 1, or 2.
  *
- * The largest of the three in absolute terms, and it is the one worth having
- * because **nothing else in the game reaches this number**. A screen changes
- * *which* hulls are spent getting clear and not how many; a stance changes
- * whether you run at all. This is the only thing that changes the price of
- * running.
+ * Thresholds rather than a rate, the same shape as `WORLD_BONUS_THRESHOLDS`
+ * and for the same reason: a bonus that rises with every engagement is
+ * unbounded in principle and compounds with itself, since the officer who wins
+ * is the officer who keeps being sent.
  */
-export const COMMANDER_WITHDRAW_RELIEF = 8;
+export function veterancyOf(battles: number): number {
+  let step = 0;
+  for (const at of VETERAN_THRESHOLDS) if (battles >= at) step += 1;
+  return step;
+}
+
+/**
+ * What each archetype is worth at each step, indexed by veterancy.
+ *
+ * **Three ladders rather than one multiplier**, which is not a stylistic
+ * choice: a shared scale cannot express this, because might is integer-valued
+ * and its base is 1. At x1.5 and x2 the ladder rounds to 1, 2, 2 and the
+ * second step buys nothing at all — the same defect as halving a one-hull lift
+ * loss, where `floor(1 / 2)` shipped a 100% discount wearing a 50% label.
+ * Where the granularity cannot carry a fraction, the fraction is not the thing
+ * to write down.
+ *
+ * Scaling each archetype's own effect rather than adding a flat might bonus on
+ * top keeps the three distinct. A veteran's bonus being might whatever she is
+ * known for would make every officer partly a `lineofbattle` officer, and that
+ * archetype's whole claim is that its help is the small unconditional kind.
+ */
+/**
+ * Might added by a `lineofbattle` officer, against a modifier running -1..+5.
+ *
+ * The top of this ladder is deliberately larger than `OPPORTUNIST_MIGHT_BONUS`,
+ * which revises a claim this file used to make — that a commander is *always*
+ * worth less than a doctrine, because a doctrine is what a power IS and an
+ * officer is who happened to be aboard. That is right about a **fresh** officer
+ * and wrong about a veteran, and the distinction is the whole point of having a
+ * ladder: a doctrine is given, and this is the one thing on the field a power
+ * builds by winning. It also takes five engagements and is destroyed by a
+ * single bad defeat, which no doctrine ever is.
+ */
+export const COMMANDER_MIGHT = [1, 2, 3] as const;
+
+/**
+ * Points off the withdrawal loss, which runs 10-35%.
+ *
+ * Still floored at 5% in `bleed` whatever the step, because a withdrawal under
+ * fire is never free however good the officer running it — the top of this
+ * ladder would otherwise clear the bottom of the band outright.
+ */
+export const COMMANDER_WITHDRAW_RELIEF = [8, 12, 16] as const;
 
 /** How much heavier a `gunnery` officer's opening salvo lands. */
-export const COMMANDER_STRIKE_BONUS = 0.4;
+export const COMMANDER_STRIKE_BONUS = [0.4, 0.6, 0.8] as const;
 
 /**
  * A commander is lost when their side is broken and the die is against them.
  *
- * Only on a **defeat** — a routed fleet, or one driven off — because an officer
+ * Only on a **defeat** - a routed fleet, or one driven off - because an officer
  * who wins does not die at a rate worth modelling, and because a death roll on
  * every battle would make the roster churn faster than a player could learn a
  * name. `roll <= 4` on the battle's own seeded d20, so it is reproducible and
  * needs no second source of randomness.
  */
 export const COMMANDER_LOSS_ROLL = 4;
+
+/* ------------------------------------------------------------------ */
+/* What an officer is worth, given her record                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The three ladders, read at the step the officer's own record puts her on.
+ *
+ * Separate accessors rather than one `effectOf`, because the three are
+ * denominated in three different things — a might modifier, a percentage off a
+ * loss, and a multiplier on a salvo — and one function returning a bare number
+ * for all of them is the units drift this codebase keeps having to undo.
+ *
+ * Each is read only after the caller has gated on the archetype, exactly as the
+ * flat constants were, so the accessor answers "how much" and never "whether".
+ */
+export function commanderMight(c: Commander): number {
+  return COMMANDER_MIGHT[veterancyOf(c.battles)]!;
+}
+
+export function commanderRelief(c: Commander): number {
+  return COMMANDER_WITHDRAW_RELIEF[veterancyOf(c.battles)]!;
+}
+
+export function commanderStrike(c: Commander): number {
+  return COMMANDER_STRIKE_BONUS[veterancyOf(c.battles)]!;
+}
+
+/** What a battle report calls an officer of this standing. */
+export function veterancyLabel(battles: number): string {
+  return ['untested', 'seasoned', 'veteran'][veterancyOf(battles)]!;
+}
+
+/**
+ * What THIS officer is worth, in the same words a battle report uses.
+ *
+ * `COMMANDER_ARCHETYPES[].effect` describes the SHAPE of an archetype's help
+ * and deliberately quotes no number any more — it used to say *"fights a point
+ * harder"*, which stopped being true the moment a record could make it two.
+ * A screen that says what a kind of officer does is a different thing from one
+ * that says what this one does, and only the second can be checked against the
+ * arithmetic in the battle card.
+ */
+export function commanderEffect(c: Commander): string {
+  switch (c.archetype) {
+    case 'lineofbattle':
+      return `+${commanderMight(c)} might in every exchange, and the landing`;
+    case 'gunnery':
+      return `+${Math.round(commanderStrike(c) * 100)}% on the opening salvo`;
+    case 'convoy':
+      return `-${commanderRelief(c)}% off a withdrawal`;
+  }
+}
+
+/**
+ * Engagements still owed before the next step, or `null` at the cap.
+ *
+ * Shown because the ladder is only a reason to protect an officer if a player
+ * can see where she is on it — a cost you cannot read coming is a cost you
+ * cannot weigh.
+ */
+export function toNextVeterancy(battles: number): number | null {
+  const next = VETERAN_THRESHOLDS[veterancyOf(battles)];
+  return next === undefined ? null : next - battles;
+}
 
 /* ------------------------------------------------------------------ */
 /* The record                                                          */
@@ -215,6 +358,45 @@ export function commanderName(factionId: string, turn: number, salt: string): st
 export function commanderArchetype(factionId: string, turn: number, salt: string): CommanderArchetype {
   const n = rollD20(turn, `commander-kind:${factionId}:${salt}`) - 1;
   return COMMANDER_ARCHETYPES[n % COMMANDER_ARCHETYPES.length]!.kind;
+}
+
+/**
+ * What the next officer is known for: the same thing the last one was.
+ *
+ * **A successor inherits the archetype and never the record**, and the split is
+ * the whole of what makes a death a loss. Re-rolling the specialty made a
+ * defeat a free lottery ticket — a power stuck with an officer its fleet had no
+ * use for was better off losing her — so the one live consequence of the death
+ * mechanic ran backwards. Inheriting it means what a defeat costs is the
+ * `battles` behind her, which is a thing that took turns of winning to build
+ * and cannot be bought at any price.
+ *
+ * It reads as the institution rather than the person, which is the right shape:
+ * a power that fights its wars in the line goes on fighting them in the line,
+ * and the officer it promotes is the one that school produced. What it does NOT
+ * mean is that a power is locked to a specialty forever — an archetype is fixed
+ * at the seed and inherited down from there, and moving off it is what an
+ * appointment op would be for, if the player ever gets one.
+ *
+ * Falls back to a fresh roll when there is no predecessor at all — a faction
+ * added mid-campaign, or a save written before commanders existed — so the
+ * appointment always has an answer.
+ */
+export function successorArchetype(
+  commanders: Commander[] | undefined,
+  factionId: string,
+  turn: number,
+  salt: string,
+): CommanderArchetype {
+  // Scanned from the end: the array is append-ordered, so the last entry for a
+  // faction is the officer most recently in post. Every one of them is `lost`
+  // by the time this is asked, since an active officer is what stops the
+  // appointment happening at all.
+  const all = commanders ?? [];
+  for (let i = all.length - 1; i >= 0; i--) {
+    if (all[i]!.factionId === factionId) return all[i]!.archetype;
+  }
+  return commanderArchetype(factionId, turn, salt);
 }
 
 /* ------------------------------------------------------------------ */

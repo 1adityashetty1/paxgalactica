@@ -2878,9 +2878,12 @@ of the help:
 
 | archetype | shape | what it does |
 |---|---|---|
-| `lineofbattle` | small, unconditional | `COMMANDER_MIGHT` (1) on the might modifier, which every fight reads |
+| `lineofbattle` | small, unconditional | `COMMANDER_MIGHT` on the might modifier, which every fight reads |
 | `gunnery` | large, conditional on a **class** | multiplies the opening salvo by `COMMANDER_STRIKE_BONUS`, so she is worth a great deal to a power that builds torpedo boats and nothing to one that brought none |
-| `convoy` | large, conditional on **losing** | `COMMANDER_WITHDRAW_RELIEF` (8) points off the retreat loss — worth nothing until the day you have to run |
+| `convoy` | large, conditional on **losing** | `COMMANDER_WITHDRAW_RELIEF` points off the retreat loss — worth nothing until the day you have to run |
+
+Each is a **ladder indexed by veterancy** rather than a single figure — see "A
+death has to cost something" below for the values and for why.
 
 That is a better set than one-per-phase: they are not substitutes, so which one
 you want depends on the fleet you build and the war you are losing.
@@ -2912,9 +2915,87 @@ from `bleed`, on use.
 a new one (`COMMANDER_LOSS_ROLL`). An officer who wins does not die at a rate
 worth modelling, and a death roll on every engagement would churn the roster
 faster than a player could learn a name. `tickTurn` appoints a replacement — a
-different person, new name, new archetype, no battles — and the dead stay on the
+different person, with a new name and no battles — and the dead stay on the
 roster, since a power's history of commanders is worth more than the bytes of
 removing them.
+
+### A death has to cost something, and for a while it paid out
+
+The replacement also **re-rolled the archetype**, and that made losing an
+officer free in the only sense that matters: the successor was exactly as good,
+one turn later, at no charge. Worse than free, in fact — a power whose yards
+built torpedo boats and whose doctrine had dealt it a `convoy` officer was
+better off losing her, two times in three. The one mechanically live consequence
+of the death mechanic paid out on average.
+
+`battles` was already being counted and had **no mechanical reader at all**: two
+display strings and a sort that is a no-op while a power holds one officer. So
+what a defeat destroyed was a name and a counter.
+
+**Upkeep is the wrong instrument here**, which is worth stating because it is
+the obvious one. Upkeep bounds a roster you can stockpile, and the appointment
+loop skips any power that already has an active officer — so a power can never
+hold two, there is nothing to stockpile, and a per-turn charge against incomes
+of 87–300 would be noise. A replacement fee is worse: an appointment the power
+never chose, billed to it anyway. What needed fixing was never the replacement's
+**price** but its **quality**.
+
+Two changes, and they are halves of one idea:
+
+- **A successor inherits the speciality.** It reads as the institution rather
+  than the person — a power that fights its wars in the line goes on fighting
+  them in the line, and the officer it promotes is the one that school produced.
+  It also removes the free re-roll.
+- **The record is worth something.** `veterancyOf` puts an officer on one of
+  three steps and each archetype's own effect scales with it, so what a defeat
+  costs is the `battles` behind her — a thing that takes turns of winning to
+  build and **cannot be bought back at any price**.
+
+| step | at | `lineofbattle` | `gunnery` | `convoy` |
+|---|---|---|---|---|
+| untested | 0–1 | +1 might | +40% salvo | −8% withdrawal |
+| seasoned | 2–4 | +2 | +60% | −12% |
+| veteran | 5+ | +3 | +80% | −16% |
+
+**Three ladders rather than one multiplier**, and that is not a style
+preference: might is integer-valued with a base of 1, so a shared ×1.5/×2 scale
+rounds to 1, 2, 2 and the middle step buys nothing. Exactly the defect that
+shipped a 100% discount wearing a 50% label when a one-hull lift loss was
+halved — where the granularity cannot carry a fraction, the fraction is not the
+thing to write down. Scaling each archetype's own effect also keeps the three
+distinct, where a flat might bonus for veterancy would make every officer partly
+a `lineofbattle` officer and flatten the one archetype whose claim is that its
+help is small and unconditional.
+
+A veteran at the cap is worth **more than any doctrine's might bonus**, which
+revises a claim this section used to make. That claim is right about a *fresh*
+officer and wrong about a veteran, and the distinction is the point of having a
+ladder at all: a doctrine is given, and this is the one thing on the field a
+power builds by winning. It also takes five engagements and is destroyed by a
+single bad defeat, which no doctrine ever is.
+
+**The thresholds were swept, and the first guess was dead on arrival.** 4 and 10
+read like modest numbers and are unreachable: `pnpm balance 30` fights **four
+battles in the whole galaxy over thirty turns**, and the busiest officer on the
+board ends the run at 3. At 4/10 not one power ever leaves step 0 — and the
+harness would have reported that as a clean pass, because a mechanic that never
+fires moves nothing. A war here is rare and decisive rather than continuous,
+which is a fact about the map and the 2:1 break-off band rather than about the
+bots, so the ladder has to be denominated in the engagements a campaign actually
+contains. At 2/5 it fires once in the harness — Meridian's Adrienne Vance is
+seasoned by turn 24 and takes +2 might into the defence of Corvid, and still
+loses it, so the board is unchanged at 3/6/5/4/4 with the 58/42 mix.
+
+A **model-driven** campaign is far busier than the bots, which is the case the
+thresholds are really for: replaying `classes_playtest`, twelve turns of a
+played campaign put Meridian's officer on **ten** engagements and the Vigil's on
+eight — two veterans at the cap, against a bot galaxy where nobody reaches five.
+
+The ladder is shown where it can be acted on: the Command tab says what **this**
+officer is worth and how far off the next step she is, because a cost a player
+cannot read coming is a cost they cannot weigh. `COMMANDER_ARCHETYPES[].effect`
+quotes no number any more — it used to say *"fights a point harder"*, which
+stopped being true the moment a record could make it two.
 
 Names are per faction and shaped differently per faction, because five powers
 that should never be mistaken for one another is a rule this project applies to

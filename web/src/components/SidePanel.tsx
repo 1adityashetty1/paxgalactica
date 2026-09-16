@@ -9,7 +9,13 @@ import { describeOutstanding, loansFor } from '../../../src/domain/loan.js';
 import { assetWorthRangeTo } from '../../../src/domain/diplomacy.js';
 import { describeOrderEffect } from '../../../src/domain/development.js';
 import { describeEffect } from '../../../src/domain/diplomacy.js';
-import { archetypeOf, commanderFor } from '../../../src/domain/command.js';
+import {
+  archetypeOf,
+  commanderEffect,
+  commanderFor,
+  toNextVeterancy,
+  veterancyLabel,
+} from '../../../src/domain/command.js';
 import { worldFlavour } from '../../../src/ui/worldtext.js';
 import {
   presentAt,
@@ -425,18 +431,24 @@ function Command({ state }: { state: WorldState }) {
                 <p className="command-name" style={{ color: colour }}>
                   {officer.name}
                 </p>
-                <p className="command-effect">
-                  {archetypeOf(officer.archetype).effect}
-                </p>
+                <p className="command-effect">{commanderEffect(officer)}</p>
                 <p className="meta">
                   known for {archetypeOf(officer.archetype).known}
                 </p>
                 <p className="meta">
-                  {officer.battles === 0
-                    ? 'untested'
-                    : `${officer.battles} engagement${officer.battles === 1 ? '' : 's'}`}
+                  {veterancyLabel(officer.battles)}
+                  {officer.battles > 0 &&
+                    ` · ${officer.battles} engagement${officer.battles === 1 ? '' : 's'}`}
                   {' · appointed turn '}
                   {officer.appointedTurn}
+                </p>
+                {/* Where she stands on the ladder, because a cost a player
+                    cannot read coming is a cost they cannot weigh — and this
+                    one is paid by losing her, not by spending credits. */}
+                <p className="meta command-ladder">
+                  {toNextVeterancy(officer.battles) === null
+                    ? 'as good as an officer gets'
+                    : `${toNextVeterancy(officer.battles)} more to improve again`}
                 </p>
               </>
             ) : (
@@ -444,7 +456,10 @@ function Command({ state }: { state: WorldState }) {
             )}
             {fallen.length > 0 && (
               <p className="meta command-fallen">
-                lost: {fallen.map((c) => c.name).join(', ')}
+                lost:{' '}
+                {fallen
+                  .map((c) => `${c.name} (${veterancyLabel(c.battles)})`)
+                  .join(', ')}
               </p>
             )}
           </section>
