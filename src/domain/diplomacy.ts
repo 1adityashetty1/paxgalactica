@@ -993,6 +993,26 @@ export const AgentSchema = z.object({
    */
   name: z.string().default(''),
   /**
+   * Operations brought off. The operative's own record, and the twin of a
+   * commander's `battles`.
+   *
+   * Counted per successful resolution, so a watcher who sits for ten turns has
+   * ten and a saboteur caught on its second attempt has one. That asymmetry is
+   * the point: the operative who survives is the operative who gets good.
+   */
+  operations: z.number().int().min(0).default(0),
+  /**
+   * How many times this face has been caught. **Permanent, and it never
+   * decays.**
+   *
+   * What makes redeploying a ransomed operative a decision rather than a
+   * formality: they come back with everything they learned and a face a rival's
+   * counter-intelligence has already photographed. Two captures and the record
+   * stops paying for the risk, which is the moment to leave them home and hire
+   * somebody nobody knows.
+   */
+  timesCaught: z.number().int().min(0).default(0),
+  /**
    * The officer an `assassination` is aimed at, if it is aimed at one.
    *
    * `null` for every other mission and for an assassination aimed at a power
@@ -1004,6 +1024,56 @@ export const AgentSchema = z.object({
   targetCommanderId: z.string().nullable().default(null),
 });
 export type Agent = z.infer<typeof AgentSchema>;
+
+/**
+ * Veterancy for operatives: the same idea as a commander's, on the one number
+ * this side of the game owns.
+ *
+ * A commander's record scales their archetype's own effect; an operative's
+ * scales `successChance`, because that is the figure **code computes** here.
+ * The `effect` magnitude is model-chosen and capped, so scaling that would hand
+ * a model a lever on its own payoff — the failure `onComplete` had before
+ * `boundPayloadsToOutcome`.
+ *
+ * Thresholds are 4 and 10 against a commander's 2 and 5, because the two accrue
+ * at completely different rates: a galaxy fights four battles in thirty turns
+ * and a posted watcher resolves an operation **every** turn. A ladder is only
+ * meaningful denominated in what the campaign actually contains, which is the
+ * lesson the commander thresholds had to learn by being unreachable.
+ */
+export const AGENT_VETERAN_THRESHOLDS = [4, 10] as const;
+export const AGENT_VETERAN_BONUS = [0, 8, 16] as const;
+
+/**
+ * What a caught face costs, for good: **exactly the whole ladder.**
+ *
+ * So one capture erases everything an operative learned — a veteran ransomed
+ * home is worth precisely what a stranger is worth, and a second capture puts
+ * them below one. That is a rule a player can hold in their head, and it is the
+ * decision the round trip is for: pay to get the record back, or leave them and
+ * hire a face nobody has photographed.
+ *
+ * It was 12 first, which is a number rather than a rule, and it produced the
+ * opposite of the intent at the top of the range. `successChance` clamps at 95,
+ * so against a weak target a strong power's ladder is mostly cut off by the
+ * ceiling — and a veteran caught once came out at 90 against a fresh
+ * operative's 86. Being captured made them **better**. Tying the penalty to the
+ * ladder rather than picking a figure makes the cancellation exact at every
+ * pairing, clamp or no clamp.
+ */
+export const AGENT_CAUGHT_PENALTY = AGENT_VETERAN_BONUS[AGENT_VETERAN_BONUS.length - 1]!;
+
+export function agentVeterancy(operations: number): number {
+  let step = 0;
+  for (const at of AGENT_VETERAN_THRESHOLDS) if (operations >= at) step += 1;
+  return step;
+}
+
+/** What a report calls an operative of this standing. */
+export function agentStanding(operations: number): string {
+  return ['unproven', 'practised', 'veteran'][agentVeterancy(operations)]!;
+}
+
 
 export function describeEffect(effect: AgentEffect): string {
   switch (effect.kind) {

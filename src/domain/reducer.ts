@@ -50,6 +50,9 @@ import {
   type Asset,
   type Treaty,
   type VoidCondition,
+  AGENT_CAUGHT_PENALTY,
+  AGENT_VETERAN_BONUS,
+  agentVeterancy,
 } from './diplomacy.js';
 import { archetypeFor } from './assets.js';
 import {
@@ -464,9 +467,25 @@ function mintId(state: WorldState, prefix: string): string {
  * counter-intelligence. Computed in code so a model cannot talk its spy into
  * being better than its faction is.
  */
-export function agentSuccessChance(guile: number, counterIntel: number): number {
-  return Math.max(5, Math.min(95, 50 + (guile - counterIntel) * 6));
+export function agentSuccessChance(
+  guile: number,
+  counterIntel: number,
+  operations = 0,
+  timesCaught = 0,
+): number {
+  return Math.max(
+    5,
+    Math.min(
+      95,
+      50 +
+        (guile - counterIntel) * 6 +
+        AGENT_VETERAN_BONUS[agentVeterancy(operations)]! -
+        timesCaught * AGENT_CAUGHT_PENALTY,
+    ),
+  );
 }
+
+
 
 /**
  * Take `count` hulls off a faction, largest concentration first.
@@ -1950,7 +1969,22 @@ export function applyOps(
         // to the power that took them — nobody else was in the room.
         if (asset.commanderId !== null || asset.agentId !== null) {
           const them = (state.commanders ?? []).find((c) => c.id === asset.commanderId);
-          const spy = (state.agents ?? []).find((a) => a.id === asset.agentId);
+          const theirSpy = (state.agents ?? []).find((a) => a.id === asset.agentId);
+          const theirs = them?.factionId ?? theirSpy?.ownerFactionId;
+          // **Not your own people.** Ransom one home and this would have you
+          // question them and file what they gave up — a power selling itself
+          // intelligence about its own network, worth credits to the power that
+          // already had it. Reachable the moment a round trip existed, and
+          // incoherent rather than merely unbalanced.
+          if (theirs === asset.heldBy) {
+            reject(
+              raw,
+              'illegal_value',
+              `${them?.name ?? theirSpy?.name ?? 'That person'} is one of yours. There is nothing to be learned by questioning them.`,
+            );
+            break;
+          }
+          const spy = theirSpy;
           const who = them?.name || spy?.name || 'the prisoner';
           state.assets = state.assets.filter((a) => a.id !== asset.id);
           // Spent either way: an officer is dead to their power and an
@@ -1982,7 +2016,6 @@ export function applyOps(
           const note = `${nameFor(state, asset.heldBy)} questions ${who} and files what they gave up.`;
           notes.push(note);
           logEvent(state, 'narrative', note, asset.heldBy);
-          const theirs = them?.factionId ?? spy?.ownerFactionId;
           if (theirs) logEvent(state, 'narrative', note, theirs);
           break;
         }
@@ -3195,6 +3228,66 @@ export function applyOps(
         }
         owner.credits -= price;
 
+        // Putting a ransomed operative back in the field. Resolved after the
+        // ordinary guards, so a redeployment is held to the same rules about
+        // whose operative it is and where they may be posted — a returning
+        // agent is an agent.
+        if (op.fromAssetId !== null) {
+          const held = (state.assets ?? []).find((a) => a.id === op.fromAssetId);
+          if (!held || held.agentId === null) {
+            reject(raw, 'illegal_value', `Asset "${op.fromAssetId}" is not a captured operative.`);
+            break;
+          }
+          if (held.heldBy !== ownerId) {
+            reject(raw, 'no_presence', 'You are not holding that operative.');
+            break;
+          }
+          const spy = (state.agents ?? []).find((a) => a.id === held.agentId);
+          if (!spy) {
+            reject(raw, 'unknown_agent', 'That operative is no longer on the books.');
+            break;
+          }
+          // Only your own go back out. Running somebody else's caught agent is
+          // turning them, which is the larger idea `recruit_commander` refuses
+          // for officers and refuses here for the same reason.
+          if (spy.ownerFactionId !== ownerId) {
+            reject(
+              raw,
+              'illegal_value',
+              `That operative answers to ${nameFor(state, spy.ownerFactionId)}; releasing them is not running them.`,
+            );
+            break;
+          }
+          if (liveAgentsOf(state, ownerId).length >= maxAgentsFor(state, ownerId)) {
+            reject(raw, 'illegal_value', `${nameFor(state, ownerId)} is at its operative ceiling.`);
+            break;
+          }
+          // **Off the exposed list**, which is the whole of redeployment: a
+          // face the enemy caught is not a person who has stopped existing.
+          // The record comes with them and so does the mark — `timesCaught`
+          // never decays, so the second ransom is worth much less than the
+          // first and the third is worth nothing.
+          spy.exposed = false;
+          spy.systemId = op.systemId;
+          spy.mission = op.mission;
+          spy.effect = op.effect;
+          spy.cover = op.cover;
+          spy.deployedTurn = state.turn;
+          spy.successChance = agentSuccessChance(
+            effectiveStats(state, ownerId).guile,
+            host.controllerFactionId
+              ? effectiveStats(state, host.controllerFactionId).resolve
+              : 8,
+            spy.operations,
+            spy.timesCaught,
+          );
+          state.assets = (state.assets ?? []).filter((a) => a.id !== held.id);
+          const back = `${spy.name || 'A returned operative'} goes back out on ${host.name}, ${spy.operations} operation${spy.operations === 1 ? '' : 's'} behind them and a face ${nameFor(state, held.heldBy === ownerId ? ownerId : held.heldBy)}'s rivals have seen ${spy.timesCaught} time${spy.timesCaught === 1 ? '' : 's'}.`;
+          notes.push(back);
+          logEvent(state, 'narrative', back, ownerId);
+          break;
+        }
+
         const taken = namesInUse(state);
         const who = unusedName(taken, (n) =>
           agentName(ownerId, state.turn, `agent:${op.systemId}:${state.agents.length}:${n}`),
@@ -3226,6 +3319,8 @@ export function applyOps(
           ),
           deployedTurn: state.turn,
           exposed: false,
+          operations: 0,
+          timesCaught: 0,
           cover: op.cover,
           // Only an assassination can be aimed at a person; every other mission
           // works against a power. Silently dropped rather than rejected, the
@@ -5336,6 +5431,12 @@ export function tickTurn(input: WorldState): TickResult {
         // Worth most to the power that ran them, and something to everybody,
         // for the reason an officer is: what they know is leverage over more
         // than one table.
+        // A caught face is caught for good. Recorded on the agent rather than
+        // on the asset, because it has to survive the round trip: they are
+        // ransomed home as an asset and redeployed as an agent, and the mark is
+        // the whole reason that second act is a decision.
+        agent.timesCaught += 1;
+
         const prize: Asset = {
           id: mintId(state, 'ast'),
           kind: 'operative',
@@ -5379,6 +5480,11 @@ export function tickTurn(input: WorldState): TickResult {
       }
       continue;
     }
+
+    // The operation came off, so it goes on their record — counted here rather
+    // than per posting, because a watcher who sits for ten turns has learned
+    // ten turns' worth and a saboteur caught on its second attempt has not.
+    agent.operations += 1;
 
     // An assassination aimed at a PERSON, resolved before the effect — the
     // effect still lands, because an operation that got close enough to try is

@@ -3098,6 +3098,51 @@ exactly as well as one at peace. Precisely the defect `effectiveStats` was
 introduced to fix for the d20, left behind in the one other place two stats are
 compared.
 
+### An operative has a record too, and a face that can be photographed
+
+A burned operative was permanently burned, so ransoming one home bought a person
+you owned and could not employ. Two fields close it, and they pull against each
+other on purpose:
+
+- **`operations`** — one per successful resolution, so a watcher who sits for
+  ten turns has ten and a saboteur caught on its second attempt has one. That
+  asymmetry is the point: the operative who survives is the one who gets good.
+  It scales `successChance`, because that is the figure **code computes** here;
+  the `effect` magnitude is model-chosen and capped, so scaling it would hand a
+  model a lever on its own payoff.
+- **`timesCaught`** — permanent, and it never decays.
+
+Thresholds are **4 and 10** against a commander's 2 and 5, because the two
+accrue at completely different rates: a galaxy fights four battles in thirty
+turns and a posted watcher resolves an operation every turn. A ladder is only
+meaningful denominated in what a campaign actually contains — the lesson the
+commander thresholds learned by being unreachable.
+
+**A capture costs exactly the whole ladder**, so a veteran ransomed home is worth
+precisely what a stranger is worth and a second capture puts them below one.
+That is a rule a player can hold in their head, and it is the decision the round
+trip is for.
+
+> It was a flat 12 first, which is a number rather than a rule, and it produced
+> the **opposite** of the intent at the top of the range. `successChance` clamps
+> at 95, so a strong power's ladder is mostly cut off by the ceiling — and a
+> veteran caught once came out at 90 against a fresh operative's 86. Being
+> captured made them *better*. Tying the penalty to the ladder makes the
+> cancellation exact at every pairing, clamp or no clamp, and a test pins it at
+> both ends of the range.
+
+`deploy_agent` takes `fromAssetId`, the twin of `recruit_commander`'s. It
+**clears `exposed`** — a face the enemy caught is not a person who has stopped
+existing — charges no `AGENT_COST`, since the ransom was the cost and they are
+already trained, and still checks `maxAgentsFor`, because the ceiling is about
+how many lines you can run rather than how many people you have hired. Only your
+own go back out.
+
+**And you cannot question your own people.** `consume_asset` on a person your own
+power ran would have you file what they gave up and sell yourself intelligence
+about your own network — reachable the moment a round trip existed, and
+incoherent rather than merely unbalanced.
+
 ### Officers are they/them
 
 Their names are generated, so there is nobody for a pronoun to be about: a

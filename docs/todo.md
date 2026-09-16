@@ -64,10 +64,11 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~107~~ | ~~an officer commanded every battle their power fought, everywhere at once~~ | medium | **BUILT** — they have a location, ride a fleet, and command only the battle they are at. Not tonnage, not in the loss order; killable by the death roll alone |
 | ~~108~~ | ~~a power could never hold two officers, and a beaten one could only die~~ | subsystem | **BUILT** — `recruit_commander`, a cap of five with upkeep, and capture as an asset that comes home through the same op |
 | ~~109~~ | ~~five design questions about officers, and three of them were defects~~ | medium | **FIXED/BUILT** — the spy contest read base stats where suborning read effective; a captured officer was invisible to third parties; assassination could not reach a person. Plus named operatives, unique names, and operatives taken alive |
+| ~~110~~ | ~~a ransomed operative was a person you owned and could not employ~~ | small | **BUILT** — `deploy_agent` takes `fromAssetId` and clears `exposed`; operatives get a record and a permanent mark for being caught, with a capture costing exactly one full ladder |
 
 **What is left is a playtest and two design items.** Everything from the
 2026-09-07 batch is built or closed, and so are all five of the features raised
-on 2026-09-14 (**97**, **100**–**103**), along with **104**–**109**,
+on 2026-09-14 (**97**, **100**–**103**), along with **104**–**110**,
 raised and closed on 2026-09-15 and 2026-09-16. What remains is **92** and **94(b)**, which are
 claims only a campaign can settle, plus two things filed since:
 
@@ -1597,6 +1598,49 @@ Three things the build turned up that the filing did not predict:
 567 — the small drop being freighters taking a larger share of the unaligned
 hops that some tolled traffic crosses.
 
+
+## 110. BUILT — an operative's record, and a face that has been photographed
+
+Raised and built 2026-09-16, off the asymmetry 109 left behind: an officer could
+be ransomed home and restored to post, and a ransomed operative sat in the
+warehouse as a person you owned and could not employ. `fromAssetId` existed only
+on `recruit_commander`.
+
+**Two fields pulling against each other.** `operations` counts successful
+resolutions and scales `successChance` — the figure code computes, where the
+`effect` magnitude is model-chosen and capped. `timesCaught` is permanent and
+never decays.
+
+Thresholds **4 and 10** against a commander's 2 and 5, because a galaxy fights
+four battles in thirty turns and a posted watcher resolves an operation every
+turn. Denominate the ladder in what the campaign contains — the lesson 105's
+thresholds learned by being unreachable.
+
+**A capture costs exactly the whole ladder.** A veteran ransomed home is worth
+precisely what a stranger is worth; a second capture puts them below one.
+
+> It was a flat 12 first and produced the **opposite** of the intent at the top
+> of the range: `successChance` clamps at 95, so a strong power's ladder is cut
+> off by the ceiling and a veteran caught once came out at 90 against a fresh
+> operative's 86. Being captured made them better. Tying the penalty to the
+> ladder rather than picking a figure makes the cancellation exact at every
+> pairing, and a test pins it at both ends.
+
+`deploy_agent` with `fromAssetId` clears `exposed`, charges no `AGENT_COST`
+(the ransom was the cost), still checks `maxAgentsFor`, and refuses somebody
+else's caught operative — running one is turning them, which is the larger idea
+`recruit_commander` already refuses for officers.
+
+**And 110(b), which was the worse half:** `consume_asset` on a person your own
+power ran would have you question them and file what they gave up — a power
+selling itself intelligence about its own network, worth credits to the power
+that already had it. Reachable the moment a round trip existed.
+
+The ladder moved `agentVeterancy`/`agentStanding` into `diplomacy.ts` beside
+`AgentSchema`, where they belong: `serialize.ts` needed them and importing the
+reducer into the serializer is a cycle waiting to happen.
+
+Board unchanged at 3/6/5/4/4.
 
 ## 109. FIXED/BUILT — five design questions, three of them defects
 

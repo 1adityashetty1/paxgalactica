@@ -1864,7 +1864,7 @@ describe('the officer on the field', () => {
             mission: 'assassination', effect: { kind: 'hull_damage', perTurn: 1 },
             successChance: 100, exposed: false, deployedTurn: 0, cover: '',
             targetCommanderId: them.id,
-            name: '',
+            name: '', operations: 0, timesCaught: 0,
           });
           let st = s;
           const seen: string[] = [];
@@ -1916,7 +1916,7 @@ describe('the officer on the field', () => {
           mission: 'surveillance', effect: { kind: 'intel', revealsOrders: true },
           successChance: 50, exposed: false, deployedTurn: 0, cover: '',
           targetCommanderId: null,
-          name: 'Voss Greywake',
+          name: 'Voss Greywake', operations: 0, timesCaught: 0,
         });
         expect(namesInUse(s).has('Voss Greywake')).toBe(true);
         for (const c of s.commanders) expect(namesInUse(s).has(c.name)).toBe(true);
@@ -1950,7 +1950,7 @@ describe('the officer on the field', () => {
           mission: 'assassination', effect: { kind: 'hull_damage', perTurn: 1 },
           successChance: 5, exposed: false, deployedTurn: 0, cover: 'a freight clerk',
           targetCommanderId: null,
-          name: 'Prynn Threxwind',
+          name: 'Prynn Threxwind', operations: 0, timesCaught: 0,
         });
         let st = s;
         for (let i = 0; i < 20 && !st.agents[st.agents.length - 1]!.exposed; i++) {
@@ -1982,7 +1982,7 @@ describe('the officer on the field', () => {
           mission: 'theft', effect: { kind: 'income_penalty', perTurn: 4 },
           successChance: 50, exposed: true, deployedTurn: 0, cover: '',
           targetCommanderId: null,
-          name: 'Aleska Halfshare',
+          name: 'Aleska Halfshare', operations: 0, timesCaught: 0,
         });
         s.assets.push({
           id: 'ast-spy', kind: 'operative', text: 'them', heldBy: 'vigil',

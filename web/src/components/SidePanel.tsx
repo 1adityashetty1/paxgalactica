@@ -10,6 +10,8 @@ import { assetWorthRangeTo } from '../../../src/domain/diplomacy.js';
 import { describeOrderEffect } from '../../../src/domain/development.js';
 import { describeEffect } from '../../../src/domain/diplomacy.js';
 import { CommanderIcon } from './BattleIcons.js';
+import { agentStanding } from '../../../src/domain/diplomacy.js';
+
 import {
   MAX_ACTIVE_COMMANDERS,
   activeCommanders,
@@ -399,6 +401,10 @@ function SystemTab({
                   {a.mission}
                 </span>
                 <span className="count">
+                  {/* The record, then the odds. A caught face is permanent, so
+                      it is worth seeing before deciding to ransom one home. */}
+                  {a.operations > 0 && `${agentStanding(a.operations)} · `}
+                  {a.timesCaught > 0 && `caught ${a.timesCaught}× · `}
                   {a.exposed ? 'burned' : `${a.successChance}%`}
                 </span>
               </li>

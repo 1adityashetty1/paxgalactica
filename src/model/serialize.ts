@@ -1,7 +1,7 @@
 import { eventsVisibleTo, ordersVisibleTo } from '../domain/intel.js';
 import { describeStack, hullsIn } from '../domain/hulls.js';
 import { describeOrderEffect } from '../domain/development.js';
-import { assetWorthRangeTo, describeEffect, wantedBy } from '../domain/diplomacy.js';
+import { agentStanding, assetWorthRangeTo, describeEffect, wantedBy } from '../domain/diplomacy.js';
 import { describeOutstanding } from '../domain/loan.js';
 import { routeEarnings } from '../domain/trade.js';
 import {
@@ -341,7 +341,7 @@ export function serializeStanding(state: WorldState, viewerId: string): string {
       // The operative's NAME, and their power's display name rather than its
       // id — the same leak item 104 closed two lines further up this file, left
       // behind here because nothing reads this block back except the model.
-      `  - \`${a.id}\` ${a.name || a.cover || 'an operative'}, ${mine ? 'YOURS' : `${nameOfFaction(state, a.ownerFactionId)} (exposed)`} on ${where}: ${a.mission}, ${describeEffect(a.effect)}, ${a.successChance}% per turn${a.exposed ? ' — BURNED' : ''}`,
+      `  - \`${a.id}\` ${a.name || a.cover || 'an operative'}, ${mine ? 'YOURS' : `${nameOfFaction(state, a.ownerFactionId)} (exposed)`} on ${where}: ${a.mission}, ${describeEffect(a.effect)}, ${a.successChance}% per turn — ${agentStanding(a.operations)}${a.timesCaught > 0 ? `, caught ${a.timesCaught} time${a.timesCaught === 1 ? '' : 's'}` : ''}${a.exposed ? ' — BURNED' : ''}`,
     );
   }
 

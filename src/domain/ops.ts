@@ -446,6 +446,19 @@ export const DeployAgentOp = z.object({
    * success this codebase closes everywhere else.
    */
   targetCommanderId: z.string().nullable().default(null),
+  /**
+   * A captured operative of your own to put back in the field, rather than a
+   * new one to recruit.
+   *
+   * The twin of `recruit_commander`'s `fromAssetId`, and the half that was
+   * missing: an officer could be ransomed home and restored to post, while a
+   * ransomed operative sat in the warehouse as a person you owned and could not
+   * employ. **Redeployment clears `exposed`** — a face the enemy caught is not
+   * a person who has stopped existing — and charges no `AGENT_COST`, because
+   * the ransom was the cost and they are already trained. Their record comes
+   * with them, and so does the mark.
+   */
+  fromAssetId: z.string().nullable().default(null),
 });
 
 export const RecallAgentOp = z.object({
