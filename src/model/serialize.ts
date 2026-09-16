@@ -151,7 +151,18 @@ function commanderLine(state: WorldState, viewerId: string): string {
     owed === null
       ? ' She is as good as an officer gets; a successor would start again from nothing.'
       : ` ${owed} more engagement${owed === 1 ? '' : 's'} and she improves again. A successor inherits the speciality and none of the record.`;
-  return `Your fleet is commanded by ${officer.name}${seen} — known for ${shape.known}. In a battle, ${commanderEffect(officer)}; the rest of the time, ${commanderPassive(officer)}.${ladder}`;
+  // Where she is, because it now decides which battles she is in at all — a
+  // power told it has a commander and not told she is three jumps from the
+  // fighting has been told something misleading.
+  const posted = officer.atSystemId
+    ? ` She is at ${getSystem(state, officer.atSystemId)?.name ?? officer.atSystemId}`
+    : (() => {
+        const o = (state.pendingOrders ?? []).find((x) => x.commanderId === officer.id);
+        return o
+          ? ` She is under way to ${getSystem(state, o.targetId)?.name ?? o.targetId}`
+          : ' She is unposted';
+      })();
+  return `Your fleet is commanded by ${officer.name}${seen} — known for ${shape.known}. In a battle, ${commanderEffect(officer)}; the rest of the time, ${commanderPassive(officer)}.${posted}, and commands only the battle she is at.${ladder}`;
 }
 
 /** Worlds a power holds that began as somebody else's, by name. */

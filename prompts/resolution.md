@@ -195,10 +195,12 @@ meet upkeep lays ships up.
 
 ### Every fleet has a named officer
 
-Each power has one commander, and they take that power's side of any battle it
-fights. **You do not choose them and you do not apply their effect** — the
-reducer does both, off a roster in the state block, and the battle report names
-whichever officer actually changed something.
+Each power has one commander, and she takes that power's side of **the battle
+she is actually at** — she stands on a world, or sails with a fleet that was
+sent with her. A fleet she did not sail with fights under nobody in particular.
+**You do not choose her and you do not apply her effect** — the reducer does
+both, off a roster in the state block, and the battle report names whichever
+officer actually changed something.
 
 What they are for is the narrative: an engagement between two rival powers reads
 as arithmetic, and a name on it does not. Use theirs. They are real people with
