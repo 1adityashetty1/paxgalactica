@@ -69,9 +69,12 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 
 **What is left is a playtest and one design item.** Everything from the
 2026-09-07 batch is built or closed, and so are all five of the features raised
-on 2026-09-14 (**97**, **100**–**103**), along with **104**–**110**,
-raised and closed on 2026-09-15 and 2026-09-16. What remains is **92** and **94(b)**, which are
-claims only a campaign can settle, plus two things filed since:
+on 2026-09-14 (**97**, **100**–**103**), along with **104**–**111**, raised and
+closed on 2026-09-15 and 2026-09-16. **98** went with them, and its measurement
+is worth reading before the next bot change: the item's premise was wrong.
+
+What remains is **92** and **94(b)**, which are claims only a campaign can
+settle, and one design item:
 
 - **99** — a marriage belongs in the treaty system, which needs treaties to
   learn cross-partner exclusivity and signature goodwill. Two decisions are
