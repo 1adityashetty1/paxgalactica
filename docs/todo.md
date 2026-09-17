@@ -58,7 +58,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~102~~ | ~~leaders, assigned per battle~~ | subsystem | **BUILT** — archetypes with generated names; the one-per-phase framing was wrong and is recorded as such |
 | ~~98~~ | ~~the doctrine bots cannot tell a friend from an enemy~~ | medium | **BUILT** — and the measurement said something sharper than the item: they do not attack friends, they fail to act on hatred. A peace floor and a grievance tie-break |
 | ~~111~~ | ~~trading a person cost nobody anything~~ | small | **BUILT** — repatriation buys goodwill, selling somebody on costs it with their power and with every onlooker, interrogation costs most |
-| **99** | a marriage is a treaty, and treaties cannot say two things it needs | small | there is no marriage scaffolding to delete — the gap is cross-partner **exclusivity** and **signature goodwill**. A two-party commitment is free to repudiate today |
+| **99** | a marriage is a treaty, and treaties cannot say two things it needs | small | there is no marriage scaffolding to delete — the gap is cross-partner **exclusivity** and **signature goodwill**. Exclusivity wants to be a LIST of partners, on the `tollTargets` precedent; one decision left, on what it keys to. A two-party commitment is free to repudiate today |
 | ~~104~~ | ~~the state document published raw ids~~ | small | **FIXED** — `lanes:` joined `hyperlaneEdges` with nothing giving them a name, so the model wrote `ilv-6` into prose |
 | ~~105~~ | ~~a commander's death cost nothing, and usually paid~~ | medium | **BUILT** — veterancy, and a successor who inherits the speciality. The thresholds had to be swept: the first guess was unreachable in a whole campaign |
 | ~~106~~ | ~~officers are five hand-written characters, and do nothing on a quiet turn~~ | medium | **BUILT** — generated names carrying the school as a title, and one passive each. A prerequisite for recruitment: choosing between officers needs them to differ off the battlefield |
@@ -1070,7 +1070,18 @@ dashed.
 burned", so **"discovered agents" needed no new rule at all** — only a per-world
 filter and a struck-through row for a burned one.
 
-## 98. OPEN — the doctrine bots cannot tell a friend from an enemy
+## 98. BUILT — the doctrine bots cannot tell a friend from an enemy
+
+> **Closed 2026-09-16, and the title is wrong.** The measurement this item asked
+> for says the bots do **not** attack friends: thirty harness turns produce two
+> attacks on a held world, both the Vigil against Meridian at −20, a power it
+> dislikes. The real defect is the other half — the final matrix carries −75,
+> −75 and −70 between various pairs and none of it produces anything at all. The
+> bots hate each other and do nothing about it, which is the failure the bots
+> were built to fix one layer up, reached from the other side: the model had
+> motives and no initiative, the bots had initiative and no motives. Built as a
+> peace floor plus a grievance tie-break; see **111**. The title is left as
+> filed, because what the item *assumed* is the useful part of the record.
 
 **`src/domain/initiative.ts` contains no reading of `disposition` at all.** Not a
 weighting, not a threshold, not a tiebreak — the word appears once, in a comment
@@ -1161,146 +1172,174 @@ the two boards, which is what `src/balance.ts` is for and costs no model calls.
 
 ## 99. OPEN — a marriage is a treaty, and treaties cannot say two things it needs
 
-Raised 2026-09-14 as *"we have a lot of custom scaffolding and tests for
-political marriages; I think this is wrong and weak."*
+Raised 2026-09-14. **Rewritten 2026-09-16**, because a question about one of its
+own examples showed the objection in it was wrong — see "the coarseness, restated"
+below.
 
-### First, the correction, because it changes what the work is
+### First, the premise was factually wrong, and that stands
 
-**There is no marriage-specific code.** Fifty-five mentions across the repo, and
-every one in `src/` is a comment, a doc-string, a faction voice sheet, or a
-single line of help text. In the tests `dynastic_marriage` is a *string* passed
-to the generic `establish_commitment`. In the prompts it is the worked example
-teaching a generic mechanism.
+The item was raised as *"we have a lot of custom scaffolding and tests for
+political marriages"*. There is **none**. `grep -ri marriage src/` returns the
+word only inside prompt examples and one arbitration doc comment. There is no
+`Marriage` type, no marriage branch in the reducer, no marriage test.
+`Commitment.kind` is a free-form slug, deliberately, because *"the whole point
+is to hold arrangements nobody enumerated in advance."* Marriage is one slug
+beside `exclusive_charter`, `hostage_exchange` and `mining_operation`.
 
-`Commitment.kind` is `z.string().max(40).regex(/^[a-z][a-z0-9_]*$/)` —
-deliberately free-form, *"the whole point is to hold arrangements nobody
-enumerated in advance."* Marriage is one slug beside `exclusive_charter`,
-`hostage_exchange`, `mining_operation` and `intel_sharing_drajk`.
+**Anyone reading this item looking for a marriage subsystem to tear out will not
+find one.**
 
-So there is nothing to delete. Removing the word would cost the prompts their
-best worked example and buy nothing. **Anyone reading this item looking for a
-marriage subsystem to tear out will not find one.**
+### What is actually missing
 
-### What is actually true, and it is a better finding
-
-The proposition raised was that a marriage is *a treaty with no expiry, an
-exclusivity clause, a conditional breakage clause, and the effect of positive
-disposition on both sides*. That definition names exactly the two things a
-treaty cannot express:
+The proposition was that a marriage is *a treaty with no expiry, an exclusivity
+clause, a conditional breakage clause, and positive disposition on both sides*.
+That names exactly two things a treaty cannot express:
 
 | property | treaty today |
 |---|---|
 | no expiration | **yes** — `expiresTurn` is nullable |
-| conditional breakage | **yes** — `voidsOn`, a closed five-kind vocabulary |
-| **exclusivity** | **no.** Supersession is *pair-level*: it retires a live treaty between the **same two parties**. *"I cannot marry Meridian because I am bound to the Nars"* is unsayable |
-| **goodwill on signature** | **no.** Nothing in the treaty path moves disposition upward. `COMMITMENT_GOODWILL` (5) does, and is commitment-only |
+| conditional breakage | **yes** — `voidsOn`, a closed vocabulary |
+| **exclusivity** | **no.** Supersession is *pair-level*. *"I cannot marry Meridian because I am bound to the Nars"* is unsayable |
+| **goodwill on signature** | **no.** Nothing in the treaty path moves disposition upward; `COMMITMENT_GOODWILL` does and is commitment-only |
 
-So the "custom system" is not marriage. It is **cross-partner exclusivity and
-signature goodwill**, and those two fields are the whole reason `Commitment`
-exists as a separate record.
+### The live hole underneath it
+
+`adjustCommitmentGoodwill` pays +5 on establish and takes −5 on dissolve, so the
+two net to **zero** — and disposition has no decay, which makes this the only
+reversible disposition movement in the game. CLAUDE.md frames the refund as
+*"what makes a commitment cost something to have made."* For two parties it does
+not.
+
+| ending the same arrangement | costs |
+|---|---|
+| dynastic marriage as a **commitment** | −5, privately, net zero against what it paid |
+| `non_aggression` as a **treaty** | −25 with the party plus `PACT_BREAKING_REPUTATION_COST` with every onlooker, permanent |
+
+A power can swear a dynastic marriage and repudiate it next turn at no net
+standing loss and no public consequence. The **multi-party** case was patched
+after a playtest repudiated a four-power compact in all three clauses and paid
+nothing; `dissolve_commitment` now charges pact-breaking above two parties. The
+two-party case is the same hole, still open, and it is exactly the shape a
+marriage is.
 
 ### The public/private argument, which is the strongest one
 
 `COMMITMENT_GOODWILL` moves disposition **between the bound parties only**,
 because *"unlike a treaty, a commitment is not public business, so onlookers
-have no view."* That is a deliberate and well-argued rule.
-
-It is also the wrong rule for a marriage, which is about the most public act in
-the genre. Marriage is not mis-filed because commitments are marriage
-scaffolding — it is mis-filed because **marriage is public and commitments are
+have no view."* That is deliberate and well argued — and it is why a marriage is
+mis-filed. Marriage is not mis-filed because commitments are marriage
+scaffolding. It is mis-filed because **marriage is public and commitments are
 private.**
 
-### And there is a live hole underneath it
+### Exclusivity is a FIELD, not a condition
 
-`adjustCommitmentGoodwill` pays `+5` on establish and takes `−5` on dissolve, so
-the two net to **zero** — and disposition has no decay, which makes this the
-only reversible disposition movement in the game. CLAUDE.md frames the refund as
-*"what makes a commitment cost something to have made."* For two parties it does
-not: the `+5` was free to acquire, so returning it leaves both sides exactly
-where they started.
-
-| ending the same arrangement | costs |
-|---|---|
-| dynastic marriage as a **commitment** | −5, privately, between the parties, net zero against what it paid |
-| `non_aggression` as a **treaty** | −25 with the party, plus `PACT_BREAKING_REPUTATION_COST` with every onlooker, permanent |
-
-So a power can swear a dynastic marriage and repudiate it the next turn for no
-net standing loss and no public consequence. The **multi-party** case was
-already patched — a playtest repudiated a four-power compact in all three
-clauses and paid nothing, so `dissolve_commitment` now charges pact-breaking
-when more than two powers are bound. The two-party case is the same hole, still
-open, and it is exactly the shape a marriage is.
-
-### The design: exclusivity is a FIELD, not a condition
-
-Both forms were considered. The condition form — *"this treaty voids if you sign
-the same type with anyone else"* — is wrong, and not on taste:
-
-`voidsOn` ends a treaty as `voided`, and that status exists **because it carries
-no penalty**: *"nobody repudiated it, the condition simply came true, so it
-carries no pact-breaking reputation cost."* So exclusivity-as-a-condition makes
-signing a second marriage **silently dissolve the first, for free**, dodging the
-−25 and the public cost that `break_treaty` charges. It converts a betrayal into
-an automatic administrative event with no injured party, which is the opposite
-of what exclusivity is for.
+The condition form — *"this treaty voids if you sign the same type with anyone
+else"* — is wrong on mechanics rather than taste. `voidsOn` ends a treaty as
+`voided`, and that status exists **because it carries no penalty**: *"nobody
+repudiated it, the condition simply came true."* So exclusivity-as-a-condition
+makes signing a second marriage **silently dissolve the first, for free**,
+dodging the −25 and the public cost `break_treaty` charges. It converts a
+betrayal into an administrative event with no injured party.
 
 |  | the second treaty | the first | cost of the swap |
 |---|---|---|---|
 | condition (`voidsOn`) | allowed | voids automatically | **nothing** |
-| field (`exclusive`) | refused at signature | stands | break it deliberately, and pay |
+| field | refused at signature | stands | break it deliberately, and pay |
 
 A smaller blocker points the same way: `voidsOn.treaty_with` takes a **named**
-`target`, so it can only say *"voids if you sign with the Vigil"*, never *"with
+`target`, so it can say *"voids if you sign with the Vigil"* and never *"with
 anyone"*. Wildcarding needs a sentinel in a field that is otherwise always a
-faction id — the kind of thing that reads fine and breaks a reader later.
+faction id.
 
-The field form also reproduces the ruling already verified live on the
-commitment path, which is an answer a player can act on: *"You are already bound
-by the exclusive dynastic marriage to the Ojjul Nar Combine (com-0-0). That
-marriage must be dissolved before you can enter another."*
+### The field is a LIST, and the precedent is `tollTargets`
 
-**A boolean, not a list of permitted partners.** Every arrangement that wants
-exclusivity here wants it against everyone: a marriage, a sole charter, an
-exclusive supply deal. *"Exclusive except the Combine"* is expressed by not
-setting the flag and writing the carve-out in `text`. Same rule as `OrderEffect`
-and `VoidCondition` — a closed thing edited when a case appears beats a general
-thing that has to be right in advance.
+**This is the part the first draft of the item got wrong.** It argued for a
+boolean — *"every arrangement that wants exclusivity here wants it against
+everyone; `exclusive except the Combine` is expressed by not setting the flag
+and writing the carve-out in `text`."*
+
+That is the "record that changes nothing" failure this file names everywhere
+else. The arbiter would read the prose and the reducer would not, so an accord
+naming a carve-out would be **inert** — and an inert success teaches a boundary
+that is not there.
+
+The precedent is already in the codebase and says the opposite, in as many
+words. `Faction.tollTargets` is a list rather than a flag:
+
+> A list rather than a flag, because that is what makes it leverage. Waiving a
+> toll for one power while keeping it on their rival is a thing to offer across
+> a table, and lifting one is a concession that costs something and lands at
+> once.
+
+Every word of that transfers. *"I will swear off everyone but the Combine, whom
+I am already bound to"* is a real negotiating position, and a boolean cannot say
+it. So: **`exclusiveAgainst: string[]`**, mirroring `tollTargets` exactly —
+empty meaning not exclusive.
+
+Deliberately a list of faction ids and **not** a `Record<factionId, boolean>`
+by analogy with `Asset.valuePerUnit`: that is a map because the *values* differ
+per faction, where this is set membership and a map would invite a `false` entry
+that means something subtly different from an absent one.
 
 Mirror `conflictingCommitment`: return the **blocking treaty** rather than a
-boolean, so the rejection can quote it.
+boolean, so the rejection can quote it — the ruling already verified live on the
+commitment path is an answer a player can act on.
 
-### Two decisions to make before writing any of it
+### The coarseness, restated — because the first version of it was confused
 
-**1. What exclusivity keys on.** `Commitment.exclusive` keys on the free-form
-`kind`, which is why the slug has to be stable — an inconsistent one silently
-disables the mechanism, and the `prisoners`/`pows` drift that produced
-`ASSET_ARCHETYPES` is the same failure. A treaty's `type` is closed and cannot
-drift, which is safer and **coarser**: an exclusive `trade_accord` would block
-*all* trade accords, and a test already pins that two accords granting different
-lanes are two legitimate deals.
+The item used to object that *"an exclusive `trade_accord` would block all trade
+accords, and a test already pins that two accords granting different lanes are
+two legitimate deals."*
 
-Leaning: accept the coarseness and let the **arbiter** decide when to set the
-flag, which is the division that already works — *the arbiter rules that a
-marriage is exclusive; the reducer enforces it.* A dedicated `bond`/`union`
-treaty type is the alternative and recreates the type-explosion that the
-`tribute`-versus-`contract` split already taught against.
+**That test does not constrain exclusivity.** `tests/treaty-state.test.ts:66`
+signs both accords with `parties: ['drajk', 'freeworlds']` — the **same pair**.
+Two deals between the same two powers is supersession's business; exclusivity is
+about signing with a **different** partner. The two rules do not overlap, and
+the objection compared them as though they did.
 
-**2. The ordering against supersession**, because this becomes a *third*
-retirement rule beside expiry and pair-level footprint clash:
+The real coarseness is a different axis, and a partner list does not touch it:
 
-- **same pair → supersede.** A renegotiation is legitimate and must not be
-  blocked by the treaty it replaces.
-- **different partner → refuse.**
+- `Commitment.exclusive` keys on a free-form `kind` — `dynastic_marriage`,
+  `mining_operation` — which **describes the subject**.
+- A treaty's `type` does not. `contract` covers a hire, an annuity and a charter
+  fee alike, so an exclusive one blocks all three.
 
-Backwards, and either you cannot renegotiate your own marriage, or exclusivity
-does nothing.
+So *against whom* now has an answer and *about what* does not.
+
+### The one decision left
+
+**What exclusivity keys on.** Three candidates:
+
+1. **`type` alone** — closed, cannot drift, and coarse in exactly the way above.
+2. **A subject slug on the treaty**, mirroring `Commitment.kind`. Precise, and
+   it reintroduces the drift `ASSET_ARCHETYPES` exists to fix: an inconsistent
+   slug silently disables the mechanism, the way `prisoners`/`pows` did.
+3. **`type` plus the arbiter setting the list.** The division that already
+   works — *the arbiter rules that a marriage is exclusive; the reducer enforces
+   it* — with the coarseness accepted and bounded by the fact that a power
+   naming partners has already been specific about who.
+
+Leaning **3**, and note that a list makes the coarseness much less painful than
+a boolean did: an exclusive `contract` against two named powers blocks contracts
+with those two, not with everybody, so the blast radius of a coarse key is
+bounded by a field the parties chose.
+
+A dedicated `bond`/`union` treaty type is the fourth option and recreates the
+type-explosion the `tribute`-versus-`contract` split already taught against.
+
+**Ordering against supersession was the second decision and the list settles
+it.** Supersession is same-pair; `exclusiveAgainst` names other powers. A
+renegotiation with the same partner is not in the list and is never blocked, so
+the two rules cannot collide — which is the argument for the list over a
+boolean a second time, since a boolean would have needed the ordering written
+out by hand.
 
 ### Scope
 
 Small, and deliberately not a merge. `Commitment` still earns its place for
 one-party standing vows (`factionIds` min 1, where a treaty requires exactly 2),
 for `share` — directional proportional lane flows — and for arrangements with no
-counterparty at all. What moves to treaties is the **public bilateral bargain**:
+counterparty. What moves to treaties is the **public bilateral bargain**:
 marriages, charters naming a partner, hostage exchanges.
 
 The full merge into one `Arrangement` record was considered and rejected: it
@@ -1309,9 +1348,8 @@ touches the schema, the save format, the journal, replay, every prompt,
 public/private flag, so it moves the distinction rather than removing it.
 
 **Prompt work is most of the cost.** `appraisal.md` mentions marriage twelve
-times, `extraction.md` four, and both currently teach it as the canonical
-commitment. Those are the files that decide where a negotiated marriage actually
-lands, so they change with the code or the feature does not exist.
+times as its worked example of a commitment, and every one of those would be
+teaching the wrong home.
 
 
 ## 100. BUILT — worlds carry modifiers that reach faction stats
