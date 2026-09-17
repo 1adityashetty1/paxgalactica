@@ -50,6 +50,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~93~~ | ~~three things the asset fields still cannot say~~ | small | **BUILT** — a catalogue, `consume_asset`, speculative value, assets at the table |
 | ~~80~~ | ~~an advisor that costs an action~~ | medium | **BUILT** — with a structural guard against it becoming a solver |
 | ~~112~~ | ~~a power could decide what two other powers thought of each other~~ | small | **FIXED** — `adjust_disposition` had no actor test and no magnitude bound. 4 of 625 archived movements were the hole; two are one turn of the creative playtest |
+| **113** | sowing discord between two rivals has no priced path | medium | 112 closed the free one and opened no paid one. The price is the open question and **60 is too cheap** — what is bought is permanent, aimed at two powers at once, and paid for by somebody who is not in the war |
 | **92** | two claims only a campaign can settle | — | needs play, not code |
 | ~~95~~ | ~~playtests are billed to the subscription~~ | medium | **MOVED** to `docs/architecture.md` A.1 — an architecture item, and step 1 of packaging the game |
 | ~~97~~ | ~~tolls on the map, agents in the System tab~~ | small | **BUILT** — and the toll attribution had to be recorded in `routeEarnings`, not recomputed |
@@ -75,8 +76,11 @@ closed on 2026-09-15 and 2026-09-16. **98** went with them, and its measurement
 is worth reading before the next bot change: the item's premise was wrong.
 
 What remains is **92** and **94(b)**, which are claims only a campaign can
-settle, and one design item:
+settle, and two design items:
 
+- **113** — sowing discord has no priced path, because **112** closed the free
+  one. The mechanism is obvious and the price is not; the item argues 60 is too
+  cheap and that a rate cap is the wrong bound for a permanent effect.
 - **99** — **exclusivity is built**: `terms.exclusiveAgainst`, a list of the
   powers a treaty shuts out, enforced from schema alone. What remains is
   **signature goodwill** — nothing in the treaty path moves disposition upward —
@@ -1712,6 +1716,77 @@ The ladder moved `agentVeterancy`/`agentStanding` into `diplomacy.ts` beside
 reducer into the serializer is a cycle waiting to happen.
 
 Board unchanged at 3/6/5/4/4.
+
+## 113. OPEN — sowing discord has no priced path, and the price is the question
+
+Filed 2026-09-16 by **112**, which closed the free route and opened no paid one.
+*"Convince the Vigil that Meridian betrayed them"* is a reasonable sentence a
+player will type, and today it is refused by a guard that points nowhere.
+
+### The mechanism is the easy part
+
+A `discord` agent effect on the existing `subversion` mission, naming two
+powers neither of which is the owner. It sits where `sedition` sits and is the
+same job pointed at a different number: `sedition` moves the target's **own**
+dissent, and this would move their **regard for a third power**.
+
+Three bounds it needs that `sedition` does not:
+
+- **Both powers named, and neither is you.** Otherwise it is
+  `adjust_disposition` with extra steps — reaching a pair you are not in is the
+  whole of what it buys.
+- **It runs from somewhere**, and the host world belongs to the power whose
+  *opinion* is being moved. You are working on their people, not their rival's.
+- **Exposure costs standing with both.** Being caught forging a grievance
+  between two powers is a thing all three hear about.
+
+### Why the obvious price is wrong
+
+`AGENT_COST.subversion` is 60, and that is what `sedition` pays. **It is too
+cheap here, for three reasons that compound:**
+
+1. **Dissent decays and disposition does not.** `DISSENT_DECAY` claws back 2 a
+   turn, so `sedition` at 6 a turn is building something the target sheds in
+   weeks. Nothing ever undoes a disposition movement. The same per-turn number
+   would be strictly, permanently worse — which means the *rate* has to be far
+   smaller, and a smaller rate does not make the **total** cheaper to buy.
+2. **It reaches two powers at once**, where every other effect reaches one.
+3. **The buyer is not in the war it starts.** That is the `profiteer` doctrine
+   stated as an exploit: the Combine earns `PROFITEER_INCOME_PER_WAR` from every
+   war it is *not* in, so a cheap way to manufacture one is a cheap way to
+   manufacture its own income.
+
+**And it got sharper the same day it was filed.** 111 gave the bots
+`BOT_PEACE_FLOOR` (20): a bot withholds an attack on a power it is above that
+with. So moving a relationship from +25 to +5 no longer merely makes somebody
+sad — it **unlocks a war** that the mechanic was withholding. Discord is now the
+cheapest way to point one power's fleet at another, and the buyer pays neither
+the hulls nor the reputation.
+
+### The bound is probably not a rate at all
+
+A per-turn cap is the wrong shape for a permanent effect: it bounds the speed
+and leaves the total to depend on how long the operative happens to survive,
+which is a dice roll. **A lifetime cap on total movement per operative** bounds
+the thing that actually matters, and makes the price answerable — you are buying
+a known quantity of permanent ill will rather than an annuity.
+
+With that shape the price should sit at or above `assassination` (150), not at
+`subversion` (60): the ladder today prices by how much damage one operative can
+do, and nothing else on it is permanent.
+
+### The doubt, which is the reason this is filed rather than built
+
+**It may be unreachable at any honest rate.** At 1–2 a turn it takes ten
+uninterrupted turns to move 20 — under what a single broken pact costs — in a
+campaign of thirty, against a `TOLL_RESENTMENT` that moves comparable amounts
+for free every turn. Priced honestly it may simply never be worth a slot against
+`maxAgentsFor`, and a mechanic nobody buys is a mechanic nobody has measured,
+which is how `monopolist` stayed implemented, tested and dead for the life of
+the project.
+
+`src/balance.ts` **cannot settle this**, because the bots run no operatives at
+all. It wants a campaign, which puts it beside **92** rather than ahead of it.
 
 ## 112. FIXED — a power could decide what two other powers thought of each other
 
