@@ -285,6 +285,30 @@ Specifically:
   arrangement out loud instead of letting a broke payer quietly stop paying
   while still collecting.
 
+  **`terms.exclusiveAgainst` is for "and with nobody else".** A dynastic
+  marriage, a sole charter, an exclusive supply deal — powers bargain for these
+  constantly, and until the field existed the promise was narration a party
+  could sign around the next turn. List the **faction ids** the treaty shuts
+  out; leave it empty for the ordinary case, which is almost every treaty.
+
+  It is a list rather than a flag because *"everyone except the Combine, whom we
+  are already bound to"* is a real position at a table, and a carve-out written
+  in prose binds nobody. Name whoever was actually excluded and no more.
+
+  Two things follow, and both are worth knowing before you use it:
+
+  - It blocks a treaty **of the same type** with a power on the list, and the
+    rejection quotes the treaty that blocked it. It never blocks a
+    renegotiation with the party you are already signing with.
+  - It binds **both** parties, not only the one who offered it. An exclusivity
+    one side asked for is a property of the paper.
+
+  Do not use it for a promise that is really conditional — *"this ends if you
+  sign with the Vigil"* is `voidsOn`, and the difference is who pays: an
+  exclusivity is **refused at signature** so the first treaty stands and
+  breaking it costs what breaking a treaty costs, where a `voidsOn` ends the
+  first one automatically and for nothing.
+
   **`ratifyTurns` is for a deal agreed subject to ratification.** When the other
   side says yes *but* a council, a senate or an assembly must consent first, set
   it to how many turns that takes. The treaty is recorded immediately as

@@ -53,6 +53,7 @@ import {
   AGENT_CAUGHT_PENALTY,
   AGENT_VETERAN_BONUS,
   agentVeterancy,
+  conflictingTreaty,
 } from './diplomacy.js';
 import { archetypeFor } from './assets.js';
 import {
@@ -2878,6 +2879,41 @@ export function applyOps(
         }
         if (op.parties[0] === op.parties[1]) {
           reject(raw, 'illegal_value', 'A treaty needs two distinct parties.');
+          break;
+        }
+        // **The arbiter names who is excluded; the reducer checks they exist.**
+        // A model asked for faction ids will eventually invent one, and an
+        // invented id in an enforcement field is an exclusivity clause that
+        // silently protects nobody — the `prisoners`/`pows` drift, in the one
+        // place it would be invisible.
+        const phantom = op.terms.exclusiveAgainst.find((id) => !factionExists(id));
+        if (phantom) {
+          reject(raw, 'unknown_faction', `No faction "${phantom}" to be exclusive against.`);
+          break;
+        }
+        // Naming your own counterparty is incoherent rather than over-large —
+        // you are bound TO them — so it is trimmed with a note and the deal
+        // stands, the same shape as `MAX_COMMITMENT_INCOME`.
+        const selfNamed = op.terms.exclusiveAgainst.filter((id) => op.parties.includes(id));
+        if (selfNamed.length > 0) {
+          op.terms.exclusiveAgainst = op.terms.exclusiveAgainst.filter(
+            (id) => !op.parties.includes(id),
+          );
+          const trimmed = `Dropped ${selfNamed.map((id) => nameFor(state, id)).join(' and ')} from the exclusivity: a treaty cannot be exclusive against its own party.`;
+          notes.push(trimmed);
+          logEvent(state, 'clamp', trimmed, op.parties[0]!);
+        }
+        // Refused at signature, so the first treaty stands and breaking it is a
+        // deliberate act that costs what `break_treaty` costs. The condition
+        // form would have voided the first silently and for free, which turns a
+        // betrayal into an administrative event with no injured party.
+        const blocked = conflictingTreaty(state.treaties, state.turn, op.parties, op.treatyType);
+        if (blocked) {
+          reject(
+            raw,
+            'illegal_value',
+            `${nameFor(state, blocked.parties.find((p: string) => op.parties.includes(p)) ?? blocked.parties[0]!)} is already bound by an exclusive ${blocked.type.replace(/_/g, ' ')} (\`${blocked.id}\`): ${blocked.summary}. It must be broken before another can be signed.`,
+          );
           break;
         }
         const badSystem = [

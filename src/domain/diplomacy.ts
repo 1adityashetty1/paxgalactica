@@ -228,6 +228,38 @@ export const TREATY_TYPES = [
 export const TreatyTypeSchema = z.enum(TREATY_TYPES);
 export type TreatyType = z.infer<typeof TreatyTypeSchema>;
 
+/**
+ * The live treaty that forbids `parties` signing a new one of `type`, if any.
+ *
+ * Returns the **blocking treaty** rather than a boolean, mirroring
+ * `conflictingCommitment`, so a rejection can quote it — the ruling already
+ * verified live on the commitment path is an answer a player can act on rather
+ * than a refusal they have to guess at.
+ *
+ * Reads `type`, `parties` and `terms.exclusiveAgainst` and **nothing else**.
+ */
+export function conflictingTreaty(
+  treaties: Treaty[] | undefined,
+  turn: number,
+  parties: readonly string[],
+  type: TreatyType,
+): Treaty | undefined {
+  return (treaties ?? []).find((t) => {
+    if (t.type !== type || !isTreatyLive(t, turn)) return false;
+    // Same pair is supersession's business, never exclusivity's — a
+    // renegotiation must not be blocked by the paper it replaces.
+    const samePair = parties.every((p) => t.parties.includes(p));
+    if (samePair) return false;
+    // Somebody bound by the old treaty is signing again, and the old treaty
+    // names their new counterparty.
+    return t.parties.some(
+      (bound) =>
+        parties.includes(bound) &&
+        parties.some((other) => other !== bound && t.terms.exclusiveAgainst.includes(other)),
+    );
+  });
+}
+
 export const TREATY_TYPE_MEANING: Record<TreatyType, string> = {
   cession: 'one party hands named worlds to the other, once and permanently; a price may ride with it',
   contract: 'a commercial agreement that pays — a hire, an annuity, a charter fee; money for something given, not tribute',
@@ -677,6 +709,49 @@ export const TreatyTermsSchema = z.object({
   /**
    * Conditions that end this treaty when they come true. Evaluated every tick.
    */
+  /**
+   * Powers this treaty forbids signing another of the **same type** with.
+   *
+   * Empty means not exclusive, which is every treaty in the game today.
+   *
+   * ## A list, on the `tollTargets` precedent
+   *
+   * A boolean was the first design and it was wrong for the reason
+   * `Faction.tollTargets` is already a list: *"a list rather than a flag,
+   * because that is what makes it leverage."* Waiving exclusivity for one power
+   * while holding it against their rival is a thing to offer across a table.
+   * The boolean's answer — write the carve-out in `text` — is the
+   * record-that-changes-nothing failure this codebase names everywhere else:
+   * the arbiter would read the prose and the reducer would not, so an accord
+   * naming a carve-out would be inert, and an inert success teaches a boundary
+   * that is not there.
+   *
+   * Faction ids and **not** a `Record<factionId, boolean>` by analogy with
+   * `Asset.valuePerUnit`: that is a map because the *values* differ per
+   * faction, where this is set membership, and a map invites a `false` entry
+   * meaning something subtly different from an absent one.
+   *
+   * ## Why a list settles the supersession question for free
+   *
+   * Supersession is **same-pair** — a renegotiation retires the paper it
+   * replaces. `exclusiveAgainst` names **other** powers. So your existing
+   * partner is never in the list and the two rules cannot collide. A boolean
+   * would have needed that ordering written out by hand, and getting it
+   * backwards means either you cannot renegotiate your own marriage or
+   * exclusivity does nothing.
+   *
+   * ## What enforcement is allowed to read
+   *
+   * **This field, the treaty's `type`, and its `parties`. Nothing else.** The
+   * arbiter's job ends when the list is populated at signature; from that
+   * moment it is data, and `conflictingTreaty` never consults a transcript, a
+   * summary or a ruling. That is what keeps a model's judgement in the one
+   * place it belongs — deciding *that* an arrangement is exclusive — and out of
+   * the place it does not, which is deciding whether a later treaty is blocked.
+   * Zod validates the shape; the reducer validates that every id names a real
+   * faction; enforcement reads the result and re-derives nothing.
+   */
+  exclusiveAgainst: z.array(z.string()).default([]),
   voidsOn: z.array(VoidConditionSchema).default([]),
   /** Systems whose ownership or access the treaty settles. */
   territory: z.array(z.string()).default([]),

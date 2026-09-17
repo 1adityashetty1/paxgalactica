@@ -479,3 +479,94 @@ describe('a cession has to look like one', () => {
     expect(res.state.systems.find((x) => x.id === mine().id)!.controllerFactionId).toBe('meridian');
   });
 });
+
+/**
+ * Exclusivity: the thing a treaty could not say, and what enforcement may read.
+ *
+ * `Commitment` has had `exclusive` since it existed; a treaty has not, which is
+ * why a dynastic marriage was filed as a commitment and therefore stayed
+ * **private** — the real defect item 99 turned out to name. A list rather than a
+ * boolean, on the `tollTargets` precedent: a flag cannot say *"everyone but the
+ * Combine"*, and writing the carve-out in prose is a record that changes
+ * nothing.
+ */
+describe('a treaty can be exclusive against named powers', () => {
+  const marry = (parties: [string, string], against: string[] = []): OpInput =>
+    ({
+      op: 'form_treaty', treatyType: 'mutual_defense', parties,
+      terms: { exclusiveAgainst: against },
+      summary: `bound to ${parties[1]}`,
+    }) as OpInput;
+
+  it('refuses a second one with a power the first excluded', () => {
+    let s = sign(seed(), marry(['drajk', 'freeworlds'], ['meridian'])).state;
+    const out = sign(s, marry(['drajk', 'meridian']));
+    expect(out.rejections.map((r) => r.code)).toContain('illegal_value');
+    // Quotes the blocking treaty, mirroring `conflictingCommitment` — a
+    // rejection a player can act on rather than one they have to guess at.
+    expect(out.rejections[0]!.message).toMatch(/exclusive mutual defense/);
+    expect(live(out.state)).toHaveLength(1);
+  });
+
+  it('leaves a power it did not name alone', () => {
+    // A flag could not express this, and it is the whole reason for a list.
+    let s = sign(seed(), marry(['drajk', 'freeworlds'], ['meridian'])).state;
+    s = sign(s, marry(['drajk', 'vigil'])).state;
+    expect(live(s)).toHaveLength(2);
+  });
+
+  it('never blocks a renegotiation with the same partner', () => {
+    // Supersession is same-pair and `exclusiveAgainst` names OTHER powers, so
+    // the two rules cannot collide. A boolean would have needed this ordering
+    // written out by hand, and backwards it means you cannot renegotiate your
+    // own marriage.
+    let s = sign(seed(), marry(['drajk', 'freeworlds'], ['meridian'])).state;
+    const again = sign(s, marry(['drajk', 'freeworlds'], ['meridian', 'vigil']));
+    expect(again.rejections).toHaveLength(0);
+  });
+
+  it('binds both parties, not just the one who signed', () => {
+    let s = sign(seed(), marry(['drajk', 'freeworlds'], ['meridian'])).state;
+    // The OTHER party is equally bound — exclusivity is a property of the
+    // paper, not a promise one side made.
+    const out = sign(s, marry(['freeworlds', 'meridian']));
+    expect(out.rejections.map((r) => r.code)).toContain('illegal_value');
+  });
+
+  it('refuses an invented faction and trims its own party', () => {
+    // An invented id in an enforcement field is an exclusivity clause that
+    // silently protects nobody, which is the `prisoners`/`pows` drift in the
+    // one place it would be invisible.
+    const phantom = sign(seed(), marry(['drajk', 'freeworlds'], ['nobody']));
+    expect(phantom.rejections.map((r) => r.code)).toContain('unknown_faction');
+
+    // Naming your own counterparty is incoherent rather than over-large, so it
+    // is trimmed and the deal stands.
+    const self = sign(seed(), marry(['drajk', 'freeworlds'], ['freeworlds']));
+    expect(self.rejections).toHaveLength(0);
+    expect(live(self.state)[0]!.terms.exclusiveAgainst).toEqual([]);
+    expect(self.notes.join(' ')).toMatch(/cannot be exclusive against its own party/);
+  });
+
+  it('is inert on every treaty that does not set it', () => {
+    // Empty means not exclusive, which is every treaty in the game today.
+    let s = sign(seed(), marry(['drajk', 'freeworlds'])).state;
+    s = sign(s, marry(['drajk', 'meridian'])).state;
+    expect(live(s)).toHaveLength(2);
+  });
+
+  it('reads the field and not the prose', () => {
+    // The arbiter's job ends when the list is populated. Enforcement consults
+    // `type`, `parties` and `exclusiveAgainst` and nothing else — a summary
+    // that says "exclusive" in words blocks nothing.
+    let s = sign(
+      seed(),
+      {
+        op: 'form_treaty', treatyType: 'mutual_defense',
+        parties: ['drajk', 'freeworlds'], terms: {},
+        summary: 'an exclusive and binding union, to the exclusion of all others',
+      } as OpInput,
+    ).state;
+    expect(sign(s, marry(['drajk', 'meridian'])).rejections).toHaveLength(0);
+  });
+});

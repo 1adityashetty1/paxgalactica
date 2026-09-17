@@ -1154,6 +1154,47 @@ and nothing implemented it.
 | `territory` (a term, not a type) | the named systems **change hands** when the treaty takes force |
 | `payment` (a term, not a type) | credits move **once**, when the treaty takes force — the price of a cession, an indemnity, a lump settlement |
 | `voidsOn` (a term, not a type) | typed conditions that **end** the treaty when they come true — and one already true at signature is **refused**, not signed |
+| `exclusiveAgainst` (a term, not a type) | faction ids this treaty **shuts out** — a second treaty of the same type with one of them is refused at signature |
+
+**A treaty can shut other powers out.** `terms.exclusiveAgainst` names the
+faction ids a treaty forbids signing another of the same type with — a dynastic
+marriage, a sole charter, an exclusive supply deal. Empty means not exclusive,
+which is every treaty in the seed.
+
+**A list, not a flag**, on the precedent `Faction.tollTargets` already set: *"a
+list rather than a flag, because that is what makes it leverage."* Waiving
+exclusivity for one power while holding it against their rival is a thing to
+offer across a table, and the alternative — a boolean with the carve-out written
+in `text` — is the record-that-changes-nothing failure this file names
+everywhere else, since the arbiter would read the prose and the reducer would
+not.
+
+**A field, not a `voidsOn` condition**, and the difference is who pays. A
+condition ends the first treaty as `voided`, and that status exists *because it
+carries no penalty* — so a second marriage would silently dissolve the first for
+free, dodging the −25 and the public cost `break_treaty` charges, and turning a
+betrayal into an administrative event with no injured party. A field refuses the
+second at signature, so the first stands and breaking it is a deliberate act
+that costs what breaking a treaty costs.
+
+**It settles its own ordering against supersession.** Supersession is
+same-pair; `exclusiveAgainst` names other powers, so your existing partner is
+never in the list and the two rules cannot collide. A boolean would have needed
+that ordering written by hand, and backwards it means either you cannot
+renegotiate your own marriage or exclusivity does nothing.
+
+**Enforcement reads schema and only schema.** `conflictingTreaty` consults
+`type`, `parties` and `exclusiveAgainst` — never a transcript, a summary or a
+ruling. Zod validates the shape, the reducer validates that every id names a
+real faction, and the arbiter's judgement ends the moment the list is populated;
+from there it is data. That keeps a model deciding *that* an arrangement is
+exclusive and never deciding whether a later treaty is blocked. A test signs a
+treaty whose summary says *"exclusive… to the exclusion of all others"* in so
+many words and asserts it blocks nothing.
+
+An invented faction id is **rejected** — an invented id in an enforcement field
+is a clause that silently protects nobody — while naming your own counterparty
+is **trimmed** with a note, being incoherent rather than over-large.
 
 **A renegotiation replaces the old paper; it does not add to it.** Powers say
 "supersedes" constantly and nothing acted on it: a playtest left two `tribute`

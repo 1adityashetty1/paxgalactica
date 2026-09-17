@@ -58,7 +58,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~102~~ | ~~leaders, assigned per battle~~ | subsystem | **BUILT** — archetypes with generated names; the one-per-phase framing was wrong and is recorded as such |
 | ~~98~~ | ~~the doctrine bots cannot tell a friend from an enemy~~ | medium | **BUILT** — and the measurement said something sharper than the item: they do not attack friends, they fail to act on hatred. A peace floor and a grievance tie-break |
 | ~~111~~ | ~~trading a person cost nobody anything~~ | small | **BUILT** — repatriation buys goodwill, selling somebody on costs it with their power and with every onlooker, interrogation costs most |
-| **99** | a marriage is a treaty, and treaties cannot say two things it needs | small | there is no marriage scaffolding to delete — the gap is cross-partner **exclusivity** and **signature goodwill**. Exclusivity wants to be a LIST of partners, on the `tollTargets` precedent; one decision left, on what it keys to. A two-party commitment is free to repudiate today |
+| **99** | ~~a marriage is a treaty~~ — half built | small | **EXCLUSIVITY BUILT** as `terms.exclusiveAgainst`, a list on the `tollTargets` precedent, keyed on `type` with the arbiter naming partners. What is left is **signature goodwill**, and the net-zero commitment hole underneath it |
 | ~~104~~ | ~~the state document published raw ids~~ | small | **FIXED** — `lanes:` joined `hyperlaneEdges` with nothing giving them a name, so the model wrote `ilv-6` into prose |
 | ~~105~~ | ~~a commander's death cost nothing, and usually paid~~ | medium | **BUILT** — veterancy, and a successor who inherits the speciality. The thresholds had to be swept: the first guess was unreachable in a whole campaign |
 | ~~106~~ | ~~officers are five hand-written characters, and do nothing on a quiet turn~~ | medium | **BUILT** — generated names carrying the school as a title, and one passive each. A prerequisite for recruitment: choosing between officers needs them to differ off the battlefield |
@@ -67,7 +67,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~109~~ | ~~five design questions about officers, and three of them were defects~~ | medium | **FIXED/BUILT** — the spy contest read base stats where suborning read effective; a captured officer was invisible to third parties; assassination could not reach a person. Plus named operatives, unique names, and operatives taken alive |
 | ~~110~~ | ~~a ransomed operative was a person you owned and could not employ~~ | small | **BUILT** — `deploy_agent` takes `fromAssetId` and clears `exposed`; operatives get a record and a permanent mark for being caught, with a capture costing exactly one full ladder |
 
-**What is left is a playtest and one design item.** Everything from the
+**What is left is a playtest and half a design item.** Everything from the
 2026-09-07 batch is built or closed, and so are all five of the features raised
 on 2026-09-14 (**97**, **100**–**103**), along with **104**–**111**, raised and
 closed on 2026-09-15 and 2026-09-16. **98** went with them, and its measurement
@@ -76,9 +76,11 @@ is worth reading before the next bot change: the item's premise was wrong.
 What remains is **92** and **94(b)**, which are claims only a campaign can
 settle, and one design item:
 
-- **99** — a marriage belongs in the treaty system, which needs treaties to
-  learn cross-partner exclusivity and signature goodwill. Two decisions are
-  named in the item and neither is made.
+- **99** — **exclusivity is built**: `terms.exclusiveAgainst`, a list of the
+  powers a treaty shuts out, enforced from schema alone. What remains is
+  **signature goodwill** — nothing in the treaty path moves disposition upward —
+  and the hole underneath it, where a commitment's +5 on establish and −5 on
+  dissolve net to zero and make a two-party marriage free to repudiate.
 
 **95 has left this file**: it was infrastructure rather than a feature — nothing
 in the game gets better for building it — and questions of that kind now live in
@@ -1306,7 +1308,36 @@ The real coarseness is a different axis, and a partner list does not touch it:
 
 So *against whom* now has an answer and *about what* does not.
 
-### The one decision left
+### The decision, made 2026-09-16: option 3, confirmed in schema
+
+**`type`, with the arbiter naming the partners** — the division that already
+works, *the arbiter rules that an arrangement is exclusive; the reducer enforces
+it.* Nothing new drifts, because the only free-form part is who, and a power
+naming partners has already been specific.
+
+The condition attached to it is the important half: **enforcement reads schema
+and only schema.** `conflictingTreaty` consults `type`, `parties` and
+`terms.exclusiveAgainst`, and nothing else — never a transcript, a summary or a
+ruling. Zod validates the shape, the reducer validates that every id names a
+real faction, and the arbiter's job ends the moment the list is populated. From
+there it is data. A test pins it by signing a treaty whose **summary says
+"exclusive… to the exclusion of all others"** in so many words and showing it
+blocks nothing.
+
+Two guards fall out of that rule. An **invented** id is rejected, because an
+invented id in an enforcement field is an exclusivity clause that silently
+protects nobody — the `prisoners`/`pows` drift in the one place it would be
+invisible. And naming **your own counterparty** is trimmed with a note rather
+than rejected: it is incoherent rather than over-large, so the deal stands.
+
+The coarseness of `type` was accepted and is much cheaper under a list than it
+would have been under a boolean: an exclusive `contract` against two named
+powers blocks contracts with those two, not with everybody, so the blast radius
+of a coarse key is bounded by a field the parties chose. If play shows it
+biting, option 2 — a subject slug mirroring `Commitment.kind` — is the upgrade,
+and a campaign can show that where no test can.
+
+### The options as they stood
 
 **What exclusivity keys on.** Three candidates:
 
