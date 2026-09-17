@@ -27,6 +27,7 @@ import {
   treatiesFor,
   warsFor,
   type WorldState,
+  MAX_NARRATIVE_DISPOSITION,
 } from '../src/domain/state.js';
 
 /**
@@ -1848,5 +1849,86 @@ describe('a dossier sold across a table', () => {
       true,
     );
     expect(out.rejections[0]?.code).toBe('unknown_asset');
+  });
+});
+
+/**
+ * `adjust_disposition` had almost no guard, and the saves show what that cost.
+ *
+ * It checked that both factions existed and were not the same one, and nothing
+ * else: no actor test, and a magnitude bounded only by the ±100 clamp on the
+ * result. Across every saved campaign, 621 of 625 movements are ordinary — 418
+ * "mine toward them", 203 "theirs toward me". The four that are neither are the
+ * hole, and two of them are one turn of the creative playtest: `actor=ojjul`
+ * moving `freeworlds → meridian` and `vigil → meridian` by −15 each. A power
+ * poisoning two other powers against a third, for free and permanently, since
+ * disposition has no decay.
+ */
+describe('a power may not decide what two others think of each other', () => {
+  const move = (
+    actor: string,
+    factionId: string,
+    towardFactionId: string,
+    delta: number,
+  ) =>
+    applyOps(
+      createSeedState('drajk'),
+      [{ op: 'adjust_disposition', factionId, towardFactionId, delta }],
+      'model',
+      actor,
+    );
+
+  it('allows your opinion of them, and theirs of you', () => {
+    // Between them these are 621 of the 625 movements in the archive.
+    expect(move('drajk', 'drajk', 'meridian', -10).rejections).toHaveLength(0);
+    expect(move('drajk', 'meridian', 'drajk', -10).rejections).toHaveLength(0);
+  });
+
+  it('refuses a movement between two powers that are neither', () => {
+    const out = move('ojjul', 'freeworlds', 'meridian', -15);
+    expect(out.rejections.map((r) => r.code)).toContain('illegal_value');
+    // Names all three powers, so the rejection says what was actually wrong.
+    expect(out.rejections[0]!.message).toMatch(/cannot decide what/);
+  });
+
+  it('is strictly better than the mechanic that exists to do this', () => {
+    // `sedition` reaches a power's own institutions for `AGENT_COST`, a slot
+    // against `maxAgentsFor` and an exposure roll. A free op that reached
+    // further than it is the same shape `adjust_dissent` was narrowed for —
+    // named in CLAUDE.md as "the most cost-effective hostile act in the game".
+    const s = createSeedState('drajk');
+    const before = s.factions.find((f) => f.id === 'freeworlds')!.disposition['meridian'] ?? 0;
+    const out = move('ojjul', 'freeworlds', 'meridian', -40);
+    expect(
+      out.state.factions.find((f) => f.id === 'freeworlds')!.disposition['meridian'] ?? 0,
+    ).toBe(before);
+  });
+
+  it('trims a swing larger than any act the reducer charges for', () => {
+    // Every movement the reducer itself charges is small and reasoned — 5 for a
+    // commitment, 6 a hull for suborning, 25 for breaking a pact. This was
+    // bounded only by the clamp, so one narrated sentence could swing a
+    // relationship four times further than repudiating a treaty does.
+    const out = move('drajk', 'drajk', 'meridian', -100);
+    expect(out.rejections).toHaveLength(0);
+    const after = out.state.factions.find((f) => f.id === 'drajk')!.disposition['meridian'] ?? 0;
+    const before = createSeedState('drajk').factions.find((f) => f.id === 'drajk')!
+      .disposition['meridian'] ?? 0;
+    expect(before - after).toBe(MAX_NARRATIVE_DISPOSITION);
+    // Trimmed with a note rather than rejected: the insult was still real at a
+    // smaller number.
+    expect(out.notes.join(' ')).toMatch(/Trimmed/);
+  });
+
+  it('leaves an actorless batch alone', () => {
+    // An engine op, or a journal written before the guard existed. Those
+    // replay exactly as they ran — the same scoping `deploy_agent`'s ownership
+    // guard uses.
+    const out = applyOps(
+      createSeedState('drajk'),
+      [{ op: 'adjust_disposition', factionId: 'freeworlds', towardFactionId: 'meridian', delta: -15 }],
+      'model',
+    );
+    expect(out.rejections).toHaveLength(0);
   });
 });

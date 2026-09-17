@@ -2337,6 +2337,47 @@ reducer sets the price. Neither half is resolution's to decide. And
 nothing further fires at the cap on purpose — the penalty there is already
 crippling, and a terminal state on top of it would charge twice for one decision.
 
+### Disposition needs you to be in the room
+
+`adjust_disposition` checked that both factions existed and were not the same
+one, and **nothing else** — no actor test, and a magnitude bounded only by the
+±100 clamp on the result. So a power could set what two *other* powers thought
+of each other, by any amount, permanently, for free.
+
+The archive says how ordinary the legitimate uses are and how rare the hole is:
+across every saved campaign, **621 of 625** movements are "mine toward them"
+(418) or "theirs toward me" (203). The four that are neither are the defect, and
+two of them are one turn of the creative playtest — `actor=ojjul` moving
+`freeworlds → meridian` and `vigil → meridian` by −15 each.
+
+That is strictly better than the mechanic built to do something similar:
+`sedition` reaches a power's own institutions for `AGENT_COST`, a slot against
+`maxAgentsFor` and an exposure roll. The same shape `adjust_dissent` was
+narrowed for, and this file already names that one "the most cost-effective
+hostile act in the game".
+
+Two rules now, both mirroring guards that already exist:
+
+- **You must be one of the two.** Either your opinion of them moved or theirs of
+  you did. Scoped to a live actor like `deploy_agent`'s ownership guard, so an
+  engine op or an older journal replays exactly as it ran.
+- **`MAX_NARRATIVE_DISPOSITION` (25), trimmed not rejected**, the same shape as
+  `MAX_NARRATIVE_CREDITS`. Every movement the reducer itself charges is small
+  and reasoned — 5 for a commitment, 6 a hull for suborning, 6 a turn for a
+  default, 25 for breaking a pact — and this one could swing a relationship four
+  times further than repudiating a treaty does. Disposition has **no decay**,
+  which is what makes the size matter: it is not a mood that wears off, it is
+  the permanent record of what two powers think of each other.
+
+> **One saved campaign replays differently, and that is the fix working.**
+> `creative_0907` goes from 12 rejected ops to 14 — the two the Combine used to
+> poison Meridian with. No other save moves. The one prior change to touch
+> replay this way, the `form_treaty` extraction split, was given a journal-version
+> exemption because the old behaviour was *legitimate*: those treaties really
+> had been negotiated. Here the old behaviour is the exploit, and the campaign
+> that replays differently is the adversarial playtest run to find exactly this.
+> Re-running it faithfully would mean reproducing the hole.
+
 ### Dissent moves one way, on your own faction only
 
 `adjust_dissent` had the same unguarded shape, and raising the ceiling to 8 made

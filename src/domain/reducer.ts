@@ -164,6 +164,7 @@ import {
   DOCTRINE_TEXT_DISSENT,
   getSystem,
   MAX_NARRATIVE_CREDITS,
+  MAX_NARRATIVE_DISPOSITION,
   MAX_TREATY_INCOME_PER_TURN,
   isMovementType,
   ledgerFor,
@@ -1505,8 +1506,49 @@ export function applyOps(
           reject(raw, 'illegal_value', `A faction cannot hold a disposition toward itself.`);
           break;
         }
+        // **You must be one of the two.** Either your opinion of them moved, or
+        // theirs of you did — both are ordinary and between them account for
+        // 621 of the 625 movements across every saved campaign.
+        //
+        // The four that were neither are the hole: `actor=ojjul` moving
+        // `freeworlds → meridian` and `vigil → meridian` by −15 each, in one
+        // turn. A power poisoning two other powers against a third, for free,
+        // permanently — disposition has no decay — and strictly better than the
+        // `sedition` operative, which reaches a power's own institutions for
+        // 150 credits, a slot against `maxAgentsFor` and an exposure roll. The
+        // same hole `adjust_dissent` had before it was narrowed, and it is
+        // named in this file as "the most cost-effective hostile act in the
+        // game".
+        //
+        // Scoped to a live actor, like the ownership guards on `deploy_agent`:
+        // an actorless batch is an engine op or a journal written before the
+        // guard existed, and those replay exactly as they ran.
+        if (
+          actor !== undefined &&
+          op.factionId !== actor &&
+          op.towardFactionId !== actor
+        ) {
+          reject(
+            raw,
+            'illegal_value',
+            `${nameFor(state, actor)} cannot decide what ${nameFor(state, op.factionId)} thinks of ${nameFor(state, op.towardFactionId)}. Move your own standing, or theirs toward you.`,
+          );
+          break;
+        }
         const before = f.disposition[op.towardFactionId] ?? 0;
-        const after = Math.max(-100, Math.min(100, before + op.delta));
+        // Bounded like narrative credits, and for the same reason: every
+        // movement the reducer itself charges is small and reasoned, and this
+        // one was limited only by the clamp on the result — so one narrated
+        // sentence could swing a relationship four times further than
+        // repudiating a treaty does.
+        let delta = op.delta;
+        if (Math.abs(delta) > MAX_NARRATIVE_DISPOSITION) {
+          delta = Math.sign(delta) * MAX_NARRATIVE_DISPOSITION;
+          const trimmed = `Trimmed a ${op.delta} swing in ${nameFor(state, op.factionId)}'s regard for ${nameFor(state, op.towardFactionId)} to ${delta}; no single act moves an opinion further.`;
+          notes.push(trimmed);
+          logEvent(state, 'clamp', trimmed, op.factionId);
+        }
+        const after = Math.max(-100, Math.min(100, before + delta));
         f.disposition[op.towardFactionId] = after;
         break;
       }

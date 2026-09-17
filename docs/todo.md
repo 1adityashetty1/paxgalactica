@@ -49,6 +49,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~94~~ | ~~loans, after the first one is signed~~ | small | **(a) BUILT**, with the default model it exposed; (b) wants a playtest, (c) settled |
 | ~~93~~ | ~~three things the asset fields still cannot say~~ | small | **BUILT** — a catalogue, `consume_asset`, speculative value, assets at the table |
 | ~~80~~ | ~~an advisor that costs an action~~ | medium | **BUILT** — with a structural guard against it becoming a solver |
+| ~~112~~ | ~~a power could decide what two other powers thought of each other~~ | small | **FIXED** — `adjust_disposition` had no actor test and no magnitude bound. 4 of 625 archived movements were the hole; two are one turn of the creative playtest |
 | **92** | two claims only a campaign can settle | — | needs play, not code |
 | ~~95~~ | ~~playtests are billed to the subscription~~ | medium | **MOVED** to `docs/architecture.md` A.1 — an architecture item, and step 1 of packaging the game |
 | ~~97~~ | ~~tolls on the map, agents in the System tab~~ | small | **BUILT** — and the toll attribution had to be recorded in `routeEarnings`, not recomputed |
@@ -1711,6 +1712,42 @@ The ladder moved `agentVeterancy`/`agentStanding` into `diplomacy.ts` beside
 reducer into the serializer is a cycle waiting to happen.
 
 Board unchanged at 3/6/5/4/4.
+
+## 112. FIXED — a power could decide what two other powers thought of each other
+
+Found 2026-09-16 while answering *"is there not a disposition op?"* — there is,
+and it was almost unguarded. `adjust_disposition` checked that both factions
+existed and were not the same one, and nothing else: **no actor test**, and a
+magnitude bounded only by the ±100 clamp on the result.
+
+**The archive measured it.** Across every saved campaign, 621 of 625 movements
+are ordinary — 418 "mine toward them", 203 "theirs toward me". The four that are
+neither are the hole, and two are one turn of the creative playtest:
+`actor=ojjul` moving `freeworlds → meridian` and `vigil → meridian` by −15 each.
+A power poisoning two others against a third, free and permanent, since
+disposition has no decay.
+
+Strictly better than `sedition`, which reaches a power's **own** institutions for
+150 credits, a slot against `maxAgentsFor` and an exposure roll. The same shape
+`adjust_dissent` was narrowed for.
+
+Two rules: **you must be one of the two**, scoped to a live actor so engine ops
+and older journals replay as they ran; and `MAX_NARRATIVE_DISPOSITION` (25),
+trimmed rather than rejected. 25 puts a narrated act at parity with the heaviest
+thing the reducer charges — breaking a pact — and no higher.
+
+**One save replays differently and it should.** `creative_0907` goes 12 → 14
+rejected ops; no other save moves. The prior change to touch replay this way
+(the `form_treaty` extraction split) got a journal-version exemption because the
+old behaviour was legitimate — those treaties really were negotiated. Here the
+old behaviour is the exploit, and the campaign that diverges is the adversarial
+playtest run to find exactly this. Replaying it faithfully would mean
+reproducing the hole.
+
+**Not fixed, and filed by this:** sowing discord between two rivals is a real
+play with **no priced path at all** now. `sedition` moves a power's own dissent;
+no agent effect moves disposition between third parties. The free path is closed
+and no paid one was opened, which is a gap rather than a decision.
 
 ## 111. BUILT — a bot with grievances, and a price on trading people
 
