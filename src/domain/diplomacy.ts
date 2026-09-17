@@ -870,6 +870,20 @@ export const PEACE_TREATIES = ['non_aggression', 'ceasefire', 'mutual_defense'] 
  */
 export const TREATY_GOODWILL = 10;
 
+/**
+ * The most regard one `discord` operative can ever destroy.
+ *
+ * Set at `PACT_BREAKING_REPUTATION_COST * 2` — twice what every onlooker
+ * charges a power for breaking a pact. That is the comparison that matters:
+ * this is somebody buying, for 100 credits and a slot, rather more ill will
+ * than a public betrayal earns, and buying it against a pair they are not in.
+ *
+ * It also makes the mechanic's whole cost legible, which a rate cannot: at 2 a
+ * turn an unburned operative reaches the ceiling in ten turns of a
+ * thirty-turn campaign, and is then worth nothing but the upkeep.
+ */
+export const MAX_DISCORD_TOTAL = 20;
+
 export const PACT_BREAKING_REPUTATION_COST = 10;
 
 export const TreatySchema = z.object({
@@ -925,6 +939,7 @@ export const AGENT_MISSIONS = [
   'subversion',
   'theft',
   'defection',
+  'discord',
   'assassination',
 ] as const;
 export const AgentMissionSchema = z.enum(AGENT_MISSIONS);
@@ -938,6 +953,8 @@ export const AGENT_MISSION_MEANING: Record<AgentMission, string> = {
   sabotage: 'destroys fleet strength every turn it succeeds; loud, and easier to trace',
   defection:
     'talks crews out of the target\'s service and into yours, one or two hulls at a time. How many is your guile against their resolve, not your choice — and a power resolute enough simply cannot be turned',
+  discord:
+    'turns the power whose world this is against a THIRD power — forged grievances, planted letters, a rumour that keeps arriving. Slow, permanent, and the only mission aimed at a quarrel you are not in',
   assassination:
     'ONE attempt at a decapitating strike, then the operative is gone either way. Success is a heavy one-off blow and a collapse in relations; failure almost always ends with the agent caught',
 };
@@ -968,6 +985,13 @@ export const AGENT_COST: Record<AgentMission, number> = {
   subversion: 60,
   defection: 80,
   sabotage: 80,
+  // Above every persistent mission and below the one-shot strike. What it buys
+  // is **permanent** — disposition has no decay, where `sedition`'s dissent is
+  // clawed back at `DISSENT_DECAY` a turn — and it is the only mission that
+  // reaches two powers at once, neither of them the buyer. A starting figure,
+  // set to make the mechanic exercisable rather than to settle it: see item 113
+  // for the argument that it is probably still too cheap.
+  discord: 100,
   assassination: 150,
 };
 
@@ -988,6 +1012,11 @@ export const MISSION_PROFILE: Record<AgentMission, MissionProfile> = {
   // Riskier than theft — you are talking to people who may report you — but
   // it persists, because a defection network is a standing arrangement.
   defection: { exposureRisk: 4, oneShot: false, effectMultiplier: 1 },
+  // Riskier than subversion, and for a reason the fiction supplies: forging a
+  // grievance between two powers means handling letters, go-betweens and money
+  // that all belong to somebody else, and being caught at it is the sort of
+  // thing all three hear about.
+  discord: { exposureRisk: 5, oneShot: false, effectMultiplier: 1 },
   // A near-coin-flip on being caught, in exchange for one heavy blow.
   assassination: { exposureRisk: 9, oneShot: true, effectMultiplier: 4 },
 };
@@ -999,6 +1028,23 @@ export const MISSION_PROFILE: Record<AgentMission, MissionProfile> = {
  * trade being made and the reducer can apply it deterministically.
  */
 export const AgentEffectSchema = z.discriminatedUnion('kind', [
+  z.object({
+    /**
+     * Turn one power against a **third**, which no other effect can reach.
+     *
+     * `sedition` moves a power's own dissent; this moves their **regard** for
+     * somebody else. The difference is decay: dissent is shed at
+     * `DISSENT_DECAY` a turn and disposition is shed never, so the same
+     * per-turn figure would be strictly and permanently worse. Hence a rate
+     * this small, and a **lifetime** bound on top of it — `MAX_DISCORD_TOTAL`
+     * is the number that actually decides what the mission's 100 credits buys.
+     */
+    kind: z.literal('discord'),
+    /** The power the host is being turned against. Never the operative's owner. */
+    towardFactionId: z.string().min(1),
+    /** Regard lost per turn on success. */
+    perTurn: z.number().int().min(1).max(2),
+  }),
   z.object({
     kind: z.literal('hull_damage'),
     /** Fleet strength destroyed per turn on success. */
@@ -1069,6 +1115,11 @@ export const DEFAULT_COVERT_EFFECT: Record<AgentMission, AgentEffect> = {
   theft: { kind: 'income_penalty', perTurn: 10 },
   subversion: { kind: 'stat_debuff', stat: 'industry', magnitude: 1 },
   sabotage: { kind: 'hull_damage', perTurn: 2 },
+  // The only default that cannot be complete: `discord` needs a third power
+  // named, and there is no sensible guess at which. A routed covert action
+  // that reaches this is rejected for it, which is the honest outcome — the
+  // arbiter has to say who the quarrel is with.
+  discord: { kind: 'discord', towardFactionId: 'unnamed', perTurn: 1 },
   defection: { kind: 'crew_defection', perTurn: 1 },
   // One attempt, quadrupled by the mission profile, then the operative is gone.
   assassination: { kind: 'stat_debuff', stat: 'resolve', magnitude: 1 },
@@ -1109,6 +1160,17 @@ export const AgentSchema = z.object({
    * the point: the operative who survives is the operative who gets good.
    */
   operations: z.number().int().min(0).default(0),
+  /**
+   * How much regard this operative has already destroyed, against
+   * `MAX_DISCORD_TOTAL`.
+   *
+   * **A lifetime bound rather than only a rate**, because a rate bounds the
+   * speed and leaves the total to depend on how long the operative happens to
+   * survive — which is a dice roll, and a poor thing to price a permanent
+   * effect against. With a ceiling, 100 credits buys a known quantity of
+   * permanent ill will instead of an annuity.
+   */
+  discordMoved: z.number().int().min(0).default(0),
   /**
    * How many times this face has been caught. **Permanent, and it never
    * decays.**
@@ -1197,6 +1259,8 @@ export function describeEffect(effect: AgentEffect): string {
       return `+${effect.perTurn} dissent a turn in the target's own institutions`;
     case 'intel':
       return 'reveals hidden orders';
+    case 'discord':
+      return `−${effect.perTurn} a turn in the host's regard for ${effect.towardFactionId}, to a lifetime ${MAX_DISCORD_TOTAL}`;
   }
 }
 

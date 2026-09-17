@@ -4,6 +4,7 @@ import type { OpInput } from '../src/domain/ops.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import {
   AGENT_VETERAN_THRESHOLDS,
+  MAX_DISCORD_TOTAL,
   MISSION_PROFILE,
   agentStanding,
   agentVeterancy,
@@ -295,7 +296,7 @@ describe('a thief receives what it steals', () => {
         systemId: 'tor-3', mission: 'theft',
         effect: { kind: 'income_penalty', perTurn: 10 },
         cover: 'a factor',
-        targetCommanderId: null, name: '', operations: 0, timesCaught: 0, deployedTurn: 0, exposed: false, successChance: 50,
+        targetCommanderId: null, name: '', operations: 0, timesCaught: 0, discordMoved: 0, deployedTurn: 0, exposed: false, successChance: 50,
       },
     ] as never;
     return s;
@@ -358,7 +359,7 @@ describe('every covert operation in one declaration is routed', () => {
         mission: 'assassination',
         effect: { kind: 'stat_debuff', stat: 'resolve', magnitude: 1 },
         cover: 'a factor',
-        targetCommanderId: null, name: '', operations: 0, timesCaught: 0,
+        targetCommanderId: null, name: '', operations: 0, timesCaught: 0, discordMoved: 0,
       },
     ];
     const out = routeCovertAction(ops, 'success', both, 'meridian');
@@ -663,7 +664,7 @@ describe('an operative gets better, and being caught is permanent', () => {
       mission: 'theft', effect: { kind: 'income_penalty', perTurn: 4 },
       successChance: 40, exposed: true, deployedTurn: 0, cover: '',
       targetCommanderId: null, name: 'Ravel Coldwake',
-      operations: AGENT_VETERAN_THRESHOLDS[1], timesCaught: 1,
+      operations: AGENT_VETERAN_THRESHOLDS[1], timesCaught: 1, discordMoved: 0,
     });
     s.assets.push({
       id: 'ast-home', kind: 'operative', text: 'them', heldBy: 'drajk',
@@ -699,7 +700,7 @@ describe('an operative gets better, and being caught is permanent', () => {
       id: 'agt-theirs', ownerFactionId: 'meridian', systemId: host.id,
       mission: 'theft', effect: { kind: 'income_penalty', perTurn: 4 },
       successChance: 40, exposed: true, deployedTurn: 0, cover: '',
-      targetCommanderId: null, name: 'Odile Brandt', operations: 3, timesCaught: 1,
+      targetCommanderId: null, name: 'Odile Brandt', operations: 3, timesCaught: 1, discordMoved: 0,
     });
     s.assets.push({
       id: 'ast-theirs', kind: 'operative', text: 'them', heldBy: 'drajk',
@@ -728,7 +729,7 @@ describe('an operative gets better, and being caught is permanent', () => {
       id: 'agt-ours', ownerFactionId: 'drajk', systemId: 'ilv-6',
       mission: 'theft', effect: { kind: 'income_penalty', perTurn: 4 },
       successChance: 40, exposed: true, deployedTurn: 0, cover: '',
-      targetCommanderId: null, name: 'Kess Skeln', operations: 2, timesCaught: 1,
+      targetCommanderId: null, name: 'Kess Skeln', operations: 2, timesCaught: 1, discordMoved: 0,
     });
     s.assets.push({
       id: 'ast-ours', kind: 'operative', text: 'them', heldBy: 'drajk',
@@ -744,5 +745,139 @@ describe('an operative gets better, and being caught is permanent', () => {
     );
     expect(out.rejections.map((r) => r.code)).toContain('illegal_value');
     expect(out.state.assets.find((a) => a.kind === 'dossier')).toBeUndefined();
+  });
+});
+
+/**
+ * `discord`: the only mission aimed at a quarrel the buyer is not in.
+ *
+ * Filed as 113 when **112** closed the free route — a power could simply emit
+ * `adjust_disposition` between two others — and left no paid one. What it buys
+ * is **permanent**, because disposition has no decay where `sedition`'s dissent
+ * is clawed back at `DISSENT_DECAY` a turn, so the rate is small and the real
+ * bound is a lifetime ceiling.
+ */
+describe('setting two other powers against each other', () => {
+  const regard = (s: WorldState, who: string, of: string) =>
+    s.factions.find((f) => f.id === who)!.disposition[of] ?? 0;
+
+  /** A world the Vigil holds, so Drajk can work on the Vigil against Meridian. */
+  const theirs = (s: WorldState) =>
+    s.systems.find((x) => x.controllerFactionId === 'vigil')!.id;
+
+  const deploy = (s: WorldState, effect: Record<string, unknown>, systemId?: string) =>
+    applyOps(
+      s,
+      [{ op: 'deploy_agent', systemId: systemId ?? theirs(s), mission: 'discord', effect }],
+      'model',
+      'drajk',
+    );
+
+  it('moves the host against a third power, and nobody against the buyer', () => {
+    const s = createSeedState('drajk');
+    const host = theirs(s);
+    const before = regard(s, 'vigil', 'meridian');
+    const mine = regard(s, 'vigil', 'drajk');
+    // Placed directly at a success chance that cannot fail. Deploying it and
+    // un-exposing it each tick looked equivalent and is not: exposure is
+    // charged DURING the tick, so resetting the flag afterwards re-triggers the
+    // penalty every turn and the test ends up measuring exposure rather than
+    // the effect.
+    s.agents.push({
+      id: 'agt-d', ownerFactionId: 'drajk', systemId: host, mission: 'discord',
+      effect: { kind: 'discord', towardFactionId: 'meridian', perTurn: 2 },
+      successChance: 100, exposed: false, deployedTurn: 0, cover: '',
+      targetCommanderId: null, name: 'Sherrin Greywake',
+      operations: 0, timesCaught: 0, discordMoved: 0,
+    });
+
+    let st = s;
+    for (let i = 0; i < 4; i++) st = tickTurn(st).state;
+    expect(regard(st, 'vigil', 'meridian')).toBe(before - 8);
+
+    // The operative is working on somebody else's quarrel, so the BUYER's
+    // standing is not what it moves. Measured against a control, because a tick
+    // moves disposition for reasons of its own — Drajk's seeded raiding charges
+    // reputation with uninvolved powers every turn — and an absolute assertion
+    // would be pinning those instead.
+    let control = createSeedState('drajk');
+    for (let i = 0; i < 4; i++) control = tickTurn(control).state;
+    expect(regard(st, 'vigil', 'drajk')).toBe(regard(control, 'vigil', 'drajk'));
+    expect(mine).toBeDefined();
+  });
+
+  it('stops at a lifetime ceiling rather than earning forever', () => {
+    // A rate bounds the speed and leaves the total to depend on how long the
+    // operative happens to survive, which is a dice roll — a poor thing to
+    // price a permanent effect against.
+    const s = createSeedState('drajk');
+    s.factions.find((f) => f.id === 'drajk')!.credits = 5000;
+    const before = regard(s, 'vigil', 'meridian');
+    let st = deploy(s, { kind: 'discord', towardFactionId: 'meridian', perTurn: 2 }).state;
+    // Kept alive deliberately: the ceiling, not exposure, is what must stop it.
+    for (let i = 0; i < 40; i++) {
+      st = tickTurn(st).state;
+      const a = st.agents.find((x) => x.mission === 'discord');
+      if (a) a.exposed = false;
+    }
+    expect(before - regard(st, 'vigil', 'meridian')).toBeLessThanOrEqual(MAX_DISCORD_TOTAL);
+    const spent = st.agents.find((x) => x.mission === 'discord')!;
+    expect(spent.discordMoved).toBeLessThanOrEqual(MAX_DISCORD_TOTAL);
+  });
+
+  it('refuses a quarrel the buyer is in, on either side', () => {
+    const s = createSeedState('drajk');
+    s.factions.find((f) => f.id === 'drajk')!.credits = 5000;
+    // Turning them against ME is just `adjust_disposition`, which 112 closed.
+    expect(
+      deploy(s, { kind: 'discord', towardFactionId: 'drajk', perTurn: 1 }).rejections.map(
+        (r) => r.code,
+      ),
+    ).toContain('illegal_value');
+    // And working on my OWN people is not a quarrel between two others.
+    const mine = s.systems.find((x) => x.controllerFactionId === 'drajk')!.id;
+    expect(
+      deploy(s, { kind: 'discord', towardFactionId: 'meridian', perTurn: 1 }, mine).rejections.map(
+        (r) => r.code,
+      ),
+    ).toContain('illegal_value');
+  });
+
+  it('refuses an unaligned world and an invented power', () => {
+    const s = createSeedState('drajk');
+    s.factions.find((f) => f.id === 'drajk')!.credits = 5000;
+    const nobodys = s.systems.find((x) => x.controllerFactionId === null)!.id;
+    expect(
+      deploy(s, { kind: 'discord', towardFactionId: 'meridian', perTurn: 1 }, nobodys).rejections.map(
+        (r) => r.code,
+      ),
+    ).toContain('no_presence');
+    expect(
+      deploy(s, { kind: 'discord', towardFactionId: 'nowhere', perTurn: 1 }).rejections.map(
+        (r) => r.code,
+      ),
+    ).toContain('unknown_faction');
+  });
+
+  it('costs standing with BOTH powers when it is caught', () => {
+    // Every other mission has one victim. The forged letters were about
+    // somebody, and being exposed hands that power the evidence — which is the
+    // risk that makes this worth 100 rather than `subversion`'s 60.
+    const s = createSeedState('drajk');
+    s.agents.push({
+      id: 'agt-forge', ownerFactionId: 'drajk', systemId: theirs(s),
+      mission: 'discord', effect: { kind: 'discord', towardFactionId: 'meridian', perTurn: 2 },
+      successChance: 5, exposed: false, deployedTurn: 0, cover: '', targetCommanderId: null,
+      name: 'Doram Ashlott', operations: 0, timesCaught: 0, discordMoved: 0,
+    });
+    const before = { vigil: regard(s, 'vigil', 'drajk'), meridian: regard(s, 'meridian', 'drajk') };
+    let st = s;
+    for (let i = 0; i < 25 && !st.agents.find((a) => a.id === 'agt-forge')?.exposed; i++) {
+      st = tickTurn(st).state;
+    }
+    if (st.agents.find((a) => a.id === 'agt-forge')?.exposed) {
+      expect(regard(st, 'vigil', 'drajk')).toBeLessThan(before.vigil);
+      expect(regard(st, 'meridian', 'drajk')).toBeLessThan(before.meridian);
+    }
   });
 });

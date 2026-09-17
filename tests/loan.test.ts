@@ -442,7 +442,7 @@ describe('loans', () => {
           mission: 'surveillance' as const, effect: { kind: 'intel' as const, revealsOrders: true },
           cover: 'a factor',
           targetCommanderId: null,
-          name: '', operations: 0, timesCaught: 0, deployedTurn: 0, exposed: false, successChance: 50,
+          name: '', operations: 0, timesCaught: 0, discordMoved: 0, deployedTurn: 0, exposed: false, successChance: 50,
         },
       ],
     };

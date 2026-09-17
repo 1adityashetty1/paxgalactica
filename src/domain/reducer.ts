@@ -46,6 +46,7 @@ import {
   MISSION_PROFILE,
   PACT_BREAKING_REPUTATION_COST,
   TREATY_GOODWILL,
+  MAX_DISCORD_TOTAL,
   PEACE_TREATIES,
   isTreatyLive,
   treatyBetween,
@@ -3465,6 +3466,45 @@ export function applyOps(
           break;
         }
 
+        // **Discord names a quarrel you are not in**, and all three of these
+        // are the same rule said three ways: the buyer must be outside it.
+        // Without them the mission is `adjust_disposition` with extra steps —
+        // and 112 closed that free route precisely because a power deciding
+        // what two others think of each other is the exploit.
+        if (op.effect.kind === 'discord') {
+          const host = state.systems.find((x) => x.id === op.systemId);
+          const whose = host?.controllerFactionId ?? null;
+          const toward = op.effect.towardFactionId;
+          if (!factionExists(toward)) {
+            reject(raw, 'unknown_faction', `No faction "${toward}" to turn them against.`);
+            break;
+          }
+          if (whose === null) {
+            reject(
+              raw,
+              'no_presence',
+              `${op.systemId} answers to nobody, so there is nobody there to turn against ${nameFor(state, toward)}.`,
+            );
+            break;
+          }
+          if (toward === ownerId || whose === ownerId) {
+            reject(
+              raw,
+              'illegal_value',
+              'Discord is for a quarrel between two other powers. Your own standing is not it.',
+            );
+            break;
+          }
+          if (toward === whose) {
+            reject(
+              raw,
+              'illegal_value',
+              `${nameFor(state, whose)} cannot be turned against itself.`,
+            );
+            break;
+          }
+        }
+
         const taken = namesInUse(state);
         const who = unusedName(taken, (n) =>
           agentName(ownerId, state.turn, `agent:${op.systemId}:${state.agents.length}:${n}`),
@@ -3498,6 +3538,7 @@ export function applyOps(
           exposed: false,
           operations: 0,
           timesCaught: 0,
+          discordMoved: 0,
           cover: op.cover,
           // Only an assassination can be aimed at a person; every other mission
           // works against a power. Silently dropped rather than rejected, the
@@ -5672,6 +5713,17 @@ export function tickTurn(input: WorldState): TickResult {
             -100,
             (target.disposition[owner.id] ?? 0) - outrage,
           );
+          // **Discord caught is a scandal with two injured parties.** The
+          // forged letters were about somebody, and being exposed hands that
+          // power the evidence — so the third power resents the forger too,
+          // which is the risk that makes the mission worth 100 rather than 60.
+          // Every other mission has one victim and this one has two on both
+          // sides of the ledger.
+          if (agent.effect.kind === 'discord') {
+            moveRegard(state, agent.effect.towardFactionId, owner.id, -outrage);
+            const scandal = `${target.name} exposes ${owner.name}'s hand in forging its quarrel with ${nameFor(state, agent.effect.towardFactionId)}.`;
+            logEvent(state, 'diplomacy', scandal, target.id);
+          }
         }
       }
       continue;
@@ -5714,6 +5766,38 @@ export function tickTurn(input: WorldState): TickResult {
           watchNotes.set(agent.id, `came close to ${mark.name} on ${host.name} and no closer.`);
         }
       }
+    }
+
+    if (agent.effect.kind === 'discord') {
+      // The host's regard for a third power, and never the owner's own
+      // standing with anybody — the operative is working on somebody else's
+      // quarrel, which is the whole of what 100 credits buys here.
+      const left = MAX_DISCORD_TOTAL - agent.discordMoved;
+      const moved = Math.min(agent.effect.perTurn * profile.effectMultiplier, Math.max(0, left));
+      if (moved <= 0) {
+        // Spent. Reported rather than silent, because an operative that has
+        // stopped earning is an operative to recall — and "nothing to report"
+        // is the load-bearing case the watch section exists for.
+        watchNotes.set(
+          agent.id,
+          `has said all there is to say against ${nameFor(state, agent.effect.towardFactionId)} on ${host.name}.`,
+        );
+      } else {
+        agent.discordMoved += moved;
+        moveRegard(state, target.id, agent.effect.towardFactionId, -moved);
+        watchNotes.set(
+          agent.id,
+          `turns ${target.name} a little further against ${nameFor(state, agent.effect.towardFactionId)} (${agent.discordMoved} of ${MAX_DISCORD_TOTAL} spent).`,
+        );
+        logEvent(
+          state,
+          'intel',
+          `Your operative on ${host.name} sets ${target.name} against ${nameFor(state, agent.effect.towardFactionId)}, ${moved} at a time.`,
+          agent.ownerFactionId,
+          [agent.ownerFactionId],
+        );
+      }
+      continue;
     }
 
     if (agent.effect.kind === 'crew_defection') {

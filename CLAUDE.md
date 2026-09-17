@@ -2457,7 +2457,37 @@ costs the breaker 25 disposition with the other party.
 | `surveillance` | 1 in 20 | yes | 1 |
 | `theft` / `subversion` | 2 in 20 | yes | 1 |
 | `sabotage` | 3 in 20 | yes | 1 |
+| `discord` | 5 in 20 | yes | 1 |
 | `assassination` | **9 in 20** | **no** | **4** |
+
+**`discord` is the only mission aimed at a quarrel the buyer is not in.** It
+turns the power whose world the operative sits on against a **third** power,
+named in `effect.towardFactionId`. It exists because closing the free route —
+`adjust_disposition` between two powers that were neither you nor your
+counterparty — left a real play with no priced path at all.
+
+Three things make it unlike the rest, and all three set its price:
+
+- **Permanent.** `sedition`'s dissent is clawed back at `DISSENT_DECAY` a turn;
+  regard is shed never. The same per-turn figure would be strictly worse
+  forever, so the rate is 1–2 and the real bound is `MAX_DISCORD_TOTAL` (20) —
+  a **lifetime** ceiling on the operative, because a rate bounds the speed and
+  leaves the total to depend on how long they happen to survive, which is a dice
+  roll and a poor thing to price a permanent effect against.
+- **It reaches two powers**, where every other effect reaches one — and neither
+  of them is the buyer. All three guards are the same rule said three ways: the
+  host power, the named power and the owner must be three different factions.
+- **Caught is a scandal with two victims.** The forged letters were about
+  somebody, and exposure hands that power the evidence, so both resent the
+  forger. Every other mission has one injured party.
+
+`AGENT_COST.discord` is **100** — above every persistent mission, below the
+one-shot strike. It is a starting figure chosen to make the mechanic
+exercisable rather than to settle it, and item 113 records the argument that it
+is probably still too cheap: what is bought is permanent, aimed at a pair the
+buyer is outside, and — since `BOT_PEACE_FLOOR` is 20 — capable of **unlocking a
+war the bots were withholding**, with the buyer paying neither hulls nor
+reputation.
 
 `successChance` is computed in code from the owner's guile against the target's
 resolve, never chosen by a model. Agents resolve each tick against the same

@@ -50,7 +50,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~93~~ | ~~three things the asset fields still cannot say~~ | small | **BUILT** — a catalogue, `consume_asset`, speculative value, assets at the table |
 | ~~80~~ | ~~an advisor that costs an action~~ | medium | **BUILT** — with a structural guard against it becoming a solver |
 | ~~112~~ | ~~a power could decide what two other powers thought of each other~~ | small | **FIXED** — `adjust_disposition` had no actor test and no magnitude bound. 4 of 625 archived movements were the hole; two are one turn of the creative playtest |
-| **113** | sowing discord between two rivals has no priced path | medium | 112 closed the free one and opened no paid one. The price is the open question and **60 is too cheap** — what is bought is permanent, aimed at two powers at once, and paid for by somebody who is not in the war |
+| ~~113~~ | ~~sowing discord between two rivals has no priced path~~ | medium | **BUILT** — a `discord` mission at 100 with a **lifetime** ceiling of 20, not a rate cap. Deliberately a starting price: the argument that it is still too cheap is recorded in the item |
 | **92** | two claims only a campaign can settle | — | needs play, not code |
 | ~~95~~ | ~~playtests are billed to the subscription~~ | medium | **MOVED** to `docs/architecture.md` A.1 — an architecture item, and step 1 of packaging the game |
 | ~~97~~ | ~~tolls on the map, agents in the System tab~~ | small | **BUILT** — and the toll attribution had to be recorded in `routeEarnings`, not recomputed |
@@ -76,11 +76,7 @@ closed on 2026-09-15 and 2026-09-16. **98** went with them, and its measurement
 is worth reading before the next bot change: the item's premise was wrong.
 
 What remains is **92** and **94(b)**, which are claims only a campaign can
-settle, and one design item:
-
-- **113** — sowing discord has no priced path, because **112** closed the free
-  one. The mechanism is obvious and the price is not; the item argues 60 is too
-  cheap and that a rate cap is the wrong bound for a permanent effect.
+settle. **Every design item is closed.**
 
 **95 has left this file**: it was infrastructure rather than a feature — nothing
 in the game gets better for building it — and questions of that kind now live in
@@ -1735,7 +1731,15 @@ reducer into the serializer is a cycle waiting to happen.
 
 Board unchanged at 3/6/5/4/4.
 
-## 113. OPEN — sowing discord has no priced path, and the price is the question
+## 113. BUILT — a priced path for sowing discord
+
+> **Built 2026-09-16 at 100 credits, deliberately as a starting figure.** The
+> argument below that the price is probably still too low is left standing on
+> purpose — it is the thing a campaign has to settle, and the mechanic had to be
+> exercisable before anyone could find out. A `discord` mission, exposure 5 in
+> 20, persistent, with `MAX_DISCORD_TOTAL` (20) as a **lifetime** ceiling rather
+> than a rate cap — which is the one design conclusion below that was adopted
+> rather than deferred.
 
 Filed 2026-09-16 by **112**, which closed the free route and opened no paid one.
 *"Convince the Vigil that Meridian betrayed them"* is a reasonable sentence a

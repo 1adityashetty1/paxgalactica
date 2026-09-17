@@ -356,10 +356,27 @@ victim, "sabotage the Vigil garrison", so it came back owned by the Vigil, and
 an agent owned by the faction it targets can never act. Omit it.
 
 The `mission` decides risk and persistence: `surveillance` (very low risk),
-`theft`, `subversion`, `defection`, `sabotage` (moderate), and `assassination`
-— **one attempt, quadruple effect, the operative spent either way, and usually
-caught.** Scale effects sanely: 2 hulls a turn is a nuisance, 12 is a
-catastrophe that should have taken a real operation.
+`theft`, `subversion`, `defection`, `sabotage` (moderate), `discord` (riskier),
+and `assassination` — **one attempt, quadruple effect, the operative spent
+either way, and usually caught.** Scale effects sanely: 2 hulls a turn is a
+nuisance, 12 is a catastrophe that should have taken a real operation.
+
+**`discord` is the one mission aimed at a quarrel you are not in.** Forged
+letters, a planted grievance, a rumour that keeps arriving — it turns the power
+whose world the operative sits on against a **third** power, named in
+`effect.towardFactionId`. Use it when a player wants two rivals at each other's
+throats rather than wanting anything for themselves.
+
+Three things about it are unlike every other mission:
+
+- **You are in neither half.** The host power and the named power must both be
+  somebody other than the actor. Turning them against *you* is not a mission, and
+  turning your own people against anyone is not either — both are rejected.
+- **It is permanent.** Every other effect fades: dissent decays, a debuff ends
+  when the operative is burned. Regard never recovers, which is why the rate is
+  1–2 a turn and why one operative can only ever destroy so much of it.
+- **Being caught is a scandal with two victims.** The letters were about
+  somebody, and exposure hands that power the evidence — so both resent you.
 
 ## Duration — two sources, never mixed
 
