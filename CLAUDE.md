@@ -1245,6 +1245,40 @@ the board, and the status is `voided` rather than `broken` — nobody repudiated
 it, the condition simply came true, so it carries no pact-breaking reputation
 cost.
 
+**A signature is worth something, and until now only breaking one was.** The
+cost was charged in code — 25 with the injured party plus
+`PACT_BREAKING_REPUTATION_COST` with every onlooker — and the reward was left to
+a model to remember, so a treaty was **all downside** in the ledger of standing.
+`TREATY_GOODWILL` (10) is paid pairwise at signature, and at **ratification**
+for a treaty gated on a council: a deal that has yet to be consented to has not
+been struck, and paying at signature would let a power buy standing with paper
+it never ratified.
+
+Deliberately less than breaking costs. The commitment path netted **exactly
+zero** — `+5` on establish and `−5` on dissolve, against a disposition that has
+no decay — so a two-party arrangement was free to swear and repudiate.
+`COMMITMENT_BREACH_COST` closes that at two parties, which is the size a
+marriage actually is; the multi-party case was already closed after a playtest
+repudiated a four-power compact in all three clauses and paid nothing.
+
+**Public, which is the whole difference from `COMMITMENT_GOODWILL`** — and it
+took two entries rather than one. A commitment is private business, so its log
+is scoped to the bound factions. A treaty is not, because
+`PACT_BREAKING_REPUTATION_COST` charges every onlooker for breaking one, which
+is only coherent if the onlookers knew there was one.
+
+> **Widening the existing entry was wrong and a test caught it.** `summary` is
+> model-written prose and routinely carries the substance — *"the Sennex lane,
+> quietly"* names the lane — so publishing it publishes the deal, which is the
+> exact leak that scoped that entry in the first place. The announcement is a
+> **second** entry carrying the parties and the type and nothing else. The fact
+> is public; the terms are not.
+
+Third parties' opinions do **not** move. Two powers signing a mutual defence
+pact might reasonably make a third warier (they are combining) or calmer (the
+Rim is steadier), and the sign is genuinely unknowable — a mechanic built on a
+guess is worse than one that is absent.
+
 **Signing under a fleet costs the power holding the fleet.** A lopsided-Vigil
 playtest put the identical ultimatum to all four powers with 1,020 hulls against
 24–39; three conceded, and **the two that conceded most ended the turn better

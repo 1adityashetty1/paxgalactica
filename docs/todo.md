@@ -60,7 +60,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~102~~ | ~~leaders, assigned per battle~~ | subsystem | **BUILT** — archetypes with generated names; the one-per-phase framing was wrong and is recorded as such |
 | ~~98~~ | ~~the doctrine bots cannot tell a friend from an enemy~~ | medium | **BUILT** — and the measurement said something sharper than the item: they do not attack friends, they fail to act on hatred. A peace floor and a grievance tie-break |
 | ~~111~~ | ~~trading a person cost nobody anything~~ | small | **BUILT** — repatriation buys goodwill, selling somebody on costs it with their power and with every onlooker, interrogation costs most |
-| **99** | ~~a marriage is a treaty~~ — half built | small | **EXCLUSIVITY BUILT** as `terms.exclusiveAgainst`, a list on the `tollTargets` precedent, keyed on `type` with the arbiter naming partners. What is left is **signature goodwill**, and the net-zero commitment hole underneath it |
+| ~~99~~ | ~~a marriage is a treaty, and treaties cannot say two things it needs~~ | small | **BUILT** — `terms.exclusiveAgainst` enforced from schema alone, and `TREATY_GOODWILL` paid publicly at signature. The net-zero commitment hole closed with it |
 | ~~104~~ | ~~the state document published raw ids~~ | small | **FIXED** — `lanes:` joined `hyperlaneEdges` with nothing giving them a name, so the model wrote `ilv-6` into prose |
 | ~~105~~ | ~~a commander's death cost nothing, and usually paid~~ | medium | **BUILT** — veterancy, and a successor who inherits the speciality. The thresholds had to be swept: the first guess was unreachable in a whole campaign |
 | ~~106~~ | ~~officers are five hand-written characters, and do nothing on a quiet turn~~ | medium | **BUILT** — generated names carrying the school as a title, and one passive each. A prerequisite for recruitment: choosing between officers needs them to differ off the battlefield |
@@ -76,16 +76,11 @@ closed on 2026-09-15 and 2026-09-16. **98** went with them, and its measurement
 is worth reading before the next bot change: the item's premise was wrong.
 
 What remains is **92** and **94(b)**, which are claims only a campaign can
-settle, and two design items:
+settle, and one design item:
 
 - **113** — sowing discord has no priced path, because **112** closed the free
   one. The mechanism is obvious and the price is not; the item argues 60 is too
   cheap and that a rate cap is the wrong bound for a permanent effect.
-- **99** — **exclusivity is built**: `terms.exclusiveAgainst`, a list of the
-  powers a treaty shuts out, enforced from schema alone. What remains is
-  **signature goodwill** — nothing in the treaty path moves disposition upward —
-  and the hole underneath it, where a commitment's +5 on establish and −5 on
-  dissolve net to zero and make a two-party marriage free to repudiate.
 
 **95 has left this file**: it was infrastructure rather than a feature — nothing
 in the game gets better for building it — and questions of that kind now live in
@@ -1312,6 +1307,29 @@ The real coarseness is a different axis, and a partner list does not touch it:
   fee alike, so an exclusive one blocks all three.
 
 So *against whom* now has an answer and *about what* does not.
+
+### BUILT 2026-09-16 — both halves
+
+**Signature goodwill** is `TREATY_GOODWILL` (10), paid pairwise in code at
+signature and at **ratification** for a treaty gated on a council: a deal not
+yet consented to has not been struck, and paying at signature would let a power
+buy standing with paper it never ratified. Less than breaking costs, so the
+sign-and-repudiate cycle is never profitable — which is precisely what the
+commitment path got wrong.
+
+**The net-zero hole is closed.** `COMMITMENT_BREACH_COST` makes dissolving cost
+more than establishing paid, at two parties, which is the size a marriage is.
+
+**Public took two log entries, not one.** Widening the existing entry was wrong
+and a test caught it: `summary` is model-written prose that routinely carries
+the substance — *"the Sennex lane, quietly"* names the lane — so publishing it
+publishes the deal, the exact leak that scoped that entry in the first place.
+The announcement is a second entry carrying the parties and the type and nothing
+else.
+
+**Onlookers' opinions do not move**, because the sign is unknowable: two powers
+signing a mutual defence pact might reasonably make a third warier or calmer,
+and a mechanic built on a guess is worse than one that is absent.
 
 ### The decision, made 2026-09-16: option 3, confirmed in schema
 

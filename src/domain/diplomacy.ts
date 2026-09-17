@@ -837,6 +837,39 @@ export const PEACE_TREATIES = ['non_aggression', 'ceasefire', 'mutual_defense'] 
  * a reputation. Without it, breaking a pact was a private matter between two
  * factions and treachery had no strategic price at all.
  */
+/**
+ * What signing a treaty is worth between its parties.
+ *
+ * **Nothing in the treaty path moved disposition upward**, while breaking one
+ * costs 25 with the injured party and `PACT_BREAKING_REPUTATION_COST` with
+ * every onlooker. So in the ledger of standing a treaty was **all downside**:
+ * the cost was charged in code and the reward was left to a model to remember,
+ * which is the shape of thing this codebase keeps having to undo. `TOLL_RESENTMENT`,
+ * `COERCION_RESENTMENT`, `SUBORN_DISPOSITION_COST` and `COMMITMENT_GOODWILL`
+ * are all charged by the reducer precisely because *"were they wronged"* and
+ * *"by how much"* are the judgements a model gets talked out of.
+ *
+ * **Public, which is the whole difference from `COMMITMENT_GOODWILL`.** A
+ * commitment is private business, so its goodwill is pairwise and its log entry
+ * is scoped to the bound factions. A treaty is not: `PACT_BREAKING_REPUTATION_COST`
+ * already charges every onlooker for breaking one, and that is only coherent if
+ * the onlookers knew it existed. So the signature is announced to everybody —
+ * **the fact of it, never its terms**, which stay scoped to the parties for the
+ * reason a private channel's substance must not be published.
+ *
+ * Third parties' opinions deliberately do **not** move. Two powers signing a
+ * mutual defence pact might reasonably make a third warier (they are combining)
+ * or calmer (the Rim is steadier), and the sign is genuinely unknowable —
+ * inventing one would be a mechanic built on a guess, which is worse than a
+ * mechanic that is absent.
+ *
+ * **Smaller than breaking costs, and that is load-bearing.** At 10 against a
+ * −25 grievance and a −10 reputation, signing and repudiating nets −15 and a
+ * public mark. The commitment path netted exactly zero and was free to cycle;
+ * this must not reproduce that.
+ */
+export const TREATY_GOODWILL = 10;
+
 export const PACT_BREAKING_REPUTATION_COST = 10;
 
 export const TreatySchema = z.object({

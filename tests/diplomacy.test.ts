@@ -16,6 +16,7 @@ import {
   atThisTable,
   mergeConcessions,
   type Concession,
+  TREATY_GOODWILL,
 } from '../src/domain/diplomacy.js';
 import { boundPayloadsToOutcome } from '../src/domain/development.js';
 import { applyOps, COERCION_RESENTMENT, tickTurn } from '../src/domain/reducer.js';
@@ -865,17 +866,26 @@ describe('signing under a fleet costs the power holding the fleet', () => {
 
     const out = applyOps(state, [accord], 'extraction', 'freeworlds');
     expect(out.rejections).toHaveLength(0);
+    // Against the goodwill the signature itself pays: coercion is charged on
+    // top of it, not instead of it, so a treaty signed under a fleet still
+    // reads as a treaty — it just costs its author more than it earns.
     expect(dispositionToward(out.state, 'freeworlds', 'vigil')).toBe(
-      before - COERCION_RESENTMENT,
+      before + TREATY_GOODWILL - COERCION_RESENTMENT,
     );
     expect(out.notes.join(' ')).toMatch(/ships over 1 of its worlds/);
   });
 
-  it('charges nothing for an ordinary negotiation', () => {
+  it('charges nothing for an ordinary negotiation, and pays for the signature', () => {
     const state = createSeedState('freeworlds');
     const before = dispositionToward(state, 'freeworlds', 'vigil');
     const out = applyOps(state, [accord], 'extraction', 'freeworlds');
-    expect(dispositionToward(out.state, 'freeworlds', 'vigil')).toBe(before);
+    // No coercion, so what is left is what signing is worth. Nothing in the
+    // treaty path moved disposition upward until this existed, which made a
+    // treaty all downside: breaking one costs 25 and a public mark, and signing
+    // one paid nothing.
+    expect(dispositionToward(out.state, 'freeworlds', 'vigil')).toBe(
+      before + TREATY_GOODWILL,
+    );
   });
 
   it('does not charge a guest who was invited in', () => {
@@ -900,7 +910,10 @@ describe('signing under a fleet costs the power holding the fleet', () => {
     const before = dispositionToward(invited, 'freeworlds', 'vigil');
 
     const out = applyOps(invited, [accord], 'extraction', 'freeworlds');
-    expect(dispositionToward(out.state, 'freeworlds', 'vigil')).toBe(before);
+    // The signature still pays; what is absent is the coercion charge.
+    expect(dispositionToward(out.state, 'freeworlds', 'vigil')).toBe(
+      before + TREATY_GOODWILL,
+    );
   });
 });
 

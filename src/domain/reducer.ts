@@ -9,6 +9,7 @@ import {
   type FibScale,
 } from './duration.js';
 import {
+  COMMITMENT_BREACH_COST,
   COMMITMENT_GOODWILL,
   commitmentIncomeFor,
   conflictingCommitment,
@@ -44,6 +45,7 @@ import {
   MAX_ASSET_YIELD,
   MISSION_PROFILE,
   PACT_BREAKING_REPUTATION_COST,
+  TREATY_GOODWILL,
   PEACE_TREATIES,
   isTreatyLive,
   treatyBetween,
@@ -3127,6 +3129,29 @@ export function applyOps(
         // yet — it does so when it is promoted in `tickTurn`, or the parties
         // would have nothing in force while the council deliberates.
         if (!pending) supersedePriorTreaties(state, treaty, notes);
+        // Signing is worth something, and until now only breaking was. Paid on
+        // the same event supersession runs on, so a treaty that takes force
+        // later pays when it takes force — `tickTurn` does it at promotion.
+        if (!pending) adjustCommitmentGoodwill(state, [...op.parties], TREATY_GOODWILL, notes);
+        // **That a pact exists is public; what is in it is not.**
+        //
+        // A second entry, and it has to be a second one rather than widening
+        // the entry above: `treaty.summary` is model-written prose and routinely
+        // carries the substance — *"the Sennex lane, quietly"* names the lane.
+        // Publishing that publishes the deal, which is the leak that scoped the
+        // first entry in the first place, and a test catches it.
+        //
+        // So this carries the parties and the type and nothing else. It is
+        // needed because `PACT_BREAKING_REPUTATION_COST` charges every onlooker
+        // for breaking a pact, which is only coherent if the onlookers knew
+        // there was one to break.
+        if (!pending) {
+          logEvent(
+            state,
+            'diplomacy',
+            `${nameFor(state, op.parties[0]!)} and ${nameFor(state, op.parties[1]!)} have signed a ${op.treatyType.replace(/_/g, ' ')}.`,
+          );
+        }
         logEvent(
           state,
           'diplomacy',
@@ -3917,7 +3942,17 @@ export function applyOps(
         found.status = 'dissolved';
         // Walking away takes the goodwill back, which is what makes a
         // commitment cost something to have made.
-        adjustCommitmentGoodwill(state, found.factionIds, -COMMITMENT_GOODWILL, notes);
+        // The goodwill comes back, **and a little more**. Returning exactly what
+        // it paid netted zero against a disposition that never decays, so a
+        // two-party arrangement was free to swear and repudiate — the hole that
+        // was already closed above two parties and left open at two, which is
+        // the size a marriage actually is.
+        adjustCommitmentGoodwill(
+          state,
+          found.factionIds,
+          -(COMMITMENT_GOODWILL + COMMITMENT_BREACH_COST),
+          notes,
+        );
 
         // And tearing up a MULTI-PARTY arrangement is public business, which
         // walking away from a two-party understanding is not. A playtest
@@ -5299,6 +5334,15 @@ export function tickTurn(input: WorldState): TickResult {
     // It replaces its predecessor now, not at signature — see
     // `supersedePriorTreaties`.
     supersedePriorTreaties(state, treaty, notes);
+    // And it pays its goodwill now, for the same reason: a deal a council has
+    // yet to consent to has not been struck, and paying at signature would let
+    // a power buy standing with paper it never ratified.
+    adjustCommitmentGoodwill(state, [...treaty.parties], TREATY_GOODWILL, notes);
+    logEvent(
+      state,
+      'diplomacy',
+      `${nameFor(state, treaty.parties[0]!)} and ${nameFor(state, treaty.parties[1]!)} have ratified a ${treaty.type.replace(/_/g, ' ')}.`,
+    );
     logEvent(state, 'diplomacy', `Treaty ratified and now in force: ${treaty.summary}.`);
     notes.push(`Ratified: ${treaty.summary}`);
     // A cession takes effect with the rest of the terms, not at signature, so a

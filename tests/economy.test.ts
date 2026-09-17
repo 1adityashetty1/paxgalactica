@@ -4,7 +4,11 @@ import { applyOps, tickTurn, MAX_ATTRITION_FRACTION } from '../src/domain/reduce
 import { CREDITS_PER_TON, HULL_SPEC, LIFTER_CARRY, hullUpkeep } from '../src/domain/hulls.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { AGENT_COST, MISSION_PROFILE } from '../src/domain/diplomacy.js';
-import { COMMITMENT_GOODWILL, MAX_COMMITMENT_SHARE } from '../src/domain/arbitration.js';
+import {
+  COMMITMENT_BREACH_COST,
+  COMMITMENT_GOODWILL,
+  MAX_COMMITMENT_SHARE,
+} from '../src/domain/arbitration.js';
 import {
   hullsAt,
   setShipsAt,
@@ -1106,11 +1110,18 @@ describe('a commitment binds people, so it moves how they see each other', () =>
     expect(disp(out.state, 'ojjul', 'freeworlds')).toBe(b + COMMITMENT_GOODWILL);
   });
 
-  it('takes it back when the commitment is dissolved', () => {
+  it('takes back more than it paid when the commitment is dissolved', () => {
+    // It used to return **exactly** what it paid, which netted zero against a
+    // disposition that never decays — so a two-party arrangement was free to
+    // swear and repudiate, and a dynastic marriage is exactly that size. The
+    // multi-party case was closed after a playtest repudiated a four-power
+    // compact in all three clauses and paid nothing; this is the same hole at
+    // two.
     const state = fresh();
     const before = disp(state, 'freeworlds', 'ojjul');
     const bound = applyOps(state, [bind(['freeworlds', 'ojjul'])], 'extraction', 'freeworlds');
     const id = bound.state.commitments.at(-1)!.id;
+    expect(disp(bound.state, 'freeworlds', 'ojjul')).toBe(before + COMMITMENT_GOODWILL);
 
     const out = applyOps(
       bound.state,
@@ -1118,7 +1129,7 @@ describe('a commitment binds people, so it moves how they see each other', () =>
       'model',
       'freeworlds',
     );
-    expect(disp(out.state, 'freeworlds', 'ojjul')).toBe(before);
+    expect(disp(out.state, 'freeworlds', 'ojjul')).toBe(before - COMMITMENT_BREACH_COST);
   });
 
   it('moves nothing for a commitment that binds only its author', () => {

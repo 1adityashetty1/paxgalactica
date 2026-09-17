@@ -212,6 +212,29 @@ export const MAX_COMMITMENT_INCOME = 25;
 export const COMMITMENT_GOODWILL = 5;
 
 /**
+ * What dissolving a two-party arrangement costs **on top of** returning the
+ * goodwill it paid.
+ *
+ * Without it the two net to **zero**: `+5` on establish and `−5` on dissolve,
+ * against a disposition that has no decay, made this the only reversible
+ * disposition movement in the game. CLAUDE.md frames the refund as *"what makes
+ * a commitment cost something to have made"* — and for two parties it did not,
+ * because the `+5` was free to acquire, so handing it back left both sides
+ * exactly where they started. A power could swear a dynastic marriage and
+ * repudiate it the next turn for no net standing loss at all.
+ *
+ * The **multi-party** case was already closed: a playtest repudiated a
+ * four-power compact in all three of its clauses and paid nothing, so
+ * `dissolve_commitment` charges pact-breaking above two parties. This is the
+ * same hole at two, which is the size a marriage actually is.
+ *
+ * Small, and deliberately smaller than a treaty's: a commitment is private
+ * business, so what it costs is a grievance between the parties and never a
+ * reputation.
+ */
+export const COMMITMENT_BREACH_COST = 5;
+
+/**
  * Everything a faction may draw from arrangements at once.
  *
  * Derived from `influence` rather than being a flat constant, the way

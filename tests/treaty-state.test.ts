@@ -5,6 +5,8 @@ import { MemoryCampaignStore } from '../src/engine/store.js';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import { addShipsAt, ledgerFor, setShipsAt, type WorldState } from '../src/domain/state.js';
 import type { OpInput } from '../src/domain/ops.js';
+import { TREATY_GOODWILL } from '../src/domain/diplomacy.js';
+import { eventsVisibleTo } from '../src/domain/intel.js';
 
 /**
  * A treaty conflates three things: what was AGREED (the conversation), what was
@@ -568,5 +570,74 @@ describe('a treaty can be exclusive against named powers', () => {
       } as OpInput,
     ).state;
     expect(sign(s, marry(['drajk', 'meridian'])).rejections).toHaveLength(0);
+  });
+});
+
+/**
+ * Signing a treaty is worth something, and until now only breaking one was.
+ *
+ * The cost was charged in code — 25 with the injured party, plus
+ * `PACT_BREAKING_REPUTATION_COST` with every onlooker — and the reward was left
+ * to a model to remember. So a treaty was **all downside** in the ledger of
+ * standing, which biases every judgement about whether one is worth signing.
+ */
+describe('a signature is worth something', () => {
+  const regard = (s: WorldState, who: string, of: string) =>
+    s.factions.find((f) => f.id === who)!.disposition[of] ?? 0;
+
+  const pact = (extra: Record<string, unknown> = {}): OpInput =>
+    ({
+      op: 'form_treaty', treatyType: 'non_aggression',
+      parties: ['drajk', 'freeworlds'], terms: {}, summary: 'quiet borders',
+      ...extra,
+    }) as OpInput;
+
+  it('pays both parties, pairwise', () => {
+    const s0 = seed();
+    const before = regard(s0, 'drajk', 'freeworlds');
+    const s = sign(s0, pact()).state;
+    expect(regard(s, 'drajk', 'freeworlds')).toBe(before + TREATY_GOODWILL);
+    expect(regard(s, 'freeworlds', 'drajk')).toBe(
+      regard(s0, 'freeworlds', 'drajk') + TREATY_GOODWILL,
+    );
+  });
+
+  it('pays less than breaking costs, so the cycle is never profitable', () => {
+    // The commitment path netted exactly zero and was free to cycle. This must
+    // not reproduce that: 10 against a −25 grievance and a −10 public mark.
+    expect(TREATY_GOODWILL).toBeLessThan(25);
+  });
+
+  it('moves no onlooker, because the sign is unknowable', () => {
+    // Two powers signing a mutual defence pact might reasonably make a third
+    // warier or calmer. Inventing a direction would be a mechanic built on a
+    // guess, which is worse than one that is absent.
+    const s0 = seed();
+    const before = ['meridian', 'vigil', 'ojjul'].map((id) => regard(s0, id, 'drajk'));
+    const s = sign(s0, pact()).state;
+    expect(['meridian', 'vigil', 'ojjul'].map((id) => regard(s, id, 'drajk'))).toEqual(before);
+  });
+
+  it('tells everyone a pact exists, and nobody what is in it', () => {
+    // `PACT_BREAKING_REPUTATION_COST` charges every onlooker for breaking a
+    // pact, which is only coherent if the onlookers knew there was one. But
+    // `summary` is model-written prose that routinely carries the substance, so
+    // the announcement is a SECOND entry carrying the parties and the type and
+    // nothing else.
+    const s = sign(seed(), pact({ summary: 'the Sennex lane, quietly' })).state;
+    const seen = eventsVisibleTo(s, 'meridian').map((e) => e.text).join(' ');
+    expect(seen).toMatch(/have signed a non aggression/);
+    expect(seen).not.toMatch(/Sennex/);
+  });
+
+  it('pays when a ratified treaty takes force, not when it is agreed', () => {
+    // A deal a council has yet to consent to has not been struck, and paying at
+    // signature would let a power buy standing with paper it never ratified.
+    const s0 = seed();
+    const before = regard(s0, 'drajk', 'freeworlds');
+    let s = sign(s0, pact({ ratifyTurns: 2 })).state;
+    expect(regard(s, 'drajk', 'freeworlds')).toBe(before);
+    for (let i = 0; i < 3; i++) s = tickTurn(s).state;
+    expect(regard(s, 'drajk', 'freeworlds')).toBe(before + TREATY_GOODWILL);
   });
 });
