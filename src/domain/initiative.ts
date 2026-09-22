@@ -12,6 +12,9 @@ import {
   fleetStrengthOf,
   fleetBases,
   fleetTonsOf,
+  tonsAt,
+  holdsGround,
+  livesOffTheLanes,
   dispositionBetween,
   warsFor,
   ledgerFor,
@@ -202,8 +205,13 @@ function hire(ctx: Ctx): Ops {
   return [{ op: 'recruit_commander', factionId: ctx.me, systemId: post.id }];
 }
 
-function buy(ctx: Ctx, appetite: number, reserve: number, doctrine: BuyDoctrine = {}): Ops {
+function buy(ctx: Ctx, appetite: number, reserveTurns: number, doctrine: BuyDoctrine = {}): Ops {
   const line = doctrine.line ?? 'battleship';
+  // A power with no ground has no yards unless its doctrine says otherwise, so
+  // asking would only earn a rejection. The reducer is the rule; this keeps the
+  // bots from generating ops it is going to refuse.
+  const me = getFaction(ctx.state, ctx.me);
+  if (!holdsGround(ctx.state, ctx.me) && !(me && livesOffTheLanes(me))) return [];
   const ledger = ledgerFor(ctx.state, ctx.me);
   const tons = fleetTonsOf(ctx.state, ctx.me);
   // Gross income supports a fleet of gross/upkeep TONS. Spend `appetite` of
@@ -212,7 +220,16 @@ function buy(ctx: Ctx, appetite: number, reserve: number, doctrine: BuyDoctrine 
   const room = sustainable - tons;
   if (room <= 0) return [];
 
-  const budget = Math.max(0, purse(ctx.state, ctx.me) - reserve);
+  // **The war chest is a number of TURNS, not a number of credits.** A flat
+  // reserve is a fixed sum against an income that is not fixed, so a power
+  // whose position collapses is locked out of rebuilding at exactly the moment
+  // it most needs to: Drajk stripped of every world sat on 158 credits against
+  // a reserve of 150, which rounds to **zero affordable tons**, and held 15
+  // tons and a net of 1 unchanged from turn 30 to turn 50 — able to grow, never
+  // able to pay for the first hull. Denominated in its own gross, the chest
+  // shrinks with the power and there is always a first hull.
+  const keep = Math.round(ledger.gross * reserveTurns);
+  const budget = Math.max(0, purse(ctx.state, ctx.me) - keep);
   const affordable = Math.floor(budget / CREDITS_PER_TON);
   let tonsToSpend = Math.min(room, affordable, 8 * HULL_SPEC.battleship.tonnage);
   if (tonsToSpend <= 0) return [];
@@ -309,6 +326,9 @@ function buy(ctx: Ctx, appetite: number, reserve: number, doctrine: BuyDoctrine 
  * a live board without the harness measuring a galaxy that forgot to build a
  * navy.
  */
+/** Tons of shipping that make a raiding squadron — four battleships' worth. */
+const RAID_SQUADRON_TONS = 16;
+
 const BOT_MAX_FREIGHTERS = 3;
 const BOT_MAX_LISTENERS = 2;
 /** At or below this guile, a power is bad enough at spies to buy ears instead. */
@@ -504,11 +524,272 @@ export function targetPriority(state: WorldState, me: string, target: StarSystem
   return target.strategicValue + (Math.max(0, -standing) / 100) * GRIEVANCE_WEIGHT;
 }
 
+/**
+ * The warship weight needed to clear a world's orbit, in battleship-equivalents.
+ *
+ * **The garrison is not in it, and that was a units bug in four bots.** An
+ * invasion has two independent requirements in two different currencies:
+ *
+ * | | beaten by | requirement |
+ * |---|---|---|
+ * | the defending fleet | warship weight | ~2x their battleship-equivalents |
+ * | the garrison | **lifters** | `lifters * LIFTER_CARRY > garrison` |
+ *
+ * Warships cannot touch a garrison — `resolveBattle`'s orbital phase is
+ * *"purely ship against ship: the garrison takes no part and grants no bonus"*
+ * — and lifters cannot fight a fleet. `sortie` already sizes lift correctly and
+ * separately, at `DUG_IN_MARGIN` times the garrison.
+ *
+ * The Vigil's bot was asking for `2.2 * (garrison + enemy ships)` of
+ * **warships**, so every defender's garrison was paid for twice: once properly
+ * in transports, and again as though troops dug in on a planet were capital
+ * ships in orbit. On `tor-1` — garrison 9, squadron 11 BE — it demanded 44 BE
+ * where the battle needs 22 and four lifters, which is exactly double, against
+ * an opening fleet of 34. That is why it could not sail until turn 8.
+ *
+ * It is the same units drift this module already fixed once, when hull counts
+ * were standing in for battleship-equivalents and *"counting transports among
+ * them makes a fleet cross its own thresholds faster the more lift it buys."*
+ * Here it was troops standing in for tonnage.
+ *
+ * Floored at a token weight so an undefended world still gets a real escort
+ * sent with the convoy: the orbit may be empty now and need not be on arrival.
+ */
+const MIN_SORTIE_WEIGHT = 4;
+
+function orbitalNeed(state: WorldState, me: string, target: StarSystem): number {
+  const defenders = Object.keys(target.ships ?? {})
+    .filter((id) => id !== me)
+    .reduce((n, id) => n + lineStrengthAt(state, target.id, id), 0);
+  return Math.max(MIN_SORTIE_WEIGHT, Math.ceil(defenders * ORBITAL_MARGIN));
+}
+
+/**
+ * How far past the 2:1 break-off a bot wants to be before it commits.
+ *
+ * `resolveBattle` breaks a defender off at exactly 2.0, and the seeded d20
+ * swings each side's power by up to ±43% — so a fleet at exactly 2:1 on paper
+ * is in the mutual-bleed band on a bad roll. The margin is the bot's caution,
+ * not a rule of the game: a player may attack at any odds they like.
+ */
+const ORBITAL_MARGIN = 2.2;
+
 /** Transit value crossing a system — what a raid or blockade there is worth. */
 function trafficAt(s: WorldState, systemId: string): number {
   return tradeRoutes(s)
     .filter((r) => r.path.slice(1, -1).includes(systemId))
     .reduce((n, r) => n + r.volume, 0);
+}
+
+/**
+ * The sector a power began in: where most of the worlds it started with lie.
+ *
+ * Read off `homeFactionId`, which the seed writes once and never again, so this
+ * is a fixed fact about where a power comes from rather than a moving readout of
+ * what it currently holds. A power driven out of its own sector still wants it
+ * back; one that conquers half of somebody else's does not acquire a claim to
+ * the rest of it.
+ *
+ * Pure, and derived rather than declared — there is no new seed field to keep in
+ * step, and a campaign replays it identically.
+ */
+function homeSectorOf(state: WorldState, me: string): string | null {
+  const count = new Map<string, number>();
+  for (const sys of state.systems) {
+    if (sys.homeFactionId !== me) continue;
+    count.set(sys.sector, (count.get(sys.sector) ?? 0) + 1);
+  }
+  let best: string | null = null;
+  let most = 0;
+  for (const [sector, n] of [...count].sort((a, b) => a[0].localeCompare(b[0]))) {
+    if (n > most) {
+      most = n;
+      best = sector;
+    }
+  }
+  return best;
+}
+
+/**
+ * Worlds in a power's own sector that it does not hold.
+ *
+ * **This is what gives four of the five bots a reason to take ground.** Before
+ * it, only the Vigil ever attacked a world another power held: Meridian took
+ * unclaimed worlds with a garrison of three or less, the Combine parked on empty
+ * junctions, Arkane took unclaimed ground in its own sector, and Drajk raided.
+ * So once the five neutral worlds were gone the galaxy had exactly one
+ * aggressor, and when it ran out of cheap targets the board stopped moving —
+ * at any disposition, including every power at -100.
+ *
+ * A sector is the right unit for that appetite because it is **bounded and
+ * geographic**. "Take everything" makes every bot the same bot and ends in one
+ * power holding the map; "take the next cheap thing" is what produced the
+ * stall. A power that wants its own sector whole wants a specific, finite list
+ * of worlds, stops when it has them, and is opposed by whoever is standing on
+ * them — which the seed already arranges, because **Drajk holds a world in
+ * three of the four sectors** and Meridian holds `tor-1` in the Vigil's.
+ */
+function sectorGaps(state: WorldState, me: string): StarSystem[] {
+  const home = homeSectorOf(state, me);
+  if (home === null) return [];
+  return state.systems
+    .filter((x) => x.sector === home && x.controllerFactionId !== me)
+    .sort((a, b) => {
+      // **Unclaimed ground first.** Consolidating your own sector is cheaper
+      // than evicting somebody from it, needs no war, and is what a power
+      // actually does first. It is also what keeps Drajk on the board: the
+      // Confederacy squats in three of the four sectors, so when every home
+      // power reaches for a rival's holding before an empty world, all three of
+      // them reach for Drajk at once and it is carved up by turn 12 — one world
+      // left in an ordinary run and **none at all** under total war.
+      const empty = Number(a.controllerFactionId === null) - Number(b.controllerFactionId === null);
+      return (
+        empty || targetPriority(state, me, b) - targetPriority(state, me, a) || a.id.localeCompare(b.id)
+      );
+    });
+}
+
+/**
+ * Worlds that began the campaign under nobody's flag.
+ *
+ * Drajk's appetite, and deliberately not a sector: the Confederacy's line is
+ * *"borders are a fiction maintained by people with fleets"*, so a power whose
+ * doctrine is the denial of borders should not be handed one to defend. What it
+ * wants is that the unclaimed middle of the map stays unclaimed, or becomes its
+ * own — which is the same sentence either way, and reaches across three sectors
+ * without giving it a home in any of them.
+ *
+ * Read off `homeFactionId === null`, so it is fixed at turn 0: a world Drajk
+ * itself takes stays on the list as something to hold rather than becoming
+ * territory, and one a rival annexes becomes something to take back.
+ */
+function lawlessGround(state: WorldState, me: string): StarSystem[] {
+  return state.systems
+    .filter((x) => x.homeFactionId === null && x.controllerFactionId !== me)
+    .sort((a, b) => {
+      // Ground a rival has annexed first — that is the border being drawn, and
+      // the whole objection. Unclaimed ground is merely opportunity.
+      const claimed = Number(b.controllerFactionId !== null) - Number(a.controllerFactionId !== null);
+      return claimed || trafficAt(state, b.id) - trafficAt(state, a.id) || a.id.localeCompare(b.id);
+    });
+}
+
+/**
+ * Mass, then strike — the two-step every land-taking bot shares.
+ *
+ * `sortie` needs ONE holding that can supply the whole blow, so a power whose
+ * navy is spread across four worlds can be strong enough in total and unable to
+ * sail. Concentrating first is what makes an attack reachable at all; it was
+ * written twice, in the Vigil and in Arkane, before four bots needed it.
+ */
+/**
+ * Take station over a world without landing on it.
+ *
+ * **Presence, not conquest**, and for Drajk the difference is the doctrine. A
+ * warship-only squadron wins the orbit and then cannot put anybody ashore, so
+ * the world stays unaligned with Drajk hulls sitting on it — which contests its
+ * income, denies it to whoever wanted to annex it, and leaves the Confederacy
+ * holding no ground worth besieging. *"The unclaimed middle of the map stays
+ * unclaimed, or becomes Drajk's"* is one sentence, and this is its first half.
+ *
+ * It is also what the Confederacy can afford. Conquest costs lift, lift dies
+ * first in the loss order, and the poorest power on the board buying transports
+ * for five worlds across three sectors went insolvent at -33 a turn. A blockading
+ * squadron costs warships it already has.
+ */
+const OCCUPY_RESERVE = 3;
+
+function occupy(ctx: Ctx, target: StarSystem, label: string): Ops {
+  const need = orbitalNeed(ctx.state, ctx.me, target);
+  // **`OCCUPY_RESERVE` is what has to stay home, and it was swept both ways.**
+  // At `MIN_SORTIE_WEIGHT` (4) no base on Drajk's board ever qualified — its
+  // best holding fields 6.3 battleship-equivalents — and the doctrine was
+  // silent. At 0 or 2 it sails, and the squadron it sends is the squadron that
+  // was holding `ilv-6`: the Vigil takes that world, then four more, ending at
+  // eight while Drajk is reduced to **one**. A power with no ground worth
+  // besieging still has ground worth keeping.
+  const from = held(ctx.state, ctx.me)
+    .filter((b) => lineStrengthAt(ctx.state, b.id, ctx.me) >= need + OCCUPY_RESERVE)
+    .sort(
+      (a, b) =>
+        (shortestPath(ctx.state.systems, a.id, target.id)?.length ?? 99) -
+          (shortestPath(ctx.state.systems, b.id, target.id)?.length ?? 99) ||
+        a.id.localeCompare(b.id),
+    )[0];
+  if (!from) return [];
+  const here = stackAt(from, ctx.me);
+  // Warships only. Carrying lift would land it and take the world, which is the
+  // thing this doctrine declines to do.
+  const warships = subtractStack(here, { lifter: here.lifter ?? 0 });
+  const force = drawToWeight(warships, need);
+  if (hullsIn(force) === 0) return [];
+  return [
+    {
+      op: 'issue_order', factionId: ctx.me, type: 'fleet_movement',
+      originId: from.id, targetId: target.id, force,
+      commanderId: commanderAt(ctx.state.commanders, ctx.me, from.id)?.id ?? null,
+      label,
+    },
+  ];
+}
+
+function press(ctx: Ctx, target: StarSystem, label: string): Ops {
+  const need = orbitalNeed(ctx.state, ctx.me, target);
+  // **Sail first, and from anywhere.** `sortie` already finds the nearest
+  // holding that can supply the whole blow, at any range, so gating the attempt
+  // on an ADJACENT staging base was a second, stricter rule laid over a
+  // mechanism that did not need it — and it silenced Drajk completely, whose
+  // four worlds do not touch a single one of the five that began unaligned.
+  const away = sortie(ctx, target.id, need, label);
+  if (away.length > 0) return away;
+
+  // Nothing could supply it, so concentrate toward the frontier world nearest
+  // the target and try again next turn.
+  const staging = held(ctx.state, ctx.me)
+    .filter((b) => neighboursOf(ctx.state, b.id).includes(target.id))
+    .sort(
+      (a, b) =>
+        lineStrengthAt(ctx.state, b.id, ctx.me) - lineStrengthAt(ctx.state, a.id, ctx.me) ||
+        a.id.localeCompare(b.id),
+    )[0];
+  if (!staging) return [];
+  if (lineStrength(ctx.state, ctx.me) >= need + 8) return massAt(ctx, staging.id, need);
+  return [];
+}
+
+/**
+ * Take the best thing you can take today; failing that, build toward the best
+ * thing there is.
+ *
+ * **A bot used to commit to its single highest-prize target and stay committed**,
+ * which is why the Combine issued nothing for thirty turns: it wanted `ilv-6`
+ * (a raider's world, value 7, garrison 9, wanting 14 battleship-equivalents and
+ * four transports at one base), massed toward it every turn, and stalled around
+ * thirteen — while `ilv-4` sat unclaimed next door at garrison 2, needing four
+ * and one. It could not take the prize and would not take the rock.
+ *
+ * So the order is: walk the list in priority order and sail at the first target
+ * a base can actually supply; if none can, concentrate toward the best one, as
+ * before. A commander takes what is takeable and builds toward what is not, and
+ * the fallback is what turns a permanent stall into a slower campaign.
+ *
+ * `sortie` and `occupy` both return `[]` when nothing can supply the blow, so
+ * "can I do this today" needs no separate predicate — the attempt is the test.
+ */
+function pursue(
+  ctx: Ctx,
+  candidates: StarSystem[],
+  label: (t: StarSystem) => string,
+  go: (ctx: Ctx, t: StarSystem, label: string) => Ops = press,
+): Ops {
+  for (const target of candidates) {
+    const ops = go(ctx, target, label(target));
+    // `press` also returns massing ops, which are not an attack — those are the
+    // fallback, not a reason to stop looking for something reachable.
+    if (ops.some((o) => o.op === 'issue_order')) return ops;
+  }
+  const best = candidates[0];
+  return best ? go(ctx, best, label(best)) : [];
 }
 
 /* ------------------------------------------------------------------ */
@@ -525,15 +806,15 @@ type Bot = (ctx: Ctx) => Ops;
 const meridian: Bot = (ctx) => {
   const ops: Ops = [];
   // A defensive power keeps a modest navy and banks the rest.
-  ops.push(...buy(ctx, 0.55, 600));
+  ops.push(...buy(ctx, 0.55, 1.3));
   ops.push(...hire(ctx));
 
-  const free = frontier(ctx.state, ctx.me)
-    .filter((t) => t.controllerFactionId === null && t.garrison <= 3)
-    .sort((a, b) => b.strategicValue - a.strategicValue)[0];
-  if (free) {
-    const need = free.garrison * 3 + 4;
-    ops.push(...sortie(ctx, free.id, need, `secure ${free.name}`));
+  // The Verge, whole. A trading power's sovereignty is the ground its lanes run
+  // over, and three of the Sekkar's six worlds have never been anybody's — which
+  // is also where Drajk goes looking, so Meridian's appetite and the
+  // Confederacy's are aimed at the same three rocks.
+  if (!hasOrder(ctx.state, ctx.me, 'fleet_movement')) {
+    ops.push(...pursue(ctx, sectorGaps(ctx.state, ctx.me), (t) => `secure ${t.name}`));
   }
   return ops;
 };
@@ -544,7 +825,7 @@ const meridian: Bot = (ctx) => {
  */
 const vigil: Bot = (ctx) => {
   const ops: Ops = [];
-  ops.push(...buy(ctx, 0.85, 200));
+  ops.push(...buy(ctx, 0.85, 0.53));
   ops.push(...hire(ctx)); // crusading: spends most of its income on hulls
 
   if (hasOrder(ctx.state, ctx.me, 'fleet_movement')) return ops;
@@ -558,24 +839,30 @@ const vigil: Bot = (ctx) => {
           .reduce((n, [id]) => n + lineStrengthAt(ctx.state, t.id, id), 0);
       return { t, defence, prize: targetPriority(ctx.state, ctx.me, t) };
     })
+    // `defence` decides whether there is anything here to fight at all —
+    // garrison or ships — and nothing else. What it must NOT do is size the
+    // fleet; see `orbitalNeed`.
     .filter(({ defence }) => defence > 0)
     .sort((a, b) => b.prize - a.prize || a.t.id.localeCompare(b.t.id))[0];
 
   if (target) {
-    const need = Math.ceil(target.defence * 2.2);
+    const need = orbitalNeed(ctx.state, ctx.me, target.t);
     // Crusading, not suicidal: it masses first, then strikes when it can
     // actually carry the world. Without the massing step it never attacked at
     // all, and a crusader that never crusades tests nothing.
-    const staging = held(ctx.state, ctx.me)
-      .filter((b) => neighboursOf(ctx.state, b.id).includes(target.t.id))
-      .sort((a, b) => lineStrengthAt(ctx.state, b.id, ctx.me) - lineStrengthAt(ctx.state, a.id, ctx.me))[0];
-    if (staging) {
-      if (lineStrengthAt(ctx.state, staging.id, ctx.me) >= need) {
-        ops.push(...sortie(ctx, target.t.id, need, `pacify ${target.t.name}`));
-      } else if (lineStrength(ctx.state, ctx.me) >= need + 8) {
-        ops.push(...massAt(ctx, staging.id, need));
-      }
-    }
+    // **The Torrek first.** "Hold the Torrek until order is restored" is the
+    // first clause of the doctrine and the crusade is the second, so the
+    // Marches are put back in order before the Vigil goes looking further
+    // afield. Without that ordering it is the only power on the board with an
+    // unbounded appetite — everyone else now wants a sector and stops — and it
+    // simply runs away with the map, reaching eight worlds while Drajk is
+    // ground down to one.
+    const home = sectorGaps(ctx.state, ctx.me);
+    ops.push(
+      ...(home.length > 0
+        ? pursue(ctx, home, (t) => `restore order at ${t.name}`)
+        : press(ctx, target.t, `pacify ${target.t.name}`)),
+    );
   }
   return ops;
 };
@@ -587,15 +874,14 @@ const vigil: Bot = (ctx) => {
  */
 const ojjul: Bot = (ctx) => {
   const ops: Ops = [];
-  ops.push(...buy(ctx, 0.5, 800));
+  ops.push(...buy(ctx, 0.5, 1.91));
   ops.push(...hire(ctx)); // will not spend its own hulls freely
 
-  // Occupy the neutral junction it is already next to: income without a war.
-  const junction = frontier(ctx.state, ctx.me)
-    .filter((t) => t.controllerFactionId === null && shipsAt(ctx.state, t.id, ctx.me) === 0)
-    .sort((a, b) => trafficAt(ctx.state, b.id) - trafficAt(ctx.state, a.id))[0];
-  if (junction && !hasOrder(ctx.state, ctx.me, 'fleet_movement')) {
-    ops.push(...sortie(ctx, junction.id, junction.garrison * 3 + 4, `take ${junction.name}`));
+  // The Fringe, whole. The Combine's chokepoints are only worth what the lanes
+  // through them carry, and two of the Ilvenn's richest crossings are held by a
+  // raider — so "own the survivor" starts at home.
+  if (!hasOrder(ctx.state, ctx.me, 'fleet_movement')) {
+    ops.push(...pursue(ctx, sectorGaps(ctx.state, ctx.me), (t) => `take ${t.name}`));
   }
 
   // Squeeze a rival's chokepoint when one is worth squeezing and a fleet is
@@ -619,32 +905,29 @@ const ojjul: Bot = (ctx) => {
 /** "Defend the Drift, take no master." Fortifies, never attacks. */
 const freeworlds: Bot = (ctx) => {
   const ops: Ops = [];
-  ops.push(...buy(ctx, 0.6, 300));
+  // **A defensive power spends a larger share of its income on its navy** —
+  // that is what defensive means — where Meridian at 0.55 banks the difference.
+  // It also has to: at 0.6 the Drift's opening fleet of 123 tons was already
+  // above the 117 its own gross would carry, so `buy` returned `room <= 0` and
+  // the yards laid down **nothing at all for thirty turns**. Arkane kept the
+  // single lifter it started with, could never mount the two-transport landing
+  // its own sector needed, and its income sat flat from turn 5 to turn 30 —
+  // read as a balance signal when it was a power unable to act at all.
+  ops.push(...buy(ctx, 0.8, 1.54));
   ops.push(...hire(ctx));
 
-  // The Drift takes what is on its own doorstep and nothing beyond it.
-  const home = frontier(ctx.state, ctx.me)
-    .filter((t) => t.controllerFactionId === null && t.sector === 'Arkane Drift')
-    .sort((a, b) => b.strategicValue - a.strategicValue)[0];
-  if (home && !hasOrder(ctx.state, ctx.me, 'fleet_movement')) {
-    // Mass, then strike — the same step the Vigil already had, and the reason
-    // this faction was invisible to the harness without it. `sortie` needs one
-    // base holding the whole blow; the Drift wants 16 hulls for Sennex and
-    // keeps a navy of 31 spread 10/7/8/6, so no base ever qualified and the bot
-    // issued nothing for thirty turns. Its income sat at exactly 71/turn from
-    // turn 5 to turn 30, and that flat line was read as a balance signal when
-    // it was the harness never letting the faction move.
-    const need = home.garrison * 3 + 4;
-    const staging = held(ctx.state, ctx.me)
-      .filter((b) => neighboursOf(ctx.state, b.id).includes(home.id))
-      .sort((a, b) => lineStrengthAt(ctx.state, b.id, ctx.me) - lineStrengthAt(ctx.state, a.id, ctx.me))[0];
-    if (staging) {
-      if (lineStrengthAt(ctx.state, staging.id, ctx.me) >= need) {
-        ops.push(...sortie(ctx, home.id, need, `secure ${home.name}`));
-      } else if (lineStrength(ctx.state, ctx.me) >= need + 8) {
-        ops.push(...massAt(ctx, staging.id, need));
-      }
-    }
+  // The Drift, whole — and nothing beyond it. That sentence was already this
+  // bot's comment; what it could not previously do is remove a squatter, so
+  // "take no master" stopped at ground nobody was standing on.
+  const gaps = sectorGaps(ctx.state, ctx.me);
+  if (gaps.length > 0 && !hasOrder(ctx.state, ctx.me, 'fleet_movement')) {
+    // Mass, then strike — see `press`. This faction was invisible to the harness
+    // without that step: the Drift wanted 16 hulls for Sennex and kept a navy of
+    // 31 spread 10/7/8/6, so no single base ever qualified and the bot issued
+    // nothing for thirty turns. Its income sat at exactly 71/turn from turn 5 to
+    // turn 30, and that flat line was read as a balance signal when it was the
+    // harness never letting the faction move.
+    ops.push(...pursue(ctx, gaps, (t) => `secure ${t.name}`));
   }
   return ops;
 };
@@ -663,24 +946,55 @@ const drajk: Bot = (ctx) => {
   // *"borders are a fiction maintained by people with fleets"* — expressed in
   // what its yards lay down, and it is what gives the class an owner in the
   // harness the way each ethic has one.
-  ops.push(...buy(ctx, 0.7, 150, { line: 'torpedo_boat', screen: false }));
+  ops.push(...buy(ctx, 0.7, 0.89, { line: 'torpedo_boat', screen: false }));
   ops.push(...hire(ctx));
 
-  // Park on the richest unaligned junction — trade nobody else is carrying.
-  const lawless = ctx.state.systems
-    .filter((x) => x.controllerFactionId === null && shipsAt(ctx.state, x.id, ctx.me) === 0)
-    .sort((a, b) => trafficAt(ctx.state, b.id) - trafficAt(ctx.state, a.id))[0];
-  if (lawless && !hasOrder(ctx.state, ctx.me, 'fleet_movement')) {
-    ops.push(...sortie(ctx, lawless.id, lawless.garrison * 3 + 3, `work ${lawless.name}`));
+  // The unclaimed middle of the map stays unclaimed, or becomes Drajk's — and a
+  // world somebody else has just annexed is the first thing on the list, because
+  // that is a border being drawn. It takes no sector of its own: a power whose
+  // line is "borders are a fiction maintained by people with fleets" should not
+  // be handed one to defend. See `lawlessGround`.
+  if (!hasOrder(ctx.state, ctx.me, 'fleet_movement')) {
+    // Deliberately NOT filtered to what it already borders. Drajk holds ark-5,
+    // tor-6, ilv-6 and ilv-7, and **not one of them touches a world that began
+    // unaligned** — so an adjacency test silences the doctrine completely, which
+    // is what a first pass at this did. `occupy` and `sortie` both find the
+    // nearest base that can supply the blow and sail however far it is; reaching
+    // across the map is the Confederacy's whole manner of operating.
+    // A border somebody else has drawn is taken down; ground nobody has claimed
+    // is merely stood on. See `occupy`.
+    ops.push(
+      ...pursue(
+        ctx,
+        lawlessGround(ctx.state, ctx.me),
+        (t) => (t.controllerFactionId !== null ? `break the claim on ${t.name}` : `work ${t.name}`),
+        press,
+      ),
+    );
   }
 
   // Raid the busiest lane a squadron can reach. A raider does not need to
   // hold the system — it lurks a jump out — which is the whole point of the
   // Confederacy: it preys on powers it could never beat in orbit.
+  //
+  // **Weighed in TONS, because the question is whether a squadron is there.**
+  // It was four battleship-equivalents, which is a fighting-weight unit, and a
+  // torpedo boat carries 0.1 of one by design — its whole output is the opening
+  // strike. So the Confederacy, whose buy doctrine is `line: 'torpedo_boat'`,
+  // needed **120 boats and 3,600 credits** to unlock the mechanic that is its
+  // entire economic identity, against four battleships and 240 for anybody
+  // else. It raided at all only while it still had battleships left from the
+  // seed; a Drajk that had actually followed its own doctrine could never raid.
+  //
+  // The same units drift as the garrison double-count, in the same module: a
+  // threshold written when a hull meant a battleship, read against a hull
+  // chosen for a different property. Tons is the unit every fleet-size limit in
+  // the game is denominated in, and 16 of them is what four battleships used to
+  // weigh — so nothing changes for a power that builds a line.
   if (!hasOrder(ctx.state, ctx.me, 'commerce_raiding')) {
     const reachable = new Set<string>();
     for (const base of ctx.state.systems) {
-      if (lineStrengthAt(ctx.state, base.id, ctx.me) < 4) continue;
+      if (tonsAt(base, ctx.me) < RAID_SQUADRON_TONS) continue;
       reachable.add(base.id);
       for (const n of neighboursOf(ctx.state, base.id)) reachable.add(n);
     }

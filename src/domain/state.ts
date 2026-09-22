@@ -943,6 +943,40 @@ export function fleetTonsOf(state: WorldState, factionId: string): number {
  */
 export const SURPLUS_GARRISON_UPKEEP = hullUpkeep('lifter') / LIFTER_CARRY;
 
+/**
+ * Whether a power can lay down hulls with no world of its own.
+ *
+ * **Almost nobody can**, and that has to be enforced here rather than trusted
+ * to a prompt: `fleetBases` counts a system where a faction merely has ships,
+ * because that is the right answer for where *losses* are drawn from — and it
+ * meant any power reduced to a single hull in a rival's orbit could go on
+ * commissioning battleships there forever. A galaxy where every beaten power
+ * survives as a shipyard in somebody else's sky is not the fiction; being
+ * driven off your worlds should end you.
+ *
+ * The exception is the **smuggler**, and it is the doctrine rather than the
+ * faction that licenses it. *"Borders are a fiction maintained by people with
+ * fleets"* is a claim about not needing ground, and the ethic already says the
+ * same thing three other ways — it ignores blockades, raids at double effect,
+ * and counts double at a lawless junction. A power built to live off the lanes
+ * is the one power that can lose every world and still be playing.
+ *
+ * Keyed on `tradeEthic` and not on `factionId` for the reason `warEthic` and
+ * `tradeEthic` exist at all: a rule attached to a name is a special case, and a
+ * rule attached to a doctrine is something another power could take up by
+ * becoming that. `set_doctrine` can move a power onto `smuggler` at the cost of
+ * `DOCTRINE_ETHIC_DISSENT`, which is the price of choosing to be that kind of
+ * power.
+ */
+export function livesOffTheLanes(faction: Faction): boolean {
+  return faction.tradeEthic === 'smuggler';
+}
+
+/** Whether this power has any ground of its own to build on. */
+export function holdsGround(state: WorldState, factionId: string): boolean {
+  return state.systems.some((s) => s.controllerFactionId === factionId);
+}
+
 export function fleetBases(state: WorldState, factionId: string): StarSystem[] {
   return state.systems
     .filter((s) => s.controllerFactionId === factionId || (hullsAt(s, factionId)) > 0)

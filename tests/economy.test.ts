@@ -1779,3 +1779,51 @@ describe('the ground a power holds reaches its stats', () => {
     for (const type of WORLD_TYPES) expect(WORLD_TYPE_STAT[type]).toBeDefined();
   });
 });
+
+describe('no ground, no yards', () => {
+  const strip = (s: WorldState, id: string): WorldState => {
+    const out = JSON.parse(JSON.stringify(s)) as WorldState;
+    for (const sys of out.systems) if (sys.controllerFactionId === id) sys.controllerFactionId = 'meridian';
+    return out;
+  };
+
+  it('refuses a landless power new hulls, by either route', () => {
+    // `fleetBases` counts a system where a faction merely has ships — correct
+    // for drawing losses, and wrong for building. Without this guard any beaten
+    // power went on commissioning battleships in a rival's orbit forever.
+    const stripped = strip(fresh(), 'vigil');
+    expect(sys(stripped, 'tor-3').ships.vigil).toBeDefined(); // the fleet is still there
+
+    for (const op of [
+      { op: 'adjust_fleet', factionId: 'vigil', delta: 3 },
+      { op: 'adjust_ships', systemId: 'tor-3', factionId: 'vigil', delta: 3 },
+    ] as Op[]) {
+      const res = applyOps(stripped, [op], 'model', 'vigil');
+      expect(res.rejections.map((r) => r.code), op.op).toEqual(['no_presence']);
+      expect(res.rejections[0]!.message).toMatch(/holds no world/);
+    }
+  });
+
+  it('lets the smuggler build anyway, because its doctrine does not need ground', () => {
+    // Keyed on `tradeEthic`, not on the faction id: a rule attached to a name
+    // is a special case, and one attached to a doctrine is something another
+    // power could take up by becoming that.
+    const stripped = strip(fresh(), 'drajk');
+    expect(stripped.factions.find((f) => f.id === 'drajk')!.tradeEthic).toBe('smuggler');
+    const res = applyOps(stripped, [
+      { op: 'adjust_fleet', factionId: 'drajk', delta: 2, hull: 'torpedo_boat' },
+    ] as Op[], 'model', 'drajk');
+    expect(res.rejections).toHaveLength(0);
+    expect(fleetTonsOf(res.state, 'drajk')).toBeGreaterThan(fleetTonsOf(stripped, 'drajk'));
+  });
+
+  it('still lets a landless power lose ships, and still takes what it is owed', () => {
+    // The guard is on minting only. Losses, suborning and upkeep attrition all
+    // draw from concentrations wherever they are, which is what `fleetBases`
+    // was written for in the first place.
+    const stripped = strip(fresh(), 'vigil');
+    const res = applyOps(stripped, [{ op: 'adjust_fleet', factionId: 'vigil', delta: -4 }] as Op[], 'engine');
+    expect(res.rejections).toHaveLength(0);
+    expect(fleetTonsOf(res.state, 'vigil')).toBeLessThan(fleetTonsOf(stripped, 'vigil'));
+  });
+});

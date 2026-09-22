@@ -384,6 +384,21 @@ const DISPOSITIONS: Record<string, Record<string, number>> = {
  * so the seed has to distribute it rather than declare it. Expressed in TONS,
  * because that is the unit every fleet limit is measured in and the unit the
  * composition below is divided by.
+ *
+ * > **Weighting this by exposure was tried and removed.** Opening tonnage pays
+ * > for what a world is worth and knows nothing about whether anyone is standing
+ * > across the lane from it, which leaves Meridian with the largest navy on the
+ * > board, one front and three interior worlds carrying squadrons that face
+ * > nothing — 156 tons per front against Drajk's 32. Paying more for frontier
+ * > worlds fixes that ratio and costs two things worth more than it. It makes
+ * > the most exposed power **poorer**, since upkeep is per ton and Drajk is
+ * > exposed on all four of its worlds, pushing its seeded debt past the burden
+ * > ceiling `debt.ts` was sized against. And `createSeedState` is where replay
+ * > begins, so **every saved campaign rebuilds into a different world** — no
+ * > journal exemption can cover that, because that mechanism gates rules and not
+ * > the seed. What the ratio was a symptom of is fixed in `initiative.ts`
+ * > instead: three of the five bots had no reason to take ground at all, so a
+ * > fleet with one front had nothing to do with itself.
  */
 function startingTons(s: SeedSystem): number {
   return Math.max(2, Math.round(s.value * 1.4)) * HULL_SPEC.battleship.tonnage;

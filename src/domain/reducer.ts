@@ -149,6 +149,8 @@ import {
   refusesToBreakOff,
   effectiveStats,
   fleetBases,
+  holdsGround,
+  livesOffTheLanes,
   isGuestOf,
   fleetStrengthOf,
   canSubornAt,
@@ -1595,6 +1597,14 @@ export function applyOps(
         const bases = fleetBases(state, op.factionId);
         if (bases.length === 0) {
           reject(raw, 'illegal_value', `${op.factionId} holds no system to base ships at.`);
+          break;
+        }
+        // **No ground, no yards** — see `livesOffTheLanes`. `fleetBases` counts
+        // a system where a faction merely has ships, which is correct for
+        // drawing losses and wrong for building: it let any beaten power go on
+        // commissioning hulls in a rival's orbit forever.
+        if (op.delta > 0 && !canLayDownHulls(state, op.factionId)) {
+          reject(raw, 'no_presence', noYardsMessage(state, op.factionId));
           break;
         }
         if (op.delta >= 0) {
@@ -3512,6 +3522,19 @@ export function applyOps(
         // produced a legitimate one-corvette defection on a natural 20 — and
         // the same op shape would have moved thirty hulls across the galaxy.
         let delta = op.delta;
+        // Placing your OWN new hulls at a named world is the second way to mint
+        // a ship, and it was unguarded — so the territory rule on `adjust_fleet`
+        // would have been one sentence away from being routed around.
+        // Suborning (taking somebody else's) is a transfer, not a build, and is
+        // checked by `canSubornAt` below.
+        if (
+          delta > 0 &&
+          (actor === undefined || op.factionId === actor) &&
+          !canLayDownHulls(state, op.factionId)
+        ) {
+          reject(raw, 'no_presence', noYardsMessage(state, op.factionId));
+          break;
+        }
         if (actor !== undefined && op.factionId !== actor && delta < 0) {
           if (!canSubornAt(state, actor, op.systemId)) {
             reject(
@@ -4788,6 +4811,24 @@ function refundDuplicateCharges(
     notes.push(note);
     logEvent(state, 'clamp', note, id);
   }
+}
+
+/**
+ * Whether this power may commission new hulls at all.
+ *
+ * Ground of its own, or a doctrine that does not need any. See
+ * `livesOffTheLanes` for why the exception is keyed on the ethic rather than on
+ * the faction holding it.
+ */
+function canLayDownHulls(state: WorldState, factionId: string): boolean {
+  if (holdsGround(state, factionId)) return true;
+  const faction = state.factions.find((f) => f.id === factionId);
+  return faction !== undefined && livesOffTheLanes(faction);
+}
+
+/** Said the same way from both minting paths, so a player learns one rule. */
+function noYardsMessage(state: WorldState, factionId: string): string {
+  return `${nameFor(state, factionId)} holds no world, and only a power that lives off the lanes can build without one. Its yards were lost with its last system; take ground before laying down hulls.`;
 }
 
 /**
