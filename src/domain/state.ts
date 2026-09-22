@@ -1102,6 +1102,7 @@ export function worksBonus(state: WorldState, factionId: string): Partial<Factio
   for (const asset of state.assets ?? []) {
     if (asset.heldBy !== factionId) continue;
     if (asset.yield === null || asset.yield.kind !== 'stat') continue;
+    const spread = asset.yield.stats;
     // The same presence line every other yield draws: a works pays while its
     // holder holds the world or has ships over it, and not from an abandoned
     // shell on ground somebody else took.
@@ -1109,7 +1110,7 @@ export function worksBonus(state: WorldState, factionId: string): Partial<Factio
     const where = state.systems.find((x) => x.id === asset.atSystemId);
     if (!where) continue;
     if (where.controllerFactionId !== factionId && hullsAt(where, factionId) === 0) continue;
-    out[asset.yield.stat] = (out[asset.yield.stat] ?? 0) + asset.yield.points;
+    for (const { stat, points } of spread) out[stat] = (out[stat] ?? 0) + points;
   }
   for (const stat of STAT_NAMES) {
     const n = out[stat];

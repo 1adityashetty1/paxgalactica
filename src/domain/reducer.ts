@@ -42,6 +42,7 @@ import {
   AGENT_COST,
   DOSSIER_KIND,
   MAX_ASSET_DISSENT,
+  MAX_ASSET_STAT,
   MAX_ASSET_YIELD,
   MISSION_PROFILE,
   PACT_BREAKING_REPUTATION_COST,
@@ -1963,9 +1964,17 @@ export function applyOps(
           // catalogue supplies a default, it does not overrule a deliberate
           // one — and the reducer still clamps the points either way.
           if (shape.modifies !== undefined && yielded === null) {
-            yielded = { kind: 'stat', stat: shape.modifies, points: 1 };
+            // One budget, split evenly over the attributes the kind names. At
+            // `MAX_ASSET_STAT` of 2 that is either two points of one stat or
+            // one of each — which is the whole reason the cap on the split is
+            // two, since a half point does not exist on a 1-20 scale.
+            const each = Math.max(1, Math.floor(MAX_ASSET_STAT / shape.modifies.length));
+            yielded = {
+              kind: 'stat',
+              stats: shape.modifies.map((stat) => ({ stat, points: each })),
+            };
             notes.push(
-              `A ${op.kind} is worth ${shape.modifies} to whoever holds the ground it stands on; recorded that way.`,
+              `A ${op.kind} is worth ${shape.modifies.join(' and ')} to whoever holds the ground it stands on; recorded that way.`,
             );
           }
         }
@@ -2033,6 +2042,42 @@ export function applyOps(
             );
             assetYield = { ...assetYield, perTurn: clamped };
           }
+        }
+        if (assetYield?.kind === 'stat') {
+          // **The split is a trade, not a bonus.** A works spread over two
+          // attributes at full value on each would be worth twice one that
+          // concentrated, so what is capped is the TOTAL — and the trim takes
+          // it off the largest share first, so a lopsided pair stays lopsided
+          // and an even one stays even. Same stat named twice is merged for
+          // the same reason `normaliseStack` exists: a record whose shape
+          // depends on how it was written is a record nobody can read.
+          const merged = new Map<string, number>();
+          for (const { stat, points } of assetYield.stats) {
+            merged.set(stat, (merged.get(stat) ?? 0) + points);
+          }
+          let spread = [...merged].map(([stat, points]) => ({ stat, points })) as {
+            stat: 'might' | 'guile' | 'industry' | 'influence' | 'resolve';
+            points: number;
+          }[];
+          const total = spread.reduce((n, t) => n + Math.abs(t.points), 0);
+          if (total > MAX_ASSET_STAT) {
+            const order = [...spread].sort(
+              (a, b) => Math.abs(b.points) - Math.abs(a.points) || a.stat.localeCompare(b.stat),
+            );
+            let over = total - MAX_ASSET_STAT;
+            for (const term of order) {
+              if (over <= 0) break;
+              const take = Math.min(over, Math.abs(term.points));
+              term.points -= Math.sign(term.points) * take;
+              over -= take;
+            }
+            spread = order.filter((t) => t.points !== 0);
+            notes.push(
+              `${op.text} would be worth ${total} points of attribute; a works is worth ${MAX_ASSET_STAT} however it is split — trimmed.`,
+            );
+          }
+          assetYield =
+            spread.length === 0 ? null : { ...assetYield, stats: spread.slice(0, 2) };
         }
         if (assetYield?.kind === 'asset') {
           assetYield = {

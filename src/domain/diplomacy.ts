@@ -350,9 +350,35 @@ export const AssetYieldSchema = z.discriminatedUnion('kind', [
      * down more hulls for whoever took it.
      */
     kind: z.literal('stat'),
-    stat: z.enum(['might', 'guile', 'industry', 'influence', 'resolve']),
-    /** Clamped to `MAX_ASSET_STAT`. Negative is a works that is a liability. */
-    points: z.number().int().min(-MAX_ASSET_STAT).max(MAX_ASSET_STAT),
+    /**
+     * **One or two stats, sharing one budget.** A works is worth
+     * `MAX_ASSET_STAT` in total and may spend it on a single attribute or split
+     * it between two: a plain `exchange` is two points of influence, a black
+     * market is one of influence and one of guile, a mercenary board one of
+     * influence and one of might. Same institution, differently run — which is
+     * a better way to say what a works IS than a second archetype that happens
+     * to be worth the same amount.
+     *
+     * **Two is the cap and it is a real one.** A works spread across three
+     * stats at a point each would be worth more in total than one that
+     * concentrated, so the split has to be a trade rather than a bonus; and at
+     * a budget of two, "up to two stats" is the only split integers allow. A
+     * half point does not exist on a 1–20 scale.
+     *
+     * The reducer clamps the sum, so an entry naming the same stat twice or a
+     * pair that overspends is trimmed rather than rejected — the shape
+     * `MAX_COMMITMENT_INCOME` set.
+     */
+    stats: z
+      .array(
+        z.object({
+          stat: z.enum(['might', 'guile', 'industry', 'influence', 'resolve']),
+          /** Negative is a works that is a liability to hold. */
+          points: z.number().int().min(-MAX_ASSET_STAT).max(MAX_ASSET_STAT),
+        }),
+      )
+      .min(1)
+      .max(2),
   }),
   z.object({
     /**

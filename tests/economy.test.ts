@@ -1847,7 +1847,7 @@ describe('a works makes its holder better at something', () => {
         divisible: false, uses: null, speculative: false, portable: false,
         atSystemId: at, valuePerUnit: {}, valueRange: null, text: 'A foundry.',
         commanderId: null, agentId: null,
-        yield: { kind: 'stat', stat, points },
+        yield: { kind: 'stat', stats: [{ stat, points }] },
       } as never,
     ];
     return s;
@@ -1887,7 +1887,7 @@ describe('a works makes its holder better at something', () => {
       divisible: false, uses: null, speculative: false, portable: false,
       atSystemId: at, valuePerUnit: {}, valueRange: null, text: 'A foundry.',
       commanderId: null, agentId: null,
-      yield: { kind: 'stat', stat: 'industry', points: 2 },
+      yield: { kind: 'stat', stats: [{ stat: 'industry', points: 2 }] },
     })) as never;
     expect(effectiveStats(many, 'drajk').industry).toBe(
       effectiveStats(fresh(), 'drajk').industry + MAX_ASSET_STAT,

@@ -56,13 +56,17 @@ export interface AssetArchetype {
    * college and a fortress are not inert scenery, they are the reason the
    * world under them is worth taking.
    *
-   * So there is exactly one per stat, and naming it is naming the mechanic:
-   * you do not have to be told what a `foundry` does. The reducer fills in a
+   * So there is one per stat, and naming it is naming the mechanic: you do not
+   * have to be told what a `foundry` does. **A works may also name two**, and
+   * then it splits one budget between them — a black market is an exchange run
+   * for guile as much as for influence, a mercenary board one run for might.
+   * Same institution, differently run, which says what a works IS better than
+   * a second archetype that happens to be worth the same amount. The reducer fills in a
    * `stat` yield from this when `create_asset` names a known fixture and gave
    * none, the same correction it already applies to `divisible` and `uses` —
    * the two other fields whose being wrong quietly breaks a later trade.
    */
-  modifies?: 'might' | 'guile' | 'industry' | 'influence' | 'resolve';
+  modifies?: readonly ('might' | 'guile' | 'industry' | 'influence' | 'resolve')[];
 }
 
 /**
@@ -243,7 +247,7 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: false,
     fixture: true,
-    modifies: 'might',
+    modifies: ['might'],
     from: 'raising an armoury, a proving ground, a fortress academy',
     wanted: 'whoever holds the world — it arms them, and changes hands with the ground',
   },
@@ -254,7 +258,7 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: false,
     fixture: true,
-    modifies: 'guile',
+    modifies: ['guile'],
     from: 'endowing a university, a chart house, a school of signals',
     wanted: 'whoever holds the world — it teaches them, and changes hands with the ground',
   },
@@ -265,7 +269,7 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: false,
     fixture: true,
-    modifies: 'industry',
+    modifies: ['industry'],
     from: 'opening a mine, laying a slipway, converting a yard',
     wanted: 'whoever holds the world — it builds for them, and changes hands with the ground',
   },
@@ -276,7 +280,7 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: false,
     fixture: true,
-    modifies: 'influence',
+    modifies: ['influence'],
     from: 'chartering a market, licensing a dock, seating a court',
     wanted: 'whoever holds the world — it speaks for them, and changes hands with the ground',
   },
@@ -287,9 +291,55 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: false,
     fixture: true,
-    modifies: 'resolve',
+    modifies: ['resolve'],
     from: 'raising a theatre, a temple, a grain dole — anything that settles a population',
     wanted: 'whoever holds the world — it settles them, and changes hands with the ground',
+  },
+  /* Split works: one budget, two attributes. The pure form above is the same
+     institution run for one thing; these are it run for two. */
+  {
+    kind: 'black_market',
+    unit: 'works',
+    divisible: false,
+    uses: null,
+    speculative: false,
+    fixture: true,
+    modifies: ['influence', 'guile'],
+    from: 'letting a market run without asking what crosses it',
+    wanted: 'whoever holds the world — an exchange that also hears things',
+  },
+  {
+    kind: 'mercenary_board',
+    unit: 'works',
+    divisible: false,
+    uses: null,
+    speculative: false,
+    fixture: true,
+    modifies: ['influence', 'might'],
+    from: 'licensing a hiring hall, seating a board that sells contracts',
+    wanted: 'whoever holds the world — an exchange that also musters companies',
+  },
+  {
+    kind: 'war_college',
+    unit: 'works',
+    divisible: false,
+    uses: null,
+    speculative: false,
+    fixture: true,
+    modifies: ['might', 'resolve'],
+    from: 'endowing a staff school, a siege academy',
+    wanted: 'whoever holds the world — it teaches an army to hold as well as to fight',
+  },
+  {
+    kind: 'shipwright_school',
+    unit: 'works',
+    divisible: false,
+    uses: null,
+    speculative: false,
+    fixture: true,
+    modifies: ['industry', 'guile'],
+    from: 'endowing a school beside a yard — draughtsmen as well as riveters',
+    wanted: 'whoever holds the world — it builds hulls and copies other people\'s',
   },
 ];
 

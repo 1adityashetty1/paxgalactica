@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MAX_ASSET_STAT } from '../src/domain/diplomacy.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import { boundPayloadsToOutcome } from '../src/domain/development.js';
@@ -84,8 +85,10 @@ describe('assets', () => {
       expect(archetypeFor('ore')?.speculative).toBe(true);
       expect(archetypeFor('foundry')?.fixture).toBe(true);
       // A works declares the attribute it is worth to whoever holds the ground.
-      expect(archetypeFor('foundry')?.modifies).toBe('industry');
-      expect(archetypeFor('college')?.modifies).toBe('guile');
+      expect(archetypeFor('foundry')?.modifies).toEqual(['industry']);
+      expect(archetypeFor('college')?.modifies).toEqual(['guile']);
+      // A works may name two, and then it splits one budget between them.
+      expect(archetypeFor('black_market')?.modifies).toEqual(['influence', 'guile']);
       expect(archetypeFor('nothing_like_this')).toBeUndefined();
     });
 
@@ -141,7 +144,10 @@ describe('assets', () => {
       expect(out.rejections).toEqual([]);
       expect(out.state.assets[0]!.portable).toBe(false);
       // And it is worth what its kind means, without being told.
-      expect(out.state.assets[0]!.yield).toEqual({ kind: 'stat', stat: 'industry', points: 1 });
+      expect(out.state.assets[0]!.yield).toEqual({
+        kind: 'stat',
+        stats: [{ stat: 'industry', points: 2 }],
+      });
     });
   });
 
@@ -579,6 +585,70 @@ describe('assets', () => {
       expect(s.assets.some((a) => a.kind === 'ore' && a.quantity === 40)).toBe(true);
     });
   });
+  describe('a works can be run for two things at once', () => {
+    // "Up to two" is the whole shape: a works is worth MAX_ASSET_STAT in total
+    // and may spend it on one attribute or split it between two. At a budget of
+    // 2 that is 2+0 or 1+1, which is why the cap on the split is two — a half
+    // point does not exist on a 1–20 scale.
+    const place = (kind: string) => {
+      const s = seed();
+      const out = applyOps(
+        s,
+        [mint({ kind, quantity: 1, unit: 'works', valuePerUnit: {}, atSystemId: world(s).id })],
+        'model',
+        'ojjul',
+      );
+      expect(out.rejections).toEqual([]);
+      return out.state.assets[0]!.yield as { kind: 'stat'; stats: { stat: string; points: number }[] };
+    };
+
+    it('splits one budget evenly when a kind names two attributes', () => {
+      const plain = place('exchange');
+      expect(plain.stats).toEqual([{ stat: 'influence', points: MAX_ASSET_STAT }]);
+
+      const split = place('black_market');
+      expect(split.stats).toEqual([
+        { stat: 'influence', points: 1 },
+        { stat: 'guile', points: 1 },
+      ]);
+      // The same total either way — the split is a trade, not a bonus.
+      const sum = (y: typeof split) => y.stats.reduce((n, t) => n + t.points, 0);
+      expect(sum(split)).toBe(sum(plain));
+    });
+
+    it('trims a works that tries to be worth more by spreading', () => {
+      const s = seed();
+      const out = applyOps(
+        s,
+        [mint({
+          kind: 'grand_works', quantity: 1, unit: 'works', valuePerUnit: {},
+          atSystemId: world(s).id, portable: false,
+          yield: { kind: 'stat', stats: [{ stat: 'might', points: 2 }, { stat: 'guile', points: 2 }] },
+        })],
+        'model',
+        'ojjul',
+      );
+      const y = out.state.assets[0]!.yield as { stats: { stat: string; points: number }[] };
+      expect(y.stats.reduce((n, t) => n + t.points, 0)).toBe(MAX_ASSET_STAT);
+      expect(out.notes.join(' ')).toMatch(/a works is worth 2 however it is split/);
+    });
+
+    it('merges a stat named twice rather than paying it twice', () => {
+      const s = seed();
+      const out = applyOps(
+        s,
+        [mint({
+          kind: 'doubled_works', quantity: 1, unit: 'works', valuePerUnit: {},
+          atSystemId: world(s).id, portable: false,
+          yield: { kind: 'stat', stats: [{ stat: 'guile', points: 1 }, { stat: 'guile', points: 1 }] },
+        })],
+        'model',
+        'ojjul',
+      );
+      const y = out.state.assets[0]!.yield as { stats: { stat: string; points: number }[] };
+      expect(y.stats).toEqual([{ stat: 'guile', points: 2 }]);
+    });
+  });
 });
 
 /**
@@ -589,6 +659,8 @@ describe('assets', () => {
  * kind that never passes through `create_asset`, so the reducer's own
  * corrections are not there to catch a malformed one.
  */
+
+
 describe('the opening board gives every power something to bargain with', () => {
   const opening = () => createSeedState('drajk');
 
