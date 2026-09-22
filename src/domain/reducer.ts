@@ -787,6 +787,40 @@ function settleReturn(
  * read has not yet done anything, and paying at signature would hand over the
  * goodwill for a treaty that may never come into force.
  */
+/**
+ * Whether these parties were ALREADY bound by a live treaty of this type.
+ *
+ * `TREATY_GOODWILL` is paid for binding yourselves to each other, and
+ * rewriting paper you already hold is not a new bond — so a renewal pays
+ * nothing.
+ *
+ * Without this the goodwill is a **pump**, and the war-ending case is exactly
+ * where a player has every reason to work it: signing the identical ceasefire
+ * eight times walks a pair from −50 to +14, because each signature pays +8 and
+ * `supersedePriorTreaties` retires the previous one at no cost whatever. Peace
+ * by redrafting the same document, at a price of nothing.
+ *
+ * Read **before** supersession, which is the pass that retires the treaty this
+ * question is about, and matched on `type` rather than on footprint: two
+ * `trade_accord`s granting different lanes are two legitimate deals and neither
+ * supersedes the other, but they are still one relationship, and the second is
+ * not a fresh act of binding.
+ *
+ * Signing a *different* type does pay — a trade accord and a defence pact are
+ * two distinct bonds — which bounds the total a pair can ever draw from this at
+ * one payment per type, against a negotiation apiece to earn it.
+ */
+function alreadyBound(state: WorldState, incoming: Treaty): boolean {
+  return state.treaties.some(
+    (t) =>
+      t.id !== incoming.id &&
+      t.status === 'active' &&
+      t.type === incoming.type &&
+      t.parties.length === incoming.parties.length &&
+      incoming.parties.every((p) => t.parties.includes(p)),
+  );
+}
+
 function payTreatyGoodwill(state: WorldState, treaty: Treaty, notes: string[]): void {
   for (const party of treaty.parties) {
     const faction = state.factions.find((f) => f.id === party);
@@ -3072,8 +3106,11 @@ export function applyOps(
         // yet — it does so when it is promoted in `tickTurn`, or the parties
         // would have nothing in force while the council deliberates.
         if (!pending) {
+          // Read BEFORE supersession, which is what retires the treaty this
+          // question is about.
+          const renewal = alreadyBound(state, treaty);
           supersedePriorTreaties(state, treaty, notes);
-          if (arrangementStanding) payTreatyGoodwill(state, treaty, notes);
+          if (arrangementStanding && !renewal) payTreatyGoodwill(state, treaty, notes);
         }
         logEvent(
           state,
@@ -5387,13 +5424,14 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
     treaty.status = 'active';
     // It replaces its predecessor now, not at signature — see
     // `supersedePriorTreaties`.
+    const renewal = alreadyBound(state, treaty);
     supersedePriorTreaties(state, treaty, notes);
     // A ratified treaty pays its goodwill here rather than at signature, the
     // same rule `supersedePriorTreaties` and `cedeTerritory` follow at both
     // sites. The legacy flag has to reach the tick for that reason: ten saved
     // campaigns contain `ratifyTurns`, so gating only the signature path would
     // have left half the change live during replay.
-    if (arrangementStanding) payTreatyGoodwill(state, treaty, notes);
+    if (arrangementStanding && !renewal) payTreatyGoodwill(state, treaty, notes);
     logEvent(state, 'diplomacy', `Treaty ratified and now in force: ${treaty.summary}.`);
     notes.push(`Ratified: ${treaty.summary}`);
     // A cession takes effect with the rest of the terms, not at signature, so a

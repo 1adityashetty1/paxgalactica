@@ -639,6 +639,39 @@ describe('signing a treaty is worth standing', () => {
     expect(view(ratified, 'drajk', 'ojjul')).toBe(control + TREATY_GOODWILL);
   });
 
+  it('pays once for one bond — a renewal is not a fresh act of binding', () => {
+    // Found by playing the war-ending case, which is exactly where a player has
+    // every reason to keep redrafting terms. Each signature paid +8 and
+    // `supersedePriorTreaties` retired the previous one at no cost whatever, so
+    // signing the identical ceasefire eight times walked a pair from −50 to
+    // +14: peace by redrafting the same document, at a price of nothing.
+    const before = seed();
+    let s = before;
+    for (let i = 0; i < 6; i++) {
+      s = applyOps(s, [pact(['drajk', 'ojjul'])], 'extraction', 'drajk', true).state;
+    }
+    expect(s.treaties.filter((t) => t.status === 'active')).toHaveLength(1);
+    expect(view(s, 'drajk', 'ojjul')).toBe(view(before, 'drajk', 'ojjul') + TREATY_GOODWILL);
+  });
+
+  it('pays again for a genuinely different bond', () => {
+    // A defence pact and a trade accord are two arrangements, not one redrafted
+    // — which bounds what a pair can ever draw from this at one payment per
+    // type, against a negotiation apiece to earn it.
+    const before = seed();
+    const first = applyOps(before, [pact(['drajk', 'ojjul'])], 'extraction', 'drajk', true).state;
+    const second = applyOps(
+      first,
+      [{ ...(pact(['drajk', 'ojjul']) as Record<string, unknown>), treatyType: 'trade_accord' }] as OpInput[],
+      'extraction',
+      'drajk',
+      true,
+    ).state;
+    expect(view(second, 'drajk', 'ojjul')).toBe(
+      view(before, 'drajk', 'ojjul') + 2 * TREATY_GOODWILL,
+    );
+  });
+
   it('is not taken back when the treaty is broken, because breaking already costs', () => {
     // The asymmetry against `COMMITMENT_GOODWILL`, whose refund on dissolve
     // netted to zero. `break_treaty` costs 25 with the party and a permanent

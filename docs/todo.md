@@ -1332,6 +1332,24 @@ netted to zero. Below a treaty's 25 deliberately — a commitment is the private
 instrument, so breaking one is a grievance rather than a scandal — and onlookers
 still only at three or more, which is the distinction that survives.
 
+**The goodwill was a pump, and playing the war-ending case found it.** Each
+signature paid +8 and `supersedePriorTreaties` retired the previous treaty at no
+cost, so signing the identical ceasefire eight times walked a pair from −50 to
++14 — peace by redrafting the same document, at a price of nothing, in exactly
+the situation where a player has most reason to redraft. `alreadyBound` is read
+before supersession and a renewal pays nothing; a genuinely different type still
+pays, which bounds a pair at one payment per type.
+
+**And a related gap is left open deliberately.** Disposition has no decay, so a
+war-ending ceasefire cannot heal anything: the Vigil and Drajk sign with a 300
+indemnity and 20 a turn, keep the peace seven turns, and sit at the same −48 the
+signature left them. A ceasefire with a `durationTurns` is a **war on a timer** —
+it lapses, `warsFor` reads the same unmoved numbers, and the war resumes with no
+act by either party — so an indefinite one is the only durable peace, and
+reparations buy no standing whatever. Patching it means paying goodwill per turn
+of kept peace, which is a decay model in disguise; that decision belongs to the
+ratchet (closed grouping 20a), not here.
+
 **Replay needed an exemption, which the item did not anticipate.** Both new
 charges fire inside `applyOps`, so ten of the 48 saves rebuild with different
 dispositions — and those dispositions are what the powers in them actually

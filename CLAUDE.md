@@ -1263,6 +1263,37 @@ on establish and takes −5 on dissolve, netting to zero; a treaty already costs
 with the party and `PACT_BREAKING_REPUTATION_COST` with every onlooker to tear
 up, so taking the goodwill back on top would charge twice for one decision.
 
+**And paid once per bond, because otherwise it is a pump.** A renewal pays
+nothing — `alreadyBound` is read *before* supersession, which is the pass that
+retires the treaty the question is about. Without that, signing the identical
+ceasefire eight times walks a pair from −50 to **+14**: each signature pays its
++8 and `supersedePriorTreaties` retires the previous one at no cost whatever, so
+peace is made by redrafting the same document at a price of nothing.
+
+Found by playing the war-ending case, which is where a player has every reason
+to keep redrafting terms, and it is the shape this file keeps recording — a
+number that moves in one direction with nothing spending it. Matched on `type`
+rather than on footprint: two `trade_accord`s granting different lanes are two
+legitimate deals and neither supersedes the other, but they are one relationship
+and the second is not a fresh act of binding. A *different* type does pay — a
+trade accord and a defence pact are two distinct bonds — which bounds what a
+pair can ever draw at one payment per type, against a negotiation apiece to earn
+it.
+
+**What none of this does is let peace heal.** Disposition has no decay — a
+stated choice, *"relationships stay where they are put; the ratchet is
+accepted"* — so a war-ending ceasefire is the one case where that bites hardest.
+Measured: the Vigil and Drajk open at −70/−50, sign a ceasefire with a 300
+indemnity and 20 a turn, and after seven turns of kept peace and 180 credits
+paid they sit at −48, exactly where the signature left them. A treaty with a
+`durationTurns` is therefore **a war on a timer**: it lapses, `warsFor` reads the
+same unmoved numbers, and the war resumes with no act by either party. An
+indefinite ceasefire is the only durable peace available, and reparations —
+`terms.payment` and `incomePerTurn`, the two mechanisms built for exactly this —
+move real money and buy no standing at all. Left as a known gap rather than
+patched: paying goodwill per turn of kept peace is a decay model in disguise, and
+that decision belongs to the ratchet, not to this.
+
 **3. Walking away from a commitment now costs more than it paid.** That refund is
 the live hole underneath all of it: `+COMMITMENT_GOODWILL` on establish and `−` on
 dissolve net to **zero**, and since disposition has no decay this was the only
