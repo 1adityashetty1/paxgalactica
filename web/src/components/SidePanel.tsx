@@ -889,6 +889,19 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
                 <strong style={{ color: colourOf(state, other) }}>
                   {t.type.replace(/_/g, ' ')}
                 </strong>
+                {/* Exclusivity is the actionable half: it is the reason the next
+                    arrangement of this type will be refused at signature, and a
+                    player who cannot see it reads that refusal as the game
+                    being arbitrary. The same gap tolls had — legible in the
+                    Factions panel, invisible where it cost you something. */}
+                {t.exclusive && (
+                  <span
+                    className="chip"
+                    title={`Exclusive: no other ${t.type.replace(/_/g, ' ')} can be entered with anyone else while this stands. Breaking it costs 25 with ${getFaction(state, other)?.name ?? other} and standing with every onlooker.`}
+                  >
+                    exclusive
+                  </span>
+                )}
                 <span className="eta">
                   {t.expiresTurn === null
                     ? 'indefinite'

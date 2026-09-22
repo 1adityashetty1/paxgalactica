@@ -302,7 +302,13 @@ export function serializeStanding(state: WorldState, viewerId: string): string {
   for (const t of treaties) {
     const other = t.parties.find((p) => p !== viewerId) ?? '?';
     const until = t.expiresTurn === null ? 'indefinite' : `until turn ${t.expiresTurn}`;
-    lines.push(`  - \`${t.id}\` ${t.type.replace(/_/g, ' ')} with ${other} (${until}) — ${t.summary}`);
+    // Exclusivity has to be ON the line the arbiter reads, not merely in the
+    // record: `appraisal.md` rules a second exclusive arrangement inadmissible
+    // from this block, and it cannot rule on a field it was never shown. The
+    // commitments block has carried the same flag since exclusivity existed
+    // there.
+    const only = t.exclusive ? ' **[exclusive — one at a time]**' : '';
+    lines.push(`  - \`${t.id}\` ${t.type.replace(/_/g, ' ')} with ${other} (${until})${only} — ${t.summary}`);
     const flow = t.terms.incomePerTurn[viewerId];
     if (flow) lines.push(`      income: ${flow > 0 ? '+' : ''}${flow}/turn`);
     for (const share of t.terms.incomeShares) {

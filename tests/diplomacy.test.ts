@@ -12,6 +12,7 @@ import { loadPrompt } from '../src/model/prompts.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { groundInConcessions } from '../src/engine/turn.js';
 import {
+  TREATY_GOODWILL,
   assetWorthTo,
   atThisTable,
   mergeConcessions,
@@ -311,7 +312,7 @@ describe('war is a property of the relationship, not one opinion', () => {
     const state = fresh();
     state.factions.find((f) => f.id === 'freeworlds')!.disposition['drajk'] = -90;
     state.treaties.push({
-      id: 't1', type: 'non_aggression', parties: ['freeworlds', 'drajk'],
+      id: 't1', type: 'non_aggression', parties: ['freeworlds', 'drajk'], exclusive: false,
       terms: { territory: [], shipsPledged: {}, incomePerTurn: {}, payment: {}, assets: [], incomeShares: [], mutualDefenseTrigger: '', voidsOn: [] },
       signedTurn: 0, expiresTurn: null, effectiveTurn: null, status: 'active', summary: 'na',
     });
@@ -864,8 +865,11 @@ describe('signing under a fleet costs the power holding the fleet', () => {
 
     const out = applyOps(state, [accord], 'extraction', 'freeworlds');
     expect(out.rejections).toHaveLength(0);
+    // Signing also PAYS `TREATY_GOODWILL` now, and both terms are named rather
+    // than folded into one literal: this test pins the coercion charge, and a
+    // number with the goodwill silently absorbed into it would stop saying so.
     expect(dispositionToward(out.state, 'freeworlds', 'vigil')).toBe(
-      before - COERCION_RESENTMENT,
+      before + TREATY_GOODWILL - COERCION_RESENTMENT,
     );
     expect(out.notes.join(' ')).toMatch(/ships over 1 of its worlds/);
   });
@@ -874,7 +878,9 @@ describe('signing under a fleet costs the power holding the fleet', () => {
     const state = createSeedState('freeworlds');
     const before = dispositionToward(state, 'freeworlds', 'vigil');
     const out = applyOps(state, [accord], 'extraction', 'freeworlds');
-    expect(dispositionToward(out.state, 'freeworlds', 'vigil')).toBe(before);
+    // No coercion term: what moves is the goodwill of having signed, and
+    // nothing else.
+    expect(dispositionToward(out.state, 'freeworlds', 'vigil')).toBe(before + TREATY_GOODWILL);
   });
 
   it('does not charge a guest who was invited in', () => {
@@ -899,7 +905,7 @@ describe('signing under a fleet costs the power holding the fleet', () => {
     const before = dispositionToward(invited, 'freeworlds', 'vigil');
 
     const out = applyOps(invited, [accord], 'extraction', 'freeworlds');
-    expect(dispositionToward(out.state, 'freeworlds', 'vigil')).toBe(before);
+    expect(dispositionToward(out.state, 'freeworlds', 'vigil')).toBe(before + TREATY_GOODWILL);
   });
 });
 
@@ -1638,6 +1644,7 @@ describe('a contingency written against losing a world', () => {
     // why this needs no per-turn set and no schema change.
     s.treaties.push({
       id: 'tre-t-0',
+      exclusive: false,
       type: 'cession',
       parties: ['meridian', 'vigil'],
       terms: {

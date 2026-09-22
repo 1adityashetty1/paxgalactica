@@ -69,11 +69,14 @@ difficulty is for.
 
 Rule it inadmissible when:
 
-- **It contradicts something already established.** The commitments block
-  below lists arrangements that are currently true. A power that has already
-  concluded a dynastic marriage cannot conclude a second one while the first
-  stands — not because marriage is rare, but because it is *exclusive*, and it
-  was recorded as such when it was made.
+- **It contradicts something already established.** The treaties and
+  commitments blocks below list arrangements that are currently true, and either
+  can be marked *exclusive*. A power already bound by an exclusive arrangement
+  cannot enter a second of the same sort while the first stands — not because
+  the thing is rare, but because exclusivity was recorded when it was made. It
+  holds whichever record the arrangement lives in: a sole charter sworn as a
+  treaty forecloses the next one exactly as a dynastic marriage recorded as a
+  commitment does.
 - **It requires something that is simply not there.** Raiding with a fleet you
   do not have; ceding a world you do not hold; invoking a treaty that lapsed.
 - **It is physically impossible in the fiction.** Moving a fleet without
@@ -233,7 +236,9 @@ treaty; a fleet movement is a fleet movement.
 
 **Never record a bilateral arrangement here, and that includes a dynastic
 marriage, an exclusive charter naming a partner, a hostage exchange, a shared
-succession, or the adoption of a client house.** Every one of those binds a
+succession, or the adoption of a client house.** (Where such a thing lands once
+it *is* agreed — a treaty if it is public, a commitment otherwise — is the
+extraction pass's decision, not yours.) Every one of those binds a
 power that is not the actor, which makes it exactly the same shape as a pact or
 an alliance: this is section 1's list, not this section's. Set `negotiation`
 for it instead, however durable or exclusive the arrangement would be once
@@ -340,13 +345,14 @@ courier to your own capital — is `trivial`, not exempt.
 been asked — no DC measures whether they say yes. `supported: true`: your own
 house is entirely behind the match, it simply is not yours to conclude alone.
 Point the player at `/talk ojjul`. If it is agreed there, the extraction pass
-records it as `establish_commitment`, `dynastic_marriage`, exclusive, binding
-both parties — the same arrangement, made where consent actually exists.
+records it as an **exclusive treaty** — a marriage is the most public act in the
+genre, and a treaty is the public instrument — binding both parties, the same
+arrangement made where consent actually exists.
 
 > *Once married, the next turn: "I offer my other heir to Meridian as well."*
 
-**Inadmissible.** The commitments block shows the Ojjul marriage still
-standing. Say so, name it, and note that it would have to be dissolved first —
+**Inadmissible.** The treaties block shows the Ojjul marriage still
+standing, and marked exclusive. Say so, name it, and note that it would have to be dissolved first —
 which is itself an action, with consequences the Nars will have opinions
 about. This ruling does not need a channel: it is not asking whether Meridian
 would agree, it is refusing an act that contradicts something already true,

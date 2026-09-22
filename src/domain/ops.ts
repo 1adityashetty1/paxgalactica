@@ -400,6 +400,15 @@ export const FormTreatyOp = z.object({
    * completed without producing the treaty at all.
    */
   ratifyTurns: z.number().int().min(1).max(10).optional(),
+  /**
+   * Whether this arrangement forecloses another of its type with anyone else.
+   *
+   * The arbiter's ruling to make, the same division that already governs
+   * `establish_commitment`: *the arbiter rules that a marriage is exclusive and
+   * the reducer enforces it.* Refused at signature when either side is already
+   * bound exclusively to a third power — see `conflictingTreaty`.
+   */
+  exclusive: z.boolean().default(false),
   summary: z.string().default(''),
 });
 
@@ -1389,7 +1398,15 @@ export interface OpRejection {
      * honouring. Refusing it is what makes the deal get re-expressed rather
      * than quietly evaporate.
      */
-    | 'already_void';
+    | 'already_void'
+    /**
+     * A party is already bound by an exclusive treaty of that type to somebody
+     * else. The treaty counterpart of `commitment_conflict`, and the answer to
+     * the one thing a treaty could not previously say — see
+     * `conflictingTreaty`. A renegotiation between the SAME parties is not this:
+     * that supersedes.
+     */
+    | 'treaty_conflict';
   message: string;
 }
 

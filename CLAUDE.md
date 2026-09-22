@@ -540,12 +540,48 @@ follow from billing the **net** rather than each op:
   in either order, and issuing a `fleet_movement` is not read as scrapping the
   ships that left.
 - Overreach is **not a rejection**. The yards deliver what was paid for and the
-  surplus is trimmed off, deterministically, largest concentration first. A
-  partly-affordable order is partly fulfilled, which reads the way a partial
-  check reads.
+  surplus is trimmed off, deterministically. A partly-affordable order is partly
+  fulfilled, which reads the way a partial check reads.
 
 Losses are never refunded, so hulls cannot be cycled through the yards for
 cash.
+
+**The surplus comes off the gain, never off the fleet.** Comparing whole-faction
+tonnage is right for deciding *how much* was built — it is what keeps
+repositioning free — and it is the wrong thing to **cut**, which is what the trim
+did for as long as the trim existed: it went through `removeTons`, which spends a
+faction's richest world in loss order and cannot tell a hull laid down this batch
+from one in service since turn 0. So an order bigger than the treasury ate the
+standing navy. Measured on the seed: `adjust_fleet +1000` as Arkane on 1,100
+credits took the battleships from 17 to 35 and the escorts from 26 to 18, and the
+lifter with them — 73 tons paid for, 70 delivered, and two classes the order never
+named scrapped to pay for a third.
+
+The gain is knowable exactly, because `applyOps` already snapshots every system's
+stacks for `capSelfInflictedLosses`: the positive per-class differences **are**
+the new hulls. `unbuild` cuts heaviest-first out of those, ordered on
+(tonnage, class, system id) so replay walks it identically, and everything
+already standing is unreachable.
+
+**And the bill follows the delivery rather than leading it.** A whole hull is the
+smallest thing that can be refused, so a cut overshoots by up to three tons, and
+what is charged is what actually landed — capped by what the treasury could have
+afforded, since the part of a shortfall that could not be reached is tonnage
+already in transit, which cannot be un-built. The same order now delivers 72 tons
+for 1,080 credits and leaves every escort and the lifter where they were.
+
+This is the first change since batches became atomic that makes an old journal
+rebuild differently, so `JOURNAL_VERSION` is **4** and the gain-scoped trim is
+pinned to it, exactly as `atomicBatches` is pinned to 3 — those campaigns really
+did lose those hulls, and replay reproduces what happened rather than re-running
+it under today's rules. Two of the 48 saves prove the exemption is load-bearing:
+without it `adversarial_0907` and `creative_0907` both end with the Vigil a few
+tens of credits richer. With it, all 48 replay byte-identically.
+
+> `SaveFileSchema` had **restated** the accepted journal versions instead of
+> importing them, so bumping the version left every existing save unparseable —
+> the second source of truth failing in the one place a save file is read.
+> `JournalVersionSchema` is exported and both read it.
 
 Unpaid upkeep used to do nothing at all — `credits` floored at zero and a fleet
 of a thousand was sustainable on an empty treasury forever, which made upkeep no
@@ -1154,6 +1190,110 @@ and nothing implemented it.
 | `territory` (a term, not a type) | the named systems **change hands** when the treaty takes force |
 | `payment` (a term, not a type) | credits move **once**, when the treaty takes force — the price of a cession, an indemnity, a lump settlement |
 | `voidsOn` (a term, not a type) | typed conditions that **end** the treaty when they come true — and one already true at signature is **refused**, not signed |
+| `exclusive` (a flag, not a type) | forecloses another treaty of that **type** with anybody else; the second is **refused at signature** with `treaty_conflict` |
+
+### A treaty can be exclusive, and is worth something to have signed
+
+Three things a treaty could not say, none of them about marriage — a marriage is
+simply the case that wants all three at once, which is why every arrangement
+needing them kept being filed as a `Commitment`, where it is private and was
+free to walk away from. The same three are reached for by a sole charter, an
+exclusive supply deal, a hostage exchange and a single-creditor undertaking.
+
+**1. Exclusivity across partners.** Supersession is *pair-level* — it retires a
+live treaty between the **same two parties** — so *"I cannot bind to Meridian
+because I am already bound to the Nars"* was unsayable. `Treaty.exclusive` says
+it, and `conflictingTreaty` mirrors `conflictingCommitment` down to returning the
+blocking **treaty** rather than a boolean, so the rejection quotes it.
+
+**A field, not a `voidsOn` condition**, and that is not taste. A condition ends a
+treaty as `voided`, and that status exists *because it carries no penalty* —
+nobody repudiated it, the condition simply came true. So
+exclusivity-as-a-condition would make signing a second arrangement **silently
+dissolve the first, for free**, dodging the −25 and the public cost
+`break_treaty` charges, and converting a betrayal into an administrative event
+with no injured party:
+
+| | the second treaty | the first | cost of the swap |
+|---|---|---|---|
+| condition (`voidsOn`) | allowed | voids automatically | **nothing** |
+| field (`exclusive`) | refused at signature | stands | break it deliberately, and pay |
+
+`voidsOn.treaty_with` also takes a **named** target, so it could only ever say
+"voids if you sign with the Vigil" and never "with anyone" — wildcarding needs a
+sentinel in a field that is otherwise always a faction id.
+
+Keyed on `type`, which is a closed enum and **cannot drift** the way
+`Commitment.kind`'s free-form slug can — the `prisoners`/`pows` problem that
+produced `ASSET_ARCHETYPES`. The cost is coarseness: an exclusive `trade_accord`
+forecloses *all* trade accords, against a test that has pinned since item 26
+that two accords granting different lanes are two legitimate deals. That is
+accepted rather than worked around, and the arbiter decides when to set the flag
+— the division that already works for commitments, where *the arbiter rules that
+a marriage is exclusive and the reducer enforces it*.
+
+**Same pair supersedes; a different partner refuses.** Getting that ordering
+backwards breaks one feature or the other outright: refuse the same pair and a
+power cannot renegotiate its own marriage, permit a different partner and
+exclusivity does nothing at all.
+
+**2. Goodwill on signature.** Nothing in the treaty path moved disposition
+upward, for the whole life of the treaty system. `COMMITMENT_GOODWILL` did and
+was commitment-only, so an arrangement that wanted to be *worth something in
+standing* had to be filed privately — backwards, since a treaty is the public
+instrument and a commitment explicitly is not. `TREATY_GOODWILL` (8) is larger
+than the commitment's 5 because it is public: the same bargain sworn where
+everyone can see it is worth more than an understanding between two houses.
+
+Paid **to the parties and nobody else**, which differs from the commitment
+reasoning and lands in the same place. A commitment excludes onlookers because it
+is private; a treaty is public and onlookers plainly have a view — but the
+**sign** of that view is not determinable. An ally of my enemy signing a mutual
+defence pact is bad news for me; the same pact between two powers I am courting
+is good news. A third-party term would have to pick one, and picking one
+arbitrarily is how a mechanic becomes a number nobody can argue with.
+
+Paid where the treaty becomes **active**, so at signature *and* where `tickTurn`
+promotes a ratified one — the rule `supersedePriorTreaties` and `cedeTerritory`
+already follow at both sites, because a deal a council still has to read has not
+yet done anything.
+
+**Never refunded**, and that is the asymmetry. `adjustCommitmentGoodwill` pays +5
+on establish and takes −5 on dissolve, netting to zero; a treaty already costs 25
+with the party and `PACT_BREAKING_REPUTATION_COST` with every onlooker to tear
+up, so taking the goodwill back on top would charge twice for one decision.
+
+**3. Walking away from a commitment now costs more than it paid.** That refund is
+the live hole underneath all of it: `+COMMITMENT_GOODWILL` on establish and `−` on
+dissolve net to **zero**, and since disposition has no decay this was the only
+reversible disposition movement in the game. A power could swear a dynastic
+marriage, an exclusive charter or a standing intelligence duty and repudiate it
+the next turn at no net standing loss whatever.
+
+| ending the same arrangement | costs |
+|---|---|
+| as a **commitment**, before | −5 privately, against the +5 it paid — **net zero** |
+| as a **commitment**, now | the refund, plus `COMMITMENT_BREAKING_COST` (12) with each bound party |
+| as a **treaty** | −25 with the party, plus a permanent reputation hit with every onlooker |
+
+The multi-party case was patched earlier; two parties is the commonest shape a
+commitment has and was the one still open. `COMMITMENT_BREAKING_COST` sits below
+a treaty's 25 deliberately — a commitment is the *private* instrument, which is
+the whole basis on which onlookers get no view of it, so breaking one is a
+grievance between the parties rather than a public scandal. **Onlookers still
+only at three or more**, which is the distinction that survives: an arrangement
+sworn to four powers is public business and three of them just watched it torn
+up.
+
+**Replay.** `TREATY_GOODWILL` and `COMMITMENT_BREAKING_COST` both fire inside
+`applyOps`, so ten of the saved campaigns rebuild with different dispositions —
+and those dispositions are what the powers in them actually believed.
+`JOURNAL_VERSION` is **5**, with the exemption pinned to 5 the way
+`unbuildFromGain` is pinned to 4. Both replay-only rules now live in one
+`LegacyRules` object rather than a third positional boolean, and `tickTurn` takes
+it too: ten saves contain `ratifyTurns`, so gating only the signature path would
+have left half the change live during replay. All 48 saves replay identically,
+dispositions included; without the exemption ten move.
 
 **A renegotiation replaces the old paper; it does not add to it.** Powers say
 "supersedes" constantly and nothing acted on it: a playtest left two `tribute`
@@ -2632,6 +2772,82 @@ touch, and the only pending orders they consult are their own. A test pins it by
 asserting that a hidden rival programme changes no bot's proposal at all —
 an invariant rather than an accident.
 
+### And a doctrine is not blind, either
+
+`initiative.ts` contained **no reading of `disposition` at all**. A power that
+loathed you at −95 with no paper between you picked its targets exactly as one
+that liked you at +50 did: `lineStrength`, garrison, adjacency. `honourTreaties`
+was the only relationship any bot consulted, so *paper* was the sole restraint
+and the entire range between neutral and war was inert — for the half of the
+galaxy played by arithmetic on an ordinary turn.
+
+That was a correct decision that stopped being correct. This file used to file it
+honestly as a limitation of the harness — *"the counterplay their position
+invites is political, and politics is what the model-driven game supplies"* —
+which holds only while the bots play nobody but each other, and they now run in
+`endTurn` for every faction the model did not speak for.
+
+**Measuring it required fixing the harness first, and that is the finding under
+the finding.** `src/balance.ts` called `BOTS[id]` directly rather than going
+through `proposeFor`, so it skipped **both** post-filters: the one tool that
+plays the bots for thirty turns was the one place `honourTreaties` had never run,
+and a standing gate measured against it would have reported a board it could not
+have changed. The harness now takes the path `endTurn` takes. With the new rules
+switched off that change is exactly neutral — the board is the historical
+3/6/5/4/4 with the 58/42 mix — which is what makes it a control rather than a
+confound.
+
+Two halves, and only one of them moves the board:
+
+| | what it does | how often it fires |
+|---|---|---|
+| `BOT_AGGRESSION_CEILING` | a bot will not attack a power it is on positive terms with, absent a war | **never**, in 30 harness turns or on any of the 24 played boards |
+| `GRIEVANCE_WEIGHT` | standing weights *which* world a bot reaches for | every turn a bot has a choice |
+
+**The gate is an invariant and is documented as one.** It withholds nothing in
+any measurement available, because the whole galaxy issues **four fleet
+movements in thirty turns** — wars here are rare and decisive, the same fact that
+made the first veterancy thresholds unreachable — and only one bot ever attacks a
+world another power holds, its target being one it already dislikes. What it buys
+is a guarantee a model-driven campaign can reach easily and the bots cannot: no
+power sends a fleet at a neighbour that thinks well of it. Pinned on a
+constructed board, because a guard nobody has watched fire is exactly the failure
+this file keeps recording.
+
+It reads `warsFor` **first**, because that is bilateral and a war is a property
+of the relationship — a power that has been attacked may answer whatever its own
+opinion was a moment ago. Outside a war the test is *my* view of *them*, which is
+what keeps this from closing the feedback loop: every disposition cost in the
+game moves the **injured** party's view of the aggressor and nothing moves the
+aggressor's view of its victim, so attacking cannot talk me into attacking again
+while it can and should talk my victim into answering. Gating on the worse of the
+two directions would make the first war self-reinforcing and permanent, since
+disposition has no decay. Unaligned ground and interdiction are both ungated —
+a world with no flag over it has nobody to have offended, and raiding is
+deliberately open to anyone with `PIRACY_REPUTATION_COST` already pricing it.
+
+**`GRIEVANCE_WEIGHT` is the half that fires.** `targetPriority` adds up to 4 on a
+`strategicValue` that runs 0–10, so a grievance reorders two comparable prizes
+and cannot make a worthless world a war aim. The bound is the design rather than
+timidity: *always* attacking whoever you hate most makes the board deterministic
+and flattens `opportunist` (hits the weak) into `crusading` (hits regardless),
+two distinctions the harness exists to keep visible. Swept — 0–2 leaves the
+historical board, **3–6 is a flat region** at 4/6/5/4/4 with six movements
+instead of four, and at 10 grievance swamps prize and the galaxy goes to
+5/5/5/4/3. 4 is taken from the middle.
+
+The two turn out to pair: at any gate setting the board keeps moving, because a
+Vigil refused its neighbour goes after a power it is actually at war with
+instead. The first sweep, run before the weighting existed, froze the board at
+turn 10 — which is the failure mode the item predicted, and it is now
+unreachable.
+
+**And the board freezing is an assertion now, not an observation.**
+`tests/balance.test.ts` asserted that nobody is eliminated and nobody holds half
+the map, and **both of those get easier when bots attack less** — so the whole
+suite would have gone green on a galaxy where nothing ever happens. *"Territory
+changes through turn 24"* was a sentence in this file; it is a test.
+
 ## A batch is a transaction
 
 `applyOps` prices each op on its own. That is right when ops are independent —
@@ -3484,9 +3700,10 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `interrupt_order` | rejected when the order is not interruptible |
 | `extend_order` | rejected for movement |
 | `accelerate_order` | spends credits, drops one Fibonacci bucket, min 1; rejected for movement |
-| `form_treaty` | **extraction-only** — absent from `ModelOpSchema`; a treaty needs the other party's consent |
+| `form_treaty` | **extraction-only** — absent from `ModelOpSchema`; a treaty needs the other party's consent. `exclusive` forecloses another of that type with anyone else |
 | `restructure_debt` | **extraction-only** — new terms need the creditor's agreement; keeps the id, the balance and the history |
 | `establish_commitment` | optional `incomePerTurn`, trimmed to `MAX_COMMITMENT_INCOME` |
+| `dissolve_commitment` | returns the goodwill **and** charges `COMMITMENT_BREAKING_COST` with each bound party; onlookers only at three or more |
 | `establish_debt` | **extraction-only** — a principal that depletes; trimmed to `MAX_DEBT_PRINCIPAL` |
 | `establish_loan` | **extraction-only** — a thing that comes back: hulls, credits or a portable asset. Never a world, never a fixture |
 | `return_loan` | borrower only; the hulls really leave its stacks |
@@ -3509,7 +3726,8 @@ Rejection codes: `unknown_op`, `schema_invalid`, `reducer_only`,
 `unknown_treaty`, `unknown_agent`, `commitment_conflict`, `no_presence`,
 `unreachable_target`, `missing_duration`, `insufficient_credits`,
 `not_interruptible`, `illegal_value`, `doctrine_refusal`, `needs_consent`,
-`declared_only`, `unknown_debt`, `unknown_loan`.
+`declared_only`, `unknown_debt`, `unknown_loan`, `already_void`,
+`treaty_conflict`.
 
 ---
 
@@ -4078,10 +4296,18 @@ income, and each doctrine's signature mechanic actually earning something.
 Loose bounds on purpose: a tight assertion on a balance number is a test people
 learn to ignore.
 
-**What the harness cannot model:** the bots do not react to disposition. The
-Nars finish hated by everyone and nobody invades them, so the harness
-overstates their runaway — the counterplay their position invites is political,
-and politics is what the model-driven game supplies.
+**What the harness cannot model:** the bots read disposition now — see *"a
+doctrine is not blind, either"* — but only to choose between targets and to
+refuse one they are on good terms with. Nothing makes them *ally*, and nothing
+makes a hated power a coalition's target. The Nars still finish hated by
+everyone and nobody combines against them, so the harness still overstates their
+runaway; what that counterplay needs is diplomacy, which is what the
+model-driven game supplies.
+
+It also runs the bots through `proposeFor` rather than calling them raw, which is
+the path `endTurn` takes. That is not a detail: calling `BOTS[id]` directly
+skipped every post-filter, so the harness was the one place `honourTreaties` had
+never executed in thirty turns of play.
 
 ---
 
