@@ -579,16 +579,57 @@ const tons = (s: WorldState) => fleetTonsOf(s, 'freeworlds');
 
     // Affordability is in TONS, because that is what the yards bill and what
     // the trim removes. Counting hulls gave the same answer only while every
-    // fleet was a pure battle line: the surplus is cut cheapest-first, so the
-    // hulls that come off are not the hulls that went on.
+    // fleet was a pure battle line.
+    //
+    // A whole hull is the smallest thing that can be refused, so the delivery
+    // lands at or just under what the purse could carry — a battleship is four
+    // tons and 73 does not divide by four. What it may never be is MORE, and
+    // what is charged is what landed.
     const affordableTons = Math.floor(purse(start) / CREDITS_PER_TON);
-    expect(tons(res.state)).toBe(tons(start) + affordableTons);
+    const gained = tons(res.state) - tons(start);
+    expect(gained).toBeLessThanOrEqual(affordableTons);
+    expect(gained).toBeGreaterThan(affordableTons - HULL_SPEC.battleship.tonnage);
+    expect(purse(start) - purse(res.state)).toBe(gained * CREDITS_PER_TON);
     expect(fleet(res.state)).toBeGreaterThan(before);
-    expect(purse(res.state)).toBeLessThan(CREDITS_PER_TON * HULL_SPEC.battleship.tonnage);
     expect(res.notes.join(' ')).toMatch(/could only pay for/);
     // Not a rejection — the order is partly fulfilled, which is the more
     // useful outcome and matches how a partial check reads.
     expect(res.rejections).toHaveLength(0);
+  });
+
+  it('pays for an overbuy out of the gain, never out of the standing fleet', () => {
+    // The bug this pins: the trim went through `removeTons`, which spends a
+    // faction's richest world in loss order and cannot tell a hull laid down
+    // this batch from one in service since turn 0. Arkane ordering a thousand
+    // ships on 1,100 credits finished with its escorts down from 26 to 18 and
+    // its lifter and listener gone — two classes the order never named,
+    // scrapped to pay for a third.
+    const start = fresh();
+    const res = applyOps(start, [{ op: 'adjust_fleet', factionId: 'freeworlds', delta: 1000 }]);
+
+    const held = (s: WorldState) => {
+      const out: Partial<Record<string, number>> = {};
+      for (const system of s.systems)
+        for (const [hull, n] of Object.entries(system.ships.freeworlds ?? {}))
+          out[hull] = (out[hull] ?? 0) + n;
+      return out;
+    };
+    const was = held(start);
+    const now = held(res.state);
+
+    // Every class the fleet already had is still there in at least its
+    // original strength. The order added battleships; nothing else moved.
+    for (const [hull, n] of Object.entries(was)) {
+      expect(now[hull] ?? 0, hull).toBeGreaterThanOrEqual(n!);
+    }
+    expect(now.battleship!).toBeGreaterThan(was.battleship!);
+
+    // And the bill is the delivery: what left the treasury bought exactly the
+    // tonnage that arrived, with nothing paid for hulls that were never laid
+    // down.
+    const gained = tons(res.state) - tons(start);
+    expect(gained).toBeGreaterThan(0);
+    expect(purse(start) - purse(res.state)).toBe(gained * CREDITS_PER_TON);
   });
 
   it('charges exactly the list price for an affordable order', () => {

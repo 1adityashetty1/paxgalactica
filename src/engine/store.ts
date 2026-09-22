@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { EpilogueViewSchema } from './epilogue.js';
+import { JournalVersionSchema } from './journal.js';
 
 /**
  * Campaign persistence, behind an interface.
@@ -34,8 +35,11 @@ export const SaveFileSchema = z.object({
     // Every version loads, and each replays under the rule that was in force
     // when it was written — see `replay`. v1 predates `form_treaty` requiring
     // the `extraction` source; v1 and v2 both predate batches being atomic, and
-    // recorded batches that really did apply in part.
-    version: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+    // recorded batches that really did apply in part; v1-v3 predate an
+    // overbuy's surplus being cut out of the batch's own gain.
+    // Restating the union here is what made bumping the journal version break
+    // every save that already existed; there is one definition now.
+    version: JournalVersionSchema,
     entries: z.array(z.unknown()),
   }),
   /**
