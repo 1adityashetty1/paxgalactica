@@ -12,6 +12,8 @@ import {
   fleetStrengthOf,
   fleetBases,
   fleetTonsOf,
+  dispositionBetween,
+  warsFor,
   ledgerFor,
   stackAt,
   getFaction,
@@ -470,6 +472,38 @@ function movedClasses(
 const hasOrder = (s: WorldState, me: string, type: string): boolean =>
   s.pendingOrders.some((o) => o.factionId === me && o.type === type);
 
+/**
+ * How much a bot wants a particular world, prize and grievance together.
+ *
+ * `strategicValue` alone was the whole of it, tie-broken on system id — so the
+ * Iron Vigil, whose doctrine is *"answer insolence with force"*, picked the
+ * richest thing on its border and was indifferent to who was standing on it.
+ * A power it loathed at -95 and one it liked at +50 were the same target at the
+ * same value.
+ *
+ * **A thumb on the scale, not the scale.** Standing is worth at most
+ * `GRIEVANCE_WEIGHT` against a `strategicValue` that runs 0-10, so a grievance
+ * can reorder two comparable prizes and cannot turn a worthless world into a
+ * war aim. That bound is the point rather than timidity: the item that asked for
+ * this named the failure mode, which is that *always* attacking whoever you hate
+ * most makes the board deterministic and flattens `opportunist` (hits the weak)
+ * into `crusading` (hits regardless) — two distinctions the harness exists to
+ * keep visible.
+ *
+ * Unaligned ground scores its prize and no grievance, because there is nobody
+ * there to have offended you. That is also what stops this being a general
+ * increase in aggression: a neutral world and a rival's world are still compared
+ * on what they are worth.
+ */
+export const GRIEVANCE_WEIGHT = 4;
+
+export function targetPriority(state: WorldState, me: string, target: StarSystem): number {
+  const holder = target.controllerFactionId;
+  if (!holder || holder === me) return target.strategicValue;
+  const standing = dispositionBetween(state, me, holder);
+  return target.strategicValue + (Math.max(0, -standing) / 100) * GRIEVANCE_WEIGHT;
+}
+
 /** Transit value crossing a system — what a raid or blockade there is worth. */
 function trafficAt(s: WorldState, systemId: string): number {
   return tradeRoutes(s)
@@ -522,7 +556,7 @@ const vigil: Bot = (ctx) => {
         Object.entries(t.ships ?? {})
           .filter(([id]) => id !== ctx.me)
           .reduce((n, [id]) => n + lineStrengthAt(ctx.state, t.id, id), 0);
-      return { t, defence, prize: t.strategicValue };
+      return { t, defence, prize: targetPriority(ctx.state, ctx.me, t) };
     })
     .filter(({ defence }) => defence > 0)
     .sort((a, b) => b.prize - a.prize || a.t.id.localeCompare(b.t.id))[0];
@@ -707,6 +741,70 @@ export interface Proposal {
   withheld: string[];
 }
 
+/**
+ * How well a power must think of a neighbour for its own doctrine to refuse to
+ * attack them, absent a war. Strictly positive standing protects you.
+ *
+ * **The bots read no standing at all before this.** A power that loathed you at
+ * −95 with no paper between you picked its targets exactly as one that liked you
+ * at +50 did: `lineStrength`, garrison, adjacency. `honourTreaties` was the only
+ * relationship any of them consulted, which made *paper* the sole restraint and
+ * left the whole range between neutral and war inert — for the half of the
+ * galaxy that is played by arithmetic on an ordinary turn.
+ *
+ * That was a correct decision that stopped being correct. CLAUDE.md filed it
+ * honestly as a limitation of the harness — *"the counterplay their position
+ * invites is political, and politics is what the model-driven game supplies"* —
+ * and that argument holds only while the bots play nobody but each other. They
+ * now run in `endTurn` for every faction the model did not speak for.
+ *
+ * ## This is an invariant, not a behaviour change, and it is measured as one
+ *
+ * It withholds **nothing** across 30 harness turns and nothing on all 24 played
+ * boards in `saves/`. That is not a threshold that wants tuning; it is what the
+ * board is actually like. The whole galaxy issues **four fleet movements in
+ * thirty turns** — wars here are rare and decisive, the same fact that made the
+ * first veterancy thresholds unreachable — and only one bot ever attacks a world
+ * another power holds, its target being one it already dislikes.
+ *
+ * So what this buys is a guarantee rather than a difference: a bot will never
+ * send a fleet at a power it is on good terms with, which a model-driven campaign
+ * can reach easily and the bots cannot reach on their own. The behaviour half of
+ * the same item is `targetPriority`, which fires every turn. Pinned on a
+ * constructed board in `tests/initiative.test.ts`, because a guard nobody has
+ * watched fire is the failure this repo keeps catching.
+ *
+ * **Set where it is a rule rather than a number.** At −21 and below the Vigil's
+ * campaign against Meridian at −20 is withheld too, and −20 is mild dislike in a
+ * lawless outer rim rather than friendship: gating it says a power may only
+ * attack what it hates past a quarter of the scale, which is over-firing. Zero
+ * is the line that states itself — *nobody attacks a neighbour that thinks well
+ * of them* — and it leaves the measured board untouched.
+ *
+ * ## Read on my own view of them, and only outside a war
+ *
+ * `warsFor` first, because it is **bilateral** and a war is a property of the
+ * relationship: a power that has been attacked may answer whatever its own
+ * opinion was a moment ago.
+ *
+ * Outside a war the test is *my* view of *them*, which is what keeps this from
+ * closing the positive feedback loop the item warned about. Every mechanical
+ * disposition cost in the game moves the **injured** party's view of the
+ * aggressor and nothing moves the aggressor's view of its victim — so attacking
+ * cannot talk me into attacking again, while it can and should talk my victim
+ * into answering. Gating on the worse of the two directions would make the first
+ * war self-reinforcing and permanent, since disposition has no decay.
+ *
+ * **Unaligned ground is not gated**, which is most of why the board keeps
+ * moving: a world with no flag over it has nobody to have offended, and taking
+ * unclaimed space is not an act against a power. Nor is interdiction — raiding
+ * is deliberately available to anyone, and `PIRACY_REPUTATION_COST` already
+ * prices doing it to a power that does not expect it of you. Gating that too
+ * would have taken the Confederacy's whole economy away from it: Drajk's best
+ * prey is the Combine, which it likes at +30.
+ */
+export const BOT_AGGRESSION_CEILING = 0;
+
 /** Strip acts that would break a pact this faction has actually signed. */
 function honourTreaties(
   state: WorldState,
@@ -731,6 +829,45 @@ function honourTreaties(
       boundBy(state, me, holder, new Set(['trade_accord']))
     ) {
       withheld.push(`interdiction at ${target.name}, which a trade accord makes pointless`);
+      return false;
+    }
+    return true;
+  });
+  return { ops: kept, withheld };
+}
+
+/**
+ * Strip attacks on powers this faction has no quarrel with.
+ *
+ * A second post-filter beside `honourTreaties` rather than a check threaded
+ * into five bots, for the reason that one is: a bot added later inherits the
+ * guard without knowing it exists. See `BOT_AGGRESSION_CEILING`.
+ *
+ * What it withholds is **reported**, exactly as a treaty refusal is. A power
+ * that quietly does less than its doctrine demands is the bug this module was
+ * written to fix, and a silent restraint is indistinguishable from a broken bot.
+ */
+function honourStanding(
+  state: WorldState,
+  me: string,
+  ops: Record<string, unknown>[],
+): { ops: Record<string, unknown>[]; withheld: string[] } {
+  const withheld: string[] = [];
+  const enemies = new Set(warsFor(state, me));
+  const kept = ops.filter((op) => {
+    if (op.op !== 'issue_order' || op.type !== 'fleet_movement') return true;
+    const target = sys(state, String(op.targetId ?? ''));
+    const holder = target?.controllerFactionId;
+    // Your own world is reinforcement, and unaligned ground has nobody to have
+    // offended.
+    if (!target || !holder || holder === me) return true;
+    if (enemies.has(holder)) return true;
+
+    const standing = dispositionBetween(state, me, holder);
+    if (standing > BOT_AGGRESSION_CEILING) {
+      withheld.push(
+        `an attack on ${target.name}, which it has no quarrel with ${getFaction(state, holder)?.name ?? holder} to justify (${standing})`,
+      );
       return false;
     }
     return true;
@@ -789,7 +926,13 @@ export function proposeFor(state: WorldState, factionId: string): Proposal | nul
   if (!bot) return null;
 
   const raw = bot({ state, me: factionId });
-  const { ops, withheld } = honourTreaties(state, factionId, raw);
+  // Paper first, then standing. Both are post-filters over one proposal, so a
+  // bot cannot route around either and the order between them only decides
+  // which reason is given for an act both would have refused.
+  const paper = honourTreaties(state, factionId, raw);
+  const standing = honourStanding(state, factionId, paper.ops);
+  const ops = standing.ops;
+  const withheld = [...paper.withheld, ...standing.withheld];
   if (ops.length === 0) return null;
 
   return { factionId, ops, rationale: describeProposal(state, factionId, ops), withheld };

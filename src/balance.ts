@@ -1,6 +1,6 @@
 import { applyOps, tickTurn } from './domain/reducer.js';
 import { createSeedState } from './seed/scenario.js';
-import { BOTS, held } from './domain/initiative.js';
+import { BOTS, held, proposeFor } from './domain/initiative.js';
 import { fleetStrengthOf, ledgerFor, type WorldState } from './domain/state.js';
 import { routeEarnings, tradeRoutes } from './domain/trade.js';
 
@@ -47,9 +47,17 @@ export function runBalance(turns: number, onTurn?: (s: Snapshot) => void): Snaps
 
   for (let turn = 1; turn <= turns; turn++) {
     // Bots act in a fixed order so the run is reproducible.
+    //
+    // Through `proposeFor`, not `BOTS[id]` directly, because that is the path
+    // `endTurn` takes — and calling the bot raw skipped BOTH post-filters. So
+    // the one tool that plays the bots for thirty turns was the one place
+    // `honourTreaties` had never run, and a standing gate measured against it
+    // would have reported a board it could not have changed. `honourTreaties`
+    // is still inert here, since nobody in the harness signs anything; the
+    // point is that the harness now exercises whatever guard the game does.
     for (const id of Object.keys(BOTS).sort()) {
-      const ops = BOTS[id]!({ state, me: id });
-      if (ops.length > 0) state = applyOps(state, ops, 'model').state;
+      const proposal = proposeFor(state, id);
+      if (proposal) state = applyOps(state, proposal.ops, 'model', id).state;
     }
     state = tickTurn(state).state;
 

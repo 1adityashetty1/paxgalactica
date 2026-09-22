@@ -55,6 +55,29 @@ describe('a thirty-turn campaign, five doctrine bots', () => {
     expect(Math.max(...systems)).toBeLessThan(13);
   });
 
+  it('keeps the map moving — a frozen board passes every other assertion here', () => {
+    // The gap the standing gate was measured against. "Nobody is eliminated"
+    // and "nobody holds half the map" both get EASIER when bots attack less, so
+    // the whole suite would have gone green on a galaxy where nothing ever
+    // happens — and the first attempt at gating aggression on disposition
+    // produced exactly that, freezing the board at turn 10. CLAUDE.md had
+    // "territory changes through turn 24" as an observation; this is the
+    // assertion, deliberately much looser than the observed run.
+    const board = (turn: number) =>
+      IDS.map((id) => RUN[turn - 1]!.perFaction[id]!.systems).join('/');
+    const opening = board(1);
+    const late = RUN.length;
+
+    expect(board(late), 'the board is identical to turn 1 — nobody ever took anything').not.toBe(
+      opening,
+    );
+    // And it is still moving past the opening exchanges, rather than settling
+    // in the first few turns and then standing still for twenty.
+    const boards = new Set(RUN.map((_, i) => board(i + 1)));
+    expect(boards.size, 'distinct boards over the run').toBeGreaterThan(2);
+    expect(board(late)).not.toBe(board(Math.floor(late / 3)));
+  });
+
   it('keeps every power able to afford something', () => {
     // A faction that cannot buy a hull in three turns has no moves left.
     for (const id of IDS) {

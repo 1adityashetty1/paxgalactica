@@ -3,8 +3,8 @@ import { HULL_CLASSES, carryOf, type ShipStack } from '../src/domain/hulls.js';
 import { describe, expect, it } from 'vitest';
 import { createSeedState } from '../src/seed/scenario.js';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
-import { proposeFor } from '../src/domain/initiative.js';
-import type { WorldState } from '../src/domain/state.js';
+import { GRIEVANCE_WEIGHT, proposeFor, targetPriority } from '../src/domain/initiative.js';
+import { warsFor, type WorldState } from '../src/domain/state.js';
 
 /**
  * Doctrine initiative, and the measurement that made it necessary.
@@ -136,14 +136,180 @@ describe('a doctrine is not a licence', () => {
       s = tickTurn(s).state;
     }
   });
+
+  /**
+   * Standing was invisible to every bot: a power that loathed you at −95 with
+   * no paper between you picked its targets exactly as one that liked you at
+   * +50 did. `honourTreaties` was the only relationship any of them consulted,
+   * which made paper the sole restraint.
+   *
+   * The gate is deliberately an **invariant** rather than a behaviour change,
+   * and it is measured as one: it withholds nothing across 30 harness turns and
+   * on all 24 played boards in `saves/`, because the bots rarely attack a held
+   * world and the one that does dislikes its target. So it has to be pinned on
+   * a board built to reach it, or it would be a mechanic nobody has ever seen
+   * fire — the failure this repo keeps catching.
+   */
+  it('will not attack a power it is on good terms with, pact or no pact', () => {
+    let s = seed();
+    let attack: Record<string, unknown> | undefined;
+    for (let t = 0; t < 12 && !attack; t++) {
+      const p = proposeFor(s, 'vigil');
+      attack = p?.ops.find((o) => o.op === 'issue_order' && o.type === 'fleet_movement');
+      if (attack) break;
+      if (p) s = applyOps(s, p.ops, 'model', 'vigil', true).state;
+      s = tickTurn(s).state;
+    }
+    expect(attack, 'the Vigil never proposed an attack in 12 turns').toBeDefined();
+
+    // No treaty at all — only an opinion, and held about EVERY power, both
+    // ways. Warming one rival only proves the weighting redirected the fleet to
+    // another; warming all of them is what leaves the gate as the sole thing
+    // that can refuse the attack. Both directions, because `warsFor` is
+    // bilateral and a war would bypass the gate by design.
+    const ops = [];
+    for (const other of s.factions) {
+      if (other.id === 'vigil') continue;
+      ops.push(
+        { op: 'adjust_disposition', factionId: 'vigil', towardFactionId: other.id, delta: 200 },
+        { op: 'adjust_disposition', factionId: other.id, towardFactionId: 'vigil', delta: 200 },
+      );
+    }
+    const warm = applyOps(s, ops, 'engine').state;
+    const after = proposeFor(warm, 'vigil');
+
+    // Unaligned ground is not gated — there is nobody there to have offended —
+    // so what must be gone is every attack on a world another power HOLDS.
+    const onAPower = (after?.ops ?? []).filter((o) => {
+      if (o.op !== 'issue_order' || o.type !== 'fleet_movement') return false;
+      const holder = warm.systems.find((x) => x.id === o.targetId)?.controllerFactionId;
+      return !!holder && holder !== 'vigil';
+    });
+    expect(onAPower).toHaveLength(0);
+    expect(after?.withheld.join(' ') ?? '').toMatch(/quarrel/);
+  });
+
+  it('still answers a power it is at war with, whatever it thinks of them', () => {
+    // `warsFor` is checked first and is BILATERAL, so a power that has been
+    // attacked may answer regardless of its own opinion a moment ago. Without
+    // that, the gate would forbid exactly the retaliation it should permit.
+    let s = seed();
+    for (let t = 0; t < 12; t++) {
+      const p = proposeFor(s, 'vigil');
+      const attack = p?.ops.find((o) => o.op === 'issue_order' && o.type === 'fleet_movement');
+      if (attack) {
+        const victim = s.systems.find((x) => x.id === attack.targetId)!.controllerFactionId!;
+        // The Vigil thinks well of EVERYONE, and one of them is at war with it
+        // anyway. So the gate forbids every held world except that power's, and
+        // what the Vigil reaches for is the assertion. Warming only the victim
+        // would prove nothing: the grievance weighting would simply send the
+        // fleet at somebody else.
+        const ops = [];
+        for (const other of s.factions) {
+          if (other.id === 'vigil') continue;
+          ops.push(
+            { op: 'adjust_disposition', factionId: 'vigil', towardFactionId: other.id, delta: 200 },
+            { op: 'adjust_disposition', factionId: other.id, towardFactionId: 'vigil', delta: 200 },
+          );
+        }
+        // …and then one of them declares for war, one-sidedly. `warsFor` is
+        // bilateral, so that is enough.
+        ops.push({ op: 'adjust_disposition', factionId: victim, towardFactionId: 'vigil', delta: -200 });
+        const atWar = applyOps(s, ops, 'engine').state;
+
+        const after = proposeFor(atWar, 'vigil');
+        const onAPower = (after?.ops ?? []).filter((o) => {
+          if (o.op !== 'issue_order' || o.type !== 'fleet_movement') return false;
+          const holder = atWar.systems.find((x) => x.id === o.targetId)?.controllerFactionId;
+          return !!holder && holder !== 'vigil';
+        });
+        // It may mass rather than sail this turn; what it must never do is
+        // attack one of the four powers it has no quarrel with.
+        for (const op of onAPower) {
+          const holder = atWar.systems.find((x) => x.id === op.targetId)!.controllerFactionId;
+          expect(holder, 'attacked a power it is not at war with').toBe(victim);
+        }
+        expect(warsFor(atWar, 'vigil')).toEqual([victim]);
+        return;
+      }
+      if (p) s = applyOps(s, p.ops, 'model', 'vigil', true).state;
+      s = tickTurn(s).state;
+    }
+    throw new Error('the Vigil never proposed an attack in 12 turns');
+  });
 });
 
-/**
- * The bots predate the fog and must not see through it. They read
- * `system.ships` and `system.garrison`, which redaction does not touch, and
- * the only pending orders they consult are their own. Pinned as an invariant
- * rather than left as an accident.
- */
+describe('standing chooses between two prizes', () => {
+  /**
+   * The part of 98 that actually moves the board. `strategicValue` alone was
+   * the whole of target selection, tie-broken on system id — so the Vigil,
+   * whose doctrine is "answer insolence with force", was indifferent to who was
+   * standing on the world it wanted.
+   *
+   * A thumb on the scale and not the scale: `GRIEVANCE_WEIGHT` is 4 against a
+   * `strategicValue` of 0-10, so a grievance reorders comparable prizes and
+   * cannot make a worthless world a war aim. Swept over played 30-turn runs —
+   * 0-2 leaves the historical 3/6/5/4/4, 3-6 is a flat region at 4/6/5/4/4, and
+   * at 10 grievance swamps prize and Drajk loses a world it otherwise keeps.
+   */
+  const at = (s: WorldState, id: string) => s.systems.find((x) => x.id === id)!;
+
+  it('ranks a resented holder above a tolerated one at equal value', () => {
+    const s = seed();
+    const rival = s.systems.find(
+      (x) => x.controllerFactionId && x.controllerFactionId !== 'vigil',
+    )!;
+    const holder = rival.controllerFactionId!;
+
+    const opinion = (delta: number) =>
+      applyOps(
+        s,
+        [{ op: 'adjust_disposition', factionId: 'vigil', towardFactionId: holder, delta }],
+        'engine',
+      ).state;
+
+    const resented = opinion(-200);
+    const tolerated = opinion(200);
+    expect(targetPriority(resented, 'vigil', at(resented, rival.id))).toBeGreaterThan(
+      targetPriority(tolerated, 'vigil', at(tolerated, rival.id)),
+    );
+  });
+
+  it('cannot let a grievance outweigh what a world is worth by more than the cap', () => {
+    // The bound is the whole design: `opportunist` hits the weak and
+    // `crusading` hits regardless, and a grievance large enough to dominate
+    // `strategicValue` would flatten both into "attack whoever you hate most".
+    const s = seed();
+    const rival = s.systems.find(
+      (x) => x.controllerFactionId && x.controllerFactionId !== 'vigil',
+    )!;
+    const worst = applyOps(
+      s,
+      [
+        {
+          op: 'adjust_disposition',
+          factionId: 'vigil',
+          towardFactionId: rival.controllerFactionId!,
+          delta: -200,
+        },
+      ],
+      'engine',
+    ).state;
+    const bumped = targetPriority(worst, 'vigil', at(worst, rival.id)) - rival.strategicValue;
+    expect(bumped).toBeCloseTo(GRIEVANCE_WEIGHT);
+    expect(bumped).toBeLessThan(10);
+  });
+
+  it('scores unaligned ground on its prize alone — nobody there has offended you', () => {
+    const s = seed();
+    const neutral = s.systems.find((x) => x.controllerFactionId === null)!;
+    expect(targetPriority(s, 'vigil', neutral)).toBe(neutral.strategicValue);
+    // And a power's own world carries no grievance against itself.
+    const mine = s.systems.find((x) => x.controllerFactionId === 'vigil')!;
+    expect(targetPriority(s, 'vigil', mine)).toBe(mine.strategicValue);
+  });
+});
+
 describe('initiative is fog-clean', () => {
   it('proposes the same thing whether or not a rival has hidden work under way', () => {
     const plain = seed();
