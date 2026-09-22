@@ -2023,7 +2023,7 @@ export function effectiveStats(state: WorldState, factionId: string): FactionSta
   // because a per-turn mutation of a stat compounds instead of recurring.
   //
   // This is what closes the loop on a fixture: `yardCapacityFor` reads
-  // `effectiveStats().industry`, so a captured foundry lays down more hulls for
+  // `effectiveStats().industry`, so a captured factory lays down more hulls for
   // whoever took the ground it stands on.
   const works = worksBonus(state, factionId);
   for (const stat of STAT_NAMES) {

@@ -1960,7 +1960,7 @@ export function applyOps(
           // arrived without a yield gets the one its kind means. The same
           // correction `divisible` and `uses` already take, and for the same
           // reason: these are the fields whose being wrong quietly turns a
-          // foundry into scenery. A caller that stated a yield keeps it — the
+          // factory into scenery. A caller that stated a yield keeps it — the
           // catalogue supplies a default, it does not overrule a deliberate
           // one — and the reducer still clamps the points either way.
           if (shape.modifies !== undefined && yielded === null) {

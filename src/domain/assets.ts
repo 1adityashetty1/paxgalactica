@@ -204,7 +204,7 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: true,
     fixture: false,
-    from: 'a survey, a seizure, a foundry standing on a world you hold',
+    from: 'a survey, a seizure, an industrial works on a world you hold',
     wanted: 'a power building hulls, at a price nobody has settled',
   },
   {
@@ -240,12 +240,93 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   /* --- Works: they stand on a world and produce ------------------------- */
   /* --- works: they stand on a world, and make its holder better at something
      ------------------------------------------------------------------------
-     One per stat, so the catalogue's fixtures ARE the five attributes. A works
-     never leaves the ground it stands on: `transfer_asset` refuses it from both
-     the declared and the negotiated path, and it changes hands only through
-     cession or conquest, which needed no new code — the transfer-of-control
-     path already moves everything standing on a world. That is what makes it a
-     reason to take ground rather than a thing to trade. */
+     One per stat and one per pair of stats — five plus `5C2`, so the catalogue
+     covers every attribute and every combination of two. A works never leaves
+     the ground it stands on: `transfer_asset` refuses it from both the declared
+     and the negotiated path, and it changes hands only through cession or
+     conquest, which needed no new code — the transfer-of-control path already
+     moves everything standing on a world. That is what makes it a reason to
+     take ground rather than a thing to trade.
+
+     **Named for what they are, not for what a fantasy would call them.** The
+     first set read as a guild hall and a cloister; these are the institutions a
+     power actually runs, which is also what makes the mechanic legible — you do
+     not need to be told what a factory improves. */
+  {
+    kind: 'military_base',
+    unit: 'works',
+    divisible: false,
+    uses: null,
+    speculative: false,
+    fixture: true,
+    modifies: ['might'],
+    from: 'standing up a garrison post, a fleet station, a training range',
+    wanted: 'whoever holds the world — it arms them, and changes hands with the ground',
+  },
+  {
+    kind: 'university',
+    unit: 'works',
+    divisible: false,
+    uses: null,
+    speculative: false,
+    fixture: true,
+    modifies: ['guile'],
+    from: 'endowing a university, a research faculty, a school of languages',
+    wanted: 'whoever holds the world — it teaches them, and changes hands with the ground',
+  },
+  {
+    kind: 'factory',
+    unit: 'works',
+    divisible: false,
+    uses: null,
+    speculative: false,
+    fixture: true,
+    modifies: ['industry'],
+    from: 'opening a plant, a refinery, an assembly line',
+    wanted: 'whoever holds the world — it builds for them, and changes hands with the ground',
+  },
+  {
+    kind: 'stock_exchange',
+    unit: 'works',
+    divisible: false,
+    uses: null,
+    speculative: false,
+    fixture: true,
+    modifies: ['influence'],
+    from: 'chartering an exchange, licensing a clearing house',
+    wanted: 'whoever holds the world — it speaks for them, and changes hands with the ground',
+  },
+  {
+    kind: 'hospital',
+    unit: 'works',
+    divisible: false,
+    uses: null,
+    speculative: false,
+    fixture: true,
+    modifies: ['resolve'],
+    from: 'building a hospital, a housing programme, anything that keeps a population well',
+    wanted: 'whoever holds the world — it steadies them, and changes hands with the ground',
+  },
+
+  /* Split works: one budget, two attributes. The pure five above are the same
+     kind of institution run for one thing; these are them run for two — and
+     there are exactly **ten**, because that is every unordered pair of five
+     attributes. Complete by construction rather than by whatever anybody
+     thought to add, which is what stops a model reaching for a plausible works
+     and finding no archetype behind it. `tests/assets.test.ts` asserts the
+     count and the coverage, so a sixth attribute would fail rather than quietly
+     leave forty-five per cent of the pairs unnamed. */
+  {
+    kind: 'special_forces_command',
+    unit: 'works',
+    divisible: false,
+    uses: null,
+    speculative: false,
+    fixture: true,
+    modifies: ['might', 'guile'],
+    from: 'standing up a special operations command — soldiers who are not seen',
+    wanted: 'whoever holds the world — it fights for them quietly',
+  },
   {
     kind: 'arsenal',
     unit: 'works',
@@ -253,116 +334,42 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: false,
     fixture: true,
-    modifies: ['might'],
-    from: 'raising an armoury, a proving ground, a fortress academy',
-    wanted: 'whoever holds the world — it arms them, and changes hands with the ground',
-  },
-  {
-    kind: 'college',
-    unit: 'works',
-    divisible: false,
-    uses: null,
-    speculative: false,
-    fixture: true,
-    modifies: ['guile'],
-    from: 'endowing a university, a chart house, a school of signals',
-    wanted: 'whoever holds the world — it teaches them, and changes hands with the ground',
-  },
-  {
-    kind: 'foundry',
-    unit: 'works',
-    divisible: false,
-    uses: null,
-    speculative: false,
-    fixture: true,
-    modifies: ['industry'],
-    from: 'opening a mine, laying a slipway, converting a yard',
-    wanted: 'whoever holds the world — it builds for them, and changes hands with the ground',
-  },
-  {
-    kind: 'exchange',
-    unit: 'works',
-    divisible: false,
-    uses: null,
-    speculative: false,
-    fixture: true,
-    modifies: ['influence'],
-    from: 'chartering a market, licensing a dock, seating a court',
-    wanted: 'whoever holds the world — it speaks for them, and changes hands with the ground',
-  },
-  {
-    kind: 'sanctuary',
-    unit: 'works',
-    divisible: false,
-    uses: null,
-    speculative: false,
-    fixture: true,
-    modifies: ['resolve'],
-    from: 'raising a theatre, a temple, a grain dole — anything that settles a population',
-    wanted: 'whoever holds the world — it settles them, and changes hands with the ground',
-  },
-  /* Split works: one budget, two attributes. The pure five above are the same
-     institutions run for one thing; these are them run for two — and there are
-     exactly **ten**, because that is every unordered pair of five attributes.
-     The catalogue is complete by construction rather than by whatever anybody
-     thought to add, which is what stops a model reaching for a plausible works
-     and finding no archetype behind it. `tests/assets.test.ts` asserts the
-     count and the coverage, so a sixth attribute would fail rather than quietly
-     leave forty-five per cent of the pairs unnamed. */
-  {
-    kind: 'privateer_hall',
-    unit: 'works',
-    divisible: false,
-    uses: null,
-    speculative: false,
-    fixture: true,
-    modifies: ['might', 'guile'],
-    from: 'licensing a hall of marque — captains who fight and captains who vanish',
-    wanted: 'whoever holds the world — it arms them and hides them, and changes hands with the ground',
-  },
-  {
-    kind: 'proving_yard',
-    unit: 'works',
-    divisible: false,
-    uses: null,
-    speculative: false,
-    fixture: true,
     modifies: ['might', 'industry'],
-    from: 'laying out a proving ground beside the works that feeds it',
-    wanted: 'whoever holds the world — it builds the guns and teaches the crews',
+    from: 'opening a state arsenal — weapons built where they are proved',
+    wanted: 'whoever holds the world — it builds the guns and tests them',
   },
   {
-    kind: 'mercenary_board',
+    kind: 'defence_contractor',
     unit: 'works',
     divisible: false,
     uses: null,
     speculative: false,
     fixture: true,
     modifies: ['might', 'influence'],
-    from: 'licensing a hiring hall, seating a board that sells contracts',
-    wanted: 'whoever holds the world — an exchange that also musters companies',
+    from: 'licensing a defence contractor — a firm that sells force and lobbies for it',
+    wanted: 'whoever holds the world — it musters companies and works the room',
   },
   {
-    kind: 'war_college',
+    kind: 'military_academy',
     unit: 'works',
     divisible: false,
     uses: null,
     speculative: false,
     fixture: true,
     modifies: ['might', 'resolve'],
-    from: 'endowing a staff school, a siege academy',
+    from: 'endowing a staff academy, a command and general staff school',
     wanted: 'whoever holds the world — it teaches an army to hold as well as to fight',
   },
   {
-    kind: 'shipwright_school',
+    kind: 'research_lab',
     unit: 'works',
     divisible: false,
     uses: null,
     speculative: false,
     fixture: true,
     modifies: ['guile', 'industry'],
-    from: 'endowing a school beside a yard — draughtsmen as well as riveters',
-    wanted: "whoever holds the world — it builds hulls and copies other people's",
+    from: 'funding a laboratory beside the plant it serves',
+    wanted: 'whoever holds the world — it designs what the line then builds',
   },
   {
     kind: 'black_market',
@@ -376,47 +383,47 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     wanted: 'whoever holds the world — an exchange that also hears things',
   },
   {
-    kind: 'cloister',
+    kind: 'security_bureau',
     unit: 'works',
     divisible: false,
     uses: null,
     speculative: false,
     fixture: true,
     modifies: ['guile', 'resolve'],
-    from: 'endowing a closed order — people who keep secrets and keep going',
-    wanted: 'whoever holds the world — it teaches discretion, and endurance with it',
+    from: 'standing up an internal security service — files kept and order held',
+    wanted: 'whoever holds the world — it watches, and it does not rattle',
   },
   {
-    kind: 'guildhall',
+    kind: 'chamber_of_commerce',
     unit: 'works',
     divisible: false,
     uses: null,
     speculative: false,
     fixture: true,
     modifies: ['industry', 'influence'],
-    from: 'chartering a guild — a trade that speaks for itself',
+    from: 'chartering a chamber of commerce — a trade that speaks for itself',
     wanted: 'whoever holds the world — it makes things, and is heard when it asks',
   },
   {
-    kind: 'arcology',
+    kind: 'power_plant',
     unit: 'works',
     divisible: false,
     uses: null,
     speculative: false,
     fixture: true,
     modifies: ['industry', 'resolve'],
-    from: 'raising a works-town that feeds and houses the people who run it',
-    wanted: 'whoever holds the world — it produces, and it does not break under siege',
+    from: 'commissioning a reactor, a grid, the works a population runs on',
+    wanted: 'whoever holds the world — it produces, and it does not go dark under siege',
   },
   {
-    kind: 'tribunal',
+    kind: 'civil_service',
     unit: 'works',
     divisible: false,
     uses: null,
     speculative: false,
     fixture: true,
     modifies: ['influence', 'resolve'],
-    from: 'seating a bench that settles disputes nobody else will',
+    from: 'staffing a permanent administration — registries, courts, inspectors',
     wanted: 'whoever holds the world — it speaks for them, and steadies them',
   },
 ];

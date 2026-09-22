@@ -1843,9 +1843,9 @@ describe('a works makes its holder better at something', () => {
     s.assets = [
       ...(s.assets ?? []),
       {
-        id: 'ast-w-0', kind: 'foundry', heldBy: id, quantity: 1, unit: 'works',
+        id: 'ast-w-0', kind: 'factory', heldBy: id, quantity: 1, unit: 'works',
         divisible: false, uses: null, speculative: false, portable: false,
-        atSystemId: at, valuePerUnit: {}, valueRange: null, text: 'A foundry.',
+        atSystemId: at, valuePerUnit: {}, valueRange: null, text: 'A factory.',
         commanderId: null, agentId: null,
         yield: { kind: 'stat', stats: [{ stat, points }] },
       } as never,
@@ -1861,7 +1861,7 @@ describe('a works makes its holder better at something', () => {
     );
   });
 
-  it('closes the loop on the yards — a foundry lays down more hulls', () => {
+  it('closes the loop on the yards — a factory lays down more hulls', () => {
     // `yardCapacityFor` reads `effectiveStats().industry`, so this is what
     // makes a captured works worth taking rather than worth recording.
     const plain = fresh();
@@ -1883,9 +1883,9 @@ describe('a works makes its holder better at something', () => {
   it('clamps what any number of works can be worth', () => {
     const many = fresh();
     many.assets = ['ilv-6', 'ilv-7', 'tor-6', 'ark-5'].map((at, i) => ({
-      id: `ast-w-${i}`, kind: 'foundry', heldBy: 'drajk', quantity: 1, unit: 'works',
+      id: `ast-w-${i}`, kind: 'factory', heldBy: 'drajk', quantity: 1, unit: 'works',
       divisible: false, uses: null, speculative: false, portable: false,
-      atSystemId: at, valuePerUnit: {}, valueRange: null, text: 'A foundry.',
+      atSystemId: at, valuePerUnit: {}, valueRange: null, text: 'A factory.',
       commanderId: null, agentId: null,
       yield: { kind: 'stat', stats: [{ stat: 'industry', points: 2 }] },
     })) as never;

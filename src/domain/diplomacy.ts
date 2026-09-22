@@ -332,7 +332,7 @@ export const AssetYieldSchema = z.discriminatedUnion('kind', [
   z.object({
     /**
      * **A works that makes its holder better at something.** A shipyard or a
-     * foundry is industry; a university or a chart house is guile; a fortress
+     * factory is industry; a university or a research lab is guile; a base
      * academy is might. This is what a fixture is FOR, and the catalogue said
      * the opposite of it for a while — the three `works` archetypes were each
      * described as *"nobody wants it"*, which is true of the paperwork and
@@ -346,7 +346,7 @@ export const AssetYieldSchema = z.discriminatedUnion('kind', [
      * It pays only while its holder still stands over the world, like every
      * other yield — and since a fixture changes hands with the world, taking
      * the ground takes the benefit. That is the whole loop: `yardCapacityFor`
-     * reads `effectiveStats().industry`, so a captured foundry really does lay
+     * reads `effectiveStats().industry`, so a captured factory really does lay
      * down more hulls for whoever took it.
      */
     kind: z.literal('stat'),

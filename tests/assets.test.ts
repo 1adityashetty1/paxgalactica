@@ -83,10 +83,10 @@ describe('assets', () => {
       expect(archetypeFor('dossier')?.divisible).toBe(false);
       expect(archetypeFor('writ')?.uses).toBe(1);
       expect(archetypeFor('ore')?.speculative).toBe(true);
-      expect(archetypeFor('foundry')?.fixture).toBe(true);
+      expect(archetypeFor('factory')?.fixture).toBe(true);
       // A works declares the attribute it is worth to whoever holds the ground.
-      expect(archetypeFor('foundry')?.modifies).toEqual(['industry']);
-      expect(archetypeFor('college')?.modifies).toEqual(['guile']);
+      expect(archetypeFor('factory')?.modifies).toEqual(['industry']);
+      expect(archetypeFor('university')?.modifies).toEqual(['guile']);
       // A works may name two, and then it splits one budget between them.
       expect(archetypeFor('black_market')?.modifies).toEqual(['guile', 'influence']);
       expect(archetypeFor('nothing_like_this')).toBeUndefined();
@@ -137,7 +137,7 @@ describe('assets', () => {
       const s = seed();
       const out = applyOps(
         s,
-        [mint({ kind: 'foundry', quantity: 1, unit: 'works', valuePerUnit: {}, atSystemId: world(s).id })],
+        [mint({ kind: 'factory', quantity: 1, unit: 'works', valuePerUnit: {}, atSystemId: world(s).id })],
         'model',
         'ojjul',
       );
@@ -535,7 +535,7 @@ describe('assets', () => {
       expect(hullsAt(theirs, 'ojjul')).toBe(0);
       const out = applyOps(
         s,
-        [mint({ kind: 'exchange', quantity: 1, unit: 'works', valuePerUnit: {}, atSystemId: theirs.id })],
+        [mint({ kind: 'stock_exchange', quantity: 1, unit: 'works', valuePerUnit: {}, atSystemId: theirs.id })],
         'model',
         'ojjul',
       );
@@ -546,7 +546,7 @@ describe('assets', () => {
       expect(
         applyOps(
           s,
-          [mint({ kind: 'exchange', quantity: 1, unit: 'works', valuePerUnit: {}, atSystemId: theirs.id })],
+          [mint({ kind: 'stock_exchange', quantity: 1, unit: 'works', valuePerUnit: {}, atSystemId: theirs.id })],
           'model',
           'ojjul',
         ).rejections,
@@ -605,7 +605,7 @@ describe('assets', () => {
     it('names every attribute once, and every PAIR of attributes once', () => {
       // 5 pure + 5C2 split = 15, and the catalogue is complete by construction
       // rather than by whatever anybody thought to add. Without this a model
-      // reaching for a plausible works — a guildhall, a tribunal — would find no
+      // reaching for a plausible works — a power plant, a civil service — would find no
       // archetype behind it and get no default, which is the drift the table
       // exists to stop.
       const STATS = ['might', 'guile', 'industry', 'influence', 'resolve'] as const;
@@ -631,7 +631,7 @@ describe('assets', () => {
     });
 
     it('splits one budget evenly when a kind names two attributes', () => {
-      const plain = place('exchange');
+      const plain = place('stock_exchange');
       expect(plain.stats).toEqual([{ stat: 'influence', points: MAX_ASSET_STAT }]);
 
       const split = place('black_market');
