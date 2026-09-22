@@ -280,8 +280,12 @@ describe('agents', () => {
   });
 
   it('debuffs a stat while in place, and only for the target', () => {
+    // Derived on BOTH sides for the reason the comment below gives: the Drift
+    // opens holding an arsenal at Pell Reach, so a hardcoded 10 here was an
+    // assertion about the seeded works as much as about the operative.
+    const clean = effectiveStats(fresh(), 'freeworlds').industry;
     const res = withAgent({ kind: 'stat_debuff', stat: 'industry', magnitude: 3 });
-    expect(effectiveStats(res.state, 'freeworlds').industry).toBe(10 - 3);
+    expect(effectiveStats(res.state, 'freeworlds').industry).toBe(clean - 3);
     // Derived against a board with no operative rather than stated, because
     // `effectiveStats` composes terrain, the officer's passive and dissent as
     // well — a hardcoded figure here is an assertion about all four, and fails
@@ -291,9 +295,10 @@ describe('agents', () => {
   });
 
   it('stops having any effect once exposed', () => {
+    const clean = effectiveStats(fresh(), 'freeworlds').industry;
     const res = withAgent({ kind: 'stat_debuff', stat: 'industry', magnitude: 3 });
     res.state.agents[0]!.exposed = true;
-    expect(effectiveStats(res.state, 'freeworlds').industry).toBe(10);
+    expect(effectiveStats(res.state, 'freeworlds').industry).toBe(clean);
   });
 
   it('resolves deterministically on tick', () => {
@@ -1714,7 +1719,14 @@ describe('holding somebody else’s ground', () => {
  * worth.
  */
 describe('the ground a power holds reaches its stats', () => {
-  const seed = () => createSeedState('meridian');
+  // No works. `effectiveStats` composes terrain, the seeded fixtures, the
+  // officer's passive and dissent, and this block is about terrain — an
+  // assertion that reads all four fails without saying which one moved.
+  const seed = (): WorldState => {
+    const s = createSeedState('meridian');
+    s.assets = s.assets.filter((a) => a.portable);
+    return s;
+  };
   /** Give `me` `n` worlds of one type, taken from whoever holds them. */
   const stock = (s: WorldState, me: string, type: WorldType, n: number) => {
     let given = 0;

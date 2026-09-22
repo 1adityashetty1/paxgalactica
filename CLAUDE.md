@@ -1688,7 +1688,7 @@ could be invented at all.
 |---|---|
 | a successful attempt | `create_asset` from the resolution pass, stripped by `boundPayloadsToOutcome` on a failure and **halved** on a partial — an asset has a magnitude, unlike an operative, who is placed or is not |
 | a world changing hands | anything with that `atSystemId` goes with it |
-| **the seed** | nine, authored — four cargo (one per power except the Combine) and five works (one apiece) |
+| **the seed** | nine, authored — four cargo (one per power except the Combine) and five split works (one apiece) |
 
 `create_asset` is refused from an **accord** (`declared_only`): a conversation
 trades what exists and cannot conjure what does not. It is also refused when the
@@ -1745,41 +1745,58 @@ reaches for and no player learns exists — the argument that put cargo on the
 opening board in the first place — so the seed stands a works on one world per
 power.
 
-**Keyed on the ground, not on the power.** The archetype is whatever
-`WORLD_TYPE_STAT` says that world produces: a foundry on an industrial moon, a
-fleet station on hard ground, schools on a world that never sleeps. That is the
-same claim the terrain bonus already makes, said as a building — and it is what
-makes the modifier legible from the map, since you can see what a world is and
-therefore what is likely built on it.
-
-**One each, five distinct attributes**, so nobody opens with a modifier
-everybody has. That is the failure `WORLD_BONUS_THRESHOLDS` was set at two to
-avoid, and it is easy to walk back into here: a fixture on every held world
-gives four of the five powers a point on four stats apiece. The pairing is each
-power's own ground doing what that power is — Meridian's clearing house at
-Brannix, the Vigil's fleet station at Kalzir, the Combine's faculties on the
-map's greatest junction, the Closing's wards at Vashka, and the yards Drajk has
-never had.
+**Keyed on the ground.** Each one names, among the two attributes it modifies,
+the one `WORLD_TYPE_STAT` gives the world it stands on: a reactor on an
+industrial moon, a garrison school on hard ground, an undermarket on a world
+that never sleeps. That is the same claim the terrain bonus already makes, said
+as a building — and it is what makes the modifier legible from the map, since
+you can see what a world is and therefore what is likely built on it. *Among*
+rather than leading, because `modifies` is in canonical stat order: an influence
+pair can only lead with influence when paired with resolve, so insisting on the
+lead would pick the archetype by alphabet rather than by what the world is.
 
 | power | world | type | works | |
 |---|---|---|---|---|
-| Meridian | sek-4 Brannix | earthlike | `stock_exchange` | +1 influence |
-| Iron Vigil | tor-2 Kalzir | arid | `military_base` | +1 might |
-| Ojjul Nar | ilv-2 Shalka | earthnight | `university` | +1 guile |
-| Arkane | ark-4 Vashka | oceanic | `hospital` | +1 resolve |
-| Drajk | ark-5 Tulgarn | industrialmoon | `factory` | +1 industry |
+| Meridian | sek-4 Brannix | earthlike | `chamber_of_commerce` | +1 industry, +1 influence |
+| Iron Vigil | tor-2 Kalzir | arid | `military_academy` | +1 might, +1 resolve |
+| Ojjul Nar | ilv-2 Shalka | earthnight | `black_market` | +1 guile, +1 influence |
+| Arkane | ark-1 Arkane Prime | earthnight | `research_lab` | +1 guile, +1 industry |
+| Drajk | ark-5 Tulgarn | industrialmoon | `power_plant` | +1 industry, +1 resolve |
+
+**All five are SPLIT works, and that is the load-bearing decision.** The first
+version seeded *pure* archetypes at half of `MAX_ASSET_STAT`, which is a thing
+the catalogue cannot say: a `military_base` is two points of might by its own
+entry, so a seeded one worth a single point made the same named kind mean two
+different things depending on where it came from. A second source of truth about
+what a works is — the defect this file records everywhere else, reintroduced as
+a tuning knob.
+
+A split says the same thing honestly. The budget is the full `MAX_ASSET_STAT`
+either way and a two-attribute kind divides it, so each of these is worth one
+point on each of two stats **by exactly the arithmetic the reducer runs when a
+player founds one**. The seed calls `ASSET_ARCHETYPES` and divides, rather than
+writing the answer down.
+
+It also gets what the half-budget was reaching for, and gets it as a consequence
+rather than a discount. Pure works at the full budget put three powers **on the
+20 cap on turn 0** — the Vigil's might, the Combine's guile, the Closing's
+resolve — and a scale whose ceiling is where you start has nothing left to play
+for. Spreading two points over two attributes is what keeps everybody under it.
+A test asserts that property directly: no works may be the thing that puts a
+stat on the ceiling.
+
+**Five distinct kinds, and every attribute covered**, so nobody opens with a
+modifier everybody has — the failure `WORLD_BONUS_THRESHOLDS` was set at two to
+avoid, and easy to walk back into here, since a fixture on every held world
+gives four of the five powers a point on four stats apiece. The second attribute
+is what the power *is* where the first is what the ground is: the Authority's
+chamber both brokers and builds, the Remnant's school holds as well as fights,
+the Combine's undermarket hears things, the Closing draws its own hulls because
+nobody will sell it one, and the Confederacy's plant does not go dark.
 
 **The Combine gets one**, unlike the cargo. Its shelf is the paper because a
 works is not a thing to sell, so the argument that kept it off the tradeable
 board does not reach this at all.
-
-**A point, not the `MAX_ASSET_STAT` a built one gets**, and that was measured
-rather than chosen for taste. At the full budget three powers came out **pinned
-at 20 on their own peak stat** on turn 0 — the Vigil's might, the Combine's
-guile, the Closing's resolve — and a scale whose ceiling is where you start has
-nothing left to play for. At one, the cap stays somewhere a power reaches by
-taking a second works off somebody, which is the behaviour the clamp exists to
-produce. The same restraint the cargo shows by carrying no `yield` at all.
 
 **Each stands on a world that can be taken**, which is the whole of why a works
 sits somewhere rather than on a balance sheet: `worksBonus` pays only while its
@@ -1791,13 +1808,27 @@ from both paths, so a figure on one is a number no bargain can ever settle — a
 `serializeTheirAssets` filters a counterparty's shelf by what the viewer would
 pay, so a priced works would advertise itself as being for sale.
 
-Measured: `pnpm balance 30` is unchanged at **6/8/5/5/1** with the 58/42 mix and
-the poorest net at 8, and `pnpm fleetlab` is byte-identical. Four existing tests
-broke and all four were right to — they pinned `effectiveStats`,
-`maxCommitmentIncomeFor` and a commander passive against the seed's **base**
-stats, which now compose a works term too. Each was isolated by clearing the
-seeded fixtures rather than by adjusting its expected number, the same way the
-dissent tests clear `commanders`.
+**Which world each sits on was measured, not chosen.** `pnpm balance 30` is the
+historical **6/8/5/5/1** with the 58/42 mix and the poorest net at 8, and
+`pnpm fleetlab` is byte-identical — but only after one move. Arkane's works
+began as an `arsenal` at Pell Reach, and its point of **might** took the Drift
+from five worlds to six off the Vigil, dropping the galaxy to 64/36 and Drajk to
+−22. Every assertion in `tests/balance.test.ts` still passed, because the bounds
+there are deliberately loose; what it actually did was flatten the one faction
+on the board whose doctrine is that it does **not** expand. Moved to a
+`research_lab` at Arkane Prime, which touches neither might nor resolve, the run
+is identical to the one before any of this existed.
+
+That is the caution this whole section is under: a works reaches `effectiveStats`
+and `effectiveStats` reaches every check, every yard and every contest, so a
+point handed to the right power on the right stat is not a flavour detail.
+
+Seven existing tests broke and all seven were right to — they pinned
+`effectiveStats`, `terrainBonus`, `maxCommitmentIncomeFor`, a `stat_debuff` and a
+commander passive against the seed's **base** stats, which now compose a works
+term too. Each was isolated by clearing the seeded fixtures rather than by
+adjusting its expected number, the same way the dissent tests clear
+`commanders`.
 
 > A campaign journaled before this replays differently, because `replay()`
 > rebuilds from `createSeedState` and the seed moved. Nothing is done about

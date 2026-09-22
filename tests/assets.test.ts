@@ -12,7 +12,17 @@ import {
 import { ASSET_ARCHETYPES, archetypeFor, serializeArchetypes } from '../src/domain/assets.js';
 import { serializeAssets, serializeTheirAssets } from '../src/model/serialize.js';
 import { groundInConcessions } from '../src/engine/turn.js';
-import { WORLD_TYPE_STAT, hullsAt, setStackAt, worksBonus, type WorldState } from '../src/domain/state.js';
+import {
+  STAT_NAMES,
+} from '../src/domain/checks.js';
+import {
+  WORLD_TYPE_STAT,
+  effectiveStats,
+  hullsAt,
+  setStackAt,
+  worksBonus,
+  type WorldState,
+} from '../src/domain/state.js';
 import type { OpInput } from '../src/domain/ops.js';
 
 /**
@@ -789,6 +799,8 @@ describe('the opening board also stands a works on one world per power', () => {
   it('builds what the ground makes, so the modifier is legible from the map', () => {
     // The whole reason the archetype is keyed on `worldType` rather than on the
     // power: you can see what a world is, so you can see what is built on it.
+    // Among the pair rather than leading it — `modifies` is in canonical stat
+    // order, so insisting on the lead would pick the archetype by alphabet.
     const s = createSeedState('drajk');
     for (const a of s.assets.filter((x) => !x.portable)) {
       const at = s.systems.find((x) => x.id === a.atSystemId)!;
@@ -796,18 +808,43 @@ describe('the opening board also stands a works on one world per power', () => {
       expect(shape.fixture, a.kind).toBe(true);
       expect(a.yield?.kind).toBe('stat');
       const stats = a.yield?.kind === 'stat' ? a.yield.stats : [];
-      expect(stats.map((x) => x.stat)).toEqual([WORLD_TYPE_STAT[at.worldType]]);
-      expect(stats.map((x) => x.stat)).toEqual(shape.modifies);
+      expect(stats.map((x) => x.stat), a.kind).toEqual(shape.modifies);
+      expect(stats.map((x) => x.stat), a.kind).toContain(WORLD_TYPE_STAT[at.worldType]);
     }
   });
 
-  it('is worth a point rather than the full budget, so the cap is still somewhere to get to', () => {
-    // Three powers came out pinned at 20 on their own peak stat when these were
-    // seeded at `MAX_ASSET_STAT`, and a scale whose ceiling is where you start
-    // has nothing left to play for.
+  it('is worth exactly what its kind is worth, split the way the reducer splits it', () => {
+    // The first version seeded PURE archetypes at half of `MAX_ASSET_STAT`,
+    // which is a thing the catalogue cannot say: a `military_base` is two
+    // points of might by its own entry, so a seeded one worth a single point
+    // made the same named kind mean two different things depending on where it
+    // came from. Every seeded works is a split one at the full budget instead,
+    // which is +1/+1 by exactly the arithmetic a player's gets.
     for (const a of works()) {
+      const shape = ASSET_ARCHETYPES.find((x) => x.kind === a.kind)!;
+      expect(shape.modifies, a.kind).toHaveLength(2);
       const stats = a.yield?.kind === 'stat' ? a.yield.stats : [];
-      for (const { points } of stats) expect(points).toBeLessThan(MAX_ASSET_STAT);
+      const spent = stats.reduce((n, x) => n + x.points, 0);
+      expect(spent, a.kind).toBe(MAX_ASSET_STAT);
+      for (const { points } of stats) expect(points, a.kind).toBe(1);
+    }
+  });
+
+  it('leaves every power off the top of the scale on turn 0', () => {
+    // Pure works at the full budget put three powers ON the 20 cap on turn 1 —
+    // the Vigil's might, the Combine's guile, the Closing's resolve — and a
+    // scale whose ceiling is where you start has nothing left to play for.
+    // Spreading the same two points over two attributes is what keeps them
+    // under it, so this is the property the split is really buying.
+    const s = createSeedState('drajk');
+    const bare = { ...s, assets: s.assets.filter((a) => a.portable) };
+    for (const f of s.factions) {
+      const with_ = effectiveStats(s, f.id);
+      const without = effectiveStats(bare, f.id);
+      for (const stat of STAT_NAMES) {
+        // No works may be the thing that puts a stat on the ceiling.
+        if (with_[stat] === 20) expect(without[stat], `${f.id} ${stat}`).toBe(20);
+      }
     }
   });
 
