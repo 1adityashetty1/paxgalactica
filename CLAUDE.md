@@ -546,6 +546,101 @@ follow from billing the **net** rather than each op:
 Losses are never refunded, so hulls cannot be cycled through the yards for
 cash.
 
+### Industry decides how fast, not how cheap
+
+`industry` had **no reader in construction at all**. The stat whose own
+description is *"anything that must be built or supplied"* reached ability
+checks and `effectiveStats` and touched the yards nowhere: a hull was priced
+purely by displacement and gated purely by presence, so the Confederacy at
+industry 8 built exactly as fast as Meridian at 17 given the same credits. Two
+asset archetypes already assumed otherwise — `blueprints` are wanted by *"a
+power with the industry to use them and not the design"*.
+
+`yardCapacityFor` is `YARD_TONS_BASE + statModifier(industry) * YARD_TONS_PER_POINT`
+tons per declaration, scaled off the stat the way `maxAgentsFor` is off guile
+and read through `effectiveStats`, so terrain, dissent, a `gunnery` officer's
+passive and a captured factory all reach the slipways.
+
+| power | industry | berths | battleships a turn |
+|---|---|---|---|
+| Meridian | 17 | 46 t | 11 |
+| the Vigil / the Combine | 13 | 30 t | 7 |
+| Arkane | 10 | 22 t | 5 |
+| Drajk | 8 | 14 t | 3 |
+
+**Throughput, not price.** `CREDITS_PER_TON` is read by suborning, by
+development pricing and by `commission_ships`, so a per-faction price would
+ripple through three balanced systems to say one thing. A cap says it where it
+is cheap, and sits beside the affordability trim in `billConstruction` — same
+place, same shape, trimmed with a note and never rejected. **A suborned crew is
+billed but occupies no berth**: it sails over rather than using anybody's
+slipway, tracked as `changedFlag` tons.
+
+**The harness can only see half the range, and that is the first finding.**
+`buy` spends at most `8 * HULL_SPEC.battleship.tonnage` — **32 tons** — in one
+call, so a power whose capacity sits above that can never be observed binding by
+the bots. That one fact explains the whole gradient: at the first setting tried
+(28/8) Meridian, the Vigil and the Combine were all above 32, only Arkane and
+Drajk could ever trim, and the cap fired **twice in thirty turns**. A player is
+under no such ceiling, which is where the constant earns its keep — the same
+shape as the world-type stat bonuses, which move the harness not at all.
+
+Swept over played 30-turn runs, counting how often the cap actually trims:
+
+| base/point | trims | board | poorest net | |
+|---|---|---|---|---|
+| 16/8 | 27 | 5/9/5/5/1 | **−42** | **fails**, and the mix distorts to 66/34 |
+| 18/8 | 21 | 6/7/6/5/1 | −14 | |
+| 20/8 | 24 | 5/8/6/5/1 | −19 | |
+| **22/8** | **10** | **6/8/5/5/1** | **8** | taken |
+| 24/8 | 3 | 6/8/5/5/1 | 8 | |
+| 26/8 · 28/8 | 2 | 6/7/5/6/1 | 17 | |
+| 30/8 | **0** | 5/8/6/6/0 | −15 | passes, and the mechanic is **inert** |
+
+Two boundaries, and 22 is between them rather than on either: below 18 the
+poorest power is starved into a net the balance suite refuses, and at 30 the cap
+stops firing and the board reverts to the one it produces with no cap.
+
+**The last row is the reading that matters.** At every setting where the cap
+fires the Confederacy survives on one world, and at every setting where it does
+not it is wiped out. Throttling throughput slows the rich more than the poor,
+because the rich are the ones with the credits to outrun it — which is what an
+earlier sweep of Drajk's *starting tonnage* could not achieve by any amount of
+handing it more ships, since its ceiling was always its income.
+
+28/8 shipped first and sat one step from inert, the position `MONOPOLY_BONUS`
+was moved off for the same reason. `YARD_TONS_PER_POINT` was swept on its own
+axis at base 24 — 4, 6 and 8 all give three or four trims and the same board,
+and 10 jumps to thirteen trims and a net of −19.
+
+### No ground, no yards
+
+`fleetBases` counts a system where a faction merely **has ships**, which is the
+right answer for drawing losses and the wrong one for building: any beaten power
+could go on commissioning battleships in a rival's orbit forever. A galaxy where
+every defeated power survives as a shipyard in somebody else's sky is not the
+fiction — being driven off your worlds should end you.
+
+Guarded in the reducer on **both** minting paths, because one would have been a
+sentence away from useless: `adjust_fleet` with a positive delta, and
+`adjust_ships` placing your own new hulls at a named world, which was entirely
+unguarded. Both reject with `no_presence` and the same message. Losses,
+suborning and upkeep attrition are untouched — a landless power can still lose
+ships, have crews turned and be billed; it simply cannot replace them.
+
+The exception is the **smuggler**, and it is keyed on `tradeEthic` rather than
+on a faction id: a rule attached to a name is a special case, one attached to a
+doctrine is something another power could take up by paying
+`DOCTRINE_ETHIC_DISSENT` to become it. *"Borders are a fiction maintained by
+people with fleets"* is a claim about not needing ground, and the ethic already
+says it three other ways.
+
+A landless smuggler is viable and vestigial: it builds (a fleet in somebody's
+orbit is a shipyard), earns from contesting that orbit, and raids — but one
+contested world pays ~26 a turn, which sustains about 18 tons. Measured from
+turn 30 to turn 60: 15 tons, ~110 credits, net oscillating +8/−18 as raids start
+and end. It survives; it is not a power.
+
 **The surplus comes off the gain, never off the fleet.** Comparing whole-faction
 tonnage is right for deciding *how much* was built — it is what keeps
 repositioning free — and it is the wrong thing to **cut**, which is what the trim
@@ -1319,8 +1414,9 @@ up.
 **Replay.** `TREATY_GOODWILL` and `COMMITMENT_BREAKING_COST` both fire inside
 `applyOps`, so ten of the saved campaigns rebuild with different dispositions —
 and those dispositions are what the powers in them actually believed.
-`JOURNAL_VERSION` is **5**, with the exemption pinned to 5 the way
-`unbuildFromGain` is pinned to 4. Both replay-only rules now live in one
+`JOURNAL_VERSION` is **6** now and this exemption is pinned to **5**, the way
+`unbuildFromGain` is pinned to 4 — version 6 carries two more, `yardCapacity`
+and `hostages`, each with its own flag because each is its own rule. Both replay-only rules now live in one
 `LegacyRules` object rather than a third positional boolean, and `tickTurn` takes
 it too: ten saves contain `ratifyTurns`, so gating only the signature path would
 have left half the change live during replay. All 48 saves replay identically,
@@ -1503,7 +1599,7 @@ capped twice precisely because it *is* money.
 arithmetic divides, rather than a model being trusted to. `divisible: false` is
 a thing that is one thing; `split_asset` refuses on it.
 
-### The catalogue: sixteen shapes, and permission to invent a seventeenth
+### The catalogue: thirty shapes, and permission to invent a thirty-first
 
 `src/domain/assets.ts`. An open `kind` slug is right and stays — it is what let a
 playtest reach for a fostered heir, a claimant's seal and a hundred tons of rare
@@ -1516,7 +1612,7 @@ and cannot reconcile.
 `ASSET_ARCHETYPES` is the anchor, and it is the same division of labour as
 `classifyPrinciple`: **the model is good at judgement and unreliable at lookup**,
 so it decides *that a thing was taken* and the table decides *what that kind of
-thing is like*. Sixteen entries in four groups — **people** who can be ransomed
+thing is like*. Thirty entries in four groups — **people** who can be ransomed
 or turned, **paper** that proves or authorises, **stuff** that is counted and
 consumed, and **works** that stand on a world and produce.
 
@@ -1524,7 +1620,9 @@ An archetype is a **default, not a restriction**. `create_asset` accepts any
 slug; when the slug is a known one the reducer fills in what was not stated and
 **corrects** `divisible` and `uses`, which are the two fields whose being wrong
 quietly breaks a later trade — a prisoner haul that will not divide cannot be
-ransomed in lots, and an instrument with no `uses` is exercisable forever.
+ransomed in lots, and an instrument with no `uses` is exercisable forever. For a
+**works** it also fills a missing `stat` yield from `modifies`, on the same
+argument: a fixture with no yield is a factory that is scenery.
 
 The table is **substituted into the prompt at call time**, never pasted into the
 `.md`. A copy restated in Markdown is a second opinion that will eventually be
@@ -1689,15 +1787,110 @@ somewhere it can be taken.** Without it a producing asset would be a perpetual
 income stream with no counterplay whatever — unraidable, unblockadeable,
 unconquerable — the one shape this economy has consistently refused.
 
-**`yield` is what it does every turn**, a closed union of three for the reason
+**`yield` is what it does every turn**, a closed union of four for the reason
 `OrderEffect` and `VoidCondition` are closed. Where each is applied follows the
 rule the agent effects already set, rather than being decided afresh:
 
 | kind | applied | why there |
 |---|---|---|
 | `credits` | `ledgerFor`, as `assetYield` | a flow that mutated the treasury each tick would compound instead of recurring — the same argument as `commitmentFlow` and `income_penalty` |
+| `stat` | `effectiveStats`, as `worksBonus` | a per-turn mutation of a stat compounds instead of recurring; read beside terrain and the officer's passive |
 | `dissent` | `tickTurn` | accumulates and decays on its own clock, like `sedition` and `hull_damage` |
 | `asset` | `tickTurn` | a stockpile grows; it is not a figure read fresh |
+
+### A works is a modifier on the power holding the ground
+
+The three original `works` archetypes were each described as *"nobody wants
+it"*, which is true of the paperwork and false of the thing: **a fixture is what
+makes the ground under it worth taking.** A factory is industry, a university is
+guile, a hospital is resolve.
+
+`MAX_ASSET_STAT` is **2**, summed across holdings and then clamped per stat, so
+ten factories beat one and not by ten. Small for the reason `MAX_ASSET_DISSENT`
+is small — a stat reaches every check through `effectiveStats`, and a modifier
+summed over territory is unbounded in principle. It pays only while its holder
+still stands over the world, and since a fixture changes hands with the world,
+**taking the ground takes the benefit**.
+
+That closes a loop: `yardCapacityFor` reads `effectiveStats().industry`, so a
+captured factory really does lay down more hulls for whoever took it.
+
+**One budget, one or two attributes.** A works is worth `MAX_ASSET_STAT` in
+total however it is split — two points of influence, or one of influence and one
+of guile. The split is a **trade, not a bonus**: spread over two attributes at
+full value on each, a works would be worth twice one that concentrated. The
+reducer merges a stat named twice and trims an overspend off the largest share
+first, so a deliberately lopsided pair stays lopsided.
+
+**Two is the cap and it is a real one.** At a budget of two, "up to two stats" is
+the only split the integers allow — a half point does not exist on a 1–20 scale,
+the same granularity argument that took a lifter's half loss on the troops
+rather than on the hull count.
+
+`AssetArchetype.modifies` names the attributes, and the reducer fills a missing
+yield by dividing the budget over them — the same correction it already applies
+to `divisible` and `uses`, and for the same reason: these are the fields whose
+being wrong quietly turns a factory into scenery.
+
+**Fifteen of them: five plus `5C2`**, so the catalogue covers every attribute and
+every pair of two. Complete by construction rather than by whatever anybody
+thought to add — a model reaching for a plausible works finds an archetype
+behind it, which is the table's whole job. A test asserts the *coverage* rather
+than the contents, so a sixth attribute fails the suite rather than quietly
+leaving forty-five per cent of the pairs unnamed.
+
+| | pure | | split | |
+|---|---|---|---|---|
+| might | `military_base` | might+guile | `special_forces_command` | soldiers who are not seen |
+| guile | `university` | might+industry | `arsenal` | guns built where they are proved |
+| industry | `factory` | might+influence | `defence_contractor` | sells force and lobbies for it |
+| influence | `stock_exchange` | might+resolve | `military_academy` | holds as well as fights |
+| resolve | `hospital` | guile+industry | `research_lab` | designs what the line builds |
+| | | guile+influence | `black_market` | an exchange that also hears things |
+| | | guile+resolve | `security_bureau` | watches, and does not rattle |
+| | | industry+influence | `chamber_of_commerce` | makes things, and is heard |
+| | | industry+resolve | `power_plant` | does not go dark under siege |
+| | | influence+resolve | `civil_service` | speaks for them, steadies them |
+
+They are named for what they are rather than for what a fantasy would call them
+— the first set read as a guild hall and a cloister — which is also what makes
+the mechanic legible: nobody has to be told what a factory improves.
+
+### A works is built on purpose, by the attribute it is made of
+
+A fixture is **the one asset kind that is not a prize.** Prisoners and salvage
+are things an attempt *comes away with*, so they ride on whatever check the
+attempt happened to be — but a factory is a thing a power sets out to build, and
+nothing tied the building of one to being any good at building. A successful
+`influence` check to charm a governor could mint a foundry as a byproduct,
+because `create_asset` was governed only by the band it resolved in.
+
+Three paths could reach one and each is closed:
+
+- a **declared action** founds a works only when the check was against its
+  primary attribute — `modifies[0]`, canonically ordered and therefore stable.
+  The arbiter picks the stat from what the player actually described, so a
+  player who wants a works has to *say* they are building one, and be good at it.
+- a **reaction** has no check behind it at all, so it founds nothing. The rest of
+  an NPC's ops stay unbounded — it is answering the turn, not rolling for it —
+  and the correction batch is filtered too, since a retry that re-emitted the
+  works would otherwise be the hole.
+- an **accord** already refused `create_asset` with `declared_only`, and now
+  passes the same filter rather than resting on that alone.
+
+**And a works is not half-built.** A partial delivers a reduced *prize*, which is
+what `quantity` is for — but a fixture is `quantity: 1` and atomic, so halving it
+delivered a whole one. That is the shape that shipped a 100% discount wearing a
+50% label when a one-hull lift loss was halved.
+
+Enforced in `boundPayloadsToOutcome`, where outcome-dependent filtering already
+lives, and **above its early return on success** — because the question a fixture
+asks is not how well the attempt went but whether it was the right *kind* of
+attempt. Array identity is preserved when nothing is refused, which a test pins.
+
+**The seed is not bound by any of it**, for the reason it is not bound by
+"nobody declares an asset into existence": the rule governs what a *model* may
+do, and a seeded works passes through no model at all.
 
 Bounds, each answering a specific way the field could be turned into free money:
 
@@ -5008,6 +5201,12 @@ writing one down. Fixtures and hand-built batches want the input type.
   and put it in `PUBLIC_CATEGORIES` or `SECRET_CATEGORIES` in `intel.ts`. A
   test asserts every type is in exactly one, because a forgotten one would
   default to secret and nobody would notice.
+- New works archetype? It goes in `ASSET_ARCHETYPES` with `fixture: true` and a
+  `modifies` naming one attribute or two. There are fifteen — five plus `5C2` —
+  and `tests/assets.test.ts` asserts that coverage rather than the contents, so
+  a sixth attribute fails the suite instead of quietly leaving pairs unnamed.
+  Nothing else has to change: the reducer fills the yield, `worksBonus` reads it
+  and `boundPayloadsToOutcome` gates the founding off `modifies[0]`.
 - New order effect kind? Add it to `OrderEffectSchema`, give it a cap in
   `EFFECT_CAPS`, a price, the categories that may deliver it in
   `EFFECT_CATEGORIES`, and a branch in `applyOrderEffect`. Price it against what
