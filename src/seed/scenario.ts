@@ -370,13 +370,67 @@ const SEED_FACTIONS: SeedFaction[] = [
   },
 ];
 
-/** Starting opinions. Asymmetric on purpose: contempt is rarely mutual. */
+/**
+ * Starting opinions. Asymmetric on purpose: contempt is rarely mutual.
+ *
+ * **Seated on the geography, which the first table was not.** Every reader of
+ * disposition in `initiative.ts` keys on a world's HOLDER — `targetPriority`
+ * weights a prize by what you think of whoever has it, and `honourStanding`
+ * withholds an attack on a power you are on terms with — so a grievance against
+ * somebody whose worlds you cannot reach is a number nothing ever consults.
+ *
+ * The seed shipped its two deepest antagonisms in exactly that position. The
+ * Vigil and the Free Worlds sat at −60/−75, past `WAR_DISPOSITION_THRESHOLD`
+ * and therefore formally at war, with **no lane anywhere on the map** between a
+ * world either of them holds; Meridian and the Confederacy sat at −55/−40, the
+ * same. Meanwhile the richest contested border on the board — Oridin against
+ * Vantic, the two best worlds either power holds, one jump apart — was the
+ * Combine and the Vigil at −40/−45, one notch short of war, and they never
+ * fought. The map and the politics were describing two different galaxies.
+ *
+ * So the wars moved to where they can be prosecuted and the unfightable ones
+ * became contempt:
+ *
+ * | pair | border | was | is |
+ * |---|---|---|---|
+ * | vigil ↔ freeworlds | **none** | −60/−75, at war | −40/−50 |
+ * | meridian ↔ drajk | **none** | −55/−40 | −30/−25 |
+ * | meridian ↔ vigil | Torrek Anchorage | −35/−20 | −55/−45 |
+ * | ojjul ↔ vigil | Oridin~Vantic | −40/−45 | −55/−50 |
+ * | freeworlds ↔ drajk | Tulgarn | −30/−10 | −45/−20 |
+ * | ojjul ↔ drajk | Hollow Star, Oridin | +20/+30 | +35/+40 |
+ *
+ * `vigil ↔ drajk` at −70/−50 is left exactly as it was, and it is now the only
+ * war on the opening board. It is also the only one that ever could be fought:
+ * they share Threx.
+ *
+ * **Drajk's opening number with the Combine is its fuse, and that is the one
+ * entry chosen for a mechanical reason.** The Confederacy borders three powers,
+ * is the weakest on the board, and its own doctrine bleeds every neighbour's
+ * opinion of it through `PIRACY_REPUTATION_COST` on every prize it takes. So
+ * `BOT_AGGRESSION_CEILING` holds those neighbours off only until raiding has
+ * dragged them below zero, and where the number starts decides which turn that
+ * is: measured, the Combine's view of the Confederacy crosses zero around turn
+ * 8 from +20 and around turn 14 from +35, and it attacks on turn 13 or turn 16
+ * accordingly.
+ *
+ * **None of this was tuned on the harness board, because it cannot be.** The
+ * 30-turn board is chaotic in exactly this parameter — sweeping the Combine's
+ * opening view of the Confederacy over 20/22/25/28/30/35/40 gives 6/8/5/5/1,
+ * 6/6/6/6/1, 6/7/6/6/0, 6/7/6/6/0, 5/9/5/6/0, 5/8/6/6/0, 6/8/5/5/1, with no
+ * monotone structure at all. That is the shape `MONOPOLY_BONUS` and
+ * `COMMANDER_COST` both turned out to have, for the reason CLAUDE.md gives
+ * there: the discrete question of whether one marginal conquest happens swamps
+ * the arithmetic, and a table picked off the board would be overfitted to a
+ * cliff. The table is chosen on the map, and `tests/initiative.test.ts` pins
+ * the rules it embodies rather than the numbers.
+ */
 const DISPOSITIONS: Record<string, Record<string, number>> = {
-  meridian: { vigil: -35, ojjul: 15, freeworlds: 10, drajk: -55 },
-  vigil: { meridian: -20, ojjul: -45, freeworlds: -60, drajk: -70 },
-  ojjul: { meridian: 25, vigil: -40, freeworlds: -5, drajk: 20 },
-  freeworlds: { meridian: 5, vigil: -75, ojjul: -15, drajk: -30 },
-  drajk: { meridian: -40, vigil: -50, ojjul: 30, freeworlds: -10 },
+  meridian: { vigil: -55, ojjul: -15, freeworlds: 10, drajk: -30 },
+  vigil: { meridian: -45, ojjul: -50, freeworlds: -40, drajk: -70 },
+  ojjul: { meridian: 10, vigil: -55, freeworlds: -20, drajk: 35 },
+  freeworlds: { meridian: 5, vigil: -50, ojjul: -10, drajk: -45 },
+  drajk: { meridian: -25, vigil: -50, ojjul: 40, freeworlds: -20 },
 };
 
 /**

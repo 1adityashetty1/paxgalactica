@@ -3145,18 +3145,34 @@ Two halves, and only one of them moves the board:
 
 | | what it does | how often it fires |
 |---|---|---|
-| `BOT_AGGRESSION_CEILING` | a bot will not attack a power it is on positive terms with, absent a war | **never**, in 30 harness turns or on any of the 24 played boards |
+| `BOT_AGGRESSION_CEILING` | a bot will not attack a power it is on positive terms with, absent a war | **every run**, and it decides Drajk's life — see below |
 | `GRIEVANCE_WEIGHT` | standing weights *which* world a bot reaches for | every turn a bot has a choice |
 
-**The gate is an invariant and is documented as one.** It withholds nothing in
-any measurement available, because the whole galaxy issues **four fleet
-movements in thirty turns** — wars here are rare and decisive, the same fact that
-made the first veterancy thresholds unreachable — and only one bot ever attacks a
-world another power holds, its target being one it already dislikes. What it buys
-is a guarantee a model-driven campaign can reach easily and the bots cannot: no
-power sends a fleet at a neighbour that thinks well of it. Pinned on a
-constructed board, because a guard nobody has watched fire is exactly the failure
-this file keeps recording.
+**The gate was documented as an invariant and it is not one.** This file said it
+withholds nothing in any measurement available, on the strength of a galaxy
+issuing four fleet movements in thirty turns. That was true when the bots had no
+territorial appetite; it stopped being true when four of them acquired one, and
+nobody went back and re-measured. It is a **timer**, and what it times is the
+Confederacy.
+
+Drajk borders three powers, is the weakest on the board, and its own doctrine
+bleeds every neighbour's opinion of it through `PIRACY_REPUTATION_COST` on every
+prize it takes. So the gate holds those neighbours off only until raiding has
+dragged them below zero, and where the number **starts** decides which turn that
+is. Traced, on the Combine's opening view of the Confederacy:
+
+| start | crosses zero | Ojjul takes a Drajk world |
+|---|---|---|
+| +20 | ~turn 8 | turn 13 |
+| +35 | ~turn 14 | turn 16 |
+
+That is the gate firing for fifteen turns and then opening, and it is the single
+most load-bearing thing any starting disposition does. It also means **the
+opening table cannot be tuned on the board**: sweeping that one entry over
+20/22/25/28/30/35/40 gives 6/8/5/5/1, 6/6/6/6/1, 6/7/6/6/0, 6/7/6/6/0,
+5/9/5/6/0, 5/8/6/6/0, 6/8/5/5/1 — no monotone structure whatever. Same shape as
+`MONOPOLY_BONUS` and `COMMANDER_COST`: the discrete question of whether one
+marginal conquest happens swamps the arithmetic.
 
 It reads `warsFor` **first**, because that is bilateral and a war is a property
 of the relationship — a power that has been attacked may answer whatever its own
@@ -3191,6 +3207,65 @@ unreachable.
 the map, and **both of those get easier when bots attack less** — so the whole
 suite would have gone green on a galaxy where nothing ever happens. *"Territory
 changes through turn 24"* was a sentence in this file; it is a test.
+
+### The grievances are seated where they can be acted on
+
+Both readers key on a world's **holder** — `targetPriority` weights a prize by
+what you think of whoever has it, `honourStanding` withholds an attack on a
+power you are on terms with — so a grievance against somebody whose worlds you
+cannot reach is a number nothing will ever consult. The seed shipped its two
+deepest antagonisms in exactly that position:
+
+- the **Vigil and the Free Worlds** at −60/−75, past
+  `WAR_DISPOSITION_THRESHOLD` and therefore formally at war, with **no lane
+  anywhere on the map** between a world either of them holds;
+- **Meridian and the Confederacy** at −55/−40, the same.
+
+Meanwhile the richest contested border on the board — **Oridin against Vantic**,
+the two best worlds either power holds, one jump apart — was the Combine and the
+Vigil at −40/−45, one notch short of war, and they never fought. The map and the
+politics were describing two different galaxies, and the half that gets played
+is the map.
+
+| pair | border | was | is |
+|---|---|---|---|
+| vigil ↔ freeworlds | **none** | −60/−75, at war | −40/−50 |
+| meridian ↔ drajk | **none** | −55/−40 | −30/−25 |
+| meridian ↔ vigil | Torrek Anchorage | −35/−20 | −55/−45 |
+| ojjul ↔ vigil | Oridin~Vantic | −40/−45 | **−55/−50** |
+| freeworlds ↔ drajk | Tulgarn | −30/−10 | −45/−20 |
+| ojjul ↔ drajk | Hollow Star, Oridin | +20/+30 | +35/+40 |
+| vigil ↔ drajk | Threx | −70/−50 | **unchanged** |
+
+The wars that could not be fought became contempt, and the one that can is left
+exactly where it was: `vigil ↔ drajk` is now the **only** war on the opening
+board, and the two share Threx. Nothing is cooled below mutual dislike — the
+Vigil and the Free Worlds still hold the deepest feeling on the map, they simply
+no longer have a formal war they can do nothing about.
+
+Two entries are chosen for reasons beyond the geography. `ojjul ↔ vigil` is
+pushed to −55/−50 rather than to war, because a pair that borders at the best
+ground on the board and likes each other is a border nothing ever happens at,
+while a pair already at war there has spent its escalation before turn 1. And
+`ojjul ↔ drajk` is raised to +35/+40 because that number is Drajk's fuse, for
+the reason above.
+
+**The table is chosen on the map and pinned as rules, not numbers.**
+`tests/initiative.test.ts` asserts that no seeded war is between powers who
+share no border, that the single deepest grievance on the board is on a pair
+that can reach each other, that the Oridin–Vantic border is negative but short
+of war, and that the Combine and the Confederacy open on terms. All four hold
+whatever the numbers are later tuned to, and the first two fail against the
+table that shipped before this.
+
+Measured: `pnpm balance 30` reads **6/7/6/6/0** where it read 6/8/5/5/1 — the
+Vigil one world down, the Combine and the Drift one up each, and the
+Confederacy landless. That last is the board reading and not a spiral: it ends
+with a fleet, 26 a turn from raiding and a **net of +11** against the 8 it had,
+which is `tests/balance.test.ts`'s own stated position that *"a landless fleet
+is a real position in this game"* — the Confederacy played to its doctrine
+rather than a power that has been eliminated. Income mix is 58/42, unchanged.
+`pnpm fleetlab` does not read disposition at all.
 
 ## A batch is a transaction
 

@@ -453,3 +453,91 @@ describe('the bots field composed navies', () => {
     }
   });
 });
+
+/**
+ * The seed's grievances, checked against the seed's own geography.
+ *
+ * `BOT_AGGRESSION_CEILING` and `GRIEVANCE_WEIGHT` both key on a HOLDER, so
+ * every one of their readers asks "whose world is this and what do I think of
+ * them" — and a grievance against a power whose worlds you cannot reach is a
+ * number nothing will ever consult. The seed shipped its two deepest
+ * antagonisms in exactly that position: the Vigil and the Free Worlds at
+ * −60/−75 with no lane between them anywhere on the map, and Meridian and the
+ * Confederacy at −55/−40, likewise. A war neither party can prosecute is the
+ * thing `initiative.ts` exists to stop being the normal case.
+ *
+ * These are assertions about the SEED, not about the mechanics, and they are
+ * here rather than in a scenario test because the mechanics are what make them
+ * matter. Both hold whatever the numbers are tuned to.
+ */
+describe('the seed seats its grievances where they can be acted on', () => {
+  const seed = () => createSeedState('meridian');
+
+  /** Pairs with at least one hyperlane between worlds they each hold at turn 0. */
+  const bordering = (s: WorldState): Set<string> => {
+    const held = new Map(s.systems.map((x) => [x.id, x.controllerFactionId]));
+    const out = new Set<string>();
+    for (const sys of s.systems) {
+      const a = held.get(sys.id);
+      if (!a) continue;
+      for (const e of sys.hyperlaneEdges) {
+        const b = held.get(e);
+        if (!b || b === a) continue;
+        out.add([a, b].sort().join('|'));
+      }
+    }
+    return out;
+  };
+
+  it('does not open a war between powers who share no border', () => {
+    // `warsFor` is symmetric and reads either direction past
+    // WAR_DISPOSITION_THRESHOLD, so this is every seeded war on the board.
+    const s = seed();
+    const borders = bordering(s);
+    for (const f of s.factions) {
+      for (const enemy of warsFor(s, f.id)) {
+        const pair = [f.id, enemy].sort().join('|');
+        expect(borders.has(pair), `${pair} is at war and shares no lane`).toBe(true);
+      }
+    }
+  });
+
+  it('puts its worst standing on a pair that can reach each other', () => {
+    // Weaker than the rule above and worth pinning separately: it is possible
+    // for every WAR to border while the single deepest grievance on the board
+    // still sits between two powers three sectors apart, which is the state
+    // this seed was actually in.
+    const s = seed();
+    const borders = bordering(s);
+    let worst = { pair: '', at: 1 };
+    for (const f of s.factions) {
+      for (const [other, n] of Object.entries(f.disposition)) {
+        if (n < worst.at) worst = { pair: [f.id, other].sort().join('|'), at: n };
+      }
+    }
+    expect(borders.has(worst.pair), `deepest grievance ${worst.pair} (${worst.at})`).toBe(true);
+  });
+
+  it('leaves the map’s richest contested border short of war, but not friendly', () => {
+    // Oridin and Vantic are the two highest-value worlds either power holds and
+    // there is one lane between them. A pair that borders at the best ground on
+    // the board and likes each other is a border nothing will ever happen at;
+    // a pair already at war there has spent the escalation before turn 1.
+    const s = seed();
+    for (const [a, b] of [['ojjul', 'vigil'], ['vigil', 'ojjul']] as const) {
+      const n = s.factions.find((f) => f.id === a)!.disposition[b]!;
+      expect(n, `${a} -> ${b}`).toBeLessThan(0);
+      expect(n, `${a} -> ${b}`).toBeGreaterThan(-60);
+    }
+  });
+
+  it('keeps the Combine and the Confederacy on terms, which is Drajk’s fuse', () => {
+    // Drajk borders three powers and is the weakest on the board, and its own
+    // raiding bleeds all three opinions of it every turn it takes a prize. How
+    // long it lasts is how long the standing gate stays shut on its neighbours,
+    // so an opening grievance here is worth several turns of its life.
+    const s = seed();
+    expect(s.factions.find((f) => f.id === 'ojjul')!.disposition['drajk']).toBeGreaterThan(0);
+    expect(s.factions.find((f) => f.id === 'drajk')!.disposition['ojjul']).toBeGreaterThan(0);
+  });
+});

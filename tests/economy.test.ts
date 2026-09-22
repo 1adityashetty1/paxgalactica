@@ -511,21 +511,25 @@ describe('treaties', () => {
 
   it('counts a peace treaty as ending a war', () => {
     const state = fresh();
-    // Vigil sits at -75 toward the Free Worlds in the seed.
-    expect(warsFor(state, 'freeworlds')).toContain('vigil');
+    // The Vigil sits at -70 toward the Confederacy, which is the seed's one
+    // war — and, since the two share a border at Threx, the one that can
+    // actually be fought. It used to be the Vigil and the Free Worlds, who are
+    // three sectors apart and have no lane between them: see "the grievances
+    // are seated where they can be acted on" for why that pair was cooled.
+    expect(warsFor(state, 'drajk')).toContain('vigil');
     const res = applyOps(
       state,
       [
         {
           op: 'form_treaty',
           treatyType: 'non_aggression',
-          parties: ['freeworlds', 'vigil'],
+          parties: ['drajk', 'vigil'],
           terms: {},
         },
       ],
       'extraction',
     );
-    expect(warsFor(res.state, 'freeworlds')).not.toContain('vigil');
+    expect(warsFor(res.state, 'drajk')).not.toContain('vigil');
   });
 });
 
