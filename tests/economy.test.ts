@@ -526,8 +526,12 @@ describe('treaties', () => {
 
 describe('ships in systems', () => {
   it('moves ships in and out, clearing empty entries', () => {
+    // Escorts rather than the default battleship, so this pins the clearing of
+    // an empty entry and nothing else. Five battleships are twenty tons and the
+    // Confederacy's yards lay down fourteen, so the default class would have
+    // this test quietly measuring `yardCapacityFor` instead.
     const added = applyOps(fresh(), [
-      { op: 'adjust_ships', systemId: 'sek-3', factionId: 'drajk', delta: 5 },
+      { op: 'adjust_ships', systemId: 'sek-3', factionId: 'drajk', delta: 5, hull: 'escort' },
     ]).state;
     expect(hullsAt(sys(added, 'sek-3'), 'drajk')).toBe(5);
 

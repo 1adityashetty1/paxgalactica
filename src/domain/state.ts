@@ -1076,8 +1076,50 @@ export const MAX_AGENTS_BASE = 2;
  * ripple through three balanced systems to say one thing. A cap says the same
  * thing where it is cheap: a good yard builds *faster*, not cheaper, and a
  * power that wants a fleet in a hurry needs the industry to lay it down.
+ *
+ * ## Both numbers were swept, and the harness can only see half of the range
+ *
+ * `buy` spends at most `8 * HULL_SPEC.battleship.tonnage` — **32 tons** — in one
+ * call, so a power whose yard capacity sits above that can never be observed
+ * binding by the bots. That single fact explains the whole gradient, and it
+ * means the harness measures the cap on the *poor* powers and is blind to it on
+ * the rich ones. A player is under no such ceiling, which is where this
+ * constant actually earns its keep — the same shape as the world-type stat
+ * bonuses, which move the harness not at all.
+ *
+ * Swept over played 30-turn runs, counting how often the cap actually trims:
+ *
+ * | base/point | trims | board | poorest net | suite |
+ * |---|---|---|---|---|
+ * | 16/8 | 27 | 5/9/5/5/1 | **−42** | **fails** — and the income mix distorts to 66/34 |
+ * | 18/8 | 21 | 6/7/6/5/1 | −14 | passes |
+ * | 20/8 | 24 | 5/8/6/5/1 | −19 | passes |
+ * | **22/8** | **10** | **6/8/5/5/1** | **8** | passes |
+ * | 24/8 | 3 | 6/8/5/5/1 | 8 | passes |
+ * | 26/8 | 2 | 6/7/5/6/1 | 17 | passes |
+ * | 28/8 | 2 | 6/7/5/6/1 | 17 | passes |
+ * | 30/8 | **0** | 5/8/6/6/0 | −15 | passes, and the mechanic is **inert** |
+ *
+ * Two boundaries, and 22 is between them rather than on either: below 18 the
+ * poorest power is starved into a net the balance suite refuses, and at 30 the
+ * cap stops firing at all and the board reverts to the one it produces with no
+ * cap — **including Drajk eliminated**. That last row is the reading that
+ * matters: at every setting where the cap fires the Confederacy survives on one
+ * world, and at every setting where it does not it is wiped out. Throttling
+ * throughput slows the rich more than the poor, because the rich are the ones
+ * with the credits to outrun it.
+ *
+ * 28/8 shipped first and sat one step from inert, which is the position
+ * `MONOPOLY_BONUS` was moved off for the same reason: a tuning value on a cliff
+ * edge is one unrelated change away from tipping over it.
+ *
+ * `YARD_TONS_PER_POINT` was swept on its own axis at base 24 — 4, 6 and 8 all
+ * give three or four trims and the same board, and 10 jumps to thirteen trims
+ * and a net of −19. 8 is taken from that flat region, and it is the value that
+ * makes the spread worth having: Meridian lays down 46 tons a turn against
+ * Drajk's 14, a little over three to one.
  */
-export const YARD_TONS_BASE = 28;
+export const YARD_TONS_BASE = 22;
 export const YARD_TONS_PER_POINT = 8;
 
 export function yardCapacityFor(state: WorldState, factionId: string): number {
