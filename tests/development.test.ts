@@ -863,3 +863,78 @@ describe('an operative is not placed by a failed attempt', () => {
     expect((out.ops[0] as { op: string }).op).toBe('adjust_credits');
   });
 });
+
+describe('a works is built on purpose, by the attribute it is made of', () => {
+  // A fixture is the one asset kind that is not a prize. Prisoners and salvage
+  // are things an attempt comes away with, so they ride on whatever check the
+  // attempt happened to be — but a factory is a thing a power sets out to
+  // build, and nothing tied the building of one to being any good at building.
+  const found = (kind: string) => ({
+    op: 'create_asset',
+    kind,
+    heldBy: 'ojjul',
+    quantity: 1,
+    unit: 'works',
+    atSystemId: 'ilv-2',
+    portable: false,
+    valuePerUnit: {},
+    text: `A ${kind}.`,
+  });
+  const kinds = (r: { ops: unknown[] }) =>
+    r.ops.map((o) => (o as { kind?: string }).kind ?? (o as { op?: string }).op);
+
+  it('lets the right check found one', () => {
+    const out = boundPayloadsToOutcome([found('factory')], 'success', 'industry');
+    expect(kinds(out)).toEqual(['factory']);
+    expect(out.notes).toEqual([]);
+  });
+
+  it('refuses a works the check never tested', () => {
+    // The case that motivated it: a successful influence check to charm a
+    // governor could mint a foundry as a byproduct, because `create_asset` was
+    // governed only by the band.
+    const out = boundPayloadsToOutcome([found('factory')], 'success', 'influence');
+    expect(kinds(out)).toEqual([]);
+    expect(out.notes.join(' ')).toMatch(/takes industry/);
+  });
+
+  it('reads the PRIMARY attribute of a split works', () => {
+    // `modifies` is canonically ordered, so `modifies[0]` is stable: a
+    // special_forces_command leads with might, not guile.
+    expect(kinds(boundPayloadsToOutcome([found('special_forces_command')], 'success', 'might')))
+      .toEqual(['special_forces_command']);
+    expect(kinds(boundPayloadsToOutcome([found('special_forces_command')], 'success', 'guile')))
+      .toEqual([]);
+  });
+
+  it('refuses one when there was no check at all — a reaction founds nothing', () => {
+    const out = boundPayloadsToOutcome([found('university')], 'success', undefined);
+    expect(kinds(out)).toEqual([]);
+    expect(out.notes.join(' ')).toMatch(/built, not come by/);
+  });
+
+  it('will not half-build one on a partial', () => {
+    // A works is quantity 1 and atomic, so halving it delivers a whole one —
+    // the shape that shipped a 100% discount wearing a 50% label.
+    const out = boundPayloadsToOutcome([found('factory')], 'partial', 'industry');
+    expect(kinds(out)).toEqual([]);
+    expect(out.notes.join(' ')).toMatch(/one thing or nothing/);
+  });
+
+  it('leaves an ordinary prize alone, on any check', () => {
+    // The rule is about fixtures only. A haul of prisoners off a might check is
+    // exactly what `create_asset` is for.
+    const haul = {
+      op: 'create_asset', kind: 'prisoners', heldBy: 'ojjul', quantity: 40,
+      unit: 'crew', valuePerUnit: {}, text: 'Forty crews.',
+    };
+    expect(kinds(boundPayloadsToOutcome([haul], 'success', 'might'))).toEqual(['prisoners']);
+  });
+
+  it('does not bind the seed, which passes through no model', () => {
+    // The same distinction "nobody declares an asset into existence" draws: the
+    // rule governs what a MODEL may do.
+    const seeded = createSeedState('ojjul');
+    expect(seeded.assets.length).toBeGreaterThan(0);
+  });
+});

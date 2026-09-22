@@ -1,5 +1,6 @@
 import { DEFAULT_COVERT_EFFECT, type AgentMission } from './diplomacy.js';
 import type { DurationCategory } from './duration.js';
+import { archetypeFor } from './assets.js';
 import { CREDITS_PER_TON, HULL_SPEC } from './hulls.js';
 import {
   addShipsAt,
@@ -264,13 +265,83 @@ export interface PayloadBounding {
   notes: string[];
 }
 
+/**
+ * A works is built on purpose, by the attribute it is made of.
+ *
+ * **A fixture is the one asset kind that is not a prize.** Prisoners, salvage
+ * and a dossier are things an attempt *comes away with*, so they ride on
+ * whatever check the attempt happened to be — but a factory is a thing a power
+ * sets out to build, and nothing tied the building of one to being any good at
+ * building. A successful `influence` check to charm a governor could mint a
+ * foundry as a byproduct, because `create_asset` was governed only by the band.
+ *
+ * So a fixture is stripped unless the check behind it was against its own
+ * **primary attribute** — `modifies[0]`, which is canonically ordered and
+ * therefore stable. A factory takes `industry`, a university `guile`, a
+ * `special_forces_command` the `might` it leads with. That is the same division
+ * the rest of the game draws: the arbiter picks the stat from what the player
+ * actually described, so a player who wants a works has to *say* they are
+ * building one, and be good at it.
+ *
+ * **And a works is not half-built.** A partial delivers a reduced version of a
+ * prize, which is what `quantity` is for — but a fixture is `quantity: 1` and
+ * atomic, so halving it delivers a whole one. That is the shape that shipped a
+ * 100% discount wearing a 50% label when a one-hull lift loss was halved, and
+ * it is refused here rather than rounded.
+ *
+ * The seed is not bound by any of this, for the reason it is not bound by
+ * "nobody declares an asset into existence": the rule governs what a *model*
+ * may do, and a seeded works passes through no model at all.
+ */
+function fixtureBuilt(op: Record<string, unknown>, stat: string | undefined): string | null {
+  const shape = archetypeFor(String(op.kind ?? ''));
+  if (shape === undefined || !shape.fixture) return null;
+  const wants = shape.modifies?.[0];
+  if (wants === undefined) return null;
+  if (stat === wants) return null;
+  return stat === undefined
+    ? `A ${shape.kind} is built, not come by: it takes a ${wants} undertaking, and nothing here tested ${wants}.`
+    : `A ${shape.kind} takes ${wants}, and this was a ${stat} undertaking; the works was not begun.`;
+}
+
 export function boundPayloadsToOutcome(
   ops: unknown[],
   outcome: 'critical_success' | 'success' | 'partial' | 'failure' | 'critical_failure',
+  /**
+   * The attribute the check was made against, when there was a check. Absent
+   * for a reaction, which has none — and a power cannot build a works in a
+   * turn it never set out to. See `fixtureBuilt`.
+   */
+  stat?: string,
 ): PayloadBounding {
-  if (outcome === 'success' || outcome === 'critical_success') return { ops, notes: [] };
+  // **The fixture rule runs on every band, including a clean success**, which
+  // is why it sits above the early return: the question it asks is not how well
+  // the attempt went but whether the attempt was the right kind of attempt.
+  const builtNotes: string[] = [];
+  const kept = ops.filter((op) => {
+    const o = op && typeof op === 'object' ? (op as Record<string, unknown>) : null;
+    if (o === null || o.op !== 'create_asset') return true;
+    const wrong = fixtureBuilt(o, stat);
+    if (wrong !== null) {
+      builtNotes.push(wrong);
+      return false;
+    }
+    // A works is atomic, so a partial cannot deliver a smaller one.
+    if (outcome === 'partial' && archetypeFor(String(o.kind ?? ''))?.fixture === true) {
+      builtNotes.push(
+        `A ${String(o.kind)} is one thing or nothing: a partial result leaves the ground broken and the works unbuilt.`,
+      );
+      return false;
+    }
+    return true;
+  });
+  // Identity is preserved when nothing was refused: a clean success that founds
+  // no works must hand back the array it was given, which a test pins.
+  if (kept.length !== ops.length) ops = kept;
 
-  const notes: string[] = [];
+  if (outcome === 'success' || outcome === 'critical_success') return { ops, notes: builtNotes };
+
+  const notes: string[] = [...builtNotes];
   const failed = outcome === 'failure' || outcome === 'critical_failure';
 
   // An operative placed on a failed attempt.

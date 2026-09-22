@@ -124,9 +124,19 @@ proclaiming an attainder, buying their officer corps. Those paths cost credits,
 risk exposure and are capped, and they are the only ones there is.
 
 **A commitment is an arrangement; a works is an asset.** If the thing built is
-a *physical installation standing on a world* — a mine, an exchange floor, a dry
-dock, a theatre, a refinery — it is `create_asset` with `portable: false`, an
-`atSystemId` and a `yield`, NOT an `establish_commitment` with `incomePerTurn`.
+a *physical installation standing on a world* — a factory, a university, a
+hospital, a power plant, an exchange floor — it is `create_asset` with
+`portable: false`, an `atSystemId` and a `yield`, NOT an
+`establish_commitment` with `incomePerTurn`.
+**A works is only founded when the player set out to build one, and only on
+its own attribute.** The catalogue names one works per attribute and one per
+pair of them, and the engine refuses a fixture whose check was against anything
+but its primary attribute — a `factory` takes `industry`, a `university` takes
+`guile`, a `special_forces_command` leads with `might`. So do not hand one out
+as a byproduct of an attempt that was about something else, however well it
+went: an influence check that charms a governor does not found a foundry. A
+partial founds nothing either, because a works is one thing or none.
+
 Use a commitment for what is agreed between powers or declared as policy: a
 concession, a charter, a marriage, a standing duty. The test is whether an enemy
 could come and take it: if holding the world means holding the thing, it is an
