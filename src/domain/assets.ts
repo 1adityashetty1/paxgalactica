@@ -61,7 +61,13 @@ export interface AssetArchetype {
    * then it splits one budget between them — a black market is an exchange run
    * for guile as much as for influence, a mercenary board one run for might.
    * Same institution, differently run, which says what a works IS better than
-   * a second archetype that happens to be worth the same amount. The reducer fills in a
+   * a second archetype that happens to be worth the same amount.
+   *
+   * There are **fifteen**: five pure and `5C2` = ten pairs, so the catalogue
+   * covers every attribute and every combination of two. Complete by
+   * construction rather than by whatever anybody thought to add — a model
+   * reaching for a guildhall or a tribunal finds an archetype behind it, which
+   * is the whole job of the table. The reducer fills in a
    * `stat` yield from this when `create_asset` names a known fixture and gave
    * none, the same correction it already applies to `divisible` and `uses` —
    * the two other fields whose being wrong quietly breaks a later trade.
@@ -70,7 +76,7 @@ export interface AssetArchetype {
 }
 
 /**
- * Twenty shapes, chosen to cover the ways a thing can enter play rather than
+ * Thirty shapes, chosen to cover the ways a thing can enter play rather than
  * to enumerate the fiction.
  *
  * Four groups, and the grouping is the useful part: **people** who can be
@@ -295,18 +301,35 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     from: 'raising a theatre, a temple, a grain dole — anything that settles a population',
     wanted: 'whoever holds the world — it settles them, and changes hands with the ground',
   },
-  /* Split works: one budget, two attributes. The pure form above is the same
-     institution run for one thing; these are it run for two. */
+  /* Split works: one budget, two attributes. The pure five above are the same
+     institutions run for one thing; these are them run for two — and there are
+     exactly **ten**, because that is every unordered pair of five attributes.
+     The catalogue is complete by construction rather than by whatever anybody
+     thought to add, which is what stops a model reaching for a plausible works
+     and finding no archetype behind it. `tests/assets.test.ts` asserts the
+     count and the coverage, so a sixth attribute would fail rather than quietly
+     leave forty-five per cent of the pairs unnamed. */
   {
-    kind: 'black_market',
+    kind: 'privateer_hall',
     unit: 'works',
     divisible: false,
     uses: null,
     speculative: false,
     fixture: true,
-    modifies: ['influence', 'guile'],
-    from: 'letting a market run without asking what crosses it',
-    wanted: 'whoever holds the world — an exchange that also hears things',
+    modifies: ['might', 'guile'],
+    from: 'licensing a hall of marque — captains who fight and captains who vanish',
+    wanted: 'whoever holds the world — it arms them and hides them, and changes hands with the ground',
+  },
+  {
+    kind: 'proving_yard',
+    unit: 'works',
+    divisible: false,
+    uses: null,
+    speculative: false,
+    fixture: true,
+    modifies: ['might', 'industry'],
+    from: 'laying out a proving ground beside the works that feeds it',
+    wanted: 'whoever holds the world — it builds the guns and teaches the crews',
   },
   {
     kind: 'mercenary_board',
@@ -315,7 +338,7 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: false,
     fixture: true,
-    modifies: ['influence', 'might'],
+    modifies: ['might', 'influence'],
     from: 'licensing a hiring hall, seating a board that sells contracts',
     wanted: 'whoever holds the world — an exchange that also musters companies',
   },
@@ -337,9 +360,64 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: false,
     fixture: true,
-    modifies: ['industry', 'guile'],
+    modifies: ['guile', 'industry'],
     from: 'endowing a school beside a yard — draughtsmen as well as riveters',
-    wanted: 'whoever holds the world — it builds hulls and copies other people\'s',
+    wanted: "whoever holds the world — it builds hulls and copies other people's",
+  },
+  {
+    kind: 'black_market',
+    unit: 'works',
+    divisible: false,
+    uses: null,
+    speculative: false,
+    fixture: true,
+    modifies: ['guile', 'influence'],
+    from: 'letting a market run without asking what crosses it',
+    wanted: 'whoever holds the world — an exchange that also hears things',
+  },
+  {
+    kind: 'cloister',
+    unit: 'works',
+    divisible: false,
+    uses: null,
+    speculative: false,
+    fixture: true,
+    modifies: ['guile', 'resolve'],
+    from: 'endowing a closed order — people who keep secrets and keep going',
+    wanted: 'whoever holds the world — it teaches discretion, and endurance with it',
+  },
+  {
+    kind: 'guildhall',
+    unit: 'works',
+    divisible: false,
+    uses: null,
+    speculative: false,
+    fixture: true,
+    modifies: ['industry', 'influence'],
+    from: 'chartering a guild — a trade that speaks for itself',
+    wanted: 'whoever holds the world — it makes things, and is heard when it asks',
+  },
+  {
+    kind: 'arcology',
+    unit: 'works',
+    divisible: false,
+    uses: null,
+    speculative: false,
+    fixture: true,
+    modifies: ['industry', 'resolve'],
+    from: 'raising a works-town that feeds and houses the people who run it',
+    wanted: 'whoever holds the world — it produces, and it does not break under siege',
+  },
+  {
+    kind: 'tribunal',
+    unit: 'works',
+    divisible: false,
+    uses: null,
+    speculative: false,
+    fixture: true,
+    modifies: ['influence', 'resolve'],
+    from: 'seating a bench that settles disputes nobody else will',
+    wanted: 'whoever holds the world — it speaks for them, and steadies them',
   },
 ];
 

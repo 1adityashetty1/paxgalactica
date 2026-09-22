@@ -88,7 +88,7 @@ describe('assets', () => {
       expect(archetypeFor('foundry')?.modifies).toEqual(['industry']);
       expect(archetypeFor('college')?.modifies).toEqual(['guile']);
       // A works may name two, and then it splits one budget between them.
-      expect(archetypeFor('black_market')?.modifies).toEqual(['influence', 'guile']);
+      expect(archetypeFor('black_market')?.modifies).toEqual(['guile', 'influence']);
       expect(archetypeFor('nothing_like_this')).toBeUndefined();
     });
 
@@ -602,14 +602,42 @@ describe('assets', () => {
       return out.state.assets[0]!.yield as { kind: 'stat'; stats: { stat: string; points: number }[] };
     };
 
+    it('names every attribute once, and every PAIR of attributes once', () => {
+      // 5 pure + 5C2 split = 15, and the catalogue is complete by construction
+      // rather than by whatever anybody thought to add. Without this a model
+      // reaching for a plausible works — a guildhall, a tribunal — would find no
+      // archetype behind it and get no default, which is the drift the table
+      // exists to stop.
+      const STATS = ['might', 'guile', 'industry', 'influence', 'resolve'] as const;
+      const works = ASSET_ARCHETYPES.filter((a) => a.fixture);
+      expect(works.every((a) => a.modifies !== undefined)).toBe(true);
+
+      const pure = works.filter((a) => a.modifies!.length === 1);
+      expect(pure.map((a) => a.modifies![0]).sort()).toEqual([...STATS].sort());
+
+      const split = works.filter((a) => a.modifies!.length === 2);
+      const pairs = split.map((a) => [...a.modifies!].sort().join('+')).sort();
+      const every: string[] = [];
+      for (let i = 0; i < STATS.length; i++) {
+        for (let j = i + 1; j < STATS.length; j++) {
+          every.push([STATS[i]!, STATS[j]!].sort().join('+'));
+        }
+      }
+      expect(every).toHaveLength(10); // 5C2
+      expect(pairs).toEqual(every.sort());
+      // No archetype spreads further than a budget of two can pay for.
+      expect(works.every((a) => a.modifies!.length <= 2)).toBe(true);
+      expect(works).toHaveLength(STATS.length + every.length);
+    });
+
     it('splits one budget evenly when a kind names two attributes', () => {
       const plain = place('exchange');
       expect(plain.stats).toEqual([{ stat: 'influence', points: MAX_ASSET_STAT }]);
 
       const split = place('black_market');
       expect(split.stats).toEqual([
-        { stat: 'influence', points: 1 },
         { stat: 'guile', points: 1 },
+        { stat: 'influence', points: 1 },
       ]);
       // The same total either way — the split is a trade, not a bonus.
       const sum = (y: typeof split) => y.stats.reduce((n, t) => n + t.points, 0);
