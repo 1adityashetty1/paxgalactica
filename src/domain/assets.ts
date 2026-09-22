@@ -46,10 +46,27 @@ export interface AssetArchetype {
   from: string;
   /** Who tends to want it, in words. Never a number: the board decides that. */
   wanted: string;
+  /**
+   * For a **fixture**, the stat it is worth to whoever holds the ground.
+   *
+   * **A works is defined by what it modifies**, which is the whole reason a
+   * fixture is a distinct shape rather than cargo that happens not to move.
+   * Before this the three `works` entries were each described as *"nobody
+   * wants it"* — true of the paperwork and false of the thing: a foundry, a
+   * college and a fortress are not inert scenery, they are the reason the
+   * world under them is worth taking.
+   *
+   * So there is exactly one per stat, and naming it is naming the mechanic:
+   * you do not have to be told what a `foundry` does. The reducer fills in a
+   * `stat` yield from this when `create_asset` names a known fixture and gave
+   * none, the same correction it already applies to `divisible` and `uses` —
+   * the two other fields whose being wrong quietly breaks a later trade.
+   */
+  modifies?: 'might' | 'guile' | 'industry' | 'influence' | 'resolve';
 }
 
 /**
- * Sixteen shapes, chosen to cover the ways a thing can enter play rather than
+ * Twenty shapes, chosen to cover the ways a thing can enter play rather than
  * to enumerate the fiction.
  *
  * Four groups, and the grouping is the useful part: **people** who can be
@@ -177,7 +194,7 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: true,
     fixture: false,
-    from: 'a survey, a seizure, a mine standing on a world you hold',
+    from: 'a survey, a seizure, a foundry standing on a world you hold',
     wanted: 'a power building hulls, at a price nobody has settled',
   },
   {
@@ -211,15 +228,46 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     wanted: 'whoever it was taken from, for reasons that are not commercial',
   },
   /* --- Works: they stand on a world and produce ------------------------- */
+  /* --- works: they stand on a world, and make its holder better at something
+     ------------------------------------------------------------------------
+     One per stat, so the catalogue's fixtures ARE the five attributes. A works
+     never leaves the ground it stands on: `transfer_asset` refuses it from both
+     the declared and the negotiated path, and it changes hands only through
+     cession or conquest, which needed no new code — the transfer-of-control
+     path already moves everything standing on a world. That is what makes it a
+     reason to take ground rather than a thing to trade. */
   {
-    kind: 'mine',
+    kind: 'arsenal',
     unit: 'works',
     divisible: false,
     uses: null,
     speculative: false,
     fixture: true,
-    from: 'a survey that struck something, then the works to open it',
-    wanted: 'nobody — it changes hands with the ground and by no other route',
+    modifies: 'might',
+    from: 'raising an armoury, a proving ground, a fortress academy',
+    wanted: 'whoever holds the world — it arms them, and changes hands with the ground',
+  },
+  {
+    kind: 'college',
+    unit: 'works',
+    divisible: false,
+    uses: null,
+    speculative: false,
+    fixture: true,
+    modifies: 'guile',
+    from: 'endowing a university, a chart house, a school of signals',
+    wanted: 'whoever holds the world — it teaches them, and changes hands with the ground',
+  },
+  {
+    kind: 'foundry',
+    unit: 'works',
+    divisible: false,
+    uses: null,
+    speculative: false,
+    fixture: true,
+    modifies: 'industry',
+    from: 'opening a mine, laying a slipway, converting a yard',
+    wanted: 'whoever holds the world — it builds for them, and changes hands with the ground',
   },
   {
     kind: 'exchange',
@@ -228,8 +276,9 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: false,
     fixture: true,
-    from: 'chartering a market, licensing a dock',
-    wanted: 'nobody — take the world if you want it',
+    modifies: 'influence',
+    from: 'chartering a market, licensing a dock, seating a court',
+    wanted: 'whoever holds the world — it speaks for them, and changes hands with the ground',
   },
   {
     kind: 'sanctuary',
@@ -238,8 +287,9 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: false,
     fixture: true,
+    modifies: 'resolve',
     from: 'raising a theatre, a temple, a grain dole — anything that settles a population',
-    wanted: 'nobody — but it settles whoever holds the world',
+    wanted: 'whoever holds the world — it settles them, and changes hands with the ground',
   },
 ];
 

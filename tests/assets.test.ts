@@ -82,7 +82,10 @@ describe('assets', () => {
       expect(archetypeFor('dossier')?.divisible).toBe(false);
       expect(archetypeFor('writ')?.uses).toBe(1);
       expect(archetypeFor('ore')?.speculative).toBe(true);
-      expect(archetypeFor('mine')?.fixture).toBe(true);
+      expect(archetypeFor('foundry')?.fixture).toBe(true);
+      // A works declares the attribute it is worth to whoever holds the ground.
+      expect(archetypeFor('foundry')?.modifies).toBe('industry');
+      expect(archetypeFor('college')?.modifies).toBe('guile');
       expect(archetypeFor('nothing_like_this')).toBeUndefined();
     });
 
@@ -131,12 +134,14 @@ describe('assets', () => {
       const s = seed();
       const out = applyOps(
         s,
-        [mint({ kind: 'mine', quantity: 1, unit: 'works', valuePerUnit: {}, atSystemId: world(s).id })],
+        [mint({ kind: 'foundry', quantity: 1, unit: 'works', valuePerUnit: {}, atSystemId: world(s).id })],
         'model',
         'ojjul',
       );
       expect(out.rejections).toEqual([]);
       expect(out.state.assets[0]!.portable).toBe(false);
+      // And it is worth what its kind means, without being told.
+      expect(out.state.assets[0]!.yield).toEqual({ kind: 'stat', stat: 'industry', points: 1 });
     });
   });
 

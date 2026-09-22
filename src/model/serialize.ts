@@ -648,7 +648,9 @@ export function serializeAssets(state: WorldState, viewerId: string): string {
             ? ` · pays ${a.yield.perTurn} a turn`
             : a.yield.kind === 'dissent'
               ? ` · moves your dissent ${a.yield.perTurn > 0 ? '+' : '−'}${Math.abs(a.yield.perTurn)} a turn`
-              : ` · yields ${a.yield.perTurn} ${a.yield.unit} a turn`;
+              : a.yield.kind === 'stat'
+                ? ` · ${a.yield.points > 0 ? '+' : '−'}${Math.abs(a.yield.points)} ${a.yield.stat} while you hold it`
+                : ` · yields ${a.yield.perTurn} ${a.yield.unit} a turn`;
       return `- \`${a.id}\` ${a.quantity} ${a.unit} — ${a.text}${where}${split}${fixed}${plays}${does}\n  ${
         wanted || 'nobody has shown it is worth anything to them'
       }`;

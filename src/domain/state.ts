@@ -45,6 +45,7 @@ import {
   type Agent,
   type Treaty,
   AssetSchema,
+  MAX_ASSET_STAT,
 } from './diplomacy.js';
 import { DebtSchema, MAX_DEBT_PER_TURN, scheduledDebtService, type Debt } from './debt.js';
 import { LoanSchema, scheduledRent } from './loan.js';
@@ -1052,6 +1053,71 @@ export const AGENT_UPKEEP = 3;
  */
 export const MAX_AGENTS_BASE = 2;
 
+/**
+ * How much shipping a power's yards can lay down in one declaration, in TONS.
+ *
+ * **`industry` had no say in construction at all.** The stat whose own
+ * description is *"anything that must be built or supplied"* reached ability
+ * checks and `effectiveStats` and touched the yards nowhere: a hull was priced
+ * purely by displacement and gated purely by presence, so the Confederacy at
+ * industry 8 built exactly as fast as Meridian at 17 given the same credits.
+ * Two of the asset archetypes already assumed otherwise — `blueprints` are
+ * wanted by *"a power with the industry to use them and not the design"*, and
+ * `ore` by *"a power building hulls"*.
+ *
+ * Scaled off the stat on the same principle as `maxAgentsFor` from guile and
+ * `maxCommitmentIncomeFor` from influence, and read off `effectiveStats`, so
+ * terrain, dissent and a `gunnery` officer's passive all reach the slipways —
+ * which is what makes an industrial world worth taking for a reason beyond its
+ * income.
+ *
+ * **Throughput, not price.** `CREDITS_PER_TON` is read by suborning, by
+ * development pricing and by `commission_ships`, so making it per-faction would
+ * ripple through three balanced systems to say one thing. A cap says the same
+ * thing where it is cheap: a good yard builds *faster*, not cheaper, and a
+ * power that wants a fleet in a hurry needs the industry to lay it down.
+ */
+export const YARD_TONS_BASE = 28;
+export const YARD_TONS_PER_POINT = 8;
+
+export function yardCapacityFor(state: WorldState, factionId: string): number {
+  const faction = getFaction(state, factionId);
+  if (!faction) return 0;
+  return Math.max(
+    HULL_SPEC.battleship.tonnage,
+    YARD_TONS_BASE + statModifier(effectiveStats(state, factionId).industry) * YARD_TONS_PER_POINT,
+  );
+}
+
+/**
+ * What a power's standing works add to its stats.
+ *
+ * Only while the holder is still over the world, which is the rule every asset
+ * yield follows — and since a fixture changes hands with the ground, taking the
+ * world takes the benefit. Summed across holdings and then clamped per stat, so
+ * ten foundries are worth more than one and not ten times more.
+ */
+export function worksBonus(state: WorldState, factionId: string): Partial<FactionStats> {
+  const out: Partial<FactionStats> = {};
+  for (const asset of state.assets ?? []) {
+    if (asset.heldBy !== factionId) continue;
+    if (asset.yield === null || asset.yield.kind !== 'stat') continue;
+    // The same presence line every other yield draws: a works pays while its
+    // holder holds the world or has ships over it, and not from an abandoned
+    // shell on ground somebody else took.
+    if (asset.atSystemId === null) continue;
+    const where = state.systems.find((x) => x.id === asset.atSystemId);
+    if (!where) continue;
+    if (where.controllerFactionId !== factionId && hullsAt(where, factionId) === 0) continue;
+    out[asset.yield.stat] = (out[asset.yield.stat] ?? 0) + asset.yield.points;
+  }
+  for (const stat of STAT_NAMES) {
+    const n = out[stat];
+    if (n !== undefined) out[stat] = Math.max(-MAX_ASSET_STAT, Math.min(MAX_ASSET_STAT, n));
+  }
+  return out;
+}
+
 export function maxAgentsFor(state: WorldState, factionId: string): number {
   const faction = getFaction(state, factionId);
   if (!faction) return 0;
@@ -1947,6 +2013,21 @@ export function effectiveStats(state: WorldState, factionId: string): FactionSta
   if (officer) {
     base.industry = Math.min(20, base.industry + commanderIndustry(officer));
     base.resolve = Math.min(20, base.resolve + commanderResolve(officer));
+  }
+
+  // **A works its holder is standing over makes them better at something.**
+  // Beside terrain and the officer's passive and before dissent, for terrain's
+  // own reason: good institutions should offset a bad leader rather than
+  // vanishing under the floor. Read here rather than applied on the tick,
+  // because a per-turn mutation of a stat compounds instead of recurring.
+  //
+  // This is what closes the loop on a fixture: `yardCapacityFor` reads
+  // `effectiveStats().industry`, so a captured foundry lays down more hulls for
+  // whoever took the ground it stands on.
+  const works = worksBonus(state, factionId);
+  for (const stat of STAT_NAMES) {
+    const bonus = works[stat] ?? 0;
+    if (bonus !== 0) base[stat] = Math.max(1, Math.min(20, base[stat] + bonus));
   }
 
   const penalty = dissentPenalty(faction?.dissent ?? 0);

@@ -68,8 +68,10 @@ import {
   commanderTaken,
   ASSASSINATION_KILL_ROLL,
   INTERROGATION_SHARE,
+  HOSTAGE_VALUE_PER_POINT,
   OFFICER_LEVERAGE,
   OPERATIVE_RANSOM,
+  hostageTaken,
   officerRansom,
   commanderLost,
   commanderMight,
@@ -150,6 +152,7 @@ import {
   effectiveStats,
   fleetBases,
   holdsGround,
+  yardCapacityFor,
   livesOffTheLanes,
   isGuestOf,
   fleetStrengthOf,
@@ -1282,6 +1285,25 @@ export interface LegacyRules {
    * believed. Journal version 5.
    */
   arrangementStanding?: boolean;
+  /**
+   * Cap what a faction's yards can lay down in one batch, off `industry`.
+   *
+   * `industry` had no say in construction before this, so a recorded campaign
+   * built at whatever rate its credits allowed — and replaying it under the cap
+   * would quietly hand back fleets those powers really did put in the water.
+   * Journal version 6.
+   */
+  yardCapacity?: boolean;
+  /**
+   * Take a hostage on a storming or a successful subversion.
+   *
+   * A recorded campaign fought those battles and ran those operatives without
+   * anybody being seized, so replaying it under this would mint assets that
+   * never existed — and an asset is tradeable, so it would not stay cosmetic.
+   * Journal version 6, alongside `yardCapacity`: two rules, introduced
+   * together, each with its own flag for the reason the others have theirs.
+   */
+  hostages?: boolean;
 }
 
 export function applyOps(
@@ -1333,7 +1355,7 @@ export function applyOps(
    */
   legacy: LegacyRules = {},
 ): ApplyResult {
-  const { unbuildFromGain = true, arrangementStanding = true } = legacy;
+  const { unbuildFromGain = true, arrangementStanding = true, yardCapacity = true } = legacy;
   const state = cloneState(input);
   const rejections: OpRejection[] = [];
   const notes: string[] = [];
@@ -1444,6 +1466,17 @@ export function applyOps(
    * escort, and must not be handed back a battleship because one happened to be
    * uprooted first.
    */
+  /**
+   * Tons that changed flag this batch rather than coming out of a slipway.
+   *
+   * A suborned crew sails over; it does not occupy a building berth. So it is
+   * still BILLED — CLAUDE.md is explicit that a defection is bought and not
+   * captured — and it does not count against `yardCapacityFor`. Kept separate
+   * from `exempt`, which moves the billing baseline itself and is for hulls
+   * that are neither built nor lost.
+   */
+  const changedFlag = new Map<string, number>();
+
   const uprooted = new Map<string, ShipStack>();
   const commissioned = new Map<string, { count: number; at: StarSystem }>();
   const placed = new Map<string, number>();
@@ -1911,6 +1944,7 @@ export function applyOps(
         let uses = op.uses;
         let speculative = op.speculative;
         let portable = op.portable;
+        let yielded = op.yield;
         if (shape) {
           if (divisible !== shape.divisible && stated('divisible')) {
             notes.push(
@@ -1921,19 +1955,32 @@ export function applyOps(
           uses = shape.uses;
           if (!stated('speculative')) speculative = shape.speculative;
           if (shape.fixture) portable = false;
+          // **A works is defined by what it modifies**, so a named fixture that
+          // arrived without a yield gets the one its kind means. The same
+          // correction `divisible` and `uses` already take, and for the same
+          // reason: these are the fields whose being wrong quietly turns a
+          // foundry into scenery. A caller that stated a yield keeps it — the
+          // catalogue supplies a default, it does not overrule a deliberate
+          // one — and the reducer still clamps the points either way.
+          if (shape.modifies !== undefined && yielded === null) {
+            yielded = { kind: 'stat', stat: shape.modifies, points: 1 };
+            notes.push(
+              `A ${op.kind} is worth ${shape.modifies} to whoever holds the ground it stands on; recorded that way.`,
+            );
+          }
         }
 
         // A dossier has no location, so it can carry neither of the two fields
         // that need one. Settled here rather than by rejecting, since both are
         // meaningless on a file rather than wrong.
-        if (isDossier && (op.yield !== null || portable === false)) {
+        if (isDossier && (yielded !== null || portable === false)) {
           notes.push(`A ${DOSSIER_KIND} is paper: it stands nowhere and produces nothing.`);
         }
         // Read off the RESOLVED shape rather than the raw op, because the
         // catalogue is what decides that an `exchange` is a fixture. Checking
         // `op.portable` here let a works archetype skip both this and the
         // presence guard below and land on ground its owner had never reached.
-        if (!isDossier && (portable === false || op.yield !== null) && op.atSystemId === null) {
+        if (!isDossier && (portable === false || yielded !== null) && op.atSystemId === null) {
           reject(
             raw,
             'illegal_value',
@@ -1952,7 +1999,7 @@ export function applyOps(
           : undefined;
         if (
           site &&
-          (portable === false || op.yield !== null) &&
+          (portable === false || yielded !== null) &&
           site.controllerFactionId !== op.heldBy &&
           hullsAt(site, op.heldBy) === 0
         ) {
@@ -1968,7 +2015,7 @@ export function applyOps(
         // are still real at a smaller number, the same shape as
         // `MAX_COMMITMENT_INCOME` and `billConstruction`. Only the paying
         // direction: nothing needs protecting from a power agreeing to pay.
-        let assetYield = isDossier ? null : op.yield;
+        let assetYield = isDossier ? null : yielded;
         if (assetYield?.kind === 'credits' && assetYield.perTurn > MAX_ASSET_YIELD) {
           notes.push(
             `${op.text} would pay ${assetYield.perTurn} a turn; trimmed to ${MAX_ASSET_YIELD}.`,
@@ -3693,6 +3740,7 @@ export function applyOps(
           // always said about pricing a defection by class.
           if (actor !== undefined && op.factionId !== actor) {
             addToPool(uprooted, actor, removed);
+            changedFlag.set(actor, (changedFlag.get(actor) ?? 0) + tonsIn(removed));
           }
         }
 
@@ -4670,7 +4718,9 @@ export function applyOps(
   notes.push(...moveConserved(state, negotiated, 'the terms agreed', actor ?? 'engine'));
   notes.push(...settleDeclaredCredits(state, declaredCredits, declaredPaidOut, notes));
   const pricedByYards = new Set<string>();
-  billConstruction(state, hullsBefore, shipsBefore, unbuildFromGain, notes, pricedByYards);
+  billConstruction(
+    state, hullsBefore, shipsBefore, unbuildFromGain, yardCapacity, changedFlag, notes, pricedByYards,
+  );
   refundDuplicateCharges(state, chargedByNarrative, pricedByYards, notes);
 
   // Nothing lands unless everything does. The notes are dropped with the state
@@ -4814,6 +4864,65 @@ function refundDuplicateCharges(
 }
 
 /**
+ * Take somebody who matters, and hold them where they were taken.
+ *
+ * **The two events that produce one are a storming and a subversion**, which is
+ * the whole of it — a hostage was in the catalogue with no mechanism behind it,
+ * reachable only by a model narrating one into being. Both callers already roll
+ * a seeded d20 for something else, and this reads the top of that same roll
+ * rather than taking a new one, so a campaign replays exactly.
+ *
+ * The two are the same act from either side of the wall: a conqueror finds the
+ * ruling house in the residence it just took, and an operative lifts somebody
+ * out of it without an army. Worth a great deal to the power they were taken
+ * from and `OFFICER_LEVERAGE` to everybody else — the same asymmetry
+ * `officerRansom` draws, and the reason a hostage is worth trading rather than
+ * worth keeping.
+ *
+ * Held **at the world**, so it travels with the ground: retake the world and
+ * you have your people back, which is what makes a hostage worth guarding and
+ * a garrison worth leaving. It is the rule every located asset follows.
+ */
+function takeHostage(
+  state: WorldState,
+  captor: string,
+  from: string,
+  where: StarSystem,
+  how: string,
+): void {
+  const worth = Math.max(
+    OFFICER_LEVERAGE,
+    where.strategicValue * HOSTAGE_VALUE_PER_POINT,
+  );
+  const valuePerUnit: Record<string, number> = {};
+  for (const f of state.factions) {
+    if (f.id === captor) continue;
+    valuePerUnit[f.id] = f.id === from ? worth : OFFICER_LEVERAGE;
+  }
+  (state.assets ??= []).push({
+    id: mintId(state, 'ast'),
+    kind: 'hostage',
+    text: `A figure of consequence from ${nameFor(state, from)}'s house on ${where.name}, ${how}`,
+    heldBy: captor,
+    quantity: 1,
+    unit: 'person',
+    commanderId: null,
+    agentId: null,
+    divisible: false,
+    valuePerUnit,
+    speculative: false,
+    valueRange: {},
+    uses: null,
+    atSystemId: where.id,
+    portable: true,
+    yield: null,
+    acquiredTurn: state.turn,
+  } as Asset);
+  const note = `${nameFor(state, captor)} takes a hostage of consequence from ${nameFor(state, from)} on ${where.name}.`;
+  logEvent(state, 'narrative', note, captor, [captor, from]);
+}
+
+/**
  * Whether this power may commission new hulls at all.
  *
  * Ground of its own, or a doctrine that does not need any. See
@@ -4875,6 +4984,10 @@ function billConstruction(
   shipsBefore: Map<string, Record<string, ShipStack>>,
   /** False only for a journal written before the gain-scoped trim. */
   fromGain: boolean,
+  /** False only for a journal written before `industry` reached the yards. */
+  capped: boolean,
+  /** Tons that changed flag rather than being laid down — billed, not built. */
+  changedFlag: Map<string, number>,
   notes: string[],
   /** Factions this pass actually debited, so a duplicate charge can be found. */
   charged: Set<string> = new Set(),
@@ -4887,7 +5000,24 @@ function billConstruction(
     if (gained <= 0) continue;
 
     const affordable = Math.floor(faction.credits / CREDITS_PER_TON);
-    const shortfall = gained - Math.min(gained, affordable);
+
+    // **The yards can only lay down so much at once.** Applied beside the
+    // affordability trim, in the same place and the same shape, because both
+    // answer "how much of this order actually arrives" — one in credits, one
+    // in berths. A defection is billed but does not occupy a berth, so what
+    // the yards are asked for is the gain minus whatever merely changed flag.
+    const swapped = changedFlag.get(faction.id) ?? 0;
+    const laidDown = Math.max(0, gained - swapped);
+    const berths = capped ? yardCapacityFor(state, faction.id) : Number.POSITIVE_INFINITY;
+    const overYard = Math.max(0, laidDown - berths);
+    const deliverable = gained - overYard;
+    if (overYard > 0) {
+      const note = `${faction.name}'s yards can lay down ${berths} tons at a time (industry ${effectiveStats(state, faction.id).industry}); ${overYard} of ${laidDown} tons ordered were not begun.`;
+      notes.push(note);
+      logEvent(state, 'clamp', note, faction.id);
+    }
+
+    const shortfall = deliverable - Math.min(deliverable, affordable);
     if (!fromGain) {
       // The rule as it stood when these journals were written: charge what was
       // affordable and take the surplus out of the fleet at large.
@@ -4906,7 +5036,8 @@ function billConstruction(
       }
       continue;
     }
-    const trimmed = shortfall > 0 ? unbuild(state, faction.id, shipsBefore, shortfall) : 0;
+    const cut = overYard + shortfall;
+    const trimmed = cut > 0 ? unbuild(state, faction.id, shipsBefore, cut) : 0;
 
     // What the yards actually handed over, which is the only thing a faction
     // may be billed for. Capped by affordability, because the part of a
@@ -5116,7 +5247,7 @@ export interface TickResult extends ApplyResult {
  * originates.
  */
 export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResult {
-  const { arrangementStanding = true } = legacy;
+  const { arrangementStanding = true, hostages = true } = legacy;
   const state = cloneState(input);
   const notes: string[] = [];
 
@@ -5903,6 +6034,25 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
       continue;
     }
 
+    // **A subversion can come away with a person.** The operative's counterpart
+    // to a storming: the same act from the other side of the wall, lifting
+    // somebody out of a ruling house without an army. Read off the operative's
+    // own roll rather than a new one, so a campaign replays exactly — and only
+    // on a success, because a mission that failed placed nothing, which is the
+    // rule `routeCovertAction` and `boundPayloadsToOutcome` both draw.
+    //
+    // Scoped to `subversion` alone. It is the mission whose whole business is
+    // turning people, where `theft` takes money and `sabotage` breaks things —
+    // and a hostage from every mission kind would make the rarest asset in the
+    // catalogue the commonest thing on the board.
+    if (hostages && succeeded && agent.mission === 'subversion' && hostageTaken(roll)) {
+      takeHostage(state, agent.ownerFactionId, target.id, host, 'lifted out by an operative');
+      watchNotes.set(
+        agent.id,
+        `has somebody of consequence out of ${target.name}'s house on ${host.name}, and holds them.`,
+      );
+    }
+
     if (agent.effect.kind === 'sedition') {
       // Bounded by the same ceiling a leader's own refusals are, so a spy
       // network cannot do to a rival what the rival could not do to itself.
@@ -6096,7 +6246,7 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
   }
 
   for (const [systemId, orders] of landings) {
-    const { note: outcome, report: battle } = resolveBattle(state, systemId, orders);
+    const { note: outcome, report: battle } = resolveBattle(state, systemId, orders, hostages);
     notes.push(outcome);
     report.arrivals.push(outcome);
     if (battle) report.battles.push(battle);
@@ -6210,6 +6360,8 @@ function resolveBattle(
   state: WorldState,
   systemId: string,
   orders: PendingOrder[],
+  /** False only for a journal written before a storming could seize anybody. */
+  takesHostages = true,
 ): BattleOutcomeResult {
   const target = state.systems.find((s) => s.id === systemId);
   if (!target) {
@@ -7196,6 +7348,11 @@ function resolveBattle(
       spent -= take;
     }
     for (const [id, st] of attackShare) land(id, st);
+    // The residence falls with the world. Read off the battle's own roll, so
+    // nothing new is drawn and the campaign replays exactly.
+    if (takesHostages && holder !== null && holder !== owner && hostageTaken(roll)) {
+      takeHostage(state, owner, holder, target, 'taken when the world was stormed');
+    }
     const note = `${notes.join(' ')} ${coalition} storms ${target.name}, breaking a garrison of ${garrison} for ${lifterLosses} lifters; ${nameOf(owner)} takes possession with ${target.garrison} troops ashore.`.trim();
     logEvent(state, 'order', note, owner);
     ground('world_taken', note);

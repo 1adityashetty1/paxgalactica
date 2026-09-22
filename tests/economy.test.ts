@@ -5,6 +5,7 @@ import { CREDITS_PER_TON, HULL_SPEC, LIFTER_CARRY, hullUpkeep } from '../src/dom
 import { createSeedState } from '../src/seed/scenario.js';
 import { AGENT_COST, MISSION_PROFILE } from '../src/domain/diplomacy.js';
 import { COMMITMENT_GOODWILL, MAX_COMMITMENT_SHARE } from '../src/domain/arbitration.js';
+import { MAX_ASSET_STAT } from '../src/domain/diplomacy.js';
 import {
   hullsAt,
   setShipsAt,
@@ -23,6 +24,7 @@ import {
   type WorldState,
   AGENT_UPKEEP,
   maxAgentsFor,
+  yardCapacityFor,
   MAX_TREATY_INCOME_PER_TURN,
   OCCUPATION_COST,
   MAX_WORLD_BONUS,
@@ -585,10 +587,17 @@ const tons = (s: WorldState) => fleetTonsOf(s, 'freeworlds');
     // lands at or just under what the purse could carry — a battleship is four
     // tons and 73 does not divide by four. What it may never be is MORE, and
     // what is charged is what landed.
+    // TWO ceilings now, and the order they bind in is the point: the yards can
+    // only begin so much at once, and the purse pays for what they began.
+    // Arkane at industry 10 has 28 berths against 73 tons it could afford, so
+    // the slipways are what stops a thousand ships, not the treasury.
     const affordableTons = Math.floor(purse(start) / CREDITS_PER_TON);
+    const berths = yardCapacityFor(start, 'freeworlds');
+    const ceiling = Math.min(affordableTons, berths);
     const gained = tons(res.state) - tons(start);
-    expect(gained).toBeLessThanOrEqual(affordableTons);
-    expect(gained).toBeGreaterThan(affordableTons - HULL_SPEC.battleship.tonnage);
+    expect(gained).toBeLessThanOrEqual(ceiling);
+    expect(gained).toBeGreaterThan(ceiling - HULL_SPEC.battleship.tonnage);
+    // And it is billed for exactly what arrived, not for what it ordered.
     expect(purse(start) - purse(res.state)).toBe(gained * CREDITS_PER_TON);
     expect(fleet(res.state)).toBeGreaterThan(before);
     expect(res.notes.join(' ')).toMatch(/could only pay for/);
@@ -1825,5 +1834,63 @@ describe('no ground, no yards', () => {
     const res = applyOps(stripped, [{ op: 'adjust_fleet', factionId: 'vigil', delta: -4 }] as Op[], 'engine');
     expect(res.rejections).toHaveLength(0);
     expect(fleetTonsOf(res.state, 'vigil')).toBeLessThan(fleetTonsOf(stripped, 'vigil'));
+  });
+});
+
+describe('a works makes its holder better at something', () => {
+  const works = (id: string, at: string, stat: string, points: number): WorldState => {
+    const s = fresh();
+    s.assets = [
+      ...(s.assets ?? []),
+      {
+        id: 'ast-w-0', kind: 'foundry', heldBy: id, quantity: 1, unit: 'works',
+        divisible: false, uses: null, speculative: false, portable: false,
+        atSystemId: at, valuePerUnit: {}, valueRange: null, text: 'A foundry.',
+        commanderId: null, agentId: null,
+        yield: { kind: 'stat', stat, points },
+      } as never,
+    ];
+    return s;
+  };
+
+  it('raises the stat while its holder stands over the world', () => {
+    const plain = fresh();
+    const built = works('drajk', 'ilv-6', 'industry', 2);
+    expect(effectiveStats(built, 'drajk').industry).toBe(
+      effectiveStats(plain, 'drajk').industry + 2,
+    );
+  });
+
+  it('closes the loop on the yards — a foundry lays down more hulls', () => {
+    // `yardCapacityFor` reads `effectiveStats().industry`, so this is what
+    // makes a captured works worth taking rather than worth recording.
+    const plain = fresh();
+    const built = works('drajk', 'ilv-6', 'industry', 2);
+    expect(yardCapacityFor(built, 'drajk')).toBeGreaterThan(yardCapacityFor(plain, 'drajk'));
+  });
+
+  it('pays nothing once the holder is no longer over the world', () => {
+    // The same presence line every other asset yield draws. A fixture changes
+    // hands with the ground, so taking the world takes the benefit.
+    const built = works('drajk', 'ilv-6', 'industry', 2);
+    const lost = JSON.parse(JSON.stringify(built)) as WorldState;
+    const world = sys(lost, 'ilv-6');
+    world.controllerFactionId = 'ojjul';
+    delete world.ships.drajk;
+    expect(effectiveStats(lost, 'drajk').industry).toBe(effectiveStats(fresh(), 'drajk').industry);
+  });
+
+  it('clamps what any number of works can be worth', () => {
+    const many = fresh();
+    many.assets = ['ilv-6', 'ilv-7', 'tor-6', 'ark-5'].map((at, i) => ({
+      id: `ast-w-${i}`, kind: 'foundry', heldBy: 'drajk', quantity: 1, unit: 'works',
+      divisible: false, uses: null, speculative: false, portable: false,
+      atSystemId: at, valuePerUnit: {}, valueRange: null, text: 'A foundry.',
+      commanderId: null, agentId: null,
+      yield: { kind: 'stat', stat: 'industry', points: 2 },
+    })) as never;
+    expect(effectiveStats(many, 'drajk').industry).toBe(
+      effectiveStats(fresh(), 'drajk').industry + MAX_ASSET_STAT,
+    );
   });
 });

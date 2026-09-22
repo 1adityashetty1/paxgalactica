@@ -310,12 +310,49 @@ export const MAX_ASSET_DISSENT = 2;
  * clock — the same split that puts `hull_damage` and `sedition` on one side and
  * `income_penalty` on the other.
  */
+/**
+ * The most a single works can move one of its holder's stats.
+ *
+ * Small, and for the reason `MAX_ASSET_DISSENT` is small: a stat reaches every
+ * ability check in the game through `effectiveStats`, and a modifier summed
+ * over territory is unbounded in principle. Two points is a third of what
+ * `MAX_DISSENT_PENALTY` takes away at the cap, and one point below what good
+ * ground can grant through `MAX_WORLD_BONUS` — so a works is worth having and
+ * cannot substitute for the sheet.
+ */
+export const MAX_ASSET_STAT = 2;
+
 export const AssetYieldSchema = z.discriminatedUnion('kind', [
   z.object({
     /** An exchange, a customs house, a licenced dock. */
     kind: z.literal('credits'),
     /** To the holder, every turn. Negative is upkeep — prisoners eat. */
     perTurn: z.number().int().min(-400).max(400),
+  }),
+  z.object({
+    /**
+     * **A works that makes its holder better at something.** A shipyard or a
+     * foundry is industry; a university or a chart house is guile; a fortress
+     * academy is might. This is what a fixture is FOR, and the catalogue said
+     * the opposite of it for a while — the three `works` archetypes were each
+     * described as *"nobody wants it"*, which is true of the paperwork and
+     * false of the thing: a fixture is a modifier on the power that holds the
+     * ground, and that is precisely why the ground is worth taking.
+     *
+     * Read in `effectiveStats` rather than applied on the tick, the same rule
+     * `commitmentFlow`, `assetYield` and the agent effects all follow: a
+     * per-turn mutation of a stat would compound instead of recurring.
+     *
+     * It pays only while its holder still stands over the world, like every
+     * other yield — and since a fixture changes hands with the world, taking
+     * the ground takes the benefit. That is the whole loop: `yardCapacityFor`
+     * reads `effectiveStats().industry`, so a captured foundry really does lay
+     * down more hulls for whoever took it.
+     */
+    kind: z.literal('stat'),
+    stat: z.enum(['might', 'guile', 'industry', 'influence', 'resolve']),
+    /** Clamped to `MAX_ASSET_STAT`. Negative is a works that is a liability. */
+    points: z.number().int().min(-MAX_ASSET_STAT).max(MAX_ASSET_STAT),
   }),
   z.object({
     /**
@@ -359,6 +396,8 @@ export const AssetYieldSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 export type AssetYield = z.infer<typeof AssetYieldSchema>;
+
+
 
 /**
  * A thing that is neither credits nor ships.

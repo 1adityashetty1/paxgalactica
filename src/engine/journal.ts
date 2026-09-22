@@ -14,7 +14,7 @@ import { createSeedState } from '../seed/scenario.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 5;
+export const JOURNAL_VERSION = 6;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -78,6 +78,7 @@ export const JournalVersionSchema = z.union([
   z.literal(3),
   z.literal(4),
   z.literal(5),
+  z.literal(6),
 ]);
 
 export const JournalSchema = z.object({
@@ -92,7 +93,9 @@ export const JournalSchema = z.object({
    * 4 — written before a treaty paid goodwill on signature and before walking
    *     away from a two-party commitment cost anything, so its dispositions are
    *     what those powers actually believed.
-   * 5 — current.
+   * 5 — written before `industry` capped what a faction's yards could lay down
+   *     in one batch, so its fleets grew at whatever rate credits allowed.
+   * 6 — current.
    */
   version: JournalVersionSchema,
   entries: z.array(JournalEntrySchema),
@@ -161,6 +164,12 @@ export function replay(
     // are what the powers in them actually believed — replaying them with
     // goodwill applied would rewrite every one of those relationships.
     arrangementStanding: parsed.version >= 5,
+    // `industry` reached the slipways here. Those campaigns really did put
+    // those fleets in the water at the rate their credits allowed.
+    yardCapacity: parsed.version >= 6,
+    // Those campaigns fought those battles and ran those operatives without
+    // anybody being seized, and an asset is tradeable rather than cosmetic.
+    hostages: parsed.version >= 6,
   };
 
   for (const entry of parsed.entries.slice(1)) {
