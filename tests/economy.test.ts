@@ -5,6 +5,7 @@ import { CREDITS_PER_TON, HULL_SPEC, LIFTER_CARRY, hullUpkeep } from '../src/dom
 import { createSeedState } from '../src/seed/scenario.js';
 import { AGENT_COST, MISSION_PROFILE } from '../src/domain/diplomacy.js';
 import { COMMITMENT_GOODWILL, MAX_COMMITMENT_SHARE } from '../src/domain/arbitration.js';
+import { MAX_ASSET_STAT } from '../src/domain/diplomacy.js';
 import {
   hullsAt,
   setShipsAt,
@@ -23,6 +24,7 @@ import {
   type WorldState,
   AGENT_UPKEEP,
   maxAgentsFor,
+  yardCapacityFor,
   MAX_TREATY_INCOME_PER_TURN,
   OCCUPATION_COST,
   MAX_WORLD_BONUS,
@@ -278,8 +280,12 @@ describe('agents', () => {
   });
 
   it('debuffs a stat while in place, and only for the target', () => {
+    // Derived on BOTH sides for the reason the comment below gives: the Drift
+    // opens holding an arsenal at Pell Reach, so a hardcoded 10 here was an
+    // assertion about the seeded works as much as about the operative.
+    const clean = effectiveStats(fresh(), 'freeworlds').industry;
     const res = withAgent({ kind: 'stat_debuff', stat: 'industry', magnitude: 3 });
-    expect(effectiveStats(res.state, 'freeworlds').industry).toBe(10 - 3);
+    expect(effectiveStats(res.state, 'freeworlds').industry).toBe(clean - 3);
     // Derived against a board with no operative rather than stated, because
     // `effectiveStats` composes terrain, the officer's passive and dissent as
     // well — a hardcoded figure here is an assertion about all four, and fails
@@ -289,9 +295,10 @@ describe('agents', () => {
   });
 
   it('stops having any effect once exposed', () => {
+    const clean = effectiveStats(fresh(), 'freeworlds').industry;
     const res = withAgent({ kind: 'stat_debuff', stat: 'industry', magnitude: 3 });
     res.state.agents[0]!.exposed = true;
-    expect(effectiveStats(res.state, 'freeworlds').industry).toBe(10);
+    expect(effectiveStats(res.state, 'freeworlds').industry).toBe(clean);
   });
 
   it('resolves deterministically on tick', () => {
@@ -504,28 +511,36 @@ describe('treaties', () => {
 
   it('counts a peace treaty as ending a war', () => {
     const state = fresh();
-    // Vigil sits at -75 toward the Free Worlds in the seed.
-    expect(warsFor(state, 'freeworlds')).toContain('vigil');
+    // The Vigil sits at -70 toward the Confederacy, which is the seed's one
+    // war — and, since the two share a border at Threx, the one that can
+    // actually be fought. It used to be the Vigil and the Free Worlds, who are
+    // three sectors apart and have no lane between them: see "the grievances
+    // are seated where they can be acted on" for why that pair was cooled.
+    expect(warsFor(state, 'drajk')).toContain('vigil');
     const res = applyOps(
       state,
       [
         {
           op: 'form_treaty',
           treatyType: 'non_aggression',
-          parties: ['freeworlds', 'vigil'],
+          parties: ['drajk', 'vigil'],
           terms: {},
         },
       ],
       'extraction',
     );
-    expect(warsFor(res.state, 'freeworlds')).not.toContain('vigil');
+    expect(warsFor(res.state, 'drajk')).not.toContain('vigil');
   });
 });
 
 describe('ships in systems', () => {
   it('moves ships in and out, clearing empty entries', () => {
+    // Escorts rather than the default battleship, so this pins the clearing of
+    // an empty entry and nothing else. Five battleships are twenty tons and the
+    // Confederacy's yards lay down fourteen, so the default class would have
+    // this test quietly measuring `yardCapacityFor` instead.
     const added = applyOps(fresh(), [
-      { op: 'adjust_ships', systemId: 'sek-3', factionId: 'drajk', delta: 5 },
+      { op: 'adjust_ships', systemId: 'sek-3', factionId: 'drajk', delta: 5, hull: 'escort' },
     ]).state;
     expect(hullsAt(sys(added, 'sek-3'), 'drajk')).toBe(5);
 
@@ -579,16 +594,64 @@ const tons = (s: WorldState) => fleetTonsOf(s, 'freeworlds');
 
     // Affordability is in TONS, because that is what the yards bill and what
     // the trim removes. Counting hulls gave the same answer only while every
-    // fleet was a pure battle line: the surplus is cut cheapest-first, so the
-    // hulls that come off are not the hulls that went on.
+    // fleet was a pure battle line.
+    //
+    // A whole hull is the smallest thing that can be refused, so the delivery
+    // lands at or just under what the purse could carry — a battleship is four
+    // tons and 73 does not divide by four. What it may never be is MORE, and
+    // what is charged is what landed.
+    // TWO ceilings now, and the order they bind in is the point: the yards can
+    // only begin so much at once, and the purse pays for what they began.
+    // Arkane at industry 10 has 28 berths against 73 tons it could afford, so
+    // the slipways are what stops a thousand ships, not the treasury.
     const affordableTons = Math.floor(purse(start) / CREDITS_PER_TON);
-    expect(tons(res.state)).toBe(tons(start) + affordableTons);
+    const berths = yardCapacityFor(start, 'freeworlds');
+    const ceiling = Math.min(affordableTons, berths);
+    const gained = tons(res.state) - tons(start);
+    expect(gained).toBeLessThanOrEqual(ceiling);
+    expect(gained).toBeGreaterThan(ceiling - HULL_SPEC.battleship.tonnage);
+    // And it is billed for exactly what arrived, not for what it ordered.
+    expect(purse(start) - purse(res.state)).toBe(gained * CREDITS_PER_TON);
     expect(fleet(res.state)).toBeGreaterThan(before);
-    expect(purse(res.state)).toBeLessThan(CREDITS_PER_TON * HULL_SPEC.battleship.tonnage);
     expect(res.notes.join(' ')).toMatch(/could only pay for/);
     // Not a rejection — the order is partly fulfilled, which is the more
     // useful outcome and matches how a partial check reads.
     expect(res.rejections).toHaveLength(0);
+  });
+
+  it('pays for an overbuy out of the gain, never out of the standing fleet', () => {
+    // The bug this pins: the trim went through `removeTons`, which spends a
+    // faction's richest world in loss order and cannot tell a hull laid down
+    // this batch from one in service since turn 0. Arkane ordering a thousand
+    // ships on 1,100 credits finished with its escorts down from 26 to 18 and
+    // its lifter and listener gone — two classes the order never named,
+    // scrapped to pay for a third.
+    const start = fresh();
+    const res = applyOps(start, [{ op: 'adjust_fleet', factionId: 'freeworlds', delta: 1000 }]);
+
+    const held = (s: WorldState) => {
+      const out: Partial<Record<string, number>> = {};
+      for (const system of s.systems)
+        for (const [hull, n] of Object.entries(system.ships.freeworlds ?? {}))
+          out[hull] = (out[hull] ?? 0) + n;
+      return out;
+    };
+    const was = held(start);
+    const now = held(res.state);
+
+    // Every class the fleet already had is still there in at least its
+    // original strength. The order added battleships; nothing else moved.
+    for (const [hull, n] of Object.entries(was)) {
+      expect(now[hull] ?? 0, hull).toBeGreaterThanOrEqual(n!);
+    }
+    expect(now.battleship!).toBeGreaterThan(was.battleship!);
+
+    // And the bill is the delivery: what left the treasury bought exactly the
+    // tonnage that arrived, with nothing paid for hulls that were never laid
+    // down.
+    const gained = tons(res.state) - tons(start);
+    expect(gained).toBeGreaterThan(0);
+    expect(purse(start) - purse(res.state)).toBe(gained * CREDITS_PER_TON);
   });
 
   it('charges exactly the list price for an affordable order', () => {
@@ -1660,7 +1723,14 @@ describe('holding somebody else’s ground', () => {
  * worth.
  */
 describe('the ground a power holds reaches its stats', () => {
-  const seed = () => createSeedState('meridian');
+  // No works. `effectiveStats` composes terrain, the seeded fixtures, the
+  // officer's passive and dissent, and this block is about terrain — an
+  // assertion that reads all four fails without saying which one moved.
+  const seed = (): WorldState => {
+    const s = createSeedState('meridian');
+    s.assets = s.assets.filter((a) => a.portable);
+    return s;
+  };
   /** Give `me` `n` worlds of one type, taken from whoever holds them. */
   const stock = (s: WorldState, me: string, type: WorldType, n: number) => {
     let given = 0;
@@ -1736,5 +1806,122 @@ describe('the ground a power holds reaches its stats', () => {
 
   it('gives every world type a stat, so none of them is decoration', () => {
     for (const type of WORLD_TYPES) expect(WORLD_TYPE_STAT[type]).toBeDefined();
+  });
+});
+
+describe('no ground, no yards', () => {
+  const strip = (s: WorldState, id: string): WorldState => {
+    const out = JSON.parse(JSON.stringify(s)) as WorldState;
+    for (const sys of out.systems) if (sys.controllerFactionId === id) sys.controllerFactionId = 'meridian';
+    return out;
+  };
+
+  it('refuses a landless power new hulls, by either route', () => {
+    // `fleetBases` counts a system where a faction merely has ships — correct
+    // for drawing losses, and wrong for building. Without this guard any beaten
+    // power went on commissioning battleships in a rival's orbit forever.
+    const stripped = strip(fresh(), 'vigil');
+    expect(sys(stripped, 'tor-3').ships.vigil).toBeDefined(); // the fleet is still there
+
+    for (const op of [
+      { op: 'adjust_fleet', factionId: 'vigil', delta: 3 },
+      { op: 'adjust_ships', systemId: 'tor-3', factionId: 'vigil', delta: 3 },
+    ] as Op[]) {
+      const res = applyOps(stripped, [op], 'model', 'vigil');
+      expect(res.rejections.map((r) => r.code), op.op).toEqual(['no_presence']);
+      expect(res.rejections[0]!.message).toMatch(/holds no world/);
+    }
+  });
+
+  it('lets the smuggler build anyway, because its doctrine does not need ground', () => {
+    // Keyed on `tradeEthic`, not on the faction id: a rule attached to a name
+    // is a special case, and one attached to a doctrine is something another
+    // power could take up by becoming that.
+    const stripped = strip(fresh(), 'drajk');
+    expect(stripped.factions.find((f) => f.id === 'drajk')!.tradeEthic).toBe('smuggler');
+    const res = applyOps(stripped, [
+      { op: 'adjust_fleet', factionId: 'drajk', delta: 2, hull: 'torpedo_boat' },
+    ] as Op[], 'model', 'drajk');
+    expect(res.rejections).toHaveLength(0);
+    expect(fleetTonsOf(res.state, 'drajk')).toBeGreaterThan(fleetTonsOf(stripped, 'drajk'));
+  });
+
+  it('still lets a landless power lose ships, and still takes what it is owed', () => {
+    // The guard is on minting only. Losses, suborning and upkeep attrition all
+    // draw from concentrations wherever they are, which is what `fleetBases`
+    // was written for in the first place.
+    const stripped = strip(fresh(), 'vigil');
+    const res = applyOps(stripped, [{ op: 'adjust_fleet', factionId: 'vigil', delta: -4 }] as Op[], 'engine');
+    expect(res.rejections).toHaveLength(0);
+    expect(fleetTonsOf(res.state, 'vigil')).toBeLessThan(fleetTonsOf(stripped, 'vigil'));
+  });
+});
+
+describe('a works makes its holder better at something', () => {
+  /**
+   * The seed now stands a works on one world per power, so a test that adds
+   * another and compares against `fresh()` is measuring two of them against
+   * one. Cleared here rather than folded into the expected numbers, the same
+   * way the dissent tests clear `commanders`: each test should pin one rule.
+   */
+  const bare = (): WorldState => {
+    const s = fresh();
+    s.assets = (s.assets ?? []).filter((a) => a.portable);
+    return s;
+  };
+  const works = (id: string, at: string, stat: string, points: number): WorldState => {
+    const s = bare();
+    s.assets = [
+      ...(s.assets ?? []),
+      {
+        id: 'ast-w-0', kind: 'factory', heldBy: id, quantity: 1, unit: 'works',
+        divisible: false, uses: null, speculative: false, portable: false,
+        atSystemId: at, valuePerUnit: {}, valueRange: null, text: 'A factory.',
+        commanderId: null, agentId: null,
+        yield: { kind: 'stat', stats: [{ stat, points }] },
+      } as never,
+    ];
+    return s;
+  };
+
+  it('raises the stat while its holder stands over the world', () => {
+    const plain = bare();
+    const built = works('drajk', 'ilv-6', 'industry', 2);
+    expect(effectiveStats(built, 'drajk').industry).toBe(
+      effectiveStats(plain, 'drajk').industry + 2,
+    );
+  });
+
+  it('closes the loop on the yards — a factory lays down more hulls', () => {
+    // `yardCapacityFor` reads `effectiveStats().industry`, so this is what
+    // makes a captured works worth taking rather than worth recording.
+    const plain = bare();
+    const built = works('drajk', 'ilv-6', 'industry', 2);
+    expect(yardCapacityFor(built, 'drajk')).toBeGreaterThan(yardCapacityFor(plain, 'drajk'));
+  });
+
+  it('pays nothing once the holder is no longer over the world', () => {
+    // The same presence line every other asset yield draws. A fixture changes
+    // hands with the ground, so taking the world takes the benefit.
+    const built = works('drajk', 'ilv-6', 'industry', 2);
+    const lost = JSON.parse(JSON.stringify(built)) as WorldState;
+    const world = sys(lost, 'ilv-6');
+    world.controllerFactionId = 'ojjul';
+    delete world.ships.drajk;
+    expect(effectiveStats(lost, 'drajk').industry).toBe(effectiveStats(bare(), 'drajk').industry);
+  });
+
+  it('clamps what any number of works can be worth', () => {
+    const many = bare();
+    many.assets = ['ilv-6', 'ilv-7', 'tor-6', 'ark-5'].map((at, i) => ({
+      id: `ast-w-${i}`, kind: 'factory', heldBy: 'drajk', quantity: 1, unit: 'works',
+      divisible: false, uses: null, speculative: false, portable: false,
+      atSystemId: at, valuePerUnit: {}, valueRange: null, text: 'A factory.',
+      commanderId: null, agentId: null,
+      yield: { kind: 'stat', stats: [{ stat: 'industry', points: 2 }] },
+    })) as never;
+    expect(effectiveStats(many, 'drajk').industry).toBe(
+      effectiveStats(bare(), 'drajk').industry + MAX_ASSET_STAT,
+    );
   });
 });

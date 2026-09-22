@@ -45,6 +45,8 @@ import {
   type Agent,
   type Treaty,
   AssetSchema,
+  type Asset,
+  MAX_ASSET_STAT,
 } from './diplomacy.js';
 import { DebtSchema, MAX_DEBT_PER_TURN, scheduledDebtService, type Debt } from './debt.js';
 import { LoanSchema, scheduledRent } from './loan.js';
@@ -943,6 +945,40 @@ export function fleetTonsOf(state: WorldState, factionId: string): number {
  */
 export const SURPLUS_GARRISON_UPKEEP = hullUpkeep('lifter') / LIFTER_CARRY;
 
+/**
+ * Whether a power can lay down hulls with no world of its own.
+ *
+ * **Almost nobody can**, and that has to be enforced here rather than trusted
+ * to a prompt: `fleetBases` counts a system where a faction merely has ships,
+ * because that is the right answer for where *losses* are drawn from — and it
+ * meant any power reduced to a single hull in a rival's orbit could go on
+ * commissioning battleships there forever. A galaxy where every beaten power
+ * survives as a shipyard in somebody else's sky is not the fiction; being
+ * driven off your worlds should end you.
+ *
+ * The exception is the **smuggler**, and it is the doctrine rather than the
+ * faction that licenses it. *"Borders are a fiction maintained by people with
+ * fleets"* is a claim about not needing ground, and the ethic already says the
+ * same thing three other ways — it ignores blockades, raids at double effect,
+ * and counts double at a lawless junction. A power built to live off the lanes
+ * is the one power that can lose every world and still be playing.
+ *
+ * Keyed on `tradeEthic` and not on `factionId` for the reason `warEthic` and
+ * `tradeEthic` exist at all: a rule attached to a name is a special case, and a
+ * rule attached to a doctrine is something another power could take up by
+ * becoming that. `set_doctrine` can move a power onto `smuggler` at the cost of
+ * `DOCTRINE_ETHIC_DISSENT`, which is the price of choosing to be that kind of
+ * power.
+ */
+export function livesOffTheLanes(faction: Faction): boolean {
+  return faction.tradeEthic === 'smuggler';
+}
+
+/** Whether this power has any ground of its own to build on. */
+export function holdsGround(state: WorldState, factionId: string): boolean {
+  return state.systems.some((s) => s.controllerFactionId === factionId);
+}
+
 export function fleetBases(state: WorldState, factionId: string): StarSystem[] {
   return state.systems
     .filter((s) => s.controllerFactionId === factionId || (hullsAt(s, factionId)) > 0)
@@ -1017,6 +1053,133 @@ export const AGENT_UPKEEP = 3;
  * free intel and sabotage feeds.
  */
 export const MAX_AGENTS_BASE = 2;
+
+/**
+ * How much shipping a power's yards can lay down in one declaration, in TONS.
+ *
+ * **`industry` had no say in construction at all.** The stat whose own
+ * description is *"anything that must be built or supplied"* reached ability
+ * checks and `effectiveStats` and touched the yards nowhere: a hull was priced
+ * purely by displacement and gated purely by presence, so the Confederacy at
+ * industry 8 built exactly as fast as Meridian at 17 given the same credits.
+ * Two of the asset archetypes already assumed otherwise — `blueprints` are
+ * wanted by *"a power with the industry to use them and not the design"*, and
+ * `ore` by *"a power building hulls"*.
+ *
+ * Scaled off the stat on the same principle as `maxAgentsFor` from guile and
+ * `maxCommitmentIncomeFor` from influence, and read off `effectiveStats`, so
+ * terrain, dissent and a `gunnery` officer's passive all reach the slipways —
+ * which is what makes an industrial world worth taking for a reason beyond its
+ * income.
+ *
+ * **Throughput, not price.** `CREDITS_PER_TON` is read by suborning, by
+ * development pricing and by `commission_ships`, so making it per-faction would
+ * ripple through three balanced systems to say one thing. A cap says the same
+ * thing where it is cheap: a good yard builds *faster*, not cheaper, and a
+ * power that wants a fleet in a hurry needs the industry to lay it down.
+ *
+ * ## Both numbers were swept, and the harness can only see half of the range
+ *
+ * `buy` spends at most `8 * HULL_SPEC.battleship.tonnage` — **32 tons** — in one
+ * call, so a power whose yard capacity sits above that can never be observed
+ * binding by the bots. That single fact explains the whole gradient, and it
+ * means the harness measures the cap on the *poor* powers and is blind to it on
+ * the rich ones. A player is under no such ceiling, which is where this
+ * constant actually earns its keep — the same shape as the world-type stat
+ * bonuses, which move the harness not at all.
+ *
+ * Swept over played 30-turn runs, counting how often the cap actually trims:
+ *
+ * | base/point | trims | board | poorest net | suite |
+ * |---|---|---|---|---|
+ * | 16/8 | 27 | 5/9/5/5/1 | **−42** | **fails** — and the income mix distorts to 66/34 |
+ * | 18/8 | 21 | 6/7/6/5/1 | −14 | passes |
+ * | 20/8 | 24 | 5/8/6/5/1 | −19 | passes |
+ * | **22/8** | **10** | **6/8/5/5/1** | **8** | passes |
+ * | 24/8 | 3 | 6/8/5/5/1 | 8 | passes |
+ * | 26/8 | 2 | 6/7/5/6/1 | 17 | passes |
+ * | 28/8 | 2 | 6/7/5/6/1 | 17 | passes |
+ * | 30/8 | **0** | 5/8/6/6/0 | −15 | passes, and the mechanic is **inert** |
+ *
+ * Two boundaries, and 22 is between them rather than on either: below 18 the
+ * poorest power is starved into a net the balance suite refuses, and at 30 the
+ * cap stops firing at all and the board reverts to the one it produces with no
+ * cap — **including Drajk eliminated**. That last row is the reading that
+ * matters: at every setting where the cap fires the Confederacy survives on one
+ * world, and at every setting where it does not it is wiped out. Throttling
+ * throughput slows the rich more than the poor, because the rich are the ones
+ * with the credits to outrun it.
+ *
+ * 28/8 shipped first and sat one step from inert, which is the position
+ * `MONOPOLY_BONUS` was moved off for the same reason: a tuning value on a cliff
+ * edge is one unrelated change away from tipping over it.
+ *
+ * `YARD_TONS_PER_POINT` was swept on its own axis at base 24 — 4, 6 and 8 all
+ * give three or four trims and the same board, and 10 jumps to thirteen trims
+ * and a net of −19. 8 is taken from that flat region, and it is the value that
+ * makes the spread worth having: Meridian lays down 46 tons a turn against
+ * Drajk's 14, a little over three to one.
+ */
+export const YARD_TONS_BASE = 22;
+export const YARD_TONS_PER_POINT = 8;
+
+export function yardCapacityFor(state: WorldState, factionId: string): number {
+  const faction = getFaction(state, factionId);
+  if (!faction) return 0;
+  return Math.max(
+    HULL_SPEC.battleship.tonnage,
+    YARD_TONS_BASE + statModifier(effectiveStats(state, factionId).industry) * YARD_TONS_PER_POINT,
+  );
+}
+
+/**
+ * What a power's standing works add to its stats.
+ *
+ * Only while the holder is still over the world, which is the rule every asset
+ * yield follows — and since a fixture changes hands with the ground, taking the
+ * world takes the benefit. Summed across holdings and then clamped per stat, so
+ * ten foundries are worth more than one and not ten times more.
+ */
+export function worksBonus(state: WorldState, factionId: string): Partial<FactionStats> {
+  const out: Partial<FactionStats> = {};
+  for (const asset of state.assets ?? []) {
+    if (asset.heldBy !== factionId) continue;
+    if (asset.yield === null || asset.yield.kind !== 'stat') continue;
+    const spread = asset.yield.stats;
+    // The same presence line every other yield draws: a works pays while its
+    // holder holds the world or has ships over it, and not from an abandoned
+    // shell on ground somebody else took.
+    if (asset.atSystemId === null) continue;
+    const where = state.systems.find((x) => x.id === asset.atSystemId);
+    if (!where) continue;
+    if (where.controllerFactionId !== factionId && hullsAt(where, factionId) === 0) continue;
+    for (const { stat, points } of spread) out[stat] = (out[stat] ?? 0) + points;
+  }
+  for (const stat of STAT_NAMES) {
+    const n = out[stat];
+    if (n !== undefined) out[stat] = Math.max(-MAX_ASSET_STAT, Math.min(MAX_ASSET_STAT, n));
+  }
+  return out;
+}
+
+/**
+ * The works standing on one world.
+ *
+ * A fixture is the one asset kind that IS the ground: it cannot be handed over,
+ * it changes hands only with the world, and what it modifies is read off
+ * whoever holds that world. So it belongs on the system panel beside the
+ * garrison and the ships, not in a warehouse list of things a power is
+ * carrying — the same correction the operative list took when it moved off the
+ * Treaties panel, and for the same reason: the question a player asks about a
+ * works is *what is built on this world*.
+ *
+ * Not scoped by viewer. A plant, a base or a hospital is a structure on a
+ * surface, visible exactly as `system.ships` is visible; what stays hidden is
+ * the power's ORDERS, which is a different question.
+ */
+export function worksAt(state: WorldState, systemId: string): Asset[] {
+  return (state.assets ?? []).filter((a) => !a.portable && a.atSystemId === systemId);
+}
 
 export function maxAgentsFor(state: WorldState, factionId: string): number {
   const faction = getFaction(state, factionId);
@@ -1913,6 +2076,21 @@ export function effectiveStats(state: WorldState, factionId: string): FactionSta
   if (officer) {
     base.industry = Math.min(20, base.industry + commanderIndustry(officer));
     base.resolve = Math.min(20, base.resolve + commanderResolve(officer));
+  }
+
+  // **A works its holder is standing over makes them better at something.**
+  // Beside terrain and the officer's passive and before dissent, for terrain's
+  // own reason: good institutions should offset a bad leader rather than
+  // vanishing under the floor. Read here rather than applied on the tick,
+  // because a per-turn mutation of a stat compounds instead of recurring.
+  //
+  // This is what closes the loop on a fixture: `yardCapacityFor` reads
+  // `effectiveStats().industry`, so a captured factory lays down more hulls for
+  // whoever took the ground it stands on.
+  const works = worksBonus(state, factionId);
+  for (const stat of STAT_NAMES) {
+    const bonus = works[stat] ?? 0;
+    if (bonus !== 0) base[stat] = Math.max(1, Math.min(20, base[stat] + bonus));
   }
 
   const penalty = dissentPenalty(faction?.dissent ?? 0);

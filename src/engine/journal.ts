@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { applyOps, tickTurn } from '../domain/reducer.js';
+import { applyOps, tickTurn, type LegacyRules } from '../domain/reducer.js';
 import { WorldStateSchema, type WorldState } from '../domain/state.js';
 import { createSeedState } from '../seed/scenario.js';
 
@@ -14,7 +14,7 @@ import { createSeedState } from '../seed/scenario.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 3;
+export const JOURNAL_VERSION = 6;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -66,14 +66,38 @@ export const JournalEntrySchema = z.discriminatedUnion('kind', [
 ]);
 export type JournalEntry = z.infer<typeof JournalEntrySchema>;
 
+/**
+ * Every journal version that still loads. Exported because `SaveFileSchema`
+ * restated it and duly drifted: bumping the version here left a save carrying
+ * one unparseable, so the campaign that wrote it would not load. One
+ * definition, two readers.
+ */
+export const JournalVersionSchema = z.union([
+  z.literal(1),
+  z.literal(2),
+  z.literal(3),
+  z.literal(4),
+  z.literal(5),
+  z.literal(6),
+]);
+
 export const JournalSchema = z.object({
   /**
    * 1 — written before `form_treaty` required the `extraction` source, so its
    *     diplomacy batches are recorded as `model` and must still replay as they
    *     originally ran. See `replay`.
-   * 2 — current.
+   * 2 — written before a batch was atomic, so its batches really did apply in
+   *     part and must replay that way.
+   * 3 — written before an unaffordable order's surplus was cut out of the
+   *     batch's own gain, so its overbuys really did eat the standing fleet.
+   * 4 — written before a treaty paid goodwill on signature and before walking
+   *     away from a two-party commitment cost anything, so its dispositions are
+   *     what those powers actually believed.
+   * 5 — written before `industry` capped what a faction's yards could lay down
+   *     in one batch, so its fleets grew at whatever rate credits allowed.
+   * 6 — current.
    */
-  version: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+  version: JournalVersionSchema,
   entries: z.array(JournalEntrySchema),
 });
 export type Journal = z.infer<typeof JournalSchema>;
@@ -122,6 +146,32 @@ export function replay(
   // campaign's opening move, which is exactly the move most worth recording.
   observe?.(state, seed);
 
+  // Rules the game has acquired since this journal was written, each pinned to
+  // the version that introduced it and NOT to `JOURNAL_VERSION` — written
+  // against the current version an exemption silently widens on the next
+  // unrelated bump and starts exempting the journals it exists to hold. Hoisted
+  // out of the loop because the tick needs them too.
+  const legacy: LegacyRules = {
+    // An order bigger than the treasury used to have its surplus cut out of the
+    // faction's richest world in loss order, which could not tell a hull laid
+    // down this batch from one in service since turn 0 — so an overbuy scrapped
+    // ships the order never named, and the campaign went on being played with
+    // the fleet that left it.
+    unbuildFromGain: parsed.version >= 4,
+    // Nothing in the treaty path moved standing upward, and walking away from a
+    // two-party commitment cost exactly what it paid. Ten of the saved
+    // campaigns were negotiated under that arithmetic, and their dispositions
+    // are what the powers in them actually believed — replaying them with
+    // goodwill applied would rewrite every one of those relationships.
+    arrangementStanding: parsed.version >= 5,
+    // `industry` reached the slipways here. Those campaigns really did put
+    // those fleets in the water at the rate their credits allowed.
+    yardCapacity: parsed.version >= 6,
+    // Those campaigns fought those battles and ran those operatives without
+    // anybody being seized, and an asset is tradeable rather than cosmetic.
+    hostages: parsed.version >= 6,
+  };
+
   for (const entry of parsed.entries.slice(1)) {
     if (entry.kind === 'ops') {
       // A journal written before treaties needed a transcript recorded its
@@ -154,11 +204,11 @@ export function replay(
       // prevent. Each entry replays under the rule that was in force when it
       // was written, exactly as the legacy-treaty clause above does.
       const atomicBatches = parsed.version >= 3;
-      const res = applyOps(state, entry.ops, source, entry.actor, atomicBatches);
+      const res = applyOps(state, entry.ops, source, entry.actor, atomicBatches, legacy);
       state = res.state;
       rejectionCount += res.rejections.length;
     } else if (entry.kind === 'tick') {
-      state = tickTurn(state).state;
+      state = tickTurn(state, legacy).state;
     }
     observe?.(state, entry);
   }

@@ -310,12 +310,75 @@ export const MAX_ASSET_DISSENT = 2;
  * clock — the same split that puts `hull_damage` and `sedition` on one side and
  * `income_penalty` on the other.
  */
+/**
+ * The most a single works can move one of its holder's stats.
+ *
+ * Small, and for the reason `MAX_ASSET_DISSENT` is small: a stat reaches every
+ * ability check in the game through `effectiveStats`, and a modifier summed
+ * over territory is unbounded in principle. Two points is a third of what
+ * `MAX_DISSENT_PENALTY` takes away at the cap, and one point below what good
+ * ground can grant through `MAX_WORLD_BONUS` — so a works is worth having and
+ * cannot substitute for the sheet.
+ */
+export const MAX_ASSET_STAT = 2;
+
 export const AssetYieldSchema = z.discriminatedUnion('kind', [
   z.object({
     /** An exchange, a customs house, a licenced dock. */
     kind: z.literal('credits'),
     /** To the holder, every turn. Negative is upkeep — prisoners eat. */
     perTurn: z.number().int().min(-400).max(400),
+  }),
+  z.object({
+    /**
+     * **A works that makes its holder better at something.** A shipyard or a
+     * factory is industry; a university or a research lab is guile; a base
+     * academy is might. This is what a fixture is FOR, and the catalogue said
+     * the opposite of it for a while — the three `works` archetypes were each
+     * described as *"nobody wants it"*, which is true of the paperwork and
+     * false of the thing: a fixture is a modifier on the power that holds the
+     * ground, and that is precisely why the ground is worth taking.
+     *
+     * Read in `effectiveStats` rather than applied on the tick, the same rule
+     * `commitmentFlow`, `assetYield` and the agent effects all follow: a
+     * per-turn mutation of a stat would compound instead of recurring.
+     *
+     * It pays only while its holder still stands over the world, like every
+     * other yield — and since a fixture changes hands with the world, taking
+     * the ground takes the benefit. That is the whole loop: `yardCapacityFor`
+     * reads `effectiveStats().industry`, so a captured factory really does lay
+     * down more hulls for whoever took it.
+     */
+    kind: z.literal('stat'),
+    /**
+     * **One or two stats, sharing one budget.** A works is worth
+     * `MAX_ASSET_STAT` in total and may spend it on a single attribute or split
+     * it between two: a plain `exchange` is two points of influence, a black
+     * market is one of influence and one of guile, a mercenary board one of
+     * influence and one of might. Same institution, differently run — which is
+     * a better way to say what a works IS than a second archetype that happens
+     * to be worth the same amount.
+     *
+     * **Two is the cap and it is a real one.** A works spread across three
+     * stats at a point each would be worth more in total than one that
+     * concentrated, so the split has to be a trade rather than a bonus; and at
+     * a budget of two, "up to two stats" is the only split integers allow. A
+     * half point does not exist on a 1–20 scale.
+     *
+     * The reducer clamps the sum, so an entry naming the same stat twice or a
+     * pair that overspends is trimmed rather than rejected — the shape
+     * `MAX_COMMITMENT_INCOME` set.
+     */
+    stats: z
+      .array(
+        z.object({
+          stat: z.enum(['might', 'guile', 'industry', 'influence', 'resolve']),
+          /** Negative is a works that is a liability to hold. */
+          points: z.number().int().min(-MAX_ASSET_STAT).max(MAX_ASSET_STAT),
+        }),
+      )
+      .min(1)
+      .max(2),
   }),
   z.object({
     /**
@@ -359,6 +422,8 @@ export const AssetYieldSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 export type AssetYield = z.infer<typeof AssetYieldSchema>;
+
+
 
 /**
  * A thing that is neither credits nor ships.
@@ -802,10 +867,126 @@ export const TreatySchema = z.object({
    * everywhere for free — no reader had to change.
    */
   effectiveTurn: z.number().int().min(0).nullable().default(null),
+  /**
+   * Whether this arrangement forecloses another of its type with anybody else.
+   *
+   * **The gap this closes is cross-partner exclusivity**, and it is the one
+   * thing `Commitment` could say that a treaty could not. Supersession is
+   * *pair-level*: it retires a live treaty between the **same two parties**, so
+   * *"I cannot bind to Meridian because I am already bound to the Nars"* was
+   * unsayable in the treaty system — which is why every arrangement that needed
+   * to say it was filed as a commitment instead, where it is private and free
+   * to repudiate.
+   *
+   * **A FIELD, not a `voidsOn` condition**, and that is not a matter of taste.
+   * A condition ends a treaty as `voided`, and that status exists precisely
+   * *because it carries no penalty* — nobody repudiated it, the condition simply
+   * came true. So exclusivity-as-a-condition would make signing a second
+   * arrangement **silently dissolve the first, for free**, dodging the −25 and
+   * the public cost `break_treaty` charges. It converts a betrayal into an
+   * administrative event with no injured party, which is the opposite of what
+   * exclusivity is for. A `voidsOn.treaty_with` also takes a *named* target, so
+   * it could only ever say "voids if you sign with the Vigil" and never "with
+   * anyone" — wildcarding it would need a sentinel in a field that is otherwise
+   * always a faction id.
+   *
+   * | | the second treaty | the first | cost of the swap |
+   * |---|---|---|---|
+   * | condition | allowed | voids automatically | **nothing** |
+   * | field | refused at signature | stands | break it deliberately, and pay |
+   *
+   * **A boolean, not a list of permitted partners.** Everything that wants
+   * exclusivity here wants it against everyone: a dynastic marriage, a sole
+   * charter, an exclusive supply deal, a single-creditor undertaking.
+   * *"Exclusive except the Combine"* is expressed by leaving the flag off and
+   * writing the carve-out into `summary` — the same rule `OrderEffect` and
+   * `VoidCondition` follow, where a closed thing edited when a case appears
+   * beats a general thing that has to be right in advance.
+   *
+   * Keyed on `type`, which is a closed enum and therefore **cannot drift** the
+   * way `Commitment.kind`'s free-form slug can — the `prisoners`/`pows` problem
+   * that produced `ASSET_ARCHETYPES`. The cost is coarseness: an exclusive
+   * `trade_accord` forecloses *all* trade accords, and a test has pinned since
+   * item 26 that two accords granting different lanes are two legitimate deals.
+   * That coarseness is accepted rather than worked around, and the arbiter
+   * decides when to set the flag — the same division that already works for
+   * commitments, where *the arbiter rules that a marriage is exclusive and the
+   * reducer enforces it*.
+   */
+  exclusive: z.boolean().default(false),
   /** One line the UI can show verbatim. */
   summary: z.string().default(''),
 });
 export type Treaty = z.infer<typeof TreatySchema>;
+
+/**
+ * The standing two powers gain by binding themselves to each other publicly.
+ *
+ * **Nothing in the treaty path moved disposition upward**, for the whole life of
+ * the treaty system. `COMMITMENT_GOODWILL` did and was commitment-only, so a
+ * power that wanted an arrangement to be *worth something in standing* had to
+ * file it privately — which is backwards, since a treaty is the public
+ * instrument and a commitment explicitly is not.
+ *
+ * Larger than `COMMITMENT_GOODWILL` (5) because it is public: the same bargain
+ * sworn where everyone can see it is worth more than an understanding between
+ * two houses.
+ *
+ * **Paid to the parties and to nobody else**, which differs from the reasoning
+ * for commitments and reaches the same place. A commitment is excluded from
+ * onlookers because it is private; a treaty is public and onlookers plainly
+ * have a view — but the *sign* of that view is not determinable. An ally of my
+ * enemy signing a mutual defence pact is bad news for me; the same pact between
+ * two powers I am courting is good news. A third-party term would have to pick
+ * one, and picking one arbitrarily is how a mechanic becomes a number nobody
+ * can argue with.
+ *
+ * **Not refunded when the treaty ends**, and that is the asymmetry that makes
+ * this different from the commitment version. `adjustCommitmentGoodwill` pays +5
+ * on establish and takes −5 on dissolve, so the two net to zero — and since
+ * disposition has no decay, that made a commitment the only reversible
+ * disposition movement in the game and walking away from one free. A treaty
+ * already has a price for being torn up: `break_treaty` costs 25 with the party
+ * and `PACT_BREAKING_REPUTATION_COST` with every onlooker, permanently. Taking
+ * the goodwill back on top would be charging twice for one decision.
+ */
+export const TREATY_GOODWILL = 8;
+
+/**
+ * The live treaty that forecloses this one, if any.
+ *
+ * Mirrors `conflictingCommitment` down to returning the blocking **treaty**
+ * rather than a boolean, so the rejection can quote it: *"you are already bound
+ * by the exclusive marriage to the Ojjul Nar Combine (tre-3-0), which must be
+ * dissolved first"* is an answer a player can act on, where "not allowed" is
+ * not.
+ *
+ * **Same pair supersedes; a different partner refuses.** That ordering is the
+ * second decision the item named, and getting it backwards breaks one of the two
+ * features outright: refuse the same pair and a power cannot renegotiate its own
+ * marriage, permit a different partner and exclusivity does nothing at all. So a
+ * prior treaty whose parties are the same set is not a conflict — it is the
+ * treaty this one replaces, and `supersedePriorTreaties` retires it.
+ */
+export function conflictingTreaty(
+  treaties: Treaty[],
+  turn: number,
+  type: TreatyType,
+  parties: string[],
+  exclusive: boolean,
+): Treaty | undefined {
+  return treaties.find((t) => {
+    if (!isTreatyLive(t, turn)) return false;
+    if (t.type !== type) return false;
+    // A renegotiation between the same two powers is legitimate.
+    if (parties.every((p) => t.parties.includes(p))) return false;
+    // Either side's exclusivity blocks: an exclusive arrangement already sworn
+    // forecloses a new one, and a new exclusive arrangement cannot be sworn over
+    // a live commitment of the same type to somebody else.
+    if (!t.exclusive && !exclusive) return false;
+    return t.parties.some((id) => parties.includes(id));
+  });
+}
 
 /* ------------------------------------------------------------------ */
 /* Agents                                                              */

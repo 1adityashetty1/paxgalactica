@@ -41,10 +41,31 @@ describe('a thirty-turn campaign, five doctrine bots', () => {
 
   it('leaves nobody in a death spiral', () => {
     // Insolvent-and-shrinking is a losing position a player can recover from;
-    // a power with no systems has been eliminated by bots that barely play.
+    // having nothing left at all is not.
+    //
+    // **Territory is not the test, and asserting it was a claim about what a
+    // power has to be.** A landless fleet is a real position in this game: the
+    // contested-income split pays a squadron for standing in somebody else's
+    // orbit, `fleetBases` counts presence rather than control so a fleet in
+    // that orbit can lay down hulls, and raiding needs a squadron a jump out
+    // and no ground whatever. That is the Confederacy played to its own
+    // doctrine — *"never hold ground worth besieging"* — rather than a power
+    // that has been eliminated.
+    //
+    // So what must be true is that a power can still act: a fleet, and an
+    // income that is not draining it. A power with neither has nothing left to
+    // play, however many worlds it is standing on.
+    // Read over the closing turns rather than one snapshot. A raid pays for
+    // three turns and then stops, so a landless power's net oscillates by
+    // design — sampling a single turn catches the trough and calls a working
+    // position a spiral.
+    const tail = RUN.slice(-5);
     for (const id of IDS) {
-      expect(last.perFaction[id]!.systems, id).toBeGreaterThan(0);
-      expect(last.perFaction[id]!.fleet, id).toBeGreaterThan(0);
+      expect(last.perFaction[id]!.fleet, `${id} fleet`).toBeGreaterThan(0);
+      expect(
+        tail.some((h) => h.perFaction[id]!.systems > 0 || h.perFaction[id]!.net > 0),
+        `${id} holds no world and never turns a profit`,
+      ).toBe(true);
     }
   });
 
@@ -53,6 +74,29 @@ describe('a thirty-turn campaign, five doctrine bots', () => {
     // 25 systems, five powers. Anyone holding more than half has won by
     // turn 30 against opponents who are not even trying.
     expect(Math.max(...systems)).toBeLessThan(13);
+  });
+
+  it('keeps the map moving — a frozen board passes every other assertion here', () => {
+    // The gap the standing gate was measured against. "Nobody is eliminated"
+    // and "nobody holds half the map" both get EASIER when bots attack less, so
+    // the whole suite would have gone green on a galaxy where nothing ever
+    // happens — and the first attempt at gating aggression on disposition
+    // produced exactly that, freezing the board at turn 10. CLAUDE.md had
+    // "territory changes through turn 24" as an observation; this is the
+    // assertion, deliberately much looser than the observed run.
+    const board = (turn: number) =>
+      IDS.map((id) => RUN[turn - 1]!.perFaction[id]!.systems).join('/');
+    const opening = board(1);
+    const late = RUN.length;
+
+    expect(board(late), 'the board is identical to turn 1 — nobody ever took anything').not.toBe(
+      opening,
+    );
+    // And it is still moving past the opening exchanges, rather than settling
+    // in the first few turns and then standing still for twenty.
+    const boards = new Set(RUN.map((_, i) => board(i + 1)));
+    expect(boards.size, 'distinct boards over the run').toBeGreaterThan(2);
+    expect(board(late)).not.toBe(board(Math.floor(late / 3)));
   });
 
   it('keeps every power able to afford something', () => {

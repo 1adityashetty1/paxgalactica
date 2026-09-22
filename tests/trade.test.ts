@@ -36,6 +36,7 @@ const fac = (s: WorldState, id: string) => s.factions.find((x) => x.id === id)!;
 function pact(type: TreatyType, parties: [string, string], pledged: Record<string, number> = {}): Treaty {
   return {
     id: `t-${type}`,
+    exclusive: false,
     type,
     parties,
     terms: {

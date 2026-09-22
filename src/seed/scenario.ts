@@ -2,6 +2,8 @@ import type { FactionStats } from '../domain/checks.js';
 import type { DurationCategory } from '../domain/duration.js';
 import type { WorldType } from '../domain/state.js';
 import { commanderArchetype, commanderName } from '../domain/command.js';
+import { MAX_ASSET_STAT } from '../domain/diplomacy.js';
+import { ASSET_ARCHETYPES } from '../domain/assets.js';
 import {
   HULL_SPEC,
   normaliseStack,
@@ -368,13 +370,67 @@ const SEED_FACTIONS: SeedFaction[] = [
   },
 ];
 
-/** Starting opinions. Asymmetric on purpose: contempt is rarely mutual. */
+/**
+ * Starting opinions. Asymmetric on purpose: contempt is rarely mutual.
+ *
+ * **Seated on the geography, which the first table was not.** Every reader of
+ * disposition in `initiative.ts` keys on a world's HOLDER — `targetPriority`
+ * weights a prize by what you think of whoever has it, and `honourStanding`
+ * withholds an attack on a power you are on terms with — so a grievance against
+ * somebody whose worlds you cannot reach is a number nothing ever consults.
+ *
+ * The seed shipped its two deepest antagonisms in exactly that position. The
+ * Vigil and the Free Worlds sat at −60/−75, past `WAR_DISPOSITION_THRESHOLD`
+ * and therefore formally at war, with **no lane anywhere on the map** between a
+ * world either of them holds; Meridian and the Confederacy sat at −55/−40, the
+ * same. Meanwhile the richest contested border on the board — Oridin against
+ * Vantic, the two best worlds either power holds, one jump apart — was the
+ * Combine and the Vigil at −40/−45, one notch short of war, and they never
+ * fought. The map and the politics were describing two different galaxies.
+ *
+ * So the wars moved to where they can be prosecuted and the unfightable ones
+ * became contempt:
+ *
+ * | pair | border | was | is |
+ * |---|---|---|---|
+ * | vigil ↔ freeworlds | **none** | −60/−75, at war | −40/−50 |
+ * | meridian ↔ drajk | **none** | −55/−40 | −30/−25 |
+ * | meridian ↔ vigil | Torrek Anchorage | −35/−20 | −55/−45 |
+ * | ojjul ↔ vigil | Oridin~Vantic | −40/−45 | −55/−50 |
+ * | freeworlds ↔ drajk | Tulgarn | −30/−10 | −45/−20 |
+ * | ojjul ↔ drajk | Hollow Star, Oridin | +20/+30 | +35/+40 |
+ *
+ * `vigil ↔ drajk` at −70/−50 is left exactly as it was, and it is now the only
+ * war on the opening board. It is also the only one that ever could be fought:
+ * they share Threx.
+ *
+ * **Drajk's opening number with the Combine is its fuse, and that is the one
+ * entry chosen for a mechanical reason.** The Confederacy borders three powers,
+ * is the weakest on the board, and its own doctrine bleeds every neighbour's
+ * opinion of it through `PIRACY_REPUTATION_COST` on every prize it takes. So
+ * `BOT_AGGRESSION_CEILING` holds those neighbours off only until raiding has
+ * dragged them below zero, and where the number starts decides which turn that
+ * is: measured, the Combine's view of the Confederacy crosses zero around turn
+ * 8 from +20 and around turn 14 from +35, and it attacks on turn 13 or turn 16
+ * accordingly.
+ *
+ * **None of this was tuned on the harness board, because it cannot be.** The
+ * 30-turn board is chaotic in exactly this parameter — sweeping the Combine's
+ * opening view of the Confederacy over 20/22/25/28/30/35/40 gives 6/8/5/5/1,
+ * 6/6/6/6/1, 6/7/6/6/0, 6/7/6/6/0, 5/9/5/6/0, 5/8/6/6/0, 6/8/5/5/1, with no
+ * monotone structure at all. That is the shape `MONOPOLY_BONUS` and
+ * `COMMANDER_COST` both turned out to have, for the reason CLAUDE.md gives
+ * there: the discrete question of whether one marginal conquest happens swamps
+ * the arithmetic, and a table picked off the board would be overfitted to a
+ * cliff. The table is chosen on the map, and `tests/initiative.test.ts` pins
+ * the rules it embodies rather than the numbers.
+ */
 const DISPOSITIONS: Record<string, Record<string, number>> = {
-  meridian: { vigil: -35, ojjul: 15, freeworlds: 10, drajk: -55 },
-  vigil: { meridian: -20, ojjul: -45, freeworlds: -60, drajk: -70 },
-  ojjul: { meridian: 25, vigil: -40, freeworlds: -5, drajk: 20 },
-  freeworlds: { meridian: 5, vigil: -75, ojjul: -15, drajk: -30 },
-  drajk: { meridian: -40, vigil: -50, ojjul: 30, freeworlds: -10 },
+  meridian: { vigil: -55, ojjul: -15, freeworlds: 10, drajk: -30 },
+  vigil: { meridian: -45, ojjul: -50, freeworlds: -40, drajk: -70 },
+  ojjul: { meridian: 10, vigil: -55, freeworlds: -20, drajk: 35 },
+  freeworlds: { meridian: 5, vigil: -50, ojjul: -10, drajk: -45 },
+  drajk: { meridian: -25, vigil: -50, ojjul: 40, freeworlds: -20 },
 };
 
 /**
@@ -384,6 +440,21 @@ const DISPOSITIONS: Record<string, Record<string, number>> = {
  * so the seed has to distribute it rather than declare it. Expressed in TONS,
  * because that is the unit every fleet limit is measured in and the unit the
  * composition below is divided by.
+ *
+ * > **Weighting this by exposure was tried and removed.** Opening tonnage pays
+ * > for what a world is worth and knows nothing about whether anyone is standing
+ * > across the lane from it, which leaves Meridian with the largest navy on the
+ * > board, one front and three interior worlds carrying squadrons that face
+ * > nothing — 156 tons per front against Drajk's 32. Paying more for frontier
+ * > worlds fixes that ratio and costs two things worth more than it. It makes
+ * > the most exposed power **poorer**, since upkeep is per ton and Drajk is
+ * > exposed on all four of its worlds, pushing its seeded debt past the burden
+ * > ceiling `debt.ts` was sized against. And `createSeedState` is where replay
+ * > begins, so **every saved campaign rebuilds into a different world** — no
+ * > journal exemption can cover that, because that mechanism gates rules and not
+ * > the seed. What the ratio was a symptom of is fixed in `initiative.ts`
+ * > instead: three of the five bots had no reason to take ground at all, so a
+ * > fleet with one front had nothing to do with itself.
  */
 function startingTons(s: SeedSystem): number {
   return Math.max(2, Math.round(s.value * 1.4)) * HULL_SPEC.battleship.tonnage;
@@ -770,6 +841,127 @@ export function createSeedState(playerFactionId: string): WorldState {
         commanderId: null,
         agentId: null,
       },
+      /**
+       * And five works, one apiece — the half of the catalogue the four above
+       * cannot demonstrate.
+       *
+       * A works is the opposite kind of thing to the cargo above it: it cannot
+       * be traded, it is worth nothing to anybody as a thing, and what it does
+       * is modify the power standing over it. So the opening board needed some,
+       * for the reason it needed cargo at all — a mechanic nobody can point at
+       * on turn 0 is one no persona reaches for and no player learns exists.
+       *
+       * **Keyed on the ground.** Every one of them names, among the two
+       * attributes it modifies, the one `WORLD_TYPE_STAT` gives the world it
+       * stands on — so a reactor sits on an industrial moon and a garrison
+       * school on hard ground. *Among*, rather than first: `modifies` is in the
+       * canonical stat order, so an influence pair can only lead with influence
+       * when it is paired with resolve, and insisting on the lead would pick
+       * the archetype by alphabet rather than by what the world is. That is the same
+       * claim the terrain bonus already makes, said as a building — and it is
+       * what makes the modifier legible from the map, since you can see what a
+       * world is and therefore what is likely built on it.
+       *
+       * **All five are SPLIT works, and that is the load-bearing decision.**
+       * The first version seeded pure archetypes at half of `MAX_ASSET_STAT`,
+       * which is a thing the catalogue cannot say: a `military_base` is two
+       * points of might by its own entry, so a seeded one worth a single point
+       * made the same named kind mean two different things depending on where
+       * it came from — a second source of truth about what a works is.
+       *
+       * A split says the same thing honestly. The budget is the full
+       * `MAX_ASSET_STAT` either way and a two-attribute kind divides it, so
+       * each of these is worth **one point on each of two stats** by exactly
+       * the arithmetic the reducer applies to a player's. Nobody has to be
+       * told a seeded works is a lesser works, because it is not one.
+       *
+       * It also fixes what the half-budget was reaching for. Pure works at the
+       * full budget put three powers **on the 20 cap on turn 0** — the Vigil's
+       * might, the Combine's guile, the Closing's resolve — and a scale whose
+       * ceiling is where you start has nothing left to play for. Spreading the
+       * same two points over two attributes is what keeps everybody under it,
+       * and it is the mechanic working rather than a discount applied on top.
+       *
+       * **Five distinct kinds, and every attribute covered.** Nobody opens with
+       * a modifier everybody has — the failure `WORLD_BONUS_THRESHOLDS` was set
+       * at two to avoid — and the second attribute is what the power is, where
+       * the first is what the ground is: the Authority's clearing house is
+       * commerce AND production, the Remnant's school holds as well as fights,
+       * the Combine's exchange hears things, the Closing arms itself where it
+       * proves the guns, and the Confederacy's plant does not go dark.
+       *
+       * **Each stands on a world that can be taken**, which is the whole of why
+       * a works sits somewhere rather than on a balance sheet: `worksBonus`
+       * pays only while its holder is still over the ground, so storming
+       * Tulgarn does not merely cost Drajk a world, it costs it the slipways.
+       *
+       * Worth nothing to anybody in `valuePerUnit`, deliberately. A fixture is
+       * refused by `transfer_asset` from both paths, so a price on one is a
+       * number no bargain can ever settle — and `serializeTheirAssets` filters a
+       * counterparty's shelf by what the viewer would pay, so a priced works
+       * would advertise itself as being for sale.
+       */
+      ...(
+        [
+          // Brannix is the Authority's populous world — `earthlike`, so
+          // influence — and a chamber of commerce is what Meridian does with
+          // one. The industry half is the Authority's own: it does not merely
+          // broker, it builds.
+          ['meridian', 'sek-4', 'chamber_of_commerce',
+            'The Brannix chamber, chartered by the Authority: it settles most of the Verge\u2019s paper and owns a good deal of what the paper is written against.'],
+          // Kalzir is `arid` — hard ground, and might. An academy rather than a
+          // bare station because the Remnant's claim is that it ENDURES: the
+          // might half is the ranges, the resolve half is the school.
+          ['vigil', 'tor-2', 'military_academy',
+            'The Kalzir ranges and the garrison school beside them, which the Remnant has never once let close.'],
+          // Shalka is `earthnight` — dense, lit and unpoliceable, so guile — and
+          // it is the map's greatest junction. What the Combine runs on it is an
+          // exchange that also listens, which is that faction in one building.
+          ['ojjul', 'ilv-2', 'black_market',
+            'The Shalka undermarket: a clearing floor for cargo nobody will name, and the best-informed room on the Rim.'],
+          // Arkane Prime is `earthnight` — dense and unpoliceable, so guile —
+          // and the Closing designs what it builds because it takes no help
+          // from anybody. Deliberately nowhere near might or resolve: an
+          // `arsenal` at Pell Reach was tried and its point of might took the
+          // Drift from five worlds to six off the Vigil, which flattens the one
+          // faction on the board whose doctrine is that it does not expand.
+          // Vashka is out for the other reason — Arkane opens at resolve 19, so
+          // a works on its own best attribute is a point it cannot spend.
+          ['freeworlds', 'ark-1', 'research_lab',
+            'The Arkane Prime design halls, where the Drift draws every hull it flies because nobody will sell it one.'],
+          // Tulgarn is an `industrialmoon` — industry — and it is the one such
+          // world Drajk holds, sitting inside Arkane's sector where anybody
+          // could come and take it. The resolve half is what a plant is worth
+          // to a power that expects to be besieged.
+          ['drajk', 'ark-5', 'power_plant',
+            'The Tulgarn reactors, cut into the moon by somebody else and run since by whoever holds the rock.'],
+        ] as const
+      ).map(([held, where, kind, text], i) => {
+        const shape = ASSET_ARCHETYPES.find((a) => a.kind === kind)!;
+        // The full budget, divided by the kind's own arithmetic — the same line
+        // the reducer runs when a player founds one, rather than a second copy
+        // of it that could drift.
+        const each = Math.max(1, Math.floor(MAX_ASSET_STAT / shape.modifies!.length));
+        return {
+          id: `ast-0-${4 + i}`,
+          kind,
+          text,
+          heldBy: held,
+          quantity: 1,
+          unit: 'works',
+          divisible: false,
+          valuePerUnit: {},
+          speculative: false,
+          valueRange: {},
+          uses: null,
+          atSystemId: where,
+          portable: false,
+          yield: { kind: 'stat' as const, stats: shape.modifies!.map((stat) => ({ stat, points: each })) },
+          acquiredTurn: 0,
+          commanderId: null,
+          agentId: null,
+        };
+      }),
     ],
     // Nor does anybody start owing a squadron. A loan moves real hulls between
     // powers, so seeding one would move the opening board — every fleet

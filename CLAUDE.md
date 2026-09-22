@@ -540,12 +540,143 @@ follow from billing the **net** rather than each op:
   in either order, and issuing a `fleet_movement` is not read as scrapping the
   ships that left.
 - Overreach is **not a rejection**. The yards deliver what was paid for and the
-  surplus is trimmed off, deterministically, largest concentration first. A
-  partly-affordable order is partly fulfilled, which reads the way a partial
-  check reads.
+  surplus is trimmed off, deterministically. A partly-affordable order is partly
+  fulfilled, which reads the way a partial check reads.
 
 Losses are never refunded, so hulls cannot be cycled through the yards for
 cash.
+
+### Industry decides how fast, not how cheap
+
+`industry` had **no reader in construction at all**. The stat whose own
+description is *"anything that must be built or supplied"* reached ability
+checks and `effectiveStats` and touched the yards nowhere: a hull was priced
+purely by displacement and gated purely by presence, so the Confederacy at
+industry 8 built exactly as fast as Meridian at 17 given the same credits. Two
+asset archetypes already assumed otherwise — `blueprints` are wanted by *"a
+power with the industry to use them and not the design"*.
+
+`yardCapacityFor` is `YARD_TONS_BASE + statModifier(industry) * YARD_TONS_PER_POINT`
+tons per declaration, scaled off the stat the way `maxAgentsFor` is off guile
+and read through `effectiveStats`, so terrain, dissent, a `gunnery` officer's
+passive and a captured factory all reach the slipways.
+
+| power | industry | berths | battleships a turn |
+|---|---|---|---|
+| Meridian | 17 | 46 t | 11 |
+| the Vigil / the Combine | 13 | 30 t | 7 |
+| Arkane | 10 | 22 t | 5 |
+| Drajk | 8 | 14 t | 3 |
+
+**Throughput, not price.** `CREDITS_PER_TON` is read by suborning, by
+development pricing and by `commission_ships`, so a per-faction price would
+ripple through three balanced systems to say one thing. A cap says it where it
+is cheap, and sits beside the affordability trim in `billConstruction` — same
+place, same shape, trimmed with a note and never rejected. **A suborned crew is
+billed but occupies no berth**: it sails over rather than using anybody's
+slipway, tracked as `changedFlag` tons.
+
+**The harness can only see half the range, and that is the first finding.**
+`buy` spends at most `8 * HULL_SPEC.battleship.tonnage` — **32 tons** — in one
+call, so a power whose capacity sits above that can never be observed binding by
+the bots. That one fact explains the whole gradient: at the first setting tried
+(28/8) Meridian, the Vigil and the Combine were all above 32, only Arkane and
+Drajk could ever trim, and the cap fired **twice in thirty turns**. A player is
+under no such ceiling, which is where the constant earns its keep — the same
+shape as the world-type stat bonuses, which move the harness not at all.
+
+Swept over played 30-turn runs, counting how often the cap actually trims:
+
+| base/point | trims | board | poorest net | |
+|---|---|---|---|---|
+| 16/8 | 27 | 5/9/5/5/1 | **−42** | **fails**, and the mix distorts to 66/34 |
+| 18/8 | 21 | 6/7/6/5/1 | −14 | |
+| 20/8 | 24 | 5/8/6/5/1 | −19 | |
+| **22/8** | **10** | **6/8/5/5/1** | **8** | taken |
+| 24/8 | 3 | 6/8/5/5/1 | 8 | |
+| 26/8 · 28/8 | 2 | 6/7/5/6/1 | 17 | |
+| 30/8 | **0** | 5/8/6/6/0 | −15 | passes, and the mechanic is **inert** |
+
+Two boundaries, and 22 is between them rather than on either: below 18 the
+poorest power is starved into a net the balance suite refuses, and at 30 the cap
+stops firing and the board reverts to the one it produces with no cap.
+
+**The last row is the reading that matters.** At every setting where the cap
+fires the Confederacy survives on one world, and at every setting where it does
+not it is wiped out. Throttling throughput slows the rich more than the poor,
+because the rich are the ones with the credits to outrun it — which is what an
+earlier sweep of Drajk's *starting tonnage* could not achieve by any amount of
+handing it more ships, since its ceiling was always its income.
+
+28/8 shipped first and sat one step from inert, the position `MONOPOLY_BONUS`
+was moved off for the same reason. `YARD_TONS_PER_POINT` was swept on its own
+axis at base 24 — 4, 6 and 8 all give three or four trims and the same board,
+and 10 jumps to thirteen trims and a net of −19.
+
+### No ground, no yards
+
+`fleetBases` counts a system where a faction merely **has ships**, which is the
+right answer for drawing losses and the wrong one for building: any beaten power
+could go on commissioning battleships in a rival's orbit forever. A galaxy where
+every defeated power survives as a shipyard in somebody else's sky is not the
+fiction — being driven off your worlds should end you.
+
+Guarded in the reducer on **both** minting paths, because one would have been a
+sentence away from useless: `adjust_fleet` with a positive delta, and
+`adjust_ships` placing your own new hulls at a named world, which was entirely
+unguarded. Both reject with `no_presence` and the same message. Losses,
+suborning and upkeep attrition are untouched — a landless power can still lose
+ships, have crews turned and be billed; it simply cannot replace them.
+
+The exception is the **smuggler**, and it is keyed on `tradeEthic` rather than
+on a faction id: a rule attached to a name is a special case, one attached to a
+doctrine is something another power could take up by paying
+`DOCTRINE_ETHIC_DISSENT` to become it. *"Borders are a fiction maintained by
+people with fleets"* is a claim about not needing ground, and the ethic already
+says it three other ways.
+
+A landless smuggler is viable and vestigial: it builds (a fleet in somebody's
+orbit is a shipyard), earns from contesting that orbit, and raids — but one
+contested world pays ~26 a turn, which sustains about 18 tons. Measured from
+turn 30 to turn 60: 15 tons, ~110 credits, net oscillating +8/−18 as raids start
+and end. It survives; it is not a power.
+
+**The surplus comes off the gain, never off the fleet.** Comparing whole-faction
+tonnage is right for deciding *how much* was built — it is what keeps
+repositioning free — and it is the wrong thing to **cut**, which is what the trim
+did for as long as the trim existed: it went through `removeTons`, which spends a
+faction's richest world in loss order and cannot tell a hull laid down this batch
+from one in service since turn 0. So an order bigger than the treasury ate the
+standing navy. Measured on the seed: `adjust_fleet +1000` as Arkane on 1,100
+credits took the battleships from 17 to 35 and the escorts from 26 to 18, and the
+lifter with them — 73 tons paid for, 70 delivered, and two classes the order never
+named scrapped to pay for a third.
+
+The gain is knowable exactly, because `applyOps` already snapshots every system's
+stacks for `capSelfInflictedLosses`: the positive per-class differences **are**
+the new hulls. `unbuild` cuts heaviest-first out of those, ordered on
+(tonnage, class, system id) so replay walks it identically, and everything
+already standing is unreachable.
+
+**And the bill follows the delivery rather than leading it.** A whole hull is the
+smallest thing that can be refused, so a cut overshoots by up to three tons, and
+what is charged is what actually landed — capped by what the treasury could have
+afforded, since the part of a shortfall that could not be reached is tonnage
+already in transit, which cannot be un-built. The same order now delivers 72 tons
+for 1,080 credits and leaves every escort and the lifter where they were.
+
+This is the first change since batches became atomic that makes an old journal
+rebuild differently, so `JOURNAL_VERSION` is **4** and the gain-scoped trim is
+pinned to it, exactly as `atomicBatches` is pinned to 3 — those campaigns really
+did lose those hulls, and replay reproduces what happened rather than re-running
+it under today's rules. Two of the 48 saves prove the exemption is load-bearing:
+without it `adversarial_0907` and `creative_0907` both end with the Vigil a few
+tens of credits richer. With it, all 48 replay byte-identically.
+
+> `SaveFileSchema` had **restated** the accepted journal versions instead of
+> importing them, so bumping the version left every existing save unparseable —
+> the second source of truth failing in the one place a save file is read.
+> `JournalVersionSchema` is exported and both read it.
 
 Unpaid upkeep used to do nothing at all — `credits` floored at zero and a fleet
 of a thousand was sustainable on an empty treasury forever, which made upkeep no
@@ -1154,6 +1285,142 @@ and nothing implemented it.
 | `territory` (a term, not a type) | the named systems **change hands** when the treaty takes force |
 | `payment` (a term, not a type) | credits move **once**, when the treaty takes force — the price of a cession, an indemnity, a lump settlement |
 | `voidsOn` (a term, not a type) | typed conditions that **end** the treaty when they come true — and one already true at signature is **refused**, not signed |
+| `exclusive` (a flag, not a type) | forecloses another treaty of that **type** with anybody else; the second is **refused at signature** with `treaty_conflict` |
+
+### A treaty can be exclusive, and is worth something to have signed
+
+Three things a treaty could not say, none of them about marriage — a marriage is
+simply the case that wants all three at once, which is why every arrangement
+needing them kept being filed as a `Commitment`, where it is private and was
+free to walk away from. The same three are reached for by a sole charter, an
+exclusive supply deal, a hostage exchange and a single-creditor undertaking.
+
+**1. Exclusivity across partners.** Supersession is *pair-level* — it retires a
+live treaty between the **same two parties** — so *"I cannot bind to Meridian
+because I am already bound to the Nars"* was unsayable. `Treaty.exclusive` says
+it, and `conflictingTreaty` mirrors `conflictingCommitment` down to returning the
+blocking **treaty** rather than a boolean, so the rejection quotes it.
+
+**A field, not a `voidsOn` condition**, and that is not taste. A condition ends a
+treaty as `voided`, and that status exists *because it carries no penalty* —
+nobody repudiated it, the condition simply came true. So
+exclusivity-as-a-condition would make signing a second arrangement **silently
+dissolve the first, for free**, dodging the −25 and the public cost
+`break_treaty` charges, and converting a betrayal into an administrative event
+with no injured party:
+
+| | the second treaty | the first | cost of the swap |
+|---|---|---|---|
+| condition (`voidsOn`) | allowed | voids automatically | **nothing** |
+| field (`exclusive`) | refused at signature | stands | break it deliberately, and pay |
+
+`voidsOn.treaty_with` also takes a **named** target, so it could only ever say
+"voids if you sign with the Vigil" and never "with anyone" — wildcarding needs a
+sentinel in a field that is otherwise always a faction id.
+
+Keyed on `type`, which is a closed enum and **cannot drift** the way
+`Commitment.kind`'s free-form slug can — the `prisoners`/`pows` problem that
+produced `ASSET_ARCHETYPES`. The cost is coarseness: an exclusive `trade_accord`
+forecloses *all* trade accords, against a test that has pinned since item 26
+that two accords granting different lanes are two legitimate deals. That is
+accepted rather than worked around, and the arbiter decides when to set the flag
+— the division that already works for commitments, where *the arbiter rules that
+a marriage is exclusive and the reducer enforces it*.
+
+**Same pair supersedes; a different partner refuses.** Getting that ordering
+backwards breaks one feature or the other outright: refuse the same pair and a
+power cannot renegotiate its own marriage, permit a different partner and
+exclusivity does nothing at all.
+
+**2. Goodwill on signature.** Nothing in the treaty path moved disposition
+upward, for the whole life of the treaty system. `COMMITMENT_GOODWILL` did and
+was commitment-only, so an arrangement that wanted to be *worth something in
+standing* had to be filed privately — backwards, since a treaty is the public
+instrument and a commitment explicitly is not. `TREATY_GOODWILL` (8) is larger
+than the commitment's 5 because it is public: the same bargain sworn where
+everyone can see it is worth more than an understanding between two houses.
+
+Paid **to the parties and nobody else**, which differs from the commitment
+reasoning and lands in the same place. A commitment excludes onlookers because it
+is private; a treaty is public and onlookers plainly have a view — but the
+**sign** of that view is not determinable. An ally of my enemy signing a mutual
+defence pact is bad news for me; the same pact between two powers I am courting
+is good news. A third-party term would have to pick one, and picking one
+arbitrarily is how a mechanic becomes a number nobody can argue with.
+
+Paid where the treaty becomes **active**, so at signature *and* where `tickTurn`
+promotes a ratified one — the rule `supersedePriorTreaties` and `cedeTerritory`
+already follow at both sites, because a deal a council still has to read has not
+yet done anything.
+
+**Never refunded**, and that is the asymmetry. `adjustCommitmentGoodwill` pays +5
+on establish and takes −5 on dissolve, netting to zero; a treaty already costs 25
+with the party and `PACT_BREAKING_REPUTATION_COST` with every onlooker to tear
+up, so taking the goodwill back on top would charge twice for one decision.
+
+**And paid once per bond, because otherwise it is a pump.** A renewal pays
+nothing — `alreadyBound` is read *before* supersession, which is the pass that
+retires the treaty the question is about. Without that, signing the identical
+ceasefire eight times walks a pair from −50 to **+14**: each signature pays its
++8 and `supersedePriorTreaties` retires the previous one at no cost whatever, so
+peace is made by redrafting the same document at a price of nothing.
+
+Found by playing the war-ending case, which is where a player has every reason
+to keep redrafting terms, and it is the shape this file keeps recording — a
+number that moves in one direction with nothing spending it. Matched on `type`
+rather than on footprint: two `trade_accord`s granting different lanes are two
+legitimate deals and neither supersedes the other, but they are one relationship
+and the second is not a fresh act of binding. A *different* type does pay — a
+trade accord and a defence pact are two distinct bonds — which bounds what a
+pair can ever draw at one payment per type, against a negotiation apiece to earn
+it.
+
+**What none of this does is let peace heal.** Disposition has no decay — a
+stated choice, *"relationships stay where they are put; the ratchet is
+accepted"* — so a war-ending ceasefire is the one case where that bites hardest.
+Measured: the Vigil and Drajk open at −70/−50, sign a ceasefire with a 300
+indemnity and 20 a turn, and after seven turns of kept peace and 180 credits
+paid they sit at −48, exactly where the signature left them. A treaty with a
+`durationTurns` is therefore **a war on a timer**: it lapses, `warsFor` reads the
+same unmoved numbers, and the war resumes with no act by either party. An
+indefinite ceasefire is the only durable peace available, and reparations —
+`terms.payment` and `incomePerTurn`, the two mechanisms built for exactly this —
+move real money and buy no standing at all. Left as a known gap rather than
+patched: paying goodwill per turn of kept peace is a decay model in disguise, and
+that decision belongs to the ratchet, not to this.
+
+**3. Walking away from a commitment now costs more than it paid.** That refund is
+the live hole underneath all of it: `+COMMITMENT_GOODWILL` on establish and `−` on
+dissolve net to **zero**, and since disposition has no decay this was the only
+reversible disposition movement in the game. A power could swear a dynastic
+marriage, an exclusive charter or a standing intelligence duty and repudiate it
+the next turn at no net standing loss whatever.
+
+| ending the same arrangement | costs |
+|---|---|
+| as a **commitment**, before | −5 privately, against the +5 it paid — **net zero** |
+| as a **commitment**, now | the refund, plus `COMMITMENT_BREAKING_COST` (12) with each bound party |
+| as a **treaty** | −25 with the party, plus a permanent reputation hit with every onlooker |
+
+The multi-party case was patched earlier; two parties is the commonest shape a
+commitment has and was the one still open. `COMMITMENT_BREAKING_COST` sits below
+a treaty's 25 deliberately — a commitment is the *private* instrument, which is
+the whole basis on which onlookers get no view of it, so breaking one is a
+grievance between the parties rather than a public scandal. **Onlookers still
+only at three or more**, which is the distinction that survives: an arrangement
+sworn to four powers is public business and three of them just watched it torn
+up.
+
+**Replay.** `TREATY_GOODWILL` and `COMMITMENT_BREAKING_COST` both fire inside
+`applyOps`, so ten of the saved campaigns rebuild with different dispositions —
+and those dispositions are what the powers in them actually believed.
+`JOURNAL_VERSION` is **6** now and this exemption is pinned to **5**, the way
+`unbuildFromGain` is pinned to 4 — version 6 carries two more, `yardCapacity`
+and `hostages`, each with its own flag because each is its own rule. Both replay-only rules now live in one
+`LegacyRules` object rather than a third positional boolean, and `tickTurn` takes
+it too: ten saves contain `ratifyTurns`, so gating only the signature path would
+have left half the change live during replay. All 48 saves replay identically,
+dispositions included; without the exemption ten move.
 
 **A renegotiation replaces the old paper; it does not add to it.** Powers say
 "supersedes" constantly and nothing acted on it: a playtest left two `tribute`
@@ -1332,7 +1599,7 @@ capped twice precisely because it *is* money.
 arithmetic divides, rather than a model being trusted to. `divisible: false` is
 a thing that is one thing; `split_asset` refuses on it.
 
-### The catalogue: sixteen shapes, and permission to invent a seventeenth
+### The catalogue: thirty shapes, and permission to invent a thirty-first
 
 `src/domain/assets.ts`. An open `kind` slug is right and stays — it is what let a
 playtest reach for a fostered heir, a claimant's seal and a hundred tons of rare
@@ -1345,7 +1612,7 @@ and cannot reconcile.
 `ASSET_ARCHETYPES` is the anchor, and it is the same division of labour as
 `classifyPrinciple`: **the model is good at judgement and unreliable at lookup**,
 so it decides *that a thing was taken* and the table decides *what that kind of
-thing is like*. Sixteen entries in four groups — **people** who can be ransomed
+thing is like*. Thirty entries in four groups — **people** who can be ransomed
 or turned, **paper** that proves or authorises, **stuff** that is counted and
 consumed, and **works** that stand on a world and produce.
 
@@ -1353,7 +1620,9 @@ An archetype is a **default, not a restriction**. `create_asset` accepts any
 slug; when the slug is a known one the reducer fills in what was not stated and
 **corrects** `divisible` and `uses`, which are the two fields whose being wrong
 quietly breaks a later trade — a prisoner haul that will not divide cannot be
-ransomed in lots, and an instrument with no `uses` is exercisable forever.
+ransomed in lots, and an instrument with no `uses` is exercisable forever. For a
+**works** it also fills a missing `stat` yield from `modifies`, on the same
+argument: a fixture with no yield is a factory that is scenery.
 
 The table is **substituted into the prompt at call time**, never pasted into the
 `.md`. A copy restated in Markdown is a second opinion that will eventually be
@@ -1419,7 +1688,7 @@ could be invented at all.
 |---|---|
 | a successful attempt | `create_asset` from the resolution pass, stripped by `boundPayloadsToOutcome` on a failure and **halved** on a partial — an asset has a magnitude, unlike an operative, who is placed or is not |
 | a world changing hands | anything with that `atSystemId` goes with it |
-| **the seed** | four, authored — one per power except the Combine |
+| **the seed** | nine, authored — four cargo (one per power except the Combine) and five split works (one apiece) |
 
 `create_asset` is refused from an **accord** (`declared_only`): a conversation
 trades what exists and cannot conjure what does not. It is also refused when the
@@ -1439,7 +1708,8 @@ the state it was built to replace. Nothing could be ransomed, no file bought,
 and the gains-from-trade argument that makes `valuePerUnit` per-faction had
 nothing to price.
 
-Four properties, each load-bearing:
+Four properties of the **cargo**, each load-bearing — the seeded works below
+are a different kind of thing and keep none of them:
 
 - **None of them pays.** No `yield` anywhere. These exist to be traded, not to
   change the economy: four seeded income streams would be four new
@@ -1451,8 +1721,8 @@ Four properties, each load-bearing:
 - **Roughly equal**, at 400–500 to the best buyer, so no opening position is
   decided by what a power happens to be holding.
 
-The Combine holds none, and that is not an oversight: its shelf is the paper —
-three debts, and `assign_debt` is how a creditor sells one. The richest power on
+The Combine holds no **cargo**, and that is not an oversight: its shelf is the
+paper — three debts, and `assign_debt` is how a creditor sells one. The richest power on
 the board is the one whose tradeable inventory is claims on everybody else,
 which is that faction stated as a balance sheet.
 
@@ -1466,6 +1736,125 @@ whether they can be used at all, not what a ton of something costs.
 declarable; **taking** another power's needs them, so it is refused from a
 declaration with `needs_consent` and reachable from an accord — the same rule
 `terms.territory` follows.
+
+### And five works, because cargo cannot demonstrate the other half
+
+Those four are all things you carry, and half the catalogue is things that
+**are** the ground. A mechanic nobody can point at on turn 0 is one no persona
+reaches for and no player learns exists — the argument that put cargo on the
+opening board in the first place — so the seed stands a works on one world per
+power.
+
+**Keyed on the ground.** Each one names, among the two attributes it modifies,
+the one `WORLD_TYPE_STAT` gives the world it stands on: a reactor on an
+industrial moon, a garrison school on hard ground, an undermarket on a world
+that never sleeps. That is the same claim the terrain bonus already makes, said
+as a building — and it is what makes the modifier legible from the map, since
+you can see what a world is and therefore what is likely built on it. *Among*
+rather than leading, because `modifies` is in canonical stat order: an influence
+pair can only lead with influence when paired with resolve, so insisting on the
+lead would pick the archetype by alphabet rather than by what the world is.
+
+| power | world | type | works | |
+|---|---|---|---|---|
+| Meridian | sek-4 Brannix | earthlike | `chamber_of_commerce` | +1 industry, +1 influence |
+| Iron Vigil | tor-2 Kalzir | arid | `military_academy` | +1 might, +1 resolve |
+| Ojjul Nar | ilv-2 Shalka | earthnight | `black_market` | +1 guile, +1 influence |
+| Arkane | ark-1 Arkane Prime | earthnight | `research_lab` | +1 guile, +1 industry |
+| Drajk | ark-5 Tulgarn | industrialmoon | `power_plant` | +1 industry, +1 resolve |
+
+**All five are SPLIT works, and that is the load-bearing decision.** The first
+version seeded *pure* archetypes at half of `MAX_ASSET_STAT`, which is a thing
+the catalogue cannot say: a `military_base` is two points of might by its own
+entry, so a seeded one worth a single point made the same named kind mean two
+different things depending on where it came from. A second source of truth about
+what a works is — the defect this file records everywhere else, reintroduced as
+a tuning knob.
+
+A split says the same thing honestly. The budget is the full `MAX_ASSET_STAT`
+either way and a two-attribute kind divides it, so each of these is worth one
+point on each of two stats **by exactly the arithmetic the reducer runs when a
+player founds one**. The seed calls `ASSET_ARCHETYPES` and divides, rather than
+writing the answer down.
+
+It also gets what the half-budget was reaching for, and gets it as a consequence
+rather than a discount. Pure works at the full budget put three powers **on the
+20 cap on turn 0** — the Vigil's might, the Combine's guile, the Closing's
+resolve — and a scale whose ceiling is where you start has nothing left to play
+for. Spreading two points over two attributes is what keeps everybody under it.
+A test asserts that property directly: no works may be the thing that puts a
+stat on the ceiling.
+
+**Five distinct kinds, and every attribute covered**, so nobody opens with a
+modifier everybody has — the failure `WORLD_BONUS_THRESHOLDS` was set at two to
+avoid, and easy to walk back into here, since a fixture on every held world
+gives four of the five powers a point on four stats apiece. The second attribute
+is what the power *is* where the first is what the ground is: the Authority's
+chamber both brokers and builds, the Remnant's school holds as well as fights,
+the Combine's undermarket hears things, the Closing draws its own hulls because
+nobody will sell it one, and the Confederacy's plant does not go dark.
+
+**The Combine gets one**, unlike the cargo. Its shelf is the paper because a
+works is not a thing to sell, so the argument that kept it off the tradeable
+board does not reach this at all.
+
+**Each stands on a world that can be taken**, which is the whole of why a works
+sits somewhere rather than on a balance sheet: `worksBonus` pays only while its
+holder is still over the ground, so storming Tulgarn does not merely cost Drajk
+a world, it costs it the slipways.
+
+**Priced at nothing**, deliberately. A fixture is refused by `transfer_asset`
+from both paths, so a figure on one is a number no bargain can ever settle — and
+`serializeTheirAssets` filters a counterparty's shelf by what the viewer would
+pay, so a priced works would advertise itself as being for sale.
+
+**Which world each sits on was measured, not chosen.** `pnpm balance 30` is the
+historical **6/8/5/5/1** with the 58/42 mix and the poorest net at 8, and
+`pnpm fleetlab` is byte-identical — but only after one move. Arkane's works
+began as an `arsenal` at Pell Reach, and its point of **might** took the Drift
+from five worlds to six off the Vigil, dropping the galaxy to 64/36 and Drajk to
+−22. Every assertion in `tests/balance.test.ts` still passed, because the bounds
+there are deliberately loose; what it actually did was flatten the one faction
+on the board whose doctrine is that it does **not** expand. Moved to a
+`research_lab` at Arkane Prime, which touches neither might nor resolve, the run
+is identical to the one before any of this existed.
+
+That is the caution this whole section is under: a works reaches `effectiveStats`
+and `effectiveStats` reaches every check, every yard and every contest, so a
+point handed to the right power on the right stat is not a flavour detail.
+
+Seven existing tests broke and all seven were right to — they pinned
+`effectiveStats`, `terrainBonus`, `maxCommitmentIncomeFor`, a `stat_debuff` and a
+commander passive against the seed's **base** stats, which now compose a works
+term too. Each was isolated by clearing the seeded fixtures rather than by
+adjusting its expected number, the same way the dissent tests clear
+`commanders`.
+
+> A campaign journaled before this replays differently, because `replay()`
+> rebuilds from `createSeedState` and the seed moved. Nothing is done about
+> that, for the reason the faction rename gives: `saves/` is gitignored, a save
+> is a local artifact of one machine, and a permanent migration script carrying
+> a one-time seed edit has no ongoing job.
+
+### A works is drawn on the world, not in the warehouse
+
+It rendered under **Held** on the Treaties panel, beside prisoners and ore and
+under a chip saying what the keenest buyer would pay — which is three claims
+that are false of a fixture at once. It cannot be handed over, it cannot be
+pledged, and no buyer can ever pay anything for it.
+
+`worksAt` puts it on the **System** panel instead, beside the garrison and the
+ships, which is where the question it answers lives: *what is built on this
+world, and what does taking it get me*. Exactly the correction the operative
+list took when it moved off the Treaties panel, and for the same reason — a
+mechanic whose whole nature is that it is SOMEWHERE was answerable only from a
+global list.
+
+Shown **whoever holds it**, and not scoped by viewer: a plant, a base or a
+hospital is a structure on a surface, visible exactly as `system.ships` is
+visible. What stays hidden is that power's **orders**, which is a different
+question. The holder is named rather than assumed, because a works pays whoever
+stands over the world and that need not be the power that built it.
 
 ### What makes it bite
 
@@ -1518,15 +1907,110 @@ somewhere it can be taken.** Without it a producing asset would be a perpetual
 income stream with no counterplay whatever — unraidable, unblockadeable,
 unconquerable — the one shape this economy has consistently refused.
 
-**`yield` is what it does every turn**, a closed union of three for the reason
+**`yield` is what it does every turn**, a closed union of four for the reason
 `OrderEffect` and `VoidCondition` are closed. Where each is applied follows the
 rule the agent effects already set, rather than being decided afresh:
 
 | kind | applied | why there |
 |---|---|---|
 | `credits` | `ledgerFor`, as `assetYield` | a flow that mutated the treasury each tick would compound instead of recurring — the same argument as `commitmentFlow` and `income_penalty` |
+| `stat` | `effectiveStats`, as `worksBonus` | a per-turn mutation of a stat compounds instead of recurring; read beside terrain and the officer's passive |
 | `dissent` | `tickTurn` | accumulates and decays on its own clock, like `sedition` and `hull_damage` |
 | `asset` | `tickTurn` | a stockpile grows; it is not a figure read fresh |
+
+### A works is a modifier on the power holding the ground
+
+The three original `works` archetypes were each described as *"nobody wants
+it"*, which is true of the paperwork and false of the thing: **a fixture is what
+makes the ground under it worth taking.** A factory is industry, a university is
+guile, a hospital is resolve.
+
+`MAX_ASSET_STAT` is **2**, summed across holdings and then clamped per stat, so
+ten factories beat one and not by ten. Small for the reason `MAX_ASSET_DISSENT`
+is small — a stat reaches every check through `effectiveStats`, and a modifier
+summed over territory is unbounded in principle. It pays only while its holder
+still stands over the world, and since a fixture changes hands with the world,
+**taking the ground takes the benefit**.
+
+That closes a loop: `yardCapacityFor` reads `effectiveStats().industry`, so a
+captured factory really does lay down more hulls for whoever took it.
+
+**One budget, one or two attributes.** A works is worth `MAX_ASSET_STAT` in
+total however it is split — two points of influence, or one of influence and one
+of guile. The split is a **trade, not a bonus**: spread over two attributes at
+full value on each, a works would be worth twice one that concentrated. The
+reducer merges a stat named twice and trims an overspend off the largest share
+first, so a deliberately lopsided pair stays lopsided.
+
+**Two is the cap and it is a real one.** At a budget of two, "up to two stats" is
+the only split the integers allow — a half point does not exist on a 1–20 scale,
+the same granularity argument that took a lifter's half loss on the troops
+rather than on the hull count.
+
+`AssetArchetype.modifies` names the attributes, and the reducer fills a missing
+yield by dividing the budget over them — the same correction it already applies
+to `divisible` and `uses`, and for the same reason: these are the fields whose
+being wrong quietly turns a factory into scenery.
+
+**Fifteen of them: five plus `5C2`**, so the catalogue covers every attribute and
+every pair of two. Complete by construction rather than by whatever anybody
+thought to add — a model reaching for a plausible works finds an archetype
+behind it, which is the table's whole job. A test asserts the *coverage* rather
+than the contents, so a sixth attribute fails the suite rather than quietly
+leaving forty-five per cent of the pairs unnamed.
+
+| | pure | | split | |
+|---|---|---|---|---|
+| might | `military_base` | might+guile | `special_forces_command` | soldiers who are not seen |
+| guile | `university` | might+industry | `arsenal` | guns built where they are proved |
+| industry | `factory` | might+influence | `defence_contractor` | sells force and lobbies for it |
+| influence | `stock_exchange` | might+resolve | `military_academy` | holds as well as fights |
+| resolve | `hospital` | guile+industry | `research_lab` | designs what the line builds |
+| | | guile+influence | `black_market` | an exchange that also hears things |
+| | | guile+resolve | `security_bureau` | watches, and does not rattle |
+| | | industry+influence | `chamber_of_commerce` | makes things, and is heard |
+| | | industry+resolve | `power_plant` | does not go dark under siege |
+| | | influence+resolve | `civil_service` | speaks for them, steadies them |
+
+They are named for what they are rather than for what a fantasy would call them
+— the first set read as a guild hall and a cloister — which is also what makes
+the mechanic legible: nobody has to be told what a factory improves.
+
+### A works is built on purpose, by the attribute it is made of
+
+A fixture is **the one asset kind that is not a prize.** Prisoners and salvage
+are things an attempt *comes away with*, so they ride on whatever check the
+attempt happened to be — but a factory is a thing a power sets out to build, and
+nothing tied the building of one to being any good at building. A successful
+`influence` check to charm a governor could mint a foundry as a byproduct,
+because `create_asset` was governed only by the band it resolved in.
+
+Three paths could reach one and each is closed:
+
+- a **declared action** founds a works only when the check was against its
+  primary attribute — `modifies[0]`, canonically ordered and therefore stable.
+  The arbiter picks the stat from what the player actually described, so a
+  player who wants a works has to *say* they are building one, and be good at it.
+- a **reaction** has no check behind it at all, so it founds nothing. The rest of
+  an NPC's ops stay unbounded — it is answering the turn, not rolling for it —
+  and the correction batch is filtered too, since a retry that re-emitted the
+  works would otherwise be the hole.
+- an **accord** already refused `create_asset` with `declared_only`, and now
+  passes the same filter rather than resting on that alone.
+
+**And a works is not half-built.** A partial delivers a reduced *prize*, which is
+what `quantity` is for — but a fixture is `quantity: 1` and atomic, so halving it
+delivered a whole one. That is the shape that shipped a 100% discount wearing a
+50% label when a one-hull lift loss was halved.
+
+Enforced in `boundPayloadsToOutcome`, where outcome-dependent filtering already
+lives, and **above its early return on success** — because the question a fixture
+asks is not how well the attempt went but whether it was the right *kind* of
+attempt. Array identity is preserved when nothing is refused, which a test pins.
+
+**The seed is not bound by any of it**, for the reason it is not bound by
+"nobody declares an asset into existence": the rule governs what a *model* may
+do, and a seeded works passes through no model at all.
 
 Bounds, each answering a specific way the field could be turned into free money:
 
@@ -2632,6 +3116,157 @@ touch, and the only pending orders they consult are their own. A test pins it by
 asserting that a hidden rival programme changes no bot's proposal at all —
 an invariant rather than an accident.
 
+### And a doctrine is not blind, either
+
+`initiative.ts` contained **no reading of `disposition` at all**. A power that
+loathed you at −95 with no paper between you picked its targets exactly as one
+that liked you at +50 did: `lineStrength`, garrison, adjacency. `honourTreaties`
+was the only relationship any bot consulted, so *paper* was the sole restraint
+and the entire range between neutral and war was inert — for the half of the
+galaxy played by arithmetic on an ordinary turn.
+
+That was a correct decision that stopped being correct. This file used to file it
+honestly as a limitation of the harness — *"the counterplay their position
+invites is political, and politics is what the model-driven game supplies"* —
+which holds only while the bots play nobody but each other, and they now run in
+`endTurn` for every faction the model did not speak for.
+
+**Measuring it required fixing the harness first, and that is the finding under
+the finding.** `src/balance.ts` called `BOTS[id]` directly rather than going
+through `proposeFor`, so it skipped **both** post-filters: the one tool that
+plays the bots for thirty turns was the one place `honourTreaties` had never run,
+and a standing gate measured against it would have reported a board it could not
+have changed. The harness now takes the path `endTurn` takes. With the new rules
+switched off that change is exactly neutral — the board is the historical
+3/6/5/4/4 with the 58/42 mix — which is what makes it a control rather than a
+confound.
+
+Two halves, and only one of them moves the board:
+
+| | what it does | how often it fires |
+|---|---|---|
+| `BOT_AGGRESSION_CEILING` | a bot will not attack a power it is on positive terms with, absent a war | **every run**, and it decides Drajk's life — see below |
+| `GRIEVANCE_WEIGHT` | standing weights *which* world a bot reaches for | every turn a bot has a choice |
+
+**The gate was documented as an invariant and it is not one.** This file said it
+withholds nothing in any measurement available, on the strength of a galaxy
+issuing four fleet movements in thirty turns. That was true when the bots had no
+territorial appetite; it stopped being true when four of them acquired one, and
+nobody went back and re-measured. It is a **timer**, and what it times is the
+Confederacy.
+
+Drajk borders three powers, is the weakest on the board, and its own doctrine
+bleeds every neighbour's opinion of it through `PIRACY_REPUTATION_COST` on every
+prize it takes. So the gate holds those neighbours off only until raiding has
+dragged them below zero, and where the number **starts** decides which turn that
+is. Traced, on the Combine's opening view of the Confederacy:
+
+| start | crosses zero | Ojjul takes a Drajk world |
+|---|---|---|
+| +20 | ~turn 8 | turn 13 |
+| +35 | ~turn 14 | turn 16 |
+
+That is the gate firing for fifteen turns and then opening, and it is the single
+most load-bearing thing any starting disposition does. It also means **the
+opening table cannot be tuned on the board**: sweeping that one entry over
+20/22/25/28/30/35/40 gives 6/8/5/5/1, 6/6/6/6/1, 6/7/6/6/0, 6/7/6/6/0,
+5/9/5/6/0, 5/8/6/6/0, 6/8/5/5/1 — no monotone structure whatever. Same shape as
+`MONOPOLY_BONUS` and `COMMANDER_COST`: the discrete question of whether one
+marginal conquest happens swamps the arithmetic.
+
+It reads `warsFor` **first**, because that is bilateral and a war is a property
+of the relationship — a power that has been attacked may answer whatever its own
+opinion was a moment ago. Outside a war the test is *my* view of *them*, which is
+what keeps this from closing the feedback loop: every disposition cost in the
+game moves the **injured** party's view of the aggressor and nothing moves the
+aggressor's view of its victim, so attacking cannot talk me into attacking again
+while it can and should talk my victim into answering. Gating on the worse of the
+two directions would make the first war self-reinforcing and permanent, since
+disposition has no decay. Unaligned ground and interdiction are both ungated —
+a world with no flag over it has nobody to have offended, and raiding is
+deliberately open to anyone with `PIRACY_REPUTATION_COST` already pricing it.
+
+**`GRIEVANCE_WEIGHT` is the half that fires.** `targetPriority` adds up to 4 on a
+`strategicValue` that runs 0–10, so a grievance reorders two comparable prizes
+and cannot make a worthless world a war aim. The bound is the design rather than
+timidity: *always* attacking whoever you hate most makes the board deterministic
+and flattens `opportunist` (hits the weak) into `crusading` (hits regardless),
+two distinctions the harness exists to keep visible. Swept — 0–2 leaves the
+historical board, **3–6 is a flat region** at 4/6/5/4/4 with six movements
+instead of four, and at 10 grievance swamps prize and the galaxy goes to
+5/5/5/4/3. 4 is taken from the middle.
+
+The two turn out to pair: at any gate setting the board keeps moving, because a
+Vigil refused its neighbour goes after a power it is actually at war with
+instead. The first sweep, run before the weighting existed, froze the board at
+turn 10 — which is the failure mode the item predicted, and it is now
+unreachable.
+
+**And the board freezing is an assertion now, not an observation.**
+`tests/balance.test.ts` asserted that nobody is eliminated and nobody holds half
+the map, and **both of those get easier when bots attack less** — so the whole
+suite would have gone green on a galaxy where nothing ever happens. *"Territory
+changes through turn 24"* was a sentence in this file; it is a test.
+
+### The grievances are seated where they can be acted on
+
+Both readers key on a world's **holder** — `targetPriority` weights a prize by
+what you think of whoever has it, `honourStanding` withholds an attack on a
+power you are on terms with — so a grievance against somebody whose worlds you
+cannot reach is a number nothing will ever consult. The seed shipped its two
+deepest antagonisms in exactly that position:
+
+- the **Vigil and the Free Worlds** at −60/−75, past
+  `WAR_DISPOSITION_THRESHOLD` and therefore formally at war, with **no lane
+  anywhere on the map** between a world either of them holds;
+- **Meridian and the Confederacy** at −55/−40, the same.
+
+Meanwhile the richest contested border on the board — **Oridin against Vantic**,
+the two best worlds either power holds, one jump apart — was the Combine and the
+Vigil at −40/−45, one notch short of war, and they never fought. The map and the
+politics were describing two different galaxies, and the half that gets played
+is the map.
+
+| pair | border | was | is |
+|---|---|---|---|
+| vigil ↔ freeworlds | **none** | −60/−75, at war | −40/−50 |
+| meridian ↔ drajk | **none** | −55/−40 | −30/−25 |
+| meridian ↔ vigil | Torrek Anchorage | −35/−20 | −55/−45 |
+| ojjul ↔ vigil | Oridin~Vantic | −40/−45 | **−55/−50** |
+| freeworlds ↔ drajk | Tulgarn | −30/−10 | −45/−20 |
+| ojjul ↔ drajk | Hollow Star, Oridin | +20/+30 | +35/+40 |
+| vigil ↔ drajk | Threx | −70/−50 | **unchanged** |
+
+The wars that could not be fought became contempt, and the one that can is left
+exactly where it was: `vigil ↔ drajk` is now the **only** war on the opening
+board, and the two share Threx. Nothing is cooled below mutual dislike — the
+Vigil and the Free Worlds still hold the deepest feeling on the map, they simply
+no longer have a formal war they can do nothing about.
+
+Two entries are chosen for reasons beyond the geography. `ojjul ↔ vigil` is
+pushed to −55/−50 rather than to war, because a pair that borders at the best
+ground on the board and likes each other is a border nothing ever happens at,
+while a pair already at war there has spent its escalation before turn 1. And
+`ojjul ↔ drajk` is raised to +35/+40 because that number is Drajk's fuse, for
+the reason above.
+
+**The table is chosen on the map and pinned as rules, not numbers.**
+`tests/initiative.test.ts` asserts that no seeded war is between powers who
+share no border, that the single deepest grievance on the board is on a pair
+that can reach each other, that the Oridin–Vantic border is negative but short
+of war, and that the Combine and the Confederacy open on terms. All four hold
+whatever the numbers are later tuned to, and the first two fail against the
+table that shipped before this.
+
+Measured: `pnpm balance 30` reads **6/7/6/6/0** where it read 6/8/5/5/1 — the
+Vigil one world down, the Combine and the Drift one up each, and the
+Confederacy landless. That last is the board reading and not a spiral: it ends
+with a fleet, 26 a turn from raiding and a **net of +11** against the 8 it had,
+which is `tests/balance.test.ts`'s own stated position that *"a landless fleet
+is a real position in this game"* — the Confederacy played to its doctrine
+rather than a power that has been eliminated. Income mix is 58/42, unchanged.
+`pnpm fleetlab` does not read disposition at all.
+
 ## A batch is a transaction
 
 `applyOps` prices each op on its own. That is right when ops are independent —
@@ -3484,9 +4119,10 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `interrupt_order` | rejected when the order is not interruptible |
 | `extend_order` | rejected for movement |
 | `accelerate_order` | spends credits, drops one Fibonacci bucket, min 1; rejected for movement |
-| `form_treaty` | **extraction-only** — absent from `ModelOpSchema`; a treaty needs the other party's consent |
+| `form_treaty` | **extraction-only** — absent from `ModelOpSchema`; a treaty needs the other party's consent. `exclusive` forecloses another of that type with anyone else |
 | `restructure_debt` | **extraction-only** — new terms need the creditor's agreement; keeps the id, the balance and the history |
 | `establish_commitment` | optional `incomePerTurn`, trimmed to `MAX_COMMITMENT_INCOME` |
+| `dissolve_commitment` | returns the goodwill **and** charges `COMMITMENT_BREAKING_COST` with each bound party; onlookers only at three or more |
 | `establish_debt` | **extraction-only** — a principal that depletes; trimmed to `MAX_DEBT_PRINCIPAL` |
 | `establish_loan` | **extraction-only** — a thing that comes back: hulls, credits or a portable asset. Never a world, never a fixture |
 | `return_loan` | borrower only; the hulls really leave its stacks |
@@ -3509,7 +4145,8 @@ Rejection codes: `unknown_op`, `schema_invalid`, `reducer_only`,
 `unknown_treaty`, `unknown_agent`, `commitment_conflict`, `no_presence`,
 `unreachable_target`, `missing_duration`, `insufficient_credits`,
 `not_interruptible`, `illegal_value`, `doctrine_refusal`, `needs_consent`,
-`declared_only`, `unknown_debt`, `unknown_loan`.
+`declared_only`, `unknown_debt`, `unknown_loan`, `already_void`,
+`treaty_conflict`.
 
 ---
 
@@ -4078,10 +4715,18 @@ income, and each doctrine's signature mechanic actually earning something.
 Loose bounds on purpose: a tight assertion on a balance number is a test people
 learn to ignore.
 
-**What the harness cannot model:** the bots do not react to disposition. The
-Nars finish hated by everyone and nobody invades them, so the harness
-overstates their runaway — the counterplay their position invites is political,
-and politics is what the model-driven game supplies.
+**What the harness cannot model:** the bots read disposition now — see *"a
+doctrine is not blind, either"* — but only to choose between targets and to
+refuse one they are on good terms with. Nothing makes them *ally*, and nothing
+makes a hated power a coalition's target. The Nars still finish hated by
+everyone and nobody combines against them, so the harness still overstates their
+runaway; what that counterplay needs is diplomacy, which is what the
+model-driven game supplies.
+
+It also runs the bots through `proposeFor` rather than calling them raw, which is
+the path `endTurn` takes. That is not a detail: calling `BOTS[id]` directly
+skipped every post-filter, so the harness was the one place `honourTreaties` had
+never executed in thirty turns of play.
 
 ---
 
@@ -4306,6 +4951,11 @@ component is logic nothing checks.
   unaligned ice worlds, and three identical paragraphs read as a bug. Picked by
   a hash of the **system id** and deliberately not `rollD20`, which is seeded on
   the turn: a world's character must not change because time passed.
+
+  **A works is listed on the world it stands on**, and nowhere else. See "A
+  works is drawn on the world, not in the warehouse" above: it used to render
+  under **Held** on the Treaties panel, beside cargo and under a price no
+  bargain can ever settle.
 
   **Operatives are listed per world as well as globally**, and the per-world
   list is the one a player actually asks for. An operative has an `atSystemId`,
@@ -4751,6 +5401,12 @@ writing one down. Fixtures and hand-built batches want the input type.
   and put it in `PUBLIC_CATEGORIES` or `SECRET_CATEGORIES` in `intel.ts`. A
   test asserts every type is in exactly one, because a forgotten one would
   default to secret and nobody would notice.
+- New works archetype? It goes in `ASSET_ARCHETYPES` with `fixture: true` and a
+  `modifies` naming one attribute or two. There are fifteen — five plus `5C2` —
+  and `tests/assets.test.ts` asserts that coverage rather than the contents, so
+  a sixth attribute fails the suite instead of quietly leaving pairs unnamed.
+  Nothing else has to change: the reducer fills the yield, `worksBonus` reads it
+  and `boundPayloadsToOutcome` gates the founding off `modifies[0]`.
 - New order effect kind? Add it to `OrderEffectSchema`, give it a cap in
   `EFFECT_CAPS`, a price, the categories that may deliver it in
   `EFFECT_CATEGORIES`, and a branch in `applyOrderEffect`. Price it against what

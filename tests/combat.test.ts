@@ -676,6 +676,9 @@ describe('dissent has teeth', () => {
     // and dissent, and a test asserting all three at once fails without saying
     // which one moved. The passive is pinned in the commander suite.
     state.commanders = [];
+    // And no works, for exactly the same reason: `effectiveStats` composes one
+    // of those too, and the Closing opens holding a hospital.
+    state.assets = (state.assets ?? []).filter((a) => a.portable);
     const me = state.factions.find((f) => f.id === 'freeworlds')!;
     const base = { ...me.stats };
     me.dissent = 100;
@@ -689,6 +692,7 @@ describe('dissent has teeth', () => {
   it('does nothing below the first threshold', () => {
     const state = fresh();
     state.commanders = [];
+    state.assets = (state.assets ?? []).filter((a) => a.portable);
     const under = Math.ceil(DISSENT_PER_PENALTY_POINT) - 1;
     state.factions.find((f) => f.id === 'freeworlds')!.dissent = under;
     expect(dissentPenalty(under)).toBe(0);
@@ -1361,6 +1365,10 @@ describe('the officer on the field', () => {
         // passive conditional on conquest is not a passive.
         const s = fresh();
         for (const sys of s.systems) sys.homeFactionId = sys.controllerFactionId;
+        // Without this the Closing opens at resolve 20 — its 19 plus the
+        // hospital at Vashka — and a passive that cannot raise a capped stat
+        // measures as no passive at all.
+        s.assets = (s.assets ?? []).filter((a) => a.portable);
         setArchetype(s, 'freeworlds', 'lineofbattle');
         const base = effectiveStats({ ...s, commanders: [] }, 'freeworlds');
         expect(effectiveStats(s, 'freeworlds').resolve).toBeGreaterThan(base.resolve);

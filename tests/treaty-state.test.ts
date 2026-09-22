@@ -5,6 +5,8 @@ import { MemoryCampaignStore } from '../src/engine/store.js';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import { addShipsAt, ledgerFor, setShipsAt, type WorldState } from '../src/domain/state.js';
 import type { OpInput } from '../src/domain/ops.js';
+import { TREATY_GOODWILL } from '../src/domain/diplomacy.js';
+import { COMMITMENT_BREAKING_COST } from '../src/domain/arbitration.js';
 
 /**
  * A treaty conflates three things: what was AGREED (the conversation), what was
@@ -477,5 +479,285 @@ describe('a cession has to look like one', () => {
     const res = sign(seed(), cede({}));
     expect(res.rejections).toEqual([]);
     expect(res.state.systems.find((x) => x.id === mine().id)!.controllerFactionId).toBe('meridian');
+  });
+});
+
+/**
+ * The three things a treaty could not say, none of which is about marriage.
+ *
+ * A marriage is the case that exposed them and wants all three at once, which
+ * is why it kept being filed as a `Commitment` — where it is private, and was
+ * free to walk away from. Every one of these is reached for by arrangements
+ * with no romance in them: a sole charter, an exclusive supply deal, a hostage
+ * exchange, a single-creditor undertaking.
+ */
+describe('a treaty can be exclusive', () => {
+  const marriage = (parties: string[], extra: Record<string, unknown> = {}): OpInput =>
+    ({
+      op: 'form_treaty',
+      treatyType: 'contract',
+      parties,
+      terms: {},
+      exclusive: true,
+      summary: `bound: ${parties.join(' and ')}`,
+      ...extra,
+    }) as OpInput;
+
+  const swear = (s: WorldState, op: OpInput, actor = 'drajk') =>
+    applyOps(s, [op], 'extraction', actor, true);
+
+  it('refuses a second exclusive arrangement with a different power', () => {
+    // The gap: supersession is PAIR-LEVEL, so "I am already bound to somebody
+    // else" was unsayable in the treaty system however the deal was worded.
+    const once = swear(seed(), marriage(['drajk', 'ojjul'])).state;
+    expect(live(once)).toHaveLength(1);
+
+    const twice = swear(once, marriage(['drajk', 'meridian']));
+    expect(twice.rejections.map((r) => r.code)).toEqual(['treaty_conflict']);
+    // The blocking treaty is quoted, not merely refused — the same standard
+    // `conflictingCommitment` is held to.
+    expect(twice.rejections[0]!.message).toMatch(/already bound/i);
+    expect(twice.rejections[0]!.message).toMatch(once.treaties[0]!.id);
+    expect(live(twice.state)).toHaveLength(1);
+  });
+
+  it('blocks in both directions — a new exclusive deal over a live one, and the reverse', () => {
+    // A power already bound exclusively cannot take a NON-exclusive arrangement
+    // of the same type either: the exclusivity is a property of the standing
+    // deal, not of the incoming one.
+    const bound = swear(seed(), marriage(['drajk', 'ojjul'])).state;
+    const casual = swear(
+      bound,
+      marriage(['drajk', 'meridian'], { exclusive: false }),
+    );
+    expect(casual.rejections.map((r) => r.code)).toEqual(['treaty_conflict']);
+
+    // And an ordinary deal already live does not stop an exclusive one being
+    // sworn elsewhere: nothing was promised about exclusivity.
+    const ordinary = swear(seed(), marriage(['drajk', 'ojjul'], { exclusive: false })).state;
+    expect(swear(ordinary, marriage(['meridian', 'vigil'])).rejections).toHaveLength(0);
+  });
+
+  it('still lets the same two powers renegotiate their own arrangement', () => {
+    // The ordering the item named, and getting it backwards breaks one feature
+    // or the other: refuse the same pair and a power cannot renegotiate its own
+    // marriage; permit a different partner and exclusivity does nothing.
+    const once = swear(seed(), marriage(['drajk', 'ojjul'])).state;
+    const again = swear(once, marriage(['drajk', 'ojjul'], { summary: 'terms revised' }));
+    expect(again.rejections).toHaveLength(0);
+    // Superseded, not stacked.
+    expect(live(again.state)).toHaveLength(1);
+    expect(live(again.state)[0]!.summary).toBe('terms revised');
+  });
+
+  it('frees the partner once the exclusive treaty is broken', () => {
+    const once = swear(seed(), marriage(['drajk', 'ojjul'])).state;
+    const freed = applyOps(
+      once,
+      [{ op: 'break_treaty', treatyId: once.treaties[0]!.id, reason: 'repudiated' }],
+      'model',
+      'drajk',
+    ).state;
+    expect(swear(freed, marriage(['drajk', 'meridian'])).rejections).toHaveLength(0);
+  });
+
+  it('does not reach across types', () => {
+    // Keyed on the closed `type`, which cannot drift the way a free-form
+    // commitment slug can — at the price of coarseness within a type.
+    const bound = swear(seed(), marriage(['drajk', 'ojjul'])).state;
+    const other = swear(
+      bound,
+      marriage(['drajk', 'meridian'], { treatyType: 'non_aggression' }),
+    );
+    expect(other.rejections).toHaveLength(0);
+  });
+
+  it('defaults to false, so every treaty written before this loads unchanged', () => {
+    const plain = applyOps(
+      seed(),
+      [{ op: 'form_treaty', treatyType: 'trade_accord', parties: ['drajk', 'ojjul'], terms: {}, summary: 'lanes' }],
+      'extraction',
+      'drajk',
+      true,
+    ).state;
+    expect(plain.treaties[0]!.exclusive).toBe(false);
+  });
+});
+
+describe('signing a treaty is worth standing', () => {
+  const pact = (parties: string[]): OpInput =>
+    ({
+      op: 'form_treaty',
+      treatyType: 'non_aggression',
+      parties,
+      terms: {},
+      summary: 'peace',
+    }) as OpInput;
+
+  const view = (s: WorldState, who: string, of: string) =>
+    s.factions.find((f) => f.id === who)!.disposition[of] ?? 0;
+
+  it('pays both parties, pairwise', () => {
+    // Nothing in the treaty path moved disposition upward for the whole life of
+    // the treaty system. `COMMITMENT_GOODWILL` did and was commitment-only, so
+    // an arrangement that wanted to be worth something in standing had to be
+    // filed privately — backwards, since the treaty is the public instrument.
+    const before = seed();
+    const after = applyOps(before, [pact(['drajk', 'ojjul'])], 'extraction', 'drajk', true).state;
+    expect(view(after, 'drajk', 'ojjul')).toBe(view(before, 'drajk', 'ojjul') + TREATY_GOODWILL);
+    expect(view(after, 'ojjul', 'drajk')).toBe(view(before, 'ojjul', 'drajk') + TREATY_GOODWILL);
+  });
+
+  it('pays nobody else, because the sign of an onlooker’s view is not determinable', () => {
+    const before = seed();
+    const after = applyOps(before, [pact(['drajk', 'ojjul'])], 'extraction', 'drajk', true).state;
+    for (const witness of ['meridian', 'vigil', 'freeworlds']) {
+      expect(view(after, witness, 'drajk'), witness).toBe(view(before, witness, 'drajk'));
+      expect(view(after, witness, 'ojjul'), witness).toBe(view(before, witness, 'ojjul'));
+    }
+  });
+
+  it('waits for ratification, and pays when the treaty comes into force', () => {
+    // The same rule `supersedePriorTreaties` and `cedeTerritory` follow at both
+    // sites: a deal a council still has to read has not yet done anything.
+    const before = seed();
+    const pending = applyOps(
+      before,
+      [{ ...(pact(['drajk', 'ojjul']) as Record<string, unknown>), ratifyTurns: 1 }] as OpInput[],
+      'extraction',
+      'drajk',
+      true,
+    ).state;
+    expect(view(pending, 'drajk', 'ojjul')).toBe(view(before, 'drajk', 'ojjul'));
+
+    // Against a control tick, not against the pre-tick value: the same tick
+    // applies `TOLL_RESENTMENT`, and folding an unrelated −1 into this
+    // expectation would leave it pinning two rules and explaining neither.
+    const control = view(tickTurn(before).state, 'drajk', 'ojjul');
+    const ratified = tickTurn(pending).state;
+    expect(ratified.treaties[0]!.status).toBe('active');
+    expect(view(ratified, 'drajk', 'ojjul')).toBe(control + TREATY_GOODWILL);
+  });
+
+  it('pays once for one bond — a renewal is not a fresh act of binding', () => {
+    // Found by playing the war-ending case, which is exactly where a player has
+    // every reason to keep redrafting terms. Each signature paid +8 and
+    // `supersedePriorTreaties` retired the previous one at no cost whatever, so
+    // signing the identical ceasefire eight times walked a pair from −50 to
+    // +14: peace by redrafting the same document, at a price of nothing.
+    const before = seed();
+    let s = before;
+    for (let i = 0; i < 6; i++) {
+      s = applyOps(s, [pact(['drajk', 'ojjul'])], 'extraction', 'drajk', true).state;
+    }
+    expect(s.treaties.filter((t) => t.status === 'active')).toHaveLength(1);
+    expect(view(s, 'drajk', 'ojjul')).toBe(view(before, 'drajk', 'ojjul') + TREATY_GOODWILL);
+  });
+
+  it('pays again for a genuinely different bond', () => {
+    // A defence pact and a trade accord are two arrangements, not one redrafted
+    // — which bounds what a pair can ever draw from this at one payment per
+    // type, against a negotiation apiece to earn it.
+    const before = seed();
+    const first = applyOps(before, [pact(['drajk', 'ojjul'])], 'extraction', 'drajk', true).state;
+    const second = applyOps(
+      first,
+      [{ ...(pact(['drajk', 'ojjul']) as Record<string, unknown>), treatyType: 'trade_accord' }] as OpInput[],
+      'extraction',
+      'drajk',
+      true,
+    ).state;
+    expect(view(second, 'drajk', 'ojjul')).toBe(
+      view(before, 'drajk', 'ojjul') + 2 * TREATY_GOODWILL,
+    );
+  });
+
+  it('is not taken back when the treaty is broken, because breaking already costs', () => {
+    // The asymmetry against `COMMITMENT_GOODWILL`, whose refund on dissolve
+    // netted to zero. `break_treaty` costs 25 with the party and a permanent
+    // reputation hit with every onlooker; taking the goodwill back on top would
+    // charge twice for one decision.
+    const before = seed();
+    const signed = applyOps(before, [pact(['drajk', 'ojjul'])], 'extraction', 'drajk', true).state;
+    const broken = applyOps(
+      signed,
+      [{ op: 'break_treaty', treatyId: signed.treaties[0]!.id, reason: 'no longer convenient' }],
+      'model',
+      'drajk',
+    ).state;
+    // The victim is worse off than before the treaty existed — the pact-breaking
+    // charge outweighs the goodwill — and the goodwill itself was not reversed
+    // on top of it.
+    const net = view(broken, 'ojjul', 'drajk') - view(before, 'ojjul', 'drajk');
+    expect(net).toBeLessThan(0);
+    expect(net).toBe(TREATY_GOODWILL - 25);
+  });
+});
+
+describe('walking away from a commitment costs more than it paid', () => {
+  const swear = (s: WorldState, ids: string[]) =>
+    applyOps(
+      s,
+      [
+        {
+          op: 'establish_commitment',
+          kind: 'dynastic_marriage',
+          factionIds: ids,
+          text: 'A dynastic marriage.',
+          exclusive: true,
+        },
+      ],
+      'extraction',
+      ids[0],
+      true,
+    );
+
+  const view = (s: WorldState, who: string, of: string) =>
+    s.factions.find((f) => f.id === who)!.disposition[of] ?? 0;
+
+  it('leaves the injured party worse off than if it had never been sworn', () => {
+    // The live hole: `+COMMITMENT_GOODWILL` on establish and `-` on dissolve net
+    // to ZERO, and disposition has no decay — so this was the only reversible
+    // disposition movement in the game, and a power could swear a marriage and
+    // repudiate it the next turn for nothing. Two parties is the commonest shape
+    // a commitment has.
+    const before = seed();
+    const sworn = swear(before, ['drajk', 'ojjul']).state;
+    const gone = applyOps(
+      sworn,
+      [{ op: 'dissolve_commitment', commitmentId: sworn.commitments[0]!.id, reason: 'repudiated' }],
+      'model',
+      'drajk',
+    ).state;
+
+    const net = view(gone, 'ojjul', 'drajk') - view(before, 'ojjul', 'drajk');
+    expect(net).toBe(-COMMITMENT_BREAKING_COST);
+    expect(net).toBeLessThan(0);
+  });
+
+  it('keeps onlookers out of a two-party understanding, and lets them in at three', () => {
+    // The distinction that survives: a commitment is not public business, so a
+    // private arrangement between two is nobody else's to have a view about —
+    // but one sworn to four powers is, and three of them just watched it torn
+    // up.
+    const two = swear(seed(), ['drajk', 'ojjul']).state;
+    const beforeTwo = view(two, 'vigil', 'drajk');
+    const goneTwo = applyOps(
+      two,
+      [{ op: 'dissolve_commitment', commitmentId: two.commitments[0]!.id, reason: 'over' }],
+      'model',
+      'drajk',
+    ).state;
+    expect(view(goneTwo, 'vigil', 'drajk')).toBe(beforeTwo);
+
+    const many = swear(seed(), ['drajk', 'ojjul', 'meridian', 'vigil']).state;
+    const beforeMany = view(many, 'freeworlds', 'drajk');
+    const goneMany = applyOps(
+      many,
+      [{ op: 'dissolve_commitment', commitmentId: many.commitments[0]!.id, reason: 'over' }],
+      'model',
+      'drajk',
+    ).state;
+    expect(view(goneMany, 'freeworlds', 'drajk')).toBeLessThan(beforeMany);
   });
 });

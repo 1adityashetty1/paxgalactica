@@ -340,12 +340,13 @@ agree in this conversation, it is not a party: you cannot accede somebody who
 was never in the room, and a clause deeming them acceded because their ships use
 a lane binds nothing.
 
-**An exclusivity clause goes in the commitment, not in the prose.** *"Sole
-possession, no resale"* written into a `log_narrative` is a sentence; written as
-`establish_commitment` with a reusable `kind` and `exclusive: true`, the reducer
-refuses the second sale with `commitment_conflict`. A playtest sold the same
-intelligence twice in one hour with the word "exclusive" on the paper, and
-nothing anywhere could tell.
+**An exclusivity clause goes in the record, not in the prose.** *"Sole
+possession, no resale"* written into a `log_narrative` is a sentence; written
+with `exclusive: true` — on the treaty if the arrangement is public, on the
+commitment otherwise — the reducer refuses the second one with
+`treaty_conflict` or `commitment_conflict` and quotes the deal that blocks it.
+A playtest sold the same intelligence twice in one hour with the word
+"exclusive" on the paper, and nothing anywhere could tell.
 
 **A world changing hands is a `cession`, and only a `cession`.** A land transfer
 had no type of its own, so it used to be written into whatever treaty was to
@@ -370,14 +371,51 @@ So: `treatyType: "cession"`, `terms.territory` naming the worlds, and
 
 **A durable arrangement binding both parties — a dynastic marriage, an
 exclusive charter naming a partner, a hostage exchange, a shared succession,
-the adoption of a client house.** These are not treaties, so `form_treaty`'s
-five fixed types do not fit them, and they are not something one side can
-declare on its own — a declared action asking for one is turned away exactly
-like a declared treaty, and sent here. When both sides have actually agreed,
-emit `establish_commitment`: `kind` a reusable lower_snake_case slug
-(`dynastic_marriage`, not `marriage_to_the_ojjuls`), `factionIds` naming
-everyone bound, `text` for what was agreed, and `exclusive: true` when a power
-can only sensibly hold one at a time — a marriage is; a friendship pact is not.
+the adoption of a client house.** These are not something one side can declare
+on its own: a declared action asking for one is turned away exactly like a
+declared treaty, and sent here. When both sides have actually agreed, the
+question is which record it goes in, and there is one test.
+
+**Is the arrangement PUBLIC?** A treaty is public business and a commitment is
+not, and the whole difference follows from that — onlookers have a view of a
+treaty and none of a commitment, breaking a treaty is a scandal and breaking a
+commitment is a grievance between the parties.
+
+| | `form_treaty` | `establish_commitment` |
+|---|---|---|
+| who knows | everyone | the parties |
+| binds | exactly two | one, two or many |
+| worth on signature | `TREATY_GOODWILL` between the parties | `COMMITMENT_GOODWILL`, smaller |
+| cost of walking away | 25 with the party and a permanent hit with every onlooker | a grievance with the parties |
+| exclusivity | `exclusive: true`, matched on the **type** | `exclusive: true`, matched on the `kind` slug |
+
+So a **dynastic marriage, a proclaimed sole charter, a publicly guaranteed
+protectorate** — anything whose point is that everybody knows about it — is a
+treaty, on the type that fits what it does (`contract` for an arrangement with
+consideration, `non_aggression` for a sworn peace), with `exclusive: true`.
+Writing one as a commitment makes the most public act in the genre a private
+understanding, which is how a marriage came to be cheaper to repudiate than a
+trade accord.
+
+A **commitment** is for what a treaty cannot hold: an arrangement binding **one
+party** (a standing vow, a policy over your own space), one binding **three or
+more**, a `share` of a lane flow, or an understanding the parties would rather
+nobody else knew about. Emit `establish_commitment` with `kind` a reusable
+lower_snake_case slug (`dynastic_marriage`, not `marriage_to_the_ojjuls`),
+`factionIds` naming everyone bound, `text` for what was agreed, and
+`exclusive: true` when a power can only sensibly hold one at a time.
+
+**`exclusive: true` forecloses the same thing with anybody else, and it is
+refused at signature rather than quietly voiding what came before.** Set it when
+a power can only sensibly hold one at a time — a marriage, a sole charter, a
+single-creditor undertaking — and leave it off for anything a power can hold
+several of, like a friendship pact or a lane accord. On a treaty it is matched on
+the **type**, so it is coarse: an exclusive `trade_accord` forecloses *all* trade
+accords with anyone. Prefer `contract` for a bargain that is exclusive about one
+specific thing, and say what it covers in `summary`. *"Exclusive except the
+Combine"* is not expressible — leave the flag off and write the carve-out in the
+text. The same two powers can always renegotiate their own arrangement; that
+supersedes rather than conflicts.
 
 **`incomePerTurn` is what the arrangement is worth per turn, and a deal with
 money in it must carry a number.** It is one figure every bound party reads the

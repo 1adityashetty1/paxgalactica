@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { HULL_SPEC } from '../src/domain/hulls.js';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { MAX_DURATION } from '../src/domain/duration.js';
 import {
   addShipsAt,
   hullsAt,
-  setShipsAt, fleetStrengthOf, SHIP_COST, type WorldState } from '../src/domain/state.js';
+  setShipsAt, fleetStrengthOf, SHIP_COST, type WorldState,
+  yardCapacityFor,
+} from '../src/domain/state.js';
 
 const fresh = (): WorldState => createSeedState('freeworlds');
 
@@ -102,14 +105,22 @@ describe('adjust_fleet and adjust_credits', () => {
     const start = fresh();
     const before = fleetStrengthOf(start, 'drajk');
     const purse = start.factions.find((f) => f.id === 'drajk')!.credits;
-    // Drajk holds 700 credits, so 10 hulls at 60 apiece is affordable and 12
-    // would not be — the yards are the binding constraint, not the order.
+    // Drajk holds 700 credits, so ten hulls at 60 apiece is affordable — and
+    // its yards are not. At industry 8 the Confederacy has the smallest
+    // slipways on the board, so what arrives is what it can BEGIN, and the
+    // treasury is not the binding constraint at all.
+    const berths = yardCapacityFor(start, 'drajk');
+    const laid = Math.floor(berths / HULL_SPEC.battleship.tonnage);
+    expect(laid).toBeLessThan(10);
+
     const res = applyOps(start, [{ op: 'adjust_fleet', factionId: 'drajk', delta: 10 }]);
-    expect(fleetStrengthOf(res.state, 'drajk')).toBe(before + 10);
+    expect(fleetStrengthOf(res.state, 'drajk')).toBe(before + laid);
     // They must exist in a system, not in an abstract pool.
     const total = res.state.systems.reduce((n, s) => n + (hullsAt(s, 'drajk')), 0);
-    expect(total).toBe(before + 10);
-    expect(res.state.factions.find((f) => f.id === 'drajk')!.credits).toBe(purse - 10 * SHIP_COST);
+    expect(total).toBe(before + laid);
+    // Billed for what arrived, never for what was ordered.
+    expect(res.state.factions.find((f) => f.id === 'drajk')!.credits).toBe(purse - laid * SHIP_COST);
+    expect(res.notes.join(' ')).toMatch(/yards can lay down/);
   });
 
   it('rejects unknown factions', () => {

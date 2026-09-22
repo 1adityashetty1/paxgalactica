@@ -12,15 +12,18 @@ import { loadPrompt } from '../src/model/prompts.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { groundInConcessions } from '../src/engine/turn.js';
 import {
+  TREATY_GOODWILL,
   assetWorthTo,
   atThisTable,
   mergeConcessions,
   type Concession,
 } from '../src/domain/diplomacy.js';
+import { HOSTAGE_ROLL, hostageTaken } from '../src/domain/command.js';
 import { boundPayloadsToOutcome } from '../src/domain/development.js';
 import { applyOps, COERCION_RESENTMENT, tickTurn } from '../src/domain/reducer.js';
 import {
   hullsAt,
+  addShipsAt,
   setShipsAt,
   ledgerFor,
   subornLimit,
@@ -311,7 +314,7 @@ describe('war is a property of the relationship, not one opinion', () => {
     const state = fresh();
     state.factions.find((f) => f.id === 'freeworlds')!.disposition['drajk'] = -90;
     state.treaties.push({
-      id: 't1', type: 'non_aggression', parties: ['freeworlds', 'drajk'],
+      id: 't1', type: 'non_aggression', parties: ['freeworlds', 'drajk'], exclusive: false,
       terms: { territory: [], shipsPledged: {}, incomePerTurn: {}, payment: {}, assets: [], incomeShares: [], mutualDefenseTrigger: '', voidsOn: [] },
       signedTurn: 0, expiresTurn: null, effectiveTurn: null, status: 'active', summary: 'na',
     });
@@ -864,8 +867,11 @@ describe('signing under a fleet costs the power holding the fleet', () => {
 
     const out = applyOps(state, [accord], 'extraction', 'freeworlds');
     expect(out.rejections).toHaveLength(0);
+    // Signing also PAYS `TREATY_GOODWILL` now, and both terms are named rather
+    // than folded into one literal: this test pins the coercion charge, and a
+    // number with the goodwill silently absorbed into it would stop saying so.
     expect(dispositionToward(out.state, 'freeworlds', 'vigil')).toBe(
-      before - COERCION_RESENTMENT,
+      before + TREATY_GOODWILL - COERCION_RESENTMENT,
     );
     expect(out.notes.join(' ')).toMatch(/ships over 1 of its worlds/);
   });
@@ -874,7 +880,9 @@ describe('signing under a fleet costs the power holding the fleet', () => {
     const state = createSeedState('freeworlds');
     const before = dispositionToward(state, 'freeworlds', 'vigil');
     const out = applyOps(state, [accord], 'extraction', 'freeworlds');
-    expect(dispositionToward(out.state, 'freeworlds', 'vigil')).toBe(before);
+    // No coercion term: what moves is the goodwill of having signed, and
+    // nothing else.
+    expect(dispositionToward(out.state, 'freeworlds', 'vigil')).toBe(before + TREATY_GOODWILL);
   });
 
   it('does not charge a guest who was invited in', () => {
@@ -899,7 +907,7 @@ describe('signing under a fleet costs the power holding the fleet', () => {
     const before = dispositionToward(invited, 'freeworlds', 'vigil');
 
     const out = applyOps(invited, [accord], 'extraction', 'freeworlds');
-    expect(dispositionToward(out.state, 'freeworlds', 'vigil')).toBe(before);
+    expect(dispositionToward(out.state, 'freeworlds', 'vigil')).toBe(before + TREATY_GOODWILL);
   });
 });
 
@@ -1638,6 +1646,7 @@ describe('a contingency written against losing a world', () => {
     // why this needs no per-turn set and no schema change.
     s.treaties.push({
       id: 'tre-t-0',
+      exclusive: false,
       type: 'cession',
       parties: ['meridian', 'vigil'],
       terms: {
@@ -1847,5 +1856,76 @@ describe('a dossier sold across a table', () => {
       true,
     );
     expect(out.rejections[0]?.code).toBe('unknown_asset');
+  });
+});
+
+describe('a hostage is taken, not narrated into being', () => {
+  // `hostage` sat in the catalogue with no mechanism behind it: the only way
+  // one could exist was a model writing it into a resolved attempt. These are
+  // the two events that produce one — a storming and a subversion — and both
+  // read the top of a seeded roll the event had already taken, so a campaign
+  // replays exactly.
+  //
+  // Driven through the real events rather than a helper, because a test that
+  // pins the mechanism while nothing pins that the mechanism is REACHED is the
+  // failure this repo keeps recording.
+  const hostages = (s: WorldState) => (s.assets ?? []).filter((a) => a.kind === 'hostage');
+
+  /** Storm ilv-5 out of tor-3 — one jump — with a force that cannot lose. */
+  const storm = (turn: number): WorldState => {
+    let s = createSeedState('vigil');
+    s.turn = turn;
+    const from = s.systems.find((x) => x.id === 'tor-3')!;
+    setShipsAt(from, 'vigil', 0);
+    addShipsAt(from, 'vigil', 60, 'battleship');
+    addShipsAt(from, 'vigil', 20, 'lifter');
+    s = applyOps(
+      s,
+      [{
+        op: 'issue_order', factionId: 'vigil', type: 'fleet_movement',
+        originId: 'tor-3', targetId: 'ilv-5',
+        force: { battleship: 60, lifter: 20 }, label: 'storm',
+      }] as OpInput[],
+      'model',
+      'vigil',
+    ).state;
+    return tickTurn(s).state;
+  };
+
+  it('is taken when a world is stormed, on the battle’s own roll', () => {
+    // The roll is seeded on (turn, combatants, system), so some turns take a
+    // hostage and some do not. Both must happen, or the gate is not a gate.
+    const outcomes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((t) => hostages(storm(t)).length);
+    expect(outcomes.some((n) => n > 0), 'no storming in eight turns took a hostage').toBe(true);
+    expect(outcomes.some((n) => n === 0), 'every storming took one — the roll is not gating').toBe(
+      true,
+    );
+  });
+
+  it('prices them against the house they were taken from, and holds them there', () => {
+    const took = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(storm).find((s) => hostages(s).length > 0)!;
+    const held = hostages(took)[0]!;
+    expect(held.heldBy).toBe('vigil');
+    expect(held.atSystemId).toBe('ilv-5');
+    expect(held.divisible).toBe(false);
+    expect(held.portable).toBe(true);
+    // Worth most to the Combine, leverage to everyone else, and never priced
+    // for the power holding them — you do not ransom to yourself.
+    expect(held.valuePerUnit['ojjul']!).toBeGreaterThan(held.valuePerUnit['meridian']!);
+    expect(held.valuePerUnit['vigil']).toBeUndefined();
+  });
+
+  it('travels with the ground, so retaking the world brings them home', () => {
+    // The rule every located asset follows, and what makes a hostage worth
+    // guarding and a garrison worth leaving.
+    const took = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(storm).find((s) => hostages(s).length > 0)!;
+    expect(hostages(took)[0]!.atSystemId).toBe('ilv-5');
+    expect(took.systems.find((x) => x.id === 'ilv-5')!.controllerFactionId).toBe('vigil');
+  });
+
+  it('only fires on a high roll, so leverage stays worth something', () => {
+    expect(hostageTaken(HOSTAGE_ROLL)).toBe(true);
+    expect(hostageTaken(HOSTAGE_ROLL - 1)).toBe(false);
+    expect((21 - HOSTAGE_ROLL) / 20).toBeLessThan(0.3);
   });
 });

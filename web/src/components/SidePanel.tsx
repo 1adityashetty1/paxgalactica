@@ -37,6 +37,7 @@ import {
   MAX_DISSENT_PENALTY,
   effectiveStats,
   systemIncome,
+  worksAt,
   treatiesFor,
   warsFor,
   type WorldState,
@@ -272,6 +273,13 @@ function SystemTab({
   const officersHere = (state.commanders ?? []).filter(
     (c) => c.status === 'active' && c.atSystemId === sys.id,
   );
+  /**
+   * What is built on this world. A works is the one asset kind that cannot
+   * leave, so it is a fact about the ground rather than about a warehouse —
+   * and since it changes hands with the world, it is part of what taking this
+   * world is worth.
+   */
+  const works = worksAt(state, sys.id);
 
   return (
     <div className="system-detail">
@@ -357,6 +365,39 @@ function SystemTab({
             </li>
           ))}
         </ul>
+      )}
+      {/* Built on this world, and taken with it.
+
+          Shown whoever holds it, because a plant or a base is a structure on a
+          surface: `system.ships` is not redacted either. The holder is named
+          rather than assumed, since a works pays whoever stands over the world
+          and that need not be the power that built it. */}
+      {works.length > 0 && (
+        <>
+          <h4>Works here</h4>
+          <ul className="ship-list">
+            {works.map((w) => {
+              const holder = getFaction(state, w.heldBy);
+              const spread =
+                w.yield?.kind === 'stat'
+                  ? w.yield.stats
+                      .map((x) => `${x.points > 0 ? '+' : ''}${x.points} ${x.stat}`)
+                      .join(' · ')
+                  : null;
+              return (
+                <li key={w.id} className="agent-row" title={w.text}>
+                  <span className="swatch" style={{ background: colourOf(state, w.heldBy) }} />
+                  <span style={{ color: colourOf(state, w.heldBy) }}>
+                    {w.kind.replace(/_/g, ' ')}
+                    {' · '}
+                    {holder?.name ?? w.heldBy}
+                  </span>
+                  {spread && <span className="count">{spread}</span>}
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
       {/* Officers standing on this world.
           Not redacted, for the reason `system.ships` is not: they are aboard a
@@ -653,7 +694,12 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
   const wars = warsFor(state, me);
   const agents = agentsVisibleTo(state, me);
   const commitments = commitmentsOf(state, me);
-  const assets = (state.assets ?? []).filter((a) => a.heldBy === me);
+  // Fixtures are deliberately absent: a works cannot be traded, cannot be
+  // pledged and changes hands only with the ground under it, so listing it
+  // among things this power is *holding* invited exactly the bargain the
+  // reducer refuses. It is rendered on the System panel instead, beside the
+  // garrison it is really a property of.
+  const assets = (state.assets ?? []).filter((a) => a.heldBy === me && a.portable);
   const debts = debtsFor(state.debts ?? [], me);
   const loans = loansFor(state.loans ?? [], me);
 
@@ -889,6 +935,19 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
                 <strong style={{ color: colourOf(state, other) }}>
                   {t.type.replace(/_/g, ' ')}
                 </strong>
+                {/* Exclusivity is the actionable half: it is the reason the next
+                    arrangement of this type will be refused at signature, and a
+                    player who cannot see it reads that refusal as the game
+                    being arbitrary. The same gap tolls had — legible in the
+                    Factions panel, invisible where it cost you something. */}
+                {t.exclusive && (
+                  <span
+                    className="chip"
+                    title={`Exclusive: no other ${t.type.replace(/_/g, ' ')} can be entered with anyone else while this stands. Breaking it costs 25 with ${getFaction(state, other)?.name ?? other} and standing with every onlooker.`}
+                  >
+                    exclusive
+                  </span>
+                )}
                 <span className="eta">
                   {t.expiresTurn === null
                     ? 'indefinite'

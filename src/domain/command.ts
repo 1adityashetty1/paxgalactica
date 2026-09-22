@@ -282,6 +282,34 @@ export const OFFICER_LEVERAGE = 60;
 export const OPERATIVE_RANSOM = 120;
 
 /**
+ * A hostage taken is worth this per point of the world's `strategicValue` to
+ * the house they were taken from, and `OFFICER_LEVERAGE` to anybody else.
+ *
+ * Scaled off the world rather than flat, because *"someone who matters"* means
+ * something different on a nine-value capital than on a backwater: the person
+ * a conqueror finds worth holding at Shalka is a different person from the one
+ * at Vosk Marker, and the map already says which is which.
+ */
+export const HOSTAGE_VALUE_PER_POINT = 35;
+
+/**
+ * The roll a storming or a subversion must make to come away with a hostage.
+ *
+ * Read off the top of the same seeded d20 the event already rolled, never a new
+ * one, so a campaign replays exactly — the rule `commanderTaken` and the agent
+ * exposure ladder both follow.
+ *
+ * Deliberately uncommon. A hostage is leverage over a power, and a mechanism
+ * that produced one on every capture would flood the table with them and make
+ * each worth nothing; at 17+ a conqueror takes a person roughly one storming in
+ * five, which is often enough to be a thing that happens and rare enough to be
+ * worth something when it does.
+ */
+export const HOSTAGE_ROLL = 17;
+
+export const hostageTaken = (roll: number): boolean => roll >= HOSTAGE_ROLL;
+
+/**
  * What a prisoner's file is worth against the prisoner.
  *
  * A fraction, because interrogating them **spends** them: the ransom goes and

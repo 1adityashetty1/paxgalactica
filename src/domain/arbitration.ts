@@ -212,6 +212,29 @@ export const MAX_COMMITMENT_INCOME = 25;
 export const COMMITMENT_GOODWILL = 5;
 
 /**
+ * What the other bound parties charge a power that walks away from a
+ * commitment.
+ *
+ * **The goodwill swing is a refund, not a price.** `COMMITMENT_GOODWILL` is paid
+ * on establish and taken back on dissolve, so the two net to zero — and since
+ * disposition has no decay, that made a commitment the only reversible
+ * disposition movement in the game: a power could swear a dynastic marriage or
+ * an exclusive charter and repudiate it the next turn, leaving both sides
+ * exactly where they started. The same bargain written as a treaty costs 25
+ * with the party and `PACT_BREAKING_REPUTATION_COST` with every onlooker,
+ * permanently.
+ *
+ * Set below a treaty's 25 deliberately. A commitment is the *private*
+ * instrument — that is the whole basis on which onlookers get no view of it —
+ * so breaking one is a grievance between the parties rather than a public
+ * scandal, and it should cost less than tearing up paper the galaxy has read.
+ * What it must not be is free, and with the refund on top of it walking away
+ * now costs `COMMITMENT_GOODWILL + COMMITMENT_BREAKING_COST` against the
+ * `COMMITMENT_GOODWILL` it paid.
+ */
+export const COMMITMENT_BREAKING_COST = 12;
+
+/**
  * Everything a faction may draw from arrangements at once.
  *
  * Derived from `influence` rather than being a flat constant, the way

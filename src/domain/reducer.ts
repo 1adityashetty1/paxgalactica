@@ -9,6 +9,7 @@ import {
   type FibScale,
 } from './duration.js';
 import {
+  COMMITMENT_BREAKING_COST,
   COMMITMENT_GOODWILL,
   commitmentIncomeFor,
   conflictingCommitment,
@@ -41,10 +42,13 @@ import {
   AGENT_COST,
   DOSSIER_KIND,
   MAX_ASSET_DISSENT,
+  MAX_ASSET_STAT,
   MAX_ASSET_YIELD,
   MISSION_PROFILE,
   PACT_BREAKING_REPUTATION_COST,
   PEACE_TREATIES,
+  TREATY_GOODWILL,
+  conflictingTreaty,
   isTreatyLive,
   treatyBetween,
   type Asset,
@@ -65,8 +69,10 @@ import {
   commanderTaken,
   ASSASSINATION_KILL_ROLL,
   INTERROGATION_SHARE,
+  HOSTAGE_VALUE_PER_POINT,
   OFFICER_LEVERAGE,
   OPERATIVE_RANSOM,
+  hostageTaken,
   officerRansom,
   commanderLost,
   commanderMight,
@@ -146,6 +152,9 @@ import {
   refusesToBreakOff,
   effectiveStats,
   fleetBases,
+  holdsGround,
+  yardCapacityFor,
+  livesOffTheLanes,
   isGuestOf,
   fleetStrengthOf,
   canSubornAt,
@@ -773,6 +782,69 @@ function settleReturn(
  * mutual and pairwise. A one-party commitment — a standing policy, a charter
  * over your own space — binds nobody else and moves nothing.
  */
+/**
+ * Pay the standing two powers gain by binding themselves to each other in
+ * public. See `TREATY_GOODWILL` for why it is larger than the commitment
+ * version, why onlookers get no term, and why it is never taken back.
+ *
+ * Called where a treaty becomes **active** — at signature, and again where
+ * `tickTurn` promotes a ratified one — for the reason `supersedePriorTreaties`
+ * and `cedeTerritory` are called at both sites: a deal a council still has to
+ * read has not yet done anything, and paying at signature would hand over the
+ * goodwill for a treaty that may never come into force.
+ */
+/**
+ * Whether these parties were ALREADY bound by a live treaty of this type.
+ *
+ * `TREATY_GOODWILL` is paid for binding yourselves to each other, and
+ * rewriting paper you already hold is not a new bond — so a renewal pays
+ * nothing.
+ *
+ * Without this the goodwill is a **pump**, and the war-ending case is exactly
+ * where a player has every reason to work it: signing the identical ceasefire
+ * eight times walks a pair from −50 to +14, because each signature pays +8 and
+ * `supersedePriorTreaties` retires the previous one at no cost whatever. Peace
+ * by redrafting the same document, at a price of nothing.
+ *
+ * Read **before** supersession, which is the pass that retires the treaty this
+ * question is about, and matched on `type` rather than on footprint: two
+ * `trade_accord`s granting different lanes are two legitimate deals and neither
+ * supersedes the other, but they are still one relationship, and the second is
+ * not a fresh act of binding.
+ *
+ * Signing a *different* type does pay — a trade accord and a defence pact are
+ * two distinct bonds — which bounds the total a pair can ever draw from this at
+ * one payment per type, against a negotiation apiece to earn it.
+ */
+function alreadyBound(state: WorldState, incoming: Treaty): boolean {
+  return state.treaties.some(
+    (t) =>
+      t.id !== incoming.id &&
+      t.status === 'active' &&
+      t.type === incoming.type &&
+      t.parties.length === incoming.parties.length &&
+      incoming.parties.every((p) => t.parties.includes(p)),
+  );
+}
+
+function payTreatyGoodwill(state: WorldState, treaty: Treaty, notes: string[]): void {
+  for (const party of treaty.parties) {
+    const faction = state.factions.find((f) => f.id === party);
+    if (!faction) continue;
+    for (const other of treaty.parties) {
+      if (other === party) continue;
+      if (!state.factions.some((f) => f.id === other)) continue;
+      faction.disposition[other] = Math.max(
+        -100,
+        Math.min(100, (faction.disposition[other] ?? 0) + TREATY_GOODWILL),
+      );
+    }
+  }
+  const note = `Bound by treaty: ${treaty.parties.map((p) => nameFor(state, p)).join(' and ')} each gain ${TREATY_GOODWILL} disposition.`;
+  notes.push(note);
+  logEvent(state, 'diplomacy', note, treaty.parties[0] ?? null, [...treaty.parties]);
+}
+
 function adjustCommitmentGoodwill(
   state: WorldState,
   factionIds: string[],
@@ -1192,6 +1264,49 @@ function cedeTerritory(state: WorldState, treaty: Treaty): string[] {
   return notes;
 }
 
+/** See `applyOps`'s `legacy` parameter. */
+export interface LegacyRules {
+  /**
+   * Cut an unaffordable order's surplus out of the hulls the batch ADDED,
+   * rather than out of the faction's richest world in loss order.
+   *
+   * The old trim could not tell a hull laid down this batch from one in service
+   * since turn 0, so an overbuy ate the standing navy. Those campaigns really
+   * did lose those hulls. Journal version 4.
+   */
+  unbuildFromGain?: boolean;
+  /**
+   * Pay `TREATY_GOODWILL` when a treaty comes into force, and charge
+   * `COMMITMENT_BREAKING_COST` when a party walks away from a commitment.
+   *
+   * One flag for both because they are one change: nothing in the treaty path
+   * moved standing upward, and nothing made ending a two-party commitment cost
+   * more than it paid. Ten of the saved campaigns were negotiated under the old
+   * arithmetic and their dispositions are what the powers in them actually
+   * believed. Journal version 5.
+   */
+  arrangementStanding?: boolean;
+  /**
+   * Cap what a faction's yards can lay down in one batch, off `industry`.
+   *
+   * `industry` had no say in construction before this, so a recorded campaign
+   * built at whatever rate its credits allowed — and replaying it under the cap
+   * would quietly hand back fleets those powers really did put in the water.
+   * Journal version 6.
+   */
+  yardCapacity?: boolean;
+  /**
+   * Take a hostage on a storming or a successful subversion.
+   *
+   * A recorded campaign fought those battles and ran those operatives without
+   * anybody being seized, so replaying it under this would mint assets that
+   * never existed — and an asset is tradeable, so it would not stay cosmetic.
+   * Journal version 6, alongside `yardCapacity`: two rules, introduced
+   * together, each with its own flag for the reason the others have theirs.
+   */
+  hostages?: boolean;
+}
+
 export function applyOps(
   input: WorldState,
   rawOps: unknown[],
@@ -1226,7 +1341,22 @@ export function applyOps(
    * according to the journal version. See `JOURNAL_VERSION`.
    */
   atomic = false,
+  /**
+   * Rules a journal written before them was played WITHOUT.
+   *
+   * Every field is on by default, because every one of them is the rule now.
+   * `replay()` turns them off by journal version, so a recorded campaign
+   * rebuilds as the game it was actually played as rather than being re-run
+   * under today's arithmetic — see `JOURNAL_VERSION`.
+   *
+   * An object rather than more positional booleans: `atomic` stays a parameter
+   * because live callers set it, but a caller that wants only the newest
+   * exemption should not have to restate every older one to reach it, and a
+   * third bare `true, false, true` at a call site is unreadable.
+   */
+  legacy: LegacyRules = {},
 ): ApplyResult {
+  const { unbuildFromGain = true, arrangementStanding = true, yardCapacity = true } = legacy;
   const state = cloneState(input);
   const rejections: OpRejection[] = [];
   const notes: string[] = [];
@@ -1337,6 +1467,17 @@ export function applyOps(
    * escort, and must not be handed back a battleship because one happened to be
    * uprooted first.
    */
+  /**
+   * Tons that changed flag this batch rather than coming out of a slipway.
+   *
+   * A suborned crew sails over; it does not occupy a building berth. So it is
+   * still BILLED — CLAUDE.md is explicit that a defection is bought and not
+   * captured — and it does not count against `yardCapacityFor`. Kept separate
+   * from `exempt`, which moves the billing baseline itself and is for hulls
+   * that are neither built nor lost.
+   */
+  const changedFlag = new Map<string, number>();
+
   const uprooted = new Map<string, ShipStack>();
   const commissioned = new Map<string, { count: number; at: StarSystem }>();
   const placed = new Map<string, number>();
@@ -1490,6 +1631,14 @@ export function applyOps(
         const bases = fleetBases(state, op.factionId);
         if (bases.length === 0) {
           reject(raw, 'illegal_value', `${op.factionId} holds no system to base ships at.`);
+          break;
+        }
+        // **No ground, no yards** — see `livesOffTheLanes`. `fleetBases` counts
+        // a system where a faction merely has ships, which is correct for
+        // drawing losses and wrong for building: it let any beaten power go on
+        // commissioning hulls in a rival's orbit forever.
+        if (op.delta > 0 && !canLayDownHulls(state, op.factionId)) {
+          reject(raw, 'no_presence', noYardsMessage(state, op.factionId));
           break;
         }
         if (op.delta >= 0) {
@@ -1796,6 +1945,7 @@ export function applyOps(
         let uses = op.uses;
         let speculative = op.speculative;
         let portable = op.portable;
+        let yielded = op.yield;
         if (shape) {
           if (divisible !== shape.divisible && stated('divisible')) {
             notes.push(
@@ -1806,19 +1956,40 @@ export function applyOps(
           uses = shape.uses;
           if (!stated('speculative')) speculative = shape.speculative;
           if (shape.fixture) portable = false;
+          // **A works is defined by what it modifies**, so a named fixture that
+          // arrived without a yield gets the one its kind means. The same
+          // correction `divisible` and `uses` already take, and for the same
+          // reason: these are the fields whose being wrong quietly turns a
+          // factory into scenery. A caller that stated a yield keeps it — the
+          // catalogue supplies a default, it does not overrule a deliberate
+          // one — and the reducer still clamps the points either way.
+          if (shape.modifies !== undefined && yielded === null) {
+            // One budget, split evenly over the attributes the kind names. At
+            // `MAX_ASSET_STAT` of 2 that is either two points of one stat or
+            // one of each — which is the whole reason the cap on the split is
+            // two, since a half point does not exist on a 1-20 scale.
+            const each = Math.max(1, Math.floor(MAX_ASSET_STAT / shape.modifies.length));
+            yielded = {
+              kind: 'stat',
+              stats: shape.modifies.map((stat) => ({ stat, points: each })),
+            };
+            notes.push(
+              `A ${op.kind} is worth ${shape.modifies.join(' and ')} to whoever holds the ground it stands on; recorded that way.`,
+            );
+          }
         }
 
         // A dossier has no location, so it can carry neither of the two fields
         // that need one. Settled here rather than by rejecting, since both are
         // meaningless on a file rather than wrong.
-        if (isDossier && (op.yield !== null || portable === false)) {
+        if (isDossier && (yielded !== null || portable === false)) {
           notes.push(`A ${DOSSIER_KIND} is paper: it stands nowhere and produces nothing.`);
         }
         // Read off the RESOLVED shape rather than the raw op, because the
         // catalogue is what decides that an `exchange` is a fixture. Checking
         // `op.portable` here let a works archetype skip both this and the
         // presence guard below and land on ground its owner had never reached.
-        if (!isDossier && (portable === false || op.yield !== null) && op.atSystemId === null) {
+        if (!isDossier && (portable === false || yielded !== null) && op.atSystemId === null) {
           reject(
             raw,
             'illegal_value',
@@ -1837,7 +2008,7 @@ export function applyOps(
           : undefined;
         if (
           site &&
-          (portable === false || op.yield !== null) &&
+          (portable === false || yielded !== null) &&
           site.controllerFactionId !== op.heldBy &&
           hullsAt(site, op.heldBy) === 0
         ) {
@@ -1853,7 +2024,7 @@ export function applyOps(
         // are still real at a smaller number, the same shape as
         // `MAX_COMMITMENT_INCOME` and `billConstruction`. Only the paying
         // direction: nothing needs protecting from a power agreeing to pay.
-        let assetYield = isDossier ? null : op.yield;
+        let assetYield = isDossier ? null : yielded;
         if (assetYield?.kind === 'credits' && assetYield.perTurn > MAX_ASSET_YIELD) {
           notes.push(
             `${op.text} would pay ${assetYield.perTurn} a turn; trimmed to ${MAX_ASSET_YIELD}.`,
@@ -1871,6 +2042,42 @@ export function applyOps(
             );
             assetYield = { ...assetYield, perTurn: clamped };
           }
+        }
+        if (assetYield?.kind === 'stat') {
+          // **The split is a trade, not a bonus.** A works spread over two
+          // attributes at full value on each would be worth twice one that
+          // concentrated, so what is capped is the TOTAL — and the trim takes
+          // it off the largest share first, so a lopsided pair stays lopsided
+          // and an even one stays even. Same stat named twice is merged for
+          // the same reason `normaliseStack` exists: a record whose shape
+          // depends on how it was written is a record nobody can read.
+          const merged = new Map<string, number>();
+          for (const { stat, points } of assetYield.stats) {
+            merged.set(stat, (merged.get(stat) ?? 0) + points);
+          }
+          let spread = [...merged].map(([stat, points]) => ({ stat, points })) as {
+            stat: 'might' | 'guile' | 'industry' | 'influence' | 'resolve';
+            points: number;
+          }[];
+          const total = spread.reduce((n, t) => n + Math.abs(t.points), 0);
+          if (total > MAX_ASSET_STAT) {
+            const order = [...spread].sort(
+              (a, b) => Math.abs(b.points) - Math.abs(a.points) || a.stat.localeCompare(b.stat),
+            );
+            let over = total - MAX_ASSET_STAT;
+            for (const term of order) {
+              if (over <= 0) break;
+              const take = Math.min(over, Math.abs(term.points));
+              term.points -= Math.sign(term.points) * take;
+              over -= take;
+            }
+            spread = order.filter((t) => t.points !== 0);
+            notes.push(
+              `${op.text} would be worth ${total} points of attribute; a works is worth ${MAX_ASSET_STAT} however it is split — trimmed.`,
+            );
+          }
+          assetYield =
+            spread.length === 0 ? null : { ...assetYield, stats: spread.slice(0, 2) };
         }
         if (assetYield?.kind === 'asset') {
           assetYield = {
@@ -2947,6 +3154,31 @@ export function applyOps(
           break;
         }
 
+        // CROSS-PARTNER EXCLUSIVITY. Supersession is pair-level, so until this
+        // existed the treaty system could not say "I am already bound to
+        // somebody else" — which is why every arrangement needing to say it was
+        // filed as a `Commitment`, where it is private and was free to walk
+        // away from. See `conflictingTreaty` for why this is a field rather
+        // than a `voidsOn` condition, and why the same pair supersedes while a
+        // different partner is refused.
+        const bound = conflictingTreaty(
+          state.treaties,
+          state.turn,
+          op.treatyType,
+          op.parties,
+          op.exclusive,
+        );
+        if (bound) {
+          const blocked = bound.parties.find((id) => op.parties.includes(id))!;
+          const third = bound.parties.find((id) => id !== blocked) ?? 'another power';
+          reject(
+            raw,
+            'treaty_conflict',
+            `${nameFor(state, blocked)} is already bound by an exclusive ${bound.type.replace(/_/g, ' ')} with ${nameFor(state, third)} (${bound.id}). That has to be dissolved before another can be entered.`,
+          );
+          break;
+        }
+
         // A deal agreed subject to ratification is recorded now and inert until
         // its effective turn. `isTreatyLive` gates on `status === 'active'`, so
         // `pending` costs nothing anywhere else.
@@ -2968,13 +3200,20 @@ export function applyOps(
             | 'broken'
             | 'superseded'
             | 'pending',
+          exclusive: op.exclusive,
           summary: op.summary || `${op.treatyType.replace(/_/g, ' ')} between ${op.parties.join(' and ')}`,
         };
         state.treaties.push(treaty);
         // One live treaty per (pair, type). A pending one supersedes nothing
         // yet — it does so when it is promoted in `tickTurn`, or the parties
         // would have nothing in force while the council deliberates.
-        if (!pending) supersedePriorTreaties(state, treaty, notes);
+        if (!pending) {
+          // Read BEFORE supersession, which is what retires the treaty this
+          // question is about.
+          const renewal = alreadyBound(state, treaty);
+          supersedePriorTreaties(state, treaty, notes);
+          if (arrangementStanding && !renewal) payTreatyGoodwill(state, treaty, notes);
+        }
         logEvent(
           state,
           'diplomacy',
@@ -3375,6 +3614,19 @@ export function applyOps(
         // produced a legitimate one-corvette defection on a natural 20 — and
         // the same op shape would have moved thirty hulls across the galaxy.
         let delta = op.delta;
+        // Placing your OWN new hulls at a named world is the second way to mint
+        // a ship, and it was unguarded — so the territory rule on `adjust_fleet`
+        // would have been one sentence away from being routed around.
+        // Suborning (taking somebody else's) is a transfer, not a build, and is
+        // checked by `canSubornAt` below.
+        if (
+          delta > 0 &&
+          (actor === undefined || op.factionId === actor) &&
+          !canLayDownHulls(state, op.factionId)
+        ) {
+          reject(raw, 'no_presence', noYardsMessage(state, op.factionId));
+          break;
+        }
         if (actor !== undefined && op.factionId !== actor && delta < 0) {
           if (!canSubornAt(state, actor, op.systemId)) {
             reject(
@@ -3533,6 +3785,7 @@ export function applyOps(
           // always said about pricing a defection by class.
           if (actor !== undefined && op.factionId !== actor) {
             addToPool(uprooted, actor, removed);
+            changedFlag.set(actor, (changedFlag.get(actor) ?? 0) + tonsIn(removed));
           }
         }
 
@@ -3767,28 +4020,66 @@ export function applyOps(
         // commitment cost something to have made.
         adjustCommitmentGoodwill(state, found.factionIds, -COMMITMENT_GOODWILL, notes);
 
-        // And tearing up a MULTI-PARTY arrangement is public business, which
-        // walking away from a two-party understanding is not. A playtest
-        // repudiated a compact sworn to four powers one turn earlier, in all
-        // three of its clauses, and paid nothing at all with anybody: a
-        // `Commitment` is not a `Treaty`, so `PACT_BREAKING_REPUTATION_COST`
-        // never applied, and the replacement commitment paid the identical
-        // +20/turn. Repudiation was strictly free.
+        // AND WALKING AWAY HAS TO COST MORE THAN IT PAID. The multi-party case
+        // was patched first: a playtest repudiated a compact sworn to four
+        // powers one turn earlier, in all three of its clauses, and paid
+        // nothing at all with anybody, because a `Commitment` is not a `Treaty`
+        // and `PACT_BREAKING_REPUTATION_COST` never applied.
         //
-        // Charged only to the party doing the tearing, and only when more than
-        // two powers were bound — the goodwill swing above is already the whole
-        // price of ending a private understanding between two.
-        if (actor !== undefined && found.factionIds.length > 2 && found.factionIds.includes(actor)) {
-          for (const witness of state.factions) {
-            if (witness.id === actor) continue;
-            witness.disposition[actor] = Math.max(
-              -100,
-              (witness.disposition[actor] ?? 0) - PACT_BREAKING_REPUTATION_COST,
-            );
+        // The two-party case is the same hole and the argument that left it
+        // open was wrong. It read: "the goodwill swing above is already the
+        // whole price of ending a private understanding between two." But that
+        // swing is a REFUND — `+COMMITMENT_GOODWILL` on establish and
+        // `-COMMITMENT_GOODWILL` here — so the two net to **zero**, and since
+        // disposition has no decay this was the only reversible disposition
+        // movement in the game. A power could swear a dynastic marriage, an
+        // exclusive charter or a standing intelligence duty and repudiate it the
+        // next turn at no net standing loss whatever, while the same bargain
+        // written as a treaty costs 25 with the party and a permanent reputation
+        // hit with every onlooker.
+        //
+        // So the injured party charges it, at `COMMITMENT_BREAKING_COST`. Two
+        // parties is the commonest shape a commitment has, and the one the whole
+        // mechanism was built for.
+        //
+        // **Onlookers only when more than two were bound**, which is the
+        // distinction that survives: a commitment is not public business, so a
+        // private understanding between two is nobody else's to have an opinion
+        // about — but an arrangement sworn to four powers is, and three of them
+        // just watched it torn up.
+        if (actor !== undefined && found.factionIds.length >= 2 && found.factionIds.includes(actor)) {
+          // The pairwise charge is the new half, so it is the half the legacy
+          // exemption turns off. The onlooker cost below predates it and those
+          // journals DID pay it — gating both together would have changed ten
+          // recorded campaigns in the other direction, which is the mistake the
+          // exemption exists to avoid.
+          if (arrangementStanding) {
+            for (const party of found.factionIds) {
+              if (party === actor) continue;
+              const injured = state.factions.find((f) => f.id === party);
+              if (!injured) continue;
+              injured.disposition[actor] = Math.max(
+                -100,
+                (injured.disposition[actor] ?? 0) - COMMITMENT_BREAKING_COST,
+              );
+            }
+            const felt = `${nameFor(state, actor)} walks away from an arrangement it swore: −${COMMITMENT_BREAKING_COST} with ${found.factionIds.filter((id) => id !== actor).map((id) => nameFor(state, id)).join(' and ')}.`;
+            notes.push(felt);
+            logEvent(state, 'diplomacy', felt, actor, [...found.factionIds]);
           }
-          const seen = `${nameFor(state, actor)} tears up an arrangement it swore to ${found.factionIds.length - 1} other powers; everyone notices.`;
-          notes.push(seen);
-          logEvent(state, 'diplomacy', seen, actor);
+
+          if (found.factionIds.length > 2) {
+            for (const witness of state.factions) {
+              if (witness.id === actor) continue;
+              witness.disposition[actor] = Math.max(
+                -100,
+                (witness.disposition[actor] ?? 0) - PACT_BREAKING_REPUTATION_COST,
+              );
+            }
+            const seen = `${nameFor(state, actor)} tears up an arrangement it swore to ${found.factionIds.length - 1} other powers; everyone notices.`;
+            notes.push(seen);
+            logEvent(state, 'diplomacy', seen, actor);
+          }
         }
         logEvent(state, 'diplomacy', `Ended: ${found.text}. ${op.reason}`.trim());
         break;
@@ -4472,7 +4763,9 @@ export function applyOps(
   notes.push(...moveConserved(state, negotiated, 'the terms agreed', actor ?? 'engine'));
   notes.push(...settleDeclaredCredits(state, declaredCredits, declaredPaidOut, notes));
   const pricedByYards = new Set<string>();
-  billConstruction(state, hullsBefore, notes, pricedByYards);
+  billConstruction(
+    state, hullsBefore, shipsBefore, unbuildFromGain, yardCapacity, changedFlag, notes, pricedByYards,
+  );
   refundDuplicateCharges(state, chargedByNarrative, pricedByYards, notes);
 
   // Nothing lands unless everything does. The notes are dropped with the state
@@ -4616,6 +4909,83 @@ function refundDuplicateCharges(
 }
 
 /**
+ * Take somebody who matters, and hold them where they were taken.
+ *
+ * **The two events that produce one are a storming and a subversion**, which is
+ * the whole of it — a hostage was in the catalogue with no mechanism behind it,
+ * reachable only by a model narrating one into being. Both callers already roll
+ * a seeded d20 for something else, and this reads the top of that same roll
+ * rather than taking a new one, so a campaign replays exactly.
+ *
+ * The two are the same act from either side of the wall: a conqueror finds the
+ * ruling house in the residence it just took, and an operative lifts somebody
+ * out of it without an army. Worth a great deal to the power they were taken
+ * from and `OFFICER_LEVERAGE` to everybody else — the same asymmetry
+ * `officerRansom` draws, and the reason a hostage is worth trading rather than
+ * worth keeping.
+ *
+ * Held **at the world**, so it travels with the ground: retake the world and
+ * you have your people back, which is what makes a hostage worth guarding and
+ * a garrison worth leaving. It is the rule every located asset follows.
+ */
+function takeHostage(
+  state: WorldState,
+  captor: string,
+  from: string,
+  where: StarSystem,
+  how: string,
+): void {
+  const worth = Math.max(
+    OFFICER_LEVERAGE,
+    where.strategicValue * HOSTAGE_VALUE_PER_POINT,
+  );
+  const valuePerUnit: Record<string, number> = {};
+  for (const f of state.factions) {
+    if (f.id === captor) continue;
+    valuePerUnit[f.id] = f.id === from ? worth : OFFICER_LEVERAGE;
+  }
+  (state.assets ??= []).push({
+    id: mintId(state, 'ast'),
+    kind: 'hostage',
+    text: `A figure of consequence from ${nameFor(state, from)}'s house on ${where.name}, ${how}`,
+    heldBy: captor,
+    quantity: 1,
+    unit: 'person',
+    commanderId: null,
+    agentId: null,
+    divisible: false,
+    valuePerUnit,
+    speculative: false,
+    valueRange: {},
+    uses: null,
+    atSystemId: where.id,
+    portable: true,
+    yield: null,
+    acquiredTurn: state.turn,
+  } as Asset);
+  const note = `${nameFor(state, captor)} takes a hostage of consequence from ${nameFor(state, from)} on ${where.name}.`;
+  logEvent(state, 'narrative', note, captor, [captor, from]);
+}
+
+/**
+ * Whether this power may commission new hulls at all.
+ *
+ * Ground of its own, or a doctrine that does not need any. See
+ * `livesOffTheLanes` for why the exception is keyed on the ethic rather than on
+ * the faction holding it.
+ */
+function canLayDownHulls(state: WorldState, factionId: string): boolean {
+  if (holdsGround(state, factionId)) return true;
+  const faction = state.factions.find((f) => f.id === factionId);
+  return faction !== undefined && livesOffTheLanes(faction);
+}
+
+/** Said the same way from both minting paths, so a player learns one rule. */
+function noYardsMessage(state: WorldState, factionId: string): string {
+  return `${nameFor(state, factionId)} holds no world, and only a power that lives off the lanes can build without one. Its yards were lost with its last system; take ground before laying down hulls.`;
+}
+
+/**
  * Bill every faction for the hulls it gained this batch, and deliver only what
  * it could pay for.
  *
@@ -4627,10 +4997,42 @@ function refundDuplicateCharges(
  *
  * Losses are never refunded — a scrapped hull returns nothing — so a faction
  * cannot cycle ships through the yards for money.
+ *
+ * ## The surplus comes off the GAIN, never off the fleet
+ *
+ * Comparing whole-faction tonnage is right for deciding **how much** was built
+ * — it is what keeps repositioning free. It is the wrong thing to cut, and for
+ * a long time this cut it anyway: the trim went through `removeTons`, which
+ * spends the faction's richest world in loss order and cannot tell a hull laid
+ * down this batch from one that has been in service since turn 0. So an order
+ * bigger than the treasury **ate the existing navy**. Measured on the seed:
+ * `adjust_fleet +1000` as Arkane on 1,100 credits left battleships up from 16
+ * to 39 and took the escorts from 26 to 18, the lifter and the listener to
+ * zero — three of the 73 tons paid for never arrived, and two hulls the order
+ * never named were scrapped to pay for hulls it did.
+ *
+ * The gain is knowable exactly: `applyOps` already snapshots every system's
+ * stacks, so the positive per-class differences ARE the new hulls. Cutting
+ * heaviest-first out of those leaves everything that was already standing
+ * untouched, and is deterministic on (tonnage, class, system id).
+ *
+ * The bill then follows the delivery rather than leading it. A whole hull is
+ * the smallest thing that can be un-built, so the cut overshoots by up to three
+ * tons, and a faction must not be charged for tonnage that was never laid down;
+ * what is charged is what actually landed, capped by what the treasury could
+ * have afforded. Tonnage already in transit is out of reach either way — it
+ * cannot be un-built — so that much of a shortfall stands, as it always did.
  */
 function billConstruction(
   state: WorldState,
   before: Map<string, number>,
+  shipsBefore: Map<string, Record<string, ShipStack>>,
+  /** False only for a journal written before the gain-scoped trim. */
+  fromGain: boolean,
+  /** False only for a journal written before `industry` reached the yards. */
+  capped: boolean,
+  /** Tons that changed flag rather than being laid down — billed, not built. */
+  changedFlag: Map<string, number>,
   notes: string[],
   /** Factions this pass actually debited, so a duplicate charge can be found. */
   charged: Set<string> = new Set(),
@@ -4643,24 +5045,116 @@ function billConstruction(
     if (gained <= 0) continue;
 
     const affordable = Math.floor(faction.credits / CREDITS_PER_TON);
-    const built = Math.min(gained, affordable);
-    faction.credits -= built * CREDITS_PER_TON;
-    if (built > 0) charged.add(faction.id);
 
-    const shortfall = gained - built;
-    if (shortfall > 0) {
-      // Tonnage in transit cannot be un-built, so trim from systems and accept
-      // a smaller cut if that is all that is reachable.
-      const trimmed = removeTons(state, faction.id, shortfall);
-      const note = `${faction.name} could only pay for ${built} of ${gained} new tons (${CREDITS_PER_TON} credits each); ${trimmed} tons were never laid down.`;
+    // **The yards can only lay down so much at once.** Applied beside the
+    // affordability trim, in the same place and the same shape, because both
+    // answer "how much of this order actually arrives" — one in credits, one
+    // in berths. A defection is billed but does not occupy a berth, so what
+    // the yards are asked for is the gain minus whatever merely changed flag.
+    const swapped = changedFlag.get(faction.id) ?? 0;
+    const laidDown = Math.max(0, gained - swapped);
+    const berths = capped ? yardCapacityFor(state, faction.id) : Number.POSITIVE_INFINITY;
+    const overYard = Math.max(0, laidDown - berths);
+    const deliverable = gained - overYard;
+    if (overYard > 0) {
+      const note = `${faction.name}'s yards can lay down ${berths} tons at a time (industry ${effectiveStats(state, faction.id).industry}); ${overYard} of ${laidDown} tons ordered were not begun.`;
+      notes.push(note);
+      logEvent(state, 'clamp', note, faction.id);
+    }
+
+    const shortfall = deliverable - Math.min(deliverable, affordable);
+    if (!fromGain) {
+      // The rule as it stood when these journals were written: charge what was
+      // affordable and take the surplus out of the fleet at large.
+      const built = Math.min(gained, affordable);
+      faction.credits -= built * CREDITS_PER_TON;
+      if (built > 0) charged.add(faction.id);
+      if (shortfall > 0) {
+        const trimmedLegacy = removeTons(state, faction.id, shortfall);
+        const note = `${faction.name} could only pay for ${built} of ${gained} new tons (${CREDITS_PER_TON} credits each); ${trimmedLegacy} tons were never laid down.`;
+        notes.push(note);
+        logEvent(state, 'system', note, faction.id);
+      } else if (built > 0) {
+        const note = `${faction.name} commissions ${built} tons of shipping for ${built * CREDITS_PER_TON} credits.`;
+        notes.push(note);
+        logEvent(state, 'system', note, faction.id);
+      }
+      continue;
+    }
+    const cut = overYard + shortfall;
+    const trimmed = cut > 0 ? unbuild(state, faction.id, shipsBefore, cut) : 0;
+
+    // What the yards actually handed over, which is the only thing a faction
+    // may be billed for. Capped by affordability, because the part of a
+    // shortfall that could not be reached is tonnage already under way.
+    const delivered = Math.min(gained - trimmed, affordable);
+    faction.credits -= delivered * CREDITS_PER_TON;
+    if (delivered > 0) charged.add(faction.id);
+
+    if (trimmed > 0 || shortfall > 0) {
+      const note = `${faction.name} could only pay for ${delivered} of ${gained} new tons (${CREDITS_PER_TON} credits each); ${trimmed} tons were never laid down.`;
       notes.push(note);
       logEvent(state, 'system', note, faction.id);
-    } else if (built > 0) {
-      const note = `${faction.name} commissions ${built} tons of shipping for ${built * CREDITS_PER_TON} credits.`;
+    } else if (delivered > 0) {
+      const note = `${faction.name} commissions ${delivered} tons of shipping for ${delivered * CREDITS_PER_TON} credits.`;
       notes.push(note);
       logEvent(state, 'system', note, faction.id);
     }
   }
+}
+
+/**
+ * Cut `tons` out of what a faction GAINED this batch, heaviest class first.
+ *
+ * The counterpart of `removeTons` for the one caller that is refusing a
+ * delivery rather than settling a bill against a standing fleet: only hulls
+ * that are in a system now and were not there before the batch are reachable,
+ * so nothing already in service can be spent paying for something else.
+ *
+ * Returns the tons actually removed, which may exceed `tons` by up to a hull:
+ * a ship is the smallest thing that can be un-built. The caller bills what is
+ * left rather than what it asked for, so an overshoot is a smaller bill and
+ * never an uncharged windfall.
+ */
+function unbuild(
+  state: WorldState,
+  factionId: string,
+  shipsBefore: Map<string, Record<string, ShipStack>>,
+  tons: number,
+): number {
+  const gains: { system: StarSystem; hull: HullClass; count: number }[] = [];
+  for (const system of state.systems) {
+    const was = shipsBefore.get(system.id)?.[factionId] ?? {};
+    const now = stackAt(system, factionId);
+    for (const hull of HULL_CLASSES) {
+      const n = (now[hull] ?? 0) - (was[hull] ?? 0);
+      if (n > 0) gains.push({ system, hull, count: n });
+    }
+  }
+  // Heaviest first, so the fewest hulls are refused; ties broken on names so
+  // replay walks the same order on every machine.
+  gains.sort(
+    (a, b) =>
+      HULL_SPEC[b.hull].tonnage - HULL_SPEC[a.hull].tonnage ||
+      a.hull.localeCompare(b.hull) ||
+      a.system.id.localeCompare(b.system.id),
+  );
+
+  let owed = tons;
+  let removed = 0;
+  for (const gain of gains) {
+    if (owed <= 0) break;
+    const each = HULL_SPEC[gain.hull].tonnage;
+    const n = Math.min(gain.count, Math.ceil(owed / each));
+    const stack = { ...stackAt(gain.system, factionId) };
+    const left = (stack[gain.hull] ?? 0) - n;
+    if (left > 0) stack[gain.hull] = left;
+    else delete stack[gain.hull];
+    setStackAt(gain.system, factionId, stack);
+    owed -= n * each;
+    removed += n * each;
+  }
+  return removed;
 }
 
 /**
@@ -4797,7 +5291,8 @@ export interface TickResult extends ApplyResult {
  * everything that completes. This is the only place `transfer_control`
  * originates.
  */
-export function tickTurn(input: WorldState): TickResult {
+export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResult {
+  const { arrangementStanding = true, hostages = true } = legacy;
   const state = cloneState(input);
   const notes: string[] = [];
 
@@ -5146,7 +5641,14 @@ export function tickTurn(input: WorldState): TickResult {
     treaty.status = 'active';
     // It replaces its predecessor now, not at signature — see
     // `supersedePriorTreaties`.
+    const renewal = alreadyBound(state, treaty);
     supersedePriorTreaties(state, treaty, notes);
+    // A ratified treaty pays its goodwill here rather than at signature, the
+    // same rule `supersedePriorTreaties` and `cedeTerritory` follow at both
+    // sites. The legacy flag has to reach the tick for that reason: ten saved
+    // campaigns contain `ratifyTurns`, so gating only the signature path would
+    // have left half the change live during replay.
+    if (arrangementStanding && !renewal) payTreatyGoodwill(state, treaty, notes);
     logEvent(state, 'diplomacy', `Treaty ratified and now in force: ${treaty.summary}.`);
     notes.push(`Ratified: ${treaty.summary}`);
     // A cession takes effect with the rest of the terms, not at signature, so a
@@ -5577,6 +6079,25 @@ export function tickTurn(input: WorldState): TickResult {
       continue;
     }
 
+    // **A subversion can come away with a person.** The operative's counterpart
+    // to a storming: the same act from the other side of the wall, lifting
+    // somebody out of a ruling house without an army. Read off the operative's
+    // own roll rather than a new one, so a campaign replays exactly — and only
+    // on a success, because a mission that failed placed nothing, which is the
+    // rule `routeCovertAction` and `boundPayloadsToOutcome` both draw.
+    //
+    // Scoped to `subversion` alone. It is the mission whose whole business is
+    // turning people, where `theft` takes money and `sabotage` breaks things —
+    // and a hostage from every mission kind would make the rarest asset in the
+    // catalogue the commonest thing on the board.
+    if (hostages && succeeded && agent.mission === 'subversion' && hostageTaken(roll)) {
+      takeHostage(state, agent.ownerFactionId, target.id, host, 'lifted out by an operative');
+      watchNotes.set(
+        agent.id,
+        `has somebody of consequence out of ${target.name}'s house on ${host.name}, and holds them.`,
+      );
+    }
+
     if (agent.effect.kind === 'sedition') {
       // Bounded by the same ceiling a leader's own refusals are, so a spy
       // network cannot do to a rival what the rival could not do to itself.
@@ -5770,7 +6291,7 @@ export function tickTurn(input: WorldState): TickResult {
   }
 
   for (const [systemId, orders] of landings) {
-    const { note: outcome, report: battle } = resolveBattle(state, systemId, orders);
+    const { note: outcome, report: battle } = resolveBattle(state, systemId, orders, hostages);
     notes.push(outcome);
     report.arrivals.push(outcome);
     if (battle) report.battles.push(battle);
@@ -5884,6 +6405,8 @@ function resolveBattle(
   state: WorldState,
   systemId: string,
   orders: PendingOrder[],
+  /** False only for a journal written before a storming could seize anybody. */
+  takesHostages = true,
 ): BattleOutcomeResult {
   const target = state.systems.find((s) => s.id === systemId);
   if (!target) {
@@ -6870,6 +7393,11 @@ function resolveBattle(
       spent -= take;
     }
     for (const [id, st] of attackShare) land(id, st);
+    // The residence falls with the world. Read off the battle's own roll, so
+    // nothing new is drawn and the campaign replays exactly.
+    if (takesHostages && holder !== null && holder !== owner && hostageTaken(roll)) {
+      takeHostage(state, owner, holder, target, 'taken when the world was stormed');
+    }
     const note = `${notes.join(' ')} ${coalition} storms ${target.name}, breaking a garrison of ${garrison} for ${lifterLosses} lifters; ${nameOf(owner)} takes possession with ${target.garrison} troops ashore.`.trim();
     logEvent(state, 'order', note, owner);
     ground('world_taken', note);

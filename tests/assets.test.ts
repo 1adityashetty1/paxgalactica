@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MAX_ASSET_STAT } from '../src/domain/diplomacy.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import { boundPayloadsToOutcome } from '../src/domain/development.js';
@@ -11,7 +12,17 @@ import {
 import { ASSET_ARCHETYPES, archetypeFor, serializeArchetypes } from '../src/domain/assets.js';
 import { serializeAssets, serializeTheirAssets } from '../src/model/serialize.js';
 import { groundInConcessions } from '../src/engine/turn.js';
-import { hullsAt, setStackAt, type WorldState } from '../src/domain/state.js';
+import {
+  STAT_NAMES,
+} from '../src/domain/checks.js';
+import {
+  WORLD_TYPE_STAT,
+  effectiveStats,
+  hullsAt,
+  setStackAt,
+  worksBonus,
+  type WorldState,
+} from '../src/domain/state.js';
 import type { OpInput } from '../src/domain/ops.js';
 
 /**
@@ -82,7 +93,12 @@ describe('assets', () => {
       expect(archetypeFor('dossier')?.divisible).toBe(false);
       expect(archetypeFor('writ')?.uses).toBe(1);
       expect(archetypeFor('ore')?.speculative).toBe(true);
-      expect(archetypeFor('mine')?.fixture).toBe(true);
+      expect(archetypeFor('factory')?.fixture).toBe(true);
+      // A works declares the attribute it is worth to whoever holds the ground.
+      expect(archetypeFor('factory')?.modifies).toEqual(['industry']);
+      expect(archetypeFor('university')?.modifies).toEqual(['guile']);
+      // A works may name two, and then it splits one budget between them.
+      expect(archetypeFor('black_market')?.modifies).toEqual(['guile', 'influence']);
       expect(archetypeFor('nothing_like_this')).toBeUndefined();
     });
 
@@ -131,12 +147,17 @@ describe('assets', () => {
       const s = seed();
       const out = applyOps(
         s,
-        [mint({ kind: 'mine', quantity: 1, unit: 'works', valuePerUnit: {}, atSystemId: world(s).id })],
+        [mint({ kind: 'factory', quantity: 1, unit: 'works', valuePerUnit: {}, atSystemId: world(s).id })],
         'model',
         'ojjul',
       );
       expect(out.rejections).toEqual([]);
       expect(out.state.assets[0]!.portable).toBe(false);
+      // And it is worth what its kind means, without being told.
+      expect(out.state.assets[0]!.yield).toEqual({
+        kind: 'stat',
+        stats: [{ stat: 'industry', points: 2 }],
+      });
     });
   });
 
@@ -524,7 +545,7 @@ describe('assets', () => {
       expect(hullsAt(theirs, 'ojjul')).toBe(0);
       const out = applyOps(
         s,
-        [mint({ kind: 'exchange', quantity: 1, unit: 'works', valuePerUnit: {}, atSystemId: theirs.id })],
+        [mint({ kind: 'stock_exchange', quantity: 1, unit: 'works', valuePerUnit: {}, atSystemId: theirs.id })],
         'model',
         'ojjul',
       );
@@ -535,7 +556,7 @@ describe('assets', () => {
       expect(
         applyOps(
           s,
-          [mint({ kind: 'exchange', quantity: 1, unit: 'works', valuePerUnit: {}, atSystemId: theirs.id })],
+          [mint({ kind: 'stock_exchange', quantity: 1, unit: 'works', valuePerUnit: {}, atSystemId: theirs.id })],
           'model',
           'ojjul',
         ).rejections,
@@ -574,6 +595,98 @@ describe('assets', () => {
       expect(s.assets.some((a) => a.kind === 'ore' && a.quantity === 40)).toBe(true);
     });
   });
+  describe('a works can be run for two things at once', () => {
+    // "Up to two" is the whole shape: a works is worth MAX_ASSET_STAT in total
+    // and may spend it on one attribute or split it between two. At a budget of
+    // 2 that is 2+0 or 1+1, which is why the cap on the split is two — a half
+    // point does not exist on a 1–20 scale.
+    const place = (kind: string) => {
+      const s = seed();
+      const out = applyOps(
+        s,
+        [mint({ kind, quantity: 1, unit: 'works', valuePerUnit: {}, atSystemId: world(s).id })],
+        'model',
+        'ojjul',
+      );
+      expect(out.rejections).toEqual([]);
+      return out.state.assets[0]!.yield as { kind: 'stat'; stats: { stat: string; points: number }[] };
+    };
+
+    it('names every attribute once, and every PAIR of attributes once', () => {
+      // 5 pure + 5C2 split = 15, and the catalogue is complete by construction
+      // rather than by whatever anybody thought to add. Without this a model
+      // reaching for a plausible works — a power plant, a civil service — would find no
+      // archetype behind it and get no default, which is the drift the table
+      // exists to stop.
+      const STATS = ['might', 'guile', 'industry', 'influence', 'resolve'] as const;
+      const works = ASSET_ARCHETYPES.filter((a) => a.fixture);
+      expect(works.every((a) => a.modifies !== undefined)).toBe(true);
+
+      const pure = works.filter((a) => a.modifies!.length === 1);
+      expect(pure.map((a) => a.modifies![0]).sort()).toEqual([...STATS].sort());
+
+      const split = works.filter((a) => a.modifies!.length === 2);
+      const pairs = split.map((a) => [...a.modifies!].sort().join('+')).sort();
+      const every: string[] = [];
+      for (let i = 0; i < STATS.length; i++) {
+        for (let j = i + 1; j < STATS.length; j++) {
+          every.push([STATS[i]!, STATS[j]!].sort().join('+'));
+        }
+      }
+      expect(every).toHaveLength(10); // 5C2
+      expect(pairs).toEqual(every.sort());
+      // No archetype spreads further than a budget of two can pay for.
+      expect(works.every((a) => a.modifies!.length <= 2)).toBe(true);
+      expect(works).toHaveLength(STATS.length + every.length);
+    });
+
+    it('splits one budget evenly when a kind names two attributes', () => {
+      const plain = place('stock_exchange');
+      expect(plain.stats).toEqual([{ stat: 'influence', points: MAX_ASSET_STAT }]);
+
+      const split = place('black_market');
+      expect(split.stats).toEqual([
+        { stat: 'guile', points: 1 },
+        { stat: 'influence', points: 1 },
+      ]);
+      // The same total either way — the split is a trade, not a bonus.
+      const sum = (y: typeof split) => y.stats.reduce((n, t) => n + t.points, 0);
+      expect(sum(split)).toBe(sum(plain));
+    });
+
+    it('trims a works that tries to be worth more by spreading', () => {
+      const s = seed();
+      const out = applyOps(
+        s,
+        [mint({
+          kind: 'grand_works', quantity: 1, unit: 'works', valuePerUnit: {},
+          atSystemId: world(s).id, portable: false,
+          yield: { kind: 'stat', stats: [{ stat: 'might', points: 2 }, { stat: 'guile', points: 2 }] },
+        })],
+        'model',
+        'ojjul',
+      );
+      const y = out.state.assets[0]!.yield as { stats: { stat: string; points: number }[] };
+      expect(y.stats.reduce((n, t) => n + t.points, 0)).toBe(MAX_ASSET_STAT);
+      expect(out.notes.join(' ')).toMatch(/a works is worth 2 however it is split/);
+    });
+
+    it('merges a stat named twice rather than paying it twice', () => {
+      const s = seed();
+      const out = applyOps(
+        s,
+        [mint({
+          kind: 'doubled_works', quantity: 1, unit: 'works', valuePerUnit: {},
+          atSystemId: world(s).id, portable: false,
+          yield: { kind: 'stat', stats: [{ stat: 'guile', points: 1 }, { stat: 'guile', points: 1 }] },
+        })],
+        'model',
+        'ojjul',
+      );
+      const y = out.state.assets[0]!.yield as { stats: { stat: string; points: number }[] };
+      expect(y.stats).toEqual([{ stat: 'guile', points: 2 }]);
+    });
+  });
 });
 
 /**
@@ -584,15 +697,25 @@ describe('assets', () => {
  * kind that never passes through `create_asset`, so the reducer's own
  * corrections are not there to catch a malformed one.
  */
+
+
 describe('the opening board gives every power something to bargain with', () => {
   const opening = () => createSeedState('drajk');
+  /**
+   * The tradeable shelf only. The seed also stands a works on one world per
+   * power, and every property below is about a thing somebody can BUY — a
+   * fixture is refused by `transfer_asset` from both paths, so asking what it
+   * is worth to a rival is asking about a bargain the reducer will not allow.
+   * They are held to their own rules in the block beneath this one.
+   */
+  const cargo = () => opening().assets.filter((a) => a.portable);
 
   it('holds one each, and nothing for the Combine', () => {
     const s = opening();
-    const holders = s.assets.map((a) => a.heldBy).sort();
+    const holders = cargo().map((a) => a.heldBy).sort();
     expect(holders).toEqual(['drajk', 'freeworlds', 'meridian', 'vigil']);
     // Its shelf is the paper: three debts, and `assign_debt` sells one.
-    expect(s.assets.some((a) => a.heldBy === 'ojjul')).toBe(false);
+    expect(cargo().some((a) => a.heldBy === 'ojjul')).toBe(false);
     expect(s.debts.filter((d) => d.creditorFactionId === 'ojjul')).toHaveLength(3);
   });
 
@@ -604,7 +727,7 @@ describe('the opening board gives every power something to bargain with', () => 
     // A seeded yield would be four new income streams on a board whose balance
     // is already measured. `ledgerFor` reads `assetYield`, so this is the line
     // between "something to trade" and "a change to the economy".
-    for (const a of opening().assets) expect(a.yield).toBeNull();
+    for (const a of cargo()) expect(a.yield).toBeNull();
   });
 
   it('can be taken, because each one stands on a world', () => {
@@ -621,7 +744,7 @@ describe('the opening board gives every power something to bargain with', () => 
     // The whole of gains-from-trade, and the reason `valuePerUnit` is keyed by
     // faction at all. A shelf of things worth the same to everyone is a shelf
     // nobody has a reason to bargain over.
-    for (const a of opening().assets) {
+    for (const a of cargo()) {
       if (a.speculative) {
         const bands = Object.entries(a.valueRange);
         expect(bands.length).toBeGreaterThan(0);
@@ -637,7 +760,7 @@ describe('the opening board gives every power something to bargain with', () => 
   });
 
   it('is worth roughly the same to each best buyer, so nobody opens ahead', () => {
-    const worth = opening().assets.map((a) =>
+    const worth = cargo().map((a) =>
       a.speculative
         ? Math.max(...Object.values(a.valueRange).map((b) => ((b.min + b.max) / 2) * a.quantity))
         : Math.max(...Object.values(a.valuePerUnit)) * a.quantity,
@@ -648,6 +771,99 @@ describe('the opening board gives every power something to bargain with', () => 
     for (const w of worth) {
       expect(w).toBeGreaterThan(400);
       expect(w).toBeLessThan(560);
+    }
+  });
+});
+
+describe('the opening board also stands a works on one world per power', () => {
+  const works = () => createSeedState('drajk').assets.filter((a) => !a.portable);
+
+  it('gives one to each of the five, on a world that power holds', () => {
+    const s = createSeedState('drajk');
+    const fixed = s.assets.filter((a) => !a.portable);
+    expect(fixed.map((a) => a.heldBy).sort()).toEqual([
+      'drajk',
+      'freeworlds',
+      'meridian',
+      'ojjul',
+      'vigil',
+    ]);
+    // Unlike the cargo, the Combine gets one: a works is not a thing to sell,
+    // so the argument that its shelf is the paper does not reach it.
+    for (const a of fixed) {
+      const at = s.systems.find((x) => x.id === a.atSystemId)!;
+      expect(at.controllerFactionId, `${a.kind} at ${a.atSystemId}`).toBe(a.heldBy);
+    }
+  });
+
+  it('builds what the ground makes, so the modifier is legible from the map', () => {
+    // The whole reason the archetype is keyed on `worldType` rather than on the
+    // power: you can see what a world is, so you can see what is built on it.
+    // Among the pair rather than leading it — `modifies` is in canonical stat
+    // order, so insisting on the lead would pick the archetype by alphabet.
+    const s = createSeedState('drajk');
+    for (const a of s.assets.filter((x) => !x.portable)) {
+      const at = s.systems.find((x) => x.id === a.atSystemId)!;
+      const shape = ASSET_ARCHETYPES.find((x) => x.kind === a.kind)!;
+      expect(shape.fixture, a.kind).toBe(true);
+      expect(a.yield?.kind).toBe('stat');
+      const stats = a.yield?.kind === 'stat' ? a.yield.stats : [];
+      expect(stats.map((x) => x.stat), a.kind).toEqual(shape.modifies);
+      expect(stats.map((x) => x.stat), a.kind).toContain(WORLD_TYPE_STAT[at.worldType]);
+    }
+  });
+
+  it('is worth exactly what its kind is worth, split the way the reducer splits it', () => {
+    // The first version seeded PURE archetypes at half of `MAX_ASSET_STAT`,
+    // which is a thing the catalogue cannot say: a `military_base` is two
+    // points of might by its own entry, so a seeded one worth a single point
+    // made the same named kind mean two different things depending on where it
+    // came from. Every seeded works is a split one at the full budget instead,
+    // which is +1/+1 by exactly the arithmetic a player's gets.
+    for (const a of works()) {
+      const shape = ASSET_ARCHETYPES.find((x) => x.kind === a.kind)!;
+      expect(shape.modifies, a.kind).toHaveLength(2);
+      const stats = a.yield?.kind === 'stat' ? a.yield.stats : [];
+      const spent = stats.reduce((n, x) => n + x.points, 0);
+      expect(spent, a.kind).toBe(MAX_ASSET_STAT);
+      for (const { points } of stats) expect(points, a.kind).toBe(1);
+    }
+  });
+
+  it('leaves every power off the top of the scale on turn 0', () => {
+    // Pure works at the full budget put three powers ON the 20 cap on turn 1 —
+    // the Vigil's might, the Combine's guile, the Closing's resolve — and a
+    // scale whose ceiling is where you start has nothing left to play for.
+    // Spreading the same two points over two attributes is what keeps them
+    // under it, so this is the property the split is really buying.
+    const s = createSeedState('drajk');
+    const bare = { ...s, assets: s.assets.filter((a) => a.portable) };
+    for (const f of s.factions) {
+      const with_ = effectiveStats(s, f.id);
+      const without = effectiveStats(bare, f.id);
+      for (const stat of STAT_NAMES) {
+        // No works may be the thing that puts a stat on the ceiling.
+        if (with_[stat] === 20) expect(without[stat], `${f.id} ${stat}`).toBe(20);
+      }
+    }
+  });
+
+  it('is priced at nothing, because no bargain can ever settle it', () => {
+    // `transfer_asset` refuses a fixture from both paths, and
+    // `serializeTheirAssets` filters a counterparty's shelf by what the viewer
+    // would pay — so a priced works would advertise itself as being for sale.
+    for (const a of works()) {
+      expect(a.valuePerUnit).toEqual({});
+      expect(a.valueRange).toEqual({});
+    }
+  });
+
+  it('reaches the holder it is standing over, and nobody else', () => {
+    const s = createSeedState('drajk');
+    for (const a of s.assets.filter((x) => !x.portable)) {
+      const stats = a.yield?.kind === 'stat' ? a.yield.stats : [];
+      const bonus = worksBonus(s, a.heldBy);
+      for (const { stat, points } of stats) expect(bonus[stat]).toBe(points);
     }
   });
 });
