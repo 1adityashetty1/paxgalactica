@@ -2,6 +2,10 @@ import type { FactionStats } from '../domain/checks.js';
 import type { DurationCategory } from '../domain/duration.js';
 import type { WorldType } from '../domain/state.js';
 import { commanderArchetype, commanderName } from '../domain/command.js';
+import { MAX_ASSET_STAT } from '../domain/diplomacy.js';
+
+/** What a seeded works is worth, against the `MAX_ASSET_STAT` a built one gets. */
+const SEED_WORKS_POINTS = Math.max(1, Math.floor(MAX_ASSET_STAT / 2));
 import {
   HULL_SPEC,
   normaliseStack,
@@ -785,6 +789,90 @@ export function createSeedState(playerFactionId: string): WorldState {
         commanderId: null,
         agentId: null,
       },
+      /**
+       * And five works, one apiece — the half of the catalogue the four above
+       * cannot demonstrate.
+       *
+       * A works is the opposite kind of thing to the cargo above it: it cannot
+       * be traded, it is worth nothing to anybody as a thing, and what it does
+       * is modify the power standing over it. So the opening board needed some,
+       * for the reason it needed cargo at all — a mechanic nobody can point at
+       * on turn 0 is one no persona reaches for and no player learns exists.
+       *
+       * **Keyed on the ground, not on the power.** The archetype is whatever
+       * `WORLD_TYPE_STAT` says that world produces — a foundry on an industrial
+       * moon, a base on hard ground, schools on a world that never sleeps —
+       * which is the same claim the terrain bonus makes, said as a building.
+       * That also makes them legible from the map: you can see what a world is,
+       * so you can see what is likely built on it.
+       *
+       * **One each, and five distinct attributes**, so no power opens with a
+       * modifier everybody has — the failure the world-type thresholds were set
+       * at two to avoid. The pairing is the power's own ground doing what that
+       * power is: the Authority's exchange, the Vigil's fleet station, the
+       * Combine's schools on the great junction, the Closing's hospital, and
+       * the yards Drajk has never had.
+       *
+       * **Each is on a world that can be taken**, which is the whole of why a
+       * works sits somewhere rather than on a balance sheet: `worksBonus` pays
+       * only while its holder still stands over the ground, so storming Tulgarn
+       * does not merely cost Drajk a world, it costs it the slipways.
+       *
+       * Worth nothing to anybody in `valuePerUnit`, deliberately. A fixture is
+       * refused by `transfer_asset` from both paths, so a price on one is a
+       * number no bargain can ever settle — and `serializeTheirAssets` filters a
+       * counterparty's shelf by what the viewer would pay, so a priced works
+       * would advertise itself as being for sale.
+       */
+      ...(
+        [
+          // Meridian: "commerce is sovereignty", written as a building. Brannix
+          // is the Authority's populous world and an exchange is what it does
+          // with one.
+          ['meridian', 'sek-4', 'stock_exchange', 'influence',
+            'The Brannix clearing house, chartered by the Authority and settling most of the Verge\u2019s paper.'],
+          // The Vigil: hard ground, and the fleet station the Empire left on it.
+          ['vigil', 'tor-2', 'military_base', 'might',
+            'The fleet station at Kalzir \u2014 ranges, berths and a garrison school the Remnant never let close.'],
+          // The Combine: schools on the map’s greatest junction, which is
+          // where its guile is actually manufactured.
+          ['ojjul', 'ilv-2', 'university', 'guile',
+            'The Shalka faculties: languages, accounts and navigation, endowed by the families and attended by everybody\u2019s children.'],
+          // The Closing: a power that counts its dead keeps its people alive.
+          ['freeworlds', 'ark-4', 'hospital', 'resolve',
+            'The Vashka wards, built after the Closing and kept open since on nobody\u2019s charity.'],
+          // Drajk: the one thing the Confederacy has never had, on the one
+          // industrial world it holds — and the first thing anybody taking
+          // Tulgarn would take off it.
+          ['drajk', 'ark-5', 'factory', 'industry',
+            'The Tulgarn yards, cut into the moon by somebody else and run since by whoever holds the rock.'],
+        ] as const
+      ).map(([held, where, kind, stat, text], i) => ({
+        id: `ast-0-${4 + i}`,
+        kind,
+        text,
+        heldBy: held,
+        quantity: 1,
+        unit: 'works',
+        divisible: false,
+        valuePerUnit: {},
+        speculative: false,
+        valueRange: {},
+        uses: null,
+        atSystemId: where,
+        portable: false,
+        // **One point, not the two a player-built works gets**, and that is
+        // the same restraint the cargo above shows by carrying no `yield` at
+        // all. Three powers came out pinned at 20 on their own peak stat at the
+        // full budget — the Vigil's might, the Combine's guile, the Closing's
+        // resolve — and a scale whose ceiling is where you START is a scale with
+        // nothing left to play for. At one, `MAX_ASSET_STAT` stays somewhere a
+        // power reaches by taking a second works off somebody.
+        yield: { kind: 'stat' as const, stats: [{ stat, points: SEED_WORKS_POINTS }] },
+        acquiredTurn: 0,
+        commanderId: null,
+        agentId: null,
+      })),
     ],
     // Nor does anybody start owing a squadron. A loan moves real hulls between
     // powers, so seeding one would move the opening board — every fleet

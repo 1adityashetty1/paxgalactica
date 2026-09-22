@@ -578,7 +578,11 @@ describe('standing arrangements pay', () => {
   });
 
   it('derives the ceiling from influence, putting the trading house above the remnant', () => {
+    // The ceiling is derived from the sheet, so the seeded works are cleared:
+    // Meridian's exchange at Brannix is a point of influence and would be
+    // measured here as part of a rule that is about the base stat.
     const state = fresh();
+    state.assets = (state.assets ?? []).filter((a) => a.portable);
     expect(maxCommitmentIncomeFor(state, 'meridian')).toBe(50);
     expect(maxCommitmentIncomeFor(state, 'ojjul')).toBe(40);
     expect(maxCommitmentIncomeFor(state, 'vigil')).toBe(MIN_COMMITMENT_INCOME_CEILING);

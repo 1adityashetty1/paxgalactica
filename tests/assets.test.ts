@@ -12,7 +12,7 @@ import {
 import { ASSET_ARCHETYPES, archetypeFor, serializeArchetypes } from '../src/domain/assets.js';
 import { serializeAssets, serializeTheirAssets } from '../src/model/serialize.js';
 import { groundInConcessions } from '../src/engine/turn.js';
-import { hullsAt, setStackAt, type WorldState } from '../src/domain/state.js';
+import { WORLD_TYPE_STAT, hullsAt, setStackAt, worksBonus, type WorldState } from '../src/domain/state.js';
 import type { OpInput } from '../src/domain/ops.js';
 
 /**
@@ -691,13 +691,21 @@ describe('assets', () => {
 
 describe('the opening board gives every power something to bargain with', () => {
   const opening = () => createSeedState('drajk');
+  /**
+   * The tradeable shelf only. The seed also stands a works on one world per
+   * power, and every property below is about a thing somebody can BUY — a
+   * fixture is refused by `transfer_asset` from both paths, so asking what it
+   * is worth to a rival is asking about a bargain the reducer will not allow.
+   * They are held to their own rules in the block beneath this one.
+   */
+  const cargo = () => opening().assets.filter((a) => a.portable);
 
   it('holds one each, and nothing for the Combine', () => {
     const s = opening();
-    const holders = s.assets.map((a) => a.heldBy).sort();
+    const holders = cargo().map((a) => a.heldBy).sort();
     expect(holders).toEqual(['drajk', 'freeworlds', 'meridian', 'vigil']);
     // Its shelf is the paper: three debts, and `assign_debt` sells one.
-    expect(s.assets.some((a) => a.heldBy === 'ojjul')).toBe(false);
+    expect(cargo().some((a) => a.heldBy === 'ojjul')).toBe(false);
     expect(s.debts.filter((d) => d.creditorFactionId === 'ojjul')).toHaveLength(3);
   });
 
@@ -709,7 +717,7 @@ describe('the opening board gives every power something to bargain with', () => 
     // A seeded yield would be four new income streams on a board whose balance
     // is already measured. `ledgerFor` reads `assetYield`, so this is the line
     // between "something to trade" and "a change to the economy".
-    for (const a of opening().assets) expect(a.yield).toBeNull();
+    for (const a of cargo()) expect(a.yield).toBeNull();
   });
 
   it('can be taken, because each one stands on a world', () => {
@@ -726,7 +734,7 @@ describe('the opening board gives every power something to bargain with', () => 
     // The whole of gains-from-trade, and the reason `valuePerUnit` is keyed by
     // faction at all. A shelf of things worth the same to everyone is a shelf
     // nobody has a reason to bargain over.
-    for (const a of opening().assets) {
+    for (const a of cargo()) {
       if (a.speculative) {
         const bands = Object.entries(a.valueRange);
         expect(bands.length).toBeGreaterThan(0);
@@ -742,7 +750,7 @@ describe('the opening board gives every power something to bargain with', () => 
   });
 
   it('is worth roughly the same to each best buyer, so nobody opens ahead', () => {
-    const worth = opening().assets.map((a) =>
+    const worth = cargo().map((a) =>
       a.speculative
         ? Math.max(...Object.values(a.valueRange).map((b) => ((b.min + b.max) / 2) * a.quantity))
         : Math.max(...Object.values(a.valuePerUnit)) * a.quantity,
@@ -753,6 +761,72 @@ describe('the opening board gives every power something to bargain with', () => 
     for (const w of worth) {
       expect(w).toBeGreaterThan(400);
       expect(w).toBeLessThan(560);
+    }
+  });
+});
+
+describe('the opening board also stands a works on one world per power', () => {
+  const works = () => createSeedState('drajk').assets.filter((a) => !a.portable);
+
+  it('gives one to each of the five, on a world that power holds', () => {
+    const s = createSeedState('drajk');
+    const fixed = s.assets.filter((a) => !a.portable);
+    expect(fixed.map((a) => a.heldBy).sort()).toEqual([
+      'drajk',
+      'freeworlds',
+      'meridian',
+      'ojjul',
+      'vigil',
+    ]);
+    // Unlike the cargo, the Combine gets one: a works is not a thing to sell,
+    // so the argument that its shelf is the paper does not reach it.
+    for (const a of fixed) {
+      const at = s.systems.find((x) => x.id === a.atSystemId)!;
+      expect(at.controllerFactionId, `${a.kind} at ${a.atSystemId}`).toBe(a.heldBy);
+    }
+  });
+
+  it('builds what the ground makes, so the modifier is legible from the map', () => {
+    // The whole reason the archetype is keyed on `worldType` rather than on the
+    // power: you can see what a world is, so you can see what is built on it.
+    const s = createSeedState('drajk');
+    for (const a of s.assets.filter((x) => !x.portable)) {
+      const at = s.systems.find((x) => x.id === a.atSystemId)!;
+      const shape = ASSET_ARCHETYPES.find((x) => x.kind === a.kind)!;
+      expect(shape.fixture, a.kind).toBe(true);
+      expect(a.yield?.kind).toBe('stat');
+      const stats = a.yield?.kind === 'stat' ? a.yield.stats : [];
+      expect(stats.map((x) => x.stat)).toEqual([WORLD_TYPE_STAT[at.worldType]]);
+      expect(stats.map((x) => x.stat)).toEqual(shape.modifies);
+    }
+  });
+
+  it('is worth a point rather than the full budget, so the cap is still somewhere to get to', () => {
+    // Three powers came out pinned at 20 on their own peak stat when these were
+    // seeded at `MAX_ASSET_STAT`, and a scale whose ceiling is where you start
+    // has nothing left to play for.
+    for (const a of works()) {
+      const stats = a.yield?.kind === 'stat' ? a.yield.stats : [];
+      for (const { points } of stats) expect(points).toBeLessThan(MAX_ASSET_STAT);
+    }
+  });
+
+  it('is priced at nothing, because no bargain can ever settle it', () => {
+    // `transfer_asset` refuses a fixture from both paths, and
+    // `serializeTheirAssets` filters a counterparty's shelf by what the viewer
+    // would pay — so a priced works would advertise itself as being for sale.
+    for (const a of works()) {
+      expect(a.valuePerUnit).toEqual({});
+      expect(a.valueRange).toEqual({});
+    }
+  });
+
+  it('reaches the holder it is standing over, and nobody else', () => {
+    const s = createSeedState('drajk');
+    for (const a of s.assets.filter((x) => !x.portable)) {
+      const stats = a.yield?.kind === 'stat' ? a.yield.stats : [];
+      const bonus = worksBonus(s, a.heldBy);
+      for (const { stat, points } of stats) expect(bonus[stat]).toBe(points);
     }
   });
 });

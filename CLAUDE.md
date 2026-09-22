@@ -1688,7 +1688,7 @@ could be invented at all.
 |---|---|
 | a successful attempt | `create_asset` from the resolution pass, stripped by `boundPayloadsToOutcome` on a failure and **halved** on a partial — an asset has a magnitude, unlike an operative, who is placed or is not |
 | a world changing hands | anything with that `atSystemId` goes with it |
-| **the seed** | four, authored — one per power except the Combine |
+| **the seed** | nine, authored — four cargo (one per power except the Combine) and five works (one apiece) |
 
 `create_asset` is refused from an **accord** (`declared_only`): a conversation
 trades what exists and cannot conjure what does not. It is also refused when the
@@ -1708,7 +1708,8 @@ the state it was built to replace. Nothing could be ransomed, no file bought,
 and the gains-from-trade argument that makes `valuePerUnit` per-faction had
 nothing to price.
 
-Four properties, each load-bearing:
+Four properties of the **cargo**, each load-bearing — the seeded works below
+are a different kind of thing and keep none of them:
 
 - **None of them pays.** No `yield` anywhere. These exist to be traded, not to
   change the economy: four seeded income streams would be four new
@@ -1720,8 +1721,8 @@ Four properties, each load-bearing:
 - **Roughly equal**, at 400–500 to the best buyer, so no opening position is
   decided by what a power happens to be holding.
 
-The Combine holds none, and that is not an oversight: its shelf is the paper —
-three debts, and `assign_debt` is how a creditor sells one. The richest power on
+The Combine holds no **cargo**, and that is not an oversight: its shelf is the
+paper — three debts, and `assign_debt` is how a creditor sells one. The richest power on
 the board is the one whose tradeable inventory is claims on everybody else,
 which is that faction stated as a balance sheet.
 
@@ -1735,6 +1736,94 @@ whether they can be used at all, not what a ton of something costs.
 declarable; **taking** another power's needs them, so it is refused from a
 declaration with `needs_consent` and reachable from an accord — the same rule
 `terms.territory` follows.
+
+### And five works, because cargo cannot demonstrate the other half
+
+Those four are all things you carry, and half the catalogue is things that
+**are** the ground. A mechanic nobody can point at on turn 0 is one no persona
+reaches for and no player learns exists — the argument that put cargo on the
+opening board in the first place — so the seed stands a works on one world per
+power.
+
+**Keyed on the ground, not on the power.** The archetype is whatever
+`WORLD_TYPE_STAT` says that world produces: a foundry on an industrial moon, a
+fleet station on hard ground, schools on a world that never sleeps. That is the
+same claim the terrain bonus already makes, said as a building — and it is what
+makes the modifier legible from the map, since you can see what a world is and
+therefore what is likely built on it.
+
+**One each, five distinct attributes**, so nobody opens with a modifier
+everybody has. That is the failure `WORLD_BONUS_THRESHOLDS` was set at two to
+avoid, and it is easy to walk back into here: a fixture on every held world
+gives four of the five powers a point on four stats apiece. The pairing is each
+power's own ground doing what that power is — Meridian's clearing house at
+Brannix, the Vigil's fleet station at Kalzir, the Combine's faculties on the
+map's greatest junction, the Closing's wards at Vashka, and the yards Drajk has
+never had.
+
+| power | world | type | works | |
+|---|---|---|---|---|
+| Meridian | sek-4 Brannix | earthlike | `stock_exchange` | +1 influence |
+| Iron Vigil | tor-2 Kalzir | arid | `military_base` | +1 might |
+| Ojjul Nar | ilv-2 Shalka | earthnight | `university` | +1 guile |
+| Arkane | ark-4 Vashka | oceanic | `hospital` | +1 resolve |
+| Drajk | ark-5 Tulgarn | industrialmoon | `factory` | +1 industry |
+
+**The Combine gets one**, unlike the cargo. Its shelf is the paper because a
+works is not a thing to sell, so the argument that kept it off the tradeable
+board does not reach this at all.
+
+**A point, not the `MAX_ASSET_STAT` a built one gets**, and that was measured
+rather than chosen for taste. At the full budget three powers came out **pinned
+at 20 on their own peak stat** on turn 0 — the Vigil's might, the Combine's
+guile, the Closing's resolve — and a scale whose ceiling is where you start has
+nothing left to play for. At one, the cap stays somewhere a power reaches by
+taking a second works off somebody, which is the behaviour the clamp exists to
+produce. The same restraint the cargo shows by carrying no `yield` at all.
+
+**Each stands on a world that can be taken**, which is the whole of why a works
+sits somewhere rather than on a balance sheet: `worksBonus` pays only while its
+holder is still over the ground, so storming Tulgarn does not merely cost Drajk
+a world, it costs it the slipways.
+
+**Priced at nothing**, deliberately. A fixture is refused by `transfer_asset`
+from both paths, so a figure on one is a number no bargain can ever settle — and
+`serializeTheirAssets` filters a counterparty's shelf by what the viewer would
+pay, so a priced works would advertise itself as being for sale.
+
+Measured: `pnpm balance 30` is unchanged at **6/8/5/5/1** with the 58/42 mix and
+the poorest net at 8, and `pnpm fleetlab` is byte-identical. Four existing tests
+broke and all four were right to — they pinned `effectiveStats`,
+`maxCommitmentIncomeFor` and a commander passive against the seed's **base**
+stats, which now compose a works term too. Each was isolated by clearing the
+seeded fixtures rather than by adjusting its expected number, the same way the
+dissent tests clear `commanders`.
+
+> A campaign journaled before this replays differently, because `replay()`
+> rebuilds from `createSeedState` and the seed moved. Nothing is done about
+> that, for the reason the faction rename gives: `saves/` is gitignored, a save
+> is a local artifact of one machine, and a permanent migration script carrying
+> a one-time seed edit has no ongoing job.
+
+### A works is drawn on the world, not in the warehouse
+
+It rendered under **Held** on the Treaties panel, beside prisoners and ore and
+under a chip saying what the keenest buyer would pay — which is three claims
+that are false of a fixture at once. It cannot be handed over, it cannot be
+pledged, and no buyer can ever pay anything for it.
+
+`worksAt` puts it on the **System** panel instead, beside the garrison and the
+ships, which is where the question it answers lives: *what is built on this
+world, and what does taking it get me*. Exactly the correction the operative
+list took when it moved off the Treaties panel, and for the same reason — a
+mechanic whose whole nature is that it is SOMEWHERE was answerable only from a
+global list.
+
+Shown **whoever holds it**, and not scoped by viewer: a plant, a base or a
+hospital is a structure on a surface, visible exactly as `system.ships` is
+visible. What stays hidden is that power's **orders**, which is a different
+question. The holder is named rather than assumed, because a works pays whoever
+stands over the world and that need not be the power that built it.
 
 ### What makes it bite
 
@@ -4756,6 +4845,11 @@ component is logic nothing checks.
   unaligned ice worlds, and three identical paragraphs read as a bug. Picked by
   a hash of the **system id** and deliberately not `rollD20`, which is seeded on
   the turn: a world's character must not change because time passed.
+
+  **A works is listed on the world it stands on**, and nowhere else. See "A
+  works is drawn on the world, not in the warehouse" above: it used to render
+  under **Held** on the Treaties panel, beside cargo and under a price no
+  bargain can ever settle.
 
   **Operatives are listed per world as well as globally**, and the per-world
   list is the one a player actually asks for. An operative has an `atSystemId`,

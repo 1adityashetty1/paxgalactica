@@ -45,6 +45,7 @@ import {
   type Agent,
   type Treaty,
   AssetSchema,
+  type Asset,
   MAX_ASSET_STAT,
 } from './diplomacy.js';
 import { DebtSchema, MAX_DEBT_PER_TURN, scheduledDebtService, type Debt } from './debt.js';
@@ -1159,6 +1160,25 @@ export function worksBonus(state: WorldState, factionId: string): Partial<Factio
     if (n !== undefined) out[stat] = Math.max(-MAX_ASSET_STAT, Math.min(MAX_ASSET_STAT, n));
   }
   return out;
+}
+
+/**
+ * The works standing on one world.
+ *
+ * A fixture is the one asset kind that IS the ground: it cannot be handed over,
+ * it changes hands only with the world, and what it modifies is read off
+ * whoever holds that world. So it belongs on the system panel beside the
+ * garrison and the ships, not in a warehouse list of things a power is
+ * carrying — the same correction the operative list took when it moved off the
+ * Treaties panel, and for the same reason: the question a player asks about a
+ * works is *what is built on this world*.
+ *
+ * Not scoped by viewer. A plant, a base or a hospital is a structure on a
+ * surface, visible exactly as `system.ships` is visible; what stays hidden is
+ * the power's ORDERS, which is a different question.
+ */
+export function worksAt(state: WorldState, systemId: string): Asset[] {
+  return (state.assets ?? []).filter((a) => !a.portable && a.atSystemId === systemId);
 }
 
 export function maxAgentsFor(state: WorldState, factionId: string): number {
