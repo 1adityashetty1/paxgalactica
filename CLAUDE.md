@@ -5068,6 +5068,14 @@ component is logic nothing checks.
   a hash of the **system id** and deliberately not `rollD20`, which is seeded on
   the turn: a world's character must not change because time passed.
 
+  **Assets is its own tab**, and the only one carrying a count on its label. A
+  treaty is an arrangement you negotiated and so already know about; an asset
+  *arrives* — a prisoner off a won battle, an operative caught, a dossier out of
+  an accord — unasked, and filed one scroll down inside Treaties, a thing that
+  appears on its own is a thing nobody sees appear. The tab strip **wraps**
+  rather than dividing the panel's ~310px nine ways, which truncated every label
+  but "Log"; an empty shelf says what would fill it rather than rendering blank.
+
   **A fixture is listed on the world it stands on**, and nowhere else. See "A
   fixture is drawn on the world, not in the warehouse" above: it used to render
   under **Held** on the Treaties panel, beside cargo and under a price no

@@ -13,7 +13,7 @@ closed — the reasoning is the useful part, and a fixed item explains why the c
 looks the way it does.
 
 Statuses are checked against the code, not carried forward from the label. The
-last audit was **2026-09-16**.
+last audit was **2026-09-23**.
 
 ---
 
@@ -66,6 +66,16 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~109~~ | ~~five design questions about officers, and three of them were defects~~ | medium | **FIXED/BUILT** — the spy contest read base stats where suborning read effective; a captured officer was invisible to third parties; assassination could not reach a person. Plus named operatives, unique names, and operatives taken alive |
 | ~~110~~ | ~~a ransomed operative was a person you owned and could not employ~~ | small | **BUILT** — `deploy_agent` takes `fromAssetId` and clears `exposed`; operatives get a record and a permanent mark for being caught, with a capture costing exactly one full ladder |
 | ~~115~~ | ~~an unaffordable order was paid for out of the standing fleet~~ | small | **FIXED** — the surplus comes off the batch's own gain now, and the bill follows the delivery. `JOURNAL_VERSION` 4, with the exemption that keeps all 48 saves byte-identical |
+| **116** | the commitment income ceiling is reported twice at signature | small | two blocks in `establish_commitment` answer item 51 in different words; one should go |
+| **117** | is `PAXGALACTICA_RAW_JSON=1` the default? | — | the latency half is measured (4 turns: declare 37.8s → 20.8s); what is missing is `extraction`, an attack turn and ten turns of volume — see the entry below the table |
+| **118** | resolution takes 3–6 agentic turns where 2 is the floor | small | reactions with thinking on nested their answer under `StructuredOutput`; the trace now records rejected keys, so one traced campaign says whether resolution does the same |
+| **119** | reactions without thinking, on a turn where the player attacks | — | measured only on mild turns (#37); a power that thought less would show it here |
+| **120** | every check is logged twice | small | `calls.ts` logs `[check] … -> outcome` and `turn.ts` stages a `log_narrative` with `describeCheck`, `→ outcome` — two entries per roll in the event log, the prompts' recent log and the Log panel |
+| **121** | two escorts take five turns | small | resolution filed "commission two escorts" as `capital_ship_construction`, whose floor is 5; `refit` and `retooling` also deliver `commission_ships` faster. `prompts/resolution.md` lists all three with no guidance on which a light hull wants — the category should follow the hull, and the clamp at least should say so |
+
+**Audited 2026-09-23:** every numbered item above 81 is built or closed except
+**92**, **94(b)** and the four added today. Of those, **116** is code and the rest
+are campaigns — **117**–**119** can share one traced run if it includes an attack.
 
 **What is left is a playtest.** Everything from the
 2026-09-07 batch is built or closed, and so are all five of the features raised
@@ -96,7 +106,37 @@ that campaign could not reach: `return_loan` and `repudiate_loan`, which the
 automatic return at `dueTurn` beat to it both times, and the fixture-transfer
 refusal, which is tested in the suite and never seen in play.
 
-**And there is now a second question only a campaign can answer.**
+**117 — what closing it needs, as of 2026-09-23.** Two traced 4-turn runs from
+the same save and actions (`trace4` structured, `rawjson4` raw):
+
+| | structured | raw JSON |
+|---|---|---|
+| declared action, median | 37.8s | 20.8s |
+| appraisal / resolution | 9.6s / 20.9s | 4.2s / 18.9s |
+| agentic turns per call | 2–6 | 1 |
+| schema trouble | 1 resolution exhausted the SDK's own retries | 1 reaction retry (`durationTurns`), fixed in one pass |
+
+The latency case is made. The safety case is not, and three things are missing:
+
+1. **`extraction` has never run under raw JSON.** It is the call the trade
+   endangers most — the most ids to get right, and no constrained decoding once
+   the schema is only text in the prompt — and neither run closed a channel.
+   Needs at least three closed channels that agree something (a treaty, a debt,
+   an asset transfer).
+2. **Volume.** 16 raw calls cannot distinguish a 6% retry rate from 20%. Ten
+   turns, two actions a turn, gives ~60 calls — enough to compare retry and
+   `schema_failed` rates per call kind with `pnpm trace a b`.
+3. **An attack turn**, so resolution's ops include a `fleet_movement` with a
+   force composition — the densest structure a declared action emits. Doubles
+   as **119**.
+
+Decision rule, stated in advance so the run cannot be read to suit: raw JSON
+becomes the default if no call kind fails outright (`schema_failed`) and no
+kind's retry rate exceeds structured output's by more than 10 points. The
+comparison run must be played on the current reaction settings (thinking off),
+since `trace4` predates them and its end-of-turn times are not comparable.
+
+**And there is now a second question only a campaign can answer** — now **117**.
 `PAXGALACTICA_RAW_JSON=1` drops structured output and measured a turn from ~98s
 to ~37s — but that trades away layer 1 of the two-layer defence, and the
 evidence is eight calls with no retries. A ten-turn run with the flag on,
@@ -2628,7 +2668,7 @@ Both helpers live in `src/ui/logview.ts`, pure and beside `layout.ts` and
 `portrait.ts`, for the reason those are: there is no DOM in the suite, so logic
 inside a component is logic nothing checks.
 
-## p.3 — fold old log entries into a compact digest
+## p.3 — DEFERRED — fold old log entries into a compact digest
 
 The proposal that prompted this section: every ~5 turns, encode what is behind
 you into something smaller.
@@ -3681,7 +3721,13 @@ once, including why quoting a compulsion at the game does not trip it.
 
 ---
 
-## 67. FOUR FIXED, ONE OPEN — five things that produced nothing
+## 67. CLOSED — five things that produced nothing
+
+> **Audited 2026-09-23.** (1) an accord may move money, settled through
+> `moveConserved`; (2) `terms.voidsOn` exists and `prompts/extraction.md` names
+> it; (3) `AppraisalSchema.covert` is an array, every mission routed; (4) a thief
+> receives what it steals (`espionageGain`). (5) is a claim about play, and lives
+> on as **92**.
 
 The agent's measurements, grouped because they share a shape: a conversation
 agreed something and the world did not change.
@@ -4807,7 +4853,11 @@ evaporating.
 
 ---
 
-## 51. PARTLY FIXED — a concession of 60 lands as 10, and nobody was told
+## 51. FIXED — a concession of 60 lands as 10, and nobody was told
+
+> **Audited 2026-09-23.** The compounding ceiling is reported at signature, and
+> a share of prizes is `Commitment.share`. The report is made **twice**, by two
+> blocks written for the same finding — see **116**.
 
 **Agent's measurement.** The Combine agreed to 60/turn. The reducer trimmed it
 to 25 (`"Trimmed war_chest_stipend yield from 60 to 25 per turn (ceiling 25)"`),
