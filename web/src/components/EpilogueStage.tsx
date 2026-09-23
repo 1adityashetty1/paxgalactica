@@ -19,7 +19,14 @@ const ARC_LABEL: Record<EpilogueView['factions'][number]['arc'], string> = {
   broken: 'broken',
 };
 
-export function EpilogueStage({ epilogue }: { epilogue: EpilogueView }) {
+export function EpilogueStage({
+  epilogue,
+  onLeave,
+}: {
+  epilogue: EpilogueView;
+  /** Back to the faction picker. A finished campaign had no exit at all. */
+  onLeave?: () => void;
+}) {
   const slideFor = (id: string) => epilogue.slides.find((s) => s.factionId === id)?.text ?? '';
 
   return (
@@ -82,6 +89,21 @@ export function EpilogueStage({ epilogue }: { epilogue: EpilogueView }) {
 
       <section className="epilogue-closing">
         <p>{epilogue.closing}</p>
+        {/* The way out. A read-only campaign disables the command line and End
+            Turn, so without this a player finishes the game and has nothing
+            left to press. The campaign stays loaded on the server — this only
+            puts the picker back up, so the ending is still here if they change
+            their mind. */}
+        {onLeave && (
+          <div className="epilogue-exit">
+            <button className="endtalk" onClick={onLeave}>
+              Leave the Rim
+            </button>
+            <span className="hint">
+              Start another campaign, resume a saved one, or come back to this ending.
+            </span>
+          </div>
+        )}
       </section>
     </div>
   );

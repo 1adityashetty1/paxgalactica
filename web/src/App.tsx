@@ -268,6 +268,9 @@ export function App() {
         onStart={game.start}
         onResume={game.resume}
         onImport={game.importCampaign}
+        // Only when a campaign is still loaded — on a cold start there is
+        // nothing behind this screen to go back to.
+        onBack={view ? () => game.rejoinCampaign() : undefined}
       />
     ) : (
       <div className="loading">Connecting to the server…</div>
@@ -311,7 +314,7 @@ export function App() {
           {/* The ending outranks both: there are no fleets left to move and
               nobody left to talk to, so it takes the stage outright. */}
           {view.epilogue ? (
-            <EpilogueStage epilogue={view.epilogue} />
+            <EpilogueStage epilogue={view.epilogue} onLeave={game.leaveCampaign} />
           ) : activeChannel ? (
             <PortraitStage state={view.state} factionId={activeChannel} />
           ) : (

@@ -701,3 +701,7 @@ svg.outcome-art {
 .command-name { margin: 0; font-size: 14px; font-weight: 600; }
 .command-effect { margin: 2px 0 4px; color: var(--fg); }
 .command-fallen { margin-top: 6px; opacity: 0.7; text-decoration: line-through; }
+
+/* The way out of a finished campaign, and the way back into it. */
+.epilogue-exit { margin-top: 18px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.picker-back { margin: 0 0 16px; }

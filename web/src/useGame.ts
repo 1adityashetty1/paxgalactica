@@ -428,9 +428,32 @@ export function useGame() {
     [guard, say],
   );
 
+  /**
+   * Put the faction picker back up, without touching the campaign on the
+   * server.
+   *
+   * A finished campaign had **no exit**: `needsCampaign` is only ever set by a
+   * cold start returning 409, so once one was loaded a player read the epilogue
+   * and sat there — the command line is disabled on a read-only campaign, End
+   * Turn does nothing, and nothing on screen offered anything else.
+   *
+   * Client-side on purpose. The server holds one campaign per process and
+   * `POST /api/campaign/new` replaces it, so there is nothing to unload and no
+   * route to add; what was missing was a way back to the screen that calls it.
+   * Leaving the finished campaign in place is also what keeps **Back** honest —
+   * the ending is still there if the player changes their mind, and it is not
+   * lost until they actually start something else.
+   */
+  const leaveCampaign = useCallback(() => setNeedsCampaign(true), []);
+
+  /** Back into the campaign the picker is sitting in front of. */
+  const rejoinCampaign = useCallback(() => setNeedsCampaign(false), []);
+
   return {
     view,
     needsCampaign,
+    leaveCampaign,
+    rejoinCampaign,
     exportCampaign,
     advisor,
     importCampaign,
