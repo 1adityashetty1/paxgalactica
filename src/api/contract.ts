@@ -114,7 +114,20 @@ export const StagedItemSchema = z.object({
   index: z.number().int().min(0),
   label: z.string(),
   narrative: z.string(),
+  /**
+   * Why this declaration can no longer be withdrawn, or null when it can.
+   * Discard withdraws an order, never an attempt: once the dice are thrown or
+   * the institutions have refused, what it cost is a fact of the turn.
+   */
+  binding: z.enum(['rolled', 'refused', 'charge', 'record']).nullable(),
 });
+
+export const DiscardResultSchema = z.object({
+  discarded: z.number().int().min(0),
+  /** Declarations left staged because they were already binding. */
+  kept: z.number().int().min(0),
+});
+export type DiscardResult = z.infer<typeof DiscardResultSchema>;
 
 export const ReactionViewSchema = z.object({
   factionId: z.string(),

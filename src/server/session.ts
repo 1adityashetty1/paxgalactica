@@ -8,11 +8,11 @@ import type {
 } from '../api/contract.js';
 import type { EpilogueView } from '../engine/epilogue.js';
 import { eventsVisibleTo, observeOrders } from '../domain/intel.js';
-import { MAX_CHANNEL_MESSAGES } from '../api/contract.js';
+import { MAX_CHANNEL_MESSAGES, type DiscardResult } from '../api/contract.js';
 import { archiveFilename, packCampaign, unpackCampaign } from '../engine/archive.js';
 import {
   withCurrentIntel, briefingFromState, buildBriefing, type Briefing } from '../engine/briefing.js';
-import { Campaign, ACTION_POINTS_PER_TURN } from '../engine/campaign.js';
+import { Campaign, ACTION_POINTS_PER_TURN, type StagedBinding } from '../engine/campaign.js';
 import { FileCampaignStore, type CampaignStore } from '../engine/store.js';
 import { closeChannel, endTurn, writeEpilogue, submitAction } from '../engine/turn.js';
 import type { ActionOutcome } from '../engine/turn.js';
@@ -192,6 +192,7 @@ export class GameSession {
         index,
         label,
         narrative: campaign.stagedNarratives()[index] ?? '',
+        binding: campaign.stagedBindings()[index] ?? null,
       })),
       // `watch` and `rumoured` are facts about the board, not about the turn
       // that produced the briefing — so they are re-derived on every read. An
@@ -480,21 +481,25 @@ export class GameSession {
     };
   }
 
-  async discardStaged(index?: number): Promise<{ discarded: number }> {
+  async discardStaged(index?: number): Promise<DiscardResult> {
     const campaign = this.requirePlayable();
     if (this.isBusy) throw new ApiFailure('conflict', `Busy: ${this.busyLabel}.`);
 
     if (index === undefined) {
       const discarded = campaign.discardStaged();
       this.pushState();
-      return { discarded };
+      return { discarded, kept: campaign.stagedCount };
     }
 
-    if (!campaign.discardStagedAt(index)) {
+    const result = campaign.discardStagedAt(index);
+    if (result === false) {
       throw new ApiFailure('bad_request', `No declared action at index ${index}.`);
     }
+    if (result !== true) {
+      throw new ApiFailure('bad_request', BINDING_REASON[result]);
+    }
     this.pushState();
-    return { discarded: 1 };
+    return { discarded: 1, kept: campaign.stagedCount };
   }
 
   /* ---------------- diplomacy ---------------- */
@@ -668,3 +673,11 @@ export class GameSession {
     return { saved: true, stagedLost };
   }
 }
+
+/** Why a declaration cannot be withdrawn, in the player's terms. */
+const BINDING_REASON: Record<StagedBinding, string> = {
+  rolled: 'That declaration has already been rolled. Its outcome is a fact of this turn; withdrawing it would be a reroll.',
+  refused: 'A refusal cannot be withdrawn — your institutions have already said no, and that is what it cost.',
+  charge: 'That is a charge your institutions levied for the proposal itself, and it stands even if the accord is withdrawn.',
+  record: 'That is the record of a ruling, not an order, and it cannot be withdrawn.',
+};

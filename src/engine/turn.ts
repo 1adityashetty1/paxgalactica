@@ -42,7 +42,12 @@ import {
   type EpilogueView,
 } from './epilogue.js';
 import { mostAffectedFactions, serializeCharacter, serializeState } from '../model/serialize.js';
-import { ACTION_POINTS_PER_TURN, type Campaign } from './campaign.js';
+import {
+  ACTION_POINTS_PER_TURN,
+  markNotesPrivate,
+  type Campaign,
+  type StageMeta,
+} from './campaign.js';
 
 export interface ReactionView {
   factionId: string;
@@ -245,7 +250,9 @@ async function stageWithCorrection(
    * see `fixtureBuilt`.
    */
   stat?: CheckResult['stat'],
+  meta: StageMeta = {},
 ): Promise<{ rejections: OpRejection[]; notes: string[]; costUsd: number }> {
+  const actor = campaign.state.playerFactionId;
   // Run on an accord too, where there is no check at all: a conversation can
   // agree to many things and founding a fixture is not one of them, so passing
   // no band still has to strip a fixture rather than wave it through.
@@ -253,7 +260,7 @@ async function stageWithCorrection(
     boundPayloadsToOutcome(batch, outcome ?? 'success', stat);
 
   const bound = bind(ops);
-  const first = campaign.stage(bound.ops, label, narrative, source);
+  const first = campaign.stage(bound.ops, label, narrative, source, actor, meta);
   if (first.rejections.length === 0) {
     return { rejections: [], notes: [...bound.notes, ...first.notes], costUsd: 0 };
   }
@@ -268,7 +275,7 @@ async function stageWithCorrection(
   }
 
   const boundAgain = bind(revised.ops);
-  const second = campaign.stage(boundAgain.ops, `${label}:correction`, '', source);
+  const second = campaign.stage(boundAgain.ops, `${label}:correction`, '', source, actor, meta);
 
   // BOTH batches' rejections reach the player, and the first batch's
   // all-or-nothing note is rewritten when the correction landed.
@@ -305,6 +312,8 @@ async function commitWithCorrection(
   label: string,
   context: string,
   actor?: string,
+  /** Covert work: its notes are written for the actor alone, correction included. */
+  secret = false,
 ): Promise<{ rejections: OpRejection[]; notes: string[]; costUsd: number }> {
   // **A reaction has no check behind it**, so it cannot found a fixture. The rest
   // of an NPC's ops are unbounded on purpose — it is answering the turn, not
@@ -312,7 +321,8 @@ async function commitWithCorrection(
   // nothing here is an undertaking. See `fixtureBuilt`.
   const bound = boundPayloadsToOutcome(ops, 'success', undefined);
   ops = bound.ops;
-  const first = campaign.commit(ops, 'model', label, actor);
+  const seal = (batch: unknown[]) => (secret ? markNotesPrivate(batch) : batch);
+  const first = campaign.commit(seal(ops), 'model', label, actor);
   if (first.rejections.length === 0) {
     return { rejections: [], notes: [...bound.notes, ...first.notes], costUsd: 0 };
   }
@@ -325,7 +335,7 @@ async function commitWithCorrection(
   // The correction batch is filtered too: a retry that re-emitted the fixture
   // would otherwise be the hole, exactly as it is for an `onComplete` payload.
   const again = boundPayloadsToOutcome(revised.ops, 'success', undefined);
-  const second = campaign.commit(again.ops, 'model', `${label}:correction`, actor);
+  const second = campaign.commit(seal(again.ops), 'model', `${label}:correction`, actor);
   return {
     rejections: second.rejections,
     notes: [...bound.notes, ...first.notes, ...again.notes, ...second.notes],
@@ -461,6 +471,11 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
       ],
       `refused: ${action.length > 40 ? `${action.slice(0, 39)}…` : action}`,
       resolution.output.narrative,
+      'model',
+      campaign.state.playerFactionId,
+      // The refusal IS the charge, so there is nothing inside to withdraw; and an
+      // order your own institutions would not carry out is nobody else's news.
+      { binding: 'refused', secret: true },
     );
     return {
       narrative: resolution.output.narrative,
@@ -528,6 +543,15 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     campaign.state.playerFactionId,
   );
 
+  // Secret when the arbiter ruled it covert OR anything in it places an
+  // operative. The ruling is the load-bearing half: a covert attempt that
+  // FAILED places nobody, so it carries no `deploy_agent` to recognise it by,
+  // and its narrative is exactly the thing that told the Vigil it had been
+  // targeted.
+  const secret =
+    (resolution.output.covert?.length ?? 0) > 0 ||
+    routed.ops.some((op) => (op as { op?: unknown } | null)?.op === 'deploy_agent');
+
   const staged = await stageWithCorrection(
     campaign,
     routed.ops,
@@ -537,6 +561,7 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     resolution.check?.outcome,
     'model',
     resolution.check?.stat,
+    { binding: 'rolled', secret },
   );
   staged.notes.unshift(...routed.notes);
 
@@ -582,8 +607,9 @@ export async function endTurn(
   let costUsd = 0;
 
   // Capture what was declared before committing clears the staging area.
-  const declared = campaign.stagedSummary();
-  const stagedOps = campaign.stagedOps();
+  const brief = campaign.reactionBrief();
+  const declared = brief.summary;
+  const stagedOps = brief.ops;
 
   // Each step of the turn is a span (see `src/model/telemetry.ts`), so a slow
   // end-of-turn reads as commit, reactions, bots and tick rather than one bar.
@@ -622,13 +648,33 @@ export async function endTurn(
         const reactions = await gatherReactions(
           campaign.state,
           responders,
-          `${campaign.state.playerFactionId} acted this turn:\n\n${declared}`,
+          // Everything the player did may have been secret. Saying "acted this
+          // turn:" over an empty list would itself tell the Rim that something
+          // happened out of sight.
+          declared
+            ? `${campaign.state.playerFactionId} acted this turn:\n\n${declared}`
+            : `${campaign.state.playerFactionId} did nothing this turn that you could see.`,
         );
         costUsd += reactions.costUsd;
 
         for (const reaction of reactions.output.reactions) {
           const faction = getFaction(campaign.state, reaction.factionId);
           if (!faction) continue;
+          // A reaction that places an operative is the NPC mirror of a secret
+          // declaration. Its ops land and its notes are written for it alone —
+          // and the player hears NOTHING from it this turn: not the narrative,
+          // not the reducer's notes, not its rejections. Measured in a live save:
+          // Drajk's reaction told the player it had "inserted a theft operative
+          // into Vigil-held Vantic".
+          //
+          // Silence is a small tell, and the cheaper one: a power that says
+          // nothing is indistinguishable from a power that was not asked, which
+          // the reserved-seat rule makes an ordinary turn. The alternative is a
+          // prompt rule asking the model not to mention it, which is exactly the
+          // guard a model can be talked past.
+          const secret = reaction.ops.some(
+            (op) => (op as { op?: unknown } | null)?.op === 'deploy_agent',
+          );
           const applied = await commitWithCorrection(
             campaign,
             reaction.ops,
@@ -637,8 +683,10 @@ export async function endTurn(
             // The reacting faction is the actor, so an NPC is held to the same
             // presence and guile limits the player is when it suborns a crew.
             reaction.factionId,
+            secret,
           );
           costUsd += applied.costUsd;
+          if (secret) continue;
           notes.push(...applied.notes);
           rejections.push(...applied.rejections);
           const view: ReactionView = {
@@ -1090,6 +1138,9 @@ export async function closeChannel(
       ],
       `refused accord with ${faction?.name ?? factionId}`,
       why,
+      'model',
+      campaign.state.playerFactionId,
+      { binding: 'refused', secret: true },
     );
     const dissent = getFaction(campaign.state, campaign.state.playerFactionId)?.dissent ?? 0;
     return {
@@ -1207,6 +1258,10 @@ export async function closeChannel(
       ],
       `objection to the accord with ${faction?.name ?? factionId}`,
       '',
+      'model',
+      campaign.state.playerFactionId,
+      // Charged for proposing it, so it stays even if the accord is withdrawn.
+      { binding: 'charge' },
     );
     const dissent = getFaction(campaign.state, campaign.state.playerFactionId)?.dissent ?? 0;
     notes.push(

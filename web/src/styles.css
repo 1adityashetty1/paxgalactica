@@ -705,3 +705,6 @@ svg.outcome-art {
 /* The way out of a finished campaign, and the way back into it. */
 .epilogue-exit { margin-top: 18px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .picker-back { margin: 0 0 16px; }
+
+/* A declaration that can no longer be withdrawn says why, where the × was. */
+.staged-binding { color: var(--dim); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }

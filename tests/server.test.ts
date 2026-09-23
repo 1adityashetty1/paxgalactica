@@ -115,7 +115,7 @@ describe('staging', () => {
     const { session } = await startedSession();
     const res = await dispatch(session, 'POST', ROUTES.discardStaged, {});
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ discarded: 0 });
+    expect(res.body).toEqual({ discarded: 0, kept: 0 });
   });
 });
 
@@ -135,7 +135,7 @@ describe('per-item staged discard', () => {
 
     const res = await dispatch(session, 'POST', ROUTES.discardStaged, { index: 0 });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ discarded: 1 });
+    expect(res.body).toEqual({ discarded: 1, kept: 1 });
 
     const staged = session.view().staged;
     expect(staged).toHaveLength(1);
@@ -157,8 +157,48 @@ describe('per-item staged discard', () => {
   it('clears everything when no index is given', async () => {
     const { session } = await withTwo();
     const res = await dispatch(session, 'POST', ROUTES.discardStaged, {});
-    expect(res.body).toEqual({ discarded: 2 });
+    expect(res.body).toEqual({ discarded: 2, kept: 0 });
     expect(session.view().staged).toHaveLength(0);
+  });
+
+  /**
+   * Discard withdraws an order, never an attempt. It used to refund what a
+   * rolled or refused declaration had cost while the action point stayed
+   * spent: measured, credits 3400 → 3600 and dissent 8 → 0 — a bad roll and a
+   * refusal both erasable for the price of a point already paid.
+   */
+  it('keeps what was rolled or refused, and withdraws only the rest', async () => {
+    const { session } = await startedSession();
+    const campaign = (session as unknown as { campaign: import('../src/engine/campaign.js').Campaign })
+      .campaign;
+    const me = () => session.view().state.factions.find((f) => f.id === 'freeworlds')!;
+    const before = me().credits;
+    campaign.stage(
+      [{ op: 'adjust_credits', factionId: 'freeworlds', delta: -200 }],
+      'a failed attempt', '', 'model', 'freeworlds', { binding: 'rolled' },
+    );
+    campaign.stage(
+      [{ op: 'adjust_dissent', factionId: 'freeworlds', delta: 8 }],
+      'refused: x', '', 'model', 'freeworlds', { binding: 'refused', secret: true },
+    );
+    campaign.stage(
+      [{ op: 'adjust_credits', factionId: 'freeworlds', delta: -100 }],
+      'an accord', '',
+    );
+    expect(session.view().staged.map((s) => s.binding)).toEqual(['rolled', 'refused', null]);
+
+    const all = await dispatch(session, 'POST', ROUTES.discardStaged, {});
+    expect(all.body).toEqual({ discarded: 1, kept: 2 });
+    // The attempt's cost and the refusal's charge both stand.
+    expect(me().credits).toBe(before - 200);
+    expect(me().dissent).toBe(8);
+
+    // And a binding row cannot be removed one at a time either, with a reason.
+    const one = await dispatch(session, 'POST', ROUTES.discardStaged, { index: 0 });
+    expect(one.status).toBe(400);
+    expect(JSON.stringify(one.body)).toMatch(/already been rolled/);
+    expect(session.view().staged).toHaveLength(2);
+    expect(campaign.verifyReplay().ok).toBe(true);
   });
 
   it('rejects an out-of-range index', async () => {

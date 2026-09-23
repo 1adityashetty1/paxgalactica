@@ -28,9 +28,15 @@ export function BriefingPanel({
         <div className="staged">
           <header>
             <strong>Declared this turn</strong>
-            <button className="link" onClick={() => onDiscard()}>
-              discard all
-            </button>
+            {/* Only offered when something can actually be withdrawn. Discard
+                withdraws an order, never an attempt: a rolled or refused
+                declaration is a fact of the turn, so a button that could only
+                ever leave the list untouched is not shown at all. */}
+            {staged.some((s) => s.binding === null) && (
+              <button className="link" onClick={() => onDiscard()}>
+                withdraw all
+              </button>
+            )}
           </header>
           <ul className="staged-list">
             {staged.map((s) => (
@@ -38,18 +44,27 @@ export function BriefingPanel({
                 <span className="staged-label" title={s.narrative}>
                   {s.label}
                 </span>
-                <button
-                  className="drop"
-                  onClick={() => onDiscard(s.index)}
-                  title="Drop this declaration"
-                  aria-label={`Discard: ${s.label}`}
-                >
-                  ×
-                </button>
+                {s.binding === null ? (
+                  <button
+                    className="drop"
+                    onClick={() => onDiscard(s.index)}
+                    title="Withdraw this declaration"
+                    aria-label={`Withdraw: ${s.label}`}
+                  >
+                    ×
+                  </button>
+                ) : (
+                  <span className="staged-binding" title={BINDING_TITLE[s.binding]}>
+                    {s.binding}
+                  </span>
+                )}
               </li>
             ))}
           </ul>
-          <p className="hint">These land when you end the turn.</p>
+          <p className="hint">
+            These land when you end the turn. Only an accord can still be withdrawn —
+            anything already rolled or refused is a fact of this turn.
+          </p>
         </div>
       )}
 
@@ -238,3 +253,10 @@ export function BriefingPanel({
     </section>
   );
 }
+
+const BINDING_TITLE: Record<NonNullable<StagedItem['binding']>, string> = {
+  rolled: 'Already rolled. Its outcome stands; withdrawing it would be a reroll.',
+  refused: 'Your institutions refused this. The refusal and its cost stand.',
+  charge: 'Charged for proposing the accord. It stands even if the accord is withdrawn.',
+  record: 'The record of a ruling, not an order.',
+};

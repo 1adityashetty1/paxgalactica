@@ -4973,7 +4973,7 @@ export function applyOps(
           'narrative',
           op.text,
           null,
-          source === 'extraction' && actor !== undefined ? [actor] : null,
+          (source === 'extraction' || op.private) && actor !== undefined ? [actor] : null,
         );
         break;
       }

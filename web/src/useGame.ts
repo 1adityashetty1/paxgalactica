@@ -302,8 +302,20 @@ export function useGame() {
   const discard = useCallback(
     (index?: number) =>
       guard(async () => {
-        const { discarded } = await api.discardStaged(index);
-        say(discarded > 0 ? `Discarded ${discarded} declared action(s).` : 'Nothing to discard.', 'system');
+        const { discarded, kept } = await api.discardStaged(index);
+        say(
+          [
+            discarded > 0 ? `Withdrew ${discarded} declared action(s).` : 'Nothing could be withdrawn.',
+            // Said, because a "discard all" that leaves rows behind otherwise
+            // reads as a button that did not work.
+            index === undefined && kept > 0
+              ? `${kept} stay: what was already rolled or refused is a fact of this turn.`
+              : '',
+          ]
+            .filter(Boolean)
+            .join(' '),
+          'system',
+        );
       }),
     [guard, say],
   );

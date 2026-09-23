@@ -806,6 +806,15 @@ export const SpawnEventOp = z.object({
 export const LogNarrativeOp = z.object({
   op: z.literal('log_narrative'),
   text: z.string().min(1),
+  /**
+   * Written for the actor alone. Set by the engine on a secret batch — covert
+   * work, or an order the actor's own institutions refused — and never needed
+   * from a model: the only thing it can do is hide the actor's own note.
+   *
+   * Absent is public, which is every note ever journaled before this existed,
+   * so old campaigns replay exactly.
+   */
+  private: z.boolean().optional(),
 });
 
 /**

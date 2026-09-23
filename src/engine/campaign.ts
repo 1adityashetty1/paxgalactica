@@ -6,7 +6,8 @@ import {
   type OpSource,
   type TurnReport,
 } from '../domain/reducer.js';
-import type { WorldState } from '../domain/state.js';
+import { WorldStateSchema, type OrderType, type WorldState } from '../domain/state.js';
+import { isPublicOrderType } from '../domain/intel.js';
 import { createSeedState } from '../seed/scenario.js';
 import { emptyJournal, replay, type Journal } from './journal.js';
 import {
@@ -58,6 +59,43 @@ export interface StagedBatch {
    * so a batch restored from an older shape still works.
    */
   source?: Extract<OpSource, 'model' | 'extraction' | 'engine'>;
+  /**
+   * Why this batch cannot be discarded, or absent when it can.
+   *
+   * **Discard withdraws an order; it does not un-happen an attempt.** It used
+   * to drop the whole batch and rebuild the preview from committed state, which
+   * refunded everything the declaration cost while the action point stayed
+   * spent — so a failed roll's losses and a refusal's dissent were both free to
+   * erase, and a player could probe their own red lines at no price but the
+   * point. Measured: credits 3400 → 3600 and dissent 8 → 0 after a discard.
+   *
+   * - `rolled` — the dice were thrown. Which band it landed in is now a fact,
+   *   and letting a player keep the good ones and discard the bad ones is a
+   *   reroll with extra steps.
+   * - `refused` — a refusal IS its charge; there is no order inside to withdraw.
+   * - `charge` — an objection priced on an accord, kept even if the accord goes.
+   * - `record` — an engine row, such as the arbiter's ruling. Records of what
+   *   happened are not the player's to delete.
+   *
+   * What stays discardable is an accord: unrolled, and still the player's to
+   * walk away from before the turn lands. A charge its institutions levied for
+   * proposing it is a separate batch and stays.
+   */
+  binding?: StagedBinding;
+  /**
+   * The acting power's business alone: covert work, or an order its own
+   * institutions refused. Left out of what the reactions are told, and its
+   * narrative notes are written private — see `reactionBrief`.
+   */
+  secret?: boolean;
+}
+
+export type StagedBinding = 'rolled' | 'refused' | 'charge' | 'record';
+
+/** Staging options beyond the op list. */
+export interface StageMeta {
+  binding?: StagedBinding;
+  secret?: boolean;
 }
 
 /**
@@ -198,8 +236,15 @@ export class Campaign {
      * own report card is the confirmation bias this layer exists to avoid.
      */
     actorId: string = this.committed.playerFactionId,
+    meta: StageMeta = {},
   ): { rejections: ApplyResult['rejections']; notes: string[] } {
     const actor = actorId;
+    // A secret batch's notes are written for its actor alone. Marked on the op
+    // rather than decided in the reducer, because the reducer sees one batch and
+    // cannot know an arbiter ruled it covert — a failed covert attempt places
+    // nobody, so it carries no `deploy_agent` to recognise it by. On the op, it
+    // is journaled and replays exactly.
+    if (meta.secret) ops = ops.map(privateNote);
     const res = applyOps(this.state, ops, source, actor, true);
     this.state = res.state;
     // `ops` is what was PROPOSED and is what gets journaled, because replay must
@@ -214,7 +259,17 @@ export class Campaign {
     // reported the whole held-back first batch *and* its correction, so ops
     // appeared doubled and the counts in the notes matched neither list.
     const applied = res.rejections.length > 0 ? [] : ops;
-    this.stagedBatches.push({ label, ops, applied, narrative, actor, source });
+    this.stagedBatches.push({
+      label,
+      ops,
+      applied,
+      narrative,
+      actor,
+      source,
+      // An engine row is a record whatever the caller says.
+      binding: meta.binding ?? (source === 'engine' ? 'record' : undefined),
+      secret: meta.secret,
+    });
     return { rejections: res.rejections, notes: res.notes };
   }
 
@@ -252,6 +307,38 @@ export class Campaign {
   }
 
   /**
+   * What the reacting powers are told the player did, and what their selection
+   * is computed from.
+   *
+   * This was the whole staged summary, label and narrative verbatim, handed to
+   * every responder — and responders are chosen by what the player's ops
+   * TOUCHED, so the target of a covert op was the power most likely to be woken
+   * and given the order text. Measured in a live save: the Iron Vigil was told
+   * the Combine had directed an assassination of its Iron Marshal, and answered
+   * by name.
+   *
+   * A secret batch is left out of the prose entirely, and its ops count toward
+   * selection only where they are PUBLIC by the fog's own rule — a fleet under
+   * way is seen by everyone, so an attack riding in the same declaration as a
+   * covert op still wakes the power it lands on. An operative, a refused order
+   * and a failed covert attempt wake nobody. Engine rows are records, not acts.
+   */
+  reactionBrief(): { summary: string; ops: unknown[] } {
+    const acts = this.stagedBatches.filter((b) => b.source !== 'engine');
+    const summary = acts
+      .filter((b) => !b.secret)
+      .map((b, i) => `${i + 1}. ${b.label}${b.narrative ? ` — ${b.narrative}` : ''}`)
+      .join('\n');
+    const ops = acts.flatMap((b) => (b.secret ? b.ops.filter(isPublicAct) : b.ops));
+    return { summary, ops };
+  }
+
+  /** Whether each staged batch may be discarded, index for index. */
+  stagedBindings(): (StagedBinding | null)[] {
+    return this.stagedBatches.map((b) => b.binding ?? null);
+  }
+
+  /**
    * Ops from batches `index` onward that actually LANDED — one declaration's
    * whole effect, including any correction batch that followed it, and excluding
    * everything the reducer refused.
@@ -278,11 +365,18 @@ export class Campaign {
       .join('\n');
   }
 
+  /**
+   * Withdraw every declaration that can still be withdrawn.
+   *
+   * Returns how many went; the rest stay staged, for the reasons on
+   * `StagedBatch.binding`. The preview is rebuilt rather than reset, because
+   * what survives must be replayed against committed state.
+   */
   discardStaged(): number {
-    const dropped = this.stagedBatches.length;
-    this.stagedBatches = [];
-    this.state = this.committed;
-    return dropped;
+    const before = this.stagedBatches.length;
+    this.stagedBatches = this.stagedBatches.filter((b) => b.binding !== undefined);
+    this.resyncPreview();
+    return before - this.stagedBatches.length;
   }
 
   /**
@@ -292,8 +386,10 @@ export class Campaign {
    * because a later declaration may have been resolved against the one being
    * removed. Replaying what survives is the only way to get a coherent world.
    */
-  discardStagedAt(index: number): boolean {
+  discardStagedAt(index: number): boolean | StagedBinding {
     if (index < 0 || index >= this.stagedBatches.length) return false;
+    const binding = this.stagedBatches[index]!.binding;
+    if (binding !== undefined) return binding;
     this.stagedBatches.splice(index, 1);
     this.resyncPreview();
     return true;
@@ -448,8 +544,19 @@ export class Campaign {
    */
   verifyReplay(): { ok: boolean; detail: string } {
     const { state } = replay(this.journal);
+    // Both sides in CANONICAL form. `replay` returns its world through
+    // `WorldStateSchema.parse`, which writes every object's keys in schema
+    // order, while the live world keeps whatever order the reducer's literal
+    // happened to use — so an operative created as `{ id, name, ownerFactionId,
+    // … }` compared unequal to the same operative replayed as `{ id,
+    // ownerFactionId, …, name }`. Every campaign with a live operative failed
+    // this check while holding an identical world. Found while pinning that a
+    // covert reaction replays exactly.
+    //
+    // Records are untouched by the parse — `z.record` keeps insertion order —
+    // so the stack-order defect `normaliseStack` closed is still caught here.
     const a = JSON.stringify(state);
-    const b = JSON.stringify(this.committed);
+    const b = JSON.stringify(WorldStateSchema.parse(this.committed));
     if (a === b) {
       return {
         ok: true,
@@ -461,4 +568,30 @@ export class Campaign {
     }
     return { ok: false, detail: `Replay diverged: ${a.length} vs ${b.length} bytes of state.` };
   }
+}
+
+/** Every `log_narrative` in a batch, marked private to its actor. */
+export function markNotesPrivate(ops: unknown[]): unknown[] {
+  return ops.map(privateNote);
+}
+
+/** Mark a `log_narrative` private to its actor; any other op passes through. */
+function privateNote(op: unknown): unknown {
+  return op && typeof op === 'object' && (op as { op?: unknown }).op === 'log_narrative'
+    ? { ...(op as object), private: true }
+    : op;
+}
+
+/**
+ * The part of a secret batch that the rest of the Rim can see anyway: an order
+ * of a public category, which `intel.ts` already rules visible to everyone.
+ */
+function isPublicAct(op: unknown): boolean {
+  if (!op || typeof op !== 'object') return false;
+  const o = op as { op?: unknown; type?: unknown };
+  return (
+    o.op === 'issue_order' &&
+    typeof o.type === 'string' &&
+    isPublicOrderType(o.type as OrderType)
+  );
 }

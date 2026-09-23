@@ -109,7 +109,10 @@ describe('the contract accepts real engine output', () => {
       eventLogFrom: 0,
       eventLogTotal: visibleLog.length,
       rumours: seen.rumours,
-      staged: [{ index: 0, label: 'x', narrative: 'y' }],
+      staged: [
+        { index: 0, label: 'x', narrative: 'y', binding: null },
+        { index: 1, label: 'z', narrative: '', binding: 'rolled' as const },
+      ],
       briefing: buildBriefing(campaign.state, report),
       openChannel: null,
       channelHistory: [{ speaker: 'player' as const, text: 'hello' }],

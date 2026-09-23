@@ -3189,6 +3189,47 @@ extraction-sourced `log_narrative` is scoped to the **actor**, since the op
 names no counterparty and the counterparty has the better memory anyway:
 transcripts are replayed into its persona.
 
+### Covert work stays with the power that did it
+
+Three more leaks, all measured in one live save, and all on paths the fog
+above never covered:
+
+- **What reactions were told.** `endTurn` handed every responder the whole
+  staged summary verbatim — and responders are chosen by what the player's ops
+  touched, so the target of a covert op was the power most likely to be woken
+  and given the order text. The Iron Vigil was told the Combine had directed an
+  assassination of its Iron Marshal, and answered by name.
+- **The player's own notes.** A declared action's `log_narrative` was written
+  public, so the failed attempt's account went into the log every NPC reads.
+- **An NPC's reaction.** Drajk's reaction told the player it had *"inserted a
+  theft operative into Vigil-held Vantic"*.
+
+`StagedBatch.secret` marks a batch that is the actor's business alone: the
+arbiter ruled it covert, or it places an operative, or its own institutions
+refused it. **The ruling is the load-bearing half** — a covert attempt that
+*failed* places nobody, so it carries no `deploy_agent` to recognise it by, and
+its narrative is exactly what gave the game away.
+
+`Campaign.reactionBrief` leaves a secret batch out of the prose, and counts its
+ops toward responder selection only where they are **public by the fog's own
+rule** — a fleet under way is seen by everyone, so an attack riding in the same
+declaration still wakes the power it lands on, and a test pins the battle
+end to end. A turn in which everything was secret is described as nothing
+visible, rather than as "acted this turn:" over an empty list.
+
+A secret batch's notes carry `private: true` on the op, which the reducer scopes
+to the actor. On the op rather than decided in the reducer because the reducer
+sees one batch and cannot know what the arbiter ruled; on the op, it is
+journaled and replays exactly, and a journal written before it replays as public.
+
+**A reaction that places an operative is withheld from the player entirely** —
+narrative, reducer notes and rejections — while its ops land and its notes are
+the NPC's alone. Silence is a small tell and the cheaper one: a power that says
+nothing is indistinguishable from a power that was not asked, which the
+reserved-seat rule makes an ordinary turn. The alternative is a prompt rule
+asking the model not to mention it, which is the kind of guard a model can be
+talked past.
+
 **Knowledge is a snapshot, not a memory.** Burn the operative and the programme
 goes back to being a rumour. A last-known-position model is the more honest one
 and needs a durable set on `WorldState` — schema, save format and journal — so
@@ -4764,6 +4805,29 @@ Staged actions are deliberately **not** in the journal, so they do not survive a
 save; `:quit` says so rather than losing them quietly. `:staged` lists them and
 `:discard` clears them.
 
+### Discard withdraws an order, never an attempt
+
+Discard used to drop a batch and rebuild the preview from committed state, which
+**refunded everything the declaration cost while the action point stayed
+spent**. Measured: credits 3400 → 3600 and dissent 8 → 0 after a discard. So a
+bad roll was free to erase, and so was a refusal — the free probing of your own
+red lines that charging a point for a refusal exists to prevent.
+
+`StagedBatch.binding` names why a batch cannot be withdrawn:
+
+| binding | what it is |
+|---|---|
+| `rolled` | the dice were thrown; keeping the good bands and discarding the bad ones is a reroll |
+| `refused` | a refusal *is* its charge, with no order inside to withdraw |
+| `charge` | an objection priced on an accord, which stands even if the accord goes |
+| `record` | an engine row such as the arbiter's ruling — every `engine` batch |
+
+What stays withdrawable is an **accord**: unrolled, and still the player's to
+walk away from before the turn lands. Its objection charge is a separate batch
+and stays. The panel hides the × on a binding row and says why, and "withdraw
+all" appears only when something can go — a button that could only ever leave
+the list untouched reads as broken.
+
 ---
 
 ## Diplomacy
@@ -5073,6 +5137,16 @@ rebuilds state from turn 0 by re-running the reducer — **no model calls**.
 `Campaign.verifyReplay()` compares live state against replayed state and is
 asserted in the test suite. This is what makes prompt changes evaluable: run the
 same journal before and after a prompt edit and compare the worlds produced.
+
+**It compares canonical forms.** `replay` returns its world through
+`WorldStateSchema.parse`, which writes every object's keys in schema order,
+while the live world keeps whatever order the reducer's literal used — so an
+operative built as `{ id, name, ownerFactionId, … }` compared unequal to the
+same operative replayed as `{ id, ownerFactionId, …, name }`, and **every
+campaign with a live operative failed the check while holding an identical
+world**. The live side is parsed too now. Records are untouched by the parse —
+`z.record` keeps insertion order — so the stack-order defect `normaliseStack`
+closed is still caught.
 
 Determinism depends on three things, all tested:
 
