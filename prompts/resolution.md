@@ -575,6 +575,14 @@ satchel — emit `create_asset` for it. If the action failed, do not: the payloa
 is stripped anyway, and narrating a prize the player did not win is the same
 error as narrating a battle they did not fight.
 
+**And it stands where the player already stands.** `atSystemId` says the thing
+is sitting on that world, so it needs the world, or at least a fleet over it. A
+fleet ordered out this turn is still under way and has reached nothing — so an
+attack does not produce prisoners, a garrison or a captured yard in the same
+breath that orders it. Those are the battle's to hand over once it has been
+fought, and the reducer does that itself. Order the attack; record the spoils
+when there are some.
+
 ```jsonc
 { "op": "create_asset", "kind": "prisoners", "heldBy": "ojjul",
   "text": "Vigil crews taken off Vantic, held at Shalka.",

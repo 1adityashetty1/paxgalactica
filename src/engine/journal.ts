@@ -198,6 +198,8 @@ export function replay(
     interruptNeedsReach: parsed.version >= 7,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
+    // Only fixtures and producers needed their holder present; a haul did not.
+    spoilsNeedPresence: parsed.version >= 7,
     battleRules: {
       officerHomecoming: parsed.version >= 7,
       squattersFight: parsed.version >= 7,

@@ -296,3 +296,80 @@ describe('a self-credit in a journal written before it needed a payer', () => {
     expect(then.state.factions.find((f) => f.id === 'drajk')!.credits).toBe(before + 100);
   });
 });
+
+describe('spoils are recorded after the battle, not before it', () => {
+  /**
+   * Measured: a declaration ordering an attack on Threx created "6 crew who
+   * laid down arms" AT Threx on the spot — a turn before the fleet arrived and
+   * the landing was fought. Had the landing failed, the prisoners would have
+   * been held anyway.
+   *
+   * The presence guard already existed and covered fixtures and producers
+   * only, so the ordinary haul walked past it. `atSystemId` is what makes an
+   * asset losable, which is exactly as much a claim on ground for a crate of
+   * prisoners as for a mine.
+   */
+  const prisoners = (atSystemId: string) => ({
+    op: 'create_asset' as const,
+    kind: 'prisoners',
+    heldBy: 'vigil',
+    quantity: 6,
+    unit: 'crew',
+    text: 'six crew who laid down arms',
+    atSystemId,
+  });
+
+  it('refuses a haul on a world the taker has not reached', () => {
+    const s = seed('vigil');
+    const theirs = s.systems.find((x) => x.controllerFactionId === 'ojjul')!;
+    const out = applyOps(s, [prisoners(theirs.id)], 'model', 'vigil', true);
+
+    expect(out.rejections[0]?.code).toBe('no_presence');
+    expect(out.state.assets.some((a) => a.text === 'six crew who laid down arms')).toBe(false);
+  });
+
+  it('refuses it while the fleet that would take the world is still in transit', () => {
+    // The case as played: the order and the prize in one declaration. A fleet
+    // under way is in `order.force` and not in `system.ships`, so the attacker
+    // stands nowhere and the guard catches it.
+    const s = seed('vigil');
+    const home = s.systems.find((x) => x.controllerFactionId === 'vigil')!;
+    const target = s.systems.find(
+      (x) => x.controllerFactionId === 'ojjul' && neighboursOf(s, home.id).includes(x.id),
+    ) ?? s.systems.find((x) => x.controllerFactionId === 'ojjul')!;
+    setStackAt(home, 'vigil', { battleship: 8, lifter: 4 });
+
+    const out = applyOps(s, [
+      {
+        op: 'issue_order', factionId: 'vigil', type: 'fleet_movement',
+        originId: home.id, targetId: target.id, force: { battleship: 8, lifter: 4 },
+        label: 'take the world', visibility: [],
+      },
+      prisoners(target.id),
+    ], 'model', 'vigil', false);
+
+    expect(out.rejections.some((r) => r.code === 'no_presence')).toBe(true);
+    expect(out.state.assets.some((a) => a.text === 'six crew who laid down arms')).toBe(false);
+    // The attack itself is untouched: a failed prize does not cancel the war.
+    expect(out.state.pendingOrders).toHaveLength(1);
+  });
+
+  it('allows it once the takers are actually there', () => {
+    const s = seed('vigil');
+    const theirs = s.systems.find((x) => x.controllerFactionId === 'ojjul')!;
+    setStackAt(theirs, 'vigil', { battleship: 6 });
+    const out = applyOps(s, [prisoners(theirs.id)], 'model', 'vigil', true);
+
+    expect(out.rejections).toEqual([]);
+    expect(out.state.assets.some((a) => a.text === 'six crew who laid down arms')).toBe(true);
+  });
+
+  it('leaves a haul on your own ground alone', () => {
+    const s = seed('vigil');
+    const home = s.systems.find((x) => x.controllerFactionId === 'vigil')!;
+    const out = applyOps(s, [prisoners(home.id)], 'model', 'vigil', true);
+
+    expect(out.rejections).toEqual([]);
+    expect(out.state.assets.some((a) => a.text === 'six crew who laid down arms')).toBe(true);
+  });
+});

@@ -1444,6 +1444,12 @@ export interface LegacyRules {
    * narration and replay as they ran. Journal version 7.
    */
   selfCreditNeedsPayer?: boolean;
+  /**
+   * Every asset placed on a world needs its holder to stand there, not only a
+   * fixture or a producer — a crate of prisoners is as much a claim on ground as
+   * a mine. Journal version 7.
+   */
+  spoilsNeedPresence?: boolean;
   officerByName?: boolean;
   interruptNeedsReach?: boolean;
   /** The battle rules from the same playtest. See `BattleRules`. */
@@ -1546,6 +1552,7 @@ function applyOpsUnderRules(
     officerByName = true,
     interruptNeedsReach = true,
     selfCreditNeedsPayer = true,
+    spoilsNeedPresence = true,
   } = legacy;
   const state = cloneState(input);
   const rejections: OpRejection[] = [];
@@ -2239,16 +2246,29 @@ function applyOpsUnderRules(
           );
           break;
         }
-        // And you can only build where you stand. The same line interdiction,
-        // suborning and a works payload draw, and here for the same reason: a
-        // producing asset on a rival's world would be a claim on ground the
-        // actor has never reached.
+        // And you can only put a thing where you stand. The same line
+        // interdiction, suborning and a works payload draw.
+        //
+        // **It covered fixtures and producers only, and the hole was the
+        // ordinary haul.** `atSystemId` is what makes an asset losable — it
+        // says the thing is standing on that world — so it is exactly as much
+        // a claim on ground for a crate of prisoners as for a mine. Measured in
+        // a playtest: a declaration ordering an attack on Threx created "6 crew
+        // who laid down arms" AT Threx on the spot, a turn before the fleet
+        // arrived and the landing was fought. Had the landing failed the
+        // prisoners would have been held anyway.
+        //
+        // A fleet under way is in `order.force` and not in `system.ships`, so
+        // this is precisely the case it catches: an attacker in transit stands
+        // nowhere, and the spoils of a battle are the reducer's to create once
+        // the battle has happened. Winning first and recording it afterwards is
+        // one extra turn and the whole difference between a prize and a wish.
         const site = op.atSystemId && !isDossier
           ? state.systems.find((x) => x.id === op.atSystemId)!
           : undefined;
         if (
           site &&
-          (portable === false || yielded !== null) &&
+          (spoilsNeedPresence || portable === false || yielded !== null) &&
           site.controllerFactionId !== op.heldBy &&
           hullsAt(site, op.heldBy) === 0
         ) {

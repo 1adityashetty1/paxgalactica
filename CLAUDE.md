@@ -1817,6 +1817,18 @@ made them buildable. What that mechanic is for is a thing whose worth nobody has
 settled, and a design nobody has built from is the honest case — the argument is
 whether they can be used at all, not what a ton of something costs.
 
+**And it is created where its owner already stands.** The presence guard
+covered fixtures and producers only, so the ordinary haul walked past it —
+`atSystemId` is what makes an asset losable, which is exactly as much a claim on
+ground for a crate of prisoners as for a mine. Measured in a playtest: a
+declaration ordering an attack on Threx created *"six crew who laid down arms"*
+**at Threx**, a turn before the fleet arrived and the landing was fought, and a
+failed landing would have left the prisoners in hand anyway. A fleet under way
+is in `order.force` and not in `system.ships`, so an attacker in transit stands
+nowhere and the widened guard catches exactly that: the spoils of a battle are
+the reducer's to create once the battle has happened. The attack itself is
+untouched — a refused prize does not cancel the war.
+
 `transfer_asset` runs the other way. Giving your own away needs nobody, so it is
 declarable; **taking** another power's needs them, so it is refused from a
 declaration with `needs_consent` and reachable from an accord — the same rule
