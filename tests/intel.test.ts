@@ -109,6 +109,13 @@ describe('what presence buys, and what it does not', () => {
   it('does NOT reveal covert work run against you, even on your own capital', () => {
     for (const t of COVERT_CATEGORIES) {
       let s = seed();
+      // No ears at the capital. The Combine opens with listeners at its yards,
+      // and a listener sees covert work where it stands — that is the class
+      // doing its job, and it is pinned on its own. This pins the covert rule.
+      for (const sys of s.systems) {
+        const st = sys.ships.ojjul;
+        if (st?.listener) setStackAt(sys, 'ojjul', { ...st, listener: 0 });
+      }
       // `commerce_raiding` is the one covert category the reducer will not
       // issue without a fleet in reach, so the raider gets one. That is the
       // interesting case rather than an awkward one: the hulls ARE visible in

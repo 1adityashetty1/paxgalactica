@@ -143,7 +143,13 @@ export function replay(
     throw new Error('Journal must begin with a seed entry.');
   }
 
-  let state = createSeedState(seed.playerFactionId, { fourSchools: parsed.version >= 7 });
+  // The seed moved at version 7 — officers dealt from four schools, freighters
+  // and listeners in the opening fleets — so an older journal rebuilds the
+  // board it was actually played on.
+  let state = createSeedState(seed.playerFactionId, {
+    fourSchools: parsed.version >= 7,
+    auxiliaries: parsed.version >= 7,
+  });
   let rejectionCount = 0;
   // The opening board, before anything is applied. Without it an observer's
   // first sample is the state AFTER the first batch, so anything that batch

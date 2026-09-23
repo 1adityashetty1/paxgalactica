@@ -767,6 +767,29 @@ guile is bad at spies **by construction** — the Vigil at 11 and Arkane at 12 �
 so before this there was no way for such a power to buy sight at all. SIGINT is
 how a power with no spies sees.
 
+**The seed carries both, where each faction's skill is.** Freighters go to the
+trading powers — Meridian most, the Combine and Drajk a few — and are taken out
+of lift and boats rather than the line, because an auxiliary reads as nothing
+in battleship-equivalents and that is how Drajk's raiding once went to zero.
+Listeners go to the Combine (three) and one each to the Vigil and Arkane. The
+Combine's are the one place the seed departs from the bot on purpose: its bot
+never buys ears, being the best power at spies in the game, but it is the power
+whose business is knowing things, and it keeps what it is given. None of it
+moves the opening ledgers — upkeep is per ton and tonnage per world is
+unchanged, and a freighter earns nothing until it is sailed to ground nobody
+owns — and a test holds every power in surplus on turn 0, debt service
+included.
+
+**It moves the board on main, where it did not on the branch it was built on.**
+On `no-star-wars` the harness was unmoved at 3/6/5/4/4; ported onto main's
+economy (fixtures, reseated grievances, the fourth school) the 30-turn board
+goes from 6/6/6/6/1 to **6/6/5/6/2** — the Confederacy holds a second world at
+the Combine's expense — with the income mix unchanged at 59/41 and turn-30 nets
+Meridian 130 → 87, the Vigil 105 → 80, the Combine 102 → 84, Arkane 15 → 31,
+Drajk −8 → −9. Every property `tests/balance.test.ts` asserts still holds. Pinned
+to `JOURNAL_VERSION` 7 (`createSeedState`'s `auxiliaries`), so an older journal
+rebuilds the fleets it opened with.
+
 **The bots buy both, for stated reasons**, because a class nobody builds is a
 class nobody has measured — which is how `monopolist` stayed implemented,
 tested and dead for the life of the project. Freighters are sized from how much
