@@ -2,6 +2,7 @@ import {
   ActionOutcomeSchema,
   AdvisorOutcomeSchema,
   ApiErrorSchema,
+  DiscardResultSchema,
   CampaignViewSchema,
   FactionListSchema,
   ImportOutcomeSchema,
@@ -108,7 +109,7 @@ export const api = {
   discardStaged: (index?: number) =>
     request(
       ROUTES.discardStaged,
-      { parse: (v: unknown) => v as { discarded: number } },
+      DiscardResultSchema,
       post(index === undefined ? {} : { index }),
     ),
 

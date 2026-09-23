@@ -89,6 +89,10 @@ describe('loans', () => {
 
   it('takes rent from the borrower every turn, outside net', () => {
     const { state, systemId } = withSquadron();
+    // Officers cleared so the 20 tons of upkeep the lender sheds is exactly 20.
+    // The Combine opens with a `convoy` officer and that passive is a PERCENTAGE
+    // off fleet upkeep, so it scales with the very tonnage this is measuring.
+    state.commanders = [];
     const s = applyOps(state, [hire(systemId)], 'extraction', 'ojjul').state;
 
     expect(ledgerFor(s, 'ojjul').loanRent).toBe(40);

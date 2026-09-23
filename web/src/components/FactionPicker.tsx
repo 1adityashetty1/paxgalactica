@@ -13,10 +13,13 @@ export function FactionPicker({
   onStart,
   onResume,
   onImport,
+  onBack,
 }: {
   onStart: (factionId: string, maxTurns: number) => void;
   onResume: (name: string) => void;
   onImport: (file: File) => void | Promise<void>;
+  /** Present only when a campaign is still loaded behind this screen. */
+  onBack?: () => void;
 }) {
   const [factions, setFactions] = useState<Playable[]>([]);
   const [saves, setSaves] = useState<string[]>([]);
@@ -45,6 +48,16 @@ export function FactionPicker({
       </p>
 
       {error && <p className="error">{error}</p>}
+
+      {/* Only when there is something to go back TO. On a cold start this
+          screen is the whole app and a Back button would lead nowhere. */}
+      {onBack && (
+        <p className="picker-back">
+          <button className="endtalk" onClick={onBack}>
+            ← Back to the campaign in progress
+          </button>
+        </p>
+      )}
 
       {saves.length > 0 && (
         <div className="resume">

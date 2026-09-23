@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { DurationCategory } from './duration.js';
 import {
+  agentsVisibleTo,
   hullsAt,
   MOVEMENT_ORDER_TYPE,
   type OrderType,
@@ -300,6 +301,18 @@ export function worldAsSeenBy(state: WorldState, factionId: string): WorldState 
     ...state,
     pendingOrders: observeOrders(state, factionId).orders,
     eventLog: eventsVisibleTo(state, factionId),
+    // **Operatives are the third field, and they were shipped whole.**
+    // `GET /api/campaign` carried `state.agents` — every rival operative,
+    // unexposed ones included, with name, world, mission and cover story. A
+    // playtest read six of them off one response, five never exposed, and the
+    // covert layer is over the moment that is true: an operative that can be
+    // seen without being caught costs its owner everything and buys nothing.
+    //
+    // `agentsVisibleTo` is already the rule — mine, plus anyone's that has been
+    // burned — and the client's own panels were calling it on arrival, which is
+    // exactly the "each component remembering to filter" this function exists to
+    // replace. Fog is a property of the whole payload.
+    agents: agentsVisibleTo(state, factionId),
   };
 }
 

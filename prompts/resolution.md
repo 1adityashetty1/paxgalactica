@@ -104,7 +104,16 @@ writing off what you are owed needs nobody's permission, only a willingness to
 pay for it. Forgiving is the creditor's alone; a debtor cannot cancel what it
 owes, and the reducer rejects the attempt.
 
-`adjust_credits` is for narrative money only — a bribe, a fine, a windfall.
+`adjust_credits` is for narrative money only — a bribe, a fine, a levy.
+
+**Money only ever MOVES. Nothing you write makes it.** A credit into any
+treasury, including your own, is paid for out of a debit somewhere in the same
+batch, and an unfunded one is dropped with a note. So write both halves of a
+payment or neither. A sale to another power is not yours to write at all: the
+buyer has to agree, which happens in a channel, and until then it is a
+conversation rather than a price — describe the offer and leave the money
+alone. Selling a thing for credits nobody paid was worth about 600 invented
+credits in one campaign, on a lot worth 480.
 Every real price in this game is charged by the mechanic that owns it: hulls by
 displacement (15 a ton — 60 for a battleship, 45 for a lifter, freighter or
 listener, 30 for an escort or a torpedo boat), agents at 40–150, a programme payload by its own rule, treaty and
@@ -383,11 +392,33 @@ rejected field in the game — the sentence on a hostile mission is about the
 victim, "sabotage the Vigil garrison", so it came back owned by the Vigil, and
 an agent owned by the faction it targets can never act. Omit it.
 
+**An assassination may be aimed at a named officer.** Set `targetCommanderId`
+to the name the player used — `Marcia Galba`, `M. Galba`, `Marshal Galba` — and
+the engine resolves it against the officers actually in post; every power's
+roster, school and station is in the state block. Write the **name**, never an
+id, and never one you have invented. Without it the operation is aimed at the
+power and the officer goes on commanding battles, which is the one outcome an
+assassination must not quietly produce. The knife only finds an officer standing
+where your operative is, so an officer under way is one it misses.
+
 The `mission` decides risk and persistence: `surveillance` (very low risk),
-`theft`, `subversion`, `defection`, `sabotage` (moderate), and `assassination`
-— **one attempt, quadruple effect, the operative spent either way, and usually
-caught.** Scale effects sanely: 2 hulls a turn is a nuisance, 12 is a
-catastrophe that should have taken a real operation.
+`theft`, `subversion`, `defection`, `sabotage` (moderate), `discord` (riskier),
+and `assassination` — **one attempt, quadruple effect, the operative spent
+either way, and usually caught.** Scale effects sanely: 2 hulls a turn is a
+nuisance, 12 is a catastrophe that should have taken a real operation.
+
+**`discord` is the one mission aimed at a quarrel you are not in.** Forged
+letters, a planted grievance, a rumour that keeps arriving — it turns the power
+whose world the operative sits on against a **third** power, named in
+`effect.towardFactionId`. Use it when a player wants two rivals at each other's
+throats rather than wanting anything for themselves.
+
+- **You are in neither half.** The host power and the named power must both be
+  somebody other than the actor; anything else is rejected.
+- **It is permanent.** Every other effect fades; regard never recovers, which is
+  why the rate is 1–2 a turn and one operative can only ever destroy so much.
+- **Being caught is a scandal with two victims.** Exposure hands the named power
+  the evidence, so both resent you.
 
 ## Duration — two sources, never mixed
 
@@ -543,6 +574,14 @@ wreckage brings back survivors, a survey finds ore, a raid takes a courier's
 satchel — emit `create_asset` for it. If the action failed, do not: the payload
 is stripped anyway, and narrating a prize the player did not win is the same
 error as narrating a battle they did not fight.
+
+**And it stands where the player already stands.** `atSystemId` says the thing
+is sitting on that world, so it needs the world, or at least a fleet over it. A
+fleet ordered out this turn is still under way and has reached nothing — so an
+attack does not produce prisoners, a garrison or a captured yard in the same
+breath that orders it. Those are the battle's to hand over once it has been
+fought, and the reducer does that itself. Order the attack; record the spoils
+when there are some.
 
 ```jsonc
 { "op": "create_asset", "kind": "prisoners", "heldBy": "ojjul",

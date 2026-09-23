@@ -806,6 +806,15 @@ export const SpawnEventOp = z.object({
 export const LogNarrativeOp = z.object({
   op: z.literal('log_narrative'),
   text: z.string().min(1),
+  /**
+   * Written for the actor alone. Set by the engine on a secret batch — covert
+   * work, or an order the actor's own institutions refused — and never needed
+   * from a model: the only thing it can do is hide the actor's own note.
+   *
+   * Absent is public, which is every note ever journaled before this existed,
+   * so old campaigns replay exactly.
+   */
+  private: z.boolean().optional(),
 });
 
 /**
@@ -1196,6 +1205,22 @@ export const AppraisalSchema = z.object({
         mission: AgentMissionSchema,
         /** Where the operative works — the system the action happens at. */
         systemId: z.string().min(1),
+        /**
+         * The **person**, when the operation is aimed at one, written as the
+         * player named them.
+         *
+         * A name, never an id. `Commander.name` stores the title baked in and a
+         * player writes "Marcia Galba" or "M. Galba", so requiring an id here
+         * would be asking a model to do a lookup — the half of the work it is
+         * measurably worst at, and the reason `classifyPrinciple` exists.
+         * `resolveCommander` does the matching in code.
+         *
+         * Without this the fallback routing built a `deploy_agent` with no
+         * target at all, so an assassination the resolution call did not place
+         * itself came out aimed at the power rather than at the officer the
+         * player asked for.
+         */
+        target: z.string().min(1).max(60).optional(),
       }),
     )
     .max(4)
@@ -1265,7 +1290,13 @@ export const ResolutionOutputSchema = ModelTurnOutputSchema.extend({
    * declaration into the agent mechanic rather than let it be priced twice.
    */
   covert: z
-    .array(z.object({ mission: AgentMissionSchema, systemId: z.string() }))
+    .array(
+      z.object({
+        mission: AgentMissionSchema,
+        systemId: z.string(),
+        target: z.string().optional(),
+      }),
+    )
     .optional(),
   /**
    * Set by the engine, never by the model: this needs another power's consent,

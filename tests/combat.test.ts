@@ -44,6 +44,7 @@ import {
   commanderResolve,
   commanderPassive,
   commanderUpkeepRelief,
+  commanderInfluence,
   toNextVeterancy,
   veterancyLabel,
   veterancyOf,
@@ -304,6 +305,12 @@ describe('phase 2 — the ground assault', () => {
 describe('garrisons regrow', () => {
   it('rebuilds toward the ceiling, free of fleet and treasury', () => {
     const state = fresh();
+    // Isolated from the officer roster, which now reaches this number: an
+    // `assault` officer's passive raises their power's garrison regrowth, and
+    // Arkane and the Vigil both open with one. Cleared rather than re-valued so
+    // this still pins `GARRISON_REGROWTH` alone — the officer term is pinned on
+    // its own, beside the other three passives.
+    state.commanders = [];
     const target = sys(state, 'ark-1');
     target.garrison = 2;
     const creditsBefore = state.factions.find((f) => f.id === 'freeworlds')!.credits;
@@ -337,6 +344,9 @@ describe('garrisons regrow', () => {
 
   it('lets a captured world slowly re-arm under its new owner', () => {
     let state = attack((s) => {
+      // See the note on `GARRISON_REGROWTH` isolation above: the Vigil opens
+      // with an `assault` officer, whose passive raises this very number.
+      s.commanders = [];
       const t = sys(s, 'sek-6');
       t.controllerFactionId = 'vigil';
       t.garrison = 3;
@@ -461,6 +471,12 @@ describe('a garrison under attack does not grow', () => {
 
   it('resumes growing the moment the siege lifts', () => {
     const state = fresh();
+    // Isolated from the officer roster, which now reaches this number: an
+    // `assault` officer's passive raises their power's garrison regrowth, and
+    // Arkane and the Vigil both open with one. Cleared rather than re-valued so
+    // this still pins `GARRISON_REGROWTH` alone — the officer term is pinned on
+    // its own, beside the other three passives.
+    state.commanders = [];
     const besieged = sys(state, 'ark-1');
     besieged.garrison = 4;
     setShipsAt(besieged, 'vigil', 6);
@@ -506,6 +522,12 @@ describe('a garrison under attack does not grow', () => {
 
   it('still grows on a quiet world elsewhere in the same turn', () => {
     const state = fresh();
+    // Isolated from the officer roster, which now reaches this number: an
+    // `assault` officer's passive raises their power's garrison regrowth, and
+    // Arkane and the Vigil both open with one. Cleared rather than re-valued so
+    // this still pins `GARRISON_REGROWTH` alone — the officer term is pinned on
+    // its own, beside the other three passives.
+    state.commanders = [];
     sys(state, 'ark-1').garrison = 4;
     sys(state, 'ark-3').garrison = 4;
     setShipsAt(sys(state, 'ark-1'), 'vigil', 5); // only ark-1 is besieged
@@ -717,6 +739,11 @@ describe('dissent has teeth', () => {
     // mechanic itself was untouched — a test that fails for the wrong reason.
     const takenWith = (dissent: number, garrison: number, lift: number) =>
       attack((s) => {
+        // Officers cleared so this pins DISSENT. Arkane opens with an `assault`
+        // officer, whose whole effect is a multiplier on the troops landed —
+        // the same quantity the dissent penalty is being searched for a flip
+        // in, and several times its size, so it buries the signal.
+        s.commanders = [];
         s.factions.find((f) => f.id === 'freeworlds')!.dissent = dissent;
         const t = sys(s, 'sek-6');
         t.controllerFactionId = 'vigil';
@@ -1374,9 +1401,98 @@ describe('the officer on the field', () => {
         expect(effectiveStats(s, 'freeworlds').resolve).toBeGreaterThan(base.resolve);
       });
 
-      it('gives each school exactly one of the three', () => {
+      /**
+       * The `assault` school, which exists because `gunnery` could not fire for
+       * four of the five powers.
+       *
+       * A gunnery officer multiplies the opening salvo, and only Drajk builds
+       * torpedo boats — so on a uniform draw a third of every other roster had
+       * a battle effect that was structurally incapable of doing anything. The
+       * same inert-mechanic failure as the first veterancy thresholds and
+       * `lineofbattle`'s occupation passive, and pinned the same way: by
+       * asserting the thing FIRES, not that the board is unchanged.
+       */
+      it('lands more troops for an assault officer, and only with lift aboard', () => {
+        const withOfficer = (kind: CommanderArchetype | null, lift: number) =>
+          attack((s) => {
+            if (kind === null) s.commanders = [];
+            else {
+              setArchetype(s, 'freeworlds', kind);
+              s.commanders.find((c) => c.factionId === 'freeworlds')!.battles =
+                VETERAN_THRESHOLDS[1];
+            }
+            const t = sys(s, 'sek-6');
+            t.controllerFactionId = 'vigil';
+            t.garrison = 6;
+            t.garrisonMax = 6;
+            t.ships = {};
+          }, 12, lift);
+
+        // Same battle, same seeded roll, same lift — only the school differs.
+        const plain = withOfficer(null, 4);
+        const landed = withOfficer('assault', 4);
+        const groundOf = (r: ReturnType<typeof withOfficer>) =>
+          r.report?.battles?.[0]?.rounds.find((x) => x.phase === 'ground')?.assault ?? 0;
+        expect(groundOf(landed)).toBeGreaterThan(groundOf(plain));
+        expect(landed.report?.battles?.[0]?.commandersFired.join(' ')).toMatch(/troops ashore/);
+      });
+
+      it('credits an assault officer with nothing when there is no landing', () => {
+        // `commandersFired` follows `doctrinesFired`: a thing that changed
+        // nothing does not appear. An assault officer aboard a fleet carrying
+        // no lift changed nothing — the exact bug the first `convoy` note had.
+        const noLift = attack((s) => {
+          setArchetype(s, 'freeworlds', 'assault');
+          const t = sys(s, 'sek-6');
+          t.controllerFactionId = 'vigil';
+          t.garrison = 6;
+          t.ships = {};
+        }, 12, 0);
+        expect(noLift.report?.battles?.[0]?.commandersFired.join(' ') ?? '').not.toMatch(
+          /troops ashore/,
+        );
+      });
+
+      it('lifts influence for a landing officer, and only for that school', () => {
+        // The passive, and why it is a STAT. It was extra garrison regrowth
+        // first and measured at 3 garrison for one power and zero for the other
+        // four over thirty harness turns: regrowth is clamped to `garrisonMax`
+        // and garrisons sit at their ceiling, so a faster rate did nothing
+        // except in the turns right after a fight. `effectiveStats` is read by
+        // every check in the game and cannot go inert that way.
+        const run = (kind: CommanderArchetype | null) => {
+          const s = fresh();
+          if (kind === null) s.commanders = [];
+          else {
+            setArchetype(s, 'freeworlds', kind);
+            s.commanders.find((c) => c.factionId === 'freeworlds')!.battles =
+              VETERAN_THRESHOLDS[1];
+          }
+          return effectiveStats(s, 'freeworlds').influence;
+        };
+        expect(run('assault')).toBeGreaterThan(run(null));
+        expect(run('convoy')).toBe(run(null));
+      });
+
+      it('never pays a landing officer in might, which would count twice', () => {
+        // `bestMod` reads `effectiveStats().might`, and `assault` is already
+        // `troops * (1 + attackMod / 20)` — so a might passive would pay this
+        // officer once for the modifier and again for the multiplier on the
+        // same landing. The constraint that shaped all four passives.
+        const s = fresh();
+        setArchetype(s, 'freeworlds', 'assault');
+        s.commanders.find((c) => c.factionId === 'freeworlds')!.battles = VETERAN_THRESHOLDS[1];
+        expect(effectiveStats(s, 'freeworlds').might).toBe(
+          effectiveStats({ ...s, commanders: [] }, 'freeworlds').might,
+        );
+      });
+
+      it('gives each school exactly one passive, and no school two', () => {
         // A passive that fired for the wrong archetype would make the choice
-        // between officers no choice at all.
+        // between officers no choice at all. Every school must also HAVE one:
+        // the fourth arrived with a battle effect before it had a passive, and
+        // an officer who is worth nothing on a quiet turn is the `convoy`
+        // problem this set of passives exists to answer.
         const s = fresh();
         for (const kind of COMMANDER_ARCHETYPES.map((a) => a.kind)) {
           setArchetype(s, 'drajk', kind);
@@ -1385,6 +1501,7 @@ describe('the officer on the field', () => {
             commanderResolve(c),
             commanderIndustry(c),
             commanderUpkeepRelief(c),
+            commanderInfluence(c),
           ].filter((n) => n > 0);
           expect(live, kind).toHaveLength(1);
           expect(commanderPassive(c)).toMatch(/\d/);

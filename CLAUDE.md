@@ -767,6 +767,29 @@ guile is bad at spies **by construction** — the Vigil at 11 and Arkane at 12 �
 so before this there was no way for such a power to buy sight at all. SIGINT is
 how a power with no spies sees.
 
+**The seed carries both, where each faction's skill is.** Freighters go to the
+trading powers — Meridian most, the Combine and Drajk a few — and are taken out
+of lift and boats rather than the line, because an auxiliary reads as nothing
+in battleship-equivalents and that is how Drajk's raiding once went to zero.
+Listeners go to the Combine (three) and one each to the Vigil and Arkane. The
+Combine's are the one place the seed departs from the bot on purpose: its bot
+never buys ears, being the best power at spies in the game, but it is the power
+whose business is knowing things, and it keeps what it is given. None of it
+moves the opening ledgers — upkeep is per ton and tonnage per world is
+unchanged, and a freighter earns nothing until it is sailed to ground nobody
+owns — and a test holds every power in surplus on turn 0, debt service
+included.
+
+**It moves the board on main, where it did not on the branch it was built on.**
+On `no-star-wars` the harness was unmoved at 3/6/5/4/4; ported onto main's
+economy (fixtures, reseated grievances, the fourth school) the 30-turn board
+goes from 6/6/6/6/1 to **6/6/5/6/2** — the Confederacy holds a second world at
+the Combine's expense — with the income mix unchanged at 59/41 and turn-30 nets
+Meridian 130 → 87, the Vigil 105 → 80, the Combine 102 → 84, Arkane 15 → 31,
+Drajk −8 → −9. Every property `tests/balance.test.ts` asserts still holds. Pinned
+to `JOURNAL_VERSION` 7 (`createSeedState`'s `auxiliaries`), so an older journal
+rebuilds the fleets it opened with.
+
 **The bots buy both, for stated reasons**, because a class nobody builds is a
 class nobody has measured — which is how `monopolist` stayed implemented,
 tested and dead for the life of the project. Freighters are sized from how much
@@ -780,9 +803,8 @@ it is also that). The harness asks *at equal credits, which **fighting**
 composition wins*, and neither hull's job exists in a two-system arena with the
 galaxy stripped out. Including them would have the sweep answer "spend nothing
 on these" at great length, and then report a class count meaning something
-different from the one every earlier result was stated in. Verified: the best
-attacker is still `escort:24 torpedo_boat:72 lifter:16` at 64% with a 10.4-point
-margin, and the best defender still `battleship:9 escort:6 lifter:10` at 85%.
+different from the one every earlier result was stated in. Verified when they
+were added: the best attacker and defender were unchanged by their presence.
 
 **Tonnage is the single primitive.** Cost, upkeep, insolvency attrition,
 `capSelfInflictedLosses`, the income contest and the price of a suborned crew
@@ -984,6 +1006,52 @@ instrument, and a defender's answer to it is still a screen.
 The historical shape and the mechanical one agree, which is why the class is
 called what it is: destroyers were originally *torpedo boat destroyers*.
 
+### What an attacker already holds in the orbit fights
+
+Three battle defects, all found in one playtest and all of them arithmetic
+rather than doctrine.
+
+**A parked squadron joined neither side.** `defenders` excludes anyone
+attacking and the attacking force was the *arriving* hulls alone, so ships
+already sitting on the target sat the battle out, took no losses and went on
+contesting the world's income. Worse than an oversight, it was a shield:
+sending one more fleet at a world you were already squatting on made the
+squatters unkillable for that turn — the exact tax `sweep` exists to let a
+holder answer. Measured: the Vigil came home to clear Vantic, Meridian
+reinforced on the same tick, and Meridian's parked six battleships were in
+neither line while the Vigil lost thirteen hulls. They are merged into their
+owner's contingent now and taken out of the system as they join, exactly as
+arriving hulls are outside it until they win. **It applies to a sweeping holder
+too**, which is the same rule and not a special case: your own hulls in your own
+orbit fight for you.
+
+**`Math.ceil` made any defence cost a whole battleship-equivalent.** The
+exchange charges the attacker `(base - tilt) / (1 + attackMod / 20)` and rounded
+it up, so a defence of 0.003 and a defence of 0.33 cost exactly the same: a
+lone **listener** — an unarmed hull — destroyed three escorts of a ten-hull
+fleet, and a lone escort destroyed the same three. A playtest hit it through
+`crusading`, which never escapes this branch by breaking off, but the arithmetic
+was never about the doctrine. These are **weights, not hulls** — the two lines
+below turn them into a fraction of each contingent's tonnage — so the rounding
+bought nothing and cost proportionality, which is the property the whole
+exchange is built on. The nominal weights the classes that cannot fight carry
+exist precisely so they are *something*; a defence of nearly nothing should cost
+nearly nothing.
+
+**The defender's emergency landing fired against no landing.** Converting the
+holder's transports to garrison above `garrisonMax` is deliberate — spent once,
+never regrown — but it ran on *any* arrival, so an attacker with no lift aboard
+handed the defender a permanent fortress for free. Measured: an attack carrying
+no transports at all put 60 troops into a world whose ceiling is 9, the attacker
+broke off, and it still read **69 of 9** four turns later. It is gated on
+inbound lift now: the window the rule describes is "the transports are about to
+be irrelevant either way", and with nothing coming ashore there is no window.
+
+`pnpm balance 30` is unmoved at 3/6/5/4/4 with the 58/42 mix across all three.
+`pnpm fleetlab` moves, and the exchange fix is why: see the note under
+"Composition" below — the attacker's advantage was partly the rounding, which
+fell on the defender as well.
+
 ### Key order is part of the state, because replay compares strings
 
 `verifyReplay` compares `JSON.stringify` of live state against replayed state,
@@ -1071,6 +1139,21 @@ and there is none to take. A guest under `basing_rights` is not swept — that
 fleet was invited — and sweeping a power you have sworn peace with breaks the
 pact exactly as any other attack does, which is why the pact check had to learn
 that the victim of an attack is not always the holder.
+
+## Interrupting somebody else's programme takes being there
+
+`interrupt_order` checked that the order existed and was interruptible and
+nothing else, so a declared action reached across the galaxy and stood a rival's
+works down. Measured in a playtest: an invasion's resolution suspended the
+Combine's fortification at Oridin *before the fleet arrived*, and the reducer
+duly refunded the Combine its 60 credits. Sharper than it looks, because
+`COVERT_CATEGORIES` means some of those orders are rumours to the actor — it
+could cancel a programme it is not allowed to see.
+
+The guard is the presence line interdiction, suborning and a works payload
+already draw: ships at the order's origin or target. Your **own** order needs
+nothing, which is what `cancel_order` is for; this is the path for reaching into
+a rival's, and reaching needs a hand.
 
 ## A refund cannot exceed the outlay
 
@@ -1733,6 +1816,18 @@ set of Imperial line-of-battle drawings complete but for the yard notes that
 made them buildable. What that mechanic is for is a thing whose worth nobody has
 settled, and a design nobody has built from is the honest case — the argument is
 whether they can be used at all, not what a ton of something costs.
+
+**And it is created where its owner already stands.** The presence guard
+covered fixtures and producers only, so the ordinary haul walked past it —
+`atSystemId` is what makes an asset losable, which is exactly as much a claim on
+ground for a crate of prisoners as for a mine. Measured in a playtest: a
+declaration ordering an attack on Threx created *"six crew who laid down arms"*
+**at Threx**, a turn before the fleet arrived and the landing was fought, and a
+failed landing would have left the prisoners in hand anyway. A fleet under way
+is in `order.force` and not in `system.ships`, so an attacker in transit stands
+nowhere and the widened guard catches exactly that: the spoils of a battle are
+the reducer's to create once the battle has happened. The attack itself is
+untouched — a refused prize does not cancel the war.
 
 `transfer_asset` runs the other way. Giving your own away needs nobody, so it is
 declarable; **taking** another power's needs them, so it is refused from a
@@ -2894,6 +2989,29 @@ reducer sets the price. Neither half is resolution's to decide. And
 nothing further fires at the cap on purpose — the penalty there is already
 crippling, and a terminal state on top of it would charge twice for one decision.
 
+### Disposition needs you to be in the room
+
+`adjust_disposition` checked that both factions existed and differed, and
+**nothing else** — no actor test, and a magnitude bounded only by the ±100 clamp.
+So a power could set what two *other* powers thought of each other, by any
+amount, permanently, for free: strictly better than the `sedition` operative,
+which costs 150 credits, a slot and an exposure roll.
+
+Two rules, both mirroring guards that exist. **You must be one of the two** —
+your opinion of them, or theirs of you, which between them are 621 of the 625
+movements in the saved campaigns. And **`MAX_NARRATIVE_DISPOSITION` (25)**,
+trimmed rather than rejected, the shape `MAX_NARRATIVE_CREDITS` uses: every
+movement the reducer charges is small and reasoned, and this one could swing a
+relationship four times further than repudiating a treaty does.
+
+Both apply only to a batch with an actor — every narrated movement has one, and
+an actorless batch is the engine or a test building a board. Both are pinned to
+`JOURNAL_VERSION` 7 (`narratedDisposition`), which the original build of this
+rule deliberately did not do. It argued the exploit need not be reproduced, and
+for the adversarial run that found it that is true; but the rules move **six**
+of the 48 saves, one of them an ordinary campaign where a treaty follows from
+the move, and replay exists to reproduce what happened.
+
 ### Dissent moves one way, on your own faction only
 
 `adjust_dissent` had the same unguarded shape, and raising the ceiling to 8 made
@@ -2939,6 +3057,7 @@ costs the breaker 25 disposition with the other party.
 | `surveillance` | 1 in 20 | yes | 1 |
 | `theft` / `subversion` | 2 in 20 | yes | 1 |
 | `sabotage` | 3 in 20 | yes | 1 |
+| `discord` | 5 in 20 | yes | 1 |
 | `assassination` | **9 in 20** | **no** | **4** |
 
 `successChance` is computed in code from the owner's guile against the target's
@@ -2976,6 +3095,24 @@ there is exactly one path — charged by `AGENT_COST`, held to `maxAgentsFor`,
 resolved on the tick, exposed on the same ladder. **Only on an outcome that
 placed something**: a failed attempt places nobody, the same rule
 `boundPayloadsToOutcome` applies to a works payload.
+
+**`discord` is the only mission aimed at a quarrel the buyer is not in.** It
+turns the power whose world the operative sits on against a **third** power,
+named in `effect.towardFactionId` — the priced path that closing the free one
+(`adjust_disposition` between two other powers) left missing.
+
+- **Permanent.** `sedition`'s dissent is clawed back at `DISSENT_DECAY`; regard
+  never is. So the rate is 1–2 and the real bound is `MAX_DISCORD_TOTAL` (20), a
+  **lifetime** ceiling on the operative rather than a rate — a rate leaves the
+  total to how long they happen to survive.
+- **Two powers, neither the buyer.** Host, named power and owner must be three
+  different factions; checked before the 100 credits are taken.
+- **Caught is a scandal with two victims**: exposure hands the named power the
+  evidence, so both resent the forger.
+
+`AGENT_COST.discord` is **100**, a starting figure; item 113 argues it is still
+too cheap, since what it buys is permanent and can drag two powers past
+`BOT_AGGRESSION_CEILING` into a war the bots were withholding.
 
 **Assassination is a strike, not a posting.** The operative is spent after one
 attempt either way; success deals four times the declared effect and costs the
@@ -3146,6 +3283,78 @@ so onlookers have no view"*), a debt to its lender and borrower. An
 extraction-sourced `log_narrative` is scoped to the **actor**, since the op
 names no counterparty and the counterparty has the better memory anyway:
 transcripts are replayed into its persona.
+
+### Covert work stays with the power that did it
+
+Three more leaks, all measured in one live save, and all on paths the fog
+above never covered:
+
+- **What reactions were told.** `endTurn` handed every responder the whole
+  staged summary verbatim — and responders are chosen by what the player's ops
+  touched, so the target of a covert op was the power most likely to be woken
+  and given the order text. The Iron Vigil was told the Combine had directed an
+  assassination of its Iron Marshal, and answered by name.
+- **The player's own notes.** A declared action's `log_narrative` was written
+  public, so the failed attempt's account went into the log every NPC reads.
+- **An NPC's reaction.** Drajk's reaction told the player it had *"inserted a
+  theft operative into Vigil-held Vantic"*.
+
+`StagedBatch.secret` marks a batch that is the actor's business alone: the
+arbiter ruled it covert, or it places an operative, or its own institutions
+refused it. **The ruling is the load-bearing half** — a covert attempt that
+*failed* places nobody, so it carries no `deploy_agent` to recognise it by, and
+its narrative is exactly what gave the game away.
+
+`Campaign.reactionBrief` leaves a secret batch out of the prose, and counts its
+ops toward responder selection only where they are **public by the fog's own
+rule** — a fleet under way is seen by everyone, so an attack riding in the same
+declaration still wakes the power it lands on, and a test pins the battle
+end to end. A turn in which everything was secret is described as nothing
+visible, rather than as "acted this turn:" over an empty list.
+
+A secret batch's notes carry `private: true` on the op, which the reducer scopes
+to the actor. On the op rather than decided in the reducer because the reducer
+sees one batch and cannot know what the arbiter ruled; on the op, it is
+journaled and replays exactly, and a journal written before it replays as public.
+
+**A reaction that places an operative is withheld from the player entirely** —
+narrative, reducer notes and rejections — while its ops land and its notes are
+the NPC's alone. Silence is a small tell and the cheaper one: a power that says
+nothing is indistinguishable from a power that was not asked, which the
+reserved-seat rule makes an ordinary turn. The alternative is a prompt rule
+asking the model not to mention it, which is the kind of guard a model can be
+talked past.
+
+### Three more fields the payload was shipping whole
+
+An 8-turn playtest read all three off `GET /api/campaign` and the event log:
+
+- **`state.agents`.** Every rival operative, unexposed ones included, with
+  name, world, mission and cover story — six of them off one response, five
+  never caught. An operative that can be seen without being burned costs its
+  owner everything and buys nothing, so this was the covert layer switched off.
+  `worldAsSeenBy` now applies `agentsVisibleTo` — mine, plus anyone's that has
+  been burned — which is the rule the client's own panels were already calling
+  on arrival, and exactly the "each component remembering to filter" that
+  function exists to replace.
+- **`clamp` and `rejection` entries.** Both were public and
+  `serializeRecentLog` feeds the log into every NPC prompt, so the Vigil's log
+  carried *"[illegal_value] drajk cannot deploy an agent owned by vigil"* —
+  Drajk's covert attempt, published to its target. Scoped in `logEvent` by
+  **kind** rather than at forty call sites, because the rule is about what the
+  kind is: a note the engine wrote about one power's own batch. An entry naming
+  no faction stays public, having nobody to be about; `reject` therefore
+  attributes to the actor, and engine batches carry none.
+
+**Redacting operatives cost the client its arithmetic**, and that is worth
+stating because the fix is a contract change rather than a filter.
+`effectiveStats` is computed in the browser from the served world, so with a
+rival's `stat_debuff` hidden the player's own row would read **higher than the
+dice allow** — the "a number that is not the number the game rolls against is a
+lie" this file names elsewhere, running the other way. `CampaignView.effective`
+carries the player's true stats, computed server-side from the unredacted
+world. Only the player's own: shipping every faction's would hand back through
+arithmetic exactly what the redaction took away.
 
 **Knowledge is a snapshot, not a memory.** Burn the operative and the programme
 goes back to being a rumour. A last-known-position model is the more honest one
@@ -3448,6 +3657,29 @@ duplicate on top of a real bill is a second charge for one purchase. Only
 charges are refunded, since a windfall beside a purchase is not the duplicate
 case.
 
+### And a declaration cannot make money either
+
+The other half took a playtest to find. Crediting **somebody else** already
+needed a payer; crediting **yourself** was exempt, on the stated grounds that
+"the fiction paying you is a real thing and `MAX_NARRATIVE_CREDITS` is what
+bounds it". The cap bounds one batch, and a power declares every turn — so what
+it bounded was the *rate* of invention rather than the fact of it.
+
+Measured: two NPC reactions "sold" one 60-crate lot back and forth across three
+turns, crediting the seller each time and debiting no buyer, and the galaxy
+ended about **600 credits richer on a lot worth at most 480** — twice the thing,
+out of nowhere, by describing a sale nobody paid for. It is the asset rules'
+own line broken from the other side: *"it becomes credits only when a power
+actually pays"*.
+
+A positive `adjust_credits` from a `model` batch is now deferred with the rest
+and funded out of what that declaration actually paid out, whoever it names.
+Conservation rather than prohibition: write both halves and the money moves.
+What is closed is the shape with no counterparty at all — and every honest
+route is untouched, because each has a payer. An accord has the buyer's consent
+and its debit in one transcript; a toll, a raid and an `income_penalty`
+operative all take money from a treasury that had it.
+
 ### An accord may move money; a declaration may not
 
 `adjust_credits` is refused when it takes credits out of a faction that is not
@@ -3630,6 +3862,56 @@ of the help:
 | `lineofbattle` | small, unconditional | `COMMANDER_MIGHT` on the might modifier, which every fight reads |
 | `gunnery` | large, conditional on a **class** | multiplies the opening salvo by `COMMANDER_STRIKE_BONUS`, so they are worth a great deal to a power that builds torpedo boats and nothing to one that brought none |
 | `convoy` | large, conditional on **losing** | `COMMANDER_WITHDRAW_RELIEF` points off the retreat loss — worth nothing until the day you have to run |
+| `assault` | large, conditional on **taking ground** | `COMMANDER_ASSAULT` multiplies the troops the lift arm lands, so it decides conquests and does nothing in a battle with no landing in it |
+
+### There is a fourth school because the third could not fire
+
+`gunnery` is conditional on a class that **one power in five builds**. The bots
+buy torpedo boats for Drajk and nobody else — a screen is a defensive purchase,
+and preying on fleets it could never beat in orbit is the whole of the
+Confederacy's doctrine — so for the other four powers a third of every roster
+had a battle effect that was structurally incapable of doing anything. The draw
+was uniform over the schools and read `buildBias` nowhere.
+
+The fix has two halves and needs both:
+
+- **A school for the landing**, which every power reaches for. A fourth school
+  is what lets the draw take `gunnery` away from powers that would never use it
+  without leaving a hole where it was.
+- **A weighted draw**. `RARE_SCHOOL_WEIGHT` is 1 against `COMMON_SCHOOL_WEIGHT`
+  8, so the mismatched school is **4%, not 0%** — a Meridian leader who decides
+  to build boats should be able to find an ordnance officer eventually, and a
+  branch no power can ever reach is the same dead code the table exists to
+  remove. Mirrored rather than special-cased: `assault` is the rare one for
+  Drajk, whose sheet says *"never hold ground worth besieging"*. The weights
+  total 25, which divides the draw's 400 values exactly, so unlike the name
+  stocks this carries no residual bias at all.
+
+**Attacker's only**, and that is the honest version rather than a gap. A
+defender has no lift phase, and the one thing an officer could do for them on
+the ground is make the garrison fight above its size — which is
+`DEFENSIVE_GARRISON_BONUS`, Arkane's entire doctrine and not a commander's to
+duplicate. The same constraint that shaped the original three.
+
+**The seeded school is dealt, not drawn.** `SEED_SCHOOL` in the scenario
+authors one per power, because `successorArchetype` means a power fights its
+whole campaign in the school it opens with — so a seeded draw is one sample and
+a bad one does not correct itself. Drawn off a single `'seed'` salt it dealt
+**four `convoy` officers out of five**: a legal sample from a correct
+distribution, and four powers indistinguishable on the one axis this mechanic
+exists to differentiate. Each power now opens with the school whose passive is
+not wasted on it — Meridian the line (`+resolve` patches the seed's stated
+vulnerability of 9), the Vigil and Arkane the landing (`convoy` is *dead* for a
+`crusading` power that never breaks off), the Combine the convoy (upkeep relief
+is money, which is what that power is), and Drajk gunnery alone.
+
+**And the journals played before it replay as they were played.** Four schools,
+the weighted draw and the dealt seed all change who a power appoints — name
+included, since a title is the school — so `LegacyRules.fourSchools`, pinned to
+`JOURNAL_VERSION` 7, rebuilds an older campaign's seed and draws from the
+original three schools with the original arithmetic. Ported from the unmerged
+`no-star-wars` branch, which versioned nothing; without the pin every one of the
+48 saves would have come back with different officers.
 
 Each is a **ladder indexed by veterancy** rather than a single figure — see "A
 death has to cost something" below for the values and for why.
@@ -3691,6 +3973,24 @@ sails under nobody in particular.
 > Registration now happens before the first exit, and a campaign-long invariant
 > check (no active officer is ever at no system and on no order) runs clean over
 > thirty turns.
+
+> **A third exit stranded one, and it is the commonest.** Moving a fleet
+> between your own worlds takes the friendly-arrival path, which returns before
+> any officer is put on the board — so an officer who sailed home was at no
+> system and on no voyage, permanently. Measured in a playtest: a Brigadier was
+> lost that way on turn 5 and every later invasion sailed under nobody, with no
+> op able to place them again. They are placed there now **without** `finish`,
+> which is the distinction: `finish` counts a battle and rolls for death, and
+> nothing was fought.
+
+**An officer is named the way a person names one.** `issue_order` matched ids
+only, and the resolution call writes what a player says — `commanderId: "Marcia
+Galba"` three turns running in one playtest — so every one of them was dropped
+with *"no such officer"* while the narrative went on claiming the officer was
+aboard. It resolves through `resolveCommander`, the same lookup the knife uses,
+scoped to the power's own roster so a name that could only mean a rival's
+officer resolves to nobody. The three guards that follow — yours, active, at the
+origin — are unchanged, and a name that fails one still drops with its note.
 
 **The bots name their officer too**, when they are standing at the port a sortie
 leaves from. Without that, giving their a location would have made commanders a
@@ -3771,6 +4071,32 @@ cap and draws no pay, which is what lets a power that lost one appoint a
 replacement — and what makes getting their back a real bargain rather than a
 formality.
 
+### And what you do with them costs, or buys, standing
+
+Assets were tradeable from the start and **moving one moved nobody's opinion**:
+a power could sell another's admiral to their worst enemy, or question one and
+throw them away, and only credits changed. The same defect `COERCION_RESENTMENT`
+exists for — an act that is plainly an insult, priced at nothing.
+
+| act | whose person they are thinks of the holder | every onlooker |
+|---|---|---|
+| handed home | `REPATRIATION_GOODWILL` (+25) | — |
+| sold to anyone else | `TRAFFICKING_RESENTMENT` (−15) | `TRAFFICKING_REPUTATION_COST` (−4) |
+| questioned | `INTERROGATION_RESENTMENT` (−20) | — |
+
+**Returning somebody is worth more than taking them cost**, because a
+repatriation is a choice and a capture was a battle — which is what makes a
+prisoner a diplomatic instrument rather than a scoreboard. Only **people** — an
+asset with a `commanderId` or `agentId`; a hold of anonymous crews names nobody,
+and nobody resents the sale of people it cannot name. A world stormed with a
+prisoner on it is a conquest, not a sale, and moves nothing.
+
+**Both routes a person changes hands by**: `transfer_asset` and a treaty's
+`terms.assets`. The original build (on an unmerged branch) priced only the
+first, and a ransom is most naturally written as a treaty — a rule on one route
+makes the other the free one. `JOURNAL_VERSION` is **7** for this, pinned by
+`LegacyRules.peopleStanding`.
+
 ### People, on both sides of the fog
 
 An officer and an operative are the same kind of thing once they are caught, and
@@ -3824,6 +4150,33 @@ at all. Home pays for the person; everybody else pays for the leverage.
 *"assassinate their Iron Marshal"* admissible, priced, rolled — and then it
 damaged some hulls while the officer went on commanding battles. The inert
 success this codebase closes everywhere else.
+
+**The model names the person; code does the lookup.** `Commander.name` stores
+the title baked in — *"Iron Marshal Marcia Galba"* — and a player writes *"Marcia
+Galba"*, *"M. Galba"* or *"Marshal Galba"*. `targetCommanderId` was passed
+through as an id, so every one of those matched no record: the attempt was
+admissible, priced, rolled, and then the officer went on commanding battles.
+Worse, the arbiter had never been shown that such a person exists —
+`commanderLine` renders only the **viewer's own** officers, so no rival's name
+reached any prompt in the game, and `targetCommanderId` appeared in no prompt
+file at all. A name a model has not been given is a name it has to invent.
+
+Both halves are closed. `serializeFactions` now carries each other power's
+roster — name, school and where they are standing, which is the half that
+decides whether the knife finds them — and that is no fog leak, since an
+officer's name and school are already on the Command tab for every power because
+they are a fact about a fleet rather than about a plan. And `resolveCommander`
+does the matching in **code**, the same division of labour as
+`classifyPrinciple`: the model is good at judgement and unreliable at lookup, so
+it names the person and the reducer resolves it. Every content token of the
+query must be answered — partial credit is what would let *"Galba"* land on
+whoever merely shares a title with the one Galba — an initial answers a given
+name, and **a tie resolves to nobody**, because two officers a query fits
+equally is a query that has identified neither. Unresolvable is dropped with a
+note rather than rejected, the same shape as a fleet naming an officer it cannot
+carry: the operative still goes out, aimed at the power rather than at a person.
+`Appraisal.covert[].target` carries the name through the fallback routing too,
+which otherwise built a `deploy_agent` aimed at nobody.
 
 `Agent.targetCommanderId` names them, and two things bound it. They must be
 **standing at the operative's system** when the attempt resolves, so an officer
@@ -3962,11 +4315,18 @@ Two changes, and they are halves of one idea:
   costs is the `battles` behind them — a thing that takes turns of winning to
   build and **cannot be bought back at any price**.
 
-| step | at | `lineofbattle` | `gunnery` | `convoy` |
-|---|---|---|---|---|
-| untested | 0–1 | +1 might | +40% salvo | −8% withdrawal |
-| seasoned | 2–4 | +2 | +60% | −12% |
-| veteran | 5+ | +3 | +80% | −16% |
+| step | at | `lineofbattle` | `gunnery` | `convoy` | `assault` |
+|---|---|---|---|---|---|
+| untested | 0–1 | +1 might | +40% salvo | −8% withdrawal | +15% ashore |
+| seasoned | 2–4 | +2 | +60% | −12% | +25% |
+| veteran | 5+ | +3 | +80% | −16% | +35% |
+
+`COMMANDER_ASSAULT` is sized against the might modifier it sits beside rather
+than picked: the landing is already `troops * (1 + attackMod / 20)`, so a
+veteran `lineofbattle` officer's +3 might is +15% on the same quantity. A
+veteran here is more than twice that, which is the "large and conditional"
+shape, and the price is that it does nothing whatever in a battle with no
+landing in it.
 
 **Three ladders rather than one multiplier**, and that is not a style
 preference: might is integer-valued with a base of 1, so a shared ×1.5/×2 scale
@@ -4031,13 +4391,19 @@ needs: a successor holds the same school and therefore the same title, so the
 continuity of the institution is legible in the name while the person is plainly
 somebody new.
 
-| | `lineofbattle` | `gunnery` | `convoy` | leader |
-|---|---|---|---|---|
-| Meridian | Operations Executive | Senior Director | Comptroller | Chief Executive |
-| Iron Vigil | Iron Marshal | Commodore | Rear Admiral | Grand Admiral |
-| Ojjul Nar | Underboss | Second Elder | Hand of the Family | First Elder |
-| Arkane | Fleetwarden | Gunwarden | Lanewarden | Highwarden |
-| Drajk | Korvan Lord | Packmaster | Quartermaster | Huntmaster |
+| | `lineofbattle` | `gunnery` | `convoy` | `assault` | leader |
+|---|---|---|---|---|---|
+| Meridian | Operations Executive | Senior Director | Comptroller | Acquisitions Director | Chief Executive |
+| Iron Vigil | Iron Marshal | Commodore | Rear Admiral | Brigadier | Grand Admiral |
+| Ojjul Nar | Underboss | Second Elder | Hand of the Family | Enforcer | First Elder |
+| Arkane | Fleetwarden | Gunwarden | Lanewarden | Fieldwarden | Highwarden |
+| Drajk | Korvan Lord | Packmaster | Quartermaster | Swordmaster | Huntmaster |
+
+The landing titles hold each power's own convention: the company *acquires* a
+world, the Vigil's army rank sits beside its flag ranks, the Combine's is the
+one office in its column that is a job rather than a thing you are owed, Arkane
+adds the warden whose charge is ground rather than lanes, and Drajk keeps the
+`-master` suffix on the corsair who actually crosses onto the deck.
 
 They ladder off `Faction.title`, which is what makes an officer placeable
 without the name: the Combine's Second Elder is **family** rather than staff,
@@ -4074,6 +4440,7 @@ it.
 | `lineofbattle` | always | **+resolve** — their crews do not come apart, so `subornLimit` against the power falls | +3 |
 | `gunnery` | only with boats | **+industry** — they run the establishment that makes the guns | +3 |
 | `convoy` | only when losing | **−% fleet upkeep**, the largest standing charge any power carries | −14% |
+| `assault` | only when landing | **+influence** — an army in being is leverage at a table, which is the claim `COERCION_RESENTMENT` already makes from the other side | +3 |
 
 **Neither stat passive is might**, which is the one constraint that shapes the
 set: `bestMod` reads `effectiveStats().might`, so a might passive would pay an
@@ -4096,6 +4463,21 @@ stated vulnerability and this is what patches it. The board is unchanged at
 > veterancy thresholds and caught the same way — by checking that the mechanic
 > fired rather than that the board was unchanged. A passive conditional on
 > conquest is not a passive.
+>
+> **`assault`'s was extra garrison regrowth first, and it failed the same
+> measurement.** `+1..3` on `GARRISON_REGROWTH` for every world the power holds
+> is a landing officer's obvious trade, and over thirty harness turns it moved
+> the board by **3 garrison for one power and zero for the other four** —
+> including Arkane, which opens with an officer of that very school. Structural
+> rather than unlucky: regrowth is clamped to `garrisonMax` and garrisons sit AT
+> their ceiling almost always, so a faster rate only does anything in the few
+> turns after a fight. The clamp that made a per-turn mutation safe is the same
+> clamp that made it inert. That is the third catch of this exact shape, and the
+> lesson is the same each time — a stat passive cannot fail that way, because
+> `effectiveStats` is read by every check in the game. Measured on the opening
+> board, all four now move a real number: Meridian resolve 9→10, the Vigil
+> influence 6→7, Arkane influence 10→11, Drajk industry 8→9, and the Combine's
+> upkeep down 6%.
 
 Four existing tests broke on the passives and all four were right to: they pinned
 `effectiveStats` and `ledgerFor` against a faction's **base** stats, and those
@@ -4230,7 +4612,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `consume_asset` | spend, release or destroy a thing you hold; draws an instrument's `uses` or stuff's `quantity` |
 | `issue_order` | see Duration below; optional `onComplete` payload, paid at issue. `force` is a count (drawn proportionally) or a named composition |
 | `cancel_order` | returns the unspent part of an `onComplete` payload |
-| `interrupt_order` | rejected when the order is not interruptible |
+| `interrupt_order` | rejected when the order is not interruptible; **somebody else's** order also needs ships at its origin or target |
 | `extend_order` | rejected for movement |
 | `accelerate_order` | spends credits, drops one Fibonacci bucket, min 1; rejected for movement |
 | `form_treaty` | **extraction-only** — absent from `ModelOpSchema`; a treaty needs the other party's consent. `exclusive` forecloses another of that type with anyone else |
@@ -4590,6 +4972,29 @@ Staged actions are deliberately **not** in the journal, so they do not survive a
 save; `:quit` says so rather than losing them quietly. `:staged` lists them and
 `:discard` clears them.
 
+### Discard withdraws an order, never an attempt
+
+Discard used to drop a batch and rebuild the preview from committed state, which
+**refunded everything the declaration cost while the action point stayed
+spent**. Measured: credits 3400 → 3600 and dissent 8 → 0 after a discard. So a
+bad roll was free to erase, and so was a refusal — the free probing of your own
+red lines that charging a point for a refusal exists to prevent.
+
+`StagedBatch.binding` names why a batch cannot be withdrawn:
+
+| binding | what it is |
+|---|---|
+| `rolled` | the dice were thrown; keeping the good bands and discarding the bad ones is a reroll |
+| `refused` | a refusal *is* its charge, with no order inside to withdraw |
+| `charge` | an objection priced on an accord, which stands even if the accord goes |
+| `record` | an engine row such as the arbiter's ruling — every `engine` batch |
+
+What stays withdrawable is an **accord**: unrolled, and still the player's to
+walk away from before the turn lands. Its objection charge is a separate batch
+and stays. The panel hides the × on a binding row and says why, and "withdraw
+all" appears only when something can go — a button that could only ever leave
+the list untouched reads as broken.
+
 ---
 
 ## Diplomacy
@@ -4871,8 +5276,20 @@ different margin:
 
 | side | best fleet | rate | margin over the best 1–2 class fleet |
 |---|---|---|---|
-| attacker | `escort:24 torpedo_boat:72 lifter:16` | 64% | **+10.4 points** |
-| defender | `battleship:9 escort:6 lifter:10` | 85% | **+1.2 points** |
+| attacker | `battleship:12 escort:24 torpedo_boat:48 lifter:16` | 54% | **+1.6 points** |
+| defender | `battleship:9 escort:6 lifter:10` | 85% | **+1.4 points** |
+
+> **Both margins narrowed when the exchange stopped rounding losses up**, and
+> the attacker's side moved a long way: it read `escort:24 torpedo_boat:72
+> lifter:16` at **64%** with a **10.4**-point margin while `Math.ceil` stood.
+> That figure was inflated by the bug rather than measuring the classes — the
+> rounding fell on the DEFENDER too, destroying it faster than its weight
+> deserved, and an attacker's whole case is how much defence it removes. What
+> survives is the property the harness exists to test: the best fleet on both
+> sides still carries three or four classes, a no-lift fleet still takes
+> nothing (`no_lift` 59–75%), and the two failure modes that make the mix a
+> decision are both still on the board. `pnpm balance 30` is unmoved at
+> 3/6/5/4/4, so the campaign-level board did not follow the arena.
 
 A line-heavy attacker fails by losing its transports (`no_lift`); a screen-heavy
 one fails by never clearing the orbit (`no_landing`). Two failure modes of
@@ -4899,6 +5316,16 @@ rebuilds state from turn 0 by re-running the reducer — **no model calls**.
 `Campaign.verifyReplay()` compares live state against replayed state and is
 asserted in the test suite. This is what makes prompt changes evaluable: run the
 same journal before and after a prompt edit and compare the worlds produced.
+
+**It compares canonical forms.** `replay` returns its world through
+`WorldStateSchema.parse`, which writes every object's keys in schema order,
+while the live world keeps whatever order the reducer's literal used — so an
+operative built as `{ id, name, ownerFactionId, … }` compared unequal to the
+same operative replayed as `{ id, ownerFactionId, …, name }`, and **every
+campaign with a live operative failed the check while holding an identical
+world**. The live side is parsed too now. Records are untouched by the parse —
+`z.record` keeps insertion order — so the stack-order defect `normaliseStack`
+closed is still caught.
 
 Determinism depends on three things, all tested:
 
@@ -5067,6 +5494,14 @@ component is logic nothing checks.
   unaligned ice worlds, and three identical paragraphs read as a bug. Picked by
   a hash of the **system id** and deliberately not `rollD20`, which is seeded on
   the turn: a world's character must not change because time passed.
+
+  **Assets is its own tab**, and the only one carrying a count on its label. A
+  treaty is an arrangement you negotiated and so already know about; an asset
+  *arrives* — a prisoner off a won battle, an operative caught, a dossier out of
+  an accord — unasked, and filed one scroll down inside Treaties, a thing that
+  appears on its own is a thing nobody sees appear. The tab strip **wraps**
+  rather than dividing the panel's ~310px nine ways, which truncated every label
+  but "Log"; an empty shelf says what would fill it rather than rendering blank.
 
   **A fixture is listed on the world it stands on**, and nowhere else. See "A
   fixture is drawn on the world, not in the warehouse" above: it used to render

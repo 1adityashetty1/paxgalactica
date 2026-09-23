@@ -281,11 +281,17 @@ describe('adjust_credits is bounded narrative money', () => {
     expect(out.state.eventLog.some((e) => e.kind === 'clamp')).toBe(true);
   });
 
-  it('trims an invented windfall the same way, which is the worse direction', () => {
+  it('drops an invented windfall outright, whatever its size', () => {
+    // The cap is for CHARGES now. A windfall is not trimmed to the cap and
+    // applied, because the cap bounds one batch and a power declares every
+    // turn — so trimming bounded the rate of invention rather than the fact of
+    // it. Money only ever moves; nothing a declaration writes makes it.
     const state = fresh();
     const before = fac(state, 'meridian').credits;
     const out = applyOps(state, [move('meridian', 9000)], 'model', 'meridian');
-    expect(fac(out.state, 'meridian').credits).toBe(before + MAX_NARRATIVE_CREDITS);
+    expect(out.rejections).toHaveLength(0);
+    expect(fac(out.state, 'meridian').credits).toBe(before);
+    expect(out.notes.join(' ')).toMatch(/came from nobody's treasury/);
   });
 
   it('leaves an ordinary sum alone', () => {
@@ -347,14 +353,31 @@ describe('adjust_credits is bounded narrative money', () => {
     expect(out.notes.join(' ')).toMatch(/only 40 was actually paid out/);
   });
 
-  it('leaves the actor\'s own windfall alone, which is what the cap is for', () => {
-    // Money appearing in YOUR account is the fiction paying you, and
-    // `MAX_NARRATIVE_CREDITS` is what bounds it. Only money appearing in
-    // somebody else's needs a payer.
+  it('holds the actor\'s own windfall to the same rule as anyone else\'s', () => {
+    // This used to be exempt: money appearing in YOUR account was "the fiction
+    // paying you", bounded by the cap alone. A playtest sold one crate lot back
+    // and forth between two NPCs and minted about 600 credits on a lot worth
+    // 480 — a sale nobody paid for, which is the asset rules' own line broken
+    // from the other side.
     const state = fresh();
     const before = fac(state, 'meridian').credits;
     const out = applyOps(state, [move('meridian', 120)], 'model', 'meridian');
-    expect(fac(out.state, 'meridian').credits).toBe(before + 120);
+    expect(fac(out.state, 'meridian').credits).toBe(before);
+  });
+
+  it('pays that same windfall when the batch funds it', () => {
+    // Conservation, not prohibition: write both halves and the money moves.
+    const state = fresh();
+    const mine = fac(state, 'meridian').credits;
+    const theirs = fac(state, 'vigil').credits;
+    const out = applyOps(
+      state,
+      [move('meridian', -120), move('vigil', 120)],
+      'model',
+      'meridian',
+    );
+    expect(fac(out.state, 'meridian').credits).toBe(mine - 120);
+    expect(fac(out.state, 'vigil').credits).toBe(theirs + 120);
   });
 
   it('leaves engine ops and older journals unbounded, so replay is exact', () => {

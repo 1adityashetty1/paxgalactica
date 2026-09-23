@@ -25,6 +25,7 @@ import {
   activeCommanders,
   commanderFor,
   commanderIndustry,
+  commanderInfluence,
   commanderResolve,
   commanderUpkeepRelief,
 } from './command.js';
@@ -1940,6 +1941,25 @@ export const COMPULSION_DRIFT_DISSENT = 3;
 export const MAX_NARRATIVE_CREDITS = 4 * SHIP_COST;
 
 /**
+ * The most one narrated act may move an opinion.
+ *
+ * Every disposition movement the *reducer* charges is small and reasoned —
+ * `COMMITMENT_GOODWILL` 5, `SUBORN_DISPOSITION_COST` 6 a hull,
+ * `DEBT_DEFAULT_DISPOSITION_COST` 6 a turn, 25 for breaking a pact — and
+ * `adjust_disposition` was bounded only by the ±100 clamp on the result, so a
+ * single narrated sentence could swing a relationship four times further than
+ * repudiating a treaty does.
+ *
+ * Disposition has **no decay**, which is what makes the size matter: this is
+ * the permanent record of what two powers think of each other. 25 puts a
+ * narrated act at parity with the heaviest thing the reducer charges for.
+ *
+ * Trimmed with a note rather than rejected, the same shape as
+ * `MAX_NARRATIVE_CREDITS`: the insult was still real at a smaller number.
+ */
+export const MAX_NARRATIVE_DISPOSITION = 25;
+
+/**
  * The most a single treaty may move per turn, in either direction.
  *
  * The paragraph above notes that treaty `incomePerTurn` is one of the
@@ -2179,6 +2199,7 @@ export function effectiveStats(state: WorldState, factionId: string): FactionSta
   if (officer) {
     base.industry = Math.min(20, base.industry + commanderIndustry(officer));
     base.resolve = Math.min(20, base.resolve + commanderResolve(officer));
+    base.influence = Math.min(20, base.influence + commanderInfluence(officer));
   }
 
   // **A fixture its holder is standing over makes them better at something.**

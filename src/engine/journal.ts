@@ -14,7 +14,7 @@ import { createSeedState } from '../seed/scenario.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 6;
+export const JOURNAL_VERSION = 7;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -79,6 +79,7 @@ export const JournalVersionSchema = z.union([
   z.literal(4),
   z.literal(5),
   z.literal(6),
+  z.literal(7),
 ]);
 
 export const JournalSchema = z.object({
@@ -95,7 +96,14 @@ export const JournalSchema = z.object({
    *     what those powers actually believed.
    * 5 — written before `industry` capped what a faction's yards could lay down
    *     in one batch, so its fleets grew at whatever rate credits allowed.
-   * 6 — current.
+   * 6 — written before the rules ported from the unmerged `no-star-wars`
+   *     branch: standing moved by what a power does with a captured person,
+   *     narrated disposition bounded and needing the actor, officers dealt and
+   *     drawn from four schools, freighters and listeners in the opening fleets,
+   *     engine notes private to their power, officers named by name, reach to
+   *     interrupt a rival, four battle rules, self-credits needing a payer, and
+   *     spoils needing presence. Each is its own `LegacyRules` flag.
+   * 7 — current.
    */
   version: JournalVersionSchema,
   entries: z.array(JournalEntrySchema),
@@ -138,7 +146,13 @@ export function replay(
     throw new Error('Journal must begin with a seed entry.');
   }
 
-  let state = createSeedState(seed.playerFactionId);
+  // The seed moved at version 7 — officers dealt from four schools, freighters
+  // and listeners in the opening fleets — so an older journal rebuilds the
+  // board it was actually played on.
+  let state = createSeedState(seed.playerFactionId, {
+    fourSchools: parsed.version >= 7,
+    auxiliaries: parsed.version >= 7,
+  });
   let rejectionCount = 0;
   // The opening board, before anything is applied. Without it an observer's
   // first sample is the state AFTER the first batch, so anything that batch
@@ -170,6 +184,31 @@ export function replay(
     // Those campaigns fought those battles and ran those operatives without
     // anybody being seized, and an asset is tradeable rather than cosmetic.
     hostages: parsed.version >= 6,
+    // What a power does with the people it holds moved nobody's opinion. Those
+    // campaigns sold, returned and questioned officers and operatives and the
+    // powers involved felt nothing about it — that is what they believed.
+    peopleStanding: parsed.version >= 7,
+    // A narrated swing had no ceiling but the clamp and no test of who was
+    // asking, and six recorded campaigns moved under one or the other.
+    narratedDisposition: parsed.version >= 7,
+    // Officers were drawn from three schools, uniformly, seed included.
+    fourSchools: parsed.version >= 7,
+    // One Iron Vigil playtest's fixes: engine notes private to their power, an
+    // officer named by name on an order, reach needed to interrupt a rival —
+    // and four battle rules, below. Those campaigns were played without them.
+    privateEngineNotes: parsed.version >= 7,
+    officerByName: parsed.version >= 7,
+    interruptNeedsReach: parsed.version >= 7,
+    // Crediting your own treasury by narration needed no payer.
+    selfCreditNeedsPayer: parsed.version >= 7,
+    // Only fixtures and producers needed their holder present; a haul did not.
+    spoilsNeedPresence: parsed.version >= 7,
+    battleRules: {
+      officerHomecoming: parsed.version >= 7,
+      squattersFight: parsed.version >= 7,
+      landingNeedsLift: parsed.version >= 7,
+      exactExchange: parsed.version >= 7,
+    },
   };
 
   for (const entry of parsed.entries.slice(1)) {

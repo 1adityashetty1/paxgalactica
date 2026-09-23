@@ -37,10 +37,35 @@ import { rollD20 } from './checks.js';
  *   boats and exactly nothing to one that brought none.
  * - `convoy` is **large and conditional on losing** — it is worth nothing at
  *   all until the day you have to run, and a great deal on that day.
+ * - `assault` is **large and conditional on taking ground** — it multiplies the
+ *   troops the lift arm lands, so it decides conquests and is worth nothing in
+ *   a battle nobody is trying to win a world with.
  *
  * That is a better set than one-per-phase would have been, because it means the
- * three are not substitutes: which one you want depends on the fleet you build
+ * four are not substitutes: which one you want depends on the fleet you build
  * and the war you are losing or winning.
+ *
+ * ## Why there is a fourth, and why the draw is not uniform
+ *
+ * `gunnery` is conditional on a **class that one power in five builds**. The
+ * bots buy torpedo boats for Drajk and nobody else, because a screen is a
+ * defensive purchase and preying on fleets it could never beat in orbit is the
+ * whole of the Confederacy's doctrine — so for the other four powers a third of
+ * every roster had a battle effect that **could not fire at all**. Measured, not
+ * inferred: the draw is uniform over the schools and reads `buildBias` nowhere.
+ *
+ * That is the inert-mechanic failure this codebase keeps closing — the first
+ * veterancy thresholds, `lineofbattle`'s occupation passive, `monopolist` owned
+ * by nobody. The fix has two halves and needs both:
+ *
+ * - **A school for the landing**, which every power reaches for, because a
+ *   fourth school is what lets the draw take `gunnery` away from powers that
+ *   would never use it without leaving a hole where it was.
+ * - **A weighted draw** (`SCHOOL_WEIGHTS`), so `gunnery` is Drajk's school and
+ *   is merely *rare* elsewhere rather than impossible. Rare rather than absent
+ *   on purpose: a Meridian player who decides to build boats should be able to
+ *   find an ordnance officer eventually, and a school no power can ever draw is
+ *   the same dead branch one step along.
  *
  * **None of the three duplicates a war ethic**, which was the real constraint.
  * `crusading` already refuses to break off and `opportunist` already takes a
@@ -72,6 +97,12 @@ export const COMMANDER_ARCHETYPES = [
     phase: 'the withdrawal',
     effect: 'brings more of a beaten fleet home',
     known: 'getting a broken fleet out, which is a reputation nobody wants',
+  },
+  {
+    kind: 'assault',
+    phase: 'the landing',
+    effect: 'puts more of the lift arm onto the ground',
+    known: 'the landing itself — going down with the first wave, and being hard to throw off',
   },
 ] as const;
 
@@ -188,6 +219,24 @@ export const COMMANDER_WITHDRAW_RELIEF = [8, 12, 16] as const;
 
 /** How much heavier a `gunnery` officer's opening salvo lands. */
 export const COMMANDER_STRIKE_BONUS = [0.4, 0.6, 0.8] as const;
+
+/**
+ * `assault`: the share added to the troops the lift arm puts ashore.
+ *
+ * Sized against the might modifier it sits beside rather than picked: `assault`
+ * is already `troops * (1 + attackMod / 20)`, so a veteran `lineofbattle`
+ * officer's +3 might is +15% on the same quantity. A veteran here is +35% — more
+ * than twice that, which is the "large and conditional" shape, and the price is
+ * that it does nothing whatever in a battle with no landing in it.
+ *
+ * **Attacker's only**, and that is the honest version rather than a gap. A
+ * defender has no lift phase; the thing an officer could do for them on the
+ * ground is make the garrison fight above its size, and that is
+ * `DEFENSIVE_GARRISON_BONUS` — Arkane's entire doctrine. A commander who did it
+ * too would flatten a war ethic, which is the constraint that shaped the
+ * original three.
+ */
+export const COMMANDER_ASSAULT = [0.15, 0.25, 0.35] as const;
 
 /**
  * A commander is lost when their side is broken and the die is against them.
@@ -319,6 +368,35 @@ export const hostageTaken = (roll: number): boolean => roll >= HOSTAGE_ROLL;
  */
 export const INTERROGATION_SHARE = 0.4;
 
+/* ------------------------------------------------------------------ */
+/* What trafficking in people costs, and what handing them back buys   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Disposition moved by what a power does with the people it is holding.
+ *
+ * Assets have been tradeable since they existed and **moving one cost nobody
+ * anything** — a power could sell another's admiral to their worst enemy, or
+ * question one and throw them away, and the only thing that moved was credits.
+ * The same defect `COERCION_RESENTMENT` was added for: an act that is plainly an
+ * insult, priced at nothing, because nothing read it.
+ *
+ * The asymmetry is the design. **Giving somebody back is worth more than taking
+ * them cost**, because a repatriation is a choice and a capture was a battle —
+ * which is what makes a prisoner a diplomatic instrument rather than a
+ * scoreboard.
+ *
+ * Only for **people**: an asset carrying a `commanderId` or an `agentId`.
+ * Selling a hold of ore to somebody's enemy is commerce, and so is a hold of
+ * anonymous crews — `prisoners` names nobody, and a power cannot resent the
+ * sale of people it cannot name.
+ */
+export const REPATRIATION_GOODWILL = 25;
+export const TRAFFICKING_RESENTMENT = 15;
+export const INTERROGATION_RESENTMENT = 20;
+/** What a third party thinks of a power that deals in prisoners at all. */
+export const TRAFFICKING_REPUTATION_COST = 4;
+
 export function officerRansom(
   c: Commander,
   factionIds: readonly string[],
@@ -418,6 +496,34 @@ export const COMMANDER_INDUSTRY = [1, 2, 3] as const;
  */
 export const COMMANDER_UPKEEP_RELIEF = [0.06, 0.1, 0.14] as const;
 
+/**
+ * `assault`: points of **influence**, added like terrain and clamped the same.
+ *
+ * A power whose officers can put troops on a world is listened to by powers that
+ * would rather they did not — an army in being is leverage at a table, which is
+ * the same claim `COERCION_RESENTMENT` already makes from the other side. It is
+ * also the last stat available: `bestMod` reads might, so a might passive would
+ * pay this officer twice for the same landing, and `lineofbattle` and `gunnery`
+ * have taken resolve and industry.
+ *
+ * **It was extra garrison regrowth first, and that measured at nothing.**
+ * `+1..3` on `GARRISON_REGROWTH` for every world the power holds reads like a
+ * landing officer's obvious trade, and over thirty harness turns it moved the
+ * board by **3 garrison for one power and zero for the other four** — including
+ * Arkane, which opens with an officer of this very school. The reason is
+ * structural rather than bad luck: regrowth is clamped to `garrisonMax` and
+ * garrisons sit AT their ceiling almost always, so a faster rate only does
+ * anything in the few turns after a fight. The clamp that made a per-turn
+ * mutation safe is the same clamp that made it inert.
+ *
+ * That is the third time this exact shape has been caught — the 4/10 veterancy
+ * thresholds, `lineofbattle`'s occupation relief, and now this — and all three
+ * were found the same way, by measuring that the mechanic FIRED rather than that
+ * the board was unchanged. A stat passive cannot fail that way, because
+ * `effectiveStats` is read by every check in the game.
+ */
+export const COMMANDER_INFLUENCE = [1, 2, 3] as const;
+
 export function commanderResolve(c: Commander): number {
   return c.archetype === 'lineofbattle' ? COMMANDER_RESOLVE[veterancyOf(c.battles)]! : 0;
 }
@@ -426,6 +532,9 @@ export function commanderIndustry(c: Commander): number {
 }
 export function commanderUpkeepRelief(c: Commander): number {
   return c.archetype === 'convoy' ? COMMANDER_UPKEEP_RELIEF[veterancyOf(c.battles)]! : 0;
+}
+export function commanderInfluence(c: Commander): number {
+  return c.archetype === 'assault' ? COMMANDER_INFLUENCE[veterancyOf(c.battles)]! : 0;
 }
 
 /**
@@ -444,6 +553,8 @@ export function commanderPassive(c: Commander): string {
       return `+${commanderIndustry(c)} industry`;
     case 'convoy':
       return `-${Math.round(commanderUpkeepRelief(c) * 100)}% fleet upkeep`;
+    case 'assault':
+      return `+${commanderInfluence(c)} influence`;
   }
 }
 
@@ -474,6 +585,10 @@ export function commanderStrike(c: Commander): number {
   return COMMANDER_STRIKE_BONUS[veterancyOf(c.battles)]!;
 }
 
+export function commanderAssault(c: Commander): number {
+  return COMMANDER_ASSAULT[veterancyOf(c.battles)]!;
+}
+
 /** What a battle report calls an officer of this standing. */
 export function veterancyLabel(battles: number): string {
   return ['untested', 'seasoned', 'veteran'][veterancyOf(battles)]!;
@@ -497,6 +612,8 @@ export function commanderEffect(c: Commander): string {
       return `+${Math.round(commanderStrike(c) * 100)}% on the opening salvo`;
     case 'convoy':
       return `-${commanderRelief(c)}% off a withdrawal`;
+    case 'assault':
+      return `+${Math.round(commanderAssault(c) * 100)}% troops ashore in a landing`;
   }
 }
 
@@ -611,6 +728,7 @@ const NAME_STOCK: Record<string, NameStock> = {
       lineofbattle: 'Operations Executive',
       gunnery: 'Senior Director',
       convoy: 'Comptroller',
+      assault: 'Acquisitions Director',
     },
     place: 'prefix',
   },
@@ -624,6 +742,7 @@ const NAME_STOCK: Record<string, NameStock> = {
       lineofbattle: 'Iron Marshal',
       gunnery: 'Commodore',
       convoy: 'Rear Admiral',
+      assault: 'Brigadier',
     },
     place: 'prefix',
   },
@@ -638,6 +757,7 @@ const NAME_STOCK: Record<string, NameStock> = {
       lineofbattle: 'Underboss',
       gunnery: 'Second Elder',
       convoy: 'Hand of the Family',
+      assault: 'Enforcer',
     },
     place: 'suffix',
   },
@@ -653,6 +773,7 @@ const NAME_STOCK: Record<string, NameStock> = {
       lineofbattle: 'Fleetwarden',
       gunnery: 'Gunwarden',
       convoy: 'Lanewarden',
+      assault: 'Fieldwarden',
     },
     place: 'prefix',
   },
@@ -669,6 +790,7 @@ const NAME_STOCK: Record<string, NameStock> = {
       lineofbattle: 'Korvan Lord',
       gunnery: 'Packmaster',
       convoy: 'Quartermaster',
+      assault: 'Swordmaster',
     },
     place: 'prefix',
   },
@@ -786,10 +908,69 @@ export function titlesFor(factionId: string): Record<CommanderArchetype, string>
  * same reason left alone. Measured: 160/165/155 over 480 draws before, even
  * after.
  */
-export function commanderArchetype(factionId: string, turn: number, salt: string): CommanderArchetype {
+/**
+ * How often each power's appointments come out of each school.
+ *
+ * **`gunnery` is Drajk's, and `assault` is everybody else's.** A gunnery officer
+ * multiplies the opening salvo, which is worth a great deal to a power that
+ * builds torpedo boats and *nothing whatever* to one that brought none — and
+ * only the Confederacy builds them, because a screen is a defensive purchase and
+ * preying on fleets it could never beat in orbit is its whole doctrine. Drawn
+ * uniformly, a third of every other power's roster had a battle effect that
+ * could not fire.
+ *
+ * Mirrored on Drajk's side rather than special-cased: *"never hold ground worth
+ * besieging"* is the sheet of the one power that should almost never produce a
+ * landing officer.
+ *
+ * `RARE_SCHOOL_WEIGHT` is 1 against 8 — **4%, not 0%** — because a player is not
+ * a bot. A Meridian leader who decides to build boats should be able to find an
+ * ordnance officer eventually, and a branch no power can ever reach is the same
+ * dead code this table exists to remove. It also keeps `successorArchetype`
+ * honest: an inherited school is never one its power could not have drawn.
+ *
+ * The weights total **25**, which divides the draw's 400 values exactly, so
+ * unlike the name stocks this carries no residual bias at all.
+ */
+const COMMON_SCHOOL_WEIGHT = 8;
+const RARE_SCHOOL_WEIGHT = 1;
+
+/** The school each power almost never appoints. */
+const RARE_SCHOOL: Record<string, CommanderArchetype> = {
+  drajk: 'assault',
+};
+const DEFAULT_RARE_SCHOOL: CommanderArchetype = 'gunnery';
+
+function schoolWeights(factionId: string): { kind: CommanderArchetype; weight: number }[] {
+  const rare = RARE_SCHOOL[factionId] ?? DEFAULT_RARE_SCHOOL;
+  return COMMANDER_ARCHETYPES.map((a) => ({
+    kind: a.kind,
+    weight: a.kind === rare ? RARE_SCHOOL_WEIGHT : COMMON_SCHOOL_WEIGHT,
+  }));
+}
+
+export function commanderArchetype(
+  factionId: string,
+  turn: number,
+  salt: string,
+  /**
+   * False for a journal written before `assault` existed (version 6 and
+   * earlier): those campaigns drew uniformly from the first three schools, and
+   * every appointment they made has to come out the same on replay.
+   */
+  fourSchools = true,
+): CommanderArchetype {
   const hi = rollD20(turn, `commander-kind:${factionId}:${salt}`) - 1;
   const lo = rollD20(turn, `commander-school:${factionId}:${salt}`) - 1;
-  return COMMANDER_ARCHETYPES[(hi * 20 + lo) % COMMANDER_ARCHETYPES.length]!.kind;
+  if (!fourSchools) return COMMANDER_ARCHETYPES[(hi * 20 + lo) % 3]!.kind;
+  const weights = schoolWeights(factionId);
+  const total = weights.reduce((n, w) => n + w.weight, 0);
+  let draw = (hi * 20 + lo) % total;
+  for (const w of weights) {
+    if (draw < w.weight) return w.kind;
+    draw -= w.weight;
+  }
+  return weights[0]!.kind;
 }
 
 /**
@@ -819,6 +1000,7 @@ export function successorArchetype(
   factionId: string,
   turn: number,
   salt: string,
+  fourSchools = true,
 ): CommanderArchetype {
   // Scanned from the end: the array is append-ordered, so the last entry for a
   // faction is the officer most recently in post. Every one of them is `lost`
@@ -828,7 +1010,7 @@ export function successorArchetype(
   for (let i = all.length - 1; i >= 0; i--) {
     if (all[i]!.factionId === factionId) return all[i]!.archetype;
   }
-  return commanderArchetype(factionId, turn, salt);
+  return commanderArchetype(factionId, turn, salt, fourSchools);
 }
 
 /* ------------------------------------------------------------------ */
@@ -886,4 +1068,122 @@ export function commanderFor(
  */
 export function commanderLost(roll: number): boolean {
   return roll <= COMMANDER_LOSS_ROLL;
+}
+
+/* ------------------------------------------------------------------ */
+/* Naming a person the model did not invent                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Words that carry no identity, so a query keeps its meaning without them.
+ *
+ * Deliberately tiny, and deliberately free of anything that appears in a title:
+ * `marshal`, `elder`, `warden`, `master`, `hand` and the rest are exactly the
+ * tokens a player uses to name somebody they only know by rank, and dropping one
+ * of those would throw away the discriminating half of *"Marshal Galba"*.
+ *
+ * The possessives here are the they/them set and no other, which is the
+ * convention rather than an oversight: officers are they/them everywhere in this
+ * game because their names are generated, so *"their Iron Marshal"* is the form
+ * a player writes. A gendered determiner in front of an officer's name falls
+ * through as an unmatched token and the query reports that it identified
+ * nobody — which is the honest outcome, and a great deal better than a list that
+ * quietly contradicts the rule `naming.test.ts` pins.
+ */
+const NAME_FILLER = new Set([
+  'the', 'their', 'theirs', 'them', 'they', 'our', 'ours', 'your', 'yours',
+  'its', 'of', 'and', 'a', 'an', 'to', 'at', 'on',
+  'that', 'this', 'enemy', 'rival', 'opposing',
+]);
+
+/** Lowercase, drop punctuation, split, and discard filler. */
+function nameTokens(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 0 && !NAME_FILLER.has(w));
+}
+
+/**
+ * Does one token of a written name answer to one token of a query?
+ *
+ * Exact, or an **initial**: `m` answers `marcia`, which is the whole of what
+ * makes *"M. Galba"* work. Deliberately one direction only — a one-letter token
+ * in the officer's own name would be a generator bug, not an abbreviation.
+ */
+function tokenAnswers(nameToken: string, queryToken: string): boolean {
+  if (nameToken === queryToken) return true;
+  return queryToken.length === 1 && nameToken.startsWith(queryToken);
+}
+
+/**
+ * The officer a free-text name refers to, or `null`.
+ *
+ * ## Why this is code and not a prompt rule
+ *
+ * `Commander.name` stores the title baked in — *"Iron Marshal Marcia Galba"*,
+ * *"Miral Nar Halq, Hand of the Family"* — because a title names the school and
+ * the school is the officer's whole mechanical identity. A player does not write
+ * it that way. They write *"Marcia Galba"*, *"M. Galba"*, *"Marshal Galba"*, and
+ * before this every one of those reached a `targetCommanderId` that matched no
+ * record: the assassination was admissible, priced, rolled, and then killed
+ * nobody while the officer went on commanding battles. The inert success this
+ * codebase closes everywhere else.
+ *
+ * The division of labour is the one `classifyPrinciple` already sets, for the
+ * same stated reason — **the model is good at judgement and unreliable at
+ * lookup**. Asking a prompt to remember an id is asking it to do the lookup;
+ * asking it to name the person it means is asking for the judgement. So the
+ * model writes down a name and this resolves it, which is also why an id is
+ * accepted: a caller that already has one should not be forced to round-trip
+ * through prose.
+ *
+ * ## The rule
+ *
+ * **Every content token of the query must be answered**, so a name that is
+ * merely adjacent does not match. Among the candidates that clear that bar the
+ * most specific wins — the one that answered the most tokens — and a **tie is
+ * `null`**, because two officers a query fits equally is a query that has not
+ * identified anybody and guessing between them is worse than saying so.
+ */
+export function resolveCommander(
+  commanders: Commander[] | undefined,
+  query: string,
+  /** Narrow the field before matching: rivals only, active only, and so on. */
+  eligible: (c: Commander) => boolean = () => true,
+): Commander | null {
+  const all = (commanders ?? []).filter(eligible);
+  if (all.length === 0) return null;
+
+  // An id is not a name and must never go through the token matcher: ids are
+  // `cmd-3-0`, so tokenising one produces `cmd`, `3`, `0` and a single-letter
+  // rule that was built for initials starts answering digits.
+  const byId = all.find((c) => c.id === query.trim());
+  if (byId) return byId;
+
+  const wanted = nameTokens(query);
+  if (wanted.length === 0) return null;
+
+  let best: Commander | null = null;
+  let bestScore = 0;
+  let tied = false;
+  for (const c of all) {
+    const have = nameTokens(c.name);
+    let score = 0;
+    for (const w of wanted) {
+      if (have.some((h) => tokenAnswers(h, w))) score++;
+    }
+    // Partial credit is not credit. "Galba" must not resolve to an officer who
+    // merely shares a title with the one Galba.
+    if (score < wanted.length) continue;
+    if (score > bestScore) {
+      best = c;
+      bestScore = score;
+      tied = false;
+    } else if (score === bestScore) {
+      tied = true;
+    }
+  }
+  return tied ? null : best;
 }

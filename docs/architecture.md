@@ -536,6 +536,14 @@ Things this document deliberately does not decide:
   seconds of nothing. **The instrument now exists** (A.11): play one campaign
   each way and `pnpm trace json_run raw_run` puts retries, schema rejections
   and median latency per call kind side by side.
+- **A decision model beside the chat models?** TypeSafe's Jev (on OpenRouter)
+  answers typed choice / yes-no / scale questions with probabilities and writes
+  no text. It does not fit `Provider.call` — it is a second, smaller client —
+  but it fits the arbiter's *decisions* chained into the calls that write:
+  admissible, stat, difficulty, which sheet line is breached and which way.
+  Candidates first: `breach_relevance` and breach detection, judged against the
+  cases already recorded (debt forgiveness, the inverted proxy line, the
+  assassination charged under an unrelated line). Needs A.1's key handling.
 - **Does the packaged build ship the subscription path at all?** A.3 argues no.
   The counter-argument is that a Max subscriber pays nothing marginal and would
   rather use it, which is a real player and not a hypothetical one.

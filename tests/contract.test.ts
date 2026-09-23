@@ -1,4 +1,4 @@
-import { setShipsAt } from '../src/domain/state.js';
+import { effectiveStats, setShipsAt } from '../src/domain/state.js';
 import { eventsVisibleTo, observeOrders } from '../src/domain/intel.js';
 import { describe, expect, it } from 'vitest';
 import {
@@ -80,6 +80,10 @@ describe('the contract accepts real engine output', () => {
       eventLogFrom: 0,
       eventLogTotal: visibleLog.length,
       rumours: seen.rumours,
+      effective: {
+        stats: effectiveStats(campaign.state, player),
+        base: campaign.state.factions.find((f) => f.id === player)!.stats,
+      },
       staged: [],
       briefing: buildBriefing(campaign.state, report),
       openChannel: null,
@@ -109,7 +113,14 @@ describe('the contract accepts real engine output', () => {
       eventLogFrom: 0,
       eventLogTotal: visibleLog.length,
       rumours: seen.rumours,
-      staged: [{ index: 0, label: 'x', narrative: 'y' }],
+      effective: {
+        stats: effectiveStats(campaign.state, player),
+        base: campaign.state.factions.find((f) => f.id === player)!.stats,
+      },
+      staged: [
+        { index: 0, label: 'x', narrative: 'y', binding: null },
+        { index: 1, label: 'z', narrative: '', binding: 'rolled' as const },
+      ],
       briefing: buildBriefing(campaign.state, report),
       openChannel: null,
       channelHistory: [{ speaker: 'player' as const, text: 'hello' }],

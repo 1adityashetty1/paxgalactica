@@ -116,7 +116,13 @@ describe('a holder can clear rivals out of its own orbit', () => {
 
   it('can fail, leaving the squatters in place', () => {
     // One hull against nine: the sweep is thrown back rather than succeeding.
+    //
+    // The world is emptied of the holder's OWN parked squadron first, because
+    // those hulls now join the sweep — they are in the orbit and their owner is
+    // the one attacking. Before that they were in neither line, which is the
+    // same hole that let an invader's parked ships sit a battle out.
     const { state, world, from } = contested(9, 4);
+    setShipsAt(state.systems.find((x) => x.id === world)!, 'ojjul', 0);
     const after = arrive(state, from, world, 1);
     const sys = after.systems.find((x) => x.id === world)!;
     expect(hullsAt(sys, 'vigil')).toBeGreaterThan(0);

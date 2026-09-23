@@ -732,7 +732,7 @@ export function routeCovertAction(
    * to produce a single `deploy_agent` and a `log_narrative` promising the
    * other "will come on a later tick", which never came.
    */
-  covert: readonly { mission: AgentMission; systemId: string }[] | null | undefined,
+  covert: readonly { mission: AgentMission; systemId: string; target?: string }[] | null | undefined,
   actor: string,
 ): CovertRouting {
   if (!covert || covert.length === 0) return { ops, notes: [] };
@@ -766,6 +766,10 @@ export function routeCovertAction(
         mission: c.mission,
         effect: DEFAULT_COVERT_EFFECT[c.mission],
         cover: 'placed by a covert operation the arbiter ruled on',
+        // Carried through as the player wrote it; `resolveCommander` in the
+        // reducer turns it into an id. Dropping it here was how a routed
+        // assassination came out aimed at nobody in particular.
+        targetCommanderId: c.target ?? null,
       })),
     ],
     notes: added.map(

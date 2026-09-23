@@ -46,6 +46,7 @@ import {
   MAX_ASSET_YIELD,
   MISSION_PROFILE,
   PACT_BREAKING_REPUTATION_COST,
+  MAX_DISCORD_TOTAL,
   PEACE_TREATIES,
   TREATY_GOODWILL,
   conflictingTreaty,
@@ -69,7 +70,11 @@ import {
   commanderFor,
   commanderTaken,
   ASSASSINATION_KILL_ROLL,
+  INTERROGATION_RESENTMENT,
   INTERROGATION_SHARE,
+  REPATRIATION_GOODWILL,
+  TRAFFICKING_REPUTATION_COST,
+  TRAFFICKING_RESENTMENT,
   HOSTAGE_VALUE_PER_POINT,
   OFFICER_LEVERAGE,
   OPERATIVE_RANSOM,
@@ -86,6 +91,8 @@ import {
   successorArchetype,
   veterancyLabel,
   type Commander,
+  resolveCommander,
+  commanderAssault,
 } from './command.js';
 import { jumpsBetween, neighboursOf, positionAlongPath, shortestPath } from './graph.js';
 import {
@@ -169,6 +176,7 @@ import {
   DOCTRINE_TEXT_DISSENT,
   getSystem,
   MAX_NARRATIVE_CREDITS,
+  MAX_NARRATIVE_DISPOSITION,
   MAX_TREATY_INCOME_PER_TURN,
   isMovementType,
   ledgerFor,
@@ -408,6 +416,15 @@ function addToPool(pool: Map<string, ShipStack>, id: string, add: ShipStack): vo
 const nameFor = (state: WorldState, id: string): string =>
   state.factions.find((f) => f.id === id)?.name ?? id;
 
+/**
+ * Whether clamp and rejection entries are scoped to the power they concern —
+ * `LegacyRules.privateEngineNotes`. Module-scoped because `logEvent` has forty
+ * call sites and no access to the batch's rules; `applyOps` and `tickTurn` set
+ * it on entry and restore it on exit, which is safe because the reducer is
+ * synchronous.
+ */
+let scopeEngineNotes = true;
+
 function logEvent(
   state: WorldState,
   kind: EventLogEntry['kind'],
@@ -416,7 +433,23 @@ function logEvent(
   /** Who may read it. Omit for public — see `EventLogEntrySchema.visibleTo`. */
   visibleTo: string[] | null = null,
 ): void {
-  state.eventLog.push({ turn: state.turn, kind, factionId, text, visibleTo });
+  // **A clamp or a rejection is a note to the power that wrote the order**, and
+  // both were public. Measured in a playtest: the Iron Vigil's log carried
+  // "[illegal_value] drajk cannot deploy an agent owned by vigil" — Drajk's
+  // covert attempt, published to everyone including its target — and the
+  // Vigil's own "Fleet sails without a named officer" went to all five powers.
+  // `serializeRecentLog` feeds the log into every NPC prompt, so this was the
+  // same leak `intel` entries were scoped for, one kind along.
+  //
+  // Applied here rather than at forty call sites, because the rule is about the
+  // KIND: these two describe what the engine did to one power's own batch.
+  // Attribution is what makes them scopable, so an entry with no faction named
+  // stays public — there is nobody to scope it to.
+  const audience =
+    scopeEngineNotes && visibleTo === null && factionId !== null && (kind === 'clamp' || kind === 'rejection')
+      ? [factionId]
+      : visibleTo;
+  state.eventLog.push({ turn: state.turn, kind, factionId, text, visibleTo: audience });
 }
 
 /**
@@ -1166,7 +1199,62 @@ function moveConserved(
  *   that is what a loan of a thing means — so every guard keyed on the holder
  *   waves them through, and this one has to say it.
  */
-function settleAssetTerms(state: WorldState, treaty: Treaty): string[] {
+/**
+ * Move one power's regard for another, clamped. One-directional, unlike
+ * `adjustCommitmentGoodwill`: the power whose officer was questioned resents
+ * the questioner, and the questioner has no view about it.
+ */
+function moveRegard(state: WorldState, who: string, toward: string, delta: number): void {
+  if (who === toward) return;
+  const faction = state.factions.find((f) => f.id === who);
+  if (!faction || !state.factions.some((f) => f.id === toward)) return;
+  faction.disposition[toward] = Math.max(-100, Math.min(100, (faction.disposition[toward] ?? 0) + delta));
+}
+
+/**
+ * Whose a held person is — `heldBy` is who HAS them. `null` for everything
+ * that is not a person, which is every asset but a captured officer or
+ * operative.
+ */
+function personsPower(state: WorldState, asset: Asset): string | null {
+  if (asset.commanderId !== null) {
+    return (state.commanders ?? []).find((c) => c.id === asset.commanderId)?.factionId ?? null;
+  }
+  if (asset.agentId !== null) {
+    return (state.agents ?? []).find((a) => a.id === asset.agentId)?.ownerFactionId ?? null;
+  }
+  return null;
+}
+
+/**
+ * What handing a person over does to standing. Read BEFORE `heldBy` moves,
+ * since the question is about the power giving them up.
+ *
+ * Called from both routes a person can change hands by — `transfer_asset` and
+ * a treaty's `terms.assets` — because a ransom is most naturally written as a
+ * treaty, and a rule on one route alone would make the other the free way to
+ * sell somebody. Not from conquest: a prisoner on a world that is stormed is
+ * TAKEN, and the fighting already priced it.
+ */
+function regardForHandover(state: WorldState, asset: Asset, from: string, to: string): void {
+  const whose = personsPower(state, asset);
+  if (whose === null || whose === from) return;
+  if (to === whose) {
+    // Home. Worth more than the taking cost: a repatriation is a choice.
+    moveRegard(state, whose, from, REPATRIATION_GOODWILL);
+    return;
+  }
+  // Sold on, over their head. Their power resents the seller, and every
+  // onlooker marks down a power that deals in people at all — visible to
+  // everybody, the same shape as `PACT_BREAKING_REPUTATION_COST`.
+  moveRegard(state, whose, from, -TRAFFICKING_RESENTMENT);
+  for (const f of state.factions) {
+    if (f.id === from || f.id === whose || f.id === to) continue;
+    moveRegard(state, f.id, from, -TRAFFICKING_REPUTATION_COST);
+  }
+}
+
+function settleAssetTerms(state: WorldState, treaty: Treaty, peopleStanding = true): string[] {
   const notes: string[] = [];
   for (const term of treaty.terms.assets ?? []) {
     const asset = (state.assets ?? []).find((a) => a.id === term.assetId);
@@ -1187,6 +1275,7 @@ function settleAssetTerms(state: WorldState, treaty: Treaty): string[] {
       continue;
     }
 
+    if (peopleStanding) regardForHandover(state, asset, holder, receiver);
     asset.heldBy = receiver;
     notes.push(`${asset.quantity} ${asset.unit} of ${asset.kind} passes to ${receiver} under ${treaty.summary}.`);
   }
@@ -1308,9 +1397,103 @@ export interface LegacyRules {
    * together, each with its own flag for the reason the others have theirs.
    */
   hostages?: boolean;
+  /**
+   * Move standing when a captured PERSON is handed home, sold on, or
+   * questioned — `REPATRIATION_GOODWILL`, `TRAFFICKING_RESENTMENT`,
+   * `TRAFFICKING_REPUTATION_COST`, `INTERROGATION_RESENTMENT`. A recorded
+   * campaign did all three at no cost in standing. Journal version 7.
+   */
+  peopleStanding?: boolean;
+  /**
+   * `adjust_disposition` must involve the actor, and one narrated act moves an
+   * opinion at most `MAX_NARRATIVE_DISPOSITION`. Journal version 7.
+   *
+   * Both halves move recorded campaigns. The cap trims legitimate large swings
+   * in four of them; the actor guard moves two — `creative_0907`, the
+   * adversarial run that found the hole, and `classes_playtest`, an ordinary
+   * campaign where Meridian's exposure of a Combine agent wrote down the
+   * Vigil's regard for the Combine and a treaty later followed from it. The
+   * original build of this rule argued the exploit need not be reproduced;
+   * the second campaign is history rather than exploit, and replay's job is to
+   * reproduce what happened.
+   */
+  narratedDisposition?: boolean;
+  /**
+   * Officers are drawn from four schools with `SCHOOL_WEIGHTS`, and the seed
+   * DEALS each power its opening school. A recorded campaign drew uniformly
+   * from three, and every officer it appointed — name included, since a title
+   * is the school — has to come out the same. Journal version 7.
+   */
+  fourSchools?: boolean;
+  /**
+   * Six rules from one 8-turn Iron Vigil playtest, each its own flag, all
+   * journal version 7. Measured: together they move 21 of the 48 saves.
+   *
+   * - `privateEngineNotes` — a clamp or rejection is visible only to the power
+   *   whose batch it concerns; they were public, and the log feeds every NPC
+   *   prompt.
+   * - `officerByName` — `issue_order.commanderId` resolves a name through
+   *   `resolveCommander`, not only an id.
+   * - `interruptNeedsReach` — interrupting a RIVAL's order needs ships at its
+   *   origin or target.
+   */
+  privateEngineNotes?: boolean;
+  /**
+   * A positive `adjust_credits` to the ACTOR's own treasury needs a payer, like
+   * one to anybody else's. Fifteen of the 48 saves credited themselves by
+   * narration and replay as they ran. Journal version 7.
+   */
+  selfCreditNeedsPayer?: boolean;
+  /**
+   * Every asset placed on a world needs its holder to stand there, not only a
+   * fixture or a producer — a crate of prisoners is as much a claim on ground as
+   * a mine. Journal version 7.
+   */
+  spoilsNeedPresence?: boolean;
+  officerByName?: boolean;
+  interruptNeedsReach?: boolean;
+  /** The battle rules from the same playtest. See `BattleRules`. */
+  battleRules?: BattleRules;
 }
 
+/**
+ * Battle rules added at journal version 7, each a flag so an older journal's
+ * battles are fought as they were.
+ */
+export interface BattleRules {
+  /** An officer who sails between your own worlds is placed on arrival rather than stranded. */
+  officerHomecoming?: boolean;
+  /** An attacker's hulls already parked on the target join its attack. */
+  squattersFight?: boolean;
+  /** The defender's emergency landing fires only against inbound lift. */
+  landingNeedsLift?: boolean;
+  /** The exchange charges losses by weight, not rounded up to a whole battleship. */
+  exactExchange?: boolean;
+}
+
+/**
+ * Apply a batch of ops. See `applyOpsUnderRules` for everything it does; this
+ * wrapper only sets the module-scoped `scopeEngineNotes` switch for the batch's
+ * journal rules and restores it afterwards.
+ */
 export function applyOps(
+  input: WorldState,
+  rawOps: unknown[],
+  source: OpSource = 'model',
+  actor?: string,
+  atomic = false,
+  legacy: LegacyRules = {},
+): ApplyResult {
+  const outer = scopeEngineNotes;
+  scopeEngineNotes = legacy.privateEngineNotes ?? true;
+  try {
+    return applyOpsUnderRules(input, rawOps, source, actor, atomic, legacy);
+  } finally {
+    scopeEngineNotes = outer;
+  }
+}
+
+function applyOpsUnderRules(
   input: WorldState,
   rawOps: unknown[],
   source: OpSource = 'model',
@@ -1359,7 +1542,18 @@ export function applyOps(
    */
   legacy: LegacyRules = {},
 ): ApplyResult {
-  const { unbuildFromGain = true, arrangementStanding = true, yardCapacity = true } = legacy;
+  const {
+    unbuildFromGain = true,
+    arrangementStanding = true,
+    yardCapacity = true,
+    peopleStanding = true,
+    narratedDisposition = true,
+    fourSchools = true,
+    officerByName = true,
+    interruptNeedsReach = true,
+    selfCreditNeedsPayer = true,
+    spoilsNeedPresence = true,
+  } = legacy;
   const state = cloneState(input);
   const rejections: OpRejection[] = [];
   const notes: string[] = [];
@@ -1379,12 +1573,16 @@ export function applyOps(
 
   const reject = (op: unknown, code: OpRejection['code'], message: string): void => {
     rejections.push({ op, code, message });
+    // Attributed to the actor, which is what lets it be scoped: a rejection
+    // names the op that was refused, and a refused `deploy_agent` names the
+    // operative, the world and the mission. Engine batches carry no actor and
+    // stay public, having nobody to be about.
     const entry: EventLogEntry = {
       turn: state.turn,
       kind: 'rejection',
-      factionId: null,
+      factionId: scopeEngineNotes ? (actor ?? null) : null,
       text: `[${code}] ${message}`,
-      visibleTo: null,
+      visibleTo: !scopeEngineNotes || actor === undefined ? null : [actor],
     };
     rejectionEvents.push({ ...entry });
     state.eventLog.push(entry);
@@ -1602,8 +1800,40 @@ export function applyOps(
           reject(raw, 'illegal_value', `A faction cannot hold a disposition toward itself.`);
           break;
         }
+        // **You must be one of the two.** Either your opinion of them moved, or
+        // theirs of you did — between them 621 of the 625 movements across
+        // every saved campaign. The four that were neither are the hole:
+        // `actor=ojjul` moving `freeworlds → meridian` and `vigil → meridian`
+        // by −15 each in one turn — a power poisoning two others against a
+        // third, free and permanent, and strictly better than the `sedition`
+        // operative that costs 150 credits, a slot and an exposure roll.
+        //
+        // Scoped to a live actor, like the ownership guards on `deploy_agent`:
+        // an actorless batch is an engine op or a journal written before the
+        // guard existed, and those replay as they ran.
+        if (narratedDisposition && actor !== undefined && op.factionId !== actor && op.towardFactionId !== actor) {
+          reject(
+            raw,
+            'illegal_value',
+            `${nameFor(state, actor)} cannot decide what ${nameFor(state, op.factionId)} thinks of ${nameFor(state, op.towardFactionId)}. Move your own standing, or theirs toward you.`,
+          );
+          break;
+        }
         const before = f.disposition[op.towardFactionId] ?? 0;
-        const after = Math.max(-100, Math.min(100, before + op.delta));
+        // Bounded like narrative credits: one narrated sentence could swing a
+        // relationship four times further than repudiating a treaty does.
+        let delta = op.delta;
+        // Scoped to a live actor like the guard above: every NARRATED movement
+        // carries one (a declaration, a reaction, an accord), and an actorless
+        // batch is the engine or a test building a board, which may set a
+        // relationship outright.
+        if (narratedDisposition && actor !== undefined && Math.abs(delta) > MAX_NARRATIVE_DISPOSITION) {
+          delta = Math.sign(delta) * MAX_NARRATIVE_DISPOSITION;
+          const trimmed = `Trimmed a ${op.delta} swing in ${nameFor(state, op.factionId)}'s regard for ${nameFor(state, op.towardFactionId)} to ${delta}; no single act moves an opinion further.`;
+          notes.push(trimmed);
+          logEvent(state, 'clamp', trimmed, op.factionId);
+        }
+        const after = Math.max(-100, Math.min(100, before + delta));
         f.disposition[op.towardFactionId] = after;
         break;
       }
@@ -1751,14 +1981,28 @@ export function applyOps(
         // ops later. Funded at settle time out of what the actor actually paid
         // out, and the surplus is minting and is dropped.
         //
-        // A windfall to the actor's OWN treasury is untouched — the fiction
-        // paying you is a real thing and `MAX_NARRATIVE_CREDITS` is what bounds
-        // it. Only money appearing in somebody else's account needs a payer.
+        // **A windfall to the actor's OWN treasury needs a payer too**, and
+        // exempting it was the whole of the remaining hole. The exemption read
+        // "the fiction paying you is a real thing and `MAX_NARRATIVE_CREDITS`
+        // bounds it" — but the cap bounds one batch, and a power may declare
+        // every turn, so what it bounded was the RATE of invention rather than
+        // the fact of it. Measured in a playtest: one 60-crate lot was "sold"
+        // back and forth between two NPCs across three turns, crediting the
+        // seller each time and debiting no buyer, and the galaxy ended about
+        // 600 credits richer on a lot worth at most 480. Twice the lot, out of
+        // nowhere, by describing a sale nobody paid for.
+        //
+        // Selling a thing to a power that never paid is precisely what the
+        // asset rules already refuse: *"it becomes credits only when a power
+        // actually pays"*. The honest routes are all still open — an accord,
+        // where the buyer's consent and its debit exist in the same transcript;
+        // a toll; a raid; an `income_penalty` operative. What is closed is the
+        // one route with no counterparty at all.
         //
         // Scoped to `model`. An `engine` batch is the reducer's own arithmetic
         // paying out something it already priced, and an `extraction` one has
         // returned above into `negotiated`, which conserves more strictly.
-        if (source === 'model' && actor !== undefined && op.factionId !== actor && delta > 0) {
+        if (source === 'model' && actor !== undefined && (selfCreditNeedsPayer || op.factionId !== actor) && delta > 0) {
           declaredCredits[op.factionId] = (declaredCredits[op.factionId] ?? 0) + delta;
           break;
         }
@@ -2002,16 +2246,29 @@ export function applyOps(
           );
           break;
         }
-        // And you can only build where you stand. The same line interdiction,
-        // suborning and a works payload draw, and here for the same reason: a
-        // producing asset on a rival's world would be a claim on ground the
-        // actor has never reached.
+        // And you can only put a thing where you stand. The same line
+        // interdiction, suborning and a works payload draw.
+        //
+        // **It covered fixtures and producers only, and the hole was the
+        // ordinary haul.** `atSystemId` is what makes an asset losable — it
+        // says the thing is standing on that world — so it is exactly as much
+        // a claim on ground for a crate of prisoners as for a mine. Measured in
+        // a playtest: a declaration ordering an attack on Threx created "6 crew
+        // who laid down arms" AT Threx on the spot, a turn before the fleet
+        // arrived and the landing was fought. Had the landing failed the
+        // prisoners would have been held anyway.
+        //
+        // A fleet under way is in `order.force` and not in `system.ships`, so
+        // this is precisely the case it catches: an attacker in transit stands
+        // nowhere, and the spoils of a battle are the reducer's to create once
+        // the battle has happened. Winning first and recording it afterwards is
+        // one extra turn and the whole difference between a prize and a wish.
         const site = op.atSystemId && !isDossier
           ? state.systems.find((x) => x.id === op.atSystemId)!
           : undefined;
         if (
           site &&
-          (portable === false || yielded !== null) &&
+          (spoilsNeedPresence || portable === false || yielded !== null) &&
           site.controllerFactionId !== op.heldBy &&
           hullsAt(site, op.heldBy) === 0
         ) {
@@ -2190,7 +2447,13 @@ export function applyOps(
           const note = `${nameFor(state, asset.heldBy)} questions ${who} and files what they gave up.`;
           notes.push(note);
           logEvent(state, 'narrative', note, asset.heldBy);
-          if (theirs) logEvent(state, 'narrative', note, theirs);
+          if (theirs) {
+            logEvent(state, 'narrative', note, theirs);
+            // Their power hears of it and does not forgive it. Disposition has
+            // no decay, so this is a grievance rather than a mood — the price of
+            // choosing the file over the ransom.
+            if (peopleStanding) moveRegard(state, theirs, asset.heldBy, -INTERROGATION_RESENTMENT);
+          }
           break;
         }
 
@@ -2266,6 +2529,7 @@ export function applyOps(
           break;
         }
         const from = asset.heldBy;
+        if (peopleStanding) regardForHandover(state, asset, from, op.toFactionId);
         asset.heldBy = op.toFactionId;
         const note = `${nameFor(state, from)} hands ${asset.quantity} ${asset.unit} to ${nameFor(state, op.toFactionId)}: ${asset.text} ${op.reason}`.trim();
         notes.push(note);
@@ -2709,7 +2973,17 @@ export function applyOps(
         // the fleet still sails, it just sails under nobody in particular.
         let riding: string | null = null;
         if (op.commanderId !== null) {
-          const named = (state.commanders ?? []).find((c) => c.id === op.commanderId);
+          // **Resolved by NAME, not only by id**, the same lookup the knife
+          // uses. The resolution call writes what a person would say — a live
+          // playtest produced `commanderId: "Marcia Galba"` three turns running
+          // — and an id-only match dropped every one of them with "no such
+          // officer" while the narrative went on claiming the officer was
+          // aboard. Scoped to this power's own roster, so a name that could
+          // only mean a rival's officer resolves to nobody rather than to them.
+          const named =
+            (officerByName
+              ? resolveCommander(state.commanders, op.commanderId, (c) => c.factionId === op.factionId)
+              : undefined) ?? (state.commanders ?? []).find((c) => c.id === op.commanderId);
           const ok =
             named &&
             named.factionId === op.factionId &&
@@ -2852,7 +3126,7 @@ export function applyOps(
         // hiring is where a power changes what it is good at, and inheritance is
         // where an institution carries on. If hiring inherited too, a power
         // would be locked to its opening archetype for the whole campaign.
-        const school = commanderArchetype(op.factionId, state.turn, salt);
+        const school = commanderArchetype(op.factionId, state.turn, salt, fourSchools);
         const hired: Commander = {
           id: `cmd-${op.factionId}-${state.turn}-${(state.commanders ?? []).length}`,
           factionId: op.factionId,
@@ -2924,6 +3198,33 @@ export function applyOps(
             raw,
             'not_interruptible',
             `Order "${op.orderId}" (${order.label}) is flagged not interruptible.`,
+          );
+          break;
+        }
+        // **Interrupting somebody else's programme takes being there.** The op
+        // checked the order existed and was interruptible and nothing else, so
+        // a declared action reached across the galaxy and stood down a rival's
+        // works — measured in a playtest, where an invasion's resolution
+        // suspended the Combine's fortification at Oridin before the fleet had
+        // arrived, and the reducer even refunded the Combine its 60 credits.
+        // Worse, `COVERT_CATEGORIES` means some of those orders are rumours to
+        // the actor: it could cancel a programme it is not allowed to see.
+        //
+        // The same presence line interdiction, suborning and a works payload
+        // already draw — ships at the origin or the target. Your OWN order
+        // needs nothing, which is what `cancel_order` is for; this is the path
+        // for reaching into a rival's, and reaching needs a hand.
+        const mine = actor === undefined || order.factionId === actor;
+        const standsAt = (systemId: string): boolean => {
+          const sys = getSystem(state, systemId);
+          return sys !== undefined && hullsAt(sys, actor!) > 0;
+        };
+        const reach = !interruptNeedsReach || mine || standsAt(order.originId) || standsAt(order.targetId);
+        if (!reach) {
+          reject(
+            raw,
+            'no_presence',
+            `${nameFor(state, actor!)} has nothing at ${nameFor(state, order.originId)} or ${nameFor(state, order.targetId)} to interrupt "${order.label}" with.`,
           );
           break;
         }
@@ -3346,7 +3647,7 @@ export function applyOps(
         // hands once, and taking it back is a fresh act.
         if (!pending) {
           notes.push(...cedeTerritory(state, treaty));
-          notes.push(...settleAssetTerms(state, treaty));
+          notes.push(...settleAssetTerms(state, treaty, peopleStanding));
           notes.push(...settleTreatyPayment(state, treaty));
         }
         break;
@@ -3483,6 +3784,38 @@ export function applyOps(
           break;
         }
 
+        // **Discord names a quarrel you are not in**, and all three of these are
+        // the same rule said three ways: the buyer must be outside it. Without
+        // them the mission is `adjust_disposition` with extra steps, and the
+        // free route was closed precisely because a power deciding what two
+        // others think of each other is the exploit. Checked before the price
+        // is taken, so a refused forgery costs nothing.
+        if (op.effect.kind === 'discord') {
+          const hostWorld = state.systems.find((x) => x.id === op.systemId);
+          const whose = hostWorld?.controllerFactionId ?? null;
+          const toward = op.effect.towardFactionId;
+          if (!factionExists(toward)) {
+            reject(raw, 'unknown_faction', `No faction "${toward}" to turn them against.`);
+            break;
+          }
+          if (whose === null) {
+            reject(
+              raw,
+              'no_presence',
+              `${op.systemId} answers to nobody, so there is nobody there to turn against ${nameFor(state, toward)}.`,
+            );
+            break;
+          }
+          if (toward === ownerId || whose === ownerId) {
+            reject(raw, 'illegal_value', 'Discord is for a quarrel between two other powers. Your own standing is not it.');
+            break;
+          }
+          if (toward === whose) {
+            reject(raw, 'illegal_value', `${nameFor(state, whose)} cannot be turned against itself.`);
+            break;
+          }
+        }
+
         const price = AGENT_COST[op.mission];
         if (owner.credits < price) {
           reject(
@@ -3558,6 +3891,32 @@ export function applyOps(
         const who = unusedName(taken, (n) =>
           agentName(ownerId, state.turn, `agent:${op.systemId}:${state.agents.length}:${n}`),
         );
+        // **The model names the person; code does the lookup.** `Commander.name`
+        // carries the title — "Iron Marshal Marcia Galba" — and a player writes
+        // "Marcia Galba", "M. Galba" or "Marshal Galba". Passing the raw string
+        // through as an id meant every one of those named nobody: the attempt
+        // was admissible, priced, rolled, and then the officer went on
+        // commanding battles. Same division of labour as `classifyPrinciple`.
+        //
+        // Scoped to officers who are **not the actor's own**, because the knife
+        // is pointed outward and a query that could only mean one of your own
+        // people is a query that has misfired. Unresolvable is **dropped with a
+        // note** rather than rejected, the same shape as a fleet naming an
+        // officer it cannot carry: the operative still goes out, they simply go
+        // out against the power rather than against a name.
+        let knife: string | null = null;
+        if (op.mission === 'assassination' && op.targetCommanderId !== null) {
+          const mark = resolveCommander(
+            state.commanders,
+            op.targetCommanderId,
+            (c) => c.status === 'active' && c.factionId !== ownerId,
+          );
+          if (mark) knife = mark.id;
+          else
+            notes.push(
+              `No officer answering to "${op.targetCommanderId}" could be identified, so the operation is aimed at ${target ? target.name : host.name} rather than at a person.`,
+            );
+        }
         state.agents.push({
           id: mintId(state, 'agt'),
           name: who,
@@ -3591,7 +3950,7 @@ export function applyOps(
           // Only an assassination can be aimed at a person; every other mission
           // works against a power. Silently dropped rather than rejected, the
           // same shape as a fleet naming an officer it cannot carry.
-          targetCommanderId: op.mission === 'assassination' ? op.targetCommanderId : null,
+          targetCommanderId: op.mission === 'assassination' ? knife : null,
         });
         logEvent(
           state,
@@ -4777,7 +5136,7 @@ export function applyOps(
           'narrative',
           op.text,
           null,
-          source === 'extraction' && actor !== undefined ? [actor] : null,
+          (source === 'extraction' || op.private) && actor !== undefined ? [actor] : null,
         );
         break;
       }
@@ -5318,8 +5677,19 @@ export interface TickResult extends ApplyResult {
  * everything that completes. This is the only place `transfer_control`
  * originates.
  */
+/** Advance one turn. Sets `scopeEngineNotes` for the journal's rules; see `applyOps`. */
 export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResult {
-  const { arrangementStanding = true, hostages = true } = legacy;
+  const outer = scopeEngineNotes;
+  scopeEngineNotes = legacy.privateEngineNotes ?? true;
+  try {
+    return tickTurnUnderRules(input, legacy);
+  } finally {
+    scopeEngineNotes = outer;
+  }
+}
+
+function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult {
+  const { arrangementStanding = true, hostages = true, peopleStanding = true, fourSchools = true, battleRules = {} } = legacy;
   const state = cloneState(input);
   const notes: string[] = [];
 
@@ -5343,7 +5713,7 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
     // name and names the school — a successor of the same school wears the same
     // title, which is what makes the continuity of the institution legible
     // while the person is plainly somebody new.
-    const school = successorArchetype(state.commanders, faction.id, state.turn, salt);
+    const school = successorArchetype(state.commanders, faction.id, state.turn, salt, fourSchools);
     // The successor inherits the SPECIALITY and none of the record. Re-rolling
     // the archetype made a defeat a free lottery ticket — a power whose fleet
     // had no use for the officer it was dealt was better off losing them — so
@@ -5692,7 +6062,7 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
     // two calls belong together at BOTH sites, which is the whole reason that
     // comment says "the same two places".
     notes.push(...cedeTerritory(state, treaty));
-    notes.push(...settleAssetTerms(state, treaty));
+    notes.push(...settleAssetTerms(state, treaty, peopleStanding));
     notes.push(...settleTreatyPayment(state, treaty));
   }
 
@@ -6005,6 +6375,14 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
             -100,
             (target.disposition[owner.id] ?? 0) - outrage,
           );
+          // **Discord caught is a scandal with two injured parties.** The forged
+          // letters were about somebody, and exposure hands that power the
+          // evidence — so the third power resents the forger too.
+          if (agent.effect.kind === 'discord') {
+            moveRegard(state, agent.effect.towardFactionId, owner.id, -outrage);
+            const scandal = `${target.name} exposes ${owner.name}'s hand in forging its quarrel with ${nameFor(state, agent.effect.towardFactionId)}.`;
+            logEvent(state, 'diplomacy', scandal, target.id);
+          }
         }
       }
       continue;
@@ -6047,6 +6425,33 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
           watchNotes.set(agent.id, `came close to ${mark.name} on ${host.name} and no closer.`);
         }
       }
+    }
+
+    if (agent.effect.kind === 'discord') {
+      // The host's regard for a third power, and never the owner's own standing
+      // with anybody — the operative is working on somebody else's quarrel.
+      const spent = agent.discordMoved ?? 0;
+      const moved = Math.min(agent.effect.perTurn * profile.effectMultiplier, Math.max(0, MAX_DISCORD_TOTAL - spent));
+      if (moved <= 0) {
+        // Spent, and said so: an operative that has stopped earning is one to
+        // recall, and "nothing to report" is the load-bearing case.
+        watchNotes.set(agent.id, `has said all there is to say against ${nameFor(state, agent.effect.towardFactionId)} on ${host.name}.`);
+      } else {
+        agent.discordMoved = spent + moved;
+        moveRegard(state, target.id, agent.effect.towardFactionId, -moved);
+        watchNotes.set(
+          agent.id,
+          `turns ${target.name} a little further against ${nameFor(state, agent.effect.towardFactionId)} (${agent.discordMoved} of ${MAX_DISCORD_TOTAL} spent).`,
+        );
+        logEvent(
+          state,
+          'intel',
+          `Your operative on ${host.name} sets ${target.name} against ${nameFor(state, agent.effect.towardFactionId)}, ${moved} at a time.`,
+          agent.ownerFactionId,
+          [agent.ownerFactionId],
+        );
+      }
+      continue;
     }
 
     if (agent.effect.kind === 'crew_defection') {
@@ -6318,7 +6723,7 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
   }
 
   for (const [systemId, orders] of landings) {
-    const { note: outcome, report: battle } = resolveBattle(state, systemId, orders, hostages);
+    const { note: outcome, report: battle } = resolveBattle(state, systemId, orders, hostages, battleRules);
     notes.push(outcome);
     report.arrivals.push(outcome);
     if (battle) report.battles.push(battle);
@@ -6459,7 +6864,14 @@ function resolveBattle(
   orders: PendingOrder[],
   /** False only for a journal written before a storming could seize anybody. */
   takesHostages = true,
+  rules: BattleRules = {},
 ): BattleOutcomeResult {
+  const {
+    officerHomecoming = true,
+    squattersFight = true,
+    landingNeedsLift = true,
+    exactExchange = true,
+  } = rules;
   const target = state.systems.find((s) => s.id === systemId);
   if (!target) {
     return {
@@ -6646,6 +7058,23 @@ function resolveBattle(
       guests.length > 0 && holder !== null
         ? `${guests.map(([id]) => nameOf(id)).join(' and ')} puts in at ${target.name} under basing rights.`
         : `${who} reinforces ${target.name}.`;
+    // **The officers who sailed get off the ship.** This is the third exit found
+    // to strand one, after the unopposed walk-in and `cancel_order`, and it is
+    // the commonest of the three: moving a fleet between your OWN worlds takes
+    // this path every time. The order leaves `pendingOrders` on arrival, so an
+    // officer not placed here is at no system and on no voyage, permanently —
+    // measured in a playtest, where a Brigadier was lost on turn 5 by sailing
+    // home and every later invasion went out under nobody.
+    //
+    // Placed WITHOUT `finish`, which is the distinction: `finish` counts a
+    // battle and rolls for death, and nothing was fought here.
+    for (const o of officerHomecoming ? orders : []) {
+      if (!o.commanderId) continue;
+      const rider = (state.commanders ?? []).find(
+        (c) => c.id === o.commanderId && c.status === 'active',
+      );
+      if (rider) rider.atSystemId = systemId;
+    }
     logEvent(state, 'order', note, holder);
     // Not a battle. Reporting one would put a "no losses" card in the panel
     // every time a fleet moved between friendly worlds.
@@ -6653,6 +7082,30 @@ function resolveBattle(
   }
 
   const attackerIds = new Set(attackers.map(([id]) => id));
+
+  // **What an attacker already had in the orbit joins its attack.** It joined
+  // neither side: `defenders` excludes anyone attacking, and the attacking
+  // force was the ARRIVING hulls alone — so a squadron already parked on the
+  // target sat the battle out, took no losses, and went on contesting the
+  // world's income afterwards. Measured in a playtest: the Vigil came home to
+  // Vantic to clear it, Meridian reinforced on the same tick, and Meridian's
+  // parked six battleships and an escort were in neither line while the Vigil
+  // lost thirteen hulls to the newcomers.
+  //
+  // Worse than an oversight, it was a shield: sending one more fleet at a world
+  // you are already squatting on made the squatters unkillable for that turn,
+  // which is the exact tax `sweep` exists to let a holder answer.
+  //
+  // Taken OUT of the system as they join, exactly as arriving hulls are outside
+  // it until they win — otherwise the same ships are counted twice, once in the
+  // line and once as presence.
+  for (const entry of squattersFight ? attackers : []) {
+    const alreadyThere = stackAt(target, entry[0]);
+    if (hullsIn(alreadyThere) === 0) continue;
+    entry[1] = mergeStacks(entry[1], alreadyThere);
+    setStackAt(target, entry[0], {});
+  }
+
   const coalition = attackers.map(([id]) => nameOf(id)).join(' and ');
   /** One side of one round: what it had at the round's start, and what it has now. */
   const sideOf = (now: Map<string, ShipStack>, was: Map<string, ShipStack>): Contingent[] =>
@@ -7076,7 +7529,17 @@ function resolveBattle(
   // seven with four transports committed reads **11/7**. `GARRISON_REGROWTH`
   // only fires below the ceiling, so the excess is spent once and never grows
   // back — an emergency deployment, not a permanent fortification.
-  if (holder !== null) {
+  //
+  // **And only against a landing that could actually happen.** It fired on any
+  // arrival, so an attacker with no transports aboard — a fleet that can
+  // sterilise the orbit and take nothing — handed the defender a permanent
+  // fortress for free. Measured in a playtest: an attack carrying no lift at
+  // all put 60 troops into a world whose ceiling is 9, the attacker broke off,
+  // and Vergesse still read **69 of 9** four turns later. The window this
+  // paragraph describes is "the transports are about to be irrelevant either
+  // way", and with nothing coming ashore there is no window and no decision.
+  const inboundLift = [...attackShare.values()].reduce((n, st) => n + (st.lifter ?? 0), 0);
+  if (holder !== null && (inboundLift > 0 || !landingNeedsLift)) {
     const held = defenders.find(([id]) => id === holder);
     const committed = held?.[1].lifter ?? 0;
     if (committed > 0) {
@@ -7268,14 +7731,25 @@ function resolveBattle(
       // own losses, so it is counted once as well.
       const base = Math.min(attackWeight, defendWeight);
       const tilt = base * swing;
-      const attackLeft = Math.max(
-        0,
-        attackWeight - Math.ceil((base - tilt) / (1 + attackMod / 20)),
-      );
-      const defenceLeft = Math.max(
-        0,
-        defendWeight - Math.ceil((base + tilt) / (1 + defendMod / 20)),
-      );
+      // **Not rounded up.** `Math.ceil` here charged a whole
+      // battleship-equivalent for any defence at all, however small — and the
+      // classes that cannot fight carry a nominal weight precisely so that they
+      // are something rather than nothing. Measured: a lone **listener**, an
+      // unarmed hull of 0.01 weight, destroyed three escorts out of a ten-hull
+      // fleet, and a lone escort destroyed exactly the same three, because both
+      // ceil to 1. A playtest hit it through `crusading`, which never escapes
+      // this branch by breaking off, but the arithmetic was never about the
+      // doctrine.
+      //
+      // These are WEIGHTS, not hulls: the two lines below turn them into a
+      // fraction of each contingent's tonnage, so a fractional loss is exactly
+      // as expressible as a whole one and the rounding bought nothing. What it
+      // cost was proportionality — the property this whole exchange is built
+      // on, and the reason a defence of nothing should cost nothing.
+      // A journal from before this was fought with the rounding, and replays so.
+      const charge = exactExchange ? (x: number) => x : Math.ceil;
+      const attackLeft = Math.max(0, attackWeight - charge((base - tilt) / (1 + attackMod / 20)));
+      const defenceLeft = Math.max(0, defendWeight - charge((base + tilt) / (1 + defendMod / 20)));
       const hullsBeforeExchange = attackHulls();
       const defendHullsBefore = defenceForce;
 
@@ -7352,7 +7826,22 @@ function resolveBattle(
   const liftersIn = (): number =>
     [...attackShare.values()].reduce((n, st) => n + (st.lifter ?? 0), 0);
   const troops = [...attackShare.values()].reduce((n, st) => n + carryOf(st), 0);
-  const assault = troops * (1 + attackMod / 20) * (1 + (roll - 10.5) / 30);
+  // An `assault` officer multiplies what actually gets ashore. Attacker's only:
+  // a defender has no lift phase, and the one thing an officer could do for
+  // them on the ground is `DEFENSIVE_GARRISON_BONUS`, which is Arkane's whole
+  // doctrine and not a commander's to duplicate.
+  //
+  // Reported only when there were troops to multiply, following
+  // `doctrinesFired`'s convention that a thing which changed nothing does not
+  // appear — an assault officer aboard a fleet carrying no lift changed nothing,
+  // which is the bug the first `convoy` note shipped with.
+  let assaultBonus = 0;
+  if (attackOfficer?.archetype === 'assault' && troops > 0) {
+    assaultBonus = commanderAssault(attackOfficer);
+    officerNote(attackOfficer, `+${Math.round(assaultBonus * 100)}% troops ashore`);
+  }
+  const assault =
+    troops * (1 + assaultBonus) * (1 + attackMod / 20) * (1 + (roll - 10.5) / 30);
   const ground = (outcome: BattleOutcome, note: string): void => {
     rounds.push({
       turn: state.turn, phase: 'ground', outcome,

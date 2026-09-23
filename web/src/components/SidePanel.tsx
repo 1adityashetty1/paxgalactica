@@ -44,10 +44,11 @@ import {
   type WorldState,
 } from '../../../src/domain/state.js';
 import type { Briefing } from '../../../src/engine/briefing.js';
+import type { EffectiveStats } from '../../../src/api/contract.js';
 import { ansi256ToHex, NEUTRAL } from '../color.js';
 import { logWindow } from '../../../src/ui/logview.js';
 
-type Tab = 'factions' | 'system' | 'fleets' | 'commanders' | 'trade' | 'orders' | 'standing' | 'log';
+type Tab = 'factions' | 'system' | 'fleets' | 'commanders' | 'trade' | 'assets' | 'orders' | 'standing' | 'log';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'factions', label: 'Factions' },
@@ -59,6 +60,12 @@ const TABS: { id: Tab; label: string }[] = [
   // chips directly above it are for.
   { id: 'commanders', label: 'Command' },
   { id: 'trade', label: 'Trade' },
+  // Its own tab rather than a section of Treaties. A treaty is an arrangement
+  // you negotiated and so already know about; an asset ARRIVES — a prisoner
+  // off a won battle, an operative your people caught, a dossier out of an
+  // accord — unasked and unannounced, and one scroll down inside another panel
+  // a thing that appears on its own is a thing nobody sees appear.
+  { id: 'assets', label: 'Assets' },
   { id: 'orders', label: 'Orders' },
   { id: 'standing', label: 'Treaties' },
   { id: 'log', label: 'Log' },
@@ -68,11 +75,14 @@ export function SidePanel({
   state,
   selectedId,
   briefing,
+  effective,
   onSelect,
   onTalk,
   activeChannel,
 }: {
   state: WorldState;
+  /** The player's stats as the server rolls them — see `EffectiveStatsSchema`. */
+  effective: EffectiveStats;
   selectedId: string | null;
   briefing: Briefing | null;
   onSelect: (id: string) => void;
@@ -80,24 +90,38 @@ export function SidePanel({
   activeChannel: string | null;
 }) {
   const [tab, setTab] = useState<Tab>('factions');
+  const heldCount = heldAssets(state).length;
 
   return (
     <aside className="panel">
       <nav className="tabs">
-        {TABS.map((t) => (
-          <button key={t.id} className={t.id === tab ? 'tab active' : 'tab'} onClick={() => setTab(t.id)}>
-            {t.label}
-          </button>
-        ))}
+        {TABS.map((t) => {
+          // Only Assets carries a count, because it is the only tab whose
+          // contents arrive without the player doing anything. Every other tab
+          // is somewhere a player goes on purpose.
+          const count = t.id === 'assets' ? heldCount : 0;
+          return (
+            <button key={t.id} className={t.id === tab ? 'tab active' : 'tab'} onClick={() => setTab(t.id)}>
+              {t.label}
+              {count > 0 && <span className="tab-count">{count}</span>}
+            </button>
+          );
+        })}
       </nav>
       <div className="panel-body">
         {tab === 'factions' && (
-          <Factions state={state} onTalk={onTalk} activeChannel={activeChannel} />
+          <Factions
+            state={state}
+            effective={effective}
+            onTalk={onTalk}
+            activeChannel={activeChannel}
+          />
         )}
         {tab === 'system' && <SystemTab state={state} selectedId={selectedId} onSelect={onSelect} />}
         {tab === 'fleets' && <FleetsPanel state={state} onSelect={onSelect} />}
         {tab === 'commanders' && <Command state={state} />}
         {tab === 'trade' && <TradePanel state={state} onSelect={onSelect} />}
+        {tab === 'assets' && <Assets state={state} />}
         {tab === 'orders' && <Orders state={state} briefing={briefing} />}
         {tab === 'standing' && <Standing state={state} onSelect={onSelect} />}
         {tab === 'log' && <Log state={state} />}
@@ -108,17 +132,26 @@ export function SidePanel({
 
 function Factions({
   state,
+  effective: served,
   onTalk,
   activeChannel,
 }: {
   state: WorldState;
+  effective: EffectiveStats;
   onTalk: (factionId: string) => void;
   activeChannel: string | null;
 }) {
   return (
     <div className="factions">
       {state.factions.map((f) => {
-        const effective = effectiveStats(state, f.id);
+        // The player's own row reads the SERVED figure, because the client can
+        // no longer compute it: `worldAsSeenBy` redacts operatives the player
+        // has not caught, so a hostile `stat_debuff` is invisible here and a
+        // recomputed number would read higher than the dice allow. Every other
+        // power is computed as before — from the same redacted world an NPC's
+        // debuffs are missing from, which is the fog and not a discrepancy.
+        const isPlayerRow = f.id === state.playerFactionId;
+        const effective = isPlayerRow ? served.stats : effectiveStats(state, f.id);
         const penalty = dissentPenalty(f.dissent);
         const isPlayer = f.id === state.playerFactionId;
         const disposition = dispositionBetween(state, f.id, state.playerFactionId);
@@ -404,7 +437,8 @@ function SystemTab({
                 <li key={w.id} className="agent-row" title={w.text}>
                   <span className="swatch" style={{ background: colourOf(state, w.heldBy) }} />
                   <span style={{ color: colourOf(state, w.heldBy) }}>
-                    {w.kind.replace(/_/g, ' ')}
+                    {/* A proper name for a building — "Power Plant", not the slug. */}
+                    {w.kind.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
                     {' · '}
                     {holder?.name ?? w.heldBy}
                   </span>
@@ -704,26 +738,38 @@ function colourOf(state: WorldState, factionId: string): string {
  * turns, and none of them were visible anywhere before — a treaty with real
  * mechanical terms is useless if you cannot read the terms.
  */
-function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: string) => void }) {
+/**
+ * What this power holds that it could trade: never a fixture. A fixture cannot
+ * be traded, cannot be pledged and changes hands only with the ground under it,
+ * so listing it among things a power is *holding* invites exactly the bargain
+ * the reducer refuses; it is drawn on the System panel, beside the garrison it
+ * is really a property of.
+ */
+function heldAssets(state: WorldState) {
+  return (state.assets ?? []).filter((a) => a.heldBy === state.playerFactionId && a.portable);
+}
+
+/**
+ * The Assets tab. The count on its label is the point of it — see `TABS`.
+ */
+function Assets({ state }: { state: WorldState }) {
   const me = state.playerFactionId;
-  const treaties = treatiesFor(state, me);
-  const wars = warsFor(state, me);
-  const agents = agentsVisibleTo(state, me);
-  const commitments = commitmentsOf(state, me);
-  // Fixtures are deliberately absent: a fixture cannot be traded, cannot be
-  // pledged and changes hands only with the ground under it, so listing it
-  // among things this power is *holding* invited exactly the bargain the
-  // reducer refuses. It is rendered on the System panel instead, beside the
-  // garrison it is really a property of.
-  const assets = (state.assets ?? []).filter((a) => a.heldBy === me && a.portable);
-  const debts = debtsFor(state.debts ?? [], me);
-  const loans = loansFor(state.loans ?? [], me);
+  const assets = heldAssets(state);
+
+  if (assets.length === 0) {
+    // Not a blank panel: an empty shelf is an ordinary state, and a blank tab
+    // reads as a broken one. Say what would fill it.
+    return (
+      <p className="muted">
+        You are holding nothing but credits, ships and the fixtures on your worlds (those are on the
+        System tab). Prisoners taken in battle, operatives your people catch, salvage, and anything
+        bargained for across a table are held here.
+      </p>
+    );
+  }
 
   return (
     <div className="standing">
-      {/* Commitments first: they are the things most likely to block an
-          action the player is about to try, and a ruling of "you are already
-          bound" only reads as fair if the binding was visible beforehand. */}
       {/* What this power is holding.
 
           Deliberately ONE line of qualifiers rather than a chip per interested
@@ -786,6 +832,24 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
         </>
       )}
 
+    </div>
+  );
+}
+
+function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: string) => void }) {
+  const me = state.playerFactionId;
+  const treaties = treatiesFor(state, me);
+  const wars = warsFor(state, me);
+  const agents = agentsVisibleTo(state, me);
+  const commitments = commitmentsOf(state, me);
+  const debts = debtsFor(state.debts ?? [], me);
+  const loans = loansFor(state.loans ?? [], me);
+
+  return (
+    <div className="standing">
+      {/* Commitments first: they are the things most likely to block an
+          action the player is about to try, and a ruling of "you are already
+          bound" only reads as fair if the binding was visible beforehand. */}
       {commitments.length > 0 && (
         <>
           <h4>Standing commitments</h4>

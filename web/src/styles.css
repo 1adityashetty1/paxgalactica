@@ -59,6 +59,20 @@ ul { margin: 0; padding-left: 1.1em; }
 .msg.check { color: var(--warn); font-size: 12px; }
 .msg.busy { color: var(--accent); font-style: italic; }
 
+/* Three blocks lighting in sequence — a spinner in this game's own alphabet.
+   Squares because everything else here is pixels and crisp-edged SVG, and a
+   rotating arc belongs to a different program. */
+.pips { display: inline-flex; gap: 3px; margin-left: 7px; vertical-align: 2px; }
+.pips i { width: 4px; height: 4px; background: currentColor; animation: pip 1.05s infinite ease-in-out; }
+.pips i:nth-child(2) { animation-delay: 0.18s; }
+.pips i:nth-child(3) { animation-delay: 0.36s; }
+@keyframes pip { 0%, 70%, 100% { opacity: 0.22; } 35% { opacity: 1; } }
+/* Motion is the whole point, so when it is unwelcome the pips still have to
+   read as "waiting" rather than vanishing. They hold at half. */
+@media (prefers-reduced-motion: reduce) {
+  .pips i { animation: none; opacity: 0.55; }
+}
+
 /* ---------- command line ---------- */
 
 .commandline {
@@ -136,9 +150,17 @@ ul { margin: 0; padding-left: 1.1em; }
 /* ---------- side panel ---------- */
 
 .panel { display: flex; flex-direction: column; min-height: 0; flex: 1; }
-.tabs { display: flex; border-bottom: 1px solid var(--line); }
-.tab { flex: 1; background: none; border: none; color: var(--dim); padding: 8px 4px; border-bottom: 2px solid transparent; }
+/* The strip WRAPS rather than dividing a fixed width. The panel is pinned near
+   310px whatever the window does, so at `flex: 1` nine tabs get ~34px each and
+   every label truncates — and a container that narrow cannot be rescued by a
+   viewport media query. Sized to its own text and allowed onto a second row, a
+   tab is legible at any count; another tab costs a few pixels of height instead
+   of making the rest unreadable. */
+.tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+.tab { background: none; border: none; color: var(--dim); font-size: 11px; padding: 7px 7px; border-bottom: 2px solid transparent; white-space: nowrap; }
 .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+/* "Assets" alone is a place to look; "Assets 3" is a reason to. */
+.tab .tab-count { color: var(--accent); margin-left: 4px; }
 .panel-body { flex: 1; overflow-y: auto; padding: 12px 14px; min-height: 0; }
 
 .faction { padding: 8px 0; border-bottom: 1px solid var(--line); }
@@ -679,3 +701,10 @@ svg.outcome-art {
 .command-name { margin: 0; font-size: 14px; font-weight: 600; }
 .command-effect { margin: 2px 0 4px; color: var(--fg); }
 .command-fallen { margin-top: 6px; opacity: 0.7; text-decoration: line-through; }
+
+/* The way out of a finished campaign, and the way back into it. */
+.epilogue-exit { margin-top: 18px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.picker-back { margin: 0 0 16px; }
+
+/* A declaration that can no longer be withdrawn says why, where the × was. */
+.staged-binding { color: var(--dim); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }

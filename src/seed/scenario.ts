@@ -4,6 +4,7 @@ import type { WorldType } from '../domain/state.js';
 import { commanderArchetype, commanderName } from '../domain/command.js';
 import { MAX_ASSET_STAT } from '../domain/diplomacy.js';
 import { ASSET_ARCHETYPES } from '../domain/assets.js';
+import type { CommanderArchetype } from '../domain/command.js';
 import {
   HULL_SPEC,
   normaliseStack,
@@ -370,6 +371,22 @@ const SEED_FACTIONS: SeedFaction[] = [
   },
 ];
 
+/** The school a power opens with: dealt from four, or — for an old journal — drawn from three. */
+function seedSchool(factionId: string, fourSchools: boolean): CommanderArchetype {
+  return fourSchools
+    ? (SEED_SCHOOL[factionId] ?? commanderArchetype(factionId, 0, 'seed'))
+    : commanderArchetype(factionId, 0, 'seed', false);
+}
+
+/** The school each power opens with. See `commanders` in `createSeedState`. */
+const SEED_SCHOOL: Record<string, CommanderArchetype> = {
+  meridian: 'lineofbattle',
+  vigil: 'assault',
+  ojjul: 'convoy',
+  freeworlds: 'assault',
+  drajk: 'gunnery',
+};
+
 /**
  * Starting opinions. Asymmetric on purpose: contempt is rarely mutual.
  *
@@ -463,6 +480,27 @@ function startingTons(s: SeedSystem): number {
 /**
  * What each power's opening squadron is made of, as shares of its tonnage.
  *
+ * **The two auxiliaries go where the faction's skill is.** A freighter is a
+ * trading hull, so the trading powers carry them: **Meridian** most, the free
+ * trader with industry 17; the **Combine** a few, a trade house that lives off
+ * tolls rather than hauling; **Drajk** a few, because a smuggler's weight at a
+ * lawless junction multiplies with a freighter's (`SMUGGLER_UNCLAIMED_WEIGHT`
+ * and `FREIGHTER_LANE_WEIGHT` make different claims and stack). Listeners are
+ * set by count in `OPENING_FLOOR`, below.
+ *
+ * **Taken from lift and boats, not from the line.** Neither auxiliary fights,
+ * and the bots judge strength in battleship-equivalents — the lesson Drajk's
+ * boats already taught, where half a fleet that reads as nothing sent its
+ * raiding income to zero. So Meridian's freighters come mostly out of a lift
+ * arm the size of an invasion it rarely launches, and Drajk's out of its boats
+ * with its line share untouched.
+ *
+ * **They earn nothing where they start**, and that is the rule rather than an
+ * oversight: a freighter pays only on a lane crossing ground nobody owns, and
+ * nobody opens parked on unaligned ground. It is an instrument a player sails
+ * to a junction, not an opening income — so the turn-0 ledgers are unchanged,
+ * since upkeep is per ton and tonnage per world is unchanged.
+ *
  * The seed predated ship classes and gave everybody a pure battle line, so the
  * one thing a player saw on turn 0 contradicted the thing the classes exist to
  * make interesting. These shares say the same thing each faction's **bot
@@ -495,11 +533,11 @@ function startingTons(s: SeedSystem): number {
  * rather than resizing them.
  */
 const OPENING_SQUADRON: Record<string, Partial<Record<HullClass, number>>> = {
-  meridian: { battleship: 0.55, escort: 0.25, lifter: 0.2 },
+  meridian: { battleship: 0.53, escort: 0.21, lifter: 0.14, freighter: 0.12 },
   vigil: { battleship: 0.64, escort: 0.26, lifter: 0.1 },
-  ojjul: { battleship: 0.44, escort: 0.36, lifter: 0.2 },
+  ojjul: { battleship: 0.44, escort: 0.36, lifter: 0.14, freighter: 0.06 },
   freeworlds: { battleship: 0.55, escort: 0.42, lifter: 0.03 },
-  drajk: { battleship: 0.6, torpedo_boat: 0.4 },
+  drajk: { battleship: 0.6, torpedo_boat: 0.33, freighter: 0.07 },
 };
 
 /**
@@ -520,6 +558,34 @@ const OPENING_FLOOR: Record<string, Partial<Record<HullClass, number>>> = {
   // The Combine's screen is what keeps its factors alive — might 9, and a red
   // line against fighting its own wars. Shares land it on 26 and this is the
   // two it is short, paid for out of a line it barely uses.
+  //
+  // Its listeners are the one place the seed departs from the bot on purpose.
+  // `BOT_SIGINT_GUILE` buys ears only for a power too poor at spies to run
+  // operatives, and the Combine is the best at spies in the game — so its bot
+  // will never add one. But the Combine is the power whose business is knowing
+  // things, and three ears at its yards say so on turn 0 in a way its guile
+  // score does not. The bot keeps what it is given; it simply never buys more.
+  ojjul: { escort: 28, listener: 3 },
+  // A listener each for the two powers bad enough at spies that their own bots
+  // buy ears on turn 1 — seeded so a player running either sees the class on
+  // the opening board instead of discovering it in a build order. One each,
+  // under `BOT_MAX_LISTENERS`, so the bot still tops up to its own cap.
+  vigil: { listener: 1 },
+  freeworlds: { lifter: 1, listener: 1 },
+};
+
+/**
+ * The opening fleets a version-6-or-earlier journal was played on — before the
+ * freighters and listeners were seeded. Kept whole rather than derived, because
+ * `replay` must rebuild exactly the board those campaigns began on.
+ */
+const LEGACY_OPENING_SQUADRON: Record<string, Partial<Record<HullClass, number>>> = {
+  ...OPENING_SQUADRON,
+  meridian: { battleship: 0.55, escort: 0.25, lifter: 0.2 },
+  ojjul: { battleship: 0.44, escort: 0.36, lifter: 0.2 },
+  drajk: { battleship: 0.6, torpedo_boat: 0.4 },
+};
+const LEGACY_OPENING_FLOOR: Record<string, Partial<Record<HullClass, number>>> = {
   ojjul: { escort: 28 },
   freeworlds: { lifter: 1 },
 };
@@ -532,8 +598,8 @@ const OPENING_FLOOR: Record<string, Partial<Record<HullClass, number>>> = {
  * whatever the rounding does, because a squadron with nothing that can fight is
  * not a squadron.
  */
-function openingSquadron(controller: string, tons: number): ShipStack {
-  const shares = OPENING_SQUADRON[controller] ?? { battleship: 1 };
+function openingSquadron(controller: string, tons: number, auxiliaries = true): ShipStack {
+  const shares = (auxiliaries ? OPENING_SQUADRON : LEGACY_OPENING_SQUADRON)[controller] ?? { battleship: 1 };
   const entries = Object.entries(shares) as [HullClass, number][];
   const stack: ShipStack = {};
   let spent = 0;
@@ -571,7 +637,7 @@ function openingSquadron(controller: string, tons: number): ShipStack {
   return normaliseStack(stack);
 }
 
-function buildSystems(): StarSystem[] {
+function buildSystems(auxiliaries = true): StarSystem[] {
   const edges = new Map<string, Set<string>>();
   for (const s of SEED_SYSTEMS) edges.set(s.id, new Set());
   for (const [a, b] of LANES) {
@@ -600,7 +666,7 @@ function buildSystems(): StarSystem[] {
     // the world is worth holding, and composed the way that power's own
     // doctrine composes a fleet. Nobody starts contested.
     ships: s.controller
-      ? { [s.controller]: openingSquadron(s.controller, startingTons(s)) }
+      ? { [s.controller]: openingSquadron(s.controller, startingTons(s), auxiliaries) }
       : {},
   }));
 }
@@ -664,8 +730,8 @@ function seedBase(factionId: string): string {
     .sort((a, b) => b.value - a.value || a.id.localeCompare(b.id))[0]!.id;
 }
 
-function applyOpeningFloors(systems: StarSystem[]): void {
-  for (const [who, floors] of Object.entries(OPENING_FLOOR)) {
+function applyOpeningFloors(systems: StarSystem[], auxiliaries = true): void {
+  for (const [who, floors] of Object.entries(auxiliaries ? OPENING_FLOOR : LEGACY_OPENING_FLOOR)) {
     const held = systems.filter((sys) => sys.ships?.[who] !== undefined);
     if (held.length === 0) continue;
     const biggest = [...held].sort(
@@ -686,15 +752,23 @@ function applyOpeningFloors(systems: StarSystem[]): void {
   }
 }
 
-export function createSeedState(playerFactionId: string): WorldState {
+export function createSeedState(
+  playerFactionId: string,
+  /**
+   * Both `false` rebuild the board a version-6-or-earlier journal was played
+   * on: officers DRAWN from three schools rather than dealt from four, and
+   * opening fleets without freighters or listeners. Only `replay` passes them.
+   */
+  { fourSchools = true, auxiliaries = true }: { fourSchools?: boolean; auxiliaries?: boolean } = {},
+): WorldState {
   if (!SEED_FACTIONS.some((f) => f.id === playerFactionId)) {
     throw new Error(
       `Unknown faction "${playerFactionId}". Choose one of: ${SEED_FACTIONS.map((f) => f.id).join(', ')}.`,
     );
   }
 
-  const systems = buildSystems();
-  applyOpeningFloors(systems);
+  const systems = buildSystems(auxiliaries);
+  applyOpeningFloors(systems, auxiliaries);
   const state: WorldState = {
     factions: buildFactions(),
     systems,
@@ -968,19 +1042,52 @@ export function createSeedState(playerFactionId: string): WorldState {
     // threshold, every balance figure — to demonstrate a mechanic the first
     // negotiated hire will demonstrate for free.
     /**
-     * One officer each, generated rather than written.
+     * One officer each: the **name** generated, the **school** dealt.
      *
      * Seeded so the mechanic is live from the first battle instead of waiting
-     * for somebody to die — the same argument the Combine's opening debts
-     * make. The names and the archetypes come out of `commanderName` and
-     * `commanderArchetype`, which are seeded hashes, so a replayed campaign
-     * appoints the same five people.
+     * for somebody to die — the same argument the Combine's opening debts make.
+     *
+     * The school is authored and the name is not, which is the split this whole
+     * module already runs on: generation is right where the only thing varied is
+     * identity, and wrong where the choice has to say something true about one
+     * power. It is the same call `worldtext.ts` makes, and here it is load-
+     * bearing twice over — `successorArchetype` means a power fights its entire
+     * campaign in the school it opens with, and a seeded draw is one sample, so
+     * a bad one is not bad luck that corrects itself.
+     *
+     * It was drawn off a single `'seed'` salt and dealt **four `convoy`
+     * officers out of five**, which is a legal sample from a correct
+     * distribution and a terrible opening board: four powers indistinguishable
+     * on the one axis this mechanic exists to differentiate, for thirty turns.
+     * The same argument that gives three identical ice worlds three different
+     * paragraphs.
+     *
+     * Each is the school whose passive is *not wasted* on that power, which is
+     * the whole lesson of the occupation-relief passive:
+     *
+     * - **Meridian** takes the line, because `+resolve` patches the seed's one
+     *   stated vulnerability — resolve 9, the number that makes them the easiest
+     *   power on the board to suborn.
+     * - **The Iron Vigil** takes the landing. `convoy` is *dead* for them by
+     *   construction, since `crusading` never breaks off and there is no
+     *   withdrawal to relieve, and the garrison passive is their buildBias
+     *   (`fortification`, `garrison_raising`) written as an officer.
+     * - **The Combine** takes the convoy: upkeep relief is money, which is what
+     *   that power is, and a withdrawal bonus suits the one faction whose red
+     *   line is that it should not be fighting its own wars at all.
+     * - **Arkane** takes the landing too. `+resolve` would be nearly inert at
+     *   19, and extra garrison on top of `DEFENSIVE_GARRISON_BONUS` is *"make
+     *   occupation cost more than it is worth"* said twice — which is why the
+     *   Fieldwarden is the one warden whose charge is ground rather than lanes.
+     * - **Drajk** takes gunnery, and is the only power that does. It is the only
+     *   one that builds torpedo boats, which is the whole reason the school is
+     *   rare everywhere else.
      */
     commanders: SEED_FACTIONS.map((f) => ({
       id: `cmd-${f.id}`,
       factionId: f.id,
-      name: commanderName(f.id, 0, 'seed', commanderArchetype(f.id, 0, 'seed')),
-      archetype: commanderArchetype(f.id, 0, 'seed'),
+      name: commanderName(f.id, 0, 'seed', seedSchool(f.id, fourSchools)),
+      archetype: seedSchool(f.id, fourSchools),
       appointedTurn: 0,
       battles: 0,
       status: 'active' as const,
