@@ -65,6 +65,10 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~108~~ | ~~a power could never hold two officers, and a beaten one could only die~~ | subsystem | **BUILT** — `recruit_commander`, a cap of five with upkeep, and capture as an asset that comes home through the same op |
 | ~~109~~ | ~~five design questions about officers, and three of them were defects~~ | medium | **FIXED/BUILT** — the spy contest read base stats where suborning read effective; a captured officer was invisible to third parties; assassination could not reach a person. Plus named operatives, unique names, and operatives taken alive |
 | ~~110~~ | ~~a ransomed operative was a person you owned and could not employ~~ | small | **BUILT** — `deploy_agent` takes `fromAssetId` and clears `exposed`; operatives get a record and a permanent mark for being caught, with a capture costing exactly one full ladder |
+| **114** | a red line phrased as a state cannot be enforced by refusal | — | filed on `no-star-wars`, carried over; open |
+| ~~113~~ | ~~sowing discord has no priced path~~ | medium | **BUILT** — ported from `no-star-wars` |
+| ~~112~~ | ~~a power could decide what two others thought of each other~~ | small | **FIXED** — ported, pinned to journal 7 |
+| ~~111~~ | ~~a bot with grievances, a price on trading people~~ | medium | **PORTED IN PART** — the people half; the bot half is 98 |
 | ~~115~~ | ~~an unaffordable order was paid for out of the standing fleet~~ | small | **FIXED** — the surplus comes off the batch's own gain now, and the bill follows the delivery. `JOURNAL_VERSION` 4, with the exemption that keeps all 48 saves byte-identical |
 | **116** | the commitment income ceiling is reported twice at signature | small | two blocks in `establish_commitment` answer item 51 in different words; one should go |
 | **117** | is `PAXGALACTICA_RAW_JSON=1` the default? | — | the latency half is measured (4 turns: declare 37.8s → 20.8s); what is missing is `extraction`, an attack turn and ten turns of volume — see the entry below the table |
@@ -151,6 +155,354 @@ on this list: the most-favoured-nation ratchet (`B-12`), because no arrangement
 can read another's terms and a clause whose whole content is *"track that other
 contract"* is structurally unrepresentable. The fix there is the arbiter *saying
 so* rather than recording it as though it bound something.
+
+## 114. OPEN — a red line phrased as a state cannot be enforced by refusal
+
+Found 2026-09-17 in play, as Drajk, and the player's report is the whole item:
+
+> *"The red lines encourage lying to your own faction. Drajk captains will
+> refuse to hold a planet if you tell them to. But if you just have them rally
+> at a spot you know is under attack, they will comply."*
+
+The line is real and it is doing its job on the declared path:
+
+```
+'will not hold a defensive line — no siege endured, no fleet committed to
+ sit and wait to be attacked; a raid or an offensive under way is the
+ opposite of this and never breaches it'
+```
+
+Declare the siege and the arbiter quotes it back and `submitAction` stages
+nothing. Order the same fleet to *rally* at a world the Iron Vigil is about to
+hit, and it sails, and the captains fight the defensive battle the sheet says
+they will not fight.
+
+### It is not the arbiter's to catch, and that is the finding
+
+The obvious fix is to have the arbiter rule on **consequences** rather than on
+the order as phrased. It is the right instinct and it is unbuildable here,
+because **the game does not know the player's intent and must not pretend to**.
+One order produces three players:
+
+- one who is lying to their own captains;
+- one who has not seen the Vigil sail and is rallying for perfectly ordinary
+  reasons;
+- one who saw it, guessed, and would say so.
+
+The resulting board is identical in all three, and so is what the captains end
+up doing. An arbiter asked to separate them is being asked to read a mind, and
+`prompts/appraisal.md` already records that **over-firing is this rule's real
+failure mode** — nearly any fleet movement *might* end with someone holding
+ground.
+
+### The mechanism already exists; it is filed under the wrong list
+
+`compulsions.ts` names this exact shape in its own doc comment:
+
+> *"a refusal needs an action to refuse. A player who simply never acts is
+> never noticed."*
+
+This is that sentence mirrored. A refusal can only catch a principle stated as
+a **prohibition on an act**. Drajk's line is a **state** — *no fleet committed
+to sit and wait* — and a state is reachable by any number of orders that never
+name it. Refusal covers acts; a **trigger** covers states.
+
+A trigger is outcome-based by construction. It is a pure predicate on world
+state evaluated once per faction per turn, it never sees an order at all, and
+it therefore *cannot* ask about intent. Deception and ignorance produce the
+same board, so they produce the same charge — which is the correct answer
+rather than a compromise, and the codebase has already settled the identical
+argument in `loan.ts`:
+
+> *"A lender does not care why twelve hulls did not come home… Taking on an
+> obligation you cannot honour is a fact about your reliability."*
+
+Bad luck and bad faith are one outcome, at one price. The captains' grievance is
+the same whether they were lied to or blundered into a siege.
+
+### What is missing
+
+**Triggers live on compulsions only.** `CompulsionSchema` carries an optional
+`trigger`; `Faction.redLines` is a bare `z.string()` array with nowhere to put
+one. So this needs the field on red lines too, which is a schema change, a save
+default and a seed pass — and the default has to be the inert value, the same
+call `CompulsionSchema` and `Faction.title` made.
+
+**The predicate** is close to `unanswered_incursion` inverted: a fleet of yours
+standing on a world you hold, hostiles present or inbound, and no raid or
+offensive under way. All four existing triggers already read that kind of state,
+so this adds a case rather than a capability.
+
+**The rate has to be its own**, and that is what also fixes the pricing defect
+below.
+
+### The workaround is currently cheaper than the honest path, which is backwards
+
+Measured on the current constants, for the same intent:
+
+| path | outcome | cost |
+|---|---|---|
+| say it plainly | refused, **nothing staged**, world not held | `REFUSAL_DISSENT` 8, once |
+| rally at the same world | **the world is held** | `no_plunder` drift 3 − `DISSENT_DECAY` 2 = **net +1 a turn** |
+
+So going around the line is cheaper than being refused for the first eight
+turns *and* it works. There is no board on which telling your captains the truth
+is the better play — which makes the red line decoration for any player who
+notices, and a tax on any player who does not.
+
+At `COMPULSION_DRIFT_DISSENT` (3) a red-line drift would keep that inversion.
+At **8** — `REFUSAL_DISSENT`, net +6 a turn against decay — routing around your
+own principles finally costs more per turn than openly defying them, which is
+the ordering the two kinds of principle are supposed to have.
+
+### What the charge must also do is say why
+
+The second half of the defect is legibility, and it is independent of the price.
+The drift note today reads *"the captains require plunder"* three turns later
+and never connects itself to the order the player rephrased. A player who found
+the trick feels clever and never learns they are paying; a player who stumbled
+in never learns what they did. That is the same failure as an inert success with
+the sign flipped, and it is why this is not simply *"raise the number"*.
+
+### Two things to settle before building
+
+- **Does a red-line trigger fire for NPCs?** Drift already does, and
+  `compulsions.ts` calls that *"the first mechanism in the game that holds an
+  NPC to its own character"* — because `ReactionSchema` has no `refusal` field,
+  so red lines have **never** reached the other four powers at all. A trigger on
+  a red line would be the first thing that does. That is probably right and it
+  is a real change to how the bots play.
+- **Sweep the rate.** 8 a turn against a cap of 100 cripples a faction in about
+  twelve turns of holding one world. `pnpm balance 30` cannot settle it — the
+  bots do not lie to anybody — so this wants a campaign, which puts it beside
+  **92**.
+
+### Is lying to your own troops intended?
+
+**Yes, and it should stay reachable.** Red lines are permanent and nothing is
+ever retired, so with no path around one a Drajk player simply cannot hold
+ground for a whole campaign, whatever happens. That is a wall rather than a
+constraint. The game already made this call for compulsions — *"you may, and by
+the eighth time nobody is following you"* — and a costly, deferred, **visible**
+path around a red line is the same idea one step up.
+
+What is wrong is not that the path exists. It is that the path is silent and
+underpriced.
+
+## 113. BUILT (ported) — a priced path for sowing discord
+
+> **Ported 2026-09-23.** One change: the three "outside the quarrel" checks now
+> run before the 100 credits are taken, so a refused forgery costs nothing.
+
+> **Built 2026-09-16 at 100 credits, deliberately as a starting figure.** The
+> argument below that the price is probably still too low is left standing on
+> purpose — it is the thing a campaign has to settle, and the mechanic had to be
+> exercisable before anyone could find out. A `discord` mission, exposure 5 in
+> 20, persistent, with `MAX_DISCORD_TOTAL` (20) as a **lifetime** ceiling rather
+> than a rate cap — which is the one design conclusion below that was adopted
+> rather than deferred.
+
+Filed 2026-09-16 by **112**, which closed the free route and opened no paid one.
+*"Convince the Vigil that Meridian betrayed them"* is a reasonable sentence a
+player will type, and today it is refused by a guard that points nowhere.
+
+### The mechanism is the easy part
+
+A `discord` agent effect on the existing `subversion` mission, naming two
+powers neither of which is the owner. It sits where `sedition` sits and is the
+same job pointed at a different number: `sedition` moves the target's **own**
+dissent, and this would move their **regard for a third power**.
+
+Three bounds it needs that `sedition` does not:
+
+- **Both powers named, and neither is you.** Otherwise it is
+  `adjust_disposition` with extra steps — reaching a pair you are not in is the
+  whole of what it buys.
+- **It runs from somewhere**, and the host world belongs to the power whose
+  *opinion* is being moved. You are working on their people, not their rival's.
+- **Exposure costs standing with both.** Being caught forging a grievance
+  between two powers is a thing all three hear about.
+
+### Why the obvious price is wrong
+
+`AGENT_COST.subversion` is 60, and that is what `sedition` pays. **It is too
+cheap here, for three reasons that compound:**
+
+1. **Dissent decays and disposition does not.** `DISSENT_DECAY` claws back 2 a
+   turn, so `sedition` at 6 a turn is building something the target sheds in
+   weeks. Nothing ever undoes a disposition movement. The same per-turn number
+   would be strictly, permanently worse — which means the *rate* has to be far
+   smaller, and a smaller rate does not make the **total** cheaper to buy.
+2. **It reaches two powers at once**, where every other effect reaches one.
+3. **The buyer is not in the war it starts.** That is the `profiteer` doctrine
+   stated as an exploit: the Combine earns `PROFITEER_INCOME_PER_WAR` from every
+   war it is *not* in, so a cheap way to manufacture one is a cheap way to
+   manufacture its own income.
+
+**And it got sharper the same day it was filed.** 111 gave the bots
+`BOT_PEACE_FLOOR` (20): a bot withholds an attack on a power it is above that
+with. So moving a relationship from +25 to +5 no longer merely makes somebody
+sad — it **unlocks a war** that the mechanic was withholding. Discord is now the
+cheapest way to point one power's fleet at another, and the buyer pays neither
+the hulls nor the reputation.
+
+### The bound is probably not a rate at all
+
+A per-turn cap is the wrong shape for a permanent effect: it bounds the speed
+and leaves the total to depend on how long the operative happens to survive,
+which is a dice roll. **A lifetime cap on total movement per operative** bounds
+the thing that actually matters, and makes the price answerable — you are buying
+a known quantity of permanent ill will rather than an annuity.
+
+With that shape the price should sit at or above `assassination` (150), not at
+`subversion` (60): the ladder today prices by how much damage one operative can
+do, and nothing else on it is permanent.
+
+### The doubt, which is the reason this is filed rather than built
+
+**It may be unreachable at any honest rate.** At 1–2 a turn it takes ten
+uninterrupted turns to move 20 — under what a single broken pact costs — in a
+campaign of thirty, against a `TOLL_RESENTMENT` that moves comparable amounts
+for free every turn. Priced honestly it may simply never be worth a slot against
+`maxAgentsFor`, and a mechanic nobody buys is a mechanic nobody has measured,
+which is how `monopolist` stayed implemented, tested and dead for the life of
+the project.
+
+`src/balance.ts` **cannot settle this**, because the bots run no operatives at
+all. It wants a campaign, which puts it beside **92** rather than ahead of it.
+
+## 112. FIXED (ported) — a power could decide what two other powers thought of each other
+
+> **Ported 2026-09-23.** Unlike the original, pinned to `JOURNAL_VERSION` 7: on
+> main the two rules move six of 48 saves, one of them an ordinary campaign.
+
+Found 2026-09-16 while answering *"is there not a disposition op?"* — there is,
+and it was almost unguarded. `adjust_disposition` checked that both factions
+existed and were not the same one, and nothing else: **no actor test**, and a
+magnitude bounded only by the ±100 clamp on the result.
+
+**The archive measured it.** Across every saved campaign, 621 of 625 movements
+are ordinary — 418 "mine toward them", 203 "theirs toward me". The four that are
+neither are the hole, and two are one turn of the creative playtest:
+`actor=ojjul` moving `freeworlds → meridian` and `vigil → meridian` by −15 each.
+A power poisoning two others against a third, free and permanent, since
+disposition has no decay.
+
+Strictly better than `sedition`, which reaches a power's **own** institutions for
+150 credits, a slot against `maxAgentsFor` and an exposure roll. The same shape
+`adjust_dissent` was narrowed for.
+
+Two rules: **you must be one of the two**, scoped to a live actor so engine ops
+and older journals replay as they ran; and `MAX_NARRATIVE_DISPOSITION` (25),
+trimmed rather than rejected. 25 puts a narrated act at parity with the heaviest
+thing the reducer charges — breaking a pact — and no higher.
+
+**One save replays differently and it should.** `creative_0907` goes 12 → 14
+rejected ops; no other save moves. The prior change to touch replay this way
+(the `form_treaty` extraction split) got a journal-version exemption because the
+old behaviour was legitimate — those treaties really were negotiated. Here the
+old behaviour is the exploit, and the campaign that diverges is the adversarial
+playtest run to find exactly this. Replaying it faithfully would mean
+reproducing the hole.
+
+**Not fixed, and filed by this:** sowing discord between two rivals is a real
+play with **no priced path at all** now. `sedition` moves a power's own dissent;
+no agent effect moves disposition between third parties. The free path is closed
+and no paid one was opened, which is a gap rather than a decision.
+
+## 111. PORTED IN PART — a bot with grievances, and a price on trading people
+
+> **Ported 2026-09-23 from the unmerged `no-star-wars` branch.** The price on
+> trading people came over, widened to the treaty route (`terms.assets`) and
+> pinned to `JOURNAL_VERSION` 7. The bot peace floor and grievance tie-break did
+> **not**: main built the same idea independently as **98**
+> (`BOT_AGGRESSION_CEILING`, `GRIEVANCE_WEIGHT`), and references below to
+> `BOT_PEACE_FLOOR` describe the branch, not main.
+
+Built 2026-09-16, closing **98** and adding its neighbour.
+
+### 98, and why the measurement mattered
+
+Filed as *"the bots cannot tell a friend from an enemy"*, which implies they
+attack friends. **They do not.** Thirty harness turns produce **two** attacks on
+a held world, both the Vigil against Meridian at -20 — a power it dislikes. The
+real defect is the other half: the final matrix carries -75 (Vigil toward the
+Combine), -75 (Arkane toward the Vigil) and -70 (Vigil toward Drajk), and **none
+of it produces anything at all.** The bots hate each other and do nothing about
+it.
+
+That is the failure the bots were built to fix one layer up, reached from the
+other side. The model had motives and no initiative; the bots had initiative and
+no motives.
+
+Two pieces, and both are **preferences rather than vetoes** except in the one
+case that reads as nonsense:
+
+- `BOT_PEACE_FLOOR` (20) withholds an attack on a power a bot is on good terms
+  with. Not a treaty — `honourTreaties` does paper that exists; this is the
+  softer thing a doctrine ought to have on its own. A post-filter beside it, so
+  a bot added later inherits it without knowing it exists.
+- Grievance **breaks the tie** on target choice. A tie-break rather than a term
+  in the prize, because a doctrine that weighed feeling against strategic value
+  would stop being the doctrine: the Vigil takes the corridor it needs, and
+  *which* enemy it takes it from is where its temper gets a say.
+
+Only one sort in the bots picks a **held** world to attack; every other target
+sort takes unaligned ground, where there is nobody to resent.
+
+**Verifying it fires cost three probes**, which is the useful part. The harness
+is unchanged, because Meridian holds the only worlds worth taking on the Vigil's
+frontier and the tie-break never has a tie. Making it fire needed a board where
+three gates were open at once: the seed carries a pending Vigil movement that
+short-circuits the branch, `sortie` needs a staging base holding the whole blow,
+and it needs **lift** there. Both halves are now pinned by tests on such a board
+rather than by a harness run that proves nothing.
+
+### 111 — trading a person cost nobody anything
+
+Assets have been tradeable since they existed and moving one has **never cost or
+bought anybody anything**: a power could sell another's admiral to their worst
+enemy and the only thing that moved was credits. The same defect
+`COERCION_RESENTMENT` was added for — an act that is obviously an insult, priced
+at nothing because nothing read it.
+
+| | |
+|---|---|
+| handing somebody home | `REPATRIATION_GOODWILL` (25) with their power |
+| selling them on | `TRAFFICKING_RESENTMENT` (15) with their power, `TRAFFICKING_REPUTATION_COST` (4) with every onlooker |
+| questioning them | `INTERROGATION_RESENTMENT` (20) with their power |
+
+Giving somebody back is worth **more** than taking them cost, because a
+repatriation is a choice and a capture was a battle — which is what makes a
+prisoner a diplomatic instrument rather than a scoreboard.
+
+**Only for people.** Selling a hold of ore to somebody's enemy is commerce;
+selling their Grand Admiral is not, and the distinction is the one
+`Asset.commanderId` and `Asset.agentId` already draw. A test pins that ore moves
+nobody's opinion.
+
+> The first version of this landed in the wrong handler — the transfer-of-control
+> path, where assets follow a world that changes hands — and so charged
+> **trafficking for taking a prisoner in battle**. A conquest is not a sale; the
+> fighting already priced it. Caught by the tests, which failed with no
+> disposition movement at all because that path's `asset` is a different
+> variable in a different loop.
+
+### And a loading animation
+
+A model call is 5–15 seconds and an end-turn nearer 38, and what the player had
+was a **static italic line**. A label that does not move is indistinguishable
+from one that is stuck — the same failure the progress labels were added to fix,
+one level up.
+
+Three blocks lighting in sequence, in CSS, on both surfaces a player waits
+(the feed and a diplomacy channel). **Squares, not a spinner**: everything drawn
+in this game is pixels and crisp-edged SVG, and a rotating arc belongs to a
+different program. `aria-live` on the label, the pips hidden from it, and they
+hold at half opacity under `prefers-reduced-motion` — motion is the whole point,
+so when it is unwelcome they still have to read as *waiting* rather than vanish.
+
+Board unchanged at 3/6/5/4/4, tolls 558, mix 58/42.
 
 ## 115. FIXED — an unaffordable order was paid for out of the standing fleet
 

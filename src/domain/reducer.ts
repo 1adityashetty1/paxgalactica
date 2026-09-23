@@ -46,6 +46,7 @@ import {
   MAX_ASSET_YIELD,
   MISSION_PROFILE,
   PACT_BREAKING_REPUTATION_COST,
+  MAX_DISCORD_TOTAL,
   PEACE_TREATIES,
   TREATY_GOODWILL,
   conflictingTreaty,
@@ -3610,6 +3611,38 @@ export function applyOps(
           break;
         }
 
+        // **Discord names a quarrel you are not in**, and all three of these are
+        // the same rule said three ways: the buyer must be outside it. Without
+        // them the mission is `adjust_disposition` with extra steps, and the
+        // free route was closed precisely because a power deciding what two
+        // others think of each other is the exploit. Checked before the price
+        // is taken, so a refused forgery costs nothing.
+        if (op.effect.kind === 'discord') {
+          const hostWorld = state.systems.find((x) => x.id === op.systemId);
+          const whose = hostWorld?.controllerFactionId ?? null;
+          const toward = op.effect.towardFactionId;
+          if (!factionExists(toward)) {
+            reject(raw, 'unknown_faction', `No faction "${toward}" to turn them against.`);
+            break;
+          }
+          if (whose === null) {
+            reject(
+              raw,
+              'no_presence',
+              `${op.systemId} answers to nobody, so there is nobody there to turn against ${nameFor(state, toward)}.`,
+            );
+            break;
+          }
+          if (toward === ownerId || whose === ownerId) {
+            reject(raw, 'illegal_value', 'Discord is for a quarrel between two other powers. Your own standing is not it.');
+            break;
+          }
+          if (toward === whose) {
+            reject(raw, 'illegal_value', `${nameFor(state, whose)} cannot be turned against itself.`);
+            break;
+          }
+        }
+
         const price = AGENT_COST[op.mission];
         if (owner.credits < price) {
           reject(
@@ -6132,6 +6165,14 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
             -100,
             (target.disposition[owner.id] ?? 0) - outrage,
           );
+          // **Discord caught is a scandal with two injured parties.** The forged
+          // letters were about somebody, and exposure hands that power the
+          // evidence — so the third power resents the forger too.
+          if (agent.effect.kind === 'discord') {
+            moveRegard(state, agent.effect.towardFactionId, owner.id, -outrage);
+            const scandal = `${target.name} exposes ${owner.name}'s hand in forging its quarrel with ${nameFor(state, agent.effect.towardFactionId)}.`;
+            logEvent(state, 'diplomacy', scandal, target.id);
+          }
         }
       }
       continue;
@@ -6174,6 +6215,33 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
           watchNotes.set(agent.id, `came close to ${mark.name} on ${host.name} and no closer.`);
         }
       }
+    }
+
+    if (agent.effect.kind === 'discord') {
+      // The host's regard for a third power, and never the owner's own standing
+      // with anybody — the operative is working on somebody else's quarrel.
+      const spent = agent.discordMoved ?? 0;
+      const moved = Math.min(agent.effect.perTurn * profile.effectMultiplier, Math.max(0, MAX_DISCORD_TOTAL - spent));
+      if (moved <= 0) {
+        // Spent, and said so: an operative that has stopped earning is one to
+        // recall, and "nothing to report" is the load-bearing case.
+        watchNotes.set(agent.id, `has said all there is to say against ${nameFor(state, agent.effect.towardFactionId)} on ${host.name}.`);
+      } else {
+        agent.discordMoved = spent + moved;
+        moveRegard(state, target.id, agent.effect.towardFactionId, -moved);
+        watchNotes.set(
+          agent.id,
+          `turns ${target.name} a little further against ${nameFor(state, agent.effect.towardFactionId)} (${agent.discordMoved} of ${MAX_DISCORD_TOTAL} spent).`,
+        );
+        logEvent(
+          state,
+          'intel',
+          `Your operative on ${host.name} sets ${target.name} against ${nameFor(state, agent.effect.towardFactionId)}, ${moved} at a time.`,
+          agent.ownerFactionId,
+          [agent.ownerFactionId],
+        );
+      }
+      continue;
     }
 
     if (agent.effect.kind === 'crew_defection') {

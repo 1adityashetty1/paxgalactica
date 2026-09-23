@@ -2962,6 +2962,7 @@ costs the breaker 25 disposition with the other party.
 | `surveillance` | 1 in 20 | yes | 1 |
 | `theft` / `subversion` | 2 in 20 | yes | 1 |
 | `sabotage` | 3 in 20 | yes | 1 |
+| `discord` | 5 in 20 | yes | 1 |
 | `assassination` | **9 in 20** | **no** | **4** |
 
 `successChance` is computed in code from the owner's guile against the target's
@@ -2999,6 +3000,24 @@ there is exactly one path — charged by `AGENT_COST`, held to `maxAgentsFor`,
 resolved on the tick, exposed on the same ladder. **Only on an outcome that
 placed something**: a failed attempt places nobody, the same rule
 `boundPayloadsToOutcome` applies to a works payload.
+
+**`discord` is the only mission aimed at a quarrel the buyer is not in.** It
+turns the power whose world the operative sits on against a **third** power,
+named in `effect.towardFactionId` — the priced path that closing the free one
+(`adjust_disposition` between two other powers) left missing.
+
+- **Permanent.** `sedition`'s dissent is clawed back at `DISSENT_DECAY`; regard
+  never is. So the rate is 1–2 and the real bound is `MAX_DISCORD_TOTAL` (20), a
+  **lifetime** ceiling on the operative rather than a rate — a rate leaves the
+  total to how long they happen to survive.
+- **Two powers, neither the buyer.** Host, named power and owner must be three
+  different factions; checked before the 100 credits are taken.
+- **Caught is a scandal with two victims**: exposure hands the named power the
+  evidence, so both resent the forger.
+
+`AGENT_COST.discord` is **100**, a starting figure; item 113 argues it is still
+too cheap, since what it buys is permanent and can drag two powers past
+`BOT_AGGRESSION_CEILING` into a war the bots were withholding.
 
 **Assassination is a strike, not a posting.** The operative is spent after one
 attempt either way; success deals four times the declared effect and costs the
