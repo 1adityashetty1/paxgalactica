@@ -419,6 +419,7 @@ export function App() {
             state={view.state}
             selectedId={selectedId}
             briefing={view.briefing}
+            effective={view.effective}
             onSelect={setSelectedId}
             onTalk={setDraftChannel}
             activeChannel={activeChannel}

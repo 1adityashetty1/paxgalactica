@@ -44,6 +44,7 @@ import {
   type WorldState,
 } from '../../../src/domain/state.js';
 import type { Briefing } from '../../../src/engine/briefing.js';
+import type { EffectiveStats } from '../../../src/api/contract.js';
 import { ansi256ToHex, NEUTRAL } from '../color.js';
 import { logWindow } from '../../../src/ui/logview.js';
 
@@ -74,11 +75,14 @@ export function SidePanel({
   state,
   selectedId,
   briefing,
+  effective,
   onSelect,
   onTalk,
   activeChannel,
 }: {
   state: WorldState;
+  /** The player's stats as the server rolls them — see `EffectiveStatsSchema`. */
+  effective: EffectiveStats;
   selectedId: string | null;
   briefing: Briefing | null;
   onSelect: (id: string) => void;
@@ -106,7 +110,12 @@ export function SidePanel({
       </nav>
       <div className="panel-body">
         {tab === 'factions' && (
-          <Factions state={state} onTalk={onTalk} activeChannel={activeChannel} />
+          <Factions
+            state={state}
+            effective={effective}
+            onTalk={onTalk}
+            activeChannel={activeChannel}
+          />
         )}
         {tab === 'system' && <SystemTab state={state} selectedId={selectedId} onSelect={onSelect} />}
         {tab === 'fleets' && <FleetsPanel state={state} onSelect={onSelect} />}
@@ -123,17 +132,26 @@ export function SidePanel({
 
 function Factions({
   state,
+  effective: served,
   onTalk,
   activeChannel,
 }: {
   state: WorldState;
+  effective: EffectiveStats;
   onTalk: (factionId: string) => void;
   activeChannel: string | null;
 }) {
   return (
     <div className="factions">
       {state.factions.map((f) => {
-        const effective = effectiveStats(state, f.id);
+        // The player's own row reads the SERVED figure, because the client can
+        // no longer compute it: `worldAsSeenBy` redacts operatives the player
+        // has not caught, so a hostile `stat_debuff` is invisible here and a
+        // recomputed number would read higher than the dice allow. Every other
+        // power is computed as before — from the same redacted world an NPC's
+        // debuffs are missing from, which is the fog and not a discrepancy.
+        const isPlayerRow = f.id === state.playerFactionId;
+        const effective = isPlayerRow ? served.stats : effectiveStats(state, f.id);
         const penalty = dissentPenalty(f.dissent);
         const isPlayer = f.id === state.playerFactionId;
         const disposition = dispositionBetween(state, f.id, state.playerFactionId);

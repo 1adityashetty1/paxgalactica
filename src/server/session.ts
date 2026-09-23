@@ -17,7 +17,7 @@ import { FileCampaignStore, type CampaignStore } from '../engine/store.js';
 import { closeChannel, endTurn, writeEpilogue, submitAction } from '../engine/turn.js';
 import type { ActionOutcome } from '../engine/turn.js';
 import { askAdvisor, diplomacyReply, type ChatMessage } from '../model/calls.js';
-import { getFaction } from '../domain/state.js';
+import { effectiveStats, getFaction } from '../domain/state.js';
 import { playableFactions } from '../seed/scenario.js';
 import { ApiFailure, toApiFailure } from './errors.js';
 import { appraiseAgreement } from '../model/calls.js';
@@ -194,6 +194,15 @@ export class GameSession {
         narrative: campaign.stagedNarratives()[index] ?? '',
         binding: campaign.stagedBindings()[index] ?? null,
       })),
+      // Computed from the TRUE world, not from the redacted one above: the
+      // point of shipping it is that the client cannot see the operatives whose
+      // debuffs are in it.
+      effective: {
+        stats: effectiveStats(campaign.state, campaign.state.playerFactionId),
+        base:
+          getFaction(campaign.state, campaign.state.playerFactionId)?.stats ??
+          effectiveStats(campaign.state, campaign.state.playerFactionId),
+      },
       // `watch` and `rumoured` are facts about the board, not about the turn
       // that produced the briefing — so they are re-derived on every read. An
       // action that deploys or recalls an operative changes them immediately.

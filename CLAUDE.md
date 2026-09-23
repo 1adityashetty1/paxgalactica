@@ -803,9 +803,8 @@ it is also that). The harness asks *at equal credits, which **fighting**
 composition wins*, and neither hull's job exists in a two-system arena with the
 galaxy stripped out. Including them would have the sweep answer "spend nothing
 on these" at great length, and then report a class count meaning something
-different from the one every earlier result was stated in. Verified: the best
-attacker is still `escort:24 torpedo_boat:72 lifter:16` at 64% with a 10.4-point
-margin, and the best defender still `battleship:9 escort:6 lifter:10` at 85%.
+different from the one every earlier result was stated in. Verified when they
+were added: the best attacker and defender were unchanged by their presence.
 
 **Tonnage is the single primitive.** Cost, upkeep, insolvency attrition,
 `capSelfInflictedLosses`, the income contest and the price of a suborned crew
@@ -1007,6 +1006,52 @@ instrument, and a defender's answer to it is still a screen.
 The historical shape and the mechanical one agree, which is why the class is
 called what it is: destroyers were originally *torpedo boat destroyers*.
 
+### What an attacker already holds in the orbit fights
+
+Three battle defects, all found in one playtest and all of them arithmetic
+rather than doctrine.
+
+**A parked squadron joined neither side.** `defenders` excludes anyone
+attacking and the attacking force was the *arriving* hulls alone, so ships
+already sitting on the target sat the battle out, took no losses and went on
+contesting the world's income. Worse than an oversight, it was a shield:
+sending one more fleet at a world you were already squatting on made the
+squatters unkillable for that turn — the exact tax `sweep` exists to let a
+holder answer. Measured: the Vigil came home to clear Vantic, Meridian
+reinforced on the same tick, and Meridian's parked six battleships were in
+neither line while the Vigil lost thirteen hulls. They are merged into their
+owner's contingent now and taken out of the system as they join, exactly as
+arriving hulls are outside it until they win. **It applies to a sweeping holder
+too**, which is the same rule and not a special case: your own hulls in your own
+orbit fight for you.
+
+**`Math.ceil` made any defence cost a whole battleship-equivalent.** The
+exchange charges the attacker `(base - tilt) / (1 + attackMod / 20)` and rounded
+it up, so a defence of 0.003 and a defence of 0.33 cost exactly the same: a
+lone **listener** — an unarmed hull — destroyed three escorts of a ten-hull
+fleet, and a lone escort destroyed the same three. A playtest hit it through
+`crusading`, which never escapes this branch by breaking off, but the arithmetic
+was never about the doctrine. These are **weights, not hulls** — the two lines
+below turn them into a fraction of each contingent's tonnage — so the rounding
+bought nothing and cost proportionality, which is the property the whole
+exchange is built on. The nominal weights the classes that cannot fight carry
+exist precisely so they are *something*; a defence of nearly nothing should cost
+nearly nothing.
+
+**The defender's emergency landing fired against no landing.** Converting the
+holder's transports to garrison above `garrisonMax` is deliberate — spent once,
+never regrown — but it ran on *any* arrival, so an attacker with no lift aboard
+handed the defender a permanent fortress for free. Measured: an attack carrying
+no transports at all put 60 troops into a world whose ceiling is 9, the attacker
+broke off, and it still read **69 of 9** four turns later. It is gated on
+inbound lift now: the window the rule describes is "the transports are about to
+be irrelevant either way", and with nothing coming ashore there is no window.
+
+`pnpm balance 30` is unmoved at 3/6/5/4/4 with the 58/42 mix across all three.
+`pnpm fleetlab` moves, and the exchange fix is why: see the note under
+"Composition" below — the attacker's advantage was partly the rounding, which
+fell on the defender as well.
+
 ### Key order is part of the state, because replay compares strings
 
 `verifyReplay` compares `JSON.stringify` of live state against replayed state,
@@ -1094,6 +1139,21 @@ and there is none to take. A guest under `basing_rights` is not swept — that
 fleet was invited — and sweeping a power you have sworn peace with breaks the
 pact exactly as any other attack does, which is why the pact check had to learn
 that the victim of an attack is not always the holder.
+
+## Interrupting somebody else's programme takes being there
+
+`interrupt_order` checked that the order existed and was interruptible and
+nothing else, so a declared action reached across the galaxy and stood a rival's
+works down. Measured in a playtest: an invasion's resolution suspended the
+Combine's fortification at Oridin *before the fleet arrived*, and the reducer
+duly refunded the Combine its 60 credits. Sharper than it looks, because
+`COVERT_CATEGORIES` means some of those orders are rumours to the actor — it
+could cancel a programme it is not allowed to see.
+
+The guard is the presence line interdiction, suborning and a works payload
+already draw: ships at the order's origin or target. Your **own** order needs
+nothing, which is what `cancel_order` is for; this is the path for reaching into
+a rival's, and reaching needs a hand.
 
 ## A refund cannot exceed the outlay
 
@@ -3253,6 +3313,37 @@ reserved-seat rule makes an ordinary turn. The alternative is a prompt rule
 asking the model not to mention it, which is the kind of guard a model can be
 talked past.
 
+### Three more fields the payload was shipping whole
+
+An 8-turn playtest read all three off `GET /api/campaign` and the event log:
+
+- **`state.agents`.** Every rival operative, unexposed ones included, with
+  name, world, mission and cover story — six of them off one response, five
+  never caught. An operative that can be seen without being burned costs its
+  owner everything and buys nothing, so this was the covert layer switched off.
+  `worldAsSeenBy` now applies `agentsVisibleTo` — mine, plus anyone's that has
+  been burned — which is the rule the client's own panels were already calling
+  on arrival, and exactly the "each component remembering to filter" that
+  function exists to replace.
+- **`clamp` and `rejection` entries.** Both were public and
+  `serializeRecentLog` feeds the log into every NPC prompt, so the Vigil's log
+  carried *"[illegal_value] drajk cannot deploy an agent owned by vigil"* —
+  Drajk's covert attempt, published to its target. Scoped in `logEvent` by
+  **kind** rather than at forty call sites, because the rule is about what the
+  kind is: a note the engine wrote about one power's own batch. An entry naming
+  no faction stays public, having nobody to be about; `reject` therefore
+  attributes to the actor, and engine batches carry none.
+
+**Redacting operatives cost the client its arithmetic**, and that is worth
+stating because the fix is a contract change rather than a filter.
+`effectiveStats` is computed in the browser from the served world, so with a
+rival's `stat_debuff` hidden the player's own row would read **higher than the
+dice allow** — the "a number that is not the number the game rolls against is a
+lie" this file names elsewhere, running the other way. `CampaignView.effective`
+carries the player's true stats, computed server-side from the unredacted
+world. Only the player's own: shipping every faction's would hand back through
+arithmetic exactly what the redaction took away.
+
 **Knowledge is a snapshot, not a memory.** Burn the operative and the programme
 goes back to being a rumour. A last-known-position model is the more honest one
 and needs a durable set on `WorldState` — schema, save format and journal — so
@@ -3847,6 +3938,24 @@ sails under nobody in particular.
 > Registration now happens before the first exit, and a campaign-long invariant
 > check (no active officer is ever at no system and on no order) runs clean over
 > thirty turns.
+
+> **A third exit stranded one, and it is the commonest.** Moving a fleet
+> between your own worlds takes the friendly-arrival path, which returns before
+> any officer is put on the board — so an officer who sailed home was at no
+> system and on no voyage, permanently. Measured in a playtest: a Brigadier was
+> lost that way on turn 5 and every later invasion sailed under nobody, with no
+> op able to place them again. They are placed there now **without** `finish`,
+> which is the distinction: `finish` counts a battle and rolls for death, and
+> nothing was fought.
+
+**An officer is named the way a person names one.** `issue_order` matched ids
+only, and the resolution call writes what a player says — `commanderId: "Marcia
+Galba"` three turns running in one playtest — so every one of them was dropped
+with *"no such officer"* while the narrative went on claiming the officer was
+aboard. It resolves through `resolveCommander`, the same lookup the knife uses,
+scoped to the power's own roster so a name that could only mean a rival's
+officer resolves to nobody. The three guards that follow — yours, active, at the
+origin — are unchanged, and a name that fails one still drops with its note.
 
 **The bots name their officer too**, when they are standing at the port a sortie
 leaves from. Without that, giving their a location would have made commanders a
@@ -4468,7 +4577,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `consume_asset` | spend, release or destroy a thing you hold; draws an instrument's `uses` or stuff's `quantity` |
 | `issue_order` | see Duration below; optional `onComplete` payload, paid at issue. `force` is a count (drawn proportionally) or a named composition |
 | `cancel_order` | returns the unspent part of an `onComplete` payload |
-| `interrupt_order` | rejected when the order is not interruptible |
+| `interrupt_order` | rejected when the order is not interruptible; **somebody else's** order also needs ships at its origin or target |
 | `extend_order` | rejected for movement |
 | `accelerate_order` | spends credits, drops one Fibonacci bucket, min 1; rejected for movement |
 | `form_treaty` | **extraction-only** — absent from `ModelOpSchema`; a treaty needs the other party's consent. `exclusive` forecloses another of that type with anyone else |
@@ -5132,8 +5241,20 @@ different margin:
 
 | side | best fleet | rate | margin over the best 1–2 class fleet |
 |---|---|---|---|
-| attacker | `escort:24 torpedo_boat:72 lifter:16` | 64% | **+10.4 points** |
-| defender | `battleship:9 escort:6 lifter:10` | 85% | **+1.2 points** |
+| attacker | `battleship:12 escort:24 torpedo_boat:48 lifter:16` | 54% | **+1.6 points** |
+| defender | `battleship:9 escort:6 lifter:10` | 85% | **+1.4 points** |
+
+> **Both margins narrowed when the exchange stopped rounding losses up**, and
+> the attacker's side moved a long way: it read `escort:24 torpedo_boat:72
+> lifter:16` at **64%** with a **10.4**-point margin while `Math.ceil` stood.
+> That figure was inflated by the bug rather than measuring the classes — the
+> rounding fell on the DEFENDER too, destroying it faster than its weight
+> deserved, and an attacker's whole case is how much defence it removes. What
+> survives is the property the harness exists to test: the best fleet on both
+> sides still carries three or four classes, a no-lift fleet still takes
+> nothing (`no_lift` 59–75%), and the two failure modes that make the mix a
+> decision are both still on the board. `pnpm balance 30` is unmoved at
+> 3/6/5/4/4, so the campaign-level board did not follow the arena.
 
 A line-heavy attacker fails by losing its transports (`no_lift`); a screen-heavy
 one fails by never clearing the orbit (`no_landing`). Two failure modes of

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ConcessionSchema, RetractionSchema } from '../domain/diplomacy.js';
 import { BattleReportSchema } from '../domain/battle.js';
-import { CheckOutcomeSchema, StatNameSchema } from '../domain/checks.js';
+import { CheckOutcomeSchema, FactionStatsSchema, StatNameSchema } from '../domain/checks.js';
 import { EpilogueViewSchema } from '../engine/epilogue.js';
 import { OrderRumourSchema } from '../domain/intel.js';
 import {
@@ -122,6 +122,31 @@ export const StagedItemSchema = z.object({
   binding: z.enum(['rolled', 'refused', 'charge', 'record']).nullable(),
 });
 
+export const EffectiveStatsSchema = z.object({
+  /**
+   * The player's stats as the game will actually roll them — terrain, the
+   * senior officer's passive, dissent and every hostile `stat_debuff` already
+   * applied.
+   *
+   * Shipped rather than computed on the client, and that is a consequence of
+   * the fog rather than a convenience. `worldAsSeenBy` redacts operatives the
+   * player has not caught, so the client can no longer see a rival's debuff —
+   * and a client recomputing from the redacted world would draw a number
+   * HIGHER than the one the dice are rolled against. This codebase already
+   * calls that a lie; the honest version is to hide the cause and keep the
+   * effect, which is what being sabotaged without knowing feels like anyway.
+   *
+   * Only the player's own, because it is derived from the true world: shipping
+   * every faction's would hand back through arithmetic exactly what the
+   * redaction above took away.
+   */
+  stats: FactionStatsSchema,
+  /** The same power's sheet before any of it, so the panel can show both. */
+  base: FactionStatsSchema,
+});
+
+export type EffectiveStats = z.infer<typeof EffectiveStatsSchema>;
+
 export const DiscardResultSchema = z.object({
   discarded: z.number().int().min(0),
   /** Declarations left staged because they were already binding. */
@@ -197,6 +222,8 @@ export const CampaignViewSchema = z.object({
   /** Rival work known to exist and not identifiable. Never carries an order id. */
   rumours: z.array(OrderRumourSchema),
   staged: z.array(StagedItemSchema),
+  /** What the dice are actually rolled against for the player. See the schema. */
+  effective: EffectiveStatsSchema,
   /** Null before the first turn has been ended. */
   briefing: BriefingSchema.nullable(),
   /** Faction id of an open diplomatic channel, if any. */

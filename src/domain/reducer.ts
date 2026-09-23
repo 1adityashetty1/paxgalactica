@@ -416,6 +416,15 @@ function addToPool(pool: Map<string, ShipStack>, id: string, add: ShipStack): vo
 const nameFor = (state: WorldState, id: string): string =>
   state.factions.find((f) => f.id === id)?.name ?? id;
 
+/**
+ * Whether clamp and rejection entries are scoped to the power they concern —
+ * `LegacyRules.privateEngineNotes`. Module-scoped because `logEvent` has forty
+ * call sites and no access to the batch's rules; `applyOps` and `tickTurn` set
+ * it on entry and restore it on exit, which is safe because the reducer is
+ * synchronous.
+ */
+let scopeEngineNotes = true;
+
 function logEvent(
   state: WorldState,
   kind: EventLogEntry['kind'],
@@ -424,7 +433,23 @@ function logEvent(
   /** Who may read it. Omit for public — see `EventLogEntrySchema.visibleTo`. */
   visibleTo: string[] | null = null,
 ): void {
-  state.eventLog.push({ turn: state.turn, kind, factionId, text, visibleTo });
+  // **A clamp or a rejection is a note to the power that wrote the order**, and
+  // both were public. Measured in a playtest: the Iron Vigil's log carried
+  // "[illegal_value] drajk cannot deploy an agent owned by vigil" — Drajk's
+  // covert attempt, published to everyone including its target — and the
+  // Vigil's own "Fleet sails without a named officer" went to all five powers.
+  // `serializeRecentLog` feeds the log into every NPC prompt, so this was the
+  // same leak `intel` entries were scoped for, one kind along.
+  //
+  // Applied here rather than at forty call sites, because the rule is about the
+  // KIND: these two describe what the engine did to one power's own batch.
+  // Attribution is what makes them scopable, so an entry with no faction named
+  // stays public — there is nobody to scope it to.
+  const audience =
+    scopeEngineNotes && visibleTo === null && factionId !== null && (kind === 'clamp' || kind === 'rejection')
+      ? [factionId]
+      : visibleTo;
+  state.eventLog.push({ turn: state.turn, kind, factionId, text, visibleTo: audience });
 }
 
 /**
@@ -1400,9 +1425,63 @@ export interface LegacyRules {
    * is the school — has to come out the same. Journal version 7.
    */
   fourSchools?: boolean;
+  /**
+   * Six rules from one 8-turn Iron Vigil playtest, each its own flag, all
+   * journal version 7. Measured: together they move 21 of the 48 saves.
+   *
+   * - `privateEngineNotes` — a clamp or rejection is visible only to the power
+   *   whose batch it concerns; they were public, and the log feeds every NPC
+   *   prompt.
+   * - `officerByName` — `issue_order.commanderId` resolves a name through
+   *   `resolveCommander`, not only an id.
+   * - `interruptNeedsReach` — interrupting a RIVAL's order needs ships at its
+   *   origin or target.
+   */
+  privateEngineNotes?: boolean;
+  officerByName?: boolean;
+  interruptNeedsReach?: boolean;
+  /** The battle rules from the same playtest. See `BattleRules`. */
+  battleRules?: BattleRules;
 }
 
+/**
+ * Battle rules added at journal version 7, each a flag so an older journal's
+ * battles are fought as they were.
+ */
+export interface BattleRules {
+  /** An officer who sails between your own worlds is placed on arrival rather than stranded. */
+  officerHomecoming?: boolean;
+  /** An attacker's hulls already parked on the target join its attack. */
+  squattersFight?: boolean;
+  /** The defender's emergency landing fires only against inbound lift. */
+  landingNeedsLift?: boolean;
+  /** The exchange charges losses by weight, not rounded up to a whole battleship. */
+  exactExchange?: boolean;
+}
+
+/**
+ * Apply a batch of ops. See `applyOpsUnderRules` for everything it does; this
+ * wrapper only sets the module-scoped `scopeEngineNotes` switch for the batch's
+ * journal rules and restores it afterwards.
+ */
 export function applyOps(
+  input: WorldState,
+  rawOps: unknown[],
+  source: OpSource = 'model',
+  actor?: string,
+  atomic = false,
+  legacy: LegacyRules = {},
+): ApplyResult {
+  const outer = scopeEngineNotes;
+  scopeEngineNotes = legacy.privateEngineNotes ?? true;
+  try {
+    return applyOpsUnderRules(input, rawOps, source, actor, atomic, legacy);
+  } finally {
+    scopeEngineNotes = outer;
+  }
+}
+
+function applyOpsUnderRules(
   input: WorldState,
   rawOps: unknown[],
   source: OpSource = 'model',
@@ -1458,6 +1537,8 @@ export function applyOps(
     peopleStanding = true,
     narratedDisposition = true,
     fourSchools = true,
+    officerByName = true,
+    interruptNeedsReach = true,
   } = legacy;
   const state = cloneState(input);
   const rejections: OpRejection[] = [];
@@ -1478,12 +1559,16 @@ export function applyOps(
 
   const reject = (op: unknown, code: OpRejection['code'], message: string): void => {
     rejections.push({ op, code, message });
+    // Attributed to the actor, which is what lets it be scoped: a rejection
+    // names the op that was refused, and a refused `deploy_agent` names the
+    // operative, the world and the mission. Engine batches carry no actor and
+    // stay public, having nobody to be about.
     const entry: EventLogEntry = {
       turn: state.turn,
       kind: 'rejection',
-      factionId: null,
+      factionId: scopeEngineNotes ? (actor ?? null) : null,
       text: `[${code}] ${message}`,
-      visibleTo: null,
+      visibleTo: !scopeEngineNotes || actor === undefined ? null : [actor],
     };
     rejectionEvents.push({ ...entry });
     state.eventLog.push(entry);
@@ -2847,7 +2932,17 @@ export function applyOps(
         // the fleet still sails, it just sails under nobody in particular.
         let riding: string | null = null;
         if (op.commanderId !== null) {
-          const named = (state.commanders ?? []).find((c) => c.id === op.commanderId);
+          // **Resolved by NAME, not only by id**, the same lookup the knife
+          // uses. The resolution call writes what a person would say — a live
+          // playtest produced `commanderId: "Marcia Galba"` three turns running
+          // — and an id-only match dropped every one of them with "no such
+          // officer" while the narrative went on claiming the officer was
+          // aboard. Scoped to this power's own roster, so a name that could
+          // only mean a rival's officer resolves to nobody rather than to them.
+          const named =
+            (officerByName
+              ? resolveCommander(state.commanders, op.commanderId, (c) => c.factionId === op.factionId)
+              : undefined) ?? (state.commanders ?? []).find((c) => c.id === op.commanderId);
           const ok =
             named &&
             named.factionId === op.factionId &&
@@ -3062,6 +3157,33 @@ export function applyOps(
             raw,
             'not_interruptible',
             `Order "${op.orderId}" (${order.label}) is flagged not interruptible.`,
+          );
+          break;
+        }
+        // **Interrupting somebody else's programme takes being there.** The op
+        // checked the order existed and was interruptible and nothing else, so
+        // a declared action reached across the galaxy and stood down a rival's
+        // works — measured in a playtest, where an invasion's resolution
+        // suspended the Combine's fortification at Oridin before the fleet had
+        // arrived, and the reducer even refunded the Combine its 60 credits.
+        // Worse, `COVERT_CATEGORIES` means some of those orders are rumours to
+        // the actor: it could cancel a programme it is not allowed to see.
+        //
+        // The same presence line interdiction, suborning and a works payload
+        // already draw — ships at the origin or the target. Your OWN order
+        // needs nothing, which is what `cancel_order` is for; this is the path
+        // for reaching into a rival's, and reaching needs a hand.
+        const mine = actor === undefined || order.factionId === actor;
+        const standsAt = (systemId: string): boolean => {
+          const sys = getSystem(state, systemId);
+          return sys !== undefined && hullsAt(sys, actor!) > 0;
+        };
+        const reach = !interruptNeedsReach || mine || standsAt(order.originId) || standsAt(order.targetId);
+        if (!reach) {
+          reject(
+            raw,
+            'no_presence',
+            `${nameFor(state, actor!)} has nothing at ${nameFor(state, order.originId)} or ${nameFor(state, order.targetId)} to interrupt "${order.label}" with.`,
           );
           break;
         }
@@ -5514,8 +5636,19 @@ export interface TickResult extends ApplyResult {
  * everything that completes. This is the only place `transfer_control`
  * originates.
  */
+/** Advance one turn. Sets `scopeEngineNotes` for the journal's rules; see `applyOps`. */
 export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResult {
-  const { arrangementStanding = true, hostages = true, peopleStanding = true, fourSchools = true } = legacy;
+  const outer = scopeEngineNotes;
+  scopeEngineNotes = legacy.privateEngineNotes ?? true;
+  try {
+    return tickTurnUnderRules(input, legacy);
+  } finally {
+    scopeEngineNotes = outer;
+  }
+}
+
+function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult {
+  const { arrangementStanding = true, hostages = true, peopleStanding = true, fourSchools = true, battleRules = {} } = legacy;
   const state = cloneState(input);
   const notes: string[] = [];
 
@@ -6549,7 +6682,7 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
   }
 
   for (const [systemId, orders] of landings) {
-    const { note: outcome, report: battle } = resolveBattle(state, systemId, orders, hostages);
+    const { note: outcome, report: battle } = resolveBattle(state, systemId, orders, hostages, battleRules);
     notes.push(outcome);
     report.arrivals.push(outcome);
     if (battle) report.battles.push(battle);
@@ -6690,7 +6823,14 @@ function resolveBattle(
   orders: PendingOrder[],
   /** False only for a journal written before a storming could seize anybody. */
   takesHostages = true,
+  rules: BattleRules = {},
 ): BattleOutcomeResult {
+  const {
+    officerHomecoming = true,
+    squattersFight = true,
+    landingNeedsLift = true,
+    exactExchange = true,
+  } = rules;
   const target = state.systems.find((s) => s.id === systemId);
   if (!target) {
     return {
@@ -6877,6 +7017,23 @@ function resolveBattle(
       guests.length > 0 && holder !== null
         ? `${guests.map(([id]) => nameOf(id)).join(' and ')} puts in at ${target.name} under basing rights.`
         : `${who} reinforces ${target.name}.`;
+    // **The officers who sailed get off the ship.** This is the third exit found
+    // to strand one, after the unopposed walk-in and `cancel_order`, and it is
+    // the commonest of the three: moving a fleet between your OWN worlds takes
+    // this path every time. The order leaves `pendingOrders` on arrival, so an
+    // officer not placed here is at no system and on no voyage, permanently —
+    // measured in a playtest, where a Brigadier was lost on turn 5 by sailing
+    // home and every later invasion went out under nobody.
+    //
+    // Placed WITHOUT `finish`, which is the distinction: `finish` counts a
+    // battle and rolls for death, and nothing was fought here.
+    for (const o of officerHomecoming ? orders : []) {
+      if (!o.commanderId) continue;
+      const rider = (state.commanders ?? []).find(
+        (c) => c.id === o.commanderId && c.status === 'active',
+      );
+      if (rider) rider.atSystemId = systemId;
+    }
     logEvent(state, 'order', note, holder);
     // Not a battle. Reporting one would put a "no losses" card in the panel
     // every time a fleet moved between friendly worlds.
@@ -6884,6 +7041,30 @@ function resolveBattle(
   }
 
   const attackerIds = new Set(attackers.map(([id]) => id));
+
+  // **What an attacker already had in the orbit joins its attack.** It joined
+  // neither side: `defenders` excludes anyone attacking, and the attacking
+  // force was the ARRIVING hulls alone — so a squadron already parked on the
+  // target sat the battle out, took no losses, and went on contesting the
+  // world's income afterwards. Measured in a playtest: the Vigil came home to
+  // Vantic to clear it, Meridian reinforced on the same tick, and Meridian's
+  // parked six battleships and an escort were in neither line while the Vigil
+  // lost thirteen hulls to the newcomers.
+  //
+  // Worse than an oversight, it was a shield: sending one more fleet at a world
+  // you are already squatting on made the squatters unkillable for that turn,
+  // which is the exact tax `sweep` exists to let a holder answer.
+  //
+  // Taken OUT of the system as they join, exactly as arriving hulls are outside
+  // it until they win — otherwise the same ships are counted twice, once in the
+  // line and once as presence.
+  for (const entry of squattersFight ? attackers : []) {
+    const alreadyThere = stackAt(target, entry[0]);
+    if (hullsIn(alreadyThere) === 0) continue;
+    entry[1] = mergeStacks(entry[1], alreadyThere);
+    setStackAt(target, entry[0], {});
+  }
+
   const coalition = attackers.map(([id]) => nameOf(id)).join(' and ');
   /** One side of one round: what it had at the round's start, and what it has now. */
   const sideOf = (now: Map<string, ShipStack>, was: Map<string, ShipStack>): Contingent[] =>
@@ -7307,7 +7488,17 @@ function resolveBattle(
   // seven with four transports committed reads **11/7**. `GARRISON_REGROWTH`
   // only fires below the ceiling, so the excess is spent once and never grows
   // back — an emergency deployment, not a permanent fortification.
-  if (holder !== null) {
+  //
+  // **And only against a landing that could actually happen.** It fired on any
+  // arrival, so an attacker with no transports aboard — a fleet that can
+  // sterilise the orbit and take nothing — handed the defender a permanent
+  // fortress for free. Measured in a playtest: an attack carrying no lift at
+  // all put 60 troops into a world whose ceiling is 9, the attacker broke off,
+  // and Vergesse still read **69 of 9** four turns later. The window this
+  // paragraph describes is "the transports are about to be irrelevant either
+  // way", and with nothing coming ashore there is no window and no decision.
+  const inboundLift = [...attackShare.values()].reduce((n, st) => n + (st.lifter ?? 0), 0);
+  if (holder !== null && (inboundLift > 0 || !landingNeedsLift)) {
     const held = defenders.find(([id]) => id === holder);
     const committed = held?.[1].lifter ?? 0;
     if (committed > 0) {
@@ -7499,14 +7690,25 @@ function resolveBattle(
       // own losses, so it is counted once as well.
       const base = Math.min(attackWeight, defendWeight);
       const tilt = base * swing;
-      const attackLeft = Math.max(
-        0,
-        attackWeight - Math.ceil((base - tilt) / (1 + attackMod / 20)),
-      );
-      const defenceLeft = Math.max(
-        0,
-        defendWeight - Math.ceil((base + tilt) / (1 + defendMod / 20)),
-      );
+      // **Not rounded up.** `Math.ceil` here charged a whole
+      // battleship-equivalent for any defence at all, however small — and the
+      // classes that cannot fight carry a nominal weight precisely so that they
+      // are something rather than nothing. Measured: a lone **listener**, an
+      // unarmed hull of 0.01 weight, destroyed three escorts out of a ten-hull
+      // fleet, and a lone escort destroyed exactly the same three, because both
+      // ceil to 1. A playtest hit it through `crusading`, which never escapes
+      // this branch by breaking off, but the arithmetic was never about the
+      // doctrine.
+      //
+      // These are WEIGHTS, not hulls: the two lines below turn them into a
+      // fraction of each contingent's tonnage, so a fractional loss is exactly
+      // as expressible as a whole one and the rounding bought nothing. What it
+      // cost was proportionality — the property this whole exchange is built
+      // on, and the reason a defence of nothing should cost nothing.
+      // A journal from before this was fought with the rounding, and replays so.
+      const charge = exactExchange ? (x: number) => x : Math.ceil;
+      const attackLeft = Math.max(0, attackWeight - charge((base - tilt) / (1 + attackMod / 20)));
+      const defenceLeft = Math.max(0, defendWeight - charge((base + tilt) / (1 + defendMod / 20)));
       const hullsBeforeExchange = attackHulls();
       const defendHullsBefore = defenceForce;
 

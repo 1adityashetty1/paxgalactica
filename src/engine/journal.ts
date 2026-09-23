@@ -190,6 +190,18 @@ export function replay(
     narratedDisposition: parsed.version >= 7,
     // Officers were drawn from three schools, uniformly, seed included.
     fourSchools: parsed.version >= 7,
+    // One Iron Vigil playtest's fixes: engine notes private to their power, an
+    // officer named by name on an order, reach needed to interrupt a rival —
+    // and four battle rules, below. Those campaigns were played without them.
+    privateEngineNotes: parsed.version >= 7,
+    officerByName: parsed.version >= 7,
+    interruptNeedsReach: parsed.version >= 7,
+    battleRules: {
+      officerHomecoming: parsed.version >= 7,
+      squattersFight: parsed.version >= 7,
+      landingNeedsLift: parsed.version >= 7,
+      exactExchange: parsed.version >= 7,
+    },
   };
 
   for (const entry of parsed.entries.slice(1)) {
