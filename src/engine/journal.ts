@@ -196,6 +196,8 @@ export function replay(
     privateEngineNotes: parsed.version >= 7,
     officerByName: parsed.version >= 7,
     interruptNeedsReach: parsed.version >= 7,
+    // Crediting your own treasury by narration needed no payer.
+    selfCreditNeedsPayer: parsed.version >= 7,
     battleRules: {
       officerHomecoming: parsed.version >= 7,
       squattersFight: parsed.version >= 7,

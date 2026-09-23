@@ -529,7 +529,11 @@ describe('tickTurn', () => {
  * available is the batch, and a batch is one declared action.
  */
 describe('a batch is atomic when asked to be', () => {
-  const good = { op: 'adjust_credits', factionId: 'meridian', delta: 120, reason: 'surplus' };
+  // A CHARGE, not a windfall: money written into a treasury by a declaration
+  // needs a payer, so a self-credit is held back and settled out of what the
+  // batch actually paid out. These tests are about ATOMICITY and want an op
+  // that plainly lands, which a charge does.
+  const good = { op: 'adjust_credits', factionId: 'meridian', delta: -120, reason: 'a levy' };
   const bad = { op: 'adjust_credits', factionId: 'nobody-at-all', delta: -10, reason: 'x' };
 
   const creditsOf = (s: WorldState) => s.factions.find((f) => f.id === 'meridian')!.credits;
@@ -550,7 +554,7 @@ describe('a batch is atomic when asked to be', () => {
     const before = creditsOf(state);
     const out = applyOps(state, [good], 'model', 'meridian', true);
     expect(out.rejections).toHaveLength(0);
-    expect(creditsOf(out.state)).toBe(before + 120);
+    expect(creditsOf(out.state)).toBe(before - 120);
   });
 
   /**
@@ -604,7 +608,7 @@ describe('a batch is atomic when asked to be', () => {
     const before = creditsOf(state);
     const out = applyOps(state, [good, bad], 'model', 'meridian');
     expect(out.rejections).toHaveLength(1);
-    expect(creditsOf(out.state)).toBe(before + 120);
+    expect(creditsOf(out.state)).toBe(before - 120);
   });
 });
 

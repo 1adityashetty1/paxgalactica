@@ -65,19 +65,22 @@ describe('a ceiling belongs to the declaration, not to the op', () => {
   });
 
   it('gives one declaration one allowance of narrative money', () => {
+    // Charges, because a windfall no longer lands at all: money written into a
+    // treasury needs a payer, and saying it three times names no more payers
+    // than saying it once. The allowance is still the BATCH's.
     const state = fresh();
     const before = fac(state, 'meridian').credits;
     const out = applyOps(
       state,
       [
-        { op: 'adjust_credits', factionId: 'meridian', delta: MAX_NARRATIVE_CREDITS },
-        { op: 'adjust_credits', factionId: 'meridian', delta: MAX_NARRATIVE_CREDITS },
-        { op: 'adjust_credits', factionId: 'meridian', delta: MAX_NARRATIVE_CREDITS },
+        { op: 'adjust_credits', factionId: 'meridian', delta: -MAX_NARRATIVE_CREDITS },
+        { op: 'adjust_credits', factionId: 'meridian', delta: -MAX_NARRATIVE_CREDITS },
+        { op: 'adjust_credits', factionId: 'meridian', delta: -MAX_NARRATIVE_CREDITS },
       ],
       'model',
       'meridian',
     );
-    expect(fac(out.state, 'meridian').credits - before).toBe(MAX_NARRATIVE_CREDITS);
+    expect(before - fac(out.state, 'meridian').credits).toBe(MAX_NARRATIVE_CREDITS);
   });
 });
 

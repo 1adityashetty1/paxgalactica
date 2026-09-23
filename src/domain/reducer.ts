@@ -1438,6 +1438,12 @@ export interface LegacyRules {
    *   origin or target.
    */
   privateEngineNotes?: boolean;
+  /**
+   * A positive `adjust_credits` to the ACTOR's own treasury needs a payer, like
+   * one to anybody else's. Fifteen of the 48 saves credited themselves by
+   * narration and replay as they ran. Journal version 7.
+   */
+  selfCreditNeedsPayer?: boolean;
   officerByName?: boolean;
   interruptNeedsReach?: boolean;
   /** The battle rules from the same playtest. See `BattleRules`. */
@@ -1539,6 +1545,7 @@ function applyOpsUnderRules(
     fourSchools = true,
     officerByName = true,
     interruptNeedsReach = true,
+    selfCreditNeedsPayer = true,
   } = legacy;
   const state = cloneState(input);
   const rejections: OpRejection[] = [];
@@ -1967,14 +1974,28 @@ function applyOpsUnderRules(
         // ops later. Funded at settle time out of what the actor actually paid
         // out, and the surplus is minting and is dropped.
         //
-        // A windfall to the actor's OWN treasury is untouched — the fiction
-        // paying you is a real thing and `MAX_NARRATIVE_CREDITS` is what bounds
-        // it. Only money appearing in somebody else's account needs a payer.
+        // **A windfall to the actor's OWN treasury needs a payer too**, and
+        // exempting it was the whole of the remaining hole. The exemption read
+        // "the fiction paying you is a real thing and `MAX_NARRATIVE_CREDITS`
+        // bounds it" — but the cap bounds one batch, and a power may declare
+        // every turn, so what it bounded was the RATE of invention rather than
+        // the fact of it. Measured in a playtest: one 60-crate lot was "sold"
+        // back and forth between two NPCs across three turns, crediting the
+        // seller each time and debiting no buyer, and the galaxy ended about
+        // 600 credits richer on a lot worth at most 480. Twice the lot, out of
+        // nowhere, by describing a sale nobody paid for.
+        //
+        // Selling a thing to a power that never paid is precisely what the
+        // asset rules already refuse: *"it becomes credits only when a power
+        // actually pays"*. The honest routes are all still open — an accord,
+        // where the buyer's consent and its debit exist in the same transcript;
+        // a toll; a raid; an `income_penalty` operative. What is closed is the
+        // one route with no counterparty at all.
         //
         // Scoped to `model`. An `engine` batch is the reducer's own arithmetic
         // paying out something it already priced, and an `extraction` one has
         // returned above into `negotiated`, which conserves more strictly.
-        if (source === 'model' && actor !== undefined && op.factionId !== actor && delta > 0) {
+        if (source === 'model' && actor !== undefined && (selfCreditNeedsPayer || op.factionId !== actor) && delta > 0) {
           declaredCredits[op.factionId] = (declaredCredits[op.factionId] ?? 0) + delta;
           break;
         }

@@ -210,3 +210,89 @@ describe('interrupting somebody else’s programme takes being there', () => {
     expect(out.state.pendingOrders).toHaveLength(0);
   });
 });
+
+describe('money written into a treasury needs a payer', () => {
+  /**
+   * The cap bounded one batch and a power declares every turn, so what it
+   * bounded was the RATE of invention rather than the fact of it. Measured:
+   * two NPCs "sold" one 60-crate lot back and forth over three turns, the
+   * seller credited each time and no buyer debited, and the galaxy ended about
+   * 600 credits richer on a lot worth at most 480.
+   */
+  const purse = (s: WorldState, id: string) => s.factions.find((f) => f.id === id)!.credits;
+
+  it('drops a windfall the actor writes into its own treasury', () => {
+    const s = seed('drajk');
+    const before = purse(s, 'drajk');
+    const out = applyOps(s, [
+      { op: 'adjust_credits', factionId: 'drajk', delta: 240, reason: 'sold the crate lot' },
+    ], 'model', 'drajk', true);
+
+    expect(out.rejections).toEqual([]);
+    expect(purse(out.state, 'drajk')).toBe(before);
+    expect(out.notes.join(' ')).toMatch(/came from nobody's treasury/);
+  });
+
+  it('drops one an NPC reaction writes for itself', () => {
+    // The playtest's minting came from reactions, which commit under the
+    // reacting power as actor — the same path, and it must read the same.
+    const s = seed('vigil');
+    const before = purse(s, 'ojjul');
+    const out = applyOps(s, [
+      { op: 'adjust_credits', factionId: 'ojjul', delta: 200, reason: 'the sale clears' },
+    ], 'model', 'ojjul', true);
+
+    expect(purse(out.state, 'ojjul')).toBe(before);
+  });
+
+  it('still lets a power spend its own money', () => {
+    const s = seed('drajk');
+    const before = purse(s, 'drajk');
+    const out = applyOps(s, [
+      { op: 'adjust_credits', factionId: 'drajk', delta: -150, reason: 'a bribe paid' },
+    ], 'model', 'drajk', true);
+
+    expect(purse(out.state, 'drajk')).toBe(before - 150);
+  });
+
+  it('pays a credit that somebody in the same batch actually funded', () => {
+    // Conservation, not prohibition: the money moves when a treasury paid it.
+    const s = seed('drajk');
+    const beforeThem = purse(s, 'ojjul');
+    const beforeUs = purse(s, 'drajk');
+    const out = applyOps(s, [
+      { op: 'adjust_credits', factionId: 'drajk', delta: -100, reason: 'paid over' },
+      { op: 'adjust_credits', factionId: 'ojjul', delta: 100, reason: 'received' },
+    ], 'model', 'drajk', true);
+
+    expect(purse(out.state, 'drajk')).toBe(beforeUs - 100);
+    expect(purse(out.state, 'ojjul')).toBe(beforeThem + 100);
+  });
+
+  it('leaves an accord alone, where the buyer’s consent is on the record', () => {
+    const s = seed('drajk');
+    const beforeThem = purse(s, 'ojjul');
+    const beforeUs = purse(s, 'drajk');
+    const out = applyOps(s, [
+      { op: 'adjust_credits', factionId: 'ojjul', delta: -180, reason: 'the agreed price' },
+      { op: 'adjust_credits', factionId: 'drajk', delta: 180, reason: 'the agreed price' },
+    ], 'extraction', 'drajk', true);
+
+    expect(purse(out.state, 'ojjul')).toBe(beforeThem - 180);
+    expect(purse(out.state, 'drajk')).toBe(beforeUs + 180);
+  });
+});
+
+describe('a self-credit in a journal written before it needed a payer', () => {
+  it('replays as it ran', async () => {
+    const { applyOps: apply } = await import('../src/domain/reducer.js');
+    const { createSeedState: seed } = await import('../src/seed/scenario.js');
+    const s = seed('drajk');
+    const before = s.factions.find((f) => f.id === 'drajk')!.credits;
+    const op = { op: 'adjust_credits', factionId: 'drajk', delta: 100 } as never;
+    const now = apply(s, [op], 'model', 'drajk');
+    const then = apply(s, [op], 'model', 'drajk', false, { selfCreditNeedsPayer: false });
+    expect(now.state.factions.find((f) => f.id === 'drajk')!.credits).toBe(before);
+    expect(then.state.factions.find((f) => f.id === 'drajk')!.credits).toBe(before + 100);
+  });
+});

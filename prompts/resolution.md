@@ -104,7 +104,16 @@ writing off what you are owed needs nobody's permission, only a willingness to
 pay for it. Forgiving is the creditor's alone; a debtor cannot cancel what it
 owes, and the reducer rejects the attempt.
 
-`adjust_credits` is for narrative money only — a bribe, a fine, a windfall.
+`adjust_credits` is for narrative money only — a bribe, a fine, a levy.
+
+**Money only ever MOVES. Nothing you write makes it.** A credit into any
+treasury, including your own, is paid for out of a debit somewhere in the same
+batch, and an unfunded one is dropped with a note. So write both halves of a
+payment or neither. A sale to another power is not yours to write at all: the
+buyer has to agree, which happens in a channel, and until then it is a
+conversation rather than a price — describe the offer and leave the money
+alone. Selling a thing for credits nobody paid was worth about 600 invented
+credits in one campaign, on a lot worth 480.
 Every real price in this game is charged by the mechanic that owns it: hulls by
 displacement (15 a ton — 60 for a battleship, 45 for a lifter, freighter or
 listener, 30 for an escort or a torpedo boat), agents at 40–150, a programme payload by its own rule, treaty and

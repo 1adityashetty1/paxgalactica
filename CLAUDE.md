@@ -3645,6 +3645,29 @@ duplicate on top of a real bill is a second charge for one purchase. Only
 charges are refunded, since a windfall beside a purchase is not the duplicate
 case.
 
+### And a declaration cannot make money either
+
+The other half took a playtest to find. Crediting **somebody else** already
+needed a payer; crediting **yourself** was exempt, on the stated grounds that
+"the fiction paying you is a real thing and `MAX_NARRATIVE_CREDITS` is what
+bounds it". The cap bounds one batch, and a power declares every turn — so what
+it bounded was the *rate* of invention rather than the fact of it.
+
+Measured: two NPC reactions "sold" one 60-crate lot back and forth across three
+turns, crediting the seller each time and debiting no buyer, and the galaxy
+ended about **600 credits richer on a lot worth at most 480** — twice the thing,
+out of nowhere, by describing a sale nobody paid for. It is the asset rules'
+own line broken from the other side: *"it becomes credits only when a power
+actually pays"*.
+
+A positive `adjust_credits` from a `model` batch is now deferred with the rest
+and funded out of what that declaration actually paid out, whoever it names.
+Conservation rather than prohibition: write both halves and the money moves.
+What is closed is the shape with no counterparty at all — and every honest
+route is untouched, because each has a payer. An accord has the buyer's consent
+and its debit in one transcript; a toll, a raid and an `income_penalty`
+operative all take money from a treasury that had it.
+
 ### An accord may move money; a declaration may not
 
 `adjust_credits` is refused when it takes credits out of a faction that is not
