@@ -52,7 +52,7 @@ price is named, it is a treaty.
 **A fixture is not on the table.** A mine, an exchange, a theatre — anything the
 state block marks *"fixed here; changes hands only with the world"* — cannot be
 transferred on its own. Selling one is selling the world it stands on: write a
-`cession` naming that system, with `terms.payment` for the price, and the works
+`cession` naming that system, with `terms.payment` for the price, and the fixtures
 go with the ground.
 
 **You cannot create one here, with one exception.** A conversation trades what

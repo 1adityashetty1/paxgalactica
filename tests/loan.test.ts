@@ -329,7 +329,7 @@ describe('loans', () => {
           atSystemId: world.id,
         },
         {
-          op: 'create_asset', kind: 'exchange', heldBy: 'ojjul', quantity: 1, unit: 'works',
+          op: 'create_asset', kind: 'exchange', heldBy: 'ojjul', quantity: 1, unit: 'fixture',
           text: 'The Shalka exchange.', divisible: false, valuePerUnit: {},
           atSystemId: world.id, portable: false,
         },

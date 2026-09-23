@@ -37,7 +37,8 @@ import {
   MAX_DISSENT_PENALTY,
   effectiveStats,
   systemIncome,
-  worksAt,
+  fixturesAt,
+  statFixtureAt,
   treatiesFor,
   warsFor,
   type WorldState,
@@ -274,12 +275,21 @@ function SystemTab({
     (c) => c.status === 'active' && c.atSystemId === sys.id,
   );
   /**
-   * What is built on this world. A works is the one asset kind that cannot
+   * What is built on this world. A fixture is the one asset kind that cannot
    * leave, so it is a fact about the ground rather than about a warehouse —
    * and since it changes hands with the world, it is part of what taking this
    * world is worth.
    */
-  const works = worksAt(state, sys.id);
+  const fixtures = fixturesAt(state, sys.id);
+  /**
+   * What this world could carry, when the player holds it and it carries
+   * nothing yet. The ground rule is the whole mechanism — a fixture must name
+   * the attribute the world's type makes — so the panel says which one rather
+   * than leaving a player to discover it from a rejection.
+   */
+  const ground = WORLD_TYPE_STAT[sys.worldType];
+  const slotFree =
+    sys.controllerFactionId === state.playerFactionId && statFixtureAt(state, sys.id) === undefined;
 
   return (
     <div className="system-detail">
@@ -370,13 +380,19 @@ function SystemTab({
 
           Shown whoever holds it, because a plant or a base is a structure on a
           surface: `system.ships` is not redacted either. The holder is named
-          rather than assumed, since a works pays whoever stands over the world
+          rather than assumed, since a fixture pays whoever stands over the world
           and that need not be the power that built it. */}
-      {works.length > 0 && (
+      {(fixtures.length > 0 || slotFree) && <h4>Fixtures here</h4>}
+      {slotFree && (
+        <p className="muted">
+          Nothing built yet. This ground makes {ground}: it can carry one fixture that names{' '}
+          {ground}.
+        </p>
+      )}
+      {fixtures.length > 0 && (
         <>
-          <h4>Works here</h4>
           <ul className="ship-list">
-            {works.map((w) => {
+            {fixtures.map((w) => {
               const holder = getFaction(state, w.heldBy);
               const spread =
                 w.yield?.kind === 'stat'
@@ -694,7 +710,7 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
   const wars = warsFor(state, me);
   const agents = agentsVisibleTo(state, me);
   const commitments = commitmentsOf(state, me);
-  // Fixtures are deliberately absent: a works cannot be traded, cannot be
+  // Fixtures are deliberately absent: a fixture cannot be traded, cannot be
   // pledged and changes hands only with the ground under it, so listing it
   // among things this power is *holding* invited exactly the bargain the
   // reducer refuses. It is rendered on the System panel instead, beside the

@@ -107,7 +107,7 @@ owes, and the reducer rejects the attempt.
 `adjust_credits` is for narrative money only — a bribe, a fine, a windfall.
 Every real price in this game is charged by the mechanic that owns it: hulls by
 displacement (15 a ton — 60 for a battleship, 45 for a lifter, freighter or
-listener, 30 for an escort or a torpedo boat), agents at 40–150, a works payload from what it is worth, treaty and
+listener, 30 for an escort or a torpedo boat), agents at 40–150, a programme payload by its own rule, treaty and
 commitment flows. **Do not add a second charge alongside one of those**, and do
 not move a large sum with it; anything past a few hundred is trimmed, and taking
 credits out of a rival's treasury is rejected outright. Skim a rival with an
@@ -123,19 +123,37 @@ at once and is what a legitimacy attack actually does: crowning a pretender,
 proclaiming an attainder, buying their officer corps. Those paths cost credits,
 risk exposure and are capped, and they are the only ones there is.
 
-**A commitment is an arrangement; a works is an asset.** If the thing built is
-a *physical installation standing on a world* — a factory, a university, a
-hospital, a power plant, an exchange floor — it is `create_asset` with
-`portable: false`, an `atSystemId` and a `yield`, NOT an
-`establish_commitment` with `incomePerTurn`.
-**A works is only founded when the player set out to build one, and only on
-its own attribute.** The catalogue names one works per attribute and one per
-pair of them, and the engine refuses a fixture whose check was against anything
-but its primary attribute — a `factory` takes `industry`, a `university` takes
-`guile`, a `special_forces_command` leads with `might`. So do not hand one out
-as a byproduct of an attempt that was about something else, however well it
-went: an influence check that charms a governor does not found a foundry. A
-partial founds nothing either, because a works is one thing or none.
+**A commitment is an arrangement; a fixture is a programme.** If the thing
+built is a *physical installation standing on a world* — a factory, a
+university, a hospital, a power plant, an exchange floor — it is an
+`issue_order` of type `construction_infrastructure`, `industrial_conversion` or
+`retooling` carrying `onComplete: {kind: "found_fixture", magnitude: 1,
+fixtureKind: "<a kind from the catalogue>"}`. It is NOT `create_asset`, which
+refuses a fixture outright, and NOT an `establish_commitment` with
+`incomePerTurn`.
+
+The engine holds it to rules you should honour rather than discover:
+
+- **The ground decides what can stand on it.** The kind must name the
+  attribute the world's own type makes — an industrial moon or a gas giant
+  makes industry, arid ground might, a world that never sleeps guile, an
+  earthlike world influence, ice and ocean resolve. A hospital on an
+  industrial moon is refused; a `power_plant` (industry and resolve) is not.
+- **A world carries one**, standing or under way.
+- **On ground the power holds**, not merely orbits.
+- **It is founded only when the player set out to build one, on its primary
+  attribute.** The check must be against `modifies[0]` — a `factory` takes
+  `industry`, a `university` `guile`, a `special_forces_command` leads with
+  `might`. Do not hand one out as a byproduct of an attempt that was about
+  something else: an influence check that charms a governor does not found a
+  foundry. A partial founds nothing either, because a fixture is one thing or
+  none. In every refused case the order still goes out — the ground is broken
+  and the programme runs — it simply raises nothing.
+
+It costs 120 credits at issue and adds to a running bill every turn, and each
+one a power runs costs more to keep than the last. So a power with many is
+paying for them, which is the point: a fixture is a thing a player weighs
+against a squadron, not a free improvement.
 
 Use a commitment for what is agreed between powers or declared as policy: a
 concession, a charter, a marriage, a standing duty. The test is whether an enemy
@@ -397,7 +415,7 @@ right for a courier run or a decree, and wrong for a shipyard: if the player is
 building, mining, developing, levying or fortifying, the payload is the whole
 point of the action. Set it, or the work was theatre.
 
-`onComplete` is `{kind, magnitude, summary}`. Four kinds, each legal only on the
+`onComplete` is `{kind, magnitude, summary}`. Five kinds, each legal only on the
 order types listed:
 
 | kind | does | allowed on |
@@ -406,12 +424,13 @@ order types listed:
 | `raise_garrison` | +1..5 garrison now, up to the world's ceiling | `garrison_raising`, `fortification` |
 | `fortify` | +1..3 to the garrison **ceiling** | `fortification`, `construction_infrastructure` |
 | `commission_ships` | hulls delivered at the target on completion | `capital_ship_construction`, `refit`, `retooling` |
+| `found_fixture` | a fixture raised on the world — name it with `fixtureKind`; always magnitude 1 | `construction_infrastructure`, `industrial_conversion`, `retooling` |
 
 It is **paid for when the order is issued**: hulls by displacement at 15 a ton
 (so 60 for a battleship, 45 for a lifter, freighter or listener, 30 for an
 escort or torpedo boat —
 name the class with `hull`), 45 a point of garrison ceiling, 15 a garrison
-point. `develop_system` is priced from what it
+point, 120 for a fixture. `develop_system` is priced from what it
 is worth on that particular world — twelve turns of the income it would create —
 so improving an ordinary world is cheap and founding a **trade hub** costs a
 large fraction of a treasury. You do not calculate this; the reducer does, and
@@ -642,6 +661,11 @@ that produces must sit somewhere a rival can come and take it:
 - **`asset`** — a mine, a hatchery. The output piles up as one growing
   stockpile at the same world, and what a mine makes is portable even though the
   mine is not.
+
+There is no fourth kind for you to write. A thing that makes its holder better
+at something — a factory, a university — is a fixture, and fixtures are raised
+by a `found_fixture` programme, never by `create_asset`: one carrying a stat
+yield is refused.
 
 A yielding asset **pays only while you hold the world or have ships over it**,
 and you can only create one where you already stand. It also does not split: a

@@ -5,7 +5,7 @@ import { CREDITS_PER_TON, HULL_SPEC, LIFTER_CARRY, hullUpkeep } from '../src/dom
 import { createSeedState } from '../src/seed/scenario.js';
 import { AGENT_COST, MISSION_PROFILE } from '../src/domain/diplomacy.js';
 import { COMMITMENT_GOODWILL, MAX_COMMITMENT_SHARE } from '../src/domain/arbitration.js';
-import { MAX_ASSET_STAT } from '../src/domain/diplomacy.js';
+import { MAX_FIXTURE_BONUS } from '../src/domain/diplomacy.js';
 import {
   hullsAt,
   setShipsAt,
@@ -219,7 +219,9 @@ describe('ledgers', () => {
 
     const l = ledgerFor(res.state, 'freeworlds');
     // Every term is actually exercised, or the assertion below proves nothing.
-    for (const term of [l.upkeep, l.treatyFlow, l.espionageLoss, l.agentUpkeep, l.commitmentFlow]) {
+    // `fixtureUpkeep` is live without anything being added: the Drift opens
+    // running a research lab at Arkane Prime.
+    for (const term of [l.upkeep, l.treatyFlow, l.espionageLoss, l.agentUpkeep, l.fixtureUpkeep, l.commitmentFlow]) {
       expect(term).not.toBe(0);
     }
     expect(l.gross).toBe(l.territory + l.routes);
@@ -229,6 +231,7 @@ describe('ledgers', () => {
         l.treatyFlow -
         l.espionageLoss -
         l.agentUpkeep -
+        l.fixtureUpkeep -
         l.commanderUpkeep +
         l.commitmentFlow,
     );
@@ -282,7 +285,7 @@ describe('agents', () => {
   it('debuffs a stat while in place, and only for the target', () => {
     // Derived on BOTH sides for the reason the comment below gives: the Drift
     // opens holding an arsenal at Pell Reach, so a hardcoded 10 here was an
-    // assertion about the seeded works as much as about the operative.
+    // assertion about the seeded fixtures as much as about the operative.
     const clean = effectiveStats(fresh(), 'freeworlds').industry;
     const res = withAgent({ kind: 'stat_debuff', stat: 'industry', magnitude: 3 });
     expect(effectiveStats(res.state, 'freeworlds').industry).toBe(clean - 3);
@@ -1857,9 +1860,9 @@ describe('no ground, no yards', () => {
   });
 });
 
-describe('a works makes its holder better at something', () => {
+describe('a fixture makes its holder better at something', () => {
   /**
-   * The seed now stands a works on one world per power, so a test that adds
+   * The seed now stands a fixture on one world per power, so a test that adds
    * another and compares against `fresh()` is measuring two of them against
    * one. Cleared here rather than folded into the expected numbers, the same
    * way the dissent tests clear `commanders`: each test should pin one rule.
@@ -1874,7 +1877,7 @@ describe('a works makes its holder better at something', () => {
     s.assets = [
       ...(s.assets ?? []),
       {
-        id: 'ast-w-0', kind: 'factory', heldBy: id, quantity: 1, unit: 'works',
+        id: 'ast-w-0', kind: 'factory', heldBy: id, quantity: 1, unit: 'fixture',
         divisible: false, uses: null, speculative: false, portable: false,
         atSystemId: at, valuePerUnit: {}, valueRange: null, text: 'A factory.',
         commanderId: null, agentId: null,
@@ -1911,17 +1914,22 @@ describe('a works makes its holder better at something', () => {
     expect(effectiveStats(lost, 'drajk').industry).toBe(effectiveStats(bare(), 'drajk').industry);
   });
 
-  it('clamps what any number of works can be worth', () => {
+  it('clamps what any number of fixtures can be worth', () => {
+    // At `MAX_FIXTURE_BONUS`, not at one building's budget: the clamp used to
+    // equal `MAX_ASSET_STAT`, so a second plant on a stat was worth nothing and
+    // the feature was one free +2 per attribute. Four foundries here would be
+    // eight points; they are worth four. (Built straight into state, past the
+    // one-per-world ground rule, because this is a test of the clamp.)
     const many = bare();
     many.assets = ['ilv-6', 'ilv-7', 'tor-6', 'ark-5'].map((at, i) => ({
-      id: `ast-w-${i}`, kind: 'factory', heldBy: 'drajk', quantity: 1, unit: 'works',
+      id: `ast-w-${i}`, kind: 'factory', heldBy: 'drajk', quantity: 1, unit: 'fixture',
       divisible: false, uses: null, speculative: false, portable: false,
       atSystemId: at, valuePerUnit: {}, valueRange: null, text: 'A factory.',
       commanderId: null, agentId: null,
       yield: { kind: 'stat', stats: [{ stat: 'industry', points: 2 }] },
     })) as never;
     expect(effectiveStats(many, 'drajk').industry).toBe(
-      effectiveStats(bare(), 'drajk').industry + MAX_ASSET_STAT,
+      effectiveStats(bare(), 'drajk').industry + MAX_FIXTURE_BONUS,
     );
   });
 });

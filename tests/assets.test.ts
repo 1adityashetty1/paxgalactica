@@ -9,7 +9,7 @@ import {
   wantedBy,
   type Asset,
 } from '../src/domain/diplomacy.js';
-import { ASSET_ARCHETYPES, archetypeFor, serializeArchetypes } from '../src/domain/assets.js';
+import { ASSET_ARCHETYPES, archetypeFor, fixtureYieldFor, serializeArchetypes } from '../src/domain/assets.js';
 import { serializeAssets, serializeTheirAssets } from '../src/model/serialize.js';
 import { groundInConcessions } from '../src/engine/turn.js';
 import {
@@ -20,7 +20,7 @@ import {
   effectiveStats,
   hullsAt,
   setStackAt,
-  worksBonus,
+  fixtureBonus,
   type WorldState,
 } from '../src/domain/state.js';
 import type { OpInput } from '../src/domain/ops.js';
@@ -94,10 +94,10 @@ describe('assets', () => {
       expect(archetypeFor('writ')?.uses).toBe(1);
       expect(archetypeFor('ore')?.speculative).toBe(true);
       expect(archetypeFor('factory')?.fixture).toBe(true);
-      // A works declares the attribute it is worth to whoever holds the ground.
+      // A fixture declares the attribute it is worth to whoever holds the ground.
       expect(archetypeFor('factory')?.modifies).toEqual(['industry']);
       expect(archetypeFor('university')?.modifies).toEqual(['guile']);
-      // A works may name two, and then it splits one budget between them.
+      // A fixture may name two, and then it splits one budget between them.
       expect(archetypeFor('black_market')?.modifies).toEqual(['guile', 'influence']);
       expect(archetypeFor('nothing_like_this')).toBeUndefined();
     });
@@ -143,21 +143,32 @@ describe('assets', () => {
       expect(invented.state.assets[0]!.uses).toBeNull();
     });
 
-    it('makes a fixture out of a works archetype without being told', () => {
+    it('refuses to mint a fixture that moves a stat — one is raised, not found', () => {
+      // A fixture used to arrive here, instant and free, which made it the
+      // only permanent compounding thing in the game with no price. It is a
+      // construction programme now (`found_fixture`), so this path refuses it
+      // by archetype — and by yield, since a portable thing carrying a stat
+      // yield would reach `fixtureBonus` and walk around every guard.
       const s = seed();
-      const out = applyOps(
+      const byKind = applyOps(
         s,
-        [mint({ kind: 'factory', quantity: 1, unit: 'works', valuePerUnit: {}, atSystemId: world(s).id })],
+        [mint({ kind: 'factory', quantity: 1, unit: 'fixture', valuePerUnit: {}, atSystemId: world(s).id })],
         'model',
         'ojjul',
       );
-      expect(out.rejections).toEqual([]);
-      expect(out.state.assets[0]!.portable).toBe(false);
-      // And it is worth what its kind means, without being told.
-      expect(out.state.assets[0]!.yield).toEqual({
-        kind: 'stat',
-        stats: [{ stat: 'industry', points: 2 }],
-      });
+      expect(byKind.rejections[0]?.code).toBe('illegal_value');
+      expect(byKind.rejections[0]?.message).toMatch(/found_fixture/);
+
+      const byYield = applyOps(
+        s,
+        [mint({
+          kind: 'lucky_charm', quantity: 1, unit: 'item', valuePerUnit: {}, atSystemId: world(s).id,
+          yield: { kind: 'stat', stats: [{ stat: 'might', points: 1 }] },
+        })],
+        'model',
+        'ojjul',
+      );
+      expect(byYield.rejections[0]?.code).toBe('illegal_value');
     });
   });
 
@@ -526,13 +537,13 @@ describe('assets', () => {
 
     it('refuses a fixture with nowhere to stand and a producer with no world', () => {
       expect(
-        applyOps(seed(), [mint({ kind: 'shrine', quantity: 1, unit: 'works', portable: false })], 'model', 'ojjul')
+        applyOps(seed(), [mint({ kind: 'shrine', quantity: 1, unit: 'fixture', portable: false })], 'model', 'ojjul')
           .rejections[0]?.code,
       ).toBe('illegal_value');
       expect(
         applyOps(
           seed(),
-          [mint({ kind: 'still', quantity: 1, unit: 'works', yield: { kind: 'credits', perTurn: 8 } })],
+          [mint({ kind: 'still', quantity: 1, unit: 'fixture', yield: { kind: 'credits', perTurn: 8 } })],
           'model',
           'ojjul',
         ).rejections[0]?.code,
@@ -540,12 +551,19 @@ describe('assets', () => {
     });
 
     it('refuses to build a producing thing on ground nobody has reached', () => {
+      // A producer rather than a stat fixture, since those are raised by a
+      // programme now and are refused here before presence is asked.
+      const customs = (at: string) =>
+        mint({
+          kind: 'customs_house', quantity: 1, unit: 'house', valuePerUnit: {}, atSystemId: at,
+          portable: false, yield: { kind: 'credits', perTurn: 5 },
+        });
       const s = seed();
       const theirs = s.systems.find((x) => x.controllerFactionId === 'vigil')!;
       expect(hullsAt(theirs, 'ojjul')).toBe(0);
       const out = applyOps(
         s,
-        [mint({ kind: 'stock_exchange', quantity: 1, unit: 'works', valuePerUnit: {}, atSystemId: theirs.id })],
+        [customs(theirs.id)],
         'model',
         'ojjul',
       );
@@ -556,7 +574,7 @@ describe('assets', () => {
       expect(
         applyOps(
           s,
-          [mint({ kind: 'stock_exchange', quantity: 1, unit: 'works', valuePerUnit: {}, atSystemId: theirs.id })],
+          [customs(theirs.id)],
           'model',
           'ojjul',
         ).rejections,
@@ -581,7 +599,7 @@ describe('assets', () => {
         s0,
         [
           mint({ atSystemId: home.id }),
-          mint({ kind: 'mine', quantity: 1, unit: 'works', valuePerUnit: {}, atSystemId: home.id,
+          mint({ kind: 'mine', quantity: 1, unit: 'fixture', valuePerUnit: {}, atSystemId: home.id,
             yield: { kind: 'asset', perTurn: 20, assetKind: 'ore', unit: 'ton', text: 'Ore off the cut.', valuePerUnit: { meridian: 4 } } }),
         ],
         'model',
@@ -595,22 +613,11 @@ describe('assets', () => {
       expect(s.assets.some((a) => a.kind === 'ore' && a.quantity === 40)).toBe(true);
     });
   });
-  describe('a works can be run for two things at once', () => {
-    // "Up to two" is the whole shape: a works is worth MAX_ASSET_STAT in total
+  describe('a fixture can be run for two things at once', () => {
+    // "Up to two" is the whole shape: a fixture is worth MAX_ASSET_STAT in total
     // and may spend it on one attribute or split it between two. At a budget of
     // 2 that is 2+0 or 1+1, which is why the cap on the split is two — a half
     // point does not exist on a 1–20 scale.
-    const place = (kind: string) => {
-      const s = seed();
-      const out = applyOps(
-        s,
-        [mint({ kind, quantity: 1, unit: 'works', valuePerUnit: {}, atSystemId: world(s).id })],
-        'model',
-        'ojjul',
-      );
-      expect(out.rejections).toEqual([]);
-      return out.state.assets[0]!.yield as { kind: 'stat'; stats: { stat: string; points: number }[] };
-    };
 
     it('names every attribute once, and every PAIR of attributes once', () => {
       // 5 pure + 5C2 split = 15, and the catalogue is complete by construction
@@ -641,10 +648,13 @@ describe('assets', () => {
     });
 
     it('splits one budget evenly when a kind names two attributes', () => {
-      const plain = place('stock_exchange');
+      // `fixtureYieldFor` is the one definition, read by the programme when it
+      // lands and by nothing else, so this pins the arithmetic at the source.
+      const yieldOf = (kind: string) => fixtureYieldFor(archetypeFor(kind)!)!;
+      const plain = yieldOf('stock_exchange');
       expect(plain.stats).toEqual([{ stat: 'influence', points: MAX_ASSET_STAT }]);
 
-      const split = place('black_market');
+      const split = yieldOf('black_market');
       expect(split.stats).toEqual([
         { stat: 'guile', points: 1 },
         { stat: 'influence', points: 1 },
@@ -654,37 +664,15 @@ describe('assets', () => {
       expect(sum(split)).toBe(sum(plain));
     });
 
-    it('trims a works that tries to be worth more by spreading', () => {
-      const s = seed();
-      const out = applyOps(
-        s,
-        [mint({
-          kind: 'grand_works', quantity: 1, unit: 'works', valuePerUnit: {},
-          atSystemId: world(s).id, portable: false,
-          yield: { kind: 'stat', stats: [{ stat: 'might', points: 2 }, { stat: 'guile', points: 2 }] },
-        })],
-        'model',
-        'ojjul',
-      );
-      const y = out.state.assets[0]!.yield as { stats: { stat: string; points: number }[] };
-      expect(y.stats.reduce((n, t) => n + t.points, 0)).toBe(MAX_ASSET_STAT);
-      expect(out.notes.join(' ')).toMatch(/a works is worth 2 however it is split/);
-    });
-
-    it('merges a stat named twice rather than paying it twice', () => {
-      const s = seed();
-      const out = applyOps(
-        s,
-        [mint({
-          kind: 'doubled_works', quantity: 1, unit: 'works', valuePerUnit: {},
-          atSystemId: world(s).id, portable: false,
-          yield: { kind: 'stat', stats: [{ stat: 'guile', points: 1 }, { stat: 'guile', points: 1 }] },
-        })],
-        'model',
-        'ojjul',
-      );
-      const y = out.state.assets[0]!.yield as { stats: { stat: string; points: number }[] };
-      expect(y.stats).toEqual([{ stat: 'guile', points: 2 }]);
+    it('cannot be talked into a larger budget, because nobody states one', () => {
+      // There used to be a trim here, for a `create_asset` that stated a stat
+      // yield worth more than the budget. A fixture's yield now comes only from
+      // its archetype, so there is no stated figure to trim — which is the
+      // stronger guarantee, and why every catalogue entry is checked here.
+      for (const shape of ASSET_ARCHETYPES.filter((a) => a.modifies !== undefined)) {
+        const y = fixtureYieldFor(shape)!;
+        expect(y.stats.reduce((n, t) => n + t.points, 0), shape.kind).toBe(MAX_ASSET_STAT);
+      }
     });
   });
 });
@@ -702,7 +690,7 @@ describe('assets', () => {
 describe('the opening board gives every power something to bargain with', () => {
   const opening = () => createSeedState('drajk');
   /**
-   * The tradeable shelf only. The seed also stands a works on one world per
+   * The tradeable shelf only. The seed also stands a fixture on one world per
    * power, and every property below is about a thing somebody can BUY — a
    * fixture is refused by `transfer_asset` from both paths, so asking what it
    * is worth to a rival is asking about a bargain the reducer will not allow.
@@ -775,7 +763,7 @@ describe('the opening board gives every power something to bargain with', () => 
   });
 });
 
-describe('the opening board also stands a works on one world per power', () => {
+describe('the opening board also stands a fixture on one world per power', () => {
   const works = () => createSeedState('drajk').assets.filter((a) => !a.portable);
 
   it('gives one to each of the five, on a world that power holds', () => {
@@ -788,7 +776,7 @@ describe('the opening board also stands a works on one world per power', () => {
       'ojjul',
       'vigil',
     ]);
-    // Unlike the cargo, the Combine gets one: a works is not a thing to sell,
+    // Unlike the cargo, the Combine gets one: a fixture is not a thing to sell,
     // so the argument that its shelf is the paper does not reach it.
     for (const a of fixed) {
       const at = s.systems.find((x) => x.id === a.atSystemId)!;
@@ -818,7 +806,7 @@ describe('the opening board also stands a works on one world per power', () => {
     // which is a thing the catalogue cannot say: a `military_base` is two
     // points of might by its own entry, so a seeded one worth a single point
     // made the same named kind mean two different things depending on where it
-    // came from. Every seeded works is a split one at the full budget instead,
+    // came from. Every seeded fixtures is a split one at the full budget instead,
     // which is +1/+1 by exactly the arithmetic a player's gets.
     for (const a of works()) {
       const shape = ASSET_ARCHETYPES.find((x) => x.kind === a.kind)!;
@@ -831,7 +819,7 @@ describe('the opening board also stands a works on one world per power', () => {
   });
 
   it('leaves every power off the top of the scale on turn 0', () => {
-    // Pure works at the full budget put three powers ON the 20 cap on turn 1 —
+    // Pure fixtures at the full budget put three powers ON the 20 cap on turn 1 —
     // the Vigil's might, the Combine's guile, the Closing's resolve — and a
     // scale whose ceiling is where you start has nothing left to play for.
     // Spreading the same two points over two attributes is what keeps them
@@ -862,7 +850,7 @@ describe('the opening board also stands a works on one world per power', () => {
     const s = createSeedState('drajk');
     for (const a of s.assets.filter((x) => !x.portable)) {
       const stats = a.yield?.kind === 'stat' ? a.yield.stats : [];
-      const bonus = worksBonus(s, a.heldBy);
+      const bonus = fixtureBonus(s, a.heldBy);
       for (const { stat, points } of stats) expect(bonus[stat]).toBe(points);
     }
   });

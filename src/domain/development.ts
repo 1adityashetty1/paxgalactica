@@ -1,6 +1,6 @@
-import { DEFAULT_COVERT_EFFECT, type AgentMission } from './diplomacy.js';
+import { DEFAULT_COVERT_EFFECT, FIXTURE_COST, type AgentMission, type Asset } from './diplomacy.js';
 import type { DurationCategory } from './duration.js';
-import { archetypeFor } from './assets.js';
+import { archetypeFor, fixtureYieldFor } from './assets.js';
 import { CREDITS_PER_TON, HULL_SPEC } from './hulls.js';
 import {
   addShipsAt,
@@ -71,6 +71,10 @@ export const EFFECT_CAPS: Record<OrderEffectKind, number> = {
   // move over a campaign, not over a turn.
   fortify: 3,
   commission_ships: 12,
+  // A building is one building. The magnitude field means nothing here, and
+  // capping it at 1 is what stops a model asking for six foundries in one
+  // programme and getting a sixfold stat bonus for one price.
+  found_fixture: 1,
 };
 
 /**
@@ -88,6 +92,12 @@ export const EFFECT_COST: Record<
   Exclude<OrderEffectKind, 'develop_system' | 'commission_ships'>,
   number
 > = {
+  // Flat, which contradicts what `develop_system` learned the hard way — and
+  // the distinction is real. A point of `strategicValue` varies by 25x across
+  // the board because it can tip a world into hub status; a point of a stat is
+  // worth about the same to everybody, so there is no board arithmetic for a
+  // per-case price to read. See `FIXTURE_COST` for the anchors.
+  found_fixture: FIXTURE_COST,
   // Ground troops are raised locally and normally cost nothing — passive
   // regrowth is free. What is bought here is speed, so the price is small.
   raise_garrison: 15,
@@ -147,6 +157,10 @@ export const EFFECT_CATEGORIES: Record<OrderEffectKind, readonly DurationCategor
   raise_garrison: ['garrison_raising', 'fortification'],
   fortify: ['fortification', 'construction_infrastructure'],
   commission_ships: ['capital_ship_construction', 'refit', 'retooling'],
+  // The three categories that build things on a world, which is what a fixture
+  // is. Deliberately not `fortification` — a wall is not a foundry, and
+  // `fortify` is already what that category delivers.
+  found_fixture: ['construction_infrastructure', 'industrial_conversion', 'retooling'],
 };
 
 /** Kinds this category is allowed to deliver. Empty for the eight above. */
@@ -266,7 +280,7 @@ export interface PayloadBounding {
 }
 
 /**
- * A works is built on purpose, by the attribute it is made of.
+ * A fixture is built on purpose, by the attribute it is made of.
  *
  * **A fixture is the one asset kind that is not a prize.** Prisoners, salvage
  * and a dossier are things an attempt *comes away with*, so they ride on
@@ -280,10 +294,10 @@ export interface PayloadBounding {
  * therefore stable. A factory takes `industry`, a university `guile`, a
  * `special_forces_command` the `might` it leads with. That is the same division
  * the rest of the game draws: the arbiter picks the stat from what the player
- * actually described, so a player who wants a works has to *say* they are
+ * actually described, so a player who wants a fixture has to *say* they are
  * building one, and be good at it.
  *
- * **And a works is not half-built.** A partial delivers a reduced version of a
+ * **And a fixture is not half-built.** A partial delivers a reduced version of a
  * prize, which is what `quantity` is for — but a fixture is `quantity: 1` and
  * atomic, so halving it delivers a whole one. That is the shape that shipped a
  * 100% discount wearing a 50% label when a one-hull lift loss was halved, and
@@ -291,17 +305,17 @@ export interface PayloadBounding {
  *
  * The seed is not bound by any of this, for the reason it is not bound by
  * "nobody declares an asset into existence": the rule governs what a *model*
- * may do, and a seeded works passes through no model at all.
+ * may do, and a seeded fixtures passes through no model at all.
  */
-function fixtureBuilt(op: Record<string, unknown>, stat: string | undefined): string | null {
-  const shape = archetypeFor(String(op.kind ?? ''));
+function fixtureBuilt(kind: string, stat: string | undefined): string | null {
+  const shape = archetypeFor(kind);
   if (shape === undefined || !shape.fixture) return null;
   const wants = shape.modifies?.[0];
   if (wants === undefined) return null;
   if (stat === wants) return null;
   return stat === undefined
     ? `A ${shape.kind} is built, not come by: it takes a ${wants} undertaking, and nothing here tested ${wants}.`
-    : `A ${shape.kind} takes ${wants}, and this was a ${stat} undertaking; the works was not begun.`;
+    : `A ${shape.kind} takes ${wants}, and this was a ${stat} undertaking; the fixture was not begun.`;
 }
 
 export function boundPayloadsToOutcome(
@@ -309,7 +323,7 @@ export function boundPayloadsToOutcome(
   outcome: 'critical_success' | 'success' | 'partial' | 'failure' | 'critical_failure',
   /**
    * The attribute the check was made against, when there was a check. Absent
-   * for a reaction, which has none — and a power cannot build a works in a
+   * for a reaction, which has none — and a power cannot build a fixture in a
    * turn it never set out to. See `fixtureBuilt`.
    */
   stat?: string,
@@ -317,27 +331,37 @@ export function boundPayloadsToOutcome(
   // **The fixture rule runs on every band, including a clean success**, which
   // is why it sits above the early return: the question it asks is not how well
   // the attempt went but whether the attempt was the right kind of attempt.
+  //
+  // A fixture arrives as an `issue_order` carrying `found_fixture`, so what is
+  // refused is the PAYLOAD and never the order: the rule the rest of this pass
+  // follows, and the one a failed attack needs. The ground is still broken and
+  // the programme still runs; it simply raises nothing.
   const builtNotes: string[] = [];
-  const kept = ops.filter((op) => {
+  let changed = false;
+  const kept = ops.map((op) => {
     const o = op && typeof op === 'object' ? (op as Record<string, unknown>) : null;
-    if (o === null || o.op !== 'create_asset') return true;
-    const wrong = fixtureBuilt(o, stat);
-    if (wrong !== null) {
-      builtNotes.push(wrong);
-      return false;
-    }
-    // A works is atomic, so a partial cannot deliver a smaller one.
-    if (outcome === 'partial' && archetypeFor(String(o.kind ?? ''))?.fixture === true) {
-      builtNotes.push(
-        `A ${String(o.kind)} is one thing or nothing: a partial result leaves the ground broken and the works unbuilt.`,
-      );
-      return false;
-    }
-    return true;
+    if (o === null || o.op !== 'issue_order') return op;
+    const effect = o.onComplete as { kind?: unknown; fixtureKind?: unknown } | undefined;
+    if (!effect || effect.kind !== 'found_fixture') return op;
+    const kind = String(effect.fixtureKind ?? '');
+    const wrong = fixtureBuilt(kind, stat);
+    // A fixture is atomic, so a partial cannot deliver a smaller one — and
+    // halving a magnitude of one would floor back to one and deliver it whole,
+    // the 100%-discount-wearing-a-50%-label shape.
+    const halfBuilt =
+      wrong === null && outcome === 'partial'
+        ? `A ${kind.replace(/_/g, ' ')} is one thing or nothing: a partial result leaves the ground broken and the fixture unbuilt.`
+        : null;
+    const reason = wrong ?? halfBuilt;
+    if (reason === null) return op;
+    builtNotes.push(reason);
+    changed = true;
+    const { onComplete: _dropped, ...rest } = o;
+    return rest;
   });
   // Identity is preserved when nothing was refused: a clean success that founds
-  // no works must hand back the array it was given, which a test pins.
-  if (kept.length !== ops.length) ops = kept;
+  // no fixture must hand back the array it was given, which a test pins.
+  if (changed) ops = kept;
 
   if (outcome === 'success' || outcome === 'critical_success') return { ops, notes: builtNotes };
 
@@ -500,6 +524,8 @@ export function describeOrderEffect(effect: OrderEffect): string {
       return `+${n} garrison capacity`;
     case 'commission_ships':
       return `${n} new ${HULL_SPEC[effect.hull].label}${n === 1 ? '' : 's'}`;
+    case 'found_fixture':
+      return `a ${effect.fixtureKind.replace(/_/g, ' ') || 'fixture'}`;
   }
 }
 
@@ -512,6 +538,15 @@ export interface EffectOutcome {
   note: string;
   /** False when the programme delivered nothing at all. */
   delivered: boolean;
+  /**
+   * A fixture to stand on the world, for `found_fixture`.
+   *
+   * Returned rather than pushed, because minting an id needs the whole world
+   * and this function is handed one system — the reducer mints it, checks the
+   * slot is still free, and stands it up. A draft rather than an `Asset` so
+   * nothing here has to invent the id the reducer owns.
+   */
+  fixture?: Omit<Asset, 'id'>;
 }
 
 /**
@@ -603,6 +638,54 @@ export function applyOrderEffect(
       return {
         note: `${label} completed at ${system.name}: ${describeOrderEffect(effect)} commissioned.`,
         delivered: true,
+      };
+    }
+
+    case 'found_fixture': {
+      // A ground improvement, so it LANDS whoever now holds the world — the
+      // rule `develop_system` and `fortify` already follow. A plant does not
+      // care whose flag is over it, and a power that loses a world mid-build
+      // has built its conqueror a factory. That is the risk of building on
+      // ground you might not keep, and it is what makes a programme under way
+      // a thing worth raiding.
+      const shape = archetypeFor(effect.fixtureKind);
+      const yielded = shape ? fixtureYieldFor(shape) : null;
+      if (!shape || !yielded) {
+        return {
+          note: `${label} completed at ${system.name}, but nothing called a ${effect.fixtureKind} could be raised there.`,
+          delivered: false,
+        };
+      }
+      if (holder === null) {
+        return {
+          note: `${label} completed at ${system.name}, but the world has fallen out of anyone's hands and the ${shape.kind.replace(/_/g, ' ')} stands empty.`,
+          delivered: false,
+        };
+      }
+      const whose = stillOurs
+        ? ''
+        : ` It serves ${holder}, who holds the world now.`;
+      return {
+        note: `${label} completed at ${system.name}: ${describeOrderEffect(effect)} stands.${whose}`,
+        delivered: true,
+        fixture: {
+          kind: shape.kind,
+          text: `${shape.kind.replace(/_/g, ' ')} at ${system.name}`,
+          heldBy: holder,
+          quantity: 1,
+          unit: shape.unit,
+          divisible: false,
+          valuePerUnit: {},
+          speculative: false,
+          valueRange: {},
+          uses: null,
+          atSystemId: system.id,
+          portable: false,
+          yield: yielded,
+          acquiredTurn: 0,
+          commanderId: null,
+          agentId: null,
+        },
       };
     }
   }

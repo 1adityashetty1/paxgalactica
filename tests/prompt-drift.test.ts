@@ -1,3 +1,4 @@
+import { FIXTURE_COST } from '../src/domain/diplomacy.js';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -95,6 +96,20 @@ describe('prompts do not quote ship prices the yards do not charge', () => {
       ].map((m) => m[1]!);
       const stale = quoted.filter((n) => !realPrices.has(n) && !realUpkeep.has(n));
       expect(stale, `${file} quotes ${stale.join(', ')} as a hull price`).toEqual([]);
+    });
+
+    it(`${file} prices a fixture at what the reducer charges`, () => {
+      // Quoted in words because a model cannot read the constant, which makes
+      // the sentence the thing that drifts. "120 for a fixture", "costs 120
+      // credits at issue".
+      const text = readFileSync(join(PROMPTS, file), 'utf8');
+      for (const m of [
+        ...text.matchAll(/(\d+)\s+for\s+a\s+fixture\b/gi),
+        ...text.matchAll(/fixture[^.]*?costs\s+(\d+)\s+credits\s+at\s+issue/gi),
+        ...text.matchAll(/It costs (\d+) credits at issue/g),
+      ]) {
+        expect(Number(m[1]), `${file} prices a fixture at ${m[1]}`).toBe(FIXTURE_COST);
+      }
     });
 
     it(`${file} prices each named class correctly`, () => {

@@ -47,6 +47,8 @@ import {
   AssetSchema,
   type Asset,
   MAX_ASSET_STAT,
+  MAX_FIXTURE_BONUS,
+  FIXTURE_UPKEEP,
 } from './diplomacy.js';
 import { DebtSchema, MAX_DEBT_PER_TURN, scheduledDebtService, type Debt } from './debt.js';
 import { LoanSchema, scheduledRent } from './loan.js';
@@ -528,6 +530,19 @@ export const OrderEffectSchema = z.object({
     'fortify',
     /** Hulls delivered at the target when the programme lands. */
     'commission_ships',
+    /**
+     * A fixture raised on the target world.
+     *
+     * A building is a construction programme, so it is filed as one. It used to
+     * arrive as a `create_asset` out of a resolved action — instant, free, and
+     * with no window in which a rival could stop it, which made it the only
+     * permanent compounding thing in the game nobody could interdict. As a
+     * payload it inherits every bound this module already applies: paid at
+     * issue, a category floor so a foundry cannot be raised in one turn however
+     * the action is phrased, and `boundPayloadsToOutcome` gating it on the
+     * check the attempt was actually made against.
+     */
+    'found_fixture',
   ]),
   /**
    * How much. Generous bounds here and the real limits in code: a schema
@@ -542,6 +557,15 @@ export const OrderEffectSchema = z.object({
    * only win the space over it.
    */
   hull: HullClassSchema.default('battleship'),
+  /**
+   * Which archetype `found_fixture` raises. Ignored by every other kind.
+   *
+   * A slug rather than an enum because `ASSET_ARCHETYPES` is the catalogue and
+   * an enum here would be a second copy of it — the drift `prompt-drift.test.ts`
+   * exists to catch. The reducer resolves it against the table and refuses what
+   * it does not find.
+   */
+  fixtureKind: z.string().max(64).default(''),
   /** One clause, shown to the player in the orders panel and the briefing. */
   summary: z.string().max(160).default(''),
 });
@@ -1133,20 +1157,24 @@ export function yardCapacityFor(state: WorldState, factionId: string): number {
 }
 
 /**
- * What a power's standing works add to its stats.
+ * What a power's standing fixtures add to its stats.
  *
  * Only while the holder is still over the world, which is the rule every asset
  * yield follows — and since a fixture changes hands with the ground, taking the
  * world takes the benefit. Summed across holdings and then clamped per stat, so
- * ten foundries are worth more than one and not ten times more.
+ * ten foundries are worth more than one and not ten times more — and the clamp
+ * is `MAX_FIXTURE_BONUS` rather than one building's budget, so the second plant
+ * on a stat is worth something. What actually limits this is the map: a fixture
+ * must match its world's `WORLD_TYPE_STAT` and a world carries one, so a power
+ * can only raise a stat as far as its holdings of that kind of ground allow.
  */
-export function worksBonus(state: WorldState, factionId: string): Partial<FactionStats> {
+export function fixtureBonus(state: WorldState, factionId: string): Partial<FactionStats> {
   const out: Partial<FactionStats> = {};
   for (const asset of state.assets ?? []) {
     if (asset.heldBy !== factionId) continue;
     if (asset.yield === null || asset.yield.kind !== 'stat') continue;
     const spread = asset.yield.stats;
-    // The same presence line every other yield draws: a works pays while its
+    // The same presence line every other yield draws: a fixture pays while its
     // holder holds the world or has ships over it, and not from an abandoned
     // shell on ground somebody else took.
     if (asset.atSystemId === null) continue;
@@ -1157,13 +1185,14 @@ export function worksBonus(state: WorldState, factionId: string): Partial<Factio
   }
   for (const stat of STAT_NAMES) {
     const n = out[stat];
-    if (n !== undefined) out[stat] = Math.max(-MAX_ASSET_STAT, Math.min(MAX_ASSET_STAT, n));
+    if (n !== undefined)
+      out[stat] = Math.max(-MAX_FIXTURE_BONUS, Math.min(MAX_FIXTURE_BONUS, n));
   }
   return out;
 }
 
 /**
- * The works standing on one world.
+ * The fixtures standing on one world.
  *
  * A fixture is the one asset kind that IS the ground: it cannot be handed over,
  * it changes hands only with the world, and what it modifies is read off
@@ -1171,14 +1200,75 @@ export function worksBonus(state: WorldState, factionId: string): Partial<Factio
  * garrison and the ships, not in a warehouse list of things a power is
  * carrying — the same correction the operative list took when it moved off the
  * Treaties panel, and for the same reason: the question a player asks about a
- * works is *what is built on this world*.
+ * fixture is *what is built on this world*.
  *
  * Not scoped by viewer. A plant, a base or a hospital is a structure on a
  * surface, visible exactly as `system.ships` is visible; what stays hidden is
  * the power's ORDERS, which is a different question.
  */
-export function worksAt(state: WorldState, systemId: string): Asset[] {
+export function fixturesAt(state: WorldState, systemId: string): Asset[] {
   return (state.assets ?? []).filter((a) => !a.portable && a.atSystemId === systemId);
+}
+
+/**
+ * A fixture that modifies its holder's stats, as against one that merely
+ * produces — a mine and a theatre are fixtures too, and neither is bound by the
+ * ground rule or the one-per-world slot.
+ *
+ * One definition, because three separate readers ask this question and a
+ * predicate written out three times is three chances to disagree.
+ */
+export function isStatFixture(asset: Asset): boolean {
+  return !asset.portable && asset.yield !== null && asset.yield.kind === 'stat';
+}
+
+/** The stat-bearing fixture on a world, if it has one. A world carries one. */
+export function statFixtureAt(state: WorldState, systemId: string): Asset | undefined {
+  return (state.assets ?? []).find((a) => a.atSystemId === systemId && isStatFixture(a));
+}
+
+/**
+ * What a power pays every turn to run its fixtures.
+ *
+ * The half of the pricing that makes a fixture behave like a fleet rather than
+ * like a one-off purchase: you buy it, and then you keep buying it. It is
+ * charged on every stat-bearing fixture whose holder still stands over the
+ * world — the same line the yield is paid on, so a power never pays for a
+ * building it is not getting the benefit of.
+ */
+export function fixtureUpkeepFor(state: WorldState, factionId: string): number {
+  let n = 0;
+  for (const asset of state.assets ?? []) {
+    if (asset.heldBy !== factionId || !isStatFixture(asset)) continue;
+    if (asset.atSystemId === null) continue;
+    const where = state.systems.find((x) => x.id === asset.atSystemId);
+    if (!where) continue;
+    if (where.controllerFactionId !== factionId && hullsAt(where, factionId) === 0) continue;
+    n += 1;
+  }
+  return fixtureUpkeepForCount(n);
+}
+
+/**
+ * The running cost of `n` fixtures: the first costs `FIXTURE_UPKEEP`, the
+ * second twice that, the third three times — triangular in the count.
+ *
+ * **Rising, because flat was regressive, and that was measured.** A stat point
+ * is worth about the same to every power, and a flat price on a flat-value
+ * thing is a constraint only on whoever cannot pay it: swept over cost 150–300
+ * and upkeep 4–20, the three rich powers finished every run with 10–12 points
+ * of fixture bonus — about +2 on every stat — while raising the price only
+ * stopped Arkane and Drajk building, which WIDENED the gap it was meant to
+ * close. A 4,000-credit treasury clears any price that the poor can also pay.
+ *
+ * Fleets do not have that problem because upkeep scales with the size of what
+ * you run, so income decides where a navy settles. This is the same property
+ * for buildings: the first fixture is cheap for anybody, the sixth is dear for
+ * everybody, and where a power stops depends on what its income will carry
+ * rather than on what its savings can clear once.
+ */
+export function fixtureUpkeepForCount(n: number): number {
+  return (FIXTURE_UPKEEP * n * (n + 1)) / 2;
 }
 
 export function maxAgentsFor(state: WorldState, factionId: string): number {
@@ -1250,6 +1340,16 @@ export const LedgerSchema = z.object({
   garrisonUpkeep: z.number().int(),
   /** What this faction's own live operatives cost it per turn. */
   agentUpkeep: z.number().int(),
+  /**
+   * What the fixtures it is running cost it per turn.
+   *
+   * Its own line for the reason `commanderUpkeep` has one: a power cuts hulls
+   * by laying them up and cuts this by holding fewer buildings, and a player
+   * deciding between another foundry and another squadron needs to see the two
+   * bills separately. It is also what makes a fixture a *fleet-like* thing —
+   * bought, then kept — rather than a free permanent buff.
+   */
+  fixtureUpkeep: z.number().int(),
   /**
    * What the officers in post cost a turn.
    *
@@ -1511,7 +1611,7 @@ export function ledgerFor(
   if (!faction) {
     return {
       gross: 0, upkeep: 0, net: 0, systems: 0, treatyFlow: 0,
-      espionageLoss: 0, espionageGain: 0, garrisonUpkeep: 0, agentUpkeep: 0, commanderUpkeep: 0, commitmentFlow: 0, commitmentShare: 0, assetYield: 0, warProfit: 0, occupation: 0,
+      espionageLoss: 0, espionageGain: 0, garrisonUpkeep: 0, agentUpkeep: 0, fixtureUpkeep: 0, commanderUpkeep: 0, commitmentFlow: 0, commitmentShare: 0, assetYield: 0, warProfit: 0, occupation: 0,
       territory: 0, routes: 0, tolls: 0, raided: 0, debtService: 0, loanRent: 0,
     };
   }
@@ -1622,6 +1722,7 @@ export function ledgerFor(
   }
 
   const agentUpkeep = liveAgentsOf(state, factionId).length * AGENT_UPKEEP;
+  const fixtureUpkeep = fixtureUpkeepFor(state, factionId);
   // Officers in post draw pay. Captured and lost do not — a power stops paying
   // a commander the day it stops having them, which is also what stops a roster
   // of the fallen costing anything.
@@ -1679,6 +1780,7 @@ export function ledgerFor(
       espionageLoss +
       espionageGain -
       agentUpkeep -
+      fixtureUpkeep -
       commanderUpkeep +
       commitmentFlow +
       commitmentShare +
@@ -1692,6 +1794,7 @@ export function ledgerFor(
     espionageGain,
     garrisonUpkeep,
     agentUpkeep,
+    fixtureUpkeep,
     commanderUpkeep,
     commitmentFlow,
     commitmentShare,
@@ -2078,7 +2181,7 @@ export function effectiveStats(state: WorldState, factionId: string): FactionSta
     base.resolve = Math.min(20, base.resolve + commanderResolve(officer));
   }
 
-  // **A works its holder is standing over makes them better at something.**
+  // **A fixture its holder is standing over makes them better at something.**
   // Beside terrain and the officer's passive and before dissent, for terrain's
   // own reason: good institutions should offset a bad leader rather than
   // vanishing under the floor. Read here rather than applied on the tick,
@@ -2087,9 +2190,9 @@ export function effectiveStats(state: WorldState, factionId: string): FactionSta
   // This is what closes the loop on a fixture: `yardCapacityFor` reads
   // `effectiveStats().industry`, so a captured factory lays down more hulls for
   // whoever took the ground it stands on.
-  const works = worksBonus(state, factionId);
+  const built = fixtureBonus(state, factionId);
   for (const stat of STAT_NAMES) {
-    const bonus = works[stat] ?? 0;
+    const bonus = built[stat] ?? 0;
     if (bonus !== 0) base[stat] = Math.max(1, Math.min(20, base[stat] + bonus));
   }
 

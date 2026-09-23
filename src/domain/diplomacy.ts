@@ -311,16 +311,77 @@ export const MAX_ASSET_DISSENT = 2;
  * `income_penalty` on the other.
  */
 /**
- * The most a single works can move one of its holder's stats.
+ * What one fixture is worth, spent on one attribute or split between two.
  *
- * Small, and for the reason `MAX_ASSET_DISSENT` is small: a stat reaches every
- * ability check in the game through `effectiveStats`, and a modifier summed
- * over territory is unbounded in principle. Two points is a third of what
- * `MAX_DISSENT_PENALTY` takes away at the cap, and one point below what good
- * ground can grant through `MAX_WORLD_BONUS` — so a works is worth having and
- * cannot substitute for the sheet.
+ * The budget per building, not the ceiling on a power. Two points is a third of
+ * what `MAX_DISSENT_PENALTY` takes away at the cap and one below what good
+ * ground grants through `MAX_WORLD_BONUS`, so a fixture is worth having and
+ * cannot substitute for the sheet. Splitting it across two attributes is a
+ * **trade**: at full value on each, a split fixture would be worth twice a
+ * concentrated one.
  */
 export const MAX_ASSET_STAT = 2;
+
+/**
+ * The most every fixture a power holds can add to ONE of its stats.
+ *
+ * **A backstop, not the mechanism**, and it used to be the mechanism. It sat at
+ * `MAX_ASSET_STAT` — the budget of a *single* building — which meant a second
+ * fixture on the same stat was worth literally nothing, and the whole feature
+ * read as "one free +2 per attribute, take it or leave it". Nothing about that
+ * behaved like the rest of the economy.
+ *
+ * What bounds a power now is the same thing that bounds its fleet: what it can
+ * pay for, and what ground it holds. A fixture must match its world's
+ * `WORLD_TYPE_STAT` and a world carries one, so the number a power can raise a
+ * given stat by is the number of worlds of that kind it holds — visible on the
+ * map, different for every faction, and takeable. On the opening board nobody
+ * holds more than two of any kind, so nobody can reach this at all without
+ * conquest.
+ *
+ * It exists because *a modifier summed over territory is unbounded in
+ * principle*, which is a rule this codebase keeps for good reason. Four is two
+ * concentrated buildings, or four split ones — and combined with
+ * `MAX_WORLD_BONUS` it is +7 on a stat, which needs roughly six worlds of one
+ * kind, a figure only `industry` and `resolve` can even reach on this map.
+ */
+export const MAX_FIXTURE_BONUS = 4;
+
+/**
+ * What founding a fixture costs, and what running one adds to the bill.
+ *
+ * Priced because it was free, which made it the only permanent compounding
+ * thing in the game with no price at all — against `fortify` at 45 credits for
+ * one world's garrison ceiling, and `COMMANDER_COST` at 120 for an officer who
+ * can die.
+ *
+ * `FIXTURE_UPKEEP` is the **first** building's running cost, not every
+ * building's: the Nth costs N times that, so running `n` costs
+ * `FIXTURE_UPKEEP * n(n+1)/2` — see `fixtureUpkeepForCount` for why flat was
+ * regressive. That is what makes a fixture behave like a fleet rather than a
+ * purchase, and there is deliberately **no second insolvency rule**: the bill
+ * competes with fleet upkeep for the same income, so a power that overbuilds
+ * lays up hulls through the attrition path that already exists.
+ *
+ * **Swept, and taken from the middle of a flat region.** Over played 30-turn
+ * runs with the bots raising fixtures:
+ *
+ * | cost / upkeep | board | poorest net | built | fixture points |
+ * |---|---|---|---|---|
+ * | flat 150 / 4 | 5/9/5/6/0 | −27 | 20 | 11/12/10/10/0 |
+ * | flat 150 / 20 | 6/6/6/6/1 | 63 | 15 | 11/12/12/**2/0** |
+ * | 150 / 6 | 6/6/6/5/2 | −14 | 16 | 10/12/10/4/4 |
+ * | 100–150 / 8–12 | **6/6/6/6/1** | −4 to 3 | 8–14 | 6–8/8–12/6–10/2–4/2 |
+ * | **120 / 10** | **6/6/6/6/1** | **−4** | **12** | **6/10/10/4/2** |
+ * | 175 / 10 · 200 / 8 | 6/7/6/6/0 · 6/8/5/6/0 | −17, −15 | 9, 10 | Drajk 0 |
+ *
+ * The flat rows are the finding: at a flat price the rich finish on about +2
+ * across the board whatever the price is, and raising it only stops the poor.
+ * Inside the region every cell gives the same board, the Confederacy keeps a
+ * world, and the two poorest powers still build; above 150 it is wiped out.
+ */
+export const FIXTURE_COST = 120;
+export const FIXTURE_UPKEEP = 10;
 
 export const AssetYieldSchema = z.discriminatedUnion('kind', [
   z.object({
@@ -331,10 +392,10 @@ export const AssetYieldSchema = z.discriminatedUnion('kind', [
   }),
   z.object({
     /**
-     * **A works that makes its holder better at something.** A shipyard or a
+     * **A fixture that makes its holder better at something.** A shipyard or a
      * factory is industry; a university or a research lab is guile; a base
      * academy is might. This is what a fixture is FOR, and the catalogue said
-     * the opposite of it for a while — the three `works` archetypes were each
+     * the opposite of it for a while — the three `fixture` archetypes were each
      * described as *"nobody wants it"*, which is true of the paperwork and
      * false of the thing: a fixture is a modifier on the power that holds the
      * ground, and that is precisely why the ground is worth taking.
@@ -351,15 +412,15 @@ export const AssetYieldSchema = z.discriminatedUnion('kind', [
      */
     kind: z.literal('stat'),
     /**
-     * **One or two stats, sharing one budget.** A works is worth
+     * **One or two stats, sharing one budget.** A fixture is worth
      * `MAX_ASSET_STAT` in total and may spend it on a single attribute or split
      * it between two: a plain `exchange` is two points of influence, a black
      * market is one of influence and one of guile, a mercenary board one of
      * influence and one of might. Same institution, differently run — which is
-     * a better way to say what a works IS than a second archetype that happens
+     * a better way to say what a fixture IS than a second archetype that happens
      * to be worth the same amount.
      *
-     * **Two is the cap and it is a real one.** A works spread across three
+     * **Two is the cap and it is a real one.** A fixture spread across three
      * stats at a point each would be worth more in total than one that
      * concentrated, so the split has to be a trade rather than a bonus; and at
      * a budget of two, "up to two stats" is the only split integers allow. A
@@ -373,7 +434,7 @@ export const AssetYieldSchema = z.discriminatedUnion('kind', [
       .array(
         z.object({
           stat: z.enum(['might', 'guile', 'industry', 'influence', 'resolve']),
-          /** Negative is a works that is a liability to hold. */
+          /** Negative is a fixture that is a liability to hold. */
           points: z.number().int().min(-MAX_ASSET_STAT).max(MAX_ASSET_STAT),
         }),
       )

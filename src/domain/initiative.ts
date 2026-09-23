@@ -5,7 +5,8 @@ import {
   commanderAt,
 } from './command.js';
 import { neighboursOf, shortestPath } from './graph.js';
-import { isTreatyLive } from './diplomacy.js';
+import { FIXTURE_COST, isTreatyLive } from './diplomacy.js';
+import { ASSET_ARCHETYPES } from './assets.js';
 import {
   hullsAt,
   presentAt,
@@ -20,6 +21,10 @@ import {
   ledgerFor,
   stackAt,
   getFaction,
+  statFixtureAt,
+  isStatFixture,
+  fixtureUpkeepForCount,
+  WORLD_TYPE_STAT,
   type StarSystem,
   type WorldState,
 } from './state.js';
@@ -203,6 +208,58 @@ function hire(ctx: Ctx): Ops {
   const post = fleetBases(ctx.state, ctx.me).find((s) => s.controllerFactionId === ctx.me);
   if (!post) return [];
   return [{ op: 'recruit_commander', factionId: ctx.me, systemId: post.id }];
+}
+
+/**
+ * Raise one fixture at a time, on the best held world with a free slot.
+ *
+ * **The bots build them because a fixture nobody builds is a fixture nobody
+ * has measured** — the lesson `monopolist` taught by sitting implemented,
+ * tested and dead for the life of the project. Four of the five powers are
+ * played by this module on any given turn, so a mechanic only the player
+ * reaches is a mechanic the harness cannot see.
+ *
+ * The **pure** archetype for the ground, never a split: a bot has no reason to
+ * trade half its budget for an attribute the world does not make, and the
+ * concentrated kind is the one whose reach the clamp is sized against. One
+ * programme at a time, and only while comfortably solvent against both the
+ * price and the upkeep it adds — the same shape `hire` takes, for the same
+ * reason: a standing cost bought on one turn's treasury is a decision a bot
+ * should not make in a hurry.
+ */
+function raise(ctx: Ctx): Ops {
+  const { state, me } = ctx;
+  const underway = state.pendingOrders.some(
+    (o) => o.factionId === me && o.onComplete?.kind === 'found_fixture',
+  );
+  if (underway) return [];
+  if (purse(state, me) < FIXTURE_COST * 3) return [];
+  // What the NEXT one adds to the bill, not what one costs on its own —
+  // upkeep rises with the count, so the marginal building is the dearest one.
+  const running = state.assets.filter((a) => a.heldBy === me && isStatFixture(a)).length;
+  const marginal = fixtureUpkeepForCount(running + 1) - fixtureUpkeepForCount(running);
+  if (ledgerFor(state, me).net < marginal * 4) return [];
+  const site = state.systems
+    .filter((s) => s.controllerFactionId === me && statFixtureAt(state, s.id) === undefined)
+    .sort((a, b) => b.strategicValue - a.strategicValue || a.id.localeCompare(b.id))[0];
+  if (!site) return [];
+  const ground = WORLD_TYPE_STAT[site.worldType];
+  const kind = ASSET_ARCHETYPES.find(
+    (a) => a.modifies !== undefined && a.modifies.length === 1 && a.modifies[0] === ground,
+  )?.kind;
+  if (!kind) return [];
+  return [
+    {
+      op: 'issue_order',
+      factionId: me,
+      type: 'construction_infrastructure',
+      originId: site.id,
+      targetId: site.id,
+      durationTurns: 3,
+      label: `${kind.replace(/_/g, ' ')} at ${site.name}`,
+      onComplete: { kind: 'found_fixture', magnitude: 1, fixtureKind: kind },
+    },
+  ];
 }
 
 function buy(ctx: Ctx, appetite: number, reserveTurns: number, doctrine: BuyDoctrine = {}): Ops {
@@ -808,6 +865,7 @@ const meridian: Bot = (ctx) => {
   // A defensive power keeps a modest navy and banks the rest.
   ops.push(...buy(ctx, 0.55, 1.3));
   ops.push(...hire(ctx));
+  ops.push(...raise(ctx));
 
   // The Verge, whole. A trading power's sovereignty is the ground its lanes run
   // over, and three of the Sekkar's six worlds have never been anybody's — which
@@ -826,7 +884,8 @@ const meridian: Bot = (ctx) => {
 const vigil: Bot = (ctx) => {
   const ops: Ops = [];
   ops.push(...buy(ctx, 0.85, 0.53));
-  ops.push(...hire(ctx)); // crusading: spends most of its income on hulls
+  ops.push(...hire(ctx));
+  ops.push(...raise(ctx)); // crusading: spends most of its income on hulls
 
   if (hasOrder(ctx.state, ctx.me, 'fleet_movement')) return ops;
 
@@ -875,7 +934,8 @@ const vigil: Bot = (ctx) => {
 const ojjul: Bot = (ctx) => {
   const ops: Ops = [];
   ops.push(...buy(ctx, 0.5, 1.91));
-  ops.push(...hire(ctx)); // will not spend its own hulls freely
+  ops.push(...hire(ctx));
+  ops.push(...raise(ctx)); // will not spend its own hulls freely
 
   // The Fringe, whole. The Combine's chokepoints are only worth what the lanes
   // through them carry, and two of the Ilvenn's richest crossings are held by a
@@ -915,6 +975,7 @@ const freeworlds: Bot = (ctx) => {
   // read as a balance signal when it was a power unable to act at all.
   ops.push(...buy(ctx, 0.8, 1.54));
   ops.push(...hire(ctx));
+  ops.push(...raise(ctx));
 
   // The Drift, whole — and nothing beyond it. That sentence was already this
   // bot's comment; what it could not previously do is remove a squatter, so
@@ -948,6 +1009,7 @@ const drajk: Bot = (ctx) => {
   // harness the way each ethic has one.
   ops.push(...buy(ctx, 0.7, 0.89, { line: 'torpedo_boat', screen: false }));
   ops.push(...hire(ctx));
+  ops.push(...raise(ctx));
 
   // The unclaimed middle of the map stays unclaimed, or becomes Drajk's — and a
   // world somebody else has just annexed is the first thing on the list, because

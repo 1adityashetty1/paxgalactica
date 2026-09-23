@@ -67,6 +67,11 @@ export function BriefingPanel({
               +{briefing.ledger.territory} territory · +{briefing.ledger.routes} lanes · −
               {briefing.ledger.upkeep} upkeep
               {briefing.ledger.agentUpkeep > 0 && ` · −${briefing.ledger.agentUpkeep} agents`}
+              {/* Its own term, because it rises with the count: the next
+                  fixture costs more to run than the last, and a player
+                  weighing a foundry against a squadron needs to see this bill
+                  apart from the fleet's. */}
+              {briefing.ledger.fixtureUpkeep > 0 && ` · −${briefing.ledger.fixtureUpkeep} fixtures`}
               {briefing.ledger.commitmentFlow !== 0 &&
                 ` · ${briefing.ledger.commitmentFlow > 0 ? '+' : '−'}${Math.abs(
                   briefing.ledger.commitmentFlow,
