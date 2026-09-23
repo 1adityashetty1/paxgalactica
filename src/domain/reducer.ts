@@ -1,4 +1,5 @@
 import {
+  FIB_BUCKETS,
   MAX_DURATION,
   accelerationCost,
   applyCategoryFloor,
@@ -2635,7 +2636,10 @@ export function applyOps(
             reject(
               raw,
               'missing_duration',
-              `Order type "${op.type}" is estimated work and requires durationTurns from the Fibonacci scale (1,2,3,5,8,13,21).`,
+              // From FIB_BUCKETS, not restated: this text is what the correction
+              // pass hands back to the model, and a hardcoded 1..21 outlived the
+              // rescale to five turns — inviting an 8 the schema then rejects.
+              `Order type "${op.type}" is estimated work and requires durationTurns, one of ${FIB_BUCKETS.join(', ')}.`,
             );
             break;
           }

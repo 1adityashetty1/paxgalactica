@@ -14,7 +14,8 @@ import { z } from 'zod';
  */
 
 type Scripted =
-  | { kind: 'result'; message: Record<string, unknown>; delayMs?: number }
+  /** `before` is what the binary streams ahead of its result: turns, tool results. */
+  | { kind: 'result'; message: Record<string, unknown>; delayMs?: number; before?: Record<string, unknown>[] }
   | { kind: 'throw'; error: Error };
 
 const script: Scripted[] = [];
@@ -22,12 +23,14 @@ const script: Scripted[] = [];
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: () => {
     const step = script.shift();
+    const queued = step?.kind === 'result' ? [...(step.before ?? [])] : [];
     let done = false;
     return {
       [Symbol.asyncIterator]() {
         return {
           async next() {
             if (done || !step) return { done: true, value: undefined };
+            if (queued.length > 0) return { done: false, value: queued.shift() };
             done = true;
             if (step.kind === 'throw') throw step.error;
             if (step.delayMs) await new Promise((r) => setTimeout(r, step.delayMs));
@@ -78,6 +81,18 @@ const success = (result: unknown, extra: Record<string, unknown> = {}): Scripted
 });
 
 const Answer = z.object({ answer: z.number() });
+
+/** The model's StructuredOutput call, as the SDK streams it. */
+const sent = (input: Record<string, unknown>): Record<string, unknown> => ({
+  type: 'assistant',
+  message: { role: 'assistant', content: [{ type: 'tool_use', name: 'StructuredOutput', input }] },
+});
+
+/** The SDK's reply to a StructuredOutput call that failed its schema, as observed live. */
+const rejected = (issues: string): Record<string, unknown> => ({
+  type: 'user',
+  message: { role: 'user', content: [{ type: 'tool_result', is_error: true, content: `Output does not match required schema: ${issues}` }] },
+});
 
 const ask = (label = 'probe') =>
   callStructured({ kind: 'appraisal', system: 'S'.repeat(40), user: 'U'.repeat(25), schema: Answer, label });
@@ -156,6 +171,43 @@ describe('a model call leaves one record per attempt', () => {
     // An error result carries no time-to-first-token, and a record does not
     // state a zero it was not told.
     expect(failed).not.toHaveProperty('ttftMs');
+  });
+
+  it('keeps the schema misses the SDK retried inside an attempt, which no retry count shows', async () => {
+    script.push({
+      ...success({ answer: 5 }, { num_turns: 4 }),
+      before: [sent({ result: { answer: 'five' } }), rejected('/answer: must be number'), sent({ answer: -5 }), rejected('/answer: must be >= 0')],
+    } as Scripted);
+    await ask();
+    const [rec] = calls();
+    // Passed on the first attempt as far as our retry loop knows — the two
+    // misses were the SDK's, a layer down, each a round trip on the context.
+    expect(rec).toMatchObject({ attempt: 1, outcome: 'ok', numTurns: 4 });
+    expect(rec!.sdkRejections).toEqual(['/answer: must be number', '/answer: must be >= 0']);
+    // What was sent, by key — the first miss was a wrapper the validator only
+    // reports as a missing field.
+    expect(rec!.sdkRejectedKeys).toEqual(['result', 'answer']);
+  });
+
+  it('calls an attempt the SDK gave up on for missing the schema a schema failure, not a transport one', async () => {
+    script.push(
+      {
+        kind: 'result',
+        before: [rejected('/ops/0/type: must be equal to one of the allowed values')],
+        message: { type: 'result', subtype: 'error_max_structured_output_retries', is_error: true, errors: [], total_cost_usd: 0.1, num_turns: 6 },
+      },
+      success({ answer: 6 }),
+    );
+    await ask();
+    const [failed] = calls();
+    expect(failed).toMatchObject({ outcome: 'schema_retry', numTurns: 6 });
+    expect(failed!.why).toMatch(/ops\/0\/type/);
+  });
+
+  it('records no rejections on a clean call', async () => {
+    script.push(success({ answer: 7 }));
+    await ask();
+    expect(calls()[0]).not.toHaveProperty('sdkRejections');
   });
 
   it('tells a timeout from any other transport failure', async () => {
@@ -240,6 +292,44 @@ describe('the report', () => {
     expect(k!.wallP50).toBe(11000);
     expect(k!.overheadP50).toBe(2500);
     expect(k!.cacheHit).toBeCloseTo(900 / 1100);
+    // All the input the provider read, cached or not: 1000 and 100, so 550.
+    expect(k!.inTokP50).toBe(550);
+  });
+
+  it('groups the SDK schema misses by field, so the most-missed one is the top row', () => {
+    const rs: TraceRecord[] = [
+      call({ kind: 'resolution', sdkRejections: ['/ops/0/type: must be equal to one of the allowed values, /narrative: must be string'] }),
+      call({ kind: 'resolution', sdkRejections: ['/ops/3/type: must be equal to one of the allowed values'] }),
+      call({ kind: 'resolution' }),
+    ];
+    expect(report.summariseCalls(rs)[0]!.sdkRejections).toBe(2);
+    expect(report.sdkRejectionsByField(rs)).toEqual([
+      { kind: 'resolution', path: '/ops/*/type', message: 'must be equal to one of the allowed values', count: 2 },
+      { kind: 'resolution', path: '/narrative', message: 'must be string', count: 1 },
+    ]);
+    expect(report.formatReport(rs)).toMatch(/2\s+resolution \/ops\/\*\/type/);
+  });
+
+  it('reads an op that matched no variant as one miss, not every branch of the union', () => {
+    // As observed on a live reaction: the validator lists each variant's
+    // complaint, and the length bound cut the text mid-pointer.
+    const echo = [
+      "/reactions/0/ops/0: must have required property 'towardFactionId'",
+      "/reactions/0/ops/0: must have required property 'delta'",
+      '/reactions/0/ops/0/op: must be equal to constant',
+      "/reactions/0/ops/0: must have required property 'delta'",
+      '/reactions/0/ops/0/op: must be equal to constant',
+      '/reactions/0',
+    ].join(', ');
+    const rs: TraceRecord[] = [
+      call({ kind: 'reaction', sdkRejections: [echo] }),
+      call({ kind: 'reaction', sdkRejections: ['/reactions: must be array', "root: must have required property 'reactions'"] }),
+    ];
+    expect(report.sdkRejectionsByField(rs)).toEqual([
+      { kind: 'reaction', path: '(root)', message: "must have required property 'reactions'", count: 1 },
+      { kind: 'reaction', path: '/reactions', message: 'must be array', count: 1 },
+      { kind: 'reaction', path: '/reactions/*/ops/*', message: 'matches no op in the vocabulary', count: 1 },
+    ]);
   });
 
   it('puts two runs side by side', () => {

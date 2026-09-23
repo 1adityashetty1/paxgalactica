@@ -96,8 +96,30 @@ export const TIERS: Record<ModelTier, TierConfig> = {
    * and extraction decides what a negotiation bound anybody to; those keep
    * `medium`, where a worse judgement is a worse world rather than a flatter
    * sentence.
+   *
+   * **And with thinking off**, measured the same way one step further: the
+   * same three turns replayed from a saved campaign, the same three powers,
+   * two samples of nine reactions per setting.
+   *
+   * |                                  | medium | low      | low, no thinking |
+   * |----------------------------------|--------|----------|------------------|
+   * | reaction, median                 | 24.6s  | 12.6-16s | 7-9s             |
+   * | end of turn waits on the slowest | 40-123s| 16-76s   | 9-13s            |
+   * | effect ops written (18 reactions)| —      | 26       | 24               |
+   * | reactions that only talked       | —      | 5        | 4                |
+   *
+   * The NPCs act as often and stay in voice; what goes is the tail, because
+   * end of turn waits for the slowest of three and the slow ones were thinking.
+   * Medium did not buy judgement either — it wrote more ops and had half of
+   * them rejected (a sale the buyer never agreed to, a battle's outcome written
+   * in as a payload). Untested: a turn where the player attacks someone, which
+   * is where a power that thought less would show it.
+   *
+   * It also stops a transport quirk: with thinking on, the model kept nesting
+   * its answer under the SDK's own `StructuredOutput` key, which the SDK
+   * rejects and retries — 4 of 9 reactions paid a round trip for it.
    */
-  narrative: { model: 'claude-sonnet-5', maxTurns: 6, effort: 'low' },
+  narrative: { model: 'claude-sonnet-5', maxTurns: 6, effort: 'low', thinking: { type: 'disabled' } },
   // Colour that must be cheap and fast: system descriptions, NPC names.
   // Classification and colour. Arbitration lives here too: it returns two
   // numbers and a clause, which is not a thinking problem.

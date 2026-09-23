@@ -33,6 +33,11 @@ export interface KindSummary {
   schemaRetries: number;
   /** Calls that exhausted every attempt. */
   failed: number;
+  /**
+   * Schema misses the SDK retried INSIDE an attempt — invisible as retries
+   * above, and each one a round trip that re-reads the whole context.
+   */
+  sdkRejections: number;
   wallP50: number | null;
   wallP95: number | null;
   /** Wall minus API time: transport the provider does not count as model time. */
@@ -40,6 +45,11 @@ export interface KindSummary {
   spawnP50: number | null;
   ttftP50: number | null;
   numTurnsP50: number | null;
+  /**
+   * All input the provider read — fresh, cache read and cache write. Fresh
+   * tokens alone read as 2-10 on a cached call, which says nothing about how
+   * much context a call actually carries.
+   */
   inTokP50: number | null;
   outTokP50: number | null;
   /** Cache reads over all input the provider saw, across every attempt. */
@@ -62,7 +72,11 @@ export function summariseCalls(records: readonly TraceRecord[]): KindSummary[] {
   }
   const out: KindSummary[] = [];
   for (const [kind, rs] of byKind) {
-    const input = nums(rs, (r) => (r.inTok ?? 0) + (r.cacheReadTok ?? 0) + (r.cacheWriteTok ?? 0));
+    const input = nums(rs, (r) =>
+      r.inTok === undefined && r.cacheReadTok === undefined && r.cacheWriteTok === undefined
+        ? undefined
+        : (r.inTok ?? 0) + (r.cacheReadTok ?? 0) + (r.cacheWriteTok ?? 0),
+    );
     const read = nums(rs, (r) => r.cacheReadTok);
     const seenInput = input.reduce((a, b) => a + b, 0);
     out.push({
@@ -71,13 +85,14 @@ export function summariseCalls(records: readonly TraceRecord[]): KindSummary[] {
       retries: rs.filter((r) => r.attempt > 1).length,
       schemaRetries: rs.filter((r) => r.outcome === 'schema_retry').length,
       failed: rs.filter((r) => r.outcome !== 'ok' && r.attempt >= r.maxAttempts).length,
+      sdkRejections: rs.reduce((a, r) => a + (r.sdkRejections?.length ?? 0), 0),
       wallP50: median(nums(rs, (r) => r.wallMs)),
       wallP95: quantile(nums(rs, (r) => r.wallMs), 0.95),
       overheadP50: median(nums(rs, (r) => (r.apiMs === undefined ? undefined : r.wallMs - r.apiMs))),
       spawnP50: median(nums(rs, (r) => r.spawnMs)),
       ttftP50: median(nums(rs, (r) => r.ttftMs)),
       numTurnsP50: median(nums(rs, (r) => r.numTurns)),
-      inTokP50: median(nums(rs, (r) => r.inTok)),
+      inTokP50: median(input),
       outTokP50: median(nums(rs, (r) => r.outTok)),
       cacheHit: seenInput > 0 && read.length > 0 ? read.reduce((a, b) => a + b, 0) / seenInput : null,
       userCharsP50: median(nums(rs, (r) => r.userChars)),
@@ -134,7 +149,7 @@ export function formatReport(records: readonly TraceRecord[], title = 'trace'): 
   const lines: string[] = [
     `── ${title}: ${calls.length} attempts over ${turns.size} turns · raw JSON ${rawJson.length === 0 ? '—' : rawJson.join('/')} ──`,
     '',
-    'kind             calls retry schema fail  p50 s  p95 s  ovh s spawn s ttft s turns  in tok out tok cache  userKB    cost',
+    'kind             calls retry schema  sdk fail  p50 s  p95 s  ovh s spawn s ttft s turns  in tok out tok cache  userKB    cost',
   ];
   for (const k of kinds) {
     lines.push(
@@ -143,6 +158,7 @@ export function formatReport(records: readonly TraceRecord[], title = 'trace'): 
         String(k.calls).padStart(5),
         String(k.retries).padStart(6),
         String(k.schemaRetries).padStart(7),
+        String(k.sdkRejections).padStart(5),
         String(k.failed).padStart(5),
         s(k.wallP50).padStart(7),
         s(k.wallP95).padStart(7),
@@ -165,12 +181,90 @@ export function formatReport(records: readonly TraceRecord[], title = 'trace'): 
       `${p.phase.padEnd(14)}${(p.step === p.phase ? '(whole)' : p.step).padEnd(14)}${String(p.count).padStart(5)}${s2(p.p50).padStart(9)}${s2(p.p95).padStart(9)}`,
     );
   }
+  const fields = sdkRejectionsByField(records).slice(0, 10);
+  if (fields.length > 0) {
+    lines.push('', 'schema misses the SDK retried inside a call, by field (most frequent first):');
+    for (const f of fields) lines.push(`  ${String(f.count).padStart(3)}  ${f.kind} ${f.path}: ${f.message}`);
+  }
+  const shapes = new Map<string, number>();
+  for (const c of calls) for (const k of c.sdkRejectedKeys ?? []) {
+    const key = `${c.kind} {${k}}`;
+    shapes.set(key, (shapes.get(key) ?? 0) + 1);
+  }
+  if (shapes.size > 0) {
+    lines.push('', 'what the rejected outputs were, by top-level keys:');
+    for (const [k, n] of [...shapes].sort((a, b) => b[1] - a[1]).slice(0, 8)) lines.push(`  ${String(n).padStart(3)}  ${k}`);
+  }
   const why = calls.filter((c) => c.outcome !== 'ok' && c.why).slice(-8);
   if (why.length > 0) {
     lines.push('', 'why attempts did not succeed (newest last):');
     for (const c of why) lines.push(`  t${c.turn ?? '?'} ${c.kind} #${c.attempt} ${c.outcome}: ${c.why}`);
   }
   return lines.join('\n');
+}
+
+export interface FieldRejection {
+  kind: string;
+  /** JSON pointer with array indices collapsed, so `/ops/0/type` and `/ops/3/type` are one row. */
+  path: string;
+  message: string;
+  count: number;
+}
+
+/**
+ * The SDK's rejection texts, split into single issues and grouped.
+ *
+ * One rejection names several issues — `/x: must be >= 1000, /word: must match
+ * pattern …` — separated by a comma before the next pointer, so the split is on
+ * that and not on every comma, since a message can contain one. What the model
+ * keeps missing is then the top row, which is the whole point of recording it.
+ *
+ * **An op that matches no variant is one miss, not thirty.** The op vocabulary
+ * is a union, and the validator reports a failed union as every branch's
+ * complaint — `/ops/0/op: must be equal to constant` once per variant, beside
+ * each variant's missing fields — which on a real trace buried the one fact
+ * worth reading under rows of noise and ran the text out of its length bound.
+ * So any pointer carrying an `/op` constant miss is reported once, as matching
+ * no op, and every other issue under that pointer is dropped as the union's
+ * echo. Within one rejection an issue counts once.
+ */
+export function sdkRejectionsByField(records: readonly TraceRecord[]): FieldRejection[] {
+  const counts = new Map<string, FieldRejection>();
+  const bump = (kind: string, path: string, message: string) => {
+    const key = `${kind}\u0000${path}\u0000${message}`;
+    const row = counts.get(key) ?? { kind, path, message, count: 0 };
+    row.count += 1;
+    counts.set(key, row);
+  };
+  for (const r of records) {
+    if (r.type !== 'call' || !r.sdkRejections) continue;
+    for (const text of r.sdkRejections) {
+      const issues: { pointer: string; message: string }[] = [];
+      for (const issue of text.split(/,\s+(?=\/|root:)/)) {
+        const m = /^(\/[^:]*|root)?:\s*([\s\S]*)$/.exec(issue.trim());
+        // A fragment with no message is where the length bound cut the text.
+        if (!m || m[2]!.trim() === '') continue;
+        issues.push({ pointer: m[1] && m[1] !== 'root' ? m[1] : '', message: m[2]!.trim().slice(0, 100) });
+      }
+      const unions = new Set(
+        issues.filter((i) => /\/op$/.test(i.pointer) && /must be equal to constant/.test(i.message)).map((i) => i.pointer.replace(/\/op$/, '')),
+      );
+      const seen = new Set<string>();
+      const once = (path: string, message: string) => {
+        const key = `${path}\u0000${message}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        bump(r.kind, path, message);
+      };
+      const shape = (pointer: string) => (pointer === '' ? '(root)' : pointer.replace(/\/\d+(?=\/|$)/g, '/*'));
+      for (const u of unions) once(shape(u), 'matches no op in the vocabulary');
+      for (const i of issues) {
+        if ([...unions].some((u) => i.pointer === u || i.pointer.startsWith(`${u}/`))) continue;
+        once(shape(i.pointer), i.message);
+      }
+    }
+  }
+  return [...counts.values()].sort((a, b) => b.count - a.count || a.kind.localeCompare(b.kind) || a.path.localeCompare(b.path));
 }
 
 /**
@@ -190,7 +284,7 @@ export function formatComparison(
   const lines = [
     `── ${labels[0]} vs ${labels[1]} ──`,
     '',
-    'kind              calls A/B    p50 s A/B     retry A/B   schema A/B',
+    'kind              calls A/B    p50 s A/B     retry A/B   schema A/B   sdk rej A/B',
   ];
   for (const kind of kinds) {
     const x = ka.get(kind);
@@ -202,6 +296,7 @@ export function formatComparison(
         `${s(x?.wallP50 ?? null)}/${s(y?.wallP50 ?? null)}`.padStart(14),
         `${rate(x)}/${rate(y)}`.padStart(14),
         `${x?.schemaRetries ?? 0}/${y?.schemaRetries ?? 0}`.padStart(13),
+        `${x?.sdkRejections ?? 0}/${y?.sdkRejections ?? 0}`.padStart(14),
       ].join(''),
     );
   }

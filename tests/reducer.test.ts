@@ -201,6 +201,9 @@ describe('issue_order — estimated work', () => {
       { op: 'issue_order', factionId: 'freeworlds', type: 'garrison_raising', originId: 'ark-1', targetId: 'ark-3' },
     ]);
     expect(codes(res)).toEqual(['missing_duration']);
+    // The message is fed back to the model on correction, so it must name the
+    // scale the schema accepts — it said 1..21 long after the rescale to 5.
+    expect(res.rejections[0]!.message).toMatch(/1, 2, 3, 5\.$/);
   });
 
   it('rejects a duration off the Fibonacci scale', () => {

@@ -34,7 +34,7 @@ vi.mock('../src/model/client.js', () => ({
         covert: [],
       },
       extraction: { narrative: 'Nothing was agreed.', ops: [] },
-      reaction: { reactions: [{ factionId: 'vigil', narrative: 'The Legate says nothing.', ops: [] }] },
+      reaction: { factionId: 'vigil', narrative: 'The Legate says nothing.', ops: [] },
     };
     return { value: scripted[call.kind], attempts: 1, costUsd: 0 };
   },
