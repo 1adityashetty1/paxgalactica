@@ -28,6 +28,7 @@ import {
 import {
   breachContradictsState, classifyPrinciples } from '../domain/compulsions.js';
 import { callStructured } from '../model/client.js';
+import { span } from '../model/telemetry.js';
 import { loadPrompt } from '../model/prompts.js';
 import { createSeedState } from '../seed/scenario.js';
 import { proposeFor } from '../domain/initiative.js';
@@ -584,12 +585,16 @@ export async function endTurn(
   const declared = campaign.stagedSummary();
   const stagedOps = campaign.stagedOps();
 
-  const committed = campaign.commitTurn();
+  // Each step of the turn is a span (see `src/model/telemetry.ts`), so a slow
+  // end-of-turn reads as commit, reactions, bots and tick rather than one bar.
+  // The turn is the one being ended — read before `tick` advances it.
+  const turn = campaign.state.turn;
+  const committed = await span('commit', { turn }, () => campaign.commitTurn());
   notes.push(...committed.notes);
 
   // NPCs react once, to the world as it now stands.
   const reactionViews: ReactionView[] = [];
-  if (committed.applied > 0) {
+  if (committed.applied > 0) await span('reactions', { turn }, async () => {
     const touched = touchedBy(stagedOps);
     // Three responders, not four, so one seat is always left for a power the
     // player never touched.
@@ -659,7 +664,7 @@ export async function endTurn(
         );
       }
     }
-  }
+  });
 
   // Every power that the model did NOT speak for acts on its own doctrine.
   //
@@ -676,35 +681,37 @@ export async function endTurn(
   // reasoning. It runs OUTSIDE the `committed.applied > 0` gate on purpose, so
   // a turn the player ends quietly is still a turn in which the galaxy moves.
   const spokenFor = new Set([campaign.state.playerFactionId, ...reactionViews.map((r) => r.factionId)]);
-  for (const faction of campaign.state.factions) {
-    if (spokenFor.has(faction.id)) continue;
-    const proposal = proposeFor(campaign.state, faction.id);
-    if (!proposal) continue;
+  await span('bots', { turn }, () => {
+    for (const faction of campaign.state.factions) {
+      if (spokenFor.has(faction.id)) continue;
+      const proposal = proposeFor(campaign.state, faction.id);
+      if (!proposal) continue;
 
-    // The rationale is logged as part of the batch, so `serializeRecentLog`
-    // carries it into the NEXT reaction call and the faction can account for
-    // its own move when it next speaks. That is the whole of the retroactive
-    // narration: no second model call, and the NPC's history becomes something
-    // it reasons from rather than something only the player remembers.
-    const withheld = proposal.withheld.length > 0
-      ? ` It holds back ${proposal.withheld.join(' and ')}.`
-      : '';
-    const batch = [
-      ...proposal.ops,
-      {
-        op: 'spawn_event',
-        factionId: faction.id,
-        text: `${proposal.rationale}${withheld}`,
-      },
-    ];
+      // The rationale is logged as part of the batch, so `serializeRecentLog`
+      // carries it into the NEXT reaction call and the faction can account for
+      // its own move when it next speaks. That is the whole of the retroactive
+      // narration: no second model call, and the NPC's history becomes something
+      // it reasons from rather than something only the player remembers.
+      const withheld = proposal.withheld.length > 0
+        ? ` It holds back ${proposal.withheld.join(' and ')}.`
+        : '';
+      const batch = [
+        ...proposal.ops,
+        {
+          op: 'spawn_event',
+          factionId: faction.id,
+          text: `${proposal.rationale}${withheld}`,
+        },
+      ];
 
-    const applied = campaign.commit(batch, 'model', `initiative:${faction.id}`, faction.id);
-    notes.push(...applied.notes);
-    rejections.push(...applied.rejections);
-  }
+      const applied = campaign.commit(batch, 'model', `initiative:${faction.id}`, faction.id);
+      notes.push(...applied.notes);
+      rejections.push(...applied.rejections);
+    }
+  });
 
   // Time passes last, so orders started this turn do not immediately progress.
-  const ticked = campaign.tick();
+  const ticked = await span('tick', { turn }, () => campaign.tick());
   notes.push(...ticked.notes);
 
   return {

@@ -102,6 +102,10 @@ transport floor is the process spawn — appraisal runs 4.5s for ~7.6k in and
 ~200 Haiku tokens out, of which generation is maybe 2s — so about 2.5s a call,
 15-18s a turn rather than 50s.
 
+> **Since measured, per call (A.11):** wall minus API time is **1.6–1.9s**, so
+> the estimate above was high. Structured output reports **2** agentic turns
+> and raw JSON **1** on the same call, which confirms the carrier directly.
+
 That reshapes what this is worth:
 
 | | still worth it |
@@ -483,6 +487,40 @@ worth continuing at any point without stranding work.
 
 ---
 
+## A.11. Where a turn's time goes, recorded as data
+
+**BUILT.** Every model-call attempt and every phase of play writes one line to
+`saves/<campaign>.trace.jsonl`; `pnpm trace` reads it. CLAUDE.md has the
+design under *"Where a turn's time goes, as data"*. Here because it is
+infrastructure rather than a game item, and because it is what A.1 and the
+raw-JSON question were both missing.
+
+**What it unblocks, and what each needs:**
+
+| question | how the trace answers it |
+|---|---|
+| raw JSON as the default | a campaign each way; `pnpm trace a b` compares retries, schema rejections and p50 per kind |
+| is caching worth chasing (A.1) | cache-read over total input, per call kind, on today's path — the baseline any provider has to beat |
+| A.1's transport floor | measured: wall − API, 1.6–1.9s a call |
+| what three parallel reactions cost | `concurrent` on every call against its wall time |
+| diplomacy prompt growth | `userChars` on `diplomacy` over a campaign — `priorTranscripts` is uncapped |
+
+**Designed around A.1 rather than beside it.** The call record is written in
+`callStructured`, above `rawCall`, and every SDK-only field is optional — the
+HTTP provider fills the same record with wall time and tokens and leaves the
+rest out. The offline prompt-size probe is **not** built: it needs every prompt
+constructed without its call, and a capturing provider on A.1's seam gives
+that for free. Building it first would be a second seam.
+
+**Rejected:** OpenTelemetry (a dependency tree and an exporter for fifteen
+records a turn); the trace inside the save or `WorldState` (machine-specific
+timings in a portable archive, and something replay would have to reproduce);
+keeping it opt-in (why the data did not exist); engine spans (bots 10–18ms, tick
+2–7ms, flat — `pnpm perf` and p.8 already cover it).
+
+**Path:** `CampaignStore.tracePath`, so A.7's move of the save directory moves
+traces with it.
+
 ## Open questions
 
 Things this document deliberately does not decide:
@@ -495,7 +533,9 @@ Things this document deliberately does not decide:
   ~98s and ~37s a turn and it trades away layer 1 of the two-layer defence. A
   ten-turn campaign decides it (see `todo.md`, above the ranked table), and a
   packaged build wants that settled — a stranger's first turn should not be 98
-  seconds of nothing.
+  seconds of nothing. **The instrument now exists** (A.11): play one campaign
+  each way and `pnpm trace json_run raw_run` puts retries, schema rejections
+  and median latency per call kind side by side.
 - **Does the packaged build ship the subscription path at all?** A.3 argues no.
   The counter-argument is that a Max subscriber pays nothing marginal and would
   rather use it, which is a real player and not a hypothetical one.

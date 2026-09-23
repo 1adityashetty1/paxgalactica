@@ -22,6 +22,7 @@ import { playableFactions } from '../seed/scenario.js';
 import { ApiFailure, toApiFailure } from './errors.js';
 import { appraiseAgreement } from '../model/calls.js';
 import { timingReport } from '../model/client.js';
+import { FileSink, NULL_SINK, setTelemetrySink, span } from '../model/telemetry.js';
 import { classifyPrinciples } from '../domain/compulsions.js';
 import { mergeConcessions, type Concession, type Retraction } from '../domain/diplomacy.js';
 
@@ -121,6 +122,24 @@ export class GameSession {
   }
 
   /** Run work under the busy guard, narrating progress to any SSE listener. */
+  /**
+   * Point the performance trace at this campaign's file, or at nothing when
+   * the store has no disk. Called wherever the session adopts a campaign, so a
+   * trace can never carry one campaign's calls under another's name.
+   */
+  private traceTo(name: string): void {
+    setTelemetrySink(this.store.tracePath ? new FileSink(this.store.tracePath(name)) : NULL_SINK);
+  }
+
+  /** Numbers declared actions within a turn, for the trace. Reset each turn. */
+  private actionSeq = 0;
+
+  /** Run a top-level phase of play inside a trace span. */
+  private traced<T>(phase: string, work: () => Promise<T>, actionId?: string): Promise<T> {
+    const turn = this.campaign?.state.turn ?? 0;
+    return span(phase, { turn, phase, ...(actionId ? { actionId } : {}) }, work);
+  }
+
   private async exclusive<T>(label: string, work: () => Promise<T>): Promise<T> {
     if (this.busyLabel) {
       throw new ApiFailure('conflict', `Busy: ${this.busyLabel}. Wait for it to finish.`);
@@ -211,6 +230,7 @@ export class GameSession {
       throw new ApiFailure('bad_request', `Unknown faction "${factionId}".`);
     }
     this.campaign = Campaign.start(factionId, name, this.store, maxTurns);
+    this.traceTo(name);
     this.openChannel = null;
     this.channelHistory = [];
     this.channelConcessions = [];
@@ -226,6 +246,7 @@ export class GameSession {
     const loaded = await Campaign.load(name, this.store);
     if (!loaded) throw new ApiFailure('not_found', `No saved campaign named "${name}".`);
     this.campaign = loaded;
+    this.traceTo(name);
     this.openChannel = null;
     this.channelHistory = [];
     this.channelConcessions = [];
@@ -320,7 +341,12 @@ export class GameSession {
       );
     }
 
-    const outcome = await this.exclusive('Resolving', () => submitAction(campaign, text));
+    const actionId = `${campaign.state.turn}.${++this.actionSeq}`;
+    const outcome = await this.traced(
+      'declare',
+      () => this.exclusive('Resolving', () => submitAction(campaign, text)),
+      actionId,
+    );
     this.pushState();
     return {
       narrative: outcome.narrative,
@@ -374,7 +400,9 @@ export class GameSession {
       };
     }
 
-    const result = await this.exclusive('Consulting', () => askAdvisor(campaign.state));
+    const result = await this.traced('advisor', () =>
+      this.exclusive('Consulting', () => askAdvisor(campaign.state)),
+    );
     campaign.spendActionPoint();
     this.pushState();
     return {
@@ -395,31 +423,44 @@ export class GameSession {
       );
     }
 
-    const outcome = await this.exclusive('The galaxy turns', () =>
-      endTurn(campaign, (reaction) => {
-        // Pushed as it is written, not with the other two at the end. The
-        // board moves with it, and the progress line names the power that is
-        // answering rather than sitting on one label for a minute.
-        this.emit({ type: 'reaction', reaction });
+    // The turn being ENDED, read before the tick advances it — every step of
+    // one end-of-turn is stamped with the same turn, including the save and
+    // the epilogue that run after the tick.
+    const turn = campaign.state.turn;
+    const { outcome, costUsd, briefing } = await this.traced('end_turn', async () => {
+      const outcome = await this.exclusive('The galaxy turns', () =>
+        endTurn(campaign, (reaction) => {
+          // Pushed as it is written, not with the other two at the end. The
+          // board moves with it, and the progress line names the power that is
+          // answering rather than sitting on one label for a minute.
+          this.emit({ type: 'reaction', reaction });
+          this.pushState();
+          this.emit({ type: 'progress', label: `${reaction.factionName} answers`, busy: true });
+        }),
+      );
+      const briefing = buildBriefing(campaign.state, outcome.report);
+      this.lastBriefing = briefing;
+
+      // Time ran out on this turn. The ending is written once, here, and cached
+      // on the campaign — never regenerated, so reopening a finished campaign
+      // shows the ending the player was actually given.
+      let costUsd = outcome.costUsd;
+      if (campaign.isOver && this.epilogue === null) {
+        const written = await span('epilogue', { turn, phase: 'epilogue' }, () =>
+          this.exclusive('The Rim settles', () => writeEpilogue(campaign)),
+        );
+        this.epilogue = written.view;
+        campaign.epilogue = written.view;
+        costUsd += written.costUsd;
+      }
+
+      await span('save', { turn }, async () => {
+        await campaign.save();
         this.pushState();
-        this.emit({ type: 'progress', label: `${reaction.factionName} answers`, busy: true });
-      }),
-    );
-    this.lastBriefing = buildBriefing(campaign.state, outcome.report);
-
-    // Time ran out on this turn. The ending is written once, here, and cached
-    // on the campaign — never regenerated, so reopening a finished campaign
-    // shows the ending the player was actually given.
-    let costUsd = outcome.costUsd;
-    if (campaign.isOver && this.epilogue === null) {
-      const written = await this.exclusive('The Rim settles', () => writeEpilogue(campaign));
-      this.epilogue = written.view;
-      campaign.epilogue = written.view;
-      costUsd += written.costUsd;
-    }
-
-    await campaign.save();
-    this.pushState();
+      });
+      return { outcome, costUsd, briefing };
+    });
+    this.actionSeq = 0;
 
     // Where the turn's time actually went, cumulative for the process. Latency
     // here is almost entirely model latency, and a retried call is
@@ -434,7 +475,7 @@ export class GameSession {
       reactions: outcome.reactions,
       notes: outcome.notes,
       rejections: outcome.rejections,
-      briefing: this.lastBriefing,
+      briefing,
       costUsd,
     };
   }
@@ -505,33 +546,36 @@ export class GameSession {
 
     this.channelHistory.push({ speaker: 'player', text });
 
-    const result = await this.exclusive(`${faction.name} considers`, async () =>
-      diplomacyReply(campaign.state, factionId, this.channelHistory, campaign.priorTranscripts(factionId)),
-    );
+    const { result, rulings } = await this.traced('talk', async () => {
+      const result = await this.exclusive(`${faction.name} considers`, async () =>
+        diplomacyReply(campaign.state, factionId, this.channelHistory, campaign.priorTranscripts(factionId)),
+      );
 
-    this.channelHistory.push({ speaker: 'faction', text: result.reply });
+      this.channelHistory.push({ speaker: 'faction', text: result.reply });
 
-    this.channelConcessions = mergeConcessions(
-      this.channelConcessions,
-      result.concessions,
-      result.retractions,
-    );
+      this.channelConcessions = mergeConcessions(
+        this.channelConcessions,
+        result.concessions,
+        result.retractions,
+      );
 
-    // The player's own institutions get a view NOW, not at `/endtalk`. A red
-    // line found at the end refuses the whole accord after both sides have
-    // agreed — costing a real negotiation for a line the player would have
-    // steered around had they been told. Only the player's concessions are
-    // appraised: the other power's are theirs to make and cannot trip your
-    // line, which `appraiseAgreement` already guarantees by construction.
+      // The player's own institutions get a view NOW, not at `/endtalk`. A red
+      // line found at the end refuses the whole accord after both sides have
+      // agreed — costing a real negotiation for a line the player would have
+      // steered around had they been told. Only the player's concessions are
+      // appraised: the other power's are theirs to make and cannot trip your
+      // line, which `appraiseAgreement` already guarantees by construction.
+      const mine = result.concessions.filter((c) => c.by === campaign.state.playerFactionId);
+      // In parallel: these are independent rulings on separate concessions, and
+      // awaiting them in a loop made a message carrying three offers three times
+      // slower to answer than one carrying a single offer. Order is preserved by
+      // `Promise.all`, so the blockers still read in the order they were conceded.
+      const rulings = await Promise.all(
+        mine.map(async (c) => ({ c, ruled: await appraiseAgreement(campaign.state, factionId, c.text) })),
+      );
+      return { result, rulings };
+    });
     let costUsd = result.costUsd;
-    const mine = result.concessions.filter((c) => c.by === campaign.state.playerFactionId);
-    // In parallel: these are independent rulings on separate concessions, and
-    // awaiting them in a loop made a message carrying three offers three times
-    // slower to answer than one carrying a single offer. Order is preserved by
-    // `Promise.all`, so the blockers still read in the order they were conceded.
-    const rulings = await Promise.all(
-      mine.map(async (c) => ({ c, ruled: await appraiseAgreement(campaign.state, factionId, c.text) })),
-    );
     for (const { c, ruled } of rulings) {
       costUsd += ruled.costUsd;
       const named = ruled.appraisal.breach?.principles ?? [];
@@ -578,8 +622,10 @@ export class GameSession {
     // as it stood and the player can simply `/endtalk` again.
     let outcome: ActionOutcome;
     try {
-      outcome = await this.exclusive('Reading the transcript', () =>
-        closeChannel(campaign, factionId, history, conceded, blockers),
+      outcome = await this.traced('end_talk', () =>
+        this.exclusive('Reading the transcript', () =>
+          closeChannel(campaign, factionId, history, conceded, blockers),
+        ),
       );
     } catch (err) {
       this.openChannel = factionId;

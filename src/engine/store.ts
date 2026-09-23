@@ -62,6 +62,14 @@ export interface CampaignStore {
   save(name: string, data: SaveFile): Promise<void>;
   list(): Promise<string[]>;
   exists(name: string): Promise<boolean>;
+  /**
+   * Where this campaign's performance trace is appended, or nothing to record
+   * none. Optional, so a store that has no disk — the in-memory one the suite
+   * uses — simply never writes a trace. Lives on the store rather than beside
+   * `SAVE_DIR` so that wherever saves move to, the trace moves with them.
+   * See `src/model/telemetry.ts`.
+   */
+  tracePath?(name: string): string;
 }
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -106,6 +114,14 @@ export class FileCampaignStore implements CampaignStore {
 
   async exists(name: string): Promise<boolean> {
     return existsSync(this.path(name));
+  }
+
+  /**
+   * `saves/<name>.trace.jsonl`, beside the save it describes. `list()` keeps
+   * to `.json`, so a trace is never mistaken for a campaign.
+   */
+  tracePath(name: string): string {
+    return this.path(name).replace(/\.json$/, '.trace.jsonl');
   }
 }
 

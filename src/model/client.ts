@@ -2,6 +2,14 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import { buildAuthEnv } from './auth.js';
 import { modelFor, type CallKind } from './router.js';
+import {
+  callFinished,
+  callStarted,
+  currentSpan,
+  median,
+  telemetrySink,
+  type CallOutcome,
+} from './telemetry.js';
 
 /**
  * The one typed model client. Every model call in the game goes through here,
@@ -79,7 +87,10 @@ export interface CallStats {
    * process, which cannot see a retry. A retried call looks exactly like a slow
    * one from the outside, and the two want opposite fixes.
    */
-  byKind: Record<string, { calls: number; seconds: number; costUsd: number; retries: number }>;
+  byKind: Record<
+    string,
+    { calls: number; seconds: number; costUsd: number; retries: number; durations: number[] }
+  >;
   /** What went wrong on each retried call, bounded and newest last. */
   failures: { kind: string; label: string; why: string }[];
 }
@@ -105,10 +116,19 @@ function recordFailure(kind: CallKind, label: string, why: string): void {
   if (stats.failures.length > MAX_RECORDED_FAILURES) stats.failures.shift();
 }
 
+/**
+ * Durations kept per kind so the table can print a real median. Bounded for
+ * the same reason `failures` is: the per-call record is `telemetry.ts`, and
+ * this is only the console's rolling view of it.
+ */
+const MAX_DURATIONS = 200;
+
 function record(kind: CallKind, seconds: number, costUsd: number, retries: number): void {
-  const row = (stats.byKind[kind] ??= { calls: 0, seconds: 0, costUsd: 0, retries: 0 });
+  const row = (stats.byKind[kind] ??= { calls: 0, seconds: 0, costUsd: 0, retries: 0, durations: [] });
   row.calls += 1;
   row.seconds += seconds;
+  row.durations.push(seconds);
+  if (row.durations.length > MAX_DURATIONS) row.durations.shift();
   row.costUsd += costUsd;
   row.retries += retries;
 }
@@ -121,7 +141,10 @@ export function timingReport(): string {
     'kind             calls   total s    med s   retries    cost',
     ...rows.map(
       ([kind, r]) =>
-        `${kind.padEnd(17)}${String(r.calls).padStart(4)}${r.seconds.toFixed(1).padStart(10)}${(r.seconds / r.calls).toFixed(1).padStart(9)}${String(r.retries).padStart(10)}${('$' + r.costUsd.toFixed(3)).padStart(9)}`,
+        // A MEDIAN. This column was labelled "med s" and computed
+        // seconds / calls — a mean, which one 117-second outlier drags far
+        // enough to misdescribe every other call of that kind.
+        `${kind.padEnd(17)}${String(r.calls).padStart(4)}${r.seconds.toFixed(1).padStart(10)}${(median(r.durations) ?? 0).toFixed(1).padStart(9)}${String(r.retries).padStart(10)}${('$' + r.costUsd.toFixed(3)).padStart(9)}`,
     ),
     ...(stats.failures.length > 0
       ? ['', 'why calls were retried (newest last):',
@@ -156,12 +179,67 @@ function assertNetworkAllowed(): void {
  */
 export const CALL_TIMEOUT_MS = 180_000;
 
+/**
+ * What the provider reported about one attempt. Filled in place rather than
+ * returned, so an attempt that ends in an error result still reports what it
+ * cost and how long the API took — which is exactly the attempt worth seeing.
+ */
+interface AttemptMetrics {
+  apiMs?: number;
+  ttftMs?: number;
+  spawnMs?: number;
+  numTurns?: number;
+  inTok?: number;
+  outTok?: number;
+  cacheReadTok?: number;
+  cacheWriteTok?: number;
+  costUsd?: number;
+}
+
+/**
+ * Pull timings and token counts off an SDK result message. Every field is
+ * optional in the SDK's own type or absent on some result subtypes — an error
+ * result carries no time-to-first-token — so each is copied only when present,
+ * and a record never states a zero it was not told.
+ */
+function readResultMetrics(message: Record<string, unknown>, out: AttemptMetrics): void {
+  const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+  const set = <K extends keyof AttemptMetrics>(k: K, v: number | undefined) => {
+    if (v !== undefined) out[k] = v;
+  };
+  set('apiMs', num(message.duration_api_ms));
+  set('ttftMs', num(message.ttft_ms));
+  set('spawnMs', num(message.time_to_request_from_spawn_ms));
+  set('numTurns', num(message.num_turns));
+  set('costUsd', num(message.total_cost_usd));
+  // `modelUsage` covers every model the call touched and is what the SDK says
+  // to account from; `usage` is the main loop only.
+  const perModel = message.modelUsage;
+  if (perModel && typeof perModel === 'object') {
+    let inTok = 0, outTok = 0, read = 0, write = 0, seen = false;
+    for (const u of Object.values(perModel as Record<string, Record<string, unknown>>)) {
+      seen = true;
+      inTok += num(u.inputTokens) ?? 0;
+      outTok += num(u.outputTokens) ?? 0;
+      read += num(u.cacheReadInputTokens) ?? 0;
+      write += num(u.cacheCreationInputTokens) ?? 0;
+    }
+    if (seen) {
+      out.inTok = inTok;
+      out.outTok = outTok;
+      out.cacheReadTok = read;
+      out.cacheWriteTok = write;
+    }
+  }
+}
+
 /** Raw single-shot call. Returns whatever the model produced, unvalidated. */
 async function rawCall(
   kind: CallKind,
   system: string,
   user: string,
   jsonSchema: Record<string, unknown>,
+  metrics: AttemptMetrics = {},
 ): Promise<{ result: unknown; costUsd: number }> {
   const tier = modelFor(kind);
   const rawJson = process.env.PAXGALACTICA_RAW_JSON === '1';
@@ -248,6 +326,7 @@ async function rawCall(
       const message = step.value;
       if (message.type === 'result') {
         costUsd = message.total_cost_usd ?? 0;
+        readResultMetrics(message as unknown as Record<string, unknown>, metrics);
         if (message.subtype === 'success') {
           // Even under json_schema the payload arrives as a string; `coerce`
           // parses it. An is_error success carries the failure text in-band.
@@ -324,24 +403,59 @@ export async function callStructured<T>(call: StructuredCall<T>): Promise<Struct
 
   let lastError: unknown;
 
+  const rawJson = process.env.PAXGALACTICA_RAW_JSON === '1';
   for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
     let result: unknown;
     let costUsd = 0;
+    const metrics: AttemptMetrics = {};
+    const attemptAt = Date.now();
+    const concurrent = callStarted();
+    // One line per ATTEMPT, written however the attempt ends. Built here
+    // rather than inside `rawCall` because only this loop knows whether the
+    // output then passed validation, which is the half of a retry that
+    // matters most and the half `rawCall` cannot see.
+    const trace = (outcome: CallOutcome, why?: string) => {
+      const at = currentSpan();
+      telemetrySink().write({
+        type: 'call',
+        at: attemptAt,
+        turn: at?.turn ?? null,
+        phase: at?.phase ?? null,
+        actionId: at?.actionId ?? null,
+        kind: call.kind,
+        label,
+        attempt,
+        maxAttempts: maxRetries + 1,
+        outcome,
+        ...(why !== undefined ? { why: why.replace(/\s+/g, ' ').trim().slice(0, 300) } : {}),
+        wallMs: Date.now() - attemptAt,
+        ...metrics,
+        costUsd: metrics.costUsd ?? costUsd,
+        systemChars: call.system.length,
+        userChars: prompt.length,
+        concurrent,
+        rawJson,
+      });
+    };
 
     // Transient failures — turn-budget overruns, overload, a dropped stream —
     // get the same retry budget as a schema violation. Previously only Zod
     // failures were retried, so one bad round trip ended the whole action.
     try {
-      ({ result, costUsd } = await rawCall(call.kind, call.system, prompt, jsonSchema));
+      ({ result, costUsd } = await rawCall(call.kind, call.system, prompt, jsonSchema, metrics));
     } catch (err) {
+      callFinished();
+      const message = err instanceof Error ? err.message : String(err);
+      trace(/went silent/.test(message) ? 'timeout' : 'transport_error', message);
       if (err instanceof NotLoggedInError) throw err;
       lastError = err;
       stats.calls += 1;
-      recordFailure(call.kind, label, err instanceof Error ? err.message : String(err));
+      recordFailure(call.kind, label, message);
       if (attempt > maxRetries) break;
       stats.retries += 1;
       continue;
     }
+    callFinished();
 
     totalCost += costUsd;
     stats.calls += 1;
@@ -350,10 +464,12 @@ export async function callStructured<T>(call: StructuredCall<T>): Promise<Struct
     lastRaw = coerce(result);
     const parsed = call.schema.safeParse(lastRaw);
     if (parsed.success) {
+      trace('ok');
       record(call.kind, (Date.now() - startedAt) / 1000, totalCost, stats.retries - retriesBefore);
       return { value: parsed.data, attempts: attempt, costUsd: totalCost };
     }
 
+    trace(attempt > maxRetries ? 'schema_failed' : 'schema_retry', formatIssues(parsed.error));
     if (attempt > maxRetries) {
       throw new ModelCallError(
         `${label}: output failed validation after ${attempt} attempts.\n${formatIssues(parsed.error)}`,

@@ -33,6 +33,7 @@ strictly more setup to solve a problem Node already solves.
 | `pnpm resume <file>` | verify an exported `.tar.gz`, install it, and serve it |
 | `pnpm balance [turns]` | 5 doctrine bots vs the real reducer, no model calls |
 | `pnpm perf [turns]` | where a long campaign's time goes — turn loop, save, payload size |
+| `pnpm trace <campaign> [other]` | where a played campaign's MODEL time went — per call kind and phase, from `saves/<name>.trace.jsonl`; two names compare runs; `--perfetto` draws a waterfall |
 | `pnpm fleetlab [atk] [def]` | which fleet composition wins, at equal credits |
 | `pnpm doctor` | full setup check — runtime, deps, binary, auth, port |
 | `pnpm typecheck` / `typecheck:web` / `typecheck:tests` | the three tsconfigs — **Vite does not typecheck** |
@@ -5440,7 +5441,8 @@ prompted the work. Three things, in order of size:
    to choose the stat and difficulty itself — work that moved to arbitration —
    while the user message told it the outcome was already settled. Conflicting
    instructions, paid for on every internal round trip. Rewritten at 8.3k
-   chars from 19.3k.
+   chars from 19.3k — and it has since grown back to **39.8k**, which is why
+   the trace now records prompt size on every call.
 3. **`ResolutionOutputSchema` still had a dead `check` field**, so the model
    spent tokens filling something nothing read.
 
@@ -5450,6 +5452,84 @@ serialized state document (~1.8k tokens), and the model tier.
 **The remaining floor** is the agentic loop: under `outputFormat: json_schema`
 the SDK returns through an end-turn tool, so every call costs two turns and
 re-sends its context. A trivial call still takes ~7s for that reason.
+
+### Where a turn's time goes, as data
+
+`src/model/telemetry.ts`. The account above was assembled by hand, from `curl`
+timings outside the process and a cumulative table printed under
+`PAXGALACTICA_TIMING=1` — and the one open decision on latency, whether
+`PAXGALACTICA_RAW_JSON=1` becomes the default (~98s a turn against ~37s), could
+not be taken on that, because it turns on **retries and rejections per call
+kind** and nothing kept those per call. The SDK had been reporting most of the
+answer on every result message all along; the client read `total_cost_usd` and
+dropped the rest.
+
+Every model-call **attempt** and every **phase** of play now writes one line to
+`saves/<campaign>.trace.jsonl`, and `pnpm trace` reads it:
+
+```bash
+pnpm trace mycampaign              # per call kind and per phase: p50, p95, retries, cache
+pnpm trace json_run raw_run        # two runs side by side — the raw-JSON decision
+pnpm trace mycampaign --perfetto   # a waterfall for ui.perfetto.dev
+```
+
+| record | carries |
+|---|---|
+| **call**, one per attempt | turn, phase, action, kind, attempt of max, outcome (`ok` · `schema_retry` · `schema_failed` · `transport_error` · `timeout`) and why, wall and API time, time to first token, agentic turns, tokens in/out/cache-read/cache-write, cost, prompt size in characters, calls in flight, and whether raw JSON was on |
+| **phase**, one per span | `declare`, `advisor`, `talk`, `end_talk`, `epilogue`, and `end_turn` with its steps `commit`, `reactions`, `bots`, `tick`, `save` |
+
+Five decisions shaped it:
+
+- **A retry is its own line.** From outside the process a retry looks exactly
+  like one slow call, and the two want opposite fixes.
+- **Not game state.** Nothing reaches `WorldState`, the journal, the save or an
+  archive — timings are a fact about one machine, and anything in state is
+  something replay must reproduce. A test pins that the save carries no trace
+  and the campaign still replays.
+- **Always on**, because an opt-in flag is exactly why the data did not exist.
+  A dozen numbers a record and no prompt text. The default sink records
+  nothing, so the suite writes no files; the server installs a file sink when a
+  campaign starts or resumes, at `CampaignStore.tracePath` — on the store, so
+  wherever saves move the traces follow.
+- **Context rides `AsyncLocalStorage`**, not parameters, so a call deep in
+  `resolveAction` knows its turn and action without either being threaded
+  through, and three parallel reactions stay attributed to the end of turn
+  that fired them. `src/domain` is untouched.
+- **Shaped for A.1's provider seam, not for the SDK.** Wall time and tokens are
+  universal; the SDK-only timings are optional, so an HTTP provider fills the
+  same record.
+
+**Checked live** with one Haiku call per transport, about $0.002 in all:
+
+| | structured output | raw JSON |
+|---|---|---|
+| wall / API | 2.76s / 1.11s | 2.66s / 0.76s |
+| agentic turns | **2** | **1** |
+| input tokens | 905 | 360 |
+
+The extra round trip structured output pays is now measured per call rather
+than inferred. **The transport floor is `wall − API`, 1.6–1.9s a call** — below
+the ~2.5s A.1 estimated. `time_to_request_from_spawn_ms` is declared by the SDK
+and **not sent** by 0.3.225, so `spawnMs` is recorded when a version sends it
+and absent until then; and `ttft_ms` is clocked from a different start than
+`duration_api_ms` (1220 against 1112 on the first call), so it is not a slice
+of API time.
+
+> Building it found two things wrong with what existed. The console table's
+> **"med s" column was a mean** — `seconds / calls` — and the test beside it
+> pinned the mean, so the mislabel was asserted rather than caught; one 117s
+> outlier is exactly what a mean hides. And the first draft stamped the `save`
+> step with the turn *after* the tick, splitting one end of turn across two;
+> every step is now stamped with the turn being ended.
+
+**What it deliberately does not cover.** The engine: bots cost 10–18ms a turn
+and the tick 2–7ms, flat over 90 turns, which is `pnpm perf`'s territory and
+the p.8 result again. The client: pushes are flat at 77KB since p.1. And an
+offline prompt-size probe, which needs every prompt built without its call —
+A.1's provider seam gives that for free as a capturing provider, so building it
+now would be a second seam. Until then `systemChars`/`userChars` measure prompt
+growth in real play, which matters most for diplomacy: `priorTranscripts`
+replays **every** past conversation with a power into every reply, uncapped.
 
 ## Layout
 
@@ -5461,7 +5541,8 @@ src/
               ← pure. No I/O, no network, no imports from engine/model/ui.
   api/        contract.ts — Zod schemas shared by server and browser
   engine/     campaign, store, journal, turn, briefing, epilogue
-  model/      client, router, prompts, serialize, calls, auth, binary
+  model/      client, router, prompts, serialize, calls, auth, binary,
+              telemetry, trace-report
               ← server-only. Spawns the binary, holds the token.
   server/     index (node:http), router, session, events, static, errors
   seed/       the 25-system Rim scenario
