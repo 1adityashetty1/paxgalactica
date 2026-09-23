@@ -96,10 +96,13 @@ export const JournalSchema = z.object({
    *     what those powers actually believed.
    * 5 — written before `industry` capped what a faction's yards could lay down
    *     in one batch, so its fleets grew at whatever rate credits allowed.
-   * 6 — written before handing over, selling on or questioning a captured
-   *     PERSON moved anybody's opinion, and before one narrated act could move
-   *     an opinion at most `MAX_NARRATIVE_DISPOSITION`, so its dispositions are
-   *     what those powers actually believed.
+   * 6 — written before the rules ported from the unmerged `no-star-wars`
+   *     branch: standing moved by what a power does with a captured person,
+   *     narrated disposition bounded and needing the actor, officers dealt and
+   *     drawn from four schools, freighters and listeners in the opening fleets,
+   *     engine notes private to their power, officers named by name, reach to
+   *     interrupt a rival, four battle rules, self-credits needing a payer, and
+   *     spoils needing presence. Each is its own `LegacyRules` flag.
    * 7 — current.
    */
   version: JournalVersionSchema,
