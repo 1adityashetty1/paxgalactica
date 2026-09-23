@@ -27,7 +27,8 @@
     "balance": "tsc && node scripts/balance-report.mjs",
     "doctor": "node scripts/doctor.mjs",
     "fleetlab": "tsc && node --max-old-space-size=4096 scripts/fleetlab.mjs",
-    "perf": "tsc && node scripts/perf-probe.mjs"
+    "perf": "tsc && node scripts/perf-probe.mjs",
+    "trace": "tsc && node scripts/trace.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.225",

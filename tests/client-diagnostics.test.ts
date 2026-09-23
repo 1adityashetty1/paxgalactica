@@ -22,16 +22,21 @@ describe('call timings are visible from inside the process', () => {
   });
 
   it('reports each kind with its own wall clock and retries', () => {
-    stats.byKind['resolution'] = { calls: 2, seconds: 48, costUsd: 0.11, retries: 0 };
-    stats.byKind['appraisal'] = { calls: 6, seconds: 88, costUsd: 0.12, retries: 2 };
+    stats.byKind['resolution'] = { calls: 2, seconds: 48, costUsd: 0.11, retries: 0, durations: [24, 24] };
+    stats.byKind['appraisal'] = {
+      calls: 6, seconds: 88, costUsd: 0.12, retries: 2, durations: [8, 10, 12, 14, 16, 28],
+    };
     const out = timingReport();
     // Slowest first: the line you would act on should not be the last one read.
     expect(out.indexOf('appraisal')).toBeLessThan(out.indexOf('resolution'));
-    expect(out).toMatch(/appraisal\s+6\s+88\.0\s+14\.7\s+2/);
+    // A MEDIAN of 13.0. The column was labelled "med s" and printed the mean,
+    // 14.7 — which this test used to pin, so the mislabel was asserted rather
+    // than caught. One slow outlier (28s) is exactly what a mean hides.
+    expect(out).toMatch(/appraisal\s+6\s+88\.0\s+13\.0\s+2/);
   });
 
   it('shows why a call was retried, not merely that it was', () => {
-    stats.byKind['appraisal'] = { calls: 1, seconds: 12, costUsd: 0.01, retries: 1 };
+    stats.byKind['appraisal'] = { calls: 1, seconds: 12, costUsd: 0.01, retries: 1, durations: [12] };
     stats.failures.push({
       kind: 'appraisal',
       label: 'the arbiter considers it',

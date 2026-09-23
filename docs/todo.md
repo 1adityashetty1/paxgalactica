@@ -2717,6 +2717,16 @@ every *defender's* record and a rate cannot be averaged back together.
 This was worth doing before anything in **p.8**: 6.3x for ~90 lines, against a
 2.4% ceiling for a WASM port of the arithmetic.
 
+## p.9 — BUILT — model time was printed, not recorded
+
+The perf items above are all about the engine, the payload and the client, and
+**none of them is where a turn's time goes** — p.8's own table puts a model call
+at 20–60 seconds against a 4ms tick. That side had one instrument: a
+cumulative table printed under `PAXGALACTICA_TIMING=1`, lost on restart, whose
+"med s" column was a mean. Now every attempt and every phase of play is a line
+in `saves/<campaign>.trace.jsonl`, and `pnpm trace` reads it — see CLAUDE.md,
+*"Where a turn's time goes, as data"*, and `docs/architecture.md` A.11.
+
 ## p.7 — BUILT — `routeEarnings` was recomputed five times a tick from identical input
 
 `ledgerFor` calls `routeEarnings(state)`, and `tickTurn` calls `ledgerFor` once
