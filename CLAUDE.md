@@ -3893,6 +3893,33 @@ at all. Home pays for the person; everybody else pays for the leverage.
 damaged some hulls while the officer went on commanding battles. The inert
 success this codebase closes everywhere else.
 
+**The model names the person; code does the lookup.** `Commander.name` stores
+the title baked in — *"Iron Marshal Marcia Galba"* — and a player writes *"Marcia
+Galba"*, *"M. Galba"* or *"Marshal Galba"*. `targetCommanderId` was passed
+through as an id, so every one of those matched no record: the attempt was
+admissible, priced, rolled, and then the officer went on commanding battles.
+Worse, the arbiter had never been shown that such a person exists —
+`commanderLine` renders only the **viewer's own** officers, so no rival's name
+reached any prompt in the game, and `targetCommanderId` appeared in no prompt
+file at all. A name a model has not been given is a name it has to invent.
+
+Both halves are closed. `serializeFactions` now carries each other power's
+roster — name, school and where they are standing, which is the half that
+decides whether the knife finds them — and that is no fog leak, since an
+officer's name and school are already on the Command tab for every power because
+they are a fact about a fleet rather than about a plan. And `resolveCommander`
+does the matching in **code**, the same division of labour as
+`classifyPrinciple`: the model is good at judgement and unreliable at lookup, so
+it names the person and the reducer resolves it. Every content token of the
+query must be answered — partial credit is what would let *"Galba"* land on
+whoever merely shares a title with the one Galba — an initial answers a given
+name, and **a tie resolves to nobody**, because two officers a query fits
+equally is a query that has identified neither. Unresolvable is dropped with a
+note rather than rejected, the same shape as a fleet naming an officer it cannot
+carry: the operative still goes out, aimed at the power rather than at a person.
+`Appraisal.covert[].target` carries the name through the fallback routing too,
+which otherwise built a `deploy_agent` aimed at nobody.
+
 `Agent.targetCommanderId` names them, and two things bound it. They must be
 **standing at the operative's system** when the attempt resolves, so an officer
 who has sailed is one the knife does not find — the location model is the

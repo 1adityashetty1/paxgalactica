@@ -202,6 +202,13 @@ other was promised in prose and never came. Each entry:
   `subversion` (erode a stat), `sabotage` (destroy hulls), `defection` (turn
   crews), `assassination` (one attempt, heavy, usually caught).
 - `systemId` — where that operative works.
+- `target` — **the person, when the operation is aimed at one.** Write the name
+  the player used: `Marcia Galba`, `M. Galba`, `Marshal Galba` and
+  `Iron Marshal Marcia Galba` are all fine, and all resolve to the same officer.
+  Do **not** invent an id and do not guess at one; the engine matches the name
+  against the officers actually in post, and every power's roster is listed in
+  the state block above. Omit it when the operation is aimed at a power rather
+  than at a person — a theft from a treasury has no target.
 
 Four at most. Each is charged, capped and exposed on its own.
 

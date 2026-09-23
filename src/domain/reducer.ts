@@ -91,6 +91,7 @@ import {
   successorArchetype,
   veterancyLabel,
   type Commander,
+  resolveCommander,
 } from './command.js';
 import { jumpsBetween, neighboursOf, positionAlongPath, shortestPath } from './graph.js';
 import {
@@ -3718,6 +3719,32 @@ export function applyOps(
         const who = unusedName(taken, (n) =>
           agentName(ownerId, state.turn, `agent:${op.systemId}:${state.agents.length}:${n}`),
         );
+        // **The model names the person; code does the lookup.** `Commander.name`
+        // carries the title — "Iron Marshal Marcia Galba" — and a player writes
+        // "Marcia Galba", "M. Galba" or "Marshal Galba". Passing the raw string
+        // through as an id meant every one of those named nobody: the attempt
+        // was admissible, priced, rolled, and then the officer went on
+        // commanding battles. Same division of labour as `classifyPrinciple`.
+        //
+        // Scoped to officers who are **not the actor's own**, because the knife
+        // is pointed outward and a query that could only mean one of your own
+        // people is a query that has misfired. Unresolvable is **dropped with a
+        // note** rather than rejected, the same shape as a fleet naming an
+        // officer it cannot carry: the operative still goes out, they simply go
+        // out against the power rather than against a name.
+        let knife: string | null = null;
+        if (op.mission === 'assassination' && op.targetCommanderId !== null) {
+          const mark = resolveCommander(
+            state.commanders,
+            op.targetCommanderId,
+            (c) => c.status === 'active' && c.factionId !== ownerId,
+          );
+          if (mark) knife = mark.id;
+          else
+            notes.push(
+              `No officer answering to "${op.targetCommanderId}" could be identified, so the operation is aimed at ${target ? target.name : host.name} rather than at a person.`,
+            );
+        }
         state.agents.push({
           id: mintId(state, 'agt'),
           name: who,
@@ -3751,7 +3778,7 @@ export function applyOps(
           // Only an assassination can be aimed at a person; every other mission
           // works against a power. Silently dropped rather than rejected, the
           // same shape as a fleet naming an officer it cannot carry.
-          targetCommanderId: op.mission === 'assassination' ? op.targetCommanderId : null,
+          targetCommanderId: op.mission === 'assassination' ? knife : null,
         });
         logEvent(
           state,

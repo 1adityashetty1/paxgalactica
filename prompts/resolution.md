@@ -383,6 +383,15 @@ rejected field in the game — the sentence on a hostile mission is about the
 victim, "sabotage the Vigil garrison", so it came back owned by the Vigil, and
 an agent owned by the faction it targets can never act. Omit it.
 
+**An assassination may be aimed at a named officer.** Set `targetCommanderId`
+to the name the player used — `Marcia Galba`, `M. Galba`, `Marshal Galba` — and
+the engine resolves it against the officers actually in post; every power's
+roster, school and station is in the state block. Write the **name**, never an
+id, and never one you have invented. Without it the operation is aimed at the
+power and the officer goes on commanding battles, which is the one outcome an
+assassination must not quietly produce. The knife only finds an officer standing
+where your operative is, so an officer under way is one it misses.
+
 The `mission` decides risk and persistence: `surveillance` (very low risk),
 `theft`, `subversion`, `defection`, `sabotage` (moderate), `discord` (riskier),
 and `assassination` — **one attempt, quadruple effect, the operative spent

@@ -119,11 +119,44 @@ export function serializeFactions(
           : `charges ${f.tollTargets.map((id) => getFaction(state, id)?.name ?? id).join(', ')} for passage`
       }`,
       isViewer || detail === 'full' ? `  doctrine: ${f.doctrine}` : '',
+      // **Their officers, by the name a player would use.** For its whole
+      // existence this block named nobody but the viewer's own, so an arbiter
+      // asked to rule on "assassinate their Iron Marshal" had never been shown
+      // that such a person exists — and `targetCommanderId` reached the reducer
+      // matching no record, which made the attempt admissible, priced, rolled
+      // and then harmless. A name the model has not been given is a name it has
+      // to invent.
+      //
+      // Not a fog leak: an officer's name and school are already on the Command
+      // tab for every power, because it is a fact about a fleet rather than
+      // about a plan. Where they are standing is the half that matters, since
+      // the knife only finds an officer who has not sailed.
+      isViewer ? '' : officerRoll(state, f.id),
     ]
       .filter(Boolean)
       .join('\n');
   });
   return lines.join('\n');
+}
+
+/**
+ * One power's officers as a rival reads them: who they are, what school, and
+ * where they are standing.
+ *
+ * Rendered with the name exactly as `Commander.name` stores it — title and all
+ * — because that is the string `resolveCommander` matches against, and a model
+ * shown one form and asked to produce another is being asked to do a lookup.
+ */
+function officerRoll(state: WorldState, factionId: string): string {
+  const roster = activeCommanders(state.commanders, factionId);
+  if (roster.length === 0) return '  officers: none in post';
+  const each = roster.map((c) => {
+    const where = c.atSystemId
+      ? `at ${getSystem(state, c.atSystemId)?.name ?? c.atSystemId}`
+      : 'under way';
+    return `${c.name} (${c.archetype}, ${veterancyLabel(c.battles)}, ${where})`;
+  });
+  return `  officers: ${each.join('; ')}`;
 }
 
 /**

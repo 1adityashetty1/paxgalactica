@@ -916,3 +916,120 @@ export function commanderFor(
 export function commanderLost(roll: number): boolean {
   return roll <= COMMANDER_LOSS_ROLL;
 }
+/* ------------------------------------------------------------------ */
+/* Naming a person the model did not invent                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Words that carry no identity, so a query keeps its meaning without them.
+ *
+ * Deliberately tiny, and deliberately free of anything that appears in a title:
+ * `marshal`, `elder`, `warden`, `master`, `hand` and the rest are exactly the
+ * tokens a player uses to name somebody they only know by rank, and dropping one
+ * of those would throw away the discriminating half of *"Marshal Galba"*.
+ *
+ * The possessives here are the they/them set and no other, which is the
+ * convention rather than an oversight: officers are they/them everywhere in this
+ * game because their names are generated, so *"their Iron Marshal"* is the form
+ * a player writes. A gendered determiner in front of an officer's name falls
+ * through as an unmatched token and the query reports that it identified
+ * nobody — which is the honest outcome, and a great deal better than a list that
+ * quietly contradicts the rule `naming.test.ts` pins.
+ */
+const NAME_FILLER = new Set([
+  'the', 'their', 'theirs', 'them', 'they', 'our', 'ours', 'your', 'yours',
+  'its', 'of', 'and', 'a', 'an', 'to', 'at', 'on',
+  'that', 'this', 'enemy', 'rival', 'opposing',
+]);
+
+/** Lowercase, drop punctuation, split, and discard filler. */
+function nameTokens(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 0 && !NAME_FILLER.has(w));
+}
+
+/**
+ * Does one token of a written name answer to one token of a query?
+ *
+ * Exact, or an **initial**: `m` answers `marcia`, which is the whole of what
+ * makes *"M. Galba"* work. Deliberately one direction only — a one-letter token
+ * in the officer's own name would be a generator bug, not an abbreviation.
+ */
+function tokenAnswers(nameToken: string, queryToken: string): boolean {
+  if (nameToken === queryToken) return true;
+  return queryToken.length === 1 && nameToken.startsWith(queryToken);
+}
+
+/**
+ * The officer a free-text name refers to, or `null`.
+ *
+ * ## Why this is code and not a prompt rule
+ *
+ * `Commander.name` stores the title baked in — *"Iron Marshal Marcia Galba"*,
+ * *"Miral Nar Halq, Hand of the Family"* — because a title names the school and
+ * the school is the officer's whole mechanical identity. A player does not write
+ * it that way. They write *"Marcia Galba"*, *"M. Galba"*, *"Marshal Galba"*, and
+ * before this every one of those reached a `targetCommanderId` that matched no
+ * record: the assassination was admissible, priced, rolled, and then killed
+ * nobody while the officer went on commanding battles. The inert success this
+ * codebase closes everywhere else.
+ *
+ * The division of labour is the one `classifyPrinciple` already sets, for the
+ * same stated reason — **the model is good at judgement and unreliable at
+ * lookup**. Asking a prompt to remember an id is asking it to do the lookup;
+ * asking it to name the person it means is asking for the judgement. So the
+ * model writes down a name and this resolves it, which is also why an id is
+ * accepted: a caller that already has one should not be forced to round-trip
+ * through prose.
+ *
+ * ## The rule
+ *
+ * **Every content token of the query must be answered**, so a name that is
+ * merely adjacent does not match. Among the candidates that clear that bar the
+ * most specific wins — the one that answered the most tokens — and a **tie is
+ * `null`**, because two officers a query fits equally is a query that has not
+ * identified anybody and guessing between them is worse than saying so.
+ */
+export function resolveCommander(
+  commanders: Commander[] | undefined,
+  query: string,
+  /** Narrow the field before matching: rivals only, active only, and so on. */
+  eligible: (c: Commander) => boolean = () => true,
+): Commander | null {
+  const all = (commanders ?? []).filter(eligible);
+  if (all.length === 0) return null;
+
+  // An id is not a name and must never go through the token matcher: ids are
+  // `cmd-3-0`, so tokenising one produces `cmd`, `3`, `0` and a single-letter
+  // rule that was built for initials starts answering digits.
+  const byId = all.find((c) => c.id === query.trim());
+  if (byId) return byId;
+
+  const wanted = nameTokens(query);
+  if (wanted.length === 0) return null;
+
+  let best: Commander | null = null;
+  let bestScore = 0;
+  let tied = false;
+  for (const c of all) {
+    const have = nameTokens(c.name);
+    let score = 0;
+    for (const w of wanted) {
+      if (have.some((h) => tokenAnswers(h, w))) score++;
+    }
+    // Partial credit is not credit. "Galba" must not resolve to an officer who
+    // merely shares a title with the one Galba.
+    if (score < wanted.length) continue;
+    if (score > bestScore) {
+      best = c;
+      bestScore = score;
+      tied = false;
+    } else if (score === bestScore) {
+      tied = true;
+    }
+  }
+  return tied ? null : best;
+}
