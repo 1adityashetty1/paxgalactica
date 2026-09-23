@@ -3672,6 +3672,56 @@ of the help:
 | `lineofbattle` | small, unconditional | `COMMANDER_MIGHT` on the might modifier, which every fight reads |
 | `gunnery` | large, conditional on a **class** | multiplies the opening salvo by `COMMANDER_STRIKE_BONUS`, so they are worth a great deal to a power that builds torpedo boats and nothing to one that brought none |
 | `convoy` | large, conditional on **losing** | `COMMANDER_WITHDRAW_RELIEF` points off the retreat loss — worth nothing until the day you have to run |
+| `assault` | large, conditional on **taking ground** | `COMMANDER_ASSAULT` multiplies the troops the lift arm lands, so it decides conquests and does nothing in a battle with no landing in it |
+
+### There is a fourth school because the third could not fire
+
+`gunnery` is conditional on a class that **one power in five builds**. The bots
+buy torpedo boats for Drajk and nobody else — a screen is a defensive purchase,
+and preying on fleets it could never beat in orbit is the whole of the
+Confederacy's doctrine — so for the other four powers a third of every roster
+had a battle effect that was structurally incapable of doing anything. The draw
+was uniform over the schools and read `buildBias` nowhere.
+
+The fix has two halves and needs both:
+
+- **A school for the landing**, which every power reaches for. A fourth school
+  is what lets the draw take `gunnery` away from powers that would never use it
+  without leaving a hole where it was.
+- **A weighted draw**. `RARE_SCHOOL_WEIGHT` is 1 against `COMMON_SCHOOL_WEIGHT`
+  8, so the mismatched school is **4%, not 0%** — a Meridian leader who decides
+  to build boats should be able to find an ordnance officer eventually, and a
+  branch no power can ever reach is the same dead code the table exists to
+  remove. Mirrored rather than special-cased: `assault` is the rare one for
+  Drajk, whose sheet says *"never hold ground worth besieging"*. The weights
+  total 25, which divides the draw's 400 values exactly, so unlike the name
+  stocks this carries no residual bias at all.
+
+**Attacker's only**, and that is the honest version rather than a gap. A
+defender has no lift phase, and the one thing an officer could do for them on
+the ground is make the garrison fight above its size — which is
+`DEFENSIVE_GARRISON_BONUS`, Arkane's entire doctrine and not a commander's to
+duplicate. The same constraint that shaped the original three.
+
+**The seeded school is dealt, not drawn.** `SEED_SCHOOL` in the scenario
+authors one per power, because `successorArchetype` means a power fights its
+whole campaign in the school it opens with — so a seeded draw is one sample and
+a bad one does not correct itself. Drawn off a single `'seed'` salt it dealt
+**four `convoy` officers out of five**: a legal sample from a correct
+distribution, and four powers indistinguishable on the one axis this mechanic
+exists to differentiate. Each power now opens with the school whose passive is
+not wasted on it — Meridian the line (`+resolve` patches the seed's stated
+vulnerability of 9), the Vigil and Arkane the landing (`convoy` is *dead* for a
+`crusading` power that never breaks off), the Combine the convoy (upkeep relief
+is money, which is what that power is), and Drajk gunnery alone.
+
+**And the journals played before it replay as they were played.** Four schools,
+the weighted draw and the dealt seed all change who a power appoints — name
+included, since a title is the school — so `LegacyRules.fourSchools`, pinned to
+`JOURNAL_VERSION` 7, rebuilds an older campaign's seed and draws from the
+original three schools with the original arithmetic. Ported from the unmerged
+`no-star-wars` branch, which versioned nothing; without the pin every one of the
+48 saves would have come back with different officers.
 
 Each is a **ladder indexed by veterancy** rather than a single figure — see "A
 death has to cost something" below for the values and for why.
@@ -4057,11 +4107,18 @@ Two changes, and they are halves of one idea:
   costs is the `battles` behind them — a thing that takes turns of winning to
   build and **cannot be bought back at any price**.
 
-| step | at | `lineofbattle` | `gunnery` | `convoy` |
-|---|---|---|---|---|
-| untested | 0–1 | +1 might | +40% salvo | −8% withdrawal |
-| seasoned | 2–4 | +2 | +60% | −12% |
-| veteran | 5+ | +3 | +80% | −16% |
+| step | at | `lineofbattle` | `gunnery` | `convoy` | `assault` |
+|---|---|---|---|---|---|
+| untested | 0–1 | +1 might | +40% salvo | −8% withdrawal | +15% ashore |
+| seasoned | 2–4 | +2 | +60% | −12% | +25% |
+| veteran | 5+ | +3 | +80% | −16% | +35% |
+
+`COMMANDER_ASSAULT` is sized against the might modifier it sits beside rather
+than picked: the landing is already `troops * (1 + attackMod / 20)`, so a
+veteran `lineofbattle` officer's +3 might is +15% on the same quantity. A
+veteran here is more than twice that, which is the "large and conditional"
+shape, and the price is that it does nothing whatever in a battle with no
+landing in it.
 
 **Three ladders rather than one multiplier**, and that is not a style
 preference: might is integer-valued with a base of 1, so a shared ×1.5/×2 scale
@@ -4126,13 +4183,19 @@ needs: a successor holds the same school and therefore the same title, so the
 continuity of the institution is legible in the name while the person is plainly
 somebody new.
 
-| | `lineofbattle` | `gunnery` | `convoy` | leader |
-|---|---|---|---|---|
-| Meridian | Operations Executive | Senior Director | Comptroller | Chief Executive |
-| Iron Vigil | Iron Marshal | Commodore | Rear Admiral | Grand Admiral |
-| Ojjul Nar | Underboss | Second Elder | Hand of the Family | First Elder |
-| Arkane | Fleetwarden | Gunwarden | Lanewarden | Highwarden |
-| Drajk | Korvan Lord | Packmaster | Quartermaster | Huntmaster |
+| | `lineofbattle` | `gunnery` | `convoy` | `assault` | leader |
+|---|---|---|---|---|---|
+| Meridian | Operations Executive | Senior Director | Comptroller | Acquisitions Director | Chief Executive |
+| Iron Vigil | Iron Marshal | Commodore | Rear Admiral | Brigadier | Grand Admiral |
+| Ojjul Nar | Underboss | Second Elder | Hand of the Family | Enforcer | First Elder |
+| Arkane | Fleetwarden | Gunwarden | Lanewarden | Fieldwarden | Highwarden |
+| Drajk | Korvan Lord | Packmaster | Quartermaster | Swordmaster | Huntmaster |
+
+The landing titles hold each power's own convention: the company *acquires* a
+world, the Vigil's army rank sits beside its flag ranks, the Combine's is the
+one office in its column that is a job rather than a thing you are owed, Arkane
+adds the warden whose charge is ground rather than lanes, and Drajk keeps the
+`-master` suffix on the corsair who actually crosses onto the deck.
 
 They ladder off `Faction.title`, which is what makes an officer placeable
 without the name: the Combine's Second Elder is **family** rather than staff,
@@ -4169,6 +4232,7 @@ it.
 | `lineofbattle` | always | **+resolve** — their crews do not come apart, so `subornLimit` against the power falls | +3 |
 | `gunnery` | only with boats | **+industry** — they run the establishment that makes the guns | +3 |
 | `convoy` | only when losing | **−% fleet upkeep**, the largest standing charge any power carries | −14% |
+| `assault` | only when landing | **+influence** — an army in being is leverage at a table, which is the claim `COERCION_RESENTMENT` already makes from the other side | +3 |
 
 **Neither stat passive is might**, which is the one constraint that shapes the
 set: `bestMod` reads `effectiveStats().might`, so a might passive would pay an
@@ -4191,6 +4255,21 @@ stated vulnerability and this is what patches it. The board is unchanged at
 > veterancy thresholds and caught the same way — by checking that the mechanic
 > fired rather than that the board was unchanged. A passive conditional on
 > conquest is not a passive.
+>
+> **`assault`'s was extra garrison regrowth first, and it failed the same
+> measurement.** `+1..3` on `GARRISON_REGROWTH` for every world the power holds
+> is a landing officer's obvious trade, and over thirty harness turns it moved
+> the board by **3 garrison for one power and zero for the other four** —
+> including Arkane, which opens with an officer of that very school. Structural
+> rather than unlucky: regrowth is clamped to `garrisonMax` and garrisons sit AT
+> their ceiling almost always, so a faster rate only does anything in the few
+> turns after a fight. The clamp that made a per-turn mutation safe is the same
+> clamp that made it inert. That is the third catch of this exact shape, and the
+> lesson is the same each time — a stat passive cannot fail that way, because
+> `effectiveStats` is read by every check in the game. Measured on the opening
+> board, all four now move a real number: Meridian resolve 9→10, the Vigil
+> influence 6→7, Arkane influence 10→11, Drajk industry 8→9, and the Combine's
+> upkeep down 6%.
 
 Four existing tests broke on the passives and all four were right to: they pinned
 `effectiveStats` and `ledgerFor` against a faction's **base** stats, and those

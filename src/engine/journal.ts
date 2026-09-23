@@ -143,7 +143,7 @@ export function replay(
     throw new Error('Journal must begin with a seed entry.');
   }
 
-  let state = createSeedState(seed.playerFactionId);
+  let state = createSeedState(seed.playerFactionId, { fourSchools: parsed.version >= 7 });
   let rejectionCount = 0;
   // The opening board, before anything is applied. Without it an observer's
   // first sample is the state AFTER the first batch, so anything that batch
@@ -182,6 +182,8 @@ export function replay(
     // A narrated swing had no ceiling but the clamp and no test of who was
     // asking, and six recorded campaigns moved under one or the other.
     narratedDisposition: parsed.version >= 7,
+    // Officers were drawn from three schools, uniformly, seed included.
+    fourSchools: parsed.version >= 7,
   };
 
   for (const entry of parsed.entries.slice(1)) {

@@ -25,6 +25,7 @@ import {
   activeCommanders,
   commanderFor,
   commanderIndustry,
+  commanderInfluence,
   commanderResolve,
   commanderUpkeepRelief,
 } from './command.js';
@@ -2198,6 +2199,7 @@ export function effectiveStats(state: WorldState, factionId: string): FactionSta
   if (officer) {
     base.industry = Math.min(20, base.industry + commanderIndustry(officer));
     base.resolve = Math.min(20, base.resolve + commanderResolve(officer));
+    base.influence = Math.min(20, base.influence + commanderInfluence(officer));
   }
 
   // **A fixture its holder is standing over makes them better at something.**

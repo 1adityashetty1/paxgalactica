@@ -4,6 +4,7 @@ import type { WorldType } from '../domain/state.js';
 import { commanderArchetype, commanderName } from '../domain/command.js';
 import { MAX_ASSET_STAT } from '../domain/diplomacy.js';
 import { ASSET_ARCHETYPES } from '../domain/assets.js';
+import type { CommanderArchetype } from '../domain/command.js';
 import {
   HULL_SPEC,
   normaliseStack,
@@ -370,6 +371,22 @@ const SEED_FACTIONS: SeedFaction[] = [
   },
 ];
 
+/** The school a power opens with: dealt from four, or — for an old journal — drawn from three. */
+function seedSchool(factionId: string, fourSchools: boolean): CommanderArchetype {
+  return fourSchools
+    ? (SEED_SCHOOL[factionId] ?? commanderArchetype(factionId, 0, 'seed'))
+    : commanderArchetype(factionId, 0, 'seed', false);
+}
+
+/** The school each power opens with. See `commanders` in `createSeedState`. */
+const SEED_SCHOOL: Record<string, CommanderArchetype> = {
+  meridian: 'lineofbattle',
+  vigil: 'assault',
+  ojjul: 'convoy',
+  freeworlds: 'assault',
+  drajk: 'gunnery',
+};
+
 /**
  * Starting opinions. Asymmetric on purpose: contempt is rarely mutual.
  *
@@ -686,7 +703,15 @@ function applyOpeningFloors(systems: StarSystem[]): void {
   }
 }
 
-export function createSeedState(playerFactionId: string): WorldState {
+export function createSeedState(
+  playerFactionId: string,
+  /**
+   * `fourSchools: false` rebuilds the board a version-6-or-earlier journal was
+   * played on: officers DRAWN from three schools rather than dealt from four.
+   * Only `replay` passes it.
+   */
+  { fourSchools = true }: { fourSchools?: boolean } = {},
+): WorldState {
   if (!SEED_FACTIONS.some((f) => f.id === playerFactionId)) {
     throw new Error(
       `Unknown faction "${playerFactionId}". Choose one of: ${SEED_FACTIONS.map((f) => f.id).join(', ')}.`,
@@ -968,19 +993,52 @@ export function createSeedState(playerFactionId: string): WorldState {
     // threshold, every balance figure — to demonstrate a mechanic the first
     // negotiated hire will demonstrate for free.
     /**
-     * One officer each, generated rather than written.
+     * One officer each: the **name** generated, the **school** dealt.
      *
      * Seeded so the mechanic is live from the first battle instead of waiting
-     * for somebody to die — the same argument the Combine's opening debts
-     * make. The names and the archetypes come out of `commanderName` and
-     * `commanderArchetype`, which are seeded hashes, so a replayed campaign
-     * appoints the same five people.
+     * for somebody to die — the same argument the Combine's opening debts make.
+     *
+     * The school is authored and the name is not, which is the split this whole
+     * module already runs on: generation is right where the only thing varied is
+     * identity, and wrong where the choice has to say something true about one
+     * power. It is the same call `worldtext.ts` makes, and here it is load-
+     * bearing twice over — `successorArchetype` means a power fights its entire
+     * campaign in the school it opens with, and a seeded draw is one sample, so
+     * a bad one is not bad luck that corrects itself.
+     *
+     * It was drawn off a single `'seed'` salt and dealt **four `convoy`
+     * officers out of five**, which is a legal sample from a correct
+     * distribution and a terrible opening board: four powers indistinguishable
+     * on the one axis this mechanic exists to differentiate, for thirty turns.
+     * The same argument that gives three identical ice worlds three different
+     * paragraphs.
+     *
+     * Each is the school whose passive is *not wasted* on that power, which is
+     * the whole lesson of the occupation-relief passive:
+     *
+     * - **Meridian** takes the line, because `+resolve` patches the seed's one
+     *   stated vulnerability — resolve 9, the number that makes them the easiest
+     *   power on the board to suborn.
+     * - **The Iron Vigil** takes the landing. `convoy` is *dead* for them by
+     *   construction, since `crusading` never breaks off and there is no
+     *   withdrawal to relieve, and the garrison passive is their buildBias
+     *   (`fortification`, `garrison_raising`) written as an officer.
+     * - **The Combine** takes the convoy: upkeep relief is money, which is what
+     *   that power is, and a withdrawal bonus suits the one faction whose red
+     *   line is that it should not be fighting its own wars at all.
+     * - **Arkane** takes the landing too. `+resolve` would be nearly inert at
+     *   19, and extra garrison on top of `DEFENSIVE_GARRISON_BONUS` is *"make
+     *   occupation cost more than it is worth"* said twice — which is why the
+     *   Fieldwarden is the one warden whose charge is ground rather than lanes.
+     * - **Drajk** takes gunnery, and is the only power that does. It is the only
+     *   one that builds torpedo boats, which is the whole reason the school is
+     *   rare everywhere else.
      */
     commanders: SEED_FACTIONS.map((f) => ({
       id: `cmd-${f.id}`,
       factionId: f.id,
-      name: commanderName(f.id, 0, 'seed', commanderArchetype(f.id, 0, 'seed')),
-      archetype: commanderArchetype(f.id, 0, 'seed'),
+      name: commanderName(f.id, 0, 'seed', seedSchool(f.id, fourSchools)),
+      archetype: seedSchool(f.id, fourSchools),
       appointedTurn: 0,
       battles: 0,
       status: 'active' as const,

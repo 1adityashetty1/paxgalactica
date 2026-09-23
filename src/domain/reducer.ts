@@ -92,6 +92,7 @@ import {
   veterancyLabel,
   type Commander,
   resolveCommander,
+  commanderAssault,
 } from './command.js';
 import { jumpsBetween, neighboursOf, positionAlongPath, shortestPath } from './graph.js';
 import {
@@ -1392,6 +1393,13 @@ export interface LegacyRules {
    * reproduce what happened.
    */
   narratedDisposition?: boolean;
+  /**
+   * Officers are drawn from four schools with `SCHOOL_WEIGHTS`, and the seed
+   * DEALS each power its opening school. A recorded campaign drew uniformly
+   * from three, and every officer it appointed — name included, since a title
+   * is the school — has to come out the same. Journal version 7.
+   */
+  fourSchools?: boolean;
 }
 
 export function applyOps(
@@ -1449,6 +1457,7 @@ export function applyOps(
     yardCapacity = true,
     peopleStanding = true,
     narratedDisposition = true,
+    fourSchools = true,
   } = legacy;
   const state = cloneState(input);
   const rejections: OpRejection[] = [];
@@ -2981,7 +2990,7 @@ export function applyOps(
         // hiring is where a power changes what it is good at, and inheritance is
         // where an institution carries on. If hiring inherited too, a power
         // would be locked to its opening archetype for the whole campaign.
-        const school = commanderArchetype(op.factionId, state.turn, salt);
+        const school = commanderArchetype(op.factionId, state.turn, salt, fourSchools);
         const hired: Commander = {
           id: `cmd-${op.factionId}-${state.turn}-${(state.commanders ?? []).length}`,
           factionId: op.factionId,
@@ -5506,7 +5515,7 @@ export interface TickResult extends ApplyResult {
  * originates.
  */
 export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResult {
-  const { arrangementStanding = true, hostages = true, peopleStanding = true } = legacy;
+  const { arrangementStanding = true, hostages = true, peopleStanding = true, fourSchools = true } = legacy;
   const state = cloneState(input);
   const notes: string[] = [];
 
@@ -5530,7 +5539,7 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
     // name and names the school — a successor of the same school wears the same
     // title, which is what makes the continuity of the institution legible
     // while the person is plainly somebody new.
-    const school = successorArchetype(state.commanders, faction.id, state.turn, salt);
+    const school = successorArchetype(state.commanders, faction.id, state.turn, salt, fourSchools);
     // The successor inherits the SPECIALITY and none of the record. Re-rolling
     // the archetype made a defeat a free lottery ticket — a power whose fleet
     // had no use for the officer it was dealt was better off losing them — so
@@ -7574,7 +7583,22 @@ function resolveBattle(
   const liftersIn = (): number =>
     [...attackShare.values()].reduce((n, st) => n + (st.lifter ?? 0), 0);
   const troops = [...attackShare.values()].reduce((n, st) => n + carryOf(st), 0);
-  const assault = troops * (1 + attackMod / 20) * (1 + (roll - 10.5) / 30);
+  // An `assault` officer multiplies what actually gets ashore. Attacker's only:
+  // a defender has no lift phase, and the one thing an officer could do for
+  // them on the ground is `DEFENSIVE_GARRISON_BONUS`, which is Arkane's whole
+  // doctrine and not a commander's to duplicate.
+  //
+  // Reported only when there were troops to multiply, following
+  // `doctrinesFired`'s convention that a thing which changed nothing does not
+  // appear — an assault officer aboard a fleet carrying no lift changed nothing,
+  // which is the bug the first `convoy` note shipped with.
+  let assaultBonus = 0;
+  if (attackOfficer?.archetype === 'assault' && troops > 0) {
+    assaultBonus = commanderAssault(attackOfficer);
+    officerNote(attackOfficer, `+${Math.round(assaultBonus * 100)}% troops ashore`);
+  }
+  const assault =
+    troops * (1 + assaultBonus) * (1 + attackMod / 20) * (1 + (roll - 10.5) / 30);
   const ground = (outcome: BattleOutcome, note: string): void => {
     rounds.push({
       turn: state.turn, phase: 'ground', outcome,
