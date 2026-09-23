@@ -17,6 +17,8 @@ import {
   hullsAt,
   setShipsAt,
   ledgerFor,
+  fixtureUpkeepForCount,
+  WORLD_TYPE_STAT,
   maxCommitmentIncomeFor,
   SHIP_COST,
   type OrderEffectInput,
@@ -30,6 +32,9 @@ import {
 } from '../src/domain/arbitration.js';
 import { HUB_THRESHOLD, tradeHubs, tradeRoutes } from '../src/domain/trade.js';
 import { CREDITS_PER_TON, HULL_SPEC } from '../src/domain/hulls.js';
+import { FIXTURE_COST, FIXTURE_UPKEEP } from '../src/domain/diplomacy.js';
+import { ASSET_ARCHETYPES } from '../src/domain/assets.js';
+import { BOTS, proposeFor } from '../src/domain/initiative.js';
 
 /**
  * Completed orders used to change nothing at all.
@@ -237,12 +242,12 @@ describe('hulls from a construction programme', () => {
     // programme still bills at `SHIP_COST` apiece.
     expect(
       priceOrderEffect(fresh(), sys(fresh(), 'ark-1'), 'freeworlds', {
-        kind: 'commission_ships', magnitude: 1, hull: 'battleship', summary: '',
+        kind: 'commission_ships', magnitude: 1, hull: 'battleship', fixtureKind: '', summary: '',
       }),
     ).toBe(SHIP_COST);
     expect(
       priceOrderEffect(fresh(), sys(fresh(), 'ark-1'), 'freeworlds', {
-        kind: 'commission_ships', magnitude: 1, hull: 'lifter', summary: '',
+        kind: 'commission_ships', magnitude: 1, hull: 'lifter', fixtureKind: '', summary: '',
       }),
     ).toBe(HULL_SPEC.lifter.tonnage * CREDITS_PER_TON);
   });
@@ -393,7 +398,7 @@ describe('the payload is bounded in code, not in a prompt', () => {
         state,
         site,
         'meridian',
-        { kind, magnitude: 99, hull: 'battleship', summary: '' },
+        { kind, magnitude: 99, hull: 'battleship', fixtureKind: 'factory', summary: '' },
         10_000_000,
       );
       expect(trimmed!.effect.magnitude).toBe(EFFECT_CAPS[kind]);
@@ -578,7 +583,7 @@ describe('standing arrangements pay', () => {
   });
 
   it('derives the ceiling from influence, putting the trading house above the remnant', () => {
-    // The ceiling is derived from the sheet, so the seeded works are cleared:
+    // The ceiling is derived from the sheet, so the seeded fixtures are cleared:
     // Meridian's exchange at Brannix is a point of influence and would be
     // measured here as part of a rule that is about the base stat.
     const state = fresh();
@@ -868,24 +873,31 @@ describe('an operative is not placed by a failed attempt', () => {
   });
 });
 
-describe('a works is built on purpose, by the attribute it is made of', () => {
+describe('a fixture is built on purpose, by the attribute it is made of', () => {
   // A fixture is the one asset kind that is not a prize. Prisoners and salvage
   // are things an attempt comes away with, so they ride on whatever check the
   // attempt happened to be — but a factory is a thing a power sets out to
   // build, and nothing tied the building of one to being any good at building.
+  //
+  // A fixture arrives as a programme now, so a refusal strips the PAYLOAD and
+  // leaves the order: `kinds` reads the fixture still riding on each order, and
+  // reports a bare `issue_order` where the payload was dropped. The order is
+  // never removed — the rule the rest of `boundPayloadsToOutcome` follows.
   const found = (kind: string) => ({
-    op: 'create_asset',
-    kind,
-    heldBy: 'ojjul',
-    quantity: 1,
-    unit: 'works',
-    atSystemId: 'ilv-2',
-    portable: false,
-    valuePerUnit: {},
-    text: `A ${kind}.`,
+    op: 'issue_order',
+    factionId: 'ojjul',
+    type: 'construction_infrastructure',
+    originId: 'ilv-2',
+    targetId: 'ilv-2',
+    durationTurns: 3,
+    label: `a ${kind}`,
+    onComplete: { kind: 'found_fixture', magnitude: 1, fixtureKind: kind },
   });
   const kinds = (r: { ops: unknown[] }) =>
-    r.ops.map((o) => (o as { kind?: string }).kind ?? (o as { op?: string }).op);
+    r.ops.map((o) => {
+      const x = o as { op?: string; kind?: string; onComplete?: { fixtureKind?: string } };
+      return x.onComplete?.fixtureKind ?? x.kind ?? x.op;
+    });
 
   it('lets the right check found one', () => {
     const out = boundPayloadsToOutcome([found('factory')], 'success', 'industry');
@@ -893,35 +905,35 @@ describe('a works is built on purpose, by the attribute it is made of', () => {
     expect(out.notes).toEqual([]);
   });
 
-  it('refuses a works the check never tested', () => {
+  it('refuses a fixture the check never tested', () => {
     // The case that motivated it: a successful influence check to charm a
-    // governor could mint a foundry as a byproduct, because `create_asset` was
+    // governor could mint a foundry as a byproduct, because a fixture was
     // governed only by the band.
     const out = boundPayloadsToOutcome([found('factory')], 'success', 'influence');
-    expect(kinds(out)).toEqual([]);
+    expect(kinds(out)).toEqual(['issue_order']);
     expect(out.notes.join(' ')).toMatch(/takes industry/);
   });
 
-  it('reads the PRIMARY attribute of a split works', () => {
+  it('reads the PRIMARY attribute of a split fixtures', () => {
     // `modifies` is canonically ordered, so `modifies[0]` is stable: a
     // special_forces_command leads with might, not guile.
     expect(kinds(boundPayloadsToOutcome([found('special_forces_command')], 'success', 'might')))
       .toEqual(['special_forces_command']);
     expect(kinds(boundPayloadsToOutcome([found('special_forces_command')], 'success', 'guile')))
-      .toEqual([]);
+      .toEqual(['issue_order']);
   });
 
   it('refuses one when there was no check at all — a reaction founds nothing', () => {
     const out = boundPayloadsToOutcome([found('university')], 'success', undefined);
-    expect(kinds(out)).toEqual([]);
+    expect(kinds(out)).toEqual(['issue_order']);
     expect(out.notes.join(' ')).toMatch(/built, not come by/);
   });
 
   it('will not half-build one on a partial', () => {
-    // A works is quantity 1 and atomic, so halving it delivers a whole one —
+    // A fixture is quantity 1 and atomic, so halving it delivers a whole one —
     // the shape that shipped a 100% discount wearing a 50% label.
     const out = boundPayloadsToOutcome([found('factory')], 'partial', 'industry');
-    expect(kinds(out)).toEqual([]);
+    expect(kinds(out)).toEqual(['issue_order']);
     expect(out.notes.join(' ')).toMatch(/one thing or nothing/);
   });
 
@@ -940,5 +952,162 @@ describe('a works is built on purpose, by the attribute it is made of', () => {
     // rule governs what a MODEL may do.
     const seeded = createSeedState('ojjul');
     expect(seeded.assets.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * A fixture is infrastructure: bought, run, and bounded by the ground.
+ *
+ * It was free — the only permanent compounding thing in the game with no price
+ * — and slotless, so its whole limit was a clamp equal to one building's
+ * budget. Now it behaves like a fleet: you pay for it, you keep paying for it,
+ * and where you stop is set by what your income and your territory carry.
+ */
+describe('a fixture is raised by a programme, and the ground decides what', () => {
+  // Meridian holds Sekkar Gate (earthnight — guile), Corvid and Torrek
+  // Anchorage (industrial moons — industry) and Brannix (earthlike — influence,
+  // already carrying the seeded chamber of commerce).
+  const raise = (targetId: string, fixtureKind: string, factionId = 'meridian'): Op => ({
+    op: 'issue_order',
+    factionId,
+    type: 'construction_infrastructure',
+    originId: targetId,
+    targetId,
+    durationTurns: 3,
+    label: `a ${fixtureKind}`,
+    onComplete: { kind: 'found_fixture', magnitude: 1, fixtureKind },
+  });
+  const statFixtures = (s: WorldState, at: string) =>
+    s.assets.filter((a) => a.atSystemId === at && !a.portable && a.yield?.kind === 'stat');
+
+  it('charges at issue and stands the fixture up when the programme lands', () => {
+    const s = fresh();
+    const before = fac(s, 'meridian').credits;
+    const issued = applyOps(s, [raise('sek-2', 'factory')], 'model', 'meridian');
+    expect(issued.rejections).toEqual([]);
+    expect(fac(issued.state, 'meridian').credits).toBe(before - FIXTURE_COST);
+    // Nothing stands yet: it is a programme, with a window in which it can be
+    // interrupted or raided — which a fixture minted on the spot never had.
+    expect(statFixtures(issued.state, 'sek-2')).toHaveLength(0);
+
+    const done = runOut(issued.state);
+    const [plant] = statFixtures(done, 'sek-2');
+    expect(plant?.kind).toBe('factory');
+    expect(plant?.heldBy).toBe('meridian');
+    expect(plant?.yield).toEqual({ kind: 'stat', stats: [{ stat: 'industry', points: 2 }] });
+  });
+
+  it('refuses a fixture the ground does not make', () => {
+    // Corvid is an industrial moon. A hospital is resolve.
+    const out = applyOps(fresh(), [raise('sek-2', 'hospital')], 'model', 'meridian');
+    expect(out.rejections[0]?.code).toBe('illegal_value');
+    expect(out.rejections[0]?.message).toMatch(/makes industry/);
+  });
+
+  it('accepts a split fixture that names the ground among its two', () => {
+    // `power_plant` is industry+resolve: the world makes one of them, which is
+    // the rule — among, not first.
+    const out = applyOps(fresh(), [raise('sek-2', 'power_plant')], 'model', 'meridian');
+    expect(out.rejections).toEqual([]);
+  });
+
+  it('cannot paper over a weakness the map does not support', () => {
+    // Meridian's defining weakness is resolve 9, and it holds no ice or oceanic
+    // world. No fixture that raises resolve can be founded anywhere it stands —
+    // the only way up is to take the ground first.
+    const s = fresh();
+    const mine = s.systems.filter((x) => x.controllerFactionId === 'meridian');
+    const resolveKinds = ASSET_ARCHETYPES.filter((a) => a.modifies?.includes('resolve'));
+    for (const world of mine) {
+      for (const shape of resolveKinds) {
+        if (shape.modifies!.includes(WORLD_TYPE_STAT[world.worldType])) continue;
+        const out = applyOps(s, [raise(world.id, shape.kind)], 'model', 'meridian');
+        expect(out.rejections[0]?.code, `${shape.kind} at ${world.id}`).toBe('illegal_value');
+      }
+    }
+    // And nothing it CAN raise touches resolve except a split that pairs it
+    // with something the ground makes — which is one point, not a rebuild.
+    const reachable = resolveKinds.filter((shape) =>
+      mine.some((w) => shape.modifies!.includes(WORLD_TYPE_STAT[w.worldType])),
+    );
+    for (const shape of reachable) expect(shape.modifies).toHaveLength(2);
+  });
+
+  it('carries one per world, standing or under way', () => {
+    // Brannix already carries the seeded chamber of commerce.
+    const s = fresh();
+    expect(applyOps(s, [raise('sek-4', 'stock_exchange')], 'model', 'meridian').rejections[0]?.code)
+      .toBe('illegal_value');
+
+    // And two programmes cannot race for one slot and both be paid for.
+    const both = applyOps(s, [raise('sek-2', 'factory'), raise('sek-2', 'arsenal')], 'model', 'meridian');
+    expect(both.rejections).toHaveLength(1);
+    expect(both.rejections[0]?.message).toMatch(/already being raised/);
+  });
+
+  it('is raised on ground you hold, not merely orbit', () => {
+    // Presence is enough to fortify somebody else's world; an installation a
+    // power runs is not a thing it staffs on a rival's ground.
+    const s = fresh();
+    setShipsAt(sys(s, 'tor-2'), 'meridian', 4);
+    const out = applyOps(s, [raise('tor-2', 'military_base')], 'model', 'meridian');
+    expect(out.rejections[0]?.code).toBe('no_presence');
+  });
+
+  it('refuses a kind nobody knows how to raise', () => {
+    const out = applyOps(fresh(), [raise('sek-2', 'grand_orrery')], 'model', 'meridian');
+    expect(out.rejections[0]?.code).toBe('illegal_value');
+  });
+
+  it('serves whoever holds the world when it lands', () => {
+    // A ground improvement, like `fortify` and `develop_system`: a power that
+    // loses a world mid-build has built its conqueror a factory.
+    const issued = applyOps(fresh(), [raise('sek-2', 'factory')], 'model', 'meridian').state;
+    sys(issued, 'sek-2').controllerFactionId = 'vigil';
+    const done = runOut(issued);
+    expect(statFixtures(done, 'sek-2')[0]?.heldBy).toBe('vigil');
+  });
+
+  it('raises nothing on a slot filled while it was being built', () => {
+    const issued = applyOps(fresh(), [raise('sek-2', 'factory')], 'model', 'meridian').state;
+    issued.assets.push({
+      ...issued.assets.find((a) => a.kind === 'chamber_of_commerce')!,
+      id: 'ast-x-0',
+      atSystemId: 'sek-2',
+    });
+    const done = runOut(issued);
+    expect(statFixtures(done, 'sek-2').map((a) => a.id)).toEqual(['ast-x-0']);
+  });
+
+  it('costs more to run the more of them a power runs', () => {
+    // Flat was regressive, measured: the rich cleared any price and the poor
+    // stopped building. Triangular in the count, so where a power stops is set
+    // by what its income carries rather than by what its savings clear once.
+    expect([1, 2, 3, 4].map(fixtureUpkeepForCount)).toEqual([
+      FIXTURE_UPKEEP, FIXTURE_UPKEEP * 3, FIXTURE_UPKEEP * 6, FIXTURE_UPKEEP * 10,
+    ]);
+    const one = fresh();
+    expect(ledgerFor(one, 'meridian').fixtureUpkeep).toBe(fixtureUpkeepForCount(1));
+    const two = runOut(applyOps(one, [raise('sek-2', 'factory')], 'model', 'meridian').state);
+    expect(ledgerFor(two, 'meridian').fixtureUpkeep).toBe(fixtureUpkeepForCount(2));
+  });
+
+  it('is built by the bots too, since a fixture nobody builds is one nobody has measured', () => {
+    let s = createSeedState('freeworlds');
+    const seeded = s.assets.filter((a) => !a.portable && a.yield?.kind === 'stat').length;
+    for (let t = 0; t < 15; t++) {
+      for (const id of Object.keys(BOTS).sort()) {
+        const p = proposeFor(s, id);
+        if (p) s = applyOps(s, p.ops, 'model', id).state;
+      }
+      s = tickTurn(s).state;
+    }
+    const raisedBy = new Set(
+      s.assets
+        .filter((a) => !a.portable && a.yield?.kind === 'stat' && a.acquiredTurn > 0)
+        .map((a) => a.heldBy),
+    );
+    expect(s.assets.filter((a) => !a.portable && a.yield?.kind === 'stat').length).toBeGreaterThan(seeded);
+    expect(raisedBy.size).toBeGreaterThanOrEqual(3);
   });
 });

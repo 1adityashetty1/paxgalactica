@@ -842,10 +842,10 @@ export function createSeedState(playerFactionId: string): WorldState {
         agentId: null,
       },
       /**
-       * And five works, one apiece — the half of the catalogue the four above
+       * And five fixtures, one apiece — the half of the catalogue the four above
        * cannot demonstrate.
        *
-       * A works is the opposite kind of thing to the cargo above it: it cannot
+       * A fixture is the opposite kind of thing to the cargo above it: it cannot
        * be traded, it is worth nothing to anybody as a thing, and what it does
        * is modify the power standing over it. So the opening board needed some,
        * for the reason it needed cargo at all — a mechanic nobody can point at
@@ -862,20 +862,20 @@ export function createSeedState(playerFactionId: string): WorldState {
        * what makes the modifier legible from the map, since you can see what a
        * world is and therefore what is likely built on it.
        *
-       * **All five are SPLIT works, and that is the load-bearing decision.**
+       * **All five are SPLIT fixtures, and that is the load-bearing decision.**
        * The first version seeded pure archetypes at half of `MAX_ASSET_STAT`,
        * which is a thing the catalogue cannot say: a `military_base` is two
        * points of might by its own entry, so a seeded one worth a single point
        * made the same named kind mean two different things depending on where
-       * it came from — a second source of truth about what a works is.
+       * it came from — a second source of truth about what a fixture is.
        *
        * A split says the same thing honestly. The budget is the full
        * `MAX_ASSET_STAT` either way and a two-attribute kind divides it, so
        * each of these is worth **one point on each of two stats** by exactly
        * the arithmetic the reducer applies to a player's. Nobody has to be
-       * told a seeded works is a lesser works, because it is not one.
+       * told a seeded fixture is a lesser one, because it is not.
        *
-       * It also fixes what the half-budget was reaching for. Pure works at the
+       * It also fixes what the half-budget was reaching for. Pure fixtures at the
        * full budget put three powers **on the 20 cap on turn 0** — the Vigil's
        * might, the Combine's guile, the Closing's resolve — and a scale whose
        * ceiling is where you start has nothing left to play for. Spreading the
@@ -891,14 +891,14 @@ export function createSeedState(playerFactionId: string): WorldState {
        * proves the guns, and the Confederacy's plant does not go dark.
        *
        * **Each stands on a world that can be taken**, which is the whole of why
-       * a works sits somewhere rather than on a balance sheet: `worksBonus`
+       * a fixture sits somewhere rather than on a balance sheet: `fixtureBonus`
        * pays only while its holder is still over the ground, so storming
        * Tulgarn does not merely cost Drajk a world, it costs it the slipways.
        *
        * Worth nothing to anybody in `valuePerUnit`, deliberately. A fixture is
        * refused by `transfer_asset` from both paths, so a price on one is a
        * number no bargain can ever settle — and `serializeTheirAssets` filters a
-       * counterparty's shelf by what the viewer would pay, so a priced works
+       * counterparty's shelf by what the viewer would pay, so a priced fixture
        * would advertise itself as being for sale.
        */
       ...(
@@ -926,7 +926,7 @@ export function createSeedState(playerFactionId: string): WorldState {
           // Drift from five worlds to six off the Vigil, which flattens the one
           // faction on the board whose doctrine is that it does not expand.
           // Vashka is out for the other reason — Arkane opens at resolve 19, so
-          // a works on its own best attribute is a point it cannot spend.
+          // a fixture on its own best attribute is a point it cannot spend.
           ['freeworlds', 'ark-1', 'research_lab',
             'The Arkane Prime design halls, where the Drift draws every hull it flies because nobody will sell it one.'],
           // Tulgarn is an `industrialmoon` — industry — and it is the one such
@@ -948,7 +948,7 @@ export function createSeedState(playerFactionId: string): WorldState {
           text,
           heldBy: held,
           quantity: 1,
-          unit: 'works',
+          unit: 'fixture',
           divisible: false,
           valuePerUnit: {},
           speculative: false,

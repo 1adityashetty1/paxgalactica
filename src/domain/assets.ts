@@ -1,3 +1,6 @@
+import { MAX_ASSET_STAT } from './diplomacy.js';
+import type { StatName } from './checks.js';
+
 /**
  * The catalogue: what a thing usually is, so the arbiter reaches for a shape
  * rather than inventing one.
@@ -49,18 +52,18 @@ export interface AssetArchetype {
   /**
    * For a **fixture**, the stat it is worth to whoever holds the ground.
    *
-   * **A works is defined by what it modifies**, which is the whole reason a
+   * **A fixture is defined by what it modifies**, which is the whole reason a
    * fixture is a distinct shape rather than cargo that happens not to move.
-   * Before this the three `works` entries were each described as *"nobody
+   * Before this the three `fixture` entries were each described as *"nobody
    * wants it"* — true of the paperwork and false of the thing: a foundry, a
    * college and a fortress are not inert scenery, they are the reason the
    * world under them is worth taking.
    *
    * So there is one per stat, and naming it is naming the mechanic: you do not
-   * have to be told what a `foundry` does. **A works may also name two**, and
+   * have to be told what a `foundry` does. **A fixture may also name two**, and
    * then it splits one budget between them — a black market is an exchange run
    * for guile as much as for influence, a mercenary board one run for might.
-   * Same institution, differently run, which says what a works IS better than
+   * Same institution, differently run, which says what a fixture IS better than
    * a second archetype that happens to be worth the same amount.
    *
    * There are **fifteen**: five pure and `5C2` = ten pairs, so the catalogue
@@ -81,7 +84,7 @@ export interface AssetArchetype {
  *
  * Four groups, and the grouping is the useful part: **people** who can be
  * ransomed or turned, **paper** that proves or authorises, **stuff** that is
- * counted and consumed, and **works** that stand on a world and produce.
+ * counted and consumed, and **fixtures** that stand on a world and produce.
  */
 export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   /* --- People: worth most to whoever lost them ------------------------- */
@@ -204,7 +207,7 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     uses: null,
     speculative: true,
     fixture: false,
-    from: 'a survey, a seizure, an industrial works on a world you hold',
+    from: 'a survey, a seizure, an industrial plant on a world you hold',
     wanted: 'a power building hulls, at a price nobody has settled',
   },
   {
@@ -238,10 +241,10 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
     wanted: 'whoever it was taken from, for reasons that are not commercial',
   },
   /* --- Works: they stand on a world and produce ------------------------- */
-  /* --- works: they stand on a world, and make its holder better at something
+  /* --- fixtures: they stand on a world, and make its holder better at something
      ------------------------------------------------------------------------
      One per stat and one per pair of stats — five plus `5C2`, so the catalogue
-     covers every attribute and every combination of two. A works never leaves
+     covers every attribute and every combination of two. A fixture never leaves
      the ground it stands on: `transfer_asset` refuses it from both the declared
      and the negotiated path, and it changes hands only through cession or
      conquest, which needed no new code — the transfer-of-control path already
@@ -254,7 +257,7 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
      not need to be told what a factory improves. */
   {
     kind: 'military_base',
-    unit: 'works',
+    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -265,7 +268,7 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'university',
-    unit: 'works',
+    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -276,7 +279,7 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'factory',
-    unit: 'works',
+    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -287,7 +290,7 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'stock_exchange',
-    unit: 'works',
+    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -298,7 +301,7 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'hospital',
-    unit: 'works',
+    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -312,13 +315,13 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
      kind of institution run for one thing; these are them run for two — and
      there are exactly **ten**, because that is every unordered pair of five
      attributes. Complete by construction rather than by whatever anybody
-     thought to add, which is what stops a model reaching for a plausible works
+     thought to add, which is what stops a model reaching for a plausible fixture
      and finding no archetype behind it. `tests/assets.test.ts` asserts the
      count and the coverage, so a sixth attribute would fail rather than quietly
      leave forty-five per cent of the pairs unnamed. */
   {
     kind: 'special_forces_command',
-    unit: 'works',
+    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -329,7 +332,7 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'arsenal',
-    unit: 'works',
+    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -340,7 +343,7 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'defence_contractor',
-    unit: 'works',
+    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -351,7 +354,7 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'military_academy',
-    unit: 'works',
+    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -362,7 +365,7 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'research_lab',
-    unit: 'works',
+    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -373,7 +376,7 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'black_market',
-    unit: 'works',
+    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -384,7 +387,7 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'security_bureau',
-    unit: 'works',
+    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -395,7 +398,7 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'chamber_of_commerce',
-    unit: 'works',
+    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -406,7 +409,7 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'power_plant',
-    unit: 'works',
+    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -417,7 +420,7 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
   },
   {
     kind: 'civil_service',
-    unit: 'works',
+    unit: 'fixture',
     divisible: false,
     uses: null,
     speculative: false,
@@ -460,4 +463,23 @@ export function serializeArchetypes(): string {
     '|---|---|---|---|---|',
     ...ASSET_ARCHETYPES.map(row),
   ].join('\n');
+}
+
+/**
+ * The stat yield an archetype means, from the attributes it names.
+ *
+ * One budget, divided evenly over them: at `MAX_ASSET_STAT` of 2 that is either
+ * two points of one attribute or one of each, which is the whole reason the cap
+ * on a split is two — a half point does not exist on a 1-20 scale.
+ *
+ * Shared, because two callers need it and a formula written twice is two
+ * chances to disagree about what a foundry is worth: the reducer filling in a
+ * `create_asset` that named no yield, and a `found_fixture` programme landing.
+ */
+export function fixtureYieldFor(
+  shape: AssetArchetype,
+): { kind: 'stat'; stats: { stat: StatName; points: number }[] } | null {
+  if (shape.modifies === undefined || shape.modifies.length === 0) return null;
+  const each = Math.max(1, Math.floor(MAX_ASSET_STAT / shape.modifies.length));
+  return { kind: 'stat', stats: shape.modifies.map((stat) => ({ stat, points: each })) };
 }

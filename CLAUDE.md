@@ -1614,15 +1614,15 @@ and cannot reconcile.
 so it decides *that a thing was taken* and the table decides *what that kind of
 thing is like*. Thirty entries in four groups — **people** who can be ransomed
 or turned, **paper** that proves or authorises, **stuff** that is counted and
-consumed, and **works** that stand on a world and produce.
+consumed, and **fixtures** that stand on a world and produce.
 
 An archetype is a **default, not a restriction**. `create_asset` accepts any
 slug; when the slug is a known one the reducer fills in what was not stated and
 **corrects** `divisible` and `uses`, which are the two fields whose being wrong
 quietly breaks a later trade — a prisoner haul that will not divide cannot be
-ransomed in lots, and an instrument with no `uses` is exercisable forever. For a
-**works** it also fills a missing `stat` yield from `modifies`, on the same
-argument: a fixture with no yield is a factory that is scenery.
+ransomed in lots, and an instrument with no `uses` is exercisable forever. A
+**fixture** archetype it refuses outright: those are raised by a `found_fixture`
+programme, whose yield `fixtureYieldFor` derives from `modifies`.
 
 The table is **substituted into the prompt at call time**, never pasted into the
 `.md`. A copy restated in Markdown is a second opinion that will eventually be
@@ -1687,8 +1687,9 @@ could be invented at all.
 | origin | how |
 |---|---|
 | a successful attempt | `create_asset` from the resolution pass, stripped by `boundPayloadsToOutcome` on a failure and **halved** on a partial — an asset has a magnitude, unlike an operative, who is placed or is not |
+| a fixture | only a `found_fixture` **programme** — `create_asset` refuses any stat yield; see "A fixture is infrastructure" |
 | a world changing hands | anything with that `atSystemId` goes with it |
-| **the seed** | nine, authored — four cargo (one per power except the Combine) and five split works (one apiece) |
+| **the seed** | nine, authored — four cargo (one per power except the Combine) and five split fixtures (one apiece) |
 
 `create_asset` is refused from an **accord** (`declared_only`): a conversation
 trades what exists and cannot conjure what does not. It is also refused when the
@@ -1708,7 +1709,7 @@ the state it was built to replace. Nothing could be ransomed, no file bought,
 and the gains-from-trade argument that makes `valuePerUnit` per-faction had
 nothing to price.
 
-Four properties of the **cargo**, each load-bearing — the seeded works below
+Four properties of the **cargo**, each load-bearing — the seeded fixtures below
 are a different kind of thing and keep none of them:
 
 - **None of them pays.** No `yield` anywhere. These exist to be traded, not to
@@ -1737,12 +1738,12 @@ declarable; **taking** another power's needs them, so it is refused from a
 declaration with `needs_consent` and reachable from an accord — the same rule
 `terms.territory` follows.
 
-### And five works, because cargo cannot demonstrate the other half
+### And five fixtures, because cargo cannot demonstrate the other half
 
 Those four are all things you carry, and half the catalogue is things that
 **are** the ground. A mechanic nobody can point at on turn 0 is one no persona
 reaches for and no player learns exists — the argument that put cargo on the
-opening board in the first place — so the seed stands a works on one world per
+opening board in the first place — so the seed stands a fixture on one world per
 power.
 
 **Keyed on the ground.** Each one names, among the two attributes it modifies,
@@ -1755,7 +1756,7 @@ rather than leading, because `modifies` is in canonical stat order: an influence
 pair can only lead with influence when paired with resolve, so insisting on the
 lead would pick the archetype by alphabet rather than by what the world is.
 
-| power | world | type | works | |
+| power | world | type | fixture | |
 |---|---|---|---|---|
 | Meridian | sek-4 Brannix | earthlike | `chamber_of_commerce` | +1 industry, +1 influence |
 | Iron Vigil | tor-2 Kalzir | arid | `military_academy` | +1 might, +1 resolve |
@@ -1763,12 +1764,12 @@ lead would pick the archetype by alphabet rather than by what the world is.
 | Arkane | ark-1 Arkane Prime | earthnight | `research_lab` | +1 guile, +1 industry |
 | Drajk | ark-5 Tulgarn | industrialmoon | `power_plant` | +1 industry, +1 resolve |
 
-**All five are SPLIT works, and that is the load-bearing decision.** The first
+**All five are SPLIT fixtures, and that is the load-bearing decision.** The first
 version seeded *pure* archetypes at half of `MAX_ASSET_STAT`, which is a thing
 the catalogue cannot say: a `military_base` is two points of might by its own
 entry, so a seeded one worth a single point made the same named kind mean two
 different things depending on where it came from. A second source of truth about
-what a works is — the defect this file records everywhere else, reintroduced as
+what a fixture is — the defect this file records everywhere else, reintroduced as
 a tuning knob.
 
 A split says the same thing honestly. The budget is the full `MAX_ASSET_STAT`
@@ -1778,11 +1779,11 @@ player founds one**. The seed calls `ASSET_ARCHETYPES` and divides, rather than
 writing the answer down.
 
 It also gets what the half-budget was reaching for, and gets it as a consequence
-rather than a discount. Pure works at the full budget put three powers **on the
+rather than a discount. Pure fixtures at the full budget put three powers **on the
 20 cap on turn 0** — the Vigil's might, the Combine's guile, the Closing's
 resolve — and a scale whose ceiling is where you start has nothing left to play
 for. Spreading two points over two attributes is what keeps everybody under it.
-A test asserts that property directly: no works may be the thing that puts a
+A test asserts that property directly: no fixture may be the thing that puts a
 stat on the ceiling.
 
 **Five distinct kinds, and every attribute covered**, so nobody opens with a
@@ -1795,22 +1796,22 @@ the Combine's undermarket hears things, the Closing draws its own hulls because
 nobody will sell it one, and the Confederacy's plant does not go dark.
 
 **The Combine gets one**, unlike the cargo. Its shelf is the paper because a
-works is not a thing to sell, so the argument that kept it off the tradeable
+fixture is not a thing to sell, so the argument that kept it off the tradeable
 board does not reach this at all.
 
-**Each stands on a world that can be taken**, which is the whole of why a works
-sits somewhere rather than on a balance sheet: `worksBonus` pays only while its
+**Each stands on a world that can be taken**, which is the whole of why a fixture
+sits somewhere rather than on a balance sheet: `fixtureBonus` pays only while its
 holder is still over the ground, so storming Tulgarn does not merely cost Drajk
 a world, it costs it the slipways.
 
 **Priced at nothing**, deliberately. A fixture is refused by `transfer_asset`
 from both paths, so a figure on one is a number no bargain can ever settle — and
 `serializeTheirAssets` filters a counterparty's shelf by what the viewer would
-pay, so a priced works would advertise itself as being for sale.
+pay, so a priced fixture would advertise itself as being for sale.
 
 **Which world each sits on was measured, not chosen.** `pnpm balance 30` is the
 historical **6/8/5/5/1** with the 58/42 mix and the poorest net at 8, and
-`pnpm fleetlab` is byte-identical — but only after one move. Arkane's works
+`pnpm fleetlab` is byte-identical — but only after one move. Arkane's fixture
 began as an `arsenal` at Pell Reach, and its point of **might** took the Drift
 from five worlds to six off the Vigil, dropping the galaxy to 64/36 and Drajk to
 −22. Every assertion in `tests/balance.test.ts` still passed, because the bounds
@@ -1819,13 +1820,13 @@ on the board whose doctrine is that it does **not** expand. Moved to a
 `research_lab` at Arkane Prime, which touches neither might nor resolve, the run
 is identical to the one before any of this existed.
 
-That is the caution this whole section is under: a works reaches `effectiveStats`
+That is the caution this whole section is under: a fixture reaches `effectiveStats`
 and `effectiveStats` reaches every check, every yard and every contest, so a
 point handed to the right power on the right stat is not a flavour detail.
 
 Seven existing tests broke and all seven were right to — they pinned
 `effectiveStats`, `terrainBonus`, `maxCommitmentIncomeFor`, a `stat_debuff` and a
-commander passive against the seed's **base** stats, which now compose a works
+commander passive against the seed's **base** stats, which now compose a fixture
 term too. Each was isolated by clearing the seeded fixtures rather than by
 adjusting its expected number, the same way the dissent tests clear
 `commanders`.
@@ -1836,14 +1837,14 @@ adjusting its expected number, the same way the dissent tests clear
 > is a local artifact of one machine, and a permanent migration script carrying
 > a one-time seed edit has no ongoing job.
 
-### A works is drawn on the world, not in the warehouse
+### A fixture is drawn on the world, not in the warehouse
 
 It rendered under **Held** on the Treaties panel, beside prisoners and ore and
 under a chip saying what the keenest buyer would pay — which is three claims
 that are false of a fixture at once. It cannot be handed over, it cannot be
 pledged, and no buyer can ever pay anything for it.
 
-`worksAt` puts it on the **System** panel instead, beside the garrison and the
+`fixturesAt` puts it on the **System** panel instead, beside the garrison and the
 ships, which is where the question it answers lives: *what is built on this
 world, and what does taking it get me*. Exactly the correction the operative
 list took when it moved off the Treaties panel, and for the same reason — a
@@ -1853,7 +1854,7 @@ global list.
 Shown **whoever holds it**, and not scoped by viewer: a plant, a base or a
 hospital is a structure on a surface, visible exactly as `system.ships` is
 visible. What stays hidden is that power's **orders**, which is a different
-question. The holder is named rather than assumed, because a works pays whoever
+question. The holder is named rather than assumed, because a fixture pays whoever
 stands over the world and that need not be the power that built it.
 
 ### What makes it bite
@@ -1914,47 +1915,47 @@ rule the agent effects already set, rather than being decided afresh:
 | kind | applied | why there |
 |---|---|---|
 | `credits` | `ledgerFor`, as `assetYield` | a flow that mutated the treasury each tick would compound instead of recurring — the same argument as `commitmentFlow` and `income_penalty` |
-| `stat` | `effectiveStats`, as `worksBonus` | a per-turn mutation of a stat compounds instead of recurring; read beside terrain and the officer's passive |
+| `stat` | `effectiveStats`, as `fixtureBonus` | a per-turn mutation of a stat compounds instead of recurring; read beside terrain and the officer's passive |
 | `dissent` | `tickTurn` | accumulates and decays on its own clock, like `sedition` and `hull_damage` |
 | `asset` | `tickTurn` | a stockpile grows; it is not a figure read fresh |
 
-### A works is a modifier on the power holding the ground
+### A fixture is a modifier on the power holding the ground
 
-The three original `works` archetypes were each described as *"nobody wants
+The three original fixture archetypes were each described as *"nobody wants
 it"*, which is true of the paperwork and false of the thing: **a fixture is what
 makes the ground under it worth taking.** A factory is industry, a university is
 guile, a hospital is resolve.
 
-`MAX_ASSET_STAT` is **2**, summed across holdings and then clamped per stat, so
-ten factories beat one and not by ten. Small for the reason `MAX_ASSET_DISSENT`
-is small — a stat reaches every check through `effectiveStats`, and a modifier
-summed over territory is unbounded in principle. It pays only while its holder
+`MAX_ASSET_STAT` (**2**) is what **one** fixture is worth; `MAX_FIXTURE_BONUS`
+(**4**) is what all of a power's fixtures can add to one stat, summed and then
+clamped. Those were the same number until the fixture became a programme, which
+meant a second plant on a stat was worth literally nothing — see "A fixture is
+infrastructure" below for why they separated. It pays only while its holder
 still stands over the world, and since a fixture changes hands with the world,
 **taking the ground takes the benefit**.
 
 That closes a loop: `yardCapacityFor` reads `effectiveStats().industry`, so a
 captured factory really does lay down more hulls for whoever took it.
 
-**One budget, one or two attributes.** A works is worth `MAX_ASSET_STAT` in
+**One budget, one or two attributes.** A fixture is worth `MAX_ASSET_STAT` in
 total however it is split — two points of influence, or one of influence and one
 of guile. The split is a **trade, not a bonus**: spread over two attributes at
-full value on each, a works would be worth twice one that concentrated. The
-reducer merges a stat named twice and trims an overspend off the largest share
-first, so a deliberately lopsided pair stays lopsided.
+full value on each, a fixture would be worth twice one that concentrated.
+Nobody states the figure any more, so nothing needs trimming: `fixtureYieldFor`
+derives it from the archetype, and `create_asset` refuses any stat yield at all.
 
 **Two is the cap and it is a real one.** At a budget of two, "up to two stats" is
 the only split the integers allow — a half point does not exist on a 1–20 scale,
 the same granularity argument that took a lifter's half loss on the troops
 rather than on the hull count.
 
-`AssetArchetype.modifies` names the attributes, and the reducer fills a missing
-yield by dividing the budget over them — the same correction it already applies
-to `divisible` and `uses`, and for the same reason: these are the fields whose
-being wrong quietly turns a factory into scenery.
+`AssetArchetype.modifies` names the attributes and `fixtureYieldFor` divides the
+budget over them — one definition, read when a programme lands and by the seed,
+so there is no second opinion about what a foundry is worth.
 
 **Fifteen of them: five plus `5C2`**, so the catalogue covers every attribute and
 every pair of two. Complete by construction rather than by whatever anybody
-thought to add — a model reaching for a plausible works finds an archetype
+thought to add — a model reaching for a plausible fixture finds an archetype
 behind it, which is the table's whole job. A test asserts the *coverage* rather
 than the contents, so a sixth attribute fails the suite rather than quietly
 leaving forty-five per cent of the pairs unnamed.
@@ -1976,29 +1977,141 @@ They are named for what they are rather than for what a fantasy would call them
 — the first set read as a guild hall and a cloister — which is also what makes
 the mechanic legible: nobody has to be told what a factory improves.
 
-### A works is built on purpose, by the attribute it is made of
+### A fixture is infrastructure: bought, run, and bounded by the ground
+
+A fixture was **free and slotless**. `create_asset` charged nothing, a
+successful check could mint one on any world a power stood on, and the only
+limit was a clamp equal to one building's budget. Against the rest of the game —
+`fortify` at 45 credits for one world's garrison ceiling, an officer at 120 who
+can die — it was the only permanent compounding thing with no price at all, and
+five declarations bought +2 on every stat, which is exactly the weakness-paper
+the faction sheets are built to prevent.
+
+The goal was stated as: players should build fixtures **naturally, the way they
+build fleets**, and the effect should **balance itself**. Fleets do that with no
+cap anywhere — you pay for them, you keep paying for them, and income decides
+where a navy settles. So a fixture now works the same way, with the map as the
+third bound.
+
+**1. The ground decides what can stand on it.** A fixture must name, among the
+attributes it modifies, the one `WORLD_TYPE_STAT` gives its world, and **a world
+carries one** (`statFixtureAt`), counting programmes under way so two cannot race
+for a slot. That is the self-balancing mechanism rather than a restriction on
+it: how far a power can raise a stat is how many worlds of that kind it holds —
+visible on the map, different for every faction, and takeable. On the opening
+board nobody holds more than two of a kind, and the weaknesses land where the
+sheets put them:
+
+| | might | guile | industry | influence | resolve |
+|---|---|---|---|---|---|
+| Meridian | 0 | 1 | 2 | 1 | **0** |
+| Iron Vigil | 1 | 1 | 1 | 1 | 0 |
+| Ojjul Nar | 1 | 1 | **0** | 1 | 1 |
+| Arkane | 1 | 1 | **0** | 1 | 1 |
+| Drajk | 0 | 0 | 2 | **0** | 2 |
+
+Meridian's defining weakness is resolve 9 and it holds no world that could carry
+a hospital; Drajk's is influence 8 and it holds no earthlike world at all. The
+only way up is to take the ground first, so patching a weakness stops being a
+purchase and becomes a war aim. Raised on ground a power **holds**, not merely
+orbits — presence is enough to fortify a world, but a fixture is an institution
+a power staffs.
+
+**2. It is a construction programme.** `found_fixture` is an `OrderEffect` on
+`construction_infrastructure`, `industrial_conversion` or `retooling`, and
+`create_asset` refuses any stat yield — by archetype and by yield, since a
+portable thing carrying one would reach `fixtureBonus` and walk around every
+guard. One way in, and it is almost entirely machinery that already existed:
+paid at issue, a category floor so a foundry cannot be raised in one turn,
+`boundPayloadsToOutcome` gating it on the check, and — new for fixtures —
+**visible as a rumour and interruptible**, which puts it under the fog doctrine:
+long projects are worth hiding and worth raiding. It lands for **whoever holds
+the world when it completes**, the rule `develop_system` and `fortify` follow, so
+a power that loses a world mid-build has built its conqueror a factory; and the
+slot is re-checked on completion, so a programme finishing on ground somebody
+else has built on raises nothing. The minted record goes through `AssetSchema`,
+because a spread put `id` last where a round-tripped save puts it first and
+`verifyReplay` failed on the same bytes in a different order.
+
+**3. It is priced like a fleet: bought, then kept.** `FIXTURE_COST` (120) at
+issue, and a running bill — `fixtureUpkeep`, its own `Ledger` line and its own
+term in the briefing — that **rises with the count**: the Nth fixture costs N ×
+`FIXTURE_UPKEEP` (10), so running `n` costs `10 · n(n+1)/2`. No second
+insolvency rule: the bill competes with fleet upkeep for the same income, so a
+power that overbuilds lays up hulls through the attrition path that exists.
+
+**Flat pricing was the obvious build, and it measured regressive.** A stat point
+is worth about the same to every power, so a flat price on a flat-value thing
+is a constraint only on whoever cannot pay it. Swept flat, the three rich powers
+finished every run on 10–12 points of fixture bonus — about +2 on every stat —
+whatever the price, because a 4,000-credit treasury clears anything the poor can
+also pay; raising it only stopped Arkane and Drajk building, which **widened**
+the gap. Fleets do not have that problem because upkeep scales with what you
+run, and a triangular bill is the same property for buildings: the first is
+cheap for anybody and the sixth is dear for everybody.
+
+**4. The clamp separated from the budget.** `MAX_FIXTURE_BONUS` is 4, a backstop
+rather than the mechanism: a second plant on a stat is worth something for the
+first time, and the ground plus the bill are what actually bound a power.
+
+**Swept, over 30 played turns with the bots raising fixtures:**
+
+| cost / upkeep | board | poorest net | raised | fixture points |
+|---|---|---|---|---|
+| flat 150 / 4 | 5/9/5/6/0 | −27 | 20 | 11/12/10/10/0 |
+| flat 150 / 20 | 6/6/6/6/1 | 63 | 15 | 11/12/12/**2/0** |
+| rising 150 / 6 | 6/6/6/5/2 | −14 | 16 | 10/12/10/4/4 |
+| rising 100–150 / 8–12 | **6/6/6/6/1** | −4 to 3 | 8–14 | 6–8/8–12/6–10/2–4/2 |
+| **rising 120 / 10** | **6/6/6/6/1** | **−4** | **12** | **6/10/10/4/2** |
+| rising 175 / 10 · 200 / 8 | 6/7/6/6/0 · 6/8/5/6/0 | −17, −15 | 9, 10 | Drajk 0 |
+
+Every cell of the 100–150 × 8–12 region gives the same board, the Confederacy
+keeps a world, and the two poorest powers still build; above 150 it is wiped
+out. 120/10 is its middle. The board is **more even than without fixtures**
+(6/7/6/6/0 before), which is the self-balancing claim measured rather than
+asserted.
+
+**The bots build them**, because a fixture nobody builds is a fixture nobody has
+measured — the lesson `monopolist` taught. `raise` in `initiative.ts` founds one
+at a time, on the best held world with a free slot, always the pure archetype
+for the ground, and only while solvent against the price and the **marginal**
+upkeep the next building adds. Without it the harness could not see any of the
+above: with the bots not raising, the board is simply the one it was.
+
+**Replay is not versioned for this, deliberately.** The seed moved earlier on
+this branch (the seeded fixtures), so no journal written before it replays
+faithfully anyway, for the reason the faction rename gives; an exemption pinned
+to a new version would guard nothing. `fixtureUpkeep` and the new clamp are also
+read-side — `ledgerFor` and `effectiveStats` — where a legacy flag cannot reach,
+the same position the terrain bonuses are in.
+
+### A fixture is built on purpose, by the attribute it is made of
 
 A fixture is **the one asset kind that is not a prize.** Prisoners and salvage
 are things an attempt *comes away with*, so they ride on whatever check the
 attempt happened to be — but a factory is a thing a power sets out to build, and
 nothing tied the building of one to being any good at building. A successful
 `influence` check to charm a governor could mint a foundry as a byproduct,
-because `create_asset` was governed only by the band it resolved in.
+because a fixture was governed only by the band it resolved in.
+
+It is a `found_fixture` programme now, so what is refused is the **payload**,
+never the order — the rule the rest of `boundPayloadsToOutcome` follows. The
+ground is broken and the programme runs; it simply raises nothing.
 
 Three paths could reach one and each is closed:
 
-- a **declared action** founds a works only when the check was against its
+- a **declared action** founds a fixture only when the check was against its
   primary attribute — `modifies[0]`, canonically ordered and therefore stable.
   The arbiter picks the stat from what the player actually described, so a
-  player who wants a works has to *say* they are building one, and be good at it.
+  player who wants a fixture has to *say* they are building one, and be good at it.
 - a **reaction** has no check behind it at all, so it founds nothing. The rest of
   an NPC's ops stay unbounded — it is answering the turn, not rolling for it —
   and the correction batch is filtered too, since a retry that re-emitted the
-  works would otherwise be the hole.
-- an **accord** already refused `create_asset` with `declared_only`, and now
-  passes the same filter rather than resting on that alone.
+  fixture would otherwise be the hole.
+- an **accord** passes through the same filter with no check behind it, so a
+  construction programme agreed across a table raises nothing either.
 
-**And a works is not half-built.** A partial delivers a reduced *prize*, which is
+**And a fixture is not half-built.** A partial delivers a reduced *prize*, which is
 what `quantity` is for — but a fixture is `quantity: 1` and atomic, so halving it
 delivered a whole one. That is the shape that shipped a 100% discount wearing a
 50% label when a one-hull lift loss was halved.
@@ -2010,7 +2123,7 @@ attempt. Array identity is preserved when nothing is refused, which a test pins.
 
 **The seed is not bound by any of it**, for the reason it is not bound by
 "nobody declares an asset into existence": the rule governs what a *model* may
-do, and a seeded works passes through no model at all.
+do, and a seeded fixture passes through no model at all.
 
 Bounds, each answering a specific way the field could be turned into free money:
 
@@ -4115,7 +4228,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `set_toll_policy` | who pays to cross your space; free, actor's own faction only. An accord may only **lift** a toll — adding one is `declared_only` |
 | `consume_asset` | spend, release or destroy a thing you hold; draws an instrument's `uses` or stuff's `quantity` |
 | `issue_order` | see Duration below; optional `onComplete` payload, paid at issue. `force` is a count (drawn proportionally) or a named composition |
-| `cancel_order` | returns the unspent part of a works payload |
+| `cancel_order` | returns the unspent part of an `onComplete` payload |
 | `interrupt_order` | rejected when the order is not interruptible |
 | `extend_order` | rejected for movement |
 | `accelerate_order` | spends credits, drops one Fibonacci bucket, min 1; rejected for movement |
@@ -4221,6 +4334,7 @@ for the bounds and pricing, `OrderEffectSchema` in `state.ts` for the shape:
 | `raise_garrison` | garrison up now, to the world's ceiling | `garrison_raising`, `fortification` |
 | `fortify` | `garrisonMax` up — capacity regrowth can never add | `fortification`, `construction_infrastructure` |
 | `commission_ships` | hulls of a named `hull` class delivered at the target on completion, priced by displacement | `capital_ship_construction`, `refit`, `retooling` |
+| `found_fixture` | a fixture of a named `fixtureKind` raised on the world, if its ground supports it and its slot is free | `construction_infrastructure`, `industrial_conversion`, `retooling` |
 
 The eight remaining categories carry **no** payload on purpose: `espionage`
 lands as `deploy_agent`, `treaty_ratification` as `form_treaty`, and `blockade`
@@ -4237,6 +4351,7 @@ the policy, and the split is a rule rather than an accident:
 |---|---|
 | `develop_system` | **lands** — *"the works now serve whoever holds the world"* |
 | `fortify` | **lands** — *"they defend whoever takes the world next"* |
+| `found_fixture` | **lands**, held by whoever holds the world — a power that loses a world mid-build has built its conqueror a factory |
 | `raise_garrison` | **withheld** — the levy disperses |
 | `commission_ships` | **withheld** — the yards were lost with the world and the hulls with them |
 
@@ -4952,8 +5067,8 @@ component is logic nothing checks.
   a hash of the **system id** and deliberately not `rollD20`, which is seeded on
   the turn: a world's character must not change because time passed.
 
-  **A works is listed on the world it stands on**, and nowhere else. See "A
-  works is drawn on the world, not in the warehouse" above: it used to render
+  **A fixture is listed on the world it stands on**, and nowhere else. See "A
+  fixture is drawn on the world, not in the warehouse" above: it used to render
   under **Held** on the Treaties panel, beside cargo and under a price no
   bargain can ever settle.
 
@@ -5401,12 +5516,13 @@ writing one down. Fixtures and hand-built batches want the input type.
   and put it in `PUBLIC_CATEGORIES` or `SECRET_CATEGORIES` in `intel.ts`. A
   test asserts every type is in exactly one, because a forgotten one would
   default to secret and nobody would notice.
-- New works archetype? It goes in `ASSET_ARCHETYPES` with `fixture: true` and a
+- New fixture archetype? It goes in `ASSET_ARCHETYPES` with `fixture: true` and a
   `modifies` naming one attribute or two. There are fifteen — five plus `5C2` —
   and `tests/assets.test.ts` asserts that coverage rather than the contents, so
   a sixth attribute fails the suite instead of quietly leaving pairs unnamed.
-  Nothing else has to change: the reducer fills the yield, `worksBonus` reads it
-  and `boundPayloadsToOutcome` gates the founding off `modifies[0]`.
+  Nothing else has to change: `fixtureYieldFor` derives the yield, the ground
+  rule reads `modifies`, `fixtureBonus` reads the yield and
+  `boundPayloadsToOutcome` gates the founding off `modifies[0]`.
 - New order effect kind? Add it to `OrderEffectSchema`, give it a cap in
   `EFFECT_CAPS`, a price, the categories that may deliver it in
   `EFFECT_CATEGORIES`, and a branch in `applyOrderEffect`. Price it against what

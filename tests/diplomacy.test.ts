@@ -1377,7 +1377,7 @@ describe('assets that stand on a world', () => {
   const home = (s: WorldState) => s.systems.find((x) => x.controllerFactionId === 'ojjul')!;
   const mine = (over: Record<string, unknown> = {}) => ({
     op: 'create_asset', kind: 'mine', heldBy: 'ojjul',
-    text: 'The Halland cut.', quantity: 1, unit: 'works', divisible: false,
+    text: 'The Halland cut.', quantity: 1, unit: 'fixture', divisible: false,
     valuePerUnit: {}, ...over,
   });
 
@@ -1734,7 +1734,7 @@ describe('a thing sold under a treaty', () => {
       [
         {
           op: 'create_asset', kind: 'mine', heldBy: 'ojjul', text: 'The Ithaal cut.',
-          quantity: 1, unit: 'works', valuePerUnit: { meridian: 300 },
+          quantity: 1, unit: 'fixture', valuePerUnit: { meridian: 300 },
           atSystemId: world.id, portable: false, divisible: false,
         },
       ],

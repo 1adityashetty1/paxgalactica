@@ -42,7 +42,6 @@ import {
   AGENT_COST,
   DOSSIER_KIND,
   MAX_ASSET_DISSENT,
-  MAX_ASSET_STAT,
   MAX_ASSET_YIELD,
   MISSION_PROFILE,
   PACT_BREAKING_REPUTATION_COST,
@@ -50,6 +49,7 @@ import {
   TREATY_GOODWILL,
   conflictingTreaty,
   isTreatyLive,
+  AssetSchema,
   treatyBetween,
   type Asset,
   type Treaty,
@@ -58,7 +58,7 @@ import {
   AGENT_VETERAN_BONUS,
   agentVeterancy,
 } from './diplomacy.js';
-import { archetypeFor } from './assets.js';
+import { ASSET_ARCHETYPES, archetypeFor } from './assets.js';
 import {
   COMMANDER_COST,
   MAX_ACTIVE_COMMANDERS,
@@ -174,6 +174,8 @@ import {
   liveAgentsOf,
   maxAgentsFor,
   subornLimit,
+  statFixtureAt,
+  WORLD_TYPE_STAT,
   type EventLogEntry,
   type Ledger,
   type OrderEffect,
@@ -1956,27 +1958,27 @@ export function applyOps(
           uses = shape.uses;
           if (!stated('speculative')) speculative = shape.speculative;
           if (shape.fixture) portable = false;
-          // **A works is defined by what it modifies**, so a named fixture that
-          // arrived without a yield gets the one its kind means. The same
-          // correction `divisible` and `uses` already take, and for the same
-          // reason: these are the fields whose being wrong quietly turns a
-          // factory into scenery. A caller that stated a yield keeps it — the
-          // catalogue supplies a default, it does not overrule a deliberate
-          // one — and the reducer still clamps the points either way.
-          if (shape.modifies !== undefined && yielded === null) {
-            // One budget, split evenly over the attributes the kind names. At
-            // `MAX_ASSET_STAT` of 2 that is either two points of one stat or
-            // one of each — which is the whole reason the cap on the split is
-            // two, since a half point does not exist on a 1-20 scale.
-            const each = Math.max(1, Math.floor(MAX_ASSET_STAT / shape.modifies.length));
-            yielded = {
-              kind: 'stat',
-              stats: shape.modifies.map((stat) => ({ stat, points: each })),
-            };
-            notes.push(
-              `A ${op.kind} is worth ${shape.modifies.join(' and ')} to whoever holds the ground it stands on; recorded that way.`,
-            );
-          }
+        }
+
+        // **A fixture that moves a stat is built, not declared into being.**
+        // It used to arrive here — instant, free, and with no window in which
+        // anybody could stop it — which made it the only permanent compounding
+        // thing in the game with no price at all. It is a construction
+        // programme now: `issue_order` carrying `found_fixture`, paid at issue,
+        // held to a category floor, bound to the check it was attempted on and
+        // to the ground it stands on. One way in, so one set of rules.
+        //
+        // Refused on the archetype AND on the yield: a named fixture kind is the
+        // obvious route, and a portable thing carrying a stat yield would reach
+        // `fixtureBonus` just the same and walk around every guard the
+        // programme applies.
+        if (shape?.modifies !== undefined || (yielded !== null && yielded.kind === 'stat')) {
+          reject(
+            raw,
+            'illegal_value',
+            `A ${op.kind.replace(/_/g, ' ')} is raised, not found: issue a construction_infrastructure, industrial_conversion or retooling order carrying onComplete { kind: 'found_fixture', fixtureKind } at a world you hold whose ground supports it.`,
+          );
+          break;
         }
 
         // A dossier has no location, so it can carry neither of the two fields
@@ -1987,7 +1989,7 @@ export function applyOps(
         }
         // Read off the RESOLVED shape rather than the raw op, because the
         // catalogue is what decides that an `exchange` is a fixture. Checking
-        // `op.portable` here let a works archetype skip both this and the
+        // `op.portable` here let a fixture archetype skip both this and the
         // presence guard below and land on ground its owner had never reached.
         if (!isDossier && (portable === false || yielded !== null) && op.atSystemId === null) {
           reject(
@@ -2042,42 +2044,6 @@ export function applyOps(
             );
             assetYield = { ...assetYield, perTurn: clamped };
           }
-        }
-        if (assetYield?.kind === 'stat') {
-          // **The split is a trade, not a bonus.** A works spread over two
-          // attributes at full value on each would be worth twice one that
-          // concentrated, so what is capped is the TOTAL — and the trim takes
-          // it off the largest share first, so a lopsided pair stays lopsided
-          // and an even one stays even. Same stat named twice is merged for
-          // the same reason `normaliseStack` exists: a record whose shape
-          // depends on how it was written is a record nobody can read.
-          const merged = new Map<string, number>();
-          for (const { stat, points } of assetYield.stats) {
-            merged.set(stat, (merged.get(stat) ?? 0) + points);
-          }
-          let spread = [...merged].map(([stat, points]) => ({ stat, points })) as {
-            stat: 'might' | 'guile' | 'industry' | 'influence' | 'resolve';
-            points: number;
-          }[];
-          const total = spread.reduce((n, t) => n + Math.abs(t.points), 0);
-          if (total > MAX_ASSET_STAT) {
-            const order = [...spread].sort(
-              (a, b) => Math.abs(b.points) - Math.abs(a.points) || a.stat.localeCompare(b.stat),
-            );
-            let over = total - MAX_ASSET_STAT;
-            for (const term of order) {
-              if (over <= 0) break;
-              const take = Math.min(over, Math.abs(term.points));
-              term.points -= Math.sign(term.points) * take;
-              over -= take;
-            }
-            spread = order.filter((t) => t.points !== 0);
-            notes.push(
-              `${op.text} would be worth ${total} points of attribute; a works is worth ${MAX_ASSET_STAT} however it is split — trimmed.`,
-            );
-          }
-          assetYield =
-            spread.length === 0 ? null : { ...assetYield, stats: spread.slice(0, 2) };
         }
         if (assetYield?.kind === 'asset') {
           assetYield = {
@@ -2477,7 +2443,7 @@ export function applyOps(
         // paid for further down once every other rejection has been ruled out.
         // Charging earlier would take credits for an order that a later check
         // refuses to create; charging later, on completion, would let a faction
-        // commission works it could never afford.
+        // commission work it could never afford.
         if (op.onComplete) {
           if (isMovementType(op.type)) {
             reject(
@@ -2502,6 +2468,63 @@ export function applyOps(
               `${op.factionId} neither holds ${site.name} nor has ships there; a works programme needs the world, or at least a fleet over it.`,
             );
             break;
+          }
+          // A fixture has three rules of its own, and together they are what
+          // makes it self-balancing rather than a free permanent buff.
+          if (op.onComplete.kind === 'found_fixture') {
+            const shape = archetypeFor(op.onComplete.fixtureKind);
+            if (!shape?.fixture || shape.modifies === undefined) {
+              reject(
+                raw,
+                'illegal_value',
+                `"${op.onComplete.fixtureKind}" is not a fixture anybody knows how to raise. Name one from the catalogue: ${ASSET_ARCHETYPES.filter((a) => a.modifies !== undefined).map((a) => a.kind).join(', ')}.`,
+              );
+              break;
+            }
+            // **Held, not merely orbited.** Presence is enough to fortify or
+            // develop, where the improvement is the world's; a fixture is an
+            // installation a power runs, and running one on a rival's ground
+            // would be an institution that is not yours to staff.
+            if (!holds) {
+              reject(
+                raw,
+                'no_presence',
+                `${op.factionId} does not hold ${site.name}; a fixture is raised on your own ground.`,
+              );
+              break;
+            }
+            // **The ground decides what can stand on it.** This is the
+            // mechanism rather than a restriction on it: the number of worlds of
+            // a kind a power holds is how far it can raise that attribute, which
+            // is visible on the map, different for every faction, and takeable.
+            // It is also what stops a fixture papering over a power's weakness —
+            // Meridian holds no world that could carry a hospital.
+            const ground = WORLD_TYPE_STAT[site.worldType];
+            if (!shape.modifies.includes(ground)) {
+              reject(
+                raw,
+                'illegal_value',
+                `${site.name} is ${site.worldType} ground and makes ${ground}; a ${shape.kind.replace(/_/g, ' ')} (${shape.modifies.join(' and ')}) cannot stand there. Raise one that names ${ground}.`,
+              );
+              break;
+            }
+            // **A world carries one.** Checked against programmes already
+            // under way as well as fixtures standing, so two orders cannot race
+            // for the same slot and both be paid for.
+            const standing = statFixtureAt(state, site.id);
+            const building = state.pendingOrders.find(
+              (o) => o.targetId === site.id && o.onComplete?.kind === 'found_fixture',
+            );
+            if (standing || building) {
+              reject(
+                raw,
+                'illegal_value',
+                standing
+                  ? `${site.name} already carries a ${standing.kind.replace(/_/g, ' ')}; a world carries one fixture.`
+                  : `A fixture is already being raised at ${site.name}; a world carries one.`,
+              );
+              break;
+            }
           }
           const category = op.type as DurationCategory;
           if (!effectAllowedIn(op.onComplete.kind, category)) {
@@ -6313,10 +6336,35 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
       // world. Without a payload the order really does just finish — correct for
       // a courier run or a decree, whose effects landed elsewhere.
       const target = order.onComplete ? getSystem(state, order.targetId) : undefined;
-      const note =
-        order.onComplete && target
-          ? applyOrderEffect(target, order.factionId, order.onComplete, order.label).note
-          : `${order.label} completed at ${nameOf(order.targetId)}.`;
+      let note = `${order.label} completed at ${nameOf(order.targetId)}.`;
+      if (order.onComplete && target) {
+        const outcome = applyOrderEffect(target, order.factionId, order.onComplete, order.label);
+        note = outcome.note;
+        if (outcome.fixture) {
+          // The slot is re-checked here, not only at issue: a world taken
+          // mid-build may already carry its new holder's fixture, and a world
+          // carries one. The money is sunk either way — a programme that
+          // finishes on ground somebody else has built on is a programme that
+          // built nothing, which is the risk of building where you might lose.
+          const occupant = statFixtureAt(state, target.id);
+          if (occupant) {
+            note = `${order.label} completed at ${target.name}, but a ${occupant.kind.replace(/_/g, ' ')} already stands there and a world carries one.`;
+          } else {
+            // Through the schema, not a spread: replay compares
+            // `JSON.stringify`, which preserves key order, and a record built
+            // by spreading puts `id` last where one that has round-tripped a
+            // save puts it first — the same bytes in a different order, and
+            // `verifyReplay` fails with nothing to read off the failure.
+            (state.assets ??= []).push(
+              AssetSchema.parse({
+                ...outcome.fixture,
+                id: mintId(state, 'ast'),
+                acquiredTurn: state.turn,
+              }),
+            );
+          }
+        }
+      }
       logEvent(state, 'order', note, order.factionId);
       notes.push(note);
       report.completed.push({

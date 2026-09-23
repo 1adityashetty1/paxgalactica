@@ -239,14 +239,14 @@ async function stageWithCorrection(
   outcome?: CheckResult['outcome'],
   source: 'model' | 'extraction' = 'model',
   /**
-   * The attribute the check tested. A works is built by the attribute it is
+   * The attribute the check tested. A fixture is built by the attribute it is
    * made of, so this is what decides whether a fixture may be founded at all —
    * see `fixtureBuilt`.
    */
   stat?: CheckResult['stat'],
 ): Promise<{ rejections: OpRejection[]; notes: string[]; costUsd: number }> {
   // Run on an accord too, where there is no check at all: a conversation can
-  // agree to many things and founding a works is not one of them, so passing
+  // agree to many things and founding a fixture is not one of them, so passing
   // no band still has to strip a fixture rather than wave it through.
   const bind = (batch: unknown[]) =>
     boundPayloadsToOutcome(batch, outcome ?? 'success', stat);
@@ -305,7 +305,7 @@ async function commitWithCorrection(
   context: string,
   actor?: string,
 ): Promise<{ rejections: OpRejection[]; notes: string[]; costUsd: number }> {
-  // **A reaction has no check behind it**, so it cannot found a works. The rest
+  // **A reaction has no check behind it**, so it cannot found a fixture. The rest
   // of an NPC's ops are unbounded on purpose — it is answering the turn, not
   // rolling for it — but a fixture is a thing a power sets out to build, and
   // nothing here is an undertaking. See `fixtureBuilt`.
@@ -321,7 +321,7 @@ async function commitWithCorrection(
     return { rejections: first.rejections, notes: [...bound.notes, ...first.notes], costUsd: 0 };
   }
 
-  // The correction batch is filtered too: a retry that re-emitted the works
+  // The correction batch is filtered too: a retry that re-emitted the fixture
   // would otherwise be the hole, exactly as it is for an `onComplete` payload.
   const again = boundPayloadsToOutcome(revised.ops, 'success', undefined);
   const second = campaign.commit(again.ops, 'model', `${label}:correction`, actor);
