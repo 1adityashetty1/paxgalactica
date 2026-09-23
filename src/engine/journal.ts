@@ -14,7 +14,7 @@ import { createSeedState } from '../seed/scenario.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 6;
+export const JOURNAL_VERSION = 7;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -79,6 +79,7 @@ export const JournalVersionSchema = z.union([
   z.literal(4),
   z.literal(5),
   z.literal(6),
+  z.literal(7),
 ]);
 
 export const JournalSchema = z.object({
@@ -95,7 +96,10 @@ export const JournalSchema = z.object({
    *     what those powers actually believed.
    * 5 — written before `industry` capped what a faction's yards could lay down
    *     in one batch, so its fleets grew at whatever rate credits allowed.
-   * 6 — current.
+   * 6 — written before handing over, selling on or questioning a captured
+   *     PERSON moved anybody's opinion, so its dispositions are what those
+   *     powers actually believed.
+   * 7 — current.
    */
   version: JournalVersionSchema,
   entries: z.array(JournalEntrySchema),
@@ -170,6 +174,10 @@ export function replay(
     // Those campaigns fought those battles and ran those operatives without
     // anybody being seized, and an asset is tradeable rather than cosmetic.
     hostages: parsed.version >= 6,
+    // What a power does with the people it holds moved nobody's opinion. Those
+    // campaigns sold, returned and questioned officers and operatives and the
+    // powers involved felt nothing about it — that is what they believed.
+    peopleStanding: parsed.version >= 7,
   };
 
   for (const entry of parsed.entries.slice(1)) {

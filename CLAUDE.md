@@ -3771,6 +3771,32 @@ cap and draws no pay, which is what lets a power that lost one appoint a
 replacement — and what makes getting their back a real bargain rather than a
 formality.
 
+### And what you do with them costs, or buys, standing
+
+Assets were tradeable from the start and **moving one moved nobody's opinion**:
+a power could sell another's admiral to their worst enemy, or question one and
+throw them away, and only credits changed. The same defect `COERCION_RESENTMENT`
+exists for — an act that is plainly an insult, priced at nothing.
+
+| act | whose person they are thinks of the holder | every onlooker |
+|---|---|---|
+| handed home | `REPATRIATION_GOODWILL` (+25) | — |
+| sold to anyone else | `TRAFFICKING_RESENTMENT` (−15) | `TRAFFICKING_REPUTATION_COST` (−4) |
+| questioned | `INTERROGATION_RESENTMENT` (−20) | — |
+
+**Returning somebody is worth more than taking them cost**, because a
+repatriation is a choice and a capture was a battle — which is what makes a
+prisoner a diplomatic instrument rather than a scoreboard. Only **people** — an
+asset with a `commanderId` or `agentId`; a hold of anonymous crews names nobody,
+and nobody resents the sale of people it cannot name. A world stormed with a
+prisoner on it is a conquest, not a sale, and moves nothing.
+
+**Both routes a person changes hands by**: `transfer_asset` and a treaty's
+`terms.assets`. The original build (on an unmerged branch) priced only the
+first, and a ransom is most naturally written as a treaty — a rule on one route
+makes the other the free one. `JOURNAL_VERSION` is **7** for this, pinned by
+`LegacyRules.peopleStanding`.
+
 ### People, on both sides of the fog
 
 An officer and an operative are the same kind of thing once they are caught, and

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Waiting } from './Waiting.js';
 import type { CampaignView } from '../../../src/api/contract.js';
 import { getFaction } from '../../../src/domain/state.js';
 import { ansi256ToHex } from '../color.js';
@@ -80,7 +81,11 @@ export function ChannelPanel({
             <p>{m.text}</p>
           </div>
         ))}
-        {busy && <p className="channel-busy">{busy}…</p>}
+        {busy && (
+          <p className="channel-busy" role="status" aria-live="polite">
+            <Waiting label={busy} />
+          </p>
+        )}
       </div>
 
       {/* The bargain as it is actually being written down, rather than as the

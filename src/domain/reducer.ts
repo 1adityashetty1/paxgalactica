@@ -69,7 +69,11 @@ import {
   commanderFor,
   commanderTaken,
   ASSASSINATION_KILL_ROLL,
+  INTERROGATION_RESENTMENT,
   INTERROGATION_SHARE,
+  REPATRIATION_GOODWILL,
+  TRAFFICKING_REPUTATION_COST,
+  TRAFFICKING_RESENTMENT,
   HOSTAGE_VALUE_PER_POINT,
   OFFICER_LEVERAGE,
   OPERATIVE_RANSOM,
@@ -1166,7 +1170,62 @@ function moveConserved(
  *   that is what a loan of a thing means — so every guard keyed on the holder
  *   waves them through, and this one has to say it.
  */
-function settleAssetTerms(state: WorldState, treaty: Treaty): string[] {
+/**
+ * Move one power's regard for another, clamped. One-directional, unlike
+ * `adjustCommitmentGoodwill`: the power whose officer was questioned resents
+ * the questioner, and the questioner has no view about it.
+ */
+function moveRegard(state: WorldState, who: string, toward: string, delta: number): void {
+  if (who === toward) return;
+  const faction = state.factions.find((f) => f.id === who);
+  if (!faction || !state.factions.some((f) => f.id === toward)) return;
+  faction.disposition[toward] = Math.max(-100, Math.min(100, (faction.disposition[toward] ?? 0) + delta));
+}
+
+/**
+ * Whose a held person is — `heldBy` is who HAS them. `null` for everything
+ * that is not a person, which is every asset but a captured officer or
+ * operative.
+ */
+function personsPower(state: WorldState, asset: Asset): string | null {
+  if (asset.commanderId !== null) {
+    return (state.commanders ?? []).find((c) => c.id === asset.commanderId)?.factionId ?? null;
+  }
+  if (asset.agentId !== null) {
+    return (state.agents ?? []).find((a) => a.id === asset.agentId)?.ownerFactionId ?? null;
+  }
+  return null;
+}
+
+/**
+ * What handing a person over does to standing. Read BEFORE `heldBy` moves,
+ * since the question is about the power giving them up.
+ *
+ * Called from both routes a person can change hands by — `transfer_asset` and
+ * a treaty's `terms.assets` — because a ransom is most naturally written as a
+ * treaty, and a rule on one route alone would make the other the free way to
+ * sell somebody. Not from conquest: a prisoner on a world that is stormed is
+ * TAKEN, and the fighting already priced it.
+ */
+function regardForHandover(state: WorldState, asset: Asset, from: string, to: string): void {
+  const whose = personsPower(state, asset);
+  if (whose === null || whose === from) return;
+  if (to === whose) {
+    // Home. Worth more than the taking cost: a repatriation is a choice.
+    moveRegard(state, whose, from, REPATRIATION_GOODWILL);
+    return;
+  }
+  // Sold on, over their head. Their power resents the seller, and every
+  // onlooker marks down a power that deals in people at all — visible to
+  // everybody, the same shape as `PACT_BREAKING_REPUTATION_COST`.
+  moveRegard(state, whose, from, -TRAFFICKING_RESENTMENT);
+  for (const f of state.factions) {
+    if (f.id === from || f.id === whose || f.id === to) continue;
+    moveRegard(state, f.id, from, -TRAFFICKING_REPUTATION_COST);
+  }
+}
+
+function settleAssetTerms(state: WorldState, treaty: Treaty, peopleStanding = true): string[] {
   const notes: string[] = [];
   for (const term of treaty.terms.assets ?? []) {
     const asset = (state.assets ?? []).find((a) => a.id === term.assetId);
@@ -1187,6 +1246,7 @@ function settleAssetTerms(state: WorldState, treaty: Treaty): string[] {
       continue;
     }
 
+    if (peopleStanding) regardForHandover(state, asset, holder, receiver);
     asset.heldBy = receiver;
     notes.push(`${asset.quantity} ${asset.unit} of ${asset.kind} passes to ${receiver} under ${treaty.summary}.`);
   }
@@ -1308,6 +1368,13 @@ export interface LegacyRules {
    * together, each with its own flag for the reason the others have theirs.
    */
   hostages?: boolean;
+  /**
+   * Move standing when a captured PERSON is handed home, sold on, or
+   * questioned — `REPATRIATION_GOODWILL`, `TRAFFICKING_RESENTMENT`,
+   * `TRAFFICKING_REPUTATION_COST`, `INTERROGATION_RESENTMENT`. A recorded
+   * campaign did all three at no cost in standing. Journal version 7.
+   */
+  peopleStanding?: boolean;
 }
 
 export function applyOps(
@@ -1359,7 +1426,7 @@ export function applyOps(
    */
   legacy: LegacyRules = {},
 ): ApplyResult {
-  const { unbuildFromGain = true, arrangementStanding = true, yardCapacity = true } = legacy;
+  const { unbuildFromGain = true, arrangementStanding = true, yardCapacity = true, peopleStanding = true } = legacy;
   const state = cloneState(input);
   const rejections: OpRejection[] = [];
   const notes: string[] = [];
@@ -2190,7 +2257,13 @@ export function applyOps(
           const note = `${nameFor(state, asset.heldBy)} questions ${who} and files what they gave up.`;
           notes.push(note);
           logEvent(state, 'narrative', note, asset.heldBy);
-          if (theirs) logEvent(state, 'narrative', note, theirs);
+          if (theirs) {
+            logEvent(state, 'narrative', note, theirs);
+            // Their power hears of it and does not forgive it. Disposition has
+            // no decay, so this is a grievance rather than a mood — the price of
+            // choosing the file over the ransom.
+            if (peopleStanding) moveRegard(state, theirs, asset.heldBy, -INTERROGATION_RESENTMENT);
+          }
           break;
         }
 
@@ -2266,6 +2339,7 @@ export function applyOps(
           break;
         }
         const from = asset.heldBy;
+        if (peopleStanding) regardForHandover(state, asset, from, op.toFactionId);
         asset.heldBy = op.toFactionId;
         const note = `${nameFor(state, from)} hands ${asset.quantity} ${asset.unit} to ${nameFor(state, op.toFactionId)}: ${asset.text} ${op.reason}`.trim();
         notes.push(note);
@@ -3346,7 +3420,7 @@ export function applyOps(
         // hands once, and taking it back is a fresh act.
         if (!pending) {
           notes.push(...cedeTerritory(state, treaty));
-          notes.push(...settleAssetTerms(state, treaty));
+          notes.push(...settleAssetTerms(state, treaty, peopleStanding));
           notes.push(...settleTreatyPayment(state, treaty));
         }
         break;
@@ -5319,7 +5393,7 @@ export interface TickResult extends ApplyResult {
  * originates.
  */
 export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResult {
-  const { arrangementStanding = true, hostages = true } = legacy;
+  const { arrangementStanding = true, hostages = true, peopleStanding = true } = legacy;
   const state = cloneState(input);
   const notes: string[] = [];
 
@@ -5692,7 +5766,7 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
     // two calls belong together at BOTH sites, which is the whole reason that
     // comment says "the same two places".
     notes.push(...cedeTerritory(state, treaty));
-    notes.push(...settleAssetTerms(state, treaty));
+    notes.push(...settleAssetTerms(state, treaty, peopleStanding));
     notes.push(...settleTreatyPayment(state, treaty));
   }
 
