@@ -194,6 +194,53 @@ interface AttemptMetrics {
   cacheReadTok?: number;
   cacheWriteTok?: number;
   costUsd?: number;
+  sdkRejections?: string[];
+  sdkRejectedKeys?: string[];
+}
+
+/** Enough to see a pattern without a pathological attempt bloating the trace. */
+const MAX_SDK_REJECTIONS = 8;
+const MAX_SDK_REJECTION_CHARS = 400;
+
+/** The top-level keys of the last StructuredOutput the model sent, or '' before one. */
+function structuredOutputKeys(message: Record<string, unknown>): string | undefined {
+  const content = (message.message as { content?: unknown } | undefined)?.content;
+  if (!Array.isArray(content)) return undefined;
+  for (const block of content as Record<string, unknown>[]) {
+    if (block?.type !== 'tool_use' || block.name !== 'StructuredOutput') continue;
+    const input = block.input;
+    return input && typeof input === 'object' ? Object.keys(input).join(',').slice(0, 120) : typeof input;
+  }
+  return undefined;
+}
+
+/**
+ * Collect the schema rejections the SDK fed back to the model mid-attempt.
+ *
+ * They arrive as `user` messages carrying a `tool_result` with `is_error` —
+ * the reply to the model's StructuredOutput call — and are otherwise consumed
+ * by the SDK's own loop. Checked live: a forced miss produced
+ * `Output does not match required schema: /x: must be >= 1000, /word: must
+ * match pattern "^[a-z]{41}$"`, then a second try in the same attempt.
+ */
+function noteSdkRejections(message: Record<string, unknown>, out: AttemptMetrics, sentKeys: string): void {
+  const content = (message.message as { content?: unknown } | undefined)?.content;
+  if (!Array.isArray(content)) return;
+  for (const block of content as Record<string, unknown>[]) {
+    if (block?.type !== 'tool_result' || block.is_error !== true) continue;
+    const raw = block.content;
+    const text =
+      typeof raw === 'string'
+        ? raw
+        : Array.isArray(raw)
+          ? raw.map((c) => (typeof (c as { text?: unknown })?.text === 'string' ? (c as { text: string }).text : '')).join(' ')
+          : '';
+    const list = (out.sdkRejections ??= []);
+    if (list.length < MAX_SDK_REJECTIONS) {
+      list.push(text.replace(/^Output does not match required schema:\s*/i, '').trim().slice(0, MAX_SDK_REJECTION_CHARS));
+      (out.sdkRejectedKeys ??= []).push(sentKeys);
+    }
+  }
 }
 
 /**
@@ -204,7 +251,7 @@ interface AttemptMetrics {
  */
 function readResultMetrics(message: Record<string, unknown>, out: AttemptMetrics): void {
   const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
-  const set = <K extends keyof AttemptMetrics>(k: K, v: number | undefined) => {
+  const set = <K extends Exclude<keyof AttemptMetrics, 'sdkRejections' | 'sdkRejectedKeys'>>(k: K, v: number | undefined) => {
     if (v !== undefined) out[k] = v;
   };
   set('apiMs', num(message.duration_api_ms));
@@ -317,6 +364,7 @@ async function rawCall(
       );
     });
 
+  let sentKeys = '';
   try {
     const it = q[Symbol.asyncIterator]();
     for (;;) {
@@ -324,6 +372,8 @@ async function rawCall(
       clearTimeout(timer);
       if (step.done) break;
       const message = step.value;
+      if (message.type === 'assistant') sentKeys = structuredOutputKeys(message as unknown as Record<string, unknown>) ?? sentKeys;
+      if (message.type === 'user') noteSdkRejections(message as unknown as Record<string, unknown>, metrics, sentKeys);
       if (message.type === 'result') {
         costUsd = message.total_cost_usd ?? 0;
         readResultMetrics(message as unknown as Record<string, unknown>, metrics);
@@ -446,7 +496,20 @@ export async function callStructured<T>(call: StructuredCall<T>): Promise<Struct
     } catch (err) {
       callFinished();
       const message = err instanceof Error ? err.message : String(err);
-      trace(/went silent/.test(message) ? 'timeout' : 'transport_error', message);
+      // An attempt the SDK ended because the model kept missing the schema —
+      // its structured-output retries ran out, or its turn budget did while it
+      // was still retrying — is a schema failure that happened a layer down,
+      // not a transport one. It was recorded as `transport_error`, which
+      // hid the one number the raw-JSON decision turns on.
+      const schemaMiss = (metrics.sdkRejections?.length ?? 0) > 0 || /structured-output retries exhausted/.test(message);
+      trace(
+        /went silent/.test(message)
+          ? 'timeout'
+          : schemaMiss
+            ? attempt > maxRetries ? 'schema_failed' : 'schema_retry'
+            : 'transport_error',
+        schemaMiss && metrics.sdkRejections?.length ? metrics.sdkRejections.at(-1) : message,
+      );
       if (err instanceof NotLoggedInError) throw err;
       lastError = err;
       stats.calls += 1;

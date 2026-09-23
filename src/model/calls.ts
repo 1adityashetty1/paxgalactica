@@ -21,7 +21,7 @@ import {
   type Appraisal,
   ExtractionOutputSchema,
   ModelTurnOutputSchema,
-  ReactionSetSchema,
+  ReactionSchema,
   ResolutionOutputSchema,
   type ExtractionOutput,
   type ReactionSet,
@@ -902,7 +902,7 @@ async function reactAs(
     '',
     perFaction,
     '',
-    `Return exactly 1 reaction, for \`${factionId}\` and no other faction.`,
+    `Return one reaction object for \`${factionId}\` — not an array.`,
   ].join('\n');
 
   const res = await callStructured({
@@ -910,15 +910,21 @@ async function reactAs(
     label: `reaction (${factionId})`,
     system: withRubric(loadPrompt('reaction')),
     user,
-    schema: ReactionSetSchema,
+    // ONE reaction, not the set. The call has been per-faction since the split
+    // above, but its schema still asked for `{ reactions: [...] }` — and the
+    // model, told to answer for one power, kept answering with one object.
+    // Traced: 13 of 16 schema misses across 27 reactions were that envelope
+    // (`/reactions: must be array`, or no `reactions` key at all), each costing
+    // a round trip inside the SDK that re-read the whole context.
+    schema: ReactionSchema,
   });
-  // The call was asked for one faction, so anything else it wrote down is
-  // discarded rather than trusted. A reaction commits with its own faction as
-  // `actor`, so a misattributed one would act with another power's hand — the
-  // merged call could not check this at all, because every id in the batch was
-  // legitimately expected.
+  // The call was asked for one faction, so a reaction written under any other
+  // flag is discarded rather than trusted. A reaction commits with its own
+  // faction as `actor`, so a misattributed one would act with another power's
+  // hand — the merged call could not check this at all, because every id in
+  // the batch was legitimately expected.
   return {
-    output: { reactions: res.value.reactions.filter((r) => r.factionId === factionId) },
+    output: { reactions: res.value.factionId === factionId ? [res.value] : [] },
     attempts: res.attempts,
     costUsd: res.costUsd,
   };

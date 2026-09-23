@@ -5416,11 +5416,13 @@ Measured live, on the current prompts and tiers:
 | arbitration | Haiku | ~7–13s | ~$0.017 |
 | resolution | Sonnet | ~20–30s | ~$0.056 |
 | **one declared action** | | **~33s** | **~$0.073** |
-| end of turn (reactions + tick) | Sonnet | ~38s | ~$0.14 |
+| end of turn (three reactions at once + tick) | Sonnet, no thinking | ~9–13s | ~$0.21–0.40 |
 
-A two-action turn is about **100 seconds and $0.29**; a ten-turn campaign is
-roughly **$3** and half an hour. Reactions are one call per *turn*, not per
-action.
+A two-action turn is about **80 seconds and $0.45**; a ten-turn campaign is
+roughly **$4** and a quarter of an hour. Reactions are paid per *turn*, not per
+action — one call for each of the three responding powers, run at once, so the
+end of turn waits on the slowest. With thinking on that was 16–76s; the
+measurement that turned it off is on the `narrative` tier in `router.ts`.
 
 ### How it got there, because the mistakes are instructive
 
@@ -5475,7 +5477,7 @@ pnpm trace mycampaign --perfetto   # a waterfall for ui.perfetto.dev
 
 | record | carries |
 |---|---|
-| **call**, one per attempt | turn, phase, action, kind, attempt of max, outcome (`ok` · `schema_retry` · `schema_failed` · `transport_error` · `timeout`) and why, wall and API time, time to first token, agentic turns, tokens in/out/cache-read/cache-write, cost, prompt size in characters, calls in flight, and whether raw JSON was on |
+| **call**, one per attempt | turn, phase, action, kind, attempt of max, outcome (`ok` · `schema_retry` · `schema_failed` · `transport_error` · `timeout`) and why, wall and API time, time to first token, agentic turns, tokens in/out/cache-read/cache-write, cost, prompt size in characters, calls in flight, whether raw JSON was on, and the **schema misses the SDK retried inside the attempt** (`sdkRejections`) |
 | **phase**, one per span | `declare`, `advisor`, `talk`, `end_talk`, `epilogue`, and `end_turn` with its steps `commit`, `reactions`, `bots`, `tick`, `save` |
 
 Five decisions shaped it:
@@ -5521,6 +5523,34 @@ of API time.
 > outlier is exactly what a mean hides. And the first draft stamped the `save`
 > step with the turn *after* the tick, splitting one end of turn across two;
 > every step is now stamped with the turn being ended.
+
+**A call that passed can have failed the schema twice.** Under `outputFormat: json_schema` the SDK validates each StructuredOutput call
+itself and, on a miss, hands the error back and lets the model try again
+**inside the same attempt**. None of that reached the retry loop above it, so a
+resolution that took six agentic turns logged as one slow success — and one
+that ran out of the SDK's own retries logged as a `transport_error`, which hid
+the exact number the raw-JSON decision turns on. The misses arrive as a
+`tool_result` with `is_error` (checked live by forcing one), and are now kept on
+the record; an attempt the SDK gave up on for them is a `schema_retry` or
+`schema_failed`, not a transport failure.
+
+`pnpm trace` groups them by field, and **an op that matches no variant counts
+once**: the validator reports a failed union as every branch's complaint, which
+on the first real trace was thirty rows of noise around one fact.
+
+First reading, 27 reactions on three identical turns: **13 of 16 misses were the
+wrapper**, not the ops — `/reactions: must be array` or no `reactions` key at
+all. Each reaction call was for one power while its schema still asked for a
+list of them, so it now asks for one reaction; with thinking off that took the
+misses from 5 in 9 calls to none.
+
+With thinking **on** it did not, and the second field on the record is why:
+`sdkRejectedKeys` keeps the top-level keys of each rejected output (keys only,
+no values), because a validator only ever says what is *missing*. The rejected
+reactions were all `{StructuredOutput}` — the model nesting its answer under the
+SDK's own tool name — which reads to the validator as "no factionId, no
+narrative, no ops" and names nothing. That is a quirk of the transport rather
+than of any schema here, and it is one more thing raw JSON would not have.
 
 **What it deliberately does not cover.** The engine: bots cost 10–18ms a turn
 and the tick 2–7ms, flat over 90 turns, which is `pnpm perf`'s territory and

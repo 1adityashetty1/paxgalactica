@@ -23,7 +23,7 @@ vi.mock('../src/model/client.js', () => ({
   callStructured: async (call: { kind: string; user: string }) => {
     calls.push({ kind: call.kind, user: call.user });
     return {
-      value: { reactions: [{ factionId: 'vigil', narrative: 'The Legate reads the dispatch.', ops: [] }] },
+      value: { factionId: 'vigil', narrative: 'The Legate reads the dispatch.', ops: [] },
       attempts: 1,
       costUsd: 0,
     };

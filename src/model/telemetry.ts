@@ -84,6 +84,24 @@ export interface CallRecord {
   spawnMs?: number;
   /** Agentic round trips; structured output costs one more than raw JSON. */
   numTurns?: number;
+  /**
+   * Schema rejections the SDK made INSIDE this attempt, in its own words —
+   * `/ops/0/type: must be equal to one of the allowed values`. Under
+   * `outputFormat: json_schema` the SDK validates each StructuredOutput call
+   * and, on a miss, feeds the error back and lets the model try again within
+   * the same attempt, so a call that "succeeded" in four turns failed the
+   * schema twice and nothing above the SDK could tell. Absent when there were
+   * none. Bounded in count and length.
+   */
+  sdkRejections?: string[];
+  /**
+   * The top-level keys of each output the SDK rejected, parallel to
+   * `sdkRejections` — `reaction` or `factionId,narrative,ops`. A validator
+   * reports what is MISSING, so a model that wrapped its answer in a key of its
+   * own invention reads as "no factionId, no narrative, no ops" and the wrapper
+   * itself is never named. Keys only: no values, so no prompt or game text.
+   */
+  sdkRejectedKeys?: string[];
   inTok?: number;
   outTok?: number;
   cacheReadTok?: number;
