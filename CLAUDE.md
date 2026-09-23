@@ -2894,6 +2894,29 @@ reducer sets the price. Neither half is resolution's to decide. And
 nothing further fires at the cap on purpose — the penalty there is already
 crippling, and a terminal state on top of it would charge twice for one decision.
 
+### Disposition needs you to be in the room
+
+`adjust_disposition` checked that both factions existed and differed, and
+**nothing else** — no actor test, and a magnitude bounded only by the ±100 clamp.
+So a power could set what two *other* powers thought of each other, by any
+amount, permanently, for free: strictly better than the `sedition` operative,
+which costs 150 credits, a slot and an exposure roll.
+
+Two rules, both mirroring guards that exist. **You must be one of the two** —
+your opinion of them, or theirs of you, which between them are 621 of the 625
+movements in the saved campaigns. And **`MAX_NARRATIVE_DISPOSITION` (25)**,
+trimmed rather than rejected, the shape `MAX_NARRATIVE_CREDITS` uses: every
+movement the reducer charges is small and reasoned, and this one could swing a
+relationship four times further than repudiating a treaty does.
+
+Both apply only to a batch with an actor — every narrated movement has one, and
+an actorless batch is the engine or a test building a board. Both are pinned to
+`JOURNAL_VERSION` 7 (`narratedDisposition`), which the original build of this
+rule deliberately did not do. It argued the exploit need not be reproduced, and
+for the adversarial run that found it that is true; but the rules move **six**
+of the 48 saves, one of them an ordinary campaign where a treaty follows from
+the move, and replay exists to reproduce what happened.
+
 ### Dissent moves one way, on your own faction only
 
 `adjust_dissent` had the same unguarded shape, and raising the ceiling to 8 made

@@ -173,6 +173,7 @@ import {
   DOCTRINE_TEXT_DISSENT,
   getSystem,
   MAX_NARRATIVE_CREDITS,
+  MAX_NARRATIVE_DISPOSITION,
   MAX_TREATY_INCOME_PER_TURN,
   isMovementType,
   ledgerFor,
@@ -1375,6 +1376,20 @@ export interface LegacyRules {
    * campaign did all three at no cost in standing. Journal version 7.
    */
   peopleStanding?: boolean;
+  /**
+   * `adjust_disposition` must involve the actor, and one narrated act moves an
+   * opinion at most `MAX_NARRATIVE_DISPOSITION`. Journal version 7.
+   *
+   * Both halves move recorded campaigns. The cap trims legitimate large swings
+   * in four of them; the actor guard moves two — `creative_0907`, the
+   * adversarial run that found the hole, and `classes_playtest`, an ordinary
+   * campaign where Meridian's exposure of a Combine agent wrote down the
+   * Vigil's regard for the Combine and a treaty later followed from it. The
+   * original build of this rule argued the exploit need not be reproduced;
+   * the second campaign is history rather than exploit, and replay's job is to
+   * reproduce what happened.
+   */
+  narratedDisposition?: boolean;
 }
 
 export function applyOps(
@@ -1426,7 +1441,13 @@ export function applyOps(
    */
   legacy: LegacyRules = {},
 ): ApplyResult {
-  const { unbuildFromGain = true, arrangementStanding = true, yardCapacity = true, peopleStanding = true } = legacy;
+  const {
+    unbuildFromGain = true,
+    arrangementStanding = true,
+    yardCapacity = true,
+    peopleStanding = true,
+    narratedDisposition = true,
+  } = legacy;
   const state = cloneState(input);
   const rejections: OpRejection[] = [];
   const notes: string[] = [];
@@ -1669,8 +1690,40 @@ export function applyOps(
           reject(raw, 'illegal_value', `A faction cannot hold a disposition toward itself.`);
           break;
         }
+        // **You must be one of the two.** Either your opinion of them moved, or
+        // theirs of you did — between them 621 of the 625 movements across
+        // every saved campaign. The four that were neither are the hole:
+        // `actor=ojjul` moving `freeworlds → meridian` and `vigil → meridian`
+        // by −15 each in one turn — a power poisoning two others against a
+        // third, free and permanent, and strictly better than the `sedition`
+        // operative that costs 150 credits, a slot and an exposure roll.
+        //
+        // Scoped to a live actor, like the ownership guards on `deploy_agent`:
+        // an actorless batch is an engine op or a journal written before the
+        // guard existed, and those replay as they ran.
+        if (narratedDisposition && actor !== undefined && op.factionId !== actor && op.towardFactionId !== actor) {
+          reject(
+            raw,
+            'illegal_value',
+            `${nameFor(state, actor)} cannot decide what ${nameFor(state, op.factionId)} thinks of ${nameFor(state, op.towardFactionId)}. Move your own standing, or theirs toward you.`,
+          );
+          break;
+        }
         const before = f.disposition[op.towardFactionId] ?? 0;
-        const after = Math.max(-100, Math.min(100, before + op.delta));
+        // Bounded like narrative credits: one narrated sentence could swing a
+        // relationship four times further than repudiating a treaty does.
+        let delta = op.delta;
+        // Scoped to a live actor like the guard above: every NARRATED movement
+        // carries one (a declaration, a reaction, an accord), and an actorless
+        // batch is the engine or a test building a board, which may set a
+        // relationship outright.
+        if (narratedDisposition && actor !== undefined && Math.abs(delta) > MAX_NARRATIVE_DISPOSITION) {
+          delta = Math.sign(delta) * MAX_NARRATIVE_DISPOSITION;
+          const trimmed = `Trimmed a ${op.delta} swing in ${nameFor(state, op.factionId)}'s regard for ${nameFor(state, op.towardFactionId)} to ${delta}; no single act moves an opinion further.`;
+          notes.push(trimmed);
+          logEvent(state, 'clamp', trimmed, op.factionId);
+        }
+        const after = Math.max(-100, Math.min(100, before + delta));
         f.disposition[op.towardFactionId] = after;
         break;
       }

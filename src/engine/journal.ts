@@ -97,8 +97,9 @@ export const JournalSchema = z.object({
    * 5 — written before `industry` capped what a faction's yards could lay down
    *     in one batch, so its fleets grew at whatever rate credits allowed.
    * 6 — written before handing over, selling on or questioning a captured
-   *     PERSON moved anybody's opinion, so its dispositions are what those
-   *     powers actually believed.
+   *     PERSON moved anybody's opinion, and before one narrated act could move
+   *     an opinion at most `MAX_NARRATIVE_DISPOSITION`, so its dispositions are
+   *     what those powers actually believed.
    * 7 — current.
    */
   version: JournalVersionSchema,
@@ -178,6 +179,9 @@ export function replay(
     // campaigns sold, returned and questioned officers and operatives and the
     // powers involved felt nothing about it — that is what they believed.
     peopleStanding: parsed.version >= 7,
+    // A narrated swing had no ceiling but the clamp and no test of who was
+    // asking, and six recorded campaigns moved under one or the other.
+    narratedDisposition: parsed.version >= 7,
   };
 
   for (const entry of parsed.entries.slice(1)) {
