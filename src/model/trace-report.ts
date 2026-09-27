@@ -195,6 +195,13 @@ export function formatReport(records: readonly TraceRecord[], title = 'trace'): 
     lines.push('', 'what the rejected outputs were, by top-level keys:');
     for (const [k, n] of [...shapes].sort((a, b) => b[1] - a[1]).slice(0, 8)) lines.push(`  ${String(n).padStart(3)}  ${k}`);
   }
+  const unparsed = calls.filter((c) => c.unparsed !== undefined).slice(-6);
+  if (unparsed.length > 0) {
+    lines.push('', 'replies that never became a JSON object (start of each, newest last):');
+    for (const c of unparsed) {
+      lines.push(`  t${c.turn ?? '?'} ${c.kind} #${c.attempt}: ${JSON.stringify(c.unparsed!.replace(/\s+/g, ' ').slice(0, 200))}`);
+    }
+  }
   const why = calls.filter((c) => c.outcome !== 'ok' && c.why).slice(-8);
   if (why.length > 0) {
     lines.push('', 'why attempts did not succeed (newest last):');

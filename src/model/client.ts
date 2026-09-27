@@ -198,6 +198,9 @@ interface AttemptMetrics {
   sdkRejectedKeys?: string[];
 }
 
+/** How much of a reply that was not JSON the trace keeps: enough to see its shape. */
+const UNPARSED_SAMPLE_CHARS = 600;
+
 /** Enough to see a pattern without a pathological attempt bloating the trace. */
 const MAX_SDK_REJECTIONS = 8;
 const MAX_SDK_REJECTION_CHARS = 400;
@@ -464,7 +467,7 @@ export async function callStructured<T>(call: StructuredCall<T>): Promise<Struct
     // rather than inside `rawCall` because only this loop knows whether the
     // output then passed validation, which is the half of a retry that
     // matters most and the half `rawCall` cannot see.
-    const trace = (outcome: CallOutcome, why?: string) => {
+    const trace = (outcome: CallOutcome, why?: string, unparsed?: string) => {
       const at = currentSpan();
       telemetrySink().write({
         type: 'call',
@@ -478,6 +481,7 @@ export async function callStructured<T>(call: StructuredCall<T>): Promise<Struct
         maxAttempts: maxRetries + 1,
         outcome,
         ...(why !== undefined ? { why: why.replace(/\s+/g, ' ').trim().slice(0, 300) } : {}),
+        ...(unparsed !== undefined ? { unparsed: unparsed.slice(0, UNPARSED_SAMPLE_CHARS) } : {}),
         wallMs: Date.now() - attemptAt,
         ...metrics,
         costUsd: metrics.costUsd ?? costUsd,
@@ -532,7 +536,13 @@ export async function callStructured<T>(call: StructuredCall<T>): Promise<Struct
       return { value: parsed.data, attempts: attempt, costUsd: totalCost };
     }
 
-    trace(attempt > maxRetries ? 'schema_failed' : 'schema_retry', formatIssues(parsed.error));
+    // A reply that never became a JSON object is kept, briefly, so its cause can
+    // be read rather than guessed at — see `CallRecord.unparsed`.
+    trace(
+      attempt > maxRetries ? 'schema_failed' : 'schema_retry',
+      formatIssues(parsed.error),
+      typeof lastRaw === 'string' ? lastRaw : undefined,
+    );
     if (attempt > maxRetries) {
       throw new ModelCallError(
         `${label}: output failed validation after ${attempt} attempts.\n${formatIssues(parsed.error)}`,

@@ -20,6 +20,24 @@ import {
   WarEthicSchema,
 } from './state.js';
 
+
+/**
+ * An optional string where a model says "none" by sending an empty one.
+ *
+ * Every model-facing schema here is handed to the model as JSON Schema, and a
+ * model asked for an optional field routinely writes `""` rather than leaving
+ * it out. A `min(1)` on that field then rejects an honest answer and costs a
+ * retry for nothing — measured in a traced playtest, where a covert action aimed
+ * at nobody in particular sent `target: ""`. Blank means absent, here, once.
+ */
+export function absentWhenBlank(max: number) {
+  return z
+    .string()
+    .max(max)
+    .optional()
+    .transform((v) => (v === undefined || v.trim() === '' ? undefined : v));
+}
+
 /**
  * The op vocabulary. The model never rewrites state — it emits ops from this
  * list, they are Zod-validated, and a pure reducer applies them.
@@ -1042,14 +1060,16 @@ export const REDUCER_ONLY_OPS = new Set(['transfer_control']);
 /** Standard envelope for every model call that produces state change. */
 export const ModelTurnOutputSchema = z.object({
   narrative: z.string().min(1),
-  ops: z.array(ModelOpSchema),
+  // Nothing to emit is an answer, not an omission.
+  ops: z.array(ModelOpSchema).default([]),
 });
 export type ModelTurnOutput = z.infer<typeof ModelTurnOutputSchema>;
 
 /** What `/endtalk` extraction returns: the ordinary vocabulary plus treaties. */
 export const ExtractionOutputSchema = z.object({
   narrative: z.string().min(1),
-  ops: z.array(ExtractionOpSchema),
+  // "Nothing was agreed" is the commonest honest outcome of a conversation.
+  ops: z.array(ExtractionOpSchema).default([]),
 });
 export type ExtractionOutput = z.infer<typeof ExtractionOutputSchema>;
 
@@ -1128,8 +1148,18 @@ export const AppraisalSchema = z.object({
   admissible: z.boolean().default(true),
   /** Why it was refused, or a one-clause note on the ruling. */
   reason: z.string().default(''),
-  stat: StatNameSchema,
-  difficulty: z.number().int().min(1).max(30),
+  /**
+   * The price: which stat the attempt tests and how hard it is. **Only when a
+   * roll will happen.** An inadmissible action is not attempted, an action
+   * redirected to a conversation is not rolled, and an accord is never rolled
+   * at all — and the schema used to demand a price for all three, so the model
+   * either invented one or was sent back to. Measured on a traced playtest: 7 of
+   * raw JSON's 8 arbiter retries, and 4 of the SDK's hidden ones, were an honest
+   * `{ admissible: false, reason }` refused for lacking a stat. Required on the
+   * declared path by `DeclaredAppraisalSchema` exactly when it will be used.
+   */
+  stat: StatNameSchema.optional(),
+  difficulty: z.number().int().min(1).max(30).optional(),
   rationale: z.string().default(''),
   /**
    * The principle on the acting faction's own sheet that this action breaks,
@@ -1232,7 +1262,7 @@ export const AppraisalSchema = z.object({
          * itself came out aimed at the power rather than at the officer the
          * player asked for.
          */
-        target: z.string().min(1).max(60).optional(),
+        target: absentWhenBlank(60),
       }),
     )
     .max(4)
@@ -1279,6 +1309,24 @@ export const AppraisalSchema = z.object({
 });
 export type Appraisal = z.infer<typeof AppraisalSchema>;
 
+/**
+ * The arbiter's ruling on a DECLARED action: priced whenever a roll will follow.
+ *
+ * A roll follows an admissible action that is not a redirect to a conversation.
+ * Anything else carries no price, and asking for one is asking the model to
+ * invent a number nothing reads. The accord path uses `AppraisalSchema` as it
+ * stands, since an accord is never rolled.
+ */
+export const DeclaredAppraisalSchema = AppraisalSchema.superRefine((a, ctx) => {
+  if (!a.admissible || a.negotiation) return;
+  if (a.stat === undefined) {
+    ctx.addIssue({ code: 'custom', path: ['stat'], message: 'An action that can be attempted needs the stat it tests.' });
+  }
+  if (a.difficulty === undefined) {
+    ctx.addIssue({ code: 'custom', path: ['difficulty'], message: 'An action that can be attempted needs a difficulty.' });
+  }
+});
+
 export const ResolutionOutputSchema = ModelTurnOutputSchema.extend({
   // No `check` field. The check is an INPUT to resolution now — computed in
   // code from a separate arbitration pass — so leaving it in the output schema
@@ -1306,7 +1354,7 @@ export const ResolutionOutputSchema = ModelTurnOutputSchema.extend({
       z.object({
         mission: AgentMissionSchema,
         systemId: z.string(),
-        target: z.string().optional(),
+        target: absentWhenBlank(60),
       }),
     )
     .optional(),
@@ -1363,7 +1411,8 @@ export const ReactionSchema = z.object({
    * of these are generated a turn, so the overrun is paid three times.
    */
   narrative: cappedProse(420),
-  ops: z.array(ModelOpSchema),
+  // A power that chooses to wait sends nothing, and that is an answer.
+  ops: z.array(ModelOpSchema).default([]),
   /**
    * This power wants to talk, and what about.
    *
@@ -1386,11 +1435,14 @@ export const ReactionSchema = z.object({
   approach: z
     .object({
       /** One or two sentences, in character, opening the subject. */
-      opening: z.string().min(1).max(400),
+      opening: z.string().max(400),
       /** What they want, in a few words, for the prompt to open with. */
-      about: z.string().min(1).max(120),
+      about: z.string().max(120),
     })
-    .optional(),
+    .optional()
+    // "No approach" arrives as empty strings as often as as nothing at all —
+    // measured three times in one traced playtest. Blank means none.
+    .transform((a) => (a && a.opening.trim() !== '' && a.about.trim() !== '' ? a : undefined)),
 });
 
 export const ReactionSetSchema = z.object({

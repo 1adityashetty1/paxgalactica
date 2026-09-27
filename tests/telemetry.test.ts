@@ -204,6 +204,15 @@ describe('a model call leaves one record per attempt', () => {
     expect(failed!.why).toMatch(/ops\/0\/type/);
   });
 
+  it('keeps the start of a reply that never became a JSON object, and nothing from one that did', async () => {
+    script.push(success('Certainly! Here is the ruling you asked for:\n{"answer": 1}'), success({ answer: 2 }));
+    await ask();
+    const [prose, ok] = calls();
+    expect(prose).toMatchObject({ outcome: 'schema_retry' });
+    expect(prose!.unparsed).toMatch(/^Certainly! Here is the ruling/);
+    expect(ok).not.toHaveProperty('unparsed');
+  });
+
   it('records no rejections on a clean call', async () => {
     script.push(success({ answer: 7 }));
     await ask();

@@ -102,6 +102,14 @@ export interface CallRecord {
    * itself is never named. Keys only: no values, so no prompt or game text.
    */
   sdkRejectedKeys?: string[];
+  /**
+   * The start of a reply that never became a JSON object — 600 characters at
+   * most, and only on an attempt that failed for that reason. The one place a
+   * trace keeps model text: a traced playtest counted eight such replies across
+   * both transports, and "expected object, received string" says nothing about
+   * why. A fence, a preamble and a refusal want three different fixes.
+   */
+  unparsed?: string;
   inTok?: number;
   outTok?: number;
   cacheReadTok?: number;

@@ -303,6 +303,11 @@ nobody's mind establishes nothing.
 
 `stat`, `difficulty`, and a one-clause `rationale` naming what makes it hard.
 
+**Price only what will be attempted.** An action you rule inadmissible is not
+attempted, and one you redirect to a conversation (`negotiation`) is not rolled:
+leave `stat` and `difficulty` out of both. Every action that can be attempted
+needs both, breach or no breach.
+
 | stat | covers |
 |---|---|
 | `might` | fleets, guns, invasions, blockades, raids — anything settled by force |
