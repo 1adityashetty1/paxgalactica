@@ -708,3 +708,12 @@ svg.outcome-art {
 
 /* A declaration that can no longer be withdrawn says why, where the × was. */
 .staged-binding { color: var(--dim); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* The cheat menu: a strip above the command line, deliberately plain and
+   marked as what it is. Rows wrap because the feed column narrows. */
+.cheat-panel { border-top: 1px dashed var(--warn); padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.cheat-panel header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cheat-panel header strong { color: var(--warn); }
+.cheat-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cheat-label { width: 78px; color: var(--dim); }
+.cheat-row select, .cheat-row button { font: inherit; font-size: 12px; }

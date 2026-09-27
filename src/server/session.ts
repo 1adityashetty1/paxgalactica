@@ -8,7 +8,8 @@ import type {
 } from '../api/contract.js';
 import type { EpilogueView } from '../engine/epilogue.js';
 import { eventsVisibleTo, observeOrders } from '../domain/intel.js';
-import { MAX_CHANNEL_MESSAGES, type DiscardResult } from '../api/contract.js';
+import { MAX_CHANNEL_MESSAGES, type CheatResult, type DiscardResult } from '../api/contract.js';
+import type { Cheat } from '../domain/cheats.js';
 import { archiveFilename, packCampaign, unpackCampaign } from '../engine/archive.js';
 import {
   withCurrentIntel, briefingFromState, buildBriefing, type Briefing } from '../engine/briefing.js';
@@ -488,6 +489,25 @@ export class GameSession {
       briefing,
       costUsd,
     };
+  }
+
+  /**
+   * Apply one cheat from the menu, straight to the committed world.
+   *
+   * No model call, no action point, no arbiter — and journaled under the
+   * `cheat` source so the campaign still replays exactly. Committed rather
+   * than staged, so it is part of the world before the next declaration is
+   * resolved against it and is never described to a reaction as something the
+   * player "did this turn". Refused while a model call is in flight, for the
+   * reason every mutation is: staging assumes ordered declarations.
+   */
+  async cheat(cheat: Cheat): Promise<CheatResult> {
+    const campaign = this.requirePlayable();
+    if (this.isBusy) throw new ApiFailure('conflict', `Busy: ${this.busyLabel}.`);
+    const res = campaign.commit([{ op: 'cheat', cheat }], 'cheat', `cheat:${cheat.kind}`);
+    if (res.rejections.length === 0) await campaign.save();
+    this.pushState();
+    return { notes: res.notes, rejections: res.rejections };
   }
 
   async discardStaged(index?: number): Promise<DiscardResult> {

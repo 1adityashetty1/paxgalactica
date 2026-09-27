@@ -1,5 +1,6 @@
 import {
   ActionRequestSchema,
+  CheatRequestSchema,
   DiscardRequestSchema,
   ImportRequestSchema,
   NewCampaignRequestSchema,
@@ -92,6 +93,10 @@ async function route(
 
   if (method === 'POST' && path === ROUTES.endturn) {
     return ok(await session.endTurn());
+  }
+
+  if (method === 'POST' && path === ROUTES.cheat) {
+    return ok(await session.cheat(parseBody(CheatRequestSchema, body)));
   }
 
   if (method === 'POST' && path === ROUTES.discardStaged) {

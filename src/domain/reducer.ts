@@ -60,7 +60,8 @@ import {
   AGENT_VETERAN_BONUS,
   agentVeterancy,
 } from './diplomacy.js';
-import { ASSET_ARCHETYPES, archetypeFor } from './assets.js';
+import { ASSET_ARCHETYPES, archetypeFor, fixtureYieldFor } from './assets.js';
+import { CHEAT_ASSET_QUANTITY, CHEAT_ASSET_VALUE, type Cheat } from './cheats.js';
 import {
   COMMANDER_COST,
   MAX_ACTIVE_COMMANDERS,
@@ -201,7 +202,11 @@ import {
  * model-driven source whose ops carry another faction's consent. `form_treaty`
  * is reachable from it and from nowhere else a model can reach.
  */
-export type OpSource = 'model' | 'engine' | 'extraction';
+/**
+ * `cheat` is the in-game cheat menu and nothing else: the only source that may
+ * apply a `cheat` op, and a batch carrying nothing but them.
+ */
+export type OpSource = 'model' | 'engine' | 'extraction' | 'cheat';
 
 /**
  * What being let off a debt is worth to the debtor.
@@ -1200,6 +1205,112 @@ function moveConserved(
  *   waves them through, and this one has to say it.
  */
 /**
+ * Apply one cheat from the menu. Deterministic, so a journaled cheat replays
+ * exactly; everything it logs is `kind: 'cheat'` and visible to the player
+ * alone. It bypasses prices and the arbiter, not the shape of the world: a ship
+ * needs somewhere to be, an officer a world of their own power's to report to,
+ * a world one fixture, and a power five officers at most.
+ */
+function applyCheat(
+  state: WorldState,
+  cheat: Cheat,
+  notes: string[],
+  refuse: (code: OpRejection['code'], message: string) => void,
+): void {
+  const player = state.playerFactionId;
+  const log = (text: string, factionId: string | null) => {
+    notes.push(text);
+    logEvent(state, 'cheat', `[cheat] ${text}`, factionId, [player]);
+  };
+  const faction = (id: string) => state.factions.find((f) => f.id === id);
+  switch (cheat.kind) {
+    case 'credits': {
+      const f = faction(cheat.factionId);
+      if (!f) return refuse('unknown_faction', `No faction "${cheat.factionId}".`);
+      f.credits += cheat.amount;
+      return log(`${f.name} gains ${cheat.amount} credits.`, f.id);
+    }
+    case 'disposition': {
+      const f = faction(cheat.factionId);
+      const t = faction(cheat.towardFactionId);
+      if (!f || !t) return refuse('unknown_faction', 'Both powers must exist.');
+      if (f.id === t.id) return refuse('illegal_value', 'A power has no disposition toward itself.');
+      const before = f.disposition[t.id] ?? 0;
+      f.disposition[t.id] = Math.max(-100, Math.min(100, before + cheat.delta));
+      return log(`${f.name}'s regard for ${t.name}: ${before} → ${f.disposition[t.id]}.`, f.id);
+    }
+    case 'asset': {
+      const sys = getSystem(state, cheat.systemId);
+      if (!sys) return refuse('unknown_system', `No system "${cheat.systemId}".`);
+      const holder = sys.controllerFactionId;
+      if (!holder) return refuse('no_presence', `${sys.name} answers to nobody, so there is nobody to hold it.`);
+      const shape = archetypeFor(cheat.archetype);
+      if (!shape) return refuse('illegal_value', `No asset kind "${cheat.archetype}".`);
+      if (shape.fixture && statFixtureAt(state, sys.id)) {
+        return refuse('illegal_value', `${sys.name} already carries a fixture; a world holds one.`);
+      }
+      const quantity = shape.divisible && !shape.fixture ? CHEAT_ASSET_QUANTITY : 1;
+      const asset = AssetSchema.parse({
+        id: mintId(state, 'ast'),
+        kind: shape.kind,
+        text: `${shape.kind.replace(/_/g, ' ')} at ${sys.name}`,
+        heldBy: holder,
+        quantity,
+        unit: shape.unit,
+        divisible: shape.divisible,
+        valuePerUnit: shape.fixture
+          ? {}
+          : Object.fromEntries(state.factions.filter((f) => f.id !== holder).map((f) => [f.id, CHEAT_ASSET_VALUE])),
+        speculative: false,
+        valueRange: {},
+        uses: shape.uses,
+        atSystemId: sys.id,
+        portable: !shape.fixture,
+        yield: shape.fixture ? fixtureYieldFor(shape) : null,
+        acquiredTurn: state.turn,
+      });
+      (state.assets ??= []).push(asset);
+      return log(`${quantity} ${shape.unit}${quantity === 1 ? '' : 's'} of ${shape.kind} placed at ${sys.name}, held by ${nameFor(state, holder)}.`, holder);
+    }
+    case 'ships': {
+      const f = faction(cheat.factionId);
+      if (!f) return refuse('unknown_faction', `No faction "${cheat.factionId}".`);
+      const sys = getSystem(state, cheat.systemId);
+      if (!sys) return refuse('unknown_system', `No system "${cheat.systemId}".`);
+      if (sys.controllerFactionId !== f.id && hullsAt(sys, f.id) === 0) {
+        return refuse('no_presence', `${f.name} neither holds ${sys.name} nor has ships there.`);
+      }
+      addShipsAt(sys, f.id, cheat.count, cheat.hull);
+      return log(`${cheat.count} ${cheat.hull.replace(/_/g, ' ')}${cheat.count === 1 ? '' : 's'} join ${f.name} at ${sys.name}.`, f.id);
+    }
+    case 'officer': {
+      const f = faction(cheat.factionId);
+      if (!f) return refuse('unknown_faction', `No faction "${cheat.factionId}".`);
+      const sys = getSystem(state, cheat.systemId);
+      if (!sys || sys.controllerFactionId !== f.id) {
+        return refuse('no_presence', `An officer reports to a world their power holds; ${cheat.systemId} is not one of ${f.name}'s.`);
+      }
+      if (activeCommanders(state.commanders, f.id).length >= MAX_ACTIVE_COMMANDERS) {
+        return refuse('illegal_value', `${f.name} already has ${MAX_ACTIVE_COMMANDERS} officers in post.`);
+      }
+      const salt = `cheat:${f.id}:${state.turn}:${(state.commanders ?? []).length}`;
+      const officer: Commander = {
+        id: `cmd-${f.id}-${state.turn}-${(state.commanders ?? []).length}`,
+        factionId: f.id,
+        name: unusedName(namesInUse(state), (n) => commanderName(f.id, state.turn, `${salt}:${n}`, cheat.archetype)),
+        archetype: cheat.archetype,
+        appointedTurn: state.turn,
+        battles: 0,
+        status: 'active',
+        atSystemId: sys.id,
+      };
+      (state.commanders ??= []).push(officer);
+      return log(`${officer.name} is appointed for ${f.name} at ${sys.name}.`, f.id);
+    }
+  }
+}
+
+/**
  * Move one power's regard for another, clamped. One-directional, unlike
  * `adjustCommitmentGoodwill`: the power whose officer was questioned resents
  * the questioner, and the questioner has no view about it.
@@ -1577,13 +1688,18 @@ function applyOpsUnderRules(
     // names the op that was refused, and a refused `deploy_agent` names the
     // operative, the world and the mission. Engine batches carry no actor and
     // stay public, having nobody to be about.
-    const entry: EventLogEntry = {
-      turn: state.turn,
-      kind: 'rejection',
-      factionId: scopeEngineNotes ? (actor ?? null) : null,
-      text: `[${code}] ${message}`,
-      visibleTo: !scopeEngineNotes || actor === undefined ? null : [actor],
-    };
+    // A refused cheat is the player's business alone and never a prompt's —
+    // logged under the private `cheat` kind, which no model is ever handed.
+    const entry: EventLogEntry =
+      source === 'cheat'
+        ? { turn: state.turn, kind: 'cheat', factionId: null, text: `[cheat refused] ${message}`, visibleTo: [state.playerFactionId] }
+        : {
+            turn: state.turn,
+            kind: 'rejection',
+            factionId: scopeEngineNotes ? (actor ?? null) : null,
+            text: `[${code}] ${message}`,
+            visibleTo: !scopeEngineNotes || actor === undefined ? null : [actor],
+          };
     rejectionEvents.push({ ...entry });
     state.eventLog.push(entry);
   };
@@ -1718,6 +1834,20 @@ function applyOpsUnderRules(
 
     const op: Op = parsed.data;
 
+    // The cheat menu's op is refused from every other source, and a cheat batch
+    // carries nothing else — so the menu cannot smuggle an ordinary op past the
+    // arbiter, and nothing a model emits can reach a cheat.
+    if ((op.op === 'cheat') !== (source === 'cheat')) {
+      reject(
+        raw,
+        'reducer_only',
+        op.op === 'cheat'
+          ? 'Cheats come from the cheat menu and nowhere else.'
+          : `A cheat batch carries cheats only; "${op.op}" is not one.`,
+      );
+      continue;
+    }
+
     if (source === 'model' && REDUCER_ONLY_OPS.has(op.op)) {
       reject(
         raw,
@@ -1750,6 +1880,11 @@ function applyOpsUnderRules(
     }
 
     switch (op.op) {
+      case 'cheat': {
+        applyCheat(state, op.cheat, notes, (code, message) => reject(raw, code, message));
+        break;
+      }
+
       case 'transfer_control': {
         const sys = state.systems.find((s) => s.id === op.systemId);
         if (!sys) {
@@ -5143,6 +5278,9 @@ function applyOpsUnderRules(
     }
   }
 
+  // A cheat is free by definition: none of the batch passes that bill, trim or
+  // restore hulls apply, or ten battleships from the menu would be charged for.
+  if (source !== 'cheat') {
   capSelfInflictedLosses(state, actor, hullsBefore, shipsBefore, notes);
   // Before the yards bill, so a settlement received this batch can pay for
   // what the same accord commissioned.
@@ -5153,6 +5291,7 @@ function applyOpsUnderRules(
     state, hullsBefore, shipsBefore, unbuildFromGain, yardCapacity, changedFlag, notes, pricedByYards,
   );
   refundDuplicateCharges(state, chargedByNarrative, pricedByYards, notes);
+  }
 
   // Nothing lands unless everything does. The notes are dropped with the state
   // they describe — a trim note for an op that was discarded would be telling

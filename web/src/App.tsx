@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import { Waiting } from './components/Waiting.js';
+import { CheatPanel } from './components/CheatPanel.js';
 import { STAT_MEANINGS, STAT_NAMES } from '../../src/domain/checks.js';
 import { neighboursOf, shortestPath } from '../../src/domain/graph.js';
 import { hullsAt, type WorldState } from '../../src/domain/state.js';
@@ -100,6 +101,8 @@ function helpLines(state: WorldState | null): string[] {
     '  :discard         clear what you have declared this turn',
     '  :export          download this campaign as a .tar.gz you can resume anywhere',
     '  :help            this',
+    '  :cheats          the cheat menu, for testing — free, instant, costs no action,',
+    '                   skips the arbiter, and no power is ever told',
     '',
     ...(state
       ? [
@@ -176,6 +179,7 @@ export function App() {
   // A channel the player has opened in the UI but not yet spoken into. The
   // server opens it for real on the first message.
   const [draftChannel, setDraftChannel] = useState<string | null>(null);
+  const [cheatsOpen, setCheatsOpen] = useState(false);
   const feedRef = useStickToBottom(game.messages.length);
 
   const { view, busy, say } = game;
@@ -204,6 +208,10 @@ export function App() {
           return;
         case 'endturn':
           await game.endTurn();
+          return;
+        case 'cheat':
+        case 'cheats':
+          setCheatsOpen((open) => !open);
           return;
         case 'discard':
           await game.discard();
@@ -342,6 +350,14 @@ export function App() {
               </p>
             )}
           </div>
+          {cheatsOpen && view && (
+            <CheatPanel
+              state={view.state}
+              busy={busy !== null}
+              onCheat={(c) => void game.cheat(c)}
+              onClose={() => setCheatsOpen(false)}
+            />
+          )}
           <form
             className="commandline"
             onSubmit={(e) => {

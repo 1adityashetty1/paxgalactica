@@ -2,6 +2,7 @@ import {
   ActionOutcomeSchema,
   AdvisorOutcomeSchema,
   ApiErrorSchema,
+  CheatResultSchema,
   DiscardResultSchema,
   CampaignViewSchema,
   FactionListSchema,
@@ -13,6 +14,7 @@ import {
   type CampaignView,
   type TurnOutcomeResponse,
 } from '../../src/api/contract.js';
+import type { Cheat } from '../../src/domain/cheats.js';
 
 /**
  * Typed client for the game server.
@@ -105,6 +107,8 @@ export const api = {
 
   endTurn: (): Promise<TurnOutcomeResponse> =>
     request(ROUTES.endturn, TurnOutcomeSchema, post()),
+
+  cheat: (cheat: Cheat) => request(ROUTES.cheat, CheatResultSchema, post(cheat)),
 
   discardStaged: (index?: number) =>
     request(
