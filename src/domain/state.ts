@@ -667,6 +667,13 @@ export const EventLogEntrySchema = z.object({
      * are: the interesting entries are the ones nothing else would show you.
      */
     'arbiter',
+    /**
+     * Something the cheat menu did. Visible to the player alone, and — unlike
+     * every other kind — **never handed to a model**: `serializeRecentLog`
+     * leaves it out, so no prompt is ever told the world was edited, only what
+     * the world now is.
+     */
+    'cheat',
   ]),
   factionId: z.string().nullable().default(null),
   text: z.string(),

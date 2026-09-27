@@ -11,6 +11,7 @@ import {
 import { FibScaleSchema } from './duration.js';
 import { LentSchema } from './loan.js';
 import { HullClassSchema, TypedStackSchema } from './hulls.js';
+import { CheatSchema } from './cheats.js';
 import {
   OnInterruptSchema,
   OrderEffectSchema,
@@ -33,6 +34,16 @@ export const TransferControlOp = z.object({
   systemId: z.string().min(1),
   toFactionId: z.string().nullable(),
   reason: z.string().default(''),
+});
+
+/**
+ * A cheat from the in-game menu. **Reducer-only in the strictest sense**: absent
+ * from every schema a model is handed, and refused from any source but `cheat`,
+ * which only the server's cheat route uses. See `src/domain/cheats.ts`.
+ */
+export const CheatOp = z.object({
+  op: z.literal('cheat'),
+  cheat: CheatSchema,
 });
 
 export const AdjustDispositionOp = z.object({
@@ -976,6 +987,7 @@ export const ExtractionOpSchema = z.union([
 /** The full vocabulary, including ops only the reducer may originate. */
 export const OpSchema = z.discriminatedUnion('op', [
   TransferControlOp,
+  CheatOp,
   AdjustDispositionOp,
   AdjustFleetOp,
   AdjustCreditsOp,

@@ -4603,6 +4603,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | op | notes |
 |---|---|
 | `transfer_control` | **reducer-only** — absent from `ModelOpSchema` entirely |
+| `cheat` | **menu-only** — accepted from the `cheat` source alone, in batches of nothing else; see "A cheat menu" |
 | `adjust_disposition` | clamped to −100..100; self-disposition rejected |
 | `adjust_fleet` | floors at 0; `hull` picks the class the yards lay down |
 | `adjust_ships` | `hull` picks the class — which to build, and which of *your own* to move. Taking another power's is suborning, and spends their loss order |
@@ -5771,6 +5772,42 @@ The examples were cut from ten lines to four and lost the gloss under each. A
 list where every entry carries a footnote is a list nobody finishes, and what
 those footnotes taught belongs in the help text once rather than under every
 example.
+
+## A cheat menu, for testing, that no model ever hears about
+
+`:cheats` opens a strip above the command line with five fixed actions: add
+credits to a power, move one power's regard for another, place an asset on a
+world, add hulls to a power, appoint an officer. It exists so edge cases can be
+set up directly instead of played into.
+
+**Fixed, not free-form.** `CheatSchema` in `src/domain/cheats.ts` is the whole
+menu: every number is one of a few listed values (credits 100/500/2000,
+disposition ±10/±25, hulls 1/5/10), every kind an enumerated shape, and the
+request body *is* that schema — there is no field a player could type a million
+into. Cheats bypass prices, action points and the arbiter; they do not bypass
+the shape of the world: hulls need somewhere their power stands, an officer a
+world their power holds, a world carries one fixture, and a power five officers.
+
+**It never passes through a model, and no model is told.** Three guards, each
+closing a different route:
+
+- **The op is reachable only from the menu.** `cheat` is in `OpSchema` and in no
+  schema a model is handed, and the reducer refuses it from any source but
+  `cheat` — which only `POST /api/cheat` uses — and refuses anything *else* in a
+  cheat batch, so the menu cannot smuggle an ordinary op past the arbiter.
+- **Its log is private in both senses.** Every cheat, and every refused one,
+  logs `kind: 'cheat'` visible to the player alone, and `serializeRecentLog` —
+  the one place the log reaches a prompt — leaves that kind out, **including for
+  the player's own calls**. A resolution or arbiter call reasons from the world
+  as it is, never from the fact that somebody edited it.
+- **It is committed, not staged.** A staged batch is described to the turn's
+  reactions as something the player did; a cheat is part of the world before the
+  next declaration and is never "an action this turn".
+
+It is journaled under the `cheat` source, so a campaign replays exactly — no
+journal version is involved, since no old journal can contain one. And it is
+free by definition: the batch passes that bill construction and restore hulls
+skip a cheat batch, or ten battleships from the menu would arrive with a bill.
 
 ## A campaign has a length, and an ending
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { Cheat } from '../../src/domain/cheats.js';
 import {
   ROUTES,
   ServerEventSchema,
@@ -320,6 +321,20 @@ export function useGame() {
     [guard, say],
   );
 
+  /**
+   * One cheat. What it did is said in the feed and nowhere else — the server
+   * logs it under a kind no prompt is ever handed.
+   */
+  const cheat = useCallback(
+    (c: Cheat) =>
+      guard(async () => {
+        const { notes, rejections } = await api.cheat(c);
+        notes.forEach((n) => say(`[cheat] ${n}`, 'system'));
+        rejections.forEach((r) => say(`[cheat refused] ${r.message}`, 'error'));
+      }),
+    [guard, say],
+  );
+
   const talk = useCallback(
     (factionId: string, text: string) =>
       guard(async () => {
@@ -479,6 +494,7 @@ export function useGame() {
     act,
     endTurn,
     discard,
+    cheat,
     talk,
     endTalk,
   };

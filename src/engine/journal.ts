@@ -49,7 +49,7 @@ export const JournalEntrySchema = z.discriminatedUnion('kind', [
      * a treaty, so replaying them reproduces what actually happened rather than
      * retroactively rejecting it.
      */
-    source: z.enum(['model', 'engine', 'extraction']),
+    source: z.enum(['model', 'engine', 'extraction', 'cheat']),
     label: z.string(),
     ops: z.array(z.unknown()),
     /**

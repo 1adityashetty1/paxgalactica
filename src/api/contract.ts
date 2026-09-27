@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CheatSchema } from '../domain/cheats.js';
 import { ConcessionSchema, RetractionSchema } from '../domain/diplomacy.js';
 import { BattleReportSchema } from '../domain/battle.js';
 import { CheckOutcomeSchema, FactionStatsSchema, StatNameSchema } from '../domain/checks.js';
@@ -437,6 +438,20 @@ export const TalkRequestSchema = z.object({
   text: z.string().min(1).max(2000),
 });
 
+/**
+ * One cheat from the in-game menu. The request IS the domain's `CheatSchema` —
+ * a fixed set of shapes and values — so the menu cannot ask for anything the
+ * reducer has not already enumerated.
+ */
+export const CheatRequestSchema = CheatSchema;
+
+/** What a cheat did, for the player alone — never pushed into any prompt. */
+export const CheatResultSchema = z.object({
+  notes: z.array(z.string()),
+  rejections: z.array(OpRejectionSchema),
+});
+export type CheatResult = z.infer<typeof CheatResultSchema>;
+
 /** Omit `index` to clear everything; supply it to drop one declaration. */
 export const DiscardRequestSchema = z.object({
   index: z.number().int().min(0).optional(),
@@ -533,6 +548,7 @@ export const ROUTES = {
   advisor: '/api/advisor',
   endturn: '/api/endturn',
   discardStaged: '/api/staged/discard',
+  cheat: '/api/cheat',
   talk: (factionId: string) => `/api/talk/${factionId}`,
   endtalk: (factionId: string) => `/api/endtalk/${factionId}`,
   events: '/api/events',

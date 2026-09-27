@@ -467,7 +467,12 @@ export function serializeOrders(state: WorldState, viewerId: string): string {
 export function serializeRecentLog(state: WorldState, viewerId: string, limit = 12): string {
   // Symmetric with the player's view: an NPC reasons from the log too, and a
   // rival's covert placement is no more its business than it is the player's.
-  const recent = eventsVisibleTo(state, viewerId).slice(-limit);
+  // A cheat's entry is the player's alone and is never a prompt's business,
+  // including the player's own resolution and arbiter calls: they reason from
+  // the world as it is, never from the fact that somebody edited it.
+  const recent = eventsVisibleTo(state, viewerId)
+    .filter((e) => e.kind !== 'cheat')
+    .slice(-limit);
   if (recent.length === 0) return '_Nothing has happened yet._';
   return recent.map((e) => `- [turn ${e.turn}] ${e.text}`).join('\n');
 }
