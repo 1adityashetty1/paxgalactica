@@ -20,6 +20,7 @@ import {
 import type {
   BattleOutcome,
   BattleReport,
+  BattleOfficer,
   BattleRound,
   Contingent,
 } from './battle.js';
@@ -70,6 +71,7 @@ import {
   commanderAt,
   commanderFor,
   commanderTaken,
+  officerTakenAlive,
   ASSASSINATION_KILL_ROLL,
   INTERROGATION_RESENTMENT,
   INTERROGATION_SHARE,
@@ -87,11 +89,14 @@ import {
   commanderName,
   namesInUse,
   unusedName,
+  drawPerson,
+  familiesInUse,
   commanderRelief,
   commanderStrike,
   successorArchetype,
   veterancyLabel,
   type Commander,
+  type CommanderArchetype,
   resolveCommander,
   commanderAssault,
 } from './command.js';
@@ -223,17 +228,22 @@ export const DEBT_DEFAULT_DISPOSITION_COST = 6;
 export const GARRISON_REGROWTH = 1;
 
 /**
- * Put an officer riding a cancelled or interrupted order back on the board.
+ * Put the officers riding a cancelled or interrupted order back on the board.
  *
- * An order that leaves `pendingOrders` takes its `commanderId` with it, so
- * without this they are in transit on a voyage that no longer exists — `null`
- * location, `null` order, commanding nothing anywhere. The same reason the
- * ships are returned: they were never destroyed.
+ * An order that leaves `pendingOrders` takes its `officers` with it, so without
+ * this they are in transit on a voyage that no longer exists — `null` location,
+ * no order, commanding nothing anywhere. The same reason the ships are
+ * returned: they were never destroyed.
  */
 function returnRider(state: WorldState, order: PendingOrder, where: string): void {
-  if (!order.commanderId) return;
-  const rider = (state.commanders ?? []).find((c) => c.id === order.commanderId);
-  if (rider && rider.status === 'active') rider.atSystemId = where;
+  for (const rider of ridersOf(state, order)) rider.atSystemId = where;
+}
+
+/** The active officers aboard an order, in the order they were named. */
+function ridersOf(state: WorldState, order: PendingOrder): Commander[] {
+  return order.officers
+    .map((id) => (state.commanders ?? []).find((c) => c.id === id && c.status === 'active'))
+    .filter((c): c is Commander => c !== undefined);
 }
 
 /** Dissent bled off per quiet turn. Refusals add 8, so defiance compounds. */
@@ -1211,11 +1221,40 @@ function moveConserved(
  * needs somewhere to be, an officer a world of their own power's to report to,
  * a world one fixture, and a power five officers at most.
  */
+/**
+ * Name a new person — an officer if `archetype` is given, an operative if not —
+ * and record their family so no one else in the campaign is given it.
+ *
+ * Under `uniqueFamilies` the family name is the component that identifies them;
+ * see `drawPerson`. A journal from before it draws the way it always did, a
+ * full name retried against the ones in use, and `legacyDraw` is that draw.
+ */
+function namePerson(
+  state: WorldState,
+  factionId: string,
+  salt: string,
+  archetype: CommanderArchetype | null,
+  uniqueFamilies: boolean,
+  legacyDraw: (attempt: number) => string,
+): string {
+  if (!uniqueFamilies) return unusedName(namesInUse(state), legacyDraw);
+  const { name, family } = drawPerson({
+    factionId,
+    turn: state.turn,
+    salt: `${salt}:0`,
+    archetype,
+    taken: familiesInUse(state),
+  });
+  (state.familiesUsed ??= []).push(family);
+  return name;
+}
+
 function applyCheat(
   state: WorldState,
   cheat: Cheat,
   notes: string[],
   refuse: (code: OpRejection['code'], message: string) => void,
+  uniqueFamilies = true,
 ): void {
   const player = state.playerFactionId;
   const log = (text: string, factionId: string | null) => {
@@ -1297,7 +1336,9 @@ function applyCheat(
       const officer: Commander = {
         id: `cmd-${f.id}-${state.turn}-${(state.commanders ?? []).length}`,
         factionId: f.id,
-        name: unusedName(namesInUse(state), (n) => commanderName(f.id, state.turn, `${salt}:${n}`, cheat.archetype)),
+        name: namePerson(state, f.id, salt, cheat.archetype, uniqueFamilies, (n) =>
+          commanderName(f.id, state.turn, `${salt}:${n}`, cheat.archetype),
+        ),
         archetype: cheat.archetype,
         appointedTurn: state.turn,
         battles: 0,
@@ -1563,6 +1604,18 @@ export interface LegacyRules {
   spoilsNeedPresence?: boolean;
   officerByName?: boolean;
   interruptNeedsReach?: boolean;
+  /**
+   * An officer is a unit of the fleet (item 122): an order carries any number
+   * of them by name, and they board whenever the whole port sails. Before it,
+   * one officer an order, named or not at all. Journal version 8.
+   */
+  officerUnits?: boolean;
+  /**
+   * Every person's family name unique for the campaign and never reused,
+   * walked rather than redrawn. Before it, a full name redrawn up to 24 times
+   * and then repeated. Journal version 8.
+   */
+  uniqueFamilies?: boolean;
   /** The battle rules from the same playtest. See `BattleRules`. */
   battleRules?: BattleRules;
 }
@@ -1580,6 +1633,12 @@ export interface BattleRules {
   landingNeedsLift?: boolean;
   /** The exchange charges losses by weight, not rounded up to a whole battleship. */
   exactExchange?: boolean;
+  /**
+   * An officer is lost when the contingent they fought with is gone, by the
+   * battle's own arithmetic, rather than on a roll of 1–4 after any defeat.
+   * Journal version 8.
+   */
+  officersFallWithFleet?: boolean;
 }
 
 /**
@@ -1664,6 +1723,8 @@ function applyOpsUnderRules(
     interruptNeedsReach = true,
     selfCreditNeedsPayer = true,
     spoilsNeedPresence = true,
+    officerUnits = true,
+    uniqueFamilies = true,
   } = legacy;
   const state = cloneState(input);
   const rejections: OpRejection[] = [];
@@ -1881,7 +1942,7 @@ function applyOpsUnderRules(
 
     switch (op.op) {
       case 'cheat': {
-        applyCheat(state, op.cheat, notes, (code, message) => reject(raw, code, message));
+        applyCheat(state, op.cheat, notes, (code, message) => reject(raw, code, message), uniqueFamilies);
         break;
       }
 
@@ -3100,25 +3161,33 @@ function applyOpsUnderRules(
           }
         }
 
-        // An officer named to this fleet. Three guards, because a model asked
-        // for an id will eventually invent one: they must be this faction's, they
-        // must be alive, and they must be standing at the origin — a commander
-        // cannot join a squadron they are nowhere near. A name that fails any of
-        // them is dropped with a note rather than rejecting the whole order:
-        // the fleet still sails, it just sails under nobody in particular.
-        let riding: string | null = null;
-        if (op.commanderId !== null) {
-          // **Resolved by NAME, not only by id**, the same lookup the knife
-          // uses. The resolution call writes what a person would say — a live
-          // playtest produced `commanderId: "Marcia Galba"` three turns running
-          // — and an id-only match dropped every one of them with "no such
-          // officer" while the narrative went on claiming the officer was
-          // aboard. Scoped to this power's own roster, so a name that could
-          // only mean a rival's officer resolves to nobody rather than to them.
+        // Officers sailing with this fleet. Three guards on a NAMED officer,
+        // because a model asked for one will eventually invent one: they must be
+        // this faction's, alive, and standing at the origin — a commander cannot
+        // join a squadron they are nowhere near. One who fails is left behind
+        // with a note rather than rejecting the whole order: the fleet still
+        // sails, it simply sails without them.
+        //
+        // **Resolved by NAME, not only by id**, the same lookup the knife uses,
+        // and scoped to this power's own roster so a name that could only mean
+        // a rival's officer resolves to nobody rather than to them. A playtest
+        // produced `"Marcia Galba"` three turns running, and an id-only match
+        // dropped every one while the narrative said they were aboard.
+        //
+        // **And an officer is a unit of the fleet (item 122)**, so when the
+        // WHOLE port sails — no `force` given — everyone standing there sails
+        // with it, exactly as every hull does. Otherwise a fleet ordered out
+        // entire left its commander standing on an empty quay. A partial force
+        // takes only the officers it names. Before this, one officer an order
+        // and only by name.
+        const riding: string[] = [];
+        const asked = officerUnits ? op.officers : op.officers.slice(0, 1);
+        for (const query of asked) {
           const named =
             (officerByName
-              ? resolveCommander(state.commanders, op.commanderId, (c) => c.factionId === op.factionId)
-              : undefined) ?? (state.commanders ?? []).find((c) => c.id === op.commanderId);
+              ? resolveCommander(state.commanders, query, (c) => c.factionId === op.factionId)
+              : undefined) ?? (state.commanders ?? []).find((c) => c.id === query);
+          if (named && riding.includes(named.id)) continue;
           const ok =
             named &&
             named.factionId === op.factionId &&
@@ -3126,7 +3195,7 @@ function applyOpsUnderRules(
             named.atSystemId === op.originId &&
             isMovementType(op.type);
           if (ok) {
-            riding = named.id;
+            riding.push(named.id);
             named.atSystemId = null;
           } else {
             const why = !named
@@ -3138,9 +3207,30 @@ function applyOpsUnderRules(
                   : !isMovementType(op.type)
                     ? 'only a fleet movement carries an officer'
                     : `${named.name} is not at ${nameFor(state, op.originId)}`;
-            const note = `Fleet sails without a named officer: ${why}.`;
+            // The journal-7 wording is kept exactly, since it is replayed into
+            // the event log; the current one names the person and the WORLD —
+            // the old note ran a system id through a faction lookup and printed
+            // "is not at ark-3".
+            const worldName = (id: string | null): string =>
+              id === null ? 'under way' : `at ${state.systems.find((x) => x.id === id)?.name ?? id}`;
+            const note = !officerUnits
+              ? `Fleet sails without a named officer: ${why}.`
+              : !named
+                ? `Fleet sails without "${query}": no officer of ${nameFor(state, op.factionId)} answers to that name.`
+                : `Fleet sails without ${named.name}: ${
+                    named.factionId !== op.factionId || named.status !== 'active' || !isMovementType(op.type)
+                      ? why
+                      : `they are ${worldName(named.atSystemId)}, not ${worldName(op.originId).slice(3)}`
+                  }.`;
             notes.push(note);
             logEvent(state, 'clamp', note, op.factionId);
+          }
+        }
+        if (officerUnits && isMovementType(op.type) && op.force === undefined) {
+          for (const c of activeCommanders(state.commanders, op.factionId)) {
+            if (c.atSystemId !== op.originId || riding.includes(c.id)) continue;
+            riding.push(c.id);
+            c.atSystemId = null;
           }
         }
 
@@ -3153,7 +3243,7 @@ function applyOpsUnderRules(
           durationTurns: duration,
           progress: 0,
           interruptible: op.interruptible,
-          commanderId: riding,
+          officers: riding,
           onInterrupt: op.onInterrupt,
           visibility: [...new Set(op.visibility.filter(factionExists))],
           label: op.label || op.type.replace(/_/g, ' '),
@@ -3265,7 +3355,7 @@ function applyOpsUnderRules(
         const hired: Commander = {
           id: `cmd-${op.factionId}-${state.turn}-${(state.commanders ?? []).length}`,
           factionId: op.factionId,
-          name: unusedName(namesInUse(state), (n) =>
+          name: namePerson(state, op.factionId, salt, school, uniqueFamilies, (n) =>
             commanderName(op.factionId, state.turn, `${salt}:${n}`, school),
           ),
           archetype: school,
@@ -4022,8 +4112,7 @@ function applyOpsUnderRules(
           break;
         }
 
-        const taken = namesInUse(state);
-        const who = unusedName(taken, (n) =>
+        const who = namePerson(state, ownerId, `agent:${op.systemId}:${state.agents.length}`, null, uniqueFamilies, (n) =>
           agentName(ownerId, state.turn, `agent:${op.systemId}:${state.agents.length}:${n}`),
         );
         // **The model names the person; code does the lookup.** `Commander.name`
@@ -5828,7 +5917,7 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
 }
 
 function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult {
-  const { arrangementStanding = true, hostages = true, peopleStanding = true, fourSchools = true, battleRules = {} } = legacy;
+  const { arrangementStanding = true, hostages = true, peopleStanding = true, fourSchools = true, uniqueFamilies = true, battleRules = {} } = legacy;
   const state = cloneState(input);
   const notes: string[] = [];
 
@@ -5861,7 +5950,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     const appointed: Commander = {
       id: `cmd-${faction.id}-${state.turn}`,
       factionId: faction.id,
-      name: unusedName(namesInUse(state), (n) =>
+      name: namePerson(state, faction.id, salt, school, uniqueFamilies, (n) =>
         commanderName(faction.id, state.turn, `${salt}:${n}`, school),
       ),
       archetype: school,
@@ -7010,6 +7099,7 @@ function resolveBattle(
     squattersFight = true,
     landingNeedsLift = true,
     exactExchange = true,
+    officersFallWithFleet = true,
   } = rules;
   const target = state.systems.find((s) => s.id === systemId);
   if (!target) {
@@ -7052,29 +7142,51 @@ function resolveBattle(
     lands: string | null;
   }[] = [];
   let beatenSide: 'attack' | 'defend' | null = null;
+  /**
+   * Whether an officer's contingent got clear, for the ones whose side broke
+   * off or withdrew. Everyone else's fate is read off the board at `finish`.
+   */
+  const escapedWith = new Map<string, boolean>();
 
 
   /** Close the engagement: snapshot the result and hand back both forms. */
   const finish = (note: string): BattleOutcomeResult => {
+    const fielded: BattleOfficer[] = [];
     for (const { officer, side, lands } of onField) {
       const live = (state.commanders ?? []).find((c) => c.id === officer.id);
       if (!live || live.status !== 'active') continue;
       live.battles += 1;
-      // They came off the order and onto the board. Done before the death roll
-      // so a survivor is standing somewhere and a casualty is cleared below.
+      // They came off the order and onto the board. Done before the fall is
+      // decided so a survivor is standing somewhere and a casualty is cleared.
       live.atSystemId = lands;
-      // Lost only on a DEFEAT, and on the battle's own roll rather than a new
-      // one. An officer who wins does not die at a rate worth modelling, and a
-      // death roll on every engagement would churn the roster faster than a
-      // player could learn a name.
-      if (side === beatenSide && commanderLost(roll)) {
+      // **An officer is a unit of the fleet, last in its loss order (item
+      // 122)** — the flagship — so they fall exactly when nothing they fought
+      // with is left: every hull of theirs destroyed, or a withdrawal that got
+      // nothing clear. An officer standing on a world their power holds when it
+      // is over is ashore — a defender with the garrison that held, an attacker
+      // with the troops that took it — and does not fall with the ships.
+      //
+      // Before this an officer was lost on a DEFEAT, on the battle's own roll
+      // of 1–4: a fifth of defeats, whatever the fleet around them suffered.
+      // Over a hundred bot turns that was no officer lost at all, and it could
+      // also take one whose fleet had come through intact while sparing one
+      // whose fleet was annihilated on a side that "won".
+      const falls = officersFallWithFleet
+        ? !(escapedWith.get(live.id) ??
+            (hullsAt(target, live.factionId) > 0 || target.controllerFactionId === live.factionId))
+        : side === beatenSide && commanderLost(roll);
+      let fate: BattleOfficer['fate'] = 'fought';
+      if (falls) {
         live.atSystemId = null;
         // Taken alive, if there is anybody to take them. A capture needs a
-        // CAPTOR — the side that did not break — so a fleet driven off by an
-        // unaligned world's militia is killed instead: ground with no flag over
-        // it does not run a prison.
+        // CAPTOR — the other side — so a fleet driven off by an unaligned
+        // world's militia is killed instead: ground with no flag over it does
+        // not run a prison.
         const captor = side === 'attack' ? (holder ?? largestDefender) : largestAttacker;
-        if (commanderTaken(roll) && captor && captor !== live.factionId) {
+        const takenAlive = officersFallWithFleet
+          ? officerTakenAlive(state.turn, live.id, target.id)
+          : commanderTaken(roll);
+        if (takenAlive && captor && captor !== live.factionId) {
           live.status = 'captured';
           const held: Asset = {
             id: mintId(state, 'ast'),
@@ -7103,13 +7215,16 @@ function resolveBattle(
           commandersFired.push(taken);
           logEvent(state, 'narrative', taken, live.factionId);
           logEvent(state, 'narrative', taken, captor);
+          fate = 'captured';
         } else {
           live.status = 'lost';
           const gone = `${live.name} is lost with the ${nameOf(live.factionId)} fleet over ${target.name}.`;
           commandersFired.push(gone);
           logEvent(state, 'narrative', gone, live.factionId);
+          fate = 'lost';
         }
       }
+      fielded.push({ id: live.id, name: live.name, factionId: live.factionId, side, fate });
     }
     return {
     note,
@@ -7123,6 +7238,7 @@ function resolveBattle(
       defendMod: defendModOut,
       doctrinesFired,
       commandersFired,
+      officers: fielded,
       holderBefore: holder,
       holderAfter: target.controllerFactionId,
       garrisonBefore,
@@ -7208,11 +7324,7 @@ function resolveBattle(
     // Placed WITHOUT `finish`, which is the distinction: `finish` counts a
     // battle and rolls for death, and nothing was fought here.
     for (const o of officerHomecoming ? orders : []) {
-      if (!o.commanderId) continue;
-      const rider = (state.commanders ?? []).find(
-        (c) => c.id === o.commanderId && c.status === 'active',
-      );
-      if (rider) rider.atSystemId = systemId;
+      for (const rider of ridersOf(state, o)) rider.atSystemId = systemId;
     }
     logEvent(state, 'order', note, holder);
     // Not a battle. Reporting one would put a "no losses" card in the panel
@@ -7371,16 +7483,40 @@ function resolveBattle(
   // power fought, simultaneously, wherever they were. An attacker's officer is
   // the one who SAILED: they ride `order.commanderId`, exactly as their ships
   // ride `order.force`. A defender's is whoever is standing on the world.
-  const riders = orders
-    .map((o) =>
-      o.commanderId
-        ? (state.commanders ?? []).find((c) => c.id === o.commanderId && c.status === 'active')
-        : undefined,
-    )
-    .filter((c): c is Commander => c !== undefined);
-  const defendersPresent = defenders
-    .map(([id]) => commanderAt(state.commanders, id, systemId))
-    .filter((c): c is Commander => c !== undefined);
+  //
+  // **As units of the fleet (item 122)** that reads more carefully. An officer
+  // aboard a fleet that arrived WITHOUT attacking — a holder reinforcing, a
+  // guest under basing rights — has put in and defends with everyone ashore;
+  // they used to be counted on the attacking side, where a withdrawal could
+  // kill them for a retreat their own power never made. An attacker's officer
+  // already standing in the orbit fights with the squadron parked there, which
+  // joins the attack. And every officer of a defending power standing on the
+  // world is on the field, not only the first one found.
+  if (officersFallWithFleet) {
+    for (const o of orders) {
+      if (attackerIds.has(o.factionId)) continue;
+      for (const c of ridersOf(state, o)) c.atSystemId = systemId;
+    }
+  }
+  const standingHere = (c: Commander): boolean => c.status === 'active' && c.atSystemId === systemId;
+  const riders = officersFallWithFleet
+    ? [
+        ...orders.filter((o) => attackerIds.has(o.factionId)).flatMap((o) => ridersOf(state, o)),
+        ...(squattersFight
+          ? (state.commanders ?? []).filter((c) => standingHere(c) && attackerIds.has(c.factionId))
+          : []),
+      ]
+    : orders.flatMap((o) => ridersOf(state, o));
+  const defendersPresent = officersFallWithFleet
+    ? (state.commanders ?? []).filter(
+        (c) =>
+          standingHere(c) &&
+          !attackerIds.has(c.factionId) &&
+          (c.factionId === holder || defenders.some(([id]) => id === c.factionId)),
+      )
+    : defenders
+        .map(([id]) => commanderAt(state.commanders, id, systemId))
+        .filter((c): c is Commander => c !== undefined);
 
   // Being present is what risks you; commanding is what helps. So every officer
   // on the field takes the death roll if their side is broken, while only the
@@ -7806,6 +7942,7 @@ function resolveBattle(
         for (const entry of onField) {
           if (entry.side === 'defend' && entry.officer.factionId === id) {
             entry.lands = refuge?.id ?? target.id;
+            escapedWith.set(entry.officer.id, refuge !== undefined && hullsIn(escaped) > 0);
           }
         }
       }
@@ -7830,8 +7967,9 @@ function resolveBattle(
         // An officer falls back down the path their own fleet took, not the
         // coalition's — one shared refuge would land them all on one world.
         for (const entry of onField) {
-          if (entry.side === 'attack' && entry.officer.id === order.commanderId) {
+          if (entry.side === 'attack' && order.officers.includes(entry.officer.id)) {
             entry.lands = refuge?.id ?? order.originId;
+            escapedWith.set(entry.officer.id, refuge !== undefined && hullsIn(escaped) > 0);
           }
         }
       }

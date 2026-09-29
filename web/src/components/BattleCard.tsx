@@ -8,7 +8,7 @@ import {
 import type { WorldState } from '../../../src/domain/state.js';
 import { getFaction } from '../../../src/domain/state.js';
 import { ansi256ToHex, NEUTRAL } from '../color.js';
-import { GarrisonIcon, ShipIcon, StackGlyphs } from './BattleIcons.js';
+import { CommanderIcon, GarrisonIcon, ShipIcon, StackGlyphs } from './BattleIcons.js';
 import { subtractStack, type ShipStack } from '../../../src/domain/hulls.js';
 
 /**
@@ -94,14 +94,17 @@ function ObRow({
   ships,
   stack,
   garrison,
+  officers = [],
 }: {
   name: string;
   colour: string;
   ships: number;
   stack?: ShipStack;
   garrison?: number;
+  /** Officers in this row — a unit of the fleet since item 122, drawn beside the hulls. */
+  officers?: { name: string; label: string }[];
 }) {
-  if (ships <= 0 && !garrison) return null;
+  if (ships <= 0 && !garrison && officers.length === 0) return null;
   return (
     <div className="ob-row" style={{ color: colour }}>
       <span className="ob-name">{name}</span>
@@ -110,6 +113,11 @@ function ObRow({
         {garrison !== undefined && garrison > 0 && (
           <Strength kind="garrison" count={garrison} label="garrison batteries" />
         )}
+        {officers.map((o) => (
+          <span key={o.name} className="ob-strength" title={o.label}>
+            <CommanderIcon size={16} title={o.label} />
+          </span>
+        ))}
       </span>
     </div>
   );
@@ -163,6 +171,19 @@ function OrderOfBattle({ report, state }: { report: BattleReport; state: WorldSt
     defenders[0]?.factionName ??
     (report.holderBefore ? getFaction(state, report.holderBefore)?.name ?? 'the holder' : 'nobody');
   const defenderColour = report.holderBefore ? colourOf(report.holderBefore) : NEUTRAL;
+  const officers = report.officers ?? [];
+  const aboard = (factionId: string, side: 'attack' | 'defend') =>
+    officers
+      .filter((o) => o.factionId === factionId && o.side === side)
+      .map((o) => ({ name: o.name, label: o.name }));
+  const fallen = (side: 'attack' | 'defend') =>
+    officers
+      .filter((o) => o.side === side && o.fate !== 'fought')
+      .map((o) => ({ name: o.name, label: `${o.name} — ${o.fate === 'captured' ? 'taken alive' : 'killed'}` }));
+  const defendingIds = new Set(defenders.map((c) => c.factionId));
+  // An officer ashore with a garrison and no hulls has no contingent row of
+  // their own, so they ride the holder's garrison row.
+  const ashore = officers.filter((o) => o.side === 'defend' && !defendingIds.has(o.factionId));
 
   return (
     <div className="order-of-battle">
@@ -175,6 +196,7 @@ function OrderOfBattle({ report, state }: { report: BattleReport; state: WorldSt
             colour={colourOf(c.factionId)}
             ships={c.before}
             stack={c.stackBefore}
+            officers={aboard(c.factionId, 'attack')}
           />
         ))}
         {defenders.length > 0 ? (
@@ -186,6 +208,10 @@ function OrderOfBattle({ report, state }: { report: BattleReport; state: WorldSt
               ships={c.before}
               stack={c.stackBefore}
               garrison={i === 0 ? report.garrisonBefore : undefined}
+              officers={[
+                ...aboard(c.factionId, 'defend'),
+                ...(i === 0 ? ashore.map((o) => ({ name: o.name, label: `${o.name} (ashore)` })) : []),
+              ]}
             />
           ))
         ) : (
@@ -194,6 +220,7 @@ function OrderOfBattle({ report, state }: { report: BattleReport; state: WorldSt
             colour={defenderColour}
             ships={0}
             garrison={report.garrisonBefore}
+            officers={ashore.map((o) => ({ name: o.name, label: `${o.name} (ashore)` }))}
           />
         )}
       </div>
@@ -205,6 +232,7 @@ function OrderOfBattle({ report, state }: { report: BattleReport; state: WorldSt
           colour={NEUTRAL}
           ships={losses.attackers}
           stack={lostBy(report, 'attackers')}
+          officers={fallen('attack')}
         />
         <ObRow
           name="defending"
@@ -212,8 +240,9 @@ function OrderOfBattle({ report, state }: { report: BattleReport; state: WorldSt
           ships={losses.defenders}
           stack={lostBy(report, 'defenders')}
           garrison={garrisonLost}
+          officers={fallen('defend')}
         />
-        {losses.attackers === 0 && losses.defenders === 0 && garrisonLost === 0 && (
+        {losses.attackers === 0 && losses.defenders === 0 && garrisonLost === 0 && fallen('attack').length + fallen('defend').length === 0 && (
           <span className="muted">nothing was fired</span>
         )}
       </div>

@@ -370,6 +370,11 @@ ul { margin: 0; padding-left: 1.1em; }
 
 .ship-list { list-style: none; padding: 0; margin: 4px 0 0; }
 .ship-list li { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 11px; }
+/* An officer is a unit of the fleet (item 122): their insignia sits in the
+   row of the hulls they stand beside, after the count. */
+.ship-list .row-officers { display: inline-flex; gap: 2px; align-items: center; }
+.order-officers { display: flex; align-items: center; gap: 4px; }
+.officer-mark { pointer-events: auto; }
 .ship-list .count { margin-left: auto; color: var(--text); font-weight: 600; }
 .ship-list .count.treaty { color: var(--accent); font-weight: 400; }
 .contested-note { color: var(--bad); font-size: 11px; margin: 6px 0; }

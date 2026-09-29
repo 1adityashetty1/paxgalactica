@@ -36,7 +36,7 @@ describe('an officer who sails between friendly worlds arrives', () => {
     const issued = applyOps(s, [{
       op: 'issue_order', factionId: 'vigil', type: 'fleet_movement',
       originId: home.id, targetId: to.id, force: { battleship: 4 },
-      commanderId: officer.id, label: 'redeploy', visibility: [],
+      officers: [officer.id], label: 'redeploy', visibility: [],
     }], 'model', 'vigil', true).state;
     // Aboard, so nowhere on the board while under way.
     expect(issued.commanders.find((c) => c.id === officer.id)!.atSystemId).toBeNull();
@@ -69,11 +69,11 @@ describe('an officer can be named the way a person names one', () => {
     const out = applyOps(s, [{
       op: 'issue_order', factionId: 'vigil', type: 'fleet_movement',
       originId: home.id, targetId: neighboursOf(s, home.id)[0]!, force: { battleship: 2 },
-      commanderId: family, label: 'sortie', visibility: [],
+      officers: [family], label: 'sortie', visibility: [],
     }], 'model', 'vigil', true);
 
-    expect(out.state.pendingOrders[0]!.commanderId).toBe(officer.id);
-    expect(out.notes.join(' ')).not.toMatch(/without a named officer/);
+    expect(out.state.pendingOrders[0]!.officers).toEqual([officer.id]);
+    expect(out.notes.join(' ')).not.toMatch(/Fleet sails without/);
   });
 
   it('still refuses a name that could only mean a rival officer', () => {
@@ -86,11 +86,11 @@ describe('an officer can be named the way a person names one', () => {
     const out = applyOps(s, [{
       op: 'issue_order', factionId: 'vigil', type: 'fleet_movement',
       originId: home.id, targetId: neighboursOf(s, home.id)[0]!, force: { battleship: 2 },
-      commanderId: theirs.name, label: 'sortie', visibility: [],
+      officers: [theirs.name], label: 'sortie', visibility: [],
     }], 'model', 'vigil', true);
 
-    expect(out.state.pendingOrders[0]!.commanderId).toBeNull();
-    expect(out.notes.join(' ')).toMatch(/without a named officer/);
+    expect(out.state.pendingOrders[0]!.officers).toEqual([]);
+    expect(out.notes.join(' ')).toMatch(/Fleet sails without/);
   });
 });
 
@@ -159,7 +159,7 @@ describe('a clamp or a rejection is a note to the power that wrote the order', (
     const out = applyOps(s, [{
       op: 'issue_order', factionId: 'vigil', type: 'fleet_movement',
       originId: home.id, targetId: neighboursOf(s, home.id)[0]!, force: { battleship: 2 },
-      commanderId: 'nobody at all', label: 'sortie', visibility: [],
+      officers: ['nobody at all'], label: 'sortie', visibility: [],
     }], 'model', 'vigil', true);
 
     expect(eventsVisibleTo(out.state, 'vigil').some((e) => e.kind === 'clamp')).toBe(true);

@@ -3933,7 +3933,7 @@ junior partner's officer does not run the coalition.
 ### They sail with a fleet, and command only the battle they are at
 
 An officer has a location, and it decides everything: `Commander.atSystemId`
-while they are standing somewhere, `PendingOrder.commanderId` while they are under
+while they are standing somewhere, `PendingOrder.officers` while they are under
 way. Two fields rather than one because they answer different questions, and
 the split is **the same convention their ships already follow** — a fleet under
 way is in `order.force` and not in `system.ships`, and `shipsInTransit` derives
@@ -3943,26 +3943,65 @@ An attacker's officer is the one who **sailed**; a defender's is whoever is
 standing on the world. Before this, a power's single commander fought every
 engagement it had, simultaneously, wherever they were.
 
-**They are in a fleet without being tonnage**, which is the whole shape of it. They
-is not a `ShipStack` entry and never enters the loss order: everything in that
-order is denominated in tons, so a person there would need an `orbitalWeight` —
-and *nothing may weigh exactly nothing*, because a side with no weight reads as
-"nothing to fight" to every branch of the resolver. "Last in the loss order" is
-also precisely the bug `lifter` shipped with, which made transports the safest
-thing in a fleet and left the escort nothing to protect. The only thing that can
-kill their is `commanderLost` on a defeat — a considered rule rather than an
-emergent one needing an exception to stop being a coin flip.
+### An officer is a unit of the fleet
+
+Item 122, and the end state for officers: **a unit of the fleet that weighs
+nothing** — it sails, shows and falls with the hulls it stands beside, the way a
+freighter does — with a passive and a battle effect, **named by a family name
+nobody else in the campaign carries**.
+
+**A unit in behaviour, stored as the named record.** A fleet is anonymous counts
+and an officer is a person with a record, so `officer: 1` in a `ShipStack` would
+be two records that must agree about who it is. The roster stays the one source
+of truth for who and where; every behaviour of a unit is built on it:
+
+- **Sailing.** `issue_order.officers` names them — a family name is enough, and a
+  fleet carries several — guarded three ways: yours, active, and standing at the
+  origin. One who fails is **left behind with a note** and the fleet still sails.
+  When the **whole port** sails (`force` omitted) everyone standing there goes
+  with it, exactly as every hull does; a partial force takes only whom it names.
+  A movement with no hulls is already refused, so an officer never sails alone.
+- **Showing.** The state document lists them beside the hulls on each world and
+  gives every officer's location — only the senior one's was given, so naming any
+  other to a fleet was a guess. The System panel draws them in the row of the
+  hulls they stand beside, the map marks them with the star-in-circle, and a
+  battle's order of battle lists them per side and under Losses.
+- **Falling.** Last in the loss order, as the flagship: an officer falls exactly
+  when **nothing they fought with is left** — every hull destroyed, or a
+  withdrawal that got nothing clear. One standing on a world their power holds
+  when it is over is **ashore** — a defender with the garrison that held, an
+  attacker with the troops that took it — and does not fall with the ships.
+
+**Zero tons, and no weight either.** Tons are integers and drive cost, upkeep,
+the income contest and suborning, and an officer already has `COMMANDER_COST`
+and `COMMANDER_UPKEEP`. The reason freighters carry 0.01 weight — a side of
+nothing reads as "nothing to fight" — does not arise, because an officer is
+never a side on their own. So a lone officer contests no income, blocks no
+landing and anchors no suborning, which is decision 3 falling out of the storage
+choice rather than being guarded.
 
 **Being present is what risks you; commanding is what helps.** Every officer on
-the field takes the death roll if their side breaks, while only the largest
-contingent's applies their effects. Where they end up is tracked per contingent
-through `onField`, so a coalition's officers fall back down their **own** paths
-rather than all landing on one world.
+the field falls if their contingent does, while only the senior officer of the
+largest contingent applies their effects. Where they end up is tracked per
+contingent through `onField`, so a coalition's officers fall back down their
+**own** paths rather than all landing on one world. Two readings changed with
+the unit model: an officer aboard a fleet that arrived **without attacking** — a
+holder reinforcing, a guest under basing rights — defends with everyone ashore,
+where they were counted as an attacker; and **every** officer of a defending
+power standing on the world is on the field, not only the first one found.
 
-`issue_order` takes an optional `commanderId`, guarded three ways — yours,
-active, and standing at the origin. A name that fails any of them is **dropped
-with a note rather than rejecting the order**: the fleet still sails, it just
-sails under nobody in particular.
+**The die was the wrong instrument, measured.** The rule this replaced took an
+officer on a roll of 1–4 after any defeat — a fifth of defeats, whatever the
+fleet around them suffered — and over a hundred bot turns it took nobody at all.
+It could also take one whose squadron came home intact while sparing one whose
+contingent was annihilated on a side that "won". Now: 100 bot turns, 19
+engagements against 16 and one officer captured against none; 30 turns, 13
+against 11. `pnpm balance 30` and `pnpm fleetlab` are unchanged.
+
+`JOURNAL_VERSION` is **8**, with three flags — `officerUnits` (the list and
+whole-port boarding), `uniqueFamilies` (below) and the battle rule
+`officersFallWithFleet` — and a journal's `issue_order.commanderId` is read as a
+one-name `officers` list at every version. All 12 saves replay identically.
 
 > Two bugs, both the same bug. `resolveBattle` returns from ten places and the
 > **unopposed walk-in is above all of them**, so an officer who took an empty
@@ -4046,17 +4085,19 @@ first two were battle presence and assignment.
 
 ### Taken alive
 
-An officer who does not walk away from a defeat is killed **or captured**, split
-out of the roll that was already there: `1–2` kills, `3–4` takes their alive. No
-second die, so it replays exactly. A capture needs a **captor**, so a fleet
-driven off by an unaligned world's militia is killed instead — ground with no
-flag over it does not run a prison.
+An officer who falls is killed **or captured**, evenly, on a seeded roll of their
+own (`officerTakenAlive`) — their own rather than the battle's, since two
+officers lost in one battle are two fates. It was the battle's roll split inside
+its loss band, `1–2` killed and `3–4` taken, until item 122 made the fall a
+matter of the fleet rather than the die. A capture needs a **captor**, so a
+fleet driven off by an unaligned world's militia is killed instead — ground with
+no flag over it does not run a prison.
 
 A captured officer becomes an `Asset` of kind `officer` in the victor's hands,
 held at the world where they were taken, so they travel with it when it changes
 hands. From there they need **no second mechanism**: they are ransomed, traded,
 ceded or won back exactly as any other asset is, and `recruit_commander` with a
-`fromAssetId` puts their back in post with their record intact and spends the asset.
+`fromAssetId` puts them back in post with their record intact and spends the asset.
 Worth most to the power that lost them — the same claim `prisoners` makes, scaled
 by veterancy, because the officer a power actually wants back is the one whose
 ladder took engagements to climb.
@@ -4109,12 +4150,27 @@ rival actually sees. Names reach the System panel and the model's own block,
 where the operative line had been printing a raw `ownerFactionId` — the same
 leak item 104 closed two lines above it in the same file.
 
-**No campaign fields the same person twice.** `unusedName` bumps the salt and
-draws again rather than suffixing a duplicate: a second *Kess Coldwake II* is a
-worse answer than a different person, and eighty names per power collides sooner
-than it sounds — the birthday problem bites at five on a roster and again on
-every replacement. Deterministic, because the taken set is a pure function of
-state, so a replay walks the same path.
+**A family name is a person, for the whole campaign.** Full names used to be
+unique by luck — `unusedName` redrew up to 24 times and then gave the collision
+back — while `resolveCommander` makes a tie resolve to nobody, so a clash never
+handed a fleet to the wrong officer: it dropped the assignment. Since item 122
+the **family name** is the component that identifies someone, and nobody else
+alive, held or ever named in the campaign carries it, officers and operatives
+alike. That is what lets a player write *"Galba"* and be understood.
+
+`drawPerson` **walks** rather than redraws: the hash picks where to start — where
+the old draw would have landed, so the seed's names and most early ones are
+unchanged — and the stock is walked to the first free family, so a clash is
+impossible rather than unlikely. Stocks grew from ten family names a power to
+thirty, measured against what a campaign names: the Combine named seven people
+in ten turns, most of them operatives. Past the stock, two families are **joined
+into one word** — *Galbavarro*, not *Galba-Varro*, because the matcher splits on
+a hyphen and *"Galba"* would then tie between the two, the exact failure this
+exists to remove.
+
+"Never reused" needs a record, and `WorldState.familiesUsed` is it: operatives
+are spliced out of `agents` when recalled or spent, so current state alone
+cannot say a name was ever taken. A journal from before it draws the old way.
 
 **A burned operative is taken, not merely flagged.** Exposure used to set a
 boolean: the line closed, the person evaporated, and the power that caught them
@@ -4275,10 +4331,12 @@ to be aboard this one. That convention caught a real bug — the first version
 credited a `convoy` officer in a battle nobody lost, and the note is now pushed
 from `bleed`, on use.
 
-**They die, and only on a defeat**, on the battle's own seeded roll rather than
-a new one (`COMMANDER_LOSS_ROLL`). An officer who wins does not die at a rate
-worth modelling, and a death roll on every engagement would churn the roster
-faster than a player could learn a name. `tickTurn` appoints a replacement — a
+**They fall with their contingent** — see "An officer is a unit of the fleet".
+That was a roll on the battle's own seeded d20 after a defeat
+(`COMMANDER_LOSS_ROLL`, still used to replay journals before version 8), on the
+argument that a death roll on every engagement would churn the roster faster
+than a player could learn a name; tying the fall to the fleet keeps that
+property without the die. `tickTurn` appoints a replacement — a
 different person, with a new name and no battles — and the dead stay on the
 roster, since a power's history of commanders is worth more than the bytes of
 removing them.

@@ -266,6 +266,21 @@ export function commanderTaken(roll: number): boolean {
   return commanderLost(roll) && roll > COMMANDER_CAPTURE_ROLL;
 }
 
+/**
+ * An officer whose contingent is gone: taken alive, or killed?
+ *
+ * Since item 122 an officer is lost by the battle's own arithmetic — they sail
+ * last in the loss order, as the flagship, so they fall exactly when nothing
+ * they sailed with is left — and this splits that fall evenly between killed
+ * and captured, the split `commanderTaken` made inside its band. A roll of the
+ * officer's OWN rather than the battle's, because two officers lost in one
+ * battle are two fates, and seeded, so it replays exactly. A capture still
+ * needs a captor; the caller decides that.
+ */
+export function officerTakenAlive(turn: number, officerId: string, systemId: string): boolean {
+  return rollD20(turn, `officer-fate:${officerId}:${systemId}`) > 10;
+}
+
 /* ------------------------------------------------------------------ */
 /* A roster, and what it costs to have one                             */
 /* ------------------------------------------------------------------ */
@@ -723,7 +738,11 @@ const NAME_STOCK: Record<string, NameStock> = {
   meridian: {
     first: ['Adrienne', 'Caspar', 'Teodor', 'Lira', 'Odile', 'Marcus', 'Sabine', 'Yusuf'],
     last: ['Vance', 'Okonjo', 'Reyes', 'Haldane', 'Brandt', 'Sorel', 'Achebe',
-           'Marchetti', 'Delacroix', 'Ferreira'],
+           'Marchetti', 'Delacroix', 'Ferreira',
+           'Castellane', 'Nakagawa', 'Oyelaran', 'Lindqvist', 'Abernathy',
+           'Moreau', 'Kowalczyk', 'Salgado', 'Ashworth', 'Iversen', 'Mbatha',
+           'Carvalho', 'Whitlock', 'Petrakis', 'Quintero', 'Hollis', 'Sandoval',
+           'Everett', 'Rahimi', 'Lachance'],
     titles: {
       lineofbattle: 'Operations Executive',
       gunnery: 'Senior Director',
@@ -737,7 +756,11 @@ const NAME_STOCK: Record<string, NameStock> = {
   vigil: {
     first: ['Caius', 'Valeria', 'Drusus', 'Marcia', 'Aulus', 'Livia', 'Quintus', 'Sabina'],
     last: ['Ferrata', 'Corvinus', 'Nasica', 'Longinus', 'Severa', 'Galba',
-           'Cinna', 'Rufus', 'Varro', 'Scaeva'],
+           'Cinna', 'Rufus', 'Varro', 'Scaeva',
+           'Agrippa', 'Balbus', 'Cotta', 'Dentatus', 'Flaccus', 'Gallus',
+           'Lentulus', 'Macer', 'Naso', 'Paullus', 'Regulus', 'Saturninus',
+           'Strabo', 'Torquata', 'Vitellia', 'Aquila', 'Calvus', 'Fimbria',
+           'Laenas', 'Pansa'],
     titles: {
       lineofbattle: 'Iron Marshal',
       gunnery: 'Commodore',
@@ -752,7 +775,11 @@ const NAME_STOCK: Record<string, NameStock> = {
   ojjul: {
     first: ['Serek', 'Halvane', 'Dovic', 'Ruille', 'Tallim', 'Osk', 'Vessine', 'Miral'],
     last: ['Nar Kheline', 'Nar Ossik', 'Nar Duvane', 'Nar Serrel', 'Nar Halq',
-           'Nar Ojjuk', 'Nar Tevin', 'Nar Rissa', 'Nar Belline', 'Nar Aquen'],
+           'Nar Ojjuk', 'Nar Tevin', 'Nar Rissa', 'Nar Belline', 'Nar Aquen',
+           'Nar Vessat', 'Nar Quillen', 'Nar Dorrik', 'Nar Imrel', 'Nar Kasko',
+           'Nar Tellumen', 'Nar Pellith', 'Nar Rhuun', 'Nar Zevric', 'Nar Hessane',
+           'Nar Mordal', 'Nar Ulvik', 'Nar Cassimer', 'Nar Brevane', 'Nar Tollek',
+           'Nar Ghessa', 'Nar Idrel', 'Nar Voskane', 'Nar Emmerai', 'Nar Sollis'],
     titles: {
       lineofbattle: 'Underboss',
       gunnery: 'Second Elder',
@@ -768,7 +795,11 @@ const NAME_STOCK: Record<string, NameStock> = {
   freeworlds: {
     first: ['Oria', 'Kell', 'Devain', 'Sarn', 'Mira', 'Tolen', 'Ysra', 'Bran'],
     last: ['Stonecount', 'Vesskeeper', 'Throatholder', 'Ninefold', 'Dustborn',
-           'Marklen', 'Pellrun', 'Delvane', 'Ashkeep', 'Windward'],
+           'Marklen', 'Pellrun', 'Delvane', 'Ashkeep', 'Windward',
+           'Flintmoor', 'Saltgrave', 'Coalward', 'Stillwater', 'Harrowfield',
+           'Cindermark', 'Deepholm', 'Ridgewell', 'Tallstone', 'Graveln',
+           'Wardhollow', 'Shalecroft', 'Brightkeel', 'Oathmere', 'Longreach',
+           'Kilnborn', 'Mossgate', 'Slatewright', 'Fernhold', 'Cairnfell'],
     titles: {
       lineofbattle: 'Fleetwarden',
       gunnery: 'Gunwarden',
@@ -785,7 +816,11 @@ const NAME_STOCK: Record<string, NameStock> = {
   drajk: {
     first: ['Kess', 'Ravel', 'Tannic', 'Voss', 'Sherrin', 'Doram', 'Aleska', 'Prynn'],
     last: ['Longburn', 'Deeprunner', 'Coldwake', 'Halfshare', 'Threxwind',
-           'Ashlott', 'Greywake', 'Skeln', 'Hollowmark', 'Sundrift'],
+           'Ashlott', 'Greywake', 'Skeln', 'Hollowmark', 'Sundrift',
+           'Blacktack', 'Saltknife', 'Farhook', 'Brinecut', 'Keelbreaker',
+           'Starveling', 'Dunmarrow', 'Scuttlebar', 'Tallowjack', 'Rimsnatch',
+           'Bilgewater', 'Lastlight', 'Sharkhollow', 'Vantrell', 'Grimhale',
+           'Emberwick', 'Quickshare', 'Nightrudder', 'Thornprow', 'Cinderjaw'],
     titles: {
       lineofbattle: 'Korvan Lord',
       gunnery: 'Packmaster',
@@ -828,9 +863,128 @@ export function commanderName(
   const stock = NAME_STOCK[factionId] ?? FALLBACK;
   const a = rollD20(turn, `commander-first:${factionId}:${salt}`) - 1;
   const b = rollD20(turn, `commander-last:${factionId}:${salt}`) - 1;
-  const person = `${stock.first[a % stock.first.length]} ${stock.last[b % stock.last.length]}`;
+  const person = `${stock.first[a % stock.first.length]} ${stock.last[b % ORIGINAL_FAMILIES]}`;
+  return titled(stock, person, archetype);
+}
+
+function titled(stock: NameStock, person: string, archetype: CommanderArchetype): string {
   const title = stock.titles[archetype];
   return stock.place === 'prefix' ? `${title} ${person}` : `${person}, ${title}`;
+}
+
+/**
+ * How many family names each stock had before they were grown to thirty.
+ *
+ * The legacy draws index these ten exactly as they always did, so a journal
+ * written before family names were unique rebuilds the same people; and the
+ * unique draw STARTS where the legacy one would have landed, so a campaign's
+ * first appointments — the seed's included — are the same names either way.
+ */
+const ORIGINAL_FAMILIES = 10;
+
+/**
+ * A person nobody in this campaign has been, identified by their family name.
+ *
+ * **The family name is the component that names one person.** Full names were
+ * unique by luck — `unusedName` redrew up to 24 times and then gave up — while
+ * the lookup that resolves *"Galba"* treats a tie as nobody. So a clash never
+ * handed a fleet to the wrong officer; it dropped the assignment. A family name
+ * that nobody else alive, held or ever named in this campaign carries is what
+ * lets a player write one word and be understood, which is how people talk
+ * about officers.
+ *
+ * **Walked, not redrawn.** The hash picks where to start — where the legacy
+ * draw would have landed — and the stock is walked from there to the first
+ * free family, so a clash is impossible rather than unlikely. Past the stock,
+ * two families are joined into a new word. A hyphen would not do: the name
+ * matcher splits on it, and *"Galba"* would then tie between Galba and
+ * Galba-Varro, which is the failure this exists to remove.
+ *
+ * Operatives draw from the same stock with the same rule — `archetype: null`,
+ * no title — because they are the same people, and a captured operative and a
+ * serving officer sharing a family name is the same ambiguity at a ransom
+ * table.
+ */
+export function drawPerson(opts: {
+  factionId: string;
+  turn: number;
+  salt: string;
+  /** The officer's school, which is their title; `null` for an operative. */
+  archetype: CommanderArchetype | null;
+  /** Families already used in this campaign — see `familiesInUse`. */
+  taken: ReadonlySet<string>;
+}): { name: string; family: string } {
+  const { factionId, turn, salt, archetype, taken } = opts;
+  const stock = NAME_STOCK[factionId] ?? FALLBACK;
+  const kind = archetype === null ? 'agent' : 'commander';
+  const a = rollD20(turn, `${kind}-first:${factionId}:${salt}`) - 1;
+  const b = rollD20(turn, `${kind}-last:${factionId}:${salt}`) - 1;
+  const family = freeFamily(stock.last, b % ORIGINAL_FAMILIES, taken);
+  const person = `${stock.first[a % stock.first.length]} ${family}`;
+  return { name: archetype === null ? person : titled(stock, person, archetype), family };
+}
+
+function freeFamily(list: readonly string[], start: number, taken: ReadonlySet<string>): string {
+  const at = (i: number): string => list[(start + i) % list.length]!;
+  for (let i = 0; i < list.length; i++) if (!taken.has(at(i))) return at(i);
+  for (let i = 0; i < list.length; i++) {
+    for (let j = 1; j < list.length; j++) {
+      const joined = joinFamilies(at(i), at(i + j));
+      if (!taken.has(joined)) return joined;
+    }
+  }
+  return at(0);
+}
+
+/** `Galba` + `Varro` is `Galbavarro`; `Nar Halq` + `Nar Ossik` is `Nar Halqossik`. */
+function joinFamilies(first: string, second: string): string {
+  const house = first.match(/^(\S+ )/)?.[1];
+  const tail = house && second.startsWith(house) ? second.slice(house.length) : second;
+  return `${first}${tail.toLowerCase().replace(/\s+/g, '')}`;
+}
+
+/**
+ * The family a name carries, if it is one of the stocks' own.
+ *
+ * Searched across every stock, which is safe because they share no family name
+ * — a test holds them to that. Longest first, so `Nar Halq` is found before a
+ * shorter family that happened to be a prefix of it.
+ */
+export function familyOf(name: string): string | null {
+  const words = ` ${name.replace(/,/g, ' ')} `;
+  for (const family of ALL_FAMILIES) if (words.includes(` ${family} `)) return family;
+  return null;
+}
+
+const ALL_FAMILIES = Object.values(NAME_STOCK)
+  .flatMap((s) => s.last)
+  .sort((x, y) => y.length - x.length);
+
+/**
+ * Every family name this campaign has used: recorded as each person is named,
+ * plus whatever can be read off the people still in state.
+ *
+ * The record is what makes "never reused" true. Operatives are spliced out of
+ * `state.agents` when recalled or spent, so a set read off current state alone
+ * would hand a dead spy's name to the next recruit — and the event log would
+ * then name two different people the same way. The read-off half covers the
+ * seed's officers, who are named before any record exists.
+ */
+export function familiesInUse(state: {
+  familiesUsed?: string[];
+  commanders?: Commander[];
+  agents?: { name?: string }[];
+}): Set<string> {
+  const taken = new Set(state.familiesUsed ?? []);
+  for (const c of state.commanders ?? []) {
+    const f = familyOf(c.name);
+    if (f) taken.add(f);
+  }
+  for (const a of state.agents ?? []) {
+    const f = a.name ? familyOf(a.name) : null;
+    if (f) taken.add(f);
+  }
+  return taken;
 }
 
 /**
@@ -884,7 +1038,7 @@ export function agentName(factionId: string, turn: number, salt: string): string
   const stock = NAME_STOCK[factionId] ?? FALLBACK;
   const a = rollD20(turn, `agent-first:${factionId}:${salt}`) - 1;
   const b = rollD20(turn, `agent-last:${factionId}:${salt}`) - 1;
-  return `${stock.first[a % stock.first.length]} ${stock.last[b % stock.last.length]}`;
+  return `${stock.first[a % stock.first.length]} ${stock.last[b % ORIGINAL_FAMILIES]}`;
 }
 
 /** Exported so a test can hold the stocks to the archetypes rather than to itself. */

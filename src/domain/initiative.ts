@@ -478,6 +478,16 @@ function massAt(ctx: Ctx, whereId: string, want: number): Ops {
 }
 
 /** Send `force` from the nearest holding that can supply the whole blow. */
+/**
+ * The officer a bot sends with a fleet leaving `systemId`: whoever of its own is
+ * standing there, as a one-name list for `issue_order.officers`. One rather
+ * than all, so a sortie does not strip the port it left of its commander.
+ */
+function officersAt(ctx: Ctx, systemId: string): string[] {
+  const here = commanderAt(ctx.state.commanders, ctx.me, systemId);
+  return here ? [here.id] : [];
+}
+
 function sortie(ctx: Ctx, targetId: string, force: number, label: string): Ops {
   // **Enough lift to take the place, or this is a raid.** A bot that sails
   // with guns only wins the orbitals and hands the world back, which is how
@@ -527,7 +537,7 @@ function sortie(ctx: Ctx, targetId: string, force: number, label: string): Ops {
       // fleet, not for the officer, so they are either there or they are not. A bot
       // that repositioned its commander to catch a sortie would be playing the
       // mechanic rather than its doctrine.
-      commanderId: commanderAt(ctx.state.commanders, ctx.me, from.id)?.id ?? null,
+      officers: officersAt(ctx, from.id),
       label,
     },
   ];
@@ -784,7 +794,7 @@ function occupy(ctx: Ctx, target: StarSystem, label: string): Ops {
     {
       op: 'issue_order', factionId: ctx.me, type: 'fleet_movement',
       originId: from.id, targetId: target.id, force,
-      commanderId: commanderAt(ctx.state.commanders, ctx.me, from.id)?.id ?? null,
+      officers: officersAt(ctx, from.id),
       label,
     },
   ];

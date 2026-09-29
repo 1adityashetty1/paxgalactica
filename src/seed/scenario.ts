@@ -773,6 +773,7 @@ export function createSeedState(
     factions: buildFactions(),
     systems,
     pendingOrders: [],
+    familiesUsed: [],
     treaties: [],
     commitments: [],
     agents: [],
