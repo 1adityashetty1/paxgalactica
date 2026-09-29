@@ -13,6 +13,7 @@ import {
   commanderPassive,
   toNextVeterancy,
   veterancyLabel,
+  type Commander,
 } from '../domain/command.js';
 import type { Commitment } from '../domain/arbitration.js';
 import {
@@ -183,39 +184,34 @@ function commanderLine(state: WorldState, viewerId: string): string {
       : 'You have no officer in post.';
   }
   const shape = archetypeOf(officer.archetype);
-  const seen =
-    officer.battles > 0
-      ? `, ${veterancyLabel(officer.battles)} at ${officer.battles} engagement${officer.battles === 1 ? '' : 's'}`
-      : ', untested';
-  // What losing their would cost, said plainly. A power that cannot tell a
+  // Where each one is, because that decides which battles they are in at all,
+  // and which fleets they can sail with. Every officer's — the senior one's
+  // alone used to be given, so naming any other to a fleet was a guess about
+  // where they stood.
+  const where = (c: Commander): string => {
+    if (c.atSystemId) return `at ${getSystem(state, c.atSystemId)?.name ?? c.atSystemId}`;
+    const o = (state.pendingOrders ?? []).find((x) => x.officers.includes(c.id));
+    return o ? `under way to ${getSystem(state, o.targetId)?.name ?? o.targetId}` : 'unposted';
+  };
+  const record = (c: Commander): string =>
+    c.battles > 0 ? `${veterancyLabel(c.battles)} at ${c.battles} engagement${c.battles === 1 ? '' : 's'}` : 'untested';
+  const roster = activeCommanders(state.commanders, viewerId);
+  const room = MAX_ACTIVE_COMMANDERS - roster.length;
+  const each = roster.map((c) => `${c.name} — ${record(c)}, ${where(c)}; in a battle, ${commanderEffect(c)}`);
+  // What losing them would cost, said plainly. A power that cannot tell a
   // veteran from a replacement has no reason to fight shy of spending them, and
   // the successor arrives with the same speciality and none of the record.
-  // The rest of the roster, and the room left in it. A power that cannot see it
-  // has five officers' worth of decision it does not know it has.
-  const others = activeCommanders(state.commanders, viewerId).filter((c) => c.id !== officer.id);
-  const room = MAX_ACTIVE_COMMANDERS - (others.length + 1);
-  const roster =
-    (others.length > 0
-      ? ` Also in post: ${others.map((c) => `${c.name} (${commanderEffect(c)})`).join('; ')}.`
-      : '') +
-    (room > 0 ? ` You may appoint ${room} more.` : ' Your roster is full.');
   const owed = toNextVeterancy(officer.battles);
   const ladder =
     owed === null
-      ? ' They are as good as an officer gets; a successor would start again from nothing.'
-      : ` ${owed} more engagement${owed === 1 ? '' : 's'} and they improve again. A successor inherits the speciality and none of the record.`;
-  // Where they are, because it now decides which battles they are in at all — a
-  // power told it has a commander and not told they are three jumps from the
-  // fighting has been told something misleading.
-  const posted = officer.atSystemId
-    ? ` They are at ${getSystem(state, officer.atSystemId)?.name ?? officer.atSystemId}`
-    : (() => {
-        const o = (state.pendingOrders ?? []).find((x) => x.commanderId === officer.id);
-        return o
-          ? ` They are under way to ${getSystem(state, o.targetId)?.name ?? o.targetId}`
-          : ' They are unposted';
-      })();
-  return `Your fleet is commanded by ${officer.name}${seen} — known for ${shape.known}. In a battle, ${commanderEffect(officer)}; the rest of the time, ${commanderPassive(officer)}.${posted}, and command only the battle they are at.${ladder}${roster}`;
+      ? `${officer.name} is as good as an officer gets; a successor would start again from nothing.`
+      : `${officer.name} improves again in ${owed} more engagement${owed === 1 ? '' : 's'}. A successor inherits the speciality and none of the record.`;
+  return [
+    `Your officers (${roster.length} in post${room > 0 ? `, room for ${room} more` : ', the roster is full'}):`,
+    ...each.map((line) => `  - ${line}`),
+    `The senior officer, ${officer.name}, is known for ${shape.known} and runs your establishment: ${commanderPassive(officer)}. ${ladder}`,
+    'An officer is part of the fleet they stand with. They sail when named in a fleet movement\'s `officers` (a family name is enough) or when the whole port sails; they command only the battle they are at, and fall only when every ship they fought with is lost.',
+  ].join('\n');
 }
 
 /** Worlds a power holds that began as somebody else's, by name. */
@@ -403,10 +399,25 @@ export function serializeSystems(state: WorldState): string {
     // the lift arm; a state block that reports "freeworlds 12" cannot tell the
     // model whether any of the twelve can put troops on the ground, so the
     // rule would be unactionable exactly where it matters.
-    const ships = Object.entries(s.ships ?? {})
-      .filter(([, stack]) => hullsIn(stack) > 0)
-      .map(([id, stack]) => `${nameOfFaction(state, id)} ${describeStack(stack)}`)
-      .join(', ');
+    // **Officers are listed with the hulls they stand beside (item 122)**, since
+    // an officer is a unit of the fleet and sails the way the fleet does. A
+    // model that can see who is at a world can name them to a fleet leaving it;
+    // one shown only the senior officer's location was guessing. Not a fog
+    // leak: `officerRoll` already gives every rival's officers and where they
+    // stand, and the System panel shows them to the player.
+    const here = (state.commanders ?? []).filter((c) => c.status === 'active' && c.atSystemId === s.id);
+    const officersOf = (id: string): string => {
+      const names = here.filter((c) => c.factionId === id).map((c) => c.name);
+      return names.length > 0 ? ` with ${names.join(' and ')}` : '';
+    };
+    const withShips = Object.entries(s.ships ?? {}).filter(([, stack]) => hullsIn(stack) > 0);
+    const ashore = [...new Set(here.map((c) => c.factionId))].filter(
+      (id) => !withShips.some(([f]) => f === id),
+    );
+    const ships = [
+      ...withShips.map(([id, stack]) => `${nameOfFaction(state, id)} ${describeStack(stack)}${officersOf(id)}`),
+      ...ashore.map((id) => `${nameOfFaction(state, id)} no ships${officersOf(id)}`),
+    ].join(', ');
     const payout = Object.entries(income.shares)
       .filter(([, v]) => v > 0)
       .map(([id, v]) => `${nameOfFaction(state, id)} ${v}`)

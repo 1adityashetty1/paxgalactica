@@ -14,7 +14,7 @@ import { createSeedState } from '../seed/scenario.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 7;
+export const JOURNAL_VERSION = 8;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -80,6 +80,7 @@ export const JournalVersionSchema = z.union([
   z.literal(5),
   z.literal(6),
   z.literal(7),
+  z.literal(8),
 ]);
 
 export const JournalSchema = z.object({
@@ -103,7 +104,9 @@ export const JournalSchema = z.object({
    *     engine notes private to their power, officers named by name, reach to
    *     interrupt a rival, four battle rules, self-credits needing a payer, and
    *     spoils needing presence. Each is its own `LegacyRules` flag.
-   * 7 — current.
+   * 7 — written before an officer was a unit of the fleet: one officer per
+   *     order, a roll to die on any defeat, and names unique only by luck.
+   * 8 — current.
    */
   version: JournalVersionSchema,
   entries: z.array(JournalEntrySchema),
@@ -199,6 +202,12 @@ export function replay(
     privateEngineNotes: parsed.version >= 7,
     officerByName: parsed.version >= 7,
     interruptNeedsReach: parsed.version >= 7,
+    // An officer became a unit of the fleet (item 122): named in a list, aboard
+    // whenever the whole port sails, and every person's family name unique for
+    // the campaign. Those campaigns sailed one officer an order, by name only,
+    // and drew names that could repeat.
+    officerUnits: parsed.version >= 8,
+    uniqueFamilies: parsed.version >= 8,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.
@@ -208,6 +217,7 @@ export function replay(
       squattersFight: parsed.version >= 7,
       landingNeedsLift: parsed.version >= 7,
       exactExchange: parsed.version >= 7,
+      officersFallWithFleet: parsed.version >= 8,
     },
   };
 
@@ -243,7 +253,7 @@ export function replay(
       // prevent. Each entry replays under the rule that was in force when it
       // was written, exactly as the legacy-treaty clause above does.
       const atomicBatches = parsed.version >= 3;
-      const res = applyOps(state, entry.ops, source, entry.actor, atomicBatches, legacy);
+      const res = applyOps(state, entry.ops.map(officersFromCommanderId), source, entry.actor, atomicBatches, legacy);
       state = res.state;
       rejectionCount += res.rejections.length;
     } else if (entry.kind === 'tick') {
@@ -253,6 +263,20 @@ export function replay(
   }
 
   return { state: WorldStateSchema.parse(state), rejectionCount };
+}
+
+/**
+ * An order journaled before officers sailed as a list named its one officer in
+ * `commanderId`, a field the op schema no longer has — so without this the name
+ * would be stripped as an unknown key and the fleet would sail under nobody.
+ * An input shape rather than a rule, so it applies at every version.
+ */
+function officersFromCommanderId(op: unknown): unknown {
+  if (!op || typeof op !== 'object' || !('commanderId' in op)) return op;
+  const { commanderId, ...rest } = op as Record<string, unknown>;
+  return typeof commanderId === 'string' && commanderId.length > 0 && rest.officers === undefined
+    ? { ...rest, officers: [commanderId] }
+    : rest;
 }
 
 /**

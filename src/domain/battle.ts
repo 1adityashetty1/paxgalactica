@@ -96,6 +96,22 @@ export const ContingentSchema = z.object({
 });
 export type Contingent = z.infer<typeof ContingentSchema>;
 
+/**
+ * An officer on the field, and what became of them.
+ *
+ * A unit of the fleet since item 122, so the order of battle lists them beside
+ * the hulls — `fought` is everyone who walked away, whether or not their
+ * effect fired, which `commandersFired` already reports.
+ */
+export const BattleOfficerSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  factionId: z.string(),
+  side: z.enum(['attack', 'defend']),
+  fate: z.enum(['fought', 'lost', 'captured']),
+});
+export type BattleOfficer = z.infer<typeof BattleOfficerSchema>;
+
 export const BattleRoundSchema = z.object({
   /** Stamped per round so rounds can span turns without a schema change. */
   turn: z.number().int().min(0),
@@ -150,6 +166,8 @@ export const BattleReportSchema = z.object({
    * the interesting thing about them is that next turn they might not be.
    */
   commandersFired: z.array(z.string()).default([]),
+  /** Every officer on the field, by side, and whether they came through. */
+  officers: z.array(BattleOfficerSchema).default([]),
   holderBefore: z.string().nullable(),
   holderAfter: z.string().nullable(),
   garrisonBefore: z.number().int().min(0),

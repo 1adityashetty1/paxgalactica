@@ -410,6 +410,40 @@ export function CommanderIcon({ size = 18, title }: IconProps) {
   );
 }
 
+/**
+ * The same insignia as a group inside an existing SVG, for the map.
+ *
+ * `CommanderIcon` is its own `<svg>` and cannot sit inside the map's. Drawn in
+ * the map's units, and large on purpose — the viewBox is scaled to about 0.4x,
+ * so anything under ~15 units is a smudge (the toll ring's lesson).
+ */
+export function CommanderMark({
+  x,
+  y,
+  size = 16,
+  color,
+  title,
+}: {
+  x: number;
+  y: number;
+  size?: number;
+  color: string;
+  title: string;
+}) {
+  const k = size / 24;
+  return (
+    <g className="officer-mark" transform={`translate(${x - size / 2} ${y - size / 2}) scale(${k})`} color={color}>
+      <title>{title}</title>
+      <circle cx="12" cy="12" r="10.5" fill="var(--panel, #11151c)" />
+      <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2.2" />
+      <path
+        fill="currentColor"
+        d="M12 3.85 L13.83 9.48 L19.75 9.48 L14.96 12.96 L16.79 18.59 L12 15.11 L7.21 18.59 L9.04 12.96 L4.25 9.48 L10.17 9.48 Z"
+      />
+    </g>
+  );
+}
+
 export function HullIcon({
   hull,
   size = 18,

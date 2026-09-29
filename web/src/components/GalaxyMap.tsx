@@ -3,6 +3,7 @@ import type { WorldState } from '../../../src/domain/state.js';
 import { layoutGalaxy, sectorsOf } from '../../../src/ui/layout.js';
 import { blockadesOn, routeEarnings, tradeRoutes } from '../../../src/domain/trade.js';
 import { ansi256ToHex, NEUTRAL } from '../color.js';
+import { CommanderMark } from './BattleIcons.js';
 
 /**
  * The galaxy, as SVG.
@@ -102,6 +103,11 @@ export function GalaxyMap({ state, selectedId, onSelect }: Props) {
     [state.factions],
   );
 
+  const officersAt = useCallback(
+    (systemId: string) =>
+      (state.commanders ?? []).filter((c) => c.status === 'active' && c.atSystemId === systemId),
+    [state.commanders],
+  );
   const contested = useCallback(
     (systemId: string, controller: string | null): boolean =>
       state.pendingOrders.some(
@@ -224,6 +230,14 @@ export function GalaxyMap({ state, selectedId, onSelect }: Props) {
               </title>
               <circle r={9} fill={colorOf(f.factionId)} fillOpacity={0.18} />
               <path d="M -6 -5 L 7 0 L -6 5 Z" fill={colorOf(f.factionId)} />
+              {/* An officer under way rides the fleet, so the mark does too. */}
+              {(() => {
+                const aboard = (state.pendingOrders.find((o) => o.id === f.orderId)?.officers ?? [])
+                  .map((id) => state.commanders.find((c) => c.id === id)?.name ?? id);
+                return aboard.length > 0 ? (
+                  <CommanderMark x={-12} y={-12} color={colorOf(f.factionId)} title={aboard.join(', ')} />
+                ) : null;
+              })()}
               <text y={-13} className="fleet-eta" fill={colorOf(f.factionId)}>
                 {f.remaining}
               </text>
@@ -292,6 +306,22 @@ export function GalaxyMap({ state, selectedId, onSelect }: Props) {
                     </title>
                   </circle>
                 )}
+                {/* Officers standing here, one mark per power, stacked to the
+                    upper left of the world so they never cover its name. The
+                    star-in-circle is the same insignia the panels use, drawn
+                    large because the map is scaled to about 0.4x. */}
+                {[...new Set(officersAt(s.id).map((c) => c.factionId))].map((fid, i) => (
+                  <CommanderMark
+                    key={fid}
+                    x={-(r + 9) - i * 14}
+                    y={-(r + 6)}
+                    color={colorOf(fid)}
+                    title={officersAt(s.id)
+                      .filter((c) => c.factionId === fid)
+                      .map((c) => c.name)
+                      .join(', ')}
+                  />
+                ))}
                 <text x={r + 7} y={4.5} className="label" fill={color}>
                   {s.name}
                 </text>

@@ -1454,7 +1454,7 @@ describe('a raid can actually be paid', () => {
           interruptible: true, onInterrupt: 'cancel', visibility: [],
           label: 'prizes at the terminus', durationRationale: '', path: [],
           investedCredits: 0,
-          commanderId: null, force: {},
+          officers: [], force: {},
         },
       ],
     };
@@ -1477,7 +1477,7 @@ describe('a raid can actually be paid', () => {
           interruptible: true, onInterrupt: 'cancel', visibility: [],
           label: 'prizes at the terminus', durationRationale: '', path: [],
           investedCredits: 0,
-          commanderId: null, force: {},
+          officers: [], force: {},
         },
       ],
     };

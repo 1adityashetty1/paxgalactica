@@ -363,15 +363,15 @@ export const IssueOrderOp = z.object({
   force: z.union([z.number().int().min(1), TypedStackSchema]).optional(),
   interruptible: z.boolean().default(true),
   /**
-   * An officer named to this fleet. `fleet_movement` only.
+   * Officers sailing with this fleet, by name — a family name is enough — or
+   * by id. `fleet_movement` only.
    *
-   * The whole of officer assignment: a battle resolves inside `tickTurn` with
-   * no player present, so a per-battle choice can only be made when the order
-   * goes out. They must be yours, active, and standing at the origin — the
-   * reducer checks all three, because a model asked for an officer id will
-   * eventually invent one.
+   * An officer is a unit of the fleet that weighs nothing, so they sail the way
+   * its hulls do: named here, or aboard when the WHOLE port sails (`force`
+   * omitted). They must be yours, active, and standing at the origin; one who
+   * is not is left behind with a note and the fleet still sails.
    */
-  commanderId: z.string().nullable().default(null),
+  officers: z.array(z.string().min(1)).max(5).default([]),
   onInterrupt: OnInterruptSchema.default('cancel'),
   visibility: z.array(z.string()).default([]),
   label: z.string().default(''),

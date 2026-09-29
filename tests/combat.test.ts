@@ -41,6 +41,7 @@ import {
   commanderIndustry,
   commanderLost,
   commanderTaken,
+  officerTakenAlive,
   commanderResolve,
   commanderPassive,
   commanderUpkeepRelief,
@@ -92,7 +93,7 @@ function attack(setup: (s: WorldState) => void, force = 8, lift = 0) {
       op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
       originId: 'ark-3', targetId: 'sek-6',
       force: { battleship: force, lifter: lift },
-      commanderId: aboard?.id ?? null,
+      officers: aboard ? [aboard.id] : [],
     },
   ]);
   expect(issued.rejections).toHaveLength(0);
@@ -1526,7 +1527,7 @@ describe('the officer on the field', () => {
           [
             {
               op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
-              originId, targetId: 'sek-6', force, commanderId,
+              originId, targetId: 'sek-6', force, officers: commanderId ? [commanderId] : [],
             },
           ],
           'model',
@@ -1544,7 +1545,7 @@ describe('the officer on the field', () => {
         c.atSystemId = 'ark-3';
         const out = sail(s, c.id);
         expect(out.rejections).toHaveLength(0);
-        expect(out.state.pendingOrders[0]!.commanderId).toBe(c.id);
+        expect(out.state.pendingOrders[0]!.officers).toEqual([c.id]);
         expect(ours(out.state).atSystemId).toBeNull();
       });
 
@@ -1559,16 +1560,16 @@ describe('the officer on the field', () => {
           s,
           [
             { op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
-              originId: 'ark-3', targetId: 'sek-6', force: { battleship: 5 }, commanderId: c.id },
+              originId: 'ark-3', targetId: 'sek-6', force: { battleship: 5 }, officers: [c.id] },
             { op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
-              originId: 'ark-3', targetId: 'ark-4', force: { battleship: 5 }, commanderId: c.id },
+              originId: 'ark-3', targetId: 'ark-4', force: { battleship: 5 }, officers: [c.id] },
           ],
           'model',
           'freeworlds',
         );
-        const carrying = out.state.pendingOrders.filter((o) => o.commanderId === c.id);
+        const carrying = out.state.pendingOrders.filter((o) => o.officers.includes(c.id));
         expect(carrying).toHaveLength(1);
-        expect(out.notes.join(' ')).toMatch(/without a named officer/);
+        expect(out.notes.join(' ')).toMatch(/Fleet sails without/);
       });
 
       it('cannot sail with no ships at all', () => {
@@ -1609,8 +1610,8 @@ describe('the officer on the field', () => {
           const s = fresh();
           const id = mutate(s);
           const out = sail(s, id);
-          expect(out.state.pendingOrders[0]!.commanderId, why).toBeNull();
-          expect(out.notes.join(' '), why).toMatch(/without a named officer/);
+          expect(out.state.pendingOrders[0]!.officers, why).toEqual([]);
+          expect(out.notes.join(' '), why).toMatch(/Fleet sails without/);
         }
       });
 
@@ -1751,22 +1752,25 @@ describe('the officer on the field', () => {
     });
 
     /**
-     * Capture: the other way an officer does not walk away from a defeat.
+     * Capture: the other way an officer does not walk away from a battle.
      *
-     * Built into the death roll rather than beside it, so it costs no second
-     * source of randomness — `1–2` kills, `3–4` takes their alive. They become an
-     * `Asset` and moves like one, which is what lets their be ransomed, traded,
-     * ceded or won back with no second mechanism.
+     * An officer is the flagship of the contingent they sail with (item 122), so
+     * they fall exactly when nothing they fought with is left, and the fall
+     * splits evenly between killed and taken alive on a seeded roll of their
+     * own. Taken, they become an `Asset` and move like one, which is what lets
+     * them be ransomed, traded, ceded or won back with no second mechanism.
      */
     describe('and being taken alive', () => {
       /**
-       * Send a small fleet under its officer against an overwhelming defender,
-       * `skip` turns into the campaign. The turn is what moves the seeded roll,
-       * so this is how a specific band is reached without a second die.
+       * Send a small CRUSADING fleet under its officer against an overwhelming
+       * defender, `skip` turns into the campaign. Crusading does not break off,
+       * so on a low enough roll the whole contingent is destroyed in the
+       * exchange; the turn is what moves the seeded rolls.
        */
       const beaten = (skip: number) => {
         let s = fresh();
         for (let i = 0; i < skip; i++) s = tickTurn(s).state;
+        s.factions.find((f) => f.id === 'freeworlds')!.warEthic = 'crusading';
         const c = s.commanders.find((x) => x.factionId === 'freeworlds' && x.status === 'active')!;
         c.atSystemId = 'ark-3';
         const t = sys(s, 'sek-6');
@@ -1777,7 +1781,7 @@ describe('the officer on the field', () => {
           [{
             op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
             originId: 'ark-3', targetId: 'sek-6', force: { battleship: 4 },
-            commanderId: c.id, agentId: null,
+            officers: [c.id],
           }],
           'model',
           'freeworlds',
@@ -1807,13 +1811,19 @@ describe('the officer on the field', () => {
         }
       });
 
-      it('takes their alive, and the captor is holding a person', () => {
-        // Turn 9 puts this engagement's seeded roll at 3 — inside the loss band
-        // and above the kill half. Pinned rather than searched, so a change to
-        // the band fails here instead of quietly never exercising capture.
+      it('takes them alive when their whole contingent is gone, and the captor is holding a person', () => {
+        // Turn 9 puts this engagement's roll at 3, which destroys all four
+        // hulls, and the officer's own fate roll on the capture half. Pinned
+        // rather than searched, so a change to either fails here instead of
+        // quietly never exercising capture.
         const { res, officerId } = beaten(9);
         const battle = res.report.battles[0];
         expect(battle?.roll).toBe(3);
+        expect(hullsAt(sys(res.state, 'sek-6'), 'freeworlds')).toBe(0);
+        expect(officerTakenAlive(battle!.turn, officerId, 'sek-6')).toBe(true);
+        expect(battle?.officers).toEqual([
+          expect.objectContaining({ id: officerId, side: 'attack', fate: 'captured' }),
+        ]);
         const them = res.state.commanders.find((c) => c.id === officerId)!;
         expect(them.status).toBe('captured');
         expect(them.atSystemId).toBeNull();
@@ -1831,6 +1841,44 @@ describe('the officer on the field', () => {
         expect(asset.valuePerUnit['freeworlds']).toBeGreaterThan(0);
         // And they are off the payroll while somebody else has them.
         expect(activeCommanders(res.state.commanders, 'freeworlds')).toHaveLength(0);
+      });
+
+      it('kills them on the other half of their own roll', () => {
+        const { res, officerId } = beaten(0);
+        expect(hullsAt(sys(res.state, 'sek-6'), 'freeworlds')).toBe(0);
+        const them = res.state.commanders.find((c) => c.id === officerId)!;
+        expect(them.status).toBe('lost');
+        expect(res.report.battles[0]?.officers[0]?.fate).toBe('lost');
+        expect((res.state.assets ?? []).some((a) => a.commanderId === officerId)).toBe(false);
+      });
+
+      it('lets them walk away from a defeat their ships got clear of', () => {
+        // The same fleet, not crusading, is driven off at worse than two to
+        // one and keeps most of itself — so the flagship, last in the loss
+        // order, comes home. Under the old rule a fifth of defeats took the
+        // officer whatever the fleet around them suffered.
+        for (const skip of [0, 9]) {
+          let s = fresh();
+          for (let i = 0; i < skip; i++) s = tickTurn(s).state;
+          const c = s.commanders.find((x) => x.factionId === 'freeworlds' && x.status === 'active')!;
+          c.atSystemId = 'ark-3';
+          const t = sys(s, 'sek-6');
+          t.controllerFactionId = 'vigil';
+          setStackAt(t, 'vigil', { battleship: 400 });
+          const out = applyOps(s, [{
+            op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
+            originId: 'ark-3', targetId: 'sek-6', force: { battleship: 4 }, officers: [c.id],
+          }], 'model', 'freeworlds');
+          let res = tickTurn(out.state);
+          while (res.state.pendingOrders.some((o) => o.factionId === 'freeworlds' && o.type === 'fleet_movement')) {
+            res = tickTurn(res.state);
+          }
+          const them = res.state.commanders.find((x) => x.id === c.id)!;
+          expect(res.report.battles[0]?.rounds.at(-1)?.outcome).toBe('attacker_driven_off');
+          expect(them.status, `turn ${skip}`).toBe('active');
+          expect(them.atSystemId).not.toBeNull();
+          expect(hullsAt(sys(res.state, them.atSystemId!), 'freeworlds')).toBeGreaterThan(0);
+        }
       });
 
       it('costs nothing to keep an officer nobody has', () => {

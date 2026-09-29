@@ -76,7 +76,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | **119** | reactions without thinking, on a turn where the player attacks | — | measured only on mild turns (#37); a power that thought less would show it here |
 | **120** | every check is logged twice | small | `calls.ts` logs `[check] … -> outcome` and `turn.ts` stages a `log_narrative` with `describeCheck`, `→ outcome` — two entries per roll in the event log, the prompts' recent log and the Log panel |
 | **121** | two escorts take five turns | small | resolution filed "commission two escorts" as `capital_ship_construction`, whose floor is 5; `refit` and `retooling` also deliver `commission_ships` faster. `prompts/resolution.md` lists all three with no guidance on which a light hull wants — the category should follow the hull, and the clamp at least should say so |
-| **122** | an officer should be a unit, not a record beside the fleet | medium | the end state: a zero-ton unit at nominal weight that moves, shows and falls with its fleet, uniquely named by its family name, carrying a passive and a battle effect. Decided calls and the build order are in the entry below |
+| ~~122~~ | ~~an officer should be a unit, not a record beside the fleet~~ | medium | **BUILT** — `officers` on an order (by family name), aboard when the whole port sails, fall with their contingent rather than on a die, family names unique for the campaign. `JOURNAL_VERSION` 8; all 12 saves replay identically; balance and fleetlab unchanged. Two calls differ from the entry below, and it says which |
 
 **Audited 2026-09-23:** every numbered item above 81 is built or closed except
 **92**, **94(b)** and the four added today. Of those, **116** is code and the rest
@@ -157,7 +157,38 @@ can read another's terms and a clause whose whole content is *"track that other
 contract"* is structurally unrepresentable. The fix there is the arbiter *saying
 so* rather than recording it as though it bound something.
 
-## 122. OPEN — an officer should be a unit, not a record beside the fleet
+## 122. BUILT — an officer should be a unit, not a record beside the fleet
+
+**As built, and where it differs from the decisions below.** Everything below
+was built, with two calls made differently once the arithmetic was in front of
+us:
+
+- **No weight at all, not 0.01.** The nominal weight exists so a side made of
+  nothing but unarmed hulls is still a side. An officer is never a side on their
+  own — they are stored as a record, not in a stack, and never sail without
+  hulls — so a weight would have nothing to do.
+- **They fall when nothing they fought with is left — not whenever their side
+  breaks off.** "Last in the loss order" and "falls on a break-off" contradict
+  each other: a withdrawal spends 10–35% of tonnage in loss order and the
+  flagship is last, so a flagship reached by a break-off is one whose whole
+  contingent was spent. Falling on every break-off would also have been five
+  times today's rate (every defeat against a fifth of them). One addition the
+  unit reading needed: an officer on a world their power holds when the battle
+  is over is ashore and does not fall with the ships — otherwise an invasion
+  that spent its last lifter taking a world lost the officer who took it.
+
+Measured over bot turns, main against this: 30 turns, 11 → 13 engagements; 100
+turns, 16 → 19 engagements, and officers lost or captured 0 → 1. The board is
+6/6/5/6/2 at 59/41 either way. Worth watching in a played campaign, where
+battles are far more frequent: if officers now almost never fall, veterancy
+stops costing anything to risk, which is the defect item 105 fixed.
+
+Also found building it: an officer aboard a holder's fleet that arrived at a
+world being attacked on the same tick was counted as an ATTACKER, where a
+withdrawal could take them for a retreat their own power never made. They
+defend now.
+
+### The entry as filed
 
 **The end state, as decided on 2026-09-28:** an officer behaves as a near-zero
 unit in a fleet, the way a freighter or a lifter does. They are uniquely

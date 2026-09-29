@@ -21,6 +21,7 @@ import {
   commanderPassive,
   toNextVeterancy,
   veterancyLabel,
+  type Commander,
 } from '../../../src/domain/command.js';
 import { worldFlavour } from '../../../src/ui/worldtext.js';
 import {
@@ -307,6 +308,7 @@ function SystemTab({
   const officersHere = (state.commanders ?? []).filter(
     (c) => c.status === 'active' && c.atSystemId === sys.id,
   );
+  const officersAshore = officersHere.filter((c) => !shipRows.some(([id]) => id === c.factionId));
   /**
    * What is built on this world. A fixture is the one asset kind that cannot
    * leave, so it is a fact about the ground rather than about a warehouse —
@@ -387,6 +389,7 @@ function SystemTab({
               <span className="swatch" style={{ background: colourOf(state, id) }} />
               <span style={{ color: colourOf(state, id) }}>{getFaction(state, id)?.name ?? id}</span>
               <span className="count">{n}</span>
+              <OfficersIn list={officersHere.filter((c) => c.factionId === id)} colour={colourOf(state, id)} />
             </li>
           ))}
         </ul>
@@ -449,15 +452,17 @@ function SystemTab({
           </ul>
         </>
       )}
-      {/* Officers standing on this world.
-          Not redacted, for the reason `system.ships` is not: they are aboard a
-          fleet, and a fleet in orbit is a thing anybody with eyes can see. What
-          stays hidden is their power's ORDERS, which is a different question. */}
-      {officersHere.length > 0 && (
+      {/* Officers are units of the fleet (item 122), so they sit in the row of
+          the hulls they stand beside, above. Listed here only when there are no
+          hulls of theirs to stand beside — ashore, with the garrison.
+          Not redacted, for the reason `system.ships` is not: a fleet in orbit
+          is a thing anybody with eyes can see. What stays hidden is their
+          power's ORDERS, which is a different question. */}
+      {officersAshore.length > 0 && (
         <>
-          <h4>Officers here</h4>
+          <h4>Officers ashore</h4>
           <ul className="ship-list">
-            {officersHere.map((c) => (
+            {officersAshore.map((c) => (
               <li key={c.id} className="agent-row">
                 <span style={{ color: colourOf(state, c.factionId), display: 'flex' }}>
                   <CommanderIcon title={archetypeOf(c.archetype).effect} />
@@ -595,8 +600,8 @@ function Command({ state }: { state: WorldState }) {
                   {officer.atSystemId
                     ? `at ${state.systems.find((x) => x.id === officer.atSystemId)?.name ?? officer.atSystemId}`
                     : (() => {
-                        const o = state.pendingOrders.find(
-                          (x) => x.commanderId === officer.id,
+                        const o = state.pendingOrders.find((x) =>
+                          x.officers.includes(officer.id),
                         );
                         return o
                           ? `under way to ${state.systems.find((x) => x.id === o.targetId)?.name ?? o.targetId}`
@@ -619,7 +624,10 @@ function Command({ state }: { state: WorldState }) {
                     <span style={{ color: colour, display: 'flex' }}>
                       <CommanderIcon title={archetypeOf(c.archetype).effect} />
                     </span>
-                    <span style={{ color: colour }}>{c.name}</span>
+                    <span style={{ color: colour }}>
+                      {c.name}
+                      <span className="meta"> · {whereIs(state, c)}</span>
+                    </span>
                     <span className="count">{commanderEffect(c)}</span>
                   </li>
                 ))}
@@ -693,6 +701,14 @@ function Orders({ state, briefing }: { state: WorldState; briefing: Briefing | n
               it. A programme whose payoff is invisible until it lands is a
               programme the player cannot weigh against defending it.
             */}
+            {o.officers.length > 0 && (
+              <div className="meta order-officers" style={{ color }}>
+                <CommanderIcon size={13} />{' '}
+                {o.officers
+                  .map((id) => state.commanders.find((c) => c.id === id)?.name ?? id)
+                  .join(', ')}
+              </div>
+            )}
             {o.onComplete && (
               <div className="meta delivers">
                 delivers {describeOrderEffect(o.onComplete)}
@@ -724,6 +740,29 @@ function voidText(state: WorldState, v: { kind: string; by: string; target: stri
     default:
       return `${v.kind}: ${who}`;
   }
+}
+
+/**
+ * The officers in one row of hulls: a star-in-circle each, named on hover.
+ * Inline rather than a list of their own, because an officer is part of the
+ * fleet they stand beside (item 122) and the row is where that fleet is.
+ */
+function OfficersIn({ list, colour }: { list: Commander[]; colour: string }) {
+  if (list.length === 0) return null;
+  return (
+    <span className="row-officers" style={{ color: colour }} title={list.map((c) => c.name).join(', ')}>
+      {list.map((c) => (
+        <CommanderIcon key={c.id} size={14} title={`${c.name} — ${veterancyLabel(c.battles)}`} />
+      ))}
+    </span>
+  );
+}
+
+/** Where an officer is: a world, a voyage, or nowhere. */
+function whereIs(state: WorldState, c: Commander): string {
+  if (c.atSystemId) return `at ${state.systems.find((x) => x.id === c.atSystemId)?.name ?? c.atSystemId}`;
+  const o = state.pendingOrders.find((x) => x.officers.includes(c.id));
+  return o ? `under way to ${state.systems.find((x) => x.id === o.targetId)?.name ?? o.targetId}` : 'unposted';
 }
 
 function colourOf(state: WorldState, factionId: string): string {
