@@ -195,6 +195,25 @@ export function formatReport(records: readonly TraceRecord[], title = 'trace'): 
     lines.push('', 'what the rejected outputs were, by top-level keys:');
     for (const [k, n] of [...shapes].sort((a, b) => b[1] - a[1]).slice(0, 8)) lines.push(`  ${String(n).padStart(3)}  ${k}`);
   }
+  // Accepted only because the reader or the null pass fixed the reply up. Counted
+  // apart from retries, because a normalised success costs nothing today and is
+  // exactly what a stricter provider would turn into a failure.
+  const normalized = new Map<string, number>();
+  for (const c of calls) for (const n of c.normalized ?? []) {
+    const key = `${c.kind} ${n}`;
+    normalized.set(key, (normalized.get(key) ?? 0) + 1);
+  }
+  if (normalized.size > 0) {
+    lines.push('', 'replies accepted after normalising (fence, preamble, nulls, trim, empty_force):');
+    for (const [k, n] of [...normalized].sort((a, b) => b[1] - a[1])) lines.push(`  ${String(n).padStart(3)}  ${k}`);
+  }
+  const unparsed = calls.filter((c) => c.unparsed !== undefined).slice(-6);
+  if (unparsed.length > 0) {
+    lines.push('', 'replies that never became a JSON object (start of each, newest last):');
+    for (const c of unparsed) {
+      lines.push(`  t${c.turn ?? '?'} ${c.kind} #${c.attempt}: ${JSON.stringify(c.unparsed!.replace(/\s+/g, ' ').slice(0, 200))}`);
+    }
+  }
   const why = calls.filter((c) => c.outcome !== 'ok' && c.why).slice(-8);
   if (why.length > 0) {
     lines.push('', 'why attempts did not succeed (newest last):');

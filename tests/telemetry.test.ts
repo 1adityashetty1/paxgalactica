@@ -19,9 +19,12 @@ type Scripted =
   | { kind: 'throw'; error: Error };
 
 const script: Scripted[] = [];
+/** The user message of every query, in order. */
+const prompts: string[] = [];
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
-  query: () => {
+  query: ({ prompt }: { prompt: string }) => {
+    prompts.push(prompt);
     const step = script.shift();
     const queued = step?.kind === 'result' ? [...(step.before ?? [])] : [];
     let done = false;
@@ -80,6 +83,12 @@ const success = (result: unknown, extra: Record<string, unknown> = {}): Scripted
   },
 });
 
+/** A success whose result is the model's text exactly as written, not JSON-encoded. */
+const successText = (text: string): Scripted => {
+  const s = success(null) as Extract<Scripted, { kind: 'result' }>;
+  return { ...s, message: { ...s.message, result: text } };
+};
+
 const Answer = z.object({ answer: z.number() });
 
 /** The model's StructuredOutput call, as the SDK streams it. */
@@ -106,7 +115,9 @@ beforeEach(() => {
   // The client refuses to call out under the suite's no-network guard. Lifted
   // here only because `query` is mocked above: nothing can leave the process.
   vi.stubEnv('PAXGALACTICA_NO_NETWORK', '0');
-  vi.stubEnv('PAXGALACTICA_RAW_JSON', '');
+  // Structured output, which is what most of these tests script: the SDK's own
+  // StructuredOutput calls and rejections. Raw JSON is opted into per test.
+  vi.stubEnv('PAXGALACTICA_RAW_JSON', '0');
 });
 
 afterEach(() => {
@@ -202,6 +213,82 @@ describe('a model call leaves one record per attempt', () => {
     const [failed] = calls();
     expect(failed).toMatchObject({ outcome: 'schema_retry', numTurns: 6 });
     expect(failed!.why).toMatch(/ops\/0\/type/);
+  });
+
+  it('keeps the start of a reply that never became a JSON object, and nothing from one that did', async () => {
+    script.push(successText('Certainly. Before I rule, which fleet do you mean?'), success({ answer: 2 }));
+    await ask();
+    const [prose, ok] = calls();
+    expect(prose).toMatchObject({ outcome: 'schema_retry' });
+    expect(prose!.unparsed).toMatch(/^Certainly\. Before I rule/);
+    expect(ok).not.toHaveProperty('unparsed');
+    expect(ok).not.toHaveProperty('normalized');
+  });
+
+  it('takes the object out of a reply that told the story first, without a retry', async () => {
+    // The shape captured on resolution: prose, then the object, at character 92.
+    script.push(successText('The Vigil line holds at Kalzir; the {fleet} breaks off.\n\n{"answer": 1, "note": "a } in a string"}'));
+    const res = await ask();
+    expect(res.value).toEqual({ answer: 1 });
+    expect(calls()).toHaveLength(1);
+    expect(calls()[0]).toMatchObject({ outcome: 'ok', normalized: ['preamble'] });
+  });
+
+  it('reads a fenced reply, and says it did', async () => {
+    script.push(successText('```json\n{"answer": 4}\n```'));
+    expect((await ask()).value).toEqual({ answer: 4 });
+    expect(calls()[0]).toMatchObject({ outcome: 'ok', normalized: ['fence'] });
+  });
+
+  it('reads null as absent only when the answer would otherwise fail', async () => {
+    const Ruling = z.object({ answer: z.number(), stat: z.string().optional(), target: z.string().nullable().optional() });
+    const rule = () => callStructured({ kind: 'appraisal', system: 'S', user: 'U', schema: Ruling, label: 'nulls' });
+    script.push(success({ answer: 1, stat: null }));
+    expect((await rule()).value).toEqual({ answer: 1 });
+    expect(calls()[0]).toMatchObject({ outcome: 'ok', normalized: ['nulls'] });
+    // Valid as sent: a null that means something is kept.
+    script.push(success({ answer: 2, target: null }));
+    expect((await rule()).value).toEqual({ answer: 2, target: null });
+    expect(calls()[1]).not.toHaveProperty('normalized');
+  });
+
+  it('cuts text past its cap and drops an op that sends no ships, when nothing else is wrong', async () => {
+    const Op = z.object({ text: z.string().min(1).max(20).optional(), force: z.union([z.number().int().min(1), z.object({ escort: z.number() })]).optional() });
+    const Batch = z.object({ narrative: z.string().max(400), ops: z.array(Op) });
+    const run = () => callStructured({ kind: 'reaction', system: 'S', user: 'U', schema: Batch, label: 'trim' });
+    script.push(success({ narrative: 'n', ops: [{ force: 3 }, { force: 0 }, { text: 'a note that runs well past twenty characters' }] }));
+    const { value } = await run();
+    expect(value.ops).toHaveLength(2);
+    expect(value.ops[0]).toEqual({ force: 3 });
+    expect(value.ops[1]!.text!.length).toBeLessThanOrEqual(20);
+    expect(value.ops[1]!.text).toMatch(/…$/);
+    expect(calls()[0]).toMatchObject({ outcome: 'ok' });
+    expect(calls()[0]!.normalized!.sort()).toEqual(['empty_force', 'trim']);
+    // A valid answer is never trimmed, and a failure trimming cannot fix is still a retry.
+    script.push(success({ narrative: 'n', ops: [{ force: 1 }] }), success({ narrative: 5, ops: [{ force: 0 }] }), success({ narrative: 'n', ops: [] }));
+    expect((await run()).value.ops).toEqual([{ force: 1 }]);
+    expect(calls()[1]).not.toHaveProperty('normalized');
+    await run();
+    expect(calls()[2]).toMatchObject({ outcome: 'schema_retry' });
+  });
+
+  it('repeats the JSON-only rule at the end of a raw-JSON user message, and only there', async () => {
+    const { RAW_JSON_REMINDER } = await import('../src/model/client.js');
+    prompts.length = 0;
+    script.push(success({ answer: 1 }));
+    await ask();
+    expect(prompts[0]).toBe('U'.repeat(25));
+    const before = process.env.PAXGALACTICA_RAW_JSON;
+    process.env.PAXGALACTICA_RAW_JSON = '1';
+    try {
+      script.push(success({ answer: 1 }));
+      await ask();
+    } finally {
+      if (before === undefined) delete process.env.PAXGALACTICA_RAW_JSON;
+      else process.env.PAXGALACTICA_RAW_JSON = before;
+    }
+    expect(prompts[1]!.endsWith(RAW_JSON_REMINDER)).toBe(true);
+    expect(RAW_JSON_REMINDER).toMatch(/nobody to ask/);
   });
 
   it('records no rejections on a clean call', async () => {

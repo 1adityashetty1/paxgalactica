@@ -18,6 +18,7 @@ import {
 } from '../domain/checks.js';
 import {
   AppraisalSchema,
+  DeclaredAppraisalSchema,
   type Appraisal,
   ExtractionOutputSchema,
   ModelTurnOutputSchema,
@@ -118,6 +119,12 @@ export async function appraiseAction(
    * itself whatsoever.
    */
   viewerId: string = state.playerFactionId,
+  /**
+   * `declared: false` for an accord, which is never rolled and so is never
+   * priced. `note` is appended to the question — used once, to ask for the
+   * price of an action code has ruled admissible after all.
+   */
+  opts: { declared?: boolean; note?: string } = {},
 ): Promise<{ appraisal: Appraisal; attempts: number; costUsd: number }> {
   const stats = effectiveStats(state, viewerId);
   const bands = DIFFICULTY_BANDS.map((b) => `  DC ${b.dc} ${b.label} — ${b.example}`).join('\n');
@@ -163,8 +170,9 @@ export async function appraiseAction(
       '## Declared action',
       '',
       action,
+      ...(opts.note ? ['', '---', '', opts.note] : []),
     ].join('\n'),
-    schema: AppraisalSchema,
+    schema: opts.declared === false ? AppraisalSchema : DeclaredAppraisalSchema,
   });
 
   return { appraisal: res.value, attempts: res.attempts, costUsd: res.costUsd };
@@ -251,8 +259,13 @@ export async function appraiseAgreement(
       'breaches nothing. Promising to close a lane, pay tribute, or hand over a',
       'world is a breach for a power whose lines forbid those things, whatever',
       'the trigger.',
+      '',
+      'An agreement is never rolled, so it has no price: leave `stat` and',
+      '`difficulty` out.',
     ].join('\n'),
     viewerId,
+    // An accord is never rolled, so it is never priced.
+    { declared: false },
   );
   return { appraisal: res.appraisal, costUsd: res.costUsd };
 }
@@ -596,6 +609,32 @@ export async function resolveAction(
     };
   }
 
+  /* --- 1c. The price, if the ruling carried none ---------------------- */
+  // An inadmissible ruling carries no price, and must not be made to invent
+  // one — but `smuggled` above can rewrite it into the compulsion breach it
+  // quoted, and a compulsion is priced and rolled. Only on that path, ask the
+  // arbiter for the one thing it was right not to give: one small call, on a
+  // path that is rare by construction.
+  let stat = priced.appraisal.stat;
+  let difficulty = priced.appraisal.difficulty;
+  if (stat === undefined || difficulty === undefined) {
+    const again = await appraiseAction(state, action, undefined, {
+      note: [
+        '## This action is admissible',
+        '',
+        'It breaks one of your own compulsions, and a compulsion is a price your',
+        'institutions charge, not a wall: the attempt goes ahead. Rule it',
+        'admissible and give the stat it tests and its difficulty.',
+      ].join('\n'),
+    });
+    priced.costUsd += again.costUsd;
+    stat = again.appraisal.stat;
+    difficulty = again.appraisal.difficulty;
+    if (stat === undefined || difficulty === undefined) {
+      throw new Error('The arbiter would not price an action that has to be rolled.');
+    }
+  }
+
   /* --- 2. Roll, and resolve in code ----------------------------------- */
   const roll = rollD20(state.turn, `${salt}:${action}`);
   // EFFECTIVE stats, not base: dissent and hostile stat_debuffs both reduce
@@ -604,10 +643,10 @@ export async function resolveAction(
   // rolled exactly as well as one whose institutions were behind it.
   const stats = effectiveStats(state, state.playerFactionId);
   const check = resolveCheck(
-    priced.appraisal.stat,
-    stats[priced.appraisal.stat],
+    stat,
+    stats[stat],
     roll,
-    priced.appraisal.difficulty,
+    difficulty,
   );
 
   // Every check is written to the log, so a campaign's luck is auditable.
@@ -622,7 +661,7 @@ export async function resolveAction(
   // replays exactly like every other entry.
   const checkOp = {
     op: 'log_narrative' as const,
-    text: `[check] ${priced.appraisal.stat} check: d20 ${roll} ${check.modifier >= 0 ? '+' : ''}${check.modifier} = ${check.total} vs DC ${priced.appraisal.difficulty} -> ${check.outcome}`,
+    text: `[check] ${stat} check: d20 ${roll} ${check.modifier >= 0 ? '+' : ''}${check.modifier} = ${check.total} vs DC ${difficulty} -> ${check.outcome}`,
   };
 
   /* --- 3. Narrate and enact the outcome code produced ------------------ */
@@ -637,7 +676,7 @@ export async function resolveAction(
       '',
       '## How this action resolved',
       '',
-      `The attempt was priced as a **${priced.appraisal.stat}** check at DC ${priced.appraisal.difficulty}`,
+      `The attempt was priced as a **${stat}** check at DC ${difficulty}`,
       priced.appraisal.rationale ? `(${priced.appraisal.rationale})` : '',
       `and rolled **d20 ${roll} ${formatModifier(check.modifier)} = ${check.total}**.`,
       '',
