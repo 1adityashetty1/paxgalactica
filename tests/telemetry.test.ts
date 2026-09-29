@@ -115,7 +115,9 @@ beforeEach(() => {
   // The client refuses to call out under the suite's no-network guard. Lifted
   // here only because `query` is mocked above: nothing can leave the process.
   vi.stubEnv('PAXGALACTICA_NO_NETWORK', '0');
-  vi.stubEnv('PAXGALACTICA_RAW_JSON', '');
+  // Structured output, which is what most of these tests script: the SDK's own
+  // StructuredOutput calls and rejections. Raw JSON is opted into per test.
+  vi.stubEnv('PAXGALACTICA_RAW_JSON', '0');
 });
 
 afterEach(() => {

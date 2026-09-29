@@ -529,7 +529,9 @@ Things this document deliberately does not decide:
   now the main cost lever (A.1). Verify before choosing, not after.
 - **Does `ROUTES` become configuration?** A settings screen implies yes; the
   router's own comment implies no. Both cannot be true in the same build.
-- **Is `PAXGALACTICA_RAW_JSON=1` the default?** It is the difference between
+- ~~**Is `PAXGALACTICA_RAW_JSON=1` the default?**~~ **Yes, since todo 117** —
+  zero retries over ten turns against structured output's 5–12%, 15.8s a
+  declared action against 44.6s. What follows is the question as it stood. It is the difference between
   ~98s and ~37s a turn and it trades away layer 1 of the two-layer defence. A
   ten-turn campaign decides it (see `todo.md`, above the ranked table), and a
   packaged build wants that settled — a stranger's first turn should not be 98

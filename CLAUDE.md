@@ -5118,15 +5118,44 @@ Every state-changing call returns:
 
 Reactions wrap this as `{ "reactions": [{ "factionId", "narrative", "ops" }] }`.
 
-Two layers of defence against malformed output:
+Three layers of defence against malformed output:
 
-1. `outputFormat: { type: 'json_schema' }` — the schema (from
-   `z.toJSONSchema(..., { io: 'input' })`) is handed to the model, so shape is
-   enforced at generation time.
-2. Zod re-validation with up to **2 retries**, feeding the exact validation
-   error back into the prompt. Layer 1 guarantees shape; only layer 2 catches
-   semantic problems — an unknown faction id, a duration off the scale — that no
-   JSON schema can express.
+1. **The schema is in the prompt.** `z.toJSONSchema(..., { io: 'input' })` is
+   inlined into the system prompt, and the user message ends by repeating that
+   the answer is the object alone. Nothing enforces it while the model writes.
+2. **A lenient read.** `readReply` takes the first JSON object in the reply —
+   out of a fence, or after prose that told the story first — and, only when the
+   strict parse fails, `dropNulls` reads `null` as absent and `trimToLimits`
+   cuts text to its cap and drops an op that sends no ships. Each is recorded on
+   the trace as `normalized`, so what the transport is leaning on stays visible.
+3. **Zod re-validation** with up to **2 retries**, feeding the exact validation
+   error back into the prompt. Only this layer catches semantic problems — an
+   unknown faction id, a duration off the scale — that no JSON schema can
+   express.
+
+**This used to be structured output** (`outputFormat: { type: 'json_schema' }`),
+which enforces shape at generation time and returns through an end-turn tool —
+a second agentic round trip that re-sends the whole context. It was traded away
+on measurement, not on principle (`docs/todo.md` 117). The same ten-turn script
+both ways, after every model-facing schema was made to accept every honest
+answer:
+
+| | structured | raw JSON |
+|---|---|---|
+| retries | appraisal 12%, reaction 7%, resolution 5% | **none, in any call kind** |
+| schema misses the SDK retried inside a call | 84 | 0 |
+| declared action p50 | 44.6s | **15.8s** |
+| end of turn p50 | 16.3s | 10.7s |
+| cost | $7.11 | **$4.90** |
+| accords closed | 3 treaties, 1 commitment | the same |
+
+The rule was fixed before the run: raw becomes the default if no call kind fails
+outright and none retries more than ten points above structured. The run before
+this one failed it — resolution +14, extraction +25, diplomacy +13 — and every
+failure was a reply the game could not *read* rather than one it disagreed
+with: prose before the object, a fence, `null` for "none", a note ten characters
+over its cap, a fleet sent with `force: 0`. Layer 2 exists because of that run.
+`PAXGALACTICA_RAW_JSON=0` restores structured output, for comparison runs.
 
 ---
 
@@ -5151,7 +5180,8 @@ Under `outputFormat: json_schema` the SDK returns the result through an
 agentic round trip of its own. A budget of 1 leaves no room for the model to
 write anything before the carrier, so calls die with *"Reached maximum number of
 turns (1)"*; in practice this fired constantly during diplomacy, where replies
-are longest. The tiers allow 6 (reasoning) and 4 (flavour). Nothing can run away,
+are longest. Raw JSON answers in one turn, but the budget is kept for
+`PAXGALACTICA_RAW_JSON=0`, where it is still needed. The tiers allow 6 (reasoning) and 4 (flavour). Nothing can run away,
 because `tools: []` means no real tools exist.
 
 Transient failures — turn-budget overruns, overload, a dropped stream — consume
@@ -5940,10 +5970,10 @@ re-sends its context. A trivial call still takes ~7s for that reason.
 
 `src/model/telemetry.ts`. The account above was assembled by hand, from `curl`
 timings outside the process and a cumulative table printed under
-`PAXGALACTICA_TIMING=1` — and the one open decision on latency, whether
-`PAXGALACTICA_RAW_JSON=1` becomes the default (~98s a turn against ~37s), could
-not be taken on that, because it turns on **retries and rejections per call
-kind** and nothing kept those per call. The SDK had been reporting most of the
+`PAXGALACTICA_TIMING=1` — and the one open decision on latency, whether raw
+JSON should replace structured output, could not be taken on that, because it
+turned on **retries and rejections per call kind** and nothing kept those per
+call. It has since been taken on this trace; see "Prompt contract". The SDK had been reporting most of the
 answer on every result message all along; the client read `total_cost_usd` and
 dropped the rest.
 

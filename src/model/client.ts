@@ -283,6 +283,17 @@ function readResultMetrics(message: Record<string, unknown>, out: AttemptMetrics
   }
 }
 
+/**
+ * Whether calls ask for JSON in the prompt rather than through structured
+ * output. The default since todo 117 closed: on the same ten-turn script it
+ * retried nothing where structured output retried 12% of arbiter calls, took a
+ * declared action from 44.6s to 15.8s, and cost $4.90 against $7.11.
+ * `PAXGALACTICA_RAW_JSON=0` restores structured output, for comparison runs.
+ */
+export function usesRawJson(): boolean {
+  return process.env.PAXGALACTICA_RAW_JSON !== '0';
+}
+
 /** Appended to every raw-JSON user message. Exported for the test that pins it. */
 export const RAW_JSON_REMINDER =
   'Answer with the JSON object alone: begin with `{` and end with `}`, with nothing before or after it. There is nobody to ask a question of — if something is unclear, decide on the most plausible reading.';
@@ -296,7 +307,7 @@ async function rawCall(
   metrics: AttemptMetrics = {},
 ): Promise<{ result: unknown; costUsd: number }> {
   const tier = modelFor(kind);
-  const rawJson = process.env.PAXGALACTICA_RAW_JSON === '1';
+  const rawJson = usesRawJson();
   if (rawJson) {
     system = [
       system,
@@ -346,8 +357,8 @@ async function rawCall(
       // a key exported from the user's shell profile can neither shadow the
       // subscription nor bill an API account.
       env: buildAuthEnv(),
-      // EXPERIMENT (PAXGALACTICA_RAW_JSON=1): drop structured output and ask
-      // for JSON in the prompt instead.
+      // Raw JSON is the default; PAXGALACTICA_RAW_JSON=0 restores structured
+      // output. Decided on two traced ten-turn campaigns (docs/todo.md 117).
       //
       // Under `outputFormat: json_schema` the SDK returns the result through
       // an end-turn tool — a tool_use/tool_result pair — which costs a second
@@ -358,7 +369,7 @@ async function rawCall(
       // to make.
       //
       // Roughly cost-neutral on input either way — the schema is sent as
-      // `outputFormat` today and inlined into the system prompt here.
+      // `outputFormat` there and inlined into the system prompt here.
       ...(rawJson ? {} : { outputFormat: { type: 'json_schema', schema: jsonSchema } }),
     },
   });
@@ -608,7 +619,7 @@ export async function callStructured<T>(call: StructuredCall<T>): Promise<Struct
 
   let lastError: unknown;
 
-  const rawJson = process.env.PAXGALACTICA_RAW_JSON === '1';
+  const rawJson = usesRawJson();
   for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
     let result: unknown;
     let costUsd = 0;

@@ -8,10 +8,10 @@ import { dirname } from 'node:path';
  * A turn is almost entirely model latency — the reducer is flat at a few
  * milliseconds (see `pnpm perf`) — and for most of this project's life the only
  * account of that latency was a cumulative table printed under an opt-in flag.
- * So the one decision the architecture notes leave open on latency, whether
- * `PAXGALACTICA_RAW_JSON=1` becomes the default (~98s a turn against ~37s), had
- * no data to be decided on: it turns on retries and rejections per call kind,
- * and nothing kept those per call.
+ * So the one open decision on latency, whether raw JSON should replace
+ * structured output, had no data to be decided on: it turned on retries and
+ * rejections per call kind, and nothing kept those per call. This trace is what
+ * decided it (docs/todo.md 117).
  *
  * Two record types, one line of JSON each, appended to
  * `saves/<campaign>.trace.jsonl`:
