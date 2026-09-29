@@ -76,6 +76,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | **119** | reactions without thinking, on a turn where the player attacks | — | measured only on mild turns (#37); a power that thought less would show it here |
 | **120** | every check is logged twice | small | `calls.ts` logs `[check] … -> outcome` and `turn.ts` stages a `log_narrative` with `describeCheck`, `→ outcome` — two entries per roll in the event log, the prompts' recent log and the Log panel |
 | **121** | two escorts take five turns | small | resolution filed "commission two escorts" as `capital_ship_construction`, whose floor is 5; `refit` and `retooling` also deliver `commission_ships` faster. `prompts/resolution.md` lists all three with no guidance on which a light hull wants — the category should follow the hull, and the clamp at least should say so |
+| **122** | an officer should be a unit, not a record beside the fleet | medium | the end state: a zero-ton unit at nominal weight that moves, shows and falls with its fleet, uniquely named by its family name, carrying a passive and a battle effect. Decided calls and the build order are in the entry below |
 
 **Audited 2026-09-23:** every numbered item above 81 is built or closed except
 **92**, **94(b)** and the four added today. Of those, **116** is code and the rest
@@ -155,6 +156,94 @@ on this list: the most-favoured-nation ratchet (`B-12`), because no arrangement
 can read another's terms and a clause whose whole content is *"track that other
 contract"* is structurally unrepresentable. The fix there is the arbiter *saying
 so* rather than recording it as though it bound something.
+
+## 122. OPEN — an officer should be a unit, not a record beside the fleet
+
+**The end state, as decided on 2026-09-28:** an officer behaves as a near-zero
+unit in a fleet, the way a freighter or a lifter does. They are uniquely
+identified by their name or a component of it, and they carry a passive and a
+battle modifier.
+
+**Where it started.** Checking whether picking an officer for a battle had
+ever been validated. The reducer half works: replaying `pt117c_raw` and
+`pt_0917_vigil`, every movement that named an officer — by id (`cmd-vigil`) or
+by name (`Adrienne Sorel`, `Marcia Galba`) — carried them, and they fought. Not
+one "sails without a named officer" note in either. It works by accident,
+though:
+
+- `prompts/resolution.md` ("Every fleet has a named officer") still says *"You
+  do not choose their"*, and that each power has one commander. The model sets
+  `commanderId` anyway because the op schema has the field.
+- The prompt block gives a location for the senior officer only. The rest of
+  the roster is listed by name and effect, while an officer must stand at the
+  origin to sail. So picking anyone but the senior is a guess.
+- `unusedName` gives up after 24 draws and returns a taken name, so names are
+  unique by luck. `resolveCommander` makes a tie resolve to nobody, so a clash
+  drops an assignment rather than giving the fleet the wrong officer.
+
+Patching those three would leave the officer a record beside the fleet. The
+decision is to make them part of it.
+
+### Already true, kept
+
+- **A passive and a battle effect for every officer.** Only the **senior**
+  officer's passive applies; otherwise five `convoy` officers would cut upkeep
+  by 70%. In battle, the senior officer **in the largest contingent** commands,
+  the same rule doctrine follows.
+- **The star-in-circle glyph** (`CommanderIcon`, `BattleIcons.tsx`), used today
+  in the System panel's "Officers here" and the Command roster.
+
+### Decided
+
+1. **A unit in behaviour, stored as the named record.** A fleet is anonymous
+   counts, and an officer is a person with a record, so `officer: 1` in a
+   `ShipStack` would be two records that must agree. The roster stays the one
+   source of truth for who they are and where. Every behaviour of a unit is
+   implemented on top of it:
+   - named in a movement's `force` composition (for example
+     `{ battleship: 5, officers: ["Galba"] }`), replacing `commanderId`;
+   - listed beside the hulls on a world, in the state document, on the map and
+     in a battle's order of battle, with the glyph;
+   - fought and lost by the ordinary battle arithmetic rather than by
+     `COMMANDER_LOSS_ROLL`.
+2. **Zero tons, 0.01 orbital weight.** Tons are integers and drive cost, upkeep,
+   the income contest and suborning, and an officer already has
+   `COMMANDER_COST` and `COMMANDER_UPKEEP`. Weight is what must be non-zero:
+   the reason freighters and lifters carry 0.01 is that at exactly zero a side
+   reads as "nothing to fight". That answers the objection item 107 recorded
+   against putting officers in a fleet.
+3. **Present only beside their own hulls.** A lone officer does not contest
+   income, block an unopposed landing, count as a squatter or anchor a fleet
+   for `canSubornAt`, and cannot sail without at least one hull.
+4. **Last in the loss order, as the flagship.** Being last is the lifter bug
+   when the class is meant to be the weak point. It is right for a commander.
+   An officer falls when their contingent is destroyed or breaks off, and the
+   existing roughly even killed/captured split is kept.
+5. **The family name is unique among everyone alive or held**, across all
+   powers, because the knife names rivals' officers. Draws walk the unused
+   family names deterministically instead of retrying, so a clash is
+   impossible rather than unlikely. Names are **never reused within a
+   campaign**, so the event log stays unambiguous. Officers and operatives
+   share one stock, so the per-faction family lists (10 today) need to grow;
+   size them against what a 100-turn campaign actually consumes.
+6. **Replay.** Officers change how battles resolve, so this needs a
+   `JOURNAL_VERSION` bump, with older journals pinned to the old rules the way
+   `fourSchools` is.
+
+### Falls out of it
+
+- `prompts/resolution.md` rewritten to say how to put officers aboard a force,
+  with a prompt-drift test pinning the field it names.
+- The state document lists officers where the ships are, so the model reads
+  and names them the way it reads hulls.
+
+### Measure
+
+`pnpm balance 30` and `pnpm fleetlab` before and after. The bots already name
+their officer when they are at the sortie port, and they must keep doing so
+through the force composition. A campaign where officers stop reaching battles
+reads as a clean pass, the failure item 102 already caught once. Count officer
+engagements over thirty turns and compare them against today's figure.
 
 ## 114. OPEN — a red line phrased as a state cannot be enforced by refusal
 
