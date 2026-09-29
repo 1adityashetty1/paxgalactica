@@ -77,7 +77,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | **120** | every check is logged twice | small | `calls.ts` logs `[check] … -> outcome` and `turn.ts` stages a `log_narrative` with `describeCheck`, `→ outcome` — two entries per roll in the event log, the prompts' recent log and the Log panel |
 | **121** | two escorts take five turns | small | resolution filed "commission two escorts" as `capital_ship_construction`, whose floor is 5; `refit` and `retooling` also deliver `commission_ships` faster. `prompts/resolution.md` lists all three with no guidance on which a light hull wants — the category should follow the hull, and the clamp at least should say so |
 | ~~122~~ | ~~an officer should be a unit, not a record beside the fleet~~ | medium | **BUILT** — `officers` on an order (by family name), aboard when the whole port sails, fall with their contingent rather than on a die, family names unique for the campaign. `JOURNAL_VERSION` 8; all 12 saves replay identically; balance and fleetlab unchanged. Two calls differ from the entry below, and it says which |
-| **123** | influence does nothing at the table, and resolve does nothing but resist | medium | two attributes whose stated meaning has no mechanism behind it: influence never touches diplomacy, and resolve is only ever the defending half of a guile contest. Candidate levers and how to measure each are in the entry below |
+| **123** | influence does nothing at the table, and resolve does nothing but resist | medium | two attributes whose stated meaning has no mechanism behind it. Recommended: standing from a signed arrangement scales with the signer's influence; and **Rally** — each home world lost lifts the other four attributes by an amount resolve sets, capped at +3. Replay pinning for Rally is an open decision; the rejected occupation discount and why are in the entry |
 
 **Audited 2026-09-23:** every numbered item above 81 is built or closed except
 **92**, **94(b)** and the four added today. Of those, **116** is code and the rest
@@ -218,30 +218,95 @@ two places, both as the DEFENDING half of a guile contest: an operative's
 success chance on your worlds, and how many of your crews a rival can suborn.
 A resolute power is hard to infiltrate and does nothing actively with it.
 
-Candidates, each taken from a clause of that description and each checked
-against what the game already does, because the constraint that shaped the
-officer passives applies here too — **a lever that duplicates a doctrine
-flattens it**:
+**The principle: resolve's active side pays off on the back foot.** Every
+clause of the description is about enduring, so a lever built from it should be
+a brake on whoever is losing rather than an accelerator for whoever is ahead —
+which also makes it the comeback mechanic this game keeps finding it lacks.
 
-| clause | lever | collides with |
-|---|---|---|
-| *unrest suppressed* | `OCCUPATION_COST` scaled down by the holder's resolve modifier: a resolute power holds conquered ground more cheaply | nothing; the occupation cost has no other modifier. **Recommended.** |
-| *long programmes not abandoned* | interrupting a power's order needs the interrupter to beat its resolve, or a `cancel` interruption becomes `partial` | `interruptNeedsReach` already gates who may reach; this stacks a second gate |
-| *sieges endured* | a blockade severs less of a resolute power's lanes | the smuggler's blockade-running, which is Drajk's identity |
-| (institutions) | `DISSENT_DECAY` scaled by resolve, so a resolute power's leader recovers standing faster | nothing, but it is passive again — it acts only after a refusal |
+### Recommended: Rally
 
-Not candidates: garrison strength (`DEFENSIVE_GARRISON_BONUS` is Arkane's
-doctrine), withdrawal losses (`convoy` officers own that number) and refusing
-to break off (`crusading`).
+**A power that has lost its home ground rallies: each home world held by
+somebody else lifts its other four attributes, by an amount its resolve sets.**
 
-**`OCCUPATION_COST` is a cliff and must be swept, not set.** At 0.25 the Vigil's
-late conquest of `tor-1` never happens because holding foreign ground starves
-its fleet; the value sits at 0.15 in the middle of a flat region. A per-point
-discount moves each power's effective rate by a different amount, and the
-powers with high resolve — the Vigil at 17, Arkane at 19 — are exactly the ones
-whose doctrines decide whether conquest happens. Sweep the discount per point
-over played 30-turn runs, watch the board and the poorest net, and keep the
-region where the Vigil still takes ground and Arkane still does not expand.
+- **Measured against its own home ground, not its size.** `homeFactionId`
+  already records who held each world at turn 0, and every power opens with
+  exactly **four**, so the deficit comes in equal quarters for everyone and needs
+  no new state. Absolute size would make it a doctrine bonus instead: Drajk is
+  small by design (*"never hold ground worth besieging"*) and ends the 30-turn
+  harness on two worlds, and the Combine rules from a few worlds and a great deal
+  of paper — both would be buffed permanently for being what they are. Measured
+  against the leader it would be a catch-up tax on everyone who is not first.
+  "Your homeland is occupied and your people rally" is also the fiction exactly.
+- **Resolve sets the size, and is excluded from the buff**, so it cannot feed
+  itself. Might, guile, industry and influence all rise, and because
+  `effectiveStats` is what every reader uses, the rally reaches every check,
+  battle, yard, operative contest and the commitment ceiling with no further
+  wiring. The Vigil (17) and Arkane (19) rally hardest; Meridian at 9 barely
+  rallies, which keeps the weakness the seed gives it on purpose.
+- **Capped at +3 per attribute**, the ceiling `MAX_WORLD_BONUS` already sets for
+  terrain on the same 1–20 scale, against `MAX_DISSENT_PENALTY`'s 8: a real lift,
+  not a reversal. **Applied before dissent**, the order terrain uses, so an
+  occupied homeland can offset a bad leader; clamped at 20.
+- **Self-limiting.** A power that rallies and takes its ground back loses the
+  rally as it does.
+- **Looking beaten has to cost what being beaten costs.** A home world lost is
+  income lost, so ceding one to trigger the rally is allowed — the price is
+  real. If tonnage is ever added to the measure, hulls lent out under
+  `establish_loan` must still count as the lender's, or a power lends its fleet
+  to an ally, collects the rally and has the fleet handed back. Worlds alone need
+  no such guard, which is one argument for leaving tonnage out: there is no
+  stored baseline for it either, so it would need a new field.
+
+**Open: replay.** Rally lives inside `effectiveStats`, which every battle, yard
+and contest reads, so it moves any journal in which a power lost a home world.
+A legacy flag does not reach `effectiveStats` today — it takes
+`(state, factionId)` — so pinning it means threading the flag through its
+callers. The alternative is to accept that pre-rally saves drift, the choice
+made when the seed moved; decide which before building.
+
+**Measure it in the harness**, which can see this where it cannot see the
+influence half: the bots fight and lose ground. Sweep the step per home world
+and the cap over played 30-turn runs, and watch that Drajk keeps a world, that
+the Vigil's late conquests still happen, and the poorest power's net. The
+failure mode runs the other way from the usual one — too strong and no war can
+ever be finished, which would show as territory that stops changing, the
+property `tests/balance.test.ts` already asserts through turn 24.
+
+### Rejected: a cheaper occupation for a resolute holder
+
+*Unrest suppressed* read as `OCCUPATION_COST` scaled down by the holder's
+resolve. It lands almost entirely on the Iron Vigil:
+
+| | might | resolve | war ethic |
+|---|---|---|---|
+| Iron Vigil | 18 | 17 (+3) | crusading |
+| Arkane | 11 | 19 (+4) | defensive |
+| Drajk | 15 | 12 (+1) | opportunist |
+| Ojjul Nar | 9 | 11 (+0) | profiteer |
+| Meridian | 10 | 9 (−1) | expansionist |
+
+Arkane has the highest resolve and a doctrine of not expanding, so a cheaper
+occupation is worth nothing to it. The Vigil is the one power that pairs high
+resolve with a conquering doctrine, and it already has the best might — so
+cheaper holding means more net, more hulls and more conquest, the exact loop
+`OCCUPATION_COST` exists to price. And Meridian, whose doctrine is the
+expansionist one, would pay more. An accelerator for whoever is winning, which
+is the shape the principle above rules out.
+
+### Also considered
+
+- **Programmes not abandoned** — interrupting a power's non-fleet programme
+  needs the interrupter to beat its resolve. On the back foot and harmless, but
+  it only ever protects work, and `interruptNeedsReach` already gates who may
+  reach. A candidate if Rally is swept and found wanting.
+- **Sieges endured** — a blockade severs less of a resolute power's lanes.
+  Collides with the smuggler's blockade-running, Drajk's identity.
+- **Dissent** — faster decay for a resolute power. Passive again, and it runs
+  the wrong way: a steadfast institution should be HARDER for its leader to
+  overrule, not quicker to forgive it.
+- Not candidates: garrison strength (`DEFENSIVE_GARRISON_BONUS` is Arkane's
+  doctrine), withdrawal losses (`convoy` officers own that number) and refusing
+  to break off (`crusading`).
 
 ## 122. BUILT — an officer should be a unit, not a record beside the fleet
 
