@@ -77,6 +77,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | **120** | every check is logged twice | small | `calls.ts` logs `[check] … -> outcome` and `turn.ts` stages a `log_narrative` with `describeCheck`, `→ outcome` — two entries per roll in the event log, the prompts' recent log and the Log panel |
 | **121** | two escorts take five turns | small | resolution filed "commission two escorts" as `capital_ship_construction`, whose floor is 5; `refit` and `retooling` also deliver `commission_ships` faster. `prompts/resolution.md` lists all three with no guidance on which a light hull wants — the category should follow the hull, and the clamp at least should say so |
 | ~~122~~ | ~~an officer should be a unit, not a record beside the fleet~~ | medium | **BUILT** — `officers` on an order (by family name), aboard when the whole port sails, fall with their contingent rather than on a die, family names unique for the campaign. `JOURNAL_VERSION` 8; all 12 saves replay identically; balance and fleetlab unchanged. Two calls differ from the entry below, and it says which |
+| **123** | influence does nothing at the table, and resolve does nothing but resist | medium | two attributes whose stated meaning has no mechanism behind it: influence never touches diplomacy, and resolve is only ever the defending half of a guile contest. Candidate levers and how to measure each are in the entry below |
 
 **Audited 2026-09-23:** every numbered item above 81 is built or closed except
 **92**, **94(b)** and the four added today. Of those, **116** is code and the rest
@@ -156,6 +157,91 @@ on this list: the most-favoured-nation ratchet (`B-12`), because no arrangement
 can read another's terms and a clause whose whole content is *"track that other
 contract"* is structurally unrepresentable. The fix there is the arbiter *saying
 so* rather than recording it as though it bound something.
+
+## 123. OPEN — influence does nothing at the table, and resolve does nothing but resist
+
+Found by asking what each attribute is rolled against. Every declared action
+rolls a d20 against whichever of the five the arbiter picks, and beyond that
+each attribute has a handful of readers — might in every battle, guile in the
+operative and suborning contests and the operative cap, industry in the yards.
+Two of them fall short of what their own descriptions promise.
+
+### Influence never reaches diplomacy
+
+`STAT_MEANINGS.influence` is *"diplomacy, treaties, propaganda, courting client
+worlds, buying loyalty"*, and none of the diplomacy path reads it:
+
+- a channel message is one persona call, and nothing is rolled;
+- `/endtalk` extracts what was agreed from the transcript, and the only check
+  on the way is the red-line appraisal of your own concessions;
+- a treaty declared as an ordinary action is redirected to a channel **before**
+  the roll, because it needs consent.
+
+So the same lines produce the same treaty at influence 5 and at 18. Its only
+reader outside its own checks is `maxCommitmentIncomeFor`, a ceiling a power
+meets only after signing several paying commitments. The persona does see a
+`stats:` line for the player inside `serializeState`, but
+`prompts/diplomacy-persona.md` never says what influence means; the lever it
+names is disposition. Whatever a model makes of one number in a long document
+is noise, not a mechanic.
+
+**That line is also the base sheet.** `serializeFactions` prints `f.stats`, not
+`effectiveStats`, so a fixture, an officer's passive or dissent that moved a
+power's influence does not reach any prompt that reads it — the *"a number that
+is not the number the game rolls against is a lie"* defect, in the one place
+every persona reads. Fix it whichever lever is chosen.
+
+**Candidate levers**, in the order recommended:
+
+1. **Standing from a signed arrangement scales with the signer's influence.**
+   `TREATY_GOODWILL` (8) and `COMMITMENT_GOODWILL` (5) are paid pairwise and
+   symmetrically today. Make the counterparty's regard for a power grow by the
+   base plus that power's influence modifier, so a persuasive power comes out
+   of the same deal better liked. Mechanical, in the reducer, bounded by the
+   modifier's range (−5..+5), and it compounds the way standing should: better
+   liked, the next conversation starts warmer. The pump guards stay as they are
+   — renewals pay nothing, and one payment per type per pair.
+2. **A defined input to the persona.** Hand it the player's influence modifier
+   as a stated shift to the disposition it negotiates from, for this
+   conversation only. Still a prompt input, so still arguable-with, but a named
+   number with a stated meaning rather than a stray stat.
+
+Measure 1 in a played campaign, not the harness: the bots sign nothing, so
+`pnpm balance` cannot see it. Count accords closed and disposition after each,
+the same script at two influence settings via the cheat menu.
+
+### Resolve only ever resists
+
+`STAT_MEANINGS.resolve` is *"holding on — sieges endured, unrest suppressed,
+long programmes not abandoned"*. Outside its own checks it is read in exactly
+two places, both as the DEFENDING half of a guile contest: an operative's
+success chance on your worlds, and how many of your crews a rival can suborn.
+A resolute power is hard to infiltrate and does nothing actively with it.
+
+Candidates, each taken from a clause of that description and each checked
+against what the game already does, because the constraint that shaped the
+officer passives applies here too — **a lever that duplicates a doctrine
+flattens it**:
+
+| clause | lever | collides with |
+|---|---|---|
+| *unrest suppressed* | `OCCUPATION_COST` scaled down by the holder's resolve modifier: a resolute power holds conquered ground more cheaply | nothing; the occupation cost has no other modifier. **Recommended.** |
+| *long programmes not abandoned* | interrupting a power's order needs the interrupter to beat its resolve, or a `cancel` interruption becomes `partial` | `interruptNeedsReach` already gates who may reach; this stacks a second gate |
+| *sieges endured* | a blockade severs less of a resolute power's lanes | the smuggler's blockade-running, which is Drajk's identity |
+| (institutions) | `DISSENT_DECAY` scaled by resolve, so a resolute power's leader recovers standing faster | nothing, but it is passive again — it acts only after a refusal |
+
+Not candidates: garrison strength (`DEFENSIVE_GARRISON_BONUS` is Arkane's
+doctrine), withdrawal losses (`convoy` officers own that number) and refusing
+to break off (`crusading`).
+
+**`OCCUPATION_COST` is a cliff and must be swept, not set.** At 0.25 the Vigil's
+late conquest of `tor-1` never happens because holding foreign ground starves
+its fleet; the value sits at 0.15 in the middle of a flat region. A per-point
+discount moves each power's effective rate by a different amount, and the
+powers with high resolve — the Vigil at 17, Arkane at 19 — are exactly the ones
+whose doctrines decide whether conquest happens. Sweep the discount per point
+over played 30-turn runs, watch the board and the poorest net, and keep the
+region where the Vigil still takes ground and Arkane still does not expand.
 
 ## 122. BUILT — an officer should be a unit, not a record beside the fleet
 
