@@ -308,6 +308,11 @@ attempted, and one you redirect to a conversation (`negotiation`) is not rolled:
 leave `stat` and `difficulty` out of both. Every action that can be attempted
 needs both, breach or no breach.
 
+**There is nobody to ask.** Your answer goes to the engine, not to the player,
+and nothing reads a question. When an order is ambiguous — which world, how many
+ships, what "the fleet" means — rule on its most plausible reading and name that
+reading in your rationale, so the player can see what was priced.
+
 | stat | covers |
 |---|---|
 | `might` | fleets, guns, invasions, blockades, raids — anything settled by force |

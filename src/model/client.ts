@@ -283,6 +283,10 @@ function readResultMetrics(message: Record<string, unknown>, out: AttemptMetrics
   }
 }
 
+/** Appended to every raw-JSON user message. Exported for the test that pins it. */
+export const RAW_JSON_REMINDER =
+  'Answer with the JSON object alone: begin with `{` and end with `}`, with nothing before or after it. There is nobody to ask a question of — if something is unclear, decide on the most plausible reading.';
+
 /** Raw single-shot call. Returns whatever the model produced, unvalidated. */
 async function rawCall(
   kind: CallKind,
@@ -308,6 +312,11 @@ async function rawCall(
       JSON.stringify(jsonSchema),
       '```',
     ].join('\n');
+    // Repeated at the END of the user message, where it is read last. A traced
+    // run found every raw preamble-then-JSON reply on resolution, whose user
+    // message is the longest in the game: a rule stated once, a system prompt
+    // and forty thousand characters earlier, is the rule a model drifts off.
+    user = `${user}\n\n${RAW_JSON_REMINDER}`;
   }
 
   let result: unknown;
@@ -344,7 +353,7 @@ async function rawCall(
       // an end-turn tool — a tool_use/tool_result pair — which costs a second
       // agentic round trip that re-sends the whole context. That carrier is
       // most of the ~7-8s floor on every call. Without it the model answers in
-      // one turn, and `coerce` + the Zod retry loop become the only validator:
+      // one turn, and `readReply` + the Zod retry loop become the only validator:
       // layer 1 is traded for however many extra corrections layer 2 then has
       // to make.
       //
@@ -381,7 +390,7 @@ async function rawCall(
         costUsd = message.total_cost_usd ?? 0;
         readResultMetrics(message as unknown as Record<string, unknown>, metrics);
         if (message.subtype === 'success') {
-          // Even under json_schema the payload arrives as a string; `coerce`
+          // Even under json_schema the payload arrives as a string; `readReply`
           // parses it. An is_error success carries the failure text in-band.
           if (message.is_error) errorText = message.result;
           else result = message.result;
@@ -419,15 +428,89 @@ async function rawCall(
 }
 
 /** Structured output arrives as an object, but tolerate a JSON string. */
-function coerce(result: unknown): unknown {
-  if (typeof result !== 'string') return result;
+/**
+ * Read a model's reply as the JSON object it was asked for.
+ *
+ * Under structured output the API holds the model to the schema while it
+ * writes; raw JSON moves that job here, so this is the transport's contract,
+ * stated once. **The reply is the first complete JSON object in the text.**
+ * Captured in a traced playtest (`CallRecord.unparsed`): resolution calls wrote
+ * the story as prose and THEN the object — at character 92, 573 and 275, one of
+ * them inside a ```json fence — and every one of those was a retry that
+ * re-sent the whole context for an answer already given. The prose ahead of the
+ * object restates its own `narrative`, so nothing is lost by dropping it, and
+ * the schema still validates what is kept.
+ *
+ * A reply with no object in it at all — a persona answering in character, an
+ * arbiter asking a question — stays a string, and is a retry: there is nothing
+ * to salvage, and guessing a shape would be inventing an answer.
+ */
+export function readReply(result: unknown): { value: unknown; normalized: string[] } {
+  if (typeof result !== 'string') return { value: result, normalized: [] };
   const trimmed = result.trim();
-  const fenced = trimmed.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  const unfenced = trimmed.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   try {
-    return JSON.parse(fenced);
+    return { value: JSON.parse(unfenced), normalized: unfenced !== trimmed ? ['fence'] : [] };
   } catch {
-    return result;
+    // Not a bare object; look for one inside the text.
   }
+  const found = firstJsonObject(trimmed);
+  if (found !== undefined) return { value: found, normalized: ['preamble'] };
+  return { value: result, normalized: [] };
+}
+
+/**
+ * The first balanced `{…}` in a text that parses as a JSON object, respecting
+ * strings and escapes. A candidate that does not parse — braces in the prose
+ * ahead of the answer — is skipped rather than ending the search.
+ */
+function firstJsonObject(text: string): Record<string, unknown> | undefined {
+  for (let start = text.indexOf('{'); start !== -1; start = text.indexOf('{', start + 1)) {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (ch === '\\') escaped = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') inString = true;
+      else if (ch === '{') depth++;
+      else if (ch === '}' && --depth === 0) {
+        try {
+          const value: unknown = JSON.parse(text.slice(start, i + 1));
+          if (value !== null && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
+        } catch {
+          // Not JSON; try the next opening brace.
+        }
+        break;
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The same object with every `null` property removed, recursively.
+ *
+ * A model writing JSON without the schema enforced says "none" with `null` as
+ * readily as by leaving the key out — measured once in the traced playtest: an
+ * arbiter ruling with `null` for its stat, difficulty, breach, covert work and
+ * negotiation. Applied only when the strict parse FAILS, so a field where
+ * `null` is a real value (`targetCommanderId`, `fromAssetId`) is never touched
+ * on an answer that was already valid.
+ */
+export function dropNulls(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(dropNulls);
+  if (value === null || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== null)
+      .map(([k, v]) => [k, dropNulls(v)]),
+  );
 }
 
 function formatIssues(error: z.ZodError): string {
@@ -467,7 +550,7 @@ export async function callStructured<T>(call: StructuredCall<T>): Promise<Struct
     // rather than inside `rawCall` because only this loop knows whether the
     // output then passed validation, which is the half of a retry that
     // matters most and the half `rawCall` cannot see.
-    const trace = (outcome: CallOutcome, why?: string, unparsed?: string) => {
+    const trace = (outcome: CallOutcome, why?: string, unparsed?: string, normalized: string[] = []) => {
       const at = currentSpan();
       telemetrySink().write({
         type: 'call',
@@ -482,6 +565,7 @@ export async function callStructured<T>(call: StructuredCall<T>): Promise<Struct
         outcome,
         ...(why !== undefined ? { why: why.replace(/\s+/g, ' ').trim().slice(0, 300) } : {}),
         ...(unparsed !== undefined ? { unparsed: unparsed.slice(0, UNPARSED_SAMPLE_CHARS) } : {}),
+        ...(normalized.length > 0 ? { normalized } : {}),
         wallMs: Date.now() - attemptAt,
         ...metrics,
         costUsd: metrics.costUsd ?? costUsd,
@@ -528,10 +612,19 @@ export async function callStructured<T>(call: StructuredCall<T>): Promise<Struct
     stats.calls += 1;
     stats.costUsd += costUsd;
 
-    lastRaw = coerce(result);
-    const parsed = call.schema.safeParse(lastRaw);
+    const read = readReply(result);
+    lastRaw = read.value;
+    let normalized = read.normalized;
+    let parsed = call.schema.safeParse(lastRaw);
+    if (!parsed.success && lastRaw !== null && typeof lastRaw === 'object') {
+      const lenient = call.schema.safeParse(dropNulls(lastRaw));
+      if (lenient.success) {
+        parsed = lenient;
+        normalized = [...normalized, 'nulls'];
+      }
+    }
     if (parsed.success) {
-      trace('ok');
+      trace('ok', undefined, undefined, normalized);
       record(call.kind, (Date.now() - startedAt) / 1000, totalCost, stats.retries - retriesBefore);
       return { value: parsed.data, attempts: attempt, costUsd: totalCost };
     }

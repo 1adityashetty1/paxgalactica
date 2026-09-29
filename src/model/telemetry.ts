@@ -110,6 +110,13 @@ export interface CallRecord {
    * why. A fence, a preamble and a refusal want three different fixes.
    */
   unparsed?: string;
+  /**
+   * What `readReply` and the null pass had to do for an answer that was then
+   * accepted — `fence`, `preamble`, `nulls`. Absent when the reply was a bare,
+   * valid object. Counted so the raw-JSON decision can see how much of its
+   * success depends on the transport's normalisation.
+   */
+  normalized?: string[];
   inTok?: number;
   outTok?: number;
   cacheReadTok?: number;
