@@ -204,7 +204,7 @@ export function formatReport(records: readonly TraceRecord[], title = 'trace'): 
     normalized.set(key, (normalized.get(key) ?? 0) + 1);
   }
   if (normalized.size > 0) {
-    lines.push('', 'replies accepted after normalising (fence, preamble, nulls):');
+    lines.push('', 'replies accepted after normalising (fence, preamble, nulls, trim, empty_force):');
     for (const [k, n] of [...normalized].sort((a, b) => b[1] - a[1])) lines.push(`  ${String(n).padStart(3)}  ${k}`);
   }
   const unparsed = calls.filter((c) => c.unparsed !== undefined).slice(-6);

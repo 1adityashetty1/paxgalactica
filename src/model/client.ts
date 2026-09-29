@@ -513,6 +513,75 @@ export function dropNulls(value: unknown): unknown {
   );
 }
 
+/**
+ * Brings an answer within the limits its schema states, where the limit has an
+ * honest smaller version. Under structured output these limits are enforced
+ * while the model writes; in raw JSON nothing enforces them, and a traced run
+ * spent retries on a 250-character accord note and on fleets sent with
+ * `force: 0`. Each re-sent the whole context to be told a number.
+ *
+ * - **Text past its cap is cut**, at a word where one is near, and marked
+ *   with an ellipsis — the same trim-not-reject the reducer gives an
+ *   over-large income: the record is still real at a smaller length.
+ * - **An op sending fewer than one ship is dropped.** It is not reduced to
+ *   "no force", because an absent `force` means the WHOLE port sails: zero
+ *   ships is no order, and reading it as every ship would invert it.
+ *
+ * Driven by the issues Zod reported rather than a walk of the schema, so it
+ * touches only what failed, and the JSON schema a model is shown keeps stating
+ * every limit. Anything else is left for the retry.
+ */
+export function trimToLimits(value: unknown, issues: readonly z.core.$ZodIssue[]): { value: unknown; changed: string[] } {
+  const out = structuredClone(value);
+  const changed = new Set<string>();
+  const dropped = new Map<string, { list: unknown[]; index: number }>();
+  const visit = (list: readonly z.core.$ZodIssue[], base: PropertyKey[]) => {
+    for (const issue of list) {
+      const path = [...base, ...issue.path];
+      if (issue.code === 'invalid_union') {
+        for (const branch of issue.errors) visit(branch, path);
+        continue;
+      }
+      const parent = walk(out, path.slice(0, -1));
+      const key = path.at(-1);
+      if (parent === undefined || key === undefined) continue;
+      const here = (parent as Record<PropertyKey, unknown>)[key];
+      if (issue.code === 'too_big' && issue.origin === 'string' && typeof here === 'string') {
+        const max = Number(issue.maximum);
+        if (here.length <= max) continue;
+        const cut = here.slice(0, max - 1);
+        const space = cut.lastIndexOf(' ');
+        (parent as Record<PropertyKey, unknown>)[key] = `${(space > max * 0.8 ? cut.slice(0, space) : cut).trimEnd()}…`;
+        changed.add('trim');
+      } else if (issue.code === 'too_small' && issue.origin === 'number' && key === 'force' && typeof here === 'number' && here < 1) {
+        // The op holding the force is the element of the list above it.
+        const opPath = path.slice(0, -1);
+        const list = walk(out, opPath.slice(0, -1));
+        const index = opPath.at(-1);
+        if (Array.isArray(list) && typeof index === 'number') {
+          dropped.set(opPath.join('.'), { list, index });
+          changed.add('empty_force');
+        }
+      }
+    }
+  };
+  visit(issues, []);
+  // Highest index first, so earlier removals do not shift later ones.
+  for (const { list, index } of [...dropped.values()].sort((a, b) => b.index - a.index)) {
+    list.splice(index, 1);
+  }
+  return { value: out, changed: [...changed] };
+}
+
+function walk(value: unknown, path: readonly PropertyKey[]): unknown {
+  let at: unknown = value;
+  for (const key of path) {
+    if (at === null || typeof at !== 'object') return undefined;
+    at = (at as Record<PropertyKey, unknown>)[key];
+  }
+  return at;
+}
+
 function formatIssues(error: z.ZodError): string {
   return error.issues
     .map((i) => `  - ${i.path.join('.') || '(root)'}: ${i.message}`)
@@ -617,10 +686,23 @@ export async function callStructured<T>(call: StructuredCall<T>): Promise<Struct
     let normalized = read.normalized;
     let parsed = call.schema.safeParse(lastRaw);
     if (!parsed.success && lastRaw !== null && typeof lastRaw === 'object') {
-      const lenient = call.schema.safeParse(dropNulls(lastRaw));
+      // Two lenient passes, each only when what came before still fails, so
+      // an answer that was valid as sent is never rewritten.
+      const unnulled = dropNulls(lastRaw);
+      let lenient = call.schema.safeParse(unnulled);
+      let passes = ['nulls'];
+      if (!lenient.success) {
+        const trimmed = trimToLimits(unnulled, lenient.error.issues);
+        if (trimmed.changed.length > 0) {
+          lenient = call.schema.safeParse(trimmed.value);
+          const hadNulls = JSON.stringify(unnulled) !== JSON.stringify(lastRaw);
+          passes = [...(hadNulls ? ['nulls'] : []), ...trimmed.changed];
+          if (!lenient.success) passes = [];
+        }
+      }
       if (lenient.success) {
         parsed = lenient;
-        normalized = [...normalized, 'nulls'];
+        normalized = [...normalized, ...new Set(passes)];
       }
     }
     if (parsed.success) {

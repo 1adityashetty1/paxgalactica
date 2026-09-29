@@ -250,6 +250,26 @@ describe('a model call leaves one record per attempt', () => {
     expect(calls()[1]).not.toHaveProperty('normalized');
   });
 
+  it('cuts text past its cap and drops an op that sends no ships, when nothing else is wrong', async () => {
+    const Op = z.object({ text: z.string().min(1).max(20).optional(), force: z.union([z.number().int().min(1), z.object({ escort: z.number() })]).optional() });
+    const Batch = z.object({ narrative: z.string().max(400), ops: z.array(Op) });
+    const run = () => callStructured({ kind: 'reaction', system: 'S', user: 'U', schema: Batch, label: 'trim' });
+    script.push(success({ narrative: 'n', ops: [{ force: 3 }, { force: 0 }, { text: 'a note that runs well past twenty characters' }] }));
+    const { value } = await run();
+    expect(value.ops).toHaveLength(2);
+    expect(value.ops[0]).toEqual({ force: 3 });
+    expect(value.ops[1]!.text!.length).toBeLessThanOrEqual(20);
+    expect(value.ops[1]!.text).toMatch(/…$/);
+    expect(calls()[0]).toMatchObject({ outcome: 'ok' });
+    expect(calls()[0]!.normalized!.sort()).toEqual(['empty_force', 'trim']);
+    // A valid answer is never trimmed, and a failure trimming cannot fix is still a retry.
+    script.push(success({ narrative: 'n', ops: [{ force: 1 }] }), success({ narrative: 5, ops: [{ force: 0 }] }), success({ narrative: 'n', ops: [] }));
+    expect((await run()).value.ops).toEqual([{ force: 1 }]);
+    expect(calls()[1]).not.toHaveProperty('normalized');
+    await run();
+    expect(calls()[2]).toMatchObject({ outcome: 'schema_retry' });
+  });
+
   it('repeats the JSON-only rule at the end of a raw-JSON user message, and only there', async () => {
     const { RAW_JSON_REMINDER } = await import('../src/model/client.js');
     prompts.length = 0;

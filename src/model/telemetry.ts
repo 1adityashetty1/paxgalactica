@@ -111,8 +111,9 @@ export interface CallRecord {
    */
   unparsed?: string;
   /**
-   * What `readReply` and the null pass had to do for an answer that was then
-   * accepted — `fence`, `preamble`, `nulls`. Absent when the reply was a bare,
+   * What `readReply` and the lenient passes had to do for an answer that was
+   * then accepted — `fence`, `preamble`, `nulls`, `trim` (text cut to its cap),
+   * `empty_force` (an op sending no ships dropped). Absent when the reply was a bare,
    * valid object. Counted so the raw-JSON decision can see how much of its
    * success depends on the transport's normalisation.
    */
