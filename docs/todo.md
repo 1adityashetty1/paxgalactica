@@ -78,7 +78,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | **121** | two escorts take five turns | small | resolution filed "commission two escorts" as `capital_ship_construction`, whose floor is 5; `refit` and `retooling` also deliver `commission_ships` faster. `prompts/resolution.md` lists all three with no guidance on which a light hull wants — the category should follow the hull, and the clamp at least should say so |
 | ~~122~~ | ~~an officer should be a unit, not a record beside the fleet~~ | medium | **BUILT** — `officers` on an order (by family name), aboard when the whole port sails, fall with their contingent rather than on a die, family names unique for the campaign. `JOURNAL_VERSION` 8; all 12 saves replay identically; balance and fleetlab unchanged. Two calls differ from the entry below, and it says which |
 | ~~123~~ | ~~influence does nothing at the table, and resolve does nothing but resist~~ | medium | **BUILT** — a treaty's standing is `TREATY_GOODWILL` plus the other signer's influence modifier (6–12 on the opening board, pinned to journal 9); **Rally** lifts might, guile, industry and influence by up to +3 per share of homeland lost × resolve (unpinned, as decided — 7 of 12 saves drift); personas read effective stats. The harness cannot see a rally turn a war: bots pick targets by line strength and read no stat |
-| **124** | random events: the Rim moves on its own | medium | six hazards and four boons, resolved in the advance-turn tick — deterministic state changes, a Haiku line of flavour after the fact, and surfaced in the feed the way a veto is so none is missable. Catalogue, rules and the surfacing are in the entry below |
+| **124** | random events: the Rim moves on its own | medium | six hazards and four boons, one turn in two on average (weights sum to 0.5), resolved in the advance-turn tick — deterministic state changes, a Haiku line of flavour after the fact, and surfaced in the feed the way a veto is so none is missable. Catalogue, rules and the surfacing are in the entry below |
 
 **Audited 2026-09-23:** every numbered item above 81 is built or closed except
 **92**, **94(b)** and the four added today. Of those, **116** is code and the rest
@@ -245,7 +245,20 @@ second step, not this one.
   the edit is where the thinking happens. Journaled, so replay reproduces every
   event, and pinned to a journal version so an older campaign replays without
   them.
-- **Rate-limited.** At most one event a turn to start, drawn from the ten, a cooldown per event and
+- **Half the turns have an event, exactly.** The weights of all ten sum to
+  **0.5**, so on average one turn in two carries one. Implemented as two
+  seeded draws rather than ten independent chances: `rollD20` decides **whether**
+  an event fires (11 or better — exactly one in two, since the d20 is uniform),
+  and a second draw picks **which** among those currently eligible, in
+  proportion to their weights, renormalised over the eligible set. Independent
+  per-event chances would allow two events in one turn and let the rate drift as
+  eligibility changed; renormalising keeps it at one in two whenever anything is
+  eligible at all, and a turn with nothing eligible passing quietly is the only
+  way the average dips. The pick uses two rolls for 400 values, the granularity
+  `commanderArchetype` already uses. Starting weights: 0.05 each (ten × 0.05 =
+  0.5), then tuned against the harness — the split between hazards and boons is
+  what to sweep, not the total.
+- **Rate-limited as well.** At most one event a turn, drawn from the ten, a cooldown per event and
   per power, and a low base chance, so a quiet turn stays quiet. Stellaris and
   CK3 both learned event spam the hard way.
 - **Fog applies.** Most of these are public (a storm, a border incident). One
@@ -254,7 +267,8 @@ second step, not this one.
 - **Bots feel them too.** They run in `endTurn`, so an event that costs a bot a
   squadron costs it a squadron.
 - **Measurable.** Every event with mechanical force shows up in
-  `pnpm balance`; sweep the base chance so events colour a campaign without
+  `pnpm balance`; the total is fixed at 0.5, so sweep the per-event weights —
+  above all hazards against boons — so events colour a campaign without
   deciding it.
 
 ### The flavour line: Haiku, after the fact, and never load-bearing
