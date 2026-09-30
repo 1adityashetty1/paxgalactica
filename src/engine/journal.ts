@@ -14,7 +14,7 @@ import { createSeedState } from '../seed/scenario.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 8;
+export const JOURNAL_VERSION = 9;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -81,6 +81,7 @@ export const JournalVersionSchema = z.union([
   z.literal(6),
   z.literal(7),
   z.literal(8),
+  z.literal(9),
 ]);
 
 export const JournalSchema = z.object({
@@ -106,7 +107,9 @@ export const JournalSchema = z.object({
    *     spoils needing presence. Each is its own `LegacyRules` flag.
    * 7 — written before an officer was a unit of the fleet: one officer per
    *     order, a roll to die on any defeat, and names unique only by luck.
-   * 8 — current.
+   * 8 — written before a treaty's standing scaled with the signer's influence.
+   *     (The rally of the same change is not pinned; see `LegacyRules`.)
+   * 9 — current.
    */
   version: JournalVersionSchema,
   entries: z.array(JournalEntrySchema),
@@ -208,6 +211,8 @@ export function replay(
     // and drew names that could repeat.
     officerUnits: parsed.version >= 8,
     uniqueFamilies: parsed.version >= 8,
+    // A treaty paid a flat 8 standing both ways, whoever signed it.
+    influentialGoodwill: parsed.version >= 9,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

@@ -495,7 +495,9 @@ svg.outcome-art {
 }
 .stat-value.bad { color: #e07a6a; }
 
-.dissent {
+.dissent,
+/* A rally sits where dissent does, and reads the same way: a term on every bar. */
+.rally {
   font-size: 0.78rem;
   margin-top: 0.25rem;
   opacity: 0.9;
