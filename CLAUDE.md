@@ -3827,10 +3827,12 @@ The briefing's copy is derived from `state.rimEvents`, so it survives a resume.
 A card keeps its flavour line when the next turn's briefing replaces the one it
 arrived on, because the line is written onto the feed message itself.
 
-**No art yet, and that is the plan rather than a gap.** Each kind gets a pixel
-scene once the user has vetted it, one at a time — `docs/todo.md` 124.
-`RimEventArt` is the slot, and it renders nothing for a kind with no approved
-scene, the fallback `OutcomeArt` keeps.
+**Art only where the user approved it.** Each kind gets a pixel scene drawn in
+`src/ui/outcomeart.ts` — rendered at feed size and larger and approved by eye
+before it is committed, one at a time (`docs/todo.md` 124). `RIM_ART_KINDS`
+lists the approved ones; `RimEventArt` renders nothing for any other kind, the
+fallback `OutcomeArt` keeps. Approved so far: **ion storm** — a storm cloud with
+a bolt coming down onto a dashed lane that stops beneath it.
 
 ## A batch is a transaction
 

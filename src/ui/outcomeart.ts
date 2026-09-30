@@ -248,8 +248,138 @@ function defiance(): Grid {
 }
 
 /* ------------------------------------------------------------------ */
+/* The Rim's own events (item 124)                                     */
+/* ------------------------------------------------------------------ */
+
+const STAR_DIM = '#2b3440';
+const STAR = '#6d7480';
+const LANE = '#2c6b66';
+const WORLD = '#8a94a3';
+const WORLD_LIT = '#c3cad4';
+const STORM_DARK = '#261f47';
+const STORM = '#40357a';
+const STORM_LIT = '#6f62b8';
+const BOLT = '#f2f7ff';
+const BOLT_GLOW = '#8fd3ff';
+
+/** A filled disc. */
+const disc = (g: Grid, cx: number, cy: number, r: number, c: string): void => {
+  for (let y = cy - r; y <= cy + r; y++) {
+    for (let x = cx - r; x <= cx + r; x++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      if (dx * dx + dy * dy <= r * r + r) put(g, x, y, c);
+    }
+  }
+};
+
+/**
+ * ION STORM — a storm cloud with a bolt in it, sitting on a trade lane that
+ * stops underneath it.
+ *
+ * The cloud and the bolt are the most conventional storm there is, which is the
+ * point: the refusal stamp's lesson is that a picture has to be understood
+ * before the sentence under it is read. Space is said by the stars and by the
+ * lane — two worlds and a dashed line, the way the map draws one — and what the
+ * event DOES is said by the gap: the lane runs in from both sides and is gone
+ * where the bolt comes down.
+ */
+function ionStorm(): Grid {
+  const g = blank();
+
+  // A few stars, fixed so the scene is the same every time it is drawn.
+  for (const [x, y] of [[3, 4], [11, 2], [55, 3], [60, 9], [5, 16], [58, 19], [17, 31], [48, 32], [62, 30], [2, 33]] as const) {
+    put(g, x, y, STAR_DIM);
+  }
+  for (const [x, y] of [[8, 7], [52, 6], [14, 21], [61, 25]] as const) put(g, x, y, STAR);
+
+  // The lane, dashed as the map dashes it, cut where the storm sits.
+  const LANE_Y = 27;
+  for (let x = 10; x <= 54; x++) {
+    if (x >= 24 && x <= 40) continue;
+    if (x % 4 < 3) put(g, x, LANE_Y, LANE);
+  }
+  // A world at each end, lit from the upper left.
+  for (const wx of [7, 57]) {
+    disc(g, wx, LANE_Y, 3, WORLD);
+    put(g, wx - 1, LANE_Y - 2, WORLD_LIT);
+    put(g, wx - 2, LANE_Y - 1, WORLD_LIT);
+  }
+
+  // The cloud: overlapping discs with a flat underside. Shaded after it is
+  // laid down — lit where nothing is above a pixel, dark along the bottom — so
+  // it reads as a mass rather than a flat blob.
+  const cloud = blank();
+  // Puffs of clearly different sizes, so the top is bumpy the way a drawn
+  // cloud's is; evenly sized ones merged into a mound.
+  for (const [cx, cy, r] of [[19, 13, 4], [26, 10, 5], [35, 8, 7], [45, 12, 4], [31, 13, 4], [40, 13, 4]] as const) {
+    disc(cloud, cx, cy, r, STORM);
+  }
+  for (let y = 16; y < OUTCOME_H; y++) for (let x = 0; x < OUTCOME_W; x++) cloud[y]![x] = VOID;
+  for (let y = 0; y < OUTCOME_H; y++) {
+    for (let x = 0; x < OUTCOME_W; x++) {
+      if (cloud[y]![x] !== STORM) continue;
+      const above = y > 0 ? cloud[y - 1]![x] : VOID;
+      const below = y < OUTCOME_H - 1 ? cloud[y + 1]![x] : VOID;
+      put(g, x, y, above === VOID ? STORM_LIT : below === VOID || y >= 14 ? STORM_DARK : STORM);
+    }
+  }
+
+  // The bolt: a zigzag two pixels wide from the cloud's belly to the gap in the
+  // lane, with a glow down its left side so it reads as light, not as a line.
+  const bolt: [number, number][] = [[33, 16], [29, 21], [34, 21], [31, 27]];
+  for (let i = 0; i < bolt.length - 1; i++) {
+    const [x0, y0] = bolt[i]!;
+    const [x1, y1] = bolt[i + 1]!;
+    const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+    for (let st = 0; st <= steps; st++) {
+      const x = Math.round(x0 + ((x1 - x0) * st) / steps);
+      const y = Math.round(y0 + ((y1 - y0) * st) / steps);
+      put(g, x - 1, y, BOLT_GLOW);
+      put(g, x, y, BOLT);
+      put(g, x + 1, y, BOLT);
+    }
+  }
+  // Where it strikes the lane: a short burst on either side.
+  for (const [x, y] of [[28, 27], [34, 27], [29, 26], [33, 26], [31, 28]] as const) put(g, x, y, BOLT_GLOW);
+  return g;
+}
+
+/* ------------------------------------------------------------------ */
 /* Out                                                                 */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Random events with a scene. **Each one is here because the user approved it**
+ * — rendered at feed size and larger and put in front of them before it was
+ * committed (item 124) — and every other kind falls back to the text card.
+ */
+export const RIM_ART_KINDS = ['ion_storm'] as const;
+export type RimArtKind = (typeof RIM_ART_KINDS)[number];
+
+const RIM_SCENES: Record<RimArtKind, () => Grid> = {
+  ion_storm: ionStorm,
+};
+
+export function hasRimArt(kind: string): kind is RimArtKind {
+  return (RIM_ART_KINDS as readonly string[]).includes(kind);
+}
+
+/** A random event's scene, as the raw grid. */
+export function rimEventPixels(kind: RimArtKind): string[][] {
+  return RIM_SCENES[kind]();
+}
+
+const rimCache = new Map<RimArtKind, OutcomeRun[]>();
+
+/** A random event's scene as horizontal runs, the way `outcomeRuns` does it. */
+export function rimEventRuns(kind: RimArtKind): OutcomeRun[] {
+  const hit = rimCache.get(kind);
+  if (hit) return hit;
+  const runs = toRuns(RIM_SCENES[kind]());
+  rimCache.set(kind, runs);
+  return runs;
+}
 
 const SCENES: Record<OutcomeArtKind, () => Grid> = {
   refusal,
@@ -275,7 +405,12 @@ const cache = new Map<OutcomeArtKind, OutcomeRun[]>();
 export function outcomeRuns(kind: OutcomeArtKind): OutcomeRun[] {
   const hit = cache.get(kind);
   if (hit) return hit;
-  const g = SCENES[kind]();
+  const runs = toRuns(SCENES[kind]());
+  cache.set(kind, runs);
+  return runs;
+}
+
+function toRuns(g: Grid): OutcomeRun[] {
   const runs: OutcomeRun[] = [];
   for (let y = 0; y < OUTCOME_H; y++) {
     let x = 0;
@@ -287,7 +422,6 @@ export function outcomeRuns(kind: OutcomeArtKind): OutcomeRun[] {
       x += width;
     }
   }
-  cache.set(kind, runs);
   return runs;
 }
 

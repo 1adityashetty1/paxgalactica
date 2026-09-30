@@ -5,7 +5,12 @@ import {
   OUTCOME_W,
   outcomePixels,
   outcomeRuns,
+  RIM_ART_KINDS,
+  hasRimArt,
+  rimEventPixels,
+  rimEventRuns,
 } from '../src/ui/outcomeart.js';
+import { RIM_EVENT_KINDS } from '../src/domain/events.js';
 
 /**
  * The two rulings your own institutions make, as pixels.
@@ -132,6 +137,54 @@ describe('the outcome scenes', () => {
       }
       // And it is worth doing: a scene is a few hundred rects, not 2,304.
       expect(runs.length).toBeLessThan(OUTCOME_W * OUTCOME_H * 0.4);
+    }
+  });
+});
+
+/**
+ * The Rim's own events (item 124). Each scene is in `RIM_ART_KINDS` only because
+ * the user approved it by eye; what is pinned here is what the picture claims.
+ */
+describe('the event scenes', () => {
+  it('draws only real event kinds, and says which have art', () => {
+    for (const kind of RIM_ART_KINDS) expect(RIM_EVENT_KINDS).toContain(kind);
+    expect(hasRimArt('ion_storm')).toBe(true);
+    expect(hasRimArt('mutiny')).toBe(RIM_ART_KINDS.includes('mutiny' as never));
+  });
+
+  it('fills every cell and merges into runs without losing a pixel', () => {
+    for (const kind of RIM_ART_KINDS) {
+      const px = rimEventPixels(kind);
+      expect(px).toHaveLength(OUTCOME_H);
+      for (const row of px) {
+        expect(row).toHaveLength(OUTCOME_W);
+        for (const cell of row) expect(cell).toMatch(/^#[0-9a-f]{6}$/);
+      }
+      const runs = rimEventRuns(kind);
+      expect(runs.reduce((n, r) => n + r.width, 0)).toBe(OUTCOME_W * OUTCOME_H);
+      for (const r of runs) {
+        for (let i = 0; i < r.width; i++) expect(px[r.y]![r.x + i]).toBe(r.colour);
+      }
+    }
+  });
+
+  it('ion storm: a bolt from the cloud to a lane that is cut beneath it', () => {
+    const px = rimEventPixels('ion_storm');
+    const LANE = '#2c6b66';
+    const BOLT = new Set(['#f2f7ff', '#8fd3ff']);
+    const CLOUD = new Set(['#261f47', '#40357a', '#6f62b8']);
+    const laneRow = px[27]!;
+    const lane = laneRow.map((c, x) => (c === LANE ? x : -1)).filter((x) => x >= 0);
+    // Dashes on both sides of the storm, and none under it.
+    expect(lane.some((x) => x < 24)).toBe(true);
+    expect(lane.some((x) => x > 40)).toBe(true);
+    expect(lane.some((x) => x >= 24 && x <= 40)).toBe(false);
+    // The cloud is above the lane and the bolt spans the gap between them:
+    // every row from the cloud's belly down to the lane has bolt in it.
+    const cloudRows = px.map((row, y) => (row.some((c) => CLOUD.has(c)) ? y : -1)).filter((y) => y >= 0);
+    expect(Math.max(...cloudRows)).toBeLessThan(27);
+    for (let y = Math.max(...cloudRows) + 1; y <= 27; y++) {
+      expect(px[y]!.some((c) => BOLT.has(c)), `row ${y}`).toBe(true);
     }
   });
 });
