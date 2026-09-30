@@ -78,6 +78,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | **121** | two escorts take five turns | small | resolution filed "commission two escorts" as `capital_ship_construction`, whose floor is 5; `refit` and `retooling` also deliver `commission_ships` faster. `prompts/resolution.md` lists all three with no guidance on which a light hull wants — the category should follow the hull, and the clamp at least should say so |
 | ~~122~~ | ~~an officer should be a unit, not a record beside the fleet~~ | medium | **BUILT** — `officers` on an order (by family name), aboard when the whole port sails, fall with their contingent rather than on a die, family names unique for the campaign. `JOURNAL_VERSION` 8; all 12 saves replay identically; balance and fleetlab unchanged. Two calls differ from the entry below, and it says which |
 | ~~123~~ | ~~influence does nothing at the table, and resolve does nothing but resist~~ | medium | **BUILT** — a treaty's standing is `TREATY_GOODWILL` plus the other signer's influence modifier (6–12 on the opening board, pinned to journal 9); **Rally** lifts might, guile, industry and influence by up to +3 per share of homeland lost × resolve (unpinned, as decided — 7 of 12 saves drift); personas read effective stats. The harness cannot see a rally turn a war: bots pick targets by line strength and read no stat |
+| **124** | random events: the Rim moves on its own | medium | six base events resolved in the advance-turn tick — deterministic state changes, a Haiku line of flavour after the fact, and surfaced in the feed the way a veto is so none is missable. Catalogue, rules and the surfacing are in the entry below |
 
 **Audited 2026-09-23:** every numbered item above 81 is built or closed except
 **92**, **94(b)** and the four added today. Of those, **116** is code and the rest
@@ -157,6 +158,106 @@ on this list: the most-favoured-nation ratchet (`B-12`), because no arrangement
 can read another's terms and a clause whose whole content is *"track that other
 contract"* is structurally unrepresentable. The fix there is the arbiter *saying
 so* rather than recording it as though it bound something.
+
+## 124. OPEN — random events: the Rim moves on its own
+
+**The ask:** events like a TTRPG's, processed while the turn advances, that
+touch one or more powers. Six to start. What they do to the world is
+deterministic; a Haiku call only writes the line that tells the player about it;
+and the UI surfaces each one the way a veto is surfaced, so it cannot be missed.
+
+### What was borrowed, and from where
+
+Researched against Stellaris, the other Paradox titles and Larian's RPGs (from
+knowledge of the games, not a fresh read of their files — check specifics before
+quoting them):
+
+- **The pulse (EU4 mean-time-to-happen, CK3 pulses):** each tick picks from a
+  weighted pool of events whose conditions are currently true, with cooldowns so
+  nothing repeats. It is the same shape as the compulsion triggers `tickTurn`
+  already checks — a pure predicate on state — plus a weight and a seeded pick.
+- **Hit the powerful hardest (EU4 disasters, Stellaris crises):** bad events
+  weighted by occupied worlds, fleet size or dissent, so the leader is the most
+  exposed. The same back-foot principle as Rally (item 123).
+- **Found by whoever is there (Stellaris anomalies):** presence decides, and
+  the prize is an asset the game already knows how to trade.
+- **Resolved at rest (BG3 camp scenes on a long rest):** advance-turn is the
+  long rest. Events land in the tick and are read in the briefing; nothing
+  interrupts a turn the player is taking.
+- **The world says why (Larian reactivity):** every event names its cause in
+  the log. Nothing from nowhere.
+- **A d20 against a table (TTRPG encounter tables):** literally `rollD20(turn,
+  salt)` against the pool.
+
+### The six
+
+Each is chosen because it reuses a mechanic that already has force, so none is
+flavour:
+
+| event | eligible when | what it does | weighted toward |
+|---|---|---|---|
+| **Ion storm** | always | a lane or world is severed for 1–3 turns, like a blockade nobody declared; the smuggler still runs it | high-traffic lanes |
+| **Derelict** | a power has ships over an unaligned world | that power gains an asset — salvage, speculative blueprints or a stranded crew | whoever is out in the lawless middle |
+| **Unrest** | a power holds a world that was never its own | the garrison drops, and a world with none left slips to unaligned | the occupation a power is paying for (`OCCUPATION_COST`) |
+| **Border incident** | two powers have ships one jump apart | each loses standing with the other, which can tip a pair past `BOT_AGGRESSION_CEILING` | pairs already cool toward each other |
+| **Shortage** | an asset kind is held by somebody | that kind's value per unit rises for every power that wants it, for a few turns | kinds with more than one interested buyer |
+| **Mutiny** | a power's dissent is above a threshold | a small squadron deserts, through the insolvency attrition path | dissent |
+
+Choice events (Stellaris-style fixed options with prices) and multi-turn
+situations with progress bars (EU4 disasters, Stellaris situations) are the
+second step, not this one.
+
+### Rules, from how this codebase works
+
+- **Deterministic, in the reducer.** A seeded pick, pure eligibility predicates,
+  and effects from a **closed vocabulary** applied by the reducer — the
+  `OrderEffect` argument: a list has to be edited when an event is added, and
+  the edit is where the thinking happens. Journaled, so replay reproduces every
+  event, and pinned to a journal version so an older campaign replays without
+  them.
+- **Rate-limited.** At most one event a turn to start, a cooldown per event and
+  per power, and a low base chance, so a quiet turn stays quiet. Stellaris and
+  CK3 both learned event spam the hard way.
+- **Fog applies.** Most of these are public (a storm, a border incident). One
+  that concerns a single power's own affairs — a mutiny, unrest — is visible to
+  that power and to whoever can see the world, by the existing rules.
+- **Bots feel them too.** They run in `endTurn`, so an event that costs a bot a
+  squadron costs it a squadron.
+- **Measurable.** Every event with mechanical force shows up in
+  `pnpm balance`; sweep the base chance so events colour a campaign without
+  deciding it.
+
+### The flavour line: Haiku, after the fact, and never load-bearing
+
+The reducer decides and applies the event and writes a plain, complete log line
+itself. A flavour-tier call then rewrites that line in the setting's voice for
+the player — told the facts as settled, forbidden to add any. Three rules keep it
+safe:
+
+- **Never state.** The Haiku text is display only; nothing reads it, it is not
+  journaled, and replay never calls it — the same position as the epilogue's
+  prose.
+- **Cannot fail the turn.** If the call errors or times out, the plain line
+  stands, the way `fallbackEpilogue` does.
+- **Costs one call per turn at most**, and nothing on a turn with no event. Run
+  alongside the reactions, so it adds no wall time to the end of turn.
+
+### Surfaced like a veto
+
+A veto is not missable because it is a picture in the feed with its line under
+it, not a sentence in the log (`OutcomeArt`, carried on the message so the feed
+trimming cannot separate the two). An event gets the same treatment:
+
+- **Its own card in the feed** after End Turn, above the battles, with an image
+  per event kind — pixel art drawn in `src/ui/outcomeart.ts` the way refusal and
+  defiance are — the Haiku line, and the plain fact beneath it.
+- **Named in the briefing** as its own group, so it is still there on a resumed
+  campaign (derived from the event log, the way the watch section is).
+- **Private events** reach only the powers entitled to see them, by the same
+  scoping the event log already applies; the player never sees a card for a
+  rival's mutiny they could not have observed.
+- **Missing art renders nothing**, falling back to the text card — the rule
+  `OutcomeArt` already follows — so the wiring can ship before the images.
 
 ## 123. BUILT — influence does nothing at the table, and resolve does nothing but resist
 
