@@ -520,6 +520,64 @@ Measured separately, which is worth recording: **the stat bonuses move the
 harness not at all** (board identical with occupation switched off), so the
 entire territorial effect is the occupation cost.
 
+### An occupied homeland rallies
+
+Item 123, and resolve's first active reader. For its whole life resolve was
+read in exactly two places, both as the **defending** half of a guile contest —
+an operative's success chance on your worlds, how many of your crews a rival
+can turn — so a resolute power was hard to infiltrate and did nothing with it.
+
+`rallyBonus` in `state.ts`: each home world held by somebody else lifts
+**might, guile, industry and influence**, by `floor(share lost × resolve ×
+RALLY_PER_RESOLVE)`, capped at `RALLY_CAP` (3). `effectiveStats` applies it, so
+it reaches every check, battle, yard, operative contest and the commitment
+ceiling with no further wiring.
+
+**It pays off on the back foot, which is the design.** Every clause of
+resolve's description — sieges endured, unrest suppressed, programmes not
+abandoned — is about enduring, so its active lever is a brake on whoever is
+losing rather than an accelerator for whoever is ahead. It limits itself: a
+power that rallies and retakes its ground loses the rally as it does.
+
+Four decisions, each against a way it could have gone wrong:
+
+- **Measured against a power's own home ground, not its size.**
+  `homeFactionId` already records who held each world at turn 0 and every power
+  opens with four, so the deficit moves in equal quarters for everyone and needs
+  no new state. An absolute measure would buff Drajk (small by design) and the
+  Combine (few worlds, much paper) forever for being what they are.
+- **Resolve sizes it and is excluded from it**, so it cannot feed itself. The
+  Vigil at 17 reaches the cap at half its homeland gone; Meridian at 9 needs two
+  worlds lost for its first point, which keeps the weakness the seed gives it.
+- **After terrain, the officer and fixtures, before dissent** — it reads the
+  resolve those left, and an occupied homeland can offset a bad leader rather
+  than vanishing under the floor. Clamped at 20.
+- **Not pinned to a journal version.** `effectiveStats` takes no legacy rules,
+  and threading a flag through every caller was judged not worth it; journals
+  in which a power lost a home world replay differently, and that was accepted.
+
+**Measured, and the harness is nearly blind to it** — the same finding as the
+terrain bonus. Swept over step × cap (0.2–0.6 × 2–3) for 30 and 100 bot turns,
+the board is 6/6/5/6/2 and territory last changes on turn 22 at **every**
+setting, rally or none. It does fire — Drajk rallies for 14 of 30 turns (84 of
+100) at up to +3, and Meridian joins from a step of 0.5 — and it lifts the
+poorest power's 100-turn net from −102 to −88. What it cannot do in the harness
+is turn a war, because the bots choose targets by line strength and read no
+stat at all; a rallying bot never leans into its rally. The comeback it is for
+is a **played** one, and 0.4 × 3 is taken because it keeps Meridian at resolve 9
+out of the rally at one home world lost while the Vigil reaches the cap at two.
+`pnpm balance 30` and `pnpm fleetlab` are unchanged. It moves 7 of the 12 saved
+campaigns on replay, all of it the rally.
+
+**The obvious lever was rejected, and the reason is the lesson.** *Unrest
+suppressed* reads naturally as a cheaper `OCCUPATION_COST` for a resolute
+holder — and it lands almost wholly on the Iron Vigil, the one power pairing
+high resolve with a conquering doctrine and the best might on the board, while
+Arkane (resolve 19, `defensive`) never occupies anything and Meridian (the
+`expansionist`) would pay more. Cheaper holding is more net, more hulls, more
+conquest: an accelerator for whoever is winning, the shape the principle rules
+out.
+
 ### Ships are bought, and a navy you cannot pay for shrinks
 
 `CREDITS_PER_TON` is **15**; `UPKEEP_PER_TON` is **1 a turn**. A battleship is
@@ -1423,6 +1481,31 @@ standing* had to be filed privately — backwards, since a treaty is the public
 instrument and a commitment explicitly is not. `TREATY_GOODWILL` (8) is larger
 than the commitment's 5 because it is public: the same bargain sworn where
 everyone can see it is worth more than an understanding between two houses.
+
+**And the signer's influence decides how much** (item 123). Each party's regard
+for the other rises by `TREATY_GOODWILL` plus the **other** party's influence
+modifier, floored at zero — `treatyGoodwillToward`. Influence is *"diplomacy,
+treaties, propaganda"* and for the whole life of the game touched none of them:
+nothing in the diplomacy path is rolled, so the same lines signed the same
+treaty at influence 5 or 18, and the persona's only sight of the number was a
+stray stat line. On the opening board a treaty now pays 12 toward Meridian, 11
+toward the Combine, 8 toward Arkane, 7 toward Drajk and 6 toward the Vigil —
+a persuasive power comes out of the same deal better liked, and the next
+conversation starts warmer. Read off `effectiveStats`, so terrain, fixtures, an
+officer's passive and a rally all reach it.
+
+**Treaties only.** A commitment's goodwill is a deposit, paid on establish and
+refunded on dissolve, and scaling it by an influence that can move in between
+would let a power sign high and walk away low, keeping the difference. Pinned
+to `JOURNAL_VERSION` **9** (`influentialGoodwill`), so a journal signed under
+the flat 8 replays under it.
+
+**That stat line was also the base sheet.** `serializeFactions` printed
+`f.stats`, so dissent, fixtures and every other term reached no prompt that read
+it — and every persona reads it about the leader across the table. It prints
+`effectiveStats` now; a rival's row leaves out covert `stat_debuff`s
+(`effectiveStats(..., { covert: false })`), which the fog hides from everyone
+but the victim.
 
 Paid **to the parties and nobody else**, which differs from the commitment
 reasoning and lands in the same place. A commitment excludes onlookers because it

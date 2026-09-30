@@ -1773,14 +1773,22 @@ describe('the ground a power holds reaches its stats', () => {
   it('reaches the stats the game actually rolls against', () => {
     const s = seed();
     const base = s.factions.find((f) => f.id === 'meridian')!.stats.industry;
-    for (const sys of s.systems) sys.controllerFactionId = null;
+    // Nobody's homeland either, or clearing every controller occupies it and
+    // a rally rides along with the terrain (item 123).
+    for (const sys of s.systems) {
+      sys.controllerFactionId = null;
+      sys.homeFactionId = null;
+    }
     stock(s, 'meridian', 'industrialmoon', 4);
     expect(effectiveStats(s, 'meridian').industry).toBe(base + 2);
   });
 
   it('is lost with the world, so it is a target and not an endowment', () => {
     const s = seed();
-    for (const sys of s.systems) sys.controllerFactionId = null;
+    for (const sys of s.systems) {
+      sys.controllerFactionId = null;
+      sys.homeFactionId = null;
+    }
     stock(s, 'meridian', 'industrialmoon', 4);
     const held = effectiveStats(s, 'meridian').industry;
     s.systems.filter((x) => x.controllerFactionId === 'meridian')[0]!.controllerFactionId = 'vigil';
@@ -1911,6 +1919,8 @@ describe('a fixture makes its holder better at something', () => {
     const world = sys(lost, 'ilv-6');
     world.controllerFactionId = 'ojjul';
     delete world.ships.drajk;
+    // Not home ground, so losing it costs the fixture and raises no rally.
+    world.homeFactionId = null;
     expect(effectiveStats(lost, 'drajk').industry).toBe(effectiveStats(bare(), 'drajk').industry);
   });
 

@@ -878,20 +878,55 @@ function alreadyBound(state: WorldState, incoming: Treaty): boolean {
   );
 }
 
-function payTreatyGoodwill(state: WorldState, treaty: Treaty, notes: string[]): void {
+/**
+ * What one party's regard for another gains when they bind themselves to it.
+ *
+ * **The signer's influence decides it** (item 123): `TREATY_GOODWILL` plus the
+ * OTHER party's influence modifier, floored at zero. Influence is "diplomacy,
+ * treaties, propaganda" and for the whole life of the game touched none of
+ * them — the same lines signed the same treaty at influence 5 or 18, because
+ * nothing in the diplomacy path is rolled. This is where a persuasive power
+ * comes out of the same deal better liked, and it compounds the way standing
+ * should: the next conversation starts warmer.
+ *
+ * Bounded by the modifier's range, −5..+5, so 3..13 against a flat 8, and read
+ * off `effectiveStats` so terrain, fixtures, an officer's passive and a rally
+ * all reach it. Treaties only: a commitment's goodwill is a refundable deposit
+ * — paid on establish and taken back on dissolve — and scaling it by an
+ * influence that can change in between would let a power sign high and walk
+ * away low, keeping the difference.
+ */
+export function treatyGoodwillToward(state: WorldState, signer: string, scaled = true): number {
+  if (!scaled) return TREATY_GOODWILL;
+  return Math.max(0, TREATY_GOODWILL + statModifier(effectiveStats(state, signer).influence));
+}
+
+function payTreatyGoodwill(
+  state: WorldState,
+  treaty: Treaty,
+  notes: string[],
+  scaled = true,
+): void {
+  const paid: string[] = [];
   for (const party of treaty.parties) {
     const faction = state.factions.find((f) => f.id === party);
     if (!faction) continue;
     for (const other of treaty.parties) {
       if (other === party) continue;
       if (!state.factions.some((f) => f.id === other)) continue;
+      const gain = treatyGoodwillToward(state, other, scaled);
       faction.disposition[other] = Math.max(
         -100,
-        Math.min(100, (faction.disposition[other] ?? 0) + TREATY_GOODWILL),
+        Math.min(100, (faction.disposition[other] ?? 0) + gain),
       );
+      paid.push(`${nameFor(state, party)} +${gain} toward ${nameFor(state, other)}`);
     }
   }
-  const note = `Bound by treaty: ${treaty.parties.map((p) => nameFor(state, p)).join(' and ')} each gain ${TREATY_GOODWILL} disposition.`;
+  // The journal-8 wording is kept for a flat payment, since it is replayed
+  // into the event log.
+  const note = scaled
+    ? `Bound by treaty: ${paid.join('; ')}.`
+    : `Bound by treaty: ${treaty.parties.map((p) => nameFor(state, p)).join(' and ')} each gain ${TREATY_GOODWILL} disposition.`;
   notes.push(note);
   logEvent(state, 'diplomacy', note, treaty.parties[0] ?? null, [...treaty.parties]);
 }
@@ -1616,6 +1651,16 @@ export interface LegacyRules {
    * and then repeated. Journal version 8.
    */
   uniqueFamilies?: boolean;
+  /**
+   * The standing a treaty pays each party scales with the OTHER party's
+   * influence (item 123); before it, a flat `TREATY_GOODWILL` both ways.
+   * Journal version 9.
+   *
+   * The rally that came in with it is NOT pinned: it lives in `effectiveStats`,
+   * which takes no legacy rules, and journals written before it were accepted
+   * as drifting rather than threading a flag through every caller.
+   */
+  influentialGoodwill?: boolean;
   /** The battle rules from the same playtest. See `BattleRules`. */
   battleRules?: BattleRules;
 }
@@ -1725,6 +1770,7 @@ function applyOpsUnderRules(
     spoilsNeedPresence = true,
     officerUnits = true,
     uniqueFamilies = true,
+    influentialGoodwill = true,
   } = legacy;
   const state = cloneState(input);
   const rejections: OpRejection[] = [];
@@ -3765,7 +3811,7 @@ function applyOpsUnderRules(
           // question is about.
           const renewal = alreadyBound(state, treaty);
           supersedePriorTreaties(state, treaty, notes);
-          if (arrangementStanding && !renewal) payTreatyGoodwill(state, treaty, notes);
+          if (arrangementStanding && !renewal) payTreatyGoodwill(state, treaty, notes, influentialGoodwill);
         }
         logEvent(
           state,
@@ -5917,7 +5963,15 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
 }
 
 function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult {
-  const { arrangementStanding = true, hostages = true, peopleStanding = true, fourSchools = true, uniqueFamilies = true, battleRules = {} } = legacy;
+  const {
+    arrangementStanding = true,
+    hostages = true,
+    peopleStanding = true,
+    fourSchools = true,
+    uniqueFamilies = true,
+    influentialGoodwill = true,
+    battleRules = {},
+  } = legacy;
   const state = cloneState(input);
   const notes: string[] = [];
 
@@ -6273,7 +6327,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     // sites. The legacy flag has to reach the tick for that reason: ten saved
     // campaigns contain `ratifyTurns`, so gating only the signature path would
     // have left half the change live during replay.
-    if (arrangementStanding && !renewal) payTreatyGoodwill(state, treaty, notes);
+    if (arrangementStanding && !renewal) payTreatyGoodwill(state, treaty, notes, influentialGoodwill);
     logEvent(state, 'diplomacy', `Treaty ratified and now in force: ${treaty.summary}.`);
     notes.push(`Ratified: ${treaty.summary}`);
     // A cession takes effect with the rest of the terms, not at signature, so a

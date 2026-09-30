@@ -25,6 +25,8 @@ import {
 import {
   presentAt,
   dissentPenalty,
+  effectiveStats,
+  rallyBonus,
   terrainBonus,
   WORLD_TYPES,
   WORLD_TYPE_STAT,
@@ -100,7 +102,13 @@ export function serializeFactions(
     return [
       `- **${f.name}** (id: \`${f.id}\`)${self}`,
       `  fleet ${fleetStrengthOf(state, f.id)} hulls / ${fleetTonsOf(state, f.id)} tons | credits ${f.credits} | ${held} systems${toward}`,
-      `  stats: ${serializeStats(f.stats)}`,
+      // **Effective, not the base sheet** (item 123). This printed `f.stats`,
+      // so a fixture, an officer's passive, a rally or dissent that moved a
+      // power's numbers reached no prompt that read this line — and every
+      // persona reads it about the leader across the table. A rival's row
+      // leaves out covert debuffs, which the fog hides from everyone but their
+      // victim's own staff.
+      `  stats: ${serializeStats(effectiveStats(state, f.id, isViewer ? {} : { covert: false }))}`,
       // The ethics keep their labels even when trimmed: `expansionist` and
       // `monopolist` are what a power IS, and the arbiter does price an action
       // against them. What goes is the sentence explaining each one, which the
@@ -212,6 +220,22 @@ function commanderLine(state: WorldState, viewerId: string): string {
     `The senior officer, ${officer.name}, is known for ${shape.known} and runs your establishment: ${commanderPassive(officer)}. ${ladder}`,
     'An officer is part of the fleet they stand with. They sail when named in a fleet movement\'s `officers` (a family name is enough) or when the whole port sails; they command only the battle they are at, and fall only when every ship they fought with is lost.',
   ].join('\n');
+}
+
+/**
+ * A power rallying over its occupied homeland, said to the power itself.
+ *
+ * Every capability in the block is already lifted by it, and a lift nobody is
+ * told about cannot be narrated — the reason the dissent line exists, pointed
+ * the other way. Empty while the homeland is whole.
+ */
+function rallyLine(state: WorldState, viewerId: string): string {
+  const lift = rallyBonus(state, viewerId);
+  if (lift <= 0) return '';
+  const lost = state.systems
+    .filter((s) => s.homeFactionId === viewerId && s.controllerFactionId !== viewerId)
+    .map((s) => s.name);
+  return `Your people are rallying: ${lost.join(', ')} ${lost.length === 1 ? 'is' : 'are'} held by others, and might, guile, industry and influence are each +${lift} for it. It lasts while the homeland does not.`;
 }
 
 /** Worlds a power holds that began as somebody else's, by name. */
@@ -514,6 +538,7 @@ export function serializeState(
       ? `Holding ground that was never yours: ${ledger.occupation}/turn, on ${occupiedNames(state, viewerId)}. Institutions built for another state do not administer themselves.`
       : '',
     terrainLine(state, viewerId),
+    rallyLine(state, viewerId),
     commanderLine(state, viewerId),
     // Dissent reduces every stat the model is reasoning about. Omitting it
     // meant a leader could be told its own odds had worsened with no way to

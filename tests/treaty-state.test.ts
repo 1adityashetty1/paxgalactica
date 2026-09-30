@@ -5,7 +5,10 @@ import { MemoryCampaignStore } from '../src/engine/store.js';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import { addShipsAt, ledgerFor, setShipsAt, type WorldState } from '../src/domain/state.js';
 import type { OpInput } from '../src/domain/ops.js';
-import { TREATY_GOODWILL } from '../src/domain/diplomacy.js';
+// The goodwill a signed treaty pays scales with the OTHER party's influence
+// (item 123), so each expectation asks for the figure toward that party rather
+// than restating the flat base.
+import { treatyGoodwillToward as goodwillToward } from '../src/domain/reducer.js';
 import { COMMITMENT_BREAKING_COST } from '../src/domain/arbitration.js';
 
 /**
@@ -604,8 +607,8 @@ describe('signing a treaty is worth standing', () => {
     // filed privately — backwards, since the treaty is the public instrument.
     const before = seed();
     const after = applyOps(before, [pact(['drajk', 'ojjul'])], 'extraction', 'drajk', true).state;
-    expect(view(after, 'drajk', 'ojjul')).toBe(view(before, 'drajk', 'ojjul') + TREATY_GOODWILL);
-    expect(view(after, 'ojjul', 'drajk')).toBe(view(before, 'ojjul', 'drajk') + TREATY_GOODWILL);
+    expect(view(after, 'drajk', 'ojjul')).toBe(view(before, 'drajk', 'ojjul') + goodwillToward(before, 'ojjul'));
+    expect(view(after, 'ojjul', 'drajk')).toBe(view(before, 'ojjul', 'drajk') + goodwillToward(before, 'drajk'));
   });
 
   it('pays nobody else, because the sign of an onlooker’s view is not determinable', () => {
@@ -636,7 +639,7 @@ describe('signing a treaty is worth standing', () => {
     const control = view(tickTurn(before).state, 'drajk', 'ojjul');
     const ratified = tickTurn(pending).state;
     expect(ratified.treaties[0]!.status).toBe('active');
-    expect(view(ratified, 'drajk', 'ojjul')).toBe(control + TREATY_GOODWILL);
+    expect(view(ratified, 'drajk', 'ojjul')).toBe(control + goodwillToward(ratified, 'ojjul'));
   });
 
   it('pays once for one bond — a renewal is not a fresh act of binding', () => {
@@ -651,7 +654,7 @@ describe('signing a treaty is worth standing', () => {
       s = applyOps(s, [pact(['drajk', 'ojjul'])], 'extraction', 'drajk', true).state;
     }
     expect(s.treaties.filter((t) => t.status === 'active')).toHaveLength(1);
-    expect(view(s, 'drajk', 'ojjul')).toBe(view(before, 'drajk', 'ojjul') + TREATY_GOODWILL);
+    expect(view(s, 'drajk', 'ojjul')).toBe(view(before, 'drajk', 'ojjul') + goodwillToward(before, 'ojjul'));
   });
 
   it('pays again for a genuinely different bond', () => {
@@ -668,7 +671,7 @@ describe('signing a treaty is worth standing', () => {
       true,
     ).state;
     expect(view(second, 'drajk', 'ojjul')).toBe(
-      view(before, 'drajk', 'ojjul') + 2 * TREATY_GOODWILL,
+      view(before, 'drajk', 'ojjul') + 2 * goodwillToward(before, 'ojjul'),
     );
   });
 
@@ -690,7 +693,7 @@ describe('signing a treaty is worth standing', () => {
     // on top of it.
     const net = view(broken, 'ojjul', 'drajk') - view(before, 'ojjul', 'drajk');
     expect(net).toBeLessThan(0);
-    expect(net).toBe(TREATY_GOODWILL - 25);
+    expect(net).toBe(goodwillToward(before, 'drajk') - 25);
   });
 });
 

@@ -77,7 +77,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | **120** | every check is logged twice | small | `calls.ts` logs `[check] … -> outcome` and `turn.ts` stages a `log_narrative` with `describeCheck`, `→ outcome` — two entries per roll in the event log, the prompts' recent log and the Log panel |
 | **121** | two escorts take five turns | small | resolution filed "commission two escorts" as `capital_ship_construction`, whose floor is 5; `refit` and `retooling` also deliver `commission_ships` faster. `prompts/resolution.md` lists all three with no guidance on which a light hull wants — the category should follow the hull, and the clamp at least should say so |
 | ~~122~~ | ~~an officer should be a unit, not a record beside the fleet~~ | medium | **BUILT** — `officers` on an order (by family name), aboard when the whole port sails, fall with their contingent rather than on a die, family names unique for the campaign. `JOURNAL_VERSION` 8; all 12 saves replay identically; balance and fleetlab unchanged. Two calls differ from the entry below, and it says which |
-| **123** | influence does nothing at the table, and resolve does nothing but resist | medium | two attributes whose stated meaning has no mechanism behind it. Recommended: standing from a signed arrangement scales with the signer's influence; and **Rally** — each home world lost lifts the other four attributes by an amount resolve sets, capped at +3. Replay pinning for Rally is an open decision; the rejected occupation discount and why are in the entry |
+| ~~123~~ | ~~influence does nothing at the table, and resolve does nothing but resist~~ | medium | **BUILT** — a treaty's standing is `TREATY_GOODWILL` plus the other signer's influence modifier (6–12 on the opening board, pinned to journal 9); **Rally** lifts might, guile, industry and influence by up to +3 per share of homeland lost × resolve (unpinned, as decided — 7 of 12 saves drift); personas read effective stats. The harness cannot see a rally turn a war: bots pick targets by line strength and read no stat |
 
 **Audited 2026-09-23:** every numbered item above 81 is built or closed except
 **92**, **94(b)** and the four added today. Of those, **116** is code and the rest
@@ -158,7 +158,30 @@ can read another's terms and a clause whose whole content is *"track that other
 contract"* is structurally unrepresentable. The fix there is the arbiter *saying
 so* rather than recording it as though it bound something.
 
-## 123. OPEN — influence does nothing at the table, and resolve does nothing but resist
+## 123. BUILT — influence does nothing at the table, and resolve does nothing but resist
+
+**As built.** Both recommendations below, as written, plus the stats-line fix:
+
+- **Influence:** `treatyGoodwillToward` — each party's regard rises by
+  `TREATY_GOODWILL` plus the OTHER party's influence modifier, floored at 0. On
+  the seed: 12 toward Meridian, 11 the Combine, 8 Arkane, 7 Drajk, 6 the Vigil.
+  Treaties only; a commitment's goodwill is refunded on dissolve, and scaling a
+  refundable deposit by a stat that moves would let a power sign high and walk
+  away low. `JOURNAL_VERSION` 9, `influentialGoodwill`.
+- **Rally:** `RALLY_PER_RESOLVE` 0.4, `RALLY_CAP` 3, not pinned (the decision
+  taken on replay): 7 of the 12 saves drift, all of it the rally.
+- **Personas read effective stats**, a rival's row without covert debuffs.
+
+**What the sweep found.** Step 0.2–0.6 × cap 2–3, 30 and 100 bot turns: board
+6/6/5/6/2 and last territory change turn 22 at every setting, rally or none.
+It fires — Drajk rallies 14 of 30 turns, 84 of 100, up to +3 — and lifts the
+poorest 100-turn net from −102 to −88, but the bots choose targets by line
+strength and read no stat, so none ever turns its rally into a counterattack.
+Whether it works as a comeback is a question for a played campaign, and **the
+bots' blindness to their own stats is the follow-up worth filing** if it does
+not show there.
+
+### The entry as filed
 
 Found by asking what each attribute is rolled against. Every declared action
 rolls a d20 against whichever of the five the arbiter picks, and beyond that

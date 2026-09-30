@@ -12,7 +12,6 @@ import { loadPrompt } from '../src/model/prompts.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { groundInConcessions } from '../src/engine/turn.js';
 import {
-  TREATY_GOODWILL,
   assetWorthTo,
   atThisTable,
   mergeConcessions,
@@ -20,7 +19,7 @@ import {
 } from '../src/domain/diplomacy.js';
 import { HOSTAGE_ROLL, hostageTaken } from '../src/domain/command.js';
 import { boundPayloadsToOutcome } from '../src/domain/development.js';
-import { applyOps, COERCION_RESENTMENT, tickTurn } from '../src/domain/reducer.js';
+import { applyOps, COERCION_RESENTMENT, tickTurn, treatyGoodwillToward } from '../src/domain/reducer.js';
 import {
   hullsAt,
   addShipsAt,
@@ -871,7 +870,7 @@ describe('signing under a fleet costs the power holding the fleet', () => {
     // than folded into one literal: this test pins the coercion charge, and a
     // number with the goodwill silently absorbed into it would stop saying so.
     expect(dispositionToward(out.state, 'freeworlds', 'vigil')).toBe(
-      before + TREATY_GOODWILL - COERCION_RESENTMENT,
+      before + treatyGoodwillToward(state, 'vigil') - COERCION_RESENTMENT,
     );
     expect(out.notes.join(' ')).toMatch(/ships over 1 of its worlds/);
   });
@@ -882,7 +881,7 @@ describe('signing under a fleet costs the power holding the fleet', () => {
     const out = applyOps(state, [accord], 'extraction', 'freeworlds');
     // No coercion term: what moves is the goodwill of having signed, and
     // nothing else.
-    expect(dispositionToward(out.state, 'freeworlds', 'vigil')).toBe(before + TREATY_GOODWILL);
+    expect(dispositionToward(out.state, 'freeworlds', 'vigil')).toBe(before + treatyGoodwillToward(out.state, 'vigil'));
   });
 
   it('does not charge a guest who was invited in', () => {
@@ -907,7 +906,7 @@ describe('signing under a fleet costs the power holding the fleet', () => {
     const before = dispositionToward(invited, 'freeworlds', 'vigil');
 
     const out = applyOps(invited, [accord], 'extraction', 'freeworlds');
-    expect(dispositionToward(out.state, 'freeworlds', 'vigil')).toBe(before + TREATY_GOODWILL);
+    expect(dispositionToward(out.state, 'freeworlds', 'vigil')).toBe(before + treatyGoodwillToward(out.state, 'vigil'));
   });
 });
 

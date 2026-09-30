@@ -2180,6 +2180,70 @@ export function dissentPenalty(dissent: number): number {
 }
 
 /**
+ * The most a rally can lift one attribute: the ceiling `MAX_WORLD_BONUS` sets
+ * for terrain on the same 1–20 scale, against `MAX_DISSENT_PENALTY`'s 8. A
+ * real lift for a power on the back foot, not a reversal of the war.
+ */
+export const RALLY_CAP = 3;
+
+/**
+ * Rally points per point of resolve, per whole homeland lost.
+ *
+ * `floor(share lost x resolve x this)`: at 0.4 a power at resolve 10 gains a
+ * point per home world lost out of four, the Iron Vigil at 17 reaches the cap
+ * at half its homeland gone, and Meridian at 9 needs two worlds lost for its
+ * first point — resolve decides how hard a people rallies, which is what the
+ * stat is for.
+ */
+export const RALLY_PER_RESOLVE = 0.4;
+
+/** Resolve is excluded, so a rally cannot feed the thing that sizes it. */
+export const RALLY_STATS = ['might', 'guile', 'industry', 'influence'] as const;
+
+/**
+ * The share of a power's home ground held by somebody else, 0..1.
+ *
+ * Home ground is `homeFactionId` — who held each world at turn 0, never
+ * rewritten — and every power opens with four, so this moves in equal quarters
+ * for everyone. Measured against a power's OWN homeland rather than its size:
+ * Drajk is small by design and the Combine rules from a few worlds and a great
+ * deal of paper, and an absolute measure would buff both forever for being what
+ * they are. A save from before `homeFactionId` has no home ground and never
+ * rallies.
+ */
+export function homelandLost(state: WorldState, factionId: string): number {
+  const home = state.systems.filter((s) => s.homeFactionId === factionId);
+  if (home.length === 0) return 0;
+  return home.filter((s) => s.controllerFactionId !== factionId).length / home.length;
+}
+
+/**
+ * Resolve's active side (item 123): a power that has lost its home ground
+ * rallies, lifting might, guile, industry and influence by up to `RALLY_CAP`.
+ *
+ * **It pays off on the back foot**, which is the whole design. Every clause of
+ * resolve's description — sieges endured, unrest suppressed, programmes not
+ * abandoned — is about enduring, so its active lever is a brake on whoever is
+ * losing rather than an accelerator for whoever is ahead. It limits itself: a
+ * power that rallies and retakes its ground loses the rally as it does.
+ *
+ * `resolve` is passed in rather than read, so `effectiveStats` can hand over
+ * the figure terrain, the officer and fixtures have already shaped. Read where
+ * it is used, like every other stat term here, because a per-turn mutation
+ * would compound instead of recurring.
+ *
+ * The rejected alternative — a cheaper occupation for a resolute holder — is in
+ * `docs/todo.md` 123: it landed almost wholly on the Iron Vigil, the one power
+ * pairing high resolve with a conquering doctrine.
+ */
+export function rallyBonus(state: WorldState, factionId: string, resolve?: number): number {
+  const share = homelandLost(state, factionId);
+  if (share <= 0) return 0;
+  const r = resolve ?? getFaction(state, factionId)?.stats.resolve ?? 10;
+  return Math.min(RALLY_CAP, Math.floor(share * r * RALLY_PER_RESOLVE + 1e-9));
+}
+
+/**
  * Effective stats after covert interference AND internal dissent.
  *
  * A `stat_debuff` agent makes its target measurably worse at something. So does
@@ -2188,7 +2252,17 @@ export function dissentPenalty(dissent: number): number {
  * read from here rather than straight off the faction, so refusing to govern in
  * character has a running cost rather than being a free "no".
  */
-export function effectiveStats(state: WorldState, factionId: string): FactionStats {
+export function effectiveStats(
+  state: WorldState,
+  factionId: string,
+  /**
+   * `covert: false` leaves out rival `stat_debuff` operatives — the stats as
+   * anybody but the victim's own dissent-ridden staff could see them. What a
+   * prompt shows about ANOTHER power, since an unexposed operative's effect is
+   * exactly what the fog hides; `CampaignView.effective` makes the same cut.
+   */
+  opts: { covert?: boolean } = {},
+): FactionStats {
   const faction = getFaction(state, factionId);
   const base: FactionStats = faction
     ? { ...faction.stats }
@@ -2233,12 +2307,21 @@ export function effectiveStats(state: WorldState, factionId: string): FactionSta
     if (bonus !== 0) base[stat] = Math.max(1, Math.min(20, base[stat] + bonus));
   }
 
+  // **A people whose homeland is occupied rallies** — see `rallyBonus`. After
+  // terrain, the officer and fixtures, so it reads the resolve those left, and
+  // before dissent for terrain's reason: an occupied homeland can offset a bad
+  // leader rather than vanishing under the floor.
+  const rally = rallyBonus(state, factionId, base.resolve);
+  if (rally > 0) {
+    for (const stat of RALLY_STATS) base[stat] = Math.min(20, base[stat] + rally);
+  }
+
   const penalty = dissentPenalty(faction?.dissent ?? 0);
   if (penalty > 0) {
     for (const stat of STAT_NAMES) base[stat] = Math.max(1, base[stat] - penalty);
   }
 
-  for (const agent of state.agents ?? []) {
+  for (const agent of opts.covert === false ? [] : (state.agents ?? [])) {
     if (agent.exposed || agent.ownerFactionId === factionId) continue;
     if (agent.effect.kind !== 'stat_debuff') continue;
     const host = getSystem(state, agent.systemId);

@@ -37,6 +37,7 @@ import {
   dissentPenalty,
   MAX_DISSENT_PENALTY,
   effectiveStats,
+  rallyBonus,
   systemIncome,
   fixturesAt,
   statFixtureAt,
@@ -217,7 +218,13 @@ function Factions({
                   <div
                     key={s}
                     className="stat"
-                    title={reduced ? `${s} ${live} (base ${base}, reduced by ${base - live})` : `${s} ${live}`}
+                    title={
+                      reduced
+                        ? `${s} ${live} (base ${base}, reduced by ${base - live})`
+                        : live > base
+                          ? `${s} ${live} (base ${base}, raised by ${live - base})`
+                          : `${s} ${live}`
+                    }
                   >
                     <span className="stat-name">{s.slice(0, 3)}</span>
                     <span className="stat-bar">
@@ -238,6 +245,21 @@ function Factions({
               >
                 dissent {f.dissent}/100
                 {penalty > 0 && <span className="bad"> · −{penalty} to every stat</span>}
+              </div>
+            )}
+            {/* A rally lifts the bars above, and a lift nobody can read the
+                cause of is the lie the dissent line exists to prevent, run the
+                other way. Shown for every power: whose homeland is occupied is
+                a fact on the map, not a secret. */}
+            {rallyBonus(state, f.id) > 0 && (
+              <div
+                className="rally"
+                title={`Home worlds held by others: ${state.systems
+                  .filter((s) => s.homeFactionId === f.id && s.controllerFactionId !== f.id)
+                  .map((s) => s.name)
+                  .join(', ')}. Resolve decides how hard a people rallies; it lasts while the homeland does not.`}
+              >
+                rallying · <span className="good">+{rallyBonus(state, f.id)} might, guile, industry, influence</span>
               </div>
             )}
             <div className="ethics">
