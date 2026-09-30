@@ -268,6 +268,8 @@ export const CampaignViewSchema = z.object({
   name: z.string(),
   /** Turns this campaign runs for, or null for one with no ending. */
   maxTurns: z.number().int().nullable(),
+  /** The one random event a sandbox campaign fires every turn, or null. */
+  sandboxEvent: RimEventKindSchema.nullable().default(null),
   /** Set once time has run out. While it is present the campaign is read-only. */
   epilogue: EpilogueViewSchema.nullable(),
 });
@@ -446,6 +448,11 @@ export const NewCampaignRequestSchema = z.object({
    * which is what every campaign was before this existed.
    */
   maxTurns: z.number().int().min(10).max(100).optional(),
+  /**
+   * A sandbox for looking at one random event (item 124): only that kind fires,
+   * every turn, on a board set up so it can happen to the player.
+   */
+  sandboxEvent: RimEventKindSchema.optional(),
 });
 
 export const ActionRequestSchema = z.object({

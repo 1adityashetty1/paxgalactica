@@ -413,3 +413,40 @@ describe('the flavour line', () => {
     expect(JSON.stringify(session.view().state.rimEvents)).not.toContain(flavour.line);
   });
 });
+
+describe('a sandbox: one event, every turn, and nothing else touched', () => {
+  it('fires its one kind at the player on every turn, and replays exactly', () => {
+    for (const kind of RIM_EVENT_KINDS) {
+      const c = Campaign.start('freeworlds', `sandbox_${kind}`, new MemoryCampaignStore(), undefined, kind);
+      for (let t = 1; t <= 3; t++) {
+        c.tick();
+        const fresh = briefingFromState(c.state).events.filter((e) => !e.ongoing);
+        expect(fresh.map((e) => e.kind), `${kind} turn ${t}`).toEqual([kind]);
+      }
+      expect(c.verifyReplay().ok, kind).toBe(true);
+    }
+  });
+
+  it('is opt-in: a real campaign carries no sandbox and draws as it always did', () => {
+    const real = Campaign.start('freeworlds', 'real', new MemoryCampaignStore());
+    expect(real.sandboxEvent).toBeNull();
+    expect(real.journal.entries[0]).not.toHaveProperty('sandboxEvent');
+    const s = fresh();
+    for (let t = 1; t <= 20; t++) {
+      s.turn = t;
+      expect(drawRimEvent(s, undefined)).toEqual(drawRimEvent(s));
+    }
+  });
+
+  it('saves under its own name, so it can never overwrite a campaign being played', async () => {
+    const store = new MemoryCampaignStore();
+    const session = new GameSession(store, () => {});
+    await session.newCampaign('freeworlds', 'campaign');
+    await session.endTurn();
+    const played = JSON.stringify(await store.load('campaign'));
+    const view = await session.newCampaign('vigil', 'campaign', undefined, 'mutiny');
+    expect(view.name).toBe('sandbox_mutiny');
+    expect(view.sandboxEvent).toBe('mutiny');
+    expect(JSON.stringify(await store.load('campaign'))).toBe(played);
+  });
+});

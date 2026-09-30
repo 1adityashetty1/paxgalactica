@@ -3754,6 +3754,24 @@ journal's ticks pass without events and without `lastClash`. All 12 saved
 campaigns replay identically. `pnpm fleetlab` ticks with events off: its arena
 strips the galaxy out, and volunteers landing mid-trial would be noise.
 
+### A sandbox, for looking at one event
+
+Waiting for a particular event in a real campaign is waiting on a d20, a
+cooldown and a board that happens to make it eligible. A **sandbox** campaign
+fires one chosen kind every turn instead — no d20, no cooldowns, aimed at the
+player whenever a candidate is — on an opening board `primeRimSandbox` sets up so
+the event can happen to them: escorts over unclaimed ground for a derelict, two
+occupied worlds for unrest, dissent at 60 for a mutiny, and so on.
+
+**It is isolated by construction.** The kind lives on the journal's seed entry,
+beside `maxTurns`, so it replays; a campaign without it takes exactly the path
+it always did, and all 15 saves replay byte-identically with the sandbox code
+present. The server saves a sandbox as `sandbox_<kind>` whatever name the
+request asked for, so it can never overwrite a campaign being played. Chosen on
+the faction picker, and labelled in the top bar. Some kinds run dry after a few
+turns — garrisons back at their ceiling, a war thawed into peace — which is the
+mechanic working.
+
 ### Measured, and the split does not decide the board
 
 `pnpm balance [turns] --no-events` is the control. Swept over the hazard/boon

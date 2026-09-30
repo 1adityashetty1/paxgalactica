@@ -346,12 +346,102 @@ export function rimEventFires(turn: number): boolean {
 /**
  * This turn's event, or null. Pure: the same board on the same turn draws the
  * same event, which is all replay needs.
+ *
+ * `sandbox` is a testing campaign's rule (see `primeRimSandbox`): that one kind,
+ * every turn, with no d20 and no cooldowns — and aimed at the player whenever a
+ * candidate is, so a power's private event lands where the player can see it.
  */
-export function drawRimEvent(state: WorldState): RimEventPlan | null {
+export function drawRimEvent(state: WorldState, sandbox?: RimEventKind): RimEventPlan | null {
+  if (sandbox !== undefined) {
+    const all = candidatesFor(state, sandbox).filter((c) => c.weight > 0);
+    const mine = all.filter((c) => c.subjects.includes(state.playerFactionId));
+    const pool = mine.length > 0 ? mine : all;
+    return weighted(pool, (c) => c.weight, draw400(state.turn, 'rim:where'))?.plan ?? null;
+  }
   if (!rimEventFires(state.turn)) return null;
   const pool = eligibleRimEvents(state);
   const chosen = weighted(pool, (e) => RIM_EVENT_WEIGHT[e.kind], draw400(state.turn, 'rim:which'));
   if (!chosen) return null;
   const target = weighted(chosen.candidates, (c) => c.weight, draw400(state.turn, 'rim:where'));
   return target?.plan ?? null;
+}
+
+/**
+ * Set a fresh board up so one kind of event can happen to the player at once —
+ * the other half of a sandbox campaign, which fires only that kind, every
+ * turn, for looking at it.
+ *
+ * Changes to the opening board, not to the rules: an event still has to be
+ * eligible, so this makes it eligible. Applied to the seed in `Campaign.start`
+ * and again in `replay`, off the journal's seed entry, so a sandbox rebuilds
+ * exactly. Some kinds run dry after a few turns — a garrison raised to its
+ * ceiling, an occupied world that has slipped — which is the mechanic working.
+ */
+export function primeRimSandbox(state: WorldState, kind: RimEventKind): WorldState {
+  const me = state.playerFactionId;
+  const player = state.factions.find((f) => f.id === me)!;
+  const adj = buildAdjacency(state.systems);
+  const mine = worlds(state).filter((s) => s.controllerFactionId === me);
+  const nextToMine = (s: { id: string }) => mine.some((m) => adj.get(m.id)?.has(s.id));
+  switch (kind) {
+    case 'derelict': {
+      // Ships over the nearest ground nobody holds.
+      const empty =
+        worlds(state).find((s) => s.controllerFactionId === null && nextToMine(s)) ??
+        worlds(state).find((s) => s.controllerFactionId === null);
+      if (empty) empty.ships[me] = { ...(empty.ships[me] ?? {}), escort: (empty.ships[me]?.escort ?? 0) + 2 };
+      break;
+    }
+    case 'unrest': {
+      // Two of a neighbour's home worlds, taken before the campaign began.
+      const taken = worlds(state)
+        .filter((s) => s.homeFactionId !== null && s.homeFactionId !== me && nextToMine(s))
+        .slice(0, 2);
+      for (const s of taken) {
+        for (const id of Object.keys(s.ships)) if (id !== me) delete s.ships[id];
+        s.controllerFactionId = me;
+      }
+      break;
+    }
+    case 'mutiny':
+      player.dissent = Math.max(player.dissent, 60);
+      break;
+    case 'volunteers':
+      for (const s of mine) s.garrison = 1;
+      break;
+    case 'shortage': {
+      // Every kind of goods on the shelf, so a shortage is always eligible for
+      // one while the others run their three turns.
+      const at = mine[0];
+      if (!at) break;
+      const others = Object.fromEntries(state.factions.filter((f) => f.id !== me).map((f) => [f.id, 3]));
+      for (const k of ['ore', 'relic'] as const) {
+        state.assets.push({
+          id: `ast-sandbox-${k}`, kind: k, text: `Sandbox ${k}`, heldBy: me, quantity: 10,
+          unit: k === 'ore' ? 'ton' : 'relic', divisible: k === 'ore', valuePerUnit: others,
+          speculative: false, valueRange: {}, uses: null, atSystemId: at.id, portable: true,
+          yield: null, acquiredTurn: 0, commanderId: null, agentId: null,
+        });
+      }
+      break;
+    }
+    case 'envoys_of_peace': {
+      // A war with a power the player shares no border with, deep enough for
+      // several envoys, quiet since before the campaign began.
+      const reach = new Set(mine.flatMap((m) => [...(adj.get(m.id) ?? [])]));
+      const far =
+        powers(state).find(
+          (f) => f.id !== me && !worlds(state).some((s) => s.controllerFactionId === f.id && reach.has(s.id)),
+        ) ?? powers(state).find((f) => f.id !== me)!;
+      player.disposition[far.id] = -95;
+      far.disposition[me] = -95;
+      state.treaties = state.treaties.filter((t) => !(t.parties.includes(me) && t.parties.includes(far.id)));
+      state.lastClash[clashKey(me, far.id)] = -ENVOYS_QUIET_TURNS;
+      break;
+    }
+    default:
+      // A storm, a border incident, a windfall and free captains need nothing.
+      break;
+  }
+  return state;
 }

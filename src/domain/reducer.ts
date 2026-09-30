@@ -124,6 +124,7 @@ import {
   SHORTAGE_TURNS,
   VOLUNTEERS_MAX,
   type RimEvent,
+  type RimEventKind,
 } from './events.js';
 import { clashKey, drawRimEvent, type RimEventPlan } from './pulse.js';
 import {
@@ -1680,6 +1681,12 @@ export interface LegacyRules {
    * existed, whose ticks really did pass without one.
    */
   randomEvents?: boolean;
+  /**
+   * A sandbox campaign's one event (see `primeRimSandbox`): that kind every
+   * turn, with no d20 and no cooldowns. Not a rule the game acquired — a rule
+   * of that campaign, read off its journal's seed entry.
+   */
+  rimSandbox?: RimEventKind;
   /** The battle rules from the same playtest. See `BattleRules`. */
   battleRules?: BattleRules;
 }
@@ -5996,6 +6003,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     uniqueFamilies = true,
     influentialGoodwill = true,
     randomEvents = true,
+    rimSandbox,
     battleRules = {},
   } = legacy;
   const state = cloneState(input);
@@ -7130,7 +7138,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
         }
       }
     }
-    const plan = drawRimEvent(state);
+    const plan = drawRimEvent(state, rimSandbox);
     if (plan) report.events.push(applyRimEvent(state, plan));
   }
 

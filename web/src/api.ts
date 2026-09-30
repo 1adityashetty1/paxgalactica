@@ -15,6 +15,7 @@ import {
   type TurnOutcomeResponse,
 } from '../../src/api/contract.js';
 import type { Cheat } from '../../src/domain/cheats.js';
+import type { RimEventKind } from '../../src/domain/events.js';
 
 /**
  * Typed client for the game server.
@@ -93,8 +94,13 @@ export const api = {
 
   campaign: () => request(ROUTES.campaign, CampaignViewSchema),
 
-  newCampaign: (factionId: string, name = 'campaign', maxTurns?: number): Promise<CampaignView> =>
-    request(ROUTES.newCampaign, CampaignViewSchema, post({ factionId, name, maxTurns })),
+  newCampaign: (
+    factionId: string,
+    name = 'campaign',
+    maxTurns?: number,
+    sandboxEvent?: RimEventKind,
+  ): Promise<CampaignView> =>
+    request(ROUTES.newCampaign, CampaignViewSchema, post({ factionId, name, maxTurns, sandboxEvent })),
 
   resume: (name: string): Promise<CampaignView> =>
     request(ROUTES.resume, CampaignViewSchema, post({ name })),

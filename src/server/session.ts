@@ -18,7 +18,7 @@ import { FileCampaignStore, type CampaignStore } from '../engine/store.js';
 import { closeChannel, endTurn, writeEpilogue, submitAction } from '../engine/turn.js';
 import type { ActionOutcome } from '../engine/turn.js';
 import { askAdvisor, diplomacyReply, dressRimEvent, type ChatMessage } from '../model/calls.js';
-import { rimEventsVisibleTo } from '../domain/events.js';
+import { rimEventsVisibleTo, type RimEventKind } from '../domain/events.js';
 import { effectiveStats, getFaction } from '../domain/state.js';
 import { playableFactions } from '../seed/scenario.js';
 import { ApiFailure, toApiFailure } from './errors.js';
@@ -222,6 +222,7 @@ export class GameSession {
       actionPoints: { left: campaign.actionPointsLeft, perTurn: ACTION_POINTS_PER_TURN },
       name: campaign.name,
       maxTurns: campaign.maxTurns,
+      sandboxEvent: campaign.sandboxEvent,
       epilogue: this.epilogue,
     };
   }
@@ -282,12 +283,20 @@ export class GameSession {
 
   /* ---------------- lifecycle ---------------- */
 
-  async newCampaign(factionId: string, name: string, maxTurns?: number): Promise<CampaignView> {
+  async newCampaign(
+    factionId: string,
+    name: string,
+    maxTurns?: number,
+    sandboxEvent?: RimEventKind,
+  ): Promise<CampaignView> {
     if (!playableFactions().some((f) => f.id === factionId)) {
       throw new ApiFailure('bad_request', `Unknown faction "${factionId}".`);
     }
-    this.campaign = Campaign.start(factionId, name, this.store, maxTurns);
-    this.traceTo(name);
+    // A sandbox is saved under its own name whatever the request asked for, so
+    // looking at an event can never overwrite a campaign being played.
+    const saveAs = sandboxEvent === undefined ? name : `sandbox_${sandboxEvent}`;
+    this.campaign = Campaign.start(factionId, saveAs, this.store, maxTurns, sandboxEvent);
+    this.traceTo(saveAs);
     this.openChannel = null;
     this.channelHistory = [];
     this.channelConcessions = [];

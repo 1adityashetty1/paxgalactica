@@ -9,6 +9,7 @@ import { spliceLog } from '../../src/ui/logview.js';
 import { api, ApiError } from './api.js';
 import type { OutcomeArtKind } from './components/OutcomeArt.js';
 import type { BriefingEventView } from '../../src/api/contract.js';
+import { RIM_EVENT_TITLE, type RimEventKind } from '../../src/domain/events.js';
 
 export interface Message {
   id: number;
@@ -176,15 +177,25 @@ export function useGame() {
   );
 
   const start = useCallback(
-    (factionId: string, maxTurns: number) =>
+    (factionId: string, maxTurns: number, sandboxEvent?: RimEventKind) =>
       guard(async () => {
-        const v = await api.newCampaign(factionId, 'campaign', maxTurns);
+        // A sandbox gets its own save, so looking at an event never overwrites
+        // the campaign being played.
+        const v = await api.newCampaign(
+          factionId,
+          sandboxEvent ? `sandbox_${sandboxEvent}` : 'campaign',
+          maxTurns,
+          sandboxEvent,
+        );
         setView(v);
         setNeedsCampaign(false);
         setMessages([]);
         say(`You command the ${v.state.factions.find((f) => f.id === factionId)?.name}.`, 'system');
         if (v.maxTurns !== null) {
           say(`The campaign runs ${v.maxTurns} turns. Make them count.`, 'brief');
+        }
+        if (v.sandboxEvent) {
+          say(`Sandbox: only ${RIM_EVENT_TITLE[v.sandboxEvent].toLowerCase()} fires, every turn. End a turn to see it.`, 'brief');
         }
       }),
     [guard, say],

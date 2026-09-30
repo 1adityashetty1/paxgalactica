@@ -11,6 +11,7 @@ import { FactionPicker } from './components/FactionPicker.js';
 import { GalaxyMap } from './components/GalaxyMap.js';
 import { OutcomeArt } from './components/OutcomeArt.js';
 import { RimEventCard } from './components/RimEventCard.js';
+import { RIM_EVENT_TITLE } from '../../src/domain/events.js';
 import { EpilogueStage } from './components/EpilogueStage.js';
 import { PortraitStage } from './components/PortraitStage.js';
 import { SidePanel } from './components/SidePanel.js';
@@ -294,6 +295,11 @@ export function App() {
       <header className="topbar">
         <span className="title">PAX GALACTICA</span>
         <span className="turn">Turn {view.state.turn}</span>
+        {view.sandboxEvent && (
+          <span className="pill" title="Only this random event fires, every turn. Not a real campaign.">
+            sandbox: {RIM_EVENT_TITLE[view.sandboxEvent].toLowerCase()}
+          </span>
+        )}
         <span style={{ color: player ? ansi256ToHex(player.displayColor) : undefined }}>
           {player?.name}
         </span>
