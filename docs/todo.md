@@ -78,7 +78,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | **121** | two escorts take five turns | small | resolution filed "commission two escorts" as `capital_ship_construction`, whose floor is 5; `refit` and `retooling` also deliver `commission_ships` faster. `prompts/resolution.md` lists all three with no guidance on which a light hull wants — the category should follow the hull, and the clamp at least should say so |
 | ~~122~~ | ~~an officer should be a unit, not a record beside the fleet~~ | medium | **BUILT** — `officers` on an order (by family name), aboard when the whole port sails, fall with their contingent rather than on a die, family names unique for the campaign. `JOURNAL_VERSION` 8; all 12 saves replay identically; balance and fleetlab unchanged. Two calls differ from the entry below, and it says which |
 | ~~123~~ | ~~influence does nothing at the table, and resolve does nothing but resist~~ | medium | **BUILT** — a treaty's standing is `TREATY_GOODWILL` plus the other signer's influence modifier (6–12 on the opening board, pinned to journal 9); **Rally** lifts might, guile, industry and influence by up to +3 per share of homeland lost × resolve (unpinned, as decided — 7 of 12 saves drift); personas read effective stats. The harness cannot see a rally turn a war: bots pick targets by line strength and read no stat |
-| **124** | random events: the Rim moves on its own | medium | six base events resolved in the advance-turn tick — deterministic state changes, a Haiku line of flavour after the fact, and surfaced in the feed the way a veto is so none is missable. Catalogue, rules and the surfacing are in the entry below |
+| **124** | random events: the Rim moves on its own | medium | six hazards and four boons, resolved in the advance-turn tick — deterministic state changes, a Haiku line of flavour after the fact, and surfaced in the feed the way a veto is so none is missable. Catalogue, rules and the surfacing are in the entry below |
 
 **Audited 2026-09-23:** every numbered item above 81 is built or closed except
 **92**, **94(b)** and the four added today. Of those, **116** is code and the rest
@@ -203,6 +203,36 @@ flavour:
 | **Shortage** | an asset kind is held by somebody | that kind's value per unit rises for every power that wants it, for a few turns | kinds with more than one interested buyer |
 | **Mutiny** | a power's dissent is above a threshold | a small squadron deserts, through the insolvency attrition path | dissent |
 
+### And four that help
+
+Of the six, only the derelict is plainly good news, so four boons join them.
+**They lean the other way from the hazards:** where a bad event is weighted
+toward the powerful, a good one is weighted toward the power on the back foot —
+the Rally principle again (item 123), so luck is a brake on whoever is ahead
+rather than a second engine for them.
+
+| event | eligible when | what it does | weighted toward |
+|---|---|---|---|
+| **Rich seam** | a power holds a world | a one-off windfall of a few turns of that world's own income | the poorest net |
+| **Volunteers** | a world a power holds is below its garrison ceiling | the garrison is raised toward the ceiling, the `raise_garrison` effect without the order | worlds with rival ships in orbit or one jump out |
+| **Free captains** | a power holds a world | a small squadron of a few tons joins at that world, unbilled | the smallest fleet |
+| **Envoys of peace** | two powers at war have fought no battle between them for several turns | both regain some standing with each other | the longest-quiet wars |
+
+Two notes on these:
+
+- **A windfall is the one place an event mints money**, and that is why it is
+  bounded by the world's own income rather than a figure: the rule this economy
+  holds everywhere else is that nothing produces credits from nowhere, and a
+  multiple of what a world already pays is a lot of a harvest, not an invention.
+- **Envoys of peace answers a gap this file already names.** Disposition has no
+  decay, so a war-ending ceasefire leaves a pair exactly where the signature did
+  and a timed treaty is *a war on a timer*. An event that only fires on a quiet
+  war is a small, occasional thaw, not a decay model, and leaves the ratchet
+  decision where it belongs.
+
+The boons get cards in the feed like the hazards, with their own art, so good
+news is as hard to miss as bad.
+
 Choice events (Stellaris-style fixed options with prices) and multi-turn
 situations with progress bars (EU4 disasters, Stellaris situations) are the
 second step, not this one.
@@ -215,7 +245,7 @@ second step, not this one.
   the edit is where the thinking happens. Journaled, so replay reproduces every
   event, and pinned to a journal version so an older campaign replays without
   them.
-- **Rate-limited.** At most one event a turn to start, a cooldown per event and
+- **Rate-limited.** At most one event a turn to start, drawn from the ten, a cooldown per event and
   per power, and a low base chance, so a quiet turn stays quiet. Stellaris and
   CK3 both learned event spam the hard way.
 - **Fog applies.** Most of these are public (a storm, a border incident). One
