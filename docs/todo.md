@@ -303,6 +303,21 @@ trimming cannot separate the two). An event gets the same treatment:
 - **Missing art renders nothing**, falling back to the text card — the rule
   `OutcomeArt` already follows — so the wiring can ship before the images.
 
+**The art is vetted by the user before any of it merges.** Ten images is ten
+chances to repeat what refusal and defiance went through — a barred door that
+read as an abstraction, a stamp that read as a tube — and those faults were
+found by looking, not by the suite. So the build is split:
+
+1. **Mechanics and the text card first**, in their own PR: the pulse, the ten
+   events, the Haiku line, the feed card and the briefing group, with no images.
+   Complete and playable on the fallback.
+2. **Art second, one kind at a time, for review.** Each image is rendered out as
+   a PNG at the size it is actually shown in the feed, and at a larger size, and
+   put in front of the user with the event line beside it. Nothing is committed
+   to the art branch until it is approved; a rejected image goes back with the
+   reason, the way the refusal stamp did.
+
+
 ## 123. BUILT — influence does nothing at the table, and resolve does nothing but resist
 
 **As built.** Both recommendations below, as written, plus the stats-line fix:
