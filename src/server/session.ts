@@ -17,7 +17,8 @@ import { Campaign, ACTION_POINTS_PER_TURN, type StagedBinding } from '../engine/
 import { FileCampaignStore, type CampaignStore } from '../engine/store.js';
 import { closeChannel, endTurn, writeEpilogue, submitAction } from '../engine/turn.js';
 import type { ActionOutcome } from '../engine/turn.js';
-import { askAdvisor, diplomacyReply, type ChatMessage } from '../model/calls.js';
+import { askAdvisor, diplomacyReply, dressRimEvent, type ChatMessage } from '../model/calls.js';
+import { rimEventsVisibleTo } from '../domain/events.js';
 import { effectiveStats, getFaction } from '../domain/state.js';
 import { playableFactions } from '../seed/scenario.js';
 import { ApiFailure, toApiFailure } from './errors.js';
@@ -185,6 +186,9 @@ export class GameSession {
         ...campaign.state,
         pendingOrders: seen.orders,
         eventLog: from === 0 ? visibleLog : visibleLog.slice(from),
+        // A power's own affairs — a rival's mutiny, its windfall — by the
+        // same rule the log above is cut by.
+        rimEvents: rimEventsVisibleTo(campaign.state, player),
       },
       eventLogFrom: from,
       eventLogTotal: visibleLog.length,
@@ -232,6 +236,48 @@ export class GameSession {
 
   private pushState(): void {
     if (this.campaign) this.emit({ type: 'state', view: this.view(LOG_PUSH_TAIL) });
+  }
+
+  /**
+   * The flavour pass over this turn's random events (item 124), in flight.
+   * Exposed so a test can wait for it; nothing in the game does.
+   */
+  dressing: Promise<void> = Promise.resolve();
+
+  /**
+   * Have a model dress this turn's event for the player — and never wait for it.
+   *
+   * The event is decided in the tick, which runs after the reactions, so the
+   * call cannot run alongside them; blocking on it would add a Haiku round trip
+   * to every other end of turn. So the turn returns with the plain line, which
+   * is complete on its own, and the dressed line arrives on the next state
+   * push, where the briefing — and the feed card reading it — picks it up.
+   *
+   * It can fail in every way and cost nothing but the colour: any error, and a
+   * line that invents a number, leave the plain line standing. And it lands only
+   * on the briefing it was written for, so a turn ended in the meantime is not
+   * handed the last one's weather.
+   */
+  private dressEvents(briefing: Briefing): void {
+    const fresh = briefing.events.filter((e) => !e.ongoing);
+    if (fresh.length === 0) return;
+    this.dressing = (async () => {
+      for (const event of fresh) {
+        try {
+          const { line } = await dressRimEvent(event.title, event.text);
+          if (line === null) continue;
+          const current = this.lastBriefing;
+          if (current === null || current.turn !== briefing.turn) return;
+          this.lastBriefing = {
+            ...current,
+            events: current.events.map((e) => (e.id === event.id ? { ...e, flavour: line } : e)),
+          };
+          this.pushState();
+        } catch {
+          // The plain line stands, which is what a player had before the call.
+        }
+      }
+    })();
   }
 
   /* ---------------- lifecycle ---------------- */
@@ -451,6 +497,7 @@ export class GameSession {
       );
       const briefing = buildBriefing(campaign.state, outcome.report);
       this.lastBriefing = briefing;
+      this.dressEvents(briefing);
 
       // Time ran out on this turn. The ending is written once, here, and cached
       // on the campaign — never regenerated, so reopening a finished campaign

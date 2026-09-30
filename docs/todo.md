@@ -78,7 +78,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | **121** | two escorts take five turns | small | resolution filed "commission two escorts" as `capital_ship_construction`, whose floor is 5; `refit` and `retooling` also deliver `commission_ships` faster. `prompts/resolution.md` lists all three with no guidance on which a light hull wants — the category should follow the hull, and the clamp at least should say so |
 | ~~122~~ | ~~an officer should be a unit, not a record beside the fleet~~ | medium | **BUILT** — `officers` on an order (by family name), aboard when the whole port sails, fall with their contingent rather than on a die, family names unique for the campaign. `JOURNAL_VERSION` 8; all 12 saves replay identically; balance and fleetlab unchanged. Two calls differ from the entry below, and it says which |
 | ~~123~~ | ~~influence does nothing at the table, and resolve does nothing but resist~~ | medium | **BUILT** — a treaty's standing is `TREATY_GOODWILL` plus the other signer's influence modifier (6–12 on the opening board, pinned to journal 9); **Rally** lifts might, guile, industry and influence by up to +3 per share of homeland lost × resolve (unpinned, as decided — 7 of 12 saves drift); personas read effective stats. The harness cannot see a rally turn a war: bots pick targets by line strength and read no stat |
-| **124** | random events: the Rim moves on its own | medium | six hazards and four boons, one turn in two on average (weights sum to 0.5), resolved in the advance-turn tick — deterministic state changes, a Haiku line of flavour after the fact, and surfaced in the feed the way a veto is so none is missable. Catalogue, rules and the surfacing are in the entry below |
+| **124** | random events: the Rim moves on its own | medium | **MECHANICS BUILT, ART PENDING** — the pulse, all ten events, the Haiku line (never waited for, and refused if it brings a number the plain line lacks) and the card in the feed and briefing, on the text fallback. `JOURNAL_VERSION` 10; all 12 saves replay identically; the board moves by at most one world at any hazard/boon split, so the weights stay 0.05 each. Art is the second step, one kind at a time, vetted before it merges |
 
 **Audited 2026-09-23:** every numbered item above 81 is built or closed except
 **92**, **94(b)** and the four added today. Of those, **116** is code and the rest
@@ -159,7 +159,7 @@ can read another's terms and a clause whose whole content is *"track that other
 contract"* is structurally unrepresentable. The fix there is the arbiter *saying
 so* rather than recording it as though it bound something.
 
-## 124. OPEN — random events: the Rim moves on its own
+## 124. MECHANICS BUILT, ART PENDING — random events: the Rim moves on its own
 
 **The ask:** events like a TTRPG's, processed while the turn advances, that
 touch one or more powers. Six to start. What they do to the world is
@@ -316,6 +316,31 @@ found by looking, not by the suite. So the build is split:
    put in front of the user with the event line beside it. Nothing is committed
    to the art branch until it is approved; a rejected image goes back with the
    reason, the way the refusal stamp did.
+
+### As built (step 1)
+
+CLAUDE.md, "The Rim moves on its own", has the whole of it. Where the build
+departs from the plan above, and why:
+
+- **The flavour call does not run alongside the reactions**, and cannot: the
+  event is decided in the tick, which runs after them. It is fired without being
+  waited for instead — the turn returns with the plain line and the dressed one
+  arrives on the next state push — which keeps the promise that mattered, no
+  wall time added to the end of turn.
+- **"Forbidden to add facts" is partly code.** A line carrying a number the
+  plain line does not, in digits or spelled out, is thrown away and the plain
+  line stands.
+- **The split was swept and left alone.** At every hazard/boon split with the
+  total at 0.5 the board is within one world of the no-events control, always the
+  marginal world between the Combine and the Confederacy; events colour a
+  campaign without deciding it, so the weights stay 0.05 each.
+- **The harness never fires a derelict or volunteers** — bots rarely sit over
+  unaligned ground, and a garrison has regrown to its ceiling by the time the
+  pulse runs. Both fire in played campaigns.
+- **Unrest can leave a world to nobody**, which makes it the third way control
+  changes after an arrival and a cession — reducer-only, like both.
+- **Envoys needed new state**: `WorldState.lastClash`, the last turn each pair
+  fought, since a battle report is not kept.
 
 
 ## 123. BUILT — influence does nothing at the table, and resolve does nothing but resist

@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { applyOps, tickTurn } from '../src/domain/reducer.js';
+import { applyOps, tickTurn as tickWithEvents } from '../src/domain/reducer.js';
+import type { LegacyRules } from '../src/domain/reducer.js';
+
+// These pin garrison and landing arithmetic to the unit, and a random event
+// (item 124) — volunteers, unrest — moves a garrison on its own. The Rim is
+// held still here so each test still pins one rule; `rim-events.test.ts`
+// covers what the events do.
+const tickTurn = (s: Parameters<typeof tickWithEvents>[0], legacy: LegacyRules = {}) =>
+  tickWithEvents(s, { randomEvents: false, ...legacy });
 import { createSeedState } from '../src/seed/scenario.js';
 import {
   boundPayloadsToOutcome,

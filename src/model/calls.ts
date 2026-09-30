@@ -396,6 +396,80 @@ export async function verifyBreachRelevance(
 }
 
 /* ------------------------------------------------------------------ */
+/* A random event, dressed for the player                              */
+/* ------------------------------------------------------------------ */
+
+export const EventFlavourSchema = z.object({
+  line: z.string().min(1).max(280),
+});
+
+const NUMBER_WORDS: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16,
+  seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50,
+  sixty: 60, seventy: 70, eighty: 80, ninety: 90, hundred: 100, thousand: 1000, dozen: 12,
+};
+
+/**
+ * Every number in `text`, digits or spelled out. What the guard below compares.
+ * "Sixty-three" is read as 63, since that is how a line dressing "63 credits"
+ * says it; anything longer than a hyphenated pair is read word by word, which
+ * refuses more than it needs to and falls back to the plain line when it does.
+ */
+function numbersIn(text: string): string[] {
+  const digits = text.match(/\d+/g) ?? [];
+  const words = (text.toLowerCase().match(/[a-z]+(?:-[a-z]+)?/g) ?? []).flatMap((token) => {
+    const [a, b] = token.split('-');
+    const x = NUMBER_WORDS[a!];
+    const y = b === undefined ? undefined : NUMBER_WORDS[b];
+    if (x !== undefined && y !== undefined && x >= 20 && x % 10 === 0 && y < 10) return [String(x + y)];
+    return [a, b].filter((w): w is string => w !== undefined && w in NUMBER_WORDS).map((w) => String(NUMBER_WORDS[w]));
+  });
+  return [...digits, ...words];
+}
+
+/**
+ * The one guard code can hold a flavour line to: **no number the plain line
+ * does not already contain.** A number is the likeliest invented fact and the
+ * one a reader is likeliest to believe — "loses 40 tons" beside a plain line
+ * saying 12 is the failure this exists to stop. Anything subtler is the
+ * prompt's job, and the plain line is always shown beneath, so a line that
+ * slips past this is colour beside a fact rather than instead of one.
+ */
+export function flavourKeepsTheFacts(plain: string, line: string): boolean {
+  const allowed = new Set(numbersIn(plain));
+  // "One" is how English says "a", so it is always allowed: "one storm" adds
+  // nothing a plain line about a storm did not already say.
+  return numbersIn(line).every((n) => n === '1' || allowed.has(n));
+}
+
+/**
+ * Rewrite one event's plain line in the setting's voice (item 124).
+ *
+ * **Never state, and never load-bearing.** Nothing reads what comes back but a
+ * card on the player's screen; it is not journaled and replay never calls it —
+ * the position the epilogue's prose is in. So it may fail freely: the caller
+ * keeps the plain line on any error, and on a line that fails
+ * `flavourKeepsTheFacts`.
+ */
+export async function dressRimEvent(
+  title: string,
+  plain: string,
+): Promise<{ line: string | null; costUsd: number }> {
+  const res = await callStructured({
+    kind: 'event_flavour',
+    label: 'event-flavour',
+    system: loadPrompt('event-flavour'),
+    user: [`EVENT: ${title}`, `PLAIN SENTENCE (settled fact): ${plain}`].join('\n'),
+    schema: EventFlavourSchema,
+    // One retry: this is colour, and the plain line is already on screen.
+    maxRetries: 1,
+  });
+  const line = res.value.line.trim();
+  return { line: flavourKeepsTheFacts(plain, line) ? line : null, costUsd: res.costUsd };
+}
+
+/* ------------------------------------------------------------------ */
 /* The epilogue                                                        */
 /* ------------------------------------------------------------------ */
 

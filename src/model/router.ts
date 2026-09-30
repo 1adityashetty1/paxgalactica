@@ -35,6 +35,12 @@ export type CallKind =
    * would be a solved-once optimum every player opens every turn.
    */
   | 'advisor'
+  /**
+   * The line a random event (item 124) is dressed in for the player. Its own
+   * kind so it can be re-tiered in one line, and so a test scripting any other
+   * call cannot answer it by accident.
+   */
+  | 'event_flavour'
   | 'flavor';
 
 export interface TierConfig {
@@ -154,6 +160,9 @@ export const ROUTES: Record<CallKind, ModelTier> = {
   // Measured: 21s on the reasoning tier for counsel the player said was too
   // long to read.
   advisor: 'flavor',
+  // One sentence of colour over a fact already decided. The cheap tier, and
+  // it never blocks the turn — see `GameSession.dressEvents`.
+  event_flavour: 'flavor',
   flavor: 'flavor',
 };
 

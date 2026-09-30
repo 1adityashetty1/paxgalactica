@@ -774,6 +774,8 @@ export function createSeedState(
     systems,
     pendingOrders: [],
     familiesUsed: [],
+    rimEvents: [],
+    lastClash: {},
     treaties: [],
     commitments: [],
     agents: [],

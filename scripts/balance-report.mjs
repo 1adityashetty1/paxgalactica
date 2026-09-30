@@ -9,6 +9,8 @@ import { createSeedState } from '../dist/seed/scenario.js';
 
 const turns = Number(process.argv.find((a) => /^\d+$/.test(a)) ?? 30);
 const trace = process.argv.includes('--trace');
+// The control for item 124: the same bots on a Rim that never moves on its own.
+const calm = process.argv.includes('--no-events');
 
 const NAMES = Object.fromEntries(
   createSeedState('freeworlds').factions.map((f) => [f.id, f.name]),
@@ -22,7 +24,8 @@ const history = runBalance(turns, (s) => {
   if (!trace) return;
   const row = IDS.map((id) => `${id.slice(0, 4)} ${String(s.perFaction[id].net).padStart(4)}`).join(' · ');
   console.log(`  t${String(s.turn).padStart(2)}  ${row}   open ${(s.openness * 100).toFixed(0)}%`);
-});
+  for (const e of s.events) console.log(`       ↳ ${e.kind}: ${e.text}`);
+}, calm ? { randomEvents: false } : {});
 
 const last = history[history.length - 1];
 const at = (t) => history[Math.min(t, history.length) - 1];
@@ -101,3 +104,20 @@ console.log(
     (100 * totalTerr) / (totalTerr + totalRoute),
   )}%) · lanes ${totalRoute} (${Math.round((100 * totalRoute) / (totalTerr + totalRoute))}%)`,
 );
+
+console.log(calm ? '\n── random events: off (--no-events) ──' : '\n── random events ──');
+if (!calm) {
+  const events = history.flatMap((h) => h.events);
+  const byKind = {};
+  for (const e of events) byKind[e.kind] = (byKind[e.kind] ?? 0) + 1;
+  const hazards = ['ion_storm', 'derelict', 'unrest', 'border_incident', 'shortage', 'mutiny'];
+  const hurt = events.filter((e) => hazards.includes(e.kind)).length;
+  console.log(
+    `  ${events.length} in ${turns} turns (${Math.round((100 * events.length) / turns)}%) · ` +
+      `${hurt} hazards, ${events.length - hurt} boons`,
+  );
+  console.log('  ' + Object.entries(byKind).map(([k, n]) => `${k} ${n}`).join(' · '));
+  const touched = {};
+  for (const e of events) for (const id of e.factionIds) touched[id] = (touched[id] ?? 0) + 1;
+  console.log('  touched: ' + IDS.map((id) => `${id.slice(0, 4)} ${touched[id] ?? 0}`).join(' · '));
+}

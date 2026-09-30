@@ -1,4 +1,5 @@
-import { applyOps, tickTurn } from './domain/reducer.js';
+import { applyOps, tickTurn, type LegacyRules } from './domain/reducer.js';
+import type { RimEvent } from './domain/events.js';
 import { createSeedState } from './seed/scenario.js';
 import { BOTS, held, proposeFor } from './domain/initiative.js';
 import { fleetStrengthOf, ledgerFor, type WorldState } from './domain/state.js';
@@ -39,9 +40,19 @@ export interface Snapshot {
   uncollected: number;
   /** factionId -> how everyone else sees them, for reading the politics. */
   disposition: Record<string, Record<string, number>>;
+  /** What the Rim did on its own this turn (item 124): at most one. */
+  events: RimEvent[];
 }
 
-export function runBalance(turns: number, onTurn?: (s: Snapshot) => void): Snapshot[] {
+export function runBalance(
+  turns: number,
+  onTurn?: (s: Snapshot) => void,
+  /**
+   * Rules to tick under. `{ randomEvents: false }` is the control a sweep of the
+   * events is measured against — the board the bots produce on their own.
+   */
+  legacy: LegacyRules = {},
+): Snapshot[] {
   let state = createSeedState('freeworlds');
   const history: Snapshot[] = [];
 
@@ -59,11 +70,13 @@ export function runBalance(turns: number, onTurn?: (s: Snapshot) => void): Snaps
       const proposal = proposeFor(state, id);
       if (proposal) state = applyOps(state, proposal.ops, 'model', id).state;
     }
-    state = tickTurn(state).state;
+    const ticked = tickTurn(state, legacy);
+    state = ticked.state;
 
     const earnings = routeEarnings(state);
     const snap: Snapshot = {
       turn,
+      events: ticked.report.events,
       openness: earnings.openness,
       uncollected: earnings.uncollected,
       disposition: Object.fromEntries(

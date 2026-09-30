@@ -2,6 +2,7 @@ import { eventsVisibleTo, ordersVisibleTo } from '../domain/intel.js';
 import { describeStack, hullsIn } from '../domain/hulls.js';
 import { describeOrderEffect } from '../domain/development.js';
 import { agentStanding, assetWorthRangeTo, describeEffect, wantedBy } from '../domain/diplomacy.js';
+import { shortageFactor } from '../domain/events.js';
 import { describeOutstanding } from '../domain/loan.js';
 import { routeEarnings } from '../domain/trade.js';
 import {
@@ -669,6 +670,14 @@ function shareWorth(state: WorldState, share: NonNullable<Commitment['share']>):
  * a rival's whole warehouse would be an intelligence leak dressed up as a
  * shopping list.
  */
+/**
+ * Said beside a price a shortage has raised (item 124), so a persona bargaining
+ * over it knows the figure is the market's mood and will not last.
+ */
+function scarcityNote(factor: number): string {
+  return factor === 1 ? '' : ' · scarce just now, so priced high: the Rim is short of it';
+}
+
 export function serializeTheirAssets(
   state: WorldState,
   viewerId: string,
@@ -680,12 +689,13 @@ export function serializeTheirAssets(
   if (theirs.length === 0) return '_Nothing of theirs that you have shown any interest in._';
   return theirs
     .map((a) => {
-      const band = assetWorthRangeTo(a, viewerId);
+      const scarce = shortageFactor(state, a.kind);
+      const band = assetWorthRangeTo(a, viewerId, scarce);
       const worth =
         band.min === band.max
           ? `worth about ${band.max} to you`
           : `worth somewhere between ${band.min} and ${band.max} to you — nobody has settled it`;
-      return `- \`${a.id}\` ${a.quantity} ${a.unit} — ${a.text}\n  ${worth}`;
+      return `- \`${a.id}\` ${a.quantity} ${a.unit} — ${a.text}\n  ${worth}${scarcityNote(scarce)}`;
     })
     .join('\n');
 }
@@ -695,9 +705,10 @@ export function serializeAssets(state: WorldState, viewerId: string): string {
   if (mine.length === 0) return '_You hold nothing beyond credits, ships and ground._';
   return mine
     .map((a) => {
+      const scarce = shortageFactor(state, a.kind);
       const wanted = wantedBy(a, viewerId)
         .map((id) => {
-          const band = assetWorthRangeTo(a, id);
+          const band = assetWorthRangeTo(a, id, scarce);
           const per = a.quantity > 0 ? a.quantity : 1;
           return band.min === band.max
             ? `${getFaction(state, id)?.name ?? id} would pay about ${Math.floor(band.max / per)} a ${a.unit}`
@@ -729,7 +740,7 @@ export function serializeAssets(state: WorldState, viewerId: string): string {
                 : ` · yields ${a.yield.perTurn} ${a.yield.unit} a turn`;
       return `- \`${a.id}\` ${a.quantity} ${a.unit} — ${a.text}${where}${split}${fixed}${plays}${does}\n  ${
         wanted || 'nobody has shown it is worth anything to them'
-      }`;
+      }${scarcityNote(scarce)}`;
     })
     .join('\n');
 }

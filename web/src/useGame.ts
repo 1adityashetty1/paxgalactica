@@ -8,6 +8,7 @@ import {
 import { spliceLog } from '../../src/ui/logview.js';
 import { api, ApiError } from './api.js';
 import type { OutcomeArtKind } from './components/OutcomeArt.js';
+import type { BriefingEventView } from '../../src/api/contract.js';
 
 export interface Message {
   id: number;
@@ -23,6 +24,13 @@ export interface Message {
    * behead a scene and leave the caption.
    */
   art?: { kind: OutcomeArtKind; alt: string };
+  /**
+   * Something the Rim did on its own (item 124), drawn as a card rather than a
+   * line. Carried on the message for the reason `art` is. Its flavour line is
+   * filled in by a later state push, because it arrives after the turn that
+   * produced the event.
+   */
+  event?: BriefingEventView;
 }
 
 let nextMessageId = 1;
@@ -117,6 +125,18 @@ export function useGame() {
       } else if (event.type === 'state') {
         setView((prev) => spliceLog(prev, event.view));
         setNeedsCampaign(false);
+        // An event's flavour line lands on a push after the turn that made
+        // it. Written onto the card's own message, so it stays when the next
+        // turn's briefing replaces this one.
+        const dressed = (event.view.briefing?.events ?? []).filter((e) => e.flavour !== null);
+        if (dressed.length > 0) {
+          setMessages((prev) =>
+            prev.map((m) => {
+              const live = m.event && dressed.find((e) => e.id === m.event!.id);
+              return live && m.event!.flavour !== live.flavour ? { ...m, event: { ...m.event!, flavour: live.flavour } } : m;
+            }),
+          );
+        }
       } else if (event.type === 'reaction') {
         // Said the moment it arrives. `endTurn` also returns the full set, so
         // the ids that came through live are remembered and skipped there —
@@ -276,6 +296,13 @@ export function useGame() {
         spokenLive.current.clear();
         const outcome = await api.endTurn();
         say(`── Turn ${outcome.briefing.turn} ──`, 'system');
+        // What the Rim did on its own, first: it is the one thing this turn
+        // nobody chose, and a card is what keeps it from scrolling past.
+        for (const event of outcome.briefing.events.filter((e) => !e.ongoing)) {
+          setMessages((prev) =>
+            [...prev, { id: nextMessageId++, text: event.text, tone: 'system' as const, event }].slice(-500),
+          );
+        }
         say(
           outcome.applied > 0
             ? `Applied ${outcome.applied} declared action${outcome.applied === 1 ? '' : 's'}.`

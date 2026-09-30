@@ -1,5 +1,6 @@
 import { shortestPath } from './graph.js';
 import { getFaction, laneWeightsAt, type StarSystem, type WorldState } from './state.js';
+import { STORM_BLOCKER, stormbound } from './events.js';
 
 /**
  * Trade as a network on the hyperlane graph.
@@ -198,8 +199,27 @@ export function blockadesOn(state: WorldState, systemId: string): string[] {
     .map((o) => o.factionId);
 }
 
+/**
+ * Whether anything is closing this system's lanes — a blockade, or an ion
+ * storm (item 124), which is a blockade nobody declared.
+ */
 export function isBlockaded(state: WorldState, systemId: string): boolean {
-  return blockadesOn(state, systemId).length > 0;
+  return severedBy(state, systemId).length > 0;
+}
+
+/**
+ * Who is closing this system's lanes: every blockader, plus `STORM_BLOCKER`
+ * while a storm sits on it.
+ *
+ * The storm goes in as a blocker rather than as a rule of its own, and that is
+ * the whole design of it: `runsBlockade` lets a smuggler through any blockade,
+ * so the smuggler runs the storm too, and a `trade_accord` names no weather so
+ * it exempts nobody. Nobody resents a storm — interdiction's disposition costs
+ * are charged off the ORDERS, which a storm has none of.
+ */
+export function severedBy(state: WorldState, systemId: string): string[] {
+  const blockers = blockadesOn(state, systemId);
+  return stormbound(state, systemId) ? [...blockers, STORM_BLOCKER] : blockers;
 }
 
 /** Factions raiding this system right now. */
@@ -357,7 +377,7 @@ export function routeEarnings(state: WorldState): RouteEarnings {
     // blockades", the Confederacy's entire economic identity, almost never
     // fired. Now the lane closes for those it closes for, and whoever can slip
     // through still gets paid.
-    const blockers = route.path.flatMap((id) => blockadesOn(state, id));
+    const blockers = route.path.flatMap((id) => severedBy(state, id));
     const carries = (id: string | null): boolean =>
       id !== null && runsBlockade(state, id, blockers);
 

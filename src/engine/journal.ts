@@ -14,7 +14,7 @@ import { createSeedState } from '../seed/scenario.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 9;
+export const JOURNAL_VERSION = 10;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -82,6 +82,7 @@ export const JournalVersionSchema = z.union([
   z.literal(7),
   z.literal(8),
   z.literal(9),
+  z.literal(10),
 ]);
 
 export const JournalSchema = z.object({
@@ -109,7 +110,9 @@ export const JournalSchema = z.object({
    *     order, a roll to die on any defeat, and names unique only by luck.
    * 8 — written before a treaty's standing scaled with the signer's influence.
    *     (The rally of the same change is not pinned; see `LegacyRules`.)
-   * 9 — current.
+   * 9 — written before the Rim moved on its own: no random events in the
+   *     tick, and no record of who last fought whom.
+   * 10 — current.
    */
   version: JournalVersionSchema,
   entries: z.array(JournalEntrySchema),
@@ -213,6 +216,10 @@ export function replay(
     uniqueFamilies: parsed.version >= 8,
     // A treaty paid a flat 8 standing both ways, whoever signed it.
     influentialGoodwill: parsed.version >= 9,
+    // The Rim moved on its own (item 124). Those campaigns' ticks passed with
+    // no event, and a storm, a mutiny or a windfall they never had would
+    // rewrite every turn after it.
+    randomEvents: parsed.version >= 10,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

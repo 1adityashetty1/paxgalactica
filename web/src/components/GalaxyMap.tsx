@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { WorldState } from '../../../src/domain/state.js';
 import { layoutGalaxy, sectorsOf } from '../../../src/ui/layout.js';
-import { blockadesOn, routeEarnings, tradeRoutes } from '../../../src/domain/trade.js';
+import { routeEarnings, severedBy, tradeRoutes } from '../../../src/domain/trade.js';
 import { ansi256ToHex, NEUTRAL } from '../color.js';
 import { CommanderMark } from './BattleIcons.js';
 
@@ -41,14 +41,14 @@ export function GalaxyMap({ state, selectedId, onSelect }: Props) {
 
   /**
    * Trade volume per hyperlane, summed over every route that uses it, plus the
-   * lanes currently severed by a blockade. Derived from the same functions the
+   * lanes currently severed by a blockade or an ion storm. Derived from the same functions the
    * reducer pays out from, so the picture cannot disagree with the ledger.
    */
   const { tradeOnLane, severed } = useMemo(() => {
     const carried = new Map<string, number>();
     const cut = new Set<string>();
     for (const route of tradeRoutes(state)) {
-      const blocked = route.path.some((id) => blockadesOn(state, id).length > 0);
+      const blocked = route.path.some((id) => severedBy(state, id).length > 0);
       for (let i = 0; i < route.path.length - 1; i++) {
         const key = laneKey(route.path[i]!, route.path[i + 1]!);
         carried.set(key, (carried.get(key) ?? 0) + route.volume);

@@ -115,6 +115,18 @@ import {
 } from './loan.js';
 import { routeEarnings, tollsOn, tradeRoutes } from './trade.js';
 import {
+  BORDER_INCIDENT_COST,
+  ENVOYS_GOODWILL,
+  MUTINY_FRACTION,
+  MUTINY_MIN_TONS,
+  RICH_SEAM_TURNS,
+  RimEventSchema,
+  SHORTAGE_TURNS,
+  VOLUNTEERS_MAX,
+  type RimEvent,
+} from './events.js';
+import { clashKey, drawRimEvent, type RimEventPlan } from './pulse.js';
+import {
   CREDITS_PER_TON,
   HULL_CLASSES,
   HULL_SPEC,
@@ -186,6 +198,7 @@ import {
   MAX_TREATY_INCOME_PER_TURN,
   isMovementType,
   ledgerFor,
+  systemIncome,
   liveAgentsOf,
   maxAgentsFor,
   subornLimit,
@@ -1661,6 +1674,12 @@ export interface LegacyRules {
    * as drifting rather than threading a flag through every caller.
    */
   influentialGoodwill?: boolean;
+  /**
+   * The Rim moves on its own (item 124): the pulse in `tickTurn`, and the
+   * `lastClash` record it reads. False for a journal from before random events
+   * existed, whose ticks really did pass without one.
+   */
+  randomEvents?: boolean;
   /** The battle rules from the same playtest. See `BattleRules`. */
   battleRules?: BattleRules;
 }
@@ -5940,6 +5959,12 @@ export interface TurnReport {
    * battle and which doctrines changed it.
    */
   battles: BattleReport[];
+  /**
+   * What the Rim did on its own this turn — at most one, and every one, not
+   * only those the player may see. Scoping is the reader's job, by the event's
+   * own `visibleTo`, the rule the event log follows.
+   */
+  events: RimEvent[];
 }
 
 export interface TickResult extends ApplyResult {
@@ -5970,6 +5995,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     fourSchools = true,
     uniqueFamilies = true,
     influentialGoodwill = true,
+    randomEvents = true,
     battleRules = {},
   } = legacy;
   const state = cloneState(input);
@@ -6984,6 +7010,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     ledger: playerLedger,
     arrivals: [],
     battles: [],
+    events: [],
   };
 
   const nameOf = (id: string): string => state.systems.find((s) => s.id === id)?.name ?? id;
@@ -7083,6 +7110,30 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     }
   }
 
+  /* --- The Rim moves on its own ---------------------------------------- */
+  // Last, so an event reads the board the turn actually left — a garrison
+  // after it regrew, a fleet after it landed — and so nothing later in the tick
+  // can undo what it did before the player has seen it. See `pulse.ts` for
+  // what may happen and how it is chosen; this is only where it is done.
+  if (randomEvents) {
+    // Who fought whom, for the one event that needs a war to have gone quiet.
+    // Every attacker against every defender and against the world's holder,
+    // since a landing on a held world is a clash with its holder whether or
+    // not the holder had a ship in orbit.
+    for (const battle of report.battles) {
+      const attackers = new Set(battle.rounds.flatMap((r) => r.attackers.map((c) => c.factionId)));
+      const defenders = new Set(battle.rounds.flatMap((r) => r.defenders.map((c) => c.factionId)));
+      if (battle.holderBefore) defenders.add(battle.holderBefore);
+      for (const a of attackers) {
+        for (const d of defenders) {
+          if (a !== d) (state.lastClash ??= {})[clashKey(a, d)] = state.turn;
+        }
+      }
+    }
+    const plan = drawRimEvent(state);
+    if (plan) report.events.push(applyRimEvent(state, plan));
+  }
+
   for (const order of state.pendingOrders) {
     report.advanced.push({
       id: order.id,
@@ -7104,6 +7155,267 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
   );
 
   return { state, rejections: [], notes, report };
+}
+
+/**
+ * Carry out one random event (item 124), and write down what it did.
+ *
+ * Every effect is a mechanic the game already has, applied without the order
+ * or the op that would normally carry it — a storm is a blockade, a mutiny is
+ * the insolvency path, volunteers are `raise_garrison` — so no event is a rule
+ * of its own that nothing else agrees with. The plain line written here is
+ * complete on its own; a model may later dress it for the player, and nothing
+ * reads what the model wrote.
+ */
+/**
+ * The same, on a copy of the world. The tick calls `applyRimEvent` in place;
+ * this is the seam a test or a tool uses to make one particular event happen.
+ */
+export function resolveRimEvent(
+  input: WorldState,
+  plan: RimEventPlan,
+): { state: WorldState; event: RimEvent } {
+  const state = cloneState(input);
+  const event = applyRimEvent(state, plan);
+  return { state, event };
+}
+
+function applyRimEvent(state: WorldState, plan: RimEventPlan): RimEvent {
+  const turn = state.turn;
+  const world = (id: string) => state.systems.find((s) => s.id === id)!;
+  const who = (id: string) => nameFor(state, id);
+  let text: string;
+  let factionIds: string[] = [];
+  let systemId: string | null = null;
+  let assetKind: string | null = null;
+  let untilTurn: number | null = null;
+  // Most of these are a power's own affairs; the three that are weather, a
+  // quarrel in open space and a market are everybody's.
+  let publicEvent = false;
+
+  switch (plan.kind) {
+    case 'ion_storm': {
+      const s = world(plan.systemId);
+      systemId = s.id;
+      // In force through the next `turns` incomes: the pulse runs at the end
+      // of the tick, so the first income it can close is the next one.
+      untilTurn = turn + plan.turns;
+      publicEvent = true;
+      text = `An ion storm settles over ${s.name}: every lane through it is closed for ${plan.turns} turn${plan.turns === 1 ? '' : 's'}, and only smugglers will run it.`;
+      break;
+    }
+
+    case 'derelict': {
+      const s = world(plan.systemId);
+      const finder = plan.factionId;
+      factionIds = [finder];
+      systemId = s.id;
+      const others = state.factions.filter((f) => f.id !== finder).map((f) => f.id);
+      // Modest next to the seeded cargo (400–500 to the best buyer): a find is
+      // a windfall to bargain with, not a fortune.
+      const shape =
+        plan.find === 'salvage'
+          ? {
+              kind: 'salvage',
+              text: `Salvage off a derelict hulk drifting over ${s.name}`,
+              quantity: 40,
+              unit: 'ton',
+              divisible: true,
+              valuePerUnit: Object.fromEntries([...others.map((id) => [id, 3]), [finder, 2]]),
+              speculative: false,
+              valueRange: {},
+            }
+          : plan.find === 'blueprints'
+            ? {
+                kind: 'blueprints',
+                text: `Drawings from a derelict's yard office over ${s.name} — nobody yet knows whether they build anything`,
+                quantity: 1,
+                unit: 'set',
+                divisible: false,
+                valuePerUnit: {},
+                speculative: true,
+                valueRange: Object.fromEntries([
+                  ...others.map((id) => [id, { min: 80, max: 300 }]),
+                  [finder, { min: 40, max: 150 }],
+                ]),
+              }
+            : {
+                kind: 'prisoners',
+                text: `Ten of ${who(plan.crewOf ?? finder)}'s spacers, found alive in a derelict over ${s.name}`,
+                quantity: 10,
+                unit: 'crew',
+                divisible: true,
+                // Worth most to the power that lost them, the same claim
+                // `prisoners` makes everywhere else.
+                valuePerUnit: Object.fromEntries(
+                  others.map((id) => [id, id === plan.crewOf ? 15 : 2]),
+                ),
+                speculative: false,
+                valueRange: {},
+              };
+      const find = AssetSchema.parse({
+        id: mintId(state, 'ast'),
+        ...shape,
+        heldBy: finder,
+        uses: null,
+        // Where it was found, so whoever takes that world later takes it too.
+        atSystemId: s.id,
+        portable: true,
+        yield: null,
+        acquiredTurn: turn,
+        commanderId: null,
+        agentId: null,
+      });
+      (state.assets ??= []).push(find);
+      text = `${who(finder)}'s ships over ${s.name} find a derelict and board it: ${find.text.charAt(0).toLowerCase()}${find.text.slice(1)}.`;
+      break;
+    }
+
+    case 'unrest': {
+      const s = world(plan.systemId);
+      const holder = plan.factionId;
+      factionIds = [holder];
+      systemId = s.id;
+      const lost = Math.min(s.garrison, Math.max(2, Math.ceil(s.garrison / 2)));
+      s.garrison -= lost;
+      text =
+        lost > 0
+          ? `Unrest on ${s.name}: the rising costs ${who(holder)} ${lost} of its garrison.`
+          : `Unrest on ${s.name}, where ${who(holder)} has no garrison left to lose.`;
+      // **A world with nobody left to hold it slips.** The third way control
+      // changes after an arrival and a cession, and like both it is the
+      // reducer's alone: no model can ask for it. Not while the holder has a
+      // ship in orbit, since a fleet overhead is holding it. The rising becomes
+      // the world's militia, because "unaligned is not undefended" — a world
+      // left at no garrison at all would be a free pickup for the next fleet
+      // past.
+      if (s.garrison === 0 && hullsAt(s, holder) === 0) {
+        s.controllerFactionId = null;
+        s.garrison = Math.min(s.garrisonMax, Math.max(1, lost));
+        text += ` With nobody left to hold it, ${s.name} throws off ${who(holder)} and answers to nobody.`;
+      }
+      break;
+    }
+
+    case 'border_incident': {
+      const [a, b] = plan.factionIds;
+      const s = world(plan.systemId);
+      factionIds = [a, b];
+      systemId = s.id;
+      publicEvent = true;
+      moveRegard(state, a, b, -BORDER_INCIDENT_COST);
+      moveRegard(state, b, a, -BORDER_INCIDENT_COST);
+      text = `A border incident near ${s.name}: ${who(a)} and ${who(b)} ships trade fire nobody ordered, and each thinks worse of the other.`;
+      break;
+    }
+
+    case 'shortage': {
+      assetKind = plan.assetKind;
+      // Read, not written — see `shortageFactor`. In force this turn and the
+      // two after it, which are the turns anybody can bargain in.
+      untilTurn = turn + SHORTAGE_TURNS - 1;
+      publicEvent = true;
+      text = `A shortage of ${plan.assetKind.replace(/_/g, ' ')} runs through the Rim: every buyer will pay half as much again for it for ${SHORTAGE_TURNS} turns.`;
+      break;
+    }
+
+    case 'mutiny': {
+      const f = plan.factionId;
+      factionIds = [f];
+      // Through the insolvency attrition path, and under its cap: a mutiny is
+      // a squadron walking off, not a navy.
+      const fleet = fleetTonsOf(state, f);
+      const want = Math.max(MUTINY_MIN_TONS, Math.ceil(fleet * MUTINY_FRACTION));
+      const cap = Math.max(1, Math.floor(fleet * MAX_ATTRITION_FRACTION));
+      const gone = removeTons(state, f, Math.min(want, cap));
+      text = `Mutiny in ${who(f)}'s fleet: crews who have stopped believing their orders take ${gone} tons of shipping and go.`;
+      break;
+    }
+
+    case 'rich_seam': {
+      const s = world(plan.systemId);
+      const f = plan.factionId;
+      factionIds = [f];
+      systemId = s.id;
+      // **The one event that mints money**, and why it is bounded by the
+      // world's own income rather than a figure: a multiple of what a world
+      // already pays is a lot of a harvest, not an invention.
+      const windfall = (systemIncome(state, s).shares[f] ?? 0) * RICH_SEAM_TURNS;
+      const faction = state.factions.find((x) => x.id === f);
+      if (faction) faction.credits += windfall;
+      text = `A rich seam is struck on ${s.name}: ${who(f)} banks ${windfall} credits, ${RICH_SEAM_TURNS} turns of what the world pays.`;
+      break;
+    }
+
+    case 'volunteers': {
+      const s = world(plan.systemId);
+      const f = plan.factionId;
+      factionIds = [f];
+      systemId = s.id;
+      const raised = Math.max(0, Math.min(VOLUNTEERS_MAX, s.garrisonMax - s.garrison));
+      s.garrison += raised;
+      text = `Volunteers come forward on ${s.name}: ${who(f)}'s garrison rises by ${raised}, to ${s.garrison} of ${s.garrisonMax}.`;
+      break;
+    }
+
+    case 'free_captains': {
+      const s = world(plan.systemId);
+      const f = plan.factionId;
+      factionIds = [f];
+      systemId = s.id;
+      // Eight tons, unbilled — `billConstruction` belongs to `applyOps` and the
+      // tick never runs it. Upkeep is charged from the next income like any
+      // other hull, so the gift has a running cost.
+      const squadron: ShipStack = { battleship: 1, escort: 2 };
+      addStackAt(s, f, squadron);
+      text = `Free captains sign on with ${who(f)} at ${s.name}: ${describeStack(squadron)} join the fleet, asking nothing but a flag to fly.`;
+      break;
+    }
+
+    case 'envoys_of_peace': {
+      const [a, b] = plan.factionIds;
+      factionIds = [a, b];
+      moveRegard(state, a, b, ENVOYS_GOODWILL);
+      moveRegard(state, b, a, ENVOYS_GOODWILL);
+      text = `Envoys pass between ${who(a)} and ${who(b)}, at war and without a battle for ${plan.quietFor} turns: each thinks a little better of the other.`;
+      break;
+    }
+  }
+
+  // A power's own affairs reach that power and whoever could see the world it
+  // happened on — whoever holds it or has a ship there — by the rule the rest
+  // of the fog follows.
+  const visibleTo = publicEvent
+    ? null
+    : [
+        ...new Set([
+          ...factionIds,
+          ...(systemId === null
+            ? []
+            : (() => {
+                const s = world(systemId);
+                return [
+                  ...(s.controllerFactionId ? [s.controllerFactionId] : []),
+                  ...Object.keys(s.ships).filter((id) => hullsAt(s, id) > 0),
+                ];
+              })()),
+        ]),
+      ].sort();
+
+  const event = RimEventSchema.parse({
+    id: `rim-${turn}`,
+    turn,
+    kind: plan.kind,
+    factionIds,
+    systemId,
+    assetKind,
+    untilTurn,
+    text,
+    visibleTo,
+  });
+  (state.rimEvents ??= []).push(event);
+  logEvent(state, 'rim', text, factionIds[0] ?? null, visibleTo);
+  return event;
 }
 
 /**

@@ -24,6 +24,7 @@ export type PromptName =
   | 'duration-rubric'
   | 'epilogue'
   | 'advisor'
+  | 'event-flavour'
   | 'flavor';
 
 export function loadPrompt(name: PromptName): string {
