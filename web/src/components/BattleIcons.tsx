@@ -1,3 +1,4 @@
+import { ESCORT_GLYPH, polygonPath } from '../../../src/ui/glyphs.js';
 import { HULL_CLASSES, HULL_SPEC, type HullClass, type ShipStack } from '../../../src/domain/hulls.js';
 /**
  * Glyphs for the order of battle: one per hull class, and a tracked gun.
@@ -195,13 +196,14 @@ export function EscortIcon({ size = 18, title }: IconProps) {
       role={title ? 'img' : undefined}
     >
       {title && <title>{title}</title>}
-      <path d="M23.2 12 L15 9.6 L5.5 9.8 L4 10.8 L4 13.2 L5.5 14.2 L15 14.4 Z" />
-      <path d="M13.5 10 L7 3.4 L3.2 4.2 L9 10.2 Z" />
-      <path d="M13.5 14 L7 20.6 L3.2 19.8 L9 13.8 Z" />
-      {/* Drive block, square-cornered like the rest of the space set. It
-          carried a 0.6 radius from when this glyph was the only ship in the
-          game and had nothing to be consistent with. */}
-      <rect x="1.6" y="10.6" width="2.6" height="2.8" />
+      {/* From `src/ui/glyphs.ts`, which the event art rasterises too, so the
+          ship in a border incident is this ship. The drive block is
+          square-cornered like the rest of the space set. */}
+      <path d={polygonPath(ESCORT_GLYPH.hull)} />
+      {ESCORT_GLYPH.wings.map((w, i) => (
+        <path key={i} d={polygonPath(w)} />
+      ))}
+      <path d={polygonPath(ESCORT_GLYPH.drive)} />
     </svg>
   );
 }

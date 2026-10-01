@@ -1,3 +1,5 @@
+import { ESCORT_GLYPH, rasterise } from './glyphs.js';
+
 /**
  * The ways a declaration produces nothing, as pixel art.
  *
@@ -575,6 +577,99 @@ function unrest(): Grid {
   return g;
 }
 
+const BORDER = '#4a5260';
+const BUOY = '#b3372e';
+const BUOY_LIT = '#ff6a5c';
+const LEFT_HULL = '#4f7fa8';
+const LEFT_LIT = '#86b4d8';
+const LEFT_DARK = '#30536f';
+const RIGHT_HULL = '#a8743f';
+const RIGHT_LIT = '#d8a56a';
+const RIGHT_DARK = '#6e4a27';
+const SHOT_COOL = '#8fd3ff';
+const SHOT_COOL_CORE = '#e8f7ff';
+const SHOT_WARM = '#f59e0b';
+const SHOT_WARM_CORE = '#fde68a';
+const EXHAUST = '#2c6b66';
+const SHOT_COOL_TRAIL = '#2f5f7a';
+const SHOT_WARM_TRAIL = '#7a4a12';
+
+/**
+ * The escort, as pixels: the same silhouette the order of battle draws
+ * (`ESCORT_GLYPH`), rasterised at 16 — the smallest size at which its swept
+ * wings stay wings. `w` wing, `#` hull, `D` drive, `.` empty; nosed right.
+ */
+const ESCORT_SPRITE: string[] = (() => {
+  const n = 16;
+  const all = rasterise([ESCORT_GLYPH.hull, ...ESCORT_GLYPH.wings, ESCORT_GLYPH.drive], n);
+  const hull = rasterise([ESCORT_GLYPH.hull], n);
+  const drive = rasterise([ESCORT_GLYPH.drive], n);
+  return all.map((row, r) =>
+    row.map((on, c) => (!on ? '.' : drive[r]![c] ? 'D' : hull[r]![c] ? '#' : 'w')).join(''),
+  );
+})();
+
+/**
+ * BORDER INCIDENT — two ships either side of a marked line, trading fire across
+ * it.
+ *
+ * The line is what makes it a border rather than a battle: dashed, and buoyed
+ * at both ends so it reads as something laid down rather than a stray mark. The
+ * two sides are told apart by colour — cool against warm, hull and shot alike —
+ * because the event is about two powers, and neither is anybody in particular.
+ * Small ships and a few bolts, not a fleet action: nobody ordered this.
+ */
+function borderIncident(): Grid {
+  const g = blank();
+  for (const [x, y] of [[4, 3], [14, 8], [24, 2], [41, 5], [53, 3], [60, 11], [7, 30], [20, 33], [45, 31], [58, 28]] as const) {
+    put(g, x, y, STAR_DIM);
+  }
+  for (const [x, y] of [[10, 26], [50, 9]] as const) put(g, x, y, STAR);
+
+  // The border: dashed, buoyed at both ends.
+  for (let y = 3; y <= 32; y++) if (y % 4 < 2) put(g, 32, y, BORDER);
+  for (const by of [2, 33]) {
+    put(g, 32, by - 1, BUOY);
+    rect(g, 31, by, 33, by, BUOY);
+    put(g, 32, by + 1, BUOY);
+    put(g, 32, by, BUOY_LIT);
+  }
+
+  // An escort each side, nose to the line — the order of battle's own ship.
+  const ship = (x0: number, y0: number, facingRight: boolean, hull: string, lit: string, dark: string) => {
+    const width = ESCORT_SPRITE[0]!.length;
+    const hullRows = ESCORT_SPRITE.map((row, r) => (row.includes('#') ? r : -1)).filter((r) => r >= 0);
+    const top = Math.min(...hullRows);
+    ESCORT_SPRITE.forEach((row, dy) => {
+      [...row].forEach((ch, dx) => {
+        if (ch === '.') return;
+        const x = facingRight ? x0 + dx : x0 + (width - 1 - dx);
+        const c = ch === 'w' ? dark : ch === 'D' ? EXHAUST : dy === top ? lit : hull;
+        put(g, x, y0 + dy, c);
+      });
+    });
+  };
+  ship(1, 6, true, LEFT_HULL, LEFT_LIT, LEFT_DARK);
+  ship(47, 10, false, RIGHT_HULL, RIGHT_LIT, RIGHT_DARK);
+
+  // Fire across the line, each side's in its own colour: two bolts apiece,
+  // one already past the border.
+  // A bolt has a bright head and a fading tail, so it says which way it flies;
+  // a dash lit the same at both ends could be going either way.
+  const bolt = (head: number, y: number, dir: 1 | -1, core: string, glow: string, trail: string) => {
+    put(g, head, y, BOLT);
+    put(g, head - dir, y, core);
+    put(g, head - 2 * dir, y, glow);
+    put(g, head - 3 * dir, y, trail);
+    put(g, head - 4 * dir, y, trail);
+  };
+  bolt(24, 13, 1, SHOT_COOL_CORE, SHOT_COOL, SHOT_COOL_TRAIL);
+  bolt(39, 13, 1, SHOT_COOL_CORE, SHOT_COOL, SHOT_COOL_TRAIL);
+  bolt(39, 18, -1, SHOT_WARM_CORE, SHOT_WARM, SHOT_WARM_TRAIL);
+  bolt(24, 18, -1, SHOT_WARM_CORE, SHOT_WARM, SHOT_WARM_TRAIL);
+  return g;
+}
+
 /* ------------------------------------------------------------------ */
 /* Out                                                                 */
 /* ------------------------------------------------------------------ */
@@ -584,13 +679,14 @@ function unrest(): Grid {
  * — rendered at feed size and larger and put in front of them before it was
  * committed (item 124) — and every other kind falls back to the text card.
  */
-export const RIM_ART_KINDS = ['ion_storm', 'derelict', 'unrest'] as const;
+export const RIM_ART_KINDS = ['ion_storm', 'derelict', 'unrest', 'border_incident'] as const;
 export type RimArtKind = (typeof RIM_ART_KINDS)[number];
 
 const RIM_SCENES: Record<RimArtKind, () => Grid> = {
   ion_storm: ionStorm,
   derelict,
   unrest,
+  border_incident: borderIncident,
 };
 
 export function hasRimArt(kind: string): kind is RimArtKind {

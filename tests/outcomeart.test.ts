@@ -233,3 +233,29 @@ describe('unrest', () => {
     expect(new Set(roof).size).toBeLessThanOrEqual(2);
   });
 });
+
+describe('the border incident', () => {
+  const px = rimEventPixels('border_incident');
+  const LEFT = new Set(['#4f7fa8', '#86b4d8', '#30536f']);
+  const RIGHT = new Set(['#a8743f', '#d8a56a', '#6e4a27']);
+
+  it('puts one ship each side of a buoyed line, and fire crossing it both ways', () => {
+    const xs = (set: Set<string>) => px.flatMap((row) => row.map((c, x) => (set.has(c) ? x : -1))).filter((x) => x >= 0);
+    expect(Math.max(...xs(LEFT))).toBeLessThan(32);
+    expect(Math.min(...xs(RIGHT))).toBeGreaterThan(32);
+    expect(px[2]![32]).toBe('#ff6a5c');
+    expect(px[33]![32]).toBe('#ff6a5c');
+    // Each side's fire on both sides of the line.
+    const cool = xs(new Set(['#e8f7ff']));
+    const warm = xs(new Set(['#fde68a']));
+    expect(cool.some((x) => x < 32) && cool.some((x) => x > 32)).toBe(true);
+    expect(warm.some((x) => x < 32) && warm.some((x) => x > 32)).toBe(true);
+  });
+
+  it('draws the ships as the escort glyph, swept wings and all', () => {
+    // A wing pixel well above the hull's nose row: the swept wing is the line
+    // that makes the silhouette an escort and not a cross.
+    const wingRows = px.map((row, y) => (row.some((c) => c === '#30536f') ? y : -1)).filter((y) => y >= 0);
+    expect(Math.max(...wingRows) - Math.min(...wingRows)).toBeGreaterThan(8);
+  });
+});

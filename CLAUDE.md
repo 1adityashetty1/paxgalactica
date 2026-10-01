@@ -3840,6 +3840,12 @@ the fires have lit, before a contemporary garrison post flying the occupier's
 banner. It took four drafts: a ten-person crowd merged into a skyline, a castle
 put it in the wrong century, and a figure touching the post's wall flattened the
 distance between them.
+**Border incident** — an escort each side of a buoyed border line, cool against
+warm, trading fire across it. The ships are the order of battle's own escort:
+`ESCORT_GLYPH` in `src/ui/glyphs.ts` is the one definition, rendered as SVG paths
+by `EscortIcon` and rasterised at 16 pixels for the scene, the smallest size at
+which its swept wings stay wings. A bolt has a bright head and a fading tail so
+it says which way it flies.
 
 ## A batch is a transaction
 
