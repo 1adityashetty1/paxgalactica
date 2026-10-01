@@ -1028,6 +1028,65 @@ function freeCaptains(): Grid {
   return g;
 }
 
+const BUOY_CALM = '#2f8a5a';
+const BUOY_CALM_LIT = '#6fe0a0';
+const TRUCE = '#f4f1e8';
+const TRUCE_SHADE = '#c9c4b4';
+
+/**
+ * ENVOYS OF PEACE — the border incident's line and its two sides, nose to nose
+ * across it under white flags, with nothing fired.
+ *
+ * Drawn as that scene's counterpart so the pair read together, the way unrest
+ * and volunteers do: the same buoyed border, the same escorts in the same two
+ * colours, but closer, with the guns quiet, a white flag on each, and the buoys
+ * gone from red to green. A white flag is the oldest sign there is for "we are
+ * here to talk", and needs no explaining at feed size.
+ */
+function envoysOfPeace(): Grid {
+  const g = blank();
+  for (const [x, y] of [[4, 3], [14, 8], [24, 2], [41, 5], [53, 3], [60, 11], [7, 30], [20, 33], [45, 31], [58, 28]] as const) {
+    put(g, x, y, STAR_DIM);
+  }
+  for (const [x, y] of [[10, 26], [50, 9]] as const) put(g, x, y, STAR);
+
+  // The same border, buoyed at both ends — green now.
+  for (let y = 3; y <= 32; y++) if (y % 4 < 2) put(g, 32, y, BORDER);
+  for (const by of [2, 33]) {
+    put(g, 32, by - 1, BUOY_CALM);
+    rect(g, 31, by, 33, by, BUOY_CALM);
+    put(g, 32, by + 1, BUOY_CALM);
+    put(g, 32, by, BUOY_CALM_LIT);
+  }
+
+  // The two sides, nose to nose across it, close.
+  const sprite = escortStencil(16);
+  const width = sprite[0]!.length;
+  const top = Math.min(...sprite.map((row, r) => (row.includes('#') ? r : 99)));
+  const ship = (x0: number, y0: number, facingRight: boolean, hull: string, lit: string, dark: string) => {
+    sprite.forEach((row, dy) => {
+      [...row].forEach((ch, dx) => {
+        if (ch === '.') return;
+        const x = facingRight ? x0 + dx : x0 + (width - 1 - dx);
+        put(g, x, y0 + dy, ch === 'w' ? dark : ch === 'D' ? EXHAUST : dy === top ? lit : hull);
+      });
+    });
+  };
+  ship(14, 9, true, LEFT_HULL, LEFT_LIT, LEFT_DARK);
+  ship(34, 9, false, RIGHT_HULL, RIGHT_LIT, RIGHT_DARK);
+
+  // A white flag on a short mast over each: three pixels of cloth, shaded.
+  const flag = (mastX: number, towardRight: boolean) => {
+    rect(g, mastX, 9, mastX, 15, MAST);
+    const x0 = towardRight ? mastX + 1 : mastX - 4;
+    rect(g, x0, 9, x0 + 3, 11, TRUCE);
+    rect(g, x0, 11, x0 + 3, 11, TRUCE_SHADE);
+  };
+  flag(22, true);
+  flag(41, false);
+  return g;
+}
+
 /* ------------------------------------------------------------------ */
 /* Out                                                                 */
 /* ------------------------------------------------------------------ */
@@ -1039,7 +1098,7 @@ function freeCaptains(): Grid {
  */
 export const RIM_ART_KINDS = [
   'ion_storm', 'derelict', 'unrest', 'border_incident', 'shortage', 'mutiny', 'rich_seam', 'volunteers',
-  'free_captains',
+  'free_captains', 'envoys_of_peace',
 ] as const;
 export type RimArtKind = (typeof RIM_ART_KINDS)[number];
 
@@ -1053,6 +1112,7 @@ const RIM_SCENES: Record<RimArtKind, () => Grid> = {
   rich_seam: richSeam,
   volunteers,
   free_captains: freeCaptains,
+  envoys_of_peace: envoysOfPeace,
 };
 
 export function hasRimArt(kind: string): kind is RimArtKind {

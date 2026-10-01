@@ -383,3 +383,35 @@ describe('the free captains', () => {
     expect(right.filter((c) => world.includes(c)).length).toBeGreaterThan(200);
   });
 });
+
+describe('the envoys of peace', () => {
+  const px = rimEventPixels('envoys_of_peace');
+  const border = rimEventPixels('border_incident');
+  const LEFT = new Set(['#4f7fa8', '#86b4d8', '#30536f']);
+  const RIGHT = new Set(['#a8743f', '#d8a56a', '#6e4a27']);
+
+  it('is the border incident\'s two sides across the same line, closer, with nothing fired', () => {
+    const xs = (set: Set<string>) => px.flatMap((row) => row.map((c, x) => (set.has(c) ? x : -1))).filter((x) => x >= 0);
+    expect(Math.max(...xs(LEFT))).toBeLessThan(32);
+    expect(Math.min(...xs(RIGHT))).toBeGreaterThan(32);
+    const gap = Math.min(...xs(RIGHT)) - Math.max(...xs(LEFT));
+    const bxs = (set: Set<string>) => border.flatMap((row) => row.map((c, x) => (set.has(c) ? x : -1))).filter((x) => x >= 0);
+    expect(gap).toBeLessThan(Math.min(...bxs(RIGHT)) - Math.max(...bxs(LEFT)));
+    for (const shot of ['#e8f7ff', '#fde68a', '#8fd3ff', '#f59e0b']) expect(px.flat()).not.toContain(shot);
+  });
+
+  it('flies a white flag on each side, and the buoys have gone green', () => {
+    const white = px.flatMap((row, y) => row.map((c, x) => (c === '#f4f1e8' ? x : -1))).filter((x) => x >= 0);
+    expect(white.some((x) => x < 32) && white.some((x) => x > 32)).toBe(true);
+    expect(px[2]![32]).toBe('#6fe0a0');
+    expect(px[33]![32]).toBe('#6fe0a0');
+  });
+});
+
+describe('every event has its scene', () => {
+  it('draws all ten, each one different', () => {
+    expect([...RIM_ART_KINDS].sort()).toEqual([...RIM_EVENT_KINDS].sort());
+    const scenes = RIM_ART_KINDS.map((k) => rimEventPixels(k).flat().join(''));
+    expect(new Set(scenes).size).toBe(RIM_ART_KINDS.length);
+  });
+});

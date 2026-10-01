@@ -3831,7 +3831,7 @@ arrived on, because the line is written onto the feed message itself.
 `src/ui/outcomeart.ts` — rendered at feed size and larger and approved by eye
 before it is committed, one at a time (`docs/todo.md` 124). `RIM_ART_KINDS`
 lists the approved ones; `RimEventArt` renders nothing for any other kind, the
-fallback `OutcomeArt` keeps. Approved so far: **ion storm** — a storm cloud with
+fallback `OutcomeArt` keeps. All ten are approved: **ion storm** — a storm cloud with
 a bolt coming down onto a dashed lane that stops beneath it; **derelict** — a
 hulk broken in two, lit where a scout's searchlight lands on it, because a spot
 of lit metal is what makes a cone read as light rather than a smear.
@@ -3871,6 +3871,9 @@ earthlike world. The battleship is `BATTLESHIP_GLYPH` (shared with `ShipIcon`
 the way the escort's is) at 26 pixels, a capital beside 14-pixel escorts. A
 third escort was tried in its place and rejected: the art should match the
 event, not the other way round.
+**Envoys of peace** — the border incident's counterpart, as volunteers is
+unrest's: the same buoyed line and the same two sides' escorts, closer, nothing
+fired, a white flag over each, and the buoys gone from red to green.
 
 ## A batch is a transaction
 
