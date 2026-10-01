@@ -188,3 +188,26 @@ describe('the event scenes', () => {
     }
   });
 });
+
+describe('the derelict', () => {
+  const px = rimEventPixels('derelict');
+  const HULL = new Set(['#353c49', '#586272', '#808b9b', '#7f8a99', '#b4bfcc', '#e1e7ee']);
+  const LIT = new Set(['#7f8a99', '#b4bfcc', '#e1e7ee']);
+
+  it('is one ship in two pieces, with a gap where it broke', () => {
+    // A column with at most a drifting fragment in it, between two columns
+    // that have plenty — debris is hull too, and it is meant to be there.
+    const hullIn = (x: number) => px.filter((row) => HULL.has(row[x]!)).length;
+    const gap = [36, 37, 38].some((x) => hullIn(x) <= 1);
+    expect(gap).toBe(true);
+    expect(hullIn(25)).toBeGreaterThan(4);
+    expect(hullIn(46)).toBeGreaterThan(4);
+  });
+
+  it('is lit where the searchlight lands, and the light comes from a ship', () => {
+    expect(px.flat().filter((c) => LIT.has(c)).length).toBeGreaterThan(20);
+    // The lamp is the brightest thing in the scene, at the scout's nose.
+    expect(px.flat().filter((c) => c === '#fdfcf0')).toHaveLength(1);
+    expect(px.flat().filter((c) => c === '#3fb8ad').length).toBeGreaterThan(3);
+  });
+});

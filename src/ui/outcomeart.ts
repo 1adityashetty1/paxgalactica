@@ -345,6 +345,115 @@ function ionStorm(): Grid {
   return g;
 }
 
+const HULL_DARK = '#353c49';
+const HULL = '#586272';
+const HULL_LIT = '#808b9b';
+const RUST = '#8a4e2c';
+const DEAD_WINDOW = '#161c25';
+const SCOUT = '#3fb8ad';
+const SCOUT_DARK = '#23766f';
+const SCOUT_LIT = '#9ff0e7';
+const LAMP = '#fdfcf0';
+const BEAM = '#161f2a';
+const BEAM_LIT = '#22303f';
+/** Hull under the searchlight: the same metal, lit. */
+const SPOT: Record<string, string> = {
+  [HULL_DARK]: '#7f8a99',
+  [HULL]: '#b4bfcc',
+  [HULL_LIT]: '#e1e7ee',
+  [RUST]: '#d08a55',
+  [DEAD_WINDOW]: '#3a4350',
+};
+
+/**
+ * DERELICT — a hulk broken in two, and a searchlight on it.
+ *
+ * The wreck says what was found; the light says somebody found it, which is
+ * the event — a power's ships were there, and the prize is theirs. The beam is
+ * faint over empty space and **bright where it lands on the hull**, because a
+ * spot of lit metal is what makes a cone read as light rather than as a smear.
+ * The break is jagged and rust-edged, since a clean gap between two hull halves
+ * reads as two ships.
+ */
+function derelict(): Grid {
+  const g = blank();
+  for (const [x, y] of [[4, 3], [15, 6], [27, 2], [45, 4], [59, 7], [62, 16], [3, 20], [52, 30], [30, 33], [60, 33]] as const) {
+    put(g, x, y, STAR_DIM);
+  }
+  for (const [x, y] of [[9, 9], [56, 12], [22, 30]] as const) put(g, x, y, STAR);
+
+  // The searchlight: a cone from the scout's lamp toward the break amidships.
+  const lamp: [number, number] = [14, 28];
+  const aim: [number, number] = [31, 17];
+  const len = Math.hypot(aim[0] - lamp[0], aim[1] - lamp[1]);
+  const dir = [(aim[0] - lamp[0]) / len, (aim[1] - lamp[1]) / len] as const;
+  const inBeam = (x: number, y: number): 'core' | 'edge' | null => {
+    const px = x - lamp[0];
+    const py = y - lamp[1];
+    const along = px * dir[0] + py * dir[1];
+    if (along < 1 || along > len + 4) return null;
+    const perp = Math.abs(px * dir[1] - py * dir[0]);
+    if (perp <= 0.4 + along * 0.1) return 'core';
+    if (perp <= 0.6 + along * 0.2) return 'edge';
+    return null;
+  };
+  for (let y = 0; y < OUTCOME_H; y++) {
+    for (let x = 0; x < OUTCOME_W; x++) {
+      const b = inBeam(x, y);
+      if (b) put(g, x, y, b === 'core' ? BEAM_LIT : BEAM);
+    }
+  }
+
+  // The aft half: engine block, hull, a row of dead windows.
+  rect(g, 15, 15, 18, 21, HULL_DARK);
+  rect(g, 13, 16, 14, 17, HULL_DARK);
+  rect(g, 13, 19, 14, 20, HULL_DARK);
+  rect(g, 19, 14, 33, 21, HULL);
+  rect(g, 19, 14, 33, 14, HULL_LIT);
+  rect(g, 19, 21, 33, 21, HULL_DARK);
+  for (let x = 21; x <= 31; x += 3) put(g, x, 17, DEAD_WINDOW);
+  // Its broken end: jagged, and rust where the metal tore.
+  for (const [y, x] of [[14, 34], [15, 35], [16, 34], [17, 35], [18, 36], [19, 35], [20, 34], [21, 33]] as const) {
+    rect(g, 33, y, x, y, HULL);
+    put(g, x, y, RUST);
+  }
+
+  // The bow half, knocked up and away from the break, tapering to a point.
+  const bowTop = 11;
+  for (const [y, x0, x1] of [
+    [bowTop, 40, 49], [bowTop + 1, 39, 52], [bowTop + 2, 40, 54], [bowTop + 3, 39, 55],
+    [bowTop + 4, 40, 54], [bowTop + 5, 39, 52], [bowTop + 6, 40, 49],
+  ] as const) {
+    rect(g, x0, y, x1, y, HULL);
+    put(g, x0, y, RUST);
+  }
+  rect(g, 41, bowTop, 49, bowTop, HULL_LIT);
+  rect(g, 41, bowTop + 6, 49, bowTop + 6, HULL_DARK);
+  for (let x = 43; x <= 50; x += 3) put(g, x, bowTop + 3, DEAD_WINDOW);
+
+  // Where the light lands, the metal is lit.
+  for (let y = 0; y < OUTCOME_H; y++) {
+    for (let x = 0; x < OUTCOME_W; x++) {
+      const lit = SPOT[g[y]![x]!];
+      if (lit && inBeam(x, y)) put(g, x, y, lit);
+    }
+  }
+
+  // What came off it, drifting in the gap.
+  for (const [x, y] of [[37, 9], [38, 22], [36, 24], [42, 21], [35, 11]] as const) put(g, x, y, HULL_LIT);
+  put(g, 39, 8, RUST);
+
+  // The scout that found it: a small ship nosed toward the wreck, its lamp lit.
+  const [lx, ly] = lamp;
+  rect(g, lx - 6, ly, lx - 1, ly, SCOUT);
+  rect(g, lx - 5, ly + 1, lx - 2, ly + 1, SCOUT_DARK);
+  rect(g, lx - 4, ly - 1, lx - 2, ly - 1, SCOUT_LIT);
+  put(g, lx - 7, ly - 1, SCOUT_DARK);
+  put(g, lx - 7, ly + 1, SCOUT_DARK);
+  put(g, lx, ly, LAMP);
+  return g;
+}
+
 /* ------------------------------------------------------------------ */
 /* Out                                                                 */
 /* ------------------------------------------------------------------ */
@@ -354,11 +463,12 @@ function ionStorm(): Grid {
  * — rendered at feed size and larger and put in front of them before it was
  * committed (item 124) — and every other kind falls back to the text card.
  */
-export const RIM_ART_KINDS = ['ion_storm'] as const;
+export const RIM_ART_KINDS = ['ion_storm', 'derelict'] as const;
 export type RimArtKind = (typeof RIM_ART_KINDS)[number];
 
 const RIM_SCENES: Record<RimArtKind, () => Grid> = {
   ion_storm: ionStorm,
+  derelict,
 };
 
 export function hasRimArt(kind: string): kind is RimArtKind {

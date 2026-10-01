@@ -3832,7 +3832,9 @@ arrived on, because the line is written onto the feed message itself.
 before it is committed, one at a time (`docs/todo.md` 124). `RIM_ART_KINDS`
 lists the approved ones; `RimEventArt` renders nothing for any other kind, the
 fallback `OutcomeArt` keeps. Approved so far: **ion storm** — a storm cloud with
-a bolt coming down onto a dashed lane that stops beneath it.
+a bolt coming down onto a dashed lane that stops beneath it; **derelict** — a
+hulk broken in two, lit where a scout's searchlight lands on it, because a spot
+of lit metal is what makes a cone read as light rather than a smear.
 
 ## A batch is a transaction
 
