@@ -94,6 +94,10 @@ const HONEST: Record<string, { schema: z.ZodType; answers: Record<string, unknow
     schema: callsModule.BreachRelevanceSchema,
     answers: { 'a bare verdict': { relevant: false } },
   },
+  EventFlavourSchema: {
+    schema: callsModule.EventFlavourSchema,
+    answers: { 'one line': { line: 'The lanes past Shalka go quiet, and the pilots drink.' } },
+  },
   EpilogueSchema: {
     schema: callsModule.EpilogueSchema,
     answers: { 'an ending': { slides: [{ factionId: 'vigil', text: 't' }], closing: 'c' } },

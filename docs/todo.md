@@ -78,6 +78,7 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | **121** | two escorts take five turns | small | resolution filed "commission two escorts" as `capital_ship_construction`, whose floor is 5; `refit` and `retooling` also deliver `commission_ships` faster. `prompts/resolution.md` lists all three with no guidance on which a light hull wants — the category should follow the hull, and the clamp at least should say so |
 | ~~122~~ | ~~an officer should be a unit, not a record beside the fleet~~ | medium | **BUILT** — `officers` on an order (by family name), aboard when the whole port sails, fall with their contingent rather than on a die, family names unique for the campaign. `JOURNAL_VERSION` 8; all 12 saves replay identically; balance and fleetlab unchanged. Two calls differ from the entry below, and it says which |
 | ~~123~~ | ~~influence does nothing at the table, and resolve does nothing but resist~~ | medium | **BUILT** — a treaty's standing is `TREATY_GOODWILL` plus the other signer's influence modifier (6–12 on the opening board, pinned to journal 9); **Rally** lifts might, guile, industry and influence by up to +3 per share of homeland lost × resolve (unpinned, as decided — 7 of 12 saves drift); personas read effective stats. The harness cannot see a rally turn a war: bots pick targets by line strength and read no stat |
+| **124** | random events: the Rim moves on its own | medium | **MECHANICS BUILT, ART PENDING** — the pulse, all ten events, the Haiku line (never waited for, and refused if it brings a number the plain line lacks) and the card in the feed and briefing, on the text fallback. `JOURNAL_VERSION` 10; all 12 saves replay identically; the board moves by at most one world at any hazard/boon split, so the weights stay 0.05 each. Art is the second step, one kind at a time, vetted before it merges |
 
 **Audited 2026-09-23:** every numbered item above 81 is built or closed except
 **92**, **94(b)** and the four added today. Of those, **116** is code and the rest
@@ -157,6 +158,190 @@ on this list: the most-favoured-nation ratchet (`B-12`), because no arrangement
 can read another's terms and a clause whose whole content is *"track that other
 contract"* is structurally unrepresentable. The fix there is the arbiter *saying
 so* rather than recording it as though it bound something.
+
+## 124. MECHANICS BUILT, ART PENDING — random events: the Rim moves on its own
+
+**The ask:** events like a TTRPG's, processed while the turn advances, that
+touch one or more powers. Six to start. What they do to the world is
+deterministic; a Haiku call only writes the line that tells the player about it;
+and the UI surfaces each one the way a veto is surfaced, so it cannot be missed.
+
+### What was borrowed, and from where
+
+Researched against Stellaris, the other Paradox titles and Larian's RPGs (from
+knowledge of the games, not a fresh read of their files — check specifics before
+quoting them):
+
+- **The pulse (EU4 mean-time-to-happen, CK3 pulses):** each tick picks from a
+  weighted pool of events whose conditions are currently true, with cooldowns so
+  nothing repeats. It is the same shape as the compulsion triggers `tickTurn`
+  already checks — a pure predicate on state — plus a weight and a seeded pick.
+- **Hit the powerful hardest (EU4 disasters, Stellaris crises):** bad events
+  weighted by occupied worlds, fleet size or dissent, so the leader is the most
+  exposed. The same back-foot principle as Rally (item 123).
+- **Found by whoever is there (Stellaris anomalies):** presence decides, and
+  the prize is an asset the game already knows how to trade.
+- **Resolved at rest (BG3 camp scenes on a long rest):** advance-turn is the
+  long rest. Events land in the tick and are read in the briefing; nothing
+  interrupts a turn the player is taking.
+- **The world says why (Larian reactivity):** every event names its cause in
+  the log. Nothing from nowhere.
+- **A d20 against a table (TTRPG encounter tables):** literally `rollD20(turn,
+  salt)` against the pool.
+
+### The six
+
+Each is chosen because it reuses a mechanic that already has force, so none is
+flavour:
+
+| event | eligible when | what it does | weighted toward |
+|---|---|---|---|
+| **Ion storm** | always | a lane or world is severed for 1–3 turns, like a blockade nobody declared; the smuggler still runs it | high-traffic lanes |
+| **Derelict** | a power has ships over an unaligned world | that power gains an asset — salvage, speculative blueprints or a stranded crew | whoever is out in the lawless middle |
+| **Unrest** | a power holds a world that was never its own | the garrison drops, and a world with none left slips to unaligned | the occupation a power is paying for (`OCCUPATION_COST`) |
+| **Border incident** | two powers have ships one jump apart | each loses standing with the other, which can tip a pair past `BOT_AGGRESSION_CEILING` | pairs already cool toward each other |
+| **Shortage** | an asset kind is held by somebody | that kind's value per unit rises for every power that wants it, for a few turns | kinds with more than one interested buyer |
+| **Mutiny** | a power's dissent is above a threshold | a small squadron deserts, through the insolvency attrition path | dissent |
+
+### And four that help
+
+Of the six, only the derelict is plainly good news, so four boons join them.
+**They lean the other way from the hazards:** where a bad event is weighted
+toward the powerful, a good one is weighted toward the power on the back foot —
+the Rally principle again (item 123), so luck is a brake on whoever is ahead
+rather than a second engine for them.
+
+| event | eligible when | what it does | weighted toward |
+|---|---|---|---|
+| **Rich seam** | a power holds a world | a one-off windfall of a few turns of that world's own income | the poorest net |
+| **Volunteers** | a world a power holds is below its garrison ceiling | the garrison is raised toward the ceiling, the `raise_garrison` effect without the order | worlds with rival ships in orbit or one jump out |
+| **Free captains** | a power holds a world | a small squadron of a few tons joins at that world, unbilled | the smallest fleet |
+| **Envoys of peace** | two powers at war have fought no battle between them for several turns | both regain some standing with each other | the longest-quiet wars |
+
+Two notes on these:
+
+- **A windfall is the one place an event mints money**, and that is why it is
+  bounded by the world's own income rather than a figure: the rule this economy
+  holds everywhere else is that nothing produces credits from nowhere, and a
+  multiple of what a world already pays is a lot of a harvest, not an invention.
+- **Envoys of peace answers a gap this file already names.** Disposition has no
+  decay, so a war-ending ceasefire leaves a pair exactly where the signature did
+  and a timed treaty is *a war on a timer*. An event that only fires on a quiet
+  war is a small, occasional thaw, not a decay model, and leaves the ratchet
+  decision where it belongs.
+
+The boons get cards in the feed like the hazards, with their own art, so good
+news is as hard to miss as bad.
+
+Choice events (Stellaris-style fixed options with prices) and multi-turn
+situations with progress bars (EU4 disasters, Stellaris situations) are the
+second step, not this one.
+
+### Rules, from how this codebase works
+
+- **Deterministic, in the reducer.** A seeded pick, pure eligibility predicates,
+  and effects from a **closed vocabulary** applied by the reducer — the
+  `OrderEffect` argument: a list has to be edited when an event is added, and
+  the edit is where the thinking happens. Journaled, so replay reproduces every
+  event, and pinned to a journal version so an older campaign replays without
+  them.
+- **Half the turns have an event, exactly.** The weights of all ten sum to
+  **0.5**, so on average one turn in two carries one. Implemented as two
+  seeded draws rather than ten independent chances: `rollD20` decides **whether**
+  an event fires (11 or better — exactly one in two, since the d20 is uniform),
+  and a second draw picks **which** among those currently eligible, in
+  proportion to their weights, renormalised over the eligible set. Independent
+  per-event chances would allow two events in one turn and let the rate drift as
+  eligibility changed; renormalising keeps it at one in two whenever anything is
+  eligible at all, and a turn with nothing eligible passing quietly is the only
+  way the average dips. The pick uses two rolls for 400 values, the granularity
+  `commanderArchetype` already uses. Starting weights: 0.05 each (ten × 0.05 =
+  0.5), then tuned against the harness — the split between hazards and boons is
+  what to sweep, not the total.
+- **Rate-limited as well.** At most one event a turn, drawn from the ten, a cooldown per event and
+  per power, and a low base chance, so a quiet turn stays quiet. Stellaris and
+  CK3 both learned event spam the hard way.
+- **Fog applies.** Most of these are public (a storm, a border incident). One
+  that concerns a single power's own affairs — a mutiny, unrest — is visible to
+  that power and to whoever can see the world, by the existing rules.
+- **Bots feel them too.** They run in `endTurn`, so an event that costs a bot a
+  squadron costs it a squadron.
+- **Measurable.** Every event with mechanical force shows up in
+  `pnpm balance`; the total is fixed at 0.5, so sweep the per-event weights —
+  above all hazards against boons — so events colour a campaign without
+  deciding it.
+
+### The flavour line: Haiku, after the fact, and never load-bearing
+
+The reducer decides and applies the event and writes a plain, complete log line
+itself. A flavour-tier call then rewrites that line in the setting's voice for
+the player — told the facts as settled, forbidden to add any. Three rules keep it
+safe:
+
+- **Never state.** The Haiku text is display only; nothing reads it, it is not
+  journaled, and replay never calls it — the same position as the epilogue's
+  prose.
+- **Cannot fail the turn.** If the call errors or times out, the plain line
+  stands, the way `fallbackEpilogue` does.
+- **Costs one call per turn at most**, and nothing on a turn with no event. Run
+  alongside the reactions, so it adds no wall time to the end of turn.
+
+### Surfaced like a veto
+
+A veto is not missable because it is a picture in the feed with its line under
+it, not a sentence in the log (`OutcomeArt`, carried on the message so the feed
+trimming cannot separate the two). An event gets the same treatment:
+
+- **Its own card in the feed** after End Turn, above the battles, with an image
+  per event kind — pixel art drawn in `src/ui/outcomeart.ts` the way refusal and
+  defiance are — the Haiku line, and the plain fact beneath it.
+- **Named in the briefing** as its own group, so it is still there on a resumed
+  campaign (derived from the event log, the way the watch section is).
+- **Private events** reach only the powers entitled to see them, by the same
+  scoping the event log already applies; the player never sees a card for a
+  rival's mutiny they could not have observed.
+- **Missing art renders nothing**, falling back to the text card — the rule
+  `OutcomeArt` already follows — so the wiring can ship before the images.
+
+**The art is vetted by the user before any of it merges.** Ten images is ten
+chances to repeat what refusal and defiance went through — a barred door that
+read as an abstraction, a stamp that read as a tube — and those faults were
+found by looking, not by the suite. So the build is split:
+
+1. **Mechanics and the text card first**, in their own PR: the pulse, the ten
+   events, the Haiku line, the feed card and the briefing group, with no images.
+   Complete and playable on the fallback.
+2. **Art second, one kind at a time, for review.** Each image is rendered out as
+   a PNG at the size it is actually shown in the feed, and at a larger size, and
+   put in front of the user with the event line beside it. Nothing is committed
+   to the art branch until it is approved; a rejected image goes back with the
+   reason, the way the refusal stamp did.
+
+### As built (step 1)
+
+CLAUDE.md, "The Rim moves on its own", has the whole of it. Where the build
+departs from the plan above, and why:
+
+- **The flavour call does not run alongside the reactions**, and cannot: the
+  event is decided in the tick, which runs after them. It is fired without being
+  waited for instead — the turn returns with the plain line and the dressed one
+  arrives on the next state push — which keeps the promise that mattered, no
+  wall time added to the end of turn.
+- **"Forbidden to add facts" is partly code.** A line carrying a number the
+  plain line does not, in digits or spelled out, is thrown away and the plain
+  line stands.
+- **The split was swept and left alone.** At every hazard/boon split with the
+  total at 0.5 the board is within one world of the no-events control, always the
+  marginal world between the Combine and the Confederacy; events colour a
+  campaign without deciding it, so the weights stay 0.05 each.
+- **The harness never fires a derelict or volunteers** — bots rarely sit over
+  unaligned ground, and a garrison has regrown to its ceiling by the time the
+  pulse runs. Both fire in played campaigns.
+- **Unrest can leave a world to nobody**, which makes it the third way control
+  changes after an arrival and a cession — reducer-only, like both.
+- **Envoys needed new state**: `WorldState.lastClash`, the last turn each pair
+  fought, since a battle report is not kept.
+
 
 ## 123. BUILT — influence does nothing at the table, and resolve does nothing but resist
 

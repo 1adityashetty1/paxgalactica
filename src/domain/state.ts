@@ -55,6 +55,7 @@ import { DebtSchema, MAX_DEBT_PER_TURN, scheduledDebtService, type Debt } from '
 import { LoanSchema, scheduledRent } from './loan.js';
 import { DurationCategorySchema, FibScaleSchema } from './duration.js';
 import { buildAdjacency } from './graph.js';
+import { RimEventSchema } from './events.js';
 // trade.ts imports only TYPES from here, so this edge is one-directional at
 // runtime and there is no import cycle to trip over.
 import { routeEarnings, type RouteEarnings } from './trade.js';
@@ -675,6 +676,12 @@ export const EventLogEntrySchema = z.object({
      * the world now is.
      */
     'cheat',
+    /**
+     * Something the Rim did on its own — a random event (item 124). The plain
+     * line the reducer wrote, scoped by the event's own `visibleTo`, so a
+     * power reads about a rival's mutiny only if it could have seen it.
+     */
+    'rim',
   ]),
   factionId: z.string().nullable().default(null),
   text: z.string(),
@@ -750,6 +757,24 @@ export const WorldStateSchema = z.object({
    * taken. See `familiesInUse`.
    */
   familiesUsed: z.array(z.string()).default([]),
+  /**
+   * Every random event the Rim has produced, oldest first — see `events.ts`.
+   *
+   * History rather than only what is in force, because the cooldowns read it
+   * and the briefing on a resumed campaign is derived from it. Defaulted, so a
+   * campaign from before events existed loads as one that has had none.
+   */
+  rimEvents: z.array(RimEventSchema).default([]),
+  /**
+   * The last turn each pair of powers fought, keyed by the two ids sorted and
+   * joined with `|`. Absent means never.
+   *
+   * Only one reader — envoys of peace, which fire on a war that has gone quiet
+   * — and no way to derive it: a battle report is a by-product of the tick and
+   * is not kept, and reading it back out of the log's prose would be parsing a
+   * sentence to recover a fact.
+   */
+  lastClash: z.record(z.string(), z.number().int()).default({}),
   playerFactionId: z.string().min(1),
   /** Abstract unit. There is no calendar in this game, deliberately. */
   turn: z.number().int().min(0),

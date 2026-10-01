@@ -10,6 +10,7 @@ import {
   tradeRoutes,
   type TradeRoute,
 } from '../../../src/domain/trade.js';
+import { stormbound } from '../../../src/domain/events.js';
 import { ansi256ToHex } from '../color.js';
 
 /**
@@ -140,8 +141,13 @@ function Lane({
 }) {
   const [a, b] = route.endpoints;
   const interference = route.path
-    .map((id) => ({ id, blockaders: blockadesOn(state, id), raiders: raidersOn(state, id) }))
-    .filter((x) => x.blockaders.length > 0 || x.raiders.length > 0);
+    .map((id) => ({
+      id,
+      blockaders: blockadesOn(state, id),
+      raiders: raidersOn(state, id),
+      storm: stormbound(state, id),
+    }))
+    .filter((x) => x.blockaders.length > 0 || x.raiders.length > 0 || x.storm);
 
   const nameFaction = (id: string) => state.factions.find((f) => f.id === id)?.name ?? id;
 
@@ -181,8 +187,9 @@ function Lane({
             <>Blockaded at {nameOf(x.id)} by {x.blockaders.map(nameFaction).join(', ')}. </>
           )}
           {x.raiders.length > 0 && (
-            <>Raided at {nameOf(x.id)} by {x.raiders.map(nameFaction).join(', ')}.</>
+            <>Raided at {nameOf(x.id)} by {x.raiders.map(nameFaction).join(', ')}. </>
           )}
+          {x.storm && <>An ion storm closes {nameOf(x.id)}; only smugglers run it.</>}
         </div>
       ))}
     </li>

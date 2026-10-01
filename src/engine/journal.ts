@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { applyOps, tickTurn, type LegacyRules } from '../domain/reducer.js';
 import { WorldStateSchema, type WorldState } from '../domain/state.js';
 import { createSeedState } from '../seed/scenario.js';
+import { RimEventKindSchema, type RimEventKind } from '../domain/events.js';
+import { primeRimSandbox } from '../domain/pulse.js';
 
 /**
  * The ops journal. Everything that ever changed the world is recorded here as
@@ -14,7 +16,7 @@ import { createSeedState } from '../seed/scenario.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 9;
+export const JOURNAL_VERSION = 10;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -35,6 +37,13 @@ export const JournalEntrySchema = z.discriminatedUnion('kind', [
      * played under.
      */
     maxTurns: z.number().int().min(10).max(100).optional(),
+    /**
+     * A sandbox campaign (item 124): only this random event, every turn, on a
+     * board set up so it can happen to the player. For looking at an event, not
+     * for playing. On the seed entry for `maxTurns`'s reason — a rule of this
+     * campaign that has to survive a save and a replay.
+     */
+    sandboxEvent: RimEventKindSchema.optional(),
   }),
   z.object({
     kind: z.literal('ops'),
@@ -82,6 +91,7 @@ export const JournalVersionSchema = z.union([
   z.literal(7),
   z.literal(8),
   z.literal(9),
+  z.literal(10),
 ]);
 
 export const JournalSchema = z.object({
@@ -109,18 +119,41 @@ export const JournalSchema = z.object({
    *     order, a roll to die on any defeat, and names unique only by luck.
    * 8 — written before a treaty's standing scaled with the signer's influence.
    *     (The rally of the same change is not pinned; see `LegacyRules`.)
-   * 9 — current.
+   * 9 — written before the Rim moved on its own: no random events in the
+   *     tick, and no record of who last fought whom.
+   * 10 — current.
    */
   version: JournalVersionSchema,
   entries: z.array(JournalEntrySchema),
 });
 export type Journal = z.infer<typeof JournalSchema>;
 
-export function emptyJournal(playerFactionId: string, maxTurns?: number): Journal {
+export function emptyJournal(
+  playerFactionId: string,
+  maxTurns?: number,
+  sandboxEvent?: RimEventKind,
+): Journal {
   return {
     version: JOURNAL_VERSION,
-    entries: [{ kind: 'seed', playerFactionId, ...(maxTurns === undefined ? {} : { maxTurns }) }],
+    entries: [
+      {
+        kind: 'seed',
+        playerFactionId,
+        ...(maxTurns === undefined ? {} : { maxTurns }),
+        ...(sandboxEvent === undefined ? {} : { sandboxEvent }),
+      },
+    ],
   };
+}
+
+/** The opening board a journal's seed entry describes. */
+export function seedStateFor(
+  playerFactionId: string,
+  sandboxEvent: RimEventKind | undefined,
+  opts: Parameters<typeof createSeedState>[1] = {},
+): WorldState {
+  const state = createSeedState(playerFactionId, opts);
+  return sandboxEvent === undefined ? state : WorldStateSchema.parse(primeRimSandbox(state, sandboxEvent));
 }
 
 export interface ReplayResult {
@@ -155,7 +188,7 @@ export function replay(
   // The seed moved at version 7 — officers dealt from four schools, freighters
   // and listeners in the opening fleets — so an older journal rebuilds the
   // board it was actually played on.
-  let state = createSeedState(seed.playerFactionId, {
+  let state = seedStateFor(seed.playerFactionId, seed.sandboxEvent, {
     fourSchools: parsed.version >= 7,
     auxiliaries: parsed.version >= 7,
   });
@@ -213,6 +246,11 @@ export function replay(
     uniqueFamilies: parsed.version >= 8,
     // A treaty paid a flat 8 standing both ways, whoever signed it.
     influentialGoodwill: parsed.version >= 9,
+    // The Rim moved on its own (item 124). Those campaigns' ticks passed with
+    // no event, and a storm, a mutiny or a windfall they never had would
+    // rewrite every turn after it.
+    randomEvents: parsed.version >= 10,
+    rimSandbox: seed.sandboxEvent,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

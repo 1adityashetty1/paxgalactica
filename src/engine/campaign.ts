@@ -9,7 +9,8 @@ import {
 import { WorldStateSchema, type OrderType, type WorldState } from '../domain/state.js';
 import { isPublicOrderType } from '../domain/intel.js';
 import { createSeedState } from '../seed/scenario.js';
-import { emptyJournal, replay, type Journal } from './journal.js';
+import { emptyJournal, replay, seedStateFor, type Journal } from './journal.js';
+import type { RimEventKind } from '../domain/events.js';
 import {
   FileCampaignStore,
   SAVE_DIR,
@@ -134,10 +135,12 @@ export class Campaign {
     name = 'campaign',
     store: CampaignStore = new FileCampaignStore(),
     maxTurns?: number,
+    /** A sandbox: only this random event, every turn. See `primeRimSandbox`. */
+    sandboxEvent?: RimEventKind,
   ): Campaign {
     return new Campaign(
-      createSeedState(playerFactionId),
-      emptyJournal(playerFactionId, maxTurns),
+      seedStateFor(playerFactionId, sandboxEvent),
+      emptyJournal(playerFactionId, maxTurns, sandboxEvent),
       {},
       name,
       store,
@@ -157,6 +160,13 @@ export class Campaign {
     const seed = this.journal.entries[0];
     if (!seed || seed.kind !== 'seed') return null;
     return seed.maxTurns ?? null;
+  }
+
+  /** The one random event a sandbox campaign fires, or null for a real one. */
+  get sandboxEvent(): RimEventKind | null {
+    const seed = this.journal.entries[0];
+    if (!seed || seed.kind !== 'seed') return null;
+    return seed.sandboxEvent ?? null;
   }
 
   /** True once time has run out. Committed turn, not the preview. */
@@ -462,7 +472,7 @@ export class Campaign {
 
   /** Advance time. The only path by which pending orders progress. */
   tick(): { notes: string[]; report: TurnReport } {
-    const res = tickTurn(this.committed);
+    const res = tickTurn(this.committed, { rimSandbox: this.sandboxEvent ?? undefined });
     this.committed = res.state;
     this.journal.entries.push({ kind: 'tick' });
     this.resyncPreview();

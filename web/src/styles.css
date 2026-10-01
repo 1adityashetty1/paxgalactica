@@ -425,6 +425,31 @@ svg.outcome-art {
 .outcome-art\.out-of-actions,
 .outcome-art.out-of-actions { border-left: 2px solid var(--dim, #666); }
 
+/* ---- the Rim's own events (item 124) ---- */
+
+/* A card rather than a line, edged the way a refusal is so it reads as one
+   thing: a veto is not missable because it is set apart from the prose around
+   it, and neither is this. Amber for a hazard, green for a boon — good news
+   has to be as hard to miss as bad. */
+.rim-event {
+  margin: 6px 0 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn);
+  border-radius: 3px;
+  background: rgba(251, 191, 36, 0.05);
+  max-width: 560px;
+}
+.rim-event.boon { border-left-color: var(--good); background: rgba(74, 222, 128, 0.05); }
+.rim-event-head { font-size: 12px; }
+.rim-event .muted { color: var(--dim); }
+.rim-event-head strong { color: var(--warn); text-transform: uppercase; letter-spacing: 0.06em; }
+.rim-event.boon .rim-event-head strong { color: var(--good); }
+.rim-event-flavour { margin: 4px 0 2px; font-style: italic; color: var(--text); }
+.rim-event-fact { margin: 2px 0 0; color: var(--dim); font-size: 12px; }
+/* In the briefing it is one entry among many, so it gives up the padding. */
+.rim-event.compact { padding: 4px 8px; margin: 4px 0; background: none; }
+
 /* ---- export / import ---- */
 
 /* A topbar affordance that stays subordinate to the game: the map and feed

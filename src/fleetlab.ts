@@ -141,8 +141,12 @@ export function trial(
   ]);
   if (issued.rejections.length > 0) return { took: false, why: 'other', defenderTonsLeft: 0, defenderWeightLeft: 0 };
 
-  let r = tickTurn(issued.state);
-  for (let guard = 0; guard < 6 && r.state.pendingOrders.length > 0; guard++) r = tickTurn(r.state);
+  // The Rim held still: a random event (item 124) is part of the galaxy this
+  // arena strips out, and volunteers or a mutiny landing mid-trial would be
+  // noise in a question about which fleet wins.
+  const calm = { randomEvents: false };
+  let r = tickTurn(issued.state, calm);
+  for (let guard = 0; guard < 6 && r.state.pendingOrders.length > 0; guard++) r = tickTurn(r.state, calm);
 
   const after = r.state.systems.find((s) => s.id === TARGET)!;
   const took = after.controllerFactionId === 'freeworlds';

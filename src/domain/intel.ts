@@ -1,3 +1,4 @@
+import { rimEventsVisibleTo } from './events.js';
 import { z } from 'zod';
 import type { DurationCategory } from './duration.js';
 import {
@@ -313,6 +314,9 @@ export function worldAsSeenBy(state: WorldState, factionId: string): WorldState 
     // exactly the "each component remembering to filter" this function exists to
     // replace. Fog is a property of the whole payload.
     agents: agentsVisibleTo(state, factionId),
+    // A power's own affairs among the Rim's events — a rival's mutiny, its
+    // windfall — by the rule the log above is cut by (item 124).
+    rimEvents: rimEventsVisibleTo(state, factionId),
   };
 }
 

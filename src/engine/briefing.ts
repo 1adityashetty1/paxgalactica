@@ -2,6 +2,12 @@ import type { BattleReport } from '../domain/battle.js';
 import type { TurnReport } from '../domain/reducer.js';
 import { describeEffect } from '../domain/diplomacy.js';
 import { observeOrders } from '../domain/intel.js';
+import {
+  RIM_EVENT_TITLE,
+  isBoon,
+  rimEventsVisibleTo,
+  type RimEventKind,
+} from '../domain/events.js';
 import { getFaction, ledgerFor, type Ledger, type WorldState } from '../domain/state.js';
 
 /**
@@ -74,6 +80,31 @@ export interface BriefingWatch {
   sees: string[];
 }
 
+/**
+ * Something the Rim did on its own (item 124), as the player may know it.
+ *
+ * Derived from `state.rimEvents` rather than from the tick, so a resumed
+ * campaign still shows this turn's event and every storm and shortage still in
+ * force — the rule `watch` follows. `flavour` is the one field the state does
+ * not hold: a model's rewording of `text`, attached after the fact by the
+ * session and absent until it arrives or if it never does.
+ */
+export interface BriefingEvent {
+  id: string;
+  turn: number;
+  kind: RimEventKind;
+  title: string;
+  /** The plain line the reducer wrote. Complete on its own, and always shown. */
+  text: string;
+  flavour: string | null;
+  /** Good news, which the card draws differently. */
+  boon: boolean;
+  /** From an earlier turn and still in force — a storm, a shortage. */
+  ongoing: boolean;
+  untilTurn: number | null;
+  where: string | null;
+}
+
 export interface BriefingCompletion {
   label: string;
   where: string;
@@ -113,8 +144,34 @@ export interface Briefing {
    * carries the prose, which is what a resumed player had before.
    */
   battles: BattleReport[];
+  /**
+   * What the Rim did on its own: this turn's event, and anything earlier still
+   * in force. Ahead of the battles on screen, because it is the one thing in
+   * the briefing nobody chose.
+   */
+  events: BriefingEvent[];
   /** Nothing completed, nothing running, nothing visible. */
   quiet: boolean;
+}
+
+/** The events a player may know about that belong on this turn's briefing. */
+export function briefingEvents(state: WorldState, factionId: string): BriefingEvent[] {
+  return rimEventsVisibleTo(state, factionId)
+    .filter((e) => e.turn === state.turn || (e.untilTurn !== null && e.untilTurn >= state.turn))
+    .map((e) => ({
+      id: e.id,
+      turn: e.turn,
+      kind: e.kind,
+      title: RIM_EVENT_TITLE[e.kind],
+      text: e.text,
+      flavour: null,
+      boon: isBoon(e.kind),
+      ongoing: e.turn !== state.turn,
+      untilTurn: e.untilTurn,
+      where: e.systemId === null ? null : (state.systems.find((s) => s.id === e.systemId)?.name ?? e.systemId),
+    }))
+    // This turn's first, then the longest-running.
+    .sort((a, b) => Number(a.ongoing) - Number(b.ongoing) || a.turn - b.turn);
 }
 
 /**
@@ -141,6 +198,7 @@ export function briefingFromState(state: WorldState): Briefing {
     ledger: ledgerFor(state, state.playerFactionId),
     arrivals: [],
     battles: [],
+    events: [],
   });
 }
 
@@ -237,6 +295,8 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
         }),
     }));
 
+  const events = briefingEvents(state, me);
+
   return {
     turn: state.turn,
     treasury: getFaction(state, me)?.credits ?? 0,
@@ -247,13 +307,16 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
     rumoured,
     watch,
     battles: report.battles,
-    // A battle is never a quiet turn, even if nothing else moved.
+    events,
+    // A battle is never a quiet turn, even if nothing else moved; nor is one
+    // the Rim filled on its own.
     quiet:
       completed.length === 0 &&
       inProgress.length === 0 &&
       observed.length === 0 &&
       rumoured.length === 0 &&
-      report.battles.length === 0,
+      report.battles.length === 0 &&
+      events.length === 0,
   };
 }
 
@@ -287,6 +350,7 @@ export function withCurrentIntel(briefing: Briefing, state: WorldState): Briefin
     ledger: ledgerFor(state, state.playerFactionId),
     arrivals: [],
     battles: [],
+    events: [],
   });
   return { ...briefing, watch: fresh.watch, rumoured: fresh.rumoured };
 }

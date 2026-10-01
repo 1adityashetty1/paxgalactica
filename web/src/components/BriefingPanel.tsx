@@ -1,6 +1,7 @@
 import type { WorldState } from '../../../src/domain/state.js';
 import type { Briefing } from '../../../src/engine/briefing.js';
 import { BattleCard } from './BattleCard.js';
+import { RimEventCard } from './RimEventCard.js';
 import type { StagedItem } from './types.js';
 import { ansi256ToHex } from '../color.js';
 
@@ -132,6 +133,18 @@ export function BriefingPanel({
               </span>
             )}
           </div>
+
+          {/* Above the battles: the one thing in the briefing nobody chose,
+              and a storm still closing a lane is as much news on its third
+              turn as on its first. */}
+          {briefing.events.length > 0 && (
+            <div className="brief-group">
+              <h4>The Rim</h4>
+              {briefing.events.map((e) => (
+                <RimEventCard key={e.id} event={e} compact />
+              ))}
+            </div>
+          )}
 
           {briefing.battles.length > 0 && (
             <div className="brief-group">

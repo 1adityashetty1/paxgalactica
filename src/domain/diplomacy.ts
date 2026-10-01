@@ -696,8 +696,14 @@ export const AssetSchema = z.object({
 });
 export type Asset = z.infer<typeof AssetSchema>;
 
-/** What an asset is worth to a power, in total. A claim, never a ledger entry. */
-export function assetWorthTo(asset: Asset, factionId: string): number {
+/**
+ * What an asset is worth to a power, in total. A claim, never a ledger entry.
+ *
+ * `factor` is scarcity — `shortageFactor` while a shortage of this kind is in
+ * force (item 124) — applied here, where worth is read, and never written into
+ * the asset, so a shortage ending needs nothing undone.
+ */
+export function assetWorthTo(asset: Asset, factionId: string, factor = 1): number {
   if (asset.speculative) {
     const band = asset.valueRange[factionId];
     if (!band) return 0;
@@ -705,9 +711,9 @@ export function assetWorthTo(asset: Asset, factionId: string): number {
     // middle of what is known is the least misleading one available. Anything
     // that should show the uncertainty itself — a prompt, a panel — asks
     // `assetWorthRangeTo` instead.
-    return Math.floor((band.min + band.max) / 2) * asset.quantity;
+    return Math.floor(Math.floor((band.min + band.max) / 2) * factor) * asset.quantity;
   }
-  return (asset.valuePerUnit[factionId] ?? 0) * asset.quantity;
+  return Math.floor((asset.valuePerUnit[factionId] ?? 0) * factor) * asset.quantity;
 }
 
 /**
@@ -721,13 +727,18 @@ export function assetWorthTo(asset: Asset, factionId: string): number {
 export function assetWorthRangeTo(
   asset: Asset,
   factionId: string,
+  /** Scarcity, as in `assetWorthTo`. */
+  factor = 1,
 ): { min: number; max: number } {
   if (asset.speculative) {
     const band = asset.valueRange[factionId];
     if (!band) return { min: 0, max: 0 };
-    return { min: band.min * asset.quantity, max: band.max * asset.quantity };
+    return {
+      min: Math.floor(band.min * factor) * asset.quantity,
+      max: Math.floor(band.max * factor) * asset.quantity,
+    };
   }
-  const flat = (asset.valuePerUnit[factionId] ?? 0) * asset.quantity;
+  const flat = Math.floor((asset.valuePerUnit[factionId] ?? 0) * factor) * asset.quantity;
   return { min: flat, max: flat };
 }
 

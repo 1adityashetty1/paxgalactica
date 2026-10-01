@@ -1,3 +1,4 @@
+import { RIM_EVENT_KINDS, RIM_EVENT_TITLE, type RimEventKind } from '../../../src/domain/events.js';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { ansi256ToHex } from '../color.js';
@@ -15,7 +16,7 @@ export function FactionPicker({
   onImport,
   onBack,
 }: {
-  onStart: (factionId: string, maxTurns: number) => void;
+  onStart: (factionId: string, maxTurns: number, sandboxEvent?: RimEventKind) => void;
   onResume: (name: string) => void;
   onImport: (file: File) => void | Promise<void>;
   /** Present only when a campaign is still loaded behind this screen. */
@@ -28,6 +29,8 @@ export function FactionPicker({
   // to pay for themselves and a war to be fought and lost, and short enough
   // that the ending is a horizon rather than a rumour.
   const [maxTurns, setMaxTurns] = useState(30);
+  // For looking at one random event, not for playing: see `primeRimSandbox`.
+  const [sandbox, setSandbox] = useState<RimEventKind | ''>('');
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -111,6 +114,27 @@ export function FactionPicker({
         matter, short enough to finish — a shipyard takes five turns, and a war rather longer.
       </p>
 
+      <h2>Sandbox</h2>
+      <div className="length-picker">
+        <select
+          value={sandbox}
+          onChange={(e) => setSandbox(e.target.value as RimEventKind | '')}
+          aria-label="Sandbox event"
+        >
+          <option value="">Off — a real campaign</option>
+          {RIM_EVENT_KINDS.map((k) => (
+            <option key={k} value={k}>
+              Only {RIM_EVENT_TITLE[k].toLowerCase()}, every turn
+            </option>
+          ))}
+        </select>
+      </div>
+      <p className="hint">
+        For looking at one random event: it fires every turn, aimed at you, on a board set up so it
+        can. Saved on its own as <code>sandbox_…</code>, so it never touches a campaign you are
+        playing.
+      </p>
+
       <h2>Choose your faction</h2>
       <div className="faction-cards">
         {factions.map((f) => (
@@ -118,7 +142,7 @@ export function FactionPicker({
             key={f.id}
             className="faction-card"
             style={{ borderColor: ansi256ToHex(f.color) }}
-            onClick={() => onStart(f.id, maxTurns)}
+            onClick={() => onStart(f.id, maxTurns, sandbox === '' ? undefined : sandbox)}
           >
             <strong style={{ color: ansi256ToHex(f.color) }}>{f.name}</strong>
             <span>{f.doctrine}</span>

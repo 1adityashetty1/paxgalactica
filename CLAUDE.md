@@ -3673,6 +3673,165 @@ is a real position in this game"* — the Confederacy played to its doctrine
 rather than a power that has been eliminated. Income mix is 58/42, unchanged.
 `pnpm fleetlab` does not read disposition at all.
 
+## The Rim moves on its own: random events
+
+Item 124. Ten events, like a TTRPG's, that land in the advance-turn tick and
+touch one power or several: six hazards and four boons. What an event does to
+the world is decided and applied by the reducer; a Haiku call only rewrites the
+sentence that tells the player about it; and the UI draws each one as a card, the
+way a veto is drawn, so it cannot scroll past unread.
+
+`src/domain/events.ts` holds the shapes and constants and is a leaf, because
+`state.ts` builds its schema from it and `trade.ts` reads a storm through it.
+`src/domain/pulse.ts` decides whether something happens and what, and returns a
+plan. `applyRimEvent` in the reducer carries the plan out, since carrying it out
+is changing the world and that has one home.
+
+### Every event is a mechanic that already exists
+
+| event | eligible when | what it does | weighted toward |
+|---|---|---|---|
+| **ion storm** | a world carries trade | closes its lanes for 1–3 turns, as a blockade nobody declared | lane volume through the world |
+| **derelict** | a power has ships over unaligned ground | an asset where it was found: salvage, speculative blueprints, or another power's stranded crew | tons present |
+| **unrest** | a power holds a world that was never its own | half the garrison lost; at none, and no fleet overhead, the world slips to unaligned | what the world pays its occupier |
+| **border incident** | two powers have ships within a jump | `BORDER_INCIDENT_COST` (8) standing lost each way | pairs already cool |
+| **shortage** | a kind of goods is held and wanted | `SHORTAGE_FACTOR` (1.5) on what every buyer would pay, for 3 turns | how many powers want it |
+| **mutiny** | dissent at `MUTINY_DISSENT` (25) | 5% of the fleet walks, through the insolvency attrition path | dissent |
+| **rich seam** | a power holds a paying world | 3 turns of that world's own income, once | the poorest net |
+| **volunteers** | a garrison below its ceiling | up to 4 raised, `raise_garrison` without the order | a rival in orbit or a jump out |
+| **free captains** | a power holds a world | a battleship and two escorts at its best world, unbilled | the smallest fleet |
+| **envoys of peace** | two powers at war with no battle for 5 turns | `ENVOYS_GOODWILL` (10) regained each way | the longest-quiet wars |
+
+Hazards lean on the powerful and boons on whoever is behind — the Rally principle
+(item 123), so luck is a brake on the leader rather than a second engine.
+
+**A storm is a blocker, not a rule.** `severedBy` adds `STORM_BLOCKER` beside the
+blockaders on a stormbound world, and everything else follows from code that
+already exists: `runsBlockade` lets a smuggler through any blockade, so the
+smuggler runs the storm; a `trade_accord` names no weather, so it exempts nobody;
+and the disposition interdiction costs are charged off orders, which a storm has
+none of, so nobody resents weather. The map and the Trade panel draw a storm
+where they draw a blockade.
+
+**A shortage is read, never written.** `assetWorthTo` and `assetWorthRangeTo`
+take a factor, and `shortageFactor` supplies it where worth is read — the prompts'
+asset blocks and the Assets tab. Writing the multiplier into `valuePerUnit` would
+mean dividing it back out when the shortage ends, and missing every row split,
+traded or minted in between. Only the catalogue's stuff group can run short;
+people, paper and fixtures cannot.
+
+**Unrest is the third way a world changes hands**, after an arrival and a
+cession, and like both it is the reducer's alone. A world slips only with no
+garrison left **and** no ship of its holder overhead, and the rising becomes its
+militia — *unaligned is not undefended*.
+
+**A rich seam is the one event that mints money**, which is why it is a multiple
+of what the world already pays rather than a figure.
+
+**Envoys need a record the game did not keep.** `WorldState.lastClash` is the
+last turn each pair fought, written from the tick's battle reports: every
+attacker against every defender and the world's holder. A battle report is not
+stored, and recovering the fact from the log's prose would be parsing a sentence.
+
+### Half the turns, and never two in one
+
+The weights sum to **0.5** (`RIM_EVENT_RATE`), and that total is the chance a
+turn carries an event at all: `rollD20(turn, 'rim:fires')` at 11 or better. A
+second, 400-value draw picks which kind among those eligible, by weight,
+renormalised over that set; a third picks the target within the kind. Independent
+chances per event would allow two events in one turn and let the rate drift as
+eligibility moved. A kind rests `RIM_KIND_COOLDOWN` (4) turns after it fires, and
+a power singled out rests `RIM_POWER_COOLDOWN` (3).
+
+Every event is recorded on `WorldState.rimEvents` with its plain line and a
+`visibleTo`, and logged under the `rim` kind with the same scope. A power's own
+affairs — its mutiny, its windfall, its find — reach it and whoever holds or has
+ships at the world; a storm, a border incident and a shortage are public. The
+served view, `worldAsSeenBy` and the briefing all cut by that rule.
+
+Pinned to `JOURNAL_VERSION` **10** (`LegacyRules.randomEvents`), so an older
+journal's ticks pass without events and without `lastClash`. All 12 saved
+campaigns replay identically. `pnpm fleetlab` ticks with events off: its arena
+strips the galaxy out, and volunteers landing mid-trial would be noise.
+
+### A sandbox, for looking at one event
+
+Waiting for a particular event in a real campaign is waiting on a d20, a
+cooldown and a board that happens to make it eligible. A **sandbox** campaign
+fires one chosen kind every turn instead — no d20, no cooldowns, aimed at the
+player whenever a candidate is — on an opening board `primeRimSandbox` sets up so
+the event can happen to them: escorts over unclaimed ground for a derelict, two
+occupied worlds for unrest, dissent at 60 for a mutiny, and so on.
+
+**It is isolated by construction.** The kind lives on the journal's seed entry,
+beside `maxTurns`, so it replays; a campaign without it takes exactly the path
+it always did, and all 15 saves replay byte-identically with the sandbox code
+present. The server saves a sandbox as `sandbox_<kind>` whatever name the
+request asked for, so it can never overwrite a campaign being played. Chosen on
+the faction picker, and labelled in the top bar. Some kinds run dry after a few
+turns — garrisons back at their ceiling, a war thawed into peace — which is the
+mechanic working.
+
+### Measured, and the split does not decide the board
+
+`pnpm balance [turns] --no-events` is the control. Swept over the hazard/boon
+split with the total fixed at 0.5:
+
+| hazards / boons | 30 turns | 100 turns |
+|---|---|---|
+| control (no events) | 6/6/5/6/2 | 6/6/5/6/2 |
+| 0.50 / 0.00 | 6/6/5/6/2 | 6/6/5/6/2 |
+| 0.40 / 0.10 | 6/6/4/6/3 | 6/6/5/6/2 |
+| 0.35 / 0.15 | 6/6/4/6/3 | 6/6/4/6/3 |
+| **0.30 / 0.20** (0.05 each) | **6/6/4/6/3** | **6/6/4/6/3** |
+| 0.25 / 0.25 | 6/6/5/6/2 | 6/6/5/6/2 |
+| 0.20 / 0.30 | 6/6/5/6/2 | 6/6/6/6/1 |
+
+At every split the board is within one world of the control, and that world is
+always the marginal one between the Combine and the Confederacy — the discrete
+question that swamps the arithmetic, as it did for `MONOPOLY_BONUS`. Events
+colour a campaign without deciding it, which was the bar, so the weights stay at
+0.05 each. Every property `tests/balance.test.ts` asserts holds throughout.
+
+**The harness is blind to two of the ten.** Over 100 turns it fires border
+incidents 13 times, rich seams 9, shortages, envoys and storms 8 each, unrest 6,
+free captains 4, mutiny 3 — and **no derelict and no volunteers**, because the
+bots rarely park on unaligned ground and a garrison is back at its ceiling by the
+time the pulse runs. Both fire in played campaigns, where fleets sit over neutral
+worlds and garrisons are fought down.
+
+### The flavour line: after the fact, and never waited for
+
+`dressRimEvent` rewrites the plain line in the setting's voice
+(`prompts/event-flavour.md`, the `event_flavour` call kind on the flavour tier).
+**Never state**: it is not journaled and replay never calls it — the epilogue's
+position. **Never waited for**: the event is decided in the tick, which runs
+after the reactions, so the call cannot run alongside them; `GameSession`
+returns the turn with the plain line and fires the call without awaiting it, and
+the dressed line reaches the briefing and the feed card on the next state push.
+Measured: 2.1s and $0.0016 a call, on the turns that have an event.
+
+**No number the plain line lacks.** `flavourKeepsTheFacts` refuses a line with a
+number — in digits or spelled out, "sixty-three" read as 63 — that the plain
+line does not contain, and the plain line stands. A number is the likeliest
+invented fact and the likeliest believed; anything subtler is the prompt's job,
+and the plain line is always printed beneath the flavour, so a line that slips
+through is colour beside the fact rather than instead of it.
+
+### Surfaced like a veto
+
+`RimEventCard` puts the event in the feed after End Turn, amber for a hazard and
+green for a boon, with the flavour line over the plain one; the briefing lists it
+under **The Rim**, above the battles, with any storm or shortage still in force.
+The briefing's copy is derived from `state.rimEvents`, so it survives a resume.
+A card keeps its flavour line when the next turn's briefing replaces the one it
+arrived on, because the line is written onto the feed message itself.
+
+**No art yet, and that is the plan rather than a gap.** Each kind gets a pixel
+scene once the user has vetted it, one at a time — `docs/todo.md` 124.
+`RimEventArt` is the slot, and it renders nothing for a kind with no approved
+scene, the fallback `OutcomeArt` keeps.
+
 ## A batch is a transaction
 
 `applyOps` prices each op on its own. That is right when ops are independent —
@@ -4777,6 +4936,8 @@ Control of a system changes **only** when a `fleet_movement` order physically
 arrives. This is enforced three times over: the op is not in the model's schema,
 the reducer rejects it from a `'model'` source, and arrival resolution is the
 sole caller. A model cannot talk itself into owning a system across the galaxy.
+(A cession moves a world under a signature, and unrest can leave one to nobody —
+see "The Rim moves on its own". Neither is reachable from a model either.)
 
 Rejection codes: `unknown_op`, `schema_invalid`, `reducer_only`,
 `unknown_faction`, `unknown_system`, `unknown_order`, `unknown_commitment`,
@@ -5247,6 +5408,7 @@ is a reviewable diff that can be replayed against a recorded campaign.
 | `extraction.md` | turning a transcript into ops |
 | `duration-rubric.md` | appended to every prompt that estimates duration |
 | `advisor.md` | the counsellor at the leader's shoulder |
+| `event-flavour.md` | the line a random event is dressed in, after the fact |
 | `flavor.md` | Haiku-tier colour text |
 
 ### Prompt contract
@@ -5308,6 +5470,7 @@ over its cap, a fleet sent with `force: 0`. Layer 2 exists because of that run.
 |---|---|---|
 | resolution, reaction, diplomacy, extraction, advisor | `reasoning` | `claude-sonnet-5` |
 | breach relevance | `flavor` | `claude-haiku-4-5-20251001` |
+| event flavour | `flavor` | `claude-haiku-4-5-20251001` |
 | flavour text | `flavor` | `claude-haiku-4-5-20251001` |
 
 Every call is single-shot JSON with `tools: []` and `settingSources: []`, so no
@@ -6219,7 +6382,7 @@ replays **every** past conversation with a power into every reply, uncapped.
 src/
   domain/     state, ops, hulls, duration, development, graph, checks,
               diplomacy, arbitration, compulsions, debt, loan, trade, intel,
-              battle, initiative, reducer
+              battle, initiative, events, pulse, reducer
               ← pure. No I/O, no network, no imports from engine/model/ui.
   api/        contract.ts — Zod schemas shared by server and browser
   engine/     campaign, store, journal, turn, briefing, epilogue
@@ -6286,6 +6449,13 @@ writing one down. Fixtures and hand-built batches want the input type.
   Nothing else has to change: `fixtureYieldFor` derives the yield, the ground
   rule reads `modifies`, `fixtureBonus` reads the yield and
   `boundPayloadsToOutcome` gates the founding off `modifies[0]`.
+- New random event? Add the kind to `RIM_HAZARDS` or `RIM_BOONS` in `events.ts`
+  with a weight — and take the weight from the others, since the total is the
+  chance a turn carries an event at all and a test pins it at 0.5 — plus a
+  title, a variant of `RimEventPlan`, a `case` in `pulse.ts` saying when it is
+  eligible and whom it leans toward, and a `case` in `applyRimEvent` built from a
+  mechanic the game already has. Decide whether it is public; a power's own
+  affairs are not.
 - New order effect kind? Add it to `OrderEffectSchema`, give it a cap in
   `EFFECT_CAPS`, a price, the categories that may deliver it in
   `EFFECT_CATEGORIES`, and a branch in `applyOrderEffect`. Price it against what

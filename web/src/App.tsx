@@ -10,6 +10,8 @@ import { ChannelPanel } from './components/ChannelPanel.js';
 import { FactionPicker } from './components/FactionPicker.js';
 import { GalaxyMap } from './components/GalaxyMap.js';
 import { OutcomeArt } from './components/OutcomeArt.js';
+import { RimEventCard } from './components/RimEventCard.js';
+import { RIM_EVENT_TITLE } from '../../src/domain/events.js';
 import { EpilogueStage } from './components/EpilogueStage.js';
 import { PortraitStage } from './components/PortraitStage.js';
 import { SidePanel } from './components/SidePanel.js';
@@ -293,6 +295,11 @@ export function App() {
       <header className="topbar">
         <span className="title">PAX GALACTICA</span>
         <span className="turn">Turn {view.state.turn}</span>
+        {view.sandboxEvent && (
+          <span className="pill" title="Only this random event fires, every turn. Not a real campaign.">
+            sandbox: {RIM_EVENT_TITLE[view.sandboxEvent].toLowerCase()}
+          </span>
+        )}
         <span style={{ color: player ? ansi256ToHex(player.displayColor) : undefined }}>
           {player?.name}
         </span>
@@ -336,12 +343,18 @@ export function App() {
                     while the map stays where it is. A missing file renders
                     nothing and the line alone carries it. */}
                 {m.art && <OutcomeArt kind={m.art.kind} alt={m.art.alt} />}
-                <p
-                  className={`msg ${m.tone}`}
-                  style={m.color !== undefined ? { color: ansi256ToHex(m.color) } : undefined}
-                >
-                  {m.text}
-                </p>
+                {m.event ? (
+                  // The flavour line is written onto the message as it
+                  // arrives — see the state handler in `useGame`.
+                  <RimEventCard event={m.event} />
+                ) : (
+                  <p
+                    className={`msg ${m.tone}`}
+                    style={m.color !== undefined ? { color: ansi256ToHex(m.color) } : undefined}
+                  >
+                    {m.text}
+                  </p>
+                )}
               </div>
             ))}
             {busy && (

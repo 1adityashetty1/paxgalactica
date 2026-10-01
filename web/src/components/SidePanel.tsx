@@ -7,6 +7,7 @@ import { STAT_NAMES } from '../../../src/domain/checks.js';
 import { debtsFor } from '../../../src/domain/debt.js';
 import { describeOutstanding, loansFor } from '../../../src/domain/loan.js';
 import { assetWorthRangeTo } from '../../../src/domain/diplomacy.js';
+import { shortageFactor } from '../../../src/domain/events.js';
 import { describeOrderEffect } from '../../../src/domain/development.js';
 import { describeEffect } from '../../../src/domain/diplomacy.js';
 import { CommanderIcon } from './BattleIcons.js';
@@ -845,7 +846,7 @@ function Assets({ state }: { state: WorldState }) {
           {assets.map((a) => {
             const offers = state.factions
               .filter((f) => f.id !== me)
-              .map((f) => ({ f, band: assetWorthRangeTo(a, f.id) }))
+              .map((f) => ({ f, band: assetWorthRangeTo(a, f.id, shortageFactor(state, a.kind)) }))
               .filter((o) => o.band.max > 0)
               .sort((x, y) => y.band.max - x.band.max);
             const best = offers[0];

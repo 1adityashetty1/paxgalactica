@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { CheatSchema } from '../domain/cheats.js';
 import { ConcessionSchema, RetractionSchema } from '../domain/diplomacy.js';
 import { BattleReportSchema } from '../domain/battle.js';
+import { RimEventKindSchema } from '../domain/events.js';
 import { CheckOutcomeSchema, FactionStatsSchema, StatNameSchema } from '../domain/checks.js';
 import { EpilogueViewSchema } from '../engine/epilogue.js';
 import { OrderRumourSchema } from '../domain/intel.js';
@@ -94,6 +95,21 @@ export const BriefingCompletionSchema = z.object({
   mine: z.boolean(),
 });
 
+/** Something the Rim did on its own — see `BriefingEvent` in `engine/briefing.ts`. */
+export const BriefingEventSchema = z.object({
+  id: z.string(),
+  turn: z.number().int(),
+  kind: RimEventKindSchema,
+  title: z.string(),
+  text: z.string(),
+  flavour: z.string().nullable(),
+  boon: z.boolean(),
+  ongoing: z.boolean(),
+  untilTurn: z.number().int().nullable(),
+  where: z.string().nullable(),
+});
+export type BriefingEventView = z.infer<typeof BriefingEventSchema>;
+
 export const BriefingSchema = z.object({
   turn: z.number().int(),
   treasury: z.number().int(),
@@ -107,6 +123,8 @@ export const BriefingSchema = z.object({
   watch: z.array(BriefingWatchSchema),
   /** Battles fought this turn, with the arithmetic that decided them. */
   battles: z.array(BattleReportSchema),
+  /** What the Rim did on its own, this turn and still in force. */
+  events: z.array(BriefingEventSchema).default([]),
   quiet: z.boolean(),
 });
 
@@ -250,6 +268,8 @@ export const CampaignViewSchema = z.object({
   name: z.string(),
   /** Turns this campaign runs for, or null for one with no ending. */
   maxTurns: z.number().int().nullable(),
+  /** The one random event a sandbox campaign fires every turn, or null. */
+  sandboxEvent: RimEventKindSchema.nullable().default(null),
   /** Set once time has run out. While it is present the campaign is read-only. */
   epilogue: EpilogueViewSchema.nullable(),
 });
@@ -428,6 +448,11 @@ export const NewCampaignRequestSchema = z.object({
    * which is what every campaign was before this existed.
    */
   maxTurns: z.number().int().min(10).max(100).optional(),
+  /**
+   * A sandbox for looking at one random event (item 124): only that kind fires,
+   * every turn, on a board set up so it can happen to the player.
+   */
+  sandboxEvent: RimEventKindSchema.optional(),
 });
 
 export const ActionRequestSchema = z.object({
