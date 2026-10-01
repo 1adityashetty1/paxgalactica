@@ -454,6 +454,127 @@ function derelict(): Grid {
   return g;
 }
 
+const NIGHT = '#0c0f15';
+const HAZE_HIGH = '#1c1519';
+const HAZE = '#2c1b17';
+const HAZE_LOW = '#3d2318';
+const GROUND = '#120e0c';
+const FORT = '#3a4150';
+const FORT_DARK = '#272c36';
+const FORT_LIT = '#4f5868';
+const SLIT = '#c9a227';
+const WINDOW_BAND = '#bcd7e6';
+const SHUTTER = '#323844';
+const MAST = '#6b7584';
+const BEACON = '#ff4d3d';
+const FLOOD = '#fdfcf0';
+const FLOOD_GLOW = '#8a8a6a';
+const BANNER = '#b3372e';
+const BANNER_DARK = '#7a2620';
+const CROWD = '#050608';
+const FLAME = '#f59e0b';
+const FLAME_CORE = '#fde68a';
+const FLAME_TIP = '#ea580c';
+const HAZE_GLOW = '#8a4a1c';
+const FIRE_SKY = '#4d2a1a';
+const FIRE_SKY_LOW = '#6a3518';
+const TORCH_HAFT = '#3b2416';
+
+/**
+ * UNREST — a crowd with torches, in front of the occupier's post.
+ *
+ * Torches over a crowd is the oldest picture of a rising there is, and it reads
+ * before anything else does. The crowd is drawn in silhouette against a sky the
+ * fires have lit, because black figures on a black sky are nothing at all. The
+ * post is the garrison the rising is costing, and its flag is the occupier's —
+ * the event only ever happens on ground that was somebody else's first.
+ */
+function unrest(): Grid {
+  const g = blank();
+  // Night overhead, and the horizon lit orange by the fires — bright enough that
+  // a black figure stands out against it, which is the whole of a silhouette.
+  rect(g, 0, 0, OUTCOME_W - 1, OUTCOME_H - 1, NIGHT);
+  const bands: [number, string][] = [[12, HAZE_HIGH], [16, HAZE], [20, HAZE_LOW], [24, FIRE_SKY], [28, FIRE_SKY_LOW]];
+  for (const [y0, c] of bands) rect(g, 0, y0, OUTCOME_W - 1, OUTCOME_H - 1, c);
+  for (const [x, y] of [[5, 3], [17, 6], [30, 2], [38, 8], [61, 5]] as const) put(g, x, y, STAR_DIM);
+
+  // The garrison post, contemporary rather than a keep: a flat-roofed prefab
+  // block with a control tier, a lit window band, panel seams and a roll-up
+  // shutter for a gate — and the occupier's banner on a comms mast, a red
+  // beacon on the antenna and a floodlight on the corner. Battlements read as
+  // a castle at any size, which put the scene in the wrong century.
+  rect(g, 43, 19, 62, 35, FORT);
+  rect(g, 43, 19, 62, 19, FORT_LIT);
+  rect(g, 61, 20, 62, 35, FORT_DARK);
+  for (const x of [47, 51, 55, 59]) rect(g, x, 20, x, 35, FORT_DARK);
+  rect(g, 46, 23, 59, 23, WINDOW_BAND);
+  rect(g, 48, 12, 59, 18, FORT);
+  rect(g, 48, 12, 59, 12, FORT_LIT);
+  rect(g, 58, 13, 59, 18, FORT_DARK);
+  rect(g, 49, 15, 57, 16, WINDOW_BAND);
+  // The shutter: a wide door in horizontal slats.
+  rect(g, 48, 28, 56, 35, FORT_DARK);
+  for (let y = 29; y <= 35; y += 2) rect(g, 48, y, 56, y, SHUTTER);
+  // Comms mast with the banner, and an antenna with a beacon.
+  rect(g, 50, 3, 50, 11, MAST);
+  rect(g, 51, 3, 55, 5, BANNER);
+  rect(g, 51, 5, 55, 5, BANNER_DARK);
+  rect(g, 58, 7, 58, 11, MAST);
+  rect(g, 57, 9, 59, 9, MAST);
+  put(g, 58, 6, BEACON);
+  // A floodlight on the corner, lit.
+  rect(g, 43, 17, 44, 18, MAST);
+  put(g, 42, 18, FLOOD);
+  put(g, 41, 19, FLOOD_GLOW);
+  put(g, 42, 19, FLOOD_GLOW);
+
+  // Glow around each torch, laid down before the people so they stand in it.
+  const torches: [number, number][] = [];
+
+  // Four people: a round head, a neck, broad shoulders, and a body to the
+  // bottom edge. Fewer and larger than a crowd really is, because at feed size
+  // a head has to be several pixels to be a head at all. A fifth stood against
+  // the post's wall, and a figure touching the building flattened the distance
+  // between the crowd and it.
+  const person = (x: number, h: number, raised: 'torch' | 'fist' | null) => {
+    rect(g, x + 1, h, x + 2, h, CROWD);
+    rect(g, x, h + 1, x + 3, h + 2, CROWD);
+    rect(g, x + 1, h + 3, x + 2, h + 3, CROWD);
+    rect(g, x - 1, h + 4, x + 4, OUTCOME_H - 1, CROWD);
+    put(g, x - 1, h + 4, before(x - 1, h + 4));
+    put(g, x + 4, h + 4, before(x + 4, h + 4));
+    if (!raised) return;
+    // A thick arm straight up from the shoulder.
+    rect(g, x + 4, h - 2, x + 5, h + 5, CROWD);
+    if (raised === 'fist') {
+      rect(g, x + 4, h - 3, x + 6, h - 2, CROWD);
+      return;
+    }
+    rect(g, x + 4, h - 4, x + 5, h - 2, TORCH_HAFT);
+    torches.push([x + 4, h - 5]);
+  };
+  // What was there before the person, so a rounded shoulder shows the sky.
+  const sky = g.map((row) => [...row]);
+  const before = (x: number, y: number) => sky[y]?.[x] ?? NIGHT;
+
+  for (const [x, h, raised] of [
+    [3, 19, 'fist'], [11, 17, 'torch'], [20, 20, null], [28, 18, 'torch'],
+  ] as const) {
+    person(x, h, raised);
+  }
+
+  // The flames, last, over everything.
+  for (const [fx, fy] of torches) {
+    for (const [dx, dy] of [[-2, -1], [3, -1], [-2, -2], [3, -2], [-1, -4], [2, -4], [0, -5], [1, -5]] as const) {
+      put(g, fx + dx, fy + dy, HAZE_GLOW);
+    }
+    rect(g, fx - 1, fy - 3, fx + 2, fy, FLAME);
+    rect(g, fx, fy - 2, fx + 1, fy, FLAME_CORE);
+    rect(g, fx, fy - 4, fx + 1, fy - 4, FLAME_TIP);
+  }
+  return g;
+}
+
 /* ------------------------------------------------------------------ */
 /* Out                                                                 */
 /* ------------------------------------------------------------------ */
@@ -463,12 +584,13 @@ function derelict(): Grid {
  * — rendered at feed size and larger and put in front of them before it was
  * committed (item 124) — and every other kind falls back to the text card.
  */
-export const RIM_ART_KINDS = ['ion_storm', 'derelict'] as const;
+export const RIM_ART_KINDS = ['ion_storm', 'derelict', 'unrest'] as const;
 export type RimArtKind = (typeof RIM_ART_KINDS)[number];
 
 const RIM_SCENES: Record<RimArtKind, () => Grid> = {
   ion_storm: ionStorm,
   derelict,
+  unrest,
 };
 
 export function hasRimArt(kind: string): kind is RimArtKind {

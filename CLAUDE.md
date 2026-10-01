@@ -3835,6 +3835,11 @@ fallback `OutcomeArt` keeps. Approved so far: **ion storm** — a storm cloud wi
 a bolt coming down onto a dashed lane that stops beneath it; **derelict** — a
 hulk broken in two, lit where a scout's searchlight lands on it, because a spot
 of lit metal is what makes a cone read as light rather than a smear.
+**Unrest** — four figures with torches and fists, silhouetted against a horizon
+the fires have lit, before a contemporary garrison post flying the occupier's
+banner. It took four drafts: a ten-person crowd merged into a skyline, a castle
+put it in the wrong century, and a figure touching the post's wall flattened the
+distance between them.
 
 ## A batch is a transaction
 

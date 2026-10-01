@@ -211,3 +211,25 @@ describe('the derelict', () => {
     expect(px.flat().filter((c) => c === '#3fb8ad').length).toBeGreaterThan(3);
   });
 });
+
+describe('unrest', () => {
+  const px = rimEventPixels('unrest');
+  const CROWD = '#050608';
+  const has = (x: number, c: string) => px.some((row) => row[x] === c);
+
+  it('is a crowd with torches, with open ground between it and the post', () => {
+    expect(px.flat().filter((c) => c === '#f59e0b').length).toBeGreaterThan(6);
+    // Nobody stands against the wall: a figure touching the building flattened
+    // the distance between them, so the columns before the post are empty.
+    const crowdRight = Math.max(...px.flatMap((row) => row.map((c, x) => (c === CROWD ? x : -1))));
+    expect(crowdRight).toBeLessThan(40);
+    expect(has(45, '#3a4150')).toBe(true);
+  });
+
+  it('flies the occupier\'s banner over the post, and has no battlements', () => {
+    expect(px.flat().filter((c) => c === '#b3372e').length).toBeGreaterThan(8);
+    // The roof line is flat: no gap-toothed merlons along the top of the block.
+    const roof = px[12]!.slice(48, 60);
+    expect(new Set(roof).size).toBeLessThanOrEqual(2);
+  });
+});
