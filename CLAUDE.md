@@ -3846,6 +3846,11 @@ warm, trading fire across it. The ships are the order of battle's own escort:
 by `EscortIcon` and rasterised at 16 pixels for the scene, the smallest size at
 which its swept wings stay wings. A bolt has a bright head and a fading tail so
 it says which way it flies.
+**Shortage** — a rack with one crate left and pale marks where the rest stood,
+beside a price board whose line climbs into its top corner. The line stays inside
+the frame: drawn past it, it read as a mistake rather than as off the scale. The
+card's line says "50% more", never "half as much again", which is correct and
+reads as a cut.
 
 ## A batch is a transaction
 

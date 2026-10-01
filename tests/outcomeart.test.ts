@@ -259,3 +259,30 @@ describe('the border incident', () => {
     expect(Math.max(...wingRows) - Math.min(...wingRows)).toBeGreaterThan(8);
   });
 });
+
+describe('the shortage', () => {
+  const px = rimEventPixels('shortage');
+  const PRICE = '#fbbf24';
+  const price = px.flatMap((row, y) => row.map((c, x) => (c === PRICE ? [x, y] as const : null))).filter(
+    (p): p is readonly [number, number] => p !== null,
+  );
+
+  it('keeps the price inside the screen, and only ever has it rise', () => {
+    for (const [x, y] of price) {
+      expect(x).toBeGreaterThanOrEqual(38);
+      expect(x).toBeLessThanOrEqual(60);
+      expect(y).toBeGreaterThanOrEqual(5);
+      expect(y).toBeLessThanOrEqual(23);
+    }
+    const highestAt = (x: number) => Math.min(...price.filter(([px_]) => px_ === x).map(([, y]) => y));
+    // Higher on the screen (a smaller y) at the right than at the left.
+    expect(highestAt(59)).toBeLessThan(highestAt(40) - 10);
+  });
+
+  it('has one crate left on a rack that shows where the others stood', () => {
+    const crate = px.flat().filter((c) => c === '#8a6a3a').length;
+    expect(crate).toBeGreaterThan(10);
+    expect(crate).toBeLessThan(60);
+    expect(px.flat().filter((c) => c === '#1f2530').length).toBeGreaterThan(100);
+  });
+});

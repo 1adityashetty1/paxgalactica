@@ -670,6 +670,76 @@ function borderIncident(): Grid {
   return g;
 }
 
+const WALL = '#161b23';
+const FLOOR = '#262d38';
+const FLOOR_LIT = '#323a46';
+const RACK = '#5a6474';
+const RACK_DARK = '#3b4350';
+const GHOST = '#1f2530';
+const CRATE = '#8a6a3a';
+const CRATE_DARK = '#5e4626';
+const CRATE_LIT = '#a8844c';
+const SCREEN_FRAME = '#3a4552';
+const SCREEN = '#0d1714';
+const SCREEN_GRID = '#16241f';
+const PRICE = '#fbbf24';
+
+/**
+ * SHORTAGE — a rack with almost nothing on it, and a price climbing to the
+ * top of the board beside it.
+ *
+ * An empty shelf only says "empty"; the pale marks where crates used to stand
+ * are what say "gone", which is the event. The price board says what scarcity
+ * does to a buyer: the line climbs into the top corner of the screen rather
+ * than ending in an arrowhead — the falling line in `defiance` learned that a
+ * head big enough to read at this size stops reading as a point. It stays
+ * inside the frame; a line drawn past it read as a mistake, not as off the
+ * scale.
+ */
+function shortage(): Grid {
+  const g = blank();
+  rect(g, 0, 0, OUTCOME_W - 1, 28, WALL);
+  rect(g, 0, 29, OUTCOME_W - 1, OUTCOME_H - 1, FLOOR);
+  rect(g, 0, 29, OUTCOME_W - 1, 29, FLOOR_LIT);
+
+  // The rack: three uprights and three shelves.
+  for (const x of [3, 17, 31]) rect(g, x, 4, x + 1, 30, RACK);
+  for (const y of [11, 20, 29]) {
+    rect(g, 3, y, 32, y, RACK);
+    rect(g, 3, y + 1, 32, y + 1, RACK_DARK);
+  }
+  // Where the crates stood: pale on the wall behind the shelf.
+  for (const [x0, y0] of [[6, 5], [11, 5], [20, 5], [25, 5], [20, 14], [25, 14], [6, 23], [20, 23], [25, 23]] as const) {
+    rect(g, x0, y0, x0 + 3, y0 + 5, GHOST);
+  }
+  // The one crate left.
+  rect(g, 7, 14, 13, 19, CRATE);
+  rect(g, 7, 14, 13, 14, CRATE_LIT);
+  rect(g, 7, 17, 13, 17, CRATE_DARK);
+  rect(g, 10, 14, 10, 19, CRATE_DARK);
+
+  // The price board: a framed screen with a faint grid and a line that climbs
+  // into its top corner.
+  rect(g, 37, 4, 61, 24, SCREEN_FRAME);
+  rect(g, 38, 5, 60, 23, SCREEN);
+  for (let x = 41; x <= 59; x += 5) rect(g, x, 5, x, 23, SCREEN_GRID);
+  for (let y = 9; y <= 21; y += 4) rect(g, 38, y, 60, y, SCREEN_GRID);
+  const points: [number, number][] = [[39, 21], [43, 20], [46, 21], [49, 17], [52, 15], [55, 10], [58, 6], [60, 4]];
+  for (let i = 0; i < points.length - 1; i++) {
+    const [x0, y0] = points[i]!;
+    const [x1, y1] = points[i + 1]!;
+    const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+    for (let st = 0; st <= steps; st++) {
+      const x = Math.round(x0 + ((x1 - x0) * st) / steps);
+      const y = Math.round(y0 + ((y1 - y0) * st) / steps);
+      if (y >= 5) rect(g, x, y, x, y + 1, PRICE);
+    }
+  }
+  // The board's stand.
+  rect(g, 48, 25, 50, 28, RACK_DARK);
+  return g;
+}
+
 /* ------------------------------------------------------------------ */
 /* Out                                                                 */
 /* ------------------------------------------------------------------ */
@@ -679,7 +749,7 @@ function borderIncident(): Grid {
  * — rendered at feed size and larger and put in front of them before it was
  * committed (item 124) — and every other kind falls back to the text card.
  */
-export const RIM_ART_KINDS = ['ion_storm', 'derelict', 'unrest', 'border_incident'] as const;
+export const RIM_ART_KINDS = ['ion_storm', 'derelict', 'unrest', 'border_incident', 'shortage'] as const;
 export type RimArtKind = (typeof RIM_ART_KINDS)[number];
 
 const RIM_SCENES: Record<RimArtKind, () => Grid> = {
@@ -687,6 +757,7 @@ const RIM_SCENES: Record<RimArtKind, () => Grid> = {
   derelict,
   unrest,
   border_incident: borderIncident,
+  shortage,
 };
 
 export function hasRimArt(kind: string): kind is RimArtKind {
