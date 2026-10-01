@@ -216,6 +216,14 @@ describe('the six hazards', () => {
     expect(shortageFactor({ ...state, turn: state.turn + 10 }, 'salvage')).toBe(1);
   });
 
+  it('writes a plural name\'s possessive with the apostrophe alone', () => {
+    const s = fresh();
+    s.factions.find((f) => f.id === 'freeworlds')!.dissent = 60;
+    const { event } = resolveRimEvent(s, { kind: 'mutiny', factionId: 'freeworlds' });
+    expect(event.text).toContain("Arkane Free Worlds' fleet");
+    expect(event.text).not.toContain("Worlds's");
+  });
+
   it('a mutiny needs dissent, and takes a squadron by the attrition path', () => {
     const s = fresh();
     expect(eligibleRimEvents(s).find((e) => e.kind === 'mutiny')).toBeUndefined();

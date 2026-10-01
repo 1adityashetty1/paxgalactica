@@ -7192,6 +7192,12 @@ function applyRimEvent(state: WorldState, plan: RimEventPlan): RimEvent {
   const turn = state.turn;
   const world = (id: string) => state.systems.find((s) => s.id === id)!;
   const who = (id: string) => nameFor(state, id);
+  // "Arkane Free Worlds' ships", not "Worlds's" — a plural name takes the
+  // apostrophe alone.
+  const whose = (id: string) => {
+    const name = who(id);
+    return name.endsWith('s') ? `${name}'` : `${name}'s`;
+  };
   let text: string;
   let factionIds: string[] = [];
   let systemId: string | null = null;
@@ -7249,7 +7255,7 @@ function applyRimEvent(state: WorldState, plan: RimEventPlan): RimEvent {
               }
             : {
                 kind: 'prisoners',
-                text: `Ten of ${who(plan.crewOf ?? finder)}'s spacers, found alive in a derelict over ${s.name}`,
+                text: `Ten of ${whose(plan.crewOf ?? finder)} spacers, found alive in a derelict over ${s.name}`,
                 quantity: 10,
                 unit: 'crew',
                 divisible: true,
@@ -7275,7 +7281,7 @@ function applyRimEvent(state: WorldState, plan: RimEventPlan): RimEvent {
         agentId: null,
       });
       (state.assets ??= []).push(find);
-      text = `${who(finder)}'s ships over ${s.name} find a derelict and board it: ${find.text.charAt(0).toLowerCase()}${find.text.slice(1)}.`;
+      text = `${whose(finder)} ships over ${s.name} find a derelict and board it: ${find.text.charAt(0).toLowerCase()}${find.text.slice(1)}.`;
       break;
     }
 
@@ -7336,7 +7342,7 @@ function applyRimEvent(state: WorldState, plan: RimEventPlan): RimEvent {
       const want = Math.max(MUTINY_MIN_TONS, Math.ceil(fleet * MUTINY_FRACTION));
       const cap = Math.max(1, Math.floor(fleet * MAX_ATTRITION_FRACTION));
       const gone = removeTons(state, f, Math.min(want, cap));
-      text = `Mutiny in ${who(f)}'s fleet: crews who have stopped believing their orders take ${gone} tons of shipping and go.`;
+      text = `Mutiny in ${whose(f)} fleet: crews who have stopped believing their orders take ${gone} tons of shipping and go.`;
       break;
     }
 
@@ -7362,7 +7368,7 @@ function applyRimEvent(state: WorldState, plan: RimEventPlan): RimEvent {
       systemId = s.id;
       const raised = Math.max(0, Math.min(VOLUNTEERS_MAX, s.garrisonMax - s.garrison));
       s.garrison += raised;
-      text = `Volunteers come forward on ${s.name}: ${who(f)}'s garrison rises by ${raised}, to ${s.garrison} of ${s.garrisonMax}.`;
+      text = `Volunteers come forward on ${s.name}: ${whose(f)} garrison rises by ${raised}, to ${s.garrison} of ${s.garrisonMax}.`;
       break;
     }
 
