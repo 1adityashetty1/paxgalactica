@@ -3827,10 +3827,53 @@ The briefing's copy is derived from `state.rimEvents`, so it survives a resume.
 A card keeps its flavour line when the next turn's briefing replaces the one it
 arrived on, because the line is written onto the feed message itself.
 
-**No art yet, and that is the plan rather than a gap.** Each kind gets a pixel
-scene once the user has vetted it, one at a time — `docs/todo.md` 124.
-`RimEventArt` is the slot, and it renders nothing for a kind with no approved
-scene, the fallback `OutcomeArt` keeps.
+**Art only where the user approved it.** Each kind gets a pixel scene drawn in
+`src/ui/outcomeart.ts` — rendered at feed size and larger and approved by eye
+before it is committed, one at a time (`docs/todo.md` 124). `RIM_ART_KINDS`
+lists the approved ones; `RimEventArt` renders nothing for any other kind, the
+fallback `OutcomeArt` keeps. All ten are approved: **ion storm** — a storm cloud with
+a bolt coming down onto a dashed lane that stops beneath it; **derelict** — a
+hulk broken in two, lit where a scout's searchlight lands on it, because a spot
+of lit metal is what makes a cone read as light rather than a smear.
+**Unrest** — four figures with torches and fists, silhouetted against a horizon
+the fires have lit, before a contemporary garrison post flying the occupier's
+banner. It took four drafts: a ten-person crowd merged into a skyline, a castle
+put it in the wrong century, and a figure touching the post's wall flattened the
+distance between them.
+**Border incident** — an escort each side of a buoyed border line, cool against
+warm, trading fire across it. The ships are the order of battle's own escort:
+`ESCORT_GLYPH` in `src/ui/glyphs.ts` is the one definition, rendered as SVG paths
+by `EscortIcon` and rasterised at 16 pixels for the scene, the smallest size at
+which its swept wings stay wings. A bolt has a bright head and a fading tail so
+it says which way it flies.
+**Shortage** — a rack with one crate left and pale marks where the rest stood,
+beside a price board whose line climbs into its top corner. The line stays inside
+the frame: drawn past it, it read as a mistake rather than as off the scale. The
+card's line says "50% more", never "half as much again", which is correct and
+reads as a cut.
+**Mutiny** — a formation of escorts heading right, and two of its own in the same
+colours turned left, drives burning red, trails leading back to the line they
+left. The same hull is the point: that is what makes it a mutiny and not an
+enemy. Drawn from the escort glyph at 14 pixels, the smallest that keeps its
+pointed nose; at 12 it was a bar.
+**Rich seam** — the ground cut away, a braced derrick on the surface, and its
+shaft striking a gold vein that runs the width of the frame. A cutaway because
+the event is underground; the first vein fattened under the drill into a heap,
+and the first derrick was too small to read as one.
+**Volunteers** — the counterpart to unrest in the same language: the same
+contemporary post at dawn, door open and lit, the holder's own banner, and a
+queue of six people of different heights and skin tones on one ground line, the
+first already in kit in the doorway. Legs are drawn together throughout; a wide
+stance read as a different, squatter figure.
+**Free captains** — the squadron the event delivers, a battleship and two
+escorts, each in another navy's livery, burning in toward the System panel's own
+earthlike world. The battleship is `BATTLESHIP_GLYPH` (shared with `ShipIcon`
+the way the escort's is) at 26 pixels, a capital beside 14-pixel escorts. A
+third escort was tried in its place and rejected: the art should match the
+event, not the other way round.
+**Envoys of peace** — the border incident's counterpart, as volunteers is
+unrest's: the same buoyed line and the same two sides' escorts, closer, nothing
+fired, a white flag over each, and the buoys gone from red to green.
 
 ## A batch is a transaction
 

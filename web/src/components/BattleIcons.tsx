@@ -1,3 +1,4 @@
+import { BATTLESHIP_GLYPH, ESCORT_GLYPH, polygonPath } from '../../../src/ui/glyphs.js';
 import { HULL_CLASSES, HULL_SPEC, type HullClass, type ShipStack } from '../../../src/domain/hulls.js';
 /**
  * Glyphs for the order of battle: one per hull class, and a tracked gun.
@@ -70,7 +71,7 @@ export function ShipIcon({ size = 18, title }: IconProps) {
       {title && <title>{title}</title>}
       {/* Hull: long wedge, chamfered prow, raked stern. Deep, so it carries
           the turret without the turret overhanging it. */}
-      <path d="M23.6 13.6 L13.5 10.2 L5.4 9.4 L3.4 10.4 L3.4 16.6 L5.4 17.5 L13.5 16.4 Z" />
+      <path d={polygonPath(BATTLESHIP_GLYPH.hull)} />
       {/* Main battery, seated straight on the hull: the garrison's turret and
           gun, scaled.
           
@@ -87,14 +88,14 @@ export function ShipIcon({ size = 18, title }: IconProps) {
           straight-edged polygons — a raked trapezoid stepping up to a raised
           block, and a barrel that tapers rather than ending in a cap. Same
           shape language as the guns; same language as the ships. */}
-      <path d="M5.4 10.4 L6.8 6 L10.2 6 L12.4 10.4 Z" />
-      <path d="M10.9 7.2 L18.6 8.1 L18.6 9.1 L10.9 9.6 Z" />
+      <path d={polygonPath(BATTLESHIP_GLYPH.turret)} />
+      <path d={polygonPath(BATTLESHIP_GLYPH.gun)} />
       {/* One drive, not two: a single nozzle tapering AWAY from the hull, the
           same shape as the torpedo boat's so the two read as the same idea
           rather than merely similar. Inset from the hull edges on purpose — at
           full stern depth the drive swallowed the raked stern corners and the
           back of the ship read as a flat edge. */}
-      <path d="M1 12 L3.4 11.3 L3.4 15.7 L1 15 Z" />
+      <path d={polygonPath(BATTLESHIP_GLYPH.drive)} />
     </svg>
   );
 }
@@ -195,13 +196,14 @@ export function EscortIcon({ size = 18, title }: IconProps) {
       role={title ? 'img' : undefined}
     >
       {title && <title>{title}</title>}
-      <path d="M23.2 12 L15 9.6 L5.5 9.8 L4 10.8 L4 13.2 L5.5 14.2 L15 14.4 Z" />
-      <path d="M13.5 10 L7 3.4 L3.2 4.2 L9 10.2 Z" />
-      <path d="M13.5 14 L7 20.6 L3.2 19.8 L9 13.8 Z" />
-      {/* Drive block, square-cornered like the rest of the space set. It
-          carried a 0.6 radius from when this glyph was the only ship in the
-          game and had nothing to be consistent with. */}
-      <rect x="1.6" y="10.6" width="2.6" height="2.8" />
+      {/* From `src/ui/glyphs.ts`, which the event art rasterises too, so the
+          ship in a border incident is this ship. The drive block is
+          square-cornered like the rest of the space set. */}
+      <path d={polygonPath(ESCORT_GLYPH.hull)} />
+      {ESCORT_GLYPH.wings.map((w, i) => (
+        <path key={i} d={polygonPath(w)} />
+      ))}
+      <path d={polygonPath(ESCORT_GLYPH.drive)} />
     </svg>
   );
 }

@@ -1,4 +1,6 @@
+import { useMemo } from 'react';
 import type { BriefingEventView } from '../../../src/api/contract.js';
+import { OUTCOME_H, OUTCOME_W, hasRimArt, rimEventRuns } from '../../../src/ui/outcomeart.js';
 
 /**
  * Something the Rim did on its own (item 124), as a card rather than a line.
@@ -13,11 +15,9 @@ import type { BriefingEventView } from '../../../src/api/contract.js';
  * is the reducer's own sentence and is what actually happened. The card reads
  * whole with either, and never shows the flavour without the fact beneath it.
  *
- * **No art yet, on purpose.** Each kind gets a pixel scene once the user has
- * vetted it (see `docs/todo.md` 124); until then there is nothing to draw and
- * the card is the text treatment, which is exactly the fallback `OutcomeArt`
- * keeps for a kind with no scene. The slot is `RimEventArt`, and it renders
- * nothing for a kind with no approved scene.
+ * **Art only where it has been approved.** Each kind gets a pixel scene once
+ * the user has vetted it (see `docs/todo.md` 124); a kind without one is the
+ * text treatment, which is exactly the fallback `OutcomeArt` keeps.
  */
 export function RimEventCard({
   event,
@@ -36,7 +36,7 @@ export function RimEventCard({
         : `until turn ${event.untilTurn}`;
   return (
     <div className={`rim-event ${tone}${compact ? ' compact' : ''}`} role="note">
-      {!compact && <RimEventArt kind={event.kind} />}
+      {!compact && <RimEventArt kind={event.kind} alt={`${event.title}: ${event.text}`} />}
       <div className="rim-event-head">
         <strong>{event.title}</strong>
         {event.where && <span className="muted"> · {event.where}</span>}
@@ -51,10 +51,26 @@ export function RimEventCard({
 }
 
 /**
- * The picture for one kind of event, once it exists. Nothing is approved yet,
- * so nothing is drawn: a missing scene renders nothing at all, never a grey
- * slab or a broken image.
+ * The picture for one kind of event, drawn from `src/ui/outcomeart.ts` the way
+ * refusal and defiance are. A kind with no approved scene renders nothing at
+ * all, never a grey slab or a broken image. `crispEdges` is what keeps it
+ * pixel art at any size.
  */
-function RimEventArt(_: { kind: BriefingEventView['kind'] }) {
-  return null;
+function RimEventArt({ kind, alt }: { kind: BriefingEventView['kind']; alt: string }) {
+  const runs = useMemo(() => (hasRimArt(kind) ? rimEventRuns(kind) : null), [kind]);
+  if (!runs) return null;
+  return (
+    <svg
+      className="outcome-art rim-art"
+      viewBox={`0 0 ${OUTCOME_W} ${OUTCOME_H}`}
+      preserveAspectRatio="xMidYMid meet"
+      shapeRendering="crispEdges"
+      role="img"
+      aria-label={alt}
+    >
+      {runs.map((r) => (
+        <rect key={`${r.y}-${r.x}`} x={r.x} y={r.y} width={r.width} height={1} fill={r.colour} />
+      ))}
+    </svg>
+  );
 }

@@ -1,3 +1,6 @@
+import { BATTLESHIP_GLYPH, ESCORT_GLYPH, rasterise } from './glyphs.js';
+import { worldPixels } from './worlds.js';
+
 /**
  * The ways a declaration produces nothing, as pixel art.
  *
@@ -248,8 +251,889 @@ function defiance(): Grid {
 }
 
 /* ------------------------------------------------------------------ */
+/* The Rim's own events (item 124)                                     */
+/* ------------------------------------------------------------------ */
+
+const STAR_DIM = '#2b3440';
+const STAR = '#6d7480';
+const LANE = '#2c6b66';
+const WORLD = '#8a94a3';
+const WORLD_LIT = '#c3cad4';
+const STORM_DARK = '#261f47';
+const STORM = '#40357a';
+const STORM_LIT = '#6f62b8';
+const BOLT = '#f2f7ff';
+const BOLT_GLOW = '#8fd3ff';
+
+/** A filled disc. */
+const disc = (g: Grid, cx: number, cy: number, r: number, c: string): void => {
+  for (let y = cy - r; y <= cy + r; y++) {
+    for (let x = cx - r; x <= cx + r; x++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      if (dx * dx + dy * dy <= r * r + r) put(g, x, y, c);
+    }
+  }
+};
+
+/**
+ * ION STORM — a storm cloud with a bolt in it, sitting on a trade lane that
+ * stops underneath it.
+ *
+ * The cloud and the bolt are the most conventional storm there is, which is the
+ * point: the refusal stamp's lesson is that a picture has to be understood
+ * before the sentence under it is read. Space is said by the stars and by the
+ * lane — two worlds and a dashed line, the way the map draws one — and what the
+ * event DOES is said by the gap: the lane runs in from both sides and is gone
+ * where the bolt comes down.
+ */
+function ionStorm(): Grid {
+  const g = blank();
+
+  // A few stars, fixed so the scene is the same every time it is drawn.
+  for (const [x, y] of [[3, 4], [11, 2], [55, 3], [60, 9], [5, 16], [58, 19], [17, 31], [48, 32], [62, 30], [2, 33]] as const) {
+    put(g, x, y, STAR_DIM);
+  }
+  for (const [x, y] of [[8, 7], [52, 6], [14, 21], [61, 25]] as const) put(g, x, y, STAR);
+
+  // The lane, dashed as the map dashes it, cut where the storm sits.
+  const LANE_Y = 27;
+  for (let x = 10; x <= 54; x++) {
+    if (x >= 24 && x <= 40) continue;
+    if (x % 4 < 3) put(g, x, LANE_Y, LANE);
+  }
+  // A world at each end, lit from the upper left.
+  for (const wx of [7, 57]) {
+    disc(g, wx, LANE_Y, 3, WORLD);
+    put(g, wx - 1, LANE_Y - 2, WORLD_LIT);
+    put(g, wx - 2, LANE_Y - 1, WORLD_LIT);
+  }
+
+  // The cloud: overlapping discs with a flat underside. Shaded after it is
+  // laid down — lit where nothing is above a pixel, dark along the bottom — so
+  // it reads as a mass rather than a flat blob.
+  const cloud = blank();
+  // Puffs of clearly different sizes, so the top is bumpy the way a drawn
+  // cloud's is; evenly sized ones merged into a mound.
+  for (const [cx, cy, r] of [[19, 13, 4], [26, 10, 5], [35, 8, 7], [45, 12, 4], [31, 13, 4], [40, 13, 4]] as const) {
+    disc(cloud, cx, cy, r, STORM);
+  }
+  for (let y = 16; y < OUTCOME_H; y++) for (let x = 0; x < OUTCOME_W; x++) cloud[y]![x] = VOID;
+  for (let y = 0; y < OUTCOME_H; y++) {
+    for (let x = 0; x < OUTCOME_W; x++) {
+      if (cloud[y]![x] !== STORM) continue;
+      const above = y > 0 ? cloud[y - 1]![x] : VOID;
+      const below = y < OUTCOME_H - 1 ? cloud[y + 1]![x] : VOID;
+      put(g, x, y, above === VOID ? STORM_LIT : below === VOID || y >= 14 ? STORM_DARK : STORM);
+    }
+  }
+
+  // The bolt: a zigzag two pixels wide from the cloud's belly to the gap in the
+  // lane, with a glow down its left side so it reads as light, not as a line.
+  const bolt: [number, number][] = [[33, 16], [29, 21], [34, 21], [31, 27]];
+  for (let i = 0; i < bolt.length - 1; i++) {
+    const [x0, y0] = bolt[i]!;
+    const [x1, y1] = bolt[i + 1]!;
+    const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+    for (let st = 0; st <= steps; st++) {
+      const x = Math.round(x0 + ((x1 - x0) * st) / steps);
+      const y = Math.round(y0 + ((y1 - y0) * st) / steps);
+      put(g, x - 1, y, BOLT_GLOW);
+      put(g, x, y, BOLT);
+      put(g, x + 1, y, BOLT);
+    }
+  }
+  // Where it strikes the lane: a short burst on either side.
+  for (const [x, y] of [[28, 27], [34, 27], [29, 26], [33, 26], [31, 28]] as const) put(g, x, y, BOLT_GLOW);
+  return g;
+}
+
+const HULL_DARK = '#353c49';
+const HULL = '#586272';
+const HULL_LIT = '#808b9b';
+const RUST = '#8a4e2c';
+const DEAD_WINDOW = '#161c25';
+const SCOUT = '#3fb8ad';
+const SCOUT_DARK = '#23766f';
+const SCOUT_LIT = '#9ff0e7';
+const LAMP = '#fdfcf0';
+const BEAM = '#161f2a';
+const BEAM_LIT = '#22303f';
+/** Hull under the searchlight: the same metal, lit. */
+const SPOT: Record<string, string> = {
+  [HULL_DARK]: '#7f8a99',
+  [HULL]: '#b4bfcc',
+  [HULL_LIT]: '#e1e7ee',
+  [RUST]: '#d08a55',
+  [DEAD_WINDOW]: '#3a4350',
+};
+
+/**
+ * DERELICT — a hulk broken in two, and a searchlight on it.
+ *
+ * The wreck says what was found; the light says somebody found it, which is
+ * the event — a power's ships were there, and the prize is theirs. The beam is
+ * faint over empty space and **bright where it lands on the hull**, because a
+ * spot of lit metal is what makes a cone read as light rather than as a smear.
+ * The break is jagged and rust-edged, since a clean gap between two hull halves
+ * reads as two ships.
+ */
+function derelict(): Grid {
+  const g = blank();
+  for (const [x, y] of [[4, 3], [15, 6], [27, 2], [45, 4], [59, 7], [62, 16], [3, 20], [52, 30], [30, 33], [60, 33]] as const) {
+    put(g, x, y, STAR_DIM);
+  }
+  for (const [x, y] of [[9, 9], [56, 12], [22, 30]] as const) put(g, x, y, STAR);
+
+  // The searchlight: a cone from the scout's lamp toward the break amidships.
+  const lamp: [number, number] = [14, 28];
+  const aim: [number, number] = [31, 17];
+  const len = Math.hypot(aim[0] - lamp[0], aim[1] - lamp[1]);
+  const dir = [(aim[0] - lamp[0]) / len, (aim[1] - lamp[1]) / len] as const;
+  const inBeam = (x: number, y: number): 'core' | 'edge' | null => {
+    const px = x - lamp[0];
+    const py = y - lamp[1];
+    const along = px * dir[0] + py * dir[1];
+    if (along < 1 || along > len + 4) return null;
+    const perp = Math.abs(px * dir[1] - py * dir[0]);
+    if (perp <= 0.4 + along * 0.1) return 'core';
+    if (perp <= 0.6 + along * 0.2) return 'edge';
+    return null;
+  };
+  for (let y = 0; y < OUTCOME_H; y++) {
+    for (let x = 0; x < OUTCOME_W; x++) {
+      const b = inBeam(x, y);
+      if (b) put(g, x, y, b === 'core' ? BEAM_LIT : BEAM);
+    }
+  }
+
+  // The aft half: engine block, hull, a row of dead windows.
+  rect(g, 15, 15, 18, 21, HULL_DARK);
+  rect(g, 13, 16, 14, 17, HULL_DARK);
+  rect(g, 13, 19, 14, 20, HULL_DARK);
+  rect(g, 19, 14, 33, 21, HULL);
+  rect(g, 19, 14, 33, 14, HULL_LIT);
+  rect(g, 19, 21, 33, 21, HULL_DARK);
+  for (let x = 21; x <= 31; x += 3) put(g, x, 17, DEAD_WINDOW);
+  // Its broken end: jagged, and rust where the metal tore.
+  for (const [y, x] of [[14, 34], [15, 35], [16, 34], [17, 35], [18, 36], [19, 35], [20, 34], [21, 33]] as const) {
+    rect(g, 33, y, x, y, HULL);
+    put(g, x, y, RUST);
+  }
+
+  // The bow half, knocked up and away from the break, tapering to a point.
+  const bowTop = 11;
+  for (const [y, x0, x1] of [
+    [bowTop, 40, 49], [bowTop + 1, 39, 52], [bowTop + 2, 40, 54], [bowTop + 3, 39, 55],
+    [bowTop + 4, 40, 54], [bowTop + 5, 39, 52], [bowTop + 6, 40, 49],
+  ] as const) {
+    rect(g, x0, y, x1, y, HULL);
+    put(g, x0, y, RUST);
+  }
+  rect(g, 41, bowTop, 49, bowTop, HULL_LIT);
+  rect(g, 41, bowTop + 6, 49, bowTop + 6, HULL_DARK);
+  for (let x = 43; x <= 50; x += 3) put(g, x, bowTop + 3, DEAD_WINDOW);
+
+  // Where the light lands, the metal is lit.
+  for (let y = 0; y < OUTCOME_H; y++) {
+    for (let x = 0; x < OUTCOME_W; x++) {
+      const lit = SPOT[g[y]![x]!];
+      if (lit && inBeam(x, y)) put(g, x, y, lit);
+    }
+  }
+
+  // What came off it, drifting in the gap.
+  for (const [x, y] of [[37, 9], [38, 22], [36, 24], [42, 21], [35, 11]] as const) put(g, x, y, HULL_LIT);
+  put(g, 39, 8, RUST);
+
+  // The scout that found it: a small ship nosed toward the wreck, its lamp lit.
+  const [lx, ly] = lamp;
+  rect(g, lx - 6, ly, lx - 1, ly, SCOUT);
+  rect(g, lx - 5, ly + 1, lx - 2, ly + 1, SCOUT_DARK);
+  rect(g, lx - 4, ly - 1, lx - 2, ly - 1, SCOUT_LIT);
+  put(g, lx - 7, ly - 1, SCOUT_DARK);
+  put(g, lx - 7, ly + 1, SCOUT_DARK);
+  put(g, lx, ly, LAMP);
+  return g;
+}
+
+const NIGHT = '#0c0f15';
+const HAZE_HIGH = '#1c1519';
+const HAZE = '#2c1b17';
+const HAZE_LOW = '#3d2318';
+const GROUND = '#120e0c';
+const FORT = '#3a4150';
+const FORT_DARK = '#272c36';
+const FORT_LIT = '#4f5868';
+const SLIT = '#c9a227';
+const WINDOW_BAND = '#bcd7e6';
+const SHUTTER = '#323844';
+const MAST = '#6b7584';
+const BEACON = '#ff4d3d';
+const FLOOD = '#fdfcf0';
+const FLOOD_GLOW = '#8a8a6a';
+const BANNER = '#b3372e';
+const BANNER_DARK = '#7a2620';
+const CROWD = '#050608';
+const FLAME = '#f59e0b';
+const FLAME_CORE = '#fde68a';
+const FLAME_TIP = '#ea580c';
+const HAZE_GLOW = '#8a4a1c';
+const FIRE_SKY = '#4d2a1a';
+const FIRE_SKY_LOW = '#6a3518';
+const TORCH_HAFT = '#3b2416';
+
+/**
+ * UNREST — a crowd with torches, in front of the occupier's post.
+ *
+ * Torches over a crowd is the oldest picture of a rising there is, and it reads
+ * before anything else does. The crowd is drawn in silhouette against a sky the
+ * fires have lit, because black figures on a black sky are nothing at all. The
+ * post is the garrison the rising is costing, and its flag is the occupier's —
+ * the event only ever happens on ground that was somebody else's first.
+ */
+function unrest(): Grid {
+  const g = blank();
+  // Night overhead, and the horizon lit orange by the fires — bright enough that
+  // a black figure stands out against it, which is the whole of a silhouette.
+  rect(g, 0, 0, OUTCOME_W - 1, OUTCOME_H - 1, NIGHT);
+  const bands: [number, string][] = [[12, HAZE_HIGH], [16, HAZE], [20, HAZE_LOW], [24, FIRE_SKY], [28, FIRE_SKY_LOW]];
+  for (const [y0, c] of bands) rect(g, 0, y0, OUTCOME_W - 1, OUTCOME_H - 1, c);
+  for (const [x, y] of [[5, 3], [17, 6], [30, 2], [38, 8], [61, 5]] as const) put(g, x, y, STAR_DIM);
+
+  // The garrison post, contemporary rather than a keep: a flat-roofed prefab
+  // block with a control tier, a lit window band, panel seams and a roll-up
+  // shutter for a gate — and the occupier's banner on a comms mast, a red
+  // beacon on the antenna and a floodlight on the corner. Battlements read as
+  // a castle at any size, which put the scene in the wrong century.
+  rect(g, 43, 19, 62, 35, FORT);
+  rect(g, 43, 19, 62, 19, FORT_LIT);
+  rect(g, 61, 20, 62, 35, FORT_DARK);
+  for (const x of [47, 51, 55, 59]) rect(g, x, 20, x, 35, FORT_DARK);
+  rect(g, 46, 23, 59, 23, WINDOW_BAND);
+  rect(g, 48, 12, 59, 18, FORT);
+  rect(g, 48, 12, 59, 12, FORT_LIT);
+  rect(g, 58, 13, 59, 18, FORT_DARK);
+  rect(g, 49, 15, 57, 16, WINDOW_BAND);
+  // The shutter: a wide door in horizontal slats.
+  rect(g, 48, 28, 56, 35, FORT_DARK);
+  for (let y = 29; y <= 35; y += 2) rect(g, 48, y, 56, y, SHUTTER);
+  // Comms mast with the banner, and an antenna with a beacon.
+  rect(g, 50, 3, 50, 11, MAST);
+  rect(g, 51, 3, 55, 5, BANNER);
+  rect(g, 51, 5, 55, 5, BANNER_DARK);
+  rect(g, 58, 7, 58, 11, MAST);
+  rect(g, 57, 9, 59, 9, MAST);
+  put(g, 58, 6, BEACON);
+  // A floodlight on the corner, lit.
+  rect(g, 43, 17, 44, 18, MAST);
+  put(g, 42, 18, FLOOD);
+  put(g, 41, 19, FLOOD_GLOW);
+  put(g, 42, 19, FLOOD_GLOW);
+
+  // Glow around each torch, laid down before the people so they stand in it.
+  const torches: [number, number][] = [];
+
+  // Four people: a round head, a neck, broad shoulders, and a body to the
+  // bottom edge. Fewer and larger than a crowd really is, because at feed size
+  // a head has to be several pixels to be a head at all. A fifth stood against
+  // the post's wall, and a figure touching the building flattened the distance
+  // between the crowd and it.
+  const person = (x: number, h: number, raised: 'torch' | 'fist' | null) => {
+    rect(g, x + 1, h, x + 2, h, CROWD);
+    rect(g, x, h + 1, x + 3, h + 2, CROWD);
+    rect(g, x + 1, h + 3, x + 2, h + 3, CROWD);
+    rect(g, x - 1, h + 4, x + 4, OUTCOME_H - 1, CROWD);
+    put(g, x - 1, h + 4, before(x - 1, h + 4));
+    put(g, x + 4, h + 4, before(x + 4, h + 4));
+    if (!raised) return;
+    // A thick arm straight up from the shoulder.
+    rect(g, x + 4, h - 2, x + 5, h + 5, CROWD);
+    if (raised === 'fist') {
+      rect(g, x + 4, h - 3, x + 6, h - 2, CROWD);
+      return;
+    }
+    rect(g, x + 4, h - 4, x + 5, h - 2, TORCH_HAFT);
+    torches.push([x + 4, h - 5]);
+  };
+  // What was there before the person, so a rounded shoulder shows the sky.
+  const sky = g.map((row) => [...row]);
+  const before = (x: number, y: number) => sky[y]?.[x] ?? NIGHT;
+
+  for (const [x, h, raised] of [
+    [3, 19, 'fist'], [11, 17, 'torch'], [20, 20, null], [28, 18, 'torch'],
+  ] as const) {
+    person(x, h, raised);
+  }
+
+  // The flames, last, over everything.
+  for (const [fx, fy] of torches) {
+    for (const [dx, dy] of [[-2, -1], [3, -1], [-2, -2], [3, -2], [-1, -4], [2, -4], [0, -5], [1, -5]] as const) {
+      put(g, fx + dx, fy + dy, HAZE_GLOW);
+    }
+    rect(g, fx - 1, fy - 3, fx + 2, fy, FLAME);
+    rect(g, fx, fy - 2, fx + 1, fy, FLAME_CORE);
+    rect(g, fx, fy - 4, fx + 1, fy - 4, FLAME_TIP);
+  }
+  return g;
+}
+
+const BORDER = '#4a5260';
+const BUOY = '#b3372e';
+const BUOY_LIT = '#ff6a5c';
+const LEFT_HULL = '#4f7fa8';
+const LEFT_LIT = '#86b4d8';
+const LEFT_DARK = '#30536f';
+const RIGHT_HULL = '#a8743f';
+const RIGHT_LIT = '#d8a56a';
+const RIGHT_DARK = '#6e4a27';
+const SHOT_COOL = '#8fd3ff';
+const SHOT_COOL_CORE = '#e8f7ff';
+const SHOT_WARM = '#f59e0b';
+const SHOT_WARM_CORE = '#fde68a';
+const EXHAUST = '#2c6b66';
+const SHOT_COOL_TRAIL = '#2f5f7a';
+const SHOT_WARM_TRAIL = '#7a4a12';
+
+/**
+ * The escort, as pixels: the same silhouette the order of battle draws
+ * (`ESCORT_GLYPH`), rasterised at 16 — the smallest size at which its swept
+ * wings stay wings. `w` wing, `#` hull, `D` drive, `.` empty; nosed right.
+ */
+function escortStencil(n: number): string[] {
+  const all = rasterise([ESCORT_GLYPH.hull, ...ESCORT_GLYPH.wings, ESCORT_GLYPH.drive], n);
+  const hull = rasterise([ESCORT_GLYPH.hull], n);
+  const drive = rasterise([ESCORT_GLYPH.drive], n);
+  return all.map((row, r) =>
+    row.map((on, c) => (!on ? '.' : drive[r]![c] ? 'D' : hull[r]![c] ? '#' : 'w')).join(''),
+  );
+}
+const ESCORT_SPRITE: string[] = escortStencil(16);
+
+/**
+ * The battleship, as pixels, from `BATTLESHIP_GLYPH`: `#` hull, `t` turret,
+ * `g` gun, `D` drive. At 26 it is a capital ship beside 14-pixel escorts.
+ */
+function battleshipStencil(n: number): string[] {
+  const b = BATTLESHIP_GLYPH;
+  const all = rasterise([b.hull, b.turret, b.gun, b.drive], n);
+  const hull = rasterise([b.hull], n);
+  const drive = rasterise([b.drive], n);
+  const gun = rasterise([b.gun], n);
+  return all.map((row, r) =>
+    row.map((on, c) => (!on ? '.' : drive[r]![c] ? 'D' : hull[r]![c] ? '#' : gun[r]![c] ? 'g' : 't')).join(''),
+  );
+}
+
+/** Paint a stencil, nosed right, with a colour per code. Codes not given are skipped. */
+function stamp(g: Grid, sprite: string[], x0: number, y0: number, colours: Record<string, string>): void {
+  sprite.forEach((row, dy) => {
+    [...row].forEach((ch, dx) => {
+      const c = colours[ch];
+      if (c) put(g, x0 + dx, y0 + dy, c);
+    });
+  });
+}
+
+/**
+ * BORDER INCIDENT — two ships either side of a marked line, trading fire across
+ * it.
+ *
+ * The line is what makes it a border rather than a battle: dashed, and buoyed
+ * at both ends so it reads as something laid down rather than a stray mark. The
+ * two sides are told apart by colour — cool against warm, hull and shot alike —
+ * because the event is about two powers, and neither is anybody in particular.
+ * Small ships and a few bolts, not a fleet action: nobody ordered this.
+ */
+function borderIncident(): Grid {
+  const g = blank();
+  for (const [x, y] of [[4, 3], [14, 8], [24, 2], [41, 5], [53, 3], [60, 11], [7, 30], [20, 33], [45, 31], [58, 28]] as const) {
+    put(g, x, y, STAR_DIM);
+  }
+  for (const [x, y] of [[10, 26], [50, 9]] as const) put(g, x, y, STAR);
+
+  // The border: dashed, buoyed at both ends.
+  for (let y = 3; y <= 32; y++) if (y % 4 < 2) put(g, 32, y, BORDER);
+  for (const by of [2, 33]) {
+    put(g, 32, by - 1, BUOY);
+    rect(g, 31, by, 33, by, BUOY);
+    put(g, 32, by + 1, BUOY);
+    put(g, 32, by, BUOY_LIT);
+  }
+
+  // An escort each side, nose to the line — the order of battle's own ship.
+  const ship = (x0: number, y0: number, facingRight: boolean, hull: string, lit: string, dark: string) => {
+    const width = ESCORT_SPRITE[0]!.length;
+    const hullRows = ESCORT_SPRITE.map((row, r) => (row.includes('#') ? r : -1)).filter((r) => r >= 0);
+    const top = Math.min(...hullRows);
+    ESCORT_SPRITE.forEach((row, dy) => {
+      [...row].forEach((ch, dx) => {
+        if (ch === '.') return;
+        const x = facingRight ? x0 + dx : x0 + (width - 1 - dx);
+        const c = ch === 'w' ? dark : ch === 'D' ? EXHAUST : dy === top ? lit : hull;
+        put(g, x, y0 + dy, c);
+      });
+    });
+  };
+  ship(1, 6, true, LEFT_HULL, LEFT_LIT, LEFT_DARK);
+  ship(47, 10, false, RIGHT_HULL, RIGHT_LIT, RIGHT_DARK);
+
+  // Fire across the line, each side's in its own colour: two bolts apiece,
+  // one already past the border.
+  // A bolt has a bright head and a fading tail, so it says which way it flies;
+  // a dash lit the same at both ends could be going either way.
+  const bolt = (head: number, y: number, dir: 1 | -1, core: string, glow: string, trail: string) => {
+    put(g, head, y, BOLT);
+    put(g, head - dir, y, core);
+    put(g, head - 2 * dir, y, glow);
+    put(g, head - 3 * dir, y, trail);
+    put(g, head - 4 * dir, y, trail);
+  };
+  bolt(24, 13, 1, SHOT_COOL_CORE, SHOT_COOL, SHOT_COOL_TRAIL);
+  bolt(39, 13, 1, SHOT_COOL_CORE, SHOT_COOL, SHOT_COOL_TRAIL);
+  bolt(39, 18, -1, SHOT_WARM_CORE, SHOT_WARM, SHOT_WARM_TRAIL);
+  bolt(24, 18, -1, SHOT_WARM_CORE, SHOT_WARM, SHOT_WARM_TRAIL);
+  return g;
+}
+
+const WALL = '#161b23';
+const FLOOR = '#262d38';
+const FLOOR_LIT = '#323a46';
+const RACK = '#5a6474';
+const RACK_DARK = '#3b4350';
+const GHOST = '#1f2530';
+const CRATE = '#8a6a3a';
+const CRATE_DARK = '#5e4626';
+const CRATE_LIT = '#a8844c';
+const SCREEN_FRAME = '#3a4552';
+const SCREEN = '#0d1714';
+const SCREEN_GRID = '#16241f';
+const PRICE = '#fbbf24';
+
+/**
+ * SHORTAGE — a rack with almost nothing on it, and a price climbing to the
+ * top of the board beside it.
+ *
+ * An empty shelf only says "empty"; the pale marks where crates used to stand
+ * are what say "gone", which is the event. The price board says what scarcity
+ * does to a buyer: the line climbs into the top corner of the screen rather
+ * than ending in an arrowhead — the falling line in `defiance` learned that a
+ * head big enough to read at this size stops reading as a point. It stays
+ * inside the frame; a line drawn past it read as a mistake, not as off the
+ * scale.
+ */
+function shortage(): Grid {
+  const g = blank();
+  rect(g, 0, 0, OUTCOME_W - 1, 28, WALL);
+  rect(g, 0, 29, OUTCOME_W - 1, OUTCOME_H - 1, FLOOR);
+  rect(g, 0, 29, OUTCOME_W - 1, 29, FLOOR_LIT);
+
+  // The rack: three uprights and three shelves.
+  for (const x of [3, 17, 31]) rect(g, x, 4, x + 1, 30, RACK);
+  for (const y of [11, 20, 29]) {
+    rect(g, 3, y, 32, y, RACK);
+    rect(g, 3, y + 1, 32, y + 1, RACK_DARK);
+  }
+  // Where the crates stood: pale on the wall behind the shelf.
+  for (const [x0, y0] of [[6, 5], [11, 5], [20, 5], [25, 5], [20, 14], [25, 14], [6, 23], [20, 23], [25, 23]] as const) {
+    rect(g, x0, y0, x0 + 3, y0 + 5, GHOST);
+  }
+  // The one crate left.
+  rect(g, 7, 14, 13, 19, CRATE);
+  rect(g, 7, 14, 13, 14, CRATE_LIT);
+  rect(g, 7, 17, 13, 17, CRATE_DARK);
+  rect(g, 10, 14, 10, 19, CRATE_DARK);
+
+  // The price board: a framed screen with a faint grid and a line that climbs
+  // into its top corner.
+  rect(g, 37, 4, 61, 24, SCREEN_FRAME);
+  rect(g, 38, 5, 60, 23, SCREEN);
+  for (let x = 41; x <= 59; x += 5) rect(g, x, 5, x, 23, SCREEN_GRID);
+  for (let y = 9; y <= 21; y += 4) rect(g, 38, y, 60, y, SCREEN_GRID);
+  const points: [number, number][] = [[39, 21], [43, 20], [46, 21], [49, 17], [52, 15], [55, 10], [58, 6], [60, 4]];
+  for (let i = 0; i < points.length - 1; i++) {
+    const [x0, y0] = points[i]!;
+    const [x1, y1] = points[i + 1]!;
+    const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+    for (let st = 0; st <= steps; st++) {
+      const x = Math.round(x0 + ((x1 - x0) * st) / steps);
+      const y = Math.round(y0 + ((y1 - y0) * st) / steps);
+      if (y >= 5) rect(g, x, y, x, y + 1, PRICE);
+    }
+  }
+  // The board's stand.
+  rect(g, 48, 25, 50, 28, RACK_DARK);
+  return g;
+}
+
+const FLEET = '#7d8898';
+const FLEET_LIT = '#b3bdca';
+const FLEET_DARK = '#4b5462';
+const DRIVE_LOYAL = '#2c6b66';
+const DRIVE_TURNED = '#b3372e';
+const TRAIL = '#3a2a2e';
+
+/**
+ * MUTINY — a fleet in formation, and two of its own ships turned the other way.
+ *
+ * The same hull, the same colours: they were this fleet a moment ago, which is
+ * the whole difference between a mutiny and an enemy. What separates them is
+ * the heading — the formation flies right in good order, and two break off left
+ * and down, their drives burning red, with a faint trail back to the place in
+ * the line they left. The order of battle's escort again, at 14 pixels — the
+ * smallest that keeps its pointed nose — so a formation fits.
+ */
+function mutiny(): Grid {
+  const g = blank();
+  for (const [x, y] of [[3, 3], [14, 7], [25, 2], [52, 31], [60, 22], [40, 33], [22, 14], [58, 4]] as const) {
+    put(g, x, y, STAR_DIM);
+  }
+  for (const [x, y] of [[9, 11], [47, 27]] as const) put(g, x, y, STAR);
+
+  const sprite = escortStencil(14);
+  const width = sprite[0]!.length;
+  const top = Math.min(...sprite.map((row, r) => (row.includes('#') ? r : 99)));
+  const escort = (x0: number, y0: number, facingRight: boolean, drive: string) => {
+    sprite.forEach((row, dy) => {
+      [...row].forEach((ch, dx) => {
+        if (ch === '.') return;
+        const x = facingRight ? x0 + dx : x0 + (width - 1 - dx);
+        put(g, x, y0 + dy, ch === 'w' ? FLEET_DARK : ch === 'D' ? drive : dy === top ? FLEET_LIT : FLEET);
+      });
+    });
+  };
+
+  // The trails first, so the ships sit on them: dotted, from each deserter's
+  // drive back up toward the gap in the formation.
+  for (const [x0, y0, x1, y1] of [[25, 25, 37, 21], [17, 31, 35, 24]] as const) {
+    const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+    for (let st = 0; st <= steps; st += 2) {
+      put(g, Math.round(x0 + ((x1 - x0) * st) / steps), Math.round(y0 + ((y1 - y0) * st) / steps), TRAIL);
+    }
+  }
+
+  // The formation, in good order, heading right.
+  escort(49, 6, true, DRIVE_LOYAL);
+  escort(36, -1, true, DRIVE_LOYAL);
+  escort(36, 13, true, DRIVE_LOYAL);
+  // Two of its own, turned and gone.
+  escort(11, 18, false, DRIVE_TURNED);
+  escort(2, 24, false, DRIVE_TURNED);
+  return g;
+}
+
+const STRATA_A = '#2a2420';
+const STRATA_B = '#342b25';
+const STRATA_C = '#3e332b';
+const SURFACE = '#4a3f35';
+const SEAM = '#e8b33a';
+const SEAM_LIT = '#ffe08a';
+const SEAM_DARK = '#9a6b1c';
+const RIG = '#8a94a3';
+const RIG_DARK = '#525b69';
+const SPARK = '#fffbe8';
+
+/**
+ * RICH SEAM — the ground cut away, a rig on the surface, and its drill in a
+ * thick vein of gold.
+ *
+ * A cutaway, because the event is underground and a picture of a world's
+ * surface would show nothing at all. Gold reads as wealth before anything
+ * else does, and the strike is a burst of light where the shaft meets the vein
+ * — the one bright moment in an otherwise brown, layered scene, which is what
+ * makes it good news at a glance.
+ */
+function richSeam(): Grid {
+  const g = blank();
+  const SURFACE_Y = 14;
+  rect(g, 0, 0, OUTCOME_W - 1, SURFACE_Y - 1, NIGHT);
+  for (const [x, y] of [[4, 2], [15, 6], [48, 3], [58, 9], [42, 1], [9, 11]] as const) put(g, x, y, STAR_DIM);
+
+  // Strata, in uneven bands, so it reads as rock and not as stripes.
+  rect(g, 0, SURFACE_Y, OUTCOME_W - 1, SURFACE_Y, SURFACE);
+  for (let x = 0; x < OUTCOME_W; x++) {
+    const wobble = Math.round(Math.sin(x / 6) * 1.2);
+    rect(g, x, SURFACE_Y + 1, x, 19 + wobble, STRATA_C);
+    rect(g, x, 20 + wobble, x, 30 + wobble, STRATA_B);
+    rect(g, x, 31 + wobble, x, OUTCOME_H - 1, STRATA_A);
+  }
+
+  // The seam: a vein of even, ragged thickness across the whole width — not a
+  // heap, which is what a vein fattening under the drill read as — with a thin
+  // branch climbing off it.
+  const veinAt = (x: number) => 26 + Math.round(Math.sin((x + 5) / 8) * 1.5);
+  for (let x = 0; x < OUTCOME_W; x++) {
+    const c = veinAt(x);
+    const up = Math.sin(x * 1.7) > 0.3 ? 2 : 1;
+    const down = Math.sin(x * 2.3 + 1) > 0.2 ? 2 : 1;
+    rect(g, x, c - up, x, c + down, SEAM);
+    put(g, x, c - up, SEAM_LIT);
+    put(g, x, c + down, SEAM_DARK);
+  }
+  for (let k = 0; k <= 6; k++) put(g, 12 - k, veinAt(12) - 2 - Math.round(k * 0.7), SEAM);
+  for (let k = 0; k <= 5; k++) put(g, 50 + k, veinAt(50) + 2 + Math.round(k * 0.6), SEAM_DARK);
+  // Glints along it.
+  for (const [x, y] of [[6, 25], [19, 27], [44, 26], [56, 25], [25, 25]] as const) put(g, x, veinAt(x) + (y - 26), SPARK);
+
+  // The rig: a braced derrick on a platform, tall enough to read as a tower.
+  rect(g, 25, SURFACE_Y - 1, 38, SURFACE_Y - 1, RIG_DARK);
+  for (let y = 2; y <= SURFACE_Y - 2; y++) {
+    put(g, 31 - Math.round(((y - 2) * 4) / 10), y, RIG);
+    put(g, 32 + Math.round(((y - 2) * 4) / 10), y, RIG);
+  }
+  for (const [y0, y1] of [[4, 7], [7, 10], [10, 12]] as const) {
+    const l0 = 31 - Math.round(((y0 - 2) * 4) / 10);
+    const r1 = 32 + Math.round(((y1 - 2) * 4) / 10);
+    const r0 = 32 + Math.round(((y0 - 2) * 4) / 10);
+    const l1 = 31 - Math.round(((y1 - 2) * 4) / 10);
+    for (let k = 0; k <= y1 - y0; k++) {
+      const t = k / (y1 - y0);
+      put(g, Math.round(l0 + (r1 - l0) * t), y0 + k, RIG_DARK);
+      put(g, Math.round(r0 + (l1 - r0) * t), y0 + k, RIG_DARK);
+    }
+  }
+  rect(g, 30, 1, 33, 1, RIG);
+  // The shaft, down through the rock into the seam.
+  const strikeY = veinAt(31) - 1;
+  rect(g, 31, SURFACE_Y, 32, strikeY, RIG_DARK);
+  rect(g, 31, SURFACE_Y, 31, strikeY, RIG);
+
+  // The strike: a burst of light where the shaft meets the gold.
+  for (const [dx, dy] of [[0, 0], [1, 0], [-1, 1], [2, 1], [-2, -1], [3, -1], [-1, -2], [2, -2], [-3, 1], [4, 1]] as const) {
+    put(g, 31 + dx, strikeY + dy, dx === 0 || dx === 1 ? SPARK : SEAM_LIT);
+  }
+  return g;
+}
+
+const DAWN_HIGH = '#1b2740';
+const DAWN = '#2f4466';
+const DAWN_LOW = '#7a6a78';
+const DAWN_GLOW = '#c98a5a';
+const YARD = '#2e2c27';
+const YARD_LIT = '#3c3932';
+const DOOR_LIT = '#f2cf7a';
+const DOOR_GLOW = '#8a6a3a';
+const FRIENDLY = '#2c9a8f';
+const FRIENDLY_DARK = '#1d6b63';
+const SKIN = '#c49a7a';
+const LEGS = '#24262c';
+const HELMET = '#4b5462';
+const KIT = '#4a5a3e';
+
+/**
+ * VOLUNTEERS — a queue at dawn, walking into a garrison post whose door is open
+ * and lit, the front of it already in kit.
+ *
+ * The other side of `unrest`, said in the same visual language so the pair
+ * read together: the same contemporary post, but it is morning rather than
+ * night, the door is open rather than shut, the banner is the holder's own, and
+ * the people are in colour and walking in rather than in silhouette facing it.
+ * The first in line wears a helmet — that is the garrison rising.
+ */
+function volunteers(): Grid {
+  const g = blank();
+  // Dawn, with the horizon high so the people stand against the yard: a face
+  // against a dawn sky the colour of skin is not there at all.
+  rect(g, 0, 0, OUTCOME_W - 1, 5, DAWN_HIGH);
+  rect(g, 0, 6, OUTCOME_W - 1, 10, DAWN);
+  rect(g, 0, 11, OUTCOME_W - 1, 14, DAWN_LOW);
+  rect(g, 0, 15, OUTCOME_W - 1, 17, DAWN_GLOW);
+  rect(g, 0, 18, OUTCOME_W - 1, OUTCOME_H - 1, YARD);
+  rect(g, 0, 18, OUTCOME_W - 1, 18, YARD_LIT);
+
+  // The post: the same block as `unrest`, with its door open and lit.
+  rect(g, 43, 8, 62, 34, FORT);
+  rect(g, 43, 8, 62, 8, FORT_LIT);
+  rect(g, 61, 9, 62, 34, FORT_DARK);
+  for (const x of [46, 58]) rect(g, x, 9, x, 34, FORT_DARK);
+  rect(g, 46, 12, 59, 12, WINDOW_BAND);
+  rect(g, 48, 19, 55, 34, DOOR_LIT);
+  rect(g, 47, 35, 56, 35, DOOR_GLOW);
+  // The holder's own banner on a mast.
+  rect(g, 51, 1, 51, 7, MAST);
+  rect(g, 52, 1, 57, 3, FRIENDLY);
+  rect(g, 52, 3, 57, 3, FRIENDLY_DARK);
+
+  // A person: hair or helmet, a face, shoulders, and legs down to one ground
+  // line, so a taller person stands taller rather than floating. Legs are
+  // always together; a wide stance read as a different, squatter figure.
+  const FEET = 34;
+  const person = (x: number, top: number, skin: string, body: string, helmet = false) => {
+    rect(g, x, top, x + 2, top, helmet ? HELMET : LEGS);
+    rect(g, x, top + 1, x + 2, top + 2, skin);
+    if (helmet) put(g, x - 1, top, HELMET);
+    rect(g, x - 1, top + 3, x + 3, top + 8, body);
+    rect(g, x, top + 9, x, FEET, LEGS);
+    rect(g, x + 2, top + 9, x + 2, FEET, LEGS);
+  };
+  // The first already in kit, in the lit doorway; the rest queued in the yard
+  // with room between them and the wall — every one a different height and a
+  // different face, because a queue of one person six times is a diagram.
+  person(50, 22, '#b07a52', KIT, true);
+  person(34, 21, '#f1d3b8', '#4f6a8a');
+  person(26, 22, '#5e3b26', '#7a5a4a');
+  person(18, 20, '#d9a982', '#6b7f5a');
+  person(10, 22, '#8a5a3a', '#8a7a5a');
+  person(2, 21, '#c49a7a', '#5a5a6a');
+  return g;
+}
+
+const PLANET = '#2f4f66';
+const PLANET_LIT = '#5d86a3';
+const PLANET_DARK = '#223a4c';
+const BURN = '#e8b33a';
+const BURN_TRAIL = '#6a4a1a';
+
+/**
+ * FREE CAPTAINS — a battleship and two escorts, each in somebody else's paint,
+ * burning in toward a world to sign on.
+ *
+ * Mismatched paint is the whole of "free": a navy's ships wear one livery and
+ * these wear three — gunmetal with a grey-blue battery, a field green, and grey
+ * with rust wings — because they were built for other people. The order of
+ * battle's own battleship and escort, the battleship drawn at a capital's size
+ * beside them, so the squadron is the one the event delivers; and the world is
+ * the System panel's own earthlike sprite. A rust hull read as an odd colour
+ * rather than as a livery.
+ */
+function freeCaptains(): Grid {
+  const g = blank();
+  for (const [x, y] of [[30, 3], [40, 6], [38, 30], [22, 33], [36, 25], [9, 16], [24, 7]] as const) {
+    put(g, x, y, STAR_DIM);
+  }
+  put(g, 41, 11, STAR);
+
+  // The world they are making for: the System panel's own earthlike sprite,
+  // its near side in frame.
+  const world = worldPixels('earthlike');
+  world.forEach((row, dy) => row.forEach((c, dx) => {
+    if (c) put(g, 42 + dx, 2 + dy, c);
+  }));
+
+  // Burn trails behind each drive, then the ships over them.
+  const trail = (x: number, y: number, len: number) => {
+    for (let k = 0; k < len; k++) if (k % 2 === 0) put(g, x - k, y, BURN_TRAIL);
+  };
+  trail(12, 17, 9);
+  trail(12, 18, 9);
+  trail(3, 4, 3);
+  trail(3, 29, 3);
+
+  // A battleship leading, a capital's size beside its escorts, and three
+  // liveries between them: gunmetal with a grey-blue battery, a field green, and
+  // grey with rust wings.
+  stamp(g, battleshipStencil(26), 12, 4, { '#': '#6e7480', t: '#5a6e8a', g: '#5a6e8a', D: BURN });
+  stamp(g, escortStencil(14), 3, -2, { '#': '#6f7f58', w: '#3f4a30', D: BURN });
+  stamp(g, escortStencil(14), 3, 23, { '#': '#6b7584', w: '#8a4e2c', D: BURN });
+  return g;
+}
+
+const BUOY_CALM = '#2f8a5a';
+const BUOY_CALM_LIT = '#6fe0a0';
+const TRUCE = '#f4f1e8';
+const TRUCE_SHADE = '#c9c4b4';
+
+/**
+ * ENVOYS OF PEACE — the border incident's line and its two sides, nose to nose
+ * across it under white flags, with nothing fired.
+ *
+ * Drawn as that scene's counterpart so the pair read together, the way unrest
+ * and volunteers do: the same buoyed border, the same escorts in the same two
+ * colours, but closer, with the guns quiet, a white flag on each, and the buoys
+ * gone from red to green. A white flag is the oldest sign there is for "we are
+ * here to talk", and needs no explaining at feed size.
+ */
+function envoysOfPeace(): Grid {
+  const g = blank();
+  for (const [x, y] of [[4, 3], [14, 8], [24, 2], [41, 5], [53, 3], [60, 11], [7, 30], [20, 33], [45, 31], [58, 28]] as const) {
+    put(g, x, y, STAR_DIM);
+  }
+  for (const [x, y] of [[10, 26], [50, 9]] as const) put(g, x, y, STAR);
+
+  // The same border, buoyed at both ends — green now.
+  for (let y = 3; y <= 32; y++) if (y % 4 < 2) put(g, 32, y, BORDER);
+  for (const by of [2, 33]) {
+    put(g, 32, by - 1, BUOY_CALM);
+    rect(g, 31, by, 33, by, BUOY_CALM);
+    put(g, 32, by + 1, BUOY_CALM);
+    put(g, 32, by, BUOY_CALM_LIT);
+  }
+
+  // The two sides, nose to nose across it, close.
+  const sprite = escortStencil(16);
+  const width = sprite[0]!.length;
+  const top = Math.min(...sprite.map((row, r) => (row.includes('#') ? r : 99)));
+  const ship = (x0: number, y0: number, facingRight: boolean, hull: string, lit: string, dark: string) => {
+    sprite.forEach((row, dy) => {
+      [...row].forEach((ch, dx) => {
+        if (ch === '.') return;
+        const x = facingRight ? x0 + dx : x0 + (width - 1 - dx);
+        put(g, x, y0 + dy, ch === 'w' ? dark : ch === 'D' ? EXHAUST : dy === top ? lit : hull);
+      });
+    });
+  };
+  ship(14, 9, true, LEFT_HULL, LEFT_LIT, LEFT_DARK);
+  ship(34, 9, false, RIGHT_HULL, RIGHT_LIT, RIGHT_DARK);
+
+  // A white flag on a short mast over each: three pixels of cloth, shaded.
+  const flag = (mastX: number, towardRight: boolean) => {
+    rect(g, mastX, 9, mastX, 15, MAST);
+    const x0 = towardRight ? mastX + 1 : mastX - 4;
+    rect(g, x0, 9, x0 + 3, 11, TRUCE);
+    rect(g, x0, 11, x0 + 3, 11, TRUCE_SHADE);
+  };
+  flag(22, true);
+  flag(41, false);
+  return g;
+}
+
+/* ------------------------------------------------------------------ */
 /* Out                                                                 */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Random events with a scene. **Each one is here because the user approved it**
+ * — rendered at feed size and larger and put in front of them before it was
+ * committed (item 124) — and every other kind falls back to the text card.
+ */
+export const RIM_ART_KINDS = [
+  'ion_storm', 'derelict', 'unrest', 'border_incident', 'shortage', 'mutiny', 'rich_seam', 'volunteers',
+  'free_captains', 'envoys_of_peace',
+] as const;
+export type RimArtKind = (typeof RIM_ART_KINDS)[number];
+
+const RIM_SCENES: Record<RimArtKind, () => Grid> = {
+  ion_storm: ionStorm,
+  derelict,
+  unrest,
+  border_incident: borderIncident,
+  shortage,
+  mutiny,
+  rich_seam: richSeam,
+  volunteers,
+  free_captains: freeCaptains,
+  envoys_of_peace: envoysOfPeace,
+};
+
+export function hasRimArt(kind: string): kind is RimArtKind {
+  return (RIM_ART_KINDS as readonly string[]).includes(kind);
+}
+
+/** A random event's scene, as the raw grid. */
+export function rimEventPixels(kind: RimArtKind): string[][] {
+  return RIM_SCENES[kind]();
+}
+
+const rimCache = new Map<RimArtKind, OutcomeRun[]>();
+
+/** A random event's scene as horizontal runs, the way `outcomeRuns` does it. */
+export function rimEventRuns(kind: RimArtKind): OutcomeRun[] {
+  const hit = rimCache.get(kind);
+  if (hit) return hit;
+  const runs = toRuns(RIM_SCENES[kind]());
+  rimCache.set(kind, runs);
+  return runs;
+}
 
 const SCENES: Record<OutcomeArtKind, () => Grid> = {
   refusal,
@@ -275,7 +1159,12 @@ const cache = new Map<OutcomeArtKind, OutcomeRun[]>();
 export function outcomeRuns(kind: OutcomeArtKind): OutcomeRun[] {
   const hit = cache.get(kind);
   if (hit) return hit;
-  const g = SCENES[kind]();
+  const runs = toRuns(SCENES[kind]());
+  cache.set(kind, runs);
+  return runs;
+}
+
+function toRuns(g: Grid): OutcomeRun[] {
   const runs: OutcomeRun[] = [];
   for (let y = 0; y < OUTCOME_H; y++) {
     let x = 0;
@@ -287,7 +1176,6 @@ export function outcomeRuns(kind: OutcomeArtKind): OutcomeRun[] {
       x += width;
     }
   }
-  cache.set(kind, runs);
   return runs;
 }
 

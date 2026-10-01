@@ -5,7 +5,13 @@ import {
   OUTCOME_W,
   outcomePixels,
   outcomeRuns,
+  RIM_ART_KINDS,
+  hasRimArt,
+  rimEventPixels,
+  rimEventRuns,
 } from '../src/ui/outcomeart.js';
+import { RIM_EVENT_KINDS } from '../src/domain/events.js';
+import { worldPixels } from '../src/ui/worlds.js';
 
 /**
  * The two rulings your own institutions make, as pixels.
@@ -133,5 +139,279 @@ describe('the outcome scenes', () => {
       // And it is worth doing: a scene is a few hundred rects, not 2,304.
       expect(runs.length).toBeLessThan(OUTCOME_W * OUTCOME_H * 0.4);
     }
+  });
+});
+
+/**
+ * The Rim's own events (item 124). Each scene is in `RIM_ART_KINDS` only because
+ * the user approved it by eye; what is pinned here is what the picture claims.
+ */
+describe('the event scenes', () => {
+  it('draws only real event kinds, and says which have art', () => {
+    for (const kind of RIM_ART_KINDS) expect(RIM_EVENT_KINDS).toContain(kind);
+    expect(hasRimArt('ion_storm')).toBe(true);
+    expect(hasRimArt('mutiny')).toBe(RIM_ART_KINDS.includes('mutiny' as never));
+  });
+
+  it('fills every cell and merges into runs without losing a pixel', () => {
+    for (const kind of RIM_ART_KINDS) {
+      const px = rimEventPixels(kind);
+      expect(px).toHaveLength(OUTCOME_H);
+      for (const row of px) {
+        expect(row).toHaveLength(OUTCOME_W);
+        for (const cell of row) expect(cell).toMatch(/^#[0-9a-f]{6}$/);
+      }
+      const runs = rimEventRuns(kind);
+      expect(runs.reduce((n, r) => n + r.width, 0)).toBe(OUTCOME_W * OUTCOME_H);
+      for (const r of runs) {
+        for (let i = 0; i < r.width; i++) expect(px[r.y]![r.x + i]).toBe(r.colour);
+      }
+    }
+  });
+
+  it('ion storm: a bolt from the cloud to a lane that is cut beneath it', () => {
+    const px = rimEventPixels('ion_storm');
+    const LANE = '#2c6b66';
+    const BOLT = new Set(['#f2f7ff', '#8fd3ff']);
+    const CLOUD = new Set(['#261f47', '#40357a', '#6f62b8']);
+    const laneRow = px[27]!;
+    const lane = laneRow.map((c, x) => (c === LANE ? x : -1)).filter((x) => x >= 0);
+    // Dashes on both sides of the storm, and none under it.
+    expect(lane.some((x) => x < 24)).toBe(true);
+    expect(lane.some((x) => x > 40)).toBe(true);
+    expect(lane.some((x) => x >= 24 && x <= 40)).toBe(false);
+    // The cloud is above the lane and the bolt spans the gap between them:
+    // every row from the cloud's belly down to the lane has bolt in it.
+    const cloudRows = px.map((row, y) => (row.some((c) => CLOUD.has(c)) ? y : -1)).filter((y) => y >= 0);
+    expect(Math.max(...cloudRows)).toBeLessThan(27);
+    for (let y = Math.max(...cloudRows) + 1; y <= 27; y++) {
+      expect(px[y]!.some((c) => BOLT.has(c)), `row ${y}`).toBe(true);
+    }
+  });
+});
+
+describe('the derelict', () => {
+  const px = rimEventPixels('derelict');
+  const HULL = new Set(['#353c49', '#586272', '#808b9b', '#7f8a99', '#b4bfcc', '#e1e7ee']);
+  const LIT = new Set(['#7f8a99', '#b4bfcc', '#e1e7ee']);
+
+  it('is one ship in two pieces, with a gap where it broke', () => {
+    // A column with at most a drifting fragment in it, between two columns
+    // that have plenty — debris is hull too, and it is meant to be there.
+    const hullIn = (x: number) => px.filter((row) => HULL.has(row[x]!)).length;
+    const gap = [36, 37, 38].some((x) => hullIn(x) <= 1);
+    expect(gap).toBe(true);
+    expect(hullIn(25)).toBeGreaterThan(4);
+    expect(hullIn(46)).toBeGreaterThan(4);
+  });
+
+  it('is lit where the searchlight lands, and the light comes from a ship', () => {
+    expect(px.flat().filter((c) => LIT.has(c)).length).toBeGreaterThan(20);
+    // The lamp is the brightest thing in the scene, at the scout's nose.
+    expect(px.flat().filter((c) => c === '#fdfcf0')).toHaveLength(1);
+    expect(px.flat().filter((c) => c === '#3fb8ad').length).toBeGreaterThan(3);
+  });
+});
+
+describe('unrest', () => {
+  const px = rimEventPixels('unrest');
+  const CROWD = '#050608';
+  const has = (x: number, c: string) => px.some((row) => row[x] === c);
+
+  it('is a crowd with torches, with open ground between it and the post', () => {
+    expect(px.flat().filter((c) => c === '#f59e0b').length).toBeGreaterThan(6);
+    // Nobody stands against the wall: a figure touching the building flattened
+    // the distance between them, so the columns before the post are empty.
+    const crowdRight = Math.max(...px.flatMap((row) => row.map((c, x) => (c === CROWD ? x : -1))));
+    expect(crowdRight).toBeLessThan(40);
+    expect(has(45, '#3a4150')).toBe(true);
+  });
+
+  it('flies the occupier\'s banner over the post, and has no battlements', () => {
+    expect(px.flat().filter((c) => c === '#b3372e').length).toBeGreaterThan(8);
+    // The roof line is flat: no gap-toothed merlons along the top of the block.
+    const roof = px[12]!.slice(48, 60);
+    expect(new Set(roof).size).toBeLessThanOrEqual(2);
+  });
+});
+
+describe('the border incident', () => {
+  const px = rimEventPixels('border_incident');
+  const LEFT = new Set(['#4f7fa8', '#86b4d8', '#30536f']);
+  const RIGHT = new Set(['#a8743f', '#d8a56a', '#6e4a27']);
+
+  it('puts one ship each side of a buoyed line, and fire crossing it both ways', () => {
+    const xs = (set: Set<string>) => px.flatMap((row) => row.map((c, x) => (set.has(c) ? x : -1))).filter((x) => x >= 0);
+    expect(Math.max(...xs(LEFT))).toBeLessThan(32);
+    expect(Math.min(...xs(RIGHT))).toBeGreaterThan(32);
+    expect(px[2]![32]).toBe('#ff6a5c');
+    expect(px[33]![32]).toBe('#ff6a5c');
+    // Each side's fire on both sides of the line.
+    const cool = xs(new Set(['#e8f7ff']));
+    const warm = xs(new Set(['#fde68a']));
+    expect(cool.some((x) => x < 32) && cool.some((x) => x > 32)).toBe(true);
+    expect(warm.some((x) => x < 32) && warm.some((x) => x > 32)).toBe(true);
+  });
+
+  it('draws the ships as the escort glyph, swept wings and all', () => {
+    // A wing pixel well above the hull's nose row: the swept wing is the line
+    // that makes the silhouette an escort and not a cross.
+    const wingRows = px.map((row, y) => (row.some((c) => c === '#30536f') ? y : -1)).filter((y) => y >= 0);
+    expect(Math.max(...wingRows) - Math.min(...wingRows)).toBeGreaterThan(8);
+  });
+});
+
+describe('the shortage', () => {
+  const px = rimEventPixels('shortage');
+  const PRICE = '#fbbf24';
+  const price = px.flatMap((row, y) => row.map((c, x) => (c === PRICE ? [x, y] as const : null))).filter(
+    (p): p is readonly [number, number] => p !== null,
+  );
+
+  it('keeps the price inside the screen, and only ever has it rise', () => {
+    for (const [x, y] of price) {
+      expect(x).toBeGreaterThanOrEqual(38);
+      expect(x).toBeLessThanOrEqual(60);
+      expect(y).toBeGreaterThanOrEqual(5);
+      expect(y).toBeLessThanOrEqual(23);
+    }
+    const highestAt = (x: number) => Math.min(...price.filter(([px_]) => px_ === x).map(([, y]) => y));
+    // Higher on the screen (a smaller y) at the right than at the left.
+    expect(highestAt(59)).toBeLessThan(highestAt(40) - 10);
+  });
+
+  it('has one crate left on a rack that shows where the others stood', () => {
+    const crate = px.flat().filter((c) => c === '#8a6a3a').length;
+    expect(crate).toBeGreaterThan(10);
+    expect(crate).toBeLessThan(60);
+    expect(px.flat().filter((c) => c === '#1f2530').length).toBeGreaterThan(100);
+  });
+});
+
+describe('the mutiny', () => {
+  const px = rimEventPixels('mutiny');
+  const at = (c: string) => px.flatMap((row, y) => row.map((v, x) => (v === c ? [x, y] as const : null))).filter(
+    (p): p is readonly [number, number] => p !== null,
+  );
+
+  it('keeps the formation right and sends its own ships off left', () => {
+    const loyal = at('#2c6b66');
+    const turned = at('#b3372e');
+    expect(loyal.length).toBeGreaterThan(0);
+    expect(turned.length).toBeGreaterThan(0);
+    expect(Math.min(...loyal.map(([x]) => x))).toBeGreaterThan(32);
+    expect(Math.max(...turned.map(([x]) => x))).toBeLessThan(32);
+  });
+
+  it('draws deserters and formation in one fleet\'s colours, with a trail back between them', () => {
+    // Same hull colour on both sides of the frame: they were this fleet.
+    const hull = at('#7d8898');
+    expect(hull.some(([x]) => x < 32) && hull.some(([x]) => x > 32)).toBe(true);
+    expect(at('#3a2a2e').length).toBeGreaterThan(8);
+  });
+});
+
+describe('the rich seam', () => {
+  const px = rimEventPixels('rich_seam');
+  const GOLD = new Set(['#e8b33a', '#ffe08a', '#9a6b1c']);
+
+  it('runs a gold vein the width of the ground, below a rig in the sky', () => {
+    for (const x of [0, 20, 40, 63]) {
+      expect(px.some((row, y) => y > 14 && GOLD.has(row[x]!)), `column ${x}`).toBe(true);
+    }
+    // The rig stands above the surface.
+    expect(px.slice(0, 14).some((row) => row.includes('#8a94a3'))).toBe(true);
+  });
+
+  it('strikes the vein: the shaft reaches it, and the strike is the brightest thing there', () => {
+    const shaftBottom = Math.max(...px.map((row, y) => (row[31] === '#8a94a3' && y > 14 ? y : -1)));
+    const veinTop = Math.min(...px.map((row, y) => (y > 14 && GOLD.has(row[31]!) ? y : 99)));
+    // Nothing but the strike's light between the shaft's end and the gold.
+    for (let y = shaftBottom + 1; y < veinTop; y++) {
+      expect(['#fffbe8', '#ffe08a']).toContain(px[y]![31]);
+    }
+    expect(veinTop - shaftBottom).toBeLessThanOrEqual(3);
+    expect(px.flat().filter((c) => c === '#fffbe8').length).toBeGreaterThan(3);
+  });
+});
+
+describe('the volunteers', () => {
+  const px = rimEventPixels('volunteers');
+  const SKINS = ['#b07a52', '#f1d3b8', '#5e3b26', '#d9a982', '#8a5a3a', '#c49a7a'];
+
+  it('is six different people, of different heights, on one ground line', () => {
+    for (const skin of SKINS) expect(px.flat()).toContain(skin);
+    const headTop = (skin: string) => Math.min(...px.map((row, y) => (row.includes(skin) ? y : 99)));
+    expect(new Set(SKINS.map(headTop)).size).toBeGreaterThanOrEqual(3);
+    // Feet together and all on row 34; nobody floats or sinks.
+    const feet = px[34]!.map((c, x) => (c === '#24262c' ? x : -1)).filter((x) => x >= 0);
+    expect(feet.length).toBe(12);
+    expect(px[35]!.filter((c) => c === '#24262c')).toHaveLength(0);
+  });
+
+  it('puts the recruit in the lit doorway, and nobody against the wall', () => {
+    expect(px[22]![50]).toBe('#4b5462');
+    expect(px[27]![50]).toBe('#4a5a3e');
+    // Lit door on either side of the recruit.
+    expect(px[27]![48]).toBe('#f2cf7a');
+    expect(px[27]![55]).toBe('#f2cf7a');
+    // Clear yard between the queue and the building.
+    for (let y = 19; y < 35; y++) for (let x = 38; x < 43; x++) expect(px[y]![x], `${x},${y}`).toBe('#2e2c27');
+  });
+});
+
+describe('the free captains', () => {
+  const px = rimEventPixels('free_captains');
+  const count = (c: string) => px.flat().filter((v) => v === c).length;
+
+  it('is the squadron the event delivers: a battleship larger than two escorts', () => {
+    const battleship = count('#6e7480') + count('#5a6e8a');
+    const escortA = count('#6f7f58') + count('#3f4a30');
+    const escortB = count('#6b7584') + count('#8a4e2c');
+    expect(escortA).toBeGreaterThan(20);
+    expect(escortB).toBeGreaterThan(20);
+    expect(battleship).toBeGreaterThan(2 * Math.max(escortA, escortB));
+  });
+
+  it('wears three liveries, not one navy\'s, and makes for the earthlike world', () => {
+    const hulls = ['#6e7480', '#6f7f58', '#6b7584'];
+    expect(new Set(hulls).size).toBe(3);
+    for (const h of hulls) expect(count(h)).toBeGreaterThan(0);
+    // Some of the world sprite is in frame on the right.
+    const world = worldPixels('earthlike').flat().filter((c): c is string => c !== null);
+    const right = px.flatMap((row) => row.slice(44));
+    expect(right.filter((c) => world.includes(c)).length).toBeGreaterThan(200);
+  });
+});
+
+describe('the envoys of peace', () => {
+  const px = rimEventPixels('envoys_of_peace');
+  const border = rimEventPixels('border_incident');
+  const LEFT = new Set(['#4f7fa8', '#86b4d8', '#30536f']);
+  const RIGHT = new Set(['#a8743f', '#d8a56a', '#6e4a27']);
+
+  it('is the border incident\'s two sides across the same line, closer, with nothing fired', () => {
+    const xs = (set: Set<string>) => px.flatMap((row) => row.map((c, x) => (set.has(c) ? x : -1))).filter((x) => x >= 0);
+    expect(Math.max(...xs(LEFT))).toBeLessThan(32);
+    expect(Math.min(...xs(RIGHT))).toBeGreaterThan(32);
+    const gap = Math.min(...xs(RIGHT)) - Math.max(...xs(LEFT));
+    const bxs = (set: Set<string>) => border.flatMap((row) => row.map((c, x) => (set.has(c) ? x : -1))).filter((x) => x >= 0);
+    expect(gap).toBeLessThan(Math.min(...bxs(RIGHT)) - Math.max(...bxs(LEFT)));
+    for (const shot of ['#e8f7ff', '#fde68a', '#8fd3ff', '#f59e0b']) expect(px.flat()).not.toContain(shot);
+  });
+
+  it('flies a white flag on each side, and the buoys have gone green', () => {
+    const white = px.flatMap((row, y) => row.map((c, x) => (c === '#f4f1e8' ? x : -1))).filter((x) => x >= 0);
+    expect(white.some((x) => x < 32) && white.some((x) => x > 32)).toBe(true);
+    expect(px[2]![32]).toBe('#6fe0a0');
+    expect(px[33]![32]).toBe('#6fe0a0');
+  });
+});
+
+describe('every event has its scene', () => {
+  it('draws all ten, each one different', () => {
+    expect([...RIM_ART_KINDS].sort()).toEqual([...RIM_EVENT_KINDS].sort());
+    const scenes = RIM_ART_KINDS.map((k) => rimEventPixels(k).flat().join(''));
+    expect(new Set(scenes).size).toBe(RIM_ART_KINDS.length);
   });
 });
