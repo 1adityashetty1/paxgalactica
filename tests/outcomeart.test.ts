@@ -309,3 +309,27 @@ describe('the mutiny', () => {
     expect(at('#3a2a2e').length).toBeGreaterThan(8);
   });
 });
+
+describe('the rich seam', () => {
+  const px = rimEventPixels('rich_seam');
+  const GOLD = new Set(['#e8b33a', '#ffe08a', '#9a6b1c']);
+
+  it('runs a gold vein the width of the ground, below a rig in the sky', () => {
+    for (const x of [0, 20, 40, 63]) {
+      expect(px.some((row, y) => y > 14 && GOLD.has(row[x]!)), `column ${x}`).toBe(true);
+    }
+    // The rig stands above the surface.
+    expect(px.slice(0, 14).some((row) => row.includes('#8a94a3'))).toBe(true);
+  });
+
+  it('strikes the vein: the shaft reaches it, and the strike is the brightest thing there', () => {
+    const shaftBottom = Math.max(...px.map((row, y) => (row[31] === '#8a94a3' && y > 14 ? y : -1)));
+    const veinTop = Math.min(...px.map((row, y) => (y > 14 && GOLD.has(row[31]!) ? y : 99)));
+    // Nothing but the strike's light between the shaft's end and the gold.
+    for (let y = shaftBottom + 1; y < veinTop; y++) {
+      expect(['#fffbe8', '#ffe08a']).toContain(px[y]![31]);
+    }
+    expect(veinTop - shaftBottom).toBeLessThanOrEqual(3);
+    expect(px.flat().filter((c) => c === '#fffbe8').length).toBeGreaterThan(3);
+  });
+});

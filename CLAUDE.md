@@ -3856,6 +3856,10 @@ colours turned left, drives burning red, trails leading back to the line they
 left. The same hull is the point: that is what makes it a mutiny and not an
 enemy. Drawn from the escort glyph at 14 pixels, the smallest that keeps its
 pointed nose; at 12 it was a bar.
+**Rich seam** — the ground cut away, a braced derrick on the surface, and its
+shaft striking a gold vein that runs the width of the frame. A cutaway because
+the event is underground; the first vein fattened under the drill into a heap,
+and the first derrick was too small to read as one.
 
 ## A batch is a transaction
 

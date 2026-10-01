@@ -796,6 +796,89 @@ function mutiny(): Grid {
   return g;
 }
 
+const STRATA_A = '#2a2420';
+const STRATA_B = '#342b25';
+const STRATA_C = '#3e332b';
+const SURFACE = '#4a3f35';
+const SEAM = '#e8b33a';
+const SEAM_LIT = '#ffe08a';
+const SEAM_DARK = '#9a6b1c';
+const RIG = '#8a94a3';
+const RIG_DARK = '#525b69';
+const SPARK = '#fffbe8';
+
+/**
+ * RICH SEAM — the ground cut away, a rig on the surface, and its drill in a
+ * thick vein of gold.
+ *
+ * A cutaway, because the event is underground and a picture of a world's
+ * surface would show nothing at all. Gold reads as wealth before anything
+ * else does, and the strike is a burst of light where the shaft meets the vein
+ * — the one bright moment in an otherwise brown, layered scene, which is what
+ * makes it good news at a glance.
+ */
+function richSeam(): Grid {
+  const g = blank();
+  const SURFACE_Y = 14;
+  rect(g, 0, 0, OUTCOME_W - 1, SURFACE_Y - 1, NIGHT);
+  for (const [x, y] of [[4, 2], [15, 6], [48, 3], [58, 9], [42, 1], [9, 11]] as const) put(g, x, y, STAR_DIM);
+
+  // Strata, in uneven bands, so it reads as rock and not as stripes.
+  rect(g, 0, SURFACE_Y, OUTCOME_W - 1, SURFACE_Y, SURFACE);
+  for (let x = 0; x < OUTCOME_W; x++) {
+    const wobble = Math.round(Math.sin(x / 6) * 1.2);
+    rect(g, x, SURFACE_Y + 1, x, 19 + wobble, STRATA_C);
+    rect(g, x, 20 + wobble, x, 30 + wobble, STRATA_B);
+    rect(g, x, 31 + wobble, x, OUTCOME_H - 1, STRATA_A);
+  }
+
+  // The seam: a vein of even, ragged thickness across the whole width — not a
+  // heap, which is what a vein fattening under the drill read as — with a thin
+  // branch climbing off it.
+  const veinAt = (x: number) => 26 + Math.round(Math.sin((x + 5) / 8) * 1.5);
+  for (let x = 0; x < OUTCOME_W; x++) {
+    const c = veinAt(x);
+    const up = Math.sin(x * 1.7) > 0.3 ? 2 : 1;
+    const down = Math.sin(x * 2.3 + 1) > 0.2 ? 2 : 1;
+    rect(g, x, c - up, x, c + down, SEAM);
+    put(g, x, c - up, SEAM_LIT);
+    put(g, x, c + down, SEAM_DARK);
+  }
+  for (let k = 0; k <= 6; k++) put(g, 12 - k, veinAt(12) - 2 - Math.round(k * 0.7), SEAM);
+  for (let k = 0; k <= 5; k++) put(g, 50 + k, veinAt(50) + 2 + Math.round(k * 0.6), SEAM_DARK);
+  // Glints along it.
+  for (const [x, y] of [[6, 25], [19, 27], [44, 26], [56, 25], [25, 25]] as const) put(g, x, veinAt(x) + (y - 26), SPARK);
+
+  // The rig: a braced derrick on a platform, tall enough to read as a tower.
+  rect(g, 25, SURFACE_Y - 1, 38, SURFACE_Y - 1, RIG_DARK);
+  for (let y = 2; y <= SURFACE_Y - 2; y++) {
+    put(g, 31 - Math.round(((y - 2) * 4) / 10), y, RIG);
+    put(g, 32 + Math.round(((y - 2) * 4) / 10), y, RIG);
+  }
+  for (const [y0, y1] of [[4, 7], [7, 10], [10, 12]] as const) {
+    const l0 = 31 - Math.round(((y0 - 2) * 4) / 10);
+    const r1 = 32 + Math.round(((y1 - 2) * 4) / 10);
+    const r0 = 32 + Math.round(((y0 - 2) * 4) / 10);
+    const l1 = 31 - Math.round(((y1 - 2) * 4) / 10);
+    for (let k = 0; k <= y1 - y0; k++) {
+      const t = k / (y1 - y0);
+      put(g, Math.round(l0 + (r1 - l0) * t), y0 + k, RIG_DARK);
+      put(g, Math.round(r0 + (l1 - r0) * t), y0 + k, RIG_DARK);
+    }
+  }
+  rect(g, 30, 1, 33, 1, RIG);
+  // The shaft, down through the rock into the seam.
+  const strikeY = veinAt(31) - 1;
+  rect(g, 31, SURFACE_Y, 32, strikeY, RIG_DARK);
+  rect(g, 31, SURFACE_Y, 31, strikeY, RIG);
+
+  // The strike: a burst of light where the shaft meets the gold.
+  for (const [dx, dy] of [[0, 0], [1, 0], [-1, 1], [2, 1], [-2, -1], [3, -1], [-1, -2], [2, -2], [-3, 1], [4, 1]] as const) {
+    put(g, 31 + dx, strikeY + dy, dx === 0 || dx === 1 ? SPARK : SEAM_LIT);
+  }
+  return g;
+}
+
 /* ------------------------------------------------------------------ */
 /* Out                                                                 */
 /* ------------------------------------------------------------------ */
@@ -805,7 +888,7 @@ function mutiny(): Grid {
  * — rendered at feed size and larger and put in front of them before it was
  * committed (item 124) — and every other kind falls back to the text card.
  */
-export const RIM_ART_KINDS = ['ion_storm', 'derelict', 'unrest', 'border_incident', 'shortage', 'mutiny'] as const;
+export const RIM_ART_KINDS = ['ion_storm', 'derelict', 'unrest', 'border_incident', 'shortage', 'mutiny', 'rich_seam'] as const;
 export type RimArtKind = (typeof RIM_ART_KINDS)[number];
 
 const RIM_SCENES: Record<RimArtKind, () => Grid> = {
@@ -815,6 +898,7 @@ const RIM_SCENES: Record<RimArtKind, () => Grid> = {
   border_incident: borderIncident,
   shortage,
   mutiny,
+  rich_seam: richSeam,
 };
 
 export function hasRimArt(kind: string): kind is RimArtKind {
