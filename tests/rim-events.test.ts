@@ -207,6 +207,9 @@ describe('the six hazards', () => {
     const salvage = s.assets.find((a) => a.kind === 'salvage')!;
     const { state } = resolveRimEvent(s, { kind: 'shortage', assetKind: 'salvage' });
     expect(shortageFactor(state, 'salvage')).toBe(SHORTAGE_FACTOR);
+    // Said as a rise, never as a fraction a reader can take for a cut.
+    expect(state.rimEvents.at(-1)!.text).toContain('50% more');
+    expect(state.rimEvents.at(-1)!.text).not.toMatch(/half as much/);
     expect(shortageFactor(state, 'ore')).toBe(1);
     // Read, never written: the asset itself is untouched.
     expect(state.assets.find((a) => a.id === salvage.id)!.valuePerUnit).toEqual(salvage.valuePerUnit);

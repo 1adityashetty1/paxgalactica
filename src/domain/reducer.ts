@@ -121,6 +121,7 @@ import {
   MUTINY_MIN_TONS,
   RICH_SEAM_TURNS,
   RimEventSchema,
+  SHORTAGE_FACTOR,
   SHORTAGE_TURNS,
   VOLUNTEERS_MAX,
   type RimEvent,
@@ -7329,7 +7330,9 @@ function applyRimEvent(state: WorldState, plan: RimEventPlan): RimEvent {
       // two after it, which are the turns anybody can bargain in.
       untilTurn = turn + SHORTAGE_TURNS - 1;
       publicEvent = true;
-      text = `A shortage of ${plan.assetKind.replace(/_/g, ' ')} runs through the Rim: every buyer will pay half as much again for it for ${SHORTAGE_TURNS} turns.`;
+      // "50% more", not "half as much again": the second is correct and reads
+      // as a cut, which is the opposite of what a shortage does to a price.
+      text = `A shortage of ${plan.assetKind.replace(/_/g, ' ')} runs through the Rim: buyers will pay ${Math.round((SHORTAGE_FACTOR - 1) * 100)}% more for it for ${SHORTAGE_TURNS} turns.`;
       break;
     }
 
