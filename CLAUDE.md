@@ -3851,6 +3851,11 @@ beside a price board whose line climbs into its top corner. The line stays insid
 the frame: drawn past it, it read as a mistake rather than as off the scale. The
 card's line says "50% more", never "half as much again", which is correct and
 reads as a cut.
+**Mutiny** — a formation of escorts heading right, and two of its own in the same
+colours turned left, drives burning red, trails leading back to the line they
+left. The same hull is the point: that is what makes it a mutiny and not an
+enemy. Drawn from the escort glyph at 14 pixels, the smallest that keeps its
+pointed nose; at 12 it was a bar.
 
 ## A batch is a transaction
 

@@ -286,3 +286,26 @@ describe('the shortage', () => {
     expect(px.flat().filter((c) => c === '#1f2530').length).toBeGreaterThan(100);
   });
 });
+
+describe('the mutiny', () => {
+  const px = rimEventPixels('mutiny');
+  const at = (c: string) => px.flatMap((row, y) => row.map((v, x) => (v === c ? [x, y] as const : null))).filter(
+    (p): p is readonly [number, number] => p !== null,
+  );
+
+  it('keeps the formation right and sends its own ships off left', () => {
+    const loyal = at('#2c6b66');
+    const turned = at('#b3372e');
+    expect(loyal.length).toBeGreaterThan(0);
+    expect(turned.length).toBeGreaterThan(0);
+    expect(Math.min(...loyal.map(([x]) => x))).toBeGreaterThan(32);
+    expect(Math.max(...turned.map(([x]) => x))).toBeLessThan(32);
+  });
+
+  it('draws deserters and formation in one fleet\'s colours, with a trail back between them', () => {
+    // Same hull colour on both sides of the frame: they were this fleet.
+    const hull = at('#7d8898');
+    expect(hull.some(([x]) => x < 32) && hull.some(([x]) => x > 32)).toBe(true);
+    expect(at('#3a2a2e').length).toBeGreaterThan(8);
+  });
+});

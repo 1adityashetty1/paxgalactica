@@ -599,15 +599,15 @@ const SHOT_WARM_TRAIL = '#7a4a12';
  * (`ESCORT_GLYPH`), rasterised at 16 — the smallest size at which its swept
  * wings stay wings. `w` wing, `#` hull, `D` drive, `.` empty; nosed right.
  */
-const ESCORT_SPRITE: string[] = (() => {
-  const n = 16;
+function escortStencil(n: number): string[] {
   const all = rasterise([ESCORT_GLYPH.hull, ...ESCORT_GLYPH.wings, ESCORT_GLYPH.drive], n);
   const hull = rasterise([ESCORT_GLYPH.hull], n);
   const drive = rasterise([ESCORT_GLYPH.drive], n);
   return all.map((row, r) =>
     row.map((on, c) => (!on ? '.' : drive[r]![c] ? 'D' : hull[r]![c] ? '#' : 'w')).join(''),
   );
-})();
+}
+const ESCORT_SPRITE: string[] = escortStencil(16);
 
 /**
  * BORDER INCIDENT — two ships either side of a marked line, trading fire across
@@ -740,6 +740,62 @@ function shortage(): Grid {
   return g;
 }
 
+const FLEET = '#7d8898';
+const FLEET_LIT = '#b3bdca';
+const FLEET_DARK = '#4b5462';
+const DRIVE_LOYAL = '#2c6b66';
+const DRIVE_TURNED = '#b3372e';
+const TRAIL = '#3a2a2e';
+
+/**
+ * MUTINY — a fleet in formation, and two of its own ships turned the other way.
+ *
+ * The same hull, the same colours: they were this fleet a moment ago, which is
+ * the whole difference between a mutiny and an enemy. What separates them is
+ * the heading — the formation flies right in good order, and two break off left
+ * and down, their drives burning red, with a faint trail back to the place in
+ * the line they left. The order of battle's escort again, at 14 pixels — the
+ * smallest that keeps its pointed nose — so a formation fits.
+ */
+function mutiny(): Grid {
+  const g = blank();
+  for (const [x, y] of [[3, 3], [14, 7], [25, 2], [52, 31], [60, 22], [40, 33], [22, 14], [58, 4]] as const) {
+    put(g, x, y, STAR_DIM);
+  }
+  for (const [x, y] of [[9, 11], [47, 27]] as const) put(g, x, y, STAR);
+
+  const sprite = escortStencil(14);
+  const width = sprite[0]!.length;
+  const top = Math.min(...sprite.map((row, r) => (row.includes('#') ? r : 99)));
+  const escort = (x0: number, y0: number, facingRight: boolean, drive: string) => {
+    sprite.forEach((row, dy) => {
+      [...row].forEach((ch, dx) => {
+        if (ch === '.') return;
+        const x = facingRight ? x0 + dx : x0 + (width - 1 - dx);
+        put(g, x, y0 + dy, ch === 'w' ? FLEET_DARK : ch === 'D' ? drive : dy === top ? FLEET_LIT : FLEET);
+      });
+    });
+  };
+
+  // The trails first, so the ships sit on them: dotted, from each deserter's
+  // drive back up toward the gap in the formation.
+  for (const [x0, y0, x1, y1] of [[25, 25, 37, 21], [17, 31, 35, 24]] as const) {
+    const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+    for (let st = 0; st <= steps; st += 2) {
+      put(g, Math.round(x0 + ((x1 - x0) * st) / steps), Math.round(y0 + ((y1 - y0) * st) / steps), TRAIL);
+    }
+  }
+
+  // The formation, in good order, heading right.
+  escort(49, 6, true, DRIVE_LOYAL);
+  escort(36, -1, true, DRIVE_LOYAL);
+  escort(36, 13, true, DRIVE_LOYAL);
+  // Two of its own, turned and gone.
+  escort(11, 18, false, DRIVE_TURNED);
+  escort(2, 24, false, DRIVE_TURNED);
+  return g;
+}
+
 /* ------------------------------------------------------------------ */
 /* Out                                                                 */
 /* ------------------------------------------------------------------ */
@@ -749,7 +805,7 @@ function shortage(): Grid {
  * — rendered at feed size and larger and put in front of them before it was
  * committed (item 124) — and every other kind falls back to the text card.
  */
-export const RIM_ART_KINDS = ['ion_storm', 'derelict', 'unrest', 'border_incident', 'shortage'] as const;
+export const RIM_ART_KINDS = ['ion_storm', 'derelict', 'unrest', 'border_incident', 'shortage', 'mutiny'] as const;
 export type RimArtKind = (typeof RIM_ART_KINDS)[number];
 
 const RIM_SCENES: Record<RimArtKind, () => Grid> = {
@@ -758,6 +814,7 @@ const RIM_SCENES: Record<RimArtKind, () => Grid> = {
   unrest,
   border_incident: borderIncident,
   shortage,
+  mutiny,
 };
 
 export function hasRimArt(kind: string): kind is RimArtKind {
