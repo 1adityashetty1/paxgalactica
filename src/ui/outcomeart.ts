@@ -879,6 +879,79 @@ function richSeam(): Grid {
   return g;
 }
 
+const DAWN_HIGH = '#1b2740';
+const DAWN = '#2f4466';
+const DAWN_LOW = '#7a6a78';
+const DAWN_GLOW = '#c98a5a';
+const YARD = '#2e2c27';
+const YARD_LIT = '#3c3932';
+const DOOR_LIT = '#f2cf7a';
+const DOOR_GLOW = '#8a6a3a';
+const FRIENDLY = '#2c9a8f';
+const FRIENDLY_DARK = '#1d6b63';
+const SKIN = '#c49a7a';
+const LEGS = '#24262c';
+const HELMET = '#4b5462';
+const KIT = '#4a5a3e';
+
+/**
+ * VOLUNTEERS — a queue at dawn, walking into a garrison post whose door is open
+ * and lit, the front of it already in kit.
+ *
+ * The other side of `unrest`, said in the same visual language so the pair
+ * read together: the same contemporary post, but it is morning rather than
+ * night, the door is open rather than shut, the banner is the holder's own, and
+ * the people are in colour and walking in rather than in silhouette facing it.
+ * The first in line wears a helmet — that is the garrison rising.
+ */
+function volunteers(): Grid {
+  const g = blank();
+  // Dawn, with the horizon high so the people stand against the yard: a face
+  // against a dawn sky the colour of skin is not there at all.
+  rect(g, 0, 0, OUTCOME_W - 1, 5, DAWN_HIGH);
+  rect(g, 0, 6, OUTCOME_W - 1, 10, DAWN);
+  rect(g, 0, 11, OUTCOME_W - 1, 14, DAWN_LOW);
+  rect(g, 0, 15, OUTCOME_W - 1, 17, DAWN_GLOW);
+  rect(g, 0, 18, OUTCOME_W - 1, OUTCOME_H - 1, YARD);
+  rect(g, 0, 18, OUTCOME_W - 1, 18, YARD_LIT);
+
+  // The post: the same block as `unrest`, with its door open and lit.
+  rect(g, 43, 8, 62, 34, FORT);
+  rect(g, 43, 8, 62, 8, FORT_LIT);
+  rect(g, 61, 9, 62, 34, FORT_DARK);
+  for (const x of [46, 58]) rect(g, x, 9, x, 34, FORT_DARK);
+  rect(g, 46, 12, 59, 12, WINDOW_BAND);
+  rect(g, 48, 19, 55, 34, DOOR_LIT);
+  rect(g, 47, 35, 56, 35, DOOR_GLOW);
+  // The holder's own banner on a mast.
+  rect(g, 51, 1, 51, 7, MAST);
+  rect(g, 52, 1, 57, 3, FRIENDLY);
+  rect(g, 52, 3, 57, 3, FRIENDLY_DARK);
+
+  // A person: hair or helmet, a face, shoulders, and legs down to one ground
+  // line, so a taller person stands taller rather than floating. Legs are
+  // always together; a wide stance read as a different, squatter figure.
+  const FEET = 34;
+  const person = (x: number, top: number, skin: string, body: string, helmet = false) => {
+    rect(g, x, top, x + 2, top, helmet ? HELMET : LEGS);
+    rect(g, x, top + 1, x + 2, top + 2, skin);
+    if (helmet) put(g, x - 1, top, HELMET);
+    rect(g, x - 1, top + 3, x + 3, top + 8, body);
+    rect(g, x, top + 9, x, FEET, LEGS);
+    rect(g, x + 2, top + 9, x + 2, FEET, LEGS);
+  };
+  // The first already in kit, in the lit doorway; the rest queued in the yard
+  // with room between them and the wall — every one a different height and a
+  // different face, because a queue of one person six times is a diagram.
+  person(50, 22, '#b07a52', KIT, true);
+  person(34, 21, '#f1d3b8', '#4f6a8a');
+  person(26, 22, '#5e3b26', '#7a5a4a');
+  person(18, 20, '#d9a982', '#6b7f5a');
+  person(10, 22, '#8a5a3a', '#8a7a5a');
+  person(2, 21, '#c49a7a', '#5a5a6a');
+  return g;
+}
+
 /* ------------------------------------------------------------------ */
 /* Out                                                                 */
 /* ------------------------------------------------------------------ */
@@ -888,7 +961,9 @@ function richSeam(): Grid {
  * — rendered at feed size and larger and put in front of them before it was
  * committed (item 124) — and every other kind falls back to the text card.
  */
-export const RIM_ART_KINDS = ['ion_storm', 'derelict', 'unrest', 'border_incident', 'shortage', 'mutiny', 'rich_seam'] as const;
+export const RIM_ART_KINDS = [
+  'ion_storm', 'derelict', 'unrest', 'border_incident', 'shortage', 'mutiny', 'rich_seam', 'volunteers',
+] as const;
 export type RimArtKind = (typeof RIM_ART_KINDS)[number];
 
 const RIM_SCENES: Record<RimArtKind, () => Grid> = {
@@ -899,6 +974,7 @@ const RIM_SCENES: Record<RimArtKind, () => Grid> = {
   shortage,
   mutiny,
   rich_seam: richSeam,
+  volunteers,
 };
 
 export function hasRimArt(kind: string): kind is RimArtKind {

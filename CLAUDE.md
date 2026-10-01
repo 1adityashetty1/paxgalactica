@@ -3860,6 +3860,11 @@ pointed nose; at 12 it was a bar.
 shaft striking a gold vein that runs the width of the frame. A cutaway because
 the event is underground; the first vein fattened under the drill into a heap,
 and the first derrick was too small to read as one.
+**Volunteers** — the counterpart to unrest in the same language: the same
+contemporary post at dawn, door open and lit, the holder's own banner, and a
+queue of six people of different heights and skin tones on one ground line, the
+first already in kit in the doorway. Legs are drawn together throughout; a wide
+stance read as a different, squatter figure.
 
 ## A batch is a transaction
 

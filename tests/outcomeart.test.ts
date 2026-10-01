@@ -333,3 +333,28 @@ describe('the rich seam', () => {
     expect(px.flat().filter((c) => c === '#fffbe8').length).toBeGreaterThan(3);
   });
 });
+
+describe('the volunteers', () => {
+  const px = rimEventPixels('volunteers');
+  const SKINS = ['#b07a52', '#f1d3b8', '#5e3b26', '#d9a982', '#8a5a3a', '#c49a7a'];
+
+  it('is six different people, of different heights, on one ground line', () => {
+    for (const skin of SKINS) expect(px.flat()).toContain(skin);
+    const headTop = (skin: string) => Math.min(...px.map((row, y) => (row.includes(skin) ? y : 99)));
+    expect(new Set(SKINS.map(headTop)).size).toBeGreaterThanOrEqual(3);
+    // Feet together and all on row 34; nobody floats or sinks.
+    const feet = px[34]!.map((c, x) => (c === '#24262c' ? x : -1)).filter((x) => x >= 0);
+    expect(feet.length).toBe(12);
+    expect(px[35]!.filter((c) => c === '#24262c')).toHaveLength(0);
+  });
+
+  it('puts the recruit in the lit doorway, and nobody against the wall', () => {
+    expect(px[22]![50]).toBe('#4b5462');
+    expect(px[27]![50]).toBe('#4a5a3e');
+    // Lit door on either side of the recruit.
+    expect(px[27]![48]).toBe('#f2cf7a');
+    expect(px[27]![55]).toBe('#f2cf7a');
+    // Clear yard between the queue and the building.
+    for (let y = 19; y < 35; y++) for (let x = 38; x < 43; x++) expect(px[y]![x], `${x},${y}`).toBe('#2e2c27');
+  });
+});
