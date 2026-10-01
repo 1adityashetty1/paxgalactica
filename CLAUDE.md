@@ -3865,6 +3865,12 @@ contemporary post at dawn, door open and lit, the holder's own banner, and a
 queue of six people of different heights and skin tones on one ground line, the
 first already in kit in the doorway. Legs are drawn together throughout; a wide
 stance read as a different, squatter figure.
+**Free captains** — the squadron the event delivers, a battleship and two
+escorts, each in another navy's livery, burning in toward the System panel's own
+earthlike world. The battleship is `BATTLESHIP_GLYPH` (shared with `ShipIcon`
+the way the escort's is) at 26 pixels, a capital beside 14-pixel escorts. A
+third escort was tried in its place and rejected: the art should match the
+event, not the other way round.
 
 ## A batch is a transaction
 

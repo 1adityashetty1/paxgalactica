@@ -1,4 +1,4 @@
-import { ESCORT_GLYPH, polygonPath } from '../../../src/ui/glyphs.js';
+import { BATTLESHIP_GLYPH, ESCORT_GLYPH, polygonPath } from '../../../src/ui/glyphs.js';
 import { HULL_CLASSES, HULL_SPEC, type HullClass, type ShipStack } from '../../../src/domain/hulls.js';
 /**
  * Glyphs for the order of battle: one per hull class, and a tracked gun.
@@ -71,7 +71,7 @@ export function ShipIcon({ size = 18, title }: IconProps) {
       {title && <title>{title}</title>}
       {/* Hull: long wedge, chamfered prow, raked stern. Deep, so it carries
           the turret without the turret overhanging it. */}
-      <path d="M23.6 13.6 L13.5 10.2 L5.4 9.4 L3.4 10.4 L3.4 16.6 L5.4 17.5 L13.5 16.4 Z" />
+      <path d={polygonPath(BATTLESHIP_GLYPH.hull)} />
       {/* Main battery, seated straight on the hull: the garrison's turret and
           gun, scaled.
           
@@ -88,14 +88,14 @@ export function ShipIcon({ size = 18, title }: IconProps) {
           straight-edged polygons — a raked trapezoid stepping up to a raised
           block, and a barrel that tapers rather than ending in a cap. Same
           shape language as the guns; same language as the ships. */}
-      <path d="M5.4 10.4 L6.8 6 L10.2 6 L12.4 10.4 Z" />
-      <path d="M10.9 7.2 L18.6 8.1 L18.6 9.1 L10.9 9.6 Z" />
+      <path d={polygonPath(BATTLESHIP_GLYPH.turret)} />
+      <path d={polygonPath(BATTLESHIP_GLYPH.gun)} />
       {/* One drive, not two: a single nozzle tapering AWAY from the hull, the
           same shape as the torpedo boat's so the two read as the same idea
           rather than merely similar. Inset from the hull edges on purpose — at
           full stern depth the drive swallowed the raked stern corners and the
           back of the ship read as a flat edge. */}
-      <path d="M1 12 L3.4 11.3 L3.4 15.7 L1 15 Z" />
+      <path d={polygonPath(BATTLESHIP_GLYPH.drive)} />
     </svg>
   );
 }

@@ -1,4 +1,5 @@
-import { ESCORT_GLYPH, rasterise } from './glyphs.js';
+import { BATTLESHIP_GLYPH, ESCORT_GLYPH, rasterise } from './glyphs.js';
+import { worldPixels } from './worlds.js';
 
 /**
  * The ways a declaration produces nothing, as pixel art.
@@ -610,6 +611,31 @@ function escortStencil(n: number): string[] {
 const ESCORT_SPRITE: string[] = escortStencil(16);
 
 /**
+ * The battleship, as pixels, from `BATTLESHIP_GLYPH`: `#` hull, `t` turret,
+ * `g` gun, `D` drive. At 26 it is a capital ship beside 14-pixel escorts.
+ */
+function battleshipStencil(n: number): string[] {
+  const b = BATTLESHIP_GLYPH;
+  const all = rasterise([b.hull, b.turret, b.gun, b.drive], n);
+  const hull = rasterise([b.hull], n);
+  const drive = rasterise([b.drive], n);
+  const gun = rasterise([b.gun], n);
+  return all.map((row, r) =>
+    row.map((on, c) => (!on ? '.' : drive[r]![c] ? 'D' : hull[r]![c] ? '#' : gun[r]![c] ? 'g' : 't')).join(''),
+  );
+}
+
+/** Paint a stencil, nosed right, with a colour per code. Codes not given are skipped. */
+function stamp(g: Grid, sprite: string[], x0: number, y0: number, colours: Record<string, string>): void {
+  sprite.forEach((row, dy) => {
+    [...row].forEach((ch, dx) => {
+      const c = colours[ch];
+      if (c) put(g, x0 + dx, y0 + dy, c);
+    });
+  });
+}
+
+/**
  * BORDER INCIDENT — two ships either side of a marked line, trading fire across
  * it.
  *
@@ -952,6 +978,56 @@ function volunteers(): Grid {
   return g;
 }
 
+const PLANET = '#2f4f66';
+const PLANET_LIT = '#5d86a3';
+const PLANET_DARK = '#223a4c';
+const BURN = '#e8b33a';
+const BURN_TRAIL = '#6a4a1a';
+
+/**
+ * FREE CAPTAINS — a battleship and two escorts, each in somebody else's paint,
+ * burning in toward a world to sign on.
+ *
+ * Mismatched paint is the whole of "free": a navy's ships wear one livery and
+ * these wear three — gunmetal with a grey-blue battery, a field green, and grey
+ * with rust wings — because they were built for other people. The order of
+ * battle's own battleship and escort, the battleship drawn at a capital's size
+ * beside them, so the squadron is the one the event delivers; and the world is
+ * the System panel's own earthlike sprite. A rust hull read as an odd colour
+ * rather than as a livery.
+ */
+function freeCaptains(): Grid {
+  const g = blank();
+  for (const [x, y] of [[30, 3], [40, 6], [38, 30], [22, 33], [36, 25], [9, 16], [24, 7]] as const) {
+    put(g, x, y, STAR_DIM);
+  }
+  put(g, 41, 11, STAR);
+
+  // The world they are making for: the System panel's own earthlike sprite,
+  // its near side in frame.
+  const world = worldPixels('earthlike');
+  world.forEach((row, dy) => row.forEach((c, dx) => {
+    if (c) put(g, 42 + dx, 2 + dy, c);
+  }));
+
+  // Burn trails behind each drive, then the ships over them.
+  const trail = (x: number, y: number, len: number) => {
+    for (let k = 0; k < len; k++) if (k % 2 === 0) put(g, x - k, y, BURN_TRAIL);
+  };
+  trail(12, 17, 9);
+  trail(12, 18, 9);
+  trail(3, 4, 3);
+  trail(3, 29, 3);
+
+  // A battleship leading, a capital's size beside its escorts, and three
+  // liveries between them: gunmetal with a grey-blue battery, a field green, and
+  // grey with rust wings.
+  stamp(g, battleshipStencil(26), 12, 4, { '#': '#6e7480', t: '#5a6e8a', g: '#5a6e8a', D: BURN });
+  stamp(g, escortStencil(14), 3, -2, { '#': '#6f7f58', w: '#3f4a30', D: BURN });
+  stamp(g, escortStencil(14), 3, 23, { '#': '#6b7584', w: '#8a4e2c', D: BURN });
+  return g;
+}
+
 /* ------------------------------------------------------------------ */
 /* Out                                                                 */
 /* ------------------------------------------------------------------ */
@@ -963,6 +1039,7 @@ function volunteers(): Grid {
  */
 export const RIM_ART_KINDS = [
   'ion_storm', 'derelict', 'unrest', 'border_incident', 'shortage', 'mutiny', 'rich_seam', 'volunteers',
+  'free_captains',
 ] as const;
 export type RimArtKind = (typeof RIM_ART_KINDS)[number];
 
@@ -975,6 +1052,7 @@ const RIM_SCENES: Record<RimArtKind, () => Grid> = {
   mutiny,
   rich_seam: richSeam,
   volunteers,
+  free_captains: freeCaptains,
 };
 
 export function hasRimArt(kind: string): kind is RimArtKind {

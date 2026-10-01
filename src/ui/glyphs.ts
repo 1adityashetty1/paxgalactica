@@ -22,6 +22,18 @@ export const ESCORT_GLYPH: { hull: Polygon; wings: readonly Polygon[]; drive: Po
   drive: [[1.6, 10.6], [4.2, 10.6], [4.2, 13.4], [1.6, 13.4]],
 };
 
+/**
+ * The battleship, in its icon's 24×24 box, nosed right: a long tapering wedge,
+ * the main battery seated on the after third, one drive astern. See `ShipIcon`
+ * for how it came to be drawn this way.
+ */
+export const BATTLESHIP_GLYPH: { hull: Polygon; turret: Polygon; gun: Polygon; drive: Polygon } = {
+  hull: [[23.6, 13.6], [13.5, 10.2], [5.4, 9.4], [3.4, 10.4], [3.4, 16.6], [5.4, 17.5], [13.5, 16.4]],
+  turret: [[5.4, 10.4], [6.8, 6], [10.2, 6], [12.4, 10.4]],
+  gun: [[10.9, 7.2], [18.6, 8.1], [18.6, 9.1], [10.9, 9.6]],
+  drive: [[1, 12], [3.4, 11.3], [3.4, 15.7], [1, 15]],
+};
+
 /** An SVG path for a polygon. */
 export function polygonPath(p: Polygon): string {
   return `M${p.map(([x, y]) => `${x} ${y}`).join(' L')} Z`;

@@ -11,6 +11,7 @@ import {
   rimEventRuns,
 } from '../src/ui/outcomeart.js';
 import { RIM_EVENT_KINDS } from '../src/domain/events.js';
+import { worldPixels } from '../src/ui/worlds.js';
 
 /**
  * The two rulings your own institutions make, as pixels.
@@ -356,5 +357,29 @@ describe('the volunteers', () => {
     expect(px[27]![55]).toBe('#f2cf7a');
     // Clear yard between the queue and the building.
     for (let y = 19; y < 35; y++) for (let x = 38; x < 43; x++) expect(px[y]![x], `${x},${y}`).toBe('#2e2c27');
+  });
+});
+
+describe('the free captains', () => {
+  const px = rimEventPixels('free_captains');
+  const count = (c: string) => px.flat().filter((v) => v === c).length;
+
+  it('is the squadron the event delivers: a battleship larger than two escorts', () => {
+    const battleship = count('#6e7480') + count('#5a6e8a');
+    const escortA = count('#6f7f58') + count('#3f4a30');
+    const escortB = count('#6b7584') + count('#8a4e2c');
+    expect(escortA).toBeGreaterThan(20);
+    expect(escortB).toBeGreaterThan(20);
+    expect(battleship).toBeGreaterThan(2 * Math.max(escortA, escortB));
+  });
+
+  it('wears three liveries, not one navy\'s, and makes for the earthlike world', () => {
+    const hulls = ['#6e7480', '#6f7f58', '#6b7584'];
+    expect(new Set(hulls).size).toBe(3);
+    for (const h of hulls) expect(count(h)).toBeGreaterThan(0);
+    // Some of the world sprite is in frame on the right.
+    const world = worldPixels('earthlike').flat().filter((c): c is string => c !== null);
+    const right = px.flatMap((row) => row.slice(44));
+    expect(right.filter((c) => world.includes(c)).length).toBeGreaterThan(200);
   });
 });
