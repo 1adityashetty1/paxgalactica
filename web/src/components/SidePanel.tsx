@@ -532,7 +532,7 @@ function SystemTab({
                       it is worth seeing before deciding to ransom one home. */}
                   {a.operations > 0 && `${agentStanding(a.operations)} · `}
                   {a.timesCaught > 0 && `caught ${a.timesCaught}× · `}
-                  {a.exposed ? 'burned' : `${a.successChance}%`}
+                  {a.exposed ? 'burned' : a.mission === null ? 'ready' : `${a.successChance}%`}
                 </span>
               </li>
             );
@@ -1206,7 +1206,10 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
             <div key={a.id} className={a.exposed ? 'agent burned' : 'agent'}>
               <div className="treaty-head">
                 <strong style={{ color: colourOf(state, a.ownerFactionId) }}>
-                  {mine ? 'Yours' : getFaction(state, a.ownerFactionId)?.name} · {a.mission ?? 'awaiting orders'}
+                  {/* The name first, as the System panel does: it is what a
+                      player remembers about a network. */}
+                  {a.name || (mine ? 'Yours' : getFaction(state, a.ownerFactionId)?.name)} ·{' '}
+                  {a.mission ?? 'awaiting orders'}
                 </strong>
                 {a.mission !== null && (
                   <span className={a.successChance >= 60 ? 'eta' : 'eta soon'}>
@@ -1219,10 +1222,10 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
                 <button className="link" onClick={() => onSelect(a.systemId)}>
                   {getSystem(state, a.systemId)?.name ?? a.systemId}
                 </button>
+                {a.name && ` · ${mine ? 'yours' : getFaction(state, a.ownerFactionId)?.name}`}
                 {a.exposed && ' — BURNED, no longer effective'}
                 {!a.exposed && a.mission !== null && a.inPlaceFrom > state.turn &&
                   ` — on the way, at work from turn ${a.inPlaceFrom}`}
-                {a.name && ` — ${a.name}`}
               </p>
               {a.effect && <p className="agent-effect">{describeEffect(a.effect)}</p>}
               {a.cover && <p className="meta">cover: {a.cover}</p>}

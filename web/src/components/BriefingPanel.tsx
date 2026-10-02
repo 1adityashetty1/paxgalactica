@@ -217,12 +217,19 @@ export function BriefingPanel({
               <h4>Your operatives</h4>
               <ul className="watch">
                 {briefing.watch.map((w) => (
-                  <li key={`${w.systemId}-${w.mission}`}>
+                  <li key={w.id || `${w.systemId}-${w.mission}`}>
                     <span className="watch-head">
+                      {w.name && `${w.name} · `}
                       {w.mission} · {w.where}{' '}
-                      <span className="muted">{w.successChance}%</span>
+                      {!w.awaiting && <span className="muted">{w.successChance}%</span>}
                     </span>
-                    {w.sees.length === 0 ? (
+                    {w.awaiting ? (
+                      <span className="watch-quiet">Ready to be sent, with an action of its own.</span>
+                    ) : w.arrives !== null ? (
+                      <span className="watch-quiet">
+                        On the way, at work from turn {w.arrives}. {w.effect}.
+                      </span>
+                    ) : w.sees.length === 0 ? (
                       <span className="watch-quiet">Nothing moving. {w.effect}.</span>
                     ) : (
                       w.sees.map((line, i) => (
