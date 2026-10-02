@@ -154,3 +154,22 @@ export function worldFlavour(
 
 /** Exported so a test can hold the table to the seed rather than to itself. */
 export const FLAVOUR_KEYS = Object.keys(FLAVOUR) as Key[];
+
+/**
+ * What a world's type is called on screen. One table, read by the System panel
+ * under the world's picture and by the help text's fixture section, so the two
+ * cannot call the same ground by different names.
+ */
+const TYPE_LABEL: Record<WorldType, string> = {
+  earthlike: 'Terrestrial',
+  earthnight: 'Terrestrial, settled',
+  oceanic: 'Oceanic',
+  arid: 'Arid',
+  ice: 'Ice',
+  industrialmoon: 'Ringed moon',
+  gasgiant: 'Gas giant',
+};
+
+export function worldTypeLabel(type: WorldType): string {
+  return TYPE_LABEL[type] ?? 'Unsurveyed';
+}

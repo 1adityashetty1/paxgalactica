@@ -32,6 +32,9 @@ vi.mock('../src/model/client.js', () => ({
               narrative: 'The Huntmaster slips a theft operative onto Vantic.',
               ops: [
                 { op: 'log_narrative', text: 'Drajk inserts a theft operative into Vantic.' },
+                // Recruited before it is sent (version 11); a reaction may do
+                // both, having no action points to spend.
+                { op: 'recruit_agent', systemId: 'ilv-6' },
                 {
                   op: 'deploy_agent',
                   systemId: 'tor-3',
@@ -166,6 +169,7 @@ describe('covert work stays with the power that did it', () => {
           op: 'issue_order', factionId: 'ojjul', type: 'fleet_movement',
           originId: 'ilv-2', targetId: 'tor-3', force: 4,
         },
+        { op: 'recruit_agent', systemId: 'ilv-2' },
         {
           op: 'deploy_agent', systemId: 'tor-3', mission: 'sabotage',
           effect: { kind: 'hull_damage', perTurn: 2 },

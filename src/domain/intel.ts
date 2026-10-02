@@ -1,3 +1,4 @@
+import { atWork } from './diplomacy.js';
 import { rimEventsVisibleTo } from './events.js';
 import { z } from 'zod';
 import type { DurationCategory } from './duration.js';
@@ -182,7 +183,7 @@ function ownSpace(state: WorldState, factionId: string): Set<string> {
 function watchedSystems(state: WorldState, factionId: string): Set<string> {
   const ids = new Set(
     (state.agents ?? [])
-      .filter((a) => a.ownerFactionId === factionId && !a.exposed && a.effect.kind === 'intel')
+      .filter((a) => a.ownerFactionId === factionId && atWork(a, state.turn) && a.effect.kind === 'intel')
       .map((a) => a.systemId),
   );
   for (const system of state.systems) {

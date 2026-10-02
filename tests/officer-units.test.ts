@@ -206,11 +206,9 @@ describe('a family name is a person', () => {
   it('is never given again, even after the person it named has left the board', () => {
     let s = fresh();
     s.factions.find((f) => f.id === 'ojjul')!.credits = 100000;
+    // Names are drawn when an operative signs on (version 11: `recruit_agent`).
     const deploy = () =>
-      applyOps(s, [{
-        op: 'deploy_agent', ownerFactionId: 'ojjul', systemId: 'ark-1', mission: 'surveillance',
-        effect: { kind: 'intel', perTurn: 1 }, cover: '',
-      }], 'model', 'ojjul').state;
+      applyOps(s, [{ op: 'recruit_agent', systemId: 'ilv-2' }], 'model', 'ojjul').state;
     s = deploy();
     const first = s.agents.at(-1)!;
     const family = familyOf(first.name)!;

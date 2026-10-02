@@ -1,6 +1,6 @@
 import type { BattleReport } from '../domain/battle.js';
 import type { TurnReport } from '../domain/reducer.js';
-import { describeEffect } from '../domain/diplomacy.js';
+import { atWork, describeEffect } from '../domain/diplomacy.js';
 import { observeOrders } from '../domain/intel.js';
 import {
   RIM_EVENT_TITLE,
@@ -281,10 +281,17 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
     .map((a) => ({
       where: state.systems.find((sys) => sys.id === a.systemId)?.name ?? a.systemId,
       systemId: a.systemId,
-      mission: a.mission,
-      effect: describeEffect(a.effect),
+      // A recruit awaiting orders has no mission yet, and one on the road is
+      // not there yet; both say so rather than reading as a working watch.
+      mission: a.mission ?? 'awaiting orders',
+      effect:
+        a.effect === null
+          ? ''
+          : atWork(a, state.turn)
+            ? describeEffect(a.effect)
+            : `${describeEffect(a.effect)} — on the way, at work from turn ${a.inPlaceFrom}`,
       successChance: a.successChance,
-      sees: state.pendingOrders
+      sees: (atWork(a, state.turn) ? state.pendingOrders : [])
         .filter(
           (o) =>
             o.factionId !== me && (o.originId === a.systemId || o.targetId === a.systemId),

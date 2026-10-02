@@ -657,6 +657,44 @@ const tons = (s: WorldState) => fleetTonsOf(s, 'freeworlds');
     expect(purse(start) - purse(res.state)).toBe(gained * CREDITS_PER_TON);
   });
 
+  it('does not mistake a hull moved in the same batch for one it can cut', () => {
+    // The trim read every per-world increase as a new hull, so a battleship
+    // moved from Vergesse to Threx beside a purchase Drajk could not afford was
+    // the one scrapped: the Confederacy ended a battleship down, having bought
+    // none. Found by a bot massing and buying in one batch, which every bot
+    // does.
+    const run = (legacy: Parameters<typeof applyOps>[5]) => {
+      const start = fresh();
+      start.factions.find((f) => f.id === 'drajk')!.credits = 100;
+      const res = applyOps(
+        start,
+        [
+          { op: 'adjust_ships', systemId: 'ilv-6', factionId: 'drajk', delta: -1, hull: 'battleship' },
+          { op: 'adjust_ships', systemId: 'tor-6', factionId: 'drajk', delta: 1, hull: 'battleship' },
+          { op: 'adjust_fleet', factionId: 'drajk', delta: 7, hull: 'lifter' },
+        ],
+        'model',
+        'drajk',
+        false,
+        legacy,
+      );
+      const battleships = (s: WorldState) =>
+        s.systems.reduce((n, x) => n + (x.ships.drajk?.battleship ?? 0), 0);
+      return { start, res, before: battleships(start), after: battleships(res.state) };
+    };
+
+    const now = run({});
+    expect(now.res.notes.join(' ')).toMatch(/could only pay for/);
+    expect(now.after).toBe(now.before);
+    expect(sys(now.res.state, 'tor-6').ships.drajk?.battleship).toBe(
+      (sys(now.start, 'tor-6').ships.drajk?.battleship ?? 0) + 1,
+    );
+
+    // A journal written before the rule lost that battleship, and replays so.
+    const then = run({ movesNotBuilt: false });
+    expect(then.after).toBe(then.before - 1);
+  });
+
   it('charges exactly the list price for an affordable order', () => {
     const start = fresh();
     const res = applyOps(start, [{ op: 'adjust_fleet', factionId: 'freeworlds', delta: 4 }]);
@@ -792,10 +830,13 @@ describe('a navy you cannot pay for does not simply sit there', () => {
 });
 
 describe('a covert service costs money and has a ceiling', () => {
+  // Recruited at home, then sent: two acts since version 11. Recruiting is
+  // free and capped; the mission is what is priced.
   const deploy = (state: WorldState, actor: string, systemId: string, mission = 'surveillance') =>
     applyOps(
       state,
       [
+        { op: 'recruit_agent', systemId: state.systems.find((x) => x.controllerFactionId === actor)!.id },
         {
           op: 'deploy_agent', ownerFactionId: actor, systemId,
           mission, effect: { kind: 'intel', revealsOrders: true }, cover: 'broker',
@@ -826,7 +867,8 @@ describe('a covert service costs money and has a ceiling', () => {
     state.factions.find((f) => f.id === 'freeworlds')!.credits = 10;
     const res = deploy(state, 'freeworlds', 'ark-2');
     expect(res.rejections.map((r) => r.code)).toContain('insufficient_credits');
-    expect(res.state.agents).toHaveLength(0);
+    // The recruit signs on — that is free — but goes nowhere.
+    expect(res.state.agents.filter((a) => a.mission !== null)).toHaveLength(0);
   });
 
   it('caps simultaneous operatives, scaled off guile', () => {
@@ -1543,12 +1585,17 @@ describe('seven small things', () => {
     const mine = s.systems.find((x) => x.controllerFactionId === 'meridian')!;
     const out = applyOps(
       s,
-      [{ op: 'deploy_agent', ownerFactionId: 'meridian', systemId: mine.id,
-         mission: 'surveillance', effect: { kind: 'intel', perTurn: 1 } } as Op],
+      [
+        { op: 'recruit_agent', systemId: mine.id } as Op,
+        { op: 'deploy_agent', ownerFactionId: 'meridian', systemId: mine.id,
+          mission: 'surveillance', effect: { kind: 'intel', perTurn: 1 } } as Op,
+      ],
       'model',
       'meridian',
     );
     expect(out.rejections).toEqual([]);
+    // Already standing there, so at work at once: no road to travel.
+    expect(out.state.agents[0]!.inPlaceFrom).toBe(s.turn);
   });
 
   it('charges for tearing up an arrangement sworn to more than one power', () => {

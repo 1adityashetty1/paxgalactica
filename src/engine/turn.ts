@@ -1,4 +1,4 @@
-import { describeCheck, type CheckResult } from '../domain/checks.js';
+import type { CheckResult } from '../domain/checks.js';
 import { boundPayloadsToOutcome, routeCovertAction } from '../domain/development.js';
 import {
   describeRejections,
@@ -231,6 +231,37 @@ async function reviseRejected(
 }
 
 /** Stage ops, correcting once if the reducer refuses any. */
+/** Ops that sign somebody on: an officer appointed, an operative recruited. */
+const RECRUITS = new Set(['recruit_commander', 'recruit_agent']);
+/** What may ride with a recruitment: the roll's line, a narrative, a defiance charge. */
+const WITH_A_RECRUIT = new Set(['log_narrative', 'adjust_dissent']);
+
+/**
+ * **Recruiting is an action of its own.** A declaration that signs somebody on
+ * — an officer, an operative — does only that; anything else it carried is
+ * dropped, and said. Sending the recruit is the next action, which is what
+ * stops an operative raised this turn being placed and striking in one breath.
+ *
+ * Here rather than in the reducer, because it is a rule about the player's
+ * turn and the action economy lives in the engine: an NPC reaction answers the
+ * turn with no action points to spend, and may recruit and send together.
+ * Applied to the correction batch as well, through `bind`, so a retry cannot
+ * put back what this took out.
+ */
+export function recruitmentAlone(ops: unknown[]): { ops: unknown[]; notes: string[] } {
+  const kind = (op: unknown) => (op as { op?: unknown } | null)?.op;
+  if (!ops.some((op) => RECRUITS.has(kind(op) as string))) return { ops, notes: [] };
+  const kept = ops.filter((op) => RECRUITS.has(kind(op) as string) || WITH_A_RECRUIT.has(kind(op) as string));
+  if (kept.length === ops.length) return { ops, notes: [] };
+  const dropped = [...new Set(ops.filter((op) => !kept.includes(op)).map((op) => String(kind(op))))];
+  return {
+    ops: kept,
+    notes: [
+      `Recruiting is an action of its own, so the rest of this order was not carried out (${dropped.join(', ')}). Declare it next.`,
+    ],
+  };
+}
+
 async function stageWithCorrection(
   campaign: Campaign,
   ops: unknown[],
@@ -256,8 +287,11 @@ async function stageWithCorrection(
   // Run on an accord too, where there is no check at all: a conversation can
   // agree to many things and founding a fixture is not one of them, so passing
   // no band still has to strip a fixture rather than wave it through.
-  const bind = (batch: unknown[]) =>
-    boundPayloadsToOutcome(batch, outcome ?? 'success', stat);
+  const bind = (batch: unknown[]) => {
+    const alone = recruitmentAlone(batch);
+    const bound = boundPayloadsToOutcome(alone.ops, outcome ?? 'success', stat);
+    return { ops: bound.ops, notes: [...alone.notes, ...bound.notes] };
+  };
 
   const bound = bind(ops);
   const first = campaign.stage(bound.ops, label, narrative, source, actor, meta);
@@ -505,15 +539,12 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
 
   const defiance = resolution.output.defiance ?? null;
 
-  // The check is recorded so a campaign's luck is auditable after the fact, but
-  // it rides along with the action's own ops rather than forming a batch of its
-  // own — a separate batch would show up in the player's "declared this turn"
-  // list as a meaningless "check record" entry and inflate the count.
+  // The check is already in `resolution.output.ops` — `resolveAction` puts it at
+  // the front, so the log reads roll-then-consequence. It used to be staged here
+  // as well, and every roll reached the log, the prompts and the Log panel twice
+  // (item 120).
   const ops = [
     ...resolution.output.ops,
-    ...(resolution.check
-      ? [{ op: 'log_narrative', text: `[check] ${describeCheck(resolution.check)}` }]
-      : []),
     // Charged in code, not chosen by the model: the resolution call says a
     // compulsion was defied, and the price for that is not its to nominate.
     ...(defiance

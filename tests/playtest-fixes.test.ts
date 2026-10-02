@@ -106,14 +106,21 @@ describe('the served world hides operatives that have not been caught', () => {
     const theirs = s.systems.find((x) => x.controllerFactionId === 'ojjul')!;
     // Each power's operative on the OTHER's ground, which is the only place an
     // operative does anything: one on its own world steals from nobody.
-    s = applyOps(s, [{
-      op: 'deploy_agent', systemId: mine.id, mission: 'surveillance',
-      effect: { kind: 'intel' }, cover: 'a grain factor',
-    }], 'model', 'ojjul', true).state;
-    s = applyOps(s, [{
-      op: 'deploy_agent', systemId: theirs.id, mission: 'theft',
-      effect: { kind: 'income_penalty', perTurn: 4 }, cover: 'a chandler',
-    }], 'model', 'vigil', true).state;
+    // Each recruited at home, then sent (version 11).
+    s = applyOps(s, [
+      { op: 'recruit_agent', systemId: theirs.id },
+      {
+        op: 'deploy_agent', systemId: mine.id, mission: 'surveillance',
+        effect: { kind: 'intel' }, cover: 'a grain factor',
+      },
+    ], 'model', 'ojjul', true).state;
+    s = applyOps(s, [
+      { op: 'recruit_agent', systemId: mine.id },
+      {
+        op: 'deploy_agent', systemId: theirs.id, mission: 'theft',
+        effect: { kind: 'income_penalty', perTurn: 4 }, cover: 'a chandler',
+      },
+    ], 'model', 'vigil', true).state;
     return s;
   };
 

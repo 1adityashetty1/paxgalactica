@@ -1,20 +1,9 @@
 import { useMemo } from 'react';
 import { WORLD_SIZE, worldRuns } from '../../../src/ui/worlds.js';
 import type { WorldType } from '../../../src/domain/state.js';
+import { worldTypeLabel } from '../../../src/ui/worldtext.js';
 
-const LABEL: Record<WorldType, string> = {
-  earthlike: 'Terrestrial',
-  earthnight: 'Terrestrial, settled',
-  oceanic: 'Oceanic',
-  arid: 'Arid',
-  ice: 'Ice',
-  industrialmoon: 'Ringed moon',
-  gasgiant: 'Gas giant',
-};
-
-export function worldTypeLabel(type: WorldType): string {
-  return LABEL[type] ?? 'Unsurveyed';
-}
+export { worldTypeLabel };
 
 /**
  * A world's face, drawn as SVG rects.

@@ -12,6 +12,7 @@ import { GalaxyMap } from './components/GalaxyMap.js';
 import { OutcomeArt } from './components/OutcomeArt.js';
 import { RimEventCard } from './components/RimEventCard.js';
 import { RIM_EVENT_TITLE } from '../../src/domain/events.js';
+import { fixtureLines, shipClassLines } from '../../src/ui/helptext.js';
 import { EpilogueStage } from './components/EpilogueStage.js';
 import { PortraitStage } from './components/PortraitStage.js';
 import { SidePanel } from './components/SidePanel.js';
@@ -59,7 +60,7 @@ function exampleActions(state: WorldState | null): string[] {
   return [
     ...(neutral ? [`  Send ${force} ships from ${base.name} to take ${neutral.name}.`] : []),
     ...(rival ? [`  Move ${force} ships to ${rival.name} and raid the shipping on that lane.`] : []),
-    `  Put the yards at ${base.name} to work on a squadron of corvettes.`,
+    `  Put the yards at ${base.name} to work on a squadron of escorts.`,
     `  Offer ${other.name} a dynastic marriage to seal an alliance.`,
   ];
 }
@@ -137,12 +138,11 @@ function helpLines(state: WorldState | null): string[] {
     '  costs standing at home. Enough of either and your institutions stop',
     '  following you, which comes off every stat you roll.',
     '',
+    ...shipClassLines(),
+    '',
     'FLEETS AND WORLDS',
-    '  Four hull classes, and the mix decides battles: escorts screen, lifters',
-    '  are the only way to put troops on a world, torpedo boats fire once before',
-    '  the fleets close, battleships win the exchange. A fleet of pure warships',
-    '  can sterilise an orbit and take nothing. Ships cost 15 credits a ton and',
-    '  1 a ton every turn after; a navy you cannot pay for lays itself up.',
+    '  The mix decides battles. A fleet of pure warships can sterilise an orbit',
+    '  and take nothing, and a navy you cannot pay for lays itself up.',
     '  Parking ships over a world you do not own splits its income, closes its',
     '  lanes and lets you talk to its crews — presence is not ownership, and it',
     '  is not nothing either.',
@@ -152,6 +152,8 @@ function helpLines(state: WorldState | null): string[] {
     '  for crossing your space, and lifting that toll is a real concession to',
     '  offer. Blockades sever lanes; commerce raiding takes the cargo, and both',
     '  need a fleet already there.',
+    '',
+    ...fixtureLines(state),
     '',
     'WHAT YOU CAN REACH FOR',
     '  Most of what follows has no command. You type the sentence and the',
@@ -166,6 +168,8 @@ function helpLines(state: WorldState | null): string[] {
     '    it can only be agreed in a channel and never declared.',
     '  · operatives — watchers, thieves, saboteurs, assassins. Everything you',
     '    cannot see is a rumour until somebody of yours is standing in it.',
+    '    Recruiting one is an action; sending them is another, and they travel',
+    '    three jumps a turn. Appointing an officer is an action of its own too.',
     '',
     'TIME',
     '  Nothing takes longer than 5 turns. Fleet movement costs one turn per',

@@ -3,7 +3,8 @@ import { applyOps } from '../src/domain/reducer.js';
 import { CheatSchema, CHEAT_ASSET_KINDS, type Cheat } from '../src/domain/cheats.js';
 import { ExtractionOpSchema, ModelOpSchema } from '../src/domain/ops.js';
 import { activeCommanders, MAX_ACTIVE_COMMANDERS } from '../src/domain/command.js';
-import { fleetTonsOf, hullsAt, statFixtureAt, type WorldState } from '../src/domain/state.js';
+import { fleetTonsOf, hullsAt, statFixturesAt, type WorldState } from '../src/domain/state.js';
+import { MAX_FIXTURES_PER_WORLD } from '../src/domain/diplomacy.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { serializeRecentLog } from '../src/model/serialize.js';
 import { dispatch } from '../src/server/router.js';
@@ -64,10 +65,10 @@ describe('each cheat does exactly its one thing', () => {
     expect(ore.rejections).toEqual([]);
     expect(ore.state.assets.at(-1)).toMatchObject({ kind: 'ore', heldBy: 'drajk', atSystemId: world.id, portable: true });
 
-    const free = s.systems.find((x) => x.controllerFactionId === 'drajk' && !statFixtureAt(s, x.id))!;
+    const free = s.systems.find((x) => x.controllerFactionId === 'drajk' && statFixturesAt(s, x.id).length === 0)!;
     const plant = cheat(s, { kind: 'asset', archetype: 'factory', systemId: free.id });
     expect(plant.rejections).toEqual([]);
-    expect(statFixtureAt(plant.state, free.id)).toMatchObject({ kind: 'factory', portable: false, heldBy: 'drajk' });
+    expect(statFixturesAt(plant.state, free.id)[0]).toMatchObject({ kind: 'factory', portable: false, heldBy: 'drajk' });
   });
 });
 
@@ -81,11 +82,20 @@ describe('fixed and bounded — the menu cannot put the world anywhere', () => {
     expect(CHEAT_ASSET_KINDS).not.toContain('operative');
   });
 
-  it('keeps the shape of the world: one fixture a world, five officers a power, ships somewhere real', () => {
+  it('keeps the shape of the world: two fixtures a world and no two alike, five officers a power, ships somewhere real', () => {
     const s = seed();
     const home = held(s, 'freeworlds');
-    const withPlant = statFixtureAt(s, home.id) ? s : cheat(s, { kind: 'asset', archetype: 'factory', systemId: home.id }).state;
-    expect(cheat(withPlant, { kind: 'asset', archetype: 'hospital', systemId: home.id }).rejections).toHaveLength(1);
+    let full = s;
+    for (const kind of ['factory', 'hospital', 'university']) {
+      if (statFixturesAt(full, home.id).length >= MAX_FIXTURES_PER_WORLD) break;
+      if (statFixturesAt(full, home.id).some((a) => a.kind === kind)) continue;
+      full = cheat(full, { kind: 'asset', archetype: kind, systemId: home.id }).state;
+    }
+    expect(statFixturesAt(full, home.id)).toHaveLength(MAX_FIXTURES_PER_WORLD);
+    expect(cheat(full, { kind: 'asset', archetype: 'stock_exchange', systemId: home.id }).rejections).toHaveLength(1);
+    const bare = s.systems.find((x) => x.controllerFactionId === 'freeworlds' && statFixturesAt(s, x.id).length === 0)!;
+    const one = cheat(s, { kind: 'asset', archetype: 'factory', systemId: bare.id }).state;
+    expect(cheat(one, { kind: 'asset', archetype: 'factory', systemId: bare.id }).rejections).toHaveLength(1);
 
     let st = s;
     while (activeCommanders(st.commanders, 'freeworlds').length < MAX_ACTIVE_COMMANDERS) {

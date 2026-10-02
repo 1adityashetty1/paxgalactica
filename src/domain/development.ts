@@ -1,7 +1,7 @@
 import { DEFAULT_COVERT_EFFECT, FIXTURE_COST, type AgentMission, type Asset } from './diplomacy.js';
 import type { DurationCategory } from './duration.js';
 import { archetypeFor, fixtureYieldFor } from './assets.js';
-import { CREDITS_PER_TON, HULL_SPEC } from './hulls.js';
+import { CREDITS_PER_TON, HULL_SPEC, type HullClass } from './hulls.js';
 import {
   addShipsAt,
   ledgerFor,
@@ -162,6 +162,26 @@ export const EFFECT_CATEGORIES: Record<OrderEffectKind, readonly DurationCategor
   // `fortify` is already what that category delivers.
   found_fixture: ['construction_infrastructure', 'industrial_conversion', 'retooling'],
 };
+
+/**
+ * The category a `commission_ships` programme is filed under, decided by the
+ * hull rather than by whoever wrote the order (item 121).
+ *
+ * Three categories may deliver hulls, at floors of 5, 2 and 3, and nothing said
+ * which a class wants: a playtest filed "commission two escorts" as
+ * `capital_ship_construction` and waited five turns for them, and a battleship
+ * filed as `refit` is laid down in two — the capital floor phrased around. So a
+ * battleship is always capital ship construction, and anything lighter filed
+ * there is a `refit`. A lighter hull in `retooling` is left alone: that is a
+ * longer programme chosen on purpose, not a misfiling.
+ *
+ * Only re-filed, never re-estimated: the floor still clamps upward from the
+ * duration the model proposed, so an estimate made deliberately long stays long.
+ */
+export function commissionCategory(hull: HullClass, asked: DurationCategory): DurationCategory {
+  if (hull === 'battleship') return 'capital_ship_construction';
+  return asked === 'capital_ship_construction' ? 'refit' : asked;
+}
 
 /** Kinds this category is allowed to deliver. Empty for the eight above. */
 export function effectsAllowedFor(category: DurationCategory): OrderEffectKind[] {

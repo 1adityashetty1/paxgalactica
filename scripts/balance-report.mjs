@@ -61,15 +61,19 @@ for (const id of IDS) {
   console.log(`  ${NAMES[id].padEnd(26)} ${row}`);
 }
 
+// The run's last turn always closes a table, so a 100-turn run says where it
+// ended rather than stopping at 50.
+const samples = (at) => [...new Set([...at.filter((t) => t <= turns), turns])];
+
 console.log('\n── net income over time ──');
 console.log('  turn ' + IDS.map((i) => i.slice(0, 5).padStart(6)).join(''));
-for (const t of [1, 5, 10, 15, 20, 25, 30, 40, 50].filter((t) => t <= turns)) {
+for (const t of samples([1, 5, 10, 15, 20, 25, 30, 40, 50])) {
   console.log(`  ${pad(t, 4)} ` + IDS.map((id) => pad(at(t).perFaction[id].net, 6)).join(''));
 }
 
 console.log('\n── territory over time (systems held) ──');
 console.log('  turn ' + IDS.map((i) => i.slice(0, 5).padStart(6)).join(''));
-for (const t of [1, 10, 20, 30, 40, 50].filter((t) => t <= turns)) {
+for (const t of samples([1, 10, 20, 30, 40, 50])) {
   console.log(`  ${pad(t, 4)} ` + IDS.map((id) => pad(at(t).perFaction[id].systems, 6)).join(''));
 }
 

@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { createSeedState } from '../src/seed/scenario.js';
-import { applyOps, tickTurn } from '../src/domain/reducer.js';
+import { applyOps, tickTurn as tickWithEvents } from '../src/domain/reducer.js';
+import type { LegacyRules } from '../src/domain/reducer.js';
+
+// These pin one mechanic against a control run over many ticks, and a random
+// event (item 124) — free captains, a border incident, envoys — moves hulls and
+// regard on its own, differently in each run. The Rim is held still here, as it
+// is in the garrison and combat tests; `rim-events.test.ts` covers the events.
+const tickTurn = (s: Parameters<typeof tickWithEvents>[0], legacy: LegacyRules = {}) =>
+  tickWithEvents(s, { randomEvents: false, ...legacy });
 import {
   fleetStrengthOf,
   hullsAt,
@@ -446,7 +454,7 @@ describe('loans', () => {
           mission: 'surveillance' as const, effect: { kind: 'intel' as const, revealsOrders: true },
           cover: 'a factor',
           targetCommanderId: null,
-          name: '', operations: 0, timesCaught: 0, deployedTurn: 0, exposed: false, successChance: 50,
+          name: '', operations: 0, timesCaught: 0, deployedTurn: 0, inPlaceFrom: 0, exposed: false, successChance: 50,
         },
       ],
     };

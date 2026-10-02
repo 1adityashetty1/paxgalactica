@@ -569,6 +569,14 @@ out of the rally at one home world lost while the Vigil reaches the cap at two.
 `pnpm balance 30` and `pnpm fleetlab` are unchanged. It moves 7 of the 12 saved
 campaigns on replay, all of it the rally.
 
+**And then the bots learned to read their might, and the rally turned a war.**
+See *"a doctrine reads its own might"*: once a bot sizes an attack at the odds
+the battle uses, a power the rally has lifted strikes with less. At 100 turns
+without events, rally off reads **5/9/5/6/0** — the Vigil runs to nine worlds
+and the Confederacy is wiped out — and rally on reads **6/6/6/6/1**. That is
+the brake on whoever is winning the principle asked for, measured rather than
+argued. At 30 turns the board is the same either way.
+
 **The obvious lever was rejected, and the reason is the lesson.** *Unrest
 suppressed* reads naturally as a cheaper `OCCUPATION_COST` for a resolute
 holder — and it lands almost wholly on the Iron Vigil, the one power pairing
@@ -712,10 +720,20 @@ lifter with them — 73 tons paid for, 70 delivered, and two classes the order n
 named scrapped to pay for a third.
 
 The gain is knowable exactly, because `applyOps` already snapshots every system's
-stacks for `capSelfInflictedLosses`: the positive per-class differences **are**
-the new hulls. `unbuild` cuts heaviest-first out of those, ordered on
+stacks for `capSelfInflictedLosses`: the positive per-class differences are where
+the new hulls landed. `unbuild` cuts heaviest-first out of those, ordered on
 (tonnage, class, system id) so replay walks it identically, and everything
 already standing is unreachable.
+
+**Except a hull that moved.** A positive difference is not a new hull when the
+same batch moved one there: a battleship taken from Vergesse and put at Threx
+reads as +1 at Threx, and an overbuy beside it cut that battleship — in service
+since turn 0, scrapped to pay for lift the yards never laid down. Every bot masses
+and buys in one batch, so the harness had been doing this all along. Each class
+is now cut no further than the faction's whole navy (`fleetStackOf`, systems and
+transit) actually gained of it, so a move nets to nothing and cannot be cut.
+Pinned to `JOURNAL_VERSION` 11 (`movesNotBuilt`); none of the five saves
+replays differently.
 
 **And the bill follows the delivery rather than leading it.** A whole hull is the
 smallest thing that can be refused, so a cut overshoots by up to three tons, and
@@ -2174,9 +2192,12 @@ third bound.
 
 **1. The ground decides what can stand on it.** A fixture must name, among the
 attributes it modifies, the one `WORLD_TYPE_STAT` gives its world, and **a world
-carries one** (`statFixtureAt`), counting programmes under way so two cannot race
-for a slot. That is the self-balancing mechanism rather than a restriction on
-it: how far a power can raise a stat is how many worlds of that kind it holds —
+carries two, no two of one kind** (`MAX_FIXTURES_PER_WORLD`,
+`fixtureSlotRefusal`), counting programmes under way so two cannot race for a
+slot. It carried one until journal version 11 (`twoFixtures`); the second slot
+lets a world be a black market *and* a research lab, never two black markets,
+and both must still name the ground's stat. That is the self-balancing
+mechanism rather than a restriction on it: how far a power can raise a stat is how many worlds of that kind it holds —
 visible on the map, different for every faction, and takeable. On the opening
 board nobody holds more than two of a kind, and the weaknesses land where the
 sheets put them:
@@ -2252,10 +2273,18 @@ asserted.
 
 **The bots build them**, because a fixture nobody builds is a fixture nobody has
 measured — the lesson `monopolist` taught. `raise` in `initiative.ts` founds one
-at a time, on the best held world with a free slot, always the pure archetype
-for the ground, and only while solvent against the price and the **marginal**
-upkeep the next building adds. Without it the harness could not see any of the
-above: with the bots not raising, the board is simply the one it was.
+at a time, only while solvent against the price and the **marginal** upkeep the
+next building adds, and `fixtureKindFor` picks what: the pure archetype for the
+ground first, and in a world's second slot the split pairing the ground's stat
+with the power's strongest other one. Without it the harness could not see any
+of the above: with the bots not raising, the board is simply the one it was.
+
+**Every bare world before any second slot.** Stacking both on the best world
+was tried first and moved the board — the Vigil's second building at Vantic was
+a split carrying might, and Threx fell on turn 10 instead of 18. Filling empty
+ground first is what the bots did under one slot, and in the harness they never
+reach a second: upkeep stops them before they run out of empty worlds, so the
+board is unchanged and the second slot is headroom for whoever can pay for it.
 
 **Replay is not versioned for this, deliberately.** The seed moved earlier on
 this branch (the seeded fixtures), so no journal written before it replays
@@ -3179,6 +3208,45 @@ resolved on the tick, exposed on the same ladder. **Only on an outcome that
 placed something**: a failed attempt places nobody, the same rule
 `boundPayloadsToOutcome` applies to a works payload.
 
+### Recruiting is an action, and an operative travels
+
+An operative used to be recruited, placed on any world in the galaxy and at
+work on the same End Turn — one declaration, no road. Since journal version 11
+(`operativesTravel`) those are three things:
+
+- **`recruit_agent` signs one on** at a world the power holds, awaiting orders:
+  `mission` and `effect` are `null`. Free in credits — the mission is what is
+  priced — but held to `maxAgentsFor` and paying `AGENT_UPKEEP` from that turn.
+  A ransomed operative comes back onto the books this way (`fromAssetId`).
+- **`deploy_agent` sends one already on the books.** It creates nobody: it sends
+  the operative it names (`agent`, by id or every word of a name) or, named
+  nobody, the nearest one awaiting orders. One already on a mission is only
+  re-tasked by name, so a watch is never ended by accident. Charged
+  `AGENT_COST[mission]` when sent.
+- **They travel `AGENT_JUMPS_PER_TURN` (3) jumps a turn** and are at work from
+  `inPlaceFrom`. Within three jumps that is the End Turn they were sent on — a
+  fleet a jump out fights on the End Turn it sails — and each further three
+  jumps adds a turn. `atWork` is the one test every reader uses: the tick's
+  operative pass, `ledgerFor`'s skimming, `effectiveStats`' debuffs, the
+  watcher's sight and the presence that lets a power suborn crews.
+
+**A declaration that recruits does nothing else**, officers included —
+`recruitmentAlone` in `turn.ts` drops whatever rode with a `recruit_agent` or
+`recruit_commander`, and says so. With two actions a turn, a player can recruit
+with the first and send with the second. That rule lives in the engine rather
+than the reducer, because it is about the player's action economy: an NPC
+reaction has no action points and may recruit and send together, which
+`prompts/reaction.md` tells it to. A covert declaration by a power with **nobody
+on the books** is turned away before the roll, at the price of an inadmissible
+ruling — nothing — rather than rolled, charged and then rejected for want of a
+person.
+
+**Scoped to a live actor**, like the ownership guard before it: every source in
+play has one, and an actorless batch — the engine, or a fixture building a board
+— places an operative in one step as it always did. Journals before version 11
+replay the old way; all five saves rebuild identical worlds, the operatives
+carrying `inPlaceFrom: 0`.
+
 **`discord` is the only mission aimed at a quarrel the buyer is not in.** It
 turns the power whose world the operative sits on against a **third** power,
 named in `effect.towardFactionId` — the priced path that closing the free one
@@ -3420,6 +3488,13 @@ An 8-turn playtest read all three off `GET /api/campaign` and the event log:
   been burned — which is the rule the client's own panels were already calling
   on arrival, and exactly the "each component remembering to filter" that
   function exists to replace.
+
+  **For a long time this sentence was true and the payload still leaked.**
+  `GameSession.view` built its own redaction — orders, then the log, then Rim
+  events — and never called `worldAsSeenBy`, so `state.agents` went out whole
+  while this paragraph said it did not. The view is built on `worldAsSeenBy`
+  now, and a server test reads a hidden rival operative off neither the read
+  nor the push.
 - **`clamp` and `rejection` entries.** Both were public and
   `serializeRecentLog` feeds the log into every NPC prompt, so the Vigil's log
   carried *"[illegal_value] drajk cannot deploy an agent owned by vigil"* —
@@ -3673,6 +3748,81 @@ is a real position in this game"* — the Confederacy played to its doctrine
 rather than a power that has been eliminated. Income mix is 58/42, unchanged.
 `pnpm fleetlab` does not read disposition at all.
 
+### And a doctrine reads its own might
+
+The bots read **no stat at all**. Every attack was sized on raw weight —
+`orbitalNeed` at `ORBITAL_MARGIN` times the defenders' battleship-equivalents,
+lift at `DUG_IN_MARGIN` times the garrison — while `resolveBattle` weighs each
+side as `weight × (1 + might modifier / 20)` in the exchange and on the ground.
+So a power at might 18 asked for exactly what one at 9 asked for, and the rally
+could lift a power's might for most of a campaign without once changing when it
+struck: *"a rallying bot never leans into its rally"*.
+
+`mightFactor` reads the battle's own arithmetic off `effectiveStats`, so
+terrain, fixtures, the rally and dissent all reach the decision the way they
+reach the dice. Both sides, because the odds have two: the defenders at the
+best modifier among them, as `bestMod` takes it, and a rival read as the fog
+shows it (`covert: false`) — an unexposed operative's debuff is not a bot's to
+see. `ORBITAL_MARGIN` is unchanged: it was always caution about the roll, and
+the roll swings power, not weight.
+
+**On its own it moved the board onto one battle.** The ablation is the
+finding: a landing sized by might changed nothing, three of the five powers
+reading might changed nothing, and the Vigil reading it alone reproduced the
+whole shift. At Threx — the one seeded war's one border — Drajk opens with 4.1
+battleship-equivalents, so the Vigil's need was 9.02 and rounded to **10**,
+while Vantic, one jump away, holds **9.3**. Reading might took the need to 9,
+and the Vigil sailed on turn 1 and took Threx on turn 2 where it had waited to
+turn 17. The Confederacy had been surviving on 0.7 of a battleship of rounding,
+and losing a world fifteen turns early cascaded: with events off, the Vigil
+reached eight worlds and Drajk none.
+
+**Two fixes answer it, and only one is a balance lever.**
+
+- **A moved hull was being scrapped.** Prototyping a defence found that the
+  overbuy trim read a battleship moved from Vergesse to Threx as a new hull at
+  Threx, and cut it when the same batch ordered more than the treasury held —
+  every bot masses and buys in one batch. `unbuild` now cuts a class no further
+  than the faction gained of it (see "The surplus comes off the gain"). On its
+  own that made Drajk's lot worse, since the Vigil stopped losing its massed
+  hulls too.
+- **An opportunist does not leave an easy target.** `guardFronts` keeps each
+  world facing a power Drajk is at war with too strong for any single adjacent
+  enemy base to take, by the attacker's own arithmetic plus `FRONT_MARGIN`, and
+  masses toward it when short. It is a deterrent, not a fortress: the enemy can
+  still concentrate from several bases and come. Swept, the margin has a cliff
+  below 1 — hulls move whole, so the guard lands a battleship short and Threx
+  falls on turn 2 — and is flat from 1 to 3, where Threx holds to turn 13–14
+  and every board is identical. 2 is its middle. **Drajk's alone**, measured
+  that way: guarding every power's fronts sent the Vigil to nine worlds by turn
+  100 and wiped the Confederacy out. Retaking lost home worlds was tried too
+  and changed nothing — Drajk is never strong enough to try.
+
+| | 30 turns | 100 turns |
+|---|---|---|
+| events, before | 6/6/4/6/3 | 6/6/4/6/3 |
+| events, **now** | **6/6/5/6/2** | **6/6/6/5/2** |
+| no events, before | 6/6/5/6/2 | 6/6/5/6/2 |
+| no events, now | 6/6/6/6/1 | 6/6/6/6/1 |
+
+Nobody is eliminated in any of the four and nobody nears half the map; Threx
+falls on turn 14. (With the Confederacy's luck on top — see "Luck" under the Rim
+— the 100-turn board with events is 6/6/5/5/3 and Threx holds to turn 18.) Drajk still raids for 696 over thirty turns against 745
+unguarded, so its doctrine pays. `tests/balance.test.ts`, which plays the
+30-turn run with events, passes. The rally is what reading might was for, and it
+now turns a war — see *"An occupied homeland rallies"*.
+
+**A rival is read as the fog shows it to the reader.** `effectiveStats` takes
+`seenBy`: an unexposed operative's debuff counts only for the power that runs
+it — what the player's Factions panel already showed — so a bot sizing an attack
+on a world its own operative is weakening counts the weakness, and nobody else's
+operative leaks. The persona's stat line uses the same cut. A caught operative
+stops working at all, so it was never part of the question.
+
+The SIGINT purchase reads effective guile too, as `maxAgentsFor` does; that
+moved nothing. `pnpm fleetlab` plays no bots and is unchanged. Bot ops are
+journaled, so no save replays differently.
+
 ## The Rim moves on its own: random events
 
 Item 124. Ten events, like a TTRPG's, that land in the advance-turn tick and
@@ -3754,6 +3904,45 @@ journal's ticks pass without events and without `lastClash`. All 12 saved
 campaigns replay identically. `pnpm fleetlab` ticks with events off: its arena
 strips the galaxy out, and volunteers landing mid-trial would be noise.
 
+### Luck: what the Rim tends to bring one power
+
+`Faction.luck` is a power's own weights for the ten events, used in place of
+`RIM_EVENT_WEIGHT` whenever an event would single it out. **It must total the
+galaxy's 0.5** (`RimLuckSchema`), so luck changes *what* happens to a power and
+not how often the Rim moves — the d20 reads `RIM_EVENT_RATE` and nothing else.
+`luckFavouring(kind, weight)` writes one: that kind at `weight`, the rest of the
+total shared evenly.
+
+The Confederacy is the only lucky power: free captains at **0.23**, the other
+nine at 0.03 each. Captains with no flag drift toward the power that asks the
+fewest questions.
+
+**The pulse leans rather than branches.** Each candidate counts at its
+subject's weight for the kind over the galaxy's — averaged over the powers an
+event names, 1 for one that names nobody — and that lean scales both the kind's
+weight and the target draw within it. So a lucky power's favoured event is
+likelier to be the turn's event *and* likelier to land on it. With no luck on
+the board every lean is exactly 1 and the draw is bit-for-bit the one before
+luck existed; a test holds the pulse to the old algorithm written out.
+
+Measured over the harness, with and without:
+
+| | Drajk's events | free captains among them | free captains to anyone |
+|---|---|---|---|
+| 100 turns, before | 12 | 3 | 3 |
+| 100 turns, lucky | 15 | **8** | 10 |
+| 300 turns, before | 33 | 8 (24%) | 14 |
+| 300 turns, lucky | 39 | **23 (59%)** | 31 |
+
+Above the 46% the weights alone would give (0.23 of 0.5), because free captains
+lean toward the smallest fleet — Drajk's — while unrest, volunteers and the
+derelict rarely have Drajk to choose at all. It finds Drajk a little more often
+in total for the same reason. It also takes Drajk's hazards down: no mutiny in
+300 turns against two, border incidents 8 → 5. The board at 30 turns is
+unchanged at 6/6/5/6/2; at 100 it is 6/6/5/5/3, the Confederacy a world up,
+and Threx holds to turn 18. Seeded at `JOURNAL_VERSION` 11 (`createSeedState`'s
+`luck`), so an older journal rebuilds a Confederacy with none.
+
 ### A sandbox, for looking at one event
 
 Waiting for a particular event in a real campaign is waiting on a d20, a
@@ -3793,6 +3982,11 @@ question that swamps the arithmetic, as it did for `MONOPOLY_BONUS`. Events
 colour a campaign without deciding it, which was the bar, so the weights stay at
 0.05 each. Every property `tests/balance.test.ts` asserts holds throughout.
 
+That sweep was run before the bots read might and before Drajk was lucky. Now
+the default board is **6/6/5/6/2** at 30 turns (6/6/5/5/3 at 100), against a
+control of 6/6/6/6/1 both ways — see *"a doctrine reads its own might"* and
+"Luck" below.
+
 **The harness is blind to two of the ten.** Over 100 turns it fires border
 incidents 13 times, rich seams 9, shortages, envoys and storms 8 each, unrest 6,
 free captains 4, mutiny 3 — and **no derelict and no volunteers**, because the
@@ -3817,6 +4011,13 @@ line does not contain, and the plain line stands. A number is the likeliest
 invented fact and the likeliest believed; anything subtler is the prompt's job,
 and the plain line is always printed beneath the flavour, so a line that slips
 through is colour beside the fact rather than instead of it.
+
+**So a plain line states its totals.** Free captains listed *"1 battleship, 2
+escorts"* and Haiku reliably wrote *"three hulls"*, which the guard refused
+every time — the one event that almost never got its flavour line, for a number
+that was true. It says *"3 hulls (1 battleship, 2 escorts)"* now. Teaching the
+guard to add up the plain line instead would let a flavour line total any two
+figures in it, which is a looser rule than the fact needed.
 
 ### Surfaced like a veto
 
@@ -4969,7 +5170,9 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `repudiate_loan` | borrower only; keeping it, priced like breaking a pact |
 | `forgive_loan` | lender only; what was lent becomes the borrower's |
 | `forgive_debt` | creditor only; writes off the balance and buys goodwill |
-| `recruit_commander` | appoint an officer to a world you hold, up to five; `fromAssetId` brings a captured one home |
+| `recruit_commander` | appoint an officer to a world you hold, up to five; `fromAssetId` brings a captured one home. An action of its own |
+| `recruit_agent` | sign an operative on at a world you hold, awaiting orders; `fromAssetId` brings a captured one home. An action of its own |
+| `deploy_agent` | send an operative already on the books on a mission; they travel three jumps a turn |
 | `spawn_event` | |
 | `log_narrative` | |
 
@@ -5036,6 +5239,18 @@ drift apart. Categories: `courier`, `decree`, `political_maneuver`, `espionage`,
 
 A prompt can be argued out of its own rules; code cannot. That is why the floors
 live in TypeScript.
+
+**A ship programme's category is decided by its hull** (item 121,
+`commissionCategory`). Three categories deliver `commission_ships`, at floors of
+5, 2 and 3, and nothing said which a class wants: a playtest filed *"commission
+two escorts"* as `capital_ship_construction` and waited five turns, while a
+battleship filed as a `refit` was laid down in two — the capital floor phrased
+around. A battleship is always capital ship construction; a lighter hull filed
+there is re-filed as a `refit`; a lighter hull in `retooling` is a longer
+programme chosen on purpose and stands. Re-filed and said, never re-estimated:
+the new floor still clamps upward from what the model proposed. Pinned to
+`JOURNAL_VERSION` **11** (`hullFilesTheOrder`), because `pt117_raw` holds exactly
+the escorts that took five turns.
 
 ### 3. What a finished order does — `onComplete`
 
@@ -6150,6 +6365,16 @@ list where every entry carries a footnote is a list nobody finishes, and what
 those footnotes taught belongs in the help text once rather than under every
 example.
 
+**Its numbers are generated, not written.** The fleet paragraph said *"four
+hull classes"* for as long as there were six, and an example asked the yards
+for corvettes, which are not a class. `src/ui/helptext.ts` builds the ship-class
+table and the fixture section from `HULL_SPEC`, `CREDITS_PER_TON`,
+`WORLD_TYPE_STAT`, the fixture price and upkeep and the category floors, and
+`tests/helptext.test.ts` holds them to it — including the width, because a row
+longer than the prose around it wraps into a ragged column in the feed. The
+fixture section ends on one the player could build today, on a world they hold
+with a free slot, in the kind its ground takes.
+
 ## A cheat menu, for testing, that no model ever hears about
 
 `:cheats` opens a strip above the command line with five fixed actions: add
@@ -6163,7 +6388,8 @@ disposition ±10/±25, hulls 1/5/10), every kind an enumerated shape, and the
 request body *is* that schema — there is no field a player could type a million
 into. Cheats bypass prices, action points and the arbiter; they do not bypass
 the shape of the world: hulls need somewhere their power stands, an officer a
-world their power holds, a world carries one fixture, and a power five officers.
+world their power holds, a world two fixtures of different kinds, and a power
+five officers.
 
 **It never passes through a model, and no model is told.** Three guards, each
 closing a different route:
@@ -6475,7 +6701,8 @@ writing one down. Fixtures and hand-built batches want the input type.
   `TypedStackSchema` (a `z.record` keyed by the enum is exhaustive in Zod 4 and
   would put four keys on every stack in every save — `STACK_KEYS` is pinned
   against `HULL_CLASSES` so the two cannot drift), give it a glyph in
-  `BattleIcons.tsx` and a `case` in `HullIcon`, and state its price in
+  `BattleIcons.tsx` and a `case` in `HullIcon`, a line in `JOB` in
+  `src/ui/helptext.ts` (the typecheck asks for it), and state its price in
   `prompts/resolution.md` — `tests/prompt-drift.test.ts` checks that the price
   quoted is the price charged.
 - New duration category? Add to `DURATION_CATEGORIES`, give it a floor in
@@ -6498,7 +6725,8 @@ writing one down. Fixtures and hand-built batches want the input type.
   title, a variant of `RimEventPlan`, a `case` in `pulse.ts` saying when it is
   eligible and whom it leans toward, and a `case` in `applyRimEvent` built from a
   mechanic the game already has. Decide whether it is public; a power's own
-  affairs are not.
+  affairs are not. A lucky power's table must still total 0.5, so give it a
+  weight there too — `luckFavouring` rebuilds the Confederacy's.
 - New order effect kind? Add it to `OrderEffectSchema`, give it a cap in
   `EFFECT_CAPS`, a price, the categories that may deliver it in
   `EFFECT_CATEGORIES`, and a branch in `applyOrderEffect`. Price it against what

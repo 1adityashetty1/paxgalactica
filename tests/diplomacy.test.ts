@@ -353,6 +353,7 @@ describe('agents cannot be given an effect that can never fire', () => {
     const res = applyOps(
       state,
       [
+        { op: 'recruit_agent', systemId: 'ilv-2' },
         {
           op: 'deploy_agent', ownerFactionId: 'ojjul', systemId: 'sek-1',
           mission: 'theft', effect: { kind: 'crew_defection', perTurn: 1 },
@@ -372,6 +373,7 @@ describe('agents cannot be given an effect that can never fire', () => {
     const res = applyOps(
       createSeedState('drajk'),
       [
+        { op: 'recruit_agent', systemId: 'ilv-6' },
         {
           op: 'deploy_agent', ownerFactionId: 'drajk', systemId: 'ark-6',
           mission: 'sabotage', effect: { kind: 'hull_damage', perTurn: 2 },
@@ -413,6 +415,7 @@ describe('an operative belongs to whoever deployed it', () => {
     const res = applyOps(
       createSeedState('meridian'),
       [
+        { op: 'recruit_agent', systemId: 'sek-4' },
         {
           op: 'deploy_agent', ownerFactionId: 'meridian', systemId: 'tor-2',
           mission: 'sabotage', effect: { kind: 'hull_damage', perTurn: 3 },

@@ -348,6 +348,15 @@ export const MAX_ASSET_STAT = 2;
 export const MAX_FIXTURE_BONUS = 4;
 
 /**
+ * How many stat fixtures a world can carry, **no two of one kind**: a black
+ * market and a research lab on a world that never sleeps, but not two black
+ * markets. Each still has to name the stat the ground makes, so the second slot
+ * widens what a world can be — a split beside a pure, or two splits — rather
+ * than doubling one building. One until journal version 11.
+ */
+export const MAX_FIXTURES_PER_WORLD = 2;
+
+/**
  * What founding a fixture costs, and what running one adds to the bill.
  *
  * Priced because it was free, which made it the only permanent compounding
@@ -1271,10 +1280,25 @@ export const DEFAULT_COVERT_EFFECT: Record<AgentMission, AgentEffect> = {
 export const AgentSchema = z.object({
   id: z.string().min(1),
   ownerFactionId: z.string().min(1),
-  /** Where the agent physically is. Drives which faction it harms. */
+  /**
+   * Where the agent is, or is headed: a world it has not reached yet is still
+   * its `systemId`, and `inPlaceFrom` says when it gets there. Drives which
+   * faction it harms.
+   */
   systemId: z.string().min(1),
-  mission: AgentMissionSchema,
-  effect: AgentEffectSchema,
+  /**
+   * What it has been sent to do, or `null` for a recruit awaiting orders.
+   * Recruiting and sending are two actions (`recruit_agent`, then
+   * `deploy_agent`), so an operative exists before it has a mission.
+   */
+  mission: AgentMissionSchema.nullable(),
+  effect: AgentEffectSchema.nullable(),
+  /**
+   * The turn from which it is at work where `systemId` says — it travels
+   * `AGENT_JUMPS_PER_TURN` jumps a turn to get there. Defaulted to 0, so every
+   * operative in a save written before travel existed is already in place.
+   */
+  inPlaceFrom: z.number().int().min(0).default(0),
   /**
    * Per-turn chance the agent achieves its effect, 0–100. Computed in code
    * from the owner's guile against the target's counter-intelligence, never
@@ -1332,6 +1356,25 @@ export const AgentSchema = z.object({
   targetCommanderId: z.string().nullable().default(null),
 });
 export type Agent = z.infer<typeof AgentSchema>;
+
+/**
+ * How far an operative travels in a turn. Faster than a fleet, which makes one
+ * jump: a person on a passenger liner is not a squadron under way, and three
+ * jumps reaches most of the map's middle in a turn. Still not instant, which
+ * is the point — an operative recruited at home cannot act on the far side of
+ * the Rim the turn it is sent.
+ */
+export const AGENT_JUMPS_PER_TURN = 3;
+
+/** An operative with a mission, arrived where it was sent, and not burned. */
+export function atWork(
+  agent: Agent,
+  turn: number,
+): agent is Agent & { mission: AgentMission; effect: AgentEffect } {
+  // `?? 0` for an operative built without passing through the schema, which
+  // defaults the field to 0 — already in place, as every one was before travel.
+  return !agent.exposed && agent.mission !== null && agent.effect !== null && (agent.inPlaceFrom ?? 0) <= turn;
+}
 
 /**
  * Veterancy for operatives: the same idea as a commander's, on the one number

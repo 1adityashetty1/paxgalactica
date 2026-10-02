@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { applyOps, tickTurn } from '../src/domain/reducer.js';
+import { applyOps, tickTurn as tickWithEvents } from '../src/domain/reducer.js';
+import type { LegacyRules } from '../src/domain/reducer.js';
+
+// These pin one mechanic against a control run over many ticks, and a random
+// event (item 124) — free captains, a border incident, envoys — moves hulls and
+// regard on its own, differently in each run. The Rim is held still here, as it
+// is in the garrison and combat tests; `rim-events.test.ts` covers the events.
+const tickTurn = (s: Parameters<typeof tickWithEvents>[0], legacy: LegacyRules = {}) =>
+  tickWithEvents(s, { randomEvents: false, ...legacy });
 import { MAX_DISCORD_TOTAL, AGENT_COST } from '../src/domain/diplomacy.js';
 import type { OpInput } from '../src/domain/ops.js';
 import type { WorldState } from '../src/domain/state.js';
@@ -20,13 +28,22 @@ describe('setting two other powers against each other', () => {
     s.factions.find((f) => f.id === 'drajk')!.credits = 5000;
     return s;
   };
+  // Recruited at home first, then sent: two acts since version 11.
   const deploy = (s: WorldState, effect: Record<string, unknown>, systemId?: string) =>
-    applyOps(s, [{ op: 'deploy_agent', systemId: systemId ?? theirs(s), mission: 'discord', effect } as OpInput], 'model', 'drajk');
+    applyOps(
+      s,
+      [
+        { op: 'recruit_agent', systemId: 'ilv-6' } as OpInput,
+        { op: 'deploy_agent', systemId: systemId ?? theirs(s), mission: 'discord', effect } as OpInput,
+      ],
+      'model',
+      'drajk',
+    );
   const planted = (s: WorldState, successChance: number) => {
     s.agents.push({
       id: 'agt-d', ownerFactionId: 'drajk', systemId: theirs(s), mission: 'discord',
       effect: { kind: 'discord', towardFactionId: 'meridian', perTurn: 2 },
-      successChance, exposed: false, deployedTurn: 0, cover: '', targetCommanderId: null,
+      successChance, exposed: false, deployedTurn: 0, inPlaceFrom: 0, cover: '', targetCommanderId: null,
       name: 'Sherrin Greywake', operations: 0, timesCaught: 0,
     });
     return s;

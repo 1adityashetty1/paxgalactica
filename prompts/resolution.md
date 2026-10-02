@@ -78,7 +78,8 @@ leaves a faction with nobody following it.
 | `extend_order` | work runs longer than planned |
 | `accelerate_order` | credits spent to buy back one duration bucket |
 | `break_treaty` | repudiate one; both parties' opinion of the breaker drops |
-| `deploy_agent` | place a covert operative on a system |
+| `recruit_agent` | sign an operative on at a world you hold, awaiting orders — **an action of its own** |
+| `deploy_agent` | send one of your operatives on a mission to a system; they travel there |
 | `recall_agent` | withdraw one |
 | `establish_commitment` | record a lasting arrangement **the arbiter told you to** |
 | `forgive_debt` | write off what someone owes you — creditor only |
@@ -86,7 +87,7 @@ leaves a faction with nobody following it.
 | `return_loan` | hand back what you borrowed — borrower only; the hulls really leave |
 | `repudiate_loan` | keep what you borrowed — borrower only; public, and costly |
 | `forgive_loan` | let them keep what you lent — lender only |
-| `recruit_commander` | appoint an officer to a world you hold — up to five in post |
+| `recruit_commander` | appoint an officer to a world you hold — up to five in post — **an action of its own** |
 | `dissolve_commitment` | end one, by id |
 | `spawn_event` | something happens worth recording |
 | `log_narrative` | a note for the event log |
@@ -148,7 +149,9 @@ The engine holds it to rules you should honour rather than discover:
   makes industry, arid ground might, a world that never sleeps guile, an
   earthlike world influence, ice and ocean resolve. A hospital on an
   industrial moon is refused; a `power_plant` (industry and resolve) is not.
-- **A world carries one**, standing or under way.
+- **A world carries two, of different kinds**, standing or under way — a
+  `black_market` and a `research_lab` on the same guile world, never two
+  black markets.
 - **On ground the power holds**, not merely orbits.
 - **It is founded only when the player set out to build one, on its primary
   attribute.** The check must be against `modifies[0]` — a `factory` takes
@@ -248,7 +251,9 @@ officer of the largest contingent, and the battle report names whichever
 officer actually changed something.
 
 A power may keep **up to five** in post, and `recruit_commander` appoints one to
-a world it holds. Officers cost credits to commission and draw pay every turn,
+a world it holds. **Appointing is an action of its own**: a declaration that
+recruits does nothing else, and anything else you emit beside it is dropped.
+The officer can sail with the player's next action. Officers cost credits to commission and draw pay every turn,
 so a full roster is a real choice against hulls rather than a free upgrade.
 
 An officer falls when **nothing they fought with is left**: every hull of theirs
@@ -365,16 +370,31 @@ action that runs into one.
 
 ## Agents
 
-`deploy_agent` places an operative with an `effect`: `hull_damage`,
+**Recruiting and sending are two actions.** `recruit_agent` signs an operative
+on at a world the power holds, awaiting orders — and a declaration that
+recruits does **nothing else**: anything you emit beside it is dropped. A later
+declaration sends them with `deploy_agent`, which creates nobody: it sends the
+operative it names (`agent`, by name as the state block lists them), or with
+no name the nearest one **AWAITING ORDERS**. One already on a mission is only
+re-tasked when named. The state block lists every operative of yours and what
+each is doing.
+
+**They travel.** An operative goes three jumps a turn from where they stand and
+is at work from the turn they arrive — a world within three jumps the same End
+Turn, further ones later. Narrate them setting out, not striking, when the
+target is far.
+
+`deploy_agent` gives the operative a `mission` and an `effect`: `hull_damage`,
 `crew_defection` (turns hulls over, capped by guile against resolve),
 `income_penalty`, `stat_debuff`, or `intel`. You do **not** set the success
 chance — it is computed from guile against counter-intelligence.
 
-Operatives are **bought and run, not free**: placing one costs 40–150 credits
-depending on the mission, each live agent costs 3 a turn, and a faction can
-only run a few at once (about 2 plus its guile modifier — the Nars manage six,
-the Iron Vigil two). Over the cap or short of the credits, the deployment is
-rejected. Recall an agent you no longer need.
+Operatives are **bought and run, not free**: recruiting is free, sending one
+costs 40–150 credits depending on the mission, each operative on the books costs
+3 a turn, and a faction can only run a few at once (about 2 plus its guile
+modifier — the Nars manage six, the Iron Vigil two). Over the cap the
+recruitment is rejected; short of the credits, the mission is. Recall an agent
+you no longer need.
 
 **The state block tells you how many you are running and your ceiling** — the
 line reading `Your operatives: N of M`. When it says you are at your limit, you
@@ -385,7 +405,9 @@ bought, whose ops list is empty and whose state is unchanged, has been lied to.
 ### Covert action is the agent mechanic, or it is nothing
 
 Spying, sabotage, bribery, turning an officer, planting a listener — however the
-player words it — is `deploy_agent` on the system it happens at. Do **not**
+player words it — is `deploy_agent` on the system it happens at, sending an
+operative the power already has. With nobody on the books the attempt is turned
+away before you are asked; with only busy ones, name the one to re-task. Do **not**
 narrate a covert effect you did not emit an op for: a rack of munitions going up
 with no `hull_damage`, a bought clerk with no operative, a network of informants
 with no agent. Those read as events and change nothing, which is the worst
@@ -463,8 +485,14 @@ order types listed:
 | `develop_system` | +1..2 `strategicValue` — permanent income, and at 7 the world becomes a **trade hub** | `construction_infrastructure`, `industrial_conversion`, `retooling` |
 | `raise_garrison` | +1..5 garrison now, up to the world's ceiling | `garrison_raising`, `fortification` |
 | `fortify` | +1..3 to the garrison **ceiling** | `fortification`, `construction_infrastructure` |
-| `commission_ships` | hulls delivered at the target on completion | `capital_ship_construction`, `refit`, `retooling` |
+| `commission_ships` | hulls delivered at the target on completion | `capital_ship_construction` for battleships; `refit` or `retooling` for every lighter class |
 | `found_fixture` | a fixture raised on the world — name it with `fixtureKind`; always magnitude 1 | `construction_infrastructure`, `industrial_conversion`, `retooling` |
+
+**A ship programme's type follows its hull.** A battleship is the only capital
+hull: lay it down as `capital_ship_construction`, which takes 5 turns. Escorts,
+torpedo boats, lifters, freighters and listeners come off the slips as a
+`refit` (2 turns), or a `retooling` (3) if the yard has to be converted first.
+The reducer re-files a programme put under the wrong one and says so.
 
 It is **paid for when the order is issued**: hulls by displacement at 15 a ton
 (so 60 for a battleship, 45 for a lifter, freighter or listener, 30 for an

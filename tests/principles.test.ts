@@ -257,6 +257,26 @@ describe('the ordinary case is untouched', () => {
     expect(campaign.state.factions.find((f) => f.id === 'freeworlds')!.dissent).toBe(0);
   });
 
+  it('logs the roll once, ahead of what it decided', async () => {
+    // `resolveAction` and `submitAction` each staged a `[check]` line, so every
+    // roll reached the log, the prompts' recent log and the Log panel twice
+    // (item 120).
+    scripted = {
+      appraisal: appraisal(),
+      resolution: { narrative: 'The courier goes out.', ops: [{ op: 'log_narrative', text: 'a courier sails' }] },
+    };
+    const campaign = Campaign.start('freeworlds', 'test-one-check');
+
+    const outcome = await submitAction(campaign, 'Send a courier to Sennex.');
+
+    const lines = (outcome.ops as { op: string; text?: string }[])
+      .filter((o) => o.op === 'log_narrative')
+      .map((o) => o.text ?? '');
+    expect(lines.filter((t) => t.startsWith('[check] '))).toHaveLength(1);
+    expect(lines[0]).toMatch(/^\[check\] influence check: d20 \d+ [+-]\d+ = \d+ vs DC 13 → /);
+    expect(campaign.state.eventLog.filter((e) => e.text.includes('[check]'))).toHaveLength(1);
+  });
+
   it('still lets resolution refuse as a backstop when the arbiter saw nothing', async () => {
     scripted = {
       appraisal: appraisal(),
@@ -824,16 +844,64 @@ describe('a covert declaration is routed into the agent mechanic', () => {
       },
     };
     const campaign = Campaign.start('meridian', 'test-covert');
+    // Somebody on the books to send — recruiting is an action of its own.
+    campaign.stage([{ op: 'recruit_agent', systemId: 'sek-4' }], 'recruit', '', 'model', 'meridian');
 
     const outcome = await submitAction(campaign, 'Assassinate the Drajk raid captain at Vergesse.');
 
     const ops = outcome.ops as { op: string; mission?: string }[];
     const placed = ops.find((o) => o.op === 'deploy_agent');
     expect(placed?.mission).toBe('assassination');
-    // And it went through the mechanic: charged, and on the books.
+    // And it went through the mechanic: charged, and the recruit sent.
     expect(campaign.state.agents).toHaveLength(1);
+    expect(campaign.state.agents[0]!.mission).toBe('assassination');
     expect(campaign.state.factions.find((f) => f.id === 'meridian')!.credits).toBeLessThan(2400);
     expect(outcome.notes.join(' ')).toMatch(/operatives/);
+  });
+
+  it('turns the attempt away, free, when nobody is on the books', async () => {
+    // Recruiting and sending are two actions, so a covert attempt by a power
+    // with no operative cannot be made this turn: ruled out before the roll,
+    // with no action point spent and no resolution call made.
+    scripted = {
+      appraisal: appraisal({ covert: [{ mission: 'assassination', systemId: 'ilv-6' }] }),
+      resolution: { narrative: 'should never be asked', ops: [] },
+    };
+    const campaign = Campaign.start('meridian', 'test-covert-nobody');
+    const before = campaign.actionPointsLeft;
+    calls.length = 0;
+
+    const outcome = await submitAction(campaign, 'Assassinate the Drajk raid captain at Vergesse.');
+
+    expect(outcome.inadmissible).toMatch(/nobody to send/);
+    expect(campaign.actionPointsLeft).toBe(before);
+    expect(calls.map((c) => c.kind)).not.toContain('resolution');
+    expect(campaign.state.agents).toHaveLength(0);
+  });
+
+  it('recruits and does nothing else in the same declaration', async () => {
+    // Recruiting is its own action: a send riding with it is dropped, and said.
+    scripted = {
+      appraisal: appraisal(),
+      resolution: {
+        narrative: 'A new hand signs on, and is sent at once.',
+        ops: [
+          { op: 'recruit_agent', systemId: 'sek-4' },
+          { op: 'deploy_agent', systemId: 'tor-3', mission: 'sabotage', effect: { kind: 'hull_damage', perTurn: 2 } },
+          { op: 'adjust_credits', factionId: 'meridian', delta: -20 },
+        ],
+      },
+    };
+    const campaign = Campaign.start('meridian', 'test-recruit-alone');
+
+    const outcome = await submitAction(campaign, 'Recruit an agent and send them to Vantic.');
+
+    const kinds = (outcome.ops as { op: string }[]).map((o) => o.op);
+    expect(kinds).toContain('recruit_agent');
+    expect(kinds).not.toContain('deploy_agent');
+    expect(kinds).not.toContain('adjust_credits');
+    expect(outcome.notes.join(' ')).toMatch(/Recruiting is an action of its own/);
+    expect(campaign.state.agents[0]!.mission).toBeNull();
   });
 
   it('places nobody when the attempt failed', async () => {
@@ -848,9 +916,13 @@ describe('a covert declaration is routed into the agent mechanic', () => {
       covert: [{ mission: 'sabotage', systemId: 'tor-3' }],
     });
 
+    // A recruit on the books, so it is the failed roll that keeps them home.
+    campaign.stage([{ op: 'recruit_agent', systemId: 'sek-4' }], 'recruit', '', 'model', 'meridian');
+
     await submitAction(campaign, 'Sabotage the Vigil yards at Vantic.');
 
-    expect(campaign.state.agents).toHaveLength(0);
+    expect(campaign.state.agents).toHaveLength(1);
+    expect(campaign.state.agents[0]!.mission).toBeNull();
   });
 });
 

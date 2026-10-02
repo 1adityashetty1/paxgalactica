@@ -9,6 +9,7 @@ import {
   RIM_POWER_COOLDOWN,
   SHORTAGE_KINDS,
   STORM_MAX_TURNS,
+  luckWeight,
   shortageFactor,
   stormbound,
   type RimEventKind,
@@ -360,9 +361,35 @@ export function drawRimEvent(state: WorldState, sandbox?: RimEventKind): RimEven
   }
   if (!rimEventFires(state.turn)) return null;
   const pool = eligibleRimEvents(state);
-  const chosen = weighted(pool, (e) => RIM_EVENT_WEIGHT[e.kind], draw400(state.turn, 'rim:which'));
+  // **Luck reshapes WHICH, never WHETHER.** A candidate counts at its subject's
+  // own weight for the kind rather than the galaxy's: `lean` is that ratio,
+  // averaged over the powers an event names and 1 for one that names nobody.
+  // A kind's weight is the galaxy's scaled by how its candidates lean, and the
+  // target is drawn the same way — so a lucky power's favoured event is both
+  // likelier to be the turn's event and likelier to land on it.
+  //
+  // With no luck on the board every lean is exactly 1, the kind weight is
+  // exactly `RIM_EVENT_WEIGHT` and the target weight exactly `c.weight`, so the
+  // draw is bit-for-bit the one before luck existed.
+  const lean = (kind: RimEventKind, c: Candidate): number => {
+    if (c.subjects.length === 0) return 1;
+    const each = c.subjects.map(
+      (id) => luckWeight(state.factions.find((f) => f.id === id)?.luck, kind) / RIM_EVENT_WEIGHT[kind],
+    );
+    return each.reduce((n, x) => n + x, 0) / each.length;
+  };
+  const kindWeight = (e: { kind: RimEventKind; candidates: Candidate[] }): number => {
+    const total = e.candidates.reduce((n, c) => n + c.weight, 0);
+    const leaned = e.candidates.reduce((n, c) => n + c.weight * lean(e.kind, c), 0);
+    return RIM_EVENT_WEIGHT[e.kind] * (leaned / total);
+  };
+  const chosen = weighted(pool, kindWeight, draw400(state.turn, 'rim:which'));
   if (!chosen) return null;
-  const target = weighted(chosen.candidates, (c) => c.weight, draw400(state.turn, 'rim:where'));
+  const target = weighted(
+    chosen.candidates,
+    (c) => c.weight * lean(chosen.kind, c),
+    draw400(state.turn, 'rim:where'),
+  );
   return target?.plan ?? null;
 }
 

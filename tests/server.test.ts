@@ -582,6 +582,36 @@ describe('a state push carries a tail of the log, a read carries all of it', () 
     const view = session.view();
     expect(view.state.eventLog.some((e) => e.text === 'a Vigil operative reports')).toBe(false);
   });
+
+  it('keeps a hidden rival operative out of the read and the push', async () => {
+    // `view()` built its own redaction and never applied `agentsVisibleTo`, so
+    // every rival operative went to the browser, unexposed ones included, with
+    // name, world, mission and cover — while CLAUDE.md said `worldAsSeenBy`
+    // had closed it. It had; nothing here called it.
+    const { session, events } = await startedSession();
+    const state = (session as unknown as { campaign: { state: { agents: unknown[] } } })
+      .campaign.state;
+    const agent = (id: string, ownerFactionId: string, exposed: boolean) => ({
+      id, ownerFactionId, systemId: 'sek-4', mission: 'surveillance',
+      effect: { kind: 'intel', revealsOrders: true }, successChance: 50, deployedTurn: 0,
+      exposed, cover: `cover of ${id}`, name: `Agent ${id}`,
+    });
+    state.agents.push(
+      agent('mine', 'freeworlds', false),
+      agent('hidden', 'vigil', false),
+      agent('burned', 'drajk', true),
+    );
+
+    const read = await dispatch(session, 'GET', ROUTES.campaign, undefined);
+    (session as unknown as { pushState(): void }).pushState();
+    const pushed = events.filter((e) => e.type === 'state').at(-1);
+    if (pushed?.type !== 'state') throw new Error('no state push');
+
+    for (const view of [read.body as z.infer<typeof CampaignViewSchema>, pushed.view]) {
+      expect(view.state.agents.map((a) => a.id).sort()).toEqual(['burned', 'mine']);
+      expect(JSON.stringify(view)).not.toContain('cover of hidden');
+    }
+  });
 });
 
 /**

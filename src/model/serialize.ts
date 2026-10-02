@@ -1,7 +1,7 @@
 import { eventsVisibleTo, ordersVisibleTo } from '../domain/intel.js';
 import { describeStack, hullsIn } from '../domain/hulls.js';
 import { describeOrderEffect } from '../domain/development.js';
-import { agentStanding, assetWorthRangeTo, describeEffect, wantedBy } from '../domain/diplomacy.js';
+import { agentStanding, assetWorthRangeTo, atWork, describeEffect, wantedBy } from '../domain/diplomacy.js';
 import { shortageFactor } from '../domain/events.js';
 import { describeOutstanding } from '../domain/loan.js';
 import { routeEarnings } from '../domain/trade.js';
@@ -108,8 +108,8 @@ export function serializeFactions(
       // power's numbers reached no prompt that read this line — and every
       // persona reads it about the leader across the table. A rival's row
       // leaves out covert debuffs, which the fog hides from everyone but their
-      // victim's own staff.
-      `  stats: ${serializeStats(effectiveStats(state, f.id, isViewer ? {} : { covert: false }))}`,
+      // victim's own staff — except the viewer's own, which it placed.
+      `  stats: ${serializeStats(effectiveStats(state, f.id, isViewer ? {} : { covert: false, seenBy: viewerId }))}`,
       // The ethics keep their labels even when trimmed: `expansionist` and
       // `monopolist` are what a power IS, and the arbiter does price an action
       // against them. What goes is the sentence explaining each one, which the
@@ -397,11 +397,17 @@ export function serializeStanding(state: WorldState, viewerId: string): string {
   for (const a of agents) {
     const mine = a.ownerFactionId === viewerId;
     const where = getSystem(state, a.systemId)?.name ?? a.systemId;
+    // A recruit awaiting orders is who `deploy_agent` sends by default, so the
+    // model is told which are free — and one on the road is not there yet.
+    const doing =
+      a.mission === null || a.effect === null
+        ? 'AWAITING ORDERS'
+        : `${a.mission}, ${describeEffect(a.effect)}, ${a.successChance}% per turn${atWork(a, state.turn) ? '' : ` — on the way, at work from turn ${a.inPlaceFrom}`}`;
     lines.push(
       // The operative's NAME, and their power's display name rather than its
       // id — the same leak item 104 closed two lines further up this file, left
       // behind here because nothing reads this block back except the model.
-      `  - \`${a.id}\` ${a.name || a.cover || 'an operative'}, ${mine ? 'YOURS' : `${nameOfFaction(state, a.ownerFactionId)} (exposed)`} on ${where}: ${a.mission}, ${describeEffect(a.effect)}, ${a.successChance}% per turn — ${agentStanding(a.operations)}${a.timesCaught > 0 ? `, caught ${a.timesCaught} time${a.timesCaught === 1 ? '' : 's'}` : ''}${a.exposed ? ' — BURNED' : ''}`,
+      `  - \`${a.id}\` ${a.name || a.cover || 'an operative'}, ${mine ? 'YOURS' : `${nameOfFaction(state, a.ownerFactionId)} (exposed)`} on ${where}: ${doing} — ${agentStanding(a.operations)}${a.timesCaught > 0 ? `, caught ${a.timesCaught} time${a.timesCaught === 1 ? '' : 's'}` : ''}${a.exposed ? ' — BURNED' : ''}`,
     );
   }
 

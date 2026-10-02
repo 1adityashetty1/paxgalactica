@@ -16,7 +16,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 10;
+export const JOURNAL_VERSION = 11;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -92,6 +92,7 @@ export const JournalVersionSchema = z.union([
   z.literal(8),
   z.literal(9),
   z.literal(10),
+  z.literal(11),
 ]);
 
 export const JournalSchema = z.object({
@@ -121,7 +122,12 @@ export const JournalSchema = z.object({
    *     (The rally of the same change is not pinned; see `LegacyRules`.)
    * 9 — written before the Rim moved on its own: no random events in the
    *     tick, and no record of who last fought whom.
-   * 10 — current.
+   * 10 — written before a ship programme's category followed its hull, so
+   *     escorts filed as capital construction took five turns to build;
+   *     before an overbuy's trim could tell a moved hull from a new one;
+   *     before the Confederacy was lucky; when a world carried one
+   *     fixture; and when an operative was recruited and placed in one step.
+   * 11 — current.
    */
   version: JournalVersionSchema,
   entries: z.array(JournalEntrySchema),
@@ -191,6 +197,9 @@ export function replay(
   let state = seedStateFor(seed.playerFactionId, seed.sandboxEvent, {
     fourSchools: parsed.version >= 7,
     auxiliaries: parsed.version >= 7,
+    // Drajk's luck came with version 11; before it every power drew the
+    // galaxy's weights, and the pulse reads luck off the seeded faction.
+    luck: parsed.version >= 11,
   });
   let rejectionCount = 0;
   // The opening board, before anything is applied. Without it an observer's
@@ -251,6 +260,18 @@ export function replay(
     // rewrite every turn after it.
     randomEvents: parsed.version >= 10,
     rimSandbox: seed.sandboxEvent,
+    // A ship programme stood under whatever category it was filed in, so
+    // escorts laid down as capital ships took five turns and a battleship
+    // filed as a refit took two. Those campaigns waited those turns.
+    hullFilesTheOrder: parsed.version >= 11,
+    // A hull moved in the same batch as an overbuy could be the one the trim
+    // cut. Those campaigns lost those hulls.
+    movesNotBuilt: parsed.version >= 11,
+    // A world carried one fixture.
+    twoFixtures: parsed.version >= 11,
+    // An operative was recruited and placed in one step, anywhere, at work at
+    // once. Those campaigns ran their networks that way.
+    operativesTravel: parsed.version >= 11,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

@@ -2043,7 +2043,7 @@ describe('the officer on the field', () => {
           s.agents.push({
             id: 'agt-k', ownerFactionId: 'drajk', systemId,
             mission: 'assassination', effect: { kind: 'hull_damage', perTurn: 1 },
-            successChance: 100, exposed: false, deployedTurn: 0, cover: '',
+            successChance: 100, exposed: false, deployedTurn: 0, inPlaceFrom: 0, cover: '',
             targetCommanderId: them.id,
             name: '', operations: 0, timesCaught: 0,
           });
@@ -2095,7 +2095,7 @@ describe('the officer on the field', () => {
         s.agents.push({
           id: 'agt-n', ownerFactionId: 'drajk', systemId: 'ilv-6',
           mission: 'surveillance', effect: { kind: 'intel', revealsOrders: true },
-          successChance: 50, exposed: false, deployedTurn: 0, cover: '',
+          successChance: 50, exposed: false, deployedTurn: 0, inPlaceFrom: 0, cover: '',
           targetCommanderId: null,
           name: 'Voss Greywake', operations: 0, timesCaught: 0,
         });
@@ -2129,7 +2129,7 @@ describe('the officer on the field', () => {
         s.agents.push({
           id: 'agt-doomed', ownerFactionId: 'drajk', systemId: host.id,
           mission: 'assassination', effect: { kind: 'hull_damage', perTurn: 1 },
-          successChance: 5, exposed: false, deployedTurn: 0, cover: 'a freight clerk',
+          successChance: 5, exposed: false, deployedTurn: 0, inPlaceFrom: 0, cover: 'a freight clerk',
           targetCommanderId: null,
           name: 'Prynn Threxwind', operations: 0, timesCaught: 0,
         });
@@ -2161,7 +2161,7 @@ describe('the officer on the field', () => {
         s.agents.push({
           id: 'agt-held', ownerFactionId: 'drajk', systemId: 'ilv-6',
           mission: 'theft', effect: { kind: 'income_penalty', perTurn: 4 },
-          successChance: 50, exposed: true, deployedTurn: 0, cover: '',
+          successChance: 50, exposed: true, deployedTurn: 0, inPlaceFrom: 0, cover: '',
           targetCommanderId: null,
           name: 'Aleska Halfshare', operations: 0, timesCaught: 0,
         });
