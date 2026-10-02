@@ -62,6 +62,33 @@ export const RIM_EVENT_WEIGHT: Record<RimEventKind, number> = {
 /** The chance a turn carries an event at all: the weights' total. */
 export const RIM_EVENT_RATE = Object.values(RIM_EVENT_WEIGHT).reduce((n, w) => n + w, 0);
 
+/**
+ * A power's luck: its own weights for which event befalls it, in place of
+ * `RIM_EVENT_WEIGHT` whenever an event would single it out.
+ *
+ * **It totals the galaxy's 0.5**, so luck changes WHAT happens to a power and
+ * not how often the Rim moves. The d20 that decides whether a turn carries an
+ * event reads `RIM_EVENT_RATE` and nothing else.
+ */
+export const RimLuckSchema = z
+  .record(RimEventKindSchema, z.number().min(0).max(1))
+  .refine(
+    (table) => Math.abs(Object.values(table).reduce((n, w) => n + w, 0) - RIM_EVENT_RATE) < 1e-9,
+    `a power's luck must total ${RIM_EVENT_RATE}, the galaxy's own`,
+  );
+export type RimLuck = z.infer<typeof RimLuckSchema>;
+
+/** Luck that favours one kind at `weight`, the rest of the total shared evenly. */
+export function luckFavouring(kind: RimEventKind, weight: number): RimLuck {
+  const rest = (RIM_EVENT_RATE - weight) / (RIM_EVENT_KINDS.length - 1);
+  return Object.fromEntries(RIM_EVENT_KINDS.map((k) => [k, k === kind ? weight : rest])) as RimLuck;
+}
+
+/** The weight a kind carries when it singles out a power with this luck. */
+export function luckWeight(luck: RimLuck | undefined, kind: RimEventKind): number {
+  return luck?.[kind] ?? RIM_EVENT_WEIGHT[kind];
+}
+
 /** Turns before the same kind can come round again. */
 export const RIM_KIND_COOLDOWN = 4;
 /** Turns before an event can single out a power it has already touched. */

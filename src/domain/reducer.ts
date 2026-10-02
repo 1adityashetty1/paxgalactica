@@ -3,6 +3,7 @@ import {
   MAX_DURATION,
   accelerationCost,
   applyCategoryFloor,
+  CATEGORY_FLOORS,
   dropOneBucket,
   isFibScale,
   toFibBucket,
@@ -12,7 +13,6 @@ import {
 import {
   COMMITMENT_BREAKING_COST,
   COMMITMENT_GOODWILL,
-  commitmentIncomeFor,
   conflictingCommitment,
   MAX_COMMITMENT_INCOME,
   MAX_COMMITMENT_SHARE,
@@ -34,6 +34,7 @@ import {
 import { rollD20, statModifier } from './checks.js';
 import {
   applyOrderEffect,
+  commissionCategory,
   describeOrderEffect,
   effectAllowedIn,
   effectsAllowedFor,
@@ -60,6 +61,10 @@ import {
   AGENT_CAUGHT_PENALTY,
   AGENT_VETERAN_BONUS,
   agentVeterancy,
+  MAX_FIXTURES_PER_WORLD,
+  atWork,
+  AGENT_JUMPS_PER_TURN,
+  type Agent,
 } from './diplomacy.js';
 import { ASSET_ARCHETYPES, archetypeFor, fixtureYieldFor } from './assets.js';
 import { CHEAT_ASSET_QUANTITY, CHEAT_ASSET_VALUE, type Cheat } from './cheats.js';
@@ -174,6 +179,7 @@ import {
   takeShipsAt,
   tonsAt,
   fleetTonsOf,
+  fleetStackOf,
   commitmentsOf,
   breakOffRatio,
   maxCommitmentIncomeFor,
@@ -204,7 +210,8 @@ import {
   liveAgentsOf,
   maxAgentsFor,
   subornLimit,
-  statFixtureAt,
+  statFixturesAt,
+  fixtureSlotRefusal,
   WORLD_TYPE_STAT,
   type EventLogEntry,
   type Ledger,
@@ -441,6 +448,39 @@ function addToPool(pool: Map<string, ShipStack>, id: string, add: ShipStack): vo
     if (n > 0) held[cls as HullClass] = (held[cls as HullClass] ?? 0) + n;
   }
   if (Object.keys(held).length > 0) pool.set(id, held);
+}
+
+/** A world's name, or its id when it has none. */
+const systemName = (state: WorldState, id: string): string =>
+  state.systems.find((x) => x.id === id)?.name ?? id;
+
+/**
+ * The operative a `deploy_agent` sends: the one it names, by id or by every
+ * word of a name, or — named nobody — the nearest awaiting orders. One already
+ * on a mission goes only when named, so a watch is never ended by accident.
+ * A string is the reason nobody could be sent.
+ */
+function chooseOperative(state: WorldState, ownerId: string, query: string | null, targetId: string): Agent | string {
+  const mine = (state.agents ?? []).filter((a) => a.ownerFactionId === ownerId && !a.exposed);
+  if (query !== null) {
+    const byId = mine.find((a) => a.id === query);
+    if (byId) return byId;
+    const words = query.toLowerCase().split(/[^a-z]+/).filter(Boolean);
+    const hits = mine.filter((a) => {
+      const name = a.name.toLowerCase().split(/[^a-z]+/);
+      return words.length > 0 && words.every((w) => name.includes(w));
+    });
+    if (hits.length === 1) return hits[0]!;
+    return hits.length > 1
+      ? `More than one of your operatives answers to "${query}"; name one by id.`
+      : `No operative of yours answers to "${query}".`;
+  }
+  const waiting = mine.filter((a) => a.mission === null);
+  if (waiting.length === 0) {
+    return `${nameFor(state, ownerId)} has no operative awaiting orders. Recruiting one is an action of its own — recruit_agent, at a world you hold — and one already on a mission is re-tasked only by name.`;
+  }
+  const far = (a: Agent) => (shortestPath(state.systems, a.systemId, targetId)?.length ?? Number.POSITIVE_INFINITY);
+  return [...waiting].sort((a, b) => far(a) - far(b) || a.id.localeCompare(b.id))[0]!;
 }
 
 const nameFor = (state: WorldState, id: string): string =>
@@ -1305,6 +1345,8 @@ function applyCheat(
   notes: string[],
   refuse: (code: OpRejection['code'], message: string) => void,
   uniqueFamilies = true,
+  /** How many fixtures a world carries under this journal's rules. */
+  fixturesPerWorld = MAX_FIXTURES_PER_WORLD,
 ): void {
   const player = state.playerFactionId;
   const log = (text: string, factionId: string | null) => {
@@ -1335,8 +1377,11 @@ function applyCheat(
       if (!holder) return refuse('no_presence', `${sys.name} answers to nobody, so there is nobody to hold it.`);
       const shape = archetypeFor(cheat.archetype);
       if (!shape) return refuse('illegal_value', `No asset kind "${cheat.archetype}".`);
-      if (shape.fixture && statFixtureAt(state, sys.id)) {
-        return refuse('illegal_value', `${sys.name} already carries a fixture; a world holds one.`);
+      if (shape.fixture) {
+        // What stands, not what is being built: a programme landing on a full
+        // world is refused when it lands.
+        const full = fixtureSlotRefusal(state, sys, shape.kind, { perWorld: fixturesPerWorld, underway: false });
+        if (full) return refuse('illegal_value', full);
       }
       const quantity = shape.divisible && !shape.fixture ? CHEAT_ASSET_QUANTITY : 1;
       const asset = AssetSchema.parse({
@@ -1683,6 +1728,33 @@ export interface LegacyRules {
    */
   randomEvents?: boolean;
   /**
+   * A `commission_ships` programme is filed under the category its hull
+   * wants (item 121, `commissionCategory`): a battleship as capital ship
+   * construction, anything lighter out of it. Before it, the model's category
+   * stood, and two escorts filed as capital construction took five turns.
+   * Journal version 11.
+   */
+  hullFilesTheOrder?: boolean;
+  /**
+   * An overbuy's trim cuts a class only as far as the faction actually gained
+   * hulls of it, so a hull MOVED in the same batch is not mistaken for one
+   * built and scrapped. Before it, a battleship repositioned beside an
+   * unaffordable order could be the one cut. Journal version 11.
+   */
+  movesNotBuilt?: boolean;
+  /**
+   * A world carries `MAX_FIXTURES_PER_WORLD` stat fixtures, no two of one kind.
+   * Before it, one. Journal version 11.
+   */
+  twoFixtures?: boolean;
+  /**
+   * Recruiting an operative and sending it on a mission are two acts
+   * (`recruit_agent`, then `deploy_agent`), and it travels to get there. Before
+   * it, `deploy_agent` recruited and placed in one step, anywhere, at once.
+   * Journal version 11.
+   */
+  operativesTravel?: boolean;
+  /**
    * A sandbox campaign's one event (see `primeRimSandbox`): that kind every
    * turn, with no d20 and no cooldowns. Not a rule the game acquired — a rule
    * of that campaign, read off its journal's seed entry.
@@ -1798,6 +1870,10 @@ function applyOpsUnderRules(
     officerUnits = true,
     uniqueFamilies = true,
     influentialGoodwill = true,
+    hullFilesTheOrder = true,
+    movesNotBuilt = true,
+    twoFixtures = true,
+    operativesTravel = true,
   } = legacy;
   const state = cloneState(input);
   const rejections: OpRejection[] = [];
@@ -1933,6 +2009,8 @@ function applyOpsUnderRules(
   const commissioned = new Map<string, { count: number; at: StarSystem }>();
   const placed = new Map<string, number>();
   const hullsBefore = new Map(state.factions.map((f) => [f.id, fleetTonsOf(state, f.id)]));
+  // By class, whole navy, so the trim can tell a hull built from a hull moved.
+  const navyBefore = new Map(state.factions.map((f) => [f.id, fleetStackOf(state, f.id)]));
   // Per-system counts too, so `capSelfInflictedLosses` can put restored hulls
   // back where they were taken from rather than at the faction's best world.
   // Deep enough to survive the batch: the values are stacks now, so a shallow
@@ -2015,7 +2093,10 @@ function applyOpsUnderRules(
 
     switch (op.op) {
       case 'cheat': {
-        applyCheat(state, op.cheat, notes, (code, message) => reject(raw, code, message), uniqueFamilies);
+        applyCheat(
+          state, op.cheat, notes, (code, message) => reject(raw, code, message), uniqueFamilies,
+          twoFixtures ? MAX_FIXTURES_PER_WORLD : 1,
+        );
         break;
       }
 
@@ -2960,6 +3041,9 @@ function applyOpsUnderRules(
       }
 
       case 'issue_order': {
+        // The category the order is filed under. The model's, except where a
+        // hull decides it — see `commissionCategory`.
+        let filedType = op.type;
         if (!factionExists(op.factionId)) {
           reject(raw, 'unknown_faction', `No faction "${op.factionId}".`);
           break;
@@ -3042,21 +3126,14 @@ function applyOpsUnderRules(
               );
               break;
             }
-            // **A world carries one.** Checked against programmes already
-            // under way as well as fixtures standing, so two orders cannot race
-            // for the same slot and both be paid for.
-            const standing = statFixtureAt(state, site.id);
-            const building = state.pendingOrders.find(
-              (o) => o.targetId === site.id && o.onComplete?.kind === 'found_fixture',
-            );
-            if (standing || building) {
-              reject(
-                raw,
-                'illegal_value',
-                standing
-                  ? `${site.name} already carries a ${standing.kind.replace(/_/g, ' ')}; a world carries one fixture.`
-                  : `A fixture is already being raised at ${site.name}; a world carries one.`,
-              );
+            // **A world carries two, no two alike.** Checked against
+            // programmes already under way as well as fixtures standing, so two
+            // orders cannot race for the same slot and both be paid for.
+            const full = fixtureSlotRefusal(state, site, shape.kind, {
+              perWorld: twoFixtures ? MAX_FIXTURES_PER_WORLD : 1,
+            });
+            if (full) {
+              reject(raw, 'illegal_value', full);
               break;
             }
           }
@@ -3071,6 +3148,20 @@ function applyOpsUnderRules(
                 : `Order type "${category}" cannot deliver "${op.onComplete.kind}". It can deliver: ${allowed.join(', ')}.`,
             );
             break;
+          }
+          // The hull decides the category, so its floor is the hull's (item
+          // 121). Said, because the duration the player sees follows from it.
+          if (hullFilesTheOrder && op.onComplete.kind === 'commission_ships') {
+            const hull = op.onComplete.hull;
+            filedType = commissionCategory(hull, category);
+            if (filedType !== category) {
+              const note =
+                hull === 'battleship'
+                  ? `Filed the battleship programme as capital ship construction rather than ${category.replace(/_/g, ' ')}: a battleship is a capital hull, and capital hulls take ${CATEGORY_FLOORS.capital_ship_construction} turns to lay down.`
+                  : `Filed the ${HULL_SPEC[hull].label} programme as a refit rather than capital ship construction: only a battleship is a capital hull, and lighter classes come off the slips in ${CATEGORY_FLOORS.refit}.`;
+              notes.push(note);
+              logEvent(state, 'clamp', note, op.factionId);
+            }
           }
         }
 
@@ -3176,7 +3267,7 @@ function applyOpsUnderRules(
             );
             break;
           }
-          const category = op.type as DurationCategory;
+          const category = filedType as DurationCategory;
           const clamp = applyCategoryFloor(category, op.durationTurns);
           if (clamp.clamped) {
             const note = `Clamped ${category} duration ${clamp.from} -> ${clamp.duration} (category floor ${clamp.floor}).`;
@@ -3310,7 +3401,7 @@ function applyOpsUnderRules(
         const order: PendingOrder = {
           id: mintOrderId(state),
           factionId: op.factionId,
-          type: op.type,
+          type: filedType,
           originId: op.originId,
           targetId: op.targetId,
           durationTurns: duration,
@@ -3319,7 +3410,7 @@ function applyOpsUnderRules(
           officers: riding,
           onInterrupt: op.onInterrupt,
           visibility: [...new Set(op.visibility.filter(factionExists))],
-          label: op.label || op.type.replace(/_/g, ' '),
+          label: op.label || filedType.replace(/_/g, ' '),
           durationRationale: rationale,
           path,
           force,
@@ -4071,9 +4162,18 @@ function applyOpsUnderRules(
         // is a price to place an operative, a per-turn cost to run one, and a
         // ceiling on how many a faction can handle at once. All three were
         // missing, which made an unbounded spy network strictly dominant.
+        //
+        // Since version 11 the ceiling is met at recruitment, where the
+        // operative is created; sending one already on the books adds nobody.
+        //
+        // **Scoped to a live actor**, like the ownership guard above: every
+        // source in play — a declaration, a reaction, a bot — has one, and an
+        // actorless batch is the engine or a fixture building a board, which
+        // places an operative in one step as it always did.
+        const travels = operativesTravel && actor !== undefined;
         const cap = maxAgentsFor(state, ownerId);
         const running = liveAgentsOf(state, ownerId).length;
-        if (running >= cap) {
+        if (!travels && running >= cap) {
           reject(
             raw,
             'illegal_value',
@@ -4112,6 +4212,83 @@ function applyOpsUnderRules(
             reject(raw, 'illegal_value', `${nameFor(state, whose)} cannot be turned against itself.`);
             break;
           }
+        }
+
+        // Aimed at a person, when it is an assassination naming one — see the
+        // note where an operative is created below. Shared by both paths.
+        const aimKnife = (): string | null => {
+          if (op.mission !== 'assassination' || op.targetCommanderId === null) return null;
+          const mark = resolveCommander(
+            state.commanders,
+            op.targetCommanderId,
+            (c) => c.status === 'active' && c.factionId !== ownerId,
+          );
+          if (mark) return mark.id;
+          notes.push(
+            `No officer answering to "${op.targetCommanderId}" could be identified, so the operation is aimed at ${target ? target.name : host.name} rather than at a person.`,
+          );
+          return null;
+        };
+
+        // **Sending somebody already on the books** (version 11). Recruiting
+        // is its own act, so this op creates nobody: it picks an operative —
+        // named, or the nearest awaiting orders — and sets them travelling.
+        // Three jumps a turn, and at work from the turn they arrive, so an
+        // operative raised at home cannot act on the far side of the Rim the
+        // turn it is sent.
+        if (travels) {
+          if (op.fromAssetId !== null) {
+            reject(
+              raw,
+              'illegal_value',
+              'A ransomed operative comes back onto the books with recruit_agent first; sending them out is an order of its own.',
+            );
+            break;
+          }
+          const spy = chooseOperative(state, ownerId, op.agent, op.systemId);
+          if (typeof spy === 'string') {
+            reject(raw, op.agent === null ? 'illegal_value' : 'unknown_agent', spy);
+            break;
+          }
+          const road = shortestPath(state.systems, spy.systemId, op.systemId);
+          if (!road) {
+            reject(raw, 'unreachable_target', `${spy.name || 'The operative'} has no way from ${systemName(state, spy.systemId)} to ${host.name}.`);
+            break;
+          }
+          const price = AGENT_COST[op.mission];
+          if (owner.credits < price) {
+            reject(
+              raw,
+              'insufficient_credits',
+              `Sending a ${op.mission} operative costs ${price} credits; ${owner.name} holds ${owner.credits}.`,
+            );
+            break;
+          }
+          owner.credits -= price;
+          const jumps = road.length - 1;
+          const turns = Math.ceil(jumps / AGENT_JUMPS_PER_TURN);
+          const from = systemName(state, spy.systemId);
+          spy.systemId = op.systemId;
+          spy.mission = op.mission;
+          spy.effect = op.effect;
+          if (op.cover) spy.cover = op.cover;
+          spy.deployedTurn = state.turn;
+          spy.inPlaceFrom = state.turn + turns;
+          spy.targetCommanderId = op.mission === 'assassination' ? aimKnife() : null;
+          spy.successChance = agentSuccessChance(
+            effectiveStats(state, ownerId).guile,
+            target ? effectiveStats(state, target.id).resolve : 8,
+            spy.operations,
+            spy.timesCaught,
+          );
+          const when =
+            turns === 0
+              ? 'already there'
+              : `${jumps} jump${jumps === 1 ? '' : 's'}, at work from turn ${spy.inPlaceFrom}`;
+          const sent = `${spy.name || 'An operative'} leaves ${from} for ${host.name} on ${op.mission}, for ${price} credits — ${when}.`;
+          notes.push(sent);
+          logEvent(state, 'order', sent, ownerId, [ownerId]);
+          break;
         }
 
         const price = AGENT_COST[op.mission];
@@ -4201,19 +4378,7 @@ function applyOpsUnderRules(
         // note** rather than rejected, the same shape as a fleet naming an
         // officer it cannot carry: the operative still goes out, they simply go
         // out against the power rather than against a name.
-        let knife: string | null = null;
-        if (op.mission === 'assassination' && op.targetCommanderId !== null) {
-          const mark = resolveCommander(
-            state.commanders,
-            op.targetCommanderId,
-            (c) => c.status === 'active' && c.factionId !== ownerId,
-          );
-          if (mark) knife = mark.id;
-          else
-            notes.push(
-              `No officer answering to "${op.targetCommanderId}" could be identified, so the operation is aimed at ${target ? target.name : host.name} rather than at a person.`,
-            );
-        }
+        const knife = aimKnife();
         state.agents.push({
           id: mintId(state, 'agt'),
           name: who,
@@ -4240,6 +4405,8 @@ function applyOpsUnderRules(
             target ? effectiveStats(state, target.id).resolve : 8,
           ),
           deployedTurn: state.turn,
+          // The old path: placed and at work at once, wherever it was put.
+          inPlaceFrom: state.turn,
           exposed: false,
           operations: 0,
           timesCaught: 0,
@@ -4260,6 +4427,93 @@ function applyOpsUnderRules(
           // not to announce.
           [ownerId],
         );
+        break;
+      }
+
+      case 'recruit_agent': {
+        // **Recruiting is its own act** (version 11): somebody signs on at a
+        // world the power holds and waits for orders. No mission and no price
+        // — the mission is what is priced, by `deploy_agent` — but a slot under
+        // `maxAgentsFor` and `AGENT_UPKEEP` from today.
+        const ownerId = op.factionId ?? actor;
+        if (ownerId === undefined || !factionExists(ownerId)) {
+          reject(raw, 'unknown_faction', 'A recruit needs a power to sign on with.');
+          break;
+        }
+        if (op.factionId !== undefined && actor !== undefined && op.factionId !== actor) {
+          reject(raw, 'illegal_value', `${actor} cannot recruit an operative for ${op.factionId}.`);
+          break;
+        }
+        const site = getSystem(state, op.systemId);
+        if (!site) {
+          reject(raw, 'unknown_system', `No system "${op.systemId}".`);
+          break;
+        }
+        if (site.controllerFactionId !== ownerId) {
+          reject(
+            raw,
+            'no_presence',
+            `${nameFor(state, ownerId)} does not hold ${site.name}. An operative is recruited at home and sent from there.`,
+          );
+          break;
+        }
+        const running = liveAgentsOf(state, ownerId).length;
+        if (running >= maxAgentsFor(state, ownerId)) {
+          reject(
+            raw,
+            'illegal_value',
+            `${nameFor(state, ownerId)} is already running ${running} operatives, its limit at guile ${effectiveStats(state, ownerId).guile}. Recall one before recruiting another.`,
+          );
+          break;
+        }
+        if (op.fromAssetId !== null) {
+          // A ransomed face back on the books — see `DeployAgentOp.fromAssetId`
+          // before version 11, which put them straight back in the field.
+          const held = (state.assets ?? []).find((a) => a.id === op.fromAssetId);
+          const spy = held?.agentId ? (state.agents ?? []).find((a) => a.id === held.agentId) : undefined;
+          if (!held || !spy) {
+            reject(raw, 'illegal_value', `Asset "${op.fromAssetId}" is not a captured operative.`);
+            break;
+          }
+          if (held.heldBy !== ownerId || spy.ownerFactionId !== ownerId) {
+            reject(raw, 'illegal_value', 'Only your own people, held by you, come back onto your books.');
+            break;
+          }
+          spy.exposed = false;
+          spy.systemId = site.id;
+          spy.mission = null;
+          spy.effect = null;
+          spy.targetCommanderId = null;
+          spy.deployedTurn = state.turn;
+          spy.inPlaceFrom = state.turn;
+          state.assets = state.assets.filter((a) => a.id !== held.id);
+          const back = `${spy.name || 'A returned operative'} is back on ${nameFor(state, ownerId)}'s books at ${site.name}, ${spy.operations} operation${spy.operations === 1 ? '' : 's'} behind them and caught ${spy.timesCaught} time${spy.timesCaught === 1 ? '' : 's'}.`;
+          notes.push(back);
+          logEvent(state, 'order', back, ownerId, [ownerId]);
+          break;
+        }
+        const who = namePerson(state, ownerId, `agent:${site.id}:${state.agents.length}`, null, uniqueFamilies, (n) =>
+          agentName(ownerId, state.turn, `agent:${site.id}:${state.agents.length}:${n}`),
+        );
+        state.agents.push({
+          id: mintId(state, 'agt'),
+          name: who,
+          ownerFactionId: ownerId,
+          systemId: site.id,
+          mission: null,
+          effect: null,
+          successChance: 0,
+          deployedTurn: state.turn,
+          inPlaceFrom: state.turn,
+          exposed: false,
+          operations: 0,
+          timesCaught: 0,
+          cover: op.cover,
+          targetCommanderId: null,
+        });
+        const signed = `${who} signs on with ${nameFor(state, ownerId)} at ${site.name}, awaiting orders.`;
+        notes.push(signed);
+        logEvent(state, 'order', signed, ownerId, [ownerId]);
         break;
       }
 
@@ -4550,42 +4804,30 @@ function applyOpsUnderRules(
           -MAX_COMMITMENT_INCOME,
           Math.min(MAX_COMMITMENT_INCOME, asked),
         );
-        // The SECOND ceiling is the one nobody was told about. `ledgerFor`
-        // caps a faction's total commitment earnings by
-        // `maxCommitmentIncomeFor`, at READ time, every turn — so it produces
-        // no note by construction and cannot. Measured: 60 agreed, trimmed to
-        // 25 here, and paid 10, with the negotiating party informed of neither
-        // step. An NPC bargains hard over a number that cannot exist.
-        //
-        // Said at signature rather than enforced here, because the ceiling is
-        // derived from `influence` and influence moves: dissent and a hostile
-        // `stat_debuff` both reach it, so freezing it into the record would be
-        // wrong the turn after. The arrangement is real at what it says; what
-        // it PAYS is what the reader decides.
-        if (yieldPerTurn > 0) {
-          for (const who of op.factionIds) {
-            const ceiling = maxCommitmentIncomeFor(state, who);
-            const already = commitmentIncomeFor(state.commitments, who, Number.MAX_SAFE_INTEGER);
-            const earnedNow = Math.max(0, already);
-            if (earnedNow + yieldPerTurn > ceiling) {
-              const note = `${nameFor(state, who)} can draw ${ceiling} a turn from standing arrangements at its influence, and this one takes it past that; the excess pays nothing until its standing improves or another lapses.`;
-              notes.push(note);
-              logEvent(state, 'clamp', note, who);
-            }
-          }
-        }
         if (yieldPerTurn !== asked) {
           const note = `Trimmed ${op.kind} yield from ${asked} to ${yieldPerTurn} per turn (ceiling ${MAX_COMMITMENT_INCOME}).`;
           notes.push(note);
           logEvent(state, 'clamp', note, op.factionIds[0] ?? null);
         }
         // A second, tighter ceiling applies when the money is READ, and it is
-        // the one that actually decides what an arrangement is worth. Both caps
-        // are deliberate; nobody decided they should compound silently.
+        // the one that actually decides what an arrangement is worth: `ledgerFor`
+        // caps a faction's total commitment earnings by `maxCommitmentIncomeFor`
+        // every turn, so it produces no note by construction and cannot.
         // Measured: the Combine agreed to 60 a turn, this trimmed it to 25, and
         // `ledgerFor` paid 10 — a sixth of what was negotiated, on every turn of
         // the campaign, with neither party ever told. Reported so a player can
         // see the deal they actually struck rather than the one they discussed.
+        //
+        // Said at signature rather than enforced here, because the ceiling is
+        // derived from `influence` and influence moves: dissent and a hostile
+        // `stat_debuff` both reach it, so freezing it into the record would be
+        // wrong the turn after. The arrangement is real at what it says; what
+        // it PAYS is what the reader decides.
+        //
+        // Gross earnings, as `commitmentIncomeFor` caps them: a cost a faction
+        // has agreed to pay does not make room under its ceiling. Once said: a
+        // second block answered the same question in other words, off the NET
+        // figure, and every capped signature was reported twice (item 116).
         for (const bound of op.factionIds) {
           const ceiling = maxCommitmentIncomeFor(state, bound);
           const drawn = commitmentsOf(state, bound).reduce(
@@ -5451,6 +5693,7 @@ function applyOpsUnderRules(
   const pricedByYards = new Set<string>();
   billConstruction(
     state, hullsBefore, shipsBefore, unbuildFromGain, yardCapacity, changedFlag, notes, pricedByYards,
+    movesNotBuilt ? navyBefore : undefined,
   );
   refundDuplicateCharges(state, chargedByNarrative, pricedByYards, notes);
   }
@@ -5723,6 +5966,12 @@ function billConstruction(
   notes: string[],
   /** Factions this pass actually debited, so a duplicate charge can be found. */
   charged: Set<string> = new Set(),
+  /**
+   * Each faction's navy by class before the batch. When given, the trim cuts
+   * a class no further than the faction gained of it; absent only for a
+   * journal written before that rule.
+   */
+  navyBefore?: Map<string, ShipStack>,
 ): void {
   for (const faction of state.factions) {
     // Billed in TONS, so a class costs what it displaces and nothing has to
@@ -5769,7 +6018,8 @@ function billConstruction(
       continue;
     }
     const cut = overYard + shortfall;
-    const trimmed = cut > 0 ? unbuild(state, faction.id, shipsBefore, cut) : 0;
+    const trimmed =
+      cut > 0 ? unbuild(state, faction.id, shipsBefore, cut, navyBefore?.get(faction.id)) : 0;
 
     // What the yards actually handed over, which is the only thing a faction
     // may be billed for. Capped by affordability, because the part of a
@@ -5808,7 +6058,24 @@ function unbuild(
   factionId: string,
   shipsBefore: Map<string, Record<string, ShipStack>>,
   tons: number,
+  /**
+   * The faction's navy by class before the batch. A per-world increase is not
+   * a new hull when the batch also moved one there: a battleship repositioned
+   * from Vergesse to Threx reads as +1 at Threx, and an overbuy in the same
+   * batch cut it — a hull in service since turn 0, scrapped to pay for one the
+   * yards never laid down. Found by a bot that masses and buys in one batch,
+   * which is every bot. So each class is cut no further than the faction as a
+   * whole gained of it; a move nets to nothing and cannot be cut.
+   */
+  navyBefore?: ShipStack,
 ): number {
+  const navyNow = navyBefore ? fleetStackOf(state, factionId) : undefined;
+  const room: Partial<Record<HullClass, number>> = {};
+  if (navyBefore && navyNow) {
+    for (const hull of HULL_CLASSES) {
+      room[hull] = Math.max(0, (navyNow[hull] ?? 0) - (navyBefore[hull] ?? 0));
+    }
+  }
   const gains: { system: StarSystem; hull: HullClass; count: number }[] = [];
   for (const system of state.systems) {
     const was = shipsBefore.get(system.id)?.[factionId] ?? {};
@@ -5832,7 +6099,9 @@ function unbuild(
   for (const gain of gains) {
     if (owed <= 0) break;
     const each = HULL_SPEC[gain.hull].tonnage;
-    const n = Math.min(gain.count, Math.ceil(owed / each));
+    const n = Math.min(gain.count, Math.ceil(owed / each), room[gain.hull] ?? Number.POSITIVE_INFINITY);
+    if (n <= 0) continue;
+    if (room[gain.hull] !== undefined) room[gain.hull] = room[gain.hull]! - n;
     const stack = { ...stackAt(gain.system, factionId) };
     const left = (stack[gain.hull] ?? 0) - n;
     if (left > 0) stack[gain.hull] = left;
@@ -6005,6 +6274,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     influentialGoodwill = true,
     randomEvents = true,
     rimSandbox,
+    twoFixtures = true,
     battleRules = {},
   } = legacy;
   const state = cloneState(input);
@@ -6588,6 +6858,18 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       continue;
     }
     const host = state.systems.find((sys) => sys.id === agent.systemId);
+    // A recruit awaiting orders, or one still on the road, does nothing yet —
+    // and says so, for the reason every branch below reports: an idle
+    // operative should read as idle, not as broken.
+    if (!atWork(agent, state.turn)) {
+      watchNotes.set(
+        agent.id,
+        agent.mission === null
+          ? `waits on ${host?.name ?? agent.systemId} for orders.`
+          : `is on the way to ${host?.name ?? agent.systemId}, there by turn ${agent.inPlaceFrom}.`,
+      );
+      continue;
+    }
     const target = host?.controllerFactionId
       ? state.factions.find((f) => f.id === host.controllerFactionId)
       : undefined;
@@ -7069,13 +7351,18 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
         note = outcome.note;
         if (outcome.fixture) {
           // The slot is re-checked here, not only at issue: a world taken
-          // mid-build may already carry its new holder's fixture, and a world
-          // carries one. The money is sunk either way — a programme that
+          // mid-build may already carry its new holder's fixtures — two, or
+          // one of the same kind. The money is sunk either way — a programme that
           // finishes on ground somebody else has built on is a programme that
           // built nothing, which is the risk of building where you might lose.
-          const occupant = statFixtureAt(state, target.id);
+          const occupant = twoFixtures ? undefined : statFixturesAt(state, target.id)[0];
+          const full = twoFixtures
+            ? fixtureSlotRefusal(state, target, outcome.fixture.kind, { underway: false })
+            : null;
           if (occupant) {
             note = `${order.label} completed at ${target.name}, but a ${occupant.kind.replace(/_/g, ' ')} already stands there and a world carries one.`;
+          } else if (full) {
+            note = `${order.label} completed at ${target.name}, but raised nothing: ${full}`;
           } else {
             // Through the schema, not a spread: replay compares
             // `JSON.stringify`, which preserves key order, and a record built
@@ -7385,7 +7672,11 @@ function applyRimEvent(state: WorldState, plan: RimEventPlan): RimEvent {
       // other hull, so the gift has a running cost.
       const squadron: ShipStack = { battleship: 1, escort: 2 };
       addStackAt(s, f, squadron);
-      text = `Free captains sign on with ${who(f)} at ${s.name}: ${describeStack(squadron)} join the fleet, asking nothing but a flag to fly.`;
+      // The total is stated, not left to be added up: a flavour line says
+      // "three hulls" as naturally as it says anything, and the number guard
+      // refuses any figure the plain line lacks, so without it this was the
+      // one event that almost always lost its flavour line.
+      text = `Free captains sign on with ${who(f)} at ${s.name}: ${hullsIn(squadron)} hulls (${describeStack(squadron)}) join the fleet, asking nothing but a flag to fly.`;
       break;
     }
 

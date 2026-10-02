@@ -21,7 +21,9 @@ import {
   ledgerFor,
   stackAt,
   getFaction,
-  statFixtureAt,
+  effectiveStats,
+  fixtureSlotRefusal,
+  statFixturesAt,
   isStatFixture,
   fixtureUpkeepForCount,
   WORLD_TYPE_STAT,
@@ -45,6 +47,7 @@ import {
   type ShipStack,
 } from './hulls.js';
 import { routeEarnings, tradeRoutes } from './trade.js';
+import { STAT_NAMES, statModifier } from './checks.js';
 
 /**
  * Doctrine initiative: what a power would reach for, on this board, unprompted.
@@ -147,6 +150,28 @@ const BOT_LANDINGS_HELD = 2;
 const DUG_IN_MARGIN = 2;
 
 /**
+ * What a power's might does to its weight in a battle: `resolveBattle` reads
+ * every side as `weight * (1 + modifier / 20)`, in the exchange and on the
+ * ground alike.
+ *
+ * **The bots used to read no stat at all**, so they sized every attack on raw
+ * weight and a stronger power struck exactly when a weaker one would. That is
+ * why the rally (item 123) could fire for most of a campaign and never turn a
+ * war in the harness: a power whose occupied homeland had lifted its might by
+ * three sailed at the same odds as before, and never leaned into what its
+ * situation had given it. Read through `effectiveStats`, so terrain, fixtures,
+ * the rally and dissent all reach the decision the way they reach the dice.
+ *
+ * A rival is read as the fog shows it to this power (`seenBy`): an unexposed
+ * operative's `stat_debuff` is known to its victim and its owner, so a bot
+ * counts the ones it runs and no one else's.
+ */
+function mightFactor(state: WorldState, factionId: string, me: string): number {
+  const stats = effectiveStats(state, factionId, factionId === me ? {} : { covert: false, seenBy: me });
+  return 1 + statModifier(stats.might) / 20;
+}
+
+/**
  * Buy hulls toward a fleet the faction's income can actually carry.
  *
  * The first version of these bots bought every turn they could afford to, and
@@ -219,14 +244,46 @@ function hire(ctx: Ctx): Ops {
  * played by this module on any given turn, so a mechanic only the player
  * reaches is a mechanic the harness cannot see.
  *
- * The **pure** archetype for the ground, never a split: a bot has no reason to
- * trade half its budget for an attribute the world does not make, and the
- * concentrated kind is the one whose reach the clamp is sized against. One
- * programme at a time, and only while comfortably solvent against both the
- * price and the upkeep it adds — the same shape `hire` takes, for the same
- * reason: a standing cost bought on one turn's treasury is a decision a bot
- * should not make in a hurry.
+ * What it raises is `fixtureKindFor`: the pure kind for the ground first, and
+ * the second slot a split. One programme at a time, and only while comfortably
+ * solvent against both the price and the upkeep it adds — the same shape
+ * `hire` takes, for the same reason: a standing cost bought on one turn's
+ * treasury is a decision a bot should not make in a hurry.
  */
+/**
+ * The fixture a power would raise next on one of its worlds, or null when the
+ * world has no room for anything it could build.
+ *
+ * **The pure kind for the ground first**: the concentrated one is what the
+ * clamp is sized against, and a power has no reason to trade half the budget
+ * for an attribute the world does not make while the whole of it is on offer.
+ * **The second slot is a split**, because a world's two fixtures must differ
+ * and every kind the ground allows names its stat — pairing it with the power's
+ * strongest other attribute that still has room under 20, so a bot builds
+ * toward what it already is. Ties go in stat order, so replay walks it the same.
+ *
+ * Shared with the help text's example, so the line a player is shown is the
+ * line a bot in their seat would choose.
+ */
+export function fixtureKindFor(state: WorldState, me: string, site: StarSystem): string | null {
+  const ground = WORLD_TYPE_STAT[site.worldType];
+  const stats = effectiveStats(state, me);
+  const options = ASSET_ARCHETYPES.filter((a) => a.modifies?.includes(ground));
+  const pure = options.filter((a) => a.modifies!.length === 1);
+  const splits = options
+    .filter((a) => a.modifies!.length === 2)
+    .map((a) => ({ kind: a.kind, other: a.modifies!.find((x) => x !== ground)! }))
+    .filter((x) => stats[x.other] < 20)
+    .sort(
+      (a, b) =>
+        stats[b.other] - stats[a.other] || STAT_NAMES.indexOf(a.other) - STAT_NAMES.indexOf(b.other),
+    );
+  for (const kind of [...pure.map((a) => a.kind), ...splits.map((x) => x.kind)]) {
+    if (fixtureSlotRefusal(state, site, kind) === null) return kind;
+  }
+  return null;
+}
+
 function raise(ctx: Ctx): Ops {
   const { state, me } = ctx;
   const underway = state.pendingOrders.some(
@@ -239,15 +296,24 @@ function raise(ctx: Ctx): Ops {
   const running = state.assets.filter((a) => a.heldBy === me && isStatFixture(a)).length;
   const marginal = fixtureUpkeepForCount(running + 1) - fixtureUpkeepForCount(running);
   if (ledgerFor(state, me).net < marginal * 4) return [];
-  const site = state.systems
-    .filter((s) => s.controllerFactionId === me && statFixtureAt(state, s.id) === undefined)
-    .sort((a, b) => b.strategicValue - a.strategicValue || a.id.localeCompare(b.id))[0];
-  if (!site) return [];
-  const ground = WORLD_TYPE_STAT[site.worldType];
-  const kind = ASSET_ARCHETYPES.find(
-    (a) => a.modifies !== undefined && a.modifies.length === 1 && a.modifies[0] === ground,
-  )?.kind;
-  if (!kind) return [];
+  // **Every empty world before any second slot.** Stacking both on the best
+  // world was the first version, and it moved the board: the Vigil's second
+  // building at Vantic was a split carrying might, and Threx fell on turn 10
+  // rather than 18. Filling bare ground first is what the bots did when a world
+  // held one, so the second slot is headroom for a power that has run out of
+  // empty worlds rather than a new place to concentrate.
+  const pick = state.systems
+    .filter((s) => s.controllerFactionId === me)
+    .sort(
+      (a, b) =>
+        statFixturesAt(state, a.id).length - statFixturesAt(state, b.id).length ||
+        b.strategicValue - a.strategicValue ||
+        a.id.localeCompare(b.id),
+    )
+    .map((s) => ({ site: s, kind: fixtureKindFor(state, me, s) }))
+    .find((p): p is { site: StarSystem; kind: string } => p.kind !== null);
+  if (!pick) return [];
+  const { site, kind } = pick;
   return [
     {
       op: 'issue_order',
@@ -358,7 +424,9 @@ function buy(ctx: Ctx, appetite: number, reserveTurns: number, doctrine: BuyDoct
   // so a faction below the median is bad at operatives by construction — and
   // buys ears instead, which is the whole argument for the class existing
   // beside the `surveillance` operative it duplicates.
-  const guile = getFaction(ctx.state, ctx.me)?.stats.guile ?? 10;
+  // Effective, as `maxAgentsFor` reads it: a power whose ground or fixtures
+  // make it good at spies runs operatives, whatever its sheet opened at.
+  const guile = effectiveStats(ctx.state, ctx.me).guile;
   const wantEars = guile <= BOT_SIGINT_GUILE ? BOT_MAX_LISTENERS : 0;
   const ears = hullEverywhere(ctx.state, ctx.me, 'listener');
   const earTons = HULL_SPEC.listener.tonnage;
@@ -495,7 +563,11 @@ function sortie(ctx: Ctx, targetId: string, force: number, label: string): Ops {
   // changing, and nothing in the logs says why.
   const target = ctx.state.systems.find((x) => x.id === targetId);
   const garrison = target?.garrison ?? 0;
-  const wantLift = Math.ceil((garrison * DUG_IN_MARGIN + 1) / HULL_SPEC.lifter.carry);
+  // Troops ashore count at the attacker's might, as `resolveBattle` scales them.
+  const wantLift = Math.ceil(
+    ((garrison * DUG_IN_MARGIN) / mightFactor(ctx.state, ctx.me, ctx.me) + 1) /
+      HULL_SPEC.lifter.carry,
+  );
 
   const bases = held(ctx.state, ctx.me)
     .filter(
@@ -624,11 +696,17 @@ export function targetPriority(state: WorldState, me: string, target: StarSystem
  */
 const MIN_SORTIE_WEIGHT = 4;
 
-function orbitalNeed(state: WorldState, me: string, target: StarSystem): number {
-  const defenders = Object.keys(target.ships ?? {})
-    .filter((id) => id !== me)
-    .reduce((n, id) => n + lineStrengthAt(state, target.id, id), 0);
-  return Math.max(MIN_SORTIE_WEIGHT, Math.ceil(defenders * ORBITAL_MARGIN));
+export function orbitalNeed(state: WorldState, me: string, target: StarSystem): number {
+  const present = Object.keys(target.ships ?? {}).filter((id) => id !== me);
+  const defenders = present.reduce((n, id) => n + lineStrengthAt(state, target.id, id), 0);
+  // At the odds the battle will actually be fought at: each side's weight
+  // scaled by its might, the defenders by the best modifier among them, as
+  // `bestMod` takes it. See `mightFactor`.
+  const ratio =
+    present.length === 0
+      ? 1
+      : Math.max(...present.map((id) => mightFactor(state, id, me))) / mightFactor(state, me, me);
+  return Math.max(MIN_SORTIE_WEIGHT, Math.ceil(defenders * ORBITAL_MARGIN * ratio));
 }
 
 /**
@@ -1008,8 +1086,62 @@ const freeworlds: Bot = (ctx) => {
  * besieging." Works lawless junctions for traffic and raids the busiest
  * transit system it can reach. Buys few hulls; it cannot afford many.
  */
+/**
+ * How far above the bare threshold a guarded world is kept, in
+ * battleship-equivalents. Swept: at 0 and 0.5 the Vigil still takes Threx on
+ * turn 2, because hulls move whole and the guard lands a battleship short; at
+ * 1, 2 and 3 Threx holds to turn 13–14 and every board is the same. 2 is the
+ * middle of that flat region rather than its edge.
+ */
+const FRONT_MARGIN = 2;
+
+/**
+ * Keep every world facing a power you are at war with too strong for any one
+ * of their adjacent bases to take today.
+ *
+ * Read off the attacker's own arithmetic: a base can sail when its weight
+ * meets `orbitalNeed`, which is the defence times `ORBITAL_MARGIN`, scaled by
+ * the two sides' might. So the world is safe while it holds more than the
+ * strongest adjacent enemy base divided by that, and it is topped up by massing
+ * — `massAt`, which leaves a token squadron at every other holding.
+ *
+ * **It makes a world not worth the attempt, not a fortress**, which is why it
+ * stops at one base. A determined enemy can still concentrate from several and
+ * come anyway; what it can no longer do is sail on turn one at a world one
+ * jump from its biggest yard.
+ */
+function guardFronts(ctx: Ctx): Ops {
+  const wars = new Set(warsFor(ctx.state, ctx.me));
+  const mine = mightFactor(ctx.state, ctx.me, ctx.me);
+  const ops: Ops = [];
+  for (const world of held(ctx.state, ctx.me)) {
+    let want = 0;
+    for (const id of neighboursOf(ctx.state, world.id)) {
+      const holder = ctx.state.systems.find((x) => x.id === id)?.controllerFactionId;
+      if (!holder || !wars.has(holder)) continue;
+      const theirs = mightFactor(ctx.state, holder, ctx.me);
+      const threat = lineStrengthAt(ctx.state, id, holder) * theirs;
+      want = Math.max(want, threat / (ORBITAL_MARGIN * mine) + FRONT_MARGIN);
+    }
+    if (want > lineStrengthAt(ctx.state, world.id, ctx.me)) ops.push(...massAt(ctx, world.id, want));
+  }
+  return ops;
+}
+
 const drajk: Bot = (ctx) => {
   const ops: Ops = [];
+  // **An opportunist does not leave an easy target.** The Confederacy holds
+  // Threx inside the Vigil's home sector, one jump from Vantic, at war with the
+  // strongest might on the board — and its bot never defended anything. Once the
+  // bots sized an attack at the odds the battle uses, the Vigil saw that Vantic's
+  // opening squadron was enough and took Threx on turn 2; Drajk had been
+  // surviving to turn 17 only because the raw-weight sum rounded the Vigil's
+  // need up past Vantic by 0.3 of a battleship. A doctrine that hits the weak
+  // knows what a weak target looks like. See `guardFronts`.
+  //
+  // Drajk's alone, and measured that way: guarding every power's fronts sent
+  // the Vigil to nine worlds by turn 100 and wiped the Confederacy out.
+  ops.push(...guardFronts(ctx));
   // **Boats, not a battle line.** The Jeune École answer to a power you cannot
   // beat in orbit: cheap hulls that put their share of the fire through the
   // screen and onto the capital ships, rather than a line that would simply

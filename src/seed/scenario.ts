@@ -5,6 +5,7 @@ import { commanderArchetype, commanderName } from '../domain/command.js';
 import { MAX_ASSET_STAT } from '../domain/diplomacy.js';
 import { ASSET_ARCHETYPES } from '../domain/assets.js';
 import type { CommanderArchetype } from '../domain/command.js';
+import { luckFavouring, type RimLuck } from '../domain/events.js';
 import {
   HULL_SPEC,
   normaliseStack,
@@ -143,6 +144,8 @@ interface SeedFaction {
    */
   compulsions: (string | { text: string; trigger: CompulsionTrigger })[];
   buildBias: DurationCategory[];
+  /** Which of the Rim's events tend to find it. Absent: the galaxy's weights. */
+  luck?: RimLuck;
 }
 
 /**
@@ -368,6 +371,11 @@ const SEED_FACTIONS: SeedFaction[] = [
       },
     ],
     buildBias: ['commerce_raiding', 'refit', 'espionage'],
+    // **Lucky.** Captains with no flag drift toward the power that asks the
+    // fewest questions, so free captains carry 0.23 of the Confederacy's
+    // weight and the other nine share 0.27. It totals the galaxy's 0.5, so the
+    // Rim finds Drajk with different things rather than more often.
+    luck: luckFavouring('free_captains', 0.23),
   },
 ];
 
@@ -671,7 +679,7 @@ function buildSystems(auxiliaries = true): StarSystem[] {
   }));
 }
 
-function buildFactions(): Faction[] {
+function buildFactions(luck = true): Faction[] {
   return SEED_FACTIONS.map((f) => ({
     id: f.id,
     name: f.name,
@@ -690,6 +698,7 @@ function buildFactions(): Faction[] {
     compulsions: f.compulsions.map((c) => (typeof c === 'string' ? { text: c } : { ...c })),
     dissent: 0,
     buildBias: [...f.buildBias],
+    ...(luck && f.luck ? { luck: { ...f.luck } } : {}),
     // The Combine opens charging everyone, and everyone else opens charging
     // nobody. That is not a balance choice so much as a compatibility one: the
     // extortionist was the only power that could toll at all, so seeding it
@@ -758,8 +767,13 @@ export function createSeedState(
    * Both `false` rebuild the board a version-6-or-earlier journal was played
    * on: officers DRAWN from three schools rather than dealt from four, and
    * opening fleets without freighters or listeners. Only `replay` passes them.
+   * `luck: false` rebuilds one from before version 11, when no power had any.
    */
-  { fourSchools = true, auxiliaries = true }: { fourSchools?: boolean; auxiliaries?: boolean } = {},
+  {
+    fourSchools = true,
+    auxiliaries = true,
+    luck = true,
+  }: { fourSchools?: boolean; auxiliaries?: boolean; luck?: boolean } = {},
 ): WorldState {
   if (!SEED_FACTIONS.some((f) => f.id === playerFactionId)) {
     throw new Error(
@@ -770,7 +784,7 @@ export function createSeedState(
   const systems = buildSystems(auxiliaries);
   applyOpeningFloors(systems, auxiliaries);
   const state: WorldState = {
-    factions: buildFactions(),
+    factions: buildFactions(luck),
     systems,
     pendingOrders: [],
     familiesUsed: [],

@@ -6,7 +6,7 @@ import { TradePanel } from './TradePanel.js';
 import { STAT_NAMES } from '../../../src/domain/checks.js';
 import { debtsFor } from '../../../src/domain/debt.js';
 import { describeOutstanding, loansFor } from '../../../src/domain/loan.js';
-import { assetWorthRangeTo } from '../../../src/domain/diplomacy.js';
+import { assetWorthRangeTo, MAX_FIXTURES_PER_WORLD } from '../../../src/domain/diplomacy.js';
 import { shortageFactor } from '../../../src/domain/events.js';
 import { describeOrderEffect } from '../../../src/domain/development.js';
 import { describeEffect } from '../../../src/domain/diplomacy.js';
@@ -41,7 +41,7 @@ import {
   rallyBonus,
   systemIncome,
   fixturesAt,
-  statFixtureAt,
+  statFixturesAt,
   treatiesFor,
   warsFor,
   type WorldState,
@@ -340,14 +340,16 @@ function SystemTab({
    */
   const fixtures = fixturesAt(state, sys.id);
   /**
-   * What this world could carry, when the player holds it and it carries
-   * nothing yet. The ground rule is the whole mechanism — a fixture must name
-   * the attribute the world's type makes — so the panel says which one rather
-   * than leaving a player to discover it from a rejection.
+   * What this world could still carry, when the player holds it and it has
+   * room. The ground rule is the whole mechanism — a fixture must name the
+   * attribute the world's type makes — so the panel says which one rather than
+   * leaving a player to discover it from a rejection.
    */
   const ground = WORLD_TYPE_STAT[sys.worldType];
-  const slotFree =
-    sys.controllerFactionId === state.playerFactionId && statFixtureAt(state, sys.id) === undefined;
+  const built = statFixturesAt(state, sys.id).length;
+  const room =
+    sys.controllerFactionId === state.playerFactionId ? Math.max(0, MAX_FIXTURES_PER_WORLD - built) : 0;
+  const slotFree = room > 0;
 
   return (
     <div className="system-detail">
@@ -442,10 +444,10 @@ function SystemTab({
           rather than assumed, since a fixture pays whoever stands over the world
           and that need not be the power that built it. */}
       {(fixtures.length > 0 || slotFree) && <h4>Fixtures here</h4>}
-      {slotFree && (
+      {slotFree && fixtures.length === 0 && (
         <p className="muted">
-          Nothing built yet. This ground makes {ground}: it can carry one fixture that names{' '}
-          {ground}.
+          Nothing built yet. This ground makes {ground}: it can carry {MAX_FIXTURES_PER_WORLD}{' '}
+          fixtures of different kinds, each naming {ground}.
         </p>
       )}
       {fixtures.length > 0 && (
@@ -473,6 +475,11 @@ function SystemTab({
               );
             })}
           </ul>
+          {slotFree && (
+            <p className="muted">
+              Room for {room} more, naming {ground}, no two of a kind.
+            </p>
+          )}
         </>
       )}
       {/* Officers are units of the fleet (item 122), so they sit in the row of
@@ -517,7 +524,8 @@ function SystemTab({
                   {' · '}
                   {mine ? 'yours' : (getFaction(state, a.ownerFactionId)?.name ?? a.ownerFactionId)}
                   {' · '}
-                  {a.mission}
+                  {a.mission ?? 'awaiting orders'}
+                  {a.mission !== null && a.inPlaceFrom > state.turn && ` · arrives turn ${a.inPlaceFrom}`}
                 </span>
                 <span className="count">
                   {/* The record, then the odds. A caught face is permanent, so
@@ -1198,11 +1206,13 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
             <div key={a.id} className={a.exposed ? 'agent burned' : 'agent'}>
               <div className="treaty-head">
                 <strong style={{ color: colourOf(state, a.ownerFactionId) }}>
-                  {mine ? 'Yours' : getFaction(state, a.ownerFactionId)?.name} · {a.mission}
+                  {mine ? 'Yours' : getFaction(state, a.ownerFactionId)?.name} · {a.mission ?? 'awaiting orders'}
                 </strong>
-                <span className={a.successChance >= 60 ? 'eta' : 'eta soon'}>
-                  {a.successChance}%/turn
-                </span>
+                {a.mission !== null && (
+                  <span className={a.successChance >= 60 ? 'eta' : 'eta soon'}>
+                    {a.successChance}%/turn
+                  </span>
+                )}
               </div>
               <p className="meta">
                 on{' '}
@@ -1210,8 +1220,11 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
                   {getSystem(state, a.systemId)?.name ?? a.systemId}
                 </button>
                 {a.exposed && ' — BURNED, no longer effective'}
+                {!a.exposed && a.mission !== null && a.inPlaceFrom > state.turn &&
+                  ` — on the way, at work from turn ${a.inPlaceFrom}`}
+                {a.name && ` — ${a.name}`}
               </p>
-              <p className="agent-effect">{describeEffect(a.effect)}</p>
+              {a.effect && <p className="agent-effect">{describeEffect(a.effect)}</p>}
               {a.cover && <p className="meta">cover: {a.cover}</p>}
             </div>
           );

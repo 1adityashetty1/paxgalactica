@@ -1,3 +1,4 @@
+import type { OpInput } from '../src/domain/ops.js';
 import { describe, expect, it } from 'vitest';
 import { createSeedState } from '../src/seed/scenario.js';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
@@ -464,13 +465,20 @@ describe('the event log does not leak what the fog hides', () => {
    * rival operative had just arrived on it, with the mission and the price.
    */
   it('does not announce a covert placement to the world it was placed on', () => {
-    const s = applyOps(seed(), [{
-      op: 'deploy_agent', ownerFactionId: 'ojjul', systemId: FOREIGN,
-      mission: 'surveillance', effect: { kind: 'intel', revealsOrders: true },
-    }], 'model', 'ojjul', true).state;
+    // Recruited at home and sent (version 11): neither the signing nor the
+    // sending is the business of the world it is sent to.
+    const s = applyOps(seed(), [
+      { op: 'recruit_agent', systemId: 'ilv-2' },
+      {
+        op: 'deploy_agent', ownerFactionId: 'ojjul', systemId: FOREIGN,
+        mission: 'surveillance', effect: { kind: 'intel', revealsOrders: true },
+      },
+    ] as OpInput[], 'model', 'ojjul', true).state;
 
-    expect(worldAsSeenBy(s, 'ojjul').eventLog.some((e) => /places an agent/.test(e.text))).toBe(true);
-    expect(worldAsSeenBy(s, 'freeworlds').eventLog.some((e) => /places an agent/.test(e.text))).toBe(false);
+    const told = (who: string) =>
+      worldAsSeenBy(s, who).eventLog.some((e) => /signs on|leaves .* for /.test(e.text));
+    expect(told('ojjul')).toBe(true);
+    expect(told('freeworlds')).toBe(false);
   });
 
   it('defaults to public, so nothing written before this changed', () => {

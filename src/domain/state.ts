@@ -49,13 +49,15 @@ import {
   type Asset,
   MAX_ASSET_STAT,
   MAX_FIXTURE_BONUS,
+  MAX_FIXTURES_PER_WORLD,
   FIXTURE_UPKEEP,
+  atWork,
 } from './diplomacy.js';
 import { DebtSchema, MAX_DEBT_PER_TURN, scheduledDebtService, type Debt } from './debt.js';
 import { LoanSchema, scheduledRent } from './loan.js';
 import { DurationCategorySchema, FibScaleSchema } from './duration.js';
 import { buildAdjacency } from './graph.js';
-import { RimEventSchema } from './events.js';
+import { RimEventSchema, RimLuckSchema } from './events.js';
 // trade.ts imports only TYPES from here, so this edge is one-directional at
 // runtime and there is no import cycle to trip over.
 import { routeEarnings, type RouteEarnings } from './trade.js';
@@ -288,6 +290,12 @@ export const FactionSchema = z.object({
    * under: break off only when outmatched two to one.
    */
   stance: z.enum(['hold', 'stand', 'withdraw']).default('stand'),
+  /**
+   * Which of the Rim's events tend to find this power — see `RimLuckSchema`.
+   * Absent for most, who take the galaxy's weights; the Confederacy's favours
+   * free captains. Optional, so every save written before it loads unchanged.
+   */
+  luck: RimLuckSchema.optional(),
   /**
    * Which powers this one charges for passage through its space.
    *
@@ -989,6 +997,19 @@ export function fleetTonsOf(state: WorldState, factionId: string): number {
 }
 
 /**
+ * A faction's whole navy by class — every system plus everything under way.
+ * What `unbuild` reads to tell a hull that was built from one that was moved.
+ */
+export function fleetStackOf(state: WorldState, factionId: string): ShipStack {
+  let out: ShipStack = {};
+  for (const s of state.systems) out = mergeStacks(out, stackAt(s, factionId));
+  for (const o of state.pendingOrders) {
+    if (o.factionId === factionId && isMovementType(o.type)) out = mergeStacks(out, o.force);
+  }
+  return out;
+}
+
+/**
  * Where a faction could pull ships from, richest system first. Used when an op
  * adds or removes fleet without naming a system; deterministic so replay holds.
  */
@@ -1264,9 +1285,48 @@ export function isStatFixture(asset: Asset): boolean {
   return !asset.portable && asset.yield !== null && asset.yield.kind === 'stat';
 }
 
-/** The stat-bearing fixture on a world, if it has one. A world carries one. */
-export function statFixtureAt(state: WorldState, systemId: string): Asset | undefined {
-  return (state.assets ?? []).find((a) => a.atSystemId === systemId && isStatFixture(a));
+/** The stat-bearing fixtures on a world: `MAX_FIXTURES_PER_WORLD` at most, no two alike. */
+export function statFixturesAt(state: WorldState, systemId: string): Asset[] {
+  return (state.assets ?? []).filter((a) => a.atSystemId === systemId && isStatFixture(a));
+}
+
+/**
+ * Why a world cannot take a fixture of `kind`, or null when it can — the slot
+ * rule, said once for the order that founds one, the completion that lands it,
+ * the cheat menu and the bots.
+ *
+ * `underway` counts programmes still building, so two orders cannot race for
+ * one slot and both be paid for; the completion check leaves it off, because
+ * the order landing is one of them. `perWorld` is 1 for a journal from before
+ * the second slot, whose refusals read as they did then.
+ */
+export function fixtureSlotRefusal(
+  state: WorldState,
+  system: StarSystem,
+  kind: string,
+  { perWorld = MAX_FIXTURES_PER_WORLD, underway = true }: { perWorld?: number; underway?: boolean } = {},
+): string | null {
+  const standing = statFixturesAt(state, system.id);
+  const building = underway
+    ? state.pendingOrders.filter((o) => o.targetId === system.id && o.onComplete?.kind === 'found_fixture')
+    : [];
+  const label = (k: string) => k.replace(/_/g, ' ');
+  if (perWorld === 1) {
+    if (standing[0]) return `${system.name} already carries a ${label(standing[0].kind)}; a world carries one fixture.`;
+    if (building[0]) return `A fixture is already being raised at ${system.name}; a world carries one.`;
+    return null;
+  }
+  if (standing.some((a) => a.kind === kind)) {
+    return `${system.name} already has a ${label(kind)}; a world's fixtures must be different kinds.`;
+  }
+  if (building.some((o) => o.onComplete?.fixtureKind === kind)) {
+    return `A ${label(kind)} is already being raised at ${system.name}; a world's fixtures must be different kinds.`;
+  }
+  if (standing.length + building.length >= perWorld) {
+    const there = [...standing.map((a) => a.kind), ...building.map((o) => `${o.onComplete!.fixtureKind} (being raised)`)];
+    return `${system.name} carries ${perWorld} fixtures already — ${there.map(label).join(' and ')}; a world holds ${perWorld}.`;
+  }
+  return null;
 }
 
 /**
@@ -1753,7 +1813,7 @@ export function ledgerFor(
   let espionageLoss = 0;
   let espionageGain = 0;
   for (const agent of state.agents ?? []) {
-    if (agent.exposed) continue;
+    if (!atWork(agent, state.turn)) continue;
     if (agent.effect.kind !== 'income_penalty') continue;
     const host = getSystem(state, agent.systemId);
     if (host === undefined || host.controllerFactionId === null) continue;
@@ -1902,8 +1962,10 @@ export function canSubornAt(state: WorldState, factionId: string, systemId: stri
     if (shipsAt(state, factionId, id) > 0) return true;
   }
 
+  // Arrived and on a mission: one still on the road is not there yet, and a
+  // recruit awaiting orders sits on its owner's own ground.
   return (state.agents ?? []).some(
-    (a) => a.ownerFactionId === factionId && a.systemId === systemId && !a.exposed,
+    (a) => a.ownerFactionId === factionId && a.systemId === systemId && atWork(a, state.turn),
   );
 }
 
@@ -2285,8 +2347,14 @@ export function effectiveStats(
    * anybody but the victim's own dissent-ridden staff could see them. What a
    * prompt shows about ANOTHER power, since an unexposed operative's effect is
    * exactly what the fog hides; `CampaignView.effective` makes the same cut.
+   *
+   * `seenBy` puts back the operatives that power runs itself: it placed them,
+   * so their effect is no secret to it. That is the cut the Factions panel
+   * makes for the player — the browser is served its own operatives and no
+   * one else's — and the one a bot sizing an attack, or a prompt describing a
+   * rival, should make too.
    */
-  opts: { covert?: boolean } = {},
+  opts: { covert?: boolean; seenBy?: string } = {},
 ): FactionStats {
   const faction = getFaction(state, factionId);
   const base: FactionStats = faction
@@ -2346,9 +2414,10 @@ export function effectiveStats(
     for (const stat of STAT_NAMES) base[stat] = Math.max(1, base[stat] - penalty);
   }
 
-  for (const agent of opts.covert === false ? [] : (state.agents ?? [])) {
-    if (agent.exposed || agent.ownerFactionId === factionId) continue;
+  for (const agent of state.agents ?? []) {
+    if (!atWork(agent, state.turn) || agent.ownerFactionId === factionId) continue;
     if (agent.effect.kind !== 'stat_debuff') continue;
+    if (opts.covert === false && agent.ownerFactionId !== opts.seenBy) continue;
     const host = getSystem(state, agent.systemId);
     if (host?.controllerFactionId !== factionId) continue;
     base[agent.effect.stat] = Math.max(1, base[agent.effect.stat] - agent.effect.magnitude);

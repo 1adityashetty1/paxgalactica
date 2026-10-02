@@ -46,6 +46,8 @@ const { briefingFromState } = await import('../src/engine/briefing.js');
 const { Campaign } = await import('../src/engine/campaign.js');
 const { MemoryCampaignStore } = await import('../src/engine/store.js');
 const { replay } = await import('../src/engine/journal.js');
+const { luckFavouring, RimLuckSchema, RIM_EVENT_RATE: RATE } = await import('../src/domain/events.js');
+const { rollD20 } = await import('../src/domain/checks.js');
 const { GameSession } = await import('../src/server/session.js');
 const { flavourKeepsTheFacts } = await import('../src/model/calls.js');
 
@@ -280,6 +282,17 @@ describe('the four boons', () => {
     expect(state.factions.find((f) => f.id === 'drajk')!.credits).toBe(credits);
   });
 
+  it('free captains say how many hulls, so a flavour line may too', () => {
+    // Haiku writes "three hulls" for a battleship and two escorts, and the
+    // guard refused it while the plain line only listed the classes.
+    const s = fresh();
+    const w = s.systems.find((x) => x.controllerFactionId === 'drajk')!;
+    const { state } = resolveRimEvent(s, { kind: 'free_captains', factionId: 'drajk', systemId: w.id });
+    const plain = state.rimEvents.at(-1)!.text;
+    expect(plain).toMatch(/3 hulls \(1 battleship, 2 escorts\)/);
+    expect(flavourKeepsTheFacts(plain, 'Three hulls come out of the dark under no flag at all.')).toBe(true);
+  });
+
   it('envoys pass only between powers at war whose war has gone quiet', () => {
     const s = fresh();
     // The Vigil and Drajk open at war, and nobody has fought yet.
@@ -459,5 +472,76 @@ describe('a sandbox: one event, every turn, and nothing else touched', () => {
     expect(view.name).toBe('sandbox_mutiny');
     expect(view.sandboxEvent).toBe('mutiny');
     expect(JSON.stringify(await store.load('campaign'))).toBe(played);
+  });
+});
+
+describe("the Confederacy's luck", () => {
+  const old10Luck = () => {
+    const c = Campaign.start('freeworlds', 'luck-v10');
+    return replay({ ...c.journal, version: 10 }).state.factions.find((f) => f.id === 'drajk')!.luck;
+  };
+
+  it('favours free captains at 0.23 and shares 0.27 over the other nine', () => {
+    const luck = fresh().factions.find((f) => f.id === 'drajk')!.luck!;
+    expect(luck.free_captains).toBeCloseTo(0.23, 10);
+    const rest = Object.entries(luck).filter(([k]) => k !== 'free_captains');
+    expect(rest).toHaveLength(9);
+    for (const [, w] of rest) expect(w).toBeCloseTo(0.03, 10);
+    expect(Object.values(luck).reduce((n, w) => n + w, 0)).toBeCloseTo(RATE, 10);
+    // Nobody else is lucky.
+    expect(fresh().factions.filter((f) => f.luck !== undefined).map((f) => f.id)).toEqual(['drajk']);
+  });
+
+  it("must total the galaxy's own rate, so it changes what happens and not how often", () => {
+    expect(RimLuckSchema.safeParse(luckFavouring('free_captains', 0.23)).success).toBe(true);
+    const greedy = { ...luckFavouring('free_captains', 0.23), free_captains: 0.4 };
+    expect(RimLuckSchema.safeParse(greedy).success).toBe(false);
+  });
+
+  it('lands free captains on Drajk far more often, from the same board', () => {
+    // The same board on 400 turns' worth of dice, with and without luck.
+    const count = (withLuck: boolean) => {
+      const s = fresh();
+      if (!withLuck) for (const f of s.factions) delete f.luck;
+      let n = 0;
+      for (let t = 1; t <= 400; t++) {
+        s.turn = t;
+        const plan = drawRimEvent(s);
+        if (plan?.kind === 'free_captains' && plan.factionId === 'drajk') n++;
+      }
+      return n;
+    };
+    expect(count(true)).toBeGreaterThan(2 * count(false));
+  });
+
+  it('draws exactly as before when nobody has luck', () => {
+    // Every lean is 1, so the kind weights are `RIM_EVENT_WEIGHT` and the
+    // target weights the candidates' own. The draw a version-10 journal was
+    // played under, written out here as it stood so the pulse is held to it.
+    const draw400 = (turn: number, salt: string) =>
+      (rollD20(turn, `${salt}:hi`) - 1) * 20 + (rollD20(turn, `${salt}:lo`) - 1);
+    const weighted = <T,>(items: T[], w: (t: T) => number, draw: number): T | undefined => {
+      const total = items.reduce((n, t) => n + w(t), 0);
+      if (total <= 0) return undefined;
+      let x = (draw / 400) * total;
+      for (const t of items) {
+        if (x < w(t)) return t;
+        x -= w(t);
+      }
+      return items[items.length - 1];
+    };
+    const before = (s: World) => {
+      if (!rimEventFires(s.turn)) return null;
+      const chosen = weighted(eligibleRimEvents(s), (e) => RIM_EVENT_WEIGHT[e.kind], draw400(s.turn, 'rim:which'));
+      if (!chosen) return null;
+      return weighted(chosen.candidates, (c) => c.weight, draw400(s.turn, 'rim:where'))?.plan ?? null;
+    };
+    const s = createSeedState('freeworlds', { luck: false });
+    for (let t = 1; t <= 200; t++) {
+      s.turn = t;
+      expect(JSON.stringify(drawRimEvent(s))).toBe(JSON.stringify(before(s)));
+    }
+    // And a version-10 journal rebuilds a Confederacy with no luck at all.
+    expect(old10Luck()).toBeUndefined();
   });
 });

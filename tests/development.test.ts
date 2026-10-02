@@ -261,6 +261,76 @@ describe('hulls from a construction programme', () => {
   });
 });
 
+describe('a ship programme is filed by its hull (item 121)', () => {
+  const commission = (type: string, hull: string, durationTurns: number) =>
+    applyOps(
+      fresh(),
+      [
+        {
+          op: 'issue_order', factionId: 'meridian', type, originId: 'sek-2', targetId: 'sek-2',
+          durationTurns, label: '', onComplete: { kind: 'commission_ships', magnitude: 2, hull },
+        },
+      ] as Op[],
+      'model',
+      'meridian',
+    );
+  const order = (out: ReturnType<typeof commission>) => out.state.pendingOrders.at(-1)!;
+
+  it('takes two escorts out of capital construction, and says so', () => {
+    // Seen live: "commission two escorts" filed as capital ship construction
+    // was clamped to that category's floor of five turns.
+    const out = commission('capital_ship_construction', 'escort', 1);
+    expect(out.rejections).toHaveLength(0);
+    expect(order(out).type).toBe('refit');
+    expect(order(out).durationTurns).toBe(2);
+    expect(out.notes.join(' ')).toMatch(/Filed the escort programme as a refit/);
+  });
+
+  it('lays a battleship down as a capital ship whatever it was filed as', () => {
+    // The other direction: a refit's floor of two was a way round the capital
+    // floor of five.
+    for (const type of ['refit', 'retooling']) {
+      const out = commission(type, 'battleship', 2);
+      expect(order(out).type).toBe('capital_ship_construction');
+      expect(order(out).durationTurns).toBe(5);
+      expect(out.notes.join(' ')).toMatch(/battleship is a capital hull/);
+    }
+  });
+
+  it('leaves a choice that was already right alone', () => {
+    for (const [type, hull] of [['capital_ship_construction', 'battleship'], ['refit', 'lifter'], ['retooling', 'freighter']]) {
+      const out = commission(type!, hull!, 5);
+      expect(order(out).type).toBe(type);
+      expect(order(out).durationTurns).toBe(5);
+      expect(out.notes.join(' ')).not.toMatch(/Filed the/);
+    }
+  });
+
+  it('never shortens an estimate made deliberately long', () => {
+    const out = commission('capital_ship_construction', 'torpedo_boat', 5);
+    expect(order(out).type).toBe('refit');
+    expect(order(out).durationTurns).toBe(5);
+  });
+
+  it('replays a journal from before it under the category it was filed in', () => {
+    const out = applyOps(
+      fresh(),
+      [
+        {
+          op: 'issue_order', factionId: 'meridian', type: 'capital_ship_construction', originId: 'sek-2',
+          targetId: 'sek-2', durationTurns: 1, label: '', onComplete: { kind: 'commission_ships', magnitude: 2, hull: 'escort' },
+        },
+      ] as Op[],
+      'model',
+      'meridian',
+      false,
+      { hullFilesTheOrder: false },
+    );
+    expect(order(out).type).toBe('capital_ship_construction');
+    expect(order(out).durationTurns).toBe(5);
+  });
+});
+
 describe('the payload is bounded in code, not in a prompt', () => {
   it('refuses a kind the order category cannot plausibly deliver', () => {
     const out = applyOps(
@@ -1041,16 +1111,35 @@ describe('a fixture is raised by a programme, and the ground decides what', () =
     for (const shape of reachable) expect(shape.modifies).toHaveLength(2);
   });
 
-  it('carries one per world, standing or under way', () => {
-    // Brannix already carries the seeded chamber of commerce.
+  it('carries two per world, no two alike, standing or under way', () => {
+    // Brannix already carries the seeded chamber of commerce, so a stock
+    // exchange beside it is the second slot — and a second chamber is not.
     const s = fresh();
-    expect(applyOps(s, [raise('sek-4', 'stock_exchange')], 'model', 'meridian').rejections[0]?.code)
-      .toBe('illegal_value');
+    expect(applyOps(s, [raise('sek-4', 'stock_exchange')], 'model', 'meridian').rejections).toEqual([]);
+    expect(applyOps(s, [raise('sek-4', 'chamber_of_commerce')], 'model', 'meridian').rejections[0]?.message)
+      .toMatch(/different kinds/);
 
-    // And two programmes cannot race for one slot and both be paid for.
-    const both = applyOps(s, [raise('sek-2', 'factory'), raise('sek-2', 'arsenal')], 'model', 'meridian');
-    expect(both.rejections).toHaveLength(1);
-    expect(both.rejections[0]?.message).toMatch(/already being raised/);
+    // Two different kinds may be raised together; a third cannot race them.
+    const two = applyOps(s, [raise('sek-2', 'factory'), raise('sek-2', 'arsenal')], 'model', 'meridian');
+    expect(two.rejections).toEqual([]);
+    const three = applyOps(
+      s,
+      [raise('sek-2', 'factory'), raise('sek-2', 'arsenal'), raise('sek-2', 'research_lab')],
+      'model',
+      'meridian',
+    );
+    expect(three.rejections).toHaveLength(1);
+    expect(three.rejections[0]?.message).toMatch(/carries 2 fixtures already/);
+
+    // And the same kind twice is refused while the first is still building.
+    const twice = applyOps(s, [raise('sek-2', 'factory'), raise('sek-2', 'factory')], 'model', 'meridian');
+    expect(twice.rejections[0]?.message).toMatch(/already being raised/);
+  });
+
+  it('carried one per world in a journal from before the second slot', () => {
+    const s = fresh();
+    const out = applyOps(s, [raise('sek-4', 'stock_exchange')], 'model', 'meridian', false, { twoFixtures: false });
+    expect(out.rejections[0]?.message).toMatch(/a world carries one fixture/);
   });
 
   it('is raised on ground you hold, not merely orbit', () => {
@@ -1077,10 +1166,23 @@ describe('a fixture is raised by a programme, and the ground decides what', () =
   });
 
   it('raises nothing on a slot filled while it was being built', () => {
+    // Two built there in the meantime: the world is full when it lands.
+    const issued = applyOps(fresh(), [raise('sek-2', 'factory')], 'model', 'meridian').state;
+    const chamber = issued.assets.find((a) => a.kind === 'chamber_of_commerce')!;
+    issued.assets.push(
+      { ...chamber, id: 'ast-x-0', atSystemId: 'sek-2' },
+      { ...chamber, id: 'ast-x-1', kind: 'arsenal', atSystemId: 'sek-2' },
+    );
+    const done = runOut(issued);
+    expect(statFixtures(done, 'sek-2').map((a) => a.id)).toEqual(['ast-x-0', 'ast-x-1']);
+  });
+
+  it('raises nothing where the same kind went up while it was being built', () => {
     const issued = applyOps(fresh(), [raise('sek-2', 'factory')], 'model', 'meridian').state;
     issued.assets.push({
       ...issued.assets.find((a) => a.kind === 'chamber_of_commerce')!,
       id: 'ast-x-0',
+      kind: 'factory',
       atSystemId: 'sek-2',
     });
     const done = runOut(issued);

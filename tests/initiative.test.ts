@@ -1,9 +1,10 @@
 import { addShipsAt, setShipsAt, stackAt } from '../src/domain/state.js';
-import { HULL_CLASSES, carryOf, type ShipStack } from '../src/domain/hulls.js';
+import { HULL_CLASSES, battleshipEquivalents, carryOf, type ShipStack } from '../src/domain/hulls.js';
 import { describe, expect, it } from 'vitest';
 import { createSeedState } from '../src/seed/scenario.js';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
-import { GRIEVANCE_WEIGHT, proposeFor, targetPriority } from '../src/domain/initiative.js';
+import { GRIEVANCE_WEIGHT, fixtureKindFor, orbitalNeed, proposeFor, targetPriority } from '../src/domain/initiative.js';
+import { ASSET_ARCHETYPES } from '../src/domain/assets.js';
 import { warsFor, type WorldState } from '../src/domain/state.js';
 
 /**
@@ -539,5 +540,113 @@ describe('the seed seats its grievances where they can be acted on', () => {
     const s = seed();
     expect(s.factions.find((f) => f.id === 'ojjul')!.disposition['drajk']).toBeGreaterThan(0);
     expect(s.factions.find((f) => f.id === 'drajk')!.disposition['ojjul']).toBeGreaterThan(0);
+  });
+});
+
+describe('a bot sizes an attack at the odds the battle will use', () => {
+  // `resolveBattle` weighs every side as `weight * (1 + might modifier / 20)`,
+  // and the bots used to size on raw weight — so a stronger power sailed at the
+  // same odds as a weaker one, and the rally (item 123) could lift a power's
+  // might for most of a campaign without ever changing when it struck.
+  const board = () => {
+    const s = seed();
+    s.agents = [];
+    s.commanders = [];
+    s.assets = s.assets.filter((a) => a.yield?.kind !== 'stat');
+    return s;
+  };
+  const target = (s: WorldState) => s.systems.find((x) => x.id === 'sek-4')!;
+  const need = (s: WorldState) => orbitalNeed(s, 'vigil', target(s));
+  const setMight = (s: WorldState, id: string, might: number) => {
+    s.factions.find((f) => f.id === id)!.stats.might = might;
+  };
+
+  it('asks less of a mightier fleet', () => {
+    const weak = board();
+    setMight(weak, 'vigil', 10);
+    const strong = board();
+    setMight(strong, 'vigil', 16);
+    expect(need(strong)).toBeLessThan(need(weak));
+  });
+
+  it('asks more against a mightier defender', () => {
+    const soft = board();
+    setMight(soft, 'meridian', 10);
+    const hard = board();
+    setMight(hard, 'meridian', 16);
+    expect(need(hard)).toBeGreaterThan(need(soft));
+  });
+
+  const debuff = (owner: string) => ({
+    id: `agt-${owner}`, ownerFactionId: owner, systemId: 'sek-4', mission: 'sabotage',
+    effect: { kind: 'stat_debuff', stat: 'might', magnitude: 4 }, successChance: 50,
+    deployedTurn: 0, exposed: false, cover: '', name: '', operations: 0, timesCaught: 0,
+  }) as never;
+
+  it("cannot see somebody else's covert debuff on the defender", () => {
+    // The fog shows a rival as anybody but its own staff would see it.
+    const plain = board();
+    const debuffed = board();
+    debuffed.agents.push(debuff('ojjul'));
+    expect(need(debuffed)).toBe(need(plain));
+  });
+
+  it('counts a debuff its own operative is putting on the defender', () => {
+    // It placed them, so their effect is no secret to it — the cut the
+    // player's Factions panel makes for the player's own operatives.
+    const plain = board();
+    const debuffed = board();
+    debuffed.agents.push(debuff('vigil'));
+    expect(need(debuffed)).toBeLessThan(need(plain));
+  });
+});
+
+describe('the Confederacy does not leave an easy target', () => {
+  // Threx sits one jump from Vantic, inside the Vigil's home sector, at war.
+  // Once the bots read might, Vantic's opening squadron met the Vigil's need
+  // there and Threx fell on turn 2. `guardFronts` masses enough at a world
+  // facing a power at war with Drajk that no single adjacent base can sail.
+  const line = (s: WorldState, id: string, who: string) =>
+    battleshipEquivalents(stackAt(s.systems.find((x) => x.id === id)!, who));
+
+  it('leaves no adjacent Vigil base able to take Threx on turn 1', () => {
+    let s = seed();
+    const threx = () => s.systems.find((x) => x.id === 'tor-6')!;
+    // Without the guard, Vantic alone would do it.
+    expect(line(s, 'tor-3', 'vigil')).toBeGreaterThanOrEqual(orbitalNeed(s, 'vigil', threx()));
+
+    const drajk = proposeFor(s, 'drajk')!;
+    s = applyOps(s, drajk.ops, 'model', 'drajk').state;
+
+    expect(line(s, 'tor-6', 'drajk')).toBeGreaterThan(line(seed(), 'tor-6', 'drajk'));
+    for (const base of ['tor-3', 'tor-5']) {
+      expect(line(s, base, 'vigil')).toBeLessThan(orbitalNeed(s, 'vigil', threx()));
+    }
+    const vigil = proposeFor(s, 'vigil');
+    const atThrex = (vigil?.ops ?? []).filter(
+      (o) => o.op === 'issue_order' && (o as { targetId?: string }).targetId === 'tor-6',
+    );
+    expect(atThrex).toHaveLength(0);
+  });
+});
+
+describe('what a bot raises in a world\'s two fixture slots', () => {
+  it('the pure kind for the ground first, then a split beside it, then nothing', () => {
+    const s = seed();
+    // Brannix is earthlike — influence — and opens with a chamber of commerce.
+    const brannix = () => s.systems.find((x) => x.id === 'sek-4')!;
+    expect(fixtureKindFor(s, 'meridian', brannix())).toBe('stock_exchange');
+
+    // Clear it and stand the pure kind there: the second must differ, and
+    // still name influence.
+    s.assets = s.assets.filter((a) => a.atSystemId !== 'sek-4');
+    s.assets.push({ ...seed().assets.find((a) => a.kind === 'chamber_of_commerce')!, kind: 'stock_exchange', id: 'ast-x' });
+    const second = fixtureKindFor(s, 'meridian', brannix())!;
+    const shape = ASSET_ARCHETYPES.find((a) => a.kind === second)!;
+    expect(shape.modifies).toHaveLength(2);
+    expect(shape.modifies).toContain('influence');
+
+    s.assets.push({ ...s.assets.at(-1)!, kind: second, id: 'ast-y' });
+    expect(fixtureKindFor(s, 'meridian', brannix())).toBeNull();
   });
 });

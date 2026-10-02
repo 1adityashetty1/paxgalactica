@@ -172,10 +172,13 @@ describe('the model can see how many operatives it is running', () => {
     const targets = state.systems.filter((x) => x.controllerFactionId === 'vigil').slice(0, 3);
     state = applyOps(
       state,
-      targets.map((t) => ({
-        op: 'deploy_agent', ownerFactionId: 'meridian', systemId: t.id,
-        mission: 'surveillance', effect: { kind: 'intel', perTurn: 1 }, cover: '',
-      })),
+      targets.flatMap((t) => [
+        { op: 'recruit_agent', systemId: 'sek-4' } as OpInput,
+        {
+          op: 'deploy_agent', ownerFactionId: 'meridian', systemId: t.id,
+          mission: 'surveillance', effect: { kind: 'intel', perTurn: 1 }, cover: '',
+        } as OpInput,
+      ]),
       'model',
       'meridian',
     ).state;
@@ -190,10 +193,13 @@ describe('the model can see how many operatives it is running', () => {
     const target = state.systems.find((x) => x.controllerFactionId === 'vigil')!;
     state = applyOps(
       state,
-      [{
-        op: 'deploy_agent', ownerFactionId: 'meridian', systemId: target.id,
-        mission: 'surveillance', effect: { kind: 'intel', perTurn: 1 }, cover: '',
-      }],
+      [
+        { op: 'recruit_agent', systemId: 'sek-4' } as OpInput,
+        {
+          op: 'deploy_agent', ownerFactionId: 'meridian', systemId: target.id,
+          mission: 'surveillance', effect: { kind: 'intel', perTurn: 1 }, cover: '',
+        } as OpInput,
+      ],
       'model',
       'meridian',
     ).state;
@@ -256,16 +262,21 @@ describe('a declared covert action becomes a deployment', () => {
   });
 
   it('is then charged, capped and exposed like any other operative', () => {
-    // The whole point of routing: the same guards apply. At the cap, the
-    // synthesized deployment is rejected rather than quietly landing.
+    // The whole point of routing: the same guards apply. With every operative
+    // already on a mission, the synthesized send finds nobody awaiting orders
+    // and is rejected rather than quietly landing — and recruiting another is
+    // refused at the cap.
     let state = createSeedState('meridian');
     const targets = state.systems.filter((x) => x.controllerFactionId === 'vigil').slice(0, 3);
     state = applyOps(
       state,
-      targets.map((t) => ({
-        op: 'deploy_agent', ownerFactionId: 'meridian', systemId: t.id,
-        mission: 'surveillance', effect: { kind: 'intel', perTurn: 1 }, cover: '',
-      })),
+      targets.flatMap((t) => [
+        { op: 'recruit_agent', systemId: 'sek-4' } as OpInput,
+        {
+          op: 'deploy_agent', ownerFactionId: 'meridian', systemId: t.id,
+          mission: 'surveillance', effect: { kind: 'intel', perTurn: 1 }, cover: '',
+        } as OpInput,
+      ]),
       'model',
       'meridian',
     ).state;
@@ -273,7 +284,9 @@ describe('a declared covert action becomes a deployment', () => {
     const routed = routeCovertAction([], 'success', [{ mission: 'sabotage', systemId: targets[0]!.id }], 'meridian');
     const out = applyOps(state, routed.ops, 'model', 'meridian');
     expect(out.rejections.map((r) => r.code)).toEqual(['illegal_value']);
-    expect(out.rejections[0]!.message).toMatch(/already running 3 operatives/);
+    expect(out.rejections[0]!.message).toMatch(/no operative awaiting orders/);
+    const more = applyOps(state, [{ op: 'recruit_agent', systemId: 'sek-4' } as OpInput], 'model', 'meridian');
+    expect(more.rejections[0]!.message).toMatch(/already running 3 operatives/);
   });
 });
 
@@ -295,7 +308,7 @@ describe('a thief receives what it steals', () => {
         systemId: 'tor-3', mission: 'theft',
         effect: { kind: 'income_penalty', perTurn: 10 },
         cover: 'a factor',
-        targetCommanderId: null, name: '', operations: 0, timesCaught: 0, deployedTurn: 0, exposed: false, successChance: 50,
+        targetCommanderId: null, name: '', operations: 0, timesCaught: 0, deployedTurn: 0, inPlaceFrom: 0, exposed: false, successChance: 50,
       },
     ] as never;
     return s;
@@ -583,7 +596,7 @@ describe('an operative belongs to whoever deployed it', () => {
 
   it('infers the owner from the actor when it is not given', () => {
     const { state, op } = deploy();
-    const out = applyOps(state, [op], 'model', 'meridian');
+    const out = applyOps(state, [{ op: 'recruit_agent', systemId: 'sek-4' } as OpInput, op], 'model', 'meridian');
     expect(out.rejections).toEqual([]);
     expect(out.state.agents).toHaveLength(1);
     expect(out.state.agents[0]!.ownerFactionId).toBe('meridian');
@@ -601,7 +614,7 @@ describe('an operative belongs to whoever deployed it', () => {
 
   it('still accepts one stated correctly', () => {
     const { state, op } = deploy({ ownerFactionId: 'meridian' });
-    const out = applyOps(state, [op], 'model', 'meridian');
+    const out = applyOps(state, [{ op: 'recruit_agent', systemId: 'sek-4' } as OpInput, op], 'model', 'meridian');
     expect(out.rejections).toEqual([]);
     expect(out.state.agents[0]!.ownerFactionId).toBe('meridian');
   });
@@ -661,7 +674,7 @@ describe('an operative gets better, and being caught is permanent', () => {
     s.agents.push({
       id: 'agt-home', ownerFactionId: 'drajk', systemId: host.id,
       mission: 'theft', effect: { kind: 'income_penalty', perTurn: 4 },
-      successChance: 40, exposed: true, deployedTurn: 0, cover: '',
+      successChance: 40, exposed: true, deployedTurn: 0, inPlaceFrom: 0, cover: '',
       targetCommanderId: null, name: 'Ravel Coldwake',
       operations: AGENT_VETERAN_THRESHOLDS[1], timesCaught: 1,
     });
@@ -671,17 +684,22 @@ describe('an operative gets better, and being caught is permanent', () => {
       divisible: false, valuePerUnit: {}, speculative: false, valueRange: {},
       uses: null, atSystemId: null, portable: true, yield: null, acquiredTurn: 0,
     });
+    // Back onto the books at home first, then sent: two acts since version 11.
     const out = applyOps(
       s,
-      [{
-        op: 'deploy_agent', systemId: host.id, mission: 'theft',
-        effect: { kind: 'income_penalty', perTurn: 4 }, fromAssetId: 'ast-home',
-      }],
+      [
+        { op: 'recruit_agent', systemId: 'ilv-6', fromAssetId: 'ast-home' } as OpInput,
+        {
+          op: 'deploy_agent', agent: 'agt-home', systemId: host.id, mission: 'theft',
+          effect: { kind: 'income_penalty', perTurn: 4 },
+        } as OpInput,
+      ],
       'model',
       'drajk',
     );
     expect(out.rejections).toHaveLength(0);
     const back = out.state.agents.find((a) => a.id === 'agt-home')!;
+    expect(back.mission).toBe('theft');
     // Off the exposed list — a face the enemy caught is not a person who has
     // stopped existing.
     expect(back.exposed).toBe(false);
@@ -698,7 +716,7 @@ describe('an operative gets better, and being caught is permanent', () => {
     s.agents.push({
       id: 'agt-theirs', ownerFactionId: 'meridian', systemId: host.id,
       mission: 'theft', effect: { kind: 'income_penalty', perTurn: 4 },
-      successChance: 40, exposed: true, deployedTurn: 0, cover: '',
+      successChance: 40, exposed: true, deployedTurn: 0, inPlaceFrom: 0, cover: '',
       targetCommanderId: null, name: 'Odile Brandt', operations: 3, timesCaught: 1,
     });
     s.assets.push({
@@ -709,14 +727,12 @@ describe('an operative gets better, and being caught is permanent', () => {
     });
     const out = applyOps(
       s,
-      [{
-        op: 'deploy_agent', systemId: host.id, mission: 'theft',
-        effect: { kind: 'income_penalty', perTurn: 4 }, fromAssetId: 'ast-theirs',
-      }],
+      [{ op: 'recruit_agent', systemId: 'ilv-6', fromAssetId: 'ast-theirs' } as OpInput],
       'model',
       'drajk',
     );
     expect(out.rejections.map((r) => r.code)).toContain('illegal_value');
+    expect(out.rejections[0]!.message).toMatch(/Only your own people/);
     expect(out.state.agents.find((a) => a.id === 'agt-theirs')!.exposed).toBe(true);
   });
 
@@ -727,7 +743,7 @@ describe('an operative gets better, and being caught is permanent', () => {
     s.agents.push({
       id: 'agt-ours', ownerFactionId: 'drajk', systemId: 'ilv-6',
       mission: 'theft', effect: { kind: 'income_penalty', perTurn: 4 },
-      successChance: 40, exposed: true, deployedTurn: 0, cover: '',
+      successChance: 40, exposed: true, deployedTurn: 0, inPlaceFrom: 0, cover: '',
       targetCommanderId: null, name: 'Kess Skeln', operations: 2, timesCaught: 1,
     });
     s.assets.push({

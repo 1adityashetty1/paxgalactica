@@ -447,8 +447,22 @@ export const BreakTreatyOp = z.object({
   reason: z.string().default(''),
 });
 
+/**
+ * Send an operative on a mission (journal version 11 on): one the power already
+ * has, recruited by `recruit_agent`. Recruiting and sending are two actions, so
+ * a covert attempt needs somebody already on the books. The operative travels
+ * `AGENT_JUMPS_PER_TURN` jumps a turn from where they stand and goes to work on
+ * arrival. Before version 11 this op recruited and placed in one step, at once,
+ * anywhere — and a journal written then replays that way.
+ */
 export const DeployAgentOp = z.object({
   op: z.literal('deploy_agent'),
+  /**
+   * Which of your operatives to send, by id or by name. Omitted, the nearest
+   * one awaiting orders goes; one already on a mission is only re-tasked when
+   * named, so a watch is never ended by accident.
+   */
+  agent: z.string().min(1).nullable().default(null),
   /**
    * Whose operative it is — and there is exactly one right answer, so it is
    * optional and defaults to the acting faction.
@@ -497,6 +511,27 @@ export const DeployAgentOp = z.object({
    * with them, and so does the mark.
    */
   fromAssetId: z.string().nullable().default(null),
+});
+
+/**
+ * Recruit an operative, at a world the power holds, awaiting orders. Its own
+ * action: a declaration that recruits does nothing else, and the mission is
+ * a second one (`deploy_agent`). Free in credits — the mission is what is
+ * priced — but it takes a slot under `maxAgentsFor` and draws `AGENT_UPKEEP`
+ * from the turn it signs on.
+ */
+export const RecruitAgentOp = z.object({
+  op: z.literal('recruit_agent'),
+  /** Whose operative; defaults to the acting power, as `deploy_agent` does. */
+  factionId: z.string().min(1).optional(),
+  /** Where they sign on. Must be a world the power holds. */
+  systemId: z.string().min(1),
+  /**
+   * A captured operative of your own, ransomed home, back on the books rather
+   * than a new face. Their record comes with them, and so does the mark.
+   */
+  fromAssetId: z.string().nullable().default(null),
+  cover: z.string().default(''),
 });
 
 export const RecallAgentOp = z.object({
@@ -957,6 +992,7 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   // declaration has nobody's consent but the player's.
   BreakTreatyOp,
   DeployAgentOp,
+  RecruitAgentOp,
   RecallAgentOp,
   AdjustShipsOp,
   ModelAdjustDissentOp,
@@ -1025,6 +1061,7 @@ export const OpSchema = z.discriminatedUnion('op', [
   FormTreatyOp,
   BreakTreatyOp,
   DeployAgentOp,
+  RecruitAgentOp,
   RecallAgentOp,
   AdjustShipsOp,
   AdjustDissentOp,

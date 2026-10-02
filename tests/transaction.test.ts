@@ -317,7 +317,32 @@ describe('a commitment says when its yield will not be paid', () => {
       'extraction',
       'drajk',
     );
-    expect(out.notes.join(' ')).toMatch(/can draw \d+ a turn from standing arrangements/);
+    // Once. Two blocks used to answer this in different words (item 116).
+    const said = out.notes.filter((n) => /a turn from standing arrangements/.test(n));
+    expect(said).toHaveLength(1);
+    expect(said[0]).toMatch(/can draw at most \d+ a turn from standing arrangements/);
+  });
+
+  it('measures the ceiling on gross earnings, as ledgerFor does', () => {
+    // A cost the power has agreed to pay makes no room under the ceiling,
+    // because `commitmentIncomeFor` caps what is EARNED and adds what is owed
+    // afterwards. The note has to read the same figure the ledger caps.
+    const state = fresh();
+    const ceiling = maxCommitmentIncomeFor(state, 'drajk');
+    state.commitments.push(...([
+      { id: 'com-earn', kind: 'charter', factionIds: ['drajk'], text: 'earns', exclusive: false, incomePerTurn: ceiling, contingencies: [], establishedTurn: 0, status: 'active' },
+      { id: 'com-owe', kind: 'levy', factionIds: ['drajk'], text: 'owes', exclusive: false, incomePerTurn: -2 * ceiling, contingencies: [], establishedTurn: 0, status: 'active' },
+    ] as never[]));
+    const out = applyOps(
+      state,
+      [{
+        op: 'establish_commitment', kind: 'small_stipend', factionIds: ['drajk'],
+        text: 'a stipend', exclusive: false, incomePerTurn: 1,
+      }] as never,
+      'extraction',
+      'drajk',
+    );
+    expect(out.notes.join(' ')).toMatch(/worth 0 to it rather than 1/);
   });
 
   it('says nothing when the arrangement fits under the ceiling', () => {

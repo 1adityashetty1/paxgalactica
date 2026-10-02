@@ -7,7 +7,7 @@ import type {
   TurnOutcomeResponse,
 } from '../api/contract.js';
 import type { EpilogueView } from '../engine/epilogue.js';
-import { eventsVisibleTo, observeOrders } from '../domain/intel.js';
+import { observeOrders, worldAsSeenBy } from '../domain/intel.js';
 import { MAX_CHANNEL_MESSAGES, type CheatResult, type DiscardResult } from '../api/contract.js';
 import type { Cheat } from '../domain/cheats.js';
 import { archiveFilename, packCampaign, unpackCampaign } from '../engine/archive.js';
@@ -18,7 +18,7 @@ import { FileCampaignStore, type CampaignStore } from '../engine/store.js';
 import { closeChannel, endTurn, writeEpilogue, submitAction } from '../engine/turn.js';
 import type { ActionOutcome } from '../engine/turn.js';
 import { askAdvisor, diplomacyReply, dressRimEvent, type ChatMessage } from '../model/calls.js';
-import { rimEventsVisibleTo, type RimEventKind } from '../domain/events.js';
+import type { RimEventKind } from '../domain/events.js';
 import { effectiveStats, getFaction } from '../domain/state.js';
 import { playableFactions } from '../seed/scenario.js';
 import { ApiFailure, toApiFailure } from './errors.js';
@@ -172,24 +172,21 @@ export class GameSession {
     // browser for free, so the `intel` agent effect had nothing left to
     // reveal. See `domain/intel.ts`.
     //
-    // This went through `observeOrders` alone for its whole life, so the event
-    // log shipped UNFILTERED while the orders beside it were redacted — and
-    // `intel.ts` says in as many words that an `intel` entry is private because
-    // "the event log is shipped to the browser whole". `worldAsSeenBy` does
-    // both halves and had no caller outside the tests.
+    // Built on `worldAsSeenBy`, so fog is applied in ONE place. This built its
+    // own redaction for its whole life and got it partly right each time: it
+    // went through `observeOrders` alone and shipped the event log unfiltered
+    // beside the redacted orders; then the log was cut and `state.agents` still
+    // went out whole — every rival operative, unexposed ones included, with
+    // name, world, mission and cover — while CLAUDE.md said `worldAsSeenBy`
+    // closed exactly that. It did; nothing here called it. A field added to the
+    // fog later now reaches the browser by being added there.
     const player = campaign.state.playerFactionId;
     const seen = observeOrders(campaign.state, player);
-    const visibleLog = eventsVisibleTo(campaign.state, player);
+    const world = worldAsSeenBy(campaign.state, player);
+    const visibleLog = world.eventLog;
     const from = logTail === undefined ? 0 : Math.max(0, visibleLog.length - logTail);
     return {
-      state: {
-        ...campaign.state,
-        pendingOrders: seen.orders,
-        eventLog: from === 0 ? visibleLog : visibleLog.slice(from),
-        // A power's own affairs — a rival's mutiny, its windfall — by the
-        // same rule the log above is cut by.
-        rimEvents: rimEventsVisibleTo(campaign.state, player),
-      },
+      state: { ...world, eventLog: from === 0 ? visibleLog : visibleLog.slice(from) },
       eventLogFrom: from,
       eventLogTotal: visibleLog.length,
       rumours: seen.rumours,

@@ -210,7 +210,9 @@ other was promised in prose and never came. Each entry:
   the state block above. Omit it when the operation is aimed at a power rather
   than at a person — a theft from a treasury has no target.
 
-Four at most. Each is charged, capped and exposed on its own.
+Four at most. Each is charged, capped and exposed on its own, and each needs an
+operative the power already has — recruiting one is an action of its own, so a
+power with nobody on the books is turned away before the roll.
 
 This is not a refusal and not a difficulty. Price it as you would anything else;
 naming it simply routes the act into the mechanic that owns it, so it is charged

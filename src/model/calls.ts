@@ -8,6 +8,7 @@ import {
 } from '../domain/diplomacy.js';
 import {
   DIFFICULTY_BANDS,
+  describeCheck,
   formatModifier,
   resolveCheck,
   rollD20,
@@ -643,6 +644,29 @@ export async function resolveAction(
     };
   }
 
+  /* --- 1b'. Covert work needs somebody on the books -------------------- */
+  // Recruiting an operative and sending one are two actions (version 11), so a
+  // covert attempt by a power with nobody to send is not a thing that can be
+  // tried this turn. Turned away here, before the roll and before resolution,
+  // at the price of an inadmissible ruling — nothing — rather than rolled,
+  // charged an action, and then rejected by the reducer for want of a person.
+  const covert = priced.appraisal.covert ?? [];
+  const onBooks = (state.agents ?? []).some(
+    (a) => a.ownerFactionId === state.playerFactionId && !a.exposed,
+  );
+  if (covert.length > 0 && !onBooks) {
+    const why =
+      'You have nobody to send. Recruit an operative first — that is an action of its own, at a world you hold — and send them with your next.';
+    return {
+      output: { narrative: why, ops: [], inadmissible: why },
+      check: null,
+      roll: 0,
+      attempts: priced.attempts,
+      costUsd: priced.costUsd + relevanceCost,
+      ruling,
+    };
+  }
+
   /* --- 1c. A negotiation is not a decree; send them to the channel ---- */
   // Ordered after the red-line check on purpose: an action your own people will
   // not carry out is refused whether or not it also needed someone else's
@@ -732,10 +756,12 @@ export async function resolveAction(
   // mechanism, and turns 0-5 of that campaign had none at all.
   //
   // Staged as an op rather than mutated in, so it lands with the batch and
-  // replays exactly like every other entry.
+  // replays exactly like every other entry. This is the ONE place a roll is
+  // written: `submitAction` used to stage a second copy, and every check reached
+  // the log twice (item 120).
   const checkOp = {
     op: 'log_narrative' as const,
-    text: `[check] ${stat} check: d20 ${roll} ${check.modifier >= 0 ? '+' : ''}${check.modifier} = ${check.total} vs DC ${difficulty} -> ${check.outcome}`,
+    text: `[check] ${describeCheck(check)}`,
   };
 
   /* --- 3. Narrate and enact the outcome code produced ------------------ */

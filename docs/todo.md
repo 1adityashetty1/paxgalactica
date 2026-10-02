@@ -70,12 +70,12 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 | ~~112~~ | ~~a power could decide what two others thought of each other~~ | small | **FIXED** — ported, pinned to journal 7 |
 | ~~111~~ | ~~a bot with grievances, a price on trading people~~ | medium | **PORTED IN PART** — the people half; the bot half is 98 |
 | ~~115~~ | ~~an unaffordable order was paid for out of the standing fleet~~ | small | **FIXED** — the surplus comes off the batch's own gain now, and the bill follows the delivery. `JOURNAL_VERSION` 4, with the exemption that keeps all 48 saves byte-identical |
-| **116** | the commitment income ceiling is reported twice at signature | small | two blocks in `establish_commitment` answer item 51 in different words; one should go |
+| ~~116~~ | ~~the commitment income ceiling is reported twice at signature~~ | small | **FIXED** — the block measuring the NET figure went; the survivor measures gross earnings, which is what `commitmentIncomeFor` caps, and a test pins it said once |
 | ~~117~~ | ~~is `PAXGALACTICA_RAW_JSON=1` the default?~~ | — | **DECIDED: yes.** Ten turns each way on one script (`pt117b_json` vs `pt117c_raw`): no retries in any call kind, declare 44.6s → 15.8s, $7.11 → $4.90, the same four accords. Passed the pre-committed rule after the schema-honesty fixes and a lenient read; `PAXGALACTICA_RAW_JSON=0` restores structured output. See CLAUDE.md "Prompt contract" |
 | **118** | resolution takes 3–6 agentic turns where 2 is the floor | small | reactions with thinking on nested their answer under `StructuredOutput`; the trace now records rejected keys, so one traced campaign says whether resolution does the same |
 | **119** | reactions without thinking, on a turn where the player attacks | — | measured only on mild turns (#37); a power that thought less would show it here |
-| **120** | every check is logged twice | small | `calls.ts` logs `[check] … -> outcome` and `turn.ts` stages a `log_narrative` with `describeCheck`, `→ outcome` — two entries per roll in the event log, the prompts' recent log and the Log panel |
-| **121** | two escorts take five turns | small | resolution filed "commission two escorts" as `capital_ship_construction`, whose floor is 5; `refit` and `retooling` also deliver `commission_ships` faster. `prompts/resolution.md` lists all three with no guidance on which a light hull wants — the category should follow the hull, and the clamp at least should say so |
+| ~~120~~ | ~~every check is logged twice~~ | small | **FIXED** — `resolveAction` writes the one line, at the front of the batch, through `describeCheck`; `submitAction` no longer stages a second |
+| ~~121~~ | ~~two escorts take five turns~~ | small | **FIXED** — the hull decides the category (`commissionCategory`): a battleship is always capital construction, a lighter hull filed there becomes a `refit`, and the re-filing is said. The prompt says the same. `JOURNAL_VERSION` 11, because `pt117_raw` holds exactly those escorts |
 | ~~122~~ | ~~an officer should be a unit, not a record beside the fleet~~ | medium | **BUILT** — `officers` on an order (by family name), aboard when the whole port sails, fall with their contingent rather than on a die, family names unique for the campaign. `JOURNAL_VERSION` 8; all 12 saves replay identically; balance and fleetlab unchanged. Two calls differ from the entry below, and it says which |
 | ~~123~~ | ~~influence does nothing at the table, and resolve does nothing but resist~~ | medium | **BUILT** — a treaty's standing is `TREATY_GOODWILL` plus the other signer's influence modifier (6–12 on the opening board, pinned to journal 9); **Rally** lifts might, guile, industry and influence by up to +3 per share of homeland lost × resolve (unpinned, as decided — 7 of 12 saves drift); personas read effective stats. The harness cannot see a rally turn a war: bots pick targets by line strength and read no stat |
 | ~~124~~ | ~~random events: the Rim moves on its own~~ | medium | **BUILT** — all ten scenes drawn and approved one at a time, in a sandbox campaign that fires one chosen event every turn. Mechanics: the pulse, all ten events, the Haiku line (never waited for, and refused if it brings a number the plain line lacks) and the card in the feed and briefing, on the text fallback. `JOURNAL_VERSION` 10; all 12 saves replay identically; the board moves by at most one world at any hazard/boon split, so the weights stay 0.05 each |
@@ -83,6 +83,22 @@ not there. **So the priority is mechanics, not arbiter tuning.**
 **Audited 2026-09-23:** every numbered item above 81 is built or closed except
 **92**, **94(b)** and the four added today. Of those, **116** is code and the rest
 are campaigns — **117**–**119** can share one traced run if it includes an attack.
+
+**2026-10-01:** 116, 120 and 121 are fixed, with three things found while
+building 124 that were never numbered: the bots size attacks at the might the
+battle uses (so the rally now turns a war in the harness — CLAUDE.md, *"a
+doctrine reads its own might"*), free captains' plain line states its total so
+the flavour guard stops refusing "three hulls", and `GameSession.view` is built
+on `worldAsSeenBy`, so a hidden rival operative no longer reaches the browser.
+Reading might cost the Confederacy Threx on turn 2, which took two more: the
+overbuy trim no longer scraps a hull moved in the same batch, and Drajk's bot
+guards the world facing its war (`guardFronts`). A bot also counts its own
+operatives' debuffs on a rival now (`seenBy`), and only those. And the
+Confederacy is lucky: `Faction.luck` favours free captains at 0.23 of its 0.5.
+A world carries two fixtures of different kinds. Recruiting an officer or an
+operative is an action of its own, and an operative travels three jumps a turn
+to its mission rather than appearing on any world at once.
+What is open is **92**, **94(b)**, **114**, **118** and **119**.
 
 **What is left is a playtest.** Everything from the
 2026-09-07 batch is built or closed, and so are all five of the features raised
