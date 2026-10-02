@@ -67,6 +67,13 @@ export interface BriefingRumour {
  * intelligence has no business in the player's briefing.
  */
 export interface BriefingWatch {
+  id: string;
+  /** Who they are — what a player remembers about a network. */
+  name: string;
+  /** A recruit with no mission yet. */
+  awaiting: boolean;
+  /** The turn a travelling operative is at work from; null once there. */
+  arrives: number | null;
   where: string;
   systemId: string;
   mission: string;
@@ -279,17 +286,16 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
   const watch: BriefingWatch[] = (state.agents ?? [])
     .filter((a) => a.ownerFactionId === me && !a.exposed)
     .map((a) => ({
+      id: a.id,
+      name: a.name,
       where: state.systems.find((sys) => sys.id === a.systemId)?.name ?? a.systemId,
       systemId: a.systemId,
       // A recruit awaiting orders has no mission yet, and one on the road is
       // not there yet; both say so rather than reading as a working watch.
       mission: a.mission ?? 'awaiting orders',
-      effect:
-        a.effect === null
-          ? ''
-          : atWork(a, state.turn)
-            ? describeEffect(a.effect)
-            : `${describeEffect(a.effect)} — on the way, at work from turn ${a.inPlaceFrom}`,
+      effect: a.effect === null ? '' : describeEffect(a.effect),
+      awaiting: a.mission === null,
+      arrives: a.mission !== null && !atWork(a, state.turn) ? a.inPlaceFrom : null,
       successChance: a.successChance,
       sees: (atWork(a, state.turn) ? state.pendingOrders : [])
         .filter(

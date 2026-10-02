@@ -77,12 +77,20 @@ export const BriefingRumourSchema = z.object({
 
 /** One of the player's own operatives, and what it can see. */
 export const BriefingWatchSchema = z.object({
+  /** Which operative, so two on one world with one mission are two rows. */
+  id: z.string().default(''),
+  /** Who they are — what a player remembers about a network. */
+  name: z.string().default(''),
   where: z.string(),
   systemId: z.string(),
   mission: z.string(),
   effect: z.string(),
   successChance: z.number().int(),
   sees: z.array(z.string()),
+  /** A recruit with no mission yet. */
+  awaiting: z.boolean().default(false),
+  /** The turn a travelling operative is at work from; null once there. */
+  arrives: z.number().int().nullable().default(null),
 });
 
 export const BriefingCompletionSchema = z.object({
