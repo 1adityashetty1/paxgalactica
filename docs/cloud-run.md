@@ -42,7 +42,7 @@ gcloud run deploy paxgalactica \
   --source . \
   --region "$REGION" \
   --allow-unauthenticated \
-  --set-env-vars PAXGALACTICA_PROVIDER=openrouter \
+  --set-env-vars PAXGALACTICA_PROVIDER=openrouter,PAXGALACTICA_SPEND_CAP=10 \
   --set-secrets OPENROUTER_API_KEY=openrouter-api-key:latest \
   --timeout 600 \
   --memory 1Gi \
@@ -67,13 +67,22 @@ read at instance start.
   in each instance's memory, so every instance has its own total and it resets
   whenever an instance is replaced. At most it's a per-instance tripwire, and
   `--max-instances` bounds how many there are.
-- **The settings screen is open to anyone who reaches the server.** #52 stores
-  a key entered there in `~/.paxgalactica/settings.json` on whichever instance
-  served the request, and a stored key wins over the environment. On a public
-  deploy, a visitor could switch the provider or put in their own key, on that
-  instance until it is replaced. Don't use the screen on a hosted server. A
-  follow-up should make it read-only when `PAXGALACTICA_PROVIDER` comes from
-  the environment.
+- **The settings screen is open to anyone who reaches the server.** #52's
+  `POST /api/settings` has no auth and writes `~/.paxgalactica/settings.json`
+  on whichever instance served it, and every model call re-reads that file.
+  With `PAXGALACTICA_PROVIDER` set, a visitor cannot change the provider, but:
+  - **model overrides** have no environment variable, so the file always wins.
+    A visitor can point the tiers at a far pricier model, billed to your key,
+    or at one that does not exist and break the game. The key's credit limit
+    is the only bound on this.
+  - **a stored key beats the env key.** A visitor's own key would then pay for
+    everyone on that instance, and see their prompts.
+  - **the spend cap** can be removed or set to 0 unless
+    `PAXGALACTICA_SPEND_CAP` is set in the environment, so set it.
+
+  Each change lasts only on that instance until it is replaced. The fix is a
+  follow-up: refuse settings changes when `PAXGALACTICA_PROVIDER` comes from
+  the environment, and show the panel read-only.
 - **`--timeout 600`.** End of turn takes up to ~80 s with reactions, and the
   response stays open for the event-flavour call.
 - **Concurrency** can stay at the default. Requests share nothing but module
