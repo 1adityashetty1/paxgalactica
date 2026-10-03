@@ -34,6 +34,7 @@ export function ChannelPanel({
   const history = view.openChannel === factionId ? view.channelHistory : [];
   const conceded = view.openChannel === factionId ? view.channelConcessions : [];
   const blockers = view.openChannel === factionId ? view.channelBlockers : [];
+  const budget = view.openChannel === factionId ? view.channelBudget : null;
   const me = view.state.playerFactionId;
 
   useEffect(() => {
@@ -106,6 +107,26 @@ export function ChannelPanel({
               {c.credits > 0 && <span className="muted"> · {c.credits}cr</span>}
               {c.perTurn > 0 && <span className="muted"> · {c.perTurn}/turn</span>}
               {c.hulls > 0 && <span className="muted"> · {c.hulls} hulls</span>}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {/* How much ground the other power can give, set in code by standing and
+          leverage. Shown so a refusal reads as a limit rather than a mood, and
+          so leverage the player holds is visibly worth something. */}
+      {budget && budget.budget > 0 && (
+        <div className="channel-terms">
+          <h5>
+            {faction?.name ?? factionId} can give up about {budget.budget}cr here
+          </h5>
+          <p className="muted">
+            {budget.given}cr is on the table, {Math.max(0, budget.budget - budget.given)}cr left.
+          </p>
+          {budget.over.map((t, i) => (
+            <p key={i} className="channel-term bad">
+              {t}
+              <span className="muted"> — struck: more than they can give</span>
             </p>
           ))}
         </div>

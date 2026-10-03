@@ -39,6 +39,7 @@ import {
   type WorldState,
 } from '../domain/state.js';
 import { classifyPrinciple, classifyPrinciples } from '../domain/compulsions.js';
+import { concessionBudget, withinBudget } from '../domain/leverage.js';
 import { callStructured } from './client.js';
 import { serializeArchetypes } from '../domain/assets.js';
 import { loadPrompt } from './prompts.js';
@@ -1282,6 +1283,8 @@ export async function diplomacyReply(
   factionId: string,
   history: ChatMessage[],
   priorTranscripts: string[],
+  /** What is already written down in this channel, which the budget counts. */
+  onTable: readonly Concession[] = [],
 ): Promise<{
   reply: string;
   concessions: Concession[];
@@ -1333,6 +1336,20 @@ export async function diplomacyReply(
     `## What ${player?.name ?? state.playerFactionId} is holding that you want`,
     '',
     serializeTheirAssets(state, factionId, state.playerFactionId),
+    '',
+    '---',
+    '',
+    // Code owns how much ground; the persona owns the words. See
+    // `concessionBudget` — a concession past it is struck when written down.
+    '## What you can give up',
+    '',
+    (() => {
+      const { budget, because } = concessionBudget(state, factionId, state.playerFactionId);
+      const { given } = withinBudget(state, onTable, factionId, state.playerFactionId);
+      return `About ${budget} credits' worth in this conversation; ${given} of it is already on the table, so ${Math.max(0, budget - given)} is left.${
+        because.length > 0 ? ` Set by ${because.join(', ')}.` : ''
+      }`;
+    })(),
     '',
     '---',
     '',

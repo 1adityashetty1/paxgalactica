@@ -17,7 +17,9 @@ import {
   TRUCE_BREAKING_REPUTATION_COST,
   truceBetween,
   workingStats,
+  demandSide,
 } from '../../../src/domain/diplomacy.js';
+import { describeSecret, secretLive } from '../../../src/domain/leverage.js';
 import { shortageFactor } from '../../../src/domain/events.js';
 import { describeOrderEffect } from '../../../src/domain/development.js';
 import { describeEffect } from '../../../src/domain/diplomacy.js';
@@ -919,6 +921,11 @@ function Assets({ state }: { state: WorldState }) {
                   ? 'your own favour: give it away and the holder may call it in, unasked'
                   : `yours to call in — declare it; it then goes home to ${getFaction(state, a.issuedBy)?.name ?? a.issuedBy}`
                 : null,
+              a.secret
+                ? secretLive(state, a.secret)
+                  ? `proof that ${describeSecret(state, a.secret)} — publish it, or spend it for a hook`
+                  : 'proof of something already over — old news'
+                : null,
               isCommodity(a) && a.issuedBy === me
                 ? `your own goods: worth nothing to you, ${COMMODITY_VALUE} a ${a.unit} to whoever you give them to`
                 : null,
@@ -1252,6 +1259,71 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
             </li>
           ))}
         </ul>
+      )}
+
+      {/* Favours, both ways. What the player can call in is leverage worth
+          knowing about before a conversation; what it owes is a call that can
+          come at any moment. */}
+      {(state.obligations ?? []).some(
+        (o) => o.status === 'open' && (o.holderFactionId === me || o.debtorFactionId === me),
+      ) && (
+        <>
+          <h4>Favours owed</h4>
+          <ul className="terms">
+            {(state.obligations ?? [])
+              .filter((o) => o.status === 'open' && (o.holderFactionId === me || o.debtorFactionId === me))
+              .map((o) => {
+                const mine = o.holderFactionId === me;
+                const other = getFaction(state, mine ? o.debtorFactionId : o.holderFactionId)?.name;
+                return (
+                  <li
+                    key={o.id}
+                    className={mine ? 'good' : 'bad'}
+                    title={
+                      mine
+                        ? 'Call it in by declaring it: they sign a non-aggression pact, a ceasefire or a trade accord with you, or back an ultimatum of yours.'
+                        : 'They can call it in at any time. Walking away from it is priced like breaking a pact.'
+                    }
+                  >
+                    {mine ? `${other} owes you` : `you owe ${other}`} · {o.strength}
+                    {o.restsUntil !== null && state.turn < o.restsUntil ? ` · rests to turn ${o.restsUntil}` : ''}
+                  </li>
+                );
+              })}
+          </ul>
+        </>
+      )}
+
+      {/* Every open ultimatum on the board: a threat is public, and the clock
+          is the point of it. */}
+      {(state.demands ?? []).some((d) => d.status === 'open') && (
+        <>
+          <h4>Ultimatums</h4>
+          {(state.demands ?? [])
+            .filter((d) => d.status === 'open')
+            .map((d) => {
+              const name = (id: string) => getFaction(state, id)?.name ?? id;
+              const forDemand = demandSide(d, 'from').slice(1).map(name);
+              const forTarget = demandSide(d, 'to').slice(1).map(name);
+              return (
+                <div key={d.id} className={d.toFactionId === me ? 'treaty bad' : 'treaty'}>
+                  <div className="treaty-head">
+                    <strong style={{ color: colourOf(state, d.fromFactionId) }}>
+                      {name(d.fromFactionId)} → {name(d.toFactionId)}
+                    </strong>
+                    <span className="eta soon">{Math.max(0, d.deadlineTurn - state.turn)} turns left</span>
+                  </div>
+                  <p className="treaty-summary">{d.text}</p>
+                  <p className="muted">
+                    {d.kind.replace(/_/g, ' ')}
+                    {forDemand.length > 0 ? ` · backing the demand: ${forDemand.join(', ')}` : ''}
+                    {forTarget.length > 0 ? ` · backing ${name(d.toFactionId)}: ${forTarget.join(', ')}` : ''}
+                    {d.toFactionId === me ? ' · give way before the deadline, or it is war' : ''}
+                  </p>
+                </div>
+              );
+            })}
+        </>
       )}
 
       {/* Every live truce, not only the player's: a truce is public, and it is

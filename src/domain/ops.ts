@@ -7,6 +7,9 @@ import {
   TreatyTermsSchema,
   TreatyTypeSchema,
   VoidConditionSchema,
+  DemandKindSchema,
+  OBLIGATION_SIGNABLE,
+  ULTIMATUM_MAX_DEADLINE,
 } from './diplomacy.js';
 import { FibScaleSchema } from './duration.js';
 import { LentSchema } from './loan.js';
@@ -328,6 +331,96 @@ export const PlayNoteOp = z.object({
   op: z.literal('play_note'),
   assetId: z.string().min(1),
   reason: z.string().max(240).default(''),
+});
+
+/**
+ * A favour owed, agreed across a table — see `ObligationSchema`. Extraction
+ * only, like `establish_debt`: it binds the debtor, and a transcript is where
+ * its consent lives. Always weak; a strong hook is only ever bought with a
+ * secret.
+ */
+export const EstablishObligationOp = z.object({
+  op: z.literal('establish_obligation'),
+  debtorFactionId: z.string().min(1),
+  holderFactionId: z.string().min(1),
+  /** One sentence: what is owed, in the words the parties used. */
+  text: z.string().min(1).max(240),
+});
+
+/**
+ * Call in an obligation you hold. Needs nobody's consent — the debtor gave it
+ * when it incurred the obligation. `sign` names a treaty from a closed list;
+ * `support` names an open ultimatum of yours.
+ */
+export const CallObligationOp = z.object({
+  op: z.literal('call_obligation'),
+  obligationId: z.string().min(1),
+  call: z.enum(['sign', 'support']),
+  /** For `sign`: the treaty the debtor enters with you. */
+  treatyType: z.enum(OBLIGATION_SIGNABLE).optional(),
+  /** For `support`: the ultimatum of yours it backs. */
+  demandId: z.string().min(1).optional(),
+  reason: z.string().max(240).default(''),
+});
+
+/** Walk away from an obligation you owe — priced like breaking a pact, in public. */
+export const RepudiateObligationOp = z.object({
+  op: z.literal('repudiate_obligation'),
+  obligationId: z.string().min(1),
+  reason: z.string().max(240).default(''),
+});
+
+/** Publish a secret a watcher found: its subject loses standing with every power. */
+export const PublishDossierOp = z.object({
+  op: z.literal('publish_dossier'),
+  assetId: z.string().min(1),
+  reason: z.string().max(240).default(''),
+});
+
+/** Spend a secret for a strong hook on its subject — see `ObligationSchema`. */
+export const BlackmailOp = z.object({
+  op: z.literal('blackmail'),
+  assetId: z.string().min(1),
+  reason: z.string().max(240).default(''),
+});
+
+/**
+ * Make a public demand of another power, with a deadline — see `DemandSchema`.
+ * Unanswered at the deadline, it is war.
+ */
+export const IssueUltimatumOp = z.object({
+  op: z.literal('issue_ultimatum'),
+  targetFactionId: z.string().min(1),
+  demand: DemandKindSchema,
+  /** `tribute`: credits a turn. */
+  perTurn: z.number().int().min(1).max(1000).optional(),
+  /** `cession`: a world the target holds. */
+  systemId: z.string().min(1).optional(),
+  /** `break_treaty`: a live treaty the target holds with a third power. */
+  treatyId: z.string().min(1).optional(),
+  /** Turns until it is answered, 1–5. */
+  deadlineTurns: z.number().int().min(1).max(ULTIMATUM_MAX_DEADLINE),
+  /** The demand in the issuer's words. */
+  text: z.string().min(1).max(240),
+});
+
+/** Declare for a side of somebody else's ultimatum. */
+export const BackUltimatumOp = z.object({
+  op: z.literal('back_ultimatum'),
+  demandId: z.string().min(1),
+  side: z.enum(['from', 'to']),
+});
+
+/** Give the issuer what it demanded, before the deadline makes it war. */
+export const ConcedeUltimatumOp = z.object({
+  op: z.literal('concede_ultimatum'),
+  demandId: z.string().min(1),
+});
+
+/** Take your own demand back. Nothing is owed, and nobody goes to war. */
+export const WithdrawUltimatumOp = z.object({
+  op: z.literal('withdraw_ultimatum'),
+  demandId: z.string().min(1),
 });
 
 /**
@@ -957,6 +1050,11 @@ export const EXTRACTION_ALLOWED = new Set<string>([
   'establish_loan',
   'return_loan',
   'forgive_loan',
+  // "We will owe you one." Binds the debtor; consent lives in the transcript.
+  'establish_obligation',
+  // A target giving way to a demand in the room, which is the other party's
+  // consent written down — grounded like any concession.
+  'concede_ultimatum',
   // The record of what was said.
   'log_narrative',
   'spawn_event',
@@ -996,6 +1094,14 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   ConsumeAssetOp,
   TransferAssetOp,
   PlayNoteOp,
+  CallObligationOp,
+  RepudiateObligationOp,
+  PublishDossierOp,
+  BlackmailOp,
+  IssueUltimatumOp,
+  BackUltimatumOp,
+  ConcedeUltimatumOp,
+  WithdrawUltimatumOp,
   IssueOrderOp,
   CancelOrderOp,
   InterruptOrderOp,
@@ -1050,6 +1156,8 @@ export const ExtractionOpSchema = z.union([
   // rest of the negotiated vocabulary rather than on the declared path.
   RestructureDebtOp,
   EstablishLoanOp,
+  // A favour owed binds the debtor, so it is agreed in a channel or not at all.
+  EstablishObligationOp,
 ]);
 
 /** The full vocabulary, including ops only the reducer may originate. */
@@ -1068,6 +1176,14 @@ export const OpSchema = z.discriminatedUnion('op', [
   ConsumeAssetOp,
   TransferAssetOp,
   PlayNoteOp,
+  CallObligationOp,
+  RepudiateObligationOp,
+  PublishDossierOp,
+  BlackmailOp,
+  IssueUltimatumOp,
+  BackUltimatumOp,
+  ConcedeUltimatumOp,
+  WithdrawUltimatumOp,
   IssueOrderOp,
   CancelOrderOp,
   InterruptOrderOp,
@@ -1091,6 +1207,7 @@ export const OpSchema = z.discriminatedUnion('op', [
   ReturnLoanOp,
   RepudiateLoanOp,
   ForgiveLoanOp,
+  EstablishObligationOp,
   RecruitCommanderOp,
   SpawnEventOp,
   LogNarrativeOp,
@@ -1525,6 +1642,8 @@ export interface OpRejection {
     | 'unknown_debt'
     | 'unknown_loan'
     | 'unknown_asset'
+    | 'unknown_obligation'
+    | 'unknown_demand'
     | 'doctrine_refusal'
     /** A treaty was declared rather than negotiated; the other party never agreed. */
     | 'needs_consent'

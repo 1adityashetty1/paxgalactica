@@ -2582,6 +2582,139 @@ moving a *thing*. Both parties must have signed: a contingency naming a power
 that is not bound by the commitment is dropped, the same rule
 `Commitment.share` follows.
 
+## Leverage: favours, secrets, ultimatums and what a power will give up
+
+The obligations tree from the 2026-10-02 brainstorm. Records in `diplomacy.ts`
+beside the other standing structures, the pure reads in `leverage.ts`, the
+changes in the reducer. Journal version 13.
+
+### A favour owed
+
+`ObligationSchema`, borrowed from *Victoria 3*'s obligations and *Crusader Kings
+III*'s hooks — **a promissory note with no fixed terms**: consent given in
+advance, called in later, with the terms picked from a closed list at the call.
+`call_obligation` makes the debtor `sign` a `non_aggression`, `ceasefire` or
+`trade_accord` with the holder for `OBLIGATION_TERM_TURNS` (5) — a ceasefire
+called on a power at war is a peace forced by a debt of honour, and leaves a
+truce — or `support` an ultimatum of the holder's. A **weak** favour is spent; a
+**strong** hook rests `OBLIGATION_REST_TURNS` (8) and stays, and while it stands
+its debtor cannot back anybody against the holder. `repudiate_obligation` is
+priced like a broken pact: 25 with the holder, `PACT_BREAKING_REPUTATION_COST`
+with every onlooker.
+
+Made only where consent or proof exists: an accord (`establish_obligation`,
+extraction only, always weak, grounded in the debtor having conceded
+something), **a forgiven debt** (the debtor owes the creditor that let it off —
+pinned to v13 as `LegacyRules.obligations`), and **blackmail** (strong).
+
+### A secret, dug up
+
+`SecretSchema` on a dossier, borrowed from *CK3*'s secrets. A watcher whose
+operation succeeds also rolls its own d20, and on `SECRET_DISCOVERY_ROLL` (17+)
+files proof of one thing its host is hiding — **typed from state, never
+invented** (`secretsAbout`): an operative of theirs at work, a programme in a
+secret category, an unpaid debt or an unreturned loan. Never one the owner
+already has proof of, and never the watcher itself. Pinned to v13
+(`LegacyRules.secrets`).
+
+**A blackmail hook lasts exactly as long as its secret.** The obligation carries
+the secret, and the tick lapses it the turn the secret goes stale — an operative
+burned or recalled, a programme finished, a debt paid. Built without that first,
+and measured: Meridian bought a hook on proof of a Vigil saboteur that was
+caught two turns later, then used it to force the Vigil into a ceasefire nine
+times over the next seventy turns — leverage over a secret long since out. It is
+also the debtor's counterplay: end the thing they know, and the hook ends with
+it. Bot-bought hooks now mostly lapse before they are called, since the
+operatives they rest on are caught quickly; the board did not move either way.
+
+`publish_dossier` costs the subject `SECRET_EXPOSURE_COST` with every other power
+(10 for an operative, 5 for a programme, 6 for a default) and does what proof
+does — burns the operative, puts the programme in the open. `blackmail` spends it
+for a strong hook instead. Either way the subject resents the holder
+(`SECRET_RESENTMENT`, 15). **Proof of something already over is old news**
+(`secretLive`) and is refused: a burned operative, a finished programme and a
+settled debt prove nothing worth paying for. A file bought across a table
+carries no `secret` and can be sold, not used.
+
+### An ultimatum
+
+`DemandSchema`, borrowed from *Victoria 3*'s diplomatic play. **Coercion and war
+were one act** — a power either asked in a channel or attacked. A demand is
+public, names its terms from a closed list (`tribute`, `cession`,
+`basing_rights`, `trade_accord`, `break_treaty`), and runs 1–5 turns.
+Third powers `back_ultimatum` either side; a strong hook or a sworn peace keeps
+a power from siding against the one it is bound to. It cannot be issued across
+a peace or a truce: break that first, and pay.
+
+At the deadline it is **conceded or it is war**. `concede_ultimatum` forms the
+terms (`concedeDemand`, shared with the deadline) and the target resents it
+(`ULTIMATUM_RESENTMENT`, 10). A power run by the bots concedes by arithmetic
+when the issuer's side outguns its own by `ULTIMATUM_YIELD_RATIO` (1.5), in
+battleship-equivalents (`sideStrength`); the player concedes by declaring it, a
+model-driven power by its reaction, and a target in the issuer's own channel by
+the transcript. Otherwise every party on each side goes to war with every party
+on the other: regard set to `WAR_DISPOSITION_THRESHOLD` wherever it was warmer.
+
+### What a power will give up
+
+`concessionBudget` in `leverage.ts`, borrowed from *Burning Wheel*'s Duel of
+Wits. **Code owns how much ground; the model owns the words.** A persona's
+concessions were checked only for whether the ops matched them, and personas
+are agreeable under pressure, so how much a power gave up was whatever the
+conversation talked it into. Now it gives up at most `CONCESSION_BUDGET_TURNS`
+(3) of its gross income per channel, scaled by the other side's influence (a
+tenth per modifier point), its regard for them (±1 across the scale), and
+leverage — a quarter per favour owed (a strong hook twice), for their ships over
+its worlds, for a debt it owes them — clamped to 0.25–3×.
+
+One unit for everything (`concessionWorth`): money at face, a flow at
+`CONCESSION_FLOW_TURNS` (10), a hull at a battleship's price, a world at twelve
+turns of what it pays, a thing at what it is worth to the power giving it up.
+The persona is told its budget and what is already on the table; the session
+strikes the persona's own concessions past it (`withinBudget`), in the order
+they were made, and the channel panel says so. **Not verified live**: no model
+call was made building it, so whether personas now stay inside the number is
+what the next playtest should measure.
+
+### What the bots do with it
+
+Six rules in `initiative.ts`, added in `proposeFor` beside the covert ones so a
+bot added later inherits them:
+
+- **`demandTribute`** — a power whose war ethic takes money for leaving a
+  neighbour alone (`expansionist`, `profiteer`, `opportunist`) demands a tenth of
+  a neighbour's gross a turn, three turns to answer, of one it outguns by
+  `ULTIMATUM_YIELD_RATIO`, has no warmth for, is not at war or at peace with, and
+  is not already paid by. **Not the Vigil**, whose sheet will *"not accept
+  payment to stand down; being bought is the insult"* — tribute is exactly that —
+  and not the Drift, which takes no master and asks nothing. One at a time;
+  self-limiting, since every concession costs the target's regard.
+- **`watch`** — a watcher on the power the bot trusts least, at its best world,
+  one at a time, always leaving a slot free for a saboteur. Aimed by standing,
+  not by what there is to find: the fog hides a rival's secrets from the bot
+  that would go looking for them.
+- **`useProof`** — live proof published against a power the bot is at war with,
+  spent for a strong hook on anyone else.
+- **`callIn`** — a favour owed by an enemy buys a ceasefire; any other favour
+  backs the bot's own open demand.
+- **`backDemands`** — a bot declares against whichever principal it is at war
+  with, never against a power holding a hook on it or one it is bound to.
+
+**Measured.** Over 30 turns: six demands, five conceded and one war; twenty
+watchers sent; eight proofs published. Over 100 turns, eighteen demands, sixteen
+conceded, two wars, and two blackmails — both on saboteurs caught soon after,
+so both hooks lapsed unused (see *"A blackmail hook lasts exactly as long as its
+secret"*). Meridian squeezes
+the Confederacy most. The board is **6/6/5/5/3** at 30 and at 100 turns, against
+6/6/6/5/2 and 5/6/5/5/4 before — the Confederacy keeps a third world — and the
+no-events control is 6/6/6/5/2 against 6/6/6/6/1. Nobody is eliminated and every
+property `tests/balance.test.ts` asserts holds.
+
+**Checked atomic, because the harness is not.** `endTurn` commits a bot's batch
+atomically, so one rejected op discards its whole turn; the harness applies
+batches partially and would hide that. Replayed with atomic batches over 30 and
+100 turns, no bot turn is lost to a rejection.
+
 ## Faction lines are enforced, not suggested
 
 Red lines stop a faction acting out of character. **Compulsions** stop it
@@ -5360,6 +5493,15 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `set_toll_policy` | who pays to cross your space; free, actor's own faction only. An accord may only **lift** a toll — adding one is `declared_only` |
 | `consume_asset` | spend, release or destroy a thing you hold; draws an instrument's `uses` or stuff's `quantity`. Never a promissory note |
 | `play_note` | call in a promissory note you hold from another power; refused in war or when what it gives is already in force |
+| `establish_obligation` | **extraction-only** — a favour owed; binds the debtor, always weak |
+| `call_obligation` | holder only; `sign` a non-aggression pact, ceasefire or trade accord, or `support` an ultimatum of yours |
+| `repudiate_obligation` | debtor only; priced like breaking a pact |
+| `publish_dossier` | spend proof a watcher found: the subject loses standing with everyone |
+| `blackmail` | spend proof a watcher found for a strong hook |
+| `issue_ultimatum` | a public demand with a deadline; refused across a peace or a truce |
+| `back_ultimatum` | a third power declares for a side |
+| `concede_ultimatum` | the target gives way; also reachable from the target's own accord |
+| `withdraw_ultimatum` | issuer only |
 | `issue_order` | see Duration below; optional `onComplete` payload, paid at issue. `force` is a count (drawn proportionally) or a named composition |
 | `cancel_order` | returns the unspent part of an `onComplete` payload |
 | `interrupt_order` | rejected when the order is not interruptible; **somebody else's** order also needs ships at its origin or target |
@@ -5395,8 +5537,8 @@ Rejection codes: `unknown_op`, `schema_invalid`, `reducer_only`,
 `unknown_treaty`, `unknown_agent`, `commitment_conflict`, `no_presence`,
 `unreachable_target`, `missing_duration`, `insufficient_credits`,
 `not_interruptible`, `illegal_value`, `doctrine_refusal`, `needs_consent`,
-`declared_only`, `unknown_debt`, `unknown_loan`, `already_void`,
-`treaty_conflict`.
+`declared_only`, `unknown_debt`, `unknown_loan`, `unknown_obligation`,
+`unknown_demand`, `already_void`, `treaty_conflict`.
 
 ---
 

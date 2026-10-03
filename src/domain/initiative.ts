@@ -11,7 +11,9 @@ import {
   TRUCE_TURNS,
   atWork,
   fixtureIntegrity,
+  hookedBy,
   isCommodity,
+  ULTIMATUM_YIELD_RATIO,
   isTreatyLive,
   truceBetween,
 } from './diplomacy.js';
@@ -19,6 +21,7 @@ import { EFFECT_COST } from './development.js';
 import { ENVOYS_QUIET_TURNS } from './events.js';
 import { clashKey } from './pulse.js';
 import { jumpsBetween } from './graph.js';
+import { secretLive, sideStrength } from './leverage.js';
 import { ASSET_ARCHETYPES } from './assets.js';
 import {
   hullsAt,
@@ -42,6 +45,7 @@ import {
   WORLD_TYPE_STAT,
   liveAgentsOf,
   maxAgentsFor,
+  MAX_TREATY_INCOME_PER_TURN,
   type StarSystem,
   type WorldState,
 } from './state.js';
@@ -447,6 +451,215 @@ function sabotage(ctx: Ctx): Ops {
       cover: `a contract crew at ${sys(state, target.a.atSystemId!)?.name ?? target.a.atSystemId}`,
     },
   ];
+}
+
+/**
+ * Call in a favour owed by a power this bot is at war with: a ceasefire, which
+ * is the most a debt of honour can buy off an enemy and leaves a truce behind
+ * it. A doctrine bot has no other use for a favour that it can read off the
+ * board — backing an ultimatum needs an ultimatum of its own, and the bots
+ * issue none.
+ */
+function callIn(ctx: Ctx): Ops {
+  const { state, me } = ctx;
+  const enemies = new Set(warsFor(state, me));
+  const ready = (state.obligations ?? [])
+    .filter(
+      (o) =>
+        o.holderFactionId === me &&
+        o.status === 'open' &&
+        (o.restsUntil === null || state.turn >= o.restsUntil) &&
+        // A hook whose secret is over would be refused, and a refused op
+        // discards the bot's whole batch in live play.
+        (!o.secret || secretLive(state, o.secret)),
+    )
+    .sort((a, b) => a.id.localeCompare(b.id));
+  const ops: Ops = [];
+  const used = new Set<string>();
+  // An enemy that owes it a favour is a war it can end.
+  const enemy = ready.find((o) => enemies.has(o.debtorFactionId));
+  if (enemy) {
+    used.add(enemy.id);
+    ops.push({
+      op: 'call_obligation',
+      obligationId: enemy.id,
+      call: 'sign',
+      treatyType: 'ceasefire',
+      reason: 'a war it can end with a debt owed',
+    });
+  }
+  // And a demand of its own is one every power that owes it should back.
+  const mine = (state.demands ?? []).find((d) => d.status === 'open' && d.fromFactionId === me);
+  if (mine) {
+    for (const o of ready) {
+      if (used.has(o.id) || o.debtorFactionId === mine.toFactionId) continue;
+      if (mine.backers.some((b) => b.factionId === o.debtorFactionId && b.side === 'from')) continue;
+      used.add(o.id);
+      ops.push({ op: 'call_obligation', obligationId: o.id, call: 'support', demandId: mine.id, reason: 'what it owes' });
+    }
+  }
+  return ops;
+}
+
+/**
+ * Who demands tribute: a power whose doctrine takes money for leaving a
+ * neighbour alone. Not the Vigil — its sheet will *"not accept payment to stand
+ * down; being bought is the insult"*, and tribute is exactly that — and not the
+ * Drift, whose whole doctrine is to take no master and ask nothing. Keyed on the
+ * war ethic, so a power that changes doctrine changes this with it.
+ */
+const DEMANDING_ETHICS = new Set(['expansionist', 'profiteer', 'opportunist']);
+
+/** A tenth of the target's gross a turn, the same order as a debt's instalment. */
+export const BOT_TRIBUTE_SHARE = 0.1;
+export const BOT_TRIBUTE_DEADLINE = 3;
+
+/**
+ * Demand tribute of a weaker neighbour.
+ *
+ * Only of a power the bot outguns by `ULTIMATUM_YIELD_RATIO` — the margin at
+ * which a bot-run target gives way — so a rational demander asks only what it
+ * expects to get, and only of one it has no warmth for, is not already at war
+ * with, is not bound to peace with, and is not already being paid by. One
+ * demand at a time.
+ *
+ * Self-limiting by construction: a concession costs the target's regard
+ * (`ULTIMATUM_RESENTMENT`), so a power squeezed often enough comes to hate the
+ * squeezer, and a power at war is not sent demands.
+ */
+function demandTribute(ctx: Ctx): Ops {
+  const { state, me } = ctx;
+  const faction = getFaction(state, me);
+  if (!faction || !DEMANDING_ETHICS.has(faction.warEthic)) return [];
+  if ((state.demands ?? []).some((d) => d.status === 'open' && d.fromFactionId === me)) return [];
+  const enemies = new Set(warsFor(state, me));
+  const mine = sideStrength(state, [me]);
+  const neighbours = [
+    ...new Set(
+      frontier(state, me)
+        .map((t) => t.controllerFactionId)
+        .filter((id): id is string => id !== null && id !== me),
+    ),
+  ];
+  const target = neighbours
+    .filter(
+      (id) =>
+        !enemies.has(id) &&
+        dispositionBetween(state, me, id) <= BOT_AGGRESSION_CEILING &&
+        !boundBy(state, me, id, PEACE_TYPES) &&
+        !truceBetween(state.truces, state.turn, me, id) &&
+        !boundBy(state, me, id, new Set(['tribute'])) &&
+        !(state.demands ?? []).some((d) => d.status === 'open' && d.toFactionId === id),
+    )
+    .map((id) => ({ id, ratio: mine / Math.max(0.1, sideStrength(state, [id])) }))
+    .filter((t) => t.ratio >= ULTIMATUM_YIELD_RATIO)
+    .sort((a, b) => b.ratio - a.ratio || a.id.localeCompare(b.id))[0];
+  if (!target) return [];
+  const perTurn = Math.max(
+    5,
+    Math.min(MAX_TREATY_INCOME_PER_TURN, Math.round(ledgerFor(state, target.id).gross * BOT_TRIBUTE_SHARE)),
+  );
+  return [
+    {
+      op: 'issue_ultimatum',
+      targetFactionId: target.id,
+      demand: 'tribute',
+      perTurn,
+      deadlineTurns: BOT_TRIBUTE_DEADLINE,
+      text: `${faction.name} demands ${perTurn} a turn of ${getFaction(state, target.id)?.name ?? target.id}, or it will take what it is owed.`,
+    },
+  ];
+}
+
+/** What a bot holds back before it posts a watcher. */
+export const BOT_WATCHER_RESERVE = AGENT_COST.surveillance * 4;
+
+/**
+ * Keep a watcher on the power it trusts least, one at a time, at that power's
+ * best world.
+ *
+ * The bots ran no watchers, so secrets — the whole of what a watcher digs up —
+ * could never be found by anyone but the player. Aimed by standing rather than
+ * by what there is to find, because what there is to find is the fog's to hide:
+ * a bot cannot see a rival's operatives to know which rival is worth watching.
+ */
+function watch(ctx: Ctx): Ops {
+  const { state, me } = ctx;
+  const home = held(state, me).sort((a, b) => b.strategicValue - a.strategicValue || a.id.localeCompare(b.id))[0];
+  if (!home) return [];
+  const distrusted = state.factions
+    .filter((f) => f.id !== me && held(state, f.id).length > 0)
+    .map((f) => ({ id: f.id, regard: dispositionBetween(state, me, f.id) }))
+    .sort((a, b) => a.regard - b.regard || a.id.localeCompare(b.id))[0];
+  if (!distrusted) return [];
+  const post = held(state, distrusted.id).sort(
+    (a, b) => b.strategicValue - a.strategicValue || a.id.localeCompare(b.id),
+  )[0]!;
+  const effect = { kind: 'intel', revealsOrders: true };
+  const watcher = state.agents.find(
+    (a) => a.ownerFactionId === me && !a.exposed && a.mission === 'surveillance',
+  );
+  if (watcher) {
+    // Still watching somebody who is not itself? Then leave it be.
+    const host = sys(state, watcher.systemId)?.controllerFactionId;
+    if (host && host !== me) return [];
+    if (purse(state, me) < AGENT_COST.surveillance) return [];
+    return [{ op: 'deploy_agent', agent: watcher.id, systemId: post.id, mission: 'surveillance', effect }];
+  }
+  if (purse(state, me) < BOT_WATCHER_RESERVE) return [];
+  // One slot always left for a saboteur, so the two never race for the last.
+  if (liveAgentsOf(state, me).length + 1 >= maxAgentsFor(state, me)) return [];
+  return [
+    { op: 'recruit_agent', systemId: home.id },
+    {
+      op: 'deploy_agent',
+      systemId: post.id,
+      mission: 'surveillance',
+      effect,
+      cover: `a factor's clerk at ${post.name}`,
+    },
+  ];
+}
+
+/**
+ * Use proof it holds while it still proves something: published against a power
+ * it is at war with, to cost the enemy standing everywhere; spent for a strong
+ * hook on anybody else, which `callIn` then turns into backing.
+ */
+function useProof(ctx: Ctx): Ops {
+  const { state, me } = ctx;
+  const enemies = new Set(warsFor(state, me));
+  return state.assets
+    .filter((a) => a.heldBy === me && a.secret && a.secret.subject !== me && secretLive(state, a.secret))
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .slice(0, 1)
+    .map((a) => ({
+      op: enemies.has(a.secret!.subject) ? 'publish_dossier' : 'blackmail',
+      assetId: a.id,
+    }));
+}
+
+/**
+ * Declare for a side of somebody else's ultimatum: against whichever principal
+ * this bot is already at war with. Never against a power holding a hook on it
+ * or one it is bound to peace with — the reducer would refuse both, and a bot
+ * proposing what it cannot do is a bot reporting a move it never made.
+ */
+function backDemands(ctx: Ctx): Ops {
+  const { state, me } = ctx;
+  const enemies = new Set(warsFor(state, me));
+  const ops: Ops = [];
+  for (const d of state.demands ?? []) {
+    if (d.status !== 'open' || d.fromFactionId === me || d.toFactionId === me) continue;
+    if (d.backers.some((b) => b.factionId === me)) continue;
+    const side = enemies.has(d.toFactionId) ? 'from' : enemies.has(d.fromFactionId) ? 'to' : null;
+    if (side === null) continue;
+    const against = side === 'from' ? d.toFactionId : d.fromFactionId;
+    if (hookedBy(state.obligations, me, against)) continue;
+    if (boundBy(state, me, against, PEACE_TYPES) || truceBetween(state.truces, state.turn, me, against)) continue;
+    ops.push({ op: 'back_ultimatum', demandId: d.id, side });
+  }
+  return ops;
 }
 
 function buy(ctx: Ctx, appetite: number, reserveTurns: number, doctrine: BuyDoctrine = {}): Ops {
@@ -1574,7 +1787,16 @@ export function proposeFor(state: WorldState, factionId: string): Proposal | nul
   // covert half of a war it is in — added here rather than to five bots, for
   // the reason the filters below are: a bot added later inherits them.
   const ctx = { state, me: factionId };
-  const raw = [...bot(ctx), ...mend(ctx), ...sabotage(ctx)];
+  const raw = [
+    ...bot(ctx),
+    ...mend(ctx),
+    ...sabotage(ctx),
+    ...watch(ctx),
+    ...useProof(ctx),
+    ...demandTribute(ctx),
+    ...callIn(ctx),
+    ...backDemands(ctx),
+  ];
   // Paper first, then standing. Both are post-filters over one proposal, so a
   // bot cannot route around either and the order between them only decides
   // which reason is given for an act both would have refused.

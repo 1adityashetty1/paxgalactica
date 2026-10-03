@@ -73,6 +73,14 @@ leaves a faction with nobody following it.
 | `split_asset` | break a divisible holding into two lots |
 | `consume_asset` | spend, release or destroy a thing you hold |
 | `play_note` | call in a promissory note you hold — see Notes and goods |
+| `call_obligation` | call in a favour owed to you — see Favours, secrets and ultimatums |
+| `repudiate_obligation` | walk away from a favour you owe, at a pact-breaker's price |
+| `publish_dossier` | publish a secret your watcher found |
+| `blackmail` | spend a secret your watcher found for a strong hook on its subject |
+| `issue_ultimatum` | a public demand with a deadline; unanswered, it is war |
+| `back_ultimatum` | declare for a side of someone else's ultimatum |
+| `concede_ultimatum` | give way to a demand made of you |
+| `withdraw_ultimatum` | take your own demand back |
 | `adjust_dissent` | **your own** institutions grow more restive — never less |
 | `cancel_order` | an existing order is called off |
 | `interrupt_order` | an order is disrupted by force or event |
@@ -684,6 +692,31 @@ beside one of them is a second source of truth. And do **not** mint one for a
 consequence that has already been paid: if the narrative is *"their fleet is
 crippled"*, that is `adjust_ships`, not a `wreckage` asset, unless somebody is
 going to come and lift it.
+
+### Favours, secrets and ultimatums
+
+**A favour owed is called in, not asked for.** The standing block lists the
+obligations owed to you and by you. `call_obligation` with `call: "sign"` and a
+`treatyType` of `non_aggression`, `ceasefire` or `trade_accord` makes the debtor
+sign it with you for five turns — a ceasefire called on a power at war is a
+peace, and leaves a truce. `call: "support"` with a `demandId` puts the debtor
+on your side of an ultimatum of yours. A weak favour is spent; a strong hook
+rests and can be used again. Walking away from one you owe
+(`repudiate_obligation`) is priced like breaking a pact, in public.
+
+**A secret is proof a watcher found** — a dossier the state block marks as one.
+`publish_dossier` costs its subject standing with every power and burns the
+operative or exposes the programme it proves; `blackmail` spends it for a
+strong hook on its subject. Proof of something already over is old news and is
+refused.
+
+**An ultimatum is a threat with a clock.** `issue_ultimatum` names a target, a
+`demand` — `tribute` (with `perTurn`), `cession` (with `systemId`, a world they
+hold), `basing_rights`, `trade_accord`, or `break_treaty` (with `treatyId`, a
+treaty they hold with a third power) — and `deadlineTurns`, 1 to 5. It is
+public. Other powers may `back_ultimatum` either side. At the deadline the
+target has given way (`concede_ultimatum`) or it is war between the two sides.
+You cannot threaten a power you are bound to peace with; break the peace first.
 
 ### Notes and goods
 

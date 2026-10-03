@@ -946,6 +946,19 @@ export function groundInConcessions(
       dropped.push(`credits out of ${otherId}'s treasury, which it never agreed to pay.`);
       return false;
     }
+    // A favour owed binds the power that owes it, and giving way to a demand
+    // binds the power giving way — both need it to have said something.
+    if (op.op === 'establish_obligation' && op.debtorFactionId === otherId && !saidAnything) {
+      dropped.push(`a favour owed by ${otherId}, which it never agreed to owe.`);
+      return false;
+    }
+    if (op.op === 'concede_ultimatum' && !saidAnything) {
+      const demand = (state.demands ?? []).find((d) => d.id === op.demandId);
+      if (demand?.toFactionId === otherId) {
+        dropped.push(`${otherId} giving way to the ultimatum, which it never agreed to.`);
+        return false;
+      }
+    }
     if (op.op === 'establish_commitment') {
       const bound = Array.isArray(op.factionIds) ? (op.factionIds as string[]) : [];
       if (bound.includes(otherId) && !saidAnything) {

@@ -894,6 +894,8 @@ export function createSeedState(
     rimEvents: [],
     lastClash: {},
     truces: [],
+    obligations: [],
+    demands: [],
     treaties: [],
     commitments: [],
     agents: [],

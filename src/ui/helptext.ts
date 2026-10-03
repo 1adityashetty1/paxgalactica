@@ -10,8 +10,10 @@ import {
   MAX_FIXTURE_BONUS,
   MAX_FIXTURES_PER_WORLD,
   NOTE_TERM_TURNS,
+  OBLIGATION_TERM_TURNS,
   TRUCE_BREAKING_REPUTATION_COST,
   TRUCE_TURNS,
+  ULTIMATUM_MAX_DEADLINE,
 } from '../domain/diplomacy.js';
 import { EMISSION_RANGE } from '../domain/intel.js';
 import { fixtureKindFor } from '../domain/initiative.js';
@@ -166,4 +168,22 @@ function exampleFixture(state: WorldState): string | null {
 const WORDS = ['none', 'one', 'two', 'three', 'four'];
 function count(n: number): string {
   return WORDS[n] ?? String(n);
+}
+
+/** Favours, secrets, ultimatums and the budget a power negotiates within. */
+export function leverageLines(): string[] {
+  return [
+    'LEVERAGE',
+    '  A favour owed can be called in, unasked: the power that owes it signs a',
+    `  non-aggression pact, a ceasefire or a trade accord for ${OBLIGATION_TERM_TURNS} turns, or backs`,
+    '  an ultimatum of yours. Favours come from accords, from debts you forgive,',
+    '  and from blackmail.',
+    '  A watcher of yours can dig up proof of what its host hides: an operative,',
+    '  a secret programme, an unpaid debt. Publish it to cost them standing with',
+    '  everyone, or keep it quiet for a hook that never stops being useful.',
+    `  An ultimatum is a public demand with a deadline of up to ${ULTIMATUM_MAX_DEADLINE} turns. Others`,
+    '  may back either side; at the deadline it is given way to, or it is war.',
+    '  Every power can give up only so much in one conversation. The channel',
+    '  shows how much; your influence and your leverage over them widen it.',
+  ];
 }

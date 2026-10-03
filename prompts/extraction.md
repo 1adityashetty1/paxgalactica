@@ -49,6 +49,16 @@ leaving the buyer ninety credits poorer and holding nothing.
 **nothing** — a hostage released, a gift, a debt of honour settled. The moment a
 price is named, it is a treaty.
 
+**A favour owed is `establish_obligation`.** *"We will owe you one"*,
+*"remember this when you need us"* — a power taking on a debt of honour it can
+be made to pay, by signing a pact or backing an ultimatum when the holder calls.
+`debtorFactionId` is the power that owes, `holderFactionId` the one owed. Only
+when the debtor said it in its own voice.
+
+**Giving way to an ultimatum in the room is `concede_ultimatum`** with the
+standing block's `demandId`, when the power the demand was made of agreed to it
+here. Do not also write the treaty: conceding forms it.
+
 **A promissory note changes hands the same way.** A power's own note is a
 favour it may give — *"take our note; call on us when you need the line"* is a
 `transfer_asset` of that note to the other party, or an `assets` term when

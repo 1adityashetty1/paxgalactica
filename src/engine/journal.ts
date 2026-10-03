@@ -16,7 +16,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 12;
+export const JOURNAL_VERSION = 13;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -94,6 +94,7 @@ export const JournalVersionSchema = z.union([
   z.literal(10),
   z.literal(11),
   z.literal(12),
+  z.literal(13),
 ]);
 
 export const JournalSchema = z.object({
@@ -131,7 +132,9 @@ export const JournalSchema = z.object({
    * 11 — written before a war-ending peace left a truce, before a power's
    *     span of control charged dissent, and before powers made goods and
    *     held promissory notes.
-   * 12 — current.
+   * 12 — written before forgiving a debt left the debtor owing a favour, and
+   *     before a watcher at work could dig up its host's secrets.
+   * 13 — current.
    */
   version: JournalVersionSchema,
   entries: z.array(JournalEntrySchema),
@@ -285,6 +288,11 @@ export function replay(
     truces: parsed.version >= 12,
     // Holding many worlds cost no dissent.
     spanOfControl: parsed.version >= 12,
+    // Forgiveness bought goodwill and nothing else, and a watcher filed no
+    // proof. Those campaigns' debts were forgiven and their watchers posted
+    // under that rule.
+    obligations: parsed.version >= 13,
+    secrets: parsed.version >= 13,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

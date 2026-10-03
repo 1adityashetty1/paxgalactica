@@ -131,14 +131,14 @@ describe('the covert half of a war', () => {
     const s = createSeedState('meridian');
     s.factions.find((f) => f.id === 'vigil')!.credits = BOT_SABOTEUR_RESERVE - 1;
     const ops = proposeFor(s, 'vigil')?.ops ?? [];
-    expect(ops.some((o) => o.op === 'deploy_agent')).toBe(false);
+    expect(ops.some((o) => o.op === 'deploy_agent' && o.mission === 'sabotage')).toBe(false);
   });
 
   it('is not waged on a power it is not at war with', () => {
     const s = createSeedState('meridian');
     // Meridian is at war with nobody on the opening board.
     expect(warsFor(s, 'meridian')).toEqual([]);
-    expect((proposeFor(s, 'meridian')?.ops ?? []).some((o) => o.op === 'deploy_agent')).toBe(false);
+    expect((proposeFor(s, 'meridian')?.ops ?? []).some((o) => o.op === 'deploy_agent' && o.mission === 'sabotage')).toBe(false);
   });
 
   it('mends what a saboteur broke', () => {
@@ -149,5 +149,49 @@ describe('the covert half of a war', () => {
       targetId: 'ark-5',
       onComplete: { kind: 'repair_fixture', magnitude: 2, fixtureKind: 'power_plant' },
     });
+  });
+});
+
+describe('the leverage the bots reach for', () => {
+  it('a power whose doctrine takes money demands tribute of a neighbour it outguns', () => {
+    const s = createSeedState('freeworlds');
+    // Pile the Combine's fleet high enough that a neighbour must give way.
+    const home = s.systems.filter((x) => x.controllerFactionId === 'ojjul').sort((a, b) => b.strategicValue - a.strategicValue)[0]!;
+    home.ships.ojjul = { ...(home.ships.ojjul ?? {}), battleship: 200 };
+    const ops = proposeFor(s, 'ojjul')?.ops ?? [];
+    expect(ops.find((o) => o.op === 'issue_ultimatum')).toMatchObject({ demand: 'tribute', deadlineTurns: 3 });
+  });
+
+  it('the Vigil does not: being bought is the insult, and tribute is that', () => {
+    const s = createSeedState('freeworlds');
+    const home = s.systems.filter((x) => x.controllerFactionId === 'vigil')[0]!;
+    home.ships.vigil = { ...(home.ships.vigil ?? {}), battleship: 200 };
+    expect((proposeFor(s, 'vigil')?.ops ?? []).some((o) => o.op === 'issue_ultimatum')).toBe(false);
+  });
+
+  it('keeps a watcher on the power it trusts least', () => {
+    const s = createSeedState('freeworlds');
+    const ops = proposeFor(s, 'meridian')?.ops ?? [];
+    const sent = ops.find((o) => o.op === 'deploy_agent' && o.mission === 'surveillance');
+    expect(sent).toBeDefined();
+    // Meridian trusts the Vigil least on the opening board (−55).
+    expect(s.systems.find((x) => x.id === sent!.systemId)!.controllerFactionId).toBe('vigil');
+  });
+
+  it('publishes proof against an enemy and blackmails anyone else with it', () => {
+    const s = createSeedState('freeworlds');
+    const file = (subject: string) => ({
+      id: `ast-p-${subject}`, kind: 'dossier', text: 'proof', heldBy: 'vigil', quantity: 1, unit: 'file',
+      commanderId: null, agentId: null, divisible: false, valuePerUnit: {}, speculative: false, valueRange: {},
+      uses: null, atSystemId: null, portable: true, yield: null, acquiredTurn: 0,
+      secret: { kind: 'default' as const, subject, ref: 'x' },
+    });
+    // A live default: Drajk is delinquent on its debt to the Combine.
+    const debt = s.debts.find((d) => d.debtorFactionId === 'drajk')!;
+    expect(debt.status).toBe('delinquent');
+    s.assets.push({ ...file('drajk'), secret: { kind: 'default', subject: 'drajk', ref: debt.id } });
+    const ops = proposeFor(s, 'vigil')?.ops ?? [];
+    // The Vigil is at war with Drajk.
+    expect(ops.find((o) => o.assetId === 'ast-p-drajk')?.op).toBe('publish_dossier');
   });
 });

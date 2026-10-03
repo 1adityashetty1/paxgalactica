@@ -358,6 +358,14 @@ courier to your own capital — is `trivial`, not exempt. **Calling in a
 promissory note the acting power holds is `trivial` and is not a
 negotiation**: the issuer consented when it wrote the note.
 
+**Calling in a favour owed to the acting power** (`call_obligation`) is
+`trivial` for the same reason, and so is **giving way to an ultimatum** made of
+it. **Issuing an ultimatum** is the acting power's own act and never a
+negotiation — price the nerve it takes (`influence`, or `might` where the threat
+is the fleet), not whether the target agrees, which the deadline decides.
+**Publishing or blackmailing with a secret** a watcher found is `guile`, and
+easy: the proof exists.
+
 **An attack on a power you hold a truce with** (the standing block lists them) is
 admissible and priced like any attack — but say in the rationale that it breaks
 the truce, which costs standing with every power on the board.

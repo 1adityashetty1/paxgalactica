@@ -27,6 +27,7 @@ import { timingReport } from '../model/client.js';
 import { FileSink, NULL_SINK, setTelemetrySink, span } from '../model/telemetry.js';
 import { classifyPrinciples } from '../domain/compulsions.js';
 import { mergeConcessions, type Concession, type Retraction } from '../domain/diplomacy.js';
+import { withinBudget } from '../domain/leverage.js';
 
 export type Emit = (event: ServerEvent) => void;
 
@@ -69,6 +70,8 @@ export class GameSession {
    * whole negotiation being refused at the end after both sides have said yes.
    */
   private channelConcessions: Concession[] = [];
+  /** The other power's concession budget in the open channel — see `concessionBudget`. */
+  private channelBudget: { budget: number; given: number; over: string[] } = { budget: 0, given: 0, over: [] };
   private channelBlockers: { concession: string; principle: string }[] = [];
   private channelHistory: ChatMessage[] = [];
   private lastBriefing: Briefing | null = null;
@@ -216,6 +219,13 @@ export class GameSession {
       openChannel: this.openChannel,
       channelHistory: [...this.channelHistory],
       channelConcessions: [...this.channelConcessions],
+      // Read live, so the panel shows the budget before the first reply and
+      // follows the board while the channel is open.
+      channelBudget: (() => {
+        if (!this.openChannel) return { budget: 0, given: 0, over: [] };
+        const now = withinBudget(campaign.state, this.channelConcessions, this.openChannel, campaign.state.playerFactionId);
+        return { budget: now.budget, given: now.given, over: [...this.channelBudget.over] };
+      })(),
       channelBlockers: [...this.channelBlockers],
       actionPoints: { left: campaign.actionPointsLeft, perTurn: ACTION_POINTS_PER_TURN },
       name: campaign.name,
@@ -298,6 +308,7 @@ export class GameSession {
     this.openChannel = null;
     this.channelHistory = [];
     this.channelConcessions = [];
+    this.channelBudget = { budget: 0, given: 0, over: [] };
     this.channelBlockers = [];
     this.lastBriefing = null;
     this.epilogue = null;
@@ -314,6 +325,7 @@ export class GameSession {
     this.openChannel = null;
     this.channelHistory = [];
     this.channelConcessions = [];
+    this.channelBudget = { budget: 0, given: 0, over: [] };
     this.channelBlockers = [];
     // A finished campaign reloads finished. The narration is cached in the
     // save rather than regenerated, because it is a model call and a player
@@ -614,6 +626,7 @@ export class GameSession {
       this.openChannel = factionId;
       this.channelHistory = [];
       this.channelConcessions = [];
+      this.channelBudget = { budget: 0, given: 0, over: [] };
       this.channelBlockers = [];
     }
 
@@ -636,16 +649,27 @@ export class GameSession {
 
     const { result, rulings } = await this.traced('talk', async () => {
       const result = await this.exclusive(`${faction.name} considers`, async () =>
-        diplomacyReply(campaign.state, factionId, this.channelHistory, campaign.priorTranscripts(factionId)),
+        diplomacyReply(
+          campaign.state,
+          factionId,
+          this.channelHistory,
+          campaign.priorTranscripts(factionId),
+          this.channelConcessions,
+        ),
       );
 
       this.channelHistory.push({ speaker: 'faction', text: result.reply });
 
-      this.channelConcessions = mergeConcessions(
-        this.channelConcessions,
-        result.concessions,
-        result.retractions,
-      );
+      // Then held to the budget: what the other power wrote past it is struck,
+      // and said, so a term never vanishes from the table unexplained.
+      const merged = mergeConcessions(this.channelConcessions, result.concessions, result.retractions);
+      const held = withinBudget(campaign.state, merged, factionId, campaign.state.playerFactionId);
+      this.channelConcessions = held.kept;
+      this.channelBudget = {
+        budget: held.budget,
+        given: held.given,
+        over: [...this.channelBudget.over, ...held.over.map((c) => c.text)].slice(-6),
+      };
 
       // The player's own institutions get a view NOW, not at `/endtalk`. A red
       // line found at the end refuses the whole accord after both sides have
@@ -693,11 +717,13 @@ export class GameSession {
     const history = [...this.channelHistory];
     const conceded = [...this.channelConcessions];
     const blockers = [...this.channelBlockers];
+    const budget = this.channelBudget;
     // Close the channel before extraction: whatever the pass returns, the
     // conversation is over, and leaving it open on failure would strand the UI.
     this.openChannel = null;
     this.channelHistory = [];
     this.channelConcessions = [];
+    this.channelBudget = { budget: 0, given: 0, over: [] };
     this.channelBlockers = [];
 
     // ...but a call that THREW returned nothing at all, and clearing first made
@@ -719,6 +745,7 @@ export class GameSession {
       this.openChannel = factionId;
       this.channelHistory = history;
       this.channelConcessions = conceded;
+      this.channelBudget = budget;
       this.channelBlockers = blockers;
       this.pushState();
       throw err;

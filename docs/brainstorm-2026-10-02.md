@@ -21,6 +21,9 @@ control (§2.5), promissory notes (§1.2), commodities (§1.3) and fixtures that
 be hurt (§6.3). CLAUDE.md holds what each became; two of them changed on the
 way, and the notes beside §3.5 and §2.5 say how.
 
+**Built** (journal version 13): obligations and hooks (§1.1), secrets (§3.2),
+ultimatums (§2.3) and the concession budget (§1.4).
+
 **Scores** are 1–5 for *setting fit* and *architecture fit*. **Size** is S
 (an afternoon), M (an item like 121 or 124's mechanics) or L (a subsystem like
 assets or officers). **Gap** names the known hole in CLAUDE.md or `docs/todo.md`
@@ -548,9 +551,9 @@ size.
 
 | idea | § | why it is small |
 |---|---|---|
-| Truces | 2.1 | a field on the peace treaty, read by `warsFor` and the bots, plus bounded recovery |
-| Emissions | 3.5 | listeners also read fleets under way within N jumps |
-| A span of control | 2.5 | dissent per world over an influence-derived cap |
+| Truces **(built)** | 2.1 | a field on the peace treaty, read by `warsFor` and the bots, plus bounded recovery |
+| Emissions **(built)** | 3.5 | listeners also read fleets under way within N jumps |
+| A span of control **(built)** | 2.5 | dissent per world over an influence-derived cap |
 | Fortune and darkness | 6.2 | a weight on the pulse — small only once mandate exists |
 
 ### Medium, lighter
@@ -558,23 +561,23 @@ size.
 | idea | § | what it builds on |
 |---|---|---|
 | The raider's ledger | 4.1 | typed terms on `contract`, and an escrowed bounty pool |
-| Secrets | 3.2 | dossier kinds read off state, and two ops: publish and blackmail |
+| Secrets **(built)** | 3.2 | dossier kinds read off state, and two ops: publish and blackmail |
 | Heat | 3.3 | a decaying counter, and four events on the 124 pulse |
-| Promissory notes | 1.2 | an asset archetype with `uses: 1` and one effect per power |
-| Fixtures that can be hurt | 6.3 | a condition on fixtures, a sabotage effect and a repair programme |
-| Commodities | 1.3 | a non-paying fixture yield that pays the receiver |
+| Promissory notes **(built)** | 1.2 | an asset archetype with `uses: 1` and one effect per power |
+| Fixtures that can be hurt **(built)** | 6.3 | a condition on fixtures, a sabotage effect and a repair programme |
+| Commodities **(built)** | 1.3 | a non-paying fixture yield that pays the receiver |
 
 ### Medium, heavier
 
 | idea | § | what is new |
 |---|---|---|
-| Obligations and hooks | 1.1 | an obligation record, `call_obligation`, and the bots honouring it |
+| Obligations and hooks **(built)** | 1.1 | an obligation record, `call_obligation`, and the bots honouring it |
 | Ambitions | 5.1 | an ambition record, progress rules per kind, bot-derived goals, fog |
-| Ultimatums with a clock | 2.3 | a demand record with a deadline, backers, and escalation in the tick |
+| Ultimatums with a clock **(built)** | 2.3 | a demand record with a deadline, backers, and escalation in the tick |
 | Mandate | 5.2 | earning on compulsions met, and a third action or a reroll |
 | Intel with memory | 3.1 | a per-pair intel level, thresholds in the fog, last-seen rows |
 | Running dark | 3.4 | anonymous stacks in the fog, and an unmasking contest |
-| A concession budget | 1.4 | a leverage figure in code, the persona prompt, the concession guard |
+| A concession budget **(built)** | 1.4 | a leverage figure in code, the persona prompt, the concession guard |
 | Speculative trade | 4.2 | prices by world type, a cargo run order |
 
 ### Large
@@ -590,36 +593,50 @@ size.
 
 ## Build graph
 
+*Updated after the obligations tree.* Ten ideas are built, plus the bot rules
+that use them, so twelve are left. Built work is no longer a node: where it
+unlocks something, the node says so.
+
 A solid arrow means the later idea, or one part of it, cannot be built without
 the earlier one. A dashed arrow means it is better built after. Green is small
-or lighter medium; red is heavier medium or large.
+or lighter medium; red is heavier medium or large; grey is built.
 
 ```mermaid
 flowchart LR
   classDef light fill:#E1F5EE,stroke:#0F6E56,color:#085041
   classDef heavy fill:#FAECE7,stroke:#993C1D,color:#712B13
+  classDef done fill:#F1EFE8,stroke:#888780,color:#444441
 
-  truces["Truces · S"]:::light --> coalitions["Coalitions · L"]:::heavy
+  subgraph built["Built"]
+    truces["Truces"]:::done
+    emissions["Emissions"]:::done
+    span["Span of control"]:::done
+    notes["Promissory notes"]:::done
+    commodities["Commodities"]:::done
+    fixtures["Fixtures that can be hurt"]:::done
+    accords["Bots: exchange, peace, sabotage"]:::done
+    obligations["Obligations and hooks"]:::done
+    secrets["Secrets"]:::done
+    ultimatums["Ultimatums"]:::done
+    concession["Concession budget"]:::done
+  end
+
+  truces --> coalitions["Coalitions · L"]:::heavy
+  accords --> coalitions
+  ultimatums -.-> coalitions
   truces -.-> wargoals["War goals and exhaustion · L"]:::heavy
-  obligations["Obligations and hooks · M+"]:::heavy --> secrets["Secrets · M"]:::light
-  obligations -.-> ultimatums["Ultimatums · M+"]:::heavy
-  obligations -.-> concession["Concession budget · M+"]:::heavy
+  accords -.-> wargoals
   ultimatums -.-> wargoals
   ledger["Raider's ledger · M"]:::light --> heat["Heat · M"]:::light --> dark["Running dark · M+"]:::heavy
+  accords -.-> heat
+  secrets -.-> heat
+  emissions -.-> dark
+  emissions -.-> intel["Intel with memory · M+"]:::heavy
+  commodities -.-> spec["Speculative trade · M+"]:::heavy
   ambitions["Ambitions · M+"]:::heavy -.-> mandate["Mandate · M+"]:::heavy --> fortune["Fortune and darkness · S"]:::light
   ambitions -.-> estates["Estates · L"]:::heavy
   mandate -.-> estates
-
-  subgraph free["No dependencies"]
-    emissions["Emissions · S"]:::light
-    span["Span of control · S"]:::light
-    notes["Promissory notes · M"]:::light
-    fixtures["Fixtures that can be hurt · M"]:::light
-    commodities["Commodities · M"]:::light
-    intel["Intel with memory · M+"]:::heavy
-    spec["Speculative trade · M+"]:::heavy
-    courting["Courting unaligned worlds · L"]:::heavy
-  end
+  courting["Courting unaligned worlds · L"]:::heavy
 ```
 
 S is small, M is medium (lighter), M+ is medium (heavier) and L is large.
@@ -628,28 +645,35 @@ S is small, M is medium (lighter), M+ is medium (heavier) and L is large.
 
 | edge | kind | why |
 |---|---|---|
-| truces → coalitions | needs | a coalition forms only among powers with no truce with the target, and a truce is how one ends |
-| obligations → secrets | needs, for blackmail | blackmail turns a secret into a hook. Publishing a secret works without hooks |
-| raider's ledger → heat | needs, for one event | *a bounty posted on you* is a ledger bounty. Unlicensed raiding only means something once a licence exists |
+| truces → coalitions | needs (built) | a coalition forms only among powers with no truce with the target, and a truce is how one ends |
+| bot accords → coalitions | needs (built) | a coalition is NPCs agreeing among themselves, and `brokeredAccords` is the first thing that lets them |
+| ultimatums ⇢ coalitions | better after (built) | a coalition is a standing ultimatum against one power; `demandSide` and the deadline's war already resolve sides |
+| ultimatums ⇢ war goals | better after (built) | an unanswered demand is the obvious goal of the war it starts — the demand's terms are already a closed list |
+| bot accords ⇢ war goals | better after | exhaustion is a better reason for a bot to sue for peace than five quiet turns |
+| secrets ⇢ heat | better after (built) | published proof is the natural way notoriety is learned, and blackmail is a covert act that should run hot |
+| bot accords ⇢ heat | better after | the bots run operatives, so heat from covert work is measurable in the harness |
+| emissions ⇢ running dark | better after | a listener within range is the natural roll to unmask a dark raid |
+| emissions ⇢ intel with memory | better after | the heard set is a ready-made source for an intel level |
+| commodities ⇢ speculative trade | better after | cargo priced by world type is goods with a destination |
+| raider's ledger → heat | needs, for one event | *a bounty posted on you* is a ledger bounty |
 | heat → running dark | needs, for unmasking | an unmasked raid adds heat |
 | mandate → fortune | needs | darkness is charged when mandate buys a reroll |
-| obligations ⇢ ultimatums | better after | backers declare for a side by obligation |
-| obligations ⇢ concession budget | better after | obligations held are part of leverage |
 | ambitions ⇢ mandate | better after | a fulfilled ambition earns mandate |
-| truces ⇢ war goals | better after | exhaustion pushes a war toward peace, and the peace should carry a truce |
-| ultimatums ⇢ war goals | better after | an unanswered demand is the obvious goal of the war it starts |
 | ambitions, mandate ⇢ estates | decision gate | estates are deferred until those two show whether more internal politics is wanted |
 
-**Waves.** Everything in a wave can be built in any order once the waves before
-it are done.
+**Waves.**
 
-1. Truces, the raider's ledger, obligations, ambitions, and all eight with no
-   dependencies.
-2. Coalitions, secrets, ultimatums, the concession budget, heat, mandate.
-3. War goals, running dark, fortune and darkness, estates.
+1. **Ready now:** the raider's ledger, ambitions, coalitions, war goals, intel
+   with memory, speculative trade, and courting unaligned worlds.
+2. Heat, mandate.
+3. Running dark, fortune and darkness, estates.
 
-The three longest chains are each three deep: obligations → ultimatums → war
-goals; ledger → heat → running dark; ambitions → mandate → fortune.
+The longest chains are three deep: ledger → heat → running dark, and ambitions
+→ mandate → fortune.
+
+The bots now reach the leverage layer too: they demand tribute of weaker
+neighbours, keep watchers on rivals, and publish or blackmail with what those
+find, so the harness measures all of it.
 
 ---
 
@@ -676,18 +700,21 @@ What the borrowing confirms, and what it found already done:
 
 ## Suggested order
 
-1. **Truces** (§2.1) — small, closes a stated gap, and makes coalitions safe to
-   build later.
-2. **The raider's ledger** (§4.1) — the most setting-shaped idea here, and the
-   one that gives Drajk an economy instead of a guard rail.
-3. **Secrets and hooks** (§3.2, §1.1) — the leverage layer, built from assets,
-   watchers and accords that exist.
-4. **Heat** (§3.3) — once the ledger exists, unlicensed raiding has a price that
-   builds.
-5. **Ambitions** (§5.1), then **mandate** (§5.2) — the arc, and the reward for
+*Updated after the obligations tree*, which built obligations, secrets,
+ultimatums and the concession budget.
+
+1. **The raider's ledger** (§4.1) — the most setting-shaped idea left, and the
+   one that gives Drajk an economy instead of a guard rail. The bots already
+   raid, so the harness can measure it on day one.
+2. **Heat** (§3.3) — once the ledger exists, unlicensed raiding has a price that
+   builds, and published secrets and the bots' saboteurs give it something to
+   measure.
+3. **Ambitions** (§5.1), then **mandate** (§5.2) — the arc, and the reward for
    playing in character.
-6. **Coalitions** (§2.2) and **ultimatums** (§2.3) — the two large diplomatic
-   systems, after the small ones prove the vocabulary.
+4. **War goals** (§2.4) — ultimatums now give a war its natural goal, and it
+   would give bot peace a better reason than a quiet war.
+5. **Coalitions** (§2.2) — unblocked, and ultimatums already resolve sides. Still
+   large, and it needs the frozen-board sweep.
 
 Every one of these would need a journal-version pin, a harness run, and a line
 in `CLAUDE.md`'s conventions if it adds a vocabulary.

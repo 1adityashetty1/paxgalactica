@@ -55,6 +55,8 @@ import {
   TruceSchema,
   isTruceLive,
   workingStats,
+  ObligationSchema,
+  DemandSchema,
 } from './diplomacy.js';
 import { DebtSchema, MAX_DEBT_PER_TURN, scheduledDebtService, type Debt } from './debt.js';
 import { LoanSchema, scheduledRent } from './loan.js';
@@ -826,6 +828,10 @@ export const WorldStateSchema = z.object({
    * campaign from before truces loads as one in which no peace left any.
    */
   truces: z.array(TruceSchema).default([]),
+  /** Favours owed and not yet called — see `ObligationSchema`. */
+  obligations: z.array(ObligationSchema).default([]),
+  /** Ultimatums, open and answered — see `DemandSchema`. */
+  demands: z.array(DemandSchema).default([]),
   playerFactionId: z.string().min(1),
   /** Abstract unit. There is no calendar in this game, deliberately. */
   turn: z.number().int().min(0),
@@ -2471,6 +2477,23 @@ export function effectiveStats(
     base[agent.effect.stat] = Math.max(1, base[agent.effect.stat] - agent.effect.magnitude);
   }
   return base;
+}
+
+/**
+ * How many of `victim`'s worlds have `coercer`'s ships sitting over them,
+ * uninvited — the presence test interdiction and suborning draw, and the
+ * measure of a signature made under a fleet. A guest under `basing_rights` or
+ * `mutual_defense` does not count: those ships were asked in.
+ */
+export function underDuressFrom(state: WorldState, coercer: string, victim: string): number {
+  let worlds = 0;
+  for (const system of state.systems) {
+    if (system.controllerFactionId !== victim) continue;
+    if (hullsAt(system, coercer) <= 0) continue;
+    if (isGuestOf(state, coercer, victim)) continue;
+    worlds += 1;
+  }
+  return worlds;
 }
 
 /** Live treaties a faction is party to. */
