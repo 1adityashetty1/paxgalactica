@@ -72,6 +72,7 @@ leaves a faction with nobody following it.
 | `transfer_asset` | hand a thing you hold to somebody else |
 | `split_asset` | break a divisible holding into two lots |
 | `consume_asset` | spend, release or destroy a thing you hold |
+| `play_note` | call in a promissory note you hold — see Notes and goods |
 | `adjust_dissent` | **your own** institutions grow more restive — never less |
 | `cancel_order` | an existing order is called off |
 | `interrupt_order` | an order is disrupted by force or event |
@@ -385,6 +386,8 @@ Turn, further ones later. Narrate them setting out, not striking, when the
 target is far.
 
 `deploy_agent` gives the operative a `mission` and an `effect`: `hull_damage`,
+`fixture_damage` (wrecks a point of a fixture on the world each turn it
+succeeds — the systems block lists what stands where; a `sabotage` mission),
 `crew_defection` (turns hulls over, capped by guile against resolve),
 `income_penalty`, `stat_debuff`, or `intel`. You do **not** set the success
 chance — it is computed from guile against counter-intelligence.
@@ -477,7 +480,7 @@ right for a courier run or a decree, and wrong for a shipyard: if the player is
 building, mining, developing, levying or fortifying, the payload is the whole
 point of the action. Set it, or the work was theatre.
 
-`onComplete` is `{kind, magnitude, summary}`. Five kinds, each legal only on the
+`onComplete` is `{kind, magnitude, summary}`. Six kinds, each legal only on the
 order types listed:
 
 | kind | does | allowed on |
@@ -487,6 +490,7 @@ order types listed:
 | `fortify` | +1..3 to the garrison **ceiling** | `fortification`, `construction_infrastructure` |
 | `commission_ships` | hulls delivered at the target on completion | `capital_ship_construction` for battleships; `refit` or `retooling` for every lighter class |
 | `found_fixture` | a fixture raised on the world — name it with `fixtureKind`; always magnitude 1 | `construction_infrastructure`, `industrial_conversion`, `retooling` |
+| `repair_fixture` | 1..2 points of sabotage damage taken off a fixture on a world you hold — name it with `fixtureKind`, or leave it blank for the most damaged | `construction_infrastructure`, `industrial_conversion`, `retooling` |
 
 **A ship programme's type follows its hull.** A battleship is the only capital
 hull: lay it down as `capital_ship_construction`, which takes 5 turns. Escorts,
@@ -680,6 +684,24 @@ beside one of them is a second source of truth. And do **not** mint one for a
 consequence that has already been paid: if the narrative is *"their fleet is
 crippled"*, that is `adjust_ships`, not a `wreckage` asset, unless somebody is
 going to come and lift it.
+
+### Notes and goods
+
+**A promissory note is a favour signed in advance.** Every power holds its own
+note and can give it away (`transfer_asset`); a power holding *somebody else's*
+note calls it in with `play_note` and the arrangement it names comes into force
+with the issuer for five turns — a trade accord, a defence pact, basing rights or
+a line of credit, as the state block says beside the note. It needs nobody's
+consent, because the issuer gave it when it wrote the note; it is refused while
+the two are at war, or when what it gives is already in force. The note then
+goes home to its issuer. Never `consume_asset` a note, and never `create_asset`
+one: every power already holds its own.
+
+**Goods are worth nothing to the power that makes them.** Each power's own goods
+pile up at its best world and are worth nothing to it — and worth 10 a unit to
+any other power that comes to hold them, sold at market on the next turn. Giving
+yours away (`transfer_asset`) costs you nothing and pays them; that is a gift a
+power can make, not a sale.
 
 ### Spending a thing
 

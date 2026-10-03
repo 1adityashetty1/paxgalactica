@@ -314,7 +314,7 @@ describe('war is a property of the relationship, not one opinion', () => {
     state.factions.find((f) => f.id === 'freeworlds')!.disposition['drajk'] = -90;
     state.treaties.push({
       id: 't1', type: 'non_aggression', parties: ['freeworlds', 'drajk'], exclusive: false,
-      terms: { territory: [], shipsPledged: {}, incomePerTurn: {}, payment: {}, assets: [], incomeShares: [], mutualDefenseTrigger: '', voidsOn: [] },
+      terms: { territory: [], shipsPledged: {}, incomePerTurn: {}, payment: {}, assets: [], incomeShares: [], commodities: [], mutualDefenseTrigger: '', voidsOn: [] },
       signedTurn: 0, expiresTurn: null, effectiveTurn: null, status: 'active', summary: 'na',
     });
     expect(warsFor(state, 'freeworlds')).not.toContain('drajk');
@@ -1659,6 +1659,7 @@ describe('a contingency written against losing a world', () => {
         payment: { meridian: 250, vigil: -250 },
         assets: [],
         incomeShares: [],
+        commodities: [],
         mutualDefenseTrigger: '',
       },
       signedTurn: 0,

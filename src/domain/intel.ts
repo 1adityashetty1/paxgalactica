@@ -1,4 +1,5 @@
 import { atWork } from './diplomacy.js';
+import { buildAdjacency } from './graph.js';
 import { rimEventsVisibleTo } from './events.js';
 import { z } from 'zod';
 import type { DurationCategory } from './duration.js';
@@ -137,6 +138,36 @@ export const COVERT_CATEGORIES: ReadonlySet<DurationCategory> = new Set<Duration
   'commerce_raiding',
 ]);
 
+/**
+ * Work that is loud on the wire: hulls running hot, or a yard drawing power
+ * and traffic around the clock.
+ *
+ * **Emissions**, borrowed from *HighFleet*, where radar finds an enemy and the
+ * emission betrays the radar, and ELINT hears emissions far past where anybody
+ * can see. A `listener` used to hear exactly what a watcher sees — the world it
+ * stands over and nothing else — which made it an operative you could shoot.
+ * It now also hears this work within `EMISSION_RANGE` jumps, and that is the
+ * thing a listener is FOR: early warning, out past the world it guards.
+ *
+ * The obvious version — hearing fleets under way — would add nothing, because
+ * `fleet_movement` is already public to everyone. What is not public is the
+ * hidden work that runs on hulls and yards: a raid (a squadron working a lane),
+ * and the four secret yard programmes. What stays silent is the work done by
+ * people in rooms — espionage, counter-intelligence, a political manoeuvre —
+ * which emits nothing for a listener to hear. **A power that runs no ships and
+ * no yards is invisible to SIGINT**, which is HighFleet's rule exactly.
+ */
+export const EMITTING_CATEGORIES: ReadonlySet<DurationCategory> = new Set<DurationCategory>([
+  'commerce_raiding',
+  'refit',
+  'retooling',
+  'capital_ship_construction',
+  'industrial_conversion',
+]);
+
+/** How far a listener hears an emitting programme, in jumps. */
+export const EMISSION_RANGE = 2;
+
 export function isCovertOrderType(t: OrderType): boolean {
   return COVERT_CATEGORIES.has(t as DurationCategory);
 }
@@ -193,6 +224,33 @@ function watchedSystems(state: WorldState, factionId: string): Set<string> {
 }
 
 /**
+ * Systems within `EMISSION_RANGE` jumps of one of this faction's listeners —
+ * where it hears emitting work (`EMITTING_CATEGORIES`) without seeing it.
+ */
+export function heardSystems(state: WorldState, factionId: string): Set<string> {
+  const posts = state.systems
+    .filter((system) => (system.ships?.[factionId]?.listener ?? 0) > 0)
+    .map((system) => system.id);
+  const heard = new Set<string>();
+  if (posts.length === 0) return heard;
+  const adjacency = buildAdjacency(state.systems);
+  let frontier = posts;
+  for (const id of posts) heard.add(id);
+  for (let jump = 0; jump < EMISSION_RANGE; jump++) {
+    const next: string[] = [];
+    for (const id of frontier) {
+      for (const n of adjacency.get(id) ?? []) {
+        if (heard.has(n)) continue;
+        heard.add(n);
+        next.push(n);
+      }
+    }
+    frontier = next;
+  }
+  return heard;
+}
+
+/**
  * How well `factionId` sees one order.
  *
  * Nothing is ever `hidden` today — every secret programme surfaces as a
@@ -207,6 +265,7 @@ export function visibilityOf(
   order: PendingOrder,
   space = ownSpace(state, factionId),
   watched = watchedSystems(state, factionId),
+  heard = heardSystems(state, factionId),
 ): OrderVisibility {
   // Your own work, and work its owner is content to be seen doing.
   if (order.factionId === factionId) return 'full';
@@ -216,6 +275,16 @@ export function visibilityOf(
   // below. This is tested BEFORE them, which is the whole reason an operative
   // is worth buying.
   if (watched.has(order.originId) || watched.has(order.targetId)) return 'full';
+
+  // A listener hears loud work a couple of jumps out — raids and yards, never
+  // people in rooms. Before the covert rule, because a raid is covert and is
+  // exactly what a listener on a lane is there to hear.
+  if (
+    EMITTING_CATEGORIES.has(order.type as DurationCategory) &&
+    (heard.has(order.originId) || heard.has(order.targetId))
+  ) {
+    return 'full';
+  }
 
   if (isPublicOrderType(order.type)) return 'full';
 
@@ -255,12 +324,13 @@ export interface Observation {
 export function observeOrders(state: WorldState, factionId: string): Observation {
   const space = ownSpace(state, factionId);
   const watched = watchedSystems(state, factionId);
+  const heard = heardSystems(state, factionId);
 
   const orders: PendingOrder[] = [];
   const rumours: OrderRumour[] = [];
 
   for (const order of state.pendingOrders) {
-    const how = visibilityOf(state, factionId, order, space, watched);
+    const how = visibilityOf(state, factionId, order, space, watched, heard);
     if (how === 'full') orders.push(order);
     else if (how === 'rumour') {
       rumours.push({

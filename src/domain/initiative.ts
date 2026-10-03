@@ -5,7 +5,20 @@ import {
   commanderAt,
 } from './command.js';
 import { neighboursOf, shortestPath } from './graph.js';
-import { FIXTURE_COST, isTreatyLive } from './diplomacy.js';
+import {
+  AGENT_COST,
+  FIXTURE_COST,
+  TRUCE_TURNS,
+  atWork,
+  fixtureIntegrity,
+  isCommodity,
+  isTreatyLive,
+  truceBetween,
+} from './diplomacy.js';
+import { EFFECT_COST } from './development.js';
+import { ENVOYS_QUIET_TURNS } from './events.js';
+import { clashKey } from './pulse.js';
+import { jumpsBetween } from './graph.js';
 import { ASSET_ARCHETYPES } from './assets.js';
 import {
   hullsAt,
@@ -27,6 +40,8 @@ import {
   isStatFixture,
   fixtureUpkeepForCount,
   WORLD_TYPE_STAT,
+  liveAgentsOf,
+  maxAgentsFor,
   type StarSystem,
   type WorldState,
 } from './state.js';
@@ -324,6 +339,112 @@ function raise(ctx: Ctx): Ops {
       durationTurns: 3,
       label: `${kind.replace(/_/g, ' ')} at ${site.name}`,
       onComplete: { kind: 'found_fixture', magnitude: 1, fixtureKind: kind },
+    },
+  ];
+}
+
+/**
+ * Put back what a saboteur broke: the power's most damaged fixture, one repair
+ * at a time, while it can afford it with room to spare.
+ *
+ * A bot that never repaired would be wrecked by sabotage permanently, which is
+ * a stronger weapon than the one the mechanic prices — the repair programme
+ * exists so that damage is a cost and not a sentence.
+ */
+function mend(ctx: Ctx): Ops {
+  const { state, me } = ctx;
+  if (state.pendingOrders.some((o) => o.factionId === me && o.onComplete?.kind === 'repair_fixture')) return [];
+  const broken = state.assets
+    .filter(
+      (a) =>
+        a.heldBy === me &&
+        isStatFixture(a) &&
+        (a.damage ?? 0) > 0 &&
+        sys(state, a.atSystemId ?? '')?.controllerFactionId === me,
+    )
+    .sort((a, b) => (b.damage ?? 0) - (a.damage ?? 0) || a.id.localeCompare(b.id))[0];
+  if (!broken) return [];
+  const points = broken.damage ?? 0;
+  if (purse(state, me) < points * EFFECT_COST.repair_fixture * 3) return [];
+  const site = sys(state, broken.atSystemId!)!;
+  return [
+    {
+      op: 'issue_order',
+      factionId: me,
+      type: 'construction_infrastructure',
+      originId: site.id,
+      targetId: site.id,
+      durationTurns: 3,
+      label: `repair the ${broken.kind.replace(/_/g, ' ')} at ${site.name}`,
+      onComplete: { kind: 'repair_fixture', magnitude: points, fixtureKind: broken.kind },
+    },
+  ];
+}
+
+/**
+ * What a bot holds back before it will put a saboteur in the field: a few
+ * missions' worth, so covert war never comes out of the money a navy needs.
+ */
+export const BOT_SABOTEUR_RESERVE = AGENT_COST.sabotage * 4;
+
+/**
+ * Send a saboteur at an enemy's fixtures — one at a time, and only at war.
+ *
+ * The bots ran no operatives at all, so the covert layer existed only for the
+ * model-driven powers and the harness could measure none of it. This is the
+ * narrowest use with a target on the board: a power at war wrecks what makes
+ * its enemy's ground worth holding. Any power may, since `maxAgentsFor` already
+ * makes a poor-guile power bad at it rather than forbidden.
+ *
+ * Recruited and sent in one batch, which an NPC may do — the "a recruitment is
+ * a declaration of its own" rule is about the PLAYER's action economy, and a
+ * bot has none. Aimed at the enemy's best working fixture nearest home; moved
+ * on when the one it is at is wrecked, and recalled when nothing is left.
+ */
+function sabotage(ctx: Ctx): Ops {
+  const { state, me } = ctx;
+  const enemies = new Set(warsFor(state, me));
+  const home = held(state, me).sort((a, b) => b.strategicValue - a.strategicValue || a.id.localeCompare(b.id))[0];
+  const working = (a: (typeof state.assets)[number]) => fixtureIntegrity(a) - (a.damage ?? 0);
+  const targets = state.assets
+    .filter(
+      (a) =>
+        isStatFixture(a) &&
+        a.atSystemId !== null &&
+        enemies.has(a.heldBy) &&
+        sys(state, a.atSystemId)?.controllerFactionId === a.heldBy &&
+        working(a) > 0,
+    )
+    .map((a) => ({ a, far: home ? (jumpsBetween(state.systems, home.id, a.atSystemId!) ?? 99) : 99 }))
+    .sort((x, y) => working(y.a) - working(x.a) || x.far - y.far || x.a.id.localeCompare(y.a.id));
+
+  const effect = { kind: 'fixture_damage', perTurn: 1 };
+  const saboteur = state.agents.find(
+    (a) => a.ownerFactionId === me && !a.exposed && a.mission === 'sabotage' && a.effect?.kind === 'fixture_damage',
+  );
+  if (saboteur) {
+    if (!atWork(saboteur, state.turn)) return [];
+    if (targets.some((t) => t.a.atSystemId === saboteur.systemId)) return [];
+    const next = targets[0];
+    if (!next) return [{ op: 'recall_agent', agentId: saboteur.id, reason: 'nothing left to wreck' }];
+    if (purse(state, me) < AGENT_COST.sabotage) return [];
+    return [
+      { op: 'deploy_agent', agent: saboteur.id, systemId: next.a.atSystemId, mission: 'sabotage', effect },
+    ];
+  }
+
+  const target = targets[0];
+  if (!target || !home) return [];
+  if (purse(state, me) < BOT_SABOTEUR_RESERVE) return [];
+  if (liveAgentsOf(state, me).length >= maxAgentsFor(state, me)) return [];
+  return [
+    { op: 'recruit_agent', systemId: home.id },
+    {
+      op: 'deploy_agent',
+      systemId: target.a.atSystemId,
+      mission: 'sabotage',
+      effect,
+      cover: `a contract crew at ${sys(state, target.a.atSystemId!)?.name ?? target.a.atSystemId}`,
     },
   ];
 }
@@ -1340,6 +1461,12 @@ function honourTreaties(
       withheld.push(`an attack on ${target.name}, which a standing pact forbids`);
       return false;
     }
+    // A truce outlives the paper that made it, and breaking one is the dearest
+    // public act in the game — see `TruceSchema`.
+    if (op.type === 'fleet_movement' && truceBetween(state.truces, state.turn, me, holder)) {
+      withheld.push(`an attack on ${target.name}, which the truce with ${getFaction(state, holder)?.name ?? holder} forbids`);
+      return false;
+    }
     // A `trade_accord` makes its parties immune to each other's blockades and
     // raiding, so this is not only bad faith but mechanically inert.
     if (
@@ -1443,7 +1570,11 @@ export function proposeFor(state: WorldState, factionId: string): Proposal | nul
   const bot = BOTS[factionId];
   if (!bot) return null;
 
-  const raw = bot({ state, me: factionId });
+  // Every bot, whatever its doctrine, mends what was broken and wages the
+  // covert half of a war it is in — added here rather than to five bots, for
+  // the reason the filters below are: a bot added later inherits them.
+  const ctx = { state, me: factionId };
+  const raw = [...bot(ctx), ...mend(ctx), ...sabotage(ctx)];
   // Paper first, then standing. Both are post-filters over one proposal, so a
   // bot cannot route around either and the order between them only decides
   // which reason is given for an act both would have refused.
@@ -1454,4 +1585,138 @@ export function proposeFor(state: WorldState, factionId: string): Proposal | nul
   if (ops.length === 0) return null;
 
   return { factionId, ops, rationale: describeProposal(state, factionId, ops), withheld };
+}
+
+/* ------------------------------------------------------------------ */
+/* What two powers agree without a channel                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * How well two powers must think of each other to trade their goods.
+ *
+ * Mutual, and an exchange rather than a gift, because the Combine's own sheet
+ * refuses to give anything away for nothing — and two powers each handing over
+ * goods worth nothing to themselves is consideration on both sides, which is
+ * the whole of a trade. On the opening board only the Combine and the
+ * Confederacy clear it, at 35 and 40.
+ */
+export const EXCHANGE_STANDING = 20;
+
+/** How long a peace the bots make lasts, before the war may resume. */
+export const BOT_PEACE_TURNS = TRUCE_TURNS;
+
+export interface Accord {
+  /** The two powers agreeing. */
+  parties: [string, string];
+  label: string;
+  /** Engine ops: a treaty or a transfer needs both parties, and here both agreed by rule. */
+  ops: Record<string, unknown>[];
+}
+
+/**
+ * What NPC powers agree between themselves each turn, by rule.
+ *
+ * **Every treaty in the game came out of a transcript**, and every transcript
+ * has the player in it — so two NPCs could fight each other and never make
+ * peace, and goods could only ever reach a power the player handed them to.
+ * That was right for the player, whose consent lives in a conversation, and it
+ * left the half of the galaxy the bots run unable to agree anything at all.
+ *
+ * Two agreements, decided by arithmetic both sides can see, and applied as
+ * ENGINE batches — the source that may sign for two parties, because the rule
+ * that decided it read both of them:
+ *
+ * - **An exchange of goods** between two powers on good terms
+ *   (`EXCHANGE_STANDING` both ways), each handing the other its stock. Each
+ *   power trades with at most one partner a turn, its best.
+ * - **A peace** between two powers whose war has gone quiet — no battle for
+ *   `ENVOYS_QUIET_TURNS`, the quiet the envoys wait for, and neither with a
+ *   fleet under way at the other. A ceasefire for `BOT_PEACE_TURNS`, which
+ *   leaves a truce; a war too deep to heal resumes when both run out.
+ *
+ * **A bot does not make a peace its own compulsions bar** (`barsPeaceWith`).
+ * The first version made it anyway and charged `COMPULSION_BREACH_DISSENT`, the
+ * price a player pays for the same defiance, and measured it: battles are so
+ * rare that wars go quiet within five turns, so the Vigil made peace with the
+ * Confederacy and the Combine four times in thirty turns and finished at 62
+ * dissent against 34. A doctrine bot paying to defy its own sheet for nothing it
+ * can name is not following its doctrine, and nowhere else does a bot defy a
+ * compulsion. The price is still there for a power that reasons about it — the
+ * player, or a model-driven reaction — through the arbiter.
+ *
+ * Never with the player, whose agreements are made in a channel.
+ */
+export function brokeredAccords(state: WorldState): Accord[] {
+  const npcs = state.factions.map((f) => f.id).filter((id) => id !== state.playerFactionId).sort();
+  const name = (id: string) => getFaction(state, id)?.name ?? id;
+  const out: Accord[] = [];
+
+  // Goods, best-liked pair first, each power once.
+  const stock = (id: string) =>
+    state.assets.find((a) => isCommodity(a) && a.issuedBy === id && a.heldBy === id && a.quantity > 0);
+  const pairs: { a: string; b: string; warmth: number }[] = [];
+  for (let i = 0; i < npcs.length; i++) {
+    for (let j = i + 1; j < npcs.length; j++) {
+      const a = npcs[i]!;
+      const b = npcs[j]!;
+      const warmth = Math.min(dispositionBetween(state, a, b), dispositionBetween(state, b, a));
+      if (warmth < EXCHANGE_STANDING || !stock(a) || !stock(b)) continue;
+      pairs.push({ a, b, warmth });
+    }
+  }
+  pairs.sort((x, y) => y.warmth - x.warmth || x.a.localeCompare(y.a) || x.b.localeCompare(y.b));
+  const traded = new Set<string>();
+  for (const { a, b } of pairs) {
+    if (traded.has(a) || traded.has(b)) continue;
+    traded.add(a);
+    traded.add(b);
+    out.push({
+      parties: [a, b],
+      label: `exchange:${a}:${b}`,
+      ops: [
+        { op: 'transfer_asset', assetId: stock(a)!.id, toFactionId: b, reason: 'in exchange' },
+        { op: 'transfer_asset', assetId: stock(b)!.id, toFactionId: a, reason: 'in exchange' },
+        { op: 'spawn_event', factionId: a, text: `${name(a)} and ${name(b)} exchange their goods.` },
+      ],
+    });
+  }
+
+  // Peace, where a war has gone quiet.
+  const attacking = (by: string, of: string) =>
+    state.pendingOrders.some(
+      (o) => o.factionId === by && o.type === 'fleet_movement' && sys(state, o.targetId)?.controllerFactionId === of,
+    );
+  for (let i = 0; i < npcs.length; i++) {
+    for (let j = i + 1; j < npcs.length; j++) {
+      const a = npcs[i]!;
+      const b = npcs[j]!;
+      if (!warsFor(state, a).includes(b)) continue;
+      const quiet = state.turn - (state.lastClash?.[clashKey(a, b)] ?? 0);
+      if (quiet < ENVOYS_QUIET_TURNS) continue;
+      if (attacking(a, b) || attacking(b, a)) continue;
+      const barred = (p: string, other: string) =>
+        getFaction(state, p)?.compulsions.some((c) => c.barsPeaceWith?.includes(other)) ?? false;
+      if (barred(a, b) || barred(b, a)) continue;
+      out.push({
+        parties: [a, b],
+        label: `peace:${a}:${b}`,
+        ops: [
+          {
+            op: 'form_treaty',
+            parties: [a, b],
+            treatyType: 'ceasefire',
+            terms: {},
+            durationTurns: BOT_PEACE_TURNS,
+            summary: `${name(a)} and ${name(b)} let a quiet war end`,
+          },
+          {
+            op: 'spawn_event',
+            factionId: a,
+            text: `${name(a)} and ${name(b)}, ${quiet} turns without a battle between them, agree a ceasefire.`,
+          },
+        ],
+      });
+    }
+  }
+  return out;
 }

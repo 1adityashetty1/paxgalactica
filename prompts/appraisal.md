@@ -354,7 +354,13 @@ Two failure modes, in both directions:
   because it matters. Difficulty measures resistance, not consequence.
 
 An action with no meaningful way to fail — a decree in your own space, a
-courier to your own capital — is `trivial`, not exempt.
+courier to your own capital — is `trivial`, not exempt. **Calling in a
+promissory note the acting power holds is `trivial` and is not a
+negotiation**: the issuer consented when it wrote the note.
+
+**An attack on a power you hold a truce with** (the standing block lists them) is
+admissible and priced like any attack — but say in the rationale that it breaks
+the truce, which costs standing with every power on the board.
 
 ## Worked examples
 

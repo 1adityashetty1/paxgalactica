@@ -1,7 +1,21 @@
 import { eventsVisibleTo, ordersVisibleTo } from '../domain/intel.js';
 import { describeStack, hullsIn } from '../domain/hulls.js';
 import { describeOrderEffect } from '../domain/development.js';
-import { agentStanding, assetWorthRangeTo, atWork, describeEffect, wantedBy } from '../domain/diplomacy.js';
+import {
+  COMMODITY_VALUE,
+  NOTE_MEANING,
+  NOTE_TITLE,
+  TRUCE_BREAKING_REPUTATION_COST,
+  agentStanding,
+  assetWorthRangeTo,
+  atWork,
+  describeEffect,
+  fixtureIntegrity,
+  isCommodity,
+  isNote,
+  isTruceLive,
+  wantedBy,
+} from '../domain/diplomacy.js';
 import { shortageFactor } from '../domain/events.js';
 import { describeOutstanding } from '../domain/loan.js';
 import { routeEarnings } from '../domain/trade.js';
@@ -44,6 +58,10 @@ import {
   systemIncome,
   treatiesFor,
   warsFor,
+  spanOfControl,
+  statFixturesAt,
+  SPAN_DISSENT_PER_WORLD,
+  TRUCE_FLOOR,
   TRADE_ETHIC_MEANING,
   WAR_ETHIC_MEANING,
   type Faction,
@@ -369,10 +387,44 @@ export function serializeStanding(state: WorldState, viewerId: string): string {
       lines.push(`      ${Math.round(share.share * 100)}% of ${share.systemId} to ${share.factionId}`);
     }
     if (t.terms.mutualDefenseTrigger) lines.push(`      triggers on: ${t.terms.mutualDefenseTrigger}`);
+    for (const maker of t.terms.commodities ?? []) {
+      const to = t.parties.find((p) => p !== maker) ?? '?';
+      lines.push(
+        maker === viewerId
+          ? `      your goods go to ${nameOfFaction(state, to)} every turn, and sell there`
+          : `      ${nameOfFaction(state, maker)}'s goods come to you every turn, and sell at ${COMMODITY_VALUE} a unit`,
+      );
+    }
   }
 
   lines.push('', '**At war with**');
   lines.push(wars.length === 0 ? '  _Nobody, formally._' : `  ${wars.join(', ')}`);
+
+  // A truce is public, and the arbiter has to see it to price an attack across
+  // one as what it is: the dearest public act in the game.
+  const truces = (state.truces ?? []).filter((t) => isTruceLive(t, state.turn) && t.parties.includes(viewerId));
+  if (truces.length > 0) {
+    lines.push('', '**Truces** — a war ended; neither side may attack the other until it runs out');
+    for (const t of truces) {
+      const other = t.parties.find((p) => p !== viewerId) ?? '?';
+      lines.push(
+        `  - with ${nameOfFaction(state, other)} until turn ${t.untilTurn}. Each turn it holds, standing heals toward ${TRUCE_FLOOR} and no further. Attacking across it costs 25 with them and ${TRUCE_BREAKING_REPUTATION_COST} with every other power.`,
+      );
+    }
+  }
+
+  // The span is a standing cost with a cause, and a cause the model can act
+  // on — so it is stated, as the occupation charge is.
+  const span = spanOfControl(state, viewerId);
+  lines.push(
+    '',
+    `**Span of control: ${span.held} worlds held, ${span.span} governable**` +
+      (span.over > 0
+        ? ` — ${span.over} over, +${span.over * SPAN_DISSENT_PER_WORLD} dissent every turn until it is back within the span.`
+        : span.held === span.span
+          ? ' — at the limit; every world taken now costs dissent every turn.'
+          : ` (room for ${span.span - span.held} more before holding ground costs dissent).`),
+  );
 
   // The ceiling, not just the list. `maxAgentsFor` had no reader anywhere in
   // `src/model/`, so no call knew a faction was at its limit — and a resolution
@@ -467,9 +519,19 @@ export function serializeSystems(state: WorldState): string {
     const lanes = s.hyperlaneEdges
       .map((id) => `${getSystem(state, id)?.name ?? id} (\`${id}\`)`)
       .join(', ');
+    // Fixtures are structures on a surface, visible to anybody, and the thing
+    // sabotage is aimed at — so the model has to be able to see them to name
+    // one, and see what a saboteur has already done to it.
+    const built = statFixturesAt(state, s.id)
+      .map((a) => {
+        const whole = fixtureIntegrity(a);
+        const hit = a.damage ?? 0;
+        return `${a.kind.replace(/_/g, ' ')} (${nameOfFaction(state, a.heldBy)}${hit > 0 ? `, DAMAGED ${whole - hit} of ${whole} working` : ''})`;
+      })
+      .join(', ');
     const line = [
       `  - \`${s.id}\` ${s.name} — held by ${controller}, garrison ${s.garrison}, value ${s.strategicValue}${income.contested ? ', CONTESTED' : ''}`,
-      `      ships: ${ships || 'none'} | pays: ${payout || 'nobody'} | lanes: ${lanes || 'none'}`,
+      `      ships: ${ships || 'none'} | pays: ${payout || 'nobody'} | lanes: ${lanes || 'none'}${built ? ` | fixtures: ${built}` : ''}`,
     ].join('\n');
     const list = bySector.get(s.sector) ?? [];
     list.push(line);
@@ -726,6 +788,15 @@ export function serializeAssets(state: WorldState, viewerId: string): string {
       // A fixture is the one thing on this list you cannot put on the table, so
       // it is said here rather than discovered by having the accord rejected.
       const fixed = a.portable ? '' : ' · fixed here; changes hands only with the world';
+      // A note and a commodity each have one rule that decides what to do
+      // with them, and a persona that is not told it will not reach for it.
+      const own = isNote(a)
+        ? a.issuedBy === viewerId
+          ? ` · YOUR OWN promissory note (${NOTE_TITLE[a.note]}): give it to a power and they may call it in for ${NOTE_MEANING[a.note]}; it comes home when played`
+          : ` · ${nameOfFaction(state, a.issuedBy)}'s promissory note (${NOTE_TITLE[a.note]}): play it (play_note) for ${NOTE_MEANING[a.note]}; it then goes home to them`
+        : isCommodity(a) && a.issuedBy === viewerId
+          ? ` · your own goods: worth nothing to you, and ${COMMODITY_VALUE} a ${a.unit} to any power that comes to hold them — given, or carried by a trade accord`
+          : '';
       const plays =
         a.uses === null
           ? ''
@@ -742,9 +813,13 @@ export function serializeAssets(state: WorldState, viewerId: string): string {
               : a.yield.kind === 'stat'
                 ? ` · ${a.yield.stats
                     .map((t) => `${t.points > 0 ? '+' : '−'}${Math.abs(t.points)} ${t.stat}`)
-                    .join(', ')} while you hold it`
+                    .join(', ')} while you hold it${
+                    (a.damage ?? 0) > 0
+                      ? ` — DAMAGED, ${fixtureIntegrity(a) - (a.damage ?? 0)} of ${fixtureIntegrity(a)} working until repaired (a repair_fixture programme)`
+                      : ''
+                  }`
                 : ` · yields ${a.yield.perTurn} ${a.yield.unit} a turn`;
-      return `- \`${a.id}\` ${a.quantity} ${a.unit} — ${a.text}${where}${split}${fixed}${plays}${does}\n  ${
+      return `- \`${a.id}\` ${a.quantity} ${a.unit} — ${a.text}${where}${split}${fixed}${own}${plays}${does}\n  ${
         wanted || 'nobody has shown it is worth anything to them'
       }${scarcityNote(scarce)}`;
     })

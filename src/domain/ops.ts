@@ -318,6 +318,19 @@ export const ConsumeAssetOp = z.object({
 });
 
 /**
+ * Call in a promissory note this power holds — see `NOTE_KINDS`.
+ *
+ * Needs nobody's consent: the issuer gave it when it wrote the note, which is
+ * what a note is. The arrangement it names comes into force between holder and
+ * issuer for `NOTE_TERM_TURNS`, and the note goes home to its issuer.
+ */
+export const PlayNoteOp = z.object({
+  op: z.literal('play_note'),
+  assetId: z.string().min(1),
+  reason: z.string().max(240).default(''),
+});
+
+/**
  * Break a divisible holding into two.
  *
  * Forty crews ransomed twenty at a time. Value is stated per unit, so the split
@@ -982,6 +995,7 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   SplitAssetOp,
   ConsumeAssetOp,
   TransferAssetOp,
+  PlayNoteOp,
   IssueOrderOp,
   CancelOrderOp,
   InterruptOrderOp,
@@ -1053,6 +1067,7 @@ export const OpSchema = z.discriminatedUnion('op', [
   SplitAssetOp,
   ConsumeAssetOp,
   TransferAssetOp,
+  PlayNoteOp,
   IssueOrderOp,
   CancelOrderOp,
   InterruptOrderOp,

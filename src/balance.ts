@@ -1,7 +1,7 @@
 import { applyOps, tickTurn, type LegacyRules } from './domain/reducer.js';
 import type { RimEvent } from './domain/events.js';
 import { createSeedState } from './seed/scenario.js';
-import { BOTS, held, proposeFor } from './domain/initiative.js';
+import { BOTS, brokeredAccords, held, proposeFor } from './domain/initiative.js';
 import { fleetStrengthOf, ledgerFor, type WorldState } from './domain/state.js';
 import { routeEarnings, tradeRoutes } from './domain/trade.js';
 
@@ -69,6 +69,10 @@ export function runBalance(
     for (const id of Object.keys(BOTS).sort()) {
       const proposal = proposeFor(state, id);
       if (proposal) state = applyOps(state, proposal.ops, 'model', id).state;
+    }
+    // What the bots agree between themselves, as `endTurn` applies it.
+    for (const accord of brokeredAccords(state)) {
+      state = applyOps(state, accord.ops, 'engine', undefined, true).state;
     }
     const ticked = tickTurn(state, legacy);
     state = ticked.state;

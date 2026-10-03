@@ -1,11 +1,19 @@
 import { STAT_NAMES } from '../domain/checks.js';
 import { EFFECT_CATEGORIES } from '../domain/development.js';
+import { EFFECT_COST } from '../domain/development.js';
 import {
+  COMMODITY_CAP,
+  COMMODITY_PER_TURN,
+  COMMODITY_VALUE,
   FIXTURE_COST,
   MAX_ASSET_STAT,
   MAX_FIXTURE_BONUS,
   MAX_FIXTURES_PER_WORLD,
+  NOTE_TERM_TURNS,
+  TRUCE_BREAKING_REPUTATION_COST,
+  TRUCE_TURNS,
 } from '../domain/diplomacy.js';
+import { EMISSION_RANGE } from '../domain/intel.js';
 import { fixtureKindFor } from '../domain/initiative.js';
 import { CATEGORY_FLOORS } from '../domain/duration.js';
 import {
@@ -17,6 +25,9 @@ import {
   type HullClass,
 } from '../domain/hulls.js';
 import {
+  SPAN_BASE,
+  SPAN_DISSENT_PER_WORLD,
+  TRUCE_FLOOR,
   WORLD_TYPE_STAT,
   fixtureUpkeepForCount,
   type WorldState,
@@ -48,7 +59,7 @@ const JOB: Record<HullClass, string> = {
   torpedo_boat: 'fires once, first, at the heaviest hulls',
   lifter: `carries ${LIFTER_CARRY} troops — the only way to take a world`,
   freighter: 'more of the trade over unclaimed ground',
-  listener: 'sees what is under way where it stands',
+  listener: `sees work where it stands; hears raids ${EMISSION_RANGE} jumps out`,
 };
 
 /** A class too light to count in the exchange: it is there to be protected. */
@@ -107,7 +118,38 @@ export function fixtureLines(state: WorldState | null): string[] {
     `  run: your first costs ${nth(1)} a turn, your second ${nth(2)}, your third ${nth(3)}. Every`,
     '  power opens with one. Whoever holds the world when it finishes owns it,',
     '  and taking a world takes what is built on it.',
+    '  A saboteur can wreck one, a point of what it yields at a time, and it',
+    `  still costs its upkeep; a repair programme puts it back, ${EFFECT_COST.repair_fixture} a point.`,
     ...(example ? [`  Try: ${example}`] : []),
+  ];
+}
+
+/**
+ * How much ground a power can govern, and what holding more costs. A line of
+ * its own because it is a standing cost with a cause the player can act on.
+ */
+export function spanLines(): string[] {
+  return [
+    '  You can govern only so many worlds: your homeland, or more with good',
+    `  influence (${SPAN_BASE} plus its modifier). Each world past that costs`,
+    `  ${SPAN_DISSENT_PER_WORLD} dissent every turn — conquest is braked by administration.`,
+  ];
+}
+
+/** Truces, promissory notes and goods: the things that pay for keeping peace. */
+export function peaceLines(): string[] {
+  return [
+    'PEACE, FAVOURS AND GOODS',
+    '  A peace signed between two powers at war leaves a truce: neither may',
+    `  attack the other for ${TRUCE_TURNS} turns, and their standing heals toward ${TRUCE_FLOOR} —`,
+    '  just out of war, and no further. Attacking across one costs 25 with the',
+    `  victim and ${TRUCE_BREAKING_REPUTATION_COST} with every other power.`,
+    '  Every power holds one promissory note, a favour signed in advance. Give',
+    '  yours away and the holder may call it in, with no need to ask: a trade',
+    `  accord, a defence pact, basing rights or a line of credit, for ${NOTE_TERM_TURNS} turns.`,
+    '  Every power also makes goods it cannot use, worth nothing to it and',
+    `  ${COMMODITY_VALUE} a unit to whoever it gives them to — ${COMMODITY_PER_TURN} a turn, piling up to ${COMMODITY_CAP}.`,
+    '  A trade accord can send them across every turn it holds.',
   ];
 }
 

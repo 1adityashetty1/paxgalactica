@@ -34,6 +34,7 @@ import {
 import { rollD20, statModifier } from './checks.js';
 import {
   applyOrderEffect,
+  fixtureToRepair,
   commissionCategory,
   describeOrderEffect,
   effectAllowedIn,
@@ -48,12 +49,18 @@ import {
   MAX_ASSET_YIELD,
   MISSION_PROFILE,
   PACT_BREAKING_REPUTATION_COST,
+  TRUCE_BREAKING_REPUTATION_COST,
+  TRUCE_RECOVERY,
+  TRUCE_TREATIES,
+  TRUCE_TURNS,
+  truceBetween,
   MAX_DISCORD_TOTAL,
   PEACE_TREATIES,
   TREATY_GOODWILL,
   conflictingTreaty,
   isTreatyLive,
   AssetSchema,
+  AgentSchema,
   treatyBetween,
   type Asset,
   type Treaty,
@@ -65,6 +72,21 @@ import {
   atWork,
   AGENT_JUMPS_PER_TURN,
   type Agent,
+  COMMODITY_CAP,
+  COMMODITY_PER_TURN,
+  COMMODITY_VALUE,
+  NOTE_ASSET_KIND,
+  NOTE_CREDIT,
+  NOTE_CREDIT_RENT,
+  NOTE_ESCORT_HULLS,
+  NOTE_INCOME_SHARE,
+  NOTE_TERM_TURNS,
+  NOTE_TITLE,
+  NOTE_TREATY,
+  TreatyTermsSchema,
+  fixtureIntegrity,
+  isCommodity,
+  isNote,
 } from './diplomacy.js';
 import { ASSET_ARCHETYPES, archetypeFor, fixtureYieldFor } from './assets.js';
 import { CHEAT_ASSET_QUANTITY, CHEAT_ASSET_VALUE, type Cheat } from './cheats.js';
@@ -197,6 +219,9 @@ import {
   EXPANSIONIST_LIFT_SHARE,
   OPPORTUNIST_MIGHT_BONUS,
   warsFor,
+  TRUCE_FLOOR,
+  spanOfControl,
+  SPAN_DISSENT_PER_WORLD,
   DOCTRINE_CHANGE_DISSENT_CEILING,
   DOCTRINE_ETHIC_DISSENT,
   DOCTRINE_TEXT_DISSENT,
@@ -1068,6 +1093,39 @@ function pairLevelFootprint(t: Treaty): string[] {
   return marks;
 }
 
+/**
+ * Leave a truce behind a peace signed between two powers at war.
+ *
+ * `wereAtWar` is read by the caller BEFORE the treaty went live, because a live
+ * peace is one of the things `warsFor` reads. Called where a treaty comes into
+ * force — at signature and on ratification — the two sites
+ * `supersedePriorTreaties` and `cedeTerritory` already share.
+ *
+ * A second peace between the same pair renews the truce rather than stacking a
+ * second one beside it.
+ */
+function leaveTruce(state: WorldState, treaty: Treaty, wereAtWar: boolean, notes: string[]): void {
+  if (!wereAtWar) return;
+  if (!(TRUCE_TREATIES as readonly string[]).includes(treaty.type)) return;
+  const parties = [...treaty.parties].sort();
+  state.truces ??= [];
+  for (const prior of state.truces) {
+    if (prior.status === 'active' && parties.every((p) => prior.parties.includes(p))) prior.status = 'ended';
+  }
+  state.truces.push({
+    parties,
+    treatyId: treaty.id,
+    signedTurn: state.turn,
+    untilTurn: state.turn + TRUCE_TURNS,
+    status: 'active',
+  });
+  // Public, as a peace is: breaking it is priced with every onlooker, so every
+  // onlooker has to be able to know it is there.
+  const note = `The war between ${nameFor(state, parties[0]!)} and ${nameFor(state, parties[1]!)} ends in a truce until turn ${state.turn + TRUCE_TURNS}.`;
+  notes.push(note);
+  logEvent(state, 'diplomacy', note);
+}
+
 function supersedePriorTreaties(
   state: WorldState,
   incoming: Treaty,
@@ -1755,6 +1813,19 @@ export interface LegacyRules {
    */
   operativesTravel?: boolean;
   /**
+   * A peace treaty or a cession signed between two powers AT WAR leaves a truce
+   * (see `TruceSchema`): it holds them out of war, heals the war toward
+   * `TRUCE_FLOOR`, and is dear to break. Before it, a ceasefire that lapsed was
+   * simply a war resumed. Journal version 12.
+   */
+  truces?: boolean;
+  /**
+   * Worlds held past a power's span of control cost it dissent every turn (see
+   * `spanOfControl`). Before it, territory cost only the occupation charge.
+   * Journal version 12.
+   */
+  spanOfControl?: boolean;
+  /**
    * A sandbox campaign's one event (see `primeRimSandbox`): that kind every
    * turn, with no d20 and no cooldowns. Not a rule the game acquired — a rule
    * of that campaign, read off its journal's seed entry.
@@ -1874,6 +1945,7 @@ function applyOpsUnderRules(
     movesNotBuilt = true,
     twoFixtures = true,
     operativesTravel = true,
+    truces = true,
   } = legacy;
   const state = cloneState(input);
   const rejections: OpRejection[] = [];
@@ -2475,6 +2547,17 @@ function applyOpsUnderRules(
       }
 
       case 'create_asset': {
+        // A promissory note is issued by the power that honours it, and every
+        // power already holds its own. One minted here would carry no terms and
+        // read on a shelf exactly like the real thing.
+        if (op.kind === NOTE_ASSET_KIND) {
+          reject(
+            raw,
+            'illegal_value',
+            'A promissory note is issued by the power that will honour it, and every power already holds its own. Hand that one over (transfer_asset), or play one you hold (play_note).',
+          );
+          break;
+        }
         // An asset is the OUTCOME OF AN ATTEMPT, never a thing declared into
         // existence. A player who says "I sell Meridian a hundred tons of rare
         // ore" has not made the ore; the arbiter redirects that to an attempt,
@@ -2725,6 +2808,17 @@ function applyOpsUnderRules(
           );
           break;
         }
+        // A note is called in, not spent: burning one would throw away a
+        // favour its issuer can never give again, and spending it is what
+        // `play_note` is for.
+        if (isNote(asset)) {
+          reject(
+            raw,
+            'illegal_value',
+            `${asset.text} is a promissory note: it is played (play_note), not spent.`,
+          );
+          break;
+        }
         // You cannot burn what you have to give back.
         const borrowed = assetOnLoan(state.loans ?? [], asset.id);
         if (borrowed) {
@@ -2884,6 +2978,138 @@ function applyOpsUnderRules(
         const note = `${nameFor(state, from)} hands ${asset.quantity} ${asset.unit} to ${nameFor(state, op.toFactionId)}: ${asset.text} ${op.reason}`.trim();
         notes.push(note);
         logEvent(state, 'diplomacy', note, op.toFactionId, [from, op.toFactionId]);
+        break;
+      }
+
+      case 'play_note': {
+        const asset = state.assets.find((a) => a.id === op.assetId);
+        if (!asset) {
+          reject(raw, 'unknown_asset', `No asset "${op.assetId}".`);
+          break;
+        }
+        if (!isNote(asset)) {
+          reject(raw, 'illegal_value', `${asset.text} is not a promissory note; there is nothing to call in.`);
+          break;
+        }
+        const holder = asset.heldBy;
+        const issuer = asset.issuedBy;
+        if (actor !== undefined && holder !== actor) {
+          reject(raw, 'illegal_value', `${asset.text} is ${nameFor(state, holder)}'s to play, not ${actor}'s.`);
+          break;
+        }
+        if (holder === issuer) {
+          reject(
+            raw,
+            'illegal_value',
+            `${nameFor(state, issuer)} does not call in its own promise. Give the note to somebody — that is what it is for.`,
+          );
+          break;
+        }
+        if (!factionExists(issuer)) {
+          reject(raw, 'unknown_faction', `No faction "${issuer}".`);
+          break;
+        }
+        // A favour signed in peace is not one either side owes in war — and a
+        // pact that ended a war would be a peace made by paper nobody signed.
+        if (warsFor(state, holder).includes(issuer)) {
+          reject(
+            raw,
+            'illegal_value',
+            `${nameFor(state, holder)} is at war with ${nameFor(state, issuer)}; a note given in peace is not honoured in war. Make peace first.`,
+          );
+          break;
+        }
+        const title = NOTE_TITLE[asset.note];
+        const type = NOTE_TREATY[asset.note];
+        let what: string;
+        if (type !== null) {
+          // Already in force, by negotiation or by an earlier note: calling
+          // this one would supersede something possibly better, so it is
+          // refused rather than allowed to replace it.
+          if (treatyBetween(state.treaties, state.turn, holder, issuer, [type])) {
+            reject(
+              raw,
+              'illegal_value',
+              `${nameFor(state, holder)} and ${nameFor(state, issuer)} already have a ${type.replace(/_/g, ' ')} in force; the note would give nothing it does not.`,
+            );
+            break;
+          }
+          // An exclusive arrangement either side holds with somebody else is
+          // honoured here exactly as at a signing.
+          const bound = conflictingTreaty(state.treaties, state.turn, type, [issuer, holder], false);
+          if (bound) {
+            reject(
+              raw,
+              'treaty_conflict',
+              `${nameFor(state, bound.parties.find((p) => p === issuer || p === holder)!)} is already bound by an exclusive ${bound.type.replace(/_/g, ' ')} (${bound.id}), so the note cannot be honoured.`,
+            );
+            break;
+          }
+          const terms: Record<string, unknown> = {};
+          if (asset.note === 'most_favoured') {
+            const richest = state.systems
+              .filter((x) => x.controllerFactionId === issuer)
+              .sort((a, b) => b.strategicValue - a.strategicValue || a.id.localeCompare(b.id))[0];
+            if (!richest) {
+              reject(raw, 'illegal_value', `${nameFor(state, issuer)} holds no world to share the income of.`);
+              break;
+            }
+            terms.incomeShares = [{ systemId: richest.id, factionId: holder, share: NOTE_INCOME_SHARE }];
+          }
+          if (asset.note === 'escort') terms.shipsPledged = { [issuer]: NOTE_ESCORT_HULLS };
+          const treaty: Treaty = {
+            id: mintId(state, 'tre'),
+            type,
+            parties: [issuer, holder],
+            terms: TreatyTermsSchema.parse(terms),
+            signedTurn: state.turn,
+            expiresTurn: state.turn + NOTE_TERM_TURNS,
+            effectiveTurn: null,
+            status: 'active',
+            exclusive: false,
+            summary: `${title}: ${nameFor(state, issuer)}'s note, called in by ${nameFor(state, holder)}`,
+          };
+          state.treaties.push(treaty);
+          what = `a ${type.replace(/_/g, ' ')} in force until turn ${treaty.expiresTurn}`;
+        } else {
+          // A line of credit is a loan of money, and it is the issuer's money:
+          // trimmed to what its treasury holds, as every transfer is.
+          const lender = state.factions.find((f) => f.id === issuer)!;
+          const borrower = state.factions.find((f) => f.id === holder)!;
+          const amount = Math.min(NOTE_CREDIT, lender.credits);
+          if (amount <= 0) {
+            reject(
+              raw,
+              'insufficient_credits',
+              `${lender.name} has nothing in its treasury to advance against its note.`,
+            );
+            break;
+          }
+          lender.credits -= amount;
+          borrower.credits += amount;
+          const lent = { kind: 'credits' as const, amount };
+          const loan: Loan = {
+            id: mintId(state, 'loan'),
+            lenderFactionId: issuer,
+            borrowerFactionId: holder,
+            lent,
+            outstanding: lent,
+            rentPerTurn: NOTE_CREDIT_RENT,
+            dueTurn: state.turn + NOTE_TERM_TURNS,
+            status: 'current',
+            missedPayments: 0,
+            establishedTurn: state.turn,
+            text: `${lender.name}'s line of credit, called in by ${borrower.name}.`,
+          };
+          state.loans.push(loan);
+          what = `an advance of ${amount} credits at ${NOTE_CREDIT_RENT} a turn, due back on turn ${loan.dueTurn}`;
+        }
+        // **It comes home.** The favour is spent and the issuer may grant it
+        // again — which is a choice it makes every time it hands it over.
+        asset.heldBy = issuer;
+        const note = `${nameFor(state, holder)} calls in ${nameFor(state, issuer)}'s note of ${title.toLowerCase()}: ${what}. The note returns to ${nameFor(state, issuer)}. ${op.reason}`.trim();
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, holder, [holder, issuer]);
         break;
       }
 
@@ -3134,6 +3360,30 @@ function applyOpsUnderRules(
             });
             if (full) {
               reject(raw, 'illegal_value', full);
+              break;
+            }
+          }
+          // A repair needs something broken, on ground the power runs — a
+          // fixture is an institution a power staffs, so mending one is the
+          // holder's work exactly as raising one is.
+          if (op.onComplete.kind === 'repair_fixture') {
+            if (!holds) {
+              reject(
+                raw,
+                'no_presence',
+                `${op.factionId} does not hold ${site.name}; a fixture is repaired by the power that runs it.`,
+              );
+              break;
+            }
+            const broken = fixtureToRepair(statFixturesAt(state, site.id), op.onComplete.fixtureKind);
+            if (!broken) {
+              reject(
+                raw,
+                'illegal_value',
+                op.onComplete.fixtureKind
+                  ? `No damaged ${op.onComplete.fixtureKind.replace(/_/g, ' ')} stands at ${site.name}.`
+                  : `Nothing standing at ${site.name} is damaged.`,
+              );
               break;
             }
           }
@@ -3738,6 +3988,27 @@ function applyOpsUnderRules(
           reject(raw, 'unknown_system', `No system "${badSystem}" in treaty terms.`);
           break;
         }
+        // Goods flow under an accord about lanes, and only between the two
+        // powers that signed it. See `COMMODITY_PER_TURN`.
+        if (op.terms.commodities.length > 0) {
+          if (op.treatyType !== 'trade_accord') {
+            reject(
+              raw,
+              'illegal_value',
+              `Goods flow under a trade_accord, not a ${op.treatyType}. Record the flow on the accord that opens the lanes.`,
+            );
+            break;
+          }
+          const stranger = op.terms.commodities.find((id) => !op.parties.includes(id));
+          if (stranger) {
+            reject(
+              raw,
+              'illegal_value',
+              `${stranger} did not sign this accord, so it cannot be made to send its goods under it.`,
+            );
+            break;
+          }
+        }
         // A per-turn flow is the one treaty term that compounds, and it was
         // unbounded — which made it strictly the better way to move money out
         // of a negotiation than the capped one-off `adjust_credits`. Trimmed
@@ -3903,6 +4174,10 @@ function applyOpsUnderRules(
           op.ratifyTurns === undefined ? null : state.turn + op.ratifyTurns;
         const pending = effectiveTurn !== null && effectiveTurn > state.turn;
 
+        // Read BEFORE the treaty exists, since a live peace is one of the
+        // things `warsFor` reads — a ceasefire signed between powers at war
+        // would otherwise find them already at peace.
+        const wereAtWar = warsFor(state, op.parties[0]!).includes(op.parties[1]!);
         const treaty = {
           id: mintId(state, 'tre'),
           type: op.treatyType,
@@ -3930,6 +4205,7 @@ function applyOpsUnderRules(
           const renewal = alreadyBound(state, treaty);
           supersedePriorTreaties(state, treaty, notes);
           if (arrangementStanding && !renewal) payTreatyGoodwill(state, treaty, notes, influentialGoodwill);
+          if (truces) leaveTruce(state, treaty, wereAtWar, notes);
         }
         logEvent(
           state,
@@ -4495,22 +4771,28 @@ function applyOpsUnderRules(
         const who = namePerson(state, ownerId, `agent:${site.id}:${state.agents.length}`, null, uniqueFamilies, (n) =>
           agentName(ownerId, state.turn, `agent:${site.id}:${state.agents.length}:${n}`),
         );
-        state.agents.push({
-          id: mintId(state, 'agt'),
-          name: who,
-          ownerFactionId: ownerId,
-          systemId: site.id,
-          mission: null,
-          effect: null,
-          successChance: 0,
-          deployedTurn: state.turn,
-          inPlaceFrom: state.turn,
-          exposed: false,
-          operations: 0,
-          timesCaught: 0,
-          cover: op.cover,
-          targetCommanderId: null,
-        });
+        // Through the schema, for the reason a fixture is: replay compares
+        // `JSON.stringify`, and a literal puts `name` second where a record
+        // that has round-tripped a save puts it eighth — the same operative in
+        // a different order, which nothing in the failure would explain.
+        state.agents.push(
+          AgentSchema.parse({
+            id: mintId(state, 'agt'),
+            name: who,
+            ownerFactionId: ownerId,
+            systemId: site.id,
+            mission: null,
+            effect: null,
+            successChance: 0,
+            deployedTurn: state.turn,
+            inPlaceFrom: state.turn,
+            exposed: false,
+            operations: 0,
+            timesCaught: 0,
+            cover: op.cover,
+            targetCommanderId: null,
+          }),
+        );
         const signed = `${who} signs on with ${nameFor(state, ownerId)} at ${site.name}, awaiting orders.`;
         notes.push(signed);
         logEvent(state, 'order', signed, ownerId, [ownerId]);
@@ -6275,6 +6557,8 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     randomEvents = true,
     rimSandbox,
     twoFixtures = true,
+    truces = true,
+    spanOfControl: governingSpan = true,
     battleRules = {},
   } = legacy;
   const state = cloneState(input);
@@ -6590,6 +6874,74 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     }
   }
 
+  /* --- Goods: made at home, carried by accord, sold abroad ------------- */
+  // See `COMMODITY_PER_TURN`. Three steps in one place, in this order, so a
+  // turn's production can travel and sell in the same tick.
+  //
+  // Made at the power's best world, into one stock that tops out at the cap —
+  // a power that never trades simply stops making more. A power that holds no
+  // ground makes nothing: there is nowhere to make it.
+  for (const faction of state.factions) {
+    const goods = faction.commodity;
+    if (!goods) continue;
+    const home = state.systems
+      .filter((x) => x.controllerFactionId === faction.id)
+      .sort((a, b) => b.strategicValue - a.strategicValue || a.id.localeCompare(b.id))[0];
+    if (!home) continue;
+    const stock = (state.assets ?? []).find(
+      (a) => isCommodity(a) && a.issuedBy === faction.id && a.heldBy === faction.id,
+    );
+    if (stock) {
+      stock.quantity = Math.min(COMMODITY_CAP, stock.quantity + COMMODITY_PER_TURN);
+      continue;
+    }
+    (state.assets ??= []).push(
+      AssetSchema.parse({
+        id: mintId(state, 'ast'),
+        kind: goods.kind,
+        text: goods.text,
+        heldBy: faction.id,
+        quantity: COMMODITY_PER_TURN,
+        unit: goods.unit,
+        divisible: true,
+        valuePerUnit: Object.fromEntries(
+          state.factions.map((f) => [f.id, f.id === faction.id ? 0 : COMMODITY_VALUE]),
+        ),
+        atSystemId: home.id,
+        acquiredTurn: state.turn,
+        issuedBy: faction.id,
+      }),
+    );
+  }
+  // Carried: an accord naming a party's goods sends that party's whole stock to
+  // the other, every turn the accord holds.
+  for (const treaty of state.treaties) {
+    if (!isTreatyLive(treaty, state.turn) || treaty.type !== 'trade_accord') continue;
+    for (const maker of treaty.terms.commodities ?? []) {
+      const other = treaty.parties.find((p) => p !== maker);
+      if (!other) continue;
+      const stock = (state.assets ?? []).find(
+        (a) => isCommodity(a) && a.issuedBy === maker && a.heldBy === maker,
+      );
+      if (!stock) continue;
+      stock.heldBy = other;
+    }
+  }
+  // Sold: goods held by anybody but their maker go to market and are gone —
+  // however they came to be held, handed over, carried by accord, or taken with
+  // a world. One place pays, so no path can pay twice or not at all.
+  for (const asset of [...(state.assets ?? [])]) {
+    if (!isCommodity(asset) || asset.heldBy === asset.issuedBy) continue;
+    const buyer = state.factions.find((f) => f.id === asset.heldBy);
+    if (!buyer) continue;
+    const earned = asset.quantity * (asset.valuePerUnit[buyer.id] ?? COMMODITY_VALUE);
+    buyer.credits += earned;
+    state.assets = state.assets.filter((a) => a.id !== asset.id);
+    const note = `${buyer.name} sells ${asset.quantity} ${asset.unit} of ${nameFor(state, asset.issuedBy!)}'s ${asset.kind.replace(/_/g, ' ')} at market for ${earned} credits.`;
+    if (buyer.id === state.playerFactionId || asset.issuedBy === state.playerFactionId) notes.push(note);
+    logEvent(state, 'system', note, buyer.id, [buyer.id, asset.issuedBy!]);
+  }
+
   /* --- Compulsions ignored --------------------------------------------- */
   // The other half of governing in character. A refusal catches a leader
   // ordering their faction to betray itself; nothing caught one who simply
@@ -6617,11 +6969,32 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     if (faction.id === state.playerFactionId) notes.push(note);
   }
 
+  /* --- Ground held past a span of control ------------------------------ */
+  // The other half of what holding territory costs: `OCCUPATION_COST` charges
+  // for whose it was, this for how much of it there is. See `spanOfControl`.
+  // After the compulsions, so a turn's drift and its overreach are read
+  // against the same decay.
+  if (governingSpan) {
+    for (const faction of state.factions) {
+      const { held, span, over } = spanOfControl(state, faction.id);
+      if (over <= 0) continue;
+      const before = faction.dissent;
+      faction.dissent = Math.min(100, before + over * SPAN_DISSENT_PER_WORLD);
+      const added = faction.dissent - before;
+      if (added === 0) continue;
+      const note = `${faction.name} holds ${held} worlds against a span of ${span}: dissent +${added} (now ${faction.dissent}/100).`;
+      logEvent(state, 'system', note, faction.id);
+      if (faction.id === state.playerFactionId) notes.push(note);
+    }
+  }
+
   /* --- Ratified treaties come into force ------------------------------- */
   // Before expiry, so a treaty cannot lapse in the same tick it becomes live.
   for (const treaty of state.treaties) {
     if (treaty.status !== 'pending' || treaty.effectiveTurn === null) continue;
     if (state.turn < treaty.effectiveTurn) continue;
+    // Before it goes live, for the reason the signature path reads it first.
+    const wereAtWar = warsFor(state, treaty.parties[0]!).includes(treaty.parties[1]!);
     treaty.status = 'active';
     // It replaces its predecessor now, not at signature — see
     // `supersedePriorTreaties`.
@@ -6633,6 +7006,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     // campaigns contain `ratifyTurns`, so gating only the signature path would
     // have left half the change live during replay.
     if (arrangementStanding && !renewal) payTreatyGoodwill(state, treaty, notes, influentialGoodwill);
+    if (truces) leaveTruce(state, treaty, wereAtWar, notes);
     logEvent(state, 'diplomacy', `Treaty ratified and now in force: ${treaty.summary}.`);
     notes.push(`Ratified: ${treaty.summary}`);
     // A cession takes effect with the rest of the terms, not at signature, so a
@@ -6725,6 +7099,31 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     if (state.turn >= treaty.expiresTurn) {
       treaty.status = 'expired';
       logEvent(state, 'diplomacy', `Treaty lapsed: ${treaty.summary}.`);
+    }
+  }
+
+  /* --- Truces heal the war they ended, and run out ---------------------- */
+  // Toward `TRUCE_FLOOR` and no further, so a truce lifts a shallow war out of
+  // war and leaves a deep one still at war when it ends — and above the floor
+  // it moves nothing at all. Disposition has no decay anywhere else; this is
+  // the one place a peace is allowed to repair what the war did.
+  for (const truce of state.truces ?? []) {
+    if (truce.status !== 'active') continue;
+    if (state.turn >= truce.untilTurn) {
+      truce.status = 'ended';
+      const [a, b] = truce.parties as [string, string];
+      const still = warsFor(state, a).includes(b);
+      const note = `The truce between ${nameFor(state, a)} and ${nameFor(state, b)} runs out${still ? ', and the war it held off is not over' : ''}.`;
+      notes.push(note);
+      logEvent(state, 'diplomacy', note);
+      continue;
+    }
+    for (const [from, toward] of [truce.parties, [...truce.parties].reverse()] as [string, string][]) {
+      const f = state.factions.find((x) => x.id === from);
+      if (!f) continue;
+      const now = f.disposition[toward] ?? 0;
+      if (now >= TRUCE_FLOOR) continue;
+      f.disposition[toward] = Math.min(TRUCE_FLOOR, now + TRUCE_RECOVERY);
     }
   }
 
@@ -7180,6 +7579,39 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       }
     }
 
+    if (agent.effect.kind === 'fixture_damage') {
+      // The host's best working fixture — the one whose loss costs most —
+      // ties broken on id so replay strikes the same building.
+      const hits = agent.effect.perTurn * profile.effectMultiplier;
+      const standing = statFixturesAt(state, host.id)
+        .filter((a) => a.heldBy === target.id && (a.damage ?? 0) < fixtureIntegrity(a))
+        .sort(
+          (a, b) =>
+            fixtureIntegrity(b) - (b.damage ?? 0) - (fixtureIntegrity(a) - (a.damage ?? 0)) ||
+            a.id.localeCompare(b.id),
+        );
+      const struck = standing[0];
+      if (!struck) {
+        watchNotes.set(agent.id, `found nothing of ${target.name}'s standing on ${host.name} worth wrecking.`);
+      } else {
+        const whole = fixtureIntegrity(struck);
+        struck.damage = Math.min(whole, (struck.damage ?? 0) + hits);
+        const label = struck.kind.replace(/_/g, ' ');
+        watchNotes.set(
+          agent.id,
+          `wrecked part of ${target.name}'s ${label} on ${host.name} (now ${whole - struck.damage} of ${whole}).`,
+        );
+        // Public, as a burning foundry is: the building stands on a surface
+        // everybody can see, and its damage is drawn on the System panel.
+        logEvent(
+          state,
+          'system',
+          `Sabotage on ${host.name}: ${target.name}'s ${label} is damaged (${whole - struck.damage} of ${whole} working).`,
+          target.id,
+        );
+      }
+    }
+
     // A successful decapitation is not deniable for long. Relations collapse
     // even when the operative gets out.
     if (profile.oneShot && owner) {
@@ -7347,7 +7779,13 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       const target = order.onComplete ? getSystem(state, order.targetId) : undefined;
       let note = `${order.label} completed at ${nameOf(order.targetId)}.`;
       if (order.onComplete && target) {
-        const outcome = applyOrderEffect(target, order.factionId, order.onComplete, order.label);
+        const outcome = applyOrderEffect(
+          target,
+          order.factionId,
+          order.onComplete,
+          order.label,
+          statFixturesAt(state, target.id),
+        );
         note = outcome.note;
         if (outcome.fixture) {
           // The slot is re-checked here, not only at issue: a world taken
@@ -8067,24 +8505,31 @@ function resolveBattle(
     for (const victimId of pactVictims) {
     if (victimId === attackerId) continue;
     const pact = treatyBetween(state.treaties, state.turn, attackerId, victimId, PEACE_TREATIES);
-    if (!pact) continue;
+    // An attack across a truce breaks it, and that is the dearer of the two:
+    // one act, one price — twice what onlookers charge for a broken pact.
+    const truce = truceBetween(state.truces, state.turn, attackerId, victimId);
+    if (!pact && !truce) continue;
 
-    pact.status = 'broken';
+    if (pact) pact.status = 'broken';
+    if (truce) truce.status = 'broken';
     const injured = state.factions.find((f) => f.id === victimId);
     if (injured) {
       injured.disposition[attackerId] = Math.max(-100, (injured.disposition[attackerId] ?? 0) - 25);
     }
+    const reputation = truce ? TRUCE_BREAKING_REPUTATION_COST : PACT_BREAKING_REPUTATION_COST;
     for (const witness of state.factions) {
       if (witness.id === attackerId || witness.id === victimId) continue;
       witness.disposition[attackerId] = Math.max(
         -100,
-        (witness.disposition[attackerId] ?? 0) - PACT_BREAKING_REPUTATION_COST,
+        (witness.disposition[attackerId] ?? 0) - reputation,
       );
     }
     logEvent(
       state,
       'diplomacy',
-      `${nameOf(attackerId)} breaks its ${pact.type.replace('_', ' ')} with ${nameOf(victimId)} by attacking ${target.name}. The whole Rim notes it.`,
+      truce
+        ? `${nameOf(attackerId)} breaks its truce with ${nameOf(victimId)} by attacking ${target.name}, ${truce.untilTurn - state.turn} turn(s) before it ran out. The whole Rim notes it, and will not forget it.`
+        : `${nameOf(attackerId)} breaks its ${pact!.type.replace('_', ' ')} with ${nameOf(victimId)} by attacking ${target.name}. The whole Rim notes it.`,
       attackerId,
     );
     }

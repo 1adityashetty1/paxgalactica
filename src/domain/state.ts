@@ -52,6 +52,9 @@ import {
   MAX_FIXTURES_PER_WORLD,
   FIXTURE_UPKEEP,
   atWork,
+  TruceSchema,
+  isTruceLive,
+  workingStats,
 } from './diplomacy.js';
 import { DebtSchema, MAX_DEBT_PER_TURN, scheduledDebtService, type Debt } from './debt.js';
 import { LoanSchema, scheduledRent } from './loan.js';
@@ -210,6 +213,19 @@ export const CompulsionSchema = z.preprocess(
   z.object({
     text: z.string().min(1).max(240),
     trigger: CompulsionTriggerSchema.optional(),
+    /**
+     * Powers a peace with whom defies this line — read only by the bots'
+     * peace (`brokeredAccords`), which has no arbiter to read the text and
+     * therefore does not make that peace at all.
+     *
+     * Authored beside the text it restates, because the alternative is code
+     * parsing a sentence: the Vigil's *"no accommodation with pirates, smugglers
+     * or the Nars"* names the Confederacy and the Combine in prose, and only the
+     * seed can say so as ids. A declared or negotiated peace is ruled on by the
+     * arbiter from the text, as every breach is. Optional, so every sheet
+     * without one loads unchanged.
+     */
+    barsPeaceWith: z.array(z.string().min(1)).optional(),
   }),
 );
 export type Compulsion = z.infer<typeof CompulsionSchema>;
@@ -324,6 +340,21 @@ export const FactionSchema = z.object({
    * been and the balance harness reads unchanged.
    */
   tollTargets: z.array(z.string().min(1)).default([]),
+  /**
+   * The goods this power makes and cannot sell to itself — see
+   * `COMMODITY_PER_TURN`. `null` makes none: a save written before commodities
+   * loads as a galaxy that never had them.
+   */
+  commodity: z
+    .object({
+      /** The asset kind its stock is filed under, a lower_snake_case slug. */
+      kind: z.string().regex(/^[a-z][a-z0-9_]*$/),
+      unit: z.string().min(1).max(24),
+      /** One sentence, read back verbatim as the stock's description. */
+      text: z.string().min(1).max(240),
+    })
+    .nullable()
+    .default(null),
 });
 export type Faction = z.infer<typeof FactionSchema>;
 
@@ -553,6 +584,13 @@ export const OrderEffectSchema = z.object({
      * check the attempt was actually made against.
      */
     'found_fixture',
+    /**
+     * A fixture a saboteur has hit, put back: each point of magnitude takes a
+     * point of `damage` off the fixture `fixtureKind` names on the target — or
+     * the most damaged one there, if it names none. A ground improvement, so it
+     * lands for whoever holds the world when it completes.
+     */
+    'repair_fixture',
   ]),
   /**
    * How much. Generous bounds here and the real limits in code: a schema
@@ -783,6 +821,11 @@ export const WorldStateSchema = z.object({
    * sentence to recover a fact.
    */
   lastClash: z.record(z.string(), z.number().int()).default({}),
+  /**
+   * What each war's peace left behind — see `TruceSchema`. Defaulted, so a
+   * campaign from before truces loads as one in which no peace left any.
+   */
+  truces: z.array(TruceSchema).default([]),
   playerFactionId: z.string().min(1),
   /** Abstract unit. There is no calendar in this game, deliberately. */
   turn: z.number().int().min(0),
@@ -1236,7 +1279,9 @@ export function fixtureBonus(state: WorldState, factionId: string): Partial<Fact
   for (const asset of state.assets ?? []) {
     if (asset.heldBy !== factionId) continue;
     if (asset.yield === null || asset.yield.kind !== 'stat') continue;
-    const spread = asset.yield.stats;
+    // What it still yields: a fixture a saboteur has hit is worth a point less
+    // for every point of damage, until it is repaired. See `workingStats`.
+    const spread = workingStats(asset);
     // The same presence line every other yield draws: a fixture pays while its
     // holder holds the world or has ships over it, and not from an abandoned
     // shell on ground somebody else took.
@@ -2354,7 +2399,7 @@ export function effectiveStats(
    * one else's — and the one a bot sizing an attack, or a prompt describing a
    * rival, should make too.
    */
-  opts: { covert?: boolean; seenBy?: string } = {},
+  opts: { covert?: boolean; seenBy?: string; dissent?: boolean } = {},
 ): FactionStats {
   const faction = getFaction(state, factionId);
   const base: FactionStats = faction
@@ -2409,7 +2454,10 @@ export function effectiveStats(
     for (const stat of RALLY_STATS) base[stat] = Math.min(20, base[stat] + rally);
   }
 
-  const penalty = dissentPenalty(faction?.dissent ?? 0);
+  // `dissent: false` reads the stats a power would have with its own house in
+  // order — what `spanOfControl` sizes the administrative span from, so that
+  // unrest cannot shrink the span that is causing it.
+  const penalty = opts.dissent === false ? 0 : dissentPenalty(faction?.dissent ?? 0);
   if (penalty > 0) {
     for (const stat of STAT_NAMES) base[stat] = Math.max(1, base[stat] - penalty);
   }
@@ -2447,6 +2495,72 @@ export function agentsVisibleTo(state: WorldState, factionId: string): Agent[] {
 export const WAR_DISPOSITION_THRESHOLD = -60;
 
 /**
+ * As far as a truce heals a war: one point short of it. See `TruceSchema` —
+ * a truce lifts a shallow war out of war and never manufactures friendship.
+ */
+export const TRUCE_FLOOR = WAR_DISPOSITION_THRESHOLD + 1;
+
+/* ------------------------------------------------------------------ */
+/* A span of control                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * How many worlds a power can govern before governing them costs it.
+ *
+ * Borrowed from *Terra Invicta*'s control-point cap and *Europa Universalis
+ * IV*'s overextension: a SOFT cap set by an administrative stat, where going
+ * over costs more every turn rather than forbidding the expansion.
+ *
+ * `OCCUPATION_COST` already charges for foreign ground in credits. This is the
+ * other half, and it is about how much ground rather than whose: past
+ * `SPAN_BASE` plus the power's influence modifier, every world held adds
+ * `SPAN_DISSENT_PER_WORLD` to its dissent each turn. **It reads influence,
+ * which nothing on the attacking side read before** — a conqueror is braked by
+ * how well it administers, not by how well it fights.
+ *
+ * **Never less than the homeland** — the four worlds a power held at turn 0,
+ * which its administration was built to run. On the opening board the spans
+ * are Meridian 9, the Combine 8, Arkane 5 and Drajk and the Vigil 4: the Vigil,
+ * with the best might on the board and influence 6, is exactly at its span and
+ * pays for every world it takes. One world over is +1 a turn against a decay of
+ * 2, so it costs nothing on its own; three over outruns the decay.
+ *
+ * **Swept, and it is a brake that only the conqueror feels.** Over the harness
+ * at a base of 6 it never fires — nobody holds more than six worlds — which is a
+ * mechanic the harness would report as a clean pass while it did nothing. At 5
+ * it fires for the Vigil alone, on 17 of 30 turns, taking its dissent from 18
+ * to 34 by turn 30 with the board unchanged at 30 and 100 turns. At 4 it reaches
+ * Arkane and Drajk too and moves the board. 5 is taken.
+ *
+ * Read off influence **before dissent** (`effectiveStats(..., { dissent: false })`),
+ * because the alternative is a spiral: dissent costs influence, a smaller
+ * span costs dissent, and a power over its span would talk itself into
+ * collapse. Terrain, fixtures, an officer's passive and a rally all count.
+ */
+export const SPAN_BASE = 5;
+export const SPAN_DISSENT_PER_WORLD = 1;
+
+export interface SpanOfControl {
+  /** Worlds the power holds. */
+  held: number;
+  /** Worlds it can hold before it costs anything. */
+  span: number;
+  /** Worlds past the span, each `SPAN_DISSENT_PER_WORLD` dissent a turn. */
+  over: number;
+}
+
+export function spanOfControl(state: WorldState, factionId: string): SpanOfControl {
+  const held = state.systems.filter((s) => s.controllerFactionId === factionId).length;
+  const influence = effectiveStats(state, factionId, { dissent: false }).influence;
+  // A power's own homeland never overextends it: the administration was built
+  // for those worlds. Without the floor the Vigil, at influence 6, would open
+  // the campaign paying dissent for ground it has always held.
+  const homeland = state.systems.filter((s) => s.homeFactionId === factionId).length;
+  const span = Math.max(1, homeland, SPAN_BASE + statModifier(influence));
+  return { held, span, over: Math.max(0, held - span) };
+}
+
+/**
  * Factions this one is at war with — no live non-aggression or ceasefire, and
  * a relationship soured past `WAR_DISPOSITION_THRESHOLD`.
  *
@@ -2465,6 +2579,12 @@ export function warsFor(state: WorldState, factionId: string): string[] {
     if (treaty.type === 'non_aggression' || treaty.type === 'ceasefire' || treaty.type === 'mutual_defense') {
       for (const p of treaty.parties) if (p !== factionId) atPeace.add(p);
     }
+  }
+  // A truce holds two powers out of war whatever the paper under it does — a
+  // ceasefire may lapse and a cession is spent on signature. See `TruceSchema`.
+  for (const truce of state.truces ?? []) {
+    if (!truce.parties.includes(factionId) || !isTruceLive(truce, state.turn)) continue;
+    for (const p of truce.parties) if (p !== factionId) atPeace.add(p);
   }
   return state.factions
     .filter(

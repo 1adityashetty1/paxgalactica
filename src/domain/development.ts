@@ -1,4 +1,4 @@
-import { DEFAULT_COVERT_EFFECT, FIXTURE_COST, type AgentMission, type Asset } from './diplomacy.js';
+import { DEFAULT_COVERT_EFFECT, FIXTURE_COST, fixtureIntegrity, type AgentMission, type Asset } from './diplomacy.js';
 import type { DurationCategory } from './duration.js';
 import { archetypeFor, fixtureYieldFor } from './assets.js';
 import { CREDITS_PER_TON, HULL_SPEC, type HullClass } from './hulls.js';
@@ -75,7 +75,13 @@ export const EFFECT_CAPS: Record<OrderEffectKind, number> = {
   // capping it at 1 is what stops a model asking for six foundries in one
   // programme and getting a sixfold stat bonus for one price.
   found_fixture: 1,
+  // A fixture is worth `MAX_ASSET_STAT` points and can lose no more, so two
+  // points is a whole repair.
+  repair_fixture: 2,
 };
+
+/** What putting back one point of a sabotaged fixture costs — see `EFFECT_COST`. */
+export const FIXTURE_REPAIR_COST = 40;
 
 /**
  * Credits per point of magnitude, charged when the order is issued.
@@ -98,6 +104,11 @@ export const EFFECT_COST: Record<
   // worth about the same to everybody, so there is no board arithmetic for a
   // per-case price to read. See `FIXTURE_COST` for the anchors.
   found_fixture: FIXTURE_COST,
+  // A third of a new building per point put back, so mending a wrecked plant
+  // (two points, 80) is cheaper than raising another (120) and dearer than
+  // leaving a lightly damaged one alone. Sabotage costs 80 to place, so a
+  // saboteur and the repair it forces are about even money.
+  repair_fixture: FIXTURE_REPAIR_COST,
   // Ground troops are raised locally and normally cost nothing — passive
   // regrowth is free. What is bought here is speed, so the price is small.
   raise_garrison: 15,
@@ -161,6 +172,8 @@ export const EFFECT_CATEGORIES: Record<OrderEffectKind, readonly DurationCategor
   // is. Deliberately not `fortification` — a wall is not a foundry, and
   // `fortify` is already what that category delivers.
   found_fixture: ['construction_infrastructure', 'industrial_conversion', 'retooling'],
+  // Whatever can raise one can mend one.
+  repair_fixture: ['construction_infrastructure', 'industrial_conversion', 'retooling'],
 };
 
 /**
@@ -546,7 +559,19 @@ export function describeOrderEffect(effect: OrderEffect): string {
       return `${n} new ${HULL_SPEC[effect.hull].label}${n === 1 ? '' : 's'}`;
     case 'found_fixture':
       return `a ${effect.fixtureKind.replace(/_/g, ' ') || 'fixture'}`;
+    case 'repair_fixture':
+      return `${n} point${n === 1 ? '' : 's'} of repair to ${effect.fixtureKind ? `the ${effect.fixtureKind.replace(/_/g, ' ')}` : 'a damaged fixture'}`;
   }
+}
+
+/**
+ * The fixture a repair programme mends: the one it names, or the most damaged
+ * standing on the world. `undefined` when there is nothing to mend.
+ */
+export function fixtureToRepair(standing: readonly Asset[], kind: string): Asset | undefined {
+  return standing
+    .filter((a) => (a.damage ?? 0) > 0 && (kind === '' || a.kind === kind))
+    .sort((a, b) => (b.damage ?? 0) - (a.damage ?? 0) || a.id.localeCompare(b.id))[0];
 }
 
 /* ------------------------------------------------------------------ */
@@ -589,6 +614,8 @@ export function applyOrderEffect(
   factionId: string,
   effect: OrderEffect,
   label: string,
+  /** The fixtures standing on `system`, for `repair_fixture`, which mends one in place. */
+  standing: readonly Asset[] = [],
 ): EffectOutcome {
   const holder = system.controllerFactionId;
   const stillOurs = holder === factionId;
@@ -657,6 +684,27 @@ export function applyOrderEffect(
       addShipsAt(system, factionId, effect.magnitude, effect.hull);
       return {
         note: `${label} completed at ${system.name}: ${describeOrderEffect(effect)} commissioned.`,
+        delivered: true,
+      };
+    }
+
+    case 'repair_fixture': {
+      // A ground improvement, so it lands for whoever holds the world now —
+      // the rule `found_fixture` follows, for its reason.
+      const mend = fixtureToRepair(standing, effect.fixtureKind);
+      if (!mend) {
+        return {
+          note: `${label} completed at ${system.name}, but there was nothing left there to repair.`,
+          delivered: false,
+        };
+      }
+      const before = mend.damage ?? 0;
+      const after = Math.max(0, before - effect.magnitude);
+      if (after === 0) delete mend.damage;
+      else mend.damage = after;
+      const whole = fixtureIntegrity(mend);
+      return {
+        note: `${label} completed at ${system.name}: the ${mend.kind.replace(/_/g, ' ')} is ${after === 0 ? 'whole again' : `back to ${whole - after} of ${whole}`}.`,
         delivered: true,
       };
     }

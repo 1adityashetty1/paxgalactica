@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_ASSET_STAT } from '../src/domain/diplomacy.js';
+import { MAX_ASSET_STAT, isNote } from '../src/domain/diplomacy.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import { boundPayloadsToOutcome } from '../src/domain/development.js';
@@ -696,7 +696,7 @@ describe('the opening board gives every power something to bargain with', () => 
    * is worth to a rival is asking about a bargain the reducer will not allow.
    * They are held to their own rules in the block beneath this one.
    */
-  const cargo = () => opening().assets.filter((a) => a.portable);
+  const cargo = () => opening().assets.filter((a) => a.portable && !isNote(a));
 
   it('holds one each, and nothing for the Combine', () => {
     const s = opening();
@@ -720,7 +720,8 @@ describe('the opening board gives every power something to bargain with', () => 
 
   it('can be taken, because each one stands on a world', () => {
     const s = opening();
-    for (const a of s.assets) {
+    // Promissory notes are paper and stand nowhere — `tests/notes.test.ts`.
+    for (const a of s.assets.filter((x) => !isNote(x))) {
       expect(a.atSystemId).not.toBeNull();
       // And on a world its own holder controls, or it would already be lost.
       const at = s.systems.find((x) => x.id === a.atSystemId)!;
