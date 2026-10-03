@@ -748,6 +748,7 @@ function buildFactions(luck = true, commodities = true): Faction[] {
     redLines: [...f.redLines],
     compulsions: f.compulsions.map((c) => (typeof c === 'string' ? { text: c } : { ...c })),
     dissent: 0,
+    heat: 0,
     buildBias: [...f.buildBias],
     ...(luck && f.luck ? { luck: { ...f.luck } } : {}),
     // The Combine opens charging everyone, and everyone else opens charging
@@ -896,6 +897,7 @@ export function createSeedState(
     truces: [],
     obligations: [],
     demands: [],
+    bounties: [],
     treaties: [],
     commitments: [],
     agents: [],

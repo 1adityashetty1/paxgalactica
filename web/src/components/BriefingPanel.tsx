@@ -110,6 +110,7 @@ export function BriefingPanel({
                 )} ${briefing.ledger.warProfit > 0 ? "others' wars" : 'at war'}`}
               {briefing.ledger.tolls > 0 && ` · ${briefing.ledger.tolls} in tolls`}
               {briefing.ledger.raided > 0 && ` · ${briefing.ledger.raided} raided`}
+              {(briefing.ledger.bounties ?? 0) > 0 && ` · +${briefing.ledger.bounties} bounties`}
             </span>
             {/* Debt service is settled as a transfer in the tick, so it is not
                 inside the net figure above. Shown separately rather than

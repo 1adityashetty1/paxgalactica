@@ -16,6 +16,10 @@ import {
   ULTIMATUM_YIELD_RATIO,
   isTreatyLive,
   truceBetween,
+  bountyOn,
+  commissionsAgainst,
+  protectedFrom,
+  raidLandsOn,
 } from './diplomacy.js';
 import { EFFECT_COST } from './development.js';
 import { ENVOYS_QUIET_TURNS } from './events.js';
@@ -314,7 +318,12 @@ function raise(ctx: Ctx): Ops {
   // upkeep rises with the count, so the marginal building is the dearest one.
   const running = state.assets.filter((a) => a.heldBy === me && isStatFixture(a)).length;
   const marginal = fixtureUpkeepForCount(running + 1) - fixtureUpkeepForCount(running);
-  if (ledgerFor(state, me).net < marginal * 4) return [];
+  // Judged against STANDING income: a building is paid for every turn, and
+  // this turn's prizes and the bounties on them are not — a raid runs out, and
+  // a fixture raised on a good raiding turn is a bill the next quiet one
+  // cannot meet.
+  const ledger = ledgerFor(state, me);
+  if (ledger.net - ledger.raided - ledger.bounties < marginal * 4) return [];
   // **Every empty world before any second slot.** Stacking both on the best
   // world was the first version, and it moved the board: the Vigil's second
   // building at Vantic was a split carrying might, and Threx fell on turn 10
@@ -660,6 +669,32 @@ function backDemands(ctx: Ctx): Ops {
     ops.push({ op: 'back_ultimatum', demandId: d.id, side });
   }
   return ops;
+}
+
+/** What a bot puts on an enemy's head, and what it keeps in hand first. */
+export const BOT_BOUNTY = 150;
+export const BOT_BOUNTY_RESERVE = 1500;
+
+/**
+ * Put a price on the enemy it hates most, one bounty at a time.
+ *
+ * Only a power that thinks in money pays raiders — the same ethics that demand
+ * tribute (`DEMANDING_ETHICS`) — so not the Vigil, whose compulsions forbid any
+ * accommodation with pirates, and not the Drift. Only at war, and only out of a
+ * full treasury: a bounty is money a power can spare to have somebody else
+ * spend their fleets for it, which is the Combine's whole doctrine.
+ */
+function postBounty(ctx: Ctx): Ops {
+  const { state, me } = ctx;
+  const faction = getFaction(state, me);
+  if (!faction || !DEMANDING_ETHICS.has(faction.warEthic)) return [];
+  if (purse(state, me) < BOT_BOUNTY_RESERVE) return [];
+  if ((state.bounties ?? []).some((b) => b.status === 'open' && b.postedBy === me)) return [];
+  const enemy = warsFor(state, me)
+    .filter((id) => held(state, id).length > 0)
+    .sort((a, b) => dispositionBetween(state, me, a) - dispositionBetween(state, me, b) || a.localeCompare(b))[0];
+  if (!enemy) return [];
+  return [{ op: 'post_bounty', targetFactionId: enemy, credits: BOT_BOUNTY, reason: 'a price on an enemy' }];
 }
 
 function buy(ctx: Ctx, appetite: number, reserveTurns: number, doctrine: BuyDoctrine = {}): Ops {
@@ -1058,6 +1093,28 @@ function trafficAt(s: WorldState, systemId: string): number {
   return tradeRoutes(s)
     .filter((r) => r.path.slice(1, -1).includes(systemId))
     .reduce((n, r) => n + r.volume, 0);
+}
+
+/** A bounty this large doubles how much a raider wants a world its target holds. */
+export const BOT_BOUNTY_PULL = 200;
+/** How much more a raider wants a world held by a power its letter of marque names. */
+export const BOT_MARQUE_PULL = 1.5;
+
+/**
+ * What raiding a world is worth to a raider: the traffic crossing it, more for
+ * a price on its holder (*"the pirates raid whoever carries the largest
+ * pool"*) and more again for a holder a letter of marque names — and nothing
+ * where the prizes would not land, on a power it sells protection to or one
+ * that commissioned it. See `BountySchema` and `CommissionSchema`.
+ */
+function raidWorth(s: WorldState, me: string, world: StarSystem): number {
+  const traffic = trafficAt(s, world.id);
+  const holder = world.controllerFactionId;
+  if (!holder || holder === me) return traffic;
+  if (!raidLandsOn(s.treaties, s.turn, me, holder)) return 0;
+  const bounty = 1 + Math.min(1, bountyOn(s.bounties, holder) / BOT_BOUNTY_PULL);
+  const licensed = commissionsAgainst(s.treaties, s.turn, me, holder).length > 0 ? BOT_MARQUE_PULL : 1;
+  return traffic * bounty * licensed;
 }
 
 /**
@@ -1538,8 +1595,9 @@ const drajk: Bot = (ctx) => {
     }
     const prey = ctx.state.systems
       .filter((x) => reachable.has(x.id) && x.controllerFactionId !== ctx.me)
-      .sort((a, b) => trafficAt(ctx.state, b.id) - trafficAt(ctx.state, a.id))[0];
-    if (prey && trafficAt(ctx.state, prey.id) > 0) {
+      .map((x) => ({ x, worth: raidWorth(ctx.state, ctx.me, x) }))
+      .sort((a, b) => b.worth - a.worth)[0]?.x;
+    if (prey && raidWorth(ctx.state, ctx.me, prey) > 0) {
       ops.push({
         op: 'issue_order', factionId: ctx.me, type: 'commerce_raiding',
         originId: prey.id, targetId: prey.id, durationTurns: 3,
@@ -1689,6 +1747,17 @@ function honourTreaties(
       withheld.push(`interdiction at ${target.name}, which a trade accord makes pointless`);
       return false;
     }
+    // Protection sold is a promise kept, and a commissioner is a paymaster.
+    if (
+      (op.type === 'blockade' || op.type === 'commerce_raiding') &&
+      (protectedFrom(state.treaties, state.turn, me, holder) ||
+        state.treaties.some(
+          (t) => t.type === 'contract' && isTreatyLive(t, state.turn) && t.terms.commission?.raider === me && t.parties.includes(holder),
+        ))
+    ) {
+      withheld.push(`interdiction at ${target.name}, which a contract with ${getFaction(state, holder)?.name ?? holder} forbids`);
+      return false;
+    }
     return true;
   });
   return { ops: kept, withheld };
@@ -1779,7 +1848,19 @@ function describeProposal(state: WorldState, me: string, ops: Record<string, unk
  * something its faction cannot see. A test pins that, because it is an
  * invariant rather than an accident.
  */
-export function proposeFor(state: WorldState, factionId: string): Proposal | null {
+export function proposeFor(
+  state: WorldState,
+  factionId: string,
+  /**
+   * Whether a batch would apply cleanly, atomically, as `endTurn` commits it.
+   * Given, a rule that would sink the whole batch is left out rather than
+   * costing the bot its turn — the rules each read the treasury as it stood,
+   * so a saboteur sent after the yards spent it was refused, and with it
+   * everything else the power meant to do. Passed in rather than imported
+   * because this module ships to the browser and the reducer does not.
+   */
+  applies?: (ops: Record<string, unknown>[]) => boolean,
+): Proposal | null {
   const bot = BOTS[factionId];
   if (!bot) return null;
 
@@ -1787,23 +1868,29 @@ export function proposeFor(state: WorldState, factionId: string): Proposal | nul
   // covert half of a war it is in — added here rather than to five bots, for
   // the reason the filters below are: a bot added later inherits them.
   const ctx = { state, me: factionId };
-  const raw = [
-    ...bot(ctx),
-    ...mend(ctx),
-    ...sabotage(ctx),
-    ...watch(ctx),
-    ...useProof(ctx),
-    ...demandTribute(ctx),
-    ...callIn(ctx),
-    ...backDemands(ctx),
-  ];
+  const rules = [mend, sabotage, watch, useProof, demandTribute, callIn, backDemands, postBounty].map((rule) =>
+    rule(ctx),
+  );
   // Paper first, then standing. Both are post-filters over one proposal, so a
   // bot cannot route around either and the order between them only decides
   // which reason is given for an act both would have refused.
-  const paper = honourTreaties(state, factionId, raw);
-  const standing = honourStanding(state, factionId, paper.ops);
-  const ops = standing.ops;
-  const withheld = [...paper.withheld, ...standing.withheld];
+  const filtered = (raw: Ops) => {
+    const paper = honourTreaties(state, factionId, raw);
+    const standing = honourStanding(state, factionId, paper.ops);
+    return { ops: standing.ops, withheld: [...paper.withheld, ...standing.withheld] };
+  };
+  let chosen = filtered([...bot(ctx), ...rules.flat()]);
+  if (applies && chosen.ops.length > 0 && !applies(chosen.ops)) {
+    // The doctrine's own ops first, then each rule only if the batch still applies.
+    let raw: Ops = bot(ctx);
+    for (const extra of rules) {
+      if (extra.length === 0) continue;
+      const next = filtered([...raw, ...extra]);
+      if (applies(next.ops)) raw = [...raw, ...extra];
+    }
+    chosen = filtered(raw);
+  }
+  const { ops, withheld } = chosen;
   if (ops.length === 0) return null;
 
   return { factionId, ops, rationale: describeProposal(state, factionId, ops), withheld };
@@ -1939,6 +2026,127 @@ export function brokeredAccords(state: WorldState): Accord[] {
         ],
       });
     }
+  }
+
+  out.push(...brokeredLedger(state, npcs));
+  return out;
+}
+
+/** The terms the bots write a letter of marque on. */
+export const BOT_MARQUE_STIPEND = 10;
+export const BOT_MARQUE_SHARE = 25;
+export const BOT_MARQUE_TURNS = 10;
+/** What a commissioner keeps in hand before it pays a raider. */
+export const BOT_MARQUE_RESERVE = 600;
+/** How much a power must hate another to pay a raider to go after it, short of war. */
+export const MARQUE_GRUDGE = -50;
+/** What protection costs: this share of what the raider is taking now, a turn. */
+export const PROTECTION_FEE_SHARE = 0.75;
+export const BOT_PROTECTION_TURNS = 10;
+
+/**
+ * The raider's ledger, between NPC powers: letters of marque and protection.
+ *
+ * - **A letter of marque** — a power that thinks in money (`DEMANDING_ETHICS`),
+ *   with a war or a deep grudge (`MARQUE_GRUDGE`), commissions a raider it is on
+ *   good terms with (`EXCHANGE_STANDING` both ways) against that enemy: a
+ *   stipend and a quarter of what the raider takes from it. The raider then
+ *   stops raiding its paymaster, and weighs the enemy's worlds above the rest.
+ * - **Protection** — a power of the same ethics, being raided by a power it is
+ *   not at war with, pays it `PROTECTION_FEE_SHARE` of the current take a turn
+ *   to stop. Cheaper than the raids, certain for the raider, and it carries no
+ *   heat, so both sides gain by the arithmetic both can see.
+ *
+ * A raider is a power whose doctrine raids (`smuggler`) or that has a raid
+ * under way. Neither deal is made across a compulsion that bars accommodation
+ * with the other power (`barsPeaceWith`), and each pair holds one contract at a
+ * time — two would supersede each other, since both carry a flow.
+ */
+function brokeredLedger(state: WorldState, npcs: string[]): Accord[] {
+  const name = (id: string) => getFaction(state, id)?.name ?? id;
+  const out: Accord[] = [];
+  const mercantile = (id: string) => DEMANDING_ETHICS.has(getFaction(state, id)?.warEthic ?? '');
+  const raiders = npcs.filter(
+    (id) => getFaction(state, id)?.tradeEthic === 'smuggler' || hasOrder(state, id, 'commerce_raiding'),
+  );
+  const barred = (p: string, other: string) =>
+    getFaction(state, p)?.compulsions.some((c) => c.barsPeaceWith?.includes(other)) ?? false;
+  const contracted = new Set<string>();
+  const pairKey = (a: string, b: string) => [a, b].sort().join('|');
+  for (const t of state.treaties) {
+    if (t.type === 'contract' && isTreatyLive(t, state.turn)) contracted.add(pairKey(t.parties[0]!, t.parties[1]!));
+  }
+
+  // Letters of marque.
+  for (const c of npcs) {
+    if (!mercantile(c) || purse(state, c) < BOT_MARQUE_RESERVE) continue;
+    const enemies = state.factions
+      .map((f) => f.id)
+      .filter((e) => e !== c && (warsFor(state, c).includes(e) || dispositionBetween(state, c, e) <= MARQUE_GRUDGE))
+      .sort((a, b) => dispositionBetween(state, c, a) - dispositionBetween(state, c, b) || a.localeCompare(b));
+    for (const r of raiders) {
+      if (r === c || contracted.has(pairKey(c, r)) || barred(c, r) || barred(r, c)) continue;
+      if (Math.min(dispositionBetween(state, c, r), dispositionBetween(state, r, c)) < EXCHANGE_STANDING) continue;
+      const enemy = enemies.find((e) => e !== r && raidLandsOn(state.treaties, state.turn, r, e));
+      if (!enemy) continue;
+      contracted.add(pairKey(c, r));
+      out.push({
+        parties: [c, r],
+        label: `marque:${c}:${r}`,
+        ops: [
+          {
+            op: 'form_treaty',
+            parties: [c, r],
+            treatyType: 'contract',
+            terms: {
+              incomePerTurn: { [c]: -BOT_MARQUE_STIPEND, [r]: BOT_MARQUE_STIPEND },
+              commission: { raider: r, against: [enemy], share: BOT_MARQUE_SHARE },
+            },
+            durationTurns: BOT_MARQUE_TURNS,
+            summary: `${name(c)} commissions ${name(r)} to raid ${name(enemy)}`,
+          },
+          {
+            op: 'spawn_event',
+            factionId: c,
+            text: `${name(c)} gives ${name(r)} a letter of marque against ${name(enemy)}.`,
+          },
+        ],
+      });
+      break;
+    }
+  }
+
+  // Protection, bought by the powers being raided.
+  const takings = routeEarnings(state).raidedFrom;
+  for (const v of npcs) {
+    if (!mercantile(v)) continue;
+    const by = raiders
+      .filter((r) => r !== v && (takings[r]?.[v] ?? 0) > 0)
+      .sort((a, b) => (takings[b]?.[v] ?? 0) - (takings[a]?.[v] ?? 0) || a.localeCompare(b))[0];
+    if (!by || contracted.has(pairKey(v, by)) || warsFor(state, v).includes(by)) continue;
+    if (barred(v, by) || barred(by, v)) continue;
+    const fee = Math.max(5, Math.min(MAX_TREATY_INCOME_PER_TURN, Math.ceil((takings[by]![v] ?? 0) * PROTECTION_FEE_SHARE)));
+    if (ledgerFor(state, v).net < fee) continue;
+    contracted.add(pairKey(v, by));
+    out.push({
+      parties: [v, by],
+      label: `protection:${v}:${by}`,
+      ops: [
+        {
+          op: 'form_treaty',
+          parties: [v, by],
+          treatyType: 'contract',
+          terms: { incomePerTurn: { [v]: -fee, [by]: fee }, protection: [v] },
+          durationTurns: BOT_PROTECTION_TURNS,
+          summary: `${name(v)} pays ${name(by)} ${fee} a turn to leave its shipping alone`,
+        },
+        {
+          op: 'spawn_event',
+          factionId: v,
+          text: `${name(v)} buys protection from ${name(by)}: ${fee} a turn, and its shipping goes unmolested.`,
+        },
+      ],
+    });
   }
   return out;
 }

@@ -1,3 +1,4 @@
+import { HEAT_NOTORIOUS } from '../domain/heat.js';
 import { eventsVisibleTo, ordersVisibleTo } from '../domain/intel.js';
 import { describeStack, hullsIn } from '../domain/hulls.js';
 import { describeOrderEffect } from '../domain/development.js';
@@ -150,6 +151,10 @@ export function serializeFactions(
           : `charges ${f.tollTargets.map((id) => getFaction(state, id)?.name ?? id).join(', ')} for passage`
       }`,
       isViewer || detail === 'full' ? `  doctrine: ${f.doctrine}` : '',
+      // Public: notoriety is what the Rim knows about a power.
+      (f.heat ?? 0) > 0
+        ? `  heat: ${f.heat}/100${(f.heat ?? 0) >= HEAT_NOTORIOUS ? ' — notorious; the Rim is answering' : ''}`
+        : '',
       // **Their officers, by the name a player would use.** For its whole
       // existence this block named nobody but the viewer's own, so an arbiter
       // asked to rule on "assassinate their Iron Marshal" had never been shown
@@ -390,6 +395,24 @@ export function serializeStanding(state: WorldState, viewerId: string): string {
       lines.push(`      ${Math.round(share.share * 100)}% of ${share.systemId} to ${share.factionId}`);
     }
     if (t.terms.mutualDefenseTrigger) lines.push(`      triggers on: ${t.terms.mutualDefenseTrigger}`);
+    for (const shielded of t.terms.protection ?? []) {
+      const by = t.parties.find((p) => p !== shielded) ?? '?';
+      lines.push(
+        shielded === viewerId
+          ? `      protection: ${nameOfFaction(state, by)} does not raid or blockade you while this holds`
+          : `      protection: you do not raid or blockade ${nameOfFaction(state, shielded)} while this holds`,
+      );
+    }
+    if (t.terms.commission) {
+      const c = t.terms.commission;
+      const paymaster = t.parties.find((p) => p !== c.raider) ?? '?';
+      const against = c.against.map((id) => nameOfFaction(state, id)).join(', ');
+      lines.push(
+        c.raider === viewerId
+          ? `      letter of marque: you raid ${against} on ${nameOfFaction(state, paymaster)}'s commission — ${c.share}% of what you take from them is added, those raids run no heat, and you may not raid ${nameOfFaction(state, paymaster)}`
+          : `      letter of marque: ${nameOfFaction(state, c.raider)} raids ${against} on your commission — you pay ${c.share}% of what it takes from them, and it may not raid you`,
+      );
+    }
     for (const maker of t.terms.commodities ?? []) {
       const to = t.parties.find((p) => p !== maker) ?? '?';
       lines.push(
@@ -432,6 +455,18 @@ export function serializeStanding(state: WorldState, viewerId: string): string {
           ? `  - \`${o.id}\` ${other} owes YOU (${o.strength}${o.strength === 'strong' ? ', reusable, and it cannot side against you' : ', spent when called'})${rests}${o.secret ? ' — only while what you know about them stays true' : ''}: ${o.text} Call it in to make them sign a non-aggression pact, a ceasefire or a trade accord for ${OBLIGATION_TERM_TURNS} turns, or to back an ultimatum of yours.`
           : `  - \`${o.id}\` you owe ${other} (${o.strength})${rests}: ${o.text} They can call it in. Walking away is priced like breaking a pact.${o.secret ? ' It rests on a secret: end the thing they know about and the hook lapses on its own.' : ''}`,
       );
+    }
+  }
+
+  // Bounties are public: a price nobody hears of is a price nobody earns.
+  const bounties = (state.bounties ?? []).filter((b) => b.status === 'open' && b.pool > 0);
+  if (bounties.length > 0) {
+    lines.push('', '**Bounties standing** — prizes raided from the target pay out credit for credit, and its hulls destroyed pay 15 a ton');
+    for (const b of bounties) {
+      const by = b.postedBy === null ? `the Rim's merchants (${b.note})` : nameOfFaction(state, b.postedBy);
+      const mine = b.postedBy === viewerId ? ' — YOURS; withdraw_bounty takes back what is left' : '';
+      const onYou = b.targetFactionId === viewerId ? ' — ON YOU' : '';
+      lines.push(`  - \`${b.id}\` ${b.pool} on ${nameOfFaction(state, b.targetFactionId)}, posted by ${by}${onYou}${mine}`);
     }
   }
 

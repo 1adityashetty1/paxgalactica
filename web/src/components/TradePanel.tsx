@@ -71,6 +71,14 @@ export function TradePanel({
             <span className="good">+{ledger.raided}</span>
           </div>
         )}
+        {(ledger.bounties ?? 0) > 0 && (
+          <div className="ledger-row">
+            <span title="Bounties posted on the powers you raided pay out of escrow, credit for credit on what you took.">
+              Bounties collected
+            </span>
+            <span className="good">+{ledger.bounties}/turn</span>
+          </div>
+        )}
         {ledger.occupation > 0 && (
           <div className="ledger-row">
             <span title="A share of what each world you took from somebody else pays you. Institutions built for another state do not administer themselves.">

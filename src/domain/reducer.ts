@@ -84,6 +84,7 @@ import {
   NOTE_TITLE,
   NOTE_TREATY,
   TreatyTermsSchema,
+  TreatySchema,
   fixtureIntegrity,
   isCommodity,
   isNote,
@@ -101,7 +102,17 @@ import {
   hookedBy,
   isTruceLive,
   type Demand,
+  BountySchema,
+  BOUNTY_MIN,
+  BOUNTY_PER_TON,
+  raidBountyDraws,
+  BOUNTY_RESENTMENT,
+  MAX_COMMISSION_SHARE,
+  commissionsAgainst,
+  openBountiesOn,
+  type Bounty,
 } from './diplomacy.js';
+import { HEAT_ANSWERED, HEAT_BLACKMAIL, HEAT_CAUGHT, HEAT_DECAY, HEAT_FOR_MISSION, HEAT_PACT_BROKEN, HEAT_PER_RAID, addHeat } from './heat.js';
 import { describeSecret, secretLive, secretsAbout, sideStrength } from './leverage.js';
 import { ASSET_ARCHETYPES, archetypeFor, fixtureYieldFor } from './assets.js';
 import { CHEAT_ASSET_QUANTITY, CHEAT_ASSET_VALUE, type Cheat } from './cheats.js';
@@ -537,6 +548,20 @@ const nameFor = (state: WorldState, id: string): string =>
  */
 let scopeEngineNotes = true;
 
+/**
+ * Whether dirty work builds heat — `LegacyRules.heat`, journal version 14.
+ * Module-scoped for `scopeEngineNotes`'s reason: heat is charged from a dozen
+ * places, two of them helpers (`defaultLoan`, the pact check on an attack)
+ * that have no access to the batch's rules.
+ */
+let runHeat = true;
+
+/** Add heat to a power, when the journal's rules have heat at all. */
+function heatUp(state: WorldState, factionId: string | null | undefined, amount: number): void {
+  if (!runHeat || !factionId) return;
+  addHeat(state.factions.find((f) => f.id === factionId), amount);
+}
+
 function logEvent(
   state: WorldState,
   kind: EventLogEntry['kind'],
@@ -611,6 +636,7 @@ function mintId(state: WorldState, prefix: string): string {
     ...(state.loans ?? []).map((l) => l.id),
     ...(state.obligations ?? []).map((o) => o.id),
     ...(state.demands ?? []).map((d) => d.id),
+    ...(state.bounties ?? []).map((b) => b.id),
   ];
   let highest = -1;
   for (const id of pool) {
@@ -764,6 +790,7 @@ function reclaimHulls(
 function defaultLoan(state: WorldState, loan: Loan, why: string, notes: string[]): void {
   if (loan.status === 'defaulted') return;
   loan.status = 'defaulted';
+  heatUp(state, loan.borrowerFactionId, HEAT_PACT_BROKEN);
   const lender = state.factions.find((f) => f.id === loan.lenderFactionId);
   if (lender) {
     lender.disposition[loan.borrowerFactionId] = Math.max(
@@ -1111,7 +1138,7 @@ function concedeDemand(state: WorldState, demand: Demand): string[] {
   const from = demand.fromFactionId;
   const to = demand.toFactionId;
   const term = (type: Treaty['type'], terms: Record<string, unknown>, expires: boolean, summary: string): Treaty => {
-    const treaty: Treaty = {
+    const treaty: Treaty = TreatySchema.parse({
       id: mintId(state, 'tre'),
       type,
       parties: [to, from],
@@ -1122,7 +1149,7 @@ function concedeDemand(state: WorldState, demand: Demand): string[] {
       status: 'active',
       exclusive: false,
       summary,
-    };
+    });
     state.treaties.push(treaty);
     return treaty;
   };
@@ -1580,6 +1607,104 @@ function applyCheat(
  * `adjustCommitmentGoodwill`: the power whose officer was questioned resents
  * the questioner, and the questioner has no view about it.
  */
+/**
+ * An operative is taken by the power whose world they were working.
+ *
+ * **Taken, not merely burned.** An exposed operative used to be a flag and
+ * nothing else: the line closed, the person evaporated, and the power that
+ * caught them held nothing to show for it. They are a person the world has a
+ * record of, exactly as a captured officer is, so they become the same kind of
+ * thing — an asset that can be ransomed, traded, ceded or questioned, with no
+ * second mechanism for any of it. Worth most to the power that ran them, and
+ * something to everybody, for the reason an officer is: what they know is
+ * leverage over more than one table.
+ *
+ * One function for both ways it happens — a botched operation on the tick, and
+ * a crackdown the Rim sends a notorious power — so the two cannot drift.
+ */
+function takeOperative(
+  state: WorldState,
+  agent: Agent,
+  target: WorldState['factions'][number],
+  host: StarSystem,
+  outrage: number,
+): void {
+  const owner = state.factions.find((f) => f.id === agent.ownerFactionId);
+  agent.exposed = true;
+  // A caught face is caught for good. Recorded on the agent rather than on the
+  // asset, because it has to survive the round trip: they are ransomed home as
+  // an asset and redeployed as an agent, and the mark is the whole reason that
+  // second act is a decision.
+  agent.timesCaught += 1;
+  heatUp(state, agent.ownerFactionId, HEAT_CAUGHT);
+
+  const prize: Asset = {
+    id: mintId(state, 'ast'),
+    kind: 'operative',
+    text: `${agent.name || 'An operative'}, ${owner?.name ?? agent.ownerFactionId}'s ${agent.mission ?? 'covert'} agent, taken on ${host.name}`,
+    heldBy: target.id,
+    quantity: 1,
+    unit: 'person',
+    commanderId: null,
+    agentId: agent.id,
+    divisible: false,
+    valuePerUnit: Object.fromEntries(
+      state.factions.map((f) => [f.id, f.id === agent.ownerFactionId ? OPERATIVE_RANSOM : OFFICER_LEVERAGE]),
+    ),
+    speculative: false,
+    valueRange: {},
+    uses: null,
+    // Held where they were caught, so a world changing hands takes them with
+    // it — the rule every other asset with a location follows.
+    atSystemId: host.id,
+    portable: true,
+    yield: null,
+    acquiredTurn: state.turn,
+  };
+  (state.assets ??= []).push(prize);
+  logEvent(
+    state,
+    'system',
+    `${target.name} exposes ${owner?.name ?? agent.ownerFactionId}'s ${agent.mission ?? 'covert'} operative on ${host.name}.`,
+    target.id,
+  );
+  if (owner) {
+    target.disposition[owner.id] = Math.max(-100, (target.disposition[owner.id] ?? 0) - outrage);
+    // **Discord caught is a scandal with two injured parties.** The forged
+    // letters were about somebody, and exposure hands that power the evidence —
+    // so the third power resents the forger too.
+    if (agent.effect?.kind === 'discord') {
+      moveRegard(state, agent.effect.towardFactionId, owner.id, -outrage);
+      const scandal = `${target.name} exposes ${owner.name}'s hand in forging its quarrel with ${nameFor(state, agent.effect.towardFactionId)}.`;
+      logEvent(state, 'diplomacy', scandal, target.id);
+    }
+  }
+}
+
+/**
+ * Pay `claimant` up to `amount` out of the open bounties on `target`, oldest
+ * first, and never out of one the claimant posted itself — collecting your own
+ * bounty would be a withdrawal by another name. Escrow to treasury, so nothing
+ * is minted. Returns what was paid.
+ */
+function claimBounty(state: WorldState, target: string, claimant: string, amount: number): number {
+  if (amount <= 0 || claimant === target) return 0;
+  const to = state.factions.find((f) => f.id === claimant);
+  if (!to) return 0;
+  let paid = 0;
+  for (const bounty of openBountiesOn(state.bounties, target)) {
+    if (bounty.postedBy === claimant) continue;
+    const take = Math.min(bounty.pool, amount - paid);
+    if (take <= 0) break;
+    bounty.pool -= take;
+    bounty.paidOut += take;
+    if (bounty.pool === 0) bounty.status = 'claimed';
+    paid += take;
+  }
+  to.credits += paid;
+  return paid;
+}
+
 function moveRegard(state: WorldState, who: string, toward: string, delta: number): void {
   if (who === toward) return;
   const faction = state.factions.find((f) => f.id === who);
@@ -1909,6 +2034,12 @@ export interface LegacyRules {
    */
   secrets?: boolean;
   /**
+   * Covert work, unlicensed raiding and broken faith build heat, and the Rim
+   * answers a notorious power (see `heat.ts`). Before it, nobody ran hot and
+   * the pulse drew from the ten fortunes alone. Journal version 14.
+   */
+  heat?: boolean;
+  /**
    * A sandbox campaign's one event (see `primeRimSandbox`): that kind every
    * turn, with no d20 and no cooldowns. Not a rule the game acquired — a rule
    * of that campaign, read off its journal's seed entry.
@@ -1953,11 +2084,14 @@ export function applyOps(
   legacy: LegacyRules = {},
 ): ApplyResult {
   const outer = scopeEngineNotes;
+  const outerHeat = runHeat;
   scopeEngineNotes = legacy.privateEngineNotes ?? true;
+  runHeat = legacy.heat ?? true;
   try {
     return applyOpsUnderRules(input, rawOps, source, actor, atomic, legacy);
   } finally {
     scopeEngineNotes = outer;
+    runHeat = outerHeat;
   }
 }
 
@@ -3141,7 +3275,7 @@ function applyOpsUnderRules(
             terms.incomeShares = [{ systemId: richest.id, factionId: holder, share: NOTE_INCOME_SHARE }];
           }
           if (asset.note === 'escort') terms.shipsPledged = { [issuer]: NOTE_ESCORT_HULLS };
-          const treaty: Treaty = {
+          const treaty: Treaty = TreatySchema.parse({
             id: mintId(state, 'tre'),
             type,
             parties: [issuer, holder],
@@ -3152,7 +3286,7 @@ function applyOpsUnderRules(
             status: 'active',
             exclusive: false,
             summary: `${title}: ${nameFor(state, issuer)}'s note, called in by ${nameFor(state, holder)}`,
-          };
+          });
           state.treaties.push(treaty);
           what = `a ${type.replace(/_/g, ' ')} in force until turn ${treaty.expiresTurn}`;
         } else {
@@ -3273,7 +3407,7 @@ function applyOpsUnderRules(
           // Read before the treaty exists, for the reason `form_treaty` does: a
           // ceasefire called on a power at war is a peace, and leaves a truce.
           const wereAtWar = warsFor(state, holder).includes(debtor);
-          const treaty: Treaty = {
+          const treaty: Treaty = TreatySchema.parse({
             id: mintId(state, 'tre'),
             type,
             parties: [holder, debtor],
@@ -3284,7 +3418,7 @@ function applyOpsUnderRules(
             status: 'active',
             exclusive: false,
             summary: `${type.replace(/_/g, ' ')} owed: ${nameFor(state, debtor)} pays a favour to ${nameFor(state, holder)}`,
-          };
+          });
           state.treaties.push(treaty);
           if (truces) leaveTruce(state, treaty, wereAtWar, notes);
           what = `${nameFor(state, debtor)} signs a ${type.replace(/_/g, ' ')} until turn ${treaty.expiresTurn}`;
@@ -3329,6 +3463,7 @@ function applyOpsUnderRules(
           break;
         }
         owed.status = 'repudiated';
+        heatUp(state, owed.debtorFactionId, HEAT_PACT_BROKEN);
         // Priced like a broken pact, and public, because a debt of honour
         // refused is the same kind of news.
         moveRegard(state, owed.holderFactionId, owed.debtorFactionId, -25);
@@ -3376,6 +3511,9 @@ function applyOpsUnderRules(
             if (witness.id === subject || witness.id === holder) continue;
             moveRegard(state, witness.id, subject, -SECRET_EXPOSURE_COST[secret.kind]);
           }
+          // Published proof is how notoriety is learned: the subject runs as
+          // hot as the scandal costs it with each onlooker.
+          heatUp(state, subject, SECRET_EXPOSURE_COST[secret.kind]);
           // Published proof does what proof does: the operative is burned and
           // the programme is in the open.
           if (secret.kind === 'covert_operation') {
@@ -3403,6 +3541,7 @@ function applyOpsUnderRules(
               secret,
             }),
           );
+          heatUp(state, holder, HEAT_BLACKMAIL);
           const note = `${nameFor(state, holder)} lets ${nameFor(state, subject)} know what it holds: ${said}. ${op.reason}`.trim();
           notes.push(note);
           logEvent(state, 'diplomacy', note, holder, [holder, subject]);
@@ -3537,6 +3676,80 @@ function applyOpsUnderRules(
         const note = `${nameFor(state, demand.fromFactionId)} withdraws its ultimatum to ${nameFor(state, demand.toFactionId)}.`;
         notes.push(note);
         logEvent(state, 'diplomacy', note, demand.fromFactionId);
+        break;
+      }
+
+      case 'post_bounty': {
+        const poster = actor === undefined ? undefined : state.factions.find((f) => f.id === actor);
+        if (!poster) {
+          reject(raw, 'illegal_value', 'A bounty is somebody\'s money; this batch names no acting power.');
+          break;
+        }
+        const target = op.targetFactionId;
+        if (!factionExists(target) || target === poster.id) {
+          reject(raw, 'unknown_faction', `No power "${target}" to put a price on.`);
+          break;
+        }
+        // Escrow, so it is trimmed to what the treasury holds rather than
+        // refused: the bounty is real at a smaller figure.
+        const credits = Math.min(op.credits, poster.credits);
+        if (credits < BOUNTY_MIN) {
+          reject(raw, 'insufficient_credits', `A bounty is ${BOUNTY_MIN} credits at least; ${poster.name} holds ${poster.credits}.`);
+          break;
+        }
+        poster.credits -= credits;
+        const standing = (state.bounties ?? []).find(
+          (b) => b.status === 'open' && b.postedBy === poster.id && b.targetFactionId === target,
+        );
+        let note: string;
+        if (standing) {
+          standing.pool += credits;
+          note = `${poster.name} adds ${credits} to its bounty on ${nameFor(state, target)}, now ${standing.pool}.`;
+        } else {
+          (state.bounties ??= []).push(
+            BountySchema.parse({
+              id: mintId(state, 'bnt'),
+              postedBy: poster.id,
+              targetFactionId: target,
+              pool: credits,
+              postedTurn: state.turn,
+            }),
+          );
+          // Once, on posting: a price on your head is an insult whatever the figure.
+          moveRegard(state, target, poster.id, -BOUNTY_RESENTMENT);
+          note = `${poster.name} puts a price of ${credits} on ${nameFor(state, target)}: prizes taken from it and hulls of its destroyed are paid for.`;
+        }
+        if (credits < op.credits) note += ` (${op.credits} was asked; the treasury held ${credits}.)`;
+        if (op.reason) note += ` ${op.reason}`;
+        notes.push(note);
+        // Public: a price nobody hears of is a price nobody earns.
+        logEvent(state, 'diplomacy', note, poster.id);
+        break;
+      }
+
+      case 'withdraw_bounty': {
+        const bounty = (state.bounties ?? []).find((b) => b.id === op.bountyId);
+        if (!bounty || bounty.status !== 'open') {
+          reject(raw, 'unknown_bounty', `No open bounty "${op.bountyId}".`);
+          break;
+        }
+        if (bounty.postedBy === null) {
+          reject(raw, 'illegal_value', 'The merchants posted that bounty, and nobody can take it back.');
+          break;
+        }
+        if (actor !== undefined && actor !== bounty.postedBy) {
+          reject(raw, 'illegal_value', `Only ${nameFor(state, bounty.postedBy)} can take back the money it put up.`);
+          break;
+        }
+        const poster = state.factions.find((f) => f.id === bounty.postedBy);
+        if (poster) poster.credits += bounty.pool;
+        const back = bounty.pool;
+        bounty.pool = 0;
+        bounty.status = 'withdrawn';
+        // The grievance stays: disposition has no decay, and the insult was the posting.
+        const note = `${nameFor(state, bounty.postedBy)} withdraws its bounty on ${nameFor(state, bounty.targetFactionId)} and takes back ${back}. ${op.reason}`.trim();
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, bounty.postedBy);
         break;
       }
 
@@ -4441,7 +4654,47 @@ function applyOpsUnderRules(
         // of a negotiation than the capped one-off `adjust_credits`. Trimmed
         // rather than rejected: the arrangement is still real at a smaller
         // number, the same shape as `MAX_COMMITMENT_INCOME`.
-        const terms = { ...op.terms, incomePerTurn: { ...op.terms.incomePerTurn } };
+        // The raider's ledger: protection and a letter of marque are terms of
+        // a commercial deal, so they ride on a `contract`, which already carries
+        // the fee. See `CommissionSchema`.
+        const protection = op.terms.protection ?? [];
+        const commission = op.terms.commission;
+        if ((protection.length > 0 || commission) && op.treatyType !== 'contract') {
+          reject(
+            raw,
+            'illegal_value',
+            `Protection and a letter of marque are terms of a contract, not a ${op.treatyType}. Record the deal as a contract carrying its fee.`,
+          );
+          break;
+        }
+        const unprotected = protection.find((id) => !op.parties.includes(id));
+        if (unprotected) {
+          reject(raw, 'illegal_value', `${unprotected} did not sign this contract, so it cannot be protected under it.`);
+          break;
+        }
+        if (commission) {
+          if (!op.parties.includes(commission.raider)) {
+            reject(raw, 'illegal_value', `${commission.raider} did not sign this contract, so it cannot be commissioned under it.`);
+            break;
+          }
+          const bad = commission.against.find((id) => !factionExists(id) || op.parties.includes(id));
+          if (bad) {
+            reject(raw, 'illegal_value', `A letter of marque names powers outside the contract to raid; "${bad}" is not one.`);
+            break;
+          }
+        }
+        const terms = {
+          ...op.terms,
+          incomePerTurn: { ...op.terms.incomePerTurn },
+          ...(commission && commission.share > MAX_COMMISSION_SHARE
+            ? { commission: { ...commission, share: MAX_COMMISSION_SHARE } }
+            : {}),
+        };
+        if (commission && commission.share > MAX_COMMISSION_SHARE) {
+          const note = `Trimmed a letter of marque's share of ${commission.share}% to ${MAX_COMMISSION_SHARE}%.`;
+          notes.push(note);
+          logEvent(state, 'clamp', note, commission.raider);
+        }
         for (const [who, amount] of Object.entries(terms.incomePerTurn)) {
           const bounded = Math.max(
             -MAX_TREATY_INCOME_PER_TURN,
@@ -4605,7 +4858,9 @@ function applyOpsUnderRules(
         // things `warsFor` reads — a ceasefire signed between powers at war
         // would otherwise find them already at peace.
         const wereAtWar = warsFor(state, op.parties[0]!).includes(op.parties[1]!);
-        const treaty = {
+        // Through the schema, so a live treaty writes its keys in the order a
+        // replayed one does — `verifyReplay` and the parity test compare strings.
+        const treaty = TreatySchema.parse({
           id: mintId(state, 'tre'),
           type: op.treatyType,
           parties: [...op.parties],
@@ -4621,7 +4876,7 @@ function applyOpsUnderRules(
             | 'pending',
           exclusive: op.exclusive,
           summary: op.summary || `${op.treatyType.replace(/_/g, ' ')} between ${op.parties.join(' and ')}`,
-        };
+        });
         state.treaties.push(treaty);
         // One live treaty per (pair, type). A pending one supersedes nothing
         // yet — it does so when it is promoted in `tickTurn`, or the parties
@@ -4752,6 +5007,8 @@ function applyOpsUnderRules(
           break;
         }
         treaty.status = 'broken';
+        // Tearing up your word is what notoriety is made of.
+        if (actor !== undefined && treaty.parties.includes(actor)) heatUp(state, actor, HEAT_PACT_BROKEN);
         // Breaking a pact is public and costly: both signatories' opinion of
         // the breaker sours, whoever was in the right.
         for (const party of treaty.parties) {
@@ -4968,6 +5225,8 @@ function applyOpsUnderRules(
             break;
           }
           owner.credits -= price;
+          // Every mission sent is talked about somewhere, the loud ones most.
+          heatUp(state, owner.id, HEAT_FOR_MISSION[op.mission] ?? 0);
           const jumps = road.length - 1;
           const turns = Math.ceil(jumps / AGENT_JUMPS_PER_TURN);
           const from = systemName(state, spy.systemId);
@@ -5004,6 +5263,7 @@ function applyOpsUnderRules(
           break;
         }
         owner.credits -= price;
+        heatUp(state, owner.id, HEAT_FOR_MISSION[op.mission] ?? 0);
 
         // Putting a ransomed operative back in the field. Resolved after the
         // ordinary guards, so a redeployment is held to the same rules about
@@ -5710,6 +5970,7 @@ function applyOpsUnderRules(
                 (witness.disposition[actor] ?? 0) - PACT_BREAKING_REPUTATION_COST,
               );
             }
+            heatUp(state, actor, HEAT_PACT_BROKEN);
             const seen = `${nameFor(state, actor)} tears up an arrangement it swore to ${found.factionIds.length - 1} other powers; everyone notices.`;
             notes.push(seen);
             logEvent(state, 'diplomacy', seen, actor);
@@ -6981,11 +7242,14 @@ export interface TickResult extends ApplyResult {
 /** Advance one turn. Sets `scopeEngineNotes` for the journal's rules; see `applyOps`. */
 export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResult {
   const outer = scopeEngineNotes;
+  const outerHeat = runHeat;
   scopeEngineNotes = legacy.privateEngineNotes ?? true;
+  runHeat = legacy.heat ?? true;
   try {
     return tickTurnUnderRules(input, legacy);
   } finally {
     scopeEngineNotes = outer;
+    runHeat = outerHeat;
   }
 }
 
@@ -7228,6 +7492,65 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       moved ? 'only part of it came back' : 'the term ran out and nothing came back',
       notes,
     );
+  }
+
+  /* --- The raider's ledger: bounties, letters of marque, heat ---------- */
+  // Read off the same settlement income was just paid from, so a prize, the
+  // bounty it earns, the bonus a commission pays on it and the heat it runs are
+  // one fact read four ways and cannot disagree. See `BountySchema` and
+  // `CommissionSchema`.
+  {
+    // Notoriety fades first, more slowly than dissent, so a turn's prizes and
+    // captures are felt in full the turn they happen.
+    for (const faction of state.factions) heatUp(state, faction.id, -HEAT_DECAY);
+    const byId = (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id);
+    for (const raider of [...state.factions].sort(byId)) {
+      const takings = settlement.raidedFrom[raider.id] ?? {};
+      for (const victim of Object.keys(takings).sort()) {
+        const taken = takings[victim]!;
+        if (taken <= 0) continue;
+        // A raid no commission licenses is piracy, and piracy is notorious.
+        if (commissionsAgainst(state.treaties, state.turn, raider.id, victim).length === 0) {
+          heatUp(state, raider.id, HEAT_PER_RAID);
+        }
+      }
+    }
+    // Prizes from a bountied power were paid in income above, as the ledger's
+    // `bounties` line; here the escrow is drawn down by exactly those draws.
+    const paidFor = new Map<string, number>();
+    for (const draw of raidBountyDraws(state.bounties, settlement.raidedFrom)) {
+      const bounty = state.bounties.find((b) => b.id === draw.bountyId)!;
+      bounty.pool -= draw.amount;
+      bounty.paidOut += draw.amount;
+      if (bounty.pool === 0) bounty.status = 'claimed';
+      const key = `${draw.claimant}|${draw.target}`;
+      paidFor.set(key, (paidFor.get(key) ?? 0) + draw.amount);
+    }
+    for (const [key, paid] of paidFor) {
+      const [claimant, target] = key.split('|') as [string, string];
+      const note = `${nameFor(state, claimant)} collects ${paid} of the bounty on ${nameFor(state, target)} for the prizes it took.`;
+      notes.push(note);
+      logEvent(state, 'diplomacy', note, claimant);
+    }
+    // A letter of marque pays its bonus out of the commissioner's treasury,
+    // trimmed to what it holds — a transfer, so a broke commissioner pays what
+    // it has and the shortfall is said.
+    for (const treaty of [...state.treaties].sort(byId)) {
+      const letter = treaty.terms.commission;
+      if (treaty.type !== 'contract' || !letter || !isTreatyLive(treaty, state.turn)) continue;
+      const commissioner = state.factions.find((f) => treaty.parties.includes(f.id) && f.id !== letter.raider);
+      const raider = state.factions.find((f) => f.id === letter.raider);
+      if (!commissioner || !raider || letter.share <= 0) continue;
+      const taken = letter.against.reduce((n, e) => n + (settlement.raidedFrom[raider.id]?.[e] ?? 0), 0);
+      const due = Math.floor((taken * letter.share) / 100);
+      if (due <= 0) continue;
+      const paid = Math.min(due, commissioner.credits);
+      commissioner.credits -= paid;
+      raider.credits += paid;
+      const note = `${commissioner.name} pays ${raider.name} ${paid} on its letter of marque${paid < due ? ` of the ${due} due` : ''}.`;
+      notes.push(note);
+      logEvent(state, 'diplomacy', note, commissioner.id, [...treaty.parties]);
+    }
   }
 
   /* --- Dissent cools ---------------------------------------------------- */
@@ -7654,8 +7977,15 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     // unless piracy is what everyone already expects of you.
     const raider = state.factions.find((x) => x.id === order.factionId);
     if (order.type === 'commerce_raiding' && raider && raider.tradeEthic !== 'smuggler') {
+      // A power that commissioned this raid does not hold it against the raider.
+      const licensors = new Set(
+        [...victims].flatMap((v) =>
+          commissionsAgainst(state.treaties, state.turn, order.factionId, v).flatMap((t) => t.parties),
+        ),
+      );
       for (const witness of state.factions) {
         if (witness.id === order.factionId || victims.has(witness.id)) continue;
+        if (licensors.has(witness.id)) continue;
         witness.disposition[order.factionId] = Math.max(
           -100,
           (witness.disposition[order.factionId] ?? 0) - PIRACY_REPUTATION_COST,
@@ -7796,70 +8126,8 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       if (roll >= 21 - profile.exposureRisk) {
         agent.exposed = true;
         watchNotes.set(agent.id, `was taken on ${host.name}. That line is closed.`);
-        // **Taken, not merely burned.** An exposed operative used to be a flag
-        // and nothing else: the line closed, the person evaporated, and the
-        // power that caught them held nothing to show for it. They are a person
-        // the world has a record of, exactly as a captured officer is, so they
-        // become the same kind of thing — an asset that can be ransomed,
-        // traded, ceded or questioned, with no second mechanism for any of it.
-        //
-        // Worth most to the power that ran them, and something to everybody,
-        // for the reason an officer is: what they know is leverage over more
-        // than one table.
-        // A caught face is caught for good. Recorded on the agent rather than
-        // on the asset, because it has to survive the round trip: they are
-        // ransomed home as an asset and redeployed as an agent, and the mark is
-        // the whole reason that second act is a decision.
-        agent.timesCaught += 1;
-
-        const prize: Asset = {
-          id: mintId(state, 'ast'),
-          kind: 'operative',
-          text: `${agent.name || 'An operative'}, ${owner?.name ?? agent.ownerFactionId}'s ${agent.mission} agent, taken on ${host.name}`,
-          heldBy: target.id,
-          quantity: 1,
-          unit: 'person',
-          commanderId: null,
-          agentId: agent.id,
-          divisible: false,
-          valuePerUnit: Object.fromEntries(
-            state.factions.map((f) => [
-              f.id,
-              f.id === agent.ownerFactionId ? OPERATIVE_RANSOM : OFFICER_LEVERAGE,
-            ]),
-          ),
-          speculative: false,
-          valueRange: {},
-          uses: null,
-          // Held where they were caught, so a world changing hands takes them
-          // with it — the rule every other asset with a location follows.
-          atSystemId: host.id,
-          portable: true,
-          yield: null,
-          acquiredTurn: state.turn,
-        };
-        (state.assets ??= []).push(prize);
-        logEvent(
-          state,
-          'system',
-          `${target.name} exposes ${owner?.name ?? agent.ownerFactionId}'s ${agent.mission} operative on ${host.name}.`,
-          target.id,
-        );
-        if (owner) {
-          const outrage = profile.oneShot ? 40 : 20;
-          target.disposition[owner.id] = Math.max(
-            -100,
-            (target.disposition[owner.id] ?? 0) - outrage,
-          );
-          // **Discord caught is a scandal with two injured parties.** The forged
-          // letters were about somebody, and exposure hands that power the
-          // evidence — so the third power resents the forger too.
-          if (agent.effect.kind === 'discord') {
-            moveRegard(state, agent.effect.towardFactionId, owner.id, -outrage);
-            const scandal = `${target.name} exposes ${owner.name}'s hand in forging its quarrel with ${nameFor(state, agent.effect.towardFactionId)}.`;
-            logEvent(state, 'diplomacy', scandal, target.id);
-          }
-        }
+        // Taken, not merely burned — see `takeOperative`.
+        takeOperative(state, agent, target, host, profile.oneShot ? 40 : 20);
       }
       continue;
     }
@@ -8141,11 +8409,16 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       // publish or spend on a hook. Never one the owner already holds proof
       // of. See `SecretSchema`.
       if (diggingSecrets && rollD20(state.turn, `secret:${agent.id}`) >= SECRET_DISCOVERY_ROLL) {
-        const filed = new Set(
-          state.assets
+        // Nor one it already holds a hook on: proof of the same thing twice
+        // would be published while the hook still rested on it.
+        const filed = new Set([
+          ...state.assets
             .filter((a) => a.heldBy === agent.ownerFactionId && a.secret)
             .map((a) => `${a.secret!.kind}:${a.secret!.ref}`),
-        );
+          ...(state.obligations ?? [])
+            .filter((o) => o.holderFactionId === agent.ownerFactionId && o.status === 'open' && o.secret)
+            .map((o) => `${o.secret!.kind}:${o.secret!.ref}`),
+        ]);
         const found = secretsAbout(state, target.id).find(
           (x) => !filed.has(`${x.kind}:${x.ref}`) && !(x.kind === 'covert_operation' && x.ref === agent.id),
         );
@@ -8365,6 +8638,46 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     if (besieged) continue;
     if (system.garrison < system.garrisonMax) {
       system.garrison = Math.min(system.garrisonMax, system.garrison + GARRISON_REGROWTH);
+    }
+  }
+
+  /* --- Bounties pay for hulls destroyed -------------------------------- */
+  // Every ton of a bountied power's shipping lost in a battle pays a hull's own
+  // price out of the pool, split among the powers on the other side by the
+  // tonnage each brought. Read off the battle reports, which carry every
+  // contingent's stack before and after each round.
+  for (const battle of report.battles) {
+    const side = new Map<string, 'attack' | 'defend'>();
+    const lost = new Map<string, number>();
+    const brought = new Map<string, number>();
+    for (const round of battle.rounds) {
+      for (const [which, list] of [
+        ['attack', round.attackers],
+        ['defend', round.defenders],
+      ] as const) {
+        for (const c of list) {
+          side.set(c.factionId, which);
+          const before = tonsIn(c.stackBefore);
+          lost.set(c.factionId, (lost.get(c.factionId) ?? 0) + Math.max(0, before - tonsIn(c.stackAfter)));
+          brought.set(c.factionId, Math.max(brought.get(c.factionId) ?? 0, before));
+        }
+      }
+    }
+    for (const [target, tons] of [...lost.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+      if (tons <= 0 || openBountiesOn(state.bounties, target).length === 0) continue;
+      const opponents = [...side.entries()]
+        .filter(([id, which]) => which !== side.get(target) && (brought.get(id) ?? 0) > 0)
+        .map(([id]) => id)
+        .sort();
+      const total = opponents.reduce((n, id) => n + brought.get(id)!, 0);
+      for (const claimant of opponents) {
+        const share = Math.floor((tons * BOUNTY_PER_TON * brought.get(claimant)!) / total);
+        const paid = claimBounty(state, target, claimant, share);
+        if (paid <= 0) continue;
+        const note = `${nameFor(state, claimant)} collects ${paid} of the bounty on ${nameFor(state, target)} for hulls destroyed at ${battle.systemName}.`;
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, claimant);
+      }
     }
   }
 
@@ -8650,6 +8963,129 @@ function applyRimEvent(state: WorldState, plan: RimEventPlan): RimEvent {
       text = `Envoys pass between ${who(a)} and ${who(b)}, at war and without a battle for ${plan.quietFor} turns: each thinks a little better of the other.`;
       break;
     }
+
+    // --- Notoriety: the Rim answering a power's heat. Each sheds
+    // `HEAT_ANSWERED` from its subject below, once it has landed.
+    case 'crackdown': {
+      const s = world(plan.systemId);
+      const f = plan.factionId;
+      factionIds = [f];
+      systemId = s.id;
+      const agent = state.agents.find((a) => a.id === plan.agentId)!;
+      const captor = state.factions.find((x) => x.id === plan.byFactionId)!;
+      // The same capture a botched operation ends in, so a crackdown's prisoner
+      // is ransomed, traded or questioned like any other.
+      takeOperative(state, agent, captor, s, 20);
+      text = `${who(plan.byFactionId)} cracks down on foreign agents at ${s.name}, and ${agent.name || 'an operative'}, working there for ${who(f)}, is taken.`;
+      break;
+    }
+
+    case 'bounty_posted': {
+      const f = plan.factionId;
+      factionIds = [f];
+      publicEvent = true;
+      // The one bounty nobody put up: the merchants', minted, sized off what
+      // the notorious power earns, and withdrawable by nobody.
+      (state.bounties ??= []).push(
+        BountySchema.parse({
+          id: mintId(state, 'bnt'),
+          postedBy: null,
+          targetFactionId: f,
+          pool: plan.pool,
+          postedTurn: turn,
+          note: `posted by merchants of ${who(plan.byFactionId)}`,
+        }),
+      );
+      text = `Merchants of ${who(plan.byFactionId)} put a price of ${plan.pool} on ${who(f)}: prizes taken from it, and its hulls destroyed, will be paid for.`;
+      break;
+    }
+
+    case 'turned_contact': {
+      const s = world(plan.systemId);
+      const f = plan.factionId;
+      const to = plan.byFactionId;
+      factionIds = [f];
+      systemId = s.id;
+      const agent = state.agents.find((a) => a.id === plan.agentId)!;
+      const name = agent.name || 'An operative';
+      // Over to the power they were working against, awaiting its orders, at
+      // the world they were turned on — which that power holds.
+      agent.ownerFactionId = to;
+      agent.mission = null;
+      agent.effect = null;
+      agent.targetCommanderId = null;
+      agent.inPlaceFrom = turn;
+      agent.deployedTurn = turn;
+      // And a turned contact talks: one thing the old masters are hiding,
+      // filed as proof, if there is anything left to tell.
+      const filed = new Set([
+        ...state.assets.filter((a) => a.heldBy === to && a.secret).map((a) => `${a.secret!.kind}:${a.secret!.ref}`),
+        ...(state.obligations ?? [])
+          .filter((o) => o.holderFactionId === to && o.status === 'open' && o.secret)
+          .map((o) => `${o.secret!.kind}:${o.secret!.ref}`),
+      ]);
+      const told = secretsAbout(state, f).find((x) => !filed.has(`${x.kind}:${x.ref}`));
+      if (told) {
+        state.assets.push(
+          AssetSchema.parse({
+            id: mintId(state, 'ast'),
+            kind: DOSSIER_KIND,
+            text: `Proof that ${describeSecret(state, told)}`.slice(0, 240),
+            heldBy: to,
+            quantity: 1,
+            unit: 'file',
+            divisible: false,
+            valuePerUnit: { [f]: 150, [to]: 60 },
+            atSystemId: null,
+            acquiredTurn: turn,
+            secret: told,
+          }),
+        );
+      }
+      text = `${name}, ${whose(f)} contact at ${s.name}, goes over to ${who(to)}${told ? ', and talks' : ''}.`;
+      break;
+    }
+
+    case 'show_of_force': {
+      const s = world(plan.systemId);
+      const f = plan.factionId;
+      const by = plan.byFactionId;
+      factionIds = [f];
+      systemId = s.id;
+      publicEvent = true;
+      // Brought up from its other worlds, richest first, never more than half
+      // of any one — a reposition of its own hulls, so nothing is minted and
+      // nothing is billed.
+      let wanted = plan.tons;
+      let moved: ShipStack = {};
+      const sources = state.systems
+        .filter((x) => x.id !== s.id && x.controllerFactionId === by && tonsAt(x, by) > 0)
+        .sort((a, b) => tonsAt(b, by) - tonsAt(a, by) || a.id.localeCompare(b.id));
+      for (const from of sources) {
+        if (wanted <= 0) break;
+        const here = stackAt(from, by);
+        const give = Math.min(wanted, Math.floor(tonsIn(here) / 2));
+        if (give <= 0) continue;
+        const { taken, left } = trimToTons(here, tonsIn(here) - give);
+        if (hullsIn(taken) === 0) continue;
+        setStackAt(from, by, left);
+        moved = mergeStacks(moved, taken);
+        wanted -= tonsIn(taken);
+      }
+      addStackAt(s, by, moved);
+      text = `${who(by)} brings ${tonsIn(moved)} tons (${describeStack(moved)}) up to ${s.name}, on ${whose(f)} border: a warning nobody mistakes.`;
+      break;
+    }
+  }
+
+  // The Rim has answered: a notorious power cools by what it just paid.
+  if (
+    plan.kind === 'crackdown' ||
+    plan.kind === 'bounty_posted' ||
+    plan.kind === 'turned_contact' ||
+    plan.kind === 'show_of_force'
+  ) {
+    heatUp(state, plan.factionId, -HEAT_ANSWERED);
   }
 
   // A power's own affairs reach that power and whoever could see the world it
@@ -9041,6 +9477,8 @@ function resolveBattle(
       injured.disposition[attackerId] = Math.max(-100, (injured.disposition[attackerId] ?? 0) - 25);
     }
     const reputation = truce ? TRUCE_BREAKING_REPUTATION_COST : PACT_BREAKING_REPUTATION_COST;
+    // A truce is the dearer word to break, in heat as in reputation.
+    heatUp(state, attackerId, truce ? HEAT_PACT_BROKEN * 2 : HEAT_PACT_BROKEN);
     for (const witness of state.factions) {
       if (witness.id === attackerId || witness.id === victimId) continue;
       witness.disposition[attackerId] = Math.max(

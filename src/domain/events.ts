@@ -31,9 +31,34 @@ export const RIM_HAZARDS = [
  */
 export const RIM_BOONS = ['rich_seam', 'volunteers', 'free_captains', 'envoys_of_peace'] as const;
 
-export const RIM_EVENT_KINDS = [...RIM_HAZARDS, ...RIM_BOONS] as const;
+/**
+ * The ten that come by chance: hazards and boons, each with a weight in
+ * `RIM_EVENT_WEIGHT` and a place in a power's luck.
+ */
+export const RIM_FORTUNES = [...RIM_HAZARDS, ...RIM_BOONS] as const;
+export const RimFortuneSchema = z.enum(RIM_FORTUNES);
+export type RimFortune = z.infer<typeof RimFortuneSchema>;
+
+/**
+ * The four that come for the notorious — the Rim answering a power's heat
+ * (see `heat.ts`). Borrowed from *Blades in the Dark*'s entanglements.
+ *
+ * **Not fortunes**, so they carry no weight in `RIM_EVENT_WEIGHT` and no place
+ * in anyone's luck: they are eligible only for a power at or above
+ * `HEAT_NOTORIOUS`, and weighted by its heat. The d20 still decides whether a
+ * turn carries an event at all, so notoriety changes WHICH event a turn brings
+ * and never how often the Rim moves. A board where nobody is notorious draws
+ * exactly as it did before they existed.
+ */
+export const RIM_NOTORIETY = ['crackdown', 'bounty_posted', 'turned_contact', 'show_of_force'] as const;
+
+export const RIM_EVENT_KINDS = [...RIM_FORTUNES, ...RIM_NOTORIETY] as const;
 export const RimEventKindSchema = z.enum(RIM_EVENT_KINDS);
 export type RimEventKind = z.infer<typeof RimEventKindSchema>;
+
+export function isNotoriety(kind: RimEventKind): kind is (typeof RIM_NOTORIETY)[number] {
+  return (RIM_NOTORIETY as readonly string[]).includes(kind);
+}
 
 /**
  * How likely each kind is, against the turn rather than against each other.
@@ -46,7 +71,7 @@ export type RimEventKind = z.infer<typeof RimEventKindSchema>;
  * the only way the average dips. The split between hazards and boons is the
  * dial to sweep, not the total.
  */
-export const RIM_EVENT_WEIGHT: Record<RimEventKind, number> = {
+export const RIM_EVENT_WEIGHT: Record<RimFortune, number> = {
   ion_storm: 0.05,
   derelict: 0.05,
   unrest: 0.05,
@@ -71,7 +96,7 @@ export const RIM_EVENT_RATE = Object.values(RIM_EVENT_WEIGHT).reduce((n, w) => n
  * event reads `RIM_EVENT_RATE` and nothing else.
  */
 export const RimLuckSchema = z
-  .record(RimEventKindSchema, z.number().min(0).max(1))
+  .record(RimFortuneSchema, z.number().min(0).max(1))
   .refine(
     (table) => Math.abs(Object.values(table).reduce((n, w) => n + w, 0) - RIM_EVENT_RATE) < 1e-9,
     `a power's luck must total ${RIM_EVENT_RATE}, the galaxy's own`,
@@ -79,13 +104,13 @@ export const RimLuckSchema = z
 export type RimLuck = z.infer<typeof RimLuckSchema>;
 
 /** Luck that favours one kind at `weight`, the rest of the total shared evenly. */
-export function luckFavouring(kind: RimEventKind, weight: number): RimLuck {
-  const rest = (RIM_EVENT_RATE - weight) / (RIM_EVENT_KINDS.length - 1);
-  return Object.fromEntries(RIM_EVENT_KINDS.map((k) => [k, k === kind ? weight : rest])) as RimLuck;
+export function luckFavouring(kind: RimFortune, weight: number): RimLuck {
+  const rest = (RIM_EVENT_RATE - weight) / (RIM_FORTUNES.length - 1);
+  return Object.fromEntries(RIM_FORTUNES.map((k) => [k, k === kind ? weight : rest])) as RimLuck;
 }
 
 /** The weight a kind carries when it singles out a power with this luck. */
-export function luckWeight(luck: RimLuck | undefined, kind: RimEventKind): number {
+export function luckWeight(luck: RimLuck | undefined, kind: RimFortune): number {
   return luck?.[kind] ?? RIM_EVENT_WEIGHT[kind];
 }
 
@@ -215,4 +240,8 @@ export const RIM_EVENT_TITLE: Record<RimEventKind, string> = {
   volunteers: 'Volunteers',
   free_captains: 'Free captains',
   envoys_of_peace: 'Envoys of peace',
+  crackdown: 'Crackdown',
+  bounty_posted: 'A price on your head',
+  turned_contact: 'Turned contact',
+  show_of_force: 'Show of force',
 };

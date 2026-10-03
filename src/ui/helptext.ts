@@ -1,3 +1,12 @@
+import { HEAT_DECAY, HEAT_NOTORIOUS } from '../domain/heat.js';
+import { RIM_BOONS, RIM_EVENT_RATE, RIM_HAZARDS } from '../domain/events.js';
+import {
+  COMMANDER_ARCHETYPES,
+  COMMANDER_COST,
+  COMMANDER_UPKEEP,
+  MAX_ACTIVE_COMMANDERS,
+  VETERAN_THRESHOLDS,
+} from '../domain/command.js';
 import { STAT_NAMES } from '../domain/checks.js';
 import { EFFECT_CATEGORIES } from '../domain/development.js';
 import { EFFECT_COST } from '../domain/development.js';
@@ -14,6 +23,7 @@ import {
   TRUCE_BREAKING_REPUTATION_COST,
   TRUCE_TURNS,
   ULTIMATUM_MAX_DEADLINE,
+  BOUNTY_PER_TON,
 } from '../domain/diplomacy.js';
 import { EMISSION_RANGE } from '../domain/intel.js';
 import { fixtureKindFor } from '../domain/initiative.js';
@@ -165,7 +175,7 @@ function exampleFixture(state: WorldState): string | null {
   return pick ? `Build a ${pick.kind!.replace(/_/g, ' ')} at ${pick.site.name}.` : null;
 }
 
-const WORDS = ['none', 'one', 'two', 'three', 'four'];
+const WORDS = ['none', 'one', 'two', 'three', 'four', 'five', 'six'];
 function count(n: number): string {
   return WORDS[n] ?? String(n);
 }
@@ -185,5 +195,46 @@ export function leverageLines(): string[] {
     '  may back either side; at the deadline it is given way to, or it is war.',
     '  Every power can give up only so much in one conversation. The channel',
     '  shows how much; your influence and your leverage over them widen it.',
+  ];
+}
+
+/** The raider's ledger and heat, from the constants that run them. */
+export function raiderLines(): string[] {
+  return [
+    "THE RAIDER'S LEDGER, AND HEAT",
+    '  Post a bounty on a power and your credits wait in escrow: prizes raided',
+    `  from it pay out credit for credit, its hulls destroyed ${BOUNTY_PER_TON} a ton.`,
+    '  A raider can be paid to leave you alone (protection) or to go after',
+    '  your enemy (a letter of marque). Both are contracts, agreed in a channel.',
+    '  Covert work, unlicensed raids and broken pacts make a power notorious.',
+    `  Heat fades ${HEAT_DECAY} a turn; from ${HEAT_NOTORIOUS} the Rim answers: crackdowns, a price`,
+    '  on your head, contacts turned, a neighbour massing on your border.',
+  ];
+}
+
+/** Officers, from the table and constants that run them. */
+export function officerLines(): string[] {
+  const [seasoned, veteran] = VETERAN_THRESHOLDS;
+  return [
+    'OFFICERS',
+    `  Up to ${count(MAX_ACTIVE_COMMANDERS)} in post, ${COMMANDER_COST} to appoint and ${COMMANDER_UPKEEP} a turn to keep. Each`,
+    '  is of one school, and helps only in a battle they are at:',
+    ...COMMANDER_ARCHETYPES.map((a) => `  · ${a.effect} — ${a.phase}`),
+    '  Name one in an order and they sail with that fleet. They grow better',
+    `  after ${seasoned} engagements and again after ${veteran}, and fall or are taken when`,
+    '  the fleet around them does. A captured officer can be ransomed home,',
+    '  and the senior one in post also improves something at home.',
+  ];
+}
+
+/** The Rim's own events, from the weights that run them. */
+export function rimLines(): string[] {
+  const oneIn = Math.round(1 / RIM_EVENT_RATE);
+  return [
+    'THE RIM MOVES ON ITS OWN',
+    `  About one turn in ${count(oneIn)}, something happens nobody ordered: one of`,
+    `  ${count(RIM_HAZARDS.length)} hazards, which lean on whoever is ahead, or one of ${count(RIM_BOONS.length)} boons, which`,
+    '  lean on whoever is behind. Never two in a turn. A card in the feed says',
+    '  what happened and what it changed; storms and shortages last a while.',
   ];
 }

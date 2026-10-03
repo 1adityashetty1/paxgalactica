@@ -1,6 +1,7 @@
 import { shortestPath } from './graph.js';
 import { getFaction, laneWeightsAt, type StarSystem, type WorldState } from './state.js';
 import { STORM_BLOCKER, stormbound } from './events.js';
+import { protectedFrom, raidLandsOn as raidLandsUnder } from './diplomacy.js';
 
 /**
  * Trade as a network on the hyperlane graph.
@@ -247,27 +248,27 @@ export function runsBlockade(
   const faction = state.factions.find((f) => f.id === factionId);
   if (faction?.tradeEthic === 'smuggler') return true;
 
-  return blockaders.every((blocker) =>
-    (state.treaties ?? []).some(
-      (t) =>
-        t.status === 'active' &&
-        t.type === 'trade_accord' &&
-        t.parties.includes(factionId) &&
-        t.parties.includes(blocker),
-    ),
+  return blockaders.every(
+    (blocker) =>
+      (state.treaties ?? []).some(
+        (t) =>
+          t.status === 'active' &&
+          t.type === 'trade_accord' &&
+          t.parties.includes(factionId) &&
+          t.parties.includes(blocker),
+      ) ||
+      // Protection bought from the blockader keeps its blockade off you too.
+      protectedFrom(state.treaties ?? [], state.turn, blocker, factionId),
   );
 }
 
-/** Trade-accord partners are also immune to each other's commerce raiding. */
+/**
+ * Whether a raider's prizes from this victim land: trade-accord partners are
+ * immune to each other's raiding, a power that bought protection from the
+ * raider is immune to it, and so is one that commissioned it.
+ */
 function raidLandsOn(state: WorldState, raider: string, victim: string): boolean {
-  if (raider === victim) return false;
-  return !(state.treaties ?? []).some(
-    (t) =>
-      t.status === 'active' &&
-      t.type === 'trade_accord' &&
-      t.parties.includes(raider) &&
-      t.parties.includes(victim),
-  );
+  return raidLandsUnder(state.treaties ?? [], state.turn, raider, victim);
 }
 
 /* ------------------------------------------------------------------ */
@@ -293,6 +294,15 @@ export interface RouteEarnings {
   tollsPaid: Record<string, number>;
   /** factionId -> credits taken from someone else by raiding. */
   raided: Record<string, number>;
+  /**
+   * `raiderId -> victimId -> credits taken`. `raided` says how much a raider
+   * took and not from whom, and the raider's ledger needs exactly that: a
+   * bounty pays on prizes taken from its target, a letter of marque on prizes
+   * taken from the powers it names, and heat rises only for prizes no
+   * commission licensed. Recorded in the same pass that moves the money, so the
+   * three cannot disagree with the ledger.
+   */
+  raidedFrom: Record<string, Record<string, number>>;
   /**
    * factionId -> the monopolist premium it has earned, held back from `shares`.
    *
@@ -355,6 +365,11 @@ export function routeEarnings(state: WorldState): RouteEarnings {
       (tollsPaidBySystem[payer]?.[systemId] ?? 0) + amount;
   };
   const raided: Record<string, number> = {};
+  const raidedFrom: Record<string, Record<string, number>> = {};
+  const took = (raider: string, victim: string, amount: number): void => {
+    add(raided, raider, amount);
+    add((raidedFrom[raider] ??= {}), victim, amount);
+  };
   const monopolyPremium: Record<string, number> = {};
   let uncollected = 0;
   let live = 0;
@@ -488,7 +503,7 @@ export function routeEarnings(state: WorldState): RouteEarnings {
         atRisk -= stolen;
         add(shares, holder, -stolen);
         add(shares, raider, stolen);
-        add(raided, raider, stolen);
+        took(raider, holder, stolen);
       }
     }
 
@@ -558,7 +573,7 @@ export function routeEarnings(state: WorldState): RouteEarnings {
         const stolen = Math.min(earned, earned * RAID_SHARE * multiplier);
         earned -= stolen;
         add(shares, raider, stolen);
-        add(raided, raider, stolen);
+        took(raider, holder, stolen);
       }
 
       add(shares, holder, earned);
@@ -579,6 +594,9 @@ export function routeEarnings(state: WorldState): RouteEarnings {
   for (const id of Object.keys(tolls)) tolls[id] = Math.round(tolls[id]!);
   for (const id of Object.keys(tollsPaid)) tollsPaid[id] = Math.round(tollsPaid[id]!);
   for (const id of Object.keys(raided)) raided[id] = Math.round(raided[id]!);
+  for (const from of Object.values(raidedFrom)) {
+    for (const id of Object.keys(from)) from[id] = Math.round(from[id]!);
+  }
   for (const id of Object.keys(monopolyPremium)) {
     monopolyPremium[id] = Math.round(monopolyPremium[id]!);
   }
@@ -591,6 +609,7 @@ export function routeEarnings(state: WorldState): RouteEarnings {
     tollsBySystem,
     tollsPaidBySystem,
     raided,
+    raidedFrom,
     monopolyPremium,
     openness: routes.length === 0 ? 1 : live / routes.length,
   };

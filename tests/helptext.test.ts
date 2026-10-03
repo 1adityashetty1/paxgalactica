@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { fixtureLines, leverageLines, peaceLines, shipClassLines, spanLines } from '../src/ui/helptext.js';
+import {
+  fixtureLines,
+  leverageLines,
+  officerLines,
+  peaceLines,
+  raiderLines,
+  rimLines,
+  shipClassLines,
+  spanLines,
+} from '../src/ui/helptext.js';
 import { CREDITS_PER_TON, HULL_CLASSES, HULL_SPEC } from '../src/domain/hulls.js';
 import { FIXTURE_COST, FIXTURE_UPKEEP, MAX_FIXTURE_BONUS } from '../src/domain/diplomacy.js';
 import { ASSET_ARCHETYPES } from '../src/domain/assets.js';
@@ -30,6 +39,9 @@ describe('the help text', () => {
       ...spanLines(),
       ...peaceLines(),
       ...leverageLines(),
+      ...raiderLines(),
+      ...officerLines(),
+      ...rimLines(),
     ]) {
       expect(line.length, line).toBeLessThanOrEqual(76);
     }

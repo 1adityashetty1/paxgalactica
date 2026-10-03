@@ -20,6 +20,8 @@ import {
   demandSide,
 } from '../../../src/domain/diplomacy.js';
 import { describeSecret, secretLive } from '../../../src/domain/leverage.js';
+import { HEAT_DECAY, HEAT_NOTORIOUS } from '../../../src/domain/heat.js';
+import { BOUNTY_PER_TON } from '../../../src/domain/diplomacy.js';
 import { shortageFactor } from '../../../src/domain/events.js';
 import { describeOrderEffect } from '../../../src/domain/development.js';
 import { describeEffect } from '../../../src/domain/diplomacy.js';
@@ -263,6 +265,15 @@ function Factions({
                 );
               })}
             </div>
+            {(f.heat ?? 0) > 0 && (
+              <div
+                className={(f.heat ?? 0) >= HEAT_NOTORIOUS ? 'dissent' : 'muted'}
+                title={`How notorious its covert work, unlicensed raiding and broken word have made it. It fades ${HEAT_DECAY} a turn; from ${HEAT_NOTORIOUS} the Rim answers — crackdowns, a price on its head, turned contacts, a neighbour massing on its border.`}
+              >
+                heat {f.heat}
+                {(f.heat ?? 0) >= HEAT_NOTORIOUS ? ' · notorious' : ''}
+              </div>
+            )}
             {f.dissent > 0 && (
               <div
                 className="dissent"
@@ -912,7 +923,6 @@ function Assets({ state }: { state: WorldState }) {
               a.yield?.kind === 'credits' ? `pays ${a.yield.perTurn}/turn` : null,
               a.yield?.kind === 'dissent' ? `settles the population` : null,
               a.yield?.kind === 'asset' ? `yields ${a.yield.perTurn} ${a.yield.unit}/turn` : null,
-              offers.length > 1 ? `${offers.length} powers want it` : null,
               // The two kinds whose one rule decides what to do with them.
               // The note's own text already says what it gives; this says what
               // to DO with it, which is the opposite for issuer and holder.
@@ -954,6 +964,34 @@ function Assets({ state }: { state: WorldState }) {
                   )}
                 </div>
                 <p className="commitment-text">{a.text}</p>
+                {/* Who wants it, as a dot in each power's own colour — the
+                    colour the map and the Factions panel already teach — keenest
+                    first, with name and price on hover. Dots rather than a chip
+                    each, for the reason above: who, without burying how much. */}
+                {offers.length > 1 && (
+                  <p className="muted wanted-by">
+                    wanted by
+                    {offers.map((o) => {
+                      const price =
+                        a.speculative && o.band.min !== o.band.max ? `${o.band.min}–${o.band.max}cr` : `${o.band.max}cr`;
+                      return (
+                        // A drawn tooltip rather than `title`: the native one
+                        // waits a second and a half, and some embedded browsers
+                        // never show it at all. Focusable, so it reads without
+                        // a mouse too.
+                        <span
+                          key={o.f.id}
+                          className="faction-dot"
+                          style={{ background: colourOf(state, o.f.id) }}
+                          data-tip={`${o.f.name} · ${price}`}
+                          aria-label={`${o.f.name}, ${price}`}
+                          role="img"
+                          tabIndex={0}
+                        />
+                      );
+                    })}
+                  </p>
+                )}
                 {qualifiers.length > 0 && <p className="muted">{qualifiers.join(' · ')}</p>}
               </div>
             );
@@ -1223,6 +1261,22 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
                 {t.terms.mutualDefenseTrigger && (
                   <li className="trigger">triggers on: {t.terms.mutualDefenseTrigger}</li>
                 )}
+                {/* The raider's ledger: who will not raid whom, and who is
+                    paid to raid whom. */}
+                {(t.terms.protection ?? []).map((shielded) => (
+                  <li key={`prot-${shielded}`} className={shielded === me ? 'good' : undefined}>
+                    protection: {getFaction(state, t.parties.find((p) => p !== shielded) ?? '')?.name ?? '?'} will not raid or
+                    blockade {getFaction(state, shielded)?.name ?? shielded}
+                  </li>
+                ))}
+                {t.terms.commission && (
+                  <li>
+                    letter of marque: {getFaction(state, t.terms.commission.raider)?.name ?? t.terms.commission.raider} raids{' '}
+                    {t.terms.commission.against.map((id) => getFaction(state, id)?.name ?? id).join(', ')} on{' '}
+                    {getFaction(state, t.parties.find((p) => p !== t.terms.commission!.raider) ?? '')?.name ?? '?'}'s
+                    commission{t.terms.commission.share > 0 ? `, plus ${t.terms.commission.share}% of what it takes` : ''}
+                  </li>
+                )}
                 {(t.terms.commodities ?? []).map((maker) => (
                   <li key={`goods-${maker}`} className={maker === me ? undefined : 'good'}>
                     goods: {getFaction(state, maker)?.name ?? maker} →{' '}
@@ -1319,6 +1373,33 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
                     {forDemand.length > 0 ? ` · backing the demand: ${forDemand.join(', ')}` : ''}
                     {forTarget.length > 0 ? ` · backing ${name(d.toFactionId)}: ${forTarget.join(', ')}` : ''}
                     {d.toFactionId === me ? ' · give way before the deadline, or it is war' : ''}
+                  </p>
+                </div>
+              );
+            })}
+        </>
+      )}
+
+      {/* Every open bounty: a price nobody hears of is a price nobody earns. */}
+      {(state.bounties ?? []).some((b) => b.status === 'open' && b.pool > 0) && (
+        <>
+          <h4>Bounties</h4>
+          {(state.bounties ?? [])
+            .filter((b) => b.status === 'open' && b.pool > 0)
+            .map((b) => {
+              const name = (id: string) => getFaction(state, id)?.name ?? id;
+              return (
+                <div key={b.id} className={b.targetFactionId === me ? 'treaty bad' : 'treaty'}>
+                  <div className="treaty-head">
+                    <strong style={{ color: colourOf(state, b.targetFactionId) }}>{name(b.targetFactionId)}</strong>
+                    <span className="eta">{b.pool} in escrow</span>
+                  </div>
+                  <p className="muted">
+                    posted by {b.postedBy === null ? `the Rim's merchants (${b.note})` : name(b.postedBy)}
+                    {b.paidOut > 0 ? ` · ${b.paidOut} paid out` : ''} · prizes raided pay credit for credit, hulls destroyed{' '}
+                    {BOUNTY_PER_TON} a ton
+                    {b.postedBy === me ? ' · yours: withdraw it to take back what is left' : ''}
+                    {b.targetFactionId === me ? ' · a price on your head' : ''}
                   </p>
                 </div>
               );

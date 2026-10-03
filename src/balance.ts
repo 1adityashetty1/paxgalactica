@@ -67,7 +67,11 @@ export function runBalance(
     // is still inert here, since nobody in the harness signs anything; the
     // point is that the harness now exercises whatever guard the game does.
     for (const id of Object.keys(BOTS).sort()) {
-      const proposal = proposeFor(state, id);
+      const proposal = proposeFor(
+        state,
+        id,
+        (ops) => applyOps(state, ops, 'model', id, true, legacy).rejections.length === 0,
+      );
       if (proposal) state = applyOps(state, proposal.ops, 'model', id).state;
     }
     // What the bots agree between themselves, as `endTurn` applies it.

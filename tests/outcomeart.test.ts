@@ -10,7 +10,7 @@ import {
   rimEventPixels,
   rimEventRuns,
 } from '../src/ui/outcomeart.js';
-import { RIM_EVENT_KINDS } from '../src/domain/events.js';
+import { RIM_EVENT_KINDS, RIM_FORTUNES } from '../src/domain/events.js';
 import { worldPixels } from '../src/ui/worlds.js';
 
 /**
@@ -409,8 +409,10 @@ describe('the envoys of peace', () => {
 });
 
 describe('every event has its scene', () => {
-  it('draws all ten, each one different', () => {
-    expect([...RIM_ART_KINDS].sort()).toEqual([...RIM_EVENT_KINDS].sort());
+  it('draws all ten fortunes, each one different', () => {
+    // The four notoriety events have no scene until one is drawn and approved;
+    // `RimEventArt` renders nothing for them, the fallback every kind had.
+    expect([...RIM_ART_KINDS].sort()).toEqual([...RIM_FORTUNES].sort());
     const scenes = RIM_ART_KINDS.map((k) => rimEventPixels(k).flat().join(''));
     expect(new Set(scenes).size).toBe(RIM_ART_KINDS.length);
   });

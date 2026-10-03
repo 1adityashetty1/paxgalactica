@@ -1124,6 +1124,201 @@ export function demandSide(demand: Demand, side: 'from' | 'to'): string[] {
   ];
 }
 
+/* ------------------------------------------------------------------ */
+/* The raider's ledger                                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A price on a power, held in escrow until somebody earns it.
+ *
+ * Borrowed from *Sins of a Solar Empire*, where each player funds a pool
+ * against a rival and the pirates go after whoever carries the largest one. The
+ * Rim has the pirates — the Confederacy, and anyone who turns raider — and
+ * nothing paid them to work against a named power on their own account.
+ *
+ * **Escrowed, so it is conserved.** Posting takes the credits out of the
+ * poster's treasury into `pool`; prizes raided from the target pay out of it
+ * credit for credit (`BOUNTY_RAID_RATE`), and every ton of the target's hulls
+ * destroyed in battle pays `BOUNTY_PER_TON`, split among the powers on the
+ * other side. Nothing is minted except by the one notoriety event that posts a
+ * bounty on the merchants' behalf (`postedBy: null`), which nobody may withdraw.
+ *
+ * Public: a price nobody knows about is a price nobody earns.
+ */
+export const BountySchema = z.object({
+  id: z.string().min(1),
+  /** Who put up the money; `null` for the Rim's merchants (a notoriety event). */
+  postedBy: z.string().min(1).nullable(),
+  targetFactionId: z.string().min(1),
+  /** Credits still in escrow. */
+  pool: z.number().int().min(0),
+  /** Credits it has paid out, for the record. */
+  paidOut: z.number().int().min(0).default(0),
+  postedTurn: z.number().int().min(0),
+  /** `claimed` ran dry; `withdrawn` went back to the poster. */
+  status: z.enum(['open', 'claimed', 'withdrawn']).default('open'),
+  /** One line, for a bounty the merchants posted: who was behind it. */
+  note: z.string().max(240).default(''),
+});
+export type Bounty = z.infer<typeof BountySchema>;
+
+/** The least a bounty may be posted for. */
+export const BOUNTY_MIN = 25;
+/** Credits paid out of the pool per credit raided from the target. */
+export const BOUNTY_RAID_RATE = 1;
+/** Credits paid out of the pool per ton of the target's shipping destroyed — a hull's own price. */
+export const BOUNTY_PER_TON = 15;
+/** The target's regard for whoever put a price on it. Once, when it is posted. */
+export const BOUNTY_RESENTMENT = 10;
+
+/** Open bounties on a power, oldest first — the order they pay out in. */
+export function openBountiesOn(bounties: readonly Bounty[] | undefined, target: string): Bounty[] {
+  return (bounties ?? [])
+    .filter((b) => b.status === 'open' && b.targetFactionId === target && b.pool > 0)
+    .sort((a, b) => a.postedTurn - b.postedTurn || a.id.localeCompare(b.id));
+}
+
+/** Everything in escrow against a power. */
+export function bountyOn(bounties: readonly Bounty[] | undefined, target: string): number {
+  return openBountiesOn(bounties, target).reduce((n, b) => n + b.pool, 0);
+}
+
+/** One draw on one bounty, by one claimant. */
+export interface BountyDraw {
+  bountyId: string;
+  claimant: string;
+  target: string;
+  amount: number;
+}
+
+/**
+ * What this turn's prizes earn from the bounties on their victims: every
+ * raider against every power it robbed, in id order, each bounty drawn oldest
+ * first and never one the raider posted itself — collecting your own bounty
+ * would be a withdrawal by another name.
+ *
+ * Pure, and the one allocation both readers use: `ledgerFor` reports a power's
+ * share as income, and the tick draws the pools down by exactly these draws, so
+ * the escrow and the ledger cannot disagree.
+ */
+export function raidBountyDraws(
+  bounties: readonly Bounty[] | undefined,
+  raidedFrom: Record<string, Record<string, number>>,
+): BountyDraw[] {
+  const left = new Map((bounties ?? []).map((b) => [b.id, b.pool]));
+  const draws: BountyDraw[] = [];
+  for (const raider of Object.keys(raidedFrom).sort()) {
+    for (const victim of Object.keys(raidedFrom[raider]!).sort()) {
+      let owed = Math.floor((raidedFrom[raider]![victim] ?? 0) * BOUNTY_RAID_RATE);
+      for (const b of openBountiesOn(bounties, victim)) {
+        if (owed <= 0) break;
+        if (b.postedBy === raider || raider === victim) continue;
+        const take = Math.min(left.get(b.id) ?? 0, owed);
+        if (take <= 0) continue;
+        left.set(b.id, (left.get(b.id) ?? 0) - take);
+        owed -= take;
+        draws.push({ bountyId: b.id, claimant: raider, target: victim, amount: take });
+      }
+    }
+  }
+  return draws;
+}
+
+/**
+ * A letter of marque: a `contract` term commissioning one party to raid named
+ * enemies of the other.
+ *
+ * Borrowed from *Starsector*'s commissions, and it is the proxy the Combine's
+ * sheet always described and never had: a `Loan` hires a squadron under your own
+ * command, while this pays a raider to work **on its own account** against a
+ * power you name. The commissioner pays a stipend (`incomePerTurn`, which a
+ * contract already carries) and `share` percent of what the raider takes from
+ * the named enemies each turn, out of its own treasury. In return the raider
+ * does not raid the commissioner, and its raids on the named enemies are
+ * licensed — they run no heat, and the commissioner charges no piracy
+ * reputation for them.
+ */
+export const CommissionSchema = z.object({
+  /** The party commissioned; the other party is the commissioner. */
+  raider: z.string().min(1),
+  /** The powers it is commissioned against. Neither party. */
+  against: z.array(z.string().min(1)).min(1),
+  /** Percent of what is taken from them that the commissioner adds as a bonus. */
+  share: z.number().int().min(0).max(100).default(0),
+});
+export type Commission = z.infer<typeof CommissionSchema>;
+
+/** The largest bonus a letter of marque may carry. Trimmed, never refused. */
+export const MAX_COMMISSION_SHARE = 50;
+
+/** The live contract between two powers matching a test, if any. */
+function liveContract(
+  treaties: readonly Treaty[],
+  turn: number,
+  a: string,
+  b: string,
+  test: (t: Treaty) => boolean,
+): Treaty | undefined {
+  return treaties.find(
+    (t) => t.type === 'contract' && isTreatyLive(t, turn) && t.parties.includes(a) && t.parties.includes(b) && test(t),
+  );
+}
+
+/**
+ * Whether `victim` has bought protection from `raider`: a live contract whose
+ * `protection` names the victim, the raider being the other party. Protection
+ * keeps the raider's raids and blockades off it, as a `trade_accord` does.
+ */
+export function protectedFrom(treaties: readonly Treaty[], turn: number, raider: string, victim: string): boolean {
+  if (raider === victim) return false;
+  return !!liveContract(treaties, turn, raider, victim, (t) => (t.terms.protection ?? []).includes(victim));
+}
+
+/** The live letter of marque `raider` holds from `commissioner`, if any. */
+export function commissionFrom(
+  treaties: readonly Treaty[],
+  turn: number,
+  raider: string,
+  commissioner: string,
+): Treaty | undefined {
+  if (raider === commissioner) return undefined;
+  return liveContract(treaties, turn, raider, commissioner, (t) => t.terms.commission?.raider === raider);
+}
+
+/**
+ * The live letters of marque licensing `raider` against `victim` — every
+ * commissioner who named the victim. A raid on a power one of these names is a
+ * licensed raid.
+ */
+export function commissionsAgainst(
+  treaties: readonly Treaty[],
+  turn: number,
+  raider: string,
+  victim: string,
+): Treaty[] {
+  return treaties.filter(
+    (t) =>
+      t.type === 'contract' &&
+      isTreatyLive(t, turn) &&
+      t.terms.commission?.raider === raider &&
+      t.parties.includes(raider) &&
+      t.terms.commission.against.includes(victim),
+  );
+}
+
+/**
+ * Whether a raider's prizes from `victim` land at all: not on a trade-accord
+ * partner, not on a power it sells protection to, and not on a power that
+ * commissioned it.
+ */
+export function raidLandsOn(treaties: readonly Treaty[], turn: number, raider: string, victim: string): boolean {
+  if (raider === victim) return false;
+  if (treatyBetween([...treaties], turn, raider, victim, ['trade_accord'])) return false;
+  if (protectedFrom(treaties, turn, raider, victim)) return false;
+  if (commissionFrom(treaties, turn, raider, victim)) return false;
+  return true;
+}
+
 /**
  * What an asset is worth to a power, in total. A claim, never a ledger entry.
  *
@@ -1297,6 +1492,15 @@ export const TreatyTermsSchema = z.object({
    * flowing is what an accord about lanes is for.
    */
   commodities: z.array(z.string().min(1)).default([]),
+  /**
+   * Parties whose shipping the OTHER party will not raid or blockade — paid
+   * protection, borrowed from *Distant Worlds*. Legal only on a `contract`,
+   * whose `incomePerTurn` is the fee. Optional, so every treaty written before
+   * it parses to exactly what it was.
+   */
+  protection: z.array(z.string().min(1)).optional(),
+  /** A letter of marque — see `CommissionSchema`. Legal only on a `contract`. */
+  commission: CommissionSchema.optional(),
   /** What obliges the signatories to act. Empty for treaties with no trigger. */
   mutualDefenseTrigger: z.string().default(''),
 });

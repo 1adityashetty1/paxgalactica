@@ -57,12 +57,15 @@ import {
   workingStats,
   ObligationSchema,
   DemandSchema,
+  BountySchema,
+  raidBountyDraws,
 } from './diplomacy.js';
 import { DebtSchema, MAX_DEBT_PER_TURN, scheduledDebtService, type Debt } from './debt.js';
 import { LoanSchema, scheduledRent } from './loan.js';
 import { DurationCategorySchema, FibScaleSchema } from './duration.js';
 import { buildAdjacency } from './graph.js';
 import { RimEventSchema, RimLuckSchema } from './events.js';
+import { HEAT_MAX } from './heat.js';
 // trade.ts imports only TYPES from here, so this edge is one-directional at
 // runtime and there is no import cycle to trip over.
 import { routeEarnings, type RouteEarnings } from './trade.js';
@@ -287,6 +290,11 @@ export const FactionSchema = z.object({
    * refused or compulsions ignored; high dissent is a losing position.
    */
   dissent: z.number().int().min(0).max(100).default(0),
+  /**
+   * How notorious its dirty work has made it, 0–100 — see `heat.ts`. Public.
+   * Defaulted, so a power from before heat opens with none.
+   */
+  heat: z.number().int().min(0).max(HEAT_MAX).default(0),
   /** Work it reaches for by instinct, biasing what NPCs choose to build. */
   buildBias: z.array(DurationCategorySchema).default([]),
   /**
@@ -832,6 +840,8 @@ export const WorldStateSchema = z.object({
   obligations: z.array(ObligationSchema).default([]),
   /** Ultimatums, open and answered — see `DemandSchema`. */
   demands: z.array(DemandSchema).default([]),
+  /** Prices on powers, in escrow — see `BountySchema`. */
+  bounties: z.array(BountySchema).default([]),
   playerFactionId: z.string().min(1),
   /** Abstract unit. There is no calendar in this game, deliberately. */
   turn: z.number().int().min(0),
@@ -1560,6 +1570,14 @@ export const LedgerSchema = z.object({
   /** Of `routes`, what was taken from others by commerce raiding. */
   raided: z.number().int(),
   /**
+   * What this turn's prizes earn from bounties on the powers they were taken
+   * from — see `raidBountyDraws`. Paid out of escrow rather than anybody's
+   * treasury, so it cannot be unaffordable and is summed into `net` like any
+   * flow; the tick draws the pools down by the same amount. Hulls destroyed
+   * pay too, but only when a battle happens, so that half is not a rate.
+   */
+  bounties: z.number().int().default(0),
+  /**
    * Scheduled debt service: positive receives, negative pays.
    *
    * Deliberately **not** part of `net`. A debt is settled as an explicit
@@ -1765,7 +1783,7 @@ export function ledgerFor(
     return {
       gross: 0, upkeep: 0, net: 0, systems: 0, treatyFlow: 0,
       espionageLoss: 0, espionageGain: 0, garrisonUpkeep: 0, agentUpkeep: 0, fixtureUpkeep: 0, commanderUpkeep: 0, commitmentFlow: 0, commitmentShare: 0, assetYield: 0, warProfit: 0, occupation: 0,
-      territory: 0, routes: 0, tolls: 0, raided: 0, debtService: 0, loanRent: 0,
+      territory: 0, routes: 0, tolls: 0, raided: 0, bounties: 0, debtService: 0, loanRent: 0,
     };
   }
 
@@ -1922,6 +1940,10 @@ export function ledgerFor(
 
   const warProfit = warProfitFor(state, factionId);
 
+  const bounties = raidBountyDraws(state.bounties, earnings.raidedFrom)
+    .filter((d) => d.claimant === factionId)
+    .reduce((n, d) => n + d.amount, 0);
+
   return {
     gross,
     upkeep,
@@ -1938,7 +1960,8 @@ export function ledgerFor(
       commitmentFlow +
       commitmentShare +
       assetYield +
-      warProfit -
+      warProfit +
+      bounties -
       occupation,
     systems: counted,
     occupation,
@@ -1957,6 +1980,7 @@ export function ledgerFor(
     routes,
     tolls: earnings.tolls[factionId] ?? 0,
     raided: earnings.raided[factionId] ?? 0,
+    bounties,
     // Reported, never summed into `net` — see `Ledger.debtService`.
     debtService: scheduledDebtService(state.debts ?? [], factionId),
     loanRent: scheduledRent(state.loans ?? [], factionId),

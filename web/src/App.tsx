@@ -14,7 +14,16 @@ import { GalaxyMap } from './components/GalaxyMap.js';
 import { OutcomeArt } from './components/OutcomeArt.js';
 import { RimEventCard } from './components/RimEventCard.js';
 import { RIM_EVENT_TITLE } from '../../src/domain/events.js';
-import { fixtureLines, leverageLines, peaceLines, shipClassLines, spanLines } from '../../src/ui/helptext.js';
+import {
+  fixtureLines,
+  leverageLines,
+  officerLines,
+  peaceLines,
+  raiderLines,
+  rimLines,
+  shipClassLines,
+  spanLines,
+} from '../../src/ui/helptext.js';
 import { EpilogueStage } from './components/EpilogueStage.js';
 import { PortraitStage } from './components/PortraitStage.js';
 import { SidePanel } from './components/SidePanel.js';
@@ -108,6 +117,8 @@ function helpLines(state: WorldState | null): string[] {
     '  :help            this',
     '  :cheats          the cheat menu, for testing — free, instant, costs no action,',
     '                   skips the arbiter, and no power is ever told',
+    '  Settings         (top bar) pay with your subscription or an Anthropic or',
+    '                   OpenRouter key, choose models, and set a spend cap',
     '',
     ...(state
       ? [
@@ -148,6 +159,9 @@ function helpLines(state: WorldState | null): string[] {
     '  Parking ships over a world you do not own splits its income, closes its',
     '  lanes and lets you talk to its crews — presence is not ownership, and it',
     '  is not nothing either.',
+    '  A losing defence breaks off at two to one. Order your navy to hold',
+    '  whatever it costs, or to withdraw the moment it is outmatched and keep',
+    '  the fleet; a crusading power cannot be ordered to run.',
     ...spanLines(),
     '',
     'MONEY',
@@ -161,6 +175,12 @@ function helpLines(state: WorldState | null): string[] {
     ...peaceLines(),
     '',
     ...leverageLines(),
+    '',
+    ...raiderLines(),
+    '',
+    ...officerLines(),
+    '',
+    ...rimLines(),
     '',
     'WHAT YOU CAN REACH FOR',
     '  Most of what follows has no command. You type the sentence and the',
@@ -182,6 +202,11 @@ function helpLines(state: WorldState | null): string[] {
     '  Nothing takes longer than 5 turns. Fleet movement costs one turn per',
     '  hyperlane jump and is never estimated. Everything else is estimated once,',
     '  when the order is issued, and never re-rolled.',
+    '',
+    'THE END',
+    '  A campaign runs the number of turns chosen on the title screen. When the',
+    '  last is played the Rim is summed up, power by power, and the campaign',
+    '  stays open to read and save, but not to play.',
   ];
 }
 

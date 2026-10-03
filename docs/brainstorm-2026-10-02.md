@@ -322,6 +322,14 @@ Each one is built from a mechanic that exists, as the ten events were.
 today flat and immediate into a pressure that builds and breaks. Measuring needs
 the bots to raid, which Drajk's do.
 
+**As built.** Heat decays one a turn and every notoriety event that lands sheds
+fifteen. Published proof heats its subject by what the scandal costs it. The
+merchants' bounty is minted, one turn of the target's gross, and nobody can
+withdraw it. A turned contact also files proof of one more of its old masters'
+secrets. A show of force moves up to sixteen tons of the neighbour's own hulls
+to the border; it is not an ultimatum. Notoriety events take turns from the ten
+fortunes rather than adding to the rate.
+
 ### 3.4 Running dark — *Starsector (the transponder)*
 
 **Elsewhere.** Turning the transponder off lets a fleet trade on the black
@@ -384,6 +392,13 @@ is what a proxy actually is.
 can read them, and all are typed terms on types that exist. Size M. It moves
 Drajk's economy, so it needs measuring; the guard should be retuned or kept
 after.
+
+**As built.** Protection keeps the raider's blockades off as well as its raids.
+Raid bounties are a line on the ledger, because as a bare transfer the
+Confederacy read as insolvent while its treasury grew. The guard was kept:
+without it the Confederacy falls to four worlds at 30 turns and three at 100.
+Protection never fires in the harness, since the Combine commissions the
+Confederacy before it would ever need to buy it off.
 
 ### 4.2 Speculative trade by world type — *Traveller*
 
@@ -560,9 +575,9 @@ size.
 
 | idea | § | what it builds on |
 |---|---|---|
-| The raider's ledger | 4.1 | typed terms on `contract`, and an escrowed bounty pool |
+| The raider's ledger **(built)** | 4.1 | typed terms on `contract`, and an escrowed bounty pool |
 | Secrets **(built)** | 3.2 | dossier kinds read off state, and two ops: publish and blackmail |
-| Heat | 3.3 | a decaying counter, and four events on the 124 pulse |
+| Heat **(built)** | 3.3 | a decaying counter, and four events on the 124 pulse |
 | Promissory notes **(built)** | 1.2 | an asset archetype with `uses: 1` and one effect per power |
 | Fixtures that can be hurt **(built)** | 6.3 | a condition on fixtures, a sabotage effect and a repair programme |
 | Commodities **(built)** | 1.3 | a non-paying fixture yield that pays the receiver |
@@ -593,8 +608,8 @@ size.
 
 ## Build graph
 
-*Updated after the obligations tree.* Ten ideas are built, plus the bot rules
-that use them, so twelve are left. Built work is no longer a node: where it
+*Updated after the raider's ledger and heat.* Twelve ideas are built, plus the
+bot rules that use them, so ten are left. Built work is no longer a node: where it
 unlocks something, the node says so.
 
 A solid arrow means the later idea, or one part of it, cannot be built without
@@ -619,6 +634,8 @@ flowchart LR
     secrets["Secrets"]:::done
     ultimatums["Ultimatums"]:::done
     concession["Concession budget"]:::done
+    ledger["Raider's ledger"]:::done
+    heat["Heat"]:::done
   end
 
   truces --> coalitions["Coalitions · L"]:::heavy
@@ -627,9 +644,7 @@ flowchart LR
   truces -.-> wargoals["War goals and exhaustion · L"]:::heavy
   accords -.-> wargoals
   ultimatums -.-> wargoals
-  ledger["Raider's ledger · M"]:::light --> heat["Heat · M"]:::light --> dark["Running dark · M+"]:::heavy
-  accords -.-> heat
-  secrets -.-> heat
+  heat --> dark["Running dark · M+"]:::heavy
   emissions -.-> dark
   emissions -.-> intel["Intel with memory · M+"]:::heavy
   commodities -.-> spec["Speculative trade · M+"]:::heavy
@@ -650,30 +665,28 @@ S is small, M is medium (lighter), M+ is medium (heavier) and L is large.
 | ultimatums ⇢ coalitions | better after (built) | a coalition is a standing ultimatum against one power; `demandSide` and the deadline's war already resolve sides |
 | ultimatums ⇢ war goals | better after (built) | an unanswered demand is the obvious goal of the war it starts — the demand's terms are already a closed list |
 | bot accords ⇢ war goals | better after | exhaustion is a better reason for a bot to sue for peace than five quiet turns |
-| secrets ⇢ heat | better after (built) | published proof is the natural way notoriety is learned, and blackmail is a covert act that should run hot |
-| bot accords ⇢ heat | better after | the bots run operatives, so heat from covert work is measurable in the harness |
 | emissions ⇢ running dark | better after | a listener within range is the natural roll to unmask a dark raid |
 | emissions ⇢ intel with memory | better after | the heard set is a ready-made source for an intel level |
 | commodities ⇢ speculative trade | better after | cargo priced by world type is goods with a destination |
-| raider's ledger → heat | needs, for one event | *a bounty posted on you* is a ledger bounty |
-| heat → running dark | needs, for unmasking | an unmasked raid adds heat |
+| heat → running dark | needs (built), for unmasking | an unmasked raid adds heat |
 | mandate → fortune | needs | darkness is charged when mandate buys a reroll |
 | ambitions ⇢ mandate | better after | a fulfilled ambition earns mandate |
 | ambitions, mandate ⇢ estates | decision gate | estates are deferred until those two show whether more internal politics is wanted |
 
 **Waves.**
 
-1. **Ready now:** the raider's ledger, ambitions, coalitions, war goals, intel
-   with memory, speculative trade, and courting unaligned worlds.
-2. Heat, mandate.
-3. Running dark, fortune and darkness, estates.
+1. **Ready now:** running dark, ambitions, coalitions, war goals, intel with
+   memory, speculative trade, and courting unaligned worlds.
+2. Mandate.
+3. Fortune and darkness, estates.
 
-The longest chains are three deep: ledger → heat → running dark, and ambitions
-→ mandate → fortune.
+The longest chain is three deep: ambitions → mandate → fortune.
 
 The bots now reach the leverage layer too: they demand tribute of weaker
 neighbours, keep watchers on rivals, and publish or blackmail with what those
-find, so the harness measures all of it.
+find. They post bounties, commission raiders and buy protection, and the Rim
+answers whichever of them runs hot — so the harness measures all of it, except
+protection, which it never reaches.
 
 ---
 
@@ -700,20 +713,17 @@ What the borrowing confirms, and what it found already done:
 
 ## Suggested order
 
-*Updated after the obligations tree*, which built obligations, secrets,
-ultimatums and the concession budget.
+*Updated after the raider's ledger and heat.* The Confederacy now has an
+economy — five worlds where it held three — and the front guard was measured
+and kept.
 
-1. **The raider's ledger** (§4.1) — the most setting-shaped idea left, and the
-   one that gives Drajk an economy instead of a guard rail. The bots already
-   raid, so the harness can measure it on day one.
-2. **Heat** (§3.3) — once the ledger exists, unlicensed raiding has a price that
-   builds, and published secrets and the bots' saboteurs give it something to
-   measure.
-3. **Ambitions** (§5.1), then **mandate** (§5.2) — the arc, and the reward for
+1. **Ambitions** (§5.1), then **mandate** (§5.2) — the arc, and the reward for
    playing in character.
-4. **War goals** (§2.4) — ultimatums now give a war its natural goal, and it
+2. **Running dark** (§3.4) — heat is built, so an unmasked raid has a price to
+   pay; the Confederacy and the Combine are its users by doctrine.
+3. **War goals** (§2.4) — ultimatums now give a war its natural goal, and it
    would give bot peace a better reason than a quiet war.
-5. **Coalitions** (§2.2) — unblocked, and ultimatums already resolve sides. Still
+4. **Coalitions** (§2.2) — unblocked, and ultimatums already resolve sides. Still
    large, and it needs the frozen-board sweep.
 
 Every one of these would need a journal-version pin, a harness run, and a line
