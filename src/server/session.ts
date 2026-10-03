@@ -13,7 +13,14 @@ import type { Cheat } from '../domain/cheats.js';
 import { archiveFilename, packCampaign, unpackCampaign } from '../engine/archive.js';
 import {
   withCurrentIntel, briefingFromState, buildBriefing, type Briefing } from '../engine/briefing.js';
-import { Campaign, ACTION_POINTS_PER_TURN, type StagedBinding } from '../engine/campaign.js';
+import { z } from 'zod';
+import {
+  Campaign,
+  ACTION_POINTS_PER_TURN,
+  CampaignSnapshotSchema,
+  StagedBatchSchema,
+  type StagedBinding,
+} from '../engine/campaign.js';
 import { FileCampaignStore, type CampaignStore } from '../engine/store.js';
 import { closeChannel, endTurn, writeEpilogue, submitAction } from '../engine/turn.js';
 import type { ActionOutcome } from '../engine/turn.js';
@@ -26,10 +33,62 @@ import { appraiseAgreement } from '../model/calls.js';
 import { timingReport } from '../model/client.js';
 import { FileSink, NULL_SINK, setTelemetrySink, span } from '../model/telemetry.js';
 import { classifyPrinciples } from '../domain/compulsions.js';
-import { mergeConcessions, type Concession, type Retraction } from '../domain/diplomacy.js';
+import {
+  ConcessionSchema,
+  mergeConcessions,
+  type Concession,
+  type Retraction,
+} from '../domain/diplomacy.js';
 import { withinBudget } from '../domain/leverage.js';
 
 export type Emit = (event: ServerEvent) => void;
+
+/**
+ * Which server wrote a snapshot. A snapshot written by this build carries a
+ * world that can be trusted as-is; one from any other build is replayed from
+ * its journal, because a new revision may have changed the rules underneath
+ * it. `K_REVISION` is set by Cloud Run and is shared by every instance of one
+ * revision; locally, every server start is its own build, so the first request
+ * after a restart replays once and every later one is trusted.
+ */
+export const BUILD_ID = process.env.K_REVISION ?? `local-${Date.now()}`;
+
+const ChannelSchema = z.object({
+  open: z.string().nullable(),
+  history: z.array(z.object({ speaker: z.enum(['player', 'faction']), text: z.string() })),
+  concessions: z.array(ConcessionSchema),
+  budget: z.object({ budget: z.number(), given: z.number(), over: z.array(z.string()) }),
+  blockers: z.array(z.object({ concession: z.string(), principle: z.string() })),
+});
+
+/**
+ * The turn in progress — everything a session holds that the journal does
+ * not. Written into a save archive as `session.json`, so a game saved
+ * mid-turn reopens mid-turn rather than losing what was declared.
+ */
+export const TurnInProgressSchema = z.object({
+  v: z.literal(1),
+  staged: z.array(StagedBatchSchema),
+  actionsDeclared: z.number().int().min(0),
+  channel: ChannelSchema,
+  /** A `Briefing`; derived from state when absent, as on any resume. */
+  briefing: z.unknown().nullable(),
+});
+export type TurnInProgress = z.infer<typeof TurnInProgressSchema>;
+
+/**
+ * A whole session as the browser carries it between requests. The server
+ * holds nothing between requests: each one is rebuilt from this, does its
+ * work, and returns the next one. See `src/server/stateless.ts`.
+ */
+export const SessionSnapshotSchema = z.object({
+  v: z.literal(1),
+  campaign: CampaignSnapshotSchema,
+  channel: ChannelSchema,
+  briefing: z.unknown().nullable(),
+  actionSeq: z.number().int().min(0),
+});
+export type SessionSnapshot = z.infer<typeof SessionSnapshotSchema>;
 
 /**
  * One campaign, held in memory, driven by the HTTP layer.
@@ -289,6 +348,59 @@ export class GameSession {
     })();
   }
 
+  /* ---------------- snapshots ---------------- */
+
+  /** This session as the browser should carry it, or null with no campaign. */
+  snapshot(): SessionSnapshot | null {
+    if (!this.campaign) return null;
+    return {
+      v: 1,
+      campaign: this.campaign.toSnapshot(BUILD_ID),
+      channel: this.channelState(),
+      briefing: this.lastBriefing,
+      actionSeq: this.actionSeq,
+    };
+  }
+
+  /** Adopt a snapshot the browser sent. Replaces whatever this session held. */
+  restore(snapshot: SessionSnapshot): void {
+    this.campaign = Campaign.fromSnapshot(snapshot.campaign, BUILD_ID, this.store);
+    this.adoptChannel(snapshot.channel);
+    this.lastBriefing =
+      (snapshot.briefing as Briefing | null) ?? briefingFromState(this.campaign.state);
+    this.epilogue = this.campaign.epilogue;
+    this.actionSeq = snapshot.actionSeq;
+  }
+
+  /** The turn in progress, for a save archive. */
+  turnInProgress(): TurnInProgress | null {
+    if (!this.campaign) return null;
+    return {
+      v: 1,
+      ...this.campaign.turnState(),
+      channel: this.channelState(),
+      briefing: this.lastBriefing,
+    };
+  }
+
+  private channelState(): SessionSnapshot['channel'] {
+    return {
+      open: this.openChannel,
+      history: this.channelHistory,
+      concessions: this.channelConcessions,
+      budget: this.channelBudget,
+      blockers: this.channelBlockers,
+    };
+  }
+
+  private adoptChannel(channel: SessionSnapshot['channel']): void {
+    this.openChannel = channel.open;
+    this.channelHistory = [...channel.history];
+    this.channelConcessions = [...channel.concessions];
+    this.channelBudget = { ...channel.budget, over: [...channel.budget.over] };
+    this.channelBlockers = [...channel.blockers];
+  }
+
   /* ---------------- lifecycle ---------------- */
 
   async newCampaign(
@@ -356,8 +468,13 @@ export class GameSession {
     const now = Date.now();
     return {
       filename: archiveFilename(campaign.name, now),
-      bytes: packCampaign(campaign.name, campaign.toSaveFile(), { now }),
-      stagedLost: campaign.stagedCount,
+      // The turn in progress rides along, so a game saved mid-turn reopens
+      // mid-turn. `pnpm resume` reads only the journal and ignores it.
+      bytes: packCampaign(campaign.name, campaign.toSaveFile(), {
+        now,
+        session: this.turnInProgress(),
+      }),
+      stagedLost: 0,
     };
   }
 
@@ -394,7 +511,16 @@ export class GameSession {
     }
 
     await this.store.save(target, unpacked.save);
-    const view = await this.resume(target);
+    let view = await this.resume(target);
+    // A save made mid-turn carries the turn too. One that does not parse is
+    // dropped: the journal is the campaign, and it already loaded.
+    const turn = TurnInProgressSchema.safeParse(unpacked.session);
+    if (turn.success && this.campaign) {
+      this.campaign.restoreTurn(turn.data);
+      this.adoptChannel(turn.data.channel);
+      if (turn.data.briefing) this.lastBriefing = turn.data.briefing as Briefing;
+      view = this.view();
+    }
 
     return {
       name: target,

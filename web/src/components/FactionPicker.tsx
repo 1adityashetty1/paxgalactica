@@ -64,7 +64,7 @@ export function FactionPicker({
 
       {saves.length > 0 && (
         <div className="resume">
-          <h2>Resume</h2>
+          <h2>Resume from this server's saves/</h2>
           {saves.map((name) => (
             <button key={name} className="resume-btn" onClick={() => onResume(name)}>
               {name}
@@ -74,10 +74,11 @@ export function FactionPicker({
       )}
 
       <div className="resume">
-        <h2>Load an archive</h2>
+        <h2>Load a save file</h2>
         <p className="hint">
-          A <code>.tar.gz</code> exported from any machine. It is verified by replaying its whole
-          journal before it is loaded.
+          A <code>.tar.gz</code> saved with the <strong>Save</strong> button, from any machine. It is
+          verified by replaying its whole journal before it is loaded, and a game saved mid-turn
+          opens mid-turn.
         </p>
         <input
           ref={fileRef}

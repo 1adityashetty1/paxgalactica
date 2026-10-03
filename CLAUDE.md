@@ -17,6 +17,12 @@ pnpm auth       # confirm it worked (makes one real call)
 pnpm play:web   # build, serve on 127.0.0.1:4173, open the browser
 ```
 
+or in a container (stateless; see `docs/cloud-run.md`):
+
+```bash
+docker build -t paxgalactica . && docker run -p 8080:8080 -e PORT=8080 paxgalactica
+```
+
 `./start` is POSIX `sh` rather than Node for one reason: the first check a new
 clone needs is "is your Node new enough", and that cannot be written in Node.
 Everything after it hands off to pnpm. A second toolchain (a Python venv, say)
@@ -5878,9 +5884,10 @@ immediately. Because `applyOps` is pure, replaying the staged batches against
 committed state at commit time reproduces the preview exactly — asserted in
 `tests/replay.test.ts`.
 
-Staged actions are deliberately **not** in the journal, so they do not survive a
-save; `:quit` says so rather than losing them quietly. `:staged` lists them and
-`:discard` clears them.
+Staged actions are deliberately **not** in the journal. They travel in the
+session snapshot the browser holds, and in a save file's `session.json`, so a
+reload or a save mid-turn keeps them. `:staged` lists them and `:discard`
+clears them.
 
 ### Discard withdraws an order, never an attempt
 
@@ -6116,13 +6123,14 @@ file to hand-place.
 
 | | |
 |---|---|
-| UI | an **Export** button in the topbar, plus `:export` |
+| UI | a **Save** button in the topbar, plus `:save`; **Load a save file** on the title screen |
 | CLI | `pnpm resume <file>` · `--as <name>` · `--no-serve` · `--inspect` |
-| HTTP | `GET /api/campaign/export` · `POST /api/campaign/import` |
+| HTTP | `POST /api/campaign/export` · `POST /api/campaign/import` |
 
 **Contents** — `manifest.json` (name, turn, player, export time, format
-version), `campaign.json` (the same save file the game already writes), and a
-`README.txt` so the file explains itself without the game.
+version), `campaign.json` (the same save file the game already writes),
+`session.json` when there is a turn in progress, and a `README.txt` so the file
+explains itself without the game.
 
 **The archive is transport, not a second source of truth.** Inside is the
 journal, and the journal is the campaign. That is what makes an archive
@@ -6131,9 +6139,13 @@ written, so a corrupt file is refused rather than landing half-adopted. Every
 failure is a sentence written for someone holding a file they hope is a save —
 "that file is not gzip-compressed", not a stack trace.
 
-Staged actions are **not** included, because they are not in the journal — the
-same reason they do not survive a save. The UI says how many were left behind
-rather than dropping them silently.
+**The turn in progress rides beside the journal, never in it.** `session.json`
+carries the staged declarations, action points spent, an open channel and the
+briefing (`TurnInProgressSchema`), so a game saved mid-turn opens mid-turn.
+`campaign.json` stays committed-only, which is what `pnpm resume` and replay
+read; an archive written before `session.json` existed loads as the start of
+its turn, and one whose `session.json` does not parse loads the same way rather
+than being refused, because the journal is the campaign.
 
 `src/engine/tar.ts` is a hand-rolled ustar reader/writer, about 120 lines. The
 alternative was a dependency in the trust path of a file the user is invited to
@@ -6282,15 +6294,50 @@ Determinism depends on three things, all tested:
 ```
 browser (web/)                    server (src/server/)            engine
 ─────────────────                 ────────────────────            ──────
-React + Vite          ──POST──▶   dispatch(method,path,body)  ──▶  Campaign
-  renders state       ◀──JSON──   GameSession                      applyOps
-  posts intents                     │                              tickTurn
-  never computes                    ├─ model calls (src/model/)
-  game state          ◀───SSE───    └─ EventHub: progress, state
+React + Vite          ──POST──▶   handleStateless             ──▶  Campaign
+  renders state       session +     restore GameSession            applyOps
+  posts intents       intent        dispatch(method,path,body)     tickTurn
+  holds the session               ├─ model calls (src/model/)
+  (IndexedDB)         ◀─NDJSON─   progress… state… result, session'
 ```
 
 **The client renders and posts intents; it never computes game state.** The
 reducer is the only thing allowed to, and it lives server-side.
+
+### The server is stateless; the browser holds the campaign
+
+`src/server/stateless.ts`. The server used to keep one `GameSession` for the
+life of the process, which cannot survive Cloud Run: instances are disposable
+and consecutive requests land wherever they land. Now every request carries a
+`SessionSnapshot` — the save file, the committed world, the staged batches,
+action points spent, the open channel and the last briefing — and the server
+rebuilds a session from it, runs the route through the same `dispatch` as
+always, and streams the next snapshot back. `GameSession` and the engine are
+unchanged; only where they get their state from moved. See `docs/cloud-run.md`.
+
+- **Cheating is not a concern, by decision.** The browser can edit what it
+  sends, and it holds the unredacted world. This is a single-player game played
+  for fun; the fog stops a player seeing rivals by *playing*, not by opening
+  devtools.
+- **`committed` rides along so a request need not replay** (~300ms at turn
+  100). It is trusted only from the build that wrote it (`BUILD_ID`, Cloud
+  Run's `K_REVISION`, or the server's start time locally); any other build
+  replays the journal, because a new revision may have changed the rules.
+- **One response, streamed.** Progress, reactions and state pushes go out as
+  NDJSON lines on the POST that caused them, then `result`, then `session` —
+  last, because it can trail the result by the event-flavour call. A separate
+  SSE connection cannot work when it and the POST may be on different
+  instances.
+- **Gzip both ways.** The browser compresses requests with the built-in
+  `CompressionStream`; the server gzips the stream when accepted. Measured:
+  ~20 KB a request at turn 3, ~37 KB for a state push at turn 100.
+- **The client runs one call at a time** (`web/src/api.ts`), because each sends
+  the snapshot the previous one returned; two in flight would fork the
+  campaign. That replaced the server's busy guard.
+- **A save file is the campaign archive**, now with an optional `session.json`
+  beside the journal, so a game saved mid-turn opens mid-turn. `pnpm resume`
+  ignores it. The current session is also kept in IndexedDB, so a reload
+  resumes.
 
 ### Why the split falls where it does
 
@@ -6313,29 +6360,33 @@ automatically.
 
 | route | purpose |
 |---|---|
-| `GET /api/campaign` | the whole `CampaignView`; **409 `no_campaign`** on a cold start |
-| `POST /api/campaign/new` · `/resume` | start or load |
-| `GET /api/factions` | playable powers + saved campaigns |
+| `POST /api/campaign` | the whole `CampaignView`; **409 `no_campaign`** with no session |
+| `POST /api/campaign/new` · `/resume` | start, or load from this server's `saves/` |
+| `POST /api/campaign/export` · `/import` | write a save file / read one back |
+| `GET /api/factions` | playable powers + saved campaigns — the one route with no session |
 | `POST /api/action` | declare — resolves now, lands on `:endturn` |
 | `POST /api/advisor` | ask your own counsellor; costs an action point |
 | `POST /api/endturn` | commit, react, tick |
 | `POST /api/staged/discard` | all, or one by `index` |
 | `POST /api/talk/:id` · `/api/endtalk/:id` | dialogue, then extraction |
-| `GET /api/events` | SSE: `hello`, `progress`, `state`, `error` |
+
+Every route but `/api/factions` is a POST whose body is `{ session, body }`
+(`RequestEnvelopeSchema`) and whose answer is an NDJSON stream
+(`StreamLineSchema`).
 
 ### Server rules
 
-- **Binds to 127.0.0.1 only.** This process spends real money and has no
-  authentication, because it is single-player on your own machine — which is
-  exactly why it must never be network-reachable.
+- **Binds to 127.0.0.1 by default.** This process spends real money and has
+  no authentication. `PAXGALACTICA_HOST=0.0.0.0` opens it — the container image
+  sets that — and auth is deliberately deferred.
 - **No CORS headers**, deliberately. A permissive policy would let any page in
   the browser drive a game that costs money.
-- **One campaign per process.** There is no tenancy model; `GameSession` is not
-  safe to share between users.
-- **A busy guard refuses rather than queues.** Staging assumes ordered
-  declarations, so a second model call while one is in flight gets a **409
-  `conflict`** — which the client treats as expected, disabling input rather
-  than showing an error.
+- **No campaign in the process.** Each request builds its own `GameSession`
+  from the snapshot it carries, so any number of players and instances can
+  share one server. `PAXGALACTICA_STORE=memory` stops it mirroring saves to
+  `saves/`, for a container whose disk is RAM.
+- **The busy guard is per request now**, and ordering is the client's job: it
+  queues its own calls.
 - **`dispatch(method, path, body)` is the testable seam** — no `req`/`res`, so
   the whole API is exercised without binding a port.
 - Path traversal is blocked in three places: campaign names, faction ids in

@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { EpilogueView } from './epilogue.js';
 import {
   applyOps,
@@ -92,6 +93,34 @@ export interface StagedBatch {
 }
 
 export type StagedBinding = 'rolled' | 'refused' | 'charge' | 'record';
+
+/**
+ * A campaign as the browser carries it between requests. See
+ * `Campaign.toSnapshot`. Loosely typed below the top level on purpose: the
+ * save file is validated by its own schema, the world by `WorldStateSchema`
+ * when it is trusted, and a staged batch is replayed through the reducer,
+ * which rejects anything malformed as it always has.
+ */
+export const StagedBatchSchema = z.object({
+  label: z.string(),
+  ops: z.array(z.unknown()),
+  applied: z.array(z.unknown()).optional(),
+  narrative: z.string(),
+  actor: z.string().optional(),
+  source: z.enum(['model', 'extraction', 'engine']).optional(),
+  binding: z.enum(['rolled', 'refused', 'charge', 'record']).optional(),
+  secret: z.boolean().optional(),
+});
+
+export const CampaignSnapshotSchema = z.object({
+  name: z.string().regex(/^[\w.-]+$/),
+  save: SaveFileSchema,
+  build: z.string(),
+  committed: z.unknown().optional(),
+  staged: z.array(StagedBatchSchema),
+  actionsDeclared: z.number().int().min(0),
+});
+export type CampaignSnapshot = z.infer<typeof CampaignSnapshotSchema>;
 
 /** Staging options beyond the op list. */
 export interface StageMeta {
@@ -545,6 +574,77 @@ export class Campaign {
   async save(): Promise<string> {
     await this.store.save(this.name, this.toSaveFile());
     return this.name;
+  }
+
+  /**
+   * Everything a campaign holds, including what a save file deliberately does
+   * not: the declarations staged this turn and the action points they spent.
+   *
+   * This is what lets the server be stateless. The browser holds the snapshot
+   * and sends it with each request; the server rebuilds the campaign from it,
+   * does the work, and hands the next snapshot back. A save file is the
+   * campaign's durable record and stays journal-only; a snapshot is the
+   * campaign mid-turn.
+   *
+   * `committed` rides along so a request need not replay the whole journal —
+   * ~300ms at turn 100 — and `build` says which server wrote it. A snapshot
+   * from another build is replayed instead of trusted, because the world it
+   * carries was produced under rules this build may not share.
+   */
+  toSnapshot(build: string): CampaignSnapshot {
+    return {
+      name: this.name,
+      save: this.toSaveFile(),
+      build,
+      committed: this.committed,
+      ...this.turnState(),
+    };
+  }
+
+  /** The turn-local half of a snapshot: what a save file leaves out. */
+  turnState(): Pick<CampaignSnapshot, 'staged' | 'actionsDeclared'> {
+    return { staged: this.stagedBatches, actionsDeclared: this.actionsDeclared };
+  }
+
+  static fromSnapshot(
+    snapshot: CampaignSnapshot,
+    build: string,
+    store: CampaignStore = new FileCampaignStore(),
+  ): Campaign {
+    const trusted =
+      snapshot.build === build && snapshot.committed !== undefined
+        ? WorldStateSchema.safeParse(snapshot.committed)
+        : null;
+    const campaign = trusted?.success
+      ? Campaign.withCommitted(snapshot.name, snapshot.save, trusted.data, store)
+      : Campaign.fromSaveFile(snapshot.name, snapshot.save, store);
+    campaign.restoreTurn(snapshot);
+    return campaign;
+  }
+
+  /** Put staged declarations and spent action points back, and rebuild the preview. */
+  restoreTurn(turn: Partial<Pick<CampaignSnapshot, 'staged' | 'actionsDeclared'>>): void {
+    this.stagedBatches = (turn.staged ?? []).map((b) => ({ ...b }));
+    this.actionsDeclared = turn.actionsDeclared ?? 0;
+    this.resyncPreview();
+  }
+
+  /** `fromSaveFile`, with the committed world supplied instead of replayed. */
+  private static withCommitted(
+    name: string,
+    file: SaveFile,
+    committed: WorldState,
+    store: CampaignStore,
+  ): Campaign {
+    const campaign = new Campaign(
+      committed,
+      file.journal as Journal,
+      file.transcripts as Record<string, TranscriptEntry[][]>,
+      name,
+      store,
+    );
+    campaign.epilogue = file.epilogue ?? null;
+    return campaign;
   }
 
   /**
