@@ -1,7 +1,8 @@
-import { query } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
-import { buildAuthEnv } from './auth.js';
-import { modelFor, type CallKind } from './router.js';
+import { ModelCallError, NotLoggedInError, SpendCapError } from './errors.js';
+import { activeProvider, type AttemptMetrics } from './provider.js';
+import type { CallKind } from './router.js';
+import { spendCap } from './settings.js';
 import {
   callFinished,
   callStarted,
@@ -11,49 +12,22 @@ import {
   type CallOutcome,
 } from './telemetry.js';
 
+export { ModelCallError, NotLoggedInError, SpendCapError } from './errors.js';
+export { CALL_TIMEOUT_MS } from './provider.js';
+
 /**
  * The one typed model client. Every model call in the game goes through here,
- * which is what makes tiering, retry policy and cost accounting single-sited.
+ * which is what makes tiering, retry policy, cost accounting and the spend cap
+ * single-sited — whichever provider answers (`provider.ts`).
  *
  * Two layers of defence against malformed output:
- *   1. `outputFormat: json_schema` — the schema is handed to the model, so the
- *      shape is enforced at generation time rather than hoped for.
+ *   1. The schema reaches the model — inlined into the prompt under raw JSON,
+ *      the default, or handed to the API as structured output.
  *   2. A Zod re-validation with up to `maxRetries` retries, feeding the exact
- *      validation error back into the prompt. Layer 1 guarantees shape; only
- *      layer 2 can catch semantic problems (an unknown faction id, a duration
- *      off the Fibonacci scale) that no JSON schema can express.
+ *      validation error back into the prompt. Only this layer can catch
+ *      semantic problems (an unknown faction id, a duration off the scale)
+ *      that no JSON schema can express.
  */
-
-export class ModelCallError extends Error {
-  constructor(
-    message: string,
-    readonly attempts: number,
-    readonly lastRaw?: unknown,
-  ) {
-    super(message);
-    this.name = 'ModelCallError';
-  }
-}
-
-export class NotLoggedInError extends ModelCallError {
-  constructor() {
-    super(
-      [
-        'Claude Code is not signed in, so no model calls can be made.',
-        '',
-        'Quit with :quit, then run these in the project directory:',
-        '',
-        '    pnpm login     sign in with your Claude Pro/Max subscription',
-        '    pnpm auth      confirm it worked',
-        '',
-        'Then `pnpm play:web` again. Nothing you have declared this turn was lost from',
-        'the save — only the model call failed.',
-      ].join('\n'),
-      0,
-    );
-    this.name = 'NotLoggedInError';
-  }
-}
 
 export interface StructuredCall<T> {
   kind: CallKind;
@@ -162,128 +136,6 @@ function assertNetworkAllowed(): void {
 }
 
 /**
- * How long one attempt may take before it is abandoned.
- *
- * The SDK's `query()` has no timeout of its own: if the spawned binary hangs —
- * a dropped stream, a wedged child process — the await never settles and the
- * turn waits forever. Measured in the playtest of 2026-09-09: one declared
- * action sat for **923 seconds** and returned no response at all, and a second
- * took 117s while costing $0.10, which is a tenth of the money for four times
- * the time and therefore not generation. Both killed the agent driving the
- * campaign.
- *
- * 180s against measured medians of 15s (appraisal), 24s (resolution) and 30s
- * (reaction) — six times the slowest legitimate call, so a timeout means
- * something is wrong rather than something is slow. Abandoning is safe because
- * `callStructured` treats it as any other transient failure and retries.
- */
-export const CALL_TIMEOUT_MS = 180_000;
-
-/**
- * What the provider reported about one attempt. Filled in place rather than
- * returned, so an attempt that ends in an error result still reports what it
- * cost and how long the API took — which is exactly the attempt worth seeing.
- */
-interface AttemptMetrics {
-  apiMs?: number;
-  ttftMs?: number;
-  spawnMs?: number;
-  numTurns?: number;
-  inTok?: number;
-  outTok?: number;
-  cacheReadTok?: number;
-  cacheWriteTok?: number;
-  costUsd?: number;
-  sdkRejections?: string[];
-  sdkRejectedKeys?: string[];
-}
-
-/** How much of a reply that was not JSON the trace keeps: enough to see its shape. */
-const UNPARSED_SAMPLE_CHARS = 600;
-
-/** Enough to see a pattern without a pathological attempt bloating the trace. */
-const MAX_SDK_REJECTIONS = 8;
-const MAX_SDK_REJECTION_CHARS = 400;
-
-/** The top-level keys of the last StructuredOutput the model sent, or '' before one. */
-function structuredOutputKeys(message: Record<string, unknown>): string | undefined {
-  const content = (message.message as { content?: unknown } | undefined)?.content;
-  if (!Array.isArray(content)) return undefined;
-  for (const block of content as Record<string, unknown>[]) {
-    if (block?.type !== 'tool_use' || block.name !== 'StructuredOutput') continue;
-    const input = block.input;
-    return input && typeof input === 'object' ? Object.keys(input).join(',').slice(0, 120) : typeof input;
-  }
-  return undefined;
-}
-
-/**
- * Collect the schema rejections the SDK fed back to the model mid-attempt.
- *
- * They arrive as `user` messages carrying a `tool_result` with `is_error` —
- * the reply to the model's StructuredOutput call — and are otherwise consumed
- * by the SDK's own loop. Checked live: a forced miss produced
- * `Output does not match required schema: /x: must be >= 1000, /word: must
- * match pattern "^[a-z]{41}$"`, then a second try in the same attempt.
- */
-function noteSdkRejections(message: Record<string, unknown>, out: AttemptMetrics, sentKeys: string): void {
-  const content = (message.message as { content?: unknown } | undefined)?.content;
-  if (!Array.isArray(content)) return;
-  for (const block of content as Record<string, unknown>[]) {
-    if (block?.type !== 'tool_result' || block.is_error !== true) continue;
-    const raw = block.content;
-    const text =
-      typeof raw === 'string'
-        ? raw
-        : Array.isArray(raw)
-          ? raw.map((c) => (typeof (c as { text?: unknown })?.text === 'string' ? (c as { text: string }).text : '')).join(' ')
-          : '';
-    const list = (out.sdkRejections ??= []);
-    if (list.length < MAX_SDK_REJECTIONS) {
-      list.push(text.replace(/^Output does not match required schema:\s*/i, '').trim().slice(0, MAX_SDK_REJECTION_CHARS));
-      (out.sdkRejectedKeys ??= []).push(sentKeys);
-    }
-  }
-}
-
-/**
- * Pull timings and token counts off an SDK result message. Every field is
- * optional in the SDK's own type or absent on some result subtypes — an error
- * result carries no time-to-first-token — so each is copied only when present,
- * and a record never states a zero it was not told.
- */
-function readResultMetrics(message: Record<string, unknown>, out: AttemptMetrics): void {
-  const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
-  const set = <K extends Exclude<keyof AttemptMetrics, 'sdkRejections' | 'sdkRejectedKeys'>>(k: K, v: number | undefined) => {
-    if (v !== undefined) out[k] = v;
-  };
-  set('apiMs', num(message.duration_api_ms));
-  set('ttftMs', num(message.ttft_ms));
-  set('spawnMs', num(message.time_to_request_from_spawn_ms));
-  set('numTurns', num(message.num_turns));
-  set('costUsd', num(message.total_cost_usd));
-  // `modelUsage` covers every model the call touched and is what the SDK says
-  // to account from; `usage` is the main loop only.
-  const perModel = message.modelUsage;
-  if (perModel && typeof perModel === 'object') {
-    let inTok = 0, outTok = 0, read = 0, write = 0, seen = false;
-    for (const u of Object.values(perModel as Record<string, Record<string, unknown>>)) {
-      seen = true;
-      inTok += num(u.inputTokens) ?? 0;
-      outTok += num(u.outputTokens) ?? 0;
-      read += num(u.cacheReadInputTokens) ?? 0;
-      write += num(u.cacheCreationInputTokens) ?? 0;
-    }
-    if (seen) {
-      out.inTok = inTok;
-      out.outTok = outTok;
-      out.cacheReadTok = read;
-      out.cacheWriteTok = write;
-    }
-  }
-}
-
-/**
  * Whether calls ask for JSON in the prompt rather than through structured
  * output. The default since todo 117 closed: on the same ten-turn script it
  * retried nothing where structured output retried 12% of arbiter calls, took a
@@ -298,18 +150,20 @@ export function usesRawJson(): boolean {
 export const RAW_JSON_REMINDER =
   'Answer with the JSON object alone: begin with `{` and end with `}`, with nothing before or after it. There is nobody to ask a question of — if something is unclear, decide on the most plausible reading.';
 
-/** Raw single-shot call. Returns whatever the model produced, unvalidated. */
-async function rawCall(
-  kind: CallKind,
-  system: string,
-  user: string,
-  jsonSchema: Record<string, unknown>,
-  metrics: AttemptMetrics = {},
-): Promise<{ result: unknown; costUsd: number }> {
-  const tier = modelFor(kind);
-  const rawJson = usesRawJson();
-  if (rawJson) {
-    system = [
+/** How much of a reply that was not JSON the trace keeps: enough to see its shape. */
+const UNPARSED_SAMPLE_CHARS = 600;
+
+/**
+ * The prompt as a provider receives it. Under raw JSON the schema is inlined
+ * into the system prompt and the rule restated at the end of the user message;
+ * under structured output both go as they are and the provider hands the
+ * schema to the API. Done here rather than in each provider, so every provider
+ * is asked for exactly the same thing.
+ */
+function asSent(system: string, user: string, jsonSchema: Record<string, unknown>, rawJson: boolean) {
+  if (!rawJson) return { system, user };
+  return {
+    system: [
       system,
       '',
       '---',
@@ -322,123 +176,30 @@ async function rawCall(
       '```json',
       JSON.stringify(jsonSchema),
       '```',
-    ].join('\n');
+    ].join('\n'),
     // Repeated at the END of the user message, where it is read last. A traced
     // run found every raw preamble-then-JSON reply on resolution, whose user
     // message is the longest in the game: a rule stated once, a system prompt
     // and forty thousand characters earlier, is the rule a model drifts off.
-    user = `${user}\n\n${RAW_JSON_REMINDER}`;
-  }
-
-  let result: unknown;
-  let costUsd = 0;
-  let errorText: string | undefined;
-
-  const q = query({
-    prompt: user,
-    options: {
-      model: tier.model,
-      systemPrompt: system,
-      maxTurns: tier.maxTurns,
-      // See TierConfig. The SDK defaults to 'high' effort with thinking on,
-      // which is deep-reasoning behaviour this game's bounded calls do not
-      // need and was costing most of the latency.
-      effort: tier.effort,
-      ...(tier.thinking ? { thinking: tier.thinking } : {}),
-      // This is a pure text-in/JSON-out call. No tools, no filesystem, no
-      // agentic loop — the game engine is the only thing that touches state.
-      tools: [],
-      allowedTools: [],
-      // Do not inherit the developer's CLAUDE.md or settings: campaign output
-      // must depend only on this repo's versioned prompts.
-      settingSources: [],
-      persistSession: false,
-      // Injects the stored subscription token and strips API-key variables, so
-      // a key exported from the user's shell profile can neither shadow the
-      // subscription nor bill an API account.
-      env: buildAuthEnv(),
-      // Raw JSON is the default; PAXGALACTICA_RAW_JSON=0 restores structured
-      // output. Decided on two traced ten-turn campaigns (docs/todo.md 117).
-      //
-      // Under `outputFormat: json_schema` the SDK returns the result through
-      // an end-turn tool — a tool_use/tool_result pair — which costs a second
-      // agentic round trip that re-sends the whole context. That carrier is
-      // most of the ~7-8s floor on every call. Without it the model answers in
-      // one turn, and `readReply` + the Zod retry loop become the only validator:
-      // layer 1 is traded for however many extra corrections layer 2 then has
-      // to make.
-      //
-      // Roughly cost-neutral on input either way — the schema is sent as
-      // `outputFormat` there and inlined into the system prompt here.
-      ...(rawJson ? {} : { outputFormat: { type: 'json_schema', schema: jsonSchema } }),
-    },
-  });
-
-  // A hung call has to be abandoned rather than waited on. Racing each `next()`
-  // rather than the whole loop, so the deadline is per MESSAGE: a long call that
-  // is still streaming is healthy and a silent one is not, and a single budget
-  // for the whole call cannot tell those apart.
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = () =>
-    new Promise<never>((_, reject) => {
-      timer = setTimeout(
-        () => reject(new ModelCallError(`the call went silent for ${CALL_TIMEOUT_MS / 1000}s and was abandoned`, 1)),
-        CALL_TIMEOUT_MS,
-      );
-    });
-
-  let sentKeys = '';
-  try {
-    const it = q[Symbol.asyncIterator]();
-    for (;;) {
-      const step = await Promise.race([it.next(), deadline()]);
-      clearTimeout(timer);
-      if (step.done) break;
-      const message = step.value;
-      if (message.type === 'assistant') sentKeys = structuredOutputKeys(message as unknown as Record<string, unknown>) ?? sentKeys;
-      if (message.type === 'user') noteSdkRejections(message as unknown as Record<string, unknown>, metrics, sentKeys);
-      if (message.type === 'result') {
-        costUsd = message.total_cost_usd ?? 0;
-        readResultMetrics(message as unknown as Record<string, unknown>, metrics);
-        if (message.subtype === 'success') {
-          // Even under json_schema the payload arrives as a string; `readReply`
-          // parses it. An is_error success carries the failure text in-band.
-          if (message.is_error) errorText = message.result;
-          else result = message.result;
-        } else if (message.subtype === 'error_max_structured_output_retries') {
-          errorText =
-            'the model could not produce output matching the required schema (structured-output retries exhausted)';
-        } else if (message.subtype === 'error_max_turns') {
-          errorText = `the call exceeded its turn budget (${modelFor(kind).maxTurns}); see TierConfig.maxTurns in router.ts`;
-        } else {
-          errorText = message.errors.join('; ') || message.subtype;
-        }
-      }
-    }
-  } catch (err) {
-    const text = err instanceof Error ? err.message : String(err);
-    if (/not logged in|\/login/i.test(text)) throw new NotLoggedInError();
-    if (errorText === undefined) throw err;
-  } finally {
-    clearTimeout(timer);
-    // Release the child process. Without this an abandoned call leaves a
-    // binary running and its output going nowhere.
-    try {
-      await q.return?.(undefined);
-    } catch {
-      // Nothing useful to do if the teardown itself fails.
-    }
-  }
-
-  if (errorText !== undefined) {
-    if (/not logged in|\/login/i.test(errorText)) throw new NotLoggedInError();
-    throw new ModelCallError(`Model call failed: ${errorText}`, 1);
-  }
-
-  return { result, costUsd };
+    user: `${user}\n\n${RAW_JSON_REMINDER}`,
+  };
 }
 
-/** Structured output arrives as an object, but tolerate a JSON string. */
+/**
+ * Stop before a call that would spend past the cap (docs/architecture.md A.5).
+ *
+ * Under a subscription an overspend is an inconvenience; under a pasted key it
+ * is a bill, so this is checked in the one place every call passes through —
+ * the same argument that makes tiering and retry policy single-sited. It reads
+ * this process's running total, which the attempt that crosses the line still
+ * adds to: the cap is the point at which no NEW call starts, which is the only
+ * kind of cap a call whose cost is unknown until it returns can honour.
+ */
+function assertUnderCap(): void {
+  const cap = spendCap();
+  if (cap !== null && stats.costUsd >= cap) throw new SpendCapError(stats.costUsd, cap);
+}
+
 /**
  * Read a model's reply as the JSON object it was asked for.
  *
@@ -620,7 +381,11 @@ export async function callStructured<T>(call: StructuredCall<T>): Promise<Struct
   let lastError: unknown;
 
   const rawJson = usesRawJson();
+  // Chosen once per call, so a key changed mid-call does not split its retries
+  // across two providers.
+  const provider = activeProvider();
   for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+    assertUnderCap();
     let result: unknown;
     let costUsd = 0;
     const metrics: AttemptMetrics = {};
@@ -653,6 +418,7 @@ export async function callStructured<T>(call: StructuredCall<T>): Promise<Struct
         userChars: prompt.length,
         concurrent,
         rawJson,
+        provider: provider.id,
       });
     };
 
@@ -660,9 +426,17 @@ export async function callStructured<T>(call: StructuredCall<T>): Promise<Struct
     // get the same retry budget as a schema violation. Previously only Zod
     // failures were retried, so one bad round trip ended the whole action.
     try {
-      ({ result, costUsd } = await rawCall(call.kind, call.system, prompt, jsonSchema, metrics));
+      const sent = asSent(call.system, prompt, jsonSchema, rawJson);
+      ({ result, costUsd } = await provider.call(
+        { kind: call.kind, system: sent.system, user: sent.user, jsonSchema, rawJson },
+        metrics,
+      ));
     } catch (err) {
       callFinished();
+      // A failed attempt can still have been billed — an error result from the
+      // SDK carries its cost — and the cap reads this total.
+      stats.costUsd += metrics.costUsd ?? 0;
+      totalCost += metrics.costUsd ?? 0;
       const message = err instanceof Error ? err.message : String(err);
       // An attempt the SDK ended because the model kept missing the schema —
       // its structured-output retries ran out, or its turn budget did while it
@@ -678,7 +452,7 @@ export async function callStructured<T>(call: StructuredCall<T>): Promise<Struct
             : 'transport_error',
         schemaMiss && metrics.sdkRejections?.length ? metrics.sdkRejections.at(-1) : message,
       );
-      if (err instanceof NotLoggedInError) throw err;
+      if (err instanceof NotLoggedInError || err instanceof SpendCapError) throw err;
       lastError = err;
       stats.calls += 1;
       recordFailure(call.kind, label, message);

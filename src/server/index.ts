@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_PORT, ROUTES } from '../api/contract.js';
-import { PreflightError, runServerPreflight } from '../preflight.js';
+import { providerStatus, runServerPreflight } from '../preflight.js';
 import { EventHub } from './events.js';
 import { dispatch } from './router.js';
 import { GameSession } from './session.js';
@@ -26,19 +26,15 @@ const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
 
 /* ---------------- preflight, before anything binds ---------------- */
 
-try {
-  const { warnings } = runServerPreflight();
-  for (const warning of warnings) process.stderr.write(`note: ${warning}\n`);
-} catch (err) {
-  if (err instanceof PreflightError) {
-    process.stderr.write(`\n${err.message}\n\n`);
-    process.exit(1);
-  }
-  throw err;
-}
+// Never fatal now: a key is entered in the browser, so the server has to be up
+// to show the screen it is entered on. What used to be the abort is the
+// session's refusal to start a campaign on a provider that cannot answer.
+const preflight = runServerPreflight();
+for (const warning of preflight.warnings) process.stderr.write(`note: ${warning}\n`);
+process.stdout.write(`Model calls: ${preflight.status.detail}${preflight.status.ready ? '' : ' (not ready)'}\n`);
 
 const hub = new EventHub();
-const session = new GameSession(undefined, (event) => hub.broadcast(event));
+const session = new GameSession(undefined, (event) => hub.broadcast(event), () => providerStatus());
 
 async function readBody(req: IncomingMessage, limit = MAX_BODY_BYTES): Promise<unknown> {
   const chunks: Buffer[] = [];
@@ -150,7 +146,11 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
  * game rather than on the title screen next to the save it just installed.
  */
 const autoload = process.env.PAXGALACTICA_CAMPAIGN;
-if (autoload) {
+if (autoload && !preflight.status.ready) {
+  // Loading it would be refused for the same reason; the settings screen comes
+  // first, and the campaign is in the Resume list once it is done.
+  process.stderr.write(`Not loading "${autoload}" until model calls are set up — it is under Resume once they are.\n`);
+} else if (autoload) {
   try {
     const view = await session.resume(autoload);
     process.stdout.write(`Loaded campaign "${autoload}" at turn ${view.state.turn}.\n`);
@@ -163,6 +163,19 @@ if (autoload) {
 }
 
 const port = Number(process.env.PAXGALACTICA_PORT ?? DEFAULT_PORT);
+
+// A port already in use is a first-run failure for an installed copy, not a
+// developer annoyance (docs/architecture.md A.9): say what to do instead of
+// printing a stack.
+server.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EADDRINUSE') {
+    process.stderr.write(
+      `\nPort ${port} is already in use — another copy of the game may be running.\nStop it, or start this one on another port: PAXGALACTICA_PORT=${port + 1}\n\n`,
+    );
+    process.exit(1);
+  }
+  throw err;
+});
 
 server.listen(port, HOST, () => {
   process.stdout.write(

@@ -8,6 +8,7 @@ import { EpilogueViewSchema } from '../engine/epilogue.js';
 import { OrderRumourSchema } from '../domain/intel.js';
 import {
   LedgerSchema, WorldStateSchema } from '../domain/state.js';
+import { ProviderIdSchema } from '../model/provider-ids.js';
 
 /**
  * The client/server contract, Zod-first.
@@ -296,6 +297,15 @@ export const CampaignViewSchema = z.object({
   sandboxEvent: RimEventKindSchema.nullable().default(null),
   /** Set once time has run out. While it is present the campaign is read-only. */
   epilogue: EpilogueViewSchema.nullable(),
+  /**
+   * What this server process has spent on model calls, and the cap, for the
+   * running total in the top bar (docs/architecture.md A.5). Under a pasted key
+   * the game spends the player's money, and a total they cannot see is a bill
+   * they cannot weigh.
+   */
+  spend: z
+    .object({ usd: z.number().min(0), capUsd: z.number().min(0).nullable() })
+    .default({ usd: 0, capUsd: null }),
 });
 export type CampaignView = z.infer<typeof CampaignViewSchema>;
 export { EpilogueViewSchema };
@@ -439,6 +449,74 @@ export const ChatReplySchema = z.object({
 
 export const OkSchema = z.object({ ok: z.literal(true) });
 
+/* ------------------------------------------------------------------ */
+/* Settings: who pays for the model calls                               */
+/* ------------------------------------------------------------------ */
+
+const KeyStateSchema = z.object({ hint: z.string(), source: z.enum(['stored', 'env']) });
+const TierModelsViewSchema = z.object({ reasoning: z.string(), narrative: z.string(), flavor: z.string() });
+
+/**
+ * The settings screen's whole world (docs/architecture.md A.5, A.6).
+ *
+ * **A key goes in and never comes out.** `keys` carries a hint — `sk-or-…4f2a` —
+ * and where the key came from, and that is all any route returns. The rule
+ * `src/model/` already lives by: the credential is the server's, and the
+ * browser is untrusted.
+ */
+export const SettingsViewSchema = z.object({
+  provider: ProviderIdSchema,
+  /** `env` when `PAXGALACTICA_PROVIDER` decides it, which the screen cannot override. */
+  source: z.enum(['env', 'stored', 'default']),
+  ready: z.boolean(),
+  detail: z.string(),
+  keys: z.object({ anthropic: KeyStateSchema.nullable(), openrouter: KeyStateSchema.nullable() }),
+  /** The model each tier uses on each keyed provider, override applied. */
+  models: z.object({ anthropic: TierModelsViewSchema, openrouter: TierModelsViewSchema }),
+  /** What each tier uses with no override — what an empty field means. */
+  defaults: z.object({ anthropic: TierModelsViewSchema, openrouter: TierModelsViewSchema }),
+  spendCapUsd: z.number().nullable(),
+  /** `env` when `PAXGALACTICA_SPEND_CAP` sets it. */
+  capSource: z.enum(['env', 'stored']),
+  spentUsd: z.number(),
+  /** Stated up front, on the same screen as the key. */
+  estimatePerTurnUsd: z.number(),
+  /** The outcome of checking the key just pasted, when one was. */
+  check: z
+    .object({ status: z.enum(['ok', 'rejected', 'unchecked']), detail: z.string() })
+    .nullable()
+    .default(null),
+});
+export type SettingsView = z.infer<typeof SettingsViewSchema>;
+
+const ModelOverrideSchema = z
+  .string()
+  .max(120)
+  .regex(/^[\w.:/@-]*$/, 'a model id: letters, digits and . : / @ - only');
+
+/**
+ * Any subset of the settings, applied in one go. Empty strings in `models`
+ * clear an override; `key: ''` is not a way to clear a key — `clearKey` is,
+ * so a blank paste cannot silently delete one.
+ */
+export const SettingsUpdateSchema = z.object({
+  provider: ProviderIdSchema.optional(),
+  key: z
+    .object({ provider: z.enum(['anthropic', 'openrouter']), key: z.string().min(1).max(400) })
+    .optional(),
+  clearKey: z.enum(['anthropic', 'openrouter']).optional(),
+  spendCapUsd: z.number().min(0).max(10_000).nullable().optional(),
+  models: z
+    .object({
+      provider: z.enum(['anthropic', 'openrouter']),
+      reasoning: ModelOverrideSchema.optional(),
+      narrative: ModelOverrideSchema.optional(),
+      flavor: ModelOverrideSchema.optional(),
+    })
+    .optional(),
+});
+export type SettingsUpdate = z.infer<typeof SettingsUpdateSchema>;
+
 /** Errors are structured, never bare strings, so the client can branch. */
 export const ApiErrorSchema = z.object({
   error: z.object({
@@ -449,6 +527,7 @@ export const ApiErrorSchema = z.object({
       'no_campaign',
       'model_error',
       'not_authenticated',
+      'spend_cap',
       'internal',
     ]),
     message: z.string(),
@@ -601,6 +680,7 @@ export const ROUTES = {
   talk: (factionId: string) => `/api/talk/${factionId}`,
   endtalk: (factionId: string) => `/api/endtalk/${factionId}`,
   events: '/api/events',
+  settings: '/api/settings',
 } as const;
 
 export const DEFAULT_PORT = 4173;

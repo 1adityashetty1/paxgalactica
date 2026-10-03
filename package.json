@@ -8,6 +8,17 @@
   "engines": {
     "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
   },
+  "bin": {
+    "paxgalactica": "bin/paxgalactica.mjs"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "!dist/**/*.map",
+    "prompts",
+    "scripts/open-browser.mjs",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "replay": "tsc && node dist/replay.js",
@@ -28,12 +39,12 @@
     "doctor": "node scripts/doctor.mjs",
     "fleetlab": "tsc && node --max-old-space-size=4096 scripts/fleetlab.mjs",
     "perf": "tsc && node scripts/perf-probe.mjs",
-    "trace": "tsc && node scripts/trace.mjs"
+    "trace": "tsc && node scripts/trace.mjs",
+    "prepack": "tsc && vite build"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.225",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
+    "@anthropic-ai/sdk": "^0.131.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -41,6 +52,8 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "typescript": "^7.0.2",
     "vite": "^8.2.1",
     "vitest": "^4.1.10"

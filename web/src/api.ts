@@ -8,10 +8,13 @@ import {
   FactionListSchema,
   ImportOutcomeSchema,
   ROUTES,
+  SettingsViewSchema,
   TurnOutcomeSchema,
   type ActionOutcomeResponse,
   type AdvisorOutcomeResponse,
   type CampaignView,
+  type SettingsUpdate,
+  type SettingsView,
   type TurnOutcomeResponse,
 } from '../../src/api/contract.js';
 import type { Cheat } from '../../src/domain/cheats.js';
@@ -47,6 +50,11 @@ export class ApiError extends Error {
 
   get isAuth(): boolean {
     return this.code === 'not_authenticated';
+  }
+
+  /** The spend cap the player set has been reached. */
+  get isSpendCap(): boolean {
+    return this.code === 'spend_cap';
   }
 }
 
@@ -91,6 +99,11 @@ const post = (body?: unknown): RequestInit => ({
 
 export const api = {
   factions: () => request(ROUTES.factions, FactionListSchema),
+
+  settings: (): Promise<SettingsView> => request(ROUTES.settings, SettingsViewSchema),
+
+  updateSettings: (update: SettingsUpdate): Promise<SettingsView> =>
+    request(ROUTES.settings, SettingsViewSchema, post(update)),
 
   campaign: () => request(ROUTES.campaign, CampaignViewSchema),
 

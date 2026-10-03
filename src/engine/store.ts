@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { EpilogueViewSchema } from './epilogue.js';
 import { JournalVersionSchema } from './journal.js';
+import { configDir } from '../model/settings.js';
 
 /**
  * Campaign persistence, behind an interface.
@@ -73,9 +74,35 @@ export interface CampaignStore {
 }
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-export const SAVE_DIR = join(HERE, '..', '..', 'saves');
+/** The checkout or installed package this module is running from. */
+const PACKAGE_ROOT = join(HERE, '..', '..');
 
-/** Saves to `saves/<name>.json`, the layout campaigns already use on disk. */
+/**
+ * Where campaigns live (docs/architecture.md A.7).
+ *
+ * - **`PAXGALACTICA_SAVE_DIR`**, when set, wins — for a second set of saves, or
+ *   a test that wants a real disk.
+ * - **A clone keeps `saves/` in the repo**, the layout every campaign, trace
+ *   and doc reference to date assumes. A clone is recognised by its `.git`.
+ * - **Anything else uses `~/.paxgalactica/saves`** (or `$PAXGALACTICA_HOME/saves`).
+ *   An installed package's directory may be read-only, and is replaced on
+ *   every upgrade, which is no place for a player's campaigns.
+ *
+ * The clone and an installed copy deliberately do NOT share a directory by
+ * luck. Moving a campaign between them is what an exported archive and
+ * `paxgalactica resume <file>` are for — the same answer as moving one between
+ * machines.
+ */
+export function resolveSaveDir(env: NodeJS.ProcessEnv = process.env, root: string = PACKAGE_ROOT): string {
+  const explicit = env.PAXGALACTICA_SAVE_DIR?.trim();
+  if (explicit) return explicit;
+  if (existsSync(join(root, '.git'))) return join(root, 'saves');
+  return join(configDir(env), 'saves');
+}
+
+export const SAVE_DIR = resolveSaveDir();
+
+/** Saves to `<SAVE_DIR>/<name>.json`, the layout campaigns already use on disk. */
 export class FileCampaignStore implements CampaignStore {
   constructor(private readonly dir: string = SAVE_DIR) {}
 

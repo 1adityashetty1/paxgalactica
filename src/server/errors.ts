@@ -10,6 +10,8 @@ const STATUS: Record<ApiErrorCode, number> = {
   no_campaign: 409,
   model_error: 502,
   not_authenticated: 401,
+  // Payment Required is what it is: the cap the player set has been reached.
+  spend_cap: 402,
   internal: 500,
 };
 
@@ -52,6 +54,15 @@ export function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
 export function toApiFailure(err: unknown): ApiFailure {
   if (err instanceof ApiFailure) return err;
   const message = err instanceof Error ? err.message : String(err);
+  // By name rather than `instanceof`, so this module need not import the model
+  // layer — and before the prose test, because a keyed provider's message names
+  // the settings screen rather than signing in.
+  if (err instanceof Error && err.name === 'NotLoggedInError') {
+    return new ApiFailure('not_authenticated', message);
+  }
+  if (err instanceof Error && err.name === 'SpendCapError') {
+    return new ApiFailure('spend_cap', message);
+  }
   // The model client throws this exact shape when the token is missing or
   // rejected; surface it as auth rather than a generic upstream failure.
   if (/not signed in|not logged in|OAuth access token is invalid/i.test(message)) {
