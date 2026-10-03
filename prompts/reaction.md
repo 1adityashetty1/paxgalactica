@@ -117,6 +117,11 @@ Same op vocabulary and duration rules as resolution:
   (`call_obligation`) to make a power sign a pact or back you. Proof your
   watcher found can be published (`publish_dossier`) or turned into a hook
   (`blackmail`).
+- **A bounty** (`post_bounty`) puts your own credits in escrow as a price on a
+  power you want hurt; raiders and anyone who destroys its hulls collect.
+  Bounties standing on the board are listed — a raider goes where the money is.
+- **Heat** is listed for every power: how notorious its covert work, raiding
+  and broken word have made it. It is computed, never an op.
 
 Keep the reaction proportionate. Not every turn is a crisis; a
 minor player action should produce watchfulness, not a general mobilisation.

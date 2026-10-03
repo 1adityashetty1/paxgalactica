@@ -12,7 +12,7 @@ import { GalaxyMap } from './components/GalaxyMap.js';
 import { OutcomeArt } from './components/OutcomeArt.js';
 import { RimEventCard } from './components/RimEventCard.js';
 import { RIM_EVENT_TITLE } from '../../src/domain/events.js';
-import { fixtureLines, leverageLines, peaceLines, shipClassLines, spanLines } from '../../src/ui/helptext.js';
+import { fixtureLines, leverageLines, peaceLines, raiderLines, shipClassLines, spanLines } from '../../src/ui/helptext.js';
 import { EpilogueStage } from './components/EpilogueStage.js';
 import { PortraitStage } from './components/PortraitStage.js';
 import { SidePanel } from './components/SidePanel.js';
@@ -159,6 +159,8 @@ function helpLines(state: WorldState | null): string[] {
     ...peaceLines(),
     '',
     ...leverageLines(),
+    '',
+    ...raiderLines(),
     '',
     'WHAT YOU CAN REACH FOR',
     '  Most of what follows has no command. You type the sentence and the',

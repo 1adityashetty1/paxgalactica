@@ -58,8 +58,9 @@ const regard = (s: World, from: string, to: string) =>
   s.factions.find((f) => f.id === from)!.disposition[to] ?? 0;
 
 describe('the pulse: one turn in two, one event at most', () => {
-  it('has ten kinds, six hazards and four boons, weighted to a total of one half', () => {
-    expect(RIM_EVENT_KINDS).toHaveLength(10);
+  it('has ten fortunes, six hazards and four boons, weighted to a total of one half — and four for the notorious', () => {
+    expect(RIM_EVENT_KINDS).toHaveLength(14);
+    expect(Object.keys(RIM_EVENT_WEIGHT)).toHaveLength(10);
     expect(RIM_HAZARDS).toHaveLength(6);
     expect(RIM_BOONS).toHaveLength(4);
     const total = Object.values(RIM_EVENT_WEIGHT).reduce((n, w) => n + w, 0);
@@ -532,7 +533,7 @@ describe("the Confederacy's luck", () => {
     };
     const before = (s: World) => {
       if (!rimEventFires(s.turn)) return null;
-      const chosen = weighted(eligibleRimEvents(s), (e) => RIM_EVENT_WEIGHT[e.kind], draw400(s.turn, 'rim:which'));
+      const chosen = weighted(eligibleRimEvents(s), (e) => RIM_EVENT_WEIGHT[e.kind as keyof typeof RIM_EVENT_WEIGHT], draw400(s.turn, 'rim:which'));
       if (!chosen) return null;
       return weighted(chosen.candidates, (c) => c.weight, draw400(s.turn, 'rim:where'))?.plan ?? null;
     };

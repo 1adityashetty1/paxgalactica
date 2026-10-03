@@ -81,6 +81,8 @@ leaves a faction with nobody following it.
 | `back_ultimatum` | declare for a side of someone else's ultimatum |
 | `concede_ultimatum` | give way to a demand made of you |
 | `withdraw_ultimatum` | take your own demand back |
+| `post_bounty` | put your own credits in escrow as a price on another power — see The raider's ledger |
+| `withdraw_bounty` | take back what is left of a bounty you posted |
 | `adjust_dissent` | **your own** institutions grow more restive — never less |
 | `cancel_order` | an existing order is called off |
 | `interrupt_order` | an order is disrupted by force or event |
@@ -717,6 +719,29 @@ treaty they hold with a third power) — and `deadlineTurns`, 1 to 5. It is
 public. Other powers may `back_ultimatum` either side. At the deadline the
 target has given way (`concede_ultimatum`) or it is war between the two sides.
 You cannot threaten a power you are bound to peace with; break the peace first.
+
+### The raider's ledger, and heat
+
+**A bounty is a price on a power, paid to whoever hurts it.** `post_bounty`
+takes `credits` out of the acting power's treasury into escrow against
+`targetFactionId`; prizes raided from the target pay out of it credit for
+credit, and every ton of the target's hulls destroyed in battle pays fifteen,
+to whoever did it. Posting again tops up your bounty. `withdraw_bounty` takes
+back what is left — the target's grievance at being priced does not go with
+it. It is the acting power's own money and needs nobody's consent; never write
+it as `adjust_credits`.
+
+**Protection and a letter of marque are contracts**, and contracts are agreed
+in a channel, never declared. Protection pays a raider to leave your shipping
+alone; a letter of marque pays a raider to go after a named enemy. A raid a
+letter of marque licenses runs no heat.
+
+**Heat is what a power's dirty work has made it notorious for**, and the state
+block shows every power's. Covert missions, unlicensed raiding, broken pacts,
+blackmail and proof published against you all raise it; it fades slowly. Past
+30 the Rim starts answering — crackdowns on your operatives, a price on your
+head, contacts turned, a neighbour massing on your border. Heat is computed in
+code: never write it as an op, and never narrate it moving.
 
 ### Notes and goods
 

@@ -255,6 +255,23 @@ Specifically:
   | `tribute` | `incomePerTurn` moves every turn — **only when it really is tribute**: money paid to be left alone, not money paid for something |
   | `contract` | the same `incomePerTurn` machinery for a **commercial** deal: a hire, an annuity, a charter fee, a retainer, a share of a season |
 
+  **The raider's ledger rides on a `contract`.** Two terms, legal on a
+  contract only, each beside the `incomePerTurn` that pays for it:
+
+  - `protection: ["payer"]` — the named party has bought protection: the
+    OTHER party will not raid or blockade it while the contract holds. The fee
+    is `incomePerTurn` from the protected party to the raider. *"Pay us forty a
+    turn and our crews leave your lanes alone."*
+  - `commission: { "raider": "...", "against": ["..."], "share": 25 }` — a
+    letter of marque. The raider (a party) is commissioned against the named
+    powers (not parties); the other party pays the stipend in `incomePerTurn`
+    and `share` percent (at most 50) of whatever the raider takes from them
+    each turn. The raider stops raiding its paymaster, and those raids run no
+    heat. *"Ten a turn, and a quarter of every prize off the Vigil."*
+
+  Write either only when the power bound by it agreed in its own voice: the
+  protector to stop, the raider to take the commission, the paymaster to pay.
+
   **`tribute` and `contract` carry the same machinery and are not the same
   word, and words bind here.** Tribute is money paid to be left alone; a
   contract is money paid for something given. The Arkane Free Worlds refuse

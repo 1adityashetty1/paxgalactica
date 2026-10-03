@@ -9,14 +9,19 @@ import {
   RIM_POWER_COOLDOWN,
   SHORTAGE_KINDS,
   STORM_MAX_TURNS,
+  isNotoriety,
   luckWeight,
   shortageFactor,
   stormbound,
   type RimEventKind,
 } from './events.js';
+import { AgentSchema, BOUNTY_MIN, atWork } from './diplomacy.js';
+import { HEAT_MAX, HEAT_NOTORIOUS, NOTORIETY_WEIGHT } from './heat.js';
 import { buildAdjacency } from './graph.js';
 import {
   dispositionBetween,
+  liveAgentsOf,
+  maxAgentsFor,
   fleetBases,
   fleetTonsOf,
   hullsAt,
@@ -62,7 +67,15 @@ export type RimEventPlan =
   | { kind: 'rich_seam'; factionId: string; systemId: string }
   | { kind: 'volunteers'; factionId: string; systemId: string }
   | { kind: 'free_captains'; factionId: string; systemId: string }
-  | { kind: 'envoys_of_peace'; factionIds: [string, string]; quietFor: number };
+  | { kind: 'envoys_of_peace'; factionIds: [string, string]; quietFor: number }
+  /** The host of one of the notorious power's operatives takes them. */
+  | { kind: 'crackdown'; factionId: string; agentId: string; byFactionId: string; systemId: string }
+  /** The merchants of the power that likes it least put a price on it. */
+  | { kind: 'bounty_posted'; factionId: string; byFactionId: string; pool: number }
+  /** One of its operatives goes over to the power it was working against. */
+  | { kind: 'turned_contact'; factionId: string; agentId: string; byFactionId: string; systemId: string }
+  /** A power that dislikes it masses ships on the border facing it. */
+  | { kind: 'show_of_force'; factionId: string; byFactionId: string; systemId: string; tons: number };
 
 interface Candidate {
   /** Relative, within its kind. */
@@ -314,7 +327,93 @@ function candidatesFor(state: WorldState, kind: RimEventKind): Candidate[] {
       }
       return out;
     }
+
+    // --- Notoriety: the Rim answering a power's heat (`heat.ts`). Each
+    // candidate is weighted by that heat, and only a power at or past
+    // `HEAT_NOTORIOUS` is one.
+    case 'crackdown':
+    case 'turned_contact': {
+      // Its operative at work on the best world somebody else holds.
+      const out: Candidate[] = [];
+      for (const f of notorious(state)) {
+        const exposed = state.agents
+          .filter((a) => a.ownerFactionId === f.id && !a.exposed && atWork(a, turn))
+          .map((a) => ({ a, host: state.systems.find((x) => x.id === a.systemId) }))
+          .filter(({ host }) => host?.controllerFactionId && host.controllerFactionId !== f.id)
+          // A contact only turns to a power with room to run them.
+          .filter(
+            ({ host }) =>
+              kind === 'crackdown' ||
+              liveAgentsOf(state, host!.controllerFactionId!).length < maxAgentsFor(state, host!.controllerFactionId!),
+          )
+          .sort((x, y) => y.host!.strategicValue - x.host!.strategicValue || x.a.id.localeCompare(y.a.id))[0];
+        if (!exposed) continue;
+        out.push({
+          weight: f.heat,
+          subjects: [f.id],
+          plan: {
+            kind,
+            factionId: f.id,
+            agentId: exposed.a.id,
+            byFactionId: exposed.host!.controllerFactionId!,
+            systemId: exposed.host!.id,
+          },
+        });
+      }
+      return out;
+    }
+
+    case 'bounty_posted': {
+      // Posted by the merchants of whoever likes it least, and sized off what
+      // it earns: the price on a rich pirate is a rich price.
+      const ledgers = ledgersFor(state);
+      const out: Candidate[] = [];
+      for (const f of notorious(state)) {
+        const by = powers(state)
+          .filter((o) => o.id !== f.id)
+          .sort((a, b) => dispositionBetween(state, a.id, f.id) - dispositionBetween(state, b.id, f.id) || a.id.localeCompare(b.id))[0];
+        if (!by) continue;
+        const pool = Math.max(BOUNTY_MIN * 2, Math.round((ledgers[f.id]?.gross ?? 0) * NOTORIETY_BOUNTY_TURNS));
+        out.push({ weight: f.heat, subjects: [f.id], plan: { kind, factionId: f.id, byFactionId: by.id, pool } });
+      }
+      return out;
+    }
+
+    case 'show_of_force': {
+      // A neighbour that thinks ill of it, with hulls elsewhere to bring up.
+      const adj = buildAdjacency(state.systems);
+      const out: Candidate[] = [];
+      for (const f of notorious(state)) {
+        const theirs = new Set(worlds(state).filter((w) => w.controllerFactionId === f.id).map((w) => w.id));
+        const border = worlds(state).filter(
+          (w) =>
+            w.controllerFactionId !== null &&
+            w.controllerFactionId !== f.id &&
+            [...(adj.get(w.id) ?? [])].some((n) => theirs.has(n)),
+        );
+        const by = [...new Set(border.map((w) => w.controllerFactionId!))]
+          .filter((id) => dispositionBetween(state, id, f.id) <= 0)
+          .sort((a, b) => dispositionBetween(state, a, f.id) - dispositionBetween(state, b, f.id) || a.localeCompare(b))
+          .find((id) => worlds(state).some((w) => w.controllerFactionId === id && !border.includes(w) && tonsAt(w, id) > 0));
+        if (!by) continue;
+        const at = border
+          .filter((w) => w.controllerFactionId === by)
+          .sort((a, b) => b.strategicValue - a.strategicValue || a.id.localeCompare(b.id))[0]!;
+        out.push({ weight: f.heat, subjects: [f.id], plan: { kind, factionId: f.id, byFactionId: by, systemId: at.id, tons: SHOW_OF_FORCE_TONS } });
+      }
+      return out;
+    }
   }
+}
+
+/** A bounty the merchants post is this many turns of the notorious power's gross. */
+export const NOTORIETY_BOUNTY_TURNS = 1;
+/** The most a show of force brings up to the border, in tons — four battleships. */
+export const SHOW_OF_FORCE_TONS = 16;
+
+/** Powers hot enough for the Rim to answer, in id order. */
+function notorious(state: WorldState) {
+  return powers(state).filter((f) => (f.heat ?? 0) >= HEAT_NOTORIOUS);
 }
 
 /**
@@ -372,13 +471,19 @@ export function drawRimEvent(state: WorldState, sandbox?: RimEventKind): RimEven
   // exactly `RIM_EVENT_WEIGHT` and the target weight exactly `c.weight`, so the
   // draw is bit-for-bit the one before luck existed.
   const lean = (kind: RimEventKind, c: Candidate): number => {
-    if (c.subjects.length === 0) return 1;
+    // Notoriety is no fortune, so nobody's luck reaches it.
+    if (c.subjects.length === 0 || isNotoriety(kind)) return 1;
     const each = c.subjects.map(
       (id) => luckWeight(state.factions.find((f) => f.id === id)?.luck, kind) / RIM_EVENT_WEIGHT[kind],
     );
     return each.reduce((n, x) => n + x, 0) / each.length;
   };
   const kindWeight = (e: { kind: RimEventKind; candidates: Candidate[] }): number => {
+    // A notoriety kind weighs `NOTORIETY_WEIGHT` at the threshold, and more
+    // the hotter its hottest candidate runs.
+    if (isNotoriety(e.kind)) {
+      return NOTORIETY_WEIGHT * (Math.max(...e.candidates.map((c) => c.weight)) / HEAT_NOTORIOUS);
+    }
     const total = e.candidates.reduce((n, c) => n + c.weight, 0);
     const leaned = e.candidates.reduce((n, c) => n + c.weight * lean(e.kind, c), 0);
     return RIM_EVENT_WEIGHT[e.kind] * (leaned / total);
@@ -464,6 +569,48 @@ export function primeRimSandbox(state: WorldState, kind: RimEventKind): WorldSta
       far.disposition[me] = -95;
       state.treaties = state.treaties.filter((t) => !(t.parties.includes(me) && t.parties.includes(far.id)));
       state.lastClash[clashKey(me, far.id)] = -ENVOYS_QUIET_TURNS;
+      break;
+    }
+    case 'crackdown':
+    case 'turned_contact':
+    case 'bounty_posted':
+    case 'show_of_force': {
+      // As notorious as a power can be, so the Rim answers every turn until
+      // the answers have cooled it.
+      player.heat = HEAT_MAX;
+      if (kind === 'crackdown' || kind === 'turned_contact') {
+        // Operatives already at work on rival worlds, one for each turn the
+        // heat lasts, on as many different powers as there are near.
+        const rivals = worlds(state)
+          .filter((s) => s.controllerFactionId !== null && s.controllerFactionId !== me)
+          .sort((a, b) => Number(nextToMine(b)) - Number(nextToMine(a)) || a.id.localeCompare(b.id));
+        const hosts = [...new Map(rivals.map((r) => [r.controllerFactionId, r])).values()];
+        for (let i = 0; i < 4; i++) {
+          const rival = hosts[i % hosts.length];
+          if (!rival) break;
+          state.agents.push(
+            AgentSchema.parse({
+              id: `agt-sandbox-${i}`,
+              ownerFactionId: me,
+              systemId: rival.id,
+              mission: 'surveillance',
+              effect: { kind: 'intel', revealsOrders: true },
+              successChance: 50,
+              deployedTurn: 0,
+              cover: `a clerk at ${rival.name}`,
+            }),
+          );
+        }
+      }
+      if (kind === 'show_of_force') {
+        // Every neighbour at least cool toward the player.
+        for (const f of powers(state)) {
+          if (f.id === me) continue;
+          if (worlds(state).some((s) => s.controllerFactionId === f.id && nextToMine(s))) {
+            f.disposition[me] = Math.min(f.disposition[me] ?? 0, -20);
+          }
+        }
+      }
       break;
     }
     default:

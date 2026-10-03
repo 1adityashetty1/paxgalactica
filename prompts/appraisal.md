@@ -365,6 +365,11 @@ negotiation — price the nerve it takes (`influence`, or `might` where the thre
 is the fleet), not whether the target agrees, which the deadline decides.
 **Publishing or blackmailing with a secret** a watcher found is `guile`, and
 easy: the proof exists.
+**Posting or withdrawing a bounty** is `trivial` and never a negotiation: it is
+the acting power's own money going into escrow, and the target's consent is
+not the point. **Protection or a letter of marque** binds the raider and the
+power paying it, so it is a negotiation with whichever of the two is not the
+acting power.
 
 **An attack on a power you hold a truce with** (the standing block lists them) is
 admissible and priced like any attack — but say in the rationale that it breaks

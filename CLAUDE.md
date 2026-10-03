@@ -1486,6 +1486,8 @@ and nothing implemented it.
 | `territory` (a term, not a type) | the named systems **change hands** when the treaty takes force |
 | `payment` (a term, not a type) | credits move **once**, when the treaty takes force — the price of a cession, an indemnity, a lump settlement |
 | `voidsOn` (a term, not a type) | typed conditions that **end** the treaty when they come true — and one already true at signature is **refused**, not signed |
+| `protection` (a term, `contract` only) | the named party is not raided or blockaded by the other — see "The raider's ledger" |
+| `commission` (a term, `contract` only) | a letter of marque: the raider is paid a share of what it takes from named powers, and spares its paymaster |
 | `exclusive` (a flag, not a type) | forecloses another treaty of that **type** with anybody else; the second is **refused at signature** with `treaty_conflict` |
 
 ### A treaty can be exclusive, and is worth something to have signed
@@ -2714,6 +2716,141 @@ property `tests/balance.test.ts` asserts holds.
 atomically, so one rejected op discards its whole turn; the harness applies
 batches partially and would hide that. Replayed with atomic batches over 30 and
 100 turns, no bot turn is lost to a rejection.
+
+## The raider's ledger, and heat
+
+The pair from the 2026-10-02 brainstorm (§4.1 and §3.3), built together
+because heat is what a raider pays for working without a commission. Records in
+`diplomacy.ts`, heat in `heat.ts` (a leaf), the payouts and the notoriety events
+in the reducer. Journal version 14.
+
+### A bounty, held in escrow
+
+`BountySchema`, borrowed from *Sins of a Solar Empire*'s pirate bounties.
+`post_bounty` takes a power's own credits into escrow against a target —
+trimmed to what the treasury holds, at least `BOUNTY_MIN` (25) — and posting
+again tops it up. Prizes raided from the target pay out of the pool credit for
+credit (`BOUNTY_RAID_RATE`), and every ton of the target's hulls destroyed in a
+battle pays `BOUNTY_PER_TON` (15, a hull's own price), split among the powers on
+the other side by the tonnage each brought. A bounty never pays its own poster —
+that would be a withdrawal by another name — and `withdraw_bounty` hands back
+what is left. The target resents the poster `BOUNTY_RESENTMENT` (10), once,
+whatever the figure, and keeps the grievance after a withdrawal. Public.
+
+**Raid bounties are a ledger line; hull bounties are not.** `raidBountyDraws` is
+one allocation read twice: `ledgerFor` reports a power's share as `bounties`
+and sums it into `net`, and the tick draws the escrow down by exactly the same
+draws, so the pool and the ledger cannot disagree. It has to be a flow: built
+first as a transfer outside `net`, the Confederacy's ledger read −40 to −110 for
+thirty turns while its treasury climbed from 290 to 2,400, and the balance suite
+read it as insolvent. A battle is not a rate, so hull bounties stay transfers in
+the tick.
+
+### Protection and a letter of marque: terms on a contract
+
+Two typed terms on `contract`, which already carries the fee. **Protection**
+(`terms.protection`, from *Distant Worlds*) names parties the other party will
+not raid or blockade. **A letter of marque** (`terms.commission`, from
+*Starsector*) commissions one party against named non-parties: the paymaster
+pays the stipend in `incomePerTurn` and `share` percent (trimmed to
+`MAX_COMMISSION_SHARE`, 50) of what the raider takes from them each turn, as a
+transfer trimmed to its treasury. The raider then cannot raid its paymaster
+(`raidLandsOn`), and its raids on the named powers are **licensed**: no heat,
+and no piracy reputation charged by the paymaster. Extraction-only, like every
+treaty, and grounded: either term binds the other party, so it needs that party
+to have conceded something.
+
+### Heat
+
+`Faction.heat`, 0–100 and public, borrowed from *Blades in the Dark*'s heat and
+entanglements. The flat reputation costs stay; heat is the same acts read as a
+pressure that builds and breaks:
+
+| source | heat |
+|---|---|
+| sending an operative | `HEAT_FOR_MISSION`: 1 for a watcher up to 8 for a knife |
+| an operative taken | `HEAT_CAUGHT` (6) |
+| a turn of prizes from a power no commission names | `HEAT_PER_RAID` (2), per power robbed |
+| breaking a pact, a favour owed, a loan, a sworn arrangement | `HEAT_PACT_BROKEN` (8); a truce twice that |
+| blackmail | `HEAT_BLACKMAIL` (4) |
+| proof published against you | what the scandal costs you with each onlooker |
+
+It fades `HEAT_DECAY` (1) a turn, before the turn adds to it. From
+`HEAT_NOTORIOUS` (30) the pulse can draw four **notoriety** events for that
+power, each built from a mechanic that exists, and each sheds `HEAT_ANSWERED`
+(15) when it lands:
+
+- **a crackdown** — the host of its best-placed operative takes them
+  (`takeOperative`, the same capture a botched operation ends in);
+- **a price on its head** — the merchants of the power that likes it least post
+  a bounty of one turn of its gross, minted, that nobody may withdraw;
+- **a turned contact** — an operative goes over to the power it was working
+  against, awaiting orders, and files proof of one more of its old masters'
+  secrets;
+- **a show of force** — the neighbour that likes it least brings up to 16 tons
+  from its other worlds to the border facing it. Public, and it mints nothing.
+
+**Notoriety is not a fortune.** `RIM_FORTUNES` are the ten with weights and a
+place in a power's luck; `RIM_NOTORIETY` are eligible only past the threshold,
+each weighing `NOTORIETY_WEIGHT` scaled by its hottest candidate's heat. The d20
+still decides whether a turn carries an event, so notoriety changes which event
+a turn brings, never how often, and a board where nobody is notorious draws
+exactly as before. **No art yet**: `RimEventArt` renders nothing for the four
+until a scene is drawn and approved. A sandbox for each primes the player at
+heat 100 with operatives abroad. Pinned to v14 (`LegacyRules.heat`).
+
+### What the bots do with it
+
+- **`postBounty`** — a power that thinks in money (`DEMANDING_ETHICS`) at war,
+  with `BOT_BOUNTY_RESERVE` in hand, puts `BOT_BOUNTY` (150) on the enemy it
+  hates most, one at a time.
+- **Raid targets** weigh traffic up to double for a bounty on the holder
+  (`BOT_BOUNTY_PULL`) and by 1.5 for a power a letter of marque names, and
+  nothing where the prizes would not land.
+- **Letters of marque**, brokered in `brokeredAccords` — a mercantile power
+  with a war or a grudge past `MARQUE_GRUDGE` (−50) commissions a raider it is
+  on good terms with: a stipend of 10 and a quarter of the take, for 10 turns.
+- **Protection** — a mercantile power being raided by one it is not at war with
+  pays three quarters of the take a turn to stop.
+- **`honourTreaties`** withholds a raid or blockade on a power it protects or
+  that commissioned it.
+
+**Measured.** Over 30 turns the Combine commissions the Confederacy against the
+Vigil three times, the Combine and Meridian post twelve bounties on the Vigil,
+and the Confederacy collects 1,350 in bounties and 372 in commission bonuses.
+Over 100: ten letters, 3,150 in bounties and 904 in bonuses, and twenty
+notoriety events spread over all five powers, the Vigil most. **Protection never
+fires in the harness** — the Combine, the one mercantile power the Confederacy
+raids, commissions it instead, which already stops the raids — so, like
+`monopolist` once was, it is measured only on a constructed board.
+
+The board with events is **6/5/5/4/5** at 30 and at 100 turns, against 6/6/5/5/3
+without the ledger and heat; with no events, 6/6/5/6/2 and 6/7/5/5/2 against
+6/6/6/5/2. The Confederacy holds five worlds and ends rich; nobody is eliminated
+and every property `tests/balance.test.ts` asserts holds. **The front guard
+stays**: without `guardFronts` the Confederacy falls to four worlds at 30 turns
+and three at 100, ledger or not. Its turn-30 net reads −39 against the suite's
+−40 floor, on a turn between raids, so that margin is thin.
+
+Two fixes the measurement forced:
+
+- **A fixture is judged against standing income.** `raise` built on a good
+  raiding turn — prizes and bounties included — and the Confederacy raised
+  three fixtures whose upkeep its quiet turns could not carry. It now leaves out
+  `raided` and `bounties`. The control board does not move.
+- **A rule that would sink the batch is left out.** `proposeFor` takes an
+  `applies` check, passed by `endTurn` and the harness: each covert rule reads
+  the treasury as it stood, so a saboteur sent after the yards had spent it was
+  refused, and live play commits atomically, so the power lost its whole turn.
+  If the full proposal fails, the doctrine's own ops go first and each rule is
+  added only while the batch still applies. Passed in because this module ships
+  to the browser and the reducer does not. Replayed atomically over 30 and 100
+  turns, with and without events, no bot turn is lost.
+
+> Building it found every treaty written as a literal, with `effectiveTurn`
+> before `status` where a replayed treaty has them the other way round. The
+> parity test had never seen a bot sign a contract on turn 1. Treaties go
+> through `TreatySchema` now.
 
 ## Faction lines are enforced, not suggested
 
@@ -5502,6 +5639,8 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `back_ultimatum` | a third power declares for a side |
 | `concede_ultimatum` | the target gives way; also reachable from the target's own accord |
 | `withdraw_ultimatum` | issuer only |
+| `post_bounty` | your own credits into escrow against another power; trimmed to the treasury, topped up by posting again |
+| `withdraw_bounty` | poster only; what is left comes back, the grievance stays. Never a merchants' bounty |
 | `issue_order` | see Duration below; optional `onComplete` payload, paid at issue. `force` is a count (drawn proportionally) or a named composition |
 | `cancel_order` | returns the unspent part of an `onComplete` payload |
 | `interrupt_order` | rejected when the order is not interruptible; **somebody else's** order also needs ships at its origin or target |
@@ -5538,7 +5677,7 @@ Rejection codes: `unknown_op`, `schema_invalid`, `reducer_only`,
 `unreachable_target`, `missing_duration`, `insufficient_credits`,
 `not_interruptible`, `illegal_value`, `doctrine_refusal`, `needs_consent`,
 `declared_only`, `unknown_debt`, `unknown_loan`, `unknown_obligation`,
-`unknown_demand`, `already_void`, `treaty_conflict`.
+`unknown_demand`, `unknown_bounty`, `already_void`, `treaty_conflict`.
 
 ---
 
@@ -7076,6 +7215,9 @@ writing one down. Fixtures and hand-built batches want the input type.
   mechanic the game already has. Decide whether it is public; a power's own
   affairs are not. A lucky power's table must still total 0.5, so give it a
   weight there too — `luckFavouring` rebuilds the Confederacy's.
+  A **notoriety** event goes in `RIM_NOTORIETY` instead, with no weight and no
+  place in anyone's luck: its candidates are powers past `HEAT_NOTORIOUS`,
+  weighted by heat.
 - New order effect kind? Add it to `OrderEffectSchema`, give it a cap in
   `EFFECT_CAPS`, a price, the categories that may deliver it in
   `EFFECT_CATEGORIES`, and a branch in `applyOrderEffect`. Price it against what

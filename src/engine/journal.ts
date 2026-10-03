@@ -16,7 +16,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 13;
+export const JOURNAL_VERSION = 14;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -95,6 +95,7 @@ export const JournalVersionSchema = z.union([
   z.literal(11),
   z.literal(12),
   z.literal(13),
+  z.literal(14),
 ]);
 
 export const JournalSchema = z.object({
@@ -134,7 +135,9 @@ export const JournalSchema = z.object({
    *     held promissory notes.
    * 12 — written before forgiving a debt left the debtor owing a favour, and
    *     before a watcher at work could dig up its host's secrets.
-   * 13 — current.
+   * 13 — written before dirty work built heat and the Rim answered a
+   *     notorious power.
+   * 14 — current.
    */
   version: JournalVersionSchema,
   entries: z.array(JournalEntrySchema),
@@ -293,6 +296,9 @@ export function replay(
     // under that rule.
     obligations: parsed.version >= 13,
     secrets: parsed.version >= 13,
+    // Nobody ran hot: covert work, raiding and broken pacts cost what they
+    // cost and no more, and the pulse drew from the ten fortunes alone.
+    heat: parsed.version >= 14,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

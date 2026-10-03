@@ -424,6 +424,26 @@ export const WithdrawUltimatumOp = z.object({
 });
 
 /**
+ * Put a price on another power — see `BountySchema`. Your own credits go into
+ * escrow, paid out to whoever raids the target or destroys its hulls. Posting
+ * again against the same power tops your bounty up.
+ */
+export const PostBountyOp = z.object({
+  op: z.literal('post_bounty'),
+  targetFactionId: z.string().min(1),
+  /** Credits into escrow. Trimmed to what the treasury holds. */
+  credits: z.number().int().min(1).max(100000),
+  reason: z.string().max(240).default(''),
+});
+
+/** Take back what is left of a bounty you posted. The target's grievance stays. */
+export const WithdrawBountyOp = z.object({
+  op: z.literal('withdraw_bounty'),
+  bountyId: z.string().min(1),
+  reason: z.string().max(240).default(''),
+});
+
+/**
  * Break a divisible holding into two.
  *
  * Forty crews ransomed twenty at a time. Value is stated per unit, so the split
@@ -1102,6 +1122,8 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   BackUltimatumOp,
   ConcedeUltimatumOp,
   WithdrawUltimatumOp,
+  PostBountyOp,
+  WithdrawBountyOp,
   IssueOrderOp,
   CancelOrderOp,
   InterruptOrderOp,
@@ -1184,6 +1206,8 @@ export const OpSchema = z.discriminatedUnion('op', [
   BackUltimatumOp,
   ConcedeUltimatumOp,
   WithdrawUltimatumOp,
+  PostBountyOp,
+  WithdrawBountyOp,
   IssueOrderOp,
   CancelOrderOp,
   InterruptOrderOp,
@@ -1644,6 +1668,7 @@ export interface OpRejection {
     | 'unknown_asset'
     | 'unknown_obligation'
     | 'unknown_demand'
+    | 'unknown_bounty'
     | 'doctrine_refusal'
     /** A treaty was declared rather than negotiated; the other party never agreed. */
     | 'needs_consent'

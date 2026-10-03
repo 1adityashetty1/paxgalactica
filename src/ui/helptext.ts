@@ -1,3 +1,4 @@
+import { HEAT_DECAY, HEAT_NOTORIOUS } from '../domain/heat.js';
 import { STAT_NAMES } from '../domain/checks.js';
 import { EFFECT_CATEGORIES } from '../domain/development.js';
 import { EFFECT_COST } from '../domain/development.js';
@@ -14,6 +15,7 @@ import {
   TRUCE_BREAKING_REPUTATION_COST,
   TRUCE_TURNS,
   ULTIMATUM_MAX_DEADLINE,
+  BOUNTY_PER_TON,
 } from '../domain/diplomacy.js';
 import { EMISSION_RANGE } from '../domain/intel.js';
 import { fixtureKindFor } from '../domain/initiative.js';
@@ -185,5 +187,19 @@ export function leverageLines(): string[] {
     '  may back either side; at the deadline it is given way to, or it is war.',
     '  Every power can give up only so much in one conversation. The channel',
     '  shows how much; your influence and your leverage over them widen it.',
+  ];
+}
+
+/** The raider's ledger and heat, from the constants that run them. */
+export function raiderLines(): string[] {
+  return [
+    "THE RAIDER'S LEDGER, AND HEAT",
+    '  Post a bounty on a power and your credits wait in escrow: prizes raided',
+    `  from it pay out credit for credit, its hulls destroyed ${BOUNTY_PER_TON} a ton.`,
+    '  A raider can be paid to leave you alone (protection) or to go after',
+    '  your enemy (a letter of marque). Both are contracts, agreed in a channel.',
+    '  Covert work, unlicensed raids and broken pacts make a power notorious.',
+    `  Heat fades ${HEAT_DECAY} a turn; from ${HEAT_NOTORIOUS} the Rim answers: crackdowns, a price`,
+    '  on your head, contacts turned, a neighbour massing on your border.',
   ];
 }

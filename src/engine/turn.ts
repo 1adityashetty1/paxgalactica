@@ -6,7 +6,7 @@ import {
   ModelTurnOutputSchema,
   type OpRejection,
 } from '../domain/ops.js';
-import type { TurnReport } from '../domain/reducer.js';
+import { applyOps, type TurnReport } from '../domain/reducer.js';
 import {
   COMPULSION_BREACH_DISSENT,
   COUNTERPARTY_BREACH_DISSENT,
@@ -763,7 +763,13 @@ export async function endTurn(
   await span('bots', { turn }, () => {
     for (const faction of campaign.state.factions) {
       if (spokenFor.has(faction.id)) continue;
-      const proposal = proposeFor(campaign.state, faction.id);
+      // Committed atomically below, so a rule that would sink the batch is
+      // left out rather than costing the power its turn.
+      const proposal = proposeFor(
+        campaign.state,
+        faction.id,
+        (ops) => applyOps(campaign.state, ops, 'model', faction.id, true).rejections.length === 0,
+      );
       if (!proposal) continue;
 
       // The rationale is logged as part of the batch, so `serializeRecentLog`
@@ -886,6 +892,15 @@ export function groundInConcessions(
       const stream = -(perTurn[otherId] ?? 0);
       if (stream > 0 && stream > offeredPerTurn) {
         dropped.push(`${stream} a turn from ${otherId}, which it never offered.`);
+        return false;
+      }
+      // The raider's ledger binds both sides of a contract: protection binds
+      // the party that stops raiding, and a letter of marque binds the raider
+      // to spare its paymaster and the paymaster to pay the bonus. Either way
+      // the other power has to have said something.
+      const protects = Array.isArray(terms.protection) ? (terms.protection as string[]) : [];
+      if ((protects.some((id) => id !== otherId) || terms.commission) && !saidAnything) {
+        dropped.push(`${terms.commission ? 'a letter of marque' : 'protection'} binding ${otherId}, which it never agreed to.`);
         return false;
       }
       const pledged = (terms.shipsPledged ?? {}) as Record<string, number>;
