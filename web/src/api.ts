@@ -10,6 +10,7 @@ import {
   ImportOutcomeSchema,
   ROUTES,
   STREAM_CONTENT_TYPE,
+  SettingsViewSchema,
   StreamLineSchema,
   TurnOutcomeSchema,
   type ActionOutcomeResponse,
@@ -17,6 +18,8 @@ import {
   type CampaignView,
   type RequestEnvelope,
   type ServerEvent,
+  type SettingsUpdate,
+  type SettingsView,
   type TurnOutcomeResponse,
 } from '../../src/api/contract.js';
 import type { Cheat } from '../../src/domain/cheats.js';
@@ -58,6 +61,11 @@ export class ApiError extends Error {
 
   get isAuth(): boolean {
     return this.code === 'not_authenticated';
+  }
+
+  /** The spend cap the player set has been reached. */
+  get isSpendCap(): boolean {
+    return this.code === 'spend_cap';
   }
 }
 
@@ -294,18 +302,33 @@ function toApiError(body: unknown, status: number): ApiError {
 
 /* ---------------- the API ---------------- */
 
+/**
+ * A plain JSON request, for the routes that need no campaign: what can be
+ * played, and the settings screen, which comes before there is any.
+ */
+async function plain<T>(path: string, schema: { parse: (v: unknown) => T }, body?: unknown): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(
+      path,
+      body === undefined
+        ? undefined
+        : { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } },
+    );
+  } catch {
+    throw new ApiError('internal', 'Cannot reach the game server. Is it still running?', 0);
+  }
+  if (!res.ok) throw await errorFrom(res);
+  return schema.parse(await res.json());
+}
+
 export const api = {
-  /** Plain GET: the only route that needs no campaign. */
-  async factions() {
-    let res: Response;
-    try {
-      res = await fetch(ROUTES.factions);
-    } catch {
-      throw new ApiError('internal', 'Cannot reach the game server. Is it still running?', 0);
-    }
-    if (!res.ok) throw await errorFrom(res);
-    return FactionListSchema.parse(await res.json());
-  },
+  factions: () => plain(ROUTES.factions, FactionListSchema),
+
+  settings: (): Promise<SettingsView> => plain(ROUTES.settings, SettingsViewSchema),
+
+  updateSettings: (update: SettingsUpdate): Promise<SettingsView> =>
+    plain(ROUTES.settings, SettingsViewSchema, update),
 
   /**
    * The first read after the page loads: pick up the campaign this browser was

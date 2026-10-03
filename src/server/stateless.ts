@@ -33,6 +33,11 @@ export interface StatelessOptions {
    * server was started by `pnpm resume <file>`, and returns null once taken.
    */
   takeAutoload?: () => string | null;
+  /**
+   * Whether model calls can be made, so a session refuses to begin play on a
+   * provider that cannot answer. Defaults to ready, for tests.
+   */
+  providerReady?: () => { ready: boolean; detail: string };
 }
 
 export async function handleStateless(
@@ -41,7 +46,7 @@ export async function handleStateless(
   envelope: unknown,
   options: StatelessOptions,
 ): Promise<StatelessOutcome> {
-  const session = new GameSession(options.store, options.emit ?? (() => {}));
+  const session = new GameSession(options.store, options.emit ?? (() => {}), options.providerReady);
 
   let request;
   try {

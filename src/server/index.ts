@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { constants as zlibConstants, createGzip, gunzipSync } from 'node:zlib';
 import { DEFAULT_PORT, ROUTES, STREAM_CONTENT_TYPE, type StreamLine } from '../api/contract.js';
 import { FileCampaignStore, MemoryCampaignStore, type CampaignStore } from '../engine/store.js';
-import { PreflightError, runServerPreflight } from '../preflight.js';
+import { providerStatus, runServerPreflight } from '../preflight.js';
 import { dispatch } from './router.js';
 import { GameSession } from './session.js';
 import { handleStateless } from './stateless.js';
@@ -48,19 +48,15 @@ const STORE: CampaignStore =
 
 /* ---------------- preflight, before anything binds ---------------- */
 
-// `PAXGALACTICA_SKIP_PREFLIGHT=1` starts the server without a model credential:
-// for a container smoke test, or a host whose credential arrives another way.
-// The first model call then fails with its own error instead.
-try {
-  const { warnings } =
-    process.env.PAXGALACTICA_SKIP_PREFLIGHT === '1' ? { warnings: [] } : runServerPreflight();
-  for (const warning of warnings) process.stderr.write(`note: ${warning}\n`);
-} catch (err) {
-  if (err instanceof PreflightError) {
-    process.stderr.write(`\n${err.message}\n\n`);
-    process.exit(1);
-  }
-  throw err;
+// Never fatal: a key can be entered in the browser, so the server has to be up
+// to show the screen it is entered on. What used to be the abort is the
+// session's refusal to start a campaign on a provider that cannot answer.
+// `PAXGALACTICA_SKIP_PREFLIGHT=1` skips even the report, for a container smoke
+// test or a host whose credential arrives another way.
+if (process.env.PAXGALACTICA_SKIP_PREFLIGHT !== '1') {
+  const preflight = runServerPreflight();
+  for (const warning of preflight.warnings) process.stderr.write(`note: ${warning}\n`);
+  process.stdout.write(`Model calls: ${preflight.status.detail}${preflight.status.ready ? '' : ' (not ready)'}\n`);
 }
 
 /**
@@ -70,6 +66,9 @@ try {
  */
 let autoload = process.env.PAXGALACTICA_CAMPAIGN ?? null;
 const takeAutoload = (): string | null => {
+  // Loading it would be refused until model calls are set up, so it waits:
+  // the settings screen comes first, and the next boot after it takes it.
+  if (autoload !== null && !providerStatus().ready) return null;
   const name = autoload;
   autoload = null;
   return name;
@@ -172,10 +171,24 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   // this process, and a permissive policy would let any page in the browser
   // drive a game that spends money.
 
-  // The one route that needs no session: what can be played, and what is in
-  // `saves/` on this machine.
+  // The routes that need no session: what can be played, what is in `saves/`
+  // on this machine, and the settings screen, which comes before any campaign.
   if (method === 'GET' && path === ROUTES.factions) {
     const result = await dispatch(new GameSession(STORE), method, path, {});
+    return sendJson(res, result.status, result.body);
+  }
+  if (path === ROUTES.settings && (method === 'GET' || method === 'POST')) {
+    let body: unknown = {};
+    if (method === 'POST') {
+      try {
+        body = await readBody(req);
+      } catch (err) {
+        return sendJson(res, 400, {
+          error: { code: 'bad_request', message: err instanceof Error ? err.message : 'Bad body.' },
+        });
+      }
+    }
+    const result = await dispatch(new GameSession(STORE), method, path, body);
     return sendJson(res, result.status, result.body);
   }
 
@@ -206,6 +219,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
         // second instance would never see.
         emit: (event) => stream.write(event),
         takeAutoload,
+        providerReady: () => providerStatus(),
       });
       stream.write({ type: 'result', status: result.status, body: result.body });
       stream.write({ type: 'session', session });
@@ -236,6 +250,19 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 
 // `PORT` is what Cloud Run sets; the game's own variable wins when both are.
 const port = Number(process.env.PAXGALACTICA_PORT ?? process.env.PORT ?? DEFAULT_PORT);
+
+// A port already in use is a first-run failure for an installed copy, not a
+// developer annoyance (docs/architecture.md A.9): say what to do instead of
+// printing a stack.
+server.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EADDRINUSE') {
+    process.stderr.write(
+      `\nPort ${port} is already in use — another copy of the game may be running.\nStop it, or start this one on another port: PAXGALACTICA_PORT=${port + 1}\n\n`,
+    );
+    process.exit(1);
+  }
+  throw err;
+});
 
 server.listen(port, HOST, () => {
   process.stdout.write(

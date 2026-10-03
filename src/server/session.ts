@@ -30,7 +30,8 @@ import { effectiveStats, getFaction, spanOfControl } from '../domain/state.js';
 import { playableFactions } from '../seed/scenario.js';
 import { ApiFailure, toApiFailure } from './errors.js';
 import { appraiseAgreement } from '../model/calls.js';
-import { timingReport } from '../model/client.js';
+import { stats, timingReport } from '../model/client.js';
+import { spendCap } from '../model/settings.js';
 import { FileSink, NULL_SINK, setTelemetrySink, span } from '../model/telemetry.js';
 import { classifyPrinciples } from '../domain/compulsions.js';
 import {
@@ -151,10 +152,25 @@ export class GameSession {
    */
   private busyLabel: string | null = null;
 
+  /**
+   * @param providerReady Whether a model call can be expected to authenticate.
+   *   Asked before a campaign is started or resumed for play, which is where
+   *   the old startup guard's argument now lives: a server that accepts a
+   *   campaign and then fails every action is worse than one that says why it
+   *   will not. Defaults to always ready, which is what a session in the suite
+   *   — whose model calls are scripted or refused — needs.
+   */
   constructor(
     private readonly store: CampaignStore = new FileCampaignStore(),
     private readonly emit: Emit = () => {},
+    private readonly providerReady: () => { ready: boolean; detail: string } = () => ({ ready: true, detail: '' }),
   ) {}
+
+  /** Refuse to begin play on a provider that cannot answer. */
+  private requireProvider(): void {
+    const { ready, detail } = this.providerReady();
+    if (!ready) throw new ApiFailure('not_authenticated', `${detail} Set it up in Settings first.`);
+  }
 
   get isBusy(): boolean {
     return this.busyLabel !== null;
@@ -291,6 +307,7 @@ export class GameSession {
       maxTurns: campaign.maxTurns,
       sandboxEvent: campaign.sandboxEvent,
       epilogue: this.epilogue,
+      spend: { usd: stats.costUsd, capUsd: spendCap() },
     };
   }
 
@@ -412,6 +429,7 @@ export class GameSession {
     if (!playableFactions().some((f) => f.id === factionId)) {
       throw new ApiFailure('bad_request', `Unknown faction "${factionId}".`);
     }
+    this.requireProvider();
     // A sandbox is saved under its own name whatever the request asked for, so
     // looking at an event can never overwrite a campaign being played.
     const saveAs = sandboxEvent === undefined ? name : `sandbox_${sandboxEvent}`;
@@ -432,6 +450,9 @@ export class GameSession {
   async resume(name: string): Promise<CampaignView> {
     const loaded = await Campaign.load(name, this.store);
     if (!loaded) throw new ApiFailure('not_found', `No saved campaign named "${name}".`);
+    // A finished campaign is read-only and makes no model calls, so its ending
+    // can be reopened whatever the provider's state.
+    if (!loaded.isOver) this.requireProvider();
     this.campaign = loaded;
     this.traceTo(name);
     this.openChannel = null;

@@ -1,6 +1,9 @@
 /**
  * Model tiering lives here and nowhere else. Changing which model handles
- * resolution, reaction, diplomacy or flavour is a one-line edit in this file.
+ * resolution, reaction, diplomacy or flavour is a one-line edit in this file —
+ * for every provider: `ROUTES` maps calls to tiers once, and each provider has
+ * its tier table beside the others (`TIERS` for the subscription's Agent SDK,
+ * `API_TIERS` and `OPENROUTER_TIERS` for the keyed providers).
  */
 
 export type ModelTier = 'reasoning' | 'narrative' | 'flavor';
@@ -166,6 +169,87 @@ export const ROUTES: Record<CallKind, ModelTier> = {
   flavor: 'flavor',
 };
 
+/** The subscription provider's tier for a call: the SDK table above. */
 export function modelFor(kind: CallKind): TierConfig {
   return TIERS[ROUTES[kind]];
+}
+
+/* ------------------------------------------------------------------ */
+/* The keyed providers                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * One tier on a provider that is called over HTTP rather than through the
+ * Agent SDK. `TierConfig` above mixes the one field every provider shares
+ * (`model`) with three that exist only because the SDK runs an agentic loop
+ * (`maxTurns`) or shapes its own request (`effort`, `thinking`); this is the
+ * shared part plus what an HTTP request needs instead.
+ *
+ * The same three tiers, the same `ROUTES` — so which call goes where is decided
+ * once, above, for every provider.
+ */
+export interface ApiTierConfig {
+  model: string;
+  /** A ceiling, not a target: the longest reply in the game is the epilogue. */
+  maxTokens: number;
+  /**
+   * `output_config.effort`. Absent where the model rejects it: the API returns
+   * an error for `effort` on Haiku 4.5, which the flavour tier's `effort: 'low'`
+   * in the SDK table would have sent verbatim (docs/architecture.md A.1).
+   */
+  effort?: 'low' | 'medium' | 'high';
+  /**
+   * `'disabled'` sends `thinking: {type: 'disabled'}`. Absent means the
+   * model's default — adaptive on Sonnet 5, none on Haiku 4.5, whose disabled
+   * form is to omit the parameter. `budget_tokens` is never sent: it is a 400
+   * on Sonnet 5.
+   */
+  thinking?: 'disabled';
+}
+
+/**
+ * The Anthropic API. Each line is the SDK table's line said in the API's terms.
+ * `claude-haiku-4-5` carries no date suffix: the dated id the SDK table uses is
+ * an alias the binary resolves, and the current API id is the bare one.
+ */
+export const API_TIERS: Record<ModelTier, ApiTierConfig> = {
+  reasoning: { model: 'claude-sonnet-5', maxTokens: 16_000, effort: 'medium' },
+  narrative: { model: 'claude-sonnet-5', maxTokens: 8_000, effort: 'low', thinking: 'disabled' },
+  flavor: { model: 'claude-haiku-4-5', maxTokens: 4_000 },
+};
+
+/**
+ * OpenRouter. The same models under OpenRouter's slugs, checked against its
+ * live catalogue (`GET /api/v1/models`, 2026-10-03): `anthropic/claude-sonnet-5`
+ * and `anthropic/claude-haiku-4.5`, which takes no `reasoning_effort`.
+ *
+ * Defaulting to the models this game's prompts were developed against is
+ * deliberate — a bug on these is a bug rather than a model difference. Routing
+ * a tier somewhere cheaper is what the settings screen's model fields are for.
+ */
+export const OPENROUTER_TIERS: Record<ModelTier, ApiTierConfig> = {
+  reasoning: { model: 'anthropic/claude-sonnet-5', maxTokens: 16_000, effort: 'medium' },
+  narrative: { model: 'anthropic/claude-sonnet-5', maxTokens: 8_000, effort: 'low', thinking: 'disabled' },
+  flavor: { model: 'anthropic/claude-haiku-4.5', maxTokens: 4_000 },
+};
+
+export const API_TIER_TABLES = { anthropic: API_TIERS, openrouter: OPENROUTER_TIERS } as const;
+
+/**
+ * The tier a keyed provider uses for a call, with the player's model override
+ * applied. An override replaces only the model: effort and thinking stay as the
+ * table says, except that a model the table did not choose is not assumed to
+ * accept either, since what Sonnet 5 accepts says nothing about what a model
+ * routed in its place will.
+ */
+export function apiTierFor(
+  provider: keyof typeof API_TIER_TABLES,
+  kind: CallKind,
+  overrides: Partial<Record<ModelTier, string>> = {},
+): ApiTierConfig & { tier: ModelTier } {
+  const tier = ROUTES[kind];
+  const base = API_TIER_TABLES[provider][tier];
+  const model = overrides[tier];
+  if (!model || model === base.model) return { ...base, tier };
+  return { model, maxTokens: base.maxTokens, tier };
 }
