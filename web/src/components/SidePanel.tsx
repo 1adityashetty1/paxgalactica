@@ -975,13 +975,18 @@ function Assets({ state }: { state: WorldState }) {
                       const price =
                         a.speculative && o.band.min !== o.band.max ? `${o.band.min}–${o.band.max}cr` : `${o.band.max}cr`;
                       return (
+                        // A drawn tooltip rather than `title`: the native one
+                        // waits a second and a half, and some embedded browsers
+                        // never show it at all. Focusable, so it reads without
+                        // a mouse too.
                         <span
                           key={o.f.id}
                           className="faction-dot"
                           style={{ background: colourOf(state, o.f.id) }}
-                          title={`${o.f.name} · ${price}`}
+                          data-tip={`${o.f.name} · ${price}`}
                           aria-label={`${o.f.name}, ${price}`}
                           role="img"
+                          tabIndex={0}
                         />
                       );
                     })}
