@@ -17,6 +17,11 @@ pnpm auth       # confirm it worked (makes one real call)
 pnpm play:web   # build, serve on 127.0.0.1:4173, open the browser
 ```
 
+No subscription? Skip `pnpm login`: the browser opens on a settings screen
+that takes an **Anthropic API key or an OpenRouter key** instead — see
+"Paying with a key" below. An installed copy (`pnpm pack`, then
+`npx paxgalactica`) runs with no clone and no pnpm.
+
 `./start` is POSIX `sh` rather than Node for one reason: the first check a new
 clone needs is "is your Node new enough", and that cannot be written in Node.
 Everything after it hands off to pnpm. A second toolchain (a Python venv, say)
@@ -25,7 +30,7 @@ strictly more setup to solve a problem Node already solves.
 
 | script | what it does |
 |---|---|
-| `pnpm play:web` | check auth, build both halves, serve, open the browser |
+| `pnpm play:web` | check auth (subscription only), build both halves, serve, open the browser |
 | `pnpm serve` | server only, no browser — useful with `pnpm dev:web` |
 | `pnpm dev:web` | Vite dev server with HMR, proxying `/api` to 4173 |
 | `pnpm test` | the suite, with no network |
@@ -62,8 +67,14 @@ player action ──▶ resolution call ──▶ ops ──▶ applyOps ──�
 
 ## Authentication
 
-The game runs on **Claude Pro/Max subscription auth** via the Claude Agent SDK,
-which bundles its own Claude Code binary.
+Three providers pay for the model calls (`src/model/provider.ts`): the
+**subscription**, described in this section and still the default; an
+**Anthropic API key**; and an **OpenRouter key**. The two keyed ones have their
+own section below. Everything in this section is about the subscription, and
+stays true for it.
+
+The subscription runs on **Claude Pro/Max subscription auth** via the Claude
+Agent SDK, which bundles its own Claude Code binary.
 
 `pnpm login` runs **`claude setup-token`**, then stores the subscription token
 it prints at `~/.paxgalactica/oauth-token` (mode 0600, outside the repo so it
@@ -99,8 +110,15 @@ standalone scripts.
 
 ### Startup guards (`src/preflight.ts`), in order
 
-1. **API key present** — a printed note, not an abort. See above.
-2. **No usable subscription auth** — abort, pointing at `pnpm login`. Probed via
+1. **API key present** — a printed note, not an abort, and only when the
+   subscription is the chosen provider. See above.
+2. **No usable credential** — **a warning, not an abort**, and the browser opens
+   on the settings screen. It was an abort, and that inverted the moment a key
+   could be entered in the browser: a server that will not start cannot show
+   the screen it is entered on. The argument for checking at all survives
+   intact, one layer down — `GameSession` refuses to start or resume a campaign
+   (`not_authenticated`) until the provider is ready, so nobody is handed a
+   campaign that fails every action. For the subscription, readiness is probed via
    `claude auth status --json` **using `buildAuthEnv()`**, i.e. exactly the
    environment the game will use. Probing with the ambient environment instead
    is how this once reported "ready" on the strength of an API key that the
@@ -114,6 +132,76 @@ There is no TTY check. Nothing in this project draws to a terminal.
 Checking at startup matters. Without it the first sign of trouble is a failed
 model call on your first action, which reads like a broken game rather than an
 unfinished setup step.
+
+### Paying with a key: the Anthropic API or OpenRouter
+
+`docs/architecture.md` A.1, A.5 and A.6, built. Playtests no longer have to be
+billed to the subscription, and a player without one can play.
+
+**`Provider` is the seam.** `callStructured` used to call one `rawCall`, which
+spawned the binary. It now calls `activeProvider().call(...)`, and the retry
+budget, the Zod re-validation, the correction prompt, `stats`, the trace and
+the raw-JSON prompt shape all stay above the line, identical whoever answers.
+Three implementations: `subscriptionProvider` (the old `rawCall` body,
+unchanged), `anthropicProvider` (the official `@anthropic-ai/sdk`, one request,
+no agentic loop), and `openRouterProvider` (`fetch` to its OpenAI-compatible
+chat endpoint — the one every model on OpenRouter speaks, which is the point of
+choosing OpenRouter). Replay is untouched: the journal records ops, not
+reasoning.
+
+**Nothing chooses a paying provider by accident.** The choice is
+`PAXGALACTICA_PROVIDER` or what the player picked on the settings screen, and
+the default is the subscription. `ANTHROPIC_API_KEY` in a shell profile is read
+by the `anthropic` provider *once it is chosen* (as is `OPENROUTER_API_KEY` by
+OpenRouter) and never chooses it — the guarantee the subscription's key-stripping
+exists for, kept. `buildAuthEnv`'s stripping is now a property of the
+subscription provider alone.
+
+**A key goes in and never comes out.** `POST /api/settings` takes it, checks
+its shape per provider (`keyProblem` — an OAuth token pasted as an API key is
+the commonest mistake, and it bills a different account), checks it against the
+provider's free endpoint (`checkKey`: Anthropic's models list, OpenRouter's key
+info), and stores it at `~/.paxgalactica/settings.json`, mode 0600, beside the
+subscription token. A key the provider rejects is refused, not stored; one that
+cannot be checked (offline) is stored with that said. No route returns a key —
+`SettingsView` carries `sk-or-…4f2a` and where it came from, and a test asserts
+the key is absent from every body. `PAXGALACTICA_HOME` moves the directory; the
+suite points it at a directory that does not exist, so it can never read a
+developer's keys.
+
+**Tiers port with three corrections** (`API_TIERS`, `OPENROUTER_TIERS` in
+`router.ts`, beside `TIERS`). `effort` is not sent to Haiku 4.5, which rejects
+it; Haiku's "no thinking" is the parameter omitted, not `{type: 'disabled'}`;
+and the API's Haiku id is `claude-haiku-4-5`, no date suffix. OpenRouter slugs
+(`anthropic/claude-sonnet-5`, `anthropic/claude-haiku-4.5`) were read off its
+live catalogue. `ROUTES` — which call goes to which tier — stays source for
+every provider; which *model* serves a tier on a keyed provider is a setting,
+because the right answer changes month to month and the player pays for it. An
+override replaces the model and drops `effort`/`thinking`, since what Sonnet 5
+accepts says nothing about what a model routed in its place will.
+
+**Cost is computed** where the SDK used to report it: from tokens against
+`pricing.ts` for Anthropic, and from OpenRouter's own `usage.cost` (what it
+actually charged) with the table as fallback. The system prompt carries a cache
+breakpoint on both — every call kind's system prompt is identical turn to turn,
+and caching is the main cost lever once a call is billed per token — but only
+on Anthropic models for OpenRouter. `cacheReadTok` in the trace says per call
+whether OpenRouter passes the cached tier through, which A.1 left open. Each
+trace record now carries `provider` and `model`.
+
+**A spend cap, enforced in `callStructured`** — the one place every call passes
+through. `PAXGALACTICA_SPEND_CAP` or the settings screen sets it, in dollars per
+server process; once `stats.costUsd` reaches it no new attempt starts
+(`SpendCapError`, `spend_cap`, HTTP 402) and the browser opens Settings. The
+attempt that crosses the line still lands, because a call's cost is unknown
+until it returns. The running total is in the top bar (`CampaignView.spend`).
+
+**What is not verified live**: no call was made to either keyed provider while
+building this. The request shapes are the SDK's types and the API reference,
+and OpenRouter's from its documented chat schema; the tests pin those shapes
+against fakes. Prompt caching through OpenRouter, and whether
+`reasoning: {enabled: false}` turns Sonnet 5's adaptive thinking off there, are
+the two things the first keyed playtest should read off its trace.
 
 ---
 
@@ -6071,7 +6159,9 @@ over its cap, a fleet sent with `force: 0`. Layer 2 exists because of that run.
 
 ## Model routing
 
-`src/model/router.ts` is the only place tiering lives. One edit changes it.
+`src/model/router.ts` is the only place tiering lives. One edit changes it. The
+table below is the subscription's (`TIERS`); the keyed providers use the same
+`ROUTES` with their own tables beside it — see "Paying with a key".
 
 | Call | Tier | Model |
 |---|---|---|
@@ -7004,18 +7094,30 @@ src/
               ← pure. No I/O, no network, no imports from engine/model/ui.
   api/        contract.ts — Zod schemas shared by server and browser
   engine/     campaign, store, journal, turn, briefing, epilogue
-  model/      client, router, prompts, serialize, calls, auth, binary,
-              telemetry, trace-report
-              ← server-only. Spawns the binary, holds the token.
-  server/     index (node:http), router, session, events, static, errors
+  model/      client, provider, router, pricing, settings, errors, prompts,
+              serialize, calls, auth, binary, telemetry, trace-report
+              ← server-only. Spawns the binary, holds the token and the keys.
+              provider-ids.ts is the one I/O-free piece the browser imports.
+  server/     index (node:http), router, session, settings, events, static, errors
   seed/       the 25-system Rim scenario
   ui/         layout.ts (pure map geometry), portrait.ts (avatar crops)
               + ansi256.ts
 web/          React + Vite client → dist/web
+bin/          paxgalactica.mjs — an installed package's entry: serve, open the browser
 prompts/      versioned .md prompt files
 tests/        domain, engine, server, contract, layout, parity — all headless
 docs/         phase-2 prompt series and progress
 ```
+
+**Where saves live** (`resolveSaveDir`, `docs/architecture.md` A.7):
+`PAXGALACTICA_SAVE_DIR` if set; else `saves/` in the repo when running from a
+clone (recognised by its `.git`), which is every path this file names; else
+`~/.paxgalactica/saves`, because an installed package's directory is read-only
+in principle and replaced on upgrade. The two never share a directory by luck —
+an exported archive moves a campaign between them, as it does between machines.
+Prompts and the built client are read relative to the module, so `dist/` runs
+from any working directory, and `pnpm pack` ships `dist`, `prompts` and `bin`
+as one installable tarball (`npx paxgalactica`, `paxgalactica resume <file>`).
 
 `src/domain` has no network dependency and no I/O. The suite sets
 `PAXGALACTICA_NO_NETWORK=1`, and the model client throws if a call is attempted

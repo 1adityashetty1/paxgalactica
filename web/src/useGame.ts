@@ -50,6 +50,12 @@ export function useGame() {
   const [busy, setBusy] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [fatal, setFatal] = useState<string | null>(null);
+  /**
+   * The settings screen, put up by the player or by a call that could not be
+   * paid for — no usable credential, or the spend cap reached. Both are fixed
+   * on that screen, so both open it rather than ending on an error line.
+   */
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [connected, setConnected] = useState(false);
 
   const say = useCallback((text: string, tone: Message['tone'], color?: number) => {
@@ -91,7 +97,7 @@ export function useGame() {
       .catch((err: unknown) => {
         if (cancelled) return;
         if (err instanceof ApiError && err.isNoCampaign) setNeedsCampaign(true);
-        else if (err instanceof ApiError && err.isAuth) setFatal(err.message);
+        else if (err instanceof ApiError && err.isAuth) setSettingsOpen(true);
         else setFatal(err instanceof Error ? err.message : String(err));
       });
     return () => {
@@ -171,6 +177,7 @@ export function useGame() {
           return;
         }
         say(err instanceof Error ? err.message : String(err), 'error');
+        if (err instanceof ApiError && (err.isAuth || err.isSpendCap)) setSettingsOpen(true);
       }
     },
     [say],
@@ -514,9 +521,15 @@ export function useGame() {
   /** Back into the campaign the picker is sitting in front of. */
   const rejoinCampaign = useCallback(() => setNeedsCampaign(false), []);
 
+  const openSettings = useCallback(() => setSettingsOpen(true), []);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
+
   return {
     view,
     needsCampaign,
+    settingsOpen,
+    openSettings,
+    closeSettings,
     leaveCampaign,
     rejoinCampaign,
     exportCampaign,

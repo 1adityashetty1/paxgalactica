@@ -749,3 +749,23 @@ svg.outcome-art {
 .cheat-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .cheat-label { width: 78px; color: var(--dim); }
 .cheat-row select, .cheat-row button { font: inherit; font-size: 12px; }
+
+/* ---------- settings: who pays for the model calls ---------- */
+
+.settings h2 { margin-top: 22px; }
+.settings-status { padding: 8px 12px; border-radius: 4px; background: var(--panel); border: 1px solid var(--line); }
+.settings-status.ok { color: var(--good); }
+.settings-status.bad { color: var(--warn); }
+.provider-card.chosen { border-left-color: var(--accent); background: #171b24; }
+.provider-card:disabled { opacity: 0.4; cursor: not-allowed; }
+.settings-input {
+  width: 100%; max-width: 520px; background: var(--bg); color: var(--text);
+  border: 1px solid var(--line); border-radius: 4px; padding: 7px 9px; font: inherit;
+}
+.settings-input:focus { outline: none; border-color: var(--accent); }
+.settings-input.narrow { width: 110px; }
+.settings-models { display: grid; gap: 10px; max-width: 560px; }
+.settings-models label { display: grid; gap: 4px; }
+.settings-actions { margin-top: 24px; }
+.spend { color: var(--dim); font-variant-numeric: tabular-nums; }
+.spend.over { color: var(--bad); }

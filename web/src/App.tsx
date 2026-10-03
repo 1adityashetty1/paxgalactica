@@ -1,4 +1,5 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { api } from './api.js';
 import { Waiting } from './components/Waiting.js';
 import { CheatPanel } from './components/CheatPanel.js';
 import { STAT_MEANINGS, STAT_NAMES } from '../../src/domain/checks.js';
@@ -8,6 +9,7 @@ import { ansi256ToHex } from './color.js';
 import { BriefingPanel } from './components/BriefingPanel.js';
 import { ChannelPanel } from './components/ChannelPanel.js';
 import { FactionPicker } from './components/FactionPicker.js';
+import { SettingsPanel } from './components/SettingsPanel.js';
 import { GalaxyMap } from './components/GalaxyMap.js';
 import { OutcomeArt } from './components/OutcomeArt.js';
 import { RimEventCard } from './components/RimEventCard.js';
@@ -185,6 +187,17 @@ function helpLines(state: WorldState | null): string[] {
 
 export function App() {
   const game = useGame();
+  /** Whether model calls can be paid for; null until asked. Asked when there is no campaign. */
+  const [providerReady, setProviderReady] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!game.needsCampaign || providerReady !== null) return;
+    void api
+      .settings()
+      .then((s) => setProviderReady(s.ready))
+      // Unreadable settings are not a reason to block the picker; a start that
+      // cannot be paid for is refused by the server and opens the screen anyway.
+      .catch(() => setProviderReady(true));
+  }, [game.needsCampaign, providerReady]);
   const [input, setInput] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // A channel the player has opened in the UI but not yet spoken into. The
@@ -274,10 +287,28 @@ export function App() {
         <h1>Cannot start</h1>
         <pre>{game.fatal}</pre>
         <p>
-          If this mentions signing in, run <code>pnpm login</code> then <code>pnpm auth</code> and
-          restart the server.
+          If this is about paying for model calls, open{' '}
+          <button type="button" className="link" onClick={game.openSettings}>
+            Settings
+          </button>{' '}
+          — or, for a Claude subscription, run <code>pnpm login</code> then <code>pnpm auth</code>.
         </p>
       </div>
+    );
+  }
+
+  // Who pays comes before what to play. On a cold start the provider is asked
+  // first, so a player with no key lands on the screen that takes one rather
+  // than on a faction list whose every choice would be refused.
+  if (game.settingsOpen || (game.needsCampaign && providerReady === false)) {
+    return (
+      <SettingsPanel
+        firstRun={game.needsCampaign || !view}
+        onDone={(s) => {
+          setProviderReady(s.ready);
+          game.closeSettings();
+        }}
+      />
     );
   }
 
@@ -314,6 +345,17 @@ export function App() {
         </span>
         <span className="spacer" />
         {view.staged.length > 0 && <span className="pill">{view.staged.length} declared</span>}
+        {/* The running total. Under a pasted key this is the player's money. */}
+        <span
+          className={`spend${view.spend.capUsd !== null && view.spend.usd >= view.spend.capUsd ? ' over' : ''}`}
+          title="Spent on model calls since the server started"
+        >
+          ${view.spend.usd.toFixed(2)}
+          {view.spend.capUsd !== null && ` / $${view.spend.capUsd.toFixed(2)}`}
+        </span>
+        <button type="button" className="ghost-btn" onClick={game.openSettings} title="Provider, API key and spend cap">
+          Settings
+        </button>
         <button
           type="button"
           className="ghost-btn"

@@ -6,10 +6,20 @@ import {
   NewCampaignRequestSchema,
   ResumeRequestSchema,
   ROUTES,
+  SettingsUpdateSchema,
   TalkRequestSchema,
 } from '../api/contract.js';
+import type { KeyCheck } from '../model/provider.js';
+import type { KeyedProvider } from '../model/settings.js';
 import { ApiFailure, parseBody, toApiFailure } from './errors.js';
 import type { GameSession } from './session.js';
+import { applySettingsUpdate, settingsView, type StatusOf } from './settings.js';
+
+/** What the settings routes reach outside the process for — injectable, so the suite reaches nothing. */
+export interface SettingsDeps {
+  statusOf?: StatusOf;
+  checkKey?: (provider: KeyedProvider, key: string) => Promise<KeyCheck>;
+}
 
 /**
  * Route dispatch as a pure-ish function: (method, path, body) -> result.
@@ -36,9 +46,10 @@ export async function dispatch(
   method: string,
   path: string,
   body: unknown,
+  deps: SettingsDeps = {},
 ): Promise<RouteResult> {
   try {
-    return await route(session, method, path, body);
+    return await route(session, method, path, body, deps);
   } catch (err) {
     const failure = toApiFailure(err);
     return { status: failure.status, body: failure.toBody() };
@@ -50,7 +61,17 @@ async function route(
   method: string,
   path: string,
   body: unknown,
+  deps: SettingsDeps,
 ): Promise<RouteResult> {
+  // Answerable with no campaign loaded: the settings screen is the first thing
+  // a new player sees, before there is anything to play.
+  if (method === 'GET' && path === ROUTES.settings) {
+    return ok(settingsView(null, deps.statusOf));
+  }
+  if (method === 'POST' && path === ROUTES.settings) {
+    return ok(await applySettingsUpdate(parseBody(SettingsUpdateSchema, body), deps.statusOf, deps.checkKey));
+  }
+
   if (method === 'GET' && path === ROUTES.factions) {
     return ok(await session.factions());
   }

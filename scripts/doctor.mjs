@@ -71,6 +71,9 @@ if (existsSync(join(ROOT, 'node_modules'))) {
 // project, so resolving from the project root fails — silently, and in a way
 // that looks exactly like being unauthenticated.
 let binaryPresent = false;
+// Under a key the binary is unused, so its absence is a note rather than a fault.
+const binaryNeeded = (await import('./settings-store.mjs')).chosenProvider().id === 'subscription';
+const binaryBad = binaryNeeded ? bad : warn;
 try {
   const { findClaudeBinary } = await import('./find-binary.mjs');
   const binary = findClaudeBinary();
@@ -78,20 +81,51 @@ try {
     binaryPresent = true;
     ok('claude binary', binary.replace(homedir(), '~'));
   } else {
-    bad('claude binary', 'not found inside the Agent SDK', 'pnpm install');
+    binaryBad('claude binary', 'not found inside the Agent SDK', 'pnpm install');
   }
 } catch (err) {
-  bad(
+  binaryBad(
     'claude binary',
     err instanceof Error ? err.message : String(err),
     'pnpm install — the binary ships inside @anthropic-ai/claude-agent-sdk',
   );
 }
 
-/* ---------------- authentication ---------------- */
+/* ---------------- who pays ---------------- */
 
+const { chosenProvider, keyHint, KEY_ENV, PROVIDER_NAMES, resolveKey, settingsPath } = await import(
+  './settings-store.mjs'
+);
+const provider = chosenProvider();
+ok('provider', `${PROVIDER_NAMES[provider.id]} (${provider.source === 'env' ? 'PAXGALACTICA_PROVIDER' : provider.source})`);
+
+if (provider.id !== 'subscription') {
+  const path = settingsPath();
+  if (existsSync(path)) {
+    const mode = statSync(path).mode & 0o777;
+    if (mode !== 0o600) warn('settings file', `${path.replace(homedir(), '~')} is mode ${mode.toString(8)}, not 600`, `chmod 600 ${path}`);
+  }
+  const resolved = resolveKey(provider.id);
+  if (!resolved) {
+    bad('api key', `no ${PROVIDER_NAMES[provider.id]} stored`, `paste one on the settings screen, or export ${KEY_ENV[provider.id]}`);
+  } else {
+    const auth = spawnSync('node', [join(ROOT, 'scripts', 'auth.mjs')], { encoding: 'utf8' });
+    if (auth.status === 0) ok('api key', `${keyHint(resolved.key)} accepted (${resolved.source})`);
+    else bad('api key', `${keyHint(resolved.key)} not accepted`, 'paste a working key on the settings screen');
+  }
+}
+
+/* ---------------- authentication (the subscription) ---------------- */
+
+// The binary and the subscription token only matter when the subscription is
+// what pays. Under a key they are reported as notes, not failures — a player
+// paying with a key has no reason to install or sign into anything else
+// (docs/architecture.md A.8).
+const subscription = provider.id === 'subscription';
 const tokenPath = join(homedir(), '.paxgalactica', 'oauth-token');
-if (existsSync(tokenPath)) {
+if (!subscription) {
+  ok('subscription', 'not in use');
+} else if (existsSync(tokenPath)) {
   const mode = statSync(tokenPath).mode & 0o777;
   if (mode !== 0o600) {
     warn(
@@ -110,7 +144,7 @@ if (existsSync(tokenPath)) {
 // the child process, so it cannot shadow the subscription or bill an API
 // account. This used to be a fatal error, which made every fresh terminal a
 // puzzle for no safety benefit.
-for (const key of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN']) {
+for (const key of subscription ? ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'] : []) {
   if (process.env[key]) {
     warn(
       key,
@@ -124,7 +158,9 @@ for (const key of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN']) {
 // anyway on a fresh clone reported an auth failure and told the user to run
 // `pnpm login`, which is the wrong remedy and sends them down the one rabbit
 // hole this project has already cost people an afternoon in.
-if (!depsPresent || !binaryPresent) {
+if (!subscription) {
+  // Nothing to check: the key was checked above.
+} else if (!depsPresent || !binaryPresent) {
   warn(
     'subscription auth',
     'not checked yet — the Claude binary ships with the dependencies',
