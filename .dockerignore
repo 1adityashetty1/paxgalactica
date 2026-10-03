@@ -1,0 +1,10 @@
+node_modules
+dist
+saves
+docs
+tests
+faction_portraits
+.git
+*.log
+_*.mjs
+_*.ts

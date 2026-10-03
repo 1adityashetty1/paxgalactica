@@ -76,7 +76,11 @@ async function route(
     return ok(await session.factions());
   }
 
-  if (method === 'GET' && path === ROUTES.campaign) {
+  // Reads arrive as POST too: on the stateless transport every request carries
+  // the session in its body, and a GET has none.
+  const read = method === 'GET' || method === 'POST';
+
+  if (read && path === ROUTES.campaign) {
     if (!session.hasCampaign()) {
       throw new ApiFailure('no_campaign', 'No campaign is loaded. Start or resume one first.');
     }
@@ -88,7 +92,7 @@ async function route(
     return ok(await session.newCampaign(factionId, name, maxTurns, sandboxEvent));
   }
 
-  if (method === 'GET' && path === ROUTES.exportCampaign) {
+  if (read && path === ROUTES.exportCampaign) {
     const { filename, bytes } = session.exportArchive();
     return { status: 200, body: null, download: { filename, bytes } };
   }

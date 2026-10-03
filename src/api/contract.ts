@@ -636,9 +636,57 @@ export const ServerEventSchema = z.discriminatedUnion('type', [
    */
   z.object({ type: z.literal('reaction'), reaction: ReactionViewSchema }),
   z.object({ type: z.literal('error'), message: z.string() }),
-  z.object({ type: z.literal('hello'), turn: z.number().int() }),
 ]);
 export type ServerEvent = z.infer<typeof ServerEventSchema>;
+
+/* ------------------------------------------------------------------ */
+/* The stateless transport                                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What every request but `GET /api/factions` carries.
+ *
+ * The server holds nothing between requests — it is built to run on Cloud
+ * Run, where any request may land on any instance and none of them lasts. So
+ * the browser holds the session and sends it each time; the server rebuilds
+ * the campaign from it, does the work, and returns the next one. `session` is
+ * opaque to the client: it stores and returns it and never reads it.
+ *
+ * `boot` marks the first read after the page loads, so a server started by
+ * `pnpm resume <file>` can hand that campaign over once.
+ */
+export const RequestEnvelopeSchema = z.object({
+  session: z.unknown().nullable().default(null),
+  body: z.unknown().default({}),
+  boot: z.boolean().optional(),
+});
+export type RequestEnvelope = z.input<typeof RequestEnvelopeSchema>;
+
+/**
+ * The response to an enveloped request: newline-delimited JSON, streamed.
+ *
+ * Progress, reactions and state pushes arrive while the work runs — these
+ * used to travel over a separate SSE connection, which cannot work when that
+ * connection and the request may be on different instances. Then `result`,
+ * which is the route's ordinary answer and status. Then `session`, always
+ * last: it can trail the result by a model call, because a random event's
+ * flavour line is written after the turn returns and belongs in the session
+ * the browser keeps.
+ */
+export const StreamLineSchema = z.discriminatedUnion('type', [
+  ...ServerEventSchema.options,
+  z.object({ type: z.literal('result'), status: z.number().int(), body: z.unknown() }),
+  z.object({ type: z.literal('session'), session: z.unknown().nullable() }),
+]);
+export type StreamLine = z.infer<typeof StreamLineSchema>;
+
+export const STREAM_CONTENT_TYPE = 'application/x-ndjson';
+
+/** A save file, returned as data so the browser can write it to disk. */
+export const ExportResultSchema = z.object({
+  filename: z.string(),
+  archiveBase64: z.string(),
+});
 
 /**
  * What the counsellor said, and what it cost.
@@ -679,7 +727,6 @@ export const ROUTES = {
   cheat: '/api/cheat',
   talk: (factionId: string) => `/api/talk/${factionId}`,
   endtalk: (factionId: string) => `/api/endtalk/${factionId}`,
-  events: '/api/events',
   settings: '/api/settings',
 } as const;
 

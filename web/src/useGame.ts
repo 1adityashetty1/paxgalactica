@@ -1,12 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Cheat } from '../../src/domain/cheats.js';
-import {
-  ROUTES,
-  ServerEventSchema,
-  type CampaignView,
-} from '../../src/api/contract.js';
+import type { CampaignView } from '../../src/api/contract.js';
 import { spliceLog } from '../../src/ui/logview.js';
-import { api, ApiError } from './api.js';
+import { api, ApiError, onConnection, onServerEvent } from './api.js';
 import type { OutcomeArtKind } from './components/OutcomeArt.js';
 import type { BriefingEventView } from '../../src/api/contract.js';
 import { RIM_EVENT_TITLE, type RimEventKind } from '../../src/domain/events.js';
@@ -56,7 +52,7 @@ export function useGame() {
    * on that screen, so both open it rather than ending on an error line.
    */
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [connected, setConnected] = useState(false);
+  const [connected, setConnected] = useState(true);
 
   const say = useCallback((text: string, tone: Message['tone'], color?: number) => {
     setMessages((prev) => [...prev, { id: nextMessageId++, text, tone, color }].slice(-500));
@@ -90,7 +86,7 @@ export function useGame() {
   useEffect(() => {
     let cancelled = false;
     void api
-      .campaign()
+      .boot()
       .then((v) => {
         if (!cancelled) setView(v);
       })
@@ -105,26 +101,23 @@ export function useGame() {
     };
   }, []);
 
-  /* ---------------- server-sent events ---------------- */
+  /* ---------------- events streamed with each call ---------------- */
 
   /**
    * Powers whose answer already arrived over the stream this turn.
    *
-   * A ref rather than state: it is read inside the SSE handler and inside the
+   * A ref rather than state: it is read inside the event handler and inside the
    * end-turn callback, and changing it must not re-render or re-subscribe.
    */
   const spokenLive = useRef<Set<string>>(new Set());
 
+  useEffect(() => onConnection(setConnected), []);
+
   useEffect(() => {
-    const source = new EventSource(ROUTES.events);
-
-    source.onopen = () => setConnected(true);
-    source.onerror = () => setConnected(false);
-    source.onmessage = (raw) => {
-      const parsed = ServerEventSchema.safeParse(JSON.parse(raw.data as string));
-      if (!parsed.success) return;
-      const event = parsed.data;
-
+    // Every call streams its own progress, reactions and state pushes back on
+    // its response. There is no standing connection: the server keeps nothing
+    // between requests, so it has nothing to push between them either.
+    return onServerEvent((event) => {
       if (event.type === 'progress') {
         // The label is written to be shown verbatim: "Resolving",
         // "Ojjul Nar Combine considers".
@@ -159,9 +152,7 @@ export function useGame() {
       } else if (event.type === 'error') {
         say(event.message, 'error');
       }
-    };
-
-    return () => source.close();
+    });
   }, [say]);
 
   /* ---------------- intents ---------------- */
@@ -459,38 +450,27 @@ export function useGame() {
   );
 
   /**
-   * Download the campaign as a .tar.gz.
+   * Write the campaign to disk as a save file (.tar.gz).
    *
-   * Not behind `guard`: an export reads the committed journal and cannot
-   * interleave with a model call, and a backup is exactly the thing you want
-   * while a turn is grinding away.
+   * Not behind `guard`, so it reports its own errors — but it still waits its
+   * turn behind any call in flight, because the save has to be of the campaign
+   * that call leaves behind.
    */
   const exportCampaign = useCallback(async () => {
     try {
       const { filename, size } = await api.exportCampaign();
-      const staged = view?.staged.length ?? 0;
       say(`Saved ${filename} (${(size / 1024).toFixed(1)} kB).`, 'system');
-      say('Resume it anywhere with: pnpm resume <file>', 'system');
-      if (staged > 0) {
-        // Staged actions are not in the journal, so an archive cannot carry
-        // them. Say so — silently dropping declarations is how a player loses
-        // a turn's work and blames the save format.
-        say(
-          `Note: ${staged} declared action${staged === 1 ? '' : 's'} not yet landed and ${
-            staged === 1 ? 'is' : 'are'
-          } not in the archive. End the turn first to include ${staged === 1 ? 'it' : 'them'}.`,
-          'error',
-        );
-      }
+      say('Load it from the title screen, or resume it from a terminal with: pnpm resume <file>', 'system');
     } catch (err) {
       say(err instanceof Error ? err.message : String(err), 'error');
     }
-  }, [say, view]);
+  }, [say]);
 
   const importCampaign = useCallback(
     (file: File) =>
       guard(async () => {
         const outcome = await api.importCampaign(file);
+        setView(outcome.view);
         setNeedsCampaign(false);
         say(
           `Loaded "${outcome.name}" — turn ${outcome.turn}, ${outcome.journalEntries} journal entries, exported ${outcome.exportedAt.slice(0, 16).replace('T', ' ')}.`,

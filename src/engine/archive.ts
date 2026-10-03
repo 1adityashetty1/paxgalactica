@@ -42,6 +42,14 @@ export interface UnpackedCampaign {
   turn: number;
   /** Ops the reducer refused during verification. Non-zero is not fatal; the journal records rejections faithfully. */
   rejectionCount: number;
+  /**
+   * The turn in progress, when the archive was saved mid-turn: staged
+   * declarations, action points spent, an open channel. Unvalidated here — it
+   * belongs to the server session, which parses it. Absent from archives
+   * written before saves carried it, and ignored by `pnpm resume`, which only
+   * ever wanted the journal.
+   */
+  session?: unknown;
 }
 
 const README = `Pax Galactica campaign archive
@@ -72,7 +80,7 @@ const encode = (value: unknown): Uint8Array =>
 export function packCampaign(
   name: string,
   save: SaveFile,
-  options: { now?: number } = {},
+  options: { now?: number; session?: unknown } = {},
 ): Uint8Array {
   const now = options.now ?? Date.now();
   const entries = save.journal.entries as Journal['entries'];
@@ -99,6 +107,9 @@ export function packCampaign(
         { path: `${PREFIX}/manifest.json`, bytes: encode(manifest) },
         { path: `${PREFIX}/campaign.json`, bytes: encode(save) },
         { path: `${PREFIX}/README.txt`, bytes: new Uint8Array(Buffer.from(README, 'utf8')) },
+        ...(options.session === undefined
+          ? []
+          : [{ path: `${PREFIX}/session.json`, bytes: encode(options.session) }]),
       ],
       now,
     ),
@@ -163,11 +174,24 @@ export function unpackCampaign(data: Uint8Array): UnpackedCampaign {
     );
   }
 
+  const sessionEntry = find('session.json');
+  let session: unknown;
+  if (sessionEntry) {
+    try {
+      session = JSON.parse(Buffer.from(sessionEntry.bytes).toString('utf8'));
+    } catch {
+      // The journal is the campaign; a turn in progress that cannot be read is
+      // dropped rather than refusing a save that is otherwise whole.
+      session = undefined;
+    }
+  }
+
   return {
     manifest,
     save,
     turn: verified.state.turn,
     rejectionCount: verified.rejectionCount,
+    ...(session === undefined ? {} : { session }),
   };
 }
 

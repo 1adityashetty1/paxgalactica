@@ -104,7 +104,7 @@ function helpLines(state: WorldState | null): string[] {
     '  /endtalk         close it — only then is anything you agreed made real',
     '  :endturn         land everything declared, hear the powers respond, advance time',
     '  :discard         clear what you have declared this turn',
-    '  :export          download this campaign as a .tar.gz you can resume anywhere',
+    '  :save            save this campaign to disk — load it from the title screen later',
     '  :help            this',
     '  :cheats          the cheat menu, for testing — free, instant, costs no action,',
     '                   skips the arbiter, and no power is ever told',
@@ -359,12 +359,12 @@ export function App() {
         <button
           type="button"
           className="ghost-btn"
-          title="Download this campaign as a .tar.gz — resume it with: pnpm resume <file>"
+          title="Save this campaign to disk — load it from the title screen, or: pnpm resume <file>"
           onClick={() => void game.exportCampaign()}
         >
-          Export
+          Save
         </button>
-        <span className={game.connected ? 'dot on' : 'dot off'} title={game.connected ? 'live' : 'reconnecting'} />
+        <span className={game.connected ? 'dot on' : 'dot off'} title={game.connected ? 'server reachable' : 'cannot reach the server'} />
       </header>
 
       <main className="grid">
