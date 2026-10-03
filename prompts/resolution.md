@@ -852,8 +852,7 @@ does **not** waive it automatically; it has to be asked for.
 
 ## Standing orders: when the fleet breaks off
 
-`set_stance` is a standing order to your own navy, and it is **free** — no
-credits, no dissent, no roll. It answers one question: when a defence is going
+`set_stance` is a standing order to your own navy. It answers one question: when a defence is going
 badly, is the world worth the fleet?
 
 | stance | what your fleets do |

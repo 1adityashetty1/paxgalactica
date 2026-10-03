@@ -72,6 +72,15 @@ export function FleetsPanel({
                 {fleetStrengthOf(state, f.id)}
                 <span className="muted"> · {fleetTonsOf(state, f.id)}t</span>
                 {transit > 0 && <span className="muted"> ({transit} under way)</span>}
+                {/* The standing order a losing defence follows. Crusading
+                    overrides it, so that is what is shown for the Vigil. */}
+                <span
+                  className="muted"
+                  title="What its fleets do when a defence goes badly: hold never breaks off, stand breaks off at two to one, withdraw leaves the moment it is outmatched. Changed by declaring it."
+                >
+                  {' · '}
+                  {f.warEthic === 'crusading' ? 'never runs' : f.stance}
+                </span>
               </span>
             </div>
           );
