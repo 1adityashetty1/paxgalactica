@@ -31,7 +31,7 @@ import { callStructured } from '../model/client.js';
 import { span } from '../model/telemetry.js';
 import { loadPrompt } from '../model/prompts.js';
 import { createSeedState } from '../seed/scenario.js';
-import { proposeFor } from '../domain/initiative.js';
+import { brokeredAccords, proposeFor } from '../domain/initiative.js';
 import { controlHistory } from './journal.js';
 import type { Concession } from '../domain/diplomacy.js';
 import type { WorldState } from '../domain/state.js';
@@ -784,6 +784,15 @@ export async function endTurn(
       ];
 
       const applied = campaign.commit(batch, 'model', `initiative:${faction.id}`, faction.id);
+      notes.push(...applied.notes);
+      rejections.push(...applied.rejections);
+    }
+
+    // And what two NPC powers agree between themselves — an exchange of goods,
+    // a peace in a war gone quiet. Engine batches with no actor: the rule read
+    // both parties, so neither one's guard speaks for the pair.
+    for (const accord of brokeredAccords(campaign.state)) {
+      const applied = campaign.commit(accord.ops, 'engine', accord.label);
       notes.push(...applied.notes);
       rejections.push(...applied.rejections);
     }

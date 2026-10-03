@@ -106,6 +106,11 @@ Same op vocabulary and duration rules as resolution:
   with nobody on the books, emit `recruit_agent` at a world it holds first, in
   the same reaction, and the `deploy_agent` after it. They travel three jumps a
   turn and are at work when they arrive.
+- **A promissory note you hold** from another power may be called in with
+  `play_note` when its terms serve you; it needs nobody's consent, and goes home
+  to its issuer once played. Your own note is a favour to give, not to play.
+- **A truce** in the standing block means the war with that power has ended for
+  now. Attacking across it is legal and the dearest public act there is.
 
 Keep the reaction proportionate. Not every turn is a crisis; a
 minor player action should produce watchfulness, not a general mobilisation.

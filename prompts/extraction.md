@@ -49,6 +49,12 @@ leaving the buyer ninety credits poorer and holding nothing.
 **nothing** — a hostage released, a gift, a debt of honour settled. The moment a
 price is named, it is a treaty.
 
+**A promissory note changes hands the same way.** A power's own note is a
+favour it may give — *"take our note; call on us when you need the line"* is a
+`transfer_asset` of that note to the other party, or an `assets` term when
+something is given for it. The holder plays it later on its own turn; nothing in
+the accord calls it in.
+
 **A fixture is not on the table.** A mine, an exchange, a theatre — anything the
 state block marks *"fixed here; changes hands only with the world"* — cannot be
 transferred on its own. Selling one is selling the world it stands on: write a
@@ -222,8 +228,20 @@ Specifically:
   |---|---|
   | `non_aggression` · `ceasefire` | attacking the other party auto-breaks it: −25 with them, −10 with every onlooker |
   | `mutual_defense` | the above, plus `shipsPledged` are really dispatched to fight |
-  | `trade_accord` | mutual immunity from each other's blockades and commerce raiding |
+  | `trade_accord` | mutual immunity from each other's blockades and commerce raiding; `terms.commodities` names the parties whose goods go to the other every turn |
   | `basing_rights` | their fleets may enter your systems without it being an attack — the ONLY way to station ships in friendly space |
+
+  **A peace between two powers at war leaves a truce.** A `ceasefire`,
+  `non_aggression`, `mutual_defense` or `cession` signed while they are at war
+  holds them out of war for eight turns whatever the paper does after, and heals
+  their standing toward the edge of war. Nothing to write for it: the reducer
+  sees the war and records the truce.
+
+  **Goods.** Every power's own goods are worth nothing to it and 10 a unit to
+  anyone else. A `trade_accord` whose `terms.commodities` lists a party sends
+  that party's goods to the other every turn the accord holds — emit it when
+  someone agreed to supply the other, and list only the party that agreed to
+  send. It is legal on a `trade_accord` only.
   | `tribute` | `incomePerTurn` moves every turn — **only when it really is tribute**: money paid to be left alone, not money paid for something |
   | `contract` | the same `incomePerTurn` machinery for a **commercial** deal: a hire, an annuity, a charter fee, a retainer, a share of a season |
 

@@ -16,7 +16,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 11;
+export const JOURNAL_VERSION = 12;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -93,6 +93,7 @@ export const JournalVersionSchema = z.union([
   z.literal(9),
   z.literal(10),
   z.literal(11),
+  z.literal(12),
 ]);
 
 export const JournalSchema = z.object({
@@ -127,7 +128,10 @@ export const JournalSchema = z.object({
    *     before an overbuy's trim could tell a moved hull from a new one;
    *     before the Confederacy was lucky; when a world carried one
    *     fixture; and when an operative was recruited and placed in one step.
-   * 11 — current.
+   * 11 — written before a war-ending peace left a truce, before a power's
+   *     span of control charged dissent, and before powers made goods and
+   *     held promissory notes.
+   * 12 — current.
    */
   version: JournalVersionSchema,
   entries: z.array(JournalEntrySchema),
@@ -200,6 +204,10 @@ export function replay(
     // Drajk's luck came with version 11; before it every power drew the
     // galaxy's weights, and the pulse reads luck off the seeded faction.
     luck: parsed.version >= 11,
+    // Notes and commodities came with version 12; before it no power held a
+    // favour to hand over or made goods it could not sell to itself.
+    notes: parsed.version >= 12,
+    commodities: parsed.version >= 12,
   });
   let rejectionCount = 0;
   // The opening board, before anything is applied. Without it an observer's
@@ -272,6 +280,11 @@ export function replay(
     // An operative was recruited and placed in one step, anywhere, at work at
     // once. Those campaigns ran their networks that way.
     operativesTravel: parsed.version >= 11,
+    // A peace signed between two powers at war left nothing behind it, so a
+    // ceasefire that lapsed was a war resumed. Those campaigns' wars ran on.
+    truces: parsed.version >= 12,
+    // Holding many worlds cost no dissent.
+    spanOfControl: parsed.version >= 12,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

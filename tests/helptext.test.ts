@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fixtureLines, shipClassLines } from '../src/ui/helptext.js';
+import { fixtureLines, peaceLines, shipClassLines, spanLines } from '../src/ui/helptext.js';
 import { CREDITS_PER_TON, HULL_CLASSES, HULL_SPEC } from '../src/domain/hulls.js';
 import { FIXTURE_COST, FIXTURE_UPKEEP, MAX_FIXTURE_BONUS } from '../src/domain/diplomacy.js';
 import { ASSET_ARCHETYPES } from '../src/domain/assets.js';
@@ -24,7 +24,12 @@ describe('the help text', () => {
   });
 
   it('keeps every line as narrow as the prose around it, so the table does not wrap', () => {
-    for (const line of [...shipClassLines(), ...fixtureLines(createSeedState('meridian'))]) {
+    for (const line of [
+      ...shipClassLines(),
+      ...fixtureLines(createSeedState('meridian')),
+      ...spanLines(),
+      ...peaceLines(),
+    ]) {
       expect(line.length, line).toBeLessThanOrEqual(76);
     }
   });

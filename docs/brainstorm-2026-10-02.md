@@ -16,6 +16,11 @@ scored against two things:
 None of this is a commitment. It is a list to argue with, ordered so the cheap,
 well-fitting ideas surface first.
 
+**Built** (journal version 12): truces (§2.1), emissions (§3.5), a span of
+control (§2.5), promissory notes (§1.2), commodities (§1.3) and fixtures that can
+be hurt (§6.3). CLAUDE.md holds what each became; two of them changed on the
+way, and the notes beside §3.5 and §2.5 say how.
+
 **Scores** are 1–5 for *setting fit* and *architecture fit*. **Size** is S
 (an afternoon), M (an item like 121 or 124's mechanics) or L (a subsystem like
 assets or officers). **Gap** names the known hole in CLAUDE.md or `docs/todo.md`
@@ -239,6 +244,10 @@ nobody else reads on the attacking side.
 **Fit.** Setting 3, architecture 5. Size S. Low priority: the occupation sweep
 showed this kind of lever is a cliff, and one already exists.
 
+**As built.** Never less than the homeland, read off influence before dissent so
+it cannot spiral, and a base of 5 rather than 6 — at 6 it never fired in the
+harness.
+
 ---
 
 ## 3. Covert work and intelligence
@@ -339,6 +348,11 @@ before arrival: early warning, the thing a listener should buy. A power that
 sails no fleets is invisible to SIGINT.
 
 **Fit.** Setting 3, architecture 5. Size S.
+
+**As built.** Fleet movements are already public to everyone, so hearing them
+would have added nothing. A listener instead hears the *hidden* work that runs
+on hulls and yards — a raid and the four secret yard programmes — within two
+jumps, and nothing done by people in rooms.
 
 ---
 

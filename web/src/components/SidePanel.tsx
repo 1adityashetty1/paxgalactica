@@ -6,7 +6,18 @@ import { TradePanel } from './TradePanel.js';
 import { STAT_NAMES } from '../../../src/domain/checks.js';
 import { debtsFor } from '../../../src/domain/debt.js';
 import { describeOutstanding, loansFor } from '../../../src/domain/loan.js';
-import { assetWorthRangeTo, MAX_FIXTURES_PER_WORLD } from '../../../src/domain/diplomacy.js';
+import {
+  assetWorthRangeTo,
+  COMMODITY_VALUE,
+  fixtureIntegrity,
+  isCommodity,
+  isNote,
+  isTruceLive,
+  MAX_FIXTURES_PER_WORLD,
+  TRUCE_BREAKING_REPUTATION_COST,
+  truceBetween,
+  workingStats,
+} from '../../../src/domain/diplomacy.js';
 import { shortageFactor } from '../../../src/domain/events.js';
 import { describeOrderEffect } from '../../../src/domain/development.js';
 import { describeEffect } from '../../../src/domain/diplomacy.js';
@@ -44,6 +55,8 @@ import {
   statFixturesAt,
   treatiesFor,
   warsFor,
+  spanOfControl,
+  TRUCE_FLOOR,
   type WorldState,
 } from '../../../src/domain/state.js';
 import type { Briefing } from '../../../src/engine/briefing.js';
@@ -158,7 +171,10 @@ function Factions({
         const penalty = dissentPenalty(f.dissent);
         const isPlayer = f.id === state.playerFactionId;
         const disposition = dispositionBetween(state, f.id, state.playerFactionId);
-        const held = state.systems.filter((s) => s.controllerFactionId === f.id).length;
+        // The player's span is served, for `effective`'s reason: it reads
+        // influence, which a hidden rival debuff can lower.
+        const span = isPlayerRow ? served.span : spanOfControl(state, f.id);
+        const truce = isPlayer ? undefined : truceBetween(state.truces, state.turn, f.id, state.playerFactionId);
         const color = ansi256ToHex(f.displayColor);
         const ledger = ledgerFor(state, f.id);
         return (
@@ -190,7 +206,13 @@ function Factions({
               )}
             </header>
             <div className="meta">
-              fleet {fleetStrengthOf(state, f.id)} · {f.credits}cr · {held} systems
+              fleet {fleetStrengthOf(state, f.id)} · {f.credits}cr ·{' '}
+              <span
+                className={span.over > 0 ? 'bad' : undefined}
+                title={`Worlds held against the span of control: ${span.span} can be governed, set by influence and never below the homeland. Each world past it costs a point of dissent every turn.`}
+              >
+                {span.held}/{span.span} worlds
+              </span>
               {isPlayer && (
                 <>
                   {' '}
@@ -264,6 +286,14 @@ function Factions({
               </div>
             )}
             <div className="ethics">
+              {truce && (
+                <span
+                  className="chip good"
+                  title={`A war ended between you. Neither side may attack the other until turn ${truce.untilTurn}; standing heals toward ${TRUCE_FLOOR} meanwhile. Breaking it costs 25 with them and ${TRUCE_BREAKING_REPUTATION_COST} with every other power.`}
+                >
+                  truce · turn {truce.untilTurn}
+                </span>
+              )}
               <span className="chip">{f.warEthic}</span>
               <span className="chip">{f.tradeEthic.replace('_', ' ')}</span>
               {/* Who this power charges for passage. Shown as a chip beside the
@@ -455,11 +485,14 @@ function SystemTab({
           <ul className="ship-list">
             {fixtures.map((w) => {
               const holder = getFaction(state, w.heldBy);
+              // What it still yields after sabotage, and how hurt it is.
+              const hit = w.damage ?? 0;
+              const working = workingStats(w);
               const spread =
                 w.yield?.kind === 'stat'
-                  ? w.yield.stats
-                      .map((x) => `${x.points > 0 ? '+' : ''}${x.points} ${x.stat}`)
-                      .join(' · ')
+                  ? working.length === 0
+                    ? 'wrecked'
+                    : working.map((x) => `${x.points > 0 ? '+' : ''}${x.points} ${x.stat}`).join(' · ')
                   : null;
               return (
                 <li key={w.id} className="agent-row" title={w.text}>
@@ -470,7 +503,15 @@ function SystemTab({
                     {' · '}
                     {holder?.name ?? w.heldBy}
                   </span>
-                  {spread && <span className="count">{spread}</span>}
+                  {spread && <span className={hit > 0 ? 'count bad' : 'count'}>{spread}</span>}
+                  {hit > 0 && (
+                    <span
+                      className="chip bad"
+                      title="Sabotaged. Each point of damage costs a point of what it yields, and it is still charged upkeep. A repair programme (construction, conversion or retooling) puts it back at 40 a point."
+                    >
+                      damaged {fixtureIntegrity(w) - hit}/{fixtureIntegrity(w)}
+                    </span>
+                  )}
                 </li>
               );
             })}
@@ -870,6 +911,17 @@ function Assets({ state }: { state: WorldState }) {
               a.yield?.kind === 'dissent' ? `settles the population` : null,
               a.yield?.kind === 'asset' ? `yields ${a.yield.perTurn} ${a.yield.unit}/turn` : null,
               offers.length > 1 ? `${offers.length} powers want it` : null,
+              // The two kinds whose one rule decides what to do with them.
+              // The note's own text already says what it gives; this says what
+              // to DO with it, which is the opposite for issuer and holder.
+              isNote(a)
+                ? a.issuedBy === me
+                  ? 'your own favour: give it away and the holder may call it in, unasked'
+                  : `yours to call in — declare it; it then goes home to ${getFaction(state, a.issuedBy)?.name ?? a.issuedBy}`
+                : null,
+              isCommodity(a) && a.issuedBy === me
+                ? `your own goods: worth nothing to you, ${COMMODITY_VALUE} a ${a.unit} to whoever you give them to`
+                : null,
             ].filter((x): x is string => x !== null);
             return (
               <div key={a.id} className="commitment">
@@ -1164,6 +1216,12 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
                 {t.terms.mutualDefenseTrigger && (
                   <li className="trigger">triggers on: {t.terms.mutualDefenseTrigger}</li>
                 )}
+                {(t.terms.commodities ?? []).map((maker) => (
+                  <li key={`goods-${maker}`} className={maker === me ? undefined : 'good'}>
+                    goods: {getFaction(state, maker)?.name ?? maker} →{' '}
+                    {getFaction(state, t.parties.find((p) => p !== maker) ?? '')?.name ?? '?'} every turn
+                  </li>
+                ))}
                 {/*
                   What ENDS the paper. A treaty carrying a condition it can die
                   of is a treaty the player should be able to read, and this was
@@ -1194,6 +1252,28 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
             </li>
           ))}
         </ul>
+      )}
+
+      {/* Every live truce, not only the player's: a truce is public, and it is
+          priced with every onlooker when it is broken — so whose wars are
+          paused is a fact the whole board can see. */}
+      {(state.truces ?? []).some((t) => isTruceLive(t, state.turn)) && (
+        <>
+          <h4>Truces</h4>
+          <ul className="terms">
+            {(state.truces ?? [])
+              .filter((t) => isTruceLive(t, state.turn))
+              .map((t) => (
+                <li
+                  key={`${t.treatyId}-${t.parties.join('-')}`}
+                  title={`Neither may attack the other until it runs out, and standing heals toward ${TRUCE_FLOOR} while it holds. Breaking it costs 25 with the victim and ${TRUCE_BREAKING_REPUTATION_COST} with every other power.`}
+                >
+                  {t.parties.map((id) => getFaction(state, id)?.name ?? id).join(' and ')} ·{' '}
+                  {t.untilTurn - state.turn} turns left
+                </li>
+              ))}
+          </ul>
+        </>
       )}
 
       <h4>Agents</h4>

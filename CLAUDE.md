@@ -586,6 +586,32 @@ Arkane (resolve 19, `defensive`) never occupies anything and Meridian (the
 conquest: an accelerator for whoever is winning, the shape the principle rules
 out.
 
+### A span of control
+
+`spanOfControl` in `state.ts`, borrowed from *Terra Invicta*'s control cap and
+*EU4*'s overextension: a soft cap, where going over costs more each turn rather
+than forbidding the expansion. A power governs `SPAN_BASE` (5) plus its influence
+modifier worlds — **never fewer than its homeland** — and every world held past
+that adds `SPAN_DISSENT_PER_WORLD` (1) to its dissent a turn. `OCCUPATION_COST`
+charges for *whose* ground it is; this charges for *how much*, and it reads
+influence, which nothing on the attacking side read before.
+
+**Influence before dissent** (`effectiveStats(..., { dissent: false })`), because
+the alternative is a spiral: dissent costs influence, a smaller span costs
+dissent. The homeland floor exists because the Vigil, at influence 6, would
+otherwise open the campaign paying for ground it has always held. Opening spans:
+Meridian 9, the Combine 8, Arkane 5, the Vigil and Drajk 4 — every power exactly
+at or inside its span.
+
+**Swept, and a base of 6 is the trap.** It never fires in the harness — nobody
+holds more than six worlds — and the harness would report that as a clean pass
+while the mechanic did nothing, the failure the first veterancy thresholds had.
+At 5 it fires for the Vigil alone on 17 of 30 turns, taking its dissent from 18
+to 34 by turn 30, with the board unchanged at 30 and 100 turns. At 4 it reaches
+Arkane and Drajk and moves the board. The player's span is served in
+`CampaignView.effective.span`, for `effective.stats`'s reason. Pinned to
+`JOURNAL_VERSION` 12 (`LegacyRules.spanOfControl`).
+
 ### Ships are bought, and a navy you cannot pay for shrinks
 
 `CREDITS_PER_TON` is **15**; `UPKEEP_PER_TON` is **1 a turn**. A battleship is
@@ -797,7 +823,7 @@ had no reason to agree.
 | **escort** | 2 | 30 | 2 | 1 | — | 0 | the screen, and the answer to boats |
 | **freighter** | 3 | 45 | 3 | **0.01** | — | 1 | takes more of a lane crossing ground nobody owns |
 | **lifter** | 3 | 45 | 3 | **0.01** | **6** | 2 | the only way to take ground |
-| **listener** | 3 | 45 | 3 | **0.01** | — | 3 | SIGINT: reads what is under way where it stands |
+| **listener** | 3 | 45 | 3 | **0.01** | — | 3 | SIGINT: reads what is under way where it stands, and hears raids and yards two jumps out |
 | **torpedo boat** | 2 | 30 | 2 | **0.1** | — | 4 | strikes past a screen at the heaviest hulls |
 | **battleship** | 4 | 60 | 4 | 3 | — | 5 | the line; it wins the exchange |
 
@@ -929,6 +955,21 @@ say both.
 > the better fighter on every axis and an escort's whole compensation is that it
 > is spent first. Same lesson as `tradeEthic` and `warEthic`: a difference
 > expressed only as a number gets solved once and then ignored.
+
+### A listener hears loud work two jumps out
+
+`EMITTING_CATEGORIES` and `heardSystems` in `intel.ts`, borrowed from
+*HighFleet*'s ELINT. A listener saw exactly what a watcher sees, on the world it
+stood over and nowhere else — an operative you could shoot. It now also hears
+**emitting** work within `EMISSION_RANGE` (2) jumps: a raid (`commerce_raiding`,
+covert, and the thing a listener on a lane is for) and the four secret yard
+programmes. Espionage, counter-intelligence and political manoeuvre are people
+in rooms and emit nothing. **A power that runs no ships and no yards is
+invisible to SIGINT.**
+
+The brainstorm's version — hearing fleets under way — would have added nothing:
+`fleet_movement` is already public to everyone, and the tripwire test on
+`worldAsSeenBy` keeps it that way. Read-side only, so it needs no journal pin.
 
 ### A world is taken by the lift arm
 
@@ -1570,9 +1611,41 @@ paid they sit at −48, exactly where the signature left them. A treaty with a
 same unmoved numbers, and the war resumes with no act by either party. An
 indefinite ceasefire is the only durable peace available, and reparations —
 `terms.payment` and `incomePerTurn`, the two mechanisms built for exactly this —
-move real money and buy no standing at all. Left as a known gap rather than
-patched: paying goodwill per turn of kept peace is a decay model in disguise, and
-that decision belongs to the ratchet, not to this.
+move real money and buy no standing at all. Paying goodwill per turn of kept
+peace would be a decay model in disguise, and that decision belongs to the
+ratchet — so the answer was a truce, below, which heals a war and nothing else.
+
+### A peace between powers at war leaves a truce
+
+`TruceSchema` in `src/domain/diplomacy.ts`, borrowed from *Europa Universalis
+IV*, where every peace imposes one. A `ceasefire`, `non_aggression`,
+`mutual_defense` or `cession` signed (or ratified) between two powers that
+`warsFor` lists as at war leaves a truce for `TRUCE_TURNS` (8):
+
+- **It holds them out of war** whatever the paper under it does. `warsFor`
+  excludes the pair and `honourTreaties` withholds a bot's attack across it — a
+  ceasefire may lapse after two turns and a cession is spent on signature, and
+  the truce runs on. A record of its own on `WorldState.truces` for exactly that
+  reason: it outlives the treaty that made it.
+- **It heals the war and nothing else.** Each turn it holds, each side's regard
+  for the other rises `TRUCE_RECOVERY` (2) toward `TRUCE_FLOOR` — one point short
+  of war — and no further, and above the floor it moves nothing. So it lifts a
+  shallow war out of war, leaves a deep one at war when it ends, and never
+  manufactures friendship. The ratchet stands everywhere else.
+- **Breaking it is the dearest public act in the game.** An attack across a
+  truce costs the victim's 25 and `TRUCE_BREAKING_REPUTATION_COST` (20, twice a
+  pact's price) with every onlooker — not additive with a pact broken by the same
+  attack: one act, the dearer price.
+
+`wereAtWar` is read **before** the treaty goes live at both sites, because a live
+peace is one of the things `warsFor` reads. A second peace between the same pair
+renews the truce. Truces are public: the price of breaking one is charged with
+every onlooker, so every onlooker can see it, and the Treaties panel lists them
+all.
+
+The bots make peace too — see *"What two powers agree without a channel"* —
+so the harness forms truces: fourteen bot ceasefires over 100 turns, from turn
+38. Pinned to `JOURNAL_VERSION` 12 (`LegacyRules.truces`).
 
 **3. Walking away from a commitment now costs more than it paid.** That refund is
 the live hole underneath all of it: `+COMMITMENT_GOODWILL` on establish and `−` on
@@ -2360,6 +2433,66 @@ Bounds, each answering a specific way the field could be turned into free money:
 - **A producer does not split.** Halving a mine would double what it produces for
   nothing. A going concern is one thing whatever its `quantity` says, and what it
   makes is the divisible half.
+
+### A fixture can be hurt
+
+Borrowed from *Stars Without Number*, where faction assets have hit points. A
+fixture carries `Asset.damage`, one point per point of its budget, and **each
+point costs a point of its yield**, off the last attribute first
+(`workingStats`) — so a split fixture usually loses the power's half before the
+ground's. A `sabotage` operative with the `fixture_damage` effect strikes the
+host's best working fixture each turn it succeeds. A wrecked fixture yields
+nothing and **is still charged upkeep**, which is the price sabotage puts on a
+rival; a `repair_fixture` programme (construction, conversion or retooling, on a
+world you hold, `FIXTURE_REPAIR_COST` 40 a point) puts it back. Repair is a
+ground improvement, so it lands for whoever holds the world, and
+`boundPayloadsToOutcome` halves or strips it like any payload. Nothing in an old
+journal can carry either, so neither is pinned.
+
+### Promissory notes: a favour signed in advance
+
+`NOTE_KINDS` in `diplomacy.ts`, borrowed from *Twilight Imperium*. Every power
+opens holding one note of its own (seeded, `ast-0-9`…`ast-0-13`, paper, worth
+nothing to its issuer and `NOTE_VALUE` to anyone else). Given away —
+`transfer_asset`, which needs nobody for your own — the holder calls it in with
+`play_note`, an ordinary op the arbiter prices as `trivial`, because **a note is
+consent given ahead of time**. What it calls into force, for `NOTE_TERM_TURNS`
+(5), is a mechanism that already exists:
+
+| note | issuer | when played |
+|---|---|---|
+| most-favoured terms | Meridian | `trade_accord`, and `NOTE_INCOME_SHARE` (25%) of the issuer's richest world |
+| escort of the line | Iron Vigil | `mutual_defense` with `NOTE_ESCORT_HULLS` (6) pledged by the issuer |
+| line of credit | Ojjul Nar | a credits `Loan` of `NOTE_CREDIT` (300) at `NOTE_CREDIT_RENT` (15) |
+| sanctuary | Arkane | `basing_rights` |
+| safe passage | Drajk | `trade_accord` — the issuer raids nothing of the holder's |
+
+Keyed on `Asset.note`, never on the issuer's id. **It comes home when played**,
+as in *Twilight Imperium*: the favour is spent, and the issuer chooses afresh
+whether to hand it over again. Refused while the two are at war (a favour given
+in peace), when what it gives is already in force (rather than superseding
+something possibly better), and against an exclusive arrangement either side
+holds. A note is never spent (`consume_asset`) and never minted
+(`create_asset` of `promissory_note`). The seed is pinned to `JOURNAL_VERSION`
+12 (`createSeedState`'s `notes`).
+
+### Goods: worth nothing to the power that makes them
+
+`COMMODITY_PER_TURN` in `diplomacy.ts`, borrowed from *Twilight Imperium*'s
+commodities. Each power makes `COMMODITY_PER_TURN` (2) of its own goods a turn
+(`Faction.commodity`) at its best world, to `COMMODITY_CAP` (12), worth nothing
+to it and `COMMODITY_VALUE` (10) a unit to anyone else. **It pays when somebody
+else holds it**: handed over, carried by a `trade_accord` whose
+`terms.commodities` names the maker, or taken with a world — and one place pays,
+the tick, which sells any goods held by someone other than their maker. That is
+what makes peace worth something every turn rather than once: almost every
+mechanic between two powers is a cost, and this one costs the giver nothing.
+
+It mints money, which is the point and the bound: production is fixed, so the
+whole Rim can create at most 100 a turn, and only when every power is giving
+its goods away. The bots trade them by exchange — see *"What two powers agree
+without a channel"*. Seeded at `JOURNAL_VERSION` 12 (`createSeedState`'s
+`commodities`).
 
 ### Intelligence is not an asset; a dossier is
 
@@ -3158,6 +3291,7 @@ costs the breaker 25 disposition with the other party.
 **Agents** separate two things that are easy to conflate:
 
 - the **effect** is what happens — `hull_damage` (mutates fleet strength),
+  `fixture_damage` (strikes a point off a fixture's yield),
   `income_penalty` (read in `ledgerFor`), `stat_debuff` (read in
   `effectiveStats`), `sedition` (raises the target's own dissent, and is the
   only thing in the game that can), `intel` (read in `ordersVisibleTo`, revealing hidden
@@ -3823,6 +3957,75 @@ The SIGINT purchase reads effective guile too, as `maxAgentsFor` does; that
 moved nothing. `pnpm fleetlab` plays no bots and is unchanged. Bot ops are
 journaled, so no save replays differently.
 
+### What two powers agree without a channel
+
+`brokeredAccords` in `initiative.ts`. **Every treaty in the game came out of a
+transcript, and every transcript has the player in it** — so two NPCs could
+fight and never make peace, and goods could reach a power only if the player
+handed them over. Right for the player, whose consent lives in a channel; it
+left the half of the galaxy the bots run unable to agree anything at all, and
+three of the journal-version-12 mechanics invisible to the harness.
+
+Two agreements between NPC powers, decided by rule and applied in `endTurn`
+after the bots as **engine batches with no actor** — the rule read both parties,
+so neither one's guard speaks for the pair:
+
+- **An exchange of goods** between two powers on good terms
+  (`EXCHANGE_STANDING`, 20, both ways), each handing the other its stock, each
+  with its best partner only. **An exchange and never a gift**, because the
+  Combine's sheet refuses to give anything away for nothing — goods worth
+  nothing to their makers changing hands both ways is consideration on both
+  sides. On the opening board only the Combine and the Confederacy clear it.
+- **A peace** in a war gone quiet: no battle for `ENVOYS_QUIET_TURNS`, neither
+  with a fleet under way at the other. A ceasefire for `BOT_PEACE_TURNS` (8),
+  which leaves a truce. **A bot does not make a peace its own compulsions bar**
+  — `Compulsion.barsPeaceWith`, authored on the Vigil's *"no accommodation with
+  pirates, smugglers or the Nars"* as `['drajk', 'ojjul']`, because only the
+  seed can turn that prose into ids. The first version made the peace anyway
+  and charged `COMPULSION_BREACH_DISSENT`, and measured it: wars go quiet within
+  five turns, so the Vigil made that peace four times in thirty turns and
+  finished at 62 dissent against 34. A doctrine bot paying to defy its own sheet
+  for nothing it can name is not following its doctrine. A player or a
+  model-driven reaction still can, through the arbiter, at the price.
+
+And two covert rules every bot carries, added in `proposeFor` beside the
+post-filters so a bot added later inherits them:
+
+- **`sabotage`** — at war with a power holding a working fixture, a bot with
+  `BOT_SABOTEUR_RESERVE` (four missions) in hand and a free operative slot
+  recruits and sends a saboteur in one batch, which an NPC may: the
+  recruitment-alone rule is the player's action economy. One at a time, aimed at
+  the best working fixture nearest home, moved on when it is wrecked, recalled
+  when nothing is left. The bots ran no operatives at all before this.
+- **`mend`** — a bot repairs its most damaged fixture, one programme at a time,
+  with three repairs' worth in hand. Without it sabotage would be a permanent
+  wreck rather than a priced cost.
+
+**Measured by ablation**, each rule switched off in turn over 30 and 100 turns:
+
+| | 30 turns | 100 turns |
+|---|---|---|
+| none (control) | 6/6/5/6/2 | 6/6/5/5/3 |
+| all three | **6/6/6/5/2** | **5/6/5/5/4** |
+| without sabotage | 6/6/5/6/2 | 6/6/6/5/2 |
+
+Sabotage is what moves the board — over 100 turns 62 saboteurs are sent, 53
+points of damage done, 25 operatives caught, and the Combine alone sends 21 at
+the Vigil, which spends 1,960 credits mending its academy. Exchanges run for the
+first five turns, until Drajk's raiding sours the Combine on it. Peace never
+fires in 30 turns, because every war there is the Vigil's against a power it
+will not make peace with; from turn 38 it fires fourteen times, between Drajk
+and the Combine, Meridian and the Combine, and Meridian and the Vigil. Nobody is
+eliminated and every property `tests/balance.test.ts` asserts holds. The
+no-events control is unchanged at 6/6/6/6/1.
+
+> Building it found that `recruit_agent` built its record as a literal, with
+> `name` second where a record that has round-tripped a save puts it eighth. The
+> parity test, which compares a live world with its rebuild byte for byte, had
+> never seen a recruited operative; with bots recruiting it failed on the same
+> operative in a different key order. The record goes through `AgentSchema` now,
+> the rule fixtures already follow.
+
 ## The Rim moves on its own: random events
 
 Item 124. Ten events, like a TTRPG's, that land in the advance-turn tick and
@@ -3983,9 +4186,10 @@ colour a campaign without deciding it, which was the bar, so the weights stay at
 0.05 each. Every property `tests/balance.test.ts` asserts holds throughout.
 
 That sweep was run before the bots read might and before Drajk was lucky. Now
-the default board is **6/6/5/6/2** at 30 turns (6/6/5/5/3 at 100), against a
-control of 6/6/6/6/1 both ways — see *"a doctrine reads its own might"* and
-"Luck" below.
+the default board is **6/6/6/5/2** at 30 turns (5/6/5/5/4 at 100), against a
+control of 6/6/6/6/1 both ways — see *"a doctrine reads its own might"*, "Luck"
+below, and *"What two powers agree without a channel"*, whose sabotage moved it
+from 6/6/5/6/2 and 6/6/5/5/3.
 
 **The harness is blind to two of the ten.** Over 100 turns it fires border
 incidents 13 times, rich seams 9, shortages, envoys and storms 8 each, unrest 6,
@@ -5154,7 +5358,8 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `adjust_credits` | floors at 0 |
 | `set_doctrine` | 1–240 chars; may move `warEthic`/`tradeEthic` and retire lines, charged in dissent; actor's own faction only |
 | `set_toll_policy` | who pays to cross your space; free, actor's own faction only. An accord may only **lift** a toll — adding one is `declared_only` |
-| `consume_asset` | spend, release or destroy a thing you hold; draws an instrument's `uses` or stuff's `quantity` |
+| `consume_asset` | spend, release or destroy a thing you hold; draws an instrument's `uses` or stuff's `quantity`. Never a promissory note |
+| `play_note` | call in a promissory note you hold from another power; refused in war or when what it gives is already in force |
 | `issue_order` | see Duration below; optional `onComplete` payload, paid at issue. `force` is a count (drawn proportionally) or a named composition |
 | `cancel_order` | returns the unspent part of an `onComplete` payload |
 | `interrupt_order` | rejected when the order is not interruptible; **somebody else's** order also needs ships at its origin or target |
@@ -5279,6 +5484,7 @@ for the bounds and pricing, `OrderEffectSchema` in `state.ts` for the shape:
 | `fortify` | `garrisonMax` up — capacity regrowth can never add | `fortification`, `construction_infrastructure` |
 | `commission_ships` | hulls of a named `hull` class delivered at the target on completion, priced by displacement | `capital_ship_construction`, `refit`, `retooling` |
 | `found_fixture` | a fixture of a named `fixtureKind` raised on the world, if its ground supports it and its slot is free | `construction_infrastructure`, `industrial_conversion`, `retooling` |
+| `repair_fixture` | sabotage damage taken off a fixture on a world you hold | `construction_infrastructure`, `industrial_conversion`, `retooling` |
 
 The eight remaining categories carry **no** payload on purpose: `espionage`
 lands as `deploy_agent`, `treaty_ratification` as `form_treaty`, and `blockade`
@@ -5296,6 +5502,7 @@ the policy, and the split is a rule rather than an accident:
 | `develop_system` | **lands** — *"the works now serve whoever holds the world"* |
 | `fortify` | **lands** — *"they defend whoever takes the world next"* |
 | `found_fixture` | **lands**, held by whoever holds the world — a power that loses a world mid-build has built its conqueror a factory |
+| `repair_fixture` | **lands** — the fixture is mended for whoever holds the world now |
 | `raise_garrison` | **withheld** — the levy disperses |
 | `commission_ships` | **withheld** — the yards were lost with the world and the hulls with them |
 
@@ -5830,9 +6037,9 @@ Loose bounds on purpose: a tight assertion on a balance number is a test people
 learn to ignore.
 
 **What the harness cannot model:** the bots read disposition now — see *"a
-doctrine is not blind, either"* — but only to choose between targets and to
-refuse one they are on good terms with. Nothing makes them *ally*, and nothing
-makes a hated power a coalition's target. The Nars still finish hated by
+doctrine is not blind, either"* — to choose between targets, to refuse one they
+are on good terms with, to trade goods and to let a quiet war end. Nothing makes
+them *ally*, and nothing makes a hated power a coalition's target. The Nars still finish hated by
 everyone and nobody combines against them, so the harness still overstates their
 runaway; what that counterplay needs is diplomacy, which is what the
 model-driven game supplies.

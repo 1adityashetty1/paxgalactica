@@ -12,7 +12,7 @@ import { GalaxyMap } from './components/GalaxyMap.js';
 import { OutcomeArt } from './components/OutcomeArt.js';
 import { RimEventCard } from './components/RimEventCard.js';
 import { RIM_EVENT_TITLE } from '../../src/domain/events.js';
-import { fixtureLines, shipClassLines } from '../../src/ui/helptext.js';
+import { fixtureLines, peaceLines, shipClassLines, spanLines } from '../../src/ui/helptext.js';
 import { EpilogueStage } from './components/EpilogueStage.js';
 import { PortraitStage } from './components/PortraitStage.js';
 import { SidePanel } from './components/SidePanel.js';
@@ -146,6 +146,7 @@ function helpLines(state: WorldState | null): string[] {
     '  Parking ships over a world you do not own splits its income, closes its',
     '  lanes and lets you talk to its crews — presence is not ownership, and it',
     '  is not nothing either.',
+    ...spanLines(),
     '',
     'MONEY',
     '  Territory pays, and so does the lane network. You may charge any power',
@@ -154,6 +155,8 @@ function helpLines(state: WorldState | null): string[] {
     '  need a fleet already there.',
     '',
     ...fixtureLines(state),
+    '',
+    ...peaceLines(),
     '',
     'WHAT YOU CAN REACH FOR',
     '  Most of what follows has no command. You type the sentence and the',

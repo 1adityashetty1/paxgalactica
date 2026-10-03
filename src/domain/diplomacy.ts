@@ -565,6 +565,192 @@ export type AssetYield = z.infer<typeof AssetYieldSchema>;
  */
 export const DOSSIER_KIND = 'dossier';
 
+/* ------------------------------------------------------------------ */
+/* Promissory notes                                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A favour a power has signed in advance, which only the holder can call.
+ *
+ * Borrowed from *Twilight Imperium*, where every faction holds notes it can
+ * give away and only the holder can play. **A note is consent given ahead of
+ * time**, and that is the whole of why it fits here: a treaty needs the other
+ * party's consent and a transcript is the only place it has ever existed, so a
+ * power that wanted to pay for something with *a future favour* had nothing to
+ * pay with. A note is that favour, written down, with its terms fixed when it
+ * was issued rather than argued at the moment it is called.
+ *
+ * Each power issues one, and what it promises is what that power is:
+ *
+ * | note | issuer | when played |
+ * |---|---|---|
+ * | most-favoured terms | Meridian | a trade accord, and a quarter of the issuer's richest world's income |
+ * | escort of the line | Iron Vigil | a mutual defence pact that calls `NOTE_ESCORT_HULLS` of the issuer's hulls to the holder's defence |
+ * | line of credit | Ojjul Nar | an advance of `NOTE_CREDIT`, as a loan at `NOTE_CREDIT_RENT` a turn |
+ * | sanctuary | Arkane | basing rights: the holder's fleets stand in the issuer's space untouched |
+ * | safe passage | Drajk | a trade accord: the issuer raids nothing the holder ships |
+ *
+ * Every one of them is **a mechanism that already exists**, entered on the
+ * issuer's authority instead of on a transcript, for `NOTE_TERM_TURNS`. That is
+ * what keeps a note small: the closed list of effects is the existing treaty
+ * types and the loan, and nothing new has to be priced.
+ *
+ * **Keyed on the note, not on the issuer.** The seed hands each power the note
+ * that fits its sheet, but the effect is a property of the paper, so a rule
+ * never has to ask whose it is.
+ *
+ * **It comes home when it is played**, as a note does in *Twilight Imperium*:
+ * the favour is spent and the issuer may grant it again. What limits it is the
+ * issuer choosing to hand it over, which is a choice made every time.
+ */
+export const NOTE_KINDS = [
+  'most_favoured',
+  'escort',
+  'line_of_credit',
+  'sanctuary',
+  'safe_passage',
+] as const;
+export const NoteKindSchema = z.enum(NOTE_KINDS);
+export type NoteKind = z.infer<typeof NoteKindSchema>;
+
+/** The archetype every note is filed under. */
+export const NOTE_ASSET_KIND = 'promissory_note';
+
+/** How long the arrangement a note calls into force lasts. */
+export const NOTE_TERM_TURNS = 5;
+/** Most-favoured terms: the holder's share of the issuer's richest world. */
+export const NOTE_INCOME_SHARE = 0.25;
+/** Escort of the line: hulls the issuer pledges to the holder's defence. */
+export const NOTE_ESCORT_HULLS = 6;
+/** Line of credit: the advance, and its rent. A twentieth a turn. */
+export const NOTE_CREDIT = 300;
+export const NOTE_CREDIT_RENT = 15;
+/**
+ * What a note is worth on a shelf, to anyone but its issuer.
+ *
+ * A claim, as every asset value is, and roughly what the favour delivers: a
+ * line of credit nets its holder 300 for 75 in rent, an escort is six hulls of
+ * cover, and a quarter of a rich world for five turns is about a hundred.
+ * Nothing to the issuer, which does not pay itself for its own promise.
+ */
+export const NOTE_VALUE = 150;
+
+/** The treaty a note enters into force, or `null` for the one that is a loan. */
+export const NOTE_TREATY: Record<NoteKind, TreatyType | null> = {
+  most_favoured: 'trade_accord',
+  escort: 'mutual_defense',
+  line_of_credit: null,
+  sanctuary: 'basing_rights',
+  safe_passage: 'trade_accord',
+};
+
+export const NOTE_TITLE: Record<NoteKind, string> = {
+  most_favoured: 'Most-favoured terms',
+  escort: 'Escort of the line',
+  line_of_credit: 'Line of credit',
+  sanctuary: 'Sanctuary',
+  safe_passage: 'Safe passage',
+};
+
+export const NOTE_MEANING: Record<NoteKind, string> = {
+  most_favoured: `a trade accord with the issuer for ${NOTE_TERM_TURNS} turns, and ${NOTE_INCOME_SHARE * 100}% of the income of the issuer's richest world`,
+  escort: `a mutual defence pact for ${NOTE_TERM_TURNS} turns: an attack on the holder calls up to ${NOTE_ESCORT_HULLS} of the issuer's hulls to the fight`,
+  line_of_credit: `an advance of ${NOTE_CREDIT} credits from the issuer, lent for ${NOTE_TERM_TURNS} turns at ${NOTE_CREDIT_RENT} a turn`,
+  sanctuary: `basing rights for ${NOTE_TERM_TURNS} turns: the holder's fleets may stand in the issuer's space without it being an attack`,
+  safe_passage: `a trade accord with the issuer for ${NOTE_TERM_TURNS} turns: neither raids nor blockades the other`,
+};
+
+/* ------------------------------------------------------------------ */
+/* Commodities                                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Goods a power makes and cannot sell to itself.
+ *
+ * Borrowed from *Twilight Imperium*'s commodities: each faction replenishes
+ * goods worth nothing to it, which become trade goods the moment they are
+ * handed to somebody else. That asymmetry is the whole mechanic, and it is the
+ * one assets already model — `valuePerUnit` per faction — taken to its limit.
+ *
+ * **What it adds is a reason to keep the peace.** Almost every mechanic between
+ * two powers is a cost — a toll, a raid, a debt, a grievance — and the
+ * positive-sum ones (a trade accord's immunity, a treaty's goodwill) pay once
+ * or protect rather than earn. A commodity is worth `COMMODITY_VALUE` a unit to
+ * whoever receives it and costs its maker nothing to give, so every pair of
+ * powers has something to gain from the other that the other loses nothing by
+ * granting — and a trade accord can name the flow, so it keeps arriving while
+ * the accord holds.
+ *
+ * **It pays when held, not when made.** Each power's stock grows by
+ * `COMMODITY_PER_TURN` at its best world, to `COMMODITY_CAP`, and is worth
+ * nothing while it sits there. Held by anybody else — handed over, named in an
+ * accord, or carried off with a world that fell — it is sold at market in the
+ * next tick for `COMMODITY_VALUE` a unit. One place pays it, whichever way it
+ * changed hands.
+ *
+ * **This mints money, and that is the point and the bound.** A rich seam does
+ * too. The bound is production: a power makes `COMMODITY_PER_TURN` a turn
+ * whoever it gives it to, so the whole Rim can create at most
+ * `5 × COMMODITY_PER_TURN × COMMODITY_VALUE` a turn — and only when every power
+ * is giving its goods away to somebody.
+ */
+export const COMMODITY_PER_TURN = 2;
+export const COMMODITY_CAP = 12;
+export const COMMODITY_VALUE = 10;
+
+/** A power's own goods, worth nothing to it — see the section above. */
+export function isCommodity(asset: Asset): boolean {
+  return asset.issuedBy !== undefined && asset.note === undefined;
+}
+
+/** A promissory note — see `NOTE_KINDS`. */
+export function isNote(asset: Asset): asset is Asset & { note: NoteKind; issuedBy: string } {
+  return asset.note !== undefined && asset.issuedBy !== undefined;
+}
+
+/* ------------------------------------------------------------------ */
+/* Fixture damage                                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What a fixture still yields after it has been hit.
+ *
+ * A fixture was lost only with its world, so covert work had nothing to aim
+ * at but hulls, and nothing about a foundry was worth guarding. Borrowed from
+ * *Stars Without Number*, where every faction asset has hit points and can be
+ * attacked: a fixture now carries `damage`, one point per point of its budget,
+ * and **each point of damage costs it one point of yield**.
+ *
+ * Taken off the LAST attribute first. A split fixture names the ground's stat
+ * among its two and a pure one names only that, so on a split the attribute
+ * that goes first is usually the power's own half — the clearing house keeps
+ * brokering while its yards are dark. Deterministic, so replay agrees.
+ *
+ * At full damage it yields nothing and is still charged upkeep. That is the
+ * price sabotage puts on a rival, and the reason a repair programme exists.
+ */
+export function workingStats(
+  asset: Asset,
+): { stat: 'might' | 'guile' | 'industry' | 'influence' | 'resolve'; points: number }[] {
+  if (asset.yield === null || asset.yield.kind !== 'stat') return [];
+  const spread = asset.yield.stats.map((s) => ({ ...s }));
+  let hits = asset.damage ?? 0;
+  for (let i = spread.length - 1; i >= 0 && hits > 0; i--) {
+    const s = spread[i]!;
+    if (s.points <= 0) continue;
+    const off = Math.min(s.points, hits);
+    s.points -= off;
+    hits -= off;
+  }
+  return spread.filter((s) => s.points !== 0);
+}
+
+/** How many points of damage a fixture can take before it yields nothing. */
+export function fixtureIntegrity(asset: Asset): number {
+  if (asset.yield === null || asset.yield.kind !== 'stat') return 0;
+  return asset.yield.stats.reduce((n, s) => n + Math.max(0, s.points), 0);
+}
+
 export const AssetSchema = z.object({
   id: z.string().min(1),
   /** A lower_snake_case slug, invented freely — `prisoners`, `heirloom`, `ore`. */
@@ -702,6 +888,22 @@ export const AssetSchema = z.object({
    */
   yield: AssetYieldSchema.nullable().default(null),
   acquiredTurn: z.number().int().min(0),
+  /**
+   * The power this came from, for the two kinds of thing whose rules turn on
+   * it: a **commodity** (its maker, which values it at nothing) and a
+   * **promissory note** (its issuer, who honours it when it is played).
+   *
+   * Optional rather than defaulted, like `Agent.discordMoved`, so every asset
+   * in a save written before either existed parses to exactly what it was.
+   */
+  issuedBy: z.string().optional(),
+  /** What a promissory note does when its holder plays it. See `NOTE_KINDS`. */
+  note: NoteKindSchema.optional(),
+  /**
+   * Points of yield a fixture has lost to sabotage, until it is repaired. See
+   * `workingStats`. Optional, so a fixture nobody has touched carries nothing.
+   */
+  damage: z.number().int().min(0).max(MAX_ASSET_STAT).optional(),
 });
 export type Asset = z.infer<typeof AssetSchema>;
 
@@ -872,6 +1074,12 @@ export const TreatyTermsSchema = z.object({
   assets: z.array(AssetTermSchema).default([]),
   /** Claims on system income — the mechanism for neutral and shared worlds. */
   incomeShares: z.array(IncomeShareSchema).default([]),
+  /**
+   * Parties whose commodities go to the OTHER party every turn the treaty is
+   * live — see `COMMODITY_PER_TURN`. Legal only on a `trade_accord`: goods
+   * flowing is what an accord about lanes is for.
+   */
+  commodities: z.array(z.string().min(1)).default([]),
   /** What obliges the signatories to act. Empty for treaties with no trigger. */
   mutualDefenseTrigger: z.string().default(''),
 });
@@ -924,6 +1132,82 @@ export const PACT_BREAKING_REPUTATION_COST = 10;
  * reaches it in ten turns and is then worth nothing but the upkeep.
  */
 export const MAX_DISCORD_TOTAL = PACT_BREAKING_REPUTATION_COST * 2;
+
+/* ------------------------------------------------------------------ */
+/* Truces                                                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What a peace leaves behind, after the paper.
+ *
+ * **A war-ending treaty bought no standing at all**, and CLAUDE.md said so in
+ * as many words: the Vigil and Drajk sign a ceasefire with an indemnity and
+ * twenty a turn, keep it for seven turns, pay 180 credits, and sit at exactly
+ * the −48 the signature left them — so a ceasefire with a duration was *"a war
+ * on a timer"*. It lapsed, `warsFor` read the same unmoved numbers, and the war
+ * resumed with no act by either party. Disposition has no decay, deliberately,
+ * and that is the ratchet this does not touch.
+ *
+ * Borrowed from *Europa Universalis IV*, where every peace imposes a truce and
+ * breaking one is among the dearest things a ruler can do. Here a truce is
+ * what a peace treaty or a cession leaves between two powers **that were at
+ * war when they signed it**:
+ *
+ * - **It holds them out of war** while it lasts. `warsFor` excludes the pair
+ *   and the bots will not attack across it, whatever the paper underneath does
+ *   — a ceasefire may lapse, a cession completes at once, and the truce runs
+ *   on regardless.
+ * - **It heals the war and nothing else.** Each turn it holds, each side's
+ *   regard for the other rises `TRUCE_RECOVERY` toward `TRUCE_FLOOR` — one point
+ *   short of war — and **no further**. Above the floor it moves nothing. So it
+ *   lifts a relationship out of war if the hatred was shallow enough, leaves a
+ *   deep one still at war when it ends, and never manufactures friendship.
+ *   Everywhere else the ratchet stands.
+ * - **Breaking it is the dearest public act in the game.** An attack across a
+ *   truce costs the victim's 25, as breaking a pact does, and
+ *   `TRUCE_BREAKING_REPUTATION_COST` — twice the pact price — with every
+ *   onlooker. Not additive with a pact broken in the same attack: one act, the
+ *   dearer price.
+ *
+ * A record of its own rather than a field on the treaty, because it outlives
+ * the treaty: a ceasefire signed for three turns leaves a truce for eight, and
+ * a cession is spent the moment it is signed.
+ */
+export const TRUCE_TURNS = 8;
+export const TRUCE_RECOVERY = 2;
+export const TRUCE_BREAKING_REPUTATION_COST = PACT_BREAKING_REPUTATION_COST * 2;
+
+/** The treaties that end a war when two powers at war sign one. */
+export const TRUCE_TREATIES = ['non_aggression', 'ceasefire', 'mutual_defense', 'cession'] as const;
+
+export const TruceSchema = z.object({
+  /** The two powers, sorted, so one pair has one spelling. */
+  parties: z.array(z.string().min(1)).length(2),
+  /** The treaty whose signature ended the war. */
+  treatyId: z.string().min(1),
+  signedTurn: z.number().int().min(0),
+  /** The first turn it no longer holds. */
+  untilTurn: z.number().int().min(0),
+  /** `ended` ran its term; `broken` is somebody attacking across it. */
+  status: z.enum(['active', 'ended', 'broken']).default('active'),
+});
+export type Truce = z.infer<typeof TruceSchema>;
+
+export function isTruceLive(truce: Truce, turn: number): boolean {
+  return truce.status === 'active' && turn < truce.untilTurn;
+}
+
+/** The live truce between two powers, if there is one. */
+export function truceBetween(
+  truces: readonly Truce[] | undefined,
+  turn: number,
+  a: string,
+  b: string,
+): Truce | undefined {
+  return (truces ?? []).find(
+    (t) => isTruceLive(t, turn) && t.parties.includes(a) && t.parties.includes(b),
+  );
+}
 
 export const TreatySchema = z.object({
   id: z.string().min(1),
@@ -1204,6 +1488,19 @@ export const AgentEffectSchema = z.discriminatedUnion('kind', [
   }),
   z.object({
     /**
+     * Wreck a fixture on the host world — a foundry, an exchange, a school.
+     *
+     * Sabotage had only hulls to aim at, so the buildings that make a world
+     * worth taking could not be touched short of taking it. Each success costs
+     * the host's most valuable working fixture a point of its yield (see
+     * `workingStats`), and a repair programme puts it back.
+     */
+    kind: z.literal('fixture_damage'),
+    /** Points of yield struck off per turn on success. */
+    perTurn: z.number().int().min(1).max(2),
+  }),
+  z.object({
+    /**
      * Turn a rival's own institutions against it.
      *
      * **There was no op in the game that could raise another power's dissent.**
@@ -1430,6 +1727,8 @@ export function describeEffect(effect: AgentEffect): string {
   switch (effect.kind) {
     case 'hull_damage':
       return `−${effect.perTurn} fleet strength per turn`;
+    case 'fixture_damage':
+      return `−${effect.perTurn} from a fixture's yield per turn, until it is repaired`;
     case 'income_penalty':
       return `−${effect.perTurn} credits per turn`;
     case 'stat_debuff':
