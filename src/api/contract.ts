@@ -8,6 +8,7 @@ import { EpilogueViewSchema } from '../engine/epilogue.js';
 import { OrderRumourSchema } from '../domain/intel.js';
 import {
   LedgerSchema, WorldStateSchema } from '../domain/state.js';
+import { ProviderIdSchema } from '../model/provider-ids.js';
 
 /**
  * The client/server contract, Zod-first.
@@ -296,6 +297,15 @@ export const CampaignViewSchema = z.object({
   sandboxEvent: RimEventKindSchema.nullable().default(null),
   /** Set once time has run out. While it is present the campaign is read-only. */
   epilogue: EpilogueViewSchema.nullable(),
+  /**
+   * What this server process has spent on model calls, and the cap, for the
+   * running total in the top bar (docs/architecture.md A.5). Under a pasted key
+   * the game spends the player's money, and a total they cannot see is a bill
+   * they cannot weigh.
+   */
+  spend: z
+    .object({ usd: z.number().min(0), capUsd: z.number().min(0).nullable() })
+    .default({ usd: 0, capUsd: null }),
 });
 export type CampaignView = z.infer<typeof CampaignViewSchema>;
 export { EpilogueViewSchema };
@@ -439,6 +449,74 @@ export const ChatReplySchema = z.object({
 
 export const OkSchema = z.object({ ok: z.literal(true) });
 
+/* ------------------------------------------------------------------ */
+/* Settings: who pays for the model calls                               */
+/* ------------------------------------------------------------------ */
+
+const KeyStateSchema = z.object({ hint: z.string(), source: z.enum(['stored', 'env']) });
+const TierModelsViewSchema = z.object({ reasoning: z.string(), narrative: z.string(), flavor: z.string() });
+
+/**
+ * The settings screen's whole world (docs/architecture.md A.5, A.6).
+ *
+ * **A key goes in and never comes out.** `keys` carries a hint — `sk-or-…4f2a` —
+ * and where the key came from, and that is all any route returns. The rule
+ * `src/model/` already lives by: the credential is the server's, and the
+ * browser is untrusted.
+ */
+export const SettingsViewSchema = z.object({
+  provider: ProviderIdSchema,
+  /** `env` when `PAXGALACTICA_PROVIDER` decides it, which the screen cannot override. */
+  source: z.enum(['env', 'stored', 'default']),
+  ready: z.boolean(),
+  detail: z.string(),
+  keys: z.object({ anthropic: KeyStateSchema.nullable(), openrouter: KeyStateSchema.nullable() }),
+  /** The model each tier uses on each keyed provider, override applied. */
+  models: z.object({ anthropic: TierModelsViewSchema, openrouter: TierModelsViewSchema }),
+  /** What each tier uses with no override — what an empty field means. */
+  defaults: z.object({ anthropic: TierModelsViewSchema, openrouter: TierModelsViewSchema }),
+  spendCapUsd: z.number().nullable(),
+  /** `env` when `PAXGALACTICA_SPEND_CAP` sets it. */
+  capSource: z.enum(['env', 'stored']),
+  spentUsd: z.number(),
+  /** Stated up front, on the same screen as the key. */
+  estimatePerTurnUsd: z.number(),
+  /** The outcome of checking the key just pasted, when one was. */
+  check: z
+    .object({ status: z.enum(['ok', 'rejected', 'unchecked']), detail: z.string() })
+    .nullable()
+    .default(null),
+});
+export type SettingsView = z.infer<typeof SettingsViewSchema>;
+
+const ModelOverrideSchema = z
+  .string()
+  .max(120)
+  .regex(/^[\w.:/@-]*$/, 'a model id: letters, digits and . : / @ - only');
+
+/**
+ * Any subset of the settings, applied in one go. Empty strings in `models`
+ * clear an override; `key: ''` is not a way to clear a key — `clearKey` is,
+ * so a blank paste cannot silently delete one.
+ */
+export const SettingsUpdateSchema = z.object({
+  provider: ProviderIdSchema.optional(),
+  key: z
+    .object({ provider: z.enum(['anthropic', 'openrouter']), key: z.string().min(1).max(400) })
+    .optional(),
+  clearKey: z.enum(['anthropic', 'openrouter']).optional(),
+  spendCapUsd: z.number().min(0).max(10_000).nullable().optional(),
+  models: z
+    .object({
+      provider: z.enum(['anthropic', 'openrouter']),
+      reasoning: ModelOverrideSchema.optional(),
+      narrative: ModelOverrideSchema.optional(),
+      flavor: ModelOverrideSchema.optional(),
+    })
+    .optional(),
+});
+export type SettingsUpdate = z.infer<typeof SettingsUpdateSchema>;
+
 /** Errors are structured, never bare strings, so the client can branch. */
 export const ApiErrorSchema = z.object({
   error: z.object({
@@ -449,6 +527,7 @@ export const ApiErrorSchema = z.object({
       'no_campaign',
       'model_error',
       'not_authenticated',
+      'spend_cap',
       'internal',
     ]),
     message: z.string(),
@@ -557,9 +636,57 @@ export const ServerEventSchema = z.discriminatedUnion('type', [
    */
   z.object({ type: z.literal('reaction'), reaction: ReactionViewSchema }),
   z.object({ type: z.literal('error'), message: z.string() }),
-  z.object({ type: z.literal('hello'), turn: z.number().int() }),
 ]);
 export type ServerEvent = z.infer<typeof ServerEventSchema>;
+
+/* ------------------------------------------------------------------ */
+/* The stateless transport                                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What every request but `GET /api/factions` carries.
+ *
+ * The server holds nothing between requests — it is built to run on Cloud
+ * Run, where any request may land on any instance and none of them lasts. So
+ * the browser holds the session and sends it each time; the server rebuilds
+ * the campaign from it, does the work, and returns the next one. `session` is
+ * opaque to the client: it stores and returns it and never reads it.
+ *
+ * `boot` marks the first read after the page loads, so a server started by
+ * `pnpm resume <file>` can hand that campaign over once.
+ */
+export const RequestEnvelopeSchema = z.object({
+  session: z.unknown().nullable().default(null),
+  body: z.unknown().default({}),
+  boot: z.boolean().optional(),
+});
+export type RequestEnvelope = z.input<typeof RequestEnvelopeSchema>;
+
+/**
+ * The response to an enveloped request: newline-delimited JSON, streamed.
+ *
+ * Progress, reactions and state pushes arrive while the work runs — these
+ * used to travel over a separate SSE connection, which cannot work when that
+ * connection and the request may be on different instances. Then `result`,
+ * which is the route's ordinary answer and status. Then `session`, always
+ * last: it can trail the result by a model call, because a random event's
+ * flavour line is written after the turn returns and belongs in the session
+ * the browser keeps.
+ */
+export const StreamLineSchema = z.discriminatedUnion('type', [
+  ...ServerEventSchema.options,
+  z.object({ type: z.literal('result'), status: z.number().int(), body: z.unknown() }),
+  z.object({ type: z.literal('session'), session: z.unknown().nullable() }),
+]);
+export type StreamLine = z.infer<typeof StreamLineSchema>;
+
+export const STREAM_CONTENT_TYPE = 'application/x-ndjson';
+
+/** A save file, returned as data so the browser can write it to disk. */
+export const ExportResultSchema = z.object({
+  filename: z.string(),
+  archiveBase64: z.string(),
+});
 
 /**
  * What the counsellor said, and what it cost.
@@ -600,7 +727,7 @@ export const ROUTES = {
   cheat: '/api/cheat',
   talk: (factionId: string) => `/api/talk/${factionId}`,
   endtalk: (factionId: string) => `/api/endtalk/${factionId}`,
-  events: '/api/events',
+  settings: '/api/settings',
 } as const;
 
 export const DEFAULT_PORT = 4173;

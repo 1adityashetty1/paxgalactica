@@ -130,6 +130,14 @@ export interface CallRecord {
   concurrent: number;
   /** Whether the experimental raw-JSON transport was on, for comparing runs. */
   rawJson: boolean;
+  /**
+   * Which provider served the attempt (docs/architecture.md A.1). Absent on
+   * traces written before there was more than one, which were all the
+   * subscription.
+   */
+  provider?: string;
+  /** The model id the provider was asked for. */
+  model?: string;
 }
 
 export interface PhaseRecord {

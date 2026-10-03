@@ -466,6 +466,11 @@ early:
 
 ## A.10. A staged plan, where each stage is worth having on its own
 
+> **Status, 2026-10-03: stages 1–4 are built; stage 5 is not.** What each
+> became is recorded in CLAUDE.md under "Paying with a key" and "Where saves
+> live"; the short version is beside each stage below. Nothing was verified
+> against a live keyed endpoint — see the end of this section.
+
 The point of the staging is that nothing here is a prerequisite for a thing
 nobody wants — each step is independently useful, and the sequence stops being
 worth continuing at any point without stranding work.
@@ -473,17 +478,51 @@ worth continuing at any point without stranding work.
 1. **A.1, the provider seam.** Useful immediately and for its own reasons:
    playtests stop billing the subscription. Nothing below is possible without
    it, and it is the only step that is pure refactoring.
+   *Built:* `src/model/provider.ts` — subscription, Anthropic API (official
+   SDK) and OpenRouter (chat endpoint) behind one `call()`; `API_TIERS` and
+   `OPENROUTER_TIERS` beside `TIERS`; cost from tokens (`pricing.ts`) or
+   OpenRouter's `usage.cost`; `provider` and `model` on every trace record.
 2. **The key, entered in the app** (A.5) — first-run screen, per-provider
    storage, running cost total, spend cap. This is what makes step 1 usable by
    anyone who is not editing env vars.
+   *Built:* `GET`/`POST /api/settings`, `SettingsPanel` (the first screen when
+   no provider is ready, and a Settings button after), keys in
+   `~/.paxgalactica/settings.json` at 0600 and never returned, per-provider key
+   validation, a free key check before storing, the total in the top bar, and
+   `SpendCapError` in `callStructured`. Preflight no longer aborts; the session
+   refuses to start a campaign instead.
 3. **Embed prompts and web assets; move saves to a user directory** (A.7).
    Also makes `node dist/server/index.js` runnable from anywhere, which is
    mildly useful on its own.
+   *Built, minus the embedding:* saves resolve by `resolveSaveDir` — the repo's
+   `saves/` in a clone, `~/.paxgalactica/saves` otherwise, `PAXGALACTICA_SAVE_DIR`
+   over both. Prompts and `dist/web` were already read relative to the module,
+   so the server runs from any directory and from an installed package as it
+   is. Embedding them into one file only matters for stage 5, and is left to it.
 4. **`npx paxgalactica` / tarball** (A.4 option 4). At this point the game is
    installable by a second person in one command, and everything after this is
    about removing the Node prerequisite.
+   *Built:* `bin/paxgalactica.mjs`, `files` and `prepack` in `package.json`;
+   `pnpm pack` produces a 1.6MB tarball that was installed into an empty
+   directory, started, served the settings screen and the game, and saved
+   under the user directory. React moved to `devDependencies` (Vite bundles
+   it). The package stays `private`: publishing to npm is a decision, not a
+   build step. The browser opens on macOS, Linux and Windows (`open-browser.mjs`),
+   and a port already in use is a sentence rather than a stack (A.9).
 5. **SEA build + signing** (A.4 option 1, A.9). The actual "downloadable
    executable", and the first step whose cost is mostly not code.
+   *Not built.* It needs a paid Apple Developer ID and notarization on every
+   build, plus prompt and asset embedding (stage 3's remainder). The Agent SDK
+   is still a hard dependency, so a single file would still carry the 267MB
+   binary unless the subscription path is left out of that build (A.3).
+
+**Not verified live.** No call was made to the Anthropic API or OpenRouter
+while building stages 1–2; the request shapes come from the SDK's types and the
+providers' documented schemas, and the tests pin them against fakes. The first
+keyed playtest should read three things off `pnpm trace`: that calls succeed at
+all, `cacheReadTok` on OpenRouter (does the cached tier pass through?), and
+whether `reasoning: {enabled: false}` really turns Sonnet 5's thinking off
+there.
 
 ---
 
@@ -525,10 +564,15 @@ traces with it.
 
 Things this document deliberately does not decide:
 
-- **OpenRouter or direct?** Turns on prompt caching, which is unverified and is
-  now the main cost lever (A.1). Verify before choosing, not after.
-- **Does `ROUTES` become configuration?** A settings screen implies yes; the
-  router's own comment implies no. Both cannot be true in the same build.
+- **OpenRouter or direct?** ~~Turns on prompt caching, which is unverified and is
+  now the main cost lever (A.1). Verify before choosing, not after.~~ **Both,
+  since stage 2** — the player chooses. Caching through OpenRouter is still
+  unverified, but is now measured per call (`cacheReadTok` on a record whose
+  `provider` is `openrouter`).
+- **Does `ROUTES` become configuration?** ~~A settings screen implies yes; the
+  router's own comment implies no.~~ **Split:** `ROUTES` (call → tier) stays
+  source, with its reasoning; the model serving each tier on a keyed provider
+  is a setting. The router's "one-line edit" promise holds for the defaults.
 - ~~**Is `PAXGALACTICA_RAW_JSON=1` the default?**~~ **Yes, since todo 117** —
   zero retries over ten turns against structured output's 5–12%, 15.8s a
   declared action against 44.6s. What follows is the question as it stood. It is the difference between

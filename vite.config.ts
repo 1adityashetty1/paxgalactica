@@ -26,11 +26,12 @@ export default defineConfig({
       '/api': {
         target: `http://127.0.0.1:${DEFAULT_PORT}`,
         changeOrigin: false,
-        // SSE must stream rather than buffer, or progress never arrives.
+        // Every game route answers with a stream of progress lines, which
+        // must pass through as they are written, not when the response ends.
         ws: false,
         configure: (proxy) => {
           proxy.on('proxyRes', (proxyRes) => {
-            if (proxyRes.headers['content-type']?.includes('text/event-stream')) {
+            if (proxyRes.headers['content-type']?.includes('application/x-ndjson')) {
               proxyRes.headers['cache-control'] = 'no-cache, no-transform';
             }
           });

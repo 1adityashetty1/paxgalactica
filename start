@@ -82,15 +82,26 @@ if [ ! -d node_modules ]; then
 fi
 
 # ── authentication ────────────────────────────────────────────────────────
-# The game runs on a Claude Pro/Max SUBSCRIPTION. `scripts/auth.mjs` probes
+# The game runs on a Claude Pro/Max SUBSCRIPTION by default, or on an API key
+# chosen on the in-game settings screen (docs/architecture.md A.6). `scripts/auth.mjs` probes
 # with the API-key variables stripped and the stored token injected — i.e. the
 # exact environment the game will use — rejects `authMethod: api_key`, and then
 # spends a few tokens on a real call, because `auth status` reports
 # loggedIn=true for a token that was truncated on paste.
 say ''
-auth_out=$(node scripts/auth.mjs 2>&1) && auth_rc=0 || auth_rc=$?
+# Which provider pays. Under an Anthropic or OpenRouter key there is nothing to
+# sign in to here: the key is pasted, checked and stored in the browser.
+provider=$(node -e "import('./scripts/settings-store.mjs').then(m => process.stdout.write(m.chosenProvider().id))" 2>/dev/null || echo subscription)
+if [ "$provider" != "subscription" ]; then
+  say "  auth    $provider key — checked on the settings screen"
+  auth_out='' ; auth_rc=keyed
+else
+  auth_out=$(node scripts/auth.mjs 2>&1) && auth_rc=0 || auth_rc=$?
+fi
 
-if [ "$auth_rc" -eq 0 ]; then
+if [ "$auth_rc" = "keyed" ]; then
+  : # nothing to do here
+elif [ "$auth_rc" -eq 0 ]; then
   say '  auth    subscription verified with a live call'
 else
   # Distinguish a broken install from an unauthenticated one. Both used to
@@ -104,22 +115,25 @@ else
     node scripts/auth.mjs >/dev/null 2>&1 || fail "Still cannot authenticate. Run \`pnpm doctor\` to see why."
     say '  auth    subscription verified with a live call'
   else
-    say 'You are not signed in yet.'
+    say 'Model calls are not set up yet.'
     say ''
-    say 'This game runs on a Claude Pro or Max subscription — no API key and no'
-    say 'per-token billing. A browser will open for you to approve access.'
+    say 'Pay with a Claude Pro or Max subscription (sign in now — a browser opens to'
+    say 'approve access), or with an Anthropic or OpenRouter API key, which you paste'
+    say 'into the settings screen the game opens on.'
     say ''
-    printf 'Sign in now? [Y/n] '
+    printf 'Sign in with a subscription now? [Y/n] '
     # Falls back to "no" when there is no terminal — piped or scripted runs
     # must not hang waiting for an answer nobody can give.
     read -r reply </dev/tty 2>/dev/null || { reply=n; printf '\n(no terminal — skipping)\n'; }
     case "$reply" in
-      [Nn]*) fail 'Skipped. Run `pnpm login` when ready, then ./start again.' ;;
+      [Nn]*) say '  auth    skipped — choose an API key on the settings screen' ;;
+      *)
+        pnpm login
+        node scripts/auth.mjs >/dev/null 2>&1 \
+          || fail "Sign-in did not complete. Run \`pnpm doctor\` to see exactly what is wrong."
+        say '  auth    subscription verified with a live call'
+        ;;
     esac
-    pnpm login
-    node scripts/auth.mjs >/dev/null 2>&1 \
-      || fail "Sign-in did not complete. Run \`pnpm doctor\` to see exactly what is wrong."
-    say '  auth    subscription verified with a live call'
   fi
 fi
 

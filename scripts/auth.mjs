@@ -9,7 +9,48 @@
  */
 import { spawnSync } from 'node:child_process';
 import { findClaudeBinary } from './find-binary.mjs';
+import { chosenProvider, keyHint, KEY_ENV, PROVIDER_NAMES, resolveKey } from './settings-store.mjs';
 import { readStoredToken, TOKEN_PATH } from './token-store.mjs';
+
+/*
+ * A keyed provider (Anthropic API, OpenRouter) is checked against the
+ * provider's own free endpoint — the models list, or OpenRouter's key info —
+ * rather than with a model call: nothing is spent learning whether a key works.
+ */
+const provider = chosenProvider();
+if (provider.id !== 'subscription') {
+  const resolved = resolveKey(provider.id);
+  process.stdout.write(`  provider   : ${PROVIDER_NAMES[provider.id]} (${provider.source})\n`);
+  if (!resolved) {
+    process.stdout.write(
+      `✗ No key. Paste one on the settings screen in the browser, or export ${KEY_ENV[provider.id]}.\n`,
+    );
+    process.exit(1);
+  }
+  process.stdout.write(`  key        : ${keyHint(resolved.key)} (${resolved.source})\n\n`);
+  const res = await fetch(
+    provider.id === 'anthropic'
+      ? 'https://api.anthropic.com/v1/models?limit=1'
+      : 'https://openrouter.ai/api/v1/key',
+    {
+      headers:
+        provider.id === 'anthropic'
+          ? { 'x-api-key': resolved.key, 'anthropic-version': '2023-06-01' }
+          : { Authorization: `Bearer ${resolved.key}` },
+      signal: AbortSignal.timeout(15_000),
+    },
+  ).catch((err) => ({ ok: false, status: 0, why: err instanceof Error ? err.message : String(err) }));
+  if (res.ok) {
+    process.stdout.write(`✓ ${PROVIDER_NAMES[provider.id]} accepted — nothing was spent checking.\n`);
+    process.exit(0);
+  }
+  process.stdout.write(
+    res.status === 401 || res.status === 403
+      ? '✗ The provider rejected the key. Paste a working one on the settings screen.\n'
+      : `✗ Could not confirm the key (${res.status ? `HTTP ${res.status}` : res.why}).\n`,
+  );
+  process.exit(1);
+}
 
 const binary = findClaudeBinary();
 if (!binary) {

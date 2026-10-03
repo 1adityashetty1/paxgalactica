@@ -346,21 +346,43 @@ describe('the export and import routes', () => {
     expect(res.status).toBe(400);
   });
 
-  it('excludes staged actions, and says how many were left behind', async () => {
+  it('keeps the journal committed-only, and carries the turn in progress beside it', async () => {
     const s = await session('staging');
     // Reach past the API to stage without a model call.
     const campaign = (s as unknown as { campaign: Campaign }).campaign;
     campaign.stage([{ op: 'adjust_credits', factionId: 'freeworlds', delta: -100 }], 'spend');
+    campaign.spendActionPoint();
 
-    const { bytes, stagedLost } = s.exportArchive();
-    expect(stagedLost).toBe(1);
-    const restored = Campaign.fromSaveFile(
-      'x',
-      unpackCampaign(bytes).save,
-      new MemoryCampaignStore(),
-    );
-    // The archive holds committed truth, not the preview.
+    const { bytes } = s.exportArchive();
+    const unpacked = unpackCampaign(bytes);
+    const restored = Campaign.fromSaveFile('x', unpacked.save, new MemoryCampaignStore());
+    // The journal holds committed truth, not the preview — `pnpm resume` reads
+    // only that, and gets the campaign as of the last turn that landed.
     expect(restored.state.factions.find((f) => f.id === 'freeworlds')!.credits).toBe(1100);
+    expect(unpacked.session).toBeDefined();
+
+    // Loaded through the game, the declaration is still declared.
+    const target = new GameSession(new MemoryCampaignStore());
+    await dispatch(target, 'POST', ROUTES.importCampaign, {
+      archiveBase64: Buffer.from(bytes).toString('base64'),
+    });
+    const view = target.view();
+    expect(view.staged.map((b) => b.label)).toEqual(['spend']);
+    expect(view.actionPoints.left).toBe(view.actionPoints.perTurn - 1);
+    expect(view.state.factions.find((f) => f.id === 'freeworlds')!.credits).toBe(1000);
+  });
+
+  it('loads an archive written before saves carried the turn', async () => {
+    const s = await session('old');
+    const campaign = (s as unknown as { campaign: Campaign }).campaign;
+    const legacy = packCampaign('old', campaign.toSaveFile());
+    expect(unpackCampaign(legacy).session).toBeUndefined();
+    const target = new GameSession(new MemoryCampaignStore());
+    const res = await dispatch(target, 'POST', ROUTES.importCampaign, {
+      archiveBase64: Buffer.from(legacy).toString('base64'),
+    });
+    expect(res.status).toBe(200);
+    expect(target.view().staged).toEqual([]);
   });
 });
 

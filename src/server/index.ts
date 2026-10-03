@@ -2,54 +2,99 @@ import { existsSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_PORT, ROUTES } from '../api/contract.js';
-import { PreflightError, runServerPreflight } from '../preflight.js';
-import { EventHub } from './events.js';
+import { constants as zlibConstants, createGzip, gunzipSync } from 'node:zlib';
+import { DEFAULT_PORT, ROUTES, STREAM_CONTENT_TYPE, type StreamLine } from '../api/contract.js';
+import { FileCampaignStore, MemoryCampaignStore, type CampaignStore } from '../engine/store.js';
+import { providerStatus, runServerPreflight } from '../preflight.js';
 import { dispatch } from './router.js';
 import { GameSession } from './session.js';
+import { handleStateless } from './stateless.js';
 import { serveStatic } from './static.js';
 
 /**
- * The Pax Galactica localhost server.
+ * The Pax Galactica server.
  *
- * Binds to 127.0.0.1 ONLY. This process can spend real money on model calls
- * and has no authentication, because it is a single-player game on your own
- * machine — which is exactly why it must never be reachable from the network.
+ * **Stateless.** The browser holds the session and sends it with every
+ * request (see `stateless.ts`), so any instance can serve any request and an
+ * instance can vanish between two of them. That is what lets this run on Cloud
+ * Run as well as on localhost, unchanged.
+ *
+ * Binds to 127.0.0.1 by default, because this process spends real money on
+ * model calls and has no authentication. `PAXGALACTICA_HOST=0.0.0.0` opens it
+ * up — the container image sets that — and doing so on a reachable network is
+ * a decision to put the bill behind no lock at all.
  */
 
-const HOST = '127.0.0.1';
+const HOST = process.env.PAXGALACTICA_HOST ?? '127.0.0.1';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB_ROOT = join(HERE, '..', 'web');
-const MAX_BODY_BYTES = 64 * 1024;
-/** Uploads are the one route that carries bulk: a base64 campaign archive. */
-const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
+/**
+ * What a request may carry. A session grows with the campaign — the journal,
+ * the transcripts and the committed world — and is a few hundred KB raw by
+ * turn 100, a few tens gzipped. These are ceilings against abuse, not budgets:
+ * Cloud Run itself refuses a request over 32 MB.
+ */
+const MAX_BODY_BYTES = 24 * 1024 * 1024;
+const MAX_DECODED_BYTES = 96 * 1024 * 1024;
+
+/**
+ * Where save files go. `file` keeps writing `saves/<name>.json` as the game
+ * always has, so the saves list, `pnpm replay` and `pnpm resume` keep working
+ * locally — it is a mirror of what the browser holds, never read back during
+ * play. `memory` writes nowhere, for a container whose disk is RAM.
+ */
+const STORE: CampaignStore =
+  process.env.PAXGALACTICA_STORE === 'memory' ? new MemoryCampaignStore() : new FileCampaignStore();
 
 /* ---------------- preflight, before anything binds ---------------- */
 
-try {
-  const { warnings } = runServerPreflight();
-  for (const warning of warnings) process.stderr.write(`note: ${warning}\n`);
-} catch (err) {
-  if (err instanceof PreflightError) {
-    process.stderr.write(`\n${err.message}\n\n`);
-    process.exit(1);
-  }
-  throw err;
+// Never fatal: a key can be entered in the browser, so the server has to be up
+// to show the screen it is entered on. What used to be the abort is the
+// session's refusal to start a campaign on a provider that cannot answer.
+// `PAXGALACTICA_SKIP_PREFLIGHT=1` skips even the report, for a container smoke
+// test or a host whose credential arrives another way.
+if (process.env.PAXGALACTICA_SKIP_PREFLIGHT !== '1') {
+  const preflight = runServerPreflight();
+  for (const warning of preflight.warnings) process.stderr.write(`note: ${warning}\n`);
+  process.stdout.write(`Model calls: ${preflight.status.detail}${preflight.status.ready ? '' : ' (not ready)'}\n`);
 }
 
-const hub = new EventHub();
-const session = new GameSession(undefined, (event) => hub.broadcast(event));
+/**
+ * `pnpm resume <file>` installs a campaign and starts this server with its
+ * name. The first page to boot is handed it, once; after that the browser
+ * holds it like any other.
+ */
+let autoload = process.env.PAXGALACTICA_CAMPAIGN ?? null;
+const takeAutoload = (): string | null => {
+  // Loading it would be refused until model calls are set up, so it waits:
+  // the settings screen comes first, and the next boot after it takes it.
+  if (autoload !== null && !providerStatus().ready) return null;
+  const name = autoload;
+  autoload = null;
+  return name;
+};
 
-async function readBody(req: IncomingMessage, limit = MAX_BODY_BYTES): Promise<unknown> {
+async function readBody(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
-    if (size > limit) throw new Error('Request body too large.');
+    if (size > MAX_BODY_BYTES) throw new Error('Request body too large.');
     chunks.push(chunk as Buffer);
   }
   if (chunks.length === 0) return {};
-  const raw = Buffer.concat(chunks).toString('utf8').trim();
+  let bytes = Buffer.concat(chunks);
+  // The browser gzips its requests — the session is mostly JSON and shrinks
+  // five- to tenfold. `maxOutputLength` keeps a small bomb from being a big
+  // allocation.
+  if ((req.headers['content-encoding'] ?? '').toLowerCase() === 'gzip') {
+    try {
+      bytes = gunzipSync(bytes, { maxOutputLength: MAX_DECODED_BYTES });
+    } catch {
+      throw new Error('Request body was not valid gzip, or decompressed too large.');
+    }
+  }
+  const raw = bytes.toString('utf8').trim();
   if (raw.length === 0) return {};
   try {
     return JSON.parse(raw);
@@ -67,18 +112,42 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(payload);
 }
 
-function sendDownload(
+/**
+ * Open a newline-delimited JSON stream, gzipped when the browser accepts it.
+ *
+ * Cloud Run compresses nothing for you, and a state push is ~280 KB of JSON at
+ * turn 100 against ~37 KB gzipped. Each line is flushed as it is written, so
+ * compression never holds a progress line back.
+ */
+function openStream(
+  req: IncomingMessage,
   res: ServerResponse,
-  { filename, bytes }: { filename: string; bytes: Uint8Array },
-): void {
+): { write: (line: StreamLine) => void; end: () => void } {
+  const gzip = /\bgzip\b/.test(String(req.headers['accept-encoding'] ?? ''));
   res.writeHead(200, {
-    'Content-Type': 'application/gzip',
-    // Quoted because the filename carries a timestamp with dashes and dots;
-    // the browser uses this verbatim as the saved name.
-    'Content-Disposition': `attachment; filename="${filename}"`,
-    'Content-Length': bytes.byteLength,
+    'Content-Type': `${STREAM_CONTENT_TYPE}; charset=utf-8`,
+    'Cache-Control': 'no-cache, no-transform',
+    'X-Accel-Buffering': 'no',
+    ...(gzip ? { 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' } : {}),
   });
-  res.end(Buffer.from(bytes));
+  if (!gzip) {
+    return {
+      write: (line) => {
+        if (!res.writableEnded) res.write(`${JSON.stringify(line)}\n`);
+      },
+      end: () => res.end(),
+    };
+  }
+  const z = createGzip();
+  z.pipe(res);
+  return {
+    write: (line) => {
+      if (z.writableEnded) return;
+      z.write(`${JSON.stringify(line)}\n`);
+      z.flush(zlibConstants.Z_SYNC_FLUSH);
+    },
+    end: () => z.end(),
+  };
 }
 
 const server = createServer((req, res) => {
@@ -95,43 +164,77 @@ const server = createServer((req, res) => {
 
 async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const method = req.method ?? 'GET';
-  const url = new URL(req.url ?? '/', `http://${HOST}`);
+  const url = new URL(req.url ?? '/', 'http://localhost');
   const path = url.pathname;
 
   // No CORS headers on purpose. Same-origin only: the client is served from
   // this process, and a permissive policy would let any page in the browser
   // drive a game that spends money.
 
-  if (path === ROUTES.events) {
-    if (method !== 'GET') return sendJson(res, 405, { error: { code: 'bad_request', message: 'GET only.' } });
-    hub.subscribe(res);
-    hub.broadcast({ type: 'hello', turn: session.hasCampaign() ? session.view().state.turn : 0 });
-    return;
+  // The routes that need no session: what can be played, what is in `saves/`
+  // on this machine, and the settings screen, which comes before any campaign.
+  if (method === 'GET' && path === ROUTES.factions) {
+    const result = await dispatch(new GameSession(STORE), method, path, {});
+    return sendJson(res, result.status, result.body);
   }
-
-  if (path.startsWith('/api/')) {
+  if (path === ROUTES.settings && (method === 'GET' || method === 'POST')) {
     let body: unknown = {};
-    if (method !== 'GET') {
+    if (method === 'POST') {
       try {
-        body = await readBody(
-          req,
-          path === ROUTES.importCampaign ? MAX_UPLOAD_BYTES : MAX_BODY_BYTES,
-        );
+        body = await readBody(req);
       } catch (err) {
         return sendJson(res, 400, {
           error: { code: 'bad_request', message: err instanceof Error ? err.message : 'Bad body.' },
         });
       }
     }
-    const result = await dispatch(session, method, path, body);
-    if (result.download) return sendDownload(res, result.download);
+    const result = await dispatch(new GameSession(STORE), method, path, body);
     return sendJson(res, result.status, result.body);
   }
 
-  if (
-    (method === 'GET' || method === 'HEAD') &&
-    serveStatic(WEB_ROOT, path, res, method)
-  ) {
+  if (path.startsWith('/api/')) {
+    if (method !== 'POST') {
+      return sendJson(res, 405, {
+        error: {
+          code: 'bad_request',
+          message: `${method} ${path}: every game route is a POST carrying the session.`,
+        },
+      });
+    }
+    let envelope: unknown;
+    try {
+      envelope = await readBody(req);
+    } catch (err) {
+      return sendJson(res, 400, {
+        error: { code: 'bad_request', message: err instanceof Error ? err.message : 'Bad body.' },
+      });
+    }
+
+    const stream = openStream(req, res);
+    try {
+      const { result, session } = await handleStateless(method, path, envelope, {
+        store: STORE,
+        // Progress, reactions and state pushes go out on this response as they
+        // happen. They used to travel over a separate SSE connection, which a
+        // second instance would never see.
+        emit: (event) => stream.write(event),
+        takeAutoload,
+        providerReady: () => providerStatus(),
+      });
+      stream.write({ type: 'result', status: result.status, body: result.body });
+      stream.write({ type: 'session', session });
+    } catch (err) {
+      stream.write({
+        type: 'result',
+        status: 500,
+        body: { error: { code: 'internal', message: err instanceof Error ? err.message : String(err) } },
+      });
+    }
+    stream.end();
+    return;
+  }
+
+  if ((method === 'GET' || method === 'HEAD') && serveStatic(WEB_ROOT, path, res, method)) {
     return;
   }
 
@@ -140,39 +243,36 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       code: 'not_found',
       message: existsSync(WEB_ROOT)
         ? `No route for ${method} ${path}.`
-        : 'The browser client has not been built yet (Phase 2 Prompt 3). The API is available under /api.',
+        : 'The browser client has not been built yet. Run `pnpm build:web`. The API is available under /api.',
     },
   });
 }
 
-/**
- * Open a campaign at boot, so `pnpm resume <archive>` lands the player in the
- * game rather than on the title screen next to the save it just installed.
- */
-const autoload = process.env.PAXGALACTICA_CAMPAIGN;
-if (autoload) {
-  try {
-    const view = await session.resume(autoload);
-    process.stdout.write(`Loaded campaign "${autoload}" at turn ${view.state.turn}.\n`);
-  } catch (err) {
+// `PORT` is what Cloud Run sets; the game's own variable wins when both are.
+const port = Number(process.env.PAXGALACTICA_PORT ?? process.env.PORT ?? DEFAULT_PORT);
+
+// A port already in use is a first-run failure for an installed copy, not a
+// developer annoyance (docs/architecture.md A.9): say what to do instead of
+// printing a stack.
+server.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EADDRINUSE') {
     process.stderr.write(
-      `Could not load campaign "${autoload}": ${err instanceof Error ? err.message : String(err)}\n`,
+      `\nPort ${port} is already in use — another copy of the game may be running.\nStop it, or start this one on another port: PAXGALACTICA_PORT=${port + 1}\n\n`,
     );
     process.exit(1);
   }
-}
-
-const port = Number(process.env.PAXGALACTICA_PORT ?? DEFAULT_PORT);
+  throw err;
+});
 
 server.listen(port, HOST, () => {
   process.stdout.write(
     [
       '',
       `Pax Galactica server on http://${HOST}:${port}`,
-      `  API      http://${HOST}:${port}/api/campaign`,
-      `  events   http://${HOST}:${port}${ROUTES.events}`,
       '',
-      'Bound to loopback only. Ctrl-C to stop.',
+      HOST === '127.0.0.1'
+        ? 'Bound to loopback only. Ctrl-C to stop.'
+        : `Bound to ${HOST}. There is no authentication.`,
       '',
     ].join('\n'),
   );
@@ -180,29 +280,15 @@ server.listen(port, HOST, () => {
 
 /* ---------------- graceful shutdown ---------------- */
 
+// Nothing to save: the browser holds every campaign. Stop taking requests, let
+// the ones in flight finish, and do not hang on a stuck connection.
 let shuttingDown = false;
-async function shutdown(signal: string): Promise<void> {
+function shutdown(): void {
   if (shuttingDown) return;
   shuttingDown = true;
-  process.stdout.write(`\n${signal} — saving…\n`);
-  try {
-    const { saved, stagedLost } = await session.shutdown();
-    if (saved) process.stdout.write('Campaign saved.\n');
-    if (stagedLost > 0) {
-      // Staged actions live outside the journal by design, so they cannot be
-      // persisted. Say so rather than losing them silently.
-      process.stdout.write(
-        `Warning: ${stagedLost} declared action(s) had not landed and were lost. End the turn to keep them.\n`,
-      );
-    }
-  } catch (err) {
-    process.stderr.write(`Save failed: ${err instanceof Error ? err.message : String(err)}\n`);
-  }
-  hub.closeAll();
   server.close(() => process.exit(0));
-  // Do not hang forever on a stuck connection.
-  setTimeout(() => process.exit(0), 2000).unref();
+  setTimeout(() => process.exit(0), 10_000).unref();
 }
 
-process.on('SIGINT', () => void shutdown('SIGINT'));
-process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);

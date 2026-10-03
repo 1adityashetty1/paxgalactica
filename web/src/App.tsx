@@ -1,4 +1,5 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { api } from './api.js';
 import { Waiting } from './components/Waiting.js';
 import { CheatPanel } from './components/CheatPanel.js';
 import { STAT_MEANINGS, STAT_NAMES } from '../../src/domain/checks.js';
@@ -8,6 +9,7 @@ import { ansi256ToHex } from './color.js';
 import { BriefingPanel } from './components/BriefingPanel.js';
 import { ChannelPanel } from './components/ChannelPanel.js';
 import { FactionPicker } from './components/FactionPicker.js';
+import { SettingsPanel } from './components/SettingsPanel.js';
 import { GalaxyMap } from './components/GalaxyMap.js';
 import { OutcomeArt } from './components/OutcomeArt.js';
 import { RimEventCard } from './components/RimEventCard.js';
@@ -102,7 +104,7 @@ function helpLines(state: WorldState | null): string[] {
     '  /endtalk         close it — only then is anything you agreed made real',
     '  :endturn         land everything declared, hear the powers respond, advance time',
     '  :discard         clear what you have declared this turn',
-    '  :export          download this campaign as a .tar.gz you can resume anywhere',
+    '  :save            save this campaign to disk — load it from the title screen later',
     '  :help            this',
     '  :cheats          the cheat menu, for testing — free, instant, costs no action,',
     '                   skips the arbiter, and no power is ever told',
@@ -187,6 +189,17 @@ function helpLines(state: WorldState | null): string[] {
 
 export function App() {
   const game = useGame();
+  /** Whether model calls can be paid for; null until asked. Asked when there is no campaign. */
+  const [providerReady, setProviderReady] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!game.needsCampaign || providerReady !== null) return;
+    void api
+      .settings()
+      .then((s) => setProviderReady(s.ready))
+      // Unreadable settings are not a reason to block the picker; a start that
+      // cannot be paid for is refused by the server and opens the screen anyway.
+      .catch(() => setProviderReady(true));
+  }, [game.needsCampaign, providerReady]);
   const [input, setInput] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // A channel the player has opened in the UI but not yet spoken into. The
@@ -276,10 +289,28 @@ export function App() {
         <h1>Cannot start</h1>
         <pre>{game.fatal}</pre>
         <p>
-          If this mentions signing in, run <code>pnpm login</code> then <code>pnpm auth</code> and
-          restart the server.
+          If this is about paying for model calls, open{' '}
+          <button type="button" className="link" onClick={game.openSettings}>
+            Settings
+          </button>{' '}
+          — or, for a Claude subscription, run <code>pnpm login</code> then <code>pnpm auth</code>.
         </p>
       </div>
+    );
+  }
+
+  // Who pays comes before what to play. On a cold start the provider is asked
+  // first, so a player with no key lands on the screen that takes one rather
+  // than on a faction list whose every choice would be refused.
+  if (game.settingsOpen || (game.needsCampaign && providerReady === false)) {
+    return (
+      <SettingsPanel
+        firstRun={game.needsCampaign || !view}
+        onDone={(s) => {
+          setProviderReady(s.ready);
+          game.closeSettings();
+        }}
+      />
     );
   }
 
@@ -316,15 +347,26 @@ export function App() {
         </span>
         <span className="spacer" />
         {view.staged.length > 0 && <span className="pill">{view.staged.length} declared</span>}
+        {/* The running total. Under a pasted key this is the player's money. */}
+        <span
+          className={`spend${view.spend.capUsd !== null && view.spend.usd >= view.spend.capUsd ? ' over' : ''}`}
+          title="Spent on model calls since the server started"
+        >
+          ${view.spend.usd.toFixed(2)}
+          {view.spend.capUsd !== null && ` / $${view.spend.capUsd.toFixed(2)}`}
+        </span>
+        <button type="button" className="ghost-btn" onClick={game.openSettings} title="Provider, API key and spend cap">
+          Settings
+        </button>
         <button
           type="button"
           className="ghost-btn"
-          title="Download this campaign as a .tar.gz — resume it with: pnpm resume <file>"
+          title="Save this campaign to disk — load it from the title screen, or: pnpm resume <file>"
           onClick={() => void game.exportCampaign()}
         >
-          Export
+          Save
         </button>
-        <span className={game.connected ? 'dot on' : 'dot off'} title={game.connected ? 'live' : 'reconnecting'} />
+        <span className={game.connected ? 'dot on' : 'dot off'} title={game.connected ? 'server reachable' : 'cannot reach the server'} />
       </header>
 
       <main className="grid">

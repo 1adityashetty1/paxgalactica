@@ -165,7 +165,7 @@ describe('server events', () => {
       ServerEventSchema.safeParse({ type: 'progress', label: 'Resolving', busy: true }).success,
     ).toBe(true);
     expect(ServerEventSchema.safeParse({ type: 'error', message: 'boom' }).success).toBe(true);
-    expect(ServerEventSchema.safeParse({ type: 'hello', turn: 0 }).success).toBe(true);
+    expect(ServerEventSchema.safeParse({ type: 'hello', turn: 0 }).success).toBe(false);
     expect(ServerEventSchema.safeParse({ type: 'nonsense' }).success).toBe(false);
   });
 });
@@ -180,7 +180,6 @@ describe('routes', () => {
       ROUTES.action,
       ROUTES.endturn,
       ROUTES.discardStaged,
-      ROUTES.events,
       ROUTES.talk('ojjul'),
       ROUTES.endtalk('ojjul'),
     ];
