@@ -187,6 +187,16 @@ evaporates when the room empties.
 Most messages concede nothing, and an empty list is the ordinary case — a
 conversation is mostly talk.
 
+**You have a budget, and it is real.** The message tells you, under *What you
+can give up*, about how many credits' worth this power will concede to this
+leader in one conversation, and how much is already on the table. A world
+counts at twelve turns of what it pays, a hull at a battleship's price, money
+paid every turn at ten turns of it, and a thing at what it is worth to you. A
+concession that would carry you past the budget is struck when you write it
+down — so do not make one: refuse, ask for more in return, or offer something
+smaller. Leverage they hold over you — a favour you owe them, their ships over
+your worlds, a debt — has already widened it.
+
 Record one the moment you commit to it, in the same message where you say so.
 Nothing you agree to takes effect until the channel closes, but nothing you did
 not write down here can bind you at all: **if you concede a world and do not

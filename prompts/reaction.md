@@ -111,6 +111,12 @@ Same op vocabulary and duration rules as resolution:
   to its issuer once played. Your own note is a favour to give, not to play.
 - **A truce** in the standing block means the war with that power has ended for
   now. Attacking across it is legal and the dearest public act there is.
+- **An ultimatum made of you** has a deadline. Give way with
+  `concede_ultimatum`, or let it run and it is war. You may `back_ultimatum`
+  either side of someone else's, and call in a favour owed you
+  (`call_obligation`) to make a power sign a pact or back you. Proof your
+  watcher found can be published (`publish_dossier`) or turned into a hook
+  (`blackmail`).
 
 Keep the reaction proportionate. Not every turn is a crisis; a
 minor player action should produce watchfulness, not a general mobilisation.

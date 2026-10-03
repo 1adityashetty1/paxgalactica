@@ -49,4 +49,25 @@ describe('a campaign under version 12 replays exactly', () => {
     const check = campaign.verifyReplay();
     expect(check.ok, check.detail).toBe(true);
   });
+
+  it('with a favour forgiven into being, called in, and an ultimatum run to war', () => {
+    const campaign = Campaign.start('ojjul', 'v13', new MemoryCampaignStore());
+    const debt = campaign.state.debts.find((d) => d.creditorFactionId === 'ojjul')!;
+    campaign.stage([{ op: 'forgive_debt', debtId: debt.id }], 'forgive');
+    campaign.stage(
+      [{ op: 'issue_ultimatum', targetFactionId: 'freeworlds', demand: 'trade_accord', deadlineTurns: 2, text: 'open the Drift' }],
+      'demand',
+    );
+    campaign.commitTurn();
+    const owed = campaign.state.obligations.at(-1)!;
+    const demand = campaign.state.demands.at(-1)!;
+    campaign.stage([{ op: 'call_obligation', obligationId: owed.id, call: 'support', demandId: demand.id }], 'call');
+    campaign.commitTurn();
+    for (let i = 0; i < 3; i++) campaign.tick();
+
+    expect(campaign.state.demands.at(-1)!.status).not.toBe('open');
+    expect(campaign.state.obligations.at(-1)!.status).toBe('called');
+    const check = campaign.verifyReplay();
+    expect(check.ok, check.detail).toBe(true);
+  });
 });

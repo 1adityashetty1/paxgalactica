@@ -15,7 +15,10 @@ import {
   isNote,
   isTruceLive,
   wantedBy,
+  demandSide,
+  OBLIGATION_TERM_TURNS,
 } from '../domain/diplomacy.js';
+import { describeSecret, secretLive } from '../domain/leverage.js';
 import { shortageFactor } from '../domain/events.js';
 import { describeOutstanding } from '../domain/loan.js';
 import { routeEarnings } from '../domain/trade.js';
@@ -413,6 +416,48 @@ export function serializeStanding(state: WorldState, viewerId: string): string {
     }
   }
 
+  // Favours owed both ways, with ids — the model cannot call in what it cannot
+  // name, and a power that owes one should know it before it is called.
+  const owed = (state.obligations ?? []).filter(
+    (o) => o.status === 'open' && (o.holderFactionId === viewerId || o.debtorFactionId === viewerId),
+  );
+  if (owed.length > 0) {
+    lines.push('', '**Favours owed**');
+    for (const o of owed) {
+      const mine = o.holderFactionId === viewerId;
+      const other = nameOfFaction(state, mine ? o.debtorFactionId : o.holderFactionId);
+      const rests = o.restsUntil !== null && state.turn < o.restsUntil ? ` — rests until turn ${o.restsUntil}` : '';
+      lines.push(
+        mine
+          ? `  - \`${o.id}\` ${other} owes YOU (${o.strength}${o.strength === 'strong' ? ', reusable, and it cannot side against you' : ', spent when called'})${rests}${o.secret ? ' — only while what you know about them stays true' : ''}: ${o.text} Call it in to make them sign a non-aggression pact, a ceasefire or a trade accord for ${OBLIGATION_TERM_TURNS} turns, or to back an ultimatum of yours.`
+          : `  - \`${o.id}\` you owe ${other} (${o.strength})${rests}: ${o.text} They can call it in. Walking away is priced like breaking a pact.${o.secret ? ' It rests on a secret: end the thing they know about and the hook lapses on its own.' : ''}`,
+      );
+    }
+  }
+
+  // Ultimatums are public, so every open one is shown to everyone, with the
+  // clock — a demand nobody can see coming is not coercion, it is an ambush.
+  const demands = (state.demands ?? []).filter((d) => d.status === 'open');
+  if (demands.length > 0) {
+    lines.push('', '**Ultimatums standing**');
+    for (const d of demands) {
+      const left = d.deadlineTurn - state.turn;
+      const backers = (side: 'from' | 'to') =>
+        demandSide(d, side).slice(1).map((id) => nameOfFaction(state, id));
+      const whose =
+        d.toFactionId === viewerId
+          ? 'MADE OF YOU — give way (concede_ultimatum) or it is war'
+          : d.fromFactionId === viewerId
+            ? 'YOURS'
+            : 'between others — you may back either side';
+      lines.push(
+        `  - \`${d.id}\` ${nameOfFaction(state, d.fromFactionId)} demands of ${nameOfFaction(state, d.toFactionId)}: ${d.text} (${d.kind.replace(/_/g, ' ')}). Answer by turn ${d.deadlineTurn}, ${left} turn${left === 1 ? '' : 's'} left. ${whose}.${
+          backers('from').length > 0 ? ` Backing the demand: ${backers('from').join(', ')}.` : ''
+        }${backers('to').length > 0 ? ` Backing the target: ${backers('to').join(', ')}.` : ''}`,
+      );
+    }
+  }
+
   // The span is a standing cost with a cause, and a cause the model can act
   // on — so it is stated, as the occupation charge is.
   const span = spanOfControl(state, viewerId);
@@ -790,6 +835,12 @@ export function serializeAssets(state: WorldState, viewerId: string): string {
       const fixed = a.portable ? '' : ' · fixed here; changes hands only with the world';
       // A note and a commodity each have one rule that decides what to do
       // with them, and a persona that is not told it will not reach for it.
+      // Proof a watcher found is the one kind of file that does something.
+      const proof = a.secret
+        ? secretLive(state, a.secret)
+          ? ` · PROOF that ${describeSecret(state, a.secret)}: publish it (publish_dossier) or spend it for a strong hook (blackmail)`
+          : ' · proof of something already over — old news, worth nothing to publish'
+        : '';
       const own = isNote(a)
         ? a.issuedBy === viewerId
           ? ` · YOUR OWN promissory note (${NOTE_TITLE[a.note]}): give it to a power and they may call it in for ${NOTE_MEANING[a.note]}; it comes home when played`
@@ -819,7 +870,7 @@ export function serializeAssets(state: WorldState, viewerId: string): string {
                       : ''
                   }`
                 : ` · yields ${a.yield.perTurn} ${a.yield.unit} a turn`;
-      return `- \`${a.id}\` ${a.quantity} ${a.unit} — ${a.text}${where}${split}${fixed}${own}${plays}${does}\n  ${
+      return `- \`${a.id}\` ${a.quantity} ${a.unit} — ${a.text}${where}${split}${fixed}${own}${proof}${plays}${does}\n  ${
         wanted || 'nobody has shown it is worth anything to them'
       }${scarcityNote(scarce)}`;
     })

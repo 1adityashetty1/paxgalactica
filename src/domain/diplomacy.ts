@@ -566,6 +566,63 @@ export type AssetYield = z.infer<typeof AssetYieldSchema>;
 export const DOSSIER_KIND = 'dossier';
 
 /* ------------------------------------------------------------------ */
+/* Secrets                                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Something a power is doing that it would rather nobody knew, found by a
+ * watcher and filed as proof.
+ *
+ * Borrowed from *Crusader Kings III*, where a spymaster finds a character's
+ * secrets and either exposes them or holds them as a hook. **Typed from state,
+ * never invented**: each kind names a record that exists, so a secret is true
+ * when it is found and goes stale when the thing it proves ends — an operative
+ * burned, a programme finished, a debt settled. Stale proof publishes nothing
+ * and buys no hook.
+ *
+ * | kind | proves | `ref` |
+ * |---|---|---|
+ * | `covert_operation` | an operative of theirs at work, unexposed | the agent |
+ * | `secret_programme` | hidden work under way | the order |
+ * | `default` | an unpaid debt or a loan never returned | the debt or loan |
+ */
+export const SECRET_KINDS = ['covert_operation', 'secret_programme', 'default'] as const;
+export const SecretKindSchema = z.enum(SECRET_KINDS);
+export type SecretKind = z.infer<typeof SecretKindSchema>;
+
+export const SecretSchema = z.object({
+  kind: SecretKindSchema,
+  /** The power it is about. */
+  subject: z.string().min(1),
+  /** The record it proves. */
+  ref: z.string().min(1),
+});
+export type Secret = z.infer<typeof SecretSchema>;
+
+/**
+ * What a watcher needs on its own d20 each turn to find one: 17 or better, a
+ * one-in-five chance, on top of a successful operation. A watcher posted for
+ * ten turns finds about two.
+ */
+export const SECRET_DISCOVERY_ROLL = 17;
+
+/**
+ * What publishing proof of each kind costs its subject with every other power.
+ *
+ * Set against `PACT_BREAKING_REPUTATION_COST` (10): being caught running an
+ * operative against somebody is about as bad as being caught breaking a pact,
+ * and a hidden programme or an unpaid debt is a lesser embarrassment.
+ */
+export const SECRET_EXPOSURE_COST: Record<SecretKind, number> = {
+  covert_operation: 10,
+  secret_programme: 5,
+  default: 6,
+};
+
+/** What the subject thinks of whoever published or blackmailed with its secret. */
+export const SECRET_RESENTMENT = 15;
+
+/* ------------------------------------------------------------------ */
 /* Promissory notes                                                    */
 /* ------------------------------------------------------------------ */
 
@@ -904,8 +961,168 @@ export const AssetSchema = z.object({
    * `workingStats`. Optional, so a fixture nobody has touched carries nothing.
    */
   damage: z.number().int().min(0).max(MAX_ASSET_STAT).optional(),
+  /**
+   * What a dossier proves, when a watcher dug it up — see `SecretSchema`. Only
+   * a dossier carrying one can be published or used for blackmail; a file
+   * bought across a table is proof of whatever the conversation said.
+   */
+  secret: SecretSchema.optional(),
 });
 export type Asset = z.infer<typeof AssetSchema>;
+
+/* ------------------------------------------------------------------ */
+/* Obligations                                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A favour owed, which the holder can call in.
+ *
+ * Borrowed from *Victoria 3*'s obligations and *Crusader Kings III*'s hooks: a
+ * power that is obligated to another can be made to sign a pact or take its
+ * side, and a strong hook can be used more than once. **A note with no fixed
+ * terms** — `play_note` was the template: consent given in advance, called in
+ * later — and the terms are chosen from a closed list when it is called.
+ *
+ * Created only where consent or proof exists:
+ *
+ * - **an accord** — *"we will owe you one"*, `establish_obligation`, extraction
+ *   only, and always weak;
+ * - **a forgiven debt** — the debtor owes the creditor that let it off, which
+ *   is Victoria's loan route and makes forgiveness worth more than goodwill;
+ * - **blackmail** — a secret spent for a STRONG hook.
+ *
+ * Called in with `call_obligation`:
+ *
+ * - `sign` — the debtor enters a `non_aggression`, `ceasefire` or
+ *   `trade_accord` with the holder for `OBLIGATION_TERM_TURNS`. A ceasefire
+ *   called on a power at war is a peace forced by a debt of honour, and it
+ *   leaves a truce like any other.
+ * - `support` — the debtor backs the holder's side of an ultimatum.
+ *
+ * A **weak** obligation is spent when called. A **strong** one rests for
+ * `OBLIGATION_REST_TURNS` and can be called again, and while it stands the
+ * debtor cannot back anybody against the holder. Walking away from one —
+ * `repudiate_obligation` — is priced like breaking a pact, in public.
+ */
+export const OBLIGATION_STRENGTHS = ['weak', 'strong'] as const;
+export const OBLIGATION_ORIGINS = ['accord', 'forgiven_debt', 'blackmail'] as const;
+export const OBLIGATION_SIGNABLE = ['non_aggression', 'ceasefire', 'trade_accord'] as const;
+export const OBLIGATION_TERM_TURNS = 5;
+export const OBLIGATION_REST_TURNS = 8;
+
+export const ObligationSchema = z.object({
+  id: z.string().min(1),
+  debtorFactionId: z.string().min(1),
+  holderFactionId: z.string().min(1),
+  strength: z.enum(OBLIGATION_STRENGTHS),
+  origin: z.enum(OBLIGATION_ORIGINS),
+  /** One sentence, read back verbatim. */
+  text: z.string().min(1).max(240),
+  establishedTurn: z.number().int().min(0),
+  /** A strong hook that has been used rests until this turn. */
+  restsUntil: z.number().int().min(0).nullable().default(null),
+  /**
+   * `called` is a weak one spent; `repudiated` is the debtor walking away;
+   * `lapsed` is a blackmail hook whose secret stopped being one.
+   */
+  status: z.enum(['open', 'called', 'repudiated', 'lapsed']).default('open'),
+  /**
+   * The secret a blackmail hook rests on. **The hook lasts exactly as long as
+   * the secret does** — once the operative is burned or recalled, the programme
+   * finished, the debt paid, there is nothing left to threaten anybody with,
+   * and the hook lapses. Measured before this existed: a hook bought on a
+   * saboteur caught two turns later forced the Vigil into a ceasefire nine
+   * times over seventy turns, on proof of something long over. It is also the
+   * debtor's way out — end the thing, and the hook ends with it.
+   */
+  secret: SecretSchema.optional(),
+});
+export type Obligation = z.infer<typeof ObligationSchema>;
+
+/** Open obligations `debtor` owes `holder`. */
+export function obligationsOwed(
+  obligations: readonly Obligation[] | undefined,
+  debtor: string,
+  holder: string,
+): Obligation[] {
+  return (obligations ?? []).filter(
+    (o) => o.status === 'open' && o.debtorFactionId === debtor && o.holderFactionId === holder,
+  );
+}
+
+/** Whether `debtor` is under a strong hook held by `holder`. */
+export function hookedBy(obligations: readonly Obligation[] | undefined, debtor: string, holder: string): boolean {
+  return obligationsOwed(obligations, debtor, holder).some((o) => o.strength === 'strong');
+}
+
+/* ------------------------------------------------------------------ */
+/* Ultimatums                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A demand with a clock on it.
+ *
+ * Borrowed from *Victoria 3*'s diplomatic play. **Coercion and war were the
+ * same act**: a power that wanted something from a neighbour either asked in a
+ * channel or attacked, and the threat in between — *give me Oridin or I take
+ * it* — had no shape. A demand is public, names what it wants from a closed
+ * list, and runs to a deadline; other powers may declare for either side in
+ * the meantime, by their own choice or because an obligation was called.
+ *
+ * | demand | conceded as |
+ * |---|---|
+ * | `tribute` | a `tribute` treaty paying `perTurn` for `ULTIMATUM_TERM_TURNS` |
+ * | `cession` | a `cession` of the named world |
+ * | `basing_rights` · `trade_accord` | that treaty, for the term |
+ * | `break_treaty` | the target repudiates the named treaty, at the usual price |
+ *
+ * At the deadline it is **conceded or it is war**: every party on each side
+ * goes to war with every party on the other — regard set to
+ * `WAR_DISPOSITION_THRESHOLD` where it was warmer. A power run by the bots
+ * concedes by arithmetic when the issuer's side outguns its own by
+ * `ULTIMATUM_YIELD_RATIO`; the player concedes by declaring it, and a
+ * model-driven power by its reaction.
+ */
+export const DEMAND_KINDS = ['tribute', 'cession', 'basing_rights', 'trade_accord', 'break_treaty'] as const;
+export const DemandKindSchema = z.enum(DEMAND_KINDS);
+export type DemandKind = z.infer<typeof DemandKindSchema>;
+
+export const ULTIMATUM_TERM_TURNS = 8;
+export const ULTIMATUM_MAX_DEADLINE = 5;
+export const ULTIMATUM_YIELD_RATIO = 1.5;
+/** What a power thinks of one that made it give way under threat. */
+export const ULTIMATUM_RESENTMENT = 10;
+
+export const DemandSchema = z.object({
+  id: z.string().min(1),
+  fromFactionId: z.string().min(1),
+  toFactionId: z.string().min(1),
+  kind: DemandKindSchema,
+  /** `tribute`: credits a turn. */
+  perTurn: z.number().int().min(0).default(0),
+  /** `cession`: the world. */
+  systemId: z.string().nullable().default(null),
+  /** `break_treaty`: the treaty the target must give up. */
+  treatyId: z.string().nullable().default(null),
+  issuedTurn: z.number().int().min(0),
+  /** Answered by the tick that reaches this turn. */
+  deadlineTurn: z.number().int().min(0),
+  backers: z
+    .array(z.object({ factionId: z.string().min(1), side: z.enum(['from', 'to']) }))
+    .default([]),
+  status: z.enum(['open', 'conceded', 'war', 'withdrawn']).default('open'),
+  /** One sentence, the demand in the issuer's words. */
+  text: z.string().min(1).max(240),
+});
+export type Demand = z.infer<typeof DemandSchema>;
+
+/** Everyone on one side of a demand, principals first. */
+export function demandSide(demand: Demand, side: 'from' | 'to'): string[] {
+  return [
+    side === 'from' ? demand.fromFactionId : demand.toFactionId,
+    ...demand.backers.filter((b) => b.side === side).map((b) => b.factionId),
+  ];
+}
 
 /**
  * What an asset is worth to a power, in total. A claim, never a ledger entry.

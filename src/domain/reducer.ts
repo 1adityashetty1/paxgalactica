@@ -87,7 +87,22 @@ import {
   fixtureIntegrity,
   isCommodity,
   isNote,
+  ObligationSchema,
+  DemandSchema,
+  OBLIGATION_REST_TURNS,
+  OBLIGATION_TERM_TURNS,
+  SECRET_DISCOVERY_ROLL,
+  SECRET_EXPOSURE_COST,
+  SECRET_RESENTMENT,
+  ULTIMATUM_RESENTMENT,
+  ULTIMATUM_TERM_TURNS,
+  ULTIMATUM_YIELD_RATIO,
+  demandSide,
+  hookedBy,
+  isTruceLive,
+  type Demand,
 } from './diplomacy.js';
+import { describeSecret, secretLive, secretsAbout, sideStrength } from './leverage.js';
 import { ASSET_ARCHETYPES, archetypeFor, fixtureYieldFor } from './assets.js';
 import { CHEAT_ASSET_QUANTITY, CHEAT_ASSET_VALUE, type Cheat } from './cheats.js';
 import {
@@ -219,6 +234,8 @@ import {
   EXPANSIONIST_LIFT_SHARE,
   OPPORTUNIST_MIGHT_BONUS,
   warsFor,
+  underDuressFrom,
+  WAR_DISPOSITION_THRESHOLD,
   TRUCE_FLOOR,
   spanOfControl,
   SPAN_DISSENT_PER_WORLD,
@@ -592,6 +609,8 @@ function mintId(state: WorldState, prefix: string): string {
     ...(state.debts ?? []).map((d) => d.id),
     ...(state.assets ?? []).map((a) => a.id),
     ...(state.loans ?? []).map((l) => l.id),
+    ...(state.obligations ?? []).map((o) => o.id),
+    ...(state.demands ?? []).map((d) => d.id),
   ];
   let highest = -1;
   for (const id of pool) {
@@ -1037,17 +1056,6 @@ function adjustCommitmentGoodwill(
   );
 }
 
-function underDuressFrom(state: WorldState, coercer: string, victim: string): number {
-  let worlds = 0;
-  for (const system of state.systems) {
-    if (system.controllerFactionId !== victim) continue;
-    if ((hullsAt(system, coercer)) <= 0) continue;
-    if (isGuestOf(state, coercer, victim)) continue;
-    worlds += 1;
-  }
-  return worlds;
-}
-
 /**
  * Retire the treaty this one replaces.
  *
@@ -1091,6 +1099,69 @@ function pairLevelFootprint(t: Treaty): string[] {
   // a second one of the same type between the same powers says nothing new.
   if (marks.length === 0 && t.terms.incomeShares.length === 0) marks.push('the pact itself');
   return marks;
+}
+
+/**
+ * Give an ultimatum's issuer what it demanded. Shared by the target's own
+ * concession and the deadline, so the two cannot disagree about what giving
+ * way means.
+ */
+function concedeDemand(state: WorldState, demand: Demand): string[] {
+  const notes: string[] = [];
+  const from = demand.fromFactionId;
+  const to = demand.toFactionId;
+  const term = (type: Treaty['type'], terms: Record<string, unknown>, expires: boolean, summary: string): Treaty => {
+    const treaty: Treaty = {
+      id: mintId(state, 'tre'),
+      type,
+      parties: [to, from],
+      terms: TreatyTermsSchema.parse(terms),
+      signedTurn: state.turn,
+      expiresTurn: expires ? state.turn + ULTIMATUM_TERM_TURNS : null,
+      effectiveTurn: null,
+      status: 'active',
+      exclusive: false,
+      summary,
+    };
+    state.treaties.push(treaty);
+    return treaty;
+  };
+  switch (demand.kind) {
+    case 'tribute': {
+      const treaty = term(
+        'tribute',
+        { incomePerTurn: { [to]: -demand.perTurn, [from]: demand.perTurn } },
+        true,
+        `tribute of ${demand.perTurn} a turn, exacted by ultimatum`,
+      );
+      supersedePriorTreaties(state, treaty, notes);
+      break;
+    }
+    case 'cession': {
+      const treaty = term('cession', { territory: demand.systemId ? [demand.systemId] : [] }, false, 'a world given up under ultimatum');
+      notes.push(...cedeTerritory(state, treaty));
+      break;
+    }
+    case 'basing_rights':
+    case 'trade_accord':
+      term(demand.kind, {}, true, `${demand.kind.replace(/_/g, ' ')} conceded under ultimatum`);
+      break;
+    case 'break_treaty': {
+      const t = state.treaties.find((x) => x.id === demand.treatyId);
+      if (t && isTreatyLive(t, state.turn)) {
+        t.status = 'broken';
+        const third = t.parties.find((p) => p !== to);
+        if (third) moveRegard(state, third, to, -25);
+      }
+      break;
+    }
+  }
+  demand.status = 'conceded';
+  moveRegard(state, to, from, -ULTIMATUM_RESENTMENT);
+  const note = `${nameFor(state, to)} gives way to ${nameFor(state, from)}'s ultimatum: ${demand.text}`;
+  notes.push(note);
+  logEvent(state, 'diplomacy', note, to);
+  return notes;
 }
 
 /**
@@ -1826,6 +1897,18 @@ export interface LegacyRules {
    */
   spanOfControl?: boolean;
   /**
+   * Forgiving a debt leaves the debtor owing the creditor a favour (see
+   * `ObligationSchema`). Before it, forgiveness bought goodwill and nothing
+   * else. Journal version 13.
+   */
+  obligations?: boolean;
+  /**
+   * A watcher at work has a chance each turn to dig up one of its host's
+   * secrets (see `SecretSchema`). Before it, a watcher saw orders and filed
+   * nothing. Journal version 13.
+   */
+  secrets?: boolean;
+  /**
    * A sandbox campaign's one event (see `primeRimSandbox`): that kind every
    * turn, with no d20 and no cooldowns. Not a rule the game acquired — a rule
    * of that campaign, read off its journal's seed entry.
@@ -1946,6 +2029,7 @@ function applyOpsUnderRules(
     twoFixtures = true,
     operativesTravel = true,
     truces = true,
+    obligations: favoursOwed = true,
   } = legacy;
   const state = cloneState(input);
   const rejections: OpRejection[] = [];
@@ -3110,6 +3194,349 @@ function applyOpsUnderRules(
         const note = `${nameFor(state, holder)} calls in ${nameFor(state, issuer)}'s note of ${title.toLowerCase()}: ${what}. The note returns to ${nameFor(state, issuer)}. ${op.reason}`.trim();
         notes.push(note);
         logEvent(state, 'diplomacy', note, holder, [holder, issuer]);
+        break;
+      }
+
+      case 'establish_obligation': {
+        // Binds the debtor, so it is agreed in a channel or not at all.
+        if (source === 'model') {
+          reject(
+            raw,
+            'needs_consent',
+            'An obligation binds the power that owes it, and it has to agree. Open a channel (/talk) and have them say so.',
+          );
+          break;
+        }
+        if (!factionExists(op.debtorFactionId) || !factionExists(op.holderFactionId)) {
+          reject(raw, 'unknown_faction', `No faction "${!factionExists(op.debtorFactionId) ? op.debtorFactionId : op.holderFactionId}".`);
+          break;
+        }
+        if (op.debtorFactionId === op.holderFactionId) {
+          reject(raw, 'illegal_value', 'A power cannot owe itself a favour.');
+          break;
+        }
+        const owed = ObligationSchema.parse({
+          id: mintId(state, 'obl'),
+          debtorFactionId: op.debtorFactionId,
+          holderFactionId: op.holderFactionId,
+          strength: 'weak',
+          origin: 'accord',
+          text: op.text,
+          establishedTurn: state.turn,
+        });
+        (state.obligations ??= []).push(owed);
+        const note = `${nameFor(state, op.debtorFactionId)} owes ${nameFor(state, op.holderFactionId)} a favour: ${op.text}`;
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, op.holderFactionId, [op.debtorFactionId, op.holderFactionId]);
+        break;
+      }
+
+      case 'call_obligation': {
+        const owed = (state.obligations ?? []).find((o) => o.id === op.obligationId);
+        if (!owed) {
+          reject(raw, 'unknown_obligation', `No obligation "${op.obligationId}".`);
+          break;
+        }
+        const holder = owed.holderFactionId;
+        const debtor = owed.debtorFactionId;
+        if (actor !== undefined && holder !== actor) {
+          reject(raw, 'illegal_value', `That favour is owed to ${nameFor(state, holder)}, and only it can call it in.`);
+          break;
+        }
+        if (owed.status !== 'open') {
+          reject(raw, 'illegal_value', `That obligation was already ${owed.status}.`);
+          break;
+        }
+        if (owed.secret && !secretLive(state, owed.secret)) {
+          reject(raw, 'illegal_value', `What that hook rested on is over — ${describeSecret(state, owed.secret)} is no longer true — and there is nothing left to threaten with.`);
+          break;
+        }
+        if (owed.restsUntil !== null && state.turn < owed.restsUntil) {
+          reject(raw, 'illegal_value', `That hook was used lately and rests until turn ${owed.restsUntil}.`);
+          break;
+        }
+        let what: string;
+        if (op.call === 'sign') {
+          const type = op.treatyType;
+          if (!type) {
+            reject(raw, 'illegal_value', 'Name the treaty it must sign: non_aggression, ceasefire or trade_accord.');
+            break;
+          }
+          if (treatyBetween(state.treaties, state.turn, holder, debtor, [type])) {
+            reject(raw, 'illegal_value', `A ${type.replace(/_/g, ' ')} already binds them; calling the favour would give nothing.`);
+            break;
+          }
+          if (conflictingTreaty(state.treaties, state.turn, type, [holder, debtor], false)) {
+            reject(raw, 'treaty_conflict', `An exclusive ${type.replace(/_/g, ' ')} already binds one of them to somebody else.`);
+            break;
+          }
+          // Read before the treaty exists, for the reason `form_treaty` does: a
+          // ceasefire called on a power at war is a peace, and leaves a truce.
+          const wereAtWar = warsFor(state, holder).includes(debtor);
+          const treaty: Treaty = {
+            id: mintId(state, 'tre'),
+            type,
+            parties: [holder, debtor],
+            terms: TreatyTermsSchema.parse({}),
+            signedTurn: state.turn,
+            expiresTurn: state.turn + OBLIGATION_TERM_TURNS,
+            effectiveTurn: null,
+            status: 'active',
+            exclusive: false,
+            summary: `${type.replace(/_/g, ' ')} owed: ${nameFor(state, debtor)} pays a favour to ${nameFor(state, holder)}`,
+          };
+          state.treaties.push(treaty);
+          if (truces) leaveTruce(state, treaty, wereAtWar, notes);
+          what = `${nameFor(state, debtor)} signs a ${type.replace(/_/g, ' ')} until turn ${treaty.expiresTurn}`;
+        } else {
+          const demand = (state.demands ?? []).find((d) => d.id === op.demandId);
+          if (!demand || demand.status !== 'open') {
+            reject(raw, 'unknown_demand', `No open ultimatum "${op.demandId ?? ''}".`);
+            break;
+          }
+          if (demand.fromFactionId !== holder) {
+            reject(raw, 'illegal_value', `A favour buys support for ${nameFor(state, holder)}'s own ultimatum, not somebody else's.`);
+            break;
+          }
+          if (debtor === demand.toFactionId) {
+            reject(raw, 'illegal_value', `${nameFor(state, debtor)} is the power the ultimatum is aimed at.`);
+            break;
+          }
+          demand.backers = [...demand.backers.filter((b) => b.factionId !== debtor), { factionId: debtor, side: 'from' }];
+          what = `${nameFor(state, debtor)} declares for ${nameFor(state, holder)} against ${nameFor(state, demand.toFactionId)}`;
+        }
+        // A weak favour is spent; a strong hook rests and stays.
+        if (owed.strength === 'weak') owed.status = 'called';
+        else owed.restsUntil = state.turn + OBLIGATION_REST_TURNS;
+        const note = `${nameFor(state, holder)} calls in what ${nameFor(state, debtor)} owes it: ${what}. ${op.reason}`.trim();
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, holder);
+        break;
+      }
+
+      case 'repudiate_obligation': {
+        const owed = (state.obligations ?? []).find((o) => o.id === op.obligationId);
+        if (!owed) {
+          reject(raw, 'unknown_obligation', `No obligation "${op.obligationId}".`);
+          break;
+        }
+        if (actor !== undefined && owed.debtorFactionId !== actor) {
+          reject(raw, 'illegal_value', `Only ${nameFor(state, owed.debtorFactionId)} owes that favour, so only it can walk away from it.`);
+          break;
+        }
+        if (owed.status !== 'open') {
+          reject(raw, 'illegal_value', `That obligation was already ${owed.status}.`);
+          break;
+        }
+        owed.status = 'repudiated';
+        // Priced like a broken pact, and public, because a debt of honour
+        // refused is the same kind of news.
+        moveRegard(state, owed.holderFactionId, owed.debtorFactionId, -25);
+        for (const witness of state.factions) {
+          if (witness.id === owed.holderFactionId || witness.id === owed.debtorFactionId) continue;
+          moveRegard(state, witness.id, owed.debtorFactionId, -PACT_BREAKING_REPUTATION_COST);
+        }
+        const note = `${nameFor(state, owed.debtorFactionId)} refuses what it owes ${nameFor(state, owed.holderFactionId)}. ${op.reason}`.trim();
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, owed.debtorFactionId);
+        break;
+      }
+
+      case 'publish_dossier':
+      case 'blackmail': {
+        const asset = state.assets.find((a) => a.id === op.assetId);
+        if (!asset) {
+          reject(raw, 'unknown_asset', `No asset "${op.assetId}".`);
+          break;
+        }
+        if (!asset.secret) {
+          reject(raw, 'illegal_value', `${asset.text} proves nothing a watcher dug up; it can be sold, not ${op.op === 'blackmail' ? 'used to blackmail' : 'published'}.`);
+          break;
+        }
+        if (actor !== undefined && asset.heldBy !== actor) {
+          reject(raw, 'illegal_value', `${asset.text} is ${nameFor(state, asset.heldBy)}'s to use.`);
+          break;
+        }
+        const secret = asset.secret;
+        if (secret.subject === asset.heldBy) {
+          reject(raw, 'illegal_value', 'Nobody blackmails or exposes itself.');
+          break;
+        }
+        if (!secretLive(state, secret)) {
+          reject(raw, 'illegal_value', `${asset.text} is old news: what it proves is over, and nobody would care or pay.`);
+          break;
+        }
+        const holder = asset.heldBy;
+        const subject = secret.subject;
+        const said = describeSecret(state, secret);
+        state.assets = state.assets.filter((a) => a.id !== asset.id);
+        moveRegard(state, subject, holder, -SECRET_RESENTMENT);
+        if (op.op === 'publish_dossier') {
+          for (const witness of state.factions) {
+            if (witness.id === subject || witness.id === holder) continue;
+            moveRegard(state, witness.id, subject, -SECRET_EXPOSURE_COST[secret.kind]);
+          }
+          // Published proof does what proof does: the operative is burned and
+          // the programme is in the open.
+          if (secret.kind === 'covert_operation') {
+            const agent = (state.agents ?? []).find((a) => a.id === secret.ref);
+            if (agent) agent.exposed = true;
+          }
+          if (secret.kind === 'secret_programme') {
+            const order = state.pendingOrders.find((o) => o.id === secret.ref);
+            if (order) order.visibility = [...new Set([...order.visibility, ...state.factions.map((f) => f.id)])];
+          }
+          const note = `${nameFor(state, holder)} publishes proof that ${said}. ${op.reason}`.trim();
+          notes.push(note);
+          logEvent(state, 'diplomacy', note, holder);
+        } else {
+          (state.obligations ??= []).push(
+            ObligationSchema.parse({
+              id: mintId(state, 'obl'),
+              debtorFactionId: subject,
+              holderFactionId: holder,
+              strength: 'strong',
+              origin: 'blackmail',
+              text: `${nameFor(state, holder)} holds proof that ${said}, and ${nameFor(state, subject)} knows it.`,
+              establishedTurn: state.turn,
+              // What the hook rests on, so it lapses when that does.
+              secret,
+            }),
+          );
+          const note = `${nameFor(state, holder)} lets ${nameFor(state, subject)} know what it holds: ${said}. ${op.reason}`.trim();
+          notes.push(note);
+          logEvent(state, 'diplomacy', note, holder, [holder, subject]);
+        }
+        break;
+      }
+
+      case 'issue_ultimatum': {
+        const from = actor;
+        if (from === undefined) {
+          reject(raw, 'illegal_value', 'An ultimatum is somebody\'s; this batch names no acting power.');
+          break;
+        }
+        const to = op.targetFactionId;
+        if (!factionExists(to) || to === from) {
+          reject(raw, 'unknown_faction', `No power "${to}" to make demands of.`);
+          break;
+        }
+        if ((state.demands ?? []).some((d) => d.status === 'open' && d.fromFactionId === from && d.toFactionId === to)) {
+          reject(raw, 'illegal_value', `${nameFor(state, from)} already has a demand standing against ${nameFor(state, to)}.`);
+          break;
+        }
+        // A threat of war is not made across a peace you have sworn. Break the
+        // pact first, and pay for that, if you mean it.
+        if (
+          treatyBetween(state.treaties, state.turn, from, to, PEACE_TREATIES) ||
+          truceBetween(state.truces, state.turn, from, to)
+        ) {
+          reject(raw, 'illegal_value', `${nameFor(state, from)} is bound to peace with ${nameFor(state, to)}; an ultimatum would threaten the war it swore off.`);
+          break;
+        }
+        if (op.demand === 'tribute' && !(op.perTurn && op.perTurn <= MAX_TREATY_INCOME_PER_TURN)) {
+          reject(raw, 'illegal_value', `A tribute demand names a sum a turn, at most ${MAX_TREATY_INCOME_PER_TURN}.`);
+          break;
+        }
+        if (op.demand === 'cession') {
+          const world = state.systems.find((x) => x.id === op.systemId);
+          if (!world || world.controllerFactionId !== to) {
+            reject(raw, 'illegal_value', `A cession demand names a world ${nameFor(state, to)} holds.`);
+            break;
+          }
+        }
+        if (op.demand === 'break_treaty') {
+          const t = state.treaties.find((x) => x.id === op.treatyId);
+          if (!t || !isTreatyLive(t, state.turn) || !t.parties.includes(to) || t.parties.includes(from)) {
+            reject(raw, 'illegal_value', `Name a live treaty ${nameFor(state, to)} holds with a third power.`);
+            break;
+          }
+        }
+        const demand = DemandSchema.parse({
+          id: mintId(state, 'dem'),
+          fromFactionId: from,
+          toFactionId: to,
+          kind: op.demand,
+          perTurn: op.perTurn ?? 0,
+          systemId: op.systemId ?? null,
+          treatyId: op.treatyId ?? null,
+          issuedTurn: state.turn,
+          deadlineTurn: state.turn + op.deadlineTurns,
+          text: op.text,
+        });
+        (state.demands ??= []).push(demand);
+        const note = `${nameFor(state, from)} issues an ultimatum to ${nameFor(state, to)}, to be answered by turn ${demand.deadlineTurn}: ${op.text}`;
+        notes.push(note);
+        // Public: a threat nobody hears is not a threat.
+        logEvent(state, 'diplomacy', note, from);
+        break;
+      }
+
+      case 'back_ultimatum': {
+        const demand = (state.demands ?? []).find((d) => d.id === op.demandId);
+        if (!demand || demand.status !== 'open') {
+          reject(raw, 'unknown_demand', `No open ultimatum "${op.demandId}".`);
+          break;
+        }
+        const who = actor;
+        if (who === undefined || who === demand.fromFactionId || who === demand.toFactionId) {
+          reject(raw, 'illegal_value', 'Only a third power can declare for a side.');
+          break;
+        }
+        const against = op.side === 'from' ? demand.toFactionId : demand.fromFactionId;
+        // A strong hook stops its debtor siding against the holder.
+        if (hookedBy(state.obligations, who, against)) {
+          reject(raw, 'illegal_value', `${nameFor(state, against)} holds a hook on ${nameFor(state, who)}, which cannot side against it.`);
+          break;
+        }
+        if (
+          treatyBetween(state.treaties, state.turn, who, against, PEACE_TREATIES) ||
+          truceBetween(state.truces, state.turn, who, against)
+        ) {
+          reject(raw, 'illegal_value', `${nameFor(state, who)} is bound to peace with ${nameFor(state, against)}.`);
+          break;
+        }
+        demand.backers = [...demand.backers.filter((b) => b.factionId !== who), { factionId: who, side: op.side }];
+        const note = `${nameFor(state, who)} declares for ${nameFor(state, op.side === 'from' ? demand.fromFactionId : demand.toFactionId)} in the ultimatum over ${nameFor(state, demand.toFactionId)}.`;
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, who);
+        break;
+      }
+
+      case 'concede_ultimatum': {
+        const demand = (state.demands ?? []).find((d) => d.id === op.demandId);
+        if (!demand || demand.status !== 'open') {
+          reject(raw, 'unknown_demand', `No open ultimatum "${op.demandId}".`);
+          break;
+        }
+        // The target gives way, or — in a channel between the two principals —
+        // the transcript records that it did.
+        const mayConcede =
+          actor === undefined ||
+          actor === demand.toFactionId ||
+          (source === 'extraction' && actor === demand.fromFactionId);
+        if (!mayConcede) {
+          reject(raw, 'illegal_value', `Only ${nameFor(state, demand.toFactionId)} can give way to a demand made of it.`);
+          break;
+        }
+        notes.push(...concedeDemand(state, demand));
+        break;
+      }
+
+      case 'withdraw_ultimatum': {
+        const demand = (state.demands ?? []).find((d) => d.id === op.demandId);
+        if (!demand || demand.status !== 'open') {
+          reject(raw, 'unknown_demand', `No open ultimatum "${op.demandId}".`);
+          break;
+        }
+        if (actor !== undefined && actor !== demand.fromFactionId) {
+          reject(raw, 'illegal_value', `Only ${nameFor(state, demand.fromFactionId)} can take its own demand back.`);
+          break;
+        }
+        demand.status = 'withdrawn';
+        const note = `${nameFor(state, demand.fromFactionId)} withdraws its ultimatum to ${nameFor(state, demand.toFactionId)}.`;
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, demand.fromFactionId);
         break;
       }
 
@@ -5696,6 +6123,22 @@ function applyOpsUnderRules(
           debt.creditorFactionId,
           [debt.creditorFactionId, debt.debtorFactionId],
         );
+        // And the debtor owes the power that let it off — Victoria's loan
+        // route, and what makes forgiveness an instrument rather than only a
+        // kindness. Weak: one favour, spent when called.
+        if (favoursOwed) {
+          (state.obligations ??= []).push(
+            ObligationSchema.parse({
+              id: mintId(state, 'obl'),
+              debtorFactionId: debt.debtorFactionId,
+              holderFactionId: debt.creditorFactionId,
+              strength: 'weak',
+              origin: 'forgiven_debt',
+              text: `${nameFor(state, debt.debtorFactionId)} owes ${nameFor(state, debt.creditorFactionId)} for a debt of ${debt.balance} written off.`,
+              establishedTurn: state.turn,
+            }),
+          );
+        }
         break;
       }
 
@@ -6559,6 +7002,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     twoFixtures = true,
     truces = true,
     spanOfControl: governingSpan = true,
+    secrets: diggingSecrets = true,
     battleRules = {},
   } = legacy;
   const state = cloneState(input);
@@ -7127,6 +7571,40 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     }
   }
 
+  /* --- Ultimatums come due -------------------------------------------- */
+  // Conceded or war. A power the bots run gives way by arithmetic when the
+  // issuer's side outguns its own by `ULTIMATUM_YIELD_RATIO`; the player gives
+  // way by declaring it before now. Nothing else answers a demand for them.
+  for (const demand of state.demands ?? []) {
+    if (demand.status !== 'open' || state.turn < demand.deadlineTurn) continue;
+    const fromSide = demandSide(demand, 'from');
+    const toSide = demandSide(demand, 'to');
+    const yields =
+      demand.toFactionId !== state.playerFactionId &&
+      sideStrength(state, fromSide) >= ULTIMATUM_YIELD_RATIO * sideStrength(state, toSide);
+    if (yields) {
+      notes.push(...concedeDemand(state, demand));
+      continue;
+    }
+    demand.status = 'war';
+    for (const a of fromSide) {
+      for (const b of toSide) {
+        if (a === b) continue;
+        for (const [x, y] of [[a, b], [b, a]] as [string, string][]) {
+          const f = state.factions.find((q) => q.id === x);
+          if (f && (f.disposition[y] ?? 0) > WAR_DISPOSITION_THRESHOLD) f.disposition[y] = WAR_DISPOSITION_THRESHOLD;
+        }
+      }
+    }
+    const note = `${nameFor(state, demand.toFactionId)} lets ${nameFor(state, demand.fromFactionId)}'s ultimatum run out. It is war${
+      fromSide.length + toSide.length > 2
+        ? `, and ${[...fromSide.slice(1), ...toSide.slice(1)].map((id) => nameFor(state, id)).join(' and ')} are in it`
+        : ''
+    }.`;
+    notes.push(note);
+    logEvent(state, 'diplomacy', note, demand.fromFactionId);
+  }
+
   /* --- Interdiction: blockades and commerce raiding -------------------- */
   // These orders are sustained by a fleet on station, so they end the moment
   // that fleet does. Checked BEFORE income is not an option — income was
@@ -7658,6 +8136,41 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
               })
               .join('; ')}.`,
       );
+      // **A watcher digs.** On its own roll, one secret its host is keeping —
+      // typed from state, never invented — filed as proof the owner can
+      // publish or spend on a hook. Never one the owner already holds proof
+      // of. See `SecretSchema`.
+      if (diggingSecrets && rollD20(state.turn, `secret:${agent.id}`) >= SECRET_DISCOVERY_ROLL) {
+        const filed = new Set(
+          state.assets
+            .filter((a) => a.heldBy === agent.ownerFactionId && a.secret)
+            .map((a) => `${a.secret!.kind}:${a.secret!.ref}`),
+        );
+        const found = secretsAbout(state, target.id).find(
+          (x) => !filed.has(`${x.kind}:${x.ref}`) && !(x.kind === 'covert_operation' && x.ref === agent.id),
+        );
+        if (found) {
+          const said = describeSecret(state, found);
+          state.assets.push(
+            AssetSchema.parse({
+              id: mintId(state, 'ast'),
+              kind: DOSSIER_KIND,
+              text: `Proof that ${said}`.slice(0, 240),
+              heldBy: agent.ownerFactionId,
+              quantity: 1,
+              unit: 'file',
+              divisible: false,
+              // Worth most to the power it would hurt, which is what makes it
+              // something to sell back as well as something to use.
+              valuePerUnit: { [target.id]: 150, [agent.ownerFactionId]: 60 },
+              atSystemId: null,
+              acquiredTurn: state.turn,
+              secret: found,
+            }),
+          );
+          watchNotes.set(agent.id, `${watchNotes.get(agent.id)} And it has found something: ${said}. The proof is filed.`);
+        }
+      }
     }
   }
 
@@ -7826,6 +8339,17 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
         outcome: note,
       });
     }
+  }
+
+  /* --- Blackmail lapses with the secret it rests on --------------------- */
+  // After the agents and the orders, which are what burn an operative and
+  // finish a programme, so a hook does not outlive the turn its secret ended.
+  for (const owed of state.obligations ?? []) {
+    if (owed.status !== 'open' || !owed.secret || secretLive(state, owed.secret)) continue;
+    owed.status = 'lapsed';
+    const note = `${nameFor(state, owed.holderFactionId)}'s hold over ${nameFor(state, owed.debtorFactionId)} lapses: what it knew is no longer worth knowing.`;
+    notes.push(note);
+    logEvent(state, 'diplomacy', note, owed.holderFactionId, [owed.holderFactionId, owed.debtorFactionId]);
   }
 
   /* --- Garrisons regrow, last, and only where it is quiet -------------- */

@@ -278,6 +278,13 @@ export const CampaignViewSchema = z.object({
     .array(z.object({ concession: z.string(), principle: z.string() }))
     .default([]),
   /**
+   * What the other power will give up in this channel, what it already has,
+   * and the terms it wrote past that and had struck — see `concessionBudget`.
+   */
+  channelBudget: z
+    .object({ budget: z.number().int(), given: z.number().int(), over: z.array(z.string()) })
+    .default({ budget: 0, given: 0, over: [] }),
+  /**
    * Actions left this turn, and the allowance. Not part of `WorldState`: this
    * is a pacing rule about the player's turn, not a fact about the galaxy.
    */
