@@ -44,6 +44,14 @@ Name what is **pressing on them**, and let them decide:
 - a thing they hold that somebody else wants much more than they do
 - an arrangement that is quietly worth nothing
 - their own institutions, if dissent is climbing
+- an ultimatum with its clock running, made of them or by them
+- a favour they could call in, or one somebody could call on them
+- proof in their hands about to go stale, because what it proves is ending
+- a truce running out on a war that has not healed
+- a price on their head, a raider paid to come after them, or their own
+  notoriety — how hot their dirty work has made them, and how close the Rim
+  is to answering it
+- more ground than they can govern, and what it is costing them at home
 
 Two or three of those, at most. A counsellor who lists everything has said
 nothing.
