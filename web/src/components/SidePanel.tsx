@@ -923,7 +923,6 @@ function Assets({ state }: { state: WorldState }) {
               a.yield?.kind === 'credits' ? `pays ${a.yield.perTurn}/turn` : null,
               a.yield?.kind === 'dissent' ? `settles the population` : null,
               a.yield?.kind === 'asset' ? `yields ${a.yield.perTurn} ${a.yield.unit}/turn` : null,
-              offers.length > 1 ? `${offers.length} powers want it` : null,
               // The two kinds whose one rule decides what to do with them.
               // The note's own text already says what it gives; this says what
               // to DO with it, which is the opposite for issuer and holder.
@@ -965,6 +964,29 @@ function Assets({ state }: { state: WorldState }) {
                   )}
                 </div>
                 <p className="commitment-text">{a.text}</p>
+                {/* Who wants it, as a dot in each power's own colour — the
+                    colour the map and the Factions panel already teach — keenest
+                    first, with name and price on hover. Dots rather than a chip
+                    each, for the reason above: who, without burying how much. */}
+                {offers.length > 1 && (
+                  <p className="muted wanted-by">
+                    wanted by
+                    {offers.map((o) => {
+                      const price =
+                        a.speculative && o.band.min !== o.band.max ? `${o.band.min}–${o.band.max}cr` : `${o.band.max}cr`;
+                      return (
+                        <span
+                          key={o.f.id}
+                          className="faction-dot"
+                          style={{ background: colourOf(state, o.f.id) }}
+                          title={`${o.f.name} · ${price}`}
+                          aria-label={`${o.f.name}, ${price}`}
+                          role="img"
+                        />
+                      );
+                    })}
+                  </p>
+                )}
                 {qualifiers.length > 0 && <p className="muted">{qualifiers.join(' · ')}</p>}
               </div>
             );
