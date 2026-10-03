@@ -5601,9 +5601,9 @@ pins one rule; the interactions are pinned separately.
 
 `set_stance` — `hold` never breaks off, `stand` breaks at two to one (the
 default, and what every campaign was played under), `withdraw` breaks the moment
-it is outmatched. Free: no credits, no dissent, no roll, because it is a
-standing order to your own navy rather than a change of what the power believes.
-Your own faction only, and `crusading` overrides all three — the Iron Vigil
+it is outmatched. A standing order to your own navy rather than a change of what
+the power believes, so it costs no dissent; it is declared like any action.
+Shown beside each power's totals on the Fleets tab. Your own faction only, and `crusading` overrides all three — the Iron Vigil
 cannot be ordered to run.
 
 It was built as the **second objective** item 74 says a defender needs, and it
