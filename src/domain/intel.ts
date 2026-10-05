@@ -1,4 +1,4 @@
-import { atWork } from './diplomacy.js';
+import { assetWorthRangeTo, atWork } from './diplomacy.js';
 import { buildAdjacency } from './graph.js';
 import { rimEventsVisibleTo } from './events.js';
 import { z } from 'zod';
@@ -375,8 +375,32 @@ export function observeOrders(state: WorldState, factionId: string): Observation
  * made quietly.
  */
 export function worldAsSeenBy(state: WorldState, factionId: string): WorldState {
+  // The paper between two other powers is theirs. Treaties, commitments, debts,
+  // loans and favours owed all came out of a private channel or a private act,
+  // and the log, the prompts and every panel already scope them to the parties
+  // — but this spread shipped everyone's, so the payload published the terms of
+  // every deal on the board. Only the viewer's own, now.
+  const treaties = state.treaties.filter((t) => t.parties.includes(factionId));
+  const offered = new Set(treaties.flatMap((t) => (t.terms.assets ?? []).map((a) => a.assetId)));
   return {
     ...state,
+    treaties,
+    commitments: (state.commitments ?? []).filter((c) => c.factionIds.includes(factionId)),
+    debts: (state.debts ?? []).filter((d) => d.creditorFactionId === factionId || d.debtorFactionId === factionId),
+    loans: (state.loans ?? []).filter((l) => l.lenderFactionId === factionId || l.borrowerFactionId === factionId),
+    obligations: (state.obligations ?? []).filter(
+      (o) => o.holderFactionId === factionId || o.debtorFactionId === factionId,
+    ),
+    // Another power's holdings by the rule its prompt already follows
+    // (`serializeTheirAssets`): what the viewer would pay for, plus what stands
+    // on a world for anyone to see and what the viewer's own paper names.
+    assets: (state.assets ?? []).filter(
+      (a) =>
+        a.heldBy === factionId ||
+        !a.portable ||
+        offered.has(a.id) ||
+        assetWorthRangeTo(a, factionId).max > 0,
+    ),
     pendingOrders: observeOrders(state, factionId).orders,
     eventLog: eventsVisibleTo(state, factionId),
     // **Operatives are the third field, and they were shipped whole.**

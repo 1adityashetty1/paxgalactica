@@ -4026,6 +4026,22 @@ reserved-seat rule makes an ordinary turn. The alternative is a prompt rule
 asking the model not to mention it, which is the kind of guard a model can be
 talked past.
 
+### And everyone's paper
+
+`worldAsSeenBy` redacted orders, the log, operatives and Rim events and spread
+the rest of the world whole, so **every power's treaties, commitments, debts,
+loans and favours owed** reached the browser — the terms of every deal on the
+board — while the log, the prompts and every panel scoped them to the parties.
+It now does too: the viewer's own of each, and of another power's assets only
+what stands on a world, what the viewer would pay for (the rule
+`serializeTheirAssets` already followed) and what the viewer's own paper names.
+
+**What it does not do is keep secrets from a determined player.** Since the
+server went stateless (#53) the browser holds the session snapshot — the
+journal and the committed world, unredacted — and that was accepted there for a
+single-player game. The fog decides what the game *shows*: every panel derives
+from the served view, so a scoped view is what keeps the UI to the rules.
+
 ### Three more fields the payload was shipping whole
 
 An 8-turn playtest read all three off `GET /api/campaign` and the event log:
