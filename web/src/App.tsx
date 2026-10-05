@@ -70,7 +70,14 @@ function exampleActions(state: WorldState | null): string[] {
   // shape of a sentence the game can hear, against worlds that really exist.
   return [
     ...(neutral ? [`  Send ${force} ships from ${base.name} to take ${neutral.name}.`] : []),
-    ...(rival ? [`  Move ${force} ships to ${rival.name} and raid the shipping on that lane.`] : []),
+    // A power that lives by raiding is shown the quiet way to do it.
+    ...(rival
+      ? [
+          state.factions.find((f) => f.id === me)?.tradeEthic === 'smuggler'
+            ? `  Raid the shipping at ${rival.name} quietly, flying no colours.`
+            : `  Move ${force} ships to ${rival.name} and raid the shipping on that lane.`,
+        ]
+      : []),
     `  Put the yards at ${base.name} to work on a squadron of escorts.`,
     `  Offer ${other.name} a dynastic marriage to seal an alliance.`,
   ];

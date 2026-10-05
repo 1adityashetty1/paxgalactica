@@ -9,6 +9,7 @@ import { DARK_RAID_YIELD, routeEarnings } from '../src/domain/trade.js';
 import { addShipsAt, type WorldState } from '../src/domain/state.js';
 import { briefingFromState } from '../src/engine/briefing.js';
 import type { OpInput } from '../src/domain/ops.js';
+import { serializeState } from '../src/model/serialize.js';
 
 /**
  * Running dark: a raid whose owner nobody else is told, whose costs are owed
@@ -117,6 +118,15 @@ describe('traced', () => {
     expect(secretLive(after, secret)).toBe(true);
     expect(secretLive({ ...ended, turn: secret.filedTurn! + DARK_PROOF_TURNS }, secret)).toBe(true);
     expect(secretLive({ ...ended, turn: secret.filedTurn! + DARK_PROOF_TURNS + 1 }, secret)).toBe(false);
+  });
+});
+
+describe('what the counsel sees', () => {
+  it('the raider its own dark raid; the robbed a loss it cannot name', () => {
+    const s = raiding(true);
+    expect(serializeState(s, 'drajk')).toMatch(/RUN DARK/);
+    expect(serializeState(s, 'ojjul')).toMatch(/Lost to raiders on your own lanes: \d+\/turn — some of it to raiders nobody can name/);
+    expect(serializeState(s, 'ojjul')).not.toMatch(/RUN DARK/);
   });
 });
 

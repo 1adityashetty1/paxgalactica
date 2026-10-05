@@ -1,4 +1,5 @@
 import { HEAT_DECAY, HEAT_NOTORIOUS } from '../domain/heat.js';
+import { DARK_RAID_YIELD } from '../domain/trade.js';
 import { RIM_BOONS, RIM_EVENT_RATE, RIM_HAZARDS } from '../domain/events.js';
 import {
   COMMANDER_ARCHETYPES,
@@ -198,14 +199,23 @@ export function leverageLines(): string[] {
   ];
 }
 
+/** "half", for a yield of a half, so the line reads as prose. */
+function darkShare(): string {
+  return DARK_RAID_YIELD === 0.5 ? 'half' : `${Math.round(DARK_RAID_YIELD * 100)}% of`;
+}
+
 /** The raider's ledger and heat, from the constants that run them. */
 export function raiderLines(): string[] {
   return [
     "THE RAIDER'S LEDGER, AND HEAT",
     '  Post a bounty on a power and your credits wait in escrow: prizes raided',
     `  from it pay out credit for credit, its hulls destroyed ${BOUNTY_PER_TON} a ton.`,
-    '  A raid can run dark: nobody is told whose it is and it runs no heat,',
-    '  but it takes half the prizes, and each power it robs may trace it.',
+    '  A raid can run dark — say so when you order it: "raid it quietly, no',
+    '  colours". Nobody is told whose it is and it costs no standing or heat',
+    `  while it stays dark, but it takes ${darkShare()} the prizes. Each power it robs`,
+    '  may trace it, helped by listeners nearby; traced, it runs open, they',
+    '  resent it double, and they hold proof to publish or blackmail you with.',
+    '  Raiders you cannot name show up on your Trade tab as what they took.',
     '  A raider can be paid to leave you alone (protection) or to go after',
     '  your enemy (a letter of marque). Both are contracts, agreed in a channel.',
     '  Covert work, unlicensed raids and broken pacts make a power notorious.',
