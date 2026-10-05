@@ -13,7 +13,8 @@ import { CommanderIcon, StackGlyphs } from './BattleIcons.js';
 import { archetypeOf, veterancyLabel } from '../../../src/domain/command.js';
 
 /**
- * Officer icons, one per person, with name, school and record on hover — an
+ * Officers, drawn as a hull class is — an icon and a count — with every name,
+ * school and record on hover. An
  * officer is a unit of the fleet (item 122), so they are drawn beside the
  * hulls they stand with, here as on the System panel and the map.
  */
@@ -22,15 +23,13 @@ function Officers({ state, ids }: { state: WorldState; ids: string[] }) {
     .map((id) => (state.commanders ?? []).find((c) => c.id === id))
     .filter((c): c is NonNullable<typeof c> => c !== undefined);
   if (people.length === 0) return null;
+  // Drawn like a hull class: one icon and a count, so two officers in one
+  // place are never one icon that hides the second. Every one is on hover.
+  const names = people.map((c) => `${c.name} — ${archetypeOf(c.archetype).effect}, ${veterancyLabel(c.battles)}`);
   return (
-    <span className="crew-officers">
-      {people.map((c) => (
-        <CommanderIcon
-          key={c.id}
-          size={12}
-          title={`${c.name} — ${archetypeOf(c.archetype).effect}, ${veterancyLabel(c.battles)}`}
-        />
-      ))}
+    <span className="ob-strength" title={names.join('\n')}>
+      <CommanderIcon size={12} title={names.join('\n')} />
+      <span className="ob-count">×{people.length}</span>
     </span>
   );
 }
