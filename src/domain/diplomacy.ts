@@ -586,7 +586,7 @@ export const DOSSIER_KIND = 'dossier';
  * | `secret_programme` | hidden work under way | the order |
  * | `default` | an unpaid debt or a loan never returned | the debt or loan |
  */
-export const SECRET_KINDS = ['covert_operation', 'secret_programme', 'default'] as const;
+export const SECRET_KINDS = ['covert_operation', 'secret_programme', 'default', 'dark_raid'] as const;
 export const SecretKindSchema = z.enum(SECRET_KINDS);
 export type SecretKind = z.infer<typeof SecretKindSchema>;
 
@@ -596,6 +596,14 @@ export const SecretSchema = z.object({
   subject: z.string().min(1),
   /** The record it proves. */
   ref: z.string().min(1),
+  /**
+   * For a `dark_raid`: what publishing it costs the raider with each onlooker
+   * and in heat — double what the raid owed while it ran dark — and the turn it
+   * was filed, which is how long it stays news once the raid is over.
+   */
+  reputation: z.number().int().min(0).optional(),
+  heat: z.number().int().min(0).optional(),
+  filedTurn: z.number().int().min(0).optional(),
 });
 export type Secret = z.infer<typeof SecretSchema>;
 
@@ -617,7 +625,13 @@ export const SECRET_EXPOSURE_COST: Record<SecretKind, number> = {
   covert_operation: 10,
   secret_programme: 5,
   default: 6,
+  // Only a fallback: proof of a dark raid carries its own price, the doubled
+  // tally of what the raid owed.
+  dark_raid: 8,
 };
+
+/** How long proof of a dark raid stays news after it was filed, once the raid is over. */
+export const DARK_PROOF_TURNS = 6;
 
 /** What the subject thinks of whoever published or blackmailed with its secret. */
 export const SECRET_RESENTMENT = 15;
@@ -1538,6 +1552,20 @@ export const PEACE_TREATIES = ['non_aggression', 'ceasefire', 'mutual_defense'] 
  * factions and treachery had no strategic price at all.
  */
 export const PACT_BREAKING_REPUTATION_COST = 10;
+
+/**
+ * What every OTHER power's opinion drops by, per turn, when a faction that is
+ * not a smuggler raids commerce.
+ *
+ * Raiding is available to anyone — a cornered power turning pirate is a real
+ * strategic story and should not be impossible. But it is the Drajk
+ * Confederacy's declared trade ("raid the rich, vanish into the deep lanes"),
+ * and everyone expects it of them. An Imperial remnant doing the same thing is
+ * news. Together with the halved yield for non-smugglers, this is what keeps
+ * raiding a Drajk mechanic in practice without hard-coding a ban that the
+ * faction's own red lines already express better.
+ */
+export const PIRACY_REPUTATION_COST = 2;
 
 /**
  * The most regard one `discord` operative can ever destroy.

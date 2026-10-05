@@ -15,6 +15,9 @@ import { ACTION_POINTS_PER_TURN } from '../src/engine/campaign.js';
 import { ApiFailure, parseBody, toApiFailure } from '../src/server/errors.js';
 import { serveStatic } from '../src/server/static.js';
 import { z } from 'zod';
+import { TreatyTermsSchema } from '../src/domain/diplomacy.js';
+import { CommitmentSchema } from '../src/domain/arbitration.js';
+import { ledgerFor, PendingOrderSchema, type WorldState } from '../src/domain/state.js';
 
 /**
  * The whole API is exercised through `dispatch`, with no port bound and no
@@ -611,6 +614,62 @@ describe('a state push carries a tail of the log, a read carries all of it', () 
       expect(view.state.agents.map((a) => a.id).sort()).toEqual(['burned', 'mine']);
       expect(JSON.stringify(view)).not.toContain('cover of hidden');
     }
+  });
+
+  it('serves the player its true ledger, raids it cannot see included', async () => {
+    // A raid on the player is a rumour in its view — a dark one, an unowned
+    // rumour — so a ledger computed from the view never subtracted it.
+    const { session } = await startedSession();
+    const state = (session as unknown as { campaign: { state: WorldState } }).campaign.state;
+    const hub = state.systems
+      .filter((x) => x.controllerFactionId === 'freeworlds')
+      .sort((a, b) => b.strategicValue - a.strategicValue)[0]!;
+    state.pendingOrders.push(
+      PendingOrderSchema.parse({
+        id: 'ord-x', factionId: 'drajk', type: 'commerce_raiding', originId: hub.id, targetId: hub.id,
+        durationTurns: 3, progress: 1, interruptible: true, onInterrupt: 'cancel', visibility: [],
+        label: 'raid', path: [], force: {}, dark: { turns: 0, heat: 0 },
+      }),
+    );
+    const view = session.view();
+    const served = view.effective.ledger!;
+    expect(served).toEqual(ledgerFor(state, 'freeworlds'));
+    expect(served.lostToRaids).toBeGreaterThan(0);
+    expect(served.routes).toBeLessThan(ledgerFor(view.state, 'freeworlds').routes);
+  });
+
+  it('keeps the paper between two other powers out of the view', async () => {
+    // The fog redacted orders, the log, operatives and Rim events and spread
+    // everything else whole, so every power's treaties, commitments, debts,
+    // loans and favours owed went to the browser while every panel showed the
+    // player only its own.
+    const { session } = await startedSession();
+    const campaign = (session as unknown as { campaign: { state: WorldState } }).campaign;
+    const state = campaign.state;
+    // The seed's debts are the Combine's, owed by others — none the player's.
+    expect(state.debts.length).toBeGreaterThan(0);
+    state.treaties.push({
+      id: 'tre-x', type: 'tribute', parties: ['vigil', 'drajk'], terms: TreatyTermsSchema.parse({}),
+      signedTurn: 0, expiresTurn: null, status: 'active', effectiveTurn: null, exclusive: false,
+      summary: 'a secret tithe',
+    });
+    state.commitments.push(
+      CommitmentSchema.parse({
+        id: 'com-x', kind: 'quiet_understanding', factionIds: ['vigil', 'drajk'], text: 'a private matter',
+        establishedTurn: 0,
+      }),
+    );
+    state.obligations.push({
+      id: 'obl-x', debtorFactionId: 'vigil', holderFactionId: 'drajk', strength: 'weak', origin: 'accord',
+      text: 'a favour', establishedTurn: 0, restsUntil: null, status: 'open',
+    });
+    const view = session.view();
+    const me = view.state.playerFactionId;
+    expect(view.state.treaties.some((t) => t.id === 'tre-x')).toBe(false);
+    expect(view.state.commitments.some((c) => c.id === 'com-x')).toBe(false);
+    expect(view.state.obligations.some((o) => o.id === 'obl-x')).toBe(false);
+    expect(view.state.debts.every((d) => d.creditorFactionId === me || d.debtorFactionId === me)).toBe(true);
+    expect(JSON.stringify(view)).not.toContain('a secret tithe');
   });
 });
 

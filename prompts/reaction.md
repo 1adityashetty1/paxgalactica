@@ -120,6 +120,10 @@ Same op vocabulary and duration rules as resolution:
 - **A bounty** (`post_bounty`) puts your own credits in escrow as a price on a
   power you want hurt; raiders and anyone who destroys its hulls collect.
   Bounties standing on the board are listed — a raider goes where the money is.
+- **Raiders nobody can name** — a dark raid — may be robbing you. You may
+  suspect whoever has ships nearby, but you cannot prove it, and do not name the
+  raider as fact unless you hold proof. You may run a raid dark yourself with
+  `"dark": true` on the order: half the prizes, nobody told whose it is.
 - **Heat** is listed for every power: how notorious its covert work, raiding
   and broken word have made it. It is computed, never an op.
 

@@ -510,6 +510,12 @@ export const IssueOrderOp = z.object({
    * category that can plausibly deliver it.
    */
   onComplete: OrderEffectSchema.optional(),
+  /**
+   * Run a `commerce_raiding` order dark: nobody else is told whose it is, its
+   * costs are owed rather than charged, and it takes `DARK_RAID_YIELD` of the
+   * prizes. Refused on any other order.
+   */
+  dark: z.boolean().optional(),
 });
 
 export const CancelOrderOp = z.object({

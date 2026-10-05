@@ -364,7 +364,8 @@ it. **Issuing an ultimatum** is the acting power's own act and never a
 negotiation — price the nerve it takes (`influence`, or `might` where the threat
 is the fleet), not whether the target agrees, which the deadline decides.
 **Publishing or blackmailing with a secret** a watcher found is `guile`, and
-easy: the proof exists.
+easy: the proof exists. **A raid run dark** is priced like any raid, as `guile`
+rather than `might`: the hard part is not being seen.
 **Posting or withdrawing a bounty** is `trivial` and never a negotiation: it is
 the acting power's own money going into escrow, and the target's consent is
 not the point. **Protection or a letter of marque** binds the raider and the

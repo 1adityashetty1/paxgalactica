@@ -1,5 +1,5 @@
 import { HEAT_NOTORIOUS } from '../domain/heat.js';
-import { eventsVisibleTo, ordersVisibleTo } from '../domain/intel.js';
+import { eventsVisibleTo, observeOrders, ordersVisibleTo } from '../domain/intel.js';
 import { describeStack, hullsIn } from '../domain/hulls.js';
 import { describeOrderEffect } from '../domain/development.js';
 import {
@@ -643,7 +643,12 @@ export function serializeOrders(state: WorldState, viewerId: string): string {
       const delivers = o.onComplete
         ? `, delivers ${describeOrderEffect(o.onComplete)} on completion`
         : '';
-      return `- \`${o.id}\` [${mine}] ${owner}: ${o.label} (${kind}) -> ${target}, ${remaining} of ${o.durationTurns} turns remaining${delivers}, ${raidable}, on interrupt: ${o.onInterrupt}`;
+      // Run dark: only its owner sees it, and the owner should know what it
+      // will cost if somebody traces it.
+      const dark = o.dark
+        ? `, RUN DARK — nobody else knows it is yours; ${o.dark.turns} turn(s) unseen so far, and if traced it costs double what it owed`
+        : '';
+      return `- \`${o.id}\` [${mine}] ${owner}: ${o.label} (${kind}) -> ${target}, ${remaining} of ${o.durationTurns} turns remaining${delivers}${dark}, ${raidable}, on interrupt: ${o.onInterrupt}`;
     })
     .join('\n');
 }
@@ -680,6 +685,16 @@ export function serializeState(
     `Treasury: ${viewer?.credits ?? 0} credits · income ${ledger.gross}/turn (${ledger.territory} territory + ${ledger.routes} trade lanes), upkeep ${ledger.upkeep}/turn (net ${ledger.net >= 0 ? '+' : ''}${ledger.net})`,
     ledger.tolls > 0 ? `Tolls levied on other powers' cargo: ${ledger.tolls}/turn.` : '',
     ledger.raided > 0 ? `Taken by commerce raiding: ${ledger.raided}/turn.` : '',
+    (ledger.bounties ?? 0) > 0 ? `Bounties collected on those prizes: ${ledger.bounties}/turn.` : '',
+    // What raiders took, named or not: a raid run dark shows up here and
+    // nowhere else for its victim.
+    (ledger.lostToRaids ?? 0) > 0
+      ? `Lost to raiders on your own lanes: ${ledger.lostToRaids}/turn${
+          observeOrders(state, viewerId).rumours.some((r) => r.factionId === null)
+            ? ' — some of it to raiders nobody can name'
+            : ''
+        }.`
+      : '',
     // A standing cost with no visible cause is a number the leader cannot act
     // on. Naming the worlds is the point: this is the line that tells a player
     // which conquest is not paying for itself.

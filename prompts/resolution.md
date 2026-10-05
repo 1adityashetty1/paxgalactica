@@ -349,6 +349,15 @@ Two ways to attack an economy without a battle, **both needing real ships**:
 - **`commerce_raiding`** diverts transiting trade and only needs a squadron
   **within one jump** — which is what lets a weak power prey on a strong one.
 
+**A raid can be run dark** — `"dark": true` on the `commerce_raiding` order,
+when the leader asks to raid without colours, quietly, unclaimed. Nobody else
+is told whose it is: no standing is lost and no heat run while it stays dark,
+but it takes **half the prizes**, and every power it robs may trace it each
+turn — listeners and a watcher on the raider's ground help. Traced, it runs open
+from then, the victim resents it for double what it owed, and the victim holds
+proof it can publish (double the reputation and heat) or blackmail with. Only a
+raid can run dark.
+
 ## Suborning crews
 
 You may reduce **another** power's ships with `adjust_ships`. The reducer

@@ -1,4 +1,4 @@
-import { atWork } from './diplomacy.js';
+import { assetWorthRangeTo, atWork } from './diplomacy.js';
 import { buildAdjacency } from './graph.js';
 import { rimEventsVisibleTo } from './events.js';
 import { z } from 'zod';
@@ -271,6 +271,11 @@ export function visibilityOf(
   if (order.factionId === factionId) return 'full';
   if (order.visibility.includes(factionId)) return 'full';
 
+  // A raid run dark is a rumour to everyone else, and an unowned one —
+  // watchers and listeners included. A listener hears that raiders are at
+  // work, not whose they are; tracing them is the victim's roll in the tick.
+  if (order.dark) return 'rumour';
+
   // An operative sees through everything, including the covert categories
   // below. This is tested BEFORE them, which is the whole reason an operative
   // is worth buying.
@@ -305,7 +310,8 @@ export function visibilityOf(
  * cannot be handed to `interrupt_order`.
  */
 export const OrderRumourSchema = z.object({
-  factionId: z.string().min(1),
+  /** Whose it is — `null` for a raid run dark, whose owner nobody can name. */
+  factionId: z.string().min(1).nullable(),
   /** The system the activity is centred on — a target id. */
   systemId: z.string().min(1),
   durationTurns: z.number().int().min(1),
@@ -334,7 +340,7 @@ export function observeOrders(state: WorldState, factionId: string): Observation
     if (how === 'full') orders.push(order);
     else if (how === 'rumour') {
       rumours.push({
-        factionId: order.factionId,
+        factionId: order.dark ? null : order.factionId,
         systemId: order.targetId,
         durationTurns: order.durationTurns,
         progress: order.progress,
@@ -369,8 +375,32 @@ export function observeOrders(state: WorldState, factionId: string): Observation
  * made quietly.
  */
 export function worldAsSeenBy(state: WorldState, factionId: string): WorldState {
+  // The paper between two other powers is theirs. Treaties, commitments, debts,
+  // loans and favours owed all came out of a private channel or a private act,
+  // and the log, the prompts and every panel already scope them to the parties
+  // — but this spread shipped everyone's, so the payload published the terms of
+  // every deal on the board. Only the viewer's own, now.
+  const treaties = state.treaties.filter((t) => t.parties.includes(factionId));
+  const offered = new Set(treaties.flatMap((t) => (t.terms.assets ?? []).map((a) => a.assetId)));
   return {
     ...state,
+    treaties,
+    commitments: (state.commitments ?? []).filter((c) => c.factionIds.includes(factionId)),
+    debts: (state.debts ?? []).filter((d) => d.creditorFactionId === factionId || d.debtorFactionId === factionId),
+    loans: (state.loans ?? []).filter((l) => l.lenderFactionId === factionId || l.borrowerFactionId === factionId),
+    obligations: (state.obligations ?? []).filter(
+      (o) => o.holderFactionId === factionId || o.debtorFactionId === factionId,
+    ),
+    // Another power's holdings by the rule its prompt already follows
+    // (`serializeTheirAssets`): what the viewer would pay for, plus what stands
+    // on a world for anyone to see and what the viewer's own paper names.
+    assets: (state.assets ?? []).filter(
+      (a) =>
+        a.heldBy === factionId ||
+        !a.portable ||
+        offered.has(a.id) ||
+        assetWorthRangeTo(a, factionId).max > 0,
+    ),
     pendingOrders: observeOrders(state, factionId).orders,
     eventLog: eventsVisibleTo(state, factionId),
     // **Operatives are the third field, and they were shipped whole.**

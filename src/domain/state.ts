@@ -693,6 +693,16 @@ export const PendingOrderSchema = z.object({
    * written before payloads existed still load and replay.
    */
   investedCredits: z.number().int().min(0).default(0),
+  /**
+   * A raid run dark — see "Running dark" in CLAUDE.md. Present only on a
+   * `commerce_raiding` order whose owner is withheld from everyone else: the
+   * turns it has run dark and the heat its prizes would have run, owed rather
+   * than charged until somebody proves whose it is. Optional, so every order
+   * written before it parses to exactly what it was.
+   */
+  dark: z
+    .object({ turns: z.number().int().min(0), heat: z.number().int().min(0) })
+    .optional(),
 });
 export type PendingOrder = z.infer<typeof PendingOrderSchema>;
 
@@ -1578,6 +1588,12 @@ export const LedgerSchema = z.object({
    */
   bounties: z.number().int().default(0),
   /**
+   * What raiders took off this power's lanes this turn — already out of
+   * `routes`, said separately so a raid nobody can name is still a loss the
+   * victim can see. Whose it was is the fog's business, not the ledger's.
+   */
+  lostToRaids: z.number().int().default(0),
+  /**
    * Scheduled debt service: positive receives, negative pays.
    *
    * Deliberately **not** part of `net`. A debt is settled as an explicit
@@ -1783,7 +1799,7 @@ export function ledgerFor(
     return {
       gross: 0, upkeep: 0, net: 0, systems: 0, treatyFlow: 0,
       espionageLoss: 0, espionageGain: 0, garrisonUpkeep: 0, agentUpkeep: 0, fixtureUpkeep: 0, commanderUpkeep: 0, commitmentFlow: 0, commitmentShare: 0, assetYield: 0, warProfit: 0, occupation: 0,
-      territory: 0, routes: 0, tolls: 0, raided: 0, bounties: 0, debtService: 0, loanRent: 0,
+      territory: 0, routes: 0, tolls: 0, raided: 0, bounties: 0, lostToRaids: 0, debtService: 0, loanRent: 0,
     };
   }
 
@@ -1981,6 +1997,9 @@ export function ledgerFor(
     tolls: earnings.tolls[factionId] ?? 0,
     raided: earnings.raided[factionId] ?? 0,
     bounties,
+    lostToRaids: Math.round(
+      Object.values(earnings.raidedFrom).reduce((n, from) => n + (from[factionId] ?? 0), 0),
+    ),
     // Reported, never summed into `net` — see `Ledger.debtService`.
     debtService: scheduledDebtService(state.debts ?? [], factionId),
     loanRent: scheduledRent(state.loans ?? [], factionId),

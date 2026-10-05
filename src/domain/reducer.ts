@@ -49,6 +49,8 @@ import {
   MAX_ASSET_YIELD,
   MISSION_PROFILE,
   PACT_BREAKING_REPUTATION_COST,
+  PIRACY_REPUTATION_COST,
+  DARK_PROOF_TURNS,
   TRUCE_BREAKING_REPUTATION_COST,
   TRUCE_RECOVERY,
   TRUCE_TREATIES,
@@ -113,7 +115,7 @@ import {
   type Bounty,
 } from './diplomacy.js';
 import { HEAT_ANSWERED, HEAT_BLACKMAIL, HEAT_CAUGHT, HEAT_DECAY, HEAT_FOR_MISSION, HEAT_PACT_BROKEN, HEAT_PER_RAID, addHeat } from './heat.js';
-import { describeSecret, secretLive, secretsAbout, sideStrength } from './leverage.js';
+import { darkRaidSecret, describeSecret, secretLive, secretsAbout, sideStrength } from './leverage.js';
 import { ASSET_ARCHETYPES, archetypeFor, fixtureYieldFor } from './assets.js';
 import { CHEAT_ASSET_QUANTITY, CHEAT_ASSET_VALUE, type Cheat } from './cheats.js';
 import {
@@ -206,7 +208,7 @@ import {
   type HullClass,
   type ShipStack,
 } from './hulls.js';
-import { isPublicOrderType } from './intel.js';
+import { EMISSION_RANGE, isPublicOrderType } from './intel.js';
 import {
   EXTRACTION_ALLOWED,
   EXTRACTION_REFUSAL_REASON,
@@ -381,19 +383,8 @@ export function interdictionStations(
 /** Disposition lost per turn by the faction whose trade you are strangling. */
 export const INTERDICTION_DISPOSITION_COST = 4;
 
-/**
- * What every OTHER power's opinion drops by, per turn, when a faction that is
- * not a smuggler raids commerce.
- *
- * Raiding is available to anyone — a cornered power turning pirate is a real
- * strategic story and should not be impossible. But it is the Drajk
- * Confederacy's declared trade ("raid the rich, vanish into the deep lanes"),
- * and everyone expects it of them. An Imperial remnant doing the same thing is
- * news. Together with the halved yield for non-smugglers, this is what keeps
- * raiding a Drajk mechanic in practice without hard-coding a ban that the
- * faction's own red lines already express better.
- */
-export const PIRACY_REPUTATION_COST = 2;
+/** Moved to `diplomacy.ts` beside the other reputation costs; re-exported here. */
+export { PIRACY_REPUTATION_COST };
 
 /**
  * What the victim's opinion drops by per hull talked out of its service, and
@@ -1607,6 +1598,82 @@ function applyCheat(
  * `adjustCommitmentGoodwill`: the power whose officer was questioned resents
  * the questioner, and the questioner has no view about it.
  */
+/** Unclaimed raiding: the raider's raids, when every one under way is dark. */
+function darkRaidOf(state: WorldState, raider: string): PendingOrder | undefined {
+  const raids = state.pendingOrders
+    .filter((o) => o.type === 'commerce_raiding' && o.factionId === raider && o.progress > 0)
+    .sort((a, b) => a.id.localeCompare(b.id));
+  return raids.length > 0 && raids.every((o) => o.dark) ? raids[0] : undefined;
+}
+
+/** What a victim needs on its own d20 to trace a dark raid, before guile. */
+export const DARK_DC = 16;
+/** What each listening post of the victim's within range, and a watcher on the raider's ground, adds. */
+export const DARK_LISTENER_BONUS = 4;
+export const DARK_WATCHER_BONUS = 4;
+
+/**
+ * Whether a power the dark raid robbed traces it this turn: its own seeded d20
+ * plus its guile against the raider's, helped by each world it keeps listeners
+ * on within `EMISSION_RANGE` of the raided world — they hear the raid, not whose
+ * it is; a post is a post however many hulls stand there —
+ * and by a watcher at work on the raider's own ground.
+ */
+function unmaskRoll(state: WorldState, order: PendingOrder, victim: string): boolean {
+  const listeners = state.systems.filter(
+    (s) =>
+      (s.ships?.[victim]?.listener ?? 0) > 0 && (jumpsBetween(state.systems, s.id, order.targetId) ?? Infinity) <= EMISSION_RANGE,
+  ).length;
+  const watcher = (state.agents ?? []).some(
+    (a) =>
+      a.ownerFactionId === victim &&
+      !a.exposed &&
+      atWork(a, state.turn) &&
+      a.effect.kind === 'intel' &&
+      state.systems.find((s) => s.id === a.systemId)?.controllerFactionId === order.factionId,
+  );
+  const roll =
+    rollD20(state.turn, `unmask:${order.id}:${victim}`) +
+    statModifier(effectiveStats(state, victim).guile) +
+    listeners * DARK_LISTENER_BONUS +
+    (watcher ? DARK_WATCHER_BONUS : 0);
+  return roll >= DARK_DC + statModifier(effectiveStats(state, order.factionId).guile);
+}
+
+/**
+ * A dark raid traced. The victim knows now, and resents it for double what the
+ * raid owed it; the raid runs open from here and is charged like any other; and
+ * the victim holds proof — a `dark_raid` secret — to publish, which costs the
+ * raider double the owed reputation and heat with everyone, or to spend on a
+ * hook. Only the two of them learn of it.
+ */
+function unmaskRaid(state: WorldState, order: PendingOrder, victim: string, notes: string[]): void {
+  const owed = order.dark!;
+  const raider = order.factionId;
+  moveRegard(state, victim, raider, -2 * INTERDICTION_DISPOSITION_COST * owed.turns);
+  const secret = darkRaidSecret(state, order.id, raider, owed);
+  const where = state.systems.find((s) => s.id === order.targetId)?.name ?? order.targetId;
+  state.assets.push(
+    AssetSchema.parse({
+      id: mintId(state, 'ast'),
+      kind: DOSSIER_KIND,
+      text: `Proof that the raiders at ${where} are ${nameFor(state, raider)}'s`.slice(0, 240),
+      heldBy: victim,
+      quantity: 1,
+      unit: 'file',
+      divisible: false,
+      valuePerUnit: { [raider]: 150, [victim]: 60 },
+      atSystemId: null,
+      acquiredTurn: state.turn,
+      secret,
+    }),
+  );
+  delete order.dark;
+  const note = `${nameFor(state, victim)} traces the raiders at ${where} to ${nameFor(state, raider)}, and holds the proof.`;
+  notes.push(note);
+  logEvent(state, 'diplomacy', note, victim, [victim, raider]);
+}
+
 /**
  * An operative is taken by the power whose world they were working.
  *
@@ -3507,13 +3574,20 @@ function applyOpsUnderRules(
         state.assets = state.assets.filter((a) => a.id !== asset.id);
         moveRegard(state, subject, holder, -SECRET_RESENTMENT);
         if (op.op === 'publish_dossier') {
+          // Proof of a dark raid carries its own price: double what it owed.
+          const scandal = secret.reputation ?? SECRET_EXPOSURE_COST[secret.kind];
           for (const witness of state.factions) {
             if (witness.id === subject || witness.id === holder) continue;
-            moveRegard(state, witness.id, subject, -SECRET_EXPOSURE_COST[secret.kind]);
+            moveRegard(state, witness.id, subject, -scandal);
           }
           // Published proof is how notoriety is learned: the subject runs as
           // hot as the scandal costs it with each onlooker.
-          heatUp(state, subject, SECRET_EXPOSURE_COST[secret.kind]);
+          heatUp(state, subject, secret.heat ?? SECRET_EXPOSURE_COST[secret.kind]);
+          // And a raid still running dark is dark no longer.
+          if (secret.kind === 'dark_raid') {
+            const raid = state.pendingOrders.find((o) => o.id === secret.ref);
+            if (raid) delete raid.dark;
+          }
           // Published proof does what proof does: the operative is burned and
           // the programme is in the open.
           if (secret.kind === 'covert_operation') {
@@ -3922,6 +3996,12 @@ function applyOpsUnderRules(
           reject(raw, 'unknown_system', `No target system "${op.targetId}".`);
           break;
         }
+        // Only a raid can run dark: a blockade's ships sit in the orbit they
+        // close, and a fleet movement is public by design.
+        if (op.dark && op.type !== 'commerce_raiding') {
+          reject(raw, 'illegal_value', `Only commerce raiding can be run dark, not a ${op.type.replace(/_/g, ' ')}.`);
+          break;
+        }
 
         // A works programme is validated HERE, before anything is mutated, and
         // paid for further down once every other rejection has been ruled out.
@@ -4306,6 +4386,7 @@ function applyOpsUnderRules(
           force,
           onComplete: effect,
           investedCredits: invested,
+          ...(op.dark ? { dark: { turns: 0, heat: 0 } } : {}),
         };
         state.pendingOrders.push(order);
         const delivers = effect
@@ -7509,9 +7590,12 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       for (const victim of Object.keys(takings).sort()) {
         const taken = takings[victim]!;
         if (taken <= 0) continue;
-        // A raid no commission licenses is piracy, and piracy is notorious.
+        // A raid no commission licenses is piracy, and piracy is notorious —
+        // unless nobody knows whose it is, when the heat is owed instead.
         if (commissionsAgainst(state.treaties, state.turn, raider.id, victim).length === 0) {
-          heatUp(state, raider.id, HEAT_PER_RAID);
+          const dark = darkRaidOf(state, raider.id);
+          if (dark) dark.dark!.heat += HEAT_PER_RAID;
+          else heatUp(state, raider.id, HEAT_PER_RAID);
         }
       }
     }
@@ -7530,7 +7614,23 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       const [claimant, target] = key.split('|') as [string, string];
       const note = `${nameFor(state, claimant)} collects ${paid} of the bounty on ${nameFor(state, target)} for the prizes it took.`;
       notes.push(note);
-      logEvent(state, 'diplomacy', note, claimant);
+      // A raider running dark is paid quietly: a public payout would name it.
+      logEvent(state, 'diplomacy', note, claimant, darkRaidOf(state, claimant) ? [claimant] : null);
+    }
+
+    // Running dark: each raid that took prizes this turn has run one more turn
+    // unseen, and every power it robbed gets a chance to trace it.
+    for (const order of state.pendingOrders.filter((o) => o.dark && o.progress > 0).sort(byId)) {
+      order.dark!.turns += 1;
+      const robbed = Object.keys(settlement.raidedFrom[order.factionId] ?? {})
+        .filter((v) => (settlement.raidedFrom[order.factionId]![v] ?? 0) > 0)
+        .sort();
+      for (const victim of robbed) {
+        if (unmaskRoll(state, order, victim)) {
+          unmaskRaid(state, order, victim, notes);
+          break;
+        }
+      }
     }
     // A letter of marque pays its bonus out of the commissioner's treasury,
     // trimmed to what it holds — a transfer, so a broke commissioner pays what
@@ -7948,6 +8048,15 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       continue;
     }
     if (order.progress <= 0 || !target) continue;
+
+    // A raid run dark costs nothing while nobody can say whose it is — the
+    // ledger block above keeps the tally — and its line names nobody.
+    if (order.dark) {
+      if (target.controllerFactionId && target.controllerFactionId !== order.factionId) {
+        logEvent(state, 'order', `Raiders take shipping at ${target.name}, and nobody can say whose they are.`);
+      }
+      continue;
+    }
 
     // Strangling someone's commerce is an act of war conducted without a
     // battle, so it has to cost what a battle would cost diplomatically.

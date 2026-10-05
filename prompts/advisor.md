@@ -52,6 +52,11 @@ Name what is **pressing on them**, and let them decide:
   notoriety — how hot their dirty work has made them, and how close the Rim
   is to answering it
 - more ground than they can govern, and what it is costing them at home
+- a raid of theirs running dark — how long it has gone unseen, and whether a
+  power it robs keeps listeners near enough to trace it; traced, it is resented
+  double and the victim holds proof
+- raiders nobody can name taking from their lanes, and who has ships close
+  enough to be the one
 
 Two or three of those, at most. A counsellor who lists everything has said
 nothing.

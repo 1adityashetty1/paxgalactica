@@ -580,8 +580,7 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
   // and its narrative is exactly the thing that told the Vigil it had been
   // targeted.
   const secret =
-    (resolution.output.covert?.length ?? 0) > 0 ||
-    routed.ops.some((op) => (op as { op?: unknown } | null)?.op === 'deploy_agent');
+    (resolution.output.covert?.length ?? 0) > 0 || routed.ops.some(isCovertOp);
 
   const staged = await stageWithCorrection(
     campaign,
@@ -703,9 +702,7 @@ export async function endTurn(
           // the reserved-seat rule makes an ordinary turn. The alternative is a
           // prompt rule asking the model not to mention it, which is exactly the
           // guard a model can be talked past.
-          const secret = reaction.ops.some(
-            (op) => (op as { op?: unknown } | null)?.op === 'deploy_agent',
-          );
+          const secret = reaction.ops.some(isCovertOp);
           const applied = await commitWithCorrection(
             campaign,
             reaction.ops,
@@ -985,6 +982,17 @@ export function groundInConcessions(
   });
 
   return { ops: keep, dropped };
+}
+
+/**
+ * An op whose batch is the actor's business alone: placing an operative, or a
+ * raid run dark. Either one in a declaration or a reaction keeps the whole
+ * batch's notes and narrative from everybody else — a dark raid announced in
+ * the narrative that launched it would not be dark.
+ */
+function isCovertOp(raw: unknown): boolean {
+  const op = raw as { op?: unknown; dark?: unknown } | null;
+  return op?.op === 'deploy_agent' || (op?.op === 'issue_order' && op.dark === true);
 }
 
 export async function closeChannel(

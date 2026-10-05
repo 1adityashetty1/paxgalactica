@@ -65,7 +65,8 @@ describe('what runs hot', () => {
 
   it('a raid no commission licenses, per power robbed, and none for one that is', () => {
     let s = createSeedState('meridian');
-    const raid = proposeFor(s, 'drajk')!.ops.find((o) => o.type === 'commerce_raiding')!;
+    // Open, so its heat is charged as it runs rather than owed.
+    const raid = { ...proposeFor(s, 'drajk')!.ops.find((o) => o.type === 'commerce_raiding')!, dark: false };
     s = applyOps(s, [raid], 'model', 'drajk').state;
     s = tickTurn(s, calm).state;
     const robbed = Object.keys(routeEarnings(s).raidedFrom.drajk ?? {}).length;
