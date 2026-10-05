@@ -181,6 +181,14 @@ export const EffectiveStatsSchema = z.object({
   span: z
     .object({ held: z.number().int(), span: z.number().int(), over: z.number().int() })
     .default({ held: 0, span: 0, over: 0 }),
+  /**
+   * The player's ledger, for `stats`'s reason. A raid on you is a rumour in
+   * your view — run dark, an unowned one — so `routeEarnings` on the redacted
+   * world never subtracts it, and a client-side ledger read your route income
+   * higher than the tick pays. Computed here from the true world. Optional so a
+   * client talking to an older server still parses.
+   */
+  ledger: LedgerSchema.optional(),
 });
 
 export type EffectiveStats = z.infer<typeof EffectiveStatsSchema>;

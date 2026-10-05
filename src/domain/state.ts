@@ -1588,6 +1588,12 @@ export const LedgerSchema = z.object({
    */
   bounties: z.number().int().default(0),
   /**
+   * What raiders took off this power's lanes this turn — already out of
+   * `routes`, said separately so a raid nobody can name is still a loss the
+   * victim can see. Whose it was is the fog's business, not the ledger's.
+   */
+  lostToRaids: z.number().int().default(0),
+  /**
    * Scheduled debt service: positive receives, negative pays.
    *
    * Deliberately **not** part of `net`. A debt is settled as an explicit
@@ -1793,7 +1799,7 @@ export function ledgerFor(
     return {
       gross: 0, upkeep: 0, net: 0, systems: 0, treatyFlow: 0,
       espionageLoss: 0, espionageGain: 0, garrisonUpkeep: 0, agentUpkeep: 0, fixtureUpkeep: 0, commanderUpkeep: 0, commitmentFlow: 0, commitmentShare: 0, assetYield: 0, warProfit: 0, occupation: 0,
-      territory: 0, routes: 0, tolls: 0, raided: 0, bounties: 0, debtService: 0, loanRent: 0,
+      territory: 0, routes: 0, tolls: 0, raided: 0, bounties: 0, lostToRaids: 0, debtService: 0, loanRent: 0,
     };
   }
 
@@ -1991,6 +1997,9 @@ export function ledgerFor(
     tolls: earnings.tolls[factionId] ?? 0,
     raided: earnings.raided[factionId] ?? 0,
     bounties,
+    lostToRaids: Math.round(
+      Object.values(earnings.raidedFrom).reduce((n, from) => n + (from[factionId] ?? 0), 0),
+    ),
     // Reported, never summed into `net` — see `Ledger.debtService`.
     debtService: scheduledDebtService(state.debts ?? [], factionId),
     loanRent: scheduledRent(state.loans ?? [], factionId),

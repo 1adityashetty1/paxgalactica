@@ -26,7 +26,7 @@ import { closeChannel, endTurn, writeEpilogue, submitAction } from '../engine/tu
 import type { ActionOutcome } from '../engine/turn.js';
 import { askAdvisor, diplomacyReply, dressRimEvent, type ChatMessage } from '../model/calls.js';
 import type { RimEventKind } from '../domain/events.js';
-import { effectiveStats, getFaction, spanOfControl } from '../domain/state.js';
+import { effectiveStats, getFaction, ledgerFor, spanOfControl } from '../domain/state.js';
 import { playableFactions } from '../seed/scenario.js';
 import { ApiFailure, toApiFailure } from './errors.js';
 import { appraiseAgreement } from '../model/calls.js';
@@ -283,6 +283,7 @@ export class GameSession {
           getFaction(campaign.state, campaign.state.playerFactionId)?.stats ??
           effectiveStats(campaign.state, campaign.state.playerFactionId),
         span: spanOfControl(campaign.state, campaign.state.playerFactionId),
+        ledger: ledgerFor(campaign.state, campaign.state.playerFactionId),
       },
       // `watch` and `rumoured` are facts about the board, not about the turn
       // that produced the briefing — so they are re-derived on every read. An

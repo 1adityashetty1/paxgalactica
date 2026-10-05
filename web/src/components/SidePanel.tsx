@@ -140,7 +140,7 @@ export function SidePanel({
         {tab === 'system' && <SystemTab state={state} selectedId={selectedId} onSelect={onSelect} />}
         {tab === 'fleets' && <FleetsPanel state={state} onSelect={onSelect} />}
         {tab === 'commanders' && <Command state={state} />}
-        {tab === 'trade' && <TradePanel state={state} onSelect={onSelect} />}
+        {tab === 'trade' && <TradePanel state={state} ledger={effective.ledger} onSelect={onSelect} />}
         {tab === 'assets' && <Assets state={state} />}
         {tab === 'orders' && <Orders state={state} briefing={briefing} />}
         {tab === 'standing' && <Standing state={state} onSelect={onSelect} />}
@@ -180,7 +180,9 @@ function Factions({
         const span = isPlayerRow ? served.span : spanOfControl(state, f.id);
         const truce = isPlayer ? undefined : truceBetween(state.truces, state.turn, f.id, state.playerFactionId);
         const color = ansi256ToHex(f.displayColor);
-        const ledger = ledgerFor(state, f.id);
+        // The player's own is served too: a raid on it is a rumour here, so
+        // a ledger computed from this view would never subtract it.
+        const ledger = (isPlayerRow ? served.ledger : undefined) ?? ledgerFor(state, f.id);
         return (
           <section key={f.id} className={isPlayer ? 'faction you' : 'faction'}>
             <header>

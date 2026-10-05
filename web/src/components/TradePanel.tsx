@@ -1,6 +1,7 @@
 import {
   ledgerFor,
   type WorldState,
+  type Ledger,
 } from '../../../src/domain/state.js';
 import {
   blockadesOn,
@@ -27,13 +28,16 @@ import { ansi256ToHex } from '../color.js';
  */
 export function TradePanel({
   state,
+  ledger: served,
   onSelect,
 }: {
   state: WorldState;
+  /** The player's true ledger from the server — see `EffectiveStats.ledger`. */
+  ledger?: Ledger;
   onSelect: (systemId: string) => void;
 }) {
   const me = state.playerFactionId;
-  const ledger = ledgerFor(state, me);
+  const ledger = served ?? ledgerFor(state, me);
   const earnings = routeEarnings(state);
   const mine = routesTouching(state, me);
   const all = tradeRoutes(state);
@@ -69,6 +73,14 @@ export function TradePanel({
           <div className="ledger-row sub">
             <span>…of which taken by raiding</span>
             <span className="good">+{ledger.raided}</span>
+          </div>
+        )}
+        {(ledger.lostToRaids ?? 0) > 0 && (
+          <div className="ledger-row sub">
+            <span title="Taken off your lanes by raiders this turn, already out of the figure above. A raid run dark takes it without saying whose it is.">
+              …lost to raiders
+            </span>
+            <span className="bad">−{ledger.lostToRaids}</span>
           </div>
         )}
         {(ledger.bounties ?? 0) > 0 && (

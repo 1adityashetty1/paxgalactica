@@ -4080,6 +4080,16 @@ carries the player's true stats, computed server-side from the unredacted
 world. Only the player's own: shipping every faction's would hand back through
 arithmetic exactly what the redaction took away.
 
+**The ledger had the same fault, and nobody saw it for longer.** The Trade tab
+and the player's Factions row called `ledgerFor` on the served view, and a raid
+on the player is a rumour there — so `routeEarnings` never subtracted it and the
+player's route income read higher than the tick paid, every turn it was being
+raided. The briefing's ledger was right, being computed on the server.
+`CampaignView.effective.ledger` is now the player's ledger from the true world,
+and both panels read it. It also carries `lostToRaids`, what raiders took off
+the player's lanes — which is how a raid run dark shows up for its victim at all.
+Rivals' rows stay estimates from the view, which is honest: they are.
+
 **Knowledge is a snapshot, not a memory.** Burn the operative and the programme
 goes back to being a rumour. A last-known-position model is the more honest one
 and needs a durable set on `WorldState` — schema, save format and journal — so

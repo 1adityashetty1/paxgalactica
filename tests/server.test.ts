@@ -17,7 +17,7 @@ import { serveStatic } from '../src/server/static.js';
 import { z } from 'zod';
 import { TreatyTermsSchema } from '../src/domain/diplomacy.js';
 import { CommitmentSchema } from '../src/domain/arbitration.js';
-import type { WorldState } from '../src/domain/state.js';
+import { ledgerFor, PendingOrderSchema, type WorldState } from '../src/domain/state.js';
 
 /**
  * The whole API is exercised through `dispatch`, with no port bound and no
@@ -614,6 +614,28 @@ describe('a state push carries a tail of the log, a read carries all of it', () 
       expect(view.state.agents.map((a) => a.id).sort()).toEqual(['burned', 'mine']);
       expect(JSON.stringify(view)).not.toContain('cover of hidden');
     }
+  });
+
+  it('serves the player its true ledger, raids it cannot see included', async () => {
+    // A raid on the player is a rumour in its view — a dark one, an unowned
+    // rumour — so a ledger computed from the view never subtracted it.
+    const { session } = await startedSession();
+    const state = (session as unknown as { campaign: { state: WorldState } }).campaign.state;
+    const hub = state.systems
+      .filter((x) => x.controllerFactionId === 'freeworlds')
+      .sort((a, b) => b.strategicValue - a.strategicValue)[0]!;
+    state.pendingOrders.push(
+      PendingOrderSchema.parse({
+        id: 'ord-x', factionId: 'drajk', type: 'commerce_raiding', originId: hub.id, targetId: hub.id,
+        durationTurns: 3, progress: 1, interruptible: true, onInterrupt: 'cancel', visibility: [],
+        label: 'raid', path: [], force: {}, dark: { turns: 0, heat: 0 },
+      }),
+    );
+    const view = session.view();
+    const served = view.effective.ledger!;
+    expect(served).toEqual(ledgerFor(state, 'freeworlds'));
+    expect(served.lostToRaids).toBeGreaterThan(0);
+    expect(served.routes).toBeLessThan(ledgerFor(view.state, 'freeworlds').routes);
   });
 
   it('keeps the paper between two other powers out of the view', async () => {
