@@ -9,7 +9,31 @@ import {
 } from '../../../src/domain/state.js';
 import { ansi256ToHex } from '../color.js';
 import { describeStack, hullsIn } from '../../../src/domain/hulls.js';
-import { StackGlyphs } from './BattleIcons.js';
+import { CommanderIcon, StackGlyphs } from './BattleIcons.js';
+import { archetypeOf, veterancyLabel } from '../../../src/domain/command.js';
+
+/**
+ * Officer icons, one per person, with name, school and record on hover — an
+ * officer is a unit of the fleet (item 122), so they are drawn beside the
+ * hulls they stand with, here as on the System panel and the map.
+ */
+function Officers({ state, ids }: { state: WorldState; ids: string[] }) {
+  const people = ids
+    .map((id) => (state.commanders ?? []).find((c) => c.id === id))
+    .filter((c): c is NonNullable<typeof c> => c !== undefined);
+  if (people.length === 0) return null;
+  return (
+    <span className="crew-officers">
+      {people.map((c) => (
+        <CommanderIcon
+          key={c.id}
+          size={12}
+          title={`${c.name} — ${archetypeOf(c.archetype).effect}, ${veterancyLabel(c.battles)}`}
+        />
+      ))}
+    </span>
+  );
+}
 
 /**
  * Every hull in the galaxy, by system.
@@ -143,6 +167,7 @@ export function FleetsPanel({
             <li key={o.id} className="fleet-row">
               <span style={{ color: colorOf(o.factionId) }} title={describeStack(o.force)}>
                 <StackGlyphs stack={o.force} />
+                <Officers state={state} ids={o.officers ?? []} />
               </span>
               <span className="muted">
                 {' '}
@@ -207,6 +232,12 @@ function Row({
             <span className="crew-mix">
               <StackGlyphs stack={stackAt(system, id)} size={12} />
             </span>
+            <Officers
+              state={state}
+              ids={(state.commanders ?? [])
+                .filter((c) => c.status === 'active' && c.factionId === id && c.atSystemId === system.id)
+                .map((c) => c.id)}
+            />
           </span>
         ))}
       </div>
