@@ -770,6 +770,14 @@ function Orders({ state, briefing }: { state: WorldState; briefing: Briefing | n
           <div key={o.id} className="order">
             <div className="order-head" style={{ color }}>
               {o.label}
+              {o.dark && (
+                <span
+                  className="chip"
+                  title={`Run dark: nobody else is told whose it is, and it takes half the prizes. ${o.dark.turns} turn(s) unseen; if traced, the victim resents it for double what it owed and holds proof.`}
+                >
+                  dark
+                </span>
+              )}
               <span className={remaining === 1 ? 'eta soon' : 'eta'}>
                 {remaining === 1 ? 'next turn' : `${remaining} turns`}
               </span>

@@ -46,7 +46,8 @@ export interface BriefingProject {
  */
 export interface BriefingRumour {
   where: string;
-  factionId: string;
+  /** `null` for a raid run dark. */
+  factionId: string | null;
   factionName: string;
   color: number;
   progress: number;
@@ -265,7 +266,8 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
     .map(toProject);
 
   const rumoured: BriefingRumour[] = seen.rumours.map((r) => {
-    const { name, color } = describe(r.factionId);
+    // A raid run dark has no owner to name, so it is drawn as nobody's.
+    const { name, color } = r.factionId === null ? { name: 'Unknown raiders', color: 245 } : describe(r.factionId);
     const remaining = r.durationTurns - r.progress;
     return {
       where: state.systems.find((sys) => sys.id === r.systemId)?.name ?? r.systemId,

@@ -204,6 +204,8 @@ export function raiderLines(): string[] {
     "THE RAIDER'S LEDGER, AND HEAT",
     '  Post a bounty on a power and your credits wait in escrow: prizes raided',
     `  from it pay out credit for credit, its hulls destroyed ${BOUNTY_PER_TON} a ton.`,
+    '  A raid can run dark: nobody is told whose it is and it runs no heat,',
+    '  but it takes half the prizes, and each power it robs may trace it.',
     '  A raider can be paid to leave you alone (protection) or to go after',
     '  your enemy (a letter of marque). Both are contracts, agreed in a channel.',
     '  Covert work, unlicensed raids and broken pacts make a power notorious.',

@@ -95,6 +95,21 @@ export const RAID_SHARE = 0.5;
 /** Smugglers raid at double effect — anyone can raid, Drajk is good at it. */
 export const SMUGGLER_RAID_MULTIPLIER = 2;
 
+/**
+ * What a raid run dark takes of what it would have taken open. Staying out of
+ * sight costs half the prizes, which is what makes it a trade against the
+ * standing and heat it saves rather than a strictly better raid.
+ */
+export const DARK_RAID_YIELD = 0.5;
+
+/** A raider's take at a system: halved when every raid it runs there is dark. */
+function raidYield(state: WorldState, raider: string, systemId: string): number {
+  const raids = state.pendingOrders.filter(
+    (o) => o.type === 'commerce_raiding' && o.factionId === raider && o.targetId === systemId && o.progress > 0,
+  );
+  return raids.length > 0 && raids.every((o) => o.dark) ? DARK_RAID_YIELD : 1;
+}
+
 /** Autarkic economies barely touch the network, by choice. */
 export const AUTARKIC_ROUTE_FRACTION = 0.35;
 
@@ -498,7 +513,7 @@ export function routeEarnings(state: WorldState): RouteEarnings {
         if (!raidLandsOn(state, raider, holder)) continue;
         const multiplier =
           ethicOf(raider) === 'smuggler' ? SMUGGLER_RAID_MULTIPLIER : 1;
-        const stolen = Math.min(atRisk, atRisk * RAID_SHARE * multiplier);
+        const stolen = Math.min(atRisk, atRisk * RAID_SHARE * multiplier * raidYield(state, raider, endId));
         if (stolen <= 0) continue;
         atRisk -= stolen;
         add(shares, holder, -stolen);
@@ -570,7 +585,7 @@ export function routeEarnings(state: WorldState): RouteEarnings {
         if (!raidLandsOn(state, raider, holder)) continue;
         const multiplier =
           ethicOf(raider) === 'smuggler' ? SMUGGLER_RAID_MULTIPLIER : 1;
-        const stolen = Math.min(earned, earned * RAID_SHARE * multiplier);
+        const stolen = Math.min(earned, earned * RAID_SHARE * multiplier * raidYield(state, raider, hopId));
         earned -= stolen;
         add(shares, raider, stolen);
         took(raider, holder, stolen);

@@ -271,6 +271,11 @@ export function visibilityOf(
   if (order.factionId === factionId) return 'full';
   if (order.visibility.includes(factionId)) return 'full';
 
+  // A raid run dark is a rumour to everyone else, and an unowned one —
+  // watchers and listeners included. A listener hears that raiders are at
+  // work, not whose they are; tracing them is the victim's roll in the tick.
+  if (order.dark) return 'rumour';
+
   // An operative sees through everything, including the covert categories
   // below. This is tested BEFORE them, which is the whole reason an operative
   // is worth buying.
@@ -305,7 +310,8 @@ export function visibilityOf(
  * cannot be handed to `interrupt_order`.
  */
 export const OrderRumourSchema = z.object({
-  factionId: z.string().min(1),
+  /** Whose it is — `null` for a raid run dark, whose owner nobody can name. */
+  factionId: z.string().min(1).nullable(),
   /** The system the activity is centred on — a target id. */
   systemId: z.string().min(1),
   durationTurns: z.number().int().min(1),
@@ -334,7 +340,7 @@ export function observeOrders(state: WorldState, factionId: string): Observation
     if (how === 'full') orders.push(order);
     else if (how === 'rumour') {
       rumours.push({
-        factionId: order.factionId,
+        factionId: order.dark ? null : order.factionId,
         systemId: order.targetId,
         durationTurns: order.durationTurns,
         progress: order.progress,

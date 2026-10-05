@@ -643,7 +643,12 @@ export function serializeOrders(state: WorldState, viewerId: string): string {
       const delivers = o.onComplete
         ? `, delivers ${describeOrderEffect(o.onComplete)} on completion`
         : '';
-      return `- \`${o.id}\` [${mine}] ${owner}: ${o.label} (${kind}) -> ${target}, ${remaining} of ${o.durationTurns} turns remaining${delivers}, ${raidable}, on interrupt: ${o.onInterrupt}`;
+      // Run dark: only its owner sees it, and the owner should know what it
+      // will cost if somebody traces it.
+      const dark = o.dark
+        ? `, RUN DARK — nobody else knows it is yours; ${o.dark.turns} turn(s) unseen so far, and if traced it costs double what it owed`
+        : '';
+      return `- \`${o.id}\` [${mine}] ${owner}: ${o.label} (${kind}) -> ${target}, ${remaining} of ${o.durationTurns} turns remaining${delivers}${dark}, ${raidable}, on interrupt: ${o.onInterrupt}`;
     })
     .join('\n');
 }

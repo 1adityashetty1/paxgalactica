@@ -67,7 +67,8 @@ export const BriefingProjectSchema = z.object({
  */
 export const BriefingRumourSchema = z.object({
   where: z.string(),
-  factionId: z.string(),
+  /** `null` for a raid run dark: nobody can say whose it is. */
+  factionId: z.string().nullable(),
   factionName: z.string(),
   color: z.number().int(),
   progress: z.number().int(),

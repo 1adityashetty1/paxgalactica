@@ -26,6 +26,7 @@ import { ENVOYS_QUIET_TURNS } from './events.js';
 import { clashKey } from './pulse.js';
 import { jumpsBetween } from './graph.js';
 import { secretLive, sideStrength } from './leverage.js';
+import { HEAT_NOTORIOUS } from './heat.js';
 import { ASSET_ARCHETYPES } from './assets.js';
 import {
   hullsAt,
@@ -1095,6 +1096,24 @@ function trafficAt(s: WorldState, systemId: string): number {
     .reduce((n, r) => n + r.volume, 0);
 }
 
+/** Heat this close below notorious makes a raider keep its next raid dark. */
+export const BOT_DARK_HEAT_MARGIN = 10;
+
+/**
+ * Whether a raider runs this raid dark: the trade a player weighs — half the
+ * prizes, against what being seen would cost. Being seen costs nothing on a
+ * raid a letter of marque pays for, so that one runs open. Otherwise it goes
+ * dark to keep a holder that still thinks well of it from finding out, or to
+ * keep its own heat off the threshold where the Rim starts answering.
+ */
+function raidsDark(s: WorldState, me: string, world: StarSystem): boolean {
+  const holder = world.controllerFactionId;
+  if (!holder || holder === me) return false;
+  if (commissionsAgainst(s.treaties, s.turn, me, holder).length > 0) return false;
+  const heat = getFaction(s, me)?.heat ?? 0;
+  return dispositionBetween(s, holder, me) >= 0 || heat >= HEAT_NOTORIOUS - BOT_DARK_HEAT_MARGIN;
+}
+
 /** A bounty this large doubles how much a raider wants a world its target holds. */
 export const BOT_BOUNTY_PULL = 200;
 /** How much more a raider wants a world held by a power its letter of marque names. */
@@ -1602,6 +1621,7 @@ const drajk: Bot = (ctx) => {
         op: 'issue_order', factionId: ctx.me, type: 'commerce_raiding',
         originId: prey.id, targetId: prey.id, durationTurns: 3,
         label: `raid ${prey.name}`,
+        ...(raidsDark(ctx.state, ctx.me, prey) ? { dark: true } : {}),
       });
     }
   }
@@ -1824,7 +1844,8 @@ function describeProposal(state: WorldState, me: string, ops: Record<string, unk
       } else if (op.type === 'blockade') {
         parts.push(`closes the lanes at ${where(op.targetId)}`);
       } else if (op.type === 'commerce_raiding') {
-        parts.push(`sets raiders on the traffic through ${where(op.targetId)}`);
+        // A raid run dark is not announced, least of all in its own account.
+        if (!op.dark) parts.push(`sets raiders on the traffic through ${where(op.targetId)}`);
       } else {
         parts.push(`begins ${String(op.label ?? op.type)} at ${where(op.targetId)}`);
       }

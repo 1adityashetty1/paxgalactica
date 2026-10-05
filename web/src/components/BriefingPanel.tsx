@@ -259,7 +259,9 @@ export function BriefingPanel({
               <ul className="rumours">
                 {briefing.rumoured.map((r, i) => (
                   <li key={i} style={{ color: ansi256ToHex(r.color) }}>
-                    {r.factionName} has something under way at {r.where} —{' '}
+                    {r.factionId === null
+                      ? `${r.factionName} are taking shipping at ${r.where}, and nobody can say whose they are — `
+                      : `${r.factionName} has something under way at ${r.where} — `}
                     {r.completesNextTurn ? 'lands next turn' : `${r.remaining} turns left`}.
                     <span className="rumour-hint"> No detail without an operative in place.</span>
                   </li>

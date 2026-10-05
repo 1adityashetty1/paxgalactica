@@ -2,6 +2,8 @@ import {
   assetWorthTo,
   atWork,
   obligationsOwed,
+  DARK_PROOF_TURNS,
+  PIRACY_REPUTATION_COST,
   type Concession,
   type Secret,
 } from './diplomacy.js';
@@ -50,7 +52,10 @@ export function secretsAbout(state: WorldState, subject: string): Secret[] {
     }
   }
   for (const order of [...state.pendingOrders].sort((a, b) => a.id.localeCompare(b.id))) {
-    if (order.factionId === subject && SECRET_CATEGORIES.has(order.type as DurationCategory)) {
+    if (order.factionId !== subject) continue;
+    // A raid run dark is proof of whose the raids are, priced at what it owed.
+    if (order.dark) out.push(darkRaidSecret(state, order.id, subject, order.dark));
+    else if (SECRET_CATEGORIES.has(order.type as DurationCategory)) {
       out.push({ kind: 'secret_programme', subject, ref: order.id });
     }
   }
@@ -86,7 +91,35 @@ export function secretLive(state: WorldState, secret: Secret): boolean {
       const loan = (state.loans ?? []).find((l) => l.id === secret.ref);
       return loan !== undefined && isLoanLive(loan) && loan.status === 'defaulted';
     }
+    // News while the raid runs, and for a while after the proof was filed.
+    case 'dark_raid':
+      return (
+        state.pendingOrders.some((o) => o.id === secret.ref) ||
+        state.turn <= (secret.filedTurn ?? 0) + DARK_PROOF_TURNS
+      );
   }
+}
+
+/**
+ * Proof that a dark raid is the subject's: what publishing it costs is double
+ * what the raid owed while it ran dark.
+ */
+export function darkRaidSecret(
+  state: WorldState,
+  orderId: string,
+  subject: string,
+  owed: { turns: number; heat: number },
+): Secret {
+  const smuggler = getFaction(state, subject)?.tradeEthic === 'smuggler';
+  return {
+    kind: 'dark_raid',
+    subject,
+    ref: orderId,
+    // Piracy is what everyone expects of a smuggler, open or dark.
+    reputation: smuggler ? 0 : 2 * PIRACY_REPUTATION_COST * owed.turns,
+    heat: 2 * owed.heat,
+    filedTurn: state.turn,
+  };
 }
 
 /** One clause, for the dossier's text and the log. */
@@ -108,6 +141,12 @@ export function describeSecret(state: WorldState, secret: Secret): string {
     }
     case 'default':
       return `${who} is not paying what it owes`;
+    case 'dark_raid': {
+      const order = state.pendingOrders.find((o) => o.id === secret.ref);
+      return order
+        ? `the raiders taking shipping at ${where(order.targetId)} are ${who}'s`
+        : `${who} ran raids it never admitted to`;
+    }
   }
 }
 

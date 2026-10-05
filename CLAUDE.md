@@ -2946,6 +2946,58 @@ Two fixes the measurement forced:
 > parity test had never seen a bot sign a contract on turn 1. Treaties go
 > through `TreatySchema` now.
 
+## Running dark
+
+Borrowed from *Starsector*'s transponder (`docs/design-2026-10-04.md` §1). A raid
+was covert in name only: the order reached others as a rumour, but the rumour
+named the raider and the tick logged *"Drajk Confederacy continues to raid
+shipping at Oridin"* in public every turn, charging the victim's regard, the
+onlookers' and heat as it went.
+
+`issue_order` of `commerce_raiding` takes `dark: true`, and only a raid can: a
+blockade's ships sit in the orbit they close, and a fleet movement is public by
+design. While a raid runs dark:
+
+- **nobody else is told whose it is** — to everyone but its owner it is a rumour
+  with no owner (`OrderRumour.factionId` null), watchers and listeners included;
+  the tick's line names nobody, a bounty it earns is logged to the raider alone,
+  and a declaration or reaction that issues one is a secret batch;
+- **its costs are owed, not charged** — `PendingOrder.dark` counts the turns it
+  has run unseen and the heat its prizes would have run;
+- **it takes half the prizes** (`DARK_RAID_YIELD`, 0.5), which is what makes it a
+  trade against the standing and heat it saves rather than a better raid.
+
+**No anonymous hulls.** The squadron a jump out is still in `system.ships`, and
+that is the point: visible hulls are suspicion, not proof. Hiding a stack's
+owner would break the exact fleet totals the fog is built on, and every battle
+report that names its sides.
+
+**Tracing.** Each turn, each power the raid robbed rolls its own seeded d20 plus
+its guile modifier, plus `DARK_LISTENER_BONUS` (4) for each world it keeps
+listeners on within `EMISSION_RANGE` of the raided world and
+`DARK_WATCHER_BONUS` (4) for a watcher at work on the raider's ground, against
+`DARK_DC` (16) plus the raider's guile modifier. Traced, the victim's regard
+drops by double what the raid owed it, the raid runs open from then, and the
+victim holds **proof** — a `dark_raid` secret priced at double the owed
+reputation (nothing, for a smuggler, of whom piracy is expected) and double the
+owed heat. Publishing it charges that with every onlooker and burns the raid
+open if it is still dark; blackmail spends it on a hook; a watcher can also dig
+it up. It is news while the raid runs and for `DARK_PROOF_TURNS` (6) after it
+was filed. A dark raid nobody traces costs nothing, ever.
+
+**Bots.** Drajk decides per raid (`raidsDark`): open where being seen costs
+nothing — a raid a letter of marque pays for — and dark to keep a holder that
+still thinks well of it from finding out, or when its own heat is within
+`BOT_DARK_HEAT_MARGIN` (10) of notorious.
+
+**Measured.** The board does not move: 6/5/5/4/5 at 30 and 100 turns with dark
+raids on or off, and the no-events boards likewise. Over 100 turns Drajk runs 13
+of 34 raids dark; one is traced, by the Vigil, and published. The Combine ends
+at 95 toward the Confederacy against 63 when every raid runs open, and the
+Confederacy ends with 1,935 credits against 2,783 — half the prizes is a real
+price. No bot turn is lost. No journal pin: no old journal can hold a dark raid,
+and open raids are untouched.
+
 ## Faction lines are enforced, not suggested
 
 Red lines stop a faction acting out of character. **Compulsions** stop it
@@ -5735,7 +5787,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `withdraw_ultimatum` | issuer only |
 | `post_bounty` | your own credits into escrow against another power; trimmed to the treasury, topped up by posting again |
 | `withdraw_bounty` | poster only; what is left comes back, the grievance stays. Never a merchants' bounty |
-| `issue_order` | see Duration below; optional `onComplete` payload, paid at issue. `force` is a count (drawn proportionally) or a named composition |
+| `issue_order` | see Duration below; optional `onComplete` payload, paid at issue. `force` is a count (drawn proportionally) or a named composition. `dark` runs a `commerce_raiding` order unowned — see "Running dark" |
 | `cancel_order` | returns the unspent part of an `onComplete` payload |
 | `interrupt_order` | rejected when the order is not interruptible; **somebody else's** order also needs ships at its origin or target |
 | `extend_order` | rejected for movement |
