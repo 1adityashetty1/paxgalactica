@@ -4584,7 +4584,7 @@ function applyOpsUnderRules(
           reject(
             raw,
             'no_presence',
-            `${nameFor(state, actor!)} has nothing at ${nameFor(state, order.originId)} or ${nameFor(state, order.targetId)} to interrupt "${order.label}" with.`,
+            `${nameFor(state, actor!)} has no ships at ${[...new Set([order.originId, order.targetId])].map((id) => systemName(state, id)).join(' or ')} to interrupt "${order.label}" with — reaching into somebody else's programme takes being there.`,
           );
           break;
         }

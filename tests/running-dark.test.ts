@@ -144,3 +144,29 @@ describe('the bots', () => {
     expect(raid?.dark).toBeUndefined();
   });
 });
+
+describe('a raid ordered', () => {
+  it('takes no plunder until it has run', async () => {
+    const { noPrizeBeforeTheRaid } = await import('../src/engine/turn.js');
+    const out = noPrizeBeforeTheRaid([
+      { op: 'issue_order', type: 'commerce_raiding', factionId: 'drajk', originId: 'tor-5', targetId: 'tor-5' },
+      { op: 'create_asset', kind: 'contraband', heldBy: 'drajk' },
+      { op: 'log_narrative', text: 'they strike' },
+    ]);
+    expect(out.ops.map((o) => (o as { op: string }).op)).toEqual(['issue_order', 'log_narrative']);
+    expect(out.notes[0]).toMatch(/No plunder was taken yet/);
+    // Anything else may still create a thing.
+    const other = noPrizeBeforeTheRaid([{ op: 'create_asset', kind: 'salvage', heldBy: 'drajk' }]);
+    expect(other.ops).toHaveLength(1);
+  });
+
+  it('a refused reach names the worlds once, by name', () => {
+    let s = createSeedState('meridian');
+    const fort = { op: 'issue_order', factionId: 'vigil', type: 'fortification', originId: 'tor-5', targetId: 'tor-5', durationTurns: 3 } as OpInput;
+    s = applyOps(s, [fort], 'model', 'vigil').state;
+    const id = s.pendingOrders.at(-1)!.id;
+    const out = applyOps(s, [{ op: 'interrupt_order', orderId: id, reason: 'raiders' } as OpInput], 'model', 'drajk');
+    expect(out.rejections[0]!.message).toMatch(/no ships at Sarsuma to interrupt/);
+    expect(out.rejections[0]!.message).not.toMatch(/tor-5/);
+  });
+});

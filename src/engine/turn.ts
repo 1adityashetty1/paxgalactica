@@ -178,7 +178,7 @@ async function reviseRejected(
    * fixable rejection into a lost agreement.
    */
   source: 'model' | 'extraction' = 'model',
-): Promise<{ ops: unknown[]; costUsd: number } | null> {
+): Promise<{ ops: unknown[]; narrative: string; costUsd: number } | null> {
   const user = [
     serializeState(campaign.state, campaign.state.playerFactionId),
     '',
@@ -222,7 +222,7 @@ async function reviseRejected(
       schema: source === 'extraction' ? ExtractionOutputSchema : ModelTurnOutputSchema,
       maxRetries: 1,
     });
-    return { ops: res.value.ops, costUsd: res.costUsd };
+    return { ops: res.value.ops, narrative: res.value.narrative, costUsd: res.costUsd };
   } catch {
     // The correction call itself failed. The original rejections still stand
     // and are reported to the player rather than swallowed.
@@ -262,6 +262,27 @@ export function recruitmentAlone(ops: unknown[]): { ops: unknown[]; notes: strin
   };
 }
 
+/**
+ * **A raid's prizes are paid when it runs, not when it is ordered.** Raiding
+ * pays through the ledger every turn the raid takes cargo, so a `create_asset`
+ * beside the order that launches it is plunder from a raid that has not
+ * happened — and would be paid twice once it did. Measured live: a dark raid
+ * ordered at Sarsuma came with "14 crates cracked from Vigil-flagged haulers"
+ * minted on the spot. The same rule the reducer keeps for battle spoils, which
+ * are its own to create once the battle has been fought.
+ */
+export function noPrizeBeforeTheRaid(ops: unknown[]): { ops: unknown[]; notes: string[] } {
+  const op = (x: unknown) => x as { op?: unknown; type?: unknown } | null;
+  const raids = ops.some((x) => op(x)?.op === 'issue_order' && op(x)?.type === 'commerce_raiding');
+  if (!raids) return { ops, notes: [] };
+  const kept = ops.filter((x) => op(x)?.op !== 'create_asset');
+  if (kept.length === ops.length) return { ops, notes: [] };
+  return {
+    ops: kept,
+    notes: ['No plunder was taken yet: a raid pays out of the lanes each turn it runs, starting next turn.'],
+  };
+}
+
 async function stageWithCorrection(
   campaign: Campaign,
   ops: unknown[],
@@ -289,8 +310,9 @@ async function stageWithCorrection(
   // no band still has to strip a fixture rather than wave it through.
   const bind = (batch: unknown[]) => {
     const alone = recruitmentAlone(batch);
-    const bound = boundPayloadsToOutcome(alone.ops, outcome ?? 'success', stat);
-    return { ops: bound.ops, notes: [...alone.notes, ...bound.notes] };
+    const unrun = noPrizeBeforeTheRaid(alone.ops);
+    const bound = boundPayloadsToOutcome(unrun.ops, outcome ?? 'success', stat);
+    return { ops: bound.ops, notes: [...alone.notes, ...unrun.notes, ...bound.notes] };
   };
 
   const bound = bind(ops);
@@ -330,11 +352,15 @@ async function stageWithCorrection(
           : n,
       )
     : first.notes;
+  // The story was told for the first batch, and some of what it describes was
+  // refused. The correction says what changed; say it, so the narrative above
+  // is not left claiming an effect that never landed.
+  const amended = corrected && revised.narrative.trim() ? [`Correction: ${revised.narrative.trim()}`] : [];
   return {
     // First then second: the order they happened, and the first is the one that
     // explains why there was a correction at all.
     rejections: [...first.rejections, ...second.rejections],
-    notes: [...bound.notes, ...firstNotes, ...boundAgain.notes, ...second.notes],
+    notes: [...bound.notes, ...firstNotes, ...amended, ...boundAgain.notes, ...second.notes],
     costUsd: revised.costUsd,
   };
 }
