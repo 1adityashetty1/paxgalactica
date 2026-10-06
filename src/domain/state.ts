@@ -139,7 +139,7 @@ export const TRADE_ETHIC_MEANING: Record<TradeEthic, string> = {
   free_trade: 'open lanes enrich everyone; earns more the more of the galaxy is open, including lanes it has no stake in',
   monopolist: 'trade is good when controlled; secures exclusive rights and punishes competitors',
   extortionist: 'commerce is something that passes through your space and owes you a toll for the privilege',
-  autarkic: 'dependence is weakness; earns more from its own worlds and cannot be strangled by a blockade, because it was never on the lanes',
+  autarkic: 'dependence is weakness; its own worlds trade with each other, an internal market no blockade elsewhere can touch, and it keeps little of the galactic lanes',
   smuggler: 'the profitable cargo is the illegal one; runs blockades others cannot, and raids the shipping others depend on',
 };
 
@@ -157,7 +157,9 @@ export const TRADE_INCOME_MULTIPLIER: Record<TradeEthic, number> = {
   free_trade: 1.1,
   monopolist: 1.05,
   extortionist: 1.0,
-  autarkic: 1.15, // pays its own way at home, having renounced the network
+  // Was 1.15, "pays its own way at home". Its own way is now its internal
+  // market (`internalLanes`), and one payoff is a doctrine; two is a bonus.
+  autarkic: 1.0,
   smuggler: 1.05,
 };
 
@@ -1599,6 +1601,12 @@ export const LedgerSchema = z.object({
    */
   lostToRaids: z.number().int().default(0),
   /**
+   * What an autarkist's own worlds paid it for trading with each other —
+   * already in `routes`, said separately so the doctrine's economy is visible
+   * beside the network income it renounced. Zero for every other ethic.
+   */
+  internalMarket: z.number().int().default(0),
+  /**
    * Scheduled debt service: positive receives, negative pays.
    *
    * Deliberately **not** part of `net`. A debt is settled as an explicit
@@ -1804,7 +1812,7 @@ export function ledgerFor(
     return {
       gross: 0, upkeep: 0, net: 0, systems: 0, treatyFlow: 0,
       espionageLoss: 0, espionageGain: 0, garrisonUpkeep: 0, agentUpkeep: 0, fixtureUpkeep: 0, commanderUpkeep: 0, commitmentFlow: 0, commitmentShare: 0, assetYield: 0, warProfit: 0, occupation: 0,
-      territory: 0, routes: 0, tolls: 0, raided: 0, bounties: 0, lostToRaids: 0, debtService: 0, loanRent: 0,
+      territory: 0, routes: 0, tolls: 0, raided: 0, bounties: 0, lostToRaids: 0, internalMarket: 0, debtService: 0, loanRent: 0,
     };
   }
 
@@ -1840,6 +1848,9 @@ export function ledgerFor(
   // performs stays a conserved division of what the network is worth — the same
   // treatment the free trader's openness bonus gets, two lines up.
   routes += earnings.monopolyPremium[factionId] ?? 0;
+  // An autarkist's own worlds trading with each other, and whatever a raider
+  // took off somebody's — beside the network's conserved split, not inside it.
+  routes += (earnings.internal[factionId] ?? 0) + (earnings.internalTaken[factionId] ?? 0);
 
   // **Ground that was never yours costs something to keep.** Charged on the
   // share each foreign world actually pays, so it is bounded by that world's
@@ -2005,6 +2016,7 @@ export function ledgerFor(
     lostToRaids: Math.round(
       Object.values(earnings.raidedFrom).reduce((n, from) => n + (from[factionId] ?? 0), 0),
     ),
+    internalMarket: earnings.internal[factionId] ?? 0,
     // Reported, never summed into `net` — see `Ledger.debtService`.
     debtService: scheduledDebtService(state.debts ?? [], factionId),
     loanRent: scheduledRent(state.loans ?? [], factionId),

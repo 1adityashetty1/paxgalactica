@@ -93,12 +93,15 @@ console.log(
 // Arkane is the only autarkist now: the Iron Vigil took over `monopolist`,
 // which had been implemented and owned by nobody while `autarkic` was held
 // twice. Labelling the Vigil an autarkist here would report the wrong doctrine.
-const laneShare = (id) =>
-  Math.round(
-    (100 * last.perFaction[id].routes) /
-      Math.max(1, last.perFaction[id].routes + last.perFaction[id].territory),
-  );
+// The network only: an autarkist's internal market is in `routes` but is its
+// own worlds trading with each other, reported on its own line below.
+const laneShare = (id) => {
+  const f = last.perFaction[id];
+  const network = f.routes - f.internal;
+  return Math.round((100 * network) / Math.max(1, network + f.territory));
+};
 console.log(`  Autarkist's lane share of gross   : freeworlds ${laneShare('freeworlds')}%`);
+console.log(`  Autarkist's internal market      : freeworlds ${last.perFaction.freeworlds.internal}/turn`);
 console.log(`  Monopolist's lane share of gross  : vigil ${laneShare('vigil')}%`);
 
 const totalTerr = IDS.reduce((n, id) => n + last.perFaction[id].territory, 0);

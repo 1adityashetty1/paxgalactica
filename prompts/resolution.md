@@ -322,8 +322,10 @@ treaty says.
 
 Trade doctrines are arithmetic in the reducer, not suggestions: `free_trade`
 scales with how open the whole galaxy is, `extortionist` charges a **premium
-rate** on foreign cargo crossing its space, `autarkic` earns at home and cannot
-be strangled, `smuggler` ignores blockades and raids at double effect,
+rate** on foreign cargo crossing its space, `autarkic` keeps little of the
+network and earns an **internal market** from its own connected worlds trading
+with each other, which no blockade elsewhere can touch, `smuggler` ignores
+blockades and raids at double effect,
 `monopolist` takes a premium on lanes it owns both ends of.
 
 **A world is worth two things beyond its income, and both are arithmetic in the

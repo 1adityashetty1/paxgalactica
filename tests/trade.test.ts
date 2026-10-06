@@ -177,19 +177,19 @@ describe('every commercial doctrine differs measurably', () => {
     return ledgerFor(state, 'meridian');
   };
 
-  it('gives an autarkist its territory and a free trader the network', () => {
-    // The territorial multiplier runs the OTHER way on purpose: an autarkist
-    // wrings more out of its own worlds precisely because it has renounced the
-    // network, so comparing the two on territory alone measures the wrong half
-    // of each doctrine.
-    expect(TRADE_INCOME_MULTIPLIER.autarkic).toBeGreaterThan(TRADE_INCOME_MULTIPLIER.free_trade);
+  it('gives an autarkist its internal market and a free trader the network', () => {
+    // An autarkist trades with itself: its own connected worlds are its market.
+    // It used to be a ×1.15 on its worlds instead, which was a bonus rather
+    // than an economy and left the doctrine a net loss. One payoff now.
+    expect(TRADE_INCOME_MULTIPLIER.autarkic).toBe(1);
 
     const closed = asEthic('autarkic');
     const open = asEthic('free_trade');
-    expect(closed.territory).toBeGreaterThan(open.territory);
+    expect(closed.internalMarket).toBeGreaterThan(0);
+    expect(open.internalMarket).toBe(0);
     expect(open.routes).toBeGreaterThan(closed.routes);
-    // On a hub-rich holding the network is worth more than the premium at
-    // home, which is why Meridian is the free trader and not the recluse.
+    // On a hub-rich holding the network is worth more than trading at home,
+    // which is why Meridian is the free trader and not the recluse.
     expect(open.gross).toBeGreaterThan(closed.gross);
   });
 

@@ -33,7 +33,7 @@ export interface Snapshot {
   turn: number;
   perFaction: Record<
     string,
-    { net: number; territory: number; routes: number; tolls: number; raided: number;
+    { net: number; territory: number; routes: number; tolls: number; raided: number; internal: number;
       fleet: number; credits: number; systems: number }
   >;
   openness: number;
@@ -103,7 +103,7 @@ export function runBalance(
             f.id,
             {
               net: l.net, territory: l.territory, routes: l.routes,
-              tolls: l.tolls, raided: l.raided,
+              tolls: l.tolls, raided: l.raided, internal: l.internalMarket,
               fleet: fleetStrengthOf(state, f.id), credits: f.credits,
               systems: held(state, f.id).length,
             },

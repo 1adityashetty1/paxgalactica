@@ -1,4 +1,4 @@
-import { shortestPath } from './graph.js';
+import { buildAdjacency, shortestPath } from './graph.js';
 import { getFaction, laneWeightsAt, type StarSystem, type WorldState } from './state.js';
 import { STORM_BLOCKER, stormbound } from './events.js';
 import { protectedFrom, raidLandsOn as raidLandsUnder } from './diplomacy.js';
@@ -112,6 +112,92 @@ function raidYield(state: WorldState, raider: string, systemId: string): number 
 
 /** Autarkic economies barely touch the network, by choice. */
 export const AUTARKIC_ROUTE_FRACTION = 0.35;
+
+/**
+ * What an autarkist's internal market is worth, as a share of what the same
+ * pairs of worlds would be worth as galactic lanes.
+ *
+ * Autarky is self-sufficiency: a power that has renounced the network trades
+ * with itself. Before this it had only the renunciation — 35% of its lane
+ * income and ×1.15 on its worlds, which on the opening board cost Arkane about
+ * ten credits a turn net — so the doctrine was a tax with a slogan. Its own
+ * worlds trading among themselves are its economy now, and the ×1.15 on its
+ * worlds went, so the doctrine has one payoff rather than two.
+ *
+ * A share rather than the full rate because Arkane's four worlds alone make six
+ * internal lanes worth 156 at network rates, a fifth of the whole galaxy's
+ * network. Swept at a quarter, a third and a half, with the ×1.15 kept and
+ * dropped: at 30 turns every setting but a half with the bonus gives the same
+ * board, 6/5/5/5/4, Arkane taking Tulgarn back from the Confederacy around turn
+ * 19. A quarter moves the 100-turn boards least and keeps the market below what
+ * the network pays a power at the centre of the map, so going autarkic is a
+ * choice about being strangled rather than a way to be rich. It grows with the
+ * square of a connected realm, which is the thing to watch.
+ */
+export const INTERNAL_MARKET_SHARE = 1 / 4;
+
+/** One pair of an autarkist's worlds trading over a path inside its own space. */
+export interface InternalLane {
+  factionId: string;
+  endpoints: [string, string];
+  path: string[];
+  jumps: number;
+  /** Credits a turn, before raids and blockades. */
+  volume: number;
+}
+
+/**
+ * Every internal lane an autarkist runs: each pair of its worlds joined by a
+ * path that never leaves the worlds it holds, whether or not either is a hub.
+ * Empty for a power of any other ethic.
+ *
+ * Valued by the network's own formula — endpoint value over distance — so a
+ * compact realm of good worlds is worth the most, and a world cut off from the
+ * rest trades with nobody. Retaking a lost home world rejoins the chain.
+ */
+export function internalLanes(state: WorldState, factionId: string): InternalLane[] {
+  if (getFaction(state, factionId)?.tradeEthic !== 'autarkic') return [];
+  const mine = state.systems
+    .filter((s) => s.controllerFactionId === factionId)
+    .sort((a, b) => a.id.localeCompare(b.id));
+  const held = new Set(mine.map((s) => s.id));
+  const adj = buildAdjacency(state.systems);
+  const lanes: InternalLane[] = [];
+  for (let i = 0; i < mine.length; i++) {
+    // Breadth-first inside its own space, neighbours in id order, so replay
+    // walks the same paths.
+    const from = mine[i]!;
+    const prev = new Map<string, string>();
+    const seen = new Set([from.id]);
+    const queue = [from.id];
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      for (const next of [...(adj.get(cur) ?? [])].sort()) {
+        if (!held.has(next) || seen.has(next)) continue;
+        seen.add(next);
+        prev.set(next, cur);
+        queue.push(next);
+      }
+    }
+    for (let j = i + 1; j < mine.length; j++) {
+      const to = mine[j]!;
+      if (!seen.has(to.id)) continue;
+      const path = [to.id];
+      while (path[0] !== from.id) path.unshift(prev.get(path[0]!)!);
+      const jumps = path.length - 1;
+      lanes.push({
+        factionId,
+        endpoints: [from.id, to.id],
+        path,
+        jumps,
+        volume:
+          (((from.strategicValue + to.strategicValue) * ROUTE_VALUE_PER_SV) / (1 + jumps * DISTANCE_DECAY)) *
+          INTERNAL_MARKET_SHARE,
+      });
+    }
+  }
+  return lanes;
+}
 
 /**
  * A monopolist's premium on a lane whose both ends it owns.
@@ -351,6 +437,15 @@ export interface RouteEarnings {
   tollsPaidBySystem: Record<string, Record<string, number>>;
   /** Fraction of all routes running unimpeded, 0–1. What free traders live on. */
   openness: number;
+  /**
+   * What each autarkist's internal market paid it, after raids on its own
+   * worlds — see `internalLanes`. Outside `shares`, which is the conserved
+   * division of the NETWORK; `ledgerFor` adds it to `routes`, as it does the
+   * monopolist's premium.
+   */
+  internal: Record<string, number>;
+  /** What raiders took off internal markets, by raider — also outside `shares`. */
+  internalTaken: Record<string, number>;
 }
 
 const add = (into: Record<string, number>, id: string, amount: number): void => {
@@ -605,6 +700,33 @@ export function routeEarnings(state: WorldState): RouteEarnings {
     shares[faction.id] = kept;
   }
 
+  // **And trades with itself.** The internal market is the autarkist's own,
+  // so the cut above never touches it, no toll is charged on it and no foreign
+  // hop takes a share. "Cannot be strangled" is true of it: a blockade on the
+  // network elsewhere does nothing, and only a blockade or a raid on one of its
+  // own worlds closes or skims a lane that runs through that world.
+  const internal: Record<string, number> = {};
+  const internalTaken: Record<string, number> = {};
+  for (const faction of state.factions) {
+    for (const lane of internalLanes(state, faction.id)) {
+      const blockers = lane.path.flatMap((id) => severedBy(state, id));
+      if (!runsBlockade(state, faction.id, blockers)) continue;
+      let earned = lane.volume;
+      for (const id of lane.path) {
+        for (const raider of raidersOn(state, id)) {
+          if (!raidLandsOn(state, raider, faction.id)) continue;
+          const multiplier = ethicOf(raider) === 'smuggler' ? SMUGGLER_RAID_MULTIPLIER : 1;
+          const stolen = Math.min(earned, earned * RAID_SHARE * multiplier * raidYield(state, raider, id));
+          if (stolen <= 0) continue;
+          earned -= stolen;
+          add(internalTaken, raider, stolen);
+          took(raider, faction.id, stolen);
+        }
+      }
+      add(internal, faction.id, earned);
+    }
+  }
+
   for (const id of Object.keys(shares)) shares[id] = Math.round(shares[id]!);
   for (const id of Object.keys(tolls)) tolls[id] = Math.round(tolls[id]!);
   for (const id of Object.keys(tollsPaid)) tollsPaid[id] = Math.round(tollsPaid[id]!);
@@ -615,6 +737,8 @@ export function routeEarnings(state: WorldState): RouteEarnings {
   for (const id of Object.keys(monopolyPremium)) {
     monopolyPremium[id] = Math.round(monopolyPremium[id]!);
   }
+  for (const id of Object.keys(internal)) internal[id] = Math.round(internal[id]!);
+  for (const id of Object.keys(internalTaken)) internalTaken[id] = Math.round(internalTaken[id]!);
 
   return {
     shares,
@@ -627,6 +751,8 @@ export function routeEarnings(state: WorldState): RouteEarnings {
     raidedFrom,
     monopolyPremium,
     openness: routes.length === 0 ? 1 : live / routes.length,
+    internal,
+    internalTaken,
   };
 }
 

@@ -69,6 +69,14 @@ export function TradePanel({
             <span className="good">+{ledger.tolls}</span>
           </div>
         )}
+        {(ledger.internalMarket ?? 0) > 0 && (
+          <div className="ledger-row sub">
+            <span title="Your own connected worlds trading with each other. An autarkist's economy: no toll, no foreign share, and no blockade elsewhere touches it — only a blockade or a raid on one of your own worlds.">
+              …of which your internal market
+            </span>
+            <span className="good">+{ledger.internalMarket}</span>
+          </div>
+        )}
         {ledger.raided > 0 && (
           <div className="ledger-row sub">
             <span>…of which taken by raiding</span>

@@ -1416,7 +1416,7 @@ lives here instead:
 |---|---|
 | `free_trade` | scales with **galaxy-wide openness** — profits from everyone's peace, not just its own |
 | `extortionist` | a **premium rate** on the toll it charges for crossing its space — see "Tolls are a policy" |
-| `autarkic` | keeps only `AUTARKIC_ROUTE_FRACTION` of route income, and cannot be strangled |
+| `autarkic` | keeps only `AUTARKIC_ROUTE_FRACTION` of network income, and earns an **internal market** from its own connected worlds — see "An autarkist trades with itself" |
 | `smuggler` | ignores blockades, raids at double effect, counts double at lawless junctions |
 | `monopolist` | `MONOPOLY_BONUS` premium on lanes it owns **both ends** of, paid on top of the conserved split |
 
@@ -1458,6 +1458,54 @@ because the ethic finally had an owner:
    lane and the discrete question (does Meridian keep tor-1) swamps it. 1.25 is
    chosen over the 1.3 that also passes for margin: a tuning value sitting on a
    cliff edge is one unrelated change away from tipping back.
+
+### An autarkist trades with itself
+
+`internalLanes` in `trade.ts`. Autarky is self-sufficiency, and the doctrine
+had only the renunciation: 35% of its network income and ×1.15 on its worlds.
+On the opening board that cost Arkane about ten credits a turn net — 51 of lane
+income cut to 18, against 23 gained at home — so the one power whose doctrine is
+standing alone was paying for it. Its income was 195 against 378–463 for the
+three large powers, and its net was 58.
+
+"Its own routes" had to be defined before it could be taxed. Lanes run hub to
+hub and Arkane holds one hub, so **no galactic lane starts and ends on its
+worlds**. The internal market is its own: every pair of an autarkist's worlds
+joined by a path that never leaves them, hub or not, valued by the network's
+formula (endpoint value over distance) at `INTERNAL_MARKET_SHARE` (a quarter).
+
+- **Its alone.** No toll, no foreign hop, no other power's share, and the 35%
+  cut does not touch it.
+- **"Cannot be strangled" is now true.** A blockade elsewhere on the network
+  does nothing to it; only a blockade or a raid on one of its own worlds closes
+  or skims the lanes through that world. What a raider takes it is paid, logged
+  as a prize from the autarkist, and drawn against a bounty like any other.
+- **Beside the network's conserved split, not inside it** — `RouteEarnings.internal`
+  and `internalTaken`, added to `routes` in `ledgerFor` the way the monopolist's
+  premium is, with its own `Ledger.internalMarket` line and a line on the Trade
+  tab. A commitment share of "routes" reads the network only, for the reason it
+  leaves out the premium: a counterparty bargained for a slice of the lanes.
+- **One payoff.** The ×1.15 on its worlds went with it.
+
+It rewards a compact, connected realm: a world cut off from the rest trades with
+nobody, and retaking a lost home world rejoins the chain. It also grows with the
+square of a connected realm — four worlds make six lanes, six make fifteen —
+which is the thing to watch if a large power ever turns autarkic. At a quarter
+it stays below what the network pays a power at the centre of the map: Meridian
+turned autarkic would earn about 130 from routes against 221.
+
+**Swept** at a quarter, a third and a half, with the ×1.15 kept and dropped.
+At 30 turns with events every setting but a half-with-bonus gives one board,
+**6/5/5/5/4** against 6/5/5/4/5: Arkane can now afford its existing doctrine of
+securing its own sector and takes Tulgarn back from the Confederacy around turn
+19, and the Confederacy's net improves from −39 to −32. A quarter moves the
+100-turn boards least (6/5/4/5/5 with events; 6/6/5/6/2 without, against
+6/7/5/5/2) and pays Arkane 59 a turn on five worlds, 86 on six; its net at 30
+turns rises from 21 to 41. The income mix moves from 59/41 to 56/44.
+
+**Not pinned to a journal version**, like the fixture upkeep and the rally: it is
+read in `ledgerFor`, where a legacy flag cannot reach, so a save in which Arkane
+was played replays with its new income.
 
 ### Tolls are a policy, not an ethic
 
