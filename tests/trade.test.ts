@@ -405,19 +405,24 @@ describe('commerce raiding', () => {
   });
 
   it('is worth more to a smuggler than to anyone else', () => {
-    const asSmuggler = ledgerFor(raiding(), 'drajk').raided;
-    const state = fresh('drajk');
-    fac(state, 'drajk').tradeEthic = 'autarkic';
-    setShipsAt(sys(state, 'ilv-3'), 'drajk', 6);
-    const plain = tickTurn(
-      applyOps(state, [
-        {
-          op: 'issue_order', factionId: 'drajk', type: 'commerce_raiding',
-          originId: 'ilv-6', targetId: 'ilv-3', durationTurns: 5, label: 'raid',
-        },
-      ]).state,
-    ).state;
-    expect(asSmuggler).toBeGreaterThan(ledgerFor(plain, 'drajk').raided);
+    // At Oridin, the busiest junction on the board: Riqel's lanes divide across
+    // equally short paths now, and what is left there rounds to a credit either way.
+    const raidOridin = (ethic: 'smuggler' | 'autarkic') => {
+      const state = fresh('drajk');
+      fac(state, 'drajk').tradeEthic = ethic;
+      setShipsAt(sys(state, 'ilv-5'), 'drajk', 6);
+      return tickTurn(
+        applyOps(state, [
+          {
+            op: 'issue_order', factionId: 'drajk', type: 'commerce_raiding',
+            originId: 'ilv-5', targetId: 'ilv-5', durationTurns: 5, label: 'raid',
+          },
+        ]).state,
+      ).state;
+    };
+    const plain = ledgerFor(raidOridin('autarkic'), 'drajk').raided;
+    expect(plain).toBeGreaterThan(0);
+    expect(ledgerFor(raidOridin('smuggler'), 'drajk').raided).toBeGreaterThan(plain);
   });
 
   it('costs the raider standing with its victim, every turn', () => {

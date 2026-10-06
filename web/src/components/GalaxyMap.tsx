@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { WorldState } from '../../../src/domain/state.js';
 import { layoutGalaxy, sectorsOf } from '../../../src/ui/layout.js';
-import { routeEarnings, severedBy, tradeRoutes } from '../../../src/domain/trade.js';
+import { routeEarnings, routeLegs, severedBy, tradeRoutes } from '../../../src/domain/trade.js';
 import { ansi256ToHex, NEUTRAL } from '../color.js';
 import { CommanderMark } from './BattleIcons.js';
 
@@ -47,11 +47,11 @@ export function GalaxyMap({ state, selectedId, onSelect }: Props) {
   const { tradeOnLane, severed } = useMemo(() => {
     const carried = new Map<string, number>();
     const cut = new Set<string>();
-    for (const route of tradeRoutes(state)) {
-      const blocked = route.path.some((id) => severedBy(state, id).length > 0);
-      for (let i = 0; i < route.path.length - 1; i++) {
-        const key = laneKey(route.path[i]!, route.path[i + 1]!);
-        carried.set(key, (carried.get(key) ?? 0) + route.volume);
+    for (const leg of tradeRoutes(state).flatMap(routeLegs)) {
+      const blocked = leg.path.some((id) => severedBy(state, id).length > 0);
+      for (let i = 0; i < leg.path.length - 1; i++) {
+        const key = laneKey(leg.path[i]!, leg.path[i + 1]!);
+        carried.set(key, (carried.get(key) ?? 0) + leg.volume);
         if (blocked) cut.add(key);
       }
     }

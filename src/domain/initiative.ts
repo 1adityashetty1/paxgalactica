@@ -70,7 +70,7 @@ import {
   type HullClass,
   type ShipStack,
 } from './hulls.js';
-import { routeEarnings, tradeRoutes } from './trade.js';
+import { routeEarnings, routeLegs, tradeRoutes } from './trade.js';
 import { STAT_NAMES, statModifier } from './checks.js';
 
 /**
@@ -1092,8 +1092,9 @@ const ORBITAL_MARGIN = 2.2;
 /** Transit value crossing a system — what a raid or blockade there is worth. */
 function trafficAt(s: WorldState, systemId: string): number {
   return tradeRoutes(s)
-    .filter((r) => r.path.slice(1, -1).includes(systemId))
-    .reduce((n, r) => n + r.volume, 0);
+    .flatMap(routeLegs)
+    .filter((leg) => leg.path.slice(1, -1).includes(systemId))
+    .reduce((n, leg) => n + leg.volume, 0);
 }
 
 /** Heat this close below notorious makes a raider keep its next raid dark. */

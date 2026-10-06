@@ -46,7 +46,8 @@ describe('a raid run dark', () => {
     const open = routeEarnings(raiding(false)).raidedFrom.drajk?.ojjul ?? 0;
     const dark = routeEarnings(raiding(true)).raidedFrom.drajk?.ojjul ?? 0;
     expect(open).toBeGreaterThan(0);
-    expect(dark).toBeCloseTo(open * DARK_RAID_YIELD, 0);
+    // Both are whole credits, rounded after the yield is taken.
+    expect(Math.abs(dark - open * DARK_RAID_YIELD)).toBeLessThanOrEqual(1);
   });
 
   it('is an unowned rumour to everyone but its owner', () => {

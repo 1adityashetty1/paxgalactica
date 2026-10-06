@@ -16,7 +16,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 14;
+export const JOURNAL_VERSION = 15;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -96,6 +96,7 @@ export const JournalVersionSchema = z.union([
   z.literal(12),
   z.literal(13),
   z.literal(14),
+  z.literal(15),
 ]);
 
 export const JournalSchema = z.object({
@@ -137,7 +138,9 @@ export const JournalSchema = z.object({
    *     before a watcher at work could dig up its host's secrets.
    * 13 — written before dirty work built heat and the Rim answered a
    *     notorious power.
-   * 14 — current.
+   * 14 — written before a trade lane's traffic divided across every equally
+   *     short path, so the alphabet chose one and six worlds carried none.
+   * 15 — current.
    */
   version: JournalVersionSchema,
   entries: z.array(JournalEntrySchema),
@@ -214,6 +217,9 @@ export function replay(
     // favour to hand over or made goods it could not sell to itself.
     notes: parsed.version >= 12,
     commodities: parsed.version >= 12,
+    // Lanes took one path each, chosen by system id, and the treasuries in
+    // those campaigns are what that routing paid.
+    splitTies: parsed.version >= 15,
   });
   let rejectionCount = 0;
   // The opening board, before anything is applied. Without it an observer's

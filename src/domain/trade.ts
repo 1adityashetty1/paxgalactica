@@ -1,4 +1,4 @@
-import { buildAdjacency, shortestPath } from './graph.js';
+import { allShortestPaths, buildAdjacency, shortestPath } from './graph.js';
 import { getFaction, laneWeightsAt, type StarSystem, type WorldState } from './state.js';
 import { STORM_BLOCKER, stormbound } from './events.js';
 import { protectedFrom, raidLandsOn as raidLandsUnder } from './diplomacy.js';
@@ -238,8 +238,21 @@ export interface TradeRoute {
   id: string;
   /** The two hub endpoints, sorted, so a route has one canonical identity. */
   endpoints: [string, string];
-  /** Full node path including both endpoints. */
+  /** Full node path including both endpoints — the first of `paths`. */
   path: string[];
+  /**
+   * Every path between the two hubs as short as `path`, `path` first. The
+   * lane's traffic divides evenly across them — see `routeLegs`.
+   *
+   * There used to be one, `shortestPath`'s, which breaks a tie by system id —
+   * so where two routes were equally short the alphabet chose, and six worlds
+   * that lay on an equally short route between two hubs (Threx on five of
+   * them) carried no trade at all. Raids, tolls and blockades there did
+   * nothing to commerce, and three of the six were the Confederacy's.
+   *
+   * One path for a campaign seeded before the split (`routeTies: 'first'`).
+   */
+  paths: string[][];
   jumps: number;
   /** Credits this lane is worth per turn when it runs unimpeded. */
   volume: number;
@@ -270,6 +283,15 @@ export function tradeRoutes(state: WorldState): TradeRoute[] {
       const b = hubs[j]!;
       const path = shortestPath(state.systems, a.id, b.id);
       if (!path || path.length < 2) continue;
+      const paths =
+        state.routeTies === 'split'
+          ? [
+              path,
+              ...allShortestPaths(state.systems, a.id, b.id).filter(
+                (p) => p.join('>') !== path.join('>'),
+              ),
+            ]
+          : [path];
 
       const jumps = path.length - 1;
       const volume = Math.round(
@@ -281,13 +303,30 @@ export function tradeRoutes(state: WorldState): TradeRoute[] {
         id: `${a.id}~${b.id}`,
         endpoints: [a.id, b.id],
         path,
+        paths,
         jumps,
         volume,
-        blockedAt: path.filter((id) => isBlockaded(state, id)),
+        blockedAt: [...new Set(paths.flat())].filter((id) => isBlockaded(state, id)).sort(),
       });
     }
   }
   return routes;
+}
+
+/**
+ * A lane as it is actually travelled: one leg per equally short path, each
+ * carrying an equal share of the lane's value. The two ends are on every leg,
+ * so what a hub earns from the lane is unchanged; what is divided is the 40%
+ * that pays the worlds in between, and a blockade or a raid on one path
+ * touches only the traffic that goes that way.
+ */
+export function routeLegs(route: TradeRoute): { path: string[]; volume: number }[] {
+  return route.paths.map((path) => ({ path, volume: route.volume / route.paths.length }));
+}
+
+/** Every system a lane's traffic passes through, on any of its paths. */
+export function routeSystems(route: TradeRoute): string[] {
+  return [...new Set(route.paths.flat())];
 }
 
 /* ------------------------------------------------------------------ */
@@ -491,203 +530,213 @@ export function routeEarnings(state: WorldState): RouteEarnings {
   const ethicOf = (id: string | null) =>
     id === null ? null : (state.factions.find((f) => f.id === id)?.tradeEthic ?? null);
 
-  for (const route of routes) {
-    const [aId, bId] = route.endpoints;
-    const holderA = holderOf(aId);
-    const holderB = holderOf(bId);
+  for (const lane of routes) {
+    const legs = routeLegs(lane);
+    // A lane is open in proportion to its legs that are: a blockade on one of
+    // two equal paths closes half of what goes that way.
+    let openLegs = 0;
+    for (const leg of legs) {
+      // Each leg is priced exactly as a whole lane used to be, at its share of
+      // the volume; every `continue` below moves on to the next leg.
+      const route = { ...lane, path: leg.path, volume: leg.volume };
+      const [aId, bId] = route.endpoints;
+      const holderA = holderOf(aId);
+      const holderB = holderOf(bId);
 
-    // A blockade is resolved PER BENEFICIARY, not per lane. Deciding it once
-    // for the whole route meant a smuggler only kept its trade when every
-    // other party on the lane could also run the blockade — so "smugglers run
-    // blockades", the Confederacy's entire economic identity, almost never
-    // fired. Now the lane closes for those it closes for, and whoever can slip
-    // through still gets paid.
-    const blockers = route.path.flatMap((id) => severedBy(state, id));
-    const carries = (id: string | null): boolean =>
-      id !== null && runsBlockade(state, id, blockers);
+      // A blockade is resolved PER BENEFICIARY, not per lane. Deciding it once
+      // for the whole route meant a smuggler only kept its trade when every
+      // other party on the lane could also run the blockade — so "smugglers run
+      // blockades", the Confederacy's entire economic identity, almost never
+      // fired. Now the lane closes for those it closes for, and whoever can slip
+      // through still gets paid.
+      const blockers = route.path.flatMap((id) => severedBy(state, id));
+      const carries = (id: string | null): boolean =>
+        id !== null && runsBlockade(state, id, blockers);
 
-    if (blockers.length > 0 && !carries(holderA) && !carries(holderB)) {
-      uncollected += route.volume;
-      continue;
-    }
-    if (blockers.length === 0) live += 1;
-
-    const middle = route.path.slice(1, -1);
-    const endpointPot = route.volume * ENDPOINT_SHARE;
-    const transitPot = route.volume - endpointPot;
-
-    /* --- endpoints: producer and consumer --- */
-    const monopoly =
-      holderA !== null && holderA === holderB && ethicOf(holderA) === 'monopolist';
-    // What each end ACTUALLY received on this route, which is not always
-    // `endpointPot / 2` — a severed or unaligned end pays nobody, and a toll
-    // comes off the top. The raid below takes a share of the receipt rather
-    // than of the pot, because stealing from a figure the holder never got
-    // would take the difference out of `uncollected` and mint it.
-    const received: Record<string, number> = {};
-    for (const holder of [holderA, holderB]) {
-      const cut = endpointPot / 2;
-      if (holder === null || !carries(holder)) {
-        uncollected += cut;
+      if (blockers.length > 0 && !carries(holderA) && !carries(holderB)) {
+        uncollected += route.volume;
         continue;
       }
-      add(received, holder, cut);
-      add(shares, holder, cut);
-      // The premium rides alongside the share rather than inflating it, so the
-      // conserved pot stays conserved. See `monopolyPremium`.
-      if (monopoly) add(monopolyPremium, holder, cut * (MONOPOLY_BONUS - 1));
-    }
+        if (blockers.length === 0) openLegs += 1;
 
-    /* --- a terminus may charge the far end for access to its market --- */
-    // Tolls used to be levied only on TRANSIT hops, and that quietly decided
-    // who could hold the mechanic at all: on the seed the Confederacy controls
-    // **zero** interior hops, so no policy it could ever set would earn it a
-    // credit, while the Combine holds twenty. Making tolling a choice is worth
-    // nothing to the power with nothing to charge for.
-    //
-    // A hub is a market as well as a waypoint, and charging the far end of a
-    // lane for reaching yours is the same act as charging someone to cross —
-    // it is a tariff either way. It comes out of the far end's OWN endpoint
-    // share, so the pot stays conserved and nobody is taxed on money they did
-    // not receive.
-    for (const [holder, other] of [
-      [holderA, holderB],
-      [holderB, holderA],
-    ] as const) {
-      if (holder === null || other === null) continue;
-      if (!carries(holder) || !carries(other)) continue;
-      if (!tollsOn(state, holder, other)) continue;
-      // ONE TOLL PER LANE PER COLLECTOR. A power that already charges this
-      // route's traffic where it crosses its space does not also charge it for
-      // arriving: those are the same cargo paying the same power twice on the
-      // same run.
-      //
-      // It is also what keeps the terminus tariff from being a straight buff to
-      // whoever is already winning. The Combine holds twenty interior hops AND
-      // fourteen endpoints, so without this it collects on both halves of most
-      // lanes it touches — measured at 884 tolls over 30 harness turns against
-      // 477 before, and a sixth system it did not previously take. The power
-      // this rule is FOR is the one holding an endpoint and no hop at all.
-      if (middle.some((id) => state.systems.find((sys) => sys.id === id)?.controllerFactionId === holder))
-        continue;
-      // `BASE_TOLL_RATE` for everyone here, extortionist included — and that is
-      // the line that keeps the Combine's doctrine intact. Its ethic is about
-      // CHOKEPOINTS: "commerce owes you for passing through" is a statement
-      // about transit, not about tariffs charged at your own markets. So the
-      // extortionist's premium rate applies where it crosses your space, and a
-      // terminus charges the ordinary rate whoever holds it.
-      const toll = (endpointPot / 2) * BASE_TOLL_RATE;
-      add(shares, other, -toll);
-      add(tollsPaid, other, toll);
-      add(received, other, -toll);
-      add(shares, holder, toll);
-      add(tolls, holder, toll);
-      add(received, holder, toll);
-      // At the collector's own hub: this is a tariff charged at a market, so
-      // the world it belongs to is the market, not the far end paying it.
-      levy(holder, other, holderOf(aId) === holder ? aId : bId, toll);
-    }
+      const middle = route.path.slice(1, -1);
+      const endpointPot = route.volume * ENDPOINT_SHARE;
+      const transitPot = route.volume - endpointPot;
 
-    /* --- a raider may take a lane's cargo at either end of it --- */
-    // Raiding was levied on TRANSIT hops only, exactly as tolling was, and it
-    // excluded the same three things: every route ENDPOINT — and endpoints are
-    // hubs, the high-value systems worth raiding — every adjacent-hub lane,
-    // where there is no middle at all, and every unaligned hop.
-    //
-    // On the live board `ilv-1`, `ilv-6`, `ark-1` and `tor-4` appear on zero
-    // interior paths, so a fleet sitting on any of them could raid nothing
-    // whatever it did. Prizes are taken where the cargo is, and at a terminus
-    // the cargo is all in one place.
-    for (const endId of [route.path[0]!, route.path.at(-1)!]) {
-      const holder = state.systems.find((sys) => sys.id === endId)?.controllerFactionId ?? null;
-      if (holder === null || !carries(holder)) continue;
-      // Only what that end actually collected is on the table.
-      let atRisk = received[holder] ?? 0;
-      if (atRisk <= 0) continue;
-      for (const raider of raidersOn(state, endId)) {
-        if (!raidLandsOn(state, raider, holder)) continue;
-        const multiplier =
-          ethicOf(raider) === 'smuggler' ? SMUGGLER_RAID_MULTIPLIER : 1;
-        const stolen = Math.min(atRisk, atRisk * RAID_SHARE * multiplier * raidYield(state, raider, endId));
-        if (stolen <= 0) continue;
-        atRisk -= stolen;
-        add(shares, holder, -stolen);
-        add(shares, raider, stolen);
-        took(raider, holder, stolen);
-      }
-    }
-
-    /* --- transit: whoever the lane crosses --- */
-    if (middle.length === 0) {
-      // Adjacent hubs: no intermediary, so the endpoints carry it themselves.
+      /* --- endpoints: producer and consumer --- */
+      const monopoly =
+        holderA !== null && holderA === holderB && ethicOf(holderA) === 'monopolist';
+      // What each end ACTUALLY received on this route, which is not always
+      // `endpointPot / 2` — a severed or unaligned end pays nobody, and a toll
+      // comes off the top. The raid below takes a share of the receipt rather
+      // than of the pot, because stealing from a figure the holder never got
+      // would take the difference out of `uncollected` and mint it.
+      const received: Record<string, number> = {};
       for (const holder of [holderA, holderB]) {
-        if (holder === null || !carries(holder)) uncollected += transitPot / 2;
-        else add(shares, holder, transitPot / 2);
-      }
-      continue;
-    }
-
-    const perHop = transitPot / middle.length;
-    for (const hopId of middle) {
-      const holder = holderOf(hopId);
-
-      // An unaligned hop pays whoever is physically moving goods through it.
-      // Exactly the rule unaligned *worlds* already follow in `systemIncome`:
-      // occupying is cheaper than conquering and collects without owning. It
-      // also stops a third of the galaxy's trade value evaporating on the
-      // three unaligned junctions the seed left on the busiest lanes.
-      if (holder === null) {
-        distributeUnclaimed(state, hopId, perHop, shares, (n) => (uncollected += n));
-        continue;
-      }
-      // A carrier that cannot get past the blockade earns nothing on this leg.
-      if (!carries(holder)) {
-        uncollected += perHop;
-        continue;
-      }
-
-      let earned = perHop;
-
-      // Extortion: a toll on goods that are not the extortionist's own.
-      // Charged to the foreign endpoints, never to itself — the Nars carry a
-      // great deal of Meridian and Vigil cargo across Ilvenn, and this is
-      // what "commerce owes you for passing through" costs in credits.
-      const payers = [holderA, holderB].filter(
-        (id): id is string => id !== null && id !== holder,
-      );
-      // Charged only to the powers this holder has actually decided to charge.
-      // A junction is a fact about the map; whether commerce pays to cross it
-      // is a policy, and it is the one a neighbour comes to the table about.
-      const charged = payers.filter((id) => tollsOn(state, holder, id));
-      if (charged.length > 0) {
-        const rate = ethicOf(holder) === 'extortionist' ? TOLL_RATE : BASE_TOLL_RATE;
-        // Still divided by the number of ENDPOINTS, not by how many of them are
-        // being charged: the toll is a share of what crosses this hop, and
-        // waiving one power's half must not double the other's.
-        const toll = perHop * rate * (charged.length / 2);
-        const each = toll / charged.length;
-        for (const payer of charged) {
-          add(shares, payer, -each);
-          add(tollsPaid, payer, each);
-          levy(holder, payer, hopId, each);
+        const cut = endpointPot / 2;
+        if (holder === null || !carries(holder)) {
+          uncollected += cut;
+          continue;
         }
+        add(received, holder, cut);
+        add(shares, holder, cut);
+        // The premium rides alongside the share rather than inflating it, so the
+        // conserved pot stays conserved. See `monopolyPremium`.
+        if (monopoly) add(monopolyPremium, holder, cut * (MONOPOLY_BONUS - 1));
+      }
+
+      /* --- a terminus may charge the far end for access to its market --- */
+      // Tolls used to be levied only on TRANSIT hops, and that quietly decided
+      // who could hold the mechanic at all: on the seed the Confederacy controls
+      // **zero** interior hops, so no policy it could ever set would earn it a
+      // credit, while the Combine holds twenty. Making tolling a choice is worth
+      // nothing to the power with nothing to charge for.
+      //
+      // A hub is a market as well as a waypoint, and charging the far end of a
+      // lane for reaching yours is the same act as charging someone to cross —
+      // it is a tariff either way. It comes out of the far end's OWN endpoint
+      // share, so the pot stays conserved and nobody is taxed on money they did
+      // not receive.
+      for (const [holder, other] of [
+        [holderA, holderB],
+        [holderB, holderA],
+      ] as const) {
+        if (holder === null || other === null) continue;
+        if (!carries(holder) || !carries(other)) continue;
+        if (!tollsOn(state, holder, other)) continue;
+        // ONE TOLL PER LANE PER COLLECTOR. A power that already charges this
+        // route's traffic where it crosses its space does not also charge it for
+        // arriving: those are the same cargo paying the same power twice on the
+        // same run.
+        //
+        // It is also what keeps the terminus tariff from being a straight buff to
+        // whoever is already winning. The Combine holds twenty interior hops AND
+        // fourteen endpoints, so without this it collects on both halves of most
+        // lanes it touches — measured at 884 tolls over 30 harness turns against
+        // 477 before, and a sixth system it did not previously take. The power
+        // this rule is FOR is the one holding an endpoint and no hop at all.
+        if (middle.some((id) => state.systems.find((sys) => sys.id === id)?.controllerFactionId === holder))
+          continue;
+        // `BASE_TOLL_RATE` for everyone here, extortionist included — and that is
+        // the line that keeps the Combine's doctrine intact. Its ethic is about
+        // CHOKEPOINTS: "commerce owes you for passing through" is a statement
+        // about transit, not about tariffs charged at your own markets. So the
+        // extortionist's premium rate applies where it crosses your space, and a
+        // terminus charges the ordinary rate whoever holds it.
+        const toll = (endpointPot / 2) * BASE_TOLL_RATE;
+        add(shares, other, -toll);
+        add(tollsPaid, other, toll);
+        add(received, other, -toll);
+        add(shares, holder, toll);
         add(tolls, holder, toll);
-        earned += toll;
+        add(received, holder, toll);
+        // At the collector's own hub: this is a tariff charged at a market, so
+        // the world it belongs to is the market, not the far end paying it.
+        levy(holder, other, holderOf(aId) === holder ? aId : bId, toll);
       }
 
-      // Raiding: taken from whoever was collecting this hop.
-      for (const raider of raidersOn(state, hopId)) {
-        if (!raidLandsOn(state, raider, holder)) continue;
-        const multiplier =
-          ethicOf(raider) === 'smuggler' ? SMUGGLER_RAID_MULTIPLIER : 1;
-        const stolen = Math.min(earned, earned * RAID_SHARE * multiplier * raidYield(state, raider, hopId));
-        earned -= stolen;
-        add(shares, raider, stolen);
-        took(raider, holder, stolen);
+      /* --- a raider may take a lane's cargo at either end of it --- */
+      // Raiding was levied on TRANSIT hops only, exactly as tolling was, and it
+      // excluded the same three things: every route ENDPOINT — and endpoints are
+      // hubs, the high-value systems worth raiding — every adjacent-hub lane,
+      // where there is no middle at all, and every unaligned hop.
+      //
+      // On the live board `ilv-1`, `ilv-6`, `ark-1` and `tor-4` appear on zero
+      // interior paths, so a fleet sitting on any of them could raid nothing
+      // whatever it did. Prizes are taken where the cargo is, and at a terminus
+      // the cargo is all in one place.
+      for (const endId of [route.path[0]!, route.path.at(-1)!]) {
+        const holder = state.systems.find((sys) => sys.id === endId)?.controllerFactionId ?? null;
+        if (holder === null || !carries(holder)) continue;
+        // Only what that end actually collected is on the table.
+        let atRisk = received[holder] ?? 0;
+        if (atRisk <= 0) continue;
+        for (const raider of raidersOn(state, endId)) {
+          if (!raidLandsOn(state, raider, holder)) continue;
+          const multiplier =
+            ethicOf(raider) === 'smuggler' ? SMUGGLER_RAID_MULTIPLIER : 1;
+          const stolen = Math.min(atRisk, atRisk * RAID_SHARE * multiplier * raidYield(state, raider, endId));
+          if (stolen <= 0) continue;
+          atRisk -= stolen;
+          add(shares, holder, -stolen);
+          add(shares, raider, stolen);
+          took(raider, holder, stolen);
+        }
       }
 
-      add(shares, holder, earned);
+      /* --- transit: whoever the lane crosses --- */
+      if (middle.length === 0) {
+        // Adjacent hubs: no intermediary, so the endpoints carry it themselves.
+        for (const holder of [holderA, holderB]) {
+          if (holder === null || !carries(holder)) uncollected += transitPot / 2;
+          else add(shares, holder, transitPot / 2);
+        }
+        continue;
+      }
+
+      const perHop = transitPot / middle.length;
+      for (const hopId of middle) {
+        const holder = holderOf(hopId);
+
+        // An unaligned hop pays whoever is physically moving goods through it.
+        // Exactly the rule unaligned *worlds* already follow in `systemIncome`:
+        // occupying is cheaper than conquering and collects without owning. It
+        // also stops a third of the galaxy's trade value evaporating on the
+        // three unaligned junctions the seed left on the busiest lanes.
+        if (holder === null) {
+          distributeUnclaimed(state, hopId, perHop, shares, (n) => (uncollected += n));
+          continue;
+        }
+        // A carrier that cannot get past the blockade earns nothing on this leg.
+        if (!carries(holder)) {
+          uncollected += perHop;
+          continue;
+        }
+
+        let earned = perHop;
+
+        // Extortion: a toll on goods that are not the extortionist's own.
+        // Charged to the foreign endpoints, never to itself — the Nars carry a
+        // great deal of Meridian and Vigil cargo across Ilvenn, and this is
+        // what "commerce owes you for passing through" costs in credits.
+        const payers = [holderA, holderB].filter(
+          (id): id is string => id !== null && id !== holder,
+        );
+        // Charged only to the powers this holder has actually decided to charge.
+        // A junction is a fact about the map; whether commerce pays to cross it
+        // is a policy, and it is the one a neighbour comes to the table about.
+        const charged = payers.filter((id) => tollsOn(state, holder, id));
+        if (charged.length > 0) {
+          const rate = ethicOf(holder) === 'extortionist' ? TOLL_RATE : BASE_TOLL_RATE;
+          // Still divided by the number of ENDPOINTS, not by how many of them are
+          // being charged: the toll is a share of what crosses this hop, and
+          // waiving one power's half must not double the other's.
+          const toll = perHop * rate * (charged.length / 2);
+          const each = toll / charged.length;
+          for (const payer of charged) {
+            add(shares, payer, -each);
+            add(tollsPaid, payer, each);
+            levy(holder, payer, hopId, each);
+          }
+          add(tolls, holder, toll);
+          earned += toll;
+        }
+
+        // Raiding: taken from whoever was collecting this hop.
+        for (const raider of raidersOn(state, hopId)) {
+          if (!raidLandsOn(state, raider, holder)) continue;
+          const multiplier =
+            ethicOf(raider) === 'smuggler' ? SMUGGLER_RAID_MULTIPLIER : 1;
+          const stolen = Math.min(earned, earned * RAID_SHARE * multiplier * raidYield(state, raider, hopId));
+          earned -= stolen;
+          add(shares, raider, stolen);
+          took(raider, holder, stolen);
+        }
+
+        add(shares, holder, earned);
+      }
     }
+    live += openLegs / legs.length;
   }
 
   // Autarkic powers hold themselves apart from the network by choice.
@@ -797,7 +846,7 @@ function distributeUnclaimed(
 
 export function routesTouching(state: WorldState, factionId: string): TradeRoute[] {
   return tradeRoutes(state).filter((route) =>
-    route.path.some(
+    routeSystems(route).some(
       (id) => state.systems.find((s) => s.id === id)?.controllerFactionId === factionId,
     ),
   );

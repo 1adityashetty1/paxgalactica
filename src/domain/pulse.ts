@@ -31,7 +31,7 @@ import {
   warsFor,
   type WorldState,
 } from './state.js';
-import { tradeRoutes } from './trade.js';
+import { routeLegs, tradeRoutes } from './trade.js';
 
 /**
  * The pulse: whether the Rim does something this turn, and what (item 124).
@@ -124,8 +124,8 @@ function candidatesFor(state: WorldState, kind: RimEventKind): Candidate[] {
       // Toward high-traffic lanes: a world is weighted by the volume of every
       // route that crosses it, endpoints included.
       const traffic = new Map<string, number>();
-      for (const route of tradeRoutes(state)) {
-        for (const id of route.path) traffic.set(id, (traffic.get(id) ?? 0) + route.volume);
+      for (const leg of tradeRoutes(state).flatMap(routeLegs)) {
+        for (const id of leg.path) traffic.set(id, (traffic.get(id) ?? 0) + leg.volume);
       }
       const r = rollD20(turn, 'rim:storm-length');
       const turns = 1 + ((r - 1) % STORM_MAX_TURNS);

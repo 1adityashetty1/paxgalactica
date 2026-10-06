@@ -854,6 +854,21 @@ export const WorldStateSchema = z.object({
   demands: z.array(DemandSchema).default([]),
   /** Prices on powers, in escrow — see `BountySchema`. */
   bounties: z.array(BountySchema).default([]),
+  /**
+   * How a trade lane between two hubs is travelled when several paths are
+   * equally short: `split` divides its traffic evenly across all of them,
+   * `first` takes the one `shortestPath` returns, which breaks the tie by
+   * system id. See `TradeRoute.paths`.
+   *
+   * A rule rather than a fact about the galaxy, and it sits on the world anyway
+   * because route income is computed from the world alone, in the browser as
+   * well as in the tick, and threading a legacy flag to every reader of
+   * `routeEarnings` would reach most of the codebase. The seed writes `split`;
+   * a journal from before version 15 is rebuilt with `first`, and a save that
+   * predates the field parses to it, so both replay the lanes they were played
+   * on — the same way `Faction.luck` carries the seed version it came from.
+   */
+  routeTies: z.enum(['first', 'split']).default('first'),
   playerFactionId: z.string().min(1),
   /** Abstract unit. There is no calendar in this game, deliberately. */
   turn: z.number().int().min(0),

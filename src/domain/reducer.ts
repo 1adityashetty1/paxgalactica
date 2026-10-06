@@ -8068,7 +8068,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     }
     if (order.type === 'blockade') {
       for (const route of tradeRoutes(state)) {
-        if (!route.path.includes(target.id)) continue;
+        if (!route.paths.some((p) => p.includes(target.id))) continue;
         for (const end of route.endpoints) {
           const holder = state.systems.find((x) => x.id === end)?.controllerFactionId;
           if (holder && holder !== order.factionId) victims.add(holder);

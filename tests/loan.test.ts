@@ -12,6 +12,7 @@ const tickTurn = (s: Parameters<typeof tickWithEvents>[0], legacy: LegacyRules =
 import {
   fleetStrengthOf,
   hullsAt,
+  addShipsAt,
   ledgerFor,
   setStackAt,
   stackAt,
@@ -231,10 +232,10 @@ describe('loans', () => {
 
   it('charges for missed hire, privately', () => {
     const { state, systemId } = withSquadron();
-    // The rent is set past anything the borrower can find rather than merely
-    // emptying its treasury: income settles before the hire does, so a purse
-    // zeroed here is refilled by the same tick, and how much it refills by is a
-    // property of the seed rather than of this test.
+    // Income settles before the hire does, so a purse zeroed here is refilled
+    // by the same tick — and the hire is trimmed to `MAX_LOAN_RENT`, so asking
+    // for more cannot outrun it. The borrower is made broke instead: a navy it
+    // cannot pay for leaves it nothing to find, whatever the seed's lanes pay.
     let s = applyOps(
       state,
       [hire(systemId, { termTurns: 20, rentPerTurn: 4000 })],
@@ -242,6 +243,10 @@ describe('loans', () => {
       'ojjul',
     ).state;
     s.factions.find((f) => f.id === 'drajk')!.credits = 0;
+    const drajkHome = s.systems.find((x) => x.controllerFactionId === 'drajk')!;
+    addShipsAt(drajkHome, 'drajk', 60, 'battleship');
+    // And owes the Combine nothing else, so the only thing it misses is the hire.
+    s.debts = [];
     const lenderBefore = s.factions.find((f) => f.id === 'ojjul')!.disposition['drajk'] ?? 0;
     const witnessBefore = s.factions.find((f) => f.id === 'meridian')!.disposition['drajk'] ?? 0;
 

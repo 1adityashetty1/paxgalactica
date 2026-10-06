@@ -7,6 +7,7 @@ import {
   blockadesOn,
   raidersOn,
   routeEarnings,
+  routeSystems,
   routesTouching,
   tradeRoutes,
   type TradeRoute,
@@ -168,7 +169,7 @@ function Lane({
   onSelect: (systemId: string) => void;
 }) {
   const [a, b] = route.endpoints;
-  const interference = route.path
+  const interference = routeSystems(route)
     .map((id) => ({
       id,
       blockaders: blockadesOn(state, id),
@@ -194,20 +195,29 @@ function Lane({
         <span className="lane-vol">{route.volume}/turn</span>
       </div>
 
-      <div className="lane-path">
-        {route.path.map((id, i) => (
-          <span key={id}>
-            {i > 0 && <span className="muted"> · </span>}
-            <span
-              style={{ color: colorOf(holderOf(id)) }}
-              className={holderOf(id) === me ? 'hop mine' : 'hop'}
-              title={holderOf(id) ? nameFaction(holderOf(id)!) : 'unaligned'}
-            >
-              {nameOf(id)}
+      {/* Every equally short path, each carrying an equal share of the traffic:
+          the worlds between take what passes them, not what the alphabet chose. */}
+      {route.paths.map((path, n) => (
+        <div
+          key={path.join('>')}
+          className="lane-path"
+          title={route.paths.length > 1 ? `1/${route.paths.length} of the traffic goes this way` : undefined}
+        >
+          {n > 0 && <span className="muted">or </span>}
+          {path.map((id, i) => (
+            <span key={id}>
+              {i > 0 && <span className="muted"> · </span>}
+              <span
+                style={{ color: colorOf(holderOf(id)) }}
+                className={holderOf(id) === me ? 'hop mine' : 'hop'}
+                title={holderOf(id) ? nameFaction(holderOf(id)!) : 'unaligned'}
+              >
+                {nameOf(id)}
+              </span>
             </span>
-          </span>
-        ))}
-      </div>
+          ))}
+        </div>
+      ))}
 
       {interference.map((x) => (
         <div key={x.id} className="lane-warn">

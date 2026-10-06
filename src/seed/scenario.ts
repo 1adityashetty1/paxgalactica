@@ -864,6 +864,7 @@ export function createSeedState(
    * opening fleets without freighters or listeners. Only `replay` passes them.
    * `luck: false` rebuilds one from before version 11, when no power had any;
    * `notes` and `commodities` false, one from before version 12.
+   * `splitTies: false` routes a lane one way only, as before version 15.
    */
   {
     fourSchools = true,
@@ -871,12 +872,14 @@ export function createSeedState(
     luck = true,
     notes = true,
     commodities = true,
+    splitTies = true,
   }: {
     fourSchools?: boolean;
     auxiliaries?: boolean;
     luck?: boolean;
     notes?: boolean;
     commodities?: boolean;
+    splitTies?: boolean;
   } = {},
 ): WorldState {
   if (!SEED_FACTIONS.some((f) => f.id === playerFactionId)) {
@@ -891,6 +894,7 @@ export function createSeedState(
     factions: buildFactions(luck, commodities),
     systems,
     pendingOrders: [],
+    routeTies: splitTies ? 'split' : 'first',
     familiesUsed: [],
     rimEvents: [],
     lastClash: {},
