@@ -1,5 +1,21 @@
-import { assetWorthRangeTo, atWork } from './diplomacy.js';
+import { assetWorthRangeTo, atWork, treatyBetween } from './diplomacy.js';
 import { buildAdjacency } from './graph.js';
+import { describeOrderEffect } from './development.js';
+import {
+  INTEL_COUNTER_SWEEP,
+  INTEL_DELIVERS,
+  INTEL_FADE,
+  INTEL_MAX,
+  INTEL_MEMORY_TURNS,
+  INTEL_PER_BATTLE,
+  INTEL_PER_LISTENER_IN_RANGE,
+  INTEL_PER_LISTENER_OVER,
+  INTEL_PER_OPERATIVE_TAKEN,
+  INTEL_PER_TRADE_ACCORD,
+  INTEL_PER_WATCHER,
+  INTEL_TYPED,
+  intelOn,
+} from './intel-levels.js';
 import { rimEventsVisibleTo } from './events.js';
 import { z } from 'zod';
 import type { DurationCategory } from './duration.js';
@@ -7,8 +23,10 @@ import {
   agentsVisibleTo,
   hullsAt,
   MOVEMENT_ORDER_TYPE,
+  SightingSchema,
   type OrderType,
   type PendingOrder,
+  type Sighting,
   type WorldState,
 } from './state.js';
 
@@ -316,8 +334,38 @@ export const OrderRumourSchema = z.object({
   systemId: z.string().min(1),
   durationTurns: z.number().int().min(1),
   progress: z.number().int().min(0),
+  /**
+   * What kind of work it is — carried only when the viewer knows its owner
+   * well enough (`INTEL_TYPED`). Never for a raid run dark: intel is about a
+   * power, and a dark rumour has none.
+   */
+  type: z.string().optional(),
+  /** What it will deliver, in words — only at `INTEL_DELIVERS`. */
+  delivers: z.string().nullable().optional(),
 });
 export type OrderRumour = z.infer<typeof OrderRumourSchema>;
+
+/**
+ * An order the viewer once saw in full and can no longer see — a last-seen
+ * row. `live` when it is still under way, which the viewer can tell because a
+ * rumour of it is still about; then `progress` is where it stands now, as the
+ * rumour would have said. Otherwise `progress` is where it stood when last seen,
+ * and whether it has finished is exactly what the viewer does not know.
+ */
+export const RememberedOrderSchema = z.object({
+  factionId: z.string().min(1),
+  type: z.string().min(1),
+  label: z.string(),
+  originId: z.string().min(1),
+  systemId: z.string().min(1),
+  durationTurns: z.number().int().min(1),
+  progress: z.number().int().min(0),
+  seenProgress: z.number().int().min(0),
+  delivers: z.string().nullable(),
+  seenTurn: z.number().int().min(0),
+  live: z.boolean(),
+});
+export type RememberedOrder = z.infer<typeof RememberedOrderSchema>;
 
 export interface Observation {
   /** Orders seen in full, safe to render and to act against. */
@@ -334,16 +382,27 @@ export function observeOrders(state: WorldState, factionId: string): Observation
 
   const orders: PendingOrder[] = [];
   const rumours: OrderRumour[] = [];
+  // An order the viewer remembers is shown as its last-seen row, marked still
+  // under way, rather than as a second, anonymous line — see `rememberedBy`.
+  const remembered = new Set(
+    (state.sightings ?? []).filter((s) => s.viewer === factionId).map((s) => s.orderId),
+  );
 
   for (const order of state.pendingOrders) {
     const how = visibilityOf(state, factionId, order, space, watched, heard);
     if (how === 'full') orders.push(order);
-    else if (how === 'rumour') {
+    else if (how === 'rumour' && !remembered.has(order.id)) {
+      // How well the viewer knows the owner decides how much a rumour says.
+      const known = order.dark ? 0 : intelOn(state, factionId, order.factionId);
       rumours.push({
         factionId: order.dark ? null : order.factionId,
         systemId: order.targetId,
         durationTurns: order.durationTurns,
         progress: order.progress,
+        ...(known >= INTEL_TYPED ? { type: order.type } : {}),
+        ...(known >= INTEL_DELIVERS
+          ? { delivers: order.onComplete ? describeOrderEffect(order.onComplete) : null }
+          : {}),
       });
     }
   }
@@ -402,6 +461,11 @@ export function worldAsSeenBy(state: WorldState, factionId: string): WorldState 
         assetWorthRangeTo(a, factionId).max > 0,
     ),
     pendingOrders: observeOrders(state, factionId).orders,
+    // What a power remembers and how well it knows the others are its own
+    // business: its rows reach the browser as `remembered`, without ids, and
+    // every other power's intel map is cleared.
+    sightings: [],
+    factions: state.factions.map((f) => (f.id === factionId ? f : { ...f, intel: {} })),
     eventLog: eventsVisibleTo(state, factionId),
     // **Operatives are the third field, and they were shipped whole.**
     // `GET /api/campaign` carried `state.agents` — every rival operative,
@@ -455,4 +519,193 @@ export function eventsVisibleTo(state: WorldState, factionId: string) {
  */
 export function ordersVisibleTo(state: WorldState, factionId: string): PendingOrder[] {
   return observeOrders(state, factionId).orders;
+}
+
+/* ------------------------------------------------------------------ */
+/* Memory, and how well one power knows another                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The viewer's last-seen rows: every order it once saw in full and cannot see
+ * now. Sight used to be a snapshot — burn the watcher and the programme it saw
+ * went straight back to "something under way at Vantic" — so spending on spies
+ * bought a light that went out and never knowledge that built up.
+ */
+export function rememberedBy(state: WorldState, viewer: string): RememberedOrder[] {
+  const inView = new Set(observeOrders(state, viewer).orders.map((o) => o.id));
+  return (state.sightings ?? [])
+    .filter((s) => s.viewer === viewer && !inView.has(s.orderId))
+    .map((s) => {
+      const live = state.pendingOrders.find((o) => o.id === s.orderId);
+      return {
+        factionId: s.factionId,
+        type: s.type,
+        label: s.label,
+        originId: s.originId,
+        systemId: s.targetId,
+        durationTurns: s.durationTurns,
+        // A live order's progress is what its rumour would show anyway.
+        progress: live ? live.progress : s.progress,
+        seenProgress: s.progress,
+        delivers: s.delivers,
+        seenTurn: s.seenTurn,
+        live: live !== undefined,
+      };
+    });
+}
+
+/**
+ * Write this turn's sightings, for every power: run in the tick after orders
+ * advance.
+ *
+ * - **Refreshed** every turn an order is seen in full — secret work only; public
+ *   work is seen by everyone and never needs remembering.
+ * - **Kept** when it drops back out of sight, for `INTEL_MEMORY_TURNS`.
+ * - **Dropped** the turn the viewer watches it finish — seen in full last turn
+ *   and gone now — and never for a completion it did not see, since removing
+ *   the row would tell it the work was done.
+ * - **A raid run dark is never remembered**, being never seen in full.
+ *
+ * Every power, not only the player: an NPC's prompt reads its own memory.
+ */
+export function recordSightings(state: WorldState): void {
+  const now = state.turn;
+  const kept: Sighting[] = [];
+  const byKey = new Map<string, Sighting>();
+  for (const s of state.sightings ?? []) {
+    const live = state.pendingOrders.some((o) => o.id === s.orderId);
+    // Watched it finish: in full last turn, and gone.
+    if (!live && s.seenTurn >= now - 1) continue;
+    if (now - s.seenTurn > INTEL_MEMORY_TURNS) continue;
+    byKey.set(`${s.viewer}|${s.orderId}`, s);
+  }
+  for (const faction of state.factions) {
+    for (const order of observeOrders(state, faction.id).orders) {
+      if (order.factionId === faction.id || order.dark) continue;
+      if (isPublicOrderType(order.type)) continue;
+      byKey.set(
+        `${faction.id}|${order.id}`,
+        SightingSchema.parse({
+          viewer: faction.id,
+          orderId: order.id,
+          factionId: order.factionId,
+          type: order.type,
+          label: order.label,
+          originId: order.originId,
+          targetId: order.targetId,
+          progress: order.progress,
+          durationTurns: order.durationTurns,
+          delivers: order.onComplete ? describeOrderEffect(order.onComplete) : null,
+          seenTurn: now,
+        }),
+      );
+    }
+  }
+  for (const s of byKey.values()) kept.push(s);
+  // Stable order, so a live world and its replay compare as the same string.
+  kept.sort((a, b) => a.viewer.localeCompare(b.viewer) || a.orderId.localeCompare(b.orderId));
+  state.sightings = kept;
+}
+
+/** Systems within `range` jumps of `start`, `start` included. */
+function withinRange(adjacency: Map<string, Set<string>>, start: string, range: number): Set<string> {
+  const seen = new Set([start]);
+  let frontier = [start];
+  for (let jump = 0; jump < range; jump++) {
+    const next: string[] = [];
+    for (const id of frontier) {
+      for (const n of adjacency.get(id) ?? []) {
+        if (seen.has(n)) continue;
+        seen.add(n);
+        next.push(n);
+      }
+    }
+    frontier = next;
+  }
+  return seen;
+}
+
+/**
+ * One turn's change in what every power knows of every other — see
+ * `intel-levels.ts` for the rates and the thresholds they buy.
+ *
+ * Watchers and listeners are the instruments, and they are priced as one
+ * sight: a listener directly over a rival's world sees what a watcher there
+ * sees and earns what a watcher earns, while one only within `EMISSION_RANGE`
+ * hears loud work and earns half. Trade and war teach a little; taking one of
+ * their people teaches a lot, once. Everything fades, and a power that runs a
+ * counter-intelligence programme on its own ground wears every rival's picture
+ * of it down faster — the job that category never had.
+ */
+export function accrueIntel(
+  state: WorldState,
+  happened: { battles: [string, string][]; taken: [captor: string, owner: string][] },
+): void {
+  const ids = state.factions.map((f) => f.id);
+  const holder = new Map(state.systems.map((s) => [s.id, s.controllerFactionId]));
+  const adjacency = buildAdjacency(state.systems);
+  const gain = new Map<string, number>();
+  const bump = (viewer: string, subject: string, n: number): void => {
+    if (viewer === subject) return;
+    gain.set(`${viewer}|${subject}`, (gain.get(`${viewer}|${subject}`) ?? 0) + n);
+  };
+
+  for (const agent of state.agents ?? []) {
+    if (agent.exposed || !atWork(agent, state.turn) || agent.effect?.kind !== 'intel') continue;
+    const subject = holder.get(agent.systemId);
+    if (subject) bump(agent.ownerFactionId, subject, INTEL_PER_WATCHER);
+  }
+  for (const system of state.systems) {
+    const reach = withinRange(adjacency, system.id, EMISSION_RANGE);
+    for (const viewer of ids) {
+      if ((system.ships?.[viewer]?.listener ?? 0) <= 0) continue;
+      const over = holder.get(system.id) ?? null;
+      for (const subject of ids) {
+        if (subject === viewer) continue;
+        if (over === subject) bump(viewer, subject, INTEL_PER_LISTENER_OVER);
+        else if ([...reach].some((id) => holder.get(id) === subject)) {
+          bump(viewer, subject, INTEL_PER_LISTENER_IN_RANGE);
+        }
+      }
+    }
+  }
+  for (const a of ids) {
+    for (const b of ids) {
+      if (a !== b && treatyBetween(state.treaties ?? [], state.turn, a, b, ['trade_accord'])) {
+        bump(a, b, INTEL_PER_TRADE_ACCORD);
+      }
+    }
+  }
+  for (const [a, b] of happened.battles) {
+    bump(a, b, INTEL_PER_BATTLE);
+    bump(b, a, INTEL_PER_BATTLE);
+  }
+  for (const [captor, owner] of happened.taken) bump(captor, owner, INTEL_PER_OPERATIVE_TAKEN);
+
+  const sweeps = new Map<string, number>();
+  for (const order of state.pendingOrders) {
+    if (order.type !== 'counter_intelligence') continue;
+    if (holder.get(order.targetId) !== order.factionId) continue;
+    sweeps.set(order.factionId, (sweeps.get(order.factionId) ?? 0) + 1);
+  }
+
+  for (const viewer of state.factions) {
+    const next: Record<string, number> = {};
+    for (const subject of ids) {
+      if (subject === viewer.id) continue;
+      const was = viewer.intel?.[subject] ?? 0;
+      const level = Math.max(
+        0,
+        Math.min(
+          INTEL_MAX,
+          was -
+            Math.ceil(was * INTEL_FADE) -
+            (sweeps.get(subject) ?? 0) * INTEL_COUNTER_SWEEP +
+            (gain.get(`${viewer.id}|${subject}`) ?? 0),
+        ),
+      );
+      if (level > 0) next[subject] = level;
+    }
+    viewer.intel = next;
+  }
 }

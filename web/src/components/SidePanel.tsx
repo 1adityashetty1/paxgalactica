@@ -20,6 +20,13 @@ import {
 } from '../../../src/domain/diplomacy.js';
 import { describeSecret, secretLive } from '../../../src/domain/leverage.js';
 import { HEAT_DECAY, HEAT_NOTORIOUS } from '../../../src/domain/heat.js';
+import {
+  INTEL_DELIVERS,
+  INTEL_DIG,
+  INTEL_OPERATIVES,
+  INTEL_TYPED,
+  intelOn,
+} from '../../../src/domain/intel-levels.js';
 import { BOUNTY_PER_TON } from '../../../src/domain/diplomacy.js';
 import { shortageFactor } from '../../../src/domain/events.js';
 import { describeOrderEffect } from '../../../src/domain/development.js';
@@ -274,6 +281,7 @@ function Factions({
                 );
               })}
             </div>
+            {!isPlayer && <IntelBar level={intelOn(state, state.playerFactionId, f.id)} />}
             {(f.heat ?? 0) > 0 && (
               <div
                 className={(f.heat ?? 0) >= HEAT_NOTORIOUS ? 'dissent' : 'muted'}
@@ -743,7 +751,8 @@ function Command({ state }: { state: WorldState }) {
 }
 
 function Orders({ state, briefing }: { state: WorldState; briefing: Briefing | null }) {
-  if (state.pendingOrders.length === 0) {
+  const remembered = briefing?.remembered ?? [];
+  if (state.pendingOrders.length === 0 && remembered.length === 0) {
     return <p className="empty">Nothing under way. Time advances when you end the turn.</p>;
   }
   const sorted = [...state.pendingOrders].sort(
@@ -809,6 +818,26 @@ function Orders({ state, briefing }: { state: WorldState; briefing: Briefing | n
           </div>
         );
       })}
+      {/* What you saw once and cannot see now: kept, greyed, and dated, rather
+          than dropping back to "something under way" the turn the watcher
+          is lost. Whether it has finished is what you do not know unless a
+          rumour of it is still about. */}
+      {remembered.map((m, i) => (
+        <div key={`seen-${i}`} className="order remembered" title={`Last seen in full on turn ${m.seenTurn}.`}>
+          <div className="order-head" style={{ color: ansi256ToHex(m.color) }}>
+            {m.label}
+            <span className="chip">last seen t{m.seenTurn}</span>
+            <span className="eta">{m.live ? `due t${m.dueBy}` : `t${m.dueBy} if it ran on`}</span>
+          </div>
+          <div className="progress">
+            <span style={{ width: `${(m.progress / m.duration) * 100}%`, background: ansi256ToHex(m.color) }} />
+          </div>
+          <div className="meta">
+            {m.factionName} · {m.kind} at {m.where} · {m.live ? 'still under way' : 'out of sight'}
+          </div>
+          {m.delivers && <div className="meta delivers">delivers {m.delivers}</div>}
+        </div>
+      ))}
     </div>
   );
 }
@@ -895,6 +924,41 @@ function FixtureBuilder({
         ))}
       </ul>
     </>
+  );
+}
+
+/** What each intel threshold buys, in the words the bar's tooltip uses. */
+const INTEL_STEPS: [number, string][] = [
+  [INTEL_TYPED, 'their rumours say what kind of work it is'],
+  [INTEL_DELIVERS, 'and what it will deliver'],
+  [INTEL_OPERATIVES, 'their operatives on your worlds show, and are caught more often'],
+  [INTEL_DIG, 'your watchers dig their secrets more easily, and you trace their dark raids'],
+];
+
+/**
+ * How well you know a rival, and what the next step buys. Hidden at nothing,
+ * so a power you have never watched does not carry an empty bar.
+ */
+function IntelBar({ level }: { level: number }) {
+  if (level <= 0) return null;
+  const reached = INTEL_STEPS.filter(([at]) => level >= at);
+  const next = INTEL_STEPS.find(([at]) => level < at);
+  const title = [
+    'How well you know them: built by watchers and listeners on their ground, trade and war; fading a tenth of itself a turn, faster while they run counter-intelligence. One watcher or listener holds it near 50; it takes two to go higher.',
+    ...reached.map(([at, what]) => `${at}: ${what}.`),
+    next ? `Next, at ${next[0]}: ${next[1]}.` : 'Nothing further to learn.',
+  ].join('\n');
+  return (
+    <div className="intel-row" title={title}>
+      <span className="muted">intel</span>
+      <span className="intel-bar">
+        {INTEL_STEPS.map(([at]) => (
+          <span key={at} className="intel-tick" style={{ left: `${at}%` }} />
+        ))}
+        <span className="intel-fill" style={{ width: `${level}%` }} />
+      </span>
+      <span className="muted">{level}</span>
+    </div>
   );
 }
 

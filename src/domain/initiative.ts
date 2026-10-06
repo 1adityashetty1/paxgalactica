@@ -631,6 +631,39 @@ function watch(ctx: Ctx): Ops {
   ];
 }
 
+/** Turns after catching a rival's operative that a bot keeps a sweep running. */
+export const BOT_SWEEP_AFTER_CATCH = 5;
+
+/**
+ * A counter-intelligence sweep where a rival was caught working: one at a time,
+ * at that world, while the catch is recent. A bot cannot see anybody's intel on
+ * it, so it answers what it can see — being spied on. A sweep wears down every
+ * rival's picture of it and makes their operatives on that world likelier to
+ * be caught. Without the rule the counter is a mechanic nobody uses.
+ */
+function sweep(ctx: Ctx): Ops {
+  const { state, me } = ctx;
+  if (hasOrder(state, me, 'counter_intelligence')) return [];
+  const caught = (state.agents ?? [])
+    .filter(
+      (a) =>
+        a.ownerFactionId !== me &&
+        a.caughtTurn !== undefined &&
+        state.turn - a.caughtTurn <= BOT_SWEEP_AFTER_CATCH &&
+        sys(state, a.systemId)?.controllerFactionId === me,
+    )
+    .sort((a, b) => (b.caughtTurn ?? 0) - (a.caughtTurn ?? 0) || a.id.localeCompare(b.id))[0];
+  if (!caught) return [];
+  const where = sys(state, caught.systemId)!;
+  return [
+    {
+      op: 'issue_order', factionId: me, type: 'counter_intelligence',
+      originId: where.id, targetId: where.id, durationTurns: 3,
+      label: `sweep ${where.name}`,
+    },
+  ];
+}
+
 /**
  * Use proof it holds while it still proves something: published against a power
  * it is at war with, to cost the enemy standing everywhere; spent for a strong
@@ -1890,7 +1923,7 @@ export function proposeFor(
   // covert half of a war it is in — added here rather than to five bots, for
   // the reason the filters below are: a bot added later inherits them.
   const ctx = { state, me: factionId };
-  const rules = [mend, sabotage, watch, useProof, demandTribute, callIn, backDemands, postBounty].map((rule) =>
+  const rules = [mend, sabotage, watch, sweep, useProof, demandTribute, callIn, backDemands, postBounty].map((rule) =>
     rule(ctx),
   );
   // Paper first, then standing. Both are post-filters over one proposal, so a

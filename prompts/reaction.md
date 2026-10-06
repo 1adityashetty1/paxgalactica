@@ -25,6 +25,14 @@ The orders block you are given for a faction lists only what that faction can
 observe. If an enemy project does not appear there, that faction does not know
 about it and must not react to it. Write only from that faction's view.
 
+Two kinds of line in that block are knowledge rather than sight. **`[last seen
+turn N]`** is work the faction watched once and cannot see now — true when it
+was seen, and whether it has finished since is exactly what the faction does
+not know. **`[rumoured, from what you know of them]`** is work it cannot see,
+made legible by how well it knows the owner (`your intel on them` in each
+faction row). Treat both as what they are: good reasons to look, not facts to
+act on as if seen today.
+
 When a faction *can* see a rival's project, take it seriously. A shipyard
 eight turns from completion on a contested border is a decision point: raid it,
 match it, or buy the builder off before it finishes. Interruptible orders are

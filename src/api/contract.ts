@@ -75,6 +75,26 @@ export const BriefingRumourSchema = z.object({
   duration: z.number().int(),
   remaining: z.number().int(),
   completesNextTurn: z.boolean(),
+  /** What kind of work — only when the player knows its owner well enough. */
+  kind: z.string().optional(),
+  /** What it will deliver — only when the player knows its owner better still. */
+  delivers: z.string().nullable().optional(),
+});
+
+/** Rival work the player once saw in full and cannot see now. */
+export const BriefingRememberedSchema = z.object({
+  where: z.string(),
+  factionId: z.string(),
+  factionName: z.string(),
+  color: z.number().int(),
+  label: z.string(),
+  kind: z.string(),
+  delivers: z.string().nullable(),
+  progress: z.number().int(),
+  duration: z.number().int(),
+  seenTurn: z.number().int(),
+  live: z.boolean(),
+  dueBy: z.number().int(),
 });
 
 /** One of the player's own operatives, and what it can see. */
@@ -129,6 +149,8 @@ export const BriefingSchema = z.object({
   observed: z.array(BriefingProjectSchema),
   /** Work you know is happening and cannot identify. */
   rumoured: z.array(BriefingRumourSchema),
+  /** Rival work you once saw in full and cannot see now. */
+  remembered: z.array(BriefingRememberedSchema).default([]),
   /** Your operatives, and what each of them has to say. */
   watch: z.array(BriefingWatchSchema),
   /** Battles fought this turn, with the arithmetic that decided them. */

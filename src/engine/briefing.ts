@@ -1,7 +1,7 @@
 import type { BattleReport } from '../domain/battle.js';
 import type { TurnReport } from '../domain/reducer.js';
 import { atWork, describeEffect } from '../domain/diplomacy.js';
-import { observeOrders } from '../domain/intel.js';
+import { observeOrders, rememberedBy } from '../domain/intel.js';
 import {
   RIM_EVENT_TITLE,
   isBoon,
@@ -39,9 +39,9 @@ export interface BriefingProject {
 }
 
 /**
- * A rival programme you know exists and nothing more.
- *
- * Deliberately carries no label and no type: the whole value of a rumour is
+ * A rival programme you know exists and nothing more — unless you know its
+ * owner well (`INTEL_TYPED`, `INTEL_DELIVERS`), when it says what kind of work
+ * it is and what it will deliver. Never a label: the whole value of a rumour is
  * that it names a place worth putting an operative, not a thing to react to.
  */
 export interface BriefingRumour {
@@ -54,6 +54,31 @@ export interface BriefingRumour {
   duration: number;
   remaining: number;
   completesNextTurn: boolean;
+  /** "capital ship construction" — only at `INTEL_TYPED`. */
+  kind?: string;
+  /** What it will deliver — only at `INTEL_DELIVERS`. */
+  delivers?: string | null;
+}
+
+/**
+ * Something you once saw in full and cannot see now — see `rememberedBy`.
+ * `live` when a rumour of it is still about, and then `remaining` is real;
+ * otherwise it is projected from what was seen, "if it ran on".
+ */
+export interface BriefingRemembered {
+  where: string;
+  factionId: string;
+  factionName: string;
+  color: number;
+  label: string;
+  kind: string;
+  delivers: string | null;
+  progress: number;
+  duration: number;
+  seenTurn: number;
+  live: boolean;
+  /** The turn it lands — known if live, projected from the sighting if not. */
+  dueBy: number;
 }
 
 /**
@@ -142,6 +167,8 @@ export interface Briefing {
    * operatives ran seven turns and reported nothing. See `domain/intel.ts`.
    */
   rumoured: BriefingRumour[];
+  /** Rival work you once saw and cannot see now. */
+  remembered: BriefingRemembered[];
   /** Your operatives, and what each of them has to say. Never a rival's. */
   watch: BriefingWatch[];
   /**
@@ -278,6 +305,28 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
       duration: r.durationTurns,
       remaining,
       completesNextTurn: remaining === 1,
+      ...(r.type ? { kind: r.type.replace(/_/g, ' ') } : {}),
+      ...(r.delivers !== undefined ? { delivers: r.delivers } : {}),
+    };
+  });
+
+  const remembered: BriefingRemembered[] = rememberedBy(state, me).map((m) => {
+    const { name, color } = describe(m.factionId);
+    return {
+      where: state.systems.find((sys) => sys.id === m.systemId)?.name ?? m.systemId,
+      factionId: m.factionId,
+      factionName: name,
+      color,
+      label: m.label,
+      kind: m.type.replace(/_/g, ' '),
+      delivers: m.delivers,
+      progress: m.progress,
+      duration: m.durationTurns,
+      seenTurn: m.seenTurn,
+      live: m.live,
+      dueBy: m.live
+        ? state.turn + (m.durationTurns - m.progress)
+        : m.seenTurn + (m.durationTurns - m.seenProgress),
     };
   });
 
@@ -320,6 +369,7 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
     inProgress,
     observed,
     rumoured,
+    remembered,
     watch,
     battles: report.battles,
     events,
@@ -330,6 +380,7 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
       inProgress.length === 0 &&
       observed.length === 0 &&
       rumoured.length === 0 &&
+      remembered.length === 0 &&
       report.battles.length === 0 &&
       events.length === 0,
   };
@@ -367,5 +418,5 @@ export function withCurrentIntel(briefing: Briefing, state: WorldState): Briefin
     battles: [],
     events: [],
   });
-  return { ...briefing, watch: fresh.watch, rumoured: fresh.rumoured };
+  return { ...briefing, watch: fresh.watch, rumoured: fresh.rumoured, remembered: fresh.remembered };
 }

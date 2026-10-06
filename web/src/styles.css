@@ -147,6 +147,13 @@ ul { margin: 0; padding-left: 1.1em; }
 .watch-head { display: block; text-transform: capitalize; }
 .watch-sees { display: block; padding-left: 8px; border-left: 2px solid var(--good); }
 .watch-quiet { display: block; padding-left: 8px; color: var(--dim); font-style: italic; }
+.order.remembered { opacity: 0.55; }
+.intel-row { display: flex; align-items: center; gap: 6px; font-size: 11px; margin-top: 4px; }
+.intel-row .muted { color: var(--dim); }
+.intel-bar { position: relative; flex: 1; height: 4px; background: #1c2028; border-radius: 2px; }
+.intel-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 2px; }
+.intel-tick { position: absolute; top: -2px; bottom: -2px; width: 1px; background: var(--dim); opacity: 0.6; }
+.order.remembered .order-head { font-style: italic; }
 .rumours > li { color: var(--dim); border-left: 2px dashed currentColor; padding-left: 6px; margin-bottom: 4px; opacity: 0.85; }
 .rumour-hint { display: block; color: var(--dim); font-size: 10px; font-style: italic; opacity: 0.75; }
 

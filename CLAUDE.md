@@ -4189,10 +4189,84 @@ and both panels read it. It also carries `lostToRaids`, what raiders took off
 the player's lanes — which is how a raid run dark shows up for its victim at all.
 Rivals' rows stay estimates from the view, which is honest: they are.
 
-**Knowledge is a snapshot, not a memory.** Burn the operative and the programme
-goes back to being a rumour. A last-known-position model is the more honest one
-and needs a durable set on `WorldState` — schema, save format and journal — so
-it is written down as the known simplification rather than pretended away.
+**Knowledge was a snapshot, and now it is a memory** — see "Intel with memory"
+below.
+
+### Intel with memory
+
+Borrowed from *Stellaris* (`docs/design-2026-10-04.md` §2). Burn a watcher and
+the programme it saw went straight back to *"something under way at Vantic"*:
+spending on spies bought a light that went out, never knowledge that built up.
+Two halves, in `intel.ts` with the rates in `intel-levels.ts`.
+
+**Memory.** `WorldState.sightings` keeps, for every power, each rival order it
+has seen in full that is neither its own nor public: type, label, where, how far
+along, what it delivers and the turn seen. `recordSightings` writes them in the
+tick. A row is refreshed while the order is seen, **kept** for
+`INTEL_MEMORY_TURNS` (8) after the sight is lost, and **dropped** the turn the
+viewer watches the order finish — never on a completion it did not see, since
+removing the row would tell it the work was done. While the order still runs,
+its rumour is replaced by the remembered row marked *still under way*. No id
+leaves the server (`rememberedBy` strips it), so a remembered order cannot be
+handed to `interrupt_order`. A raid run dark is never seen in full, so it is
+never remembered. The briefing has a **Last seen** group, the Orders tab greyed
+rows, and an NPC's orders block `[last seen turn N]` lines.
+
+**Intel levels.** `Faction.intel`, subject → 0–100, private to its holder
+(`worldAsSeenBy` clears every other power's). Each turn `accrueIntel` adds:
+
+| source | a turn |
+|---|---|
+| a watcher of yours at work on their ground | +6 |
+| a listener of yours **over** one of their worlds | +6 |
+| a listener of yours within `EMISSION_RANGE` of their ground | +3 |
+| a live `trade_accord` with them | +2 |
+| a battle fought against them | +5 |
+| one of their operatives taken by you | +10, once |
+
+**A listener over their world earns what a watcher earns**, because
+`watchedSystems` gives it exactly a watcher's sight there at nearly a watcher's
+price; one only in range hears loud work and earns half.
+
+**It fades in proportion to itself** — a tenth a turn, rounded up
+(`INTEL_FADE`) — so a source holds a level instead of adding up to the cap.
+One watcher or one listener over their world settles near 50, a listener in
+range near 20, a trade accord near 10, and it takes two instruments to reach
+the top two thresholds. A flat fade of 2 a turn was built first and measured:
+with the bots running watchers and listeners all the time, most watched pairs
+sat at 100 by turn 30 and every threshold fired everywhere.
+
+| at | about that power | read by |
+|---|---|---|
+| 20 | its rumours say what kind of work it is | display, prompts |
+| 40 | …and what the work will deliver | display, prompts |
+| 60 | its unexposed operatives on your worlds show, and roll exposure one in twenty worse | `agentsVisibleTo`, the agent pass |
+| 80 | your watchers dig its secrets at +3, and you trace its dark raids at +4 | the agent pass, `unmaskRoll` |
+
+**No level names a dark raider.** Intel is about a power and a dark rumour has
+none; what 80 buys is a better tracing roll, which names nobody until it lands.
+
+**Counter-intelligence does something now.** It was a duration category with a
+floor and nothing reading it. A `counter_intelligence` programme running on a
+world its holder controls takes `INTEL_COUNTER_SWEEP` (4) a turn off every
+rival's level on that power, and a rival operative working that world rolls
+exposure one in twenty worse. The bots run one (`sweep`) where they caught a
+rival's operative in the last five turns — `Agent.caughtTurn` records it, last
+in the schema because it is written onto a live record. A bot cannot see
+anybody's intel on it, so it answers what it can see: being spied on.
+
+**Measured**, with the split lanes and the internal market in. Watched pairs sit
+mostly between 20 and 60 and peak at 51–80; at 100 turns the Combine, the best
+at spies, knows three powers past 40. The 30-turn board does not move
+(6/6/5/5/3 with events, intel on or off); at 100 turns it is 6/6/5/6/2 against
+5/7/6/5/2 with intel off. **The Confederacy's turn-30 net is the open
+question**: −69 against the suite's −40 floor. It is not intel's — with intel
+off it is −72, and its average over turns 21–30 is −55 even before intel — but
+the reading that passed (−33) was a good turn in a raider's lumpy income.
+`pnpm balance [turns] --no-intel` is the control.
+
+Pinned to `JOURNAL_VERSION` 16 (`LegacyRules.intel`): an older journal replays
+with no memory, no levels and an inert counter-intelligence.
 
 Measured on the campaign that opened all this, at turn 7: the three physical
 programmes (a fortification, a fleet movement, an infrastructure works) are

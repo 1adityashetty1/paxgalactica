@@ -57,6 +57,9 @@ Name what is **pressing on them**, and let them decide:
   double and the victim holds proof
 - raiders nobody can name taking from their lanes, and who has ships close
   enough to be the one
+- a rival's work they saw once and can no longer see — a last-seen line — and
+  whether it has landed by now; or a rival they barely know (`your intel on
+  them`) sitting on a border, where a watcher or a listener would pay
 
 Two or three of those, at most. A counsellor who lists everything has said
 nothing.

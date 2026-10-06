@@ -66,6 +66,7 @@ import { DurationCategorySchema, FibScaleSchema } from './duration.js';
 import { buildAdjacency } from './graph.js';
 import { RimEventSchema, RimLuckSchema } from './events.js';
 import { HEAT_MAX } from './heat.js';
+import { INTEL_OPERATIVES, intelOn } from './intel-levels.js';
 // trade.ts imports only TYPES from here, so this edge is one-directional at
 // runtime and there is no import cycle to trip over.
 import { routeEarnings, type RouteEarnings } from './trade.js';
@@ -77,6 +78,29 @@ import { routeEarnings, type RouteEarnings } from './trade.js';
  * estimated work, so the two taxonomies can never drift apart.
  */
 export const MOVEMENT_ORDER_TYPE = 'fleet_movement' as const;
+
+/**
+ * One power's memory of another's order: what it was when last seen in full.
+ *
+ * The order id is the server's to match a sighting to its live order; like a
+ * rumour's, it is never shipped, so a remembered order cannot be handed to
+ * `interrupt_order`.
+ */
+export const SightingSchema = z.object({
+  viewer: z.string().min(1),
+  orderId: z.string().min(1),
+  factionId: z.string().min(1),
+  type: z.string().min(1),
+  label: z.string(),
+  originId: z.string().min(1),
+  targetId: z.string().min(1),
+  progress: z.number().int().min(0),
+  durationTurns: z.number().int().min(1),
+  /** What it will deliver, in words, or null for work that delivers nothing. */
+  delivers: z.string().nullable(),
+  seenTurn: z.number().int().min(0),
+});
+export type Sighting = z.infer<typeof SightingSchema>;
 
 export const OrderTypeSchema = z.union([
   z.literal(MOVEMENT_ORDER_TYPE),
@@ -297,6 +321,14 @@ export const FactionSchema = z.object({
    * Defaulted, so a power from before heat opens with none.
    */
   heat: z.number().int().min(0).max(HEAT_MAX).default(0),
+  /**
+   * subject -> how well this power knows it, 0–100 — see `intel-levels.ts`.
+   * Private to its holder: `worldAsSeenBy` clears every other power's. Built
+   * by watchers, listeners, trade and war, worn down by time and by the
+   * subject's counter-intelligence. Defaulted, so a power from before intel
+   * knows nobody.
+   */
+  intel: z.record(z.string(), z.number().int().min(0).max(100)).default({}),
   /** Work it reaches for by instinct, biasing what NPCs choose to build. */
   buildBias: z.array(DurationCategorySchema).default([]),
   /**
@@ -869,6 +901,13 @@ export const WorldStateSchema = z.object({
    * on — the same way `Faction.luck` carries the seed version it came from.
    */
   routeTies: z.enum(['first', 'split']).default('first'),
+  /**
+   * What each power has seen in full of another's secret work, kept after the
+   * sight is lost — see `recordSightings` in `intel.ts`. Never shipped: the
+   * viewer's own rows reach the browser as `CampaignView.remembered`, without
+   * the order id. Defaulted, so a campaign from before memory remembers nothing.
+   */
+  sightings: z.array(SightingSchema).default([]),
   playerFactionId: z.string().min(1),
   /** Abstract unit. There is no calendar in this game, deliberately. */
   turn: z.number().int().min(0),
@@ -2580,7 +2619,15 @@ export function treatiesFor(state: WorldState, factionId: string): Treaty[] {
 
 /** Agents a faction can see: its own, plus any hostile agent it has exposed. */
 export function agentsVisibleTo(state: WorldState, factionId: string): Agent[] {
-  return (state.agents ?? []).filter((a) => a.ownerFactionId === factionId || a.exposed);
+  return (state.agents ?? []).filter(
+    (a) =>
+      a.ownerFactionId === factionId ||
+      a.exposed ||
+      // Known well enough, a rival's people on your own worlds are not hidden
+      // from you — see `INTEL_OPERATIVES`.
+      (intelOn(state, factionId, a.ownerFactionId) >= INTEL_OPERATIVES &&
+        state.systems.find((s) => s.id === a.systemId)?.controllerFactionId === factionId),
+  );
 }
 
 /** Factions this one is at war with — no live non-aggression or ceasefire. */

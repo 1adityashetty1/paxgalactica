@@ -543,6 +543,11 @@ The other order types — `courier`, `decree`, `political_maneuver`, `espionage`
 take no payload: their effect is the agent, the treaty or the interdiction
 itself, and a payload on them is rejected.
 
+A `counter_intelligence` programme on a world the power holds is a **sweep**,
+read while it runs: every rival's intel on the power fades faster, and a rival
+operative working that world is likelier to be caught. Issue it on the world
+being swept — origin and target the same.
+
 ## Changing doctrine
 
 A power can genuinely change course, and `set_doctrine` is how. It carries more
