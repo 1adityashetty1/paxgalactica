@@ -261,9 +261,30 @@ export function BriefingPanel({
                   <li key={i} style={{ color: ansi256ToHex(r.color) }}>
                     {r.factionId === null
                       ? `${r.factionName} are taking shipping at ${r.where}, and nobody can say whose they are — `
-                      : `${r.factionName} has something under way at ${r.where} — `}
+                      : r.kind
+                        ? `${r.factionName} has ${r.kind} under way at ${r.where}${r.delivers ? `, to deliver ${r.delivers}` : ''} — `
+                        : `${r.factionName} has something under way at ${r.where} — `}
                     {r.completesNextTurn ? 'lands next turn' : `${r.remaining} turns left`}.
-                    <span className="rumour-hint"> No detail without an operative in place.</span>
+                    {!r.kind && (
+                      <span className="rumour-hint"> No detail without an operative in place, or knowing them better.</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {(briefing.remembered ?? []).length > 0 && (
+            <div className="brief-group">
+              {/* Memory: what an operative or a listener showed you, kept after
+                  the sight is lost. Its own group, because a last sighting is a
+                  third kind of knowledge — once true, perhaps not now. */}
+              <h4>Last seen</h4>
+              <ul className="rumours">
+                {briefing.remembered.map((m, i) => (
+                  <li key={i} style={{ color: ansi256ToHex(m.color) }}>
+                    {m.factionName}: {m.label} ({m.kind}) at {m.where}, {m.progress} of {m.duration} — seen
+                    turn {m.seenTurn}; {m.live ? `still under way, due turn ${m.dueBy}` : `due turn ${m.dueBy} if it ran on`}.
                   </li>
                 ))}
               </ul>

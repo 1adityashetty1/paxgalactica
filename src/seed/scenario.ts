@@ -749,6 +749,7 @@ function buildFactions(luck = true, commodities = true): Faction[] {
     compulsions: f.compulsions.map((c) => (typeof c === 'string' ? { text: c } : { ...c })),
     dissent: 0,
     heat: 0,
+    intel: {},
     buildBias: [...f.buildBias],
     ...(luck && f.luck ? { luck: { ...f.luck } } : {}),
     // The Combine opens charging everyone, and everyone else opens charging
@@ -864,6 +865,7 @@ export function createSeedState(
    * opening fleets without freighters or listeners. Only `replay` passes them.
    * `luck: false` rebuilds one from before version 11, when no power had any;
    * `notes` and `commodities` false, one from before version 12.
+   * `splitTies: false` routes a lane one way only, as before version 15.
    */
   {
     fourSchools = true,
@@ -871,12 +873,14 @@ export function createSeedState(
     luck = true,
     notes = true,
     commodities = true,
+    splitTies = true,
   }: {
     fourSchools?: boolean;
     auxiliaries?: boolean;
     luck?: boolean;
     notes?: boolean;
     commodities?: boolean;
+    splitTies?: boolean;
   } = {},
 ): WorldState {
   if (!SEED_FACTIONS.some((f) => f.id === playerFactionId)) {
@@ -891,6 +895,8 @@ export function createSeedState(
     factions: buildFactions(luck, commodities),
     systems,
     pendingOrders: [],
+    routeTies: splitTies ? 'split' : 'first',
+    sightings: [],
     familiesUsed: [],
     rimEvents: [],
     lastClash: {},

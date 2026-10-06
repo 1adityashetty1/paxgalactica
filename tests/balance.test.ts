@@ -23,10 +23,15 @@ const RUN = runBalance(30);
 const last = RUN[RUN.length - 1]!;
 const IDS = ['meridian', 'vigil', 'ojjul', 'freeworlds', 'drajk'] as const;
 const net = (id: string) => last.perFaction[id]!.net;
-/** How much of a power's gross comes from the lane network rather than its worlds. */
+/**
+ * How much of a power's gross comes from the lane network rather than its
+ * worlds. An autarkist's internal market is in `routes` and is not the network,
+ * so it is left out: the doctrine is to be off the network, not to be poor.
+ */
 const laneShare = (id: string) => {
   const f = last.perFaction[id]!;
-  return f.routes / Math.max(1, f.routes + f.territory);
+  const network = f.routes - f.internal;
+  return network / Math.max(1, network + f.territory);
 };
 
 const sum = (id: string, key: 'tolls' | 'raided') =>

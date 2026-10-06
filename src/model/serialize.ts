@@ -1,5 +1,6 @@
 import { HEAT_NOTORIOUS } from '../domain/heat.js';
-import { eventsVisibleTo, observeOrders, ordersVisibleTo } from '../domain/intel.js';
+import { eventsVisibleTo, observeOrders, ordersVisibleTo, rememberedBy } from '../domain/intel.js';
+import { intelOn } from '../domain/intel-levels.js';
 import { describeStack, hullsIn } from '../domain/hulls.js';
 import { describeOrderEffect } from '../domain/development.js';
 import {
@@ -118,10 +119,13 @@ export function serializeFactions(
     const held = state.systems.filter((s) => s.controllerFactionId === f.id).length;
     const isViewer = f.id === viewerId;
     const self = isViewer ? ' — THIS IS YOU' : '';
+    const known = isViewer ? 0 : intelOn(state, viewerId, f.id);
     const toward =
       f.id === viewerId
         ? ''
-        : ` | disposition toward ${viewerId}: ${fmtDisposition(dispositionBetween(state, f.id, viewerId))}`;
+        : ` | disposition toward ${viewerId}: ${fmtDisposition(dispositionBetween(state, f.id, viewerId))}${
+            known > 0 ? ` | your intel on them: ${known}/100` : ''
+          }`;
     return [
       `- **${f.name}** (id: \`${f.id}\`)${self}`,
       `  fleet ${fleetStrengthOf(state, f.id)} hulls / ${fleetTonsOf(state, f.id)} tons | credits ${f.credits} | ${held} systems${toward}`,
@@ -629,7 +633,30 @@ export function serializeSystems(state: WorldState): string {
  */
 export function serializeOrders(state: WorldState, viewerId: string): string {
   const visible = ordersVisibleTo(state, viewerId);
-  if (visible.length === 0) return '_No orders you can observe are under way._';
+  // What this power knows beyond what it can see: a rival's work it once saw
+  // and remembers, and rumours its intel on their owner makes legible.
+  const name = (id: string) => getSystem(state, id)?.name ?? id;
+  const remembered = rememberedBy(state, viewerId).map((m) => {
+    const owner = getFaction(state, m.factionId)?.name ?? m.factionId;
+    const due = m.live
+      ? `still under way, ${m.durationTurns - m.progress} of ${m.durationTurns} turns remaining`
+      : `out of sight; due turn ${m.seenTurn + m.durationTurns - m.seenProgress} if it ran on`;
+    return `- [last seen turn ${m.seenTurn}] ${owner}: ${m.label} (${m.type.replace(/_/g, ' ')}) -> ${name(m.systemId)}${
+      m.delivers ? `, delivers ${m.delivers}` : ''
+    }, ${due}`;
+  });
+  const typed = observeOrders(state, viewerId)
+    .rumours.filter((r) => r.type && r.factionId)
+    .map((r) => {
+      const owner = getFaction(state, r.factionId!)?.name ?? r.factionId;
+      return `- [rumoured, from what you know of them] ${owner}: ${r.type!.replace(/_/g, ' ')} at ${name(r.systemId)}${
+        r.delivers ? `, to deliver ${r.delivers}` : ''
+      }, ${r.durationTurns - r.progress} of ${r.durationTurns} turns remaining`;
+    });
+  const known = [...remembered, ...typed];
+  if (visible.length === 0) {
+    return known.length === 0 ? '_No orders you can observe are under way._' : known.join('\n');
+  }
   return visible
     .map((o) => {
       const owner = getFaction(state, o.factionId)?.name ?? o.factionId;
@@ -650,6 +677,7 @@ export function serializeOrders(state: WorldState, viewerId: string): string {
         : '';
       return `- \`${o.id}\` [${mine}] ${owner}: ${o.label} (${kind}) -> ${target}, ${remaining} of ${o.durationTurns} turns remaining${delivers}${dark}, ${raidable}, on interrupt: ${o.onInterrupt}`;
     })
+    .concat(known)
     .join('\n');
 }
 

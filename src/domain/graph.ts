@@ -63,6 +63,54 @@ export function shortestPath(
 }
 
 /**
+ * Every path between two systems that is as short as the shortest, in a fixed
+ * order: forward from `fromId` through neighbours in sorted id order, as
+ * `shortestPath` explores them. At most `limit`, so a pair of worlds joined by a
+ * grid of equal routes cannot make one lane cost more than a handful of legs.
+ */
+export function allShortestPaths(
+  systems: StarSystem[],
+  fromId: string,
+  toId: string,
+  limit = 8,
+): string[][] {
+  const adj = buildAdjacency(systems);
+  if (!adj.has(fromId) || !adj.has(toId)) return [];
+  if (fromId === toId) return [[fromId]];
+  const distFrom = (start: string): Map<string, number> => {
+    const dist = new Map<string, number>([[start, 0]]);
+    const queue = [start];
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      for (const next of adj.get(cur) ?? []) {
+        if (dist.has(next)) continue;
+        dist.set(next, dist.get(cur)! + 1);
+        queue.push(next);
+      }
+    }
+    return dist;
+  };
+  const toEnd = distFrom(toId);
+  const length = toEnd.get(fromId);
+  if (length === undefined) return [];
+  const out: string[][] = [];
+  const walk = (path: string[]): void => {
+    if (out.length >= limit) return;
+    const cur = path[path.length - 1]!;
+    if (cur === toId) {
+      out.push(path);
+      return;
+    }
+    const left = toEnd.get(cur)!;
+    for (const next of [...(adj.get(cur) ?? [])].sort()) {
+      if (toEnd.get(next) === left - 1) walk([...path, next]);
+    }
+  };
+  walk([fromId]);
+  return out;
+}
+
+/**
  * Movement cost in turns: one turn per hyperlane jump. This is the ONLY source
  * of truth for how long a fleet takes to arrive. A model-supplied duration for
  * a movement order is always discarded in favour of this number.

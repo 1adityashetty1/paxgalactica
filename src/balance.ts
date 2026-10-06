@@ -33,7 +33,7 @@ export interface Snapshot {
   turn: number;
   perFaction: Record<
     string,
-    { net: number; territory: number; routes: number; tolls: number; raided: number;
+    { net: number; territory: number; routes: number; tolls: number; raided: number; internal: number;
       fleet: number; credits: number; systems: number }
   >;
   openness: number;
@@ -42,6 +42,14 @@ export interface Snapshot {
   disposition: Record<string, Record<string, number>>;
   /** What the Rim did on its own this turn (item 124): at most one. */
   events: RimEvent[];
+  /** viewer -> subject -> how well it knows them, at the end of this turn. */
+  intel: Record<string, Record<string, number>>;
+  /** Counter-intelligence sweeps running at the end of this turn. */
+  sweeps: number;
+  /** Operatives taken so far, by owner. */
+  caught: Record<string, number>;
+  /** Rows of memory held, all powers together. */
+  sightings: number;
 }
 
 export function runBalance(
@@ -85,6 +93,13 @@ export function runBalance(
     const snap: Snapshot = {
       turn,
       events: ticked.report.events,
+      intel: Object.fromEntries(state.factions.map((f) => [f.id, { ...(f.intel ?? {}) }])),
+      sweeps: state.pendingOrders.filter((o) => o.type === 'counter_intelligence').length,
+      caught: state.agents.reduce<Record<string, number>>(
+        (n, a) => (a.exposed ? { ...n, [a.ownerFactionId]: (n[a.ownerFactionId] ?? 0) + 1 } : n),
+        {},
+      ),
+      sightings: state.sightings.length,
       openness: earnings.openness,
       uncollected: earnings.uncollected,
       disposition: Object.fromEntries(
@@ -103,7 +118,7 @@ export function runBalance(
             f.id,
             {
               net: l.net, territory: l.territory, routes: l.routes,
-              tolls: l.tolls, raided: l.raided,
+              tolls: l.tolls, raided: l.raided, internal: l.internalMarket,
               fleet: fleetStrengthOf(state, f.id), credits: f.credits,
               systems: held(state, f.id).length,
             },

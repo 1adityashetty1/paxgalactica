@@ -66,6 +66,7 @@ import { DurationCategorySchema, FibScaleSchema } from './duration.js';
 import { buildAdjacency } from './graph.js';
 import { RimEventSchema, RimLuckSchema } from './events.js';
 import { HEAT_MAX } from './heat.js';
+import { INTEL_OPERATIVES, intelOn } from './intel-levels.js';
 // trade.ts imports only TYPES from here, so this edge is one-directional at
 // runtime and there is no import cycle to trip over.
 import { routeEarnings, type RouteEarnings } from './trade.js';
@@ -77,6 +78,29 @@ import { routeEarnings, type RouteEarnings } from './trade.js';
  * estimated work, so the two taxonomies can never drift apart.
  */
 export const MOVEMENT_ORDER_TYPE = 'fleet_movement' as const;
+
+/**
+ * One power's memory of another's order: what it was when last seen in full.
+ *
+ * The order id is the server's to match a sighting to its live order; like a
+ * rumour's, it is never shipped, so a remembered order cannot be handed to
+ * `interrupt_order`.
+ */
+export const SightingSchema = z.object({
+  viewer: z.string().min(1),
+  orderId: z.string().min(1),
+  factionId: z.string().min(1),
+  type: z.string().min(1),
+  label: z.string(),
+  originId: z.string().min(1),
+  targetId: z.string().min(1),
+  progress: z.number().int().min(0),
+  durationTurns: z.number().int().min(1),
+  /** What it will deliver, in words, or null for work that delivers nothing. */
+  delivers: z.string().nullable(),
+  seenTurn: z.number().int().min(0),
+});
+export type Sighting = z.infer<typeof SightingSchema>;
 
 export const OrderTypeSchema = z.union([
   z.literal(MOVEMENT_ORDER_TYPE),
@@ -139,7 +163,7 @@ export const TRADE_ETHIC_MEANING: Record<TradeEthic, string> = {
   free_trade: 'open lanes enrich everyone; earns more the more of the galaxy is open, including lanes it has no stake in',
   monopolist: 'trade is good when controlled; secures exclusive rights and punishes competitors',
   extortionist: 'commerce is something that passes through your space and owes you a toll for the privilege',
-  autarkic: 'dependence is weakness; earns more from its own worlds and cannot be strangled by a blockade, because it was never on the lanes',
+  autarkic: 'dependence is weakness; its own worlds trade with each other, an internal market no blockade elsewhere can touch, and it keeps little of the galactic lanes',
   smuggler: 'the profitable cargo is the illegal one; runs blockades others cannot, and raids the shipping others depend on',
 };
 
@@ -157,7 +181,9 @@ export const TRADE_INCOME_MULTIPLIER: Record<TradeEthic, number> = {
   free_trade: 1.1,
   monopolist: 1.05,
   extortionist: 1.0,
-  autarkic: 1.15, // pays its own way at home, having renounced the network
+  // Was 1.15, "pays its own way at home". Its own way is now its internal
+  // market (`internalLanes`), and one payoff is a doctrine; two is a bonus.
+  autarkic: 1.0,
   smuggler: 1.05,
 };
 
@@ -295,6 +321,14 @@ export const FactionSchema = z.object({
    * Defaulted, so a power from before heat opens with none.
    */
   heat: z.number().int().min(0).max(HEAT_MAX).default(0),
+  /**
+   * subject -> how well this power knows it, 0–100 — see `intel-levels.ts`.
+   * Private to its holder: `worldAsSeenBy` clears every other power's. Built
+   * by watchers, listeners, trade and war, worn down by time and by the
+   * subject's counter-intelligence. Defaulted, so a power from before intel
+   * knows nobody.
+   */
+  intel: z.record(z.string(), z.number().int().min(0).max(100)).default({}),
   /** Work it reaches for by instinct, biasing what NPCs choose to build. */
   buildBias: z.array(DurationCategorySchema).default([]),
   /**
@@ -852,6 +886,28 @@ export const WorldStateSchema = z.object({
   demands: z.array(DemandSchema).default([]),
   /** Prices on powers, in escrow — see `BountySchema`. */
   bounties: z.array(BountySchema).default([]),
+  /**
+   * How a trade lane between two hubs is travelled when several paths are
+   * equally short: `split` divides its traffic evenly across all of them,
+   * `first` takes the one `shortestPath` returns, which breaks the tie by
+   * system id. See `TradeRoute.paths`.
+   *
+   * A rule rather than a fact about the galaxy, and it sits on the world anyway
+   * because route income is computed from the world alone, in the browser as
+   * well as in the tick, and threading a legacy flag to every reader of
+   * `routeEarnings` would reach most of the codebase. The seed writes `split`;
+   * a journal from before version 15 is rebuilt with `first`, and a save that
+   * predates the field parses to it, so both replay the lanes they were played
+   * on — the same way `Faction.luck` carries the seed version it came from.
+   */
+  routeTies: z.enum(['first', 'split']).default('first'),
+  /**
+   * What each power has seen in full of another's secret work, kept after the
+   * sight is lost — see `recordSightings` in `intel.ts`. Never shipped: the
+   * viewer's own rows reach the browser as `CampaignView.remembered`, without
+   * the order id. Defaulted, so a campaign from before memory remembers nothing.
+   */
+  sightings: z.array(SightingSchema).default([]),
   playerFactionId: z.string().min(1),
   /** Abstract unit. There is no calendar in this game, deliberately. */
   turn: z.number().int().min(0),
@@ -1599,6 +1655,12 @@ export const LedgerSchema = z.object({
    */
   lostToRaids: z.number().int().default(0),
   /**
+   * What an autarkist's own worlds paid it for trading with each other —
+   * already in `routes`, said separately so the doctrine's economy is visible
+   * beside the network income it renounced. Zero for every other ethic.
+   */
+  internalMarket: z.number().int().default(0),
+  /**
    * Scheduled debt service: positive receives, negative pays.
    *
    * Deliberately **not** part of `net`. A debt is settled as an explicit
@@ -1804,7 +1866,7 @@ export function ledgerFor(
     return {
       gross: 0, upkeep: 0, net: 0, systems: 0, treatyFlow: 0,
       espionageLoss: 0, espionageGain: 0, garrisonUpkeep: 0, agentUpkeep: 0, fixtureUpkeep: 0, commanderUpkeep: 0, commitmentFlow: 0, commitmentShare: 0, assetYield: 0, warProfit: 0, occupation: 0,
-      territory: 0, routes: 0, tolls: 0, raided: 0, bounties: 0, lostToRaids: 0, debtService: 0, loanRent: 0,
+      territory: 0, routes: 0, tolls: 0, raided: 0, bounties: 0, lostToRaids: 0, internalMarket: 0, debtService: 0, loanRent: 0,
     };
   }
 
@@ -1840,6 +1902,9 @@ export function ledgerFor(
   // performs stays a conserved division of what the network is worth — the same
   // treatment the free trader's openness bonus gets, two lines up.
   routes += earnings.monopolyPremium[factionId] ?? 0;
+  // An autarkist's own worlds trading with each other, and whatever a raider
+  // took off somebody's — beside the network's conserved split, not inside it.
+  routes += (earnings.internal[factionId] ?? 0) + (earnings.internalTaken[factionId] ?? 0);
 
   // **Ground that was never yours costs something to keep.** Charged on the
   // share each foreign world actually pays, so it is bounded by that world's
@@ -2005,6 +2070,7 @@ export function ledgerFor(
     lostToRaids: Math.round(
       Object.values(earnings.raidedFrom).reduce((n, from) => n + (from[factionId] ?? 0), 0),
     ),
+    internalMarket: earnings.internal[factionId] ?? 0,
     // Reported, never summed into `net` — see `Ledger.debtService`.
     debtService: scheduledDebtService(state.debts ?? [], factionId),
     loanRent: scheduledRent(state.loans ?? [], factionId),
@@ -2553,7 +2619,15 @@ export function treatiesFor(state: WorldState, factionId: string): Treaty[] {
 
 /** Agents a faction can see: its own, plus any hostile agent it has exposed. */
 export function agentsVisibleTo(state: WorldState, factionId: string): Agent[] {
-  return (state.agents ?? []).filter((a) => a.ownerFactionId === factionId || a.exposed);
+  return (state.agents ?? []).filter(
+    (a) =>
+      a.ownerFactionId === factionId ||
+      a.exposed ||
+      // Known well enough, a rival's people on your own worlds are not hidden
+      // from you — see `INTEL_OPERATIVES`.
+      (intelOn(state, factionId, a.ownerFactionId) >= INTEL_OPERATIVES &&
+        state.systems.find((s) => s.id === a.systemId)?.controllerFactionId === factionId),
+  );
 }
 
 /** Factions this one is at war with — no live non-aggression or ceasefire. */

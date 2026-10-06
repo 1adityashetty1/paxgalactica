@@ -2100,6 +2100,15 @@ export const AgentSchema = z.object({
    * find, so the location model is the defence rather than a new stat.
    */
   targetCommanderId: z.string().nullable().default(null),
+  /**
+   * Last, because it is written onto a live operative when they are taken, and
+   * a key added to an object lands at its end: here the schema agrees.
+   *
+   * The turn they were last taken, absent if never. What a power that caught them
+   * reacts to — a counter-intelligence sweep where they were working — since
+   * nobody's intel on it is anything it can see.
+   */
+  caughtTurn: z.number().int().min(0).optional(),
 });
 export type Agent = z.infer<typeof AgentSchema>;
 

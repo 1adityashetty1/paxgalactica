@@ -1416,7 +1416,7 @@ lives here instead:
 |---|---|
 | `free_trade` | scales with **galaxy-wide openness** — profits from everyone's peace, not just its own |
 | `extortionist` | a **premium rate** on the toll it charges for crossing its space — see "Tolls are a policy" |
-| `autarkic` | keeps only `AUTARKIC_ROUTE_FRACTION` of route income, and cannot be strangled |
+| `autarkic` | keeps only `AUTARKIC_ROUTE_FRACTION` of network income, and earns an **internal market** from its own connected worlds — see "An autarkist trades with itself" |
 | `smuggler` | ignores blockades, raids at double effect, counts double at lawless junctions |
 | `monopolist` | `MONOPOLY_BONUS` premium on lanes it owns **both ends** of, paid on top of the conserved split |
 
@@ -1458,6 +1458,123 @@ because the ethic finally had an owner:
    lane and the discrete question (does Meridian keep tor-1) swamps it. 1.25 is
    chosen over the 1.3 that also passes for margin: a tuning value sitting on a
    cliff edge is one unrelated change away from tipping back.
+
+### An autarkist trades with itself
+
+`internalLanes` in `trade.ts`. Autarky is self-sufficiency, and the doctrine
+had only the renunciation: 35% of its network income and ×1.15 on its worlds.
+On the opening board that cost Arkane about ten credits a turn net — 51 of lane
+income cut to 18, against 23 gained at home — so the one power whose doctrine is
+standing alone was paying for it. Its income was 195 against 378–463 for the
+three large powers, and its net was 58.
+
+"Its own routes" had to be defined before it could be taxed. Lanes run hub to
+hub and Arkane holds one hub, so **no galactic lane starts and ends on its
+worlds**. The internal market is its own: every pair of an autarkist's worlds
+joined by a path that never leaves them, hub or not, valued by the network's
+formula (endpoint value over distance) at `INTERNAL_MARKET_SHARE` (a twelfth).
+
+- **Its alone.** No toll, no foreign hop, no other power's share, and the 35%
+  cut does not touch it.
+- **"Cannot be strangled" is now true.** A blockade elsewhere on the network
+  does nothing to it; only a blockade or a raid on one of its own worlds closes
+  or skims the lanes through that world. What a raider takes it is paid, logged
+  as a prize from the autarkist, and drawn against a bounty like any other.
+- **Beside the network's conserved split, not inside it** — `RouteEarnings.internal`
+  and `internalTaken`, added to `routes` in `ledgerFor` the way the monopolist's
+  premium is, with its own `Ledger.internalMarket` line and a line on the Trade
+  tab. A commitment share of "routes" reads the network only, for the reason it
+  leaves out the premium: a counterparty bargained for a slice of the lanes.
+- **One payoff.** The ×1.15 on its worlds went with it.
+
+It rewards a compact, connected realm: a world cut off from the rest trades with
+nobody, and retaking a lost home world rejoins the chain. It also grows with the
+square of a connected realm — four worlds make six lanes, six make fifteen —
+which is the thing to watch if a large power ever turns autarkic.
+
+**It is the counterweight to the split lanes, and it is small.** It was built to
+balance lanes dividing across equally short paths (below), which on their own
+cost the Confederacy three worlds, and swept with them from a half down to
+nothing (`INTERNAL_MARKET_SHARE`):
+
+| share | 30 turns | 100 turns | no events, 30 · 100 |
+|---|---|---|---|
+| before either change | 6/5/5/4/5 | 6/5/5/4/5 | 6/6/5/6/2 · 6/7/5/5/2 |
+| a quarter | 6/6/5/6/2 | 6/6/5/6/2 | 6/6/5/6/2 · 6/6/5/6/2 |
+| a sixth | 6/6/5/6/2 | 6/6/5/6/2 | 6/6/5/5/3 · 6/6/5/6/2 |
+| a tenth | 6/6/5/5/3 | 6/8/4/6/1 | 6/6/5/5/3 · 6/7/5/6/1 |
+| **a twelfth** | **6/6/5/5/3** | **6/6/5/5/3** | 6/6/5/5/3 · 6/7/5/6/1 |
+| a twentieth | 6/6/5/5/3 | 6/8/4/5/2 | 6/6/5/5/3 · 6/6/5/5/3 |
+| nothing | 6/6/5/5/3 | 6/7/5/5/2 | 6/6/5/5/3 · 6/6/5/5/3 |
+
+Above a sixth the market makes Arkane strong enough to take Tulgarn, and the
+Confederacy ends on two worlds. **A twelfth is the one setting that keeps it on
+three with events at both horizons**, and it is a point rather than a region —
+the shape `MONOPOLY_BONUS` and the yard capacity had, where one marginal conquest
+swamps the arithmetic. Putting the ×1.15 back beside it holds three at 30 turns
+and loses it by 100.
+
+At a twelfth the market pays Arkane 13 a turn on the opening board and 21 on
+five worlds, which is **less than the ×1.15 it replaced**: Arkane opens on 185
+against 195 and nets 48 against 58, and at 30 turns nets 22 against 21. The
+doctrine is now an economy rather than a bonus, and its size was set by the
+Confederacy's survival, not by Arkane's purse.
+
+**Not pinned to a journal version**, like the fixture upkeep and the rally: it is
+read in `ledgerFor`, where a legacy flag cannot reach, so a save in which Arkane
+was played replays with its new income.
+
+### A lane divides across every equally short path
+
+`TradeRoute.paths` and `routeLegs` in `trade.ts`. A lane took one path between
+its hubs, `shortestPath`'s, which breaks a tie by system id — so where two paths
+were equally short **the alphabet chose**, and six worlds that lay on an equally
+short path between two hubs carried no trade at all: Delvane, Tulgarn, Ithaal,
+Sarsuma, Threx (on five such pairs) and Hollow Star. Raids, tolls and blockades
+there did nothing to commerce, and three of the six were the Confederacy's — a
+large part of why its route income was 44 against 170–220 for the large powers.
+
+Each equally short path is now a **leg** carrying an equal share of the lane's
+value. The ends are on every leg, so what a hub earns is unchanged; what divides
+is the 40% that pays the worlds in between, and a blockade or a raid on one path
+touches only the traffic that goes that way (a lane is open in proportion to its
+open legs). Twelve of the 28 lanes on the seed have ties, five paths at most,
+and every world is now on some lane. The map, the Trade tab (which lists each
+path), the storm's weighting and the bots' raid targeting all read legs.
+
+On the opening board route income moves Drajk 44 → 61, the Combine 223 → 202,
+Meridian 177 → 182 and the Vigil 173 → 177.
+
+**On its own it cost the Confederacy three worlds**, and not through the money:
+with the bots still reading single-path traffic the board does not move and the
+Confederacy's turn-30 net improves from −39 to −24. What moved it is the
+Confederacy's very first expansion — it goes for the busiest unclaimed world,
+and Neth (125) now edges out Sennex (120), so it spends the campaign contesting
+Meridian instead of Arkane. The internal market above, at a twelfth, balances
+the money; **the choice itself is fixed in `lawlessGround`**, in two steps.
+
+- **It leaves guarded ground alone.** The bot judged a strike only by what stood
+  on the target, so it took Var Hollow with Meridian's main fleet one jump away
+  and lost it four turns later with the hulls that took it — the sheet's *"never
+  hold ground worth besieging"*, ignored by its own bot. A world any single
+  rival guards, on it and one jump out, with more than `OPPORTUNIST_HOLD_MARGIN`
+  (¾) of the Confederacy's strongest base is off its list. Swept from nothing
+  to 1.5: everything up to 0.9 gives one board, and from 1 it attacks into
+  strong fleets and ends on two or three worlds.
+- **Of what is left, the least contested first** (`contestAt`, every rival's
+  battle line on and next to it), and only then the richest in trade.
+
+With both, the board is **6/5/5/5/4 at 30 and 100 turns, with events and
+without** — the Confederacy keeps four worlds everywhere — and its turn-30 net
+is −22 against the suite's −40 floor. In practice it now takes only ground
+nobody strong is guarding, and raids for the rest, which is the doctrine. At
+100 turns the Vigil, which no longer takes Threx, runs at a loss (−18 with
+events).
+
+**Pinned to `JOURNAL_VERSION` 15** through `WorldState.routeTies`: a rule that
+sits on the world because route income is computed from the world alone, in the
+browser as well as in the tick, the way `Faction.luck` carries the seed version
+it came from. The seed writes `split`; an older journal is rebuilt with `first`.
 
 ### Tolls are a policy, not an ethic
 
@@ -4090,10 +4207,84 @@ and both panels read it. It also carries `lostToRaids`, what raiders took off
 the player's lanes — which is how a raid run dark shows up for its victim at all.
 Rivals' rows stay estimates from the view, which is honest: they are.
 
-**Knowledge is a snapshot, not a memory.** Burn the operative and the programme
-goes back to being a rumour. A last-known-position model is the more honest one
-and needs a durable set on `WorldState` — schema, save format and journal — so
-it is written down as the known simplification rather than pretended away.
+**Knowledge was a snapshot, and now it is a memory** — see "Intel with memory"
+below.
+
+### Intel with memory
+
+Borrowed from *Stellaris* (`docs/design-2026-10-04.md` §2). Burn a watcher and
+the programme it saw went straight back to *"something under way at Vantic"*:
+spending on spies bought a light that went out, never knowledge that built up.
+Two halves, in `intel.ts` with the rates in `intel-levels.ts`.
+
+**Memory.** `WorldState.sightings` keeps, for every power, each rival order it
+has seen in full that is neither its own nor public: type, label, where, how far
+along, what it delivers and the turn seen. `recordSightings` writes them in the
+tick. A row is refreshed while the order is seen, **kept** for
+`INTEL_MEMORY_TURNS` (8) after the sight is lost, and **dropped** the turn the
+viewer watches the order finish — never on a completion it did not see, since
+removing the row would tell it the work was done. While the order still runs,
+its rumour is replaced by the remembered row marked *still under way*. No id
+leaves the server (`rememberedBy` strips it), so a remembered order cannot be
+handed to `interrupt_order`. A raid run dark is never seen in full, so it is
+never remembered. The briefing has a **Last seen** group, the Orders tab greyed
+rows, and an NPC's orders block `[last seen turn N]` lines.
+
+**Intel levels.** `Faction.intel`, subject → 0–100, private to its holder
+(`worldAsSeenBy` clears every other power's). Each turn `accrueIntel` adds:
+
+| source | a turn |
+|---|---|
+| a watcher of yours at work on their ground | +6 |
+| a listener of yours **over** one of their worlds | +6 |
+| a listener of yours within `EMISSION_RANGE` of their ground | +3 |
+| a live `trade_accord` with them | +2 |
+| a battle fought against them | +5 |
+| one of their operatives taken by you | +10, once |
+
+**A listener over their world earns what a watcher earns**, because
+`watchedSystems` gives it exactly a watcher's sight there at nearly a watcher's
+price; one only in range hears loud work and earns half.
+
+**It fades in proportion to itself** — a tenth a turn, rounded up
+(`INTEL_FADE`) — so a source holds a level instead of adding up to the cap.
+One watcher or one listener over their world settles near 50, a listener in
+range near 20, a trade accord near 10, and it takes two instruments to reach
+the top two thresholds. A flat fade of 2 a turn was built first and measured:
+with the bots running watchers and listeners all the time, most watched pairs
+sat at 100 by turn 30 and every threshold fired everywhere.
+
+| at | about that power | read by |
+|---|---|---|
+| 20 | its rumours say what kind of work it is | display, prompts |
+| 40 | …and what the work will deliver | display, prompts |
+| 60 | its unexposed operatives on your worlds show, and roll exposure one in twenty worse | `agentsVisibleTo`, the agent pass |
+| 80 | your watchers dig its secrets at +3, and you trace its dark raids at +4 | the agent pass, `unmaskRoll` |
+
+**No level names a dark raider.** Intel is about a power and a dark rumour has
+none; what 80 buys is a better tracing roll, which names nobody until it lands.
+
+**Counter-intelligence does something now.** It was a duration category with a
+floor and nothing reading it. A `counter_intelligence` programme running on a
+world its holder controls takes `INTEL_COUNTER_SWEEP` (4) a turn off every
+rival's level on that power, and a rival operative working that world rolls
+exposure one in twenty worse. The bots run one (`sweep`) where they caught a
+rival's operative in the last five turns — `Agent.caughtTurn` records it, last
+in the schema because it is written onto a live record. A bot cannot see
+anybody's intel on it, so it answers what it can see: being spied on.
+
+**Measured**, with the split lanes and the internal market in. Watched pairs sit
+mostly between 20 and 60 and peak at 51–80; at 100 turns the Combine, the best
+at spies, knows three powers past 40. Intel moved neither 30-turn board, and at
+100 turns it held the Vigil to 6 worlds where intel off let it reach 7.
+`pnpm balance [turns] --no-intel` is the control.
+
+The Confederacy's turn-30 net, which the suite floors at −40, read −69 with
+intel in and −72 with it off; it is −22 once its targeting stopped attacking
+into strong fleets (see "A lane divides across every equally short path").
+
+Pinned to `JOURNAL_VERSION` 16 (`LegacyRules.intel`): an older journal replays
+with no memory, no levels and an inert counter-intelligence.
 
 Measured on the campaign that opened all this, at turn 7: the three physical
 programmes (a fortification, a fleet movement, an infrastructure works) are

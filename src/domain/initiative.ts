@@ -70,7 +70,7 @@ import {
   type HullClass,
   type ShipStack,
 } from './hulls.js';
-import { routeEarnings, tradeRoutes } from './trade.js';
+import { routeEarnings, routeLegs, tradeRoutes } from './trade.js';
 import { STAT_NAMES, statModifier } from './checks.js';
 
 /**
@@ -631,6 +631,39 @@ function watch(ctx: Ctx): Ops {
   ];
 }
 
+/** Turns after catching a rival's operative that a bot keeps a sweep running. */
+export const BOT_SWEEP_AFTER_CATCH = 5;
+
+/**
+ * A counter-intelligence sweep where a rival was caught working: one at a time,
+ * at that world, while the catch is recent. A bot cannot see anybody's intel on
+ * it, so it answers what it can see — being spied on. A sweep wears down every
+ * rival's picture of it and makes their operatives on that world likelier to
+ * be caught. Without the rule the counter is a mechanic nobody uses.
+ */
+function sweep(ctx: Ctx): Ops {
+  const { state, me } = ctx;
+  if (hasOrder(state, me, 'counter_intelligence')) return [];
+  const caught = (state.agents ?? [])
+    .filter(
+      (a) =>
+        a.ownerFactionId !== me &&
+        a.caughtTurn !== undefined &&
+        state.turn - a.caughtTurn <= BOT_SWEEP_AFTER_CATCH &&
+        sys(state, a.systemId)?.controllerFactionId === me,
+    )
+    .sort((a, b) => (b.caughtTurn ?? 0) - (a.caughtTurn ?? 0) || a.id.localeCompare(b.id))[0];
+  if (!caught) return [];
+  const where = sys(state, caught.systemId)!;
+  return [
+    {
+      op: 'issue_order', factionId: me, type: 'counter_intelligence',
+      originId: where.id, targetId: where.id, durationTurns: 3,
+      label: `sweep ${where.name}`,
+    },
+  ];
+}
+
 /**
  * Use proof it holds while it still proves something: published against a power
  * it is at war with, to cost the enemy standing everywhere; spent for a strong
@@ -1092,8 +1125,9 @@ const ORBITAL_MARGIN = 2.2;
 /** Transit value crossing a system — what a raid or blockade there is worth. */
 function trafficAt(s: WorldState, systemId: string): number {
   return tradeRoutes(s)
-    .filter((r) => r.path.slice(1, -1).includes(systemId))
-    .reduce((n, r) => n + r.volume, 0);
+    .flatMap(routeLegs)
+    .filter((leg) => leg.path.slice(1, -1).includes(systemId))
+    .reduce((n, leg) => n + leg.volume, 0);
 }
 
 /** Heat this close below notorious makes a raider keep its next raid dark. */
@@ -1218,15 +1252,73 @@ function sectorGaps(state: WorldState, me: string): StarSystem[] {
  * itself takes stays on the list as something to hold rather than becoming
  * territory, and one a rival annexes becomes something to take back.
  */
-function lawlessGround(state: WorldState, me: string): StarSystem[] {
+/**
+ * How strong a rival's fleet on or next to a world may be, as a share of the
+ * Confederacy's strongest base, before it leaves that world alone.
+ *
+ * It judged a strike only by what stood on the target, so it took Var Hollow
+ * on turn 16 with Meridian's main fleet one jump away and lost it on turn 20,
+ * hulls and all — the sheet's *"never hold ground worth besieging"*, ignored by
+ * its own bot. Swept from nothing to 1.5: everything up to 0.9 gives the same
+ * board, 6/5/5/5/4 at 30 and 100 turns with events and without, and its net at
+ * turn 30 is −22; at 1 and above it attacks into strong fleets and ends on two
+ * or three worlds. In practice it now takes only ground nobody strong is
+ * guarding, and raids for the rest, which is the doctrine.
+ */
+export const OPPORTUNIST_HOLD_MARGIN = 0.75;
+
+export function lawlessGround(state: WorldState, me: string): StarSystem[] {
+  const contest = new Map(state.systems.map((x) => [x.id, contestAt(state, me, x.id)]));
+  // What one strike can bring: the strongest of its own bases. A world a
+  // rival guards with more than a share of that is ground it could take and
+  // not keep — see `OPPORTUNIST_HOLD_MARGIN`.
+  const strike = Math.max(0, ...held(state, me).map((b) => lineStrengthAt(state, b.id, me)));
   return state.systems
     .filter((x) => x.homeFactionId === null && x.controllerFactionId !== me)
+    .filter((x) => strongestRivalNear(state, me, x.id) <= strike * OPPORTUNIST_HOLD_MARGIN)
     .sort((a, b) => {
       // Ground a rival has annexed first — that is the border being drawn, and
       // the whole objection. Unclaimed ground is merely opportunity.
       const claimed = Number(b.controllerFactionId !== null) - Number(a.controllerFactionId !== null);
-      return claimed || trafficAt(state, b.id) - trafficAt(state, a.id) || a.id.localeCompare(b.id);
+      // Then where it would have to fight least for it — an opportunist hits
+      // the weak — and only then where the trade is richest.
+      //
+      // Traffic came first, and with lanes divided across equally short paths
+      // (`TradeRoute.paths`) that sent the Confederacy's very first expansion
+      // to Neth (125) over Sennex (120): into Meridian's backyard, where it
+      // spent the campaign contesting the strongest navy on the board and lost
+      // Tulgarn and Threx while its fleet was away. A five-credit difference
+      // in traffic decided a war; who stands next door should.
+      return (
+        claimed ||
+        contest.get(a.id)! - contest.get(b.id)! ||
+        trafficAt(state, b.id) - trafficAt(state, a.id) ||
+        a.id.localeCompare(b.id)
+      );
     });
+}
+
+/**
+ * Who a power would have to fight for a world: every rival's battle line on it
+ * and one jump out, in battleship-equivalents. The strongest single rival
+ * instead of the sum was measured too, and chose the same worlds.
+ */
+/** The strongest single rival's battle line on a world and one jump out. */
+function strongestRivalNear(state: WorldState, me: string, systemId: string): number {
+  const near = [systemId, ...neighboursOf(state, systemId)];
+  return Math.max(
+    0,
+    ...state.factions
+      .filter((f) => f.id !== me)
+      .map((f) => near.reduce((m, id) => m + lineStrengthAt(state, id, f.id), 0)),
+  );
+}
+
+function contestAt(state: WorldState, me: string, systemId: string): number {
+  const near = [systemId, ...neighboursOf(state, systemId)];
+  return state.factions
+    .filter((f) => f.id !== me)
+    .reduce((n, f) => n + near.reduce((m, id) => m + lineStrengthAt(state, id, f.id), 0), 0);
 }
 
 /**
@@ -1889,7 +1981,7 @@ export function proposeFor(
   // covert half of a war it is in — added here rather than to five bots, for
   // the reason the filters below are: a bot added later inherits them.
   const ctx = { state, me: factionId };
-  const rules = [mend, sabotage, watch, useProof, demandTribute, callIn, backDemands, postBounty].map((rule) =>
+  const rules = [mend, sabotage, watch, sweep, useProof, demandTribute, callIn, backDemands, postBounty].map((rule) =>
     rule(ctx),
   );
   // Paper first, then standing. Both are post-filters over one proposal, so a

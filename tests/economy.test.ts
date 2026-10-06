@@ -1,4 +1,5 @@
 import { ordersVisibleTo } from '../src/domain/intel.js';
+import { routeEarnings } from '../src/domain/trade.js';
 import { describe, expect, it } from 'vitest';
 import { applyOps, tickTurn, MAX_ATTRITION_FRACTION } from '../src/domain/reducer.js';
 import { CREDITS_PER_TON, HULL_SPEC, LIFTER_CARRY, hullUpkeep } from '../src/domain/hulls.js';
@@ -1339,7 +1340,10 @@ describe('proportional commitment terms', () => {
       'drajk',
     );
     expect(res.rejections).toEqual([]);
-    const pot = ledgerFor(fresh(), 'freeworlds').routes;
+    // The network's raw figure, as every share is read: an autarkist's internal
+    // market is its ethic's payoff, like the monopolist's premium, and a
+    // counterparty bargained for a slice of the lanes, not of that.
+    const pot = routeEarnings(fresh()).shares.freeworlds ?? 0;
     expect(ledgerFor(res.state, 'drajk').commitmentShare).toBe(Math.floor(pot * 0.1));
   });
 

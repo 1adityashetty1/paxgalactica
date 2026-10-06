@@ -16,7 +16,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 14;
+export const JOURNAL_VERSION = 16;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -96,6 +96,8 @@ export const JournalVersionSchema = z.union([
   z.literal(12),
   z.literal(13),
   z.literal(14),
+  z.literal(15),
+  z.literal(16),
 ]);
 
 export const JournalSchema = z.object({
@@ -137,7 +139,11 @@ export const JournalSchema = z.object({
    *     before a watcher at work could dig up its host's secrets.
    * 13 — written before dirty work built heat and the Rim answered a
    *     notorious power.
-   * 14 — current.
+   * 14 — written before a trade lane's traffic divided across every equally
+   *     short path, so the alphabet chose one and six worlds carried none.
+   * 15 — written before a power remembered what it had seen of another's
+   *     work and came to know it, and before counter-intelligence did anything.
+   * 16 — current.
    */
   version: JournalVersionSchema,
   entries: z.array(JournalEntrySchema),
@@ -214,6 +220,9 @@ export function replay(
     // favour to hand over or made goods it could not sell to itself.
     notes: parsed.version >= 12,
     commodities: parsed.version >= 12,
+    // Lanes took one path each, chosen by system id, and the treasuries in
+    // those campaigns are what that routing paid.
+    splitTies: parsed.version >= 15,
   });
   let rejectionCount = 0;
   // The opening board, before anything is applied. Without it an observer's
@@ -299,6 +308,10 @@ export function replay(
     // Nobody ran hot: covert work, raiding and broken pacts cost what they
     // cost and no more, and the pulse drew from the ten fortunes alone.
     heat: parsed.version >= 14,
+    // Sight was a snapshot, nobody came to know anybody, and a
+    // counter-intelligence programme did nothing. Those campaigns' operatives
+    // were caught and their secrets dug under that rule.
+    intel: parsed.version >= 16,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

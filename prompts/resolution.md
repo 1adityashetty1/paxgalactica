@@ -322,8 +322,10 @@ treaty says.
 
 Trade doctrines are arithmetic in the reducer, not suggestions: `free_trade`
 scales with how open the whole galaxy is, `extortionist` charges a **premium
-rate** on foreign cargo crossing its space, `autarkic` earns at home and cannot
-be strangled, `smuggler` ignores blockades and raids at double effect,
+rate** on foreign cargo crossing its space, `autarkic` keeps little of the
+network and earns an **internal market** from its own connected worlds trading
+with each other, which no blockade elsewhere can touch, `smuggler` ignores
+blockades and raids at double effect,
 `monopolist` takes a premium on lanes it owns both ends of.
 
 **A world is worth two things beyond its income, and both are arithmetic in the
@@ -540,6 +542,11 @@ The other order types — `courier`, `decree`, `political_maneuver`, `espionage`
 `counter_intelligence`, `blockade`, `commerce_raiding`, `treaty_ratification` —
 take no payload: their effect is the agent, the treaty or the interdiction
 itself, and a payload on them is rejected.
+
+A `counter_intelligence` programme on a world the power holds is a **sweep**,
+read while it runs: every rival's intel on the power fades faster, and a rival
+operative working that world is likelier to be caught. Issue it on the world
+being swept — origin and target the same.
 
 ## Changing doctrine
 

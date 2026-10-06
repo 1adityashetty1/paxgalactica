@@ -7,6 +7,7 @@ import {
   blockadesOn,
   raidersOn,
   routeEarnings,
+  routeSystems,
   routesTouching,
   tradeRoutes,
   type TradeRoute,
@@ -67,6 +68,14 @@ export function TradePanel({
           <div className="ledger-row sub">
             <span>…of which tolls levied</span>
             <span className="good">+{ledger.tolls}</span>
+          </div>
+        )}
+        {(ledger.internalMarket ?? 0) > 0 && (
+          <div className="ledger-row sub">
+            <span title="Your own connected worlds trading with each other. An autarkist's economy: no toll, no foreign share, and no blockade elsewhere touches it — only a blockade or a raid on one of your own worlds.">
+              …of which your internal market
+            </span>
+            <span className="good">+{ledger.internalMarket}</span>
           </div>
         )}
         {ledger.raided > 0 && (
@@ -160,7 +169,7 @@ function Lane({
   onSelect: (systemId: string) => void;
 }) {
   const [a, b] = route.endpoints;
-  const interference = route.path
+  const interference = routeSystems(route)
     .map((id) => ({
       id,
       blockaders: blockadesOn(state, id),
@@ -186,20 +195,29 @@ function Lane({
         <span className="lane-vol">{route.volume}/turn</span>
       </div>
 
-      <div className="lane-path">
-        {route.path.map((id, i) => (
-          <span key={id}>
-            {i > 0 && <span className="muted"> · </span>}
-            <span
-              style={{ color: colorOf(holderOf(id)) }}
-              className={holderOf(id) === me ? 'hop mine' : 'hop'}
-              title={holderOf(id) ? nameFaction(holderOf(id)!) : 'unaligned'}
-            >
-              {nameOf(id)}
+      {/* Every equally short path, each carrying an equal share of the traffic:
+          the worlds between take what passes them, not what the alphabet chose. */}
+      {route.paths.map((path, n) => (
+        <div
+          key={path.join('>')}
+          className="lane-path"
+          title={route.paths.length > 1 ? `1/${route.paths.length} of the traffic goes this way` : undefined}
+        >
+          {n > 0 && <span className="muted">or </span>}
+          {path.map((id, i) => (
+            <span key={id}>
+              {i > 0 && <span className="muted"> · </span>}
+              <span
+                style={{ color: colorOf(holderOf(id)) }}
+                className={holderOf(id) === me ? 'hop mine' : 'hop'}
+                title={holderOf(id) ? nameFaction(holderOf(id)!) : 'unaligned'}
+              >
+                {nameOf(id)}
+              </span>
             </span>
-          </span>
-        ))}
-      </div>
+          ))}
+        </div>
+      ))}
 
       {interference.map((x) => (
         <div key={x.id} className="lane-warn">

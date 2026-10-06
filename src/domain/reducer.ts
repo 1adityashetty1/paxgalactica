@@ -208,7 +208,8 @@ import {
   type HullClass,
   type ShipStack,
 } from './hulls.js';
-import { EMISSION_RANGE, isPublicOrderType } from './intel.js';
+import { accrueIntel, EMISSION_RANGE, isPublicOrderType, recordSightings } from './intel.js';
+import { INTEL_DIG, INTEL_DIG_BONUS, INTEL_OPERATIVES, INTEL_TRACE_BONUS, intelOn } from './intel-levels.js';
 import {
   EXTRACTION_ALLOWED,
   EXTRACTION_REFUSAL_REASON,
@@ -1636,7 +1637,9 @@ function unmaskRoll(state: WorldState, order: PendingOrder, victim: string): boo
     rollD20(state.turn, `unmask:${order.id}:${victim}`) +
     statModifier(effectiveStats(state, victim).guile) +
     listeners * DARK_LISTENER_BONUS +
-    (watcher ? DARK_WATCHER_BONUS : 0);
+    (watcher ? DARK_WATCHER_BONUS : 0) +
+    // Knowing the raider's habits helps the roll, and names nobody until it lands.
+    (intelOn(state, victim, order.factionId) >= INTEL_DIG ? INTEL_TRACE_BONUS : 0);
   return roll >= DARK_DC + statModifier(effectiveStats(state, order.factionId).guile);
 }
 
@@ -1703,6 +1706,7 @@ function takeOperative(
   // an asset and redeployed as an agent, and the mark is the whole reason that
   // second act is a decision.
   agent.timesCaught += 1;
+  agent.caughtTurn = state.turn;
   heatUp(state, agent.ownerFactionId, HEAT_CAUGHT);
 
   const prize: Asset = {
@@ -2106,6 +2110,14 @@ export interface LegacyRules {
    * the pulse drew from the ten fortunes alone. Journal version 14.
    */
   heat?: boolean;
+  /**
+   * Powers remember what they saw and come to know one another (see
+   * `intel.ts`, "Memory, and how well one power knows another"), and a
+   * counter-intelligence programme makes a rival's operative on that world
+   * likelier to be caught. Before it, sight was a snapshot, nobody's level
+   * rose, and counter-intelligence did nothing. Journal version 16.
+   */
+  intel?: boolean;
   /**
    * A sandbox campaign's one event (see `primeRimSandbox`): that kind every
    * turn, with no d20 and no cooldowns. Not a rule the game acquired — a rule
@@ -7350,10 +7362,14 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     truces = true,
     spanOfControl: governingSpan = true,
     secrets: diggingSecrets = true,
+    intel: knowing = true,
     battleRules = {},
   } = legacy;
   const state = cloneState(input);
   const notes: string[] = [];
+  // Who was still at large when the turn began, so the operatives taken during
+  // it can be counted toward what their captors now know of their masters.
+  const atLargeAtStart = new Set((state.agents ?? []).filter((a) => !a.exposed).map((a) => a.id));
 
   state.turn += 1;
 
@@ -8068,7 +8084,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     }
     if (order.type === 'blockade') {
       for (const route of tradeRoutes(state)) {
-        if (!route.path.includes(target.id)) continue;
+        if (!route.paths.some((p) => p.includes(target.id))) continue;
         for (const end of route.endpoints) {
           const holder = state.systems.find((x) => x.id === end)?.controllerFactionId;
           if (holder && holder !== order.factionId) victims.add(holder);
@@ -8234,7 +8250,18 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       // is only ever exposed on that 20 — which is the right shape, and bounded
       // at 5% rather than at nothing.
       watchNotes.set(agent.id, `attempted ${agent.mission} on ${host.name} and it came to nothing.`);
-      if (roll >= 21 - profile.exposureRisk) {
+      // Known well, an operative is caught one in twenty more often; and a
+      // counter-intelligence programme running on this world is a sweep,
+      // which is what that category finally does.
+      const hunted = knowing
+        ? (intelOn(state, target.id, agent.ownerFactionId) >= INTEL_OPERATIVES ? 1 : 0) +
+          (state.pendingOrders.some(
+            (o) => o.type === 'counter_intelligence' && o.factionId === target.id && o.targetId === host.id,
+          )
+            ? 1
+            : 0)
+        : 0;
+      if (roll >= 21 - profile.exposureRisk - hunted) {
         agent.exposed = true;
         watchNotes.set(agent.id, `was taken on ${host.name}. That line is closed.`);
         // Taken, not merely burned — see `takeOperative`.
@@ -8519,7 +8546,9 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       // typed from state, never invented — filed as proof the owner can
       // publish or spend on a hook. Never one the owner already holds proof
       // of. See `SecretSchema`.
-      if (diggingSecrets && rollD20(state.turn, `secret:${agent.id}`) >= SECRET_DISCOVERY_ROLL) {
+      const digAt =
+        SECRET_DISCOVERY_ROLL - (intelOn(state, agent.ownerFactionId, target.id) >= INTEL_DIG ? INTEL_DIG_BONUS : 0);
+      if (diggingSecrets && rollD20(state.turn, `secret:${agent.id}`) >= digAt) {
         // Nor one it already holds a hook on: proof of the same thing twice
         // would be published while the hook still rested on it.
         const filed = new Set([
@@ -8835,6 +8864,28 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     `Turn ${state.turn}: ${playerLedger.gross} credits from ${playerLedger.systems} systems, ${playerLedger.upkeep} to upkeep.`,
     state.playerFactionId,
   );
+
+
+  /* --- What each power learned this turn, and remembers ---------------- */
+  // Last, so a sighting is of the board the turn actually left, and a level
+  // counts the battles fought and the people taken in it. See `intel.ts`.
+  if (knowing) {
+    const battles: [string, string][] = [];
+    for (const battle of report.battles) {
+      const attackers = new Set(battle.rounds.flatMap((r) => r.attackers.map((c) => c.factionId)));
+      const defenders = new Set(battle.rounds.flatMap((r) => r.defenders.map((c) => c.factionId)));
+      if (battle.holderBefore) defenders.add(battle.holderBefore);
+      for (const a of attackers) for (const d of defenders) if (a !== d) battles.push([a, d]);
+    }
+    const taken: [string, string][] = [];
+    for (const agent of state.agents ?? []) {
+      if (!agent.exposed || !atLargeAtStart.has(agent.id)) continue;
+      const captor = state.assets.find((a) => a.agentId === agent.id)?.heldBy;
+      if (captor && captor !== agent.ownerFactionId) taken.push([captor, agent.ownerFactionId]);
+    }
+    accrueIntel(state, { battles, taken });
+    recordSightings(state);
+  }
 
   return { state, rejections: [], notes, report };
 }
