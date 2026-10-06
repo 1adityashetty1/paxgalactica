@@ -5679,8 +5679,10 @@ pins one rule; the interactions are pinned separately.
 
 `set_stance` — `hold` never breaks off, `stand` breaks at two to one (the
 default, and what every campaign was played under), `withdraw` breaks the moment
-it is outmatched. A standing order to your own navy rather than a change of what
-the power believes, so it costs no dissent; it is declared like any action.
+it is outmatched. A standing order to your **whole navy** — one setting for every
+fleet, never per world or squadron, and every text that describes it says so —
+rather than a change of what the power believes, so it costs no dissent; it is
+declared like any action.
 Shown beside each power's totals on the Fleets tab. Your own faction only, and `crusading` overrides all three — the Iron Vigil
 cannot be ordered to run.
 

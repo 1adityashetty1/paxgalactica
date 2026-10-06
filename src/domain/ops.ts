@@ -155,6 +155,8 @@ export const SetStanceOp = z.object({
   op: z.literal('set_stance'),
   factionId: z.string().min(1),
   /**
+   * One setting for the whole navy; there is no per-world or per-fleet stance.
+   *
    * `hold` never breaks off — the world at any price.
    * `stand` breaks off at two to one, which is how every campaign has played.
    * `withdraw` leaves the moment it is outmatched, keeping the fleet.

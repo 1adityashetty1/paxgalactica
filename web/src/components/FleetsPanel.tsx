@@ -99,7 +99,7 @@ export function FleetsPanel({
                     overrides it, so that is what is shown for the Vigil. */}
                 <span
                   className="muted"
-                  title="What its fleets do when a defence goes badly: hold never breaks off, stand breaks off at two to one, withdraw leaves the moment it is outmatched. Changed by declaring it."
+                  title="One standing order for its whole navy, every fleet at once: what they do when a defence goes badly. Hold never breaks off, stand breaks off at two to one, withdraw leaves the moment it is outmatched. Changed by declaring it."
                 >
                   {' · '}
                   {f.warEthic === 'crusading' ? 'never runs' : f.stance}

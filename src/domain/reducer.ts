@@ -3969,12 +3969,14 @@ function applyOpsUnderRules(
         if (f.stance === op.stance) break;
         const was = f.stance;
         f.stance = op.stance;
+        // The whole navy, said so: there is one stance per power, and a note
+        // reading as one squadron's orders is how the per-fleet reading arose.
         const said = {
           hold: 'will hold whatever the odds',
           stand: 'will break off only when badly outmatched',
-          withdraw: 'will break off the moment it is outmatched, and keep the fleet',
+          withdraw: 'will break off the moment they are outmatched, and save themselves',
         }[op.stance];
-        const note = `${f.name} ${said} (was ${was}).`;
+        const note = `Every fleet of ${f.name} ${said} (was ${was}).`;
         notes.push(note);
         logEvent(state, 'order', note, op.factionId);
         break;
