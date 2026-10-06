@@ -66,7 +66,7 @@ leaves a faction with nobody following it.
 | `adjust_credits` | money spent or earned |
 | `adjust_ships` | ships added to or removed from one system |
 | `set_doctrine` | the faction changes course — see Changing doctrine |
-| `set_stance` | what its fleets do when losing a defence — see Standing orders |
+| `set_stance` | what its whole navy does when losing a defence — see Standing orders |
 | `set_toll_policy` | who pays to cross its space — see Tolls |
 | `create_asset` | a thing taken or made **because the attempt worked** — see Things |
 | `transfer_asset` | hand a thing you hold to somebody else |
@@ -861,10 +861,13 @@ does **not** waive it automatically; it has to be asked for.
 
 ## Standing orders: when the fleet breaks off
 
-`set_stance` is a standing order to your own navy. It answers one question: when a defence is going
-badly, is the world worth the fleet?
+`set_stance` is a standing order to your **whole navy**: one setting for every
+fleet the power has, wherever it stands. There is no stance for a single world
+or squadron — an order aimed at one fleet sets it for all of them, and the
+narrative should say so. It answers one question: when a defence is going badly,
+is the world worth the fleet?
 
-| stance | what your fleets do |
+| stance | what every fleet of yours does |
 |---|---|
 | `hold` | never break off. The world at any price, and the fleet may be spent doing it. |
 | `stand` | break off only when outmatched two to one. The default, and how every campaign has been played. |

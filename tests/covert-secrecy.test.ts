@@ -76,9 +76,13 @@ function withCovertDeclaration() {
     'ojjul',
     { binding: 'rolled', secret: true },
   );
-  // And an ordinary public declaration beside it.
+  // And an ordinary public declaration beside it — one that reaches another
+  // power, since only a power the turn reached is asked to answer it.
   campaign.stage(
-    [{ op: 'log_narrative', text: 'The Combine opens its ledgers at Shalka.' }],
+    [
+      { op: 'log_narrative', text: 'The Combine opens its ledgers at Shalka.' },
+      { op: 'adjust_disposition', factionId: 'ojjul', towardFactionId: 'vigil', delta: 5 },
+    ],
     'Open the ledgers',
     'Shalka trades.',
     'model',
@@ -103,7 +107,7 @@ describe('covert work stays with the power that did it', () => {
     }
   });
 
-  it('says nothing happened rather than listing nothing, when all of it was secret', async () => {
+  it('asks nobody when all of it was secret and reached nobody in the open', async () => {
     reactionCalls.length = 0;
     const campaign = Campaign.start('ojjul', 'covert-only');
     campaign.stage(
@@ -111,6 +115,23 @@ describe('covert work stays with the power that did it', () => {
       ASSASSINATION, '', 'model', 'ojjul', { binding: 'rolled', secret: true },
     );
     await endTurn(campaign);
+    expect(reactionCalls).toEqual([]);
+  });
+
+  it('says nothing happened rather than listing nothing, when all of it was secret', async () => {
+    reactionCalls.length = 0;
+    const campaign = Campaign.start('ojjul', 'covert-fleet');
+    // A secret declaration whose fleet is seen anyway: the Vigil is woken by
+    // the hulls coming at Vantic and told nothing of the rest.
+    campaign.stage(
+      [
+        { op: 'adjust_credits', factionId: 'ojjul', delta: -50 },
+        { op: 'issue_order', factionId: 'ojjul', type: 'fleet_movement', originId: 'ilv-5', targetId: 'tor-3', force: 1 },
+      ],
+      ASSASSINATION, '', 'model', 'ojjul', { binding: 'rolled', secret: true },
+    );
+    await endTurn(campaign);
+    expect(reactionCalls.length).toBeGreaterThan(0);
     for (const { user } of reactionCalls) {
       expect(user).not.toMatch(/acted this turn:\s*\n\s*\n\s*(---|$)/);
       expect(user).toContain('did nothing this turn that you could see');

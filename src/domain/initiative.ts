@@ -90,7 +90,7 @@ import { STAT_NAMES, statModifier } from './checks.js';
  *
  * Three structural causes, none of them a prompt problem:
  *
- * 1. Responders are chosen by `mostAffectedFactions` from what the PLAYER's ops
+ * 1. Responders are chosen by `involvedFactions` from what the PLAYER's ops
  *    touched. A faction the player ignores is never asked to think.
  * 2. Reactions are skipped entirely when nothing was staged — the optimisation
  *    that makes a long campaign affordable. On a quiet turn NPCs cannot act at

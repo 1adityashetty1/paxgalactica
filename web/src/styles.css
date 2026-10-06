@@ -44,8 +44,11 @@ ul { margin: 0; padding-left: 1.1em; }
 .dot.on { background: var(--good); }
 .dot.off { background: var(--bad); }
 
-.grid { display: grid; grid-template-columns: 1fr 380px; flex: 1; min-height: 0; }
-.left { display: flex; flex-direction: column; min-width: 0; }
+.grid { display: grid; grid-template-columns: 1fr 380px; grid-template-rows: minmax(0, 1fr); flex: 1; min-height: 0; }
+/* `min-height: 0` so the column is held to the window and the feed scrolls
+   inside it; a grid item's default minimum is its content, so the feed grew
+   and took the whole page with it. */
+.left { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .right { display: flex; flex-direction: column; border-left: 1px solid var(--line); min-height: 0; overflow-y: auto; }
 
 /* ---------- feed ---------- */
@@ -189,6 +192,7 @@ ul { margin: 0; padding-left: 1.1em; }
 .ethics { display: flex; gap: 5px; margin-top: 6px; }
 .chip { background: #1c2028; color: var(--dim); font-size: 10px; padding: 1px 6px; border-radius: 3px; border: none; }
 .chip.on { background: #1e3a5f; color: #93c5fd; }
+.crew-officers { display: inline-flex; gap: 1px; margin-left: 3px; vertical-align: middle; }
 .wanted-by { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .faction-dot { position: relative; display: inline-block; width: 9px; height: 9px; border-radius: 50%; cursor: help; }
 .faction-dot:hover, .faction-dot:focus { outline: 1px solid var(--text, #e5e7eb); outline-offset: 1px; }
@@ -243,7 +247,11 @@ ul { margin: 0; padding-left: 1.1em; }
 .error { color: var(--bad); }
 
 @media (max-width: 900px) {
-  .grid { grid-template-columns: 1fr; }
+  /* Stacked, the page scrolls — but the feed keeps a height and a scrollbar of
+     its own, so a long campaign does not stretch the page without end. */
+  .app { height: auto; min-height: 100vh; }
+  .grid { grid-template-columns: 1fr; grid-template-rows: auto; }
+  .feed { flex: none; height: 45vh; }
   .right { border-left: none; border-top: 1px solid var(--line); }
 }
 
@@ -719,6 +727,11 @@ svg.outcome-art {
 /* A burned operative still occupies the list — knowing a rival's network was
    here and is no longer is worth as much as knowing it is. */
 .agent-row.burned { opacity: 0.55; text-decoration: line-through; }
+.agent-row.refused { opacity: 0.45; }
+.fixture-terms { margin: 2px 0 6px; line-height: 1.45; }
+.fixture-pick { background: none; border: none; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-align: left; }
+.fixture-pick:hover:not(:disabled) { text-decoration: underline; }
+.fixture-pick:disabled { color: var(--dim); cursor: default; }
 
 /* An officer's name, in the Command tab. A fact about a fleet and about a
    person who may not be there next turn — which is why it is not a line under

@@ -13,7 +13,6 @@ import {
   isCommodity,
   isNote,
   isTruceLive,
-  MAX_FIXTURES_PER_WORLD,
   TRUCE_BREAKING_REPUTATION_COST,
   truceBetween,
   workingStats,
@@ -41,6 +40,12 @@ import {
 } from '../../../src/domain/command.js';
 import { worldFlavour } from '../../../src/ui/worldtext.js';
 import {
+  fixtureName,
+  fixtureOptions,
+  foundingLine,
+  type FixtureOptions,
+} from '../../../src/ui/fixtureoptions.js';
+import {
   presentAt,
   agentsVisibleTo,
   dispositionBetween,
@@ -56,7 +61,6 @@ import {
   rallyBonus,
   systemIncome,
   fixturesAt,
-  statFixturesAt,
   treatiesFor,
   warsFor,
   spanOfControl,
@@ -98,6 +102,7 @@ export function SidePanel({
   effective,
   onSelect,
   onTalk,
+  onDraft,
   activeChannel,
 }: {
   state: WorldState;
@@ -107,6 +112,8 @@ export function SidePanel({
   briefing: Briefing | null;
   onSelect: (id: string) => void;
   onTalk: (factionId: string) => void;
+  /** Puts a sentence on the command line for the player to send. */
+  onDraft: (text: string) => void;
   activeChannel: string | null;
 }) {
   const [tab, setTab] = useState<Tab>('factions');
@@ -137,7 +144,7 @@ export function SidePanel({
             activeChannel={activeChannel}
           />
         )}
-        {tab === 'system' && <SystemTab state={state} selectedId={selectedId} onSelect={onSelect} />}
+        {tab === 'system' && <SystemTab state={state} selectedId={selectedId} onSelect={onSelect} onDraft={onDraft} />}
         {tab === 'fleets' && <FleetsPanel state={state} onSelect={onSelect} />}
         {tab === 'commanders' && <Command state={state} />}
         {tab === 'trade' && <TradePanel state={state} ledger={effective.ledger} onSelect={onSelect} />}
@@ -345,10 +352,12 @@ function SystemTab({
   state,
   selectedId,
   onSelect,
+  onDraft,
 }: {
   state: WorldState;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onDraft: (text: string) => void;
 }) {
   const sys = selectedId ? getSystem(state, selectedId) : null;
   if (!sys) return <p className="empty">Click a system on the map.</p>;
@@ -385,16 +394,12 @@ function SystemTab({
    */
   const fixtures = fixturesAt(state, sys.id);
   /**
-   * What this world could still carry, when the player holds it and it has
-   * room. The ground rule is the whole mechanism — a fixture must name the
-   * attribute the world's type makes — so the panel says which one rather than
-   * leaving a player to discover it from a rejection.
+   * What the player could still build here, when they hold it. The ground rule
+   * is the whole mechanism — a fixture must name the attribute the world's type
+   * makes — so the panel lists the kinds that do rather than leaving a player
+   * to discover the rule from a rejection.
    */
-  const ground = WORLD_TYPE_STAT[sys.worldType];
-  const built = statFixturesAt(state, sys.id).length;
-  const room =
-    sys.controllerFactionId === state.playerFactionId ? Math.max(0, MAX_FIXTURES_PER_WORLD - built) : 0;
-  const slotFree = room > 0;
+  const options = fixtureOptions(state, sys.id);
 
   return (
     <div className="system-detail">
@@ -488,13 +493,8 @@ function SystemTab({
           surface: `system.ships` is not redacted either. The holder is named
           rather than assumed, since a fixture pays whoever stands over the world
           and that need not be the power that built it. */}
-      {(fixtures.length > 0 || slotFree) && <h4>Fixtures here</h4>}
-      {slotFree && fixtures.length === 0 && (
-        <p className="muted">
-          Nothing built yet. This ground makes {ground}: it can carry {MAX_FIXTURES_PER_WORLD}{' '}
-          fixtures of different kinds, each naming {ground}.
-        </p>
-      )}
+      {(fixtures.length > 0 || options) && <h4>Fixtures here</h4>}
+      {options && fixtures.length === 0 && <p className="empty">Nothing built yet.</p>}
       {fixtures.length > 0 && (
         <>
           <ul className="ship-list">
@@ -514,7 +514,7 @@ function SystemTab({
                   <span className="swatch" style={{ background: colourOf(state, w.heldBy) }} />
                   <span style={{ color: colourOf(state, w.heldBy) }}>
                     {/* A proper name for a building — "Power Plant", not the slug. */}
-                    {w.kind.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+                    {fixtureName(w.kind)}
                     {' · '}
                     {holder?.name ?? w.heldBy}
                   </span>
@@ -531,13 +531,9 @@ function SystemTab({
               );
             })}
           </ul>
-          {slotFree && (
-            <p className="muted">
-              Room for {room} more, naming {ground}, no two of a kind.
-            </p>
-          )}
         </>
       )}
+      {options && <FixtureBuilder options={options} worldName={sys.name} onDraft={onDraft} />}
       {/* Officers are units of the fleet (item 122), so they sit in the row of
           the hulls they stand beside, above. Listed here only when there are no
           hulls of theirs to stand beside — ashore, with the garrison.
@@ -842,6 +838,66 @@ function voidText(state: WorldState, v: { kind: string; by: string; target: stri
  * Inline rather than a list of their own, because an officer is part of the
  * fleet they stand beside (item 122) and the row is where that fleet is.
  */
+/**
+ * What the player could raise on a world they hold: every kind its ground
+ * allows, what each gives, why any cannot go up here now, and what the next
+ * one costs to build and to keep. Picking one writes the order on the command
+ * line rather than sending it — declaring is the player's act, and costs an
+ * action.
+ */
+function FixtureBuilder({
+  options,
+  worldName,
+  onDraft,
+}: {
+  options: FixtureOptions;
+  worldName: string;
+  onDraft: (text: string) => void;
+}) {
+  const { ground, room, cost, turns, upkeepAdded, ordinal, credits, kinds } = options;
+  if (room === 0) {
+    return <p className="empty">No room for another: a world carries two fixtures.</p>;
+  }
+  const nth = ordinal === 1 ? '1st' : ordinal === 2 ? '2nd' : ordinal === 3 ? '3rd' : `${ordinal}th`;
+  return (
+    <>
+      <h4>Can be built here</h4>
+      <p className="meta fixture-terms">
+        This ground makes {ground}, so anything built here must raise it. Room for {room}, no two
+        alike. {cost} credits and at least {turns} turns of construction; as your {nth} fixture it
+        would add {upkeepAdded} a turn to upkeep.
+        {credits < cost && <span className="bad"> You have {credits}.</span>}
+      </p>
+      <ul className="ship-list fixture-options">
+        {kinds.map((k) => (
+          <li key={k.kind} className={k.refusal ? 'agent-row refused' : 'agent-row'}>
+            <button
+              type="button"
+              className="fixture-pick"
+              disabled={k.refusal !== null}
+              title={k.refusal ?? `Write "${foundingLine(k.kind, worldName)}" on the command line`}
+              onClick={() => onDraft(foundingLine(k.kind, worldName))}
+            >
+              {k.name}
+            </button>
+            <span className="count">
+              {k.spread.map((x) => `+${x.points} ${x.stat}`).join(' · ')}
+            </span>
+            {k.wasted.length > 0 && (
+              <span
+                className="chip"
+                title={`Your ${k.wasted.join(' and ')} cannot rise further from fixtures: it is at 20, or your fixtures already add the most they can to it.`}
+              >
+                no gain: {k.wasted.join(', ')}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 function OfficersIn({ list, colour }: { list: Commander[]; colour: string }) {
   if (list.length === 0) return null;
   return (

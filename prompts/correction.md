@@ -36,6 +36,8 @@ You are given the rejected ops and the reducer's reason for each.
 
 - `ops` — corrected replacements only. An empty list is a perfectly good
   answer when nothing could be legally salvaged.
-- `narrative` — one sentence, plain, describing only what changed about the
-  *correction*. This is discarded rather than shown to the player, so keep it
-  short; do not re-tell the action.
+- `narrative` — one sentence, plain, telling the player what the first account
+  claimed that did **not** happen and why — *"The work crews at Sarsuma were
+  not driven off: no ships of yours stood there to do it."* It is shown beneath
+  the original narrative as a correction, so name the effect that was dropped
+  in the fiction's terms; do not re-tell the rest of the action.

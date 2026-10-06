@@ -41,7 +41,7 @@ import {
   serializeOutcome,
   type EpilogueView,
 } from './epilogue.js';
-import { mostAffectedFactions, serializeCharacter, serializeState } from '../model/serialize.js';
+import { involvedFactions, serializeCharacter, serializeState } from '../model/serialize.js';
 import {
   ACTION_POINTS_PER_TURN,
   markNotesPrivate,
@@ -138,19 +138,27 @@ export interface TurnOutcome {
  * turn spent on internal administration does not summon the whole galaxy to
  * comment on it.
  */
-function touchedBy(ops: unknown[]): { factions: string[]; systems: string[] } {
+export function touchedBy(state: WorldState, ops: unknown[]): { factions: string[]; systems: string[] } {
+  // Any value naming a power or a world, wherever it sits in the op: a bounty's
+  // target, a treaty's parties, a void condition, a marque's `against`. Reading
+  // three field names missed most of them, and a power the turn named in a
+  // field nobody listed was a power the turn did not involve.
+  const factionIds = new Set(state.factions.map((f) => f.id));
+  const systemIds = new Set(state.systems.map((x) => x.id));
   const factions = new Set<string>();
   const systems = new Set<string>();
-  for (const op of ops) {
-    if (!op || typeof op !== 'object') continue;
-    const o = op as Record<string, unknown>;
-    for (const key of ['factionId', 'towardFactionId', 'toFactionId']) {
-      if (typeof o[key] === 'string') factions.add(o[key] as string);
+  const walk = (value: unknown, depth: number): void => {
+    if (depth > 4) return;
+    if (typeof value === 'string') {
+      if (factionIds.has(value)) factions.add(value);
+      else if (systemIds.has(value)) systems.add(value);
+    } else if (Array.isArray(value)) {
+      for (const v of value) walk(v, depth + 1);
+    } else if (value && typeof value === 'object') {
+      for (const v of Object.values(value)) walk(v, depth + 1);
     }
-    for (const key of ['systemId', 'originId', 'targetId']) {
-      if (typeof o[key] === 'string') systems.add(o[key] as string);
-    }
-  }
+  };
+  for (const op of ops) walk(op, 0);
   return { factions: [...factions], systems: [...systems] };
 }
 
@@ -178,7 +186,7 @@ async function reviseRejected(
    * fixable rejection into a lost agreement.
    */
   source: 'model' | 'extraction' = 'model',
-): Promise<{ ops: unknown[]; costUsd: number } | null> {
+): Promise<{ ops: unknown[]; narrative: string; costUsd: number } | null> {
   const user = [
     serializeState(campaign.state, campaign.state.playerFactionId),
     '',
@@ -222,7 +230,7 @@ async function reviseRejected(
       schema: source === 'extraction' ? ExtractionOutputSchema : ModelTurnOutputSchema,
       maxRetries: 1,
     });
-    return { ops: res.value.ops, costUsd: res.costUsd };
+    return { ops: res.value.ops, narrative: res.value.narrative, costUsd: res.costUsd };
   } catch {
     // The correction call itself failed. The original rejections still stand
     // and are reported to the player rather than swallowed.
@@ -262,6 +270,27 @@ export function recruitmentAlone(ops: unknown[]): { ops: unknown[]; notes: strin
   };
 }
 
+/**
+ * **A raid's prizes are paid when it runs, not when it is ordered.** Raiding
+ * pays through the ledger every turn the raid takes cargo, so a `create_asset`
+ * beside the order that launches it is plunder from a raid that has not
+ * happened — and would be paid twice once it did. Measured live: a dark raid
+ * ordered at Sarsuma came with "14 crates cracked from Vigil-flagged haulers"
+ * minted on the spot. The same rule the reducer keeps for battle spoils, which
+ * are its own to create once the battle has been fought.
+ */
+export function noPrizeBeforeTheRaid(ops: unknown[]): { ops: unknown[]; notes: string[] } {
+  const op = (x: unknown) => x as { op?: unknown; type?: unknown } | null;
+  const raids = ops.some((x) => op(x)?.op === 'issue_order' && op(x)?.type === 'commerce_raiding');
+  if (!raids) return { ops, notes: [] };
+  const kept = ops.filter((x) => op(x)?.op !== 'create_asset');
+  if (kept.length === ops.length) return { ops, notes: [] };
+  return {
+    ops: kept,
+    notes: ['No plunder was taken yet: a raid pays out of the lanes each turn it runs, starting next turn.'],
+  };
+}
+
 async function stageWithCorrection(
   campaign: Campaign,
   ops: unknown[],
@@ -289,8 +318,9 @@ async function stageWithCorrection(
   // no band still has to strip a fixture rather than wave it through.
   const bind = (batch: unknown[]) => {
     const alone = recruitmentAlone(batch);
-    const bound = boundPayloadsToOutcome(alone.ops, outcome ?? 'success', stat);
-    return { ops: bound.ops, notes: [...alone.notes, ...bound.notes] };
+    const unrun = noPrizeBeforeTheRaid(alone.ops);
+    const bound = boundPayloadsToOutcome(unrun.ops, outcome ?? 'success', stat);
+    return { ops: bound.ops, notes: [...alone.notes, ...unrun.notes, ...bound.notes] };
   };
 
   const bound = bind(ops);
@@ -330,11 +360,15 @@ async function stageWithCorrection(
           : n,
       )
     : first.notes;
+  // The story was told for the first batch, and some of what it describes was
+  // refused. The correction says what changed; say it, so the narrative above
+  // is not left claiming an effect that never landed.
+  const amended = corrected && revised.narrative.trim() ? [`Correction: ${revised.narrative.trim()}`] : [];
   return {
     // First then second: the order they happened, and the first is the one that
     // explains why there was a correction at all.
     rejections: [...first.rejections, ...second.rejections],
-    notes: [...bound.notes, ...firstNotes, ...boundAgain.notes, ...second.notes],
+    notes: [...bound.notes, ...firstNotes, ...amended, ...boundAgain.notes, ...second.notes],
     costUsd: revised.costUsd,
   };
 }
@@ -651,21 +685,18 @@ export async function endTurn(
   // NPCs react once, to the world as it now stands.
   const reactionViews: ReactionView[] = [];
   if (committed.applied > 0) await span('reactions', { turn }, async () => {
-    const touched = touchedBy(stagedOps);
-    // Three responders, not four, so one seat is always left for a power the
-    // player never touched.
+    const touched = touchedBy(campaign.state, stagedOps);
+    // Only the powers the turn involved, three at most, so a power the player
+    // never touched is always left to its doctrine.
     //
-    // `mostAffectedFactions` selects from what the PLAYER's ops touched, and in
-    // a live campaign a player touches enough of the board that nearly every
-    // faction is a responder nearly every turn — so `proposeFor` fell through
-    // for almost nobody and doctrine initiative fired exactly when it was least
-    // needed. Measured: 2 NPC-vs-NPC attacks over 12 turns with no player at
-    // all, and **zero** over a 10-turn campaign with one.
-    //
-    // The reserved seat is not a fifth responder — it costs no extra tokens,
-    // because the faction it displaces is handled by its own doctrine instead,
-    // which is free.
-    const responders = mostAffectedFactions(
+    // Selection used to fill every seat from the whole board, and in a live
+    // campaign that made nearly every faction a responder nearly every turn —
+    // so `proposeFor` fell through for almost nobody and doctrine initiative
+    // fired exactly when it was least needed. Measured: 2 NPC-vs-NPC attacks
+    // over 12 turns with no player at all, and **zero** over a 10-turn
+    // campaign with one. The seat a power with no stake no longer takes costs
+    // no tokens: its doctrine acts for it, which is free.
+    const responders = involvedFactions(
       campaign.state,
       touched.factions,
       touched.systems,
@@ -699,7 +730,7 @@ export async function endTurn(
           //
           // Silence is a small tell, and the cheaper one: a power that says
           // nothing is indistinguishable from a power that was not asked, which
-          // the reserved-seat rule makes an ordinary turn. The alternative is a
+          // is every power the turn did not reach. The alternative is a
           // prompt rule asking the model not to mention it, which is exactly the
           // guard a model can be talked past.
           const secret = reaction.ops.some(isCovertOp);
