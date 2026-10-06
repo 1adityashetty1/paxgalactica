@@ -1252,10 +1252,30 @@ function sectorGaps(state: WorldState, me: string): StarSystem[] {
  * itself takes stays on the list as something to hold rather than becoming
  * territory, and one a rival annexes becomes something to take back.
  */
-function lawlessGround(state: WorldState, me: string): StarSystem[] {
+/**
+ * How strong a rival's fleet on or next to a world may be, as a share of the
+ * Confederacy's strongest base, before it leaves that world alone.
+ *
+ * It judged a strike only by what stood on the target, so it took Var Hollow
+ * on turn 16 with Meridian's main fleet one jump away and lost it on turn 20,
+ * hulls and all — the sheet's *"never hold ground worth besieging"*, ignored by
+ * its own bot. Swept from nothing to 1.5: everything up to 0.9 gives the same
+ * board, 6/5/5/5/4 at 30 and 100 turns with events and without, and its net at
+ * turn 30 is −22; at 1 and above it attacks into strong fleets and ends on two
+ * or three worlds. In practice it now takes only ground nobody strong is
+ * guarding, and raids for the rest, which is the doctrine.
+ */
+export const OPPORTUNIST_HOLD_MARGIN = 0.75;
+
+export function lawlessGround(state: WorldState, me: string): StarSystem[] {
   const contest = new Map(state.systems.map((x) => [x.id, contestAt(state, me, x.id)]));
+  // What one strike can bring: the strongest of its own bases. A world a
+  // rival guards with more than a share of that is ground it could take and
+  // not keep — see `OPPORTUNIST_HOLD_MARGIN`.
+  const strike = Math.max(0, ...held(state, me).map((b) => lineStrengthAt(state, b.id, me)));
   return state.systems
     .filter((x) => x.homeFactionId === null && x.controllerFactionId !== me)
+    .filter((x) => strongestRivalNear(state, me, x.id) <= strike * OPPORTUNIST_HOLD_MARGIN)
     .sort((a, b) => {
       // Ground a rival has annexed first — that is the border being drawn, and
       // the whole objection. Unclaimed ground is merely opportunity.
@@ -1283,6 +1303,17 @@ function lawlessGround(state: WorldState, me: string): StarSystem[] {
  * and one jump out, in battleship-equivalents. The strongest single rival
  * instead of the sum was measured too, and chose the same worlds.
  */
+/** The strongest single rival's battle line on a world and one jump out. */
+function strongestRivalNear(state: WorldState, me: string, systemId: string): number {
+  const near = [systemId, ...neighboursOf(state, systemId)];
+  return Math.max(
+    0,
+    ...state.factions
+      .filter((f) => f.id !== me)
+      .map((f) => near.reduce((m, id) => m + lineStrengthAt(state, id, f.id), 0)),
+  );
+}
+
 function contestAt(state: WorldState, me: string, systemId: string): number {
   const near = [systemId, ...neighboursOf(state, systemId)];
   return state.factions

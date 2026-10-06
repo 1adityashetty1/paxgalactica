@@ -1551,14 +1551,25 @@ Confederacy's turn-30 net improves from −39 to −24. What moved it is the
 Confederacy's very first expansion — it goes for the busiest unclaimed world,
 and Neth (125) now edges out Sennex (120), so it spends the campaign contesting
 Meridian instead of Arkane. The internal market above, at a twelfth, balances
-the money; **the choice itself is fixed in `lawlessGround`**: an opportunist
-takes unclaimed ground where it would have to fight least for it (`contestAt`,
-every rival's battle line on the world and one jump out), and only then where
-the trade is richest. Its first expansion goes to Var Hollow, it keeps Tulgarn
-and Threx, and at 30 turns with events the board is **6/5/5/5/4**, with its
-average net over turns 21–30 at −6 against −69. At 100 turns it is 6/6/5/6/2,
-and without events 6/6/5/5/3 at both. Measuring the strongest single rival
-instead of the sum chose the same worlds.
+the money; **the choice itself is fixed in `lawlessGround`**, in two steps.
+
+- **It leaves guarded ground alone.** The bot judged a strike only by what stood
+  on the target, so it took Var Hollow with Meridian's main fleet one jump away
+  and lost it four turns later with the hulls that took it — the sheet's *"never
+  hold ground worth besieging"*, ignored by its own bot. A world any single
+  rival guards, on it and one jump out, with more than `OPPORTUNIST_HOLD_MARGIN`
+  (¾) of the Confederacy's strongest base is off its list. Swept from nothing
+  to 1.5: everything up to 0.9 gives one board, and from 1 it attacks into
+  strong fleets and ends on two or three worlds.
+- **Of what is left, the least contested first** (`contestAt`, every rival's
+  battle line on and next to it), and only then the richest in trade.
+
+With both, the board is **6/5/5/5/4 at 30 and 100 turns, with events and
+without** — the Confederacy keeps four worlds everywhere — and its turn-30 net
+is −22 against the suite's −40 floor. In practice it now takes only ground
+nobody strong is guarding, and raids for the rest, which is the doctrine. At
+100 turns the Vigil, which no longer takes Threx, runs at a loss (−18 with
+events).
 
 **Pinned to `JOURNAL_VERSION` 15** through `WorldState.routeTies`: a rule that
 sits on the world because route income is computed from the world alone, in the
@@ -4268,10 +4279,9 @@ at spies, knows three powers past 40. Intel moved neither 30-turn board, and at
 100 turns it held the Vigil to 6 worlds where intel off let it reach 7.
 `pnpm balance [turns] --no-intel` is the control.
 
-**The Confederacy's turn-30 net is the open question**: one turn of a raider's
-lumpy income, it read −33 on main and reads −83 now against the suite's −40
-floor, while its average over turns 21–30 went from −55 to −6 once its
-targeting was fixed (see "A lane divides across every equally short path").
+The Confederacy's turn-30 net, which the suite floors at −40, read −69 with
+intel in and −72 with it off; it is −22 once its targeting stopped attacking
+into strong fleets (see "A lane divides across every equally short path").
 
 Pinned to `JOURNAL_VERSION` 16 (`LegacyRules.intel`): an older journal replays
 with no memory, no levels and an inert counter-intelligence.
