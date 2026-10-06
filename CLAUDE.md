@@ -1550,8 +1550,15 @@ with the bots still reading single-path traffic the board does not move and the
 Confederacy's turn-30 net improves from −39 to −24. What moved it is the
 Confederacy's very first expansion — it goes for the busiest unclaimed world,
 and Neth (125) now edges out Sennex (120), so it spends the campaign contesting
-Meridian instead of Arkane. The internal market above, at a twelfth, is what
-balances it.
+Meridian instead of Arkane. The internal market above, at a twelfth, balances
+the money; **the choice itself is fixed in `lawlessGround`**: an opportunist
+takes unclaimed ground where it would have to fight least for it (`contestAt`,
+every rival's battle line on the world and one jump out), and only then where
+the trade is richest. Its first expansion goes to Var Hollow, it keeps Tulgarn
+and Threx, and at 30 turns with events the board is **6/5/5/5/4**, with its
+average net over turns 21–30 at −6 against −69. At 100 turns it is 6/6/5/6/2,
+and without events 6/6/5/5/3 at both. Measuring the strongest single rival
+instead of the sum chose the same worlds.
 
 **Pinned to `JOURNAL_VERSION` 15** through `WorldState.routeTies`: a rule that
 sits on the world because route income is computed from the world alone, in the
@@ -4257,13 +4264,14 @@ anybody's intel on it, so it answers what it can see: being spied on.
 
 **Measured**, with the split lanes and the internal market in. Watched pairs sit
 mostly between 20 and 60 and peak at 51–80; at 100 turns the Combine, the best
-at spies, knows three powers past 40. The 30-turn board does not move
-(6/6/5/5/3 with events, intel on or off); at 100 turns it is 6/6/5/6/2 against
-5/7/6/5/2 with intel off. **The Confederacy's turn-30 net is the open
-question**: −69 against the suite's −40 floor. It is not intel's — with intel
-off it is −72, and its average over turns 21–30 is −55 even before intel — but
-the reading that passed (−33) was a good turn in a raider's lumpy income.
+at spies, knows three powers past 40. Intel moved neither 30-turn board, and at
+100 turns it held the Vigil to 6 worlds where intel off let it reach 7.
 `pnpm balance [turns] --no-intel` is the control.
+
+**The Confederacy's turn-30 net is the open question**: one turn of a raider's
+lumpy income, it read −33 on main and reads −83 now against the suite's −40
+floor, while its average over turns 21–30 went from −55 to −6 once its
+targeting was fixed (see "A lane divides across every equally short path").
 
 Pinned to `JOURNAL_VERSION` 16 (`LegacyRules.intel`): an older journal replays
 with no memory, no levels and an inert counter-intelligence.

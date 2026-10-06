@@ -1253,14 +1253,41 @@ function sectorGaps(state: WorldState, me: string): StarSystem[] {
  * territory, and one a rival annexes becomes something to take back.
  */
 function lawlessGround(state: WorldState, me: string): StarSystem[] {
+  const contest = new Map(state.systems.map((x) => [x.id, contestAt(state, me, x.id)]));
   return state.systems
     .filter((x) => x.homeFactionId === null && x.controllerFactionId !== me)
     .sort((a, b) => {
       // Ground a rival has annexed first — that is the border being drawn, and
       // the whole objection. Unclaimed ground is merely opportunity.
       const claimed = Number(b.controllerFactionId !== null) - Number(a.controllerFactionId !== null);
-      return claimed || trafficAt(state, b.id) - trafficAt(state, a.id) || a.id.localeCompare(b.id);
+      // Then where it would have to fight least for it — an opportunist hits
+      // the weak — and only then where the trade is richest.
+      //
+      // Traffic came first, and with lanes divided across equally short paths
+      // (`TradeRoute.paths`) that sent the Confederacy's very first expansion
+      // to Neth (125) over Sennex (120): into Meridian's backyard, where it
+      // spent the campaign contesting the strongest navy on the board and lost
+      // Tulgarn and Threx while its fleet was away. A five-credit difference
+      // in traffic decided a war; who stands next door should.
+      return (
+        claimed ||
+        contest.get(a.id)! - contest.get(b.id)! ||
+        trafficAt(state, b.id) - trafficAt(state, a.id) ||
+        a.id.localeCompare(b.id)
+      );
     });
+}
+
+/**
+ * Who a power would have to fight for a world: every rival's battle line on it
+ * and one jump out, in battleship-equivalents. The strongest single rival
+ * instead of the sum was measured too, and chose the same worlds.
+ */
+function contestAt(state: WorldState, me: string, systemId: string): number {
+  const near = [systemId, ...neighboursOf(state, systemId)];
+  return state.factions
+    .filter((f) => f.id !== me)
+    .reduce((n, f) => n + near.reduce((m, id) => m + lineStrengthAt(state, id, f.id), 0), 0);
 }
 
 /**
