@@ -4021,8 +4021,8 @@ journaled and replays exactly, and a journal written before it replays as public
 **A reaction that places an operative is withheld from the player entirely** —
 narrative, reducer notes and rejections — while its ops land and its notes are
 the NPC's alone. Silence is a small tell and the cheaper one: a power that says
-nothing is indistinguishable from a power that was not asked, which the
-reserved-seat rule makes an ordinary turn. The alternative is a prompt rule
+nothing is indistinguishable from a power that was not asked, which an
+ordinary turn is for every power the player's acts did not reach. The alternative is a prompt rule
 asking the model not to mention it, which is the kind of guard a model can be
 talked past.
 
@@ -4112,7 +4112,7 @@ one world**. Zero NPC-vs-NPC aggression, while `vigil -> drajk` sat at −87 and
 
 Three structural causes, none of them a prompt problem:
 
-1. Responders come from `mostAffectedFactions`, computed from what the
+1. Responders come from `involvedFactions`, computed from what the
    **player's** ops touched. A faction the player ignores is never asked to
    think.
 2. Reactions are skipped entirely when nothing was staged — the optimisation
@@ -6116,9 +6116,14 @@ and End Turn, which is its own pacing.
 
 1. Every staged batch is applied to committed state, in declaration order, and
    journaled.
-2. **Reaction call** — the 3–4 most affected factions respond **once**, to the
-   whole settled turn rather than piecemeal to each action. Skipped entirely
-   when nothing was staged (`committed.applied > 0`), so ending a turn to let
+2. **Reaction call** — the powers the turn **involved**, three at most,
+   respond **once**, to the whole settled turn rather than piecemeal to each
+   action. Involved means named by the player's ops, or holding or standing
+   over a world they reached (`involvedFactions`); it used to fill every seat
+   from adjacency and strong feeling, so enemies the turn never reached
+   answered it, and that was mostly noise. A power with no stake is played by
+   its doctrine instead. Skipped entirely when nothing was staged
+   (`committed.applied > 0`) or nobody was reached, so ending a turn to let
    orders tick costs **nothing at all** — which is what makes a long campaign
    affordable: a 27-turn playtest cost $6.77 because most of its turns were
    free. Each faction's

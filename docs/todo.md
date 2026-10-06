@@ -7181,7 +7181,9 @@ only one is mechanical:
   explicit standing ladder tied to it, so it is the natural place to start.
 - **In who reacts at all:** `mostAffectedFactions` scores `abs(disposition)/10`,
   so *strong feeling in either direction* raises the odds of reacting. Being
-  hated and being loved both make a faction more likely to speak up.
+  hated and being loved both make a faction more likely to speak up. (Since
+  replaced by `involvedFactions`: feeling now only orders the powers a turn
+  actually reached.)
 
 There is **no stat, DC, price or combat modifier** anywhere that reads
 disposition. A power that adores you fights you exactly as well as one that is

@@ -1410,6 +1410,11 @@ export function fixtureSlotRefusal(
  * building it is not getting the benefit of.
  */
 export function fixtureUpkeepFor(state: WorldState, factionId: string): number {
+  return fixtureUpkeepForCount(fixturesRunBy(state, factionId));
+}
+
+/** How many fixtures a power is paying to run — what `fixtureUpkeepFor` is charged on. */
+export function fixturesRunBy(state: WorldState, factionId: string): number {
   let n = 0;
   for (const asset of state.assets ?? []) {
     if (asset.heldBy !== factionId || !isStatFixture(asset)) continue;
@@ -1419,7 +1424,7 @@ export function fixtureUpkeepFor(state: WorldState, factionId: string): number {
     if (where.controllerFactionId !== factionId && hullsAt(where, factionId) === 0) continue;
     n += 1;
   }
-  return fixtureUpkeepForCount(n);
+  return n;
 }
 
 /**

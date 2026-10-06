@@ -47,6 +47,7 @@ import {
   type WorldType,
 } from '../domain/state.js';
 import { worldTypeLabel } from './worldtext.js';
+import { foundingLine } from './fixtureoptions.js';
 
 /**
  * The help text's ship-class and fixture sections, built from the game's own
@@ -173,7 +174,7 @@ function exampleFixture(state: WorldState): string | null {
     .sort((a, b) => b.strategicValue - a.strategicValue || a.id.localeCompare(b.id))
     .map((s) => ({ site: s, kind: fixtureKindFor(state, me, s) }))
     .find((p) => p.kind !== null);
-  return pick ? `Build a ${pick.kind!.replace(/_/g, ' ')} at ${pick.site.name}.` : null;
+  return pick ? foundingLine(pick.kind!, pick.site.name) : null;
 }
 
 const WORDS = ['none', 'one', 'two', 'three', 'four', 'five', 'six'];

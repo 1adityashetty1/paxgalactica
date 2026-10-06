@@ -727,6 +727,11 @@ svg.outcome-art {
 /* A burned operative still occupies the list — knowing a rival's network was
    here and is no longer is worth as much as knowing it is. */
 .agent-row.burned { opacity: 0.55; text-decoration: line-through; }
+.agent-row.refused { opacity: 0.45; }
+.fixture-terms { margin: 2px 0 6px; line-height: 1.45; }
+.fixture-pick { background: none; border: none; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-align: left; }
+.fixture-pick:hover:not(:disabled) { text-decoration: underline; }
+.fixture-pick:disabled { color: var(--dim); cursor: default; }
 
 /* An officer's name, in the Command tab. A fact about a fleet and about a
    person who may not be there next turn — which is why it is not a line under

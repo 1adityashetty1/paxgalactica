@@ -41,7 +41,7 @@ import {
   serializeOutcome,
   type EpilogueView,
 } from './epilogue.js';
-import { mostAffectedFactions, serializeCharacter, serializeState } from '../model/serialize.js';
+import { involvedFactions, serializeCharacter, serializeState } from '../model/serialize.js';
 import {
   ACTION_POINTS_PER_TURN,
   markNotesPrivate,
@@ -138,19 +138,27 @@ export interface TurnOutcome {
  * turn spent on internal administration does not summon the whole galaxy to
  * comment on it.
  */
-function touchedBy(ops: unknown[]): { factions: string[]; systems: string[] } {
+export function touchedBy(state: WorldState, ops: unknown[]): { factions: string[]; systems: string[] } {
+  // Any value naming a power or a world, wherever it sits in the op: a bounty's
+  // target, a treaty's parties, a void condition, a marque's `against`. Reading
+  // three field names missed most of them, and a power the turn named in a
+  // field nobody listed was a power the turn did not involve.
+  const factionIds = new Set(state.factions.map((f) => f.id));
+  const systemIds = new Set(state.systems.map((x) => x.id));
   const factions = new Set<string>();
   const systems = new Set<string>();
-  for (const op of ops) {
-    if (!op || typeof op !== 'object') continue;
-    const o = op as Record<string, unknown>;
-    for (const key of ['factionId', 'towardFactionId', 'toFactionId']) {
-      if (typeof o[key] === 'string') factions.add(o[key] as string);
+  const walk = (value: unknown, depth: number): void => {
+    if (depth > 4) return;
+    if (typeof value === 'string') {
+      if (factionIds.has(value)) factions.add(value);
+      else if (systemIds.has(value)) systems.add(value);
+    } else if (Array.isArray(value)) {
+      for (const v of value) walk(v, depth + 1);
+    } else if (value && typeof value === 'object') {
+      for (const v of Object.values(value)) walk(v, depth + 1);
     }
-    for (const key of ['systemId', 'originId', 'targetId']) {
-      if (typeof o[key] === 'string') systems.add(o[key] as string);
-    }
-  }
+  };
+  for (const op of ops) walk(op, 0);
   return { factions: [...factions], systems: [...systems] };
 }
 
@@ -677,21 +685,18 @@ export async function endTurn(
   // NPCs react once, to the world as it now stands.
   const reactionViews: ReactionView[] = [];
   if (committed.applied > 0) await span('reactions', { turn }, async () => {
-    const touched = touchedBy(stagedOps);
-    // Three responders, not four, so one seat is always left for a power the
-    // player never touched.
+    const touched = touchedBy(campaign.state, stagedOps);
+    // Only the powers the turn involved, three at most, so a power the player
+    // never touched is always left to its doctrine.
     //
-    // `mostAffectedFactions` selects from what the PLAYER's ops touched, and in
-    // a live campaign a player touches enough of the board that nearly every
-    // faction is a responder nearly every turn — so `proposeFor` fell through
-    // for almost nobody and doctrine initiative fired exactly when it was least
-    // needed. Measured: 2 NPC-vs-NPC attacks over 12 turns with no player at
-    // all, and **zero** over a 10-turn campaign with one.
-    //
-    // The reserved seat is not a fifth responder — it costs no extra tokens,
-    // because the faction it displaces is handled by its own doctrine instead,
-    // which is free.
-    const responders = mostAffectedFactions(
+    // Selection used to fill every seat from the whole board, and in a live
+    // campaign that made nearly every faction a responder nearly every turn —
+    // so `proposeFor` fell through for almost nobody and doctrine initiative
+    // fired exactly when it was least needed. Measured: 2 NPC-vs-NPC attacks
+    // over 12 turns with no player at all, and **zero** over a 10-turn
+    // campaign with one. The seat a power with no stake no longer takes costs
+    // no tokens: its doctrine acts for it, which is free.
+    const responders = involvedFactions(
       campaign.state,
       touched.factions,
       touched.systems,
@@ -725,7 +730,7 @@ export async function endTurn(
           //
           // Silence is a small tell, and the cheaper one: a power that says
           // nothing is indistinguishable from a power that was not asked, which
-          // the reserved-seat rule makes an ordinary turn. The alternative is a
+          // is every power the turn did not reach. The alternative is a
           // prompt rule asking the model not to mention it, which is exactly the
           // guard a model can be talked past.
           const secret = reaction.ops.some(isCovertOp);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
 import { Waiting } from './components/Waiting.js';
 import { CheatPanel } from './components/CheatPanel.js';
@@ -231,6 +231,14 @@ export function App() {
       .catch(() => setProviderReady(true));
   }, [game.needsCampaign, providerReady]);
   const [input, setInput] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  // A panel that writes an order for the player (the System tab's fixtures)
+  // puts it on the command line to be read and sent, never sends it itself:
+  // declaring is the player's act, and costs an action.
+  const draft = useCallback((text: string) => {
+    setInput(text);
+    inputRef.current?.focus();
+  }, []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // A channel the player has opened in the UI but not yet spoken into. The
   // server opens it for real on the first message.
@@ -474,6 +482,7 @@ export function App() {
               ))}
             </span>
             <input
+              ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={
@@ -534,6 +543,7 @@ export function App() {
             effective={view.effective}
             onSelect={setSelectedId}
             onTalk={setDraftChannel}
+            onDraft={draft}
             activeChannel={activeChannel}
           />
         </div>

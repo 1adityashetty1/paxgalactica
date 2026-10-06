@@ -741,43 +741,46 @@ export function serializeState(
 }
 
 /**
- * Which factions should get a reaction call: those whose interests the turn
- * actually touched. Ranked by involvement, then by how strongly they already
- * feel about the player, so a quiet turn still surfaces the factions with a
- * stake in the player's position.
+ * Which powers get a reaction call: the ones the turn involved, and nobody
+ * else.
+ *
+ * Involved means the player's ops name the power, reach a world it holds, or
+ * reach a world its hulls stand over. Ranked named first, then by how strongly
+ * the power already feels about the player.
+ *
+ * It used to fill every seat. A power holding a world next to anything touched
+ * counted for half, and failing that strong feeling alone would do — so a
+ * fortification raised at home drew answers from rivals it never reached, and
+ * in play the end of a turn was mostly enemies remarking on things that were
+ * none of their business. A power with no stake is played by its doctrine
+ * instead (`proposeFor`), which costs nothing, and a turn that reached nobody
+ * asks nobody.
  */
-export function mostAffectedFactions(
+export function involvedFactions(
   state: WorldState,
   touchedFactionIds: string[],
   touchedSystemIds: string[],
   excludeId: string,
-  limit = 4,
+  limit = 3,
 ): string[] {
-  const touched = new Set(touchedFactionIds);
-  const neighbours = new Set<string>();
+  const named = new Set(touchedFactionIds);
+  const present = new Set<string>();
   for (const sid of touchedSystemIds) {
     const sys = getSystem(state, sid);
     if (!sys) continue;
-    if (sys.controllerFactionId) neighbours.add(sys.controllerFactionId);
-    for (const edge of sys.hyperlaneEdges) {
-      const adj = getSystem(state, edge);
-      if (adj?.controllerFactionId) neighbours.add(adj.controllerFactionId);
-    }
+    if (sys.controllerFactionId) present.add(sys.controllerFactionId);
+    for (const [id, stack] of Object.entries(sys.ships)) if (Object.keys(stack).length > 0) present.add(id);
   }
 
-  const scored = state.factions
-    .filter((f) => f.id !== excludeId)
-    .map((f) => {
-      let score = 0;
-      if (touched.has(f.id)) score += 100;
-      if (neighbours.has(f.id)) score += 50;
-      // Strong feelings in either direction mean a stake in what just happened.
-      score += Math.abs(dispositionBetween(state, f.id, excludeId)) / 10;
-      return { id: f.id, score };
-    })
-    .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
-
-  return scored.slice(0, limit).map((s) => s.id);
+  return state.factions
+    .filter((f) => f.id !== excludeId && (named.has(f.id) || present.has(f.id)))
+    .map((f) => ({
+      id: f.id,
+      score: (named.has(f.id) ? 100 : 0) + Math.abs(dispositionBetween(state, f.id, excludeId)) / 10,
+    }))
+    .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
+    .slice(0, limit)
+    .map((s) => s.id);
 }
 
 /**
