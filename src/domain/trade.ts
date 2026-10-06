@@ -126,15 +126,16 @@ export const AUTARKIC_ROUTE_FRACTION = 0.35;
  *
  * A share rather than the full rate because Arkane's four worlds alone make six
  * internal lanes worth 156 at network rates, a fifth of the whole galaxy's
- * network. Swept at a quarter, a third and a half, with the ×1.15 kept and
- * dropped: at 30 turns every setting but a half with the bonus gives the same
- * board, 6/5/5/5/4, Arkane taking Tulgarn back from the Confederacy around turn
- * 19. A quarter moves the 100-turn boards least and keeps the market below what
- * the network pays a power at the centre of the map, so going autarkic is a
- * choice about being strangled rather than a way to be rich. It grows with the
- * square of a connected realm, which is the thing to watch.
+ * network. It was built as the counterweight to lanes dividing across equally
+ * short paths (`TradeRoute.paths`), and swept with them from a half down to
+ * nothing. Above a sixth Arkane grows strong enough to take Tulgarn, and the
+ * Confederacy ends on two worlds at 30 and 100 turns. **A twelfth is the one
+ * setting that keeps it on three at both** — and it is a point, not a region:
+ * a tenth and a twentieth hold three at 30 turns and lose it by 100. Put back
+ * with the ×1.15 it holds three only at 30. It grows with the square of a
+ * connected realm, which is the thing to watch.
  */
-export const INTERNAL_MARKET_SHARE = 1 / 4;
+export const INTERNAL_MARKET_SHARE = 1 / 12;
 
 /** One pair of an autarkist's worlds trading over a path inside its own space. */
 export interface InternalLane {

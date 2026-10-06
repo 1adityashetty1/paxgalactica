@@ -1472,7 +1472,7 @@ three large powers, and its net was 58.
 hub and Arkane holds one hub, so **no galactic lane starts and ends on its
 worlds**. The internal market is its own: every pair of an autarkist's worlds
 joined by a path that never leaves them, hub or not, valued by the network's
-formula (endpoint value over distance) at `INTERNAL_MARKET_SHARE` (a quarter).
+formula (endpoint value over distance) at `INTERNAL_MARKET_SHARE` (a twelfth).
 
 - **Its alone.** No toll, no foreign hop, no other power's share, and the 35%
   cut does not touch it.
@@ -1490,22 +1490,73 @@ formula (endpoint value over distance) at `INTERNAL_MARKET_SHARE` (a quarter).
 It rewards a compact, connected realm: a world cut off from the rest trades with
 nobody, and retaking a lost home world rejoins the chain. It also grows with the
 square of a connected realm — four worlds make six lanes, six make fifteen —
-which is the thing to watch if a large power ever turns autarkic. At a quarter
-it stays below what the network pays a power at the centre of the map: Meridian
-turned autarkic would earn about 130 from routes against 221.
+which is the thing to watch if a large power ever turns autarkic.
 
-**Swept** at a quarter, a third and a half, with the ×1.15 kept and dropped.
-At 30 turns with events every setting but a half-with-bonus gives one board,
-**6/5/5/5/4** against 6/5/5/4/5: Arkane can now afford its existing doctrine of
-securing its own sector and takes Tulgarn back from the Confederacy around turn
-19, and the Confederacy's net improves from −39 to −32. A quarter moves the
-100-turn boards least (6/5/4/5/5 with events; 6/6/5/6/2 without, against
-6/7/5/5/2) and pays Arkane 59 a turn on five worlds, 86 on six; its net at 30
-turns rises from 21 to 41. The income mix moves from 59/41 to 56/44.
+**It is the counterweight to the split lanes, and it is small.** It was built to
+balance lanes dividing across equally short paths (below), which on their own
+cost the Confederacy three worlds, and swept with them from a half down to
+nothing (`INTERNAL_MARKET_SHARE`):
+
+| share | 30 turns | 100 turns | no events, 30 · 100 |
+|---|---|---|---|
+| before either change | 6/5/5/4/5 | 6/5/5/4/5 | 6/6/5/6/2 · 6/7/5/5/2 |
+| a quarter | 6/6/5/6/2 | 6/6/5/6/2 | 6/6/5/6/2 · 6/6/5/6/2 |
+| a sixth | 6/6/5/6/2 | 6/6/5/6/2 | 6/6/5/5/3 · 6/6/5/6/2 |
+| a tenth | 6/6/5/5/3 | 6/8/4/6/1 | 6/6/5/5/3 · 6/7/5/6/1 |
+| **a twelfth** | **6/6/5/5/3** | **6/6/5/5/3** | 6/6/5/5/3 · 6/7/5/6/1 |
+| a twentieth | 6/6/5/5/3 | 6/8/4/5/2 | 6/6/5/5/3 · 6/6/5/5/3 |
+| nothing | 6/6/5/5/3 | 6/7/5/5/2 | 6/6/5/5/3 · 6/6/5/5/3 |
+
+Above a sixth the market makes Arkane strong enough to take Tulgarn, and the
+Confederacy ends on two worlds. **A twelfth is the one setting that keeps it on
+three with events at both horizons**, and it is a point rather than a region —
+the shape `MONOPOLY_BONUS` and the yard capacity had, where one marginal conquest
+swamps the arithmetic. Putting the ×1.15 back beside it holds three at 30 turns
+and loses it by 100.
+
+At a twelfth the market pays Arkane 13 a turn on the opening board and 21 on
+five worlds, which is **less than the ×1.15 it replaced**: Arkane opens on 185
+against 195 and nets 48 against 58, and at 30 turns nets 22 against 21. The
+doctrine is now an economy rather than a bonus, and its size was set by the
+Confederacy's survival, not by Arkane's purse.
 
 **Not pinned to a journal version**, like the fixture upkeep and the rally: it is
 read in `ledgerFor`, where a legacy flag cannot reach, so a save in which Arkane
 was played replays with its new income.
+
+### A lane divides across every equally short path
+
+`TradeRoute.paths` and `routeLegs` in `trade.ts`. A lane took one path between
+its hubs, `shortestPath`'s, which breaks a tie by system id — so where two paths
+were equally short **the alphabet chose**, and six worlds that lay on an equally
+short path between two hubs carried no trade at all: Delvane, Tulgarn, Ithaal,
+Sarsuma, Threx (on five such pairs) and Hollow Star. Raids, tolls and blockades
+there did nothing to commerce, and three of the six were the Confederacy's — a
+large part of why its route income was 44 against 170–220 for the large powers.
+
+Each equally short path is now a **leg** carrying an equal share of the lane's
+value. The ends are on every leg, so what a hub earns is unchanged; what divides
+is the 40% that pays the worlds in between, and a blockade or a raid on one path
+touches only the traffic that goes that way (a lane is open in proportion to its
+open legs). Twelve of the 28 lanes on the seed have ties, five paths at most,
+and every world is now on some lane. The map, the Trade tab (which lists each
+path), the storm's weighting and the bots' raid targeting all read legs.
+
+On the opening board route income moves Drajk 44 → 61, the Combine 223 → 202,
+Meridian 177 → 182 and the Vigil 173 → 177.
+
+**On its own it cost the Confederacy three worlds**, and not through the money:
+with the bots still reading single-path traffic the board does not move and the
+Confederacy's turn-30 net improves from −39 to −24. What moved it is the
+Confederacy's very first expansion — it goes for the busiest unclaimed world,
+and Neth (125) now edges out Sennex (120), so it spends the campaign contesting
+Meridian instead of Arkane. The internal market above, at a twelfth, is what
+balances it.
+
+**Pinned to `JOURNAL_VERSION` 15** through `WorldState.routeTies`: a rule that
+sits on the world because route income is computed from the world alone, in the
+browser as well as in the tick, the way `Faction.luck` carries the seed version
+it came from. The seed writes `split`; an older journal is rebuilt with `first`.
 
 ### Tolls are a policy, not an ethic
 
