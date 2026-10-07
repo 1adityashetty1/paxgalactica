@@ -50,6 +50,10 @@ export interface Snapshot {
   caught: Record<string, number>;
   /** Rows of memory held, all powers together. */
   sightings: number;
+  /** What worlds did on their own this turn — see `regard.ts`. */
+  worlds: { joined: [string, string][]; rose: [string, string][]; restless: number };
+  /** Worlds answering to nobody at the end of this turn. */
+  independent: number;
 }
 
 export function runBalance(
@@ -61,7 +65,9 @@ export function runBalance(
    */
   legacy: LegacyRules = {},
 ): Snapshot[] {
-  let state = createSeedState('freeworlds');
+  // A control without regard has to open without it too: the seed records it,
+  // and a world with none recorded is how the tick knows to leave it alone.
+  let state = createSeedState('freeworlds', { regard: legacy.regard !== false });
   const history: Snapshot[] = [];
 
   for (let turn = 1; turn <= turns; turn++) {
@@ -100,6 +106,12 @@ export function runBalance(
         {},
       ),
       sightings: state.sightings.length,
+      worlds: {
+        joined: (ticked.report.worlds?.joined ?? []).map((w) => [w.systemId, w.factionId]),
+        rose: (ticked.report.worlds?.rose ?? []).map((w) => [w.systemId, w.factionId]),
+        restless: ticked.report.worlds?.restless.length ?? 0,
+      },
+      independent: state.systems.filter((x) => x.controllerFactionId === null).length,
       openness: earnings.openness,
       uncollected: earnings.uncollected,
       disposition: Object.fromEntries(

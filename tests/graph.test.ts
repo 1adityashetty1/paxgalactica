@@ -18,6 +18,7 @@ const mk = (id: string, edges: string[]): StarSystem => ({
   ships: {},
   strategicValue: 0,
   hyperlaneEdges: edges,
+  regard: {},
 });
 
 describe('adjacency', () => {

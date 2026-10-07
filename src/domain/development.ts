@@ -78,6 +78,9 @@ export const EFFECT_CAPS: Record<OrderEffectKind, number> = {
   // A fixture is worth `MAX_ASSET_STAT` points and can lose no more, so two
   // points is a whole repair.
   repair_fixture: 2,
+  // An envoy is one mission. Two points so a partial result is half of one —
+  // a magnitude of one would floor back to one and deliver it whole.
+  court: 2,
 };
 
 /** What putting back one point of a sabotaged fixture costs — see `EFFECT_COST`. */
@@ -113,6 +116,9 @@ export const EFFECT_COST: Record<
   // regrowth is free. What is bought here is speed, so the price is small.
   raise_garrison: 15,
   fortify: 45,
+  // An embassy's keep and its gifts. Cheap beside a fleet held over a world,
+  // which is the point: courting is how a power with no might to spare grows.
+  court: 20,
 };
 
 /**
@@ -155,9 +161,9 @@ export const MIN_DEVELOPMENT_COST = 80;
 /**
  * Which order categories may carry which effect.
  *
- * The eight categories absent from every list here — `courier`, `decree`,
- * `political_maneuver`, `espionage`, `counter_intelligence`, `blockade`,
- * `commerce_raiding`, `treaty_ratification` — carry no payload deliberately,
+ * The seven categories absent from every list here — `courier`, `decree`,
+ * `espionage`, `counter_intelligence`, `blockade`, `commerce_raiding`,
+ * `treaty_ratification` — carry no payload deliberately,
  * because their effects already live somewhere: espionage lands as
  * `deploy_agent`, ratification as `form_treaty`, and blockade and raiding are
  * read live off `pendingOrders` by `trade.ts` while they run. A payload would
@@ -174,6 +180,8 @@ export const EFFECT_CATEGORIES: Record<OrderEffectKind, readonly DurationCategor
   found_fixture: ['construction_infrastructure', 'industrial_conversion', 'retooling'],
   // Whatever can raise one can mend one.
   repair_fixture: ['construction_infrastructure', 'industrial_conversion', 'retooling'],
+  // People in rooms: the one payload a political manoeuvre carries.
+  court: ['political_maneuver'],
 };
 
 /**
@@ -196,7 +204,7 @@ export function commissionCategory(hull: HullClass, asked: DurationCategory): Du
   return asked === 'capital_ship_construction' ? 'refit' : asked;
 }
 
-/** Kinds this category is allowed to deliver. Empty for the eight above. */
+/** Kinds this category is allowed to deliver. Empty for the seven above. */
 export function effectsAllowedFor(category: DurationCategory): OrderEffectKind[] {
   return (Object.keys(EFFECT_CATEGORIES) as OrderEffectKind[]).filter((kind) =>
     EFFECT_CATEGORIES[kind].includes(category),
@@ -561,6 +569,8 @@ export function describeOrderEffect(effect: OrderEffect): string {
       return `a ${effect.fixtureKind.replace(/_/g, ' ') || 'fixture'}`;
     case 'repair_fixture':
       return `${n} point${n === 1 ? '' : 's'} of repair to ${effect.fixtureKind ? `the ${effect.fixtureKind.replace(/_/g, ' ')}` : 'a damaged fixture'}`;
+    case 'court':
+      return n >= 2 ? 'an envoy' : 'half an envoy';
   }
 }
 
@@ -756,6 +766,12 @@ export function applyOrderEffect(
         },
       };
     }
+
+    case 'court':
+      // Moving regard needs the whole board — the sender's influence is read
+      // off `effectiveStats` — so the tick lands an envoy itself, before it
+      // ever reaches here. See `envoyRegard`.
+      return { note: `${label} completed at ${system.name}.`, delivered: false };
   }
 }
 

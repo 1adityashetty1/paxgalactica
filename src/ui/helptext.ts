@@ -27,6 +27,7 @@ import {
   BOUNTY_PER_TON,
 } from '../domain/diplomacy.js';
 import { EMISSION_RANGE } from '../domain/intel.js';
+import { CONTENT_REGARD, JOIN_LEAD, JOIN_REGARD, WANT_MEANS, WANT_OF_STAT } from '../domain/regard.js';
 import { fixtureKindFor } from '../domain/initiative.js';
 import { CATEGORY_FLOORS } from '../domain/duration.js';
 import {
@@ -147,6 +148,29 @@ export function spanLines(): string[] {
     '  You can govern only so many worlds: your homeland, or more with good',
     `  influence (${SPAN_BASE} plus its modifier). Each world past that costs`,
     `  ${SPAN_DISSENT_PER_WORLD} dissent every turn — conquest is braked by administration.`,
+  ];
+}
+
+/**
+ * What a world thinks of you, and what that decides. Generated from the want
+ * table and the thresholds, so the help cannot promise a figure the tick does
+ * not use. See `regard.ts`.
+ */
+export function worldLines(): string[] {
+  return [
+    'WORLDS WITH A VIEW OF THEIR OWN',
+    '  Every world has a standing with every power. One that answers to nobody',
+    `  joins the power it regards at ${JOIN_REGARD} or better, ${JOIN_LEAD} clear of the next:`,
+    '  send it an envoy, and give it what it wants. A world you hold stays while',
+    `  it is content with you (${CONTENT_REGARD} or better) or held down by your warships`,
+    '  over it — fewer of them the higher your resolve. Neither, and its garrison',
+    '  deserts until it rises and answers to nobody. An operative sent to incite',
+    '  a world another power holds turns it against them, hardest at home.',
+    '  What a world wants, by the stat its ground makes:',
+    ...STAT_NAMES.map((stat) => {
+      const want = WANT_OF_STAT[stat];
+      return `    ${stat.padEnd(10)}${want.padEnd(12)}${WANT_MEANS[want]}`;
+    }),
   ];
 }
 

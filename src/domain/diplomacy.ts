@@ -1828,6 +1828,7 @@ export const AGENT_MISSIONS = [
   'theft',
   'defection',
   'discord',
+  'incitement',
   'assassination',
 ] as const;
 export const AgentMissionSchema = z.enum(AGENT_MISSIONS);
@@ -1843,6 +1844,8 @@ export const AGENT_MISSION_MEANING: Record<AgentMission, string> = {
     'talks crews out of the target\'s service and into yours, one or two hulls at a time. How many is your guile against their resolve, not your choice — and a power resolute enough simply cannot be turned',
   discord:
     'turns the power whose world this is against a THIRD power — forged grievances, planted letters, a rumour that keeps arriving. Slow, permanent, and the only mission aimed at a quarrel you are not in',
+  incitement:
+    'stirs the people of a world somebody else holds — pamphlets, a martyr, money for the militia. Each turn it succeeds the world thinks the less of its holder, so the holder needs more warships to hold it down, and a world neither content nor held down rises. Far harder on a power\'s own home ground, where its people defend with the resolve the power was founded on',
   assassination:
     'ONE attempt at a decapitating strike, then the operative is gone either way. Success is a heavy one-off blow and a collapse in relations; failure almost always ends with the agent caught',
 };
@@ -1879,6 +1882,9 @@ export const AGENT_COST: Record<AgentMission, number> = {
   // reaches two powers at once, neither of them the buyer. A starting figure;
   // see item 113 for the argument that it is still too cheap.
   discord: 100,
+  // Sabotage's price: what it breaks is a holder's hold on a world, and it is
+  // repaired the same way, by spending — warships sent to hold it down.
+  incitement: 80,
   assassination: 150,
 };
 
@@ -1903,6 +1909,9 @@ export const MISSION_PROFILE: Record<AgentMission, MissionProfile> = {
   // handling letters, go-betweens and money that belong to somebody else, and
   // being caught at it is the sort of thing all three hear about.
   discord: { exposureRisk: 5, oneShot: false, effectMultiplier: 1 },
+  // Sabotage's risk: agitators on somebody else's ground are found by the same
+  // garrison they are working against.
+  incitement: { exposureRisk: 3, oneShot: false, effectMultiplier: 1 },
   // A near-coin-flip on being caught, in exchange for one heavy blow.
   assassination: { exposureRisk: 9, oneShot: true, effectMultiplier: 4 },
 };
@@ -1929,6 +1938,19 @@ export const AgentEffectSchema = z.discriminatedUnion('kind', [
     towardFactionId: z.string().min(1),
     /** Regard lost per turn on success. */
     perTurn: z.number().int().min(1).max(2),
+  }),
+  z.object({
+    /**
+     * Turn a world against the power that holds it — see `regard.ts`. On the
+     * holder's own home ground the operative is contested against the resolve
+     * that power started with, and more (`counterIntelAt`), so a homeland is
+     * far harder to stir than an occupation. Read against the world's regard
+     * for its holder, so what it buys is the force the holder needs to keep
+     * it, and in the end a rising.
+     */
+    kind: z.literal('incite'),
+    /** Regard for the holder lost per turn on success. */
+    perTurn: z.number().int().min(1).max(5),
   }),
   z.object({
     kind: z.literal('hull_damage'),
@@ -2019,6 +2041,7 @@ export const DEFAULT_COVERT_EFFECT: Record<AgentMission, AgentEffect> = {
   // reaches this is rejected for it — the arbiter has to say who the quarrel is
   // with.
   discord: { kind: 'discord', towardFactionId: 'unnamed', perTurn: 1 },
+  incitement: { kind: 'incite', perTurn: 3 },
   // One attempt, quadrupled by the mission profile, then the operative is gone.
   assassination: { kind: 'stat_debuff', stat: 'resolve', magnitude: 1 },
 };
@@ -2199,6 +2222,8 @@ export function describeEffect(effect: AgentEffect): string {
       return 'reveals hidden orders';
     case 'discord':
       return `−${effect.perTurn} a turn in the host's regard for ${effect.towardFactionId}, to a lifetime ${MAX_DISCORD_TOTAL}`;
+    case 'incite':
+      return `−${effect.perTurn} a turn in the world's regard for whoever holds it`;
   }
 }
 

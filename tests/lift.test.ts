@@ -28,7 +28,11 @@ import {
   type WorldState,
 } from '../src/domain/state.js';
 
-const fresh = (): WorldState => createSeedState('freeworlds');
+// Worlds keep no regard here: these pin the battle's arithmetic, and a world
+// taken or held in a fixture would otherwise go restless on the same tick and
+// rise (see `regard.ts`). Cleared rather than re-valued, as the dissent and
+// officer tests clear what they do not measure.
+const fresh = (): WorldState => createSeedState('freeworlds', { regard: false });
 const sys = (s: WorldState, id: string) => s.systems.find((x) => x.id === id)!;
 
 /**

@@ -24,6 +24,19 @@ const last = RUN[RUN.length - 1]!;
 const IDS = ['meridian', 'vigil', 'ojjul', 'freeworlds', 'drajk'] as const;
 const net = (id: string) => last.perFaction[id]!.net;
 /**
+ * A power's net over the run's last three turns, averaged.
+ *
+ * The floor below asks whether a power can buy a hull in three turns, and a
+ * raider's net is not one number: the Confederacy's runs about +180 on a turn a
+ * raid pays and about −50 on the turns between, every three turns. Read on the
+ * last turn alone the floor was a coin toss on the raid cadence — −22 at the
+ * end of #58, −47 to −65 once worlds kept a regard, with its treasury and fleet
+ * both larger than before. Three turns is the window the floor's own comment
+ * names, and for a power with a steady income it reads exactly as before.
+ */
+const netOverThree = (id: string) =>
+  RUN.slice(-3).reduce((n, h) => n + h.perFaction[id]!.net, 0) / 3;
+/**
  * How much of a power's gross comes from the lane network rather than its
  * worlds. An autarkist's internal market is in `routes` and is not the network,
  * so it is left out: the doctrine is to be off the network, not to be poor.
@@ -107,8 +120,16 @@ describe('a thirty-turn campaign, five doctrine bots', () => {
   it('keeps every power able to afford something', () => {
     // A faction that cannot buy a hull in three turns has no moves left.
     for (const id of IDS) {
-      expect(net(id), `${id} net`).toBeGreaterThan(-40);
+      expect(netOverThree(id), `${id} net over the last three turns`).toBeGreaterThan(-40);
     }
+  });
+
+  it('lets independent worlds choose a power rather than only be taken', () => {
+    // Courting is the expansion the courting ethics now pursue (see
+    // `regard.ts`), so on a board where it never lands they do not grow at all.
+    const joined = RUN.flatMap((h) => h.worlds.joined);
+    expect(joined.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(joined.map(([, by]) => by)).size, 'more than one power wins a world').toBeGreaterThan(1);
   });
 
   it('makes trade a real share of the economy, not a rounding error', () => {

@@ -400,7 +400,11 @@ without it the Confederacy falls to four worlds at 30 turns and three at 100.
 Protection never fires in the harness, since the Combine commissions the
 Confederacy before it would ever need to buy it off.
 
-### 4.2 Speculative trade by world type — *Traveller*
+### 4.2 Speculative trade by world type — *Traveller* (dropped)
+
+**Dropped.** Lane income is automatic and a freighter only modifies it, so a
+cargo run would be a second trade economy beside the first. See
+`design-2026-10-04.md`.
 
 **Elsewhere.** Purchase and sale prices move with each world's trade codes,
 starport and tech level, and a broker's skill shifts the price a few percent per
@@ -590,17 +594,17 @@ size.
 | Ambitions | 5.1 | an ambition record, progress rules per kind, bot-derived goals, fog |
 | Ultimatums with a clock **(built)** | 2.3 | a demand record with a deadline, backers, and escalation in the tick |
 | Mandate | 5.2 | earning on compulsions met, and a third action or a reroll |
-| Intel with memory | 3.1 | a per-pair intel level, thresholds in the fog, last-seen rows |
-| Running dark | 3.4 | anonymous stacks in the fog, and an unmasking contest |
+| Intel with memory **(built)** | 3.1 | a per-pair intel level, thresholds in the fog, last-seen rows |
+| Running dark **(built)** | 3.4 | anonymous stacks in the fog, and an unmasking contest |
 | A concession budget **(built)** | 1.4 | a leverage figure in code, the persona prompt, the concession guard |
-| Speculative trade | 4.2 | prices by world type, a cargo run order |
+| Speculative trade **(dropped)** | 4.2 | prices by world type, a cargo run order |
 
 ### Large
 
 | idea | § | why it is large |
 |---|---|---|
 | Coalitions | 2.2 | alarm state, coalition treaties forming and dissolving, bot targeting, a sweep against a frozen board |
-| Courting unaligned worlds | 6.1 | wants and opinions for every neutral world, peaceful joining, bot behaviour, prompts |
+| Courting unaligned worlds **(built)** | 6.1 | wants and opinions for every neutral world, peaceful joining, bot behaviour, prompts |
 | War goals and exhaustion | 2.4 | goals at war's start, war score from battles, dissent from long wars |
 | Estates | 5.3 | a second layer of internal politics over dissent, on every sheet |
 
@@ -608,8 +612,8 @@ size.
 
 ## Build graph
 
-*Updated after the raider's ledger and heat.* Twelve ideas are built, plus the
-bot rules that use them, so ten are left. Built work is no longer a node: where it
+*Updated after courting unaligned worlds, built as standing.* Fifteen ideas are
+built, plus the bot rules that use them, and one is dropped, so six are left. Built work is no longer a node: where it
 unlocks something, the node says so.
 
 A solid arrow means the later idea, or one part of it, cannot be built without
@@ -636,6 +640,9 @@ flowchart LR
     concession["Concession budget"]:::done
     ledger["Raider's ledger"]:::done
     heat["Heat"]:::done
+    dark["Running dark"]:::done
+    intel["Intel with memory"]:::done
+    courting["Standing: courting, holding, incitement"]:::done
   end
 
   truces --> coalitions["Coalitions · L"]:::heavy
@@ -644,14 +651,9 @@ flowchart LR
   truces -.-> wargoals["War goals and exhaustion · L"]:::heavy
   accords -.-> wargoals
   ultimatums -.-> wargoals
-  heat --> dark["Running dark · M+"]:::heavy
-  emissions -.-> dark
-  emissions -.-> intel["Intel with memory · M+"]:::heavy
-  commodities -.-> spec["Speculative trade · M+"]:::heavy
   ambitions["Ambitions · M+"]:::heavy -.-> mandate["Mandate · M+"]:::heavy --> fortune["Fortune and darkness · S"]:::light
   ambitions -.-> estates["Estates · L"]:::heavy
   mandate -.-> estates
-  courting["Courting unaligned worlds · L"]:::heavy
 ```
 
 S is small, M is medium (lighter), M+ is medium (heavier) and L is large.
@@ -665,18 +667,13 @@ S is small, M is medium (lighter), M+ is medium (heavier) and L is large.
 | ultimatums ⇢ coalitions | better after (built) | a coalition is a standing ultimatum against one power; `demandSide` and the deadline's war already resolve sides |
 | ultimatums ⇢ war goals | better after (built) | an unanswered demand is the obvious goal of the war it starts — the demand's terms are already a closed list |
 | bot accords ⇢ war goals | better after | exhaustion is a better reason for a bot to sue for peace than five quiet turns |
-| emissions ⇢ running dark | better after | a listener within range is the natural roll to unmask a dark raid |
-| emissions ⇢ intel with memory | better after | the heard set is a ready-made source for an intel level |
-| commodities ⇢ speculative trade | better after | cargo priced by world type is goods with a destination |
-| heat → running dark | needs (built), for unmasking | an unmasked raid adds heat |
 | mandate → fortune | needs | darkness is charged when mandate buys a reroll |
 | ambitions ⇢ mandate | better after | a fulfilled ambition earns mandate |
 | ambitions, mandate ⇢ estates | decision gate | estates are deferred until those two show whether more internal politics is wanted |
 
 **Waves.**
 
-1. **Ready now:** running dark, ambitions, coalitions, war goals, intel with
-   memory, speculative trade, and courting unaligned worlds.
+1. **Ready now:** ambitions, coalitions and war goals.
 2. Mandate.
 3. Fortune and darkness, estates.
 

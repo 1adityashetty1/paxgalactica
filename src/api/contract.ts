@@ -140,6 +140,15 @@ export const BriefingEventSchema = z.object({
 });
 export type BriefingEventView = z.infer<typeof BriefingEventSchema>;
 
+export const BriefingWorldSchema = z.object({
+  kind: z.enum(['restless', 'leaning', 'joined', 'rose']),
+  systemId: z.string(),
+  name: z.string(),
+  factionId: z.string(),
+  mine: z.boolean(),
+  text: z.string(),
+});
+
 export const BriefingSchema = z.object({
   turn: z.number().int(),
   treasury: z.number().int(),
@@ -157,6 +166,8 @@ export const BriefingSchema = z.object({
   battles: z.array(BattleReportSchema),
   /** What the Rim did on its own, this turn and still in force. */
   events: z.array(BriefingEventSchema).default([]),
+  /** Worlds going restless, leaning, joining or rising — see `regard.ts`. */
+  worlds: z.array(BriefingWorldSchema).default([]),
   quiet: z.boolean(),
 });
 
@@ -203,6 +214,13 @@ export const EffectiveStatsSchema = z.object({
   span: z
     .object({ held: z.number().int(), span: z.number().int(), over: z.number().int() })
     .default({ held: 0, span: 0, over: 0 }),
+  /**
+   * How much each of the player's warships holds a world down — see
+   * `holdingFactor`. Shipped for `stats`'s reason: it reads resolve, and a
+   * hidden rival debuff on resolve would make a client-side figure promise
+   * more than the tick allows. Defaulted for an older server.
+   */
+  holding: z.number().default(1),
   /**
    * The player's ledger, for `stats`'s reason. A raid on you is a rumour in
    * your view — run dark, an unowned one — so `routeEarnings` on the redacted

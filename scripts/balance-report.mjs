@@ -13,6 +13,8 @@ const trace = process.argv.includes('--trace');
 const calm = process.argv.includes('--no-events');
 // The control for intel with memory: powers that never come to know one another.
 const blind = process.argv.includes('--no-intel');
+// The control for standing: worlds with no view of anybody.
+const viewless = process.argv.includes('--no-regard');
 
 const NAMES = Object.fromEntries(
   createSeedState('freeworlds').factions.map((f) => [f.id, f.name]),
@@ -27,7 +29,11 @@ const history = runBalance(turns, (s) => {
   const row = IDS.map((id) => `${id.slice(0, 4)} ${String(s.perFaction[id].net).padStart(4)}`).join(' · ');
   console.log(`  t${String(s.turn).padStart(2)}  ${row}   open ${(s.openness * 100).toFixed(0)}%`);
   for (const e of s.events) console.log(`       ↳ ${e.kind}: ${e.text}`);
-}, { ...(calm ? { randomEvents: false } : {}), ...(blind ? { intel: false } : {}) });
+}, {
+  ...(calm ? { randomEvents: false } : {}),
+  ...(blind ? { intel: false } : {}),
+  ...(viewless ? { regard: false } : {}),
+});
 
 const last = history[history.length - 1];
 const at = (t) => history[Math.min(t, history.length) - 1];
@@ -74,6 +80,15 @@ for (const id of IDS) {
 const sweepTurns = history.reduce((n, h) => n + (h.sweeps ?? 0), 0);
 const caught = IDS.map((id) => `${id.slice(0, 4)} ${last.caught?.[id] ?? 0}`).join(' · ');
 console.log(`  sweep-turns ${sweepTurns} · operatives taken, by owner: ${caught} · memory rows now ${last.sightings ?? 0}`);
+
+console.log('\n── standing: worlds that chose, and worlds that rose ──');
+const SYS = Object.fromEntries(createSeedState('freeworlds').systems.map((s) => [s.id, s.name]));
+const joins = history.flatMap((h) => (h.worlds?.joined ?? []).map(([w, f]) => `t${h.turn} ${SYS[w]} → ${f.slice(0, 4)}`));
+const risings = history.flatMap((h) => (h.worlds?.rose ?? []).map(([w, f]) => `t${h.turn} ${SYS[w]} off ${f.slice(0, 4)}`));
+const restlessTurns = history.reduce((n, h) => n + (h.worlds?.restless ?? 0), 0);
+console.log(`  joined ${joins.length}${joins.length ? ': ' + joins.join(' · ') : ''}`);
+console.log(`  rose ${risings.length}${risings.length ? ': ' + risings.join(' · ') : ''}`);
+console.log(`  restless world-turns ${restlessTurns} · independent at the end ${last.independent ?? 0}`);
 
 // The run's last turn always closes a table, so a 100-turn run says where it
 // ended rather than stopping at 50.

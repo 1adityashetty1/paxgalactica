@@ -9,6 +9,58 @@ import {
   type RimEventKind,
 } from '../domain/events.js';
 import { getFaction, ledgerFor, type Ledger, type WorldState } from '../domain/state.js';
+import { envoyRefusal, holdAt, regardFor, regardRecorded } from '../domain/regard.js';
+
+/**
+ * What a world did, or is about to do, that the player should know: one of
+ * theirs going restless, an independent world in reach leaning toward
+ * somebody, and anything that joined a power or rose this turn. See
+ * `regard.ts`.
+ */
+export interface BriefingWorld {
+  kind: 'restless' | 'leaning' | 'joined' | 'rose';
+  systemId: string;
+  name: string;
+  /** The holder, the power it leans toward, joined, or threw off. */
+  factionId: string;
+  mine: boolean;
+  text: string;
+}
+
+/** An independent world in reach is worth a line once somebody stands this well with it. */
+export const BRIEFING_LEANS_AT = 40;
+
+/** The lines that are facts about the board, so a resumed campaign has them too. */
+export function worldsOnTheBoard(state: WorldState): BriefingWorld[] {
+  if (!regardRecorded(state)) return [];
+  const me = state.playerFactionId;
+  const name = (id: string) => getFaction(state, id)?.name ?? id;
+  const out: BriefingWorld[] = [];
+  for (const s of state.systems) {
+    if (s.controllerFactionId === me) {
+      const h = holdAt(state, s);
+      if (!h || h.shortfall <= 0) continue;
+      out.push({
+        kind: 'restless', systemId: s.id, name: s.name, factionId: me, mine: true,
+        text: `${s.name} is restless: it wants ${h.need.toFixed(1)} battleship-equivalents of your warships over it and has ${h.have.toFixed(1)}, and stands at ${h.regard} with you. Its garrison is deserting — ${s.garrison} left.`,
+      });
+    } else if (s.controllerFactionId === null && envoyRefusal(state, s, me) === null) {
+      const best = state.factions
+        .map((f) => ({ id: f.id, r: regardFor(s, f.id) }))
+        .sort((a, b) => b.r - a.r || a.id.localeCompare(b.id))[0];
+      if (!best || best.r < BRIEFING_LEANS_AT) continue;
+      const yours = regardFor(s, me);
+      out.push({
+        kind: 'leaning', systemId: s.id, name: s.name, factionId: best.id, mine: best.id === me,
+        text:
+          best.id === me
+            ? `${s.name} leans toward you (${yours}).`
+            : `${s.name} leans toward ${name(best.id)} (${best.r}); you stand at ${yours}.`,
+      });
+    }
+  }
+  return out;
+}
 
 /**
  * The standing brief: everything running, reported without being asked for.
@@ -185,6 +237,8 @@ export interface Briefing {
    * the briefing nobody chose.
    */
   events: BriefingEvent[];
+  /** Worlds going restless, leaning, joining or rising — see `BriefingWorld`. */
+  worlds: BriefingWorld[];
   /** Nothing completed, nothing running, nothing visible. */
   quiet: boolean;
 }
@@ -246,6 +300,9 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
   };
 
   const completed: BriefingCompletion[] = report.completed
+    // Another power's covert work finishing is no more visible than it was
+    // while it ran: a rival's raid, envoy or espionage is a rumour, not news.
+    .filter((c) => c.factionId === me || !c.covert)
     .map((c) => {
       const { name, color } = describe(c.factionId);
       return {
@@ -360,6 +417,21 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
     }));
 
   const events = briefingEvents(state, me);
+  const turnWorlds: BriefingWorld[] = [
+    ...(report.worlds?.joined ?? []).map((w) => ({
+      kind: 'joined' as const, systemId: w.systemId,
+      name: state.systems.find((x) => x.id === w.systemId)?.name ?? w.systemId,
+      factionId: w.factionId, mine: w.factionId === me,
+      text: `${state.systems.find((x) => x.id === w.systemId)?.name ?? w.systemId} joins ${w.factionId === me ? 'you' : describe(w.factionId).name} of its own accord.`,
+    })),
+    ...(report.worlds?.rose ?? []).map((w) => ({
+      kind: 'rose' as const, systemId: w.systemId,
+      name: state.systems.find((x) => x.id === w.systemId)?.name ?? w.systemId,
+      factionId: w.factionId, mine: w.factionId === me,
+      text: `${state.systems.find((x) => x.id === w.systemId)?.name ?? w.systemId} rises against ${w.factionId === me ? 'you' : describe(w.factionId).name} and answers to nobody.`,
+    })),
+  ];
+  const worlds = [...turnWorlds, ...worldsOnTheBoard(state)];
 
   return {
     turn: state.turn,
@@ -373,6 +445,7 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
     watch,
     battles: report.battles,
     events,
+    worlds,
     // A battle is never a quiet turn, even if nothing else moved; nor is one
     // the Rim filled on its own.
     quiet:
@@ -382,7 +455,8 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
       rumoured.length === 0 &&
       remembered.length === 0 &&
       report.battles.length === 0 &&
-      events.length === 0,
+      events.length === 0 &&
+      worlds.length === 0,
   };
 }
 
@@ -418,5 +492,16 @@ export function withCurrentIntel(briefing: Briefing, state: WorldState): Briefin
     battles: [],
     events: [],
   });
-  return { ...briefing, watch: fresh.watch, rumoured: fresh.rumoured, remembered: fresh.remembered };
+  return {
+    ...briefing,
+    watch: fresh.watch,
+    rumoured: fresh.rumoured,
+    remembered: fresh.remembered,
+    // What joined or rose is a fact about the turn; what is restless or
+    // leaning is a fact about the board, and moves with it.
+    worlds: [
+      ...(briefing.worlds ?? []).filter((w) => w.kind === 'joined' || w.kind === 'rose'),
+      ...worldsOnTheBoard(state),
+    ],
+  };
 }

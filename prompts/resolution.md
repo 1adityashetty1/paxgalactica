@@ -457,7 +457,7 @@ assassination must not quietly produce. The knife only finds an officer standing
 where your operative is, so an officer under way is one it misses.
 
 The `mission` decides risk and persistence: `surveillance` (very low risk),
-`theft`, `subversion`, `defection`, `sabotage` (moderate), `discord` (riskier),
+`theft`, `subversion`, `defection`, `sabotage`, `incitement` (moderate), `discord` (riskier),
 and `assassination` — **one attempt, quadruple effect, the operative spent
 either way, and usually caught.** Scale effects sanely: 2 hulls a turn is a
 nuisance, 12 is a catastrophe that should have taken a real operation.
@@ -474,6 +474,16 @@ throats rather than wanting anything for themselves.
   why the rate is 1–2 a turn and one operative can only ever destroy so much.
 - **Being caught is a scandal with two victims.** Exposure hands the named power
   the evidence, so both resent you.
+
+**`incitement` turns a world against the power holding it** — effect
+`{ kind: "incite", perTurn: 1-5 }`, the regard the world loses for its holder
+each turn the operative succeeds. Pamphlets, a martyr, money for the militia:
+use it when a player wants an occupation to cost its occupier, or a world to
+rise. On any world another power holds, where worlds keep a view — anything
+else is rejected. **A power's own home ground is far harder**: the operative is
+contested against the resolve that power started with, and more, so it rarely
+succeeds against a resolute power's homeland. What it buys is the force the
+holder needs to keep the world down, and in the end a rising.
 
 ## Duration — two sources, never mixed
 
@@ -501,7 +511,7 @@ right for a courier run or a decree, and wrong for a shipyard: if the player is
 building, mining, developing, levying or fortifying, the payload is the whole
 point of the action. Set it, or the work was theatre.
 
-`onComplete` is `{kind, magnitude, summary}`. Six kinds, each legal only on the
+`onComplete` is `{kind, magnitude, summary}`. Seven kinds, each legal only on the
 order types listed:
 
 | kind | does | allowed on |
@@ -512,6 +522,7 @@ order types listed:
 | `commission_ships` | hulls delivered at the target on completion | `capital_ship_construction` for battleships; `refit` or `retooling` for every lighter class |
 | `found_fixture` | a fixture raised on the world — name it with `fixtureKind`; always magnitude 1 | `construction_infrastructure`, `industrial_conversion`, `retooling` |
 | `repair_fixture` | 1..2 points of sabotage damage taken off a fixture on a world you hold — name it with `fixtureKind`, or leave it blank for the most damaged | `construction_infrastructure`, `industrial_conversion`, `retooling` |
+| `court` | an **envoy**: magnitude 2 lifts the world's standing with the sender by 10 plus its influence modifier; on a world the sender holds, or one that answers to nobody that it holds a neighbour of or has ships over | `political_maneuver` |
 
 **A ship programme's type follows its hull.** A battleship is the only capital
 hull: lay it down as `capital_ship_construction`, which takes 5 turns. Escorts,
@@ -523,7 +534,7 @@ It is **paid for when the order is issued**: hulls by displacement at 15 a ton
 (so 60 for a battleship, 45 for a lifter, freighter or listener, 30 for an
 escort or torpedo boat —
 name the class with `hull`), 45 a point of garrison ceiling, 15 a garrison
-point, 120 for a fixture. `develop_system` is priced from what it
+point, 120 for a fixture, 20 a point of envoy. `develop_system` is priced from what it
 is worth on that particular world — twelve turns of the income it would create —
 so improving an ordinary world is cheap and founding a **trade hub** costs a
 large fraction of a treasury. You do not calculate this; the reducer does, and
@@ -538,10 +549,36 @@ have ships over it** — you cannot build on a rival's world by declaring it.
 Infrastructure survives a change of ownership and then serves whoever holds the
 world; levies and hulls do not.
 
-The other order types — `courier`, `decree`, `political_maneuver`, `espionage`,
+The other order types — `courier`, `decree`, `espionage`,
 `counter_intelligence`, `blockade`, `commerce_raiding`, `treaty_ratification` —
 take no payload: their effect is the agent, the treaty or the interdiction
 itself, and a payload on them is rejected.
+
+### What a world thinks of you
+
+Every world has a **standing** with every power, shown on its `people:` line in
+the state block. Nothing you write moves it except the order above; it moves
+in the tick, from what powers actually do:
+
+- A world **wants** one thing, read off its ground: arms (a `fortify` paid for
+  there), trade (your freighters over it, its lanes open), development (a
+  `develop_system` paid for there), peace (you at war with nobody) or
+  protection (your warships over it, and no raid on it). Meeting it raises its
+  standing with you; so does an envoy.
+- Raiding it, fighting over it and taking it by force lower it — a world taken
+  by force starts at −60 toward its conqueror, and every world that answers to
+  nobody thinks less of a power that conquered one of them.
+- **A world that answers to nobody joins** the power it regards at 60 or
+  better, 20 clear of the next. That is how a power expands without a war: send
+  envoys, and give the world what it wants.
+- **A held world stays** while it is content with its holder (standing 20 or
+  more) or held down by enough of the holder's warships over it; its `people:`
+  line says how many. One that is neither is RESTLESS: its garrison deserts,
+  and with none left it answers to nobody. *"Win over the people of Torrek"* is
+  an envoy, or meeting the want; *"garrison Torrek"* is warships sent to it.
+- No narrated op can make a world join, rise or change its mind. If a player
+  asks for that outright, narrate the attempt and emit the envoy or the works
+  that would actually move it.
 
 A `counter_intelligence` programme on a world the power holds is a **sweep**,
 read while it runs: every rival's intel on the power fades faster, and a rival
