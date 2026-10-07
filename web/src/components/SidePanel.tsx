@@ -5,7 +5,7 @@ import { FleetsPanel } from './FleetsPanel.js';
 import { TradePanel } from './TradePanel.js';
 import { STAT_NAMES } from '../../../src/domain/checks.js';
 import { debtsFor } from '../../../src/domain/debt.js';
-import { describeOutstanding, loansFor } from '../../../src/domain/loan.js';
+import { assetOnLoan, describeOutstanding, loansFor } from '../../../src/domain/loan.js';
 import {
   assetWorthRangeTo,
   COMMODITY_VALUE,
@@ -41,6 +41,7 @@ import {
   archetypeOf,
   commanderEffect,
   commanderFor,
+  familyOf,
   commanderPassive,
   toNextVeterancy,
   veterancyLabel,
@@ -63,6 +64,7 @@ import {
 } from '../../../src/domain/regard.js';
 import {
   fixtureName,
+  buildableWorlds,
   fixtureOptions,
   foundingLine,
   type FixtureOptions,
@@ -139,6 +141,7 @@ export function SidePanel({
   onSelect,
   onTalk,
   onDraft,
+  onOffer,
   activeChannel,
 }: {
   state: WorldState;
@@ -150,6 +153,11 @@ export function SidePanel({
   onTalk: (factionId: string) => void;
   /** Puts a sentence on the command line for the player to send. */
   onDraft: (text: string) => void;
+  /**
+   * Opens a channel with a power and puts a line in it. For what needs the
+   * other side's consent — a sale, a ransom — which a declaration cannot do.
+   */
+  onOffer: (factionId: string, text: string) => void;
   activeChannel: string | null;
 }) {
   const [tab, setTab] = useState<Tab>('factions');
@@ -190,12 +198,14 @@ export function SidePanel({
           />
         )}
         {tab === 'fleets' && <FleetsPanel state={state} onSelect={onSelect} />}
-        {tab === 'commanders' && <Command state={state} />}
+        {tab === 'commanders' && (
+          <Command state={state} onDraft={onDraft} onOffer={onOffer} activeChannel={activeChannel} />
+        )}
         {tab === 'agents' && (
           <AgentsTab state={state} guile={effective.stats.guile} onSelect={onSelect} onDraft={onDraft} />
         )}
         {tab === 'trade' && <TradePanel state={state} ledger={effective.ledger} onSelect={onSelect} />}
-        {tab === 'assets' && <Assets state={state} />}
+        {tab === 'assets' && <Assets state={state} onOffer={onOffer} activeChannel={activeChannel} />}
         {tab === 'orders' && <Orders state={state} briefing={briefing} />}
         {tab === 'standing' && <Standing state={state} onSelect={onSelect} />}
         {tab === 'log' && <Log state={state} />}
@@ -411,7 +421,7 @@ function SystemTab({
   holding: number;
 }) {
   const sys = selectedId ? getSystem(state, selectedId) : null;
-  if (!sys) return <p className="empty">Click a system on the map.</p>;
+  if (!sys) return <RoomToBuild state={state} onSelect={onSelect} onDraft={onDraft} />;
 
   const controller = sys.controllerFactionId ? getFaction(state, sys.controllerFactionId) : null;
   const color = controller ? ansi256ToHex(controller.displayColor) : NEUTRAL;
@@ -684,7 +694,37 @@ function SystemTab({
  * has space for one line, and the interesting thing about a commander is the
  * record — how many engagements, and who came before.
  */
-function Command({ state }: { state: WorldState }) {
+/**
+ * A channel can be opened with `factionId` from a button: nothing is open, or
+ * the one that is open is already theirs. A line written into the wrong
+ * conversation would be worse than no button.
+ */
+function canOffer(activeChannel: string | null, factionId: string): boolean {
+  return activeChannel === null || activeChannel === factionId;
+}
+
+/** The player's best world: where a recruit or an appointment is drafted for. */
+function homeWorld(state: WorldState): StarSystem | undefined {
+  return [...state.systems]
+    .filter((x) => x.controllerFactionId === state.playerFactionId)
+    .sort((a, b) => b.strategicValue - a.strategicValue || a.id.localeCompare(b.id))[0];
+}
+
+function Command({
+  state,
+  onDraft,
+  onOffer,
+  activeChannel,
+}: {
+  state: WorldState;
+  onDraft: (text: string) => void;
+  onOffer: (factionId: string, text: string) => void;
+  activeChannel: string | null;
+}) {
+  const me = state.playerFactionId;
+  const home = homeWorld(state);
+  /** What a name answers to in an order: the family, unique in the campaign. */
+  const callName = (c: Commander) => familyOf(c.name) ?? c.name;
   return (
     <div className="command-panel">
       {state.factions.map((f) => {
@@ -749,6 +789,9 @@ function Command({ state }: { state: WorldState }) {
                     ? 'as good as an officer gets'
                     : `${toNextVeterancy(officer.battles)} more to improve again`}
                 </p>
+                {f.id === me && officer.atSystemId && (
+                  <SailButton state={state} officer={officer} callName={callName(officer)} onDraft={onDraft} />
+                )}
               </>
             ) : (
               <p className="empty">No officer. The fleet answers to nobody in particular.</p>
@@ -765,6 +808,9 @@ function Command({ state }: { state: WorldState }) {
                       <span className="meta"> · {whereIs(state, c)}</span>
                     </span>
                     <span className="count">{commanderEffect(c)}</span>
+                    {f.id === me && c.atSystemId && (
+                      <SailButton state={state} officer={c} callName={callName(c)} onDraft={onDraft} />
+                    )}
                   </li>
                 ))}
               </ul>
@@ -775,11 +821,43 @@ function Command({ state }: { state: WorldState }) {
                   establishment, and the rest command battles. */}
               {roster.length > 1 && ' · the senior officer’s passive is the one that applies'}
             </p>
+            {f.id === me && roster.length < MAX_ACTIVE_COMMANDERS && home && (
+              <button
+                className="chip"
+                title="An appointment is an action of its own. This writes it on the command line; nothing is sent."
+                onClick={() => onDraft(`Appoint an officer at ${home.name}.`)}
+              >
+                appoint an officer
+              </button>
+            )}
             {held.length > 0 && (
               <p className="meta command-held">
                 held prisoner: {held.map((c) => c.name).join(', ')}
               </p>
             )}
+            {/* Your own, in somebody else's hands: a ransom is a conversation
+                with whoever holds them, so the button opens it. */}
+            {f.id === me &&
+              held.map((c) => {
+                const holder = (state.assets ?? []).find((a) => a.commanderId === c.id && a.quantity > 0)?.heldBy;
+                if (!holder || holder === me) return null;
+                const who = getFaction(state, holder)?.name ?? holder;
+                return (
+                  <button
+                    key={`ransom-${c.id}`}
+                    className="chip"
+                    disabled={!canOffer(activeChannel, holder)}
+                    title={
+                      canOffer(activeChannel, holder)
+                        ? `Opens a channel with ${who} and writes the ask; nothing is sent.`
+                        : 'Close the channel that is open first.'
+                    }
+                    onClick={() => onOffer(holder, `We want ${c.name} back. Name your price.`)}
+                  >
+                    ask {who} for {callName(c)}
+                  </button>
+                );
+              })}
             {fallen.length > 0 && (
               <p className="meta command-fallen">
                 lost:{' '}
@@ -792,6 +870,89 @@ function Command({ state }: { state: WorldState }) {
         );
       })}
     </div>
+  );
+}
+
+/**
+ * The System tab with no world chosen: where you could build a fixture now.
+ * The per-world builder is the full list; this is so its buttons are not
+ * hidden behind finding the right world on the map first.
+ */
+function RoomToBuild({
+  state,
+  onSelect,
+  onDraft,
+}: {
+  state: WorldState;
+  onSelect: (id: string) => void;
+  onDraft: (text: string) => void;
+}) {
+  const worlds = buildableWorlds(state);
+  const first = worlds[0]?.options;
+  return (
+    <div>
+      <p className="empty">Click a system on the map.</p>
+      <h4>Room to build</h4>
+      {worlds.length === 0 ? (
+        <p className="empty">No world of yours has a free slot for anything that would help.</p>
+      ) : (
+        <>
+          {first && (
+            <p className="muted">
+              A fixture costs {first.cost} and at least {first.turns} turns; your next adds {first.upkeepAdded} a
+              turn to upkeep. Choose a world for every kind its ground takes.
+            </p>
+          )}
+          <ul className="ship-list">
+            {worlds.map((w) => (
+              <li key={w.systemId} className="agent-row">
+                <button className="link" onClick={() => onSelect(w.systemId)}>
+                  {w.name}
+                </button>
+                <span className="count">
+                  {w.options.room} free · {w.options.ground}
+                </span>
+                <button
+                  className="chip"
+                  title={`Write "${foundingLine(w.suggest.kind, w.name)}" on the command line`}
+                  onClick={() => onDraft(foundingLine(w.suggest.kind, w.name))}
+                >
+                  build {w.suggest.name.toLowerCase()}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * An officer goes where a fleet takes them: this writes the start of that
+ * order — from where they stand, with them aboard — for the player to finish
+ * with a destination. A fleet movement is the one order a channel cannot make.
+ */
+function SailButton({
+  state,
+  officer,
+  callName,
+  onDraft,
+}: {
+  state: WorldState;
+  officer: Commander;
+  callName: string;
+  onDraft: (text: string) => void;
+}) {
+  const where = state.systems.find((x) => x.id === officer.atSystemId)?.name ?? officer.atSystemId;
+  return (
+    <button
+      className="chip"
+      title="Writes the start of a fleet movement with this officer aboard; add where it goes."
+      onClick={() => onDraft(`Send ships from ${where}, with ${callName} aboard, to `)}
+    >
+      sail with a fleet
+    </button>
   );
 }
 
@@ -1154,7 +1315,15 @@ function heldAssets(state: WorldState) {
 /**
  * The Assets tab. The count on its label is the point of it — see `TABS`.
  */
-function Assets({ state }: { state: WorldState }) {
+function Assets({
+  state,
+  onOffer,
+  activeChannel,
+}: {
+  state: WorldState;
+  onOffer: (factionId: string, text: string) => void;
+  activeChannel: string | null;
+}) {
   const me = state.playerFactionId;
   const assets = heldAssets(state);
 
@@ -1271,6 +1440,29 @@ function Assets({ state }: { state: WorldState }) {
                   </p>
                 )}
                 {qualifiers.length > 0 && <p className="muted">{qualifiers.join(' · ')}</p>}
+                {/* A sale needs the buyer, so it is a conversation: this opens
+                    one with the keenest buyer and writes the offer at what they
+                    would pay. Not for a fixture, which goes only with its
+                    world, nor for a thing out on loan, which is not yours to sell. */}
+                {best && a.portable && !assetOnLoan(state.loans ?? [], a.id) && (
+                  <button
+                    className="chip"
+                    disabled={!canOffer(activeChannel, best.f.id)}
+                    title={
+                      canOffer(activeChannel, best.f.id)
+                        ? `Opens a channel with ${best.f.name} and writes the offer; nothing is sent.`
+                        : 'Close the channel that is open first.'
+                    }
+                    onClick={() =>
+                      onOffer(
+                        best.f.id,
+                        `${a.text.replace(/[.\s]+$/, '')} — I will let ${a.quantity === 1 ? 'it' : 'them'} go to you for ${best.band.max} credits.`,
+                      )
+                    }
+                  >
+                    sell to {best.f.name}
+                  </button>
+                )}
               </div>
             );
           })}

@@ -112,5 +112,35 @@ export function fixtureOptions(state: WorldState, systemId: string): FixtureOpti
 
 /** The sentence a player can send to found one — what the help text's example says. */
 export function foundingLine(kind: string, worldName: string): string {
-  return `Build a ${kind.replace(/_/g, ' ')} at ${worldName}.`;
+  const name = kind.replace(/_/g, ' ');
+  // By sound, not letter: "an arsenal", "a university". No kind starts with a
+  // vowel that is not one of those two cases.
+  return `Build ${/^[aeio]/.test(name) ? 'an' : 'a'} ${name} at ${worldName}.`;
+}
+
+export type Buildable = {
+  systemId: string;
+  name: string;
+  options: FixtureOptions;
+  /** The first kind that can go up there now and gains something: what a button offers. */
+  suggest: FixtureOption;
+};
+
+/**
+ * Every world of the player's with a free slot and something worth building in
+ * it, best world first — for the System tab when no world is chosen, so the
+ * buttons are not hidden behind finding the right world on the map first. The
+ * suggestion is the first kind `fixtureOptions` lists that can go up now and
+ * would raise something, so it agrees with the full list on that world.
+ */
+export function buildableWorlds(state: WorldState): Buildable[] {
+  return state.systems
+    .filter((x) => x.controllerFactionId === state.playerFactionId)
+    .sort((a, b) => b.strategicValue - a.strategicValue || a.id.localeCompare(b.id))
+    .flatMap((site) => {
+      const options = fixtureOptions(state, site.id);
+      if (!options || options.room === 0) return [];
+      const suggest = options.kinds.find((k) => k.refusal === null && k.wasted.length < k.spread.length);
+      return suggest ? [{ systemId: site.id, name: site.name, options, suggest }] : [];
+    });
 }

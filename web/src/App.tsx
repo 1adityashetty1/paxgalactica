@@ -43,6 +43,13 @@ export function App() {
   // A channel the player has opened in the UI but not yet spoken into. The
   // server opens it for real on the first message.
   const [draftChannel, setDraftChannel] = useState<string | null>(null);
+  // A line for a channel, written by a button — see `ChannelPanel`'s `seed`.
+  // Opening the channel and writing the line are one press; sending is not.
+  const [channelSeed, setChannelSeed] = useState<{ factionId: string; text: string; n: number } | null>(null);
+  const offer = useCallback((factionId: string, text: string) => {
+    setDraftChannel(factionId);
+    setChannelSeed((s) => ({ factionId, text, n: (s?.n ?? 0) + 1 }));
+  }, []);
   const [cheatsOpen, setCheatsOpen] = useState(false);
   const feedRef = useStickToBottom(game.messages.length);
 
@@ -334,6 +341,7 @@ export function App() {
               factionId={activeChannel}
               busy={busy}
               onSend={(text) => void game.talk(activeChannel, text)}
+              seed={channelSeed?.factionId === activeChannel ? channelSeed : null}
               onClose={() => {
                 if (view.openChannel === activeChannel) void game.endTalk(activeChannel);
                 setDraftChannel(null);
@@ -354,6 +362,7 @@ export function App() {
             onSelect={setSelectedId}
             onTalk={setDraftChannel}
             onDraft={draft}
+            onOffer={offer}
             activeChannel={activeChannel}
           />
         </div>

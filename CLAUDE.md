@@ -7254,6 +7254,23 @@ component is logic nothing checks.
   on. The list left the Treaties tab, so each operative appears in one place;
   the System tab keeps its per-world list.
 
+  **Buttons write, they never send.** Every action button in the panels
+  writes a sentence for the player to read and send, because declaring is
+  the player's act and costs an action. Each kind goes where it can work:
+  - **Declarations go on the command line** (`onDraft`): recruit an operative
+    and give one orders (Agents); appoint an officer, and "sail with a fleet"
+    from where an officer stands (Command); build the best kind on each world
+    with a free slot (the System tab with no world chosen, `buildableWorlds`,
+    beside the full per-world builder); send an envoy.
+  - **What needs the other side's consent opens a channel** with the line
+    already in its box (`onOffer`, `ChannelPanel`'s `seed`):
+    - **sell** a thing to its keenest buyer, at that buyer's price (Assets);
+    - **ask for a captured officer back** from whoever holds them (Command).
+
+    A sale written as a declaration would be refused, since taking a buyer's
+    money needs the buyer. These buttons are disabled while a different
+    channel is open, so the line cannot land in the wrong conversation.
+
   **A world says what it is.** `src/ui/worldtext.ts` gives every system a line
   keyed on **(type, founder)** — what kind of world it is, and who built on it.
   The panel used to print `Arid` and `Ground counts toward: might` and join
