@@ -4,6 +4,7 @@ import { layoutGalaxy, sectorsOf } from '../../../src/ui/layout.js';
 import { routeEarnings, routeLegs, severedBy, tradeRoutes } from '../../../src/domain/trade.js';
 import { ansi256ToHex, NEUTRAL } from '../color.js';
 import { CommanderMark } from './BattleIcons.js';
+import { holdAt, regardFor, regardRecorded } from '../../../src/domain/regard.js';
 
 /**
  * The galaxy, as SVG.
@@ -20,7 +21,12 @@ interface Props {
   state: WorldState;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /** What each of the player's warships holds down — see `EffectiveStatsSchema.holding`. */
+  holding?: number;
 }
+
+/** An independent world shows whom it leans toward once its regard for them reaches this. */
+const LEANS_AT = 40;
 
 const SCALE = 1000; // unit space → viewBox units, for readable stroke widths
 const CUT = '#c0392b'; // a severed lane: money that has stopped moving
@@ -30,7 +36,7 @@ const laneKey = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|$
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 6;
 
-export function GalaxyMap({ state, selectedId, onSelect }: Props) {
+export function GalaxyMap({ state, selectedId, onSelect, holding }: Props) {
   const [sector, setSector] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -74,6 +80,30 @@ export function GalaxyMap({ state, selectedId, onSelect }: Props) {
       tollTakenAt: e.tollsBySystem[state.playerFactionId] ?? {},
     };
   }, [state]);
+
+  /**
+   * Worlds of yours that are neither content nor held down — their garrisons
+   * are deserting — and independent worlds leaning toward a power. See
+   * `regard.ts`: the race for a world, and the risk of losing one, both belong
+   * on the map rather than only in a panel.
+   */
+  const { restless, leans } = useMemo(() => {
+    const restless = new Set<string>();
+    const leans = new Map<string, string>();
+    if (!regardRecorded(state)) return { restless, leans };
+    for (const s of state.systems) {
+      if (s.controllerFactionId === state.playerFactionId) {
+        const h = holdAt(state, s, holding);
+        if (h && h.shortfall > 0) restless.add(s.id);
+      } else if (s.controllerFactionId === null) {
+        const best = state.factions
+          .map((f) => ({ id: f.id, r: regardFor(s, f.id) }))
+          .sort((a, b) => b.r - a.r || a.id.localeCompare(b.id))[0];
+        if (best && best.r >= LEANS_AT) leans.set(s.id, best.id);
+      }
+    }
+    return { restless, leans };
+  }, [state, holding]);
 
   const W = SCALE;
   const H = SCALE * layout.aspect;
@@ -275,6 +305,16 @@ export function GalaxyMap({ state, selectedId, onSelect }: Props) {
               >
                 {selected && <circle r={r + 8} className="sel-ring" />}
                 {isContested && <circle r={r + 4} className="contested-ring" />}
+                {restless.has(s.id) && (
+                  <circle r={r + 6} className="restless-ring">
+                    <title>Restless: neither content with you nor held down. Its garrison is deserting.</title>
+                  </circle>
+                )}
+                {leans.has(s.id) && (
+                  <circle r={r + 5} className="leans-ring" stroke={colorOf(leans.get(s.id)!)}>
+                    <title>{`Leans toward ${state.factions.find((f) => f.id === leans.get(s.id))?.name ?? leans.get(s.id)}.`}</title>
+                  </circle>
+                )}
                 <circle
                   r={r}
                   fill={s.controllerFactionId ? color : 'transparent'}

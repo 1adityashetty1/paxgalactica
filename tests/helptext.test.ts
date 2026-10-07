@@ -8,6 +8,7 @@ import {
   rimLines,
   shipClassLines,
   spanLines,
+  worldLines,
 } from '../src/ui/helptext.js';
 import { CREDITS_PER_TON, HULL_CLASSES, HULL_SPEC } from '../src/domain/hulls.js';
 import { FIXTURE_COST, FIXTURE_UPKEEP, MAX_FIXTURE_BONUS } from '../src/domain/diplomacy.js';
@@ -37,6 +38,7 @@ describe('the help text', () => {
       ...shipClassLines(),
       ...fixtureLines(createSeedState('meridian')),
       ...spanLines(),
+      ...worldLines(),
       ...peaceLines(),
       ...leverageLines(),
       ...raiderLines(),

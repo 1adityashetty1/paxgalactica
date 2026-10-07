@@ -7362,7 +7362,12 @@ function resolveInterrupt(state: WorldState, order: PendingOrder, reason: string
 
 /** Everything the turn produced, structured so the UI never has to re-derive it. */
 export interface TurnReport {
-  completed: { label: string; factionId: string; where: string; outcome: string }[];
+  /**
+   * What finished this turn. `covert` marks work in a category the fog keeps
+   * to its owner (see `isPublicOrderType`): a reader showing completions to
+   * anybody else leaves it out.
+   */
+  completed: { label: string; factionId: string; where: string; outcome: string; covert?: boolean }[];
   /** Player-visible work still running, with how much is left. */
   advanced: {
     id: string;
@@ -8844,6 +8849,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
         factionId: order.factionId,
         where: nameOf(order.targetId),
         outcome: note,
+        covert: !isPublicOrderType(order.type),
       });
     }
   }
@@ -8882,7 +8888,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       }
       logEvent(state, 'order', note, order.factionId, [order.factionId]);
       notes.push(note);
-      report.completed.push({ label: order.label, factionId: order.factionId, where: target.name, outcome: note });
+      report.completed.push({ label: order.label, factionId: order.factionId, where: target.name, outcome: note, covert: true });
     }
     const factor = new Map(state.factions.map((f) => [f.id, holdingFactor(state, f.id)]));
     // A world neither content nor held down rises: its garrison deserts by the
@@ -8925,7 +8931,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       const note = `${order.label} completed at ${nameOf(order.targetId)}, and nobody there was listening.`;
       logEvent(state, 'order', note, order.factionId, [order.factionId]);
       notes.push(note);
-      report.completed.push({ label: order.label, factionId: order.factionId, where: nameOf(order.targetId), outcome: note });
+      report.completed.push({ label: order.label, factionId: order.factionId, where: nameOf(order.targetId), outcome: note, covert: true });
     }
   }
 

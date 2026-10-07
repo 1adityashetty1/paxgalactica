@@ -8,6 +8,7 @@ import type {
 } from '../api/contract.js';
 import type { EpilogueView } from '../engine/epilogue.js';
 import { observeOrders, worldAsSeenBy } from '../domain/intel.js';
+import { holdingFactor } from '../domain/regard.js';
 import { MAX_CHANNEL_MESSAGES, type CheatResult, type DiscardResult } from '../api/contract.js';
 import type { Cheat } from '../domain/cheats.js';
 import { archiveFilename, packCampaign, unpackCampaign } from '../engine/archive.js';
@@ -283,6 +284,7 @@ export class GameSession {
           getFaction(campaign.state, campaign.state.playerFactionId)?.stats ??
           effectiveStats(campaign.state, campaign.state.playerFactionId),
         span: spanOfControl(campaign.state, campaign.state.playerFactionId),
+        holding: holdingFactor(campaign.state, campaign.state.playerFactionId),
         ledger: ledgerFor(campaign.state, campaign.state.playerFactionId),
       },
       // `watch` and `rumoured` are facts about the board, not about the turn

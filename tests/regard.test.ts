@@ -28,6 +28,7 @@ import { statModifier } from '../src/domain/checks.js';
 import { addShipsAt, effectiveStats, setShipsAt, type StarSystem, type WorldState } from '../src/domain/state.js';
 import type { BattleReport } from '../src/domain/battle.js';
 import type { OpInput } from '../src/domain/ops.js';
+import { buildBriefing } from '../src/engine/briefing.js';
 
 /**
  * A world's regard for each power — its standing — and what it decides: whom
@@ -267,6 +268,14 @@ describe('the envoy', () => {
     expect(applyOps(s, [envoy('ilv-2', 'meridian')], 'model', 'meridian').rejections[0]?.code).toBe('no_presence');
     // The Vigil holds nothing next to Neth.
     expect(applyOps(s, [envoy('sek-6', 'vigil')], 'model', 'vigil').rejections[0]?.code).toBe('no_presence');
+  });
+
+  it('is a rival’s business: its arrival is not in the player’s briefing', () => {
+    const s = createSeedState('freeworlds');
+    const out = applyOps(s, [envoy('sek-6', 'meridian')], 'model', 'meridian');
+    const after = tick(out.state);
+    expect(after.report.completed.find((c) => c.factionId === 'meridian')?.covert).toBe(true);
+    expect(buildBriefing(after.state, after.report).completed.some((c) => c.factionId === 'meridian')).toBe(false);
   });
 
   it('is refused where worlds keep no regard', () => {

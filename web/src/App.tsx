@@ -23,6 +23,7 @@ import {
   rimLines,
   shipClassLines,
   spanLines,
+  worldLines,
 } from '../../src/ui/helptext.js';
 import { EpilogueStage } from './components/EpilogueStage.js';
 import { PortraitStage } from './components/PortraitStage.js';
@@ -172,6 +173,8 @@ function helpLines(state: WorldState | null): string[] {
     '  not a single world or squadron. A crusading power cannot be ordered',
     '  to run.',
     ...spanLines(),
+    '',
+    ...worldLines(),
     '',
     'MONEY',
     '  Territory pays, and so does the lane network. You may charge any power',
@@ -433,7 +436,12 @@ export function App() {
           ) : activeChannel ? (
             <PortraitStage state={view.state} factionId={activeChannel} />
           ) : (
-            <GalaxyMap state={view.state} selectedId={selectedId} onSelect={setSelectedId} />
+            <GalaxyMap
+              state={view.state}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              holding={view.effective.holding}
+            />
           )}
           <div className="feed" ref={feedRef}>
             {game.messages.map((m) => (

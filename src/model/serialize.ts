@@ -1,3 +1,13 @@
+import {
+  CONTENT_REGARD,
+  JOIN_LEAD,
+  JOIN_REGARD,
+  WANT_MEANS,
+  holdAt,
+  regardFor,
+  regardRecorded,
+  wantOf,
+} from '../domain/regard.js';
 import { HEAT_NOTORIOUS } from '../domain/heat.js';
 import { eventsVisibleTo, observeOrders, ordersVisibleTo, rememberedBy } from '../domain/intel.js';
 import { intelOn } from '../domain/intel-levels.js';
@@ -70,6 +80,7 @@ import {
   TRADE_ETHIC_MEANING,
   WAR_ETHIC_MEANING,
   type Faction,
+  type StarSystem,
   type WorldState,
 } from '../domain/state.js';
 
@@ -555,6 +566,33 @@ function nameOfFaction(state: WorldState, id: string): string {
   return getFaction(state, id)?.name ?? id;
 }
 
+/**
+ * What a world's people think, where it matters: an independent world's want
+ * and who it leans toward, and a held world that is not content with its
+ * holder — held down by force, or restless. A content world says nothing,
+ * which keeps the block short; see `regard.ts`. Public, as the System panel is.
+ */
+function peopleLine(state: WorldState, s: StarSystem): string[] {
+  if (!regardRecorded(state)) return [];
+  const want = wantOf(s);
+  if (s.controllerFactionId === null) {
+    const leaning = state.factions
+      .map((f) => ({ id: f.id, r: regardFor(s, f.id) }))
+      .filter((x) => x.r !== 0)
+      .sort((a, b) => b.r - a.r || a.id.localeCompare(b.id))
+      .map((x) => `${nameOfFaction(state, x.id)} ${x.r}`)
+      .join(', ');
+    return [
+      `      people: answers to nobody; wants ${want} (${WANT_MEANS[want]}); joins a power it regards at ${JOIN_REGARD}+, ${JOIN_LEAD} clear of the next | regard: ${leaning || 'nobody yet'}`,
+    ];
+  }
+  const h = holdAt(state, s);
+  if (!h || h.content) return [];
+  return [
+    `      people: ${h.shortfall > 0 ? 'RESTLESS, garrison deserting' : 'held down by force'} — regard for ${nameOfFaction(state, h.holder)} ${h.regard} (content at ${CONTENT_REGARD}); wants ${h.need.toFixed(1)} battleship-equivalents of its warships over it, has ${h.have.toFixed(1)}; wants ${want} (${WANT_MEANS[want]})`,
+  ];
+}
+
 export function serializeSystems(state: WorldState): string {
   const bySector = new Map<string, string[]>();
   for (const s of state.systems) {
@@ -616,6 +654,7 @@ export function serializeSystems(state: WorldState): string {
     const line = [
       `  - \`${s.id}\` ${s.name} — held by ${controller}, garrison ${s.garrison}, value ${s.strategicValue}${income.contested ? ', CONTESTED' : ''}`,
       `      ships: ${ships || 'none'} | pays: ${payout || 'nobody'} | lanes: ${lanes || 'none'}${built ? ` | fixtures: ${built}` : ''}`,
+      ...peopleLine(state, s),
     ].join('\n');
     const list = bySector.get(s.sector) ?? [];
     list.push(line);

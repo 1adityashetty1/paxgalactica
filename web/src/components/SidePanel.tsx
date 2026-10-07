@@ -29,7 +29,7 @@ import {
 } from '../../../src/domain/intel-levels.js';
 import { BOUNTY_PER_TON } from '../../../src/domain/diplomacy.js';
 import { shortageFactor } from '../../../src/domain/events.js';
-import { describeOrderEffect } from '../../../src/domain/development.js';
+import { EFFECT_COST, describeOrderEffect } from '../../../src/domain/development.js';
 import { describeEffect } from '../../../src/domain/diplomacy.js';
 import { CommanderIcon } from './BattleIcons.js';
 import { agentStanding } from '../../../src/domain/diplomacy.js';
@@ -46,6 +46,20 @@ import {
   type Commander,
 } from '../../../src/domain/command.js';
 import { worldFlavour } from '../../../src/ui/worldtext.js';
+import {
+  CONTENT_REGARD,
+  ENVOY_PER_POINT,
+  HOME_REGARD,
+  JOIN_LEAD,
+  JOIN_REGARD,
+  OCCUPIED_HOME_REGARD,
+  WANT_MEANS,
+  envoyRefusal,
+  holdAt,
+  regardFor,
+  regardRecorded,
+  wantOf,
+} from '../../../src/domain/regard.js';
 import {
   fixtureName,
   fixtureOptions,
@@ -72,6 +86,7 @@ import {
   warsFor,
   spanOfControl,
   TRUCE_FLOOR,
+  type StarSystem,
   type WorldState,
 } from '../../../src/domain/state.js';
 import type { Briefing } from '../../../src/engine/briefing.js';
@@ -151,7 +166,15 @@ export function SidePanel({
             activeChannel={activeChannel}
           />
         )}
-        {tab === 'system' && <SystemTab state={state} selectedId={selectedId} onSelect={onSelect} onDraft={onDraft} />}
+        {tab === 'system' && (
+          <SystemTab
+            state={state}
+            selectedId={selectedId}
+            onSelect={onSelect}
+            onDraft={onDraft}
+            holding={effective.holding}
+          />
+        )}
         {tab === 'fleets' && <FleetsPanel state={state} onSelect={onSelect} />}
         {tab === 'commanders' && <Command state={state} />}
         {tab === 'trade' && <TradePanel state={state} ledger={effective.ledger} onSelect={onSelect} />}
@@ -361,11 +384,14 @@ function SystemTab({
   selectedId,
   onSelect,
   onDraft,
+  holding,
 }: {
   state: WorldState;
   selectedId: string | null;
   onSelect: (id: string) => void;
   onDraft: (text: string) => void;
+  /** What each of the player's warships holds down, as the server reads it. */
+  holding: number;
 }) {
   const sys = selectedId ? getSystem(state, selectedId) : null;
   if (!sys) return <p className="empty">Click a system on the map.</p>;
@@ -461,6 +487,8 @@ function SystemTab({
       </dl>
 
       {income.contested && <p className="contested-note">Contested — income is being split.</p>}
+
+      <WorldPeople state={state} sys={sys} holding={holding} onDraft={onDraft} />
 
       <h4>Ships present</h4>
       {shipRows.length === 0 ? (
@@ -959,6 +987,109 @@ function IntelBar({ level }: { level: number }) {
       </span>
       <span className="muted">{level}</span>
     </div>
+  );
+}
+
+/**
+ * What a world's people think of each power, what they want, and whether the
+ * power holding it keeps it by consent, by force, or not at all — see
+ * `regard.ts`. Public: a world's mood is not a secret, and the race for an
+ * independent world is one every power can see.
+ */
+function WorldPeople({
+  state,
+  sys,
+  holding,
+  onDraft,
+}: {
+  state: WorldState;
+  sys: StarSystem;
+  holding: number;
+  onDraft: (text: string) => void;
+}) {
+  if (!regardRecorded(state)) return null;
+  const me = state.playerFactionId;
+  const want = wantOf(sys);
+  const holder = sys.controllerFactionId;
+  // Your own worlds use the factor the server reads off your true resolve;
+  // a rival's is read off the view, and is an estimate the way its stats are.
+  const hold = holder ? holdAt(state, sys, holder === me ? holding : undefined) : null;
+  const holderName = holder ? (getFaction(state, holder)?.name ?? holder) : '';
+  const rows = state.factions
+    .map((f) => ({ id: f.id, name: f.name, r: regardFor(sys, f.id) }))
+    .sort((a, b) => b.r - a.r || a.id.localeCompare(b.id));
+  const envoy = envoyRefusal(state, sys, me) === null;
+  const be = (n: number) => n.toFixed(1);
+  return (
+    <>
+      <h4 title={`A world's standing with each power drifts back a tenth of the way a turn toward where it rests: ${HOME_REGARD} toward its own power, ${OCCUPIED_HOME_REGARD} toward one holding somebody else's home, nothing otherwise. Meeting what it wants raises it; raiding it, fighting over it and taking it by force lower it.`}>
+        Its people
+      </h4>
+      <p className="meta">
+        Wants {want}: {WANT_MEANS[want]}.
+      </p>
+      {!hold ? (
+        <p className="meta">
+          Answers to nobody. It joins the power it regards at {JOIN_REGARD} or better, if {JOIN_LEAD} clear of the next.
+        </p>
+      ) : hold.content ? (
+        <p className="good">
+          Content with {holderName} ({hold.regard}): it needs no force to keep.
+        </p>
+      ) : hold.shortfall <= 0 ? (
+        <p className="meta">
+          Held down by {holderName}: it wants {be(hold.need)} battleship-equivalents of warships over it and has{' '}
+          {be(hold.have)}. Content at {CONTENT_REGARD}; now {hold.regard}.
+        </p>
+      ) : (
+        <p className="bad">
+          Restless under {holderName}: it wants {be(hold.need)} battleship-equivalents over it and has {be(hold.have)}.
+          Its garrison is deserting; with none left it answers to nobody. Content at {CONTENT_REGARD}; now {hold.regard}.
+        </p>
+      )}
+      <ul className="ship-list">
+        {rows.map((row) => (
+          <li key={row.id} className="agent-row">
+            <span className="swatch" style={{ background: colourOf(state, row.id) }} />
+            <span style={{ color: colourOf(state, row.id) }}>{row.name}</span>
+            <RegardBar regard={row.r} />
+          </li>
+        ))}
+      </ul>
+      {envoy && (
+        <p className="envoy-line">
+          <button
+            type="button"
+            className="fixture-pick"
+            title={`Write "Send an envoy to ${sys.name}." on the command line`}
+            onClick={() => onDraft(`Send an envoy to ${sys.name}.`)}
+          >
+            Send an envoy
+          </button>
+          <span className="meta">
+            {' '}
+            a political manoeuvre, {2 * EFFECT_COST.court} credits: {2 * ENVOY_PER_POINT} standing, plus your influence
+          </span>
+        </p>
+      )}
+    </>
+  );
+}
+
+/** −100 to 100, from the middle: what a world thinks of one power. */
+function RegardBar({ regard }: { regard: number }) {
+  const left = regard >= 0 ? 50 : 50 + regard / 2;
+  return (
+    <span className="regard-cell">
+      <span className="regard-bar">
+        <span className="regard-mid" />
+        <span
+          className={regard >= 0 ? 'regard-fill good' : 'regard-fill bad'}
+          style={{ left: `${left}%`, width: `${Math.abs(regard) / 2}%` }}
+        />
+      </span>
+      <span className="count">{regard}</span>
+    </span>
   );
 }
 

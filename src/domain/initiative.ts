@@ -1761,7 +1761,11 @@ export const COURTING_ETHICS = new Set(['expansionist', 'defensive', 'profiteer'
 
 /** Credits a bot keeps back before it spends on a courtship. */
 export const BOT_COURT_RESERVE = 150;
-/** Independent worlds a bot courts at once. */
+/**
+ * Independent worlds a bot courts at once. Swept: at two the Confederacy loses
+ * a world by turn 100 without events, at three in two of the four boards; at
+ * one the four boards are the same, 5/5/6/5/4.
+ */
 export const BOT_COURT_TARGETS = 1;
 
 const courts = (state: WorldState, me: string): boolean =>

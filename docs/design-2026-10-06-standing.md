@@ -3,7 +3,16 @@
 `brainstorm-2026-10-02.md` §6.1 (courting unaligned worlds), generalised: one
 figure, a world's **standing** with each power, decides both whom an
 independent world joins and whether a held world stays. Worked out against the
-code after #58. Not built.
+code after #58.
+
+*Status, 2026-10-06:* **built** (`src/domain/regard.ts`; `CLAUDE.md`, "Worlds
+with a view of their own"), with these departures: resolve is read before
+dissent; the courting ethics also leave alone a world that chose a rival, and
+the defensive ethic storms nobody else's home; a bot leaves a courtship it is
+losing; envoys land after the turn's drift; and no `secession` sandbox was
+built. Measured: all five neutral worlds join by turn 12 and the board is
+5/5/6/5/4 in all four runs, against 6/5/5/5/4 before; no world rises in the
+harness.
 
 ## The rule
 

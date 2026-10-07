@@ -147,6 +147,24 @@ export function BriefingPanel({
             </div>
           )}
 
+          {/* Worlds with a view of their own: one of yours deserting, one in
+              reach leaning toward somebody, and anything that joined or rose. */}
+          {(briefing.worlds ?? []).length > 0 && (
+            <div className="brief-group">
+              <h4>Worlds</h4>
+              <ul>
+                {briefing.worlds.map((w, i) => (
+                  <li
+                    key={`${w.kind}:${w.systemId}:${i}`}
+                    className={w.kind === 'restless' || (w.kind === 'rose' && w.mine) ? 'bad' : w.mine ? 'mine' : ''}
+                  >
+                    {w.text}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {briefing.battles.length > 0 && (
             <div className="brief-group">
               <h4>Battles</h4>

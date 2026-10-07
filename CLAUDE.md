@@ -706,6 +706,108 @@ Arkane and Drajk and moves the board. The player's span is served in
 `CampaignView.effective.span`, for `effective.stats`'s reason. Pinned to
 `JOURNAL_VERSION` 12 (`LegacyRules.spanOfControl`).
 
+### Worlds with a view of their own: courting, holding down, rising
+
+`src/domain/regard.ts`, `docs/design-2026-10-06-standing.md`. Every world
+keeps a **standing** with every power (`StarSystem.regard`, −100 to 100), and
+one rule reads it both ways:
+
+- **A world stays with its holder while it is content** (standing
+  `CONTENT_REGARD`, 20, or better) **or held down** — the holder's warships over
+  it, in battleship-equivalents, at least strategic value × (20 − standing) /
+  100. A fresh conquest of a value-5 world needs 4.
+- **One that is neither is restless.** Its garrison does not regrow and
+  deserts by the shortfall each turn, and with none left it **secedes**: it
+  answers to nobody, the rising becomes its militia, and the holder's ships and
+  officers there withdraw as a ceder's do (`secede` in the reducer).
+- **An independent world joins** the power it regards at `JOIN_REGARD` (60) or
+  better and `JOIN_LEAD` (20) clear of the next: a fourth way a world changes
+  hands, after an arrival, a cession and unrest, and like them the reducer's
+  alone. Its garrison stays and `homeFactionId` does not move, so a home world
+  that rose and rejoins its own power is home again.
+
+**Home ground is content; everything else is occupied.** Standing drifts a
+tenth of the gap a turn toward a baseline — `HOME_REGARD` (+50) toward a
+world's own power, `OCCUPIED_HOME_REGARD` (−30) toward a power holding someone
+else's home, which never forgives on its own, and 0 otherwise. So the five
+worlds that open unaligned are indifferent to whoever holds them, which is
+short of content: holding one needs a warship or two, or a world won over.
+
+**What moves it**, every source a mechanic that exists:
+
+| | standing |
+|---|---|
+| its **want**, kept met: protection (warships over it, no raid on it), trade (freighters over it, lanes open) or peace (at war with nobody) | +8 a turn |
+| its want landed once: development (`develop_system`) or arms (`fortify`) paid for there | +20 |
+| an **envoy** — `court` on a `political_maneuver`, on a world you hold or an independent one you border or orbit | 5 a point (2 points, 40 credits) plus influence |
+| taken by force | the conqueror to at most −60; liberation by its own power excepted |
+| a battle fought over it | −15 to each attacker (taking station over it is not one) |
+| an independent world conquered | −25 at every other independent world |
+| a raid on it, by a power it can name | −10 a turn |
+| a notorious power | −2 a turn |
+
+**A want is read off the ground** (`WANT_OF_STAT`, keyed on `WORLD_TYPE_STAT`):
+might wants arms, guile trade, industry development, influence peace, resolve
+protection. Legible from the map, and nothing authored. A protection world is
+pacified by the fleet that holds it down, and the cost of both is the same
+squadron staying put.
+
+**Resolve decides how much a warship holds down** — `HOLD_PER_RESOLVE` (0.125)
+a modifier point, so the Iron Vigil and Arkane at +4 hold with two-thirds of
+the fleet Meridian or the Combine needs. This is the lever item 123 rejected as
+a cheaper `OCCUPATION_COST`, used differently: there it discounted an existing
+cost almost wholly for the Vigil; here it softens a new one, which every power
+pays more of than before and the Vigil the least extra. **Read before dissent**,
+the cut `spanOfControl` makes for influence: the Vigil runs at 100 dissent from
+about turn 60 in the harness whatever this does, and read after dissent its
+warships held down less than anybody's.
+
+**`OCCUPATION_COST` is unchanged**, keyed on `homeFactionId`: it prices
+institutions, not mood, and was tuned on a cliff. A conquered neutral world
+still pays none; what it costs now is the force to hold it.
+
+**The unrest event became the spark of the same rising.** It is eligible on any
+world not content with its holder, where it was any world never the holder's
+own, and its slip goes through `secede`.
+
+**The bots.** `hold` (every power) masses warships onto a world falling short,
+with `BOT_HOLD_MARGIN` over, because the need moves inside the tick. `court`
+— the courting war ethics, `COURTING_ETHICS`: expansionist, defensive,
+profiteer — sends one envoy at a time and stations what the world wants, and
+every power courts its own home worlds that have risen. Those ethics no longer
+storm ground that was never anybody's home, nor a world that chose a rival
+(measured: Arkane lost Sennex to Meridian's envoys on turn 4 and stormed it on
+turn 5), and a **defensive** power storms nobody else's home, since it would be
+hated for as long as it held it. A bot leaves a courtship it is losing
+(`BOT_RIVAL_SUITOR`): two powers courting one world climb to the cap together
+and it never joins either. And `holdable` keeps any bot from storming a world
+that would hate it past what the storming fleet could hold — the Vigil retook
+Torrek Anchorage thirteen times in twenty-five turns before it existed.
+
+**Measured.** Before, the five neutral worlds fell to conquest by turn 3 and the
+board was 6/5/5/5/4 at 30 and 100 turns, with events and without. Now all five
+**join** — Sennex and Ithaal Meridian, Vosk Marker and Var Hollow the Combine,
+Neth Arkane, by turn 12 — and the board is **5/5/6/5/4 in all four runs**: the
+Combine out-courts Meridian for Var Hollow, and the Vigil and the Confederacy
+keep exactly what they had. No world rises in the harness, for the reason the
+design predicted: every bot occupation keeps the fleet that took it, 4
+battleship-equivalents or more, and that already holds it down. So
+`HOLD_PER_RESOLVE` swept from 0 to 0.25 moves no board; what the holding rules
+do is measured by `tests/regard.test.ts`, and by the first played campaign that
+conquers and moves on. `pnpm balance [turns] --no-regard` is the control.
+`BOT_COURT_TARGETS` was swept: two courtships at once cost the Confederacy a
+world at 100 turns without events, three cost it one in two of the four runs,
+and one at a time leaves the four boards identical.
+
+**The balance floor reads three turns.** The Confederacy's net swings about
++180 on a raiding turn and −50 between, and the turn-30 sample went from −22 to
+−51…−65 while its treasury and fleet both grew; the floor's own comment names
+three turns, so it now averages them.
+
+Pinned to `JOURNAL_VERSION` 17: `createSeedState`'s `regard` writes the
+opening standing, `LegacyRules.regard` runs it, and a world with none recorded
+is how both the tick and the browser know a campaign predates it.
+
 ### Ships are bought, and a navy you cannot pay for shrinks
 
 `CREDITS_PER_TON` is **15**; `UPKEEP_PER_TON` is **1 a turn**. A battleship is
@@ -4679,7 +4781,7 @@ is changing the world and that has one home.
 |---|---|---|---|
 | **ion storm** | a world carries trade | closes its lanes for 1–3 turns, as a blockade nobody declared | lane volume through the world |
 | **derelict** | a power has ships over unaligned ground | an asset where it was found: salvage, speculative blueprints, or another power's stranded crew | tons present |
-| **unrest** | a power holds a world that was never its own | half the garrison lost; at none, and no fleet overhead, the world slips to unaligned | what the world pays its occupier |
+| **unrest** | a power holds a world that is not content with it (before journal 17: one that was never its own) | half the garrison lost; at none, and no fleet overhead, the world slips to unaligned | what the world pays its occupier |
 | **border incident** | two powers have ships within a jump | `BORDER_INCIDENT_COST` (8) standing lost each way | pairs already cool |
 | **shortage** | a kind of goods is held and wanted | `SHORTAGE_FACTOR` (1.5) on what every buyer would pay, for 3 turns | how many powers want it |
 | **mutiny** | dissent at `MUTINY_DISSENT` (25) | 5% of the fleet walks, through the insolvency attrition path | dissent |
@@ -4707,7 +4809,8 @@ traded or minted in between. Only the catalogue's stuff group can run short;
 people, paper and fixtures cannot.
 
 **Unrest is the third way a world changes hands**, after an arrival and a
-cession, and like both it is the reducer's alone. A world slips only with no
+cession (a world joining a power is the fourth — see *"Worlds with a view of
+their own"*), and like them it is the reducer's alone. A world slips only with no
 garrison left **and** no ship of its holder overhead, and the rising becomes its
 militia — *unaligned is not undefended*.
 
@@ -6131,8 +6234,9 @@ for the bounds and pricing, `OrderEffectSchema` in `state.ts` for the shape:
 | `commission_ships` | hulls of a named `hull` class delivered at the target on completion, priced by displacement | `capital_ship_construction`, `refit`, `retooling` |
 | `found_fixture` | a fixture of a named `fixtureKind` raised on the world, if its ground supports it and its slot is free | `construction_infrastructure`, `industrial_conversion`, `retooling` |
 | `repair_fixture` | sabotage damage taken off a fixture on a world you hold | `construction_infrastructure`, `industrial_conversion`, `retooling` |
+| `court` | an envoy: the target world's standing with the sender up 5 a point plus its influence | `political_maneuver` |
 
-The eight remaining categories carry **no** payload on purpose: `espionage`
+The seven remaining categories carry **no** payload on purpose: `espionage`
 lands as `deploy_agent`, `treaty_ratification` as `form_treaty`, and `blockade`
 and `commerce_raiding` are read live off `pendingOrders` by `trade.ts` while they
 run. A payload there would be a second mechanism competing with one that works.

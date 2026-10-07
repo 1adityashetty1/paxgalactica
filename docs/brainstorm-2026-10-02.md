@@ -604,7 +604,7 @@ size.
 | idea | § | why it is large |
 |---|---|---|
 | Coalitions | 2.2 | alarm state, coalition treaties forming and dissolving, bot targeting, a sweep against a frozen board |
-| Courting unaligned worlds | 6.1 | wants and opinions for every neutral world, peaceful joining, bot behaviour, prompts |
+| Courting unaligned worlds **(built)** | 6.1 | wants and opinions for every neutral world, peaceful joining, bot behaviour, prompts |
 | War goals and exhaustion | 2.4 | goals at war's start, war score from battles, dissent from long wars |
 | Estates | 5.3 | a second layer of internal politics over dissent, on every sheet |
 
@@ -612,9 +612,8 @@ size.
 
 ## Build graph
 
-*Updated after intel with memory, and speculative trade dropped.* Fourteen ideas
-are built, plus the bot rules that use them, and one is dropped, so seven are
-left. Built work is no longer a node: where it
+*Updated after courting unaligned worlds, built as standing.* Fifteen ideas are
+built, plus the bot rules that use them, and one is dropped, so six are left. Built work is no longer a node: where it
 unlocks something, the node says so.
 
 A solid arrow means the later idea, or one part of it, cannot be built without
@@ -643,6 +642,7 @@ flowchart LR
     heat["Heat"]:::done
     dark["Running dark"]:::done
     intel["Intel with memory"]:::done
+    courting["Courting, holding, secession"]:::done
   end
 
   truces --> coalitions["Coalitions · L"]:::heavy
@@ -654,7 +654,6 @@ flowchart LR
   ambitions["Ambitions · M+"]:::heavy -.-> mandate["Mandate · M+"]:::heavy --> fortune["Fortune and darkness · S"]:::light
   ambitions -.-> estates["Estates · L"]:::heavy
   mandate -.-> estates
-  courting["Courting unaligned worlds · L"]:::heavy
 ```
 
 S is small, M is medium (lighter), M+ is medium (heavier) and L is large.
@@ -674,8 +673,7 @@ S is small, M is medium (lighter), M+ is medium (heavier) and L is large.
 
 **Waves.**
 
-1. **Ready now:** ambitions, coalitions, war goals, and courting unaligned
-   worlds.
+1. **Ready now:** ambitions, coalitions and war goals.
 2. Mandate.
 3. Fortune and darkness, estates.
 
