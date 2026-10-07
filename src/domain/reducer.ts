@@ -59,6 +59,7 @@ import {
   MAX_DISCORD_TOTAL,
   PEACE_TREATIES,
   DEFENCE_PACTS,
+  PLEDGE_REACH,
   COALITION_RESENTMENT,
   pactAnswers,
   TREATY_GOODWILL,
@@ -786,13 +787,6 @@ function drawShips(
   }
   return drawn;
 }
-
-/**
- * How far a pledged squadron can come to an ally's defence in the turn the
- * ally is attacked: the reach a listener hears at, and two turns of sailing a
- * fleet would need to get there by order.
- */
-export const PLEDGE_REACH = 2;
 
 /** The classes a pledge sends, heaviest first: the line, then its screen. */
 const PLEDGE_CLASSES: readonly HullClass[] = ['battleship', 'escort', 'torpedo_boat'];

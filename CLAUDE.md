@@ -7536,6 +7536,25 @@ longer than the prose around it wraps into a ragged column in the feed. The
 fixture section ends on one the player could build today, on a world they hold
 with a free slot, in the kind its ground takes.
 
+**It is an index and nine pages** (`src/ui/help.ts`). As one page it had grown
+to about two hundred lines in the feed, so the section a player wanted was
+always a scroll away. `:help` is now the commands, the four examples, the rules
+in four lines, and the list of pages. `:help <topic>` or `:help-<topic>` prints
+one page: actions, war, worlds, trade, diplomacy, espionage, fixtures, assets
+and events. `:help all` prints everything.
+- **Finding a page.** Each page answers to its name, a few aliases
+  (`spies` → espionage, `treaties` → diplomacy) and a prefix of its name.
+- **An unknown word** prints the index under a line saying so, rather than
+  nothing.
+- **Generated sections.** The new ones are built from the game's own tables:
+  - the missions with their price and risk, from `AGENT_COST` and
+    `MISSION_PROFILE`;
+  - the treaty types, the intel thresholds and the Rim's events by title;
+  - the phrases describing each mission and treaty type, keyed on every
+    mission and type, so a new one fails the typecheck until it has a line.
+- **Tests.** `tests/help.test.ts` holds the routing, the width of every page
+  for every power, and that each table reaches its page.
+
 ## A cheat menu, for testing, that no model ever hears about
 
 `:cheats` opens a strip above the command line with five fixed actions: add

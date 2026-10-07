@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  allyLines,
+  assetLines,
+  channelLines,
+  eventListLines,
+  goodsLines,
+  heatLines,
+  intelLines,
+  operativeLines,
+  treatyLines,
   fixtureLines,
   leverageLines,
   officerLines,
@@ -44,6 +53,15 @@ describe('the help text', () => {
       ...raiderLines(),
       ...officerLines(),
       ...rimLines(),
+      ...allyLines(),
+      ...assetLines(),
+      ...channelLines(),
+      ...eventListLines(),
+      ...goodsLines(),
+      ...heatLines(),
+      ...intelLines(),
+      ...operativeLines(),
+      ...treatyLines(),
     ]) {
       expect(line.length, line).toBeLessThanOrEqual(76);
     }

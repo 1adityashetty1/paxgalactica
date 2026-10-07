@@ -1572,6 +1572,13 @@ export const PEACE_TREATIES = ['non_aggression', 'ceasefire', 'mutual_defense', 
  */
 export const DEFENCE_PACTS = ['mutual_defense', 'coalition'] as const;
 
+/**
+ * How far a pledged squadron can come to an ally's defence in the turn the
+ * ally is attacked: the reach a listener hears at, and two turns of sailing a
+ * fleet would need to get there by order.
+ */
+export const PLEDGE_REACH = 2;
+
 /** Whether an attack by `attacker` calls this pact's members to answer. */
 export function pactAnswers(treaty: Treaty, attacker: string): boolean {
   if (treaty.type === 'mutual_defense') return true;

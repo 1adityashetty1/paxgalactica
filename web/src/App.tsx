@@ -2,9 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
 import { Waiting } from './components/Waiting.js';
 import { CheatPanel } from './components/CheatPanel.js';
-import { STAT_MEANINGS, STAT_NAMES } from '../../src/domain/checks.js';
-import { neighboursOf, shortestPath } from '../../src/domain/graph.js';
-import { hullsAt, type WorldState } from '../../src/domain/state.js';
 import { ansi256ToHex } from './color.js';
 import { BriefingPanel } from './components/BriefingPanel.js';
 import { ChannelPanel } from './components/ChannelPanel.js';
@@ -14,224 +11,11 @@ import { GalaxyMap } from './components/GalaxyMap.js';
 import { OutcomeArt } from './components/OutcomeArt.js';
 import { RimEventCard } from './components/RimEventCard.js';
 import { RIM_EVENT_TITLE } from '../../src/domain/events.js';
-import {
-  fixtureLines,
-  leverageLines,
-  officerLines,
-  peaceLines,
-  raiderLines,
-  rimLines,
-  shipClassLines,
-  spanLines,
-  worldLines,
-} from '../../src/ui/helptext.js';
+import { helpPage } from '../../src/ui/help.js';
 import { EpilogueStage } from './components/EpilogueStage.js';
 import { PortraitStage } from './components/PortraitStage.js';
 import { SidePanel } from './components/SidePanel.js';
 import { useGame, useStickToBottom } from './useGame.js';
-
-/**
- * Four worked examples, written against the player's ACTUAL position.
- *
- * A blank prompt that accepts any English sentence is the hardest kind of
- * interface to start using: the player has no idea what the game can hear.
- * Generic examples only half-solve it, because the first thing anyone does is
- * substitute their own system names and get one wrong. These name real worlds
- * the player really holds and real neighbours they could really reach, so they
- * can be typed verbatim on turn one.
- *
- * Their job is the SHAPE of a sentence the game can hear, and nothing else.
- * They used to carry a gloss under each — that a neutral world fights back,
- * that raiding needs a squadron a jump out — which made the block twice as
- * long and taught rules the help text is a better place for. A list where
- * every entry has a footnote is a list nobody finishes.
- */
-function exampleActions(state: WorldState | null): string[] {
-  if (!state) return [];
-  const me = state.playerFactionId;
-  const mine = state.systems.filter((s) => s.controllerFactionId === me);
-  const base = [...mine].sort((a, b) => hullsAt(b, me) - hullsAt(a, me))[0] ?? mine[0];
-  if (!base) return [];
-
-  const neighbours = [...new Set(mine.flatMap((s) => neighboursOf(state, s.id)))]
-    .map((id) => state.systems.find((s) => s.id === id)!)
-    .filter((s) => s && s.controllerFactionId !== me);
-  const neutral =
-    neighbours.find((s) => s.controllerFactionId === null) ?? nearestNeutral(state, mine);
-  const rival = neighbours.find((s) => s.controllerFactionId !== null);
-  const other =
-    state.factions.find((f) => f.id === rival?.controllerFactionId) ??
-    state.factions.find((f) => f.id !== me)!;
-  const force = Math.max(4, Math.floor((hullsAt(base, me) || 8) / 2));
-
-  // Four lines, one per verb worth knowing, and no gloss under any of them.
-  // The notes that used to hang off each of these said things the help text
-  // now says once in its own section — and a list where every entry carries a
-  // footnote is a list nobody finishes reading. What these are for is the
-  // shape of a sentence the game can hear, against worlds that really exist.
-  return [
-    ...(neutral ? [`  Send ${force} ships from ${base.name} to take ${neutral.name}.`] : []),
-    // A power that lives by raiding is shown the quiet way to do it.
-    ...(rival
-      ? [
-          state.factions.find((f) => f.id === me)?.tradeEthic === 'smuggler'
-            ? `  Raid the shipping at ${rival.name} quietly, flying no colours.`
-            : `  Move ${force} ships to ${rival.name} and raid the shipping on that lane.`,
-        ]
-      : []),
-    `  Put the yards at ${base.name} to work on a squadron of escorts.`,
-    `  Offer ${other.name} a dynastic marriage to seal an alliance.`,
-  ];
-}
-
-/** Closest unaligned world to anything the player holds, by hyperlane. */
-function nearestNeutral(state: WorldState, mine: WorldState['systems']) {
-  const neutrals = state.systems.filter((s) => s.controllerFactionId === null);
-  let best: { system: (typeof neutrals)[number]; jumps: number } | null = null;
-  for (const candidate of neutrals) {
-    for (const home of mine) {
-      const path = shortestPath(state.systems, home.id, candidate.id);
-      if (!path) continue;
-      const jumps = path.length - 1;
-      if (!best || jumps < best.jumps) best = { system: candidate, jumps };
-    }
-  }
-  return best?.system;
-}
-
-/**
- * Help text: the commands, the shape of a declaration, and what the game can
- * actually hear.
- *
- * Without this the stat bars are decoration — a player cannot aim an action at
- * their strengths if nothing says that `guile` covers bribery and `industry`
- * covers anything that must be built. And without the WHAT YOU CAN REACH FOR
- * section, most of what has been built since is invisible: a player who does
- * not know a thing can be lent, tolled, insured or held hostage will never
- * type the sentence that reaches it, and the arbiter only rules on what
- * somebody thought to attempt.
- */
-function helpLines(state: WorldState | null): string[] {
-  return [
-    'COMMANDS',
-    '  (free text)      declare an action — it lands when you end the turn',
-    '  /advisor         ask your own counsellor what they are worried about',
-    '                   — costs one of your two actions, like anything else',
-    '  /talk <faction>  open a diplomatic channel',
-    '  /endtalk         close it — only then is anything you agreed made real',
-    '  :endturn         land everything declared, hear the powers respond, advance time',
-    '  :discard         clear what you have declared this turn',
-    '  :save            save this campaign to disk — load it from the title screen later',
-    '  :help            this',
-    '  :cheats          the cheat menu, for testing — free, instant, costs no action,',
-    '                   skips the arbiter, and no power is ever told',
-    '  Settings         (top bar) pay with your subscription or an Anthropic or',
-    '                   OpenRouter key, choose models, and set a spend cap',
-    '',
-    ...(state
-      ? [
-          'TRY THESE — plain English, no syntax, and these name your actual worlds',
-          ...exampleActions(state),
-          '',
-        ]
-      : []),
-    'HOW ACTIONS RESOLVE',
-    '  Two actions a turn. Anything you can say, you can attempt: an arbiter',
-    '  rules on whether it can be tried at all and how hard it is, before any',
-    '  dice are rolled. Being told "that is a conversation" costs you nothing.',
-    '',
-    '  Every action is tested against one of your five stats. A d20 is rolled',
-    '  before the model is asked anything, your stat modifier is added, and the',
-    '  total is compared to a difficulty. Beat it by 5+ for a critical success;',
-    '  miss by 1–4 and it half-works; miss badly and it fails outright.',
-    '  Stats run 1–20. A 10 is unremarkable, 18 is a defining strength.',
-    '',
-    'YOUR STATS',
-    ...STAT_NAMES.map((s) => `  ${s.padEnd(10)} ${STAT_MEANINGS[s]}`),
-    '',
-    '  Aim actions at what you are good at. A power with high guile buys a',
-    '  border rather than storming it; one with high might does the reverse.',
-    '',
-    'YOUR OWN PEOPLE CAN REFUSE',
-    '  Your power has red lines it will not cross and compulsions it demands of',
-    '  you. An order across a red line is refused outright — nothing happens,',
-    '  and it still costs you the action. Defying a compulsion goes ahead and',
-    '  costs standing at home. Enough of either and your institutions stop',
-    '  following you, which comes off every stat you roll.',
-    '',
-    ...shipClassLines(),
-    '',
-    'FLEETS AND WORLDS',
-    '  The mix decides battles. A fleet of pure warships can sterilise an orbit',
-    '  and take nothing, and a navy you cannot pay for lays itself up.',
-    '  Parking ships over a world you do not own splits its income, closes its',
-    '  lanes and lets you talk to its crews — presence is not ownership, and it',
-    '  is not nothing either.',
-    '  A losing defence breaks off at two to one. You can order your whole',
-    '  navy to hold whatever it costs, or to withdraw the moment it is',
-    '  outmatched and keep the fleet. One order covers every fleet at once,',
-    '  not a single world or squadron. A crusading power cannot be ordered',
-    '  to run.',
-    ...spanLines(),
-    '',
-    ...worldLines(),
-    '',
-    'MONEY',
-    '  Territory pays, and so does the lane network. You may charge any power',
-    '  for crossing your space, and lifting that toll is a real concession to',
-    '  offer. Blockades sever lanes; commerce raiding takes the cargo, and both',
-    '  need a fleet already there.',
-    '',
-    ...fixtureLines(state),
-    '',
-    ...peaceLines(),
-    '',
-    ...leverageLines(),
-    '',
-    ...raiderLines(),
-    '',
-    ...officerLines(),
-    '',
-    ...rimLines(),
-    '',
-    'WHAT YOU CAN REACH FOR',
-    '  Most of what follows has no command. You type the sentence and the',
-    '  arbiter decides — that is the point of it.',
-    '  · things — prisoners, a dossier, a relic, ore, a mine that pays you every',
-    '    turn. Worth different amounts to different powers, which is what makes',
-    '    them worth trading. Won by attempting something, never by claiming it.',
-    '  · debts and loans — money owed and paid down, or a squadron hired out',
-    '    under someone else\'s flag and expected back.',
-    '  · arrangements — a marriage, a charter, a share of what a lane earns, and',
-    '    "if this happens, you pay me that". A treaty binds the other power, so',
-    '    it can only be agreed in a channel and never declared.',
-    '  · allies — a mutual defence pact answers an attack by anyone; a coalition',
-    '    answers only the powers it names. Either way, an attack on one puts the',
-    '    other at war with the attacker and brings the warships it pledged, from',
-    '    within two jumps. A power losing the wars it is in will pay for peace.',
-    '  · operatives — watchers, thieves, saboteurs, assassins. Everything you',
-    '    cannot see is a rumour until somebody of yours is standing in it.',
-    '    Recruiting one is an action; sending them is another, and they travel',
-    '    three jumps a turn. Appointing an officer is an action of its own too.',
-    '  · intel — what a watcher or a listener shows you, you remember for a',
-    '    while after the sight is lost. And the longer you watch a power, the',
-    '    better you know it: its rumours say what the work is, then what it will',
-    '    deliver; its operatives on your worlds show; your watchers dig deeper.',
-    '    A listener over their world teaches as fast as a watcher; one nearby,',
-    '    half as fast. A counter-intelligence programme on your own ground wears',
-    '    their picture of you down, and catches their people there more often.',
-    '',
-    'TIME',
-    '  Nothing takes longer than 5 turns. Fleet movement costs one turn per',
-    '  hyperlane jump and is never estimated. Everything else is estimated once,',
-    '  when the order is issued, and never re-rolled.',
-    '',
-    'THE END',
-    '  A campaign runs the number of turns chosen on the title screen. When the',
-    '  last is played the Rim is summed up, power by power, and the campaign',
-    '  stays open to read and save, but not to play.',
-  ];
-}
 
 export function App() {
   const game = useGame();
@@ -272,15 +56,20 @@ export function App() {
 
     if (text.startsWith(':') || text.startsWith('/')) {
       const [head, ...rest] = text.split(/\s+/);
-      const arg = rest.join(' ');
-      const cmd = (head ?? '').replace(/^[:/]/, '').toLowerCase();
+      const typed = (head ?? '').replace(/^[:/]/, '').toLowerCase();
+      // `:help-war` is `:help war`, the form the pages are named in.
+      const cmd = typed.startsWith('help-') ? 'help' : typed;
+      const arg = typed.startsWith('help-') ? [typed.slice(5), ...rest].join(' ') : rest.join(' ');
 
       switch (cmd) {
-        case 'help':
+        case 'help': {
           // `view` is non-null by the time a command can be typed, but the
           // examples are grounded in real systems so degrade rather than throw.
-          helpLines(view?.state ?? null).forEach((h) => say(h, 'system'));
+          const page = helpPage(view?.state ?? null, arg);
+          if (!page.found) say(`No help page called "${arg}". The pages are listed below.`, 'error');
+          page.lines.forEach((h) => say(h, 'system'));
           return;
+        }
         case 'advisor':
         case 'advise':
         case 'counsel':
