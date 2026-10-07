@@ -185,30 +185,42 @@ grudge and none has a truce with the aggressor, they form a coalition and fight
 it together.
 
 **Here, restated (2026-10-07).** A coalition is not a new record. It is
-`mutual_defense` pacts among powers that share an enemy, which the treaty
-system already has, plus bots that sign them. The first draft — an alarm
-state, a coalition treaty type, forming and dissolving — was a second
-mechanism beside one that exists.
+`mutual_defense` pacts among powers that share an enemy — bilateral, so three
+members are three pacts, which the schema already says is how multilateral
+pacts are made — plus bots that sign them. Read as built, the pact cannot carry
+one, for four reasons:
 
-Reading the pact as built found one thing missing. **A mutual defence pact
-defends a world, and never makes a co-belligerent.** `resolveBattle` draws the
-ally's `shipsPledged` into the one battle, and that is all: `warsFor` reads
-disposition, the attack charges only the holder's regard and onlookers', so the
-attacker and the ally are at peace the turn after the ally's hulls were shot
-at. With no hulls pledged the pact does nothing but keep its two parties out of
-war with each other. *"An attack on one obliges the other to answer"* stops at
-the orbit. (`mutualDefenseTrigger` is also dead: displayed, never read.)
+1. **It never makes a co-belligerent.** `resolveBattle` draws the ally's
+   `shipsPledged` into the one battle and that is all: `warsFor` reads
+   disposition, and the attack charges only the holder's regard and onlookers'.
+   The turn after its hulls were shot at, the ally is at peace with the
+   attacker. **Fix:** a call to arms — each ally's regard for the attacker goes
+   to `WAR_DISPOSITION_THRESHOLD` where it was warmer, the move the ultimatum
+   deadline already makes — except an ally at peace or under truce with the
+   attacker, who is not called. That exception is also how a coalition breaks
+   up: a member that makes a separate peace stops being called.
+2. **It is against everyone.** A coalition is against one power; a pact today
+   obliges Meridian to defend Drajk against the Vigil as much as against the
+   Nars, and an ally's hulls fight a power it has a ceasefire with.
+   **Fix:** the pact names whom it is against. `mutualDefenseTrigger` is a free
+   string nothing reads; it becomes a list of faction ids, empty meaning anyone.
+3. **The pledge sends the wrong ships, from the wrong places, without limit.**
+   It is a hull count drawn by `takeHulls` in loss order, so escorts, freighters,
+   lifters and listeners go first; from the ally's largest stacks anywhere,
+   across the map in an instant, its own fronts included; and again for every
+   world attacked, every turn, with nothing going home. **Fix:** pledge
+   warships in battleship-equivalents, the unit the exchange and the bots
+   already use; draw only from worlds within reach of the one attacked; once a
+   turn per pact.
+4. **Nobody signs one.** A bot rule in `brokeredAccords`: two powers on good
+   terms, both at war with or deeply hostile to the same third and neither at
+   peace with it, sign a `mutual_defense` against it with warships pledged each
+   way.
 
-So two pieces:
-- **An attack on a pact member is an attack on its allies.** Each ally's regard
-  for the attacker is set to `WAR_DISPOSITION_THRESHOLD` where it was warmer —
-  the move the ultimatum deadline already makes. The pact now means war, not a
-  loaned squadron.
-- **Bots sign them** (`brokeredAccords`): two powers on good terms, at war with
-  or deeply hostile to the same third, neither at peace with it, sign a
-  `mutual_defense` with hulls pledged each way. `GRIEVANCE_WEIGHT` and
-  `honourTreaties` already make members target the common enemy and spare each
-  other.
+What needs nothing: fighting together. Arrivals at one world on one turn are
+already one coalition battle, and once (1) puts the members at war,
+`GRIEVANCE_WEIGHT` sends them at the enemy and `honourTreaties` keeps them off
+each other.
 
 **Fit.** Setting 5, architecture 5. Size S. The frozen-board risk remains, so
 the signing threshold needs sweeping like `BOT_AGGRESSION_CEILING` was. Truces
@@ -239,27 +251,27 @@ extracts.
 
 **Here, restated (2026-10-07).** War goals are dropped: a war here starts from
 disposition or an ultimatum, and an ultimatum already names what it is for.
-Exhaustion is bots weighing what a war has cost when they decide to make peace
-— today they make peace only on a quiet war (`ENVOYS_QUIET_TURNS` without a
-battle), never on a losing one.
+Exhaustion is bots weighing whether they can afford their wars when they decide
+on peace — today they make peace only on a quiet war (`ENVOYS_QUIET_TURNS`
+without a battle), never on a losing one.
 
-Reading the code found what that needs and does not have: **nothing records
-what a war has cost.** `lastClash` keeps the last turn a pair fought, a battle
-report is not stored, and the event log is prose. A bot cannot weigh losses no
-state holds. So one record, written in the tick beside `lastClash`: per pair,
-since the war began, tons each side lost to the other and worlds each took from
-the other, cleared when a peace is signed.
+**A position check, not a per-war ledger.** A power fighting three enemies
+may need to settle with one in order to hold against the others, and a ledger
+of what each war cost cannot see that. What decides it is the whole position:
+the power's battle line against every enemy's combined (`sideStrength` over
+`warsFor`, which ultimatums already read), and whether its treasury and net can
+carry the fight. All of it is on the board, so nothing new is recorded.
 
-With it:
-- **A bot sues** when its losses in a war pass a share of its navy, or it has
-  lost worlds and taken none — not only when the war goes quiet.
-- **The terms follow the ledger.** The side that lost more pays: an indemnity
-  (`terms.payment`) or a cession of what the winner already holds.
-- **The persona reads it.** A war's cost is leverage, so `concessionBudget` can
-  count it beside ships over your worlds.
+- **A bot sues** when it is outmatched or its money is running out — with the
+  enemy whose peace frees the most, so it consolidates against the rest.
+- **The terms follow the position.** The weaker side pays: an indemnity
+  (`terms.payment`) sized from its treasury, or a cession of what the other
+  already holds.
+- **The persona reads it.** Being outmatched is leverage, so
+  `concessionBudget` can count it.
 
-**Fit.** Setting 4, architecture 5. Size M. Pinned to a journal version, since
-the record is state.
+**Fit.** Setting 4, architecture 5. Size S. No journal pin: it reads state, and
+bot ops are journaled.
 
 ### 2.5 A span of control — *Terra Invicta, Europa Universalis IV (overextension)*
 
@@ -602,7 +614,8 @@ size.
 | Emissions **(built)** | 3.5 | listeners also read fleets under way within N jumps |
 | A span of control **(built)** | 2.5 | dissent per world over an influence-derived cap |
 | Fortune and darkness | 6.2 | a weight on the pulse — small only once mandate exists |
-| Coalitions | 2.2 | a pact member's allies go to war with its attacker; bots sign `mutual_defense` against a shared enemy |
+| Exhaustion | 2.4 | bots weigh their whole position — line and treasury against every enemy — when they sue and on what terms |
+| Coalitions | 2.2 | `mutual_defense` that calls allies to war, names its enemy and pledges warships within reach; bots sign them |
 
 ### Medium, lighter
 
@@ -627,7 +640,6 @@ size.
 | Running dark **(built)** | 3.4 | anonymous stacks in the fog, and an unmasking contest |
 | A concession budget **(built)** | 1.4 | a leverage figure in code, the persona prompt, the concession guard |
 | Speculative trade **(dropped)** | 4.2 | prices by world type, a cargo run order |
-| Exhaustion | 2.4 | a per-war ledger of losses, bots suing and setting terms on it |
 | War goals **(dropped)** | 2.4 | — a war's purpose is its ultimatum |
 
 ### Large
@@ -679,7 +691,7 @@ flowchart LR
   truces --> coalitions["Coalitions · S"]:::light
   accords --> coalitions
   ultimatums -.-> coalitions
-  truces --> exhaustion["Exhaustion · M"]:::light
+  truces --> exhaustion["Exhaustion · S"]:::light
   accords --> exhaustion
   exhaustion -.-> coalitions
   ambitions["Ambitions · M+"]:::heavy -.-> mandate["Mandate · M+"]:::heavy --> fortune["Fortune and darkness · S"]:::light
@@ -749,10 +761,10 @@ and kept.
    playing in character.
 2. **Running dark** (§3.4) — heat is built, so an unmasked raid has a price to
    pay; the Confederacy and the Combine are its users by doctrine.
-3. **Exhaustion** (§2.4) — a per-war ledger of losses, so bot peace has a
-   better reason than a quiet war. War goals are dropped.
-4. **Coalitions** (§2.2) — a mutual defence pact that means war, and bots that
-   sign one. Small, after exhaustion, and it needs the frozen-board sweep.
+3. **Exhaustion** (§2.4) — bots weigh line and treasury against every enemy,
+   so peace has a better reason than a quiet war. War goals are dropped.
+4. **Coalitions** (§2.2) — a mutual defence pact that calls allies to war,
+   names its enemy and pledges warships within reach, and bots that sign one. Small, after exhaustion, and it needs the frozen-board sweep.
 
 Every one of these would need a journal-version pin, a harness run, and a line
 in `CLAUDE.md`'s conventions if it adds a vocabulary.
