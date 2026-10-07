@@ -16,7 +16,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 16;
+export const JOURNAL_VERSION = 17;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -98,6 +98,7 @@ export const JournalVersionSchema = z.union([
   z.literal(14),
   z.literal(15),
   z.literal(16),
+  z.literal(17),
 ]);
 
 export const JournalSchema = z.object({
@@ -312,6 +313,9 @@ export function replay(
     // counter-intelligence programme did nothing. Those campaigns' operatives
     // were caught and their secrets dug under that rule.
     intel: parsed.version >= 16,
+    // A secret order's completion, cancellation or interruption was written
+    // to the public log, so every power read what it had only heard rumour of.
+    privateOrderLines: parsed.version >= 17,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.
