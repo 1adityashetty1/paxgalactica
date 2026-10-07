@@ -209,6 +209,17 @@ import {
   type ShipStack,
 } from './hulls.js';
 import { accrueIntel, EMISSION_RANGE, isPublicOrderType, recordSightings } from './intel.js';
+import {
+  SECESSION_REGARD,
+  accrueRegard,
+  envoyRefusal,
+  envoyRegard,
+  holdAt,
+  holdingFactor,
+  joinsWhom,
+  regardFor,
+  regardRecorded,
+} from './regard.js';
 import { INTEL_DIG, INTEL_DIG_BONUS, INTEL_OPERATIVES, INTEL_TRACE_BONUS, intelOn } from './intel-levels.js';
 import {
   EXTRACTION_ALLOWED,
@@ -1879,6 +1890,44 @@ function amendRecord(text: string, corrections: string[], max = 240): string {
   return `${kept}${note}`;
 }
 
+/**
+ * A held world answers to nobody: the rising becomes its militia, the holder's
+ * ships and officers there withdraw to its nearest holding as a ceder's do,
+ * and — where worlds keep a regard — it thinks the worse of the power it threw
+ * off. One way a world rises, whatever started it: the steady desertion of a
+ * world neither content nor held down, or the Rim's unrest. Public.
+ */
+function secede(state: WorldState, system: StarSystem, why: string): string {
+  const holder = system.controllerFactionId;
+  if (holder === null) return `${system.name} already answers to nobody.`;
+  system.controllerFactionId = null;
+  system.garrison = Math.min(system.garrisonMax, Math.max(1, Math.ceil(system.garrisonMax / 2)));
+  let where = '';
+  const refuge = fleetBases(state, holder).find((x) => x.id !== system.id && x.controllerFactionId === holder);
+  if (refuge) {
+    const leaving = stackAt(system, holder);
+    if (hullsIn(leaving) > 0) {
+      setShipsAt(system, holder, 0);
+      addStackAt(refuge, holder, leaving);
+      where = ` ${nameFor(state, holder)}'s ships there withdraw to ${refuge.name}.`;
+    }
+    for (const officer of state.commanders ?? []) {
+      if (officer.factionId === holder && officer.status === 'active' && officer.atSystemId === system.id) {
+        officer.atSystemId = refuge.id;
+      }
+    }
+  }
+  if (regardRecorded(state)) {
+    system.regard = {
+      ...system.regard,
+      [holder]: Math.max(-100, regardFor(system, holder) - SECESSION_REGARD),
+    };
+  }
+  const note = `${why}, and ${system.name} answers to nobody.${where}`;
+  logEvent(state, 'system', note, holder);
+  return note;
+}
+
 function cedeTerritory(state: WorldState, treaty: Treaty): string[] {
   const notes: string[] = [];
   if (treaty.terms.territory.length === 0) return notes;
@@ -2118,6 +2167,14 @@ export interface LegacyRules {
    * rose, and counter-intelligence did nothing. Journal version 16.
    */
   intel?: boolean;
+  /**
+   * Worlds keep a regard for each power (see `regard.ts`): an independent world
+   * joins the power it regards best, a held world that is neither content nor
+   * held down by its holder's warships rises and secedes, and an envoy can be
+   * sent. Before it, a world had no view of anybody and changed hands only by
+   * arrival, cession or the Rim's unrest. Journal version 17.
+   */
+  regard?: boolean;
   /**
    * A sandbox campaign's one event (see `primeRimSandbox`): that kind every
    * turn, with no d20 and no cooldowns. Not a rule the game acquired — a rule
@@ -4039,7 +4096,17 @@ function applyOpsUnderRules(
           const site = state.systems.find((sys) => sys.id === op.targetId)!;
           const holds = site.controllerFactionId === op.factionId;
           const present = (hullsAt(site, op.factionId)) > 0;
-          if (!holds && !present) {
+          // An envoy is not a works programme: it goes to a world of your own,
+          // or to one that answers to nobody and that you are in reach of.
+          if (op.onComplete.kind === 'court') {
+            const refusal = regardRecorded(state)
+              ? envoyRefusal(state, site, op.factionId)
+              : 'No world in this campaign keeps count of who courts it.';
+            if (refusal) {
+              reject(raw, 'no_presence', refusal);
+              break;
+            }
+          } else if (!holds && !present) {
             reject(
               raw,
               'no_presence',
@@ -7323,6 +7390,17 @@ export interface TurnReport {
    * own `visibleTo`, the rule the event log follows.
    */
   events: RimEvent[];
+  /**
+   * What worlds did on their own this turn, where they keep a regard (see
+   * `regard.ts`): those that joined a power, those that rose and now answer to
+   * nobody, and those held neither by consent nor by force, losing garrison.
+   * Absent on a campaign whose worlds keep no regard.
+   */
+  worlds?: {
+    joined: { systemId: string; factionId: string }[];
+    rose: { systemId: string; factionId: string }[];
+    restless: { systemId: string; factionId: string; garrison: number; need: number; have: number }[];
+  };
 }
 
 export interface TickResult extends ApplyResult {
@@ -7363,6 +7441,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     spanOfControl: governingSpan = true,
     secrets: diggingSecrets = true,
     intel: knowing = true,
+    regard: worldsHaveViews = true,
     battleRules = {},
   } = legacy;
   const state = cloneState(input);
@@ -8695,9 +8774,18 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     }
   }
 
+  // Works that answer a world's want, for its regard below.
+  const landedWorks: { systemId: string; factionId: string; kind: 'develop_system' | 'fortify' }[] = [];
+  const envoys: PendingOrder[] = [];
+  const keepsRegard = worldsHaveViews && regardRecorded(state);
   for (const order of completed) {
     if (isMovementType(order.type)) {
       // handled above, per system
+    } else if (order.onComplete?.kind === 'court') {
+      // An envoy arrives, and is heard once the turn's drift is done — below,
+      // with the rest of what moves a world's regard — so what it is worth is
+      // what the world thinks at the end of the turn.
+      envoys.push(order);
     } else {
       // A completed programme is where multi-turn work finally touches the
       // world. Without a payload the order really does just finish — correct for
@@ -8713,6 +8801,12 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
           statFixturesAt(state, target.id),
         );
         note = outcome.note;
+        if (
+          outcome.delivered &&
+          (order.onComplete.kind === 'develop_system' || order.onComplete.kind === 'fortify')
+        ) {
+          landedWorks.push({ systemId: target.id, factionId: order.factionId, kind: order.onComplete.kind });
+        }
         if (outcome.fixture) {
           // The slot is re-checked here, not only at issue: a world taken
           // mid-build may already carry its new holder's fixtures — two, or
@@ -8765,15 +8859,86 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     logEvent(state, 'diplomacy', note, owed.holderFactionId, [owed.holderFactionId, owed.debtorFactionId]);
   }
 
+  /* --- What each world thinks of each power, and what it does about it -- */
+  // After the battles and the works, so a world taken this turn reads its
+  // grievance at once and a programme that landed counts. See `regard.ts`.
+  const restless = new Set<string>();
+  if (keepsRegard) {
+    const worlds: NonNullable<TurnReport['worlds']> = { joined: [], rose: [], restless: [] };
+    report.worlds = worlds;
+    accrueRegard(state, { battles: report.battles, landed: landedWorks });
+    // Envoys are heard after the drift. Their worth reads the sender's
+    // influence off the whole board, which is why they land here rather than
+    // in `applyOrderEffect`.
+    for (const order of envoys) {
+      const target = getSystem(state, order.targetId);
+      if (!target) continue;
+      let note = `${order.label} completed at ${target.name}, and nobody there was listening.`;
+      if (!envoyRefusal(state, target, order.factionId)) {
+        const before = regardFor(target, order.factionId);
+        const after = Math.min(100, before + envoyRegard(state, order.factionId, order.onComplete!.magnitude));
+        target.regard = { ...target.regard, [order.factionId]: after };
+        note = `${nameFor(state, order.factionId)}'s envoy is heard at ${target.name}: its standing there ${before} -> ${after}.`;
+      }
+      logEvent(state, 'order', note, order.factionId, [order.factionId]);
+      notes.push(note);
+      report.completed.push({ label: order.label, factionId: order.factionId, where: target.name, outcome: note });
+    }
+    const factor = new Map(state.factions.map((f) => [f.id, holdingFactor(state, f.id)]));
+    // A world neither content nor held down rises: its garrison deserts by the
+    // shortfall, and with no garrison left it answers to nobody.
+    for (const system of state.systems) {
+      const hold = holdAt(state, system, factor.get(system.controllerFactionId ?? ''));
+      if (!hold || hold.shortfall <= 0) continue;
+      restless.add(system.id);
+      const deserted = Math.min(system.garrison, Math.max(1, Math.ceil(hold.shortfall)));
+      system.garrison -= deserted;
+      worlds.restless.push({
+        systemId: system.id, factionId: hold.holder, garrison: system.garrison,
+        need: Math.round(hold.need * 10) / 10, have: Math.round(hold.have * 10) / 10,
+      });
+      if (system.garrison > 0) {
+        const note = `${system.name} is restless under ${nameFor(state, hold.holder)}: ${deserted} of its garrison desert, ${system.garrison} left. It wants ${hold.need.toFixed(1)} battleship-equivalents over it and has ${hold.have.toFixed(1)}, or a better opinion of its holder (${hold.regard}).`;
+        notes.push(note);
+        logEvent(state, 'system', note, hold.holder, [hold.holder]);
+      } else {
+        const note = secede(state, system, `${system.name} rises against ${nameFor(state, hold.holder)}: its last troops desert`);
+        notes.push(note);
+        worlds.rose.push({ systemId: system.id, factionId: hold.holder });
+      }
+    }
+    // An independent world that thinks well enough of one power joins it.
+    const ids = state.factions.map((f) => f.id);
+    for (const system of state.systems) {
+      const joiner = joinsWhom(system, ids);
+      if (!joiner) continue;
+      system.controllerFactionId = joiner;
+      worlds.joined.push({ systemId: system.id, factionId: joiner });
+      const note = `${system.name} joins ${nameFor(state, joiner)} of its own accord, garrison and all.`;
+      notes.push(note);
+      logEvent(state, 'system', note, joiner);
+    }
+  }
+
+  if (!keepsRegard) {
+    for (const order of envoys) {
+      const note = `${order.label} completed at ${nameOf(order.targetId)}, and nobody there was listening.`;
+      logEvent(state, 'order', note, order.factionId, [order.factionId]);
+      notes.push(note);
+      report.completed.push({ label: order.label, factionId: order.factionId, where: nameOf(order.targetId), outcome: note });
+    }
+  }
+
   /* --- Garrisons regrow, last, and only where it is quiet -------------- */
   // Levies are raised between fights, not during one. A world regrows only if
   // nothing hostile is sitting in its orbit and nothing landed on it this turn
   // — otherwise a besieged garrison would rebuild faster than it was being
-  // ground down, and a world stormed this turn would have grown first.
+  // ground down, and a world stormed this turn would have grown first. Nor
+  // does a restless one: its people are deserting, not enlisting.
   for (const system of state.systems) {
     const holder = system.controllerFactionId;
     if (holder === null) continue;
-    if (contested.has(system.id)) continue;
+    if (contested.has(system.id) || restless.has(system.id)) continue;
     const besieged = presentAt(system).some(([id, n]) => id !== holder && n > 0);
     if (besieged) continue;
     if (system.garrison < system.garrisonMax) {
@@ -9029,9 +9194,15 @@ function applyRimEvent(state: WorldState, plan: RimEventPlan): RimEvent {
       // left at no garrison at all would be a free pickup for the next fleet
       // past.
       if (s.garrison === 0 && hullsAt(s, holder) === 0) {
-        s.controllerFactionId = null;
-        s.garrison = Math.min(s.garrisonMax, Math.max(1, lost));
-        text += ` With nobody left to hold it, ${s.name} throws off ${who(holder)} and answers to nobody.`;
+        if (regardRecorded(state)) {
+          // The same rising the tick's desertion ends in — see `secede`.
+          secede(state, s, `With nobody left to hold it, ${s.name} throws off ${who(holder)}`);
+          text += ` With nobody left to hold it, ${s.name} throws off ${who(holder)} and answers to nobody.`;
+        } else {
+          s.controllerFactionId = null;
+          s.garrison = Math.min(s.garrisonMax, Math.max(1, lost));
+          text += ` With nobody left to hold it, ${s.name} throws off ${who(holder)} and answers to nobody.`;
+        }
       }
       break;
     }

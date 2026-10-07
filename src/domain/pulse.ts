@@ -32,6 +32,7 @@ import {
   type WorldState,
 } from './state.js';
 import { routeLegs, tradeRoutes } from './trade.js';
+import { CONTENT_REGARD, regardFor, regardRecorded } from './regard.js';
 
 /**
  * The pulse: whether the Rim does something this turn, and what (item 124).
@@ -168,12 +169,17 @@ function candidatesFor(state: WorldState, kind: RimEventKind): Candidate[] {
       // A world held that was never the holder's, weighted by the occupation it
       // is paying for — `OCCUPATION_COST` is a fraction of what the world pays
       // its holder, so weighting by that income is weighting by the cost.
+      // Where worlds keep a regard (journal version 17), any world not content
+      // with its holder can rise — the spark of the rising `regard.ts` drives
+      // steadily. Before it, only ground that was never the holder's own.
+      const keeps = regardRecorded(state);
       return worlds(state)
-        .filter(
-          (s) =>
-            s.controllerFactionId !== null &&
-            s.homeFactionId !== null &&
-            s.homeFactionId !== s.controllerFactionId,
+        .filter((s) =>
+          s.controllerFactionId === null
+            ? false
+            : keeps
+              ? regardFor(s, s.controllerFactionId) < CONTENT_REGARD
+              : s.homeFactionId !== null && s.homeFactionId !== s.controllerFactionId,
         )
         .map((s) => ({
           weight: Math.max(1, systemIncome(state, s).shares[s.controllerFactionId!] ?? 0),

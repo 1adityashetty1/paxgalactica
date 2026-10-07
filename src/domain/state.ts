@@ -593,6 +593,17 @@ export const SystemSchema = z.object({
    * as a rock, which is the least presumptuous thing to be wrong about.
    */
   worldType: WorldTypeSchema.default('arid'),
+  /**
+   * What this world thinks of each power, −100 to 100: its standing with them
+   * — see `regard.ts`. Whether an independent world joins a power, and whether
+   * a held world stays with its holder, are both read off this.
+   *
+   * Last in the schema because the tick writes it onto a live record, and
+   * replay compares key order. Defaulted to empty, which is also how the
+   * mechanic knows it is off: a campaign from before journal version 17 has no
+   * regard recorded anywhere, and nothing reads or moves it.
+   */
+  regard: z.record(z.string(), z.number().int().min(-100).max(100)).default({}),
 });
 export type StarSystem = z.infer<typeof SystemSchema>;
 
@@ -635,6 +646,13 @@ export const OrderEffectSchema = z.object({
      * lands for whoever holds the world when it completes.
      */
     'repair_fixture',
+    /**
+     * An envoy: each point of magnitude lifts the target world's regard for
+     * the power that sent it by `ENVOY_PER_POINT`, plus that power's influence
+     * modifier once. Only on an independent world or one the sender holds —
+     * see `regard.ts`.
+     */
+    'court',
   ]),
   /**
    * How much. Generous bounds here and the real limits in code: a schema

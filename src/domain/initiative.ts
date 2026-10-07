@@ -21,7 +21,20 @@ import {
   protectedFrom,
   raidLandsOn,
 } from './diplomacy.js';
-import { EFFECT_COST } from './development.js';
+import { EFFECT_COST, MIN_DEVELOPMENT_COST } from './development.js';
+import {
+  BATTLE_REGARD,
+  CONQUEST_REGARD,
+  CONTENT_REGARD,
+  HOLD_DIVISOR,
+  PROTECTION_LINE,
+  envoyRefusal,
+  holdAt,
+  holdingFactor,
+  regardFor,
+  regardRecorded,
+  wantOf,
+} from './regard.js';
 import { ENVOYS_QUIET_TURNS } from './events.js';
 import { clashKey } from './pulse.js';
 import { jumpsBetween } from './graph.js';
@@ -1221,8 +1234,20 @@ function homeSectorOf(state: WorldState, me: string): string | null {
 function sectorGaps(state: WorldState, me: string): StarSystem[] {
   const home = homeSectorOf(state, me);
   if (home === null) return [];
+  // A power that courts does not storm the worlds it courts, nor take by force
+  // one that chose somebody else: ground that was never anybody's home is won
+  // by asking. Measured without the second half, Arkane lost the race for
+  // Sennex to Meridian on turn 4 and stormed it on turn 5.
+  const wooer = courts(state, me);
+  // And a power that takes no master makes none: where worlds have a view,
+  // the defensive ethic takes back its own and storms nobody else's home,
+  // which would hate it for as long as it was held.
+  const keepsToItsOwn =
+    regardRecorded(state) && getFaction(state, me)?.warEthic === 'defensive';
   return state.systems
     .filter((x) => x.sector === home && x.controllerFactionId !== me)
+    .filter((x) => !(wooer && x.homeFactionId === null))
+    .filter((x) => !(keepsToItsOwn && x.homeFactionId !== null && x.homeFactionId !== me))
     .sort((a, b) => {
       // **Unclaimed ground first.** Consolidating your own sector is cheaper
       // than evicting somebody from it, needs no war, and is what a power
@@ -1381,6 +1406,7 @@ function occupy(ctx: Ctx, target: StarSystem, label: string): Ops {
 }
 
 function press(ctx: Ctx, target: StarSystem, label: string): Ops {
+  if (!holdable(ctx.state, ctx.me, target)) return [];
   const need = orbitalNeed(ctx.state, ctx.me, target);
   // **Sail first, and from anywhere.** `sortie` already finds the nearest
   // holding that can supply the whole blow, at any range, so gating the attempt
@@ -1720,6 +1746,194 @@ const drajk: Bot = (ctx) => {
   return ops;
 };
 
+/* ------------------------------------------------------------------ */
+/* Worlds with a view of their own                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The war ethics that court an independent world rather than storm it: the
+ * expansionist trader, the defensive power that takes no master and so makes
+ * none, and the profiteer that will not spend its own hulls on a conquest. The
+ * crusader and the opportunist take what they want and hold it down. Keyed on
+ * the ethic rather than on a faction, as every doctrine rule here is.
+ */
+export const COURTING_ETHICS = new Set(['expansionist', 'defensive', 'profiteer']);
+
+/** Credits a bot keeps back before it spends on a courtship. */
+export const BOT_COURT_RESERVE = 150;
+/** Independent worlds a bot courts at once. */
+export const BOT_COURT_TARGETS = 1;
+
+const courts = (state: WorldState, me: string): boolean =>
+  regardRecorded(state) && COURTING_ETHICS.has(getFaction(state, me)?.warEthic ?? '');
+
+/**
+ * How far a rival must have got with a world before a bot leaves the race.
+ *
+ * Two powers courting one world with equal effort both climb to the cap and
+ * neither ever leads by `JOIN_LEAD`, so the world stays its own forever and
+ * both go on paying for envoys: measured, Sennex sat at 98 and 98 for Meridian
+ * and Arkane from turn 8 to turn 30. So a bot that is behind a serious rival —
+ * or level with one that sorts first, which is what makes a tie break the same
+ * way on replay — courts somewhere else, and the leader's lead opens as its own
+ * regard fades.
+ */
+export const BOT_RIVAL_SUITOR = 30;
+
+function outcourted(target: StarSystem, me: string, ids: readonly string[]): boolean {
+  const mine = regardFor(target, me);
+  return ids.some((rival) => {
+    if (rival === me) return false;
+    const theirs = regardFor(target, rival);
+    return theirs >= BOT_RIVAL_SUITOR && (theirs > mine || (theirs === mine && rival < me));
+  });
+}
+
+/**
+ * Keep every world that is neither content nor held down held down: mass
+ * warships onto it, from the other holdings, before its garrison deserts.
+ * Every power, whatever its doctrine — a doctrine that conquers has to hold
+ * what it took, and one that courts has to keep what joined it.
+ */
+/**
+ * How far over a world's need a bot keeps its holding force, in the holder's
+ * resolve-scaled battleship-equivalents. The need moves inside the tick — a
+ * world's regard drifts, and dissent can take a point off resolve and so off
+ * what each warship holds down — so a bot that tops up to exactly the need
+ * finds itself short by the time the world is asked. Measured at nothing: the
+ * Iron Vigil held Torrek Anchorage at 5.3 against 4.9 and lost it four turns
+ * later when its resolve slipped.
+ */
+export const BOT_HOLD_MARGIN = 1;
+
+function hold(ctx: Ctx): Ops {
+  if (!regardRecorded(ctx.state)) return [];
+  const factor = Math.max(0.1, holdingFactor(ctx.state, ctx.me));
+  const ops: Ops = [];
+  for (const world of held(ctx.state, ctx.me)) {
+    const h = holdAt(ctx.state, world, factor);
+    if (!h || h.need <= 0 || h.have >= h.need + BOT_HOLD_MARGIN) continue;
+    // In the holder's own battleship-equivalents, with half a battleship over,
+    // since hulls move whole.
+    const want =
+      lineStrengthAt(ctx.state, world.id, ctx.me) + (h.need + BOT_HOLD_MARGIN - h.have) / factor + 0.5;
+    ops.push(...massAt(ctx, world.id, want));
+  }
+  return ops;
+}
+
+/**
+ * Whether the fleet that takes a world could hold it down afterwards: what a
+ * fresh conquest of it would need, against the force the attack is sized at.
+ * A world that hates a power past that is not worth storming — measured, the
+ * Vigil retook Torrek Anchorage thirteen times in twenty-five turns, each time
+ * a little more hated and a little less holdable, and lost it each time.
+ */
+export function holdable(state: WorldState, me: string, target: StarSystem): boolean {
+  if (!regardRecorded(state) || target.homeFactionId === me) return true;
+  const after = Math.min(regardFor(target, me) - BATTLE_REGARD, CONQUEST_REGARD);
+  const need = (target.strategicValue * Math.max(0, CONTENT_REGARD - after)) / HOLD_DIVISOR;
+  return need / Math.max(0.1, holdingFactor(state, me)) <= orbitalNeed(state, me, target);
+}
+
+/** A movement under way, of this power, to this world. */
+const sailingTo = (s: WorldState, me: string, targetId: string): boolean =>
+  s.pendingOrders.some((o) => o.factionId === me && o.type === 'fleet_movement' && o.targetId === targetId);
+
+/** Send a small squadron of one shape from the nearest holding that can spare it. */
+function station(ctx: Ctx, target: StarSystem, shape: 'line' | 'freighter', label: string): Ops {
+  if (sailingTo(ctx.state, ctx.me, target.id)) return [];
+  const from = held(ctx.state, ctx.me)
+    .filter((b) =>
+      shape === 'freighter'
+        ? (stackAt(b, ctx.me).freighter ?? 0) > 0
+        : lineStrengthAt(ctx.state, b.id, ctx.me) >= PROTECTION_LINE + 4,
+    )
+    .sort(
+      (a, b) =>
+        (shortestPath(ctx.state.systems, a.id, target.id)?.length ?? 99) -
+          (shortestPath(ctx.state.systems, b.id, target.id)?.length ?? 99) ||
+        a.id.localeCompare(b.id),
+    )[0];
+  if (!from) return [];
+  const here = stackAt(from, ctx.me);
+  const force: ShipStack =
+    shape === 'freighter'
+      ? { freighter: 1 }
+      : drawToWeight(subtractStack(here, { lifter: here.lifter ?? 0, freighter: here.freighter ?? 0, listener: here.listener ?? 0 }), PROTECTION_LINE + 0.5);
+  if (hullsIn(force) === 0) return [];
+  return [{ op: 'issue_order', factionId: ctx.me, type: 'fleet_movement', originId: from.id, targetId: target.id, force, label }];
+}
+
+/**
+ * Court the independent worlds in reach: an envoy, and whatever the world
+ * wants that this power can give it. Every power courts its own home worlds
+ * that have risen and gone their own way; the courting ethics court any
+ * independent world they can reach. See `regard.ts`.
+ */
+function court(ctx: Ctx): Ops {
+  const { state, me } = ctx;
+  if (!regardRecorded(state)) return [];
+  const wooer = courts(state, me);
+  const ids = state.factions.map((f) => f.id);
+  const targets = state.systems
+    .filter((x) => x.controllerFactionId === null && (wooer || x.homeFactionId === me))
+    .filter((x) => envoyRefusal(state, x, me) === null)
+    // Its own home is always worth the attempt; anywhere else, not a race
+    // already lost.
+    .filter((x) => x.homeFactionId === me || !outcourted(x, me, ids))
+    .sort(
+      (a, b) =>
+        Number(b.homeFactionId === me) - Number(a.homeFactionId === me) ||
+        regardFor(b, me) - regardFor(a, me) ||
+        a.id.localeCompare(b.id),
+    )
+    .slice(0, BOT_COURT_TARGETS);
+  const ops: Ops = [];
+  let left = purse(state, me) - BOT_COURT_RESERVE;
+  for (const target of targets) {
+    const pending = (kind: string) =>
+      state.pendingOrders.some((o) => o.factionId === me && o.targetId === target.id && o.onComplete?.kind === kind);
+    const envoy = 2 * EFFECT_COST.court;
+    if (!pending('court') && left >= envoy) {
+      ops.push({
+        op: 'issue_order', factionId: me, type: 'political_maneuver',
+        originId: target.id, targetId: target.id, durationTurns: 1,
+        label: `an envoy to ${target.name}`,
+        onComplete: { kind: 'court', magnitude: 2, summary: `court ${target.name}` },
+      });
+      left -= envoy;
+    }
+    const want = wantOf(target);
+    const present = battleshipEquivalents(stackAt(target, me)) > 0;
+    if (want === 'protection' || ((want === 'development' || want === 'arms') && !present)) {
+      if (battleshipEquivalents(stackAt(target, me)) < PROTECTION_LINE) {
+        ops.push(...station(ctx, target, 'line', `stand guard over ${target.name}`));
+      }
+    } else if (want === 'trade' && (stackAt(target, me).freighter ?? 0) === 0) {
+      ops.push(...station(ctx, target, 'freighter', `open a market at ${target.name}`));
+    }
+    if (present && want === 'development' && !pending('develop_system') && left >= 2 * MIN_DEVELOPMENT_COST) {
+      ops.push({
+        op: 'issue_order', factionId: me, type: 'construction_infrastructure',
+        originId: target.id, targetId: target.id, durationTurns: 3,
+        label: `works at ${target.name}`,
+        onComplete: { kind: 'develop_system', magnitude: 1, summary: `develop ${target.name}` },
+      });
+      left -= 2 * MIN_DEVELOPMENT_COST;
+    }
+    if (present && want === 'arms' && !pending('fortify') && left >= EFFECT_COST.fortify) {
+      ops.push({
+        op: 'issue_order', factionId: me, type: 'fortification',
+        originId: target.id, targetId: target.id, durationTurns: 3,
+        label: `walls for ${target.name}`,
+        onComplete: { kind: 'fortify', magnitude: 1, summary: `fortify ${target.name}` },
+      });
+      left -= EFFECT_COST.fortify;
+    }
+  }
+  return ops;
+}
 
 export const BOTS: Record<string, Bot> = { meridian, vigil, ojjul, freeworlds, drajk };
 
@@ -1981,7 +2195,7 @@ export function proposeFor(
   // covert half of a war it is in — added here rather than to five bots, for
   // the reason the filters below are: a bot added later inherits them.
   const ctx = { state, me: factionId };
-  const rules = [mend, sabotage, watch, sweep, useProof, demandTribute, callIn, backDemands, postBounty].map((rule) =>
+  const rules = [hold, court, mend, sabotage, watch, sweep, useProof, demandTribute, callIn, backDemands, postBounty].map((rule) =>
     rule(ctx),
   );
   // Paper first, then standing. Both are post-filters over one proposal, so a

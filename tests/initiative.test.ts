@@ -389,7 +389,9 @@ describe('lift is carried, not counted as strength', () => {
   });
 
   it('sails with enough lift to hold what it takes, or does not sail', () => {
-    const s = createSeedState('freeworlds');
+    // Without regard: a courting power sends warships alone to stand guard
+    // over a world it is courting, which is not a sortie and carries no lift.
+    const s = createSeedState('freeworlds', { regard: false });
     // Every bot, and every world it proposes to attack.
     for (const me of ['meridian', 'vigil', 'ojjul', 'freeworlds', 'drajk']) {
       const ops = ((proposeFor(s, me)?.ops ?? []) as Record<string, unknown>[]).filter(

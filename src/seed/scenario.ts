@@ -1,3 +1,4 @@
+import { seedRegard } from '../domain/regard.js';
 import type { FactionStats } from '../domain/checks.js';
 import type { DurationCategory } from '../domain/duration.js';
 import type { WorldType } from '../domain/state.js';
@@ -727,6 +728,9 @@ function buildSystems(auxiliaries = true): StarSystem[] {
     ships: s.controller
       ? { [s.controller]: openingSquadron(s.controller, startingTons(s), auxiliaries) }
       : {},
+    // Filled by `createSeedState` once the factions exist; empty is how a
+    // board from before journal version 17 says its worlds keep no view.
+    regard: {},
   }));
 }
 
@@ -866,6 +870,7 @@ export function createSeedState(
    * `luck: false` rebuilds one from before version 11, when no power had any;
    * `notes` and `commodities` false, one from before version 12.
    * `splitTies: false` routes a lane one way only, as before version 15.
+   * `regard: false` gives no world a view of anybody, as before version 17.
    */
   {
     fourSchools = true,
@@ -874,6 +879,7 @@ export function createSeedState(
     notes = true,
     commodities = true,
     splitTies = true,
+    regard = true,
   }: {
     fourSchools?: boolean;
     auxiliaries?: boolean;
@@ -881,6 +887,7 @@ export function createSeedState(
     notes?: boolean;
     commodities?: boolean;
     splitTies?: boolean;
+    regard?: boolean;
   } = {},
 ): WorldState {
   if (!SEED_FACTIONS.some((f) => f.id === playerFactionId)) {
@@ -891,8 +898,14 @@ export function createSeedState(
 
   const systems = buildSystems(auxiliaries);
   applyOpeningFloors(systems, auxiliaries);
+  const factions = buildFactions(luck, commodities);
+  // Every world opens on its baseline: its own power at `HOME_REGARD`, and
+  // nobody else anything. See `regard.ts`.
+  if (regard) {
+    for (const system of systems) system.regard = seedRegard(system, factions.map((f) => f.id));
+  }
   const state: WorldState = {
-    factions: buildFactions(luck, commodities),
+    factions,
     systems,
     pendingOrders: [],
     routeTies: splitTies ? 'split' : 'first',
