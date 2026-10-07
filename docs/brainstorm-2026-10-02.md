@@ -669,10 +669,18 @@ size.
 
 ## Build graph
 
-*Updated after coalitions and exhaustion were built as extensions of mutual
-defence and bot peace, and war goals dropped.* Seventeen ideas are built, plus
-the bot rules that use them, and two are dropped, so four are left. Built work is no longer a node: where it
-unlocks something, the node says so.
+*Updated after PR #61: coalitions and exhaustion were built as extensions of
+mutual defence and bot peace, war goals were dropped, and the interface caught
+up with what is built.* Seventeen ideas are built, plus the bot rules that use
+them, and two are dropped, so four are left. Built work is no longer a node:
+where it unlocks something, the node says so.
+
+The interface work is not from this brainstorm and is drawn apart from it. It
+makes the built ideas reachable in play rather than adding mechanics:
+- help that is an index and a page per part of the game;
+- an Agents tab that tracks the network;
+- buttons that write the sentence for a recruit, an appointment, a fixture, a
+  sale or a ransom, and never send it.
 
 A solid arrow means the later idea, or one part of it, cannot be built without
 the earlier one. A dashed arrow means it is better built after. Green is small
@@ -705,6 +713,12 @@ flowchart LR
     exhaustion["Exhaustion"]:::done
   end
 
+  subgraph interface["Interface, built with PR #61"]
+    help["Help pages"]:::done
+    agentsTab["Agents tab"]:::done
+    drafts["Draft buttons"]:::done
+  end
+
   ambitions["Ambitions · M+"]:::heavy -.-> mandate["Mandate · M+"]:::heavy --> fortune["Fortune and darkness · S"]:::light
   ambitions -.-> estates["Estates · L"]:::heavy
   mandate -.-> estates
@@ -731,8 +745,11 @@ The longest chain is three deep: ambitions → mandate → fortune.
 The bots now reach the leverage layer too: they demand tribute of weaker
 neighbours, keep watchers on rivals, and publish or blackmail with what those
 find. They post bounties, commission raiders and buy protection, and the Rim
-answers whichever of them runs hot — so the harness measures all of it, except
-protection, which it never reaches.
+answers whichever of them runs hot. They also sue for peace when their enemies
+together outweigh them two to one, or their wars outrun their savings. They
+sign coalitions against a stronger power both members hate. The harness
+measures all of it except two: protection, which it never reaches, and
+coalitions, which no pair on the board qualifies for.
 
 ---
 
