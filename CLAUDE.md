@@ -784,6 +784,31 @@ and it never joins either. And `holdable` keeps any bot from storming a world
 that would hate it past what the storming fleet could hold — the Vigil retook
 Torrek Anchorage thirteen times in twenty-five turns before it existed.
 
+**Incitement gives the defensive ethic its job.** With courting taking the
+neutral worlds and the defensive rule taking Tulgarn off its list, Arkane's last
+order touching territory came on turn 12 and its massing fell from 60 moves in
+100 turns to none. Its doctrine's last clause — *"make occupation cost more
+than it is worth"* — is now an operative mission: `incitement`, effect
+`incite`, 80 credits and sabotage's exposure, takes `perTurn` (1–5) off a
+world's regard for its holder each turn it succeeds. Only on a world held by
+another power that is **not that power's home** (decision 1 of the design: home
+ground is not driven below content short of conquest), and only where worlds
+keep a view; refused before the price otherwise. The holder is told its world
+is being stirred and not by whom. The `incite` bot rule sends one, for the
+defensive ethic alone, at a world held down by force — its own lost ground
+first, then the world nearest rising, never against a power it is on good
+terms with outside a war.
+
+Measured over the four boards: Arkane keeps an inciter at Torrek Anchorage, the
+one world in the harness held by force, for 13 turns of 30 and 37 of 100 (2 and
+37 without events), and the Vigil catches 3 to 8 of them — its resolve is the
+best defence on the board, and every capture is a counter-intelligence sweep.
+While one works Torrek's standing with the Vigil runs about 9 lower and the
+force it needs about 0.6 battleship-equivalents higher; the Vigil holds it
+with 6 to 8, so it never goes restless and no board moves. At 5 a turn instead
+of the bot's 3, one restless turn in four runs. What it buys in a played
+campaign is pressure on whoever conquers, which the bots do little of.
+
 **Measured.** Before, the five neutral worlds fell to conquest by turn 3 and the
 board was 6/5/5/5/4 at 30 and 100 turns, with events and without. Now all five
 **join** — Sennex and Ithaal Meridian, Vosk Marker and Var Hollow the Combine,
@@ -3929,15 +3954,16 @@ costs the breaker 25 disposition with the other party.
   `fixture_damage` (strikes a point off a fixture's yield),
   `income_penalty` (read in `ledgerFor`), `stat_debuff` (read in
   `effectiveStats`), `sedition` (raises the target's own dissent, and is the
-  only thing in the game that can), `intel` (read in `ordersVisibleTo`, revealing hidden
-  orders on the watched system).
+  only thing in the game that can), `incite` (lowers an occupied world's
+  regard for its holder — see *"Worlds with a view of their own"*), `intel`
+  (read in `ordersVisibleTo`, revealing hidden orders on the watched system).
 - the **mission** is risk and persistence, via `MISSION_PROFILE`:
 
 | mission | exposure on failure | persists | effect × |
 |---|---|---|---|
 | `surveillance` | 1 in 20 | yes | 1 |
 | `theft` / `subversion` | 2 in 20 | yes | 1 |
-| `sabotage` | 3 in 20 | yes | 1 |
+| `sabotage` / `incitement` | 3 in 20 | yes | 1 |
 | `discord` | 5 in 20 | yes | 1 |
 | `assassination` | **9 in 20** | **no** | **4** |
 

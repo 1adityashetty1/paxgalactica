@@ -457,7 +457,7 @@ assassination must not quietly produce. The knife only finds an officer standing
 where your operative is, so an officer under way is one it misses.
 
 The `mission` decides risk and persistence: `surveillance` (very low risk),
-`theft`, `subversion`, `defection`, `sabotage` (moderate), `discord` (riskier),
+`theft`, `subversion`, `defection`, `sabotage`, `incitement` (moderate), `discord` (riskier),
 and `assassination` — **one attempt, quadruple effect, the operative spent
 either way, and usually caught.** Scale effects sanely: 2 hulls a turn is a
 nuisance, 12 is a catastrophe that should have taken a real operation.
@@ -474,6 +474,15 @@ throats rather than wanting anything for themselves.
   why the rate is 1–2 a turn and one operative can only ever destroy so much.
 - **Being caught is a scandal with two victims.** Exposure hands the named power
   the evidence, so both resent you.
+
+**`incitement` turns a world against the power holding it** — effect
+`{ kind: "incite", perTurn: 1-5 }`, the regard the world loses for its holder
+each turn the operative succeeds. Pamphlets, a martyr, money for the militia:
+use it when a player wants an occupation to cost its occupier, or a world to
+rise. Only on a world held by another power that is **not that power's home**
+(its own people are not to be stirred), and only where worlds keep a view —
+anything else is rejected. What it buys is the force the holder needs to keep
+the world down, and in the end a rising.
 
 ## Duration — two sources, never mixed
 

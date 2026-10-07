@@ -27,6 +27,7 @@ import { proposeFor, holdable } from '../src/domain/initiative.js';
 import { statModifier } from '../src/domain/checks.js';
 import { addShipsAt, effectiveStats, setShipsAt, type StarSystem, type WorldState } from '../src/domain/state.js';
 import type { BattleReport } from '../src/domain/battle.js';
+import { AgentSchema } from '../src/domain/diplomacy.js';
 import type { OpInput } from '../src/domain/ops.js';
 import { buildBriefing } from '../src/engine/briefing.js';
 
@@ -313,5 +314,71 @@ describe('the bots', () => {
     set(s, 'sek-6', 'vigil', -100);
     w.strategicValue = 10;
     expect(holdable(s, 'vigil', w)).toBe(false);
+  });
+});
+
+describe('incitement', () => {
+  /** An operative already at work, who cannot fail: what it does, not whether. */
+  const inciter = (systemId: string, owner = 'freeworlds') =>
+    AgentSchema.parse({
+      id: 'agt-i', ownerFactionId: owner, systemId, mission: 'incitement',
+      effect: { kind: 'incite', perTurn: 3 }, successChance: 100, deployedTurn: 0, name: 'A Printer',
+    });
+  /** The Vigil holding Meridian's Torrek Anchorage, as it does by turn 16 in the harness. */
+  const occupied = () => {
+    const s = createSeedState('meridian');
+    const w = sys(s, 'tor-1');
+    w.controllerFactionId = 'vigil';
+    setShipsAt(w, 'meridian', 0);
+    addShipsAt(w, 'vigil', 10, 'battleship');
+    set(s, 'tor-1', 'vigil', -40);
+    return s;
+  };
+
+  it('turns an occupied world against its holder', () => {
+    const quiet = tick(occupied()).state;
+    const s = occupied();
+    s.agents.push(inciter('tor-1'));
+    const stirred = tick(s).state;
+    // Three lower before the turn's drift, which then pulls a little harder on
+    // the wider gap.
+    expect(regardFor(sys(stirred, 'tor-1'), 'vigil')).toBeLessThan(regardFor(sys(quiet, 'tor-1'), 'vigil') - 1);
+    expect(holdAt(stirred, sys(stirred, 'tor-1'))!.need).toBeGreaterThan(holdAt(quiet, sys(quiet, 'tor-1'))!.need);
+  });
+
+  it('finds nothing to stir on a power’s own home ground', () => {
+    const quiet = tick(createSeedState('meridian')).state;
+    const s = createSeedState('meridian');
+    s.agents.push(inciter('tor-2'));
+    const after = tick(s).state;
+    expect(regardFor(sys(after, 'tor-2'), 'vigil')).toBe(regardFor(sys(quiet, 'tor-2'), 'vigil'));
+  });
+
+  it('is refused on home ground, on your own world, on a world nobody holds, and where worlds keep no view', () => {
+    const send = (s: WorldState, systemId: string) =>
+      applyOps(
+        s,
+        [
+          { op: 'recruit_agent', systemId: 'ark-1' } as OpInput,
+          { op: 'deploy_agent', systemId, mission: 'incitement', effect: { kind: 'incite', perTurn: 3 } } as OpInput,
+        ],
+        'model',
+        'freeworlds',
+      ).rejections.map((r) => r.code);
+    expect(send(occupied(), 'tor-1')).toEqual([]);
+    expect(send(occupied(), 'tor-2')).toContain('illegal_value');
+    expect(send(occupied(), 'ark-3')).toContain('illegal_value');
+    expect(send(occupied(), 'sek-6')).toContain('illegal_value');
+    expect(send(createSeedState('meridian', { regard: false }), 'tor-1')).toContain('illegal_value');
+  });
+
+  it('a defensive power sends one at a world held down by force; the others do not', () => {
+    const s = occupied();
+    s.factions.find((f) => f.id === 'freeworlds')!.credits = 2000;
+    const arkane = (proposeFor(s, 'freeworlds')?.ops ?? []) as Record<string, unknown>[];
+    expect(arkane.some((o) => o.op === 'deploy_agent' && o.mission === 'incitement' && o.systemId === 'tor-1')).toBe(true);
+    s.factions.find((f) => f.id === 'ojjul')!.credits = 5000;
+    const combine = (proposeFor(s, 'ojjul')?.ops ?? []) as Record<string, unknown>[];
+    expect(combine.some((o) => o.mission === 'incitement')).toBe(false);
   });
 });

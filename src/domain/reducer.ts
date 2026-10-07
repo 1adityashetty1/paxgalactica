@@ -5336,6 +5336,35 @@ function applyOpsUnderRules(
           }
         }
 
+        // **Incitement works on somebody else's occupied ground**: a world held
+        // by another power that is not that power's home, in a campaign whose
+        // worlds keep a view. Checked before the price is taken, so a refused
+        // posting costs nothing.
+        if (op.effect.kind === 'incite') {
+          const hostWorld = state.systems.find((x) => x.id === op.systemId);
+          const whose = hostWorld?.controllerFactionId ?? null;
+          if (!regardRecorded(state)) {
+            reject(raw, 'illegal_value', 'No world in this campaign keeps count of who rules it, so there is nothing to stir.');
+            break;
+          }
+          if (whose === null || whose === ownerId) {
+            reject(
+              raw,
+              'illegal_value',
+              `${hostWorld?.name ?? op.systemId} is not held by another power; incitement turns a world against whoever holds it.`,
+            );
+            break;
+          }
+          if (hostWorld?.homeFactionId === whose) {
+            reject(
+              raw,
+              'illegal_value',
+              `${hostWorld.name} is ${nameFor(state, whose)}'s own home ground, and its people are not to be stirred against it.`,
+            );
+            break;
+          }
+        }
+
         // Aimed at a person, when it is an assassination naming one — see the
         // note where an operative is created below. Shared by both paths.
         const aimKnife = (): string | null => {
@@ -8415,6 +8444,31 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
           `Your operative on ${host.name} sets ${target.name} against ${nameFor(state, agent.effect.towardFactionId)}, ${moved} at a time.`,
           agent.ownerFactionId,
           [agent.ownerFactionId],
+        );
+      }
+      continue;
+    }
+
+    if (agent.effect.kind === 'incite') {
+      // The world's regard for the power holding it — never on that power's own
+      // home ground, whose people are not to be stirred. See `regard.ts`.
+      if (!regardRecorded(state)) {
+        watchNotes.set(agent.id, `finds nobody on ${host.name} keeping count of who rules them.`);
+      } else if (host.homeFactionId === target.id) {
+        watchNotes.set(agent.id, `finds ${host.name}'s people are ${target.name}'s own, and not to be stirred.`);
+      } else {
+        const before = regardFor(host, target.id);
+        const after = Math.max(-100, before - agent.effect.perTurn * profile.effectMultiplier);
+        host.regard = { ...host.regard, [target.id]: after };
+        watchNotes.set(agent.id, `stirs ${host.name} against ${target.name} (its standing there ${before} -> ${after}).`);
+        logEvent(
+          state,
+          'system',
+          `Agitators on ${host.name} stir its people against ${target.name}.`,
+          target.id,
+          // The holder knows its world is being stirred; it does not know by
+          // whom. `intel` is where the owner reads the attribution.
+          [target.id, agent.ownerFactionId],
         );
       }
       continue;

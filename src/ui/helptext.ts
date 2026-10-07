@@ -164,8 +164,9 @@ export function worldLines(): string[] {
     '  send it an envoy, and give it what it wants. A world you hold stays while',
     `  it is content with you (${CONTENT_REGARD} or better) or held down by your warships`,
     '  over it — fewer of them the higher your resolve. Neither, and its garrison',
-    '  deserts until it rises and answers to nobody. What a world wants, by the',
-    '  stat its ground makes:',
+    '  deserts until it rises and answers to nobody. An operative sent to incite',
+    "  a world another power holds turns it against them — never on their home.",
+    '  What a world wants, by the stat its ground makes:',
     ...STAT_NAMES.map((stat) => {
       const want = WANT_OF_STAT[stat];
       return `    ${stat.padEnd(10)}${want.padEnd(12)}${WANT_MEANS[want]}`;

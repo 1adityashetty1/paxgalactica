@@ -1939,6 +1939,74 @@ function court(ctx: Ctx): Ops {
   return ops;
 }
 
+/** Credits a power keeps before it sends an inciter: four missions' worth, the saboteur's rule. */
+export const BOT_INCITER_RESERVE = AGENT_COST.incitement * 4;
+
+/**
+ * *"Make occupation cost more than it is worth"*: a defensive power stirs the
+ * people of worlds other powers hold down by force.
+ *
+ * The defensive ethic courts and storms nobody's home, so without this it had
+ * nothing on the map to do once the worlds it could court were spoken for —
+ * measured, Arkane's last order touching territory came on turn 12. An inciter
+ * on somebody's occupation raises the force the holder needs to keep it, and
+ * in the end can make it rise, which is that doctrine's last clause as a
+ * mechanic. Keyed on the ethic, like every doctrine rule here.
+ *
+ * One at a time. Its own lost ground first, then the world nearest rising, and
+ * never against a power it is on good terms with outside a war — the line
+ * `honourStanding` draws for an attack.
+ */
+function incite(ctx: Ctx): Ops {
+  const { state, me } = ctx;
+  if (!regardRecorded(state) || getFaction(state, me)?.warEthic !== 'defensive') return [];
+  const wars = new Set(warsFor(state, me));
+  const home = held(state, me).sort((a, b) => b.strategicValue - a.strategicValue || a.id.localeCompare(b.id))[0];
+  const targets = state.systems
+    .filter((x) => {
+      const holder = x.controllerFactionId;
+      if (holder === null || holder === me || x.homeFactionId === holder) return false;
+      if (regardFor(x, holder) >= CONTENT_REGARD) return false;
+      return wars.has(holder) || dispositionBetween(state, me, holder) <= BOT_AGGRESSION_CEILING;
+    })
+    .map((x) => ({ x, far: home ? (jumpsBetween(state.systems, home.id, x.id) ?? 99) : 99 }))
+    .sort(
+      (a, b) =>
+        Number(b.x.homeFactionId === me) - Number(a.x.homeFactionId === me) ||
+        regardFor(a.x, a.x.controllerFactionId!) - regardFor(b.x, b.x.controllerFactionId!) ||
+        a.far - b.far ||
+        a.x.id.localeCompare(b.x.id),
+    );
+
+  const effect = { kind: 'incite', perTurn: 3 };
+  const inciter = state.agents.find(
+    (a) => a.ownerFactionId === me && !a.exposed && a.mission === 'incitement',
+  );
+  if (inciter) {
+    if (!atWork(inciter, state.turn)) return [];
+    if (targets.some((t) => t.x.id === inciter.systemId)) return [];
+    const next = targets[0];
+    if (!next) return [{ op: 'recall_agent', agentId: inciter.id, reason: 'nobody left held down by force' }];
+    if (purse(state, me) < AGENT_COST.incitement) return [];
+    return [{ op: 'deploy_agent', agent: inciter.id, systemId: next.x.id, mission: 'incitement', effect }];
+  }
+
+  const target = targets[0];
+  if (!target || !home) return [];
+  if (purse(state, me) < BOT_INCITER_RESERVE) return [];
+  if (liveAgentsOf(state, me).length >= maxAgentsFor(state, me)) return [];
+  return [
+    { op: 'recruit_agent', systemId: home.id },
+    {
+      op: 'deploy_agent',
+      systemId: target.x.id,
+      mission: 'incitement',
+      effect,
+      cover: `a printer of pamphlets on ${target.x.name}`,
+    },
+  ];
+}
+
 export const BOTS: Record<string, Bot> = { meridian, vigil, ojjul, freeworlds, drajk };
 
 /* ------------------------------------------------------------------ */
@@ -2199,7 +2267,7 @@ export function proposeFor(
   // covert half of a war it is in — added here rather than to five bots, for
   // the reason the filters below are: a bot added later inherits them.
   const ctx = { state, me: factionId };
-  const rules = [hold, court, mend, sabotage, watch, sweep, useProof, demandTribute, callIn, backDemands, postBounty].map((rule) =>
+  const rules = [hold, court, incite, mend, sabotage, watch, sweep, useProof, demandTribute, callIn, backDemands, postBounty].map((rule) =>
     rule(ctx),
   );
   // Paper first, then standing. Both are post-filters over one proposal, so a
