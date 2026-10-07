@@ -1955,7 +1955,9 @@ export const BOT_INCITER_RESERVE = AGENT_COST.incitement * 4;
  *
  * One at a time. Its own lost ground first, then the world nearest rising, and
  * never against a power it is on good terms with outside a war — the line
- * `honourStanding` draws for an attack.
+ * `honourStanding` draws for an attack. Only at a world already short of
+ * content: a homeland at its baseline is far harder to stir
+ * (`counterIntelAt`) and rarely worth the operative.
  */
 function incite(ctx: Ctx): Ops {
   const { state, me } = ctx;
@@ -1965,7 +1967,7 @@ function incite(ctx: Ctx): Ops {
   const targets = state.systems
     .filter((x) => {
       const holder = x.controllerFactionId;
-      if (holder === null || holder === me || x.homeFactionId === holder) return false;
+      if (holder === null || holder === me) return false;
       if (regardFor(x, holder) >= CONTENT_REGARD) return false;
       return wars.has(holder) || dispositionBetween(state, me, holder) <= BOT_AGGRESSION_CEILING;
     })

@@ -200,9 +200,9 @@ other was promised in prose and never came. Each entry:
 
 - `mission` — `surveillance` (watch, quietest), `theft` (siphon credits),
   `subversion` (erode a stat), `sabotage` (destroy hulls), `defection` (turn
-  crews), `incitement` (stir a world another power holds against it — never on
-  that power's home ground), `assassination` (one attempt, heavy, usually
-  caught).
+  crews), `incitement` (stir a world another power holds against it — far
+  harder on that power's home ground), `assassination` (one attempt, heavy,
+  usually caught).
 - `systemId` — where that operative works.
 - `target` — **the person, when the operation is aimed at one.** Write the name
   the player used: `Marcia Galba`, `M. Galba`, `Marshal Galba` and

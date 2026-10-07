@@ -313,7 +313,8 @@ standing, no secession, no joining, and unrest eligible on the old rule.
 ## Decisions
 
 1. **Home ground cannot be driven below content short of conquest.**
-   Recommended. Tying it to dissent would charge twice for one decision:
+   *Superseded:* incitement works on home ground too, contested against the
+   power's starting resolve plus 4. Originally recommended. Tying it to dissent would charge twice for one decision:
    dissent already costs every stat, and nothing further fires at the cap on
    purpose.
 2. **A −30 baseline toward an occupier of someone's home.** Recommended.

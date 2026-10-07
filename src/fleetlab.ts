@@ -88,9 +88,12 @@ function buildArena(): WorldState {
     factions: full.factions
       .filter((f) => keep.includes(f.id))
       .map((f) => ({ ...f, disposition: { [keep.find((x) => x !== f.id)!]: -50 } })),
+    // No world in the arena keeps a view of anybody (`regard.ts`): a garrison
+    // deserting a holder it does not care for would be noise in a question
+    // about which fleet wins, as a random event would.
     systems: [
-      { ...origin, hyperlaneEdges: [target.id], ships: {}, controllerFactionId: 'freeworlds' },
-      { ...target, hyperlaneEdges: [origin.id], ships: {}, controllerFactionId: 'ojjul' },
+      { ...origin, hyperlaneEdges: [target.id], ships: {}, controllerFactionId: 'freeworlds', regard: {} },
+      { ...target, hyperlaneEdges: [origin.id], ships: {}, controllerFactionId: 'ojjul', regard: {} },
     ],
     pendingOrders: [],
     treaties: [],

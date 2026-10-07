@@ -790,10 +790,19 @@ order touching territory came on turn 12 and its massing fell from 60 moves in
 100 turns to none. Its doctrine's last clause — *"make occupation cost more
 than it is worth"* — is now an operative mission: `incitement`, effect
 `incite`, 80 credits and sabotage's exposure, takes `perTurn` (1–5) off a
-world's regard for its holder each turn it succeeds. Only on a world held by
-another power that is **not that power's home** (decision 1 of the design: home
-ground is not driven below content short of conquest), and only where worlds
-keep a view; refused before the price otherwise. The holder is told its world
+world's regard for its holder each turn it succeeds, on any world another power
+holds, where worlds keep a view; refused before the price otherwise.
+
+**A homeland is far harder to stir than an occupation** (`counterIntelAt`).
+On a power's own home ground the operative is contested against the resolve
+that power **started** with — its base sheet, which dissent, debuffs and
+terrain do not reach — plus `HOME_GROUND_DEFENCE` (4), where everywhere else it
+is the holder's effective resolve. So the Vigil's and Arkane's homelands are
+near the 5% floor for anybody but the Combine, while Meridian's, at a founding
+resolve of 9, falls to the Combine's spies 86% of the time: its stated
+weakness, now one a rival can work. Home ground still opens at +50, so it takes
+a sustained, successful campaign to bring a homeland below content. This
+replaces the design's first decision, that nothing short of conquest could. The holder is told its world
 is being stirred and not by whom. The `incite` bot rule sends one, for the
 defensive ethic alone, at a world held down by force — its own lost ground
 first, then the world nearest rising, never against a power it is on good

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createSeedState } from '../src/seed/scenario.js';
-import { applyOps, tickTurn, type LegacyRules } from '../src/domain/reducer.js';
+import { HOME_GROUND_DEFENCE, applyOps, counterIntelAt, tickTurn, type LegacyRules } from '../src/domain/reducer.js';
 import {
   BATTLE_REGARD,
   CONQUEST_REGARD,
@@ -346,15 +346,35 @@ describe('incitement', () => {
     expect(holdAt(stirred, sys(stirred, 'tor-1'))!.need).toBeGreaterThan(holdAt(quiet, sys(quiet, 'tor-1'))!.need);
   });
 
-  it('finds nothing to stir on a power’s own home ground', () => {
+  it('stirs a power’s own home ground too', () => {
     const quiet = tick(createSeedState('meridian')).state;
     const s = createSeedState('meridian');
     s.agents.push(inciter('tor-2'));
     const after = tick(s).state;
-    expect(regardFor(sys(after, 'tor-2'), 'vigil')).toBe(regardFor(sys(quiet, 'tor-2'), 'vigil'));
+    expect(regardFor(sys(after, 'tor-2'), 'vigil')).toBeLessThan(regardFor(sys(quiet, 'tor-2'), 'vigil'));
   });
 
-  it('is refused on home ground, on your own world, on a world nobody holds, and where worlds keep no view', () => {
+  it('is far harder on home ground, by the resolve the power started with', () => {
+    const s = occupied();
+    // Torrek Anchorage is occupied ground; Kalzir is the Vigil's home.
+    const occupiedDefence = counterIntelAt(s, 'incitement', sys(s, 'tor-1'), 'vigil');
+    const homeDefence = counterIntelAt(s, 'incitement', sys(s, 'tor-2'), 'vigil');
+    expect(homeDefence).toBe(s.factions.find((f) => f.id === 'vigil')!.stats.resolve + HOME_GROUND_DEFENCE);
+    expect(homeDefence).toBeGreaterThan(occupiedDefence);
+    // Dissent does not reach a homeland's defence: it reads the starting sheet.
+    s.factions.find((f) => f.id === 'vigil')!.dissent = 100;
+    expect(counterIntelAt(s, 'incitement', sys(s, 'tor-2'), 'vigil')).toBe(homeDefence);
+    expect(counterIntelAt(s, 'incitement', sys(s, 'tor-1'), 'vigil')).toBeLessThan(occupiedDefence);
+    // Every other mission is contested as it always was.
+    expect(counterIntelAt(s, 'sabotage', sys(s, 'tor-2'), 'vigil')).toBe(effectiveStats(s, 'vigil').resolve);
+    // And a resolute power's homeland is harder still: Arkane's against Meridian's.
+    const fresh = createSeedState('meridian');
+    expect(counterIntelAt(fresh, 'incitement', sys(fresh, 'ark-1'), 'freeworlds')).toBeGreaterThan(
+      counterIntelAt(fresh, 'incitement', sys(fresh, 'sek-1'), 'meridian'),
+    );
+  });
+
+  it('is refused on your own world, on a world nobody holds, and where worlds keep no view', () => {
     const send = (s: WorldState, systemId: string) =>
       applyOps(
         s,
@@ -366,7 +386,7 @@ describe('incitement', () => {
         'freeworlds',
       ).rejections.map((r) => r.code);
     expect(send(occupied(), 'tor-1')).toEqual([]);
-    expect(send(occupied(), 'tor-2')).toContain('illegal_value');
+    expect(send(occupied(), 'tor-2')).toEqual([]);
     expect(send(occupied(), 'ark-3')).toContain('illegal_value');
     expect(send(occupied(), 'sek-6')).toContain('illegal_value');
     expect(send(createSeedState('meridian', { regard: false }), 'tor-1')).toContain('illegal_value');

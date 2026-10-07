@@ -165,7 +165,7 @@ export function worldLines(): string[] {
     `  it is content with you (${CONTENT_REGARD} or better) or held down by your warships`,
     '  over it — fewer of them the higher your resolve. Neither, and its garrison',
     '  deserts until it rises and answers to nobody. An operative sent to incite',
-    "  a world another power holds turns it against them — never on their home.",
+    '  a world another power holds turns it against them, hardest at home.',
     '  What a world wants, by the stat its ground makes:',
     ...STAT_NAMES.map((stat) => {
       const want = WANT_OF_STAT[stat];

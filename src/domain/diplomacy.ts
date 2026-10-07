@@ -1845,7 +1845,7 @@ export const AGENT_MISSION_MEANING: Record<AgentMission, string> = {
   discord:
     'turns the power whose world this is against a THIRD power — forged grievances, planted letters, a rumour that keeps arriving. Slow, permanent, and the only mission aimed at a quarrel you are not in',
   incitement:
-    'stirs the people of a world somebody else holds that is not their home — pamphlets, a martyr, money for the militia. Each turn it succeeds the world thinks the less of its holder, so the holder needs more warships to hold it down, and a world neither content nor held down rises. Nothing to stir on a power\'s own home ground',
+    'stirs the people of a world somebody else holds — pamphlets, a martyr, money for the militia. Each turn it succeeds the world thinks the less of its holder, so the holder needs more warships to hold it down, and a world neither content nor held down rises. Far harder on a power\'s own home ground, where its people defend with the resolve the power was founded on',
   assassination:
     'ONE attempt at a decapitating strike, then the operative is gone either way. Success is a heavy one-off blow and a collapse in relations; failure almost always ends with the agent caught',
 };
@@ -1941,11 +1941,12 @@ export const AgentEffectSchema = z.discriminatedUnion('kind', [
   }),
   z.object({
     /**
-     * Turn a world against the power that holds it — see `regard.ts`. Only on
-     * ground that is not the holder's home: a power's own people are not to be
-     * stirred, the rule that keeps home ground content short of conquest. Read
-     * against the world's regard for its holder, so what it buys is the force
-     * the holder needs to keep it, and in the end a rising.
+     * Turn a world against the power that holds it — see `regard.ts`. On the
+     * holder's own home ground the operative is contested against the resolve
+     * that power started with, and more (`counterIntelAt`), so a homeland is
+     * far harder to stir than an occupation. Read against the world's regard
+     * for its holder, so what it buys is the force the holder needs to keep
+     * it, and in the end a rising.
      */
     kind: z.literal('incite'),
     /** Regard for the holder lost per turn on success. */

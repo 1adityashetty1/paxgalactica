@@ -651,6 +651,34 @@ function mintId(state: WorldState, prefix: string): string {
 }
 
 /**
+ * How much harder it is to stir a power's own people than an occupied world's,
+ * in points of resolve on top of the power's **starting** resolve.
+ */
+export const HOME_GROUND_DEFENCE = 4;
+
+/**
+ * What an operative on `host` is contested against: the holder's effective
+ * resolve, as for every mission — except incitement on the holder's own home
+ * ground, where the people defend with the resolve the power **started** with
+ * (its base sheet, which dissent, debuffs and terrain do not touch) plus
+ * `HOME_GROUND_DEFENCE`. A power's homeland holds firm whatever its leader's
+ * troubles, and holds firmest where the power was founded resolute. 8 on a world
+ * nobody holds, as before.
+ */
+export function counterIntelAt(
+  state: WorldState,
+  mission: string,
+  host: StarSystem,
+  holderId: string | null,
+): number {
+  if (holderId === null) return 8;
+  if (mission === 'incitement' && host.homeFactionId === holderId) {
+    return (state.factions.find((f) => f.id === holderId)?.stats.resolve ?? 10) + HOME_GROUND_DEFENCE;
+  }
+  return effectiveStats(state, holderId).resolve;
+}
+
+/**
  * An agent's per-turn odds, from the owner's guile against the target's
  * counter-intelligence. Computed in code so a model cannot talk its spy into
  * being better than its faction is.
@@ -5336,10 +5364,10 @@ function applyOpsUnderRules(
           }
         }
 
-        // **Incitement works on somebody else's occupied ground**: a world held
-        // by another power that is not that power's home, in a campaign whose
-        // worlds keep a view. Checked before the price is taken, so a refused
-        // posting costs nothing.
+        // **Incitement works on a world another power holds**, in a campaign
+        // whose worlds keep a view — its home ground included, where it is
+        // harder (`counterIntelAt`). Checked before the price is taken, so a
+        // refused posting costs nothing.
         if (op.effect.kind === 'incite') {
           const hostWorld = state.systems.find((x) => x.id === op.systemId);
           const whose = hostWorld?.controllerFactionId ?? null;
@@ -5352,14 +5380,6 @@ function applyOpsUnderRules(
               raw,
               'illegal_value',
               `${hostWorld?.name ?? op.systemId} is not held by another power; incitement turns a world against whoever holds it.`,
-            );
-            break;
-          }
-          if (hostWorld?.homeFactionId === whose) {
-            reject(
-              raw,
-              'illegal_value',
-              `${hostWorld.name} is ${nameFor(state, whose)}'s own home ground, and its people are not to be stirred against it.`,
             );
             break;
           }
@@ -5430,7 +5450,7 @@ function applyOpsUnderRules(
           spy.targetCommanderId = op.mission === 'assassination' ? aimKnife() : null;
           spy.successChance = agentSuccessChance(
             effectiveStats(state, ownerId).guile,
-            target ? effectiveStats(state, target.id).resolve : 8,
+            counterIntelAt(state, op.mission, host, target?.id ?? null),
             spy.operations,
             spy.timesCaught,
           );
@@ -5503,9 +5523,7 @@ function applyOpsUnderRules(
           spy.deployedTurn = state.turn;
           spy.successChance = agentSuccessChance(
             effectiveStats(state, ownerId).guile,
-            host.controllerFactionId
-              ? effectiveStats(state, host.controllerFactionId).resolve
-              : 8,
+            counterIntelAt(state, op.mission, host, host.controllerFactionId),
             spy.operations,
             spy.timesCaught,
           );
@@ -5556,7 +5574,7 @@ function applyOpsUnderRules(
           // place two stats are compared.
           successChance: agentSuccessChance(
             effectiveStats(state, ownerId).guile,
-            target ? effectiveStats(state, target.id).resolve : 8,
+            counterIntelAt(state, op.mission, host, target?.id ?? null),
           ),
           deployedTurn: state.turn,
           // The old path: placed and at work at once, wherever it was put.
@@ -8450,12 +8468,11 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     }
 
     if (agent.effect.kind === 'incite') {
-      // The world's regard for the power holding it — never on that power's own
-      // home ground, whose people are not to be stirred. See `regard.ts`.
+      // The world's regard for the power holding it. On that power's home
+      // ground the operative was contested against its founding resolve and
+      // more (`counterIntelAt`), so it succeeds less often. See `regard.ts`.
       if (!regardRecorded(state)) {
         watchNotes.set(agent.id, `finds nobody on ${host.name} keeping count of who rules them.`);
-      } else if (host.homeFactionId === target.id) {
-        watchNotes.set(agent.id, `finds ${host.name}'s people are ${target.name}'s own, and not to be stirred.`);
       } else {
         const before = regardFor(host, target.id);
         const after = Math.max(-100, before - agent.effect.perTurn * profile.effectMultiplier);

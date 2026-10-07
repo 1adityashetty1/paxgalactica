@@ -479,10 +479,11 @@ throats rather than wanting anything for themselves.
 `{ kind: "incite", perTurn: 1-5 }`, the regard the world loses for its holder
 each turn the operative succeeds. Pamphlets, a martyr, money for the militia:
 use it when a player wants an occupation to cost its occupier, or a world to
-rise. Only on a world held by another power that is **not that power's home**
-(its own people are not to be stirred), and only where worlds keep a view —
-anything else is rejected. What it buys is the force the holder needs to keep
-the world down, and in the end a rising.
+rise. On any world another power holds, where worlds keep a view — anything
+else is rejected. **A power's own home ground is far harder**: the operative is
+contested against the resolve that power started with, and more, so it rarely
+succeeds against a resolute power's homeland. What it buys is the force the
+holder needs to keep the world down, and in the end a rising.
 
 ## Duration — two sources, never mixed
 
