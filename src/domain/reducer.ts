@@ -541,6 +541,31 @@ const nameFor = (state: WorldState, id: string): string =>
 let scopeEngineNotes = true;
 
 /**
+ * Whether a line about one order's life is scoped like the order —
+ * `LegacyRules.privateOrderLines`. Module-scoped for `scopeEngineNotes`'s
+ * reason: `resolveInterrupt` writes four of these and has no access to the
+ * batch's rules.
+ */
+let scopeOrderLines = true;
+
+/**
+ * Who may read a line about one order's life after it began: completed,
+ * cancelled, interrupted, extended, hurried, or ended for want of ships.
+ *
+ * The same audience `issue_order` gives the line that began it — public work is
+ * public; anything else is its owner's, and whoever it chose to be seen by. All
+ * of these were public, so a raid that was a rumour to its victim for its whole
+ * run was named, labelled and located in the log the turn it finished — seen
+ * live as a rival Drajk raid's "raid Oridin completed at Oridin" — and a dark
+ * raid that lost its ships announced its owner by name. `also` is a power that
+ * acted on the order itself, and so already knows what it reached.
+ */
+function orderAudience(order: PendingOrder, also?: string): string[] | null {
+  if (!scopeOrderLines || isPublicOrderType(order.type)) return null;
+  return [...new Set([order.factionId, ...order.visibility, ...(also ? [also] : [])])];
+}
+
+/**
  * Whether dirty work builds heat — `LegacyRules.heat`, journal version 14.
  * Module-scoped for `scopeEngineNotes`'s reason: heat is charged from a dozen
  * places, two of them helpers (`defaultLoan`, the pact check on an attack)
@@ -2119,6 +2144,14 @@ export interface LegacyRules {
    */
   intel?: boolean;
   /**
+   * A line about a secret order's life after it began — completed, cancelled,
+   * interrupted, extended, hurried, or ended for want of ships — is scoped like
+   * the line that began it (`orderAudience`). They were public, so a covert
+   * programme a rival saw only as a rumour was named in the log the turn it
+   * finished. Journal version 17.
+   */
+  privateOrderLines?: boolean;
+  /**
    * A sandbox campaign's one event (see `primeRimSandbox`): that kind every
    * turn, with no d20 and no cooldowns. Not a rule the game acquired — a rule
    * of that campaign, read off its journal's seed entry.
@@ -2163,13 +2196,16 @@ export function applyOps(
   legacy: LegacyRules = {},
 ): ApplyResult {
   const outer = scopeEngineNotes;
+  const outerOrders = scopeOrderLines;
   const outerHeat = runHeat;
   scopeEngineNotes = legacy.privateEngineNotes ?? true;
+  scopeOrderLines = legacy.privateOrderLines ?? true;
   runHeat = legacy.heat ?? true;
   try {
     return applyOpsUnderRules(input, rawOps, source, actor, atomic, legacy);
   } finally {
     scopeEngineNotes = outer;
+    scopeOrderLines = outerOrders;
     runHeat = outerHeat;
   }
 }
@@ -4557,6 +4593,7 @@ function applyOpsUnderRules(
           'order',
           `${removed!.label} cancelled.${returned} ${op.reason}`.trim(),
           removed!.factionId,
+          orderAudience(removed!),
         );
         break;
       }
@@ -4602,7 +4639,7 @@ function applyOpsUnderRules(
           );
           break;
         }
-        const outcome = resolveInterrupt(state, order, op.reason);
+        const outcome = resolveInterrupt(state, order, op.reason, mine ? undefined : actor);
         notes.push(outcome);
         break;
       }
@@ -4638,6 +4675,7 @@ function applyOpsUnderRules(
           'order',
           `${order.label} extended by ${op.additionalTurns} to ${order.durationTurns} turns. ${op.reason}`.trim(),
           order.factionId,
+          orderAudience(order),
         );
         break;
       }
@@ -4685,6 +4723,7 @@ function applyOpsUnderRules(
           'order',
           `${faction.name} spends ${cost} credits: ${order.label} ${current} -> ${order.durationTurns} turns.`,
           faction.id,
+          orderAudience(order),
         );
         break;
       }
@@ -7229,12 +7268,13 @@ function removeTons(
  *             it is; estimated work refunds the unspent portion)
  *   persist - the interruption is weathered and the order continues
  */
-function resolveInterrupt(state: WorldState, order: PendingOrder, reason: string): string {
+function resolveInterrupt(state: WorldState, order: PendingOrder, reason: string, by?: string): string {
+  const audience = orderAudience(order, by);
   const faction = state.factions.find((f) => f.id === order.factionId);
 
   if (order.onInterrupt === 'persist') {
     const note = `${order.label} weathered an interruption and continues (${order.progress}/${order.durationTurns}). ${reason}`.trim();
-    logEvent(state, 'order', note, order.factionId);
+    logEvent(state, 'order', note, order.factionId, audience);
     return note;
   }
 
@@ -7255,7 +7295,7 @@ function resolveInterrupt(state: WorldState, order: PendingOrder, reason: string
     // shipyard should be told what it cost them.
     const sunk = order.investedCredits > 0 ? ` ${order.investedCredits} credits sunk with it.` : '';
     const note = `${order.label} broken off; all progress lost.${sunk} ${reason}`.trim();
-    logEvent(state, 'order', note, order.factionId);
+    logEvent(state, 'order', note, order.factionId, audience);
     return note;
   }
 
@@ -7269,7 +7309,7 @@ function resolveInterrupt(state: WorldState, order: PendingOrder, reason: string
     }
     returnRider(state, order, sys?.id ?? order.originId);
     const note = `${order.label} halted mid-transit at ${sys?.name ?? halted} with ${hullsIn(order.force)} ships. ${reason}`.trim();
-    logEvent(state, 'order', note, order.factionId);
+    logEvent(state, 'order', note, order.factionId, audience);
     return note;
   }
 
@@ -7289,7 +7329,7 @@ function resolveInterrupt(state: WorldState, order: PendingOrder, reason: string
       : 0;
   if (faction) faction.credits += refund;
   const note = `${order.label} suspended at ${order.progress}/${order.durationTurns}; ${refund} credits recovered. ${reason}`.trim();
-  logEvent(state, 'order', note, order.factionId);
+  logEvent(state, 'order', note, order.factionId, audience);
   return note;
 }
 
@@ -7337,13 +7377,16 @@ export interface TickResult extends ApplyResult {
 /** Advance one turn. Sets `scopeEngineNotes` for the journal's rules; see `applyOps`. */
 export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResult {
   const outer = scopeEngineNotes;
+  const outerOrders = scopeOrderLines;
   const outerHeat = runHeat;
   scopeEngineNotes = legacy.privateEngineNotes ?? true;
+  scopeOrderLines = legacy.privateOrderLines ?? true;
   runHeat = legacy.heat ?? true;
   try {
     return tickTurnUnderRules(input, legacy);
   } finally {
     scopeEngineNotes = outer;
+    scopeOrderLines = outerOrders;
     runHeat = outerHeat;
   }
 }
@@ -8062,7 +8105,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       if (idx !== -1) state.pendingOrders.splice(idx, 1);
       const note = `${nameFor(state, order.factionId)} no longer has ships ${order.type === 'blockade' ? 'at' : 'within reach of'} ${target?.name ?? order.targetId}; ${order.label} ends.`;
       notes.push(note);
-      logEvent(state, 'order', note, order.factionId);
+      logEvent(state, 'order', note, order.factionId, orderAudience(order));
       continue;
     }
     if (order.progress <= 0 || !target) continue;
@@ -8743,7 +8786,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
           }
         }
       }
-      logEvent(state, 'order', note, order.factionId);
+      logEvent(state, 'order', note, order.factionId, orderAudience(order));
       notes.push(note);
       report.completed.push({
         label: order.label,
