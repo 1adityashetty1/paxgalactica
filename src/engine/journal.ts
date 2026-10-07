@@ -228,6 +228,8 @@ export function replay(
     splitTies: parsed.version >= 15,
     // Worlds had no view of anybody before version 18.
     regard: parsed.version >= 18,
+    // Eight given names a power, and the first four drawn more often.
+    tenGivenNames: parsed.version >= 19,
   });
   let rejectionCount = 0;
   // The opening board, before anything is applied. Without it an observer's
@@ -323,6 +325,8 @@ export function replay(
     // A world had no view of anybody: none joined a power, none rose against
     // one but by the Rim's unrest, and no envoy was ever sent.
     regard: parsed.version >= 18,
+    // Eight given names a power, and the first four drawn more often.
+    tenGivenNames: parsed.version >= 19,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

@@ -6013,10 +6013,9 @@ to any of them would be the one place it lapsed. Built on `rollD20`'s hash, so a
 replayed campaign appoints the same people — a roster that differed between a
 campaign and its replay would break `verifyReplay` on a string comparison.
 
-A given name, a family name and a **title**, drawn independently. Eight firsts
-against ten lasts is eighty officers per power before the title, where the first
-version paired a first name with an epithet and read as the same handful of
-characters recurring.
+A given name, a family name and a **title**, drawn independently. Ten given
+names against thirty families, where the first version paired a first name with
+an epithet and read as the same handful of characters recurring.
 
 **The title is the archetype, said out loud.** One per school per power, so a
 Commodore and an Iron Marshal are visibly different appointments and a player
@@ -6056,11 +6055,16 @@ front, because an office there is something you are owed rather than something
 you are called — and because *"Hand of the Family Miral Nar Halq"* does not
 parse.
 
-> `rollD20` returns 1–20 and the given-name stocks are 8 long, so `% 8` draws
-> the first four slightly more often. That is a cosmetic bias on a cosmetic
-> field and is left alone: the uniformity that matters is the die's, which the
-> murmur3 finalizer already guarantees, and padding a name list to 20 to flatten
-> it would be arithmetic driving the fiction.
+**Ten given names a power, because the die has twenty faces.** There were
+eight, and `rollD20 % 8` draws the first four 3 times in 20 and the other four
+twice, so a power's first four names came up half as often again as the rest.
+Every Drajk operative in one campaign was a Voss. Ten divides twenty, so each
+name is now drawn twice in twenty, and the fix is two names a power rather than
+a change to the draw. Opening officers change with it (the Vigil's Brigadier is
+Cornelia Galba, not Marcia). A journal from before version 19 draws from the
+first eight (`LEGACY_GIVEN_NAMES`, `LegacyRules.tenGivenNames` and
+`createSeedState`'s `tenGivenNames`), so its people keep their names and an
+order naming one still finds them.
 
 ### And what they are worth on a turn with no battle
 

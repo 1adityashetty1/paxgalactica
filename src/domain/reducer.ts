@@ -1604,6 +1604,8 @@ function namePerson(
   archetype: CommanderArchetype | null,
   uniqueFamilies: boolean,
   legacyDraw: (attempt: number) => string,
+  /** False before journal version 19: the first eight given names. */
+  tenGivenNames = true,
 ): string {
   if (!uniqueFamilies) return unusedName(namesInUse(state), legacyDraw);
   const { name, family } = drawPerson({
@@ -1612,6 +1614,7 @@ function namePerson(
     salt: `${salt}:0`,
     archetype,
     taken: familiesInUse(state),
+    tenGivenNames,
   });
   (state.familiesUsed ??= []).push(family);
   return name;
@@ -1625,6 +1628,7 @@ function applyCheat(
   uniqueFamilies = true,
   /** How many fixtures a world carries under this journal's rules. */
   fixturesPerWorld = MAX_FIXTURES_PER_WORLD,
+  tenGivenNames = true,
 ): void {
   const player = state.playerFactionId;
   const log = (text: string, factionId: string | null) => {
@@ -1710,7 +1714,8 @@ function applyCheat(
         id: `cmd-${f.id}-${state.turn}-${(state.commanders ?? []).length}`,
         factionId: f.id,
         name: namePerson(state, f.id, salt, cheat.archetype, uniqueFamilies, (n) =>
-          commanderName(f.id, state.turn, `${salt}:${n}`, cheat.archetype),
+          commanderName(f.id, state.turn, `${salt}:${n}`, cheat.archetype, tenGivenNames),
+          tenGivenNames,
         ),
         archetype: cheat.archetype,
         appointedTurn: state.turn,
@@ -2205,6 +2210,12 @@ export interface LegacyRules {
    */
   uniqueFamilies?: boolean;
   /**
+   * Ten given names a power, which the d20 divides evenly. Before it, eight,
+   * and the first four came up half as often again as the rest. Journal
+   * version 19.
+   */
+  tenGivenNames?: boolean;
+  /**
    * The standing a treaty pays each party scales with the OTHER party's
    * influence (item 123); before it, a flat `TREATY_GOODWILL` both ways.
    * Journal version 9.
@@ -2431,6 +2442,7 @@ function applyOpsUnderRules(
     spoilsNeedPresence = true,
     officerUnits = true,
     uniqueFamilies = true,
+    tenGivenNames = true,
     influentialGoodwill = true,
     hullFilesTheOrder = true,
     movesNotBuilt = true,
@@ -2659,7 +2671,7 @@ function applyOpsUnderRules(
       case 'cheat': {
         applyCheat(
           state, op.cheat, notes, (code, message) => reject(raw, code, message), uniqueFamilies,
-          twoFixtures ? MAX_FIXTURES_PER_WORLD : 1,
+          twoFixtures ? MAX_FIXTURES_PER_WORLD : 1, tenGivenNames,
         );
         break;
       }
@@ -4710,7 +4722,8 @@ function applyOpsUnderRules(
           id: `cmd-${op.factionId}-${state.turn}-${(state.commanders ?? []).length}`,
           factionId: op.factionId,
           name: namePerson(state, op.factionId, salt, school, uniqueFamilies, (n) =>
-            commanderName(op.factionId, state.turn, `${salt}:${n}`, school),
+            commanderName(op.factionId, state.turn, `${salt}:${n}`, school, tenGivenNames),
+            tenGivenNames,
           ),
           archetype: school,
           appointedTurn: state.turn,
@@ -5675,7 +5688,8 @@ function applyOpsUnderRules(
         }
 
         const who = namePerson(state, ownerId, `agent:${op.systemId}:${state.agents.length}`, null, uniqueFamilies, (n) =>
-          agentName(ownerId, state.turn, `agent:${op.systemId}:${state.agents.length}:${n}`),
+          agentName(ownerId, state.turn, `agent:${op.systemId}:${state.agents.length}:${n}`, tenGivenNames),
+          tenGivenNames,
         );
         // **The model names the person; code does the lookup.** `Commander.name`
         // carries the title — "Iron Marshal Marcia Galba" — and a player writes
@@ -5805,7 +5819,8 @@ function applyOpsUnderRules(
           break;
         }
         const who = namePerson(state, ownerId, `agent:${site.id}:${state.agents.length}`, null, uniqueFamilies, (n) =>
-          agentName(ownerId, state.turn, `agent:${site.id}:${state.agents.length}:${n}`),
+          agentName(ownerId, state.turn, `agent:${site.id}:${state.agents.length}:${n}`, tenGivenNames),
+          tenGivenNames,
         );
         // Through the schema, for the reason a fixture is: replay compares
         // `JSON.stringify`, and a literal puts `name` second where a record
@@ -7629,6 +7644,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     peopleStanding = true,
     fourSchools = true,
     uniqueFamilies = true,
+    tenGivenNames = true,
     influentialGoodwill = true,
     randomEvents = true,
     rimSandbox,
@@ -7676,7 +7692,8 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       id: `cmd-${faction.id}-${state.turn}`,
       factionId: faction.id,
       name: namePerson(state, faction.id, salt, school, uniqueFamilies, (n) =>
-        commanderName(faction.id, state.turn, `${salt}:${n}`, school),
+        commanderName(faction.id, state.turn, `${salt}:${n}`, school, tenGivenNames),
+        tenGivenNames,
       ),
       archetype: school,
       appointedTurn: state.turn,

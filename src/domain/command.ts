@@ -704,9 +704,16 @@ export type Commander = z.infer<typeof CommanderSchema>;
  * Per-faction name stock: a given name, a family name, and a title.
  *
  * **Three parts, generated independently**, which is what makes the set large
- * enough to feel like a service rather than a list. Eight firsts against ten
- * lasts is eighty people per power before the title, where a first-plus-epithet
- * pair read as the same handful of characters recurring.
+ * enough to feel like a service rather than a list. Ten given names against
+ * thirty families, where a first-plus-epithet pair read as the same handful of
+ * characters recurring.
+ *
+ * **Ten given names, because the die has twenty faces.** There were eight, and
+ * `rollD20 % 8` draws the first four 3 times in 20 and the last four twice, so
+ * a power's first four names turned up half as often again as the rest —
+ * every Drajk operative in one campaign was a Voss. Ten divides twenty, so
+ * each name is drawn 2 times in 20. A journal from before version 19 draws
+ * from the first eight (`LEGACY_GIVEN_NAMES`), so its people keep their names.
  *
  * **The title is the archetype, said out loud.** One per school per power, so
  * a Line Captain and a Master Gunner are visibly different appointments and a
@@ -736,7 +743,7 @@ const NAME_STOCK: Record<string, NameStock> = {
   /* A chartered company, and it does not pretend to be a navy: the ranks are
      the ones on the org chart, because that is what the Authority is. */
   meridian: {
-    first: ['Adrienne', 'Caspar', 'Teodor', 'Lira', 'Odile', 'Marcus', 'Sabine', 'Yusuf'],
+    first: ['Adrienne', 'Caspar', 'Teodor', 'Lira', 'Odile', 'Marcus', 'Sabine', 'Yusuf', 'Ingrid', 'Rafael'],
     last: ['Vance', 'Okonjo', 'Reyes', 'Haldane', 'Brandt', 'Sorel', 'Achebe',
            'Marchetti', 'Delacroix', 'Ferreira',
            'Castellane', 'Nakagawa', 'Oyelaran', 'Lindqvist', 'Abernathy',
@@ -754,7 +761,7 @@ const NAME_STOCK: Record<string, NameStock> = {
   /* The remnant of a state: praenomen and cognomen, and the flag ranks of a
      service that still keeps its establishment on paper. */
   vigil: {
-    first: ['Caius', 'Valeria', 'Drusus', 'Marcia', 'Aulus', 'Livia', 'Quintus', 'Sabina'],
+    first: ['Caius', 'Valeria', 'Drusus', 'Marcia', 'Aulus', 'Livia', 'Quintus', 'Sabina', 'Tiberius', 'Cornelia'],
     last: ['Ferrata', 'Corvinus', 'Nasica', 'Longinus', 'Severa', 'Galba',
            'Cinna', 'Rufus', 'Varro', 'Scaeva',
            'Agrippa', 'Balbus', 'Cotta', 'Dentatus', 'Flaccus', 'Gallus',
@@ -773,7 +780,7 @@ const NAME_STOCK: Record<string, NameStock> = {
      what you answer to, and the office comes last because it is what you are
      owed rather than what you are called. */
   ojjul: {
-    first: ['Serek', 'Halvane', 'Dovic', 'Ruille', 'Tallim', 'Osk', 'Vessine', 'Miral'],
+    first: ['Serek', 'Halvane', 'Dovic', 'Ruille', 'Tallim', 'Osk', 'Vessine', 'Miral', 'Ennart', 'Saphrin'],
     last: ['Nar Kheline', 'Nar Ossik', 'Nar Duvane', 'Nar Serrel', 'Nar Halq',
            'Nar Ojjuk', 'Nar Tevin', 'Nar Rissa', 'Nar Belline', 'Nar Aquen',
            'Nar Vessat', 'Nar Quillen', 'Nar Dorrik', 'Nar Imrel', 'Nar Kasko',
@@ -793,7 +800,7 @@ const NAME_STOCK: Record<string, NameStock> = {
      them is a -warden under the Highwarden, so an Arkane officer is placeable
      from the title alone even before the name. */
   freeworlds: {
-    first: ['Oria', 'Kell', 'Devain', 'Sarn', 'Mira', 'Tolen', 'Ysra', 'Bran'],
+    first: ['Oria', 'Kell', 'Devain', 'Sarn', 'Mira', 'Tolen', 'Ysra', 'Bran', 'Hesk', 'Linnet'],
     last: ['Stonecount', 'Vesskeeper', 'Throatholder', 'Ninefold', 'Dustborn',
            'Marklen', 'Pellrun', 'Delvane', 'Ashkeep', 'Windward',
            'Flintmoor', 'Saltgrave', 'Coalward', 'Stillwater', 'Harrowfield',
@@ -814,7 +821,7 @@ const NAME_STOCK: Record<string, NameStock> = {
      Huntmaster — a quartermaster on a raiding crew is elected and answers to
      the hold rather than to the captain, which is the Confederacy exactly. */
   drajk: {
-    first: ['Kess', 'Ravel', 'Tannic', 'Voss', 'Sherrin', 'Doram', 'Aleska', 'Prynn'],
+    first: ['Kess', 'Ravel', 'Tannic', 'Voss', 'Sherrin', 'Doram', 'Aleska', 'Prynn', 'Mael', 'Hesper'],
     last: ['Longburn', 'Deeprunner', 'Coldwake', 'Halfshare', 'Threxwind',
            'Ashlott', 'Greywake', 'Skeln', 'Hollowmark', 'Sundrift',
            'Blacktack', 'Saltknife', 'Farhook', 'Brinecut', 'Keelbreaker',
@@ -847,24 +854,31 @@ const FALLBACK = NAME_STOCK['drajk']!;
  * and a name that disagreed with the record would be a second source of truth
  * about what an officer is.
  *
- * `rollD20` returns 1..20 and the stocks are 8 and 10 long, so the modulo is
- * not uniform — 20 % 8 is 4, and half the given names are drawn slightly more
- * often. That is a cosmetic bias on a cosmetic field and is left alone
- * deliberately: the uniformity that matters is the die's, which the murmur3
- * finalizer already guarantees, and widening a name list to 20 to flatten it
- * would be arithmetic driving the fiction.
+ * `rollD20` returns 1..20, and both stocks it reads here divide it: ten given
+ * names, and the first ten families (`ORIGINAL_FAMILIES`).
  */
 export function commanderName(
   factionId: string,
   turn: number,
   salt: string,
   archetype: CommanderArchetype,
+  /** False for a journal from before version 19: the first eight given names. */
+  tenGivenNames = true,
 ): string {
   const stock = NAME_STOCK[factionId] ?? FALLBACK;
   const a = rollD20(turn, `commander-first:${factionId}:${salt}`) - 1;
   const b = rollD20(turn, `commander-last:${factionId}:${salt}`) - 1;
-  const person = `${stock.first[a % stock.first.length]} ${stock.last[b % ORIGINAL_FAMILIES]}`;
+  const person = `${givenName(stock, a, tenGivenNames)} ${stock.last[b % ORIGINAL_FAMILIES]}`;
   return titled(stock, person, archetype);
+}
+
+/** How many given names a stock had before journal version 19. */
+export const LEGACY_GIVEN_NAMES = 8;
+
+/** The given name a draw lands on, from the whole stock or its first eight. */
+function givenName(stock: NameStock, draw: number, tenGivenNames: boolean): string {
+  const pool = tenGivenNames ? stock.first : stock.first.slice(0, LEGACY_GIVEN_NAMES);
+  return pool[draw % pool.length]!;
 }
 
 function titled(stock: NameStock, person: string, archetype: CommanderArchetype): string {
@@ -913,14 +927,16 @@ export function drawPerson(opts: {
   archetype: CommanderArchetype | null;
   /** Families already used in this campaign — see `familiesInUse`. */
   taken: ReadonlySet<string>;
+  /** False for a journal from before version 19: the first eight given names. */
+  tenGivenNames?: boolean;
 }): { name: string; family: string } {
-  const { factionId, turn, salt, archetype, taken } = opts;
+  const { factionId, turn, salt, archetype, taken, tenGivenNames = true } = opts;
   const stock = NAME_STOCK[factionId] ?? FALLBACK;
   const kind = archetype === null ? 'agent' : 'commander';
   const a = rollD20(turn, `${kind}-first:${factionId}:${salt}`) - 1;
   const b = rollD20(turn, `${kind}-last:${factionId}:${salt}`) - 1;
   const family = freeFamily(stock.last, b % ORIGINAL_FAMILIES, taken);
-  const person = `${stock.first[a % stock.first.length]} ${family}`;
+  const person = `${givenName(stock, a, tenGivenNames)} ${family}`;
   return { name: archetype === null ? person : titled(stock, person, archetype), family };
 }
 
@@ -1034,11 +1050,16 @@ export function namesInUse(state: {
  * is a `cover`, which the game already asks for and which is the thing a rival
  * actually sees.
  */
-export function agentName(factionId: string, turn: number, salt: string): string {
+export function agentName(factionId: string, turn: number, salt: string, tenGivenNames = true): string {
   const stock = NAME_STOCK[factionId] ?? FALLBACK;
   const a = rollD20(turn, `agent-first:${factionId}:${salt}`) - 1;
   const b = rollD20(turn, `agent-last:${factionId}:${salt}`) - 1;
-  return `${stock.first[a % stock.first.length]} ${stock.last[b % ORIGINAL_FAMILIES]}`;
+  return `${givenName(stock, a, tenGivenNames)} ${stock.last[b % ORIGINAL_FAMILIES]}`;
+}
+
+/** Every given name a power's people are drawn from, for the tests. */
+export function givenNamesFor(factionId: string): readonly string[] {
+  return (NAME_STOCK[factionId] ?? FALLBACK).first;
 }
 
 /** Exported so a test can hold the stocks to the archetypes rather than to itself. */

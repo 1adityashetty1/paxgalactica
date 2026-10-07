@@ -10,6 +10,8 @@ import {
   familyOf,
   resolveCommander,
   titlesFor,
+  LEGACY_GIVEN_NAMES,
+  givenNamesFor,
 } from '../src/domain/command.js';
 import { hullsAt, setStackAt, type WorldState } from '../src/domain/state.js';
 import { replay, type Journal } from '../src/engine/journal.js';
@@ -269,5 +271,44 @@ describe('the state document', () => {
     const prompt = readFileSync('prompts/resolution.md', 'utf8');
     expect(prompt).toMatch(/`officers`/);
     expect(prompt).not.toMatch(/You do not choose/);
+  });
+});
+
+describe('given names', () => {
+  it('are ten a power, all different, so the d20 draws each equally', () => {
+    for (const f of NAME_STOCK_FACTIONS) {
+      const names = givenNamesFor(f);
+      expect(names, f).toHaveLength(10);
+      expect(new Set(names).size, f).toBe(10);
+      // 20 faces over 10 names: every name is reached by exactly two.
+      const hits = new Map<string, number>();
+      for (let face = 0; face < 20; face++) {
+        const n = names[face % names.length]!;
+        hits.set(n, (hits.get(n) ?? 0) + 1);
+      }
+      expect([...hits.values()].every((h) => h === 2), f).toBe(true);
+    }
+  });
+
+  it('are never a family name or a word of a title, so a name still finds one person', () => {
+    for (const f of NAME_STOCK_FACTIONS) {
+      const title = Object.values(titlesFor(f)).join(' ').toLowerCase().split(/\W+/);
+      for (const g of givenNamesFor(f)) {
+        expect(familyOf(g), `${f}: ${g} reads as a family`).toBeNull();
+        expect(title, `${f}: ${g} is a word of a title`).not.toContain(g.toLowerCase());
+      }
+    }
+  });
+
+  it('keep the first eight for a journal from before version 19, so its people keep their names', () => {
+    for (const f of NAME_STOCK_FACTIONS) {
+      const old = new Set(givenNamesFor(f).slice(0, LEGACY_GIVEN_NAMES));
+      for (let i = 0; i < 40; i++) {
+        const p = drawPerson({ factionId: f, turn: i, salt: `y${i}`, archetype: null, taken: new Set(), tenGivenNames: false });
+        expect(old.has(p.name.split(' ')[0]!), `${f}: ${p.name}`).toBe(true);
+      }
+    }
+    const before = createSeedState('meridian', { tenGivenNames: false }).commanders.map((c) => c.name);
+    expect(before).toContain('Brigadier Marcia Galba');
   });
 });
