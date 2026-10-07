@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { WorldState } from '../../../src/domain/state.js';
 import { layoutGalaxy, sectorsOf } from '../../../src/ui/layout.js';
 import { routeEarnings, routeLegs, severedBy, tradeRoutes } from '../../../src/domain/trade.js';
@@ -36,6 +36,7 @@ export function GalaxyMap({ state, selectedId, onSelect }: Props) {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [hover, setHover] = useState<string | null>(null);
   const drag = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
 
   const layout = useMemo(() => layoutGalaxy(state, { sector }), [state, sector]);
 
@@ -116,10 +117,19 @@ export function GalaxyMap({ state, selectedId, onSelect }: Props) {
     [state.pendingOrders],
   );
 
-  const onWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    setZoom((z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z * (e.deltaY < 0 ? 1.15 : 1 / 1.15))));
-  };
+  // Attached by hand rather than through `onWheel`: React registers wheel
+  // listeners as passive, so `preventDefault()` there is ignored — the page
+  // scrolls under the zoom and the console logs an error on every tick.
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      setZoom((z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z * (e.deltaY < 0 ? 1.15 : 1 / 1.15))));
+    };
+    svg.addEventListener('wheel', onWheel, { passive: false });
+    return () => svg.removeEventListener('wheel', onWheel);
+  }, []);
 
   const onPointerDown = (e: React.PointerEvent) => {
     // Only pan with the background; dragging a system should not move the map.
@@ -185,7 +195,7 @@ export function GalaxyMap({ state, selectedId, onSelect }: Props) {
         className={drag.current ? 'map dragging' : 'map'}
         viewBox={view}
         preserveAspectRatio="xMidYMid meet"
-        onWheel={onWheel}
+        ref={svgRef}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
