@@ -642,7 +642,7 @@ flowchart LR
     heat["Heat"]:::done
     dark["Running dark"]:::done
     intel["Intel with memory"]:::done
-    courting["Courting, holding, secession"]:::done
+    courting["Standing: courting, holding, incitement"]:::done
   end
 
   truces --> coalitions["Coalitions · L"]:::heavy
