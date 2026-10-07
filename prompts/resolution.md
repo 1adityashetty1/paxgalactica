@@ -385,7 +385,8 @@ action that runs into one.
 | type | effect |
 |---|---|
 | `non_aggression` · `ceasefire` | attacking the other party breaks it automatically: −25 with them, −10 with every onlooker |
-| `mutual_defense` | the same, plus `shipsPledged` are really dispatched to fight |
+| `mutual_defense` | the same, plus an attack on one by anyone puts the other at war with the attacker and brings its `shipsPledged` — warships from within two jumps, once a turn |
+| `coalition` | the same, against the powers in `terms.against` only; an attack by anyone else calls nobody |
 | `trade_accord` | mutual immunity from blockades and raiding |
 | `basing_rights` | their fleets may enter without it being an attack — the only way to station ships in friendly space |
 | `tribute` | `incomePerTurn` moves every turn |

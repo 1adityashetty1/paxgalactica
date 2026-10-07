@@ -1522,6 +1522,13 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
                 {t.terms.mutualDefenseTrigger && (
                   <li className="trigger">triggers on: {t.terms.mutualDefenseTrigger}</li>
                 )}
+                {/* What tells a coalition from a mutual defence pact: whom it is against. */}
+                {(t.terms.against ?? []).length > 0 && (
+                  <li className="trigger">
+                    against: {(t.terms.against ?? []).map((id) => getFaction(state, id)?.name ?? id).join(', ')} — an
+                    attack by them calls the other to war
+                  </li>
+                )}
                 {/* The raider's ledger: who will not raid whom, and who is
                     paid to raid whom. */}
                 {(t.terms.protection ?? []).map((shielded) => (

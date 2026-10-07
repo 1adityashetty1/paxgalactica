@@ -38,7 +38,7 @@ import {
 import { ENVOYS_QUIET_TURNS } from './events.js';
 import { clashKey } from './pulse.js';
 import { jumpsBetween } from './graph.js';
-import { secretLive, sideStrength } from './leverage.js';
+import { EXHAUSTION_INDEMNITY_SHARE, exhaustion, secretLive, sideStrength } from './leverage.js';
 import { HEAT_NOTORIOUS } from './heat.js';
 import { ASSET_ARCHETYPES } from './assets.js';
 import {
@@ -1298,8 +1298,19 @@ export function lawlessGround(state: WorldState, me: string): StarSystem[] {
   // rival guards with more than a share of that is ground it could take and
   // not keep — see `OPPORTUNIST_HOLD_MARGIN`.
   const strike = Math.max(0, ...held(state, me).map((b) => lineStrengthAt(state, b.id, me)));
+  // Never a claim held by a power the guards would refuse to attack — a pact
+  // partner, or one it is on good terms with outside a war. Planned anyway,
+  // the strike was withheld after the fleet had massed for it, and the turn's
+  // raid went with it: a coalition with the Combine cost the Confederacy its
+  // raiding the turn the Combine annexed Var Hollow.
+  const wars = new Set(warsFor(state, me));
+  const mayStrike = (holder: string | null): boolean =>
+    holder === null ||
+    wars.has(holder) ||
+    (!boundBy(state, me, holder, PEACE_TYPES) && dispositionBetween(state, me, holder) <= BOT_AGGRESSION_CEILING);
   return state.systems
     .filter((x) => x.homeFactionId === null && x.controllerFactionId !== me)
+    .filter((x) => mayStrike(x.controllerFactionId))
     .filter((x) => strongestRivalNear(state, me, x.id) <= strike * OPPORTUNIST_HOLD_MARGIN)
     .sort((a, b) => {
       // Ground a rival has annexed first — that is the border being drawn, and
@@ -2030,7 +2041,7 @@ export const BOTS: Record<string, Bot> = { meridian, vigil, ojjul, freeworlds, d
  * five bots, which is what makes it total: a bot added later inherits the
  * guard without knowing it exists.
  */
-const PEACE_TYPES = new Set(['non_aggression', 'ceasefire', 'mutual_defense']);
+const PEACE_TYPES = new Set(['non_aggression', 'ceasefire', 'mutual_defense', 'coalition']);
 
 function boundBy(state: WorldState, a: string, b: string, types: Set<string>): boolean {
   return state.treaties.some(
@@ -2315,6 +2326,37 @@ export const EXCHANGE_STANDING = 20;
 /** How long a peace the bots make lasts, before the war may resume. */
 export const BOT_PEACE_TURNS = TRUCE_TURNS;
 
+/**
+ * How well two powers must think of each other to bind against a third — the
+ * standing an exchange of goods asks, both ways.
+ */
+export const COALITION_STANDING = EXCHANGE_STANDING;
+
+/** How badly both must think of the third, if they are not already at war with it. */
+export const COALITION_GRIEVANCE = -40;
+
+/** The warships each member of a bot coalition pledges. */
+export const BOT_COALITION_PLEDGE = 6;
+
+/** How long a bot coalition runs before the members decide again. */
+export const BOT_COALITION_TURNS = 10;
+
+/**
+ * War ethics that never join a coalition. A coalition is a promise to go to
+ * war when a partner is attacked, and a profiteer pays for every war it is in
+ * (`PROFITEER_WAR_PENALTY`); its sheet will not fight its own war where a
+ * proxy could be hired, and its instrument for hiring one is the letter of
+ * marque, which the bots already write.
+ *
+ * Measured the other way first. Joining and pledging nothing made a coalition
+ * of the Combine and the Confederacy against the Vigil on turn 1, whose
+ * resentment took the Vigil to war with the Combine on turn 1 — the border the
+ * seed holds one notch short of war on purpose — and the Confederacy's
+ * turn-30 net fell through the suite's floor. Joining and pledging hulls
+ * crosses the red line outright.
+ */
+const NO_COALITION_ETHICS = new Set(['profiteer']);
+
 export interface Accord {
   /** The two powers agreeing. */
   parties: [string, string];
@@ -2391,38 +2433,131 @@ export function brokeredAccords(state: WorldState): Accord[] {
     });
   }
 
-  // Peace, where a war has gone quiet.
+  // Peace, where a war has gone quiet — or where one side can no longer carry
+  // the wars it is in.
   const attacking = (by: string, of: string) =>
     state.pendingOrders.some(
       (o) => o.factionId === by && o.type === 'fleet_movement' && sys(state, o.targetId)?.controllerFactionId === of,
     );
+  const barred = (p: string, other: string) =>
+    getFaction(state, p)?.compulsions.some((c) => c.barsPeaceWith?.includes(other)) ?? false;
+  const settleable = (a: string, b: string) =>
+    !barred(a, b) && !barred(b, a) && !attacking(a, b) && !attacking(b, a);
+
+  // Exhaustion: a power whose enemies together outweigh it, or whose wars are
+  // eating savings it is about to run out of, sues the strongest enemy it can
+  // settle with — the peace that frees the most, so it can hold against the
+  // rest. The whole position decides it, not one war's ledger: a power under
+  // three enemies may consolidate faster than one under one.
+  const sues = new Map<string, string>();
+  const spentOf = new Map<string, ReturnType<typeof exhaustion>>();
+  for (const a of npcs) {
+    const spent = exhaustion(state, a);
+    spentOf.set(a, spent);
+    if (!spent?.exhausted) continue;
+    const choice = spent.enemies
+      .filter((e) => npcs.includes(e) && settleable(a, e))
+      .sort((x, y) => sideStrength(state, [y]) - sideStrength(state, [x]) || x.localeCompare(y))[0];
+    if (choice) sues.set(a, choice);
+  }
+
   for (let i = 0; i < npcs.length; i++) {
     for (let j = i + 1; j < npcs.length; j++) {
       const a = npcs[i]!;
       const b = npcs[j]!;
       if (!warsFor(state, a).includes(b)) continue;
+      if (!settleable(a, b)) continue;
       const quiet = state.turn - (state.lastClash?.[clashKey(a, b)] ?? 0);
-      if (quiet < ENVOYS_QUIET_TURNS) continue;
-      if (attacking(a, b) || attacking(b, a)) continue;
-      const barred = (p: string, other: string) =>
-        getFaction(state, p)?.compulsions.some((c) => c.barsPeaceWith?.includes(other)) ?? false;
-      if (barred(a, b) || barred(b, a)) continue;
+      const suer = sues.get(a) === b ? a : sues.get(b) === a ? b : null;
+      const bothSue = sues.get(a) === b && sues.get(b) === a;
+      if (quiet < ENVOYS_QUIET_TURNS && suer === null) continue;
+
+      // A quiet war ends even; an exhausted power buys its peace. If both are
+      // spent, the weaker pays.
+      let payer: string | null = null;
+      if (quiet < ENVOYS_QUIET_TURNS) {
+        payer = bothSue ? ((spentOf.get(a)?.mine ?? 0) <= (spentOf.get(b)?.mine ?? 0) ? a : b) : suer;
+      }
+      const payee = payer === null ? null : payer === a ? b : a;
+      const indemnity =
+        payer === null ? 0 : Math.floor((getFaction(state, payer)?.credits ?? 0) * EXHAUSTION_INDEMNITY_SHARE);
       out.push({
         parties: [a, b],
-        label: `peace:${a}:${b}`,
+        label: payer === null ? `peace:${a}:${b}` : `peace:${a}:${b}:${payer}`,
         ops: [
           {
             op: 'form_treaty',
             parties: [a, b],
             treatyType: 'ceasefire',
-            terms: {},
+            terms: indemnity > 0 ? { payment: { [payer!]: -indemnity, [payee!]: indemnity } } : {},
             durationTurns: BOT_PEACE_TURNS,
-            summary: `${name(a)} and ${name(b)} let a quiet war end`,
+            summary:
+              payer === null
+                ? `${name(a)} and ${name(b)} let a quiet war end`
+                : `${name(payer)} sues ${name(payee!)} for peace`,
           },
           {
             op: 'spawn_event',
             factionId: a,
-            text: `${name(a)} and ${name(b)}, ${quiet} turns without a battle between them, agree a ceasefire.`,
+            text:
+              payer === null
+                ? `${name(a)} and ${name(b)}, ${quiet} turns without a battle between them, agree a ceasefire.`
+                : `${name(payer)}, unable to carry its wars, sues ${name(payee!)} for peace${indemnity > 0 ? ` and pays ${indemnity} credits for it` : ''}.`,
+          },
+        ],
+      });
+    }
+  }
+
+  // Coalitions: two powers on good terms bind against a third both hate, at
+  // war with or not, that outweighs either of them alone — the power the Rim
+  // fears. The pact calls each to war when the other is attacked by it.
+  const DEFENCE = new Set(['mutual_defense', 'coalition']);
+  const atPeace = (p: string, x: string) =>
+    boundBy(state, p, x, PEACE_TYPES) || truceBetween(state.truces, state.turn, p, x) !== undefined;
+  const joins = (id: string) => !NO_COALITION_ETHICS.has(getFaction(state, id)?.warEthic ?? '');
+  const bound = new Set<string>();
+  for (let i = 0; i < npcs.length; i++) {
+    for (let j = i + 1; j < npcs.length; j++) {
+      const a = npcs[i]!;
+      const b = npcs[j]!;
+      if (bound.has(a) || bound.has(b) || !joins(a) || !joins(b)) continue;
+      if (Math.min(dispositionBetween(state, a, b), dispositionBetween(state, b, a)) < COALITION_STANDING) continue;
+      if (boundBy(state, a, b, DEFENCE) || barred(a, b) || barred(b, a)) continue;
+      const alone = Math.max(sideStrength(state, [a]), sideStrength(state, [b]));
+      const target = state.factions
+        .map((f) => f.id)
+        .filter(
+          (x) =>
+            x !== a &&
+            x !== b &&
+            [a, b].every(
+              (p) =>
+                (warsFor(state, p).includes(x) || dispositionBetween(state, p, x) <= COALITION_GRIEVANCE) &&
+                !atPeace(p, x),
+            ) &&
+            sideStrength(state, [x]) > alone,
+        )
+        .sort((x, y) => sideStrength(state, [y]) - sideStrength(state, [x]) || x.localeCompare(y))[0];
+      if (!target) continue;
+      bound.add(a);
+      bound.add(b);
+      out.push({
+        parties: [a, b],
+        label: `coalition:${a}:${b}:${target}`,
+        ops: [
+          {
+            op: 'form_treaty',
+            parties: [a, b],
+            treatyType: 'coalition',
+            terms: { against: [target], shipsPledged: { [a]: BOT_COALITION_PLEDGE, [b]: BOT_COALITION_PLEDGE } },
+            durationTurns: BOT_COALITION_TURNS,
+            summary: `${name(a)} and ${name(b)} bind against ${name(target)}`,
+          },
+          {
+            op: 'spawn_event',
+            factionId: a,
+            text: `${name(a)} and ${name(b)} form a coalition against ${name(target)}.`,
           },
         ],
       });

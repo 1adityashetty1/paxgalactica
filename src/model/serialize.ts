@@ -410,6 +410,9 @@ export function serializeStanding(state: WorldState, viewerId: string): string {
       lines.push(`      ${Math.round(share.share * 100)}% of ${share.systemId} to ${share.factionId}`);
     }
     if (t.terms.mutualDefenseTrigger) lines.push(`      triggers on: ${t.terms.mutualDefenseTrigger}`);
+    if (t.terms.against?.length) {
+      lines.push(`      against: ${t.terms.against.map((id) => nameOfFaction(state, id)).join(', ')} — an attack by them calls the other to war`);
+    }
     for (const shielded of t.terms.protection ?? []) {
       const by = t.parties.find((p) => p !== shielded) ?? '?';
       lines.push(

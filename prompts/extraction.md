@@ -237,12 +237,19 @@ Specifically:
   | type | what it actually does |
   |---|---|
   | `non_aggression` · `ceasefire` | attacking the other party auto-breaks it: −25 with them, −10 with every onlooker |
-  | `mutual_defense` | the above, plus `shipsPledged` are really dispatched to fight |
+  | `mutual_defense` | the above, plus an attack on one **by anyone** puts the other at war with the attacker, and the hulls in `shipsPledged` really fight — warships from within two jumps, once a turn |
+  | `coalition` | the same pact against **named powers only**: `terms.against` lists them, and it is required. An attack by anyone else calls nobody. The powers named resent both signatories |
   | `trade_accord` | mutual immunity from each other's blockades and commerce raiding; `terms.commodities` names the parties whose goods go to the other every turn |
   | `basing_rights` | their fleets may enter your systems without it being an attack — the ONLY way to station ships in friendly space |
 
+  **A defence pact or a coalition?** If they agreed to stand together against
+  one power — *"if the Vigil moves on you, we answer"* — it is a `coalition`
+  with `terms.against: ["vigil"]`. If they agreed to defend each other against
+  anyone, it is a `mutual_defense`, and `terms.against` is refused on it. A
+  member that is itself at peace with the attacker is not called.
+
   **A peace between two powers at war leaves a truce.** A `ceasefire`,
-  `non_aggression`, `mutual_defense` or `cession` signed while they are at war
+  `non_aggression`, `mutual_defense`, `coalition` or `cession` signed while they are at war
   holds them out of war for eight turns whatever the paper does after, and heals
   their standing toward the edge of war. Nothing to write for it: the reducer
   sees the war and records the truce.
@@ -345,7 +352,7 @@ Specifically:
   basing rights and mutual defence quietly do not exist. Terms belonging to
   the wrong type are inert — `mutualDefenseTrigger` on a `trade_accord` is
   just narrative text, and `shipsPledged` only dispatches under
-  `mutual_defense`.
+  `mutual_defense` or `coalition`.
 
 - `set_doctrine` — **only for the faction whose turn this is.** A power changes
   its own posture and pays its own institutions for it in dissent; the reducer

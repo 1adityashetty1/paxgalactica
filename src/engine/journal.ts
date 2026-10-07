@@ -16,7 +16,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 18;
+export const JOURNAL_VERSION = 19;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -100,6 +100,7 @@ export const JournalVersionSchema = z.union([
   z.literal(16),
   z.literal(17),
   z.literal(18),
+  z.literal(19),
 ]);
 
 export const JournalSchema = z.object({
@@ -332,6 +333,9 @@ export function replay(
       landingNeedsLift: parsed.version >= 7,
       exactExchange: parsed.version >= 7,
       officersFallWithFleet: parsed.version >= 8,
+      // A defence pact lent hulls to every battle, drawn from anywhere in loss
+      // order, and never put the ally at war with the attacker.
+      callToArms: parsed.version >= 19,
     },
   };
 

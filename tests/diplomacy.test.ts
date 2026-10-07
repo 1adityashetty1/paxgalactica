@@ -459,7 +459,7 @@ describe('extraction knows about treaties at all', () => {
   it('names every treaty type the reducer treats differently', () => {
     const text = extraction();
     for (const type of [
-      'non_aggression', 'ceasefire', 'mutual_defense',
+      'non_aggression', 'ceasefire', 'mutual_defense', 'coalition',
       'trade_accord', 'basing_rights', 'tribute',
     ]) {
       expect(text, `extraction.md should explain ${type}`).toMatch(

@@ -224,6 +224,20 @@ export const TREATY_TYPES = [
    * unrelated contracts could not coexist because they had to share a label.
    */
   'contract',
+  /**
+   * A defence pact against NAMED powers — `terms.against` — rather than
+   * against anyone. Borrowed from *Europa Universalis IV*'s coalitions: powers
+   * that fear one power bind to answer it together.
+   *
+   * A type of its own rather than a `mutual_defense` carrying a target,
+   * because the two promise different things and words bind here. A mutual
+   * defence pact obliges Meridian to defend Drajk against the Vigil as much as
+   * against the Nars; a coalition against the Nars obliges nothing against
+   * the Vigil, and is itself an act of hostility toward the Nars, who resent
+   * it (`COALITION_RESENTMENT`). Three members are three coalitions, the way
+   * every multilateral pact here is several treaties.
+   */
+  'coalition',
 ] as const;
 export const TreatyTypeSchema = z.enum(TREATY_TYPES);
 export type TreatyType = z.infer<typeof TreatyTypeSchema>;
@@ -232,7 +246,8 @@ export const TREATY_TYPE_MEANING: Record<TreatyType, string> = {
   cession: 'one party hands named worlds to the other, once and permanently; a price may ride with it',
   contract: 'a commercial agreement that pays — a hire, an annuity, a charter fee; money for something given, not tribute',
   non_aggression: 'neither party attacks the other; breaking it is a betrayal everyone sees',
-  mutual_defense: 'an attack on one obliges the other to answer',
+  mutual_defense: 'an attack on one, by anyone, obliges the other to answer: it goes to war with the attacker and sends the hulls it pledged',
+  coalition: 'a defence pact against the powers it names: an attack on one by them obliges the other to answer, and those powers resent it',
   trade_accord: 'lanes stay open and income is shared on named systems',
   tribute: 'one party pays the other every turn, in exchange for being left alone',
   basing_rights: 'fleets of one party may transit and resupply in the other’s systems',
@@ -1517,6 +1532,13 @@ export const TreatyTermsSchema = z.object({
   commission: CommissionSchema.optional(),
   /** What obliges the signatories to act. Empty for treaties with no trigger. */
   mutualDefenseTrigger: z.string().default(''),
+  /**
+   * The powers a `coalition` is against — required on one, and legal on
+   * nothing else. A `mutual_defense` is against anyone, which is the whole of
+   * the difference between the two. Optional, so every treaty written before
+   * it parses to exactly what it was.
+   */
+  against: z.array(z.string().min(1)).optional(),
 });
 export type TreatyTerms = z.infer<typeof TreatyTermsSchema>;
 
@@ -1541,7 +1563,32 @@ export function treatyBetween(
  * Treaties that forbid an attack. Breaking one of these is the betrayal the
  * whole galaxy hears about — see `PACT_BREAKING_REPUTATION_COST`.
  */
-export const PEACE_TREATIES = ['non_aggression', 'ceasefire', 'mutual_defense'] as const;
+export const PEACE_TREATIES = ['non_aggression', 'ceasefire', 'mutual_defense', 'coalition'] as const;
+
+/**
+ * The pacts whose members answer an attack on one another: ships pledged are
+ * sent, and the ally is called to war with the attacker (journal 19). A
+ * `mutual_defense` answers anyone; a `coalition` only the powers it names.
+ */
+export const DEFENCE_PACTS = ['mutual_defense', 'coalition'] as const;
+
+/** Whether an attack by `attacker` calls this pact's members to answer. */
+export function pactAnswers(treaty: Treaty, attacker: string): boolean {
+  if (treaty.type === 'mutual_defense') return true;
+  if (treaty.type === 'coalition') return (treaty.terms.against ?? []).includes(attacker);
+  return false;
+}
+
+/**
+ * What a power's regard for its coalition's target drops by, once, when the
+ * coalition is signed against it.
+ *
+ * Treaty goodwill is paid to the parties and nobody else, because an
+ * onlooker's view of an ordinary pact has no determinable sign. A coalition's
+ * has one: it names whom it is against. Not charged on a renewal, the rule
+ * goodwill follows.
+ */
+export const COALITION_RESENTMENT = 10;
 
 
 /**
@@ -1627,7 +1674,7 @@ export const TRUCE_RECOVERY = 2;
 export const TRUCE_BREAKING_REPUTATION_COST = PACT_BREAKING_REPUTATION_COST * 2;
 
 /** The treaties that end a war when two powers at war sign one. */
-export const TRUCE_TREATIES = ['non_aggression', 'ceasefire', 'mutual_defense', 'cession'] as const;
+export const TRUCE_TREATIES = ['non_aggression', 'ceasefire', 'mutual_defense', 'coalition', 'cession'] as const;
 
 export const TruceSchema = z.object({
   /** The two powers, sorted, so one pair has one spelling. */

@@ -222,6 +222,16 @@ already one coalition battle, and once (1) puts the members at war,
 `GRIEVANCE_WEIGHT` sends them at the enemy and `honourTreaties` keeps them off
 each other.
 
+**Built (2026-10-07)**, as a treaty type of its own: `coalition`, with
+`terms.against` required on it and refused on everything else, beside a
+`mutual_defense` that answers anyone. All four fixes landed, pinned to journal
+version 19, with two departures. The pledge stays a hull count, drawn as
+warships with battleships first, rather than battleship-equivalents, so the
+promissory escort note and every prompt keep their meaning. And a profiteer
+never joins, because a coalition is a promise to be at war. So no coalition
+forms in the harness, and `tests/coalition.test.ts` is where it is measured.
+See CLAUDE.md, *"Allies answer"*.
+
 **Fit.** Setting 5, architecture 5. Size S. The frozen-board risk remains, so
 the signing threshold needs sweeping like `BOT_AGGRESSION_CEILING` was. Truces
 are still its release valve.
@@ -272,6 +282,12 @@ carry the fight. All of it is on the board, so nothing new is recorded.
 
 **Fit.** Setting 4, architecture 5. Size S. No journal pin: it reads state, and
 bot ops are journaled.
+
+**Built (2026-10-07).** Outmatched means enemies at two to one, the battle's
+break-off odds. 1.5, the ultimatum ratio, was swept and sends the Vigil to
+eight worlds by turn 100. Broke means running at a loss with under five turns
+of savings. The indemnity is a quarter of the treasury. All four harness boards
+are unchanged; the Vigil sues Meridian twice. See CLAUDE.md, *"Exhaustion"*.
 
 ### 2.5 A span of control — *Terra Invicta, Europa Universalis IV (overextension)*
 
@@ -614,8 +630,8 @@ size.
 | Emissions **(built)** | 3.5 | listeners also read fleets under way within N jumps |
 | A span of control **(built)** | 2.5 | dissent per world over an influence-derived cap |
 | Fortune and darkness | 6.2 | a weight on the pulse — small only once mandate exists |
-| Exhaustion | 2.4 | bots weigh their whole position — line and treasury against every enemy — when they sue and on what terms |
-| Coalitions | 2.2 | `mutual_defense` that calls allies to war, names its enemy and pledges warships within reach; bots sign them |
+| Exhaustion **(built)** | 2.4 | bots weigh their whole position — line and treasury against every enemy — when they sue and on what terms |
+| Coalitions **(built)** | 2.2 | a `coalition` treaty type beside `mutual_defense`; both call allies to war and pledge warships within reach; bots sign them |
 
 ### Medium, lighter
 
@@ -653,10 +669,9 @@ size.
 
 ## Build graph
 
-*Updated after courting unaligned worlds, built as standing, and after war goals
-were dropped and coalitions and exhaustion restated as extensions of what
-exists.* Fifteen ideas are built, plus the bot rules that use them, and two are
-dropped, so six are left. Built work is no longer a node: where it
+*Updated after coalitions and exhaustion were built as extensions of mutual
+defence and bot peace, and war goals dropped.* Seventeen ideas are built, plus
+the bot rules that use them, and two are dropped, so four are left. Built work is no longer a node: where it
 unlocks something, the node says so.
 
 A solid arrow means the later idea, or one part of it, cannot be built without
@@ -686,14 +701,10 @@ flowchart LR
     dark["Running dark"]:::done
     intel["Intel with memory"]:::done
     courting["Standing: courting, holding, incitement"]:::done
+    coalitions["Coalitions"]:::done
+    exhaustion["Exhaustion"]:::done
   end
 
-  truces --> coalitions["Coalitions · S"]:::light
-  accords --> coalitions
-  ultimatums -.-> coalitions
-  truces --> exhaustion["Exhaustion · S"]:::light
-  accords --> exhaustion
-  exhaustion -.-> coalitions
   ambitions["Ambitions · M+"]:::heavy -.-> mandate["Mandate · M+"]:::heavy --> fortune["Fortune and darkness · S"]:::light
   ambitions -.-> estates["Estates · L"]:::heavy
   mandate -.-> estates
@@ -705,18 +716,13 @@ S is small, M is medium (lighter), M+ is medium (heavier) and L is large.
 
 | edge | kind | why |
 |---|---|---|
-| truces → coalitions | needs (built) | a coalition forms only among powers with no truce with the target, and a truce is how one ends |
-| bot accords → coalitions | needs (built) | a coalition is NPCs signing `mutual_defense` among themselves, through `brokeredAccords` |
-| ultimatums ⇢ coalitions | better after (built) | the deadline's war already sets regard to war across sides; a pact's call to arms is the same move |
-| truces, bot accords → exhaustion | needs (built) | exhaustion changes when and on what terms the bots' peace is signed, and the peace leaves a truce |
-| exhaustion ⇢ coalitions | better after | a war fought by several powers needs a way to end that is not five quiet turns, or a coalition freezes the board |
 | mandate → fortune | needs | darkness is charged when mandate buys a reroll |
 | ambitions ⇢ mandate | better after | a fulfilled ambition earns mandate |
 | ambitions, mandate ⇢ estates | decision gate | estates are deferred until those two show whether more internal politics is wanted |
 
 **Waves.**
 
-1. **Ready now:** ambitions, exhaustion, then coalitions.
+1. **Ready now:** ambitions.
 2. Mandate.
 3. Fortune and darkness, estates.
 
@@ -761,10 +767,7 @@ and kept.
    playing in character.
 2. **Running dark** (§3.4) — heat is built, so an unmasked raid has a price to
    pay; the Confederacy and the Combine are its users by doctrine.
-3. **Exhaustion** (§2.4) — bots weigh line and treasury against every enemy,
-   so peace has a better reason than a quiet war. War goals are dropped.
-4. **Coalitions** (§2.2) — a mutual defence pact that calls allies to war,
-   names its enemy and pledges warships within reach, and bots that sign one. Small, after exhaustion, and it needs the frozen-board sweep.
+3. ~~Exhaustion~~ and ~~coalitions~~ — built 2026-10-07. War goals are dropped.
 
 Every one of these would need a journal-version pin, a harness run, and a line
 in `CLAUDE.md`'s conventions if it adds a vocabulary.

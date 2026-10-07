@@ -1824,7 +1824,8 @@ and nothing implemented it.
 | type | what the reducer does |
 |---|---|
 | `non_aggression` · `ceasefire` | attacking the other party **auto-breaks** it: −25 with them, `PACT_BREAKING_REPUTATION_COST` with every onlooker |
-| `mutual_defense` | the above, plus `shipsPledged` are really dispatched — those hulls leave the ally's worlds and fight |
+| `mutual_defense` | the above, plus an attack on one **by anyone** calls the other to war with the attacker and brings its `shipsPledged` — see "Allies answer" |
+| `coalition` | the same, against the powers in `terms.against` only — an attack by anyone else calls nobody — and they resent both signatories |
 | `trade_accord` | parties are immune to each other's blockades and raiding |
 | `basing_rights` | the other party's fleets may enter without it being an attack |
 | `tribute` | `incomePerTurn` moves every turn |
@@ -1995,6 +1996,73 @@ all.
 The bots make peace too — see *"What two powers agree without a channel"* —
 so the harness forms truces: fourteen bot ceasefires over 100 turns, from turn
 38. Pinned to `JOURNAL_VERSION` 12 (`LegacyRules.truces`).
+
+### Allies answer: mutual defence and coalitions
+
+Two treaty types, distinct in the schema, and the difference is one term.
+A **`mutual_defense`** answers an attack on either party by anyone. A
+**`coalition`** answers only the powers its `terms.against` names — required on
+a coalition and refused on every other type (`illegal_value`), the shape
+`territory` and `protection` already have — and those powers resent both
+signatories (`COALITION_RESENTMENT`, 10, once, logged to the target too).
+Borrowed from *Europa Universalis IV*: powers that fear one power bind to
+answer it together. Two parties each, like every treaty, so a coalition of
+three is three coalitions. `pactAnswers` is the one reading of which attack a
+pact covers.
+
+The pact did very little before this, for three reasons (`resolveBattle`):
+
+- **It never made the ally go to war.** The pledged hulls fought the one
+  battle, and `warsFor` reads disposition, which the attack never touched, so
+  the ally was at peace with the attacker the turn after its ships were shot
+  at. Now an attack on a member's world is a **call to arms**: each ally's
+  regard for each covered attacker goes to `WAR_DISPOSITION_THRESHOLD` where it
+  was warmer, the move the ultimatum deadline makes. A pact with nothing
+  pledged now means war rather than nothing.
+- **It sent the wrong ships.** `drawShips` took a hull count in loss order, so a
+  pledge of six sent escorts, freighters, lifters and listeners first. It took
+  them from the ally's largest stacks anywhere on the map, arriving the same
+  turn, and it did so for every world attacked, every turn. `drawPledge` sends
+  warships, battleships first, from worlds within `PLEDGE_REACH` (2) jumps of
+  the attacked world, nearest first, and only once a turn per pact.
+  `shipsPledged` stays in hulls.
+- **A holder sweeping its own orbit called its allies** to defend the
+  squatters against it. A pact answers an attack *on* its member, so a sweep
+  calls nobody.
+
+**An ally at peace or under truce with the attacker is not called**, and that is
+how a coalition comes apart: a member that makes a separate peace stops being
+called against that power. Members are at peace with each other (`warsFor`,
+`PEACE_TREATIES`) and their fleets are guests (`GUEST_TREATIES`). Signed between
+powers at war, a coalition leaves a truce, as a defence pact does.
+
+**The bots sign coalitions** (`brokeredAccords`): two NPCs on good terms
+(`COALITION_STANDING`, 20, both ways), neither at peace with a third that both
+are at war with or regard at `COALITION_GRIEVANCE` (−40) or worse, and that
+outweighs either of them alone. The target may be the player. Each pledges
+`BOT_COALITION_PLEDGE` (6) for `BOT_COALITION_TURNS` (10).
+
+**A profiteer never joins** (`NO_COALITION_ETHICS`). Joining is a promise to go
+to war, and a profiteer pays for every war it is in. Its sheet won't fight a
+war a proxy could fight, and the letter of marque is how it hires one. The
+other two readings were measured:
+- *Joining and pledging nothing* made a Combine–Confederacy coalition against
+  the Vigil on turn 1. Its resentment put the Vigil at war with the Combine on
+  turn 1, the border the seed deliberately holds one notch short of war, and
+  the Confederacy's turn-30 net fell through the suite's floor.
+- *Joining and pledging hulls* crosses the red line outright.
+
+**So no coalition forms in the harness**, and that is the honest reading of the
+board. Meridian and Arkane, the only other pair that both resent the Vigil, open
+at 5 and 10 toward each other. What a coalition does is measured in
+`tests/coalition.test.ts`, the way protection was. The rule was also found
+stalling the Confederacy's opportunist: it massed for an attack on a partner's
+world that the pact guard then withheld, and lost its raid with it.
+`lawlessGround` now leaves out ground held by anyone the guards would refuse to
+attack.
+
+Pinned to `JOURNAL_VERSION` 19 (`BattleRules.callToArms`): an older journal
+draws pledges the old way and calls nobody to war.
 
 **3. Walking away from a commitment now costs more than it paid.** That refund is
 the live hole underneath all of it: `+COMMITMENT_GOODWILL` on establish and `−` on
@@ -4808,6 +4876,36 @@ and the Combine, Meridian and the Combine, and Meridian and the Vigil. Nobody is
 eliminated and every property `tests/balance.test.ts` asserts holds. The
 no-events control is unchanged at 6/6/6/6/1.
 
+### Exhaustion: a power weighs every war it is in
+
+`exhaustion` in `leverage.ts`. The bots made peace only on a war gone quiet,
+never on a losing one. A per-war ledger of losses was the first idea and the
+wrong one: a power fighting three enemies may have to settle with one in order
+to hold against the others, and no single war's account can show that. So the
+check reads the whole position from the board, and nothing new is recorded:
+
+- **Outmatched**: its enemies' fighting weight together, on the board and under
+  way, is at least `EXHAUSTION_RATIO` (2) times its own. Two to one is the odds
+  at which a fleet breaks off.
+- **Broke**: it runs at a loss with less than `EXHAUSTION_RUNWAY_TURNS` (5) of
+  that loss in savings.
+
+An exhausted NPC **sues the strongest enemy it can settle with**, meaning one
+whose compulsions and its own allow the peace and neither has a fleet under way
+at the other. It pays `EXHAUSTION_INDEMNITY_SHARE` (a quarter) of its treasury
+through `terms.payment` and keeps its other wars. If both sides are spent, the
+weaker pays. A quiet war still ends even, with nothing paid. The persona reads
+the same check: an exhausted power's `concessionBudget` rises by half against
+an enemy it is at war with.
+
+**The ratio was swept, and 1.5 is past a cliff.** That is the ratio a bot yields
+an ultimatum at, and with it the Vigil reads as outmatched on turn 3, because it
+is at war with most of the board. It settles with Meridian, turns on the
+Confederacy, and reaches eight worlds to the Confederacy's two by turn 100.
+From 2 up, all four harness boards (30 and 100 turns, with and without events)
+are the 5/5/6/5/4 they were before. In those runs exhaustion fires twice, both
+times the Vigil suing Meridian, on turns 4 and 13, with an indemnity.
+
 > Building it found that `recruit_agent` built its record as a literal, with
 > `name` second where a record that has round-tripped a save puts it eighth. The
 > parity test, which compares a live world with its rebuild byte for byte, had
@@ -6168,7 +6266,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `interrupt_order` | rejected when the order is not interruptible; **somebody else's** order also needs ships at its origin or target |
 | `extend_order` | rejected for movement |
 | `accelerate_order` | spends credits, drops one Fibonacci bucket, min 1; rejected for movement |
-| `form_treaty` | **extraction-only** — absent from `ModelOpSchema`; a treaty needs the other party's consent. `exclusive` forecloses another of that type with anyone else |
+| `form_treaty` | **extraction-only** — absent from `ModelOpSchema`; a treaty needs the other party's consent. `exclusive` forecloses another of that type with anyone else. A `coalition` must name `terms.against`; no other type may |
 | `restructure_debt` | **extraction-only** — new terms need the creditor's agreement; keeps the id, the balance and the history |
 | `establish_commitment` | optional `incomePerTurn`, trimmed to `MAX_COMMITMENT_INCOME` |
 | `dissolve_commitment` | returns the goodwill **and** charges `COMMITMENT_BREAKING_COST` with each bound party; onlookers only at three or more |
@@ -6855,11 +6953,11 @@ learn to ignore.
 
 **What the harness cannot model:** the bots read disposition now — see *"a
 doctrine is not blind, either"* — to choose between targets, to refuse one they
-are on good terms with, to trade goods and to let a quiet war end. Nothing makes
-them *ally*, and nothing makes a hated power a coalition's target. The Nars still finish hated by
-everyone and nobody combines against them, so the harness still overstates their
-runaway; what that counterplay needs is diplomacy, which is what the
-model-driven game supplies.
+are on good terms with, to trade goods, to let a quiet war end and to sue for
+peace in a war they cannot carry. They sign coalitions too (see *"Allies
+answer"*), but on this board no pair that qualifies ever forms. The Nars still
+finish hated by everyone, and the powers that hate them are never warm enough
+with each other to bind, so the harness still overstates their runaway.
 
 It also runs the bots through `proposeFor` rather than calling them raw, which is
 the path `endTurn` takes. That is not a detail: calling `BOTS[id]` directly
