@@ -1,6 +1,6 @@
 import { HEAT_DECAY, HEAT_NOTORIOUS } from '../domain/heat.js';
 import { DARK_RAID_YIELD } from '../domain/trade.js';
-import { RIM_BOONS, RIM_EVENT_RATE, RIM_HAZARDS } from '../domain/events.js';
+import { RIM_BOONS, RIM_EVENT_RATE, RIM_EVENT_TITLE, RIM_HAZARDS, RIM_NOTORIETY } from '../domain/events.js';
 import {
   COMMANDER_ARCHETYPES,
   COMMANDER_COST,
@@ -25,7 +25,24 @@ import {
   TRUCE_TURNS,
   ULTIMATUM_MAX_DEADLINE,
   BOUNTY_PER_TON,
+  AGENT_COST,
+  AGENT_JUMPS_PER_TURN,
+  MISSION_PROFILE,
+  NOTE_VALUE,
+  PLEDGE_REACH,
+  type AgentMission,
+  type TreatyType,
 } from '../domain/diplomacy.js';
+import { EXHAUSTION_INDEMNITY_SHARE, EXHAUSTION_RATIO, EXHAUSTION_RUNWAY_TURNS } from '../domain/leverage.js';
+import {
+  INTEL_DELIVERS,
+  INTEL_DIG,
+  INTEL_MEMORY_TURNS,
+  INTEL_OPERATIVES,
+  INTEL_TYPED,
+} from '../domain/intel-levels.js';
+import { ASSET_ARCHETYPES } from '../domain/assets.js';
+import { MAX_DEBT_PRINCIPAL } from '../domain/debt.js';
 import { EMISSION_RANGE } from '../domain/intel.js';
 import { CONTENT_REGARD, JOIN_LEAD, JOIN_REGARD, WANT_MEANS, WANT_OF_STAT } from '../domain/regard.js';
 import { fixtureKindFor } from '../domain/initiative.js';
@@ -39,6 +56,8 @@ import {
   type HullClass,
 } from '../domain/hulls.js';
 import {
+  AGENT_UPKEEP,
+  MAX_AGENTS_BASE,
   SPAN_BASE,
   SPAN_DISSENT_PER_WORLD,
   TRUCE_FLOOR,
@@ -174,10 +193,10 @@ export function worldLines(): string[] {
   ];
 }
 
-/** Truces, promissory notes and goods: the things that pay for keeping peace. */
+/** Truces and promissory notes: the things that pay for keeping peace. */
 export function peaceLines(): string[] {
   return [
-    'PEACE, FAVOURS AND GOODS',
+    'PEACE AND FAVOURS',
     '  A peace signed between two powers at war leaves a truce: neither may',
     `  attack the other for ${TRUCE_TURNS} turns, and their standing heals toward ${TRUCE_FLOOR} —`,
     '  just out of war, and no further. Attacking across one costs 25 with the',
@@ -185,7 +204,14 @@ export function peaceLines(): string[] {
     '  Every power holds one promissory note, a favour signed in advance. Give',
     '  yours away and the holder may call it in, with no need to ask: a trade',
     `  accord, a defence pact, basing rights or a line of credit, for ${NOTE_TERM_TURNS} turns.`,
-    '  Every power also makes goods it cannot use, worth nothing to it and',
+  ];
+}
+
+/** A power's own goods: worthless to it, and the reason peace pays every turn. */
+export function goodsLines(): string[] {
+  return [
+    'GOODS',
+    '  Every power makes goods it cannot use, worth nothing to it and',
     `  ${COMMODITY_VALUE} a unit to whoever it gives them to — ${COMMODITY_PER_TURN} a turn, piling up to ${COMMODITY_CAP}.`,
     '  A trade accord can send them across every turn it holds.',
   ];
@@ -232,7 +258,7 @@ function darkShare(): string {
 /** The raider's ledger and heat, from the constants that run them. */
 export function raiderLines(): string[] {
   return [
-    "THE RAIDER'S LEDGER, AND HEAT",
+    "THE RAIDER'S LEDGER",
     '  Post a bounty on a power and your credits wait in escrow: prizes raided',
     `  from it pay out credit for credit, its hulls destroyed ${BOUNTY_PER_TON} a ton.`,
     '  A raid can run dark — say so when you order it: "raid it quietly, no',
@@ -243,6 +269,13 @@ export function raiderLines(): string[] {
     '  Raiders you cannot name show up on your Trade tab as what they took.',
     '  A raider can be paid to leave you alone (protection) or to go after',
     '  your enemy (a letter of marque). Both are contracts, agreed in a channel.',
+  ];
+}
+
+/** Notoriety, from the constants that run it. */
+export function heatLines(): string[] {
+  return [
+    'HEAT',
     '  Covert work, unlicensed raids and broken pacts make a power notorious.',
     `  Heat fades ${HEAT_DECAY} a turn; from ${HEAT_NOTORIOUS} the Rim answers: crackdowns, a price`,
     '  on your head, contacts turned, a neighbour massing on your border.',
@@ -273,5 +306,169 @@ export function rimLines(): string[] {
     `  ${count(RIM_HAZARDS.length)} hazards, which lean on whoever is ahead, or one of ${count(RIM_BOONS.length)} boons, which`,
     '  lean on whoever is behind. Never two in a turn. A card in the feed says',
     '  what happened and what it changed; storms and shortages last a while.',
+  ];
+}
+
+/**
+ * Fold prose to the feed's width, each line indented. The help's sections
+ * that list things out of a table — events by title, archetypes by kind —
+ * cannot be wrapped by hand, since the list is whatever the table holds.
+ */
+export function wrap(text: string, indent = '  ', width = 76): string[] {
+  const out: string[] = [];
+  let line = '';
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    if (line && indent.length + line.length + 1 + word.length > width) {
+      out.push(indent + line);
+      line = word;
+    } else line = line ? `${line} ${word}` : word;
+  }
+  if (line) out.push(indent + line);
+  return out;
+}
+
+/**
+ * What each mission does, in a phrase. Keyed on every mission, so a new one
+ * fails the typecheck here rather than being missing from the help.
+ */
+const MISSION_JOB: Record<AgentMission, string> = {
+  surveillance: 'watches a world: hidden work there shows',
+  theft: 'skims credits off the world it sits on',
+  subversion: 'wears down one of the holder\'s stats',
+  sabotage: 'wrecks hulls and fixtures',
+  defection: 'talks crews into your service',
+  discord: 'sets the holder against a third power',
+  incitement: 'turns a world against whoever holds it',
+  assassination: 'one strike, at a power or a named officer',
+};
+
+/** Operatives, from the mission table that prices and risks them. */
+export function operativeLines(): string[] {
+  return [
+    'OPERATIVES',
+    '  Recruiting one is an action, at a world you hold; sending them on a',
+    `  mission is another. They travel ${AGENT_JUMPS_PER_TURN} jumps a turn and cost ${AGENT_UPKEEP} a turn`,
+    `  to keep. How many you can run is ${MAX_AGENTS_BASE} plus your guile modifier. Each`,
+    '  mission is paid when they are sent; a failure can get them caught,',
+    '  and a caught operative is a prisoner the other side can ransom.',
+    '  Risk is the chance in twenty that a failed turn gets them caught.',
+    `    ${'mission'.padEnd(14)}${'cost'.padStart(5)}  risk`,
+    ...(Object.keys(MISSION_JOB) as AgentMission[]).map((m) => {
+      const cost = `${AGENT_COST[m]}cr`;
+      const risk = `${MISSION_PROFILE[m].exposureRisk}/20`;
+      return `    ${m.padEnd(14)}${cost.padStart(5)}  ${risk.padStart(4)}  ${MISSION_JOB[m]}`;
+    }),
+    '  Say what you want done in plain words — "put a watcher on Vantic" —',
+    '  and the arbiter routes it here. The Agents tab tracks every one.',
+  ];
+}
+
+/** Intel with memory, and what knowing a power well buys. */
+export function intelLines(): string[] {
+  return [
+    'INTEL',
+    '  Everything you cannot see is a rumour until somebody of yours is',
+    '  standing in it: a watcher, or a listener over the world. What you see',
+    `  you remember for ${INTEL_MEMORY_TURNS} turns after the sight is lost.`,
+    '  The longer you watch a power, the better you know it:',
+    `    ${String(INTEL_TYPED).padStart(3)}  its rumours say what kind of work it is`,
+    `    ${String(INTEL_DELIVERS).padStart(3)}  …and what the work will deliver`,
+    `    ${String(INTEL_OPERATIVES).padStart(3)}  its operatives on your worlds show`,
+    `    ${String(INTEL_DIG).padStart(3)}  your watchers dig deeper, and trace its dark raids`,
+    '  A watcher, or a listener over their world, teaches fastest; a listener',
+    '  nearby half as fast; a trade accord or a battle a little. A',
+    '  counter-intelligence programme on your own ground wears their picture',
+    '  of you down and catches their people there more often.',
+    '  A watcher can also dig up proof of what its host hides — an operative,',
+    '  a secret programme, an unpaid debt — to publish, or to blackmail with.',
+  ];
+}
+
+/**
+ * What each treaty type does, in a phrase. Keyed on every type, so a new one
+ * fails the typecheck here rather than being missing from the help.
+ */
+const TREATY_JOB: Record<TreatyType, string> = {
+  non_aggression: 'neither attacks the other; breaking it is public',
+  ceasefire: 'hostilities stop for a set number of turns',
+  mutual_defense: 'an attack on one, by anyone, brings the other in',
+  coalition: 'the same, but only against the powers it names',
+  trade_accord: 'lanes stay open between you; goods can flow',
+  basing_rights: 'one\'s fleets may sit in the other\'s systems',
+  tribute: 'one pays the other every turn to be left alone',
+  contract: 'paid work: a hire, a charter, a letter of marque',
+  cession: 'worlds change hands, once; a price may ride along',
+};
+
+/** Talking, and what it takes to make anything said real. */
+export function channelLines(): string[] {
+  return [
+    'CHANNELS',
+    '  /talk <power> opens a conversation; time does not pass while it is',
+    '  open. Nothing said is binding until /endtalk, when what was actually',
+    '  agreed is written down — a refusal or a maybe produces nothing. A power',
+    '  may also ask to talk to you after a turn; it is an invitation only.',
+  ];
+}
+
+/** The treaty types, from the type list. */
+export function treatyLines(): string[] {
+  return [
+    'TREATIES — agreed in a channel, never declared',
+    ...(Object.keys(TREATY_JOB) as TreatyType[]).map(
+      (t) => `    ${t.replace(/_/g, ' ').replace('defense', 'defence').padEnd(16)}${TREATY_JOB[t]}`,
+    ),
+    '  One conversation can produce several. Breaking one is your choice, and',
+    '  it costs you with the other party and with everyone watching.',
+  ];
+}
+
+/** Allies, and the peace a power sues for when its wars outrun it. */
+export function allyLines(): string[] {
+  const share = EXHAUSTION_INDEMNITY_SHARE === 0.25 ? 'a quarter' : `${Math.round(EXHAUSTION_INDEMNITY_SHARE * 100)}%`;
+  return [
+    'ALLIES',
+    '  A mutual defence pact answers an attack by anyone; a coalition answers',
+    '  only the powers it names, and they resent it. Either way, an attack on',
+    '  one puts the other at war with the attacker, and the warships it',
+    `  pledged come from worlds within ${count(PLEDGE_REACH)} jumps, once a turn. An ally already`,
+    '  at peace with the attacker is not called.',
+    `  A power whose enemies together outweigh it ${count(EXHAUSTION_RATIO)} to one, or whose wars`,
+    `  are eating its last ${count(EXHAUSTION_RUNWAY_TURNS)} turns of savings, sues one of them for peace and`,
+    `  pays ${share} of its treasury for it, and gives more away at the table.`,
+  ];
+}
+
+/** The Rim's events by title, from the lists that draw them. */
+export function eventListLines(): string[] {
+  const titles = (kinds: readonly string[]) =>
+    kinds.map((k) => RIM_EVENT_TITLE[k as keyof typeof RIM_EVENT_TITLE]).join(', ');
+  return [
+    ...wrap(`Hazards: ${titles(RIM_HAZARDS)}.`),
+    ...wrap(`Boons: ${titles(RIM_BOONS)}.`),
+    ...wrap(
+      `And for a notorious power, from heat ${HEAT_NOTORIOUS}: ${titles(RIM_NOTORIETY)}. Each eases the heat it answers.`,
+    ),
+  ];
+}
+
+/** Assets, from the catalogue that anchors them. */
+export function assetLines(): string[] {
+  const things = ASSET_ARCHETYPES.filter((a) => !a.fixture).length;
+  return [
+    'ASSETS — things that are neither credits nor ships',
+    '  Prisoners, a dossier, a relic, a hold of ore, a chart: worth different',
+    '  amounts to different powers, which is what makes them worth trading.',
+    `  The game knows ${things} kinds and will hear of more. Every one is won by`,
+    '  attempting something, never by claiming it, and sits on a world —',
+    '  take the world and you take what is on it. The Assets tab lists yours.',
+    '  · people — prisoners, a captured officer or operative: worth most to',
+    '    the power that lost them. Hand them home, sell them on, or question',
+    '    them for a dossier; each is remembered.',
+    '  · paper — a dossier, a seal, a charter. A promissory note is a favour',
+    `    signed in advance, worth ${NOTE_VALUE} to anyone but the power that wrote it.`,
+    '  · debts and loans — money owed and paid down by instalment, up to',
+    `    ${MAX_DEBT_PRINCIPAL}; or a squadron, credits or a thing lent and expected back.`,
+    '    Agreed in a channel; missing a payment costs standing every turn.',
   ];
 }

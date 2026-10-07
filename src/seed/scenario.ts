@@ -871,6 +871,8 @@ export function createSeedState(
    * `notes` and `commodities` false, one from before version 12.
    * `splitTies: false` routes a lane one way only, as before version 15.
    * `regard: false` gives no world a view of anybody, as before version 18.
+   * `tenGivenNames: false` names the opening officers from the first eight
+   * given names, as before version 19.
    */
   {
     fourSchools = true,
@@ -880,6 +882,7 @@ export function createSeedState(
     commodities = true,
     splitTies = true,
     regard = true,
+    tenGivenNames = true,
   }: {
     fourSchools?: boolean;
     auxiliaries?: boolean;
@@ -888,6 +891,7 @@ export function createSeedState(
     commodities?: boolean;
     splitTies?: boolean;
     regard?: boolean;
+    tenGivenNames?: boolean;
   } = {},
 ): WorldState {
   if (!SEED_FACTIONS.some((f) => f.id === playerFactionId)) {
@@ -1231,7 +1235,7 @@ export function createSeedState(
     commanders: SEED_FACTIONS.map((f) => ({
       id: `cmd-${f.id}`,
       factionId: f.id,
-      name: commanderName(f.id, 0, 'seed', seedSchool(f.id, fourSchools)),
+      name: commanderName(f.id, 0, 'seed', seedSchool(f.id, fourSchools), tenGivenNames),
       archetype: seedSchool(f.id, fourSchools),
       appointedTurn: 0,
       battles: 0,

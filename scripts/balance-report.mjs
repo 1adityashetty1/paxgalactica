@@ -94,6 +94,18 @@ console.log(`  restless world-turns ${restlessTurns} · independent at the end $
 // ended rather than stopping at 50.
 const samples = (at) => [...new Set([...at.filter((t) => t <= turns), turns])];
 
+console.log('\n── pacts: coalitions, calls to arms, peace ──');
+{
+  const all = history.flatMap((h) => h.accords.map((l) => [h.turn, l]));
+  const kinds = (k) => all.filter(([, l]) => l.startsWith(k + ':'));
+  const coalitions = kinds('coalition');
+  const peaces = kinds('peace');
+  const calls = history.flatMap((h) => h.calls.map((c) => [h.turn, c]));
+  console.log(`  coalitions ${coalitions.length}: ${coalitions.map(([t, l]) => { const [, a, b, x] = l.split(':'); return `t${t} ${a.slice(0, 4)}+${b.slice(0, 4)}→${x.slice(0, 4)}`; }).join(' · ') || '—'}`);
+  console.log(`  peaces ${peaces.length}: ${peaces.map(([t, l]) => { const [, a, b, p] = l.split(':'); return `t${t} ${a.slice(0, 4)}/${b.slice(0, 4)}${p ? ` (${p.slice(0, 4)} sues)` : ''}`; }).join(' · ') || '—'}`);
+  console.log(`  calls to arms ${calls.length}${calls.length ? ': ' + calls.slice(0, 6).map(([t, c]) => `t${t} ${c}`).join('\n    ') : ''}`);
+}
+
 console.log('\n── net income over time ──');
 console.log('  turn ' + IDS.map((i) => i.slice(0, 5).padStart(6)).join(''));
 for (const t of samples([1, 5, 10, 15, 20, 25, 30, 40, 50])) {

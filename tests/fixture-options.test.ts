@@ -3,7 +3,7 @@ import { createSeedState } from '../src/seed/scenario.js';
 import { applyOps } from '../src/domain/reducer.js';
 import { FIXTURE_COST, FIXTURE_UPKEEP } from '../src/domain/diplomacy.js';
 import { WORLD_TYPE_STAT, fixturesRunBy } from '../src/domain/state.js';
-import { fixtureOptions, foundingLine } from '../src/ui/fixtureoptions.js';
+import { buildableWorlds, fixtureOptions, foundingLine } from '../src/ui/fixtureoptions.js';
 import type { OpInput } from '../src/domain/ops.js';
 
 /** The System tab's list of what a held world could still be built into. */
@@ -59,5 +59,46 @@ describe('what can be built here', () => {
 
   it('writes the sentence the help text teaches', () => {
     expect(foundingLine('power_plant', 'Tulgarn')).toBe('Build a power plant at Tulgarn.');
+  });
+});
+
+/** The System tab with no world chosen: where a fixture could go up now. */
+describe('room to build', () => {
+  it('lists every world of the player with a free slot, best first, each with a kind it would take', () => {
+    const s = createSeedState('meridian');
+    const worlds = buildableWorlds(s);
+    expect(worlds.length).toBeGreaterThan(0);
+    for (const w of worlds) {
+      const site = s.systems.find((x) => x.id === w.systemId)!;
+      expect(site.controllerFactionId).toBe('meridian');
+      expect(w.options.room).toBeGreaterThan(0);
+      expect(w.suggest.refusal).toBeNull();
+      // The same list the world's own builder shows, so the two cannot disagree.
+      expect(fixtureOptions(s, w.systemId)!.kinds.map((k) => k.kind)).toContain(w.suggest.kind);
+    }
+    const values = worlds.map((w) => s.systems.find((x) => x.id === w.systemId)!.strategicValue);
+    expect(values).toEqual([...values].sort((a, b) => b - a));
+  });
+
+  it('leaves out a world whose slots are full', () => {
+    const s = createSeedState('meridian');
+    const full = buildableWorlds(s)[0]!;
+    const kinds = fixtureOptions(s, full.systemId)!.kinds.filter((k) => k.refusal === null).slice(0, 2);
+    const raising = applyOps(
+      s,
+      kinds.map((k) => ({
+        op: 'issue_order', factionId: 'meridian', type: 'construction_infrastructure',
+        originId: full.systemId, targetId: full.systemId, durationTurns: 3,
+        label: `raise ${k.kind}`, onComplete: { kind: 'found_fixture', fixtureKind: k.kind, magnitude: 1 },
+      })) as OpInput[],
+      'model',
+      'meridian',
+    ).state;
+    expect(buildableWorlds(raising).map((w) => w.systemId)).not.toContain(full.systemId);
+  });
+
+  it('says "an" before a vowel', () => {
+    expect(foundingLine('arsenal', 'Kalzir')).toBe('Build an arsenal at Kalzir.');
+    expect(foundingLine('university', 'Kalzir')).toBe('Build a university at Kalzir.');
   });
 });

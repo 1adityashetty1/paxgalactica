@@ -1740,7 +1740,7 @@ export const laneWeightsAt = (system: StarSystem): [string, number][] =>
  * permission to sit in someone's orbit, so a fleet there is still leverage and
  * still contests.
  */
-const GUEST_TREATIES = ['basing_rights', 'mutual_defense'] as const;
+const GUEST_TREATIES = ['basing_rights', 'mutual_defense', 'coalition'] as const;
 
 /**
  * Whether `visitor`'s ships at a world held by `holder` are there by invitation.
@@ -2739,7 +2739,12 @@ export function spanOfControl(state: WorldState, factionId: string): SpanOfContr
 export function warsFor(state: WorldState, factionId: string): string[] {
   const atPeace = new Set<string>();
   for (const treaty of treatiesFor(state, factionId)) {
-    if (treaty.type === 'non_aggression' || treaty.type === 'ceasefire' || treaty.type === 'mutual_defense') {
+    if (
+      treaty.type === 'non_aggression' ||
+      treaty.type === 'ceasefire' ||
+      treaty.type === 'mutual_defense' ||
+      treaty.type === 'coalition'
+    ) {
       for (const p of treaty.parties) if (p !== factionId) atPeace.add(p);
     }
   }

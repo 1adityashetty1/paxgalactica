@@ -58,6 +58,10 @@ import {
   truceBetween,
   MAX_DISCORD_TOTAL,
   PEACE_TREATIES,
+  DEFENCE_PACTS,
+  PLEDGE_REACH,
+  COALITION_RESENTMENT,
+  pactAnswers,
   TREATY_GOODWILL,
   conflictingTreaty,
   isTreatyLive,
@@ -784,6 +788,48 @@ function drawShips(
   return drawn;
 }
 
+/** The classes a pledge sends, heaviest first: the line, then its screen. */
+const PLEDGE_CLASSES: readonly HullClass[] = ['battleship', 'escort', 'torpedo_boat'];
+
+/**
+ * The squadron an ally sends to honour a defence pact (journal 19).
+ *
+ * `drawShips` was the whole of it before, and it got three things wrong at
+ * once: it drew in loss order, so a pledge of six sent escorts, freighters,
+ * lifters and listeners first; it drew from the ally's largest stacks anywhere
+ * on the map, arriving the same turn from across the Rim; and it stripped the
+ * ally's own fronts as readily as its rear. A pledge is warships, the line
+ * first, from worlds within `PLEDGE_REACH` of the one attacked, nearest first.
+ * Never from the world under attack, whose hulls already defend it.
+ */
+function drawPledge(state: WorldState, ally: string, count: number, target: StarSystem): ShipStack {
+  let owed = count;
+  let drawn: ShipStack = {};
+  const warships = (st: ShipStack): number => PLEDGE_CLASSES.reduce((n, c) => n + (st[c] ?? 0), 0);
+  const bases = state.systems
+    .filter((s) => s.id !== target.id && warships(stackAt(s, ally)) > 0)
+    .map((s) => ({ s, jumps: jumpsBetween(state.systems, s.id, target.id) ?? Infinity }))
+    .filter((b) => b.jumps <= PLEDGE_REACH)
+    .sort(
+      (a, b) =>
+        a.jumps - b.jumps ||
+        warships(stackAt(b.s, ally)) - warships(stackAt(a.s, ally)) ||
+        a.s.id.localeCompare(b.s.id),
+    );
+  for (const { s } of bases) {
+    for (const cls of PLEDGE_CLASSES) {
+      if (owed <= 0) break;
+      const stack = stackAt(s, ally);
+      const take = Math.min(stack[cls] ?? 0, owed);
+      if (take <= 0) continue;
+      setStackAt(s, ally, subtractStack(stack, { [cls]: take }));
+      drawn = mergeStacks(drawn, { [cls]: take });
+      owed -= take;
+    }
+  }
+  return drawn;
+}
+
 /**
  * Pull an equivalent squadron back out of the borrower's fleet.
  *
@@ -1111,6 +1157,26 @@ function payTreatyGoodwill(
     : `Bound by treaty: ${treaty.parties.map((p) => nameFor(state, p)).join(' and ')} each gain ${TREATY_GOODWILL} disposition.`;
   notes.push(note);
   logEvent(state, 'diplomacy', note, treaty.parties[0] ?? null, [...treaty.parties]);
+}
+
+/**
+ * A coalition is hostile to the powers it names, and they know it: each one's
+ * regard for each party drops `COALITION_RESENTMENT`, once, where the treaty
+ * comes into force. Logged to the target as well as the parties — it is the
+ * target that pays attention to who has bound against it.
+ */
+function resentCoalition(state: WorldState, treaty: Treaty, notes: string[]): void {
+  if (treaty.type !== 'coalition') return;
+  for (const target of treaty.terms.against ?? []) {
+    const faction = state.factions.find((f) => f.id === target);
+    if (!faction) continue;
+    for (const party of treaty.parties) {
+      faction.disposition[party] = Math.max(-100, (faction.disposition[party] ?? 0) - COALITION_RESENTMENT);
+    }
+    const note = `${nameFor(state, treaty.parties[0]!)} and ${nameFor(state, treaty.parties[1]!)} bind themselves against ${faction.name}: −${COALITION_RESENTMENT} in its regard for each.`;
+    notes.push(note);
+    logEvent(state, 'diplomacy', note, target, [...treaty.parties, target]);
+  }
 }
 
 function adjustCommitmentGoodwill(
@@ -1538,6 +1604,8 @@ function namePerson(
   archetype: CommanderArchetype | null,
   uniqueFamilies: boolean,
   legacyDraw: (attempt: number) => string,
+  /** False before journal version 19: the first eight given names. */
+  tenGivenNames = true,
 ): string {
   if (!uniqueFamilies) return unusedName(namesInUse(state), legacyDraw);
   const { name, family } = drawPerson({
@@ -1546,6 +1614,7 @@ function namePerson(
     salt: `${salt}:0`,
     archetype,
     taken: familiesInUse(state),
+    tenGivenNames,
   });
   (state.familiesUsed ??= []).push(family);
   return name;
@@ -1559,6 +1628,7 @@ function applyCheat(
   uniqueFamilies = true,
   /** How many fixtures a world carries under this journal's rules. */
   fixturesPerWorld = MAX_FIXTURES_PER_WORLD,
+  tenGivenNames = true,
 ): void {
   const player = state.playerFactionId;
   const log = (text: string, factionId: string | null) => {
@@ -1644,7 +1714,8 @@ function applyCheat(
         id: `cmd-${f.id}-${state.turn}-${(state.commanders ?? []).length}`,
         factionId: f.id,
         name: namePerson(state, f.id, salt, cheat.archetype, uniqueFamilies, (n) =>
-          commanderName(f.id, state.turn, `${salt}:${n}`, cheat.archetype),
+          commanderName(f.id, state.turn, `${salt}:${n}`, cheat.archetype, tenGivenNames),
+          tenGivenNames,
         ),
         archetype: cheat.archetype,
         appointedTurn: state.turn,
@@ -2139,6 +2210,12 @@ export interface LegacyRules {
    */
   uniqueFamilies?: boolean;
   /**
+   * Ten given names a power, which the d20 divides evenly. Before it, eight,
+   * and the first four came up half as often again as the rest. Journal
+   * version 19.
+   */
+  tenGivenNames?: boolean;
+  /**
    * The standing a treaty pays each party scales with the OTHER party's
    * influence (item 123); before it, a flat `TREATY_GOODWILL` both ways.
    * Journal version 9.
@@ -2265,6 +2342,14 @@ export interface BattleRules {
    * Journal version 8.
    */
   officersFallWithFleet?: boolean;
+  /**
+   * A defence pact calls its ally to war with the attacker and sends warships
+   * from within reach, once a turn; a coalition answers only the powers it
+   * names. Before it, an attack on a holder pulled the ally's pledged hulls
+   * from anywhere, in loss order, into every battle, and left the ally at
+   * peace with the attacker. Journal version 19.
+   */
+  callToArms?: boolean;
 }
 
 /**
@@ -2357,6 +2442,7 @@ function applyOpsUnderRules(
     spoilsNeedPresence = true,
     officerUnits = true,
     uniqueFamilies = true,
+    tenGivenNames = true,
     influentialGoodwill = true,
     hullFilesTheOrder = true,
     movesNotBuilt = true,
@@ -2585,7 +2671,7 @@ function applyOpsUnderRules(
       case 'cheat': {
         applyCheat(
           state, op.cheat, notes, (code, message) => reject(raw, code, message), uniqueFamilies,
-          twoFixtures ? MAX_FIXTURES_PER_WORLD : 1,
+          twoFixtures ? MAX_FIXTURES_PER_WORLD : 1, tenGivenNames,
         );
         break;
       }
@@ -4636,7 +4722,8 @@ function applyOpsUnderRules(
           id: `cmd-${op.factionId}-${state.turn}-${(state.commanders ?? []).length}`,
           factionId: op.factionId,
           name: namePerson(state, op.factionId, salt, school, uniqueFamilies, (n) =>
-            commanderName(op.factionId, state.turn, `${salt}:${n}`, school),
+            commanderName(op.factionId, state.turn, `${salt}:${n}`, school, tenGivenNames),
+            tenGivenNames,
           ),
           archetype: school,
           appointedTurn: state.turn,
@@ -4878,6 +4965,32 @@ function applyOpsUnderRules(
             break;
           }
         }
+        // A coalition is against somebody, named; a mutual defence pact is
+        // against anyone. `against` is what tells them apart, so it is required
+        // on the one and refused on everything else.
+        const against = op.terms.against ?? [];
+        if (op.treatyType === 'coalition') {
+          if (against.length === 0) {
+            reject(
+              raw,
+              'illegal_value',
+              'A coalition names the powers it is against in terms.against. A pact against anyone is a mutual_defense.',
+            );
+            break;
+          }
+          const bad = against.find((id) => !factionExists(id) || op.parties.includes(id));
+          if (bad) {
+            reject(raw, 'illegal_value', `A coalition is against powers outside it; "${bad}" is not one.`);
+            break;
+          }
+        } else if (against.length > 0) {
+          reject(
+            raw,
+            'illegal_value',
+            `Only a coalition names whom it is against, not a ${op.treatyType}. Record a pact against named powers as a coalition.`,
+          );
+          break;
+        }
         // A per-turn flow is the one treaty term that compounds, and it was
         // unbounded — which made it strictly the better way to move money out
         // of a negotiation than the capped one-off `adjust_credits`. Trimmed
@@ -5116,6 +5229,7 @@ function applyOpsUnderRules(
           const renewal = alreadyBound(state, treaty);
           supersedePriorTreaties(state, treaty, notes);
           if (arrangementStanding && !renewal) payTreatyGoodwill(state, treaty, notes, influentialGoodwill);
+          if (!renewal) resentCoalition(state, treaty, notes);
           if (truces) leaveTruce(state, treaty, wereAtWar, notes);
         }
         logEvent(
@@ -5574,7 +5688,8 @@ function applyOpsUnderRules(
         }
 
         const who = namePerson(state, ownerId, `agent:${op.systemId}:${state.agents.length}`, null, uniqueFamilies, (n) =>
-          agentName(ownerId, state.turn, `agent:${op.systemId}:${state.agents.length}:${n}`),
+          agentName(ownerId, state.turn, `agent:${op.systemId}:${state.agents.length}:${n}`, tenGivenNames),
+          tenGivenNames,
         );
         // **The model names the person; code does the lookup.** `Commander.name`
         // carries the title — "Iron Marshal Marcia Galba" — and a player writes
@@ -5704,7 +5819,8 @@ function applyOpsUnderRules(
           break;
         }
         const who = namePerson(state, ownerId, `agent:${site.id}:${state.agents.length}`, null, uniqueFamilies, (n) =>
-          agentName(ownerId, state.turn, `agent:${site.id}:${state.agents.length}:${n}`),
+          agentName(ownerId, state.turn, `agent:${site.id}:${state.agents.length}:${n}`, tenGivenNames),
+          tenGivenNames,
         );
         // Through the schema, for the reason a fixture is: replay compares
         // `JSON.stringify`, and a literal puts `name` second where a record
@@ -7528,6 +7644,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     peopleStanding = true,
     fourSchools = true,
     uniqueFamilies = true,
+    tenGivenNames = true,
     influentialGoodwill = true,
     randomEvents = true,
     rimSandbox,
@@ -7575,7 +7692,8 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       id: `cmd-${faction.id}-${state.turn}`,
       factionId: faction.id,
       name: namePerson(state, faction.id, salt, school, uniqueFamilies, (n) =>
-        commanderName(faction.id, state.turn, `${salt}:${n}`, school),
+        commanderName(faction.id, state.turn, `${salt}:${n}`, school, tenGivenNames),
+        tenGivenNames,
       ),
       archetype: school,
       appointedTurn: state.turn,
@@ -8065,6 +8183,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     // campaigns contain `ratifyTurns`, so gating only the signature path would
     // have left half the change live during replay.
     if (arrangementStanding && !renewal) payTreatyGoodwill(state, treaty, notes, influentialGoodwill);
+    if (!renewal) resentCoalition(state, treaty, notes);
     if (truces) leaveTruce(state, treaty, wereAtWar, notes);
     logEvent(state, 'diplomacy', `Treaty ratified and now in force: ${treaty.summary}.`);
     notes.push(`Ratified: ${treaty.summary}`);
@@ -8878,8 +8997,11 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     landings.set(order.targetId, list);
   }
 
+  // A defence pact's hulls answer once a turn, however many of its member's
+  // worlds are attacked in it.
+  const pactsAnswered = new Set<string>();
   for (const [systemId, orders] of landings) {
-    const { note: outcome, report: battle } = resolveBattle(state, systemId, orders, hostages, battleRules);
+    const { note: outcome, report: battle } = resolveBattle(state, systemId, orders, hostages, battleRules, pactsAnswered);
     notes.push(outcome);
     report.arrivals.push(outcome);
     if (battle) report.battles.push(battle);
@@ -9618,6 +9740,8 @@ function resolveBattle(
   /** False only for a journal written before a storming could seize anybody. */
   takesHostages = true,
   rules: BattleRules = {},
+  /** Pacts whose hulls have already answered a call this tick — once a turn each. */
+  answered: Set<string> = new Set(),
 ): BattleOutcomeResult {
   const {
     officerHomecoming = true,
@@ -9625,6 +9749,7 @@ function resolveBattle(
     landingNeedsLift = true,
     exactExchange = true,
     officersFallWithFleet = true,
+    callToArms = true,
   } = rules;
   const target = state.systems.find((s) => s.id === systemId);
   if (!target) {
@@ -9955,11 +10080,73 @@ function resolveBattle(
     .filter(([id, n]) => !attackerIds.has(id) && n > 0)
     .map(([id]) => [id, stackAt(target, id)]);
 
-  /* --- Mutual defence: pledged hulls are called in ---------------------- */
+  /* --- Defence pacts: the ally answers ---------------------------------- */
   // `shipsPledged` was a dead field: a treaty could promise a squadron and
-  // nothing ever arrived. Pledged ships are drawn from the ally's nearest
-  // holding and fight here — which is the whole point of the promise.
-  if (holder !== null) {
+  // nothing ever arrived. Pledged ships are drawn and fight here — which is the
+  // whole point of the promise.
+  if (holder !== null && callToArms && !attackerIds.has(holder)) {
+    // A pact answers an attack ON its member, so a holder sweeping its own
+    // orbit calls nobody — its allies would otherwise be drawn in to defend
+    // the squatters against it.
+    for (const treaty of state.treaties) {
+      if (!isTreatyLive(treaty, state.turn)) continue;
+      if (!(DEFENCE_PACTS as readonly string[]).includes(treaty.type)) continue;
+      if (!treaty.parties.includes(holder)) continue;
+      const ally = treaty.parties.find((p) => p !== holder);
+      if (!ally || attackerIds.has(ally)) continue;
+      const allyFaction = state.factions.find((f) => f.id === ally);
+      if (!allyFaction) continue;
+      const pactName = treaty.type === 'coalition' ? 'coalition' : 'mutual defence pact';
+
+      // Whom it answers: the attackers the pact covers — anyone for a mutual
+      // defence pact, the named powers for a coalition — less any the ally is
+      // itself at peace or under truce with. That exception is also how a
+      // coalition breaks up: a member that makes a separate peace stops being
+      // called against the power it made it with.
+      const enemies = [...attackerIds]
+        .filter((a) => pactAnswers(treaty, a))
+        .filter(
+          (a) =>
+            !treatyBetween(state.treaties, state.turn, ally, a, PEACE_TREATIES) &&
+            !truceBetween(state.truces, state.turn, ally, a),
+        )
+        .sort();
+      if (enemies.length === 0) continue;
+
+      // The call to arms. The pact obliged the ally to answer, and answering
+      // a war is being in it: its regard for each attacker goes to war where
+      // it was warmer, the move the ultimatum deadline makes. Before this the
+      // ally's hulls fought the battle and the ally was at peace with the
+      // attacker the turn after.
+      const called = enemies.filter((a) => (allyFaction.disposition[a] ?? 0) > WAR_DISPOSITION_THRESHOLD);
+      for (const a of called) allyFaction.disposition[a] = WAR_DISPOSITION_THRESHOLD;
+      if (called.length > 0) {
+        logEvent(
+          state,
+          'diplomacy',
+          `${nameOf(ally)} answers its ${pactName} with ${nameOf(holder)}: the attack on ${target.name} puts it at war with ${called.map(nameOf).join(' and ')}.`,
+          ally,
+        );
+      }
+
+      // Hulls once a turn: a pledge is a squadron, not a squadron per world.
+      const pledged = treaty.terms.shipsPledged?.[ally] ?? 0;
+      if (pledged <= 0 || answered.has(treaty.id)) continue;
+      answered.add(treaty.id);
+      const sent = drawPledge(state, ally, pledged, target);
+      if (hullsIn(sent) <= 0) continue;
+      addStackAt(target, ally, sent);
+      const existing = defenders.find(([id]) => id === ally);
+      if (existing) existing[1] = mergeStacks(existing[1], sent);
+      else defenders.push([ally, sent]);
+      logEvent(
+        state,
+        'diplomacy',
+        `${nameOf(ally)} honours its ${pactName} and commits ${hullsIn(sent)} warships to ${target.name}.`,
+        ally,
+      );
+    }
+  } else if (holder !== null && !callToArms) {
     for (const treaty of state.treaties) {
       if (treaty.status !== 'active' || treaty.type !== 'mutual_defense') continue;
       if (!treaty.parties.includes(holder)) continue;

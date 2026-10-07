@@ -1824,7 +1824,8 @@ and nothing implemented it.
 | type | what the reducer does |
 |---|---|
 | `non_aggression` · `ceasefire` | attacking the other party **auto-breaks** it: −25 with them, `PACT_BREAKING_REPUTATION_COST` with every onlooker |
-| `mutual_defense` | the above, plus `shipsPledged` are really dispatched — those hulls leave the ally's worlds and fight |
+| `mutual_defense` | the above, plus an attack on one **by anyone** calls the other to war with the attacker and brings its `shipsPledged` — see "Allies answer" |
+| `coalition` | the same, against the powers in `terms.against` only — an attack by anyone else calls nobody — and they resent both signatories |
 | `trade_accord` | parties are immune to each other's blockades and raiding |
 | `basing_rights` | the other party's fleets may enter without it being an attack |
 | `tribute` | `incomePerTurn` moves every turn |
@@ -1995,6 +1996,73 @@ all.
 The bots make peace too — see *"What two powers agree without a channel"* —
 so the harness forms truces: fourteen bot ceasefires over 100 turns, from turn
 38. Pinned to `JOURNAL_VERSION` 12 (`LegacyRules.truces`).
+
+### Allies answer: mutual defence and coalitions
+
+Two treaty types, distinct in the schema, and the difference is one term.
+A **`mutual_defense`** answers an attack on either party by anyone. A
+**`coalition`** answers only the powers its `terms.against` names — required on
+a coalition and refused on every other type (`illegal_value`), the shape
+`territory` and `protection` already have — and those powers resent both
+signatories (`COALITION_RESENTMENT`, 10, once, logged to the target too).
+Borrowed from *Europa Universalis IV*: powers that fear one power bind to
+answer it together. Two parties each, like every treaty, so a coalition of
+three is three coalitions. `pactAnswers` is the one reading of which attack a
+pact covers.
+
+The pact did very little before this, for three reasons (`resolveBattle`):
+
+- **It never made the ally go to war.** The pledged hulls fought the one
+  battle, and `warsFor` reads disposition, which the attack never touched, so
+  the ally was at peace with the attacker the turn after its ships were shot
+  at. Now an attack on a member's world is a **call to arms**: each ally's
+  regard for each covered attacker goes to `WAR_DISPOSITION_THRESHOLD` where it
+  was warmer, the move the ultimatum deadline makes. A pact with nothing
+  pledged now means war rather than nothing.
+- **It sent the wrong ships.** `drawShips` took a hull count in loss order, so a
+  pledge of six sent escorts, freighters, lifters and listeners first. It took
+  them from the ally's largest stacks anywhere on the map, arriving the same
+  turn, and it did so for every world attacked, every turn. `drawPledge` sends
+  warships, battleships first, from worlds within `PLEDGE_REACH` (2) jumps of
+  the attacked world, nearest first, and only once a turn per pact.
+  `shipsPledged` stays in hulls.
+- **A holder sweeping its own orbit called its allies** to defend the
+  squatters against it. A pact answers an attack *on* its member, so a sweep
+  calls nobody.
+
+**An ally at peace or under truce with the attacker is not called**, and that is
+how a coalition comes apart: a member that makes a separate peace stops being
+called against that power. Members are at peace with each other (`warsFor`,
+`PEACE_TREATIES`) and their fleets are guests (`GUEST_TREATIES`). Signed between
+powers at war, a coalition leaves a truce, as a defence pact does.
+
+**The bots sign coalitions** (`brokeredAccords`): two NPCs on good terms
+(`COALITION_STANDING`, 20, both ways), neither at peace with a third that both
+are at war with or regard at `COALITION_GRIEVANCE` (−40) or worse, and that
+outweighs either of them alone. The target may be the player. Each pledges
+`BOT_COALITION_PLEDGE` (6) for `BOT_COALITION_TURNS` (10).
+
+**A profiteer never joins** (`NO_COALITION_ETHICS`). Joining is a promise to go
+to war, and a profiteer pays for every war it is in. Its sheet won't fight a
+war a proxy could fight, and the letter of marque is how it hires one. The
+other two readings were measured:
+- *Joining and pledging nothing* made a Combine–Confederacy coalition against
+  the Vigil on turn 1. Its resentment put the Vigil at war with the Combine on
+  turn 1, the border the seed deliberately holds one notch short of war, and
+  the Confederacy's turn-30 net fell through the suite's floor.
+- *Joining and pledging hulls* crosses the red line outright.
+
+**So no coalition forms in the harness**, and that is the honest reading of the
+board. Meridian and Arkane, the only other pair that both resent the Vigil, open
+at 5 and 10 toward each other. What a coalition does is measured in
+`tests/coalition.test.ts`, the way protection was. The rule was also found
+stalling the Confederacy's opportunist: it massed for an attack on a partner's
+world that the pact guard then withheld, and lost its raid with it.
+`lawlessGround` now leaves out ground held by anyone the guards would refuse to
+attack.
+
+Pinned to `JOURNAL_VERSION` 19 (`BattleRules.callToArms`): an older journal
+draws pledges the old way and calls nobody to war.
 
 **3. Walking away from a commitment now costs more than it paid.** That refund is
 the live hole underneath all of it: `+COMMITMENT_GOODWILL` on establish and `−` on
@@ -4808,6 +4876,36 @@ and the Combine, Meridian and the Combine, and Meridian and the Vigil. Nobody is
 eliminated and every property `tests/balance.test.ts` asserts holds. The
 no-events control is unchanged at 6/6/6/6/1.
 
+### Exhaustion: a power weighs every war it is in
+
+`exhaustion` in `leverage.ts`. The bots made peace only on a war gone quiet,
+never on a losing one. A per-war ledger of losses was the first idea and the
+wrong one: a power fighting three enemies may have to settle with one in order
+to hold against the others, and no single war's account can show that. So the
+check reads the whole position from the board, and nothing new is recorded:
+
+- **Outmatched**: its enemies' fighting weight together, on the board and under
+  way, is at least `EXHAUSTION_RATIO` (2) times its own. Two to one is the odds
+  at which a fleet breaks off.
+- **Broke**: it runs at a loss with less than `EXHAUSTION_RUNWAY_TURNS` (5) of
+  that loss in savings.
+
+An exhausted NPC **sues the strongest enemy it can settle with**, meaning one
+whose compulsions and its own allow the peace and neither has a fleet under way
+at the other. It pays `EXHAUSTION_INDEMNITY_SHARE` (a quarter) of its treasury
+through `terms.payment` and keeps its other wars. If both sides are spent, the
+weaker pays. A quiet war still ends even, with nothing paid. The persona reads
+the same check: an exhausted power's `concessionBudget` rises by half against
+an enemy it is at war with.
+
+**The ratio was swept, and 1.5 is past a cliff.** That is the ratio a bot yields
+an ultimatum at, and with it the Vigil reads as outmatched on turn 3, because it
+is at war with most of the board. It settles with Meridian, turns on the
+Confederacy, and reaches eight worlds to the Confederacy's two by turn 100.
+From 2 up, all four harness boards (30 and 100 turns, with and without events)
+are the 5/5/6/5/4 they were before. In those runs exhaustion fires twice, both
+times the Vigil suing Meridian, on turns 4 and 13, with an indemnity.
+
 > Building it found that `recruit_agent` built its record as a literal, with
 > `name` second where a record that has round-tripped a save puts it eighth. The
 > parity test, which compares a live world with its rebuild byte for byte, had
@@ -5915,10 +6013,9 @@ to any of them would be the one place it lapsed. Built on `rollD20`'s hash, so a
 replayed campaign appoints the same people — a roster that differed between a
 campaign and its replay would break `verifyReplay` on a string comparison.
 
-A given name, a family name and a **title**, drawn independently. Eight firsts
-against ten lasts is eighty officers per power before the title, where the first
-version paired a first name with an epithet and read as the same handful of
-characters recurring.
+A given name, a family name and a **title**, drawn independently. Ten given
+names against thirty families, where the first version paired a first name with
+an epithet and read as the same handful of characters recurring.
 
 **The title is the archetype, said out loud.** One per school per power, so a
 Commodore and an Iron Marshal are visibly different appointments and a player
@@ -5958,11 +6055,16 @@ front, because an office there is something you are owed rather than something
 you are called — and because *"Hand of the Family Miral Nar Halq"* does not
 parse.
 
-> `rollD20` returns 1–20 and the given-name stocks are 8 long, so `% 8` draws
-> the first four slightly more often. That is a cosmetic bias on a cosmetic
-> field and is left alone: the uniformity that matters is the die's, which the
-> murmur3 finalizer already guarantees, and padding a name list to 20 to flatten
-> it would be arithmetic driving the fiction.
+**Ten given names a power, because the die has twenty faces.** There were
+eight, and `rollD20 % 8` draws the first four 3 times in 20 and the other four
+twice, so a power's first four names came up half as often again as the rest.
+Every Drajk operative in one campaign was a Voss. Ten divides twenty, so each
+name is now drawn twice in twenty, and the fix is two names a power rather than
+a change to the draw. Opening officers change with it (the Vigil's Brigadier is
+Cornelia Galba, not Marcia). A journal from before version 19 draws from the
+first eight (`LEGACY_GIVEN_NAMES`, `LegacyRules.tenGivenNames` and
+`createSeedState`'s `tenGivenNames`), so its people keep their names and an
+order naming one still finds them.
 
 ### And what they are worth on a turn with no battle
 
@@ -6168,7 +6270,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `interrupt_order` | rejected when the order is not interruptible; **somebody else's** order also needs ships at its origin or target |
 | `extend_order` | rejected for movement |
 | `accelerate_order` | spends credits, drops one Fibonacci bucket, min 1; rejected for movement |
-| `form_treaty` | **extraction-only** — absent from `ModelOpSchema`; a treaty needs the other party's consent. `exclusive` forecloses another of that type with anyone else |
+| `form_treaty` | **extraction-only** — absent from `ModelOpSchema`; a treaty needs the other party's consent. `exclusive` forecloses another of that type with anyone else. A `coalition` must name `terms.against`; no other type may |
 | `restructure_debt` | **extraction-only** — new terms need the creditor's agreement; keeps the id, the balance and the history |
 | `establish_commitment` | optional `incomePerTurn`, trimmed to `MAX_COMMITMENT_INCOME` |
 | `dissolve_commitment` | returns the goodwill **and** charges `COMMITMENT_BREAKING_COST` with each bound party; onlookers only at three or more |
@@ -6855,11 +6957,11 @@ learn to ignore.
 
 **What the harness cannot model:** the bots read disposition now — see *"a
 doctrine is not blind, either"* — to choose between targets, to refuse one they
-are on good terms with, to trade goods and to let a quiet war end. Nothing makes
-them *ally*, and nothing makes a hated power a coalition's target. The Nars still finish hated by
-everyone and nobody combines against them, so the harness still overstates their
-runaway; what that counterplay needs is diplomacy, which is what the
-model-driven game supplies.
+are on good terms with, to trade goods, to let a quiet war end and to sue for
+peace in a war they cannot carry. They sign coalitions too (see *"Allies
+answer"*), but on this board no pair that qualifies ever forms. The Nars still
+finish hated by everyone, and the powers that hate them are never warm enough
+with each other to bind, so the harness still overstates their runaway.
 
 It also runs the bots through `proposeFor` rather than calling them raw, which is
 the path `endTurn` takes. That is not a detail: calling `BOTS[id]` directly
@@ -7123,8 +7225,8 @@ component is logic nothing checks.
 - **Panels** — Factions (a portrait thumbnail ringed in the faction's colour,
   stat bars, ethics, disposition, `talk`), System (ships and income *per
   faction*, **operatives here**, lanes, orders), **Command** (who takes each
-  power's next battle), Orders (progress + ETA), Treaties (terms, turn limits,
-  wars, agents with effect and success chance), Log (filterable — `rejection`
+  power's next battle), **Agents** (the network — see below), Orders
+  (progress + ETA), Treaties (terms, turn limits, wars), Log (filterable — `rejection`
   and `clamp` entries are debugging gold, so they are filterable rather than
   hidden).
 
@@ -7138,6 +7240,40 @@ component is logic nothing checks.
   is the other half of it — a faction row has space for one line, and the
   interesting thing about a commander is the record: engagements fought, when
   they were appointed, and who came before them.
+
+  **Agents is its own tab for the same reason Command is.** Operatives were
+  listed flat under the treaties and per world on the System tab. Neither
+  showed how many slots were in use, which were still travelling, which stood
+  idle on the books, or that one of yours was a prisoner somebody could ransom
+  back. The tab now sorts them (`agentRoster` in `src/ui/agentroster.ts`):
+  - **yours, by state:** at work, on the way, awaiting orders, and caught,
+    with the power holding a caught one and where;
+  - **rivals' operatives you have discovered**, by owner;
+  - **your counter-intelligence sweeps**;
+  - **slots in use:** read from the served effective guile, for the reason
+    `CampaignView.effective` exists, with the upkeep they cost.
+
+  Recruiting, and giving orders to an idle operative, put a sentence on the
+  command line rather than acting, since each is an action the arbiter rules
+  on. The list left the Treaties tab, so each operative appears in one place;
+  the System tab keeps its per-world list.
+
+  **Buttons write, they never send.** Every action button in the panels
+  writes a sentence for the player to read and send, because declaring is
+  the player's act and costs an action. Each kind goes where it can work:
+  - **Declarations go on the command line** (`onDraft`): recruit an operative
+    and give one orders (Agents); appoint an officer, and "sail with a fleet"
+    from where an officer stands (Command); build the best kind on each world
+    with a free slot (the System tab with no world chosen, `buildableWorlds`,
+    beside the full per-world builder); send an envoy.
+  - **What needs the other side's consent opens a channel** with the line
+    already in its box (`onOffer`, `ChannelPanel`'s `seed`):
+    - **sell** a thing to its keenest buyer, at that buyer's price (Assets);
+    - **ask for a captured officer back** from whoever holds them (Command).
+
+    A sale written as a declaration would be refused, since taking a buyer's
+    money needs the buyer. These buttons are disabled while a different
+    channel is open, so the line cannot land in the wrong conversation.
 
   **A world says what it is.** `src/ui/worldtext.ts` gives every system a line
   keyed on **(type, founder)** — what kind of world it is, and who built on it.
@@ -7437,6 +7573,25 @@ table and the fixture section from `HULL_SPEC`, `CREDITS_PER_TON`,
 longer than the prose around it wraps into a ragged column in the feed. The
 fixture section ends on one the player could build today, on a world they hold
 with a free slot, in the kind its ground takes.
+
+**It is an index and nine pages** (`src/ui/help.ts`). As one page it had grown
+to about two hundred lines in the feed, so the section a player wanted was
+always a scroll away. `:help` is now the commands, the four examples, the rules
+in four lines, and the list of pages. `:help <topic>` or `:help-<topic>` prints
+one page: actions, war, worlds, trade, diplomacy, espionage, fixtures, assets
+and events. `:help all` prints everything.
+- **Finding a page.** Each page answers to its name, a few aliases
+  (`spies` → espionage, `treaties` → diplomacy) and a prefix of its name.
+- **An unknown word** prints the index under a line saying so, rather than
+  nothing.
+- **Generated sections.** The new ones are built from the game's own tables:
+  - the missions with their price and risk, from `AGENT_COST` and
+    `MISSION_PROFILE`;
+  - the treaty types, the intel thresholds and the Rim's events by title;
+  - the phrases describing each mission and treaty type, keyed on every
+    mission and type, so a new one fails the typecheck until it has a line.
+- **Tests.** `tests/help.test.ts` holds the routing, the width of every page
+  for every power, and that each table reaches its page.
 
 ## A cheat menu, for testing, that no model ever hears about
 

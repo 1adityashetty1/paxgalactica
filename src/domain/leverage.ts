@@ -12,7 +12,7 @@ import { isLoanLive } from './loan.js';
 import { SECRET_CATEGORIES } from './intel.js';
 import { DEVELOPMENT_PAYBACK_TURNS } from './development.js';
 import { statModifier } from './checks.js';
-import { HULL_SPEC } from './hulls.js';
+import { HULL_SPEC, orbitalWeightOf } from './hulls.js';
 import {
   INCOME_PER_STRATEGIC_POINT,
   SHIP_COST,
@@ -22,6 +22,7 @@ import {
   ledgerFor,
   orbitalWeightAt,
   underDuressFrom,
+  warsFor,
   type WorldState,
 } from './state.js';
 import type { DurationCategory } from './duration.js';
@@ -252,6 +253,13 @@ export function concessionBudget(state: WorldState, conceder: string, other: str
     scale += 0.25;
     because.push('a debt you owe them');
   }
+  // A war you cannot carry, against the power across the table, is the
+  // plainest leverage there is — the reason a bot sues for peace.
+  const spent = exhaustion(state, conceder);
+  if (spent?.exhausted && spent.enemies.includes(other)) {
+    scale += 0.5;
+    because.push(spent.outmatched ? 'a war you are losing on weight' : 'a war you cannot pay for');
+  }
   scale = Math.max(CONCESSION_SCALE_MIN, Math.min(CONCESSION_SCALE_MAX, scale));
   const gross = Math.max(0, ledgerFor(state, conceder).gross);
   return { budget: Math.round(gross * CONCESSION_BUDGET_TURNS * scale), scale, because };
@@ -303,4 +311,81 @@ export function sideStrength(state: WorldState, ids: readonly string[]): number 
     for (const id of ids) weight += orbitalWeightAt(system, id);
   }
   return weight / be;
+}
+
+/* ------------------------------------------------------------------ */
+/* Exhaustion                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * How many turns of running at a loss a power's treasury must still cover for
+ * its wars to be funded. Below it, the war is being paid for out of savings
+ * that are about to run out.
+ */
+export const EXHAUSTION_RUNWAY_TURNS = 5;
+
+/**
+ * How far a power's enemies together must outweigh it before it is
+ * outmatched: two to one, the odds at which a fleet breaks off in the exchange.
+ *
+ * Swept, and 1.5 — the ratio a bot yields an ultimatum at — is over a cliff.
+ * The Vigil, at war with most of the board from the opening, read as
+ * outmatched on turn 3 and settled with Meridian, then turned on the
+ * Confederacy: eight worlds to its two by turn 100. From 2 up to never (money
+ * alone deciding) the four harness boards are the ones without exhaustion.
+ */
+export const EXHAUSTION_RATIO = 2;
+
+/**
+ * What a power sued for peace on an exhausted position pays the power it
+ * settles with: this share of its treasury, as an indemnity.
+ */
+export const EXHAUSTION_INDEMNITY_SHARE = 0.25;
+
+export interface Exhaustion {
+  /** Every power it is at war with. */
+  enemies: string[];
+  /** Its own fighting weight and its enemies' together, in battleship-equivalents. */
+  mine: number;
+  theirs: number;
+  /** Its enemies together outweigh it by `EXHAUSTION_RATIO`. */
+  outmatched: boolean;
+  /** Running at a loss with fewer than `EXHAUSTION_RUNWAY_TURNS` of it saved. */
+  broke: boolean;
+  exhausted: boolean;
+}
+
+/**
+ * Fighting weight on the board AND under way, in battleship-equivalents.
+ * `sideStrength` reads the board only, which is right for an ultimatum's
+ * standing comparison and wrong here: a power that has sent its whole navy at
+ * you is not weak because its navy is in transit.
+ */
+function warWeight(state: WorldState, id: string): number {
+  let weight = sideStrength(state, [id]) * HULL_SPEC.battleship.orbitalWeight;
+  for (const o of state.pendingOrders) {
+    if (o.factionId === id && o.type === 'fleet_movement') weight += orbitalWeightOf(o.force);
+  }
+  return weight / HULL_SPEC.battleship.orbitalWeight;
+}
+
+/**
+ * Whether a power can carry the wars it is in — its whole position, not one
+ * war's ledger. A power fighting three enemies may need to settle with one to
+ * hold against the others, and that is visible only by weighing all of them
+ * together: its line against every enemy's, and its money against its loss.
+ * Everything here is on the board, so nothing is recorded to decide it.
+ *
+ * `null` for a power at war with nobody.
+ */
+export function exhaustion(state: WorldState, id: string): Exhaustion | null {
+  const enemies = warsFor(state, id);
+  if (enemies.length === 0) return null;
+  const mine = warWeight(state, id);
+  const theirs = enemies.reduce((n, e) => n + warWeight(state, e), 0);
+  const outmatched = theirs >= mine * EXHAUSTION_RATIO;
+  const net = ledgerFor(state, id).net;
+  const credits = getFaction(state, id)?.credits ?? 0;
+  const broke = net < 0 && credits < -net * EXHAUSTION_RUNWAY_TURNS;
+  return { enemies, mine, theirs, outmatched, broke, exhausted: outmatched || broke };
 }

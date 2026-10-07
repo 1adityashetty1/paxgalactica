@@ -5,7 +5,7 @@ import { FleetsPanel } from './FleetsPanel.js';
 import { TradePanel } from './TradePanel.js';
 import { STAT_NAMES } from '../../../src/domain/checks.js';
 import { debtsFor } from '../../../src/domain/debt.js';
-import { describeOutstanding, loansFor } from '../../../src/domain/loan.js';
+import { assetOnLoan, describeOutstanding, loansFor } from '../../../src/domain/loan.js';
 import {
   assetWorthRangeTo,
   COMMODITY_VALUE,
@@ -32,7 +32,8 @@ import { shortageFactor } from '../../../src/domain/events.js';
 import { EFFECT_COST, describeOrderEffect } from '../../../src/domain/development.js';
 import { describeEffect } from '../../../src/domain/diplomacy.js';
 import { CommanderIcon } from './BattleIcons.js';
-import { agentStanding } from '../../../src/domain/diplomacy.js';
+import { agentStanding, type Agent } from '../../../src/domain/diplomacy.js';
+import { agentRoster } from '../../../src/ui/agentroster.js';
 
 import {
   MAX_ACTIVE_COMMANDERS,
@@ -40,6 +41,7 @@ import {
   archetypeOf,
   commanderEffect,
   commanderFor,
+  familyOf,
   commanderPassive,
   toNextVeterancy,
   veterancyLabel,
@@ -62,6 +64,7 @@ import {
 } from '../../../src/domain/regard.js';
 import {
   fixtureName,
+  buildableWorlds,
   fixtureOptions,
   foundingLine,
   type FixtureOptions,
@@ -94,7 +97,17 @@ import type { EffectiveStats } from '../../../src/api/contract.js';
 import { ansi256ToHex, NEUTRAL } from '../color.js';
 import { logWindow } from '../../../src/ui/logview.js';
 
-type Tab = 'factions' | 'system' | 'fleets' | 'commanders' | 'trade' | 'assets' | 'orders' | 'standing' | 'log';
+type Tab =
+  | 'factions'
+  | 'system'
+  | 'fleets'
+  | 'commanders'
+  | 'agents'
+  | 'trade'
+  | 'assets'
+  | 'orders'
+  | 'standing'
+  | 'log';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'factions', label: 'Factions' },
@@ -105,6 +118,9 @@ const TABS: { id: Tab; label: string }[] = [
   // doctrine read as a claim about the power itself, which is what the ethics
   // chips directly above it are for.
   { id: 'commanders', label: 'Command' },
+  // A network, in one place: what each operative is doing, how many more you
+  // can run, and who has been caught. It was a flat list under the treaties.
+  { id: 'agents', label: 'Agents' },
   { id: 'trade', label: 'Trade' },
   // Its own tab rather than a section of Treaties. A treaty is an arrangement
   // you negotiated and so already know about; an asset ARRIVES — a prisoner
@@ -125,6 +141,7 @@ export function SidePanel({
   onSelect,
   onTalk,
   onDraft,
+  onOffer,
   activeChannel,
 }: {
   state: WorldState;
@@ -136,6 +153,11 @@ export function SidePanel({
   onTalk: (factionId: string) => void;
   /** Puts a sentence on the command line for the player to send. */
   onDraft: (text: string) => void;
+  /**
+   * Opens a channel with a power and puts a line in it. For what needs the
+   * other side's consent — a sale, a ransom — which a declaration cannot do.
+   */
+  onOffer: (factionId: string, text: string) => void;
   activeChannel: string | null;
 }) {
   const [tab, setTab] = useState<Tab>('factions');
@@ -176,9 +198,14 @@ export function SidePanel({
           />
         )}
         {tab === 'fleets' && <FleetsPanel state={state} onSelect={onSelect} />}
-        {tab === 'commanders' && <Command state={state} />}
+        {tab === 'commanders' && (
+          <Command state={state} onDraft={onDraft} onOffer={onOffer} activeChannel={activeChannel} />
+        )}
+        {tab === 'agents' && (
+          <AgentsTab state={state} guile={effective.stats.guile} onSelect={onSelect} onDraft={onDraft} />
+        )}
         {tab === 'trade' && <TradePanel state={state} ledger={effective.ledger} onSelect={onSelect} />}
-        {tab === 'assets' && <Assets state={state} />}
+        {tab === 'assets' && <Assets state={state} onOffer={onOffer} activeChannel={activeChannel} />}
         {tab === 'orders' && <Orders state={state} briefing={briefing} />}
         {tab === 'standing' && <Standing state={state} onSelect={onSelect} />}
         {tab === 'log' && <Log state={state} />}
@@ -394,7 +421,7 @@ function SystemTab({
   holding: number;
 }) {
   const sys = selectedId ? getSystem(state, selectedId) : null;
-  if (!sys) return <p className="empty">Click a system on the map.</p>;
+  if (!sys) return <RoomToBuild state={state} onSelect={onSelect} onDraft={onDraft} />;
 
   const controller = sys.controllerFactionId ? getFaction(state, sys.controllerFactionId) : null;
   const color = controller ? ansi256ToHex(controller.displayColor) : NEUTRAL;
@@ -667,7 +694,37 @@ function SystemTab({
  * has space for one line, and the interesting thing about a commander is the
  * record — how many engagements, and who came before.
  */
-function Command({ state }: { state: WorldState }) {
+/**
+ * A channel can be opened with `factionId` from a button: nothing is open, or
+ * the one that is open is already theirs. A line written into the wrong
+ * conversation would be worse than no button.
+ */
+function canOffer(activeChannel: string | null, factionId: string): boolean {
+  return activeChannel === null || activeChannel === factionId;
+}
+
+/** The player's best world: where a recruit or an appointment is drafted for. */
+function homeWorld(state: WorldState): StarSystem | undefined {
+  return [...state.systems]
+    .filter((x) => x.controllerFactionId === state.playerFactionId)
+    .sort((a, b) => b.strategicValue - a.strategicValue || a.id.localeCompare(b.id))[0];
+}
+
+function Command({
+  state,
+  onDraft,
+  onOffer,
+  activeChannel,
+}: {
+  state: WorldState;
+  onDraft: (text: string) => void;
+  onOffer: (factionId: string, text: string) => void;
+  activeChannel: string | null;
+}) {
+  const me = state.playerFactionId;
+  const home = homeWorld(state);
+  /** What a name answers to in an order: the family, unique in the campaign. */
+  const callName = (c: Commander) => familyOf(c.name) ?? c.name;
   return (
     <div className="command-panel">
       {state.factions.map((f) => {
@@ -732,6 +789,9 @@ function Command({ state }: { state: WorldState }) {
                     ? 'as good as an officer gets'
                     : `${toNextVeterancy(officer.battles)} more to improve again`}
                 </p>
+                {f.id === me && officer.atSystemId && (
+                  <SailButton state={state} officer={officer} callName={callName(officer)} onDraft={onDraft} />
+                )}
               </>
             ) : (
               <p className="empty">No officer. The fleet answers to nobody in particular.</p>
@@ -748,6 +808,9 @@ function Command({ state }: { state: WorldState }) {
                       <span className="meta"> · {whereIs(state, c)}</span>
                     </span>
                     <span className="count">{commanderEffect(c)}</span>
+                    {f.id === me && c.atSystemId && (
+                      <SailButton state={state} officer={c} callName={callName(c)} onDraft={onDraft} />
+                    )}
                   </li>
                 ))}
               </ul>
@@ -758,11 +821,43 @@ function Command({ state }: { state: WorldState }) {
                   establishment, and the rest command battles. */}
               {roster.length > 1 && ' · the senior officer’s passive is the one that applies'}
             </p>
+            {f.id === me && roster.length < MAX_ACTIVE_COMMANDERS && home && (
+              <button
+                className="chip"
+                title="An appointment is an action of its own. This writes it on the command line; nothing is sent."
+                onClick={() => onDraft(`Appoint an officer at ${home.name}.`)}
+              >
+                appoint an officer
+              </button>
+            )}
             {held.length > 0 && (
               <p className="meta command-held">
                 held prisoner: {held.map((c) => c.name).join(', ')}
               </p>
             )}
+            {/* Your own, in somebody else's hands: a ransom is a conversation
+                with whoever holds them, so the button opens it. */}
+            {f.id === me &&
+              held.map((c) => {
+                const holder = (state.assets ?? []).find((a) => a.commanderId === c.id && a.quantity > 0)?.heldBy;
+                if (!holder || holder === me) return null;
+                const who = getFaction(state, holder)?.name ?? holder;
+                return (
+                  <button
+                    key={`ransom-${c.id}`}
+                    className="chip"
+                    disabled={!canOffer(activeChannel, holder)}
+                    title={
+                      canOffer(activeChannel, holder)
+                        ? `Opens a channel with ${who} and writes the ask; nothing is sent.`
+                        : 'Close the channel that is open first.'
+                    }
+                    onClick={() => onOffer(holder, `We want ${c.name} back. Name your price.`)}
+                  >
+                    ask {who} for {callName(c)}
+                  </button>
+                );
+              })}
             {fallen.length > 0 && (
               <p className="meta command-fallen">
                 lost:{' '}
@@ -775,6 +870,89 @@ function Command({ state }: { state: WorldState }) {
         );
       })}
     </div>
+  );
+}
+
+/**
+ * The System tab with no world chosen: where you could build a fixture now.
+ * The per-world builder is the full list; this is so its buttons are not
+ * hidden behind finding the right world on the map first.
+ */
+function RoomToBuild({
+  state,
+  onSelect,
+  onDraft,
+}: {
+  state: WorldState;
+  onSelect: (id: string) => void;
+  onDraft: (text: string) => void;
+}) {
+  const worlds = buildableWorlds(state);
+  const first = worlds[0]?.options;
+  return (
+    <div>
+      <p className="empty">Click a system on the map.</p>
+      <h4>Room to build</h4>
+      {worlds.length === 0 ? (
+        <p className="empty">No world of yours has a free slot for anything that would help.</p>
+      ) : (
+        <>
+          {first && (
+            <p className="muted">
+              A fixture costs {first.cost} and at least {first.turns} turns; your next adds {first.upkeepAdded} a
+              turn to upkeep. Choose a world for every kind its ground takes.
+            </p>
+          )}
+          <ul className="ship-list">
+            {worlds.map((w) => (
+              <li key={w.systemId} className="agent-row">
+                <button className="link" onClick={() => onSelect(w.systemId)}>
+                  {w.name}
+                </button>
+                <span className="count">
+                  {w.options.room} free · {w.options.ground}
+                </span>
+                <button
+                  className="chip"
+                  title={`Write "${foundingLine(w.suggest.kind, w.name)}" on the command line`}
+                  onClick={() => onDraft(foundingLine(w.suggest.kind, w.name))}
+                >
+                  build {w.suggest.name.toLowerCase()}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * An officer goes where a fleet takes them: this writes the start of that
+ * order — from where they stand, with them aboard — for the player to finish
+ * with a destination. A fleet movement is the one order a channel cannot make.
+ */
+function SailButton({
+  state,
+  officer,
+  callName,
+  onDraft,
+}: {
+  state: WorldState;
+  officer: Commander;
+  callName: string;
+  onDraft: (text: string) => void;
+}) {
+  const where = state.systems.find((x) => x.id === officer.atSystemId)?.name ?? officer.atSystemId;
+  return (
+    <button
+      className="chip"
+      title="Writes the start of a fleet movement with this officer aboard; add where it goes."
+      onClick={() => onDraft(`Send ships from ${where}, with ${callName} aboard, to `)}
+    >
+      sail with a fleet
+    </button>
   );
 }
 
@@ -1137,7 +1315,15 @@ function heldAssets(state: WorldState) {
 /**
  * The Assets tab. The count on its label is the point of it — see `TABS`.
  */
-function Assets({ state }: { state: WorldState }) {
+function Assets({
+  state,
+  onOffer,
+  activeChannel,
+}: {
+  state: WorldState;
+  onOffer: (factionId: string, text: string) => void;
+  activeChannel: string | null;
+}) {
   const me = state.playerFactionId;
   const assets = heldAssets(state);
 
@@ -1254,6 +1440,29 @@ function Assets({ state }: { state: WorldState }) {
                   </p>
                 )}
                 {qualifiers.length > 0 && <p className="muted">{qualifiers.join(' · ')}</p>}
+                {/* A sale needs the buyer, so it is a conversation: this opens
+                    one with the keenest buyer and writes the offer at what they
+                    would pay. Not for a fixture, which goes only with its
+                    world, nor for a thing out on loan, which is not yours to sell. */}
+                {best && a.portable && !assetOnLoan(state.loans ?? [], a.id) && (
+                  <button
+                    className="chip"
+                    disabled={!canOffer(activeChannel, best.f.id)}
+                    title={
+                      canOffer(activeChannel, best.f.id)
+                        ? `Opens a channel with ${best.f.name} and writes the offer; nothing is sent.`
+                        : 'Close the channel that is open first.'
+                    }
+                    onClick={() =>
+                      onOffer(
+                        best.f.id,
+                        `${a.text.replace(/[.\s]+$/, '')} — I will let ${a.quantity === 1 ? 'it' : 'them'} go to you for ${best.band.max} credits.`,
+                      )
+                    }
+                  >
+                    sell to {best.f.name}
+                  </button>
+                )}
               </div>
             );
           })}
@@ -1268,7 +1477,6 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
   const me = state.playerFactionId;
   const treaties = treatiesFor(state, me);
   const wars = warsFor(state, me);
-  const agents = agentsVisibleTo(state, me);
   const commitments = commitmentsOf(state, me);
   const debts = debtsFor(state.debts ?? [], me);
   const loans = loansFor(state.loans ?? [], me);
@@ -1522,6 +1730,13 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
                 {t.terms.mutualDefenseTrigger && (
                   <li className="trigger">triggers on: {t.terms.mutualDefenseTrigger}</li>
                 )}
+                {/* What tells a coalition from a mutual defence pact: whom it is against. */}
+                {(t.terms.against ?? []).length > 0 && (
+                  <li className="trigger">
+                    against: {(t.terms.against ?? []).map((id) => getFaction(state, id)?.name ?? id).join(', ')} — an
+                    attack by them calls the other to war
+                  </li>
+                )}
                 {/* The raider's ledger: who will not raid whom, and who is
                     paid to raid whom. */}
                 {(t.terms.protection ?? []).map((shielded) => (
@@ -1690,42 +1905,183 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
         </>
       )}
 
-      <h4>Agents</h4>
-      {agents.length === 0 ? (
-        <p className="empty">None deployed, none discovered.</p>
+    </div>
+  );
+}
+
+/**
+ * One operative, as a card: who, doing what, where, how well, and what has
+ * happened to them. The name comes first because it is what a player
+ * remembers about a network.
+ */
+function AgentCard({
+  state,
+  agent: a,
+  onSelect,
+  note,
+  action,
+}: {
+  state: WorldState;
+  agent: Agent;
+  onSelect: (id: string) => void;
+  /** A line under the card's head: where they are held, when they arrive. */
+  note?: string;
+  action?: { label: string; onClick: () => void };
+}) {
+  const mine = a.ownerFactionId === state.playerFactionId;
+  const owner = getFaction(state, a.ownerFactionId)?.name ?? a.ownerFactionId;
+  const target = a.targetCommanderId
+    ? (state.commanders ?? []).find((c) => c.id === a.targetCommanderId)?.name
+    : undefined;
+  const record = [
+    a.operations > 0 ? `${agentStanding(a.operations)}, ${a.operations} operation${a.operations === 1 ? '' : 's'}` : null,
+    a.timesCaught > 0 ? `caught ${a.timesCaught}×` : null,
+    mine ? `since turn ${a.deployedTurn}` : null,
+  ].filter((x): x is string => x !== null);
+  return (
+    <div className={a.exposed ? 'agent burned' : 'agent'}>
+      <div className="treaty-head">
+        <strong style={{ color: colourOf(state, a.ownerFactionId) }}>
+          {a.name || (mine ? 'Yours' : owner)} · {a.mission ?? 'awaiting orders'}
+        </strong>
+        {a.exposed ? (
+          <span className="eta">burned</span>
+        ) : (
+          a.mission !== null && (
+            <span className={a.successChance >= 60 ? 'eta' : 'eta soon'}>{a.successChance}%/turn</span>
+          )
+        )}
+      </div>
+      <p className="meta">
+        at{' '}
+        <button className="link" onClick={() => onSelect(a.systemId)}>
+          {getSystem(state, a.systemId)?.name ?? a.systemId}
+        </button>
+        {!mine && ` · ${owner}`}
+        {target && ` · after ${target}`}
+      </p>
+      {note && <p className="meta">{note}</p>}
+      {a.effect && !a.exposed && <p className="agent-effect">{describeEffect(a.effect)}</p>}
+      {a.cover && <p className="meta">cover: {a.cover}</p>}
+      {record.length > 0 && <p className="muted">{record.join(' · ')}</p>}
+      {action && (
+        <button className="chip" onClick={action.onClick}>
+          {action.label}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Every operative you can see, by what each is doing — see `agentRoster`.
+ */
+function AgentsTab({
+  state,
+  guile,
+  onSelect,
+  onDraft,
+}: {
+  state: WorldState;
+  /** Effective guile as the server reads it, for the slots figure. */
+  guile: number;
+  onSelect: (id: string) => void;
+  onDraft: (text: string) => void;
+}) {
+  const me = state.playerFactionId;
+  const r = agentRoster(state, me, guile);
+  const home = [...state.systems]
+    .filter((x) => x.controllerFactionId === me)
+    .sort((a, b) => b.strategicValue - a.strategicValue || a.id.localeCompare(b.id))[0];
+  const name = (id: string | null) => (id ? (getFaction(state, id)?.name ?? id) : 'nobody');
+  const place = (id: string | null) => (id ? (getSystem(state, id)?.name ?? id) : 'nowhere');
+  const section = (title: string, agents: Agent[], extra?: (a: Agent) => Partial<Parameters<typeof AgentCard>[0]>) =>
+    agents.length > 0 && (
+      <>
+        <h4>{title}</h4>
+        {agents.map((a) => (
+          <AgentCard key={a.id} state={state} agent={a} onSelect={onSelect} {...extra?.(a)} />
+        ))}
+      </>
+    );
+
+  return (
+    <div className="standing agents-tab">
+      <div className="agents-summary">
+        <span>
+          {r.inService} of {r.slots} in service
+          {r.upkeep > 0 && <span className="muted"> · {r.upkeep}cr/turn</span>}
+        </span>
+        {r.inService < r.slots && home && (
+          <button className="chip" onClick={() => onDraft(`Recruit an operative at ${home.name}.`)}>
+            recruit one
+          </button>
+        )}
+      </div>
+      <p className="muted">
+        How many you can run is set by your guile. Recruiting is an action, and so is sending one; they travel three
+        jumps a turn. :help espionage has the missions.
+      </p>
+
+      {section('At work', r.atWork)}
+      {section('On the way', r.underWay, (a) => ({ note: `at work from turn ${a.inPlaceFrom}` }))}
+      {section('Awaiting orders', r.idle, (a) => ({
+        action: { label: 'give orders', onClick: () => onDraft(`Send ${a.name || 'my operative'} to `) },
+      }))}
+      {r.caught.length > 0 && (
+        <>
+          <h4>Caught</h4>
+          {r.caught.map(({ agent, heldBy, heldAt }) => (
+            <AgentCard
+              key={agent.id}
+              state={state}
+              agent={agent}
+              onSelect={onSelect}
+              note={
+                heldBy && heldBy !== me
+                  ? `held by ${name(heldBy)} at ${place(heldAt)} — they can be ransomed home`
+                  : 'the line is closed'
+              }
+            />
+          ))}
+        </>
+      )}
+      {r.atWork.length + r.underWay.length + r.idle.length + r.caught.length === 0 && (
+        <p className="empty">You run no operatives.</p>
+      )}
+
+      <h4>Theirs, discovered</h4>
+      {r.theirs.length === 0 ? (
+        <p className="empty">
+          None you know of. A rival's people show once caught, or on your own worlds once you know that power well.
+        </p>
       ) : (
-        agents.map((a) => {
-          const mine = a.ownerFactionId === me;
-          return (
-            <div key={a.id} className={a.exposed ? 'agent burned' : 'agent'}>
-              <div className="treaty-head">
-                <strong style={{ color: colourOf(state, a.ownerFactionId) }}>
-                  {/* The name first, as the System panel does: it is what a
-                      player remembers about a network. */}
-                  {a.name || (mine ? 'Yours' : getFaction(state, a.ownerFactionId)?.name)} ·{' '}
-                  {a.mission ?? 'awaiting orders'}
-                </strong>
-                {a.mission !== null && (
-                  <span className={a.successChance >= 60 ? 'eta' : 'eta soon'}>
-                    {a.successChance}%/turn
-                  </span>
-                )}
-              </div>
-              <p className="meta">
-                on{' '}
-                <button className="link" onClick={() => onSelect(a.systemId)}>
-                  {getSystem(state, a.systemId)?.name ?? a.systemId}
-                </button>
-                {a.name && ` · ${mine ? 'yours' : getFaction(state, a.ownerFactionId)?.name}`}
-                {a.exposed && ' — BURNED, no longer effective'}
-                {!a.exposed && a.mission !== null && a.inPlaceFrom > state.turn &&
-                  ` — on the way, at work from turn ${a.inPlaceFrom}`}
-              </p>
-              {a.effect && <p className="agent-effect">{describeEffect(a.effect)}</p>}
-              {a.cover && <p className="meta">cover: {a.cover}</p>}
-            </div>
-          );
-        })
+        r.theirs.map(({ ownerId, agents }) => (
+          <div key={ownerId}>
+            <p className="meta" style={{ color: colourOf(state, ownerId) }}>
+              {name(ownerId)}
+            </p>
+            {agents.map((a) => (
+              <AgentCard key={a.id} state={state} agent={a} onSelect={onSelect} />
+            ))}
+          </div>
+        ))
+      )}
+
+      <h4>Counter-intelligence</h4>
+      {r.sweeps.length === 0 ? (
+        <p className="empty">No sweep running. One on your own ground wears their picture of you down.</p>
+      ) : (
+        <ul className="war-list">
+          {r.sweeps.map((w) => (
+            <li key={w.systemId}>
+              <button className="link" onClick={() => onSelect(w.systemId)}>
+                {place(w.systemId)}
+              </button>{' '}
+              <span className="muted">· {w.turnsLeft} turn{w.turnsLeft === 1 ? '' : 's'} left</span>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

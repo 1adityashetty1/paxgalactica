@@ -19,6 +19,7 @@ export function ChannelPanel({
   busy,
   onSend,
   onClose,
+  seed,
 }: {
   view: CampaignView;
   /** May be open server-side, or merely intended — the first message opens it. */
@@ -26,8 +27,17 @@ export function ChannelPanel({
   busy: string | null;
   onSend: (text: string) => void;
   onClose: () => void;
+  /**
+   * A line to put in the box, written by a button elsewhere — an offer to
+   * sell, a ransom asked. `n` changes on every press, so pressing the same
+   * button twice puts the line back. Never sent: speaking is the player's act.
+   */
+  seed?: { text: string; n: number } | null;
 }) {
   const [draft, setDraft] = useState('');
+  useEffect(() => {
+    if (seed) setDraft(seed.text);
+  }, [seed?.n]);
   const scroller = useRef<HTMLDivElement>(null);
   const faction = getFaction(view.state, factionId);
   // Only the server-confirmed channel has history worth showing.

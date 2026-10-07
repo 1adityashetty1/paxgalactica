@@ -16,7 +16,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 18;
+export const JOURNAL_VERSION = 19;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -100,6 +100,7 @@ export const JournalVersionSchema = z.union([
   z.literal(16),
   z.literal(17),
   z.literal(18),
+  z.literal(19),
 ]);
 
 export const JournalSchema = z.object({
@@ -227,6 +228,8 @@ export function replay(
     splitTies: parsed.version >= 15,
     // Worlds had no view of anybody before version 18.
     regard: parsed.version >= 18,
+    // Eight given names a power, and the first four drawn more often.
+    tenGivenNames: parsed.version >= 19,
   });
   let rejectionCount = 0;
   // The opening board, before anything is applied. Without it an observer's
@@ -322,6 +325,8 @@ export function replay(
     // A world had no view of anybody: none joined a power, none rose against
     // one but by the Rim's unrest, and no envoy was ever sent.
     regard: parsed.version >= 18,
+    // Eight given names a power, and the first four drawn more often.
+    tenGivenNames: parsed.version >= 19,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.
@@ -332,6 +337,9 @@ export function replay(
       landingNeedsLift: parsed.version >= 7,
       exactExchange: parsed.version >= 7,
       officersFallWithFleet: parsed.version >= 8,
+      // A defence pact lent hulls to every battle, drawn from anywhere in loss
+      // order, and never put the ally at war with the attacker.
+      callToArms: parsed.version >= 19,
     },
   };
 

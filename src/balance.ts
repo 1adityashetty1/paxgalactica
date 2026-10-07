@@ -54,6 +54,10 @@ export interface Snapshot {
   worlds: { joined: [string, string][]; rose: [string, string][]; restless: number };
   /** Worlds answering to nobody at the end of this turn. */
   independent: number;
+  /** What the bots agreed between themselves this turn, by accord label, as applied. */
+  accords: string[];
+  /** Allies called to war by a defence pact this turn. */
+  calls: string[];
 }
 
 export function runBalance(
@@ -89,15 +93,25 @@ export function runBalance(
       if (proposal) state = applyOps(state, proposal.ops, 'model', id).state;
     }
     // What the bots agree between themselves, as `endTurn` applies it.
+    const accords: string[] = [];
     for (const accord of brokeredAccords(state)) {
-      state = applyOps(state, accord.ops, 'engine', undefined, true).state;
+      const applied = applyOps(state, accord.ops, 'engine', undefined, true);
+      if (applied.rejections.length === 0) accords.push(accord.label);
+      state = applied.state;
     }
+    const logBefore = state.eventLog.length;
     const ticked = tickTurn(state, legacy);
     state = ticked.state;
+    const calls = state.eventLog
+      .slice(logBefore)
+      .filter((e) => e.kind === 'diplomacy' && / answers its | honours its (coalition|mutual defence pact) /.test(e.text))
+      .map((e) => e.text);
 
     const earnings = routeEarnings(state);
     const snap: Snapshot = {
       turn,
+      accords,
+      calls,
       events: ticked.report.events,
       intel: Object.fromEntries(state.factions.map((f) => [f.id, { ...(f.intel ?? {}) }])),
       sweeps: state.pendingOrders.filter((o) => o.type === 'counter_intelligence').length,
