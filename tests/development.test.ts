@@ -487,7 +487,7 @@ describe('the payload is bounded in code, not in a prompt', () => {
 
   it('leaves the seven non-delivering categories deliberately empty', () => {
     const hollow = DURATION_CATEGORIES.filter((c) => effectsAllowedFor(c).length === 0);
-    // A political manoeuvre carries an envoy (`court`) since journal version 17.
+    // A political manoeuvre carries an envoy (`court`) since journal version 18.
     expect(hollow).toEqual([
       'courier',
       'decree',

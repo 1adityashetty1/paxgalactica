@@ -16,7 +16,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 17;
+export const JOURNAL_VERSION = 18;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -99,6 +99,7 @@ export const JournalVersionSchema = z.union([
   z.literal(15),
   z.literal(16),
   z.literal(17),
+  z.literal(18),
 ]);
 
 export const JournalSchema = z.object({
@@ -224,8 +225,8 @@ export function replay(
     // Lanes took one path each, chosen by system id, and the treasuries in
     // those campaigns are what that routing paid.
     splitTies: parsed.version >= 15,
-    // Worlds had no view of anybody before version 17.
-    regard: parsed.version >= 17,
+    // Worlds had no view of anybody before version 18.
+    regard: parsed.version >= 18,
   });
   let rejectionCount = 0;
   // The opening board, before anything is applied. Without it an observer's
@@ -315,9 +316,12 @@ export function replay(
     // counter-intelligence programme did nothing. Those campaigns' operatives
     // were caught and their secrets dug under that rule.
     intel: parsed.version >= 16,
+    // A secret order's completion, cancellation or interruption was written
+    // to the public log, so every power read what it had only heard rumour of.
+    privateOrderLines: parsed.version >= 17,
     // A world had no view of anybody: none joined a power, none rose against
     // one but by the Rim's unrest, and no envoy was ever sent.
-    regard: parsed.version >= 17,
+    regard: parsed.version >= 18,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

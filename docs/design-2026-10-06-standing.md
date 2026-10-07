@@ -296,7 +296,7 @@ and `JOIN_LEAD` (20) clear of the next.
 
 ## Journal
 
-`JOURNAL_VERSION` 17, `LegacyRules.standing`. An older journal replays with no
+`JOURNAL_VERSION` 18, `LegacyRules.regard`. An older journal replays with no
 standing, no secession, no joining, and unrest eligible on the old rule.
 
 ## Build order

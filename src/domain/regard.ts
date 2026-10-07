@@ -110,7 +110,7 @@ export function wantOf(system: StarSystem): Want {
   return WANT_OF_STAT[WORLD_TYPE_STAT[system.worldType]];
 }
 
-/** Whether this campaign keeps regard at all — false for a journal from before version 17. */
+/** Whether this campaign keeps regard at all — false for a journal from before version 18. */
 export function regardRecorded(state: { systems: readonly StarSystem[] }): boolean {
   return state.systems.some((s) => Object.keys(s.regard ?? {}).length > 0);
 }

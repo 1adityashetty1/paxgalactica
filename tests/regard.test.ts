@@ -33,7 +33,7 @@ import { buildBriefing } from '../src/engine/briefing.js';
 
 /**
  * A world's regard for each power — its standing — and what it decides: whom
- * an independent world joins, and whether a held one stays (journal version 17).
+ * an independent world joins, and whether a held one stays (journal version 18).
  */
 const calm: LegacyRules = { randomEvents: false };
 const sys = (s: WorldState, id: string): StarSystem => s.systems.find((x) => x.id === id)!;
@@ -55,7 +55,7 @@ describe('the opening board', () => {
     expect(Object.keys(sys(s, 'ilv-2').regard)).toEqual(ids(s));
   });
 
-  it('keeps nothing for a board from before version 17, and the tick moves nothing', () => {
+  it('keeps nothing for a board from before version 18, and the tick moves nothing', () => {
     const s = createSeedState('meridian', { regard: false });
     expect(regardRecorded(s)).toBe(false);
     const after = tick(s);

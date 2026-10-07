@@ -6,12 +6,16 @@ import {
   COVERT_CATEGORIES,
   PUBLIC_CATEGORIES,
   SECRET_CATEGORIES,
+  eventsVisibleTo,
   observeOrders,
   ordersVisibleTo,
   visibilityOf,
   worldAsSeenBy,
 } from '../src/domain/intel.js';
 import { DURATION_CATEGORIES } from '../src/domain/duration.js';
+import { proposeFor } from '../src/domain/initiative.js';
+import { Campaign } from '../src/engine/campaign.js';
+import { replay } from '../src/engine/journal.js';
 import {
   hullsAt,
   setShipsAt, setStackAt, fleetStrengthOf, shipsInTransit, type OrderType, type WorldState } from '../src/domain/state.js';
@@ -479,6 +483,106 @@ describe('the event log does not leak what the fog hides', () => {
       worldAsSeenBy(s, who).eventLog.some((e) => /signs on|leaves .* for /.test(e.text));
     expect(told('ojjul')).toBe(true);
     expect(told('freeworlds')).toBe(false);
+  });
+
+  /**
+   * The line that BEGAN a secret order was scoped, and every line after it was
+   * not: a completion, a cancellation, an interruption, a raid ending for want
+   * of ships. Seen in a live briefing as a rival Drajk raid's "raid Oridin
+   * completed at Oridin", having been a rumour to the reader its whole run.
+   */
+  describe('nor what becomes of a secret order', () => {
+    const readBy = (s: WorldState, who: string, label: string) =>
+      eventsVisibleTo(s, who).filter((e) => e.text.includes(label));
+    const issued = (type: OrderType, label: string) =>
+      applyOps(seed(), [{
+        op: 'issue_order', factionId: 'freeworlds', type, originId: FOREIGN, targetId: FOREIGN,
+        durationTurns: 5, label, visibility: [],
+      }], 'model', 'freeworlds', true).state;
+    const runOut = (s: WorldState) => {
+      for (let i = 0; i < 6 && s.pendingOrders.length > 0; i++) s = tickTurn(s, { randomEvents: false }).state;
+      expect(s.pendingOrders).toHaveLength(0);
+      return s;
+    };
+
+    // One covert category and one secret yard category: both are rumours to a
+    // rival, so both were leaking.
+    for (const type of ['espionage', 'capital_ship_construction'] as const) {
+      it(`keeps a rival's ${type} completing out of everyone else's log`, () => {
+        const s = runOut(issued(type, 'the quiet work'));
+        expect(readBy(s, 'freeworlds', 'the quiet work').some((e) => /completed at/.test(e.text))).toBe(true);
+        for (const who of ['ojjul', 'vigil', 'meridian', 'drajk']) {
+          expect(readBy(s, who, 'the quiet work'), who).toHaveLength(0);
+        }
+      });
+    }
+
+    it('still tells everyone when public work completes', () => {
+      const s = runOut(issued('fortification', 'walls anyone saw rise'));
+      for (const who of ['freeworlds', 'ojjul', 'drajk']) {
+        expect(readBy(s, who, 'walls anyone saw rise').some((e) => /completed at/.test(e.text)), who).toBe(true);
+      }
+    });
+
+    it('tells whoever the order chose to be seen by that it completed', () => {
+      const s = runOut(applyOps(seed(), [{
+        op: 'issue_order', factionId: 'freeworlds', type: 'espionage', originId: FOREIGN, targetId: FOREIGN,
+        durationTurns: 2, label: 'the shared secret', visibility: ['ojjul'],
+      }], 'model', 'freeworlds', true).state);
+      expect(readBy(s, 'ojjul', 'the shared secret').some((e) => /completed at/.test(e.text))).toBe(true);
+      expect(readBy(s, 'vigil', 'the shared secret')).toHaveLength(0);
+    });
+
+    it('keeps a cancellation, an extension and a hurry to their owner', () => {
+      let s = issued('espionage', 'the recalled work');
+      const id = s.pendingOrders[0]!.id;
+      s = applyOps(s, [
+        { op: 'extend_order', orderId: id, additionalTurns: 1, reason: 'slow going' },
+        { op: 'accelerate_order', orderId: id },
+        { op: 'cancel_order', orderId: id, reason: 'called home' },
+      ] as OpInput[], 'model', 'freeworlds').state;
+      const own = readBy(s, 'freeworlds', 'the recalled work').map((e) => e.text).join('\n');
+      expect(own).toMatch(/extended/);
+      expect(own).toMatch(/cancelled/);
+      expect(readBy(s, 'ojjul', 'the recalled work')).toHaveLength(0);
+    });
+
+    it('tells a rival that interrupts one what it reached, and nobody else', () => {
+      const s0 = issued('capital_ship_construction', 'the stood-down slipway');
+      setShipsAt(s0.systems.find((x) => x.id === FOREIGN)!, 'ojjul', 3);
+      const s = applyOps(s0, [
+        { op: 'interrupt_order', orderId: s0.pendingOrders[0]!.id, reason: 'a fleet in orbit' },
+      ] as OpInput[], 'model', 'ojjul').state;
+      expect(s.pendingOrders).toHaveLength(0);
+      expect(readBy(s, 'freeworlds', 'the stood-down slipway').some((e) => /broken off/.test(e.text))).toBe(true);
+      expect(readBy(s, 'ojjul', 'the stood-down slipway').some((e) => /broken off/.test(e.text))).toBe(true);
+      expect(readBy(s, 'vigil', 'the stood-down slipway')).toHaveLength(0);
+    });
+
+    it('does not name a dark raider when its ships are gone', () => {
+      let s = createSeedState('meridian');
+      const raid = { ...proposeFor(s, 'drajk')!.ops.find((o) => o.type === 'commerce_raiding')!, dark: true };
+      s = applyOps(s, [raid], 'model', 'drajk').state;
+      for (const sys of s.systems) setStackAt(sys, 'drajk', {});
+      s = tickTurn(s, { randomEvents: false }).state;
+      const ended = s.eventLog.filter((e) => /no longer has ships/.test(e.text));
+      expect(ended).toHaveLength(1);
+      expect(ended[0]!.visibleTo).toEqual(['drajk']);
+    });
+
+    it('replays a journal from before the rule with the lines public', () => {
+      const c = Campaign.start('ojjul', 'order-lines-v16');
+      c.commit([{
+        op: 'issue_order', factionId: 'freeworlds', type: 'espionage', originId: FOREIGN, targetId: FOREIGN,
+        durationTurns: 2, label: 'the old secret', visibility: [],
+      }], 'model', 'an old secret', 'freeworlds');
+      c.tick();
+      c.tick();
+      const line = (s: WorldState) => s.eventLog.find((e) => e.text.startsWith('the old secret completed'))!;
+      expect(line(replay(c.journal).state).visibleTo).toEqual(['freeworlds']);
+      expect(line(replay({ ...c.journal, version: 16 }).state).visibleTo).toBeNull();
+      expect(c.verifyReplay().ok).toBe(true);
+    });
   });
 
   it('defaults to public, so nothing written before this changed', () => {

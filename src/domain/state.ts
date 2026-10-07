@@ -600,7 +600,7 @@ export const SystemSchema = z.object({
    *
    * Last in the schema because the tick writes it onto a live record, and
    * replay compares key order. Defaulted to empty, which is also how the
-   * mechanic knows it is off: a campaign from before journal version 17 has no
+   * mechanic knows it is off: a campaign from before journal version 18 has no
    * regard recorded anywhere, and nothing reads or moves it.
    */
   regard: z.record(z.string(), z.number().int().min(-100).max(100)).default({}),

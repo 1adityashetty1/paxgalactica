@@ -169,7 +169,7 @@ function candidatesFor(state: WorldState, kind: RimEventKind): Candidate[] {
       // A world held that was never the holder's, weighted by the occupation it
       // is paying for — `OCCUPATION_COST` is a fraction of what the world pays
       // its holder, so weighting by that income is weighting by the cost.
-      // Where worlds keep a regard (journal version 17), any world not content
+      // Where worlds keep a regard (journal version 18), any world not content
       // with its holder can rise — the spark of the rising `regard.ts` drives
       // steadily. Before it, only ground that was never the holder's own.
       const keeps = regardRecorded(state);

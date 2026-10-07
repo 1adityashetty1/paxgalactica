@@ -838,7 +838,7 @@ and one at a time leaves the four boards identical.
 −51…−65 while its treasury and fleet both grew; the floor's own comment names
 three turns, so it now averages them.
 
-Pinned to `JOURNAL_VERSION` 17: `createSeedState`'s `regard` writes the
+Pinned to `JOURNAL_VERSION` 18: `createSeedState`'s `regard` writes the
 opening standing, `LegacyRules.regard` runs it, and a world with none recorded
 is how both the tick and the browser know a campaign predates it.
 
@@ -4279,6 +4279,25 @@ nothing is indistinguishable from a power that was not asked, which an
 ordinary turn is for every power the player's acts did not reach. The alternative is a prompt rule
 asking the model not to mention it, which is the kind of guard a model can be
 talked past.
+
+### And what becomes of it
+
+The line that **began** a secret order was scoped and every line after it was
+not: completed, cancelled, interrupted, extended, hurried, or ended for want of
+ships. So a programme that was a rumour to a rival for its whole run was named,
+labelled and located in the log the turn it finished — seen in a live briefing
+as a rival Drajk raid's *"raid Oridin completed at Oridin"* — and a dark raid
+whose ships were driven off announced its owner by name.
+
+`orderAudience` gives all of them the audience `issue_order` gives the first:
+public work is public, anything else is its owner's and whoever its
+`visibility` names, plus a rival that **interrupted** it, which already knows
+what it reached. One helper rather than the rule restated at every call
+site. The movement branch needs nothing — a fleet under way is public.
+
+Pinned to `JOURNAL_VERSION` 17 (`LegacyRules.privateOrderLines`), because log
+visibility is state: 9 of the 10 saves rescope between 1 and 21 lines each and
+move nothing else.
 
 ### And everyone's paper
 

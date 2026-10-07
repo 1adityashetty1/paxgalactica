@@ -729,7 +729,7 @@ function buildSystems(auxiliaries = true): StarSystem[] {
       ? { [s.controller]: openingSquadron(s.controller, startingTons(s), auxiliaries) }
       : {},
     // Filled by `createSeedState` once the factions exist; empty is how a
-    // board from before journal version 17 says its worlds keep no view.
+    // board from before journal version 18 says its worlds keep no view.
     regard: {},
   }));
 }
@@ -870,7 +870,7 @@ export function createSeedState(
    * `luck: false` rebuilds one from before version 11, when no power had any;
    * `notes` and `commodities` false, one from before version 12.
    * `splitTies: false` routes a lane one way only, as before version 15.
-   * `regard: false` gives no world a view of anybody, as before version 17.
+   * `regard: false` gives no world a view of anybody, as before version 18.
    */
   {
     fourSchools = true,
