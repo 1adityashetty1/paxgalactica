@@ -390,6 +390,9 @@ ul { margin: 0; padding-left: 1.1em; }
 .treaty, .agent { background: #10141b; border: 1px solid var(--line);
   border-radius: 4px; padding: 8px 10px; margin-bottom: 8px; }
 .agent.burned { opacity: 0.55; border-style: dashed; }
+.agents-summary { display: flex; justify-content: space-between; align-items: baseline;
+  gap: 8px; font-weight: 600; margin-bottom: 4px; }
+.agent .chip { margin-top: 6px; }
 .treaty-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .treaty-summary { color: var(--text); font-size: 11px; margin: 4px 0; line-height: 1.45; }
 .terms { list-style: none; padding: 0; margin: 6px 0 0; }

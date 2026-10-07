@@ -7221,8 +7221,8 @@ component is logic nothing checks.
 - **Panels** — Factions (a portrait thumbnail ringed in the faction's colour,
   stat bars, ethics, disposition, `talk`), System (ships and income *per
   faction*, **operatives here**, lanes, orders), **Command** (who takes each
-  power's next battle), Orders (progress + ETA), Treaties (terms, turn limits,
-  wars, agents with effect and success chance), Log (filterable — `rejection`
+  power's next battle), **Agents** (the network — see below), Orders
+  (progress + ETA), Treaties (terms, turn limits, wars), Log (filterable — `rejection`
   and `clamp` entries are debugging gold, so they are filterable rather than
   hidden).
 
@@ -7236,6 +7236,23 @@ component is logic nothing checks.
   is the other half of it — a faction row has space for one line, and the
   interesting thing about a commander is the record: engagements fought, when
   they were appointed, and who came before them.
+
+  **Agents is its own tab for the same reason Command is.** Operatives were
+  listed flat under the treaties and per world on the System tab. Neither
+  showed how many slots were in use, which were still travelling, which stood
+  idle on the books, or that one of yours was a prisoner somebody could ransom
+  back. The tab now sorts them (`agentRoster` in `src/ui/agentroster.ts`):
+  - **yours, by state:** at work, on the way, awaiting orders, and caught,
+    with the power holding a caught one and where;
+  - **rivals' operatives you have discovered**, by owner;
+  - **your counter-intelligence sweeps**;
+  - **slots in use:** read from the served effective guile, for the reason
+    `CampaignView.effective` exists, with the upkeep they cost.
+
+  Recruiting, and giving orders to an idle operative, put a sentence on the
+  command line rather than acting, since each is an action the arbiter rules
+  on. The list left the Treaties tab, so each operative appears in one place;
+  the System tab keeps its per-world list.
 
   **A world says what it is.** `src/ui/worldtext.ts` gives every system a line
   keyed on **(type, founder)** — what kind of world it is, and who built on it.

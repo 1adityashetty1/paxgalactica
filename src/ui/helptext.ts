@@ -359,7 +359,7 @@ export function operativeLines(): string[] {
       return `    ${m.padEnd(14)}${cost.padStart(5)}  ${risk.padStart(4)}  ${MISSION_JOB[m]}`;
     }),
     '  Say what you want done in plain words — "put a watcher on Vantic" —',
-    '  and the arbiter routes it here.',
+    '  and the arbiter routes it here. The Agents tab tracks every one.',
   ];
 }
 
