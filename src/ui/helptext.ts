@@ -67,6 +67,19 @@ import {
   type WorldType,
 } from '../domain/state.js';
 import { worldTypeLabel } from './worldtext.js';
+import {
+  BITTER,
+  DOTING,
+  FAVOURED,
+  GRANT_COST,
+  GRANT_FAVOUR,
+  MARRIAGE_CONSENT_REGARD,
+  MARRIAGE_REGARD,
+  MAX_GRANTS,
+  RESEAT_REGARD,
+  RESENTFUL,
+  SEAT_FAVOUR,
+} from '../domain/estates.js';
 import { foundingLine } from './fixtureoptions.js';
 
 /**
@@ -472,5 +485,45 @@ export function assetLines(): string[] {
     '  · debts and loans — money owed and paid down by instalment, up to',
     `    ${MAX_DEBT_PRINCIPAL}; or a squadron, credits or a thing lent and expected back.`,
     '    Agreed in a channel; missing a payment costs standing every turn.',
+  ];
+}
+
+/**
+ * The court: estates, seats, notables, marriage, and who may not be moved
+ * between rosters. Built from the numbers the game plays by, and from the
+ * reader's own estates when there is a board to read.
+ */
+export function courtHelpLines(state?: WorldState | null): string[] {
+  const me = state?.factions.find((f) => f.id === state.playerFactionId);
+  const yours = (me?.estates ?? []).map((e) => `${e.name} (${e.stat})`).join(', ');
+  return [
+    'ESTATES',
+    ...wrap(
+      `Each power has three estates, one behind each of its three weakest stats; its two strongest belong to its institutions, which no estate moves.${yours ? ` Yours: ${yours}.` : ''}`,
+    ),
+    ...wrap(
+      `Favour runs from -100 to 100 and moves the estate's stat: +1 from ${FAVOURED}, +2 from ${DOTING}, -1 at ${RESENTFUL}, -2 at ${BITTER}. It drifts a tenth of the way a turn toward a baseline: ${SEAT_FAVOUR} for each seat above a fair share, and ${GRANT_FAVOUR} for each grant.`,
+    ),
+    ...wrap(
+      `A stipend is a grant: ${GRANT_COST} a turn, ${MAX_GRANTS} grants an estate at most. Revoking one stings. A marriage abroad counts as a grant too.`,
+    ),
+    '',
+    'SEATS AND NOTABLES',
+    ...wrap(
+      `Every world has a seat, a hub two, and a notable in each, of one of its holder's estates. Favoured, a notable wins its world over; at ${RESENTFUL} it keeps back half the world's income and sours it; at ${BITTER}, on a world not content, it lets the world go.`,
+    ),
+    ...wrap(
+      `A conquered world's notable is still its old power's, working against you until you reseat it. "Give Kalzir's seat to the Blue Bloods" is an action: it costs the world ${RESEAT_REGARD} regard, and a foreign notable turned out is held, worth a ransom.`,
+    ),
+    '',
+    'MARRIAGE',
+    ...wrap(
+      `A power marries through its notables. With another power it is a treaty, agreed in a channel: a peace, and each world warms to the in-laws by ${MARRIAGE_REGARD}. With a world that answers to nobody it is an action, and the world says yes at a standing of ${MARRIAGE_CONSENT_REGARD}. A ward may be sent to live at the other court as surety.`,
+    ),
+    '',
+    'WHO GOES WHERE',
+    ...wrap(
+      'Officers command fleets, notables sit seats, operatives work unseen, and nobody moves from one to another. A seduction courts a notable; a subversion can turn one; the knife can kill one. :help espionage has the missions.',
+    ),
   ];
 }

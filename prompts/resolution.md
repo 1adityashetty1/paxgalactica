@@ -929,6 +929,9 @@ conqueror until the conqueror reseats it.
   foreign notable is turned out first. It costs the world a little of its
   regard for you, and one estate's gain is another's loss.
 
+- A **notable** is a person: `deploy_agent` takes `targetNotable` — their
+  name or id from the `seats:` line — for a `seduction` (which must name one),
+  a `subversion` that turns them against their holder, or an `assassination`.
 - `propose_marriage` marries one of your seated notables to the notable of a
   world **that answers to nobody**. The world consents by its standing with
   you — 40 or better — and the code checks it. A marriage with another

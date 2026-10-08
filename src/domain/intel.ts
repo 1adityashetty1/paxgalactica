@@ -17,6 +17,7 @@ import {
   intelOn,
 } from './intel-levels.js';
 import { rimEventsVisibleTo } from './events.js';
+import { favourBand } from './estates.js';
 import { z } from 'zod';
 import type { DurationCategory } from './duration.js';
 import {
@@ -465,7 +466,22 @@ export function worldAsSeenBy(state: WorldState, factionId: string): WorldState 
     // business: its rows reach the browser as `remembered`, without ids, and
     // every other power's intel map is cleared.
     sightings: [],
-    factions: state.factions.map((f) => (f.id === factionId ? f : { ...f, intel: {} })),
+    // A rival's estates are public by name; their favour is not. The viewer
+    // sees it in bands once it knows the power at `INTEL_DELIVERS`, and what a
+    // power pays its estates is nobody else's business at all.
+    factions: state.factions.map((f) =>
+      f.id === factionId
+        ? f
+        : {
+            ...f,
+            intel: {},
+            estates: (f.estates ?? []).map((e) => ({
+              ...e,
+              favour: intelOn(state, factionId, f.id) >= INTEL_DELIVERS ? favourBand(e.favour) : 0,
+              stipends: 0,
+            })),
+          },
+    ),
     eventLog: eventsVisibleTo(state, factionId),
     // **Operatives are the third field, and they were shipped whole.**
     // `GET /api/campaign` carried `state.agents` — every rival operative,

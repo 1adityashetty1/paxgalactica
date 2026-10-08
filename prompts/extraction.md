@@ -239,6 +239,7 @@ Specifically:
   | `non_aggression` · `ceasefire` | attacking the other party auto-breaks it: −25 with them, −10 with every onlooker |
   | `mutual_defense` | the above, plus an attack on one **by anyone** puts the other at war with the attacker, and the hulls in `shipsPledged` really fight — warships from within two jumps, once a turn |
   | `coalition` | the same pact against **named powers only**: `terms.against` lists them, and it is required. An attack by anyone else calls nobody. The powers named resent both signatories |
+  | `marriage` | a notable of each party wed: `terms.spouses` names the two — one of each side's, as the `seats:` lines name them — and is required. A peace; each spouse's estate counts it as a grant and each world warms to the in-laws. `terms.ward` may name one of the two, who goes to live at the other court as surety |
   | `trade_accord` | mutual immunity from each other's blockades and commerce raiding; `terms.commodities` names the parties whose goods go to the other every turn |
   | `basing_rights` | their fleets may enter your systems without it being an attack — the ONLY way to station ships in friendly space |
 
@@ -248,8 +249,13 @@ Specifically:
   anyone, it is a `mutual_defense`, and `terms.against` is refused on it. A
   member that is itself at peace with the attacker is not called.
 
+  **A marriage names people.** Write each spouse by the name or id the state
+  block gives them, one of each party's; a notable already married cannot wed
+  again. Only what both sides agreed to: if they spoke of a match and named
+  nobody, emit nothing and let the record say a match is wanted.
+
   **A peace between two powers at war leaves a truce.** A `ceasefire`,
-  `non_aggression`, `mutual_defense`, `coalition` or `cession` signed while they are at war
+  `non_aggression`, `mutual_defense`, `coalition`, `marriage` or `cession` signed while they are at war
   holds them out of war for eight turns whatever the paper does after, and heals
   their standing toward the edge of war. Nothing to write for it: the reducer
   sees the war and records the truce.

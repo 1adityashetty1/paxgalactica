@@ -168,6 +168,8 @@ export const BriefingSchema = z.object({
   events: z.array(BriefingEventSchema).default([]),
   /** Worlds going restless, leaning, joining or rising — see `regard.ts`. */
   worlds: z.array(BriefingWorldSchema).default([]),
+  /** What the court is doing to you, standing: estates in or out of favour, seats costing you, people held. */
+  court: z.array(z.object({ text: z.string(), tone: z.enum(['good', 'bad', 'info']) })).default([]),
   quiet: z.boolean(),
 });
 

@@ -165,6 +165,20 @@ export function BriefingPanel({
             </div>
           )}
 
+          {/* The court: estates in or out of favour, seats costing you, people held. */}
+          {(briefing.court ?? []).length > 0 && (
+            <div className="brief-group">
+              <h4>Court</h4>
+              <ul>
+                {briefing.court.map((c, i) => (
+                  <li key={`court:${i}`} className={c.tone === 'bad' ? 'bad' : c.tone === 'good' ? 'mine' : ''}>
+                    {c.text}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {briefing.battles.length > 0 && (
             <div className="brief-group">
               <h4>Battles</h4>

@@ -10,7 +10,16 @@ import {
 } from '../domain/regard.js';
 import { HEAT_NOTORIOUS } from '../domain/heat.js';
 import { eventsVisibleTo, observeOrders, ordersVisibleTo, rememberedBy } from '../domain/intel.js';
-import { intelOn } from '../domain/intel-levels.js';
+import { INTEL_DELIVERS, intelOn } from '../domain/intel-levels.js';
+import {
+  courtRecorded,
+  estateById,
+  favourBaseline,
+  heldAs,
+  notableById,
+  seatedAt,
+} from '../domain/seats.js';
+import { MARRIAGE_CONSENT_REGARD, favourModifier } from '../domain/estates.js';
 import { describeStack, hullsIn } from '../domain/hulls.js';
 import { describeOrderEffect } from '../domain/development.js';
 import {
@@ -575,6 +584,76 @@ function nameOfFaction(state: WorldState, id: string): string {
  * holder — held down by force, or restless. A content world says nothing,
  * which keeps the block short; see `regard.ts`. Public, as the System panel is.
  */
+/**
+ * Who sits a world's seats: each notable, the estate and power they belong to,
+ * whether they are foreign to the world's holder, and whom they are married
+ * to. Public, as seats are. See `seats.ts`.
+ */
+function seatsLine(state: WorldState, s: StarSystem): string[] {
+  if (!courtRecorded(state)) return [];
+  const seated = seatedAt(state, s.id);
+  if (seated.length === 0) return [];
+  const parts = seated.map((n) => {
+    const estate = estateById(state, n.estateId);
+    const of = estate ? `of ${estate.estate.name}, ${estate.faction.name}` : 'speaking for the world itself';
+    const foreign =
+      estate && s.controllerFactionId !== null && estate.faction.id !== s.controllerFactionId
+        ? ' — FOREIGN, working against its holder until reseated'
+        : '';
+    const spouse = notableById(state, n.spouseId);
+    const spouseOf = spouse ? (estateById(state, spouse.estateId)?.faction.name ?? 'an independent world') : '';
+    return `${n.name} (\`${n.id}\`) ${of}${foreign}${spouse ? `, married to ${spouse.name} of ${spouseOf}` : ''}`;
+  });
+  return [`      seats: ${parts.join('; ')}`];
+}
+
+/**
+ * The viewer's own court: each estate's favour and what it does, where it is
+ * drifting and why, the stipends and withholding on the books, its notables
+ * held abroad and the ones it holds, and the independent worlds that would
+ * take a match. Then the other powers' estates — their favour only in bands,
+ * and only where the viewer knows the power well enough.
+ */
+function courtLine(state: WorldState, viewerId: string): string {
+  if (!courtRecorded(state)) return '';
+  const me = getFaction(state, viewerId);
+  if (!me) return '';
+  const sign = (m: number) => (m > 0 ? `+${m}` : m < 0 ? `${m}` : '±0');
+  const lines = ['Your estates — each stands behind one of your three weakest stats, and its favour moves it (+1 at 40, +2 at 80, −1 at −40, −2 at −80):'];
+  for (const e of me.estates ?? []) {
+    const b = favourBaseline(state, e);
+    lines.push(
+      `- ${e.name} (\`${e.id}\`, ${e.stat}): favour ${e.favour} → ${sign(favourModifier(e.favour))} ${e.stat}; ${b.seats} seat${b.seats === 1 ? '' : 's'} against a fair share of ${b.fairShare.toFixed(1)}, ${b.grants} grant${b.grants === 1 ? '' : 's'} (${e.stipends} paid)${b.hated > 0 ? `, ${b.hated} on worlds that resent you` : ''}; drifting toward ${b.baseline}.`,
+    );
+  }
+  const abroad = (state.notables ?? []).filter((n) => n.systemId === null && n.estateId?.startsWith(`${viewerId}:`));
+  for (const n of abroad) {
+    const held = heldAs(state, n.id);
+    if (held) lines.push(`- ${n.name} is held by ${getFaction(state, held.heldBy)?.name ?? held.heldBy} (\`${held.id}\`).`);
+  }
+  const theirs = (state.assets ?? []).filter((a) => a.heldBy === viewerId && a.notableId);
+  for (const a of theirs) lines.push(`- You hold ${a.text} (\`${a.id}\`).`);
+  const matches = state.systems
+    .filter((x) => x.controllerFactionId === null && regardFor(x, viewerId) >= MARRIAGE_CONSENT_REGARD)
+    .filter((x) => seatedAt(state, x.id).some((n) => n.estateId === null && n.spouseId === null));
+  if (matches.length > 0) {
+    lines.push(`Independent worlds that would accept a match with one of your notables: ${matches.map((x) => `${x.name} (\`${x.id}\`)`).join(', ')}.`);
+  }
+  const rivals = state.factions
+    .filter((f) => f.id !== viewerId && (f.estates?.length ?? 0) > 0)
+    .map((f) => {
+      const known = intelOn(state, viewerId, f.id) >= INTEL_DELIVERS;
+      const estates = f.estates
+        .map((e) => (known ? `${e.name} (${e.stat}, ${sign(favourModifier(e.favour))})` : `${e.name} (${e.stat})`))
+        .join(', ');
+      return `${f.name}: ${estates}`;
+    });
+  if (rivals.length > 0) {
+    lines.push(`Other powers' estates (their favour shows only where your intel on them reaches ${INTEL_DELIVERS}): ${rivals.join(' · ')}.`);
+  }
+  return lines.join('\n');
+}
+
 function peopleLine(state: WorldState, s: StarSystem): string[] {
   if (!regardRecorded(state)) return [];
   const want = wantOf(s);
@@ -657,6 +736,7 @@ export function serializeSystems(state: WorldState): string {
     const line = [
       `  - \`${s.id}\` ${s.name} — held by ${controller}, garrison ${s.garrison}, value ${s.strategicValue}${income.contested ? ', CONTESTED' : ''}`,
       `      ships: ${ships || 'none'} | pays: ${payout || 'nobody'} | lanes: ${lanes || 'none'}${built ? ` | fixtures: ${built}` : ''}`,
+      ...seatsLine(state, s),
       ...peopleLine(state, s),
     ].join('\n');
     const list = bySector.get(s.sector) ?? [];
@@ -771,9 +851,14 @@ export function serializeState(
     ledger.occupation > 0
       ? `Holding ground that was never yours: ${ledger.occupation}/turn, on ${occupiedNames(state, viewerId)}. Institutions built for another state do not administer themselves.`
       : '',
+    (ledger.stipends ?? 0) > 0 ? `Stipends to your estates: ${ledger.stipends}/turn.` : '',
+    (ledger.withheld ?? 0) > 0
+      ? `Kept back by resentful notables on your worlds: ${ledger.withheld}/turn. Reseat a foreign notable, or win back the estate.`
+      : '',
     terrainLine(state, viewerId),
     rallyLine(state, viewerId),
     commanderLine(state, viewerId),
+    courtLine(state, viewerId),
     // Dissent reduces every stat the model is reasoning about. Omitting it
     // meant a leader could be told its own odds had worsened with no way to
     // know why, and could not narrate the reason to the player either.

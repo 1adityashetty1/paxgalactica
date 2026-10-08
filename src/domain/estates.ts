@@ -146,6 +146,14 @@ export function favourModifier(favour: number): number {
   return 0;
 }
 
+/**
+ * A favour as another power may see it: the band it falls in, and nothing
+ * finer — `DOTING`, `FAVOURED`, 0, `RESENTFUL` or `BITTER`.
+ */
+export function favourBand(favour: number): number {
+  return [BITTER, RESENTFUL, 0, FAVOURED, DOTING][favourModifier(favour) + 2]!;
+}
+
 /** What a power's estates do to its stats, read beside fixtures and the rally. */
 export function estateBonus(estates: readonly Estate[] | undefined): Partial<FactionStats> {
   const bonus: Partial<FactionStats> = {};

@@ -48,7 +48,8 @@ Set `negotiation` **whenever the substance is bilateral**, without exception:
 > a treaty of any type · an alliance · a pact · a ceasefire or peace · tribute
 > in either direction · hiring another power's fleet or paying them to fight ·
 > basing or transit rights · a debt between two powers, or forgiving one ·
-> ceding or exchanging territory by agreement · a marriage or hostage exchange
+> ceding or exchanging territory by agreement · a marriage with another power's
+> notable, or a hostage exchange
 
 The engine rules on a **breach first**, so you do not need to sequence them: an
 action your own people will not carry out is refused whether or not it also
@@ -59,6 +60,13 @@ What is *not* a negotiation: anything the acting power can do alone, even if
 another power will hate it. Moving fleets, raiding, blockading, developing a
 world, deploying agents, suborning crews, breaking a treaty you have already
 signed — repudiation is unilateral by nature, and only signing is not.
+
+**The court is the power's own business.** Paying an estate a stipend, revoking
+one, giving a seat on a world it holds to one of its estates, and marrying one
+of its notables into a world **that answers to nobody** are all declarations,
+priced in code — `trivial` difficulty, no roll worth having. An independent
+world consents to a match by its standing with the power, which the state
+block gives: below 40 it will not have it, and the action is inadmissible.
 
 ## 2. Is it admissible?
 
@@ -81,6 +89,23 @@ Rule it inadmissible when:
   do not have; ceding a world you do not hold; invoking a treaty that lapsed.
 - **It is physically impossible in the fiction.** Moving a fleet without
   hyperlanes, acting on a system that does not exist.
+- **It moves a person between rosters.** Officers command fleets, notables sit
+  seats and operatives work unseen, and nobody crosses from one to another —
+  *"make Marshal Galba lord of Kalzir"*, *"give the notable of Brannix a
+  squadron"*, *"seat my spy at Vantic"* are all inadmissible, and cost nothing.
+  Give the power's own reason:
+
+  | power | why the sword and the seat are kept apart |
+  |---|---|
+  | Meridian | The Charter forbids it: an officer with a seat could send the fleet to collect on it, and the Board audits the two separately. |
+  | Iron Vigil | The Codes of the old Legions: marshals who sat the worlds they took are what broke the Empire. |
+  | Ojjul Nar | A seat is a house's, by blood; an Enforcer is the Family's hand, and a hand does not sit. |
+  | Arkane | Different councils choose them, and no council may choose for the other. |
+  | Drajk | Crews follow captains who will not put down roots. |
+
+  An operative is never seated, because a seat is public; a captured enemy
+  officer is never seated; and a notable held captive is never seated by the
+  power holding them.
 
 When you refuse, `reason` must say what specifically blocks it and, where
 there is one, what the player could do instead. "You are already bound by the
@@ -199,18 +224,22 @@ is two entries, and naming only one used to mean only one ever happened: the
 other was promised in prose and never came. Each entry:
 
 - `mission` — `surveillance` (watch, quietest), `theft` (siphon credits),
-  `subversion` (erode a stat), `sabotage` (destroy hulls), `defection` (turn
-  crews), `incitement` (stir a world another power holds against it — far
-  harder on that power's home ground), `assassination` (one attempt, heavy,
-  usually caught).
+  `subversion` (erode a stat, or turn a named notable against their holder),
+  `sabotage` (destroy hulls), `defection` (turn crews), `incitement` (stir a
+  world another power holds against it — far harder on that power's home
+  ground), `assassination` (one attempt, heavy, usually caught), `seduction`
+  (court a named notable in their seat: their world warms to you, and proof of
+  the affair follows).
 - `systemId` — where that operative works.
 - `target` — **the person, when the operation is aimed at one.** Write the name
   the player used: `Marcia Galba`, `M. Galba`, `Marshal Galba` and
   `Iron Marshal Marcia Galba` are all fine, and all resolve to the same officer.
   Do **not** invent an id and do not guess at one; the engine matches the name
   against the officers actually in post, and every power's roster is listed in
-  the state block above. Omit it when the operation is aimed at a power rather
-  than at a person — a theft from a treasury has no target.
+  the state block above. **A notable is a person too** — the `seats:` line under
+  each world names who sits it; write their name the same way. A `seduction`
+  must name one. Omit it when the operation is aimed at a power rather than at
+  a person — a theft from a treasury has no target.
 
 Four at most. Each is charged, capped and exposed on its own, and each needs an
 operative the power already has — recruiting one is an action of its own, so a
@@ -380,24 +409,32 @@ the truce, which costs standing with every power on the board.
 
 ## Worked examples
 
-> *"I offer my heir in marriage to the Ojjul Combine to seal our alliance."*
+> *"I offer the Blue Bloods' notable at Vantic in marriage to the Ojjul Combine to seal our alliance."*
 
-**A negotiation**, with `ojjul`. A marriage binds the Nars, and they have not
-been asked — no DC measures whether they say yes. `supported: true`: your own
-house is entirely behind the match, it simply is not yours to conclude alone.
-Point the player at `/talk ojjul`. If it is agreed there, the extraction pass
-records it as an **exclusive treaty** — a marriage is the most public act in the
-genre, and a treaty is the public instrument — binding both parties, the same
-arrangement made where consent actually exists.
+**A negotiation**, with `ojjul`. A power marries through its notables — the
+`seats:` lines name them — and a marriage binds one of the Nars' notables too,
+who have not been asked: no DC measures whether they say yes. `supported:
+true`: your own people are entirely behind the match, it simply is not yours to
+conclude alone. Point the player at `/talk ojjul`. If it is agreed there, the
+extraction pass records a `marriage` treaty naming the two notables. If the
+player says *"my heir"*, it means one of their notables; say so.
 
-> *Once married, the next turn: "I offer my other heir to Meridian as well."*
+> *Once married, the next turn: "I offer a notable to Meridian as well."*
 
-**Inadmissible.** The treaties block shows the Ojjul marriage still
-standing, and marked exclusive. Say so, name it, and note that it would have to be dissolved first —
-which is itself an action, with consequences the Nars will have opinions
-about. This ruling does not need a channel: it is not asking whether Meridian
-would agree, it is refusing an act that contradicts something already true,
-the same as citing a lapsed treaty or a fleet that is not there.
+**Admissible as a negotiation** — a power may marry several of its notables
+into several powers — **unless** the treaties block marks the first marriage
+exclusive. Then it is inadmissible: say so, name it, and note that it would
+have to be dissolved first, which is itself an action with consequences the
+Nars will have opinions about. That ruling does not need a channel: it refuses
+an act that contradicts something already true, the same as citing a lapsed
+treaty or a fleet that is not there.
+
+> *"Marry the Security Directorate's notable to the notable of Var Hollow."*
+
+**Not a negotiation**: Var Hollow answers to nobody, so there is nobody to
+talk to. Its standing with the power is its answer. At 40 or better, rule it
+admissible, `trivial`, and the resolution emits `propose_marriage`; below 40,
+inadmissible, saying what its standing is and that envoys raise it.
 
 ---
 
