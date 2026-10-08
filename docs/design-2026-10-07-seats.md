@@ -50,39 +50,18 @@ Three per power, authored with the faction sheets, because who a power's
 institutions are is character. Each stands behind one of the power's three
 weakest base stats; the two strongest belong to its **institutions**.
 
-Each power's three are **one kind of thing, in its own words**: every name
-comes from the vocabulary its voice already speaks.
+| power | estates (stat, base) | institutions, no estate |
+|---|---|---|
+| **Meridian** | Standards & Practices (resolve 9) · the Security Directorate (might 10) · the Creatives (guile 13) | the Board and the Trade Council (industry 16, influence 17) |
+| **Iron Vigil** | the Blue Bloods (influence 6) · the Intelligentsia (guile 11) · the Complex (industry 13) | the fleet commanders (resolve 17, might 18) |
+| **Ojjul Nar** | the Made Men (might 9) · the Blood Nars (resolve 11) · the Spice Cartel (industry 12) | the old cousins (influence 15, guile 18) |
+| **Arkane** | the Shipbreakers (industry 10) · the Bards & Poets (influence 10) · the Sentinels (might 11) | the councils (guile 12, resolve 19) |
+| **Drajk** | the Open Hand (industry 7) · the Salt Compact (influence 8) · the Sixteenth (resolve 12) | the korvani, its captains (guile 14, might 15) |
 
-| power | its estates are | estates (stat, base) | institutions, no estate |
-|---|---|---|---|
-| **Meridian** | the Enterprise's trades | the Underwriters (resolve 9) · the Factors (might 10) · the Associates (guile 13) | the Board and the Trade Council (industry 16, influence 17) |
-| **Iron Vigil** | the orders of status | the clients (influence 6) · the auxiliaries (guile 11) · the Citizenry (industry 13) | the fleet commanders (resolve 17, might 18) |
-| **Ojjul Nar** | the Nar not of blood | the sworn cousins (might 9) · the godchildren (resolve 11) · the in-laws (industry 12) | the old cousins (influence 15, guile 18) |
-| **Arkane** | what Arkane is made of | the Yards (industry 10) · the Stations (influence 10) · the Hulls (might 11) | the councils (guile 12, resolve 19) |
-| **Drajk** | the covenants a korvan answers to | the Open Hand (industry 7) · the Salt Compact (influence 8) · the Sixteenth (resolve 12) | the korvani, its captains (guile 14, might 15) |
-
-- **Meridian**, in plain business English. The **Underwriters** carry losses
-  until they can be recovered, which is what enduring is to a company; the
-  **Factors** keep the factorates and their gun batteries; the **Associates**
-  are the ranks of its agents.
-- **The Vigil**, whose politics is status and who may be granted it. The
-  **clients** are rulers left in place, which is what client worlds are; the
-  **auxiliaries** are subject peoples under its standards, its scouts and
-  informers in the deep systems; the **Citizenry** builds the settlement —
-  survey, law, tariff, lane, census.
-- **The Combine**, where the Nar is *"blood, marriage, godchildren, sworn
-  cousins"*. The blood is the old cousins, and the rest are its estates: the
-  **sworn cousins** are its muscle, the **godchildren** were raised into it and
-  hold on, and the **in-laws** are the man who fixes your ships.
-- **Arkane**, which is *"the ground, the yards, the stations, the hulls"*. The
-  ground is the councils'. The **Yards** build, the **Stations** keep the marks
-  where outsiders are received, and the **Hulls** crew the fleet.
-- **Drajk**, whose korvan *"names her own institutions"*. The **Sixteenth** is
-  the crews' sacred share and so the crews, who endure; the **Salt Compact**
-  binds the other corsair fleets; the **Open Hand** is the ports given quarter,
-  which refit and supply the hulls.
-
-No name is an officer's title or a house, which this design dropped.
+Drajk's are its own covenant words, from its voice: the Sixteenth is the crews'
+share and so the crews, the Salt Compact binds the other corsair fleets, and
+the Open Hand is the ports given quarter. No estate name collides with an
+officer's title, a house, or any term the game already uses.
 
 ### Why the weakest stats
 
@@ -134,7 +113,7 @@ down.
 still comes off every stat. Estates are a second, separate layer: dissent is
 how far a leader has strayed from the power's character, favour is how well
 the leader keeps its estates. A power can be run in character and still have
-starved its Underwriters.
+starved its Creatives.
 
 ### What moves favour
 
@@ -160,7 +139,7 @@ for every estate, by one rule:
 - **A stipend**: `GRANT_COST` (15) credits a turn, its own `Ledger` line.
   Each grant adds `GRANT_FAVOUR` to the estate's baseline, up to `MAX_GRANTS`
   (3) per estate.
-- Made and revoked by declaration — *"grant the clients a stipend"* —
+- Made and revoked by declaration — *"grant the Blue Bloods a stipend"* —
   an action, as appointing an officer is. **Revoking one** takes the 20 off the
   baseline and costs an immediate `REVOKED_FAVOUR` (15): an estate notices being
   cut more than it notices being paid.
@@ -197,13 +176,13 @@ A seat is never empty. Whenever one opens — at the seed, on a conquest, a
 joining, a world becoming a hub, a notable killed — it is filled by default:
 
 1. **the estate whose stat is the world's ground stat** (`WORLD_TYPE_STAT`):
-   an arid world (might) seats Meridian's Factors, an earthlike world
-   (influence) the Vigil's clients. Legible from the map, as a
+   an arid world (might) seats Meridian's Security Directorate, an earthlike
+   world (influence) the Vigil's Blue Bloods. Legible from the map, as a
    fixture's ground is;
 2. otherwise — ground of one of the power's peaks, which has no estate — **the
    estate with the fewest seats**.
 
-**Reseating is a declaration** — *"give Kalzir to the Citizenry"* —
+**Reseating is a declaration** — *"give Kalzir to the Complex"* —
 `seat_estate { systemId, estateId }`, an action. It changes the baseline both
 ways at once, so one estate's gain is visibly another's loss, and it shakes the
 world: its regard for the holder drops `RESEAT_REGARD` (5). A hub's second seat
