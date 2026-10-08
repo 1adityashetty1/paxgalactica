@@ -2,9 +2,11 @@
 
 `brainstorm-2026-10-02.md` §5.3 (estates), reworked into a third class of
 person. Commanders command fleets and operatives work in the dark; nobody
-**runs a world**. The institutions that refuse a leader — *the Trade Council*,
-*the fleet commanders*, *the councils*, *the captains* — exist only as names a
-refusal is spoken in. This design gives each power a few **estates**, gives
+**runs a world**. A power's **institutions** — *the Trade Council*, *the fleet
+commanders*, *the councils*, *the captains*, the term the refusal card and the
+prompts already use — exist only as names a refusal is spoken in, and dissent is
+their standing with the leader. This design leaves them as they are and gives
+each power three **estates** beside them, gives
 every held world a **seat** with a **notable** in it, and makes each notable
 belong to an estate. Which estate sits which world is the power's politics.
 
@@ -21,8 +23,8 @@ debuffs, by one rule for all of them, rather than estate-specific rules.
 **Dissent is unchanged.**
 
 *Revised again.* Estates sit on a power's **three weakest stats**, one each,
-not on its strongest. A power's peaks belong to its core, which no estate
-moves (see *Why the weakest stats*).
+not on its strongest. A power's peaks belong to its institutions, which no
+estate moves (see *Why the weakest stats*).
 
 ## The rule
 
@@ -46,9 +48,9 @@ moves (see *Why the weakest stats*).
 
 Three per power, authored with the faction sheets, because who a power's
 institutions are is character. Each stands behind one of the power's three
-weakest base stats; the two strongest belong to its **core**.
+weakest base stats; the two strongest belong to its **institutions**.
 
-| power | estates (stat, base) | core, no estate (stats) |
+| power | estates (stat, base) | institutions, no estate (stats) |
 |---|---|---|
 | **Meridian** | the Factors (resolve 9) · the Security Directorate (might 10) · the Compliance Office (guile 13) | the Trade Council (industry 16, influence 17) |
 | **Iron Vigil** | the Old Families (influence 6) · the Provosts (guile 11) · the Armourers (industry 13) | the fleet commanders (resolve 17, might 18) |
@@ -62,13 +64,13 @@ is a house, which this design dropped.
 
 ### Why the weakest stats
 
-**The core is already in the game.** Every institution a faction sheet names as
-refusing its leader stands behind that power's peaks: the Trade Council behind
+**The institutions are already in the game.** Every one a faction sheet names
+as refusing its leader stands behind that power's peaks: the Trade Council behind
 Meridian's industry and influence, the fleet commanders behind the Vigil's might
 and resolve, the old cousins behind the Combine's guile, the councils behind
 Arkane's resolve, the captains behind Drajk's might and guile. Dissent is their
 voice. They are what the power **is**, and nobody buys them with a stipend.
-Estates are everyone else: the institutions a power has never been good at
+Estates are everyone else: the interests a power has never been good at
 keeping, which is why it is weak in their stats.
 
 **A buff on a peak was the wrong shape twice over.** It made the strongest
@@ -109,8 +111,8 @@ down.
 **Dissent is untouched.** It still rises on a refusal or a defied compulsion and
 still comes off every stat. Estates are a second, separate layer: dissent is
 how far a leader has strayed from the power's character, favour is how well
-the leader keeps its institutions. A power can be run in character and still
-have starved its traders.
+the leader keeps its estates. A power can be run in character and still have
+starved its factors.
 
 ### What moves favour
 
@@ -136,10 +138,10 @@ for every estate, by one rule:
 - **A stipend**: `GRANT_COST` (15) credits a turn, its own `Ledger` line.
   Each grant adds `GRANT_FAVOUR` to the estate's baseline, up to `MAX_GRANTS`
   (3) per estate.
-- Made and revoked by declaration — *"grant the fleet commanders a stipend"* —
+- Made and revoked by declaration — *"grant the Old Families a stipend"* —
   an action, as appointing an officer is. **Revoking one** takes the 20 off the
-  baseline and costs an immediate `REVOKED_FAVOUR` (15): an institution notices
-  being cut more than it notices being paid.
+  baseline and costs an immediate `REVOKED_FAVOUR` (15): an estate notices being
+  cut more than it notices being paid.
 
 So +1 on a weakness costs two grants (30 a turn) on top of a fair share of
 seats; +2 costs three grants and more than a fair share. Against nets of
@@ -276,7 +278,7 @@ an inadmissible ruling does.
 - `appraisal.md`: a grant, a revocation and a reseating are actions; promotion
   is inadmissible, with the table.
 - **Refusals keep their speakers.** The institutions that refuse a leader are
-  its core, which the sheets already name, not an estate. An estate is voiced
+  the ones the sheets already name, never an estate. An estate is voiced
   where favour shows: a notable withholding, a stipend revoked.
 
 ## Bots
@@ -340,7 +342,7 @@ set with `regard`.
    holds a notable, and a notable belongs to an estate.
 2. **Estates give straight buffs and debuffs**, by one table for all of them,
    on the power's three weakest stats, one each. The two strongest are the
-   power's core, which dissent speaks for, and no estate moves them. No
+   power's institutions, which dissent speaks for, and no estate moves them. No
    estate-specific rules.
 3. **Dissent is unchanged.** Estates are a separate layer beside it.
 4. **One seat per world, two on a hub.** Every power holds at least one hub.
