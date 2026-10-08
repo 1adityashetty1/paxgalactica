@@ -669,7 +669,7 @@ size.
 | idea | § | why it is large |
 |---|---|---|
 | Courting unaligned worlds **(built)** | 6.1 | wants and opinions for every neutral world, peaceful joining, bot behaviour, prompts |
-| Estates, reworked as seats | 5.3 | three estates a power, on its weakest stats, whose favour buffs them; a notable of one in every seat; marriage between notables, and seduction — see `design-2026-10-07-seats.md` |
+| Estates, reworked as seats | 5.3 | three estates a power, on its weakest stats, whose favour buffs them; a notable of one in every seat and on every independent world; marriage, wards and prisoners, and seduction — see `design-2026-10-07-seats.md` |
 
 ---
 
@@ -678,8 +678,8 @@ size.
 *Updated after PR #61: coalitions and exhaustion were built as extensions of
 mutual defence and bot peace, war goals were dropped, and the interface caught
 up with what is built. Updated again for the seats design: seats are drawn as
-their build steps, with marriage and seduction among them, and mandate is
-tabled.* Seventeen ideas are built, plus the bot rules that use
+their build steps, with marriage, independent worlds' notables, wards and
+prisoners, and seduction among them, and mandate is tabled.* Seventeen ideas are built, plus the bot rules that use
 them, and two are dropped, so four are left. Built work is no longer a node:
 where it unlocks something, the node says so.
 
@@ -705,6 +705,7 @@ flowchart LR
   standing["Standing (built)"]
   intel["Intel with memory (built)"]
   secrets["Secrets (built)"]
+  captives["Captured officers and operatives (built)"]
   ui["Draft buttons and help (built)"]
 
   estates["Estates and favour (M)"]
@@ -712,7 +713,9 @@ flowchart LR
   grants["Grants and reseating (S)"]
   hands["Conquest, cession, secession (S)"]
   notableOps["Operatives on notables (S)"]
-  marriage["Marriage (M)"]
+  independents["Independent worlds' notables (S)"]
+  marriage["Marriage (M+)"]
+  wards["Wards and prisoners (S)"]
   seduction["Seduction (S)"]
   court["Court tab, prompts, bots (M)"]
 
@@ -730,8 +733,14 @@ flowchart LR
   grants --> court
   hands --> court
   notableOps --> court
+  seats --> independents
   seats --> marriage
+  independents --> marriage
   standing --> marriage
+  seats --> wards
+  marriage --> wards
+  captives --> wards
+  wards --> court
   seats --> seduction
   secrets --> seduction
   marriage -.-> seduction
@@ -742,9 +751,9 @@ flowchart LR
   ambitions -.-> mandate
   mandate --> fortune
 
-  class standing,intel,secrets,ui done
-  class estates,grants,hands,notableOps,marriage,seduction,court,fortune light
-  class seats,ambitions heavy
+  class standing,intel,secrets,captives,ui done
+  class estates,grants,hands,notableOps,independents,wards,seduction,court,fortune light
+  class seats,marriage,ambitions heavy
   class mandate later
 ```
 
@@ -761,12 +770,17 @@ S is small, M is medium (lighter), M+ is medium (heavier) and L is large.
 | standing → seats and notables | needs | a notable lifts or sours a world's regard, and a bitter estate lets a world go through the rising that exists |
 | standing → conquest, cession, secession | needs | a seceded world's notable leads it, and joining seats one |
 | standing → operatives on notables | needs | `turn_notable` is contested as incitement is |
-| seats and notables → marriage | needs | `terms.spouses` names a notable of each party |
-| standing → marriage | needs | each spouse's world adds 30 to its baseline toward the in-laws |
+| seats and notables → independent worlds' notables | needs | an independent notable is a notable of no estate |
+| seats and notables → marriage | needs | the bond is on two notables |
+| independent worlds' notables → marriage | needs | a marriage into an independent world needs its notable |
+| standing → marriage | needs | each spouse's world adds 30 to its baseline toward the in-laws, and an independent world consents by its standing |
+| marriage → wards and prisoners | needs | a ward is a spouse sent to the in-laws' court under `terms.ward` |
+| seats and notables → wards and prisoners | needs | reseating a foreign notable takes the displaced one prisoner |
+| captured officers and operatives → wards and prisoners | needs | a held notable is an asset with `notableId`, the twin of `commanderId` and `agentId` |
 | seats and notables → seduction | needs | a seduction is aimed at a notable |
 | secrets → seduction | needs | the affair is a secret kind, published or spent on blackmail |
 | marriage ⇢ seduction | better after | publishing an affair voids the notable's marriage |
-| grants, conquest, operatives, marriage, seduction → Court tab, prompts, bots | needs | the tab shows grants, foreign notables and marriages; the bots placate, grant, subvert, seduce and marry |
+| grants, conquest, operatives, wards, seduction → Court tab, prompts, bots | needs | the tab shows grants, foreign notables, marriages and who is held; the bots placate, grant, subvert, seduce and marry |
 | intel → Court tab | needs | intel at 40 shows a rival's estates' favour in bands |
 | draft buttons, help ⇢ Court tab | better after | grant, revoke and reseat are draft buttons; the no-promotion table is a help page |
 | mandate → fortune | needs | darkness is charged when mandate buys a reroll |
@@ -777,14 +791,15 @@ S is small, M is medium (lighter), M+ is medium (heavier) and L is large.
 1. **Ready now:** ambitions; estates and favour (the seats design's first step).
 2. Seats and notables.
 3. Grants and reseating; conquest, cession and secession; operatives on
-   notables; marriage. Independent of each other.
-4. Seduction, which reads best once a marriage can be voided.
-5. The Court tab, prompts and bots, and the measurement.
+   notables; independent worlds' notables. Independent of each other.
+4. Marriage.
+5. Wards and prisoners; seduction.
+6. The Court tab, prompts and bots, and the measurement.
 
 Mandate is tabled, and fortune and darkness wait on it.
 
-The longest chain is five deep: estates → seats and notables → marriage →
-seduction → the Court.
+The longest chain is six deep: estates → seats and notables → independent
+worlds' notables → marriage → wards and prisoners → the Court.
 
 The bots now reach the leverage layer too: they demand tribute of weaker
 neighbours, keep watchers on rivals, and publish or blackmail with what those
