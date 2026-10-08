@@ -226,6 +226,21 @@ import {
 } from './regard.js';
 import { INTEL_DIG, INTEL_DIG_BONUS, INTEL_OPERATIVES, INTEL_TRACE_BONUS, intelOn } from './intel-levels.js';
 import {
+  capitalise as capitaliseEstate,
+  courtRecorded,
+  driftFavour,
+  estateById,
+  findEstate,
+  grantsOf,
+  notablesAct,
+  onWorldChangesHands,
+  removeNotable,
+  seatNotable,
+  seatedAt,
+  seatsOf,
+} from './seats.js';
+import { MAX_GRANTS, RESEAT_REGARD, REVOKED_FAVOUR, estateOwner } from './estates.js';
+import {
   EXTRACTION_ALLOWED,
   EXTRACTION_REFUSAL_REASON,
   OpSchema,
@@ -2025,6 +2040,8 @@ function secede(state: WorldState, system: StarSystem, why: string): string {
   const holder = system.controllerFactionId;
   if (holder === null) return `${system.name} already answers to nobody.`;
   system.controllerFactionId = null;
+  // Its notables stay, and now speak for the world alone.
+  const seats = onWorldChangesHands(state, system, holder, 'secession');
   system.garrison = Math.min(system.garrisonMax, Math.max(1, Math.ceil(system.garrisonMax / 2)));
   let where = '';
   const refuge = fleetBases(state, holder).find((x) => x.id !== system.id && x.controllerFactionId === holder);
@@ -2047,7 +2064,7 @@ function secede(state: WorldState, system: StarSystem, why: string): string {
       [holder]: Math.max(-100, regardFor(system, holder) - SECESSION_REGARD),
     };
   }
-  const note = `${why}, and ${system.name} answers to nobody.${where}`;
+  const note = `${why}, and ${system.name} answers to nobody.${where}${seats ? ` ${seats}` : ''}`;
   logEvent(state, 'system', note, holder);
   return note;
 }
@@ -2068,6 +2085,10 @@ function cedeTerritory(state: WorldState, treaty: Treaty): string[] {
     if (!receiver) continue;
 
     system.controllerFactionId = receiver;
+    // A ceded world's notable stays, now a foreign notable to the receiver
+    // until it is reseated; an independent world has nobody to cede it.
+    const seatNote = onWorldChangesHands(state, system, ceder, 'cession');
+    if (seatNote) notes.push(seatNote);
 
     const leaving = hullsAt(system, ceder);
     if (leaving > 0) {
@@ -2313,6 +2334,12 @@ export interface LegacyRules {
    * arrival, cession or the Rim's unrest. Journal version 18.
    */
   regard?: boolean;
+  /**
+   * Estates, seats and notables run — journal version 20. A board with none
+   * recorded runs nothing either way; this is for a test that wants a court on
+   * the board and none of its turn.
+   */
+  seats?: boolean;
   /**
    * A sandbox campaign's one event (see `primeRimSandbox`): that kind every
    * turn, with no d20 and no cooldowns. Not a rule the game acquired — a rule
@@ -2687,7 +2714,10 @@ function applyOpsUnderRules(
           break;
         }
         const from = sys.controllerFactionId ?? 'nobody';
+        const priorHolder = sys.controllerFactionId;
         sys.controllerFactionId = op.toFactionId;
+        const seatNote = onWorldChangesHands(state, sys, priorHolder, 'conquest');
+        if (seatNote) notes.push(seatNote);
         // Whatever was sitting on the world changes hands with it. This is what
         // makes an asset losable, and it is the difference between a hostage
         // and a note saying somebody has a hostage: hold the world, hold the
@@ -4110,6 +4140,107 @@ function applyOpsUnderRules(
         const note = `${nameFor(state, asset.heldBy)} sets aside ${op.quantity} ${asset.unit} of ${asset.text} ${op.reason}`.trim();
         notes.push(note);
         logEvent(state, 'system', note, asset.heldBy, [asset.heldBy]);
+        break;
+      }
+
+      case 'grant_stipend':
+      case 'revoke_stipend': {
+        const f = state.factions.find((x) => x.id === op.factionId);
+        if (!f) {
+          reject(raw, 'unknown_faction', `No faction "${op.factionId}".`);
+          break;
+        }
+        // Your own estates only: paying a rival's would be buying its stats.
+        if (actor !== undefined && op.factionId !== actor) {
+          reject(raw, 'illegal_value', `${actor} does not keep ${op.factionId}'s estates.`);
+          break;
+        }
+        const estate = findEstate(f, op.estate);
+        if (!estate) {
+          const known = (f.estates ?? []).map((e) => e.name).join(', ') || 'none';
+          reject(raw, 'illegal_value', `${f.name} has no estate "${op.estate}". Its estates: ${known}.`);
+          break;
+        }
+        if (op.op === 'grant_stipend') {
+          if (grantsOf(state, estate) >= MAX_GRANTS) {
+            reject(
+              raw,
+              'illegal_value',
+              `${capitaliseEstate(estate.name)} already hold ${MAX_GRANTS} grants, stipends and marriages together; another buys nothing.`,
+            );
+            break;
+          }
+          estate.stipends += 1;
+          const note = `${f.name} grants ${estate.name} a stipend (${estate.stipends} now).`;
+          notes.push(note);
+          logEvent(state, 'diplomacy', note, f.id, [f.id]);
+        } else {
+          if (estate.stipends === 0) {
+            reject(raw, 'illegal_value', `${capitaliseEstate(estate.name)} are paid no stipend to revoke.`);
+            break;
+          }
+          estate.stipends -= 1;
+          // An estate notices being cut more than it noticed being paid.
+          estate.favour = Math.max(-100, estate.favour - REVOKED_FAVOUR);
+          const note = `${f.name} revokes a stipend from ${estate.name}; their favour falls to ${estate.favour}.`;
+          notes.push(note);
+          logEvent(state, 'diplomacy', note, f.id, [f.id]);
+        }
+        break;
+      }
+
+      case 'seat_estate': {
+        const f = state.factions.find((x) => x.id === op.factionId);
+        const world = state.systems.find((x) => x.id === op.systemId);
+        if (!f) {
+          reject(raw, 'unknown_faction', `No faction "${op.factionId}".`);
+          break;
+        }
+        if (!world) {
+          reject(raw, 'unknown_system', `No system "${op.systemId}".`);
+          break;
+        }
+        if (actor !== undefined && op.factionId !== actor) {
+          reject(raw, 'illegal_value', `${actor} does not seat ${op.factionId}'s worlds.`);
+          break;
+        }
+        if (world.controllerFactionId !== f.id) {
+          reject(raw, 'illegal_value', `${world.name} is not ${f.name}'s to seat.`);
+          break;
+        }
+        const estate = findEstate(f, op.estate);
+        if (!estate) {
+          const known = (f.estates ?? []).map((e) => e.name).join(', ') || 'none';
+          reject(raw, 'illegal_value', `${f.name} has no estate "${op.estate}". Its estates: ${known}.`);
+          break;
+        }
+        const seated = seatedAt(state, world.id);
+        // A foreign notable goes first: reseating a conquest is the first act
+        // of governing it. Otherwise the seat of whichever estate holds the
+        // most seats, so a reseating evens the court rather than tilting it.
+        const foreign = seated.find((n) => n.estateId === null || estateOwner(n.estateId) !== f.id);
+        const candidates = seated.filter((n) => n.estateId !== estate.id);
+        const displaced =
+          foreign ??
+          candidates.sort(
+            (a, b) => seatsOf(state, b.estateId ?? '') - seatsOf(state, a.estateId ?? ''),
+          )[0];
+        if (!displaced) {
+          reject(raw, 'illegal_value', `${capitaliseEstate(estate.name)} already sit every seat at ${world.name}.`);
+          break;
+        }
+        const from = estateById(state, displaced.estateId)?.estate.name ?? 'nobody';
+        const fresh = seatNotable(state, estate.id, world.id, `reseat:${world.id}:${state.turn}`);
+        removeNotable(state, displaced);
+        if (regardRecorded(state)) {
+          world.regard = {
+            ...world.regard,
+            [f.id]: Math.max(-100, regardFor(world, f.id) - RESEAT_REGARD),
+          };
+        }
+        const note = `${f.name} gives ${world.name}'s seat to ${estate.name}: ${fresh.name} takes it from ${displaced.name} of ${from}.`;
+        notes.push(note);
+        logEvent(state, 'system', note, f.id);
         break;
       }
 
@@ -7654,6 +7785,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     secrets: diggingSecrets = true,
     intel: knowing = true,
     regard: worldsHaveViews = true,
+    seats: hasCourt = true,
     battleRules = {},
   } = legacy;
   const state = cloneState(input);
@@ -9156,9 +9288,35 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       if (!joiner) continue;
       system.controllerFactionId = joiner;
       worlds.joined.push({ systemId: system.id, factionId: joiner });
-      const note = `${system.name} joins ${nameFor(state, joiner)} of its own accord, garrison and all.`;
+      const seats = onWorldChangesHands(state, system, null, 'joining');
+      const note = `${system.name} joins ${nameFor(state, joiner)} of its own accord, garrison and all.${seats ? ` ${seats}` : ''}`;
       notes.push(note);
       logEvent(state, 'system', note, joiner);
+    }
+  }
+
+  /* --- The court: what the seated do, and how the estates take it ------ */
+  // After the worlds have moved, so a world that joined this turn already has
+  // its notable seated for its new holder. See `seats.ts`.
+  if (hasCourt && courtRecorded(state)) {
+    const acted = notablesAct(state);
+    for (const line of acted.lines) {
+      notes.push(line.text);
+      logEvent(state, 'system', line.text, line.factionId, line.visibleTo);
+    }
+    // A bitter estate lets go a world that is not content: the rising that
+    // already exists, for one more reason.
+    for (const { world, notable } of acted.letGo) {
+      const holder = world.controllerFactionId;
+      if (holder === null) continue;
+      const estate = estateById(state, notable.estateId)?.estate.name ?? 'its estate';
+      const note = secede(state, world, `${notable.name} of ${estate} will not hold ${world.name} for ${nameFor(state, holder)}`);
+      notes.push(note);
+      report.worlds?.rose.push({ systemId: world.id, factionId: holder });
+    }
+    for (const line of driftFavour(state)) {
+      notes.push(line.text);
+      logEvent(state, 'system', line.text, line.factionId, line.visibleTo);
     }
   }
 
@@ -10257,6 +10415,8 @@ function resolveBattle(
     for (const [id, st] of attackers) land(id, st);
     const owner = strongestBy(attackShare, tonsIn);
     target.controllerFactionId = owner;
+    const seatNote = onWorldChangesHands(state, target, holder, 'conquest');
+    if (seatNote) logEvent(state, 'system', seatNote, owner);
     const note = `${coalition} occupies ${target.name} unopposed; ${nameOf(owner)} takes possession.`;
     logEvent(state, 'order', note, owner);
     rounds.push({
@@ -10905,6 +11065,10 @@ function resolveBattle(
     // nobody has not taken the world.
     const owner = strongestBy(attackShare, carryOf);
     target.controllerFactionId = owner;
+    // The conquered notable stays, a foreign notable until reseated; an
+    // independent world's is turned out and the seat filled for the taker.
+    const seatNote = onWorldChangesHands(state, target, holder, 'conquest');
+    if (seatNote) logEvent(state, 'system', seatNote, owner);
     // The garrison IS the landing force. What holds the world afterwards is
     // the troops that took it, up to what the world can quarter — not a
     // fraction of the defenders, who were just destroyed.

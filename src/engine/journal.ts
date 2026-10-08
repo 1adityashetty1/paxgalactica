@@ -16,7 +16,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 19;
+export const JOURNAL_VERSION = 20;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -101,6 +101,7 @@ export const JournalVersionSchema = z.union([
   z.literal(17),
   z.literal(18),
   z.literal(19),
+  z.literal(20),
 ]);
 
 export const JournalSchema = z.object({
@@ -230,6 +231,8 @@ export function replay(
     regard: parsed.version >= 18,
     // Eight given names a power, and the first four drawn more often.
     tenGivenNames: parsed.version >= 19,
+    // No estates and nobody in any seat before version 20.
+    seats: parsed.version >= 20,
   });
   let rejectionCount = 0;
   // The opening board, before anything is applied. Without it an observer's
@@ -327,6 +330,9 @@ export function replay(
     regard: parsed.version >= 18,
     // Eight given names a power, and the first four drawn more often.
     tenGivenNames: parsed.version >= 19,
+    // Estates, seats and notables ran from version 20. Their seed is what
+    // makes them run at all; this keeps the rule beside the others.
+    seats: parsed.version >= 20,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

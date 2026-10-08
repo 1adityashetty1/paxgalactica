@@ -15,6 +15,8 @@ const calm = process.argv.includes('--no-events');
 const blind = process.argv.includes('--no-intel');
 // The control for standing: worlds with no view of anybody.
 const viewless = process.argv.includes('--no-regard');
+// The control for seats: no estates, and nobody in any seat.
+const courtless = process.argv.includes('--no-seats');
 
 const NAMES = Object.fromEntries(
   createSeedState('freeworlds').factions.map((f) => [f.id, f.name]),
@@ -33,6 +35,7 @@ const history = runBalance(turns, (s) => {
   ...(calm ? { randomEvents: false } : {}),
   ...(blind ? { intel: false } : {}),
   ...(viewless ? { regard: false } : {}),
+  ...(courtless ? { seats: false } : {}),
 });
 
 const last = history[history.length - 1];
@@ -168,4 +171,20 @@ if (!calm) {
   const touched = {};
   for (const e of events) for (const id of e.factionIds) touched[id] = (touched[id] ?? 0) + 1;
   console.log('  touched: ' + IDS.map((id) => `${id.slice(0, 4)} ${touched[id] ?? 0}`).join(' · '));
+}
+
+console.log(courtless ? '\n── the court: off (--no-seats) ──' : '\n── the court: estate favour at the end (low · high over the run) ──');
+if (!courtless) {
+  const ids = Object.keys(last.estates ?? {});
+  for (const id of IDS) {
+    const mine = ids.filter((e) => e.startsWith(`${id}:`));
+    const row = mine
+      .map((e) => {
+        const all = history.map((h) => h.estates?.[e] ?? 0);
+        return `${e.split(':')[1].padEnd(14)} ${pad(last.estates[e], 4)} (${Math.min(...all)} · ${Math.max(...all)})`;
+      })
+      .join('  ');
+    const kept = history.reduce((n, h) => n + (h.withheld?.[id] ?? 0), 0);
+    console.log(`  ${NAMES[id].padEnd(26)} ${row}   withheld ${kept}`);
+  }
 }

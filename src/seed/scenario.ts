@@ -1,4 +1,6 @@
 import { seedRegard } from '../domain/regard.js';
+import { seedEstates } from '../domain/estates.js';
+import { fillSeats } from '../domain/seats.js';
 import type { FactionStats } from '../domain/checks.js';
 import type { DurationCategory } from '../domain/duration.js';
 import type { WorldType } from '../domain/state.js';
@@ -769,6 +771,9 @@ function buildFactions(luck = true, commodities = true): Faction[] {
     // Absent before journal version 12, so an older journal rebuilds a galaxy
     // that made no goods.
     commodity: commodities ? { ...f.commodity } : null,
+    // Filled by `createSeedState` when the board keeps a court; empty is how a
+    // board from before journal version 20 says it has none.
+    estates: [],
   }));
 }
 
@@ -873,6 +878,8 @@ export function createSeedState(
    * `regard: false` gives no world a view of anybody, as before version 18.
    * `tenGivenNames: false` names the opening officers from the first eight
    * given names, as before version 19.
+   * `seats: false` gives no power estates and no world a notable, as before
+   * version 20.
    */
   {
     fourSchools = true,
@@ -883,6 +890,7 @@ export function createSeedState(
     splitTies = true,
     regard = true,
     tenGivenNames = true,
+    seats = true,
   }: {
     fourSchools?: boolean;
     auxiliaries?: boolean;
@@ -892,6 +900,7 @@ export function createSeedState(
     splitTies?: boolean;
     regard?: boolean;
     tenGivenNames?: boolean;
+    seats?: boolean;
   } = {},
 ): WorldState {
   if (!SEED_FACTIONS.some((f) => f.id === playerFactionId)) {
@@ -914,6 +923,7 @@ export function createSeedState(
     pendingOrders: [],
     routeTies: splitTies ? 'split' : 'first',
     sightings: [],
+    notables: [],
     familiesUsed: [],
     rimEvents: [],
     lastClash: {},
@@ -1340,6 +1350,14 @@ export function createSeedState(
       },
     ],
   };
+
+  // Three estates a power, and a notable in every seat: one per world, two on
+  // a hub, the five unaligned worlds' included. Last, so the officers are
+  // named first and keep the names every earlier campaign opened with.
+  if (seats) {
+    for (const faction of state.factions) faction.estates = seedEstates(faction.id);
+    fillSeats(state);
+  }
 
   return WorldStateSchema.parse(state);
 }

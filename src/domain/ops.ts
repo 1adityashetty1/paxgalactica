@@ -165,6 +165,40 @@ export const SetStanceOp = z.object({
 });
 
 /**
+ * Pay one of your estates a stipend, or stop paying it — see `seats.ts`.
+ *
+ * A stipend is `GRANT_COST` a turn and lifts the estate's favour baseline by
+ * `GRANT_FAVOUR`; an estate holds at most `MAX_GRANTS` grants, a marriage
+ * abroad counting as one. Revoking costs `REVOKED_FAVOUR` at once. Your own
+ * estates only. `estate` is its id or its name — "the Blue Bloods".
+ */
+export const GrantStipendOp = z.object({
+  op: z.literal('grant_stipend'),
+  factionId: z.string().min(1),
+  estate: z.string().min(1),
+});
+export const RevokeStipendOp = z.object({
+  op: z.literal('revoke_stipend'),
+  factionId: z.string().min(1),
+  estate: z.string().min(1),
+});
+
+/**
+ * Give a seat on a world you hold to one of your estates. One estate's gain is
+ * visibly another's loss, and the world's regard for you drops
+ * `RESEAT_REGARD`. A foreign notable — left by the power you took the world
+ * from — is displaced first, and taken prisoner. `fromAssetId` seats one of
+ * your own notables brought home from captivity instead of drawing a new one.
+ */
+export const SeatEstateOp = z.object({
+  op: z.literal('seat_estate'),
+  factionId: z.string().min(1),
+  systemId: z.string().min(1),
+  estate: z.string().min(1),
+  fromAssetId: z.string().min(1).optional(),
+});
+
+/**
  * Decide who pays to cross your space.
  *
  * A standing policy about your own borders, so it is free and takes no roll —
@@ -1117,6 +1151,9 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   SetDoctrineOp,
   CreateAssetOp,
   SetStanceOp,
+  GrantStipendOp,
+  RevokeStipendOp,
+  SeatEstateOp,
   SetTollPolicyOp,
   SplitAssetOp,
   ConsumeAssetOp,
@@ -1201,6 +1238,9 @@ export const OpSchema = z.discriminatedUnion('op', [
   CreateAssetOp,
   LogRulingOp,
   SetStanceOp,
+  GrantStipendOp,
+  RevokeStipendOp,
+  SeatEstateOp,
   SetTollPolicyOp,
   SplitAssetOp,
   ConsumeAssetOp,

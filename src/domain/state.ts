@@ -70,6 +70,10 @@ import { INTEL_OPERATIVES, intelOn } from './intel-levels.js';
 // trade.ts imports only TYPES from here, so this edge is one-directional at
 // runtime and there is no import cycle to trip over.
 import { routeEarnings, type RouteEarnings } from './trade.js';
+import { EstateSchema, NotableSchema, estateBonus } from './estates.js';
+// seats.ts reads this module only inside function bodies, so the cycle is
+// harmless at load time — the shape trade.ts already has.
+import { stipendCostFor, withheldFor } from './seats.js';
 
 /**
  * An order is either a fleet movement — whose duration the reducer computes
@@ -399,6 +403,13 @@ export const FactionSchema = z.object({
     })
     .nullable()
     .default(null),
+  /**
+   * Its three estates, one behind each of its three weakest stats — see
+   * `estates.ts`. Last in the schema because the tick moves their favour on a
+   * live record. Empty before journal version 20, which is how the tick knows
+   * a campaign predates them.
+   */
+  estates: z.array(EstateSchema).default([]),
 });
 export type Faction = z.infer<typeof FactionSchema>;
 
@@ -926,6 +937,12 @@ export const WorldStateSchema = z.object({
    * the order id. Defaulted, so a campaign from before memory remembers nothing.
    */
   sightings: z.array(SightingSchema).default([]),
+  /**
+   * Every world's seated notables, and any held abroad — see `seats.ts`.
+   * Public, as seats are. Defaulted, so a campaign from before journal version
+   * 20 has nobody in any seat.
+   */
+  notables: z.array(NotableSchema).default([]),
   playerFactionId: z.string().min(1),
   /** Abstract unit. There is no calendar in this game, deliberately. */
   turn: z.number().int().min(0),
@@ -1678,6 +1695,10 @@ export const LedgerSchema = z.object({
    * beside the network income it renounced. Zero for every other ethic.
    */
   internalMarket: z.number().int().default(0),
+  /** What it pays its estates in stipends — see `seats.ts`. */
+  stipends: z.number().int().default(0),
+  /** What its resentful notables keep back from its worlds. */
+  withheld: z.number().int().default(0),
   /**
    * Scheduled debt service: positive receives, negative pays.
    *
@@ -1885,6 +1906,7 @@ export function ledgerFor(
       gross: 0, upkeep: 0, net: 0, systems: 0, treatyFlow: 0,
       espionageLoss: 0, espionageGain: 0, garrisonUpkeep: 0, agentUpkeep: 0, fixtureUpkeep: 0, commanderUpkeep: 0, commitmentFlow: 0, commitmentShare: 0, assetYield: 0, warProfit: 0, occupation: 0,
       territory: 0, routes: 0, tolls: 0, raided: 0, bounties: 0, lostToRaids: 0, internalMarket: 0, debtService: 0, loanRent: 0,
+      stipends: 0, withheld: 0,
     };
   }
 
@@ -2048,6 +2070,11 @@ export function ledgerFor(
     .filter((d) => d.claimant === factionId)
     .reduce((n, d) => n + d.amount, 0);
 
+  // The court: what its estates are paid, and what its resentful notables keep
+  // back. Both read where they are used, as fixture upkeep is.
+  const stipends = stipendCostFor(state, factionId);
+  const withheld = withheldFor(state, factionId);
+
   return {
     gross,
     upkeep,
@@ -2066,7 +2093,9 @@ export function ledgerFor(
       assetYield +
       warProfit +
       bounties -
-      occupation,
+      occupation -
+      stipends -
+      withheld,
     systems: counted,
     occupation,
     treatyFlow,
@@ -2089,6 +2118,8 @@ export function ledgerFor(
       Object.values(earnings.raidedFrom).reduce((n, from) => n + (from[factionId] ?? 0), 0),
     ),
     internalMarket: earnings.internal[factionId] ?? 0,
+    stipends,
+    withheld,
     // Reported, never summed into `net` — see `Ledger.debtService`.
     debtService: scheduledDebtService(state.debts ?? [], factionId),
     loanRent: scheduledRent(state.loans ?? [], factionId),
@@ -2590,6 +2621,17 @@ export function effectiveStats(
   const rally = rallyBonus(state, factionId, base.resolve);
   if (rally > 0) {
     for (const stat of RALLY_STATS) base[stat] = Math.min(20, base[stat] + rally);
+  }
+
+  // **A power's estates move its weaknesses** — see `estates.ts`. Each stands
+  // behind one of its three weakest stats, and its favour is a straight
+  // modifier on it. After the rally and before dissent, the place the rally
+  // takes: dissent is how far a leader has strayed, favour how well it keeps
+  // its estates, and the two are separate layers.
+  const court = estateBonus(faction?.estates);
+  for (const stat of STAT_NAMES) {
+    const bonus = court[stat] ?? 0;
+    if (bonus !== 0) base[stat] = Math.max(1, Math.min(20, base[stat] + bonus));
   }
 
   // `dissent: false` reads the stats a power would have with its own house in
