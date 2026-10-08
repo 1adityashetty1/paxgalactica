@@ -557,10 +557,11 @@ would be typed modifiers.
 dissent and prompt-heavy. Size L. Defer until ambitions and mandate show whether
 one more axis of internal politics is wanted.
 
-**Reworked (2026-10-07)** as **seats**: a third class of person, one per held
-world. A notable is a local house with its own favour, and it carries dissent.
-A governor is the leader's appointee, and it does not. See
-`design-2026-10-07-seats.md`. Mandate is tabled, so seats no longer wait on it.
+**Reworked (2026-10-07)** as **seats**: three estates a power, each with a
+stat profile and a favour that buffs or debuffs those stats, and a notable of
+one estate in every world's seat (two on a hub). Estates want seats; buffs are
+bought with grants; dissent is unchanged. See `design-2026-10-07-seats.md`.
+Mandate is tabled, so seats no longer wait on it.
 
 ---
 
@@ -668,7 +669,7 @@ size.
 | idea | § | why it is large |
 |---|---|---|
 | Courting unaligned worlds **(built)** | 6.1 | wants and opinions for every neutral world, peaceful joining, bot behaviour, prompts |
-| Estates, reworked as seats | 5.3 | a third class of person per world — notables who carry dissent, governors who do not — see `design-2026-10-07-seats.md` |
+| Estates, reworked as seats | 5.3 | three estates a power whose favour buffs their stats, and a notable of one in every seat — see `design-2026-10-07-seats.md` |
 
 ---
 
@@ -725,7 +726,7 @@ flowchart LR
   end
 
   ambitions["Ambitions · M+"]:::heavy -.-> mandate["Mandate · M+"]:::heavy --> fortune["Fortune and darkness · S"]:::light
-  seats["Seats: governors and notables · L"]:::heavy
+  seats["Seats: estates and notables · L"]:::heavy
 ```
 
 S is small, M is medium (lighter), M+ is medium (heavier) and L is large.
