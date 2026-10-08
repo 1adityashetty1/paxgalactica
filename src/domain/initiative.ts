@@ -36,6 +36,16 @@ import {
   wantOf,
 } from './regard.js';
 import { ENVOYS_QUIET_TURNS } from './events.js';
+import {
+  actingFavour,
+  courtRecorded,
+  defaultEstate,
+  grantsOf,
+  notableById,
+  powerOf as notablesPower,
+  seatedAt,
+} from './seats.js';
+import { GRANT_COST, MARRIAGE_CONSENT_REGARD, MAX_GRANTS, RESENTFUL, estateOwner } from './estates.js';
 import { clashKey } from './pulse.js';
 import { jumpsBetween } from './graph.js';
 import { EXHAUSTION_INDEMNITY_SHARE, exhaustion, secretLive, sideStrength } from './leverage.js';
@@ -2020,6 +2030,162 @@ function incite(ctx: Ctx): Ops {
   ];
 }
 
+/* ------------------------------------------------------------------ */
+/* The court                                                           */
+/* ------------------------------------------------------------------ */
+
+/** Stipends a bot pays its weakest estate, at most. */
+export const BOT_MAX_STIPENDS = 2;
+/** A bot pays a stipend only while its standing income covers this many. */
+export const BOT_STIPEND_COVER = 4;
+
+/**
+ * Keep the court: one act a turn, in order of need — see `seats.ts`.
+ *
+ * - **Reseat a conquest.** A foreign notable working against the bot is
+ *   reseated first, for the default estate: the first act of governing it.
+ * - **Placate.** When its worst estate falls to `RESENTFUL`, a seat moves to it
+ *   from its best.
+ * - **Grant.** A solvent bot pays the estate behind its weakest stat a
+ *   stipend, up to `BOT_MAX_STIPENDS`, judged against standing income as a
+ *   fixture is; one that runs at a loss stops paying one.
+ */
+function keepCourt(ctx: Ctx): Ops {
+  const { state, me } = ctx;
+  if (!courtRecorded(state)) return [];
+  const mine = held(state, me).sort((a, b) => b.strategicValue - a.strategicValue || a.id.localeCompare(b.id));
+  for (const world of mine) {
+    const foreign = seatedAt(state, world.id).find(
+      (n) => n.estateId !== null && estateOwner(n.estateId) !== me && (actingFavour(state, n) ?? 0) <= RESENTFUL,
+    );
+    const estate = foreign ? defaultEstate(state, me, world) : null;
+    if (estate) return [{ op: 'seat_estate', factionId: me, systemId: world.id, estate: estate.id }];
+  }
+  const faction = getFaction(state, me);
+  const estates = [...(faction?.estates ?? [])];
+  if (!faction || estates.length === 0) return [];
+  const byFavour = [...estates].sort((a, b) => a.favour - b.favour || a.id.localeCompare(b.id));
+  const worst = byFavour[0]!;
+  const best = byFavour[byFavour.length - 1]!;
+  if (worst.favour <= RESENTFUL && best.id !== worst.id) {
+    const seat = (state.notables ?? []).find(
+      (n) => n.estateId === best.id && n.systemId !== null && mine.some((w) => w.id === n.systemId),
+    );
+    if (seat) return [{ op: 'seat_estate', factionId: me, systemId: seat.systemId, estate: worst.id }];
+  }
+  const ledger = ledgerFor(state, me);
+  // Standing income, as a fixture is judged: this turn's prizes run out.
+  const standing = ledger.net - ledger.raided - ledger.bounties;
+  if (standing < 0) {
+    const paid = [...estates].sort((a, b) => b.stipends - a.stipends || a.id.localeCompare(b.id))[0];
+    if (paid && paid.stipends > 0) return [{ op: 'revoke_stipend', factionId: me, estate: paid.id }];
+    return [];
+  }
+  const weakest = [...estates].sort((a, b) => faction.stats[a.stat] - faction.stats[b.stat] || a.id.localeCompare(b.id))[0]!;
+  if (
+    weakest.stipends < BOT_MAX_STIPENDS &&
+    grantsOf(state, weakest) < MAX_GRANTS &&
+    standing >= GRANT_COST * BOT_STIPEND_COVER * (weakest.stipends + 1)
+  ) {
+    return [{ op: 'grant_stipend', factionId: me, estate: weakest.id }];
+  }
+  return [];
+}
+
+/**
+ * Effective guile at which a bot works on a rival's notables — the Combine's,
+ * the best spies on the board. Measured at 14, which let the Confederacy and
+ * Meridian in too: they sent operatives at the Vigil's home ground every few
+ * turns, lost most of them, and the Confederacy lost two worlds it could no
+ * longer afford to hold.
+ */
+export const BOT_SEDUCER_GUILE = 16;
+/** Turns a bot leaves a world alone after one of its operatives is taken there. */
+export const BOT_SEDUCER_BURNED_TURNS = 10;
+/** What it holds back before it sends one: a few missions' worth. */
+export const BOT_SEDUCER_RESERVE = AGENT_COST.seduction * 4;
+
+/**
+ * Work on a rival's notable — the guileful powers' instrument. On the richest
+ * world bordering its own held by a power it is at war with or has no warmth
+ * for: at war, a subversion that turns the notable against its holder; short
+ * of war, a seduction. One at a time, recalled when the mark is gone.
+ */
+function workNotables(ctx: Ctx): Ops {
+  const { state, me } = ctx;
+  if (!courtRecorded(state)) return [];
+  if (effectiveStats(state, me).guile < BOT_SEDUCER_GUILE) return [];
+  const running = state.agents.find((a) => a.ownerFactionId === me && !a.exposed && a.targetNotableId);
+  if (running) {
+    if (!atWork(running, state.turn)) return [];
+    const mark = notableById(state, running.targetNotableId);
+    if (mark && mark.systemId === running.systemId) return [];
+    return [{ op: 'recall_agent', agentId: running.id, reason: 'the notable it worked on is gone' }];
+  }
+  const wars = new Set(warsFor(state, me));
+  const home = held(state, me).sort((a, b) => b.strategicValue - a.strategicValue || a.id.localeCompare(b.id))[0];
+  // Not a power's own home ground, where its people defend with the resolve it
+  // was founded on, and not a world that has just taken one of ours.
+  const burned = new Set(
+    state.agents
+      .filter((a) => a.ownerFactionId === me && a.caughtTurn !== undefined && state.turn - a.caughtTurn < BOT_SEDUCER_BURNED_TURNS)
+      .map((a) => a.systemId),
+  );
+  const target = frontier(state, me)
+    .filter((x) => {
+      const holder = x.controllerFactionId;
+      if (holder === null || holder === me || x.homeFactionId === holder || burned.has(x.id)) return false;
+      return wars.has(holder) || dispositionBetween(state, me, holder) <= BOT_AGGRESSION_CEILING;
+    })
+    .sort((a, b) => b.strategicValue - a.strategicValue || a.id.localeCompare(b.id))
+    .map((x) => ({ x, n: seatedAt(state, x.id).find((n) => notablesPower(n) === x.controllerFactionId) }))
+    .find((t) => t.n !== undefined);
+  if (!target || !home) return [];
+  if (purse(state, me) < BOT_SEDUCER_RESERVE) return [];
+  if (liveAgentsOf(state, me).length >= maxAgentsFor(state, me)) return [];
+  const atWar = wars.has(target.x.controllerFactionId!);
+  return [
+    { op: 'recruit_agent', systemId: home.id },
+    {
+      op: 'deploy_agent',
+      systemId: target.x.id,
+      mission: atWar ? 'subversion' : 'seduction',
+      effect: atWar ? { kind: 'turn_notable' } : { kind: 'seduce' },
+      targetNotable: target.n!.id,
+      cover: `a guest of ${target.n!.name}'s house on ${target.x.name}`,
+    },
+  ];
+}
+
+/**
+ * A courting power marries into an independent world that will have it — one
+ * that regards it at `MARRIAGE_CONSENT_REGARD` or better — with its
+ * worst-favoured estate's notable, which the match counts as a grant. One a
+ * turn, and never twice into one world.
+ */
+function match(ctx: Ctx): Ops {
+  const { state, me } = ctx;
+  if (!courtRecorded(state) || !COURTING_ETHICS.has(getFaction(state, me)?.warEthic ?? '')) return [];
+  const world = state.systems
+    .filter(
+      (x) =>
+        x.controllerFactionId === null &&
+        regardFor(x, me) >= MARRIAGE_CONSENT_REGARD &&
+        seatedAt(state, x.id).some((n) => n.estateId === null && n.spouseId === null) &&
+        !seatedAt(state, x.id).some((n) => n.spouseId && notablesPower(notableById(state, n.spouseId)!) === me),
+    )
+    .sort((a, b) => regardFor(b, me) - regardFor(a, me) || a.id.localeCompare(b.id))[0];
+  if (!world) return [];
+  const estates = [...(getFaction(state, me)?.estates ?? [])].sort((a, b) => a.favour - b.favour || a.id.localeCompare(b.id));
+  for (const estate of estates) {
+    const groom = (state.notables ?? []).find(
+      (n) => n.estateId === estate.id && n.systemId !== null && n.spouseId === null && grantsOf(state, estate) < MAX_GRANTS,
+    );
+    if (groom) return [{ op: 'propose_marriage', factionId: me, notable: groom.id, systemId: world.id }];
+  }
+  return [];
+}
+
 export const BOTS: Record<string, Bot> = { meridian, vigil, ojjul, freeworlds, drajk };
 
 /* ------------------------------------------------------------------ */
@@ -2280,7 +2446,7 @@ export function proposeFor(
   // covert half of a war it is in — added here rather than to five bots, for
   // the reason the filters below are: a bot added later inherits them.
   const ctx = { state, me: factionId };
-  const rules = [hold, court, incite, mend, sabotage, watch, sweep, useProof, demandTribute, callIn, backDemands, postBounty].map((rule) =>
+  const rules = [hold, court, incite, mend, sabotage, watch, sweep, useProof, demandTribute, callIn, backDemands, postBounty, keepCourt, workNotables, match].map((rule) =>
     rule(ctx),
   );
   // Paper first, then standing. Both are post-filters over one proposal, so a
@@ -2561,6 +2727,54 @@ export function brokeredAccords(state: WorldState): Accord[] {
           },
         ],
       });
+    }
+  }
+
+  // Marriages: two powers on good terms and at peace, neither barred from a
+  // peace with the other, each with an estate out of favour, wed those
+  // estates' notables — a grant to each that costs no credits, and a peace.
+  // One a pair at a time. See `seats.ts`.
+  if (courtRecorded(state)) {
+    const unwed = (p: string) => {
+      const estates = [...(getFaction(state, p)?.estates ?? [])].sort((x, y) => x.favour - y.favour || x.id.localeCompare(y.id));
+      const worst = estates[0];
+      if (!worst || worst.favour >= 0 || grantsOf(state, worst) >= MAX_GRANTS) return undefined;
+      return (state.notables ?? []).find(
+        (n) =>
+          n.estateId === worst.id &&
+          n.spouseId === null &&
+          n.systemId !== null &&
+          state.systems.find((w) => w.id === n.systemId)?.controllerFactionId === p,
+      );
+    };
+    const wed = new Set<string>();
+    for (let i = 0; i < npcs.length; i++) {
+      for (let j = i + 1; j < npcs.length; j++) {
+        const a = npcs[i]!;
+        const b = npcs[j]!;
+        if (wed.has(a) || wed.has(b)) continue;
+        if (Math.min(dispositionBetween(state, a, b), dispositionBetween(state, b, a)) < EXCHANGE_STANDING) continue;
+        if (warsFor(state, a).includes(b) || barred(a, b) || barred(b, a)) continue;
+        if (boundBy(state, a, b, new Set(['marriage']))) continue;
+        const na = unwed(a);
+        const nb = unwed(b);
+        if (!na || !nb) continue;
+        wed.add(a);
+        wed.add(b);
+        out.push({
+          parties: [a, b],
+          label: `marriage:${a}:${b}`,
+          ops: [
+            {
+              op: 'form_treaty',
+              parties: [a, b],
+              treatyType: 'marriage',
+              terms: { spouses: [na.id, nb.id] },
+              summary: `${na.name} of ${name(a)} weds ${nb.name} of ${name(b)}`,
+            },
+          ],
+        });
+      }
     }
   }
 
