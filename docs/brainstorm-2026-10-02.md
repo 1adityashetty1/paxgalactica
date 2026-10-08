@@ -561,7 +561,9 @@ one more axis of internal politics is wanted.
 of its three weakest stats, with a favour that buffs or debuffs it, and a notable of
 one estate in every world's seat (two on a hub). Estates want seats; buffs are
 bought with grants; dissent is unchanged. See `design-2026-10-07-seats.md`.
-Mandate is tabled, so seats no longer wait on it.
+Mandate is tabled, so seats no longer wait on it. **Built 2026-10-08**, with
+marriage, wards and prisoners, independent worlds' notables and the three
+operations against a notable.
 
 ---
 
@@ -669,7 +671,7 @@ size.
 | idea | § | why it is large |
 |---|---|---|
 | Courting unaligned worlds **(built)** | 6.1 | wants and opinions for every neutral world, peaceful joining, bot behaviour, prompts |
-| Estates, reworked as seats | 5.3 | three estates a power, on its weakest stats, whose favour buffs them; a notable of one in every seat and on every independent world; marriage, wards and prisoners, and seduction — see `design-2026-10-07-seats.md` |
+| Estates, reworked as seats **(built)** | 5.3 | three estates a power, on its weakest stats, whose favour buffs them; a notable of one in every seat and on every independent world; marriage, wards and prisoners, and seduction — see `design-2026-10-07-seats.md` |
 
 ---
 
@@ -677,11 +679,11 @@ size.
 
 *Updated after PR #61: coalitions and exhaustion were built as extensions of
 mutual defence and bot peace, war goals were dropped, and the interface caught
-up with what is built. Updated again for the seats design, which is one
-feature — estates, notables, marriage, wards and prisoners, and the operations
-against a notable — and for mandate being tabled.* Seventeen ideas are built, plus the bot rules that use
-them, and two are dropped, so four are left. Built work is no longer a node:
-where it unlocks something, the node says so.
+up with what is built. Updated again when seats were built, as one feature —
+estates, notables, marriage, wards and prisoners, and the operations against
+a notable — with mandate tabled.* Eighteen ideas are built, plus the bot rules
+that use them, and two are dropped, so three are left. Built work is no longer
+a node: where it unlocks something, the node says so.
 
 The interface work is not from this brainstorm. It makes the built ideas
 reachable in play rather than adding mechanics:
@@ -699,32 +701,17 @@ tabled or later.
 flowchart LR
   classDef light fill:#E1F5EE,stroke:#0F6E56,color:#085041
   classDef heavy fill:#FAECE7,stroke:#993C1D,color:#712B13
-  classDef done fill:#F1EFE8,stroke:#888780,color:#444441
   classDef later fill:#FFFFFF,stroke:#B4B2A9,color:#5F5E5A
-
-  standing["Standing (built)"]
-  captives["Captured officers and operatives (built)"]
-  secrets["Secrets (built)"]
-  intel["Intel with memory (built)"]
-  ui["Draft buttons and help (built)"]
-
-  seats["Seats: estates, notables, marriage (L)"]
 
   ambitions["Ambitions (M+)"]
   mandate["Mandate (M+, tabled)"]
   fortune["Fortune and darkness (S)"]
 
-  standing --> seats
-  captives --> seats
-  secrets --> seats
-  intel --> seats
-  ui -.-> seats
   ambitions -.-> mandate
   mandate --> fortune
 
-  class standing,captives,secrets,intel,ui done
   class fortune light
-  class seats,ambitions heavy
+  class ambitions heavy
   class mandate later
 ```
 
@@ -734,20 +721,16 @@ S is small, M is medium (lighter), M+ is medium (heavier) and L is large.
 
 | edge | kind | why |
 |---|---|---|
-| standing → seats | needs | a notable lifts or sours a world's regard, a marriage adds to its baseline, an independent world consents to a match by its standing, and a bitter estate lets a world go through the rising that exists |
-| captured officers and operatives → seats | needs | a ward or a prisoner is an asset with `notableId`, the twin of `commanderId` and `agentId` |
-| secrets → seats | needs | a seduction files an affair, a secret kind published or spent on blackmail |
-| intel → seats | needs | intel at 40 shows a rival's estates' favour in bands |
-| draft buttons and help ⇢ seats | better after | the Court tab's grant, reseat, marriage and ransom buttons, and the `:help court` page |
 | mandate → fortune | needs | darkness is charged when mandate buys a reroll |
 | ambitions ⇢ mandate | better after | a fulfilled ambition earns mandate |
 
 **Waves.**
 
-1. **Ready now:** ambitions, and seats (design written; one feature, built in
-   the order its design gives).
+1. **Ready now:** ambitions.
 2. Mandate, which is tabled.
 3. Fortune and darkness, which waits on it.
+
+Seats are built: see `design-2026-10-07-seats.md`.
 
 The longest chain is three deep: ambitions → mandate → fortune.
 

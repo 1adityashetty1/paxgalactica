@@ -17,9 +17,12 @@ beside them:
 - three operations against a notable: **turning**, **killing** and
   **seducing** them.
 
-*Status, 2026-10-07:* proposed, nothing built. **One feature**: built and
-shipped whole, in one pull request, pinned to journal version **20** (19 is
-taken by coalitions and ten given names).
+*Status, 2026-10-08:* **built**, as one feature in one pull request, pinned to
+journal version **20** (19 is taken by coalitions and ten given names). The
+code is `src/domain/estates.ts` (the shapes, sheets and numbers),
+`src/domain/seats.ts` (everything that reads the whole world) and
+`src/ui/court.ts` (the Court tab as data); *Settled while building* and
+*Measured* at the end record what the build decided and found.
 
 ## The rules in brief
 
@@ -125,7 +128,7 @@ standing uses, so nothing is banked and everything has to be kept up:
 
 | term in the baseline | |
 |---|---|
-| **seats** | `SEAT_FAVOUR` (20) for each seat held above the estate's fair share, −20 for each below. The fair share is the power's seats divided by three |
+| **seats** | `SEAT_FAVOUR` (20) for each seat held above the estate's fair share, −20 for each below, read continuously: a third of a seat over is +7. The fair share is the power's seats divided by three |
 | **grants** | `GRANT_FAVOUR` (20) for each grant the estate holds, up to `MAX_GRANTS` (3). A stipend is a grant, and so is a marriage (see *Marriage*) |
 | **hated seats** | −10 for each of its notables sitting a world that is not content with its holder — an estate does not enjoy holding down a world for you |
 
@@ -198,7 +201,8 @@ A seat is never empty. When one opens it is filled at once:
 (`WORLD_TYPE_STAT`) — an arid world (might) seats Meridian's Security
 Directorate, an earthlike world (influence) the Vigil's Blue Bloods, legible
 from the map as a fixture's ground is. Ground of one of the power's peaks has no
-estate, and goes to **the estate with the fewest seats**.
+estate, and goes to **the estate with the fewest seats**; so does a hub's second
+seat when the ground's estate already holds the first.
 
 **Reseating is a declaration** — *"give Kalzir to the Complex"* —
 `seat_estate { systemId, estateId }`, an action. It changes the baseline both
@@ -313,8 +317,9 @@ way a world that will not have you is a fact rather than a roll.
 - **When it joins you**, its notable takes a seat for **your spouse's estate**:
   the estate that made the match gets the world. The marriage is then within
   one power and does nothing more.
-- **There is no treaty and so no peace to break.** Attacking a world you married
-  into ends the marriage and costs what storming any world costs.
+- **There is no treaty and so no peace to break.** Taking a world you married
+  into by force turns its notable out, as any conquest of an independent world
+  does, and the marriage ends with them.
 - **Rivals can still court it.** A marriage puts you 30 ahead, not out of reach.
 
 ### How a marriage ends
@@ -322,7 +327,7 @@ way a world that will not have you is a fact rather than a roll.
 | it ends when | how | cost |
 |---|---|---|
 | a party repudiates it | `break_treaty`, a divorce | a broken pact's price; the estate loses the grant and takes `REVOKED_FAVOUR` |
-| a power attacks a world it married into | the bond ends | what storming the world costs; the estate loses the grant |
+| a power takes by force a world it married into | its notable is turned out | what storming the world costs; the estate loses the grant |
 | either spouse dies | voided, nobody's fault | the estate loses the grant |
 | an affair is published | voided (see *Operatives*) | the estate loses the grant; the betrayed in-laws resent the strayer's power |
 | the holder of a ward questions them | broken by the holder | a broken pact's price, on top of what questioning a person costs |
@@ -495,13 +500,17 @@ an inadmissible ruling does.
 ## Bots
 
 - **Seats** fill by the default rule and the bots leave them, except:
-- **`placate`** — a bot reseats from its best-favoured estate to its worst when
-  the worst falls below −40, one seat at a time;
-- **`grant`** — a solvent bot grants a stipend to the estate behind its weakest
-  stat, up to two, judged against standing income as fixtures are;
-- **`subvert`** — high-guile ethics turn a rival's notable on a world they want
-  when at war, and seduce it when not; `honourTreaties` and `honourStanding`
-  gate both as they gate incitement;
+- **`keepCourt`**, one act a turn in order of need: **reseat** a conquest's
+  foreign notable for the default estate; **placate**, moving a seat from the
+  best-favoured estate to the worst when the worst falls to −40; **grant** the
+  estate behind its weakest stat a stipend, up to `BOT_MAX_STIPENDS` (2), while
+  standing income covers `BOT_STIPEND_COVER` (4) times the stipends, and revoke
+  one when it runs at a loss;
+- **`workNotables`** — a power at effective guile `BOT_SEDUCER_GUILE` (16),
+  which is the Combine, turns a rival's notable on a bordering world when at
+  war and seduces it when not, one at a time — never on a power's own home
+  ground, and not at a world that took one of its operatives in the last
+  `BOT_SEDUCER_BURNED_TURNS` (10). Gated on war or no warmth, as incitement is;
 - **marriage**, brokered in `brokeredAccords` — two NPC powers on good terms
   (`EXCHANGE_STANDING`, 20, both ways), at peace, neither barred by its
   compulsions (`barsPeaceWith`), each with an estate below 0, marry those
@@ -557,6 +566,48 @@ step tested before the next:
    affair, the watcher's view.
 8. The no-promotion guards and table.
 9. UI, prompts, help; bots; measure.
+
+## Settled while building
+
+- **Favour starts at 0** and drifts to its baseline from the first turn.
+- **Withheld income is lost to everyone**: a notable who will not collect for
+  you is not collecting for themselves. A `Ledger.withheld` line, and
+  `Ledger.stipends` for what the estates are paid.
+- **A notable's id is its family name** (`nob-galba`). Family names are never
+  reused in a campaign, so an id never is either, and a secret or an asset
+  pointing at a dead notable can never come to point at a living one.
+- **A held notable remembers the world they left** (`Notable.homeId`), and a
+  marriage's pull goes on there while they are held.
+- **A notable coming home may take a seat their own estate already holds**: the
+  one sitting it stands aside.
+- **Marriages and their treaties are kept in step each tick**: a treaty whose
+  spouses are no longer wed is voided, and a bond between two powers'
+  notables with no live treaty under it ends — which is how an attack on the
+  in-laws, breaking the treaty as any peace is broken, ends the marriage.
+- **An operative aimed at an independent world's notable** has no holder to
+  catch it: on a bad roll it is turned off the world, and a knife caught there
+  costs its power `RIM_WATCHES_REGARD` (25) with the world.
+- **The fleetlab arena keeps no court**, for the reason it keeps no regard.
+
+## Measured
+
+`pnpm balance [turns] [--no-events] [--no-seats]`. All four boards — 30 and
+100 turns, with and without events — read **5/5/6/5/4 with the court and
+without it**, as they did before. Every property `tests/balance.test.ts`
+asserts holds. The bots pay stipends to their weakest estates: the Vigil's
+Blue Bloods reach 56 (+1 influence) and end at 39–47, the Combine's Made Men
+reach 47 (+1 might), Meridian's Standards & Practices 31. The lowest any
+estate falls is −23, so no world is let go. One bot marriage forms in each run
+(the Combine and the Confederacy, on turn 2), and over 100 turns the courting
+powers make four matches with independent worlds they are courting, which
+then join them as they would have anyway, sooner.
+
+**The first seducer rule was too wide.** At effective guile 14 the Confederacy
+and Meridian joined the Combine, sent operatives at the Vigil's home ground
+every few turns and lost most of them; at 100 turns without events the
+Confederacy fell to two worlds and the Vigil reached eight. At 16, away from
+home ground and off a world that just took one of its people, every board is
+back to 5/5/6/5/4. A harness run is about a tenth slower with the court.
 
 ## Later
 
