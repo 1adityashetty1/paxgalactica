@@ -71,6 +71,7 @@ leaves a faction with nobody following it.
 | `grant_stipend` | pay one of your estates a stipend — see Estates and seats |
 | `revoke_stipend` | stop paying one, at a cost in its favour |
 | `seat_estate` | give a seat on a world you hold to one of your estates |
+| `propose_marriage` | marry one of your notables into an independent world |
 | `create_asset` | a thing taken or made **because the attempt worked** — see Things |
 | `transfer_asset` | hand a thing you hold to somebody else |
 | `split_asset` | break a divisible holding into two lots |
@@ -928,7 +929,13 @@ conqueror until the conqueror reseats it.
   foreign notable is turned out first. It costs the world a little of its
   regard for you, and one estate's gain is another's loss.
 
-All three are actions of their own: nothing else need ride with them, and
+- `propose_marriage` marries one of your seated notables to the notable of a
+  world **that answers to nobody**. The world consents by its standing with
+  you — 40 or better — and the code checks it. A marriage with another
+  POWER's notable needs that power's consent: it is a treaty, agreed in a
+  channel, never this op.
+
+All four are actions of their own: nothing else need ride with them, and
 their price is set in code — do not add credits or dissent for them.
 
 ## Standing orders: when the fleet breaks off

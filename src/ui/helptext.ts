@@ -334,12 +334,13 @@ export function wrap(text: string, indent = '  ', width = 76): string[] {
 const MISSION_JOB: Record<AgentMission, string> = {
   surveillance: 'watches a world: hidden work there shows',
   theft: 'skims credits off the world it sits on',
-  subversion: 'wears down one of the holder\'s stats',
+  subversion: 'wears down a stat, or turns a notable',
   sabotage: 'wrecks hulls and fixtures',
   defection: 'talks crews into your service',
   discord: 'sets the holder against a third power',
   incitement: 'turns a world against whoever holds it',
-  assassination: 'one strike, at a power or a named officer',
+  assassination: 'one strike, at a power, officer or notable',
+  seduction: 'courts a notable: kin, and an affair to prove',
 };
 
 /** Operatives, from the mission table that prices and risks them. */
@@ -398,6 +399,7 @@ const TREATY_JOB: Record<TreatyType, string> = {
   tribute: 'one pays the other every turn to be left alone',
   contract: 'paid work: a hire, a charter, a letter of marque',
   cession: 'worlds change hands, once; a price may ride along',
+  marriage: 'a notable of each side wed: a peace, and kin',
 };
 
 /** Talking, and what it takes to make anything said real. */

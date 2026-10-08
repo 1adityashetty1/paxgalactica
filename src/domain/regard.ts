@@ -12,6 +12,7 @@ import {
   type WorldState,
 } from './state.js';
 import type { BattleReport } from './battle.js';
+import { MARRIAGE_REGARD } from './estates.js';
 
 /**
  * A world's regard for each power — its **standing** with them — and the two
@@ -214,6 +215,11 @@ export interface RegardEvents {
   battles: readonly BattleReport[];
   /** Works delivered on a world: develop_system and fortify, by whom. */
   landed: readonly { systemId: string; factionId: string; kind: 'develop_system' | 'fortify' }[];
+  /**
+   * Which powers each world counts as kin by marriage — see `inLawsByWorld`.
+   * Each adds `MARRIAGE_REGARD` to its baseline toward them.
+   */
+  kin?: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 const clampRegard = (n: number): number => Math.max(-100, Math.min(100, Math.round(n)));
@@ -251,7 +257,7 @@ export function accrueRegard(state: WorldState, happened: RegardEvents): void {
     const next: Record<string, number> = {};
     for (const id of ids) {
       const was = regardFor(system, id);
-      const base = baselineRegard(system, id);
+      const base = baselineRegard(system, id) + (happened.kin?.get(system.id)?.has(id) ? MARRIAGE_REGARD : 0);
       const gap = base - was;
       let r = was + Math.sign(gap) * Math.ceil(Math.abs(gap) * REGARD_FADE);
       if (meetsWant(state, system, id)) r += WANT_REGARD;

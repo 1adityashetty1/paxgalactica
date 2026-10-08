@@ -41,6 +41,7 @@ export const HEAT_FOR_MISSION: Record<string, number> = {
   discord: 4,
   incitement: 3,
   assassination: 8,
+  seduction: 2,
 };
 
 /** An operative taken — by exposure on the tick, or by a crackdown. */

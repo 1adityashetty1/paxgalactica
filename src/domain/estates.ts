@@ -48,6 +48,8 @@ export const NotableSchema = z.object({
   systemId: z.string().nullable(),
   /** The notable they are married to — the one record of a marriage. */
   spouseId: z.string().nullable().default(null),
+  /** The world they sat before they were taken into keeping, whose regard a marriage still pulls. */
+  homeId: z.string().nullable().default(null),
 });
 export type Notable = z.infer<typeof NotableSchema>;
 
@@ -182,5 +184,17 @@ export const WITHHOLD_SHARE = 0.5;
 export const MARRIAGE_REGARD = 30;
 /** An independent world accepts a match from a power it regards at least this well. */
 export const MARRIAGE_CONSENT_REGARD = 40;
+/** What a held notable is worth to the power whose they are; to anyone else, `OFFICER_LEVERAGE`. */
+export const NOTABLE_RANSOM = 150;
+/** A seduced notable's world warms to the seducer this much a turn — about a marriage's worth, settled. */
+export const SEDUCTION_REGARD = 3;
+/** Turns a seduction works before the affair is proven. */
+export const SEDUCTION_PROOF_TURNS = 3;
+/** A published affair: the notable's estate, at once. */
+export const AFFAIR_FAVOUR = 15;
+/** A published affair: the notable's world, toward its holder. */
+export const AFFAIR_REGARD = 10;
+/** A published affair that ends a marriage: the in-laws, toward the strayer's power. */
+export const AFFAIR_RESENTMENT = 10;
 /** A killed notable's world, toward its holder, in the confusion. */
 export const ASSASSINATION_REGARD = 10;

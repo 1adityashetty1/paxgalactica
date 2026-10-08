@@ -66,6 +66,8 @@ import {
   conflictingTreaty,
   isTreatyLive,
   AssetSchema,
+  SecretSchema,
+  type Secret,
   AgentSchema,
   treatyBetween,
   type Asset,
@@ -214,6 +216,7 @@ import {
 } from './hulls.js';
 import { accrueIntel, EMISSION_RANGE, isPublicOrderType, recordSightings } from './intel.js';
 import {
+  RIM_WATCHES_REGARD,
   SECESSION_REGARD,
   accrueRegard,
   envoyRefusal,
@@ -232,14 +235,34 @@ import {
   estateById,
   findEstate,
   grantsOf,
+  holdNotable,
+  inLawsByWorld,
+  notableById,
   notablesAct,
   onWorldChangesHands,
+  powerOf as notablesPower,
   removeNotable,
+  resolveNotable,
   seatNotable,
   seatedAt,
   seatsOf,
+  defaultEstate,
+  unmarry,
 } from './seats.js';
-import { MAX_GRANTS, RESEAT_REGARD, REVOKED_FAVOUR, estateOwner } from './estates.js';
+import {
+  AFFAIR_FAVOUR,
+  AFFAIR_REGARD,
+  AFFAIR_RESENTMENT,
+  ASSASSINATION_REGARD,
+  MARRIAGE_CONSENT_REGARD,
+  MAX_GRANTS,
+  RESEAT_REGARD,
+  REVOKED_FAVOUR,
+  SEDUCTION_PROOF_TURNS,
+  SEDUCTION_REGARD,
+  estateOwner,
+  type Notable,
+} from './estates.js';
 import {
   EXTRACTION_ALLOWED,
   EXTRACTION_REFUSAL_REASON,
@@ -1255,6 +1278,9 @@ function adjustCommitmentGoodwill(
  * would have nothing in force while a council deliberates.
  */
 function pairLevelFootprint(t: Treaty): string[] {
+  // A marriage weds two people, not two powers: a second between the same
+  // pair is a second marriage, and neither retires the other.
+  if (t.type === 'marriage') return [];
   const marks: string[] = [];
   if (Object.values(t.terms.incomePerTurn).some((v) => v !== 0)) marks.push('incomePerTurn');
   if (Object.values(t.terms.shipsPledged).some((v) => v > 0)) marks.push('shipsPledged');
@@ -1359,6 +1385,219 @@ function leaveTruce(state: WorldState, treaty: Treaty, wereAtWar: boolean, notes
   const note = `The war between ${nameFor(state, parties[0]!)} and ${nameFor(state, parties[1]!)} ends in a truce until turn ${state.turn + TRUCE_TURNS}.`;
   notes.push(note);
   logEvent(state, 'diplomacy', note);
+}
+
+/** The live `marriage` treaty that weds this notable, if one does. */
+function marriageOf(state: WorldState, notableId: string): Treaty | undefined {
+  return (state.treaties ?? []).find(
+    (t) => t.type === 'marriage' && isTreatyLive(t, state.turn) && (t.terms.spouses ?? []).includes(notableId),
+  );
+}
+
+/**
+ * A marriage treaty takes force: the two notables are wed, and a ward named in
+ * it leaves their seat for the other party's court, their seat refilled for
+ * the same estate. Called where every treaty takes force — at signature and on
+ * ratification. A spouse already married, or gone, voids it instead.
+ */
+function wed(state: WorldState, treaty: Treaty): string[] {
+  if (treaty.type !== 'marriage') return [];
+  const [a, b] = (treaty.terms.spouses ?? []).map((id) => notableById(state, id));
+  if (!a || !b || a.spouseId || b.spouseId) {
+    treaty.status = 'voided';
+    const note = `The marriage in ${treaty.id} cannot be made: one of the two is gone or already wed.`;
+    logEvent(state, 'diplomacy', note, treaty.parties[0], [...treaty.parties]);
+    return [note];
+  }
+  a.spouseId = b.id;
+  b.spouseId = a.id;
+  const of = (n: typeof a) => estateById(state, n.estateId)?.estate.name;
+  const notes = [`${a.name}${of(a) ? ` of ${of(a)}` : ''} and ${b.name}${of(b) ? ` of ${of(b)}` : ''} are married.`];
+  const ward = treaty.terms.ward ? notableById(state, treaty.terms.ward) : undefined;
+  if (ward && ward.systemId !== null) {
+    const keeper = treaty.parties.find((p) => p !== notablesPower(ward));
+    const court = keeper ? state.systems.find((w) => w.controllerFactionId === keeper) : undefined;
+    if (keeper && court) {
+      const from = ward.systemId;
+      holdNotable(state, ward, keeper, (fleetBases(state, keeper)[0] ?? court).id, mintId(state, 'ast'), 'ward');
+      // The estate loses nothing by the match: its seat is filled at once.
+      if (ward.estateId) seatNotable(state, ward.estateId, from, `ward:${from}:${state.turn}`);
+      notes.push(`${ward.name} goes to live at ${nameFor(state, keeper)}'s court, a ward of the marriage.`);
+    }
+  }
+  for (const note of notes) logEvent(state, 'diplomacy', note, treaty.parties[0]);
+  return notes;
+}
+
+/**
+ * Break a marriage treaty on behalf of `breaker`, at a broken pact's price,
+ * and end the bond. What questioning a ward amounts to.
+ */
+function breakMarriageTreaty(state: WorldState, treaty: Treaty, breaker: string): string[] {
+  treaty.status = 'broken';
+  const other = treaty.parties.find((p) => p !== breaker);
+  if (other) moveRegard(state, other, breaker, -25);
+  for (const id of treaty.terms.spouses ?? []) {
+    const n = notableById(state, id);
+    if (n) unmarry(state, n);
+  }
+  const note = `${nameFor(state, breaker)} breaks the marriage (${treaty.summary}).`;
+  logEvent(state, 'diplomacy', note, breaker);
+  return [note];
+}
+
+/**
+ * What an operative aimed at a notable does on a turn it succeeds, as the line
+ * its owner reads. `holder` is the world's holder, `null` on a world nobody
+ * holds. See `seats.ts`.
+ */
+function workOnNotable(
+  state: WorldState,
+  agent: Agent,
+  host: StarSystem,
+  mark: Notable | undefined,
+  holder: string | null,
+): string {
+  if (!mark || mark.systemId !== host.id) {
+    return `finds nobody of that name in ${host.name}'s seat any more.`;
+  }
+  switch (agent.mission) {
+    case 'assassination': {
+      const knife = rollD20(state.turn, `assassinate:${agent.id}`);
+      if (knife < ASSASSINATION_KILL_ROLL) return `came close to ${mark.name} on ${host.name} and no closer.`;
+      const said = killNotable(state, mark, host, holder);
+      logEvent(state, 'narrative', said, holder);
+      if (holder !== agent.ownerFactionId) logEvent(state, 'narrative', said, agent.ownerFactionId, [agent.ownerFactionId]);
+      return `killed ${mark.name} on ${host.name}.`;
+    }
+    case 'seduction': {
+      if (regardRecorded(state)) {
+        const before = regardFor(host, agent.ownerFactionId);
+        host.regard = { ...host.regard, [agent.ownerFactionId]: Math.min(100, before + SEDUCTION_REGARD) };
+      }
+      agent.courted = (agent.courted ?? 0) + 1;
+      // Proven once, on the turn the affair has gone on long enough, and only
+      // where there is a court to shame: an independent world has no holder.
+      if (agent.courted === SEDUCTION_PROOF_TURNS && holder !== null && holder !== agent.ownerFactionId) {
+        const secret = SecretSchema.parse({
+          kind: 'affair',
+          subject: holder,
+          ref: agent.id,
+          notableId: mark.id,
+          filedTurn: state.turn,
+        });
+        const said = describeSecret(state, secret);
+        state.assets.push(
+          AssetSchema.parse({
+            id: mintId(state, 'ast'),
+            kind: DOSSIER_KIND,
+            text: `Proof that ${said}`.slice(0, 240),
+            heldBy: agent.ownerFactionId,
+            quantity: 1,
+            unit: 'file',
+            divisible: false,
+            valuePerUnit: { [holder]: 150, [agent.ownerFactionId]: 60 },
+            atSystemId: null,
+            acquiredTurn: state.turn,
+            secret,
+          }),
+        );
+        return `has ${mark.name} where it wants them, and the proof of it is filed.`;
+      }
+      return `keeps company with ${mark.name} on ${host.name}; ${host.name} warms to you.`;
+    }
+    default:
+      return `keeps ${mark.name} working against ${holder ? nameFor(state, holder) : 'nobody'} on ${host.name}.`;
+  }
+}
+
+/**
+ * A notable killed. The seat refills at once: for the same estate if it was the
+ * holder's own, for the holder if it was a foreign notable — the old power's
+ * foothold ends with them — and with a new voice of its own on a world nobody
+ * holds. The holder's own world shakes in the confusion.
+ */
+function killNotable(state: WorldState, mark: Notable, host: StarSystem, holder: string | null): string {
+  const power = notablesPower(mark);
+  removeNotable(state, mark);
+  let refill;
+  if (holder === null) {
+    refill = seatNotable(state, null, host.id, `killed:${host.id}:${state.turn}`);
+  } else if (power === holder && mark.estateId) {
+    refill = seatNotable(state, mark.estateId, host.id, `killed:${host.id}:${state.turn}`);
+    if (regardRecorded(state)) {
+      host.regard = { ...host.regard, [holder]: Math.max(-100, regardFor(host, holder) - ASSASSINATION_REGARD) };
+    }
+  } else {
+    const estate = defaultEstate(state, holder, host);
+    refill = estate ? seatNotable(state, estate.id, host.id, `killed:${host.id}:${state.turn}`) : undefined;
+  }
+  return `${mark.name} is killed on ${host.name}.${refill ? ` ${refill.name} takes the seat.` : ''}`;
+}
+
+/**
+ * A published affair: the notable's estate shamed, their world thinking less
+ * of its holder, and a marriage it betrays voided, the in-laws blaming the
+ * court that let it happen.
+ */
+function publishAffair(state: WorldState, secret: Secret): string[] {
+  const notable = notableById(state, secret.notableId);
+  if (!notable) return [];
+  const notes: string[] = [];
+  const estate = estateById(state, notable.estateId)?.estate;
+  if (estate) estate.favour = Math.max(-100, estate.favour - AFFAIR_FAVOUR);
+  const world = state.systems.find((w) => w.id === (notable.systemId ?? notable.homeId));
+  const holder = world?.controllerFactionId ?? null;
+  if (world && holder && regardRecorded(state)) {
+    world.regard = { ...world.regard, [holder]: Math.max(-100, regardFor(world, holder) - AFFAIR_REGARD) };
+  }
+  const spouse = notableById(state, notable.spouseId);
+  if (spouse) {
+    const treaty = marriageOf(state, notable.id);
+    if (treaty) treaty.status = 'voided';
+    unmarry(state, notable);
+    const inLaws = notablesPower(spouse);
+    if (inLaws && inLaws !== secret.subject) moveRegard(state, inLaws, secret.subject, -AFFAIR_RESENTMENT);
+    const note = `The marriage of ${notable.name} and ${spouse.name} is over.`;
+    notes.push(note);
+    logEvent(state, 'diplomacy', note, secret.subject);
+  }
+  return notes;
+}
+
+/**
+ * Keep marriage treaties and the bonds they record in step: a treaty whose
+ * spouses are no longer wed is voided — a spouse died, or was questioned — and
+ * a bond between two powers' notables with no live treaty under it ends — the
+ * treaty was broken, by repudiation or by an attack on the in-laws.
+ */
+function reconcileMarriages(state: WorldState): string[] {
+  const notes: string[] = [];
+  for (const t of state.treaties ?? []) {
+    if (t.type !== 'marriage' || !isTreatyLive(t, state.turn)) continue;
+    const [a, b] = (t.terms.spouses ?? []).map((id) => notableById(state, id));
+    if (a && b && a.spouseId === b.id) continue;
+    t.status = 'voided';
+    const note = `The marriage in ${t.summary} is over: the bond it recorded is gone.`;
+    notes.push(note);
+    logEvent(state, 'diplomacy', note, t.parties[0]);
+  }
+  for (const n of state.notables ?? []) {
+    const spouse = notableById(state, n.spouseId);
+    if (!spouse) {
+      if (n.spouseId) n.spouseId = null;
+      continue;
+    }
+    const mine = notablesPower(n);
+    const theirs = notablesPower(spouse);
+    if (mine === null || theirs === null || mine === theirs) continue;
+    if (marriageOf(state, n.id)) continue;
+    unmarry(state, n);
+    const note = `${n.name} and ${spouse.name} are married no longer: the treaty under the match is gone.`;
+    notes.push(note);
+    logEvent(state, 'diplomacy', note, mine);
+  }
+  return notes;
 }
 
 function supersedePriorTreaties(
@@ -1944,6 +2183,10 @@ function personsPower(state: WorldState, asset: Asset): string | null {
   }
   if (asset.agentId !== null) {
     return (state.agents ?? []).find((a) => a.id === asset.agentId)?.ownerFactionId ?? null;
+  }
+  if (asset.notableId) {
+    const notable = notableById(state, asset.notableId);
+    return notable ? notablesPower(notable) : null;
   }
   return null;
 }
@@ -3376,10 +3619,12 @@ function applyOpsUnderRules(
         // is worth having once, and they are worth more alive to the power that
         // wants them back. The file is worth a fraction of the person, and only
         // to the power that took them — nobody else was in the room.
-        if (asset.commanderId !== null || asset.agentId !== null) {
+        if (asset.commanderId !== null || asset.agentId !== null || asset.notableId) {
           const them = (state.commanders ?? []).find((c) => c.id === asset.commanderId);
           const theirSpy = (state.agents ?? []).find((a) => a.id === asset.agentId);
-          const theirs = them?.factionId ?? theirSpy?.ownerFactionId;
+          const theirNotable = notableById(state, asset.notableId);
+          const theirs =
+            them?.factionId ?? theirSpy?.ownerFactionId ?? (theirNotable ? notablesPower(theirNotable) ?? undefined : undefined);
           // **Not your own people.** Ransom one home and this would have you
           // question them and file what they gave up — a power selling itself
           // intelligence about its own network, worth credits to the power that
@@ -3389,17 +3634,25 @@ function applyOpsUnderRules(
             reject(
               raw,
               'illegal_value',
-              `${them?.name ?? theirSpy?.name ?? 'That person'} is one of yours. There is nothing to be learned by questioning them.`,
+              `${them?.name ?? theirSpy?.name ?? theirNotable?.name ?? 'That person'} is one of yours. There is nothing to be learned by questioning them.`,
             );
             break;
           }
           const spy = theirSpy;
-          const who = them?.name || spy?.name || 'the prisoner';
+          const who = them?.name || spy?.name || theirNotable?.name || 'the prisoner';
           state.assets = state.assets.filter((a) => a.id !== asset.id);
           // Spent either way: an officer is dead to their power and an
           // operative's line was already closed the day they were caught.
           if (them) them.status = 'lost';
           if (spy) spy.exposed = true;
+          // A notable questioned is gone from every seat and every marriage —
+          // and a ward questioned is a marriage betrayed by the court that held
+          // them, priced as the pact it breaks.
+          if (theirNotable) {
+            const betrayed = marriageOf(state, theirNotable.id);
+            if (betrayed) notes.push(...breakMarriageTreaty(state, betrayed, asset.heldBy));
+            removeNotable(state, theirNotable);
+          }
           const file: Asset = {
             id: mintId(state, 'ast'),
             kind: 'dossier',
@@ -3847,6 +4100,10 @@ function applyOpsUnderRules(
             const order = state.pendingOrders.find((o) => o.id === secret.ref);
             if (order) order.visibility = [...new Set([...order.visibility, ...state.factions.map((f) => f.id)])];
           }
+          // A scandal at the holder's court: the notable's estate is shamed,
+          // their world thinks less of its holder, and a marriage it betrays
+          // is over — the in-laws blaming the court that let it happen.
+          if (secret.kind === 'affair') notes.push(...publishAffair(state, secret));
           const note = `${nameFor(state, holder)} publishes proof that ${said}. ${op.reason}`.trim();
           notes.push(note);
           logEvent(state, 'diplomacy', note, holder);
@@ -4214,6 +4471,25 @@ function applyOpsUnderRules(
           reject(raw, 'illegal_value', `${f.name} has no estate "${op.estate}". Its estates: ${known}.`);
           break;
         }
+        // One of your own brought home from captivity, into a seat for their own
+        // estate — the way an officer goes back into post. Never anyone else's:
+        // a held notable is not seated by their captor.
+        const home = op.fromAssetId ? state.assets.find((a) => a.id === op.fromAssetId) : undefined;
+        const returning = home ? notableById(state, home.notableId) : undefined;
+        if (op.fromAssetId) {
+          if (!home || !returning) {
+            reject(raw, 'unknown_asset', `No held notable "${op.fromAssetId}".`);
+            break;
+          }
+          if (home.heldBy !== f.id || notablesPower(returning) !== f.id) {
+            reject(raw, 'illegal_value', `${returning.name} is not one of ${f.name}'s own, held by ${f.name}; a captor never seats someone else's notable.`);
+            break;
+          }
+          if (returning.estateId !== estate.id) {
+            reject(raw, 'illegal_value', `${returning.name} belongs to ${estateById(state, returning.estateId)?.estate.name ?? 'another estate'}, and goes home into a seat for it.`);
+            break;
+          }
+        }
         const seated = seatedAt(state, world.id);
         // A foreign notable goes first: reseating a conquest is the first act
         // of governing it. Otherwise the seat of whichever estate holds the
@@ -4224,23 +4500,98 @@ function applyOpsUnderRules(
           foreign ??
           candidates.sort(
             (a, b) => seatsOf(state, b.estateId ?? '') - seatsOf(state, a.estateId ?? ''),
-          )[0];
+          )[0] ??
+          // One coming home may take a seat their own estate already holds:
+          // the one sitting it stands aside.
+          (returning ? seated[0] : undefined);
         if (!displaced) {
           reject(raw, 'illegal_value', `${capitaliseEstate(estate.name)} already sit every seat at ${world.name}.`);
           break;
         }
         const from = estateById(state, displaced.estateId)?.estate.name ?? 'nobody';
-        const fresh = seatNotable(state, estate.id, world.id, `reseat:${world.id}:${state.turn}`);
-        removeNotable(state, displaced);
+        const displacedPower = notablesPower(displaced);
+        let fresh;
+        if (home && returning) {
+          state.assets = state.assets.filter((a) => a.id !== home.id);
+          returning.systemId = world.id;
+          returning.homeId = null;
+          fresh = returning;
+        } else {
+          fresh = seatNotable(state, estate.id, world.id, `reseat:${world.id}:${state.turn}`);
+        }
+        // A foreign notable turned out is taken prisoner, worth most to the
+        // power that lost the world; one of your own retires.
+        let fate = '';
+        if (displacedPower !== null && displacedPower !== f.id) {
+          holdNotable(state, displaced, f.id, world.id, mintId(state, 'ast'), 'prisoner');
+          fate = ` ${displaced.name} is held at ${world.name}.`;
+        } else {
+          removeNotable(state, displaced);
+        }
         if (regardRecorded(state)) {
           world.regard = {
             ...world.regard,
             [f.id]: Math.max(-100, regardFor(world, f.id) - RESEAT_REGARD),
           };
         }
-        const note = `${f.name} gives ${world.name}'s seat to ${estate.name}: ${fresh.name} takes it from ${displaced.name} of ${from}.`;
+        const note = `${f.name} gives ${world.name}'s seat to ${estate.name}: ${fresh.name} takes it from ${displaced.name} of ${from}.${fate}`;
         notes.push(note);
         logEvent(state, 'system', note, f.id);
+        break;
+      }
+
+      case 'propose_marriage': {
+        const f = state.factions.find((x) => x.id === op.factionId);
+        const world = state.systems.find((x) => x.id === op.systemId);
+        if (!f) {
+          reject(raw, 'unknown_faction', `No faction "${op.factionId}".`);
+          break;
+        }
+        if (!world) {
+          reject(raw, 'unknown_system', `No system "${op.systemId}".`);
+          break;
+        }
+        if (actor !== undefined && op.factionId !== actor) {
+          reject(raw, 'illegal_value', `${actor} does not marry off ${op.factionId}'s notables.`);
+          break;
+        }
+        if (world.controllerFactionId !== null) {
+          reject(
+            raw,
+            'illegal_value',
+            `${world.name} answers to a power; a marriage there is agreed with that power in a channel, as a marriage treaty.`,
+          );
+          break;
+        }
+        const mine = resolveNotable(state, op.notable, (n) => notablesPower(n) === f.id && n.systemId !== null);
+        if (!mine) {
+          reject(raw, 'illegal_value', `${f.name} has no seated notable "${op.notable}".`);
+          break;
+        }
+        if (mine.spouseId) {
+          reject(raw, 'illegal_value', `${mine.name} is already married.`);
+          break;
+        }
+        const theirs = seatedAt(state, world.id).find((n) => n.estateId === null && n.spouseId === null);
+        if (!theirs) {
+          reject(raw, 'illegal_value', `${world.name} has no unwed notable to marry.`);
+          break;
+        }
+        const standing = regardFor(world, f.id);
+        if (standing < MARRIAGE_CONSENT_REGARD) {
+          reject(
+            raw,
+            'illegal_value',
+            `${world.name} will not have the match: its standing with ${f.name} is ${standing}, and it takes ${MARRIAGE_CONSENT_REGARD}.`,
+          );
+          break;
+        }
+        mine.spouseId = theirs.id;
+        theirs.spouseId = mine.id;
+        const estateName = estateById(state, mine.estateId)?.estate.name;
+        const note = `${mine.name}${estateName ? ` of ${estateName}` : ''} marries ${theirs.name} of ${world.name}, and ${world.name} counts ${f.name} as kin.`;
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, f.id);
         break;
       }
 
@@ -5122,6 +5473,42 @@ function applyOpsUnderRules(
           );
           break;
         }
+        // A marriage names the two it weds, one of each party, both seated and
+        // unwed; names resolve to notables here, so the treaty records ids.
+        const spouses = op.terms.spouses ?? [];
+        if (op.treatyType === 'marriage') {
+          if (spouses.length !== 2) {
+            reject(raw, 'illegal_value', 'A marriage names one notable of each party in terms.spouses.');
+            break;
+          }
+          const wed = op.parties.map((party) =>
+            spouses
+              .map((q) => resolveNotable(state, q, (n) => notablesPower(n) === party && n.systemId !== null))
+              .find((n) => n !== null) ?? null,
+          );
+          const missing = op.parties.find((_, i) => wed[i] === null);
+          if (missing !== undefined) {
+            reject(raw, 'illegal_value', `terms.spouses names no seated notable of ${nameFor(state, missing)}'s.`);
+            break;
+          }
+          const married = wed.find((n) => n!.spouseId !== null);
+          if (married) {
+            reject(raw, 'illegal_value', `${married.name} is already married.`);
+            break;
+          }
+          op.terms.spouses = wed.map((n) => n!.id);
+          if (op.terms.ward) {
+            const ward = resolveNotable(state, op.terms.ward, (n) => op.terms.spouses!.includes(n.id));
+            if (!ward) {
+              reject(raw, 'illegal_value', 'A ward is one of the two spouses.');
+              break;
+            }
+            op.terms.ward = ward.id;
+          }
+        } else if (spouses.length > 0 || op.terms.ward) {
+          reject(raw, 'illegal_value', `Only a marriage names spouses or a ward, not a ${op.treatyType}.`);
+          break;
+        }
         // A per-turn flow is the one treaty term that compounds, and it was
         // unbounded — which made it strictly the better way to move money out
         // of a negotiation than the capped one-off `adjust_credits`. Trimmed
@@ -5470,6 +5857,7 @@ function applyOpsUnderRules(
           notes.push(...cedeTerritory(state, treaty));
           notes.push(...settleAssetTerms(state, treaty, peopleStanding));
           notes.push(...settleTreatyPayment(state, treaty));
+          notes.push(...wed(state, treaty));
         }
         break;
       }
@@ -5494,6 +5882,19 @@ function applyOpsUnderRules(
           }
         }
         logEvent(state, 'diplomacy', `Treaty broken: ${treaty.summary}. ${op.reason}`.trim());
+        // A divorce: the bond ends with the treaty, and the breaker's own estate
+        // takes it as a grant revoked.
+        if (treaty.type === 'marriage') {
+          for (const id of treaty.terms.spouses ?? []) {
+            const n = notableById(state, id);
+            if (!n) continue;
+            if (actor !== undefined && notablesPower(n) === actor) {
+              const own = estateById(state, n.estateId)?.estate;
+              if (own) own.favour = Math.max(-100, own.favour - REVOKED_FAVOUR);
+            }
+            unmarry(state, n);
+          }
+        }
         break;
       }
 
@@ -5573,6 +5974,38 @@ function applyOpsUnderRules(
         const target = host.controllerFactionId
           ? state.factions.find((f) => f.id === host.controllerFactionId)
           : undefined;
+
+        // **Aimed at a notable** — see `seats.ts`. A seduction must name one; a
+        // subversion that names one turns them; an assassination may. They
+        // must sit the world the operative is sent to, and not be your own.
+        // Resolved before any price is taken, so a refused aim costs nothing.
+        let notableMark: string | undefined;
+        const notableEffects = op.effect.kind === 'turn_notable' || op.effect.kind === 'seduce';
+        if (op.targetNotable || op.mission === 'seduction' || notableEffects) {
+          const aimable = op.mission === 'seduction' || op.mission === 'subversion' || op.mission === 'assassination';
+          const mark =
+            aimable && op.targetNotable
+              ? resolveNotable(state, op.targetNotable, (n) => n.systemId === op.systemId && notablesPower(n) !== ownerId)
+              : null;
+          if (mark) {
+            notableMark = mark.id;
+            if (op.mission === 'seduction') op.effect = { kind: 'seduce' };
+            if (op.mission === 'subversion') op.effect = { kind: 'turn_notable' };
+          } else if (op.mission === 'seduction' || notableEffects) {
+            reject(
+              raw,
+              'illegal_value',
+              op.targetNotable
+                ? `No notable answering to "${op.targetNotable}" sits ${host.name} for anyone but you.`
+                : `A ${op.mission} of a notable names them in targetNotable, and they must sit ${host.name}.`,
+            );
+            break;
+          } else if (op.targetNotable) {
+            notes.push(
+              `No notable answering to "${op.targetNotable}" sits ${host.name}, so the ${op.mission} is aimed at ${target ? target.name : host.name} instead.`,
+            );
+          }
+        }
 
         // A `crew_defection` operative is worthless against a power whose
         // resolve outmatches your guile: `subornLimit` returns 0, so the agent
@@ -5731,7 +6164,10 @@ function applyOpsUnderRules(
           if (op.cover) spy.cover = op.cover;
           spy.deployedTurn = state.turn;
           spy.inPlaceFrom = state.turn + turns;
-          spy.targetCommanderId = op.mission === 'assassination' ? aimKnife() : null;
+          spy.targetCommanderId = op.mission === 'assassination' && !notableMark ? aimKnife() : null;
+          if (notableMark) spy.targetNotableId = notableMark;
+          else delete spy.targetNotableId;
+          delete spy.courted;
           spy.successChance = agentSuccessChance(
             effectiveStats(state, ownerId).guile,
             counterIntelAt(state, op.mission, host, target?.id ?? null),
@@ -5835,7 +6271,7 @@ function applyOpsUnderRules(
         // note** rather than rejected, the same shape as a fleet naming an
         // officer it cannot carry: the operative still goes out, they simply go
         // out against the power rather than against a name.
-        const knife = aimKnife();
+        const knife = notableMark ? null : aimKnife();
         state.agents.push({
           id: mintId(state, 'agt'),
           name: who,
@@ -5872,6 +6308,7 @@ function applyOpsUnderRules(
           // works against a power. Silently dropped rather than rejected, the
           // same shape as a fleet naming an officer it cannot carry.
           targetCommanderId: op.mission === 'assassination' ? knife : null,
+          ...(notableMark ? { targetNotableId: notableMark } : {}),
         });
         logEvent(
           state,
@@ -8335,6 +8772,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     notes.push(...cedeTerritory(state, treaty));
     notes.push(...settleAssetTerms(state, treaty, peopleStanding));
     notes.push(...settleTreatyPayment(state, treaty));
+    notes.push(...wed(state, treaty));
   }
 
   /* --- Contingencies pay out when the thing they were written against happens --- */
@@ -8632,6 +9070,34 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     const target = host?.controllerFactionId
       ? state.factions.find((f) => f.id === host.controllerFactionId)
       : undefined;
+    // A notable is a mark on a world nobody holds, too: an independent world's
+    // notable can be courted or killed.
+    const notableMark = agent.targetNotableId ? notableById(state, agent.targetNotableId) : undefined;
+    if (host && !target && agent.targetNotableId) {
+      const roll = rollD20(state.turn, `agent:${agent.id}`);
+      const profile = MISSION_PROFILE[agent.mission];
+      if (profile.oneShot) spentAgents.push(agent.id);
+      if (roll * 5 > agent.successChance) {
+        watchNotes.set(agent.id, `attempted ${agent.mission} on ${host.name} and it came to nothing.`);
+        if (roll >= 21 - profile.exposureRisk) {
+          // No power holds the world to take them; its people turn them out,
+          // and a knife caught is a grievance the Rim remembers.
+          agent.exposed = true;
+          agent.caughtTurn = state.turn;
+          if (agent.mission === 'assassination' && regardRecorded(state)) {
+            host.regard = {
+              ...host.regard,
+              [agent.ownerFactionId]: Math.max(-100, regardFor(host, agent.ownerFactionId) - RIM_WATCHES_REGARD),
+            };
+          }
+          watchNotes.set(agent.id, `was found out on ${host.name} and turned off the world.`);
+        }
+        continue;
+      }
+      agent.operations += 1;
+      watchNotes.set(agent.id, workOnNotable(state, agent, host, notableMark, null));
+      continue;
+    }
     if (!host || !target || target.id === agent.ownerFactionId) {
       watchNotes.set(
         agent.id,
@@ -8699,6 +9165,18 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     // than per posting, because a watcher who sits for ten turns has learned
     // ten turns' worth and a saboteur caught on its second attempt has not.
     agent.operations += 1;
+
+    // Aimed at a notable: a turning, a seduction or the knife. See `seats.ts`.
+    if (agent.targetNotableId) {
+      watchNotes.set(agent.id, workOnNotable(state, agent, host, notableMark, target.id));
+      // A decapitation is not deniable for long, a notable's no more than an
+      // officer's: relations collapse even when the operative gets out.
+      if (profile.oneShot && owner) {
+        target.disposition[owner.id] = Math.max(-100, (target.disposition[owner.id] ?? 0) - 35);
+        logEvent(state, 'diplomacy', `${target.name} lays the killing at ${owner.name}'s door.`, target.id);
+      }
+      continue;
+    }
 
     // An assassination aimed at a PERSON, resolved before the effect — the
     // effect still lands, because an operation that got close enough to try is
@@ -9240,7 +9718,11 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
   if (keepsRegard) {
     const worlds: NonNullable<TurnReport['worlds']> = { joined: [], rose: [], restless: [] };
     report.worlds = worlds;
-    accrueRegard(state, { battles: report.battles, landed: landedWorks });
+    accrueRegard(state, {
+      battles: report.battles,
+      landed: landedWorks,
+      kin: hasCourt && courtRecorded(state) ? inLawsByWorld(state) : undefined,
+    });
     // Envoys are heard after the drift. Their worth reads the sender's
     // influence off the whole board, which is why they land here rather than
     // in `applyOrderEffect`.
@@ -9299,6 +9781,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
   // After the worlds have moved, so a world that joined this turn already has
   // its notable seated for its new holder. See `seats.ts`.
   if (hasCourt && courtRecorded(state)) {
+    notes.push(...reconcileMarriages(state));
     const acted = notablesAct(state);
     for (const line of acted.lines) {
       notes.push(line.text);

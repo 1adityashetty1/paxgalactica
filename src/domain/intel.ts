@@ -651,7 +651,9 @@ export function accrueIntel(
   };
 
   for (const agent of state.agents ?? []) {
-    if (agent.exposed || !atWork(agent, state.turn) || agent.effect?.kind !== 'intel') continue;
+    // A seducer hears what a watcher sees: what is said in bed.
+    if (agent.exposed || !atWork(agent, state.turn)) continue;
+    if (agent.effect?.kind !== 'intel' && agent.effect?.kind !== 'seduce') continue;
     const subject = holder.get(agent.systemId);
     if (subject) bump(agent.ownerFactionId, subject, INTEL_PER_WATCHER);
   }

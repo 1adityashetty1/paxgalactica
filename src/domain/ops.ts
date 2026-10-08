@@ -199,6 +199,22 @@ export const SeatEstateOp = z.object({
 });
 
 /**
+ * Marry one of your notables to the notable of a world that answers to
+ * nobody. No channel — an independent world has nobody to talk for it — and
+ * its standing with you is its answer: it accepts at
+ * `MARRIAGE_CONSENT_REGARD` or better. A marriage with another POWER needs
+ * its consent and is a `marriage` treaty, agreed in a channel.
+ */
+export const ProposeMarriageOp = z.object({
+  op: z.literal('propose_marriage'),
+  factionId: z.string().min(1),
+  /** Your notable, by id or name. */
+  notable: z.string().min(1),
+  /** The independent world whose notable is asked. */
+  systemId: z.string().min(1),
+});
+
+/**
  * Decide who pays to cross your space.
  *
  * A standing policy about your own borders, so it is free and takes no roll —
@@ -666,6 +682,13 @@ export const DeployAgentOp = z.object({
    * success this codebase closes everywhere else.
    */
   targetCommanderId: z.string().nullable().default(null),
+  /**
+   * A NOTABLE the operation is aimed at, by id or name — see `seats.ts`. A
+   * subversion aimed at one turns them against their holder; a seduction
+   * must name one; an assassination may. They must sit the world the
+   * operative is sent to.
+   */
+  targetNotable: z.string().min(1).optional(),
   /**
    * A captured operative of your own to put back in the field, rather than a
    * new one to recruit.
@@ -1154,6 +1177,7 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   GrantStipendOp,
   RevokeStipendOp,
   SeatEstateOp,
+  ProposeMarriageOp,
   SetTollPolicyOp,
   SplitAssetOp,
   ConsumeAssetOp,
@@ -1241,6 +1265,7 @@ export const OpSchema = z.discriminatedUnion('op', [
   GrantStipendOp,
   RevokeStipendOp,
   SeatEstateOp,
+  ProposeMarriageOp,
   SetTollPolicyOp,
   SplitAssetOp,
   ConsumeAssetOp,

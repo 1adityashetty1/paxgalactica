@@ -8,6 +8,8 @@ import {
   type Secret,
 } from './diplomacy.js';
 import { isDebtLive } from './debt.js';
+import { notableById } from './seats.js';
+import { estateOwner } from './estates.js';
 import { isLoanLive } from './loan.js';
 import { SECRET_CATEGORIES } from './intel.js';
 import { DEVELOPMENT_PAYBACK_TURNS } from './development.js';
@@ -98,6 +100,13 @@ export function secretLive(state: WorldState, secret: Secret): boolean {
         state.pendingOrders.some((o) => o.id === secret.ref) ||
         state.turn <= (secret.filedTurn ?? 0) + DARK_PROOF_TURNS
       );
+    // News while the seduction runs and the notable sits, and for a while after.
+    case 'affair': {
+      if (!notableById(state, secret.notableId)) return false;
+      const seducer = (state.agents ?? []).find((a) => a.id === secret.ref);
+      const running = seducer !== undefined && !seducer.exposed && seducer.targetNotableId === secret.notableId;
+      return running || state.turn <= (secret.filedTurn ?? 0) + DARK_PROOF_TURNS;
+    }
   }
 }
 
@@ -147,6 +156,15 @@ export function describeSecret(state: WorldState, secret: Secret): string {
       return order
         ? `the raiders taking shipping at ${where(order.targetId)} are ${who}'s`
         : `${who} ran raids it never admitted to`;
+    }
+    case 'affair': {
+      const notable = notableById(state, secret.notableId);
+      const estate = notable?.estateId
+        ? getFaction(state, estateOwner(notable.estateId))?.estates?.find((e) => e.id === notable.estateId)?.name
+        : undefined;
+      return notable
+        ? `${notable.name}${estate ? ` of ${estate}` : ''}, who sits ${where(notable.systemId ?? notable.homeId ?? '')} for ${who}, has been carrying on with a foreign agent`
+        : `one of ${who}'s notables carried on with a foreign agent`;
     }
   }
 }

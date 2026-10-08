@@ -1353,7 +1353,20 @@ export function resolveCommander(
   /** Narrow the field before matching: rivals only, active only, and so on. */
   eligible: (c: Commander) => boolean = () => true,
 ): Commander | null {
-  const all = (commanders ?? []).filter(eligible);
+  return resolvePerson(commanders, query, eligible);
+}
+
+/**
+ * The same matcher for anyone with an id and a name — a notable, say. Every
+ * content token of the query must be answered, an initial answers a given
+ * name, and a tie resolves to nobody.
+ */
+export function resolvePerson<T extends { id: string; name: string }>(
+  people: readonly T[] | undefined,
+  query: string,
+  eligible: (p: T) => boolean = () => true,
+): T | null {
+  const all = (people ?? []).filter(eligible);
   if (all.length === 0) return null;
 
   // An id is not a name and must never go through the token matcher: ids are
@@ -1365,7 +1378,7 @@ export function resolveCommander(
   const wanted = nameTokens(query);
   if (wanted.length === 0) return null;
 
-  let best: Commander | null = null;
+  let best: T | null = null;
   let bestScore = 0;
   let tied = false;
   for (const c of all) {

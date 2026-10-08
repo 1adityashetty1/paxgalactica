@@ -1,4 +1,5 @@
-import { RIM_STOCK, drawPerson, familiesInUse } from './command.js';
+import { OFFICER_LEVERAGE, RIM_STOCK, drawPerson, familiesInUse, resolvePerson } from './command.js';
+import { AssetSchema, atWork, type Asset } from './diplomacy.js';
 import {
   BITTER,
   ESTATE_SHEETS,
@@ -11,6 +12,7 @@ import {
   HATED_SEAT_FAVOUR,
   HUB_SEATS,
   MAX_GRANTS,
+  NOTABLE_RANSOM,
   RESENTFUL,
   SEAT_FAVOUR,
   WITHHOLD_SHARE,
@@ -177,7 +179,23 @@ export function actingFavour(state: WorldState, notable: Notable): number | null
     const spouse = notableById(state, notable.spouseId);
     return spouse && powerOf(spouse) === holder ? 0 : RESENTFUL;
   }
-  return estateById(state, notable.estateId)?.estate.favour ?? 0;
+  const favour = estateById(state, notable.estateId)?.estate.favour ?? 0;
+  // A rival's subversion turns this one notable, whatever the estate thinks:
+  // a local threat, not a lever on the whole estate.
+  return isTurned(state, notable) ? Math.min(favour, RESENTFUL) : favour;
+}
+
+/** Whether a rival's operative is at work turning this notable against their holder. */
+export function isTurned(state: WorldState, notable: Notable): boolean {
+  const holder = state.systems.find((s) => s.id === notable.systemId)?.controllerFactionId ?? null;
+  return (state.agents ?? []).some(
+    (a) =>
+      atWork(a, state.turn) &&
+      a.effect.kind === 'turn_notable' &&
+      a.targetNotableId === notable.id &&
+      a.systemId === notable.systemId &&
+      a.ownerFactionId !== holder,
+  );
 }
 
 /** Whether a notable lifts its world this turn. */
@@ -443,4 +461,84 @@ export function driftFavour(state: WorldState): CourtLine[] {
 /** "the Blue Bloods" to "The Blue Bloods", for the start of a sentence. */
 export function capitalise(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/**
+ * A notable by id or by name, matched as officers are: every word of the
+ * query answered, an initial answers a given name, a tie is nobody.
+ */
+export function resolveNotable(
+  state: WorldState,
+  query: string,
+  eligible: (n: Notable) => boolean = () => true,
+): Notable | null {
+  return resolvePerson(state.notables, query, eligible);
+}
+
+/** The asset a held notable is, if they are held. */
+export function heldAs(state: WorldState, notableId: string): Asset | undefined {
+  return (state.assets ?? []).find((a) => a.notableId === notableId && a.quantity > 0);
+}
+
+/**
+ * Take a notable out of their seat and into somebody's keeping — a ward sent
+ * to the in-laws' court, or a prisoner taken on a reseating. Returns the asset
+ * they now are, held at `atSystemId`, worth most to the power whose they are.
+ * The caller mints the id, since only the reducer keeps the pool.
+ */
+export function holdNotable(
+  state: WorldState,
+  notable: Notable,
+  heldBy: string,
+  atSystemId: string,
+  id: string,
+  as: 'ward' | 'prisoner',
+): Asset {
+  const theirs = powerOf(notable);
+  const estate = estateById(state, notable.estateId)?.estate.name;
+  const where = state.systems.find((w) => w.id === notable.systemId)?.name;
+  notable.homeId = notable.systemId;
+  notable.systemId = null;
+  const worth: Record<string, number> = {};
+  for (const f of state.factions) worth[f.id] = f.id === theirs ? NOTABLE_RANSOM : OFFICER_LEVERAGE;
+  const asset = AssetSchema.parse({
+    id,
+    kind: 'notable',
+    text:
+      as === 'ward'
+        ? `${notable.name}${estate ? ` of ${estate}` : ''}, a ward of the marriage, living at ${nameOf(state, heldBy)}'s court`
+        : `${notable.name}${estate ? ` of ${estate}` : ''}, turned out of ${where ?? 'their seat'} and held`,
+    heldBy,
+    quantity: 1,
+    unit: 'person',
+    commanderId: null,
+    agentId: null,
+    notableId: notable.id,
+    divisible: false,
+    valuePerUnit: worth,
+    atSystemId,
+    portable: true,
+    yield: null,
+    acquiredTurn: state.turn,
+  });
+  (state.assets ??= []).push(asset);
+  return asset;
+}
+
+/**
+ * Which powers each world counts as kin: a notable seated there — or held
+ * abroad, from there — married to someone of another power. Each world adds
+ * `MARRIAGE_REGARD` to its baseline toward its in-laws; read by the tick and
+ * handed to `accrueRegard`.
+ */
+export function inLawsByWorld(state: WorldState): Map<string, Set<string>> {
+  const kin = new Map<string, Set<string>>();
+  for (const n of state.notables ?? []) {
+    const world = n.systemId ?? n.homeId;
+    const spouse = notableById(state, n.spouseId);
+    const them = spouse ? powerOf(spouse) : null;
+    if (!world || them === null || them === powerOf(n)) continue;
+    (kin.get(world) ?? kin.set(world, new Set()).get(world)!).add(them);
+  }
+  return kin;
 }
