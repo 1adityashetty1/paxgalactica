@@ -20,10 +20,15 @@ seats is which **estate** it belongs to. Estates give straight buffs and
 debuffs, by one rule for all of them, rather than estate-specific rules.
 **Dissent is unchanged.**
 
+*Revised again.* Estates sit on a power's **three weakest stats**, one each,
+not on its strongest. A power's peaks belong to its core, which no estate
+moves (see *Why the weakest stats*).
+
 ## The rule
 
-- Each power has **three estates**. Each estate has a **stat profile** — one or
-  two of the five stats — and a **favour**, from −100 to 100.
+- Each power has **three estates**, one behind each of its **three weakest
+  stats**, and each has a **favour**, from −100 to 100. The two strongest stats
+  have no estate.
 - **An estate's favour is a straight modifier on its stats**, by one table for
   every estate. That is what a player gets for keeping an estate happy, and
   what it costs to neglect one.
@@ -40,34 +45,53 @@ debuffs, by one rule for all of them, rather than estate-specific rules.
 ## Estates
 
 Three per power, authored with the faction sheets, because who a power's
-institutions are is character. Each takes its name from what the sheets already
-say refuses or defies a leader. The stat profiles together cover all five
-stats, two estates holding two stats and one holding one, so every stat has an
-estate behind it.
+institutions are is character. Each stands behind one of the power's three
+weakest base stats; the two strongest belong to its **core**.
 
-| power | estate | stats |
+| power | estates (stat, base) | core, no estate (stats) |
 |---|---|---|
-| **Meridian** | the Trade Council | industry, influence |
-| | the Security Directorate | might, resolve |
-| | the Compliance Office | guile |
-| **Iron Vigil** | the fleet commanders | might, resolve |
-| | the Old Families | influence, guile |
-| | the Quartermasters | industry |
-| **Ojjul Nar** | the old cousins | influence, guile |
-| | the Enforcers | might, resolve |
-| | the Counting-Houses | industry |
-| **Arkane** | the fleet councils | might, resolve |
-| | the world councils | influence, industry |
-| | the Signal Keepers | guile |
-| **Drajk** | the captains | might, guile |
-| | the hold | industry, resolve |
-| | the Fences | influence |
+| **Meridian** | the Factors (resolve 9) · the Security Directorate (might 10) · the Compliance Office (guile 13) | the Trade Council (industry 16, influence 17) |
+| **Iron Vigil** | the Old Families (influence 6) · the Provosts (guile 11) · the Armourers (industry 13) | the fleet commanders (resolve 17, might 18) |
+| **Ojjul Nar** | the Retainers (might 9) · the sworn cousins (resolve 11) · the Majordomos (industry 12) | the old cousins (influence 15, guile 18) |
+| **Arkane** | the Drawing-Yards (industry 10) · the Speakers (influence 10) · the Musters (might 11) | the councils (guile 12, resolve 19) |
+| **Drajk** | the Breakers (industry 7) · the Fences (influence 8) · the hold (resolve 12) | the captains (guile 14, might 15) |
 
-*Names and profiles are a first proposal, to be authored against the sheets.*
+*Names are a first proposal, to be authored against the sheets.* None reuses an
+officer's title (the Vigil's armourers are not Drajk's Quartermaster), and none
+is a house, which this design dropped.
+
+### Why the weakest stats
+
+**The core is already in the game.** Every institution a faction sheet names as
+refusing its leader stands behind that power's peaks: the Trade Council behind
+Meridian's industry and influence, the fleet commanders behind the Vigil's might
+and resolve, the old cousins behind the Combine's guile, the councils behind
+Arkane's resolve, the captains behind Drajk's might and guile. Dissent is their
+voice. They are what the power **is**, and nobody buys them with a stipend.
+Estates are everyone else: the institutions a power has never been good at
+keeping, which is why it is weak in their stats.
+
+**A buff on a peak was the wrong shape twice over.** It made the strongest
+thing about a power stronger, which flattens nothing and widens every gap, and
+mostly it was lost to the ceiling: the Vigil's might is 18 and Arkane's resolve
+19, so a +2 on either was +1 or nothing once clamped at 20. A weak stat is far
+from the ceiling, so the whole buff lands.
+
+**So favour moves a power's weaknesses, and only them.** Courted, a weakness is
+softened, never erased: the Vigil's influence goes from 6 to 8 at most, still
+the worst on the board. Neglected, it gets worse. The peaks never move by
+estates at all.
+
+**This is a purchase that patches a weakness**, which the fixture design
+deliberately made a war aim instead. Three bounds keep it from undoing the
+sheets: +2 at most on each weak stat, paid every turn rather than once, and
+seats are zero-sum among the three estates, so lifting one weakness by seats
+costs another its favour. Whether the rich buy their weaknesses away faster than
+the poor is the first thing to measure (see *Measurement*).
 
 ### What favour buys
 
-| favour | each of the estate's stats |
+| favour | the estate's stat |
 |---|---|
 | 80 or more | +2 |
 | 40 to 79 | +1 |
@@ -79,7 +103,8 @@ Read in `effectiveStats` beside terrain, fixtures, the officer's passive and the
 rally — after them and **before dissent**, the place the rally takes — and
 clamped 1–20. So it reaches every check, battle, yard, operative contest and
 ceiling with no further wiring, exactly as a fixture does. It is the whole
-answer to *"what does favour get me"*: the estate's stats, up or down.
+answer to *"what does favour get me"*: one of the power's weaknesses, up or
+down.
 
 **Dissent is untouched.** It still rises on a refusal or a defied compulsion and
 still comes off every stat. Estates are a second, separate layer: dissent is
@@ -116,8 +141,8 @@ for every estate, by one rule:
   baseline and costs an immediate `REVOKED_FAVOUR` (15): an institution notices
   being cut more than it notices being paid.
 
-So +1 on an estate's stats costs two grants (30 a turn) on top of a fair share
-of seats; +2 costs three grants and more than a fair share. Against nets of
+So +1 on a weakness costs two grants (30 a turn) on top of a fair share of
+seats; +2 costs three grants and more than a fair share. Against nets of
 50–300 a turn that is a real choice, priced against fleets and fixtures.
 
 ## Seats and notables
@@ -147,11 +172,12 @@ estate's favour, so a notable is one record with no rules of its own.
 A seat is never empty. Whenever one opens — at the seed, on a conquest, a
 joining, a world becoming a hub, a notable killed — it is filled by default:
 
-1. **the estate whose stats include the world's ground stat** (`WORLD_TYPE_STAT`):
-   an arid world (might) seats the fleet commanders, an earthlike world
-   (influence) the Trade Council or the Old Families. Legible from the map, as
-   a fixture's ground is;
-2. otherwise, or on a tie, **the estate with the fewest seats**.
+1. **the estate whose stat is the world's ground stat** (`WORLD_TYPE_STAT`):
+   an arid world (might) seats Meridian's Security Directorate, an earthlike
+   world (influence) the Vigil's Old Families. Legible from the map, as a
+   fixture's ground is;
+2. otherwise — ground of one of the power's peaks, which has no estate — **the
+   estate with the fewest seats**.
 
 **Reseating is a declaration** — *"give Kalzir to the Old Families"* —
 `seat_estate { systemId, estateId }`, an action. It changes the baseline both
@@ -249,17 +275,16 @@ an inadmissible ruling does.
   each world's seat to its `people:` line.
 - `appraisal.md`: a grant, a revocation and a reseating are actions; promotion
   is inadmissible, with the table.
-- **Refusals get a speaker.** When a refusal or defiance is charged, it is
-  voiced by the estate whose stats the action was rolled on — *"the fleet
-  commanders will not carry this out"* — so the institutions stop being labels.
-  Voice only: dissent is charged exactly as now.
+- **Refusals keep their speakers.** The institutions that refuse a leader are
+  its core, which the sheets already name, not an estate. An estate is voiced
+  where favour shows: a notable withholding, a stipend revoked.
 
 ## Bots
 
 - **Seats** fill by the default rule and the bots leave them, except:
 - **`placate`** — a bot reseats from its best-favoured estate to its worst when
   the worst falls below −40, one seat at a time;
-- **`grant`** — a solvent bot grants a stipend to the estate behind its peak
+- **`grant`** — a solvent bot grants a stipend to the estate behind its weakest
   stat, up to two, judged against standing income as fixtures are.
 - **`subvert`** — high-guile ethics turn a rival's notable on a world they want;
   `honourTreaties` and `honourStanding` gate it as they gate incitement.
@@ -270,8 +295,10 @@ Against the four harness boards (30 and 100 turns, with and without events),
 `pnpm balance [turns] --no-seats` as the control:
 
 - estate favour over time, per power; how often any estate crosses ±40;
-- whether `grant` buffs land where the doctrines would want them, and what
-  they cost the poorest power;
+- how far grants lift each power's weakest stat, and whether the rich buy
+  theirs away faster than the poor. A flat fixture price measured regressive
+  for exactly this reason; if grants do the same, the Nth grant costs N ×
+  `GRANT_COST`, as fixture upkeep rises with the count;
 - seats withheld and worlds let go; conquered notables reseated, and how fast;
 - the boards. A stat buff is a might buff is a battle; sweep `GRANT_FAVOUR`,
   `GRANT_COST` and the thresholds before settling them, and check every
@@ -286,8 +313,9 @@ set with `regard`.
 
 ## Build order
 
-1. Estates on the faction sheets; favour, the drift and its baseline; the stat
-   table in `effectiveStats`.
+1. Estates on the faction sheets, on the three weakest base stats — a test
+   holds that no estate sits on a power's top two; favour, the drift and its
+   baseline; the stat table in `effectiveStats`.
 2. Seats and notables: one per world and two on a hub, the default fill, the
    notable's three behaviours by favour.
 3. Grants and reseating: ops, ledger line, revocation.
@@ -311,7 +339,9 @@ set with `regard`.
 1. **One kind of person in a seat.** Governors and houses are gone; a seat
    holds a notable, and a notable belongs to an estate.
 2. **Estates give straight buffs and debuffs**, by one table for all of them,
-   on their own stats. No estate-specific rules.
+   on the power's three weakest stats, one each. The two strongest are the
+   power's core, which dissent speaks for, and no estate moves them. No
+   estate-specific rules.
 3. **Dissent is unchanged.** Estates are a separate layer beside it.
 4. **One seat per world, two on a hub.** Every power holds at least one hub.
 5. **Estates want seats; buffs are bought with grants.** Favour drifts toward a
