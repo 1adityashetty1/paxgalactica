@@ -557,6 +557,11 @@ would be typed modifiers.
 dissent and prompt-heavy. Size L. Defer until ambitions and mandate show whether
 one more axis of internal politics is wanted.
 
+**Reworked (2026-10-07)** as **seats**: a third class of person, one per held
+world. A notable is a local house with its own favour, and it carries dissent.
+A governor is the leader's appointee, and it does not. See
+`design-2026-10-07-seats.md`. Mandate is tabled, so seats no longer wait on it.
+
 ---
 
 ## 6. The Rim itself
@@ -663,7 +668,7 @@ size.
 | idea | § | why it is large |
 |---|---|---|
 | Courting unaligned worlds **(built)** | 6.1 | wants and opinions for every neutral world, peaceful joining, bot behaviour, prompts |
-| Estates | 5.3 | a second layer of internal politics over dissent, on every sheet |
+| Estates, reworked as seats | 5.3 | a third class of person per world — notables who carry dissent, governors who do not — see `design-2026-10-07-seats.md` |
 
 ---
 
@@ -720,8 +725,7 @@ flowchart LR
   end
 
   ambitions["Ambitions · M+"]:::heavy -.-> mandate["Mandate · M+"]:::heavy --> fortune["Fortune and darkness · S"]:::light
-  ambitions -.-> estates["Estates · L"]:::heavy
-  mandate -.-> estates
+  seats["Seats: governors and notables · L"]:::heavy
 ```
 
 S is small, M is medium (lighter), M+ is medium (heavier) and L is large.
@@ -732,13 +736,12 @@ S is small, M is medium (lighter), M+ is medium (heavier) and L is large.
 |---|---|---|
 | mandate → fortune | needs | darkness is charged when mandate buys a reroll |
 | ambitions ⇢ mandate | better after | a fulfilled ambition earns mandate |
-| ambitions, mandate ⇢ estates | decision gate | estates are deferred until those two show whether more internal politics is wanted |
 
 **Waves.**
 
-1. **Ready now:** ambitions.
+1. **Ready now:** ambitions, and seats (estates reworked; design written). Mandate is tabled.
 2. Mandate.
-3. Fortune and darkness, estates.
+3. Fortune and darkness.
 
 The longest chain is three deep: ambitions → mandate → fortune.
 
