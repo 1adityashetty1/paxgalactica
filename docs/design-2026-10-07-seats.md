@@ -26,6 +26,10 @@ debuffs, by one rule for all of them, rather than estate-specific rules.
 not on its strongest. A power's peaks belong to its institutions, which no
 estate moves (see *Why the weakest stats*).
 
+*And again.* **Marriage** and **seduction** are in the design, not left for
+later: a power marries through its notables, and a seduction is the covert
+version of the same bond.
+
 ## The rule
 
 - Each power has **three estates**, one behind each of its **three weakest
@@ -219,14 +223,105 @@ still counts as a seat of the old power's estate, so that estate's favour does
 not fall at once when the world is lost — and the old power has every reason to
 take it back.
 
+## Marriage
+
+Among the first things players reached for. The appraisal prompt's own worked
+example is *"I offer my heir in marriage to the Ojjul Combine"*, and the first
+live arbiter test was a dynastic marriage ruled exclusive. Today it lands as an
+exclusive treaty that names nobody, so it is worth only what a treaty is. Seats
+give it the people it was missing. **The player has no house, so a power
+marries through its notables**: *"offer the Blue Bloods' notable at Vantic in
+marriage to the Combine"*.
+
+**A treaty type of its own, `marriage`**, the shape `coalition` took:
+`terms.spouses` names one notable of each party, is required on a marriage and
+refused on every other type (`illegal_value`). It needs the other power's
+consent, so it is made in a channel and recorded by extraction, as every treaty
+is. A separate type was argued against when a marriage named nobody, because it
+would carry no mechanics another type lacked. With spouses it carries five:
+
+- **One spouse each.** A notable already married cannot marry again. A power
+  may marry several of its notables into several powers. `exclusive` still
+  works as it does now: the arbiter may rule that one marriage forecloses any
+  other with anyone.
+- **The in-laws are family to the world.** Each spouse's world adds
+  `MARRIAGE_REGARD` (30) to its baseline toward the other power, so its standing
+  with the in-laws drifts up and stays there while the marriage stands.
+- **A marriage is a grant paid in alliance.** It counts as one of the estate's
+  grants: `GRANT_FAVOUR` on its baseline, within `MAX_GRANTS`, at no credits.
+  What it costs instead is the peace.
+- **It is a peace.** `marriage` joins `PEACE_TREATIES` and `TRUCE_TREATIES`:
+  attacking the in-laws breaks it, priced as a broken pact, and a marriage
+  signed between powers at war leaves a truce. Ending a war with a wedding is
+  the oldest settlement there is.
+- **A spouse never works against the in-laws.** A married notable whose world
+  the in-laws conquer is not a foreign notable to them: it acts as if its
+  estate stood at 0, not −40. A marriage is the one path to a conquest that
+  does not sour.
+
+| it ends when | how | cost |
+|---|---|---|
+| a party repudiates it | `break_treaty`, a divorce | a broken pact's price; the estate loses the grant and takes `REVOKED_FAVOUR` |
+| either spouse dies | voided, nobody's fault | the estate loses the grant |
+| an affair is published | voided (see *Seduction*) | the estate loses the grant; the betrayed in-laws resent the strayer's power |
+
+**What it does to a world that lets go.** A seceded world keeps its notable,
+and its notable keeps its marriage, so its standing with the in-laws stays 30
+higher. `JOIN_REGARD` is 60, so a bitter estate's world is far likelier to
+join the in-laws than anyone else, and their envoys have less to do.
+
+**Supersession keys on the spouses.** A marriage is neither superseded by
+another treaty between the same pair nor supersedes one, so two marriages
+between the same powers are two marriages. Goodwill on signature is paid once
+per pair and type, as now, so a second marriage between the same powers buys
+standing only through its estates and worlds.
+
+## Seduction
+
+The other early example: a Combine playtest's *"seduce a Drajk-affiliated
+captain at Tulgarn into an informal understanding"*. The arbiter routed it to a
+watcher and a two-party `quiet_understanding` commitment. That was the right
+instinct and the wrong shape, because nothing in it was the person. With
+notables it is a mission of its own: **`seduction`**, effect `seduce`, aimed at
+a notable by name (matched as officers are).
+
+**A seduction is a marriage nobody signed.** It does what a marriage does,
+covertly, and only while it lasts:
+
+- **The pull.** The notable's world's regard for the seducer's power rises
+  `SEDUCTION_REGARD` (3) a turn, which settles about 30 above its baseline, a
+  marriage's worth, and fades a tenth a turn once the seduction ends.
+- **Pillow talk.** The seducer gains intel on the notable's holder as a watcher
+  on that world does.
+- **Proof.** After `SEDUCTION_PROOF_TURNS` (3) turns at work, the seducer files
+  an **affair**, a new secret kind about the holder. It is live while the
+  seduction runs and for `DARK_PROOF_TURNS` (6) after it ends, so any hook
+  built on it lapses with it.
+
+Published, an affair is a scandal at the holder's court: the notable's estate
+loses `AFFAIR_FAVOUR` (15) at once, and the world's regard for its holder drops
+10. **If the notable is married, the marriage is voided**, and the in-laws'
+regard for the holder drops `AFFAIR_RESENTMENT` (10). Seduction is how a
+rival's marriage is broken from outside. Blackmail spends the affair for a
+strong hook on the holder, as any secret.
+
+Priced and contested as incitement is: `AGENT_COST` 80, sabotage's exposure
+(3 in 20), persistent, against `counterIntelAt`. **Caught**, the operative is
+taken as any operative is, and the holder buries the affair: there is no public
+scandal, and the seducer's power pays what a caught operative costs.
+
+Only a notable can be seduced. An officer turned by a seducer is the turned
+admiral this design rules out, and an operative has no public face to court.
+
 ## Operatives
 
-Two existing missions reach a notable. No new mission:
+Two existing missions reach a notable, and seduction (above) is new:
 
 | mission | aimed at a notable |
 |---|---|
 | **subversion** | a new effect, `turn_notable`: while it works, the notable acts as if its estate stood at −40 — withholding, souring its world — whatever the estate's real favour. A local threat, not a lever on the whole estate. Contested as incitement is (`counterIntelAt`) |
-| **assassination** | can name a notable, matched by name as officers are. The seat refills by default the same tick; the world's regard for its holder drops 10 in the confusion, and the estate loses the seat to nobody, so its favour does not move |
+| **assassination** | can name a notable, matched by name as officers are. The seat refills by default the same tick; the world's regard for its holder drops 10 in the confusion, and the estate loses the seat to nobody, so its favour does not move. A married notable's marriage is voided |
+| **seduction** | see *Seduction* |
 
 A watcher on a world shows its seat in full; `INTEL_DELIVERS` (40) on a power
 shows its estates' favour in bands.
@@ -268,8 +363,13 @@ an inadmissible ruling does.
   rival's world shows the estate that sits it.
 - **Factions panel:** the player's stat rows already show the base and what
   moves it; estates join terrain, fixtures and the rally there.
+- **Court tab, marriages:** each married notable, its spouse and their power,
+  and a *propose a marriage* button that opens a channel with the offer
+  written, as a sale does.
+- **System tab:** a married notable shows its spouse.
 - **Briefing:** an *Estates* group — an estate crossing a threshold, a seat
-  withheld or let go, a conquered notable still sitting.
+  withheld or let go, a conquered notable still sitting, a marriage made or
+  voided, an affair published.
 - **Help:** a `:help court` page, with the no-promotion table.
 
 ## Prompts
@@ -277,7 +377,13 @@ an inadmissible ruling does.
 - `serializeState` lists the viewer's estates with favour and grants, and adds
   each world's seat to its `people:` line.
 - `appraisal.md`: a grant, a revocation and a reseating are actions; promotion
-  is inadmissible, with the table.
+  is inadmissible, with the table. A marriage is a negotiation between
+  notables, and the worked example changes from *"my heir"* to a notable;
+  *"seduce"* routes to the `seduction` mission.
+- **Personas** see their own notables by estate and world, so they can offer
+  one, and the other power's, which are public as seats are.
+- `extraction.md`: the `marriage` row, with `terms.spouses`; each side's
+  notable is grounded in that side's own concession.
 - **Refusals keep their speakers.** The institutions that refuse a leader are
   the ones the sheets already name, never an estate. An estate is voiced
   where favour shows: a notable withholding, a stipend revoked.
@@ -289,8 +395,13 @@ an inadmissible ruling does.
   the worst falls below −40, one seat at a time;
 - **`grant`** — a solvent bot grants a stipend to the estate behind its weakest
   stat, up to two, judged against standing income as fixtures are.
-- **`subvert`** — high-guile ethics turn a rival's notable on a world they want;
-  `honourTreaties` and `honourStanding` gate it as they gate incitement.
+- **`subvert`** — high-guile ethics turn a rival's notable on a world they want
+  when at war, and seduce it when not; `honourTreaties` and `honourStanding`
+  gate both as they gate incitement.
+- **Marriage**, brokered in `brokeredAccords`: two NPC powers on good terms
+  (`EXCHANGE_STANDING`, 20, both ways), at peace, neither barred by its
+  compulsions (`barsPeaceWith`), each with an estate below 0, marry those
+  estates' notables. One marriage per pair at a time.
 
 ## Measurement
 
@@ -303,6 +414,8 @@ Against the four harness boards (30 and 100 turns, with and without events),
   for exactly this reason; if grants do the same, the Nth grant costs N ×
   `GRANT_COST`, as fixture upkeep rises with the count;
 - seats withheld and worlds let go; conquered notables reseated, and how fast;
+- marriages made and how long they last; affairs published, and marriages
+  they end;
 - the boards. A stat buff is a might buff is a battle; sweep `GRANT_FAVOUR`,
   `GRANT_COST` and the thresholds before settling them, and check every
   property `tests/balance.test.ts` asserts.
@@ -324,16 +437,19 @@ set with `regard`.
 3. Grants and reseating: ops, ledger line, revocation.
 4. Conquest, cession, liberation, secession and joining.
 5. Operatives: `turn_notable`, assassination of a notable, the watcher's view.
-6. The no-promotion guards and table.
-7. UI, prompts, help; bots; measure.
+6. Marriage: the treaty type, `terms.spouses`, the regard and favour terms,
+   peace, and how it ends.
+7. Seduction: the mission, the pull and the affair secret; publishing an
+   affair voids a marriage.
+8. The no-promotion guards and table.
+9. UI, prompts, help; bots; measure.
 
 ## Later
 
-- **Marriage between notables.** A notable married into another power's estate
-  pulls its world's regard toward the in-laws, and a spouse held abroad is a
-  hostage through `voidsOn: asset_lost`. When the notable's estate turns bitter,
-  the world it lets go is likelier to join the in-laws. Every piece but the
-  notable exists already.
+- **Marriage with an independent world.** Its notable has nobody to sign for
+  it, so for now an independent world is courted with envoys, not married.
+- **A spouse sent abroad as a ward or hostage**, through `voidsOn:
+  asset_lost`. It needs a notable that can leave its seat.
 - **More grants.** A charter (a share of a world's income), an exemption, a
   council seat — typed, as order effects are, once one kind has been measured.
 
@@ -353,3 +469,8 @@ set with `regard`.
    rise through the secession that exists.
 7. **No promotion between rosters**, explained in each power's own terms, and
    enforced by having no op that does it.
+8. **A power marries through its notables.** `marriage` is a treaty type naming
+   one notable of each party; it is a peace, a grant to the estate, and a pull
+   on both worlds toward the in-laws.
+9. **Seduction is a marriage nobody signed:** the same pull, covertly and while
+   it lasts, and the proof that breaks a rival's marriage.

@@ -669,7 +669,7 @@ size.
 | idea | § | why it is large |
 |---|---|---|
 | Courting unaligned worlds **(built)** | 6.1 | wants and opinions for every neutral world, peaceful joining, bot behaviour, prompts |
-| Estates, reworked as seats | 5.3 | three estates a power, on its weakest stats, whose favour buffs them, and a notable of one in every seat — see `design-2026-10-07-seats.md` |
+| Estates, reworked as seats | 5.3 | three estates a power, on its weakest stats, whose favour buffs them; a notable of one in every seat; marriage between notables, and seduction — see `design-2026-10-07-seats.md` |
 
 ---
 
@@ -678,12 +678,13 @@ size.
 *Updated after PR #61: coalitions and exhaustion were built as extensions of
 mutual defence and bot peace, war goals were dropped, and the interface caught
 up with what is built. Updated again for the seats design: seats are drawn as
-their build steps, mandate is tabled.* Seventeen ideas are built, plus the bot rules that use
+their build steps, with marriage and seduction among them, and mandate is
+tabled.* Seventeen ideas are built, plus the bot rules that use
 them, and two are dropped, so four are left. Built work is no longer a node:
 where it unlocks something, the node says so.
 
-The interface work is not from this brainstorm and is drawn apart from it. It
-makes the built ideas reachable in play rather than adding mechanics:
+The interface work is not from this brainstorm. It makes the built ideas
+reachable in play rather than adding mechanics:
 - help that is an index and a page per part of the game;
 - an Agents tab that tracks the network;
 - buttons that write the sentence for a recruit, an appointment, a fixture, a
@@ -691,68 +692,60 @@ makes the built ideas reachable in play rather than adding mechanics:
 
 A solid arrow means the later idea, or one part of it, cannot be built without
 the earlier one. A dashed arrow means it is better built after. Green is small
-or lighter medium; red is heavier medium or large; grey is built; a dashed
-border is tabled or later.
+or lighter medium; red is heavier medium or large; grey is built; white is
+tabled or later.
 
 ```mermaid
 flowchart LR
   classDef light fill:#E1F5EE,stroke:#0F6E56,color:#085041
   classDef heavy fill:#FAECE7,stroke:#993C1D,color:#712B13
   classDef done fill:#F1EFE8,stroke:#888780,color:#444441
-  classDef parked fill:#FFFFFF,stroke:#888780,stroke-dasharray:4 3,color:#444441
+  classDef later fill:#FFFFFF,stroke:#B4B2A9,color:#5F5E5A
 
-  subgraph built["Built"]
-    truces["Truces"]:::done
-    emissions["Emissions"]:::done
-    span["Span of control"]:::done
-    notes["Promissory notes"]:::done
-    commodities["Commodities"]:::done
-    fixtures["Fixtures that can be hurt"]:::done
-    accords["Bots: exchange, peace, sabotage"]:::done
-    obligations["Obligations and hooks"]:::done
-    secrets["Secrets"]:::done
-    ultimatums["Ultimatums"]:::done
-    concession["Concession budget"]:::done
-    ledger["Raider's ledger"]:::done
-    heat["Heat"]:::done
-    dark["Running dark"]:::done
-    intel["Intel with memory"]:::done
-    courting["Standing: courting, holding, incitement"]:::done
-    coalitions["Coalitions"]:::done
-    exhaustion["Exhaustion"]:::done
-  end
+  standing["Standing (built)"]
+  intel["Intel with memory (built)"]
+  secrets["Secrets (built)"]
+  ui["Draft buttons and help (built)"]
 
-  subgraph interface["Interface, built with PR #61"]
-    help["Help pages"]:::done
-    agentsTab["Agents tab"]:::done
-    drafts["Draft buttons"]:::done
-  end
+  estates["Estates and favour (M)"]
+  seats["Seats and notables (M+)"]
+  grants["Grants and reseating (S)"]
+  hands["Conquest, cession, secession (S)"]
+  notableOps["Operatives on notables (S)"]
+  marriage["Marriage (M)"]
+  seduction["Seduction (S)"]
+  court["Court tab, prompts, bots (M)"]
 
-  subgraph seatsPlan["Seats: estates and notables · L (designed)"]
-    estates["Estates and favour · M"]:::light
-    seatsCore["Seats and notables · M+"]:::heavy
-    grants["Grants and reseating · S"]:::light
-    hands["Conquest, cession, secession · S"]:::light
-    notableOps["Operatives on notables · S"]:::light
-    court["Court tab, prompts, bots · M"]:::light
-  end
+  ambitions["Ambitions (M+)"]
+  mandate["Mandate (M+, tabled)"]
+  fortune["Fortune and darkness (S)"]
 
-  estates --> seatsCore
-  seatsCore --> grants
-  seatsCore --> hands
-  seatsCore --> notableOps
+  estates --> seats
+  standing --> seats
+  seats --> grants
+  seats --> hands
+  seats --> notableOps
+  standing --> hands
+  standing --> notableOps
   grants --> court
   hands --> court
   notableOps --> court
-  courting --> seatsCore
-  courting --> hands
-  courting --> notableOps
+  seats --> marriage
+  standing --> marriage
+  seats --> seduction
+  secrets --> seduction
+  marriage -.-> seduction
+  marriage --> court
+  seduction --> court
   intel --> court
-  drafts -.-> court
-  help -.-> court
-  seatsCore -.-> marriage["Marriage between notables · later"]:::parked
+  ui -.-> court
+  ambitions -.-> mandate
+  mandate --> fortune
 
-  ambitions["Ambitions · M+"]:::heavy -.-> mandate["Mandate · M+ (tabled)"]:::parked --> fortune["Fortune and darkness · S"]:::light
+  class standing,intel,secrets,ui done
+  class estates,grants,hands,notableOps,marriage,seduction,court,fortune light
+  class seats,ambitions heavy
+  class mandate later
 ```
 
 S is small, M is medium (lighter), M+ is medium (heavier) and L is large.
@@ -768,10 +761,14 @@ S is small, M is medium (lighter), M+ is medium (heavier) and L is large.
 | standing → seats and notables | needs | a notable lifts or sours a world's regard, and a bitter estate lets a world go through the rising that exists |
 | standing → conquest, cession, secession | needs | a seceded world's notable leads it, and joining seats one |
 | standing → operatives on notables | needs | `turn_notable` is contested as incitement is |
-| grants, conquest, operatives → Court tab, prompts, bots | needs | the tab shows grants and foreign notables; the bots placate, grant and subvert |
+| seats and notables → marriage | needs | `terms.spouses` names a notable of each party |
+| standing → marriage | needs | each spouse's world adds 30 to its baseline toward the in-laws |
+| seats and notables → seduction | needs | a seduction is aimed at a notable |
+| secrets → seduction | needs | the affair is a secret kind, published or spent on blackmail |
+| marriage ⇢ seduction | better after | publishing an affair voids the notable's marriage |
+| grants, conquest, operatives, marriage, seduction → Court tab, prompts, bots | needs | the tab shows grants, foreign notables and marriages; the bots placate, grant, subvert, seduce and marry |
 | intel → Court tab | needs | intel at 40 shows a rival's estates' favour in bands |
 | draft buttons, help ⇢ Court tab | better after | grant, revoke and reseat are draft buttons; the no-promotion table is a help page |
-| seats and notables ⇢ marriage | later | a notable married abroad pulls its world toward the in-laws |
 | mandate → fortune | needs | darkness is charged when mandate buys a reroll |
 | ambitions ⇢ mandate | better after | a fulfilled ambition earns mandate |
 
@@ -780,14 +777,14 @@ S is small, M is medium (lighter), M+ is medium (heavier) and L is large.
 1. **Ready now:** ambitions; estates and favour (the seats design's first step).
 2. Seats and notables.
 3. Grants and reseating; conquest, cession and secession; operatives on
-   notables. Independent of each other.
-4. The Court tab, prompts and bots, and the measurement.
+   notables; marriage. Independent of each other.
+4. Seduction, which reads best once a marriage can be voided.
+5. The Court tab, prompts and bots, and the measurement.
 
-Mandate is tabled, and fortune and darkness wait on it. Marriage between
-notables is for after seats.
+Mandate is tabled, and fortune and darkness wait on it.
 
-The longest chain is four deep: estates → seats and notables → grants → the
-Court.
+The longest chain is five deep: estates → seats and notables → marriage →
+seduction → the Court.
 
 The bots now reach the leverage layer too: they demand tribute of weaker
 neighbours, keep watchers on rivals, and publish or blackmail with what those
