@@ -2,19 +2,19 @@ import { describe, expect, it } from 'vitest';
 import { Campaign } from '../src/engine/campaign.js';
 import { MemoryCampaignStore } from '../src/engine/store.js';
 import { JOURNAL_VERSION } from '../src/engine/journal.js';
-import { seatedAt } from '../src/domain/seats.js';
+import { listsOf, seatedAt } from '../src/domain/seats.js';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import { BOTS, brokeredAccords, proposeFor } from '../src/domain/initiative.js';
 import { createSeedState } from '../src/seed/scenario.js';
 
 /**
  * The court through a journaled campaign — journal version 20 — must rebuild
- * to the same world: stipends, a reseating that takes a prisoner, a marriage
- * with a ward, and the ticks that move favour and regard — and the bots'
+ * to the same world: stipends, a conquest that takes a prisoner, an
+ * appointment off the Lists, a marriage with its ward, and the ticks that move favour and regard — and the bots'
  * courts, matches and seducers over twenty turns.
  */
 describe('a campaign under version 20 replays exactly', () => {
-  it('with stipends, a conquest reseated, and a marriage with its ward', () => {
+  it('with stipends, a conquest and an appointment, and a marriage with its ward', () => {
     const campaign = Campaign.start('meridian', 'v20', new MemoryCampaignStore());
     expect(campaign.toSaveFile().journal.version).toBe(JOURNAL_VERSION);
     const s0 = campaign.state;
@@ -28,7 +28,7 @@ describe('a campaign under version 20 replays exactly', () => {
           op: 'form_treaty',
           treatyType: 'marriage',
           parties: ['meridian', 'vigil'],
-          terms: { spouses: [notableAt('Brannix').id, notableAt('Sarsuma').id], ward: notableAt('Sarsuma').id },
+          terms: { spouses: [notableAt('Brannix').id, listsOf(campaign.state, 'vigil')[0]!.id] },
           summary: 'a marriage',
         },
       ],
@@ -40,7 +40,8 @@ describe('a campaign under version 20 replays exactly', () => {
     campaign.commitTurn();
     campaign.tick();
 
-    // Kalzir taken (as the engine would on an arrival), then reseated.
+    // Kalzir taken (as the engine would on an arrival), its governor taken
+    // with it, then a governor of Meridian's appointed off the Lists.
     campaign.stage([{ op: 'transfer_control', systemId: named('Kalzir').id, toFactionId: 'meridian' }], 'taken', '', 'engine');
     campaign.commitTurn();
     campaign.stage(

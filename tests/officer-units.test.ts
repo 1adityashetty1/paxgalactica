@@ -52,7 +52,7 @@ function twoAtPort(): WorldState {
   s.factions.find((f) => f.id === 'freeworlds')!.credits = 100000;
   const hired = applyOps(
     s,
-    [{ op: 'recruit_commander', factionId: 'freeworlds', systemId: 'ark-3' }],
+    [{ op: 'recruit_commander', factionId: 'freeworlds', systemId: 'ark-3', school: 'convoy' }],
     'model',
     'freeworlds',
   ).state;
@@ -199,7 +199,8 @@ describe('a family name is a person', () => {
 
   it('starts where the old draw landed, so the opening names do not move', () => {
     const s = fresh();
-    for (const c of s.commanders) {
+    // The officers the seed puts in post; those waiting on the Lists are drawn after.
+    for (const c of s.commanders.filter((x) => x.status === 'active')) {
       const p = drawPerson({ factionId: c.factionId, turn: 0, salt: 'seed', archetype: c.archetype, taken: new Set() });
       expect(p.name).toBe(c.name);
     }

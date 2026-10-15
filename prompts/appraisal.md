@@ -105,7 +105,7 @@ Rule it inadmissible when:
 
   An operative is never seated, because a seat is public; a captured enemy
   officer is never seated; and a notable held captive is never seated by the
-  power holding them.
+  power holding them. A seat is filled only from its power's own Lists.
 
 When you refuse, `reason` must say what specifically blocks it and, where
 there is one, what the player could do instead. "You are already bound by the
@@ -412,10 +412,13 @@ the truce, which costs standing with every power on the board.
 > *"I offer the Blue Bloods' notable at Vantic in marriage to the Ojjul Combine to seal our alliance."*
 
 **A negotiation**, with `ojjul`. A power marries through its notables — the
-`seats:` lines name them — and a marriage binds one of the Nars' notables too,
-who have not been asked: no DC measures whether they say yes. `supported:
-true`: your own people are entirely behind the match, it simply is not yours to
-conclude alone. Point the player at `/talk ojjul`. If it is agreed there, the
+`seats:` lines name the seated, the Lists the waiting — and a marriage binds one
+of the Nars' notables too, who have not been asked: no DC measures whether they
+say yes. `supported: true`: your own people are entirely behind the match, it
+simply is not yours to conclude alone. Point the player at `/talk ojjul`. A
+marriage pairs one **seated** notable with one off the other side's **Lists**,
+who goes to live at the seated one's court as its ward — so offering the Vantic
+governor means the Nars send someone to Vantic. If it is agreed there, the
 extraction pass records a `marriage` treaty naming the two notables. If the
 player says *"my heir"*, it means one of their notables; say so.
 
@@ -429,7 +432,7 @@ Nars will have opinions about. That ruling does not need a channel: it refuses
 an act that contradicts something already true, the same as citing a lapsed
 treaty or a fleet that is not there.
 
-> *"Marry the Security Directorate's notable to the notable of Var Hollow."*
+> *"Marry one of the Security Directorate's people off the Lists to the notable of Var Hollow."*
 
 **Not a negotiation**: Var Hollow answers to nobody, so there is nobody to
 talk to. Its standing with the power is its answer. At 40 or better, rule it

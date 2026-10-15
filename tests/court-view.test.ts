@@ -2,22 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { createSeedState } from '../src/seed/scenario.js';
 import { applyOps } from '../src/domain/reducer.js';
 import { worldAsSeenBy } from '../src/domain/intel.js';
-import { courtLines, courtView, seatDoing } from '../src/ui/court.js';
+import { courtLines, courtView } from '../src/ui/court.js';
 import { seatedAt } from '../src/domain/seats.js';
 import { serializeState } from '../src/model/serialize.js';
 import { helpPage } from '../src/ui/help.js';
 
 /** The court as the player sees it: the tab, the briefing, the fog, the prompt, the help. */
 describe('the court, seen', () => {
-  it('lays out each estate, and lists a conquest’s foreign seat as costing you', () => {
+  it('lays out each estate, the Lists, and a conquest’s empty seat to fill', () => {
     let s = createSeedState('meridian');
     const kalzir = s.systems.find((x) => x.name === 'Kalzir')!;
     s = applyOps(s, [{ op: 'transfer_control', systemId: kalzir.id, toFactionId: 'meridian' }], 'engine').state;
     const view = courtView(s, 'meridian')!;
     expect(view.estates.map((e) => e.name)).toEqual(['Standards & Practices', 'the Security Directorate', 'the Creatives']);
-    expect(view.trouble.map((t) => t.world)).toContain('Kalzir');
+    expect(view.lists.every((l) => l.notables.length > 0)).toBe(true);
+    expect(view.vacancies.map((v) => [v.world, v.office])).toContainEqual(['Kalzir', 'Governor']);
+    expect(view.holding.length).toBe(1);
     expect(courtLines(s, 'meridian').some((l) => l.tone === 'bad' && l.text.includes('Kalzir'))).toBe(true);
-    expect(seatDoing(s, seatedAt(s, kalzir.id)[0]!)).toMatch(/foreign/);
+    expect(seatedAt(s, kalzir.id)).toHaveLength(0);
   });
 
   it('shows a rival’s estates by name and hides their favour and stipends', () => {
@@ -42,6 +44,7 @@ describe('the court, seen', () => {
     expect(block).toMatch(/Your estates/);
     expect(block).toMatch(/the Blue Bloods \(`vigil:bluebloods`, influence\)/);
     expect(block).toMatch(/seats: .*`nob-/);
+    expect(block).toMatch(/Your Lists/);
   });
 
   it('has a help page, found by its name and its aliases', () => {

@@ -755,8 +755,9 @@ describe('dissent has teeth', () => {
         // Officers cleared so this pins DISSENT. Arkane opens with an `assault`
         // officer, whose whole effect is a multiplier on the troops landed —
         // the same quantity the dissent penalty is being searched for a flip
-        // in, and several times its size, so it buries the signal.
-        s.commanders = [];
+        // in, and several times its size, so it buries the signal. Those waiting
+        // on the Lists stay, or every batch would put twenty more forward.
+        s.commanders = s.commanders.filter((c) => c.status === 'listed');
         s.factions.find((f) => f.id === 'freeworlds')!.dissent = dissent;
         const t = sys(s, 'sek-6');
         t.controllerFactionId = 'vigil';
@@ -794,7 +795,7 @@ describe('dissent has teeth', () => {
     // The direction matters more than the magnitude: being restive must never
     // win you a world your confident self could not take.
     expect(everHelped, 'dissent helped the attacker').toBe(0);
-  });
+  }, 20_000); // hundreds of battles: generous, so a loaded machine does not fail it
 
   it('can be adjusted deliberately, in both directions', () => {
     const up = applyOps(fresh(), [
@@ -1167,11 +1168,28 @@ describe('the officer on the field', () => {
     expect(commanderFor(out.state.commanders, 'freeworlds')!.battles).toBeGreaterThan(0);
   });
 
-  it('replaces one that is lost, with a different person', () => {
+  it('fights without one, from version 20, until another is appointed off the Lists', () => {
     const s = fresh();
     const was = commanderFor(s.commanders, 'drajk')!;
     was.status = 'lost';
     const after = tickTurn(s).state;
+    expect(commanderFor(after.commanders, 'drajk')).toBeUndefined();
+    const school = was.archetype;
+    const appointed = applyOps(
+      after,
+      [{ op: 'recruit_commander', factionId: 'drajk', systemId: after.systems.find((x) => x.controllerFactionId === 'drajk')!.id, school }],
+      'model',
+      'drajk',
+    );
+    expect(appointed.rejections).toEqual([]);
+    expect(commanderFor(appointed.state.commanders, 'drajk')!.archetype).toBe(school);
+  });
+
+  it('replaced one that was lost, with a different person, before version 20', () => {
+    const s = fresh();
+    const was = commanderFor(s.commanders, 'drajk')!;
+    was.status = 'lost';
+    const after = tickTurn(s, { officerLists: false }).state;
     const now = commanderFor(after.commanders, 'drajk')!;
     expect(now.id).not.toBe(was.id);
     expect(now.battles).toBe(0);
@@ -1297,25 +1315,27 @@ describe('the officer on the field', () => {
       expect(archetypeOf('lineofbattle').effect).not.toMatch(/\d/);
     });
 
-    it('promotes a successor of the same school', () => {
+    it('promoted a successor of the same school, before version 20', () => {
       // The speciality is the institution and survives; the record is the
       // person and does not. Re-rolling it made a defeat a free lottery ticket.
       const s = fresh();
+      // A board from before the Lists has nobody waiting on them.
+      s.commanders = s.commanders.filter((c) => c.status !== 'listed');
       const was = commanderFor(s.commanders, 'drajk')!;
       was.archetype = 'gunnery';
       was.battles = VETERAN_THRESHOLDS[1];
       was.status = 'lost';
-      const now = commanderFor(tickTurn(s).state.commanders, 'drajk')!;
+      const now = commanderFor(tickTurn(s, { officerLists: false }).state.commanders, 'drajk')!;
       expect(now.archetype).toBe('gunnery');
       expect(now.battles).toBe(0);
       expect(veterancyOf(now.battles)).toBe(0);
     });
 
-    it('rolls a speciality only when there is no predecessor at all', () => {
+    it('rolled a speciality only when there was no predecessor at all, before version 20', () => {
       // A save written before commanders existed, or a faction added later.
       const s = fresh();
       s.commanders = [];
-      const after = tickTurn(s).state;
+      const after = tickTurn(s, { officerLists: false }).state;
       for (const f of after.factions) {
         expect(commanderFor(after.commanders, f.id), f.id).toBeDefined();
       }
@@ -1688,7 +1708,11 @@ describe('the officer on the field', () => {
       const hire = (s: WorldState, factionId: string, systemId: string, fromAssetId: string | null = null) =>
         applyOps(
           s,
-          [{ op: 'recruit_commander', factionId, systemId, fromAssetId }],
+          [
+            fromAssetId
+              ? { op: 'recruit_commander', factionId, systemId, fromAssetId }
+              : { op: 'recruit_commander', factionId, systemId, school: 'lineofbattle' as const },
+          ],
           'model',
           factionId,
         );
@@ -2115,7 +2139,7 @@ describe('the officer on the field', () => {
         for (let i = 0; i < MAX_ACTIVE_COMMANDERS - 1; i++) {
           st = applyOps(
             st,
-            [{ op: 'recruit_commander', factionId: 'freeworlds', systemId: home }],
+            [{ op: 'recruit_commander', factionId: 'freeworlds', systemId: home, school: 'convoy' }],
             'model',
             'freeworlds',
           ).state;

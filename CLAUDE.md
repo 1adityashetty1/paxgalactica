@@ -1826,7 +1826,7 @@ and nothing implemented it.
 | `non_aggression` · `ceasefire` | attacking the other party **auto-breaks** it: −25 with them, `PACT_BREAKING_REPUTATION_COST` with every onlooker |
 | `mutual_defense` | the above, plus an attack on one **by anyone** calls the other to war with the attacker and brings its `shipsPledged` — see "Allies answer" |
 | `coalition` | the same, against the powers in `terms.against` only — an attack by anyone else calls nobody — and they resent both signatories |
-| `marriage` | a notable of each party wed (`terms.spouses`): a peace, a grant to each estate, each world drawn toward the in-laws; `terms.ward` sends one to the other court — see "The court" |
+| `marriage` | a seated notable wed to one off the other party's Lists, who lives at that court as its ward (`terms.spouses`, `terms.ward`): a peace, a grant to each estate, the seated spouse's world drawn toward the in-laws; the ward is surety — see "The court" |
 | `trade_accord` | parties are immune to each other's blockades and raiding |
 | `basing_rights` | the other party's fleets may enter without it being an attack |
 | `tribute` | `incomePerTurn` moves every turn |
@@ -2585,8 +2585,14 @@ asset losable, and said nothing about whether the thing can be handed over on
 its own — the difference between a hold full of ore, survey robots that can be
 crated up, and a mine. A fixture is refused by `transfer_asset` from both the
 declared and the negotiated path, and changes hands **only** through cession or
-conquest, which needed no new code at all: the transfer-of-control path already
-moves everything standing on a world. It also cannot be pledged as collateral —
+conquest, through `assetsGoWithWorld` in the reducer: every way a world gains a
+holder — `transfer_control`, a storming, a cession, a world joining — moves what
+stands on it. That was claimed here for a long time while only
+`transfer_control` did it, so a world stormed in battle or ceded left its
+fixtures, cargo and prisoners with the power that lost it; in the harness, the
+factory on Torrek Anchorage stayed Meridian's after the Vigil took the world on
+turn 20. Pinned to `JOURNAL_VERSION` 21 (`LegacyRules.assetsGoWithWorld`); the
+board does not move. A world that rises to nobody moves nothing. It also cannot be pledged as collateral —
 a contingency naming one is dropped with a note saying the true thing, which is
 that the world already carries the mine, so pledge the world.
 
@@ -5645,10 +5651,27 @@ establishment; the rest command battles. Without that rule five convoy officers
 would be −70% fleet upkeep, and the passive would stop being a reason to keep a
 *good* officer and become a reason to keep *five*.
 
-**A hire rolls a school; a successor inherits one.** Hiring is where a power
-changes what it is good at, and inheritance is where an institution carries on —
-if a hire inherited too, a power would be locked to its opening archetype for a
-whole campaign.
+**Officers come off the Lists, and only by appointment** (journal version 20,
+`LegacyRules.officerLists`). Every power keeps one officer of each school
+waiting (`listedOfficers`, `stockOfficerLists`, status `listed` — standing
+nowhere, drawing no pay, nobody's mark), and `recruit_commander` names one
+(`officer`) or a school (`school`) to send its first. A new officer costs
+`COMMANDER_COST`; one who has served (`commissioned`) — handed home from
+captivity, which puts them straight back on the Lists — comes back for nothing.
+**Nobody is put in post any other way**: when a power's last officer falls it
+fights without one until it appoints, which is what the tick's successor used to
+paper over. The school is a **choice** now, so the weighted draw below no longer
+decides anything in a new campaign: the rare school was weighted down only
+because an unlucky roll left a power paying for an officer whose battle effect
+could never fire, and nobody picks one by accident. The bots hire the line
+first, then the school their fleet gives work to (assault with lift, gunnery
+with torpedo boats), then convoy. Measured: all four boards unchanged at
+5/5/6/5/4.
+
+**Before the Lists, a hire rolled a school and a successor inherited one.**
+Hiring is where a power changes what it is good at, and inheritance is where an
+institution carries on — if a hire inherited too, a power would be locked to its
+opening archetype for a whole campaign.
 
 > The draw had to be fixed to make that fair. `rollD20` returns 1–20, so a
 > single roll taken `% 3` lands 7/7/6 and **`convoy` came up 30% against 35%** —
@@ -5676,8 +5699,10 @@ no flag over it does not run a prison.
 A captured officer becomes an `Asset` of kind `officer` in the victor's hands,
 held at the world where they were taken, so they travel with it when it changes
 hands. From there they need **no second mechanism**: they are ransomed, traded,
-ceded or won back exactly as any other asset is, and `recruit_commander` with a
-`fromAssetId` puts them back in post with their record intact and spends the asset.
+ceded or won back exactly as any other asset is; handed home they go back on
+their own power's Lists with their record intact (before version 20,
+`recruit_commander` with a `fromAssetId` put them back in post and spent the
+asset).
 Worth most to the power that lost them — the same claim `prisoners` makes, scaled
 by veterancy, because the officer a power actually wants back is the one whose
 ladder took engagements to climb.
@@ -5869,12 +5894,17 @@ trip is for.
 > cancellation exact at every pairing, clamp or no clamp, and a test pins it at
 > both ends of the range.
 
-`deploy_agent` takes `fromAssetId`, the twin of `recruit_commander`'s. It
-**clears `exposed`** — a face the enemy caught is not a person who has stopped
-existing — charges no `AGENT_COST`, since the ransom was the cost and they are
-already trained, and still checks `maxAgentsFor`, because the ceiling is about
-how many lines you can run rather than how many people you have hired. Only your
-own go back out.
+**An operative handed home goes back on the books by itself** (journal
+version 20, `operativesComeHome`), awaiting orders, at the world they were held
+on if their power holds it and its best world otherwise — the rule the Lists
+follow for notables. It **clears `exposed`** — a face the enemy caught is not a
+person who has stopped existing — charges no `AGENT_COST`, since the ransom was
+the cost and they are already trained, and still needs a free slot under
+`maxAgentsFor`, because the ceiling is about how many lines you can run rather
+than how many people you have hired: one that does not fit waits in the
+warehouse until a slot opens, and so does one whose power holds no world. Before
+version 20 it took a `recruit_agent` with `fromAssetId`, which still works.
+Officers do the same: one handed home goes back on the officers' Lists.
 
 **And you cannot question your own people.** `consume_asset` on a person your own
 power ran would have you file what they gave up and sell yourself intelligence
@@ -5916,10 +5946,10 @@ That was a roll on the battle's own seeded d20 after a defeat
 (`COMMANDER_LOSS_ROLL`, still used to replay journals before version 8), on the
 argument that a death roll on every engagement would churn the roster faster
 than a player could learn a name; tying the fall to the fleet keeps that
-property without the die. `tickTurn` appoints a replacement — a
-different person, with a new name and no battles — and the dead stay on the
-roster, since a power's history of commanders is worth more than the bytes of
-removing them.
+property without the die. Before version 20 `tickTurn` appointed a replacement
+— a different person, with a new name and no battles; now the power appoints one
+off its Lists or fights without — and the dead stay on the roster, since a
+power's history of commanders is worth more than the bytes of removing them.
 
 ### A death has to cost something, and for a while it paid out
 
@@ -6160,8 +6190,9 @@ estate; revoking one costs `REVOKED_FAVOUR` (15) at once. This is a purchase
 that patches a weakness, which the fixture design made a war aim instead: it is
 bounded at +2, paid every turn, and seats are zero-sum among the three.
 
-**Every world has a seat, a hub two, and a notable in each** — a named person
-whose own facts are their estate and their spouse. A notable acts on its world
+**Every world has a governor's seat, and a hub a chancellor's beside it**
+(`Notable.seat`, 0 and 1; the two act alike) — each held by a named person whose
+own facts are their estate and their spouse. A notable acts on its world
 by its estate's favour: from 40 it lifts the world's regard for its holder
 `NOTABLE_REGARD` (4) a turn; at −40 it keeps back half the world's income
 (`Ledger.withheld`, lost to everyone) and lowers it as much; at −80, on a world
@@ -6169,36 +6200,60 @@ not content, it lets the world go through `secede` — no new way for a world to
 change hands. On a hub each does half. An independent world's notable belongs
 to no estate, drawn from a sixth name stock (`RIM_STOCK`).
 
-**A seat that opens is filled at once** — for the ground's estate, or the one
-with the fewest seats where the ground is a peak; for the same estate after a
-death or a ward sent abroad; for the spouse's estate when a married-in world
-joins. **A conquered notable stays**, a foreign notable working against its
-conqueror as an estate at −40 does, counting for its old estate's seats and
-adding none to the conqueror's, until `seat_estate` reseats it and takes it
-prisoner. An independent world's notable is turned out on a conquest.
+**A notable is in exactly one place** (`whereabouts`): seated, on its power's
+**Lists**, held at another court as an asset, or living on an independent world
+it married into. The Lists are the notables waiting for a seat; they are not
+gameplay entities — no operative can reach them — and every seat a power fills
+comes off them. `settleCourt`, run after every batch and every tick, keeps the
+shape: one of a power's own people it holds goes back on its Lists, and an
+estate with nobody listed has someone put forward.
+
+**A seat on a power's world is never filled for it.** The opening board seats
+everyone; after that an empty seat — a conquest, a killing, a world grown into
+a hub — stands at None, doing nothing, until `seat_estate` appoints someone
+off the Lists. That was decided against auto-appointment so a killing and a
+conquest cost an action to repair. Taking a full seat sends the sitter back to
+the Lists and costs the world `RESEAT_REGARD`; a married notable's seat cannot
+be taken. **Conquest takes whoever sits the world prisoner**, held there by the
+conqueror — so retaking the world frees them onto the Lists, and the
+foreign-notable mechanic the first build had is gone. A **cession** sends them
+home to the ceder's Lists; **secession** leaves them speaking for the world
+alone. An independent world's notable is turned out on a conquest, and an
+independent world's empty seat is always refilled — nobody appoints for it.
 
 **Marriage is between notables** — the player has no house. The bond is
 `Notable.spouseId`, set on both. Between powers it is a `marriage` treaty
-(`terms.spouses`, one of each party's, the shape `coalition` took): a peace, a
-truce if signed at war, a grant to each estate at no credits, and each world
-adds `MARRIAGE_REGARD` (30) to its baseline toward the in-laws; `terms.ward`
-sends one spouse to live at the other court as an asset. Into an independent
-world it is `propose_marriage`, a declaration the world accepts at a standing of
-`MARRIAGE_CONSENT_REGARD` (40). A married notable does not work against in-laws
-who take its world. Treaties and bonds are reconciled each tick.
+(`terms.spouses`): **one spouse seated, the other off the other party's
+Lists**, who goes to live at the seated spouse's world as that court's **ward**
+(`terms.ward`, worked out by the engine). A peace, a truce if signed at war, a
+grant to each estate at no credits, and the seated spouse's world adds
+`MARRIAGE_REGARD` (30) to its baseline toward the in-laws — the ward sits
+nowhere, so the pull runs one way: the giver's payoff for handing over a
+hostage. **The ward is surety** (`fateWhenBrokenBy`): if the giver breaks the
+match or attacks the court, the court keeps the ward prisoner; if the court
+breaks it, the ward is gone from play; if the seated spouse dies or their
+affair is published, the ward goes home; if the ward's own affair is published,
+the court keeps them. A ward held counts as leverage in the giver's
+`concessionBudget` (`wardsHeld`). Into an independent world it is
+`propose_marriage`, a notable off your Lists who goes to live there
+(`Notable.livesAt`), which the world accepts at a standing of
+`MARRIAGE_CONSENT_REGARD` (40); they come home when the world joins anyone, and
+are a conqueror's prisoner if it is taken by force. Treaties and bonds are
+reconciled each tick as a backstop.
 
 **A notable can be held** — `Asset.notableId`, the third twin of `commanderId`
-and `agentId`, under the same people-standing prices — and goes home into a seat
-for its own estate by `seat_estate` with `fromAssetId`. **Three missions reach
-one**: subversion turns a notable against its holder (`turn_notable`);
-`seduction` (80 credits, sabotage's exposure) warms its world to the seducer
-and after three turns proves an **affair**, a secret that voids the marriage it
-betrays when published; assassination kills one, on the 17+ roll officers take,
-the seat refilling for the same estate — or for the holder, if the notable was
-foreign. **No promotion**: officers, notables and operatives never cross rosters,
+and `agentId`, under the same people-standing prices — and goes home onto their
+own power's Lists the moment that power holds them, by ransom or by retaking the
+world they are held on. **Three missions reach one**: subversion turns a
+notable against its holder (`turn_notable`); `seduction` (80 credits,
+sabotage's exposure) warms its world to the seducer and after three turns
+proves an **affair**, a secret that voids the marriage it betrays when
+published — and a ward living at a court can be seduced there too; assassination
+kills one, on the 17+ roll officers take, and a power's seat stands empty
+after. **No promotion**: officers, notables and operatives never cross rosters,
 and the arbiter rules the attempt inadmissible in each power's own words.
 
-**The bots keep a court** — `keepCourt` reseats a conquest first, moves a seat
+**The bots keep a court** — `keepCourt` fills empty seats first, moves a seat
 to an estate gone resentful, and pays its weakest estate up to two stipends
 while standing income covers four times them; the Combine (guile 16) works on
 rivals' notables away from their home ground; courting powers marry into worlds
@@ -6206,7 +6261,8 @@ that will have them; two NPCs on good terms wed their unhappy estates'
 notables. **Measured**: all four harness boards stay 5/5/6/5/4, as they were.
 The first seducer rule took in every power at guile 14 and cost the
 Confederacy two worlds at 100 turns; at 16 the boards are back.
-`pnpm balance [turns] --no-seats` is the control.
+`pnpm balance [turns] --no-seats` is the control. The Lists, empty seats and
+marriage-as-hostage left all four boards at 5/5/6/5/4 too.
 
 ## A commander decides whether the world is worth the fleet
 
@@ -6363,12 +6419,12 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `repudiate_loan` | borrower only; keeping it, priced like breaking a pact |
 | `forgive_loan` | lender only; what was lent becomes the borrower's |
 | `forgive_debt` | creditor only; writes off the balance and buys goodwill |
-| `recruit_commander` | appoint an officer to a world you hold, up to five; `fromAssetId` brings a captured one home. An action of its own |
+| `recruit_commander` | appoint an officer off your Lists — `officer` by name, or `school` for its first — to a world you hold, up to five. An action of its own |
 | `recruit_agent` | sign an operative on at a world you hold, awaiting orders; `fromAssetId` brings a captured one home. An action of its own |
 | `deploy_agent` | send an operative already on the books on a mission; they travel three jumps a turn. `targetNotable` aims a seduction, a subversion or an assassination at a notable |
 | `grant_stipend` · `revoke_stipend` | pay one of your estates 15 a turn, or stop; three grants an estate |
-| `seat_estate` | give a seat on a world you hold to one of your estates; a foreign notable is turned out first and held. `fromAssetId` seats one of your own brought home |
-| `propose_marriage` | marry one of your notables into a world that answers to nobody, which accepts at a standing of 40 |
+| `seat_estate` | appoint someone off your Lists (`notable`, or an `estate`'s first listed) to a seat on a world you hold; `office` picks governor or chancellor. An empty seat is filled; a full one's sitter goes back on the Lists |
+| `propose_marriage` | marry a notable off your Lists into a world that answers to nobody, where they go to live; it accepts at a standing of 40 |
 | `spawn_event` | |
 | `log_narrative` | |
 
@@ -7346,11 +7402,16 @@ component is logic nothing checks.
 
   **Court is its own tab** (`courtView` in `src/ui/court.ts`): each estate's
   favour as a bar, the stat it moves, its seats against a fair share, grants
-  and drift; the seats costing you; marriages and the worlds that would take a
-  match; who of yours is held and whom you hold. The System tab shows a world's
-  seats — who, for which estate, married to whom, and what they are doing —
-  with buttons to give a seat to another estate or propose a match, and the
-  briefing has a **Court** group.
+  and drift; the seats costing you; marriages, who lives at whose court as a
+  ward, and the worlds that would take a match; who of yours is held and whom
+  you hold. **Lists is the tab beside it**: the empty seats on your worlds,
+  each with an appoint button per estate (the ground's starred), and every
+  estate's notables waiting. The System tab shows a world's seats as
+  *Governor:* and *Chancellor:* — *None* when empty, with an appoint button —
+  and the briefing's **Court** group says when a seat stands empty. The Lists
+  tab toggles to **Officers**: one of each school waiting, new (a commission)
+  or served (free), each with an appoint button; the Command tab offers the
+  same.
 
   **Buttons write, they never send.** Every action button in the panels
   writes a sentence for the player to read and send, because declaring is

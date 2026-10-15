@@ -67,7 +67,8 @@ describe('what a power does with the people it holds', () => {
     } as OpInput;
     const byTreaty = applyOps(s, [treaty], 'extraction', 'drajk', true);
     expect(byTreaty.rejections).toEqual([]);
-    expect(byTreaty.state.assets.find((a) => a.id === 'ast-p')!.heldBy).toBe('freeworlds');
+    // Handed home, the officer goes straight back on their own power's Lists.
+    expect(byTreaty.state.assets.find((a) => a.id === 'ast-p')).toBeUndefined();
     const byTransfer = applyOps(s, [give('freeworlds')], 'model', 'drajk');
     // The treaty also pays TREATY_GOODWILL, so compare the person's share only:
     // the treaty route must move standing by at least what the transfer does.

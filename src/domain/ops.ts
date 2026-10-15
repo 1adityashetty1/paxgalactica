@@ -15,6 +15,7 @@ import { FibScaleSchema } from './duration.js';
 import { LentSchema } from './loan.js';
 import { HullClassSchema, TypedStackSchema } from './hulls.js';
 import { CheatSchema } from './cheats.js';
+import { CommanderArchetypeSchema } from './command.js';
 import {
   OnInterruptSchema,
   OrderEffectSchema,
@@ -184,31 +185,36 @@ export const RevokeStipendOp = z.object({
 });
 
 /**
- * Give a seat on a world you hold to one of your estates. One estate's gain is
+ * Appoint someone off your Lists to a seat on a world you hold: name the
+ * notable, or name an estate and its first listed notable goes. An empty seat
+ * — a conquest, a killing, a world grown into a hub — is filled at no cost
+ * beyond the action. A full one is taken from whoever sits it, the estate with
+ * the most seats first, and they go back on the Lists; one estate's gain is
  * visibly another's loss, and the world's regard for you drops
- * `RESEAT_REGARD`. A foreign notable — left by the power you took the world
- * from — is displaced first, and taken prisoner. `fromAssetId` seats one of
- * your own notables brought home from captivity instead of drawing a new one.
+ * `RESEAT_REGARD`. `office` picks the governor's seat or a hub's chancellor's.
  */
 export const SeatEstateOp = z.object({
   op: z.literal('seat_estate'),
   factionId: z.string().min(1),
   systemId: z.string().min(1),
-  estate: z.string().min(1),
-  fromAssetId: z.string().min(1).optional(),
+  /** The estate the seat goes to; its first listed notable, unless `notable` names one. */
+  estate: z.string().min(1).optional(),
+  /** A notable on your Lists, by id or name. */
+  notable: z.string().min(1).optional(),
+  office: z.enum(['governor', 'chancellor']).optional(),
 });
 
 /**
- * Marry one of your notables to the notable of a world that answers to
- * nobody. No channel — an independent world has nobody to talk for it — and
- * its standing with you is its answer: it accepts at
- * `MARRIAGE_CONSENT_REGARD` or better. A marriage with another POWER needs
- * its consent and is a `marriage` treaty, agreed in a channel.
+ * Marry one of your notables off the Lists to the notable of a world that
+ * answers to nobody; yours goes to live there. No channel — an independent
+ * world has nobody to talk for it — and its standing with you is its answer:
+ * it accepts at `MARRIAGE_CONSENT_REGARD` or better. A marriage with another
+ * POWER needs its consent and is a `marriage` treaty, agreed in a channel.
  */
 export const ProposeMarriageOp = z.object({
   op: z.literal('propose_marriage'),
   factionId: z.string().min(1),
-  /** Your notable, by id or name. */
+  /** Your notable on the Lists, by id or name — they go to live on that world. */
   notable: z.string().min(1),
   /** The independent world whose notable is asked. */
   systemId: z.string().min(1),
@@ -1036,6 +1042,14 @@ export const RecruitCommanderOp = z.object({
   factionId: z.string().min(1),
   /** Where they report. Must be a world the faction holds. */
   systemId: z.string().min(1),
+  /**
+   * An officer on your Lists, by id or name. From journal version 20 every
+   * appointment comes off the Lists: name the officer, or a `school` and its
+   * first listed goes.
+   */
+  officer: z.string().min(1).optional(),
+  /** A school of command — `lineofbattle`, `gunnery`, `convoy` or `assault` — whose first listed officer goes. */
+  school: CommanderArchetypeSchema.optional(),
   /**
    * A captured officer to restore, rather than a new one to hire.
    *

@@ -303,10 +303,13 @@ export function officerLines(): string[] {
     `  Up to ${count(MAX_ACTIVE_COMMANDERS)} in post, ${COMMANDER_COST} to appoint and ${COMMANDER_UPKEEP} a turn to keep. Each`,
     '  is of one school, and helps only in a battle they are at:',
     ...COMMANDER_ARCHETYPES.map((a) => `  · ${a.effect} — ${a.phase}`),
-    '  Name one in an order and they sail with that fleet. They grow better',
-    `  after ${seasoned} engagements and again after ${veteran}, and fall or are taken when`,
-    '  the fleet around them does. A captured officer can be ransomed home,',
-    '  and the senior one in post also improves something at home.',
+    '  Appoint them off your Lists, where one of each school always waits;',
+    '  nobody is put in post any other way, so a fleet whose officers have all',
+    '  fallen fights without one. Name one in an order and they sail with that',
+    `  fleet. They grow better after ${seasoned} engagements and again after ${veteran}, and fall`,
+    '  or are taken when the fleet around them does. One ransomed home goes',
+    '  back on the Lists and returns to post for nothing. The senior one in',
+    '  post also improves something at home.',
   ];
 }
 
@@ -510,15 +513,21 @@ export function courtHelpLines(state?: WorldState | null): string[] {
     '',
     'SEATS AND NOTABLES',
     ...wrap(
-      `Every world has a seat, a hub two, and a notable in each, of one of its holder's estates. Favoured, a notable wins its world over; at ${RESENTFUL} it keeps back half the world's income and sours it; at ${BITTER}, on a world not content, it lets the world go.`,
+      `Every world has a governor, and a hub a chancellor beside them, each of one of its holder's estates. Favoured, a notable wins its world over; at ${RESENTFUL} it keeps back half the world's income and sours it; at ${BITTER}, on a world not content, it lets the world go.`,
     ),
     ...wrap(
-      `A conquered world's notable is still its old power's, working against you until you reseat it. "Give Kalzir's seat to the Blue Bloods" is an action: it costs the world ${RESEAT_REGARD} regard, and a foreign notable turned out is held, worth a ransom.`,
+      `Your Lists are the notables waiting for a seat, and every seat you fill comes from them; each estate always has someone listed. Nobody on the Lists can be reached by an operative.`,
+    ),
+    ...wrap(
+      `Taking a world takes whoever sits it prisoner, and its seats stand empty, doing nothing, until you appoint. A killing empties a seat too. "Appoint Corvan Hale as Governor of Kalzir" is an action; taking a filled seat sends its notable back to the Lists and costs the world ${RESEAT_REGARD} regard.`,
     ),
     '',
     'MARRIAGE',
     ...wrap(
-      `A power marries through its notables. With another power it is a treaty, agreed in a channel: a peace, and each world warms to the in-laws by ${MARRIAGE_REGARD}. With a world that answers to nobody it is an action, and the world says yes at a standing of ${MARRIAGE_CONSENT_REGARD}. A ward may be sent to live at the other court as surety.`,
+      `A marriage pairs a seated notable with one off the other side's Lists, who goes to live at that court as a ward. With another power it is a treaty, agreed in a channel: a peace, and the seated spouse's world warms to the in-laws by ${MARRIAGE_REGARD}.`,
+    ),
+    ...wrap(
+      `The ward is surety. If their own power breaks the match or attacks, the court keeps them prisoner; if the court breaks it, they are lost. With a world that answers to nobody it is an action: yours goes to live there, and the world says yes at a standing of ${MARRIAGE_CONSENT_REGARD}.`,
     ),
     '',
     'WHO GOES WHERE',

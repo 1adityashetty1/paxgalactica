@@ -13,13 +13,16 @@ import { eventsVisibleTo, observeOrders, ordersVisibleTo, rememberedBy } from '.
 import { INTEL_DELIVERS, intelOn } from '../domain/intel-levels.js';
 import {
   courtRecorded,
+  emptySeats,
   estateById,
   favourBaseline,
   heldAs,
+  listsOf,
+  marriageOf,
   notableById,
   seatedAt,
 } from '../domain/seats.js';
-import { MARRIAGE_CONSENT_REGARD, favourModifier } from '../domain/estates.js';
+import { MARRIAGE_CONSENT_REGARD, favourModifier, seatOffice } from '../domain/estates.js';
 import { describeStack, hullsIn } from '../domain/hulls.js';
 import { describeOrderEffect } from '../domain/development.js';
 import {
@@ -46,6 +49,7 @@ import { routeEarnings } from '../domain/trade.js';
 import {
   MAX_ACTIVE_COMMANDERS,
   activeCommanders,
+  listedOfficers,
   archetypeOf,
   commanderEffect,
   commanderFor,
@@ -232,15 +236,24 @@ function officerRoll(state: WorldState, factionId: string): string {
  */
 function commanderLine(state: WorldState, viewerId: string): string {
   const officer = commanderFor(state.commanders, viewerId);
+  // Who could be appointed: every appointment comes off the Lists.
+  const listed = listedOfficers(state.commanders, viewerId);
+  const lists =
+    listed.length > 0
+      ? `Your officers' Lists — appoint one with \`recruit_commander\` naming them (\`officer\`) or their school (\`school\`): ${listed
+          .map((c) => `${c.name} (${c.archetype}${c.commissioned ? `, has served — ${c.battles} engagement${c.battles === 1 ? '' : 's'}, appointed for nothing` : ''})`)
+          .join('; ')}.`
+      : '';
   if (!officer) {
     const held = (state.commanders ?? []).filter(
       (c) => c.factionId === viewerId && c.status === 'captured',
     );
     // A power with nobody in post is a power that can appoint one, and saying
     // so is the difference between a gap and a mystery.
-    return held.length > 0
-      ? `You have no officer in post. ${held.map((c) => c.name).join(' and ')} ${held.length === 1 ? 'is' : 'are'} in enemy hands.`
-      : 'You have no officer in post.';
+    const none = held.length > 0
+      ? `You have no officer in post, and your fleets fight without one until you appoint. ${held.map((c) => c.name).join(' and ')} ${held.length === 1 ? 'is' : 'are'} in enemy hands.`
+      : 'You have no officer in post, and your fleets fight without one until you appoint.';
+    return [none, lists].filter(Boolean).join('\n');
   }
   const shape = archetypeOf(officer.archetype);
   // Where each one is, because that decides which battles they are in at all,
@@ -263,14 +276,17 @@ function commanderLine(state: WorldState, viewerId: string): string {
   const owed = toNextVeterancy(officer.battles);
   const ladder =
     owed === null
-      ? `${officer.name} is as good as an officer gets; a successor would start again from nothing.`
-      : `${officer.name} improves again in ${owed} more engagement${owed === 1 ? '' : 's'}. A successor inherits the speciality and none of the record.`;
+      ? `${officer.name} is as good as an officer gets; whoever replaced them would start again from nothing.`
+      : `${officer.name} improves again in ${owed} more engagement${owed === 1 ? '' : 's'}; whoever replaces them starts again from nothing.`;
   return [
     `Your officers (${roster.length} in post${room > 0 ? `, room for ${room} more` : ', the roster is full'}):`,
     ...each.map((line) => `  - ${line}`),
     `The senior officer, ${officer.name}, is known for ${shape.known} and runs your establishment: ${commanderPassive(officer)}. ${ladder}`,
     'An officer is part of the fleet they stand with. They sail when named in a fleet movement\'s `officers` (a family name is enough) or when the whole port sails; they command only the battle they are at, and fall only when every ship they fought with is lost.',
-  ].join('\n');
+    lists,
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 /**
@@ -591,8 +607,9 @@ function nameOfFaction(state: WorldState, id: string): string {
  */
 function seatsLine(state: WorldState, s: StarSystem): string[] {
   if (!courtRecorded(state)) return [];
-  const seated = seatedAt(state, s.id);
-  if (seated.length === 0) return [];
+  const seated = [...seatedAt(state, s.id)].sort((a, b) => a.seat - b.seat);
+  const empty = s.controllerFactionId !== null ? emptySeats(state, s) : [];
+  if (seated.length === 0 && empty.length === 0) return [];
   const parts = seated.map((n) => {
     const estate = estateById(state, n.estateId);
     const of = estate ? `of ${estate.estate.name}, ${estate.faction.name}` : 'speaking for the world itself';
@@ -602,8 +619,9 @@ function seatsLine(state: WorldState, s: StarSystem): string[] {
         : '';
     const spouse = notableById(state, n.spouseId);
     const spouseOf = spouse ? (estateById(state, spouse.estateId)?.faction.name ?? 'an independent world') : '';
-    return `${n.name} (\`${n.id}\`) ${of}${foreign}${spouse ? `, married to ${spouse.name} of ${spouseOf}` : ''}`;
+    return `${seatOffice(n)} ${n.name} (\`${n.id}\`) ${of}${foreign}${spouse ? `, married to ${spouse.name} of ${spouseOf}` : ''}`;
   });
+  for (const k of empty) parts.push(`${seatOffice({ seat: k })}: EMPTY, until its holder appoints someone off its Lists`);
   return [`      seats: ${parts.join('; ')}`];
 }
 
@@ -626,13 +644,38 @@ function courtLine(state: WorldState, viewerId: string): string {
       `- ${e.name} (\`${e.id}\`, ${e.stat}): favour ${e.favour} → ${sign(favourModifier(e.favour))} ${e.stat}; ${b.seats} seat${b.seats === 1 ? '' : 's'} against a fair share of ${b.fairShare.toFixed(1)}, ${b.grants} grant${b.grants === 1 ? '' : 's'} (${e.stipends} paid)${b.hated > 0 ? `, ${b.hated} on worlds that resent you` : ''}; drifting toward ${b.baseline}.`,
     );
   }
+  const lists = listsOf(state, viewerId);
+  lines.push(
+    `Your Lists — notables waiting for a seat; every appointment (\`seat_estate\`) and every match you give comes from here: ${lists
+      .map((n) => `${n.name} (\`${n.id}\`) of ${estateById(state, n.estateId)?.estate.name ?? '?'}`)
+      .join(', ')}.`,
+  );
+  const vacant = state.systems
+    .filter((x) => x.controllerFactionId === viewerId)
+    .flatMap((x) => emptySeats(state, x).map((k) => `${x.name}'s ${seatOffice({ seat: k }).toLowerCase()}`));
+  if (vacant.length > 0) lines.push(`Empty seats on your worlds, doing nothing for you until filled: ${vacant.join(', ')}.`);
   const abroad = (state.notables ?? []).filter((n) => n.systemId === null && n.estateId?.startsWith(`${viewerId}:`));
   for (const n of abroad) {
     const held = heldAs(state, n.id);
-    if (held) lines.push(`- ${n.name} is held by ${getFaction(state, held.heldBy)?.name ?? held.heldBy} (\`${held.id}\`).`);
+    const spouse = notableById(state, n.spouseId);
+    if (held && spouse) {
+      lines.push(`- ${n.name} lives at ${getFaction(state, held.heldBy)?.name ?? held.heldBy}'s court as the ward of a marriage to ${spouse.name}; if you break the marriage or attack them, they keep ${n.name} prisoner.`);
+    } else if (held) {
+      lines.push(`- ${n.name} is held by ${getFaction(state, held.heldBy)?.name ?? held.heldBy} (\`${held.id}\`).`);
+    } else if (n.livesAt && spouse) {
+      lines.push(`- ${n.name} lives on ${state.systems.find((x) => x.id === n.livesAt)?.name ?? n.livesAt}, married to ${spouse.name}.`);
+    }
   }
   const theirs = (state.assets ?? []).filter((a) => a.heldBy === viewerId && a.notableId);
-  for (const a of theirs) lines.push(`- You hold ${a.text} (\`${a.id}\`).`);
+  for (const a of theirs) {
+    const n = notableById(state, a.notableId);
+    const ward = n && marriageOf(state, n.id)?.terms.ward === n.id;
+    lines.push(
+      ward
+        ? `- You hold ${a.text} (\`${a.id}\`): a ward — if their power breaks the marriage or attacks you, you keep them; if you break it, they are lost.`
+        : `- You hold ${a.text} (\`${a.id}\`).`,
+    );
+  }
   const matches = state.systems
     .filter((x) => x.controllerFactionId === null && regardFor(x, viewerId) >= MARRIAGE_CONSENT_REGARD)
     .filter((x) => seatedAt(state, x.id).some((n) => n.estateId === null && n.spouseId === null));
