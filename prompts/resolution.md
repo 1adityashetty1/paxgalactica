@@ -68,6 +68,10 @@ leaves a faction with nobody following it.
 | `set_doctrine` | the faction changes course — see Changing doctrine |
 | `set_stance` | what its whole navy does when losing a defence — see Standing orders |
 | `set_toll_policy` | who pays to cross its space — see Tolls |
+| `grant_stipend` | pay one of your estates a stipend — see Estates and seats |
+| `revoke_stipend` | stop paying one, at a cost in its favour |
+| `seat_estate` | give a seat on a world you hold to one of your estates |
+| `propose_marriage` | marry one of your notables into an independent world |
 | `create_asset` | a thing taken or made **because the attempt worked** — see Things |
 | `transfer_asset` | hand a thing you hold to somebody else |
 | `split_asset` | break a divisible holding into two lots |
@@ -903,6 +907,39 @@ charge loses standing with you every turn it pays, and disposition never decays
 is therefore a real concession, and it is one of the few things you can give a
 neighbour that costs you something and takes effect immediately. A `trade_accord`
 does **not** waive it automatically; it has to be asked for.
+
+## Estates and seats
+
+Each power has **three estates**, one behind each of its three weakest stats —
+the state block lists yours with their favour. An estate's favour is a straight
+modifier on its stat: +1 from 40, +2 from 80, −1 from −40, −2 from −80. The
+two strongest stats belong to the power's institutions, which no estate moves.
+
+Every world has a **seat** — a hub two — and a **notable** in it, of one of the
+holder's estates. A notable lifts its world when its estate's favour is 40 or
+more, and at −40 or less withholds half the world's income and sours it. A
+conquered world's notable is still its old power's: it works against its
+conqueror until the conqueror reseats it.
+
+- `grant_stipend` pays an estate 15 a turn and lifts its favour over the
+  coming turns; an estate holds three grants at most. `revoke_stipend` stops
+  one and costs favour at once. `estate` is its name as the state block gives
+  it. Your own estates only.
+- `seat_estate` gives a seat on a world **you hold** to one of your estates. A
+  foreign notable is turned out first. It costs the world a little of its
+  regard for you, and one estate's gain is another's loss.
+
+- A **notable** is a person: `deploy_agent` takes `targetNotable` — their
+  name or id from the `seats:` line — for a `seduction` (which must name one),
+  a `subversion` that turns them against their holder, or an `assassination`.
+- `propose_marriage` marries one of your seated notables to the notable of a
+  world **that answers to nobody**. The world consents by its standing with
+  you — 40 or better — and the code checks it. A marriage with another
+  POWER's notable needs that power's consent: it is a treaty, agreed in a
+  channel, never this op.
+
+All four are actions of their own: nothing else need ride with them, and
+their price is set in code — do not add credits or dissent for them.
 
 ## Standing orders: when the fleet breaks off
 

@@ -238,6 +238,15 @@ export const TREATY_TYPES = [
    * every multilateral pact here is several treaties.
    */
   'coalition',
+  /**
+   * Two notables, one of each party, married — `terms.spouses`. See
+   * `seats.ts`. The bond itself lives on the two notables; this is how two
+   * powers agree to it, and it is a peace. A type of its own, the shape
+   * `coalition` took: it names the people it binds, and carries what no other
+   * type does — a grant to each spouse's estate, each world drawn toward the
+   * in-laws, and optionally a ward sent to live at the other court.
+   */
+  'marriage',
 ] as const;
 export const TreatyTypeSchema = z.enum(TREATY_TYPES);
 export type TreatyType = z.infer<typeof TreatyTypeSchema>;
@@ -248,6 +257,7 @@ export const TREATY_TYPE_MEANING: Record<TreatyType, string> = {
   non_aggression: 'neither party attacks the other; breaking it is a betrayal everyone sees',
   mutual_defense: 'an attack on one, by anyone, obliges the other to answer: it goes to war with the attacker and sends the hulls it pledged',
   coalition: 'a defence pact against the powers it names: an attack on one by them obliges the other to answer, and those powers resent it',
+  marriage: 'a notable of each party married to the other: a peace, a grant to each estate, and each world drawn toward the in-laws',
   trade_accord: 'lanes stay open and income is shared on named systems',
   tribute: 'one party pays the other every turn, in exchange for being left alone',
   basing_rights: 'fleets of one party may transit and resupply in the other’s systems',
@@ -601,7 +611,7 @@ export const DOSSIER_KIND = 'dossier';
  * | `secret_programme` | hidden work under way | the order |
  * | `default` | an unpaid debt or a loan never returned | the debt or loan |
  */
-export const SECRET_KINDS = ['covert_operation', 'secret_programme', 'default', 'dark_raid'] as const;
+export const SECRET_KINDS = ['covert_operation', 'secret_programme', 'default', 'dark_raid', 'affair'] as const;
 export const SecretKindSchema = z.enum(SECRET_KINDS);
 export type SecretKind = z.infer<typeof SecretKindSchema>;
 
@@ -619,6 +629,8 @@ export const SecretSchema = z.object({
   reputation: z.number().int().min(0).optional(),
   heat: z.number().int().min(0).optional(),
   filedTurn: z.number().int().min(0).optional(),
+  /** For an `affair`: the notable it compromises. `ref` is the seducer. */
+  notableId: z.string().optional(),
 });
 export type Secret = z.infer<typeof SecretSchema>;
 
@@ -643,6 +655,8 @@ export const SECRET_EXPOSURE_COST: Record<SecretKind, number> = {
   // Only a fallback: proof of a dark raid carries its own price, the doubled
   // tally of what the raid owed.
   dark_raid: 8,
+  // A court's shame is its own estate's business first; onlookers smile.
+  affair: 4,
 };
 
 /** How long proof of a dark raid stays news after it was filed, once the raid is over. */
@@ -882,6 +896,17 @@ export const AssetSchema = z.object({
    * that holds right up until somebody adds a third.
    */
   agentId: z.string().nullable().default(null),
+  /**
+   * The notable this asset IS, when it is one held abroad — a ward living at
+   * the in-laws' court, or a prisoner taken when a conqueror reseated them.
+   * See `seats.ts`. The third twin of `commanderId` and `agentId`, for their
+   * reason: a notable goes home into a seat through `seat_estate`, which is a
+   * third flow out of the warehouse.
+   *
+   * Optional rather than defaulted to `null`, so every asset written before
+   * notables existed — and every literal that builds one — is unchanged.
+   */
+  notableId: z.string().optional(),
   divisible: z.boolean().default(true),
   /**
    * factionId -> what one unit is worth to that power, in credits.
@@ -1539,6 +1564,14 @@ export const TreatyTermsSchema = z.object({
    * it parses to exactly what it was.
    */
   against: z.array(z.string().min(1)).optional(),
+  /**
+   * The two notables a `marriage` weds, one of each party — required on a
+   * marriage and refused on every other type. Names are resolved to ids at
+   * signature.
+   */
+  spouses: z.array(z.string().min(1)).optional(),
+  /** One of the two spouses, sent to live at the other party's court as surety. Marriage only. */
+  ward: z.string().min(1).optional(),
 });
 export type TreatyTerms = z.infer<typeof TreatyTermsSchema>;
 
@@ -1563,7 +1596,7 @@ export function treatyBetween(
  * Treaties that forbid an attack. Breaking one of these is the betrayal the
  * whole galaxy hears about — see `PACT_BREAKING_REPUTATION_COST`.
  */
-export const PEACE_TREATIES = ['non_aggression', 'ceasefire', 'mutual_defense', 'coalition'] as const;
+export const PEACE_TREATIES = ['non_aggression', 'ceasefire', 'mutual_defense', 'coalition', 'marriage'] as const;
 
 /**
  * The pacts whose members answer an attack on one another: ships pledged are
@@ -1681,7 +1714,7 @@ export const TRUCE_RECOVERY = 2;
 export const TRUCE_BREAKING_REPUTATION_COST = PACT_BREAKING_REPUTATION_COST * 2;
 
 /** The treaties that end a war when two powers at war sign one. */
-export const TRUCE_TREATIES = ['non_aggression', 'ceasefire', 'mutual_defense', 'coalition', 'cession'] as const;
+export const TRUCE_TREATIES = ['non_aggression', 'ceasefire', 'mutual_defense', 'coalition', 'cession', 'marriage'] as const;
 
 export const TruceSchema = z.object({
   /** The two powers, sorted, so one pair has one spelling. */
@@ -1884,6 +1917,7 @@ export const AGENT_MISSIONS = [
   'discord',
   'incitement',
   'assassination',
+  'seduction',
 ] as const;
 export const AgentMissionSchema = z.enum(AGENT_MISSIONS);
 export type AgentMission = z.infer<typeof AgentMissionSchema>;
@@ -1902,6 +1936,8 @@ export const AGENT_MISSION_MEANING: Record<AgentMission, string> = {
     'stirs the people of a world somebody else holds — pamphlets, a martyr, money for the militia. Each turn it succeeds the world thinks the less of its holder, so the holder needs more warships to hold it down, and a world neither content nor held down rises. Far harder on a power\'s own home ground, where its people defend with the resolve the power was founded on',
   assassination:
     'ONE attempt at a decapitating strike, then the operative is gone either way. Success is a heavy one-off blow and a collapse in relations; failure almost always ends with the agent caught',
+  seduction:
+    'courts a NOTABLE in their seat: while it lasts their world warms to you as to kin, what they say in bed reaches you, and after three turns you hold proof of the affair — which, published, voids their marriage and shames their estate',
 };
 
 /**
@@ -1940,6 +1976,8 @@ export const AGENT_COST: Record<AgentMission, number> = {
   // repaired the same way, by spending — warships sent to hold it down.
   incitement: 80,
   assassination: 150,
+  // Incitement's price: what it buys is a world's regard, one notable at a time.
+  seduction: 80,
 };
 
 export interface MissionProfile {
@@ -1968,6 +2006,8 @@ export const MISSION_PROFILE: Record<AgentMission, MissionProfile> = {
   incitement: { exposureRisk: 3, oneShot: false, effectMultiplier: 1 },
   // A near-coin-flip on being caught, in exchange for one heavy blow.
   assassination: { exposureRisk: 9, oneShot: true, effectMultiplier: 4 },
+  // Sabotage's risk: a seducer is in somebody else's house every night.
+  seduction: { exposureRisk: 3, oneShot: false, effectMultiplier: 1 },
 };
 
 /**
@@ -2073,6 +2113,14 @@ export const AgentEffectSchema = z.discriminatedUnion('kind', [
      */
     perTurn: z.number().int().min(1).max(4),
   }),
+  /**
+   * A subversion aimed at a notable (`Agent.targetNotableId`): while it works
+   * the notable acts as if its estate stood at −40 — withholding, souring its
+   * world — whatever the estate's real favour. See `seats.ts`.
+   */
+  z.object({ kind: z.literal('turn_notable') }),
+  /** A seduction's effect: the notable's world warms to the seducer, and proof of the affair follows. */
+  z.object({ kind: z.literal('seduce') }),
 ]);
 export type AgentEffect = z.infer<typeof AgentEffectSchema>;
 
@@ -2096,6 +2144,7 @@ export const DEFAULT_COVERT_EFFECT: Record<AgentMission, AgentEffect> = {
   // with.
   discord: { kind: 'discord', towardFactionId: 'unnamed', perTurn: 1 },
   incitement: { kind: 'incite', perTurn: 3 },
+  seduction: { kind: 'seduce' },
   // One attempt, quadrupled by the mission profile, then the operative is gone.
   assassination: { kind: 'stat_debuff', stat: 'resolve', magnitude: 1 },
 };
@@ -2186,6 +2235,13 @@ export const AgentSchema = z.object({
    * nobody's intel on it is anything it can see.
    */
   caughtTurn: z.number().int().min(0).optional(),
+  /**
+   * The notable a subversion, a seduction or an assassination is aimed at —
+   * see `seats.ts`. They must still sit the operative's world when it works.
+   */
+  targetNotableId: z.string().optional(),
+  /** Turns a seduction has worked; at `SEDUCTION_PROOF_TURNS` the affair is proven. */
+  courted: z.number().int().min(0).optional(),
 });
 export type Agent = z.infer<typeof AgentSchema>;
 
@@ -2278,6 +2334,10 @@ export function describeEffect(effect: AgentEffect): string {
       return `−${effect.perTurn} a turn in the host's regard for ${effect.towardFactionId}, to a lifetime ${MAX_DISCORD_TOTAL}`;
     case 'incite':
       return `−${effect.perTurn} a turn in the world's regard for whoever holds it`;
+    case 'turn_notable':
+      return 'the notable works against their holder, whatever their estate thinks';
+    case 'seduce':
+      return 'the notable\'s world warms to you, and proof of the affair follows';
   }
 }
 

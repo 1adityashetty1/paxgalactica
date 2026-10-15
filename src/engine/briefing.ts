@@ -10,6 +10,7 @@ import {
 } from '../domain/events.js';
 import { getFaction, ledgerFor, type Ledger, type WorldState } from '../domain/state.js';
 import { envoyRefusal, holdAt, regardFor, regardRecorded } from '../domain/regard.js';
+import { courtLines } from '../ui/court.js';
 
 /**
  * What a world did, or is about to do, that the player should know: one of
@@ -239,6 +240,8 @@ export interface Briefing {
   events: BriefingEvent[];
   /** Worlds going restless, leaning, joining or rising — see `BriefingWorld`. */
   worlds: BriefingWorld[];
+  /** What the court is doing to you, standing — see `courtLines`. */
+  court: { text: string; tone: 'good' | 'bad' | 'info' }[];
   /** Nothing completed, nothing running, nothing visible. */
   quiet: boolean;
 }
@@ -432,6 +435,7 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
     })),
   ];
   const worlds = [...turnWorlds, ...worldsOnTheBoard(state)];
+  const court = courtLines(state, me);
 
   return {
     turn: state.turn,
@@ -446,6 +450,7 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
     battles: report.battles,
     events,
     worlds,
+    court,
     // A battle is never a quiet turn, even if nothing else moved; nor is one
     // the Rim filled on its own.
     quiet:
@@ -456,7 +461,8 @@ export function buildBriefing(state: WorldState, report: TurnReport): Briefing {
       remembered.length === 0 &&
       report.battles.length === 0 &&
       events.length === 0 &&
-      worlds.length === 0,
+      worlds.length === 0 &&
+      court.length === 0,
   };
 }
 
@@ -503,5 +509,6 @@ export function withCurrentIntel(briefing: Briefing, state: WorldState): Briefin
       ...(briefing.worlds ?? []).filter((w) => w.kind === 'joined' || w.kind === 'rose'),
       ...worldsOnTheBoard(state),
     ],
+    court: courtLines(state, state.playerFactionId),
   };
 }

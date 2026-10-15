@@ -5,6 +5,7 @@ import {
   allyLines,
   assetLines,
   channelLines,
+  courtHelpLines,
   eventListLines,
   fixtureLines,
   goodsLines,
@@ -190,6 +191,12 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     aliases: ['asset', 'things', 'prisoners', 'dossiers', 'debts', 'debt', 'loans', 'loan', 'notes'],
     about: 'things, prisoners, dossiers, promissory notes, debts and loans',
     lines: () => sections(assetLines(), ['  See also: :help diplomacy, for how they change hands.']),
+  },
+  {
+    key: 'court',
+    aliases: ['estates', 'estate', 'seats', 'seat', 'notables', 'notable', 'marriage', 'marry', 'wards', 'stipends'],
+    about: 'estates, seats and notables, marriage',
+    lines: (state) => courtHelpLines(state),
   },
   {
     key: 'events',

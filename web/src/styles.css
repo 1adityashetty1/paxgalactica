@@ -393,6 +393,12 @@ ul { margin: 0; padding-left: 1.1em; }
 .agents-summary { display: flex; justify-content: space-between; align-items: baseline;
   gap: 8px; font-weight: 600; margin-bottom: 4px; }
 .agent .chip { margin-top: 6px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.favour-bar { position: relative; height: 6px; background: var(--panel-2, rgba(127,127,127,0.18)); border-radius: 3px; margin: 6px 0 2px; overflow: hidden; }
+.favour-bar .favour-zero { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--dim); }
+.favour-bar .favour-fill { position: absolute; top: 0; bottom: 0; }
+.favour-bar .favour-fill.good { background: var(--good, #4caf50); }
+.favour-bar .favour-fill.bad { background: var(--bad, #e57373); }
 .treaty-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .treaty-summary { color: var(--text); font-size: 11px; margin: 4px 0; line-height: 1.45; }
 .terms { list-style: none; padding: 0; margin: 6px 0 0; }

@@ -854,6 +854,11 @@ export function routeCovertAction(
         // reducer turns it into an id. Dropping it here was how a routed
         // assassination came out aimed at nobody in particular.
         targetCommanderId: c.target ?? null,
+        // A notable can be the mark too — courted, turned or killed. The
+        // reducer tries the name against the notables seated there first.
+        ...(c.target && (c.mission === 'seduction' || c.mission === 'subversion' || c.mission === 'assassination')
+          ? { targetNotable: c.target }
+          : {}),
       })),
     ],
     notes: added.map(

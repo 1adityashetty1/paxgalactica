@@ -836,7 +836,27 @@ const NAME_STOCK: Record<string, NameStock> = {
     },
     place: 'prefix',
   },
+  /* The Rim's own: the notables of worlds that answer to nobody. Plain names
+     from a hundred settlements, and no titles, because nobody in a seat is
+     ever an officer — the titles below exist only to satisfy the shape. */
+  rim: {
+    first: ['Anselm', 'Brisa', 'Corwen', 'Dalia', 'Emeric', 'Fenna', 'Garrick', 'Halle', 'Ivo', 'Junia'],
+    last: ['Ardane', 'Brightwater', 'Corley', 'Dunmore', 'Elvarre', 'Fairholt', 'Gannet', 'Harrow',
+           'Ingle', 'Jessup', 'Kestrel', 'Lowell', 'Marrow', 'Nettle', 'Orrin', 'Penrose', 'Quarry',
+           'Rook', 'Sable', 'Tamsin', 'Ulver', 'Vane', 'Wren', 'Yarrow', 'Zennor', 'Ashby',
+           'Bramble', 'Calloway', 'Drover', 'Ember'],
+    titles: {
+      lineofbattle: 'Notable',
+      gunnery: 'Notable',
+      convoy: 'Notable',
+      assault: 'Notable',
+    },
+    place: 'prefix',
+  },
 };
+
+/** The name stock an independent world's notable is drawn from. */
+export const RIM_STOCK = 'rim';
 
 const FALLBACK = NAME_STOCK['drajk']!;
 
@@ -990,6 +1010,7 @@ export function familiesInUse(state: {
   familiesUsed?: string[];
   commanders?: Commander[];
   agents?: { name?: string }[];
+  notables?: { name: string }[];
 }): Set<string> {
   const taken = new Set(state.familiesUsed ?? []);
   for (const c of state.commanders ?? []) {
@@ -998,6 +1019,10 @@ export function familiesInUse(state: {
   }
   for (const a of state.agents ?? []) {
     const f = a.name ? familyOf(a.name) : null;
+    if (f) taken.add(f);
+  }
+  for (const n of state.notables ?? []) {
+    const f = familyOf(n.name);
     if (f) taken.add(f);
   }
   return taken;
@@ -1328,7 +1353,20 @@ export function resolveCommander(
   /** Narrow the field before matching: rivals only, active only, and so on. */
   eligible: (c: Commander) => boolean = () => true,
 ): Commander | null {
-  const all = (commanders ?? []).filter(eligible);
+  return resolvePerson(commanders, query, eligible);
+}
+
+/**
+ * The same matcher for anyone with an id and a name — a notable, say. Every
+ * content token of the query must be answered, an initial answers a given
+ * name, and a tie resolves to nobody.
+ */
+export function resolvePerson<T extends { id: string; name: string }>(
+  people: readonly T[] | undefined,
+  query: string,
+  eligible: (p: T) => boolean = () => true,
+): T | null {
+  const all = (people ?? []).filter(eligible);
   if (all.length === 0) return null;
 
   // An id is not a name and must never go through the token matcher: ids are
@@ -1340,7 +1378,7 @@ export function resolveCommander(
   const wanted = nameTokens(query);
   if (wanted.length === 0) return null;
 
-  let best: Commander | null = null;
+  let best: T | null = null;
   let bestScore = 0;
   let tied = false;
   for (const c of all) {

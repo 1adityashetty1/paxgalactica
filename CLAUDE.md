@@ -1826,6 +1826,7 @@ and nothing implemented it.
 | `non_aggression` · `ceasefire` | attacking the other party **auto-breaks** it: −25 with them, `PACT_BREAKING_REPUTATION_COST` with every onlooker |
 | `mutual_defense` | the above, plus an attack on one **by anyone** calls the other to war with the attacker and brings its `shipsPledged` — see "Allies answer" |
 | `coalition` | the same, against the powers in `terms.against` only — an attack by anyone else calls nobody — and they resent both signatories |
+| `marriage` | a notable of each party wed (`terms.spouses`): a peace, a grant to each estate, each world drawn toward the in-laws; `terms.ward` sends one to the other court — see "The court" |
 | `trade_accord` | parties are immune to each other's blockades and raiding |
 | `basing_rights` | the other party's fleets may enter without it being an attack |
 | `tribute` | `incomePerTurn` moves every turn |
@@ -4043,6 +4044,7 @@ costs the breaker 25 disposition with the other party.
 | `sabotage` / `incitement` | 3 in 20 | yes | 1 |
 | `discord` | 5 in 20 | yes | 1 |
 | `assassination` | **9 in 20** | **no** | **4** |
+| `seduction` | 3 in 20 | yes | 1 |
 
 `successChance` is computed in code from the owner's guile against the target's
 resolve, never chosen by a model. Agents resolve each tick against the same
@@ -6125,6 +6127,87 @@ now compose a commander term as well as terrain and dissent. Each was isolated b
 clearing `commanders` rather than by adjusting its expected value, so each still
 pins one rule; the interactions are pinned separately.
 
+## The court: estates, seats and notables
+
+`docs/design-2026-10-07-seats.md`; `src/domain/estates.ts` (the shapes, the
+sheets and the numbers — a leaf, as `events.ts` is), `src/domain/seats.ts`
+(everything that reads the whole world) and `src/ui/court.ts` (the Court tab
+as data). Journal version 20. A third class of person beside officers and
+operatives: commanders command fleets, operatives work unseen, and nobody ran a
+world.
+
+**A power's institutions stay what they were.** The Trade Council, the fleet
+commanders, the old cousins, the councils and the captains are the bodies the
+sheets already name refusing a leader; they stand behind each power's two
+strongest stats, dissent is their voice, and nothing here moves them. Beside
+them each power has **three estates**, one behind each of its three weakest
+base stats — Meridian's Standards & Practices (resolve), Security Directorate
+(might) and Creatives (guile); the Vigil's Blue Bloods, Intelligentsia and
+Complex; the Combine's Made Men, Blood Nars and Spice Cartel; Arkane's
+Shipbreakers, Bards & Poets and Sentinels; Drajk's Open Hand, Salt Compact and
+Sixteenth. A test holds that no estate sits on a power's top two.
+
+**Favour is a straight modifier, by one table.** −100 to 100: +1 on the
+estate's stat from 40, +2 from 80, −1 at −40, −2 at −80, read in
+`effectiveStats` after the rally and before dissent. On a peak a buff would
+widen every gap and mostly be lost to the 20 cap; on a weakness it lands, and
+softens it without erasing it — the Vigil's influence goes from 6 to 8 at most.
+It drifts a tenth of the gap a turn toward a baseline: `SEAT_FAVOUR` (20) per
+seat above a fair share (a third of the power's seats, read continuously),
+`GRANT_FAVOUR` (20) per grant, −10 per seat on a world that resents its
+holder. A **stipend** is a grant at `GRANT_COST` (15) a turn, three grants an
+estate; revoking one costs `REVOKED_FAVOUR` (15) at once. This is a purchase
+that patches a weakness, which the fixture design made a war aim instead: it is
+bounded at +2, paid every turn, and seats are zero-sum among the three.
+
+**Every world has a seat, a hub two, and a notable in each** — a named person
+whose own facts are their estate and their spouse. A notable acts on its world
+by its estate's favour: from 40 it lifts the world's regard for its holder
+`NOTABLE_REGARD` (4) a turn; at −40 it keeps back half the world's income
+(`Ledger.withheld`, lost to everyone) and lowers it as much; at −80, on a world
+not content, it lets the world go through `secede` — no new way for a world to
+change hands. On a hub each does half. An independent world's notable belongs
+to no estate, drawn from a sixth name stock (`RIM_STOCK`).
+
+**A seat that opens is filled at once** — for the ground's estate, or the one
+with the fewest seats where the ground is a peak; for the same estate after a
+death or a ward sent abroad; for the spouse's estate when a married-in world
+joins. **A conquered notable stays**, a foreign notable working against its
+conqueror as an estate at −40 does, counting for its old estate's seats and
+adding none to the conqueror's, until `seat_estate` reseats it and takes it
+prisoner. An independent world's notable is turned out on a conquest.
+
+**Marriage is between notables** — the player has no house. The bond is
+`Notable.spouseId`, set on both. Between powers it is a `marriage` treaty
+(`terms.spouses`, one of each party's, the shape `coalition` took): a peace, a
+truce if signed at war, a grant to each estate at no credits, and each world
+adds `MARRIAGE_REGARD` (30) to its baseline toward the in-laws; `terms.ward`
+sends one spouse to live at the other court as an asset. Into an independent
+world it is `propose_marriage`, a declaration the world accepts at a standing of
+`MARRIAGE_CONSENT_REGARD` (40). A married notable does not work against in-laws
+who take its world. Treaties and bonds are reconciled each tick.
+
+**A notable can be held** — `Asset.notableId`, the third twin of `commanderId`
+and `agentId`, under the same people-standing prices — and goes home into a seat
+for its own estate by `seat_estate` with `fromAssetId`. **Three missions reach
+one**: subversion turns a notable against its holder (`turn_notable`);
+`seduction` (80 credits, sabotage's exposure) warms its world to the seducer
+and after three turns proves an **affair**, a secret that voids the marriage it
+betrays when published; assassination kills one, on the 17+ roll officers take,
+the seat refilling for the same estate — or for the holder, if the notable was
+foreign. **No promotion**: officers, notables and operatives never cross rosters,
+and the arbiter rules the attempt inadmissible in each power's own words.
+
+**The bots keep a court** — `keepCourt` reseats a conquest first, moves a seat
+to an estate gone resentful, and pays its weakest estate up to two stipends
+while standing income covers four times them; the Combine (guile 16) works on
+rivals' notables away from their home ground; courting powers marry into worlds
+that will have them; two NPCs on good terms wed their unhappy estates'
+notables. **Measured**: all four harness boards stay 5/5/6/5/4, as they were.
+The first seducer rule took in every power at guile 14 and cost the
+Confederacy two worlds at 100 turns; at 16 the boards are back.
+`pnpm balance [turns] --no-seats` is the control.
+
 ## A commander decides whether the world is worth the fleet
 
 `set_stance` — `hold` never breaks off, `stand` breaks at two to one (the
@@ -6282,7 +6365,10 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `forgive_debt` | creditor only; writes off the balance and buys goodwill |
 | `recruit_commander` | appoint an officer to a world you hold, up to five; `fromAssetId` brings a captured one home. An action of its own |
 | `recruit_agent` | sign an operative on at a world you hold, awaiting orders; `fromAssetId` brings a captured one home. An action of its own |
-| `deploy_agent` | send an operative already on the books on a mission; they travel three jumps a turn |
+| `deploy_agent` | send an operative already on the books on a mission; they travel three jumps a turn. `targetNotable` aims a seduction, a subversion or an assassination at a notable |
+| `grant_stipend` · `revoke_stipend` | pay one of your estates 15 a turn, or stop; three grants an estate |
+| `seat_estate` | give a seat on a world you hold to one of your estates; a foreign notable is turned out first and held. `fromAssetId` seats one of your own brought home |
+| `propose_marriage` | marry one of your notables into a world that answers to nobody, which accepts at a standing of 40 |
 | `spawn_event` | |
 | `log_narrative` | |
 
@@ -7258,6 +7344,14 @@ component is logic nothing checks.
   on. The list left the Treaties tab, so each operative appears in one place;
   the System tab keeps its per-world list.
 
+  **Court is its own tab** (`courtView` in `src/ui/court.ts`): each estate's
+  favour as a bar, the stat it moves, its seats against a fair share, grants
+  and drift; the seats costing you; marriages and the worlds that would take a
+  match; who of yours is held and whom you hold. The System tab shows a world's
+  seats — who, for which estate, married to whom, and what they are doing —
+  with buttons to give a seat to another estate or propose a match, and the
+  briefing has a **Court** group.
+
   **Buttons write, they never send.** Every action button in the panels
   writes a sentence for the player to read and send, because declaring is
   the player's act and costs an action. Each kind goes where it can work:
@@ -7574,12 +7668,12 @@ longer than the prose around it wraps into a ragged column in the feed. The
 fixture section ends on one the player could build today, on a world they hold
 with a free slot, in the kind its ground takes.
 
-**It is an index and nine pages** (`src/ui/help.ts`). As one page it had grown
+**It is an index and ten pages** (`src/ui/help.ts`). As one page it had grown
 to about two hundred lines in the feed, so the section a player wanted was
 always a scroll away. `:help` is now the commands, the four examples, the rules
 in four lines, and the list of pages. `:help <topic>` or `:help-<topic>` prints
-one page: actions, war, worlds, trade, diplomacy, espionage, fixtures, assets
-and events. `:help all` prints everything.
+one page: actions, war, worlds, trade, diplomacy, espionage, fixtures, assets,
+court and events. `:help all` prints everything.
 - **Finding a page.** Each page answers to its name, a few aliases
   (`spies` → espionage, `treaties` → diplomacy) and a prefix of its name.
 - **An unknown word** prints the index under a line saying so, rather than

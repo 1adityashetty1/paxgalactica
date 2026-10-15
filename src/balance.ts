@@ -58,6 +58,10 @@ export interface Snapshot {
   accords: string[];
   /** Allies called to war by a defence pact this turn. */
   calls: string[];
+  /** estateId -> favour at the end of this turn — see `seats.ts`. Empty with no court. */
+  estates: Record<string, number>;
+  /** factionId -> what its resentful notables kept back this turn. */
+  withheld: Record<string, number>;
 }
 
 export function runBalance(
@@ -71,7 +75,8 @@ export function runBalance(
 ): Snapshot[] {
   // A control without regard has to open without it too: the seed records it,
   // and a world with none recorded is how the tick knows to leave it alone.
-  let state = createSeedState('freeworlds', { regard: legacy.regard !== false });
+  // The same for the court: no estates in the seed is how the tick leaves them be.
+  let state = createSeedState('freeworlds', { regard: legacy.regard !== false, seats: legacy.seats !== false });
   const history: Snapshot[] = [];
 
   for (let turn = 1; turn <= turns; turn++) {
@@ -112,6 +117,8 @@ export function runBalance(
       turn,
       accords,
       calls,
+      estates: Object.fromEntries(state.factions.flatMap((f) => (f.estates ?? []).map((e) => [e.id, e.favour]))),
+      withheld: Object.fromEntries(state.factions.map((f) => [f.id, ledgerFor(state, f.id, earnings).withheld])),
       events: ticked.report.events,
       intel: Object.fromEntries(state.factions.map((f) => [f.id, { ...(f.intel ?? {}) }])),
       sweeps: state.pendingOrders.filter((o) => o.type === 'counter_intelligence').length,

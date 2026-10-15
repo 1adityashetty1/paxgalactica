@@ -557,6 +557,14 @@ would be typed modifiers.
 dissent and prompt-heavy. Size L. Defer until ambitions and mandate show whether
 one more axis of internal politics is wanted.
 
+**Reworked (2026-10-07)** as **seats**: three estates a power, one behind each
+of its three weakest stats, with a favour that buffs or debuffs it, and a notable of
+one estate in every world's seat (two on a hub). Estates want seats; buffs are
+bought with grants; dissent is unchanged. See `design-2026-10-07-seats.md`.
+Mandate is tabled, so seats no longer wait on it. **Built 2026-10-08**, with
+marriage, wards and prisoners, independent worlds' notables and the three
+operations against a notable.
+
 ---
 
 ## 6. The Rim itself
@@ -663,51 +671,48 @@ size.
 | idea | § | why it is large |
 |---|---|---|
 | Courting unaligned worlds **(built)** | 6.1 | wants and opinions for every neutral world, peaceful joining, bot behaviour, prompts |
-| Estates | 5.3 | a second layer of internal politics over dissent, on every sheet |
+| Estates, reworked as seats **(built)** | 5.3 | three estates a power, on its weakest stats, whose favour buffs them; a notable of one in every seat and on every independent world; marriage, wards and prisoners, and seduction — see `design-2026-10-07-seats.md` |
 
 ---
 
 ## Build graph
 
-*Updated after coalitions and exhaustion were built as extensions of mutual
-defence and bot peace, and war goals dropped.* Seventeen ideas are built, plus
-the bot rules that use them, and two are dropped, so four are left. Built work is no longer a node: where it
-unlocks something, the node says so.
+*Updated after PR #61: coalitions and exhaustion were built as extensions of
+mutual defence and bot peace, war goals were dropped, and the interface caught
+up with what is built. Updated again when seats were built, as one feature —
+estates, notables, marriage, wards and prisoners, and the operations against
+a notable — with mandate tabled.* Eighteen ideas are built, plus the bot rules
+that use them, and two are dropped, so three are left. Built work is no longer
+a node: where it unlocks something, the node says so.
+
+The interface work is not from this brainstorm. It makes the built ideas
+reachable in play rather than adding mechanics:
+- help that is an index and a page per part of the game;
+- an Agents tab that tracks the network;
+- buttons that write the sentence for a recruit, an appointment, a fixture, a
+  sale or a ransom, and never send it.
 
 A solid arrow means the later idea, or one part of it, cannot be built without
 the earlier one. A dashed arrow means it is better built after. Green is small
-or lighter medium; red is heavier medium or large; grey is built.
+or lighter medium; red is heavier medium or large; grey is built; white is
+tabled or later.
 
 ```mermaid
 flowchart LR
   classDef light fill:#E1F5EE,stroke:#0F6E56,color:#085041
   classDef heavy fill:#FAECE7,stroke:#993C1D,color:#712B13
-  classDef done fill:#F1EFE8,stroke:#888780,color:#444441
+  classDef later fill:#FFFFFF,stroke:#B4B2A9,color:#5F5E5A
 
-  subgraph built["Built"]
-    truces["Truces"]:::done
-    emissions["Emissions"]:::done
-    span["Span of control"]:::done
-    notes["Promissory notes"]:::done
-    commodities["Commodities"]:::done
-    fixtures["Fixtures that can be hurt"]:::done
-    accords["Bots: exchange, peace, sabotage"]:::done
-    obligations["Obligations and hooks"]:::done
-    secrets["Secrets"]:::done
-    ultimatums["Ultimatums"]:::done
-    concession["Concession budget"]:::done
-    ledger["Raider's ledger"]:::done
-    heat["Heat"]:::done
-    dark["Running dark"]:::done
-    intel["Intel with memory"]:::done
-    courting["Standing: courting, holding, incitement"]:::done
-    coalitions["Coalitions"]:::done
-    exhaustion["Exhaustion"]:::done
-  end
+  ambitions["Ambitions (M+)"]
+  mandate["Mandate (M+, tabled)"]
+  fortune["Fortune and darkness (S)"]
 
-  ambitions["Ambitions · M+"]:::heavy -.-> mandate["Mandate · M+"]:::heavy --> fortune["Fortune and darkness · S"]:::light
-  ambitions -.-> estates["Estates · L"]:::heavy
-  mandate -.-> estates
+  ambitions -.-> mandate
+  mandate --> fortune
+
+  class fortune light
+  class ambitions heavy
+  class mandate later
 ```
 
 S is small, M is medium (lighter), M+ is medium (heavier) and L is large.
@@ -718,21 +723,25 @@ S is small, M is medium (lighter), M+ is medium (heavier) and L is large.
 |---|---|---|
 | mandate → fortune | needs | darkness is charged when mandate buys a reroll |
 | ambitions ⇢ mandate | better after | a fulfilled ambition earns mandate |
-| ambitions, mandate ⇢ estates | decision gate | estates are deferred until those two show whether more internal politics is wanted |
 
 **Waves.**
 
 1. **Ready now:** ambitions.
-2. Mandate.
-3. Fortune and darkness, estates.
+2. Mandate, which is tabled.
+3. Fortune and darkness, which waits on it.
+
+Seats are built: see `design-2026-10-07-seats.md`.
 
 The longest chain is three deep: ambitions → mandate → fortune.
 
 The bots now reach the leverage layer too: they demand tribute of weaker
 neighbours, keep watchers on rivals, and publish or blackmail with what those
 find. They post bounties, commission raiders and buy protection, and the Rim
-answers whichever of them runs hot — so the harness measures all of it, except
-protection, which it never reaches.
+answers whichever of them runs hot. They also sue for peace when their enemies
+together outweigh them two to one, or their wars outrun their savings. They
+sign coalitions against a stronger power both members hate. The harness
+measures all of it except two: protection, which it never reaches, and
+coalitions, which no pair on the board qualifies for.
 
 ---
 
