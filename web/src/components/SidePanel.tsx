@@ -39,9 +39,12 @@ import { defaultEstate, emptySeats, listedFor, notableById, powerOf, seatedAt, s
 import { MARRIAGE_CONSENT_REGARD, estateOwner, seatOffice } from '../../../src/domain/estates.js';
 
 import {
+  COMMANDER_ARCHETYPES,
+  COMMANDER_COST,
   MAX_ACTIVE_COMMANDERS,
   activeCommanders,
   archetypeOf,
+  listedOfficers,
   commanderEffect,
   commanderFor,
   familyOf,
@@ -94,6 +97,7 @@ import {
   TRUCE_FLOOR,
   type StarSystem,
   type WorldState,
+  fleetBases,
 } from '../../../src/domain/state.js';
 import type { Briefing } from '../../../src/engine/briefing.js';
 import type { EffectiveStats } from '../../../src/api/contract.js';
@@ -823,7 +827,7 @@ function Command({
                 )}
               </>
             ) : (
-              <p className="empty">No officer. The fleet answers to nobody in particular.</p>
+              <p className="empty">No officer. The fleet fights without one until somebody is appointed off the Lists.</p>
             )}
             {roster.length > 1 && (
               <ul className="ship-list command-roster">
@@ -851,13 +855,18 @@ function Command({
               {roster.length > 1 && ' · the senior officer’s passive is the one that applies'}
             </p>
             {f.id === me && roster.length < MAX_ACTIVE_COMMANDERS && home && (
-              <button
-                className="chip"
-                title="An appointment is an action of its own. This writes it on the command line; nothing is sent."
-                onClick={() => onDraft(`Appoint an officer at ${home.name}.`)}
-              >
-                appoint an officer
-              </button>
+              <div className="chips">
+                {listedOfficers(state.commanders, me).map((c) => (
+                  <button
+                    key={c.id}
+                    className="chip"
+                    title={`An appointment is an action of its own${c.commissioned ? '; they have served, so it costs nothing' : `, and costs ${COMMANDER_COST}`}. This writes it on the command line; nothing is sent.`}
+                    onClick={() => onDraft(`Appoint ${c.name} at ${home.name}.`)}
+                  >
+                    appoint {familyOf(c.name) ?? c.name} ({c.archetype})
+                  </button>
+                ))}
+              </div>
             )}
             {held.length > 0 && (
               <p className="meta command-held">
@@ -2304,11 +2313,37 @@ function ListsTab({
   onSelect: (id: string) => void;
   onDraft: (text: string) => void;
 }) {
+  const [which, setWhich] = useState<'notables' | 'officers'>('notables');
   const view = courtView(state, state.playerFactionId);
-  if (!view) return <p className="empty">This campaign has no estates: it began before they existed.</p>;
+  const toggle = (
+    <div className="chips">
+      {(['notables', 'officers'] as const).map((w) => (
+        <button key={w} className={w === which ? 'chip on' : 'chip'} onClick={() => setWhich(w)}>
+          {w === 'notables' ? 'Notables' : 'Officers'}
+        </button>
+      ))}
+    </div>
+  );
+  if (which === 'officers') {
+    return (
+      <div className="standing court-tab">
+        {toggle}
+        <OfficerLists state={state} onDraft={onDraft} />
+      </div>
+    );
+  }
+  if (!view) {
+    return (
+      <div className="standing court-tab">
+        {toggle}
+        <p className="empty">This campaign has no estates: it began before they existed.</p>
+      </div>
+    );
+  }
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   return (
     <div className="standing court-tab">
+      {toggle}
       <p className="muted">
         Notables waiting for a seat. Every seat you fill and every match you give comes from here, and each estate always
         has someone listed. Nobody on the Lists can be reached by an operative.
@@ -2358,6 +2393,54 @@ function ListsTab({
         </div>
       ))}
     </div>
+  );
+}
+
+/**
+ * The officers' Lists: one of each school always waiting. An officer goes into
+ * post only by appointment — a new one at the price of a commission, one who
+ * has served (handed home from captivity) for nothing — and a power whose
+ * officers have all fallen fights without one until it appoints.
+ */
+function OfficerLists({ state, onDraft }: { state: WorldState; onDraft: (text: string) => void }) {
+  const me = state.playerFactionId;
+  const listed = listedOfficers(state.commanders, me);
+  const inPost = activeCommanders(state.commanders, me).length;
+  const post = fleetBases(state, me).find((x) => x.controllerFactionId === me);
+  if (listed.length === 0) return <p className="empty">Nobody waits on the Lists in this campaign: it began before they existed.</p>;
+  return (
+    <>
+      <p className="muted">
+        Officers waiting to be appointed, one of each school at least. A new one costs {COMMANDER_COST}; one who has
+        served comes back for nothing. {inPost} of {MAX_ACTIVE_COMMANDERS} in post.
+      </p>
+      {COMMANDER_ARCHETYPES.map((a) => (
+        <div key={a.kind} className="agent">
+          <div className="treaty-head">
+            <strong>{a.kind}</strong>
+            <span className="muted">{a.effect}</span>
+          </div>
+          <ul className="war-list">
+            {listed
+              .filter((c) => c.archetype === a.kind)
+              .map((c) => (
+                <li key={c.id}>
+                  {c.name}
+                  <span className="muted">
+                    {' · '}
+                    {c.commissioned ? `served, ${c.battles} engagement${c.battles === 1 ? '' : 's'} · free` : `new · ${COMMANDER_COST}`}
+                  </span>
+                  {post && inPost < MAX_ACTIVE_COMMANDERS && (
+                    <button className="chip" onClick={() => onDraft(`Appoint ${c.name} at ${post.name}.`)}>
+                      appoint
+                    </button>
+                  )}
+                </li>
+              ))}
+          </ul>
+        </div>
+      ))}
+    </>
   );
 }
 

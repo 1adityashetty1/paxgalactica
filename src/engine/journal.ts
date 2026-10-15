@@ -233,6 +233,8 @@ export function replay(
     tenGivenNames: parsed.version >= 19,
     // No estates and nobody in any seat before version 20.
     seats: parsed.version >= 20,
+    // Nobody waited on anybody's Lists before version 20.
+    officerLists: parsed.version >= 20,
   });
   let rejectionCount = 0;
   // The opening board, before anything is applied. Without it an observer's
@@ -335,6 +337,8 @@ export function replay(
     seats: parsed.version >= 20,
     // A returned operative waited in the warehouse for a recruit_agent.
     operativesComeHome: parsed.version >= 20,
+    // A hire rolled its school, and the tick put a successor in post.
+    officerLists: parsed.version >= 20,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

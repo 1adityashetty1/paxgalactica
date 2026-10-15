@@ -303,10 +303,13 @@ export function officerLines(): string[] {
     `  Up to ${count(MAX_ACTIVE_COMMANDERS)} in post, ${COMMANDER_COST} to appoint and ${COMMANDER_UPKEEP} a turn to keep. Each`,
     '  is of one school, and helps only in a battle they are at:',
     ...COMMANDER_ARCHETYPES.map((a) => `  · ${a.effect} — ${a.phase}`),
-    '  Name one in an order and they sail with that fleet. They grow better',
-    `  after ${seasoned} engagements and again after ${veteran}, and fall or are taken when`,
-    '  the fleet around them does. A captured officer can be ransomed home,',
-    '  and the senior one in post also improves something at home.',
+    '  Appoint them off your Lists, where one of each school always waits;',
+    '  nobody is put in post any other way, so a fleet whose officers have all',
+    '  fallen fights without one. Name one in an order and they sail with that',
+    `  fleet. They grow better after ${seasoned} engagements and again after ${veteran}, and fall`,
+    '  or are taken when the fleet around them does. One ransomed home goes',
+    '  back on the Lists and returns to post for nothing. The senior one in',
+    '  post also improves something at home.',
   ];
 }
 

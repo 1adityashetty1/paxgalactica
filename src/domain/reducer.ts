@@ -155,6 +155,8 @@ import {
   commanderRelief,
   commanderStrike,
   successorArchetype,
+  listedOfficers,
+  stockOfficerLists,
   veterancyLabel,
   type Commander,
   type CommanderArchetype,
@@ -1581,6 +1583,27 @@ function publishAffair(state: WorldState, secret: Secret): string[] {
 }
 
 /**
+ * The officers' Lists after a batch or a tick: one of a power's own officers
+ * it holds — ransomed, traded or freed with a world — goes back on its Lists,
+ * served and so free to appoint again, and every school has someone listed.
+ */
+function settleOfficerLists(state: WorldState, notes: string[]): void {
+  for (const held of [...(state.assets ?? [])]) {
+    if (!held.commanderId) continue;
+    const them = (state.commanders ?? []).find((c) => c.id === held.commanderId);
+    if (!them || them.status !== 'captured' || them.factionId !== held.heldBy) continue;
+    state.assets = state.assets.filter((a) => a.id !== held.id);
+    them.status = 'listed';
+    them.atSystemId = null;
+    them.commissioned = true;
+    const back = `${them.name} is home, and back on ${nameFor(state, them.factionId)}'s Lists — ${them.battles} engagement${them.battles === 1 ? '' : 's'} behind them.`;
+    notes.push(back);
+    logEvent(state, 'narrative', back, them.factionId, [them.factionId]);
+  }
+  stockOfficerLists(state);
+}
+
+/**
  * An operative their own power holds — ransomed, traded, or freed when a world
  * was retaken — goes back on its books, awaiting orders, without an action:
  * at the world they were held on if their power holds it, otherwise at its
@@ -2649,6 +2672,13 @@ export interface LegacyRules {
    */
   operativesComeHome?: boolean;
   /**
+   * Officers come off a power's **Lists** — one of each school always waiting
+   * — and only by appointment: no successor is put in post when the last one
+   * falls, and one handed home goes back on the Lists. Journal version 20;
+   * before it a hire rolled its school and the tick appointed a successor.
+   */
+  officerLists?: boolean;
+  /**
    * A sandbox campaign's one event (see `primeRimSandbox`): that kind every
    * turn, with no d20 and no cooldowns. Not a rule the game acquired — a rule
    * of that campaign, read off its journal's seed entry.
@@ -2786,6 +2816,7 @@ function applyOpsUnderRules(
     truces = true,
     obligations: favoursOwed = true,
     operativesComeHome: spiesComeHome = true,
+    officerLists = true,
   } = legacy;
   const state = cloneState(input);
   const rejections: OpRejection[] = [];
@@ -5251,6 +5282,46 @@ function applyOpsUnderRules(
           break;
         }
 
+        // **Off the Lists** (journal version 20): the officer named, or the
+        // first listed of the school named. One who has served goes back in
+        // post for nothing; a new one costs what an appointment always has.
+        if (officerLists) {
+          const listed = listedOfficers(state.commanders, op.factionId);
+          const pick = op.officer
+            ? resolveCommander(listed, op.officer, (c) => !op.school || c.archetype === op.school)
+            : op.school
+              ? (listed.find((c) => c.archetype === op.school) ?? null)
+              : null;
+          if (!pick) {
+            reject(
+              raw,
+              'illegal_value',
+              op.officer || op.school
+                ? `Nobody on ${faction.name}'s Lists answers to ${op.officer ? `"${op.officer}"` : `the ${op.school} school`}. Listed: ${listed.map((c) => c.name).join(', ') || 'nobody'}.`
+                : 'An appointment names an officer off the Lists, or a school — lineofbattle, gunnery, convoy or assault — to send its first.',
+            );
+            break;
+          }
+          const price = pick.commissioned ? 0 : COMMANDER_COST;
+          if (faction.credits < price) {
+            reject(
+              raw,
+              'insufficient_credits',
+              `Appointing an officer costs ${COMMANDER_COST}; ${faction.name} holds ${faction.credits}.`,
+            );
+            break;
+          }
+          faction.credits -= price;
+          pick.status = 'active';
+          pick.atSystemId = post.id;
+          pick.appointedTurn = state.turn;
+          pick.commissioned = true;
+          const note = `${faction.name} appoints ${pick.name} at ${post.name}${price === 0 ? `, back in post with ${pick.battles} engagement${pick.battles === 1 ? '' : 's'} behind them` : ''}.`;
+          notes.push(note);
+          logEvent(state, 'narrative', note, op.factionId);
+          break;
+        }
+
         if (faction.credits < COMMANDER_COST) {
           reject(
             raw,
@@ -7696,6 +7767,7 @@ function applyOpsUnderRules(
   // and every estate has someone listed. See `seats.ts`.
   settleCourt(state);
   if (spiesComeHome) notes.push(...operativesComeHome(state));
+  if (officerLists) settleOfficerLists(state, notes);
 
   // Nothing lands unless everything does. The notes are dropped with the state
   // they describe — a trim note for an op that was discarded would be telling
@@ -8305,6 +8377,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     regard: worldsHaveViews = true,
     seats: hasCourt = true,
     operativesComeHome: spiesComeHome = true,
+    officerLists = true,
     battleRules = {},
   } = legacy;
   const state = cloneState(input);
@@ -8326,7 +8399,9 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
   // The dead stay on the roster: a faction's history of commanders is worth
   // more than the two bytes of removing them, and `commanderFor` already
   // filters on `status`.
-  for (const faction of state.factions) {
+  // Since journal version 20 nobody is put in post but by appointment: a power
+  // whose last officer fell fights without one until it appoints off its Lists.
+  for (const faction of officerLists ? [] : state.factions) {
     if (commanderFor(state.commanders, faction.id)) continue;
     const salt = `replace:${faction.id}:${state.turn}`;
     // The school is settled BEFORE the name, because the title is part of the
@@ -9860,6 +9935,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
   }
 
   if (spiesComeHome) notes.push(...operativesComeHome(state));
+  if (officerLists) settleOfficerLists(state, notes);
 
   /* --- The court: what the seated do, and how the estates take it ------ */
   // After the worlds have moved, so a world that joined this turn already has

@@ -1,5 +1,6 @@
 import { seedRegard } from '../domain/regard.js';
 import { seedEstates } from '../domain/estates.js';
+import { stockOfficerLists } from '../domain/command.js';
 import { fillSeats, stockLists } from '../domain/seats.js';
 import type { FactionStats } from '../domain/checks.js';
 import type { DurationCategory } from '../domain/duration.js';
@@ -878,7 +879,8 @@ export function createSeedState(
    * `regard: false` gives no world a view of anybody, as before version 18.
    * `tenGivenNames: false` names the opening officers from the first eight
    * given names, as before version 19.
-   * `seats: false` gives no power estates and no world a notable, as before
+   * `seats: false` gives no power estates and no world a notable, and
+   * `officerLists: false` no officer waiting on anybody's Lists, as before
    * version 20.
    */
   {
@@ -891,6 +893,7 @@ export function createSeedState(
     regard = true,
     tenGivenNames = true,
     seats = true,
+    officerLists = true,
   }: {
     fourSchools?: boolean;
     auxiliaries?: boolean;
@@ -901,6 +904,7 @@ export function createSeedState(
     regard?: boolean;
     tenGivenNames?: boolean;
     seats?: boolean;
+    officerLists?: boolean;
   } = {},
 ): WorldState {
   if (!SEED_FACTIONS.some((f) => f.id === playerFactionId)) {
@@ -1359,6 +1363,8 @@ export function createSeedState(
     fillSeats(state, { everyWorld: true });
     stockLists(state);
   }
+  // One officer of each school waiting on every power's Lists, to appoint.
+  if (officerLists) stockOfficerLists(state);
 
   return WorldStateSchema.parse(state);
 }

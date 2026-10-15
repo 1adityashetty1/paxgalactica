@@ -363,9 +363,15 @@ export function fillSeats(state: WorldState, opts: { everyWorld?: boolean } = {}
  */
 export function stockLists(state: WorldState): Notable[] {
   const listed: Notable[] = [];
+  // One pass: which estates have somebody waiting.
+  const held = new Set((state.assets ?? []).filter((a) => a.notableId && a.quantity > 0).map((a) => a.notableId!));
+  const waiting = new Set<string>();
+  for (const n of state.notables ?? []) {
+    if (n.estateId !== null && n.systemId === null && n.livesAt === null && !held.has(n.id)) waiting.add(n.estateId);
+  }
   for (const faction of state.factions) {
     for (const estate of faction.estates ?? []) {
-      if (listedFor(state, estate.id).length > 0) continue;
+      if (waiting.has(estate.id)) continue;
       listed.push(seatNotable(state, estate.id, null, `list:${estate.id}:${state.turn}`));
     }
   }

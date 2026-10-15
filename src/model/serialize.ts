@@ -49,6 +49,7 @@ import { routeEarnings } from '../domain/trade.js';
 import {
   MAX_ACTIVE_COMMANDERS,
   activeCommanders,
+  listedOfficers,
   archetypeOf,
   commanderEffect,
   commanderFor,
@@ -235,15 +236,24 @@ function officerRoll(state: WorldState, factionId: string): string {
  */
 function commanderLine(state: WorldState, viewerId: string): string {
   const officer = commanderFor(state.commanders, viewerId);
+  // Who could be appointed: every appointment comes off the Lists.
+  const listed = listedOfficers(state.commanders, viewerId);
+  const lists =
+    listed.length > 0
+      ? `Your officers' Lists — appoint one with \`recruit_commander\` naming them (\`officer\`) or their school (\`school\`): ${listed
+          .map((c) => `${c.name} (${c.archetype}${c.commissioned ? `, has served — ${c.battles} engagement${c.battles === 1 ? '' : 's'}, appointed for nothing` : ''})`)
+          .join('; ')}.`
+      : '';
   if (!officer) {
     const held = (state.commanders ?? []).filter(
       (c) => c.factionId === viewerId && c.status === 'captured',
     );
     // A power with nobody in post is a power that can appoint one, and saying
     // so is the difference between a gap and a mystery.
-    return held.length > 0
-      ? `You have no officer in post. ${held.map((c) => c.name).join(' and ')} ${held.length === 1 ? 'is' : 'are'} in enemy hands.`
-      : 'You have no officer in post.';
+    const none = held.length > 0
+      ? `You have no officer in post, and your fleets fight without one until you appoint. ${held.map((c) => c.name).join(' and ')} ${held.length === 1 ? 'is' : 'are'} in enemy hands.`
+      : 'You have no officer in post, and your fleets fight without one until you appoint.';
+    return [none, lists].filter(Boolean).join('\n');
   }
   const shape = archetypeOf(officer.archetype);
   // Where each one is, because that decides which battles they are in at all,
@@ -266,14 +276,17 @@ function commanderLine(state: WorldState, viewerId: string): string {
   const owed = toNextVeterancy(officer.battles);
   const ladder =
     owed === null
-      ? `${officer.name} is as good as an officer gets; a successor would start again from nothing.`
-      : `${officer.name} improves again in ${owed} more engagement${owed === 1 ? '' : 's'}. A successor inherits the speciality and none of the record.`;
+      ? `${officer.name} is as good as an officer gets; whoever replaced them would start again from nothing.`
+      : `${officer.name} improves again in ${owed} more engagement${owed === 1 ? '' : 's'}; whoever replaces them starts again from nothing.`;
   return [
     `Your officers (${roster.length} in post${room > 0 ? `, room for ${room} more` : ', the roster is full'}):`,
     ...each.map((line) => `  - ${line}`),
     `The senior officer, ${officer.name}, is known for ${shape.known} and runs your establishment: ${commanderPassive(officer)}. ${ladder}`,
     'An officer is part of the fleet they stand with. They sail when named in a fleet movement\'s `officers` (a family name is enough) or when the whole port sails; they command only the battle they are at, and fall only when every ship they fought with is lost.',
-  ].join('\n');
+    lists,
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 /**

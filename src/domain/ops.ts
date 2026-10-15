@@ -15,6 +15,7 @@ import { FibScaleSchema } from './duration.js';
 import { LentSchema } from './loan.js';
 import { HullClassSchema, TypedStackSchema } from './hulls.js';
 import { CheatSchema } from './cheats.js';
+import { CommanderArchetypeSchema } from './command.js';
 import {
   OnInterruptSchema,
   OrderEffectSchema,
@@ -1041,6 +1042,14 @@ export const RecruitCommanderOp = z.object({
   factionId: z.string().min(1),
   /** Where they report. Must be a world the faction holds. */
   systemId: z.string().min(1),
+  /**
+   * An officer on your Lists, by id or name. From journal version 20 every
+   * appointment comes off the Lists: name the officer, or a `school` and its
+   * first listed goes.
+   */
+  officer: z.string().min(1).optional(),
+  /** A school of command — `lineofbattle`, `gunnery`, `convoy` or `assault` — whose first listed officer goes. */
+  school: CommanderArchetypeSchema.optional(),
   /**
    * A captured officer to restore, rather than a new one to hire.
    *

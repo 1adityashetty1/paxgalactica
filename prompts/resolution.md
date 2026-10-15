@@ -102,7 +102,7 @@ leaves a faction with nobody following it.
 | `return_loan` | hand back what you borrowed — borrower only; the hulls really leave |
 | `repudiate_loan` | keep what you borrowed — borrower only; public, and costly |
 | `forgive_loan` | let them keep what you lent — lender only |
-| `recruit_commander` | appoint an officer to a world you hold — up to five in post — **an action of its own** |
+| `recruit_commander` | appoint an officer off your Lists — named in `officer`, or the first of a `school` — to a world you hold; up to five in post; **an action of its own** |
 | `dissolve_commitment` | end one, by id |
 | `spawn_event` | something happens worth recording |
 | `log_narrative` | a note for the event log |
@@ -265,18 +265,24 @@ particular. **You do not apply their effect**: the reducer does, off the senior
 officer of the largest contingent, and the battle report names whichever
 officer actually changed something.
 
-A power may keep **up to five** in post, and `recruit_commander` appoints one to
-a world it holds. **Appointing is an action of its own**: a declaration that
-recruits does nothing else, and anything else you emit beside it is dropped.
-The officer can sail with the player's next action. Officers cost credits to commission and draw pay every turn,
-so a full roster is a real choice against hulls rather than a free upgrade.
+A power may keep **up to five** in post. Every officer comes off the power's
+**Lists** — one of each school always waiting, named in the state block — and
+`recruit_commander` appoints one to a world it holds: name them in `officer`,
+or give a `school` (`lineofbattle`, `gunnery`, `convoy`, `assault`) to send its
+first. **Nobody is put in post any other way**: a power whose last officer falls
+fights without one until it appoints. **Appointing is an action of its own**: a
+declaration that recruits does nothing else, and anything else you emit beside
+it is dropped. The officer can sail with the player's next action. A new officer
+costs credits to commission, one who has served comes back for nothing, and
+every officer in post draws pay every turn, so a full roster is a real choice
+against hulls rather than a free upgrade.
 
 An officer falls when **nothing they fought with is left**: every hull of theirs
 destroyed, or a withdrawal that got nothing clear. One standing on a world their
 power holds when the battle is over is ashore and safe. A fallen officer is
 killed or **taken alive** — a captured officer becomes an asset in the victor's
-hands, to be ransomed, traded or won back like any other, and the power they
-belong to puts them back in post with their record intact. That is a story worth
+hands, to be ransomed, traded or won back like any other; handed home, they go
+back on their own power's Lists with their record intact. That is a story worth
 telling when it happens, on both sides of it.
 
 What they are for is the narrative: an engagement between two rival powers reads

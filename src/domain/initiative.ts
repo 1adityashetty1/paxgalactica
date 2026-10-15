@@ -3,6 +3,7 @@ import {
   MAX_ACTIVE_COMMANDERS,
   activeCommanders,
   commanderAt,
+  type CommanderArchetype,
 } from './command.js';
 import { neighboursOf, shortestPath } from './graph.js';
 import {
@@ -78,6 +79,7 @@ import {
   MAX_TREATY_INCOME_PER_TURN,
   type StarSystem,
   type WorldState,
+  fleetStackOf,
 } from './state.js';
 import {
   CREDITS_PER_TON,
@@ -277,11 +279,25 @@ function wantedOfficers(ctx: Ctx): number {
  * worth having and is never worth going short of hulls for.
  */
 function hire(ctx: Ctx): Ops {
-  if (activeCommanders(ctx.state.commanders, ctx.me).length >= wantedOfficers(ctx)) return [];
+  const inPost = activeCommanders(ctx.state.commanders, ctx.me);
+  if (inPost.length >= wantedOfficers(ctx)) return [];
   if (purse(ctx.state, ctx.me) < COMMANDER_COST * 3) return [];
   const post = fleetBases(ctx.state, ctx.me).find((s) => s.controllerFactionId === ctx.me);
   if (!post) return [];
-  return [{ op: 'recruit_commander', factionId: ctx.me, systemId: post.id }];
+  // Which school, off the Lists: the line first, then the one its own fleet
+  // gives work to — the landing for a power that carries lift, the salvo for
+  // one that runs torpedo boats — then the convoy; one not already in post
+  // where it can. A school whose effect its fleet never reaches is never hired.
+  const fleet = fleetStackOf(ctx.state, ctx.me);
+  const useful: CommanderArchetype[] = [
+    'lineofbattle',
+    ...((fleet.lifter ?? 0) > 0 ? (['assault'] as const) : []),
+    ...((fleet.torpedo_boat ?? 0) > 0 ? (['gunnery'] as const) : []),
+    'convoy',
+  ];
+  const held = new Set(inPost.map((c) => c.archetype));
+  const school = useful.find((k) => !held.has(k)) ?? 'lineofbattle';
+  return [{ op: 'recruit_commander', factionId: ctx.me, systemId: post.id, school }];
 }
 
 /**

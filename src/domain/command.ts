@@ -662,14 +662,16 @@ export const CommanderSchema = z.object({
    */
   battles: z.number().int().min(0).default(0),
   /**
-   * `lost` is dead; `captured` is alive and in somebody else's hands.
+   * `lost` is dead; `captured` is alive and in somebody else's hands;
+   * `listed` is on its power's Lists, waiting to be appointed — commanding
+   * nothing, standing nowhere, drawing no pay and nobody's mark.
    *
    * A captured officer is **not on anybody's roster** — they count against no
    * cap, commands nothing, and draws no pay — but they still exists, which is
    * what lets their come home. The `Asset` holding their is the thing that moves;
    * this record is what they IS.
    */
-  status: z.enum(['active', 'lost', 'captured']).default('active'),
+  status: z.enum(['active', 'lost', 'captured', 'listed']).default('active'),
   /**
    * Where they are standing, or `null` while they are in transit with a fleet.
    *
@@ -693,8 +695,68 @@ export const CommanderSchema = z.object({
    * `pendingOrders`. One convention, not two.
    */
   atSystemId: z.string().nullable().default(null),
+  /**
+   * Whether they have ever been in post — paid for once. An officer on the
+   * Lists who has served (handed home from captivity, say) goes back into
+   * post for nothing; a new one costs `COMMANDER_COST`. Absent on a record
+   * from before the Lists.
+   */
+  commissioned: z.boolean().optional(),
 });
 export type Commander = z.infer<typeof CommanderSchema>;
+
+/** A power's officers on its Lists, waiting to be appointed, in the order they were listed. */
+export function listedOfficers(commanders: readonly Commander[] | undefined, factionId: string): Commander[] {
+  return (commanders ?? []).filter((c) => c.factionId === factionId && c.status === 'listed');
+}
+
+/**
+ * Keep every power's Lists holding an officer of each school: a school with
+ * nobody waiting has one put forward, named as any officer is. Run on the
+ * opening board and after every batch and tick (journal version 20). Returns
+ * those listed.
+ */
+export function stockOfficerLists(state: {
+  turn: number;
+  factions: readonly { id: string }[];
+  commanders?: Commander[];
+  familiesUsed?: string[];
+  agents?: { name?: string }[];
+  notables?: { name: string }[];
+}): Commander[] {
+  const listed: Commander[] = [];
+  // One pass over the roster: which schools each power already has waiting.
+  const waiting = new Set<string>();
+  for (const c of state.commanders ?? []) if (c.status === 'listed') waiting.add(`${c.factionId}:${c.archetype}`);
+  for (const faction of state.factions) {
+    for (const { kind } of COMMANDER_ARCHETYPES) {
+      if (waiting.has(`${faction.id}:${kind}`)) continue;
+      const n = (state.commanders ?? []).length;
+      const { name, family } = drawPerson({
+        factionId: faction.id,
+        turn: state.turn,
+        salt: `list:${faction.id}:${kind}:${n}`,
+        archetype: kind,
+        taken: familiesInUse(state),
+      });
+      (state.familiesUsed ??= []).push(family);
+      const officer = CommanderSchema.parse({
+        id: `cmd-${faction.id}-list-${state.turn}-${n}`,
+        factionId: faction.id,
+        name,
+        archetype: kind,
+        appointedTurn: state.turn,
+        battles: 0,
+        status: 'listed',
+        atSystemId: null,
+        commissioned: false,
+      });
+      (state.commanders ??= []).push(officer);
+      listed.push(officer);
+    }
+  }
+  return listed;
+}
 
 /* ------------------------------------------------------------------ */
 /* Names                                                               */
