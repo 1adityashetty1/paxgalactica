@@ -1309,7 +1309,7 @@ function pairLevelFootprint(t: Treaty): string[] {
  * concession and the deadline, so the two cannot disagree about what giving
  * way means.
  */
-function concedeDemand(state: WorldState, demand: Demand): string[] {
+function concedeDemand(state: WorldState, demand: Demand, withAssets = true): string[] {
   const notes: string[] = [];
   const from = demand.fromFactionId;
   const to = demand.toFactionId;
@@ -1342,7 +1342,7 @@ function concedeDemand(state: WorldState, demand: Demand): string[] {
     }
     case 'cession': {
       const treaty = term('cession', { territory: demand.systemId ? [demand.systemId] : [] }, false, 'a world given up under ultimatum');
-      notes.push(...cedeTerritory(state, treaty));
+      notes.push(...cedeTerritory(state, treaty, withAssets));
       break;
     }
     case 'basing_rights':
@@ -2354,6 +2354,37 @@ function amendRecord(text: string, corrections: string[], max = 240): string {
 }
 
 /**
+ * Whatever was sitting on a world changes hands with it. This is what makes an
+ * asset losable, and it is the difference between a hostage and a note saying
+ * somebody has a hostage: hold the world, hold the prisoners — and the fixture
+ * built on it, which changes hands with its world and by no other route. An
+ * asset with no location — a title, a charter — travels with its holder and is
+ * untouched.
+ *
+ * One helper for every way a world gains a holder — `transfer_control`, a
+ * storming in `resolveBattle`, a cession, a world joining a power — because for
+ * most of the game's life only the first of those moved anything, so a world
+ * stormed or ceded left its fixtures, cargo and prisoners with the power that
+ * lost it. A world that passes to nobody (`secede`) moves nothing: there is
+ * nobody to hold it, and what stands there stays with its holder, who collects
+ * from it only while still standing over the world.
+ */
+function assetsGoWithWorld(state: WorldState, system: StarSystem, to: string | null): string[] {
+  const notes: string[] = [];
+  if (to === null) return notes;
+  for (const asset of state.assets ?? []) {
+    if (asset.atSystemId !== system.id) continue;
+    if (asset.heldBy === to) continue;
+    const wasHeldBy = asset.heldBy;
+    asset.heldBy = to;
+    const taken = `${nameFor(state, to)} takes ${asset.quantity} ${asset.unit} with ${system.name}: ${asset.text}`;
+    notes.push(taken);
+    logEvent(state, 'system', taken, to, [wasHeldBy, to]);
+  }
+  return notes;
+}
+
+/**
  * A held world answers to nobody: the rising becomes its militia, the holder's
  * ships and officers there withdraw to its nearest holding as a ceder's do,
  * and — where worlds keep a regard — it thinks the worse of the power it threw
@@ -2393,7 +2424,7 @@ function secede(state: WorldState, system: StarSystem, why: string): string {
   return note;
 }
 
-function cedeTerritory(state: WorldState, treaty: Treaty): string[] {
+function cedeTerritory(state: WorldState, treaty: Treaty, withAssets = true): string[] {
   const notes: string[] = [];
   if (treaty.terms.territory.length === 0) return notes;
 
@@ -2413,6 +2444,9 @@ function cedeTerritory(state: WorldState, treaty: Treaty): string[] {
     // until it is reseated; an independent world has nobody to cede it.
     const seatNote = onWorldChangesHands(state, system, ceder, 'cession', () => mintId(state, 'ast'));
     if (seatNote) notes.push(seatNote);
+    // "A ceded world carries it too": the fixture, the cargo and the prisoners
+    // on it go with the signature, as they go with a conquest.
+    if (withAssets) notes.push(...assetsGoWithWorld(state, system, receiver));
 
     const leaving = hullsAt(system, ceder);
     if (leaving > 0) {
@@ -2679,6 +2713,15 @@ export interface LegacyRules {
    */
   officerLists?: boolean;
   /**
+   * What stands on a world — a fixture, cargo, a prisoner — passes to whoever
+   * takes it by storming, cession or joining, as it always did by
+   * `transfer_control` (`assetsGoWithWorld`). Before it, only that op moved
+   * anything, so a world stormed or ceded left its assets with the power that
+   * lost it. Journal version 21. Reaches the battle through
+   * `BattleRules.assetsGoWithWorld`.
+   */
+  assetsGoWithWorld?: boolean;
+  /**
    * A sandbox campaign's one event (see `primeRimSandbox`): that kind every
    * turn, with no d20 and no cooldowns. Not a rule the game acquired — a rule
    * of that campaign, read off its journal's seed entry.
@@ -2715,6 +2758,8 @@ export interface BattleRules {
    * peace with the attacker. Journal version 19.
    */
   callToArms?: boolean;
+  /** A world stormed takes what stands on it. Set from `LegacyRules.assetsGoWithWorld`. */
+  assetsGoWithWorld?: boolean;
 }
 
 /**
@@ -2817,6 +2862,7 @@ function applyOpsUnderRules(
     obligations: favoursOwed = true,
     operativesComeHome: spiesComeHome = true,
     officerLists = true,
+    assetsGoWithWorld: worldTakesAssets = true,
   } = legacy;
   const state = cloneState(input);
   const rejections: OpRejection[] = [];
@@ -3058,21 +3104,7 @@ function applyOpsUnderRules(
         sys.controllerFactionId = op.toFactionId;
         const seatNote = onWorldChangesHands(state, sys, priorHolder, 'conquest', () => mintId(state, 'ast'));
         if (seatNote) notes.push(seatNote);
-        // Whatever was sitting on the world changes hands with it. This is what
-        // makes an asset losable, and it is the difference between a hostage
-        // and a note saying somebody has a hostage: hold the world, hold the
-        // prisoners. An asset with no location — a title, a charter — travels
-        // with its holder and is untouched.
-        for (const asset of state.assets ?? []) {
-          if (asset.atSystemId !== sys.id) continue;
-          if (asset.heldBy === op.toFactionId) continue;
-          const wasHeldBy = asset.heldBy;
-          if (op.toFactionId === null) continue;
-          asset.heldBy = op.toFactionId;
-          const taken = `${nameFor(state, op.toFactionId)} takes ${asset.quantity} ${asset.unit} with ${sys.name}: ${asset.text}`;
-          notes.push(taken);
-          logEvent(state, 'system', taken, op.toFactionId, [wasHeldBy, op.toFactionId]);
-        }
+        notes.push(...assetsGoWithWorld(state, sys, op.toFactionId));
         logEvent(
           state,
           'order',
@@ -4335,7 +4367,7 @@ function applyOpsUnderRules(
           reject(raw, 'illegal_value', `Only ${nameFor(state, demand.toFactionId)} can give way to a demand made of it.`);
           break;
         }
-        notes.push(...concedeDemand(state, demand));
+        notes.push(...concedeDemand(state, demand, worldTakesAssets));
         break;
       }
 
@@ -5997,7 +6029,7 @@ function applyOpsUnderRules(
         // NOT undone if the treaty later lapses or is broken — land changes
         // hands once, and taking it back is a fresh act.
         if (!pending) {
-          notes.push(...cedeTerritory(state, treaty));
+          notes.push(...cedeTerritory(state, treaty, worldTakesAssets));
           notes.push(...settleAssetTerms(state, treaty, peopleStanding));
           notes.push(...settleTreatyPayment(state, treaty));
           notes.push(...wed(state, treaty));
@@ -8378,6 +8410,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     seats: hasCourt = true,
     operativesComeHome: spiesComeHome = true,
     officerLists = true,
+    assetsGoWithWorld: worldTakesAssets = true,
     battleRules = {},
   } = legacy;
   const state = cloneState(input);
@@ -8926,7 +8959,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     // "pricing only one of them is what made a world cost 240 credits". The
     // two calls belong together at BOTH sites, which is the whole reason that
     // comment says "the same two places".
-    notes.push(...cedeTerritory(state, treaty));
+    notes.push(...cedeTerritory(state, treaty, worldTakesAssets));
     notes.push(...settleAssetTerms(state, treaty, peopleStanding));
     notes.push(...settleTreatyPayment(state, treaty));
     notes.push(...wed(state, treaty));
@@ -9044,7 +9077,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       demand.toFactionId !== state.playerFactionId &&
       sideStrength(state, fromSide) >= ULTIMATUM_YIELD_RATIO * sideStrength(state, toSide);
     if (yields) {
-      notes.push(...concedeDemand(state, demand));
+      notes.push(...concedeDemand(state, demand, worldTakesAssets));
       continue;
     }
     demand.status = 'war';
@@ -9768,7 +9801,9 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
   // worlds are attacked in it.
   const pactsAnswered = new Set<string>();
   for (const [systemId, orders] of landings) {
-    const { note: outcome, report: battle } = resolveBattle(state, systemId, orders, hostages, battleRules, pactsAnswered);
+    const { note: outcome, report: battle } = resolveBattle(
+      state, systemId, orders, hostages, { ...battleRules, assetsGoWithWorld: worldTakesAssets }, pactsAnswered,
+    );
     notes.push(outcome);
     report.arrivals.push(outcome);
     if (battle) report.battles.push(battle);
@@ -9928,6 +9963,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       system.controllerFactionId = joiner;
       worlds.joined.push({ systemId: system.id, factionId: joiner });
       const seats = onWorldChangesHands(state, system, null, 'joining', () => mintId(state, 'ast'));
+      if (worldTakesAssets) notes.push(...assetsGoWithWorld(state, system, joiner));
       const note = `${system.name} joins ${nameFor(state, joiner)} of its own accord, garrison and all.${seats ? ` ${seats}` : ''}`;
       notes.push(note);
       logEvent(state, 'system', note, joiner);
@@ -10552,6 +10588,7 @@ function resolveBattle(
     exactExchange = true,
     officersFallWithFleet = true,
     callToArms = true,
+    assetsGoWithWorld: worldTakesAssets = true,
   } = rules;
   const target = state.systems.find((s) => s.id === systemId);
   if (!target) {
@@ -11074,6 +11111,7 @@ function resolveBattle(
     target.controllerFactionId = owner;
     const seatNote = onWorldChangesHands(state, target, holder, 'conquest', () => mintId(state, 'ast'));
     if (seatNote) logEvent(state, 'system', seatNote, owner);
+    if (worldTakesAssets) assetsGoWithWorld(state, target, owner);
     const note = `${coalition} occupies ${target.name} unopposed; ${nameOf(owner)} takes possession.`;
     logEvent(state, 'order', note, owner);
     rounds.push({
@@ -11726,6 +11764,9 @@ function resolveBattle(
     // independent world's is turned out and the seat filled for the taker.
     const seatNote = onWorldChangesHands(state, target, holder, 'conquest', () => mintId(state, 'ast'));
     if (seatNote) logEvent(state, 'system', seatNote, owner);
+    // What stands on the world is taken with it: its fixtures, its cargo, the
+    // prisoners held there. The fighting already priced it.
+    if (worldTakesAssets) assetsGoWithWorld(state, target, owner);
     // The garrison IS the landing force. What holds the world afterwards is
     // the troops that took it, up to what the world can quarter — not a
     // fraction of the defenders, who were just destroyed.

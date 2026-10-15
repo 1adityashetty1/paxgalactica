@@ -16,7 +16,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 20;
+export const JOURNAL_VERSION = 21;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -102,6 +102,7 @@ export const JournalVersionSchema = z.union([
   z.literal(18),
   z.literal(19),
   z.literal(20),
+  z.literal(21),
 ]);
 
 export const JournalSchema = z.object({
@@ -147,7 +148,14 @@ export const JournalSchema = z.object({
    *     short path, so the alphabet chose one and six worlds carried none.
    * 15 — written before a power remembered what it had seen of another's
    *     work and came to know it, and before counter-intelligence did anything.
-   * 16 — current.
+   * 16 — written before a secret order's later lines were scoped like the
+   *     line that began it.
+   * 17 — written before worlds kept a regard for each power.
+   * 18 — written before a defence pact called its ally to war, and when a
+   *     power drew from eight given names.
+   * 19 — written before estates, seats and notables.
+   * 20 — written before a world stormed or ceded took what stood on it.
+   * 21 — current.
    */
   version: JournalVersionSchema,
   entries: z.array(JournalEntrySchema),
@@ -339,6 +347,10 @@ export function replay(
     operativesComeHome: parsed.version >= 20,
     // A hire rolled its school, and the tick put a successor in post.
     officerLists: parsed.version >= 20,
+    // A world stormed in battle or ceded under a treaty left whatever stood on
+    // it — fixtures, cargo, prisoners — with the power that lost it. Those
+    // campaigns' conquerors took the ground and not what was built on it.
+    assetsGoWithWorld: parsed.version >= 21,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

@@ -2585,8 +2585,14 @@ asset losable, and said nothing about whether the thing can be handed over on
 its own — the difference between a hold full of ore, survey robots that can be
 crated up, and a mine. A fixture is refused by `transfer_asset` from both the
 declared and the negotiated path, and changes hands **only** through cession or
-conquest, which needed no new code at all: the transfer-of-control path already
-moves everything standing on a world. It also cannot be pledged as collateral —
+conquest, through `assetsGoWithWorld` in the reducer: every way a world gains a
+holder — `transfer_control`, a storming, a cession, a world joining — moves what
+stands on it. That was claimed here for a long time while only
+`transfer_control` did it, so a world stormed in battle or ceded left its
+fixtures, cargo and prisoners with the power that lost it; in the harness, the
+factory on Torrek Anchorage stayed Meridian's after the Vigil took the world on
+turn 20. Pinned to `JOURNAL_VERSION` 21 (`LegacyRules.assetsGoWithWorld`); the
+board does not move. A world that rises to nobody moves nothing. It also cannot be pledged as collateral —
 a contingency naming one is dropped with a note saying the true thing, which is
 that the world already carries the mine, so pledge the world.
 
