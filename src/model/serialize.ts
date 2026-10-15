@@ -19,7 +19,7 @@ import {
   notableById,
   seatedAt,
 } from '../domain/seats.js';
-import { MARRIAGE_CONSENT_REGARD, favourModifier } from '../domain/estates.js';
+import { MARRIAGE_CONSENT_REGARD, favourModifier, seatOffice } from '../domain/estates.js';
 import { describeStack, hullsIn } from '../domain/hulls.js';
 import { describeOrderEffect } from '../domain/development.js';
 import {
@@ -591,7 +591,7 @@ function nameOfFaction(state: WorldState, id: string): string {
  */
 function seatsLine(state: WorldState, s: StarSystem): string[] {
   if (!courtRecorded(state)) return [];
-  const seated = seatedAt(state, s.id);
+  const seated = [...seatedAt(state, s.id)].sort((a, b) => a.seat - b.seat);
   if (seated.length === 0) return [];
   const parts = seated.map((n) => {
     const estate = estateById(state, n.estateId);
@@ -602,7 +602,7 @@ function seatsLine(state: WorldState, s: StarSystem): string[] {
         : '';
     const spouse = notableById(state, n.spouseId);
     const spouseOf = spouse ? (estateById(state, spouse.estateId)?.faction.name ?? 'an independent world') : '';
-    return `${n.name} (\`${n.id}\`) ${of}${foreign}${spouse ? `, married to ${spouse.name} of ${spouseOf}` : ''}`;
+    return `${seatOffice(n)} ${n.name} (\`${n.id}\`) ${of}${foreign}${spouse ? `, married to ${spouse.name} of ${spouseOf}` : ''}`;
   });
   return [`      seats: ${parts.join('; ')}`];
 }

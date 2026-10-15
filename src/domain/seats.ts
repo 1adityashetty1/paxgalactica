@@ -54,6 +54,14 @@ export function seatedAt(state: WorldState, systemId: string): Notable[] {
   return (state.notables ?? []).filter((n) => n.systemId === systemId);
 }
 
+/** The lowest seat at a world nobody is sitting. */
+export function freeSeat(state: WorldState, systemId: string): number {
+  const taken = new Set(seatedAt(state, systemId).map((n) => n.seat));
+  let k = 0;
+  while (taken.has(k)) k += 1;
+  return k;
+}
+
 export function notableById(state: WorldState, id: string | null | undefined): Notable | undefined {
   return id ? (state.notables ?? []).find((n) => n.id === id) : undefined;
 }
@@ -260,6 +268,7 @@ export function seatNotable(
   estateId: string | null,
   systemId: string | null,
   salt: string,
+  seat?: number,
 ): Notable {
   const owner = estateId ? estateOwner(estateId) : RIM_STOCK;
   const { name, family } = drawPerson({
@@ -275,6 +284,7 @@ export function seatNotable(
     name,
     estateId,
     systemId,
+    seat: seat ?? (systemId ? freeSeat(state, systemId) : 0),
   });
   (state.notables ??= []).push(notable);
   return notable;

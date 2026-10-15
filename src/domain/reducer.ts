@@ -4515,9 +4515,10 @@ function applyOpsUnderRules(
           state.assets = state.assets.filter((a) => a.id !== home.id);
           returning.systemId = world.id;
           returning.homeId = null;
+          returning.seat = displaced.seat;
           fresh = returning;
         } else {
-          fresh = seatNotable(state, estate.id, world.id, `reseat:${world.id}:${state.turn}`);
+          fresh = seatNotable(state, estate.id, world.id, `reseat:${world.id}:${state.turn}`, displaced.seat);
         }
         // A foreign notable turned out is taken prisoner, worth most to the
         // power that lost the world; one of your own retires.

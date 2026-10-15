@@ -270,3 +270,21 @@ describe('reseating', () => {
     expect(r.rejections[0]?.code).toBe('illegal_value');
   });
 });
+
+describe('a hub’s two offices', () => {
+  it('seats a governor and a chancellor, and a replacement takes the office vacated', async () => {
+    const { seatOffice } = await import('../src/domain/estates.js');
+    const { seatedAt, removeNotable, fillSeats } = await import('../src/domain/seats.js');
+    const s = createSeedState('meridian');
+    const hub = s.systems.find((w) => seatedAt(s, w.id).length === 2)!;
+    const [a, b] = [...seatedAt(s, hub.id)].sort((x, y) => x.seat - y.seat);
+    expect([seatOffice(a!), seatOffice(b!)]).toEqual(['Governor', 'Chancellor']);
+    const plain = s.systems.find((w) => seatedAt(s, w.id).length === 1)!;
+    expect(seatOffice(seatedAt(s, plain.id)[0]!)).toBe('Governor');
+    // The governor goes; whoever replaces them governs, and the chancellor stays chancellor.
+    removeNotable(s, a!);
+    const [fresh] = fillSeats(s);
+    expect(seatOffice(fresh!)).toBe('Governor');
+    expect(seatOffice(seatedAt(s, hub.id).find((n) => n.id === b!.id)!)).toBe('Chancellor');
+  });
+});

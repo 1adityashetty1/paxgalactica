@@ -36,7 +36,7 @@ import { agentStanding, type Agent } from '../../../src/domain/diplomacy.js';
 import { agentRoster } from '../../../src/ui/agentroster.js';
 import { courtView, seatDoing, seatLabel } from '../../../src/ui/court.js';
 import { defaultEstate, notableById, powerOf, seatedAt } from '../../../src/domain/seats.js';
-import { MARRIAGE_CONSENT_REGARD, estateOwner } from '../../../src/domain/estates.js';
+import { MARRIAGE_CONSENT_REGARD, estateOwner, seatOffice } from '../../../src/domain/estates.js';
 
 import {
   MAX_ACTIVE_COMMANDERS,
@@ -2033,18 +2033,18 @@ function WorldSeats({
   const others = (mine?.estates ?? []).filter((e) => !seated.some((n) => n.estateId === e.id));
   return (
     <>
-      <h4 title="Every world has a seat, a hub two, and a notable in each. A notable belongs to one of its holder's estates, and does to the world what that estate's favour says.">
+      <h4 title="Every world has a governor, and a hub a chancellor beside them. A notable belongs to one of its holder's estates, and does to the world what that estate's favour says.">
         Seats
       </h4>
       <ul className="war-list">
-        {seated.map((n) => {
+        {[...seated].sort((a, b) => a.seat - b.seat).map((n) => {
           const spouse = notableById(state, n.spouseId);
           const spouseSide = spouse ? (powerOf(spouse) ? getFaction(state, powerOf(spouse)!)?.name : 'an independent world') : null;
           const doing = seatDoing(state, n);
           const free = n.estateId === null && n.spouseId === null;
           return (
             <li key={n.id}>
-              <strong>{n.name}</strong> <span className="muted">· {seatLabel(state, n)}</span>
+              {seatOffice(n)}: <strong>{n.name}</strong> <span className="muted">· {seatLabel(state, n)}</span>
               {spouse && (
                 <div className="meta">
                   married to {spouse.name} of {spouseSide}

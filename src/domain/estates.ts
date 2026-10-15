@@ -50,10 +50,23 @@ export const NotableSchema = z.object({
   spouseId: z.string().nullable().default(null),
   /** The world they sat before they were taken into keeping, whose regard a marriage still pulls. */
   homeId: z.string().nullable().default(null),
+  /**
+   * Which of the world's seats they sit: 0 is the governor's, 1 (a hub's
+   * second) the chancellor's. The two are the same in play; the slot is what
+   * keeps them apart, and a replacement takes the slot that was vacated.
+   */
+  seat: z.number().int().min(0).default(0),
 });
 export type Notable = z.infer<typeof NotableSchema>;
 
 /** The power an estate belongs to, read off its id. */
+/** What a seat is called: the first a world's governor, a hub's second its chancellor. */
+export const SEAT_OFFICES = ['Governor', 'Chancellor'] as const;
+
+export function seatOffice(n: { seat?: number }): string {
+  return (n.seat ?? 0) === 0 ? SEAT_OFFICES[0] : SEAT_OFFICES[1];
+}
+
 export function estateOwner(estateId: string): string {
   return estateId.slice(0, estateId.indexOf(':'));
 }
