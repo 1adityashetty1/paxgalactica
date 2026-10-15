@@ -6,7 +6,7 @@ import { regardFor } from '../src/domain/regard.js';
 import { rollD20 } from '../src/domain/checks.js';
 import { ASSASSINATION_KILL_ROLL } from '../src/domain/command.js';
 import { AFFAIR_FAVOUR, RESENTFUL, SEDUCTION_PROOF_TURNS } from '../src/domain/estates.js';
-import { actingFavour, isTurned, notableById, seatedAt, withheldFor } from '../src/domain/seats.js';
+import { actingFavour, heldAs, isTurned, listsOf, notableById, seatedAt, whereabouts, withheldFor } from '../src/domain/seats.js';
 import { secretLive } from '../src/domain/leverage.js';
 import type { OpInput } from '../src/domain/ops.js';
 
@@ -80,27 +80,35 @@ describe('a seduction', () => {
     );
   });
 
-  it('published, shames the estate, sours the world and ends the marriage it betrays', () => {
+  /** The Vigil's governor of Kalzir wed to a Meridian notable off its Lists, now a ward at Kalzir. */
+  function wedKalzir() {
     const seed = createSeedState('meridian');
     const kalzir = notableAt(seed, 'Kalzir');
-    // Married to Meridian first.
-    let s = applyOps(
+    const ward = listsOf(seed, 'meridian')[0]!;
+    const s = applyOps(
       seed,
       [
         {
           op: 'form_treaty',
           treatyType: 'marriage',
           parties: ['meridian', 'vigil'],
-          terms: { spouses: [notableAt(seed, 'Brannix').id, kalzir.id] },
+          terms: { spouses: [ward.id, kalzir.id] },
           summary: 'a marriage',
         } as OpInput,
       ],
       'extraction',
       'meridian',
     ).state;
+    return { s, kalzir, ward };
+  }
+  const affairOf = (s: WorldState) => s.assets.find((a) => a.secret?.kind === 'affair')!;
+
+  it('published, shames the estate, sours the world and ends the marriage it betrays; the ward goes home', () => {
+    let { s, kalzir, ward } = wedKalzir();
     s = place(s, 'ojjul', 'Kalzir', 'seduction', kalzir.name).state;
     for (let i = 0; i < SEDUCTION_PROOF_TURNS; i++) s = tickTurn(s, calm).state;
-    const proof = s.assets.find((a) => a.secret?.kind === 'affair')!;
+    const proof = affairOf(s);
+    expect(proof.secret!.subject).toBe('vigil');
     const favour = s.factions.flatMap((f) => f.estates).find((e) => e.id === kalzir.estateId)!.favour;
     const regard = regardFor(named(s, 'Kalzir'), 'vigil');
     const meridianOfVigil = s.factions.find((f) => f.id === 'meridian')!.disposition.vigil ?? 0;
@@ -112,6 +120,19 @@ describe('a seduction', () => {
     expect(notableById(after, kalzir.id)!.spouseId).toBeNull();
     expect(after.treaties.find((t) => t.type === 'marriage')!.status).toBe('voided');
     expect(after.factions.find((f) => f.id === 'meridian')!.disposition.vigil).toBeLessThan(meridianOfVigil);
+    expect(whereabouts(after, notableById(after, ward.id)!)).toBe('listed');
+  });
+
+  it('reaches a ward at their court; their own affair published leaves them the court’s prisoner', () => {
+    let { s, ward } = wedKalzir();
+    s = place(s, 'ojjul', 'Kalzir', 'seduction', ward.name).state;
+    expect(s.agents.at(-1)!.targetNotableId).toBe(ward.id);
+    for (let i = 0; i < SEDUCTION_PROOF_TURNS; i++) s = tickTurn(s, calm).state;
+    const proof = affairOf(s);
+    expect(proof.secret!.subject).toBe('meridian');
+    const after = applyOps(s, [{ op: 'publish_dossier', assetId: proof.id, reason: '' }], 'model', 'ojjul').state;
+    expect(after.treaties.find((t) => t.type === 'marriage')!.status).toBe('voided');
+    expect(heldAs(after, ward.id)!.heldBy).toBe('vigil');
   });
 
   it('courts an independent world’s notable too, with no court there to shame', () => {
@@ -136,24 +157,43 @@ describe('the knife', () => {
     return tickTurn({ ...s, turn }, calm).state;
   }
 
-  it('kills one of a holder’s own, and the seat refills for the same estate', () => {
+  it('kills one of a holder’s own, and the seat stands empty until the holder appoints', () => {
     const seed = createSeedState('meridian');
     const mark = notableAt(seed, 'Kalzir');
-    const s = place(seed, 'ojjul', 'Kalzir', 'assassination', mark.name).state;
-    const after = strike(s);
-    expect(notableById(after, mark.id)).toBeUndefined();
-    const refill = notableAt(after, 'Kalzir');
-    expect(refill.id).not.toBe(mark.id);
-    expect(refill.estateId).toBe(mark.estateId);
-  });
-
-  it('kills a foreign notable, and the seat goes to the holder', () => {
-    let seed = createSeedState('meridian');
-    seed = applyOps(seed, [{ op: 'transfer_control', systemId: named(seed, 'Kalzir').id, toFactionId: 'meridian' }], 'engine').state;
-    const mark = notableAt(seed, 'Kalzir');
+    const regard = regardFor(named(seed, 'Kalzir'), 'vigil');
     const after = strike(place(seed, 'ojjul', 'Kalzir', 'assassination', mark.name).state);
     expect(notableById(after, mark.id)).toBeUndefined();
-    expect(notableAt(after, 'Kalzir').estateId!.startsWith('meridian:')).toBe(true);
+    expect(seatedAt(after, named(after, 'Kalzir').id)).toHaveLength(0);
+    expect(regardFor(named(after, 'Kalzir'), 'vigil')).toBeLessThan(regard);
+  });
+
+  it('kills a married governor, and the ward goes home', () => {
+    const seed = createSeedState('meridian');
+    const mark = notableAt(seed, 'Kalzir');
+    const ward = listsOf(seed, 'meridian')[0]!;
+    const wed = applyOps(
+      seed,
+      [
+        {
+          op: 'form_treaty',
+          treatyType: 'marriage',
+          parties: ['meridian', 'vigil'],
+          terms: { spouses: [ward.id, mark.id] },
+          summary: 'a marriage',
+        } as OpInput,
+      ],
+      'extraction',
+      'meridian',
+    ).state;
+    const after = strike(place(wed, 'ojjul', 'Kalzir', 'assassination', mark.name).state);
+    expect(after.treaties.find((t) => t.type === 'marriage')!.status).toBe('voided');
+    expect(whereabouts(after, notableById(after, ward.id)!)).toBe('listed');
+  });
+
+  it('cannot reach anyone on the Lists', () => {
+    const seed = createSeedState('meridian');
+    const listed = listsOf(seed, 'vigil')[0]!;
+    expect(place(seed, 'ojjul', 'Kalzir', 'seduction', listed.name).rejections[0]?.code).toBe('illegal_value');
   });
 
   it('kills an independent world’s notable, and a new one speaks for it', () => {

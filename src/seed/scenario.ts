@@ -1,6 +1,6 @@
 import { seedRegard } from '../domain/regard.js';
 import { seedEstates } from '../domain/estates.js';
-import { fillSeats } from '../domain/seats.js';
+import { fillSeats, stockLists } from '../domain/seats.js';
 import type { FactionStats } from '../domain/checks.js';
 import type { DurationCategory } from '../domain/duration.js';
 import type { WorldType } from '../domain/state.js';
@@ -1356,7 +1356,8 @@ export function createSeedState(
   // named first and keep the names every earlier campaign opened with.
   if (seats) {
     for (const faction of state.factions) faction.estates = seedEstates(faction.id);
-    fillSeats(state);
+    fillSeats(state, { everyWorld: true });
+    stockLists(state);
   }
 
   return WorldStateSchema.parse(state);

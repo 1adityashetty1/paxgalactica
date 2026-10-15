@@ -13,9 +13,12 @@ import { eventsVisibleTo, observeOrders, ordersVisibleTo, rememberedBy } from '.
 import { INTEL_DELIVERS, intelOn } from '../domain/intel-levels.js';
 import {
   courtRecorded,
+  emptySeats,
   estateById,
   favourBaseline,
   heldAs,
+  listsOf,
+  marriageOf,
   notableById,
   seatedAt,
 } from '../domain/seats.js';
@@ -592,7 +595,8 @@ function nameOfFaction(state: WorldState, id: string): string {
 function seatsLine(state: WorldState, s: StarSystem): string[] {
   if (!courtRecorded(state)) return [];
   const seated = [...seatedAt(state, s.id)].sort((a, b) => a.seat - b.seat);
-  if (seated.length === 0) return [];
+  const empty = s.controllerFactionId !== null ? emptySeats(state, s) : [];
+  if (seated.length === 0 && empty.length === 0) return [];
   const parts = seated.map((n) => {
     const estate = estateById(state, n.estateId);
     const of = estate ? `of ${estate.estate.name}, ${estate.faction.name}` : 'speaking for the world itself';
@@ -604,6 +608,7 @@ function seatsLine(state: WorldState, s: StarSystem): string[] {
     const spouseOf = spouse ? (estateById(state, spouse.estateId)?.faction.name ?? 'an independent world') : '';
     return `${seatOffice(n)} ${n.name} (\`${n.id}\`) ${of}${foreign}${spouse ? `, married to ${spouse.name} of ${spouseOf}` : ''}`;
   });
+  for (const k of empty) parts.push(`${seatOffice({ seat: k })}: EMPTY, until its holder appoints someone off its Lists`);
   return [`      seats: ${parts.join('; ')}`];
 }
 
@@ -626,13 +631,38 @@ function courtLine(state: WorldState, viewerId: string): string {
       `- ${e.name} (\`${e.id}\`, ${e.stat}): favour ${e.favour} → ${sign(favourModifier(e.favour))} ${e.stat}; ${b.seats} seat${b.seats === 1 ? '' : 's'} against a fair share of ${b.fairShare.toFixed(1)}, ${b.grants} grant${b.grants === 1 ? '' : 's'} (${e.stipends} paid)${b.hated > 0 ? `, ${b.hated} on worlds that resent you` : ''}; drifting toward ${b.baseline}.`,
     );
   }
+  const lists = listsOf(state, viewerId);
+  lines.push(
+    `Your Lists — notables waiting for a seat; every appointment (\`seat_estate\`) and every match you give comes from here: ${lists
+      .map((n) => `${n.name} (\`${n.id}\`) of ${estateById(state, n.estateId)?.estate.name ?? '?'}`)
+      .join(', ')}.`,
+  );
+  const vacant = state.systems
+    .filter((x) => x.controllerFactionId === viewerId)
+    .flatMap((x) => emptySeats(state, x).map((k) => `${x.name}'s ${seatOffice({ seat: k }).toLowerCase()}`));
+  if (vacant.length > 0) lines.push(`Empty seats on your worlds, doing nothing for you until filled: ${vacant.join(', ')}.`);
   const abroad = (state.notables ?? []).filter((n) => n.systemId === null && n.estateId?.startsWith(`${viewerId}:`));
   for (const n of abroad) {
     const held = heldAs(state, n.id);
-    if (held) lines.push(`- ${n.name} is held by ${getFaction(state, held.heldBy)?.name ?? held.heldBy} (\`${held.id}\`).`);
+    const spouse = notableById(state, n.spouseId);
+    if (held && spouse) {
+      lines.push(`- ${n.name} lives at ${getFaction(state, held.heldBy)?.name ?? held.heldBy}'s court as the ward of a marriage to ${spouse.name}; if you break the marriage or attack them, they keep ${n.name} prisoner.`);
+    } else if (held) {
+      lines.push(`- ${n.name} is held by ${getFaction(state, held.heldBy)?.name ?? held.heldBy} (\`${held.id}\`).`);
+    } else if (n.livesAt && spouse) {
+      lines.push(`- ${n.name} lives on ${state.systems.find((x) => x.id === n.livesAt)?.name ?? n.livesAt}, married to ${spouse.name}.`);
+    }
   }
   const theirs = (state.assets ?? []).filter((a) => a.heldBy === viewerId && a.notableId);
-  for (const a of theirs) lines.push(`- You hold ${a.text} (\`${a.id}\`).`);
+  for (const a of theirs) {
+    const n = notableById(state, a.notableId);
+    const ward = n && marriageOf(state, n.id)?.terms.ward === n.id;
+    lines.push(
+      ward
+        ? `- You hold ${a.text} (\`${a.id}\`): a ward — if their power breaks the marriage or attacks you, you keep them; if you break it, they are lost.`
+        : `- You hold ${a.text} (\`${a.id}\`).`,
+    );
+  }
   const matches = state.systems
     .filter((x) => x.controllerFactionId === null && regardFor(x, viewerId) >= MARRIAGE_CONSENT_REGARD)
     .filter((x) => seatedAt(state, x.id).some((n) => n.estateId === null && n.spouseId === null));

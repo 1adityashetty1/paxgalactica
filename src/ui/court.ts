@@ -1,11 +1,15 @@
-import { favourModifier, MARRIAGE_CONSENT_REGARD, MAX_GRANTS, estateOwner, type Notable } from '../domain/estates.js';
+import { favourModifier, MARRIAGE_CONSENT_REGARD, MAX_GRANTS, estateOwner, seatOffice, type Notable } from '../domain/estates.js';
 import { regardFor } from '../domain/regard.js';
 import {
   actingFavour,
   courtRecorded,
+  defaultEstate,
+  emptySeats,
   estateById,
   favourBaseline,
   heldAs,
+  listedFor,
+  marriageOf,
   notableById,
   powerOf,
   seatedAt,
@@ -47,6 +51,26 @@ export interface CourtMarriage {
   spouse: Notable;
   /** The other side: a power's name, or the independent world the spouse speaks for. */
   side: string;
+  /** Who of the two lives away from home, and where: the ward, or yours living on an independent world. */
+  away: { who: Notable; where: string } | null;
+}
+
+/** One estate's notables waiting for a seat. */
+export interface ListedEstate {
+  id: string;
+  name: string;
+  stat: string;
+  notables: Notable[];
+}
+
+/** A seat on one of your worlds that nobody sits. */
+export interface Vacancy {
+  systemId: string;
+  world: string;
+  seat: number;
+  office: string;
+  /** The estate the game would send by default: the ground's, else the fewest seats. */
+  suggested: string | null;
 }
 
 export interface CourtSeatIssue {
@@ -68,6 +92,10 @@ export interface CourtView {
   trouble: CourtSeatIssue[];
   /** Independent worlds that would accept a match from you now. */
   matches: { systemId: string; world: string; regard: number }[];
+  /** Your Lists, estate by estate. */
+  lists: ListedEstate[];
+  /** Seats on your worlds standing empty. */
+  vacancies: Vacancy[];
 }
 
 export function courtView(state: WorldState, me: string): CourtView | null {
@@ -102,21 +130,30 @@ export function courtView(state: WorldState, me: string): CourtView | null {
     if (!spouse) continue;
     const theirs = powerOf(spouse);
     if (theirs === me) continue;
+    const ward = marriageOf(state, n.id)?.terms.ward;
+    const wardOne = ward === n.id ? n : ward === spouse.id ? spouse : null;
+    const heldAt = wardOne ? heldAs(state, wardOne.id) : undefined;
     marriages.push({
       mine: n,
       spouse,
-      side: theirs ? name(theirs) : worldName(spouse.systemId ?? spouse.homeId),
+      side: theirs ? name(theirs) : worldName(spouse.systemId ?? spouse.livesAt),
+      away: wardOne && heldAt
+        ? { who: wardOne, where: `${name(heldAt.heldBy)}'s court at ${worldName(heldAt.atSystemId)}` }
+        : n.livesAt
+          ? { who: n, where: worldName(n.livesAt) }
+          : null,
     });
   }
 
+  const isWard = (n: Notable) => marriageOf(state, n.id)?.terms.ward === n.id;
   const heldAbroad = mine
-    .filter((n) => n.systemId === null)
+    .filter((n) => n.systemId === null && !isWard(n))
     .map((n) => ({ n, a: heldAs(state, n.id) }))
     .filter((x) => x.a !== undefined && x.a.heldBy !== me)
     .map((x) => ({ notable: x.n, by: x.a!.heldBy, assetId: x.a!.id }));
 
   const holding = (state.assets ?? [])
-    .filter((a) => a.heldBy === me && a.notableId)
+    .filter((a) => a.heldBy === me && a.notableId && !isWard(notableById(state, a.notableId)!))
     .map((a) => ({ a, n: notableById(state, a.notableId) }))
     .filter((x) => x.n !== undefined)
     .map((x) => ({ notable: x.n!, assetId: x.a.id, theirs: powerOf(x.n!) }));
@@ -144,7 +181,23 @@ export function courtView(state: WorldState, me: string): CourtView | null {
     )
     .sort((a, b) => b.regard - a.regard || a.world.localeCompare(b.world));
 
-  return { estates, marriages, heldAbroad, holding, trouble, matches };
+  const lists = (faction.estates ?? []).map((e) => ({ id: e.id, name: e.name, stat: e.stat, notables: listedFor(state, e.id) }));
+
+  const vacancies: Vacancy[] = [];
+  for (const world of state.systems) {
+    if (world.controllerFactionId !== me) continue;
+    for (const seat of emptySeats(state, world)) {
+      vacancies.push({
+        systemId: world.id,
+        world: world.name,
+        seat,
+        office: seatOffice({ seat }),
+        suggested: defaultEstate(state, me, world)?.name ?? null,
+      });
+    }
+  }
+
+  return { estates, marriages, heldAbroad, holding, trouble, matches, lists, vacancies };
 }
 
 /** The estate a seat belongs to, in words, for the System tab. */
@@ -188,6 +241,13 @@ export function courtLines(state: WorldState, me: string): { text: string; tone:
   for (const h of view.heldAbroad) {
     const name = state.factions.find((f) => f.id === h.by)?.name ?? h.by;
     out.push({ text: `${h.notable.name} is held by ${name}.`, tone: 'info' });
+  }
+  if (view.vacancies.length > 0) {
+    const seats = view.vacancies.map((v) => `${v.world}'s ${v.office.toLowerCase()}`).join(', ');
+    out.push({
+      text: `${view.vacancies.length === 1 ? 'A seat stands' : `${view.vacancies.length} seats stand`} empty: ${seats}. Appoint from the Lists.`,
+      tone: 'bad',
+    });
   }
   return out;
 }

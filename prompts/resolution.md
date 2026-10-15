@@ -70,8 +70,8 @@ leaves a faction with nobody following it.
 | `set_toll_policy` | who pays to cross its space — see Tolls |
 | `grant_stipend` | pay one of your estates a stipend — see Estates and seats |
 | `revoke_stipend` | stop paying one, at a cost in its favour |
-| `seat_estate` | give a seat on a world you hold to one of your estates |
-| `propose_marriage` | marry one of your notables into an independent world |
+| `seat_estate` | appoint a notable off your Lists to a seat on a world you hold |
+| `propose_marriage` | marry a notable off your Lists into an independent world |
 | `create_asset` | a thing taken or made **because the attempt worked** — see Things |
 | `transfer_asset` | hand a thing you hold to somebody else |
 | `split_asset` | break a divisible holding into two lots |
@@ -915,28 +915,37 @@ the state block lists yours with their favour. An estate's favour is a straight
 modifier on its stat: +1 from 40, +2 from 80, −1 from −40, −2 from −80. The
 two strongest stats belong to the power's institutions, which no estate moves.
 
-Every world has a **seat** — a hub two — and a **notable** in it, of one of the
-holder's estates. A notable lifts its world when its estate's favour is 40 or
-more, and at −40 or less withholds half the world's income and sours it. A
-conquered world's notable is still its old power's: it works against its
-conqueror until the conqueror reseats it.
+Every world has a **seat** — the governor's — and a hub a second, the
+chancellor's. A notable in one belongs to one of the holder's estates, lifts
+its world when its estate's favour is 40 or more, and at −40 or less withholds
+half the world's income and sours it. Each power keeps **the Lists**: its
+notables waiting for a seat, named in the state block. Every seat a power fills
+comes off its Lists. A conquered world's notables are taken prisoner with it,
+and its seats stand **empty** — doing nothing for anyone — until the conqueror
+appoints; a seat also empties when its notable is killed, and a hub's second
+seat starts empty.
 
 - `grant_stipend` pays an estate 15 a turn and lifts its favour over the
   coming turns; an estate holds three grants at most. `revoke_stipend` stops
   one and costs favour at once. `estate` is its name as the state block gives
   it. Your own estates only.
-- `seat_estate` gives a seat on a world **you hold** to one of your estates. A
-  foreign notable is turned out first. It costs the world a little of its
-  regard for you, and one estate's gain is another's loss.
+- `seat_estate` appoints to a seat on a world **you hold**: `notable` names
+  someone off your Lists, or `estate` sends that estate's first listed;
+  `office` (`governor` or `chancellor`) picks the seat. An empty seat is simply
+  filled. A full one is taken from whoever sits it, who goes back on the Lists
+  — costing the world a little of its regard, one estate's gain another's loss
+  — and a married notable's seat cannot be taken.
 
 - A **notable** is a person: `deploy_agent` takes `targetNotable` — their
   name or id from the `seats:` line — for a `seduction` (which must name one),
   a `subversion` that turns them against their holder, or an `assassination`.
-- `propose_marriage` marries one of your seated notables to the notable of a
-  world **that answers to nobody**. The world consents by its standing with
-  you — 40 or better — and the code checks it. A marriage with another
-  POWER's notable needs that power's consent: it is a treaty, agreed in a
-  channel, never this op.
+- `propose_marriage` marries a notable **off your Lists** to the notable of a
+  world **that answers to nobody**, and yours goes to live there. The world
+  consents by its standing with you — 40 or better — and the code checks it.
+  A marriage with another POWER's notable needs that power's consent: it is a
+  treaty, agreed in a channel, never this op.
+- Nobody on the Lists can be reached by an operative. A ward of a marriage
+  living at a court can be seduced there, and nothing else.
 
 All four are actions of their own: nothing else need ride with them, and
 their price is set in code — do not add credits or dissent for them.

@@ -40,7 +40,9 @@ import {
   actingFavour,
   courtRecorded,
   defaultEstate,
+  emptySeats,
   grantsOf,
+  listedFor,
   notableById,
   powerOf as notablesPower,
   seatedAt,
@@ -2040,10 +2042,12 @@ export const BOT_MAX_STIPENDS = 2;
 export const BOT_STIPEND_COVER = 4;
 
 /**
- * Keep the court: one act a turn, in order of need — see `seats.ts`.
+ * Keep the court, in order of need — see `seats.ts`.
  *
- * - **Reseat a conquest.** A foreign notable working against the bot is
- *   reseated first, for the default estate: the first act of governing it.
+ * - **Fill empty seats.** Every seat the bot's worlds have standing empty — a
+ *   conquest, a killing, a world grown into a hub — is filled off its Lists
+ *   for the default estate, an estate at a time since each sends its first
+ *   listed: the first act of governing a world.
  * - **Placate.** When its worst estate falls to `RESENTFUL`, a seat moves to it
  *   from its best.
  * - **Grant.** A solvent bot pays the estate behind its weakest stat a
@@ -2054,13 +2058,20 @@ function keepCourt(ctx: Ctx): Ops {
   const { state, me } = ctx;
   if (!courtRecorded(state)) return [];
   const mine = held(state, me).sort((a, b) => b.strategicValue - a.strategicValue || a.id.localeCompare(b.id));
+  const fills: Ops = [];
+  const sent = new Set<string>();
   for (const world of mine) {
-    const foreign = seatedAt(state, world.id).find(
-      (n) => n.estateId !== null && estateOwner(n.estateId) !== me && (actingFavour(state, n) ?? 0) <= RESENTFUL,
-    );
-    const estate = foreign ? defaultEstate(state, me, world) : null;
-    if (estate) return [{ op: 'seat_estate', factionId: me, systemId: world.id, estate: estate.id }];
+    for (const seat of emptySeats(state, world)) {
+      const preferred = defaultEstate(state, me, world);
+      const estate = [preferred, ...(getFaction(state, me)?.estates ?? [])].find(
+        (e) => e && !sent.has(e.id) && listedFor(state, e.id).length > 0,
+      );
+      if (!estate) break;
+      sent.add(estate.id);
+      fills.push({ op: 'seat_estate', factionId: me, systemId: world.id, estate: estate.id, office: seat === 0 ? 'governor' : 'chancellor' });
+    }
   }
+  if (fills.length > 0) return fills;
   const faction = getFaction(state, me);
   const estates = [...(faction?.estates ?? [])];
   if (!faction || estates.length === 0) return [];
@@ -2069,9 +2080,11 @@ function keepCourt(ctx: Ctx): Ops {
   const best = byFavour[byFavour.length - 1]!;
   if (worst.favour <= RESENTFUL && best.id !== worst.id) {
     const seat = (state.notables ?? []).find(
-      (n) => n.estateId === best.id && n.systemId !== null && mine.some((w) => w.id === n.systemId),
+      (n) => n.estateId === best.id && n.systemId !== null && n.spouseId === null && mine.some((w) => w.id === n.systemId),
     );
-    if (seat) return [{ op: 'seat_estate', factionId: me, systemId: seat.systemId, estate: worst.id }];
+    if (seat && listedFor(state, worst.id).length > 0) {
+      return [{ op: 'seat_estate', factionId: me, systemId: seat.systemId, estate: worst.id, office: seat.seat === 0 ? 'governor' : 'chancellor' }];
+    }
   }
   const ledger = ledgerFor(state, me);
   // Standing income, as a fixture is judged: this turn's prizes run out.
@@ -2178,9 +2191,7 @@ function match(ctx: Ctx): Ops {
   if (!world) return [];
   const estates = [...(getFaction(state, me)?.estates ?? [])].sort((a, b) => a.favour - b.favour || a.id.localeCompare(b.id));
   for (const estate of estates) {
-    const groom = (state.notables ?? []).find(
-      (n) => n.estateId === estate.id && n.systemId !== null && n.spouseId === null && grantsOf(state, estate) < MAX_GRANTS,
-    );
+    const groom = grantsOf(state, estate) < MAX_GRANTS ? listedFor(state, estate.id).find((n) => n.spouseId === null) : undefined;
     if (groom) return [{ op: 'propose_marriage', factionId: me, notable: groom.id, systemId: world.id }];
   }
   return [];
@@ -2733,19 +2744,30 @@ export function brokeredAccords(state: WorldState): Accord[] {
   // Marriages: two powers on good terms and at peace, neither barred from a
   // peace with the other, each with an estate out of favour, wed those
   // estates' notables — a grant to each that costs no credits, and a peace.
-  // One a pair at a time. See `seats.ts`.
+  // The first power's notable is seated; the second's comes off its Lists and
+  // goes to live at that court as its ward. One a pair at a time. See
+  // `seats.ts`.
   if (courtRecorded(state)) {
-    const unwed = (p: string) => {
+    const worstOf = (p: string) => {
       const estates = [...(getFaction(state, p)?.estates ?? [])].sort((x, y) => x.favour - y.favour || x.id.localeCompare(y.id));
       const worst = estates[0];
-      if (!worst || worst.favour >= 0 || grantsOf(state, worst) >= MAX_GRANTS) return undefined;
-      return (state.notables ?? []).find(
-        (n) =>
-          n.estateId === worst.id &&
-          n.spouseId === null &&
-          n.systemId !== null &&
-          state.systems.find((w) => w.id === n.systemId)?.controllerFactionId === p,
-      );
+      return worst && worst.favour < 0 && grantsOf(state, worst) < MAX_GRANTS ? worst : undefined;
+    };
+    const seatedOf = (p: string) => {
+      const worst = worstOf(p);
+      return worst
+        ? (state.notables ?? []).find(
+            (n) =>
+              n.estateId === worst.id &&
+              n.spouseId === null &&
+              n.systemId !== null &&
+              state.systems.find((w) => w.id === n.systemId)?.controllerFactionId === p,
+          )
+        : undefined;
+    };
+    const listedOf = (p: string) => {
+      const worst = worstOf(p);
+      return worst ? listedFor(state, worst.id).find((n) => n.spouseId === null) : undefined;
     };
     const wed = new Set<string>();
     for (let i = 0; i < npcs.length; i++) {
@@ -2756,8 +2778,8 @@ export function brokeredAccords(state: WorldState): Accord[] {
         if (Math.min(dispositionBetween(state, a, b), dispositionBetween(state, b, a)) < EXCHANGE_STANDING) continue;
         if (warsFor(state, a).includes(b) || barred(a, b) || barred(b, a)) continue;
         if (boundBy(state, a, b, new Set(['marriage']))) continue;
-        const na = unwed(a);
-        const nb = unwed(b);
+        const na = seatedOf(a);
+        const nb = listedOf(b);
         if (!na || !nb) continue;
         wed.add(a);
         wed.add(b);

@@ -333,6 +333,8 @@ export function replay(
     // Estates, seats and notables ran from version 20. Their seed is what
     // makes them run at all; this keeps the rule beside the others.
     seats: parsed.version >= 20,
+    // A returned operative waited in the warehouse for a recruit_agent.
+    operativesComeHome: parsed.version >= 20,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

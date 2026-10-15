@@ -35,7 +35,7 @@ import { CommanderIcon } from './BattleIcons.js';
 import { agentStanding, type Agent } from '../../../src/domain/diplomacy.js';
 import { agentRoster } from '../../../src/ui/agentroster.js';
 import { courtView, seatDoing, seatLabel } from '../../../src/ui/court.js';
-import { defaultEstate, notableById, powerOf, seatedAt } from '../../../src/domain/seats.js';
+import { defaultEstate, emptySeats, listedFor, notableById, powerOf, seatedAt, seatsFor } from '../../../src/domain/seats.js';
 import { MARRIAGE_CONSENT_REGARD, estateOwner, seatOffice } from '../../../src/domain/estates.js';
 
 import {
@@ -107,6 +107,7 @@ type Tab =
   | 'commanders'
   | 'agents'
   | 'court'
+  | 'lists'
   | 'trade'
   | 'assets'
   | 'orders'
@@ -128,6 +129,9 @@ const TABS: { id: Tab; label: string }[] = [
   // The estates, the seats and the people in them: what each estate thinks of
   // you and why, who is married to whom, and who is held.
   { id: 'court', label: 'Court' },
+  // Who is waiting for a seat. Every appointment and every match you give
+  // comes off the Lists, so they sit beside the court they feed.
+  { id: 'lists', label: 'Lists' },
   { id: 'trade', label: 'Trade' },
   // Its own tab rather than a section of Treaties. A treaty is an arrangement
   // you negotiated and so already know about; an asset ARRIVES — a prisoner
@@ -223,6 +227,7 @@ export function SidePanel({
             activeChannel={activeChannel}
           />
         )}
+        {tab === 'lists' && <ListsTab state={state} onSelect={onSelect} onDraft={onDraft} />}
         {tab === 'trade' && <TradePanel state={state} ledger={effective.ledger} onSelect={onSelect} />}
         {tab === 'assets' && <Assets state={state} onOffer={onOffer} activeChannel={activeChannel} />}
         {tab === 'orders' && <Orders state={state} briefing={briefing} />}
@@ -2020,31 +2025,51 @@ function WorldSeats({
   activeChannel: string | null;
 }) {
   const seated = seatedAt(state, sys.id);
-  if (seated.length === 0) return null;
+  if (seated.length === 0 && emptySeats(state, sys).length === 0) return null;
   const me = state.playerFactionId;
   const holder = sys.controllerFactionId;
   const mine = getFaction(state, me);
-  // Who of yours would marry: your least-favoured estate's unwed notable,
-  // since a match counts as that estate's grant.
+  // Who of yours would marry: an unwed notable off the Lists of your
+  // least-favoured estate, since a match counts as that estate's grant.
   const groom = [...(mine?.estates ?? [])]
     .sort((a, b) => a.favour - b.favour)
-    .map((e) => (state.notables ?? []).find((n) => n.estateId === e.id && n.systemId !== null && n.spouseId === null))
+    .map((e) => listedFor(state, e.id).find((n) => n.spouseId === null))
     .find((n) => n !== undefined);
   const others = (mine?.estates ?? []).filter((e) => !seated.some((n) => n.estateId === e.id));
+  const slots = Array.from({ length: Math.max(seatsFor(sys), ...seated.map((n) => n.seat + 1)) }, (_, k) => k);
+  const suggested = holder === me ? defaultEstate(state, me, sys) : null;
+  const firstListed = suggested ? listedFor(state, suggested.id)[0] : undefined;
   return (
     <>
-      <h4 title="Every world has a governor, and a hub a chancellor beside them. A notable belongs to one of its holder's estates, and does to the world what that estate's favour says.">
+      <h4 title="Every world has a governor, and a hub a chancellor beside them. A seat on a power's world is filled from its Lists; a notable belongs to one of its estates, and does to the world what that estate's favour says.">
         Seats
       </h4>
       <ul className="war-list">
-        {[...seated].sort((a, b) => a.seat - b.seat).map((n) => {
+        {slots.map((k) => {
+          const n = seated.find((x) => x.seat === k);
+          const office = seatOffice({ seat: k });
+          if (!n) {
+            return (
+              <li key={`empty:${k}`}>
+                {office}: <span className="muted">None</span>
+                {holder === me && firstListed && suggested && (
+                  <button
+                    className="chip"
+                    onClick={() => onDraft(`Appoint ${firstListed.name} of ${suggested.name} as ${office} of ${sys.name}.`)}
+                  >
+                    appoint {firstListed.name}
+                  </button>
+                )}
+              </li>
+            );
+          }
           const spouse = notableById(state, n.spouseId);
           const spouseSide = spouse ? (powerOf(spouse) ? getFaction(state, powerOf(spouse)!)?.name : 'an independent world') : null;
           const doing = seatDoing(state, n);
           const free = n.estateId === null && n.spouseId === null;
           return (
             <li key={n.id}>
-              {seatOffice(n)}: <strong>{n.name}</strong> <span className="muted">· {seatLabel(state, n)}</span>
+              {office}: <strong>{n.name}</strong> <span className="muted">· {seatLabel(state, n)}</span>
               {spouse && (
                 <div className="meta">
                   married to {spouse.name} of {spouseSide}
@@ -2061,7 +2086,9 @@ function WorldSeats({
                   className="chip"
                   disabled={!canOffer(activeChannel, holder)}
                   title={canOffer(activeChannel, holder) ? undefined : 'Close the open channel first.'}
-                  onClick={() => onOffer(holder, `I propose a marriage: ${groom.name} of ours, and ${n.name} of yours.`)}
+                  onClick={() =>
+                    onOffer(holder, `I propose a marriage: ${groom.name} of ours, to live at your court married to ${n.name}.`)
+                  }
                 >
                   offer a marriage
                 </button>
@@ -2075,7 +2102,7 @@ function WorldSeats({
           Would accept a match from you at a standing of {MARRIAGE_CONSENT_REGARD}; it is {regardFor(sys, me)}.
         </p>
       )}
-      {holder === me && others.length > 0 && (
+      {holder === me && seated.length > 0 && others.length > 0 && (
         <div className="chips">
           {others.map((e) => (
             <button key={e.id} className="chip" onClick={() => onDraft(`Give ${sys.name}'s seat to ${e.name}.`)}>
@@ -2204,6 +2231,16 @@ function CourtTab({
             <li key={m.mine.id}>
               {m.mine.name} <span className="muted">and</span> {m.spouse.name}{' '}
               <span className="muted">of {m.side}</span>
+              {m.away && (
+                <div className="meta">
+                  {m.away.who.name} lives at {m.away.where}
+                  {m.away.who.livesAt !== null
+                    ? ''
+                    : m.away.who.id === m.mine.id
+                      ? ' as a ward: break the match or attack them and they keep your notable'
+                      : ' as your ward: if their power breaks the match or attacks you, they are yours to keep'}
+                </div>
+              )}
             </li>
           ))}
         </ul>
@@ -2249,6 +2286,77 @@ function CourtTab({
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/**
+ * The Lists: your estates' notables waiting for a seat. Every appointment and
+ * every match you give comes off them, and an estate never runs dry — appoint
+ * its last and another is put forward. Nobody here is anybody's mark.
+ */
+function ListsTab({
+  state,
+  onSelect,
+  onDraft,
+}: {
+  state: WorldState;
+  onSelect: (id: string) => void;
+  onDraft: (text: string) => void;
+}) {
+  const view = courtView(state, state.playerFactionId);
+  if (!view) return <p className="empty">This campaign has no estates: it began before they existed.</p>;
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  return (
+    <div className="standing court-tab">
+      <p className="muted">
+        Notables waiting for a seat. Every seat you fill and every match you give comes from here, and each estate always
+        has someone listed. Nobody on the Lists can be reached by an operative.
+      </p>
+      <h4>Empty seats</h4>
+      {view.vacancies.length === 0 ? (
+        <p className="empty">Every seat on your worlds is filled.</p>
+      ) : (
+        <ul className="war-list">
+          {view.vacancies.map((v) => (
+            <li key={`${v.systemId}:${v.seat}`}>
+              <button className="link" onClick={() => onSelect(v.systemId)}>
+                {v.world}
+              </button>{' '}
+              <span className="muted">· {v.office}: None</span>
+              <div className="chips">
+                {view.lists
+                  .filter((l) => l.notables.length > 0)
+                  .map((l) => (
+                    <button
+                      key={l.id}
+                      className="chip"
+                      title={l.name === v.suggested ? 'The estate this ground favours.' : undefined}
+                      onClick={() =>
+                        onDraft(`Appoint ${l.notables[0]!.name} of ${l.name} as ${v.office} of ${v.world}.`)
+                      }
+                    >
+                      {l.notables[0]!.name.split(' ').slice(-1)[0]} ({l.stat}){l.name === v.suggested ? ' ★' : ''}
+                    </button>
+                  ))}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {view.lists.map((l) => (
+        <div key={l.id} className="agent">
+          <div className="treaty-head">
+            <strong>{cap(l.name)}</strong>
+            <span className="muted">{l.stat}</span>
+          </div>
+          <ul className="war-list">
+            {l.notables.map((n) => (
+              <li key={n.id}>{n.name}</li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </div>
   );
 }

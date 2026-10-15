@@ -32,8 +32,9 @@ export const EstateSchema = z.object({
 export type Estate = z.infer<typeof EstateSchema>;
 
 /**
- * A named person in a world's seat — or, while held abroad as a ward or a
- * prisoner, in nobody's.
+ * A named person: in a world's seat, on their power's Lists waiting for one,
+ * held at another court as a ward or a prisoner, or living on an independent
+ * world they married into.
  *
  * Two facts of their own: the estate they belong to, and whom they are
  * married to. Everything else they do is read off their estate's favour, so a
@@ -44,12 +45,15 @@ export const NotableSchema = z.object({
   name: z.string().min(1),
   /** The estate they belong to; `null` for an independent world's notable. */
   estateId: z.string().nullable(),
-  /** The world whose seat they sit; `null` while held as an asset. */
+  /** The world whose seat they sit; `null` on the Lists, held, or living abroad. */
   systemId: z.string().nullable(),
   /** The notable they are married to — the one record of a marriage. */
   spouseId: z.string().nullable().default(null),
-  /** The world they sat before they were taken into keeping, whose regard a marriage still pulls. */
-  homeId: z.string().nullable().default(null),
+  /**
+   * The independent world they live on, married into it — off the board and
+   * off the Lists until the match ends. `null` otherwise.
+   */
+  livesAt: z.string().nullable().default(null),
   /**
    * Which of the world's seats they sit: 0 is the governor's, 1 (a hub's
    * second) the chancellor's. The two are the same in play; the slot is what

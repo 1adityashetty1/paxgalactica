@@ -8,7 +8,7 @@ import {
   type Secret,
 } from './diplomacy.js';
 import { isDebtLive } from './debt.js';
-import { notableById } from './seats.js';
+import { heldAs, marriageOf, notableById, powerOf as notablesPower } from './seats.js';
 import { estateOwner } from './estates.js';
 import { isLoanLive } from './loan.js';
 import { SECRET_CATEGORIES } from './intel.js';
@@ -163,7 +163,7 @@ export function describeSecret(state: WorldState, secret: Secret): string {
         ? getFaction(state, estateOwner(notable.estateId))?.estates?.find((e) => e.id === notable.estateId)?.name
         : undefined;
       return notable
-        ? `${notable.name}${estate ? ` of ${estate}` : ''}, who sits ${where(notable.systemId ?? notable.homeId ?? '')} for ${who}, has been carrying on with a foreign agent`
+        ? `${notable.name}${estate ? ` of ${estate}` : ''}, ${notable.systemId ? `who sits ${where(notable.systemId)} for ${who}` : `of ${who}, a ward abroad`}, has been carrying on with a foreign agent`
         : `one of ${who}'s notables carried on with a foreign agent`;
     }
   }
@@ -271,6 +271,12 @@ export function concessionBudget(state: WorldState, conceder: string, other: str
     scale += 0.25;
     because.push('a debt you owe them');
   }
+  // A ward of yours at their court: what a hostage is for.
+  const wards = wardsHeld(state, other, conceder);
+  if (wards > 0) {
+    scale += wards * 0.25;
+    because.push(`${wards} of your people living at their court as ward${wards === 1 ? '' : 's'}`);
+  }
   // A war you cannot carry, against the power across the table, is the
   // plainest leverage there is — the reason a bot sues for peace.
   const spent = exhaustion(state, conceder);
@@ -281,6 +287,17 @@ export function concessionBudget(state: WorldState, conceder: string, other: str
   scale = Math.max(CONCESSION_SCALE_MIN, Math.min(CONCESSION_SCALE_MAX, scale));
   const gross = Math.max(0, ledgerFor(state, conceder).gross);
   return { budget: Math.round(gross * CONCESSION_BUDGET_TURNS * scale), scale, because };
+}
+
+/** How many of `giver`'s notables `holder` keeps as wards of a live marriage. */
+export function wardsHeld(state: WorldState, holder: string, giver: string): number {
+  let n = 0;
+  for (const notable of state.notables ?? []) {
+    if (notablesPower(notable) !== giver) continue;
+    if (heldAs(state, notable.id)?.heldBy !== holder) continue;
+    if (marriageOf(state, notable.id)?.terms.ward === notable.id) n += 1;
+  }
+  return n;
 }
 
 /**

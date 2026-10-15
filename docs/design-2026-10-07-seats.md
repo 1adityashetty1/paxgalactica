@@ -24,6 +24,18 @@ code is `src/domain/estates.ts` (the shapes, sheets and numbers),
 `src/ui/court.ts` (the Court tab as data); *Settled while building* and
 *Measured* at the end record what the build decided and found.
 
+*Revised 2026-10-14, before merge, still version 20:* **the Lists**. A hub's
+two seats are named **Governor** and **Chancellor**. Seats are filled only from
+a power's **Lists** of waiting notables and stand **empty** until somebody is
+appointed; **conquest takes whoever sits a world prisoner**, so the foreign
+notable is gone; and **a marriage hands over a ward** — one spouse seated, the
+other off the other side's Lists, living at the seated one's court as surety.
+The problem it answers: a notable taken prisoner, the world retaken, a new
+governor appointed, and then the old one ransomed home had nowhere to go but
+the warehouse. The sections below are written to the revision. Operatives
+handed home were made to go back on the books by themselves at the same time,
+the rule the Lists follow.
+
 ## The rules in brief
 
 - **Estates.** Each power has three, one behind each of its **three weakest
@@ -32,19 +44,23 @@ code is `src/domain/estates.ts` (the shapes, sheets and numbers),
 - **Favour**, −100 to 100, is a straight modifier on the estate's stat, by one
   table for every estate. It drifts toward a baseline of **seats** held against
   a fair share and **grants** paid.
-- **Seats.** Every world has one; a hub has two. Every seat has a notable.
-  A notable acts on its world by its estate's favour: a favoured estate's
-  notables win their worlds over, a resentful one's withhold, a bitter one's
-  let their worlds go.
-- **Worlds changing hands.** A conquered notable stays as a **foreign
-  notable** working against its new holder until reseated, and reseating takes
-  it prisoner.
-- **Marriage.** A power marries through its notables: with another power as a
-  `marriage` treaty, which is a peace; with an independent world by a
-  declaration the world accepts by its standing. Either way it is a grant to the
-  estate and a pull on the worlds toward the in-laws.
+- **Seats.** Every world has a Governor; a hub has a Chancellor too. A notable
+  acts on its world by its estate's favour: a favoured estate's notables win
+  their worlds over, a resentful one's withhold, a bitter one's let their
+  worlds go. An empty seat does nothing.
+- **The Lists.** Each power's notables waiting for a seat, at least one an
+  estate. Every appointment comes off them; nobody on them can be reached by an
+  operative.
+- **Worlds changing hands.** Conquest takes whoever sits the world prisoner and
+  leaves its seats empty for the conqueror to fill off its own Lists.
+- **Marriage.** One seated notable and one off the other side's Lists, who goes
+  to live at the seated one's court as a ward. With another power it is a
+  `marriage` treaty, which is a peace; with an independent world, a declaration
+  the world accepts by its standing. A grant to each estate, and a pull on the
+  seated spouse's world toward the in-laws. The ward is surety.
 - **Wards and prisoners.** A notable can be held as an asset, beside captured
-  officers and operatives.
+  officers and operatives, and goes back on their own power's Lists the moment
+  that power holds them.
 - **Operatives.** Subversion turns a notable; assassination kills one;
   seduction is a marriage nobody signed, and its proof breaks a rival's
   marriage.
@@ -157,7 +173,10 @@ seats; +2 costs three grants and more than a fair share. Against nets of
 
 ## Seats and notables
 
-**One seat per world, two on a hub** (strategic value 7 or more). Every power
+**One seat per world, two on a hub** (strategic value 7 or more): the
+**Governor**'s and the **Chancellor**'s (`Notable.seat` 0 and 1). The two act
+alike; the names keep them apart, and an appointment fills the office that is
+empty. Every power
 holds at least one hub on the opening board:
 
 | power | worlds | hubs | seats |
@@ -169,8 +188,8 @@ holds at least one hub on the opening board:
 | Drajk | 4 | Vergesse | 5 |
 
 The worlds most worth fighting over are the ones estates fight over too. A
-world that becomes a hub by development opens a second seat; one that falls
-below 7 keeps the seats it has until one comes free.
+world that becomes a hub by development opens a Chancellor's seat, empty until
+filled; one that falls below 7 keeps the seats it has.
 
 **A notable** is a named person — the same generator as officers and
 operatives, with a family name unique in the campaign — with two facts of their
@@ -181,35 +200,56 @@ notable is one record with no rules of its own.
 **Every world has a notable, including one nobody holds.** An independent
 world's notable belongs to **no estate**: it is the world's own voice, and does
 nothing to the world by itself, since there is no favour to read. It is there
-to be married, courted and, in a war, taken. They are generic: drawn from a
+to be married, courted and, in a war, turned out. They are generic: drawn from a
 sixth name stock for the Rim's unaligned worlds, with ten given names for the
 die's twenty faces. The seed gives each of the five unaligned worlds one; a
 world that secedes keeps the notable it had.
 
 ### Who fills a seat
 
-A seat is never empty. When one opens it is filled at once:
+**A notable is in exactly one place** (`whereabouts`): seated, on its power's
+**Lists**, held at another court as an asset, or living on an independent world
+it married into.
 
-| the seat opens because | filled for |
+**The Lists** are a power's notables waiting for a seat. They are not gameplay
+entities: no operative can reach anyone on them, and they do nothing. Every
+seat a power fills comes off its Lists, and each estate always has someone
+listed — `settleCourt`, after every batch and every tick, puts one forward for
+an estate with nobody waiting. Who else is on them: notables handed home by
+ransom or freed by retaking a world, a governor turned out of a seat for
+another estate, a ward whose marriage ended in their favour, and one who lived
+abroad and came home.
+
+**A seat on a power's world is never filled for it.** The opening board seats
+everyone by default; after that an empty seat stands at **None** until the
+holder appoints. Considered and rejected: auto-appointing the vacated estate's
+first listed notable. An empty seat is what makes a conquest, and the knife,
+cost an action to repair.
+
+| the seat opens because | it |
 |---|---|
-| the seed; a world becoming a hub; a world conquered from nobody | the **default** estate (below) |
-| a notable killed; a notable sent abroad as a ward | the **same** estate, so it loses nothing |
-| a world joins a power | the estate of the notable's spouse if it married into the power, otherwise the default |
-| a power reseats it | the estate the power names |
+| a world is conquered | stands empty; whoever sat it is the conqueror's prisoner |
+| a notable is killed | stands empty |
+| a world becomes a hub | its Chancellor's seat stands empty |
+| a world is ceded | stands empty; whoever sat it goes home to the ceder's Lists |
+| a world joins a power | is kept by the independent notable, for the estate of its spouse if it married into the power, otherwise the default |
+| an independent world's notable is killed | is filled at once with a new voice of its own — nobody appoints for it |
 
 **The default** is the estate whose stat is the world's ground stat
 (`WORLD_TYPE_STAT`) — an arid world (might) seats Meridian's Security
 Directorate, an earthlike world (influence) the Vigil's Blue Bloods, legible
 from the map as a fixture's ground is. Ground of one of the power's peaks has no
 estate, and goes to **the estate with the fewest seats**; so does a hub's second
-seat when the ground's estate already holds the first.
+seat when the ground's estate already holds the first. The default seats the
+opening board, a joining world, and the bots; the player chooses.
 
-**Reseating is a declaration** — *"give Kalzir to the Complex"* —
-`seat_estate { systemId, estateId }`, an action. It changes the baseline both
-ways at once, so one estate's gain is visibly another's loss, and it shakes the
-world: its regard for the holder drops `RESEAT_REGARD` (5). The notable it
-displaces is not dismissed into nothing: one of the power's own goes home, and a
-foreign one is taken prisoner (see *Wards and prisoners*).
+**Appointing is a declaration** — *"appoint Corvan Hale as Governor of
+Kalzir"* — `seat_estate { systemId, notable | estate, office? }`, an action.
+An empty seat is simply filled. A full one is taken from its sitter — the
+estate holding the most seats first — who goes back on the Lists; that changes
+the baseline both ways at once, so one estate's gain is visibly another's loss,
+and shakes the world: its regard for the holder drops `RESEAT_REGARD` (5). A
+married notable's seat cannot be taken, since the marriage stands on it.
 
 ### What a notable does on its world
 
@@ -231,137 +271,106 @@ more reason a world rises, read by the rising that already exists.
 
 | event | the seat |
 |---|---|
-| **conquest** | the notable stays, still of the **old holder's** estate: a **foreign notable**, which acts for its new holder as an estate at −40 does (withholds, lowers regard). Reseating it is the conqueror's first act of government, and takes it prisoner |
-| **conquest of an independent world** | its notable has no power behind it, so it cannot be a foreign notable. It is released, and the seat is filled for the conqueror by default. Taking unclaimed ground is already free of occupation cost, and this matches |
-| **conquest by the in-laws** | a married notable whose world its spouse's power takes is not a foreign notable to them: it acts as if its estate stood at 0, not −40 |
-| **liberation** | a power retaking its own world finds its own notable still in the seat, and they count for it again at once |
-| **cession** | as a conquest without the taking |
-| **secession** | the notable stays and belongs to no estate; it is the independent world's notable, and keeps any marriage it had |
-| **joining** | the independent notable takes the seat for its spouse's estate if it married into the power, otherwise for the default; the people chose, and their notable came with them |
+| **conquest** | whoever sits it is taken **prisoner**, a `notable` asset the conqueror holds there; the seats stand empty for the conqueror to fill off its own Lists. A marriage whose seated spouse is taken ends, and its ward, held on the same world, is the conqueror's prisoner too |
+| **conquest of an independent world** | its notable has no power behind it and is turned out; a power's notable who married in and lives there is the conqueror's prisoner. The seats stand empty |
+| **liberation** | a power retaking a world finds its own people held there, takes them back with it, and they go onto its Lists. The seats are still empty: it appoints |
+| **cession** | nobody fought: the ceder's notables go home to its Lists, and any ward of theirs with them |
+| **secession** | the notables stay and belong to no estate, the independent world's own; a marriage of theirs ends and its ward goes home |
+| **joining** | the independent notable takes the seat for its spouse's estate if it married into the power, otherwise for the default; whoever married in from a power comes home |
 
-**Whose seat it is while it is foreign.** A foreign notable counts as a seat
-of its **old** estate, so that estate's favour does not fall at once when the
-world is lost, and the old power has every reason to take it back. Two
-consequences follow, and both are deliberate:
-
-- it adds **no seat to the conqueror's fair share** until the conqueror
-  reseats it, since the conqueror has no notable there yet;
-- it does **not** count against its old estate as a **hated seat**, since that
-  estate is not the one holding the world down.
-
-**People held on a world taken.** A ward or a prisoner held at a world is an
-asset standing there, so it changes hands with the world as any asset does. A
-power that retakes a world on which one of its own notables is held may put
-them back in a seat.
+**People held on a world taken.** A prisoner or a ward held at a world is an
+asset standing there, so it changes hands with the world, whichever way the
+world was taken; one of the conqueror's own goes home to its Lists.
 
 ## Marriage
 
 Among the first things players reached for. The appraisal prompt's own worked
 example is *"I offer my heir in marriage to the Ojjul Combine"*, and the first
-live arbiter test was a dynastic marriage ruled exclusive. Today it lands as an
-exclusive treaty that names nobody, worth only what a treaty is. Seats give it
-the people it was missing. **The player has no house, so a power marries
-through its notables**: *"offer the Blue Bloods' notable at Vantic in marriage
-to the Combine"*.
+live arbiter test was a dynastic marriage ruled exclusive. Seats give it the
+people it was missing. **The player has no house, so a power marries through its
+notables**.
 
-**The bond lives on the people.** `Notable.spouseId`, set on both, is the one
-record of who is married to whom: a pointer, as `Asset.commanderId` is. A
-notable already married cannot marry again; a power may marry several of its
-notables into several powers. Every marriage, whoever it is with:
+**One seated, one off the Lists.** Every marriage pairs a **seated** notable
+with one off the other side's **Lists**, who goes to live at the seated
+spouse's court — as that court's **ward** between powers, or simply on the
+world when marrying into an independent one. A marriage never empties a seat.
+The bond lives on the people: `Notable.spouseId`, set on both. Every marriage:
 
-- **pulls both worlds toward the in-laws.** Each spouse's world adds
-  `MARRIAGE_REGARD` (30) to its baseline toward the other side, so its standing
-  with the in-laws settles 30 higher and stays there while the marriage stands.
-  A married world that secedes is therefore far likelier to join the in-laws
-  than anyone else (`JOIN_REGARD` is 60), and their envoys have less to do;
-- **is a grant paid in alliance.** It counts as one of the estate's grants:
-  `GRANT_FAVOUR` on its baseline, within `MAX_GRANTS`, at no credits;
-- **keeps a spouse from working against the in-laws** if they take its world
-  (see *When a world changes hands*).
+- **pulls the seated spouse's world toward the in-laws**: `MARRIAGE_REGARD`
+  (30) on its baseline toward the other side. The spouse who moved sits nowhere
+  and pulls nothing, so the pull runs one way — the giver's payoff for handing
+  over a hostage;
+- **is a grant paid in alliance** to each spouse's estate: `GRANT_FAVOUR` on its
+  baseline, within `MAX_GRANTS`, at no credits.
 
 ### Between powers: the `marriage` treaty
 
-A treaty type of its own, the shape `coalition` took: `terms.spouses` names one
-notable of each party, is required on a marriage and refused on every other
-type (`illegal_value`). It needs the other power's consent, so it is made in a
-channel and recorded by extraction, as every treaty is. It sets the bond when it
-takes force, and voids when the bond ends.
+A treaty type of its own: `terms.spouses` names the two, is required on a
+marriage and refused on every other type (`illegal_value`); `terms.ward` is
+worked out by the engine — the one off the Lists — and must be them if named.
+It needs the other power's consent, so it is made in a channel and recorded by
+extraction, as every treaty is.
 
-- **It is a peace.** `marriage` joins `PEACE_TREATIES` and `TRUCE_TREATIES`:
-  attacking the in-laws breaks it, priced as a broken pact, and a marriage
-  signed between powers at war leaves a truce. Ending a war with a wedding is
-  the oldest settlement there is.
-- **`exclusive`** works as it does now: the arbiter may rule that one marriage
-  forecloses any other with anyone.
-- **Supersession keys on the spouses.** A marriage neither supersedes another
-  treaty between the same pair nor is superseded by one, so two marriages
-  between the same powers are two marriages. Goodwill on signature is paid once
-  per pair and type, as now, so a second marriage between the same powers buys
-  standing only through its estates and worlds.
-- **`terms.ward`** may send one spouse to live at the in-laws' court (see
-  *Wards and prisoners*).
+- **It is a peace.** `marriage` joins `PEACE_TREATIES` and `TRUCE_TREATIES`: a
+  marriage signed between powers at war leaves a truce.
+- **The ward is surety.** The seated spouse's power — the **receiver** — holds
+  the ward at the seated spouse's world. That is what a hostage is for:
+
+  | the marriage ends because | the ward |
+  |---|---|
+  | the **giver** breaks it, or attacks the receiver | stays, the receiver's **prisoner** |
+  | the **receiver** breaks it, or attacks the giver | is **gone** from play |
+  | the seated spouse dies, or their affair is published | goes **home** to the giver's Lists |
+  | the ward's own affair is published | stays, the receiver's **prisoner** |
+  | a third power takes the seated spouse's world | is that power's **prisoner**, as the seated spouse is |
+  | the receiver questions the ward | is gone, a broken pact |
+
+  And while it holds, a ward is **leverage**: their power's concession budget
+  toward the receiver rises as for a favour owed (`wardsHeld`).
+- **`exclusive`** works as for any treaty.
+- **Supersession keys on the spouses.** Two marriages between the same powers
+  are two marriages; goodwill on signature is paid once per pair and type.
 
 ### Into an independent world
 
-**A declared action, and the world consents by its standing.** *"Marry the
-Security Directorate's notable to the notable of Var Hollow"* —
+**A declared action, and the world consents by its standing.** *"Marry Corvan
+Hale off our Lists to the notable of Var Hollow"* —
 `propose_marriage { notable, systemId }`, one of the turn's two actions. No
-channel, since an independent world has no persona; its regard for you is its
-answer. At `MARRIAGE_CONSENT_REGARD` (40) or better, and its notable unmarried,
-it accepts. Below, the arbiter rules it inadmissible and it costs nothing, the
-way a world that will not have you is a fact rather than a roll.
+channel; the world's regard for you is its answer, at `MARRIAGE_CONSENT_REGARD`
+(40) or better, its notable unmarried. Yours goes to live there
+(`Notable.livesAt`), off the Lists.
 
-- **It does not join on the marriage alone.** Its standing settles 30 higher;
-  the rest of the way to 60 is envoys and what the world wants, as now. A
-  marriage makes a courtship stick.
-- **When it joins you**, its notable takes a seat for **your spouse's estate**:
-  the estate that made the match gets the world. The marriage is then within
-  one power and does nothing more.
-- **There is no treaty and so no peace to break.** Taking a world you married
-  into by force turns its notable out, as any conquest of an independent world
-  does, and the marriage ends with them.
-- **Rivals can still court it.** A marriage puts you 30 ahead, not out of reach.
-
-### How a marriage ends
-
-| it ends when | how | cost |
-|---|---|---|
-| a party repudiates it | `break_treaty`, a divorce | a broken pact's price; the estate loses the grant and takes `REVOKED_FAVOUR` |
-| a power takes by force a world it married into | its notable is turned out | what storming the world costs; the estate loses the grant |
-| either spouse dies | voided, nobody's fault | the estate loses the grant |
-| an affair is published | voided (see *Operatives*) | the estate loses the grant; the betrayed in-laws resent the strayer's power |
-| the holder of a ward questions them | broken by the holder | a broken pact's price, on top of what questioning a person costs |
+- **It does not join on the marriage alone**; a marriage makes a courtship
+  stick, 30 ahead and not out of reach.
+- **When it joins you**, its notable takes a seat for your spouse's estate and
+  yours comes home to the Lists. **When it joins anyone else**, yours comes home.
+- **Taken by force**, its notable is turned out; yours comes home if you took
+  it, and is the conqueror's prisoner if someone else did.
+- **Its notable killed**, yours comes home.
 
 ## Wards and prisoners
 
-Captured officers and operatives already become **assets**: an `officer` or
-`operative` held at the world where they were taken, pointed at by
-`Asset.commanderId` or `agentId`, worth most to the power that lost them,
-ransomed, traded, ceded or questioned with no second mechanism, and brought
-home by `recruit_commander` or `deploy_agent` with `fromAssetId`. Notables join
-them: kind `notable`, pointed at by **`Asset.notableId`**, the third twin.
+Captured officers and operatives already become **assets**: held at the world
+where they were taken, pointed at by `Asset.commanderId` or `agentId`, worth
+most to the power that lost them, ransomed, traded, ceded or questioned with no
+second mechanism. Notables join them: kind `notable`, pointed at by
+**`Asset.notableId`**, the third twin, under the same people-standing prices.
 
 | held as | how |
 |---|---|
-| **a ward** | a `marriage` treaty names one spouse in `terms.ward`. That notable leaves its seat and lives at the in-laws' court, a `notable` asset they hold at their best world, and its seat refills for the same estate. The ward is surety: the treaty may carry `voidsOn: asset_lost` on it, and if its own power breaks the marriage, the in-laws are holding its notable |
-| **a prisoner** | a conqueror that reseats a foreign notable takes the displaced notable prisoner, held at that world |
+| **a ward** | handed over by a marriage, held by the receiver at the seated spouse's world |
+| **a prisoner** | taken with a conquered world, or kept when a marriage ends against the giver |
 
-What the holder can do is what it can do with a captured officer, priced the
-same way: hand them home (`REPATRIATION_GOODWILL`), sell them to anyone else
-(`TRAFFICKING_RESENTMENT`), or question them (`INTERROGATION_RESENTMENT`) for a
-dossier. **A notable is a person**, so `notableId` joins `commanderId` and
-`agentId` in the people-standing rule.
-
-**Brought home**, a notable goes back into a seat for its own estate by
-`seat_estate` with `fromAssetId`, as an officer goes back into post. Only your
-own: a held notable is never seated by its captor. A married notable taken
-prisoner stays married, and the pull on its home world goes on while it is held.
+**Brought home** — handed back, or freed by retaking the world they are held on —
+a notable goes onto their own power's Lists at once, with no action: the problem
+the Lists exist to solve. A captor never seats someone else's notable.
 
 ## Operatives
 
 Three missions reach a notable. Each names them, matched by name as officers
-are. **A ward or a prisoner is not a target**: they are under guard, and their
-holder decides their fate.
+are. **Nobody on the Lists is a target, nor is a prisoner**: they are under
+guard, and their holder decides their fate. **A ward can be seduced** at the
+court they live at, and nothing else.
 
 | mission | aimed at a notable |
 |---|---|
@@ -382,12 +391,11 @@ knife, and a seated notable never leaves its world.
 
 | the notable killed | the seat | and |
 |---|---|---|
-| **one of the holder's own** | refills the same tick **for the same estate** | the world's regard for its holder drops 10 in the confusion; the estate keeps the seat, so its favour does not move |
-| **a foreign notable** | refills for the **holder**, by default | the old power's foothold ends, and its old estate loses the seat. Otherwise the old power could keep its foothold by having its own notable killed and refilled |
+| **a power's** | stands **empty** until the holder appoints | the world's regard for its holder drops 10 in the confusion, and the estate has lost a seat until it is refilled |
 | **an independent world's** | a new generic notable | if the operative is caught, the world's regard for its power drops 25, the price of conquering an independent world |
 
-Whoever is killed: their marriage is voided, and any subversion or seduction
-aimed at them ends.
+Whoever is killed: their marriage is voided and its ward goes home, and any
+subversion or seduction aimed at them ends.
 
 ### Seduction
 
@@ -413,7 +421,9 @@ covertly, and only while it lasts:
 Published, an affair is a scandal at the holder's court: the notable's estate
 loses `AFFAIR_FAVOUR` (15) at once, and the world's regard for its holder drops
 10. **If the notable is married, the marriage is voided**, and the in-laws'
-regard for the holder drops `AFFAIR_RESENTMENT` (10). Seduction is how a
+regard for the strayer's power drops `AFFAIR_RESENTMENT` (10). A seated
+spouse's affair sends the ward home; a ward's own leaves them the court's
+prisoner — the affair is about the ward's power, and so is the scandal. Seduction is how a
 rival's marriage is broken from outside. Blackmail spends the affair for a
 strong hook on the holder, as any secret.
 
@@ -446,8 +456,7 @@ is never seated**, nor **a held notable by its captor**: a prisoner is worth a
 ransom, and a turned admiral is a far larger idea than this design reaches.
 
 Mechanically: separate rosters and no op that moves a person between them.
-`seat_estate` names an estate and draws a new notable, or brings one of the
-power's own notables home from captivity (`fromAssetId`) — the same roster;
+`seat_estate` appoints only off the power's own Lists — the same roster;
 `recruit_commander` and `recruit_agent` refuse a notable. A declared *"make
 Marshal Galba lord of Kalzir"* is **inadmissible** at the arbiter, quoting the
 power's reason — the appraisal prompt carries the table — and costs nothing, as
@@ -499,9 +508,9 @@ an inadmissible ruling does.
 
 ## Bots
 
-- **Seats** fill by the default rule and the bots leave them, except:
-- **`keepCourt`**, one act a turn in order of need: **reseat** a conquest's
-  foreign notable for the default estate; **placate**, moving a seat from the
+- **`keepCourt`**, in order of need: **fill** every empty seat on its worlds
+  off its Lists for the default estate, one estate at a time in a batch;
+  **placate**, moving an unmarried notable's seat from the
   best-favoured estate to the worst when the worst falls to −40; **grant** the
   estate behind its weakest stat a stipend, up to `BOT_MAX_STIPENDS` (2), while
   standing income covers `BOT_STIPEND_COVER` (4) times the stipends, and revoke
@@ -629,21 +638,25 @@ back to 5/5/6/5/4. A harness run is about a tenth slower with the court.
    baseline of seats held and grants paid, so it is kept up rather than banked.
 6. **No new way for a world to change hands.** A bitter estate lets a world
    rise through the secession that exists.
-7. **A conquered notable works against its conqueror until reseated**, counts
-   for its old estate meanwhile, and is taken prisoner when it is.
+7. **Conquest takes whoever sits a world prisoner**, and its seats stand empty
+   until the conqueror appoints off its Lists. (The first build left a foreign
+   notable working against the conqueror; the Lists revision replaced it.)
 8. **No promotion between rosters**, explained in each power's own terms, and
    enforced by having no op that does it.
-9. **A power marries through its notables.** The bond is on the two notables.
-   Between powers it is a `marriage` treaty, which is a peace; into an
-   independent world it is a declaration the world accepts by its standing.
-   Either way it is a grant to the estate and a pull on the worlds toward the
-   in-laws.
+9. **A power marries through its notables**: one seated, one off the other
+   side's Lists who lives at the seated one's court. Between powers it is a
+   `marriage` treaty, which is a peace, and the one who moved is a ward whose
+   fate turns on who ends it; into an independent world it is a declaration the
+   world accepts by its standing. A grant to each estate, and a pull on the
+   seated spouse's world toward the in-laws.
 10. **A notable can be held**, as a ward or a prisoner, by the asset machinery
     captured officers use: `Asset.notableId` beside `commanderId` and
     `agentId`.
-11. **A killed notable's seat stays with its estate**, unless it was a foreign
-    notable, whose seat goes to the holder. The kill needs 17+, because a
-    notable cannot run.
+11. **A killed notable's seat stands empty** on a power's world until it
+    appoints; an independent world finds a new voice at once. The kill needs
+    17+, because a notable cannot run.
 12. **Seduction is a marriage nobody signed:** the same pull, covertly and while
     it lasts, and the proof that breaks a rival's marriage.
 13. **It ships as one feature**, in one journal version.
+14. **The Lists** (2026-10-14): every seat a power fills comes off them, each
+    estate always has someone on them, and nobody on them is a mark.

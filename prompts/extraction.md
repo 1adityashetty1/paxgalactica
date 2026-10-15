@@ -239,7 +239,7 @@ Specifically:
   | `non_aggression` · `ceasefire` | attacking the other party auto-breaks it: −25 with them, −10 with every onlooker |
   | `mutual_defense` | the above, plus an attack on one **by anyone** puts the other at war with the attacker, and the hulls in `shipsPledged` really fight — warships from within two jumps, once a turn |
   | `coalition` | the same pact against **named powers only**: `terms.against` lists them, and it is required. An attack by anyone else calls nobody. The powers named resent both signatories |
-  | `marriage` | a notable of each party wed: `terms.spouses` names the two — one of each side's, as the `seats:` lines name them — and is required. A peace; each spouse's estate counts it as a grant and each world warms to the in-laws. `terms.ward` may name one of the two, who goes to live at the other court as surety |
+  | `marriage` | a notable of each party wed: `terms.spouses` names the two and is required — one **seated** (as a `seats:` line names them) and one off the other party's **Lists**, who goes to live at the seated one's court as its ward. The engine works out which is the ward; `terms.ward` may name them, and must be the one off the Lists. A peace; each spouse's estate counts it as a grant, and the seated spouse's world warms to the in-laws. The ward is surety: if their own power breaks the match or attacks, the court keeps them prisoner; if the court breaks it, they are lost |
   | `trade_accord` | mutual immunity from each other's blockades and commerce raiding; `terms.commodities` names the parties whose goods go to the other every turn |
   | `basing_rights` | their fleets may enter your systems without it being an attack — the ONLY way to station ships in friendly space |
 

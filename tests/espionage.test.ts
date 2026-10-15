@@ -9,7 +9,7 @@ import {
   agentVeterancy,
   type AgentMission,
 } from '../src/domain/diplomacy.js';
-import { ledgerFor, type WorldState } from '../src/domain/state.js';
+import { ledgerFor, liveAgentsOf, maxAgentsFor, type WorldState } from '../src/domain/state.js';
 import { serializeCommitments, serializeStanding, serializeState } from '../src/model/serialize.js';
 import { routeCovertAction } from '../src/domain/development.js';
 import { eventsVisibleTo } from '../src/domain/intel.js';
@@ -708,6 +708,48 @@ describe('an operative gets better, and being caught is permanent', () => {
     // worse bargain than the first.
     expect(back.timesCaught).toBe(1);
     expect(out.state.assets.find((a) => a.id === 'ast-home')).toBeUndefined();
+  });
+
+  it('comes home by itself: one of your own handed back goes on the books, awaiting orders, if a slot is free', () => {
+    const s = createSeedState('drajk');
+    const host = s.systems.find((x) => x.controllerFactionId === 'vigil')!;
+    s.agents.push({
+      id: 'agt-home', ownerFactionId: 'drajk', systemId: host.id,
+      mission: 'theft', effect: { kind: 'income_penalty', perTurn: 4 },
+      successChance: 40, exposed: true, deployedTurn: 0, inPlaceFrom: 0, cover: '',
+      targetCommanderId: null, name: 'Ravel Coldwake',
+      operations: AGENT_VETERAN_THRESHOLDS[1], timesCaught: 1,
+    });
+    s.assets.push({
+      id: 'ast-home', kind: 'operative', text: 'them', heldBy: 'vigil',
+      quantity: 1, unit: 'person', commanderId: null, agentId: 'agt-home',
+      divisible: false, valuePerUnit: {}, speculative: false, valueRange: {},
+      uses: null, atSystemId: host.id, portable: true, yield: null, acquiredTurn: 0,
+    });
+    const handed = applyOps(s, [{ op: 'transfer_asset', assetId: 'ast-home', toFactionId: 'drajk', reason: '' }], 'model', 'vigil');
+    expect(handed.rejections).toEqual([]);
+    const back = handed.state.agents.find((a) => a.id === 'agt-home')!;
+    expect(back.exposed).toBe(false);
+    expect(back.mission).toBeNull();
+    expect(handed.state.systems.find((x) => x.id === back.systemId)!.controllerFactionId).toBe('drajk');
+    expect(back.operations).toBe(AGENT_VETERAN_THRESHOLDS[1]);
+    expect(handed.state.assets.find((a) => a.id === 'ast-home')).toBeUndefined();
+
+    // With every slot in use they wait in the warehouse, and come home once one frees.
+    const full = structuredClone(s);
+    const slots = maxAgentsFor(full, 'drajk') - liveAgentsOf(full, 'drajk').length;
+    for (let i = 0; i < slots; i++) {
+      full.agents.push({
+        id: `agt-busy-${i}`, ownerFactionId: 'drajk', systemId: 'ilv-6', mission: null, effect: null,
+        successChance: 40, exposed: false, deployedTurn: 0, inPlaceFrom: 0, cover: '',
+        targetCommanderId: null, name: `Busy ${i}`, operations: 0, timesCaught: 0,
+      } as never);
+    }
+    const waiting = applyOps(full, [{ op: 'transfer_asset', assetId: 'ast-home', toFactionId: 'drajk', reason: '' }], 'model', 'vigil').state;
+    expect(waiting.assets.find((a) => a.id === 'ast-home')?.heldBy).toBe('drajk');
+    const freed = applyOps(waiting, [{ op: 'recall_agent', agentId: 'agt-busy-0', reason: '' }], 'model', 'drajk').state;
+    expect(freed.assets.find((a) => a.id === 'ast-home')).toBeUndefined();
+    expect(freed.agents.find((a) => a.id === 'agt-home')!.exposed).toBe(false);
   });
 
   it('will not run somebody else’s caught operative', () => {

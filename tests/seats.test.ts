@@ -15,15 +15,23 @@ import {
   driftToward,
   estateOwner,
   favourModifier,
+  seatOffice,
 } from '../src/domain/estates.js';
 import {
   actingFavour,
   courtRecorded,
+  emptySeats,
   favourBaseline,
   findEstate,
+  heldAs,
+  listedFor,
+  listsOf,
+  notableById,
   notablesAct,
+  removeNotable,
   seatedAt,
   seatsFor,
+  whereabouts,
   withheldFor,
 } from '../src/domain/seats.js';
 import type { OpInput } from '../src/domain/ops.js';
@@ -154,45 +162,68 @@ describe('favour', () => {
 });
 
 describe('when a world changes hands', () => {
-  it('leaves a conquered notable seated, working against its conqueror', () => {
-    const s = take(createSeedState('meridian'), 'Kalzir', 'meridian');
+  it('takes whoever sits a conquered world prisoner, and its seat stands empty, doing nothing', () => {
+    const before = createSeedState('meridian');
+    const governor = seatedAt(before, named(before, 'Kalzir').id)[0]!;
+    const s = take(before, 'Kalzir', 'meridian');
     const kalzir = named(s, 'Kalzir');
-    const [n] = seatedAt(s, kalzir.id);
-    expect(estateOwner(n!.estateId!)).toBe('vigil');
-    expect(actingFavour(s, n!)).toBe(RESENTFUL);
-    expect(withheldFor(s, 'meridian')).toBeGreaterThan(0);
-    const before = regardFor(kalzir, 'meridian');
+    expect(seatedAt(s, kalzir.id)).toHaveLength(0);
+    expect(emptySeats(s, kalzir)).toEqual([0]);
+    expect(heldAs(s, governor.id)!.heldBy).toBe('meridian');
+    expect(withheldFor(s, 'meridian')).toBe(0);
+    const regard = regardFor(kalzir, 'meridian');
     notablesAct(s);
-    expect(regardFor(kalzir, 'meridian')).toBe(before - 4);
+    expect(regardFor(kalzir, 'meridian')).toBe(regard);
   });
 
-  it('counts a foreign seat for its old estate, and adds none to the conqueror', () => {
+  it('costs the old estate its seat, and gives the conqueror none until it appoints', () => {
     const before = createSeedState('meridian');
     const s = take(before, 'Kalzir', 'meridian');
-    const owner = seatedAt(s, named(s, 'Kalzir').id)[0]!.estateId!;
-    expect(favourBaseline(s, estate(s, owner)).seats).toBe(favourBaseline(before, estate(before, owner)).seats);
+    const owner = seatedAt(before, named(before, 'Kalzir').id)[0]!.estateId!;
+    expect(favourBaseline(s, estate(s, owner)).seats).toBe(favourBaseline(before, estate(before, owner)).seats - 1);
     for (const e of faction(s, 'meridian').estates) {
       expect(favourBaseline(s, e).seats).toBe(favourBaseline(before, estate(before, e.id)).seats);
     }
   });
 
-  it('works for its own power again the moment the world is liberated', () => {
-    let s = take(createSeedState('meridian'), 'Kalzir', 'meridian');
-    s = take(s, 'Kalzir', 'vigil');
-    const [n] = seatedAt(s, named(s, 'Kalzir').id);
-    expect(actingFavour(s, n!)).toBe(0);
-    expect(withheldFor(s, 'vigil')).toBe(0);
+  it('sends a ceded world’s notable home to the ceder’s Lists', () => {
+    const before = createSeedState('meridian');
+    const governor = seatedAt(before, named(before, 'Kalzir').id)[0]!;
+    const s = apply(before, [
+      {
+        op: 'form_treaty',
+        treatyType: 'cession',
+        parties: ['vigil', 'meridian'],
+        terms: { territory: [named(before, 'Kalzir').id] },
+        summary: 'Kalzir ceded',
+      } as OpInput,
+    ]).state;
+    expect(named(s, 'Kalzir').controllerFactionId).toBe('meridian');
+    expect(whereabouts(s, notableById(s, governor.id)!)).toBe('listed');
+    expect(seatedAt(s, named(s, 'Kalzir').id)).toHaveLength(0);
   });
 
-  it('turns an independent notable out of a conquered world and seats the conqueror its own', () => {
+  it('turns an independent notable out of a conquered world, and leaves the seat for the conqueror to fill', () => {
     const before = createSeedState('meridian');
     const old = seatedAt(before, named(before, 'Sennex').id)[0]!;
     const s = take(before, 'Sennex', 'meridian');
-    const seated = seatedAt(s, named(s, 'Sennex').id);
-    expect(seated).toHaveLength(1);
-    expect(seated[0]!.id).not.toBe(old.id);
-    expect(estateOwner(seated[0]!.estateId!)).toBe('meridian');
+    expect(seatedAt(s, named(s, 'Sennex').id)).toHaveLength(0);
     expect(s.notables.some((n) => n.id === old.id)).toBe(false);
+  });
+
+  it('retaken: the governor held there is freed onto the Lists, and whoever is appointed displaces nobody', () => {
+    let s = createSeedState('meridian');
+    const old = seatedAt(s, named(s, 'Kalzir').id)[0]!;
+    s = take(s, 'Kalzir', 'meridian');
+    s = take(s, 'Kalzir', 'vigil');
+    // A prisoner is held where they were taken, so retaking the world frees them.
+    expect(whereabouts(s, notableById(s, old.id)!)).toBe('listed');
+    expect(seatedAt(s, named(s, 'Kalzir').id)).toHaveLength(0);
+    const stranger = listedFor(s, old.estateId!).find((n) => n.id !== old.id)!;
+    const r = apply(s, [{ op: 'seat_estate', factionId: 'vigil', systemId: named(s, 'Kalzir').id, notable: stranger.name }], 'vigil');
+    expect(r.rejections).toEqual([]);
+    expect(seatOffice(seatedAt(r.state, named(r.state, 'Kalzir').id)[0]!)).toBe('Governor');
+    expect(whereabouts(r.state, notableById(r.state, old.id)!)).toBe('listed');
   });
 
   it('lets a world joining a power bring its notable into the default estate', () => {
@@ -228,10 +259,11 @@ describe('when a world changes hands', () => {
 });
 
 describe('reseating', () => {
-  it('turns out a foreign notable first, and costs the world a little', () => {
+  it('fills an empty seat off the Lists at no cost, and an estate is never left with nobody listed', () => {
     const s = take(createSeedState('meridian'), 'Kalzir', 'meridian');
     const kalzir = named(s, 'Kalzir');
     const regard = regardFor(kalzir, 'meridian');
+    const listed = listedFor(s, 'meridian:security');
     const r = apply(
       s,
       [{ op: 'seat_estate', factionId: 'meridian', systemId: kalzir.id, estate: 'the Security Directorate' }],
@@ -239,15 +271,33 @@ describe('reseating', () => {
     );
     expect(r.rejections).toEqual([]);
     const [n] = seatedAt(r.state, kalzir.id);
-    expect(n!.estateId).toBe('meridian:security');
-    expect(regardFor(named(r.state, 'Kalzir'), 'meridian')).toBe(regard - RESEAT_REGARD);
-    expect(withheldFor(r.state, 'meridian')).toBe(0);
-    const again = apply(
-      r.state,
-      [{ op: 'seat_estate', factionId: 'meridian', systemId: kalzir.id, estate: 'security' }],
-      'meridian',
-    );
-    expect(again.rejections[0]?.code).toBe('illegal_value');
+    expect(n!.id).toBe(listed[0]!.id);
+    expect(seatOffice(n!)).toBe('Governor');
+    expect(regardFor(named(r.state, 'Kalzir'), 'meridian')).toBe(regard);
+    expect(listedFor(r.state, 'meridian:security').length).toBeGreaterThan(0);
+  });
+
+  it('takes a filled seat at a little of the world’s regard, and the one displaced goes back on the Lists', () => {
+    const s = createSeedState('meridian');
+    const brannix = named(s, 'Brannix');
+    const sitting = seatedAt(s, brannix.id)[0]!;
+    const other = faction(s, 'meridian').estates.find((e) => e.id !== sitting.estateId)!;
+    const regard = regardFor(brannix, 'meridian');
+    const r = apply(s, [{ op: 'seat_estate', factionId: 'meridian', systemId: brannix.id, estate: other.id }], 'meridian');
+    expect(r.rejections).toEqual([]);
+    expect(seatedAt(r.state, brannix.id)[0]!.estateId).toBe(other.id);
+    expect(regardFor(named(r.state, 'Brannix'), 'meridian')).toBe(regard - RESEAT_REGARD);
+    expect(whereabouts(r.state, notableById(r.state, sitting.id)!)).toBe('listed');
+  });
+
+  it('appoints only someone off your own Lists', () => {
+    const s = take(createSeedState('meridian'), 'Kalzir', 'meridian');
+    const kalzir = named(s, 'Kalzir');
+    const rival = listsOf(s, 'vigil')[0]!;
+    const r = apply(s, [{ op: 'seat_estate', factionId: 'meridian', systemId: kalzir.id, notable: rival.name }], 'meridian');
+    expect(r.rejections[0]?.code).toBe('illegal_value');
+    const none = apply(s, [{ op: 'seat_estate', factionId: 'meridian', systemId: kalzir.id }], 'meridian');
+    expect(none.rejections[0]?.code).toBe('illegal_value');
   });
 
   it('on a hub, displaces the estate holding the most seats', () => {
@@ -272,19 +322,47 @@ describe('reseating', () => {
 });
 
 describe('a hub’s two offices', () => {
-  it('seats a governor and a chancellor, and a replacement takes the office vacated', async () => {
-    const { seatOffice } = await import('../src/domain/estates.js');
-    const { seatedAt, removeNotable, fillSeats } = await import('../src/domain/seats.js');
+  it('seats a governor and a chancellor; one killed leaves that office empty, and the next appointment fills it', () => {
     const s = createSeedState('meridian');
-    const hub = s.systems.find((w) => seatedAt(s, w.id).length === 2)!;
+    const hub = s.systems.find((w) => w.controllerFactionId === 'meridian' && seatedAt(s, w.id).length === 2)!;
     const [a, b] = [...seatedAt(s, hub.id)].sort((x, y) => x.seat - y.seat);
     expect([seatOffice(a!), seatOffice(b!)]).toEqual(['Governor', 'Chancellor']);
     const plain = s.systems.find((w) => seatedAt(s, w.id).length === 1)!;
     expect(seatOffice(seatedAt(s, plain.id)[0]!)).toBe('Governor');
-    // The governor goes; whoever replaces them governs, and the chancellor stays chancellor.
     removeNotable(s, a!);
-    const [fresh] = fillSeats(s);
-    expect(seatOffice(fresh!)).toBe('Governor');
-    expect(seatOffice(seatedAt(s, hub.id).find((n) => n.id === b!.id)!)).toBe('Chancellor');
+    expect(emptySeats(s, hub)).toEqual([0]);
+    const r = apply(s, [{ op: 'seat_estate', factionId: 'meridian', systemId: hub.id, estate: a!.estateId! }], 'meridian');
+    expect(r.rejections).toEqual([]);
+    const now = seatedAt(r.state, hub.id);
+    expect(seatOffice(now.find((n) => n.id !== b!.id)!)).toBe('Governor');
+    expect(seatOffice(now.find((n) => n.id === b!.id)!)).toBe('Chancellor');
+  });
+});
+
+describe('the Lists', () => {
+  it('open with someone waiting for every estate', () => {
+    const s = createSeedState('meridian');
+    for (const f of s.factions) {
+      for (const e of f.estates) expect(listedFor(s, e.id).length).toBeGreaterThan(0);
+    }
+  });
+
+  it('hold nobody an operative can reach', () => {
+    const s = createSeedState('meridian');
+    const listed = listsOf(s, 'vigil')[0]!;
+    const r = apply(
+      s,
+      [
+        {
+          op: 'deploy_agent',
+          ownerFactionId: 'ojjul',
+          systemId: named(s, 'Kalzir').id,
+          mission: 'assassination',
+          effect: { kind: 'stat_debuff', stat: 'might', magnitude: 1 },
+          targetNotable: listed.name,
+        } as OpInput,
+      ],
+    );
+    expect(r.state.agents.at(-1)?.targetNotableId).toBeUndefined();
   });
 });
