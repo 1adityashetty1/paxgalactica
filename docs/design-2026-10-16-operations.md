@@ -144,10 +144,12 @@ groundwork?: {
 
 - **Laying it is an action of its own**, reached the way everything else is: its outcome row is "better placed for a later act".
   The arbiter scores which single axis it improves and what it is aimed at. It needs the operative on the world or able to
-  reach it. It costs a small fee, and it rolls exposure at the host's counter-intelligence, because a cover can be blown while
-  it is being built. The operative runs no standing mission while laying it.
-- **It counts from the next turn**, so that preparation costs time as well as an action: a cover has to settle before it is
-  any use. Laying it and acting on it in the same turn gains nothing.
+  reach it. **The action point is its whole price**: no fee and no exposure roll of its own (decided 2026-10-16). The risk is
+  already where it belongs: the mission that uses it rolls exposure when it runs, and an operative sitting on a rival's world
+  can be found before then — by a crackdown, or shown to a host that knows its owner well. The operative runs no standing
+  mission while laying it.
+- **It counts from the next turn** (decided 2026-10-16), so that preparation costs time as well as an action: a cover has to
+  settle before it is any use. Laying it and acting on it in the same turn gains nothing.
 - **A later mission uses it** when the same operative acts on the same world, and the target matches or the groundwork named none.
   Each matching piece adds +1 to its axis, **outside the method's budget**, since an action point already paid for it. A mission
   draws at most +2 from groundwork, and at most one piece per axis.
@@ -214,6 +216,4 @@ Built only when the `unexpressed` log or a playtest asks for them:
 3. **Show the plan before the roll?** The player would see the mission, the method's profile and the odds, and could confirm or
    reword. That makes a misreading cheap to fix, but it adds a step to every covert declaration.
 4. **NPC operations.** Should the bots and the reaction prompt use methods too, or stay on bare missions for now?
-5. **Groundwork timing.** From the next turn, as proposed, so preparation costs time; or usable at once, so two actions in one
-   turn can be "get in, then act"?
-6. **Groundwork exposure.** Should laying it roll exposure at all, or is the action point price enough?
+Decided: groundwork counts from the next turn, and the action point is its only price.
