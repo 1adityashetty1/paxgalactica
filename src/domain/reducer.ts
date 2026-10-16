@@ -162,6 +162,11 @@ import {
   type CommanderArchetype,
   resolveCommander,
   commanderAssault,
+  ListedAgentSchema,
+  listedAgentsOf,
+  resolvePerson,
+  stockAgentLists,
+  withNameStock,
 } from './command.js';
 import { jumpsBetween, neighboursOf, positionAlongPath, shortestPath } from './graph.js';
 import {
@@ -713,6 +718,7 @@ function mintId(state: WorldState, prefix: string): string {
   const pool = [
     ...state.treaties.map((t) => t.id),
     ...state.agents.map((a) => a.id),
+    ...(state.listedAgents ?? []).map((a) => a.id),
     ...(state.commitments ?? []).map((c) => c.id),
     ...(state.debts ?? []).map((d) => d.id),
     ...(state.assets ?? []).map((a) => a.id),
@@ -1601,6 +1607,44 @@ function settleOfficerLists(state: WorldState, notes: string[]): void {
     logEvent(state, 'narrative', back, them.factionId, [them.factionId]);
   }
   stockOfficerLists(state);
+}
+
+/**
+ * The operatives' Lists after a batch or a tick (journal version 22): one of a
+ * power's own operatives it holds — ransomed, traded, or freed when a world was
+ * retaken — leaves the warehouse and goes back on its Lists with their record,
+ * the face the enemy photographed included, and every power has
+ * `AGENT_LIST_SIZE` waiting. No slot is needed, because the Lists are not the
+ * books: the slot is taken when they are recruited again.
+ */
+function settleAgentLists(state: WorldState, notes: string[]): void {
+  for (const held of [...(state.assets ?? [])]) {
+    if (!held.agentId) continue;
+    const spy = (state.agents ?? []).find((a) => a.id === held.agentId);
+    if (!spy || spy.ownerFactionId !== held.heldBy) continue;
+    state.assets = state.assets.filter((a) => a.id !== held.id);
+    listAgent(state, spy);
+    const back = `${spy.name || 'A returned operative'} is home, and back on ${nameFor(state, spy.ownerFactionId)}'s Lists — ${spy.operations} operation${spy.operations === 1 ? '' : 's'} behind them and caught ${spy.timesCaught} time${spy.timesCaught === 1 ? '' : 's'}.`;
+    notes.push(back);
+    logEvent(state, 'order', back, spy.ownerFactionId, [spy.ownerFactionId]);
+  }
+  stockAgentLists(state);
+}
+
+/** Take an operative off the books and put them on their power's Lists, record and all. */
+function listAgent(state: WorldState, spy: Agent): void {
+  state.agents = state.agents.filter((a) => a.id !== spy.id);
+  (state.listedAgents ??= []).push(
+    ListedAgentSchema.parse({
+      id: spy.id,
+      name: spy.name || spy.cover || spy.id,
+      ownerFactionId: spy.ownerFactionId,
+      operations: spy.operations,
+      timesCaught: spy.timesCaught,
+      served: true,
+      listedTurn: state.turn,
+    }),
+  );
 }
 
 /**
@@ -2769,6 +2813,19 @@ export interface LegacyRules {
    */
   privateDissent?: boolean;
   /**
+   * Operatives come off a power's **Lists** (`ListedAgentSchema`) and only by
+   * `recruit_agent`; a recalled one, and one handed home, go back on them with
+   * their record. Journal version 22; before it a recruit was a new face drawn
+   * on the spot, a recall removed the person, and a returned operative went
+   * back on the books by itself (`operativesComeHome`).
+   */
+  agentLists?: boolean;
+  /**
+   * People are drawn from twenty given names and sixty families
+   * (`withNameStock`). Journal version 22; before it ten and thirty.
+   */
+  widerNames?: boolean;
+  /**
    * A sandbox campaign's one event (see `primeRimSandbox`): that kind every
    * turn, with no d20 and no cooldowns. Not a rule the game acquired — a rule
    * of that campaign, read off its journal's seed entry.
@@ -2829,7 +2886,9 @@ export function applyOps(
   scopeOrderLines = legacy.privateOrderLines ?? true;
   runHeat = legacy.heat ?? true;
   try {
-    return applyOpsUnderRules(input, rawOps, source, actor, atomic, legacy);
+    return withNameStock(legacy.widerNames ?? true, () =>
+      applyOpsUnderRules(input, rawOps, source, actor, atomic, legacy),
+    );
   } finally {
     scopeEngineNotes = outer;
     scopeOrderLines = outerOrders;
@@ -2913,6 +2972,7 @@ function applyOpsUnderRules(
     wardsStay = true,
     hooksHoldOnCall = true,
     privateDissent = true,
+    agentLists = true,
   } = legacy;
   const state = cloneState(input);
   const rejections: OpRejection[] = [];
@@ -6699,6 +6759,55 @@ function applyOpsUnderRules(
           );
           break;
         }
+        if (agentLists) {
+          // Off the Lists, and only off them: the operative named, or the first
+          // listed. A ransomed one is already back on the Lists by itself.
+          if (op.fromAssetId !== null) {
+            reject(raw, 'illegal_value', 'A ransomed operative comes home onto your Lists by themselves. Recruit them from there by name.');
+            break;
+          }
+          const waiting = listedAgentsOf(state.listedAgents, ownerId);
+          const chosen = op.agent ? resolvePerson(waiting, op.agent) : (waiting[0] ?? null);
+          if (!chosen) {
+            reject(
+              raw,
+              'illegal_value',
+              op.agent
+                ? `Nobody called "${op.agent}" is waiting on ${nameFor(state, ownerId)}'s Lists. Waiting: ${waiting.map((a) => a.name).join(', ') || 'nobody'}.`
+                : `Nobody is waiting on ${nameFor(state, ownerId)}'s Lists.`,
+            );
+            break;
+          }
+          state.listedAgents = state.listedAgents.filter((a) => a.id !== chosen.id);
+          state.agents.push(
+            AgentSchema.parse({
+              // A fresh id per stint, through `mintId` as every recruit's always was:
+              // an operative's rolls are seeded on it, and a Lists id would reseed
+              // every recruit's dice and move the board for no reason in the rules.
+              id: mintId(state, 'agt'),
+              name: chosen.name,
+              ownerFactionId: ownerId,
+              systemId: site.id,
+              mission: null,
+              effect: null,
+              successChance: 0,
+              deployedTurn: state.turn,
+              inPlaceFrom: state.turn,
+              exposed: false,
+              operations: chosen.operations,
+              timesCaught: chosen.timesCaught,
+              cover: op.cover,
+              targetCommanderId: null,
+            }),
+          );
+          const record = chosen.served
+            ? `, ${chosen.operations} operation${chosen.operations === 1 ? '' : 's'} behind them and caught ${chosen.timesCaught} time${chosen.timesCaught === 1 ? '' : 's'}`
+            : '';
+          const signed = `${chosen.name} comes off ${nameFor(state, ownerId)}'s Lists at ${site.name}${record}, awaiting orders.`;
+          notes.push(signed);
+          logEvent(state, 'order', signed, ownerId, [ownerId]);
+          break;
+        }
         if (op.fromAssetId !== null) {
           // A ransomed face back on the books — see `DeployAgentOp.fromAssetId`
           // before version 11, which put them straight back in the field.
@@ -6761,6 +6870,23 @@ function applyOpsUnderRules(
         const idx = state.agents.findIndex((a) => a.id === op.agentId);
         if (idx === -1) {
           reject(raw, 'unknown_agent', `No agent "${op.agentId}".`);
+          break;
+        }
+        if (agentLists) {
+          const spy = state.agents[idx]!;
+          if (actor !== undefined && spy.ownerFactionId !== actor) {
+            reject(raw, 'illegal_value', `${spy.name || 'That operative'} is not yours to recall.`);
+            break;
+          }
+          if ((state.assets ?? []).some((a) => a.agentId === spy.id)) {
+            reject(raw, 'illegal_value', `${spy.name || 'That operative'} is a prisoner. Ransom them home, and they come back on your Lists.`);
+            break;
+          }
+          const from = state.systems.find((w) => w.id === spy.systemId)?.name ?? spy.systemId;
+          listAgent(state, spy);
+          const back = `${spy.name || 'An operative'} is withdrawn from ${from} and back on ${nameFor(state, spy.ownerFactionId)}'s Lists. ${op.reason}`.trim();
+          notes.push(back);
+          logEvent(state, 'order', back, spy.ownerFactionId, [spy.ownerFactionId]);
           break;
         }
         const [gone] = state.agents.splice(idx, 1);
@@ -7962,7 +8088,8 @@ function applyOpsUnderRules(
   // The court ends every batch in a legal shape: people come home to the Lists
   // and every estate has someone listed. See `seats.ts`.
   settleCourt(state);
-  if (spiesComeHome) notes.push(...operativesComeHome(state));
+  if (agentLists) settleAgentLists(state, notes);
+  else if (spiesComeHome) notes.push(...operativesComeHome(state));
   if (officerLists) settleOfficerLists(state, notes);
 
   // Nothing lands unless everything does. The notes are dropped with the state
@@ -8546,7 +8673,7 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
   scopeOrderLines = legacy.privateOrderLines ?? true;
   runHeat = legacy.heat ?? true;
   try {
-    return tickTurnUnderRules(input, legacy);
+    return withNameStock(legacy.widerNames ?? true, () => tickTurnUnderRules(input, legacy));
   } finally {
     scopeEngineNotes = outer;
     scopeOrderLines = outerOrders;
@@ -8557,6 +8684,7 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
 function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult {
   const {
     wardsStay = true,
+    agentLists = true,
     arrangementStanding = true,
     hostages = true,
     peopleStanding = true,
@@ -10135,7 +10263,8 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     }
   }
 
-  if (spiesComeHome) notes.push(...operativesComeHome(state));
+  if (agentLists) settleAgentLists(state, notes);
+  else if (spiesComeHome) notes.push(...operativesComeHome(state));
   if (officerLists) settleOfficerLists(state, notes);
 
   /* --- The court: what the seated do, and how the estates take it ------ */

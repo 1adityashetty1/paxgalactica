@@ -94,7 +94,8 @@ leaves a faction with nobody following it.
 | `extend_order` | work runs longer than planned |
 | `accelerate_order` | credits spent to buy back one duration bucket |
 | `break_treaty` | repudiate one; both parties' opinion of the breaker drops |
-| `recruit_agent` | sign an operative on at a world you hold, awaiting orders — **an action of its own** |
+| `recruit_agent` | take an operative off your Lists (`agent`, by name) onto the books at a world you hold, awaiting orders — **an action of its own** |
+| `recall_agent` | withdraw an operative of yours; they go back on your Lists with their record |
 | `deploy_agent` | send one of your operatives on a mission to a system; they travel there |
 | `recall_agent` | withdraw one |
 | `establish_commitment` | record a lasting arrangement **the arbiter told you to** |
@@ -404,9 +405,12 @@ action that runs into one.
 
 ## Agents
 
-**Recruiting and sending are two actions.** `recruit_agent` signs an operative
-on at a world the power holds, awaiting orders — and a declaration that
-recruits does **nothing else**: anything you emit beside it is dropped. A later
+**Recruiting and sending are two actions.** `recruit_agent` takes an operative
+off the power's **Lists** — the state block names who is waiting, a veteran's
+record against a fresh face; name one in `agent`, or the first comes — onto the
+books at a world the power holds, awaiting orders. It is the only way an
+operative is had: a recalled one, and one ransomed home, go back on the Lists
+with their record. A declaration that recruits does **nothing else**: anything you emit beside it is dropped. A later
 declaration sends them with `deploy_agent`, which creates nobody: it sends the
 operative it names (`agent`, by name as the state block lists them), or with
 no name the nearest one **AWAITING ORDERS**. One already on a mission is only

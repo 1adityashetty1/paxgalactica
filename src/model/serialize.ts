@@ -50,6 +50,7 @@ import {
   MAX_ACTIVE_COMMANDERS,
   activeCommanders,
   listedOfficers,
+  listedAgentsOf,
   archetypeOf,
   commanderEffect,
   commanderFor,
@@ -566,6 +567,16 @@ export function serializeStanding(state: WorldState, viewerId: string): string {
         ? ' — AT YOUR LIMIT. You cannot place another until one is recalled or burned.'
         : ` (room for ${ceiling - live} more)`),
   );
+  // Every recruit comes off the Lists, so the model is told who is waiting and
+  // can name one (`recruit_agent` with `agent`).
+  const waiting = listedAgentsOf(state.listedAgents, viewerId);
+  if (waiting.length > 0) {
+    lines.push(
+      `Your operatives' Lists — recruit one with \`recruit_agent\` naming them (\`agent\`), or the first comes: ${waiting
+        .map((a) => `${a.name}${a.served ? ` (has served — ${a.operations} operation${a.operations === 1 ? '' : 's'}${a.timesCaught > 0 ? `, caught ${a.timesCaught} time${a.timesCaught === 1 ? '' : 's'}` : ''})` : ' (a fresh face)'}`)
+        .join('; ')}.`,
+    );
+  }
 
   lines.push('', '**Agents you know of**');
   if (agents.length === 0) lines.push('  _None._');

@@ -696,6 +696,9 @@ describe('an operative gets better, and being caught is permanent', () => {
       ],
       'model',
       'drajk',
+      false,
+      // The hand-made round trip of journal versions 11–21; the Lists do it now.
+      { agentLists: false },
     );
     expect(out.rejections).toHaveLength(0);
     const back = out.state.agents.find((a) => a.id === 'agt-home')!;
@@ -710,7 +713,8 @@ describe('an operative gets better, and being caught is permanent', () => {
     expect(out.state.assets.find((a) => a.id === 'ast-home')).toBeUndefined();
   });
 
-  it('comes home by itself: one of your own handed back goes on the books, awaiting orders, if a slot is free', () => {
+  it('came home by itself before the Lists: one of your own handed back went on the books, awaiting orders, if a slot was free', () => {
+    const v21 = { agentLists: false };
     const s = createSeedState('drajk');
     const host = s.systems.find((x) => x.controllerFactionId === 'vigil')!;
     s.agents.push({
@@ -726,7 +730,7 @@ describe('an operative gets better, and being caught is permanent', () => {
       divisible: false, valuePerUnit: {}, speculative: false, valueRange: {},
       uses: null, atSystemId: host.id, portable: true, yield: null, acquiredTurn: 0,
     });
-    const handed = applyOps(s, [{ op: 'transfer_asset', assetId: 'ast-home', toFactionId: 'drajk', reason: '' }], 'model', 'vigil');
+    const handed = applyOps(s, [{ op: 'transfer_asset', assetId: 'ast-home', toFactionId: 'drajk', reason: '' }], 'model', 'vigil', false, v21);
     expect(handed.rejections).toEqual([]);
     const back = handed.state.agents.find((a) => a.id === 'agt-home')!;
     expect(back.exposed).toBe(false);
@@ -745,9 +749,9 @@ describe('an operative gets better, and being caught is permanent', () => {
         targetCommanderId: null, name: `Busy ${i}`, operations: 0, timesCaught: 0,
       } as never);
     }
-    const waiting = applyOps(full, [{ op: 'transfer_asset', assetId: 'ast-home', toFactionId: 'drajk', reason: '' }], 'model', 'vigil').state;
+    const waiting = applyOps(full, [{ op: 'transfer_asset', assetId: 'ast-home', toFactionId: 'drajk', reason: '' }], 'model', 'vigil', false, v21).state;
     expect(waiting.assets.find((a) => a.id === 'ast-home')?.heldBy).toBe('drajk');
-    const freed = applyOps(waiting, [{ op: 'recall_agent', agentId: 'agt-busy-0', reason: '' }], 'model', 'drajk').state;
+    const freed = applyOps(waiting, [{ op: 'recall_agent', agentId: 'agt-busy-0', reason: '' }], 'model', 'drajk', false, v21).state;
     expect(freed.assets.find((a) => a.id === 'ast-home')).toBeUndefined();
     expect(freed.agents.find((a) => a.id === 'agt-home')!.exposed).toBe(false);
   });
@@ -772,6 +776,8 @@ describe('an operative gets better, and being caught is permanent', () => {
       [{ op: 'recruit_agent', systemId: 'ilv-6', fromAssetId: 'ast-theirs' } as OpInput],
       'model',
       'drajk',
+      false,
+      { agentLists: false },
     );
     expect(out.rejections.map((r) => r.code)).toContain('illegal_value');
     expect(out.rejections[0]!.message).toMatch(/Only your own people/);

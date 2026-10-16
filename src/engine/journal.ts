@@ -158,7 +158,8 @@ export const JournalSchema = z.object({
    * 20 — written before a world stormed or ceded took what stood on it.
    * 21 — written before a live marriage's ward was kept from sale, before a
    *     favour called to back an ultimatum obeyed the hook and peace guards,
-   *     and when a dissent line was public.
+   *     when a dissent line was public, before operatives waited on the
+   *     Lists, and when names came from ten given names and thirty families.
    * 22 — current.
    */
   version: JournalVersionSchema,
@@ -247,6 +248,10 @@ export function replay(
     seats: parsed.version >= 20,
     // Nobody waited on anybody's Lists before version 20.
     officerLists: parsed.version >= 20,
+    // No operative waited on the Lists, and names came from ten given names
+    // and thirty families, before version 22.
+    agentLists: parsed.version >= 22,
+    widerNames: parsed.version >= 22,
   });
   let rejectionCount = 0;
   // The opening board, before anything is applied. Without it an observer's
@@ -361,6 +366,11 @@ export function replay(
     wardsStay: parsed.version >= 22,
     hooksHoldOnCall: parsed.version >= 22,
     privateDissent: parsed.version >= 22,
+    // A recruit was drawn on the spot, a recall removed the person, and a
+    // returned operative went back on the books by itself; and people were
+    // named from the narrower stock.
+    agentLists: parsed.version >= 22,
+    widerNames: parsed.version >= 22,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

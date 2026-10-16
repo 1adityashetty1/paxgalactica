@@ -7,6 +7,7 @@ import {
   COMMANDER_UPKEEP,
   MAX_ACTIVE_COMMANDERS,
   VETERAN_THRESHOLDS,
+  AGENT_LIST_SIZE,
 } from '../domain/command.js';
 import { STAT_NAMES } from '../domain/checks.js';
 import { EFFECT_CATEGORIES } from '../domain/development.js';
@@ -363,8 +364,10 @@ const MISSION_JOB: Record<AgentMission, string> = {
 export function operativeLines(): string[] {
   return [
     'OPERATIVES',
-    '  Recruiting one is an action, at a world you hold; sending them on a',
-    `  mission is another. They travel ${AGENT_JUMPS_PER_TURN} jumps a turn and cost ${AGENT_UPKEEP} a turn`,
+    `  Recruiting one is an action: one of the ${AGENT_LIST_SIZE} waiting on your Lists signs`,
+    '  on at a world you hold. Sending them on a mission is another. A',
+    '  recalled operative, or one ransomed home, goes back on the Lists.',
+    `  They travel ${AGENT_JUMPS_PER_TURN} jumps a turn and cost ${AGENT_UPKEEP} a turn`,
     `  to keep. How many you can run is ${MAX_AGENTS_BASE} plus your guile modifier. Each`,
     '  mission is paid when they are sent; a failure can get them caught,',
     '  and a caught operative is a prisoner the other side can ransom.',

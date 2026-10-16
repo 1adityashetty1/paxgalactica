@@ -751,6 +751,11 @@ export const RecruitAgentOp = z.object({
    * than a new face. Their record comes with them, and so does the mark.
    */
   fromAssetId: z.string().nullable().default(null),
+  /**
+   * Which operative off the power's Lists, by name or id (journal version 22).
+   * Omitted, the first one listed comes.
+   */
+  agent: z.string().min(1).optional(),
   cover: z.string().default(''),
 });
 

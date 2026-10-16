@@ -22,6 +22,7 @@ import { FactionStatsSchema, STAT_NAMES, statModifier, type FactionStats, type S
 import {
   COMMANDER_UPKEEP,
   CommanderSchema,
+  ListedAgentSchema,
   activeCommanders,
   commanderFor,
   commanderIndustry,
@@ -943,6 +944,12 @@ export const WorldStateSchema = z.object({
    * 20 has nobody in any seat.
    */
   notables: z.array(NotableSchema).default([]),
+  /**
+   * Operatives waiting on each power's Lists — see `ListedAgentSchema`. The
+   * viewer's own reach the browser; nobody else's. Defaulted, so a campaign
+   * from before journal version 22 has nobody waiting.
+   */
+  listedAgents: z.array(ListedAgentSchema).default([]),
   playerFactionId: z.string().min(1),
   /** Abstract unit. There is no calendar in this game, deliberately. */
   turn: z.number().int().min(0),
