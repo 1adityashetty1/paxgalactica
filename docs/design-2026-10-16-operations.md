@@ -21,13 +21,13 @@ That absorbs `take_asset`, `copy_paper`, `take_person` and `strike` from the ver
 nothing on its own; it is *how* a mission is done. So the operation is where a player's free-text act is put together: **what it
 achieves comes from a mission**, standing or one-shot, and **how it is done is a method**:
 
-| the player says | method | mission | what the method changes |
-|---|---|---|---|
-| "forge a letter in the Huntmaster's hand that sells out the Sixteenth" | forgery | discord | — |
-| "plant a forged order that strips the Vantic garrison" | forgery | subversion | — |
-| "fake proof of a Meridian spy and blackmail them with it" | forgery | (blackmail, with fabricated proof) | — |
-| "pose as the Huntmaster's courier and walk out with the codes" | impersonation | larceny | — |
-| "buy the turnkey and walk the governor out" | bribery | kidnapping | — |
+| the player says | method | mission |
+|---|---|---|
+| "forge a letter in the Huntmaster's hand that sells out the Sixteenth" | forgery | discord |
+| "plant a forged order that strips the Vantic garrison" | forgery | subversion |
+| "fake proof of a Meridian spy and blackmail them with it" | forgery | (blackmail, with fabricated proof) |
+| "pose as the Huntmaster's courier and walk out with the codes" | impersonation | larceny |
+| "buy the turnkey and walk the governor out" | bribery | kidnapping |
 
 A method changes the **price and the failure**, never the outcome, which stays the mission's, so nothing new needs balancing on
 the outcome side. Forgery, for example, is easier to arrange than the real thing, and much worse when it is exposed: a forgery
