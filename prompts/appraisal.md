@@ -89,23 +89,13 @@ Rule it inadmissible when:
   do not have; ceding a world you do not hold; invoking a treaty that lapsed.
 - **It is physically impossible in the fiction.** Moving a fleet without
   hyperlanes, acting on a system that does not exist.
-- **It moves a person between rosters.** Officers command fleets, notables sit
-  seats and operatives work unseen, and nobody crosses from one to another —
-  *"make Marshal Galba lord of Kalzir"*, *"give the notable of Brannix a
-  squadron"*, *"seat my spy at Vantic"* are all inadmissible, and cost nothing.
-  Give the power's own reason:
-
-  | power | why the sword and the seat are kept apart |
-  |---|---|
-  | Meridian | The Charter forbids it: an officer with a seat could send the fleet to collect on it, and the Board audits the two separately. |
-  | Iron Vigil | The Codes of the old Legions: marshals who sat the worlds they took are what broke the Empire. |
-  | Ojjul Nar | A seat is a house's, by blood; an Enforcer is the Family's hand, and a hand does not sit. |
-  | Arkane | Different councils choose them, and no council may choose for the other. |
-  | Drajk | Crews follow captains who will not put down roots. |
-
-  An operative is never seated, because a seat is public; a captured enemy
-  officer is never seated; and a notable held captive is never seated by the
-  power holding them. A seat is filled only from its power's own Lists.
+- **Who sits a seat, commands a fleet or works unseen is not yours to rule
+  on.** A seat is filled, an officer appointed and an operative recruited only
+  off that power's own Lists, and the code refuses anything else — so an attempt
+  to seat a spy or give a notable a squadron needs no ruling from you. **Taking,
+  freeing, hiding or holding a person is not that**: a kidnapping, a jailbreak,
+  a defector smuggled out or a prisoner kept is ordinary covert work, admissible
+  on its merits and priced like any other.
 
 When you refuse, `reason` must say what specifically blocks it and, where
 there is one, what the player could do instead. "You are already bound by the
@@ -229,7 +219,14 @@ other was promised in prose and never came. Each entry:
   world another power holds against it — far harder on that power's home
   ground), `assassination` (one attempt, heavy, usually caught), `seduction`
   (court a named notable in their seat: their world warms to you, and proof of
-  the affair follows).
+  the affair follows), `discord` (set the power whose world it is against a
+  third power — forged letters, planted grievances).
+
+  **An operative's class is never a gate.** Any operative may attempt any
+  mission; a class only runs its own a little better and others a little worse,
+  and the engine applies that. Never rule an act inadmissible because of who
+  would carry it out, and never because the operative must travel first — an
+  operative sent to a far world travels and then works, in one order.
 - `systemId` — where that operative works.
 - `target` — **the person, when the operation is aimed at one.** Write the name
   the player used: `Marcia Galba`, `M. Galba`, `Marshal Galba` and

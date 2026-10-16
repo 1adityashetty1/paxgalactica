@@ -204,3 +204,40 @@ describe('a raid on a power it cannot land on costs nothing and says nothing (B1
     expect(regard(now)).toBeGreaterThan(regard(old));
   });
 });
+
+describe('fixes from the operative-freedom playtest (2026-10-16)', () => {
+  it('refuses a second order to one operative in the same declaration, charging once', () => {
+    let s = createSeedState('meridian');
+    const at = s.systems.find((x) => x.controllerFactionId === 'meridian')!.id;
+    s = applyOps(s, [{ op: 'recruit_agent', systemId: at } as OpInput], 'model', 'meridian').state;
+    const spy = s.agents.at(-1)!;
+    const vigil = s.systems.find((x) => x.controllerFactionId === 'vigil')!.id;
+    const send = (mission: string, effect: object) =>
+      ({ op: 'deploy_agent', agent: spy.id, systemId: vigil, mission, effect }) as OpInput;
+    const r = applyOps(s, [send('surveillance', { kind: 'intel' }), send('theft', { kind: 'income_penalty', perTurn: 5 })], 'model', 'meridian');
+    expect(r.rejections[0]?.code).toBe('illegal_value');
+    expect(r.state.agents.find((a) => a.id === spy.id)!.mission).toBe('surveillance');
+    const before = s.factions.find((f) => f.id === 'meridian')!.credits;
+    expect(r.state.factions.find((f) => f.id === 'meridian')!.credits).toBe(before - 40);
+  });
+
+  it('keeps every roster closed in code: no op seats, appoints or recruits a person off another roster', () => {
+    const s = createSeedState('meridian');
+    const at = s.systems.find((x) => x.controllerFactionId === 'meridian')!;
+    const officer = s.commanders.find((c) => c.factionId === 'meridian' && c.status === 'listed')!;
+    const spy = s.listedAgents.find((a) => a.ownerFactionId === 'meridian')!;
+    const notable = s.notables.find((n) => n.systemId === null && n.estateId?.startsWith('meridian'))!;
+    const seat = (who: string) =>
+      applyOps(s, [{ op: 'seat_estate', factionId: 'meridian', systemId: at.id, notable: who } as OpInput], 'model', 'meridian').rejections.length;
+    expect(seat(officer.name)).toBeGreaterThan(0);
+    expect(seat(spy.name)).toBeGreaterThan(0);
+    const appoint = (who: string) =>
+      applyOps(s, [{ op: 'recruit_commander', factionId: 'meridian', systemId: at.id, officer: who } as OpInput], 'model', 'meridian').rejections.length;
+    expect(appoint(notable.name)).toBeGreaterThan(0);
+    expect(appoint(spy.name)).toBeGreaterThan(0);
+    const recruit = (who: string) =>
+      applyOps(s, [{ op: 'recruit_agent', systemId: at.id, agent: who } as OpInput], 'model', 'meridian').rejections.length;
+    expect(recruit(officer.name)).toBeGreaterThan(0);
+    expect(recruit(notable.name)).toBeGreaterThan(0);
+  });
+});

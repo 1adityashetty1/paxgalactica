@@ -2858,6 +2858,8 @@ export interface LegacyRules {
    */
   raidsLandOnly?: boolean;
   narrationCapPerBatch?: boolean;
+  /** A batch may give an operative one order; a second is refused. Journal version 22. */
+  oneOrderPerOperative?: boolean;
   /**
    * An estate loses `SEAT_VACATED_FAVOUR` when one of its notables leaves a
    * seat on its power's world, for any reason (`vacatedSeats`). Journal
@@ -3019,6 +3021,7 @@ function applyOpsUnderRules(
     agentLists = true,
     seatLossCostsFavour = true,
     narrationCapPerBatch = true,
+    oneOrderPerOperative = true,
   } = legacy;
   const state = cloneState(input);
   // Who holds office before the batch, so a seat emptied by it is charged.
@@ -3087,6 +3090,8 @@ function applyOpsUnderRules(
   // `MAX_NARRATIVE_DISPOSITION` — and the pairs a treaty in this batch binds,
   // whose goodwill the treaty already pays. See the `adjust_disposition` case.
   const narratedMoved = new Map<string, number>();
+  // Operatives sent by this batch: one order each. See `deploy_agent`.
+  const sentThisBatch = new Set<string>();
   const treatyPairs = new Set<string>();
   for (const raw of rawOps) {
     const o = raw as { op?: unknown; parties?: unknown } | null;
@@ -6636,6 +6641,14 @@ function applyOpsUnderRules(
             reject(raw, op.agent === null ? 'illegal_value' : 'unknown_agent', spy);
             break;
           }
+          // One operative, one order a declaration. A second send in the same
+          // batch charged both fees and silently replaced the first mission
+          // (playtest 2026-10-16). Journal version 22 (`oneOrderPerOperative`).
+          if (oneOrderPerOperative && sentThisBatch.has(spy.id)) {
+            reject(raw, 'illegal_value', `${spy.name || 'That operative'} has already been given an order in this declaration; one operative takes one order at a time.`);
+            break;
+          }
+          sentThisBatch.add(spy.id);
           const road = shortestPath(state.systems, spy.systemId, op.systemId);
           if (!road) {
             reject(raw, 'unreachable_target', `${spy.name || 'The operative'} has no way from ${systemName(state, spy.systemId)} to ${host.name}.`);

@@ -6366,7 +6366,12 @@ proves an **affair**, a secret that voids the marriage it betrays when
 published — and a ward living at a court can be seduced there too; assassination
 kills one, on the 17+ roll officers take, and a power's seat stands empty
 after. **No promotion**: officers, notables and operatives never cross rosters,
-and the arbiter rules the attempt inadmissible in each power's own words.
+and that is enforced **in code** — `seat_estate`, `recruit_commander` and
+`recruit_agent` take only from their own power's own Lists, and a test pins it.
+It was a prompt rule first, and a playtest (2026-10-16) watched it over-fire:
+it refused every jailbreak and kidnapping as "crossing a roster". The arbiter
+is now told the code holds the line and that taking, freeing or holding a
+person is ordinary covert work.
 
 **The bots keep a court** — `keepCourt` fills empty seats first, moves a seat
 to an estate gone resentful, and pays its weakest estate up to two stipends

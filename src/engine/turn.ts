@@ -669,6 +669,10 @@ export async function endTurn(
   const notes: string[] = [];
   const rejections: OpRejection[] = [];
   let costUsd = 0;
+  // Where this turn's log begins, so its private lines can be kept out of the
+  // notes the player is handed — see the filter at the end.
+  const logFrom = campaign.state.eventLog.length;
+  const player = campaign.state.playerFactionId;
 
   // Capture what was declared before committing clears the staging area.
   const brief = campaign.reactionBrief();
@@ -817,18 +821,19 @@ export async function endTurn(
         },
       ];
 
-      const applied = campaign.commit(batch, 'model', `initiative:${faction.id}`, faction.id);
-      notes.push(...applied.notes);
-      rejections.push(...applied.rejections);
+      // A bot's notes and rejections are its own business — where its
+      // operatives are going, what its yards were refused — and the end-turn
+      // response is printed in the player's feed. What the galaxy may know of
+      // the move is in the log, scoped like everything else there (playtest
+      // 2026-10-16: every rival's spy postings reached the player this way).
+      campaign.commit(batch, 'model', `initiative:${faction.id}`, faction.id);
     }
 
     // And what two NPC powers agree between themselves — an exchange of goods,
     // a peace in a war gone quiet. Engine batches with no actor: the rule read
     // both parties, so neither one's guard speaks for the pair.
     for (const accord of brokeredAccords(campaign.state)) {
-      const applied = campaign.commit(accord.ops, 'engine', accord.label);
-      notes.push(...applied.notes);
-      rejections.push(...applied.rejections);
+      campaign.commit(accord.ops, 'engine', accord.label);
     }
   });
 
@@ -836,10 +841,21 @@ export async function endTurn(
   const ticked = await span('tick', { turn }, () => campaign.tick());
   notes.push(...ticked.notes);
 
+  // A note the log scoped away from the player is not the player's to read
+  // either: the tick writes every power's private lines (an estate losing a
+  // seat, an operative's report) as notes and as log entries visible to that
+  // power alone, and the notes are printed in the player's feed.
+  const hidden = new Set(
+    campaign.state.eventLog
+      .slice(logFrom)
+      .filter((e) => e.visibleTo && !e.visibleTo.includes(player))
+      .map((e) => e.text),
+  );
+
   return {
     applied: committed.applied,
     reactions: reactionViews,
-    notes,
+    notes: notes.filter((n) => !hidden.has(n)),
     rejections,
     costUsd,
     report: ticked.report,
