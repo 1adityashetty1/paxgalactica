@@ -60,6 +60,14 @@ Name what is **pressing on them**, and let them decide:
 - a rival's work they saw once and can no longer see — a last-seen line — and
   whether it has landed by now; or a rival they barely know (`your intel on
   them`) sitting on a border, where a watcher or a listener would pay
+- an operative of theirs standing idle on the books, or groundwork one has
+  laid that is ready to use or about to go stale
+- one of their own officers or notables standing where a rival's operative
+  could reach them, or a ward of theirs living at another court
+- a seat on one of their worlds standing empty, or an estate whose favour is
+  sliding — it costs them on the stat that estate stands behind
+- a favour owed that is worth more traded at a table than called in
+- a toll lifted for a term that is about to come back on
 
 Two or three of those, at most. A counsellor who lists everything has said
 nothing.

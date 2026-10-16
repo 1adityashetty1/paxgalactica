@@ -258,7 +258,9 @@ export function leverageLines(): string[] {
     '  A favour owed can be called in, unasked: the power that owes it signs a',
     `  non-aggression pact, a ceasefire or a trade accord for ${OBLIGATION_TERM_TURNS} turns, or backs`,
     '  an ultimatum of yours. Favours come from accords, from debts you forgive,',
-    '  and from blackmail.',
+    '  and from blackmail. At the table a favour is also something to trade:',
+    '  let the debtor off it as your price, or sell an ordinary one to the',
+    '  power across from you. A blackmail hook cannot be sold.',
     '  A watcher of yours can dig up proof of what its host hides: an operative,',
     '  a secret programme, an unpaid debt. Publish it to cost them standing with',
     '  everyone, or keep it quiet for a hook that never stops being useful.',
@@ -405,6 +407,14 @@ export function operativeLines(): string[] {
     `  the night watch. It is an action of its own, tells from the next turn,`,
     `  and gives one later act there by the same operative a step on one of`,
     `  those four, for up to ${GROUNDWORK_TURNS} turns.`,
+    '',
+    '  SENT, NOT ROLLED',
+    '  A covert order is not rolled when you give it. The operative sets out,',
+    '  and their own chance — guile, class, method, groundwork — is rolled',
+    '  when they act. An order that sends someone does only that, so declare',
+    '  anything open, like a fleet or a payment, as an action of its own.',
+    '  One already on a mission takes a new one if you name them. An act no',
+    '  mission can do yet is turned away and costs you no action.',
   ];
 }
 
