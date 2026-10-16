@@ -53,6 +53,7 @@ by the words describing how**:
 | their crews serve you | defection |
 | a notable warms to you, or an affair is proven | seduction |
 | their hulls or a fixture are broken | sabotage |
+| nothing yet, but the operative is better placed for a later act | **groundwork** (below): no mission |
 
 **2. The duration** follows from the mission: one-shot or standing. The player does not choose it separately.
 
@@ -79,6 +80,8 @@ that names the missing outcome, and the reason is logged. That log decides which
 | "bribe the turnkey and walk the governor out" | a person held → kidnapping | bribery | the governor |
 | "copy the Board's customs ledger, then stay and skim" | a copy → larceny; credits each turn → embezzlement | — | the ledger; Sekkar Gate |
 | "kill the governor and pin it on Drajk" | someone dead → assassination; two powers at odds → discord | — | the governor; the Vigil against Drajk |
+| "get Vessine hired into the Governor's kitchens at Kalzir" | better placed → **groundwork**, on ease, aimed at the Governor | taking a post on the staff | the Governor, at Kalzir |
+| next turn: "Vessine drugs the Governor's wine and carries him out" | a person held → kidnapping, which **uses** the groundwork | drugging | the Governor |
 | "smuggle our hostage off Vergesse to Shalka" | a held person moves → **unexpressed** | — | — |
 | "fabricate proof Meridian runs a spy ring, and blackmail them" | you hold proof → **unexpressed**, by decision 3 | — | — |
 
@@ -115,6 +118,47 @@ How familiar methods might score. These are illustrations, not code:
 
 The first row shows the budget doing its job: the arbiter asked for more than a forged letter is worth, and code takes it back.
 
+## Groundwork: preparation that outlasts the action
+
+A player often spends an action getting an operative into position before acting: undercover in the kitchens, on the night
+watch's roster, owed a favour by the dockmaster. That preparation is worth something only to a **later** act, by the **same**
+operative, in the **same** place. So it is recorded on the operative, not on the act:
+
+```ts
+// On Agent, alongside the mission.
+groundwork?: {
+  id: string;
+  /** The player's own words: "a cook in the Governor's kitchens at Kalzir". */
+  text: string;
+  /** Where it holds. Leaving the world loses it. */
+  systemId: string;
+  /** The person, thing or power it is aimed at, when it is aimed at one. Null helps anything there. */
+  target: string | null;
+  /** The one axis it improves, by one step: the same four axes a method is scored on. */
+  axis: 'preparation' | 'ease' | 'noise' | 'ifCaught';
+  /** The turn it was laid, and the turn it goes stale. */
+  madeTurn: number;
+  staleTurn: number;
+}[];
+```
+
+- **Laying it is an action of its own**, reached the way everything else is: its outcome row is "better placed for a later act".
+  The arbiter scores which single axis it improves and what it is aimed at. It needs the operative on the world or able to
+  reach it. It costs a small fee, and it rolls exposure at the host's counter-intelligence, because a cover can be blown while
+  it is being built. The operative runs no standing mission while laying it.
+- **It counts from the next turn**, so that preparation costs time as well as an action: a cover has to settle before it is
+  any use. Laying it and acting on it in the same turn gains nothing.
+- **A later mission uses it** when the same operative acts on the same world, and the target matches or the groundwork named none.
+  Each matching piece adds +1 to its axis, **outside the method's budget**, since an action point already paid for it. A mission
+  draws at most +2 from groundwork, and at most one piece per axis.
+- **It is spent when used, and lost** when the operative leaves the world, is recalled or caught, or the groundwork goes stale
+  (`GROUNDWORK_TURNS`, a few turns).
+- **It is private.** The Agents tab shows it on the operative's card; a rival sees nothing. Being caught while it holds burns it.
+
+Groundwork is general for the same reason methods are: it is a scored axis, not a named kind. "Undercover as a cook", "bribed the
+night watch" and "learned the patrol schedule" are three pieces of groundwork that differ only in their words, their axis and
+their target.
+
 ## Who decides what
 
 | step | decided by |
@@ -122,6 +166,7 @@ The first row shows the budget doing its job: the arbiter asked for more than a 
 | whether the act is possible on this board | the arbiter. A refusal must cite a fact in the state block; "there is no mechanic for this" is not a reason |
 | the outcome(s) → mission(s), and the targets | the arbiter, by the outcome table |
 | the method profile | the arbiter, four axes of −1/0/+1 |
+| a piece of groundwork's axis and target | the arbiter; code applies it to a later matching mission |
 | the budget, the price, the success chance, the exposure | code |
 | the roll, and what the outcome does | code, through the mission as it already works |
 | the story | resolution, which narrates the settled outcome and emits no effect ops of its own for an operation |
@@ -133,6 +178,7 @@ travels, then acts), or the player not naming a mission.
 
 - **Tests check the mechanism, never a method.** The budget is enforced; every legal profile prices and resolves; an over-budget
   profile is clipped; the result is the same whatever the method is called; every outcome row maps to a mission that exists.
+  Groundwork applies only to the same operative, world and target, from the next turn, is spent once, and is lost on leaving.
 - **A held-out playtest.** The brief bans forgery, bribery and impersonation and asks for methods nobody has used yet. The
   mechanism is general if those land on sensible profiles and play differently. Compare against 0 of 25.
 
@@ -154,9 +200,11 @@ Built only when the `unexpressed` log or a playtest asks for them:
 ## Order of work
 
 1. The method profile on `deploy_agent` and `Agent`, the budget, and the four axes in code, with mechanism tests.
-2. The arbiter: the outcome table, `method` and `unexpressed` on each covert part, and the refusal rule; resolution narrating only.
-3. The Agents tab and the state block show the method; the help page explains the axes.
-4. The held-out playtest.
+2. Groundwork on `Agent`: the op that lays it, its exposure roll, matching and spending it on a later mission, losing it.
+3. The arbiter: the outcome table, `method`, `groundwork` and `unexpressed` on each covert part, and the refusal rule; resolution
+   narrating only.
+4. The Agents tab and the state block show the method and any groundwork; the help page explains the axes.
+5. The held-out playtest.
 
 ## Open questions
 
@@ -166,3 +214,6 @@ Built only when the `unexpressed` log or a playtest asks for them:
 3. **Show the plan before the roll?** The player would see the mission, the method's profile and the odds, and could confirm or
    reword. That makes a misreading cheap to fix, but it adds a step to every covert declaration.
 4. **NPC operations.** Should the bots and the reaction prompt use methods too, or stay on bare missions for now?
+5. **Groundwork timing.** From the next turn, as proposed, so preparation costs time; or usable at once, so two actions in one
+   turn can be "get in, then act"?
+6. **Groundwork exposure.** Should laying it roll exposure at all, or is the action point price enough?
