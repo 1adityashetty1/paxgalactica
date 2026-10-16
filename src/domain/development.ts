@@ -861,7 +861,8 @@ export function routeCovertAction(
         targetCommanderId: c.mission === 'larceny' ? null : (c.target ?? null),
         // A notable can be the mark too — courted, turned or killed. The
         // reducer tries the name against the notables seated there first.
-        ...(c.target && (c.mission === 'seduction' || c.mission === 'subversion' || c.mission === 'assassination')
+        ...(c.target &&
+        (c.mission === 'seduction' || c.mission === 'subversion' || c.mission === 'assassination' || c.mission === 'kidnapping')
           ? { targetNotable: c.target }
           : {}),
       })),

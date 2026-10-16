@@ -4091,6 +4091,7 @@ costs the breaker 25 disposition with the other party.
 | `surveillance` | 1 in 20 | yes | 1 |
 | `embezzlement` / `subversion` | 2 in 20 | yes | 1 |
 | `larceny` | 3 in 20 (a copy, 2) | one attempt, then free | — |
+| `kidnapping` | 6 in 20 | one attempt, then free | — |
 | `sabotage` / `incitement` | 3 in 20 | yes | 1 |
 | `discord` | 5 in 20 | yes | 1 |
 | `assassination` | **9 in 20** | **no** | **4** |
@@ -4231,6 +4232,19 @@ a thing on loan or a ward. The victim is told it is gone and not who took it;
 win or lose, the operative is back awaiting orders. And every mission whose
 effect is its meaning is held to it (`MISSION_EFFECTS`, journal version 22):
 an embezzler carries `income_penalty`, only a thief carries `steal`.
+
+**`kidnapping` is larceny aimed at a person**: a wetworker mission, one attempt
+(`AGENT_COST` 120, exposure 6 in 20), at a notable seated on that world or an
+officer standing there, named in `targetNotable` or `targetCommanderId` and
+resolved before any price. On success the person is the kidnapper's prisoner on
+its nearest world — a notable through `holdNotable` (the seat empties, which
+charges their estate `SEAT_VACATED_FAVOUR`, and a marriage they are in ends with
+the ward sent home), an officer as a captured `officer` asset, ransomable like
+one taken in battle — and their power knows who has them
+(`KIDNAP_RESENTMENT`, 30). An officer who has sailed, or a notable no longer in
+the seat, is not found. Nobody on the Lists and nobody already held can be
+taken; freeing a captive is a different act. Win or lose, the operative is back
+awaiting orders.
 
 ## Intelligence: what you can see, and what you only suspect
 
@@ -5985,7 +5999,7 @@ something — sight, money, a thing (surveillance, embezzlement, larceny); **agi
 from a distance — a rumour, a forged letter, a crowd (subversion, discord,
 incitement); **sparrows** win over one person face to face — a captain, a
 notable, a lover (defection, seduction); **wetworkers** break things
-(sabotage, assassination). `MISSION_CLASS` files each mission, and is a
+(sabotage, assassination, kidnapping). `MISSION_CLASS` files each mission, and is a
 `Record`, so a mission added later fails the typecheck until it is given a class
 by that rule. A class runs its own missions at `CLASS_SUCCESS_SHIFT` (+10) success
 and `CLASS_EXPOSURE_SHIFT` (1) less exposure, never below one in twenty, and

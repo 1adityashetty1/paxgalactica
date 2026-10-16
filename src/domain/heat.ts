@@ -42,6 +42,7 @@ export const HEAT_FOR_MISSION: Record<string, number> = {
   discord: 4,
   incitement: 3,
   assassination: 8,
+  kidnapping: 6,
   seduction: 2,
 };
 

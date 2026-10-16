@@ -216,7 +216,9 @@ other was promised in prose and never came. Each entry:
 - `mission` — `surveillance` (watch, quietest), `embezzlement` (skim credits
   every turn), `larceny` (ONE attempt to steal a named thing held on that world —
   drawings, a ledger, a crate, a seal — or a copy of paper, then the operative is
-  free again; name the thing in `target`),
+  free again; name the thing in `target`), `kidnapping` (ONE attempt to seize a
+  named person on that world — a notable in their seat or an officer standing
+  there — and hold them; name them in `target`; loud, and their power knows who),
   `subversion` (erode a stat, or turn a named notable against their holder),
   `sabotage` (destroy hulls), `defection` (turn crews), `incitement` (stir a
   world another power holds against it — far harder on that power's home

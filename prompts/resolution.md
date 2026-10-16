@@ -489,6 +489,14 @@ a person (that is not a theft), a fixture, a promissory note, or a thing on
 loan. Win or lose, the operative is back awaiting orders after the attempt.
 Narrate the attempt, never the haul: what was taken is settled on the tick.
 
+**`kidnapping` is one attempt at a person.** Effect `{ "kind": "kidnap" }`, with
+the person named in `targetNotable` (a notable seated on that world) or
+`targetCommanderId` (an officer, by name). It cannot reach someone on the Lists
+or a person already held — freeing a captive is not a kidnapping. On success the
+person is your prisoner on your nearest world and their seat stands empty; their
+power knows who did it. Win or lose, the operative is back awaiting orders.
+Narrate the attempt, never the seizure itself: that is settled on the tick.
+
 **`discord` is the one mission aimed at a quarrel you are not in.** Forged
 letters, a planted grievance, a rumour that keeps arriving — it turns the power
 whose world the operative sits on against a **third** power, named in

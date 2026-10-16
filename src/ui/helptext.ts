@@ -363,6 +363,7 @@ const MISSION_JOB: Record<AgentMission, string> = {
   incitement: 'turns a world against whoever holds it',
   assassination: 'one strike, at a power, officer or notable',
   seduction: 'courts a notable: kin, and an affair to prove',
+  kidnapping: 'seizes a named notable or officer there',
 };
 
 /** Operatives, from the mission table that prices and risks them. */

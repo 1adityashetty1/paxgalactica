@@ -128,6 +128,7 @@ import {
   describeEffect,
   type AgentEffect,
   assetWorthTo,
+  KIDNAP_RESENTMENT,
   CLASS_SUCCESS_SHIFT,
   type AgentMission,
 } from './diplomacy.js';
@@ -1716,6 +1717,75 @@ function steal(
   logEvent(state, 'narrative', `${mark.text} is gone from ${host.name}, and nobody can say who took it.`, from, [from]);
   logEvent(state, 'narrative', `${mark.text} is taken from ${host.name}${home ? ` and carried to ${home.name}` : ''}.`, thief, [thief]);
   return `took ${mark.text} from ${host.name}${home ? ` and carried it to ${home.name}` : ''}.`;
+}
+
+/** The world `faction` holds nearest `from`, where what it takes is carried. */
+function nearestHeld(state: WorldState, from: string, faction: string): StarSystem | undefined {
+  return [...state.systems]
+    .filter((w) => w.controllerFactionId === faction)
+    .map((w) => ({ w, d: shortestPath(state.systems, from, w.id)?.length ?? Number.POSITIVE_INFINITY }))
+    .sort((a, b) => a.d - b.d || a.w.id.localeCompare(b.w.id))[0]?.w;
+}
+
+/**
+ * A kidnapping that came off: the named notable, still seated here, or the
+ * named officer, still standing here, is seized and held on the kidnapper's
+ * nearest world — a notable as a `holdNotable` prisoner (their seat empties,
+ * which costs their estate), an officer as a captured officer, ransomable like
+ * one taken in battle. Their power knows who has them (`KIDNAP_RESENTMENT`). A
+ * kidnapped spouse's marriage ends, the ward going home. Returns the report.
+ */
+function kidnap(state: WorldState, agent: Agent, host: StarSystem): string {
+  const taker = agent.ownerFactionId;
+  const home = nearestHeld(state, host.id, taker);
+  const holdAt = home?.id ?? host.id;
+  const resent = (victim: string | null) => {
+    if (!victim || victim === taker) return;
+    moveRegard(state, victim, taker, -KIDNAP_RESENTMENT);
+  };
+  if (agent.targetNotableId) {
+    const n = notableById(state, agent.targetNotableId);
+    if (!n || n.systemId !== host.id) return `came for their mark on ${host.name} and found the seat empty.`;
+    const theirs = notablesPower(n);
+    const m = marriageOf(state, n.id);
+    if (m) endMarriage(state, m, 'home', 'voided');
+    holdNotable(state, n, taker, holdAt, mintId(state, 'ast'), 'prisoner');
+    resent(theirs);
+    const line = `${n.name} is seized on ${host.name} and carried off by ${nameFor(state, taker)}${home ? ` to ${home.name}` : ''}.`;
+    logEvent(state, 'narrative', line, taker, theirs ? [taker, theirs] : [taker]);
+    return `seized ${n.name} on ${host.name}${home ? ` and carried them to ${home.name}` : ''}.`;
+  }
+  if (agent.targetCommanderId) {
+    const c = (state.commanders ?? []).find((x) => x.id === agent.targetCommanderId);
+    if (!c || c.status !== 'active' || c.atSystemId !== host.id) {
+      return `came for ${c?.name ?? 'their mark'} on ${host.name}, and they were not there.`;
+    }
+    c.status = 'captured';
+    c.atSystemId = null;
+    state.assets.push(
+      AssetSchema.parse({
+        id: mintId(state, 'ast'),
+        kind: 'officer',
+        text: `${c.name}, ${nameFor(state, c.factionId)}, taken on ${host.name}`,
+        heldBy: taker,
+        quantity: 1,
+        unit: 'person',
+        commanderId: c.id,
+        agentId: null,
+        divisible: false,
+        valuePerUnit: officerRansom(c, state.factions.map((f) => f.id)),
+        atSystemId: holdAt,
+        portable: true,
+        yield: null,
+        acquiredTurn: state.turn,
+      }),
+    );
+    resent(c.factionId);
+    const line = `${c.name} is seized on ${host.name} and carried off by ${nameFor(state, taker)}.`;
+    logEvent(state, 'narrative', line, taker, [taker, c.factionId]);
+    return `seized ${c.name} on ${host.name}${home ? ` and carried them to ${home.name}` : ''}.`;
+  }
+  return `came to ${host.name} with nobody named to take.`;
 }
 
 /** An estate's grievance for every seat of its emptied since `before`, logged to its own power. */
@@ -6588,7 +6658,11 @@ function applyOpsUnderRules(
         let notableMark: string | undefined;
         const notableEffects = op.effect.kind === 'turn_notable' || op.effect.kind === 'seduce';
         if (op.targetNotable || op.mission === 'seduction' || notableEffects) {
-          const aimable = op.mission === 'seduction' || op.mission === 'subversion' || op.mission === 'assassination';
+          const aimable =
+            op.mission === 'seduction' ||
+            op.mission === 'subversion' ||
+            op.mission === 'assassination' ||
+            op.mission === 'kidnapping';
           const mark =
             aimable && op.targetNotable
               ? resolveNotable(
@@ -6613,7 +6687,7 @@ function applyOpsUnderRules(
                 : `A ${op.mission} of a notable names them in targetNotable, and they must sit ${host.name}.`,
             );
             break;
-          } else if (op.targetNotable) {
+          } else if (op.targetNotable && op.mission !== 'kidnapping') {
             notes.push(
               `No notable answering to "${op.targetNotable}" sits ${host.name}, so the ${op.mission} is aimed at ${target ? target.name : host.name} instead.`,
             );
@@ -6718,7 +6792,7 @@ function applyOpsUnderRules(
         // Aimed at a person, when it is an assassination naming one — see the
         // note where an operative is created below. Shared by both paths.
         const aimKnife = (): string | null => {
-          if (op.mission !== 'assassination' || op.targetCommanderId === null) return null;
+          if ((op.mission !== 'assassination' && op.mission !== 'kidnapping') || op.targetCommanderId === null) return null;
           const mark = resolveCommander(
             state.commanders,
             op.targetCommanderId,
@@ -6730,6 +6804,26 @@ function applyOpsUnderRules(
           );
           return null;
         };
+
+        // A kidnapping is aimed at a person or at nobody: a notable seated
+        // here, or an officer by name. Checked before any price is taken.
+        if (op.mission === 'kidnapping' && !notableMark) {
+          const name = op.targetCommanderId ?? op.targetNotable ?? null;
+          const officer = name
+            ? resolveCommander(state.commanders, name, (c) => c.status === 'active' && c.factionId !== ownerId)
+            : null;
+          if (!officer) {
+            reject(
+              raw,
+              'illegal_value',
+              name
+                ? `Nobody answering to "${name}" sits ${host.name} or commands for anyone but you. A kidnapping names the person: a notable in their seat there, or an officer.`
+                : 'A kidnapping names the person: a notable in their seat there, or an officer, in targetNotable or targetCommanderId.',
+            );
+            break;
+          }
+          op.targetCommanderId = officer.name;
+        }
 
         // **Sending somebody already on the books** (version 11). Recruiting
         // is its own act, so this op creates nobody: it picks an operative —
@@ -6785,7 +6879,8 @@ function applyOpsUnderRules(
           if (op.cover) spy.cover = op.cover;
           spy.deployedTurn = state.turn;
           spy.inPlaceFrom = state.turn + turns;
-          spy.targetCommanderId = op.mission === 'assassination' && !notableMark ? aimKnife() : null;
+          spy.targetCommanderId =
+            (op.mission === 'assassination' || op.mission === 'kidnapping') && !notableMark ? aimKnife() : null;
           if (notableMark) spy.targetNotableId = notableMark;
           else delete spy.targetNotableId;
           delete spy.courted;
@@ -9842,9 +9937,15 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
           }
           watchNotes.set(agent.id, `was found out on ${host.name} and turned off the world.`);
         }
+        else if (agent.mission === 'kidnapping') Object.assign(agent, { mission: null, effect: null });
         continue;
       }
       agent.operations += 1;
+      if (agent.effect.kind === 'kidnap') {
+        watchNotes.set(agent.id, kidnap(state, agent, host));
+        Object.assign(agent, { mission: null, effect: null });
+        continue;
+      }
       watchNotes.set(agent.id, workOnNotable(state, agent, host, notableMark, null));
       continue;
     }
@@ -9907,8 +10008,9 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
         watchNotes.set(agent.id, `was taken on ${host.name}. That line is closed.`);
         // Taken, not merely burned — see `takeOperative`.
         takeOperative(state, agent, target, host, profile.oneShot ? 40 : 20);
-      } else if (agent.mission === 'larceny') {
-        // One attempt: a thief who comes away empty and unseen is free again.
+      } else if (agent.mission === 'larceny' || agent.mission === 'kidnapping') {
+        // One attempt: a thief or a kidnapper who comes away empty and unseen
+        // is free again.
         Object.assign(agent, { mission: null, effect: null });
       }
       continue;
@@ -9918,6 +10020,12 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     // than per posting, because a watcher who sits for ten turns has learned
     // ten turns' worth and a saboteur caught on its second attempt has not.
     agent.operations += 1;
+
+    if (agent.effect.kind === 'kidnap') {
+      watchNotes.set(agent.id, kidnap(state, agent, host));
+      Object.assign(agent, { mission: null, effect: null });
+      continue;
+    }
 
     // Aimed at a notable: a turning, a seduction or the knife. See `seats.ts`.
     if (agent.targetNotableId) {

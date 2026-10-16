@@ -1948,6 +1948,7 @@ export const AGENT_MISSIONS = [
   'incitement',
   'assassination',
   'seduction',
+  'kidnapping',
 ] as const;
 /**
  * `embezzlement` was called `theft` until journal version 22, which read as
@@ -1979,13 +1980,14 @@ export const MISSION_CLASS: Record<AgentMission, AgentClass> = {
   seduction: 'sparrow',
   assassination: 'wetworker',
   sabotage: 'wetworker',
+  kidnapping: 'wetworker',
 };
 
 export const AGENT_CLASS_MEANING: Record<AgentClass, string> = {
   ghost: 'comes away with something: sight, money, a thing — surveillance, embezzlement and larceny',
   agitator: 'stirs the many from a distance: a rumour, a forged letter, a crowd — subversion, discord and incitement',
   sparrow: 'wins over one person, face to face: a captain, a notable, a lover — defection and seduction',
-  wetworker: 'breaks things: a fleet, a fixture, a person — sabotage and assassination',
+  wetworker: 'breaks things, and takes people: a fleet, a fixture, a life, a hostage — sabotage, assassination and kidnapping',
 };
 
 /** Success chance a class gains on its own missions, and loses on anyone else's. */
@@ -2021,7 +2023,11 @@ export function exposureRiskOf(
 export const MISSION_EFFECTS: Partial<Record<AgentMission, readonly AgentEffect['kind'][]>> = {
   embezzlement: ['income_penalty'],
   larceny: ['steal'],
+  kidnapping: ['kidnap'],
 };
+
+/** What a power thinks of the one holding a person it lost to a kidnapping: it knows who did it. */
+export const KIDNAP_RESENTMENT = 30;
 
 export const AGENT_MISSION_MEANING: Record<AgentMission, string> = {
   surveillance:
@@ -2039,6 +2045,8 @@ export const AGENT_MISSION_MEANING: Record<AgentMission, string> = {
     'stirs the people of a world somebody else holds — pamphlets, a martyr, money for the militia. Each turn it succeeds the world thinks the less of its holder, so the holder needs more warships to hold it down, and a world neither content nor held down rises. Far harder on a power\'s own home ground, where its people defend with the resolve the power was founded on',
   assassination:
     'ONE attempt at a decapitating strike, then the operative is gone either way. Success is a heavy one-off blow and a collapse in relations; failure almost always ends with the agent caught',
+  kidnapping:
+    'ONE attempt to seize a named PERSON on this world — a notable in their seat, or an officer standing there — and carry them to a world you hold as your prisoner. Their seat stands empty, and their power knows exactly who has them. Then the operative is back awaiting orders',
   seduction:
     'courts a NOTABLE in their seat: while it lasts their world warms to you as to kin, what they say in bed reaches you, and after three turns you hold proof of the affair — which, published, voids their marriage and shames their estate',
 };
@@ -2082,6 +2090,9 @@ export const AGENT_COST: Record<AgentMission, number> = {
   // repaired the same way, by spending — warships sent to hold it down.
   incitement: 80,
   assassination: 150,
+  // Dearer than a theft, cheaper than a knife: a person is harder to carry
+  // than a crate, and worth a ransom to whoever lost them.
+  kidnapping: 120,
   // Incitement's price: what it buys is a world's regard, one notable at a time.
   seduction: 80,
 };
@@ -2116,6 +2127,9 @@ export const MISSION_PROFILE: Record<AgentMission, MissionProfile> = {
   incitement: { exposureRisk: 3, oneShot: false, effectMultiplier: 1 },
   // A near-coin-flip on being caught, in exchange for one heavy blow.
   assassination: { exposureRisk: 9, oneShot: true, effectMultiplier: 4 },
+  // Loud — a person is missed at once — but one attempt and not spent, like a
+  // larceny: the operative is back awaiting orders after it.
+  kidnapping: { exposureRisk: 6, oneShot: false, effectMultiplier: 1 },
   // Sabotage's risk: a seducer is in somebody else's house every night.
   seduction: { exposureRisk: 3, oneShot: false, effectMultiplier: 1 },
 };
@@ -2229,6 +2243,8 @@ export const AgentEffectSchema = z.discriminatedUnion('kind', [
    * world — whatever the estate's real favour. See `seats.ts`.
    */
   z.object({ kind: z.literal('turn_notable') }),
+  /** `kidnapping`: the person is the agent's `targetNotableId` or `targetCommanderId`. */
+  z.object({ kind: z.literal('kidnap') }),
   z.object({
     /**
      * `larceny`: one attempt at a portable thing a rival holds on this world.
@@ -2258,6 +2274,7 @@ export const DEFAULT_COVERT_EFFECT: Record<AgentMission, AgentEffect> = {
   embezzlement: { kind: 'income_penalty', perTurn: 10 },
   // Whatever is worth most to the thief on that world, the original.
   larceny: { kind: 'steal', assetId: null, copy: false },
+  kidnapping: { kind: 'kidnap' },
   subversion: { kind: 'stat_debuff', stat: 'industry', magnitude: 1 },
   sabotage: { kind: 'hull_damage', perTurn: 2 },
   defection: { kind: 'crew_defection', perTurn: 1 },
@@ -2467,6 +2484,8 @@ export function describeEffect(effect: AgentEffect): string {
       return 'the notable works against their holder, whatever their estate thinks';
     case 'seduce':
       return 'the notable\'s world warms to you, and proof of the affair follows';
+    case 'kidnap':
+      return 'seizes a named person there, once, and holds them';
     case 'steal':
       return effect.copy ? 'copies a document held there, once' : 'steals a thing held there, once';
   }
