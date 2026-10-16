@@ -1,42 +1,6 @@
 # Operations: what an operative does when a player imagines it
 
-Draft for review, 2026-10-16. Follows `docs/playtest-2026-10-16-operative-freedom.md`.
-
-## Revised 2026-10-16, after review
-
-Two decisions narrow what follows.
-
-**1. An act with one specific object is a one-shot mission.** `larceny` and `kidnapping` are built: one attempt at a named
-thing or a named person on a world, after which the operative is free again. The missions now come in two shapes:
-
-| shape | missions | the object |
-|---|---|---|
-| **standing**, every turn until recalled or caught | surveillance, embezzlement, subversion, sabotage, defection, discord, incitement, seduction | a world or a power |
-| **one-shot**, one attempt | larceny, kidnapping, assassination | a named thing or person |
-
-That absorbs `take_asset`, `copy_paper`, `take_person` and `strike` from the verb table below. (`theft` is renamed
-`embezzlement`; old journals read the old name.)
-
-**2. The generalized operation is a mission carried out by a method, and forgery is the first method.** A forged letter means
-nothing on its own; it is *how* a mission is done. So the operation is where a player's free-text act is put together: **what it
-achieves comes from a mission**, standing or one-shot, and **how it is done is a method**:
-
-| the player says | method | mission |
-|---|---|---|
-| "forge a letter in the Huntmaster's hand that sells out the Sixteenth" | forgery | discord |
-| "plant a forged order that strips the Vantic garrison" | forgery | subversion |
-| "fake proof of a Meridian spy and blackmail them with it" | forgery | (blackmail, with fabricated proof) |
-| "pose as the Huntmaster's courier and walk out with the codes" | impersonation | larceny |
-| "buy the turnkey and walk the governor out" | bribery | kidnapping |
-
-A method changes the **price and the failure**, never the outcome, which stays the mission's, so nothing new needs balancing on
-the outcome side. Forgery, for example, is easier to arrange than the real thing, and much worse when it is exposed: a forgery
-caught is traced to its author and turns the effect against them. Impersonation and bribery are likely the next two methods.
-
-So the arbiter's job on a free-text covert act becomes picking **a mission (or two) and, if the player described one, a
-method**, with targets, and code prices the combination. The remaining verbs in the table below (`move_held`, `frame`,
-`win_over`, `turn_operative`, `spring`, `next_fight`) should be sorted the same way: is each a new mission, or a method on one
-that exists? `frame` already looks like forgery carried out through discord.
+Draft for review, revised 2026-10-16. Follows `docs/playtest-2026-10-16-operative-freedom.md`.
 
 ## The problem
 
@@ -45,113 +9,160 @@ game. The playtest measured how much of what a player imagines reaches the state
 imagined**. Sixteen were refused, four were flattened into a generic per-turn number, two left the story and the state
 contradicting each other, and three failed their roll.
 
-The cause is structural rather than a prompt slip. A covert act can only become one of nine **missions**, and a mission is a
-*standing job with a per-turn effect*: watch, skim, debuff, damage, turn crews. Most of what a player imagines is a **one-time act
-with a specific object**: steal *these* drawings, kidnap *this* governor, forge *this* letter, smuggle *that* hostage out. The
-vocabulary had nowhere to put any of these. So the arbiter refused them, inventing a rule each time, or forced them into the
-nearest mission.
+Two causes:
 
-## The shape of the answer
+- **The vocabulary was short of outcomes.** Every mission was a standing job with a per-turn effect, while much of what a player
+  imagines is one act with one object: *these* drawings, *this* governor.
+- **The arbiter read the wrong words.** It matched what the player said about *how* ("forge", "bribe", "pose as") against a list of
+  missions, found nothing, and refused, inventing a rule each time.
 
-Keep the nine missions for what they are good at, standing jobs, and add a second kind of covert act: an **operation**. An
-operation is one attempt, by one named operative, at one world, described in the player's own words.
+## Decided so far
 
-It is resolved the way every general action already is, and that split is the point:
+1. **Missions come in two shapes.** Standing ones run every turn until the operative is recalled or caught. One-shot ones are a
+   single attempt at a named thing or person, after which the operative is free again. `larceny` and `kidnapping` are built,
+   `theft` is renamed `embezzlement`, and old journals read the old name.
 
-| step | who decides | what |
-|---|---|---|
-| 1. admissibility | the arbiter | is it possible *in the fiction*, given what is true now? Never "is there a mission for it" |
-| 2. pricing | the arbiter | stat (always `guile`), DC, the **class** the act most resembles, and **which outcome verbs** it is attempting, with their targets |
-| 3. the roll | code | `rollD20`, against `successChance` with the class fit applied |
-| 4. the outcome | code | the band decides which verbs land and at what size; every magnitude comes from a table |
-| 5. the story | resolution | narrates the settled outcome; it emits no effect ops of its own for an operation |
+   | shape | missions |
+   |---|---|
+   | **standing** | surveillance, embezzlement, subversion, sabotage, defection, discord, incitement, seduction |
+   | **one-shot** | larceny, kidnapping, assassination |
 
-**The model names the intent; code owns the size.** The arbiter picks verbs and targets (ids it can see on the board). It never
-picks a number. That is the rule `ASSET_ARCHETYPES`, `classifyPrinciple` and `boundPayloadsToOutcome` already follow, so it is the
-house style rather than a new idea.
+2. **An operation is a mission carried out by a method.** The mission supplies the outcome. The method is how the player said it
+   is done, and it changes only the price and the risks, never the outcome.
 
-## Outcome verbs
+3. **Hooks come only from proof.** Surveillance digs up secrets, a seduction proves an affair, and larceny of an original dossier
+   carries its secret with it. A copy carries none, and no method creates proof, so hooks cannot breed themselves.
 
-A closed list, each built on a mechanic that already exists. This is what makes an imagined act *land* rather than become prose.
+## Reading a free-text act: outcome, then method, then target
 
-| verb | does | built on | class |
+This is the arbiter's whole job on a covert act, in this order.
+
+**1. The outcome.** Ask what is different in the world if the act works. That alone picks the mission, **by the outcome and never
+by the words describing how**:
+
+| if it works… | mission |
+|---|---|
+| someone is dead | assassination |
+| someone is held by you | kidnapping |
+| a thing is yours, or a copy of it | larceny |
+| credits flow to you each turn | embezzlement |
+| you see their hidden work | surveillance |
+| their stat or their institutions are worn down | subversion |
+| two other powers are at odds | discord |
+| a world turns on its holder | incitement |
+| their crews serve you | defection |
+| a notable warms to you, or an affair is proven | seduction |
+| their hulls or a fixture are broken | sabotage |
+
+**2. The duration** follows from the mission: one-shot or standing. The player does not choose it separately.
+
+**3. The method** is everything in the sentence about *how*: poison, a forged letter, a bribe, posing as a courier, a laundry
+hauler, a toast. A method word never chooses the mission. "Forge a letter that sets Drajk against the Vigil" is discord, because
+the outcome is two powers at odds; the forging is only how it is done. The method is scored as a profile (below).
+
+**4. The target** is the named person, thing, world or third power, and it fills the mission's target fields: `targetNotable`,
+`targetCommanderId`, the stolen thing's `assetId`, discord's `towardFactionId`.
+
+**5. More than one outcome** means one part per outcome, at most two per declaration, sharing the method. "Kill the governor and
+blame Drajk" is assassination plus discord.
+
+**6. An outcome no mission covers** goes in `unexpressed`. The act is refused **without spending the action point**, with a reason
+that names the missing outcome, and the reason is logged. That log decides which mission is built next.
+
+### Worked examples
+
+| the player says | outcome → mission | method | target |
 |---|---|---|---|
-| `take_asset` | a named portable asset at the operative's world changes hands to the actor | `transfer_asset`, by force | ghost |
-| `copy_paper` | the actor gets a dossier copied from a record a rival holds there (a ledger, a chart); the original stays | `create_asset` of a dossier | ghost |
-| `move_held` | an asset the actor holds moves between worlds: a hostage smuggled out, loot carried home | new and small: `atSystemId` on a held asset | ghost |
-| `forge_proof` | the actor files a **fabricated** secret about a rival, to publish or blackmail with | `SecretSchema` + `forged: true` | agitator |
-| `frame` | a victim's grievance over a recent act moves from the actor onto a named third power | a bounded `moveRegard` pair | agitator |
-| `rumour` | a world's regard for a named power moves once, now (`incite`, but one-shot) | `regard.ts` | agitator |
-| `win_over` | a named notable or official at the world warms to the actor and owes it a weak favour | `ObligationSchema`, origin `operation` | sparrow |
-| `turn_operative` | a rival operative caught or exposed at the world becomes a double: still theirs on their books, reporting to you | `Agent.doubledBy` (new), read by `ordersVisibleTo` | sparrow |
-| `spring` | a captive held at the world goes home (your own) or is taken by you (anyone's) | the people-asset paths that exist | wetworker |
-| `take_person` | a notable or officer standing at the world is seized and held at a world the actor holds | `takeHostage`; a captured officer is already an `officer` asset | wetworker |
-| `strike` | a one-time blow at the world: hulls, a fixture, or the garrison | `hull_damage`, `fixture_damage`, garrison | wetworker |
-| `next_fight` | the target's forces **at this world** fight worse in the next battle there | a one-battle modifier read by `resolveBattle` | wetworker |
+| "slip poison into the Governor's toast" | someone dead → assassination | poison, at a toast | the Governor |
+| "forge the Huntmaster's letter selling out the Sixteenth" | two powers at odds → discord | a forged letter | Drajk against the Vigil |
+| "pose as a courier and walk out with the IFF codes" | a thing taken → larceny | impersonation | the codes |
+| "bribe the turnkey and walk the governor out" | a person held → kidnapping | bribery | the governor |
+| "copy the Board's customs ledger, then stay and skim" | a copy → larceny; credits each turn → embezzlement | — | the ledger; Sekkar Gate |
+| "kill the governor and pin it on Drajk" | someone dead → assassination; two powers at odds → discord | — | the governor; the Vigil against Drajk |
+| "smuggle our hostage off Vergesse to Shalka" | a held person moves → **unexpressed** | — | — |
+| "fabricate proof Meridian runs a spy ring, and blackmail them" | you hold proof → **unexpressed**, by decision 3 | — | — |
 
-These cover every attempt in the playtest except selling a fake to an NPC, which needs the buyer's consent and so belongs to a
-channel. A few more could be added later (`plant_order`, to stand down a rival programme at the world as if its own officers had
-ordered it). The table is closed, so each addition is deliberate.
+## Methods are profiles, not entries
 
-**Every verb has a class**, following the rule `MISSION_CLASS` states, so the class modifier works on operations exactly as it
-does on missions. **Class is never a gate.** A wetworker may try to copy a ledger, at the penalty.
+A list of methods would be a second closed vocabulary, which is the trap the nine missions were. So no method is written into code.
+The arbiter scores the method the player described on four fixed axes, each −1, 0 or +1, from the player's side:
 
-## Sizes, bands and price
+| axis | −1 | 0 | +1 |
+|---|---|---|---|
+| **preparation**: the price | dearer | as the mission costs | cheaper |
+| **ease**: the success chance | harder | as rolled | easier |
+| **noise**: the risk of being caught | louder | as the mission's | quieter |
+| **if caught** | backfires | traced to you, as today | deniable |
 
-- **Band decides delivery.** Critical success delivers every verb and a small bonus (a second copy, an untraceable frame). Success
-  delivers the verbs. Partial delivers the first verb only, or a smaller size where a verb has one. Failure delivers nothing and
-  rolls exposure. Critical failure is caught, and the act is traced to the actor: `frame` and `forge_proof` backfire as proof
-  *against* the actor.
-- **Magnitudes are a table**, keyed by verb (`OPERATION_SIZE`): a frame moves at most 15 regard; a rumour 10; a strike up to a
-  sabotage turn's worth ×3; and so on. They are set beside the mission numbers they echo, so an operation cannot be a cheaper path
-  to a mission's effect. That is the rule that prices a declared assassination like a deployed one.
-- **Price** is per verb (`OPERATION_COST`), paid when the act is declared, like `AGENT_COST`. Exposure is per verb too: a theft is
-  quiet, a kidnapping loud. **The model may not add a fee.** The playtest found invented charges of 60–70 on top of the real price.
-- **One operation at most two verbs**, and an operative on an operation is busy that turn: no mission ticks for them.
+- **Code owns what each step is worth**: ±25% on the price, ±10 on the success chance, ±1 in 20 on exposure. "Deniable" means
+  exposure costs no regard. "Traced" is what exposure costs today. "Backfires" means the mission's effect turns against the actor:
+  the regard it was building is lost by the actor instead, with the target and with every onlooker.
+- **Code enforces a budget: the four scores must sum to zero or less.** Every advantage is paid for with a disadvantage, so no
+  method can be described into being cheap, easy, quiet and safe at once. A profile over budget is clipped, one point at a time,
+  from ease, then preparation, then noise, with a note.
+- **The method is recorded** on the operative as the player's own words plus the profile, for the log, the Agents tab and the
+  model's state block.
 
-## Long operations
+How familiar methods might score. These are illustrations, not code:
 
-A con, a long seduction for a single object, or a ring built over turns: the arbiter may rule an operation `long` (2 or 3 turns).
-The operative is committed for that time and rolls exposure each turn; the outcome lands at the end, with one size step larger.
-This is the existing `Agent` record with a new mission value of `operation` plus the verbs and targets. Not a new table, and
-journaled like any agent tick.
+| method | preparation | ease | noise | if caught | sum |
+|---|---|---|---|---|---|
+| a forged letter | +1 | +1 | 0 | −1 | +1, over budget: ease is clipped to 0 |
+| a bribe | −1 | +1 | 0 | 0 | 0 |
+| posing as a courier | 0 | 0 | +1 | −1 | 0 |
+| a hired local gang | +1 | −1 | −1 | +1 | 0 |
+| poison at a toast | 0 | 0 | +1 | −1 | 0 |
 
-## What the arbiter is told, and not told
+The first row shows the budget doing its job: the arbiter asked for more than a forged letter is worth, and code takes it back.
 
-- It rules on the **fiction and the board**: the operative is there or can get there (travel is code's: three jumps a turn, and
-  an act at a far world simply waits for arrival), the target exists, the object is portable. It does not rule on vocabulary.
-- **It cannot invent a rule.** A refusal must quote a fact from the state block. "There is no mechanic for this" is not an
-  allowed reason. When no verb fits, it says so in a dedicated field (`unexpressed`) and the act is refused **without** spending
-  the action point. Those reasons are logged, so the next verb to add comes from play rather than from guesswork.
-- Rosters stay closed **in code** (done 2026-10-16: `seat_estate`, `recruit_commander` and `recruit_agent` take only from their
-  own Lists). Taking, freeing and holding people is ordinary covert work.
+## Who decides what
 
-## Fixes the playtest asked for that this does not cover
+| step | decided by |
+|---|---|
+| whether the act is possible on this board | the arbiter. A refusal must cite a fact in the state block; "there is no mechanic for this" is not a reason |
+| the outcome(s) → mission(s), and the targets | the arbiter, by the outcome table |
+| the method profile | the arbiter, four axes of −1/0/+1 |
+| the budget, the price, the success chance, the exposure | code |
+| the roll, and what the outcome does | code, through the mission as it already works |
+| the story | resolution, which narrates the settled outcome and emits no effect ops of its own for an operation |
 
-These need doing regardless:
-- **Theft has to steal.** Check a mission's effect against the mission. `theft` was written with `intel` three times out of three.
-- **Recruiting is not rolled.** It costs a resolution call and a d20 for an act that cannot fail, and the narration invents
-  windfalls. Route `recruit …` straight to the op, as `:cheats` is routed.
-- **A burned operative clears their mission**, and the one burned by publication becomes a prisoner like the others.
-- **The arbiter's state reading**: two operatives named Vessine confused it. A **given + family** name collision inside one power
-  should be avoided at draw time too, not only family names.
+**Never a reason to refuse:** the operative's class (a class only runs its own missions better), travel (an operative sent far
+travels, then acts), or the player not naming a mission.
+
+## Validation
+
+- **Tests check the mechanism, never a method.** The budget is enforced; every legal profile prices and resolves; an over-budget
+  profile is clipped; the result is the same whatever the method is called; every outcome row maps to a mission that exists.
+- **A held-out playtest.** The brief bans forgery, bribery and impersonation and asks for methods nobody has used yet. The
+  mechanism is general if those land on sensible profiles and play differently. Compare against 0 of 25.
+
+## Missions the playtest says are missing
+
+Built only when the `unexpressed` log or a playtest asks for them:
+
+- **extraction**: move a person or a thing you hold from one world to another.
+- **jailbreak**: free a captive held on a world, yours to go home or anyone's to become yours.
+- **turning an operative**: a caught rival operative made into a double agent, still on their books and reporting to you. The
+  richest of the three, and the most new code.
+
+## Still open from the playtest, independent of this
+
+- Recruiting is rolled. It costs a resolution call and a d20 for an act that cannot fail, and the narration invents windfalls.
+- A burned operative keeps a live mission, and one burned by publication becomes nobody's prisoner.
+- Two operatives of one power can share a given name and confuse the arbiter.
 
 ## Order of work
 
-1. The verb table, sizes and prices; `operation` on `deploy_agent`; the band rules in code. Tests for each verb on its own.
-2. The arbiter's `operation` field and its prompt; resolution narrating only.
-3. The UI: an operation shows on the Agents tab as one line with its verbs and odds before you commit.
-4. `long` operations.
-5. A second freedom playtest, with the same brief, to compare against 0 of 25.
+1. The method profile on `deploy_agent` and `Agent`, the budget, and the four axes in code, with mechanism tests.
+2. The arbiter: the outcome table, `method` and `unexpressed` on each covert part, and the refusal rule; resolution narrating only.
+3. The Agents tab and the state block show the method; the help page explains the axes.
+4. The held-out playtest.
 
 ## Open questions
 
-1. **Two verbs per operation, or one?** Two lets "steal the drawings and frame Drajk for it" be a single act. One is simpler to
-   price.
-2. **Should `forge_proof` be indistinguishable from real proof** until it backfires? That is the interesting version. It is also
-   the first place the state would hold a deliberate falsehood, which the asset design avoided on purpose (*"a worth nobody has
-   settled"* rather than a claimed and a true value).
-3. **Double agents**: a turned operative reporting to two powers is the richest verb and the most new code. In for the first
-   build, or later?
-4. **Should NPCs run operations too**, or only the nine missions? The bots would need a rule per verb, and the reaction prompt a
-   paragraph. Missions only, to start, is the cheaper answer.
+1. **Step sizes.** Are ±25% price, ±10 success and ±1 exposure the right weights, or should "if caught" weigh double, since a
+   backfire costs regard permanently?
+2. **The budget.** Exactly zero, or allow +1 so that a well-chosen method is a small reward for imagination?
+3. **Show the plan before the roll?** The player would see the mission, the method's profile and the odds, and could confirm or
+   reword. That makes a misreading cheap to fix, but it adds a step to every covert declaration.
+4. **NPC operations.** Should the bots and the reaction prompt use methods too, or stay on bare missions for now?
