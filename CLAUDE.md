@@ -3022,9 +3022,26 @@ advance, called in later, with the terms picked from a closed list at the call.
 called on a power at war is a peace forced by a debt of honour, and leaves a
 truce — or `support` an ultimatum of the holder's. A **weak** favour is spent; a
 **strong** hook rests `OBLIGATION_REST_TURNS` (8) and stays, and while it stands
-its debtor cannot back anybody against the holder. `repudiate_obligation` is
+its debtor cannot back anybody against the holder — whether it declares for a
+side itself or another holder calls a favour in to make it (`call: support`
+obeys the hook and peace guards `back_ultimatum` does, from journal version 22,
+`LegacyRules.hooksHoldOnCall`). `repudiate_obligation` is
 priced like a broken pact: 25 with the holder, `PACT_BREAKING_REPUTATION_COST`
 with every onlooker.
+
+**A favour is also something to bargain with**, not only to call in. An accord
+can spend one as consideration — `release_obligation`, *"forget what you owe
+us, and the toll comes off"* — or sell it to the power across the table —
+`assign_obligation`, as `assign_debt` sells a debt. A concession names the
+favours it gives up in `Concession.obligations`, by id, so grounding holds a
+release or a sale out of the other party's hands to the standard an asset is,
+and `concessionWorth` counts each at `FAVOUR_WORTH` (100; a strong hook twice).
+**Only a weak favour can be sold**: a blackmail hook's force is a secret the
+buyer would not know, and a forgiven debt is owed to the creditor that forgave
+it. A release moves no standing, or making a favour in one accord and letting
+it off in the next would be a pump. **Calling one in stays on the declared
+path** — it needs nobody's agreement, so from a channel it would be the same
+act without its action. No journal pin: no old journal can hold either op.
 
 Made only where consent or proof exists: an accord (`establish_obligation`,
 extraction only, always weak, grounded in the debtor having conceded
@@ -4097,7 +4114,10 @@ work on the same End Turn — one declaration, no road. Since journal version 11
 - **`recruit_agent` signs one on** at a world the power holds, awaiting orders:
   `mission` and `effect` are `null`. Free in credits — the mission is what is
   priced — but held to `maxAgentsFor` and paying `AGENT_UPKEEP` from that turn.
-  A ransomed operative comes back onto the books this way (`fromAssetId`).
+  **From journal version 22 it takes them off the power's Lists** — see below —
+  by name (`agent`) or the first listed. Before it, a recruit was a new face
+  drawn on the spot, and a ransomed operative came back this way
+  (`fromAssetId`).
 - **`deploy_agent` sends one already on the books.** It creates nobody: it sends
   the operative it names (`agent`, by id or every word of a name) or, named
   nobody, the nearest one awaiting orders. One already on a mission is only
@@ -4410,6 +4430,11 @@ An 8-turn playtest read all three off `GET /api/campaign` and the event log:
   while this paragraph said it did not. The view is built on `worldAsSeenBy`
   now, and a server test reads a hidden rival operative off neither the read
   nor the push.
+- **A dissent line.** It names its reason, which for a refused order is the
+  red line the order would have crossed, and it was public — so a refusal
+  staged as a secret batch still told every NPC prompt what the player had
+  tried. It is the power's own business from journal version 22
+  (`LegacyRules.privateDissent`); the dissent figure itself stays public.
 - **`clamp` and `rejection` entries.** Both were public and
   `serializeRecentLog` feeds the log into every NPC prompt, so the Vigil's log
   carried *"[illegal_value] drajk cannot deploy an agent owned by vigil"* —
@@ -5894,7 +5919,25 @@ trip is for.
 > cancellation exact at every pairing, clamp or no clamp, and a test pins it at
 > both ends of the range.
 
-**An operative handed home goes back on the books by itself** (journal
+**Operatives come off the Lists, and only by recruiting** (journal version 22,
+`LegacyRules.agentLists`), the third roster to work the way officers and
+notables do. Every power keeps `AGENT_LIST_SIZE` (3) waiting
+(`ListedAgentSchema`, `stockAgentLists`): standing nowhere, drawing no upkeep,
+taking no slot, and seen by nobody else — `worldAsSeenBy` sends a power its own
+Lists alone. A **recalled** operative goes back on them with their record, where
+a recall used to remove the person; one **handed home** from captivity does the
+same the moment their power holds them, with no slot needed, since the slot is
+taken when they are recruited again. So recruiting is the one way onto the
+books, and the choice it offers is a veteran's ladder against a fresh face the
+enemy has never photographed. **No fee**, either way: the mission is what is
+priced. A record of its own rather than an `Agent` with a flag, because every
+reader of `state.agents` — the tick, the ledger, the fog, the slot count — means
+someone on the books. A recruit takes a fresh `mintId` each stint: an
+operative's rolls are seeded on its id, and Lists-style ids reseeded every
+recruit's dice and froze the harness board at 6/4/6/5/4 for a reason that was
+not in the rules. With fresh ids all four boards stay 5/5/6/5/4.
+
+**Before the Lists, an operative handed home went back on the books by itself** (journal
 version 20, `operativesComeHome`), awaiting orders, at the world they were held
 on if their power holds it and its best world otherwise — the rule the Lists
 follow for notables. It **clears `exposed`** — a face the enemy caught is not a
@@ -6087,6 +6130,18 @@ front, because an office there is something you are owed rather than something
 you are called — and because *"Hand of the Family Miral Nar Halq"* does not
 parse.
 
+**Twenty given names and sixty families from journal version 22**
+(`LegacyRules.widerNames`, `createSeedState`'s `widerNames`), because the Lists
+name people a power has not used yet — an officer of each school, a notable or
+more for every estate, three operatives — and a family is never used twice, so
+thirty ran out inside a long campaign and every later name was two families
+joined. Twenty still divides the d20. Read from a scope (`withNameStock`) that
+`applyOps`, `tickTurn` and the seed set from the journal's version, rather than
+threaded through every caller, the way the reducer scopes its own legacy
+switches; an older journal draws from the first ten and the first thirty, so
+its people keep their names. The new names follow each stock's shape and share
+no family across stocks, which a test holds.
+
 **Ten given names a power, because the die has twenty faces.** There were
 eight, and `rollD20 % 8` draws the first four 3 times in 20 and the other four
 twice, so a power's first four names came up half as often again as the rest.
@@ -6212,7 +6267,16 @@ estate with nobody listed has someone put forward.
 everyone; after that an empty seat — a conquest, a killing, a world grown into
 a hub — stands at None, doing nothing, until `seat_estate` appoints someone
 off the Lists. That was decided against auto-appointment so a killing and a
-conquest cost an action to repair. Taking a full seat sends the sitter back to
+conquest cost an action to repair. **And the estate feels it**: whenever one of
+its notables leaves a seat on its own power's world, for any reason — replaced,
+taken prisoner in a conquest, sent home by a cession, killed, carried off, left
+behind when the world rises — its favour falls `SEAT_VACATED_FAVOUR` (15) at
+once, whoever caused it, logged to that power alone. One rule rather than a
+charge at each cause: `inOffice` records who holds office before each batch and
+each tick, and `vacatedSeats` charges every seat emptied since, so a way of
+losing a seat added later is charged without anybody remembering to. Journal
+version 22 (`LegacyRules.seatLossCostsFavour`); the harness boards stay
+5/5/6/5/4. Taking a full seat sends the sitter back to
 the Lists and costs the world `RESEAT_REGARD`; a married notable's seat cannot
 be taken. **Conquest takes whoever sits the world prisoner**, held there by the
 conqueror — so retaking the world frees them onto the Lists, and the
@@ -6233,7 +6297,13 @@ hostage. **The ward is surety** (`fateWhenBrokenBy`): if the giver breaks the
 match or attacks the court, the court keeps the ward prisoner; if the court
 breaks it, the ward is gone from play; if the seated spouse dies or their
 affair is published, the ward goes home; if the ward's own affair is published,
-the court keeps them. A ward held counts as leverage in the giver's
+the court keeps them. **While the match stands the ward is not the court's to
+dispose of** (`wardBond`): no `transfer_asset`, no treaty `terms.assets`, no
+loan — a playtest sold one to a third power with the marriage still live, and
+sold one back and broke the match in the same batch, which lost them from play.
+Questioning one is still allowed, because that is the court betraying the
+match and `consume_asset` breaks it as such. Journal version 22
+(`LegacyRules.wardsStay`). A ward held counts as leverage in the giver's
 `concessionBudget` (`wardsHeld`). Into an independent world it is
 `propose_marriage`, a notable off your Lists who goes to live there
 (`Notable.livesAt`), which the world accepts at a standing of
@@ -6396,6 +6466,8 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `establish_obligation` | **extraction-only** — a favour owed; binds the debtor, always weak |
 | `call_obligation` | holder only; `sign` a non-aggression pact, ceasefire or trade accord, or `support` an ultimatum of yours |
 | `repudiate_obligation` | debtor only; priced like breaking a pact |
+| `release_obligation` | holder lets the debtor off; declarable, and reachable from an accord as one side's price |
+| `assign_obligation` | **extraction-only** — the holder sells a weak favour to the power across the table |
 | `publish_dossier` | spend proof a watcher found: the subject loses standing with everyone |
 | `blackmail` | spend proof a watcher found for a strong hook |
 | `issue_ultimatum` | a public demand with a deadline; refused across a peace or a truce |
@@ -6420,7 +6492,8 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `forgive_loan` | lender only; what was lent becomes the borrower's |
 | `forgive_debt` | creditor only; writes off the balance and buys goodwill |
 | `recruit_commander` | appoint an officer off your Lists — `officer` by name, or `school` for its first — to a world you hold, up to five. An action of its own |
-| `recruit_agent` | sign an operative on at a world you hold, awaiting orders; `fromAssetId` brings a captured one home. An action of its own |
+| `recruit_agent` | take an operative off your Lists (`agent`, by name, or the first) onto the books at a world you hold, awaiting orders. An action of its own. Before version 22 a new face, and `fromAssetId` brought a captured one home |
+| `recall_agent` | withdraw an operative of yours; from version 22 they go back on your Lists with their record |
 | `deploy_agent` | send an operative already on the books on a mission; they travel three jumps a turn. `targetNotable` aims a seduction, a subversion or an assassination at a notable |
 | `grant_stipend` · `revoke_stipend` | pay one of your estates 15 a turn, or stop; three grants an estate |
 | `seat_estate` | appoint someone off your Lists (`notable`, or an `estate`'s first listed) to a seat on a world you hold; `office` picks governor or chancellor. An empty seat is filled; a full one's sitter goes back on the Lists |
@@ -7411,7 +7484,9 @@ component is logic nothing checks.
   and the briefing's **Court** group says when a seat stands empty. The Lists
   tab toggles to **Officers**: one of each school waiting, new (a commission)
   or served (free), each with an appoint button; the Command tab offers the
-  same.
+  same. And to **Operatives**: the three waiting, fresh or served with their
+  record, each with a recruit button; the Agents tab's recruit button names the
+  next one.
 
   **Buttons write, they never send.** Every action button in the panels
   writes a sentence for the player to read and send, because declaring is

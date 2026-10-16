@@ -207,16 +207,20 @@ describe('a family name is a person', () => {
   });
 
   it('is never given again, even after the person it named has left the board', () => {
+    // Before the operatives' Lists (journal version 22) a recall removed the
+    // person and a recruit drew a new one on the spot, which is the case this
+    // pins; on the Lists a recalled operative is still somebody.
+    const v21 = { agentLists: false };
     let s = fresh();
     s.factions.find((f) => f.id === 'ojjul')!.credits = 100000;
     // Names are drawn when an operative signs on (version 11: `recruit_agent`).
     const deploy = () =>
-      applyOps(s, [{ op: 'recruit_agent', systemId: 'ilv-2' }], 'model', 'ojjul').state;
+      applyOps(s, [{ op: 'recruit_agent', systemId: 'ilv-2' }], 'model', 'ojjul', false, v21).state;
     s = deploy();
     const first = s.agents.at(-1)!;
     const family = familyOf(first.name)!;
     expect(s.familiesUsed).toContain(family);
-    s = applyOps(s, [{ op: 'recall_agent', agentId: first.id }], 'model', 'ojjul').state;
+    s = applyOps(s, [{ op: 'recall_agent', agentId: first.id }], 'model', 'ojjul', false, v21).state;
     expect(s.agents.some((a) => a.id === first.id)).toBe(false);
     expect(familiesInUse(s).has(family)).toBe(true);
     for (let i = 0; i < 6; i++) {
@@ -276,18 +280,21 @@ describe('the state document', () => {
 });
 
 describe('given names', () => {
-  it('are ten a power, all different, so the d20 draws each equally', () => {
+  it('are twenty a power, all different, so the d20 draws each equally — and the first ten are the old ten', () => {
     for (const f of NAME_STOCK_FACTIONS) {
       const names = givenNamesFor(f);
-      expect(names, f).toHaveLength(10);
-      expect(new Set(names).size, f).toBe(10);
-      // 20 faces over 10 names: every name is reached by exactly two.
-      const hits = new Map<string, number>();
-      for (let face = 0; face < 20; face++) {
-        const n = names[face % names.length]!;
-        hits.set(n, (hits.get(n) ?? 0) + 1);
+      expect(names, f).toHaveLength(20);
+      expect(new Set(names).size, f).toBe(20);
+      // Before journal version 22 the stock was the first ten: 20 faces over
+      // ten names, each reached by two. Both divide the die.
+      for (const size of [10, 20]) {
+        const hits = new Map<string, number>();
+        for (let face = 0; face < 20; face++) {
+          const n = names[face % size]!;
+          hits.set(n, (hits.get(n) ?? 0) + 1);
+        }
+        expect([...hits.values()].every((h) => h === 20 / size), `${f} at ${size}`).toBe(true);
       }
-      expect([...hits.values()].every((h) => h === 2), f).toBe(true);
     }
   });
 

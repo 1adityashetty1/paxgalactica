@@ -444,7 +444,8 @@ describe('every mission is mechanically distinct', () => {
       return count;
     };
     expect(burned('assassination')).toBeGreaterThan(burned('surveillance'));
-  });
+    // Eighty seeds and ticks: ~4s alone, past the default under a full suite.
+  }, 20_000);
 });
 
 describe('treaties', () => {

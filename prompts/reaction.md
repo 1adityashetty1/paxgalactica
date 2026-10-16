@@ -111,7 +111,8 @@ Same op vocabulary and duration rules as resolution:
 - A faction cannot spend credits or fleet strength it does not have.
 - **Operatives are recruited before they are sent.** `deploy_agent` sends one
   this power already has (the state block lists them, and which await orders);
-  with nobody on the books, emit `recruit_agent` at a world it holds first, in
+  with nobody on the books, emit `recruit_agent` at a world it holds first —
+  naming one off its Lists in `agent`, or the first comes — in
   the same reaction, and the `deploy_agent` after it. They travel three jumps a
   turn and are at work when they arrive.
 - **A promissory note you hold** from another power may be called in with

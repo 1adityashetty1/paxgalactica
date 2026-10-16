@@ -79,6 +79,7 @@ leaves a faction with nobody following it.
 | `play_note` | call in a promissory note you hold — see Notes and goods |
 | `call_obligation` | call in a favour owed to you — see Favours, secrets and ultimatums |
 | `repudiate_obligation` | walk away from a favour you owe, at a pact-breaker's price |
+| `release_obligation` | let a power off a favour it owes you |
 | `publish_dossier` | publish a secret your watcher found |
 | `blackmail` | spend a secret your watcher found for a strong hook on its subject |
 | `issue_ultimatum` | a public demand with a deadline; unanswered, it is war |
@@ -93,7 +94,8 @@ leaves a faction with nobody following it.
 | `extend_order` | work runs longer than planned |
 | `accelerate_order` | credits spent to buy back one duration bucket |
 | `break_treaty` | repudiate one; both parties' opinion of the breaker drops |
-| `recruit_agent` | sign an operative on at a world you hold, awaiting orders — **an action of its own** |
+| `recruit_agent` | take an operative off your Lists (`agent`, by name) onto the books at a world you hold, awaiting orders — **an action of its own** |
+| `recall_agent` | withdraw an operative of yours; they go back on your Lists with their record |
 | `deploy_agent` | send one of your operatives on a mission to a system; they travel there |
 | `recall_agent` | withdraw one |
 | `establish_commitment` | record a lasting arrangement **the arbiter told you to** |
@@ -403,9 +405,12 @@ action that runs into one.
 
 ## Agents
 
-**Recruiting and sending are two actions.** `recruit_agent` signs an operative
-on at a world the power holds, awaiting orders — and a declaration that
-recruits does **nothing else**: anything you emit beside it is dropped. A later
+**Recruiting and sending are two actions.** `recruit_agent` takes an operative
+off the power's **Lists** — the state block names who is waiting, a veteran's
+record against a fresh face; name one in `agent`, or the first comes — onto the
+books at a world the power holds, awaiting orders. It is the only way an
+operative is had: a recalled one, and one ransomed home, go back on the Lists
+with their record. A declaration that recruits does **nothing else**: anything you emit beside it is dropped. A later
 declaration sends them with `deploy_agent`, which creates nobody: it sends the
 operative it names (`agent`, by name as the state block lists them), or with
 no name the nearest one **AWAITING ORDERS**. One already on a mission is only
@@ -768,7 +773,9 @@ sign it with you for five turns — a ceasefire called on a power at war is a
 peace, and leaves a truce. `call: "support"` with a `demandId` puts the debtor
 on your side of an ultimatum of yours. A weak favour is spent; a strong hook
 rests and can be used again. Walking away from one you owe
-(`repudiate_obligation`) is priced like breaking a pact, in public.
+(`repudiate_obligation`) is priced like breaking a pact, in public. Letting a
+debtor off one you hold (`release_obligation`) costs you only the claim.
+Selling a favour to a third power needs the buyer, so it is a conversation.
 
 **A secret is proof a watcher found** — a dossier the state block marks as one.
 `publish_dossier` costs its subject standing with every power and burns the

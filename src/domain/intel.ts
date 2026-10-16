@@ -495,6 +495,8 @@ export function worldAsSeenBy(state: WorldState, factionId: string): WorldState 
     // exactly the "each component remembering to filter" this function exists to
     // replace. Fog is a property of the whole payload.
     agents: agentsVisibleTo(state, factionId),
+    // Who waits on a rival's Lists is that rival's business alone.
+    listedAgents: (state.listedAgents ?? []).filter((a) => a.ownerFactionId === factionId),
     // A power's own affairs among the Rim's events — a rival's mutiny, its
     // windfall — by the rule the log above is cut by (item 124).
     rimEvents: rimEventsVisibleTo(state, factionId),

@@ -15,6 +15,8 @@ import {
   NOTABLE_RANSOM,
   RESENTFUL,
   SEAT_FAVOUR,
+  SEAT_VACATED_FAVOUR,
+  seatOffice,
   WITHHOLD_SHARE,
   NotableSchema,
   estateOwner,
@@ -764,4 +766,56 @@ export function fateWhenBrokenBy(state: WorldState, treaty: Treaty, breaker: str
   const ward = notableById(state, treaty.terms.ward);
   if (!ward) return 'home';
   return powerOf(ward) === breaker ? 'prisoner' : 'gone';
+}
+
+/** One of a power's notables in office: seated on a world that power holds. */
+export interface InOffice {
+  name: string;
+  estateId: string;
+  systemId: string;
+  office: string;
+}
+
+/**
+ * Every notable in office: seated, belonging to an estate, on a world their
+ * own power holds. Read before a batch or a tick and again after, by
+ * `vacatedSeats`, so every way a seat can empty is charged by one rule instead
+ * of at each of the dozen places one does.
+ */
+export function inOffice(state: WorldState): Map<string, InOffice> {
+  const out = new Map<string, InOffice>();
+  for (const n of state.notables ?? []) {
+    if (n.estateId === null || n.systemId === null) continue;
+    const world = state.systems.find((w) => w.id === n.systemId);
+    if (!world || world.controllerFactionId !== estateOwner(n.estateId)) continue;
+    out.set(n.id, { name: n.name, estateId: n.estateId, systemId: n.systemId, office: seatOffice(n) });
+  }
+  return out;
+}
+
+/**
+ * Charge each estate `SEAT_VACATED_FAVOUR` for every notable of its that was
+ * in office before and is not in that seat now — replaced, taken prisoner,
+ * sent home, dead, carried off, or on a world that is no longer its power's.
+ * Returns a line for each, addressed to the power that owns the estate.
+ */
+export function vacatedSeats(
+  state: WorldState,
+  before: ReadonlyMap<string, InOffice>,
+): { factionId: string; text: string }[] {
+  const now = inOffice(state);
+  const lines: { factionId: string; text: string }[] = [];
+  for (const [id, was] of before) {
+    const still = now.get(id);
+    if (still && still.systemId === was.systemId) continue;
+    const owner = estateById(state, was.estateId);
+    if (!owner) continue;
+    owner.estate.favour = Math.max(-100, owner.estate.favour - SEAT_VACATED_FAVOUR);
+    const world = state.systems.find((w) => w.id === was.systemId)?.name ?? was.systemId;
+    lines.push({
+      factionId: owner.faction.id,
+      text: `${owner.estate.name.charAt(0).toUpperCase()}${owner.estate.name.slice(1)} lose a seat: ${was.name} is no longer ${was.office} of ${world}. Their favour falls ${SEAT_VACATED_FAVOUR}.`,
+    });
+  }
+  return lines;
 }

@@ -1,6 +1,6 @@
 import { seedRegard } from '../domain/regard.js';
 import { seedEstates } from '../domain/estates.js';
-import { stockOfficerLists } from '../domain/command.js';
+import { stockAgentLists, stockOfficerLists, withNameStock } from '../domain/command.js';
 import { fillSeats, stockLists } from '../domain/seats.js';
 import type { FactionStats } from '../domain/checks.js';
 import type { DurationCategory } from '../domain/duration.js';
@@ -867,7 +867,16 @@ function applyOpeningFloors(systems: StarSystem[], auxiliaries = true): void {
   }
 }
 
-export function createSeedState(
+/** Options to `createSeedState` — each `false` rebuilds the board an older journal opened on. */
+export type SeedOptions = NonNullable<Parameters<typeof buildSeedState>[1]>;
+
+export function createSeedState(playerFactionId: string, options: SeedOptions = {}): WorldState {
+  // The opening officers, notables and operatives are drawn from the name
+  // stock the journal's version had — see `withNameStock`.
+  return withNameStock(options.widerNames ?? true, () => buildSeedState(playerFactionId, options));
+}
+
+function buildSeedState(
   playerFactionId: string,
   /**
    * Both `false` rebuild the board a version-6-or-earlier journal was played
@@ -882,6 +891,9 @@ export function createSeedState(
    * `seats: false` gives no power estates and no world a notable, and
    * `officerLists: false` no officer waiting on anybody's Lists, as before
    * version 20.
+   * `widerNames: false` draws from ten given names and thirty families, and
+   * `agentLists: false` puts nobody on anybody's operatives' Lists, as before
+   * version 22.
    */
   {
     fourSchools = true,
@@ -894,6 +906,7 @@ export function createSeedState(
     tenGivenNames = true,
     seats = true,
     officerLists = true,
+    agentLists = true,
   }: {
     fourSchools?: boolean;
     auxiliaries?: boolean;
@@ -905,6 +918,8 @@ export function createSeedState(
     tenGivenNames?: boolean;
     seats?: boolean;
     officerLists?: boolean;
+    agentLists?: boolean;
+    widerNames?: boolean;
   } = {},
 ): WorldState {
   if (!SEED_FACTIONS.some((f) => f.id === playerFactionId)) {
@@ -928,6 +943,7 @@ export function createSeedState(
     routeTies: splitTies ? 'split' : 'first',
     sightings: [],
     notables: [],
+    listedAgents: [],
     familiesUsed: [],
     rimEvents: [],
     lastClash: {},
@@ -1365,6 +1381,8 @@ export function createSeedState(
   }
   // One officer of each school waiting on every power's Lists, to appoint.
   if (officerLists) stockOfficerLists(state);
+  // Three operatives waiting on every power's Lists, to recruit.
+  if (agentLists) stockAgentLists(state);
 
   return WorldStateSchema.parse(state);
 }

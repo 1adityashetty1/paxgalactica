@@ -142,6 +142,14 @@ export const MAX_GRANTS = 3;
 export const GRANT_COST = 15;
 /** Taken off at once when a stipend is revoked: an estate notices being cut more than being paid. */
 export const REVOKED_FAVOUR = 15;
+/**
+ * Taken off at once when one of an estate's notables leaves a seat on its own
+ * power's world, however they leave it: replaced, taken in a conquest, sent
+ * home by a cession, killed, kidnapped, or left behind when the world rises.
+ * An estate counts its people in office, and losing one is a grievance whoever
+ * caused it. Journal version 22 (`LegacyRules.seatLossCostsFavour`).
+ */
+export const SEAT_VACATED_FAVOUR = 15;
 /** Against an estate's baseline for each of its notables sitting a world not content with its holder. */
 export const HATED_SEAT_FAVOUR = 10;
 

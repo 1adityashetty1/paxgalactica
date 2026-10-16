@@ -45,6 +45,7 @@ import {
   activeCommanders,
   archetypeOf,
   listedOfficers,
+  listedAgentsOf,
   commanderEffect,
   commanderFor,
   familyOf,
@@ -2313,17 +2314,25 @@ function ListsTab({
   onSelect: (id: string) => void;
   onDraft: (text: string) => void;
 }) {
-  const [which, setWhich] = useState<'notables' | 'officers'>('notables');
+  const [which, setWhich] = useState<'notables' | 'officers' | 'operatives'>('notables');
   const view = courtView(state, state.playerFactionId);
   const toggle = (
     <div className="chips">
-      {(['notables', 'officers'] as const).map((w) => (
+      {(['notables', 'officers', 'operatives'] as const).map((w) => (
         <button key={w} className={w === which ? 'chip on' : 'chip'} onClick={() => setWhich(w)}>
-          {w === 'notables' ? 'Notables' : 'Officers'}
+          {w === 'notables' ? 'Notables' : w === 'officers' ? 'Officers' : 'Operatives'}
         </button>
       ))}
     </div>
   );
+  if (which === 'operatives') {
+    return (
+      <div className="standing court-tab">
+        {toggle}
+        <OperativeLists state={state} onDraft={onDraft} />
+      </div>
+    );
+  }
   if (which === 'officers') {
     return (
       <div className="standing court-tab">
@@ -2444,6 +2453,48 @@ function OfficerLists({ state, onDraft }: { state: WorldState; onDraft: (text: s
   );
 }
 
+/**
+ * The operatives' Lists: three always waiting. Recruiting takes one onto the
+ * books and is the only way to have one; a recalled operative and one handed
+ * home from captivity come back here with their record.
+ */
+function OperativeLists({ state, onDraft }: { state: WorldState; onDraft: (text: string) => void }) {
+  const me = state.playerFactionId;
+  const waiting = listedAgentsOf(state.listedAgents, me);
+  const live = state.agents.filter((a) => a.ownerFactionId === me && !a.exposed).length;
+  const home = [...state.systems]
+    .filter((x) => x.controllerFactionId === me)
+    .sort((a, b) => b.strategicValue - a.strategicValue || a.id.localeCompare(b.id))[0];
+  if (waiting.length === 0) return <p className="empty">Nobody waits on the Lists in this campaign: it began before they existed.</p>;
+  return (
+    <>
+      <p className="muted">
+        Operatives waiting to be recruited. Recruiting one is an action and costs nothing until you send them; it
+        takes a slot, and so does every operative on your books. A recalled operative, and one ransomed home, come back
+        here with their record. {live} on the books.
+      </p>
+      <ul className="war-list">
+        {waiting.map((a) => (
+          <li key={a.id}>
+            {a.name}
+            <span className="muted">
+              {' · '}
+              {a.served
+                ? `served, ${a.operations} operation${a.operations === 1 ? '' : 's'}${a.timesCaught > 0 ? `, caught ${a.timesCaught}×` : ''}`
+                : 'a fresh face'}
+            </span>
+            {home && (
+              <button className="chip" onClick={() => onDraft(`Recruit ${a.name} at ${home.name}.`)}>
+                recruit
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 function AgentsTab({
   state,
   guile,
@@ -2480,15 +2531,22 @@ function AgentsTab({
           {r.inService} of {r.slots} in service
           {r.upkeep > 0 && <span className="muted"> · {r.upkeep}cr/turn</span>}
         </span>
-        {r.inService < r.slots && home && (
-          <button className="chip" onClick={() => onDraft(`Recruit an operative at ${home.name}.`)}>
-            recruit one
-          </button>
-        )}
+        {r.inService < r.slots && home && (() => {
+          const next = listedAgentsOf(state.listedAgents, me)[0];
+          return (
+            <button
+              className="chip"
+              title="The next operative on your Lists; the Lists tab shows them all."
+              onClick={() => onDraft(next ? `Recruit ${next.name} at ${home.name}.` : `Recruit an operative at ${home.name}.`)}
+            >
+              recruit {next ? next.name.split(' ').slice(-1)[0] : 'one'}
+            </button>
+          );
+        })()}
       </div>
       <p className="muted">
-        How many you can run is set by your guile. Recruiting is an action, and so is sending one; they travel three
-        jumps a turn. :help espionage has the missions.
+        How many you can run is set by your guile. Recruiting takes one off your Lists and is an action, and so is
+        sending one; they travel three jumps a turn. :help espionage has the missions.
       </p>
 
       {section('At work', r.atWork)}

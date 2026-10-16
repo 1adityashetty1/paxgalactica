@@ -758,6 +758,88 @@ export function stockOfficerLists(state: {
   return listed;
 }
 
+/**
+ * An operative waiting on a power's **Lists** — the operatives' half of the
+ * mechanic officers and notables already have (journal version 22,
+ * `LegacyRules.agentLists`).
+ *
+ * `recruit_agent` takes one off the Lists and onto the books, and is the only
+ * way onto them: a recalled operative and one handed home from captivity both
+ * come back here with their record, rather than vanishing or standing on a
+ * world by themselves. Three wait for every power (`AGENT_LIST_SIZE`), so
+ * there is a choice — a veteran's ladder against a fresh face nobody's
+ * counter-intelligence has photographed.
+ *
+ * **Not gameplay entities**, as listed notables and officers are not: they
+ * stand nowhere, draw no `AGENT_UPKEEP`, take no slot under `maxAgentsFor`,
+ * and no rival can see or reach them. A record of its own rather than an
+ * `Agent` with a flag, because every reader of `state.agents` — the tick, the
+ * ledger, the fog, the slot count — means an operative on the books, and a
+ * flag would have to be remembered at each of them.
+ */
+export const ListedAgentSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  ownerFactionId: z.string().min(1),
+  /** The record they come back with. Fresh recruits carry zeroes. */
+  operations: z.number().int().min(0).default(0),
+  timesCaught: z.number().int().min(0).default(0),
+  /** Served before: recalled, or handed home. Shown, and nothing else. */
+  served: z.boolean().default(false),
+  listedTurn: z.number().int().min(0),
+});
+export type ListedAgent = z.infer<typeof ListedAgentSchema>;
+
+/** How many operatives every power keeps waiting on its Lists. */
+export const AGENT_LIST_SIZE = 3;
+
+/** A power's operatives waiting on its Lists, in the order they were listed. */
+export function listedAgentsOf(listed: readonly ListedAgent[] | undefined, factionId: string): ListedAgent[] {
+  return (listed ?? []).filter((a) => a.ownerFactionId === factionId);
+}
+
+/**
+ * Keep every power's operatives' Lists at `AGENT_LIST_SIZE`, putting forward
+ * fresh faces named as any operative is. A returned veteran counts toward the
+ * three, so the Lists never shrink below it and grow past it only when people
+ * come home. Run on the opening board and after every batch and tick.
+ */
+export function stockAgentLists(state: {
+  turn: number;
+  factions: readonly { id: string }[];
+  commanders?: Commander[];
+  familiesUsed?: string[];
+  agents?: { name?: string }[];
+  listedAgents?: ListedAgent[];
+  notables?: { name: string }[];
+}): ListedAgent[] {
+  const put: ListedAgent[] = [];
+  const counts = new Map<string, number>();
+  for (const a of state.listedAgents ?? []) counts.set(a.ownerFactionId, (counts.get(a.ownerFactionId) ?? 0) + 1);
+  for (const faction of state.factions) {
+    for (let have = counts.get(faction.id) ?? 0; have < AGENT_LIST_SIZE; have++) {
+      const n = (state.listedAgents ?? []).length;
+      const { name, family } = drawPerson({
+        factionId: faction.id,
+        turn: state.turn,
+        salt: `agent-list:${faction.id}:${n}`,
+        archetype: null,
+        taken: familiesInUse(state),
+      });
+      (state.familiesUsed ??= []).push(family);
+      const spy = ListedAgentSchema.parse({
+        id: `agt-${faction.id}-list-${state.turn}-${n}`,
+        name,
+        ownerFactionId: faction.id,
+        listedTurn: state.turn,
+      });
+      (state.listedAgents ??= []).push(spy);
+      put.push(spy);
+    }
+  }
+  return put;
+}
+
 /* ------------------------------------------------------------------ */
 /* Names                                                               */
 /* ------------------------------------------------------------------ */
@@ -805,13 +887,21 @@ const NAME_STOCK: Record<string, NameStock> = {
   /* A chartered company, and it does not pretend to be a navy: the ranks are
      the ones on the org chart, because that is what the Authority is. */
   meridian: {
-    first: ['Adrienne', 'Caspar', 'Teodor', 'Lira', 'Odile', 'Marcus', 'Sabine', 'Yusuf', 'Ingrid', 'Rafael'],
+    first: ['Adrienne', 'Caspar', 'Teodor', 'Lira', 'Odile', 'Marcus', 'Sabine', 'Yusuf', 'Ingrid', 'Rafael',
+            'Helena', 'Tomasz', 'Priya', 'Desmond', 'Anouk', 'Kwame', 'Esther', 'Lorenzo', 'Mei', 'Gregor'],
     last: ['Vance', 'Okonjo', 'Reyes', 'Haldane', 'Brandt', 'Sorel', 'Achebe',
            'Marchetti', 'Delacroix', 'Ferreira',
            'Castellane', 'Nakagawa', 'Oyelaran', 'Lindqvist', 'Abernathy',
            'Moreau', 'Kowalczyk', 'Salgado', 'Ashworth', 'Iversen', 'Mbatha',
            'Carvalho', 'Whitlock', 'Petrakis', 'Quintero', 'Hollis', 'Sandoval',
-           'Everett', 'Rahimi', 'Lachance'],
+           'Everett', 'Rahimi', 'Lachance',
+           // Grown to sixty in journal version 22, for the Lists.
+           'Albrecht', 'Bettencourt', 'Chowdhury', 'Danforth', 'Eklund',
+           'Fairbanks', 'Garnier', 'Hargreaves', 'Ibarra', 'Jansen',
+           'Kaminski', 'Langford', 'Mendoza', 'Nakamura', 'Ostrowski',
+           'Pemberton', 'Quaresma', 'Rasmussen', 'Sterling', 'Thackeray',
+           'Underhill', 'Valdivia', 'Westergaard', 'Yamada', 'Zielinski',
+           'Okafor', 'Berglund', 'Castaneda', 'Duquesne', 'Holloway'],
     titles: {
       lineofbattle: 'Operations Executive',
       gunnery: 'Senior Director',
@@ -823,13 +913,21 @@ const NAME_STOCK: Record<string, NameStock> = {
   /* The remnant of a state: praenomen and cognomen, and the flag ranks of a
      service that still keeps its establishment on paper. */
   vigil: {
-    first: ['Caius', 'Valeria', 'Drusus', 'Marcia', 'Aulus', 'Livia', 'Quintus', 'Sabina', 'Tiberius', 'Cornelia'],
+    first: ['Caius', 'Valeria', 'Drusus', 'Marcia', 'Aulus', 'Livia', 'Quintus', 'Sabina', 'Tiberius', 'Cornelia',
+            'Servius', 'Julia', 'Decimus', 'Flavia', 'Gnaeus', 'Antonia', 'Publius', 'Claudia', 'Spurius', 'Hortensia'],
     last: ['Ferrata', 'Corvinus', 'Nasica', 'Longinus', 'Severa', 'Galba',
            'Cinna', 'Rufus', 'Varro', 'Scaeva',
            'Agrippa', 'Balbus', 'Cotta', 'Dentatus', 'Flaccus', 'Gallus',
            'Lentulus', 'Macer', 'Naso', 'Paullus', 'Regulus', 'Saturninus',
            'Strabo', 'Torquata', 'Vitellia', 'Aquila', 'Calvus', 'Fimbria',
-           'Laenas', 'Pansa'],
+           'Laenas', 'Pansa',
+           // Grown to sixty in journal version 22, for the Lists.
+           'Ahenobarba', 'Brutus', 'Caepio', 'Dolabella', 'Frontinus',
+           'Glabrio', 'Hirtius', 'Labeo', 'Merula', 'Nerva',
+           'Philippus', 'Rullus', 'Scaurus', 'Tubero', 'Vatia',
+           'Afer', 'Bibulus', 'Crassipes', 'Lepida', 'Metella',
+           'Murena', 'Pulcher', 'Silanus', 'Sura', 'Taurus',
+           'Vulso', 'Calidius', 'Libo', 'Piso', 'Dives'],
     titles: {
       lineofbattle: 'Iron Marshal',
       gunnery: 'Commodore',
@@ -842,13 +940,21 @@ const NAME_STOCK: Record<string, NameStock> = {
      what you answer to, and the office comes last because it is what you are
      owed rather than what you are called. */
   ojjul: {
-    first: ['Serek', 'Halvane', 'Dovic', 'Ruille', 'Tallim', 'Osk', 'Vessine', 'Miral', 'Ennart', 'Saphrin'],
+    first: ['Serek', 'Halvane', 'Dovic', 'Ruille', 'Tallim', 'Osk', 'Vessine', 'Miral', 'Ennart', 'Saphrin',
+            'Kessane', 'Orrith', 'Tavvel', 'Imrisse', 'Dravo', 'Ulquine', 'Zennet', 'Corvane', 'Ishmel', 'Pallura'],
     last: ['Nar Kheline', 'Nar Ossik', 'Nar Duvane', 'Nar Serrel', 'Nar Halq',
            'Nar Ojjuk', 'Nar Tevin', 'Nar Rissa', 'Nar Belline', 'Nar Aquen',
            'Nar Vessat', 'Nar Quillen', 'Nar Dorrik', 'Nar Imrel', 'Nar Kasko',
            'Nar Tellumen', 'Nar Pellith', 'Nar Rhuun', 'Nar Zevric', 'Nar Hessane',
            'Nar Mordal', 'Nar Ulvik', 'Nar Cassimer', 'Nar Brevane', 'Nar Tollek',
-           'Nar Ghessa', 'Nar Idrel', 'Nar Voskane', 'Nar Emmerai', 'Nar Sollis'],
+           'Nar Ghessa', 'Nar Idrel', 'Nar Voskane', 'Nar Emmerai', 'Nar Sollis',
+           // Grown to sixty in journal version 22, for the Lists.
+           'Nar Absolan', 'Nar Cendril', 'Nar Dessic', 'Nar Elvanne', 'Nar Fosk',
+           'Nar Gorrin', 'Nar Hask', 'Nar Ilsevar', 'Nar Jethrim', 'Nar Kovane',
+           'Nar Lurris', 'Nar Mekko', 'Nar Nessaly', 'Nar Orvent', 'Nar Prellan',
+           'Nar Qessan', 'Nar Ruvic', 'Nar Saddik', 'Nar Tavrel', 'Nar Uthenne',
+           'Nar Varrow', 'Nar Wessal', 'Nar Xandrin', 'Nar Yorrel', 'Nar Zhavik',
+           'Nar Ambric', 'Nar Bellosk', 'Nar Draveth', 'Nar Esquane', 'Nar Fennix'],
     titles: {
       lineofbattle: 'Underboss',
       gunnery: 'Second Elder',
@@ -862,13 +968,21 @@ const NAME_STOCK: Record<string, NameStock> = {
      them is a -warden under the Highwarden, so an Arkane officer is placeable
      from the title alone even before the name. */
   freeworlds: {
-    first: ['Oria', 'Kell', 'Devain', 'Sarn', 'Mira', 'Tolen', 'Ysra', 'Bran', 'Hesk', 'Linnet'],
+    first: ['Oria', 'Kell', 'Devain', 'Sarn', 'Mira', 'Tolen', 'Ysra', 'Bran', 'Hesk', 'Linnet',
+            'Asha', 'Corrin', 'Dell', 'Fenn', 'Ilse', 'Joran', 'Maren', 'Quill', 'Sefa', 'Vale'],
     last: ['Stonecount', 'Vesskeeper', 'Throatholder', 'Ninefold', 'Dustborn',
            'Marklen', 'Pellrun', 'Delvane', 'Ashkeep', 'Windward',
            'Flintmoor', 'Saltgrave', 'Coalward', 'Stillwater', 'Harrowfield',
            'Cindermark', 'Deepholm', 'Ridgewell', 'Tallstone', 'Graveln',
            'Wardhollow', 'Shalecroft', 'Brightkeel', 'Oathmere', 'Longreach',
-           'Kilnborn', 'Mossgate', 'Slatewright', 'Fernhold', 'Cairnfell'],
+           'Kilnborn', 'Mossgate', 'Slatewright', 'Fernhold', 'Cairnfell',
+           // Grown to sixty in journal version 22, for the Lists.
+           'Ironvein', 'Gravelmark', 'Hollowstone', 'Ashfall', 'Bleakwater',
+           'Copperbrand', 'Duskhaven', 'Emberstone', 'Frostmere', 'Granitehand',
+           'Hearthward', 'Kilnmark', 'Lodestar', 'Marrowstone', 'Northfast',
+           'Oreholm', 'Peatmoor', 'Quarrystone', 'Rimewell', 'Shalemark',
+           'Thornwell', 'Umberfield', 'Veinrock', 'Wellspring', 'Yewmark',
+           'Anvilhold', 'Bracken', 'Clayborn', 'Driftholm', 'Stonehew'],
     titles: {
       lineofbattle: 'Fleetwarden',
       gunnery: 'Gunwarden',
@@ -883,13 +997,21 @@ const NAME_STOCK: Record<string, NameStock> = {
      Huntmaster — a quartermaster on a raiding crew is elected and answers to
      the hold rather than to the captain, which is the Confederacy exactly. */
   drajk: {
-    first: ['Kess', 'Ravel', 'Tannic', 'Voss', 'Sherrin', 'Doram', 'Aleska', 'Prynn', 'Mael', 'Hesper'],
+    first: ['Kess', 'Ravel', 'Tannic', 'Voss', 'Sherrin', 'Doram', 'Aleska', 'Prynn', 'Mael', 'Hesper',
+            'Jask', 'Corra', 'Vetch', 'Sabre', 'Nim', 'Rask', 'Teague', 'Ilka', 'Brann', 'Oriel'],
     last: ['Longburn', 'Deeprunner', 'Coldwake', 'Halfshare', 'Threxwind',
            'Ashlott', 'Greywake', 'Skeln', 'Hollowmark', 'Sundrift',
            'Blacktack', 'Saltknife', 'Farhook', 'Brinecut', 'Keelbreaker',
            'Starveling', 'Dunmarrow', 'Scuttlebar', 'Tallowjack', 'Rimsnatch',
            'Bilgewater', 'Lastlight', 'Sharkhollow', 'Vantrell', 'Grimhale',
-           'Emberwick', 'Quickshare', 'Nightrudder', 'Thornprow', 'Cinderjaw'],
+           'Emberwick', 'Quickshare', 'Nightrudder', 'Thornprow', 'Cinderjaw',
+           // Grown to sixty in journal version 22, for the Lists.
+           'Bonegrin', 'Chainwake', 'Dregmoor', 'Fathomcut', 'Gallowshook',
+           'Hullrake', 'Ironbelly', 'Jackstay', 'Knotgrim', 'Lowtide',
+           'Marrowgaff', 'Nettlerig', 'Oarsplit', 'Plankwalker', 'Ripcourse',
+           'Spindrift', 'Tarbrand', 'Undertow', 'Voidcutter', 'Wreckbound',
+           'Yawlmark', 'Ashgaff', 'Bladeswell', 'Coalhook', 'Driftknife',
+           'Galeburn', 'Hookjaw', 'Scarbrook', 'Riptack', 'Saltgrin'],
     titles: {
       lineofbattle: 'Korvan Lord',
       gunnery: 'Packmaster',
@@ -902,11 +1024,19 @@ const NAME_STOCK: Record<string, NameStock> = {
      from a hundred settlements, and no titles, because nobody in a seat is
      ever an officer — the titles below exist only to satisfy the shape. */
   rim: {
-    first: ['Anselm', 'Brisa', 'Corwen', 'Dalia', 'Emeric', 'Fenna', 'Garrick', 'Halle', 'Ivo', 'Junia'],
+    first: ['Anselm', 'Brisa', 'Corwen', 'Dalia', 'Emeric', 'Fenna', 'Garrick', 'Halle', 'Ivo', 'Junia',
+            'Kasimir', 'Liane', 'Mattias', 'Nadia', 'Oskar', 'Perpetua', 'Quentin', 'Rosalind', 'Silas', 'Theda'],
     last: ['Ardane', 'Brightwater', 'Corley', 'Dunmore', 'Elvarre', 'Fairholt', 'Gannet', 'Harrow',
            'Ingle', 'Jessup', 'Kestrel', 'Lowell', 'Marrow', 'Nettle', 'Orrin', 'Penrose', 'Quarry',
            'Rook', 'Sable', 'Tamsin', 'Ulver', 'Vane', 'Wren', 'Yarrow', 'Zennor', 'Ashby',
-           'Bramble', 'Calloway', 'Drover', 'Ember'],
+           'Bramble', 'Calloway', 'Drover', 'Ember',
+           // Grown to sixty in journal version 22, for the Lists.
+           'Abbot', 'Blackwood', 'Cresswell', 'Dovecote', 'Elderby',
+           'Foxglove', 'Gladwin', 'Hawthorne', 'Ivory', 'Juniper',
+           'Kingsley', 'Larkin', 'Mallory', 'Northcott', 'Oakes',
+           'Primrose', 'Quayle', 'Redfern', 'Stanhope', 'Thistle',
+           'Underwood', 'Vesper', 'Whitby', 'Yardley', 'Ashcombe',
+           'Barrow', 'Coppice', 'Dunstan', 'Everleigh', 'Fenwick'],
     titles: {
       lineofbattle: 'Notable',
       gunnery: 'Notable',
@@ -956,11 +1086,44 @@ export function commanderName(
 
 /** How many given names a stock had before journal version 19. */
 export const LEGACY_GIVEN_NAMES = 8;
+/** How many given names, and family names, a stock had before journal version 22. */
+export const TEN_GIVEN_NAMES = 10;
+export const LEGACY_FAMILIES = 30;
 
-/** The given name a draw lands on, from the whole stock or its first eight. */
+/**
+ * **Twenty given names and sixty families from journal version 22**, because
+ * the Lists name people a power has not used yet — an officer of each school,
+ * a notable or more an estate, three operatives — and a family is never used
+ * twice in a campaign, so thirty ran out within a long one and every later
+ * name was two families joined. Twenty still divides the d20.
+ *
+ * Read from a scope rather than threaded through every caller, the way the
+ * reducer scopes its own legacy switches: `applyOps`, `tickTurn` and the seed
+ * set it from the journal's version (`withNameStock`), so an older campaign
+ * draws from the stock it was played with and its people keep their names.
+ */
+let wideNameStock = true;
+
+export function withNameStock<T>(wide: boolean, run: () => T): T {
+  const outer = wideNameStock;
+  wideNameStock = wide;
+  try {
+    return run();
+  } finally {
+    wideNameStock = outer;
+  }
+}
+
+/** The given name a draw lands on: the whole stock, its first ten, or its first eight. */
 function givenName(stock: NameStock, draw: number, tenGivenNames: boolean): string {
-  const pool = tenGivenNames ? stock.first : stock.first.slice(0, LEGACY_GIVEN_NAMES);
+  const size = !tenGivenNames ? LEGACY_GIVEN_NAMES : wideNameStock ? stock.first.length : TEN_GIVEN_NAMES;
+  const pool = stock.first.slice(0, size);
   return pool[draw % pool.length]!;
+}
+
+/** The families a draw may walk: the whole stock, or the thirty before version 22. */
+function familyStock(stock: NameStock): readonly string[] {
+  return wideNameStock ? stock.last : stock.last.slice(0, LEGACY_FAMILIES);
 }
 
 function titled(stock: NameStock, person: string, archetype: CommanderArchetype): string {
@@ -1017,7 +1180,7 @@ export function drawPerson(opts: {
   const kind = archetype === null ? 'agent' : 'commander';
   const a = rollD20(turn, `${kind}-first:${factionId}:${salt}`) - 1;
   const b = rollD20(turn, `${kind}-last:${factionId}:${salt}`) - 1;
-  const family = freeFamily(stock.last, b % ORIGINAL_FAMILIES, taken);
+  const family = freeFamily(familyStock(stock), b % ORIGINAL_FAMILIES, taken);
   const person = `${givenName(stock, a, tenGivenNames)} ${family}`;
   return { name: archetype === null ? person : titled(stock, person, archetype), family };
 }
@@ -1072,6 +1235,7 @@ export function familiesInUse(state: {
   familiesUsed?: string[];
   commanders?: Commander[];
   agents?: { name?: string }[];
+  listedAgents?: { name: string }[];
   notables?: { name: string }[];
 }): Set<string> {
   const taken = new Set(state.familiesUsed ?? []);
@@ -1079,7 +1243,7 @@ export function familiesInUse(state: {
     const f = familyOf(c.name);
     if (f) taken.add(f);
   }
-  for (const a of state.agents ?? []) {
+  for (const a of [...(state.agents ?? []), ...(state.listedAgents ?? [])]) {
     const f = a.name ? familyOf(a.name) : null;
     if (f) taken.add(f);
   }
