@@ -239,6 +239,9 @@ import {
   appoint,
   capitalise as capitaliseEstate,
   courtRecorded,
+  inOffice,
+  vacatedSeats,
+  type InOffice,
   driftFavour,
   emptySeats,
   endMarriage,
@@ -1609,6 +1612,14 @@ function settleOfficerLists(state: WorldState, notes: string[]): void {
   stockOfficerLists(state);
 }
 
+/** An estate's grievance for every seat of its emptied since `before`, logged to its own power. */
+function chargeVacatedSeats(state: WorldState, before: ReadonlyMap<string, InOffice>, notes: string[]): void {
+  for (const line of vacatedSeats(state, before)) {
+    notes.push(line.text);
+    logEvent(state, 'system', line.text, line.factionId, [line.factionId]);
+  }
+}
+
 /**
  * The operatives' Lists after a batch or a tick (journal version 22): one of a
  * power's own operatives it holds — ransomed, traded, or freed when a world was
@@ -2821,6 +2832,12 @@ export interface LegacyRules {
    */
   agentLists?: boolean;
   /**
+   * An estate loses `SEAT_VACATED_FAVOUR` when one of its notables leaves a
+   * seat on its power's world, for any reason (`vacatedSeats`). Journal
+   * version 22.
+   */
+  seatLossCostsFavour?: boolean;
+  /**
    * People are drawn from twenty given names and sixty families
    * (`withNameStock`). Journal version 22; before it ten and thirty.
    */
@@ -2973,8 +2990,11 @@ function applyOpsUnderRules(
     hooksHoldOnCall = true,
     privateDissent = true,
     agentLists = true,
+    seatLossCostsFavour = true,
   } = legacy;
   const state = cloneState(input);
+  // Who holds office before the batch, so a seat emptied by it is charged.
+  const officeBefore = seatLossCostsFavour && courtRecorded(input) ? inOffice(input) : null;
   const rejections: OpRejection[] = [];
   const notes: string[] = [];
 
@@ -8088,6 +8108,7 @@ function applyOpsUnderRules(
   // The court ends every batch in a legal shape: people come home to the Lists
   // and every estate has someone listed. See `seats.ts`.
   settleCourt(state);
+  if (officeBefore) chargeVacatedSeats(state, officeBefore, notes);
   if (agentLists) settleAgentLists(state, notes);
   else if (spiesComeHome) notes.push(...operativesComeHome(state));
   if (officerLists) settleOfficerLists(state, notes);
@@ -8685,6 +8706,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
   const {
     wardsStay = true,
     agentLists = true,
+    seatLossCostsFavour = true,
     arrangementStanding = true,
     hostages = true,
     peopleStanding = true,
@@ -8707,6 +8729,8 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     battleRules = {},
   } = legacy;
   const state = cloneState(input);
+  // Who holds office before the turn, so a seat emptied by it is charged.
+  const officeBefore = seatLossCostsFavour && hasCourt && courtRecorded(input) ? inOffice(input) : null;
   const notes: string[] = [];
   // Who was still at large when the turn began, so the operatives taken during
   // it can be counted toward what their captors now know of their masters.
@@ -10426,6 +10450,9 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     recordSightings(state);
   }
 
+  // Last, so every way the turn emptied a seat — a battle, a cession, a
+  // rising, a knife — is in what it reads.
+  if (officeBefore) chargeVacatedSeats(state, officeBefore, notes);
   return { state, rejections: [], notes, report };
 }
 

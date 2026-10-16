@@ -6267,7 +6267,16 @@ estate with nobody listed has someone put forward.
 everyone; after that an empty seat — a conquest, a killing, a world grown into
 a hub — stands at None, doing nothing, until `seat_estate` appoints someone
 off the Lists. That was decided against auto-appointment so a killing and a
-conquest cost an action to repair. Taking a full seat sends the sitter back to
+conquest cost an action to repair. **And the estate feels it**: whenever one of
+its notables leaves a seat on its own power's world, for any reason — replaced,
+taken prisoner in a conquest, sent home by a cession, killed, carried off, left
+behind when the world rises — its favour falls `SEAT_VACATED_FAVOUR` (15) at
+once, whoever caused it, logged to that power alone. One rule rather than a
+charge at each cause: `inOffice` records who holds office before each batch and
+each tick, and `vacatedSeats` charges every seat emptied since, so a way of
+losing a seat added later is charged without anybody remembering to. Journal
+version 22 (`LegacyRules.seatLossCostsFavour`); the harness boards stay
+5/5/6/5/4. Taking a full seat sends the sitter back to
 the Lists and costs the world `RESEAT_REGARD`; a married notable's seat cannot
 be taken. **Conquest takes whoever sits the world prisoner**, held there by the
 conqueror — so retaking the world frees them onto the Lists, and the

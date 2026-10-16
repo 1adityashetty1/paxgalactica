@@ -371,6 +371,8 @@ export function replay(
     // named from the narrower stock.
     agentLists: parsed.version >= 22,
     widerNames: parsed.version >= 22,
+    // An estate lost nothing when one of its people lost a seat.
+    seatLossCostsFavour: parsed.version >= 22,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

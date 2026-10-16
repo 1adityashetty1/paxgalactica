@@ -78,6 +78,7 @@ import {
   MARRIAGE_REGARD,
   MAX_GRANTS,
   RESEAT_REGARD,
+  SEAT_VACATED_FAVOUR,
   RESENTFUL,
   SEAT_FAVOUR,
 } from '../domain/estates.js';
@@ -523,6 +524,9 @@ export function courtHelpLines(state?: WorldState | null): string[] {
     ),
     ...wrap(
       `Taking a world takes whoever sits it prisoner, and its seats stand empty, doing nothing, until you appoint. A killing empties a seat too. "Appoint Corvan Hale as Governor of Kalzir" is an action; taking a filled seat sends its notable back to the Lists and costs the world ${RESEAT_REGARD} regard.`,
+    ),
+    ...wrap(
+      `An estate counts its people in office. Whenever one of its notables leaves a seat on your world — replaced, taken in a conquest, sent home by a cession, killed or carried off — its favour falls ${SEAT_VACATED_FAVOUR} at once, whoever caused it.`,
     ),
     '',
     'MARRIAGE',
