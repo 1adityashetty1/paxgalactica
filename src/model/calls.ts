@@ -652,10 +652,26 @@ export async function resolveAction(
   // at the price of an inadmissible ruling — nothing — rather than rolled,
   // charged an action, and then rejected by the reducer for want of a person.
   const covert = priced.appraisal.covert ?? [];
+  const groundwork = priced.appraisal.groundwork ?? [];
+  // An outcome no mission produces is said so, and costs nothing: the act is
+  // turned away as inadmissible — no action point — and the reason is the
+  // record of what the next mission should be. Only when nothing else in the
+  // act could be done; alongside a mission it is a note.
+  if (priced.appraisal.unexpressed && covert.length === 0 && groundwork.length === 0) {
+    const why = `No mission does that yet: ${priced.appraisal.unexpressed}`;
+    return {
+      output: { narrative: why, ops: [], inadmissible: why },
+      check: null,
+      roll: 0,
+      attempts: priced.attempts,
+      costUsd: priced.costUsd + relevanceCost,
+      ruling,
+    };
+  }
   const onBooks = (state.agents ?? []).some(
     (a) => a.ownerFactionId === state.playerFactionId && !a.exposed,
   );
-  if (covert.length > 0 && !onBooks) {
+  if ((covert.length > 0 || groundwork.length > 0) && !onBooks) {
     const why =
       'You have nobody to send. Recruit an operative first — that is an action of its own, at a world you hold — and send them with your next.';
     return {
@@ -845,10 +861,11 @@ export async function resolveAction(
   // that call declining to notice is precisely the failure this pass exists to
   // close. The model's own wording is kept when it offered some, since it is
   // written against the narrative it just produced.
-  const withCovert = (o: ResolutionOutput): ResolutionOutput =>
-    priced.appraisal.covert && priced.appraisal.covert.length > 0
-      ? { ...o, covert: priced.appraisal.covert }
-      : o;
+  const withCovert = (o: ResolutionOutput): ResolutionOutput => ({
+    ...o,
+    ...(priced.appraisal.covert && priced.appraisal.covert.length > 0 ? { covert: priced.appraisal.covert } : {}),
+    ...(priced.appraisal.groundwork && priced.appraisal.groundwork.length > 0 ? { groundwork: priced.appraisal.groundwork } : {}),
+  });
 
   // The check line rides at the FRONT of the batch, so the log reads
   // roll-then-consequence rather than the other way round.

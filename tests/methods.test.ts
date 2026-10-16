@@ -156,3 +156,41 @@ function withSpyAt(s: WorldState, id: string): WorldState {
   delete c.agents.find((a) => a.id === id)!.groundwork;
   return c;
 }
+
+describe('routing the arbiter’s ruling', () => {
+  it('rides the method on the deployment it describes, and lays the groundwork it ruled', async () => {
+    const { routeCovertAction } = await import('../src/domain/development.js');
+    const method = { text: 'a borrowed uniform', profile: P(0, 1, 0, -1) };
+    const out = routeCovertAction(
+      [],
+      'success',
+      [{ mission: 'larceny', systemId: VANTIC, target: 'the drawings', method }],
+      'meridian',
+      [{ systemId: KALZIR, text: 'on the night watch', axis: 'noise' }],
+    );
+    const deploy = out.ops.find((o) => (o as { op: string }).op === 'deploy_agent') as { method?: unknown };
+    expect(deploy.method).toEqual(method);
+    expect(out.ops.some((o) => (o as { op: string }).op === 'lay_groundwork')).toBe(true);
+    // A deployment the resolution call wrote itself gets the method too.
+    const own = routeCovertAction(
+      [{ op: 'deploy_agent', systemId: VANTIC, mission: 'larceny', effect: { kind: 'steal' } }],
+      'success',
+      [{ mission: 'larceny', systemId: VANTIC, method }],
+      'meridian',
+    );
+    expect((own.ops[0] as { method?: unknown }).method).toEqual(method);
+    // A failure lays and places nothing.
+    expect(routeCovertAction([], 'failure', [], 'meridian', [{ systemId: KALZIR, text: 'x', axis: 'ease' }]).ops).toEqual([]);
+  });
+
+  it('accepts a ruling with a method, groundwork and an unexpressed outcome', async () => {
+    const { AppraisalSchema } = await import('../src/domain/ops.js');
+    const r = AppraisalSchema.safeParse({
+      admissible: true, reason: '', stat: 'guile', difficulty: 14,
+      covert: [{ mission: 'assassination', systemId: KALZIR, target: 'the Governor', method: { text: 'poison in a toast', profile: P(0, 0, 1, -1) } }],
+      groundwork: [{ systemId: KALZIR, text: 'hired as a cook', axis: 'ease', target: 'the Governor' }],
+      unexpressed: 'moving a prisoner between worlds',
+    });
+    expect(r.success, JSON.stringify(r.error?.issues)).toBe(true);
+  });
+});

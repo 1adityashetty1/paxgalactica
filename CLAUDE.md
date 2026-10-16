@@ -4233,6 +4233,28 @@ win or lose, the operative is back awaiting orders. And every mission whose
 effect is its meaning is held to it (`MISSION_EFFECTS`, journal version 22):
 an embezzler carries `income_penalty`, only a thief carries `steal`.
 
+**An operation is a mission carried out by a method**
+(`docs/design-2026-10-16-operations.md`). The arbiter reads a covert act by its
+**outcome** first — a table in `prompts/appraisal.md` maps "someone is dead",
+"a thing is yours", "two powers at odds" to the mission — and never by the
+words about how. **How** is a method, and no method is written into code: the
+arbiter scores the player's words on four axes, each −1..+1 (`preparation`,
+`ease`, `noise`, `ifCaught`), and `budgetMethod` holds them to a sum of zero or
+less, clipping ease, then preparation, then noise. Code owns the steps —
+`METHOD_PRICE_STEP` 25% of the price, `METHOD_EASE_STEP` 10 on the odds, one in
+twenty on exposure — and `ifCaught` decides what exposure costs: nothing when
+deniable, double with every onlooker paying `BACKFIRE_REPUTATION` when it
+backfires. **Groundwork** (`lay_groundwork`, `Agent.groundwork`) is preparation
+recorded on the operative: one axis, one step, aimed at a target resolved to an
+id or at nothing. It tells from the next turn, adds outside the budget (at most
+`MAX_GROUNDWORK_BONUS`) to a later mission by the same operative on the same
+world and target, is spent when used, and is lost by leaving, recall, capture
+or `GROUNDWORK_TURNS`. The action point is its whole price. An outcome no
+mission produces is `unexpressed`: turned away without costing an action, the
+reason kept. The engine attaches the method and lays the groundwork
+(`routeCovertAction`); resolution only narrates. Tests name methods
+arbitrarily, so nothing is tuned to one. Journal version 22 (`methodsCount`).
+
 **`kidnapping` is larceny aimed at a person**: a wetworker mission, one attempt
 (`AGENT_COST` 120, exposure 6 in 20), at a notable seated on that world or an
 officer standing there, named in `targetNotable` or `targetCommanderId` and

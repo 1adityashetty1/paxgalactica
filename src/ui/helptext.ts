@@ -36,6 +36,7 @@ import {
   CLASS_EXPOSURE_SHIFT,
   CLASS_SUCCESS_SHIFT,
   MISSION_CLASS,
+  GROUNDWORK_TURNS,
 } from '../domain/diplomacy.js';
 import { EXHAUSTION_INDEMNITY_SHARE, EXHAUSTION_RATIO, EXHAUSTION_RUNWAY_TURNS } from '../domain/leverage.js';
 import {
@@ -393,6 +394,17 @@ export function operativeLines(): string[] {
     ),
     '  Say what you want done in plain words — "put a watcher on Vantic" —',
     '  and the arbiter routes it here. The Agents tab tracks every one.',
+    '',
+    '  HOW IT IS DONE',
+    '  What the act achieves picks the mission; how you say it is done is its',
+    '  method. "Poison in the Governor\'s toast" is an assassination, by poison.',
+    '  A method can make it cheaper or dearer, easier or harder, quieter or',
+    '  louder, and deniable or liable to backfire if they are caught. Every',
+    '  advantage is paid for with a disadvantage.',
+    `  Groundwork is getting into position first: hired into the kitchens, on`,
+    `  the night watch. It is an action of its own, tells from the next turn,`,
+    `  and gives one later act there by the same operative a step on one of`,
+    `  those four, for up to ${GROUNDWORK_TURNS} turns.`,
   ];
 }
 

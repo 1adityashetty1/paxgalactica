@@ -207,9 +207,63 @@ are independent.
 
 Spying, sabotage, bribery, theft, turning an officer, planting a listener,
 assassination — however the player words it — is run by **operatives**, and the
-game has a mechanic for that. When the substance of the action is covert, set
-`covert` — **a list, with one entry for every covert operation the order
-contains**. An order that both assassinates a factor and steals from a treasury
+game has a mechanic for that.
+
+**Read a covert act in this order: outcome, then method, then target.**
+
+1. **The outcome picks the mission — never the words about how.** Ask what is
+   different in the world if it works:
+
+   | if it works… | mission |
+   |---|---|
+   | someone is dead | `assassination` |
+   | someone is held by you | `kidnapping` |
+   | a thing is yours, or a copy of it | `larceny` |
+   | credits flow to you each turn | `embezzlement` |
+   | you see their hidden work | `surveillance` |
+   | their stat or their institutions are worn down | `subversion` |
+   | two other powers are at odds | `discord` |
+   | a world turns on its holder | `incitement` |
+   | their crews serve you | `defection` |
+   | a notable warms to you, or an affair is proven | `seduction` |
+   | their hulls or a fixture are broken | `sabotage` |
+   | nothing yet — the operative is better placed for a LATER act | `groundwork` (below) |
+
+   "Forge a letter setting Drajk against the Vigil" is `discord`: the outcome is
+   two powers at odds, and the forging is only how. "Slip poison into the
+   Governor's toast" is `assassination`. Two outcomes are two entries, at most
+   two: "kill the governor and pin it on Drajk" is `assassination` and `discord`.
+
+2. **The method is everything about how** — poison, a forged letter, a bribe,
+   posing as a courier, a laundry hauler. Score it in `method`: its words in
+   `text`, and four axes, each −1, 0 or +1, from the player's side:
+   - `preparation`: +1 cheaper to arrange, −1 dearer;
+   - `ease`: +1 easier to pull off, −1 harder;
+   - `noise`: +1 quieter, −1 louder;
+   - `ifCaught`: +1 deniable, 0 traced to them, −1 it backfires on them.
+
+   Score what the method is actually like. The engine holds every method to a
+   budget — the four must sum to zero or less — so an honest score of a method
+   that is cheap and easy will show its cost on `ifCaught` or `noise`. Omit
+   `method` when the player described none.
+
+3. **Groundwork** is preparation for a later act by the same operative on the
+   same world: getting hired into the kitchens, onto the dock roster, owed a
+   favour by the watch. Put it in `groundwork`, not `covert`: the operative
+   (`agent`, by name, or omit for the nearest free one), `systemId`, the
+   player's words in `text`, the ONE `axis` it improves, and the `target` it is
+   aimed at, if any. It counts from the next turn. Price it as a modest `guile`
+   check; the danger lives in the act it prepares.
+
+4. **An outcome no mission produces** — smuggling a prisoner between worlds,
+   springing a captive, making proof out of nothing — goes in `unexpressed`, in
+   one sentence naming the outcome. It costs the player nothing, and it is how
+   the game learns which mission to add. **Never refuse covert work with a rule
+   you made up**: a refusal must cite a fact on the board above. Neither an
+   operative's class nor the distance they must travel is ever a reason.
+
+When the substance of the action is covert, set `covert` — **a list, with one
+entry for every covert operation the order contains**. An order that both assassinates a factor and steals from a treasury
 is two entries, and naming only one used to mean only one ever happened: the
 other was promised in prose and never came. Each entry:
 

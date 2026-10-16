@@ -1622,10 +1622,38 @@ export const AppraisalSchema = z.object({
          * player asked for.
          */
         target: absentWhenBlank(60),
+        /**
+         * How the player said it is done, scored on four axes of −1..+1 — see
+         * `MethodProfileSchema`. Omitted when they described no method.
+         */
+        method: MethodSchema.optional(),
       }),
     )
     .max(4)
     .optional(),
+  /**
+   * Preparation for a later act by the same operative — getting into
+   * position, not acting. See `GroundworkSchema`.
+   */
+  groundwork: z
+    .array(
+      z.object({
+        /** The operative, by name; omitted, the nearest awaiting orders. */
+        agent: absentWhenBlank(60),
+        systemId: z.string().min(1),
+        text: z.string().min(1).max(160),
+        axis: z.enum(METHOD_AXES),
+        target: absentWhenBlank(80),
+      }),
+    )
+    .max(2)
+    .optional(),
+  /**
+   * An outcome the player asked for that no mission produces. Stated rather
+   * than refused with an invented rule: the act is turned away without costing
+   * an action, and the reason is kept so the next mission comes from play.
+   */
+  unexpressed: absentWhenBlank(240),
   /**
    * This is a negotiation, not a decree: it needs another power to agree.
    *
@@ -1714,6 +1742,19 @@ export const ResolutionOutputSchema = ModelTurnOutputSchema.extend({
         mission: AgentMissionSchema,
         systemId: z.string(),
         target: absentWhenBlank(60),
+        method: MethodSchema.optional(),
+      }),
+    )
+    .optional(),
+  /** Set by the engine, never by the model: groundwork the arbiter ruled on. */
+  groundwork: z
+    .array(
+      z.object({
+        agent: absentWhenBlank(60),
+        systemId: z.string(),
+        text: z.string(),
+        axis: z.enum(METHOD_AXES),
+        target: absentWhenBlank(80),
       }),
     )
     .optional(),

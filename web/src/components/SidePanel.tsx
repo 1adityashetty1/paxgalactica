@@ -32,7 +32,7 @@ import { shortageFactor } from '../../../src/domain/events.js';
 import { EFFECT_COST, describeOrderEffect } from '../../../src/domain/development.js';
 import { describeEffect } from '../../../src/domain/diplomacy.js';
 import { CommanderIcon } from './BattleIcons.js';
-import { agentStanding, classFit, AGENT_CLASS_MEANING, CLASS_SUCCESS_SHIFT, type Agent } from '../../../src/domain/diplomacy.js';
+import { agentStanding, classFit, profileWords, AGENT_CLASS_MEANING, CLASS_SUCCESS_SHIFT, type Agent } from '../../../src/domain/diplomacy.js';
 import { agentRoster } from '../../../src/ui/agentroster.js';
 import { courtView, seatDoing, seatLabel } from '../../../src/ui/court.js';
 import { defaultEstate, emptySeats, listedFor, notableById, powerOf, seatedAt, seatsFor } from '../../../src/domain/seats.js';
@@ -2012,6 +2012,17 @@ function AgentCard({
       {note && <p className="meta">{note}</p>}
       {a.effect && !a.exposed && <p className="agent-effect">{describeEffect(a.effect)}</p>}
       {a.cover && <p className="meta">cover: {a.cover}</p>}
+      {mine && a.method && (
+        <p className="meta">
+          by {a.method.text} <span className="muted">· {profileWords(a.method.profile)}</span>
+        </p>
+      )}
+      {mine &&
+        a.groundwork?.map((g) => (
+          <p key={g.id} className="meta">
+            groundwork: {g.text} <span className="muted">· {g.axis}{g.madeTurn >= state.turn ? `, tells from turn ${g.madeTurn + 1}` : ''}</span>
+          </p>
+        ))}
       {record.length > 0 && <p className="muted">{record.join(' · ')}</p>}
       {action && (
         <button className="chip" onClick={action.onClick}>

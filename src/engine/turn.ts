@@ -606,6 +606,7 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     resolution.check?.outcome ?? 'success',
     resolution.output.covert,
     campaign.state.playerFactionId,
+    resolution.output.groundwork ?? [],
   );
 
   // Secret when the arbiter ruled it covert OR anything in it places an
@@ -614,7 +615,9 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
   // and its narrative is exactly the thing that told the Vigil it had been
   // targeted.
   const secret =
-    (resolution.output.covert?.length ?? 0) > 0 || routed.ops.some(isCovertOp);
+    (resolution.output.covert?.length ?? 0) > 0 ||
+    (resolution.output.groundwork?.length ?? 0) > 0 ||
+    routed.ops.some(isCovertOp);
 
   const staged = await stageWithCorrection(
     campaign,
@@ -1052,7 +1055,7 @@ export function groundInConcessions(
  */
 function isCovertOp(raw: unknown): boolean {
   const op = raw as { op?: unknown; dark?: unknown } | null;
-  return op?.op === 'deploy_agent' || (op?.op === 'issue_order' && op.dark === true);
+  return op?.op === 'deploy_agent' || op?.op === 'lay_groundwork' || (op?.op === 'issue_order' && op.dark === true);
 }
 
 export async function closeChannel(

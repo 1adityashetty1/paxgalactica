@@ -96,6 +96,7 @@ leaves a faction with nobody following it.
 | `break_treaty` | repudiate one; both parties' opinion of the breaker drops |
 | `recruit_agent` | take an operative off your Lists (`agent` by name, or `agentClass`) onto the books at a world you hold, awaiting orders — **an action of its own** |
 | `recall_agent` | withdraw an operative of yours; they go back on your Lists with their record |
+| `lay_groundwork` | get an operative into position for a later act (one `axis`, a `target`); usually laid by the engine from the arbiter's ruling |
 | `deploy_agent` | send one of your operatives on a mission to a system; they travel there |
 | `recall_agent` | withdraw one |
 | `establish_commitment` | record a lasting arrangement **the arbiter told you to** |
@@ -480,6 +481,12 @@ The `mission` decides risk and persistence: `surveillance` (very low risk),
 and `assassination` — **one attempt, quadruple effect, the operative spent
 either way, and usually caught.** Scale effects sanely: 2 hulls a turn is a
 nuisance, 12 is a catastrophe that should have taken a real operation.
+
+**A method and groundwork are the engine's, not yours.** When the arbiter
+scored a method or ruled groundwork, the engine attaches the method to the
+deployment and lays the groundwork itself; emit neither, and never charge a fee
+of your own for either. Narrate how it was done — the forged letter, the
+borrowed uniform, the new cook in the kitchens — and leave the numbers alone.
 
 **`larceny` is one attempt at a thing.** Effect `{ "kind": "steal", "assetId":
 <the asset's id or its name as the state block gives it>, "copy": false }`.

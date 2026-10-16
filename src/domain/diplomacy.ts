@@ -2329,6 +2329,16 @@ export const MethodSchema = z.object({
 });
 export type Method = z.infer<typeof MethodSchema>;
 
+/** A method profile as words: only the axes that move, from the player's side. */
+export function profileWords(p: { preparation: number; ease: number; noise: number; ifCaught: number }): string {
+  const parts: string[] = [];
+  if (p.preparation) parts.push(p.preparation > 0 ? 'cheaper' : 'dearer');
+  if (p.ease) parts.push(p.ease > 0 ? 'easier' : 'harder');
+  if (p.noise) parts.push(p.noise > 0 ? 'quieter' : 'louder');
+  if (p.ifCaught) parts.push(p.ifCaught > 0 ? 'deniable' : 'backfires if caught');
+  return parts.length > 0 ? parts.join(', ') : 'no different';
+}
+
 /** What a step on each axis is worth. */
 export const METHOD_PRICE_STEP = 0.25;
 export const METHOD_EASE_STEP = 10;
