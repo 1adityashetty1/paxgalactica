@@ -1954,9 +1954,10 @@ export type AgentMission = z.infer<typeof AgentMissionSchema>;
 /**
  * Which class each mission belongs to. **The rule for a new one**: a mission
  * that comes away with something — sight, money, proof, a thing — is a
- * ghost's; one that wears a power's stats, quarrels or people down is an
- * agitator's; one worked on a person is a sparrow's; one that breaks something
- * outright is a wetworker's. A `Record`, so a mission added without a class
+ * ghost's; one that wears a power down by working on the many from a
+ * distance — its stats, its quarrels, its crowds — is an agitator's; one that
+ * wins over a single person face to face is a sparrow's; one that breaks
+ * something outright is a wetworker's. A `Record`, so a mission added without a class
  * fails the typecheck.
  */
 export const MISSION_CLASS: Record<AgentMission, AgentClass> = {
@@ -1973,8 +1974,8 @@ export const MISSION_CLASS: Record<AgentMission, AgentClass> = {
 
 export const AGENT_CLASS_MEANING: Record<AgentClass, string> = {
   ghost: 'comes away with something: sight, money, proof — surveillance and theft',
-  agitator: 'wears a power down: its stats, its quarrels, its people — subversion, discord and incitement',
-  sparrow: 'works on people: crews and notables — defection and seduction',
+  agitator: 'stirs the many from a distance: a rumour, a forged letter, a crowd — subversion, discord and incitement',
+  sparrow: 'wins over one person, face to face: a captain, a notable, a lover — defection and seduction',
   wetworker: 'breaks things: a fleet, a fixture, a person — sabotage and assassination',
 };
 

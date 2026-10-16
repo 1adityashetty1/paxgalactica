@@ -783,8 +783,10 @@ export function stockOfficerLists(state: {
  * `classFit` in `diplomacy.ts`):
  *
  * - **ghosts** come away with something — sight, money, proof, a thing;
- * - **agitators** wear a power down — its stats, its quarrels, its people;
- * - **sparrows** work on people — crews, notables, a bed;
+ * - **agitators** stir the many from a distance — a rumour, a forged letter, a
+ *   crowd — and wear a power down by it;
+ * - **sparrows** win over one person face to face — a captain, a notable, a
+ *   lover;
  * - **wetworkers** break things — a fleet, a fixture, a person.
  *
  * A new mission is filed under the class whose rule it fits.

@@ -5964,9 +5964,10 @@ recruit's dice and froze the harness board at 6/4/6/5/4 for a reason that was
 not in the rules. With fresh ids all four boards stay 5/5/6/5/4.
 
 **And every operative has a class** (`AGENT_CLASSES`): **ghosts** come away with
-something — sight, money, proof (surveillance, theft); **agitators** wear a power
-down — its stats, its quarrels, its people (subversion, discord, incitement);
-**sparrows** work on people (defection, seduction); **wetworkers** break things
+something — sight, money, proof (surveillance, theft); **agitators** stir the many
+from a distance — a rumour, a forged letter, a crowd (subversion, discord,
+incitement); **sparrows** win over one person face to face — a captain, a
+notable, a lover (defection, seduction); **wetworkers** break things
 (sabotage, assassination). `MISSION_CLASS` files each mission, and is a
 `Record`, so a mission added later fails the typecheck until it is given a class
 by that rule. A class runs its own missions at `CLASS_SUCCESS_SHIFT` (+10) success
