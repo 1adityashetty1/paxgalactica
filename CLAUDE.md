@@ -1742,6 +1742,15 @@ the action economy prices it. A `trade_accord` deliberately does **not** waive
 tolls automatically: folding it into an existing type would hand the chip over
 for free.
 
+**A lift can be for a term.** `set_toll_policy` takes `forTurns`, and
+`whileTreaty` — a treaty type that must keep binding the two — and the powers it
+takes off the list go back on when the term runs out (`Faction.tollLifts`,
+restored in the tick after treaties lapse and before income). Without one, a
+lift agreed *"for five turns"* or *"while the accord holds"* could only be
+written as permanent (playtest 2026-10-15, B12). Any later policy supersedes a
+pending term, so a toll lifted for good is not quietly reimposed by an older
+one. No journal pin: no old journal carries a term.
+
 Three rules decide what is collected:
 
 - **Where.** A lane you charge either **crosses** your space or **ends** at a
@@ -1802,6 +1811,13 @@ be destroyed, which ends the order.
   argued for 1 so that raiding would not become "a second kind of blockade",
   which two turns does not: a blockade sits on the system and severs every lane
   through it. A mechanic that cannot be paid is not a faster version of itself.
+
+**A raid charges only where it lands.** The tick charged the raid's standing
+cost and logged *"continues to raid shipping"* against the world's holder
+without asking `raidLandsOn` — so a raid on a trade-accord partner, a protected
+power or a paymaster took nothing and still cost regard every turn (playtest
+2026-10-15, B15). It reads the same rule the income side does now. Journal
+version 22 (`LegacyRules.raidsLandOnly`).
 
 Blockades resolve **per beneficiary, not per lane**. Deciding it once for the
 whole route meant a smuggler only kept its trade when every other party could
@@ -4017,6 +4033,16 @@ rule deliberately did not do. It argued the exploit need not be reproduced, and
 for the adversarial run that found it that is true; but the rules move **six**
 of the 48 saves, one of them an ordinary campaign where a treaty follows from
 the move, and replay exists to reproduce what happened.
+
+**The cap belongs to the batch, and a treaty pays its own.** It was checked per
+op, so two +25 movements in one accord moved an opinion 50, and an accord that
+signed a treaty paid the treaty's goodwill and the narrated warmth on top —
+measured at 5 → 17 from the treaty and 42 with one narrated +25 (playtest
+2026-10-15, B11). Now each direction of each pair moves at most 25 over the
+whole batch, as the credits cap already did, and an accord that signs a treaty
+adds no narrated warmth between its parties; a cooling still lands. Journal
+version 22 (`LegacyRules.narrationCapPerBatch`), and only where the per-op cap
+itself applies.
 
 ### Dissent moves one way, on your own faction only
 
@@ -6460,7 +6486,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `adjust_ships` | `hull` picks the class — which to build, and which of *your own* to move. Taking another power's is suborning, and spends their loss order |
 | `adjust_credits` | floors at 0 |
 | `set_doctrine` | 1–240 chars; may move `warEthic`/`tradeEthic` and retire lines, charged in dissent; actor's own faction only |
-| `set_toll_policy` | who pays to cross your space; free, actor's own faction only. An accord may only **lift** a toll — adding one is `declared_only` |
+| `set_toll_policy` | who pays to cross your space; free, actor's own faction only. An accord may only **lift** a toll — adding one is `declared_only`. `forTurns` / `whileTreaty` make a lift temporary |
 | `consume_asset` | spend, release or destroy a thing you hold; draws an instrument's `uses` or stuff's `quantity`. Never a promissory note |
 | `play_note` | call in a promissory note you hold from another power; refused in war or when what it gives is already in force |
 | `establish_obligation` | **extraction-only** — a favour owed; binds the debtor, always weak |

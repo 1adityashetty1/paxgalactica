@@ -237,6 +237,16 @@ export const SetTollPolicyOp = z.object({
   factionId: z.string().min(1),
   /** Everyone charged for passage. Empty means the lanes are open to all. */
   targets: z.array(z.string().min(1)).max(8),
+  /**
+   * A toll lifted for a term rather than for good: the powers taken off the
+   * list go back on after this many turns. A lift with no term is permanent.
+   */
+  forTurns: z.number().int().min(1).max(30).optional(),
+  /**
+   * …or while a live treaty of this type binds this power to each power lifted
+   * — "while the accord holds". Both may be given; whichever ends first ends it.
+   */
+  whileTreaty: TreatyTypeSchema.optional(),
   reason: z.string().default(''),
 });
 

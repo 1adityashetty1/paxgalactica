@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createSeedState } from '../src/seed/scenario.js';
-import { applyOps } from '../src/domain/reducer.js';
+import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import { heldAs, listsOf, notableById, seatedAt } from '../src/domain/seats.js';
 import { ObligationSchema } from '../src/domain/diplomacy.js';
 import type { WorldState } from '../src/domain/state.js';
@@ -113,5 +113,94 @@ describe('a dissent line is its own power’s business (B7)', () => {
     const line = (st: WorldState) => st.eventLog.findLast((e) => e.text.includes('dissent'))!;
     expect(line(applyOps(s, [op], 'model', 'meridian').state).visibleTo).toEqual(['meridian']);
     expect(line(applyOps(s, [op], 'model', 'meridian', false, { privateDissent: false }).state).visibleTo).toBeNull();
+  });
+});
+
+describe('narrated regard is capped over the whole batch, and a treaty pays its own (B11)', () => {
+  const reg = (s: WorldState, a: string, b: string) => s.factions.find((f) => f.id === a)!.disposition[b] ?? 0;
+  const treaty = { op: 'form_treaty', treatyType: 'trade_accord', parties: ['meridian', 'freeworlds'], terms: {}, summary: 'x' } as OpInput;
+  const warm = (d: number) => ({ op: 'adjust_disposition', factionId: 'freeworlds', towardFactionId: 'meridian', delta: d, reason: 'a good talk' }) as OpInput;
+
+  it('adds no narrated warmth on top of a treaty between the same two', () => {
+    const s = createSeedState('meridian');
+    const only = reg(applyOps(s, [treaty], 'extraction', 'meridian', true).state, 'freeworlds', 'meridian');
+    expect(reg(applyOps(s, [treaty, warm(25)], 'extraction', 'meridian', true).state, 'freeworlds', 'meridian')).toBe(only);
+    expect(reg(applyOps(s, [treaty, warm(25)], 'extraction', 'meridian', true, { narrationCapPerBatch: false }).state, 'freeworlds', 'meridian')).toBe(only + 25);
+    // A cooling still lands.
+    expect(reg(applyOps(s, [treaty, warm(-10)], 'extraction', 'meridian', true).state, 'freeworlds', 'meridian')).toBe(only - 10);
+  });
+
+  it('cannot be stacked past the cap by saying it twice', () => {
+    const s = createSeedState('meridian');
+    const base = reg(s, 'freeworlds', 'meridian');
+    expect(reg(applyOps(s, [warm(25), warm(25)], 'extraction', 'meridian', true).state, 'freeworlds', 'meridian')).toBe(base + 25);
+    expect(reg(applyOps(s, [warm(15), warm(15)], 'model', 'meridian', true).state, 'freeworlds', 'meridian')).toBe(base + 25);
+  });
+});
+
+describe('a toll lifted for a term comes back (B12)', () => {
+  const lift = (s: WorldState, extra: Record<string, unknown>) =>
+    applyOps(s, [{ op: 'set_toll_policy', factionId: 'ojjul', targets: ['vigil', 'freeworlds', 'drajk'], ...extra } as OpInput], 'extraction', 'ojjul').state;
+  const charged = (s: WorldState) => s.factions.find((f) => f.id === 'ojjul')!.tollTargets;
+
+  it('after the turns named', () => {
+    let s = lift(createSeedState('meridian'), { forTurns: 2 });
+    expect(charged(s)).not.toContain('meridian');
+    s = tickTurn(s, { randomEvents: false }).state;
+    expect(charged(s)).not.toContain('meridian');
+    s = tickTurn(s, { randomEvents: false }).state;
+    expect(charged(s)).toContain('meridian');
+    expect(s.factions.find((f) => f.id === 'ojjul')!.tollLifts).toBeUndefined();
+  });
+
+  it('when the treaty it was lifted for ends', () => {
+    let s = createSeedState('meridian');
+    s = applyOps(
+      s,
+      [
+        { op: 'form_treaty', treatyType: 'trade_accord', parties: ['ojjul', 'meridian'], terms: {}, summary: 'x', durationTurns: 2 } as OpInput,
+        { op: 'set_toll_policy', factionId: 'ojjul', targets: ['vigil', 'freeworlds', 'drajk'], whileTreaty: 'trade_accord' } as OpInput,
+      ],
+      'extraction',
+      'ojjul',
+      true,
+    ).state;
+    expect(charged(s)).not.toContain('meridian');
+    s = tickTurn(s, { randomEvents: false }).state;
+    expect(charged(s)).not.toContain('meridian');
+    for (let i = 0; i < 3; i++) s = tickTurn(s, { randomEvents: false }).state;
+    expect(charged(s)).toContain('meridian');
+  });
+
+  it('and a lift with no term is for good, and supersedes a pending one', () => {
+    let s = lift(createSeedState('meridian'), {});
+    for (let i = 0; i < 4; i++) s = tickTurn(s, { randomEvents: false }).state;
+    expect(charged(s)).not.toContain('meridian');
+    s = lift(lift(createSeedState('meridian'), { forTurns: 1 }), {});
+    expect(s.factions.find((f) => f.id === 'ojjul')!.tollLifts).toBeUndefined();
+  });
+});
+
+describe('a raid on a power it cannot land on costs nothing and says nothing (B15)', () => {
+  it('leaves a trade-accord partner’s regard and the log alone', () => {
+    let s = createSeedState('drajk');
+    const target = s.systems.find(
+      (x) => x.controllerFactionId === 'ojjul' && x.hyperlaneEdges.some((e) => s.systems.find((y) => y.id === e)?.controllerFactionId === 'drajk'),
+    )!;
+    const from = s.systems.find((y) => target.hyperlaneEdges.includes(y.id) && y.controllerFactionId === 'drajk')!;
+    s = applyOps(s, [{ op: 'form_treaty', treatyType: 'trade_accord', parties: ['drajk', 'ojjul'], terms: {}, summary: 'x' } as OpInput], 'extraction', 'drajk').state;
+    s = applyOps(
+      s,
+      [{ op: 'issue_order', factionId: 'drajk', type: 'commerce_raiding', originId: from.id, targetId: target.id, durationTurns: 3, label: 'raid', durationRationale: 'x' } as OpInput],
+      'model',
+      'drajk',
+    ).state;
+    const regard = (st: WorldState) => st.factions.find((f) => f.id === 'ojjul')!.disposition['drajk'] ?? 0;
+    const run = (legacy = {}) => tickTurn(tickTurn(s, { randomEvents: false, ...legacy }).state, { randomEvents: false, ...legacy }).state;
+    const now = run();
+    expect(now.eventLog.some((e) => /raid shipping/.test(e.text))).toBe(false);
+    const old = run({ raidsLandOnly: false });
+    expect(old.eventLog.some((e) => /raid shipping/.test(e.text))).toBe(true);
+    expect(regard(now)).toBeGreaterThan(regard(old));
   });
 });

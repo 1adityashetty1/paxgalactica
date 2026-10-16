@@ -119,6 +119,8 @@ import {
   commissionsAgainst,
   openBountiesOn,
   type Bounty,
+  raidLandsOn,
+  type TreatyType,
 } from './diplomacy.js';
 import { HEAT_ANSWERED, HEAT_BLACKMAIL, HEAT_CAUGHT, HEAT_DECAY, HEAT_FOR_MISSION, HEAT_PACT_BROKEN, HEAT_PER_RAID, addHeat } from './heat.js';
 import { darkRaidSecret, describeSecret, secretLive, secretsAbout, sideStrength } from './leverage.js';
@@ -2832,6 +2834,15 @@ export interface LegacyRules {
    */
   agentLists?: boolean;
   /**
+   * A raid charges standing, heat and a log line only for powers it can land
+   * on (`raidLandsOn`), and a narrated movement in regard is capped per pair
+   * over the whole batch — and an accord that signs a treaty adds no narrated
+   * warmth to the pair it binds, since the treaty's goodwill already pays.
+   * Journal version 22.
+   */
+  raidsLandOnly?: boolean;
+  narrationCapPerBatch?: boolean;
+  /**
    * An estate loses `SEAT_VACATED_FAVOUR` when one of its notables leaves a
    * seat on its power's world, for any reason (`vacatedSeats`). Journal
    * version 22.
@@ -2991,6 +3002,7 @@ function applyOpsUnderRules(
     privateDissent = true,
     agentLists = true,
     seatLossCostsFavour = true,
+    narrationCapPerBatch = true,
   } = legacy;
   const state = cloneState(input);
   // Who holds office before the batch, so a seat emptied by it is charged.
@@ -3055,6 +3067,17 @@ function applyOpsUnderRules(
    */
   const spentOnNarrative = new Map<string, number>();
   const chargedByNarrative = new Map<string, number>();
+  // Narrated movement in regard this batch, per (from>toward) pair, against
+  // `MAX_NARRATIVE_DISPOSITION` — and the pairs a treaty in this batch binds,
+  // whose goodwill the treaty already pays. See the `adjust_disposition` case.
+  const narratedMoved = new Map<string, number>();
+  const treatyPairs = new Set<string>();
+  for (const raw of rawOps) {
+    const o = raw as { op?: unknown; parties?: unknown } | null;
+    if (o?.op === 'form_treaty' && Array.isArray(o.parties) && o.parties.length === 2) {
+      treatyPairs.add([...(o.parties as string[])].sort().join('|'));
+    }
+  }
   const subornedThisBatch = new Map<string, number>();
   /**
    * Hulls this batch has already put on the board, by faction and class.
@@ -3290,6 +3313,30 @@ function applyOpsUnderRules(
           const trimmed = `Trimmed a ${op.delta} swing in ${nameFor(state, op.factionId)}'s regard for ${nameFor(state, op.towardFactionId)} to ${delta}; no single act moves an opinion further.`;
           notes.push(trimmed);
           logEvent(state, 'clamp', trimmed, op.factionId);
+        }
+        if (narratedDisposition && narrationCapPerBatch && actor !== undefined) {
+          const pair = `${op.factionId}>${op.towardFactionId}`;
+          // An accord that signs a treaty between these two has paid them its
+          // goodwill already; narrating more warmth on top paid twice
+          // (playtest 2026-10-15, B11). A cooling still lands.
+          if (delta > 0 && source === 'extraction' && treatyPairs.has([op.factionId, op.towardFactionId].sort().join('|'))) {
+            const note = `The treaty's own goodwill is what ${nameFor(state, op.factionId)} takes from this accord; the narrated ${delta} more is not added.`;
+            notes.push(note);
+            logEvent(state, 'clamp', note, op.factionId);
+            break;
+          }
+          // The cap belongs to the batch, as the credits cap does: saying the
+          // same warmth twice is not twice the warmth.
+          const moved = narratedMoved.get(pair) ?? 0;
+          const room = Math.sign(delta) * MAX_NARRATIVE_DISPOSITION - moved;
+          const allowed = delta > 0 ? Math.max(0, Math.min(delta, room)) : Math.min(0, Math.max(delta, room));
+          if (allowed !== delta) {
+            const note = `${nameFor(state, op.factionId)}'s regard for ${nameFor(state, op.towardFactionId)} has moved as far as one act moves it; ${delta - allowed} of this is not added.`;
+            notes.push(note);
+            logEvent(state, 'clamp', note, op.factionId);
+            delta = allowed;
+          }
+          narratedMoved.set(pair, moved + delta);
         }
         const after = Math.max(-100, Math.min(100, before + delta));
         f.disposition[op.towardFactionId] = after;
@@ -5005,8 +5052,24 @@ function applyOpsUnderRules(
         // Nobody charges themselves for crossing their own space.
         const targets = [...new Set(op.targets.filter((id) => id !== op.factionId))].sort();
         const was = [...f.tollTargets].sort();
-        if (was.length === targets.length && was.every((id, i) => id === targets[i])) break;
+        const termed = op.forTurns !== undefined || op.whileTreaty !== undefined;
+        if (was.length === targets.length && was.every((id, i) => id === targets[i])) {
+          // The same list restated with no term makes a pending lift permanent.
+          if (!termed) delete f.tollLifts;
+          break;
+        }
         f.tollTargets = targets;
+        // A lift for a term goes back on when the term is up (journal version
+        // 22). Every new policy supersedes what was pending, so a toll lifted
+        // for good later is not quietly reimposed by an older term.
+        const lifted = was.filter((id) => !targets.includes(id));
+        if (termed && lifted.length > 0) {
+          f.tollLifts = lifted.map((id) => ({
+            factionId: id,
+            untilTurn: op.forTurns !== undefined ? state.turn + op.forTurns : null,
+            whileTreaty: op.whileTreaty ?? null,
+          }));
+        } else delete f.tollLifts;
         const nameList = (ids: string[]): string =>
           ids.length === 0 ? 'nobody' : ids.map((id) => nameFor(state, id)).join(', ');
         const note = `${f.name} charges ${nameList(targets)} for passage through its space (was ${nameList(was)}). ${op.reason}`.trim();
@@ -8707,6 +8770,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     wardsStay = true,
     agentLists = true,
     seatLossCostsFavour = true,
+    raidsLandOnly = true,
     arrangementStanding = true,
     hostages = true,
     peopleStanding = true,
@@ -9357,6 +9421,31 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     }
   }
 
+  /* --- A toll lifted for a term goes back on --------------------------- */
+  // After treaties lapse, so a lift agreed "while the accord holds" ends on the
+  // turn the accord does. Before income, so the toll is charged that turn.
+  for (const f of state.factions) {
+    if (!f.tollLifts || f.tollLifts.length === 0) continue;
+    const keep: NonNullable<typeof f.tollLifts> = [];
+    for (const lift of f.tollLifts) {
+      const timeUp = lift.untilTurn !== null && state.turn >= lift.untilTurn;
+      const treatyGone =
+        lift.whileTreaty !== null &&
+        !treatyBetween(state.treaties, state.turn, f.id, lift.factionId, [lift.whileTreaty as TreatyType]);
+      if (!timeUp && !treatyGone) {
+        keep.push(lift);
+        continue;
+      }
+      if (!f.tollTargets.includes(lift.factionId)) f.tollTargets = [...f.tollTargets, lift.factionId].sort();
+      const why = treatyGone ? `the ${lift.whileTreaty!.replace(/_/g, ' ')} it was lifted for is over` : 'the term it was lifted for has run';
+      const note = `${f.name} charges ${nameFor(state, lift.factionId)} for passage again: ${why}.`;
+      notes.push(note);
+      logEvent(state, 'diplomacy', note, f.id);
+    }
+    if (keep.length > 0) f.tollLifts = keep;
+    else delete f.tollLifts;
+  }
+
   /* --- Truces heal the war they ended, and run out ---------------------- */
   // Toward `TRUCE_FLOOR` and no further, so a truce lifts a shallow war out of
   // war and leaves a deep one still at war when it ends — and above the floor
@@ -9451,6 +9540,14 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     const victims = new Set<string>();
     if (target.controllerFactionId && target.controllerFactionId !== order.factionId) {
       victims.add(target.controllerFactionId);
+    }
+    // A raid takes nothing from a power it cannot land on — a trade-accord
+    // partner, one it protects, one that commissioned it — so it costs nothing
+    // with them and says nothing about raiding them (playtest 2026-10-15, B15).
+    // The income side always read `raidLandsOn`; this did not. Journal version
+    // 22 (`LegacyRules.raidsLandOnly`).
+    if (order.type === 'commerce_raiding' && raidsLandOnly) {
+      for (const v of [...victims]) if (!raidLandsOn(state.treaties, state.turn, order.factionId, v)) victims.delete(v);
     }
     if (order.type === 'blockade') {
       for (const route of tradeRoutes(state)) {

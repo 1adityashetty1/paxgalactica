@@ -160,6 +160,10 @@ effect at once — *"the Sennex lane opens to Meridian hulls"*. Imposing a toll
 needs nobody's agreement, so the reducer refuses an accord that adds a target;
 that is a declared action. `targets` replaces the whole list, so emit the list
 the acting power is left charging after the deal, not the names it dropped.
+**A lift for a term carries the term**: `forTurns` for *"for five turns"*, and
+`whileTreaty` (a treaty type) for *"while the accord holds"* — the toll comes
+back on its own when it runs out. Without either, the lift is for good, so do
+not drop a term the parties named.
 
 Everything else is **unilateral work the player pays an action for**, and the
 reducer refuses it from here — orders of every kind, building hulls, placing
@@ -218,9 +222,11 @@ Specifically:
 
 - `adjust_disposition` — almost always. Even a failed conversation moves
   opinion; an insulting one moves it down. Scale it: a warm exchange with no
-  deal is +3 to +8, a real treaty is +15 to +30, an ultimatum delivered and
-  refused can be −20 or worse. Apply it in **both directions** where both
-  sides' feelings changed.
+  deal is +3 to +8, an ultimatum delivered and refused can be −20 or worse.
+  Apply it in **both directions** where both sides' feelings changed. **A
+  treaty pays its own goodwill**, so when the accord signs one, add no warmth
+  between those two — the reducer drops it — and only a cooling still lands.
+  One move per direction: ±25 is the most a whole accord moves an opinion.
 - **No orders of any kind.** An order is unilateral work the player pays an
   action for, so the reducer refuses every `issue_order` from this pass — not
   just `fleet_movement`. A conversation that commits a power to building,
