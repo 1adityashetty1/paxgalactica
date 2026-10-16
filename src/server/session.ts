@@ -605,7 +605,7 @@ export class GameSession {
    * board the counsellor would read is not the board that will exist once the
    * accord lands.
    */
-  async advisor(): Promise<AdvisorOutcomeResponse> {
+  async advisor(question?: string): Promise<AdvisorOutcomeResponse> {
     const campaign = this.requirePlayable();
     if (this.openChannel) {
       throw new ApiFailure(
@@ -627,7 +627,7 @@ export class GameSession {
     }
 
     const result = await this.traced('advisor', () =>
-      this.exclusive('Consulting', () => askAdvisor(campaign.state)),
+      this.exclusive('Consulting', () => askAdvisor(campaign.state, campaign.state.playerFactionId, question)),
     );
     campaign.spendActionPoint();
     this.pushState();

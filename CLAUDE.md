@@ -7865,6 +7865,15 @@ a refusal, which also produces nothing and is also spent. Checked before the
 call, so running out of turn is free to discover, and the point is spent *after*
 the counsel arrives, so a failed call charges nothing.
 
+**A question can ride on the same action.** `/advisor <question>` — *"what is
+the best way to take Vantic with minimal losses?"* — puts the leader's words in
+front of the counsellor (`AdvisorRequestSchema`, trimmed and capped at 400),
+and `/advisor` alone asks the standing question as before. Same price, same
+answer length, and the same rule: a question that asks for a plan is answered
+with what bears on it — what holds the place, what it costs, who would answer —
+never the order of march, and `looksLikeAPlan` still refuses an enumeration.
+The words are quoted as the leader's question, never read as instructions.
+
 ### It must not become a solver, and that is enforced structurally
 
 Advice that names the optimal line turns a campaign into a queue of

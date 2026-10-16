@@ -80,7 +80,9 @@ export function App() {
         case 'advisor':
         case 'advise':
         case 'counsel':
-          await game.advisor();
+          // Anything after the command is a question for the counsellor; with
+          // nothing after it they say what is worrying them.
+          await game.advisor(arg);
           return;
         case 'endturn':
           await game.endTurn();

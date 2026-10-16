@@ -223,6 +223,7 @@ const COMMANDS = [
   'COMMANDS',
   '  (free text)      declare an action — it lands when you end the turn',
   '  /advisor         ask your own counsellor what they are worried about',
+  '  /advisor <ask>   or put a question to them: /advisor can we hold Vantic?',
   '                   — costs one of your two actions, like anything else',
   '  /talk <faction>  open a diplomatic channel',
   '  /endtalk         close it — only then is anything you agreed made real',

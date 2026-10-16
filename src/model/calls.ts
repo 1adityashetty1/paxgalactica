@@ -1244,9 +1244,17 @@ export type AdvisorReply = z.infer<typeof AdvisorReplySchema>;
 export async function askAdvisor(
   state: WorldState,
   viewerId: string = state.playerFactionId,
+  /**
+   * What the leader asked, in their own words, or nothing for the standing
+   * question. A question is answered within the same rule as everything else
+   * the counsellor says: what bears on it, never the steps — "how do I take
+   * Vantic" is answered with what holds Vantic, not with an order of march.
+   */
+  question?: string,
 ): Promise<{ counsel: string; attempts: number; costUsd: number }> {
   const faction = getFaction(state, viewerId);
   if (!faction) throw new Error(`No faction ${viewerId}`);
+  const asked = question?.trim();
 
   const res = await callStructured({
     kind: 'advisor',
@@ -1273,7 +1281,19 @@ export async function askAdvisor(
       '',
       '---',
       '',
-      `Speak to the ${faction.title}. Name what is pressing, in your own voice. Do not tell them what to do.`,
+      ...(asked
+        ? [
+            '## Your leader asks',
+            '',
+            // Quoted as the leader's words, never as instructions to you: it
+            // changes what you speak to, not how you are allowed to answer.
+            `> ${asked.replace(/\n+/g, ' ')}`,
+            '',
+            `Answer the ${faction.title}'s question, in your own voice. Name what bears on it — what stands in the way, what it would cost, who would answer — and do not lay out the steps.`,
+          ]
+        : [
+            `Speak to the ${faction.title}. Name what is pressing, in your own voice. Do not tell them what to do.`,
+          ]),
     ].join('\n'),
     schema: AdvisorReplySchema,
   });
