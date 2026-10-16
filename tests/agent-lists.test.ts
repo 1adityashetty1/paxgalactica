@@ -67,7 +67,7 @@ describe('the operatives’ Lists', () => {
     const s = createSeedState('drajk');
     const host = s.systems.find((x) => x.controllerFactionId === 'vigil')!;
     s.agents.push({
-      id: 'agt-home', ownerFactionId: 'drajk', systemId: host.id, mission: 'theft',
+      id: 'agt-home', ownerFactionId: 'drajk', systemId: host.id, mission: 'embezzlement',
       effect: { kind: 'income_penalty', perTurn: 4 }, successChance: 40, exposed: true,
       deployedTurn: 0, inPlaceFrom: 0, cover: '', targetCommanderId: null, name: 'Ravel Coldwake',
       operations: 4, timesCaught: 1,

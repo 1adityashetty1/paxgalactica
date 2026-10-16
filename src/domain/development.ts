@@ -848,12 +848,17 @@ export function routeCovertAction(
         ownerFactionId: actor,
         systemId: c.systemId,
         mission: c.mission,
-        effect: DEFAULT_COVERT_EFFECT[c.mission],
+        // A larceny's target is the THING, by the name the player used; the
+        // reducer matches it against what is held on that world.
+        effect:
+          c.mission === 'larceny' && c.target
+            ? { kind: 'steal', assetId: c.target, copy: false }
+            : DEFAULT_COVERT_EFFECT[c.mission],
         cover: 'placed by a covert operation the arbiter ruled on',
         // Carried through as the player wrote it; `resolveCommander` in the
         // reducer turns it into an id. Dropping it here was how a routed
         // assassination came out aimed at nobody in particular.
-        targetCommanderId: c.target ?? null,
+        targetCommanderId: c.mission === 'larceny' ? null : (c.target ?? null),
         // A notable can be the mark too — courted, turned or killed. The
         // reducer tries the name against the notables seated there first.
         ...(c.target && (c.mission === 'seduction' || c.mission === 'subversion' || c.mission === 'assassination')

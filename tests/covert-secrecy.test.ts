@@ -38,7 +38,7 @@ vi.mock('../src/model/client.js', () => ({
                 {
                   op: 'deploy_agent',
                   systemId: 'tor-3',
-                  mission: 'theft',
+                  mission: 'embezzlement',
                   effect: { kind: 'income_penalty', perTurn: 5 },
                   cover: 'a chandler',
                 },

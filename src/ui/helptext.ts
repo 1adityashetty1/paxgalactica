@@ -354,7 +354,8 @@ export function wrap(text: string, indent = '  ', width = 76): string[] {
  */
 const MISSION_JOB: Record<AgentMission, string> = {
   surveillance: 'watches a world: hidden work there shows',
-  theft: 'skims credits off the world it sits on',
+  embezzlement: 'skims credits off the world it sits on',
+  larceny: 'steals one thing there, or copies paper',
   subversion: 'wears down a stat, or turns a notable',
   sabotage: 'wrecks hulls and fixtures',
   defection: 'talks crews into your service',

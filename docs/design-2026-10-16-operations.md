@@ -2,6 +2,33 @@
 
 Draft for review, 2026-10-16. Follows `docs/playtest-2026-10-16-operative-freedom.md`.
 
+## Revised 2026-10-16, after review
+
+Two decisions narrow what follows.
+
+**1. An act with one specific object is a one-shot mission, not an operation.** `larceny` is built: one attempt at a named thing
+held on a world, the original or a copy of paper, after which the operative is free again. **Kidnapping is next**, on the same
+pattern: one attempt to seize a named person standing on that world (a notable, an officer) and hold them on a world the actor
+holds. The missions now come in two shapes:
+
+| shape | missions | the object |
+|---|---|---|
+| **standing**, every turn until recalled or caught | surveillance, embezzlement, subversion, sabotage, defection, discord, incitement, seduction | a world or a power |
+| **one-shot**, one attempt | larceny, assassination, kidnapping (next) | a named thing or person |
+
+That absorbs `take_asset`, `copy_paper`, `take_person` and `strike` from the verb table below. (`theft` is renamed
+`embezzlement`; old journals read the old name.)
+
+**2. Forgery is a method, not an act.** A forged letter means nothing on its own; it is *how* a mission is done: discord through
+forged correspondence, subversion through a forged order, a blackmail hook from fabricated proof. So forgery attaches to a
+mission and changes how it plays. It is easier to arrange than the real thing, and worse if it is exposed: a forgery caught is
+traced to its author and turns the effect against them. The same is likely true of impersonation and bribery, which are methods
+of reaching a person rather than outcomes.
+
+So an operation is reduced to what is neither a standing job, nor a one-shot at an object, nor a method. What remains of the
+verb table (`move_held`, `frame`, `win_over`, `turn_operative`, `spring`, `next_fight`) should be re-sorted under the same test
+before anything else is built.
+
 ## The problem
 
 The player has no piece on the board. Operatives are meant to be their hands in the world, the way a character is in a tabletop

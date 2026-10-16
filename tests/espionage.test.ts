@@ -104,7 +104,7 @@ describe('an operative can actually be caught', () => {
   // match the work; the alternative is a test that fails on a busy machine and
   // teaches everyone to re-run it.
   it('catches every persistent mission within a long run', () => {
-    for (const mission of ['surveillance', 'theft', 'sabotage', 'defection'] as const) {
+    for (const mission of ['surveillance', 'embezzlement', 'sabotage', 'defection'] as const) {
       const { exposed } = run(mission, 40);
       expect(exposed, `${mission} was never exposed in 40 turns`).toBeGreaterThan(0);
     }
@@ -305,7 +305,7 @@ describe('a thief receives what it steals', () => {
     s.agents = [
       {
         id: 'a1', ownerFactionId: 'meridian', targetFactionId: 'vigil',
-        systemId: 'tor-3', mission: 'theft',
+        systemId: 'tor-3', mission: 'embezzlement',
         effect: { kind: 'income_penalty', perTurn: 10 },
         cover: 'a factor',
         targetCommanderId: null, name: '', operations: 0, timesCaught: 0, deployedTurn: 0, inPlaceFrom: 0, exposed: false, successChance: 50,
@@ -343,7 +343,7 @@ describe('a thief receives what it steals', () => {
 describe('every covert operation in one declaration is routed', () => {
   const both = [
     { mission: 'assassination' as const, systemId: 'ilv-6' },
-    { mission: 'theft' as const, systemId: 'ilv-2' },
+    { mission: 'embezzlement' as const, systemId: 'ilv-2' },
   ];
 
   it('places one operative per operation named', () => {
@@ -354,7 +354,7 @@ describe('every covert operation in one declaration is routed', () => {
     expect(placed).toHaveLength(2);
     expect(placed.map((p) => `${p.mission}@${p.systemId}`).sort()).toEqual([
       'assassination@ilv-6',
-      'theft@ilv-2',
+      'embezzlement@ilv-2',
     ]);
     expect(out.notes).toHaveLength(2);
   });
@@ -378,7 +378,7 @@ describe('every covert operation in one declaration is routed', () => {
     const placed = out.ops.filter((op) => (op as { op?: string }).op === 'deploy_agent');
     expect(placed).toHaveLength(2);
     expect(out.notes).toHaveLength(1);
-    expect(out.notes[0]).toMatch(/theft/);
+    expect(out.notes[0]).toMatch(/embezzlement/);
   });
 
   it('places nobody at all when the attempt failed', () => {
@@ -410,7 +410,7 @@ describe('a private entry is written private', () => {
           op: 'deploy_agent',
           ownerFactionId: 'drajk',
           systemId: target.id,
-          mission: 'theft',
+          mission: 'embezzlement',
           effect: { kind: 'income_penalty', perTurn: 8 },
         },
       ],
@@ -673,7 +673,7 @@ describe('an operative gets better, and being caught is permanent', () => {
     const host = s.systems.find((x) => x.controllerFactionId === 'vigil')!;
     s.agents.push({
       id: 'agt-home', ownerFactionId: 'drajk', systemId: host.id,
-      mission: 'theft', effect: { kind: 'income_penalty', perTurn: 4 },
+      mission: 'embezzlement', effect: { kind: 'income_penalty', perTurn: 4 },
       successChance: 40, exposed: true, deployedTurn: 0, inPlaceFrom: 0, cover: '',
       targetCommanderId: null, name: 'Ravel Coldwake',
       operations: AGENT_VETERAN_THRESHOLDS[1], timesCaught: 1,
@@ -690,7 +690,7 @@ describe('an operative gets better, and being caught is permanent', () => {
       [
         { op: 'recruit_agent', systemId: 'ilv-6', fromAssetId: 'ast-home' } as OpInput,
         {
-          op: 'deploy_agent', agent: 'agt-home', systemId: host.id, mission: 'theft',
+          op: 'deploy_agent', agent: 'agt-home', systemId: host.id, mission: 'embezzlement',
           effect: { kind: 'income_penalty', perTurn: 4 },
         } as OpInput,
       ],
@@ -702,7 +702,7 @@ describe('an operative gets better, and being caught is permanent', () => {
     );
     expect(out.rejections).toHaveLength(0);
     const back = out.state.agents.find((a) => a.id === 'agt-home')!;
-    expect(back.mission).toBe('theft');
+    expect(back.mission).toBe('embezzlement');
     // Off the exposed list — a face the enemy caught is not a person who has
     // stopped existing.
     expect(back.exposed).toBe(false);
@@ -719,7 +719,7 @@ describe('an operative gets better, and being caught is permanent', () => {
     const host = s.systems.find((x) => x.controllerFactionId === 'vigil')!;
     s.agents.push({
       id: 'agt-home', ownerFactionId: 'drajk', systemId: host.id,
-      mission: 'theft', effect: { kind: 'income_penalty', perTurn: 4 },
+      mission: 'embezzlement', effect: { kind: 'income_penalty', perTurn: 4 },
       successChance: 40, exposed: true, deployedTurn: 0, inPlaceFrom: 0, cover: '',
       targetCommanderId: null, name: 'Ravel Coldwake',
       operations: AGENT_VETERAN_THRESHOLDS[1], timesCaught: 1,
@@ -761,7 +761,7 @@ describe('an operative gets better, and being caught is permanent', () => {
     const host = s.systems.find((x) => x.controllerFactionId === 'vigil')!;
     s.agents.push({
       id: 'agt-theirs', ownerFactionId: 'meridian', systemId: host.id,
-      mission: 'theft', effect: { kind: 'income_penalty', perTurn: 4 },
+      mission: 'embezzlement', effect: { kind: 'income_penalty', perTurn: 4 },
       successChance: 40, exposed: true, deployedTurn: 0, inPlaceFrom: 0, cover: '',
       targetCommanderId: null, name: 'Odile Brandt', operations: 3, timesCaught: 1,
     });
@@ -790,7 +790,7 @@ describe('an operative gets better, and being caught is permanent', () => {
     const s = createSeedState('drajk');
     s.agents.push({
       id: 'agt-ours', ownerFactionId: 'drajk', systemId: 'ilv-6',
-      mission: 'theft', effect: { kind: 'income_penalty', perTurn: 4 },
+      mission: 'embezzlement', effect: { kind: 'income_penalty', perTurn: 4 },
       successChance: 40, exposed: true, deployedTurn: 0, inPlaceFrom: 0, cover: '',
       targetCommanderId: null, name: 'Kess Skeln', operations: 2, timesCaught: 1,
     });

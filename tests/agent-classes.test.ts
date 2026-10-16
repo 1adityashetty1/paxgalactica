@@ -33,7 +33,7 @@ describe('operative classes', () => {
     for (const m of AGENT_MISSIONS) expect(AGENT_CLASSES).toContain(MISSION_CLASS[m]);
     for (const c of AGENT_CLASSES) expect(AGENT_MISSIONS.some((m) => MISSION_CLASS[m] === c)).toBe(true);
     expect(MISSION_CLASS).toMatchObject({
-      surveillance: 'ghost', theft: 'ghost',
+      surveillance: 'ghost', embezzlement: 'ghost', larceny: 'ghost',
       subversion: 'agitator', discord: 'agitator', incitement: 'agitator',
       defection: 'sparrow', seduction: 'sparrow',
       assassination: 'wetworker', sabotage: 'wetworker',

@@ -213,7 +213,10 @@ contains**. An order that both assassinates a factor and steals from a treasury
 is two entries, and naming only one used to mean only one ever happened: the
 other was promised in prose and never came. Each entry:
 
-- `mission` — `surveillance` (watch, quietest), `theft` (siphon credits),
+- `mission` — `surveillance` (watch, quietest), `embezzlement` (skim credits
+  every turn), `larceny` (ONE attempt to steal a named thing held on that world —
+  drawings, a ledger, a crate, a seal — or a copy of paper, then the operative is
+  free again; name the thing in `target`),
   `subversion` (erode a stat, or turn a named notable against their holder),
   `sabotage` (destroy hulls), `defection` (turn crews), `incitement` (stir a
   world another power holds against it — far harder on that power's home
@@ -236,7 +239,8 @@ other was promised in prose and never came. Each entry:
   the state block above. **A notable is a person too** — the `seats:` line under
   each world names who sits it; write their name the same way. A `seduction`
   must name one. Omit it when the operation is aimed at a power rather than at
-  a person — a theft from a treasury has no target.
+  a person — embezzling from a treasury has no target. For `larceny`, `target`
+  is the THING, as the state block names it.
 
 Four at most. Each is charged, capped and exposed on its own, and each needs an
 operative the power already has — recruiting one is an action of its own, so a

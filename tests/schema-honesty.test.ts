@@ -60,7 +60,7 @@ const HONEST: Record<string, { schema: z.ZodType; answers: Record<string, unknow
       'a covert act aimed at nobody': {
         stat: 'guile',
         difficulty: 14,
-        covert: [{ mission: 'theft', systemId: 'tor-3', target: '' }],
+        covert: [{ mission: 'embezzlement', systemId: 'tor-3', target: '' }],
       },
     },
   },
@@ -68,7 +68,7 @@ const HONEST: Record<string, { schema: z.ZodType; answers: Record<string, unknow
     schema: ops.ResolutionOutputSchema,
     answers: {
       'nothing to emit': { narrative: 'Nothing moves.' },
-      'a covert act aimed at nobody': { narrative: 'n', covert: [{ mission: 'theft', systemId: 'tor-3', target: '' }] },
+      'a covert act aimed at nobody': { narrative: 'n', covert: [{ mission: 'embezzlement', systemId: 'tor-3', target: '' }] },
     },
   },
   ReactionSchema: {

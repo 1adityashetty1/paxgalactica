@@ -2188,7 +2188,7 @@ describe('the officer on the field', () => {
         const s = fresh();
         s.agents.push({
           id: 'agt-held', ownerFactionId: 'drajk', systemId: 'ilv-6',
-          mission: 'theft', effect: { kind: 'income_penalty', perTurn: 4 },
+          mission: 'embezzlement', effect: { kind: 'income_penalty', perTurn: 4 },
           successChance: 50, exposed: true, deployedTurn: 0, inPlaceFrom: 0, cover: '',
           targetCommanderId: null,
           name: 'Aleska Halfshare', operations: 0, timesCaught: 0,

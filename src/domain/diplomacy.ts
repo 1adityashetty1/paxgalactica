@@ -1941,15 +1941,23 @@ export const AGENT_MISSIONS = [
   'sabotage',
   'surveillance',
   'subversion',
-  'theft',
+  'embezzlement',
+  'larceny',
   'defection',
   'discord',
   'incitement',
   'assassination',
   'seduction',
 ] as const;
-export const AgentMissionSchema = z.enum(AGENT_MISSIONS);
-export type AgentMission = z.infer<typeof AgentMissionSchema>;
+/**
+ * `embezzlement` was called `theft` until journal version 22, which read as
+ * stealing a thing when it was skimming credits a turn; stealing a thing is
+ * `larceny`. A save or journal that says `theft` reads as embezzlement.
+ */
+export const AgentMissionSchema = z
+  .enum([...AGENT_MISSIONS, 'theft'])
+  .transform((m): (typeof AGENT_MISSIONS)[number] => (m === 'theft' ? 'embezzlement' : m));
+export type AgentMission = (typeof AGENT_MISSIONS)[number];
 
 /**
  * Which class each mission belongs to. **The rule for a new one**: a mission
@@ -1962,7 +1970,8 @@ export type AgentMission = z.infer<typeof AgentMissionSchema>;
  */
 export const MISSION_CLASS: Record<AgentMission, AgentClass> = {
   surveillance: 'ghost',
-  theft: 'ghost',
+  embezzlement: 'ghost',
+  larceny: 'ghost',
   subversion: 'agitator',
   discord: 'agitator',
   incitement: 'agitator',
@@ -1973,7 +1982,7 @@ export const MISSION_CLASS: Record<AgentMission, AgentClass> = {
 };
 
 export const AGENT_CLASS_MEANING: Record<AgentClass, string> = {
-  ghost: 'comes away with something: sight, money, proof — surveillance and theft',
+  ghost: 'comes away with something: sight, money, a thing — surveillance, embezzlement and larceny',
   agitator: 'stirs the many from a distance: a rumour, a forged letter, a crowd — subversion, discord and incitement',
   sparrow: 'wins over one person, face to face: a captain, a notable, a lover — defection and seduction',
   wetworker: 'breaks things: a fleet, a fixture, a person — sabotage and assassination',
@@ -1995,14 +2004,31 @@ export function classFit(agentClass: AgentClass | undefined, mission: AgentMissi
 }
 
 /** The chance in twenty a failed turn gets this operative caught, by mission and class. */
-export function exposureRiskOf(agent: { agentClass?: AgentClass }, mission: AgentMission): number {
-  return Math.max(1, MISSION_PROFILE[mission].exposureRisk - classFit(agent.agentClass, mission) * CLASS_EXPOSURE_SHIFT);
+export function exposureRiskOf(
+  agent: { agentClass?: AgentClass; effect?: AgentEffect | null },
+  mission: AgentMission,
+): number {
+  const copying = agent.effect?.kind === 'steal' && agent.effect.copy ? 1 : 0;
+  return Math.max(1, MISSION_PROFILE[mission].exposureRisk - classFit(agent.agentClass, mission) * CLASS_EXPOSURE_SHIFT - copying);
 }
+
+/**
+ * The effects each mission may carry; anything else is replaced with the
+ * mission's default (`DEFAULT_COVERT_EFFECT`). A playtest found `theft` written
+ * with a watcher's `intel` three times in three, so no theft ever took money.
+ * Only the missions whose effect is their whole meaning are held to it.
+ */
+export const MISSION_EFFECTS: Partial<Record<AgentMission, readonly AgentEffect['kind'][]>> = {
+  embezzlement: ['income_penalty'],
+  larceny: ['steal'],
+};
 
 export const AGENT_MISSION_MEANING: Record<AgentMission, string> = {
   surveillance:
     'reveals the target\'s hidden orders on this system; no damage, and the quietest mission there is',
-  theft: 'siphons credits from the system it sits on, every turn it succeeds',
+  embezzlement: 'skims credits from the system it sits on, every turn it succeeds',
+  larceny:
+    'ONE attempt to steal a named thing held on this world — a chart, a crate, a seal, a ledger. Take the original and it is yours and theirs no longer; take a COPY of paper and they keep it, you get a dossier, and it is quieter. Then the operative is back awaiting orders',
   subversion: 'erodes a named stat while in place — the target governs, fights or builds worse',
   sabotage: 'destroys fleet strength every turn it succeeds; loud, and easier to trace',
   defection:
@@ -2039,7 +2065,10 @@ export const AGENT_MISSION_MEANING: Record<AgentMission, string> = {
  */
 export const AGENT_COST: Record<AgentMission, number> = {
   surveillance: 40,
-  theft: 60,
+  embezzlement: 60,
+  // Sabotage's price for one attempt at a thing, then the operative is free:
+  // dearer than a turn of skimming, cheaper than a knife.
+  larceny: 70,
   subversion: 60,
   defection: 80,
   sabotage: 80,
@@ -2068,7 +2097,11 @@ export interface MissionProfile {
 
 export const MISSION_PROFILE: Record<AgentMission, MissionProfile> = {
   surveillance: { exposureRisk: 1, oneShot: false, effectMultiplier: 1 },
-  theft: { exposureRisk: 2, oneShot: false, effectMultiplier: 1 },
+  embezzlement: { exposureRisk: 2, oneShot: false, effectMultiplier: 1 },
+  // One attempt, and not spent: the operative is back awaiting orders after it,
+  // win or lose — see the agent pass. Sabotage's risk for the original; a copy
+  // is a point quieter (`exposureRiskOf`).
+  larceny: { exposureRisk: 3, oneShot: false, effectMultiplier: 1 },
   subversion: { exposureRisk: 2, oneShot: false, effectMultiplier: 1 },
   sabotage: { exposureRisk: 3, oneShot: false, effectMultiplier: 1 },
   // Riskier than theft — you are talking to people who may report you — but
@@ -2196,6 +2229,17 @@ export const AgentEffectSchema = z.discriminatedUnion('kind', [
    * world — whatever the estate's real favour. See `seats.ts`.
    */
   z.object({ kind: z.literal('turn_notable') }),
+  z.object({
+    /**
+     * `larceny`: one attempt at a portable thing a rival holds on this world.
+     * `assetId` names it, or the one worth most to the thief comes. `copy`
+     * takes a copy of paper — a dossier for the thief, the original left — and
+     * is a point quieter.
+     */
+    kind: z.literal('steal'),
+    assetId: z.string().min(1).nullable().default(null),
+    copy: z.boolean().default(false),
+  }),
   /** A seduction's effect: the notable's world warms to the seducer, and proof of the affair follows. */
   z.object({ kind: z.literal('seduce') }),
 ]);
@@ -2211,7 +2255,9 @@ export type AgentEffect = z.infer<typeof AgentEffectSchema>;
  */
 export const DEFAULT_COVERT_EFFECT: Record<AgentMission, AgentEffect> = {
   surveillance: { kind: 'intel', revealsOrders: true },
-  theft: { kind: 'income_penalty', perTurn: 10 },
+  embezzlement: { kind: 'income_penalty', perTurn: 10 },
+  // Whatever is worth most to the thief on that world, the original.
+  larceny: { kind: 'steal', assetId: null, copy: false },
   subversion: { kind: 'stat_debuff', stat: 'industry', magnitude: 1 },
   sabotage: { kind: 'hull_damage', perTurn: 2 },
   defection: { kind: 'crew_defection', perTurn: 1 },
@@ -2421,6 +2467,8 @@ export function describeEffect(effect: AgentEffect): string {
       return 'the notable works against their holder, whatever their estate thinks';
     case 'seduce':
       return 'the notable\'s world warms to you, and proof of the affair follows';
+    case 'steal':
+      return effect.copy ? 'copies a document held there, once' : 'steals a thing held there, once';
   }
 }
 

@@ -379,6 +379,8 @@ export function replay(
     narrationCapPerBatch: parsed.version >= 22,
     // Two sends of one operative in a batch both charged and the second won.
     oneOrderPerOperative: parsed.version >= 22,
+    // A theft could be written with any effect, and was written as a watcher.
+    missionEffectsHeld: parsed.version >= 22,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

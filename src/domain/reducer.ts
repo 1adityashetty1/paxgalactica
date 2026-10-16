@@ -123,12 +123,17 @@ import {
   type TreatyType,
   classFit,
   exposureRiskOf,
+  MISSION_EFFECTS,
+  DEFAULT_COVERT_EFFECT,
+  describeEffect,
+  type AgentEffect,
+  assetWorthTo,
   CLASS_SUCCESS_SHIFT,
   type AgentMission,
 } from './diplomacy.js';
 import { HEAT_ANSWERED, HEAT_BLACKMAIL, HEAT_CAUGHT, HEAT_DECAY, HEAT_FOR_MISSION, HEAT_PACT_BROKEN, HEAT_PER_RAID, addHeat } from './heat.js';
 import { darkRaidSecret, describeSecret, secretLive, secretsAbout, sideStrength } from './leverage.js';
-import { ASSET_ARCHETYPES, archetypeFor, fixtureYieldFor } from './assets.js';
+import { ASSET_ARCHETYPES, PAPER_KINDS, PEOPLE_KINDS, archetypeFor, fixtureYieldFor } from './assets.js';
 import { CHEAT_ASSET_QUANTITY, CHEAT_ASSET_VALUE, type Cheat } from './cheats.js';
 import {
   COMMANDER_COST,
@@ -1629,6 +1634,90 @@ function settleOfficerLists(state: WorldState, notes: string[]): void {
   stockOfficerLists(state);
 }
 
+/**
+ * What a thief can take on a world: a portable thing the host holds there —
+ * never a person (that is a kidnapping), a fixture, a promissory note, a thing
+ * on loan or a live marriage's ward. Paper only, when copying.
+ */
+function stealable(state: WorldState, asset: Asset, holder: string, systemId: string, copy: boolean): boolean {
+  return (
+    asset.heldBy === holder &&
+    asset.atSystemId === systemId &&
+    asset.portable &&
+    asset.commanderId === null &&
+    asset.agentId === null &&
+    !asset.notableId &&
+    !PEOPLE_KINDS.has(asset.kind) &&
+    asset.note === undefined &&
+    !assetOnLoan(state.loans ?? [], asset.id) &&
+    (!copy || PAPER_KINDS.has(asset.kind))
+  );
+}
+
+/**
+ * A larceny that came off: the named thing, or the one worth most to the
+ * thief, taken or copied. The original is carried to the thief's nearest world;
+ * a copy is a dossier in the thief's hands, worth half the original to anyone
+ * who wanted it, and the original stays. The victim learns something is gone,
+ * and not who took it. Returns the operative's report.
+ */
+function steal(
+  state: WorldState,
+  agent: Agent,
+  effect: Extract<AgentEffect, { kind: 'steal' }>,
+  host: StarSystem,
+  holder: string,
+): string {
+  const thief = agent.ownerFactionId;
+  const eligible = (state.assets ?? []).filter((a) => stealable(state, a, holder, host.id, effect.copy));
+  // Named by id, or by the words the player used for it ("the drawings").
+  const words = (effect.assetId ?? '')
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter((w) => w.length > 2 && !['the', 'their', 'his', 'her', 'its', 'from', 'and'].includes(w));
+  const fits = (a: Asset) => {
+    const said = `${a.text} ${a.kind}`.toLowerCase();
+    return words.length > 0 && words.every((w) => said.includes(w));
+  };
+  const named = effect.assetId ? (eligible.find((a) => a.id === effect.assetId) ?? eligible.find(fits)) : undefined;
+  if (effect.assetId && !named) {
+    return `reached ${host.name} and found nothing there by that description to ${effect.copy ? 'copy' : 'take'}.`;
+  }
+  const mark =
+    named ?? [...eligible].sort((a, b) => assetWorthTo(b, thief) - assetWorthTo(a, thief) || a.id.localeCompare(b.id))[0];
+  if (!mark) return `searched ${host.name} and found nothing worth ${effect.copy ? 'copying' : 'carrying off'}.`;
+  if (effect.copy) {
+    const half: Record<string, number> = {};
+    for (const [f, v] of Object.entries(mark.valuePerUnit)) if (f !== holder) half[f] = Math.floor(v / 2);
+    state.assets.push(
+      AssetSchema.parse({
+        id: mintId(state, 'ast'),
+        kind: DOSSIER_KIND,
+        text: `a copy of ${mark.text}`,
+        heldBy: thief,
+        quantity: 1,
+        unit: 'dossier',
+        divisible: false,
+        valuePerUnit: half,
+        atSystemId: null,
+        acquiredTurn: state.turn,
+      }),
+    );
+    logEvent(state, 'narrative', `A copy of ${mark.text} reaches ${nameFor(state, thief)}.`, thief, [thief]);
+    return `copied ${mark.text} on ${host.name}; the original is where it was.`;
+  }
+  const from = mark.heldBy;
+  const home = [...state.systems]
+    .filter((w) => w.controllerFactionId === thief)
+    .map((w) => ({ w, d: shortestPath(state.systems, host.id, w.id)?.length ?? Number.POSITIVE_INFINITY }))
+    .sort((a, b) => a.d - b.d || a.w.id.localeCompare(b.w.id))[0]?.w;
+  mark.heldBy = thief;
+  mark.atSystemId = home?.id ?? null;
+  logEvent(state, 'narrative', `${mark.text} is gone from ${host.name}, and nobody can say who took it.`, from, [from]);
+  logEvent(state, 'narrative', `${mark.text} is taken from ${host.name}${home ? ` and carried to ${home.name}` : ''}.`, thief, [thief]);
+  return `took ${mark.text} from ${host.name}${home ? ` and carried it to ${home.name}` : ''}.`;
+}
+
 /** An estate's grievance for every seat of its emptied since `before`, logged to its own power. */
 function chargeVacatedSeats(state: WorldState, before: ReadonlyMap<string, InOffice>, notes: string[]): void {
   for (const line of vacatedSeats(state, before)) {
@@ -2861,6 +2950,11 @@ export interface LegacyRules {
   /** A batch may give an operative one order; a second is refused. Journal version 22. */
   oneOrderPerOperative?: boolean;
   /**
+   * An embezzler carries `income_penalty` and a thief `steal`, whatever the
+   * op said (`MISSION_EFFECTS`). Journal version 22.
+   */
+  missionEffectsHeld?: boolean;
+  /**
    * An estate loses `SEAT_VACATED_FAVOUR` when one of its notables leaves a
    * seat on its power's world, for any reason (`vacatedSeats`). Journal
    * version 22.
@@ -3022,6 +3116,7 @@ function applyOpsUnderRules(
     seatLossCostsFavour = true,
     narrationCapPerBatch = true,
     oneOrderPerOperative = true,
+    missionEffectsHeld = true,
   } = legacy;
   const state = cloneState(input);
   // Who holds office before the batch, so a seat emptied by it is charged.
@@ -6411,6 +6506,21 @@ function applyOpsUnderRules(
           reject(raw, 'unknown_faction', `No faction "${ownerId}".`);
           break;
         }
+        // A mission whose effect IS its meaning carries that effect: an
+        // embezzler skims, a thief steals. Anything else is replaced with the
+        // mission's default and said (playtest 2026-10-16: `theft` written as a
+        // watcher three times in three, so no theft ever took a credit). And
+        // `steal` belongs to larceny alone. Journal version 22
+        // (`LegacyRules.missionEffectsHeld`).
+        {
+          const allowed = MISSION_EFFECTS[op.mission];
+          const misfit = allowed ? !allowed.includes(op.effect.kind) : op.effect.kind === 'steal';
+          if (misfit && missionEffectsHeld) {
+            const was = op.effect.kind;
+            op.effect = DEFAULT_COVERT_EFFECT[op.mission];
+            notes.push(`A ${op.mission} operative carries ${describeEffect(op.effect)}, not ${was.replace(/_/g, ' ')}.`);
+          }
+        }
         // You may only run your own operatives. Reproduced three times in
         // playtests: on a hostile mission the resolution call anchored
         // `ownerFactionId` to the faction being harmed rather than the one
@@ -9797,6 +9907,9 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
         watchNotes.set(agent.id, `was taken on ${host.name}. That line is closed.`);
         // Taken, not merely burned — see `takeOperative`.
         takeOperative(state, agent, target, host, profile.oneShot ? 40 : 20);
+      } else if (agent.mission === 'larceny') {
+        // One attempt: a thief who comes away empty and unseen is free again.
+        Object.assign(agent, { mission: null, effect: null });
       }
       continue;
     }
@@ -9850,6 +9963,13 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
           watchNotes.set(agent.id, `came close to ${mark.name} on ${host.name} and no closer.`);
         }
       }
+    }
+
+    if (agent.effect.kind === 'steal') {
+      watchNotes.set(agent.id, steal(state, agent, agent.effect, host, target.id));
+      // One attempt, then back awaiting orders on that world, win or lose.
+      Object.assign(agent, { mission: null, effect: null });
+      continue;
     }
 
     if (agent.effect.kind === 'discord') {

@@ -476,10 +476,18 @@ assassination must not quietly produce. The knife only finds an officer standing
 where your operative is, so an officer under way is one it misses.
 
 The `mission` decides risk and persistence: `surveillance` (very low risk),
-`theft`, `subversion`, `defection`, `sabotage`, `incitement` (moderate), `discord` (riskier),
+`embezzlement`, `larceny`, `subversion`, `defection`, `sabotage`, `incitement` (moderate), `discord` (riskier),
 and `assassination` — **one attempt, quadruple effect, the operative spent
 either way, and usually caught.** Scale effects sanely: 2 hulls a turn is a
 nuisance, 12 is a catastrophe that should have taken a real operation.
+
+**`larceny` is one attempt at a thing.** Effect `{ "kind": "steal", "assetId":
+<the asset's id or its name as the state block gives it>, "copy": false }`.
+`copy: true` takes a copy of paper — charts, a ledger, blueprints, a writ — and
+leaves the original; the thief gets a dossier, and it is quieter. It cannot take
+a person (that is not a theft), a fixture, a promissory note, or a thing on
+loan. Win or lose, the operative is back awaiting orders after the attempt.
+Narrate the attempt, never the haul: what was taken is settled on the tick.
 
 **`discord` is the one mission aimed at a quarrel you are not in.** Forged
 letters, a planted grievance, a rumour that keeps arriving — it turns the power

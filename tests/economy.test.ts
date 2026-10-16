@@ -197,7 +197,7 @@ describe('ledgers', () => {
         // skimmed by a rival
         {
           op: 'deploy_agent', ownerFactionId: 'ojjul', systemId: 'ark-1',
-          mission: 'theft', effect: { kind: 'income_penalty', perTurn: 60 },
+          mission: 'embezzlement', effect: { kind: 'income_penalty', perTurn: 60 },
         },
         // runs an operative of its own
         {
@@ -248,7 +248,7 @@ describe('ledgers', () => {
           op: 'deploy_agent',
           ownerFactionId: 'ojjul',
           systemId: 'ark-1',
-          mission: 'theft',
+          mission: 'embezzlement',
           effect: { kind: 'income_penalty', perTurn: 60 },
         },
       ],
@@ -318,7 +318,7 @@ describe('agents', () => {
       [
         {
           op: 'deploy_agent', ownerFactionId: 'ojjul', systemId: 'nowhere',
-          mission: 'theft', effect: { kind: 'income_penalty', perTurn: 10 },
+          mission: 'embezzlement', effect: { kind: 'income_penalty', perTurn: 10 },
         },
       ],
       'model',

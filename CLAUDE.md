@@ -4089,7 +4089,8 @@ costs the breaker 25 disposition with the other party.
 | mission | exposure on failure | persists | effect × |
 |---|---|---|---|
 | `surveillance` | 1 in 20 | yes | 1 |
-| `theft` / `subversion` | 2 in 20 | yes | 1 |
+| `embezzlement` / `subversion` | 2 in 20 | yes | 1 |
+| `larceny` | 3 in 20 (a copy, 2) | one attempt, then free | — |
 | `sabotage` / `incitement` | 3 in 20 | yes | 1 |
 | `discord` | 5 in 20 | yes | 1 |
 | `assassination` | **9 in 20** | **no** | **4** |
@@ -4214,6 +4215,22 @@ default is called `theft`. Theft moves money.
 in the same pass. An operative on a world its own owner holds steals from
 nobody. The transfer conserves; the owner's separate `AGENT_UPKEEP` is what
 makes running the network cost something.
+
+**And it is called embezzlement now, because a player reads "theft" as taking
+a thing.** The mission skims credits a turn; the playtest of 2026-10-16 asked
+three times to *steal the drawings* and got a skim written as a watcher, with
+nothing moved. `theft` is renamed `embezzlement` (an old journal's `theft`
+reads as it, through `AgentMissionSchema`'s alias), and **`larceny`** is the
+theft of a thing: a ghost mission, one attempt (`AGENT_COST` 70), at a named
+portable thing a rival holds on that world — by id or by the words the player
+used — or the one worth most to the thief. The original is carried to the
+thief's nearest world; a **copy** of paper (`PAPER_KINDS`) leaves the original,
+gives the thief a dossier at half its worth, and is a point quieter. Never a
+person (`PEOPLE_KINDS`; that will be kidnapping), a fixture, a promissory note,
+a thing on loan or a ward. The victim is told it is gone and not who took it;
+win or lose, the operative is back awaiting orders. And every mission whose
+effect is its meaning is held to it (`MISSION_EFFECTS`, journal version 22):
+an embezzler carries `income_penalty`, only a thief carries `steal`.
 
 ## Intelligence: what you can see, and what you only suspect
 
@@ -5964,7 +5981,7 @@ recruit's dice and froze the harness board at 6/4/6/5/4 for a reason that was
 not in the rules. With fresh ids all four boards stay 5/5/6/5/4.
 
 **And every operative has a class** (`AGENT_CLASSES`): **ghosts** come away with
-something — sight, money, proof (surveillance, theft); **agitators** stir the many
+something — sight, money, a thing (surveillance, embezzlement, larceny); **agitators** stir the many
 from a distance — a rumour, a forged letter, a crowd (subversion, discord,
 incitement); **sparrows** win over one person face to face — a captain, a
 notable, a lover (defection, seduction); **wetworkers** break things

@@ -334,7 +334,7 @@ describe('agents cannot be given an effect that can never fire', () => {
       [
         {
           op: 'deploy_agent', ownerFactionId: 'drajk', systemId: 'ark-6',
-          mission: 'theft', effect: { kind: 'crew_defection', perTurn: 1 },
+          mission: 'defection', effect: { kind: 'crew_defection', perTurn: 1 },
           cover: 'labour broker',
         },
       ],
@@ -356,7 +356,7 @@ describe('agents cannot be given an effect that can never fire', () => {
         { op: 'recruit_agent', systemId: 'ilv-2' },
         {
           op: 'deploy_agent', ownerFactionId: 'ojjul', systemId: 'sek-1',
-          mission: 'theft', effect: { kind: 'crew_defection', perTurn: 1 },
+          mission: 'defection', effect: { kind: 'crew_defection', perTurn: 1 },
           cover: 'dock factor',
         },
       ],

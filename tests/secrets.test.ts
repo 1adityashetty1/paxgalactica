@@ -35,7 +35,7 @@ function board(): WorldState {
   const s = createSeedState('meridian');
   s.agents.push(agent({}));
   s.agents.push(
-    agent({ id: 'agt-v', ownerFactionId: 'vigil', systemId: 'ark-1', mission: 'theft', effect: { kind: 'income_penalty', perTurn: 5 }, name: 'A Thief' }),
+    agent({ id: 'agt-v', ownerFactionId: 'vigil', systemId: 'ark-1', mission: 'embezzlement', effect: { kind: 'income_penalty', perTurn: 5 }, name: 'A Thief' }),
   );
   return s;
 }
