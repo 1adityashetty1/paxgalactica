@@ -2007,11 +2007,15 @@ export function classFit(agentClass: AgentClass | undefined, mission: AgentMissi
 
 /** The chance in twenty a failed turn gets this operative caught, by mission and class. */
 export function exposureRiskOf(
-  agent: { agentClass?: AgentClass; effect?: AgentEffect | null },
+  agent: { agentClass?: AgentClass; effect?: AgentEffect | null; method?: Method },
   mission: AgentMission,
 ): number {
   const copying = agent.effect?.kind === 'steal' && agent.effect.copy ? 1 : 0;
-  return Math.max(1, MISSION_PROFILE[mission].exposureRisk - classFit(agent.agentClass, mission) * CLASS_EXPOSURE_SHIFT - copying);
+  const quiet = (agent.method?.profile.noise ?? 0) * METHOD_NOISE_STEP;
+  return Math.max(
+    1,
+    MISSION_PROFILE[mission].exposureRisk - classFit(agent.agentClass, mission) * CLASS_EXPOSURE_SHIFT - copying - quiet,
+  );
 }
 
 /**
@@ -2289,6 +2293,126 @@ export const DEFAULT_COVERT_EFFECT: Record<AgentMission, AgentEffect> = {
   assassination: { kind: 'stat_debuff', stat: 'resolve', magnitude: 1 },
 };
 
+/* ------------------------------------------------------------------ */
+/* Methods and groundwork — docs/design-2026-10-16-operations.md        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * How an operation is done, scored rather than named. **No method is written
+ * into code**: the arbiter scores what the player described on four fixed axes,
+ * each −1, 0 or +1 from the player's side, and code owns what a step is worth
+ * and holds the profile to a budget. A list of methods would be a second closed
+ * vocabulary — the trap the nine fixed missions were.
+ */
+export const METHOD_AXES = ['preparation', 'ease', 'noise', 'ifCaught'] as const;
+export type MethodAxis = (typeof METHOD_AXES)[number];
+/**
+ * −1..+1 as the arbiter scores it; up to +2 once groundwork is added, which is
+ * why the schema allows it — `budgetMethod` holds the arbiter's own to ±1.
+ */
+const AxisStep = z.number().int().min(-1).max(2).default(0);
+export const MethodProfileSchema = z.object({
+  /** +1 cheaper, −1 dearer: `METHOD_PRICE_STEP` of the mission's price a step. */
+  preparation: AxisStep,
+  /** +1 easier, −1 harder: `METHOD_EASE_STEP` on the success chance a step. */
+  ease: AxisStep,
+  /** +1 quieter, −1 louder: one in twenty off or on the exposure risk a step. */
+  noise: AxisStep,
+  /** +1 deniable, 0 traced as today, −1 backfires. See `takeOperative`. */
+  ifCaught: AxisStep,
+});
+export type MethodProfile = z.infer<typeof MethodProfileSchema>;
+export const MethodSchema = z.object({
+  /** The player's own words: "poison in the Governor's toast". */
+  text: z.string().min(1).max(160),
+  profile: MethodProfileSchema,
+});
+export type Method = z.infer<typeof MethodSchema>;
+
+/** What a step on each axis is worth. */
+export const METHOD_PRICE_STEP = 0.25;
+export const METHOD_EASE_STEP = 10;
+export const METHOD_NOISE_STEP = 1;
+/** Clipped from these first when a profile is over budget: what a method most often claims too much of. */
+const CLIP_ORDER: readonly MethodAxis[] = ['ease', 'preparation', 'noise', 'ifCaught'];
+
+/**
+ * Hold a profile to the budget: **the four scores sum to zero or less**, so every
+ * advantage is paid for with a disadvantage and no method can be described into
+ * being cheap, easy, quiet and safe at once. Over budget, a point at a time
+ * comes off the axes in `CLIP_ORDER`. Returns the held profile and what was cut.
+ */
+export function budgetMethod(profile: MethodProfile): { profile: MethodProfile; clipped: MethodAxis[] } {
+  const out = { ...profile };
+  for (const axis of METHOD_AXES) out[axis] = Math.max(-1, Math.min(1, out[axis]));
+  const clipped: MethodAxis[] = [];
+  const sum = () => METHOD_AXES.reduce((n, a) => n + out[a], 0);
+  for (const axis of CLIP_ORDER) {
+    while (sum() > 0 && out[axis] > 0) {
+      out[axis] -= 1;
+      clipped.push(axis);
+    }
+  }
+  return { profile: out, clipped };
+}
+
+/**
+ * The groundwork a mission by `agent` on `systemId`, aimed at `target`, can draw
+ * on this turn: usable (laid before this turn), not stale, on that world, aimed
+ * at that target or at nothing — at most one piece per axis and
+ * `MAX_GROUNDWORK_BONUS` in all, the first laid first.
+ */
+export function usableGroundwork(
+  agent: { groundwork?: Groundwork[] },
+  systemId: string,
+  targets: readonly (string | null | undefined)[],
+  turn: number,
+): Groundwork[] {
+  const out: Groundwork[] = [];
+  const axes = new Set<MethodAxis>();
+  for (const g of agent.groundwork ?? []) {
+    if (out.length >= MAX_GROUNDWORK_BONUS) break;
+    if (g.systemId !== systemId || g.madeTurn >= turn || g.staleTurn <= turn || axes.has(g.axis)) continue;
+    if (g.target !== null && !targets.includes(g.target)) continue;
+    axes.add(g.axis);
+    out.push(g);
+  }
+  return out;
+}
+
+/**
+ * Preparation that outlasts the action that laid it: an operative undercover in
+ * the kitchens, owed a favour by the night watch. Worth one step on one axis to
+ * a later mission by the **same** operative on the **same** world, aimed at the
+ * same target or laid with none. Counts from the turn after it is laid, is spent
+ * when used, and is lost when the operative leaves the world, is recalled or is
+ * caught, or when it goes stale. The action point is its whole price.
+ */
+export const GroundworkSchema = z.object({
+  id: z.string().min(1),
+  /** The player's own words. */
+  text: z.string().min(1).max(160),
+  systemId: z.string().min(1),
+  /** The person, thing or power it is aimed at, resolved to an id; null helps anything there. */
+  target: z.string().nullable().default(null),
+  axis: z.enum(METHOD_AXES),
+  /** Laid on this turn (or the turn the operative arrives); usable from the turn after. */
+  madeTurn: z.number().int().min(0),
+  /** Gone from this turn. */
+  staleTurn: z.number().int().min(0),
+});
+export type Groundwork = z.infer<typeof GroundworkSchema>;
+
+/** What every onlooker thinks the less of an author whose method backfired when caught. */
+export const BACKFIRE_REPUTATION = 5;
+
+/** Turns a piece of groundwork holds once it is usable. */
+export const GROUNDWORK_TURNS = 3;
+/** The most a mission draws from groundwork, over all axes. */
+export const MAX_GROUNDWORK_BONUS = 2;
+/** Pieces an operative can hold at once; laying another replaces the oldest. */
+export const MAX_GROUNDWORK = 2;
+
 export const AgentSchema = z.object({
   id: z.string().min(1),
   ownerFactionId: z.string().min(1),
@@ -2388,6 +2512,14 @@ export const AgentSchema = z.object({
   targetNotableId: z.string().optional(),
   /** Turns a seduction has worked; at `SEDUCTION_PROOF_TURNS` the affair is proven. */
   courted: z.number().int().min(0).optional(),
+  /**
+   * How the current mission is being done, once a method was described: the
+   * player's words and the profile in force, groundwork included. Cleared with
+   * the mission.
+   */
+  method: MethodSchema.optional(),
+  /** Preparation laid and not yet used — see `GroundworkSchema`. */
+  groundwork: z.array(GroundworkSchema).optional(),
 });
 export type Agent = z.infer<typeof AgentSchema>;
 

@@ -3,6 +3,8 @@ import { StatNameSchema } from './checks.js';
 import {
   AgentEffectSchema,
   AgentMissionSchema,
+  MethodSchema,
+  METHOD_AXES,
   AssetYieldSchema,
   TreatyTermsSchema,
   TreatyTypeSchema,
@@ -741,6 +743,11 @@ export const DeployAgentOp = z.object({
    * with them, and so does the mark.
    */
   fromAssetId: z.string().nullable().default(null),
+  /**
+   * How it is done, scored rather than named — the player's words and four axes
+   * of −1..+1. Held to a budget in code. See `MethodProfileSchema`.
+   */
+  method: MethodSchema.optional(),
 });
 
 /**
@@ -769,6 +776,26 @@ export const RecruitAgentOp = z.object({
   /** Or which class: the first of it waiting comes. See `AGENT_CLASSES`. */
   agentClass: AgentClassSchema.optional(),
   cover: z.string().default(''),
+});
+
+/**
+ * Lay groundwork: an operative gets into position for a later act — undercover
+ * in the kitchens, owed a favour by the night watch — and that preparation is
+ * recorded on them (`GroundworkSchema`). One axis, one step, worth it to a later
+ * mission by the same operative on the same world. The action point is its
+ * whole price; it counts from the next turn.
+ */
+export const LayGroundworkOp = z.object({
+  op: z.literal('lay_groundwork'),
+  /** Which operative, by name or id; named nobody, the nearest awaiting orders. */
+  agent: z.string().min(1).nullable().default(null),
+  systemId: z.string().min(1),
+  /** The player's own words. */
+  text: z.string().min(1).max(160),
+  /** The one axis it improves: preparation, ease, noise or ifCaught. */
+  axis: z.enum(METHOD_AXES),
+  /** Who or what it is aimed at, by name — a notable, an officer, a thing, a power. Omitted, it helps anything there. */
+  target: z.string().min(1).max(80).optional(),
 });
 
 export const RecallAgentOp = z.object({
@@ -1265,6 +1292,7 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   DeployAgentOp,
   RecruitAgentOp,
   RecallAgentOp,
+  LayGroundworkOp,
   AdjustShipsOp,
   ModelAdjustDissentOp,
   EstablishCommitmentOp,
@@ -1354,6 +1382,7 @@ export const OpSchema = z.discriminatedUnion('op', [
   DeployAgentOp,
   RecruitAgentOp,
   RecallAgentOp,
+  LayGroundworkOp,
   AdjustShipsOp,
   AdjustDissentOp,
   EstablishCommitmentOp,

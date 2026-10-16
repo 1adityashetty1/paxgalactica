@@ -381,6 +381,8 @@ export function replay(
     oneOrderPerOperative: parsed.version >= 22,
     // A theft could be written with any effect, and was written as a watcher.
     missionEffectsHeld: parsed.version >= 22,
+    // No mission carried a method, and nobody laid groundwork.
+    methodsCount: parsed.version >= 22,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

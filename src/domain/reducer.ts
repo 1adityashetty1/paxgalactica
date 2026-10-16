@@ -127,6 +127,16 @@ import {
   DEFAULT_COVERT_EFFECT,
   describeEffect,
   type AgentEffect,
+  type MethodProfile,
+  MethodSchema,
+  budgetMethod,
+  usableGroundwork,
+  METHOD_PRICE_STEP,
+  METHOD_EASE_STEP,
+  GroundworkSchema,
+  GROUNDWORK_TURNS,
+  MAX_GROUNDWORK,
+  BACKFIRE_REPUTATION,
   assetWorthTo,
   KIDNAP_RESENTMENT,
   CLASS_SUCCESS_SHIFT,
@@ -1788,6 +1798,18 @@ function kidnap(state: WorldState, agent: Agent, host: StarSystem): string {
   return `came to ${host.name} with nobody named to take.`;
 }
 
+/**
+ * Every operative through `AgentSchema`, so its keys are in schema order. A
+ * method and groundwork are written onto a live operative after it is made, so
+ * the key order a live record has depends on its history, while a replayed one
+ * is parsed — and replay compares the two as strings.
+ */
+function canonicalAgents(state: WorldState): void {
+  if ((state.agents ?? []).some((a) => a.method !== undefined || a.groundwork !== undefined || 'method' in a)) {
+    state.agents = state.agents.map((a) => AgentSchema.parse(a));
+  }
+}
+
 /** An estate's grievance for every seat of its emptied since `before`, logged to its own power. */
 function chargeVacatedSeats(state: WorldState, before: ReadonlyMap<string, InOffice>, notes: string[]): void {
   for (const line of vacatedSeats(state, before)) {
@@ -2410,6 +2432,21 @@ function takeOperative(
   agent.timesCaught += 1;
   agent.caughtTurn = state.turn;
   heatUp(state, agent.ownerFactionId, HEAT_CAUGHT);
+  // A cover that is blown is blown: whatever they had laid goes with them.
+  delete agent.groundwork;
+  // How the method plays when it is caught (`MethodProfile.ifCaught`): a
+  // deniable one costs no standing, one traced costs what exposure always has,
+  // and one that backfires turns what it was building against its author —
+  // double with the target, and a public cost with everyone else.
+  const caught = agent.method?.profile.ifCaught ?? 0;
+  if (caught >= 1) outrage = 0;
+  else if (caught <= -1) {
+    outrage *= 2;
+    for (const f of state.factions) {
+      if (f.id === agent.ownerFactionId || f.id === target.id) continue;
+      moveRegard(state, f.id, agent.ownerFactionId, -BACKFIRE_REPUTATION);
+    }
+  }
 
   const prize: Asset = {
     id: mintId(state, 'ast'),
@@ -2446,7 +2483,7 @@ function takeOperative(
     // **Discord caught is a scandal with two injured parties.** The forged
     // letters were about somebody, and exposure hands that power the evidence —
     // so the third power resents the forger too.
-    if (agent.effect?.kind === 'discord') {
+    if (agent.effect?.kind === 'discord' && outrage > 0) {
       moveRegard(state, agent.effect.towardFactionId, owner.id, -outrage);
       const scandal = `${target.name} exposes ${owner.name}'s hand in forging its quarrel with ${nameFor(state, agent.effect.towardFactionId)}.`;
       logEvent(state, 'diplomacy', scandal, target.id);
@@ -3025,6 +3062,12 @@ export interface LegacyRules {
    */
   missionEffectsHeld?: boolean;
   /**
+   * A mission carries the method it was done by, held to the budget, and the
+   * groundwork laid for it (`budgetMethod`, `usableGroundwork`). Journal
+   * version 22.
+   */
+  methodsCount?: boolean;
+  /**
    * An estate loses `SEAT_VACATED_FAVOUR` when one of its notables leaves a
    * seat on its power's world, for any reason (`vacatedSeats`). Journal
    * version 22.
@@ -3187,6 +3230,7 @@ function applyOpsUnderRules(
     narrationCapPerBatch = true,
     oneOrderPerOperative = true,
     missionEffectsHeld = true,
+    methodsCount = true,
   } = legacy;
   const state = cloneState(input);
   // Who holds office before the batch, so a seat emptied by it is charged.
@@ -6858,7 +6902,33 @@ function applyOpsUnderRules(
             reject(raw, 'unreachable_target', `${spy.name || 'The operative'} has no way from ${systemName(state, spy.systemId)} to ${host.name}.`);
             break;
           }
-          const price = AGENT_COST[op.mission];
+          const knifeId =
+            (op.mission === 'assassination' || op.mission === 'kidnapping') && !notableMark ? aimKnife() : null;
+          // How it is done: the method the player described, held to the budget,
+          // and any groundwork this operative laid here for it, which an action
+          // point already paid for and so sits outside the budget. See
+          // `docs/design-2026-10-16-operations.md`.
+          let profile: MethodProfile | null = null;
+          if (op.method && methodsCount) {
+            const held = budgetMethod(op.method.profile);
+            profile = held.profile;
+            if (held.clipped.length > 0) {
+              notes.push(`"${op.method.text}" asks more than it gives; ${held.clipped.join(', ')} ${held.clipped.length === 1 ? 'is' : 'are'} held back to keep it within what a method can buy.`);
+            }
+          }
+          const aimedAt = [
+            notableMark ?? null,
+            knifeId,
+            op.effect.kind === 'steal' ? op.effect.assetId : null,
+            op.effect.kind === 'discord' ? op.effect.towardFactionId : null,
+            host.controllerFactionId,
+          ];
+          const ground = methodsCount ? usableGroundwork(spy, op.systemId, aimedAt, state.turn) : [];
+          if (ground.length > 0) {
+            profile ??= { preparation: 0, ease: 0, noise: 0, ifCaught: 0 };
+            for (const g of ground) profile[g.axis] += 1;
+          }
+          const price = Math.max(0, Math.round(AGENT_COST[op.mission] * (1 - (profile?.preparation ?? 0) * METHOD_PRICE_STEP)));
           if (owner.credits < price) {
             reject(
               raw,
@@ -6873,14 +6943,19 @@ function applyOpsUnderRules(
           const jumps = road.length - 1;
           const turns = Math.ceil(jumps / AGENT_JUMPS_PER_TURN);
           const from = systemName(state, spy.systemId);
+          // Groundwork is spent when used, and lost on any other world.
+          if (spy.groundwork) {
+            const used = new Set(ground.map((g) => g.id));
+            spy.groundwork = spy.groundwork.filter((g) => !used.has(g.id) && g.systemId === op.systemId);
+            if (spy.groundwork.length === 0) delete spy.groundwork;
+          }
           spy.systemId = op.systemId;
           spy.mission = op.mission;
           spy.effect = op.effect;
           if (op.cover) spy.cover = op.cover;
           spy.deployedTurn = state.turn;
           spy.inPlaceFrom = state.turn + turns;
-          spy.targetCommanderId =
-            (op.mission === 'assassination' || op.mission === 'kidnapping') && !notableMark ? aimKnife() : null;
+          spy.targetCommanderId = knifeId;
           if (notableMark) spy.targetNotableId = notableMark;
           else delete spy.targetNotableId;
           delete spy.courted;
@@ -6891,6 +6966,16 @@ function applyOpsUnderRules(
             spy.timesCaught,
             classFit(spy.agentClass, op.mission),
           );
+          if (profile) {
+            spy.successChance = Math.max(5, Math.min(95, spy.successChance + profile.ease * METHOD_EASE_STEP));
+            spy.method = MethodSchema.parse({
+              text: op.method?.text ?? ground.map((g) => g.text).join('; '),
+              profile,
+            });
+          } else delete spy.method;
+          if (ground.length > 0) {
+            notes.push(`${spy.name || 'The operative'} draws on what was laid: ${ground.map((g) => `${g.text} (${g.axis})`).join('; ')}.`);
+          }
           const when =
             turns === 0
               ? 'already there'
@@ -7187,6 +7272,77 @@ function applyOpsUnderRules(
         const signed = `${who} signs on with ${nameFor(state, ownerId)} at ${site.name}, awaiting orders.`;
         notes.push(signed);
         logEvent(state, 'order', signed, ownerId, [ownerId]);
+        break;
+      }
+
+      case 'lay_groundwork': {
+        // Preparation for a later act, recorded on the operative. See
+        // `GroundworkSchema` and docs/design-2026-10-16-operations.md.
+        const ownerId = actor;
+        if (ownerId === undefined || !factionExists(ownerId)) {
+          reject(raw, 'illegal_value', 'Groundwork is laid by an operative of the acting power, and this batch names none.');
+          break;
+        }
+        const host = getSystem(state, op.systemId);
+        if (!host) {
+          reject(raw, 'unknown_system', `No system "${op.systemId}".`);
+          break;
+        }
+        if (host.controllerFactionId === ownerId) {
+          reject(raw, 'illegal_value', `${host.name} is ${nameFor(state, ownerId)}'s own; there is nobody there to get into position against.`);
+          break;
+        }
+        const spy = chooseOperative(state, ownerId, op.agent, op.systemId);
+        if (typeof spy === 'string') {
+          reject(raw, op.agent === null ? 'illegal_value' : 'unknown_agent', spy);
+          break;
+        }
+        if (sentThisBatch.has(spy.id)) {
+          reject(raw, 'illegal_value', `${spy.name || 'That operative'} has already been given an order in this declaration; one operative takes one order at a time.`);
+          break;
+        }
+        sentThisBatch.add(spy.id);
+        const road = shortestPath(state.systems, spy.systemId, op.systemId);
+        if (!road) {
+          reject(raw, 'unreachable_target', `${spy.name || 'The operative'} has no way from ${systemName(state, spy.systemId)} to ${host.name}.`);
+          break;
+        }
+        // What it is aimed at, resolved to an id now so a later mission can be
+        // matched against it exactly: a notable seated there, an officer, a
+        // thing held there, or a power.
+        let aim: string | null = null;
+        if (op.target) {
+          const words = op.target.toLowerCase().split(/[^a-z]+/).filter((w) => w.length > 2 && w !== 'the');
+          const notable = resolveNotable(state, op.target, (n) => n.systemId === host.id);
+          const officer = notable ? null : resolveCommander(state.commanders, op.target, (c) => c.status === 'active' && c.factionId !== ownerId);
+          const thing = notable || officer ? undefined : (state.assets ?? []).find(
+            (a) => a.atSystemId === host.id && (a.id === op.target || (words.length > 0 && words.every((w) => `${a.text} ${a.kind}`.toLowerCase().includes(w)))),
+          );
+          const power = notable || officer || thing ? undefined : state.factions.find((f) => f.id === op.target || f.name.toLowerCase() === op.target!.toLowerCase());
+          aim = notable?.id ?? officer?.id ?? thing?.id ?? power?.id ?? null;
+          if (aim === null) notes.push(`Nothing answering to "${op.target}" is on ${host.name}, so the groundwork helps anything there.`);
+        }
+        const turns = Math.ceil((road.length - 1) / AGENT_JUMPS_PER_TURN);
+        const madeTurn = state.turn + turns;
+        const laid = GroundworkSchema.parse({
+          id: `gw-${spy.id}-${state.turn}`,
+          text: op.text,
+          systemId: host.id,
+          target: aim,
+          axis: op.axis,
+          madeTurn,
+          staleTurn: madeTurn + 1 + GROUNDWORK_TURNS,
+        });
+        // The operative stands down from anything else and goes there; what
+        // they had laid on other worlds is lost, and the oldest piece here
+        // gives way past `MAX_GROUNDWORK`.
+        Object.assign(spy, { mission: null, effect: null, method: undefined });
+        spy.systemId = host.id;
+        spy.inPlaceFrom = madeTurn;
+        spy.groundwork = [...(spy.groundwork ?? []).filter((g) => g.systemId === host.id), laid].slice(-MAX_GROUNDWORK);
+        const line = `${spy.name || 'An operative'} gets into position on ${host.name}: ${op.text}. It will tell from turn ${madeTurn + 1}.`;
+        notes.push(line);
+        logEvent(state, 'order', line, ownerId, [ownerId]);
         break;
       }
 
@@ -8413,6 +8569,7 @@ function applyOpsUnderRules(
   // and every estate has someone listed. See `seats.ts`.
   settleCourt(state);
   if (officeBefore) chargeVacatedSeats(state, officeBefore, notes);
+  canonicalAgents(state);
   if (agentLists) settleAgentLists(state, notes);
   else if (spiesComeHome) notes.push(...operativesComeHome(state));
   if (officerLists) settleOfficerLists(state, notes);
@@ -9937,13 +10094,13 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
           }
           watchNotes.set(agent.id, `was found out on ${host.name} and turned off the world.`);
         }
-        else if (agent.mission === 'kidnapping') Object.assign(agent, { mission: null, effect: null });
+        else if (agent.mission === 'kidnapping') Object.assign(agent, { mission: null, effect: null, method: undefined });
         continue;
       }
       agent.operations += 1;
       if (agent.effect.kind === 'kidnap') {
         watchNotes.set(agent.id, kidnap(state, agent, host));
-        Object.assign(agent, { mission: null, effect: null });
+        Object.assign(agent, { mission: null, effect: null, method: undefined });
         continue;
       }
       watchNotes.set(agent.id, workOnNotable(state, agent, host, notableMark, null));
@@ -10011,7 +10168,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       } else if (agent.mission === 'larceny' || agent.mission === 'kidnapping') {
         // One attempt: a thief or a kidnapper who comes away empty and unseen
         // is free again.
-        Object.assign(agent, { mission: null, effect: null });
+        Object.assign(agent, { mission: null, effect: null, method: undefined });
       }
       continue;
     }
@@ -10023,7 +10180,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
 
     if (agent.effect.kind === 'kidnap') {
       watchNotes.set(agent.id, kidnap(state, agent, host));
-      Object.assign(agent, { mission: null, effect: null });
+      Object.assign(agent, { mission: null, effect: null, method: undefined });
       continue;
     }
 
@@ -10076,7 +10233,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     if (agent.effect.kind === 'steal') {
       watchNotes.set(agent.id, steal(state, agent, agent.effect, host, target.id));
       // One attempt, then back awaiting orders on that world, win or lose.
-      Object.assign(agent, { mission: null, effect: null });
+      Object.assign(agent, { mission: null, effect: null, method: undefined });
       continue;
     }
 
@@ -10814,6 +10971,13 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
   // Last, so every way the turn emptied a seat — a battle, a cession, a
   // rising, a knife — is in what it reads.
   if (officeBefore) chargeVacatedSeats(state, officeBefore, notes);
+  // Groundwork goes stale; then every operative back into schema key order.
+  for (const a of state.agents ?? []) {
+    if (!a.groundwork) continue;
+    a.groundwork = a.groundwork.filter((g) => g.staleTurn > state.turn);
+    if (a.groundwork.length === 0) delete a.groundwork;
+  }
+  canonicalAgents(state);
   return { state, rejections: [], notes, report };
 }
 
