@@ -79,6 +79,7 @@ leaves a faction with nobody following it.
 | `play_note` | call in a promissory note you hold — see Notes and goods |
 | `call_obligation` | call in a favour owed to you — see Favours, secrets and ultimatums |
 | `repudiate_obligation` | walk away from a favour you owe, at a pact-breaker's price |
+| `release_obligation` | let a power off a favour it owes you |
 | `publish_dossier` | publish a secret your watcher found |
 | `blackmail` | spend a secret your watcher found for a strong hook on its subject |
 | `issue_ultimatum` | a public demand with a deadline; unanswered, it is war |
@@ -768,7 +769,9 @@ sign it with you for five turns — a ceasefire called on a power at war is a
 peace, and leaves a truce. `call: "support"` with a `demandId` puts the debtor
 on your side of an ultimatum of yours. A weak favour is spent; a strong hook
 rests and can be used again. Walking away from one you owe
-(`repudiate_obligation`) is priced like breaking a pact, in public.
+(`repudiate_obligation`) is priced like breaking a pact, in public. Letting a
+debtor off one you hold (`release_obligation`) costs you only the claim.
+Selling a favour to a third power needs the buyer, so it is a conversation.
 
 **A secret is proof a watcher found** — a dossier the state block marks as one.
 `publish_dossier` costs its subject standing with every power and burns the

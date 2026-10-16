@@ -495,7 +495,7 @@ export function serializeStanding(state: WorldState, viewerId: string): string {
       const rests = o.restsUntil !== null && state.turn < o.restsUntil ? ` — rests until turn ${o.restsUntil}` : '';
       lines.push(
         mine
-          ? `  - \`${o.id}\` ${other} owes YOU (${o.strength}${o.strength === 'strong' ? ', reusable, and it cannot side against you' : ', spent when called'})${rests}${o.secret ? ' — only while what you know about them stays true' : ''}: ${o.text} Call it in to make them sign a non-aggression pact, a ceasefire or a trade accord for ${OBLIGATION_TERM_TURNS} turns, or to back an ultimatum of yours.`
+          ? `  - \`${o.id}\` ${other} owes YOU (${o.strength}${o.strength === 'strong' ? ', reusable, and it cannot side against you' : ', spent when called'})${rests}${o.secret ? ' — only while what you know about them stays true' : ''}: ${o.text} Call it in to make them sign a non-aggression pact, a ceasefire or a trade accord for ${OBLIGATION_TERM_TURNS} turns, or to back an ultimatum of yours. In a negotiation it is also something to give up: let them off as the price of something${o.strength === 'weak' ? ', or sell it to another power' : ''}.`
           : `  - \`${o.id}\` you owe ${other} (${o.strength})${rests}: ${o.text} They can call it in. Walking away is priced like breaking a pact.${o.secret ? ' It rests on a secret: end the thing they know about and the hook lapses on its own.' : ''}`,
       );
     }

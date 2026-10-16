@@ -4175,6 +4175,91 @@ function applyOpsUnderRules(
         break;
       }
 
+      case 'release_obligation': {
+        const owed = (state.obligations ?? []).find((o) => o.id === op.obligationId);
+        if (!owed) {
+          reject(raw, 'unknown_obligation', `No obligation "${op.obligationId}".`);
+          break;
+        }
+        // The holder lets the debtor off. From an accord the debtor may be the
+        // one in the room asking to be let off — the holder's consent is then
+        // the counterparty's concession, which grounding checks.
+        const mayRelease =
+          actor === undefined ||
+          owed.holderFactionId === actor ||
+          (source === 'extraction' && owed.debtorFactionId === actor);
+        if (!mayRelease) {
+          reject(raw, 'illegal_value', `That favour is owed to ${nameFor(state, owed.holderFactionId)}, and only it can let ${nameFor(state, owed.debtorFactionId)} off.`);
+          break;
+        }
+        if (owed.status !== 'open') {
+          reject(raw, 'illegal_value', `That obligation was already ${owed.status}.`);
+          break;
+        }
+        // No goodwill rides on it. A favour made in one accord and let off in
+        // the next would otherwise be a pump; an accord that means the release
+        // as a kindness says so with its own disposition.
+        owed.status = 'released';
+        const note = `${nameFor(state, owed.holderFactionId)} lets ${nameFor(state, owed.debtorFactionId)} off the favour it owed: ${owed.text} ${op.reason}`.trim();
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, owed.holderFactionId, [owed.holderFactionId, owed.debtorFactionId]);
+        break;
+      }
+
+      case 'assign_obligation': {
+        if (source === 'model') {
+          reject(
+            raw,
+            'needs_consent',
+            'A favour is sold to somebody, and the buyer has to agree to take it. Open a channel with them (/talk) and agree the price.',
+          );
+          break;
+        }
+        const owed = (state.obligations ?? []).find((o) => o.id === op.obligationId);
+        if (!owed) {
+          reject(raw, 'unknown_obligation', `No obligation "${op.obligationId}".`);
+          break;
+        }
+        if (!factionExists(op.toHolderFactionId)) {
+          reject(raw, 'unknown_faction', `No faction "${op.toHolderFactionId}".`);
+          break;
+        }
+        const from = owed.holderFactionId;
+        // The sale is between the two powers in the room, so one of them is the
+        // seller and the other the buyer.
+        if (actor !== undefined && from !== actor && op.toHolderFactionId !== actor) {
+          reject(raw, 'illegal_value', `That favour is ${nameFor(state, from)}'s to sell, and this conversation was not with them.`);
+          break;
+        }
+        if (owed.status !== 'open') {
+          reject(raw, 'illegal_value', `That obligation was already ${owed.status}.`);
+          break;
+        }
+        if (owed.strength === 'strong') {
+          reject(
+            raw,
+            'illegal_value',
+            owed.origin === 'blackmail'
+              ? 'A hook bought with a secret cannot be sold: its force is what the holder knows, and the buyer would know nothing. Sell the proof, or let them off.'
+              : `That favour is owed to ${nameFor(state, from)} for what it forgave, and to nobody else.`,
+          );
+          break;
+        }
+        if (op.toHolderFactionId === owed.debtorFactionId) {
+          reject(raw, 'illegal_value', `${nameFor(state, owed.debtorFactionId)} owes this favour; handing it to them would be letting them off — that is release_obligation.`);
+          break;
+        }
+        if (op.toHolderFactionId === from) {
+          reject(raw, 'illegal_value', `${nameFor(state, from)} already holds that favour.`);
+          break;
+        }
+        owed.holderFactionId = op.toHolderFactionId;
+        const note = `${nameFor(state, from)} sells the favour ${nameFor(state, owed.debtorFactionId)} owes it to ${nameFor(state, op.toHolderFactionId)}: ${owed.text} ${op.reason}`.trim();
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, op.toHolderFactionId, [from, op.toHolderFactionId, owed.debtorFactionId]);
+        break;
+      }
+
       case 'publish_dossier':
       case 'blackmail': {
         const asset = state.assets.find((a) => a.id === op.assetId);

@@ -3026,6 +3026,20 @@ its debtor cannot back anybody against the holder. `repudiate_obligation` is
 priced like a broken pact: 25 with the holder, `PACT_BREAKING_REPUTATION_COST`
 with every onlooker.
 
+**A favour is also something to bargain with**, not only to call in. An accord
+can spend one as consideration — `release_obligation`, *"forget what you owe
+us, and the toll comes off"* — or sell it to the power across the table —
+`assign_obligation`, as `assign_debt` sells a debt. A concession names the
+favours it gives up in `Concession.obligations`, by id, so grounding holds a
+release or a sale out of the other party's hands to the standard an asset is,
+and `concessionWorth` counts each at `FAVOUR_WORTH` (100; a strong hook twice).
+**Only a weak favour can be sold**: a blackmail hook's force is a secret the
+buyer would not know, and a forgiven debt is owed to the creditor that forgave
+it. A release moves no standing, or making a favour in one accord and letting
+it off in the next would be a pump. **Calling one in stays on the declared
+path** — it needs nobody's agreement, so from a channel it would be the same
+act without its action. No journal pin: no old journal can hold either op.
+
 Made only where consent or proof exists: an accord (`establish_obligation`,
 extraction only, always weak, grounded in the debtor having conceded
 something), **a forgiven debt** (the debtor owes the creditor that let it off —
@@ -6396,6 +6410,8 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `establish_obligation` | **extraction-only** — a favour owed; binds the debtor, always weak |
 | `call_obligation` | holder only; `sign` a non-aggression pact, ceasefire or trade accord, or `support` an ultimatum of yours |
 | `repudiate_obligation` | debtor only; priced like breaking a pact |
+| `release_obligation` | holder lets the debtor off; declarable, and reachable from an accord as one side's price |
+| `assign_obligation` | **extraction-only** — the holder sells a weak favour to the power across the table |
 | `publish_dossier` | spend proof a watcher found: the subject loses standing with everyone |
 | `blackmail` | spend proof a watcher found for a strong hook |
 | `issue_ultimatum` | a public demand with a deadline; refused across a peace or a truce |

@@ -6,6 +6,7 @@ import {
   PIRACY_REPUTATION_COST,
   type Concession,
   type Secret,
+  FAVOUR_WORTH,
 } from './diplomacy.js';
 import { isDebtLive } from './debt.js';
 import { heldAs, marriageOf, notableById, powerOf as notablesPower } from './seats.js';
@@ -211,7 +212,11 @@ export function concessionWorth(state: WorldState, c: Concession): number {
     const asset = (state.assets ?? []).find((a) => a.id === id);
     return n + (asset ? assetWorthTo(asset, c.by) : 0);
   }, 0);
-  return c.credits + c.perTurn * CONCESSION_FLOW_TURNS + c.hulls * SHIP_COST + worlds + things;
+  const favours = c.obligations.reduce((n, id) => {
+    const owed = (state.obligations ?? []).find((o) => o.id === id && o.holderFactionId === c.by);
+    return n + (owed ? FAVOUR_WORTH * (owed.strength === 'strong' ? 2 : 1) : 0);
+  }, 0);
+  return c.credits + c.perTurn * CONCESSION_FLOW_TURNS + c.hulls * SHIP_COST + worlds + things + favours;
 }
 
 export interface ConcessionBudget {

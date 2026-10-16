@@ -887,6 +887,7 @@ export function groundInConcessions(
   const offeredPerTurn = theirs.reduce((n, c) => n + c.perTurn, 0);
   const offeredHulls = theirs.reduce((n, c) => n + c.hulls, 0);
   const handedOver = new Set(theirs.flatMap((c) => c.assets));
+  const favoursGiven = new Set(theirs.flatMap((c) => c.obligations));
   const saidAnything = theirs.length > 0;
   const dropped: string[] = [];
 
@@ -971,6 +972,18 @@ export function groundInConcessions(
       // same rule that keeps one-sided concessions out of this whole check.
       if (asset && asset.heldBy === otherId && !handedOver.has(asset.id)) {
         dropped.push(`${asset.text} — ${otherId} never put it on the table.`);
+        return false;
+      }
+      return true;
+    }
+
+    // A favour the other party holds is theirs to let go of or to sell, and it
+    // is a record — "forget what you owe us" names no id — so it is held to the
+    // standard an asset is: that power put this one on the table.
+    if ((op.op === 'release_obligation' || op.op === 'assign_obligation') && typeof op.obligationId === 'string') {
+      const owed = (state.obligations ?? []).find((o) => o.id === op.obligationId);
+      if (owed && owed.holderFactionId === otherId && !favoursGiven.has(owed.id)) {
+        dropped.push(`the favour ${owed.debtorFactionId} owes ${otherId} — ${otherId} never put it on the table.`);
         return false;
       }
       return true;

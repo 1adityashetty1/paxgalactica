@@ -90,6 +90,12 @@ export const ConcessionSchema = z.object({
    * two different lots, held in different places, worth different things.
    */
   assets: z.array(z.string().min(1)).max(8).default([]),
+  /**
+   * Favours owed TO `by` that it is giving up — released to the debtor, or sold
+   * to the other party — **resolved to obligation ids** by the holder, for the
+   * reason `assets` is: *"forget what you owe us"* names no record.
+   */
+  obligations: z.array(z.string().min(1)).max(6).default([]),
 });
 export type Concession = z.infer<typeof ConcessionSchema>;
 
@@ -1057,12 +1063,33 @@ export type Asset = z.infer<typeof AssetSchema>;
  * `OBLIGATION_REST_TURNS` and can be called again, and while it stands the
  * debtor cannot back anybody against the holder. Walking away from one —
  * `repudiate_obligation` — is priced like breaking a pact, in public.
+ *
+ * A favour is also a thing to bargain WITH, not only a thing to call in:
+ *
+ * - `release_obligation` — the holder lets the debtor off. Unilateral (it gives
+ *   up only its own claim), so it is declarable and reachable from an accord,
+ *   where it is the usual shape: *"forget what you owe us, and lift the toll"*.
+ * - `assign_obligation` — the holder sells a favour to a third power, as
+ *   `assign_debt` sells a debt. Extraction only, since the buyer takes it on.
+ *   **Weak favours only**: a strong hook is either blackmail, whose force is a
+ *   secret the seller knows and the buyer does not, or a forgiven debt, owed
+ *   to the creditor who forgave it and to nobody else.
+ *
+ * Calling one in stays on the declared path: it needs nobody's agreement, so
+ * an accord that called one in would be the same act without its action.
  */
 export const OBLIGATION_STRENGTHS = ['weak', 'strong'] as const;
 export const OBLIGATION_ORIGINS = ['accord', 'forgiven_debt', 'blackmail'] as const;
 export const OBLIGATION_SIGNABLE = ['non_aggression', 'ceasefire', 'trade_accord'] as const;
 export const OBLIGATION_TERM_TURNS = 5;
 export const OBLIGATION_REST_TURNS = 8;
+/**
+ * What a weak favour is worth given up, in the concession budget's credits; a
+ * strong hook counts twice, as it does for leverage. A favour's call is a
+ * five-turn pact, so this sits near five turns of a trade accord's worth to a
+ * mid-sized power rather than near a world.
+ */
+export const FAVOUR_WORTH = 100;
 
 export const ObligationSchema = z.object({
   id: z.string().min(1),
@@ -1077,9 +1104,10 @@ export const ObligationSchema = z.object({
   restsUntil: z.number().int().min(0).nullable().default(null),
   /**
    * `called` is a weak one spent; `repudiated` is the debtor walking away;
-   * `lapsed` is a blackmail hook whose secret stopped being one.
+   * `lapsed` is a blackmail hook whose secret stopped being one; `released` is
+   * the holder letting the debtor off, usually as its side of a bargain.
    */
-  status: z.enum(['open', 'called', 'repudiated', 'lapsed']).default('open'),
+  status: z.enum(['open', 'called', 'repudiated', 'lapsed', 'released']).default('open'),
   /**
    * The secret a blackmail hook rests on. **The hook lasts exactly as long as
    * the secret does** — once the operative is burned or recalled, the programme

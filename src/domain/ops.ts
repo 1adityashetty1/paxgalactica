@@ -428,6 +428,29 @@ export const RepudiateObligationOp = z.object({
   reason: z.string().max(240).default(''),
 });
 
+/**
+ * Let a debtor off a favour owed to you. Holder only, and it costs the holder
+ * its own claim and nothing else, so it is declarable — and reachable from an
+ * accord, where giving a favour up is the price of something else.
+ */
+export const ReleaseObligationOp = z.object({
+  op: z.literal('release_obligation'),
+  obligationId: z.string().min(1),
+  reason: z.string().max(240).default(''),
+});
+
+/**
+ * Sell a favour owed to you to a third power, as `assign_debt` sells a debt.
+ * Extraction only: the buyer takes it on, and a transcript is where it says so.
+ * Weak favours only — see `ObligationSchema`.
+ */
+export const AssignObligationOp = z.object({
+  op: z.literal('assign_obligation'),
+  obligationId: z.string().min(1),
+  toHolderFactionId: z.string().min(1),
+  reason: z.string().max(240).default(''),
+});
+
 /** Publish a secret a watcher found: its subject loses standing with every power. */
 export const PublishDossierOp = z.object({
   op: z.literal('publish_dossier'),
@@ -1151,6 +1174,11 @@ export const EXTRACTION_ALLOWED = new Set<string>([
   'forgive_loan',
   // "We will owe you one." Binds the debtor; consent lives in the transcript.
   'establish_obligation',
+  // And a favour held is consideration: let off as one side's price, or sold
+  // to the other party. Calling one in is NOT here — it needs nobody's
+  // agreement, so from a channel it would be the declared act minus its cost.
+  'release_obligation',
+  'assign_obligation',
   // A target giving way to a demand in the room, which is the other party's
   // consent written down — grounded like any concession.
   'concede_ultimatum',
@@ -1199,6 +1227,7 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   PlayNoteOp,
   CallObligationOp,
   RepudiateObligationOp,
+  ReleaseObligationOp,
   PublishDossierOp,
   BlackmailOp,
   IssueUltimatumOp,
@@ -1263,6 +1292,8 @@ export const ExtractionOpSchema = z.union([
   EstablishLoanOp,
   // A favour owed binds the debtor, so it is agreed in a channel or not at all.
   EstablishObligationOp,
+  // Selling one binds the buyer to having bought it.
+  AssignObligationOp,
 ]);
 
 /** The full vocabulary, including ops only the reducer may originate. */
@@ -1287,6 +1318,7 @@ export const OpSchema = z.discriminatedUnion('op', [
   PlayNoteOp,
   CallObligationOp,
   RepudiateObligationOp,
+  ReleaseObligationOp,
   PublishDossierOp,
   BlackmailOp,
   IssueUltimatumOp,
@@ -1319,6 +1351,7 @@ export const OpSchema = z.discriminatedUnion('op', [
   RepudiateLoanOp,
   ForgiveLoanOp,
   EstablishObligationOp,
+  AssignObligationOp,
   RecruitCommanderOp,
   SpawnEventOp,
   LogNarrativeOp,

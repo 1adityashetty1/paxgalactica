@@ -224,7 +224,9 @@ you do not name does not move.
 
 Fill `credits` for a one-time payment out of your treasury, `perTurn` for a
 standing one, `hulls` for ships out of your own fleet, `assets` for things off
-your own shelf. All of them are **what you give**, never what you receive.
+your own shelf, `obligations` for favours owed to you that you are letting go
+of — forgiven to the power that owes them, or sold to the power across the
+table. Use the ids from **Favours owed**. All of them are **what you give**, never what you receive.
 
 ### Trade things, not only worlds and money
 
@@ -241,6 +243,11 @@ the sort this table exists for.
 
 Three things to hold on to:
 
+- **A favour owed to you is a chip too.** *"Forget what you owe us, and the
+  Sennex toll comes off"* spends it as the price of something; *"we will sell
+  you what Drajk owes us"* passes it to the buyer. Only a plain favour can be
+  sold — a hook bought with a secret, or owed for a debt you forgave, is yours
+  alone and can only be let off.
 - **Name the id in `assets`.** *"You can have your people back"* moves nothing.
   You are looking at your own shelf, so you know which lot you mean.
 - **Something unassayed is worth a range, and the range is the argument.** When

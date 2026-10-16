@@ -55,6 +55,14 @@ be made to pay, by signing a pact or backing an ultimatum when the holder calls.
 `debtorFactionId` is the power that owes, `holderFactionId` the one owed. Only
 when the debtor said it in its own voice.
 
+**A favour given up is `release_obligation` or `assign_obligation`.** *"Forget
+what you owe us"* is a `release_obligation` of that favour by its holder — the
+debtor is let off. *"We will sell you the favour Drajk owes us"* is an
+`assign_obligation` with `toHolderFactionId` the buyer, alongside whatever
+paid for it. Take the id from the standing block's **Favours owed**. Only a weak
+favour can be sold. **Calling one in is not an accord**: it needs nobody's
+agreement, and the holder does it on its own turn.
+
 **Giving way to an ultimatum in the room is `concede_ultimatum`** with the
 standing block's `demandId`, when the power the demand was made of agreed to it
 here. Do not also write the treaty: conceding forms it.
