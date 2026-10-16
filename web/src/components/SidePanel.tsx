@@ -237,7 +237,7 @@ export function SidePanel({
         {tab === 'trade' && <TradePanel state={state} ledger={effective.ledger} onSelect={onSelect} />}
         {tab === 'assets' && <Assets state={state} onOffer={onOffer} activeChannel={activeChannel} />}
         {tab === 'orders' && <Orders state={state} briefing={briefing} />}
-        {tab === 'standing' && <Standing state={state} onSelect={onSelect} />}
+        {tab === 'standing' && <Standing state={state} onSelect={onSelect} onDraft={onDraft} />}
         {tab === 'log' && <Log state={state} />}
       </div>
     </aside>
@@ -1513,7 +1513,15 @@ function Assets({
   );
 }
 
-function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: string) => void }) {
+function Standing({
+  state,
+  onSelect,
+  onDraft,
+}: {
+  state: WorldState;
+  onSelect: (id: string) => void;
+  onDraft: (text: string) => void;
+}) {
   const me = state.playerFactionId;
   const treaties = treatiesFor(state, me);
   const wars = warsFor(state, me);
@@ -1844,19 +1852,64 @@ function Standing({ state, onSelect }: { state: WorldState; onSelect: (id: strin
               .filter((o) => o.status === 'open' && (o.holderFactionId === me || o.debtorFactionId === me))
               .map((o) => {
                 const mine = o.holderFactionId === me;
-                const other = getFaction(state, mine ? o.debtorFactionId : o.holderFactionId)?.name;
+                const other = getFaction(state, mine ? o.debtorFactionId : o.holderFactionId)?.name ?? '';
+                const resting = o.restsUntil !== null && state.turn < o.restsUntil;
+                // What a blackmail hook rests on: it lapses the turn the secret
+                // stops being one, so the line says what would end it.
+                const secret = o.secret
+                  ? secretLive(state, o.secret)
+                    ? `rests on proof that ${describeSecret(state, o.secret)} — it lapses when that stops being true`
+                    : `the secret it rested on is out — it lapses this turn`
+                  : null;
+                // Your own open ultimatum, which a favour can be called in to back.
+                const myDemand = (state.demands ?? []).find((d) => d.status === 'open' && d.fromFactionId === me);
                 return (
                   <li
                     key={o.id}
                     className={mine ? 'good' : 'bad'}
                     title={
                       mine
-                        ? 'Call it in by declaring it: they sign a non-aggression pact, a ceasefire or a trade accord with you, or back an ultimatum of yours.'
+                        ? 'Calling it in is an action: they sign a non-aggression pact, a ceasefire or a trade accord with you, or back an ultimatum of yours.'
                         : 'They can call it in at any time. Walking away from it is priced like breaking a pact.'
                     }
                   >
                     {mine ? `${other} owes you` : `you owe ${other}`} · {o.strength}
-                    {o.restsUntil !== null && state.turn < o.restsUntil ? ` · rests to turn ${o.restsUntil}` : ''}
+                    {resting ? ` · rests to turn ${o.restsUntil}` : ''}
+                    {/* A blackmail hook's text restates its secret; say it once, with what ends it. */}
+                    <div className="meta">{secret ?? o.text}</div>
+                    {mine && !resting && (
+                      <div className="chips">
+                        {(
+                          [
+                            ['non-aggression', 'a non-aggression pact'],
+                            ['ceasefire', 'a ceasefire'],
+                            ['trade accord', 'a trade accord'],
+                          ] as const
+                        ).map(([label, what]) => (
+                          <button
+                            key={label}
+                            className="chip"
+                            title="Writes it on the command line; nothing is sent."
+                            onClick={() => onDraft(`Call in the favour ${other} owes us: they sign ${what} with us.`)}
+                          >
+                            call in: {label}
+                          </button>
+                        ))}
+                        {myDemand && (
+                          <button
+                            className="chip"
+                            title="Writes it on the command line; nothing is sent."
+                            onClick={() =>
+                              onDraft(
+                                `Call in the favour ${other} owes us: they back our ultimatum to ${getFaction(state, myDemand.toFactionId)?.name ?? myDemand.toFactionId}.`,
+                              )
+                            }
+                          >
+                            call in: back our ultimatum
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </li>
                 );
               })}
