@@ -6,28 +6,37 @@ Draft for review, 2026-10-16. Follows `docs/playtest-2026-10-16-operative-freedo
 
 Two decisions narrow what follows.
 
-**1. An act with one specific object is a one-shot mission, not an operation.** `larceny` is built: one attempt at a named thing
-held on a world, the original or a copy of paper, after which the operative is free again. **Kidnapping is next**, on the same
-pattern: one attempt to seize a named person standing on that world (a notable, an officer) and hold them on a world the actor
-holds. The missions now come in two shapes:
+**1. An act with one specific object is a one-shot mission.** `larceny` and `kidnapping` are built: one attempt at a named
+thing or a named person on a world, after which the operative is free again. The missions now come in two shapes:
 
 | shape | missions | the object |
 |---|---|---|
 | **standing**, every turn until recalled or caught | surveillance, embezzlement, subversion, sabotage, defection, discord, incitement, seduction | a world or a power |
-| **one-shot**, one attempt | larceny, assassination, kidnapping (next) | a named thing or person |
+| **one-shot**, one attempt | larceny, kidnapping, assassination | a named thing or person |
 
 That absorbs `take_asset`, `copy_paper`, `take_person` and `strike` from the verb table below. (`theft` is renamed
 `embezzlement`; old journals read the old name.)
 
-**2. Forgery is a method, not an act.** A forged letter means nothing on its own; it is *how* a mission is done: discord through
-forged correspondence, subversion through a forged order, a blackmail hook from fabricated proof. So forgery attaches to a
-mission and changes how it plays. It is easier to arrange than the real thing, and worse if it is exposed: a forgery caught is
-traced to its author and turns the effect against them. The same is likely true of impersonation and bribery, which are methods
-of reaching a person rather than outcomes.
+**2. The generalized operation is a mission carried out by a method, and forgery is the first method.** A forged letter means
+nothing on its own; it is *how* a mission is done. So the operation is where a player's free-text act is put together: **what it
+achieves comes from a mission**, standing or one-shot, and **how it is done is a method**:
 
-So an operation is reduced to what is neither a standing job, nor a one-shot at an object, nor a method. What remains of the
-verb table (`move_held`, `frame`, `win_over`, `turn_operative`, `spring`, `next_fight`) should be re-sorted under the same test
-before anything else is built.
+| the player says | method | mission | what the method changes |
+|---|---|---|---|
+| "forge a letter in the Huntmaster's hand that sells out the Sixteenth" | forgery | discord | — |
+| "plant a forged order that strips the Vantic garrison" | forgery | subversion | — |
+| "fake proof of a Meridian spy and blackmail them with it" | forgery | (blackmail, with fabricated proof) | — |
+| "pose as the Huntmaster's courier and walk out with the codes" | impersonation | larceny | — |
+| "buy the turnkey and walk the governor out" | bribery | kidnapping | — |
+
+A method changes the **price and the failure**, never the outcome, which stays the mission's, so nothing new needs balancing on
+the outcome side. Forgery, for example, is easier to arrange than the real thing, and much worse when it is exposed: a forgery
+caught is traced to its author and turns the effect against them. Impersonation and bribery are likely the next two methods.
+
+So the arbiter's job on a free-text covert act becomes picking **a mission (or two) and, if the player described one, a
+method**, with targets, and code prices the combination. The remaining verbs in the table below (`move_held`, `frame`,
+`win_over`, `turn_operative`, `spring`, `next_fight`) should be sorted the same way: is each a new mission, or a method on one
+that exists? `frame` already looks like forgery carried out through discord.
 
 ## The problem
 
