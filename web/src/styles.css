@@ -199,6 +199,19 @@ ul { margin: 0; padding-left: 1.1em; }
 .ethics { display: flex; gap: 5px; margin-top: 6px; }
 .chip { background: #1c2028; color: var(--dim); font-size: 10px; padding: 1px 6px; border-radius: 3px; border: none; }
 .chip.on { background: #1e3a5f; color: #93c5fd; }
+/* A button chip reads as one: it lightens under the pointer. */
+button.chip:hover { background: #262c37; color: var(--text); }
+/* A type — an estate, a school, a class — is a label, not a button: outlined,
+   in its own colour, and nothing happens under the pointer. */
+.kind-tag {
+  display: inline-block; font-size: 10px; padding: 0 6px; border-radius: 3px;
+  color: #c4b5fd; border: 1px solid #4c3f7a; background: transparent; cursor: default;
+}
+.list-group-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.list-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.list-row .chip { flex: none; }
+.list-group-head .muted { color: var(--dim); font-size: 11px; }
+.list-row .muted { color: var(--dim); font-weight: 400; }
 .crew-officers { display: inline-flex; gap: 1px; margin-left: 3px; vertical-align: middle; }
 .wanted-by { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .faction-dot { position: relative; display: inline-block; width: 9px; height: 9px; border-radius: 50%; cursor: help; }

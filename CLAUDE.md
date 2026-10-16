@@ -7528,9 +7528,14 @@ component is logic nothing checks.
   and the briefing's **Court** group says when a seat stands empty. The Lists
   tab toggles to **Officers**: one of each school waiting, new (a commission)
   or served (free), each with an appoint button; the Command tab offers the
-  same. And to **Operatives**: the three waiting, fresh or served with their
-  record, each with a recruit button; the Agents tab's recruit button names the
-  next one.
+  same. And to **Operatives**: one of each class waiting, fresh or served with
+  their record, each with a recruit button; the Agents tab's recruit button
+  names the next one. **All three share one layout** (`ListGroup`, `ListRow`):
+  grouped by estate, school or class, the type an outlined violet label that is
+  not a button (`.kind-tag`), what it means beside it, then each person's name,
+  their standing dimmed, and the one action. A notable gets an appoint button
+  when a seat stands empty. Button chips lighten under the pointer, so the two
+  never read alike.
 
   **Buttons write, they never send.** Every action button in the panels
   writes a sentence for the player to read and send, because declaring is

@@ -1,5 +1,5 @@
 import { WorldSprite, worldTypeLabel } from './WorldSprite.js';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { FactionAvatar } from './FactionAvatar.js';
 import { FleetsPanel } from './FleetsPanel.js';
 import { TradePanel } from './TradePanel.js';
@@ -46,6 +46,7 @@ import {
   archetypeOf,
   listedOfficers,
   listedAgentsOf,
+  AGENT_CLASSES,
   commanderEffect,
   commanderFor,
   familyOf,
@@ -1981,8 +1982,15 @@ function AgentCard({
     <div className={a.exposed ? 'agent burned' : 'agent'}>
       <div className="treaty-head">
         <strong style={{ color: colourOf(state, a.ownerFactionId) }}>
-          {a.name || (mine ? 'Yours' : owner)}
-          {mine && a.agentClass ? ` (${a.agentClass})` : ''} · {a.mission ?? 'awaiting orders'}
+          {a.name || (mine ? 'Yours' : owner)} · {a.mission ?? 'awaiting orders'}
+          {mine && a.agentClass && (
+            <>
+              {' '}
+              <span className="kind-tag" title={AGENT_CLASS_MEANING[a.agentClass]}>
+                {a.agentClass}
+              </span>
+            </>
+          )}
           {mine && a.agentClass && a.mission && classFit(a.agentClass, a.mission) < 0 ? ' — off their class' : ''}
         </strong>
         {a.exposed ? (
@@ -2307,6 +2315,48 @@ function CourtTab({
  * every match you give comes off them, and an estate never runs dry — appoint
  * its last and another is put forward. Nobody here is anybody's mark.
  */
+/**
+ * One group on the Lists tab — an estate, a school or a class — the same shape
+ * for notables, officers and operatives: the type as a label that is not a
+ * button, what it means, and the people waiting in it.
+ */
+function ListGroup({ kind, about, children }: { kind: string; about: string; children: ReactNode }) {
+  return (
+    <div className="agent list-group">
+      <div className="list-group-head">
+        <span className="kind-tag">{kind}</span>
+        <span className="muted">{about}</span>
+      </div>
+      <ul className="war-list">{children}</ul>
+    </div>
+  );
+}
+
+/** A person waiting on the Lists: their name, where they stand, and what you can do with them. */
+function ListRow({
+  name,
+  detail,
+  action,
+}: {
+  name: string;
+  detail: string;
+  action?: { label: string; title?: string; onClick: () => void };
+}) {
+  return (
+    <li className="list-row">
+      <span>
+        {name}
+        <span className="muted"> · {detail}</span>
+      </span>
+      {action && (
+        <button className="chip" title={action.title} onClick={action.onClick}>
+          {action.label}
+        </button>
+      )}
+    </li>
+  );
+}
+
 function ListsTab({
   state,
   onSelect,
@@ -2390,19 +2440,27 @@ function ListsTab({
           ))}
         </ul>
       )}
-      {view.lists.map((l) => (
-        <div key={l.id} className="agent">
-          <div className="treaty-head">
-            <strong>{cap(l.name)}</strong>
-            <span className="muted">{l.stat}</span>
-          </div>
-          <ul className="war-list">
+      {view.lists.map((l) => {
+        // The seat this estate's people would fill: the one its ground
+        // favours, or the first standing empty.
+        const seat = view.vacancies.find((v) => v.suggested === l.name) ?? view.vacancies[0];
+        return (
+          <ListGroup key={l.id} kind={cap(l.name)} about={`moves ${l.stat}`}>
             {l.notables.map((n) => (
-              <li key={n.id}>{n.name}</li>
+              <ListRow
+                key={n.id}
+                name={n.name}
+                detail="waiting for a seat"
+                action={
+                  seat
+                    ? { label: 'appoint', title: `${seat.office} of ${seat.world}`, onClick: () => onDraft(`Appoint ${n.name} of ${l.name} as ${seat.office} of ${seat.world}.`) }
+                    : undefined
+                }
+              />
             ))}
-          </ul>
-        </div>
-      ))}
+          </ListGroup>
+        );
+      })}
     </div>
   );
 }
@@ -2426,30 +2484,22 @@ function OfficerLists({ state, onDraft }: { state: WorldState; onDraft: (text: s
         served comes back for nothing. {inPost} of {MAX_ACTIVE_COMMANDERS} in post.
       </p>
       {COMMANDER_ARCHETYPES.map((a) => (
-        <div key={a.kind} className="agent">
-          <div className="treaty-head">
-            <strong>{a.kind}</strong>
-            <span className="muted">{a.effect}</span>
-          </div>
-          <ul className="war-list">
-            {listed
-              .filter((c) => c.archetype === a.kind)
-              .map((c) => (
-                <li key={c.id}>
-                  {c.name}
-                  <span className="muted">
-                    {' · '}
-                    {c.commissioned ? `served, ${c.battles} engagement${c.battles === 1 ? '' : 's'} · free` : `new · ${COMMANDER_COST}`}
-                  </span>
-                  {post && inPost < MAX_ACTIVE_COMMANDERS && (
-                    <button className="chip" onClick={() => onDraft(`Appoint ${c.name} at ${post.name}.`)}>
-                      appoint
-                    </button>
-                  )}
-                </li>
-              ))}
-          </ul>
-        </div>
+        <ListGroup key={a.kind} kind={a.kind} about={a.effect}>
+          {listed
+            .filter((c) => c.archetype === a.kind)
+            .map((c) => (
+              <ListRow
+                key={c.id}
+                name={c.name}
+                detail={c.commissioned ? `served, ${c.battles} engagement${c.battles === 1 ? '' : 's'} · free` : `new · ${COMMANDER_COST}cr`}
+                action={
+                  post && inPost < MAX_ACTIVE_COMMANDERS
+                    ? { label: 'appoint', title: `at ${post.name}`, onClick: () => onDraft(`Appoint ${c.name} at ${post.name}.`) }
+                    : undefined
+                }
+              />
+            ))}
+        </ListGroup>
       ))}
     </>
   );
@@ -2476,29 +2526,26 @@ function OperativeLists({ state, onDraft }: { state: WorldState; onDraft: (text:
         action and costs nothing until you send them; it takes a slot. A recalled operative, and one ransomed home, come
         back here with their record. {live} on the books.
       </p>
-      <ul className="war-list">
-        {waiting.map((a) => (
-          <li key={a.id}>
-            {a.name}
-            {a.agentClass && (
-              <span className="chip" title={AGENT_CLASS_MEANING[a.agentClass]}>
-                {a.agentClass}
-              </span>
-            )}
-            <span className="muted">
-              {' · '}
-              {a.served
-                ? `served, ${a.operations} operation${a.operations === 1 ? '' : 's'}${a.timesCaught > 0 ? `, caught ${a.timesCaught}×` : ''}`
-                : 'a fresh face'}
-            </span>
-            {home && (
-              <button className="chip" onClick={() => onDraft(`Recruit ${a.name} at ${home.name}.`)}>
-                recruit
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
+      {[...AGENT_CLASSES, undefined].map((k) => {
+        const of = waiting.filter((a) => a.agentClass === k);
+        if (of.length === 0) return null;
+        return (
+          <ListGroup key={k ?? 'none'} kind={k ?? 'no class'} about={k ? AGENT_CLASS_MEANING[k] : 'recruited before classes existed'}>
+            {of.map((a) => (
+              <ListRow
+                key={a.id}
+                name={a.name}
+                detail={
+                  a.served
+                    ? `served, ${a.operations} operation${a.operations === 1 ? '' : 's'}${a.timesCaught > 0 ? `, caught ${a.timesCaught}×` : ''}`
+                    : 'a fresh face'
+                }
+                action={home ? { label: 'recruit', title: `at ${home.name}`, onClick: () => onDraft(`Recruit ${a.name} at ${home.name}.`) } : undefined}
+              />
+            ))}
+          </ListGroup>
+        );
+      })}
     </>
   );
 }
