@@ -937,6 +937,7 @@ export class GameSession {
 /** Why a declaration cannot be withdrawn, in the player's terms. */
 const BINDING_REASON: Record<StagedBinding, string> = {
   rolled: 'That declaration has already been rolled. Its outcome is a fact of this turn; withdrawing it would be a reroll.',
+  sent: 'That operative is already under way. Recall them with a later action instead; the sending cannot be taken back.',
   refused: 'A refusal cannot be withdrawn — your institutions have already said no, and that is what it cost.',
   charge: 'That is a charge your institutions levied for the proposal itself, and it stands even if the accord is withdrawn.',
   record: 'That is the record of a ruling, not an order, and it cannot be withdrawn.',

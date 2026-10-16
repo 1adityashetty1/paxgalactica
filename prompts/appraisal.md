@@ -252,8 +252,8 @@ game has a mechanic for that.
    favour by the watch. Put it in `groundwork`, not `covert`: the operative
    (`agent`, by name, or omit for the nearest free one), `systemId`, the
    player's words in `text`, the ONE `axis` it improves, and the `target` it is
-   aimed at, if any. It counts from the next turn. Price it as a modest `guile`
-   check; the danger lives in the act it prepares.
+   aimed at, if any. It counts from the next turn. It costs the action alone;
+   the danger lives in the act it prepares.
 
 4. **An outcome no mission produces** — smuggling a prisoner between worlds,
    springing a captive, making proof out of nothing — goes in `unexpressed`, in
@@ -285,7 +285,15 @@ other was promised in prose and never came. Each entry:
   mission; a class only runs its own a little better and others a little worse,
   and the engine applies that. Never rule an act inadmissible because of who
   would carry it out, and never because the operative must travel first — an
-  operative sent to a far world travels and then works, in one order.
+  operative sent to a far world travels and then works, in one order. An
+  operative already on a mission is re-tasked by naming them; the new mission
+  replaces the old. The engine checks these refusals and sends them back.
+
+  **Covert work is sent, not rolled.** Give no `stat` or `difficulty` for an
+  order that is wholly covert or groundwork: the operative's own chance is
+  rolled when they act, and it already counts their skill, their class, the
+  method and any groundwork. A declaration carrying covert work carries only
+  the sending, so declare anything overt beside it as an action of its own.
 - `systemId` — where that operative works.
 - `target` — **the person, when the operation is aimed at one.** Write the name
   the player used: `Marcia Galba`, `M. Galba`, `Marshal Galba` and

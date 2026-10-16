@@ -628,9 +628,11 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     resolution.check?.outcome,
     'model',
     resolution.check?.stat,
-    { binding: 'rolled', secret },
+    // Covert work is sent, not rolled: nothing was thrown, but the operative is
+    // under way and the action is spent, so it stands like a roll does.
+    { binding: resolution.check ? 'rolled' : 'sent', secret },
   );
-  staged.notes.unshift(...routed.notes);
+  staged.notes.unshift(...resolution.notes, ...routed.notes);
 
   if (defiance) {
     const total = Math.min(

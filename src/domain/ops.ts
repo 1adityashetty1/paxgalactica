@@ -1699,13 +1699,16 @@ export type Appraisal = z.infer<typeof AppraisalSchema>;
 /**
  * The arbiter's ruling on a DECLARED action: priced whenever a roll will follow.
  *
- * A roll follows an admissible action that is not a redirect to a conversation.
- * Anything else carries no price, and asking for one is asking the model to
- * invent a number nothing reads. The accord path uses `AppraisalSchema` as it
- * stands, since an accord is never rolled.
+ * A roll follows an admissible action that is not a redirect to a conversation
+ * and not covert work. Covert work is sent, not rolled: the operative's own
+ * chance is rolled on the tick, so a price here would be a second roll. Anything
+ * else carries no price, and asking for one is asking the model to invent a
+ * number nothing reads. The accord path uses `AppraisalSchema` as it stands,
+ * since an accord is never rolled.
  */
 export const DeclaredAppraisalSchema = AppraisalSchema.superRefine((a, ctx) => {
   if (!a.admissible || a.negotiation) return;
+  if ((a.covert?.length ?? 0) > 0 || (a.groundwork?.length ?? 0) > 0 || a.unexpressed) return;
   if (a.stat === undefined) {
     ctx.addIssue({ code: 'custom', path: ['stat'], message: 'An action that can be attempted needs the stat it tests.' });
   }

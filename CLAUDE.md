@@ -4255,6 +4255,24 @@ reason kept. The engine attaches the method and lays the groundwork
 (`routeCovertAction`); resolution only narrates. Tests name methods
 arbitrarily, so nothing is tuned to one. Journal version 22 (`methodsCount`).
 
+**Three guards on the arbiter are code, because the prompt did not hold them**
+(`src/domain/refusals.ts`; held-out playtest 2026-10-16). A refusal whose reason
+is one of the rules the arbiter keeps inventing — an operative's class as a
+gate, "there is no mechanic", "cannot be reassigned mid-mission" —
+(`inventedRefusal`) is sent back once with what it got wrong, and a "no
+mechanic" that survives the retry is taken as `unexpressed`: turned away with no
+action spent, the missing outcome recorded. **Covert work is sent, not rolled**:
+a declaration ruled covert or groundwork has no stat, no difficulty and no d20
+of its own, because the operative's chance on the tick already counts guile,
+class, method and groundwork, and a declaration roll in front of it was a
+second gate none of those touched — a critical failure there burned an operative
+the engine gave 95%. Its batch is staged `sent`, which stands as a roll does.
+**And it carries only the sending** (`COVERT_SEND_OPS`: `deploy_agent`,
+`lay_groundwork`, `recall_agent`, `log_narrative`); anything else resolution
+wrote — a fee on free groundwork, a second charge for a deployment, an
+`extend_order` on a rival's programme — is left out with a note, and the player
+declares overt work on its own.
+
 **`kidnapping` is larceny aimed at a person**: a wetworker mission, one attempt
 (`AGENT_COST` 120, exposure 6 in 20), at a notable seated on that world or an
 officer standing there, named in `targetNotable` or `targetCommanderId` and

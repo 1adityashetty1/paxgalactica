@@ -1,0 +1,75 @@
+/**
+ * Refusals the arbiter makes up, and the ops covert work may carry.
+ *
+ * Two held-out playtests (2026-10-16) watched the arbiter refuse covert acts
+ * with rules that exist nowhere: "not a sparrow's mission", "there is no
+ * mechanic for relocation", "cannot be reassigned mid-mission". The prompt says
+ * in bold that none of these is a reason, and it did not hold twice, so the
+ * check is made here: a refusal whose reason is one of these is not a ruling.
+ */
+
+/** Why a refusal is not a ruling, or null when it may stand. */
+export type InventedRefusal = 'class' | 'no_mechanic' | 'reassign';
+
+const CLASS_WORD = /\b(ghosts?|agitators?|sparrows?|wetworkers?)\b/i;
+const CLASS_GATE =
+  /\b(mission|missions|class|trained|suited|speciali[sz]\w*|not (?:a|an|the|their|its)\b|only\b|outside\b|isn'?t|cannot|can'?t)\b/i;
+const NO_MECHANIC =
+  /\bno (?:game |engine )?(?:mechanic|mechanism|rule|op|operation|procedure|system)s? (?:for|to|that|covers?|exists?)\b|\bno (?:way|means) to (?:represent|model|express)\b|\bnot (?:modell?ed|represented|supported|expressible)\b|\b(?:engine|game|rules?) (?:has|have|offers?|provides?|supports?) no\b|\bno such (?:mechanic|mechanism|op|mission)\b|\bno mechanic\b/i;
+const REASSIGN =
+  /\bmid-?mission\b|\b(?:re-?assign|re-?task)(?:ed|ing)?\b|\balready (?:on|assigned to|committed to|engaged in) (?:a|an|another|its|their) (?:mission|operation|job)\b/i;
+
+/**
+ * Is this refusal one of the rules the arbiter keeps inventing?
+ *
+ * A class word alone is not enough — "your sparrow at Kalzir was caught" is a
+ * fact — it has to be used as a gate. Ordered so the reason reported is the
+ * likeliest one when a sentence says two.
+ */
+export function inventedRefusal(reason: string | undefined | null): InventedRefusal | null {
+  if (!reason) return null;
+  if (CLASS_WORD.test(reason) && CLASS_GATE.test(reason)) return 'class';
+  if (/\bclass(?:es)?\b/i.test(reason) && /\b(operative|agent|spy)s?\b/i.test(reason)) return 'class';
+  if (REASSIGN.test(reason)) return 'reassign';
+  if (NO_MECHANIC.test(reason)) return 'no_mechanic';
+  return null;
+}
+
+/** What the retry is told about the rule it broke, in the arbiter's terms. */
+export const INVENTED_REFUSAL_NOTE: Record<InventedRefusal, string> = {
+  class:
+    "Your ruling refused this because of the operative's class. Class is never a gate: any operative may attempt any mission, and the engine adjusts their odds for it.",
+  no_mechanic:
+    'Your ruling refused this because "there is no mechanic". That is never a reason. Read the act by its outcome: if a mission produces it, put it in `covert`; if one only prepares for it, in `groundwork`; if none produces it, rule it admissible and put the outcome in `unexpressed`.',
+  reassign:
+    'Your ruling refused this because the operative is already on a mission. That is false: an operative on a mission is re-tasked by naming them, and the new mission replaces the old.',
+};
+
+/**
+ * The ops a covert declaration may carry once the arbiter has ruled it covert.
+ *
+ * Covert work is sent, not rolled: the operative's own chance, method and
+ * groundwork are rolled on the tick. Everything a send costs is charged in code
+ * (`AGENT_COST`, the method's price) and groundwork costs the action alone, so a
+ * resolution call has nothing to add but the sending and the story. A playtest
+ * watched it invent fees on free groundwork, charge deployments twice and
+ * extend a rival's programme with no presence; none of those is in this list.
+ */
+export const COVERT_SEND_OPS: ReadonlySet<string> = new Set([
+  'deploy_agent',
+  'lay_groundwork',
+  'recall_agent',
+  'log_narrative',
+]);
+
+/** Keep only the ops a covert send may carry, and say what was left out. */
+export function covertSendOnly(ops: readonly unknown[]): { ops: unknown[]; dropped: string[] } {
+  const kept: unknown[] = [];
+  const dropped: string[] = [];
+  for (const op of ops) {
+    const kind = (op as { op?: unknown } | null)?.op;
+    if (typeof kind === 'string' && COVERT_SEND_OPS.has(kind)) kept.push(op);
+    else dropped.push(typeof kind === 'string' ? kind : 'unknown');
+  }
+  return { ops: kept, dropped };
+}
