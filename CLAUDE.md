@@ -5947,7 +5947,7 @@ trip is for.
 
 **Operatives come off the Lists, and only by recruiting** (journal version 22,
 `LegacyRules.agentLists`), the third roster to work the way officers and
-notables do. Every power keeps `AGENT_LIST_SIZE` (3) waiting
+notables do. Every power keeps `AGENT_LIST_SIZE` waiting — one of each class
 (`ListedAgentSchema`, `stockAgentLists`): standing nowhere, drawing no upkeep,
 taking no slot, and seen by nobody else — `worldAsSeenBy` sends a power its own
 Lists alone. A **recalled** operative goes back on them with their record, where
@@ -5962,6 +5962,24 @@ someone on the books. A recruit takes a fresh `mintId` each stint: an
 operative's rolls are seeded on its id, and Lists-style ids reseeded every
 recruit's dice and froze the harness board at 6/4/6/5/4 for a reason that was
 not in the rules. With fresh ids all four boards stay 5/5/6/5/4.
+
+**And every operative has a class** (`AGENT_CLASSES`): **ghosts** come away with
+something — sight, money, proof (surveillance, theft); **agitators** wear a power
+down — its stats, its quarrels, its people (subversion, discord, incitement);
+**sparrows** work on people (defection, seduction); **wetworkers** break things
+(sabotage, assassination). `MISSION_CLASS` files each mission, and is a
+`Record`, so a mission added later fails the typecheck until it is given a class
+by that rule. A class runs its own missions at `CLASS_SUCCESS_SHIFT` (+10) success
+and `CLASS_EXPOSURE_SHIFT` (1) less exposure, never below one in twenty, and
+anyone else's at −10 and one more (`classFit`, `exposureRiskOf`). The Lists keep
+**one of each class** waiting, the shape the officers' Lists have; `recruit_agent`
+takes a class (`agentClass`) or a name, and a send that names nobody goes to the
+nearest idle operative of the mission's class first. The bots recruit the class
+their mission wants, and a test holds every operative a bot runs to its own
+class. An operative with no class — recruited before them — has no modifier, so
+older campaigns play as they did. `agentClass` sits before the fields written
+onto a live operative later, because replay compares key order. The harness
+boards stay 5/5/6/5/4.
 
 **Before the Lists, an operative handed home went back on the books by itself** (journal
 version 20, `operativesComeHome`), awaiting orders, at the world they were held
@@ -6518,7 +6536,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `forgive_loan` | lender only; what was lent becomes the borrower's |
 | `forgive_debt` | creditor only; writes off the balance and buys goodwill |
 | `recruit_commander` | appoint an officer off your Lists — `officer` by name, or `school` for its first — to a world you hold, up to five. An action of its own |
-| `recruit_agent` | take an operative off your Lists (`agent`, by name, or the first) onto the books at a world you hold, awaiting orders. An action of its own. Before version 22 a new face, and `fromAssetId` brought a captured one home |
+| `recruit_agent` | take an operative off your Lists (`agent` by name, `agentClass`, or the first) onto the books at a world you hold, awaiting orders. An action of its own. Before version 22 a new face, and `fromAssetId` brought a captured one home |
 | `recall_agent` | withdraw an operative of yours; from version 22 they go back on your Lists with their record |
 | `deploy_agent` | send an operative already on the books on a mission; they travel three jumps a turn. `targetNotable` aims a seduction, a subversion or an assassination at a notable |
 | `grant_stipend` · `revoke_stipend` | pay one of your estates 15 a turn, or stop; three grants an estate |

@@ -7,7 +7,7 @@ import {
   COMMANDER_UPKEEP,
   MAX_ACTIVE_COMMANDERS,
   VETERAN_THRESHOLDS,
-  AGENT_LIST_SIZE,
+  AGENT_CLASSES,
 } from '../domain/command.js';
 import { STAT_NAMES } from '../domain/checks.js';
 import { EFFECT_CATEGORIES } from '../domain/development.js';
@@ -33,6 +33,9 @@ import {
   PLEDGE_REACH,
   type AgentMission,
   type TreatyType,
+  CLASS_EXPOSURE_SHIFT,
+  CLASS_SUCCESS_SHIFT,
+  MISSION_CLASS,
 } from '../domain/diplomacy.js';
 import { EXHAUSTION_INDEMNITY_SHARE, EXHAUSTION_RATIO, EXHAUSTION_RUNWAY_TURNS } from '../domain/leverage.js';
 import {
@@ -365,7 +368,7 @@ const MISSION_JOB: Record<AgentMission, string> = {
 export function operativeLines(): string[] {
   return [
     'OPERATIVES',
-    `  Recruiting one is an action: one of the ${AGENT_LIST_SIZE} waiting on your Lists signs`,
+    `  Recruiting one is an action: one of those waiting on your Lists signs`,
     '  on at a world you hold. Sending them on a mission is another. A',
     '  recalled operative, or one ransomed home, goes back on the Lists.',
     `  They travel ${AGENT_JUMPS_PER_TURN} jumps a turn and cost ${AGENT_UPKEEP} a turn`,
@@ -379,6 +382,13 @@ export function operativeLines(): string[] {
       const risk = `${MISSION_PROFILE[m].exposureRisk}/20`;
       return `    ${m.padEnd(14)}${cost.padStart(5)}  ${risk.padStart(4)}  ${MISSION_JOB[m]}`;
     }),
+    `  Every operative has a class, one of each waiting on your Lists. A`,
+    `  class runs its own missions at +${CLASS_SUCCESS_SHIFT}% and ${CLASS_EXPOSURE_SHIFT} less risk, anyone`,
+    `  else's at -${CLASS_SUCCESS_SHIFT}% and ${CLASS_EXPOSURE_SHIFT} more:`,
+    ...AGENT_CLASSES.map(
+      (c) =>
+        `    ${c.padEnd(11)}${(Object.keys(MISSION_CLASS) as AgentMission[]).filter((m) => MISSION_CLASS[m] === c).join(', ')}`,
+    ),
     '  Say what you want done in plain words — "put a watcher on Vantic" —',
     '  and the arbiter routes it here. The Agents tab tracks every one.',
   ];

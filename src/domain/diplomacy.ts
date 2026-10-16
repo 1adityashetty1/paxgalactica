@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { StatNameSchema } from './checks.js';
+import { AgentClassSchema, type AgentClass } from './command.js';
 
 /**
  * Treaties and covert agents: the two standing structures that outlive the turn
@@ -1950,6 +1951,53 @@ export const AGENT_MISSIONS = [
 export const AgentMissionSchema = z.enum(AGENT_MISSIONS);
 export type AgentMission = z.infer<typeof AgentMissionSchema>;
 
+/**
+ * Which class each mission belongs to. **The rule for a new one**: a mission
+ * that comes away with something — sight, money, proof, a thing — is a
+ * ghost's; one that wears a power's stats, quarrels or people down is an
+ * agitator's; one worked on a person is a sparrow's; one that breaks something
+ * outright is a wetworker's. A `Record`, so a mission added without a class
+ * fails the typecheck.
+ */
+export const MISSION_CLASS: Record<AgentMission, AgentClass> = {
+  surveillance: 'ghost',
+  theft: 'ghost',
+  subversion: 'agitator',
+  discord: 'agitator',
+  incitement: 'agitator',
+  defection: 'sparrow',
+  seduction: 'sparrow',
+  assassination: 'wetworker',
+  sabotage: 'wetworker',
+};
+
+export const AGENT_CLASS_MEANING: Record<AgentClass, string> = {
+  ghost: 'comes away with something: sight, money, proof — surveillance and theft',
+  agitator: 'wears a power down: its stats, its quarrels, its people — subversion, discord and incitement',
+  sparrow: 'works on people: crews and notables — defection and seduction',
+  wetworker: 'breaks things: a fleet, a fixture, a person — sabotage and assassination',
+};
+
+/** Success chance a class gains on its own missions, and loses on anyone else's. */
+export const CLASS_SUCCESS_SHIFT = 10;
+/** Chance in twenty of being caught a class sheds on its own missions, and adds on anyone else's. */
+export const CLASS_EXPOSURE_SHIFT = 1;
+
+/**
+ * +1 when an operative runs a mission of their own class, −1 when they run
+ * another's, 0 for one with no class (recruited before classes existed), so
+ * an older campaign plays exactly as it did.
+ */
+export function classFit(agentClass: AgentClass | undefined, mission: AgentMission): -1 | 0 | 1 {
+  if (agentClass === undefined) return 0;
+  return MISSION_CLASS[mission] === agentClass ? 1 : -1;
+}
+
+/** The chance in twenty a failed turn gets this operative caught, by mission and class. */
+export function exposureRiskOf(agent: { agentClass?: AgentClass }, mission: AgentMission): number {
+  return Math.max(1, MISSION_PROFILE[mission].exposureRisk - classFit(agent.agentClass, mission) * CLASS_EXPOSURE_SHIFT);
+}
+
 export const AGENT_MISSION_MEANING: Record<AgentMission, string> = {
   surveillance:
     'reveals the target\'s hidden orders on this system; no damage, and the quietest mission there is',
@@ -2254,6 +2302,12 @@ export const AgentSchema = z.object({
    * find, so the location model is the defence rather than a new stat.
    */
   targetCommanderId: z.string().nullable().default(null),
+  /**
+   * Their class — see `AGENT_CLASSES`. Absent for one recruited before classes
+   * existed. Here, before the fields written onto a live operative later, since
+   * it is set when they sign on: replay compares key order.
+   */
+  agentClass: AgentClassSchema.optional(),
   /**
    * Last, because it is written onto a live operative when they are taken, and
    * a key added to an object lands at its end: here the schema agrees.

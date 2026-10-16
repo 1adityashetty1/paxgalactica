@@ -15,7 +15,7 @@ import { FibScaleSchema } from './duration.js';
 import { LentSchema } from './loan.js';
 import { HullClassSchema, TypedStackSchema } from './hulls.js';
 import { CheatSchema } from './cheats.js';
-import { CommanderArchetypeSchema } from './command.js';
+import { AgentClassSchema, CommanderArchetypeSchema } from './command.js';
 import {
   OnInterruptSchema,
   OrderEffectSchema,
@@ -766,6 +766,8 @@ export const RecruitAgentOp = z.object({
    * Omitted, the first one listed comes.
    */
   agent: z.string().min(1).optional(),
+  /** Or which class: the first of it waiting comes. See `AGENT_CLASSES`. */
+  agentClass: AgentClassSchema.optional(),
   cover: z.string().default(''),
 });
 

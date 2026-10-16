@@ -94,7 +94,7 @@ leaves a faction with nobody following it.
 | `extend_order` | work runs longer than planned |
 | `accelerate_order` | credits spent to buy back one duration bucket |
 | `break_treaty` | repudiate one; both parties' opinion of the breaker drops |
-| `recruit_agent` | take an operative off your Lists (`agent`, by name) onto the books at a world you hold, awaiting orders — **an action of its own** |
+| `recruit_agent` | take an operative off your Lists (`agent` by name, or `agentClass`) onto the books at a world you hold, awaiting orders — **an action of its own** |
 | `recall_agent` | withdraw an operative of yours; they go back on your Lists with their record |
 | `deploy_agent` | send one of your operatives on a mission to a system; they travel there |
 | `recall_agent` | withdraw one |
@@ -410,7 +410,10 @@ off the power's **Lists** — the state block names who is waiting, a veteran's
 record against a fresh face; name one in `agent`, or the first comes — onto the
 books at a world the power holds, awaiting orders. It is the only way an
 operative is had: a recalled one, and one ransomed home, go back on the Lists
-with their record. A declaration that recruits does **nothing else**: anything you emit beside it is dropped. A later
+with their record. **Every operative has a class** — ghost, agitator, sparrow or
+wetworker — and the state block says which missions each runs well: their own
+at better odds and less risk, anyone else's at worse. Recruit the class the job
+wants (`agentClass`), and send the one whose class it is. A declaration that recruits does **nothing else**: anything you emit beside it is dropped. A later
 declaration sends them with `deploy_agent`, which creates nobody: it sends the
 operative it names (`agent`, by name as the state block lists them), or with
 no name the nearest one **AWAITING ORDERS**. One already on a mission is only

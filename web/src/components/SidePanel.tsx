@@ -32,7 +32,7 @@ import { shortageFactor } from '../../../src/domain/events.js';
 import { EFFECT_COST, describeOrderEffect } from '../../../src/domain/development.js';
 import { describeEffect } from '../../../src/domain/diplomacy.js';
 import { CommanderIcon } from './BattleIcons.js';
-import { agentStanding, type Agent } from '../../../src/domain/diplomacy.js';
+import { agentStanding, classFit, AGENT_CLASS_MEANING, CLASS_SUCCESS_SHIFT, type Agent } from '../../../src/domain/diplomacy.js';
 import { agentRoster } from '../../../src/ui/agentroster.js';
 import { courtView, seatDoing, seatLabel } from '../../../src/ui/court.js';
 import { defaultEstate, emptySeats, listedFor, notableById, powerOf, seatedAt, seatsFor } from '../../../src/domain/seats.js';
@@ -1981,7 +1981,9 @@ function AgentCard({
     <div className={a.exposed ? 'agent burned' : 'agent'}>
       <div className="treaty-head">
         <strong style={{ color: colourOf(state, a.ownerFactionId) }}>
-          {a.name || (mine ? 'Yours' : owner)} · {a.mission ?? 'awaiting orders'}
+          {a.name || (mine ? 'Yours' : owner)}
+          {mine && a.agentClass ? ` (${a.agentClass})` : ''} · {a.mission ?? 'awaiting orders'}
+          {mine && a.agentClass && a.mission && classFit(a.agentClass, a.mission) < 0 ? ' — off their class' : ''}
         </strong>
         {a.exposed ? (
           <span className="eta">burned</span>
@@ -2469,14 +2471,20 @@ function OperativeLists({ state, onDraft }: { state: WorldState; onDraft: (text:
   return (
     <>
       <p className="muted">
-        Operatives waiting to be recruited. Recruiting one is an action and costs nothing until you send them; it
-        takes a slot, and so does every operative on your books. A recalled operative, and one ransomed home, come back
-        here with their record. {live} on the books.
+        Operatives waiting to be recruited, one of each class at least. A class runs its own missions at +
+        {CLASS_SUCCESS_SHIFT}% and less risk, anyone else's at −{CLASS_SUCCESS_SHIFT}% and more. Recruiting one is an
+        action and costs nothing until you send them; it takes a slot. A recalled operative, and one ransomed home, come
+        back here with their record. {live} on the books.
       </p>
       <ul className="war-list">
         {waiting.map((a) => (
           <li key={a.id}>
             {a.name}
+            {a.agentClass && (
+              <span className="chip" title={AGENT_CLASS_MEANING[a.agentClass]}>
+                {a.agentClass}
+              </span>
+            )}
             <span className="muted">
               {' · '}
               {a.served

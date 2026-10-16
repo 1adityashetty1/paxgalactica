@@ -21,6 +21,7 @@ import {
   commissionsAgainst,
   protectedFrom,
   raidLandsOn,
+  MISSION_CLASS,
 } from './diplomacy.js';
 import { EFFECT_COST, MIN_DEVELOPMENT_COST } from './development.js';
 import {
@@ -493,7 +494,8 @@ function sabotage(ctx: Ctx): Ops {
   if (purse(state, me) < BOT_SABOTEUR_RESERVE) return [];
   if (liveAgentsOf(state, me).length >= maxAgentsFor(state, me)) return [];
   return [
-    { op: 'recruit_agent', systemId: home.id },
+    // Of the mission's class, which runs it better (`MISSION_CLASS`).
+    { op: 'recruit_agent', systemId: home.id, agentClass: MISSION_CLASS['sabotage'] },
     {
       op: 'deploy_agent',
       systemId: target.a.atSystemId,
@@ -670,7 +672,8 @@ function watch(ctx: Ctx): Ops {
   // One slot always left for a saboteur, so the two never race for the last.
   if (liveAgentsOf(state, me).length + 1 >= maxAgentsFor(state, me)) return [];
   return [
-    { op: 'recruit_agent', systemId: home.id },
+    // Of the mission's class, which runs it better (`MISSION_CLASS`).
+    { op: 'recruit_agent', systemId: home.id, agentClass: MISSION_CLASS['surveillance'] },
     {
       op: 'deploy_agent',
       systemId: post.id,
@@ -2046,7 +2049,8 @@ function incite(ctx: Ctx): Ops {
   if (purse(state, me) < BOT_INCITER_RESERVE) return [];
   if (liveAgentsOf(state, me).length >= maxAgentsFor(state, me)) return [];
   return [
-    { op: 'recruit_agent', systemId: home.id },
+    // Of the mission's class, which runs it better (`MISSION_CLASS`).
+    { op: 'recruit_agent', systemId: home.id, agentClass: MISSION_CLASS['incitement'] },
     {
       op: 'deploy_agent',
       systemId: target.x.id,
@@ -2183,7 +2187,8 @@ function workNotables(ctx: Ctx): Ops {
   if (liveAgentsOf(state, me).length >= maxAgentsFor(state, me)) return [];
   const atWar = wars.has(target.x.controllerFactionId!);
   return [
-    { op: 'recruit_agent', systemId: home.id },
+    // Of the mission's class, which runs it better (`MISSION_CLASS`).
+    { op: 'recruit_agent', systemId: home.id, agentClass: MISSION_CLASS[atWar ? 'subversion' : 'seduction'] },
     {
       op: 'deploy_agent',
       systemId: target.x.id,

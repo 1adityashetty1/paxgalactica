@@ -112,7 +112,8 @@ Same op vocabulary and duration rules as resolution:
 - **Operatives are recruited before they are sent.** `deploy_agent` sends one
   this power already has (the state block lists them, and which await orders);
   with nobody on the books, emit `recruit_agent` at a world it holds first —
-  naming one off its Lists in `agent`, or the first comes — in
+  naming one off its Lists in `agent`, or the class the mission wants in
+  `agentClass` (the state block says which runs what) — in
   the same reaction, and the `deploy_agent` after it. They travel three jumps a
   turn and are at work when they arrive.
 - **A promissory note you hold** from another power may be called in with

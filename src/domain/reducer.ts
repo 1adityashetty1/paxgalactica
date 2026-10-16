@@ -121,6 +121,10 @@ import {
   type Bounty,
   raidLandsOn,
   type TreatyType,
+  classFit,
+  exposureRiskOf,
+  CLASS_SUCCESS_SHIFT,
+  type AgentMission,
 } from './diplomacy.js';
 import { HEAT_ANSWERED, HEAT_BLACKMAIL, HEAT_CAUGHT, HEAT_DECAY, HEAT_FOR_MISSION, HEAT_PACT_BROKEN, HEAT_PER_RAID, addHeat } from './heat.js';
 import { darkRaidSecret, describeSecret, secretLive, secretsAbout, sideStrength } from './leverage.js';
@@ -581,7 +585,14 @@ const systemName = (state: WorldState, id: string): string =>
  * on a mission goes only when named, so a watch is never ended by accident.
  * A string is the reason nobody could be sent.
  */
-function chooseOperative(state: WorldState, ownerId: string, query: string | null, targetId: string): Agent | string {
+function chooseOperative(
+  state: WorldState,
+  ownerId: string,
+  query: string | null,
+  targetId: string,
+  /** Named nobody, one of the mission's class goes first (`MISSION_CLASS`). */
+  mission?: AgentMission,
+): Agent | string {
   const mine = (state.agents ?? []).filter((a) => a.ownerFactionId === ownerId && !a.exposed);
   if (query !== null) {
     const byId = mine.find((a) => a.id === query);
@@ -601,7 +612,8 @@ function chooseOperative(state: WorldState, ownerId: string, query: string | nul
     return `${nameFor(state, ownerId)} has no operative awaiting orders. Recruiting one is an action of its own — recruit_agent, at a world you hold — and one already on a mission is re-tasked only by name.`;
   }
   const far = (a: Agent) => (shortestPath(state.systems, a.systemId, targetId)?.length ?? Number.POSITIVE_INFINITY);
-  return [...waiting].sort((a, b) => far(a) - far(b) || a.id.localeCompare(b.id))[0]!;
+  const fits = (a: Agent) => (mission && classFit(a.agentClass, mission) === 1 ? 0 : 1);
+  return [...waiting].sort((a, b) => fits(a) - fits(b) || far(a) - far(b) || a.id.localeCompare(b.id))[0]!;
 }
 
 const nameFor = (state: WorldState, id: string): string =>
@@ -779,6 +791,8 @@ export function agentSuccessChance(
   counterIntel: number,
   operations = 0,
   timesCaught = 0,
+  /** +1 on a mission of the operative's own class, −1 on another's (`classFit`). */
+  fit: -1 | 0 | 1 = 0,
 ): number {
   return Math.max(
     5,
@@ -787,7 +801,8 @@ export function agentSuccessChance(
       50 +
         (guile - counterIntel) * 6 +
         AGENT_VETERAN_BONUS[agentVeterancy(operations)]! -
-        timesCaught * AGENT_CAUGHT_PENALTY,
+        timesCaught * AGENT_CAUGHT_PENALTY +
+        fit * CLASS_SUCCESS_SHIFT,
     ),
   );
 }
@@ -1656,6 +1671,7 @@ function listAgent(state: WorldState, spy: Agent): void {
       timesCaught: spy.timesCaught,
       served: true,
       listedTurn: state.turn,
+      agentClass: spy.agentClass,
     }),
   );
 }
@@ -6615,7 +6631,7 @@ function applyOpsUnderRules(
             );
             break;
           }
-          const spy = chooseOperative(state, ownerId, op.agent, op.systemId);
+          const spy = chooseOperative(state, ownerId, op.agent, op.systemId, op.mission);
           if (typeof spy === 'string') {
             reject(raw, op.agent === null ? 'illegal_value' : 'unknown_agent', spy);
             break;
@@ -6655,6 +6671,7 @@ function applyOpsUnderRules(
             counterIntelAt(state, op.mission, host, target?.id ?? null),
             spy.operations,
             spy.timesCaught,
+            classFit(spy.agentClass, op.mission),
           );
           const when =
             turns === 0
@@ -6728,6 +6745,7 @@ function applyOpsUnderRules(
             counterIntelAt(state, op.mission, host, host.controllerFactionId),
             spy.operations,
             spy.timesCaught,
+            classFit(spy.agentClass, op.mission),
           );
           state.assets = (state.assets ?? []).filter((a) => a.id !== held.id);
           const back = `${spy.name || 'A returned operative'} goes back out on ${host.name}, ${spy.operations} operation${spy.operations === 1 ? '' : 's'} behind them and a face ${nameFor(state, held.heldBy === ownerId ? ownerId : held.heldBy)}'s rivals have seen ${spy.timesCaught} time${spy.timesCaught === 1 ? '' : 's'}.`;
@@ -6850,7 +6868,11 @@ function applyOpsUnderRules(
             break;
           }
           const waiting = listedAgentsOf(state.listedAgents, ownerId);
-          const chosen = op.agent ? resolvePerson(waiting, op.agent) : (waiting[0] ?? null);
+          const chosen = op.agent
+            ? resolvePerson(waiting, op.agent)
+            : op.agentClass
+              ? (waiting.find((a) => a.agentClass === op.agentClass) ?? null)
+              : (waiting[0] ?? null);
           if (!chosen) {
             reject(
               raw,
@@ -6881,6 +6903,7 @@ function applyOpsUnderRules(
               timesCaught: chosen.timesCaught,
               cover: op.cover,
               targetCommanderId: null,
+              agentClass: chosen.agentClass,
             }),
           );
           const record = chosen.served
@@ -9683,7 +9706,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       if (profile.oneShot) spentAgents.push(agent.id);
       if (roll * 5 > agent.successChance) {
         watchNotes.set(agent.id, `attempted ${agent.mission} on ${host.name} and it came to nothing.`);
-        if (roll >= 21 - profile.exposureRisk) {
+        if (roll >= 21 - exposureRiskOf(agent, agent.mission)) {
           // No power holds the world to take them; its people turn them out,
           // and a knife caught is a grievance the Rim remembers.
           agent.exposed = true;
@@ -9756,7 +9779,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
             ? 1
             : 0)
         : 0;
-      if (roll >= 21 - profile.exposureRisk - hunted) {
+      if (roll >= 21 - exposureRiskOf(agent, agent.mission) - hunted) {
         agent.exposed = true;
         watchNotes.set(agent.id, `was taken on ${host.name}. That line is closed.`);
         // Taken, not merely burned — see `takeOperative`.
