@@ -3022,7 +3022,10 @@ advance, called in later, with the terms picked from a closed list at the call.
 called on a power at war is a peace forced by a debt of honour, and leaves a
 truce — or `support` an ultimatum of the holder's. A **weak** favour is spent; a
 **strong** hook rests `OBLIGATION_REST_TURNS` (8) and stays, and while it stands
-its debtor cannot back anybody against the holder. `repudiate_obligation` is
+its debtor cannot back anybody against the holder — whether it declares for a
+side itself or another holder calls a favour in to make it (`call: support`
+obeys the hook and peace guards `back_ultimatum` does, from journal version 22,
+`LegacyRules.hooksHoldOnCall`). `repudiate_obligation` is
 priced like a broken pact: 25 with the holder, `PACT_BREAKING_REPUTATION_COST`
 with every onlooker.
 
@@ -4424,6 +4427,11 @@ An 8-turn playtest read all three off `GET /api/campaign` and the event log:
   while this paragraph said it did not. The view is built on `worldAsSeenBy`
   now, and a server test reads a hidden rival operative off neither the read
   nor the push.
+- **A dissent line.** It names its reason, which for a refused order is the
+  red line the order would have crossed, and it was public — so a refusal
+  staged as a secret batch still told every NPC prompt what the player had
+  tried. It is the power's own business from journal version 22
+  (`LegacyRules.privateDissent`); the dissent figure itself stays public.
 - **`clamp` and `rejection` entries.** Both were public and
   `serializeRecentLog` feeds the log into every NPC prompt, so the Vigil's log
   carried *"[illegal_value] drajk cannot deploy an agent owned by vigil"* —
@@ -6247,7 +6255,13 @@ hostage. **The ward is surety** (`fateWhenBrokenBy`): if the giver breaks the
 match or attacks the court, the court keeps the ward prisoner; if the court
 breaks it, the ward is gone from play; if the seated spouse dies or their
 affair is published, the ward goes home; if the ward's own affair is published,
-the court keeps them. A ward held counts as leverage in the giver's
+the court keeps them. **While the match stands the ward is not the court's to
+dispose of** (`wardBond`): no `transfer_asset`, no treaty `terms.assets`, no
+loan — a playtest sold one to a third power with the marriage still live, and
+sold one back and broke the match in the same batch, which lost them from play.
+Questioning one is still allowed, because that is the court betraying the
+match and `consume_asset` breaks it as such. Journal version 22
+(`LegacyRules.wardsStay`). A ward held counts as leverage in the giver's
 `concessionBudget` (`wardsHeld`). Into an independent world it is
 `propose_marriage`, a notable off your Lists who goes to live there
 (`Notable.livesAt`), which the world accepts at a standing of

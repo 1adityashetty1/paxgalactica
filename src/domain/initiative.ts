@@ -545,6 +545,15 @@ function callIn(ctx: Ctx): Ops {
     for (const o of ready) {
       if (used.has(o.id) || o.debtorFactionId === mine.toFactionId) continue;
       if (mine.backers.some((b) => b.factionId === o.debtorFactionId && b.side === 'from')) continue;
+      // The reducer refuses a call that would set a debtor against a power
+      // that holds a hook on it or is at peace with it, and a refused op
+      // sinks the batch.
+      const target = mine.toFactionId;
+      if (hookedBy(state.obligations, o.debtorFactionId, target)) continue;
+      if (
+        boundBy(state, o.debtorFactionId, target, PEACE_TYPES) ||
+        truceBetween(state.truces, state.turn, o.debtorFactionId, target)
+      ) continue;
       used.add(o.id);
       ops.push({ op: 'call_obligation', obligationId: o.id, call: 'support', demandId: mine.id, reason: 'what it owes' });
     }

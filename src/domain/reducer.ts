@@ -2300,7 +2300,31 @@ function regardForHandover(state: WorldState, asset: Asset, from: string, to: st
   }
 }
 
-function settleAssetTerms(state: WorldState, treaty: Treaty, peopleStanding = true): string[] {
+/**
+ * The live marriage a held notable is the ward of, if they are one. A ward is
+ * surety for the match: the court holds them because the marriage stands, so
+ * while it stands they are not the court's to sell, lend or give back by a side
+ * door. (Questioning one is allowed: it is the court betraying the match, and
+ * `consume_asset` breaks it as such.) Ending the marriage is what decides their fate
+ * (`fateWhenBrokenBy`); a transfer that walked around it left the match live
+ * with its hostage in a third power's hands, or — sold back to the giver and
+ * broken in the same batch — out of the game altogether (playtest 2026-10-15,
+ * A1 and A2). Journal version 22 (`LegacyRules.wardsStay`).
+ */
+function wardBond(state: WorldState, asset: Asset): Treaty | undefined {
+  if (!asset.notableId) return undefined;
+  const bond = marriageOf(state, asset.notableId);
+  return bond && bond.terms.ward === asset.notableId ? bond : undefined;
+}
+
+function wardRefusal(state: WorldState, asset: Asset, doing: string): string | null {
+  const bond = wardBond(state, asset);
+  if (!bond) return null;
+  const ward = notableById(state, asset.notableId)?.name ?? asset.text;
+  return `${ward} is the ward of a live marriage (${bond.id}), held as surety for it, and cannot be ${doing} while it stands. End the marriage, and what becomes of them is decided by who ended it.`;
+}
+
+function settleAssetTerms(state: WorldState, treaty: Treaty, peopleStanding = true, wardsStay = true): string[] {
   const notes: string[] = [];
   for (const term of treaty.terms.assets ?? []) {
     const asset = (state.assets ?? []).find((a) => a.id === term.assetId);
@@ -2318,6 +2342,11 @@ function settleAssetTerms(state: WorldState, treaty: Treaty, peopleStanding = tr
     }
     if (assetOnLoan(state.loans ?? [], asset.id)) {
       notes.push(`${asset.kind} is out on loan and is not ${holder}'s to part with.`);
+      continue;
+    }
+    const ward = wardsStay ? wardRefusal(state, asset, 'handed over') : null;
+    if (ward) {
+      notes.push(ward);
       continue;
     }
 
@@ -2722,6 +2751,24 @@ export interface LegacyRules {
    */
   assetsGoWithWorld?: boolean;
   /**
+   * A live marriage's ward cannot be transferred, written into a treaty's
+   * asset terms or lent (`wardBond`). Journal version 22; before
+   * it a ward could be sold off while the match stood.
+   */
+  wardsStay?: boolean;
+  /**
+   * Calling in a favour to back an ultimatum obeys the guards `back_ultimatum`
+   * does: a debtor under a strong hook from the target, or at peace with it,
+   * cannot be called to side against it. Journal version 22.
+   */
+  hooksHoldOnCall?: boolean;
+  /**
+   * A dissent line names its reason, which is often the line a refused order
+   * would have crossed, so it is the power's own business. Journal version 22;
+   * before it every power read it.
+   */
+  privateDissent?: boolean;
+  /**
    * A sandbox campaign's one event (see `primeRimSandbox`): that kind every
    * turn, with no d20 and no cooldowns. Not a rule the game acquired — a rule
    * of that campaign, read off its journal's seed entry.
@@ -2863,6 +2910,9 @@ function applyOpsUnderRules(
     operativesComeHome: spiesComeHome = true,
     officerLists = true,
     assetsGoWithWorld: worldTakesAssets = true,
+    wardsStay = true,
+    hooksHoldOnCall = true,
+    privateDissent = true,
   } = legacy;
   const state = cloneState(input);
   const rejections: OpRejection[] = [];
@@ -3384,11 +3434,14 @@ function applyOpsUnderRules(
         // in the build. A number the engine changes and nobody can audit is the
         // same defect as a check nobody can audit.
         if (f.dissent !== wasDissent) {
+          // The reason is often the line a refused order would have crossed,
+          // which is nobody else's news (playtest 2026-10-15, B7).
           logEvent(
             state,
             'system',
             `${f.name}: dissent ${wasDissent} -> ${f.dissent}/100 (${op.delta >= 0 ? '+' : ''}${op.delta}). ${op.reason}`.trim(),
             f.id,
+            privateDissent ? [f.id] : null,
           );
         }
         break;
@@ -3880,6 +3933,11 @@ function applyOpsUnderRules(
           );
           break;
         }
+        const wardHeld = wardsStay ? wardRefusal(state, asset, 'handed over') : null;
+        if (wardHeld) {
+          reject(raw, 'illegal_value', wardHeld);
+          break;
+        }
         if (source === 'model' && actor !== undefined && asset.heldBy !== actor) {
           reject(
             raw,
@@ -4132,6 +4190,22 @@ function applyOpsUnderRules(
           }
           if (debtor === demand.toFactionId) {
             reject(raw, 'illegal_value', `${nameFor(state, debtor)} is the power the ultimatum is aimed at.`);
+            break;
+          }
+          // The guards a debtor declaring for itself meets: a debt of honour
+          // to one power does not override a stronger one to the target, nor a
+          // peace sworn with it. Before journal version 22 the call walked past
+          // both (playtest 2026-10-15, A8).
+          if (hooksHoldOnCall && hookedBy(state.obligations, debtor, demand.toFactionId)) {
+            reject(raw, 'illegal_value', `${nameFor(state, demand.toFactionId)} holds a hook on ${nameFor(state, debtor)}, which cannot side against it.`);
+            break;
+          }
+          if (
+            hooksHoldOnCall &&
+            (treatyBetween(state.treaties, state.turn, debtor, demand.toFactionId, PEACE_TREATIES) ||
+              truceBetween(state.truces, state.turn, debtor, demand.toFactionId))
+          ) {
+            reject(raw, 'illegal_value', `${nameFor(state, debtor)} is bound to peace with ${nameFor(state, demand.toFactionId)}.`);
             break;
           }
           demand.backers = [...demand.backers.filter((b) => b.factionId !== debtor), { factionId: debtor, side: 'from' }];
@@ -6115,7 +6189,7 @@ function applyOpsUnderRules(
         // hands once, and taking it back is a fresh act.
         if (!pending) {
           notes.push(...cedeTerritory(state, treaty, worldTakesAssets));
-          notes.push(...settleAssetTerms(state, treaty, peopleStanding));
+          notes.push(...settleAssetTerms(state, treaty, peopleStanding, wardsStay));
           notes.push(...settleTreatyPayment(state, treaty));
           notes.push(...wed(state, treaty));
         }
@@ -7358,6 +7432,11 @@ function applyOpsUnderRules(
             );
             break;
           }
+          const wardLent = wardsStay ? wardRefusal(state, asset, 'lent') : null;
+          if (wardLent) {
+            reject(raw, 'illegal_value', wardLent);
+            break;
+          }
           if (assetOnLoan(state.loans ?? [], asset.id)) {
             reject(raw, 'illegal_value', `${asset.text} is already out on loan.`);
             break;
@@ -8477,6 +8556,7 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
 
 function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult {
   const {
+    wardsStay = true,
     arrangementStanding = true,
     hostages = true,
     peopleStanding = true,
@@ -9045,7 +9125,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     // two calls belong together at BOTH sites, which is the whole reason that
     // comment says "the same two places".
     notes.push(...cedeTerritory(state, treaty, worldTakesAssets));
-    notes.push(...settleAssetTerms(state, treaty, peopleStanding));
+    notes.push(...settleAssetTerms(state, treaty, peopleStanding, wardsStay));
     notes.push(...settleTreatyPayment(state, treaty));
     notes.push(...wed(state, treaty));
   }

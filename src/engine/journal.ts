@@ -16,7 +16,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 21;
+export const JOURNAL_VERSION = 22;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -103,6 +103,7 @@ export const JournalVersionSchema = z.union([
   z.literal(19),
   z.literal(20),
   z.literal(21),
+  z.literal(22),
 ]);
 
 export const JournalSchema = z.object({
@@ -155,7 +156,10 @@ export const JournalSchema = z.object({
    *     power drew from eight given names.
    * 19 — written before estates, seats and notables.
    * 20 — written before a world stormed or ceded took what stood on it.
-   * 21 — current.
+   * 21 — written before a live marriage's ward was kept from sale, before a
+   *     favour called to back an ultimatum obeyed the hook and peace guards,
+   *     and when a dissent line was public.
+   * 22 — current.
    */
   version: JournalVersionSchema,
   entries: z.array(JournalEntrySchema),
@@ -351,6 +355,12 @@ export function replay(
     // it — fixtures, cargo, prisoners — with the power that lost it. Those
     // campaigns' conquerors took the ground and not what was built on it.
     assetsGoWithWorld: parsed.version >= 21,
+    // A live marriage's ward could be sold or lent; a favour
+    // called to back an ultimatum walked past a hook and a peace; and a
+    // dissent line, reason and all, was public.
+    wardsStay: parsed.version >= 22,
+    hooksHoldOnCall: parsed.version >= 22,
+    privateDissent: parsed.version >= 22,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.
