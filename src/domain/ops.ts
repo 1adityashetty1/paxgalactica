@@ -391,6 +391,24 @@ export const ConsumeAssetOp = z.object({
 });
 
 /**
+ * What becomes of a person this power holds.
+ *
+ * A person's fate is one named choice, never a side effect of a generic verb.
+ * `consume_asset` on a prisoner used to interrogate them, and a playtest
+ * (2026-10-16) watched resolution write "move the prisoner" as a consume and a
+ * fresh `create_asset`: the notable was questioned out of play and a lookalike
+ * minted. Each fate here is priced and checked by the reducer.
+ */
+export const DecideFateOp = z.object({
+  op: z.literal('decide_fate'),
+  assetId: z.string().min(1),
+  fate: z.enum(['interrogate', 'release', 'execute', 'relocate']),
+  /** For `relocate`: a world the holder holds, reached through its own space. */
+  toSystemId: z.string().min(1).optional(),
+  reason: z.string().max(240).default(''),
+});
+
+/**
  * Call in a promissory note this power holds — see `NOTE_KINDS`.
  *
  * Needs nobody's consent: the issuer gave it when it wrote the note, which is
@@ -1267,6 +1285,7 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   SetTollPolicyOp,
   SplitAssetOp,
   ConsumeAssetOp,
+  DecideFateOp,
   TransferAssetOp,
   PlayNoteOp,
   CallObligationOp,
@@ -1359,6 +1378,7 @@ export const OpSchema = z.discriminatedUnion('op', [
   SetTollPolicyOp,
   SplitAssetOp,
   ConsumeAssetOp,
+  DecideFateOp,
   TransferAssetOp,
   PlayNoteOp,
   CallObligationOp,

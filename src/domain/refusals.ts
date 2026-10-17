@@ -1,3 +1,5 @@
+import { familyOf } from './command.js';
+
 /**
  * Refusals the arbiter makes up, and the ops covert work may carry.
  *
@@ -72,4 +74,56 @@ export function covertSendOnly(ops: readonly unknown[]): { ops: unknown[]; dropp
     else dropped.push(typeof kind === 'string' ? kind : 'unknown');
   }
   return { ops: kept, dropped };
+}
+
+/**
+ * Keep a resolution call's sends only where the arbiter ruled one.
+ *
+ * Sending an operative and laying groundwork are the ruling's to decide: a
+ * covert part names the mission and the world, a groundwork part the world, and
+ * the engine writes the send from that (`routeCovertAction`). A resolution call
+ * may fill in the details of a send the ruling made — the cover, the effect —
+ * and nothing else. A playtest (2026-10-16) watched a retried ruling leave out
+ * its covert part, and resolution place the assassin itself on the rolled path.
+ */
+export function sendsAsRuled(
+  ops: readonly unknown[],
+  covert: readonly { mission: string; systemId: string }[],
+  groundwork: readonly { systemId: string }[],
+): { ops: unknown[]; dropped: string[] } {
+  const missions = new Set(covert.map((c) => `${c.mission}@${c.systemId}`));
+  const places = new Set(groundwork.map((g) => g.systemId));
+  const kept: unknown[] = [];
+  const dropped: string[] = [];
+  for (const op of ops) {
+    const o = op as { op?: string; mission?: string; systemId?: string } | null;
+    if (o?.op === 'deploy_agent' && !missions.has(`${o.mission}@${o.systemId}`)) {
+      dropped.push(`a ${o.mission ?? 'covert'} send at ${o.systemId ?? 'an unnamed world'}`);
+      continue;
+    }
+    if (o?.op === 'lay_groundwork' && !places.has(o.systemId ?? '')) {
+      dropped.push(`groundwork at ${o.systemId ?? 'an unnamed world'}`);
+      continue;
+    }
+    kept.push(op);
+  }
+  return { ops: kept, dropped };
+}
+
+/**
+ * The actor's own operative a piece of text names, by family name, or null.
+ * Family names are unique per campaign, so a match is that operative.
+ */
+export function ownOperativeNamed(
+  agents: readonly { name: string; ownerFactionId: string }[] | undefined,
+  actor: string,
+  text: string,
+): string | null {
+  const words = ` ${text.replace(/[^\p{L}\s'-]/gu, ' ').replace(/'s\b/g, '')} `;
+  for (const a of agents ?? []) {
+    if (a.ownerFactionId !== actor) continue;
+    const family = familyOf(a.name);
+    if (family && words.includes(` ${family} `)) return a.name;
+  }
+  return null;
 }

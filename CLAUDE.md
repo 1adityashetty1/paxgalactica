@@ -6065,6 +6065,30 @@ warehouse until a slot opens, and so does one whose power holds no world. Before
 version 20 it took a `recruit_agent` with `fromAssetId`, which still works.
 Officers do the same: one handed home goes back on the officers' Lists.
 
+**A person has one record, and their fate is a choice** (journal version 22,
+`LegacyRules.oneRecordPerPerson`; `docs/design-2026-10-16-ruling-schema.md`). A
+playtest moved a kidnapped notable by writing `consume_asset` on him — which
+questioned him out of play — and `create_asset` of a generic prisoner with his
+name. So `consume_asset` refuses a person (an anonymous, divisible haul of crews
+is still spent in lots), and a person's fate is `decide_fate`: `interrogate` as
+before, `release` home with `REPATRIATION_GOODWILL`, `execute` — an officer
+lost, an operative off the books, a notable removed as a killing removes one, at
+`EXECUTION_RESENTMENT` (40) with their power, `EXECUTION_REPUTATION_COST` (5)
+with everyone else and `HEAT_EXECUTION` (8), half the last two for someone with
+no roster record — or `relocate` to another of the holder's worlds by a path
+through its own space. And `create_asset` refuses one individual whose family
+name anyone in the campaign has carried (`personOnRoster`, read off
+`familiesInUse`): family names are never reused, so that is the existing person,
+named in the refusal. Somebody new — an informant, a defector — is still
+creatable.
+
+**Sends are the ruling's.** A resolution call may fill in a send the arbiter
+ruled (the cover, the effect) and never add one: `sendsAsRuled` drops any
+`deploy_agent` or `lay_groundwork` that matches no covert or groundwork part, and
+the note names the route. An act whose words name one of the actor's own
+operatives (`ownOperativeNamed`, by family) and comes back ruled with neither is
+put back to the arbiter once; if it stands, the act is overt and nobody is sent.
+
 **And you cannot question your own people.** `consume_asset` on a person your own
 power ran would have you file what they gave up and sell yourself intelligence
 about your own network — reachable the moment a round trip existed, and
@@ -6582,7 +6606,8 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `adjust_credits` | floors at 0 |
 | `set_doctrine` | 1–240 chars; may move `warEthic`/`tradeEthic` and retire lines, charged in dissent; actor's own faction only |
 | `set_toll_policy` | who pays to cross your space; free, actor's own faction only. An accord may only **lift** a toll — adding one is `declared_only`. `forTurns` / `whileTreaty` make a lift temporary |
-| `consume_asset` | spend, release or destroy a thing you hold; draws an instrument's `uses` or stuff's `quantity`. Never a promissory note |
+| `consume_asset` | spend, release or destroy a thing you hold; draws an instrument's `uses` or stuff's `quantity`. Never a promissory note, and from journal version 22 never a person |
+| `decide_fate` | a person you hold: `interrogate` (a dossier), `release` (home), `execute`, or `relocate` between your own worlds through your own space |
 | `play_note` | call in a promissory note you hold from another power; refused in war or when what it gives is already in force |
 | `establish_obligation` | **extraction-only** — a favour owed; binds the debtor, always weak |
 | `call_obligation` | holder only; `sign` a non-aggression pact, ceasefire or trade accord, or `support` an ultimatum of yours |

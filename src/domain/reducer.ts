@@ -158,6 +158,9 @@ import {
   ASSASSINATION_KILL_ROLL,
   INTERROGATION_RESENTMENT,
   INTERROGATION_SHARE,
+  EXECUTION_RESENTMENT,
+  EXECUTION_REPUTATION_COST,
+  HEAT_EXECUTION,
   REPATRIATION_GOODWILL,
   TRAFFICKING_REPUTATION_COST,
   TRAFFICKING_RESENTMENT,
@@ -2542,6 +2545,123 @@ function personsPower(state: WorldState, asset: Asset): string | null {
 }
 
 /**
+ * Question a person held, and file what they gave up — the one fate
+ * `consume_asset` used to carry, now `decide_fate`'s `interrogate`. Returns why
+ * it was refused, or null.
+ */
+function interrogatePerson(
+  state: WorldState,
+  asset: Asset,
+  notes: string[],
+  peopleStanding: boolean,
+): string | null {
+if (asset.commanderId !== null || asset.agentId !== null || asset.notableId) {
+  const them = (state.commanders ?? []).find((c) => c.id === asset.commanderId);
+  const theirSpy = (state.agents ?? []).find((a) => a.id === asset.agentId);
+  const theirNotable = notableById(state, asset.notableId);
+  const theirs =
+    them?.factionId ?? theirSpy?.ownerFactionId ?? (theirNotable ? notablesPower(theirNotable) ?? undefined : undefined);
+  // **Not your own people.** Ransom one home and this would have you
+  // question them and file what they gave up — a power selling itself
+  // intelligence about its own network, worth credits to the power that
+  // already had it. Reachable the moment a round trip existed, and
+  // incoherent rather than merely unbalanced.
+  if (theirs === asset.heldBy) {
+    return `${them?.name ?? theirSpy?.name ?? theirNotable?.name ?? 'That person'} is one of yours. There is nothing to be learned by questioning them.`;
+  }
+  const spy = theirSpy;
+  const who = them?.name || spy?.name || theirNotable?.name || 'the prisoner';
+  state.assets = state.assets.filter((a) => a.id !== asset.id);
+  // Spent either way: an officer is dead to their power and an
+  // operative's line was already closed the day they were caught.
+  if (them) them.status = 'lost';
+  if (spy) spy.exposed = true;
+  // A notable questioned is gone from every seat and every marriage —
+  // and a ward questioned is a marriage betrayed by the court that held
+  // them, priced as the pact it breaks.
+  if (theirNotable) {
+    const betrayed = marriageOf(state, theirNotable.id);
+    if (betrayed) notes.push(breakMarriage(state, betrayed, asset.heldBy));
+    removeNotable(state, theirNotable);
+  }
+  const file: Asset = {
+    id: mintId(state, 'ast'),
+    kind: 'dossier',
+    text: `What ${who} gave up under questioning`,
+    heldBy: asset.heldBy,
+    quantity: 1,
+    unit: 'file',
+    commanderId: null,
+    agentId: null,
+    divisible: false,
+    valuePerUnit: { [asset.heldBy]: Math.round(INTERROGATION_SHARE * (asset.valuePerUnit[asset.heldBy] ?? OFFICER_LEVERAGE)) },
+    speculative: false,
+    valueRange: {},
+    uses: null,
+    // Paper, so it stands on no world — a record of a conversation is
+    // not a thing to be seized with a planet.
+    atSystemId: null,
+    portable: true,
+    yield: null,
+    acquiredTurn: state.turn,
+  };
+  (state.assets ??= []).push(file);
+  const note = `${nameFor(state, asset.heldBy)} questions ${who} and files what they gave up.`;
+  notes.push(note);
+  logEvent(state, 'narrative', note, asset.heldBy);
+  if (theirs) {
+    logEvent(state, 'narrative', note, theirs);
+    // Their power hears of it and does not forgive it. Disposition has
+    // no decay, so this is a grievance rather than a mood — the price of
+    // choosing the file over the ransom.
+    if (peopleStanding) moveRegard(state, theirs, asset.heldBy, -INTERROGATION_RESENTMENT);
+  }
+  return null;
+}
+  return null;
+}
+
+/**
+ * The roster person a piece of text names, by a family name the campaign has
+ * used, or null. Families are unique per campaign (`familiesUsed`), so a match
+ * is that person; the name returned is their record's when it still exists.
+ */
+function personOnRoster(state: WorldState, text: string): string | null {
+  const words = ` ${text.replace(/[^\p{L}\s'-]/gu, ' ').replace(/'s\b/g, '')} `;
+  const people: { name: string }[] = [
+    ...(state.commanders ?? []),
+    ...(state.agents ?? []),
+    ...(state.listedAgents ?? []),
+    ...(state.notables ?? []),
+  ];
+  for (const family of familiesInUse(state)) {
+    if (!family || !words.includes(` ${family} `)) continue;
+    const who = people.find((p) => ` ${p.name} `.includes(` ${family} `));
+    return who?.name ?? `Someone of the ${family} family`;
+  }
+  return null;
+}
+
+/** Is there a path from one world to another that never leaves `holder`'s worlds? */
+function heldPathBetween(state: WorldState, holder: string, fromId: string, toId: string): boolean {
+  const held = (id: string) => state.systems.find((x) => x.id === id)?.controllerFactionId === holder;
+  if (!held(fromId) || !held(toId)) return false;
+  const seen = new Set([fromId]);
+  const queue = [fromId];
+  while (queue.length > 0) {
+    const at = queue.shift()!;
+    if (at === toId) return true;
+    for (const next of neighboursOf(state, at)) {
+      if (!seen.has(next) && held(next)) {
+        seen.add(next);
+        queue.push(next);
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * What handing a person over does to standing. Read BEFORE `heldBy` moves,
  * since the question is about the power giving them up.
  *
@@ -3068,6 +3188,12 @@ export interface LegacyRules {
    */
   methodsCount?: boolean;
   /**
+   * A person has one record. `consume_asset` refuses people — their fate is
+   * `decide_fate` — and `create_asset` refuses a person whose family name
+   * anyone in the campaign already carries. Journal version 22.
+   */
+  oneRecordPerPerson?: boolean;
+  /**
    * An estate loses `SEAT_VACATED_FAVOUR` when one of its notables leaves a
    * seat on its power's world, for any reason (`vacatedSeats`). Journal
    * version 22.
@@ -3231,6 +3357,7 @@ function applyOpsUnderRules(
     oneOrderPerOperative = true,
     missionEffectsHeld = true,
     methodsCount = true,
+    oneRecordPerPerson = true,
   } = legacy;
   const state = cloneState(input);
   // Who holds office before the batch, so a seat emptied by it is charged.
@@ -3934,6 +4061,24 @@ function applyOpsUnderRules(
         // `uses` is exercisable forever, which is the bug this shipped for.
         // Everything else is a default: an open slug stays open, and a survey
         // that brings back something nobody enumerated still works.
+        // **One record per person.** A person already on a roster — a notable,
+        // an officer, an operative, living or not — is acted on through their
+        // record, never minted again as a new asset: a playtest moved a
+        // kidnapped notable by questioning him out of play and creating a
+        // generic prisoner with his name (2026-10-16). Family names are never
+        // reused in a campaign, so one in the text of a single person is that
+        // person. An anonymous haul that mentions a name is not a person.
+        if (oneRecordPerPerson && PEOPLE_KINDS.has(op.kind) && op.quantity === 1) {
+          const named = personOnRoster(state, op.text);
+          if (named) {
+            reject(
+              raw,
+              'illegal_value',
+              `${named} already has a record in this campaign. Act on that person — take them, hold them, decide their fate — rather than making them again.`,
+            );
+            break;
+          }
+        }
         const shape = archetypeFor(op.kind);
         const stated = (field: string): boolean =>
           typeof raw === 'object' && raw !== null && field in (raw as Record<string, unknown>);
@@ -4158,72 +4303,24 @@ function applyOpsUnderRules(
         // is worth having once, and they are worth more alive to the power that
         // wants them back. The file is worth a fraction of the person, and only
         // to the power that took them — nobody else was in the room.
-        if (asset.commanderId !== null || asset.agentId !== null || asset.notableId) {
-          const them = (state.commanders ?? []).find((c) => c.id === asset.commanderId);
-          const theirSpy = (state.agents ?? []).find((a) => a.id === asset.agentId);
-          const theirNotable = notableById(state, asset.notableId);
-          const theirs =
-            them?.factionId ?? theirSpy?.ownerFactionId ?? (theirNotable ? notablesPower(theirNotable) ?? undefined : undefined);
-          // **Not your own people.** Ransom one home and this would have you
-          // question them and file what they gave up — a power selling itself
-          // intelligence about its own network, worth credits to the power that
-          // already had it. Reachable the moment a round trip existed, and
-          // incoherent rather than merely unbalanced.
-          if (theirs === asset.heldBy) {
-            reject(
-              raw,
-              'illegal_value',
-              `${them?.name ?? theirSpy?.name ?? theirNotable?.name ?? 'That person'} is one of yours. There is nothing to be learned by questioning them.`,
-            );
-            break;
-          }
-          const spy = theirSpy;
-          const who = them?.name || spy?.name || theirNotable?.name || 'the prisoner';
-          state.assets = state.assets.filter((a) => a.id !== asset.id);
-          // Spent either way: an officer is dead to their power and an
-          // operative's line was already closed the day they were caught.
-          if (them) them.status = 'lost';
-          if (spy) spy.exposed = true;
-          // A notable questioned is gone from every seat and every marriage —
-          // and a ward questioned is a marriage betrayed by the court that held
-          // them, priced as the pact it breaks.
-          if (theirNotable) {
-            const betrayed = marriageOf(state, theirNotable.id);
-            if (betrayed) notes.push(breakMarriage(state, betrayed, asset.heldBy));
-            removeNotable(state, theirNotable);
-          }
-          const file: Asset = {
-            id: mintId(state, 'ast'),
-            kind: 'dossier',
-            text: `What ${who} gave up under questioning`,
-            heldBy: asset.heldBy,
-            quantity: 1,
-            unit: 'file',
-            commanderId: null,
-            agentId: null,
-            divisible: false,
-            valuePerUnit: { [asset.heldBy]: Math.round(INTERROGATION_SHARE * (asset.valuePerUnit[asset.heldBy] ?? OFFICER_LEVERAGE)) },
-            speculative: false,
-            valueRange: {},
-            uses: null,
-            // Paper, so it stands on no world — a record of a conversation is
-            // not a thing to be seized with a planet.
-            atSystemId: null,
-            portable: true,
-            yield: null,
-            acquiredTurn: state.turn,
-          };
-          (state.assets ??= []).push(file);
-          const note = `${nameFor(state, asset.heldBy)} questions ${who} and files what they gave up.`;
-          notes.push(note);
-          logEvent(state, 'narrative', note, asset.heldBy);
-          if (theirs) {
-            logEvent(state, 'narrative', note, theirs);
-            // Their power hears of it and does not forgive it. Disposition has
-            // no decay, so this is a grievance rather than a mood — the price of
-            // choosing the file over the ransom.
-            if (peopleStanding) moveRegard(state, theirs, asset.heldBy, -INTERROGATION_RESENTMENT);
-          }
+        // A person is not spent. Their fate is a choice of its own
+        // (`decide_fate`), so a model that means "move them" cannot write
+        // "question them out of play" by reaching for the generic verb — which
+        // is how a playtest destroyed a notable (2026-10-16). Journal 22.
+        const isPerson = asset.commanderId !== null || asset.agentId !== null || !!asset.notableId;
+        // An anonymous, divisible haul of crews is still spent in lots; one
+        // person is not.
+        if (oneRecordPerPerson && (isPerson || (PEOPLE_KINDS.has(asset.kind) && !asset.divisible))) {
+          reject(
+            raw,
+            'illegal_value',
+            `${asset.text} is a person, or people: decide their fate (decide_fate: interrogate, release, execute or relocate) rather than spending them.`,
+          );
+          break;
+        }
+        if (isPerson) {
+          const refused = interrogatePerson(state, asset, notes, peopleStanding);
+          if (refused) reject(raw, 'illegal_value', refused);
           break;
         }
 
@@ -4244,6 +4341,144 @@ function applyOpsUnderRules(
           : `${nameFor(state, asset.heldBy)} spends ${spent} ${instrument ? 'of its plays' : asset.unit} of ${asset.text}; ${left} left. ${op.reason}`.trim();
         notes.push(note);
         logEvent(state, 'system', note, asset.heldBy, [asset.heldBy]);
+        break;
+      }
+
+      case 'decide_fate': {
+        // What becomes of a person held, as one named choice. Each fate is
+        // priced and checked here, so none of them is a side effect of a verb
+        // that meant something else.
+        const asset = state.assets.find((a) => a.id === op.assetId);
+        if (!asset) {
+          reject(raw, 'unknown_asset', `No asset "${op.assetId}".`);
+          break;
+        }
+        if (actor !== undefined && asset.heldBy !== actor) {
+          reject(raw, 'illegal_value', `${asset.text} is held by ${nameFor(state, asset.heldBy)}, not by ${nameFor(state, actor)}.`);
+          break;
+        }
+        const recorded = asset.commanderId !== null || asset.agentId !== null || !!asset.notableId;
+        if (!recorded && !PEOPLE_KINDS.has(asset.kind)) {
+          reject(raw, 'illegal_value', `${asset.text} is not a person. A thing is spent with consume_asset, or moved with relocate_asset.`);
+          break;
+        }
+        const borrowed = assetOnLoan(state.loans ?? [], asset.id);
+        if (borrowed) {
+          reject(raw, 'illegal_value', `${asset.text} is ${nameFor(state, borrowed.lenderFactionId)}'s, held on loan, and not yours to decide.`);
+          break;
+        }
+        const holder = asset.heldBy;
+        const theirs = personsPower(state, asset);
+        const who = (() => {
+          const c = (state.commanders ?? []).find((x) => x.id === asset.commanderId);
+          const a = (state.agents ?? []).find((x) => x.id === asset.agentId);
+          return c?.name || a?.name || notableById(state, asset.notableId)?.name || asset.text;
+        })();
+        if (theirs === holder && op.fate !== 'relocate') {
+          reject(raw, 'illegal_value', `${who} is one of yours. Bring them home and they go back on your Lists.`);
+          break;
+        }
+
+        if (op.fate === 'interrogate') {
+          if (recorded) {
+            const refused = interrogatePerson(state, asset, notes, peopleStanding);
+            if (refused) reject(raw, 'illegal_value', refused);
+            break;
+          }
+          // Somebody with no roster record: the file is worth a share of what
+          // the keenest buyer would have paid for them.
+          const best = Math.max(0, ...Object.values(asset.valuePerUnit ?? {}));
+          state.assets = state.assets.filter((a) => a.id !== asset.id);
+          state.assets.push(AssetSchema.parse({
+            id: mintId(state, 'ast'),
+            kind: DOSSIER_KIND,
+            text: `What ${asset.text} gave up under questioning`,
+            heldBy: holder,
+            quantity: 1,
+            unit: 'file',
+            divisible: false,
+            valuePerUnit: { [holder]: Math.round(INTERROGATION_SHARE * best) },
+            atSystemId: null,
+            portable: true,
+            acquiredTurn: state.turn,
+          }));
+          const note = `${nameFor(state, holder)} questions ${asset.text} and files what they gave up.`;
+          notes.push(note);
+          logEvent(state, 'narrative', note, holder, [holder]);
+          break;
+        }
+
+        if (op.fate === 'release' || op.fate === 'relocate') {
+          const ward = wardsStay ? wardRefusal(state, asset, op.fate === 'release' ? 'released' : 'moved') : null;
+          if (ward) {
+            reject(raw, 'illegal_value', ward);
+            break;
+          }
+        }
+
+        if (op.fate === 'release') {
+          if (theirs) {
+            // Home: the existing round trip, which puts them back on their own
+            // power's Lists and pays the repatriation goodwill.
+            if (peopleStanding) regardForHandover(state, asset, holder, theirs);
+            asset.heldBy = theirs;
+            const note = `${nameFor(state, holder)} releases ${who} to ${nameFor(state, theirs)}.`;
+            notes.push(note);
+            logEvent(state, 'narrative', note, holder, [holder, theirs]);
+          } else {
+            state.assets = state.assets.filter((a) => a.id !== asset.id);
+            const note = `${nameFor(state, holder)} lets ${asset.text} go.`;
+            notes.push(note);
+            logEvent(state, 'narrative', note, holder, [holder]);
+          }
+          break;
+        }
+
+        if (op.fate === 'execute') {
+          state.assets = state.assets.filter((a) => a.id !== asset.id);
+          const officer = (state.commanders ?? []).find((c) => c.id === asset.commanderId);
+          if (officer) officer.status = 'lost';
+          if (asset.agentId !== null) state.agents = (state.agents ?? []).filter((a) => a.id !== asset.agentId);
+          const notable = notableById(state, asset.notableId);
+          if (notable) {
+            const betrayed = marriageOf(state, notable.id);
+            if (betrayed) notes.push(breakMarriage(state, betrayed, holder));
+            removeNotable(state, notable);
+          }
+          if (theirs) moveRegard(state, theirs, holder, -EXECUTION_RESENTMENT);
+          const onlookers = theirs ? EXECUTION_REPUTATION_COST : Math.ceil(EXECUTION_REPUTATION_COST / 2);
+          for (const f of state.factions) {
+            if (f.id === holder || f.id === theirs) continue;
+            moveRegard(state, f.id, holder, -onlookers);
+          }
+          heatUp(state, holder, theirs ? HEAT_EXECUTION : Math.ceil(HEAT_EXECUTION / 2));
+          const note = `${nameFor(state, holder)} executes ${who}.`;
+          notes.push(note);
+          logEvent(state, 'narrative', note, holder);
+          break;
+        }
+
+        // relocate: from one of the holder's worlds to another, through its own space.
+        const to = op.toSystemId ? state.systems.find((x) => x.id === op.toSystemId) : undefined;
+        if (!to) {
+          reject(raw, 'unknown_system', `Relocating ${who} needs a world to take them to (toSystemId).`);
+          break;
+        }
+        if (to.controllerFactionId !== holder) {
+          reject(raw, 'illegal_value', `${to.name} is not ${nameFor(state, holder)}'s. A prisoner is moved only between worlds you hold; taking one through anybody else's space is not yet a thing anyone can do.`);
+          break;
+        }
+        const fromId = asset.atSystemId;
+        if (!fromId || !heldPathBetween(state, holder, fromId, to.id)) {
+          reject(raw, 'unreachable_target', `There is no road from where ${who} is held to ${to.name} through ${nameFor(state, holder)}'s own space.`);
+          break;
+        }
+        asset.atSystemId = to.id;
+        {
+          const note = `${nameFor(state, holder)} moves ${who} to ${to.name}.`;
+          notes.push(note);
+          logEvent(state, 'system', note, holder, [holder]);
+        }
         break;
       }
 

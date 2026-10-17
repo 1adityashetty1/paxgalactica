@@ -53,7 +53,7 @@ describe('what a power does with the people it holds', () => {
 
   it('costs standing with their power to question them', () => {
     const s = withPrisoner('drajk');
-    const out = applyOps(s, [{ op: 'consume_asset', assetId: 'ast-p', quantity: 1 } as OpInput], 'model', 'drajk');
+    const out = applyOps(s, [{ op: 'decide_fate', assetId: 'ast-p', fate: 'interrogate' } as OpInput], 'model', 'drajk');
     expect(out.rejections).toHaveLength(0);
     expect(regard(out.state, 'freeworlds', 'drajk')).toBeLessThan(regard(s, 'freeworlds', 'drajk'));
   });

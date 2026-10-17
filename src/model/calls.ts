@@ -39,7 +39,7 @@ import {
   type WorldState,
 } from '../domain/state.js';
 import { classifyPrinciple, classifyPrinciples } from '../domain/compulsions.js';
-import { covertSendOnly, INVENTED_REFUSAL_NOTE, inventedRefusal } from '../domain/refusals.js';
+import { covertSendOnly, INVENTED_REFUSAL_NOTE, inventedRefusal, ownOperativeNamed, sendsAsRuled } from '../domain/refusals.js';
 import { concessionBudget, withinBudget } from '../domain/leverage.js';
 import { callStructured } from './client.js';
 import { serializeArchetypes } from '../domain/assets.js';
@@ -575,6 +575,33 @@ export async function resolveAction(
     notes.push(`The arbiter's first ruling cited a rule that does not exist (${invented}), and was made again.`);
   }
 
+  // An act that names one of the actor's own operatives, ruled with no covert
+  // or groundwork part, has almost certainly lost the part that sends them —
+  // and with sends now the ruling's alone, a lost part is an operative who
+  // never goes. Put back once with the name; if the ruling stands, the act is
+  // overt and nobody is sent.
+  {
+    const a = priced.appraisal;
+    const operative =
+      a.admissible && !a.negotiation && !a.unexpressed && !(a.covert?.length) && !(a.groundwork?.length)
+        ? ownOperativeNamed(state.agents, state.playerFactionId, action)
+        : null;
+    if (operative) {
+      const again = await appraiseAction(state, action, undefined, {
+        note: [
+          '## This act names one of your operatives',
+          '',
+          `It names **${operative}**. If ${operative} carries it out, it is covert work: read it by its outcome and rule it with a \`covert\` part (or \`groundwork\`, if it only prepares). Rule it without one only if ${operative} has no hand in it.`,
+        ].join('\n'),
+      });
+      priced = {
+        appraisal: again.appraisal,
+        attempts: priced.attempts + again.attempts,
+        costUsd: priced.costUsd + again.costUsd,
+      };
+    }
+  }
+
   // What the arbiter NAMED, classified against the sheet rather than by its own
   // label — see `classifyPrinciple`. The model is good at spotting which line an
   // action touches and unreliable at saying which list that line is on, so the
@@ -927,6 +954,15 @@ export async function resolveAction(
   // The check line rides at the FRONT of the batch, so the log reads
   // roll-then-consequence rather than the other way round.
   const withCheck = (o: ResolutionOutput): ResolutionOutput => {
+    // Sends are the ruling's: a resolution call may detail a send that was
+    // ruled, never add one. The engine writes any it left out.
+    const ruled = sendsAsRuled(o.ops, covert, groundwork);
+    if (ruled.dropped.length > 0) {
+      notes.push(
+        `An operative is sent only when the act is ruled covert: left out ${ruled.dropped.join(', ')}. Declare it as their mission.`,
+      );
+      o = { ...o, ops: ruled.ops as ResolutionOutput['ops'] };
+    }
     if (checkOp) return { ...o, ops: [checkOp, ...o.ops] };
     const sent = covertSendOnly(o.ops);
     if (sent.dropped.length > 0) {

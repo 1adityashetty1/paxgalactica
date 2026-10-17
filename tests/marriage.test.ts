@@ -203,7 +203,7 @@ describe('a ward', () => {
   it('questioned, is a marriage betrayed by the court that held them', () => {
     const { s, ward } = wedBrannix();
     const held = heldAs(s, ward.id)!;
-    const r = applyOps(s, [{ op: 'consume_asset', assetId: held.id }], 'model', 'meridian');
+    const r = applyOps(s, [{ op: 'decide_fate', assetId: held.id, fate: 'interrogate' }], 'model', 'meridian');
     expect(r.rejections).toEqual([]);
     expect(notableById(r.state, ward.id)).toBeUndefined();
     expect(r.state.treaties.find((t) => t.type === 'marriage')!.status).toBe('broken');

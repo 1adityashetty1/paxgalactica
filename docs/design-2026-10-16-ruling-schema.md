@@ -194,7 +194,7 @@ and prices them; the journal records the ops. Replay never sees the arbiter's re
 
 - 1, 2, 3 and 7 change model calls and the engine's routing only. The journal records ops, so replay is untouched.
 - 4, 5 and 6 change what the reducer accepts: `decide_fate`, `relocate_asset`, the roster-name rule on `create_asset`, and
-  the mission union. They are pinned to the next `JOURNAL_VERSION` through `LegacyRules`. An old `consume_asset` on a person
+  the mission union. They are pinned to journal version 22 (unreleased on this branch) through `LegacyRules`. An old `consume_asset` on a person
   keeps interrogating, so old journals replay as played.
 
 ## Proving it did not cost freedom
@@ -221,17 +221,22 @@ A version that is safer and lands less is a regression.
 | t5a fleet half dropped | ✓ (hybrid) | | | | |
 | t9a frame dropped | ✓ (rider) | | | | |
 
-## Open questions
+## Decided (2026-10-16)
 
-1. **Rider limits.** One rider per part, and only when the primary succeeds: is "only if the primary succeeds" right for every
-   pairing, or should a frame land even if the killing fails?
-2. **The execution price.** How far above interrogation, and does executing a roster person end their record or leave it
-   marked dead (as a fallen officer's is)?
-3. **Name matching for new people.** Exact full-name match only, or the knife's looser matcher, which could refuse a new
-   "Galba" because an officer carries the family name? Family names are already unique per campaign, so the looser match is
-   probably right.
-4. **Overt parts that name an operative.** Match the act's words against the actor's roster (cheap, loose), or have the
-   arbiter list the operatives each part involves and check that list (exact, one more field)?
+1. **A rider lands only if the primary succeeds, and its price is refunded when it does not fire.** A frame without a body is a
+   discord, which can be declared on its own; a rider that could land alone would make every order two missions for one roll.
+   **Its exposure stays either way**: the operative went in carrying the forged papers, so a rider is always louder.
+2. **Execution ends the person the way the game already ends them**: an officer is marked lost, an operative's line is closed
+   and they leave the books, a notable is removed as a killing removes one. Priced as an assassination that was caught, done
+   openly: **−40 with their power, −5 with every other power, +8 heat.** A person with no roster record costs half the
+   onlooker and heat price, having no power behind them.
+3. **New people are checked with the loose match: a family name anyone in the campaign has used.** Family names are unique
+   per campaign (`familiesUsed`), so a new person sharing one is almost always the existing person misremembered — the Varro
+   case. Refused with the matched record named, never quietly renamed. Applies to an asset naming one individual
+   (quantity 1); an anonymous haul that mentions a name is unchanged.
+4. **Overt parts list the operatives they involve (`involves`), with a code backstop.** Code sends an overt part back if it
+   lists one of the actor's own operatives, and also if the act's words contain an own operative's family name — exact
+   enough, since family names are unique.
 
 ## Order of work
 

@@ -2042,7 +2042,7 @@ describe('the officer on the field', () => {
         });
         const out = applyOps(
           s,
-          [{ op: 'consume_asset', assetId: 'ast-pow', quantity: 1 }],
+          [{ op: 'decide_fate', assetId: 'ast-pow', fate: 'interrogate' }],
           'model',
           'drajk',
         );
@@ -2202,7 +2202,7 @@ describe('the officer on the field', () => {
         });
         const out = applyOps(
           s,
-          [{ op: 'consume_asset', assetId: 'ast-spy', quantity: 1 }],
+          [{ op: 'decide_fate', assetId: 'ast-spy', fate: 'interrogate' }],
           'model',
           'vigil',
         );

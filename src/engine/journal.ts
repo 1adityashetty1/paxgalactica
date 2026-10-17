@@ -383,6 +383,9 @@ export function replay(
     missionEffectsHeld: parsed.version >= 22,
     // No mission carried a method, and nobody laid groundwork.
     methodsCount: parsed.version >= 22,
+    // A prisoner could be spent (questioned) by a generic verb, and a person
+    // already on a roster minted again as a new asset.
+    oneRecordPerPerson: parsed.version >= 22,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

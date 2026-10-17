@@ -411,6 +411,15 @@ export const TRAFFICKING_RESENTMENT = 15;
 export const INTERROGATION_RESENTMENT = 20;
 /** What a third party thinks of a power that deals in prisoners at all. */
 export const TRAFFICKING_REPUTATION_COST = 4;
+/**
+ * Executing a person held: priced as an assassination that was caught, done
+ * openly — their power at −40, every other power at −5, and heat. A person with
+ * no roster record has no power behind them, so only half the onlooker and heat
+ * price lands.
+ */
+export const EXECUTION_RESENTMENT = 40;
+export const EXECUTION_REPUTATION_COST = 5;
+export const HEAT_EXECUTION = 8;
 
 export function officerRansom(
   c: Commander,

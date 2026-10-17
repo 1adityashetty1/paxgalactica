@@ -158,3 +158,49 @@ describe('covert work is sent, not rolled', () => {
     expect(dropped).toEqual(['extend_order', 'adjust_credits']);
   });
 });
+
+describe('sends are the ruling’s', () => {
+  it('drops a send resolution adds to an act the arbiter did not rule covert', async () => {
+    const { campaign, target } = withOperative();
+    reset({
+      appraisal: [{ admissible: true, reason: '', stat: 'guile', difficulty: 12 }],
+      resolution: [
+        {
+          narrative: 'Word goes round the docks.',
+          ops: [
+            {
+              op: 'deploy_agent',
+              systemId: target.id,
+              mission: 'assassination',
+              effect: { kind: 'hull_damage', perTurn: 1 },
+              cover: 'a rigger',
+            },
+          ],
+        },
+      ],
+    });
+    const outcome = await submitAction(campaign, 'Spread word among the dockers that Meridian is cutting pay.');
+    expect(outcome.notes.join(' ')).toMatch(/sent only when the act is ruled covert/);
+    expect(outcome.ops.some((o) => (o as { op: string }).op === 'deploy_agent')).toBe(false);
+    expect(campaign.state.agents.every((a) => a.mission === null)).toBe(true);
+  });
+
+  it('puts an overt ruling back once when the act names one of your operatives', async () => {
+    const { campaign, target } = withOperative();
+    const name = campaign.state.agents.find((a) => a.ownerFactionId === 'ojjul')!.name;
+    const family = name.split(' ').slice(1).join(' ');
+    reset({
+      appraisal: [
+        { admissible: true, reason: '', stat: 'guile', difficulty: 14 },
+        { admissible: true, reason: '', covert: [{ mission: 'surveillance', systemId: target.id }] },
+      ],
+      resolution: [{ narrative: 'They take a room over the docks.', ops: [] }],
+    });
+    const outcome = await submitAction(campaign, `Have ${family} watch the docks.`);
+    const appraisals = calls.filter((c) => c.kind === 'appraisal');
+    expect(appraisals).toHaveLength(2);
+    expect(appraisals[1]!.user).toContain('This act names one of your operatives');
+    expect(outcome.check).toBeNull();
+    expect(outcome.ops.some((o) => (o as { op: string }).op === 'deploy_agent')).toBe(true);
+  });
+});

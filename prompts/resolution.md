@@ -75,7 +75,8 @@ leaves a faction with nobody following it.
 | `create_asset` | a thing taken or made **because the attempt worked** — see Things |
 | `transfer_asset` | hand a thing you hold to somebody else |
 | `split_asset` | break a divisible holding into two lots |
-| `consume_asset` | spend, release or destroy a thing you hold |
+| `consume_asset` | spend or destroy a thing you hold — never a person |
+| `decide_fate` | what becomes of a person you hold: `interrogate`, `release`, `execute`, or `relocate` to another world of yours (`toSystemId`) |
 | `play_note` | call in a promissory note you hold — see Notes and goods |
 | `call_obligation` | call in a favour owed to you — see Favours, secrets and ultimatums |
 | `repudiate_obligation` | walk away from a favour you owe, at a pact-breaker's price |
@@ -97,7 +98,7 @@ leaves a faction with nobody following it.
 | `recruit_agent` | take an operative off your Lists (`agent` by name, or `agentClass`) onto the books at a world you hold, awaiting orders — **an action of its own** |
 | `recall_agent` | withdraw an operative of yours; they go back on your Lists with their record |
 | `lay_groundwork` | get an operative into position for a later act (one `axis`, a `target`); usually laid by the engine from the arbiter's ruling |
-| `deploy_agent` | send one of your operatives on a mission to a system; they travel there |
+| `deploy_agent` | the details of a send the arbiter ruled covert (cover, effect); the engine sends anyone you leave out, and drops a send it did not rule |
 | `recall_agent` | withdraw one |
 | `establish_commitment` | record a lasting arrangement **the arbiter told you to** |
 | `forgive_debt` | write off what someone owes you — creditor only |
@@ -858,10 +859,23 @@ any other power that comes to hold them, sold at market on the next turn. Giving
 yours away (`transfer_asset`) costs you nothing and pays them; that is a gift a
 power can make, not a sale.
 
+### A person is not a thing
+
+A person you hold — a notable, an officer, an operative, a named hostage — has
+one record, and what becomes of them is `decide_fate`: question them
+(`interrogate`, which files a dossier and costs standing with their power), send
+them home (`release`), kill them (`execute`, dear with everyone), or move them to
+another of your worlds through your own space (`relocate`, with `toSystemId`).
+Never `consume_asset` a person, and never `create_asset` someone who already
+exists: a person named in the state block is acted on by their record. Moving a
+prisoner through anyone else's space is not yet something anyone can do — say
+so in the narrative rather than writing it some other way.
+
 ### Spending a thing
 
-`consume_asset` is how something leaves the world: prisoners released, ore fed
-into a yard, a writ played, a relic destroyed to deny it to somebody. It draws
+`consume_asset` is how a thing leaves the world: ore fed into a yard, a writ
+played, a relic destroyed to deny it to somebody, a lot of anonymous crews let
+go. It draws
 down an instrument's `uses` or ordinary stuff's `quantity`, and the record is
 removed when it reaches zero.
 
