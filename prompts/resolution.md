@@ -75,7 +75,9 @@ leaves a faction with nobody following it.
 | `create_asset` | a thing taken or made **because the attempt worked** — see Things |
 | `transfer_asset` | hand a thing you hold to somebody else |
 | `split_asset` | break a divisible holding into two lots |
-| `consume_asset` | spend, release or destroy a thing you hold |
+| `consume_asset` | spend or destroy a thing you hold — never a person |
+| `relocate_asset` | move a portable thing you hold to another of your worlds, through your own space (`toSystemId`); never a person |
+| `decide_fate` | what becomes of a person you hold: `interrogate`, `release`, `execute`, or `relocate` to another world of yours (`toSystemId`) |
 | `play_note` | call in a promissory note you hold — see Notes and goods |
 | `call_obligation` | call in a favour owed to you — see Favours, secrets and ultimatums |
 | `repudiate_obligation` | walk away from a favour you owe, at a pact-breaker's price |
@@ -94,9 +96,10 @@ leaves a faction with nobody following it.
 | `extend_order` | work runs longer than planned |
 | `accelerate_order` | credits spent to buy back one duration bucket |
 | `break_treaty` | repudiate one; both parties' opinion of the breaker drops |
-| `recruit_agent` | take an operative off your Lists (`agent`, by name) onto the books at a world you hold, awaiting orders — **an action of its own** |
+| `recruit_agent` | take an operative off your Lists (`agent` by name, or `agentClass`) onto the books at a world you hold, awaiting orders — **an action of its own** |
 | `recall_agent` | withdraw an operative of yours; they go back on your Lists with their record |
-| `deploy_agent` | send one of your operatives on a mission to a system; they travel there |
+| `lay_groundwork` | get an operative into position for a later act (one `axis`, a `target`); usually laid by the engine from the arbiter's ruling |
+| `deploy_agent` | the details of a send the arbiter ruled covert (cover, effect); the engine sends anyone you leave out, and drops a send it did not rule |
 | `recall_agent` | withdraw one |
 | `establish_commitment` | record a lasting arrangement **the arbiter told you to** |
 | `forgive_debt` | write off what someone owes you — creditor only |
@@ -410,7 +413,10 @@ off the power's **Lists** — the state block names who is waiting, a veteran's
 record against a fresh face; name one in `agent`, or the first comes — onto the
 books at a world the power holds, awaiting orders. It is the only way an
 operative is had: a recalled one, and one ransomed home, go back on the Lists
-with their record. A declaration that recruits does **nothing else**: anything you emit beside it is dropped. A later
+with their record. **Every operative has a class** — ghost, agitator, sparrow or
+wetworker — and the state block says which missions each runs well: their own
+at better odds and less risk, anyone else's at worse. Recruit the class the job
+wants (`agentClass`), and send the one whose class it is. A declaration that recruits does **nothing else**: anything you emit beside it is dropped. A later
 declaration sends them with `deploy_agent`, which creates nobody: it sends the
 operative it names (`agent`, by name as the state block lists them), or with
 no name the nearest one **AWAITING ORDERS**. One already on a mission is only
@@ -473,10 +479,32 @@ assassination must not quietly produce. The knife only finds an officer standing
 where your operative is, so an officer under way is one it misses.
 
 The `mission` decides risk and persistence: `surveillance` (very low risk),
-`theft`, `subversion`, `defection`, `sabotage`, `incitement` (moderate), `discord` (riskier),
+`embezzlement`, `larceny`, `subversion`, `defection`, `sabotage`, `incitement` (moderate), `discord` (riskier),
 and `assassination` — **one attempt, quadruple effect, the operative spent
 either way, and usually caught.** Scale effects sanely: 2 hulls a turn is a
 nuisance, 12 is a catastrophe that should have taken a real operation.
+
+**A method and groundwork are the engine's, not yours.** When the arbiter
+scored a method or ruled groundwork, the engine attaches the method to the
+deployment and lays the groundwork itself; emit neither, and never charge a fee
+of your own for either. Narrate how it was done — the forged letter, the
+borrowed uniform, the new cook in the kitchens — and leave the numbers alone.
+
+**`larceny` is one attempt at a thing.** Effect `{ "kind": "steal", "assetId":
+<the asset's id or its name as the state block gives it>, "copy": false }`.
+`copy: true` takes a copy of paper — charts, a ledger, blueprints, a writ — and
+leaves the original; the thief gets a dossier, and it is quieter. It cannot take
+a person (that is not a theft), a fixture, a promissory note, or a thing on
+loan. Win or lose, the operative is back awaiting orders after the attempt.
+Narrate the attempt, never the haul: what was taken is settled on the tick.
+
+**`kidnapping` is one attempt at a person.** Effect `{ "kind": "kidnap" }`, with
+the person named in `targetNotable` (a notable seated on that world) or
+`targetCommanderId` (an officer, by name). It cannot reach someone on the Lists
+or a person already held — freeing a captive is not a kidnapping. On success the
+person is your prisoner on your nearest world and their seat stands empty; their
+power knows who did it. Win or lose, the operative is back awaiting orders.
+Narrate the attempt, never the seizure itself: that is settled on the tick.
 
 **`discord` is the one mission aimed at a quarrel you are not in.** Forged
 letters, a planted grievance, a rumour that keeps arriving — it turns the power
@@ -832,10 +860,23 @@ any other power that comes to hold them, sold at market on the next turn. Giving
 yours away (`transfer_asset`) costs you nothing and pays them; that is a gift a
 power can make, not a sale.
 
+### A person is not a thing
+
+A person you hold — a notable, an officer, an operative, a named hostage — has
+one record, and what becomes of them is `decide_fate`: question them
+(`interrogate`, which files a dossier and costs standing with their power), send
+them home (`release`), kill them (`execute`, dear with everyone), or move them to
+another of your worlds through your own space (`relocate`, with `toSystemId`).
+Never `consume_asset` a person, and never `create_asset` someone who already
+exists: a person named in the state block is acted on by their record. Moving a
+prisoner through anyone else's space is not yet something anyone can do — say
+so in the narrative rather than writing it some other way.
+
 ### Spending a thing
 
-`consume_asset` is how something leaves the world: prisoners released, ore fed
-into a yard, a writ played, a relic destroyed to deny it to somebody. It draws
+`consume_asset` is how a thing leaves the world: ore fed into a yard, a writ
+played, a relic destroyed to deny it to somebody, a lot of anonymous crews let
+go. It draws
 down an instrument's `uses` or ordinary stuff's `quantity`, and the record is
 removed when it reaches zero.
 

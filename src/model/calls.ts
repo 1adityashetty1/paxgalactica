@@ -19,7 +19,8 @@ import {
 } from '../domain/checks.js';
 import {
   AppraisalSchema,
-  DeclaredAppraisalSchema,
+  DeclaredRulingSchema,
+  rulingToAppraisal,
   type Appraisal,
   ExtractionOutputSchema,
   ModelTurnOutputSchema,
@@ -39,6 +40,7 @@ import {
   type WorldState,
 } from '../domain/state.js';
 import { classifyPrinciple, classifyPrinciples } from '../domain/compulsions.js';
+import { checkGround, covertSendOnly, INVENTED_REFUSAL_NOTE, inventedRefusal, ownOperativeNamed, sendsAsRuled } from '../domain/refusals.js';
 import { concessionBudget, withinBudget } from '../domain/leverage.js';
 import { callStructured } from './client.js';
 import { serializeArchetypes } from '../domain/assets.js';
@@ -174,10 +176,14 @@ export async function appraiseAction(
       action,
       ...(opts.note ? ['', '---', '', opts.note] : []),
     ].join('\n'),
-    schema: opts.declared === false ? AppraisalSchema : DeclaredAppraisalSchema,
+    // Two schemas, two answer shapes: an accord is never rolled, so it keeps
+    // the flat ruling; a declared act is parts.
+    schema: (opts.declared === false ? AppraisalSchema : DeclaredRulingSchema) as z.ZodType<unknown>,
   });
 
-  return { appraisal: res.value, attempts: res.attempts, costUsd: res.costUsd };
+  // A declared ruling comes back as parts; the rest of resolution reads the
+  // flat shape it was built on (`rulingToAppraisal`).
+  return { appraisal: rulingToAppraisal(res.value), attempts: res.attempts, costUsd: res.costUsd };
 }
 
 /**
@@ -536,10 +542,117 @@ export async function resolveAction(
    * else records. `null` when no line was named at all.
    */
   ruling: BreachRuling | null;
+  /** What code changed about the ruling or the batch, for the player to read. */
+  notes: string[];
 }> {
   /* --- 1. Arbitrate: admissible at all, and priced blind to the roll --- */
-  const priced = await appraiseAction(state, action);
+  let priced = await appraiseAction(state, action);
   const actor = getFaction(state, state.playerFactionId);
+
+  // A refusal that cites a rule nobody wrote is not a ruling. The prompt bans
+  // three of them in bold and two playtests watched the arbiter reach for them
+  // anyway, so the check is code: the ruling is put back with what it got
+  // wrong, once. A "no mechanic" refusal that survives the retry is what
+  // `unexpressed` is for, and is turned away on that path, so it is recorded
+  // as the missing outcome rather than as a reason the world gave.
+  const notes: string[] = [];
+  const invented = priced.appraisal.admissible ? null : inventedRefusal(priced.appraisal.reason);
+  if (invented) {
+    const again = await appraiseAction(state, action, undefined, {
+      note: [
+        '## Your first ruling broke a rule of the arbiter',
+        '',
+        `You ruled: "${priced.appraisal.reason}"`,
+        '',
+        INVENTED_REFUSAL_NOTE[invented],
+        'Rule again. Refuse only for a fact in the state block above.',
+      ].join('\n'),
+    });
+    priced = {
+      appraisal: again.appraisal,
+      attempts: priced.attempts + again.attempts,
+      costUsd: priced.costUsd + again.costUsd,
+    };
+    const still = priced.appraisal.admissible ? null : inventedRefusal(priced.appraisal.reason);
+    if (still === 'no_mechanic') {
+      priced.appraisal = { ...priced.appraisal, unexpressed: priced.appraisal.reason, admissible: true };
+    }
+    notes.push(`The arbiter's first ruling cited a rule that does not exist (${invented}), and was made again.`);
+  }
+
+  // A refusal stands on a ground code can check. One that is not true on the
+  // board is put back once with what was wrong; a second that fails is the
+  // missing outcome, turned away at no action and logged, rather than a reason
+  // the world never gave. See `checkGround`.
+  // Not for a refusal that quotes the actor's own sheet: that is a breach
+  // ruled in the wrong place, and the breach path below rewrites it.
+  if (
+    !priced.appraisal.admissible &&
+    priced.appraisal.ground &&
+    !(actor && classifyPrinciple(actor, priced.appraisal.reason))
+  ) {
+    const wrong = checkGround(state, state.playerFactionId, priced.appraisal.ground);
+    if (wrong) {
+      const again = await appraiseAction(state, action, undefined, {
+        note: [
+          '## Your refusal stands on something that is not so',
+          '',
+          `You refused on \`${priced.appraisal.ground.kind}\`, and the board says otherwise: ${wrong}`,
+          'Rule again. Refuse only on a ground that is true in the state block; if none is, rule the act as parts, and put whatever no mission does in an `unexpressed` part.',
+        ].join('\n'),
+      });
+      priced = {
+        appraisal: again.appraisal,
+        attempts: priced.attempts + again.attempts,
+        costUsd: priced.costUsd + again.costUsd,
+      };
+      const still =
+        !priced.appraisal.admissible && priced.appraisal.ground
+          ? checkGround(state, state.playerFactionId, priced.appraisal.ground)
+          : null;
+      if (still) {
+        priced.appraisal = { ...priced.appraisal, admissible: true, unexpressed: priced.appraisal.reason, ground: undefined };
+      }
+      notes.push(`The arbiter's first refusal rested on something not true on the board (${wrong}), and was made again.`);
+    }
+  }
+
+  // An act that names one of the actor's own operatives, ruled with no covert
+  // or groundwork part, has almost certainly lost the part that sends them —
+  // and with sends now the ruling's alone, a lost part is an operative who
+  // never goes. Put back once with the name; if the ruling stands, the act is
+  // overt and nobody is sent.
+  {
+    const a = priced.appraisal;
+    const own = (state.agents ?? []).filter((x) => x.ownerFactionId === state.playerFactionId);
+    // An overt part that lists one of the actor's own operatives has put a
+    // covert hand into open work; and words naming one, with no covert or
+    // groundwork part at all, have lost the part that sends them.
+    const listed = (a.involves ?? [])
+      .map((n) => own.find((x) => x.id === n || ownOperativeNamed([x], state.playerFactionId, n)))
+      .find(Boolean)?.name;
+    const operative =
+      a.admissible && !a.negotiation
+        ? listed ??
+          (!a.unexpressed && !(a.covert?.length) && !(a.groundwork?.length)
+            ? ownOperativeNamed(state.agents, state.playerFactionId, action)
+            : null)
+        : null;
+    if (operative) {
+      const again = await appraiseAction(state, action, undefined, {
+        note: [
+          '## This act names one of your operatives',
+          '',
+          `It names **${operative}**. If ${operative} carries it out, it is covert work: read it by its outcome and rule it with a \`covert\` part (or \`groundwork\`, if it only prepares). Rule it without one only if ${operative} has no hand in it.`,
+        ].join('\n'),
+      });
+      priced = {
+        appraisal: again.appraisal,
+        attempts: priced.attempts + again.attempts,
+        costUsd: priced.costUsd + again.costUsd,
+      };
+    }
+  }
 
   // What the arbiter NAMED, classified against the sheet rather than by its own
   // label — see `classifyPrinciple`. The model is good at spotting which line an
@@ -597,6 +710,7 @@ export async function resolveAction(
       attempts: priced.attempts,
       costUsd: priced.costUsd + relevanceCost,
       ruling,
+      notes,
     };
   }
 
@@ -642,6 +756,7 @@ export async function resolveAction(
       attempts: priced.attempts,
       costUsd: priced.costUsd + relevanceCost,
       ruling,
+      notes,
     };
   }
 
@@ -652,10 +767,30 @@ export async function resolveAction(
   // at the price of an inadmissible ruling — nothing — rather than rolled,
   // charged an action, and then rejected by the reducer for want of a person.
   const covert = priced.appraisal.covert ?? [];
+  const groundwork = priced.appraisal.groundwork ?? [];
+  // An outcome no mission produces is said so, and costs nothing: the act is
+  // turned away as inadmissible — no action point — and the reason is the
+  // record of what the next mission should be. Only when nothing else in the
+  // act could be done; alongside a mission it is a note.
+  if (priced.appraisal.unexpressed && covert.length === 0 && groundwork.length === 0 && !priced.appraisal.overt) {
+    const why = `No mission does that yet: ${priced.appraisal.unexpressed}`;
+    return {
+      output: { narrative: why, ops: [], inadmissible: why },
+      check: null,
+      roll: 0,
+      attempts: priced.attempts,
+      costUsd: priced.costUsd + relevanceCost,
+      ruling,
+      notes,
+    };
+  }
+  if (priced.appraisal.unexpressed) {
+    notes.push(`Not done, because no mission does it yet: ${priced.appraisal.unexpressed}`);
+  }
   const onBooks = (state.agents ?? []).some(
     (a) => a.ownerFactionId === state.playerFactionId && !a.exposed,
   );
-  if (covert.length > 0 && !onBooks) {
+  if ((covert.length > 0 || groundwork.length > 0) && !onBooks) {
     const why =
       'You have nobody to send. Recruit an operative first — that is an action of its own, at a world you hold — and send them with your next.';
     return {
@@ -665,6 +800,7 @@ export async function resolveAction(
       attempts: priced.attempts,
       costUsd: priced.costUsd + relevanceCost,
       ruling,
+      notes,
     };
   }
 
@@ -705,6 +841,7 @@ export async function resolveAction(
       attempts: priced.attempts,
       costUsd: priced.costUsd + relevanceCost,
       ruling,
+      notes,
     };
   }
 
@@ -714,9 +851,20 @@ export async function resolveAction(
   // quoted, and a compulsion is priced and rolled. Only on that path, ask the
   // arbiter for the one thing it was right not to give: one small call, on a
   // path that is rare by construction.
+  // Covert work is SENT, not rolled. The operative's own chance — guile against
+  // the host's resolve, their class, the method and any groundwork — is rolled
+  // on the tick, so a declaration roll in front of it was a second gate the
+  // method could not touch: a playtest burned an operative on a natural 1 here
+  // while the engine gave it 95%. So a covert declaration is priced at nothing
+  // and rolled not at all, and what it may carry is cut to the sending.
+  // An act may be open work and covert work at once: its overt part is rolled,
+  // its covert parts are sent. A ruling in the old flat shape has no `overt`
+  // flag, and was rolled exactly when it sent nobody.
+  const sends = covert.length > 0 || groundwork.length > 0;
+  const rolled = priced.appraisal.overt ?? !sends;
   let stat = priced.appraisal.stat;
   let difficulty = priced.appraisal.difficulty;
-  if (stat === undefined || difficulty === undefined) {
+  if (rolled && (stat === undefined || difficulty === undefined)) {
     const again = await appraiseAction(state, action, undefined, {
       note: [
         '## This action is admissible',
@@ -735,18 +883,16 @@ export async function resolveAction(
   }
 
   /* --- 2. Roll, and resolve in code ----------------------------------- */
-  const roll = rollD20(state.turn, `${salt}:${action}`);
+  const roll = rolled ? rollD20(state.turn, `${salt}:${action}`) : 0;
   // EFFECTIVE stats, not base: dissent and hostile stat_debuffs both reduce
   // what a faction can actually do, and resolving against the undegraded
   // number meant neither ever reached the dice — a faction at 100 dissent
   // rolled exactly as well as one whose institutions were behind it.
   const stats = effectiveStats(state, state.playerFactionId);
-  const check = resolveCheck(
-    stat,
-    stats[stat],
-    roll,
-    difficulty,
-  );
+  const check: CheckResult | null =
+    !rolled || stat === undefined || difficulty === undefined
+      ? null
+      : resolveCheck(stat, stats[stat], roll, difficulty);
 
   // Every check is written to the log, so a campaign's luck is auditable.
   //
@@ -760,10 +906,9 @@ export async function resolveAction(
   // replays exactly like every other entry. This is the ONE place a roll is
   // written: `submitAction` used to stage a second copy, and every check reached
   // the log twice (item 120).
-  const checkOp = {
-    op: 'log_narrative' as const,
-    text: `[check] ${describeCheck(check)}`,
-  };
+  const checkOp = check
+    ? { op: 'log_narrative' as const, text: `[check] ${describeCheck(check)}` }
+    : null;
 
   /* --- 3. Narrate and enact the outcome code produced ------------------ */
   const res = await callStructured({
@@ -775,19 +920,41 @@ export async function resolveAction(
       '',
       '---',
       '',
-      '## How this action resolved',
-      '',
-      `The attempt was priced as a **${stat}** check at DC ${difficulty}`,
-      priced.appraisal.rationale ? `(${priced.appraisal.rationale})` : '',
-      `and rolled **d20 ${roll} ${formatModifier(check.modifier)} = ${check.total}**.`,
-      '',
-      `### Outcome: ${check.outcome.replace('_', ' ').toUpperCase()}`,
-      '',
-      OUTCOME_GUIDANCE[check.outcome],
-      '',
-      'This outcome is settled. Narrate it and emit the ops that make it real.',
-      'Do not narrate a different result, and do not re-price the action.',
-      '',
+      ...(check
+        ? [
+            '## How this action resolved',
+            '',
+            `The attempt was priced as a **${stat}** check at DC ${difficulty}`,
+            priced.appraisal.rationale ? `(${priced.appraisal.rationale})` : '',
+            `and rolled **d20 ${roll} ${formatModifier(check.modifier)} = ${check.total}**.`,
+            '',
+            `### Outcome: ${check.outcome.replace('_', ' ').toUpperCase()}`,
+            '',
+            OUTCOME_GUIDANCE[check.outcome],
+            '',
+            'This outcome is settled. Narrate it and emit the ops that make it real.',
+            'Do not narrate a different result, and do not re-price the action.',
+            ...(sends
+              ? [
+                  '',
+                  'The covert half of this act is not part of that roll: its operatives are',
+                  'sent, and their own chance is rolled on the tick. Narrate them setting out,',
+                  'not what comes of it.',
+                ]
+              : []),
+            '',
+          ]
+        : [
+            '## This is covert work, and it is sent, not rolled',
+            '',
+            'Nothing has been rolled. The operative sets out now; the engine rolls',
+            'their own chance on the tick and decides what comes of it. Narrate the',
+            'operative going to work, in a sentence or two, and not the result.',
+            'Emit only `deploy_agent`, `lay_groundwork`, `recall_agent` and',
+            '`log_narrative`. Charge nothing: the engine prices the mission and the',
+            'method itself, and groundwork costs the action alone.',
+            '',
+          ]),
       ...(breach?.kind === 'compulsion'
         ? [
             '### Your institutions object, and the order stands',
@@ -810,16 +977,16 @@ export async function resolveAction(
             `The arbiter ruled this ${priced.appraisal.covert.length === 1 ? 'a' : `${priced.appraisal.covert.length}`} covert operation${priced.appraisal.covert.length === 1 ? '' : 's'}: ${priced.appraisal.covert
               .map((c) => `**${c.mission}** at \`${c.systemId}\``)
               .join(', ')}.`,
-            'Emit one `deploy_agent` for EACH of them.',
-            'Emit `deploy_agent` for it, owned by the acting faction, at that system,',
-            'with that mission and an effect that fits. Do NOT invent its consequences —',
-            'no hull losses, no stolen credits, no collapse in relations. The operative',
-            'is charged for, capped, and resolved on the tick like every other one.',
-            'If you do not emit it, the engine will, so that the act is priced once.',
+            'You may emit one `deploy_agent` for EACH of them, at that system with that',
+            'mission, to give it a cover and an effect that fits — and no send the',
+            'arbiter did not rule. Do NOT invent its consequences: no hull losses, no',
+            'stolen credits, no collapse in relations. The operative is charged for,',
+            'capped, and resolved on the tick like every other one. Anything you leave',
+            'out, the engine sends itself, rider and all.',
             '',
           ]
         : []),
-      ...(priced.appraisal.establishes && check.outcome !== 'failure' && check.outcome !== 'critical_failure'
+      ...(priced.appraisal.establishes && check && check.outcome !== 'failure' && check.outcome !== 'critical_failure'
         ? [
             '### This action establishes something lasting',
             '',
@@ -845,17 +1012,33 @@ export async function resolveAction(
   // that call declining to notice is precisely the failure this pass exists to
   // close. The model's own wording is kept when it offered some, since it is
   // written against the narrative it just produced.
-  const withCovert = (o: ResolutionOutput): ResolutionOutput =>
-    priced.appraisal.covert && priced.appraisal.covert.length > 0
-      ? { ...o, covert: priced.appraisal.covert }
-      : o;
+  const withCovert = (o: ResolutionOutput): ResolutionOutput => ({
+    ...o,
+    ...(priced.appraisal.covert && priced.appraisal.covert.length > 0 ? { covert: priced.appraisal.covert } : {}),
+    ...(priced.appraisal.groundwork && priced.appraisal.groundwork.length > 0 ? { groundwork: priced.appraisal.groundwork } : {}),
+  });
 
   // The check line rides at the FRONT of the batch, so the log reads
   // roll-then-consequence rather than the other way round.
-  const withCheck = (o: ResolutionOutput): ResolutionOutput => ({
-    ...o,
-    ops: [checkOp, ...o.ops],
-  });
+  const withCheck = (o: ResolutionOutput): ResolutionOutput => {
+    // Sends are the ruling's: a resolution call may detail a send that was
+    // ruled, never add one. The engine writes any it left out.
+    const ruled = sendsAsRuled(o.ops, covert, groundwork);
+    if (ruled.dropped.length > 0) {
+      notes.push(
+        `An operative is sent only when the act is ruled covert: left out ${ruled.dropped.join(', ')}. Declare it as their mission.`,
+      );
+      o = { ...o, ops: ruled.ops as ResolutionOutput['ops'] };
+    }
+    if (checkOp) return { ...o, ops: [checkOp, ...o.ops] };
+    const sent = covertSendOnly(o.ops);
+    if (sent.dropped.length > 0) {
+      notes.push(
+        `Covert work is sent, not rolled, so it carries only the sending: left out ${[...new Set(sent.dropped)].join(', ')}. Declare anything else on its own.`,
+      );
+    }
+    return { ...o, ops: sent.ops as ResolutionOutput['ops'] };
+  };
 
   const output: ResolutionOutput = withCheck(withCovert(
     breach?.kind === 'compulsion'
@@ -887,6 +1070,7 @@ export async function resolveAction(
     check,
     roll,
     ruling,
+    notes,
     attempts: priced.attempts + res.attempts,
     costUsd: priced.costUsd + relevanceCost + res.costUsd,
   };
@@ -1127,6 +1311,18 @@ export function looksLikeAPlan(counsel: string): boolean {
   return ordinals.length >= 2;
 }
 
+/**
+ * Whether counsel has stepped outside the fiction into the game's own terms —
+ * "that was turn five", an action point, a DC, the dice. The prompt forbids it
+ * and a playtest (2026-10-16) caught "turn five" anyway. Shape, not meaning,
+ * for the reason `looksLikeAPlan` gives.
+ */
+export function breaksTheFourthWall(counsel: string): boolean {
+  return /\bturns?\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b|\baction points?\b|\bDC\s*\d|\bd20\b|\bdice\b|\bdie roll\b/i.test(
+    counsel,
+  );
+}
+
 export const AdvisorReplySchema = z.object({
   /**
    * What the counsellor actually says, out loud, to their leader.
@@ -1141,6 +1337,10 @@ export const AdvisorReplySchema = z.object({
     .refine((c) => !looksLikeAPlan(c), {
       message:
         'This is a plan, not counsel. Do not enumerate steps or list actions — name what is pressing on your leader, in your own voice, and let them decide what to do about it.',
+    })
+    .refine((c) => !breaksTheFourthWall(c), {
+      message:
+        'This speaks of turns, action points, difficulty or dice. You are inside the fiction: say "last month", "soon", "it will not be easy" — never the game\'s own terms.',
     }),
 });
 export type AdvisorReply = z.infer<typeof AdvisorReplySchema>;
@@ -1163,9 +1363,17 @@ export type AdvisorReply = z.infer<typeof AdvisorReplySchema>;
 export async function askAdvisor(
   state: WorldState,
   viewerId: string = state.playerFactionId,
+  /**
+   * What the leader asked, in their own words, or nothing for the standing
+   * question. A question is answered within the same rule as everything else
+   * the counsellor says: what bears on it, never the steps — "how do I take
+   * Vantic" is answered with what holds Vantic, not with an order of march.
+   */
+  question?: string,
 ): Promise<{ counsel: string; attempts: number; costUsd: number }> {
   const faction = getFaction(state, viewerId);
   if (!faction) throw new Error(`No faction ${viewerId}`);
+  const asked = question?.trim();
 
   const res = await callStructured({
     kind: 'advisor',
@@ -1192,7 +1400,19 @@ export async function askAdvisor(
       '',
       '---',
       '',
-      `Speak to the ${faction.title}. Name what is pressing, in your own voice. Do not tell them what to do.`,
+      ...(asked
+        ? [
+            '## Your leader asks',
+            '',
+            // Quoted as the leader's words, never as instructions to you: it
+            // changes what you speak to, not how you are allowed to answer.
+            `> ${asked.replace(/\n+/g, ' ')}`,
+            '',
+            `Answer the ${faction.title}'s question, in your own voice. Name what bears on it — what stands in the way, what it would cost, who would answer — and do not lay out the steps.`,
+          ]
+        : [
+            `Speak to the ${faction.title}. Name what is pressing, in your own voice. Do not tell them what to do.`,
+          ]),
     ].join('\n'),
     schema: AdvisorReplySchema,
   });

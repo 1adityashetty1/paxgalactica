@@ -332,6 +332,7 @@ export function BriefingPanel({
 
 const BINDING_TITLE: Record<NonNullable<StagedItem['binding']>, string> = {
   rolled: 'Already rolled. Its outcome stands; withdrawing it would be a reroll.',
+  sent: 'The operative is already under way. Recall them with a later action instead.',
   refused: 'Your institutions refused this. The refusal and its cost stand.',
   charge: 'Charged for proposing the accord. It stands even if the accord is withdrawn.',
   record: 'The record of a ruling, not an order.',

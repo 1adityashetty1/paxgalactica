@@ -411,6 +411,22 @@ export const FactionSchema = z.object({
    * a campaign predates them.
    */
   estates: z.array(EstateSchema).default([]),
+  /**
+   * Tolls lifted for a term: each a power taken off `tollTargets` that goes back
+   * on when the term runs out — a number of turns, or while a treaty of a type
+   * binds the two. Absent when nothing is pending, so a faction written before
+   * terms existed parses to exactly what it was; and after `estates`, because
+   * it is written onto a live record.
+   */
+  tollLifts: z
+    .array(
+      z.object({
+        factionId: z.string().min(1),
+        untilTurn: z.number().int().min(0).nullable(),
+        whileTreaty: z.string().min(1).nullable(),
+      }),
+    )
+    .optional(),
 });
 export type Faction = z.infer<typeof FactionSchema>;
 

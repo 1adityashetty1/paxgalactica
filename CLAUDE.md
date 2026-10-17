@@ -1742,6 +1742,15 @@ the action economy prices it. A `trade_accord` deliberately does **not** waive
 tolls automatically: folding it into an existing type would hand the chip over
 for free.
 
+**A lift can be for a term.** `set_toll_policy` takes `forTurns`, and
+`whileTreaty` — a treaty type that must keep binding the two — and the powers it
+takes off the list go back on when the term runs out (`Faction.tollLifts`,
+restored in the tick after treaties lapse and before income). Without one, a
+lift agreed *"for five turns"* or *"while the accord holds"* could only be
+written as permanent (playtest 2026-10-15, B12). Any later policy supersedes a
+pending term, so a toll lifted for good is not quietly reimposed by an older
+one. No journal pin: no old journal carries a term.
+
 Three rules decide what is collected:
 
 - **Where.** A lane you charge either **crosses** your space or **ends** at a
@@ -1802,6 +1811,13 @@ be destroyed, which ends the order.
   argued for 1 so that raiding would not become "a second kind of blockade",
   which two turns does not: a blockade sits on the system and severs every lane
   through it. A mechanic that cannot be paid is not a faster version of itself.
+
+**A raid charges only where it lands.** The tick charged the raid's standing
+cost and logged *"continues to raid shipping"* against the world's holder
+without asking `raidLandsOn` — so a raid on a trade-accord partner, a protected
+power or a paymaster took nothing and still cost regard every turn (playtest
+2026-10-15, B15). It reads the same rule the income side does now. Journal
+version 22 (`LegacyRules.raidsLandOnly`).
 
 Blockades resolve **per beneficiary, not per lane**. Deciding it once for the
 whole route meant a smuggler only kept its trade when every other party could
@@ -4018,6 +4034,16 @@ for the adversarial run that found it that is true; but the rules move **six**
 of the 48 saves, one of them an ordinary campaign where a treaty follows from
 the move, and replay exists to reproduce what happened.
 
+**The cap belongs to the batch, and a treaty pays its own.** It was checked per
+op, so two +25 movements in one accord moved an opinion 50, and an accord that
+signed a treaty paid the treaty's goodwill and the narrated warmth on top —
+measured at 5 → 17 from the treaty and 42 with one narrated +25 (playtest
+2026-10-15, B11). Now each direction of each pair moves at most 25 over the
+whole batch, as the credits cap already did, and an accord that signs a treaty
+adds no narrated warmth between its parties; a cooling still lands. Journal
+version 22 (`LegacyRules.narrationCapPerBatch`), and only where the per-op cap
+itself applies.
+
 ### Dissent moves one way, on your own faction only
 
 `adjust_dissent` had the same unguarded shape, and raising the ceiling to 8 made
@@ -4063,7 +4089,9 @@ costs the breaker 25 disposition with the other party.
 | mission | exposure on failure | persists | effect × |
 |---|---|---|---|
 | `surveillance` | 1 in 20 | yes | 1 |
-| `theft` / `subversion` | 2 in 20 | yes | 1 |
+| `embezzlement` / `subversion` | 2 in 20 | yes | 1 |
+| `larceny` | 3 in 20 (a copy, 2) | one attempt, then free | — |
+| `kidnapping` | 6 in 20 | one attempt, then free | — |
 | `sabotage` / `incitement` | 3 in 20 | yes | 1 |
 | `discord` | 5 in 20 | yes | 1 |
 | `assassination` | **9 in 20** | **no** | **4** |
@@ -4188,6 +4216,110 @@ default is called `theft`. Theft moves money.
 in the same pass. An operative on a world its own owner holds steals from
 nobody. The transfer conserves; the owner's separate `AGENT_UPKEEP` is what
 makes running the network cost something.
+
+**And it is called embezzlement now, because a player reads "theft" as taking
+a thing.** The mission skims credits a turn; the playtest of 2026-10-16 asked
+three times to *steal the drawings* and got a skim written as a watcher, with
+nothing moved. `theft` is renamed `embezzlement` (an old journal's `theft`
+reads as it, through `AgentMissionSchema`'s alias), and **`larceny`** is the
+theft of a thing: a ghost mission, one attempt (`AGENT_COST` 70), at a named
+portable thing a rival holds on that world — by id or by the words the player
+used — or the one worth most to the thief. The original is carried to the
+thief's nearest world; a **copy** of paper (`PAPER_KINDS`) leaves the original,
+gives the thief a dossier at half its worth, and is a point quieter. Never a
+person (`PEOPLE_KINDS`; that will be kidnapping), a fixture, a promissory note,
+a thing on loan or a ward. The victim is told it is gone and not who took it;
+win or lose, the operative is back awaiting orders. And every mission whose
+effect is its meaning is held to it (`MISSION_EFFECTS`, journal version 22):
+an embezzler carries `income_penalty`, only a thief carries `steal`.
+
+**An operation is a mission carried out by a method**
+(`docs/design-2026-10-16-operations.md`). The arbiter reads a covert act by its
+**outcome** first — a table in `prompts/appraisal.md` maps "someone is dead",
+"a thing is yours", "two powers at odds" to the mission — and never by the
+words about how. **How** is a method, and no method is written into code: the
+arbiter scores the player's words on four axes, each −1..+1 (`preparation`,
+`ease`, `noise`, `ifCaught`), and `budgetMethod` holds them to a sum of zero or
+less, clipping ease, then preparation, then noise. Code owns the steps —
+`METHOD_PRICE_STEP` 25% of the price, `METHOD_EASE_STEP` 10 on the odds, one in
+twenty on exposure — and `ifCaught` decides what exposure costs: nothing when
+deniable, double with every onlooker paying `BACKFIRE_REPUTATION` when it
+backfires. **Groundwork** (`lay_groundwork`, `Agent.groundwork`) is preparation
+recorded on the operative: one axis, one step, aimed at a target resolved to an
+id or at nothing. It tells from the next turn, adds outside the budget (at most
+`MAX_GROUNDWORK_BONUS`) to a later mission by the same operative on the same
+world and target, is spent when used, and is lost by leaving, recall, capture
+or `GROUNDWORK_TURNS`. The action point is its whole price. An outcome no
+mission produces is `unexpressed`: turned away without costing an action, the
+reason kept. The engine attaches the method and lays the groundwork
+(`routeCovertAction`); resolution only narrates. Tests name methods
+arbitrarily, so nothing is tuned to one. Journal version 22 (`methodsCount`).
+
+**The ruling is a choice made of parts**
+(`docs/design-2026-10-16-ruling-schema.md`, built). The arbiter's declared
+answer is `DeclaredRulingSchema`, one required `kind`: an `act` made of `parts`
+— at most one `overt` (open work, rolled once, carrying `stat`, `difficulty`,
+`involves` and `establishes`), any number of `covert` and `groundwork` (sent,
+never rolled) and `unexpressed` (logged; turned away at no action only when it
+is all there is) — or a `negotiation`, or an `inadmissible` ruling on a
+`ground`. `rulingToAppraisal` reads it into the flat `Appraisal` the rest of
+resolution was built on, so a hybrid ("sail the fleet and land a watcher under
+its cover") is one action: its overt part is rolled, its covert parts are sent
+whatever that roll did. **A refusal stands on a fact**: `RefusalGroundSchema` is
+`no_such_entity`, `not_present`, `not_held`, `commitment_conflict` or
+`already_so`, and `checkGround` verifies it on the board. A false ground is put
+back once; a second is taken as the missing outcome, at no action. There is no
+ground for an operative's class or "no mechanic", so the arbiter has no slot to
+write one in; `refusals.ts`'s patterns stay one release as a backstop. An overt
+part that `involves` one of the actor's own operatives is sent back too.
+
+**One operative, two outcomes: a rider** (`RiderSchema`). A covert part may
+carry one `rider` — `discord`, `sabotage`, `larceny` or `incitement` — on the
+same order, since one operative takes one order. It costs its own mission's
+`AGENT_COST` at the send, adds `RIDER_EXPOSURE` (2) to the order whether or not
+it fires, lands once only if the primary's outcome did (`settleRider`: a knife
+that missed frames nobody; discord moves the host `RIDER_DISCORD` against the
+named power, incitement `RIDER_INCITE`, sabotage a fixture point or
+`RIDER_SABOTAGE_HULLS`, larceny a second thing), and is refunded when the
+primary ends without it. A third power may be named in words ("Drajk");
+`factionIdFor` resolves it. **`relocate_asset`** moves a portable thing between
+the holder's own worlds through its own space, the verb that was improvised
+destructively before; a person moves by `decide_fate`. **Every mission holds
+its own effects** (`MISSION_EFFECTS` covers all eleven), so an assassination
+cannot carry `turn_notable`. **The advisor stays in the fiction**:
+`breaksTheFourthWall` refuses "turn N", action points, a DC and dice, beside
+`looksLikeAPlan`.
+
+**Three guards on the arbiter are code, because the prompt did not hold them**
+(`src/domain/refusals.ts`; held-out playtest 2026-10-16). A refusal whose reason
+is one of the rules the arbiter keeps inventing — an operative's class as a
+gate, "there is no mechanic", "cannot be reassigned mid-mission" —
+(`inventedRefusal`) is sent back once with what it got wrong, and a "no
+mechanic" that survives the retry is taken as `unexpressed`: turned away with no
+action spent, the missing outcome recorded. **Covert work is sent, not rolled**:
+a declaration ruled covert or groundwork has no stat, no difficulty and no d20
+of its own, because the operative's chance on the tick already counts guile,
+class, method and groundwork, and a declaration roll in front of it was a
+second gate none of those touched — a critical failure there burned an operative
+the engine gave 95%. Its batch is staged `sent`, which stands as a roll does.
+**And it carries only the sending** (`COVERT_SEND_OPS`: `deploy_agent`,
+`lay_groundwork`, `recall_agent`, `log_narrative`); anything else resolution
+wrote — a fee on free groundwork, a second charge for a deployment, an
+`extend_order` on a rival's programme — is left out with a note, and the player
+declares overt work on its own.
+
+**`kidnapping` is larceny aimed at a person**: a wetworker mission, one attempt
+(`AGENT_COST` 120, exposure 6 in 20), at a notable seated on that world or an
+officer standing there, named in `targetNotable` or `targetCommanderId` and
+resolved before any price. On success the person is the kidnapper's prisoner on
+its nearest world — a notable through `holdNotable` (the seat empties, which
+charges their estate `SEAT_VACATED_FAVOUR`, and a marriage they are in ends with
+the ward sent home), an officer as a captured `officer` asset, ransomable like
+one taken in battle — and their power knows who has them
+(`KIDNAP_RESENTMENT`, 30). An officer who has sailed, or a notable no longer in
+the seat, is not found. Nobody on the Lists and nobody already held can be
+taken; freeing a captive is a different act. Win or lose, the operative is back
+awaiting orders.
 
 ## Intelligence: what you can see, and what you only suspect
 
@@ -5921,7 +6053,7 @@ trip is for.
 
 **Operatives come off the Lists, and only by recruiting** (journal version 22,
 `LegacyRules.agentLists`), the third roster to work the way officers and
-notables do. Every power keeps `AGENT_LIST_SIZE` (3) waiting
+notables do. Every power keeps `AGENT_LIST_SIZE` waiting — one of each class
 (`ListedAgentSchema`, `stockAgentLists`): standing nowhere, drawing no upkeep,
 taking no slot, and seen by nobody else — `worldAsSeenBy` sends a power its own
 Lists alone. A **recalled** operative goes back on them with their record, where
@@ -5937,6 +6069,25 @@ operative's rolls are seeded on its id, and Lists-style ids reseeded every
 recruit's dice and froze the harness board at 6/4/6/5/4 for a reason that was
 not in the rules. With fresh ids all four boards stay 5/5/6/5/4.
 
+**And every operative has a class** (`AGENT_CLASSES`): **ghosts** come away with
+something — sight, money, a thing (surveillance, embezzlement, larceny); **agitators** stir the many
+from a distance — a rumour, a forged letter, a crowd (subversion, discord,
+incitement); **sparrows** win over one person face to face — a captain, a
+notable, a lover (defection, seduction); **wetworkers** break things
+(sabotage, assassination, kidnapping). `MISSION_CLASS` files each mission, and is a
+`Record`, so a mission added later fails the typecheck until it is given a class
+by that rule. A class runs its own missions at `CLASS_SUCCESS_SHIFT` (+10) success
+and `CLASS_EXPOSURE_SHIFT` (1) less exposure, never below one in twenty, and
+anyone else's at −10 and one more (`classFit`, `exposureRiskOf`). The Lists keep
+**one of each class** waiting, the shape the officers' Lists have; `recruit_agent`
+takes a class (`agentClass`) or a name, and a send that names nobody goes to the
+nearest idle operative of the mission's class first. The bots recruit the class
+their mission wants, and a test holds every operative a bot runs to its own
+class. An operative with no class — recruited before them — has no modifier, so
+older campaigns play as they did. `agentClass` sits before the fields written
+onto a live operative later, because replay compares key order. The harness
+boards stay 5/5/6/5/4.
+
 **Before the Lists, an operative handed home went back on the books by itself** (journal
 version 20, `operativesComeHome`), awaiting orders, at the world they were held
 on if their power holds it and its best world otherwise — the rule the Lists
@@ -5948,6 +6099,30 @@ than how many people you have hired: one that does not fit waits in the
 warehouse until a slot opens, and so does one whose power holds no world. Before
 version 20 it took a `recruit_agent` with `fromAssetId`, which still works.
 Officers do the same: one handed home goes back on the officers' Lists.
+
+**A person has one record, and their fate is a choice** (journal version 22,
+`LegacyRules.oneRecordPerPerson`; `docs/design-2026-10-16-ruling-schema.md`). A
+playtest moved a kidnapped notable by writing `consume_asset` on him — which
+questioned him out of play — and `create_asset` of a generic prisoner with his
+name. So `consume_asset` refuses a person (an anonymous, divisible haul of crews
+is still spent in lots), and a person's fate is `decide_fate`: `interrogate` as
+before, `release` home with `REPATRIATION_GOODWILL`, `execute` — an officer
+lost, an operative off the books, a notable removed as a killing removes one, at
+`EXECUTION_RESENTMENT` (40) with their power, `EXECUTION_REPUTATION_COST` (5)
+with everyone else and `HEAT_EXECUTION` (8), half the last two for someone with
+no roster record — or `relocate` to another of the holder's worlds by a path
+through its own space. And `create_asset` refuses one individual whose family
+name anyone in the campaign has carried (`personOnRoster`, read off
+`familiesInUse`): family names are never reused, so that is the existing person,
+named in the refusal. Somebody new — an informant, a defector — is still
+creatable.
+
+**Sends are the ruling's.** A resolution call may fill in a send the arbiter
+ruled (the cover, the effect) and never add one: `sendsAsRuled` drops any
+`deploy_agent` or `lay_groundwork` that matches no covert or groundwork part, and
+the note names the route. An act whose words name one of the actor's own
+operatives (`ownOperativeNamed`, by family) and comes back ruled with neither is
+put back to the arbiter once; if it stands, the act is overt and nobody is sent.
 
 **And you cannot question your own people.** `consume_asset` on a person your own
 power ran would have you file what they gave up and sell yourself intelligence
@@ -6321,7 +6496,12 @@ proves an **affair**, a secret that voids the marriage it betrays when
 published — and a ward living at a court can be seduced there too; assassination
 kills one, on the 17+ roll officers take, and a power's seat stands empty
 after. **No promotion**: officers, notables and operatives never cross rosters,
-and the arbiter rules the attempt inadmissible in each power's own words.
+and that is enforced **in code** — `seat_estate`, `recruit_commander` and
+`recruit_agent` take only from their own power's own Lists, and a test pins it.
+It was a prompt rule first, and a playtest (2026-10-16) watched it over-fire:
+it refused every jailbreak and kidnapping as "crossing a roster". The arbiter
+is now told the code holds the line and that taking, freeing or holding a
+person is ordinary covert work.
 
 **The bots keep a court** — `keepCourt` fills empty seats first, moves a seat
 to an estate gone resentful, and pays its weakest estate up to two stipends
@@ -6460,8 +6640,10 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `adjust_ships` | `hull` picks the class — which to build, and which of *your own* to move. Taking another power's is suborning, and spends their loss order |
 | `adjust_credits` | floors at 0 |
 | `set_doctrine` | 1–240 chars; may move `warEthic`/`tradeEthic` and retire lines, charged in dissent; actor's own faction only |
-| `set_toll_policy` | who pays to cross your space; free, actor's own faction only. An accord may only **lift** a toll — adding one is `declared_only` |
-| `consume_asset` | spend, release or destroy a thing you hold; draws an instrument's `uses` or stuff's `quantity`. Never a promissory note |
+| `set_toll_policy` | who pays to cross your space; free, actor's own faction only. An accord may only **lift** a toll — adding one is `declared_only`. `forTurns` / `whileTreaty` make a lift temporary |
+| `consume_asset` | spend, release or destroy a thing you hold; draws an instrument's `uses` or stuff's `quantity`. Never a promissory note, and from journal version 22 never a person |
+| `relocate_asset` | a portable thing you hold, to another of your worlds through your own space |
+| `decide_fate` | a person you hold: `interrogate` (a dossier), `release` (home), `execute`, or `relocate` between your own worlds through your own space |
 | `play_note` | call in a promissory note you hold from another power; refused in war or when what it gives is already in force |
 | `establish_obligation` | **extraction-only** — a favour owed; binds the debtor, always weak |
 | `call_obligation` | holder only; `sign` a non-aggression pact, ceasefire or trade accord, or `support` an ultimatum of yours |
@@ -6492,7 +6674,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `forgive_loan` | lender only; what was lent becomes the borrower's |
 | `forgive_debt` | creditor only; writes off the balance and buys goodwill |
 | `recruit_commander` | appoint an officer off your Lists — `officer` by name, or `school` for its first — to a world you hold, up to five. An action of its own |
-| `recruit_agent` | take an operative off your Lists (`agent`, by name, or the first) onto the books at a world you hold, awaiting orders. An action of its own. Before version 22 a new face, and `fromAssetId` brought a captured one home |
+| `recruit_agent` | take an operative off your Lists (`agent` by name, `agentClass`, or the first) onto the books at a world you hold, awaiting orders. An action of its own. Before version 22 a new face, and `fromAssetId` brought a captured one home |
 | `recall_agent` | withdraw an operative of yours; from version 22 they go back on your Lists with their record |
 | `deploy_agent` | send an operative already on the books on a mission; they travel three jumps a turn. `targetNotable` aims a seduction, a subversion or an assassination at a notable |
 | `grant_stipend` · `revoke_stipend` | pay one of your estates 15 a turn, or stop; three grants an estate |
@@ -7484,9 +7666,14 @@ component is logic nothing checks.
   and the briefing's **Court** group says when a seat stands empty. The Lists
   tab toggles to **Officers**: one of each school waiting, new (a commission)
   or served (free), each with an appoint button; the Command tab offers the
-  same. And to **Operatives**: the three waiting, fresh or served with their
-  record, each with a recruit button; the Agents tab's recruit button names the
-  next one.
+  same. And to **Operatives**: one of each class waiting, fresh or served with
+  their record, each with a recruit button; the Agents tab's recruit button
+  names the next one. **All three share one layout** (`ListGroup`, `ListRow`):
+  grouped by estate, school or class, the type an outlined violet label that is
+  not a button (`.kind-tag`), what it means beside it, then each person's name,
+  their standing dimmed, and the one action. A notable gets an appoint button
+  when a seat stands empty. Button chips lighten under the pointer, so the two
+  never read alike.
 
   **Buttons write, they never send.** Every action button in the panels
   writes a sentence for the player to read and send, because declaring is
@@ -7738,6 +7925,15 @@ Charging one of two makes asking a real decision — the same argument that pric
 a refusal, which also produces nothing and is also spent. Checked before the
 call, so running out of turn is free to discover, and the point is spent *after*
 the counsel arrives, so a failed call charges nothing.
+
+**A question can ride on the same action.** `/advisor <question>` — *"what is
+the best way to take Vantic with minimal losses?"* — puts the leader's words in
+front of the counsellor (`AdvisorRequestSchema`, trimmed and capped at 400),
+and `/advisor` alone asks the standing question as before. Same price, same
+answer length, and the same rule: a question that asks for a plan is answered
+with what bears on it — what holds the place, what it costs, who would answer —
+never the order of march, and `looksLikeAPlan` still refuses an enumeration.
+The words are quoted as the leader's question, never read as instructions.
 
 ### It must not become a solver, and that is enforced structurally
 

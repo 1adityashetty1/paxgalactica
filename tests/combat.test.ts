@@ -2042,7 +2042,7 @@ describe('the officer on the field', () => {
         });
         const out = applyOps(
           s,
-          [{ op: 'consume_asset', assetId: 'ast-pow', quantity: 1 }],
+          [{ op: 'decide_fate', assetId: 'ast-pow', fate: 'interrogate' }],
           'model',
           'drajk',
         );
@@ -2188,7 +2188,7 @@ describe('the officer on the field', () => {
         const s = fresh();
         s.agents.push({
           id: 'agt-held', ownerFactionId: 'drajk', systemId: 'ilv-6',
-          mission: 'theft', effect: { kind: 'income_penalty', perTurn: 4 },
+          mission: 'embezzlement', effect: { kind: 'income_penalty', perTurn: 4 },
           successChance: 50, exposed: true, deployedTurn: 0, inPlaceFrom: 0, cover: '',
           targetCommanderId: null,
           name: 'Aleska Halfshare', operations: 0, timesCaught: 0,
@@ -2202,7 +2202,7 @@ describe('the officer on the field', () => {
         });
         const out = applyOps(
           s,
-          [{ op: 'consume_asset', assetId: 'ast-spy', quantity: 1 }],
+          [{ op: 'decide_fate', assetId: 'ast-spy', fate: 'interrogate' }],
           'model',
           'vigil',
         );

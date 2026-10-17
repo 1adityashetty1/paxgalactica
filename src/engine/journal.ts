@@ -373,6 +373,19 @@ export function replay(
     widerNames: parsed.version >= 22,
     // An estate lost nothing when one of its people lost a seat.
     seatLossCostsFavour: parsed.version >= 22,
+    // A raid on a power it could not land on still cost standing and said so,
+    // and narrated regard was capped per op rather than per batch.
+    raidsLandOnly: parsed.version >= 22,
+    narrationCapPerBatch: parsed.version >= 22,
+    // Two sends of one operative in a batch both charged and the second won.
+    oneOrderPerOperative: parsed.version >= 22,
+    // A theft could be written with any effect, and was written as a watcher.
+    missionEffectsHeld: parsed.version >= 22,
+    // No mission carried a method, and nobody laid groundwork.
+    methodsCount: parsed.version >= 22,
+    // A prisoner could be spent (questioned) by a generic verb, and a person
+    // already on a roster minted again as a new asset.
+    oneRecordPerPerson: parsed.version >= 22,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

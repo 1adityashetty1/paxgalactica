@@ -601,11 +601,14 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
   // charged by `AGENT_COST`, held to `maxAgentsFor`, resolved on the tick and
   // exposed on the same ladder as an operative placed the ordinary way. Without
   // this the declared route was simply cheaper than the mechanic it duplicates.
+  // Covert parts are sent, never rolled with the declaration: even in an act
+  // whose open half failed its check, the operatives set out.
   const routed = routeCovertAction(
     ops,
-    resolution.check?.outcome ?? 'success',
+    'success',
     resolution.output.covert,
     campaign.state.playerFactionId,
+    resolution.output.groundwork ?? [],
   );
 
   // Secret when the arbiter ruled it covert OR anything in it places an
@@ -614,7 +617,9 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
   // and its narrative is exactly the thing that told the Vigil it had been
   // targeted.
   const secret =
-    (resolution.output.covert?.length ?? 0) > 0 || routed.ops.some(isCovertOp);
+    (resolution.output.covert?.length ?? 0) > 0 ||
+    (resolution.output.groundwork?.length ?? 0) > 0 ||
+    routed.ops.some(isCovertOp);
 
   const staged = await stageWithCorrection(
     campaign,
@@ -625,9 +630,11 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     resolution.check?.outcome,
     'model',
     resolution.check?.stat,
-    { binding: 'rolled', secret },
+    // Covert work is sent, not rolled: nothing was thrown, but the operative is
+    // under way and the action is spent, so it stands like a roll does.
+    { binding: resolution.check ? 'rolled' : 'sent', secret },
   );
-  staged.notes.unshift(...routed.notes);
+  staged.notes.unshift(...resolution.notes, ...routed.notes);
 
   if (defiance) {
     const total = Math.min(
@@ -669,6 +676,10 @@ export async function endTurn(
   const notes: string[] = [];
   const rejections: OpRejection[] = [];
   let costUsd = 0;
+  // Where this turn's log begins, so its private lines can be kept out of the
+  // notes the player is handed — see the filter at the end.
+  const logFrom = campaign.state.eventLog.length;
+  const player = campaign.state.playerFactionId;
 
   // Capture what was declared before committing clears the staging area.
   const brief = campaign.reactionBrief();
@@ -817,18 +828,19 @@ export async function endTurn(
         },
       ];
 
-      const applied = campaign.commit(batch, 'model', `initiative:${faction.id}`, faction.id);
-      notes.push(...applied.notes);
-      rejections.push(...applied.rejections);
+      // A bot's notes and rejections are its own business — where its
+      // operatives are going, what its yards were refused — and the end-turn
+      // response is printed in the player's feed. What the galaxy may know of
+      // the move is in the log, scoped like everything else there (playtest
+      // 2026-10-16: every rival's spy postings reached the player this way).
+      campaign.commit(batch, 'model', `initiative:${faction.id}`, faction.id);
     }
 
     // And what two NPC powers agree between themselves — an exchange of goods,
     // a peace in a war gone quiet. Engine batches with no actor: the rule read
     // both parties, so neither one's guard speaks for the pair.
     for (const accord of brokeredAccords(campaign.state)) {
-      const applied = campaign.commit(accord.ops, 'engine', accord.label);
-      notes.push(...applied.notes);
-      rejections.push(...applied.rejections);
+      campaign.commit(accord.ops, 'engine', accord.label);
     }
   });
 
@@ -836,10 +848,21 @@ export async function endTurn(
   const ticked = await span('tick', { turn }, () => campaign.tick());
   notes.push(...ticked.notes);
 
+  // A note the log scoped away from the player is not the player's to read
+  // either: the tick writes every power's private lines (an estate losing a
+  // seat, an operative's report) as notes and as log entries visible to that
+  // power alone, and the notes are printed in the player's feed.
+  const hidden = new Set(
+    campaign.state.eventLog
+      .slice(logFrom)
+      .filter((e) => e.visibleTo && !e.visibleTo.includes(player))
+      .map((e) => e.text),
+  );
+
   return {
     applied: committed.applied,
     reactions: reactionViews,
-    notes,
+    notes: notes.filter((n) => !hidden.has(n)),
     rejections,
     costUsd,
     report: ticked.report,
@@ -1036,7 +1059,7 @@ export function groundInConcessions(
  */
 function isCovertOp(raw: unknown): boolean {
   const op = raw as { op?: unknown; dark?: unknown } | null;
-  return op?.op === 'deploy_agent' || (op?.op === 'issue_order' && op.dark === true);
+  return op?.op === 'deploy_agent' || op?.op === 'lay_groundwork' || (op?.op === 'issue_order' && op.dark === true);
 }
 
 export async function closeChannel(

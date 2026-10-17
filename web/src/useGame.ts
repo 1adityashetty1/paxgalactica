@@ -393,10 +393,11 @@ export function useGame() {
    * exactly the register it is written to avoid.
    */
   const advisor = useCallback(
-    () =>
+    (question?: string) =>
       guard(async () => {
-        say('> counsel', 'you');
-        const outcome = await api.advisor();
+        const asked = question?.trim() || undefined;
+        say(asked ? `> counsel: ${asked}` : '> counsel', 'you');
+        const outcome = await api.advisor(asked);
         if (outcome.outOfActions) {
           sayWithArt(
             outcome.counsel,

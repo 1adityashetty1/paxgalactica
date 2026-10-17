@@ -320,7 +320,8 @@ describe('assets', () => {
 
     it('lets a treaty written against holding it finally void by destruction', () => {
       // Before this an `asset_lost` condition could only fire because something
-      // changed HANDS. A hostage could not be killed.
+      // changed HANDS. A hostage could not be killed. (A person's fate is
+      // `decide_fate` from journal version 22.)
       let s = applyOps(
         seed(),
         [mint({ kind: 'hostage', quantity: 1, unit: 'person', text: 'The Vigil heir.' })],
@@ -340,7 +341,7 @@ describe('assets', () => {
       ).state;
       expect(tickTurn(s).state.treaties[0]!.status).toBe('active');
 
-      const killed = applyOps(s, [{ op: 'consume_asset', assetId }], 'model', 'ojjul').state;
+      const killed = applyOps(s, [{ op: 'decide_fate', assetId, fate: 'execute' }], 'model', 'ojjul').state;
       expect(tickTurn(killed).state.treaties[0]!.status).toBe('voided');
     });
   });

@@ -355,7 +355,8 @@ export const api = {
   action: (text: string): Promise<ActionOutcomeResponse> =>
     call(ROUTES.action, ActionOutcomeSchema, { text }),
 
-  advisor: (): Promise<AdvisorOutcomeResponse> => call(ROUTES.advisor, AdvisorOutcomeSchema),
+  advisor: (question?: string): Promise<AdvisorOutcomeResponse> =>
+    call(ROUTES.advisor, AdvisorOutcomeSchema, question ? { question } : {}),
 
   endTurn: (): Promise<TurnOutcomeResponse> => call(ROUTES.endturn, TurnOutcomeSchema),
 

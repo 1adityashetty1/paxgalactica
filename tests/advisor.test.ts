@@ -182,3 +182,14 @@ describe('the advisor', () => {
     });
   });
 });
+
+describe('the advisor stays inside the fiction', () => {
+  it('rejects the game’s own terms, and keeps ordinary speech', async () => {
+    const { breaksTheFourthWall } = await import('../src/model/calls.js');
+    expect(breaksTheFourthWall('She was taken on Vantic — that was turn five.')).toBe(true);
+    expect(breaksTheFourthWall('You have one action point left.')).toBe(true);
+    expect(breaksTheFourthWall('It is a DC 16 affair.')).toBe(true);
+    expect(breaksTheFourthWall('She was taken on Vantic last month, and it will not be easy to get her back.')).toBe(false);
+    expect(breaksTheFourthWall('The tide will turn on Vantic.')).toBe(false);
+  });
+});

@@ -7,7 +7,7 @@ import {
   COMMANDER_UPKEEP,
   MAX_ACTIVE_COMMANDERS,
   VETERAN_THRESHOLDS,
-  AGENT_LIST_SIZE,
+  AGENT_CLASSES,
 } from '../domain/command.js';
 import { STAT_NAMES } from '../domain/checks.js';
 import { EFFECT_CATEGORIES } from '../domain/development.js';
@@ -33,6 +33,10 @@ import {
   PLEDGE_REACH,
   type AgentMission,
   type TreatyType,
+  CLASS_EXPOSURE_SHIFT,
+  CLASS_SUCCESS_SHIFT,
+  MISSION_CLASS,
+  GROUNDWORK_TURNS,
 } from '../domain/diplomacy.js';
 import { EXHAUSTION_INDEMNITY_SHARE, EXHAUSTION_RATIO, EXHAUSTION_RUNWAY_TURNS } from '../domain/leverage.js';
 import {
@@ -254,7 +258,9 @@ export function leverageLines(): string[] {
     '  A favour owed can be called in, unasked: the power that owes it signs a',
     `  non-aggression pact, a ceasefire or a trade accord for ${OBLIGATION_TERM_TURNS} turns, or backs`,
     '  an ultimatum of yours. Favours come from accords, from debts you forgive,',
-    '  and from blackmail.',
+    '  and from blackmail. At the table a favour is also something to trade:',
+    '  let the debtor off it as your price, or sell an ordinary one to the',
+    '  power across from you. A blackmail hook cannot be sold.',
     '  A watcher of yours can dig up proof of what its host hides: an operative,',
     '  a secret programme, an unpaid debt. Publish it to cost them standing with',
     '  everyone, or keep it quiet for a hook that never stops being useful.',
@@ -351,7 +357,8 @@ export function wrap(text: string, indent = '  ', width = 76): string[] {
  */
 const MISSION_JOB: Record<AgentMission, string> = {
   surveillance: 'watches a world: hidden work there shows',
-  theft: 'skims credits off the world it sits on',
+  embezzlement: 'skims credits off the world it sits on',
+  larceny: 'steals one thing there, or copies paper',
   subversion: 'wears down a stat, or turns a notable',
   sabotage: 'wrecks hulls and fixtures',
   defection: 'talks crews into your service',
@@ -359,13 +366,14 @@ const MISSION_JOB: Record<AgentMission, string> = {
   incitement: 'turns a world against whoever holds it',
   assassination: 'one strike, at a power, officer or notable',
   seduction: 'courts a notable: kin, and an affair to prove',
+  kidnapping: 'seizes a named notable or officer there',
 };
 
 /** Operatives, from the mission table that prices and risks them. */
 export function operativeLines(): string[] {
   return [
     'OPERATIVES',
-    `  Recruiting one is an action: one of the ${AGENT_LIST_SIZE} waiting on your Lists signs`,
+    `  Recruiting one is an action: one of those waiting on your Lists signs`,
     '  on at a world you hold. Sending them on a mission is another. A',
     '  recalled operative, or one ransomed home, goes back on the Lists.',
     `  They travel ${AGENT_JUMPS_PER_TURN} jumps a turn and cost ${AGENT_UPKEEP} a turn`,
@@ -379,8 +387,40 @@ export function operativeLines(): string[] {
       const risk = `${MISSION_PROFILE[m].exposureRisk}/20`;
       return `    ${m.padEnd(14)}${cost.padStart(5)}  ${risk.padStart(4)}  ${MISSION_JOB[m]}`;
     }),
+    `  Every operative has a class, one of each waiting on your Lists. A`,
+    `  class runs its own missions at +${CLASS_SUCCESS_SHIFT}% and ${CLASS_EXPOSURE_SHIFT} less risk, anyone`,
+    `  else's at -${CLASS_SUCCESS_SHIFT}% and ${CLASS_EXPOSURE_SHIFT} more:`,
+    ...AGENT_CLASSES.map(
+      (c) =>
+        `    ${c.padEnd(11)}${(Object.keys(MISSION_CLASS) as AgentMission[]).filter((m) => MISSION_CLASS[m] === c).join(', ')}`,
+    ),
     '  Say what you want done in plain words — "put a watcher on Vantic" —',
     '  and the arbiter routes it here. The Agents tab tracks every one.',
+    '',
+    '  HOW IT IS DONE',
+    '  What the act achieves picks the mission; how you say it is done is its',
+    '  method. "Poison in the Governor\'s toast" is an assassination, by poison.',
+    '  A method can make it cheaper or dearer, easier or harder, quieter or',
+    '  louder, and deniable or liable to backfire if they are caught. Every',
+    '  advantage is paid for with a disadvantage.',
+    `  Groundwork is getting into position first: hired into the kitchens, on`,
+    `  the night watch. It is an action of its own, tells from the next turn,`,
+    `  and gives one later act there by the same operative a step on one of`,
+    `  those four, for up to ${GROUNDWORK_TURNS} turns.`,
+    '',
+    '  SENT, NOT ROLLED',
+    '  A covert order is not rolled when you give it. The operative sets out,',
+    '  and their own chance — guile, class, method, groundwork — is rolled',
+    '  when they act. Open work in the same order, like the fleet covering a',
+    '  landing, is rolled on its own; the sending goes ahead either way.',
+    '  One already on a mission takes a new one if you name them. Whatever no',
+    '  mission can do yet is set aside, and on its own costs you no action.',
+    '',
+    '  ONE OPERATIVE, TWO OUTCOMES',
+    '  "Kill the governor and pin it on Drajk" is one order with a rider: a',
+    '  second outcome — discord, sabotage, larceny or incitement — on the same',
+    '  operative. It costs its own mission\'s price, makes them easier to catch,',
+    '  and lands only if the first part does; if not, its price comes back.',
   ];
 }
 
@@ -483,10 +523,13 @@ export function assetLines(): string[] {
     '  amounts to different powers, which is what makes them worth trading.',
     `  The game knows ${things} kinds and will hear of more. Every one is won by`,
     '  attempting something, never by claiming it, and sits on a world —',
-    '  take the world and you take what is on it. The Assets tab lists yours.',
+    '  take the world and you take what is on it. Move a thing between your',
+    '  own worlds through your own space whenever you like; the Assets tab',
+    '  lists yours.',
     '  · people — prisoners, a captured officer or operative: worth most to',
-    '    the power that lost them. Hand them home, sell them on, or question',
-    '    them for a dossier; each is remembered.',
+    '    the power that lost them. Hand them home, sell them on, question',
+    '    them for a dossier, execute them, or move them between your worlds;',
+    '    each is remembered, and an execution by everyone.',
     '  · paper — a dossier, a seal, a charter. A promissory note is a favour',
     `    signed in advance, worth ${NOTE_VALUE} to anyone but the power that wrote it.`,
     '  · debts and loans — money owed and paid down by instalment, up to',

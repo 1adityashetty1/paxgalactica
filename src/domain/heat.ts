@@ -34,13 +34,15 @@ export const HEAT_NOTORIOUS = 30;
  */
 export const HEAT_FOR_MISSION: Record<string, number> = {
   surveillance: 1,
-  theft: 2,
+  embezzlement: 2,
+  larceny: 2,
   subversion: 2,
   sabotage: 3,
   defection: 3,
   discord: 4,
   incitement: 3,
   assassination: 8,
+  kidnapping: 6,
   seduction: 2,
 };
 

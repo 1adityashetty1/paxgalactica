@@ -904,25 +904,25 @@ describe('a covert declaration is routed into the agent mechanic', () => {
     expect(campaign.state.agents[0]!.mission).toBeNull();
   });
 
-  it('places nobody when the attempt failed', async () => {
+  it('sends the operative whatever price the arbiter wrote: covert work is rolled on the tick, not here', async () => {
+    // A declaration roll in front of the operative's own was a second gate the
+    // method and groundwork could not touch (playtest 2026-10-16). A price out
+    // of reach no longer keeps anybody home.
     scripted = {
-      appraisal: appraisal({ covert: [{ mission: 'sabotage', systemId: 'tor-3' }] }),
-      resolution: { narrative: 'He never reached the dock.', ops: [] },
+      appraisal: appraisal({
+        difficulty: 30,
+        covert: [{ mission: 'sabotage', systemId: 'tor-3' }],
+      }),
+      resolution: { narrative: 'He sets out for the docks.', ops: [] },
     };
-    const campaign = Campaign.start('meridian', 'test-covert-fail');
-    // Force the failure band by pricing it out of reach.
-    scripted.appraisal = appraisal({
-      difficulty: 30,
-      covert: [{ mission: 'sabotage', systemId: 'tor-3' }],
-    });
-
-    // A recruit on the books, so it is the failed roll that keeps them home.
+    const campaign = Campaign.start('meridian', 'test-covert-sent');
     campaign.stage([{ op: 'recruit_agent', systemId: 'sek-4' }], 'recruit', '', 'model', 'meridian');
 
-    await submitAction(campaign, 'Sabotage the Vigil yards at Vantic.');
+    const outcome = await submitAction(campaign, 'Sabotage the Vigil yards at Vantic.');
 
+    expect(outcome.check).toBeNull();
     expect(campaign.state.agents).toHaveLength(1);
-    expect(campaign.state.agents[0]!.mission).toBeNull();
+    expect(campaign.state.agents[0]!.mission).toBe('sabotage');
   });
 });
 

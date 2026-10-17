@@ -92,7 +92,7 @@ export interface StagedBatch {
   secret?: boolean;
 }
 
-export type StagedBinding = 'rolled' | 'refused' | 'charge' | 'record';
+export type StagedBinding = 'rolled' | 'sent' | 'refused' | 'charge' | 'record';
 
 /**
  * A campaign as the browser carries it between requests. See
@@ -108,7 +108,7 @@ export const StagedBatchSchema = z.object({
   narrative: z.string(),
   actor: z.string().optional(),
   source: z.enum(['model', 'extraction', 'engine']).optional(),
-  binding: z.enum(['rolled', 'refused', 'charge', 'record']).optional(),
+  binding: z.enum(['rolled', 'sent', 'refused', 'charge', 'record']).optional(),
   secret: z.boolean().optional(),
 });
 

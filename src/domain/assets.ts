@@ -434,6 +434,15 @@ export const ASSET_ARCHETYPES: readonly AssetArchetype[] = [
 const BY_KIND = new Map(ASSET_ARCHETYPES.map((a) => [a.kind, a]));
 
 /** The archetype for a slug, if it is one of the known shapes. */
+/**
+ * The catalogue's paper — what a thief can take a **copy** of and leave the
+ * original (`larceny`). Ore and a seal cannot be copied; a ledger can.
+ */
+/** The catalogue's people — never a thief's to take; carrying one off is a kidnapping. */
+export const PEOPLE_KINDS: ReadonlySet<string> = new Set(['prisoners', 'officer', 'operative', 'hostage', 'defector']);
+
+export const PAPER_KINDS: ReadonlySet<string> = new Set(['dossier', 'charts', 'blueprints', 'writ', 'surety', 'ciphers']);
+
 export function archetypeFor(kind: string): AssetArchetype | undefined {
   return BY_KIND.get(kind);
 }

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { StatNameSchema } from './checks.js';
+import { AgentClassSchema, type AgentClass } from './command.js';
 
 /**
  * Treaties and covert agents: the two standing structures that outlive the turn
@@ -1940,20 +1941,117 @@ export const AGENT_MISSIONS = [
   'sabotage',
   'surveillance',
   'subversion',
-  'theft',
+  'embezzlement',
+  'larceny',
   'defection',
   'discord',
   'incitement',
   'assassination',
   'seduction',
+  'kidnapping',
 ] as const;
-export const AgentMissionSchema = z.enum(AGENT_MISSIONS);
-export type AgentMission = z.infer<typeof AgentMissionSchema>;
+/**
+ * `embezzlement` was called `theft` until journal version 22, which read as
+ * stealing a thing when it was skimming credits a turn; stealing a thing is
+ * `larceny`. A save or journal that says `theft` reads as embezzlement.
+ */
+export const AgentMissionSchema = z
+  .enum([...AGENT_MISSIONS, 'theft'])
+  .transform((m): (typeof AGENT_MISSIONS)[number] => (m === 'theft' ? 'embezzlement' : m));
+export type AgentMission = (typeof AGENT_MISSIONS)[number];
+
+/**
+ * Which class each mission belongs to. **The rule for a new one**: a mission
+ * that comes away with something — sight, money, proof, a thing — is a
+ * ghost's; one that wears a power down by working on the many from a
+ * distance — its stats, its quarrels, its crowds — is an agitator's; one that
+ * wins over a single person face to face is a sparrow's; one that breaks
+ * something outright is a wetworker's. A `Record`, so a mission added without a class
+ * fails the typecheck.
+ */
+export const MISSION_CLASS: Record<AgentMission, AgentClass> = {
+  surveillance: 'ghost',
+  embezzlement: 'ghost',
+  larceny: 'ghost',
+  subversion: 'agitator',
+  discord: 'agitator',
+  incitement: 'agitator',
+  defection: 'sparrow',
+  seduction: 'sparrow',
+  assassination: 'wetworker',
+  sabotage: 'wetworker',
+  kidnapping: 'wetworker',
+};
+
+export const AGENT_CLASS_MEANING: Record<AgentClass, string> = {
+  ghost: 'comes away with something: sight, money, a thing — surveillance, embezzlement and larceny',
+  agitator: 'stirs the many from a distance: a rumour, a forged letter, a crowd — subversion, discord and incitement',
+  sparrow: 'wins over one person, face to face: a captain, a notable, a lover — defection and seduction',
+  wetworker: 'breaks things, and takes people: a fleet, a fixture, a life, a hostage — sabotage, assassination and kidnapping',
+};
+
+/** Success chance a class gains on its own missions, and loses on anyone else's. */
+export const CLASS_SUCCESS_SHIFT = 10;
+/** Chance in twenty of being caught a class sheds on its own missions, and adds on anyone else's. */
+export const CLASS_EXPOSURE_SHIFT = 1;
+
+/**
+ * +1 when an operative runs a mission of their own class, −1 when they run
+ * another's, 0 for one with no class (recruited before classes existed), so
+ * an older campaign plays exactly as it did.
+ */
+export function classFit(agentClass: AgentClass | undefined, mission: AgentMission): -1 | 0 | 1 {
+  if (agentClass === undefined) return 0;
+  return MISSION_CLASS[mission] === agentClass ? 1 : -1;
+}
+
+/** The chance in twenty a failed turn gets this operative caught, by mission and class. */
+export function exposureRiskOf(
+  agent: { agentClass?: AgentClass; effect?: AgentEffect | null; method?: Method; rider?: Rider },
+  mission: AgentMission,
+): number {
+  const copying = agent.effect?.kind === 'steal' && agent.effect.copy ? 1 : 0;
+  const quiet = (agent.method?.profile.noise ?? 0) * METHOD_NOISE_STEP;
+  // A rider is always louder, whether or not it fires: the operative went in
+  // carrying the forged papers.
+  const carrying = agent.rider ? RIDER_EXPOSURE : 0;
+  return Math.max(
+    1,
+    MISSION_PROFILE[mission].exposureRisk - classFit(agent.agentClass, mission) * CLASS_EXPOSURE_SHIFT - copying - quiet + carrying,
+  );
+}
+
+/**
+ * The effects each mission may carry; anything else is replaced with the
+ * mission's default (`DEFAULT_COVERT_EFFECT`). A playtest found `theft` written
+ * with a watcher's `intel` three times in three, so no theft ever took money.
+ * Only the missions whose effect is their whole meaning are held to it.
+ */
+export const MISSION_EFFECTS: Record<AgentMission, readonly AgentEffect['kind'][]> = {
+  surveillance: ['intel'],
+  embezzlement: ['income_penalty'],
+  larceny: ['steal'],
+  kidnapping: ['kidnap'],
+  subversion: ['stat_debuff', 'sedition', 'turn_notable'],
+  sabotage: ['hull_damage', 'fixture_damage'],
+  defection: ['crew_defection'],
+  discord: ['discord'],
+  incitement: ['incite'],
+  seduction: ['seduce'],
+  // A strike: the damage an operation that got close enough does, whoever it
+  // was aimed at.
+  assassination: ['stat_debuff', 'sedition', 'hull_damage', 'fixture_damage'],
+};
+
+/** What a power thinks of the one holding a person it lost to a kidnapping: it knows who did it. */
+export const KIDNAP_RESENTMENT = 30;
 
 export const AGENT_MISSION_MEANING: Record<AgentMission, string> = {
   surveillance:
     'reveals the target\'s hidden orders on this system; no damage, and the quietest mission there is',
-  theft: 'siphons credits from the system it sits on, every turn it succeeds',
+  embezzlement: 'skims credits from the system it sits on, every turn it succeeds',
+  larceny:
+    'ONE attempt to steal a named thing held on this world — a chart, a crate, a seal, a ledger. Take the original and it is yours and theirs no longer; take a COPY of paper and they keep it, you get a dossier, and it is quieter. Then the operative is back awaiting orders',
   subversion: 'erodes a named stat while in place — the target governs, fights or builds worse',
   sabotage: 'destroys fleet strength every turn it succeeds; loud, and easier to trace',
   defection:
@@ -1964,6 +2062,8 @@ export const AGENT_MISSION_MEANING: Record<AgentMission, string> = {
     'stirs the people of a world somebody else holds — pamphlets, a martyr, money for the militia. Each turn it succeeds the world thinks the less of its holder, so the holder needs more warships to hold it down, and a world neither content nor held down rises. Far harder on a power\'s own home ground, where its people defend with the resolve the power was founded on',
   assassination:
     'ONE attempt at a decapitating strike, then the operative is gone either way. Success is a heavy one-off blow and a collapse in relations; failure almost always ends with the agent caught',
+  kidnapping:
+    'ONE attempt to seize a named PERSON on this world — a notable in their seat, or an officer standing there — and carry them to a world you hold as your prisoner. Their seat stands empty, and their power knows exactly who has them. Then the operative is back awaiting orders',
   seduction:
     'courts a NOTABLE in their seat: while it lasts their world warms to you as to kin, what they say in bed reaches you, and after three turns you hold proof of the affair — which, published, voids their marriage and shames their estate',
 };
@@ -1990,7 +2090,10 @@ export const AGENT_MISSION_MEANING: Record<AgentMission, string> = {
  */
 export const AGENT_COST: Record<AgentMission, number> = {
   surveillance: 40,
-  theft: 60,
+  embezzlement: 60,
+  // Sabotage's price for one attempt at a thing, then the operative is free:
+  // dearer than a turn of skimming, cheaper than a knife.
+  larceny: 70,
   subversion: 60,
   defection: 80,
   sabotage: 80,
@@ -2004,6 +2107,9 @@ export const AGENT_COST: Record<AgentMission, number> = {
   // repaired the same way, by spending — warships sent to hold it down.
   incitement: 80,
   assassination: 150,
+  // Dearer than a theft, cheaper than a knife: a person is harder to carry
+  // than a crate, and worth a ransom to whoever lost them.
+  kidnapping: 120,
   // Incitement's price: what it buys is a world's regard, one notable at a time.
   seduction: 80,
 };
@@ -2019,7 +2125,11 @@ export interface MissionProfile {
 
 export const MISSION_PROFILE: Record<AgentMission, MissionProfile> = {
   surveillance: { exposureRisk: 1, oneShot: false, effectMultiplier: 1 },
-  theft: { exposureRisk: 2, oneShot: false, effectMultiplier: 1 },
+  embezzlement: { exposureRisk: 2, oneShot: false, effectMultiplier: 1 },
+  // One attempt, and not spent: the operative is back awaiting orders after it,
+  // win or lose — see the agent pass. Sabotage's risk for the original; a copy
+  // is a point quieter (`exposureRiskOf`).
+  larceny: { exposureRisk: 3, oneShot: false, effectMultiplier: 1 },
   subversion: { exposureRisk: 2, oneShot: false, effectMultiplier: 1 },
   sabotage: { exposureRisk: 3, oneShot: false, effectMultiplier: 1 },
   // Riskier than theft — you are talking to people who may report you — but
@@ -2034,6 +2144,9 @@ export const MISSION_PROFILE: Record<AgentMission, MissionProfile> = {
   incitement: { exposureRisk: 3, oneShot: false, effectMultiplier: 1 },
   // A near-coin-flip on being caught, in exchange for one heavy blow.
   assassination: { exposureRisk: 9, oneShot: true, effectMultiplier: 4 },
+  // Loud — a person is missed at once — but one attempt and not spent, like a
+  // larceny: the operative is back awaiting orders after it.
+  kidnapping: { exposureRisk: 6, oneShot: false, effectMultiplier: 1 },
   // Sabotage's risk: a seducer is in somebody else's house every night.
   seduction: { exposureRisk: 3, oneShot: false, effectMultiplier: 1 },
 };
@@ -2147,6 +2260,19 @@ export const AgentEffectSchema = z.discriminatedUnion('kind', [
    * world — whatever the estate's real favour. See `seats.ts`.
    */
   z.object({ kind: z.literal('turn_notable') }),
+  /** `kidnapping`: the person is the agent's `targetNotableId` or `targetCommanderId`. */
+  z.object({ kind: z.literal('kidnap') }),
+  z.object({
+    /**
+     * `larceny`: one attempt at a portable thing a rival holds on this world.
+     * `assetId` names it, or the one worth most to the thief comes. `copy`
+     * takes a copy of paper — a dossier for the thief, the original left — and
+     * is a point quieter.
+     */
+    kind: z.literal('steal'),
+    assetId: z.string().min(1).nullable().default(null),
+    copy: z.boolean().default(false),
+  }),
   /** A seduction's effect: the notable's world warms to the seducer, and proof of the affair follows. */
   z.object({ kind: z.literal('seduce') }),
 ]);
@@ -2162,7 +2288,10 @@ export type AgentEffect = z.infer<typeof AgentEffectSchema>;
  */
 export const DEFAULT_COVERT_EFFECT: Record<AgentMission, AgentEffect> = {
   surveillance: { kind: 'intel', revealsOrders: true },
-  theft: { kind: 'income_penalty', perTurn: 10 },
+  embezzlement: { kind: 'income_penalty', perTurn: 10 },
+  // Whatever is worth most to the thief on that world, the original.
+  larceny: { kind: 'steal', assetId: null, copy: false },
+  kidnapping: { kind: 'kidnap' },
   subversion: { kind: 'stat_debuff', stat: 'industry', magnitude: 1 },
   sabotage: { kind: 'hull_damage', perTurn: 2 },
   defection: { kind: 'crew_defection', perTurn: 1 },
@@ -2176,6 +2305,169 @@ export const DEFAULT_COVERT_EFFECT: Record<AgentMission, AgentEffect> = {
   // One attempt, quadrupled by the mission profile, then the operative is gone.
   assassination: { kind: 'stat_debuff', stat: 'resolve', magnitude: 1 },
 };
+
+/* ------------------------------------------------------------------ */
+/* Riders — docs/design-2026-10-16-ruling-schema.md §1                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A second outcome on one operative's order: "kill the governor and pin it on
+ * Drajk", "take the drawings and burn the archive behind me". One operative
+ * takes one order, so the second outcome rides on the first rather than being
+ * a second send. It is priced at its own mission's cost when sent, adds
+ * `RIDER_EXPOSURE` to the order whether or not it fires, lands once — only if
+ * the primary does — and is refunded when it does not.
+ */
+export const RIDER_MISSIONS = ['discord', 'sabotage', 'larceny', 'incitement'] as const;
+export type RiderMission = (typeof RIDER_MISSIONS)[number];
+export const RIDER_EXPOSURE = 2;
+/** What a discord rider turns the host against the named power, once. */
+export const RIDER_DISCORD = 10;
+/** What an incitement rider takes off the world's regard for its holder, once. */
+export const RIDER_INCITE = 10;
+/** Hulls a sabotage rider puts out of action, once, where no fixture stands to strike. */
+export const RIDER_SABOTAGE_HULLS = 2;
+
+export const RiderSchema = z.object({
+  mission: z.enum(RIDER_MISSIONS),
+  /** For larceny, the thing; for discord, unused. */
+  target: z.string().max(80).optional(),
+  /** For discord, the third power the host is turned against. */
+  towardFactionId: z.string().optional(),
+  /** What was charged for it, so a rider that never fires is refunded exactly. */
+  paid: z.number().int().min(0).default(0),
+});
+export type Rider = z.infer<typeof RiderSchema>;
+
+/* ------------------------------------------------------------------ */
+/* Methods and groundwork — docs/design-2026-10-16-operations.md        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * How an operation is done, scored rather than named. **No method is written
+ * into code**: the arbiter scores what the player described on four fixed axes,
+ * each −1, 0 or +1 from the player's side, and code owns what a step is worth
+ * and holds the profile to a budget. A list of methods would be a second closed
+ * vocabulary — the trap the nine fixed missions were.
+ */
+export const METHOD_AXES = ['preparation', 'ease', 'noise', 'ifCaught'] as const;
+export type MethodAxis = (typeof METHOD_AXES)[number];
+/**
+ * −1..+1 as the arbiter scores it; up to +2 once groundwork is added, which is
+ * why the schema allows it — `budgetMethod` holds the arbiter's own to ±1.
+ */
+const AxisStep = z.number().int().min(-1).max(2).default(0);
+export const MethodProfileSchema = z.object({
+  /** +1 cheaper, −1 dearer: `METHOD_PRICE_STEP` of the mission's price a step. */
+  preparation: AxisStep,
+  /** +1 easier, −1 harder: `METHOD_EASE_STEP` on the success chance a step. */
+  ease: AxisStep,
+  /** +1 quieter, −1 louder: one in twenty off or on the exposure risk a step. */
+  noise: AxisStep,
+  /** +1 deniable, 0 traced as today, −1 backfires. See `takeOperative`. */
+  ifCaught: AxisStep,
+});
+export type MethodProfile = z.infer<typeof MethodProfileSchema>;
+export const MethodSchema = z.object({
+  /** The player's own words: "poison in the Governor's toast". */
+  text: z.string().min(1).max(160),
+  profile: MethodProfileSchema,
+});
+export type Method = z.infer<typeof MethodSchema>;
+
+/** A method profile as words: only the axes that move, from the player's side. */
+export function profileWords(p: { preparation: number; ease: number; noise: number; ifCaught: number }): string {
+  const parts: string[] = [];
+  if (p.preparation) parts.push(p.preparation > 0 ? 'cheaper' : 'dearer');
+  if (p.ease) parts.push(p.ease > 0 ? 'easier' : 'harder');
+  if (p.noise) parts.push(p.noise > 0 ? 'quieter' : 'louder');
+  if (p.ifCaught) parts.push(p.ifCaught > 0 ? 'deniable' : 'backfires if caught');
+  return parts.length > 0 ? parts.join(', ') : 'no different';
+}
+
+/** What a step on each axis is worth. */
+export const METHOD_PRICE_STEP = 0.25;
+export const METHOD_EASE_STEP = 10;
+export const METHOD_NOISE_STEP = 1;
+/** Clipped from these first when a profile is over budget: what a method most often claims too much of. */
+const CLIP_ORDER: readonly MethodAxis[] = ['ease', 'preparation', 'noise', 'ifCaught'];
+
+/**
+ * Hold a profile to the budget: **the four scores sum to zero or less**, so every
+ * advantage is paid for with a disadvantage and no method can be described into
+ * being cheap, easy, quiet and safe at once. Over budget, a point at a time
+ * comes off the axes in `CLIP_ORDER`. Returns the held profile and what was cut.
+ */
+export function budgetMethod(profile: MethodProfile): { profile: MethodProfile; clipped: MethodAxis[] } {
+  const out = { ...profile };
+  for (const axis of METHOD_AXES) out[axis] = Math.max(-1, Math.min(1, out[axis]));
+  const clipped: MethodAxis[] = [];
+  const sum = () => METHOD_AXES.reduce((n, a) => n + out[a], 0);
+  for (const axis of CLIP_ORDER) {
+    while (sum() > 0 && out[axis] > 0) {
+      out[axis] -= 1;
+      clipped.push(axis);
+    }
+  }
+  return { profile: out, clipped };
+}
+
+/**
+ * The groundwork a mission by `agent` on `systemId`, aimed at `target`, can draw
+ * on this turn: usable (laid before this turn), not stale, on that world, aimed
+ * at that target or at nothing — at most one piece per axis and
+ * `MAX_GROUNDWORK_BONUS` in all, the first laid first.
+ */
+export function usableGroundwork(
+  agent: { groundwork?: Groundwork[] },
+  systemId: string,
+  targets: readonly (string | null | undefined)[],
+  turn: number,
+): Groundwork[] {
+  const out: Groundwork[] = [];
+  const axes = new Set<MethodAxis>();
+  for (const g of agent.groundwork ?? []) {
+    if (out.length >= MAX_GROUNDWORK_BONUS) break;
+    if (g.systemId !== systemId || g.madeTurn >= turn || g.staleTurn <= turn || axes.has(g.axis)) continue;
+    if (g.target !== null && !targets.includes(g.target)) continue;
+    axes.add(g.axis);
+    out.push(g);
+  }
+  return out;
+}
+
+/**
+ * Preparation that outlasts the action that laid it: an operative undercover in
+ * the kitchens, owed a favour by the night watch. Worth one step on one axis to
+ * a later mission by the **same** operative on the **same** world, aimed at the
+ * same target or laid with none. Counts from the turn after it is laid, is spent
+ * when used, and is lost when the operative leaves the world, is recalled or is
+ * caught, or when it goes stale. The action point is its whole price.
+ */
+export const GroundworkSchema = z.object({
+  id: z.string().min(1),
+  /** The player's own words. */
+  text: z.string().min(1).max(160),
+  systemId: z.string().min(1),
+  /** The person, thing or power it is aimed at, resolved to an id; null helps anything there. */
+  target: z.string().nullable().default(null),
+  axis: z.enum(METHOD_AXES),
+  /** Laid on this turn (or the turn the operative arrives); usable from the turn after. */
+  madeTurn: z.number().int().min(0),
+  /** Gone from this turn. */
+  staleTurn: z.number().int().min(0),
+});
+export type Groundwork = z.infer<typeof GroundworkSchema>;
+
+/** What every onlooker thinks the less of an author whose method backfired when caught. */
+export const BACKFIRE_REPUTATION = 5;
+
+/** Turns a piece of groundwork holds once it is usable. */
+export const GROUNDWORK_TURNS = 3;
+/** The most a mission draws from groundwork, over all axes. */
+export const MAX_GROUNDWORK_BONUS = 2;
+/** Pieces an operative can hold at once; laying another replaces the oldest. */
+export const MAX_GROUNDWORK = 2;
 
 export const AgentSchema = z.object({
   id: z.string().min(1),
@@ -2255,6 +2547,12 @@ export const AgentSchema = z.object({
    */
   targetCommanderId: z.string().nullable().default(null),
   /**
+   * Their class — see `AGENT_CLASSES`. Absent for one recruited before classes
+   * existed. Here, before the fields written onto a live operative later, since
+   * it is set when they sign on: replay compares key order.
+   */
+  agentClass: AgentClassSchema.optional(),
+  /**
    * Last, because it is written onto a live operative when they are taken, and
    * a key added to an object lands at its end: here the schema agrees.
    *
@@ -2270,6 +2568,16 @@ export const AgentSchema = z.object({
   targetNotableId: z.string().optional(),
   /** Turns a seduction has worked; at `SEDUCTION_PROOF_TURNS` the affair is proven. */
   courted: z.number().int().min(0).optional(),
+  /**
+   * How the current mission is being done, once a method was described: the
+   * player's words and the profile in force, groundwork included. Cleared with
+   * the mission.
+   */
+  method: MethodSchema.optional(),
+  /** Preparation laid and not yet used — see `GroundworkSchema`. */
+  groundwork: z.array(GroundworkSchema).optional(),
+  /** A second outcome riding on the current mission — see `RiderSchema`. */
+  rider: RiderSchema.optional(),
 });
 export type Agent = z.infer<typeof AgentSchema>;
 
@@ -2366,6 +2674,10 @@ export function describeEffect(effect: AgentEffect): string {
       return 'the notable works against their holder, whatever their estate thinks';
     case 'seduce':
       return 'the notable\'s world warms to you, and proof of the affair follows';
+    case 'kidnap':
+      return 'seizes a named person there, once, and holds them';
+    case 'steal':
+      return effect.copy ? 'copies a document held there, once' : 'steals a thing held there, once';
   }
 }
 

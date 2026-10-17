@@ -411,6 +411,15 @@ export const TRAFFICKING_RESENTMENT = 15;
 export const INTERROGATION_RESENTMENT = 20;
 /** What a third party thinks of a power that deals in prisoners at all. */
 export const TRAFFICKING_REPUTATION_COST = 4;
+/**
+ * Executing a person held: priced as an assassination that was caught, done
+ * openly — their power at −40, every other power at −5, and heat. A person with
+ * no roster record has no power behind them, so only half the onlooker and heat
+ * price lands.
+ */
+export const EXECUTION_RESENTMENT = 40;
+export const EXECUTION_REPUTATION_COST = 5;
+export const HEAT_EXECUTION = 8;
 
 export function officerRansom(
   c: Commander,
@@ -777,6 +786,24 @@ export function stockOfficerLists(state: {
  * ledger, the fog, the slot count — means an operative on the books, and a
  * flag would have to be remembered at each of them.
  */
+/**
+ * What kind of operative someone is — the school a spy came up in. A class runs
+ * its own missions better and everyone else's worse (`MISSION_CLASS`,
+ * `classFit` in `diplomacy.ts`):
+ *
+ * - **ghosts** come away with something — sight, money, proof, a thing;
+ * - **agitators** stir the many from a distance — a rumour, a forged letter, a
+ *   crowd — and wear a power down by it;
+ * - **sparrows** win over one person face to face — a captain, a notable, a
+ *   lover;
+ * - **wetworkers** break things — a fleet, a fixture, a person.
+ *
+ * A new mission is filed under the class whose rule it fits.
+ */
+export const AGENT_CLASSES = ['ghost', 'agitator', 'sparrow', 'wetworker'] as const;
+export const AgentClassSchema = z.enum(AGENT_CLASSES);
+export type AgentClass = z.infer<typeof AgentClassSchema>;
+
 export const ListedAgentSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -787,11 +814,13 @@ export const ListedAgentSchema = z.object({
   /** Served before: recalled, or handed home. Shown, and nothing else. */
   served: z.boolean().default(false),
   listedTurn: z.number().int().min(0),
+  /** Their class. Absent for one who served before classes existed. */
+  agentClass: AgentClassSchema.optional(),
 });
 export type ListedAgent = z.infer<typeof ListedAgentSchema>;
 
-/** How many operatives every power keeps waiting on its Lists. */
-export const AGENT_LIST_SIZE = 3;
+/** Every power keeps one operative of each class waiting on its Lists. */
+export const AGENT_LIST_SIZE = AGENT_CLASSES.length;
 
 /** A power's operatives waiting on its Lists, in the order they were listed. */
 export function listedAgentsOf(listed: readonly ListedAgent[] | undefined, factionId: string): ListedAgent[] {
@@ -814,10 +843,14 @@ export function stockAgentLists(state: {
   notables?: { name: string }[];
 }): ListedAgent[] {
   const put: ListedAgent[] = [];
-  const counts = new Map<string, number>();
-  for (const a of state.listedAgents ?? []) counts.set(a.ownerFactionId, (counts.get(a.ownerFactionId) ?? 0) + 1);
+  // One pass: which classes each power already has waiting. A served veteran
+  // counts for their class, so the Lists grow past one of each only when
+  // people come home.
+  const waiting = new Set<string>();
+  for (const a of state.listedAgents ?? []) if (a.agentClass) waiting.add(`${a.ownerFactionId}:${a.agentClass}`);
   for (const faction of state.factions) {
-    for (let have = counts.get(faction.id) ?? 0; have < AGENT_LIST_SIZE; have++) {
+    for (const agentClass of AGENT_CLASSES) {
+      if (waiting.has(`${faction.id}:${agentClass}`)) continue;
       const n = (state.listedAgents ?? []).length;
       const { name, family } = drawPerson({
         factionId: faction.id,
@@ -832,6 +865,7 @@ export function stockAgentLists(state: {
         name,
         ownerFactionId: faction.id,
         listedTurn: state.turn,
+        agentClass,
       });
       (state.listedAgents ??= []).push(spy);
       put.push(spy);

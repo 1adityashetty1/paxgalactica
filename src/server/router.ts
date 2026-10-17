@@ -8,6 +8,7 @@ import {
   ROUTES,
   SettingsUpdateSchema,
   TalkRequestSchema,
+  AdvisorRequestSchema,
 } from '../api/contract.js';
 import type { KeyCheck } from '../model/provider.js';
 import type { KeyedProvider } from '../model/settings.js';
@@ -113,7 +114,8 @@ async function route(
   }
 
   if (method === 'POST' && path === ROUTES.advisor) {
-    return ok(await session.advisor());
+    const { question } = parseBody(AdvisorRequestSchema, body ?? {});
+    return ok(await session.advisor(question || undefined));
   }
 
   if (method === 'POST' && path === ROUTES.endturn) {

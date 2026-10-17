@@ -183,7 +183,7 @@ export const StagedItemSchema = z.object({
    * Discard withdraws an order, never an attempt: once the dice are thrown or
    * the institutions have refused, what it cost is a fact of the turn.
    */
-  binding: z.enum(['rolled', 'refused', 'charge', 'record']).nullable(),
+  binding: z.enum(['rolled', 'sent', 'refused', 'charge', 'record']).nullable(),
 });
 
 export const EffectiveStatsSchema = z.object({
@@ -611,6 +611,16 @@ export const NewCampaignRequestSchema = z.object({
 
 export const ActionRequestSchema = z.object({
   text: z.string().min(1).max(2000),
+});
+
+/**
+ * A question put to the counsellor, or nothing for what they are worried
+ * about. Trimmed and capped: it is the player's own words in the counsellor's
+ * prompt, and an answer is held to 560 characters, so a question longer than
+ * this would be asking for more than can be said.
+ */
+export const AdvisorRequestSchema = z.object({
+  question: z.string().trim().max(400).optional(),
 });
 
 export const TalkRequestSchema = z.object({
