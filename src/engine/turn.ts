@@ -601,9 +601,11 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
   // charged by `AGENT_COST`, held to `maxAgentsFor`, resolved on the tick and
   // exposed on the same ladder as an operative placed the ordinary way. Without
   // this the declared route was simply cheaper than the mechanic it duplicates.
+  // Covert parts are sent, never rolled with the declaration: even in an act
+  // whose open half failed its check, the operatives set out.
   const routed = routeCovertAction(
     ops,
-    resolution.check?.outcome ?? 'success',
+    'success',
     resolution.output.covert,
     campaign.state.playerFactionId,
     resolution.output.groundwork ?? [],

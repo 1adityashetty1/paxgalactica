@@ -204,3 +204,100 @@ describe('sends are the ruling’s', () => {
     expect(outcome.ops.some((o) => (o as { op: string }).op === 'deploy_agent')).toBe(true);
   });
 });
+
+describe('a ruling made of parts', () => {
+  it('rolls the open part and sends the covert one, in one declaration', async () => {
+    const { campaign, home, target } = withOperative();
+    reset({
+      appraisal: [
+        {
+          kind: 'act',
+          parts: [
+            { kind: 'overt', what: 'the fleet stands off Brannix', stat: 'might', difficulty: 8 },
+            { kind: 'covert', mission: 'surveillance', systemId: target.id },
+          ],
+        },
+      ],
+      resolution: [
+        {
+          narrative: 'The squadron takes station, and under its cover a watcher goes ashore.',
+          ops: [{ op: 'log_narrative', text: 'The squadron takes station.' }],
+        },
+      ],
+    });
+    const outcome = await submitAction(campaign, `Sail from ${home.name} to stand off the coast while a watcher goes ashore.`);
+    expect(outcome.check).not.toBeNull();
+    expect(outcome.ops.some((o) => (o as { op: string }).op === 'deploy_agent')).toBe(true);
+    expect(calls.find((c) => c.kind === 'resolution')!.user).toContain('The covert half of this act is not part of that roll');
+  });
+
+  it('carries the rider the ruling allowed into the send', async () => {
+    const { campaign, target } = withOperative();
+    reset({
+      appraisal: [
+        {
+          kind: 'act',
+          parts: [{ kind: 'covert', mission: 'larceny', systemId: target.id, rider: { mission: 'discord', towardFactionId: 'drajk' } }],
+        },
+      ],
+      resolution: [{ narrative: 'They go in for the ledger.', ops: [] }],
+    });
+    const outcome = await submitAction(campaign, 'Take the customs ledger and leave it looking like Drajk work.');
+    const send = outcome.ops.find((o) => (o as { op: string }).op === 'deploy_agent') as { rider?: { mission: string } };
+    expect(send?.rider?.mission).toBe('discord');
+  });
+
+  it('notes an unexpressed part beside the parts that go ahead', async () => {
+    const { campaign, target } = withOperative();
+    reset({
+      appraisal: [
+        {
+          kind: 'act',
+          parts: [
+            { kind: 'covert', mission: 'surveillance', systemId: target.id },
+            { kind: 'unexpressed', outcome: 'spirit a prisoner out through Vigil space' },
+          ],
+        },
+      ],
+      resolution: [{ narrative: 'A watcher goes ashore.', ops: [] }],
+    });
+    const outcome = await submitAction(campaign, 'Watch the docks, and spirit the prisoner out through Vigil space.');
+    expect(outcome.notes.join(' ')).toMatch(/no mission does it yet: spirit a prisoner/);
+    expect(outcome.inadmissible).toBeFalsy();
+  });
+});
+
+describe('a refusal on a ground the board does not bear out', () => {
+  it('is put back once, and a second false ground is the missing outcome at no action', async () => {
+    const { campaign, home } = withOperative();
+    const before = campaign.actionPointsLeft;
+    const falseGround = {
+      kind: 'inadmissible',
+      ground: { kind: 'not_present', systemId: home.id },
+      reason: 'You have nobody there.',
+    };
+    reset({ appraisal: [falseGround, falseGround] });
+    const outcome = await submitAction(campaign, `Raise a monument at ${home.name}.`);
+    const appraisals = calls.filter((c) => c.kind === 'appraisal');
+    expect(appraisals).toHaveLength(2);
+    expect(appraisals[1]!.user).toContain('Your refusal stands on something that is not so');
+    expect(outcome.inadmissible).toMatch(/^No mission does that yet:/);
+    expect(campaign.actionPointsLeft).toBe(before);
+  });
+
+  it('stands when the ground is true', async () => {
+    const { campaign } = withOperative();
+    reset({
+      appraisal: [
+        {
+          kind: 'inadmissible',
+          ground: { kind: 'no_such_entity', name: 'Quentin Zarbo', entity: 'person' },
+          reason: 'Nobody of that name is held anywhere.',
+        },
+      ],
+    });
+    const outcome = await submitAction(campaign, 'Spring Quentin Zarbo from the Vigil cells.');
+    expect(calls.filter((c) => c.kind === 'appraisal')).toHaveLength(1);
+    expect(outcome.inadmissible).toBe('Nobody of that name is held anywhere.');
+  });
+});

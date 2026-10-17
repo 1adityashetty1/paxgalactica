@@ -129,6 +129,12 @@ import {
   type AgentEffect,
   type MethodProfile,
   MethodSchema,
+  RiderSchema,
+  RIDER_DISCORD,
+  RIDER_INCITE,
+  RIDER_SABOTAGE_HULLS,
+  type Rider,
+  type RiderMission,
   budgetMethod,
   usableGroundwork,
   METHOD_PRICE_STEP,
@@ -2642,6 +2648,104 @@ function personOnRoster(state: WorldState, text: string): string | null {
   return null;
 }
 
+/** A power named by id, or by any word of its name; the input itself when nothing matches. */
+function factionIdFor(state: WorldState, named: string): string {
+  if (state.factions.some((f) => f.id === named)) return named;
+  const n = named.toLowerCase().replace(/^the\s+/, '').trim();
+  const hit = state.factions.find(
+    (f) => f.name.toLowerCase() === n || f.name.toLowerCase().split(/\s+/).includes(n) || f.id === n,
+  );
+  return hit?.id ?? named;
+}
+
+/** Why a rider cannot ride on this order, or null. Checked before any price. */
+function riderRefusal(
+  state: WorldState,
+  rider: { mission: RiderMission; target?: string; towardFactionId?: string },
+  primary: AgentMission,
+  ownerId: string,
+  host: StarSystem,
+): string | null {
+  if (rider.mission === primary) return `A ${primary} cannot ride on a ${primary}; that is the same order twice.`;
+  const holder = host.controllerFactionId;
+  if (rider.mission === 'discord') {
+    const toward = rider.towardFactionId;
+    if (!toward || !state.factions.some((f) => f.id === toward)) return 'A discord rider names the power the host is turned against (towardFactionId).';
+    if (!holder) return `${host.name} answers to nobody, so there is nobody there to turn against ${nameFor(state, toward)}.`;
+    if (toward === ownerId || holder === ownerId) return 'Discord is for a quarrel between two other powers. Your own standing is not it.';
+    if (toward === holder) return `${nameFor(state, holder)} cannot be turned against itself.`;
+  }
+  if (rider.mission === 'incitement' && (!holder || holder === ownerId || !regardRecorded(state))) {
+    return `${host.name} is not held by another power with a view of it to stir.`;
+  }
+  if ((rider.mission === 'sabotage' || rider.mission === 'larceny') && (!holder || holder === ownerId)) {
+    return `${host.name} is not held by another power, so there is nobody there to ${rider.mission === 'sabotage' ? 'wreck' : 'rob'}.`;
+  }
+  return null;
+}
+
+/**
+ * What became of a rider this turn: landed, refunded, or still riding (null).
+ * Lands only when the primary's outcome did — a knife that missed frames
+ * nobody — and is refunded when the primary ends without it.
+ */
+function settleRider(state: WorldState, before: Agent, live: Agent | undefined, cameOff: boolean): string | null {
+  const rider = before.rider!;
+  const owner = state.factions.find((f) => f.id === before.ownerFactionId);
+  const host = state.systems.find((x) => x.id === before.systemId);
+  const refund = (why: string): string => {
+    if (owner) owner.credits += rider.paid;
+    return `${why} The ${rider.mission} riding on it never came to it; ${rider.paid} credits back.`;
+  };
+  if (!cameOff) {
+    const ended = !live || live.exposed || live.mission === null || live.mission !== before.mission;
+    return ended ? refund('The order ended.') : null;
+  }
+  // Did the primary's outcome land, and not merely the operation?
+  let landed = true;
+  if (before.mission === 'assassination' && before.targetCommanderId) {
+    landed = (state.commanders ?? []).find((c) => c.id === before.targetCommanderId)?.status === 'lost';
+  } else if (before.mission === 'assassination' && before.targetNotableId) {
+    landed = !notableById(state, before.targetNotableId);
+  } else if (before.mission === 'kidnapping') {
+    landed = (state.assets ?? []).some(
+      (a) =>
+        a.heldBy === before.ownerFactionId &&
+        ((before.targetNotableId && a.notableId === before.targetNotableId) ||
+          (before.targetCommanderId && a.commanderId === before.targetCommanderId)),
+    );
+  }
+  if (!landed || !host || !owner) return refund('The work came off but its mark did not.');
+  const holder = host.controllerFactionId;
+  let done = '';
+  if (rider.mission === 'discord' && holder && rider.towardFactionId) {
+    moveRegard(state, holder, rider.towardFactionId, -RIDER_DISCORD);
+    done = `and ${nameFor(state, holder)} is turned against ${nameFor(state, rider.towardFactionId)} for it`;
+  } else if (rider.mission === 'incitement' && holder && regardRecorded(state)) {
+    host.regard = { ...host.regard, [holder]: Math.max(-100, regardFor(host, holder) - RIDER_INCITE) };
+    done = `and ${host.name} is stirred against ${nameFor(state, holder)}`;
+  } else if (rider.mission === 'sabotage' && holder) {
+    const standing = statFixturesAt(state, host.id)
+      .filter((a) => a.heldBy === holder && (a.damage ?? 0) < fixtureIntegrity(a))
+      .sort((a, b) => a.id.localeCompare(b.id));
+    if (standing[0]) {
+      standing[0].damage = (standing[0].damage ?? 0) + 1;
+      done = `and ${nameFor(state, holder)}'s ${standing[0].kind.replace(/_/g, ' ')} there is damaged`;
+    } else {
+      const was = hullsAt(host, holder);
+      setShipsAt(host, holder, Math.max(0, was - RIDER_SABOTAGE_HULLS));
+      done = `and ${was - hullsAt(host, holder)} of ${nameFor(state, holder)}'s hulls there are put out of action`;
+    }
+  } else if (rider.mission === 'larceny' && holder) {
+    done = `and ${steal(state, live ?? before, { kind: 'steal', assetId: rider.target ?? null, copy: false }, host, holder)}`;
+  } else {
+    return refund('There was nothing there for it.');
+  }
+  const line = `The ${rider.mission} riding on it lands ${done}`.trim();
+  logEvent(state, 'intel', `${line}.`, before.ownerFactionId, [before.ownerFactionId]);
+  return `${line}.`;
+}
+
 /** Is there a path from one world to another that never leaves `holder`'s worlds? */
 function heldPathBetween(state: WorldState, holder: string, fromId: string, toId: string): boolean {
   const held = (id: string) => state.systems.find((x) => x.id === id)?.controllerFactionId === holder;
@@ -4339,6 +4443,50 @@ function applyOpsUnderRules(
         const note = left === 0
           ? `${nameFor(state, asset.heldBy)} spends the last of ${asset.text} ${op.reason}`.trim()
           : `${nameFor(state, asset.heldBy)} spends ${spent} ${instrument ? 'of its plays' : asset.unit} of ${asset.text}; ${left} left. ${op.reason}`.trim();
+        notes.push(note);
+        logEvent(state, 'system', note, asset.heldBy, [asset.heldBy]);
+        break;
+      }
+
+      case 'relocate_asset': {
+        const asset = state.assets.find((a) => a.id === op.assetId);
+        if (!asset) {
+          reject(raw, 'unknown_asset', `No asset "${op.assetId}".`);
+          break;
+        }
+        if (actor !== undefined && asset.heldBy !== actor) {
+          reject(raw, 'illegal_value', `${asset.text} is held by ${nameFor(state, asset.heldBy)}, not by ${nameFor(state, actor)}.`);
+          break;
+        }
+        const person = asset.commanderId !== null || asset.agentId !== null || !!asset.notableId || PEOPLE_KINDS.has(asset.kind);
+        if (person) {
+          reject(raw, 'illegal_value', `${asset.text} is a person, or people: move them with decide_fate (relocate).`);
+          break;
+        }
+        if (!asset.portable || asset.atSystemId === null) {
+          reject(raw, 'illegal_value', `${asset.text} ${asset.portable ? 'stands on no world to be moved from' : 'is part of the world it stands on, and goes only with that world'}.`);
+          break;
+        }
+        const borrowed = assetOnLoan(state.loans ?? [], asset.id);
+        if (borrowed) {
+          reject(raw, 'illegal_value', `${asset.text} is ${nameFor(state, borrowed.lenderFactionId)}'s, held on loan.`);
+          break;
+        }
+        const to = state.systems.find((x) => x.id === op.toSystemId);
+        if (!to) {
+          reject(raw, 'unknown_system', `No system "${op.toSystemId}".`);
+          break;
+        }
+        if (!heldPathBetween(state, asset.heldBy, asset.atSystemId, to.id)) {
+          reject(
+            raw,
+            'unreachable_target',
+            `${asset.text} moves only between worlds ${nameFor(state, asset.heldBy)} holds, by a road through its own space, and there is none to ${to.name}.`,
+          );
+          break;
+        }
+        asset.atSystemId = to.id;
+        const note = `${nameFor(state, asset.heldBy)} moves ${asset.text} to ${to.name}.`;
         notes.push(note);
         logEvent(state, 'system', note, asset.heldBy, [asset.heldBy]);
         break;
@@ -7021,6 +7169,14 @@ function applyOpsUnderRules(
         // free route was closed precisely because a power deciding what two
         // others think of each other is the exploit. Checked before the price
         // is taken, so a refused forgery costs nothing.
+        // A third power may be named as a model writes it — "Drajk", "the
+        // Confederacy" — and is resolved here, for a discord and for a rider.
+        if (op.effect.kind === 'discord') {
+          op.effect = { ...op.effect, towardFactionId: factionIdFor(state, op.effect.towardFactionId) };
+        }
+        if (op.rider?.towardFactionId) {
+          op.rider = { ...op.rider, towardFactionId: factionIdFor(state, op.rider.towardFactionId) };
+        }
         if (op.effect.kind === 'discord') {
           const hostWorld = state.systems.find((x) => x.id === op.systemId);
           const whose = hostWorld?.controllerFactionId ?? null;
@@ -7164,15 +7320,27 @@ function applyOpsUnderRules(
             for (const g of ground) profile[g.axis] += 1;
           }
           const price = Math.max(0, Math.round(AGENT_COST[op.mission] * (1 - (profile?.preparation ?? 0) * METHOD_PRICE_STEP)));
-          if (owner.credits < price) {
+          // A second outcome on the same order, priced at its own mission and
+          // refunded if it never fires. Checked before anything is taken.
+          let rider: Rider | undefined;
+          if (op.rider) {
+            const why = riderRefusal(state, op.rider, op.mission, ownerId, host);
+            if (why) {
+              reject(raw, 'illegal_value', why);
+              break;
+            }
+            rider = RiderSchema.parse({ ...op.rider, paid: AGENT_COST[op.rider.mission] });
+          }
+          const bill = price + (rider?.paid ?? 0);
+          if (owner.credits < bill) {
             reject(
               raw,
               'insufficient_credits',
-              `Sending a ${op.mission} operative costs ${price} credits; ${owner.name} holds ${owner.credits}.`,
+              `Sending a ${op.mission} operative${rider ? ` with a ${rider.mission} rider` : ''} costs ${bill} credits; ${owner.name} holds ${owner.credits}.`,
             );
             break;
           }
-          owner.credits -= price;
+          owner.credits -= bill;
           // Every mission sent is talked about somewhere, the loud ones most.
           heatUp(state, owner.id, HEAT_FOR_MISSION[op.mission] ?? 0);
           const jumps = road.length - 1;
@@ -7188,6 +7356,8 @@ function applyOpsUnderRules(
           spy.mission = op.mission;
           spy.effect = op.effect;
           if (op.cover) spy.cover = op.cover;
+          if (rider) spy.rider = rider;
+          else delete spy.rider;
           spy.deployedTurn = state.turn;
           spy.inPlaceFrom = state.turn + turns;
           spy.targetCommanderId = knifeId;
@@ -7215,7 +7385,7 @@ function applyOpsUnderRules(
             turns === 0
               ? 'already there'
               : `${jumps} jump${jumps === 1 ? '' : 's'}, at work from turn ${spy.inPlaceFrom}`;
-          const sent = `${spy.name || 'An operative'} leaves ${from} for ${host.name} on ${op.mission}, for ${price} credits — ${when}.`;
+          const sent = `${spy.name || 'An operative'} leaves ${from} for ${host.name} on ${op.mission}${rider ? `, with ${rider.mission} riding on it` : ''}, for ${bill} credits — ${when}.`;
           notes.push(sent);
           logEvent(state, 'order', sent, ownerId, [ownerId]);
           break;
@@ -10267,6 +10437,13 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
   // Keeping them separate is what lets a quiet surveillance post and a
   // one-shot decapitation share the same machinery without behaving alike.
   const spentAgents: string[] = [];
+  // Riders, as they stood before anybody acted, and whose primary came off this
+  // turn — so a rider lands once its primary does, and is refunded when the
+  // primary ends without it (see `RiderSchema`).
+  const riding = new Map(
+    state.agents.filter((a) => a.rider && !a.exposed).map((a) => [a.id, JSON.parse(JSON.stringify(a)) as Agent]),
+  );
+  const cameOff = new Set<string>();
 
   /**
    * What each operative did this turn, so that none of them can be silent.
@@ -10333,6 +10510,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
         continue;
       }
       agent.operations += 1;
+      cameOff.add(agent.id);
       if (agent.effect.kind === 'kidnap') {
         watchNotes.set(agent.id, kidnap(state, agent, host));
         Object.assign(agent, { mission: null, effect: null, method: undefined });
@@ -10412,6 +10590,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     // than per posting, because a watcher who sits for ten turns has learned
     // ten turns' worth and a saboteur caught on its second attempt has not.
     agent.operations += 1;
+    cameOff.add(agent.id);
 
     if (agent.effect.kind === 'kidnap') {
       watchNotes.set(agent.id, kidnap(state, agent, host));
@@ -10783,6 +10962,15 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
   // their product reaches their own prompt block through `ordersVisibleTo` and
   // has no business in the player's record.
   //
+  for (const [id, before] of riding) {
+    const live = state.agents.find((a) => a.id === id);
+    const note = settleRider(state, before, live, cameOff.has(id));
+    if (note) {
+      if (live) delete live.rider;
+      watchNotes.set(id, `${watchNotes.get(id) ?? ''} ${note}`.trim());
+    }
+  }
+
   // Written before `spentAgents` is filtered, so a one-shot mission still
   // reports the strike it was spent on.
   for (const agent of state.agents) {

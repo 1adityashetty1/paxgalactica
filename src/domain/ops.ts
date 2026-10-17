@@ -4,6 +4,7 @@ import {
   AgentEffectSchema,
   AgentMissionSchema,
   MethodSchema,
+  RiderSchema,
   METHOD_AXES,
   AssetYieldSchema,
   TreatyTermsSchema,
@@ -391,6 +392,18 @@ export const ConsumeAssetOp = z.object({
 });
 
 /**
+ * Move a portable thing this power holds to another of its worlds, along a
+ * path through its own space. Unrolled: it is moving your own property inside
+ * your own space. Without a verb for it a model improvises one out of
+ * destructive ops (playtest 2026-10-16). A person moves by `decide_fate`.
+ */
+export const RelocateAssetOp = z.object({
+  op: z.literal('relocate_asset'),
+  assetId: z.string().min(1),
+  toSystemId: z.string().min(1),
+});
+
+/**
  * What becomes of a person this power holds.
  *
  * A person's fate is one named choice, never a side effect of a generic verb.
@@ -690,6 +703,9 @@ export const BreakTreatyOp = z.object({
   reason: z.string().default(''),
 });
 
+/** A rider as the arbiter writes it: the price is the engine's. */
+export const RiderPartSchema = RiderSchema.omit({ paid: true });
+
 /**
  * Send an operative on a mission (journal version 11 on): one the power already
  * has, recruited by `recruit_agent`. Recruiting and sending are two actions, so
@@ -766,6 +782,11 @@ export const DeployAgentOp = z.object({
    * of −1..+1. Held to a budget in code. See `MethodProfileSchema`.
    */
   method: MethodSchema.optional(),
+  /**
+   * A second outcome on the same order — a frame on a killing, a fire behind a
+   * theft. Priced, louder, and lands only if the primary does. See `RiderSchema`.
+   */
+  rider: RiderPartSchema.optional(),
 });
 
 /**
@@ -1286,6 +1307,7 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   SplitAssetOp,
   ConsumeAssetOp,
   DecideFateOp,
+  RelocateAssetOp,
   TransferAssetOp,
   PlayNoteOp,
   CallObligationOp,
@@ -1379,6 +1401,7 @@ export const OpSchema = z.discriminatedUnion('op', [
   SplitAssetOp,
   ConsumeAssetOp,
   DecideFateOp,
+  RelocateAssetOp,
   TransferAssetOp,
   PlayNoteOp,
   CallObligationOp,
@@ -1508,6 +1531,59 @@ export const DefianceSchema = z.object({
 });
 export type Defiance = z.infer<typeof DefianceSchema>;
 
+/** A ruling that an act breaks one of the acting power's own principles — see `AppraisalSchema.breach`. */
+export const BreachSchema = z
+    .object({
+      /**
+       * `red_line` blocks absolutely; `compulsion` is a price the leader may
+       * pay. **The label is advisory** — `classifyPrinciple` derives the real
+       * kind from the list the line is actually on, because a live playtest
+       * had the arbiter call a compulsion "a red line, not a compulsion".
+       */
+      kind: z.enum(['red_line', 'compulsion']),
+      /**
+       * Every line this action touches, quoted from the sheet.
+       *
+       * A list rather than one string because an action can break more than
+       * one principle and the arbiter quotes whichever came to mind first:
+       * forgiving a debt was returned against the Combine's *"every favour
+       * carries a price"* compulsion, never mentioning *"will not forgive an
+       * unpaid debt"* — the red line that should have blocked it outright. The
+       * engine takes the most severe of whatever is named.
+       */
+      principles: z.array(z.string().min(1).max(240)).min(1).max(3),
+      /**
+       * What the action does that the line forbids, in one clause.
+       *
+       * Required, and required for a reason: the arbiter quoted the Ojjul Nar's
+       * red line against an action **hiring a proxy** — the precise inversion,
+       * since hiring is the line being honoured. Naming the direction out loud
+       * is the cheapest available check on it. Code cannot settle this the way
+       * it settles which list a line is on.
+       *
+       * It was not enough on its own. The same line was inverted again in a
+       * later playtest, with two warnings and a worked example about it live in
+       * `prompts/appraisal.md`, so the SENTENCE was rewritten prohibition-first
+       * — see `src/seed/scenario.ts`. `how` is still the right guard; it is not
+       * a substitute for a line that reads the way it means.
+       */
+      how: z.string().min(1).max(240),
+      /** Who inside the faction objects: "the fleet commanders", "the Trade Council". */
+      by: z.string().min(1).max(80),
+      /** One or two sentences, in the institutions' own voice. */
+      reason: z.string().min(1).max(400),
+    });
+export type Breach = z.infer<typeof BreachSchema>;
+
+/** A durable arrangement an act would create if it succeeds — see `AppraisalSchema.establishes`. */
+export const EstablishesSchema = z
+    .object({
+      kind: z.string().min(1).max(40).regex(/^[a-z][a-z0-9_]*$/),
+      factionIds: z.array(z.string().min(1)).min(1).max(5),
+      text: z.string().min(1).max(240),
+      exclusive: z.boolean().default(false),
+    });
+
 /**
  * What the appraisal pass returns: how an action should be priced, decided
  * WITHOUT knowledge of the roll.
@@ -1557,48 +1633,7 @@ export const AppraisalSchema = z.object({
    * rolled; a `compulsion` ruling lets it through and the engine charges
    * `COMPULSION_BREACH_DISSENT` for it.
    */
-  breach: z
-    .object({
-      /**
-       * `red_line` blocks absolutely; `compulsion` is a price the leader may
-       * pay. **The label is advisory** — `classifyPrinciple` derives the real
-       * kind from the list the line is actually on, because a live playtest
-       * had the arbiter call a compulsion "a red line, not a compulsion".
-       */
-      kind: z.enum(['red_line', 'compulsion']),
-      /**
-       * Every line this action touches, quoted from the sheet.
-       *
-       * A list rather than one string because an action can break more than
-       * one principle and the arbiter quotes whichever came to mind first:
-       * forgiving a debt was returned against the Combine's *"every favour
-       * carries a price"* compulsion, never mentioning *"will not forgive an
-       * unpaid debt"* — the red line that should have blocked it outright. The
-       * engine takes the most severe of whatever is named.
-       */
-      principles: z.array(z.string().min(1).max(240)).min(1).max(3),
-      /**
-       * What the action does that the line forbids, in one clause.
-       *
-       * Required, and required for a reason: the arbiter quoted the Ojjul Nar's
-       * red line against an action **hiring a proxy** — the precise inversion,
-       * since hiring is the line being honoured. Naming the direction out loud
-       * is the cheapest available check on it. Code cannot settle this the way
-       * it settles which list a line is on.
-       *
-       * It was not enough on its own. The same line was inverted again in a
-       * later playtest, with two warnings and a worked example about it live in
-       * `prompts/appraisal.md`, so the SENTENCE was rewritten prohibition-first
-       * — see `src/seed/scenario.ts`. `how` is still the right guard; it is not
-       * a substitute for a line that reads the way it means.
-       */
-      how: z.string().min(1).max(240),
-      /** Who inside the faction objects: "the fleet commanders", "the Trade Council". */
-      by: z.string().min(1).max(80),
-      /** One or two sentences, in the institutions' own voice. */
-      reason: z.string().min(1).max(400),
-    })
-    .optional(),
+  breach: BreachSchema.optional(),
   /**
    * This action is a covert operation, and belongs to the agent mechanic.
    *
@@ -1647,6 +1682,10 @@ export const AppraisalSchema = z.object({
          * `MethodProfileSchema`. Omitted when they described no method.
          */
         method: MethodSchema.optional(),
+        /** The operative, by name, when the ruling named one. */
+        agent: absentWhenBlank(60),
+        /** A second outcome riding on the same order — see `RiderSchema`. */
+        rider: RiderPartSchema.optional(),
       }),
     )
     .max(4)
@@ -1705,14 +1744,15 @@ export const AppraisalSchema = z.object({
    * the op vocabulary has no other home. The arbitrator decides that a thing
    * is exclusive; the reducer enforces it.
    */
-  establishes: z
-    .object({
-      kind: z.string().min(1).max(40).regex(/^[a-z][a-z0-9_]*$/),
-      factionIds: z.array(z.string().min(1)).min(1).max(5),
-      text: z.string().min(1).max(240),
-      exclusive: z.boolean().default(false),
-    })
-    .optional(),
+  establishes: EstablishesSchema.optional(),
+  /**
+   * Read off a `DeclaredRulingSchema` ruling: whether the act has an overt part
+   * (which is rolled), which of the actor's operatives that part involves, and
+   * the checkable ground a refusal cites. Absent on the old flat shape.
+   */
+  overt: z.boolean().optional(),
+  involves: z.array(z.string()).optional(),
+  ground: z.lazy(() => RefusalGroundSchema).optional(),
 });
 export type Appraisal = z.infer<typeof AppraisalSchema>;
 
@@ -1736,6 +1776,188 @@ export const DeclaredAppraisalSchema = AppraisalSchema.superRefine((a, ctx) => {
     ctx.addIssue({ code: 'custom', path: ['difficulty'], message: 'An action that can be attempted needs a difficulty.' });
   }
 });
+
+/* ------------------------------------------------------------------ */
+/* The declared ruling — docs/design-2026-10-16-ruling-schema.md §1, §2 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * One part of an act, each a tagged choice, so the arbiter cannot leave a part
+ * unclassified. The guards built on the old flat shape read fields the model
+ * could simply omit — a retried ruling that dropped `covert` sent an
+ * assassination down the rolled path (playtest 2026-10-16).
+ */
+export const OvertPartSchema = z.object({
+  kind: z.literal('overt'),
+  /** What this part does, in a clause. */
+  what: z.string().min(1).max(240),
+  stat: StatNameSchema,
+  difficulty: z.number().int().min(1).max(30),
+  rationale: z.string().default(''),
+  /** The acting power's own operatives this part involves, by name. Usually none. */
+  involves: z.array(z.string().min(1).max(60)).max(4).default([]),
+  establishes: EstablishesSchema.optional(),
+});
+export const CovertPartSchema = z.object({
+  kind: z.literal('covert'),
+  /** The operative, by name; omitted, the nearest one awaiting orders. */
+  agent: absentWhenBlank(60),
+  mission: AgentMissionSchema,
+  systemId: z.string().min(1),
+  target: absentWhenBlank(80),
+  method: MethodSchema.optional(),
+  /** A second outcome on the same order, at most one. */
+  rider: RiderPartSchema.optional(),
+});
+export const GroundworkPartSchema = z.object({
+  kind: z.literal('groundwork'),
+  agent: absentWhenBlank(60),
+  systemId: z.string().min(1),
+  text: z.string().min(1).max(160),
+  axis: z.enum(METHOD_AXES),
+  target: absentWhenBlank(80),
+});
+export const UnexpressedPartSchema = z.object({
+  kind: z.literal('unexpressed'),
+  /** The outcome no mission produces, in one sentence. */
+  outcome: z.string().min(1).max(240),
+});
+export const PartSchema = z.discriminatedUnion('kind', [
+  OvertPartSchema,
+  CovertPartSchema,
+  GroundworkPartSchema,
+  UnexpressedPartSchema,
+]);
+export type Part = z.infer<typeof PartSchema>;
+
+/**
+ * What a refusal stands on: a fact code can check on the board. There is no
+ * ground for an operative's class, "there is no mechanic", or "that is not
+ * yours to decide" — a ruling cannot cite them because the type has no slot.
+ * See `checkGround`.
+ */
+export const RefusalGroundSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('no_such_entity'),
+    /** The name looked for, as the player wrote it. */
+    name: z.string().min(1).max(80),
+    entity: z.enum(['person', 'world', 'thing', 'power']),
+  }),
+  z.object({
+    kind: z.literal('not_present'),
+    systemId: z.string().min(1),
+    /** Whose presence is missing; omitted, the acting power's. */
+    factionId: z.string().min(1).optional(),
+  }),
+  z.object({
+    kind: z.literal('not_held'),
+    /** The thing, by name or id. */
+    name: z.string().min(1).max(80),
+  }),
+  z.object({
+    kind: z.literal('commitment_conflict'),
+    /** The treaty or commitment that forecloses it, by id. */
+    id: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal('already_so'),
+    /** The record that already makes it true, by id. */
+    ref: z.string().min(1),
+  }),
+]);
+export type RefusalGround = z.infer<typeof RefusalGroundSchema>;
+
+/**
+ * The arbiter's ruling on a declared action: an act made of parts, a
+ * conversation, or a refusal on a checkable ground.
+ */
+export const DeclaredRulingSchema = z
+  .discriminatedUnion('kind', [
+    z.object({
+      kind: z.literal('act'),
+      parts: z.array(PartSchema).min(1).max(6),
+      breach: BreachSchema.optional(),
+      /** A one-clause note on the ruling. */
+      note: z.string().default(''),
+    }),
+    z.object({
+      kind: z.literal('negotiation'),
+      withFactionIds: z.array(z.string().min(1)).min(1).max(4),
+      what: z.string().min(1).max(240),
+      supported: z.boolean().default(true),
+      breach: BreachSchema.optional(),
+    }),
+    z.object({
+      kind: z.literal('inadmissible'),
+      ground: RefusalGroundSchema,
+      /** The sentence the player reads: what blocks it, and what they could do instead. */
+      reason: z.string().min(1).max(400),
+      breach: BreachSchema.optional(),
+    }),
+  ])
+  .superRefine((r, ctx) => {
+    if (r.kind !== 'act') return;
+    if (r.parts.filter((p) => p.kind === 'overt').length > 1) {
+      ctx.addIssue({ code: 'custom', path: ['parts'], message: 'An act has at most one overt part: its open work is one check.' });
+    }
+  });
+export type DeclaredRuling = z.infer<typeof DeclaredRulingSchema>;
+
+/**
+ * A declared ruling as the engine reads it, in the flat shape the rest of
+ * resolution was built on. Anything without a `kind` is already that shape (an
+ * older caller, or a test scripting one) and passes through.
+ */
+export function rulingToAppraisal(value: unknown): Appraisal {
+  const r = value as { kind?: unknown };
+  if (!r || typeof r !== 'object' || typeof r.kind !== 'string') return value as Appraisal;
+  const ruling = value as DeclaredRuling;
+  if (ruling.kind === 'negotiation') {
+    return {
+      admissible: true,
+      reason: '',
+      rationale: '',
+      negotiation: { withFactionIds: ruling.withFactionIds, what: ruling.what, supported: ruling.supported },
+      ...(ruling.breach ? { breach: ruling.breach } : {}),
+    } as Appraisal;
+  }
+  if (ruling.kind === 'inadmissible') {
+    return {
+      admissible: false,
+      reason: ruling.reason,
+      rationale: '',
+      ground: ruling.ground,
+      ...(ruling.breach ? { breach: ruling.breach } : {}),
+    } as Appraisal;
+  }
+  const overt = ruling.parts.find((p): p is z.infer<typeof OvertPartSchema> => p.kind === 'overt');
+  const covert = ruling.parts.filter((p): p is z.infer<typeof CovertPartSchema> => p.kind === 'covert');
+  const groundwork = ruling.parts.filter((p): p is z.infer<typeof GroundworkPartSchema> => p.kind === 'groundwork');
+  const unexpressed = ruling.parts.filter((p): p is z.infer<typeof UnexpressedPartSchema> => p.kind === 'unexpressed');
+  return {
+    admissible: true,
+    reason: ruling.note,
+    rationale: overt?.rationale ?? '',
+    overt: overt !== undefined,
+    ...(overt ? { stat: overt.stat, difficulty: overt.difficulty, involves: overt.involves } : {}),
+    ...(overt?.establishes ? { establishes: overt.establishes } : {}),
+    ...(covert.length > 0
+      ? {
+          covert: covert.map((c) => ({
+            mission: c.mission,
+            systemId: c.systemId,
+            ...(c.target ? { target: c.target } : {}),
+            ...(c.method ? { method: c.method } : {}),
+            ...(c.agent ? { agent: c.agent } : {}),
+            ...(c.rider ? { rider: c.rider } : {}),
+          })),
+        }
+      : {}),
+    ...(groundwork.length > 0 ? { groundwork: groundwork.map(({ kind: _k, ...g }) => g) } : {}),
+    ...(unexpressed.length > 0 ? { unexpressed: unexpressed.map((u) => u.outcome).join('; ') } : {}),
+    ...(ruling.breach ? { breach: ruling.breach } : {}),
+  } as Appraisal;
+}
 
 export const ResolutionOutputSchema = ModelTurnOutputSchema.extend({
   // No `check` field. The check is an INPUT to resolution now — computed in

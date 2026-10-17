@@ -4255,6 +4255,41 @@ reason kept. The engine attaches the method and lays the groundwork
 (`routeCovertAction`); resolution only narrates. Tests name methods
 arbitrarily, so nothing is tuned to one. Journal version 22 (`methodsCount`).
 
+**The ruling is a choice made of parts**
+(`docs/design-2026-10-16-ruling-schema.md`, built). The arbiter's declared
+answer is `DeclaredRulingSchema`, one required `kind`: an `act` made of `parts`
+— at most one `overt` (open work, rolled once, carrying `stat`, `difficulty`,
+`involves` and `establishes`), any number of `covert` and `groundwork` (sent,
+never rolled) and `unexpressed` (logged; turned away at no action only when it
+is all there is) — or a `negotiation`, or an `inadmissible` ruling on a
+`ground`. `rulingToAppraisal` reads it into the flat `Appraisal` the rest of
+resolution was built on, so a hybrid ("sail the fleet and land a watcher under
+its cover") is one action: its overt part is rolled, its covert parts are sent
+whatever that roll did. **A refusal stands on a fact**: `RefusalGroundSchema` is
+`no_such_entity`, `not_present`, `not_held`, `commitment_conflict` or
+`already_so`, and `checkGround` verifies it on the board. A false ground is put
+back once; a second is taken as the missing outcome, at no action. There is no
+ground for an operative's class or "no mechanic", so the arbiter has no slot to
+write one in; `refusals.ts`'s patterns stay one release as a backstop. An overt
+part that `involves` one of the actor's own operatives is sent back too.
+
+**One operative, two outcomes: a rider** (`RiderSchema`). A covert part may
+carry one `rider` — `discord`, `sabotage`, `larceny` or `incitement` — on the
+same order, since one operative takes one order. It costs its own mission's
+`AGENT_COST` at the send, adds `RIDER_EXPOSURE` (2) to the order whether or not
+it fires, lands once only if the primary's outcome did (`settleRider`: a knife
+that missed frames nobody; discord moves the host `RIDER_DISCORD` against the
+named power, incitement `RIDER_INCITE`, sabotage a fixture point or
+`RIDER_SABOTAGE_HULLS`, larceny a second thing), and is refunded when the
+primary ends without it. A third power may be named in words ("Drajk");
+`factionIdFor` resolves it. **`relocate_asset`** moves a portable thing between
+the holder's own worlds through its own space, the verb that was improvised
+destructively before; a person moves by `decide_fate`. **Every mission holds
+its own effects** (`MISSION_EFFECTS` covers all eleven), so an assassination
+cannot carry `turn_notable`. **The advisor stays in the fiction**:
+`breaksTheFourthWall` refuses "turn N", action points, a DC and dice, beside
+`looksLikeAPlan`.
+
 **Three guards on the arbiter are code, because the prompt did not hold them**
 (`src/domain/refusals.ts`; held-out playtest 2026-10-16). A refusal whose reason
 is one of the rules the arbiter keeps inventing — an operative's class as a
@@ -6607,6 +6642,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `set_doctrine` | 1–240 chars; may move `warEthic`/`tradeEthic` and retire lines, charged in dissent; actor's own faction only |
 | `set_toll_policy` | who pays to cross your space; free, actor's own faction only. An accord may only **lift** a toll — adding one is `declared_only`. `forTurns` / `whileTreaty` make a lift temporary |
 | `consume_asset` | spend, release or destroy a thing you hold; draws an instrument's `uses` or stuff's `quantity`. Never a promissory note, and from journal version 22 never a person |
+| `relocate_asset` | a portable thing you hold, to another of your worlds through your own space |
 | `decide_fate` | a person you hold: `interrogate` (a dossier), `release` (home), `execute`, or `relocate` between your own worlds through your own space |
 | `play_note` | call in a promissory note you hold from another power; refused in war or when what it gives is already in force |
 | `establish_obligation` | **extraction-only** — a favour owed; binds the debtor, always weak |

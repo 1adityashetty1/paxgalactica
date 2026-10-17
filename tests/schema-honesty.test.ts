@@ -64,6 +64,33 @@ const HONEST: Record<string, { schema: z.ZodType; answers: Record<string, unknow
       },
     },
   },
+  DeclaredRulingSchema: {
+    schema: ops.DeclaredRulingSchema,
+    answers: {
+      'an ordinary action': { kind: 'act', parts: [{ kind: 'overt', what: 'sail', stat: 'might', difficulty: 12 }] },
+      'a refusal on a checkable ground': {
+        kind: 'inadmissible',
+        ground: { kind: 'no_such_entity', name: 'Oriel Longburn', entity: 'person' },
+        reason: 'Nobody of that name is held anywhere.',
+      },
+      'a redirect to a conversation': { kind: 'negotiation', withFactionIds: ['vigil'], what: 'a pact' },
+      'a covert act aimed at nobody': {
+        kind: 'act',
+        parts: [{ kind: 'covert', mission: 'embezzlement', systemId: 'tor-3', target: '' }],
+      },
+      'an open act with a covert landing, and a rider': {
+        kind: 'act',
+        parts: [
+          { kind: 'overt', what: 'the fleet to Vantic', stat: 'might', difficulty: 14 },
+          {
+            kind: 'covert', mission: 'assassination', systemId: 'tor-3', target: 'Decimus Scaeva',
+            rider: { mission: 'discord', towardFactionId: 'drajk' },
+          },
+        ],
+      },
+      'an outcome no mission produces': { kind: 'act', parts: [{ kind: 'unexpressed', outcome: 'move a prisoner through Vigil space' }] },
+    },
+  },
   ResolutionOutputSchema: {
     schema: ops.ResolutionOutputSchema,
     answers: {
@@ -146,8 +173,8 @@ describe('an inadmissible ruling rewritten into a compulsion is priced, not inve
     const meridian = state.factions.find((f) => f.id === 'meridian')!;
     const compulsion = meridian.compulsions[0]!.text;
     queue.appraisal = [
-      { admissible: false, reason: compulsion },
-      { admissible: true, stat: 'influence', difficulty: 13 },
+      { kind: 'inadmissible', ground: { kind: 'commitment_conflict', id: 'none' }, reason: compulsion },
+      { kind: 'act', parts: [{ kind: 'overt', what: 'the raid', stat: 'influence', difficulty: 13 }] },
     ];
     queue.resolution = [{ narrative: 'The Council grumbles, and the order goes out.' }];
 

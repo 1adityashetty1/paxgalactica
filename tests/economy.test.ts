@@ -261,10 +261,19 @@ describe('ledgers', () => {
 });
 
 describe('agents', () => {
+  // Each effect sent on the mission that carries it: a mission holds its own
+  // effects (`MISSION_EFFECTS`), so a saboteur cannot be sent to debuff a stat.
+  const MISSION_FOR: Record<string, string> = {
+    stat_debuff: 'subversion', sedition: 'subversion', income_penalty: 'embezzlement',
+    intel: 'surveillance', crew_defection: 'defection', fixture_damage: 'sabotage',
+  };
   const withAgent = (effect: unknown, owner = 'ojjul', system = 'ark-1') =>
     applyOps(
       fresh(),
-      [{ op: 'deploy_agent', ownerFactionId: owner, systemId: system, mission: 'sabotage', effect }],
+      [{
+        op: 'deploy_agent', ownerFactionId: owner, systemId: system,
+        mission: MISSION_FOR[(effect as { kind: string }).kind] ?? 'sabotage', effect,
+      }],
       'model',
     );
 

@@ -2007,14 +2007,17 @@ export function classFit(agentClass: AgentClass | undefined, mission: AgentMissi
 
 /** The chance in twenty a failed turn gets this operative caught, by mission and class. */
 export function exposureRiskOf(
-  agent: { agentClass?: AgentClass; effect?: AgentEffect | null; method?: Method },
+  agent: { agentClass?: AgentClass; effect?: AgentEffect | null; method?: Method; rider?: Rider },
   mission: AgentMission,
 ): number {
   const copying = agent.effect?.kind === 'steal' && agent.effect.copy ? 1 : 0;
   const quiet = (agent.method?.profile.noise ?? 0) * METHOD_NOISE_STEP;
+  // A rider is always louder, whether or not it fires: the operative went in
+  // carrying the forged papers.
+  const carrying = agent.rider ? RIDER_EXPOSURE : 0;
   return Math.max(
     1,
-    MISSION_PROFILE[mission].exposureRisk - classFit(agent.agentClass, mission) * CLASS_EXPOSURE_SHIFT - copying - quiet,
+    MISSION_PROFILE[mission].exposureRisk - classFit(agent.agentClass, mission) * CLASS_EXPOSURE_SHIFT - copying - quiet + carrying,
   );
 }
 
@@ -2024,10 +2027,20 @@ export function exposureRiskOf(
  * with a watcher's `intel` three times in three, so no theft ever took money.
  * Only the missions whose effect is their whole meaning are held to it.
  */
-export const MISSION_EFFECTS: Partial<Record<AgentMission, readonly AgentEffect['kind'][]>> = {
+export const MISSION_EFFECTS: Record<AgentMission, readonly AgentEffect['kind'][]> = {
+  surveillance: ['intel'],
   embezzlement: ['income_penalty'],
   larceny: ['steal'],
   kidnapping: ['kidnap'],
+  subversion: ['stat_debuff', 'sedition', 'turn_notable'],
+  sabotage: ['hull_damage', 'fixture_damage'],
+  defection: ['crew_defection'],
+  discord: ['discord'],
+  incitement: ['incite'],
+  seduction: ['seduce'],
+  // A strike: the damage an operation that got close enough does, whoever it
+  // was aimed at.
+  assassination: ['stat_debuff', 'sedition', 'hull_damage', 'fixture_damage'],
 };
 
 /** What a power thinks of the one holding a person it lost to a kidnapping: it knows who did it. */
@@ -2294,6 +2307,39 @@ export const DEFAULT_COVERT_EFFECT: Record<AgentMission, AgentEffect> = {
 };
 
 /* ------------------------------------------------------------------ */
+/* Riders — docs/design-2026-10-16-ruling-schema.md §1                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A second outcome on one operative's order: "kill the governor and pin it on
+ * Drajk", "take the drawings and burn the archive behind me". One operative
+ * takes one order, so the second outcome rides on the first rather than being
+ * a second send. It is priced at its own mission's cost when sent, adds
+ * `RIDER_EXPOSURE` to the order whether or not it fires, lands once — only if
+ * the primary does — and is refunded when it does not.
+ */
+export const RIDER_MISSIONS = ['discord', 'sabotage', 'larceny', 'incitement'] as const;
+export type RiderMission = (typeof RIDER_MISSIONS)[number];
+export const RIDER_EXPOSURE = 2;
+/** What a discord rider turns the host against the named power, once. */
+export const RIDER_DISCORD = 10;
+/** What an incitement rider takes off the world's regard for its holder, once. */
+export const RIDER_INCITE = 10;
+/** Hulls a sabotage rider puts out of action, once, where no fixture stands to strike. */
+export const RIDER_SABOTAGE_HULLS = 2;
+
+export const RiderSchema = z.object({
+  mission: z.enum(RIDER_MISSIONS),
+  /** For larceny, the thing; for discord, unused. */
+  target: z.string().max(80).optional(),
+  /** For discord, the third power the host is turned against. */
+  towardFactionId: z.string().optional(),
+  /** What was charged for it, so a rider that never fires is refunded exactly. */
+  paid: z.number().int().min(0).default(0),
+});
+export type Rider = z.infer<typeof RiderSchema>;
+
+/* ------------------------------------------------------------------ */
 /* Methods and groundwork — docs/design-2026-10-16-operations.md        */
 /* ------------------------------------------------------------------ */
 
@@ -2530,6 +2576,8 @@ export const AgentSchema = z.object({
   method: MethodSchema.optional(),
   /** Preparation laid and not yet used — see `GroundworkSchema`. */
   groundwork: z.array(GroundworkSchema).optional(),
+  /** A second outcome riding on the current mission — see `RiderSchema`. */
+  rider: RiderSchema.optional(),
 });
 export type Agent = z.infer<typeof AgentSchema>;
 

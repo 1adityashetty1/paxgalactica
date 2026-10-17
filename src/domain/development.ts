@@ -816,7 +816,17 @@ export function routeCovertAction(
    * to produce a single `deploy_agent` and a `log_narrative` promising the
    * other "will come on a later tick", which never came.
    */
-  covert: readonly { mission: AgentMission; systemId: string; target?: string; method?: Method }[] | null | undefined,
+  covert:
+    | readonly {
+        mission: AgentMission;
+        systemId: string;
+        target?: string;
+        method?: Method;
+        agent?: string;
+        rider?: { mission: string; target?: string; towardFactionId?: string };
+      }[]
+    | null
+    | undefined,
   actor: string,
   /** Groundwork the arbiter ruled on: laid as `lay_groundwork` unless already emitted. */
   groundwork: readonly { agent?: string; systemId: string; text: string; axis: MethodAxis; target?: string }[] = [],
@@ -828,14 +838,25 @@ export function routeCovertAction(
 
   // The method the arbiter scored rides on the deployment it describes, whoever
   // wrote that op: matched on mission and place, never overwriting one given.
-  const methodFor = new Map(covert.filter((c) => c.method).map((c) => [`${c.mission}@${c.systemId}`, c.method!]));
-  if (methodFor.size > 0) {
-    ops = ops.map((op) => {
-      const o = op as { op?: string; mission?: string; systemId?: string; method?: unknown } | null;
-      if (!o || o.op !== 'deploy_agent' || o.method !== undefined) return op;
-      const m = methodFor.get(`${o.mission}@${o.systemId}`);
-      return m ? { ...o, method: m } : op;
+  // So do the operative it named and the rider it allowed.
+  const ruledAt = new Map(covert.map((c) => [`${c.mission}@${c.systemId}`, c]));
+  if (covert.some((c) => c.method || c.rider || c.agent)) {
+    let changed = false;
+    const next = ops.map((op) => {
+      const o = op as { op?: string; mission?: string; systemId?: string; method?: unknown; rider?: unknown; agent?: unknown } | null;
+      if (!o || o.op !== 'deploy_agent') return op;
+      const c = ruledAt.get(`${o.mission}@${o.systemId}`);
+      if (!c) return op;
+      const add = {
+        ...(c.method && o.method === undefined ? { method: c.method } : {}),
+        ...(c.rider && o.rider === undefined ? { rider: c.rider } : {}),
+        ...(c.agent && (o.agent === undefined || o.agent === null) ? { agent: c.agent } : {}),
+      };
+      if (Object.keys(add).length === 0) return op;
+      changed = true;
+      return { ...o, ...add };
     });
+    if (changed) ops = next;
   }
 
   // Groundwork, unless the resolution call laid it itself.
@@ -886,13 +907,17 @@ export function routeCovertAction(
         effect:
           c.mission === 'larceny' && c.target
             ? { kind: 'steal', assetId: c.target, copy: false }
-            : DEFAULT_COVERT_EFFECT[c.mission],
+            : c.mission === 'discord' && c.target
+              ? { kind: 'discord', towardFactionId: c.target, perTurn: 1 }
+              : DEFAULT_COVERT_EFFECT[c.mission],
         cover: 'placed by a covert operation the arbiter ruled on',
         ...(c.method ? { method: c.method } : {}),
+        ...(c.agent ? { agent: c.agent } : {}),
+        ...(c.rider ? { rider: c.rider } : {}),
         // Carried through as the player wrote it; `resolveCommander` in the
         // reducer turns it into an id. Dropping it here was how a routed
         // assassination came out aimed at nobody in particular.
-        targetCommanderId: c.mission === 'larceny' ? null : (c.target ?? null),
+        targetCommanderId: c.mission === 'larceny' || c.mission === 'discord' ? null : (c.target ?? null),
         // A notable can be the mark too — courted, turned or killed. The
         // reducer tries the name against the notables seated there first.
         ...(c.target &&

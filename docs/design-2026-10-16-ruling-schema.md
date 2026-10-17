@@ -1,6 +1,6 @@
 # Closing identity and conservation, keeping expression open
 
-Draft for review, revised 2026-10-16. Follows `docs/playtest-2026-10-16-arbiter-guards.md` and must not undo
+Built 2026-10-17 (steps 1–5); the acceptance playtest (step 6) is the measure. Revised 2026-10-16. Follows `docs/playtest-2026-10-16-arbiter-guards.md` and must not undo
 `docs/design-2026-10-16-operations.md`: the operative is the player's hand in the world, and the point of the last commit was
 that a player can describe almost anything and have it reach the state.
 
@@ -91,8 +91,9 @@ a good reason (a send must not be silently replaced by another in the same batch
 secondary outcomes on the same order.
 
 - A rider names an outcome from the same table (discord, sabotage, larceny of a second thing on the same world).
-- It is **priced at its own mission's cost and adds its own exposure** to the order: a rider makes the act dearer and louder,
-  never free.
+- It is **priced at its own mission's cost and adds `RIDER_EXPOSURE` (2 in 20)** to the order: a rider makes the act dearer
+  and louder, never free. (Its own mission's full exposure on top of an assassination's 9 would be 14 in 20; a flat step was
+  chosen when building.)
 - It resolves on the tick **only if the primary succeeds**, since the frame needs the killing and the fire needs the theft.
 - At most one rider per part, so an order cannot become a list of everything an operative might do.
 

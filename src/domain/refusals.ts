@@ -1,4 +1,6 @@
-import { familyOf } from './command.js';
+import { familyOf, resolvePerson } from './command.js';
+import type { RefusalGround } from './ops.js';
+import { hullsAt, type WorldState } from './state.js';
 
 /**
  * Refusals the arbiter makes up, and the ops covert work may carry.
@@ -126,4 +128,90 @@ export function ownOperativeNamed(
     if (family && words.includes(` ${family} `)) return a.name;
   }
   return null;
+}
+
+/**
+ * Whether a refusal's ground is true on the board: null when it holds, or what
+ * is wrong with it. A model names the fact; code looks it up — the split
+ * `classifyPrinciple` makes for breaches.
+ */
+export function checkGround(state: WorldState, actor: string, ground: RefusalGround): string | null {
+  const lower = (x: string) => x.toLowerCase();
+  switch (ground.kind) {
+    case 'no_such_entity': {
+      const name = ground.name.trim();
+      const found = (() => {
+        if (ground.entity === 'person') {
+          const people = [
+            ...(state.commanders ?? []),
+            ...(state.agents ?? []),
+            ...(state.listedAgents ?? []),
+            ...(state.notables ?? []),
+          ];
+          return resolvePerson(people, name)?.name ?? null;
+        }
+        if (ground.entity === 'world') {
+          return state.systems.find((x) => x.id === name || lower(x.name) === lower(name) || lower(x.name).includes(lower(name)))?.name ?? null;
+        }
+        if (ground.entity === 'power') {
+          return state.factions.find((f) => f.id === name || lower(f.name).includes(lower(name)))?.name ?? null;
+        }
+        const words = lower(name).split(/[^a-z]+/).filter((w) => w.length > 3);
+        return (
+          (state.assets ?? []).find(
+            (a) => a.id === name || (words.length > 0 && words.every((w) => lower(a.text).includes(w))),
+          )?.text ?? null
+        );
+      })();
+      return found ? `"${name}" does exist: ${found}.` : null;
+    }
+    case 'not_present': {
+      const who = ground.factionId ?? actor;
+      const world = state.systems.find((x) => x.id === ground.systemId);
+      if (!world) return `There is no world "${ground.systemId}".`;
+      const there =
+        world.controllerFactionId === who ||
+        hullsAt(world, who) > 0 ||
+        (state.agents ?? []).some((a) => a.ownerFactionId === who && a.systemId === world.id && !a.exposed);
+      return there ? `${who} is present at ${world.name}.` : null;
+    }
+    case 'not_held': {
+      const words = lower(ground.name).split(/[^a-z]+/).filter((w) => w.length > 3);
+      const held = (state.assets ?? []).find(
+        (a) => a.heldBy === actor && (a.id === ground.name || (words.length > 0 && words.every((w) => lower(a.text).includes(w)))),
+      );
+      return held ? `${actor} holds ${held.text}.` : null;
+    }
+    case 'commitment_conflict': {
+      const treaty = (state.treaties ?? []).find((t) => t.id === ground.id);
+      if (treaty) {
+        return treaty.status === 'active' && treaty.parties.includes(actor) ? null : `${ground.id} is not a live treaty binding ${actor}.`;
+      }
+      const commitment = (state.commitments ?? []).find((c) => c.id === ground.id);
+      if (commitment) {
+        return commitment.status === 'active' && commitment.factionIds.includes(actor)
+          ? null
+          : `${ground.id} is not a live commitment binding ${actor}.`;
+      }
+      return `There is no treaty or commitment "${ground.id}".`;
+    }
+    case 'already_so': {
+      const id = ground.ref;
+      const exists = [
+        state.treaties,
+        state.commitments,
+        state.assets,
+        state.agents,
+        state.pendingOrders,
+        state.debts,
+        state.loans,
+        state.obligations,
+        state.demands,
+        state.bounties,
+        state.systems,
+        state.factions,
+      ].some((list) => ((list ?? []) as { id: string }[]).some((x) => x.id === id));
+      return exists ? null : `There is no record "${id}" to make it so.`;
+    }
+  }
 }

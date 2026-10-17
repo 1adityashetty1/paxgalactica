@@ -411,10 +411,16 @@ export function operativeLines(): string[] {
     '  SENT, NOT ROLLED',
     '  A covert order is not rolled when you give it. The operative sets out,',
     '  and their own chance — guile, class, method, groundwork — is rolled',
-    '  when they act. An order that sends someone does only that, so declare',
-    '  anything open, like a fleet or a payment, as an action of its own.',
-    '  One already on a mission takes a new one if you name them. An act no',
-    '  mission can do yet is turned away and costs you no action.',
+    '  when they act. Open work in the same order, like the fleet covering a',
+    '  landing, is rolled on its own; the sending goes ahead either way.',
+    '  One already on a mission takes a new one if you name them. Whatever no',
+    '  mission can do yet is set aside, and on its own costs you no action.',
+    '',
+    '  ONE OPERATIVE, TWO OUTCOMES',
+    '  "Kill the governor and pin it on Drajk" is one order with a rider: a',
+    '  second outcome — discord, sabotage, larceny or incitement — on the same',
+    '  operative. It costs its own mission\'s price, makes them easier to catch,',
+    '  and lands only if the first part does; if not, its price comes back.',
   ];
 }
 

@@ -76,6 +76,7 @@ leaves a faction with nobody following it.
 | `transfer_asset` | hand a thing you hold to somebody else |
 | `split_asset` | break a divisible holding into two lots |
 | `consume_asset` | spend or destroy a thing you hold — never a person |
+| `relocate_asset` | move a portable thing you hold to another of your worlds, through your own space (`toSystemId`); never a person |
 | `decide_fate` | what becomes of a person you hold: `interrogate`, `release`, `execute`, or `relocate` to another world of yours (`toSystemId`) |
 | `play_note` | call in a promissory note you hold — see Notes and goods |
 | `call_obligation` | call in a favour owed to you — see Favours, secrets and ultimatums |
