@@ -406,9 +406,24 @@ part's `establishes`:
 - `exclusive` — true when a faction can only sensibly have one at a time.
 - `factionIds` — everyone bound. For `establishes` this should almost always
   be the acting faction alone — see below.
+- `mechanism` — what gives it force: `income` (a figure every turn — a
+  charter's fee, a smuggling ring's take) or `record` (nothing beyond the
+  arrangement written down, the default). Name it now, before the roll:
+  resolution is held to it, and an income nobody ruled is a model choosing its
+  own revenue, so it is left out. **A share of a lane flow or a contingency —
+  a tithe, an indemnity, insurance, a surety — binds another power**, so it is
+  a `negotiation`, not something a power establishes on its own.
 
 Leave `establishes` out for anything the ops already cover. A treaty is a
-treaty; a fleet movement is a fleet movement.
+treaty; a fleet movement is a fleet movement. **Most arrangements that reach for
+a commitment already have a home**, and that home is the ruling, not
+`establishes`:
+
+- a bribed official, an informant, a watcher in a port — a `covert` part;
+- a listening post — a listener, built with `build_ships`;
+- a free port or a toll waived — `set_toll_policy`;
+- freighters running a route — a `move` of freighters onto it;
+- a world you already hold — nothing; the board says so.
 
 **Never record a bilateral arrangement here, and that includes a dynastic
 marriage, an exclusive charter naming a partner, a hostage exchange, a shared

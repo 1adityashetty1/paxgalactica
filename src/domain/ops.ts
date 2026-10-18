@@ -958,6 +958,12 @@ export const EstablishCommitmentOp = z.object({
     )
     .max(4)
     .default([]),
+  /**
+   * The mechanism the arbiter's ruling named for it, written by the engine on
+   * a declared commitment. Absent on an accord's, and on every commitment
+   * written before journal version 25.
+   */
+  mechanism: z.enum(['income', 'record']).optional(),
 });
 
 /**
@@ -2023,6 +2029,17 @@ export const BreachSchema = z
     });
 export type Breach = z.infer<typeof BreachSchema>;
 
+/**
+ * What makes a DECLARED commitment more than a record, named by the arbiter
+ * before the roll (intent-ops §5): an income per turn, or nothing beyond the
+ * record. A declared commitment binds the actor alone, so a share of a lane flow
+ * or a contingency — each needing two parties bound — is an accord's to write,
+ * and a declaration that needs one is a negotiation. In the saved campaigns five
+ * declared commitments carried an income nobody ruled (+20, +20, +25, −20, −25).
+ */
+export const COMMITMENT_MECHANISMS = ['income', 'record'] as const;
+export const CommitmentMechanismSchema = z.enum(COMMITMENT_MECHANISMS);
+
 /** A durable arrangement an act would create if it succeeds — see `AppraisalSchema.establishes`. */
 export const EstablishesSchema = z
     .object({
@@ -2030,6 +2047,8 @@ export const EstablishesSchema = z
       factionIds: z.array(z.string().min(1)).min(1).max(5),
       text: z.string().min(1).max(240),
       exclusive: z.boolean().default(false),
+      /** What gives it force, if anything. `record` for the arrangement and nothing more. */
+      mechanism: CommitmentMechanismSchema.default('record'),
     });
 
 /**

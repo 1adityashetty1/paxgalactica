@@ -8398,6 +8398,37 @@ function applyOpsUnderRules(
       }
 
       case 'establish_commitment': {
+        // A declared commitment carries the mechanism the arbiter named before
+        // the roll (intent-ops §5): an income, or a record and nothing more. An
+        // income the ruling named must be written; one it did not is left out,
+        // because an income nobody ruled is a model choosing its own revenue.
+        // A share or a contingency binds two parties, which a declaration
+        // cannot, so neither survives one. Absent on an accord's commitment,
+        // which is held to its consent instead.
+        if (op.mechanism !== undefined) {
+          if (op.mechanism === 'income' && op.incomePerTurn === 0) {
+            reject(raw, 'illegal_value', `The arbiter ruled that "${op.kind}" pays every turn: write its \`incomePerTurn\`, or it is a record and nothing more.`);
+            break;
+          }
+          const unruled: string[] = [];
+          if (op.mechanism !== 'income' && op.incomePerTurn !== 0) {
+            unruled.push(`an income of ${op.incomePerTurn}`);
+            op.incomePerTurn = 0;
+          }
+          if (op.share !== undefined) {
+            unruled.push('a share');
+            op.share = undefined;
+          }
+          if (op.contingencies.length > 0) {
+            unruled.push('its contingencies');
+            op.contingencies = [];
+          }
+          if (unruled.length > 0) {
+            const note = `"${op.kind}" was ruled ${op.mechanism === 'record' ? 'a record' : 'an income'}, so it is written without ${unruled.join(' or ')}.`;
+            notes.push(note);
+            logEvent(state, 'clamp', note, op.factionIds[0] ?? null);
+          }
+        }
         // A commitment can bind another power exactly the way a treaty does —
         // a dynastic marriage or a charter naming a partner is not something
         // one side can declare into the other's ledger, and "a good roll is

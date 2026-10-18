@@ -303,25 +303,26 @@ each one said:
 So most of the failure is not a missing op: it is a mechanism the commitment op
 already has, left empty.
 
-**Proposed.** The arbiter's `establishes` names its mechanism from a closed
-list: `share`, `contingency`, `income`, `exclusive`, or `record`. The resolution
-is told to fill that field, and a commitment whose named mechanism is missing
-goes back once for correction, the way an invented refusal does. An act whose
-home is another op is the arbiter's routing, as covert work already is: a bribed
-dockmaster is a `covert` part, not a commitment.
+**Built, and narrowed while building it.** The proposal had the arbiter name
+any of `share`, `contingency`, `income` or `record`. But a declared commitment
+binds the actor alone, while a share or a contingency needs two parties bound —
+so on a declaration only `income` and `record` can work, and a declared act that
+needs a share or a contingency is a negotiation. Reading the 23 again by path:
+
+- **Declared (14).** Five carried an income nobody ruled (+20, +20, +25, −20,
+  −25), and four should have been another op. The arbiter now names
+  `mechanism: income | record`, `commitmentsAsRuled` keeps only the commitment
+  it ruled and stamps the mechanism on it, and the reducer refuses a ruled
+  income left unwritten and leaves out an unruled one. The arbiter is told
+  where the common cases already live: an informant is a covert part, a
+  listening post a listener, a free port a toll policy, freighters a move.
+- **Accord (9).** The five that left a share or a contingency empty were all
+  accords, which the arbiter does not rule. The extraction prompt already
+  teaches both fields; the saves may predate them. Nothing more is enforced
+  there yet.
 
 **Not a slug lookup.** All 23 slugs are distinct, so a table keyed on `kind`
-would match nothing.
-
-**Not a silent redirect either.** A declared act whose home needs the other
-party's consent (a contract, a treaty) becomes a negotiation redirect, which
-costs no action. Today the same act lands as an inert record. That change is
-intended, and the briefing should say why the act became a conversation.
-
-**Invented income.** The three commitments that paid their own power (+20, +20,
-+25) are the remaining place a model chooses a figure of money. Under this rule
-`income` is a mechanism the arbiter names before the roll, and the figure stays
-held to the existing caps.
+would match nothing — the closed field on the ruling is what replaced it.
 
 ## 6. Out of the model's vocabulary: `spawn_event` and `adjust_dissent`
 

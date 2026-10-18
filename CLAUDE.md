@@ -340,6 +340,18 @@ turn 4  admissible: false  "You are already bound by the exclusive dynastic
 string; an inconsistent slug would silently disable the mechanism, so the
 schema rejects anything else.
 
+### A declared commitment works by what the ruling named
+
+`docs/design-2026-10-17-intent-ops.md` §5, journal version 25. The arbiter's
+`establishes` names a `mechanism` before the roll: `income` (a figure every
+turn) or `record` (nothing more). `commitmentsAsRuled` keeps only the
+commitment the ruling named and stamps the mechanism on it; the reducer refuses
+a ruled income left unwritten, and leaves out an unruled one with a note — in
+the saved campaigns five declared commitments paid their own power an income
+nobody ruled. A share or a contingency binds a second party, so neither
+survives a declaration: an act that needs one is a negotiation. An accord's
+commitment carries no mechanism and is held to its consent, as before.
+
 ### An arrangement can be worth money
 
 Commitments were economically inert for their entire existence. The readers were

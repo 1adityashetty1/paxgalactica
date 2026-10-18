@@ -40,7 +40,7 @@ import {
   type WorldState,
 } from '../domain/state.js';
 import { classifyPrinciple, classifyPrinciples } from '../domain/compulsions.js';
-import { checkGround, covertSendOnly, INVENTED_REFUSAL_NOTE, inventedRefusal, ownOperativeNamed, prizesAsRuled, sendsAsRuled } from '../domain/refusals.js';
+import { checkGround, commitmentsAsRuled, covertSendOnly, INVENTED_REFUSAL_NOTE, inventedRefusal, ownOperativeNamed, prizesAsRuled, sendsAsRuled } from '../domain/refusals.js';
 import { concessionBudget, withinBudget } from '../domain/leverage.js';
 import { callStructured } from './client.js';
 import { serializeArchetypes } from '../domain/assets.js';
@@ -526,6 +526,13 @@ export async function narrateEpilogue(
   return { output: res.value, costUsd: res.costUsd };
 }
 
+/** How resolution writes the mechanism the arbiter named for a commitment (intent-ops §5). */
+const MECHANISM_GUIDANCE: Record<string, string> = {
+  income:
+    'It pays every turn: set `incomePerTurn`, positive for the side that earns. Without it the commitment is refused.',
+  record: 'It is a record and nothing more: no income — any you write is left out.',
+};
+
 export async function resolveAction(
   state: WorldState,
   action: string,
@@ -1000,6 +1007,7 @@ export async function resolveAction(
             '',
             `The arbiter ruled that success here creates: **${priced.appraisal.establishes.text}**`,
             `Emit \`establish_commitment\` with kind \`${priced.appraisal.establishes.kind}\`, parties ${priced.appraisal.establishes.factionIds.join(', ')}, exclusive ${priced.appraisal.establishes.exclusive}.`,
+            MECHANISM_GUIDANCE[priced.appraisal.establishes.mechanism ?? 'record'],
             'On a PARTIAL, record it only if the reduced result still amounts to the arrangement being made.',
             '',
           ]
@@ -1040,6 +1048,13 @@ export async function resolveAction(
     }
     // Prizes are the ruling's too: a thing is minted only of a kind the arbiter
     // named before the roll (intent-ops §4).
+    const committed = commitmentsAsRuled(o.ops, priced.appraisal.establishes);
+    if (committed.dropped.length > 0) {
+      notes.push(
+        `A lasting arrangement is recorded only when the arbiter ruled one: left out ${[...new Set(committed.dropped)].join(', ')}.`,
+      );
+      o = { ...o, ops: committed.ops as ResolutionOutput['ops'] };
+    }
     const prized = prizesAsRuled(o.ops, priced.appraisal.yields ?? []);
     if (prized.dropped.length > 0) {
       notes.push(

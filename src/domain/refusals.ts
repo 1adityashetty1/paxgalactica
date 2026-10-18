@@ -138,6 +138,33 @@ export function prizesAsRuled(
 }
 
 /**
+ * A declared commitment is the ruling's too (intent-ops §5): one is recorded
+ * only of the kind the arbiter's `establishes` named, and it carries the
+ * mechanism that ruling chose, which the reducer then holds it to. A
+ * commitment the arbiter never ruled is dropped.
+ */
+export function commitmentsAsRuled(
+  ops: readonly unknown[],
+  establishes: { kind: string; mechanism?: string } | undefined,
+): { ops: unknown[]; dropped: string[] } {
+  const kept: unknown[] = [];
+  const dropped: string[] = [];
+  for (const op of ops) {
+    const o = op as { op?: string; kind?: string } | null;
+    if (o?.op !== 'establish_commitment') {
+      kept.push(op);
+      continue;
+    }
+    if (!establishes || o.kind !== establishes.kind) {
+      dropped.push(o.kind ?? 'an arrangement');
+      continue;
+    }
+    kept.push({ ...o, mechanism: establishes.mechanism ?? 'record' });
+  }
+  return { ops: kept, dropped };
+}
+
+/**
  * The actor's own operative a piece of text names, by family name, or null.
  * Family names are unique per campaign, so a match is that operative.
  */
