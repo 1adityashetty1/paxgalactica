@@ -8,6 +8,7 @@ import {
   type TurnReport,
 } from '../domain/reducer.js';
 import { WorldStateSchema, type OrderType, type WorldState } from '../domain/state.js';
+import { OP_PATHS_LIST, type OpPath } from '../domain/ops.js';
 import { isPublicOrderType } from '../domain/intel.js';
 import { createSeedState } from '../seed/scenario.js';
 import { emptyJournal, replay, seedStateFor, type Journal } from './journal.js';
@@ -54,6 +55,8 @@ export interface StagedBatch {
   narrative: string;
   /** Whose ops these are — carried so the commit replays under the same guards. */
   actor?: string;
+  /** Which writer staged them — the player, or the engine charging the player. See `OP_PATHS`. */
+  path?: OpPath;
   /**
    * Where the batch came from, carried for the same reason as `actor`: a
    * negotiated treaty must commit under the source that permits it, or a deal
@@ -108,6 +111,7 @@ export const StagedBatchSchema = z.object({
   narrative: z.string(),
   actor: z.string().optional(),
   source: z.enum(['model', 'extraction', 'engine']).optional(),
+  path: z.enum(OP_PATHS_LIST).optional(),
   binding: z.enum(['rolled', 'sent', 'refused', 'charge', 'record']).optional(),
   secret: z.boolean().optional(),
 });
@@ -126,6 +130,8 @@ export type CampaignSnapshot = z.infer<typeof CampaignSnapshotSchema>;
 export interface StageMeta {
   binding?: StagedBinding;
   secret?: boolean;
+  /** Which writer this is. Every live caller says; a test may not. */
+  path?: OpPath;
 }
 
 /**
@@ -284,7 +290,7 @@ export class Campaign {
     // nobody, so it carries no `deploy_agent` to recognise it by. On the op, it
     // is journaled and replays exactly.
     if (meta.secret) ops = ops.map(privateNote);
-    const res = applyOps(this.state, ops, source, actor, true);
+    const res = applyOps(this.state, ops, source, actor, true, {}, meta.path);
     this.state = res.state;
     // `ops` is what was PROPOSED and is what gets journaled, because replay must
     // re-run the rejections to reproduce them. `applied` is what actually
@@ -305,6 +311,7 @@ export class Campaign {
       narrative,
       actor,
       source,
+      path: meta.path,
       // An engine row is a record whatever the caller says.
       binding: meta.binding ?? (source === 'engine' ? 'record' : undefined),
       secret: meta.secret,
@@ -453,11 +460,12 @@ export class Campaign {
       // committing it as `model` would reject it at the moment the turn landed
       // — the deal visible in the preview would quietly not exist afterwards.
       const source = batch.source ?? 'model';
-      const res = applyOps(this.committed, batch.ops, source, batch.actor, true);
+      const res = applyOps(this.committed, batch.ops, source, batch.actor, true, {}, batch.path);
       this.committed = res.state;
       this.journal.entries.push({
         kind: 'ops',
         source,
+        ...(batch.path ? { path: batch.path } : {}),
         label: batch.label,
         ops: batch.ops,
         // The actor MUST be journaled. It was applied above and dropped here,
@@ -491,10 +499,11 @@ export class Campaign {
     source: OpSource,
     label: string,
     actor?: string,
+    path?: OpPath,
   ): { rejections: ApplyResult['rejections']; notes: string[] } {
-    const res = applyOps(this.committed, ops, source, actor, true);
+    const res = applyOps(this.committed, ops, source, actor, true, {}, path);
     this.committed = res.state;
-    this.journal.entries.push({ kind: 'ops', source, label, ops, actor });
+    this.journal.entries.push({ kind: 'ops', source, ...(path ? { path } : {}), label, ops, actor });
     this.resyncPreview();
     return { rejections: res.rejections, notes: res.notes };
   }
@@ -511,7 +520,7 @@ export class Campaign {
   private resyncPreview(): void {
     let s = this.committed;
     for (const batch of this.stagedBatches) {
-      const res = applyOps(s, batch.ops, batch.source ?? 'model', batch.actor, true);
+      const res = applyOps(s, batch.ops, batch.source ?? 'model', batch.actor, true, {}, batch.path);
       s = res.state;
       // Same rule as `stage`, and it has to be the same rule: a preview that
       // recomputed `applied` differently would change the reported ops

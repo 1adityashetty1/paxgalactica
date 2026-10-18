@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { applyOps, tickTurn, type LegacyRules } from '../domain/reducer.js';
+import { OP_PATHS_LIST } from '../domain/ops.js';
 import { WorldStateSchema, type WorldState } from '../domain/state.js';
 import { createSeedState } from '../seed/scenario.js';
 import { RimEventKindSchema, type RimEventKind } from '../domain/events.js';
@@ -16,7 +17,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 24;
+export const JOURNAL_VERSION = 25;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -59,6 +60,12 @@ export const JournalEntrySchema = z.discriminatedUnion('kind', [
      * retroactively rejecting it.
      */
     source: z.enum(['model', 'engine', 'extraction', 'cheat']),
+    /**
+     * Which writer: the player's declaration, an NPC's reaction, a bot, an
+     * accord, the engine or the cheat menu (`OP_PATHS`). Absent before journal
+     * version 25, and an entry without it is checked against no path.
+     */
+    path: z.enum(OP_PATHS_LIST).optional(),
     label: z.string(),
     ops: z.array(z.unknown()),
     /**
@@ -106,6 +113,7 @@ export const JournalVersionSchema = z.union([
   z.literal(22),
   z.literal(23),
   z.literal(24),
+  z.literal(25),
 ]);
 
 export const JournalSchema = z.object({
@@ -442,7 +450,7 @@ export function replay(
       // prevent. Each entry replays under the rule that was in force when it
       // was written, exactly as the legacy-treaty clause above does.
       const atomicBatches = parsed.version >= 3;
-      const res = applyOps(state, entry.ops.map(officersFromCommanderId), source, entry.actor, atomicBatches, legacy);
+      const res = applyOps(state, entry.ops.map(officersFromCommanderId), source, entry.actor, atomicBatches, legacy, entry.path);
       state = res.state;
       rejectionCount += res.rejections.length;
     } else if (entry.kind === 'tick') {

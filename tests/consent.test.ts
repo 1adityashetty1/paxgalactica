@@ -97,8 +97,10 @@ describe('the allowlist is a closed set, and says so', () => {
       'form_treaty', 'establish_debt', 'assign_debt', 'restructure_debt', 'establish_loan',
       'establish_obligation', 'assign_obligation',
     ]);
+    // Kept so accords journaled before it left the model's vocabulary replay.
+    const replayOnly = new Set(['spawn_event']);
     for (const op of EXTRACTION_ALLOWED) {
-      expect(modelOps.has(op) || negotiated.has(op), `${op} is not an op anything can emit`).toBe(true);
+      expect(modelOps.has(op) || negotiated.has(op) || replayOnly.has(op), `${op} is not an op anything can emit`).toBe(true);
     }
   });
 

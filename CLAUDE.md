@@ -5650,6 +5650,49 @@ on whether a model asked. The actor is recorded in the journal so replay stays
 exact; it is optional, so journals written before the guard existed still
 replay — reproducing what happened rather than retroactively rejecting it.
 
+### And by which path
+
+`OP_PATHS` in `ops.ts`, `docs/design-2026-10-17-intent-ops.md` §7, journal
+version 25. A declared action, an NPC's reaction and a bot's turn all arrived as
+source `model` with an actor, and the reducer could not tell them apart — while
+they are bounded very differently before they get there: the player by the
+arbiter, the roll and two actions a turn; a bot by its post-filters; a reaction
+by nothing but the reducer. So every batch now carries its **path** —
+`declared`, `reaction`, `bot`, `accord`, `engine` or `cheat` — on the staged
+batch and the journal entry, beside `source`, and `OP_PATHS` says which paths
+may write each op. It is typed over every op name, so a new op does not compile
+until it is given its paths, and its `accord` column is held equal to
+`EXTRACTION_ALLOWED` by a test. An off-path op is rejected `wrong_path`. An old
+journal entry has no path and is checked against nothing.
+
+- **Player only:** `lay_groundwork` (its whole price is the action point),
+  `create_asset` (bounded by the ruling and the roll), `set_doctrine` (an NPC's
+  doctrine is authored).
+- **The engine only:** `adjust_dissent`. The engine's charges — a refusal, a
+  defiance, an objection to an accord, a counterparty's breach — are staged on
+  the `engine` path in batches of their own; a defiance used to ride inside the
+  declaration's batch and now stands apart, so it lands on the attempt whatever
+  became of the order.
+- **Regard, by direction:** a declaration moves how another power sees the
+  actor (the payoff of an influence check), a reaction or a bot moves its own
+  view. The other direction on each path was a model narrating the wrong side's
+  feelings.
+- **A reaction honours its own paper.** `honourTreaties`, the bots' filter, now
+  runs on a reaction before it commits: an attack, blockade or raid on a power
+  it holds a pact, truce, trade accord or contract with is held back — shown as
+  held back — unless the order names that power in `breaks`. Measured before:
+  a reaction from the Vigil attacked a pact partner and the reducer simply
+  priced the betrayal. The price is unchanged; `breaks` only proves it was
+  meant.
+
+**`adjust_dissent` and `spawn_event` left `ModelOpSchema`** (§6). Dissent is the
+engine's to charge, and 27 of the 37 in the saves were the engine's own;
+`spawn_event` duplicated `log_narrative` and escaped `markNotesPrivate`. Both
+stay in `OpSchema` for the engine, the bots' rationale line and old journals,
+and `spawn_event` stays on the accord allowlist only so old accords replay.
+Measured: 229 bot batches over 100 turns on the bot path, none refused; all
+saves replay byte-identically; the harness boards do not move.
+
 ## War ethics have mechanical force
 
 `warEthic` had **no mechanical reader anywhere** for the whole life of the

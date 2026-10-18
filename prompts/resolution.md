@@ -61,7 +61,7 @@ leaves a faction with nobody following it.
 | op | use |
 |---|---|
 | `issue_order` | anything that takes time — see Duration |
-| `adjust_disposition` | a faction's opinion of another moves |
+| `adjust_disposition` | how another power sees **you** moves — `factionId` is theirs, `towardFactionId` is yours. Never your own view of them |
 | `build_ships` | lay down new hulls of your own, now, at a world you hold |
 | `adjust_credits` | money spent or earned |
 | `suborn_crews` | another power's crews change sides where they stand — see Suborning |
@@ -91,7 +91,6 @@ leaves a faction with nobody following it.
 | `withdraw_ultimatum` | take your own demand back |
 | `post_bounty` | put your own credits in escrow as a price on another power — see The raider's ledger |
 | `withdraw_bounty` | take back what is left of a bounty you posted |
-| `adjust_dissent` | **your own** institutions grow more restive — never less |
 | `cancel_order` | an existing order is called off |
 | `interrupt_order` | an order is disrupted by force or event |
 | `extend_order` | work runs longer than planned |
@@ -110,7 +109,6 @@ leaves a faction with nobody following it.
 | `forgive_loan` | let them keep what you lent — lender only |
 | `recruit_commander` | appoint an officer off your Lists — named in `officer`, or the first of a `school` — to a world you hold; up to five in post; **an action of its own** |
 | `dissolve_commitment` | end one, by id |
-| `spawn_event` | something happens worth recording |
 | `log_narrative` | a note for the event log |
 
 `transfer_control` is **not available to you.** A system changes hands only when
@@ -144,10 +142,9 @@ not move a large sum with it; anything past a few hundred is trimmed, and taking
 credits out of a rival's treasury is rejected outright. Skim a rival with an
 `income_penalty` agent, toll them, or raid their lanes.
 
-`adjust_dissent` moves **only your own** faction, and only upward. Dissent is a
-power's standing with its own institutions: it falls by 2 a turn on its own and
-in no other way, so it cannot be talked down by a leader who has just been
-refused. To turn a *rival's* institutions against it, deploy an agent on a
+**Dissent is never yours to write.** It is a power's standing with its own
+institutions, and the engine charges it — for a refusal, a defied compulsion, a
+change of doctrine — and lets it fall 2 a turn on its own. To turn a *rival's* institutions against it, deploy an agent on a
 `subversion` mission — with a `stat_debuff` effect to blunt one stat, or a
 **`sedition`** effect to raise their dissent directly, which reaches every stat
 at once and is what a legitimacy attack actually does: crowning a pretender,

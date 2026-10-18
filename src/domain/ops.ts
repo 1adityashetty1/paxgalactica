@@ -640,6 +640,14 @@ export const IssueOrderOp = z.object({
    * prizes. Refused on any other order.
    */
   dark: z.boolean().optional(),
+  /**
+   * The power whose pact, truce, accord or contract this order knowingly
+   * breaks. An NPC's reaction that attacks, blockades or raids a power it is
+   * bound to is held back unless it names that power here: betrayal stays a
+   * move, but a deliberate one. The price is unchanged — charged on arrival by
+   * `acts.ts`, as any attack under a pact is.
+   */
+  breaks: z.string().min(1).optional(),
 });
 
 export const CancelOrderOp = z.object({
@@ -1267,6 +1275,9 @@ export const EXTRACTION_ALLOWED = new Set<string>([
   'concede_ultimatum',
   // The record of what was said.
   'log_narrative',
+  // No model can write this any more (intent-ops §6: it left `ModelOpSchema`),
+  // but accords journaled before that carry it, and refusing it here would
+  // sink those whole batches on replay.
   'spawn_event',
 ]);
 
@@ -1384,7 +1395,6 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   RecruitAgentOp,
   RecallAgentOp,
   LayGroundworkOp,
-  ModelAdjustDissentOp,
   EstablishCommitmentOp,
   DissolveCommitmentOp,
   // `establish_debt` is deliberately ABSENT, like `form_treaty`: lending binds
@@ -1397,7 +1407,6 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   RepudiateLoanOp,
   ForgiveLoanOp,
   RecruitCommanderOp,
-  SpawnEventOp,
   LogNarrativeOp,
 ]);
 export type ModelOp = z.infer<typeof ModelOpSchema>;
@@ -1510,6 +1519,107 @@ export type Op = z.infer<typeof OpSchema>;
 export type OpInput = z.input<typeof OpSchema>;
 
 export const REDUCER_ONLY_OPS = new Set(['transfer_control']);
+
+/**
+ * The path a batch came by. `source` says whether a model wrote it; this says
+ * which writer, because a declared action, an NPC's reaction and a bot's turn
+ * all arrive as `model` and are bounded very differently before they get here:
+ * the player by the arbiter, the roll and two actions a turn, a bot by its
+ * post-filters, and a reaction by nothing but the reducer
+ * (`docs/design-2026-10-17-intent-ops.md` §7).
+ */
+export const OP_PATHS_LIST = ['declared', 'reaction', 'bot', 'accord', 'engine', 'cheat'] as const;
+export type OpPath = (typeof OP_PATHS_LIST)[number];
+
+const D = 'declared';
+const R = 'reaction';
+const B = 'bot';
+const A = 'accord';
+const E = 'engine';
+/** What an NPC may do: everything the player may, less what only the arbiter bounds. */
+const NPC = [R, B] as const;
+
+/**
+ * Which paths may write each op. Typed over every op name, so an op added later
+ * does not compile until it is given its paths — the closed-allowlist argument
+ * `EXTRACTION_ALLOWED` makes, of which this table's `accord` column is a copy
+ * held equal by a test. A batch with no path (an old journal, a test building a
+ * board) is checked against nothing here.
+ *
+ * Player only, never an NPC's reaction or a bot:
+ * - `lay_groundwork`, whose whole price is the player's action point;
+ * - `create_asset`, bounded by the arbiter's ruling and the roll;
+ * - `set_doctrine`, since an NPC's doctrine is an authored character sheet.
+ *
+ * The engine alone: `adjust_dissent` (its own charges for a refusal, a breach,
+ * an objection), the ship arithmetic and the reducer's own ops. `spawn_event`
+ * is the engine's and a bot's rationale line.
+ */
+export const OP_PATHS: Record<Op['op'], readonly OpPath[]> = {
+  transfer_control: [E],
+  cheat: ['cheat'],
+  log_ruling: [E],
+  adjust_disposition: [D, ...NPC, A, E],
+  adjust_fleet: [E],
+  adjust_ships: [E],
+  build_ships: [D, ...NPC, E],
+  suborn_crews: [D, ...NPC, E],
+  scuttle_ships: [D, ...NPC, E],
+  adjust_credits: [D, ...NPC, A, E],
+  set_doctrine: [D, E],
+  create_asset: [D, A, E],
+  set_stance: [D, ...NPC, E],
+  grant_stipend: [D, ...NPC, E],
+  revoke_stipend: [D, ...NPC, E],
+  seat_estate: [D, ...NPC, E],
+  propose_marriage: [D, ...NPC, E],
+  set_toll_policy: [D, ...NPC, A, E],
+  split_asset: [D, ...NPC, E],
+  consume_asset: [D, ...NPC, A, E],
+  decide_fate: [D, ...NPC, E],
+  relocate_asset: [D, ...NPC, E],
+  transfer_asset: [D, ...NPC, A, E],
+  play_note: [D, ...NPC, E],
+  call_obligation: [D, ...NPC, E],
+  repudiate_obligation: [D, ...NPC, E],
+  release_obligation: [D, ...NPC, A, E],
+  publish_dossier: [D, ...NPC, E],
+  blackmail: [D, ...NPC, E],
+  issue_ultimatum: [D, ...NPC, E],
+  back_ultimatum: [D, ...NPC, E],
+  concede_ultimatum: [D, ...NPC, A, E],
+  withdraw_ultimatum: [D, ...NPC, E],
+  post_bounty: [D, ...NPC, E],
+  withdraw_bounty: [D, ...NPC, E],
+  issue_order: [D, ...NPC, E],
+  cancel_order: [D, ...NPC, E],
+  interrupt_order: [D, ...NPC, E],
+  extend_order: [D, ...NPC, E],
+  accelerate_order: [D, ...NPC, E],
+  form_treaty: [A, E],
+  break_treaty: [D, ...NPC, A, E],
+  deploy_agent: [D, ...NPC, E],
+  recruit_agent: [D, ...NPC, E],
+  recall_agent: [D, ...NPC, E],
+  lay_groundwork: [D],
+  adjust_dissent: [E],
+  establish_commitment: [D, ...NPC, A, E],
+  dissolve_commitment: [D, ...NPC, A, E],
+  establish_debt: [A, E],
+  forgive_debt: [D, ...NPC, A, E],
+  assign_debt: [A, E],
+  restructure_debt: [A, E],
+  settle_debt: [D, ...NPC, A, E],
+  establish_loan: [A, E],
+  return_loan: [D, ...NPC, A, E],
+  repudiate_loan: [D, ...NPC, E],
+  forgive_loan: [D, ...NPC, A, E],
+  establish_obligation: [A, E],
+  assign_obligation: [A, E],
+  recruit_commander: [D, ...NPC, E],
+  spawn_event: [B, A, E],
+  log_narrative: [D, ...NPC, A, E],
+};
 
 /** Standard envelope for every model call that produces state change. */
 export const ModelTurnOutputSchema = z.object({
@@ -2201,7 +2311,8 @@ export interface OpRejection {
      * `conflictingTreaty`. A renegotiation between the SAME parties is not this:
      * that supersedes.
      */
-    | 'treaty_conflict';
+    | 'treaty_conflict'
+    | 'wrong_path';
   message: string;
 }
 

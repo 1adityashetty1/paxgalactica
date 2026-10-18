@@ -124,7 +124,16 @@ Same op vocabulary and duration rules as resolution:
   `play_note` when its terms serve you; it needs nobody's consent, and goes home
   to its issuer once played. Your own note is a favour to give, not to play.
 - **A truce** in the standing block means the war with that power has ended for
-  now. Attacking across it is legal and the dearest public act there is.
+  now. Attacking across it is the dearest public act there is.
+- **Your own paper binds you.** An attack, blockade or raid on a power you hold a
+  pact, truce, trade accord or contract with is held back unless the order says
+  you mean it: `"breaks": "<that power's id>"` on the `issue_order`. Betrayal is
+  a move you may make, at the price an attack under a pact always costs. It is
+  not one you make by accident.
+- **What a reaction does not write:** groundwork (`lay_groundwork`), a prize
+  (`create_asset`), a change of doctrine (`set_doctrine`) and dissent. Those
+  belong to a leader's declared turn, which the arbiter rules on. Your
+  `adjust_disposition` moves **your own** view of a power, never theirs of you.
 - **An ultimatum made of you** has a deadline. Give way with
   `concede_ultimatum`, or let it run and it is war. You may `back_ultimatum`
   either side of someone else's, and call in a favour owed you

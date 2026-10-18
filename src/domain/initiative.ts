@@ -2353,8 +2353,14 @@ export interface Proposal {
  */
 export const BOT_AGGRESSION_CEILING = 0;
 
-/** Strip acts that would break a pact this faction has actually signed. */
-function honourTreaties(
+/**
+ * Strip acts that would break a pact this faction has actually signed. Read by
+ * the bots' post-filter and by an NPC's reaction before it commits
+ * (`docs/design-2026-10-17-intent-ops.md` §7). An order that names the power it
+ * knowingly breaks with (`breaks`) is kept: a bot never names one, and a
+ * reaction that does has chosen the betrayal.
+ */
+export function honourTreaties(
   state: WorldState,
   me: string,
   ops: Record<string, unknown>[],
@@ -2365,6 +2371,7 @@ function honourTreaties(
     const target = sys(state, String(op.targetId ?? ''));
     const holder = target?.controllerFactionId;
     if (!holder || holder === me) return true;
+    if (op.breaks === holder) return true;
 
     if (op.type === 'fleet_movement' && boundBy(state, me, holder, PEACE_TYPES)) {
       withheld.push(`an attack on ${target.name}, which a standing pact forbids`);

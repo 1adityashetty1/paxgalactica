@@ -226,7 +226,7 @@ describe('a compulsion is a price, and the price is charged', () => {
       appraisal: appraisal({ breach: compulsionBreach }),
       resolution: {
         narrative: 'The tribute is agreed.',
-        ops: [{ op: 'adjust_disposition', factionId: 'freeworlds', towardFactionId: 'ojjul', delta: 5 }],
+        ops: [{ op: 'adjust_disposition', factionId: 'ojjul', towardFactionId: 'freeworlds', delta: 5 }],
       },
     };
     const campaign = Campaign.start('freeworlds', 'test-compulsion');

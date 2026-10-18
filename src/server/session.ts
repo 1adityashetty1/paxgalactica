@@ -720,7 +720,7 @@ export class GameSession {
   async cheat(cheat: Cheat): Promise<CheatResult> {
     const campaign = this.requirePlayable();
     if (this.isBusy) throw new ApiFailure('conflict', `Busy: ${this.busyLabel}.`);
-    const res = campaign.commit([{ op: 'cheat', cheat }], 'cheat', `cheat:${cheat.kind}`);
+    const res = campaign.commit([{ op: 'cheat', cheat }], 'cheat', `cheat:${cheat.kind}`, undefined, 'cheat');
     if (res.rejections.length === 0) await campaign.save();
     this.pushState();
     return { notes: res.notes, rejections: res.rejections };

@@ -314,6 +314,8 @@ import {
 } from './estates.js';
 import {
   EXTRACTION_ALLOWED,
+  OP_PATHS,
+  type OpPath,
   EXTRACTION_REFUSAL_REASON,
   OpSchema,
   REDUCER_ONLY_OPS,
@@ -696,6 +698,18 @@ function heatUp(state: WorldState, factionId: string | null | undefined, amount:
  * that have no access to the batch's rules.
  */
 let breachTable: Record<BreachKind, BreachPrice> = BREACH_PRICES;
+
+/** Why an op cannot come by this path, in words a correction pass can act on. */
+function wrongPathReason(op: string, path: OpPath): string {
+  if (path === 'reaction' || path === 'bot') {
+    if (op === 'lay_groundwork') return 'Groundwork is laid by a leader spending an action on it; a reaction has no actions to spend.';
+    if (op === 'create_asset') return 'A prize comes out of an attempt the arbiter ruled on and the dice decided, and a reaction has neither. Take a thing by an operation, or trade for it.';
+    if (op === 'set_doctrine') return "A power's doctrine is not rewritten in a reaction.";
+  }
+  if (op === 'adjust_dissent') return "Dissent is the engine's to charge: a refusal, a defiance, a doctrine change. It is not written by hand.";
+  if (op === 'spawn_event') return 'Write a log_narrative instead.';
+  return `"${op}" cannot be written by a ${path === 'declared' ? 'declared action' : path}.`;
+}
 
 /**
  * Charge a breach of faith: every site that breaks a power's word comes here,
@@ -3391,6 +3405,8 @@ export function applyOps(
   actor?: string,
   atomic = false,
   legacy: LegacyRules = {},
+  /** Which writer this batch came from — see `OP_PATHS`. Omitted, nothing is checked. */
+  path?: OpPath,
 ): ApplyResult {
   const outer = scopeEngineNotes;
   const outerOrders = scopeOrderLines;
@@ -3402,7 +3418,7 @@ export function applyOps(
   breachTable = (legacy.breachPrices ?? true) ? BREACH_PRICES : LEGACY_BREACH_PRICES;
   try {
     return withNameStock(legacy.widerNames ?? true, () =>
-      applyOpsUnderRules(input, rawOps, source, actor, atomic, legacy),
+      applyOpsUnderRules(input, rawOps, source, actor, atomic, legacy, path),
     );
   } finally {
     scopeEngineNotes = outer;
@@ -3460,6 +3476,7 @@ function applyOpsUnderRules(
    * third bare `true, false, true` at a call site is unreadable.
    */
   legacy: LegacyRules = {},
+  path?: OpPath,
 ): ApplyResult {
   const {
     unbuildFromGain = true,
@@ -3729,6 +3746,14 @@ function applyOpsUnderRules(
       continue;
     }
 
+    // Who may write what. A declared action, a reaction and a bot all arrive as
+    // `model`; the path says which, and some acts are bounded only by the
+    // arbiter and the roll, which a reaction and a bot do not have.
+    if (path !== undefined && !OP_PATHS[op.op].includes(path)) {
+      reject(raw, 'wrong_path', wrongPathReason(op.op, path));
+      continue;
+    }
+
     switch (op.op) {
       case 'cheat': {
         applyCheat(
@@ -3788,6 +3813,22 @@ function applyOpsUnderRules(
         // Scoped to a live actor, like the ownership guards on `deploy_agent`:
         // an actorless batch is an engine op or a journal written before the
         // guard existed, and those replay as they ran.
+        // A declaration moves how the other power sees the actor — the payoff of
+        // an influence check; a reaction or a bot moves its own view. The other
+        // direction on each path was a model narrating the wrong side's feelings.
+        if (actor !== undefined && (path === 'declared' || path === 'reaction' || path === 'bot')) {
+          const ownView = op.factionId === actor;
+          if (path === 'declared' ? ownView : !ownView) {
+            reject(
+              raw,
+              'wrong_path',
+              path === 'declared'
+                ? `A declaration moves how ${nameFor(state, op.towardFactionId === actor ? op.factionId : op.towardFactionId)} sees ${nameFor(state, actor)}, not ${nameFor(state, actor)}'s own view of anyone: that is the leader's mind, not an act.`
+                : `${nameFor(state, actor)} answers for its own view of others; how they see it is theirs to decide.`,
+            );
+            break;
+          }
+        }
         if (narratedDisposition && actor !== undefined && op.factionId !== actor && op.towardFactionId !== actor) {
           reject(
             raw,

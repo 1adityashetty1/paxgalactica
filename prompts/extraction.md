@@ -15,7 +15,7 @@ is purely a **record** of the conversation:
 `form_treaty` · `break_treaty` · `establish_debt` · `assign_debt` ·
 `restructure_debt` · `establish_commitment` · `dissolve_commitment` ·
 `forgive_debt` · `settle_debt` · `adjust_disposition` · `adjust_credits` ·
-`log_narrative` · `spawn_event` · `set_toll_policy` · `transfer_asset` ·
+`log_narrative` · `set_toll_policy` · `transfer_asset` ·
 `establish_loan` · `return_loan` · `forgive_loan`
 
 **`transfer_asset` moves a thing that already exists** — prisoners ransomed
@@ -374,14 +374,11 @@ Specifically:
   just narrative text, and `shipsPledged` only dispatches under
   `mutual_defense` or `coalition`.
 
-- `set_doctrine` — **only for the faction whose turn this is.** A power changes
-  its own posture and pays its own institutions for it in dissent; the reducer
-  rejects one faction rewriting another's, so a rival that promised to
-  reorient in conversation is recorded with `spawn_event` or `log_narrative`,
-  not by editing its character. Emit it only for an explicit commitment to a
-  change of standing posture, never for a single deal.
-- `spawn_event` / `log_narrative` — record the substance of what was agreed so
-  it appears in the event log and both parties can refer to it later.
+- A power that promised to change its posture is recorded with
+  `log_narrative`. Doctrine is changed on that power's own turn, never by an
+  accord.
+- `log_narrative` — record the substance of what was agreed so it appears in
+  the event log and both parties can refer to it later.
 
 `transfer_control` is unavailable here, as everywhere, and so is
 `fleet_movement` (above). A faction that agreed to cede a system does so by

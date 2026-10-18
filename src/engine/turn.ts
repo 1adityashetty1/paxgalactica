@@ -31,7 +31,7 @@ import { callStructured } from '../model/client.js';
 import { span } from '../model/telemetry.js';
 import { loadPrompt } from '../model/prompts.js';
 import { createSeedState } from '../seed/scenario.js';
-import { brokeredAccords, proposeFor } from '../domain/initiative.js';
+import { brokeredAccords, honourTreaties, proposeFor } from '../domain/initiative.js';
 import { controlHistory } from './journal.js';
 import type { Concession } from '../domain/diplomacy.js';
 import type { WorldState } from '../domain/state.js';
@@ -323,6 +323,8 @@ async function stageWithCorrection(
     return { ops: bound.ops, notes: [...alone.notes, ...unrun.notes, ...bound.notes] };
   };
 
+  // The writer, for `OP_PATHS`: the player's declaration, or the accord they closed.
+  meta = { ...meta, path: meta.path ?? (source === 'extraction' ? 'accord' : 'declared') };
   const bound = bind(ops);
   const first = campaign.stage(bound.ops, label, narrative, source, actor, meta);
   if (first.rejections.length === 0) {
@@ -390,7 +392,8 @@ async function commitWithCorrection(
   const bound = boundPayloadsToOutcome(ops, 'success', undefined);
   ops = bound.ops;
   const seal = (batch: unknown[]) => (secret ? markNotesPrivate(batch) : batch);
-  const first = campaign.commit(seal(ops), 'model', label, actor);
+  // Only reactions come through here: an NPC answering the turn (`OP_PATHS`).
+  const first = campaign.commit(seal(ops), 'model', label, actor, 'reaction');
   if (first.rejections.length === 0) {
     return { rejections: [], notes: [...bound.notes, ...first.notes], costUsd: 0 };
   }
@@ -403,7 +406,7 @@ async function commitWithCorrection(
   // The correction batch is filtered too: a retry that re-emitted the fixture
   // would otherwise be the hole, exactly as it is for an `onComplete` payload.
   const again = boundPayloadsToOutcome(revised.ops, 'success', undefined);
-  const second = campaign.commit(seal(again.ops), 'model', `${label}:correction`, actor);
+  const second = campaign.commit(seal(again.ops), 'model', `${label}:correction`, actor, 'reaction');
   return {
     rejections: second.rejections,
     notes: [...bound.notes, ...first.notes, ...again.notes, ...second.notes],
@@ -461,6 +464,7 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
       '',
       'engine',
       campaign.state.playerFactionId,
+      { path: 'engine' },
     );
   }
 
@@ -543,7 +547,8 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
       campaign.state.playerFactionId,
       // The refusal IS the charge, so there is nothing inside to withdraw; and an
       // order your own institutions would not carry out is nobody else's news.
-      { binding: 'refused', secret: true },
+      // The engine's charge, not the declaration's: see `OP_PATHS`.
+      { binding: 'refused', secret: true, path: 'engine' },
     );
     return {
       narrative: resolution.output.narrative,
@@ -577,25 +582,7 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
   // the front, so the log reads roll-then-consequence. It used to be staged here
   // as well, and every roll reached the log, the prompts and the Log panel twice
   // (item 120).
-  const ops = [
-    ...resolution.output.ops,
-    // Charged in code, not chosen by the model: the resolution call says a
-    // compulsion was defied, and the price for that is not its to nominate.
-    ...(defiance
-      ? [
-          {
-            op: 'adjust_dissent',
-            factionId: campaign.state.playerFactionId,
-            delta: COMPULSION_BREACH_DISSENT,
-            reason: defiance.violated || defiance.reason,
-          },
-          {
-            op: 'log_narrative',
-            text: `[objected to by ${defiance.by}] ${defiance.reason}`,
-          },
-        ]
-      : []),
-  ];
+  const ops = [...resolution.output.ops];
 
   // One act, one mechanism. A covert declaration BECOMES a deployment, so it is
   // charged by `AGENT_COST`, held to `maxAgentsFor`, resolved on the tick and
@@ -635,6 +622,31 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     { binding: resolution.check ? 'rolled' : 'sent', secret },
   );
   staged.notes.unshift(...resolution.notes, ...routed.notes);
+
+  // Charged in code, not chosen by the model: the resolution call says a
+  // compulsion was defied, and the price for that is not its to nominate. Its
+  // own batch on the engine's path, so the order and its price are told apart —
+  // a declaration may not write `adjust_dissent`, and the engine's charge is
+  // not the declaration's. It stands whatever became of the order: the price
+  // lands on the attempt.
+  if (defiance) {
+    campaign.stage(
+      [
+        {
+          op: 'adjust_dissent',
+          factionId: campaign.state.playerFactionId,
+          delta: COMPULSION_BREACH_DISSENT,
+          reason: defiance.violated || defiance.reason,
+        },
+        { op: 'log_narrative', text: `[objected to by ${defiance.by}] ${defiance.reason}` },
+      ],
+      `objection: ${action.length > 40 ? `${action.slice(0, 39)}…` : action}`,
+      '',
+      'model',
+      campaign.state.playerFactionId,
+      { binding: 'charge', secret, path: 'engine' },
+    );
+  }
 
   if (defiance) {
     const total = Math.min(
@@ -745,9 +757,20 @@ export async function endTurn(
           // prompt rule asking the model not to mention it, which is exactly the
           // guard a model can be talked past.
           const secret = reaction.ops.some(isCovertOp);
+          // A reaction honours its own paper, as a bot does: an attack,
+          // blockade or raid on a power it is bound to is held back unless the
+          // order names that power in `breaks`. Before this a reaction broke a
+          // pact as easily as it attacked anyone, and only the prompt stood in
+          // the way (`docs/design-2026-10-17-intent-ops.md` §7).
+          const honoured = honourTreaties(
+            campaign.state,
+            reaction.factionId,
+            reaction.ops as Record<string, unknown>[],
+          );
+          const held = honoured.withheld.map((w) => `${faction.name} holds back ${w}.`);
           const applied = await commitWithCorrection(
             campaign,
-            reaction.ops,
+            honoured.ops,
             `reaction:${reaction.factionId}`,
             `${faction.name} reacted: ${reaction.narrative}`,
             // The reacting faction is the actor, so an NPC is held to the same
@@ -757,15 +780,16 @@ export async function endTurn(
           );
           costUsd += applied.costUsd;
           if (secret) continue;
-          notes.push(...applied.notes);
+          notes.push(...held, ...applied.notes);
           rejections.push(...applied.rejections);
+          const heldBack = (applied.rejections.length > 0 ? applied.rejections.length : 0) + honoured.withheld.length;
           const view: ReactionView = {
             factionId: faction.id,
             factionName: faction.name,
             color: faction.displayColor,
             narrative: reaction.narrative,
-            ops: applied.rejections.length > 0 ? [] : reaction.ops,
-            heldBack: applied.rejections.length > 0 ? applied.rejections.length : null,
+            ops: applied.rejections.length > 0 ? [] : honoured.ops,
+            heldBack: heldBack > 0 ? heldBack : null,
             // An invitation to talk, if this power wants something. Passed
             // through rather than acted on: the player opens the channel.
             approach: reaction.approach ?? null,
@@ -833,14 +857,14 @@ export async function endTurn(
       // response is printed in the player's feed. What the galaxy may know of
       // the move is in the log, scoped like everything else there (playtest
       // 2026-10-16: every rival's spy postings reached the player this way).
-      campaign.commit(batch, 'model', `initiative:${faction.id}`, faction.id);
+      campaign.commit(batch, 'model', `initiative:${faction.id}`, faction.id, 'bot');
     }
 
     // And what two NPC powers agree between themselves — an exchange of goods,
     // a peace in a war gone quiet. Engine batches with no actor: the rule read
     // both parties, so neither one's guard speaks for the pair.
     for (const accord of brokeredAccords(campaign.state)) {
-      campaign.commit(accord.ops, 'engine', accord.label);
+      campaign.commit(accord.ops, 'engine', accord.label, undefined, 'engine');
     }
   });
 
@@ -1217,6 +1241,7 @@ export async function closeChannel(
         '',
         'engine',
         factionId,
+        { path: 'engine' },
       );
       const said = `${other?.name ?? factionId} signs anyway, against its own standing: "${theirBreach.principle}". Its institutions will remember.`;
       counterpartyNotes.push(said);
@@ -1238,6 +1263,7 @@ export async function closeChannel(
       '',
       'engine',
       campaign.state.playerFactionId,
+      { path: 'engine' },
     );
   }
 
@@ -1283,7 +1309,7 @@ export async function closeChannel(
       why,
       'model',
       campaign.state.playerFactionId,
-      { binding: 'refused', secret: true },
+      { binding: 'refused', secret: true, path: 'engine' },
     );
     const dissent = getFaction(campaign.state, campaign.state.playerFactionId)?.dissent ?? 0;
     return {
@@ -1404,7 +1430,7 @@ export async function closeChannel(
       'model',
       campaign.state.playerFactionId,
       // Charged for proposing it, so it stays even if the accord is withdrawn.
-      { binding: 'charge' },
+      { binding: 'charge', path: 'engine' },
     );
     const dissent = getFaction(campaign.state, campaign.state.playerFactionId)?.dissent ?? 0;
     notes.push(
