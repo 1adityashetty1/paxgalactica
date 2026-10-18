@@ -45,18 +45,20 @@ describe('a reaction is held to what it is bounded by', () => {
     expect(codes(s, [{ op: 'adjust_dissent', factionId: 'vigil', delta: 5 }], 'vigil', 'reaction')).toEqual(['wrong_path']);
   });
 
-  it('moves its own view of a power, never theirs of it', () => {
+  it('records its own view of a power by a listed reason, never by a figure', () => {
     const s = seed();
-    expect(codes(s, [{ op: 'adjust_disposition', factionId: 'vigil', towardFactionId: 'ojjul', delta: -5 }], 'vigil', 'reaction')).toEqual([]);
-    expect(codes(s, [{ op: 'adjust_disposition', factionId: 'ojjul', towardFactionId: 'vigil', delta: -5 }], 'vigil', 'reaction')).toEqual(['wrong_path']);
+    expect(codes(s, [{ op: 'regard', factionId: 'vigil', toward: 'ojjul', because: 'insult' }], 'vigil', 'reaction')).toEqual([]);
+    expect(codes(s, [{ op: 'regard', factionId: 'ojjul', toward: 'vigil', because: 'insult' }], 'vigil', 'reaction')).toEqual(['illegal_value']);
+    expect(codes(s, [{ op: 'adjust_disposition', factionId: 'vigil', towardFactionId: 'ojjul', delta: -5 }], 'vigil', 'reaction')).toEqual(['wrong_path']);
   });
 });
 
 describe('a declaration', () => {
-  it('moves how another power sees the actor, not the actor’s own view', () => {
+  it('moves how another power sees the actor by a sway the roll sized, never by a figure', () => {
     const s = seed();
-    expect(codes(s, [{ op: 'adjust_disposition', factionId: 'vigil', towardFactionId: 'ojjul', delta: 5 }], 'ojjul', 'declared')).toEqual([]);
-    expect(codes(s, [{ op: 'adjust_disposition', factionId: 'ojjul', towardFactionId: 'vigil', delta: 5 }], 'ojjul', 'declared')).toEqual(['wrong_path']);
+    expect(codes(s, [{ op: 'sway', factionId: 'ojjul', whom: 'vigil', amount: 6 }], 'ojjul', 'declared')).toEqual([]);
+    expect(codes(s, [{ op: 'sway', factionId: 'ojjul', whom: 'vigil' }], 'ojjul', 'declared')).toEqual(['illegal_value']);
+    expect(codes(s, [{ op: 'adjust_disposition', factionId: 'vigil', towardFactionId: 'ojjul', delta: 5 }], 'ojjul', 'declared')).toEqual(['wrong_path']);
   });
 
   it('cannot write dissent; the engine’s charge on the player can', () => {

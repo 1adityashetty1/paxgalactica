@@ -70,7 +70,11 @@ leaves a faction with nobody following it.
 | `blockade` | close every lane through a world your fleet sits over |
 | `raid` | raid the shipping through a world, from a fleet on it or a jump out; `dark` runs it unowned |
 | `sweep` | counter-intelligence on a world of your own |
-| `adjust_disposition` | how another power sees **you** moves — `factionId` is theirs, `towardFactionId` is yours. Never your own view of them |
+| `sway` | an influence attempt moves how another power sees you (`whom`). The roll sizes it; it does nothing unless the check was influence and it worked |
+| `gift` | credits given to another power (`to`, `amount`), which buy its regard at 20 credits a point, ten at most |
+
+`regard` is how a reacting power records what it thinks of you, for a reason
+from a closed list; it is never yours to write about yourself.
 | `build_ships` | lay down new hulls of your own, now, at a world you hold — or, with `programme: true`, as a hidden yard programme delivered later |
 | `pay` | your credits to another power (`to`, `amount`, `for`) |
 | `spend` | your credits to nobody on the board — a bribe, a hire, materials (`amount`, `for`) |

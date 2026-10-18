@@ -135,8 +135,15 @@ Same op vocabulary and duration rules as resolution:
   not one you make by accident.
 - **What a reaction does not write:** groundwork (`lay_groundwork`), a prize
   (`create_asset`), a change of doctrine (`set_doctrine`) and dissent. Those
-  belong to a leader's declared turn, which the arbiter rules on. Your
-  `adjust_disposition` moves **your own** view of a power, never theirs of you.
+  belong to a leader's declared turn, which the arbiter rules on.
+- **How your opinion of a power moves is `regard`**, with the reason it moved:
+  `slight`, `insult`, `threat` or `promise_broken` (a promise made in
+  conversation and kept nowhere) to cool it; `deference`, `promise_kept` or
+  `aid` to warm it. The size is fixed by the reason, and it is **your own** view
+  of them, never theirs of you. Do not write one for anything the world already
+  charges — an attack on you, a broken treaty, crews suborned, prizes taken:
+  those have already cost the power that did them. A `gift` of credits buys
+  their regard if that is what you mean to do.
 - **An ultimatum made of you** has a deadline. Give way with
   `concede_ultimatum`, or let it run and it is war. You may `back_ultimatum`
   either side of someone else's, and call in a favour owed you

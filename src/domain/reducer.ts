@@ -16,7 +16,7 @@ import {
   MAX_COMMITMENT_INCOME,
   MAX_COMMITMENT_SHARE,
 } from './arbitration.js';
-import { BREACH_PRICES, LEGACY_BREACH_PRICES, breachCharges, type Breach, type BreachKind, type BreachPrice } from './acts.js';
+import { BREACH_PRICES, LEGACY_BREACH_PRICES, REGARD_BECAUSE, breachCharges, giftRegard, type Breach, type BreachKind, type BreachPrice } from './acts.js';
 import type {
   BattleOutcome,
   BattleReport,
@@ -3958,22 +3958,6 @@ function applyOpsUnderRules(
         // Scoped to a live actor, like the ownership guards on `deploy_agent`:
         // an actorless batch is an engine op or a journal written before the
         // guard existed, and those replay as they ran.
-        // A declaration moves how the other power sees the actor — the payoff of
-        // an influence check; a reaction or a bot moves its own view. The other
-        // direction on each path was a model narrating the wrong side's feelings.
-        if (actor !== undefined && (path === 'declared' || path === 'reaction' || path === 'bot')) {
-          const ownView = op.factionId === actor;
-          if (path === 'declared' ? ownView : !ownView) {
-            reject(
-              raw,
-              'wrong_path',
-              path === 'declared'
-                ? `A declaration moves how ${nameFor(state, op.towardFactionId === actor ? op.factionId : op.towardFactionId)} sees ${nameFor(state, actor)}, not ${nameFor(state, actor)}'s own view of anyone: that is the leader's mind, not an act.`
-                : `${nameFor(state, actor)} answers for its own view of others; how they see it is theirs to decide.`,
-            );
-            break;
-          }
-        }
         if (narratedDisposition && actor !== undefined && op.factionId !== actor && op.towardFactionId !== actor) {
           reject(
             raw,
@@ -4292,6 +4276,57 @@ function applyOpsUnderRules(
         }
         credit(raw, op.factionId, -op.amount);
         credit(raw, op.to, op.amount);
+        break;
+      }
+
+      // An influence check that worked: how `whom` sees the actor moves, by an
+      // amount the engine read off the roll (intent-ops §3). A model never
+      // sizes it, so one without an amount was not rolled for.
+      case 'sway': {
+        if (actor !== undefined && op.factionId !== actor) {
+          reject(raw, 'illegal_value', `${nameFor(state, actor)} sways others toward itself, not toward ${nameFor(state, op.factionId)}.`);
+          break;
+        }
+        if (!factionExists(op.whom) || op.whom === op.factionId) {
+          reject(raw, 'unknown_faction', `No other faction "${op.whom}".`);
+          break;
+        }
+        if (op.amount === undefined) {
+          reject(raw, 'illegal_value', 'A sway is sized by an influence check that worked, and this one was not rolled for.');
+          break;
+        }
+        moveRegard(state, op.whom, op.factionId, op.amount);
+        break;
+      }
+
+      // A reacting power's own view of another, for a reason from a closed
+      // list, at the table's price (`REGARD_BECAUSE`).
+      case 'regard': {
+        if (actor !== undefined && op.factionId !== actor) {
+          reject(raw, 'illegal_value', `${nameFor(state, actor)} answers for its own view of others, not ${nameFor(state, op.factionId)}'s.`);
+          break;
+        }
+        if (!factionExists(op.toward) || op.toward === op.factionId) {
+          reject(raw, 'unknown_faction', `No other faction "${op.toward}".`);
+          break;
+        }
+        moveRegard(state, op.factionId, op.toward, REGARD_BECAUSE[op.because]);
+        break;
+      }
+
+      // Credits given, which buy the receiver's regard at a published rate.
+      case 'gift': {
+        if (actor !== undefined && op.factionId !== actor) {
+          reject(raw, 'illegal_value', `${nameFor(state, actor)} gives out of its own treasury, not ${nameFor(state, op.factionId)}'s.`);
+          break;
+        }
+        if (!factionExists(op.to) || op.to === op.factionId) {
+          reject(raw, 'unknown_faction', `No other faction "${op.to}".`);
+          break;
+        }
+        credit(raw, op.factionId, -op.amount);
+        credit(raw, op.to, op.amount);
+        moveRegard(state, op.to, op.factionId, giftRegard(Math.min(op.amount, MAX_NARRATIVE_CREDITS)));
         break;
       }
 

@@ -1,4 +1,5 @@
 import { familyOf, resolvePerson } from './command.js';
+import { SWAY_BY_BAND } from './acts.js';
 import type { RefusalGround } from './ops.js';
 import { hullsAt, type WorldState } from './state.js';
 
@@ -160,6 +161,40 @@ export function commitmentsAsRuled(
       continue;
     }
     kept.push({ ...o, mechanism: establishes.mechanism ?? 'record' });
+  }
+  return { ops: kept, dropped };
+}
+
+/**
+ * A sway is sized by the roll, never by the model (intent-ops §3): an influence
+ * check that worked moves the other power's view of the actor by
+ * `SWAY_BY_BAND`, one sway a power per declaration. Any other stat, a failure,
+ * or no check at all, and it moves nothing.
+ */
+export function swaysAsRolled(
+  ops: readonly unknown[],
+  stat: string | undefined,
+  outcome: string | undefined,
+): { ops: unknown[]; dropped: string[] } {
+  const amount =
+    stat === 'influence' && outcome !== undefined && outcome in SWAY_BY_BAND
+      ? SWAY_BY_BAND[outcome as keyof typeof SWAY_BY_BAND]
+      : undefined;
+  const swayed = new Set<string>();
+  const kept: unknown[] = [];
+  const dropped: string[] = [];
+  for (const op of ops) {
+    const o = op as { op?: string; whom?: string } | null;
+    if (o?.op !== 'sway') {
+      kept.push(op);
+      continue;
+    }
+    if (amount === undefined || swayed.has(o.whom ?? '')) {
+      dropped.push(o.whom ?? 'a power');
+      continue;
+    }
+    swayed.add(o.whom ?? '');
+    kept.push({ ...o, amount });
   }
   return { ops: kept, dropped };
 }

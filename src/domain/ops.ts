@@ -110,6 +110,41 @@ export const PayOp = z.object({
   for: z.string().default(''),
 });
 
+/**
+ * What an influence check that worked moves: how `whom` sees the actor. The
+ * engine sizes it by the band (`SWAY_BY_BAND`) and drops it when the check was
+ * not influence or did not work; a model never chooses the amount (intent-ops §3).
+ */
+export const SwayOp = z.object({
+  op: z.literal('sway'),
+  factionId: z.string().min(1),
+  whom: z.string().min(1),
+  /** Written by the engine from the roll. */
+  amount: z.number().int().min(1).max(15).optional(),
+  reason: z.string().default(''),
+});
+
+/**
+ * A reacting power's own view of another moves, for a reason from a closed
+ * list; the size is the table's (`REGARD_BECAUSE`), never the model's.
+ */
+export const RegardOp = z.object({
+  op: z.literal('regard'),
+  factionId: z.string().min(1),
+  toward: z.string().min(1),
+  because: z.enum(['slight', 'insult', 'threat', 'promise_broken', 'deference', 'promise_kept', 'aid']),
+  reason: z.string().default(''),
+});
+
+/** Credits given to another power, which buy its regard at a published rate (`GIFT_RATE`). */
+export const GiftOp = z.object({
+  op: z.literal('gift'),
+  factionId: z.string().min(1),
+  to: z.string().min(1),
+  amount: z.number().int().min(1),
+  for: z.string().default(''),
+});
+
 /** The acting power's credits to nobody on the board: a bribe, a hire, materials. */
 export const SpendOp = z.object({
   op: z.literal('spend'),
@@ -1607,7 +1642,9 @@ export const ScuttleShipsOp = z.object({
 
 /** Everything the model is allowed to emit. */
 export const ModelOpSchema = z.discriminatedUnion('op', [
-  AdjustDispositionOp,
+  SwayOp,
+  RegardOp,
+  GiftOp,
   BuildShipsOp,
   MoveOp,
   FortifyOp,
@@ -1692,6 +1729,10 @@ export type ModelOp = z.infer<typeof ModelOpSchema>;
  */
 export const ExtractionOpSchema = z.union([
   ModelOpSchema,
+  // An accord's regard is still narrated, held to the batch cap and to a
+  // treaty's own goodwill (intent-ops §3); a declaration and a reaction write
+  // `sway`, `regard` and `gift` instead.
+  AdjustDispositionOp,
   FormTreatyOp,
   EstablishDebtOp,
   AssignDebtOp,
@@ -1710,6 +1751,9 @@ export const OpSchema = z.discriminatedUnion('op', [
   TransferControlOp,
   CheatOp,
   AdjustDispositionOp,
+  SwayOp,
+  RegardOp,
+  GiftOp,
   AdjustFleetOp,
   BuildShipsOp,
   MoveOp,
@@ -1836,7 +1880,13 @@ export const OP_PATHS: Record<Op['op'], readonly OpPath[]> = {
   transfer_control: [E],
   cheat: ['cheat'],
   log_ruling: [E],
-  adjust_disposition: [D, ...NPC, A, E],
+  // Regard is written as `sway` (a declaration's influence payoff), `regard` (a
+  // reaction's own view, for a listed reason) or `gift`; an accord still
+  // narrates it (intent-ops §3).
+  adjust_disposition: [A, E],
+  sway: [D],
+  regard: [R, E],
+  gift: [D, R],
   adjust_fleet: [E],
   adjust_ships: [E],
   build_ships: [D, ...NPC, E],

@@ -40,7 +40,7 @@ import {
   type WorldState,
 } from '../domain/state.js';
 import { classifyPrinciple, classifyPrinciples } from '../domain/compulsions.js';
-import { checkGround, commitmentsAsRuled, covertSendOnly, INVENTED_REFUSAL_NOTE, inventedRefusal, ownOperativeNamed, prizesAsRuled, sendsAsRuled } from '../domain/refusals.js';
+import { checkGround, commitmentsAsRuled, swaysAsRolled, covertSendOnly, INVENTED_REFUSAL_NOTE, inventedRefusal, ownOperativeNamed, prizesAsRuled, sendsAsRuled } from '../domain/refusals.js';
 import { concessionBudget, withinBudget } from '../domain/leverage.js';
 import { callStructured } from './client.js';
 import { serializeArchetypes } from '../domain/assets.js';
@@ -1048,6 +1048,11 @@ export async function resolveAction(
     }
     // Prizes are the ruling's too: a thing is minted only of a kind the arbiter
     // named before the roll (intent-ops §4).
+    const swayed = swaysAsRolled(o.ops, check?.stat, check?.outcome);
+    if (swayed.dropped.length > 0) {
+      notes.push('A sway moves another power only on an influence check that worked: it came to nothing here.');
+      o = { ...o, ops: swayed.ops as ResolutionOutput['ops'] };
+    }
     const committed = commitmentsAsRuled(o.ops, priced.appraisal.establishes);
     if (committed.dropped.length > 0) {
       notes.push(

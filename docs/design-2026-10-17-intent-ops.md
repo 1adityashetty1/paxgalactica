@@ -465,21 +465,27 @@ the journal's `break_treaty` entries and the auto-break notes.
 
 ## Order of work
 
-1. **Paths and `OP_PATHS` (§7)**: everything after it can then use a reducer
-   guard keyed on the path, instead of a schema removal. It also closes the
-   reaction gaps: treaties, groundwork, prizes and doctrine.
-2. **`spawn_event` and `adjust_dissent`**: removals with no new mechanism, and
-   they close a leak.
-3. **`issue_order` → work intents and `move`**, with the bots converted and
-   programmes counted against yard capacity.
-4. **`adjust_credits` → `pay` / `spend`**: removes four inference rules; the
-   cap stays on declarations only.
-5. **`create_asset` → `yields`**: one field on the ruling.
-6. **`establish_commitment` → a named mechanism**: one closed field on the
-   ruling, and a correction pass.
-7. **`adjust_disposition` → `sway`, `regard` and `gift`**: last, because it moves
-   played boards and needs a played campaign before and after.
+All seven are built on `claude/intent-ops`, in this order, each verified by the
+suite, the three typechecks, a byte-identical replay of every saved campaign and
+the four harness boards:
 
-Each item gets its own journal version and `LegacyRules` flag. The old op stays
-in `OpSchema` so a campaign replays as it was played. Each item ends with the
-four harness boards and `pnpm fleetlab` unchanged, or with the change explained.
+1. ~~Paths and `OP_PATHS` (§7).~~ Done.
+2. ~~`spawn_event` and `adjust_dissent` (§6).~~ Done.
+3. ~~`issue_order` → work intents and `move` (§1).~~ Done, with programmes taking berths.
+4. ~~`adjust_credits` → `pay` / `spend` (§2).~~ Done.
+5. ~~`create_asset` → `yields` (§4).~~ Done.
+6. ~~`establish_commitment` → a named mechanism (§5).~~ Done, narrowed to `income` or `record`.
+7. ~~`adjust_disposition` → `sway`, `regard` and `gift` (§3).~~ Done; the played
+   measurement is still owed.
+
+All of it is journal version 25.
+
+**Not built, and why:**
+
+- **`refundDuplicateCharges` keyed on `for`** (§2): it works as before; making it
+  exact needs `for` to name an order id, which no model writes yet.
+- **Refusing a `promise_broken` regard after a priced breach between the same
+  pair** (§3): nothing records when a breach was charged, so the guard would
+  read the log's prose. The closed list leaves priced acts off instead.
+- **Enforcing a share or a contingency on an accord** (§5): the extraction
+  prompt teaches both; a check would have to read the commitment's text.

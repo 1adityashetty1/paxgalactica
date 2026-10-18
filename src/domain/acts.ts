@@ -185,3 +185,49 @@ export function breachCharges(
   const heat = p.heat > 0 && parties.length >= p.heatFrom ? p.heat : 0;
   return { regard, heat };
 }
+
+/* ------------------------------------------------------------------ */
+/* Regard written by a model, priced here (intent-ops §3)               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What an influence check that worked moves the other power's view of the actor
+ * by: the payoff of charm, propaganda and a state visit. Sized off what models
+ * wrote for it in the saved campaigns (median 5, quartiles 4 and 10). A failure
+ * moves nothing; offence is the offended power's to record, in its reaction.
+ */
+export const SWAY_BY_BAND = {
+  partial: 3,
+  success: 6,
+  critical_success: 10,
+} as const;
+
+/**
+ * Why a reacting power's view of another moves, and by how much. The model
+ * judges that it happened; the table says what it is worth — the division
+ * `classifyPrinciple` already makes. Sized off the reactions in the saved
+ * campaigns (coolings median 6, quartiles 4 and 10; warmings median 5,
+ * quartiles 3 and 6). No reason names an act the reducer already prices — an
+ * attack, a broken treaty, suborning, piracy — so nothing is charged twice.
+ */
+export const REGARD_BECAUSE = {
+  slight: -4,
+  insult: -8,
+  threat: -10,
+  /** A promise made in conversation and recorded nowhere — a broken treaty, loan or favour is priced already. */
+  promise_broken: -12,
+  deference: 3,
+  promise_kept: 5,
+  aid: 6,
+} as const;
+export type RegardReason = keyof typeof REGARD_BECAUSE;
+export const REGARD_REASONS = Object.keys(REGARD_BECAUSE) as RegardReason[];
+
+/** Credits a point of regard costs when it is bought, and the most one gift buys. */
+export const GIFT_RATE = 20;
+export const GIFT_MAX_REGARD = 10;
+
+/** What a gift of `credits` buys in the receiver's regard for the giver. */
+export function giftRegard(credits: number): number {
+  return Math.min(GIFT_MAX_REGARD, Math.floor(Math.max(0, credits) / GIFT_RATE));
+}

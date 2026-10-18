@@ -226,7 +226,7 @@ describe('a compulsion is a price, and the price is charged', () => {
       appraisal: appraisal({ breach: compulsionBreach }),
       resolution: {
         narrative: 'The tribute is agreed.',
-        ops: [{ op: 'adjust_disposition', factionId: 'ojjul', towardFactionId: 'freeworlds', delta: 5 }],
+        ops: [{ op: 'spend', factionId: 'freeworlds', amount: 30, for: 'the first instalment' }],
       },
     };
     const campaign = Campaign.start('freeworlds', 'test-compulsion');
@@ -238,7 +238,7 @@ describe('a compulsion is a price, and the price is charged', () => {
     expect(arkanis.dissent).toBe(COMPULSION_BREACH_DISSENT);
     // The order was carried out. That is the whole difference from a red line.
     const ops = outcome.ops as { op: string }[];
-    expect(ops.some((o) => o.op === 'adjust_disposition')).toBe(true);
+    expect(ops.some((o) => o.op === 'spend')).toBe(true);
   });
 });
 

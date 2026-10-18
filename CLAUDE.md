@@ -4043,6 +4043,32 @@ reducer sets the price. Neither half is resolution's to decide. And
 nothing further fires at the cap on purpose — the penalty there is already
 crippling, and a terminal state on top of it would charge twice for one decision.
 
+### Regard is judged by the model and priced by the table
+
+`docs/design-2026-10-17-intent-ops.md` §3, journal version 25. Narrated
+`adjust_disposition` was the largest model-written op in the saved campaigns —
+310 of them — and the reducer could bound its size but never its cause, so a
+narrated cooling for an attack charged the attack twice. A model now says why,
+and `acts.ts` says how much:
+
+- **A declaration writes `sway`** — the payoff of an influence check — and the
+  engine sizes it from the band (`swaysAsRolled`): 3 on a partial, 6 on a
+  success, 10 on a critical, nothing on another stat or a failure, one a power
+  per declaration. Sized off the declared warmings in the saves (median 5).
+- **A reaction writes `regard`** — its own view, for a reason from a closed
+  list: slight, insult, threat, a promise made in conversation and broken;
+  deference, a promise kept, aid. Each has a fixed size off the reactions in
+  the saves, and none names an act the reducer already prices. It warms as well
+  as cools, so a vocabulary of grievances does not ratchet the galaxy to war.
+- **Either may `gift`** — a payment that buys regard at 20 credits a point.
+- **An accord still narrates it** with `adjust_disposition`, held to the batch
+  cap and to a treaty's own goodwill, as below.
+
+**Not measured in play**: the harness never narrates, so its boards cannot
+move, and they do not. What it does to a played campaign — how warm the Rim
+stays, how often reactions go to war — is the next playtest's to read off the
+trace and the epilogue's standing table.
+
 ### Disposition needs you to be in the room
 
 `adjust_disposition` checked that both factions existed and differed, and
@@ -6836,7 +6862,10 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 |---|---|
 | `transfer_control` | **reducer-only** — absent from `ModelOpSchema` entirely |
 | `cheat` | **menu-only** — accepted from the `cheat` source alone, in batches of nothing else; see "A cheat menu" |
-| `adjust_disposition` | clamped to −100..100; self-disposition rejected |
+| `adjust_disposition` | clamped to −100..100; self-disposition rejected. **An accord's alone** from journal version 25 — a declaration writes `sway` or `gift`, a reaction `regard` or `gift` |
+| `sway` | an influence check that worked moves how `whom` sees the actor, by `SWAY_BY_BAND` (3, 6, 10). The engine sizes it; nothing on another stat or a failure |
+| `regard` | a reacting power's own view, by a reason from a closed list priced in `REGARD_BECAUSE` (slight −4 … broken promise −12; deference +3 … aid +6) |
+| `gift` | credits given, which buy the receiver's regard at `GIFT_RATE` (20 a point, 10 at most) |
 | `build_ships` | lay down hulls of a `hull` class at a world you hold (`systemId`, or your best); billed by tonnage and held to yard capacity. `programme: true` makes it a hidden yard programme at a named world, delivered on completion, counted against the same berths |
 | `suborn_crews` | turn `count` of another power's crews where they stand; presence and `subornLimit` |
 | `scuttle_ships` | strike off hulls of your own at a world; the named class first |
