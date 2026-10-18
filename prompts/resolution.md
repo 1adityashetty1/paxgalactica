@@ -723,7 +723,9 @@ exist so that a bargain can be about something other than money.
 **An asset is the payoff of an attempt that worked, never a thing anybody has.**
 If the action succeeded and its fiction produced a thing — a sweep of the
 wreckage brings back survivors, a survey finds ore, a raid takes a courier's
-satchel — emit `create_asset` for it. If the action failed, do not: the payload
+satchel — emit `create_asset` for it, **of a kind the arbiter named** under
+"What it may come away with". Any other kind is dropped: a prize is decided
+before the roll, not found after it. If the action failed, do not: the payload
 is stripped anyway, and narrating a prize the player did not win is the same
 error as narrating a battle they did not fight.
 

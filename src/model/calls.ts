@@ -40,7 +40,7 @@ import {
   type WorldState,
 } from '../domain/state.js';
 import { classifyPrinciple, classifyPrinciples } from '../domain/compulsions.js';
-import { checkGround, covertSendOnly, INVENTED_REFUSAL_NOTE, inventedRefusal, ownOperativeNamed, sendsAsRuled } from '../domain/refusals.js';
+import { checkGround, covertSendOnly, INVENTED_REFUSAL_NOTE, inventedRefusal, ownOperativeNamed, prizesAsRuled, sendsAsRuled } from '../domain/refusals.js';
 import { concessionBudget, withinBudget } from '../domain/leverage.js';
 import { callStructured } from './client.js';
 import { serializeArchetypes } from '../domain/assets.js';
@@ -986,6 +986,14 @@ export async function resolveAction(
             '',
           ]
         : []),
+      ...(priced.appraisal.yields && priced.appraisal.yields.length > 0 && check && check.outcome !== 'failure' && check.outcome !== 'critical_failure'
+        ? [
+            '### What it may come away with',
+            '',
+            `The arbiter ruled this attempt could yield: ${priced.appraisal.yields.map((y) => `\`${y}\``).join(', ')}. A \`create_asset\` of one of those kinds is yours to write if the narrative brings it back; any other kind is dropped.`,
+            '',
+          ]
+        : []),
       ...(priced.appraisal.establishes && check && check.outcome !== 'failure' && check.outcome !== 'critical_failure'
         ? [
             '### This action establishes something lasting',
@@ -1029,6 +1037,15 @@ export async function resolveAction(
         `An operative is sent only when the act is ruled covert: left out ${ruled.dropped.join(', ')}. Declare it as their mission.`,
       );
       o = { ...o, ops: ruled.ops as ResolutionOutput['ops'] };
+    }
+    // Prizes are the ruling's too: a thing is minted only of a kind the arbiter
+    // named before the roll (intent-ops §4).
+    const prized = prizesAsRuled(o.ops, priced.appraisal.yields ?? []);
+    if (prized.dropped.length > 0) {
+      notes.push(
+        `A prize comes only of what the attempt was ruled able to yield: left out ${[...new Set(prized.dropped)].join(', ')}.`,
+      );
+      o = { ...o, ops: prized.ops as ResolutionOutput['ops'] };
     }
     if (checkOp) return { ...o, ops: [checkOp, ...o.ops] };
     const sent = covertSendOnly(o.ops);

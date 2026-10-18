@@ -2193,6 +2193,8 @@ export const AppraisalSchema = z.object({
    * is exclusive; the reducer enforces it.
    */
   establishes: EstablishesSchema.optional(),
+  /** The prizes the overt part could yield, named before the roll. See `OvertPartSchema.yields`. */
+  yields: z.array(z.string()).optional(),
   /**
    * Read off a `DeclaredRulingSchema` ruling: whether the act has an overt part
    * (which is rolled), which of the actor's operatives that part involves, and
@@ -2245,6 +2247,13 @@ export const OvertPartSchema = z.object({
   /** The acting power's own operatives this part involves, by name. Usually none. */
   involves: z.array(z.string().min(1).max(60)).max(4).default([]),
   establishes: EstablishesSchema.optional(),
+  /**
+   * The kinds of thing this part could come away with if it works — `salvage`,
+   * `prisoners`, `dossier` — named BEFORE the roll. A prize is minted only of a
+   * kind named here, sized by the band; empty for nearly every act
+   * (intent-ops §4).
+   */
+  yields: z.array(z.string().regex(/^[a-z][a-z0-9_]*$/)).max(4).default([]),
 });
 export const CovertPartSchema = z.object({
   kind: z.literal('covert'),
@@ -2389,6 +2398,7 @@ export function rulingToAppraisal(value: unknown): Appraisal {
     overt: overt !== undefined,
     ...(overt ? { stat: overt.stat, difficulty: overt.difficulty, involves: overt.involves } : {}),
     ...(overt?.establishes ? { establishes: overt.establishes } : {}),
+    ...(overt?.yields && overt.yields.length > 0 ? { yields: overt.yields } : {}),
     ...(covert.length > 0
       ? {
           covert: covert.map((c) => ({

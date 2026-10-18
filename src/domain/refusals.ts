@@ -113,6 +113,31 @@ export function sendsAsRuled(
 }
 
 /**
+ * Prizes are the ruling's, as sends are: a resolution call may mint a thing only
+ * of a kind the arbiter named in the overt part's `yields`, before the roll. A
+ * prize invented after the roll, by the pass with every reason to be generous,
+ * was how routine court acts at DC 5 produced sellable charts and contraband
+ * (playtest 2026-10-15, A10). The band still sizes it (`boundPayloadsToOutcome`).
+ */
+export function prizesAsRuled(
+  ops: readonly unknown[],
+  yields: readonly string[],
+): { ops: unknown[]; dropped: string[] } {
+  const named = new Set(yields);
+  const kept: unknown[] = [];
+  const dropped: string[] = [];
+  for (const op of ops) {
+    const o = op as { op?: string; kind?: string } | null;
+    if (o?.op === 'create_asset' && !named.has(o.kind ?? '')) {
+      dropped.push(o.kind ?? 'a thing');
+      continue;
+    }
+    kept.push(op);
+  }
+  return { ops: kept, dropped };
+}
+
+/**
  * The actor's own operative a piece of text names, by family name, or null.
  * Family names are unique per campaign, so a match is that operative.
  */

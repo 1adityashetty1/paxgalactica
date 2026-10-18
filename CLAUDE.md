@@ -2380,10 +2380,20 @@ could be invented at all.
 
 | origin | how |
 |---|---|
-| a successful attempt | `create_asset` from the resolution pass, stripped by `boundPayloadsToOutcome` on a failure and **halved** on a partial — an asset has a magnitude, unlike an operative, who is placed or is not |
+| a successful attempt | `create_asset` from the resolution pass, **only of a kind the arbiter named in the overt part's `yields` before the roll** (journal version 25), stripped by `boundPayloadsToOutcome` on a failure and **halved** on a partial — an asset has a magnitude, unlike an operative, who is placed or is not |
 | a fixture | only a `found_fixture` **programme** — `create_asset` refuses any stat yield; see "A fixture is infrastructure" |
 | a world changing hands | anything with that `atSystemId` goes with it |
 | **the seed** | nine, authored — four cargo (one per power except the Combine) and five split fixtures (one apiece) |
+
+**A prize is named before the roll** (`docs/design-2026-10-17-intent-ops.md`
+§4). Routine court acts at DC 5 came back with sellable charts, contraband and
+dossiers on a critical success (playtest 2026-10-15, A10): the prize was
+invented after the dice, by the pass with every reason to be generous. The
+arbiter's overt part now carries `yields` — the kinds of thing the attempt could
+bring back, empty for nearly every act — and `prizesAsRuled` drops any
+`create_asset` of another kind, the way `sendsAsRuled` drops a send nobody
+ruled. A reaction may not write `create_asset` at all (`OP_PATHS`), having no
+ruling. What a battle yields is still only its captured officers.
 
 `create_asset` is refused from an **accord** (`declared_only`): a conversation
 trades what exists and cannot conjure what does not. It is also refused when the

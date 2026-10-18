@@ -17,7 +17,8 @@ Every ruling is exactly one of three kinds, named in `kind`:
 - **`act`** — the action goes ahead, as a list of `parts`. Each part is one of:
   - **`overt`** — open work, rolled once: `what` it does, the `stat` it tests,
     its `difficulty`, a `rationale`, the acting power's own operatives it
-    `involves` (almost always none), and anything it `establishes`. At most one.
+    `involves` (almost always none), anything it `establishes`, and the kinds
+    of thing it `yields` if it works (almost always none). At most one.
   - **`covert`** — an operative's mission: sent, never rolled here (section 3b).
   - **`groundwork`** — an operative getting into position for a later act.
   - **`unexpressed`** — an outcome no mission produces yet, in one sentence.
@@ -376,6 +377,20 @@ blockade, a decree, a public bribe paid across a table in a channel. The test is
 whether the act depends on somebody working *unacknowledged* inside another
 power's space. And an overt part never `involves` the acting power's own
 operative: if one of them does it, it is covert.
+
+## 3c. What could it come away with?
+
+Name it before the roll, in the overt part's `yields`: the kinds of thing the
+attempt could bring back if it works, from the asset catalogue — `salvage` from
+a sweep of a battlefield, `ore` from a survey, `prisoners` from a boarding,
+`dossier` from a raid on a registry. **Almost every act yields nothing**: a
+stipend, an appointment, a decree, a fortification, an envoy or a fleet sailing
+comes back with no prize, and its `yields` is empty. Resolution may mint a
+thing only of a kind named here, and the roll decides how much of it; a prize
+named after the dice is the one an attempt never earned.
+
+Never name a person (`officer`, `operative`, a notable) or a fixture here: a
+person is taken by an operation or a battle, and a fixture is built.
 
 ## 4. What does it establish?
 
