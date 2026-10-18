@@ -60,9 +60,18 @@ leaves a faction with nobody following it.
 
 | op | use |
 |---|---|
-| `issue_order` | anything that takes time — see Duration |
+| `move` | ships of yours go somewhere — your own world, a rival's, ground nobody holds — see Fleets |
+| `fortify` | raise a world's garrison **ceiling** (`magnitude` 1..3) — see What work delivers |
+| `raise_garrison` | raise troops on a world now, up to its ceiling (`magnitude` 1..5) |
+| `develop` | develop a world (`magnitude` 1..2); at 7 it becomes a trade hub |
+| `found_fixture` | raise a fixture of a catalogue `kind` on a world you hold |
+| `repair_fixture` | mend sabotage damage on a fixture (`kind`, `magnitude` 1..2) |
+| `send_envoy` | court a world — one you hold, or an independent one you border or orbit |
+| `blockade` | close every lane through a world your fleet sits over |
+| `raid` | raid the shipping through a world, from a fleet on it or a jump out; `dark` runs it unowned |
+| `sweep` | counter-intelligence on a world of your own |
 | `adjust_disposition` | how another power sees **you** moves — `factionId` is theirs, `towardFactionId` is yours. Never your own view of them |
-| `build_ships` | lay down new hulls of your own, now, at a world you hold |
+| `build_ships` | lay down new hulls of your own, now, at a world you hold — or, with `programme: true`, as a hidden yard programme delivered later |
 | `adjust_credits` | money spent or earned |
 | `suborn_crews` | another power's crews change sides where they stand — see Suborning |
 | `scuttle_ships` | strike off hulls of your own at a world |
@@ -112,7 +121,7 @@ leaves a faction with nobody following it.
 | `log_narrative` | a note for the event log |
 
 `transfer_control` is **not available to you.** A system changes hands only when
-a `fleet_movement` order physically arrives.
+a fleet you `move` physically arrives.
 
 `form_treaty` and `establish_debt` are **not available to you either**, for the
 same class of reason: both bind a power that is not the actor, and nobody in
@@ -153,12 +162,10 @@ risk exposure and are capped, and they are the only ones there is.
 
 **A commitment is an arrangement; a fixture is a programme.** If the thing
 built is a *physical installation standing on a world* — a factory, a
-university, a hospital, a power plant, an exchange floor — it is an
-`issue_order` of type `construction_infrastructure`, `industrial_conversion` or
-`retooling` carrying `onComplete: {kind: "found_fixture", magnitude: 1,
-fixtureKind: "<a kind from the catalogue>"}`. It is NOT `create_asset`, which
-refuses a fixture outright, and NOT an `establish_commitment` with
-`incomePerTurn`.
+university, a hospital, a power plant, an exchange floor — it is a
+`found_fixture` on that world, naming its `kind` from the catalogue. It is NOT
+`create_asset`, which refuses a fixture outright, and NOT an
+`establish_commitment` with `incomePerTurn`.
 
 The engine holds it to rules you should honour rather than discover:
 
@@ -177,8 +184,7 @@ The engine holds it to rules you should honour rather than discover:
   `might`. Do not hand one out as a byproduct of an attempt that was about
   something else: an influence check that charms a governor does not found a
   foundry. A partial founds nothing either, because a fixture is one thing or
-  none. In every refused case the order still goes out — the ground is broken
-  and the programme runs — it simply raises nothing.
+  none, and neither does a failure: the work is never started.
 
 It costs 120 credits at issue and adds to a running bill every turn, and each
 one a power runs costs more to keep than the last. So a power with many is
@@ -202,9 +208,9 @@ commitment. A purely political arrangement leaves both out.
 ## Fleets
 
 A faction's navy **is** the ships in its systems plus whatever is in transit;
-there is no abstract strength. A `fleet_movement` order commits a stated force
-drawn from the origin: **always set `force`**. Omitting it sends everything
-there, which is rarely meant.
+there is no abstract strength. A `move` commits a stated force drawn from the
+origin: **always set `force`**. Omitting it sends everything there, which is
+rarely meant.
 
 ### Ships come in classes, and a fleet is composed
 
@@ -244,14 +250,20 @@ which ships absorb it changes.
 
 **Ships change through four ops and nothing else.** `build_ships` lays down
 new hulls (`hull`, `count`, and `systemId` for a world you hold — omitted, your
-best one). A `fleet_movement` order moves them, with `force` either a plain
-count, which draws proportionally from what is berthed, or a composition:
+best one). A `move` sends them, with `force` either a plain count, which draws
+proportionally from what is berthed, or a composition:
 `"force": { "battleship": 8, "lifter": 4 }`. `suborn_crews` turns a rival's
 crews and `scuttle_ships` strikes off your own. There is no op that adds or
-removes ships by arithmetic. A move is always a `fleet_movement`, whatever its
-length: one jump between two worlds the power holds, with no rival's ships over
-the target, lands at once, and anything else sails a turn a jump and is settled
+removes ships by arithmetic. A move is always a `move`, whatever its length:
+one jump between two worlds the power holds, with no rival's ships over the
+target, lands at once, and anything else sails a turn a jump and is settled
 when it arrives. The reducer decides which; you only say where the ships go.
+
+**A yard programme is a `build_ships` with `programme: true`** and a named
+`systemId`: the hulls are paid for now, built out of sight, and delivered when
+it completes — a battleship in 5 turns, a lighter hull in 2. It counts against
+the same yards as an open build, and a world lost before it completes takes the
+hulls with it.
 
 Ordering more than the treasury covers is not rejected — the yards deliver what
 was paid for and the rest is trimmed, and you are told. A power that cannot
@@ -264,7 +276,7 @@ fight on their own, but they sail with it, command the battle they are at, and
 go down with it. Your state block lists every officer you have and where they
 stand, and every world lists the officers beside its hulls.
 
-To send one with a fleet, name them in the movement's **`officers`**: a family
+To send one with a fleet, name them in the `move`'s **`officers`**: a family
 name is enough (`["Galba"]`), and a fleet can carry several. They must be
 standing at the fleet's origin; one who is not stays behind and the reducer says
 so. When you send the **whole port** — no `force` — everyone standing there
@@ -304,13 +316,13 @@ reducer when a fleet actually arrives. **This is true regardless of the
 outcome you were handed.** A `critical_failure` on an attack does not mean the
 attack happened and went badly — it means the order goes out badly: late,
 mistimed, poorly briefed, visible to the enemy. Narrate *that*, and still emit
-the `fleet_movement`.
+the `move`.
 
 Concretely, when the action is an attack, a raid, or any move against another
 power's system:
 
-- Emit `issue_order` with `type: "fleet_movement"`. That is the whole
-  mechanical content of the action.
+- Emit a `move` to the target. That is the whole mechanical content of the
+  action.
 - **Never** narrate ships destroyed, a fleet mauled, a landing thrown back, a
   world taken or held. None of that has happened yet and you cannot know it.
 - **Never** emit an op that takes ships away to represent battle losses, on
@@ -367,10 +379,10 @@ Two ways to attack an economy without a battle, **both needing real ships**:
 
 - **`blockade`** severs every lane through a system and must sit **on** it. It
   closes for the blockader's own trade too.
-- **`commerce_raiding`** diverts transiting trade and only needs a squadron
-  **within one jump** — which is what lets a weak power prey on a strong one.
+- **`raid`** diverts transiting trade and only needs a squadron **within one
+  jump** — which is what lets a weak power prey on a strong one.
 
-**A raid can be run dark** — `"dark": true` on the `commerce_raiding` order,
+**A raid can be run dark** — `"dark": true` on the `raid`,
 when the leader asks to raid without colours, quietly, unclaimed. Nobody else
 is told whose it is: no standing is lost and no heat run while it stays dark,
 but it takes **half the prizes**, and every power it robs may trace it each
@@ -535,81 +547,66 @@ contested against the resolve that power started with, and more, so it rarely
 succeeds against a resolute power's homeland. What it buys is the force the
 holder needs to keep the world down, and in the end a rising.
 
-## Duration — two sources, never mixed
+## Duration — the reducer's, unless you say otherwise
 
-**Fleet movement is not estimated.** Emit `type: "fleet_movement"` and **omit
-`durationTurns`**; the reducer computes one turn per jump, or lands a one-jump
-move inside the power's own territory at once, and discards anything you
-supply.
+**A move is not estimated.** The reducer computes one turn per jump, or lands a
+one-jump move inside the power's own territory at once.
 
-**Everything else you estimate**: pick the `type` that fits the work and set
-`durationTurns` to **1, 2, 3, or 5**. Nothing takes longer than 5. One clause in
-`durationRationale`. Categories: `courier`, `decree`, `political_maneuver`,
-`espionage`, `counter_intelligence`, `blockade`, `commerce_raiding`,
-`treaty_ratification`, `garrison_raising`, `fortification`, `refit`,
-`retooling`, `construction_infrastructure`, `capital_ship_construction`,
-`industrial_conversion`. Some have code-enforced minimums and are clamped up.
+**Work runs for its kind's own time** unless you set `durationTurns` to one of
+1, 2, 3 or 5 — nothing takes longer than 5 — with one clause in
+`durationRationale`. A
+kind has a floor the reducer clamps up to: a fortification or a development 3
+turns, a garrison raised 2, a fixture 3, an envoy 2, a blockade, a raid or a
+sweep 2, a battleship programme 5 and a lighter hull's 2. Leave it out and the
+floor is what the work takes.
 
 Set `visibility` to the faction ids who would plausibly notice — covert work
 usually nobody. Visibility is what makes long projects raidable. Set
 `interruptible` and `onInterrupt` (`cancel`, `partial`, `persist`) to match the
-work.
+work: `partial` refunds the unspent share of what was paid if the work is
+stopped. Give every piece of work a short `label` — it is what the Orders panel
+and the log call it.
 
-### What the order delivers — `onComplete`
+### What work delivers
 
-An order with no `onComplete` runs its duration and **changes nothing**. That is
-right for a courier run or a decree, and wrong for a shipyard: if the player is
-building, mining, developing, levying or fortifying, the payload is the whole
-point of the action. Set it, or the work was theatre.
+Every piece of work is its payload. It is **paid for when it starts**, and a
+failed attempt starts nothing and pays nothing; a partial one delivers half.
 
-`onComplete` is `{kind, magnitude, summary}`. Seven kinds, each legal only on the
-order types listed:
-
-| kind | does | allowed on |
+| op | does | magnitude |
 |---|---|---|
-| `develop_system` | +1..2 `strategicValue` — permanent income, and at 7 the world becomes a **trade hub** | `construction_infrastructure`, `industrial_conversion`, `retooling` |
-| `raise_garrison` | +1..5 garrison now, up to the world's ceiling | `garrison_raising`, `fortification` |
-| `fortify` | +1..3 to the garrison **ceiling** | `fortification`, `construction_infrastructure` |
-| `commission_ships` | hulls delivered at the target on completion | `capital_ship_construction` for battleships; `refit` or `retooling` for every lighter class |
-| `found_fixture` | a fixture raised on the world — name it with `fixtureKind`; always magnitude 1 | `construction_infrastructure`, `industrial_conversion`, `retooling` |
-| `repair_fixture` | 1..2 points of sabotage damage taken off a fixture on a world you hold — name it with `fixtureKind`, or leave it blank for the most damaged | `construction_infrastructure`, `industrial_conversion`, `retooling` |
-| `court` | an **envoy**: magnitude 2 lifts the world's standing with the sender by 10 plus its influence modifier; on a world the sender holds, or one that answers to nobody that it holds a neighbour of or has ships over | `political_maneuver` |
+| `develop` | +strategic value — permanent income, and at 7 the world becomes a **trade hub** | 1..2 |
+| `raise_garrison` | garrison up now, to the world's ceiling | 1..5 |
+| `fortify` | the garrison **ceiling** up | 1..3 |
+| `found_fixture` | a fixture raised on the world — name it with `kind` | always one |
+| `repair_fixture` | sabotage damage taken off a fixture on a world you hold — name it with `kind`, or leave it out for the most damaged | 1..2 |
+| `send_envoy` | the world's standing with the sender up by 5 a point plus its influence modifier; on a world the sender holds, or one that answers to nobody that it holds a neighbour of or has ships over | 2 |
+| `build_ships` with `programme: true` | hulls of a `hull` class delivered at `systemId` on completion | `count` |
 
-**A ship programme's type follows its hull.** A battleship is the only capital
-hull: lay it down as `capital_ship_construction`, which takes 5 turns. Escorts,
-torpedo boats, lifters, freighters and listeners come off the slips as a
-`refit` (2 turns), or a `retooling` (3) if the yard has to be converted first.
-The reducer re-files a programme put under the wrong one and says so.
+Prices: hulls by displacement at 15 a ton (60 for a battleship, 45 for a
+lifter, freighter or listener, 30 for an escort or torpedo boat), 45 a point of
+garrison ceiling, 15 a garrison point, 120 for a fixture, 20 a point of envoy.
+`develop` is priced from what it is worth on that particular world — twelve
+turns of the income it would create — so improving an ordinary world is cheap
+and founding a **trade hub** costs a large fraction of a treasury. You do not
+calculate this; the reducer does, and tells you the figure if the treasury
+cannot cover it. Ask for more than the cap or more than the treasury holds and
+it is trimmed, not rejected.
 
-It is **paid for when the order is issued**: hulls by displacement at 15 a ton
-(so 60 for a battleship, 45 for a lifter, freighter or listener, 30 for an
-escort or torpedo boat —
-name the class with `hull`), 45 a point of garrison ceiling, 15 a garrison
-point, 120 for a fixture, 20 a point of envoy. `develop_system` is priced from what it
-is worth on that particular world — twelve turns of the income it would create —
-so improving an ordinary world is cheap and founding a **trade hub** costs a
-large fraction of a treasury. You do not calculate this; the reducer does, and
-tells you the figure if the treasury cannot cover it.
+The world named in `systemId` is where the work happens, and the faction must
+**hold it or have ships over it** — you cannot build on a rival's world by
+declaring it. Infrastructure survives a change of ownership and then serves
+whoever holds the world; levies and hulls do not.
 
-Ask for more than the cap or more than the treasury holds and it is trimmed, not
-rejected. Over-asking is therefore safe; **forgetting it entirely is what makes
-the action pointless.**
-
-`targetId` is the world the work happens on, and the faction must **hold it or
-have ships over it** — you cannot build on a rival's world by declaring it.
-Infrastructure survives a change of ownership and then serves whoever holds the
-world; levies and hulls do not.
-
-The other order types — `courier`, `decree`, `espionage`,
-`counter_intelligence`, `blockade`, `commerce_raiding`, `treaty_ratification` —
-take no payload: their effect is the agent, the treaty or the interdiction
-itself, and a payload on them is rejected.
+**There is no work that does nothing.** A courier run, a decree, a speech, a
+manoeuvre in a ministry: if it has no mechanism, it is a `log_narrative`, not a
+programme. A covert operation is an operative's (`deploy_agent`), and a treaty
+waiting on ratification is negotiated in a channel.
 
 ### What a world thinks of you
 
 Every world has a **standing** with every power, shown on its `people:` line in
-the state block. Nothing you write moves it except the order above; it moves
-in the tick, from what powers actually do:
+the state block. Nothing you write moves it except the work above; it moves in
+the tick, from what powers actually do:
 
 - A world **wants** one thing, read off its ground: arms (a `fortify` paid for
   there), trade (your freighters over it, its lanes open), development (a
@@ -631,10 +628,9 @@ in the tick, from what powers actually do:
   asks for that outright, narrate the attempt and emit the envoy or the works
   that would actually move it.
 
-A `counter_intelligence` programme on a world the power holds is a **sweep**,
-read while it runs: every rival's intel on the power fades faster, and a rival
-operative working that world is likelier to be caught. Issue it on the world
-being swept — origin and target the same.
+A **`sweep`** on a world the power holds is counter-intelligence, read while it
+runs: every rival's intel on the power fades faster, and a rival operative
+working that world is likelier to be caught.
 
 ## Changing doctrine
 

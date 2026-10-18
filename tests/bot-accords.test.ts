@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { asOrders } from './orders.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import {
@@ -118,7 +119,7 @@ describe('the covert half of a war', () => {
   it('sends a saboteur at an enemy\'s fixtures, recruited and sent in one batch', () => {
     // The Vigil is at war with Drajk, whose plant stands at Tulgarn.
     const s = createSeedState('meridian');
-    const ops = proposeFor(s, 'vigil')!.ops;
+    const ops = asOrders(proposeFor(s, 'vigil')!.ops);
     const recruit = ops.find((o) => o.op === 'recruit_agent');
     const sent = ops.find((o) => o.op === 'deploy_agent');
     expect(recruit).toBeDefined();
@@ -130,7 +131,7 @@ describe('the covert half of a war', () => {
   it('keeps a reserve, so covert war never eats the navy\'s money', () => {
     const s = createSeedState('meridian');
     s.factions.find((f) => f.id === 'vigil')!.credits = BOT_SABOTEUR_RESERVE - 1;
-    const ops = proposeFor(s, 'vigil')?.ops ?? [];
+    const ops = asOrders(proposeFor(s, 'vigil')?.ops ?? []);
     expect(ops.some((o) => o.op === 'deploy_agent' && o.mission === 'sabotage')).toBe(false);
   });
 
@@ -138,13 +139,13 @@ describe('the covert half of a war', () => {
     const s = createSeedState('meridian');
     // Meridian is at war with nobody on the opening board.
     expect(warsFor(s, 'meridian')).toEqual([]);
-    expect((proposeFor(s, 'meridian')?.ops ?? []).some((o) => o.op === 'deploy_agent' && o.mission === 'sabotage')).toBe(false);
+    expect((asOrders(proposeFor(s, 'meridian')?.ops ?? [])).some((o) => o.op === 'deploy_agent' && o.mission === 'sabotage')).toBe(false);
   });
 
   it('mends what a saboteur broke', () => {
     const s = createSeedState('meridian');
     s.assets.find((a) => a.kind === 'power_plant')!.damage = 2;
-    const ops = proposeFor(s, 'drajk')?.ops ?? [];
+    const ops = asOrders(proposeFor(s, 'drajk')?.ops ?? []);
     expect(ops.find((o) => (o.onComplete as { kind?: string } | undefined)?.kind === 'repair_fixture')).toMatchObject({
       targetId: 'ark-5',
       onComplete: { kind: 'repair_fixture', magnitude: 2, fixtureKind: 'power_plant' },
@@ -158,7 +159,7 @@ describe('the leverage the bots reach for', () => {
     // Pile the Combine's fleet high enough that a neighbour must give way.
     const home = s.systems.filter((x) => x.controllerFactionId === 'ojjul').sort((a, b) => b.strategicValue - a.strategicValue)[0]!;
     home.ships.ojjul = { ...(home.ships.ojjul ?? {}), battleship: 200 };
-    const ops = proposeFor(s, 'ojjul')?.ops ?? [];
+    const ops = asOrders(proposeFor(s, 'ojjul')?.ops ?? []);
     expect(ops.find((o) => o.op === 'issue_ultimatum')).toMatchObject({ demand: 'tribute', deadlineTurns: 3 });
   });
 
@@ -166,12 +167,12 @@ describe('the leverage the bots reach for', () => {
     const s = createSeedState('freeworlds');
     const home = s.systems.filter((x) => x.controllerFactionId === 'vigil')[0]!;
     home.ships.vigil = { ...(home.ships.vigil ?? {}), battleship: 200 };
-    expect((proposeFor(s, 'vigil')?.ops ?? []).some((o) => o.op === 'issue_ultimatum')).toBe(false);
+    expect((asOrders(proposeFor(s, 'vigil')?.ops ?? [])).some((o) => o.op === 'issue_ultimatum')).toBe(false);
   });
 
   it('keeps a watcher on the power it trusts least', () => {
     const s = createSeedState('freeworlds');
-    const ops = proposeFor(s, 'meridian')?.ops ?? [];
+    const ops = asOrders(proposeFor(s, 'meridian')?.ops ?? []);
     const sent = ops.find((o) => o.op === 'deploy_agent' && o.mission === 'surveillance');
     expect(sent).toBeDefined();
     // Meridian trusts the Vigil least on the opening board (−55).
@@ -190,7 +191,7 @@ describe('the leverage the bots reach for', () => {
     const debt = s.debts.find((d) => d.debtorFactionId === 'drajk')!;
     expect(debt.status).toBe('delinquent');
     s.assets.push({ ...file('drajk'), secret: { kind: 'default', subject: 'drajk', ref: debt.id } });
-    const ops = proposeFor(s, 'vigil')?.ops ?? [];
+    const ops = asOrders(proposeFor(s, 'vigil')?.ops ?? []);
     // The Vigil is at war with Drajk.
     expect(ops.find((o) => o.assetId === 'ast-p-drajk')?.op).toBe('publish_dossier');
   });

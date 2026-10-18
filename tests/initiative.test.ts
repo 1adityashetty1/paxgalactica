@@ -1,4 +1,5 @@
 import { addShipsAt, setShipsAt, stackAt } from '../src/domain/state.js';
+import { asOrders } from './orders.js';
 import { HULL_CLASSES, battleshipEquivalents, carryOf, type ShipStack } from '../src/domain/hulls.js';
 import { describe, expect, it } from 'vitest';
 import { createSeedState } from '../src/seed/scenario.js';
@@ -28,7 +29,7 @@ function quietCampaign(turns: number): { state: WorldState; npcVsNpc: number } {
       if (f.id === s.playerFactionId) continue;
       const p = proposeFor(s, f.id);
       if (!p) continue;
-      for (const op of p.ops) {
+      for (const op of asOrders(p.ops)) {
         if (op.op !== 'issue_order' || op.type !== 'fleet_movement') continue;
         const holder = s.systems.find((x) => x.id === op.targetId)?.controllerFactionId;
         if (holder && holder !== f.id && holder !== s.playerFactionId) npcVsNpc++;
@@ -100,7 +101,7 @@ describe('a doctrine is not a licence', () => {
     let attack: Record<string, unknown> | undefined;
     for (let t = 0; t < 12 && !attack; t++) {
       const p = proposeFor(s, 'vigil');
-      attack = p?.ops.find((o) => o.op === 'issue_order' && o.type === 'fleet_movement');
+      attack = asOrders(p?.ops ?? []).find((o) => o.op === 'issue_order' && o.type === 'fleet_movement');
       if (attack) break;
       if (p) s = applyOps(s, p.ops, 'model', 'vigil', true).state;
       s = tickTurn(s).state;
@@ -112,7 +113,7 @@ describe('a doctrine is not a licence', () => {
     expect(bound.treaties).toHaveLength(1);
 
     const after = proposeFor(bound, 'vigil');
-    const stillAttacks = (after?.ops ?? []).some(
+    const stillAttacks = asOrders(after?.ops ?? []).some(
       (o) => o.op === 'issue_order' && o.type === 'fleet_movement' && o.targetId === attack!.targetId,
     );
     expect(stillAttacks).toBe(false);
@@ -125,7 +126,7 @@ describe('a doctrine is not a licence', () => {
     let s = seed();
     for (let t = 0; t < 12; t++) {
       const p = proposeFor(s, 'vigil');
-      const attack = p?.ops.find((o) => o.op === 'issue_order' && o.type === 'fleet_movement');
+      const attack = asOrders(p?.ops ?? []).find((o) => o.op === 'issue_order' && o.type === 'fleet_movement');
       if (attack) {
         const victim = s.systems.find((x) => x.id === attack.targetId)!.controllerFactionId!;
         const bound = pactBetween(s, 'vigil', victim, 'ceasefire');
@@ -156,7 +157,7 @@ describe('a doctrine is not a licence', () => {
     let attack: Record<string, unknown> | undefined;
     for (let t = 0; t < 12 && !attack; t++) {
       const p = proposeFor(s, 'vigil');
-      attack = p?.ops.find((o) => o.op === 'issue_order' && o.type === 'fleet_movement');
+      attack = asOrders(p?.ops ?? []).find((o) => o.op === 'issue_order' && o.type === 'fleet_movement');
       if (attack) break;
       if (p) s = applyOps(s, p.ops, 'model', 'vigil', true).state;
       s = tickTurn(s).state;
@@ -197,7 +198,7 @@ describe('a doctrine is not a licence', () => {
     let s = seed();
     for (let t = 0; t < 12; t++) {
       const p = proposeFor(s, 'vigil');
-      const attack = p?.ops.find((o) => o.op === 'issue_order' && o.type === 'fleet_movement');
+      const attack = asOrders(p?.ops ?? []).find((o) => o.op === 'issue_order' && o.type === 'fleet_movement');
       if (attack) {
         const victim = s.systems.find((x) => x.id === attack.targetId)!.controllerFactionId!;
         // The Vigil thinks well of EVERYONE, and one of them is at war with it
@@ -378,7 +379,7 @@ describe('lift is carried, not counted as strength', () => {
       const staging = s.systems.find((x) => x.id === 'tor-3')!;
       setShipsAt(staging, 'vigil', 6);
       if (lifters > 0) addShipsAt(staging, 'vigil', lifters, 'lifter');
-      return (proposeFor(s, 'vigil')?.ops ?? []).some(
+      return (asOrders(proposeFor(s, 'vigil')?.ops ?? [])).some(
         (op: Record<string, unknown>) =>
           op.op === 'issue_order' && op.type === 'fleet_movement',
       );
@@ -394,7 +395,7 @@ describe('lift is carried, not counted as strength', () => {
     const s = createSeedState('freeworlds', { regard: false });
     // Every bot, and every world it proposes to attack.
     for (const me of ['meridian', 'vigil', 'ojjul', 'freeworlds', 'drajk']) {
-      const ops = ((proposeFor(s, me)?.ops ?? []) as Record<string, unknown>[]).filter(
+      const ops = ((asOrders(proposeFor(s, me)?.ops ?? [])) as Record<string, unknown>[]).filter(
         (op) => op.op === 'issue_order' && op.type === 'fleet_movement',
       ) as unknown as { force: ShipStack; targetId: string }[];
       for (const op of ops) {
@@ -422,7 +423,7 @@ describe('the bots field composed navies', () => {
     let s = createSeedState('freeworlds');
     for (let t = 0; t < turns; t++) {
       for (const id of ['freeworlds', 'ojjul', 'drajk', 'meridian', 'vigil']) {
-        const ops = proposeFor(s, id)?.ops ?? [];
+        const ops = asOrders(proposeFor(s, id)?.ops ?? []);
         if (ops.length > 0) s = applyOps(s, ops as never[], 'model', id).state;
       }
       s = tickTurn(s).state;

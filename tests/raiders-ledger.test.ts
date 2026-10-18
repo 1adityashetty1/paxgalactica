@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { asOrders } from './orders.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import {
@@ -35,7 +36,7 @@ const contract = (s: WorldState, parties: [string, string], terms: Record<string
 
 /** Drajk raiding Oridin, the Combine's junction, with the raid under way. */
 function raiding(s = createSeedState('meridian')): WorldState {
-  const raid = proposeFor(s, 'drajk')!.ops.find((o) => o.type === 'commerce_raiding')!;
+  const raid = asOrders(proposeFor(s, 'drajk')!.ops).find((o) => o.type === 'commerce_raiding')!;
   s = applyOps(s, [raid], 'model', 'drajk').state;
   return tickTurn(s, calm).state;
 }
@@ -122,7 +123,7 @@ describe('protection', () => {
     expect(routeEarnings(s).raidedFrom.drajk?.ojjul ?? 0).toBe(0);
     expect(runsBlockade(s, 'ojjul', ['drajk'])).toBe(true);
     // And a bot keeps its word: no raid on the power it protects.
-    const ops = proposeFor(s, 'drajk')?.ops ?? [];
+    const ops = asOrders(proposeFor(s, 'drajk')?.ops ?? []);
     const raids = ops.filter((o) => o.type === 'commerce_raiding');
     expect(raids.every((o) => s.systems.find((x) => x.id === o.targetId)?.controllerFactionId !== 'ojjul')).toBe(true);
   });
@@ -215,7 +216,7 @@ describe('the bots', () => {
     const s = createSeedState('freeworlds');
     s.factions.find((f) => f.id === 'meridian')!.disposition.vigil = -90;
     s.factions.find((f) => f.id === 'vigil')!.disposition.meridian = -90;
-    const ops = proposeFor(s, 'meridian')?.ops ?? [];
+    const ops = asOrders(proposeFor(s, 'meridian')?.ops ?? []);
     expect(ops.find((o) => o.op === 'post_bounty')).toMatchObject({ targetFactionId: 'vigil' });
   });
 });

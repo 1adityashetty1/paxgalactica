@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { asOrders } from './orders.js';
 import { applyOps, tickTurn, type LegacyRules } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { TRUCE_FLOOR, warsFor, type WorldState } from '../src/domain/state.js';
@@ -170,7 +171,7 @@ describe('breaking a truce', () => {
     let target: string | undefined;
     for (let t = 0; t < 20 && !target; t++) {
       const p = proposeFor(s, 'vigil');
-      const hit = p?.ops.find(
+      const hit = asOrders(p?.ops ?? []).find(
         (o) =>
           o.op === 'issue_order' &&
           o.type === 'fleet_movement' &&
@@ -186,7 +187,7 @@ describe('breaking a truce', () => {
     expect(target, 'the Vigil never reached for a Drajk world in 20 turns').toBeDefined();
 
     const after = proposeFor(withTruce(s, 'vigil', 'drajk'), 'vigil');
-    const still = (after?.ops ?? []).some(
+    const still = asOrders(after?.ops ?? []).some(
       (o) => o.op === 'issue_order' && o.type === 'fleet_movement' && o.targetId === target,
     );
     expect(still).toBe(false);

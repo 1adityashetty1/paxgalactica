@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { asOrders } from './orders.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { applyOps, tickTurn, type LegacyRules } from '../src/domain/reducer.js';
 import { AgentSchema, type Agent } from '../src/domain/diplomacy.js';
@@ -187,7 +188,7 @@ describe('the bots', () => {
     s.agents.push(
       watcher({ id: 'agt-c', ownerFactionId: 'vigil', systemId: 'sek-4', exposed: true, caughtTurn: s.turn }),
     );
-    const ops = proposeFor(s, 'meridian')!.ops as { op: string; type?: string; targetId?: string }[];
+    const ops = asOrders(proposeFor(s, 'meridian')!.ops) as { op: string; type?: string; targetId?: string }[];
     expect(ops.some((o) => o.type === 'counter_intelligence' && o.targetId === 'sek-4')).toBe(true);
   });
 });

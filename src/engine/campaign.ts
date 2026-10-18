@@ -8,7 +8,7 @@ import {
   type TurnReport,
 } from '../domain/reducer.js';
 import { WorldStateSchema, type OrderType, type WorldState } from '../domain/state.js';
-import { OP_PATHS_LIST, type OpPath } from '../domain/ops.js';
+import { OP_PATHS_LIST, orderFor, type OpPath } from '../domain/ops.js';
 import { isPublicOrderType } from '../domain/intel.js';
 import { createSeedState } from '../seed/scenario.js';
 import { emptyJournal, replay, seedStateFor, type Journal } from './journal.js';
@@ -706,11 +706,8 @@ function privateNote(op: unknown): unknown {
  * of a public category, which `intel.ts` already rules visible to everyone.
  */
 function isPublicAct(op: unknown): boolean {
-  if (!op || typeof op !== 'object') return false;
-  const o = op as { op?: unknown; type?: unknown };
-  return (
-    o.op === 'issue_order' &&
-    typeof o.type === 'string' &&
-    isPublicOrderType(o.type as OrderType)
-  );
+  // Work is read as the order it means, so a declared move is as public as the
+  // fleet movement it becomes.
+  const o = orderFor(op) as { type?: unknown } | null;
+  return o !== null && typeof o.type === 'string' && isPublicOrderType(o.type as OrderType);
 }

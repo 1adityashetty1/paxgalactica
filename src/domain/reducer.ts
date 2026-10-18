@@ -315,6 +315,8 @@ import {
 import {
   EXTRACTION_ALLOWED,
   OP_PATHS,
+  IssueOrderOp,
+  orderFor,
   type OpPath,
   EXTRACTION_REFUSAL_REASON,
   OpSchema,
@@ -3272,6 +3274,13 @@ export interface LegacyRules {
    */
   breachPrices?: boolean;
   /**
+   * A yard programme's hulls count against the berths of the declaration that
+   * starts it, as an open build's do. Before journal version 25 a programme
+   * bypassed `yardCapacityFor` altogether: twelve hulls each, delivered in the
+   * tick outside `billConstruction`, and any number of programmes at once.
+   */
+  programmeBerths?: boolean;
+  /**
    * Officers come off a power's **Lists** — one of each school always waiting
    * — and only by appointment: no successor is put in post when the last one
    * falls, and one handed home goes back on the Lists. Journal version 20;
@@ -3514,6 +3523,7 @@ function applyOpsUnderRules(
     oneRecordPerPerson = true,
     shipIntents = true,
     breachPrices = true,
+    programmeBerths = true,
   } = legacy;
   const state = cloneState(input);
   // Who holds office before the batch, so a seat emptied by it is charged.
@@ -3659,6 +3669,8 @@ function applyOpsUnderRules(
    * that are neither built nor lost.
    */
   const changedFlag = new Map<string, number>();
+  /** Berths taken this batch by yard programmes, so open builds get what is left. */
+  const programmeTons = new Map<string, number>();
 
   const uprooted = new Map<string, ShipStack>();
   const commissioned = new Map<string, { count: number; at: StarSystem }>();
@@ -3699,7 +3711,7 @@ function applyOpsUnderRules(
       continue;
     }
 
-    const op: Op = parsed.data;
+    let op: Op = parsed.data;
 
     // The cheat menu's op is refused from every other source, and a cheat batch
     // carries nothing else — so the menu cannot smuggle an ordinary op past the
@@ -3752,6 +3764,29 @@ function applyOpsUnderRules(
     if (path !== undefined && !OP_PATHS[op.op].includes(path)) {
       reject(raw, 'wrong_path', wrongPathReason(op.op, path));
       continue;
+    }
+
+    // Work is an order. One conversion (`orderFor`) files it under its
+    // category, and the `issue_order` case below does the rest: the floor, the
+    // price, the presence it needs, the fog (intent-ops §1).
+    if (op.op !== 'issue_order') {
+      if (op.op === 'build_ships' && op.programme && op.systemId === undefined) {
+        reject(raw, 'illegal_value', 'A yard programme is laid down at a named world: give `systemId`.');
+        continue;
+      }
+      const asOrder = orderFor(op);
+      if (asOrder) {
+        const order = IssueOrderOp.safeParse(asOrder);
+        if (!order.success) {
+          reject(
+            raw,
+            'schema_invalid',
+            `Op "${op.op}" failed validation: ${order.error.issues.map((i) => `${i.path.join('.') || '(root)'} ${i.message}`).join('; ')}`,
+          );
+          continue;
+        }
+        op = order.data;
+      }
     }
 
     switch (op.op) {
@@ -6258,6 +6293,22 @@ function applyOpsUnderRules(
         // that cannot buy a single unit is refused outright.
         let effect: OrderEffect | undefined;
         let invested = 0;
+        // A programme takes berths as an open build does, from the same yards.
+        if (op.onComplete?.kind === 'commission_ships' && programmeBerths && yardCapacity) {
+          const perHull = HULL_SPEC[op.onComplete.hull].tonnage;
+          const left = yardCapacityFor(state, op.factionId) - (programmeTons.get(op.factionId) ?? 0);
+          const fits = Math.max(0, Math.floor(left / perHull));
+          if (fits === 0) {
+            reject(raw, 'illegal_value', `${nameFor(state, op.factionId)}'s yards have no berths left this turn for a ${HULL_SPEC[op.onComplete.hull].label} programme.`);
+            break;
+          }
+          if (op.onComplete.magnitude > fits) {
+            const note = `${nameFor(state, op.factionId)}'s yards have berths for ${fits} ${HULL_SPEC[op.onComplete.hull].label}(s) this turn; the programme lays down ${fits} of ${op.onComplete.magnitude}.`;
+            notes.push(note);
+            logEvent(state, 'clamp', note, op.factionId);
+            op.onComplete = { ...op.onComplete, magnitude: fits };
+          }
+        }
         if (op.onComplete) {
           const treasury = state.factions.find((f) => f.id === op.factionId)!;
           const site = getSystem(state, op.targetId)!;
@@ -6287,6 +6338,12 @@ function applyOpsUnderRules(
             effect = trim.effect;
             invested = trim.cost;
             treasury.credits -= invested;
+            if (effect.kind === 'commission_ships' && programmeBerths) {
+              programmeTons.set(
+                op.factionId,
+                (programmeTons.get(op.factionId) ?? 0) + effect.magnitude * HULL_SPEC[effect.hull].tonnage,
+              );
+            }
             if (trim.from !== undefined) {
               const why =
                 trim.reason === 'cap'
@@ -9249,6 +9306,7 @@ function applyOpsUnderRules(
   billConstruction(
     state, hullsBefore, shipsBefore, unbuildFromGain, yardCapacity, changedFlag, notes, pricedByYards,
     movesNotBuilt ? navyBefore : undefined,
+    programmeTons,
   );
   refundDuplicateCharges(state, chargedByNarrative, pricedByYards, notes);
   }
@@ -9535,6 +9593,8 @@ function billConstruction(
    * journal written before that rule.
    */
   navyBefore?: Map<string, ShipStack>,
+  /** Berths a yard programme took this batch, which an open build cannot have too. */
+  programmeTons: Map<string, number> = new Map(),
 ): void {
   for (const faction of state.factions) {
     // Billed in TONS, so a class costs what it displaces and nothing has to
@@ -9552,7 +9612,9 @@ function billConstruction(
     // the yards are asked for is the gain minus whatever merely changed flag.
     const swapped = changedFlag.get(faction.id) ?? 0;
     const laidDown = Math.max(0, gained - swapped);
-    const berths = capped ? yardCapacityFor(state, faction.id) : Number.POSITIVE_INFINITY;
+    const berths = capped
+      ? Math.max(0, yardCapacityFor(state, faction.id) - (programmeTons.get(faction.id) ?? 0))
+      : Number.POSITIVE_INFINITY;
     const overYard = Math.max(0, laidDown - berths);
     const deliverable = gained - overYard;
     if (overYard > 0) {

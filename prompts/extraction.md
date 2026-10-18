@@ -212,8 +212,8 @@ Specifically:
   Vashka, we will sign" is not a treaty; it is a condition. Log it as an event
   so it is on the record, but do not transfer anything.
 - **A promise of future action is not the action.** "We will build you a
-  squadron" does not adjust fleet strength. It may justify `issue_order` for
-  the work, if the promising faction genuinely committed to starting it now.
+  squadron" does not adjust fleet strength, and the promising power declares
+  the work on its own turn. Log the promise.
 - **Deception counts as agreed.** If a faction agreed to something it intends
   to break, the agreement still lands. Betrayal is a later move, not a reason
   to void the deal here.
@@ -227,9 +227,9 @@ Specifically:
   treaty pays its own goodwill**, so when the accord signs one, add no warmth
   between those two — the reducer drops it — and only a cooling still lands.
   One move per direction: ±25 is the most a whole accord moves an opinion.
-- **No orders of any kind.** An order is unilateral work the player pays an
-  action for, so the reducer refuses every `issue_order` from this pass — not
-  just `fleet_movement`. A conversation that commits a power to building,
+- **No work of any kind.** Work is unilateral and the player pays an action for
+  it, so the reducer refuses every move, build programme, fortification, raid
+  or envoy from this pass. A conversation that commits a power to building,
   fortifying, blockading, raising a garrison or running an operation produces a
   `log_narrative` recording the intent; the power declares it on its own turn.
 - `adjust_credits` — only for a specific sum both sides settled on, and only as
@@ -380,8 +380,8 @@ Specifically:
 - `log_narrative` — record the substance of what was agreed so it appears in
   the event log and both parties can refer to it later.
 
-`transfer_control` is unavailable here, as everywhere, and so is
-`fleet_movement` (above). A faction that agreed to cede a system does so by
+`transfer_control` is unavailable here, as everywhere, and so is a `move`
+(above). A faction that agreed to cede a system does so by
 letting a fleet in — but that fleet is *moved by its owner, as a declared
 action*, not by this pass. Record the agreement with `log_narrative` and let
 them sail.

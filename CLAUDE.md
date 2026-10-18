@@ -6800,7 +6800,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `transfer_control` | **reducer-only** — absent from `ModelOpSchema` entirely |
 | `cheat` | **menu-only** — accepted from the `cheat` source alone, in batches of nothing else; see "A cheat menu" |
 | `adjust_disposition` | clamped to −100..100; self-disposition rejected |
-| `build_ships` | lay down hulls of a `hull` class at a world you hold (`systemId`, or your best); billed by tonnage and held to yard capacity |
+| `build_ships` | lay down hulls of a `hull` class at a world you hold (`systemId`, or your best); billed by tonnage and held to yard capacity. `programme: true` makes it a hidden yard programme at a named world, delivered on completion, counted against the same berths |
 | `suborn_crews` | turn `count` of another power's crews where they stand; presence and `subornLimit` |
 | `scuttle_ships` | strike off hulls of your own at a world; the named class first |
 | `adjust_fleet` | **reducer arithmetic** from journal version 23 — refused from a model batch with an actor. Floors at 0; `hull` picks the class the yards lay down |
@@ -6825,7 +6825,12 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `withdraw_ultimatum` | issuer only |
 | `post_bounty` | your own credits into escrow against another power; trimmed to the treasury, topped up by posting again |
 | `withdraw_bounty` | poster only; what is left comes back, the grievance stays. Never a merchants' bounty |
-| `issue_order` | see Duration below; optional `onComplete` payload, paid at issue. `force` is a count (drawn proportionally) or a named composition. `dark` runs a `commerce_raiding` order unowned — see "Running dark". A `fleet_movement` one jump between two worlds you hold, with no rival over the target, lands at once |
+| `issue_order` | **the engine's** from journal version 25 — a model writes work as its own op (below). See Duration; optional `onComplete` payload, paid at issue. `force` is a count (drawn proportionally) or a named composition. `dark` runs a `commerce_raiding` order unowned — see "Running dark". A `fleet_movement` one jump between two worlds you hold, with no rival over the target, lands at once |
+| `move` | ships of yours somewhere: `force`, `officers`, `breaks`. Becomes a `fleet_movement` |
+| `fortify` · `raise_garrison` · `develop` | a world's ceiling, troops or value, by `magnitude`; each becomes its order and payload |
+| `found_fixture` · `repair_fixture` | a fixture of a catalogue `kind` raised, or mended, on a world |
+| `send_envoy` | court a world; two turns unless told otherwise |
+| `blockade` · `raid` · `sweep` | interdiction and counter-intelligence on a world; `raid` takes `dark` |
 | `cancel_order` | returns the unspent part of an `onComplete` payload |
 | `interrupt_order` | rejected when the order is not interruptible; **somebody else's** order also needs ships at its origin or target |
 | `extend_order` | rejected for movement |
@@ -6927,6 +6932,51 @@ programme chosen on purpose and stands. Re-filed and said, never re-estimated:
 the new floor still clamps upward from what the model proposed. Pinned to
 `JOURNAL_VERSION` **11** (`hullFilesTheOrder`), because `pt117_raw` holds exactly
 the escorts that took five turns.
+
+### Work is its own op
+
+`docs/design-2026-10-17-intent-ops.md` §1, journal version 25. `issue_order`
+carried fourteen categories, an optional payload and an estimated duration, and
+the reducer read the act out of the combination. In the saved campaigns 31 of
+the 111 non-movement orders that were not raids carried no payload and completed
+doing nothing — courier runs, decrees, an envoy without a `court`, fortifications
+that fortified nothing — and one envoy declaration staged a bare manoeuvre, a
+fleet movement nobody asked for and a stipend.
+
+So a model writes the work, and the reducer files it. `move`, `fortify`,
+`raise_garrison`, `develop`, `found_fixture`, `repair_fixture`, `send_envoy`,
+`blockade`, `raid`, `sweep`, and `build_ships` with `programme: true`. **One
+conversion, `orderFor` in `ops.ts`**, turns each into the order it means — the
+category, the payload, the default duration — and the reducer runs that through
+the `issue_order` case unchanged, so every bound on an order (the floors, the
+price, the presence a payload needs, the fog) holds for work by construction.
+Every reader of a batch reads work through the same function: payload bounding,
+the fog's public test, the covert test, the bots' treaty and standing filters.
+`issue_order` left `ModelOpSchema` and is the engine's alone (`OP_PATHS`); the
+bots write work too.
+
+- **Every piece of work is its payload, so a failure starts nothing.** An order
+  stripped of its payload ran its course doing nothing; work that failed is not
+  begun and costs nothing, and a partial delivers half. A `move`, `blockade`,
+  `raid` and `sweep` carry no payload and still go out on a failure — a failed
+  attack must still be issued.
+- **A duration is the kind's own** unless the model sets one: the category
+  floor, and two turns for an envoy, because every envoy in the saves was
+  estimated at two against a floor of one.
+- **`label`, `onInterrupt`, `interruptible` and `visibility` stay** on every
+  piece of work: models set a label on 112 of 132 orders, `partial` on 33 and a
+  visibility on 19.
+- **There is no work that does nothing.** A courier run, a decree, a bare
+  manoeuvre and `espionage` left the model's vocabulary; an act with no
+  mechanism is a `log_narrative`.
+- **A yard programme takes berths** (`LegacyRules.programmeBerths`). It
+  bypassed `yardCapacityFor` entirely — twelve hulls a programme, delivered in
+  the tick outside `billConstruction`, any number at once. A programme now takes
+  its tonnage from the declaration's berths when it starts, trimmed to what
+  fits, and an open build in the same declaration gets what is left.
+
+Measured: all saves replay byte-identically, the four harness boards do not
+move, and the bots' twelve order shapes are work ops.
 
 ### 3. What a finished order does — `onComplete`
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { asOrders } from './orders.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { HOME_GROUND_DEFENCE, applyOps, counterIntelAt, tickTurn, type LegacyRules } from '../src/domain/reducer.js';
 import {
@@ -288,7 +289,7 @@ describe('the envoy', () => {
 describe('the bots', () => {
   it('a courting power sends an envoy to an independent world it borders, and does not storm it', () => {
     const s = createSeedState('freeworlds');
-    const ops = (proposeFor(s, 'meridian')?.ops ?? []) as Record<string, unknown>[];
+    const ops = (asOrders(proposeFor(s, 'meridian')?.ops ?? [])) as Record<string, unknown>[];
     expect(ops.some((o) => o.type === 'political_maneuver' && (o.onComplete as { kind: string }).kind === 'court')).toBe(true);
     const storming = ops.filter(
       (o) => o.type === 'fleet_movement' && ((o.force as Record<string, number>)?.lifter ?? 0) > 0,
@@ -302,7 +303,7 @@ describe('the bots', () => {
     w.controllerFactionId = 'meridian';
     set(s, 'sek-3', 'meridian', CONQUEST_REGARD);
     setShipsAt(w, 'meridian', 0);
-    const ops = (proposeFor(s, 'meridian')?.ops ?? []) as Record<string, unknown>[];
+    const ops = (asOrders(proposeFor(s, 'meridian')?.ops ?? [])) as Record<string, unknown>[];
     expect(ops.some((o) => o.op === 'issue_order' && o.type === 'fleet_movement' && o.targetId === 'sek-3')).toBe(true);
     // A neighbour of its own is one jump away, so the warships are over the
     // world before the tick reads whether it is held down.
@@ -399,10 +400,10 @@ describe('incitement', () => {
   it('a defensive power sends one at a world held down by force; the others do not', () => {
     const s = occupied();
     s.factions.find((f) => f.id === 'freeworlds')!.credits = 2000;
-    const arkane = (proposeFor(s, 'freeworlds')?.ops ?? []) as Record<string, unknown>[];
+    const arkane = (asOrders(proposeFor(s, 'freeworlds')?.ops ?? [])) as Record<string, unknown>[];
     expect(arkane.some((o) => o.op === 'deploy_agent' && o.mission === 'incitement' && o.systemId === 'tor-1')).toBe(true);
     s.factions.find((f) => f.id === 'ojjul')!.credits = 5000;
-    const combine = (proposeFor(s, 'ojjul')?.ops ?? []) as Record<string, unknown>[];
+    const combine = (asOrders(proposeFor(s, 'ojjul')?.ops ?? [])) as Record<string, unknown>[];
     expect(combine.some((o) => o.mission === 'incitement')).toBe(false);
   });
 });

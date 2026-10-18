@@ -6,6 +6,7 @@ import {
   type CommanderArchetype,
 } from './command.js';
 import { neighboursOf, shortestPath } from './graph.js';
+import { orderFor } from './ops.js';
 import {
   AGENT_COST,
   FIXTURE_COST,
@@ -387,14 +388,12 @@ function raise(ctx: Ctx): Ops {
   const { site, kind } = pick;
   return [
     {
-      op: 'issue_order',
+      op: 'found_fixture',
       factionId: me,
-      type: 'construction_infrastructure',
-      originId: site.id,
-      targetId: site.id,
+      systemId: site.id,
+      kind,
       durationTurns: 3,
       label: `${kind.replace(/_/g, ' ')} at ${site.name}`,
-      onComplete: { kind: 'found_fixture', magnitude: 1, fixtureKind: kind },
     },
   ];
 }
@@ -425,14 +424,13 @@ function mend(ctx: Ctx): Ops {
   const site = sys(state, broken.atSystemId!)!;
   return [
     {
-      op: 'issue_order',
+      op: 'repair_fixture',
       factionId: me,
-      type: 'construction_infrastructure',
-      originId: site.id,
-      targetId: site.id,
+      systemId: site.id,
+      kind: broken.kind,
+      magnitude: points,
       durationTurns: 3,
       label: `repair the ${broken.kind.replace(/_/g, ' ')} at ${site.name}`,
-      onComplete: { kind: 'repair_fixture', magnitude: points, fixtureKind: broken.kind },
     },
   ];
 }
@@ -709,11 +707,7 @@ function sweep(ctx: Ctx): Ops {
   if (!caught) return [];
   const where = sys(state, caught.systemId)!;
   return [
-    {
-      op: 'issue_order', factionId: me, type: 'counter_intelligence',
-      originId: where.id, targetId: where.id, durationTurns: 3,
-      label: `sweep ${where.name}`,
-    },
+    { op: 'sweep', factionId: me, systemId: where.id, durationTurns: 3, label: `sweep ${where.name}` },
   ];
 }
 
@@ -1004,7 +998,7 @@ function massAt(ctx: Ctx, whereId: string, want: number): Ops {
     if (hullsIn(force) === 0) continue;
     const target = ctx.state.systems.find((x) => x.id === whereId);
     ops.push({
-      op: 'issue_order', factionId: ctx.me, type: 'fleet_movement',
+      op: 'move', factionId: ctx.me,
       originId: base.id, targetId: whereId, force,
       label: `concentrate at ${target?.name ?? whereId}`,
     });
@@ -1059,7 +1053,7 @@ function sortie(ctx: Ctx, targetId: string, force: number, label: string): Ops {
   const warships = subtractStack(here, { lifter: here.lifter ?? 0 });
   return [
     {
-      op: 'issue_order', factionId: ctx.me, type: 'fleet_movement',
+      op: 'move', factionId: ctx.me,
       originId: from.id, targetId,
       force: mergeStacks(drawToWeight(warships, force), { lifter }),
       // The officer sails if they are standing at the port the sortie leaves
@@ -1460,7 +1454,7 @@ function occupy(ctx: Ctx, target: StarSystem, label: string): Ops {
   if (hullsIn(force) === 0) return [];
   return [
     {
-      op: 'issue_order', factionId: ctx.me, type: 'fleet_movement',
+      op: 'move', factionId: ctx.me,
       originId: from.id, targetId: target.id, force,
       officers: officersAt(ctx, from.id),
       label,
@@ -1514,8 +1508,9 @@ function press(ctx: Ctx, target: StarSystem, label: string): Ops {
  */
 /** A fleet movement onto ground the mover does not hold: an attack, not a concentration. */
 function strikes(state: WorldState, me: string, op: Record<string, unknown>): boolean {
-  if (op.op !== 'issue_order' || op.type !== 'fleet_movement') return false;
-  return sys(state, String(op.targetId ?? ''))?.controllerFactionId !== me;
+  const order = orderFor(op);
+  if (order?.type !== 'fleet_movement') return false;
+  return sys(state, String(order.targetId ?? ''))?.controllerFactionId !== me;
 }
 
 function pursue(
@@ -1639,11 +1634,7 @@ const ojjul: Bot = (ctx) => {
       .filter((x) => shipsAt(ctx.state, x.id, ctx.me) >= 5 && x.controllerFactionId !== ctx.me)
       .sort((a, b) => trafficAt(ctx.state, b.id) - trafficAt(ctx.state, a.id))[0];
     if (squeeze && trafficAt(ctx.state, squeeze.id) > 0) {
-      ops.push({
-        op: 'issue_order', factionId: ctx.me, type: 'blockade',
-        originId: squeeze.id, targetId: squeeze.id, durationTurns: 3,
-        label: `close ${squeeze.name}`,
-      });
+      ops.push({ op: 'blockade', factionId: ctx.me, systemId: squeeze.id, durationTurns: 3, label: `close ${squeeze.name}` });
     }
   }
   return ops;
@@ -1807,8 +1798,7 @@ const drajk: Bot = (ctx) => {
       .sort((a, b) => b.worth - a.worth)[0]?.x;
     if (prey && raidWorth(ctx.state, ctx.me, prey) > 0) {
       ops.push({
-        op: 'issue_order', factionId: ctx.me, type: 'commerce_raiding',
-        originId: prey.id, targetId: prey.id, durationTurns: 3,
+        op: 'raid', factionId: ctx.me, systemId: prey.id, durationTurns: 3,
         label: `raid ${prey.name}`,
         ...(raidsDark(ctx.state, ctx.me, prey) ? { dark: true } : {}),
       });
@@ -1937,7 +1927,7 @@ function station(ctx: Ctx, target: StarSystem, shape: 'line' | 'freighter', labe
       ? { freighter: 1 }
       : drawToWeight(subtractStack(here, { lifter: here.lifter ?? 0, freighter: here.freighter ?? 0, listener: here.listener ?? 0 }), PROTECTION_LINE + 0.5);
   if (hullsIn(force) === 0) return [];
-  return [{ op: 'issue_order', factionId: ctx.me, type: 'fleet_movement', originId: from.id, targetId: target.id, force, label }];
+  return [{ op: 'move', factionId: ctx.me, originId: from.id, targetId: target.id, force, label }];
 }
 
 /**
@@ -1972,10 +1962,8 @@ function court(ctx: Ctx): Ops {
     const envoy = 2 * EFFECT_COST.court;
     if (!pending('court') && left >= envoy) {
       ops.push({
-        op: 'issue_order', factionId: me, type: 'political_maneuver',
-        originId: target.id, targetId: target.id, durationTurns: 1,
+        op: 'send_envoy', factionId: me, systemId: target.id, magnitude: 2, durationTurns: 1,
         label: `an envoy to ${target.name}`,
-        onComplete: { kind: 'court', magnitude: 2, summary: `court ${target.name}` },
       });
       left -= envoy;
     }
@@ -1990,19 +1978,15 @@ function court(ctx: Ctx): Ops {
     }
     if (present && want === 'development' && !pending('develop_system') && left >= 2 * MIN_DEVELOPMENT_COST) {
       ops.push({
-        op: 'issue_order', factionId: me, type: 'construction_infrastructure',
-        originId: target.id, targetId: target.id, durationTurns: 3,
+        op: 'develop', factionId: me, systemId: target.id, magnitude: 1, durationTurns: 3,
         label: `works at ${target.name}`,
-        onComplete: { kind: 'develop_system', magnitude: 1, summary: `develop ${target.name}` },
       });
       left -= 2 * MIN_DEVELOPMENT_COST;
     }
     if (present && want === 'arms' && !pending('fortify') && left >= EFFECT_COST.fortify) {
       ops.push({
-        op: 'issue_order', factionId: me, type: 'fortification',
-        originId: target.id, targetId: target.id, durationTurns: 3,
+        op: 'fortify', factionId: me, systemId: target.id, magnitude: 1, durationTurns: 3,
         label: `walls for ${target.name}`,
-        onComplete: { kind: 'fortify', magnitude: 1, summary: `fortify ${target.name}` },
       });
       left -= EFFECT_COST.fortify;
     }
@@ -2367,26 +2351,28 @@ export function honourTreaties(
 ): { ops: Record<string, unknown>[]; withheld: string[] } {
   const withheld: string[] = [];
   const kept = ops.filter((op) => {
-    if (op.op !== 'issue_order') return true;
-    const target = sys(state, String(op.targetId ?? ''));
+    // Work is read as the order it means: a move, a blockade, a raid.
+    const order = orderFor(op);
+    if (!order) return true;
+    const target = sys(state, String(order.targetId ?? ''));
     const holder = target?.controllerFactionId;
     if (!holder || holder === me) return true;
-    if (op.breaks === holder) return true;
+    if (order.breaks === holder) return true;
 
-    if (op.type === 'fleet_movement' && boundBy(state, me, holder, PEACE_TYPES)) {
+    if (order.type === 'fleet_movement' && boundBy(state, me, holder, PEACE_TYPES)) {
       withheld.push(`an attack on ${target.name}, which a standing pact forbids`);
       return false;
     }
     // A truce outlives the paper that made it, and breaking one is the dearest
     // public act in the game — see `TruceSchema`.
-    if (op.type === 'fleet_movement' && truceBetween(state.truces, state.turn, me, holder)) {
+    if (order.type === 'fleet_movement' && truceBetween(state.truces, state.turn, me, holder)) {
       withheld.push(`an attack on ${target.name}, which the truce with ${getFaction(state, holder)?.name ?? holder} forbids`);
       return false;
     }
     // A `trade_accord` makes its parties immune to each other's blockades and
     // raiding, so this is not only bad faith but mechanically inert.
     if (
-      (op.type === 'blockade' || op.type === 'commerce_raiding') &&
+      (order.type === 'blockade' || order.type === 'commerce_raiding') &&
       boundBy(state, me, holder, new Set(['trade_accord']))
     ) {
       withheld.push(`interdiction at ${target.name}, which a trade accord makes pointless`);
@@ -2394,7 +2380,7 @@ export function honourTreaties(
     }
     // Protection sold is a promise kept, and a commissioner is a paymaster.
     if (
-      (op.type === 'blockade' || op.type === 'commerce_raiding') &&
+      (order.type === 'blockade' || order.type === 'commerce_raiding') &&
       (protectedFrom(state.treaties, state.turn, me, holder) ||
         state.treaties.some(
           (t) => t.type === 'contract' && isTreatyLive(t, state.turn) && t.terms.commission?.raider === me && t.parties.includes(holder),
@@ -2427,8 +2413,9 @@ function honourStanding(
   const withheld: string[] = [];
   const enemies = new Set(warsFor(state, me));
   const kept = ops.filter((op) => {
-    if (op.op !== 'issue_order' || op.type !== 'fleet_movement') return true;
-    const target = sys(state, String(op.targetId ?? ''));
+    const order = orderFor(op);
+    if (order?.type !== 'fleet_movement') return true;
+    const target = sys(state, String(order.targetId ?? ''));
     const holder = target?.controllerFactionId;
     // Your own world is reinforcement, and unaligned ground has nobody to have
     // offended.
@@ -2455,9 +2442,13 @@ function describeProposal(state: WorldState, me: string, ops: Record<string, unk
   let bought = 0;
   let massed = 0;
 
-  for (const op of ops) {
-    if (op.op === 'build_ships') bought += Number(op.count ?? 0);
-    else if (op.op === 'issue_order') {
+  for (const raw of ops) {
+    if (raw.op === 'build_ships' && raw.programme !== true) {
+      bought += Number(raw.count ?? 0);
+      continue;
+    }
+    const op = orderFor(raw);
+    if (op) {
       if (op.type === 'fleet_movement' && String(op.label ?? '').startsWith('concentrate')) {
         massed += hullsIn(normaliseStack((op.force ?? {}) as ShipStack));
       } else if (op.type === 'fleet_movement') {

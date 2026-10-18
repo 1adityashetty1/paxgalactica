@@ -1,4 +1,5 @@
 import type { OpInput } from '../src/domain/ops.js';
+import { asOrders } from './orders.js';
 import { describe, expect, it } from 'vitest';
 import { createSeedState } from '../src/seed/scenario.js';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
@@ -561,7 +562,7 @@ describe('the event log does not leak what the fog hides', () => {
 
     it('does not name a dark raider when its ships are gone', () => {
       let s = createSeedState('meridian');
-      const raid = { ...proposeFor(s, 'drajk')!.ops.find((o) => o.type === 'commerce_raiding')!, dark: true };
+      const raid = { ...asOrders(proposeFor(s, 'drajk')!.ops).find((o) => o.type === 'commerce_raiding')!, dark: true };
       s = applyOps(s, [raid], 'model', 'drajk').state;
       for (const sys of s.systems) setStackAt(sys, 'drajk', {});
       s = tickTurn(s, { randomEvents: false }).state;

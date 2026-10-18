@@ -14,7 +14,7 @@ import {
   OBLIGATION_SIGNABLE,
   ULTIMATUM_MAX_DEADLINE,
 } from './diplomacy.js';
-import { FibScaleSchema } from './duration.js';
+import { CATEGORY_FLOORS, FibScaleSchema, type DurationCategory } from './duration.js';
 import { LentSchema } from './loan.js';
 import { HullClassSchema, TypedStackSchema } from './hulls.js';
 import { CheatSchema } from './cheats.js';
@@ -1313,15 +1313,239 @@ export const EXTRACTION_REFUSAL_REASON: Record<string, string> = {
  */
 
 /** Lay down new hulls of your own, now, billed by displacement and held to your yards' capacity. */
+/**
+ * What every piece of work carries, as an order does. Every one is optional
+ * with a default, and every one is used: models set `label` on most orders,
+ * `onInterrupt` on a fifth of them (`partial` refunds the unspent money), and
+ * `visibility` when a power chooses to be seen.
+ */
+const WorkFields = {
+  label: z.string().default(''),
+  /** 1, 2, 3 or 5 turns. Omitted, the kind's own: its category floor, and two for an envoy. */
+  durationTurns: FibScaleSchema.optional(),
+  durationRationale: z.string().default(''),
+  interruptible: z.boolean().default(true),
+  onInterrupt: OnInterruptSchema.default('cancel'),
+  visibility: z.array(z.string()).default([]),
+};
+
 export const BuildShipsOp = z.object({
   op: z.literal('build_ships'),
   factionId: z.string().min(1),
   hull: HullClassSchema,
   count: z.number().int().min(1),
-  /** A world you hold; omitted, your best one. */
+  /** A world you hold; omitted, your best one. A programme needs one named. */
   systemId: z.string().min(1).optional(),
   reason: z.string().default(''),
+  /**
+   * Built out of sight instead of laid down now: a hidden, interruptible yard
+   * programme, paid at issue and delivered on completion. Counted against the
+   * same berths as an open build.
+   */
+  programme: z.boolean().default(false),
+  ...WorkFields,
 });
+
+/**
+ * Move ships of your own — to your own world, against a rival's, onto ground
+ * nobody holds. One jump between two worlds you hold, with no rival over the
+ * target, lands at once; anything else sails a turn a jump and is settled on
+ * arrival. The reducer decides which.
+ */
+export const MoveOp = z.object({
+  op: z.literal('move'),
+  factionId: z.string().min(1),
+  originId: z.string().min(1),
+  targetId: z.string().min(1),
+  /** A count, drawn proportionally, or a composition. Omitted, the whole port and its officers. */
+  force: z.union([z.number().int().min(1), TypedStackSchema]).optional(),
+  officers: z.array(z.string().min(1)).max(5).default([]),
+  /** The power whose pact, truce, accord or contract this knowingly breaks. */
+  breaks: z.string().min(1).optional(),
+  label: z.string().default(''),
+  interruptible: z.boolean().default(true),
+  onInterrupt: OnInterruptSchema.default('cancel'),
+  visibility: z.array(z.string()).default([]),
+});
+
+/** Raise a world's garrison ceiling. Permanent, and it defends whoever holds the world next. */
+export const FortifyOp = z.object({
+  op: z.literal('fortify'),
+  factionId: z.string().min(1),
+  systemId: z.string().min(1),
+  magnitude: z.number().int().min(1).max(99),
+  ...WorkFields,
+});
+
+/** Raise troops on a world, up to its ceiling. */
+export const RaiseGarrisonOp = z.object({
+  op: z.literal('raise_garrison'),
+  factionId: z.string().min(1),
+  systemId: z.string().min(1),
+  magnitude: z.number().int().min(1).max(99),
+  ...WorkFields,
+});
+
+/** Develop a world: strategic value up, and at 7 it becomes a trade hub. Priced by what it is worth. */
+export const DevelopOp = z.object({
+  op: z.literal('develop'),
+  factionId: z.string().min(1),
+  systemId: z.string().min(1),
+  magnitude: z.number().int().min(1).max(99),
+  ...WorkFields,
+});
+
+/** Raise a fixture of a catalogue kind on a world you hold, if its ground takes it and a slot is free. */
+export const FoundFixtureOp = z.object({
+  op: z.literal('found_fixture'),
+  factionId: z.string().min(1),
+  systemId: z.string().min(1),
+  kind: z.string().min(1),
+  ...WorkFields,
+});
+
+/** Mend a fixture a saboteur has hit. */
+export const RepairFixtureOp = z.object({
+  op: z.literal('repair_fixture'),
+  factionId: z.string().min(1),
+  systemId: z.string().min(1),
+  kind: z.string().min(1).optional(),
+  magnitude: z.number().int().min(1).max(99),
+  ...WorkFields,
+});
+
+/** Send an envoy to court a world — one you hold, or an independent one you border or orbit. */
+export const SendEnvoyOp = z.object({
+  op: z.literal('send_envoy'),
+  factionId: z.string().min(1),
+  systemId: z.string().min(1),
+  magnitude: z.number().int().min(1).max(99).default(2),
+  ...WorkFields,
+});
+
+/** Close every lane through a world your fleet already sits over. */
+export const BlockadeOp = z.object({
+  op: z.literal('blockade'),
+  factionId: z.string().min(1),
+  systemId: z.string().min(1),
+  originId: z.string().min(1).optional(),
+  breaks: z.string().min(1).optional(),
+  ...WorkFields,
+});
+
+/** Raid the shipping through a world, from a fleet on it or a jump out. `dark` runs it unowned. */
+export const RaidOp = z.object({
+  op: z.literal('raid'),
+  factionId: z.string().min(1),
+  systemId: z.string().min(1),
+  originId: z.string().min(1).optional(),
+  dark: z.boolean().optional(),
+  breaks: z.string().min(1).optional(),
+  ...WorkFields,
+});
+
+/** Sweep a world of your own for rival operatives: counter-intelligence, read while it runs. */
+export const SweepOp = z.object({
+  op: z.literal('sweep'),
+  factionId: z.string().min(1),
+  systemId: z.string().min(1),
+  ...WorkFields,
+});
+
+/** The ops that are work: each one an order, with the reducer choosing its category. */
+export const WORK_OPS = [
+  'move', 'fortify', 'raise_garrison', 'develop', 'found_fixture', 'repair_fixture',
+  'send_envoy', 'blockade', 'raid', 'sweep',
+] as const;
+
+/**
+ * The order a piece of work means, as an `issue_order` would have written it —
+ * or null when the op is not work. One conversion, read by the reducer and by
+ * every reader of a batch (payload bounding, the fog's public test, the treaty
+ * filter), so none of them restates which category a kind of work is filed
+ * under (`docs/design-2026-10-17-intent-ops.md` §1).
+ *
+ * A `build_ships` is work only as a `programme`. An `issue_order` is returned as
+ * it is: the engine, the bots' legacy shapes and old journals still write it.
+ */
+export function orderFor(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  if (o.op === 'issue_order') return o;
+  const work = (type: string, systemId: unknown, onComplete?: Record<string, unknown>, duration?: unknown) => ({
+    op: 'issue_order',
+    factionId: o.factionId,
+    type,
+    originId: o.originId ?? systemId,
+    targetId: systemId,
+    ...(duration !== undefined ? { durationTurns: duration } : {}),
+    durationRationale: o.durationRationale ?? '',
+    interruptible: o.interruptible ?? true,
+    onInterrupt: o.onInterrupt ?? 'cancel',
+    visibility: o.visibility ?? [],
+    label: o.label ?? '',
+    ...(onComplete ? { onComplete } : {}),
+  });
+  const floor = (type: DurationCategory) => o.durationTurns ?? CATEGORY_FLOORS[type];
+  switch (o.op) {
+    case 'move':
+      return {
+        op: 'issue_order',
+        factionId: o.factionId,
+        type: 'fleet_movement',
+        originId: o.originId,
+        targetId: o.targetId,
+        ...(o.force !== undefined ? { force: o.force } : {}),
+        officers: o.officers ?? [],
+        ...(o.breaks !== undefined ? { breaks: o.breaks } : {}),
+        interruptible: o.interruptible ?? true,
+        onInterrupt: o.onInterrupt ?? 'cancel',
+        visibility: o.visibility ?? [],
+        label: o.label ?? '',
+      };
+    case 'fortify':
+      return work('fortification', o.systemId, { kind: 'fortify', magnitude: o.magnitude }, floor('fortification'));
+    case 'raise_garrison':
+      return work('garrison_raising', o.systemId, { kind: 'raise_garrison', magnitude: o.magnitude }, floor('garrison_raising'));
+    case 'develop':
+      return work('construction_infrastructure', o.systemId, { kind: 'develop_system', magnitude: o.magnitude }, floor('construction_infrastructure'));
+    case 'found_fixture':
+      return work('construction_infrastructure', o.systemId, { kind: 'found_fixture', magnitude: 1, fixtureKind: o.kind }, floor('construction_infrastructure'));
+    case 'repair_fixture':
+      return work(
+        'construction_infrastructure',
+        o.systemId,
+        { kind: 'repair_fixture', magnitude: o.magnitude, ...(o.kind !== undefined ? { fixtureKind: o.kind } : {}) },
+        floor('construction_infrastructure'),
+      );
+    case 'send_envoy':
+      // Two turns: every envoy in the saved campaigns was estimated at two
+      // against a floor of one, and the floor alone would double their pace.
+      return work('political_maneuver', o.systemId, { kind: 'court', magnitude: o.magnitude ?? 2 }, o.durationTurns ?? 2);
+    case 'blockade':
+      return { ...work('blockade', o.systemId, undefined, floor('blockade')), ...(o.breaks !== undefined ? { breaks: o.breaks } : {}) };
+    case 'raid':
+      return {
+        ...work('commerce_raiding', o.systemId, undefined, floor('commerce_raiding')),
+        ...(o.dark !== undefined ? { dark: o.dark } : {}),
+        ...(o.breaks !== undefined ? { breaks: o.breaks } : {}),
+      };
+    case 'sweep':
+      return work('counter_intelligence', o.systemId, undefined, floor('counter_intelligence'));
+    case 'build_ships':
+      if (o.programme !== true) return null;
+      // Filed as capital ship construction; the reducer re-files a lighter hull
+      // as a refit (`commissionCategory`).
+      return work(
+        'capital_ship_construction',
+        o.systemId,
+        { kind: 'commission_ships', magnitude: o.count, hull: o.hull },
+        o.durationTurns ?? CATEGORY_FLOORS[o.hull === 'battleship' ? 'capital_ship_construction' : 'refit'],
+      );
+    default:
+      return null;
+  }
+}
 
 /**
  * Talk another power's crews into changing sides where they stand — at a world
@@ -1354,6 +1578,16 @@ export const ScuttleShipsOp = z.object({
 export const ModelOpSchema = z.discriminatedUnion('op', [
   AdjustDispositionOp,
   BuildShipsOp,
+  MoveOp,
+  FortifyOp,
+  RaiseGarrisonOp,
+  DevelopOp,
+  FoundFixtureOp,
+  RepairFixtureOp,
+  SendEnvoyOp,
+  BlockadeOp,
+  RaidOp,
+  SweepOp,
   SubornCrewsOp,
   ScuttleShipsOp,
   AdjustCreditsOp,
@@ -1382,7 +1616,6 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   WithdrawUltimatumOp,
   PostBountyOp,
   WithdrawBountyOp,
-  IssueOrderOp,
   CancelOrderOp,
   InterruptOrderOp,
   ExtendOrderOp,
@@ -1447,6 +1680,16 @@ export const OpSchema = z.discriminatedUnion('op', [
   AdjustDispositionOp,
   AdjustFleetOp,
   BuildShipsOp,
+  MoveOp,
+  FortifyOp,
+  RaiseGarrisonOp,
+  DevelopOp,
+  FoundFixtureOp,
+  RepairFixtureOp,
+  SendEnvoyOp,
+  BlockadeOp,
+  RaidOp,
+  SweepOp,
   SubornCrewsOp,
   ScuttleShipsOp,
   AdjustCreditsOp,
@@ -1591,7 +1834,18 @@ export const OP_PATHS: Record<Op['op'], readonly OpPath[]> = {
   withdraw_ultimatum: [D, ...NPC, E],
   post_bounty: [D, ...NPC, E],
   withdraw_bounty: [D, ...NPC, E],
-  issue_order: [D, ...NPC, E],
+  // Work is written as its own op (`move`, `fortify`, …); the order is the engine's.
+  issue_order: [E],
+  move: [D, ...NPC, E],
+  fortify: [D, ...NPC, E],
+  raise_garrison: [D, ...NPC, E],
+  develop: [D, ...NPC, E],
+  found_fixture: [D, ...NPC, E],
+  repair_fixture: [D, ...NPC, E],
+  send_envoy: [D, ...NPC, E],
+  blockade: [D, ...NPC, E],
+  raid: [D, ...NPC, E],
+  sweep: [D, ...NPC, E],
   cancel_order: [D, ...NPC, E],
   interrupt_order: [D, ...NPC, E],
   extend_order: [D, ...NPC, E],

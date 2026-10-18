@@ -402,6 +402,8 @@ export function replay(
     // A breach of faith was priced where it happened, at eight sites with five
     // sets of numbers, and any power could break any treaty.
     breachPrices: parsed.version >= 24,
+    // A yard programme bypassed the yards' berths.
+    programmeBerths: parsed.version >= 25,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

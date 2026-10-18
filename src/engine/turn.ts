@@ -5,6 +5,7 @@ import {
   ExtractionOutputSchema,
   ModelTurnOutputSchema,
   type OpRejection,
+  orderFor,
 } from '../domain/ops.js';
 import { applyOps, type TurnReport } from '../domain/reducer.js';
 import {
@@ -280,10 +281,9 @@ export function recruitmentAlone(ops: unknown[]): { ops: unknown[]; notes: strin
  * are its own to create once the battle has been fought.
  */
 export function noPrizeBeforeTheRaid(ops: unknown[]): { ops: unknown[]; notes: string[] } {
-  const op = (x: unknown) => x as { op?: unknown; type?: unknown } | null;
-  const raids = ops.some((x) => op(x)?.op === 'issue_order' && op(x)?.type === 'commerce_raiding');
+  const raids = ops.some((x) => (orderFor(x) as { type?: unknown } | null)?.type === 'commerce_raiding');
   if (!raids) return { ops, notes: [] };
-  const kept = ops.filter((x) => op(x)?.op !== 'create_asset');
+  const kept = ops.filter((x) => (x as { op?: unknown } | null)?.op !== 'create_asset');
   if (kept.length === ops.length) return { ops, notes: [] };
   return {
     ops: kept,
@@ -1083,7 +1083,7 @@ export function groundInConcessions(
  */
 function isCovertOp(raw: unknown): boolean {
   const op = raw as { op?: unknown; dark?: unknown } | null;
-  return op?.op === 'deploy_agent' || op?.op === 'lay_groundwork' || (op?.op === 'issue_order' && op.dark === true);
+  return op?.op === 'deploy_agent' || op?.op === 'lay_groundwork' || (orderFor(op) as { dark?: unknown } | null)?.dark === true;
 }
 
 export async function closeChannel(

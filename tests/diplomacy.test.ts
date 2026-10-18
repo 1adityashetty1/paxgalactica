@@ -200,11 +200,12 @@ describe('prompts do not drift from the schema', () => {
     }
   });
 
-  it('does not offer an accord any order at all', () => {
+  it('does not offer an accord any work at all', () => {
     // The guard was one exception — every `issue_order` except a movement —
     // which made diplomacy an unmetered action channel for 13 of the 14 types.
+    // Work is its own ops now (intent-ops §1), and an accord writes none.
     const text = loadPrompt('extraction');
-    expect(text).toMatch(/No orders of any kind/);
+    expect(text).toMatch(/No work of any kind/);
   });
 
   it('tells every prompt that CAN move a fleet to set a force', () => {
