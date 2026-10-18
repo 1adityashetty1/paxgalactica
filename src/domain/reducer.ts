@@ -11,12 +11,12 @@ import {
   type FibScale,
 } from './duration.js';
 import {
-  COMMITMENT_BREAKING_COST,
   COMMITMENT_GOODWILL,
   conflictingCommitment,
   MAX_COMMITMENT_INCOME,
   MAX_COMMITMENT_SHARE,
 } from './arbitration.js';
+import { BREACH_PRICES, LEGACY_BREACH_PRICES, breachCharges, type Breach, type BreachKind, type BreachPrice } from './acts.js';
 import type {
   BattleOutcome,
   BattleReport,
@@ -48,10 +48,8 @@ import {
   MAX_ASSET_DISSENT,
   MAX_ASSET_YIELD,
   MISSION_PROFILE,
-  PACT_BREAKING_REPUTATION_COST,
   PIRACY_REPUTATION_COST,
   DARK_PROOF_TURNS,
-  TRUCE_BREAKING_REPUTATION_COST,
   TRUCE_RECOVERY,
   TRUCE_TREATIES,
   TRUCE_TURNS,
@@ -148,7 +146,7 @@ import {
   CLASS_SUCCESS_SHIFT,
   type AgentMission,
 } from './diplomacy.js';
-import { HEAT_ANSWERED, HEAT_BLACKMAIL, HEAT_CAUGHT, HEAT_DECAY, HEAT_FOR_MISSION, HEAT_PACT_BROKEN, HEAT_PER_RAID, addHeat } from './heat.js';
+import { HEAT_ANSWERED, HEAT_BLACKMAIL, HEAT_CAUGHT, HEAT_DECAY, HEAT_FOR_MISSION, HEAT_PER_RAID, addHeat } from './heat.js';
 import { darkRaidSecret, describeSecret, secretLive, secretsAbout, sideStrength } from './leverage.js';
 import { ASSET_ARCHETYPES, PAPER_KINDS, PEOPLE_KINDS, archetypeFor, fixtureYieldFor } from './assets.js';
 import { CHEAT_ASSET_QUANTITY, CHEAT_ASSET_VALUE, type Cheat } from './cheats.js';
@@ -201,7 +199,6 @@ import {
 } from './command.js';
 import { jumpsBetween, neighboursOf, positionAlongPath, shortestPath } from './graph.js';
 import {
-  LOAN_DEFAULT_DISPOSITION_COST,
   MAX_LOAN_CREDITS,
   MAX_LOAN_RENT,
   assetOnLoan,
@@ -692,6 +689,24 @@ function heatUp(state: WorldState, factionId: string | null | undefined, amount:
   addHeat(state.factions.find((f) => f.id === factionId), amount);
 }
 
+/**
+ * The price table a breach of faith is charged from — `LegacyRules.breachPrices`,
+ * journal version 24. Module-scoped for `runHeat`'s reason: breaches are charged
+ * from helpers (`defaultLoan`, `breakMarriage`, the pact check on an attack)
+ * that have no access to the batch's rules.
+ */
+let breachTable: Record<BreachKind, BreachPrice> = BREACH_PRICES;
+
+/**
+ * Charge a breach of faith: every site that breaks a power's word comes here,
+ * and `acts.ts` alone decides what it costs (`docs/design-2026-10-17-acts.md`).
+ */
+function chargeBreach(state: WorldState, breach: Breach): void {
+  const charge = breachCharges(breach, state.factions.map((f) => f.id), breachTable);
+  for (const m of charge.regard) moveRegard(state, m.who, m.toward, m.delta);
+  if (charge.heat > 0) heatUp(state, breach.breaker, charge.heat);
+}
+
 function logEvent(
   state: WorldState,
   kind: EventLogEntry['kind'],
@@ -994,21 +1009,11 @@ function reclaimHulls(
 function defaultLoan(state: WorldState, loan: Loan, why: string, notes: string[]): void {
   if (loan.status === 'defaulted') return;
   loan.status = 'defaulted';
-  heatUp(state, loan.borrowerFactionId, HEAT_PACT_BROKEN);
-  const lender = state.factions.find((f) => f.id === loan.lenderFactionId);
-  if (lender) {
-    lender.disposition[loan.borrowerFactionId] = Math.max(
-      -100,
-      (lender.disposition[loan.borrowerFactionId] ?? 0) - LOAN_DEFAULT_DISPOSITION_COST,
-    );
-  }
-  for (const witness of state.factions) {
-    if (witness.id === loan.borrowerFactionId || witness.id === loan.lenderFactionId) continue;
-    witness.disposition[loan.borrowerFactionId] = Math.max(
-      -100,
-      (witness.disposition[loan.borrowerFactionId] ?? 0) - PACT_BREAKING_REPUTATION_COST,
-    );
-  }
+  chargeBreach(state, {
+    kind: 'loan_defaulted',
+    breaker: loan.borrowerFactionId,
+    parties: [loan.borrowerFactionId, loan.lenderFactionId],
+  });
   const note = `${nameFor(state, loan.borrowerFactionId)} does not return ${describeOutstanding(loan)} to ${nameFor(state, loan.lenderFactionId)} — ${why}. ${loan.text}`;
   notes.push(note);
   logEvent(state, 'diplomacy', note, loan.lenderFactionId);
@@ -1403,11 +1408,11 @@ function concedeDemand(state: WorldState, demand: Demand, withAssets = true): st
     case 'break_treaty': {
       const t = state.treaties.find((x) => x.id === demand.treatyId);
       if (t && isTreatyLive(t, state.turn) && t.type === 'marriage' && t.parties.includes(to)) {
-        notes.push(breakMarriage(state, t, to));
+        notes.push(breakMarriage(state, t, to, 'treaty_conceded'));
       } else if (t && isTreatyLive(t, state.turn)) {
         t.status = 'broken';
         const third = t.parties.find((p) => p !== to);
-        if (third) moveRegard(state, third, to, -25);
+        if (third) chargeBreach(state, { kind: 'treaty_conceded', breaker: to, parties: [to, third] });
       }
       break;
     }
@@ -1493,9 +1498,14 @@ function wed(state: WorldState, treaty: Treaty): string[] {
  * (`fateWhenBrokenBy`). The breaker's own estate in the match takes it as a
  * grant revoked.
  */
-function breakMarriage(state: WorldState, treaty: Treaty, breaker: string): string {
+function breakMarriage(
+  state: WorldState,
+  treaty: Treaty,
+  breaker: string,
+  kind: Extract<BreachKind, 'marriage_repudiated' | 'treaty_conceded' | 'match_betrayed'>,
+): string {
   const other = treaty.parties.find((p) => p !== breaker);
-  if (other) moveRegard(state, other, breaker, -25);
+  if (other) chargeBreach(state, { kind, breaker, parties: [breaker, other] });
   for (const id of treaty.terms.spouses ?? []) {
     const n = notableById(state, id);
     if (!n || notablesPower(n) !== breaker) continue;
@@ -2587,7 +2597,7 @@ if (asset.commanderId !== null || asset.agentId !== null || asset.notableId) {
   // them, priced as the pact it breaks.
   if (theirNotable) {
     const betrayed = marriageOf(state, theirNotable.id);
-    if (betrayed) notes.push(breakMarriage(state, betrayed, asset.heldBy));
+    if (betrayed) notes.push(breakMarriage(state, betrayed, asset.heldBy, 'match_betrayed'));
     removeNotable(state, theirNotable);
   }
   const file: Asset = {
@@ -3238,6 +3248,16 @@ export interface LegacyRules {
    */
   shipIntents?: boolean;
   /**
+   * A breach of faith is charged from one table in `acts.ts`, and four of its
+   * prices were decided rather than left where they fell: repudiating a treaty
+   * costs `REPUDIATION_REPUTATION_COST` with onlookers, the breaker's own regard
+   * no longer falls, a commitment's parties are not charged again as
+   * onlookers, and walking away from a two-party one carries heat. And
+   * `break_treaty` needs the actor to be a party and the treaty to be live.
+   * Journal version 24; before it the table is `LEGACY_BREACH_PRICES`.
+   */
+  breachPrices?: boolean;
+  /**
    * Officers come off a power's **Lists** — one of each school always waiting
    * — and only by appointment: no successor is put in post when the last one
    * falls, and one handed home goes back on the Lists. Journal version 20;
@@ -3375,9 +3395,11 @@ export function applyOps(
   const outer = scopeEngineNotes;
   const outerOrders = scopeOrderLines;
   const outerHeat = runHeat;
+  const outerBreaches = breachTable;
   scopeEngineNotes = legacy.privateEngineNotes ?? true;
   scopeOrderLines = legacy.privateOrderLines ?? true;
   runHeat = legacy.heat ?? true;
+  breachTable = (legacy.breachPrices ?? true) ? BREACH_PRICES : LEGACY_BREACH_PRICES;
   try {
     return withNameStock(legacy.widerNames ?? true, () =>
       applyOpsUnderRules(input, rawOps, source, actor, atomic, legacy),
@@ -3386,6 +3408,7 @@ export function applyOps(
     scopeEngineNotes = outer;
     scopeOrderLines = outerOrders;
     runHeat = outerHeat;
+    breachTable = outerBreaches;
   }
 }
 
@@ -3473,6 +3496,7 @@ function applyOpsUnderRules(
     methodsCount = true,
     oneRecordPerPerson = true,
     shipIntents = true,
+    breachPrices = true,
   } = legacy;
   const state = cloneState(input);
   // Who holds office before the batch, so a seat emptied by it is charged.
@@ -4773,7 +4797,7 @@ function applyOpsUnderRules(
           const notable = notableById(state, asset.notableId);
           if (notable) {
             const betrayed = marriageOf(state, notable.id);
-            if (betrayed) notes.push(breakMarriage(state, betrayed, holder));
+            if (betrayed) notes.push(breakMarriage(state, betrayed, holder, 'match_betrayed'));
             removeNotable(state, notable);
           }
           if (theirs) moveRegard(state, theirs, holder, -EXECUTION_RESENTMENT);
@@ -5158,14 +5182,13 @@ function applyOpsUnderRules(
           break;
         }
         owed.status = 'repudiated';
-        heatUp(state, owed.debtorFactionId, HEAT_PACT_BROKEN);
         // Priced like a broken pact, and public, because a debt of honour
         // refused is the same kind of news.
-        moveRegard(state, owed.holderFactionId, owed.debtorFactionId, -25);
-        for (const witness of state.factions) {
-          if (witness.id === owed.holderFactionId || witness.id === owed.debtorFactionId) continue;
-          moveRegard(state, witness.id, owed.debtorFactionId, -PACT_BREAKING_REPUTATION_COST);
-        }
+        chargeBreach(state, {
+          kind: 'favour_repudiated',
+          breaker: owed.debtorFactionId,
+          parties: [owed.debtorFactionId, owed.holderFactionId],
+        });
         const note = `${nameFor(state, owed.debtorFactionId)} refuses what it owes ${nameFor(state, owed.holderFactionId)}. ${op.reason}`.trim();
         notes.push(note);
         logEvent(state, 'diplomacy', note, owed.debtorFactionId);
@@ -7162,25 +7185,37 @@ function applyOpsUnderRules(
           reject(raw, 'unknown_treaty', `No treaty "${op.treatyId}".`);
           break;
         }
+        // A treaty is broken by a power bound by it, and only while it stands.
+        // Before version 24 neither was asked: any power could declare two
+        // others' pact void and leave them 25 colder toward each other, for
+        // nothing, and breaking a dead treaty charged again.
+        if (breachPrices && actor !== undefined) {
+          if (!treaty.parties.includes(actor)) {
+            reject(
+              raw,
+              'illegal_value',
+              `${nameFor(state, actor)} is not bound by "${treaty.summary}", so it is not ${nameFor(state, actor)}'s to break. Setting two other powers against each other is an operative's work — a discord mission.`,
+            );
+            break;
+          }
+          if (treaty.status !== 'pending' && !isTreatyLive(treaty, state.turn)) {
+            reject(raw, 'already_void', `"${treaty.summary}" is no longer in force (${treaty.status}).`);
+            break;
+          }
+        }
         // A marriage carries a ward, whose fate turns on who broke it.
         if (treaty.type === 'marriage' && isTreatyLive(treaty, state.turn) && actor !== undefined && treaty.parties.includes(actor)) {
-          heatUp(state, actor, HEAT_PACT_BROKEN);
-          notes.push(breakMarriage(state, treaty, actor));
+          notes.push(breakMarriage(state, treaty, actor, 'marriage_repudiated'));
           break;
         }
         treaty.status = 'broken';
-        // Tearing up your word is what notoriety is made of.
-        if (actor !== undefined && treaty.parties.includes(actor)) heatUp(state, actor, HEAT_PACT_BROKEN);
-        // Breaking a pact is public and costly: both signatories' opinion of
-        // the breaker sours, whoever was in the right.
-        for (const party of treaty.parties) {
-          for (const other of treaty.parties) {
-            if (party === other) continue;
-            const f = state.factions.find((x) => x.id === other);
-            if (!f) continue;
-            f.disposition[party] = Math.max(-100, (f.disposition[party] ?? 0) - 25);
-          }
-        }
+        // Tearing up your word is public and costly — see `acts.ts`. A treaty
+        // broken by no party (the engine) charges each side's view of the other.
+        chargeBreach(state, {
+          kind: 'treaty_repudiated',
+          breaker: actor !== undefined && treaty.parties.includes(actor) ? actor : null,
+          parties: treaty.parties,
+        });
         logEvent(state, 'diplomacy', `Treaty broken: ${treaty.summary}. ${op.reason}`.trim());
         // A marriage broken by nobody's hand — an engine batch — ends with its
         // ward sent home.
@@ -8446,30 +8481,19 @@ function applyOpsUnderRules(
           // journals DID pay it — gating both together would have changed ten
           // recorded campaigns in the other direction, which is the mistake the
           // exemption exists to avoid.
+          chargeBreach(state, {
+            kind: 'commitment_walked',
+            breaker: actor,
+            parties: found.factionIds,
+            chargeInjured: arrangementStanding,
+          });
           if (arrangementStanding) {
-            for (const party of found.factionIds) {
-              if (party === actor) continue;
-              const injured = state.factions.find((f) => f.id === party);
-              if (!injured) continue;
-              injured.disposition[actor] = Math.max(
-                -100,
-                (injured.disposition[actor] ?? 0) - COMMITMENT_BREAKING_COST,
-              );
-            }
-            const felt = `${nameFor(state, actor)} walks away from an arrangement it swore: −${COMMITMENT_BREAKING_COST} with ${found.factionIds.filter((id) => id !== actor).map((id) => nameFor(state, id)).join(' and ')}.`;
+            const felt = `${nameFor(state, actor)} walks away from an arrangement it swore: −${breachTable.commitment_walked.injured} with ${found.factionIds.filter((id) => id !== actor).map((id) => nameFor(state, id)).join(' and ')}.`;
             notes.push(felt);
             logEvent(state, 'diplomacy', felt, actor, [...found.factionIds]);
           }
 
           if (found.factionIds.length > 2) {
-            for (const witness of state.factions) {
-              if (witness.id === actor) continue;
-              witness.disposition[actor] = Math.max(
-                -100,
-                (witness.disposition[actor] ?? 0) - PACT_BREAKING_REPUTATION_COST,
-              );
-            }
-            heatUp(state, actor, HEAT_PACT_BROKEN);
             const seen = `${nameFor(state, actor)} tears up an arrangement it swore to ${found.factionIds.length - 1} other powers; everyone notices.`;
             notes.push(seen);
             logEvent(state, 'diplomacy', seen, actor);
@@ -9791,15 +9815,18 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
   const outer = scopeEngineNotes;
   const outerOrders = scopeOrderLines;
   const outerHeat = runHeat;
+  const outerBreaches = breachTable;
   scopeEngineNotes = legacy.privateEngineNotes ?? true;
   scopeOrderLines = legacy.privateOrderLines ?? true;
   runHeat = legacy.heat ?? true;
+  breachTable = (legacy.breachPrices ?? true) ? BREACH_PRICES : LEGACY_BREACH_PRICES;
   try {
     return withNameStock(legacy.widerNames ?? true, () => tickTurnUnderRules(input, legacy));
   } finally {
     scopeEngineNotes = outer;
     scopeOrderLines = outerOrders;
     runHeat = outerHeat;
+    breachTable = outerBreaches;
   }
 }
 
@@ -12394,8 +12421,7 @@ function resolveBattle(
       logEvent(state, 'diplomacy', endMarriage(state, m, fateWhenBrokenBy(state, m, attackerId), 'broken'), attackerId);
       if (!treatyBetween(state.treaties, state.turn, attackerId, victimId, PEACE_TREATIES)) {
         // The marriage was their only peace; price its breaking here.
-        const injured = state.factions.find((f) => f.id === victimId);
-        if (injured) injured.disposition[attackerId] = Math.max(-100, (injured.disposition[attackerId] ?? 0) - 25);
+        chargeBreach(state, { kind: 'attack_on_inlaws', breaker: attackerId, parties: [attackerId, victimId] });
       }
     }
     const pact = treatyBetween(state.treaties, state.turn, attackerId, victimId, PEACE_TREATIES);
@@ -12406,20 +12432,12 @@ function resolveBattle(
 
     if (pact) pact.status = 'broken';
     if (truce) truce.status = 'broken';
-    const injured = state.factions.find((f) => f.id === victimId);
-    if (injured) {
-      injured.disposition[attackerId] = Math.max(-100, (injured.disposition[attackerId] ?? 0) - 25);
-    }
-    const reputation = truce ? TRUCE_BREAKING_REPUTATION_COST : PACT_BREAKING_REPUTATION_COST;
     // A truce is the dearer word to break, in heat as in reputation.
-    heatUp(state, attackerId, truce ? HEAT_PACT_BROKEN * 2 : HEAT_PACT_BROKEN);
-    for (const witness of state.factions) {
-      if (witness.id === attackerId || witness.id === victimId) continue;
-      witness.disposition[attackerId] = Math.max(
-        -100,
-        (witness.disposition[attackerId] ?? 0) - reputation,
-      );
-    }
+    chargeBreach(state, {
+      kind: truce ? 'attack_across_truce' : 'attack_under_pact',
+      breaker: attackerId,
+      parties: [attackerId, victimId],
+    });
     logEvent(
       state,
       'diplomacy',

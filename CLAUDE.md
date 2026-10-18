@@ -2093,8 +2093,8 @@ the next turn at no net standing loss whatever.
 | ending the same arrangement | costs |
 |---|---|
 | as a **commitment**, before | −5 privately, against the +5 it paid — **net zero** |
-| as a **commitment**, now | the refund, plus `COMMITMENT_BREAKING_COST` (12) with each bound party |
-| as a **treaty** | −25 with the party, plus a permanent reputation hit with every onlooker |
+| as a **commitment**, now | the refund, plus `COMMITMENT_BREAKING_COST` (12) with each bound party, and `HEAT_PACT_BROKEN` |
+| as a **treaty** | −25 with the party, plus `REPUDIATION_REPUTATION_COST` (5) with every onlooker (journal version 24; nothing before it) |
 
 The multi-party case was patched earlier; two parties is the commonest shape a
 commitment has and was the one still open. `COMMITMENT_BREAKING_COST` sits below
@@ -3236,7 +3236,7 @@ pressure that builds and breaks:
 | sending an operative | `HEAT_FOR_MISSION`: 1 for a watcher up to 8 for a knife |
 | an operative taken | `HEAT_CAUGHT` (6) |
 | a turn of prizes from a power no commission names | `HEAT_PER_RAID` (2), per power robbed |
-| breaking a pact, a favour owed, a loan, a sworn arrangement | `HEAT_PACT_BROKEN` (8); a truce twice that |
+| breaking a pact, a favour owed, a loan, a sworn arrangement | `HEAT_PACT_BROKEN` (8); a truce twice that. A two-party arrangement carried none before journal version 24 |
 | blackmail | `HEAT_BLACKMAIL` (4) |
 | proof published against you | what the scandal costs you with each onlooker |
 
@@ -4074,6 +4074,51 @@ operative's work.
 Reactions commit with the reacting faction as `actor`, so an NPC can still move
 its own dissent; only the cross-faction reach is closed.
 
+## A breach of faith is priced once
+
+`src/domain/acts.ts`, `docs/design-2026-10-17-acts.md`. Going back on your word
+was priced at **eight sites with five sets of numbers**: an attack under a pact,
+an attack on in-laws, `break_treaty` on a treaty and on a marriage, a treaty
+broken by conceding an ultimatum, a match betrayed by the court holding its
+ward, a favour refused, a loan defaulted and a commitment walked away from. The
+figure 25 was a bare number at six of them. Every site now calls
+`chargeBreach` with a kind, and `breachCharges` decides what it costs from one
+table: the injured party's regard, every onlooker's, and heat. The rules each
+site used to restate are written once — the injured are the other parties,
+onlookers are everybody else, nobody is charged twice, nobody resents itself.
+
+**Four prices were decided rather than left where they fell** (journal version
+24, `LegacyRules.breachPrices`; `LEGACY_BREACH_PRICES` is the old table, written
+out exactly):
+
+| | before | from version 24 |
+|---|---|---|
+| `break_treaty`, onlookers | nothing — so repudiating and then attacking skipped the onlooker price an attack under the pact pays | `REPUDIATION_REPUTATION_COST` (5): half an attack's, since breaking your word in the open is the smaller act |
+| `break_treaty`, the breaker's own regard | fell 25 for its victim too | unchanged, as at every other breach |
+| a commitment of three or more, its other parties | charged as injured (12) **and** as onlookers (10) | the injured price, once |
+| a two-party commitment walked away from | no heat, against 8 for a favour refused | `HEAT_PACT_BROKEN` |
+
+**And two exploits closed in the same place.** `break_treaty` never checked who
+was breaking what: any power could declare two others' pact void and leave them
+25 colder toward each other, for nothing — strictly better than a discord
+operative, which costs 100 and is capped at 20 for its life. And a treaty
+already broken could be broken again, charging again. From version 24 the actor
+must be a party and the treaty in force (`already_void`); a pending one may
+still be backed out of.
+
+**Verified as a move before it was a change.** With the old table, all saved
+campaigns replay byte-identically through the new layer; with the new table
+forced on, one of them changes, so the saves exercise it. The harness boards do
+not move (bots break no treaties). `tests/acts.test.ts` writes the old table out
+by hand from the sites it replaced, and fails on any breach constant or bare
+`-25` regard written outside `acts.ts` — the guard that keeps the next mechanic
+from pricing the act a sixth way.
+
+**Left as it was, and open:** attacking in-laws whose marriage was the only peace
+between you costs the injured party's 25 and nothing with onlookers, where an
+attack under any other peace costs 10. Hostile acts, goodwill, money and dissent
+are the other families in the design, not yet moved.
+
 ## Treaties and agents
 
 Both live in world state (`src/domain/diplomacy.ts`), because both have
@@ -4083,7 +4128,8 @@ that quietly stops existing.
 **Treaties** have two parties, a type, an optional expiry, and terms the reducer
 applies: `territory`, `shipsPledged`, `incomePerTurn`, `incomeShares`,
 `mutualDefenseTrigger`. They lapse on schedule during `tickTurn`. Breaking one
-costs the breaker 25 disposition with the other party.
+is a breach of faith, priced in `acts.ts` — see "A breach of faith is priced
+once".
 
 **Agents** separate two things that are easy to conflate:
 
@@ -6744,7 +6790,8 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `form_treaty` | **extraction-only** — absent from `ModelOpSchema`; a treaty needs the other party's consent. `exclusive` forecloses another of that type with anyone else. A `coalition` must name `terms.against`; no other type may |
 | `restructure_debt` | **extraction-only** — new terms need the creditor's agreement; keeps the id, the balance and the history |
 | `establish_commitment` | optional `incomePerTurn`, trimmed to `MAX_COMMITMENT_INCOME` |
-| `dissolve_commitment` | returns the goodwill **and** charges `COMMITMENT_BREAKING_COST` with each bound party; onlookers only at three or more |
+| `dissolve_commitment` | returns the goodwill **and** charges `COMMITMENT_BREAKING_COST` with each bound party, and heat; onlookers only at three or more, and never the parties |
+| `break_treaty` | a party only, and only a treaty still in force (journal version 24); priced in `acts.ts` |
 | `establish_debt` | **extraction-only** — a principal that depletes; trimmed to `MAX_DEBT_PRINCIPAL` |
 | `establish_loan` | **extraction-only** — a thing that comes back: hulls, credits or a portable asset. Never a world, never a fixture |
 | `return_loan` | borrower only; the hulls really leave its stacks |
@@ -8374,7 +8421,7 @@ replays **every** past conversation with a power into every reply, uncapped.
 src/
   domain/     state, ops, hulls, duration, development, graph, checks,
               diplomacy, arbitration, compulsions, debt, loan, trade, intel,
-              battle, initiative, events, pulse, reducer
+              battle, initiative, events, pulse, acts, reducer
               ← pure. No I/O, no network, no imports from engine/model/ui.
   api/        contract.ts — Zod schemas shared by server and browser
   engine/     campaign, store, journal, turn, briefing, epilogue

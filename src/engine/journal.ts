@@ -16,7 +16,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 23;
+export const JOURNAL_VERSION = 24;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -105,6 +105,7 @@ export const JournalVersionSchema = z.union([
   z.literal(21),
   z.literal(22),
   z.literal(23),
+  z.literal(24),
 ]);
 
 export const JournalSchema = z.object({
@@ -390,6 +391,9 @@ export function replay(
     // A model wrote ship arithmetic (adjust_ships, adjust_fleet) directly,
     // and the reducer inferred whether it meant a build, a move or a suborn.
     shipIntents: parsed.version >= 23,
+    // A breach of faith was priced where it happened, at eight sites with five
+    // sets of numbers, and any power could break any treaty.
+    breachPrices: parsed.version >= 24,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

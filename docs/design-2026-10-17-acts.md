@@ -189,31 +189,36 @@ Each family moves in two separate changes, and the separation is the safety:
 Breaches go first: they are the smallest family, the accidents are already
 known, and the move is eight sites.
 
-## Decisions this needs from you
+## Decided, and built for the breach family
 
-These are the table edits the breach family would make. Each is a choice, not a
-correction.
+Built in journal version 24 (`LegacyRules.breachPrices`), with the four table
+edits below. The move was verified first: with the old table, every saved
+campaign replays byte-identically through the new layer.
 
-1. **Does repudiating a treaty charge onlookers?** Recommended: yes,
-   `PACT_BREAKING_REPUTATION_COST`, as CLAUDE.md already says it does. That
-   closes the repudiate-then-attack route.
-2. **Does the breaker's own regard for its victim fall?** Recommended: no, as at
-   every other breach site.
-3. **Are the parties to a broken commitment of three or more charged as
-   onlookers too?** Recommended: no; they are the injured, once.
-4. **Does walking away from a two-party commitment carry heat?** Today a favour
-   refused carries 8 and this carries none. Recommended: yes, at
-   `HEAT_PACT_BROKEN`, since CLAUDE.md lists "a sworn arrangement" among heat's
-   sources.
+1. **Repudiating a treaty charges onlookers**, at `REPUDIATION_REPUTATION_COST`
+   (5), half of what an attack under a pact charges. Breaking your word in the
+   open is the smaller act. Repudiating and then attacking is still cheaper
+   than attacking under the pact: 5 against 10 with each onlooker. It is no
+   longer free.
+2. **The breaker's own regard for its victim does not fall.**
+3. **A broken commitment's other parties are charged once**, as the injured.
+4. **Walking away from a two-party commitment carries `HEAT_PACT_BROKEN`.**
 
-The hostile family's differences (heat for kidnapping, heat for suborning) are
-listed in the table above and are decided when that family moves.
+**Building it found two exploits at the same site,** both closed in version 24:
+
+- **Any power could break any treaty.** `break_treaty` never checked that the
+  actor was a party. Drajk could declare the Vigil–Combine pact void, and both
+  sides came out 25 colder toward each other, for nothing.
+- **A treaty already broken could be broken again,** charging again each time.
+
+**Still open:** attacking in-laws whose marriage was the only peace between you
+costs the injured party's 25 and nothing with onlookers. An attack under any
+other peace costs 10 with each onlooker. That waits for a decision.
 
 ## Order of work
 
-1. `acts.ts`, the breach family moved (no numbers changed), and the erosion
-   test with the other families on its allowlist.
-2. The breach decisions above, journal-pinned.
+1. ~~`acts.ts`, the breach family moved, with the erosion test for it.~~ Done.
+2. ~~The breach decisions above, journal-pinned.~~ Done, journal version 24.
 3. Money: `transfer` and `mint`, moved, then any decisions.
 4. Hostile acts, moved, then the heat and onlooker decisions.
 5. Goodwill, dissent and war, moved. The allowlist shrinks to the cheat menu and
