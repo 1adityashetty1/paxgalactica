@@ -3689,6 +3689,116 @@ function applyOpsUnderRules(
     ]),
   );
 
+  /**
+   * Move a faction's credits by `requested` — the one money path every op that
+   * writes money goes through (`adjust_credits`, `pay`, `spend`), so the
+   * conservation rules, the declaration's cap and the duplicate-charge ledger
+   * are applied once (intent-ops §2).
+   */
+  const credit = (raw: unknown, factionId: string, requested: number): void => {
+        const f = state.factions.find((x) => x.id === factionId);
+        if (!f) {
+          reject(raw, 'unknown_faction', `No faction "${factionId}".`);
+          return;
+        }
+        // Taking another power's money is not something a sentence can do. The
+        // same shape as the `adjust_fleet` guard: there are mechanisms for this
+        // — an `income_penalty` agent, an extortionist's toll, commerce raiding
+        // — and all of them cost something. Paying someone is still allowed,
+        // because nothing needs protecting from a faction giving money away.
+        // An accord may move money BETWEEN the parties, because a transcript is
+        // the one place the other side's consent exists. A declared action may
+        // not: that is looting a treasury by narration.
+        if (source === 'extraction') {
+          negotiated[factionId] = (negotiated[factionId] ?? 0) + requested;
+          return;
+        }
+        if (actor !== undefined && factionId !== actor && requested < 0) {
+          reject(
+            raw,
+            'illegal_value',
+            `${actor} cannot take credits out of ${factionId}'s treasury directly. Skim it with an agent on an income_penalty mission, toll it, or raid its lanes.`,
+          );
+          return;
+        }
+        // Narrative money is capped. Every large movement of credits has a
+        // mechanism that owns its price and debits the treasury itself, so an
+        // `adjust_credits` this big is either duplicating one of those or
+        // inventing a sum outright — a failed action once charged 380 for
+        // nothing, and a priced 156-credit programme arrived with a freeform
+        // 180 riding alongside it.
+        //
+        // The allowance is the BATCH's, not the op's. Per op it could be
+        // multiplied by saying the same thing three times, which is exactly
+        // what happened to `subornLimit` below.
+        let delta = requested;
+        if (actor !== undefined) {
+          const used = spentOnNarrative.get(factionId) ?? 0;
+          const room = Math.max(0, MAX_NARRATIVE_CREDITS - used);
+          if (Math.abs(delta) > room) {
+            const trimmed = Math.sign(delta) * room;
+            const note =
+              room === 0
+                ? `Dropped a ${delta > 0 ? 'windfall' : 'charge'} of ${Math.abs(delta)} credits for ${nameFor(state, factionId)}; this declaration has already moved its ${MAX_NARRATIVE_CREDITS} of narrative money.`
+                : `Trimmed a ${delta > 0 ? 'windfall' : 'charge'} of ${Math.abs(delta)} credits to ${room} for ${nameFor(state, factionId)}; sums past that belong to a mechanic that prices them.`;
+            notes.push(note);
+            logEvent(state, 'clamp', note, factionId);
+            delta = trimmed;
+          }
+          spentOnNarrative.set(factionId, used + Math.abs(delta));
+          if (delta < 0) {
+            chargedByNarrative.set(
+              factionId,
+              (chargedByNarrative.get(factionId) ?? 0) + -delta,
+            );
+          }
+        }
+        // A CREDIT TO SOMEBODY ELSE HAS TO COME FROM SOMEWHERE.
+        //
+        // Taking another power's money by declaration is already refused above.
+        // Giving it money was not, and that is the other half of the same hole:
+        // a one-sided `adjust_credits meridian +300` was capped and applied, so
+        // the cap bounded the SIZE of the invention rather than the fact of it.
+        // Measured on an arbitral award — the galaxy ended 320 credits richer
+        // and no treasury paid.
+        //
+        // Deferred rather than dropped here, because whether it is a transfer
+        // is a property of the whole batch: the actor may be paying for it two
+        // ops later. Funded at settle time out of what the actor actually paid
+        // out, and the surplus is minting and is dropped.
+        //
+        // **A windfall to the actor's OWN treasury needs a payer too**, and
+        // exempting it was the whole of the remaining hole. The exemption read
+        // "the fiction paying you is a real thing and `MAX_NARRATIVE_CREDITS`
+        // bounds it" — but the cap bounds one batch, and a power may declare
+        // every turn, so what it bounded was the RATE of invention rather than
+        // the fact of it. Measured in a playtest: one 60-crate lot was "sold"
+        // back and forth between two NPCs across three turns, crediting the
+        // seller each time and debiting no buyer, and the galaxy ended about
+        // 600 credits richer on a lot worth at most 480. Twice the lot, out of
+        // nowhere, by describing a sale nobody paid for.
+        //
+        // Selling a thing to a power that never paid is precisely what the
+        // asset rules already refuse: *"it becomes credits only when a power
+        // actually pays"*. The honest routes are all still open — an accord,
+        // where the buyer's consent and its debit exist in the same transcript;
+        // a toll; a raid; an `income_penalty` operative. What is closed is the
+        // one route with no counterparty at all.
+        //
+        // Scoped to `model`. An `engine` batch is the reducer's own arithmetic
+        // paying out something it already priced, and an `extraction` one has
+        // returned above into `negotiated`, which conserves more strictly.
+        if (source === 'model' && actor !== undefined && (selfCreditNeedsPayer || factionId !== actor) && delta > 0) {
+          declaredCredits[factionId] = (declaredCredits[factionId] ?? 0) + delta;
+          return;
+        }
+        if (source === 'model' && actor !== undefined && factionId === actor && delta < 0) {
+          declaredPaidOut += -delta;
+        }
+        f.credits = Math.max(0, f.credits + delta);
+        return;
+        };
+
   for (const raw of rawOps) {
     const parsed = OpSchema.safeParse(raw);
     if (!parsed.success) {
@@ -4159,106 +4269,40 @@ function applyOpsUnderRules(
       }
 
       case 'adjust_credits': {
-        const f = state.factions.find((x) => x.id === op.factionId);
-        if (!f) {
-          reject(raw, 'unknown_faction', `No faction "${op.factionId}".`);
+        credit(raw, op.factionId, op.delta);
+        break;
+      }
+
+      // Money moves between two powers: the payer's debit and the payee's
+      // credit, through the one money path. On a declaration the payer is the
+      // actor; across a table either party may pay, because the transcript is
+      // where the payer agreed. Nothing here credits the power paying.
+      case 'pay': {
+        if (actor !== undefined && source !== 'extraction' && op.factionId !== actor) {
+          reject(raw, 'illegal_value', `${nameFor(state, actor)} pays out of its own treasury, not ${nameFor(state, op.factionId)}'s.`);
           break;
         }
-        // Taking another power's money is not something a sentence can do. The
-        // same shape as the `adjust_fleet` guard: there are mechanisms for this
-        // — an `income_penalty` agent, an extortionist's toll, commerce raiding
-        // — and all of them cost something. Paying someone is still allowed,
-        // because nothing needs protecting from a faction giving money away.
-        // An accord may move money BETWEEN the parties, because a transcript is
-        // the one place the other side's consent exists. A declared action may
-        // not: that is looting a treasury by narration.
-        if (source === 'extraction') {
-          negotiated[op.factionId] = (negotiated[op.factionId] ?? 0) + op.delta;
+        if (op.to === op.factionId) {
+          reject(raw, 'illegal_value', 'A power cannot pay itself.');
           break;
         }
-        if (actor !== undefined && op.factionId !== actor && op.delta < 0) {
-          reject(
-            raw,
-            'illegal_value',
-            `${actor} cannot take credits out of ${op.factionId}'s treasury directly. Skim it with an agent on an income_penalty mission, toll it, or raid its lanes.`,
-          );
+        if (!factionExists(op.to)) {
+          reject(raw, 'unknown_faction', `No faction "${op.to}".`);
           break;
         }
-        // Narrative money is capped. Every large movement of credits has a
-        // mechanism that owns its price and debits the treasury itself, so an
-        // `adjust_credits` this big is either duplicating one of those or
-        // inventing a sum outright — a failed action once charged 380 for
-        // nothing, and a priced 156-credit programme arrived with a freeform
-        // 180 riding alongside it.
-        //
-        // The allowance is the BATCH's, not the op's. Per op it could be
-        // multiplied by saying the same thing three times, which is exactly
-        // what happened to `subornLimit` below.
-        let delta = op.delta;
-        if (actor !== undefined) {
-          const used = spentOnNarrative.get(op.factionId) ?? 0;
-          const room = Math.max(0, MAX_NARRATIVE_CREDITS - used);
-          if (Math.abs(delta) > room) {
-            const trimmed = Math.sign(delta) * room;
-            const note =
-              room === 0
-                ? `Dropped a ${delta > 0 ? 'windfall' : 'charge'} of ${Math.abs(delta)} credits for ${nameFor(state, op.factionId)}; this declaration has already moved its ${MAX_NARRATIVE_CREDITS} of narrative money.`
-                : `Trimmed a ${delta > 0 ? 'windfall' : 'charge'} of ${Math.abs(delta)} credits to ${room} for ${nameFor(state, op.factionId)}; sums past that belong to a mechanic that prices them.`;
-            notes.push(note);
-            logEvent(state, 'clamp', note, op.factionId);
-            delta = trimmed;
-          }
-          spentOnNarrative.set(op.factionId, used + Math.abs(delta));
-          if (delta < 0) {
-            chargedByNarrative.set(
-              op.factionId,
-              (chargedByNarrative.get(op.factionId) ?? 0) + -delta,
-            );
-          }
-        }
-        // A CREDIT TO SOMEBODY ELSE HAS TO COME FROM SOMEWHERE.
-        //
-        // Taking another power's money by declaration is already refused above.
-        // Giving it money was not, and that is the other half of the same hole:
-        // a one-sided `adjust_credits meridian +300` was capped and applied, so
-        // the cap bounded the SIZE of the invention rather than the fact of it.
-        // Measured on an arbitral award — the galaxy ended 320 credits richer
-        // and no treasury paid.
-        //
-        // Deferred rather than dropped here, because whether it is a transfer
-        // is a property of the whole batch: the actor may be paying for it two
-        // ops later. Funded at settle time out of what the actor actually paid
-        // out, and the surplus is minting and is dropped.
-        //
-        // **A windfall to the actor's OWN treasury needs a payer too**, and
-        // exempting it was the whole of the remaining hole. The exemption read
-        // "the fiction paying you is a real thing and `MAX_NARRATIVE_CREDITS`
-        // bounds it" — but the cap bounds one batch, and a power may declare
-        // every turn, so what it bounded was the RATE of invention rather than
-        // the fact of it. Measured in a playtest: one 60-crate lot was "sold"
-        // back and forth between two NPCs across three turns, crediting the
-        // seller each time and debiting no buyer, and the galaxy ended about
-        // 600 credits richer on a lot worth at most 480. Twice the lot, out of
-        // nowhere, by describing a sale nobody paid for.
-        //
-        // Selling a thing to a power that never paid is precisely what the
-        // asset rules already refuse: *"it becomes credits only when a power
-        // actually pays"*. The honest routes are all still open — an accord,
-        // where the buyer's consent and its debit exist in the same transcript;
-        // a toll; a raid; an `income_penalty` operative. What is closed is the
-        // one route with no counterparty at all.
-        //
-        // Scoped to `model`. An `engine` batch is the reducer's own arithmetic
-        // paying out something it already priced, and an `extraction` one has
-        // returned above into `negotiated`, which conserves more strictly.
-        if (source === 'model' && actor !== undefined && (selfCreditNeedsPayer || op.factionId !== actor) && delta > 0) {
-          declaredCredits[op.factionId] = (declaredCredits[op.factionId] ?? 0) + delta;
+        credit(raw, op.factionId, -op.amount);
+        credit(raw, op.to, op.amount);
+        break;
+      }
+
+      // Money out of the actor's treasury to nobody on the board: a bribe, a
+      // hire, materials. The cost of an attempt.
+      case 'spend': {
+        if (actor !== undefined && op.factionId !== actor) {
+          reject(raw, 'illegal_value', `${nameFor(state, actor)} spends its own money, not ${nameFor(state, op.factionId)}'s.`);
           break;
         }
-        if (source === 'model' && actor !== undefined && op.factionId === actor && delta < 0) {
-          declaredPaidOut += -delta;
-        }
-        f.credits = Math.max(0, f.credits + delta);
+        credit(raw, op.factionId, -op.amount);
         break;
       }
 

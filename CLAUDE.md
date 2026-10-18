@@ -5485,6 +5485,21 @@ route is untouched, because each has a payer. An accord has the buyer's consent
 and its debit in one transcript; a toll, a raid and an `income_penalty`
 operative all take money from a treasury that had it.
 
+### Money is written as a payment or a cost
+
+`docs/design-2026-10-17-intent-ops.md` §2, journal version 25. Every rule in
+this section exists because `adjust_credits` was a signed number on any faction
+and the reducer had to work out what it meant: whether a credit was a windfall
+or the other half of a payment, whether a debit was a cost or a theft. A model
+now writes `pay` — from one power to another — or `spend` — the actor's money to
+nobody on the board — and **nothing a model writes credits the power writing
+it**. Both run through one money path in the reducer (`credit`), so
+conservation, the declaration's cap and the duplicate-charge ledger are applied
+exactly as before; an accord's `pay` is the conserved, uncapped transfer
+`moveConserved` already made. `adjust_credits` left `ModelOpSchema`. What is
+left where a model chooses a figure of money is a commitment's
+`incomePerTurn`, still held to its caps.
+
 ### An accord may move money; a declaration may not
 
 `adjust_credits` is refused when it takes credits out of a faction that is not
@@ -6805,7 +6820,9 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `scuttle_ships` | strike off hulls of your own at a world; the named class first |
 | `adjust_fleet` | **reducer arithmetic** from journal version 23 — refused from a model batch with an actor. Floors at 0; `hull` picks the class the yards lay down |
 | `adjust_ships` | **reducer arithmetic** from journal version 23, as `adjust_fleet`. Before it: `hull` picks the class — which to build, and which of *your own* to move; taking another power's is suborning, and spends their loss order |
-| `adjust_credits` | floors at 0 |
+| `adjust_credits` | floors at 0. **Not the model's** from journal version 25 — money is `pay` or `spend`; an accord keeps it only so old accords replay |
+| `pay` | `factionId` pays `to` an `amount`, through the one money path. A declaration pays only out of the actor's treasury, held to the declaration's cap; an accord may name either party and is conserved and uncapped |
+| `spend` | the actor's credits to nobody on the board — a bribe, a hire, materials |
 | `set_doctrine` | 1–240 chars; may move `warEthic`/`tradeEthic` and retire lines, charged in dissent; actor's own faction only |
 | `set_toll_policy` | who pays to cross your space; free, actor's own faction only. An accord may only **lift** a toll — adding one is `declared_only`. `forTurns` / `whileTreaty` make a lift temporary |
 | `consume_asset` | spend, release or destroy a thing you hold; draws an instrument's `uses` or stuff's `quantity`. Never a promissory note, and from journal version 22 never a person |

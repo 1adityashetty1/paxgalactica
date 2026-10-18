@@ -95,6 +95,29 @@ export const AdjustCreditsOp = z.object({
   reason: z.string().default(''),
 });
 
+/**
+ * Credits from one power to another: `factionId` pays, `to` receives. On a
+ * declaration the payer is the acting power; in an accord either party may pay,
+ * because the transcript is where the payer agreed. Conserved by construction —
+ * a payment cannot invent the money it moves (intent-ops §2).
+ */
+export const PayOp = z.object({
+  op: z.literal('pay'),
+  factionId: z.string().min(1),
+  to: z.string().min(1),
+  amount: z.number().int().min(1),
+  /** What it buys, in a phrase: a bribe, a ransom, the price of a world. */
+  for: z.string().default(''),
+});
+
+/** The acting power's credits to nobody on the board: a bribe, a hire, materials. */
+export const SpendOp = z.object({
+  op: z.literal('spend'),
+  factionId: z.string().min(1),
+  amount: z.number().int().min(1),
+  for: z.string().default(''),
+});
+
 /** Internal standing with your own institutions. Reducer-driven, not narrative. */
 export const AdjustDissentOp = z.object({
   op: z.literal('adjust_dissent'),
@@ -1238,7 +1261,9 @@ export const EXTRACTION_ALLOWED = new Set<string>([
   'settle_debt',
   // The relational product of having talked at all.
   'adjust_disposition',
-  // A payment agreed across the table.
+  // A payment agreed across the table — `pay`, and `adjust_credits` only so
+  // accords journaled before `pay` existed replay.
+  'pay',
   'adjust_credits',
   // Lifting a toll is a concession, and a concession is the thing an accord is
   // FOR — "I'll open the Sennex lane to your hulls" produced nothing before,
@@ -1590,7 +1615,8 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   SweepOp,
   SubornCrewsOp,
   ScuttleShipsOp,
-  AdjustCreditsOp,
+  PayOp,
+  SpendOp,
   SetDoctrineOp,
   CreateAssetOp,
   SetStanceOp,
@@ -1693,6 +1719,8 @@ export const OpSchema = z.discriminatedUnion('op', [
   SubornCrewsOp,
   ScuttleShipsOp,
   AdjustCreditsOp,
+  PayOp,
+  SpendOp,
   SetDoctrineOp,
   CreateAssetOp,
   LogRulingOp,
@@ -1808,7 +1836,11 @@ export const OP_PATHS: Record<Op['op'], readonly OpPath[]> = {
   build_ships: [D, ...NPC, E],
   suborn_crews: [D, ...NPC, E],
   scuttle_ships: [D, ...NPC, E],
-  adjust_credits: [D, ...NPC, A, E],
+  // Money is written as `pay` or `spend` (intent-ops §2). An accord keeps it
+  // only so accords journaled before that replay.
+  adjust_credits: [A, E],
+  pay: [D, ...NPC, A, E],
+  spend: [D, ...NPC, E],
   set_doctrine: [D, E],
   create_asset: [D, A, E],
   set_stance: [D, ...NPC, E],

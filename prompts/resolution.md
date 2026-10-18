@@ -72,7 +72,8 @@ leaves a faction with nobody following it.
 | `sweep` | counter-intelligence on a world of your own |
 | `adjust_disposition` | how another power sees **you** moves — `factionId` is theirs, `towardFactionId` is yours. Never your own view of them |
 | `build_ships` | lay down new hulls of your own, now, at a world you hold — or, with `programme: true`, as a hidden yard programme delivered later |
-| `adjust_credits` | money spent or earned |
+| `pay` | your credits to another power (`to`, `amount`, `for`) |
+| `spend` | your credits to nobody on the board — a bribe, a hire, materials (`amount`, `for`) |
 | `suborn_crews` | another power's crews change sides where they stand — see Suborning |
 | `scuttle_ships` | strike off hulls of your own at a world |
 | `set_doctrine` | the faction changes course — see Changing doctrine |
@@ -133,12 +134,12 @@ writing off what you are owed needs nobody's permission, only a willingness to
 pay for it. Forgiving is the creditor's alone; a debtor cannot cancel what it
 owes, and the reducer rejects the attempt.
 
-`adjust_credits` is for narrative money only — a bribe, a fine, a levy.
+`pay` and `spend` are for narrative money only — a bribe, a gift, a fee.
 
-**Money only ever MOVES. Nothing you write makes it.** A credit into any
-treasury, including your own, is paid for out of a debit somewhere in the same
-batch, and an unfunded one is dropped with a note. So write both halves of a
-payment or neither. A sale to another power is not yours to write at all: the
+**Money only ever MOVES, and only out of your own treasury.** `pay` moves your
+credits to another power; `spend` pays someone off the board. Nothing you write
+credits your own treasury: money reaches you because another power paid it, or
+from a mechanism. A sale to another power is not yours to write at all: the
 buyer has to agree, which happens in a channel, and until then it is a
 conversation rather than a price — describe the offer and leave the money
 alone. Selling a thing for credits nobody paid was worth about 600 invented
@@ -665,7 +666,7 @@ capability — nobody talks a fleet across the galaxy in a turn.
 
 Money owed between powers is real state: a principal that depletes, a scheduled
 instalment, and a debtor who can fail to pay. Servicing happens in the tick — you
-do not emit the payments, and you must not move them with `adjust_credits`.
+do not emit the payments, and you must not move them with `pay`.
 
 What you can do here is **forgive** one, with `forgive_debt`, which writes off
 the balance and buys real goodwill with the debtor. For most powers that is an
@@ -832,7 +833,7 @@ credit, and every ton of the target's hulls destroyed in battle pays fifteen,
 to whoever did it. Posting again tops up your bounty. `withdraw_bounty` takes
 back what is left — the target's grievance at being priced does not go with
 it. It is the acting power's own money and needs nobody's consent; never write
-it as `adjust_credits`.
+it as a `pay` or a `spend`.
 
 **Protection and a letter of marque are contracts**, and contracts are agreed
 in a channel, never declared. Protection pays a raider to leave your shipping

@@ -14,7 +14,7 @@ is purely a **record** of the conversation:
 
 `form_treaty` · `break_treaty` · `establish_debt` · `assign_debt` ·
 `restructure_debt` · `establish_commitment` · `dissolve_commitment` ·
-`forgive_debt` · `settle_debt` · `adjust_disposition` · `adjust_credits` ·
+`forgive_debt` · `settle_debt` · `adjust_disposition` · `pay` ·
 `log_narrative` · `set_toll_policy` · `transfer_asset` ·
 `establish_loan` · `return_loan` · `forgive_loan`
 
@@ -31,8 +31,8 @@ was meant. A power giving its own away needs no such record.
 **A SALE is one treaty, never two loose ops.** If a thing was agreed to change
 hands *for a price*, write a treaty carrying both halves — `terms.assets` for
 what moves and `terms.payment` for what is paid — exactly as a cession carries
-the world and its price. Do NOT write `transfer_asset` beside a pair of
-`adjust_credits` entries: nothing binds those two together, and a live accord to
+the world and its price. Do NOT write `transfer_asset` beside a `pay`: nothing
+binds those two together, and a live accord to
 sell fifteen tons of ore for ninety credits emitted the money and not the ore,
 leaving the buyer ninety credits poorer and holding nothing.
 
@@ -93,8 +93,8 @@ a single `create_asset` with `kind: "dossier"`, and the price beside it.
 
 **Write it straight into the buyer's hands.** A dossier is the one asset an
 accord may create, and the one whose `heldBy` may be either party — so a sale is
-a single `create_asset` with the BUYER as `heldBy`, and the price as
-`adjust_credits` in both directions. Do not create it for the seller and then
+a single `create_asset` with the BUYER as `heldBy`, and the price as a `pay`
+from the buyer to the seller. Do not create it for the seller and then
 try to move it: the id does not exist until the reducer mints it, so there is
 nothing for `terms.assets` or `transfer_asset` to name, and inventing a
 placeholder like `"NEW:dossier:..."` is rejected as an unknown asset. (That is
@@ -232,11 +232,10 @@ Specifically:
   or envoy from this pass. A conversation that commits a power to building,
   fortifying, blockading, raising a garrison or running an operation produces a
   `log_narrative` recording the intent; the power declares it on its own turn.
-- `adjust_credits` — only for a specific sum both sides settled on, and only as
-  a payment one side makes from money it has. **A loan is not this.** Lending is
-  `establish_debt`, which moves the principal from the creditor to the debtor
-  itself; writing the advance as a bare `adjust_credits` to the borrower creates
-  money that never left anybody's treasury.
+- `pay` — only for a specific sum both sides settled on: `factionId` is the
+  party paying, `to` the party paid, and it moves money the payer has. **A loan
+  is not this.** Lending is `establish_debt`, which moves the principal from the
+  creditor to the debtor itself.
 - `form_treaty` — for anything the parties agreed will **stand over time**.
   **This pass is the only one in the game that may emit it.** A treaty binds a
   power that is not the player, so it needs that power's consent, and a
@@ -322,9 +321,9 @@ Specifically:
   **`terms.payment` is how a world is bought.** It carries no ceiling, because
   it is a transfer: it moves on the turn the treaty takes force, the buyer pays
   only what its treasury actually holds, and the seller receives exactly that.
-  Write the agreed price here. Do **not** write a purchase price as
-  `adjust_credits` — narrative money is capped at a few hundred credits, so a
-  world agreed at 3,000 used to change hands for 240.
+  Write the agreed price here, on the treaty that moves the world, rather than
+  as a loose `pay` beside it — the two halves of one bargain belong on one
+  record.
 
   `incomePerTurn` is a **transfer**, so it can never pay out more than it takes
   in. Writing `{"a": 30, "b": 20}` — both positive — is money from nowhere, and
@@ -583,7 +582,7 @@ creditor has to agree to part with it. Give it the `debtId` being sold and the
 its history, and simply answers to someone else. **Never write an assignment as
 `establish_debt`** — that mints a second copy of the same paper and retires
 nothing, so the debtor ends up owing it twice. If money changes hands for the
-paper, that is a separate `adjust_credits` pair.
+paper, that is a separate `pay`.
 
 A debtor paying a balance down is `settle_debt`, which is an ordinary op either
 side may reach; the money really moves, so it is bounded by what the debtor

@@ -1045,7 +1045,11 @@ export function groundInConcessions(
       dropped.push(`a debt owed by ${otherId}, which it never agreed to owe.`);
       return false;
     }
-    if (op.op === 'adjust_credits' && op.factionId === otherId && Number(op.delta ?? 0) < 0 && !saidAnything) {
+    if (
+      ((op.op === 'adjust_credits' && Number(op.delta ?? 0) < 0) || op.op === 'pay') &&
+      op.factionId === otherId &&
+      !saidAnything
+    ) {
       dropped.push(`credits out of ${otherId}'s treasury, which it never agreed to pay.`);
       return false;
     }
