@@ -11,9 +11,9 @@ This document applies the same test to the rest of `ModelOpSchema`:
 > **Could two different acts be written as this op?** If so, the reducer is
 > inferring, and a wrong inference is either a refused batch or a free effect.
 
-Counts are for model-written ops in the 11 saved campaigns on this machine.
-Bot batches (`initiative`) and engine batches are left out. Columns are
-declared actions, reactions and accords.
+Counts are for ops in the 11 saved campaigns on this machine, with bot batches
+(`initiative`) left out. The engine stages some ops in batches that a model did
+not write, and those are counted separately where it matters.
 
 | op | total | declared | reaction | accord |
 |---|---|---|---|---|
@@ -23,19 +23,55 @@ declared actions, reactions and accords.
 | `deploy_agent` | 82 | 19 | 63 | — |
 | `adjust_credits` | 78 | 48 | 14 | 16 |
 | `spawn_event` | 39 | 37 | 1 | 1 |
-| `adjust_dissent` | 30 | 28 | 2 | — |
+| `adjust_dissent` | 37 * | 35 | 2 | — |
 | `establish_commitment` | 23 | 14 | — | 9 |
 | `create_asset` | 9 | 9 | — | — |
 
+\* 27 of the 37 are the engine's own charges, not a model's (§0).
+
 `log_narrative` is a record, and `deploy_agent` already carries a mission, a
-method and a class. Everything else in the table fails the test. Ranked by how
-much the reducer infers multiplied by how often the op is written:
+method and a class. Everything else in the table fails the test.
+
+## 0. How a removal is done, so it breaks nothing
+
+Version 23 retired `adjust_ships` with a reducer guard: the op is refused from
+any `model` or `extraction` batch that has an actor. **That pattern is wrong for
+most of what follows**, because the engine and the bots write ops under the same
+source:
+
+- **The engine stages its own charges as `adjust_dissent` under `model`, with
+  an actor.** That covers a refusal (8), a compulsion defiance (15, appended to
+  the resolution's own batch) and an objection to an accord. Of the 37
+  `adjust_dissent` ops in the saves, 21 are these charges, and 6 more are
+  engine charges under source `engine`. A reducer guard would refuse the 21,
+  and red lines and compulsions would cost nothing.
+- **Every bot batch is committed under `model`, with an actor and atomically**,
+  and the engine appends a `spawn_event` to it carrying the bot's rationale. A
+  reducer guard on `spawn_event` would sink every bot turn.
+- **Bots write `issue_order` in twelve shapes**: moves, raids, blockades, sweeps,
+  envoys, fixtures, repairs and others. Retiring it means converting the bots,
+  as version 23 converted their ship buying.
+
+So the default is a **schema removal**: the op leaves `ModelOpSchema`, which is
+what a model's reply is validated against, and stays in `OpSchema`. The reducer
+keeps accepting it from the engine, from bots and from old journals. A reducer
+guard is added only where the engine and the bots no longer write the op. Every
+item still gets its own journal version and `LegacyRules` flag.
 
 ## 1. `issue_order` → one op per kind of work
 
 **Today.** One op carries fourteen order categories, an optional `onComplete`
-payload, and a duration the model estimates (1, 2, 3 or 5 turns). The reducer
-infers the act from the category plus the payload:
+payload, a duration the model estimates (1, 2, 3 or 5 turns), and four fields
+the model fills in:
+
+| field | set by models on the 132 work orders in the saves |
+|---|---|
+| `label` | 112 — what the Orders panel and the log call it |
+| `onInterrupt` | 38 non-default: 33 `partial` (unspent money refunded) and 5 `persist` |
+| `visibility` | 19 — the acting power choosing to be seen |
+| `interruptible: false` | 3 |
+
+The reducer infers the act from the category plus the payload:
 
 - `commissionCategory` re-files a ship programme by its hull (item 121);
 - `boundPayloadsToOutcome` strips a payload;
@@ -44,9 +80,9 @@ infers the act from the category plus the payload:
 **What it costs.**
 
 - **Orders that complete and do nothing.** Of the 111 non-movement orders in
-  the saves that are not raids, 31 carried nothing (raids and the 8 payload-less
-  counter-intelligence sweeps are left out, because the reducer reads both live
-  while they run):
+  the saves that are not raids, 31 carried nothing (raids and the 8
+  payload-less counter-intelligence sweeps are left out, because the reducer
+  reads both live while they run):
   - political manoeuvre 8, fortification 7, courier 7, espionage 4;
   - refit 2, decree 1, infrastructure 1, garrison 1.
 
@@ -55,22 +91,39 @@ infers the act from the category plus the payload:
 - **Unrequested work.** B5: one envoy declaration staged a payload-less
   political manoeuvre, a fleet movement nobody asked for, and a stipend.
 - **Categories whose real mechanism lives elsewhere.** `espionage` is
-  `deploy_agent`, and `treaty_ratification` is `form_treaty.ratifyTurns`. A
-  model that writes the category gets an order and no effect.
+  `deploy_agent`, and `treaty_ratification` is `form_treaty.ratifyTurns`.
 
-**Proposed.** One op for each piece of work that does something:
+**Proposed.** One op for each piece of work that does something. **Every one of
+them keeps `label`, `onInterrupt`, `interruptible` and `visibility`.** Dropping
+them would lose the partial refund 33 orders chose, a power's choice to be seen,
+and every order's name.
 
 | intent | today | the reducer decides |
 |---|---|---|
+| `move { originId, targetId, force?, officers? }` | `issue_order` with `fleet_movement` | whether it lands now or sails (v23's rule, unchanged) |
 | `fortify { systemId, magnitude }` | `fortification` + `fortify` | category, floor, price, visibility |
 | `raise_garrison { systemId, magnitude }` | `garrison_raising` + `raise_garrison` | the same |
 | `develop { systemId, magnitude }` | `construction_infrastructure` + `develop_system` | the same, priced by `developmentCost` |
-| `commission { systemId, hull, count }` | three categories + `commission_ships` | the category, from the hull — `commissionCategory` stops being a correction |
 | `found_fixture { systemId, kind }` / `repair_fixture` | as now | the same |
 | `send_envoy { systemId }` | `political_maneuver` + `court` | the same |
 | `blockade` / `raid { systemId, dark? }` | as now | as now |
 | `sweep { systemId }` | `counter_intelligence` | read live, as now |
-| `fleet_movement` | — | **done in v23**: one jump inside your own territory lands at once |
+
+**`move` is needed because `issue_order` is leaving.** Version 23's move rule
+lives on `issue_order` with type `fleet_movement`, and goes with it.
+
+**Ship programmes are not a second build op.** A `commission` beside
+`build_ships` would be two ops for one intent, the shape just folded out of
+movement: the model would pick between "lay them down now" and "a programme".
+Fold them into `build_ships`, with a `programme: true` flag that makes the work
+a hidden, interruptible order paid at issue. The flag says the power wants it
+built out of sight; the reducer decides everything else.
+
+**A programme must count against yard capacity.** Today it bypasses
+`yardCapacityFor`: up to 12 hulls a programme, delivered in the tick, outside
+`billConstruction`'s per-declaration berth cap, and any number of programmes at
+once. Count a programme's tonnage against the berths of the declaration that
+issues it.
 
 `courier`, `decree` and bare `political_maneuver` leave the model's vocabulary.
 `espionage` and `treaty_ratification` leave it too, since each has a real op
@@ -78,14 +131,24 @@ already. An act with no mechanism belongs in `log_narrative`, or in the
 arbiter's `unexpressed`. It should not become an order that completes doing
 nothing.
 
-**Duration can be derived, not estimated.** For every intent above, the
-category floor already decides the duration in practice. The only things a
-model estimate adds are a longer wait or a clamp note. Deriving it as the floor
-scaled by magnitude would remove the duration rubric from these prompts. This is
-optional and its own decision.
+**One capability is lost, and that is accepted.** A bare covert order is a
+rumour to rivals ("something under way at X"), so it can serve as a feint. The
+fog's rumours of real programmes remain.
 
-**Pin.** Journal version 24, `LegacyRules.workIntents`. `issue_order` stays in
-`OpSchema` for old journals and the engine.
+**Durations: derive them per kind, from the floor plus a base where models
+disagree with the floor.** In the saves, every category was estimated at or
+below its floor (and clamped up to it), with one exception: all 10 envoy orders
+were estimated at 2 turns against a floor of 1. Deriving from the floor alone
+would make envoys land twice as fast, and standing would move twice as fast with
+them. So `send_envoy` takes 2, and every other kind takes its floor scaled by
+magnitude. This is optional and its own decision; until then, keep the estimate.
+
+**The bots convert in the same change.** Their twelve `issue_order` shapes
+become the ops above. Then a reducer guard can refuse `issue_order` from a
+model batch with an actor, as version 23 did for `adjust_ships`. Measure: the
+four harness boards and `pnpm fleetlab`.
+
+**Pin.** Journal version 24, `LegacyRules.workIntents`.
 
 ## 2. `adjust_credits` → `pay` and `spend`
 
@@ -94,9 +157,11 @@ from the sign, the actor and the rest of the batch:
 
 - a positive amount from a declaration is deferred, and funded from what the
   same batch paid out;
-- a debit from a non-actor is refused on the declared path and conserved on the
-  accord path (`moveConserved`);
-- `MAX_NARRATIVE_CREDITS` caps the batch;
+- a debit from a non-actor is refused on the declared path;
+- on the accord path, a transfer is conserved by `moveConserved` and is
+  **uncapped**: a conserved transfer cannot invent a credit, which is the rule
+  `terms.payment` was built on;
+- `MAX_NARRATIVE_CREDITS` (240) caps a declaration's money;
 - `refundDuplicateCharges` guesses which charge duplicates a mechanism's bill.
 
 **What it costs**, every item measured and recorded in CLAUDE.md:
@@ -106,125 +171,184 @@ from the sign, the actor and the rest of the batch:
 - a 450-credit settlement that could not be written down;
 - seven worlds for 1,200 credits against 13,950 agreed.
 
-Each needed its own inference rule, and each rule exists because the op cannot
-say who pays whom for what.
-
 **Proposed.**
 
-- `pay { to, amount, for }`: the actor's credits to a named power, conserved by
-  construction. In an accord either party may be the payer, because consent is
-  in the transcript.
+- `pay { to, amount, for }`: credits from the payer to a named power, conserved
+  by construction. On the declared path the payer is the actor. In an accord
+  either party may pay, because consent is in the transcript.
 - `spend { amount, for }`: the actor's credits to nobody. This is the cost of an
   attempt: a bribe to someone off the board, materials, a hire.
 
-No model op credits the actor. Money arrives as somebody else's `pay` or from a
-mechanism. The deferral and funding pass goes away. The cap stays on `spend` and
-`pay` alike. `refundDuplicateCharges` becomes exact when `for` names an order in
-the same batch.
+**The cap applies to a declaration only.** `MAX_NARRATIVE_CREDITS` bounds a
+declaration's `pay` and `spend` together, as it bounds `adjust_credits` today.
+An accord's `pay` stays uncapped and conserved. Capping it would bring back
+seven worlds for 1,200 credits.
 
-## 3. `adjust_disposition` → a grievance or a gift, priced in code
+No `pay` or `spend` credits the actor. Money reaches a power through somebody
+else's `pay` or through a mechanism. **One mechanism still has a figure a model
+chose**: a commitment's `incomePerTurn`, which is held to `MAX_COMMITMENT_INCOME`
+and the influence ceiling. Three commitments in the saves invented revenue that
+way (`free_port` +20, `compact_repudiation` +20, `shalka_scrip` +25). That
+belongs to §5, not here.
 
-**Today.** The largest model-written op after narration: 310 in the saves, 208
-of them negative, 195 of them in reactions. It is held to the actor's own pair
-and to `MAX_NARRATIVE_DISPOSITION` per batch. That bounds the size and says
-nothing about the cause. Most hostile acts are already priced in the reducer:
-an attack, suborning, piracy, coercion, a broken pact, a bounty. So a reaction
-that also narrates −15 for one of those acts is charging the same act twice.
+The deferral and funding pass goes away. `refundDuplicateCharges` becomes exact
+when `for` names an order in the same batch.
 
-**What it costs.** B11:
+## 3. `adjust_disposition` → a regard ruling, priced in code
 
-- an accord that signed a treaty paid the treaty's goodwill and the narrated
-  warmth on top (5 → 17 → 42);
-- being blackmailed *raised* regard.
+**Today.** The largest model-written op after narration: 310 in the saves. It is
+held to the actor's own pair and to `MAX_NARRATIVE_DISPOSITION` (25) per batch.
+That bounds the size and says nothing about the cause. Both directions are
+used, and both signs:
 
-The v22 batch cap fixed the size. Nothing fixes double counting, because the
-op cannot say what it is for.
+| path | whose view moves | warmer | cooler |
+|---|---|---|---|
+| declared | the target's view of the actor | 12 | 50 |
+| declared | the actor's view of the target | — | 1 |
+| reaction | the reacting power's own view | 48 | 146 |
+| reaction | the other's view of it | 1 | — |
+| accord | either side | 41 | 11 |
 
-**Proposed.** The model judges *that* something happened, and the reducer looks
-up *how much* it is worth. This is the division `classifyPrinciple` already
-uses.
+**What it costs.**
 
-- `grievance { against, because }`, with `because` from a closed list: `insult`,
-  `threat`, `slight`, `broken_word`. Each is a fixed cost in code. An act the
-  reducer already prices is not on the list, so it cannot be charged twice.
+- **B11:** an accord that signed a treaty paid the treaty's goodwill and the
+  narrated warmth on top (5 → 17 → 42), and being blackmailed *raised* regard.
+- **Double counting.** The reducer already prices most hostile acts: an attack,
+  suborning, piracy, coercion, a broken pact, a bounty. A narrated cooling on
+  top charges the same act twice. The 50 declared coolings of the target's view
+  are mostly that: the fallout of the actor's own act.
+
+**What it must not lose.**
+
+- **The 12 declared warmings are the payoff of an influence check.** Without
+  them a successful charm, propaganda or state visit does nothing.
+- **The 48 reaction warmings are how an NPC comes to like the player.**
+  Disposition has no decay, so a vocabulary that can only cool ratchets the
+  galaxy toward war. Disposition is the bots' main input: it gates aggression,
+  ranks targets, and decides exchanges and coalitions.
+
+**Proposed.** The model judges *that* something happened and why; the reducer
+looks up *how much*. This is the division `classifyPrinciple` already uses.
+
+- `sway { whom }` on a declared action that rolled `influence`. It moves `whom`'s
+  view of the actor by an amount set from the band in code: nothing on a
+  failure, less on a partial, more on a success. A failure that offended them
+  is a `regard` ruling, below.
+- `regard { toward, because }` in a reaction. It moves the reacting power's own
+  view. `because` comes from a closed list with both signs: `insult`, `threat`,
+  `slight` and `promise_broken` on one side; `aid`, `deference` and
+  `promise_kept` on the other. Each has a fixed size in code.
+  - `promise_broken` and `promise_kept` mean a promise made in conversation and
+    recorded nowhere. A broken treaty, loan or favour is already priced, and
+    the reducer refuses `regard` when the same batch or the last tick charged
+    one between the pair.
+  - No reason on the list names an act the reducer prices.
 - `gift { to, amount }`: a `pay` that buys regard at a published rate.
+- **Accords:** treaty and commitment goodwill as now. A narrated warming lands
+  only when the accord signed no treaty between the pair, which is the v22
+  rule. A cooling still lands, through `regard`.
 
-In an accord, regard comes from treaty and commitment goodwill and nothing
-else.
-
-**Risk.** Disposition is the bots' main input: it gates aggression, ranks
-grievances, and decides exchanges and coalitions. Removing 195 narrated movements
-a campaign will move played boards, not the harness, which never narrates. This
-needs a played campaign before and after, read off the trace and the epilogue's
-standing table.
+**Risk.** This moves played boards and not the harness, because the harness
+never narrates. It needs a played campaign before and after, read off the
+trace and off the epilogue's standing table, with the share of warming against
+cooling compared to the table above.
 
 ## 4. `create_asset` → prizes the ruling names
 
 **Today.** The resolution pass mints a thing on a good band. The reducer bounds
 it by outcome, presence and archetype, and refuses a person who already exists
-(v22).
+(v22). A reaction may create one too, with no check behind it; only fixtures
+are refused there.
 
 **What it costs.** A10: routine court acts at DC 5 produced charts, contraband
 and dossiers on a critical success, each sellable. A prize is invented after
-the roll, by the pass with every reason to be generous. That is the failure the
-arbiter split was built to end.
+the roll, by the pass with every reason to be generous.
 
 **Proposed.** The arbiter names what an overt part *could* yield, before the
 roll, as `yields` beside `establishes`. The reducer mints only that, sized by
-the band, which matches "sends are the ruling's" for covert work. Prizes of a
-battle, a larceny or a kidnapping stay the reducer's own. An accord keeps its
-one exception, the dossier.
+the band, which matches "sends are the ruling's" for covert work. The other
+sources of assets are unchanged: larceny, kidnapping, interrogation, a derelict
+event and an accord's dossier.
 
-## 5. `establish_commitment` → the typed home when there is one
+**Two consequences, stated rather than discovered later.**
 
-**Today.** Free-form `kind`. All 23 in the saves are distinct, and most of them
-now have a mechanism:
+- **A battle yields no prize under this rule, and none today.** The reducer
+  mints captured officers from a battle, and nothing else: crew prisoners and
+  salvage come only from the derelict event. An attack's `yields` cannot land at
+  resolution either, because the presence guard refuses a prize where the
+  attacker does not yet stand. Prisoners from a won battle would be a reducer
+  mechanic of their own, and are out of scope.
+- **Reactions lose asset creation altogether**, because a reaction has no
+  ruling to name a yield. This matches the reason fixtures were taken from
+  reactions.
 
-| written as | has a home in |
-|---|---|
-| `letter_of_marque`, `marque_ratchet` | `contract` with `terms.commission` |
-| `indemnity_pact`, `insurance_syndicate`, `claimant_seal_surety` | a contingency |
-| `raid_tithe`, `shalka_mark_premium`, `corridor_rate_pact` | `Commitment.share`, a toll policy |
-| `free_port`, `trade_route_opened` | `set_toll_policy`, `trade_accord` |
-| `territorial_holding` | `cession` |
-| `listening_post`, `agent_asset` | a listener hull, an operative |
-| `factional_subsidy` | `grant_stipend`, or a `contract` |
+## 5. `establish_commitment` → fill the mechanism, or use the right op
 
-That leaves 8 of the 23 as genuinely new institutions: `bill_of_attainder`,
-`shalka_judgment`, `bench_impartiality`, `arbitration_compact`,
-`claimant_seat`, `compact_repudiation`, `oridin_denial` and `shalka_scrip`.
+**Today.** Free-form `kind`. All 23 in the saves are distinct. Read against what
+each one said:
 
-**Proposed.** The arbiter's `establishes` maps a kind to its typed op through a
-lookup table in code, and the resolution emits that op. `establish_commitment`
-stays for the residue, where its record and goodwill are the honest whole of
-it. A recorded marque that pays nothing is the inert record this project keeps
-finding.
+| | count | kinds | what should have happened |
+|---|---|---|---|
+| a commitment field left empty | 5 | `indemnity_pact`, `insurance_syndicate`, `claimant_seal_surety` (contingency); `raid_tithe`, `corridor_rate_pact` (share) | the same op, with `contingency` or `share` filled in |
+| another op | 4 | `agent_asset` (a bribed dockmaster: an operative), `listening_post` (a listener or a watcher), `trade_route_opened` (freighters sailing), `free_port` (a toll lift, and the rest is residue) | that op |
+| a treaty term | 1 | `letter_of_marque` | `contract` with `terms.commission`, in an accord |
+| restating the board | 1 | `territorial_holding` ("Meridian holds Ithaal…") | nothing |
+| residue | 12 | `marque_ratchet`, `shalka_mark_premium`, `factional_subsidy`, `reputation_campaign`, `arbitration_compact`, `bench_impartiality`, `bill_of_attainder`, `claimant_seat`, `compact_repudiation`, `oridin_denial`, `shalka_judgment`, `shalka_scrip` | a record, as now |
 
-## 6. Leave the vocabulary: `spawn_event` and `adjust_dissent`
+So most of the failure is not a missing op: it is a mechanism the commitment op
+already has, left empty.
 
-**`spawn_event`** (39 in the saves, 37 of them in declarations) writes a log line,
-which `log_narrative` already does. `markNotesPrivate` scopes only
-`log_narrative`, so a `spawn_event` in a secret batch is logged in public. The
-engine keeps it for bot rationales and brokered accords. The model loses it.
+**Proposed.** The arbiter's `establishes` names its mechanism from a closed
+list: `share`, `contingency`, `income`, `exclusive`, or `record`. The resolution
+is told to fill that field, and a commitment whose named mechanism is missing
+goes back once for correction, the way an invented refusal does. An act whose
+home is another op is the arbiter's routing, as covert work already is: a bribed
+dockmaster is a `covert` part, not a commitment.
 
-**`adjust_dissent`** (30, 28 of them in declarations) raises the actor's own
-dissent. Every intended source already has a price in code: a refusal (8), a
-compulsion breach (15), a doctrine change, the span of control, drift. A
-narrated amount on top of an arbiter's breach ruling is the same act charged
-twice. If the fallout has no mechanism, it is a breach the arbiter should rule.
-The model loses this op.
+**Not a slug lookup.** All 23 slugs are distinct, so a table keyed on `kind`
+would match nothing.
+
+**Not a silent redirect either.** A declared act whose home needs the other
+party's consent (a contract, a treaty) becomes a negotiation redirect, which
+costs no action. Today the same act lands as an inert record. That change is
+intended, and the briefing should say why the act became a conversation.
+
+**Invented income.** The three commitments that paid their own power (+20, +20,
++25) are the remaining place a model chooses a figure of money. Under this rule
+`income` is a mechanism the arbiter names before the roll, and the figure stays
+held to the existing caps.
+
+## 6. Out of the model's vocabulary: `spawn_event` and `adjust_dissent`
+
+**`spawn_event`** (37 in declarations, all written by a model) writes a log line,
+which `log_narrative` already does. `markNotesPrivate` marks only
+`log_narrative` private. So a `spawn_event` in a batch that mixes open and covert
+work, or in a reaction that places an operative, is logged in public. Purely
+covert batches already drop it (`COVERT_SEND_OPS`). Remove it from
+`ModelOpSchema` only: the engine appends one to every bot batch under `model`
+(§0).
+
+**`adjust_dissent`**: of the 37 in the saves, 27 are the engine's own charges
+(§0), and 10 were written by a model. Those 10 raise the actor's own dissent by a
+figure the model chose, on top of prices that live in code: a refusal, a
+defiance, a doctrine change, the span of control, drift. If a fallout has no
+mechanism, it is a breach the arbiter should rule. Remove it from `ModelOpSchema`
+only. The engine goes on staging its charges, and the reducer's up-only,
+own-faction rule stays as the guard on them.
 
 ## Order of work
 
-1. **`spawn_event` and `adjust_dissent`**: removals with no new mechanism, and
-   they close a leak.
-2. **`issue_order` → work intents**: the most dead orders, and it reuses every
-   bound that already exists.
-3. **`adjust_credits` → `pay` / `spend`**: removes four inference rules.
+1. **`spawn_event` and `adjust_dissent`**: schema removals with no new
+   mechanism, and they close a leak.
+2. **`issue_order` → work intents and `move`**, with the bots converted and
+   programmes counted against yard capacity.
+3. **`adjust_credits` → `pay` / `spend`**: removes four inference rules; the
+   cap stays on declarations only.
 4. **`create_asset` → `yields`**: one field on the ruling.
-5. **`establish_commitment` routing**: a lookup table.
-6. **`adjust_disposition` → `grievance` / `gift`**: last, because it moves played
-   boards and needs a played campaign before and after.
+5. **`establish_commitment` → a named mechanism**: one closed field on the
+   ruling, and a correction pass.
+6. **`adjust_disposition` → `sway`, `regard` and `gift`**: last, because it moves
+   played boards and needs a played campaign before and after.
 
 Each item gets its own journal version and `LegacyRules` flag. The old op stays
 in `OpSchema` so a campaign replays as it was played. Each item ends with the
