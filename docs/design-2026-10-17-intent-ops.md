@@ -52,11 +52,16 @@ source:
   envoys, fixtures, repairs and others. Retiring it means converting the bots,
   as version 23 converted their ship buying.
 
-So the default is a **schema removal**: the op leaves `ModelOpSchema`, which is
-what a model's reply is validated against, and stays in `OpSchema`. The reducer
-keeps accepting it from the engine, from bots and from old journals. A reducer
-guard is added only where the engine and the bots no longer write the op. Every
-item still gets its own journal version and `LegacyRules` flag.
+So until §7 is built, the default is a **schema removal**: the op leaves
+`ModelOpSchema`, which is what a model's reply is validated against, and stays in
+`OpSchema`. The reducer keeps accepting it from the engine, from bots and from
+old journals. A reducer guard is added only where the engine and the bots no
+longer write the op.
+
+**§7 removes the need for this workaround.** Once every batch carries the path
+it came by, the reducer can refuse `adjust_dissent` from a declaration or a
+reaction and still accept the engine's own charge. Every item still gets its own
+journal version and `LegacyRules` flag.
 
 ## 1. `issue_order` → one op per kind of work
 
@@ -336,18 +341,142 @@ mechanism, it is a breach the arbiter should rule. Remove it from `ModelOpSchema
 only. The engine goes on staging its charges, and the reducer's up-only,
 own-faction rule stays as the guard on them.
 
+## 7. Who may write what: the path a batch came by
+
+**Today the reducer cannot tell the player from an NPC.** A declared action, a
+reaction and a bot turn all arrive as source `model` with an actor. The only
+thing that tells them apart is a free-text label. They are bounded very
+differently before they get there:
+
+| | arbiter, roll, action points | treaty filter | what bounds it |
+|---|---|---|---|
+| the player's declared action | yes | — | the ruling, the band, two actions a turn |
+| an NPC reaction | **no** | **no** | the reducer's guards alone |
+| an NPC bot | — | yes (`honourTreaties`) | code, and its post-filters |
+| an accord | — | — | consent grounding, `EXTRACTION_ALLOWED` |
+
+That makes a reaction the least-bounded writer in the game.
+
+**Reactions do not honour treaties.** Tested: the Vigil holds a non-aggression
+pact with the Combine, and a reaction from the Vigil sends a fleet at Oridin.
+The reducer accepts the move, breaks the pact on arrival, and charges the
+betrayal: the Combine's view of the Vigil goes from −49 to −74, plus the
+reputation cost with every onlooker. A bot would have withheld the attack. The
+reaction prompt calls an attack across a truce "legal and the dearest public act
+there is", and the prompt is the only thing between a reaction and a betrayal.
+
+**Three ops depend on bounds a reaction does not have.** None of the three
+appears in a reaction in the saves yet, so the risk is latent:
+
+- **`lay_groundwork`**: its whole price is the player's action point. For a
+  reaction it is free and repeatable.
+- **`create_asset`**: the arbiter's ruling and the roll bound it. A reaction can
+  mint a prize for itself with no check (§4 is the declared-path fix).
+- **`set_doctrine`**: a reaction can rewrite its own power's ethics, paying
+  dissent. That is a model editing an authored character sheet mid-campaign.
+
+### Proposed
+
+**1. Tag each batch with its path:** `declared`, `reaction`, `bot`, `accord`,
+`engine` or `cheat`. The tag goes on each journal entry and is passed to
+`applyOps` beside `source`, which stays as it is. So the twelve existing
+`source === 'model'` guards keep covering all three model-driven paths.
+
+- **The engine's own charges go on the `engine` path, in batches of their own.**
+  That covers a refusal's dissent, an objection to an accord and a bot's
+  rationale line. A defiance charge is appended to the resolution's batch today,
+  so it moves into a batch of its own. Otherwise a rule that keeps
+  `adjust_dissent` off the `declared` path would refuse the price of every
+  compulsion breach (§0).
+- **An old journal entry carries no path, and no path rule applies to it.** It
+  replays as played, so the rules need no `LegacyRules` flag of their own. The
+  entry schema gains the field, which is optional.
+
+**2. Add one table, `OP_PATHS`, in `ops.ts`:** for every op, the paths that may
+write it.
+
+- It is typed as a `Record` over every op name, so an op added later does not
+  compile until it is given its paths. That is the closed-allowlist argument
+  `EXTRACTION_ALLOWED` already makes.
+- `EXTRACTION_ALLOWED` becomes the table's accord column.
+- It is checked once, at the top of `applyOps`, before the op's case runs. An op
+  off its path is rejected as `wrong_path`, with the path named. On the
+  declared and reaction paths that rejection feeds the one correction pass, as
+  every other rejection does.
+
+**3. The rules for each path:**
+
+| op or act | player (declared) | NPC reaction | NPC bot | accord |
+|---|---|---|---|---|
+| `lay_groundwork` | ✓ | — | — | — |
+| `create_asset` | ✓, bounded by the ruling (§4) | — | — | a dossier only |
+| `set_doctrine` | ✓ | — | — | — |
+| `adjust_dissent`, `spawn_event` | — (§6) | — | `spawn_event` for the rationale | — |
+| attack, blockade or raid on a power bound by a pact, truce, accord or contract | ✓, at the betrayal price | **only if the order names what it breaks** (`breaks`) | withheld, as now | — |
+| `adjust_disposition` | the target's view of the actor | the reacting power's own view only | — | as now |
+| everything else in `ModelOpSchema` | ✓ | ✓ | ✓ | as now |
+
+**On the treaty row.** A reaction keeps betrayal as a move, but makes it
+deliberate. The bot filter is shared rather than restated: `honourTreaties`
+moves out of `initiative.ts` into a module both paths read.
+
+- **A reaction's attack, blockade or raid on a bound partner is held back unless
+  the order says what it breaks**: a `breaks` field naming the treaty or truce.
+  It is held back the way a bot's is, so the rest of the reaction still lands,
+  and it is shown on the feed card as held back (`heldBack`), with the reason.
+- **The price does not change.** A named betrayal is charged where an attack is
+  charged now: on arrival, −25 with the victim, `PACT_BREAKING_REPUTATION_COST`
+  (10) with every onlooker, or `TRUCE_BREAKING_REPUTATION_COST` (20) across a
+  truce, and heat. The field only proves the reaction meant it.
+- **Why not require a `break_treaty` in the same batch.** It would make NPC
+  betrayal cheaper than it is now: `break_treaty` costs 25 each way and heat, and
+  nothing with onlookers. It also cannot end a truce, which is its own record and
+  not a treaty.
+- **The filter runs in the engine,** before the reaction commits, rather than as
+  a reducer rejection. Batches are atomic, so a reducer rejection would sink the
+  whole reaction.
+
+**This turned up a gap that is not about reactions.** Repudiating first and then
+attacking is the cheaper betrayal for anyone, the player included: the attack
+arrives against a broken pact and the onlooker price is never charged. CLAUDE.md
+says breaking a treaty costs "a permanent reputation hit with every onlooker",
+and `break_treaty` does not charge one. Either `break_treaty` charges
+`PACT_BREAKING_REPUTATION_COST` with onlookers, or a break followed by an attack
+on the same party within a turn is charged as the attack's auto-break. That is
+its own change, with its own journal pin.
+
+**On the regard row.** The saves already nearly follow it. Of 195 regard
+movements in reactions, one moved another power's view of the reacting power;
+of 63 in declarations, one moved the actor's own view. The rule makes it
+structural. §3's `sway` and `regard` replace the op on these two paths later.
+
+**What reactions keep, deliberately:**
+
+- **No standing ceiling.** A bot will not attack a power it is on good terms with
+  outside a war. A reaction answers what the player did this turn, which is the
+  point of having one, and the reducer has usually already moved its regard.
+- **No action points.** A reaction is one answer per power per turn, three
+  powers at most, and that is its pacing.
+
+**Measure:** the four harness boards (bots only, so they should not move), then
+a played campaign comparing pacts broken by reactions before and after, read off
+the journal's `break_treaty` entries and the auto-break notes.
+
 ## Order of work
 
-1. **`spawn_event` and `adjust_dissent`**: schema removals with no new
-   mechanism, and they close a leak.
-2. **`issue_order` → work intents and `move`**, with the bots converted and
+1. **Paths and `OP_PATHS` (§7)**: everything after it can then use a reducer
+   guard keyed on the path, instead of a schema removal. It also closes the
+   reaction gaps: treaties, groundwork, prizes and doctrine.
+2. **`spawn_event` and `adjust_dissent`**: removals with no new mechanism, and
+   they close a leak.
+3. **`issue_order` → work intents and `move`**, with the bots converted and
    programmes counted against yard capacity.
-3. **`adjust_credits` → `pay` / `spend`**: removes four inference rules; the
+4. **`adjust_credits` → `pay` / `spend`**: removes four inference rules; the
    cap stays on declarations only.
-4. **`create_asset` → `yields`**: one field on the ruling.
-5. **`establish_commitment` → a named mechanism**: one closed field on the
+5. **`create_asset` → `yields`**: one field on the ruling.
+6. **`establish_commitment` → a named mechanism**: one closed field on the
    ruling, and a correction pass.
-6. **`adjust_disposition` → `sway`, `regard` and `gift`**: last, because it moves
+7. **`adjust_disposition` → `sway`, `regard` and `gift`**: last, because it moves
    played boards and needs a played campaign before and after.
 
 Each item gets its own journal version and `LegacyRules` flag. The old op stays
