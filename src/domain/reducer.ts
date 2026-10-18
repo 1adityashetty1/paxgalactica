@@ -3228,6 +3228,16 @@ export interface LegacyRules {
    */
   operativesComeHome?: boolean;
   /**
+   * Ships change only through intent ops — `build_ships`, `suborn_crews`,
+   * `scuttle_ships` and a fleet movement — and `adjust_ships` /
+   * `adjust_fleet` are refused from a model-written batch, and a fleet
+   * movement one jump between two worlds the mover holds lands in the batch
+   * (`movesAtOnce`). Journal version 23; before it a model wrote the
+   * arithmetic and the reducer inferred what it meant, and every movement
+   * sailed.
+   */
+  shipIntents?: boolean;
+  /**
    * Officers come off a power's **Lists** — one of each school always waiting
    * — and only by appointment: no successor is put in post when the last one
    * falls, and one handed home goes back on the Lists. Journal version 20;
@@ -3462,6 +3472,7 @@ function applyOpsUnderRules(
     missionEffectsHeld = true,
     methodsCount = true,
     oneRecordPerPerson = true,
+    shipIntents = true,
   } = legacy;
   const state = cloneState(input);
   // Who holds office before the batch, so a seat emptied by it is charged.
@@ -3805,6 +3816,19 @@ function applyOpsUnderRules(
       }
 
       case 'adjust_fleet': {
+        // The mechanism, not a model's to write (journal version 23): a model
+        // says what it means — build_ships, suborn_crews, scuttle_ships or a
+        // fleet movement — and the reducer does the arithmetic. Every batch a
+        // model or a bot writes carries an actor; one without is the engine or
+        // a test setting a board, and keeps the mechanism.
+        if (shipIntents && actor !== undefined && (source === 'model' || source === 'extraction')) {
+          reject(
+            raw,
+            'reducer_only',
+            `${op.op} is the reducer's ship arithmetic, not an order. Build hulls with build_ships, turn a rival's crews with suborn_crews, strike off your own with scuttle_ships, and move ships with a fleet_movement order. Losses in battle are the reducer's, when a fleet arrives.`,
+          );
+          break;
+        }
         if (!factionExists(op.factionId)) {
           reject(raw, 'unknown_faction', `No faction "${op.factionId}".`);
           break;
@@ -3872,6 +3896,165 @@ function applyOpsUnderRules(
             owed -= take;
           }
         }
+        break;
+      }
+
+      case 'build_ships': {
+        if (!factionExists(op.factionId)) {
+          reject(raw, 'unknown_faction', `No faction "${op.factionId}".`);
+          break;
+        }
+        if (actor !== undefined && op.factionId !== actor) {
+          reject(raw, 'illegal_value', `${actor} lays down hulls for itself, not for ${op.factionId}.`);
+          break;
+        }
+        // **No ground, no yards** — see `livesOffTheLanes`.
+        if (!canLayDownHulls(state, op.factionId)) {
+          reject(raw, 'no_presence', noYardsMessage(state, op.factionId));
+          break;
+        }
+        // Where the yards deliver: a world you hold, or one your ships already
+        // stand over (a smuggler's yard is its orbit). Never a world you have
+        // not reached — a fleet arrives by moving there.
+        let yard: StarSystem | undefined;
+        if (op.systemId !== undefined) {
+          yard = state.systems.find((x) => x.id === op.systemId);
+          if (!yard) {
+            reject(raw, 'unknown_system', `No system "${op.systemId}".`);
+            break;
+          }
+          if (yard.controllerFactionId !== op.factionId && hullsAt(yard, op.factionId) === 0) {
+            reject(
+              raw,
+              'no_presence',
+              `${nameFor(state, op.factionId)} holds neither ${yard.name} nor any ships over it; hulls are delivered where its yards can reach, and a fleet arrives by moving there.`,
+            );
+            break;
+          }
+        } else {
+          yard = fleetBases(state, op.factionId).find((x) => x.controllerFactionId === op.factionId) ?? fleetBases(state, op.factionId)[0];
+          if (!yard) {
+            reject(raw, 'illegal_value', `${op.factionId} holds no system to base ships at.`);
+            break;
+          }
+        }
+        // Billed, and held to yard capacity, by `billConstruction` after the
+        // batch: what is charged is what actually landed.
+        addShipsAt(yard, op.factionId, op.count, op.hull);
+        break;
+      }
+
+      case 'scuttle_ships': {
+        const host = state.systems.find((x) => x.id === op.systemId);
+        if (!host) {
+          reject(raw, 'unknown_system', `No system "${op.systemId}".`);
+          break;
+        }
+        if (actor !== undefined && op.factionId !== actor) {
+          reject(
+            raw,
+            'illegal_value',
+            `${actor} cannot strike off ${op.factionId}'s hulls. Another power's ships are lost in battle, when a fleet arrives, or turned with suborn_crews.`,
+          );
+          break;
+        }
+        const here = stackAt(host, op.factionId);
+        if (hullsIn(here) === 0) {
+          reject(raw, 'illegal_value', `${nameFor(state, op.factionId)} has no ships at ${host.name}.`);
+          break;
+        }
+        // The class named first, then the loss order — the cheapest hulls.
+        const named = op.hull ? Math.min(op.count, here[op.hull] ?? 0) : 0;
+        if (named > 0) setStackAt(host, op.factionId, subtractStack(here, { [op.hull!]: named }));
+        if (op.count > named) takeShipsAt(host, op.factionId, op.count - named);
+        // A batch that scuttles more than `MAX_SELF_INFLICTED_LOSS_FRACTION`
+        // of a fleet is cut back by `capSelfInflictedLosses` afterwards.
+        break;
+      }
+
+      case 'suborn_crews': {
+        const host = state.systems.find((x) => x.id === op.systemId);
+        if (!host) {
+          reject(raw, 'unknown_system', `No system "${op.systemId}".`);
+          break;
+        }
+        if (!factionExists(op.factionId) || !factionExists(op.fromFactionId)) {
+          reject(raw, 'unknown_faction', `No faction "${factionExists(op.factionId) ? op.fromFactionId : op.factionId}".`);
+          break;
+        }
+        const turner = op.factionId;
+        const victimId = op.fromFactionId;
+        if (actor !== undefined && turner !== actor) {
+          reject(raw, 'illegal_value', `${actor} turns crews for itself, not for ${turner}.`);
+          break;
+        }
+        if (turner === victimId) {
+          reject(raw, 'illegal_value', 'A power cannot suborn its own crews.');
+          break;
+        }
+        // Presence: ships here or a jump out, or an operative here.
+        if (!canSubornAt(state, turner, op.systemId)) {
+          reject(
+            raw,
+            'no_presence',
+            `${nameFor(state, turner)} has no ships at or next to ${host.name}, and no operative there; a crew cannot be talked into changing sides from further off.`,
+          );
+          break;
+        }
+        // How many will: the turner's guile against the victim's resolve.
+        const limit = subornLimit(state, turner, victimId);
+        if (limit <= 0) {
+          reject(
+            raw,
+            'illegal_value',
+            `${nameFor(state, victimId)}'s crews will not be turned by ${nameFor(state, turner)} — their resolve is beyond its guile.`,
+          );
+          break;
+        }
+        // Against what this declaration has already turned, so a ceiling cannot
+        // be multiplied by asking class by class.
+        const key = `${turner}->${victimId}`;
+        const room = Math.max(0, limit - (subornedThisBatch.get(key) ?? 0));
+        let want = op.count;
+        if (room <= 0) {
+          const note = `${nameFor(state, turner)} has already turned its ${limit} ${nameFor(state, victimId)} crews with this declaration; the rest will not be moved.`;
+          notes.push(note);
+          logEvent(state, 'system', note, turner);
+          break;
+        }
+        if (want > room) {
+          const note = `${nameFor(state, turner)} could only talk ${room} of ${want} ${nameFor(state, victimId)} hulls into changing sides.`;
+          notes.push(note);
+          logEvent(state, 'system', note, turner);
+          want = room;
+        }
+        // Which of their ships defect is not the suborner's choice: the loss
+        // order, cheapest first. They change flag where they stand.
+        const before = stackAt(host, victimId);
+        takeShipsAt(host, victimId, want);
+        const turned = subtractStack(before, stackAt(host, victimId));
+        const taken = hullsIn(turned);
+        if (taken === 0) {
+          reject(raw, 'illegal_value', `${nameFor(state, victimId)} has no ships at ${host.name} to turn.`);
+          break;
+        }
+        addStackAt(host, turner, turned);
+        subornedThisBatch.set(key, (subornedThisBatch.get(key) ?? 0) + taken);
+        // Bought, not captured: billed by the ton after the batch, and occupying
+        // no berth — they sail over rather than using anybody's slipway.
+        changedFlag.set(turner, (changedFlag.get(turner) ?? 0) + tonsIn(turned));
+        // An act of statecraft, priced in standing.
+        const victim = state.factions.find((f) => f.id === victimId);
+        if (victim) {
+          victim.disposition[turner] = Math.max(-100, (victim.disposition[turner] ?? 0) - SUBORN_DISPOSITION_COST * taken);
+        }
+        for (const witness of state.factions) {
+          if (witness.id === turner || witness.id === victimId) continue;
+          witness.disposition[turner] = Math.max(-100, (witness.disposition[turner] ?? 0) - SUBORN_REPUTATION_COST);
+        }
+        const note = `${nameFor(state, turner)} turns ${taken} ${nameFor(state, victimId)} hull(s) at ${host.name} without a shot fired.`;
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, turner);
         break;
       }
 
@@ -6125,6 +6308,27 @@ function applyOpsUnderRules(
           }
         }
 
+        // One jump between two worlds this power holds, with no rival's ships
+        // over the target, is a shuffle inside its own territory: it lands in
+        // the batch, where the rest of the turn sees it. Anything else sails
+        // and is resolved on arrival — an attack, a voyage, a sweep of a
+        // squatter. One move intent, and the reducer decides which it is, so
+        // the model never has to pick a mechanism and cannot pick the wrong one.
+        if (shipIntents && isMovementType(op.type) && movesAtOnce(state, op.factionId, op.originId, op.targetId)) {
+          const dest = getSystem(state, op.targetId)!;
+          addStackAt(dest, op.factionId, force);
+          for (const c of state.commanders ?? []) {
+            if (riding.includes(c.id)) c.atSystemId = dest.id;
+          }
+          const aboard = riding.length > 0
+            ? `, ${riding.map((id) => (state.commanders ?? []).find((c) => c.id === id)?.name ?? id).join(' and ')} with them`
+            : '';
+          const note = `${nameFor(state, op.factionId)} moves ${describeStack(force)} from ${getSystem(state, op.originId)!.name} to ${dest.name}${aboard}.`;
+          notes.push(note);
+          logEvent(state, 'order', note, op.factionId);
+          break;
+        }
+
         const order: PendingOrder = {
           id: mintOrderId(state),
           factionId: op.factionId,
@@ -7786,6 +7990,19 @@ function applyOpsUnderRules(
       }
 
       case 'adjust_ships': {
+        // The mechanism, not a model's to write (journal version 23): a model
+        // says what it means — build_ships, suborn_crews, scuttle_ships or a
+        // fleet movement — and the reducer does the arithmetic. Every batch a
+        // model or a bot writes carries an actor; one without is the engine or
+        // a test setting a board, and keeps the mechanism.
+        if (shipIntents && actor !== undefined && (source === 'model' || source === 'extraction')) {
+          reject(
+            raw,
+            'reducer_only',
+            `${op.op} is the reducer's ship arithmetic, not an order. Build hulls with build_ships, turn a rival's crews with suborn_crews, strike off your own with scuttle_ships, and move ships with a fleet_movement order. Losses in battle are the reducer's, when a fleet arrives.`,
+          );
+          break;
+        }
         const host = state.systems.find((x) => x.id === op.systemId);
         if (!host) {
           reject(raw, 'unknown_system', `No system "${op.systemId}".`);
@@ -9552,6 +9769,24 @@ export interface TickResult extends ApplyResult {
  * originates.
  */
 /** Advance one turn. Sets `scopeEngineNotes` for the journal's rules; see `applyOps`. */
+/**
+ * Whether a fleet movement from `originId` to `targetId` lands at once: one
+ * jump, both worlds held by the mover, and nobody's ships over the target but
+ * its own and its guests'. A rival squatting there makes it a sweep, which is
+ * fought on arrival, so it sails.
+ */
+export function movesAtOnce(state: WorldState, factionId: string, originId: string, targetId: string): boolean {
+  if (originId === targetId) return false;
+  const origin = state.systems.find((x) => x.id === originId);
+  const target = state.systems.find((x) => x.id === targetId);
+  if (!origin || !target) return false;
+  if (origin.controllerFactionId !== factionId || target.controllerFactionId !== factionId) return false;
+  if (!neighboursOf(state, originId).includes(targetId)) return false;
+  return !Object.keys(target.ships ?? {}).some(
+    (f) => f !== factionId && hullsAt(target, f) > 0 && !isGuestOf(state, f, factionId),
+  );
+}
+
 export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResult {
   const outer = scopeEngineNotes;
   const outerOrders = scopeOrderLines;

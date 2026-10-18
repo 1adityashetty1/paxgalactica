@@ -1291,10 +1291,60 @@ export const EXTRACTION_REFUSAL_REASON: Record<string, string> = {
     'Crews change hands by suborning them, which needs presence and a stat contest. A conversation cannot hand over hulls.',
 };
 
+/**
+ * **Ships change only through intent ops** (journal version 22). A model never
+ * writes ship arithmetic: `adjust_ships` and `adjust_fleet` are the reducer's
+ * mechanism, and what a model may say is one of these, or a fleet movement.
+ * The reducer used to infer intent from who was acting, whose hulls they were
+ * and the sign of the number — so a casualty a model invented beside a fleet
+ * movement read as an attempt to suborn, was refused for it, and sank the
+ * movement with it.
+ */
+
+/** Lay down new hulls of your own, now, billed by displacement and held to your yards' capacity. */
+export const BuildShipsOp = z.object({
+  op: z.literal('build_ships'),
+  factionId: z.string().min(1),
+  hull: HullClassSchema,
+  count: z.number().int().min(1),
+  /** A world you hold; omitted, your best one. */
+  systemId: z.string().min(1).optional(),
+  reason: z.string().default(''),
+});
+
+/**
+ * Talk another power's crews into changing sides where they stand — at a world
+ * you have ships at or next to, or an operative on. Their resolve against your
+ * guile decides how many will; the cheapest hulls go first, they are paid for
+ * by the ton, and it costs standing with them and everyone watching.
+ */
+export const SubornCrewsOp = z.object({
+  op: z.literal('suborn_crews'),
+  factionId: z.string().min(1),
+  /** The power whose crews are turned. */
+  fromFactionId: z.string().min(1),
+  systemId: z.string().min(1),
+  count: z.number().int().min(1),
+  reason: z.string().default(''),
+});
+
+/** Scuttle or strike off hulls of your own at a world. Never another power's. */
+export const ScuttleShipsOp = z.object({
+  op: z.literal('scuttle_ships'),
+  factionId: z.string().min(1),
+  systemId: z.string().min(1),
+  count: z.number().int().min(1),
+  /** Which class; omitted, the cheapest go first. */
+  hull: HullClassSchema.optional(),
+  reason: z.string().default(''),
+});
+
 /** Everything the model is allowed to emit. */
 export const ModelOpSchema = z.discriminatedUnion('op', [
   AdjustDispositionOp,
-  AdjustFleetOp,
+  BuildShipsOp,
+  SubornCrewsOp,
+  ScuttleShipsOp,
   AdjustCreditsOp,
   SetDoctrineOp,
   CreateAssetOp,
@@ -1334,7 +1384,6 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   RecruitAgentOp,
   RecallAgentOp,
   LayGroundworkOp,
-  AdjustShipsOp,
   ModelAdjustDissentOp,
   EstablishCommitmentOp,
   DissolveCommitmentOp,
@@ -1388,6 +1437,9 @@ export const OpSchema = z.discriminatedUnion('op', [
   CheatOp,
   AdjustDispositionOp,
   AdjustFleetOp,
+  BuildShipsOp,
+  SubornCrewsOp,
+  ScuttleShipsOp,
   AdjustCreditsOp,
   SetDoctrineOp,
   CreateAssetOp,

@@ -62,9 +62,10 @@ leaves a faction with nobody following it.
 |---|---|
 | `issue_order` | anything that takes time — see Duration |
 | `adjust_disposition` | a faction's opinion of another moves |
-| `adjust_fleet` | ships gained or lost |
+| `build_ships` | lay down new hulls of your own, now, at a world you hold |
 | `adjust_credits` | money spent or earned |
-| `adjust_ships` | ships added to or removed from one system |
+| `suborn_crews` | another power's crews change sides where they stand — see Suborning |
+| `scuttle_ships` | strike off hulls of your own at a world |
 | `set_doctrine` | the faction changes course — see Changing doctrine |
 | `set_stance` | what its whole navy does when losing a defence — see Standing orders |
 | `set_toll_policy` | who pays to cross its space — see Tolls |
@@ -244,14 +245,19 @@ there, and a screen matching them ton for ton cancels that outright. None of
 this is extra damage: the tonnage destroyed is the same either way, and only
 which ships absorb it changes.
 
-Say what to build with `hull` on `adjust_fleet` or `adjust_ships`, and what to
-send with `force` on a movement — either a plain count, which draws
-proportionally from what is berthed, or a composition:
-`"force": { "battleship": 8, "lifter": 4 }`.
+**Ships change through four ops and nothing else.** `build_ships` lays down
+new hulls (`hull`, `count`, and `systemId` for a world you hold — omitted, your
+best one). A `fleet_movement` order moves them, with `force` either a plain
+count, which draws proportionally from what is berthed, or a composition:
+`"force": { "battleship": 8, "lifter": 4 }`. `suborn_crews` turns a rival's
+crews and `scuttle_ships` strikes off your own. There is no op that adds or
+removes ships by arithmetic. A move is always a `fleet_movement`, whatever its
+length: one jump between two worlds the power holds, with no rival's ships over
+the target, lands at once, and anything else sails a turn a jump and is settled
+when it arrives. The reducer decides which; you only say where the ships go.
 
 Ordering more than the treasury covers is not rejected — the yards deliver what
-was paid for and the rest is trimmed, and you are told. Repositioning is free:
-`-5` here and `+5` there nets to zero and costs nothing. A power that cannot
+was paid for and the rest is trimmed, and you are told. A power that cannot
 meet upkeep lays ships up.
 
 ### Officers sail with the fleet
@@ -310,8 +316,9 @@ power's system:
   mechanical content of the action.
 - **Never** narrate ships destroyed, a fleet mauled, a landing thrown back, a
   world taken or held. None of that has happened yet and you cannot know it.
-- **Never** emit `adjust_fleet` or `adjust_ships` to represent battle losses,
-  on either side. Losses come out of the reducer, not out of the story.
+- **Never** emit an op that takes ships away to represent battle losses, on
+  either side — not `scuttle_ships`, not `suborn_crews`. Losses come out of the
+  reducer, not out of the story.
 
 **A fleet already in orbit assaults the world under it by moving to where it
 is.** Set `originId` and `targetId` to the same system. That is a legal order,
@@ -377,8 +384,10 @@ raid can run dark.
 
 ## Suborning crews
 
-You may reduce **another** power's ships with `adjust_ships`. The reducer
-enforces both rules: you must have ships in the system, ships **one jump out**,
+Turning another power's crews is `suborn_crews` — `fromFactionId` names whose,
+`systemId` where, `count` how many. It is the only op that ever takes another
+power's ships, and only for a declaration that set out to suborn them. The
+reducer enforces both rules: you must have ships in the system, ships **one jump out**,
 or an agent there; and how many is your `guile` against their `resolve` — none
 at all against a power more resolute than you are cunning. Over-asking is
 trimmed, not rejected, and the crews are bought at the same 15 a ton the yards
@@ -532,8 +541,9 @@ holder needs to keep the world down, and in the end a rising.
 ## Duration — two sources, never mixed
 
 **Fleet movement is not estimated.** Emit `type: "fleet_movement"` and **omit
-`durationTurns`**; the reducer computes one turn per jump and discards anything
-you supply.
+`durationTurns`**; the reducer computes one turn per jump, or lands a one-jump
+move inside the power's own territory at once, and discards anything you
+supply.
 
 **Everything else you estimate**: pick the `type` that fits the work and set
 `durationTurns` to **1, 2, 3, or 5**. Nothing takes longer than 5. One clause in
@@ -789,8 +799,9 @@ something the game already models — a treaty right, a debt, a standing
 arrangement, hulls, credits or ground all have their own ops, and an asset
 beside one of them is a second source of truth. And do **not** mint one for a
 consequence that has already been paid: if the narrative is *"their fleet is
-crippled"*, that is `adjust_ships`, not a `wreckage` asset, unless somebody is
-going to come and lift it.
+crippled"*, that is the reducer's battle or a saboteur's `hull_damage` — never
+an op you write — and not a `wreckage` asset either, unless somebody is going to
+come and lift it.
 
 ### Favours, secrets and ultimatums
 

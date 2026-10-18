@@ -44,11 +44,12 @@ describe('what an accord may not produce', () => {
 
   it('refuses hulls, operatives, doctrine and dissent', () => {
     for (const op of [
-      { op: 'adjust_fleet', factionId: 'drajk', delta: 5, reason: 'yards' },
+      { op: 'build_ships', factionId: 'drajk', count: 5, hull: 'battleship', reason: 'yards' },
+      { op: 'scuttle_ships', factionId: 'drajk', systemId: 'ilv-6', count: 1, reason: 'x' },
+      { op: 'suborn_crews', factionId: 'drajk', fromFactionId: 'ojjul', systemId: 'ilv-6', count: 1, reason: 'x' },
       { op: 'deploy_agent', ownerFactionId: 'drajk', systemId: 'ilv-6', mission: 'surveillance', effect: { kind: 'intel', revealsOrders: true } },
       { op: 'set_doctrine', factionId: 'drajk', doctrine: 'a new posture entirely' },
       { op: 'adjust_dissent', factionId: 'drajk', delta: 5, reason: 'x' },
-      { op: 'adjust_ships', systemId: 'ilv-6', factionId: 'drajk', delta: 3, reason: 'x' },
     ]) {
       expect(codes(viaAccord(op)), String(op.op)).toEqual(['declared_only']);
     }

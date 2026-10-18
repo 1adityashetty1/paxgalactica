@@ -507,7 +507,12 @@ Two failure modes, in both directions:
   because it matters. Difficulty measures resistance, not consequence.
 
 An action with no meaningful way to fail — a decree in your own space, a
-courier to your own capital — is `trivial`, not exempt. **Calling in a
+courier to your own capital — is `trivial`, not exempt. **Moving the acting
+power's own ships between worlds it holds** is `trivial`, and so is laying down
+hulls it can pay for or striking off its own: nobody resists a shuffle inside
+your own territory, and what a fleet meets on arrival is settled by the battle,
+never by this roll. A move onto ground somebody else holds is a different act
+and is priced as the strike it is. **Calling in a
 promissory note the acting power holds is `trivial` and is not a
 negotiation**: the issuer consented when it wrote the note.
 

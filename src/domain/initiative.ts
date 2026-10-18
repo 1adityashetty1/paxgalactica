@@ -831,7 +831,7 @@ function buy(ctx: Ctx, appetite: number, reserveTurns: number, doctrine: BuyDoct
   const lifterTons = HULL_SPEC.lifter.tonnage;
   const buyLift = Math.min(Math.max(0, wantLift - lift), Math.floor(tonsToSpend / lifterTons));
   if (buyLift > 0) {
-    ops.push({ op: 'adjust_fleet', factionId: ctx.me, delta: buyLift, hull: 'lifter', reason: 'lift' });
+    ops.push({ op: 'build_ships', factionId: ctx.me, count: buyLift, hull: 'lifter', reason: 'lift' });
     tonsToSpend -= buyLift * lifterTons;
   }
 
@@ -851,7 +851,7 @@ function buy(ctx: Ctx, appetite: number, reserveTurns: number, doctrine: BuyDoct
     Math.floor(tonsToSpend / escortTons),
   );
   if (buyScreen > 0) {
-    ops.push({ op: 'adjust_fleet', factionId: ctx.me, delta: buyScreen, hull: 'escort', reason: 'screen' });
+    ops.push({ op: 'build_ships', factionId: ctx.me, count: buyScreen, hull: 'escort', reason: 'screen' });
     tonsToSpend -= buyScreen * escortTons;
   }
 
@@ -872,7 +872,7 @@ function buy(ctx: Ctx, appetite: number, reserveTurns: number, doctrine: BuyDoct
   const haulTons = HULL_SPEC.freighter.tonnage;
   const buyHaul = Math.min(Math.max(0, wantHaul - haul), Math.floor(tonsToSpend / haulTons));
   if (buyHaul > 0) {
-    ops.push({ op: 'adjust_fleet', factionId: ctx.me, delta: buyHaul, hull: 'freighter', reason: 'hauling' });
+    ops.push({ op: 'build_ships', factionId: ctx.me, count: buyHaul, hull: 'freighter', reason: 'hauling' });
     tonsToSpend -= buyHaul * haulTons;
   }
 
@@ -888,13 +888,13 @@ function buy(ctx: Ctx, appetite: number, reserveTurns: number, doctrine: BuyDoct
   const earTons = HULL_SPEC.listener.tonnage;
   const buyEars = Math.min(Math.max(0, wantEars - ears), Math.floor(tonsToSpend / earTons));
   if (buyEars > 0) {
-    ops.push({ op: 'adjust_fleet', factionId: ctx.me, delta: buyEars, hull: 'listener', reason: 'sigint' });
+    ops.push({ op: 'build_ships', factionId: ctx.me, count: buyEars, hull: 'listener', reason: 'sigint' });
     tonsToSpend -= buyEars * earTons;
   }
 
   const buyLine = Math.floor(tonsToSpend / HULL_SPEC[line].tonnage);
   if (buyLine > 0) {
-    ops.push({ op: 'adjust_fleet', factionId: ctx.me, delta: buyLine, hull: line, reason: 'yards' });
+    ops.push({ op: 'build_ships', factionId: ctx.me, count: buyLine, hull: line, reason: 'yards' });
   }
   return ops;
 }
@@ -974,10 +974,21 @@ function lifterCount(s: WorldState, me: string): number {
   return inSystems + inTransit;
 }
 
-/** Concentrate scattered hulls at one holding, so a blow can be struck. */
+/**
+ * Concentrate scattered hulls at one holding, so a blow can be struck, by a
+ * `fleet_movement` from each base that can spare them. One jump inside its own
+ * territory lands at once (`movesAtOnce` in the reducer); anything further
+ * takes its turns. Hulls already under way to it count toward the want, so a
+ * power does not send a second wave each turn while the first is in transit.
+ * (Before journal version 23 this moved them in an instant from anywhere, as a
+ * pair of `adjust_ships`.)
+ */
 function massAt(ctx: Ctx, whereId: string, want: number): Ops {
   const ops: Ops = [];
-  let owed = want - lineStrengthAt(ctx.state, whereId, ctx.me);
+  const inbound = ctx.state.pendingOrders
+    .filter((o) => o.factionId === ctx.me && o.type === 'fleet_movement' && o.targetId === whereId)
+    .reduce((n, o) => n + battleshipEquivalents(o.force), 0);
+  let owed = want - lineStrengthAt(ctx.state, whereId, ctx.me) - inbound;
   if (owed <= 0) return ops;
   for (const base of held(ctx.state, ctx.me)
     .filter((b) => b.id !== whereId)
@@ -987,15 +998,16 @@ function massAt(ctx: Ctx, whereId: string, want: number): Ops {
     const spare = Math.max(0, lineStrengthAt(ctx.state, base.id, ctx.me) - 4);
     const take = Math.min(spare, owed);
     if (take <= 0) continue;
-    // Class by class, so concentrating a fleet does not silently turn its
-    // transports into battleships on the way: a bare `adjust_ships` removes in
-    // loss order and adds battleships.
-    for (const [hull, n] of movedClasses(ctx.state, base.id, ctx.me, take)) {
-      ops.push(
-        { op: 'adjust_ships', systemId: base.id, factionId: ctx.me, delta: -n, hull },
-        { op: 'adjust_ships', systemId: whereId, factionId: ctx.me, delta: n, hull },
-      );
-    }
+    // Class by class, so a concentrating fleet keeps its transports.
+    const force: ShipStack = {};
+    for (const [hull, n] of movedClasses(ctx.state, base.id, ctx.me, take)) force[hull] = n;
+    if (hullsIn(force) === 0) continue;
+    const target = ctx.state.systems.find((x) => x.id === whereId);
+    ops.push({
+      op: 'issue_order', factionId: ctx.me, type: 'fleet_movement',
+      originId: base.id, targetId: whereId, force,
+      label: `concentrate at ${target?.name ?? whereId}`,
+    });
     owed -= take;
   }
   return ops;
@@ -1500,6 +1512,12 @@ function press(ctx: Ctx, target: StarSystem, label: string): Ops {
  * `sortie` and `occupy` both return `[]` when nothing can supply the blow, so
  * "can I do this today" needs no separate predicate — the attempt is the test.
  */
+/** A fleet movement onto ground the mover does not hold: an attack, not a concentration. */
+function strikes(state: WorldState, me: string, op: Record<string, unknown>): boolean {
+  if (op.op !== 'issue_order' || op.type !== 'fleet_movement') return false;
+  return sys(state, String(op.targetId ?? ''))?.controllerFactionId !== me;
+}
+
 function pursue(
   ctx: Ctx,
   candidates: StarSystem[],
@@ -1509,8 +1527,10 @@ function pursue(
   for (const target of candidates) {
     const ops = go(ctx, target, label(target));
     // `press` also returns massing ops, which are not an attack — those are the
-    // fallback, not a reason to stop looking for something reachable.
-    if (ops.some((o) => o.op === 'issue_order')) return ops;
+    // fallback, not a reason to stop looking for something reachable. Massing
+    // is a fleet movement too, onto ground the bot already holds, so a strike
+    // is told apart by where it goes rather than by what kind of op it is.
+    if (ops.some((o) => strikes(ctx.state, ctx.me, o))) return ops;
   }
   const best = candidates[0];
   return best ? go(ctx, best, label(best)) : [];
@@ -2429,10 +2449,11 @@ function describeProposal(state: WorldState, me: string, ops: Record<string, unk
   let massed = 0;
 
   for (const op of ops) {
-    if (op.op === 'adjust_fleet') bought += Number(op.delta ?? 0);
-    else if (op.op === 'adjust_ships' && Number(op.delta ?? 0) > 0) massed += Number(op.delta);
+    if (op.op === 'build_ships') bought += Number(op.count ?? 0);
     else if (op.op === 'issue_order') {
-      if (op.type === 'fleet_movement') {
+      if (op.type === 'fleet_movement' && String(op.label ?? '').startsWith('concentrate')) {
+        massed += hullsIn(normaliseStack((op.force ?? {}) as ShipStack));
+      } else if (op.type === 'fleet_movement') {
         // `op.force` is a stack now, and interpolating one yields
         // "[object Object]" — legal TypeScript, and it would put that in the
         // event log the next reaction call reads back.
@@ -2449,7 +2470,7 @@ function describeProposal(state: WorldState, me: string, ops: Record<string, unk
       }
     }
   }
-  if (massed > 0) parts.unshift(`concentrates ${massed} hull(s)`);
+  if (massed > 0) parts.unshift(`sails ${massed} hull(s) to concentrate`);
   if (bought > 0) parts.unshift(`lays down ${bought} hull(s)`);
 
   return parts.length === 0 ? `${name} holds its position.` : `${name} ${parts.join(', ')}.`;

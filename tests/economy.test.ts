@@ -668,44 +668,6 @@ const tons = (s: WorldState) => fleetTonsOf(s, 'freeworlds');
     expect(purse(start) - purse(res.state)).toBe(gained * CREDITS_PER_TON);
   });
 
-  it('does not mistake a hull moved in the same batch for one it can cut', () => {
-    // The trim read every per-world increase as a new hull, so a battleship
-    // moved from Vergesse to Threx beside a purchase Drajk could not afford was
-    // the one scrapped: the Confederacy ended a battleship down, having bought
-    // none. Found by a bot massing and buying in one batch, which every bot
-    // does.
-    const run = (legacy: Parameters<typeof applyOps>[5]) => {
-      const start = fresh();
-      start.factions.find((f) => f.id === 'drajk')!.credits = 100;
-      const res = applyOps(
-        start,
-        [
-          { op: 'adjust_ships', systemId: 'ilv-6', factionId: 'drajk', delta: -1, hull: 'battleship' },
-          { op: 'adjust_ships', systemId: 'tor-6', factionId: 'drajk', delta: 1, hull: 'battleship' },
-          { op: 'adjust_fleet', factionId: 'drajk', delta: 7, hull: 'lifter' },
-        ],
-        'model',
-        'drajk',
-        false,
-        legacy,
-      );
-      const battleships = (s: WorldState) =>
-        s.systems.reduce((n, x) => n + (x.ships.drajk?.battleship ?? 0), 0);
-      return { start, res, before: battleships(start), after: battleships(res.state) };
-    };
-
-    const now = run({});
-    expect(now.res.notes.join(' ')).toMatch(/could only pay for/);
-    expect(now.after).toBe(now.before);
-    expect(sys(now.res.state, 'tor-6').ships.drajk?.battleship).toBe(
-      (sys(now.start, 'tor-6').ships.drajk?.battleship ?? 0) + 1,
-    );
-
-    // A journal written before the rule lost that battleship, and replays so.
-    const then = run({ movesNotBuilt: false });
-    expect(then.after).toBe(then.before - 1);
-  });
-
   it('charges exactly the list price for an affordable order', () => {
     const start = fresh();
     const res = applyOps(start, [{ op: 'adjust_fleet', factionId: 'freeworlds', delta: 4 }]);
@@ -1888,7 +1850,7 @@ describe('no ground, no yards', () => {
     return out;
   };
 
-  it('refuses a landless power new hulls, by either route', () => {
+  it('refuses a landless power new hulls, named world or not', () => {
     // `fleetBases` counts a system where a faction merely has ships — correct
     // for drawing losses, and wrong for building. Without this guard any beaten
     // power went on commissioning battleships in a rival's orbit forever.
@@ -1896,8 +1858,8 @@ describe('no ground, no yards', () => {
     expect(sys(stripped, 'tor-3').ships.vigil).toBeDefined(); // the fleet is still there
 
     for (const op of [
-      { op: 'adjust_fleet', factionId: 'vigil', delta: 3 },
-      { op: 'adjust_ships', systemId: 'tor-3', factionId: 'vigil', delta: 3 },
+      { op: 'build_ships', factionId: 'vigil', count: 3, hull: 'battleship' },
+      { op: 'build_ships', factionId: 'vigil', count: 3, hull: 'battleship', systemId: 'tor-3' },
     ] as Op[]) {
       const res = applyOps(stripped, [op], 'model', 'vigil');
       expect(res.rejections.map((r) => r.code), op.op).toEqual(['no_presence']);
@@ -1912,7 +1874,7 @@ describe('no ground, no yards', () => {
     const stripped = strip(fresh(), 'drajk');
     expect(stripped.factions.find((f) => f.id === 'drajk')!.tradeEthic).toBe('smuggler');
     const res = applyOps(stripped, [
-      { op: 'adjust_fleet', factionId: 'drajk', delta: 2, hull: 'torpedo_boat' },
+      { op: 'build_ships', factionId: 'drajk', count: 2, hull: 'torpedo_boat' },
     ] as Op[], 'model', 'drajk');
     expect(res.rejections).toHaveLength(0);
     expect(fleetTonsOf(res.state, 'drajk')).toBeGreaterThan(fleetTonsOf(stripped, 'drajk'));

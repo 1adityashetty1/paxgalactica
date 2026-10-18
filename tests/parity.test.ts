@@ -62,7 +62,7 @@ describe('a server-driven campaign replays exactly', () => {
           op: 'deploy_agent', ownerFactionId: 'freeworlds', systemId: 'tor-3',
           mission: 'sabotage', effect: { kind: 'hull_damage', perTurn: 2 },
         },
-        { op: 'adjust_ships', systemId: 'tor-3', factionId: 'freeworlds', delta: 4 },
+        { op: 'build_ships', systemId: 'tor-3', factionId: 'freeworlds', count: 4, hull: 'battleship' },
       ],
       'open a second front',
     );
@@ -155,7 +155,7 @@ describe('a server-driven campaign replays exactly', () => {
     const session = new GameSession(store);
     await dispatch(session, 'POST', ROUTES.newCampaign, { factionId: 'drajk', name: 'kinds' });
     const campaign = reach(session);
-    campaign.stage([{ op: 'adjust_fleet', factionId: 'drajk', delta: 5 }], 'muster');
+    campaign.stage([{ op: 'build_ships', factionId: 'drajk', count: 5, hull: 'escort' }], 'muster');
     await dispatch(session, 'POST', ROUTES.endturn, {});
 
     const kinds = new Set(campaign.journal.entries.map((e) => e.kind));

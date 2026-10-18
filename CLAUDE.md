@@ -859,9 +859,10 @@ Billing happens in `billConstruction`, a post-pass over each `applyOps` batch
 that compares each faction's **tonnage** before and after. Two consequences
 follow from billing the **net** rather than each op:
 
-- Repositioning is free. `adjust_ships -5` here and `+5` there costs nothing,
-  in either order, and issuing a `fleet_movement` is not read as scrapping the
-  ships that left.
+- Repositioning is free. A `fleet_movement` is not read as scrapping the ships
+  that left, whether it sails or lands in the batch (see "Ships change by
+  intent"), and in a journal before version 23 an `adjust_ships -5` here and
+  `+5` there costs nothing, in either order.
 - Overreach is **not a rejection**. The yards deliver what was paid for and the
   surplus is trimmed off, deterministically. A partly-affordable order is partly
   fulfilled, which reads the way a partial check reads.
@@ -944,10 +945,11 @@ could go on commissioning battleships in a rival's orbit forever. A galaxy where
 every defeated power survives as a shipyard in somebody else's sky is not the
 fiction — being driven off your worlds should end you.
 
-Guarded in the reducer on **both** minting paths, because one would have been a
-sentence away from useless: `adjust_fleet` with a positive delta, and
+Guarded in the reducer on **every** minting path, because one would have been a
+sentence away from useless: `build_ships`, and — for the engine and for
+journals before version 23 — `adjust_fleet` with a positive delta and
 `adjust_ships` placing your own new hulls at a named world, which was entirely
-unguarded. Both reject with `no_presence` and the same message. Losses,
+unguarded. All reject with `no_presence` and the same message. Losses,
 suborning and upkeep attrition are untouched — a landless power can still lose
 ships, have crews turned and be billed; it simply cannot replace them.
 
@@ -5364,6 +5366,12 @@ unit; this is the same move for money and for crews. A batch-scoped ledger
 carries what has been spent against each cap, so a ceiling cannot be multiplied
 by saying the same thing more times.
 
+> The next three paragraphs describe journals before version 23, and the
+> engine's own actorless batches: since then a model writes a move as a
+> `fleet_movement` and a build as `build_ships`, and cannot reach
+> `adjust_ships` at all — see "Ships change by intent". The machinery stays so
+> an old campaign replays as it was played.
+
 **And a squadron moved is the squadron that arrives.** `adjust_ships -N` spends
 the loss order and `+N` mints the class named, which defaults to `battleship` —
 so the obvious way to write a reposition scrapped escorts at the origin and
@@ -5529,6 +5537,65 @@ game that cost nothing at all.
 The `defection` agent mission (`crew_defection` effect) is the standing version:
 it turns crews every turn under the same limit, costs the victim 6 disposition
 per hull, and reports finding "no takers" against a resolute power.
+
+From journal version 23 a declaration turns crews with `suborn_crews`
+(`fromFactionId` names whose), under the same two rules and the same prices,
+and `adjust_ships` is not the model's to write — see "Ships change by intent".
+
+## Ships change by intent, and the reducer picks the mechanism
+
+`build_ships`, `suborn_crews`, `scuttle_ships` and a `fleet_movement`, journal
+version 23 (`LegacyRules.shipIntents`). Found by a playtest move that came back
+rejected with *"drajk's crews will not be suborned by vigil — their resolve is
+beyond its guile"*. The resolution call had written an invented casualty on the
+defender as `adjust_ships`, the reducer read a take of another power's hulls as
+suborning, the suborning refused, and an atomic batch took the move down with
+it. `adjust_ships` was one op for five intents — build, move, suborn, scuttle
+and a casualty nobody fought — and the reducer guessed which from signs and
+owners. The same shape let a natural 1 on a move between a power's own worlds
+scuttle an escort (playtest 2026-10-15, B16).
+
+- **The model states an intent; the reducer does the arithmetic.**
+  `adjust_ships` and `adjust_fleet` stay as the reducer's ship arithmetic, and
+  are refused (`reducer_only`) from any model or extraction batch with an
+  actor. Actorless batches — the engine, a test building a board — and older
+  journals keep them. Losses are the battle's, or a saboteur's `hull_damage`;
+  no op a model writes takes another power's hulls except `suborn_crews`.
+- **A move is one intent, whatever its length.** A `fleet_movement` one jump
+  between two worlds the mover holds, with nobody's ships over the target but
+  its own and its guests' (`movesAtOnce`), lands in the batch. Anything else
+  sails a turn a jump and is settled on arrival: an attack, a voyage, a sweep
+  of a squatter. There was briefly a separate `redeploy_ships` for the first
+  case, and it was folded in: two move ops made the model pick a mechanism, and
+  a wrong pick — a redeploy refused because a rival hull had turned up at the
+  target — sank the whole declaration. Control is the reducer's alone and
+  deterministic, so it can decide at the moment the batch applies, and replay
+  decides the same way.
+
+**Why a short move lands at once at all**, which is narrower than it looks. The
+tick pays income first, then resolves arrivals, then reads regard, and a
+holder's ships landing on a world in the same tick as an attack fight in that
+battle. So a one-jump move that sails differs from one that lands in two ways
+only: one income settlement, and whether the rest of the turn sees the ships
+there — the player's second action, which can sail on from the new world, and
+every bot deciding after. The second is what matters: `guardFronts` deters by
+the attacking bot reading the guard on the board, and a guard still under way
+deters nobody. Measured with every move sailing: Drajk loses Threx by turn 10
+and the board is 5/6/6/5/3 at 30 and 100 turns with events, 5/7/6/5/2 at 100
+without. With one jump landing at once it is **5/5/6/5/4** at 30 and 100 with
+events and at 30 without, and **5/6/6/5/3** at 100 without — the Vigil takes
+one Confederacy world between turns 50 and 100.
+
+**And a bot tells an attack from massing by where it goes.** `pursue` walks a
+doctrine's targets and stops at the first one it can strike, and it treated any
+`issue_order` as the strike — right while massing was `adjust_ships`, and wrong
+once massing became a movement: every bot stopped at its first target and only
+massed, and in a quiet twelve-turn campaign no power took a world off another.
+`strikes` reads whether the movement goes onto ground the mover does not hold.
+
+The arbiter prices moving a power's own ships, building and scuttling as
+`trivial` (`prompts/appraisal.md`): nobody resists a shuffle inside your own
+territory, and what a fleet meets on arrival is the battle's to decide.
 
 ### applyOps now knows who is asking
 
@@ -6644,8 +6711,11 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `transfer_control` | **reducer-only** — absent from `ModelOpSchema` entirely |
 | `cheat` | **menu-only** — accepted from the `cheat` source alone, in batches of nothing else; see "A cheat menu" |
 | `adjust_disposition` | clamped to −100..100; self-disposition rejected |
-| `adjust_fleet` | floors at 0; `hull` picks the class the yards lay down |
-| `adjust_ships` | `hull` picks the class — which to build, and which of *your own* to move. Taking another power's is suborning, and spends their loss order |
+| `build_ships` | lay down hulls of a `hull` class at a world you hold (`systemId`, or your best); billed by tonnage and held to yard capacity |
+| `suborn_crews` | turn `count` of another power's crews where they stand; presence and `subornLimit` |
+| `scuttle_ships` | strike off hulls of your own at a world; the named class first |
+| `adjust_fleet` | **reducer arithmetic** from journal version 23 — refused from a model batch with an actor. Floors at 0; `hull` picks the class the yards lay down |
+| `adjust_ships` | **reducer arithmetic** from journal version 23, as `adjust_fleet`. Before it: `hull` picks the class — which to build, and which of *your own* to move; taking another power's is suborning, and spends their loss order |
 | `adjust_credits` | floors at 0 |
 | `set_doctrine` | 1–240 chars; may move `warEthic`/`tradeEthic` and retire lines, charged in dissent; actor's own faction only |
 | `set_toll_policy` | who pays to cross your space; free, actor's own faction only. An accord may only **lift** a toll — adding one is `declared_only`. `forTurns` / `whileTreaty` make a lift temporary |
@@ -6666,7 +6736,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `withdraw_ultimatum` | issuer only |
 | `post_bounty` | your own credits into escrow against another power; trimmed to the treasury, topped up by posting again |
 | `withdraw_bounty` | poster only; what is left comes back, the grievance stays. Never a merchants' bounty |
-| `issue_order` | see Duration below; optional `onComplete` payload, paid at issue. `force` is a count (drawn proportionally) or a named composition. `dark` runs a `commerce_raiding` order unowned — see "Running dark" |
+| `issue_order` | see Duration below; optional `onComplete` payload, paid at issue. `force` is a count (drawn proportionally) or a named composition. `dark` runs a `commerce_raiding` order unowned — see "Running dark". A `fleet_movement` one jump between two worlds you hold, with no rival over the target, lands at once |
 | `cancel_order` | returns the unspent part of an `onComplete` payload |
 | `interrupt_order` | rejected when the order is not interruptible; **somebody else's** order also needs ships at its origin or target |
 | `extend_order` | rejected for movement |
@@ -6716,7 +6786,8 @@ Rejection codes: `unknown_op`, `schema_invalid`, `reducer_only`,
 
 Cost is **computed**, never estimated: one turn per jump on the shortest
 hyperlane path (BFS, neighbours visited in sorted order so ties break
-identically on replay).
+identically on replay). One jump inside the mover's own territory takes none —
+it lands in the batch (`movesAtOnce`, journal version 23).
 
 If a model returns `durationTurns` for a `fleet_movement` order, it is
 **discarded**, recomputed, and the discard is logged to `eventLog` and to the

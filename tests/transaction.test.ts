@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyOps } from '../src/domain/reducer.js';
+import type { OpInput } from '../src/domain/ops.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { fleetStrengthOf, setStackAt, stackAt } from '../src/domain/state.js';
 import { hullsIn, subtractStack, type ShipStack } from '../src/domain/hulls.js';
@@ -48,18 +49,10 @@ describe('a ceiling belongs to the declaration, not to the op', () => {
     expect(limit).toBeGreaterThan(0);
 
     const before = hullsAt(sys(state, at), 'ojjul');
-    // The playtest's exact shape: one action, split by hull class, each op
+    // The playtest's shape: one action asking three times, each ask
     // individually inside the cap.
-    const out = applyOps(
-      state,
-      [
-        { op: 'adjust_ships', systemId: at, factionId: 'ojjul', delta: -limit, hull: 'escort' },
-        { op: 'adjust_ships', systemId: at, factionId: 'ojjul', delta: -limit, hull: 'escort' },
-        { op: 'adjust_ships', systemId: at, factionId: 'ojjul', delta: -limit, hull: 'battleship' },
-      ],
-      'model',
-      'meridian',
-    );
+    const ask = { op: 'suborn_crews', factionId: 'meridian', fromFactionId: 'ojjul', systemId: at, count: limit } as OpInput;
+    const out = applyOps(state, [ask, ask, ask], 'model', 'meridian');
     const turned = before - hullsAt(sys(out.state, at), 'ojjul');
     expect(turned).toBe(limit);
   });
@@ -91,7 +84,7 @@ describe('a price is charged once', () => {
     const withBoth = applyOps(
       fresh(),
       [
-        { op: 'adjust_fleet', factionId: 'meridian', delta: 10, hull: 'battleship' },
+        { op: 'build_ships', factionId: 'meridian', count: 10, hull: 'battleship' } as OpInput,
         { op: 'adjust_credits', factionId: 'meridian', delta: -510 },
       ],
       'model',
@@ -99,7 +92,7 @@ describe('a price is charged once', () => {
     );
     const yardsOnly = applyOps(
       fresh(),
-      [{ op: 'adjust_fleet', factionId: 'meridian', delta: 10, hull: 'battleship' }],
+      [{ op: 'build_ships', factionId: 'meridian', count: 10, hull: 'battleship' } as OpInput],
       'model',
       'meridian',
     );
@@ -171,79 +164,6 @@ describe('a cession and its price are two halves of one deal', () => {
     const out = purchase({ meridian: 3000, ojjul: 3000 });
     expect(fac(out.state, 'meridian').credits).toBe(fac(start, 'meridian').credits);
     expect(fac(out.state, 'ojjul').credits).toBe(fac(start, 'ojjul').credits);
-  });
-});
-
-describe('one squadron described twice is one squadron', () => {
-  const build = (ops: unknown[]) => {
-    const state = fresh();
-    const before = fleetStrengthOf(state, 'meridian');
-    const at = (w: WorldState, id: string) => stackAt(sys(w, id), 'meridian').lifter ?? 0;
-    // Measured as a DELTA: the seed now opens every power with a doctrine-shaped
-    // squadron, so Meridian already has transports at these worlds and an
-    // absolute count would be asserting the seed rather than the reconciliation.
-    const opening = new Map(['sek-1', 'sek-4'].map((id) => [id, at(state, id)]));
-    const out = applyOps(state, ops as never, 'model', 'meridian');
-    const lifters = (id: string) => at(out.state, id) - (opening.get(id) ?? 0);
-    return { gained: fleetStrengthOf(out.state, 'meridian') - before, lifters };
-  };
-
-  // `adjust_fleet` commissions and bases at the best holding; `adjust_ships`
-  // puts hulls at a named world. A model describing one squadron reaches for
-  // both, and the reducer counted them as two — twice the hulls the narrative
-  // claimed, and twice the bill. Same defect as 58/61/63 one field over.
-  it('does not mint a second squadron when the placement names the base', () => {
-    // Meridian's best holding IS sek-1, which is what made the first fix fail:
-    // a "different system" guard skipped the relocation and still added.
-    const { gained, lifters } = build([
-      { op: 'adjust_fleet', factionId: 'meridian', delta: 6, hull: 'lifter' },
-      { op: 'adjust_ships', systemId: 'sek-1', factionId: 'meridian', delta: 6, hull: 'lifter' },
-    ]);
-    expect(gained).toBe(6);
-    expect(lifters('sek-1')).toBe(6);
-  });
-
-  it('moves them when the placement names somewhere else', () => {
-    const { gained, lifters } = build([
-      { op: 'adjust_fleet', factionId: 'meridian', delta: 6, hull: 'lifter' },
-      { op: 'adjust_ships', systemId: 'sek-4', factionId: 'meridian', delta: 6, hull: 'lifter' },
-    ]);
-    expect(gained).toBe(6);
-    expect(lifters('sek-4')).toBe(6);
-    expect(lifters('sek-1')).toBe(0);
-  });
-
-  it('reconciles the other emission order too', () => {
-    const { gained, lifters } = build([
-      { op: 'adjust_ships', systemId: 'sek-4', factionId: 'meridian', delta: 6, hull: 'lifter' },
-      { op: 'adjust_fleet', factionId: 'meridian', delta: 6, hull: 'lifter' },
-    ]);
-    expect(gained).toBe(6);
-    expect(lifters('sek-4')).toBe(6);
-  });
-
-  it('delivers the surplus when the placement asks for more than was built', () => {
-    const { gained } = build([
-      { op: 'adjust_fleet', factionId: 'meridian', delta: 6, hull: 'lifter' },
-      { op: 'adjust_ships', systemId: 'sek-4', factionId: 'meridian', delta: 10, hull: 'lifter' },
-    ]);
-    expect(gained).toBe(10);
-  });
-
-  it('leaves two genuine programmes alone', () => {
-    // Two `adjust_fleet` ops are two builds, not one described twice. The rule
-    // must not make a fleet cheaper to buy by splitting the order.
-    expect(build([
-      { op: 'adjust_fleet', factionId: 'meridian', delta: 6, hull: 'lifter' },
-      { op: 'adjust_fleet', factionId: 'meridian', delta: 6, hull: 'lifter' },
-    ]).gained).toBe(12);
-  });
-
-  it('does not reconcile across hull classes', () => {
-    expect(build([
-      { op: 'adjust_fleet', factionId: 'meridian', delta: 6, hull: 'lifter' },
-      { op: 'adjust_ships', systemId: 'sek-4', factionId: 'meridian', delta: 6, hull: 'escort' },
-    ]).gained).toBe(12);
   });
 });
 
@@ -358,119 +278,6 @@ describe('a commitment says when its yield will not be paid', () => {
     expect(out.notes.join(' ')).not.toMatch(/can draw/);
   });
 });
-
-/**
- * A BARE `adjust_ships` PAIR IS A MOVE, NOT A REFIT.
- *
- * `-N` spends the loss order and `+N` mints the class named, which defaults to
- * `battleship`. So the obvious way to write a reposition — take six from here,
- * put six down there — scrapped six escorts at the origin and commissioned six
- * battleships at the destination. `billConstruction` charged the difference
- * correctly, which is exactly what made it hard to see: the money was right and
- * the fleet was wrong. The narrative said the squadron sailed and a different
- * squadron arrived.
- */
-describe('a reposition keeps the fleet it moved', () => {
-  /** Six escorts and two battleships at `originId`, an empty world at `destId`. */
-  const mixed = (): { s: WorldState; originId: string; destId: string } => {
-    const s = createSeedState('meridian');
-    const [from, to] = s.systems.filter((x) => x.controllerFactionId === 'meridian');
-    setStackAt(from!, 'meridian', { escort: 6, battleship: 2 });
-    setStackAt(to!, 'meridian', {});
-    return { s, originId: from!.id, destId: to!.id };
-  };
-
-  const at = (s: WorldState, id: string): ShipStack =>
-    stackAt(s.systems.find((x) => x.id === id)!, 'meridian');
-
-  it('lands exactly the hulls it lifted when no class was named', () => {
-    const { s, originId, destId } = mixed();
-    const before = at(s, originId);
-
-    const res = applyOps(
-      s,
-      [
-        { op: 'adjust_ships', systemId: originId, factionId: 'meridian', delta: -4 },
-        { op: 'adjust_ships', systemId: destId, factionId: 'meridian', delta: 4 },
-      ],
-      'model',
-      'meridian',
-    );
-    expect(res.rejections).toEqual([]);
-
-    // The property is not "four escorts arrived" — an unnamed removal takes
-    // two battleships and then two escorts. It is that WHAT LEFT IS WHAT
-    // ARRIVED. Before this, four battleships arrived whatever had left.
-    const gone = subtractStack(before, at(res.state, originId));
-    expect(at(res.state, destId)).toEqual(gone);
-    expect(hullsIn(gone)).toBe(4);
-
-    // And because nothing was built, nothing was billed.
-    const paid =
-      s.factions.find((f) => f.id === 'meridian')!.credits -
-      res.state.factions.find((f) => f.id === 'meridian')!.credits;
-    expect(paid).toBe(0);
-  });
-
-  it('still obeys an explicitly named class', () => {
-    // The pool must never override an op that said what it wanted. `hull` is
-    // read off the raw op precisely so "the model asked for battleships" is
-    // distinguishable from "the model said nothing".
-    const { s, originId, destId } = mixed();
-    const res = applyOps(
-      s,
-      [
-        { op: 'adjust_ships', systemId: originId, factionId: 'meridian', delta: -2, hull: 'escort' },
-        { op: 'adjust_ships', systemId: destId, factionId: 'meridian', delta: 2, hull: 'battleship' },
-      ],
-      'model',
-      'meridian',
-    );
-    expect(res.rejections).toEqual([]);
-    expect(at(res.state, destId)).toEqual({ battleship: 2 });
-  });
-
-  it('bills only the surplus past what was lifted', () => {
-    const { s, originId, destId } = mixed();
-    const res = applyOps(
-      s,
-      [
-        { op: 'adjust_ships', systemId: originId, factionId: 'meridian', delta: -2, hull: 'escort' },
-        { op: 'adjust_ships', systemId: destId, factionId: 'meridian', delta: 5 },
-      ],
-      'model',
-      'meridian',
-    );
-    expect(res.rejections).toEqual([]);
-    // Two escorts moved; three battleships past them are a genuine build.
-    expect(at(res.state, destId)).toEqual({ escort: 2, battleship: 3 });
-  });
-
-  it('lets a suborned crew keep the hull it was standing on', () => {
-    // Turning three escorts used to deliver three battleships — paid for at
-    // battleship rates, so never free, but not what was turned either, and the
-    // opposite of what CLAUDE.md says about pricing a defection by class.
-    const s = createSeedState('ojjul');
-    const host = s.systems.find((x) => x.controllerFactionId === 'meridian')!;
-    setStackAt(host, 'meridian', { escort: 4 });
-    setStackAt(host, 'ojjul', { battleship: 1 });
-    expect(subornLimit(s, 'ojjul', 'meridian')).toBeGreaterThanOrEqual(2);
-
-    const res = applyOps(
-      s,
-      [
-        { op: 'adjust_ships', systemId: host.id, factionId: 'meridian', delta: -2 },
-        { op: 'adjust_ships', systemId: host.id, factionId: 'ojjul', delta: 2 },
-      ],
-      'model',
-      'ojjul',
-    );
-    expect(res.rejections).toEqual([]);
-    const after = stackAt(res.state.systems.find((x) => x.id === host.id)!, 'ojjul');
-    expect(after.escort).toBe(2);
-  });
-});
-
 /**
  * The event log is the one part of the world a batch can only append to, and it
  * is 61% of what `clone` copies. Sharing the entries is safe exactly while

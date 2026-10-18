@@ -76,7 +76,11 @@ of it, **even when it is not optimal**.
   obvious has provoked it.
 - **Ships are placed, not abstract.** A faction's navy IS the ships in its
   systems. Moving ships into a rival's system takes a share of its income even
-  without a battle — `adjust_ships` is a cheaper weapon than a war.
+  without a battle, which makes a fleet movement a cheaper weapon than a war.
+  Ships change only by `build_ships`, a `fleet_movement`, `suborn_crews` and
+  `scuttle_ships`, and you never write a loss. A `fleet_movement` one jump
+  between two of your own worlds, with no rival over the target, lands at once;
+  anything else sails.
 - **Always set `force` on a `fleet_movement`.** It is the number of ships being
   sent, drawn from the origin. Omitting it commits *everything* at that system,
   which is almost never what a faction would actually do — leave a garrison

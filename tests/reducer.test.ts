@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { OpInput } from '../src/domain/ops.js';
 import { HULL_SPEC } from '../src/domain/hulls.js';
 import { applyOps, tickTurn } from '../src/domain/reducer.js';
 import { createSeedState } from '../src/seed/scenario.js';
@@ -590,7 +591,7 @@ describe('a batch is atomic when asked to be', () => {
     const out = applyOps(
       state,
       [
-        { op: 'adjust_ships', systemId: home.id, factionId: 'meridian', delta: -999, reason: 'scuttle' },
+        { op: 'scuttle_ships', systemId: home.id, factionId: 'meridian', count: 999, reason: 'scuttle' } as OpInput,
         bad,
       ],
       'model',
@@ -633,7 +634,7 @@ describe('hulls a declaration could not lose stay where they were', () => {
   it('does not teleport survivors to the faction’s best world', () => {
     const out = applyOps(
       setup(),
-      [{ op: 'adjust_fleet', factionId: 'drajk', delta: -4, reason: 'scuttle' }],
+      [{ op: 'scuttle_ships', factionId: 'drajk', systemId: 'ilv-7', count: 4, reason: 'scuttle' } as OpInput],
       'model',
       'drajk',
       true,
@@ -650,7 +651,7 @@ describe('hulls a declaration could not lose stay where they were', () => {
   it('names where they actually are in the note', () => {
     const out = applyOps(
       setup(),
-      [{ op: 'adjust_fleet', factionId: 'drajk', delta: -4, reason: 'scuttle' }],
+      [{ op: 'scuttle_ships', factionId: 'drajk', systemId: 'ilv-7', count: 4, reason: 'scuttle' } as OpInput],
       'model',
       'drajk',
       true,

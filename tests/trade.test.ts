@@ -20,6 +20,7 @@ import {
   tradeHubs,
   tradeRoutes,
 } from '../src/domain/trade.js';
+import type { OpInput } from '../src/domain/ops.js';
 import type { Treaty, TreatyType } from '../src/domain/diplomacy.js';
 
 /**
@@ -761,14 +762,11 @@ describe('suborning crews: presence and a stat contest, not a sentence', () => {
   const totalShips = (s: WorldState, f: string) =>
     s.systems.reduce((n, x) => n + (hullsAt(x, f)), 0);
 
-  /** The op shape a playtest actually produced, as the acting faction. */
+  /** One suborn, as the acting faction declares it. */
   const suborn = (s: WorldState, at: string, from: string, n: number, actor = 'drajk') =>
     applyOps(
       s,
-      [
-        { op: 'adjust_ships', systemId: at, factionId: from, delta: -n },
-        { op: 'adjust_ships', systemId: at, factionId: actor, delta: n },
-      ],
+      [{ op: 'suborn_crews', factionId: actor, fromFactionId: from, systemId: at, count: n } as OpInput],
       'model',
       actor,
     );
@@ -817,27 +815,12 @@ describe('suborning crews: presence and a stat contest, not a sentence', () => {
     expect(totalShips(res.state, 'vigil')).toBe(totalShips(state, 'vigil'));
   });
 
-  it('leaves a faction free to move its own ships as before', () => {
-    const state = fresh('drajk');
-    const res = applyOps(
-      state,
-      [
-        { op: 'adjust_ships', systemId: 'ilv-6', factionId: 'drajk', delta: -5 },
-        { op: 'adjust_ships', systemId: 'ilv-7', factionId: 'drajk', delta: 5 },
-      ],
-      'model',
-      'drajk',
-    );
-    expect(res.rejections).toHaveLength(0);
-    expect(totalShips(res.state, 'drajk')).toBe(totalShips(state, 'drajk'));
-  });
-
   it('holds NPCs to the same rule as the player', () => {
     const res = suborn(fresh('drajk'), 'sek-1', 'meridian', 6, 'ojjul');
     expect(res.rejections.map((r) => r.code)).toContain('no_presence');
   });
 
-  it('still applies no guard when no actor is known, so old journals replay', () => {
+  it('leaves the engine its ship arithmetic when no actor is known', () => {
     const res = applyOps(
       fresh('drajk'),
       [{ op: 'adjust_ships', systemId: 'ilv-2', factionId: 'ojjul', delta: -5 }],
@@ -1027,10 +1010,7 @@ describe('suborning is statecraft, not combat', () => {
       before: state,
       res: applyOps(
         state,
-        [
-          { op: 'adjust_ships', systemId: 'ilv-3', factionId: 'ojjul', delta: -n },
-          { op: 'adjust_ships', systemId: 'ilv-4', factionId: 'drajk', delta: n },
-        ],
+        [{ op: 'suborn_crews', factionId: 'drajk', fromFactionId: 'ojjul', systemId: 'ilv-3', count: n } as OpInput],
         'model',
         'drajk',
       ),
@@ -1092,27 +1072,11 @@ describe('suborning is statecraft, not combat', () => {
     setShipsAt(sys(state, 'ilv-6'), 'drajk', 20); // ilv-6 is not adjacent to ilv-2
     const res = applyOps(
       state,
-      [{ op: 'adjust_ships', systemId: 'ilv-2', factionId: 'ojjul', delta: -3 }],
+      [{ op: 'suborn_crews', factionId: 'drajk', fromFactionId: 'ojjul', systemId: 'ilv-2', count: 3 } as OpInput],
       'model',
       'drajk',
     );
     expect(res.rejections.map((r) => r.code)).toContain('no_presence');
-  });
-
-  it('charges nothing to a faction moving its own ships', () => {
-    const state = fresh('drajk');
-    const before = disp(state, 'ojjul', 'drajk');
-    const res = applyOps(
-      state,
-      [
-        { op: 'adjust_ships', systemId: 'ilv-6', factionId: 'drajk', delta: -4 },
-        { op: 'adjust_ships', systemId: 'ilv-7', factionId: 'drajk', delta: 4 },
-      ],
-      'model',
-      'drajk',
-    );
-    expect(disp(res.state, 'ojjul', 'drajk')).toBe(before);
-    expect(res.notes.join(' ')).not.toMatch(/without a shot fired/);
   });
 });
 

@@ -303,7 +303,11 @@ describe('the bots', () => {
     set(s, 'sek-3', 'meridian', CONQUEST_REGARD);
     setShipsAt(w, 'meridian', 0);
     const ops = (proposeFor(s, 'meridian')?.ops ?? []) as Record<string, unknown>[];
-    expect(ops.some((o) => o.op === 'adjust_ships' && o.systemId === 'sek-3' && (o.delta as number) > 0)).toBe(true);
+    expect(ops.some((o) => o.op === 'issue_order' && o.type === 'fleet_movement' && o.targetId === 'sek-3')).toBe(true);
+    // A neighbour of its own is one jump away, so the warships are over the
+    // world before the tick reads whether it is held down.
+    const after = applyOps(s, ops, 'model', 'meridian', true).state;
+    expect(sys(after, 'sek-3').ships.meridian?.battleship ?? 0).toBeGreaterThan(0);
   });
 
   it('does not storm a world that hates it past what the storming fleet could hold', () => {

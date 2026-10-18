@@ -16,7 +16,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 22;
+export const JOURNAL_VERSION = 23;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -104,6 +104,7 @@ export const JournalVersionSchema = z.union([
   z.literal(20),
   z.literal(21),
   z.literal(22),
+  z.literal(23),
 ]);
 
 export const JournalSchema = z.object({
@@ -386,6 +387,9 @@ export function replay(
     // A prisoner could be spent (questioned) by a generic verb, and a person
     // already on a roster minted again as a new asset.
     oneRecordPerPerson: parsed.version >= 22,
+    // A model wrote ship arithmetic (adjust_ships, adjust_fleet) directly,
+    // and the reducer inferred whether it meant a build, a move or a suborn.
+    shipIntents: parsed.version >= 23,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.
