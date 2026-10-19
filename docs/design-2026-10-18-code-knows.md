@@ -18,6 +18,27 @@ from a model to code, and leaves the model the judgement that remains.
 
 Two decisions close the document (§7, §8), and one limit is left alone (§9).
 
+**Status (2026-10-19): §1–§5, §7 and §8 are built; §6 is not.** What was built
+differs from the design here:
+
+- **§1** tags lines in `Faction.lineActs`, keyed by line text, rather than
+  turning `redLines` into objects, so a saved sheet's shape is unchanged
+  (journal version 27). Drajk's decision went neither (a) nor (b): its line was
+  reworded to forbid public alliances and foreign basing (`alliance_signed`,
+  `basing_granted`), so its letters of marque and ceasefires stand. No bot
+  crosses a tagged line, so the board did not move — the order of work below
+  expected it to.
+- **§5** rewrites the staged batch's narrative, which the reactions read, and
+  the outcome the player sees. The model's own `log_narrative` is not
+  rewritten, since it is journaled. The `Correction:` notes stay as the
+  fallback when the pass fails or its guard refuses.
+- **§7** pays the charter's figure, capped at a quarter of the world's take,
+  rather than the quarter outright; a declaration naming no world is chartered
+  on its power's richest (journal version 28, `charterOnWorld`).
+- **§8** lets an accord move either party's view, one of them the player's, and
+  leaves out `aid`; a left-out warmth is a note, never a rejection (journal
+  version 28, `pricedWarmth`).
+
 ---
 
 ## 1. A line reads the acts it forbids (B4, C10, C11)

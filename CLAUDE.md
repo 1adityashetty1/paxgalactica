@@ -371,6 +371,9 @@ a commitment is the easiest place in the game for a model to invent revenue:
   Vigil at the floor of 10. A trading authority runs charters; a military
   remnant does not. Costs are deliberately uncapped — nothing needs protecting
   from a faction agreeing to pay.
+- **A declared charter pays from a world** (journal version 28): at most a
+  quarter of what that world pays its power, and nothing once it is lost — see
+  *"What code knows, code decides"* §7.
 
 It is read where it is used rather than paid out each tick, for the same reason
 agent effects are: a per-turn mutation would compound instead of recurring.
@@ -4089,8 +4092,9 @@ and `acts.ts` says how much:
   the saves, and none names an act the reducer already prices. It warms as well
   as cools, so a vocabulary of grievances does not ratchet the galaxy to war.
 - **Either may `gift`** — a payment that buys regard at 20 credits a point.
-- **An accord still narrates it** with `adjust_disposition`, held to the batch
-  cap and to a treaty's own goodwill, as below.
+- **An accord writes `regard` too**, from journal version 28 — see *"What code
+  knows, code decides"* §8. It narrated `adjust_disposition` before, held to
+  the batch cap and to a treaty's own goodwill, as below.
 
 **Not measured in play**: the harness never narrates, so its boards cannot
 move, and they do not. What it does to a played campaign — how warm the Rim
@@ -4128,7 +4132,8 @@ measured at 5 → 17 from the treaty and 42 with one narrated +25 (playtest
 whole batch, as the credits cap already did, and an accord that signs a treaty
 adds no narrated warmth between its parties; a cooling still lands. Journal
 version 22 (`LegacyRules.narrationCapPerBatch`), and only where the per-op cap
-itself applies.
+itself applies. From version 28 an accord does not narrate regard at all; the
+same two rules hold its `regard` (§8 below).
 
 ### Dissent moves one way, on your own faction only
 
@@ -4194,6 +4199,100 @@ from pricing the act a sixth way.
 between you costs the injured party's 25 and nothing with onlookers, where an
 attack under any other peace costs 10. Hostile acts, goodwill, money and dissent
 are the other families in the design, not yet moved.
+
+## What code knows, code decides
+
+`docs/design-2026-10-18-code-knows.md`, from the audit of the 2026-10-18
+adversarial playtest. Each finding had one shape: **the engine held a fact, and
+a model was asked to say it again.** Each fix moves a lookup from a model to
+code and leaves the model the judgement that remains — the `classifyPrinciple`
+rule, applied six more times.
+
+**§1. A line reads the acts it forbids** (journal version 27). `applyOps`
+returns `acts` — the ten breach kinds plus `pact_attack_ordered`,
+`blockade_ordered`, `raid_ordered`, `invasion_launched`, `treaty_signed`,
+`peace_signed`, `alliance_signed`, `marriage_signed`, `basing_granted`,
+`protection_accepted`, `debt_forgiven`, `tribute_paid`, `territory_ceded`,
+`defence_pledged`, `person_trafficked`, `gift_given` — output only, never
+state. The seed tags each line that code can check with the acts it forbids
+(`Faction.lineActs`, by line text, with an optional `with` naming
+counterparties), and `linesCrossed` matches them. The engine reads them after
+the ops are known: a declaration crossing a red line is refused as an arbiter
+red line is, and a compulsion is charged once even if the arbiter named it too;
+a reaction's offending ops are held back; a bot's are dropped (`honourLines`,
+beside `honourTreaties`); an accord reads `paid_for_peace` and
+`given_for_nothing` off the whole batch and the concession record
+(`accordActs`). The arbiter still rules on every line before the roll — a
+tagged line simply cannot be missed afterwards. **Drajk's second red line was
+reworded** to *"will not be bound in public to another power — no alliance, no
+coalition, no foreign fleet based in its space"*, forbidding `alliance_signed`
+and `basing_granted`, so its letters of marque and ceasefires stand: no bot
+crosses a tagged line in 30, 100 or 300 harness turns, and the boards do not
+move. A journal before 27 rebuilds the old wording, untagged.
+
+**§2–3. An accord is built from the record, and lands whole.** Extraction
+returns `accepted` — which recorded concessions were agreed, as `by:kind` — and
+writes only terms that have no field on a concession: a treaty's type, a
+commitment, a debt, a loan, a favour owed. `transfersFromRecord` builds every
+payment, thing handed over, favour released or sold, cession and toll lift from
+the ids each power wrote as it spoke (`Concession` gained `lifts` and
+`liftTurns`), and `withoutRecordTransfers` drops any extraction wrote itself, so
+a sale is paid once. A cession carries the buyer's credits and things as its
+`terms.payment` and `terms.assets`. The built transfers go in as `fixed`: one
+the reducer refuses fails the accord with no correction (a refused transfer
+cannot be reworded), and a correction may fix a term but never drop one. The
+transcript says *"nothing agreed above took effect"* when it did not land.
+
+**§4. A declaration produces what was ruled.** An overt part names how it
+`reaches` into another power's business — `their_orders`, `their_ships`,
+`their_paper`, `coercion` — and `opsAsRuled`, inside `holdToRuling`, drops a
+reaching op the ruling did not name (an `interrupt_order` on a rival's
+programme, a `suborn_crews`, a `break_treaty`), with a note. A critical success
+names one `bonus` off a closed menu — `cost_avoided` (a quarter of what the
+declaration spent comes back), `tempo` (an order it started finishes a step
+sooner), `goodwill` (the power it most touched warms by a partial sway),
+`windfall` (one more of the ruled prize) — and the engine applies it, where
+resolution used to write any op as its flourish.
+
+**§5. Narrate what landed.** When a declaration's or an accord's ops were
+rejected, left out, trimmed or corrected (`storyDiverged`, read off the notes
+already written), one call on the flavour tier (`reconcile`,
+`prompts/reconcile.md`) rewrites the story from the draft, the ops that landed
+and the notes, onto the staged batch the reactions read. It is held to
+`flavourKeepsTheFacts`: a rewrite with a number the landed ops and notes do not
+contain leaves the draft, as does a call that fails, and the `Correction:`
+notes stay as the fallback. The model's own `log_narrative` is not rewritten —
+it is journaled, and narratives are not state. **The epilogue** now carries
+each power's `refusals` and `defiances`, counted off the journal's labelled
+dissent charges (`overrulings`), because dissent decays: a power refused on
+turn 3 was narrated as one whose institutions "never once had to overrule"
+it.
+
+**§6** (a prize's worth set in code) is designed and not built.
+
+**§7. A declared charter pays from a world** (journal version 28,
+`charterOnWorld`). A declared `income` commitment is chartered on a world its
+power holds (`establish_commitment.systemId`, else its richest, said in a
+note) — `Commitment.atSystemId` — and pays its figure but no more than
+`CHARTER_SHARE` (a quarter) of what that world pays the power, and nothing
+while the power does not hold it (`charterWorth`, read in `ledgerFor`). The
+last standing income a ruling minted from nowhere now sits where it can be
+taken. On the opening board a charter on a power's best world pays 12–15.
+
+**§8. An accord's warmth is priced** (journal version 28, `pricedWarmth`). An
+accord writes `regard` — either party's view of the other, one of them the
+actor — for a reason off `REGARD_BECAUSE`: `promise_kept` or `deference` for a
+deal, `slight`, `insult`, `threat` or `promise_broken` for one gone sour. Each
+direction moves once an accord; no warmth beside a treaty's goodwill between
+the same two; **no warmth when nothing else was agreed**, which ends the
+conversation-only pump; never `aid`, which a gift or a payment buys. Each is
+left out with a note rather than rejected, so a warmth written twice does not
+sink the terms. Narrated `adjust_disposition` left the extraction schema and is
+refused from an accord; `OP_PATHS` keeps its accord column only so older
+accords replay, as `spawn_event`'s does.
+
+Measured after every step: every save replays byte-identically and the four
+harness boards stay 5/5/6/5/4 (5/6/6/5/3 at 100 turns without events).
 
 ## Treaties and agents
 
@@ -6902,9 +7001,9 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 |---|---|
 | `transfer_control` | **reducer-only** — absent from `ModelOpSchema` entirely |
 | `cheat` | **menu-only** — accepted from the `cheat` source alone, in batches of nothing else; see "A cheat menu" |
-| `adjust_disposition` | clamped to −100..100; self-disposition rejected. **An accord's alone** from journal version 25 — a declaration writes `sway` or `gift`, a reaction `regard` or `gift` |
+| `adjust_disposition` | clamped to −100..100; self-disposition rejected. **The engine's** from journal version 28 (an accord's from 25 to 27) — a declaration writes `sway` or `gift`, a reaction or an accord `regard` or `gift` |
 | `sway` | an influence check that worked moves how `whom` sees the actor, by `SWAY_BY_BAND` (3, 6, 10). The engine sizes it; nothing on another stat or a failure |
-| `regard` | a reacting power's own view, by a reason from a closed list priced in `REGARD_BECAUSE` (slight −4 … broken promise −12; deference +3 … aid +6) |
+| `regard` | a reacting power's own view, or either party's in an accord, by a reason from a closed list priced in `REGARD_BECAUSE` (slight −4 … broken promise −12; deference +3 … aid +6). In an accord: once a direction, no warmth beside a treaty or without a deal, never aid |
 | `gift` | credits given, which buy the receiver's regard at `GIFT_RATE` (20 a point, 10 at most) |
 | `build_ships` | lay down hulls of a `hull` class at a world you hold (`systemId`, or your best); billed by tonnage and held to yard capacity. `programme: true` makes it a hidden yard programme at a named world, delivered on completion, counted against the same berths |
 | `suborn_crews` | turn `count` of another power's crews where they stand; presence and `subornLimit` |
@@ -6945,7 +7044,7 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `accelerate_order` | spends credits, drops one Fibonacci bucket, min 1; rejected for movement |
 | `form_treaty` | **extraction-only** — absent from `ModelOpSchema`; a treaty needs the other party's consent. `exclusive` forecloses another of that type with anyone else. A `coalition` must name `terms.against`; no other type may |
 | `restructure_debt` | **extraction-only** — new terms need the creditor's agreement; keeps the id, the balance and the history |
-| `establish_commitment` | optional `incomePerTurn`, trimmed to `MAX_COMMITMENT_INCOME` |
+| `establish_commitment` | optional `incomePerTurn`, trimmed to `MAX_COMMITMENT_INCOME`. A declared income is chartered on `systemId` (a world the power holds, else its richest) and pays at most a quarter of it |
 | `dissolve_commitment` | returns the goodwill **and** charges `COMMITMENT_BREAKING_COST` with each bound party, and heat; onlookers only at three or more, and never the parties |
 | `break_treaty` | a party only, and only a treaty still in force (journal version 24); priced in `acts.ts` |
 | `establish_debt` | **extraction-only** — a principal that depletes; trimmed to `MAX_DEBT_PRINCIPAL` |
@@ -7489,8 +7588,10 @@ contradicting its own prose is still possible. But that is a contradiction
 inside one message, on screen, in the turn it happens — which is the difference
 between a bug you can find and the one this replaced.
 
-On `/endtalk`, a **separate extraction call** reads the transcript and emits ops
-for what was actually agreed. It is the **only** pass that may emit
+On `/endtalk`, a **separate extraction call** reads the transcript and says
+which recorded concessions were agreed; the engine builds every transfer they
+name from the record, and extraction writes only the terms that have no field
+(see *"What code knows, code decides"* §2–3). It is the **only** pass that may emit
 `form_treaty`: a treaty binds a power that is not the actor, and a transcript is
 the only place that power's consent exists. A treaty asked for as an ordinary
 declared action is redirected here rather than rolled for. An NPC may promise anything in dialogue; only the
@@ -7519,6 +7620,7 @@ is a reviewable diff that can be replayed against a recorded campaign.
 | `duration-rubric.md` | appended to every prompt that estimates duration |
 | `advisor.md` | the counsellor at the leader's shoulder |
 | `event-flavour.md` | the line a random event is dressed in, after the fact |
+| `reconcile.md` | a story rewritten to what landed, when the two differ |
 | `flavor.md` | Haiku-tier colour text |
 
 ### Prompt contract
@@ -7583,6 +7685,7 @@ table below is the subscription's (`TIERS`); the keyed providers use the same
 | resolution, reaction, diplomacy, extraction, advisor | `reasoning` | `claude-sonnet-5` |
 | breach relevance | `flavor` | `claude-haiku-4-5-20251001` |
 | event flavour | `flavor` | `claude-haiku-4-5-20251001` |
+| reconcile | `flavor` | `claude-haiku-4-5-20251001` |
 | flavour text | `flavor` | `claude-haiku-4-5-20251001` |
 
 Every call is single-shot JSON with `tools: []` and `settingSources: []`, so no
