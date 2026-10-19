@@ -426,6 +426,9 @@ export function replay(
     ledgerAfterArrivals: parsed.version >= 26,
     // A declared charter paid its figure from nowhere, chartered on no world.
     charterOnWorld: parsed.version >= 28,
+    // An accord narrated its warmth with `adjust_disposition`, up to 25 a
+    // direction, for a conversation.
+    pricedWarmth: parsed.version >= 28,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

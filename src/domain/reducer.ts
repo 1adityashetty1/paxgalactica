@@ -3367,6 +3367,13 @@ export interface LegacyRules {
    */
   charterOnWorld?: boolean;
   /**
+   * An accord's warmth is priced: it writes `regard` for a listed reason, once
+   * a direction, none beside a treaty's goodwill and none when nothing else
+   * was agreed, and may no longer narrate `adjust_disposition`
+   * (`docs/design-2026-10-18-code-knows.md` §8). Journal version 28.
+   */
+  pricedWarmth?: boolean;
+  /**
    * Officers come off a power's **Lists** — one of each school always waiting
    * — and only by appointment: no successor is put in post when the last one
    * falls, and one handed home goes back on the Lists. Journal version 20;
@@ -3628,6 +3635,7 @@ function applyOpsUnderRules(
     fleetsMeetInBattle = true,
     counterpartyTolls = true,
     honestYardNote = true,
+    pricedWarmth = true,
   } = legacy;
   const state = cloneState(input);
   // Worlds a fleet landed on at once this batch, as `faction:system`: a move out
@@ -3708,6 +3716,13 @@ function applyOpsUnderRules(
       treatyPairs.add([...(o.parties as string[])].sort().join('|'));
     }
   }
+  // What an accord agreed besides its warmth (§8): an accord that agreed
+  // nothing warms nobody, and a direction of regard moves once an accord.
+  const agreedBesidesWarmth = rawOps.some((raw) => {
+    const o = (raw as { op?: unknown } | null)?.op;
+    return typeof o === 'string' && o !== 'regard' && o !== 'adjust_disposition' && o !== 'log_narrative';
+  });
+  const regardedThisAccord = new Set<string>();
   const subornedThisBatch = new Map<string, number>();
   /**
    * Hulls this batch has already put on the board, by faction and class.
@@ -3983,6 +3998,16 @@ function applyOpsUnderRules(
     // arbiter and the roll, which a reaction and a bot do not have.
     if (path !== undefined && !OP_PATHS[op.op].includes(path)) {
       reject(raw, 'wrong_path', wrongPathReason(op.op, path));
+      continue;
+    }
+    // An accord's warmth is `regard` from journal version 28 (§8); narrated
+    // `adjust_disposition` stays on the accord path only for older accords.
+    if (pricedWarmth && path === 'accord' && op.op === 'adjust_disposition') {
+      reject(
+        raw,
+        'wrong_path',
+        'An accord moves regard for a listed reason: write `regard` — `promise_kept` or `deference` for a deal made, `slight`, `insult`, `threat` or `promise_broken` for one gone sour.',
+      );
       continue;
     }
 
@@ -4412,15 +4437,43 @@ function applyOpsUnderRules(
       // A reacting power's own view of another, for a reason from a closed
       // list, at the table's price (`REGARD_BECAUSE`).
       case 'regard': {
-        if (actor !== undefined && op.factionId !== actor) {
-          reject(raw, 'illegal_value', `${nameFor(state, actor)} answers for its own view of others, not ${nameFor(state, op.factionId)}'s.`);
+        // An accord speaks for both parties at the table, so either view may
+        // move — the actor's of them, or theirs of the actor (§8).
+        const onAccord = pricedWarmth && path === 'accord';
+        if (actor !== undefined && op.factionId !== actor && !(onAccord && op.toward === actor)) {
+          reject(
+            raw,
+            'illegal_value',
+            onAccord
+              ? `${nameFor(state, actor)} cannot decide what ${nameFor(state, op.factionId)} thinks of ${nameFor(state, op.toward)}. Move your own standing, or theirs toward you.`
+              : `${nameFor(state, actor)} answers for its own view of others, not ${nameFor(state, op.factionId)}'s.`,
+          );
           break;
         }
         if (!factionExists(op.toward) || op.toward === op.factionId) {
           reject(raw, 'unknown_faction', `No other faction "${op.toward}".`);
           break;
         }
-        moveRegard(state, op.factionId, op.toward, REGARD_BECAUSE[op.because]);
+        const delta = REGARD_BECAUSE[op.because];
+        if (onAccord) {
+          // Priced, not narrated (§8). Each left-out case is said, never
+          // rejected: the accord's terms are what it is for, and a warmth
+          // written twice should not sink them.
+          const who = `${nameFor(state, op.factionId)}'s regard for ${nameFor(state, op.toward)}`;
+          let left: string | null = null;
+          if (op.because === 'aid') left = `${who} is not moved by "aid" in an accord: aid is what a gift or a payment buys.`;
+          else if (delta > 0 && !agreedBesidesWarmth) left = `${who} is not warmed: the conversation agreed nothing.`;
+          else if (delta > 0 && treatyPairs.has([op.factionId, op.toward].sort().join('|')))
+            left = `The treaty's own goodwill is what ${who.replace(/'s regard for .*/, '')} takes from this accord; the warmth written beside it is not added.`;
+          else if (regardedThisAccord.has(`${op.factionId}>${op.toward}`)) left = `${who} has moved once for this accord; a second reason is not added.`;
+          if (left !== null) {
+            notes.push(left);
+            logEvent(state, 'clamp', left, op.factionId);
+            break;
+          }
+          regardedThisAccord.add(`${op.factionId}>${op.toward}`);
+        }
+        moveRegard(state, op.factionId, op.toward, delta);
         break;
       }
 

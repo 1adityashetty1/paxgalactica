@@ -96,12 +96,10 @@ describe('the allowlist is a closed set, and says so', () => {
     const negotiated = new Set([
       'form_treaty', 'establish_debt', 'assign_debt', 'restructure_debt', 'establish_loan',
       'establish_obligation', 'assign_obligation',
-      // An accord still narrates regard; a declaration and a reaction write
-      // `sway`, `regard` and `gift` (intent-ops §3).
-      'adjust_disposition',
     ]);
     // Kept so accords journaled before it left the model's vocabulary replay.
-    const replayOnly = new Set(['spawn_event', 'adjust_credits']);
+    // An accord's warmth is `regard` from journal version 28 (code-knows §8).
+    const replayOnly = new Set(['spawn_event', 'adjust_credits', 'adjust_disposition']);
     for (const op of EXTRACTION_ALLOWED) {
       expect(modelOps.has(op) || negotiated.has(op) || replayOnly.has(op), `${op} is not an op anything can emit`).toBe(true);
     }

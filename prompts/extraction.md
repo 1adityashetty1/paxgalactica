@@ -208,13 +208,17 @@ Specifically:
 
 ## What to emit
 
-- `adjust_disposition` — almost always. Even a failed conversation moves
-  opinion; an insulting one moves it down. Scale it: a warm exchange with no
-  deal is +3 to +8, an ultimatum delivered and refused can be −20 or worse.
-  Apply it in **both directions** where both sides' feelings changed. **A
-  treaty pays its own goodwill**, so when the accord signs one, add no warmth
-  between those two — the reducer drops it — and only a cooling still lands.
-  One move per direction: ±25 is the most a whole accord moves an opinion.
+- `regard` — how either party now regards the other, for **one reason from a
+  closed list**; the game sets the size. `factionId` is whose view moves,
+  `toward` whom; one of the two is the player. A deal made is `promise_kept`
+  (the other side kept faith across the table) or `deference` (it gave ground
+  with grace). A conversation gone sour is `slight`, `insult`, `threat` or
+  `promise_broken` (a promise made in this room and broken in it). Apply it
+  in **both directions** where both sides' views changed, **once a direction**
+  — a second reason is not added. **Warmth needs a deal**: a conversation that
+  agreed nothing warms nobody, and a cooling still lands. **A treaty pays its
+  own goodwill**, so when the accord signs one, add no warmth between those
+  two. Never `aid`: aid is what a payment or a gift buys.
 - **No work of any kind.** Work is unilateral and the player pays an action for
   it, so the reducer refuses every move, build programme, fortification, raid
   or envoy from this pass. A conversation that commits a power to building,

@@ -1306,7 +1306,10 @@ export const EXTRACTION_ALLOWED = new Set<string>([
   // money in the reducer, so neither can be wished into existence.
   'forgive_debt',
   'settle_debt',
-  // The relational product of having talked at all.
+  // The relational product of having talked at all, priced from journal
+  // version 28 (code-knows §8): `regard`, for a reason from a closed list.
+  // `adjust_disposition` stays only so older accords replay.
+  'regard',
   'adjust_disposition',
   // A payment agreed across the table — `pay`, and `adjust_credits` only so
   // accords journaled before `pay` existed replay.
@@ -1735,10 +1738,9 @@ export type ModelOp = z.infer<typeof ModelOpSchema>;
  */
 export const ExtractionOpSchema = z.union([
   ModelOpSchema,
-  // An accord's regard is still narrated, held to the batch cap and to a
-  // treaty's own goodwill (intent-ops §3); a declaration and a reaction write
-  // `sway`, `regard` and `gift` instead.
-  AdjustDispositionOp,
+  // An accord's regard is `regard`, in `ModelOpSchema`, priced by the reducer
+  // (code-knows §8); narrated `adjust_disposition` left this pass at journal
+  // version 28.
   FormTreatyOp,
   EstablishDebtOp,
   AssignDebtOp,
@@ -1887,11 +1889,13 @@ export const OP_PATHS: Record<Op['op'], readonly OpPath[]> = {
   cheat: ['cheat'],
   log_ruling: [E],
   // Regard is written as `sway` (a declaration's influence payoff), `regard` (a
-  // reaction's own view, for a listed reason) or `gift`; an accord still
-  // narrates it (intent-ops §3).
+  // reaction's or an accord's view, for a listed reason) or `gift` (intent-ops
+  // §3, code-knows §8). `adjust_disposition` keeps the accord path only so
+  // accords journaled before version 28 replay; the reducer refuses it from a
+  // newer one, and the extraction schema no longer offers it.
   adjust_disposition: [A, E],
   sway: [D],
-  regard: [R, E],
+  regard: [R, A, E],
   gift: [D, R],
   adjust_fleet: [E],
   adjust_ships: [E],
