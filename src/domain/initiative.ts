@@ -101,6 +101,7 @@ import {
 } from './hulls.js';
 import { routeEarnings, routeLegs, tradeRoutes } from './trade.js';
 import { STAT_NAMES, statModifier } from './checks.js';
+import { ACT_WORDS, linesCrossed, type Act } from './acts.js';
 
 /**
  * Doctrine initiative: what a power would reach for, on this board, unprompted.
@@ -2344,6 +2345,35 @@ export const BOT_AGGRESSION_CEILING = 0;
  * knowingly breaks with (`breaks`) is kept: a bot never names one, and a
  * reaction that does has chosen the betrayal.
  */
+/**
+ * A bot's own lines, read off what its ops would do. Every line a doctrine
+ * bot's op crosses is held back, red line or compulsion alike: a doctrine bot
+ * does not defy its own sheet, the decision `barsPeaceWith` made for one line
+ * and this makes for all of them (`docs/design-2026-10-18-code-knows.md` §1).
+ *
+ * Measured with the sheets as written at journal version 27: no bot crosses a
+ * tagged line in 30, 100 or 300 harness turns, with events and without, so this
+ * is a guard on what a bot added later might do rather than a change to what the
+ * bots do now.
+ */
+export function honourLines(
+  state: WorldState,
+  factionId: string,
+  ops: Ops,
+  actsOf: (ops: Ops) => Act[],
+): { ops: Ops; withheld: string[] } {
+  let kept = ops;
+  const withheld: string[] = [];
+  for (let pass = 0; pass < 3; pass++) {
+    const hits = linesCrossed(state.factions, actsOf(kept), [factionId]).filter((h) => h.act.opIndex >= 0);
+    if (hits.length === 0) break;
+    const drop = new Set(hits.map((h) => h.act.opIndex));
+    withheld.push(...hits.map((h) => `${ACT_WORDS[h.act.kind]}, against its own line`));
+    kept = kept.filter((_, i) => !drop.has(i));
+  }
+  return { ops: kept, withheld };
+}
+
 export function honourTreaties(
   state: WorldState,
   me: string,
@@ -2498,6 +2528,12 @@ export function proposeFor(
    * because this module ships to the browser and the reducer does not.
    */
   applies?: (ops: Record<string, unknown>[]) => boolean,
+  /**
+   * The acts a batch would commit, read off a dry run (`ApplyResult.acts`).
+   * Given, the proposal is held to the bot's own lines (`honourLines`). Passed
+   * in for the reason `applies` is.
+   */
+  actsOf?: (ops: Record<string, unknown>[]) => Act[],
 ): Proposal | null {
   const bot = BOTS[factionId];
   if (!bot) return null;
@@ -2515,7 +2551,8 @@ export function proposeFor(
   const filtered = (raw: Ops) => {
     const paper = honourTreaties(state, factionId, raw);
     const standing = honourStanding(state, factionId, paper.ops);
-    return { ops: standing.ops, withheld: [...paper.withheld, ...standing.withheld] };
+    const lines = actsOf ? honourLines(state, factionId, standing.ops, actsOf) : { ops: standing.ops, withheld: [] };
+    return { ops: lines.ops, withheld: [...paper.withheld, ...standing.withheld, ...lines.withheld] };
   };
   let chosen = filtered([...bot(ctx), ...rules.flat()]);
   if (applies && chosen.ops.length > 0 && !applies(chosen.ops)) {

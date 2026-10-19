@@ -1,3 +1,4 @@
+import { linesCrossed } from './domain/acts.js';
 import { applyOps, tickTurn, type LegacyRules } from './domain/reducer.js';
 import type { RimEvent } from './domain/events.js';
 import { createSeedState } from './seed/scenario.js';
@@ -94,12 +95,15 @@ export function runBalance(
         state,
         id,
         (ops) => applyOps(state, ops, 'model', id, true, legacy).rejections.length === 0,
+        (ops) => applyOps(state, ops, 'model', id, false, legacy, 'bot').acts,
       );
       if (proposal) state = applyOps(state, proposal.ops, 'model', id).state;
     }
     // What the bots agree between themselves, as `endTurn` applies it.
     const accords: string[] = [];
     for (const accord of brokeredAccords(state)) {
+      const dry = applyOps(state, accord.ops, 'engine', undefined, false, legacy, 'engine');
+      if (linesCrossed(state.factions, dry.acts, state.factions.map((f) => f.id)).length > 0) continue;
       const applied = applyOps(state, accord.ops, 'engine', undefined, true);
       if (applied.rejections.length === 0) accords.push(accord.label);
       state = applied.state;

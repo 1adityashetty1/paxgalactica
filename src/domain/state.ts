@@ -67,6 +67,7 @@ import { DurationCategorySchema, FibScaleSchema } from './duration.js';
 import { buildAdjacency } from './graph.js';
 import { RimEventSchema, RimLuckSchema } from './events.js';
 import { HEAT_MAX } from './heat.js';
+import { ACT_KINDS } from './act-kinds.js';
 import { INTEL_OPERATIVES, intelOn } from './intel-levels.js';
 // trade.ts imports only TYPES from here, so this edge is one-directional at
 // runtime and there is no import cycle to trip over.
@@ -316,6 +317,23 @@ export const FactionSchema = z.object({
    * commanders have views, and this is where they live.
    */
   compulsions: z.array(CompulsionSchema).default([]),
+  /**
+   * The acts each line forbids, which code detects: a red line or a compulsion,
+   * named by its exact text, and what crossing it is
+   * (`docs/design-2026-10-18-code-knows.md` §1, journal version 27). Authored
+   * in the seed beside the text, the way `barsPeaceWith` is. Absent on a sheet
+   * from before: an old campaign is held only to what the arbiter reads, as it
+   * was played. See `linesCrossed`.
+   */
+  lineActs: z
+    .array(
+      z.object({
+        text: z.string().min(1),
+        forbids: z.array(z.enum(ACT_KINDS)).min(1),
+        with: z.array(z.string().min(1)).optional(),
+      }),
+    )
+    .optional(),
   /**
    * How far the leader has strayed from doctrine, 0–100. Rises when orders are
    * refused or compulsions ignored; high dissent is a losing position.

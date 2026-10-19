@@ -1,3 +1,4 @@
+import { ACT_WORDS } from '../domain/acts.js';
 import {
   CONTENT_REGARD,
   JOIN_LEAD,
@@ -377,10 +378,10 @@ export function serializeCharacter(faction: Faction): string {
     '',
     `Capabilities: ${serializeStats(effectiveFor(faction))}`,
     faction.redLines.length > 0
-      ? `\nYou will NOT, whatever the incentive:\n${faction.redLines.map((r) => `  - ${r}`).join('\n')}`
+      ? `\nYou will NOT, whatever the incentive:\n${faction.redLines.map((r) => `  - ${r}${heldTo(faction, r)}`).join('\n')}`
       : '',
     faction.compulsions.length > 0
-      ? `\nYour own institutions DEMAND of you:\n${faction.compulsions.map((c) => `  - ${c.text}`).join('\n')}`
+      ? `\nYour own institutions DEMAND of you:\n${faction.compulsions.map((c) => `  - ${c.text}${heldTo(faction, c.text)}`).join('\n')}`
       : '',
     faction.buildBias.length > 0
       ? `\nWhen you build, you reach first for: ${faction.buildBias.map((b) => b.replace(/_/g, ' ')).join(', ')}.`
@@ -388,6 +389,18 @@ export function serializeCharacter(faction: Faction): string {
   ]
     .filter(Boolean)
     .join('\n');
+}
+
+/**
+ * What a line is held to in code, said beside it, so a persona that is about to
+ * agree to what its sheet forbids knows the price before it agrees, and the
+ * arbiter knows which acts are already checked (`Faction.lineActs`).
+ */
+function heldTo(faction: Faction, text: string): string {
+  const tag = faction.lineActs?.find((l) => l.text === text);
+  if (!tag) return '';
+  const toward = tag.with ? ` (toward ${tag.with.join(', ')})` : '';
+  return ` [binding on any order or deal to ${tag.forbids.map((k) => ACT_WORDS[k]).join('; or to ')}${toward}]`;
 }
 
 /**
@@ -406,10 +419,10 @@ export function serializePrinciples(faction: Faction): string {
     `Doctrine: ${faction.doctrine}`,
     `On war — ${faction.warEthic}. On trade — ${faction.tradeEthic}.`,
     faction.redLines.length > 0
-      ? `\nYou will NOT, whatever the incentive:\n${faction.redLines.map((r) => `  - ${r}`).join('\n')}`
+      ? `\nYou will NOT, whatever the incentive:\n${faction.redLines.map((r) => `  - ${r}${heldTo(faction, r)}`).join('\n')}`
       : '\n_This power holds no red lines._',
     faction.compulsions.length > 0
-      ? `\nYour own institutions DEMAND of you:\n${faction.compulsions.map((c) => `  - ${c.text}`).join('\n')}`
+      ? `\nYour own institutions DEMAND of you:\n${faction.compulsions.map((c) => `  - ${c.text}${heldTo(faction, c.text)}`).join('\n')}`
       : '\n_This power is under no compulsions._',
   ].join('\n');
 }

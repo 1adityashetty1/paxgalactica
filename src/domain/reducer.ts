@@ -16,7 +16,7 @@ import {
   MAX_COMMITMENT_INCOME,
   MAX_COMMITMENT_SHARE,
 } from './arbitration.js';
-import { BREACH_PRICES, LEGACY_BREACH_PRICES, REGARD_BECAUSE, breachCharges, giftRegard, type Breach, type BreachKind, type BreachPrice } from './acts.js';
+import { BREACH_PRICES, LEGACY_BREACH_PRICES, REGARD_BECAUSE, breachCharges, giftRegard, type Act, type ActKind, type Breach, type BreachKind, type BreachPrice } from './acts.js';
 import type {
   BattleOutcome,
   BattleReport,
@@ -549,6 +549,12 @@ export interface ApplyResult {
   rejections: OpRejection[];
   /** Human-readable record of discards, clamps and arrivals. */
   notes: string[];
+  /**
+   * What the batch did, as acts a faction's lines may forbid (`acts.ts`).
+   * Output only: nothing in the world records them. Empty when the batch was
+   * held back.
+   */
+  acts: Act[];
 }
 
 /**
@@ -719,7 +725,26 @@ function wrongPathReason(op: string, path: OpPath): string {
  * Charge a breach of faith: every site that breaks a power's word comes here,
  * and `acts.ts` alone decides what it costs (`docs/design-2026-10-17-acts.md`).
  */
+/**
+ * The acts a running `applyOps` has committed, and the op it is on. Scoped the
+ * way `breachTable` is, and null outside a batch, so the tick records nothing.
+ */
+let actsOut: Act[] | null = null;
+let actOpIndex = -1;
+
+/** Record that `actor` did `kind`, toward `toward`, at the op being applied. */
+function recordAct(kind: ActKind, actor: string | null | undefined, toward: readonly (string | null | undefined)[]): void {
+  if (!actsOut || !actor) return;
+  actsOut.push({
+    kind,
+    actor,
+    with: [...new Set(toward.filter((x): x is string => !!x && x !== actor))],
+    opIndex: actOpIndex,
+  });
+}
+
 function chargeBreach(state: WorldState, breach: Breach): void {
+  recordAct(breach.kind, breach.breaker, breach.parties);
   const charge = breachCharges(breach, state.factions.map((f) => f.id), breachTable);
   for (const m of charge.regard) moveRegard(state, m.who, m.toward, m.delta);
   if (charge.heat > 0) heatUp(state, breach.breaker, charge.heat);
@@ -1411,6 +1436,7 @@ function concedeDemand(
   };
   switch (demand.kind) {
     case 'tribute': {
+      recordAct('tribute_paid', to, [from]);
       const treaty = term(
         'tribute',
         { incomePerTurn: { [to]: -demand.perTurn, [from]: demand.perTurn } },
@@ -2831,6 +2857,7 @@ function regardForHandover(state: WorldState, asset: Asset, from: string, to: st
   // Sold on, over their head. Their power resents the seller, and every
   // onlooker marks down a power that deals in people at all — visible to
   // everybody, the same shape as `PACT_BREAKING_REPUTATION_COST`.
+  recordAct('person_trafficked', from, [whose, to]);
   moveRegard(state, whose, from, -TRAFFICKING_RESENTMENT);
   for (const f of state.factions) {
     if (f.id === from || f.id === whose || f.id === to) continue;
@@ -3007,6 +3034,7 @@ function cedeTerritory(state: WorldState, treaty: Treaty, withAssets = true): st
     if (!receiver) continue;
 
     system.controllerFactionId = receiver;
+    recordAct('territory_ceded', ceder, [receiver]);
     // A ceded world's notable stays, now a foreign notable to the receiver
     // until it is reseated; an independent world has nobody to cede it.
     const seatNote = onWorldChangesHands(state, system, ceder, 'cession', () => mintId(state, 'ast'));
@@ -3472,21 +3500,30 @@ export function applyOps(
   const outerHeat = runHeat;
   const outerBreaches = breachTable;
   const outerSecrets = hideSeenSecrets;
+  const outerActs = actsOut;
+  const outerActIndex = actOpIndex;
   scopeEngineNotes = legacy.privateEngineNotes ?? true;
   scopeOrderLines = legacy.privateOrderLines ?? true;
   runHeat = legacy.heat ?? true;
   breachTable = (legacy.breachPrices ?? true) ? BREACH_PRICES : LEGACY_BREACH_PRICES;
   hideSeenSecrets = legacy.secretsAreHidden ?? true;
+  const acts: Act[] = [];
+  actsOut = acts;
+  actOpIndex = -1;
   try {
-    return withNameStock(legacy.widerNames ?? true, () =>
+    const out = withNameStock(legacy.widerNames ?? true, () =>
       applyOpsUnderRules(input, rawOps, source, actor, atomic, legacy, path),
     );
+    // A batch held back did nothing, so it committed nothing.
+    return { ...out, acts: atomic && out.rejections.length > 0 ? [] : acts };
   } finally {
     scopeEngineNotes = outer;
     scopeOrderLines = outerOrders;
     runHeat = outerHeat;
     breachTable = outerBreaches;
     hideSeenSecrets = outerSecrets;
+    actsOut = outerActs;
+    actOpIndex = outerActIndex;
   }
 }
 
@@ -3539,7 +3576,7 @@ function applyOpsUnderRules(
    */
   legacy: LegacyRules = {},
   path?: OpPath,
-): ApplyResult {
+): Omit<ApplyResult, 'acts'> {
   const {
     unbuildFromGain = true,
     arrangementStanding = true,
@@ -3861,7 +3898,10 @@ function applyOpsUnderRules(
         return;
         };
 
+  let opIndex = -1;
   for (const raw of rawOps) {
+    opIndex += 1;
+    actOpIndex = opIndex;
     const parsed = OpSchema.safeParse(raw);
     if (!parsed.success) {
       const opName =
@@ -4389,6 +4429,7 @@ function applyOpsUnderRules(
         credit(raw, op.factionId, -op.amount);
         credit(raw, op.to, op.amount);
         moveRegard(state, op.to, op.factionId, giftRegard(Math.min(op.amount, MAX_NARRATIVE_CREDITS)));
+        recordAct('gift_given', op.factionId, [op.to]);
         break;
       }
 
@@ -6629,6 +6670,31 @@ function applyOpsUnderRules(
           ...(op.dark ? { dark: { turns: 0, heat: 0 } } : {}),
         };
         state.pendingOrders.push(order);
+        {
+          // What the order does to another power, for the lines that forbid it.
+          const holder = getSystem(state, op.targetId)?.controllerFactionId ?? null;
+          const other = holder && holder !== op.factionId ? holder : null;
+          if (isMovementType(op.type) && other && !isGuestOf(state, op.factionId, other)) {
+            const named = op.breaks ? state.treaties.find((t) => t.id === op.breaks && t.parties.includes(other)) : undefined;
+            const bound =
+              named !== undefined ||
+              treatyBetween(state.treaties, state.turn, op.factionId, other, PEACE_TREATIES) !== undefined ||
+              truceBetween(state.truces, state.turn, op.factionId, other) !== undefined;
+            if (bound) recordAct('pact_attack_ordered', op.factionId, [other]);
+          }
+          // Troops sent at a world the mover does not hold, a guest's excepted:
+          // conquest of a rival's world or of one that answers to nobody.
+          if (
+            isMovementType(op.type) &&
+            holder !== op.factionId &&
+            !isGuestOf(state, op.factionId, holder) &&
+            (force.lifter ?? 0) > 0
+          ) {
+            recordAct('invasion_launched', op.factionId, [other]);
+          }
+          if (op.type === 'blockade') recordAct('blockade_ordered', op.factionId, [other]);
+          if (op.type === 'commerce_raiding') recordAct('raid_ordered', op.factionId, [other]);
+        }
         const delivers = effect
           ? `, to deliver ${describeOrderEffect(effect)} for ${invested} credits`
           : '';
@@ -7324,6 +7390,19 @@ function applyOpsUnderRules(
           summary: op.summary || `${op.treatyType.replace(/_/g, ' ')} between ${op.parties.join(' and ')}`,
         });
         state.treaties.push(treaty);
+        // What each party did by signing it, for the lines that forbid it.
+        for (const [p, q] of [op.parties, [...op.parties].reverse()] as [string, string][]) {
+          recordAct('treaty_signed', p, [q]);
+          if ((PEACE_TREATIES as readonly string[]).includes(treaty.type)) recordAct('peace_signed', p, [q]);
+          if ((DEFENCE_PACTS as readonly string[]).includes(treaty.type)) recordAct('alliance_signed', p, [q]);
+          if (treaty.type === 'marriage') recordAct('marriage_signed', p, [q]);
+          if (treaty.type === 'basing_rights') recordAct('basing_granted', p, [q]);
+          if (treaty.type === 'tribute' && (treaty.terms.incomePerTurn?.[p] ?? 0) < 0) recordAct('tribute_paid', p, [q]);
+          if ((treaty.terms.protection ?? []).includes(p) && treaty.type === 'contract') recordAct('protection_accepted', p, [q]);
+          if ((DEFENCE_PACTS as readonly string[]).includes(treaty.type) && (treaty.terms.shipsPledged?.[p] ?? 0) > 0) {
+            recordAct('defence_pledged', p, [q]);
+          }
+        }
         // One live treaty per (pair, type). A pending one supersedes nothing
         // yet — it does so when it is promoted in `tickTurn`, or the parties
         // would have nothing in force while the council deliberates.
@@ -9211,6 +9290,7 @@ function applyOpsUnderRules(
           break;
         }
         debt.status = 'forgiven';
+        recordAct('debt_forgiven', debt.creditorFactionId, [debt.debtorFactionId]);
         const debtor = state.factions.find((f) => f.id === debt.debtorFactionId);
         // Being let off a debt is worth something to the debtor, which is what
         // makes forgiveness a real instrument rather than pure loss — and what
@@ -10114,7 +10194,7 @@ export interface TurnReport {
   };
 }
 
-export interface TickResult extends ApplyResult {
+export interface TickResult extends Omit<ApplyResult, 'acts'> {
   report: TurnReport;
 }
 
@@ -10153,9 +10233,12 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
   runHeat = legacy.heat ?? true;
   breachTable = (legacy.breachPrices ?? true) ? BREACH_PRICES : LEGACY_BREACH_PRICES;
   hideSeenSecrets = legacy.secretsAreHidden ?? true;
+  const outerActs = actsOut;
+  actsOut = null;
   try {
     return withNameStock(legacy.widerNames ?? true, () => tickTurnUnderRules(input, legacy));
   } finally {
+    actsOut = outerActs;
     scopeEngineNotes = outer;
     scopeOrderLines = outerOrders;
     runHeat = outerHeat;

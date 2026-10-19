@@ -14,6 +14,7 @@ import { PACT_BREAKING_REPUTATION_COST, TRUCE_BREAKING_REPUTATION_COST } from '.
 import { COMMITMENT_BREAKING_COST } from './arbitration.js';
 import { LOAN_DEFAULT_DISPOSITION_COST } from './loan.js';
 import { HEAT_PACT_BROKEN } from './heat.js';
+import type { ActKind, BreachKind } from './act-kinds.js';
 
 /** What one injured party thinks of a power that broke its word to it. */
 export const BROKEN_WORD_COST = 25;
@@ -26,29 +27,7 @@ export const BROKEN_WORD_COST = 25;
  */
 export const REPUDIATION_REPUTATION_COST = Math.ceil(PACT_BREAKING_REPUTATION_COST / 2);
 
-export const BREACH_KINDS = [
-  /** Attacking a partner the attacker has sworn peace with. Breaks the pact on arrival. */
-  'attack_under_pact',
-  /** Attacking across a truce: the dearest public act in the game. */
-  'attack_across_truce',
-  /** Attacking in-laws whose marriage was the only peace between them. */
-  'attack_on_inlaws',
-  /** `break_treaty` on a treaty the breaker is party to. */
-  'treaty_repudiated',
-  /** `break_treaty` on a marriage the breaker is party to. */
-  'marriage_repudiated',
-  /** A treaty broken because an ultimatum the breaker conceded demanded it. */
-  'treaty_conceded',
-  /** A marriage ended by the court that holds its ward, questioning or executing them. */
-  'match_betrayed',
-  /** `repudiate_obligation`: a favour owed, refused. */
-  'favour_repudiated',
-  /** A loan not returned, kept or lost. */
-  'loan_defaulted',
-  /** `dissolve_commitment` by a party to a commitment binding two or more. */
-  'commitment_walked',
-] as const;
-export type BreachKind = (typeof BREACH_KINDS)[number];
+export { BREACH_KINDS, type BreachKind } from './act-kinds.js';
 
 export interface BreachPrice {
   /** What each injured party's regard for the breaker falls. */
@@ -230,4 +209,111 @@ export const GIFT_MAX_REGARD = 10;
 /** What a gift of `credits` buys in the receiver's regard for the giver. */
 export function giftRegard(credits: number): number {
   return Math.min(GIFT_MAX_REGARD, Math.floor(Math.max(0, credits) / GIFT_RATE));
+}
+
+/* ------------------------------------------------------------------ */
+/* Acts a batch commits, for the lines that forbid them               */
+/* ------------------------------------------------------------------ */
+
+export { ACT_KINDS, type ActKind } from './act-kinds.js';
+
+/** One act: `actor` did `kind`, toward the powers in `with`, at op `opIndex` of its batch. */
+export interface Act {
+  kind: ActKind;
+  actor: string;
+  with: string[];
+  /** The op in the batch that committed it; -1 when the engine read it from the batch as a whole. */
+  opIndex: number;
+}
+
+/** What a line forbids, beside its text. Authored with the line in the seed. */
+export interface LineActs {
+  /** The line, exactly as the sheet carries it: a red line or a compulsion. */
+  text: string;
+  /** The acts this line forbids. */
+  forbids: readonly ActKind[];
+  /** Only toward these powers, as `barsPeaceWith` once said. Absent: toward anyone. */
+  with?: readonly string[];
+}
+
+/** A line an act runs into. */
+export interface LineHit {
+  kind: 'red_line' | 'compulsion';
+  principle: string;
+  act: Act;
+}
+
+/** What each act is, in words a refusal and a persona can use. */
+export const ACT_WORDS: Record<ActKind, string> = {
+  attack_under_pact: 'attack a power it is at peace with',
+  attack_across_truce: 'attack across a truce',
+  attack_on_inlaws: 'attack its in-laws',
+  treaty_repudiated: 'repudiate a treaty',
+  marriage_repudiated: 'repudiate a marriage',
+  treaty_conceded: 'give up a treaty under an ultimatum',
+  match_betrayed: 'betray a match',
+  favour_repudiated: 'refuse a favour it owes',
+  loan_defaulted: 'keep what it was lent',
+  commitment_walked: 'walk away from an arrangement',
+  pact_attack_ordered: 'send a fleet against a power it is at peace with',
+  blockade_ordered: 'close a lane by blockade',
+  raid_ordered: 'raid shipping',
+  invasion_launched: 'send troops to take a world',
+  treaty_signed: 'sign a treaty',
+  peace_signed: 'make peace',
+  alliance_signed: 'join an alliance',
+  marriage_signed: 'sign a marriage',
+  basing_granted: 'let a foreign fleet base in its space',
+  protection_accepted: 'accept protection',
+  tribute_paid: 'pay tribute',
+  territory_ceded: 'cede a world',
+  defence_pledged: 'pledge hulls to stand in defence',
+  debt_forgiven: 'forgive a debt',
+  person_trafficked: 'sell somebody to a power not their own',
+  gift_given: 'give something for nothing',
+  paid_for_peace: 'take payment to keep the peace',
+  given_for_nothing: 'give something for nothing',
+};
+
+/**
+ * The lines `acts` cross, for the powers in `actors`. A faction's tags are on
+ * the faction (`Faction.lineActs`), written by the seed beside the text; a
+ * sheet from before tags existed has none and is held to nothing here, as it
+ * was played. A tag binds only while its text is still one of the faction's
+ * lines, and the list it is on decides its kind: the sheet, not the tag.
+ *
+ * A red line sorts before a compulsion, and each line is hit once however many
+ * acts cross it.
+ */
+export function linesCrossed(
+  factions: readonly {
+    id: string;
+    redLines: readonly string[];
+    compulsions: readonly { text: string }[];
+    lineActs?: readonly LineActs[];
+  }[],
+  acts: readonly Act[],
+  actors: readonly string[],
+): LineHit[] {
+  const hits: LineHit[] = [];
+  const seen = new Set<string>();
+  for (const act of acts) {
+    if (!actors.includes(act.actor)) continue;
+    const sheet = factions.find((f) => f.id === act.actor);
+    for (const tag of sheet?.lineActs ?? []) {
+      if (!tag.forbids.includes(act.kind)) continue;
+      if (tag.with && !act.with.some((w) => tag.with!.includes(w))) continue;
+      const kind = sheet!.redLines.includes(tag.text)
+        ? 'red_line'
+        : sheet!.compulsions.some((c) => c.text === tag.text)
+          ? 'compulsion'
+          : null;
+      if (kind === null) continue;
+      const key = `${act.actor}|${tag.text}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      hits.push({ kind, principle: tag.text, act });
+    }
+  }
+  return hits.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'red_line' ? -1 : 1));
 }
