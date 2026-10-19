@@ -1516,6 +1516,12 @@ already draw: ships at the order's origin or target. Your **own** order needs
 nothing, which is what `cancel_order` is for; this is the path for reaching into
 a rival's, and reaching needs a hand.
 
+**And a fleet under way is not reached at all.** It is met where it arrives, and
+the battle decides what becomes of it: a critical success wrote
+`interrupt_order` on the Vigil's relief fleet and sent eight battleships home
+with no shot fired (playtest 2026-10-18). Another power's movement is refused
+(`fleetsMeetInBattle`, journal version 26).
+
 ## A refund cannot exceed the outlay
 
 `onInterrupt: 'partial'` refunds the unspent share of `investedCredits`,
@@ -1754,7 +1760,11 @@ refuses an accord that **adds** a target. Opening your lanes needs the room;
 closing them needs nobody, so imposing a tariff stays on the declared path where
 the action economy prices it. A `trade_accord` deliberately does **not** waive
 tolls automatically: folding it into an existing type would hand the chip over
-for free.
+for free. **Either party's toll may be lifted in an accord** — the other party
+lifting its toll on the player is the commonest thing a toll is traded for, and
+the actor-only guard refused it while the payment for it landed (playtest
+2026-10-18; `counterpartyTolls`, journal version 26). `groundInConcessions` holds
+the lift to the power that conceded it.
 
 **A lift can be for a term.** `set_toll_policy` takes `forTurns`, and
 `whileTreaty` — a treaty type that must keep binding the two — and the powers it
@@ -3104,7 +3114,10 @@ files proof of one thing its host is hiding — **typed from state, never
 invented** (`secretsAbout`): an operative of theirs at work, a programme in a
 secret category, an unpaid debt or an unreturned loan. Never one the owner
 already has proof of, and never the watcher itself. Pinned to v13
-(`LegacyRules.secrets`).
+(`LegacyRules.secrets`). A programme every other power already sees in full is
+no secret, whatever its category (`secretsAreHidden`, journal version 26: a
+watcher filed proof of Meridian's "secret" yards while the order's visibility
+named all four rivals).
 
 **A blackmail hook lasts exactly as long as its secret.** The obligation carries
 the secret, and the tick lapses it the turn the secret goes stale — an operative
@@ -3143,6 +3156,12 @@ battleship-equivalents (`sideStrength`); the player concedes by declaring it, a
 model-driven power by its reaction, and a target in the issuer's own channel by
 the transcript. Otherwise every party on each side goes to war with every party
 on the other: regard set to `WAR_DISPOSITION_THRESHOLD` wherever it was warmer.
+
+**A cession comes out of the target's hands.** `cedeTerritory` moves a named
+world from whichever party holds it, so an issuer that took the world by force
+before the deadline ceded it back to the target when the target gave way
+(playtest 2026-10-18). If the target no longer holds the world, nothing moves
+(`cessionFromTarget`, journal version 26).
 
 ### What a power will give up
 
@@ -3489,6 +3508,15 @@ needs you to cross it is no deal); a compulsion lets it stand and charges. The
 check is scoped to the acting faction by construction, because the arbiter
 appraises from `playerFactionId` — the other party's concessions are theirs to
 make and cannot trip your line.
+
+**They trip its own, as a price.** The other power's concessions are appraised
+against its sheet and charged `COUNTERPARTY_BREACH_DISSENT`, never refused.
+Three rules, all from the playtest of 2026-10-18: the charge is staged **only
+once the accord has landed** (it was charged on an accord the player's own side
+refused); it goes through the **relevance check** the player's breach gets
+(unrelated lines were quoted against fully paid deals); and it is **attached**
+to the accord, withdrawn with it and never alone (withdrawing and re-signing
+charged it twice).
 
 A red-line ruling is also **cheaper** than what it replaces: it skips the Sonnet
 resolution call entirely, so the most flagrant actions in the game now cost
@@ -4335,7 +4363,11 @@ person (`PEOPLE_KINDS`; that will be kidnapping), a fixture, a promissory note,
 a thing on loan or a ward. The victim is told it is gone and not who took it;
 win or lose, the operative is back awaiting orders. And every mission whose
 effect is its meaning is held to it (`MISSION_EFFECTS`, journal version 22):
-an embezzler carries `income_penalty`, only a thief carries `steal`.
+an embezzler carries `income_penalty`, only a thief carries `steal`. A name
+that is not a rival's thing on the world the thief is sent to — the sender's
+own dossier, in the playtest of 2026-10-18 — is dropped when the thief is sent,
+and they take what is worth most there (`stealNamesARivalsThing`, journal
+version 26).
 
 **An operation is a mission carried out by a method**
 (`docs/design-2026-10-16-operations.md`). The arbiter reads a covert act by its
@@ -6344,6 +6376,14 @@ name anyone in the campaign has carried (`personOnRoster`, read off
 named in the refusal. Somebody new — an informant, a defector — is still
 creatable.
 
+**Every batch of a declaration is held to its ruling**, the first and any
+correction alike: `holdToRuling` applies the sends, sways, commitments and
+prizes rules below, and keeps what they stamp whether or not they dropped
+anything. The caller kept their output only when something was dropped, so a
+clean success swayed three powers by the model's 9 rather than the band's 6, and
+nine declared commitments carried no ruled mechanism; and a correction call's
+batch went to staging through none of them (playtest 2026-10-18).
+
 **Sends are the ruling's.** A resolution call may fill in a send the arbiter
 ruled (the cover, the effect) and never add one: `sendsAsRuled` drops any
 `deploy_agent` or `lay_groundwork` that matches no covert or groundwork part, and
@@ -6950,7 +6990,11 @@ Rejection codes: `unknown_op`, `schema_invalid`, `reducer_only`,
 Cost is **computed**, never estimated: one turn per jump on the shortest
 hyperlane path (BFS, neighbours visited in sorted order so ties break
 identically on replay). One jump inside the mover's own territory takes none —
-it lands in the batch (`movesAtOnce`, journal version 23).
+it lands in the batch (`movesAtOnce`, journal version 23) — **once a batch**: a
+move out of a world the same batch just landed on sails, or a chain of one-jump
+moves crosses three jumps in a turn (`oneJumpOnce`, journal version 26). A move
+from a world to itself is not a no-op: it is the assault from an orbit you
+already hold, one turn.
 
 If a model returns `durationTurns` for a `fleet_movement` order, it is
 **discarded**, recomputed, and the discard is logged to `eventLog` and to the
@@ -7352,10 +7396,12 @@ red lines that charging a point for a refusal exists to prevent.
 | `refused` | a refusal *is* its charge, with no order inside to withdraw |
 | `charge` | an objection priced on an accord, which stands even if the accord goes |
 | `record` | an engine row such as the arbiter's ruling — every `engine` batch |
+| `attached` | part of an accord's `group` — the other power's charge for signing it — withdrawn with the accord and never alone |
 
 What stays withdrawable is an **accord**: unrolled, and still the player's to
 walk away from before the turn lands. Its objection charge is a separate batch
-and stays. The panel hides the × on a binding row and says why, and "withdraw
+and stays. Withdrawing it writes a `record` line into the conversation it came
+from, so the other power does not go on believing in it. The panel hides the × on a binding row and says why, and "withdraw
 all" appears only when something can go — a button that could only ever leave
 the list untouched reads as broken.
 
@@ -7433,7 +7479,10 @@ per-message pass appraises the player's own concessions through
 walks toward it. It still refuses the whole accord if it is standing when the
 channel closes — a deal that needs you to cross a red line is no deal — but
 there is now a conversation left in which to steer around it, where before the
-whole negotiation was lost after both sides had said yes.
+whole negotiation was lost after both sides had said yes. A blocker goes through
+the relevance check first, and goes when the concession it stands on is
+retracted (playtest 2026-10-18: a payment made *for* open lanes was blocked by
+"will not close a lane", and a retracted handover still refused the accord).
 
 What this does **not** establish: a persona that records a concession
 contradicting its own prose is still possible. But that is a contradiction

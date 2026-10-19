@@ -17,7 +17,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 25;
+export const JOURNAL_VERSION = 26;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -114,6 +114,7 @@ export const JournalVersionSchema = z.union([
   z.literal(23),
   z.literal(24),
   z.literal(25),
+  z.literal(26),
 ]);
 
 export const JournalSchema = z.object({
@@ -404,6 +405,20 @@ export function replay(
     breachPrices: parsed.version >= 24,
     // A yard programme bypassed the yards' berths.
     programmeBerths: parsed.version >= 25,
+    // The playtest of 2026-10-18: an ultimatum's cession moved a world from
+    // whichever party held it; one-jump moves chained; a thief could be named
+    // at its own thing; a programme everybody saw was a secret; an order stood
+    // a rival's fleet down; an accord could not lift the other party's toll; a
+    // yard limit read as a bill; and the turn's ledger line missed every
+    // arrival.
+    cessionFromTarget: parsed.version >= 26,
+    oneJumpOnce: parsed.version >= 26,
+    stealNamesARivalsThing: parsed.version >= 26,
+    secretsAreHidden: parsed.version >= 26,
+    fleetsMeetInBattle: parsed.version >= 26,
+    counterpartyTolls: parsed.version >= 26,
+    honestYardNote: parsed.version >= 26,
+    ledgerAfterArrivals: parsed.version >= 26,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

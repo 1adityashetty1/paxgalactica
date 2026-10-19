@@ -336,4 +336,5 @@ const BINDING_TITLE: Record<NonNullable<StagedItem['binding']>, string> = {
   refused: 'Your institutions refused this. The refusal and its cost stand.',
   charge: 'Charged for proposing the accord. It stands even if the accord is withdrawn.',
   record: 'The record of a ruling, not an order.',
+  attached: 'Goes with the accord above it: withdraw the accord and this goes too.',
 };

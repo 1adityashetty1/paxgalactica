@@ -395,9 +395,9 @@ person is taken by an operation or a battle, and a fixture is built.
 ## 4. What does it establish?
 
 If the action would create a **durable arrangement that the game has no
-mechanic for** — a standing policy, a declared sphere over unclaimed space, a
-programme, ground gained in a campaign of persuasion — describe it in the overt
-part's `establishes`:
+mechanic for** — a standing policy, a declared sphere over unclaimed space,
+ground gained in a campaign of persuasion — describe it in the overt part's
+`establishes`:
 
 - `kind` — a lower_snake_case slug, reused exactly for the same sort of thing
   every time. Exclusivity is checked on this string, so an inconsistent slug
@@ -423,7 +423,16 @@ a commitment already have a home**, and that home is the ruling, not
 - a listening post — a listener, built with `build_ships`;
 - a free port or a toll waived — `set_toll_policy`;
 - freighters running a route — a `move` of freighters onto it;
-- a world you already hold — nothing; the board says so.
+- a world you already hold — nothing; the board says so;
+- an attack, an assault or a push, however many turns it runs — a `move`;
+- a build or construction programme — `build_ships`, `fortify`, `develop` and
+  the other work ops, which already run for turns and deliver;
+- an ultimatum — `issue_ultimatum`; a toll — `set_toll_policy`.
+
+A record of any of those is read back to you on later turns as a standing
+arrangement, and it is not one: a `kalzir_assault` or a
+`battleship_construction_programme` once made a later ruling refuse a build
+on the strength of what it "specified". Leave `establishes` out.
 
 **Never record a bilateral arrangement here, and that includes a dynastic
 marriage, an exclusive charter naming a partner, a hostage exchange, a shared

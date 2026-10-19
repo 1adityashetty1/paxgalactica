@@ -81,12 +81,19 @@ export interface StagedBatch {
    * - `charge` — an objection priced on an accord, kept even if the accord goes.
    * - `record` — an engine row, such as the arbiter's ruling. Records of what
    *   happened are not the player's to delete.
+   * - `attached` — part of another batch's `group`, withdrawn with it and
+   *   never alone: the other power's charge for signing an accord goes when
+   *   the accord does.
    *
    * What stays discardable is an accord: unrolled, and still the player's to
    * walk away from before the turn lands. A charge its institutions levied for
    * proposing it is a separate batch and stays.
    */
   binding?: StagedBinding;
+  /** Batches withdrawn together: an accord, its correction, and what is `attached` to it. */
+  group?: string;
+  /** The power an accord was made with, so withdrawing it can be written into that conversation. */
+  accordWith?: string;
   /**
    * The acting power's business alone: covert work, or an order its own
    * institutions refused. Left out of what the reactions are told, and its
@@ -95,7 +102,7 @@ export interface StagedBatch {
   secret?: boolean;
 }
 
-export type StagedBinding = 'rolled' | 'sent' | 'refused' | 'charge' | 'record';
+export type StagedBinding = 'rolled' | 'sent' | 'refused' | 'charge' | 'record' | 'attached';
 
 /**
  * A campaign as the browser carries it between requests. See
@@ -112,8 +119,10 @@ export const StagedBatchSchema = z.object({
   actor: z.string().optional(),
   source: z.enum(['model', 'extraction', 'engine']).optional(),
   path: z.enum(OP_PATHS_LIST).optional(),
-  binding: z.enum(['rolled', 'sent', 'refused', 'charge', 'record']).optional(),
+  binding: z.enum(['rolled', 'sent', 'refused', 'charge', 'record', 'attached']).optional(),
   secret: z.boolean().optional(),
+  group: z.string().optional(),
+  accordWith: z.string().optional(),
 });
 
 export const CampaignSnapshotSchema = z.object({
@@ -130,6 +139,10 @@ export type CampaignSnapshot = z.infer<typeof CampaignSnapshotSchema>;
 export interface StageMeta {
   binding?: StagedBinding;
   secret?: boolean;
+  /** Withdrawn together — see `StagedBatch.group`. */
+  group?: string;
+  /** The power an accord was made with. */
+  accordWith?: string;
   /** Which writer this is. Every live caller says; a test may not. */
   path?: OpPath;
 }
@@ -312,9 +325,12 @@ export class Campaign {
       actor,
       source,
       path: meta.path,
-      // An engine row is a record whatever the caller says.
+      // An engine row is a record whatever the caller says, unless it is
+      // attached to a batch it goes with.
       binding: meta.binding ?? (source === 'engine' ? 'record' : undefined),
       secret: meta.secret,
+      ...(meta.group ? { group: meta.group } : {}),
+      ...(meta.accordWith ? { accordWith: meta.accordWith } : {}),
     });
     return { rejections: res.rejections, notes: res.notes };
   }
@@ -375,8 +391,19 @@ export class Campaign {
       .filter((b) => !b.secret)
       .map((b, i) => `${i + 1}. ${b.label}${b.narrative ? ` — ${b.narrative}` : ''}`)
       .join('\n');
-    const ops = acts.flatMap((b) => (b.secret ? b.ops.filter(isPublicAct) : b.ops));
+    // What LANDED decides who answers, not what was proposed: a refused op
+    // reaches nobody (playtest 2026-10-18, D4).
+    const ops = acts.flatMap((b) => {
+      const landed = b.applied ?? b.ops;
+      return b.secret ? landed.filter(isPublicAct) : landed;
+    });
     return { summary, ops };
+  }
+
+  /** Write what a correction changed onto the batch it staged, for the reactions to read. */
+  amendLastNarrative(text: string): void {
+    const last = this.stagedBatches[this.stagedBatches.length - 1];
+    if (last) last.narrative = last.narrative ? `${last.narrative} ${text}` : text;
   }
 
   /** Whether each staged batch may be discarded, index for index. */
@@ -420,7 +447,9 @@ export class Campaign {
    */
   discardStaged(): number {
     const before = this.stagedBatches.length;
-    this.stagedBatches = this.stagedBatches.filter((b) => b.binding !== undefined);
+    const going = this.stagedBatches.filter((b) => b.binding === undefined || b.binding === 'attached');
+    this.stagedBatches = this.stagedBatches.filter((b) => b.binding !== undefined && b.binding !== 'attached');
+    this.recordWithdrawals(going);
     this.resyncPreview();
     return before - this.stagedBatches.length;
   }
@@ -434,11 +463,37 @@ export class Campaign {
    */
   discardStagedAt(index: number): boolean | StagedBinding {
     if (index < 0 || index >= this.stagedBatches.length) return false;
-    const binding = this.stagedBatches[index]!.binding;
-    if (binding !== undefined) return binding;
-    this.stagedBatches.splice(index, 1);
+    const target = this.stagedBatches[index]!;
+    if (target.binding !== undefined) return target.binding;
+    // Its group goes with it: the accord's correction, and the charge attached
+    // to it. Anything bound in the group stays, for its own reason.
+    const goes = (b: StagedBatch): boolean =>
+      b === target ||
+      (target.group !== undefined && b.group === target.group && (b.binding === undefined || b.binding === 'attached'));
+    const going = this.stagedBatches.filter(goes);
+    this.stagedBatches = this.stagedBatches.filter((b) => !goes(b));
+    this.recordWithdrawals(going);
     this.resyncPreview();
     return true;
+  }
+
+  /**
+   * Tell the conversation an accord came from that it was withdrawn. The
+   * transcript is replayed into that power's persona, which otherwise goes on
+   * believing in a deal that never took effect — measured: after a withdrawn
+   * toll lift, the Combine insisted "you paid 400, and my customs houses struck
+   * you from the list" (playtest 2026-10-18, C13). Once per conversation.
+   */
+  private recordWithdrawals(going: readonly StagedBatch[]): void {
+    for (const factionId of new Set(going.flatMap((b) => (b.accordWith ? [b.accordWith] : [])))) {
+      const sessions = this.transcripts[factionId];
+      const last = sessions?.[sessions.length - 1];
+      if (!last) continue;
+      last.push({
+        speaker: 'record',
+        text: '[The accord reached above was WITHDRAWN before it took effect. Nothing in it was carried out — no treaty, no payment, no concession by either side.]',
+      });
+    }
   }
 
   stagedLabels(): string[] {

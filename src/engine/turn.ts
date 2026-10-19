@@ -34,6 +34,7 @@ import { loadPrompt } from '../model/prompts.js';
 import { createSeedState } from '../seed/scenario.js';
 import { brokeredAccords, honourTreaties, proposeFor } from '../domain/initiative.js';
 import { controlHistory } from './journal.js';
+import { holdToRuling, type RulingBounds } from '../domain/refusals.js';
 import type { Concession } from '../domain/diplomacy.js';
 import type { WorldState } from '../domain/state.js';
 import {
@@ -311,6 +312,12 @@ async function stageWithCorrection(
    */
   stat?: CheckResult['stat'],
   meta: StageMeta = {},
+  /**
+   * What the declaration's ruling lets a batch carry. The first batch was held
+   * to it when it was resolved; a correction call writes a fresh one, which
+   * must be held to the same ruling or it is a way around every filter on it.
+   */
+  bounds?: RulingBounds,
 ): Promise<{ rejections: OpRejection[]; notes: string[]; costUsd: number }> {
   const actor = campaign.state.playerFactionId;
   // Run on an accord too, where there is no check at all: a conversation can
@@ -340,7 +347,9 @@ async function stageWithCorrection(
     };
   }
 
-  const boundAgain = bind(revised.ops);
+  const reheld = bounds ? holdToRuling(revised.ops, bounds) : { ops: revised.ops, notes: [] };
+  const boundAgain = bind(reheld.ops);
+  boundAgain.notes.unshift(...reheld.notes);
   const second = campaign.stage(boundAgain.ops, `${label}:correction`, '', source, actor, meta);
 
   // BOTH batches' rejections reach the player, and the first batch's
@@ -366,6 +375,11 @@ async function stageWithCorrection(
   // refused. The correction says what changed; say it, so the narrative above
   // is not left claiming an effect that never landed.
   const amended = corrected && revised.narrative.trim() ? [`Correction: ${revised.narrative.trim()}`] : [];
+  // And on the batch itself, which is what the turn's reactions are told. The
+  // correction sat in the player's notes only, so the Vigil's reaction went on
+  // about a listener crew that "has already gone over" when the suborning had
+  // been refused (playtest 2026-10-18, D4).
+  if (amended.length > 0) campaign.amendLastNarrative(amended[0]!);
   return {
     // First then second: the order they happened, and the first is the one that
     // explains why there was a correction at all.
@@ -620,6 +634,7 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     // Covert work is sent, not rolled: nothing was thrown, but the operative is
     // under way and the action is spent, so it stands like a roll does.
     { binding: resolution.check ? 'rolled' : 'sent', secret },
+    resolution.bounds,
   );
   staged.notes.unshift(...resolution.notes, ...routed.notes);
 
@@ -1066,6 +1081,20 @@ export function groundInConcessions(
         return false;
       }
     }
+    // A toll is lifted by the power that charges it. In an accord that may be
+    // the other party, which the reducer now allows (playtest 2026-10-18, C4) —
+    // so it needs that power to have said something, and a third power's
+    // customs are nobody's at this table to open.
+    if (op.op === 'set_toll_policy' && op.factionId !== state.playerFactionId) {
+      if (op.factionId !== otherId) {
+        dropped.push(`${String(op.factionId)}'s tolls, which are not ${otherId}'s to lift.`);
+        return false;
+      }
+      if (!saidAnything) {
+        dropped.push(`${otherId} lifting its toll, which it never agreed to.`);
+        return false;
+      }
+    }
     if (op.op === 'establish_commitment') {
       const bound = Array.isArray(op.factionIds) ? (op.factionIds as string[]) : [];
       if (bound.includes(otherId) && !saidAnything) {
@@ -1119,7 +1148,7 @@ export async function closeChannel(
 
   const before = campaign.stagedCount;
   const faction = getFaction(campaign.state, factionId);
-  const extraction = await extractAgreements(campaign.state, factionId, history);
+  const extraction = await extractAgreements(campaign.state, factionId, history, conceded);
 
   // The institutions get a view on a deal, exactly as they do on a decree.
   //
@@ -1197,61 +1226,6 @@ export async function closeChannel(
   // The same record the declared path writes. An accord's rulings drift exactly
   // as an order's do — a playtest saw six treaty-emitting accords permitted and
   // two refused, one of them on a debt, with no way to ask how often.
-  // AND THE OTHER POWER'S OWN INSTITUTIONS GET A VIEW.
-  //
-  // `appraiseAgreement` is scoped to the acting faction by construction, on the
-  // correct ground that the counterparty's concessions cannot trip the PLAYER's
-  // lines. They should trip their own, and nothing checked: measured, the Iron
-  // Vigil negotiated three messages and signed an accommodation with the Nars
-  // against a sheet that forbids exactly that, at no cost to itself.
-  //
-  // A price rather than a veto — an NPC backing out at signature would destroy a
-  // deal the player negotiated in good faith, with none of the warning the
-  // player gets from a blocker. A leader may agree to what its people hate, and
-  // its people notice.
-  //
-  // Only when the accord produced ops AND the other power actually conceded
-  // something: agreeing to nothing costs nobody anything, and a conversation
-  // that agreed nothing must not cost a call to discover that.
-  let counterpartyCost = 0;
-  const counterpartyNotes: string[] = [];
-  const theirs = conceded.filter((c) => c.by === factionId);
-  if (extraction.output.ops.length > 0 && theirs.length > 0) {
-    const other = getFaction(campaign.state, factionId);
-    // Same reason as above: a ruling on the OTHER power's concessions that
-    // cannot be obtained is a ruling that did not happen, not grounds to throw
-    // away a negotiation both sides completed.
-    const theirRuling = await appraiseAgreement(
-      campaign.state,
-      campaign.state.playerFactionId,
-      theirs.map((c) => c.text).join(' '),
-      factionId,
-    ).catch(() => null);
-    counterpartyCost = theirRuling?.costUsd ?? 0;
-    const theirNamed = theirRuling?.appraisal.breach?.principles ?? [];
-    const theirBreach =
-      other && theirNamed.length > 0 ? classifyPrinciples(other, theirNamed) : null;
-    if (theirBreach) {
-      campaign.stage(
-        [
-          {
-            op: 'adjust_dissent',
-            factionId,
-            delta: COUNTERPARTY_BREACH_DISSENT[theirBreach.kind],
-            reason: theirBreach.principle,
-          },
-        ],
-        `${factionId} signs against its own line`,
-        '',
-        'engine',
-        factionId,
-        { path: 'engine' },
-      );
-      const said = `${other?.name ?? factionId} signs anyway, against its own standing: "${theirBreach.principle}". Its institutions will remember.`;
-      counterpartyNotes.push(said);
-    }
-  }
-
   const rulingRow = recordRuling(
     extraction.output.narrative,
     'accord',
@@ -1358,6 +1332,11 @@ export async function closeChannel(
   // needs protecting from a power binding itself.
   const grounded = groundInConcessions(campaign.state, extraction.output.ops, conceded, factionId);
 
+  // One group for the accord and everything that goes with it if the player
+  // withdraws it before the turn lands.
+  const accordAt = campaign.stagedCount;
+  const group = `accord:${factionId}:${accordAt}`;
+  const stateBefore = campaign.state;
   const staged = await stageWithCorrection(
     campaign,
     grounded.ops,
@@ -1368,7 +1347,75 @@ export async function closeChannel(
     // The one model-driven source that may form a treaty: these ops come from a
     // transcript in which the other power actually said yes.
     'extraction',
+    undefined,
+    { group, accordWith: factionId },
   );
+
+  // AND THE OTHER POWER'S OWN INSTITUTIONS GET A VIEW.
+  //
+  // `appraiseAgreement` is scoped to the acting faction by construction, on the
+  // correct ground that the counterparty's concessions cannot trip the PLAYER's
+  // lines. They should trip their own, and nothing checked: measured, the Iron
+  // Vigil negotiated three messages and signed an accommodation with the Nars
+  // against a sheet that forbids exactly that, at no cost to itself.
+  //
+  // A price rather than a veto — an NPC backing out at signature would destroy a
+  // deal the player negotiated in good faith, with none of the warning the
+  // player gets from a blocker. A leader may agree to what its people hate, and
+  // its people notice.
+  //
+  // **Only once the accord has landed**, and only when the other power actually
+  // conceded something. It was staged before the player's own refusal was
+  // ruled, so an accord the player's side refused still charged the other
+  // power 20 for signing it (playtest 2026-10-18, C2). **Held to the relevance
+  // check** the player's own breach gets, since unrelated lines were quoted
+  // against ordinary paid deals (C3). And **withdrawn with the accord**: it was
+  // an engine record that outlived the accord it priced, so withdrawing and
+  // re-signing charged it twice (C1). Ruled on the board as it stood before
+  // the accord, which is what the other power signed against.
+  let counterpartyCost = 0;
+  const counterpartyNotes: string[] = [];
+  const theirs = conceded.filter((c) => c.by === factionId);
+  const landed = campaign.opsStagedSince(accordAt).length > 0;
+  if (landed && theirs.length > 0) {
+    const other = getFaction(stateBefore, factionId);
+    const theirText = theirs.map((c) => c.text).join(' ');
+    // Same reason as above: a ruling on the OTHER power's concessions that
+    // cannot be obtained is a ruling that did not happen, not grounds to throw
+    // away a negotiation both sides completed.
+    const theirRuling = await appraiseAgreement(stateBefore, stateBefore.playerFactionId, theirText, factionId).catch(
+      () => null,
+    );
+    counterpartyCost = theirRuling?.costUsd ?? 0;
+    const theirNamed = theirRuling?.appraisal.breach?.principles ?? [];
+    let theirBreach = other && theirNamed.length > 0 ? classifyPrinciples(other, theirNamed) : null;
+    if (theirBreach?.kind === 'compulsion' && breachContradictsState(stateBefore, factionId, theirBreach.principle)) {
+      theirBreach = null;
+    } else if (theirBreach) {
+      const check = await verifyBreachRelevance(theirText, theirBreach.principle, theirBreach.kind);
+      counterpartyCost += check.costUsd;
+      if (!check.relevant) theirBreach = null;
+    }
+    if (theirBreach) {
+      campaign.stage(
+        [
+          {
+            op: 'adjust_dissent',
+            factionId,
+            delta: COUNTERPARTY_BREACH_DISSENT[theirBreach.kind],
+            reason: theirBreach.principle,
+          },
+        ],
+        `${factionId} signs against its own line`,
+        '',
+        'engine',
+        factionId,
+        { path: 'engine', binding: 'attached', group },
+      );
+      const said = `${other?.name ?? factionId} signs anyway, against its own standing: "${theirBreach.principle}". Its institutions will remember.`;
+      counterpartyNotes.push(said);
+    }
+  }
 
   // A compulsion is a price, not a wall: the accord stands and the institutions
   // charge for having been overruled — the same bargain a declared action gets.

@@ -700,6 +700,8 @@ function heatUp(state: WorldState, factionId: string | null | undefined, amount:
  * that have no access to the batch's rules.
  */
 let breachTable: Record<BreachKind, BreachPrice> = BREACH_PRICES;
+/** `LegacyRules.secretsAreHidden`, scoped the way `breachTable` is: two sites read it. */
+let hideSeenSecrets = true;
 
 /** Why an op cannot come by this path, in words a correction pass can act on. */
 function wrongPathReason(op: string, path: OpPath): string {
@@ -1381,7 +1383,13 @@ function pairLevelFootprint(t: Treaty): string[] {
  * concession and the deadline, so the two cannot disagree about what giving
  * way means.
  */
-function concedeDemand(state: WorldState, demand: Demand, withAssets = true): string[] {
+function concedeDemand(
+  state: WorldState,
+  demand: Demand,
+  withAssets = true,
+  /** Journal version 26: the world comes out of the target's hands, or nothing moves. */
+  fromTarget = true,
+): string[] {
   const notes: string[] = [];
   const from = demand.fromFactionId;
   const to = demand.toFactionId;
@@ -1413,6 +1421,17 @@ function concedeDemand(state: WorldState, demand: Demand, withAssets = true): st
       break;
     }
     case 'cession': {
+      // What the target gives up is a world IT holds. `cedeTerritory` moves a
+      // named world from whichever party holds it, so a demand the issuer had
+      // already settled by force ceded the world back to the target at the
+      // deadline (playtest 2026-10-18, A1).
+      const held = state.systems.find((x) => x.id === demand.systemId)?.controllerFactionId;
+      if (fromTarget && held !== to) {
+        notes.push(
+          `${nameFor(state, to)} no longer holds ${systemName(state, demand.systemId ?? '')}; there is nothing to give up.`,
+        );
+        break;
+      }
       const treaty = term('cession', { territory: demand.systemId ? [demand.systemId] : [] }, false, 'a world given up under ultimatum');
       notes.push(...cedeTerritory(state, treaty, withAssets));
       break;
@@ -3281,6 +3300,37 @@ export interface LegacyRules {
    */
   programmeBerths?: boolean;
   /**
+   * The playtest of 2026-10-18, one rule each, journal version 26:
+   *
+   * - `cessionFromTarget` — a world given up under an ultimatum comes out of
+   *   the target's hands and no one else's. `cedeTerritory` moves a named world
+   *   from whichever party holds it, so an issuer that had already taken the
+   *   world it demanded ceded it back at the deadline.
+   * - `oneJumpOnce` — a move lands at once only from a world the batch did not
+   *   just land on; a chain of one-jump moves crossed three jumps in a turn.
+   * - `stealNamesARivalsThing` — a larceny naming an asset that is not a
+   *   rival's thing on that world is aimed at what is worth most there, rather
+   *   than at nothing.
+   * - `secretsAreHidden` — a programme every other power already sees is no
+   *   secret, so a watcher files no proof of it.
+   * - `fleetsMeetInBattle` — another power's fleet under way cannot be stood
+   *   down by an `interrupt_order`; it is met where it arrives.
+   * - `counterpartyTolls` — an accord may lift the other party's toll, which
+   *   the actor-only guard refused while the payment for it landed.
+   * - `honestYardNote` — a build the yards could not take is not reported as
+   *   one the treasury could not pay for.
+   * - `ledgerAfterArrivals` — the turn's ledger line is read after arriving
+   *   fleets land, where it missed every hull that arrived that tick.
+   */
+  cessionFromTarget?: boolean;
+  oneJumpOnce?: boolean;
+  stealNamesARivalsThing?: boolean;
+  secretsAreHidden?: boolean;
+  fleetsMeetInBattle?: boolean;
+  counterpartyTolls?: boolean;
+  honestYardNote?: boolean;
+  ledgerAfterArrivals?: boolean;
+  /**
    * Officers come off a power's **Lists** — one of each school always waiting
    * — and only by appointment: no successor is put in post when the last one
    * falls, and one handed home goes back on the Lists. Journal version 20;
@@ -3421,10 +3471,12 @@ export function applyOps(
   const outerOrders = scopeOrderLines;
   const outerHeat = runHeat;
   const outerBreaches = breachTable;
+  const outerSecrets = hideSeenSecrets;
   scopeEngineNotes = legacy.privateEngineNotes ?? true;
   scopeOrderLines = legacy.privateOrderLines ?? true;
   runHeat = legacy.heat ?? true;
   breachTable = (legacy.breachPrices ?? true) ? BREACH_PRICES : LEGACY_BREACH_PRICES;
+  hideSeenSecrets = legacy.secretsAreHidden ?? true;
   try {
     return withNameStock(legacy.widerNames ?? true, () =>
       applyOpsUnderRules(input, rawOps, source, actor, atomic, legacy, path),
@@ -3434,6 +3486,7 @@ export function applyOps(
     scopeOrderLines = outerOrders;
     runHeat = outerHeat;
     breachTable = outerBreaches;
+    hideSeenSecrets = outerSecrets;
   }
 }
 
@@ -3524,8 +3577,17 @@ function applyOpsUnderRules(
     shipIntents = true,
     breachPrices = true,
     programmeBerths = true,
+    cessionFromTarget = true,
+    oneJumpOnce = true,
+    stealNamesARivalsThing = true,
+    fleetsMeetInBattle = true,
+    counterpartyTolls = true,
+    honestYardNote = true,
   } = legacy;
   const state = cloneState(input);
+  // Worlds a fleet landed on at once this batch, as `faction:system`: a move out
+  // of one of them sails, so one-jump moves cannot be chained (`oneJumpOnce`).
+  const landedAtOnce = new Set<string>();
   // Who holds office before the batch, so a seat emptied by it is charged.
   const officeBefore = seatLossCostsFavour && courtRecorded(input) ? inOffice(input) : null;
   const rejections: OpRejection[] = [];
@@ -5627,7 +5689,7 @@ function applyOpsUnderRules(
           reject(raw, 'illegal_value', `Only ${nameFor(state, demand.toFactionId)} can give way to a demand made of it.`);
           break;
         }
-        notes.push(...concedeDemand(state, demand, worldTakesAssets));
+        notes.push(...concedeDemand(state, demand, worldTakesAssets, cessionFromTarget));
         break;
       }
 
@@ -5993,7 +6055,14 @@ function applyOpsUnderRules(
         // Your own customs service only, the same actor-shaped guard
         // `set_stance` and `set_doctrine` carry. Opening a rival's borders for
         // them would be a free strike at their treasury.
-        if (actor !== undefined && op.factionId !== actor) {
+        //
+        // Except in an accord, where the other party may LIFT its own toll —
+        // the commonest thing a toll is traded for. The guard refused it while
+        // the payment for it landed (playtest 2026-10-18, C4). Only a lift: an
+        // accord adding a target is refused below, and `groundInConcessions`
+        // holds a lift to the party that conceded it.
+        const theirLift = counterpartyTolls && source === 'extraction';
+        if (actor !== undefined && op.factionId !== actor && !theirLift) {
           reject(
             raw,
             'illegal_value',
@@ -6514,9 +6583,19 @@ function applyOpsUnderRules(
         // and is resolved on arrival — an attack, a voyage, a sweep of a
         // squatter. One move intent, and the reducer decides which it is, so
         // the model never has to pick a mechanism and cannot pick the wrong one.
-        if (shipIntents && isMovementType(op.type) && movesAtOnce(state, op.factionId, op.originId, op.targetId)) {
+        // Once a batch: hulls that landed at once on a world do not jump on from
+        // it in the same batch, or a chain of one-jump moves crosses the map in
+        // a turn (playtest 2026-10-18, B2). The second leg sails.
+        const chained = oneJumpOnce && landedAtOnce.has(`${op.factionId}:${op.originId}`);
+        if (
+          shipIntents &&
+          !chained &&
+          isMovementType(op.type) &&
+          movesAtOnce(state, op.factionId, op.originId, op.targetId)
+        ) {
           const dest = getSystem(state, op.targetId)!;
           addStackAt(dest, op.factionId, force);
+          landedAtOnce.add(`${op.factionId}:${dest.id}`);
           for (const c of state.commanders ?? []) {
             if (riding.includes(c.id)) c.atSystemId = dest.id;
           }
@@ -6778,6 +6857,19 @@ function applyOpsUnderRules(
         // needs nothing, which is what `cancel_order` is for; this is the path
         // for reaching into a rival's, and reaching needs a hand.
         const mine = actor === undefined || order.factionId === actor;
+        // A fleet under way is met where it arrives, and the battle decides
+        // what becomes of it. An order cannot stand somebody else's down: a
+        // critical success wrote `interrupt_order` on a rival's relief fleet
+        // and sent eight battleships home with no shot fired (playtest
+        // 2026-10-18, D3).
+        if (fleetsMeetInBattle && !mine && isMovementType(order.type)) {
+          reject(
+            raw,
+            'illegal_value',
+            `${nameFor(state, order.factionId)}'s fleet under way is not stood down by an order; it is met where it arrives.`,
+          );
+          break;
+        }
         const standsAt = (systemId: string): boolean => {
           const sys = getSystem(state, systemId);
           return sys !== undefined && hullsAt(sys, actor!) > 0;
@@ -7432,6 +7524,22 @@ function applyOpsUnderRules(
             const was = op.effect.kind;
             op.effect = DEFAULT_COVERT_EFFECT[op.mission];
             notes.push(`A ${op.mission} operative carries ${describeEffect(op.effect)}, not ${was.replace(/_/g, ' ')}.`);
+          }
+        }
+        // A thief is sent at a rival's thing on the world it is sent to. A name
+        // that is the id of something else — the thief's own, or a thing on
+        // another world — was carried to the tick and found nothing (playtest
+        // 2026-10-18, D1, where it named the sender's own dossier). Dropped
+        // here, so the thief takes what is worth most on that world instead.
+        const theft = op.effect;
+        if (stealNamesARivalsThing && theft.kind === 'steal' && theft.assetId) {
+          const named = (state.assets ?? []).find((a) => a.id === theft.assetId);
+          const sender = op.ownerFactionId ?? actor;
+          if (named && (named.heldBy === sender || named.atSystemId !== op.systemId)) {
+            notes.push(
+              `${named.text} is ${named.heldBy === sender ? 'already yours' : `not at ${systemName(state, op.systemId)}`}; the thief will take whatever is worth most there.`,
+            );
+            op.effect = { ...theft, assetId: null };
           }
         }
         // You may only run your own operatives. Reproduced three times in
@@ -9417,6 +9525,7 @@ function applyOpsUnderRules(
     state, hullsBefore, shipsBefore, unbuildFromGain, yardCapacity, changedFlag, notes, pricedByYards,
     movesNotBuilt ? navyBefore : undefined,
     programmeTons,
+    honestYardNote,
   );
   refundDuplicateCharges(state, chargedByNarrative, pricedByYards, notes);
   }
@@ -9705,6 +9814,8 @@ function billConstruction(
   navyBefore?: Map<string, ShipStack>,
   /** Berths a yard programme took this batch, which an open build cannot have too. */
   programmeTons: Map<string, number> = new Map(),
+  /** Journal version 26: tonnage the yards could not take is not reported as unaffordable. */
+  honestNote = true,
 ): void {
   for (const faction of state.factions) {
     // Billed in TONS, so a class costs what it displaces and nothing has to
@@ -9763,7 +9874,14 @@ function billConstruction(
     faction.credits -= delivered * CREDITS_PER_TON;
     if (delivered > 0) charged.add(faction.id);
 
-    if (trimmed > 0 || shortfall > 0) {
+    // When the yards were the limit and the treasury was not, the yard note
+    // above has said so; this one is the bill. It read "could only pay for 28
+    // of 56" with 3,100 credits in hand (playtest 2026-10-18, B11).
+    if (honestNote && shortfall === 0 && delivered > 0) {
+      const note = `${faction.name} commissions ${delivered} tons of shipping for ${delivered * CREDITS_PER_TON} credits.`;
+      notes.push(note);
+      logEvent(state, 'system', note, faction.id);
+    } else if (trimmed > 0 || shortfall > 0) {
       const note = `${faction.name} could only pay for ${delivered} of ${gained} new tons (${CREDITS_PER_TON} credits each); ${trimmed} tons were never laid down.`;
       notes.push(note);
       logEvent(state, 'system', note, faction.id);
@@ -10029,10 +10147,12 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
   const outerOrders = scopeOrderLines;
   const outerHeat = runHeat;
   const outerBreaches = breachTable;
+  const outerSecrets = hideSeenSecrets;
   scopeEngineNotes = legacy.privateEngineNotes ?? true;
   scopeOrderLines = legacy.privateOrderLines ?? true;
   runHeat = legacy.heat ?? true;
   breachTable = (legacy.breachPrices ?? true) ? BREACH_PRICES : LEGACY_BREACH_PRICES;
+  hideSeenSecrets = legacy.secretsAreHidden ?? true;
   try {
     return withNameStock(legacy.widerNames ?? true, () => tickTurnUnderRules(input, legacy));
   } finally {
@@ -10040,6 +10160,7 @@ export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResul
     scopeOrderLines = outerOrders;
     runHeat = outerHeat;
     breachTable = outerBreaches;
+    hideSeenSecrets = outerSecrets;
   }
 }
 
@@ -10761,7 +10882,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       demand.toFactionId !== state.playerFactionId &&
       sideStrength(state, fromSide) >= ULTIMATUM_YIELD_RATIO * sideStrength(state, toSide);
     if (yields) {
-      notes.push(...concedeDemand(state, demand, worldTakesAssets));
+      notes.push(...concedeDemand(state, demand, worldTakesAssets, legacy.cessionFromTarget ?? true));
       continue;
     }
     demand.status = 'war';
@@ -11400,7 +11521,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
             .filter((o) => o.holderFactionId === agent.ownerFactionId && o.status === 'open' && o.secret)
             .map((o) => `${o.secret!.kind}:${o.secret!.ref}`),
         ]);
-        const found = secretsAbout(state, target.id).find(
+        const found = secretsAbout(state, target.id, hideSeenSecrets).find(
           (x) => !filed.has(`${x.kind}:${x.ref}`) && !(x.kind === 'covert_operation' && x.ref === agent.id),
         );
         if (found) {
@@ -11837,10 +11958,15 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     });
   }
 
+  // Read again now that arrivals have landed. Taken above, it was after the
+  // arriving orders left `pendingOrders` and before their hulls landed, so the
+  // ledger missed every ship that arrived this tick: the briefing read 120 to
+  // upkeep against a navy of 238 tons (playtest 2026-10-18).
+  if (legacy.ledgerAfterArrivals ?? true) report.ledger = ledgerFor(state, state.playerFactionId);
   logEvent(
     state,
     'system',
-    `Turn ${state.turn}: ${playerLedger.gross} credits from ${playerLedger.systems} systems, ${playerLedger.upkeep} to upkeep.`,
+    `Turn ${state.turn}: ${report.ledger.gross} credits from ${report.ledger.systems} systems, ${report.ledger.upkeep} to upkeep.`,
     state.playerFactionId,
   );
 
@@ -12181,7 +12307,7 @@ function applyRimEvent(state: WorldState, plan: RimEventPlan): RimEvent {
           .filter((o) => o.holderFactionId === to && o.status === 'open' && o.secret)
           .map((o) => `${o.secret!.kind}:${o.secret!.ref}`),
       ]);
-      const told = secretsAbout(state, f).find((x) => !filed.has(`${x.kind}:${x.ref}`));
+      const told = secretsAbout(state, f, hideSeenSecrets).find((x) => !filed.has(`${x.kind}:${x.ref}`));
       if (told) {
         state.assets.push(
           AssetSchema.parse({

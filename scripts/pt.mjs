@@ -8,7 +8,7 @@
  *   node scripts/pt.mjs new <factionId> [maxTurns] [name]
  *   node scripts/pt.mjs state            # the whole CampaignView
  *   node scripts/pt.mjs act "<text>"     # declare an action
- *   node scripts/pt.mjs advisor          # ask your counsellor (costs an action)
+ *   node scripts/pt.mjs advisor [question] # ask your counsellor (costs an action)
  *   node scripts/pt.mjs end              # end the turn
  *   node scripts/pt.mjs talk <id> "<text>"
  *   node scripts/pt.mjs endtalk <id>
@@ -29,7 +29,7 @@ const routes = {
   new: () => ['/api/campaign/new', { factionId: args[0], ...(args[1] ? { maxTurns: Number(args[1]) } : {}), name: args[2] ?? 'playtest' }, true],
   state: () => ['/api/campaign', {}],
   act: () => ['/api/action', { text: args.join(' ') }],
-  advisor: () => ['/api/advisor', {}],
+  advisor: () => ['/api/advisor', args.length > 0 ? { question: args.join(' ') } : {}],
   end: () => ['/api/endturn', {}],
   talk: () => [`/api/talk/${args[0]}`, { text: args.slice(1).join(' ') }],
   endtalk: () => [`/api/endtalk/${args[0]}`, {}],

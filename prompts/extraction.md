@@ -158,8 +158,11 @@ ends with the squadron going home or being made a gift of.
 toll is a concession, and it is one of the few real ones you can make that takes
 effect at once — *"the Sennex lane opens to Meridian hulls"*. Imposing a toll
 needs nobody's agreement, so the reducer refuses an accord that adds a target;
-that is a declared action. `targets` replaces the whole list, so emit the list
-the acting power is left charging after the deal, not the names it dropped.
+that is a declared action. **Either party's toll may be lifted** — the
+`factionId` is the power whose customs charge it, which is often the other
+party, lifting its toll on the player. `targets` replaces the whole list, so emit
+the list that power is left charging after the deal (each power's line in the
+state says whom it charges for passage), not the names it dropped.
 **A lift for a term carries the term**: `forTurns` for *"for five turns"*, and
 `whileTreaty` (a treaty type) for *"while the accord holds"* — the toll comes
 back on its own when it runs out. Without either, the lift is for good, so do

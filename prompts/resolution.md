@@ -576,6 +576,8 @@ and the log call it.
 
 Every piece of work is its payload. It is **paid for when it starts**, and a
 failed attempt starts nothing and pays nothing; a partial one delivers half.
+**Write it at the size that was attempted either way** — the engine halves it
+on a partial, so a magnitude or a count you halve yourself is halved twice.
 
 | op | does | magnitude |
 |---|---|---|

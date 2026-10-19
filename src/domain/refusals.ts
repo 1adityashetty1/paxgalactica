@@ -199,6 +199,66 @@ export function swaysAsRolled(
   return { ops: kept, dropped };
 }
 
+/** What a declaration's ruling allows a resolution batch to carry. */
+export interface RulingBounds {
+  covert: readonly { mission: string; systemId: string }[];
+  groundwork: readonly { systemId: string }[];
+  stat: string | undefined;
+  outcome: string | undefined;
+  establishes: { kind: string; mechanism?: string } | undefined;
+  yields: readonly string[];
+  /** Covert work with nothing rolled: the batch carries only the sending. */
+  sentOnly: boolean;
+}
+
+/**
+ * Hold a resolution batch to the ruling it was written under: sends, sways,
+ * commitments and prizes as `sendsAsRuled`, `swaysAsRolled`,
+ * `commitmentsAsRuled` and `prizesAsRuled` have them, and nothing but the
+ * sending for covert work.
+ *
+ * One function, so the batch a correction call writes is held to the same
+ * ruling as the first. And the filters' output is kept whether or not they
+ * dropped anything: two of them STAMP what they keep — a sway with the band's
+ * figure, a commitment with its ruled mechanism — and the caller kept their
+ * output only when something was dropped, so a clean success swayed three
+ * powers 9 each and nine declared commitments carried no mechanism at all
+ * (playtest 2026-10-18, B1 and B5).
+ */
+export function holdToRuling(ops: readonly unknown[], bounds: RulingBounds): { ops: unknown[]; notes: string[] } {
+  const notes: string[] = [];
+  const sends = sendsAsRuled(ops, bounds.covert, bounds.groundwork);
+  if (sends.dropped.length > 0) {
+    notes.push(
+      `An operative is sent only when the act is ruled covert: left out ${sends.dropped.join(', ')}. Declare it as their mission.`,
+    );
+  }
+  const sways = swaysAsRolled(sends.ops, bounds.stat, bounds.outcome);
+  if (sways.dropped.length > 0) {
+    notes.push('A sway moves another power only on an influence check that worked, once a power: the rest came to nothing.');
+  }
+  const committed = commitmentsAsRuled(sways.ops, bounds.establishes);
+  if (committed.dropped.length > 0) {
+    notes.push(
+      `A lasting arrangement is recorded only when the arbiter ruled one: left out ${[...new Set(committed.dropped)].join(', ')}.`,
+    );
+  }
+  const prized = prizesAsRuled(committed.ops, bounds.yields);
+  if (prized.dropped.length > 0) {
+    notes.push(
+      `A prize comes only of what the attempt was ruled able to yield: left out ${[...new Set(prized.dropped)].join(', ')}.`,
+    );
+  }
+  if (!bounds.sentOnly) return { ops: prized.ops, notes };
+  const sent = covertSendOnly(prized.ops);
+  if (sent.dropped.length > 0) {
+    notes.push(
+      `Covert work is sent, not rolled, so it carries only the sending: left out ${[...new Set(sent.dropped)].join(', ')}. Declare anything else on its own.`,
+    );
+  }
+  return { ops: sent.ops, notes };
+}
+
 /**
  * The actor's own operative a piece of text names, by family name, or null.
  * Family names are unique per campaign, so a match is that operative.

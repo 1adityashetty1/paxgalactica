@@ -627,7 +627,11 @@ const tons = (s: WorldState) => fleetTonsOf(s, 'freeworlds');
     // And it is billed for exactly what arrived, not for what it ordered.
     expect(purse(start) - purse(res.state)).toBe(gained * CREDITS_PER_TON);
     expect(fleet(res.state)).toBeGreaterThan(before);
-    expect(res.notes.join(' ')).toMatch(/could only pay for/);
+    // Said as what it is: the yards were the limit, and the bill is a bill.
+    // It read "could only pay for 20 of 4000 new tons" with the purse able to
+    // pay for 73 (playtest 2026-10-18, B11).
+    expect(res.notes.join(' ')).toMatch(/yards can lay down/);
+    expect(res.notes.join(' ')).not.toMatch(/could only pay for/);
     // Not a rejection — the order is partly fulfilled, which is the more
     // useful outcome and matches how a partial check reads.
     expect(res.rejections).toHaveLength(0);
