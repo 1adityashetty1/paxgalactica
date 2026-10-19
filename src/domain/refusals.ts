@@ -1,6 +1,6 @@
 import { familyOf, resolvePerson } from './command.js';
 import { SWAY_BY_BAND } from './acts.js';
-import type { RefusalGround } from './ops.js';
+import type { Reach, RefusalGround } from './ops.js';
 import { hullsAt, type WorldState } from './state.js';
 
 /**
@@ -209,6 +209,66 @@ export interface RulingBounds {
   yields: readonly string[];
   /** Covert work with nothing rolled: the batch carries only the sending. */
   sentOnly: boolean;
+  /** How the act was ruled able to reach another power (§4). Absent: not at all. */
+  reaches?: readonly Reach[];
+  /** Pending orders that are not the actor's, by id, for `their_orders`. */
+  foreignOrders?: readonly string[];
+}
+
+/**
+ * The reach an op makes into another power's business, or null for the
+ * actor's own (`docs/design-2026-10-18-code-knows.md` §4). Drawn where the
+ * damage is: a fortification dropped for want of a ruling is a worse failure
+ * than a flourish, so a power's own building, moving, works, court and orders
+ * pass unruled, and only these need naming.
+ */
+export function reachOf(op: unknown, foreignOrders: readonly string[]): Reach | null {
+  const o = op as { op?: string; orderId?: string } | null;
+  switch (o?.op) {
+    case 'interrupt_order':
+    case 'extend_order':
+    case 'accelerate_order':
+      return o.orderId && foreignOrders.includes(o.orderId) ? 'their_orders' : null;
+    case 'suborn_crews':
+      return 'their_ships';
+    case 'break_treaty':
+    case 'repudiate_obligation':
+    case 'repudiate_loan':
+    case 'call_obligation':
+      return 'their_paper';
+    case 'issue_ultimatum':
+    case 'back_ultimatum':
+    case 'post_bounty':
+    case 'publish_dossier':
+    case 'blackmail':
+      return 'coercion';
+    default:
+      return null;
+  }
+}
+
+/**
+ * Keep an op that reaches another power only when the ruling named its reach.
+ * A critical success wrote `interrupt_order` on a rival's relief fleet as its
+ * flourish and sent it home with no battle (playtest 2026-10-18, D3); four
+ * filters each closed one op, and the vocabulary has sixty.
+ */
+export function opsAsRuled(
+  ops: readonly unknown[],
+  reaches: readonly Reach[],
+  foreignOrders: readonly string[],
+): { ops: unknown[]; dropped: string[] } {
+  const kept: unknown[] = [];
+  const dropped: string[] = [];
+  for (const op of ops) {
+    const reach = reachOf(op, foreignOrders);
+    if (reach !== null && !reaches.includes(reach)) {
+      dropped.push(String((op as { op?: unknown }).op));
+      continue;
+    }
+    kept.push(op);
+  }
+  return { ops: kept, dropped };
 }
 
 /**
@@ -249,8 +309,14 @@ export function holdToRuling(ops: readonly unknown[], bounds: RulingBounds): { o
       `A prize comes only of what the attempt was ruled able to yield: left out ${[...new Set(prized.dropped)].join(', ')}.`,
     );
   }
-  if (!bounds.sentOnly) return { ops: prized.ops, notes };
-  const sent = covertSendOnly(prized.ops);
+  const reached = opsAsRuled(prized.ops, bounds.reaches ?? [], bounds.foreignOrders ?? []);
+  if (reached.dropped.length > 0) {
+    notes.push(
+      `An act reaches into another power's business only as it was ruled to: left out ${[...new Set(reached.dropped)].join(', ')}. Declare it as its own act.`,
+    );
+  }
+  if (!bounds.sentOnly) return { ops: reached.ops, notes };
+  const sent = covertSendOnly(reached.ops);
   if (sent.dropped.length > 0) {
     notes.push(
       `Covert work is sent, not rolled, so it carries only the sending: left out ${[...new Set(sent.dropped)].join(', ')}. Declare anything else on its own.`,

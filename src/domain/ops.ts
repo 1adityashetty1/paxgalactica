@@ -2273,6 +2273,8 @@ export const AppraisalSchema = z.object({
   establishes: EstablishesSchema.optional(),
   /** The prizes the overt part could yield, named before the roll. See `OvertPartSchema.yields`. */
   yields: z.array(z.string()).optional(),
+  /** How the overt part reaches another power, named before the roll. See `OvertPartSchema.reaches`. */
+  reaches: z.array(z.enum(['their_orders', 'their_ships', 'their_paper', 'coercion'])).optional(),
   /**
    * Read off a `DeclaredRulingSchema` ruling: whether the act has an overt part
    * (which is rolled), which of the actor's operatives that part involves, and
@@ -2332,7 +2334,16 @@ export const OvertPartSchema = z.object({
    * (intent-ops §4).
    */
   yields: z.array(z.string().regex(/^[a-z][a-z0-9_]*$/)).max(4).default([]),
+  /**
+   * How this part reaches into another power's business, named BEFORE the roll
+   * — its orders, its crews, the paper binding the two, or coercion. An op that
+   * reaches is written only when the ruling named its reach; empty for nearly
+   * every act (`docs/design-2026-10-18-code-knows.md` §4).
+   */
+  reaches: z.array(z.enum(['their_orders', 'their_ships', 'their_paper', 'coercion'])).max(4).default([]),
 });
+/** How a declaration may reach into another power's business — see `OvertPartSchema.reaches`. */
+export type Reach = 'their_orders' | 'their_ships' | 'their_paper' | 'coercion';
 export const CovertPartSchema = z.object({
   kind: z.literal('covert'),
   /** The operative, by name; omitted, the nearest one awaiting orders. */
@@ -2477,6 +2488,7 @@ export function rulingToAppraisal(value: unknown): Appraisal {
     ...(overt ? { stat: overt.stat, difficulty: overt.difficulty, involves: overt.involves } : {}),
     ...(overt?.establishes ? { establishes: overt.establishes } : {}),
     ...(overt?.yields && overt.yields.length > 0 ? { yields: overt.yields } : {}),
+    ...(overt?.reaches && overt.reaches.length > 0 ? { reaches: overt.reaches } : {}),
     ...(covert.length > 0
       ? {
           covert: covert.map((c) => ({
@@ -2502,6 +2514,13 @@ export const ResolutionOutputSchema = ModelTurnOutputSchema.extend({
   // nothing reads, while the prompt told it the outcome was already settled.
   /** Present when the player's OWN faction will not carry the order out. */
   refusal: RefusalSchema.optional(),
+  /**
+   * On a critical success, the one bonus it brings, from a closed menu the
+   * engine prices and applies (§4): a quarter of what the act spent back,
+   * one of its new orders a bucket sooner, goodwill with the power most
+   * involved, or one more of a prize the ruling named. Ignored on any other band.
+   */
+  bonus: z.enum(['cost_avoided', 'tempo', 'goodwill', 'windfall']).optional(),
   /**
    * Present when the order breaches a COMPULSION rather than a red line: the
    * institutions object, the ops still land, and the faction pays for it.

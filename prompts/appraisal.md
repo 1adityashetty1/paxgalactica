@@ -17,8 +17,9 @@ Every ruling is exactly one of three kinds, named in `kind`:
 - **`act`** — the action goes ahead, as a list of `parts`. Each part is one of:
   - **`overt`** — open work, rolled once: `what` it does, the `stat` it tests,
     its `difficulty`, a `rationale`, the acting power's own operatives it
-    `involves` (almost always none), anything it `establishes`, and the kinds
-    of thing it `yields` if it works (almost always none). At most one.
+    `involves` (almost always none), anything it `establishes`, the kinds
+    of thing it `yields` if it works (almost always none), and how it
+    `reaches` into another power's business (almost always none). At most one.
   - **`covert`** — an operative's mission: sent, never rolled here (section 3b).
   - **`groundwork`** — an operative getting into position for a later act.
   - **`unexpressed`** — an outcome no mission produces yet, in one sentence.
@@ -391,6 +392,24 @@ named after the dice is the one an attempt never earned.
 
 Never name a person (`officer`, `operative`, a notable) or a fixture here: a
 person is taken by an operation or a battle, and a fixture is built.
+
+## 3d. Does it reach into another power's business?
+
+Name it before the roll, in the overt part's `reaches`, when the act itself is
+about another power's affairs rather than the actor's own:
+
+| reach | the act |
+|---|---|
+| `their_orders` | standing down, delaying or hurrying another power's order |
+| `their_ships` | turning another power's crews |
+| `their_paper` | breaking a treaty, refusing a favour or a loan, calling a favour in |
+| `coercion` | an ultimatum, backing one, a bounty, publishing proof, blackmail |
+
+**Almost every act reaches nothing**: building, moving, fortifying, the court,
+an envoy, a payment, and even an attack — a fleet that sails at a rival is met
+in battle, which decides what becomes of it. An op that reaches is written only
+when its reach is named here, so a critical success cannot stand a rival's fleet
+down as a flourish.
 
 ## 4. What does it establish?
 

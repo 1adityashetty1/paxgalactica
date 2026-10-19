@@ -1013,6 +1013,19 @@ export async function resolveAction(
             '',
           ]
         : []),
+      ...(priced.appraisal.reaches && priced.appraisal.reaches.length > 0
+        ? [
+            '### How it may reach another power',
+            '',
+            `The arbiter ruled this act reaches into another power's business by: ${priced.appraisal.reaches.map((r) => `\`${r}\``).join(', ')}. An op of another reach — standing down a rival's orders, turning crews, breaking paper, coercion — is dropped.`,
+            '',
+          ]
+        : [
+            '### It reaches no other power',
+            '',
+            "The arbiter named no way this act reaches into another power's business, so do not write one: no `interrupt_order`, `extend_order` or `accelerate_order` on a rival's order, no `suborn_crews`, `break_treaty`, ultimatum, bounty, blackmail or published dossier. They are dropped.",
+            '',
+          ]),
       ...(priced.appraisal.establishes && check && check.outcome !== 'failure' && check.outcome !== 'critical_failure'
         ? [
             '### This action establishes something lasting',
@@ -1055,13 +1068,25 @@ export async function resolveAction(
     establishes: priced.appraisal.establishes,
     yields: priced.appraisal.yields ?? [],
     sentOnly: !checkOp,
+    reaches: priced.appraisal.reaches ?? [],
+    foreignOrders: state.pendingOrders.filter((o) => o.factionId !== state.playerFactionId).map((o) => o.id),
   };
   const withCheck = (o: ResolutionOutput): ResolutionOutput => {
     // Sends, sways, commitments and prizes are the ruling's (intent-ops §3–5),
     // and covert work carries only its sending. See `holdToRuling`.
     const held = holdToRuling(o.ops, bounds);
     notes.push(...held.notes);
-    const ops = held.ops as ResolutionOutput['ops'];
+    let ops = held.ops as ResolutionOutput['ops'];
+    // A windfall is one more of a prize the ruling named, and only on a
+    // critical (§4). The other bonuses are applied by the engine once staged.
+    if (check?.outcome === 'critical_success' && o.bonus === 'windfall') {
+      const at = ops.findIndex((x) => x.op === 'create_asset' && (bounds.yields as readonly string[]).includes(x.kind));
+      if (at >= 0) {
+        const prize = ops[at] as Extract<ResolutionOutput['ops'][number], { op: 'create_asset' }>;
+        ops = ops.map((x, i) => (i === at ? { ...prize, quantity: (prize.quantity ?? 1) + 1 } : x));
+        notes.push('A windfall: one more than the attempt was after.');
+      }
+    }
     // The check line rides at the FRONT of the batch, so the log reads
     // roll-then-consequence rather than the other way round.
     return { ...o, ops: checkOp ? [checkOp, ...ops] : ops };
@@ -1113,7 +1138,7 @@ export async function resolveAction(
  */
 const OUTCOME_GUIDANCE: Record<CheckResult['outcome'], string> = {
   critical_success:
-    'It worked, and better than intended. Emit the ops for the full result plus one concrete bonus that follows from it — an unexpected defection, a rival caught off balance, a cost avoided.',
+    'It worked, and better than intended. Emit the ops for the full result, and name ONE bonus in `bonus` — `cost_avoided` (a quarter of what it spent comes back), `tempo` (one of its new orders finishes a bucket sooner), `goodwill` (the power most involved warms to you) or `windfall` (one more of a prize the ruling named). The engine applies it: write no ops for the bonus, and narrate it however you like.',
   success:
     'It worked as intended. Emit the ops for exactly what was attempted; no windfall, no complication.',
   partial:

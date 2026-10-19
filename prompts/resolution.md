@@ -106,7 +106,7 @@ from a closed list; it is never yours to write about yourself.
 | `post_bounty` | put your own credits in escrow as a price on another power — see The raider's ledger |
 | `withdraw_bounty` | take back what is left of a bounty you posted |
 | `cancel_order` | an existing order is called off |
-| `interrupt_order` | an order is disrupted by force or event |
+| `interrupt_order` | an order is disrupted by force or event — another power's only when the ruling named `their_orders` |
 | `extend_order` | work runs longer than planned |
 | `accelerate_order` | credits spent to buy back one duration bucket |
 | `break_treaty` | repudiate one; both parties' opinion of the breaker drops |

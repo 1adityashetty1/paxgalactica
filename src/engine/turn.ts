@@ -35,7 +35,9 @@ import { createSeedState } from '../seed/scenario.js';
 import { brokeredAccords, honourTreaties, proposeFor } from '../domain/initiative.js';
 import { controlHistory } from './journal.js';
 import { holdToRuling, type RulingBounds } from '../domain/refusals.js';
-import { ACT_WORDS, linesCrossed, type Act, type LineHit } from '../domain/acts.js';
+import { ACT_WORDS, SWAY_BY_BAND, linesCrossed, type Act, type LineHit } from '../domain/acts.js';
+import { accelerationCost, type FibScale } from '../domain/duration.js';
+import { isMovementType } from '../domain/state.js';
 import { PEACE_TREATIES, type Concession } from '../domain/diplomacy.js';
 import type { WorldState } from '../domain/state.js';
 import {
@@ -522,6 +524,70 @@ function reactionToLines(
   return { ops: kept, withheld, charged: null };
 }
 
+/**
+ * A critical success's bonus, priced in code (`docs/design-2026-10-18-code-knows.md`
+ * §4). Resolution names one; this decides what it does, on the engine's path:
+ *
+ * - `cost_avoided` — a quarter of what the declaration took out of the treasury;
+ * - `tempo` — the first new order of the declaration's own drops a bucket, free;
+ * - `goodwill` — `SWAY_BY_BAND.partial` from the power the batch named most;
+ * - `windfall` — applied before staging, as one more of a ruled prize.
+ *
+ * It was "one concrete bonus that follows from it", and resolution chose the
+ * ops — once an `interrupt_order` that sent a rival's fleet home (playtest
+ * 2026-10-18, D3).
+ */
+export function applyBonus(
+  campaign: Campaign,
+  bonus: 'cost_avoided' | 'tempo' | 'goodwill' | 'windfall',
+  creditsBefore: number,
+  ordersBefore: ReadonlySet<string>,
+  landed: readonly unknown[],
+): string[] {
+  const me = campaign.state.playerFactionId;
+  const stage = (ops: unknown[], label: string) =>
+    campaign.stage(ops, label, '', 'engine', undefined, { path: 'engine' });
+  if (bonus === 'cost_avoided') {
+    const spent = creditsBefore - (getFaction(campaign.state, me)?.credits ?? 0);
+    const back = Math.floor(Math.max(0, spent) / 4);
+    if (back <= 0) return [];
+    stage([{ op: 'adjust_credits', factionId: me, delta: back }], 'a cost avoided');
+    return [`A cost avoided: ${back} credits come back.`];
+  }
+  if (bonus === 'tempo') {
+    const fresh = campaign.state.pendingOrders.find(
+      (o) => o.factionId === me && !ordersBefore.has(o.id) && !isMovementType(o.type) && o.durationTurns > 1,
+    );
+    if (!fresh) return [];
+    const cost = accelerationCost(fresh.durationTurns as FibScale);
+    stage(
+      [
+        { op: 'accelerate_order', orderId: fresh.id, reason: 'ahead of time' },
+        { op: 'adjust_credits', factionId: me, delta: cost },
+      ],
+      'ahead of time',
+    );
+    return [`Ahead of time: ${fresh.label} finishes a step sooner.`];
+  }
+  if (bonus === 'goodwill') {
+    const named = new Map<string, number>();
+    for (const raw of landed) {
+      const o = (raw ?? {}) as Record<string, unknown>;
+      const ids = [o.factionId, o.to, o.whom, o.toFactionId, o.towardFactionId, o.fromFactionId];
+      const sys = campaign.state.systems.find((x) => x.id === (o.targetId ?? o.systemId));
+      ids.push(sys?.controllerFactionId);
+      for (const id of ids) {
+        if (typeof id === 'string' && id !== me && getFaction(campaign.state, id)) named.set(id, (named.get(id) ?? 0) + 1);
+      }
+    }
+    const [who] = [...named].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0] ?? [];
+    if (!who) return [];
+    stage([{ op: 'adjust_disposition', factionId: who, towardFactionId: me, delta: SWAY_BY_BAND.partial }], 'goodwill');
+    return [`Goodwill: ${getFaction(campaign.state, who)?.name ?? who} thinks better of you.`];
+  }
+  return [];
+}
+
 /** A crossing said as the institutions would say it. */
 function lineReason(state: WorldState, hit: LineHit): string {
   const toward = hit.act.with.map((id) => getFaction(state, id)?.name ?? id);
@@ -761,6 +827,8 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     (resolution.output.groundwork?.length ?? 0) > 0 ||
     routed.ops.some(isCovertOp);
 
+  const creditsBefore = getFaction(campaign.state, campaign.state.playerFactionId)?.credits ?? 0;
+  const ordersBefore = new Set(campaign.state.pendingOrders.map((o) => o.id));
   const staged = await stageWithCorrection(
     campaign,
     routed.ops,
@@ -820,6 +888,13 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
       ops: campaign.opsStagedSince(before),
     };
   }
+  // A critical success's bonus, from the closed menu and applied here, where
+  // the engine can see what the declaration spent and started (§4). The
+  // windfall was applied to the batch before it was staged.
+  if (resolution.check?.outcome === 'critical_success' && resolution.output.bonus) {
+    staged.notes.push(...applyBonus(campaign, resolution.output.bonus, creditsBefore, ordersBefore, campaign.opsStagedSince(before)));
+  }
+
   // A compulsion the ops cross is priced as the arbiter's is, once: the
   // arbiter's own ruling stands when it named one.
   const defied = staged.crossed.find((h) => h.kind === 'compulsion');
