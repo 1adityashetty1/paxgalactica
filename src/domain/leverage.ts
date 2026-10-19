@@ -15,6 +15,7 @@ import { isLoanLive } from './loan.js';
 import { SECRET_CATEGORIES } from './intel.js';
 import { DEVELOPMENT_PAYBACK_TURNS } from './development.js';
 import { statModifier } from './checks.js';
+import { routeEarnings } from './trade.js';
 import { HULL_SPEC, orbitalWeightOf } from './hulls.js';
 import {
   INCOME_PER_STRATEGIC_POINT,
@@ -228,7 +229,19 @@ export function concessionWorth(state: WorldState, c: Concession): number {
     const owed = (state.obligations ?? []).find((o) => o.id === id && o.holderFactionId === c.by);
     return n + (owed ? FAVOUR_WORTH * (owed.strength === 'strong' ? 2 : 1) : 0);
   }, 0);
-  return c.credits + c.perTurn * CONCESSION_FLOW_TURNS + c.hulls * SHIP_COST + worlds + things + favours;
+  // A toll lifted is the passage the lifted power pays at the conceder's
+  // worlds, for the term or as a standing flow.
+  let lifted = 0;
+  if (c.lifts.length > 0) {
+    const paidAt = routeEarnings(state).tollsPaidBySystem;
+    const held = new Set(state.systems.filter((x) => x.controllerFactionId === c.by).map((x) => x.id));
+    const perTurn = c.lifts.reduce(
+      (n, payer) => n + Object.entries(paidAt[payer] ?? {}).reduce((m, [sys, v]) => m + (held.has(sys) ? v : 0), 0),
+      0,
+    );
+    lifted = perTurn * Math.min(c.liftTurns ?? CONCESSION_FLOW_TURNS, CONCESSION_FLOW_TURNS);
+  }
+  return c.credits + c.perTurn * CONCESSION_FLOW_TURNS + c.hulls * SHIP_COST + worlds + things + favours + Math.round(lifted);
 }
 
 export interface ConcessionBudget {

@@ -1716,12 +1716,13 @@ export function serializeConcessionRecord(state: WorldState, conceded: readonly 
       parts.push(a ? `\`${id}\` (${a.quantity} ${a.unit} — ${a.text}, held by ${a.heldBy})` : `\`${id}\``);
     }
     for (const id of c.obligations) parts.push(`favour \`${id}\``);
-    return `- ${who} (\`${c.by}\`), ${c.kind}: ${c.text}${parts.length > 0 ? ` — ${parts.join('; ')}` : ''}`;
+    if (c.lifts.length > 0) parts.push(`stops tolling ${c.lifts.join(', ')}${c.liftTurns ? ` for ${c.liftTurns} turns` : ''}`);
+    return `- \`${c.by}:${c.kind}\` — ${who}: ${c.text}${parts.length > 0 ? ` — ${parts.join('; ')}` : ''}`;
   });
   return [
     '## What each side recorded conceding',
     '',
-    'Written down by each power as it spoke, and struck when it was withdrawn. A thing named by id here already exists: handing it over is `transfer_asset` of that id, never a new asset.',
+    'Written down by each power as it spoke, and struck when it was withdrawn. List every term the two actually agreed in `accepted`, by the key at the start of its line. The engine builds the payments, things, favours, worlds and toll lifts from these lines; a thing named by id here already exists.',
     '',
     ...lines,
   ].join('\n');

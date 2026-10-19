@@ -7502,7 +7502,12 @@ function applyOpsUnderRules(
               op.parties.includes(owner)
             );
           });
-          const paid = Object.values(treaty.terms.payment ?? {}).some((n) => (n ?? 0) < 0);
+          // Paid in credits, or in things handed to the power giving the world
+          // up — a cession built from the record carries what the buyer gave
+          // as its consideration, whatever it was (design 2026-10-18 §3).
+          const paid =
+            Object.values(treaty.terms.payment ?? {}).some((n) => (n ?? 0) < 0) ||
+            (treaty.terms.assets ?? []).some((a) => op.parties.includes(a.toFactionId) && a.toFactionId !== actor);
           if (actor !== undefined && acquiring.length > 0 && !paid) {
             reject(
               raw,

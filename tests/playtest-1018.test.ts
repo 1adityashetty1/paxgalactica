@@ -247,7 +247,8 @@ describe('C7, C8 — the extraction pass is shown what each side conceded', () =
     ]);
     expect(record).toContain('`ast-0-1`');
     expect(record).toContain('held by vigil');
-    expect(record).toMatch(/transfer_asset/);
+    expect(record).toContain('`vigil:sell_drawings`');
+    expect(record).toMatch(/accepted/);
   });
 });
 
@@ -275,15 +276,16 @@ describe('C1, C2, C3, C13 — the other power’s charge for signing an accord',
     { speaker: 'player' as const, text: 'Four hundred to lift the toll.' },
     { speaker: 'faction' as const, text: 'Done.' },
   ];
+  // The record is the deal (design §3): the payment and the lift are built
+  // from what each side wrote down, and extraction only says they were agreed.
   const conceded = [
-    ConcessionSchema.parse({ by: 'ojjul', kind: 'toll_lift', text: 'The Combine lifts its toll on Meridian.' }),
+    ConcessionSchema.parse({ by: 'ojjul', kind: 'toll_lift', text: 'The Combine lifts its toll on Meridian.', lifts: ['meridian'] }),
+    ConcessionSchema.parse({ by: 'meridian', kind: 'fee', text: 'Four hundred to the Combine.', credits: 400 }),
   ];
   const extraction = {
     narrative: 'Meridian pays four hundred and the Combine lifts its toll.',
-    ops: [
-      { op: 'pay', factionId: 'meridian', to: 'ojjul', amount: 400 },
-      { op: 'set_toll_policy', factionId: 'ojjul', targets: ['vigil', 'freeworlds', 'drajk'] },
-    ],
+    accepted: ['ojjul:toll_lift', 'meridian:fee'],
+    ops: [],
   };
   const clean = { admissible: true, reason: '', stat: 'influence', difficulty: 10, rationale: '' };
   const breach = (principle: string, kind: string) => ({

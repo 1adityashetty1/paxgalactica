@@ -226,7 +226,15 @@ Fill `credits` for a one-time payment out of your treasury, `perTurn` for a
 standing one, `hulls` for ships out of your own fleet, `assets` for things off
 your own shelf, `obligations` for favours owed to you that you are letting go
 of — forgiven to the power that owes them, or sold to the power across the
-table. Use the ids from **Favours owed**. All of them are **what you give**, never what you receive.
+table. Use the ids from **Favours owed**. `lifts` names the powers you stop
+charging for passage through your space — usually the one across the table —
+and `liftTurns` how long for, when a term was named. All of them are **what you
+give**, never what you receive.
+
+**The record is the deal.** When the channel closes, every payment, thing,
+favour, world and toll lift moves exactly as it is written here, and only as it
+is written here — on both sides. A price the other power agreed to pay that you
+did not write down as THEIR concession is a price nobody pays.
 
 ### Trade things, not only worlds and money
 

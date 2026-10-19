@@ -1974,6 +1974,15 @@ export type ModelTurnOutput = z.infer<typeof ModelTurnOutputSchema>;
 /** What `/endtalk` extraction returns: the ordinary vocabulary plus treaties. */
 export const ExtractionOutputSchema = z.object({
   narrative: z.string().min(1),
+  /**
+   * Which recorded concessions the two powers actually agreed, each as
+   * `by:kind`. The engine builds every transfer they name — a payment, a thing
+   * handed over, a favour let go, a world ceded, a toll lifted — from the
+   * record itself (`docs/design-2026-10-18-code-knows.md` §3). Deciding which
+   * terms on the table were agreed is the judgement; the ids were settled when
+   * each power wrote its concession down.
+   */
+  accepted: z.array(z.string().min(1)).default([]),
   // "Nothing was agreed" is the commonest honest outcome of a conversation.
   ops: z.array(ExtractionOpSchema).default([]),
 });

@@ -230,7 +230,9 @@ async function reviseRejected(
       // entire batch and double-applied everything that had already succeeded.
       system: loadPrompt('correction'),
       user,
-      schema: source === 'extraction' ? ExtractionOutputSchema : ModelTurnOutputSchema,
+      // A correction re-emits the ops alone: which concessions were agreed was
+      // settled by the first pass, and the transfers they name are not its to touch.
+      schema: source === 'extraction' ? ExtractionOutputSchema.omit({ accepted: true }) : ModelTurnOutputSchema,
       maxRetries: 1,
     });
     return { ops: res.value.ops, narrative: res.value.narrative, costUsd: res.costUsd };
@@ -326,6 +328,12 @@ async function stageWithCorrection(
    * every crossing is returned as `crossed`, for the caller to price.
    */
   lines?: LineCheck,
+  /**
+   * Ops the correction call may not touch, staged with every batch: an
+   * accord's transfers, built from the record (`transfersFromRecord`). One of
+   * them refused cannot be repaired by rewording, so the accord fails whole.
+   */
+  fixed: readonly unknown[] = [],
 ): Promise<{
   rejections: OpRejection[];
   notes: string[];
@@ -355,7 +363,7 @@ async function stageWithCorrection(
     const hits = linesOf(campaign, batch, source, actor, meta.path, lines);
     return { hits, refused: hits.find((h) => h.kind === 'red_line' && lines.refuse.includes(h.act.actor)) };
   };
-  const bound = bind(ops);
+  const bound = bind([...ops, ...fixed]);
   const firstLines = holdTo(bound.ops);
   if (firstLines.refused) {
     return { rejections: [], notes: bound.notes, costUsd: 0, refused: firstLines.refused, crossed: firstLines.hits };
@@ -365,7 +373,36 @@ async function stageWithCorrection(
     return { rejections: [], notes: [...bound.notes, ...first.notes], costUsd: 0, crossed: firstLines.hits };
   }
 
-  const revised = await reviseRejected(campaign, first.rejections, label, context, bound.ops, source);
+  // An accord lands whole or not at all (§2). A refused transfer from the
+  // record cannot be reworded into legality, and a correction that drops a term
+  // would land the rest without it — the 400 paid for a toll lift that was
+  // refused (playtest 2026-10-18, C4). Either way the accord fails, said.
+  const key = (o: unknown): string => JSON.stringify(o);
+  const fixedKeys = new Set(fixed.map(key));
+  const accordFails = (why: string) => ({
+    rejections: first.rejections,
+    notes: [...bound.notes, ...first.notes, why],
+    costUsd: 0,
+    crossed: [] as LineHit[],
+  });
+  if (first.rejections.some((r) => fixedKeys.has(key(r.op)))) {
+    return accordFails('A term the record wrote could not be carried out, so nothing in the accord took effect.');
+  }
+  const attempted = bound.ops.filter((o) => !fixedKeys.has(key(o)));
+  const revised = await reviseRejected(campaign, first.rejections, label, context, attempted, source);
+  if (revised && source === 'extraction') {
+    const count = (list: readonly unknown[]) =>
+      list.reduce<Map<string, number>>((m, o) => {
+        const k = String((o as { op?: unknown } | null)?.op);
+        return m.set(k, (m.get(k) ?? 0) + 1);
+      }, new Map());
+    const before = count(attempted);
+    const after = count(revised.ops);
+    const lost = [...before].filter(([k, n]) => (after.get(k) ?? 0) < n).map(([k]) => k);
+    if (lost.length > 0) {
+      return accordFails(`A correction may fix a term, not drop one (${lost.join(', ')}), so nothing in the accord took effect.`);
+    }
+  }
   if (!revised) {
     return {
       rejections: first.rejections,
@@ -376,7 +413,7 @@ async function stageWithCorrection(
   }
 
   const reheld = bounds ? holdToRuling(revised.ops, bounds) : { ops: revised.ops, notes: [] };
-  const boundAgain = bind(reheld.ops);
+  const boundAgain = bind([...reheld.ops, ...fixed]);
   boundAgain.notes.unshift(...reheld.notes);
   const secondLines = holdTo(boundAgain.ops);
   if (secondLines.refused) {
@@ -1287,6 +1324,135 @@ export function groundInConcessions(
 }
 
 /**
+ * Every transfer an accord's agreed concessions name, built by the engine from
+ * the record each power wrote as it spoke (`docs/design-2026-10-18-code-knows.md`
+ * §3). Extraction re-read these from the transcript and wrote them again, and
+ * could write them wrong: a conceded crate dropped, an existing set of drawings
+ * minted afresh (playtest 2026-10-18, C7, C8). The ids were settled when each
+ * power wrote its concession; building from them is lookup.
+ *
+ * A world ceded is a `cession` treaty, and what the other side gives for it —
+ * its credits as `terms.payment`, its things as `terms.assets` — rides on the
+ * same treaty, so the cession looks like the bargain it is. Everything else is
+ * one op per transfer: `pay`, `transfer_asset`, `release_obligation` or
+ * `assign_obligation`, and `set_toll_policy` for a toll lifted. A flow and
+ * hulls are not built: each needs a shape (tribute or contract, loan or
+ * pledge), which is extraction's to judge.
+ */
+export function transfersFromRecord(
+  state: WorldState,
+  agreed: readonly Concession[],
+  player: string,
+  other: string,
+): { ops: Record<string, unknown>[]; notes: string[] } {
+  const ops: Record<string, unknown>[] = [];
+  const notes: string[] = [];
+  const otherOf = (by: string): string => (by === player ? other : player);
+  const sum = (by: string, f: (c: Concession) => number) =>
+    agreed.filter((c) => c.by === by).reduce((n, c) => n + f(c), 0);
+  const credits = new Map([player, other].map((p) => [p, sum(p, (c) => c.credits)] as [string, number]));
+  const assetsOf = (by: string) => [...new Set(agreed.filter((c) => c.by === by).flatMap((c) => c.assets))];
+  const assetsGiven = new Map([player, other].map((p) => [p, assetsOf(p)] as [string, string[]]));
+
+  for (const ceder of [player, other]) {
+    const systems = [...new Set(agreed.filter((c) => c.by === ceder).flatMap((c) => c.systems))];
+    if (systems.length === 0) continue;
+    const buyer = otherOf(ceder);
+    const price = credits.get(buyer) ?? 0;
+    const goods = assetsGiven.get(buyer) ?? [];
+    ops.push({
+      op: 'form_treaty',
+      treatyType: 'cession',
+      parties: [ceder, buyer],
+      terms: {
+        territory: systems,
+        ...(price > 0 ? { payment: { [buyer]: -price, [ceder]: price } } : {}),
+        ...(goods.length > 0 ? { assets: goods.map((assetId) => ({ assetId, toFactionId: ceder })) } : {}),
+      },
+      summary: `${systems.map((id) => state.systems.find((x) => x.id === id)?.name ?? id).join(', ')} ceded to ${getFaction(state, buyer)?.name ?? buyer}`,
+    });
+    credits.set(buyer, 0);
+    assetsGiven.set(buyer, []);
+  }
+  for (const [by, amount] of credits) {
+    if (amount > 0) ops.push({ op: 'pay', factionId: by, to: otherOf(by), amount, for: 'the terms agreed' });
+  }
+  for (const [by, ids] of assetsGiven) {
+    for (const assetId of ids) ops.push({ op: 'transfer_asset', assetId, toFactionId: otherOf(by), reason: 'the terms agreed' });
+  }
+  for (const c of agreed) {
+    const to = otherOf(c.by);
+    for (const id of c.obligations) {
+      const owed = (state.obligations ?? []).find((o) => o.id === id);
+      if (!owed) {
+        notes.push(`No favour "${id}" to give up; ${c.text}`);
+        continue;
+      }
+      ops.push(
+        owed.debtorFactionId === to
+          ? { op: 'release_obligation', obligationId: id, reason: c.text.slice(0, 240) }
+          : { op: 'assign_obligation', obligationId: id, toHolderFactionId: to, reason: c.text.slice(0, 240) },
+      );
+    }
+  }
+  for (const by of [player, other]) {
+    const lifting = agreed.filter((c) => c.by === by && c.lifts.length > 0);
+    if (lifting.length === 0) continue;
+    const lifts = new Set(lifting.flatMap((c) => c.lifts));
+    const term = lifting.map((c) => c.liftTurns).find((t) => t !== undefined);
+    const charging = getFaction(state, by)?.tollTargets ?? [];
+    ops.push({
+      op: 'set_toll_policy',
+      factionId: by,
+      targets: charging.filter((id) => !lifts.has(id)),
+      ...(term !== undefined ? { forTurns: term } : {}),
+    });
+  }
+  return { ops, notes };
+}
+
+/** The ops the record writes, which extraction no longer may (§3). */
+const RECORD_OPS = new Set(['pay', 'adjust_credits', 'transfer_asset', 'release_obligation', 'assign_obligation', 'set_toll_policy']);
+
+/**
+ * Extraction's ops with every transfer the record now writes taken out: those
+ * ops, a cession, and the territory, payment and things on any other treaty. A
+ * contract left with no flow, protection or commission was a sale written as a
+ * treaty, and goes too. Said, so a dropped term is never silent.
+ */
+export function withoutRecordTransfers(ops: readonly unknown[]): { ops: unknown[]; dropped: string[] } {
+  const kept: unknown[] = [];
+  const dropped: string[] = [];
+  for (const raw of ops) {
+    const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : null;
+    if (!o) {
+      kept.push(raw);
+      continue;
+    }
+    if (RECORD_OPS.has(String(o.op))) {
+      dropped.push(String(o.op));
+      continue;
+    }
+    if (o.op === 'form_treaty') {
+      if (o.treatyType === 'cession') {
+        dropped.push('a cession');
+        continue;
+      }
+      const { territory: _t, payment: _p, assets: _a, ...rest } = (o.terms ?? {}) as Record<string, unknown>;
+      const flows = rest.incomePerTurn && Object.keys(rest.incomePerTurn as object).length > 0;
+      if (o.treatyType === 'contract' && !flows && !rest.protection && !rest.commission) {
+        dropped.push('a sale written as a contract');
+        continue;
+      }
+      kept.push(rest === o.terms ? o : { ...o, terms: rest });
+      continue;
+    }
+    kept.push(raw);
+  }
+  return { ops: kept, dropped };
+}
+
+/**
  * What an accord does that no single op shows: one side taking money for a
  * peace, or one side giving and the other giving nothing. Read from the whole
  * batch and the concession record, for the lines that name them — the Vigil's
@@ -1389,6 +1555,24 @@ export async function closeChannel(
   const faction = getFaction(campaign.state, factionId);
   const extraction = await extractAgreements(campaign.state, factionId, history, conceded);
 
+  // The record is the deal (§3). Extraction judged which terms were agreed;
+  // the transfers they name are built from the ids each power wrote down, and
+  // any extraction wrote itself are left out, said.
+  const player = campaign.state.playerFactionId;
+  const accepted = new Set(extraction.output.accepted);
+  const agreed = conceded.filter((c) => accepted.has(`${c.by}:${c.kind}`));
+  const unknownTerms = [...accepted].filter((k) => !conceded.some((c) => `${c.by}:${c.kind}` === k));
+  const built = transfersFromRecord(campaign.state, agreed, player, factionId);
+  const stripped = withoutRecordTransfers(extraction.output.ops);
+  const recordNotes = [
+    ...built.notes,
+    ...unknownTerms.map((k) => `"${k}" is not on the record, so nothing was built for it.`),
+    ...(stripped.dropped.length > 0
+      ? [`The record writes the transfers; left out of the extraction: ${[...new Set(stripped.dropped)].join(', ')}.`]
+      : []),
+  ];
+  const proposed = [...stripped.ops, ...built.ops];
+
   // The institutions get a view on a deal, exactly as they do on a decree.
   //
   // Without this the arbiter gated the declaration path and nothing gated
@@ -1419,7 +1603,7 @@ export async function closeChannel(
   // `fallback: true` rather than pretending it wrote the ending.
   const unappraised: string[] = [];
   const ruling =
-    extraction.output.ops.length > 0
+    proposed.length > 0
       ? await appraiseAgreement(campaign.state, factionId, extraction.output.narrative).catch(
           (err: unknown) => {
             unappraised.push(
@@ -1576,7 +1760,7 @@ export async function closeChannel(
   // Ops that COST THE COUNTERPARTY must be grounded in something that power
   // actually wrote down. A concession by the player needs no grounding: nobody
   // needs protecting from a power binding itself.
-  const grounded = groundInConcessions(campaign.state, extraction.output.ops, conceded, factionId);
+  const grounded = groundInConcessions(campaign.state, stripped.ops, conceded, factionId);
 
   // One group for the accord and everything that goes with it if the player
   // withdraws it before the turn lands.
@@ -1602,9 +1786,11 @@ export async function closeChannel(
     {
       refuse: [campaign.state.playerFactionId],
       price: [factionId],
-      extra: (batch) => accordActs(stateBefore, batch, conceded, campaign.state.playerFactionId, factionId),
+      extra: (batch) => accordActs(stateBefore, batch, agreed, campaign.state.playerFactionId, factionId),
     },
+    built.ops,
   );
+  staged.notes.unshift(...recordNotes);
   if (staged.refused) {
     return refuseAccord('your own institutions', lineReason(stateBefore, staged.refused), staged.refused.principle, staged.costUsd);
   }
@@ -1633,7 +1819,8 @@ export async function closeChannel(
   // the accord, which is what the other power signed against.
   let counterpartyCost = 0;
   const counterpartyNotes: string[] = [];
-  const theirs = conceded.filter((c) => c.by === factionId);
+  // What the other power agreed to give, not every term it put on the table.
+  const theirs = agreed.filter((c) => c.by === factionId);
   const landed = campaign.opsStagedSince(accordAt).length > 0;
   // A line of theirs the accord's ops cross, which no reading can miss.
   const theirLine = landed ? staged.crossed.find((h) => h.act.actor === factionId) : undefined;
@@ -1703,7 +1890,9 @@ export async function closeChannel(
 
   campaign.recordTranscript(
     factionId,
-    staged.rejections.length > 0
+    // Whether the accord LANDED, not whether a first attempt was refused: a
+    // correction that landed used to be recorded as "nothing took effect".
+    !landed && proposed.length > 0
       ? [
           ...history,
           {

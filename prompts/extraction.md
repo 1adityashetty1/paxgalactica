@@ -7,6 +7,35 @@ committed to, and emit the ops that make it real.
 This is the only pass in a conversation that changes the world. Everything
 said in the channel was talk until now.
 
+## Two jobs, and the record does the rest
+
+Each power wrote down what it was giving up as it spoke — the **record**, shown
+below the transcript, each term keyed `by:kind`. A payment, a thing handed over,
+a favour let go, a world ceded and a toll lifted are all written there with
+their ids, and **the engine builds every one of those transfers from the
+record**. You do not write them.
+
+1. **`accepted`** — every recorded term the two powers actually agreed, as
+   `by:kind`, exactly as the record keys it. A term on the table is not a term
+   agreed: an offer refused, unanswered or still conditional stays off this
+   list. A promise recorded as a concession (*"the Combine will not raid you"*)
+   belongs here too when it was agreed, beside whatever treaty you write for it.
+2. **`ops`** — only the terms the record has no field for: the treaties and
+   their types and conditions, commitments, debts, loans, favours owed, an
+   ultimatum given way to, a dossier, the record of what was said.
+
+**Do not write `pay`, `transfer_asset`, `release_obligation`,
+`assign_obligation`, `set_toll_policy`, a `cession`, or `terms.payment`,
+`terms.assets` or `terms.territory` on any treaty.** They are taken out of what
+you emit, because the record already holds them — and a term written twice, or
+written wrong, is how a crate was left behind and a set of drawings minted
+afresh. A **flow** (money every turn) and **hulls** are the exception: they
+need a shape only you can judge — tribute or contract, loan or pledge — so you
+write those, and they are held to what the record says was offered.
+
+An accord lands whole or not at all: if a term cannot be carried out, nothing
+in it takes effect, and both powers are told.
+
 ## What an accord can and cannot produce
 
 An accord may only produce what needs **the other party's agreement**, or what
@@ -14,40 +43,18 @@ is purely a **record** of the conversation:
 
 `form_treaty` · `break_treaty` · `establish_debt` · `assign_debt` ·
 `restructure_debt` · `establish_commitment` · `dissolve_commitment` ·
-`forgive_debt` · `settle_debt` · `adjust_disposition` · `pay` ·
-`log_narrative` · `set_toll_policy` · `transfer_asset` ·
-`establish_loan` · `return_loan` · `forgive_loan`
+`forgive_debt` · `settle_debt` · `regard` · `log_narrative` ·
+`establish_loan` · `return_loan` · `forgive_loan` · `establish_obligation` ·
+`concede_ultimatum` · `create_asset` (a dossier only)
 
-**`transfer_asset` moves a thing that already exists** — prisoners ransomed
-back, an heirloom handed over, a lot of ore delivered. Taking another power's
-asset needs their agreement, which is why it is reachable from here at all; a
-declared action can only give one away.
+— and, through the record, every payment, thing, favour, world and toll lift.
 
-**Match `transfer_asset` to the `assets` the holder named.** A thing coming out
-of the *other* power's hands moves only if that power put its id on the table,
-exactly as a world does — you are matching what was recorded, not judging what
-was meant. A power giving its own away needs no such record.
-
-**A SALE is one treaty, never two loose ops.** If a thing was agreed to change
-hands *for a price*, write a treaty carrying both halves — `terms.assets` for
-what moves and `terms.payment` for what is paid — exactly as a cession carries
-the world and its price. Do NOT write `transfer_asset` beside a `pay`: nothing
-binds those two together, and a live accord to
-sell fifteen tons of ore for ninety credits emitted the money and not the ore,
-leaving the buyer ninety credits poorer and holding nothing.
-
-```jsonc
-{ "op": "form_treaty", "type": "contract", "parties": ["meridian", "ojjul"],
-  "terms": {
-    "assets": [{ "assetId": "ast-0-0", "toFactionId": "meridian" }],
-    "payment": { "meridian": -90, "ojjul": 90 }
-  },
-  "summary": "The Ithaal assay sold to Meridian for ninety." }
-```
-
-`transfer_asset` on its own is still right for a thing handed over for
-**nothing** — a hostage released, a gift, a debt of honour settled. The moment a
-price is named, it is a treaty.
+**A thing changing hands is on the record.** Prisoners ransomed back, an
+heirloom handed over, a lot of ore delivered, a promissory note given: the power
+holding it wrote its id in `assets`, and if the price was money, the buyer wrote
+it in `credits`. Accept both terms and the engine moves the thing and the money
+together, in one accord that lands whole. Nothing else is needed — not a
+`transfer_asset`, not a contract carrying the sale.
 
 **A favour owed is `establish_obligation`.** *"We will owe you one"*,
 *"remember this when you need us"* — a power taking on a debt of honour it can
@@ -55,29 +62,20 @@ be made to pay, by signing a pact or backing an ultimatum when the holder calls.
 `debtorFactionId` is the power that owes, `holderFactionId` the one owed. Only
 when the debtor said it in its own voice.
 
-**A favour given up is `release_obligation` or `assign_obligation`.** *"Forget
-what you owe us"* is a `release_obligation` of that favour by its holder — the
-debtor is let off. *"We will sell you the favour Drajk owes us"* is an
-`assign_obligation` with `toHolderFactionId` the buyer, alongside whatever
-paid for it. Take the id from the standing block's **Favours owed**. Only a weak
-favour can be sold. **Calling one in is not an accord**: it needs nobody's
-agreement, and the holder does it on its own turn.
+**A favour given up is on the record too** — *"forget what you owe us"*, or a
+favour sold to the power across the table: the holder wrote its id in
+`obligations`, and the engine lets it go to the debtor or passes it to the
+buyer. **Calling one in is not an accord**: it needs nobody's agreement, and the
+holder does it on its own turn.
 
 **Giving way to an ultimatum in the room is `concede_ultimatum`** with the
 standing block's `demandId`, when the power the demand was made of agreed to it
 here. Do not also write the treaty: conceding forms it.
 
-**A promissory note changes hands the same way.** A power's own note is a
-favour it may give — *"take our note; call on us when you need the line"* is a
-`transfer_asset` of that note to the other party, or an `assets` term when
-something is given for it. The holder plays it later on its own turn; nothing in
-the accord calls it in.
-
 **A fixture is not on the table.** A mine, an exchange, a theatre — anything the
 state block marks *"fixed here; changes hands only with the world"* — cannot be
-transferred on its own. Selling one is selling the world it stands on: write a
-`cession` naming that system, with `terms.payment` for the price, and the fixtures
-go with the ground.
+handed over on its own. Selling one is selling the world it stands on, which is
+the record's `systems`, and the fixtures go with the ground.
 
 **You cannot create one here, with one exception.** A conversation trades what
 exists and does not conjure what does not, so an accord promising *"a hundred
@@ -93,14 +91,11 @@ a single `create_asset` with `kind: "dossier"`, and the price beside it.
 
 **Write it straight into the buyer's hands.** A dossier is the one asset an
 accord may create, and the one whose `heldBy` may be either party — so a sale is
-a single `create_asset` with the BUYER as `heldBy`, and the price as a `pay`
-from the buyer to the seller. Do not create it for the seller and then
-try to move it: the id does not exist until the reducer mints it, so there is
-nothing for `terms.assets` or `transfer_asset` to name, and inventing a
-placeholder like `"NEW:dossier:..."` is rejected as an unknown asset. (That is
-measured, not hypothetical.) The two-halves rule still holds — the paper and the
-payment are one batch, and a batch that moves money without conserving it is
-dropped.
+a single `create_asset` with the BUYER as `heldBy`; the price is the buyer's
+`credits` on the record. Do not create it for the seller and then try to move
+it: the id does not exist until the reducer mints it. **Never create a dossier
+for a thing that already exists** — a file, a chart, a set of drawings already
+on somebody's shelf has an id, and it changes hands through the record.
 
 ```jsonc
 { "op": "create_asset", "kind": "dossier", "heldBy": "ojjul",
@@ -154,19 +149,9 @@ whenever the parties named one.
 `return_loan` and `forgive_loan` are reachable here too, for a conversation that
 ends with the squadron going home or being made a gift of.
 
-**`set_toll_policy` may only OPEN your lanes here, never close them.** Lifting a
-toll is a concession, and it is one of the few real ones you can make that takes
-effect at once — *"the Sennex lane opens to Meridian hulls"*. Imposing a toll
-needs nobody's agreement, so the reducer refuses an accord that adds a target;
-that is a declared action. **Either party's toll may be lifted** — the
-`factionId` is the power whose customs charge it, which is often the other
-party, lifting its toll on the player. `targets` replaces the whole list, so emit
-the list that power is left charging after the deal (each power's line in the
-state says whom it charges for passage), not the names it dropped.
-**A lift for a term carries the term**: `forTurns` for *"for five turns"*, and
-`whileTreaty` (a treaty type) for *"while the accord holds"* — the toll comes
-back on its own when it runs out. Without either, the lift is for good, so do
-not drop a term the parties named.
+**A toll lifted is on the record** — the power that charges it wrote whom it
+stops charging in `lifts`, and for how long in `liftTurns`. Imposing a toll
+needs nobody's agreement, so it is a declared action, never an accord.
 
 Everything else is **unilateral work the player pays an action for**, and the
 reducer refuses it from here — orders of every kind, building hulls, placing
@@ -235,10 +220,6 @@ Specifically:
   or envoy from this pass. A conversation that commits a power to building,
   fortifying, blockading, raising a garrison or running an operation produces a
   `log_narrative` recording the intent; the power declares it on its own turn.
-- `pay` — only for a specific sum both sides settled on: `factionId` is the
-  party paying, `to` the party paid, and it moves money the payer has. **A loan
-  is not this.** Lending is `establish_debt`, which moves the principal from the
-  creditor to the debtor itself.
 - `form_treaty` — for anything the parties agreed will **stand over time**.
   **This pass is the only one in the game that may emit it.** A treaty binds a
   power that is not the player, so it needs that power's consent, and a
@@ -316,17 +297,10 @@ Specifically:
 
   | the deal | write it as |
   |---|---|
-  | a price paid **once** — a cession, an indemnity, a lump settlement, a ransom | `payment`, and it must **balance**: `{"buyer": -3000, "seller": 3000}` |
+  | a price paid **once** — a cession, an indemnity, a lump settlement, a ransom | **nothing**: it is the payer's `credits` on the record, and the engine moves it |
   | one side pays the other **every turn** | `incomePerTurn`, and it must **balance**: `{"payer": -40, "payee": 40}` — on a `tribute` if it is money for nothing, on a `contract` if it buys something |
   | both sides share what a **named world** earns | `incomeShares`, which comes off that system's own take |
   | a venture, charter or operation that **makes** money for both | **not a treaty at all** — `establish_commitment`, which prices what an arrangement is worth |
-
-  **`terms.payment` is how a world is bought.** It carries no ceiling, because
-  it is a transfer: it moves on the turn the treaty takes force, the buyer pays
-  only what its treasury actually holds, and the seller receives exactly that.
-  Write the agreed price here, on the treaty that moves the world, rather than
-  as a loose `pay` beside it — the two halves of one bargain belong on one
-  record.
 
   `incomePerTurn` is a **transfer**, so it can never pay out more than it takes
   in. Writing `{"a": 30, "b": 20}` — both positive — is money from nowhere, and
@@ -334,15 +308,9 @@ Specifically:
   A joint venture that genuinely enriches both houses is a real deal and it has
   a real home; it is just not this field.
 
-  **`terms.territory` really cedes worlds.** List a system there and it changes
-  hands when the treaty takes force: the garrison goes with it intact, and the
-  ceding power's ships withdraw to its nearest holding. Only a system a *party
-  to this treaty actually holds* moves — naming someone else's world, or one
-  nobody at the table controls, is a claim and does nothing. Use it only for a
-  cession both sides actually agreed to. **If a price was agreed for it, put
-  that price in `terms.payment` on the same treaty** — the cession and its price
-  are two halves of one deal, and writing only one of them is how seven worlds
-  once changed hands for 1,200 credits against 13,950 agreed.
+  **A world changing hands is the record's `systems`.** The engine writes the
+  `cession`, with what the other side gave for it as its price. Do not write a
+  cession yourself, and never let land ride on another type of treaty.
 
   **`terms.voidsOn` is for "this ends if you…".** Powers say it constantly and
   it used to be pure narration, so a party could take a clause and then do the
@@ -392,8 +360,8 @@ them sail.
 
 - `narrative` — 1–3 sentences summarising what the channel produced, written
   as a record rather than a scene. If nothing was agreed, say so plainly.
-- `ops` — the consequences, or an empty list if the conversation genuinely
-  committed nobody to anything.
+- `accepted` — every recorded term agreed, as `by:kind`; empty when nothing was.
+- `ops` — the terms the record has no field for, or an empty list.
 
 Be conservative. A campaign where every pleasant conversation silently becomes
 a treaty is a campaign where diplomacy means nothing.
@@ -418,27 +386,6 @@ commitment otherwise — the reducer refuses the second one with
 `treaty_conflict` or `commitment_conflict` and quotes the deal that blocks it.
 A playtest sold the same intelligence twice in one hour with the word
 "exclusive" on the paper, and nothing anywhere could tell.
-
-**A world changing hands is a `cession`, and only a `cession`.** A land transfer
-had no type of its own, so it used to be written into whatever treaty was to
-hand — and that borrowed label decides real things, so it did real damage: three
-worlds once moved inside a `basing_rights` accord, which grants the right to
-*enter* without it being an attack and is the opposite of a handover, and a sale
-written as a `trade_accord` cancelled the live raid-immunity pact between the
-same pair because supersession keys on the type.
-
-So: `treatyType: "cession"`, `terms.territory` naming the worlds, and
-
-- **no duration.** A cession is permanent — nothing gives the land back when a
-  treaty lapses — so an expiring one promises a return that never comes.
-- **a price, if the acting power is the one gaining.** Giving your own world
-  away needs nothing; taking the other party's needs `terms.payment` to say what
-  was given for it. The reducer refuses a bare transfer the other way.
-- **only what was actually agreed, world by world.** *"I'll tell my people to
-  look the other way when your ships come through"* is transit, not a handover.
-  *"Refit through Oridin"* is basing rights. A world moves only when the power
-  holding it said, of that world, that it would let it go — and if they said no,
-  it does not move whatever else was agreed in the same breath.
 
 **A durable arrangement binding both parties — a dynastic marriage, an
 exclusive charter naming a partner, a hostage exchange, a shared succession,
@@ -585,7 +532,7 @@ creditor has to agree to part with it. Give it the `debtId` being sold and the
 its history, and simply answers to someone else. **Never write an assignment as
 `establish_debt`** — that mints a second copy of the same paper and retires
 nothing, so the debtor ends up owing it twice. If money changes hands for the
-paper, that is a separate `pay`.
+paper, that is the buyer's `credits` on the record.
 
 A debtor paying a balance down is `settle_debt`, which is an ordinary op either
 side may reach; the money really moves, so it is bounded by what the debtor
