@@ -125,6 +125,10 @@ const HONEST: Record<string, { schema: z.ZodType; answers: Record<string, unknow
     schema: callsModule.EventFlavourSchema,
     answers: { 'one line': { line: 'The lanes past Shalka go quiet, and the pilots drink.' } },
   },
+  ReconcileSchema: {
+    schema: callsModule.ReconcileSchema,
+    answers: { 'a story rewritten': { narrative: 'The order went out, and the yards were not paid for.' } },
+  },
   EpilogueSchema: {
     schema: callsModule.EpilogueSchema,
     answers: { 'an ending': { slides: [{ factionId: 'vigil', text: 't' }], closing: 'c' } },

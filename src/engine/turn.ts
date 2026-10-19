@@ -18,6 +18,7 @@ import {
 } from '../domain/state.js';
 import {
   narrateEpilogue,
+  reconcileNarrative,
   appraiseAgreement,
   extractAgreements,
   recordRuling,
@@ -33,7 +34,7 @@ import { span } from '../model/telemetry.js';
 import { loadPrompt } from '../model/prompts.js';
 import { createSeedState } from '../seed/scenario.js';
 import { brokeredAccords, honourTreaties, proposeFor } from '../domain/initiative.js';
-import { controlHistory } from './journal.js';
+import { controlHistory, overrulings } from './journal.js';
 import { holdToRuling, type RulingBounds } from '../domain/refusals.js';
 import { ACT_WORDS, SWAY_BY_BAND, linesCrossed, type Act, type LineHit } from '../domain/acts.js';
 import { accelerationCost, type FibScale } from '../domain/duration.js';
@@ -588,6 +589,53 @@ export function applyBonus(
   return [];
 }
 
+/**
+ * Whether what landed differs from the story told for it: a rejection, an op
+ * a ruling filter dropped, a trim or clamp, a correction (§5). Read off the
+ * notes the engine and the reducer already write, so nothing new is tracked.
+ */
+export function storyDiverged(notes: readonly string[], rejections: readonly unknown[]): boolean {
+  if (rejections.length > 0) return true;
+  return notes.some((n) =>
+    /left out|^Trimmed |rather than|were not begun|could only pay|^Correction:|is not added|moved as far as|Nothing in this batch was applied|^Not enacted|nothing in the accord took effect/.test(n),
+  );
+}
+
+/** What a batch did, one line an op, for the reconcile pass to tell the truth from. */
+export function describeLanded(ops: readonly unknown[]): string {
+  return ops
+    .filter((o) => (o as { op?: string } | null)?.op && (o as { op: string }).op !== 'log_check')
+    .map((o) => {
+      const { op, ...rest } = o as Record<string, unknown>;
+      const fields = Object.entries(rest)
+        .filter(([, v]) => v !== undefined && v !== '' && !(Array.isArray(v) && v.length === 0))
+        .map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : String(v)}`)
+        .join(' ');
+      return `- ${String(op)} ${fields}`.slice(0, 240);
+    })
+    .join('\n');
+}
+
+/**
+ * Rewrite a declaration's or an accord's story to what landed, when the two
+ * differ, onto the staged batch from `from` (§5). Returns the story to show,
+ * and what it cost. A call or guard that fails leaves the draft.
+ */
+async function reconcileStory(
+  campaign: Campaign,
+  from: number,
+  draft: string,
+  notes: readonly string[],
+  rejections: readonly unknown[],
+): Promise<{ narrative: string; costUsd: number; reconciled: boolean }> {
+  if (!draft.trim() || !storyDiverged(notes, rejections)) return { narrative: draft, costUsd: 0, reconciled: false };
+  const landed = describeLanded(campaign.opsStagedSince(from));
+  const out = await reconcileNarrative(draft, landed, notes).catch(() => null);
+  if (!out?.narrative) return { narrative: draft, costUsd: out?.costUsd ?? 0, reconciled: false };
+  campaign.rewriteNarrative(from, out.narrative);
+  return { narrative: out.narrative, costUsd: out.costUsd, reconciled: true };
+}
+
 /** A crossing said as the institutions would say it. */
 function lineReason(state: WorldState, hit: LineHit): string {
   const toward = hit.act.with.map((id) => getFaction(state, id)?.name ?? id);
@@ -942,12 +990,22 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     );
   }
 
+  // The story, rewritten to what landed when the two differ (§5). The notes
+  // still say what changed; the story stops claiming it did not.
+  const story = await reconcileStory(
+    campaign,
+    before,
+    resolution.output.narrative,
+    [...resolution.notes, ...staged.notes],
+    staged.rejections,
+  );
+
   return {
-    narrative: resolution.output.narrative,
+    narrative: story.narrative,
     staged: campaign.stagedCount - before,
-    notes: staged.notes,
+    notes: story.reconciled ? staged.notes.filter((n) => !n.startsWith('Correction: ')) : staged.notes,
     rejections: staged.rejections,
-    costUsd: resolution.costUsd + staged.costUsd,
+    costUsd: resolution.costUsd + staged.costUsd + story.costUsd,
     check: resolution.check,
     refusal: null,
     defiance,
@@ -2050,13 +2108,16 @@ export async function closeChannel(
     );
   }
 
+  // The accord's story, rewritten to what landed when the two differ (§5).
+  const story = await reconcileStory(campaign, accordAt, extraction.output.narrative, notes, staged.rejections);
+
   return {
-    narrative: extraction.output.narrative,
+    narrative: story.narrative,
     defiance,
     staged: campaign.stagedCount - before,
     notes,
     rejections: staged.rejections,
-    costUsd: extraction.costUsd + staged.costUsd + rulingCost + counterpartyCost,
+    costUsd: extraction.costUsd + staged.costUsd + rulingCost + counterpartyCost + story.costUsd,
     // Extraction is the one pass that can turn conversation into ops, so seeing
     // exactly what it read out of a transcript matters more here than anywhere.
     ops: campaign.opsStagedSince(before),
@@ -2098,6 +2159,7 @@ export async function writeEpilogue(
     createSeedState(state.playerFactionId),
     campaign.maxTurns ?? state.turn,
     controlHistory(campaign.journal),
+    overrulings(campaign.journal),
   );
 
   const base = {

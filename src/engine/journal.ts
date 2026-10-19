@@ -561,3 +561,45 @@ export function controlHistory(journal: Journal): ControlChange[] {
 
   return changes;
 }
+
+/** How often a power's own institutions overruled it, or were overruled. */
+export interface Overruling {
+  /** Orders and accords its institutions refused outright. */
+  refusals: number;
+  /** Lines its leader crossed over their objection, and paid for. */
+  defiances: number;
+}
+
+/**
+ * Every refusal and defiance across a campaign, by power
+ * (`docs/design-2026-10-18-code-knows.md` §5).
+ *
+ * The epilogue told one campaign "the Board never once had to overrule its own
+ * officers" after a refusal, because its dossier carried a power's dissent at
+ * the final bell and nothing about how it got there — and dissent decays. The
+ * charges are in the journal, each as an `adjust_dissent` under a label the
+ * engine writes, so they are read off it rather than recorded twice.
+ *
+ * Read by the label, not the delta: a model could write `adjust_dissent` in a
+ * journal before version 25, at any figure, and that was neither.
+ */
+export function overrulings(journal: Journal): Record<string, Overruling> {
+  const out: Record<string, Overruling> = {};
+  for (const entry of journal.entries) {
+    if (entry.kind !== 'ops') continue;
+    const kind = /^refused[: ]/.test(entry.label)
+      ? 'refusals'
+      : /^objection[: ]| acts against its own line$/.test(entry.label)
+        ? 'defiances'
+        : null;
+    if (!kind) continue;
+    for (const raw of entry.ops) {
+      const op = raw as { op?: unknown; factionId?: unknown; delta?: unknown };
+      if (op.op !== 'adjust_dissent' || typeof op.factionId !== 'string') continue;
+      if (typeof op.delta !== 'number' || op.delta <= 0) continue;
+      const row = (out[op.factionId] ??= { refusals: 0, defiances: 0 });
+      row[kind] += 1;
+    }
+  }
+  return out;
+}

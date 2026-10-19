@@ -477,6 +477,39 @@ export async function dressRimEvent(
   return { line: flavourKeepsTheFacts(plain, line) ? line : null, costUsd: res.costUsd };
 }
 
+export const ReconcileSchema = z.object({
+  narrative: z.string().min(1).max(1200),
+});
+
+/**
+ * A story rewritten to what landed (`docs/design-2026-10-18-code-knows.md` §5).
+ *
+ * Resolution writes the story and the ops in one call, before the reducer has
+ * ruled on them, and half the playtest's declarations ended with a story that
+ * said more than happened — a crew that defected and did not, twelve lifters
+ * where six were laid down. Run only when the two differ, on the cheap tier,
+ * and held to the guard the Rim's lines are: no number the landed acts and the
+ * notes do not contain. A rewrite that fails it, or a call that fails, leaves
+ * the draft standing.
+ */
+export async function reconcileNarrative(
+  draft: string,
+  landed: string,
+  notes: readonly string[],
+): Promise<{ narrative: string | null; costUsd: number }> {
+  const facts = [landed, ...notes].join('\n');
+  const res = await callStructured({
+    kind: 'reconcile',
+    label: 'reconcile',
+    system: loadPrompt('reconcile'),
+    user: [`DRAFT STORY:\n${draft}`, `ACTS THAT LANDED (settled):\n${landed || '(none)'}`, `NOTES (settled):\n${notes.join('\n')}`].join('\n\n'),
+    schema: ReconcileSchema,
+    maxRetries: 1,
+  });
+  const narrative = res.value.narrative.trim();
+  return { narrative: flavourKeepsTheFacts(facts, narrative) ? narrative : null, costUsd: res.costUsd };
+}
+
 /* ------------------------------------------------------------------ */
 /* The epilogue                                                        */
 /* ------------------------------------------------------------------ */

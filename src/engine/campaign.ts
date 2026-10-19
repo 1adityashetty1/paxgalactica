@@ -400,6 +400,20 @@ export class Campaign {
     return { summary, ops };
   }
 
+  /**
+   * Replace one declaration's story with the reconciled one (§5): the first
+   * non-engine batch from `from` carries it, and any correction after it is
+   * cleared, so the reactions read one story and it is the true one.
+   */
+  rewriteNarrative(from: number, text: string): void {
+    let first = true;
+    for (const batch of this.stagedBatches.slice(from)) {
+      if (batch.source === 'engine') continue;
+      batch.narrative = first ? text : '';
+      first = false;
+    }
+  }
+
   /** Write what a correction changed onto the batch it staged, for the reactions to read. */
   amendLastNarrative(text: string): void {
     const last = this.stagedBatches[this.stagedBatches.length - 1];
