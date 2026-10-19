@@ -31,6 +31,7 @@ import {
   commanderUpkeepRelief,
 } from './command.js';
 import {
+  CHARTER_SHARE,
   COMMITMENT_INCOME_BASE,
   COMMITMENT_INCOME_PER_INFLUENCE,
   CommitmentSchema,
@@ -1843,6 +1844,20 @@ export function isGuestOf(
  *    Income flows only to factions a treaty names, which is what makes an
  *    unaligned world worth negotiating over rather than just invading.
  */
+/**
+ * What a charter on a world pays a power this turn (§7): its figure, but no
+ * more than `CHARTER_SHARE` of what the world pays that power, and nothing
+ * while the power does not hold it. Floored, so a poor world pays a little and
+ * a lost one pays nothing.
+ */
+export function charterWorth(state: WorldState, c: Commitment, factionId: string): number {
+  if (c.atSystemId === undefined) return c.incomePerTurn;
+  const world = state.systems.find((s) => s.id === c.atSystemId);
+  if (!world || world.controllerFactionId !== factionId) return 0;
+  const take = systemIncome(state, world).shares[factionId] ?? 0;
+  return Math.max(0, Math.min(c.incomePerTurn, Math.floor(take * CHARTER_SHARE)));
+}
+
 export function systemIncome(state: WorldState, system: StarSystem): SystemIncome {
   const base = system.strategicValue * INCOME_PER_STRATEGIC_POINT;
   const shares: Record<string, number> = {};
@@ -2074,6 +2089,7 @@ export function ledgerFor(
     state.commitments ?? [],
     factionId,
     maxCommitmentIncomeFor(state, factionId),
+    (c) => charterWorth(state, c, factionId),
   );
 
   // A share is a slice of what the payer's lanes actually paid, so it is

@@ -87,6 +87,7 @@ import {
   ledgerFor,
   WORLD_TYPE_STAT,
   commitmentsOf,
+  charterWorth,
   dissentPenalty,
   MAX_DISSENT_PENALTY,
   effectiveStats,
@@ -1552,7 +1553,14 @@ function Standing({
                 {c.incomePerTurn !== 0 && (
                   <span className={c.incomePerTurn > 0 ? 'chip good' : 'chip bad'}>
                     {c.incomePerTurn > 0 ? '+' : ''}
-                    {c.incomePerTurn}cr/turn
+                    {c.atSystemId === undefined ? c.incomePerTurn : charterWorth(state, c, me)}cr/turn
+                  </span>
+                )}
+                {/* A charter pays from its world, and nothing once it is lost
+                    (§7): the world is what a rival takes to end it. */}
+                {c.atSystemId !== undefined && (
+                  <span className="chip" title="Pays at most a quarter of what this world pays you, and nothing if it is lost.">
+                    on {getSystem(state, c.atSystemId)?.name ?? c.atSystemId}
                   </span>
                 )}
                 {/* A proportional term has no fixed figure, so the chip names

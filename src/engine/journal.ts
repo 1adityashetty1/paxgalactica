@@ -17,7 +17,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 27;
+export const JOURNAL_VERSION = 28;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -116,6 +116,7 @@ export const JournalVersionSchema = z.union([
   z.literal(25),
   z.literal(26),
   z.literal(27),
+  z.literal(28),
 ]);
 
 export const JournalSchema = z.object({
@@ -423,6 +424,8 @@ export function replay(
     counterpartyTolls: parsed.version >= 26,
     honestYardNote: parsed.version >= 26,
     ledgerAfterArrivals: parsed.version >= 26,
+    // A declared charter paid its figure from nowhere, chartered on no world.
+    charterOnWorld: parsed.version >= 28,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.

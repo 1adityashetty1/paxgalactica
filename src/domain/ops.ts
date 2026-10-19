@@ -999,6 +999,12 @@ export const EstablishCommitmentOp = z.object({
    * written before journal version 25.
    */
   mechanism: z.enum(['income', 'record']).optional(),
+  /**
+   * The world a declared charter is chartered on — one its power holds (§7).
+   * It pays at most a quarter of what that world pays, and nothing once the
+   * world is lost. Named nobody, the power's richest world.
+   */
+  systemId: z.string().min(1).optional(),
 });
 
 /**

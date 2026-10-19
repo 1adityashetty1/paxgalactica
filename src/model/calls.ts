@@ -562,7 +562,7 @@ export async function narrateEpilogue(
 /** How resolution writes the mechanism the arbiter named for a commitment (intent-ops §5). */
 const MECHANISM_GUIDANCE: Record<string, string> = {
   income:
-    'It pays every turn: set `incomePerTurn`, positive for the side that earns. Without it the commitment is refused.',
+    'It pays every turn: set `incomePerTurn`, positive for the side that earns. Without it the commitment is refused. A charter pays from a world: name it in `systemId`, a world this power holds, or it is chartered on the richest. It pays at most a quarter of what that world pays, and nothing once the world is lost — say so if the figure is more.',
   record: 'It is a record and nothing more: no income — any you write is left out.',
 };
 

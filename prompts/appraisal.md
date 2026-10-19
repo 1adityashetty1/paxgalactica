@@ -427,7 +427,9 @@ ground gained in a campaign of persuasion — describe it in the overt part's
   be the acting faction alone — see below.
 - `mechanism` — what gives it force: `income` (a figure every turn — a
   charter's fee, a smuggling ring's take) or `record` (nothing beyond the
-  arrangement written down, the default). Name it now, before the roll:
+  arrangement written down, the default). An income is chartered on a world
+  the power holds and pays at most a quarter of what that world pays — nothing
+  once it is lost — so a power with no world cannot hold one. Name it now, before the roll:
   resolution is held to it, and an income nobody ruled is a model choosing its
   own revenue, so it is left out. **A share of a lane flow or a contingency —
   a tithe, an indemnity, insurance, a surety — binds another power**, so it is

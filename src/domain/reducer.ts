@@ -369,6 +369,7 @@ import {
   isMovementType,
   ledgerFor,
   systemIncome,
+  charterWorth,
   liveAgentsOf,
   maxAgentsFor,
   subornLimit,
@@ -3358,6 +3359,13 @@ export interface LegacyRules {
   counterpartyTolls?: boolean;
   honestYardNote?: boolean;
   ledgerAfterArrivals?: boolean;
+  /**
+   * A declared income is chartered on a world its power holds, and pays at
+   * most a quarter of what that world pays (`docs/design-2026-10-18-code-knows.md`
+   * §7). Journal version 28; before it, a declared charter paid its figure from
+   * nowhere.
+   */
+  charterOnWorld?: boolean;
   /**
    * Officers come off a power's **Lists** — one of each school always waiting
    * — and only by appointment: no successor is put in post when the last one
@@ -8685,6 +8693,37 @@ function applyOpsUnderRules(
           reject(raw, 'unknown_faction', `No faction "${unknown}".`);
           break;
         }
+        // A declared income pays from a world (§7, journal version 28): the
+        // world named, if its power holds it, or else its richest. A thing
+        // that pays must sit somewhere it can be taken, and a ruling was the
+        // last thing in the game that minted a standing income from nowhere.
+        let charteredOn: string | undefined;
+        if ((legacy.charterOnWorld ?? true) && op.mechanism === 'income' && op.incomePerTurn > 0) {
+          const holder = actor ?? op.factionIds[0]!;
+          const held = state.systems.filter((x) => x.controllerFactionId === holder);
+          if (op.systemId !== undefined) {
+            const named = state.systems.find((x) => x.id === op.systemId);
+            if (!named) {
+              reject(raw, 'unknown_system', `No system "${op.systemId}".`);
+              break;
+            }
+            if (named.controllerFactionId !== holder) {
+              reject(raw, 'no_presence', `A charter pays from a world its power holds, and ${named.name} is not ${nameFor(state, holder)}'s.`);
+              break;
+            }
+            charteredOn = named.id;
+          } else {
+            const richest = held
+              .map((x) => ({ id: x.id, name: x.name, take: systemIncome(state, x).shares[holder] ?? 0 }))
+              .sort((a, b) => b.take - a.take || a.id.localeCompare(b.id))[0];
+            if (!richest) {
+              reject(raw, 'no_presence', `A charter pays from a world, and ${nameFor(state, holder)} holds none.`);
+              break;
+            }
+            charteredOn = richest.id;
+            notes.push(`${op.kind.replace(/_/g, ' ')} is chartered on ${richest.name}, ${nameFor(state, holder)}'s richest world.`);
+          }
+        }
         // The arbitrator rules that a marriage is exclusive; THIS is what
         // stops a second one. Trusting the arbitrator to remember turn 3 on
         // turn 4 is exactly the kind of consistency a prompt cannot be relied
@@ -8818,7 +8857,18 @@ function applyOpsUnderRules(
             .map((c) => ({ ...c, firedTurn: null })),
           establishedTurn: state.turn,
           status: 'active',
+          ...(charteredOn === undefined ? {} : { atSystemId: charteredOn }),
         });
+        if (charteredOn !== undefined) {
+          const world = state.systems.find((x) => x.id === charteredOn)!;
+          const holder = actor ?? op.factionIds[0]!;
+          const pays = charterWorth(state, state.commitments[state.commitments.length - 1]!, holder);
+          if (pays < yieldPerTurn) {
+            notes.push(
+              `A charter on ${world.name} pays at most a quarter of what the world pays, so ${op.kind.replace(/_/g, ' ')} is worth ${pays} a turn rather than ${yieldPerTurn} — and nothing if ${world.name} is lost.`,
+            );
+          }
+        }
         // Binding yourself to another power is worth something in standing even
         // when no money moves. Without this a commitment with no `incomePerTurn`
         // was entirely inert, and a playtest closed five accords that each

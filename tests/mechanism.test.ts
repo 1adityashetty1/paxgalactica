@@ -57,3 +57,45 @@ describe('the reducer holds a commitment to it', () => {
     expect(r.state.commitments.find((c) => c.kind === 'free_port')!.incomePerTurn).toBe(20);
   });
 });
+
+describe('a declared charter pays from a world (code-knows §7)', () => {
+  const ledger = async (s: WorldState) => (await import('../src/domain/state.js')).ledgerFor(s, 'ojjul').commitmentFlow;
+  const shalka = (s: WorldState) => s.systems.find((x) => x.id === 'ilv-2')!;
+
+  it('is chartered on the world named, and pays a quarter of it at most', async () => {
+    const { systemIncome } = await import('../src/domain/state.js');
+    const r = declare(seed(), [charter({ incomePerTurn: 25, mechanism: 'income', systemId: 'ilv-2' })]);
+    expect(r.rejections).toEqual([]);
+    const c = r.state.commitments.find((x) => x.kind === 'free_port')!;
+    expect(c.atSystemId).toBe('ilv-2');
+    const take = systemIncome(r.state, shalka(r.state)).shares.ojjul ?? 0;
+    const quarter = Math.floor(take / 4);
+    expect(await ledger(r.state)).toBe(Math.min(25, quarter));
+    if (quarter < 25) expect(r.notes.join(' ')).toMatch(/at most a quarter/);
+  });
+
+  it('is chartered on the richest world when none is named, and says so', () => {
+    const r = declare(seed(), [charter({ incomePerTurn: 10, mechanism: 'income' })]);
+    expect(r.state.commitments.find((x) => x.kind === 'free_port')!.atSystemId).toBeDefined();
+    expect(r.notes.join(' ')).toMatch(/chartered on .*richest world/);
+  });
+
+  it('refuses a world its power does not hold', () => {
+    const r = declare(seed(), [charter({ incomePerTurn: 10, mechanism: 'income', systemId: 'tor-2' })]);
+    expect(r.rejections.map((x) => x.code)).toEqual(['no_presence']);
+  });
+
+  it('pays nothing once the world is lost', async () => {
+    const r = declare(seed(), [charter({ incomePerTurn: 10, mechanism: 'income', systemId: 'ilv-2' })]);
+    expect(await ledger(r.state)).toBeGreaterThan(0);
+    shalka(r.state).controllerFactionId = 'vigil';
+    expect(await ledger(r.state)).toBe(0);
+  });
+
+  it('charters nothing for an accord, or for a journal before version 28', () => {
+    const accord = applyOps(seed(), [charter({ incomePerTurn: 20 })], 'extraction', 'ojjul', true, {}, 'accord');
+    expect(accord.state.commitments.find((x) => x.kind === 'free_port')!.atSystemId).toBeUndefined();
+    const old = applyOps(seed(), [charter({ incomePerTurn: 20, mechanism: 'income' })], 'model', 'ojjul', true, { charterOnWorld: false }, 'declared');
+    expect(old.state.commitments.find((x) => x.kind === 'free_port')!.atSystemId).toBeUndefined();
+  });
+});
