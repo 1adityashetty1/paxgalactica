@@ -4294,6 +4294,30 @@ accords replay, as `spawn_event`'s does.
 Measured after every step: every save replays byte-identically and the four
 harness boards stay 5/5/6/5/4 (5/6/6/5/3 at 100 turns without events).
 
+**The first playtest of it** (`docs/playtest-2026-10-19-advisor.md`, audited in
+`docs/audit-2026-10-19.md`) found four holes in it, closed:
+
+- **`post_bounty` is not a reach.** It is the actor's own money in escrow, and
+  §4 had dropped the whole act.
+- **A refused rewrite no longer leaves the false draft alone.** The draft
+  carries what did not land after it (`draftWithCorrection`).
+- **A buyer's concession is not charged for the world it buys.**
+  `concessionWorth` counts only worlds the conceder holds.
+- **The epilogue reads every battle**, not only borders that moved
+  (`battleHistory`, `battlesFought`, `shipsLost`).
+
+A declared `move` must now name its `force` (journal version 29,
+`declaredMovesNameForce`). Six structural problems are written up there and
+left open:
+
+- the arbiter's `establishes` is unbounded;
+- the player's side of a negotiation's record is written by the other party;
+- arrivals are narrated before they are fought;
+- "stand guard" over a third party's orbit is an attack;
+- Meridian's voice tells the counsellor to number its points, which the plan
+  guard forbids;
+- the counsellor reads the board badly and seldom advises.
+
 ## Treaties and agents
 
 Both live in world state (`src/domain/diplomacy.ts`), because both have

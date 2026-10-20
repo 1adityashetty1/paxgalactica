@@ -194,6 +194,9 @@ small disposition shift.
 Specifically:
 
 - **A rejected offer produces nothing.** Not a small version of itself.
+- **A withdrawn term is not accepted**, even if it still stands on the record:
+  a power that said *"we withdraw it"* or *"no deal"* later in the conversation
+  agreed nothing by it, whatever was written down earlier.
 - **An unanswered offer produces nothing.** If the channel closed before the
   other side responded, nothing was agreed.
 - **A conditional promise produces nothing yet.** "If you withdraw from

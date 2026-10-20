@@ -2608,7 +2608,13 @@ export function cappedProse(max: number) {
       if (t.length <= max) return t;
       const cut = t.slice(0, max);
       const stop = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '));
-      return stop > max * 0.75 ? cut.slice(0, stop + 1) : `${cut.slice(0, max - 1)}…`;
+      if (stop > max * 0.75) return cut.slice(0, stop + 1);
+      // Never mid-word: at the last clause, or else the last word, that fits
+      // (playtest 2026-10-19, A1: "the Board will ask you by quarte…").
+      const clause = Math.max(cut.lastIndexOf(', '), cut.lastIndexOf('; '), cut.lastIndexOf(' — '), cut.lastIndexOf(': '));
+      const word = cut.lastIndexOf(' ');
+      const at = clause > max * 0.6 ? clause : word > 0 ? word : max - 1;
+      return `${cut.slice(0, Math.min(at, max - 1)).trimEnd()}…`;
     });
 }
 

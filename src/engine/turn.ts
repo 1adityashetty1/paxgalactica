@@ -34,7 +34,7 @@ import { span } from '../model/telemetry.js';
 import { loadPrompt } from '../model/prompts.js';
 import { createSeedState } from '../seed/scenario.js';
 import { brokeredAccords, honourTreaties, proposeFor } from '../domain/initiative.js';
-import { controlHistory, overrulings } from './journal.js';
+import { battleHistory, controlHistory, overrulings } from './journal.js';
 import { holdToRuling, type RulingBounds } from '../domain/refusals.js';
 import { ACT_WORDS, SWAY_BY_BAND, linesCrossed, type Act, type LineHit } from '../domain/acts.js';
 import { accelerationCost, type FibScale } from '../domain/duration.js';
@@ -594,11 +594,22 @@ export function applyBonus(
  * a ruling filter dropped, a trim or clamp, a correction (§5). Read off the
  * notes the engine and the reducer already write, so nothing new is tracked.
  */
+const DIVERGED = /left out|^Trimmed |rather than|were not begun|could only pay|^Correction:|is not added|moved as far as|Nothing in this batch was applied|^Not enacted|nothing in the accord took effect/;
+
 export function storyDiverged(notes: readonly string[], rejections: readonly unknown[]): boolean {
   if (rejections.length > 0) return true;
-  return notes.some((n) =>
-    /left out|^Trimmed |rather than|were not begun|could only pay|^Correction:|is not added|moved as far as|Nothing in this batch was applied|^Not enacted|nothing in the accord took effect/.test(n),
-  );
+  return notes.some((n) => DIVERGED.test(n));
+}
+
+/**
+ * The draft with what did not land said after it, for when no rewrite can be
+ * had. A refused rewrite used to leave the draft alone — the one story known
+ * to be wrong: "four hundred credits go into escrow" for a bounty that was
+ * left out (playtest 2026-10-19, B3).
+ */
+export function draftWithCorrection(draft: string, notes: readonly string[], rejections: readonly { message?: string }[]): string {
+  const said = [...notes.filter((n) => DIVERGED.test(n)), ...rejections.map((r) => r.message ?? '').filter(Boolean)];
+  return said.length === 0 ? draft : `${draft}\n\nNot as told: ${said.join(' ')}`;
 }
 
 /** What a batch did, one line an op, for the reconcile pass to tell the truth from. */
@@ -631,7 +642,11 @@ async function reconcileStory(
   if (!draft.trim() || !storyDiverged(notes, rejections)) return { narrative: draft, costUsd: 0, reconciled: false };
   const landed = describeLanded(campaign.opsStagedSince(from));
   const out = await reconcileNarrative(draft, landed, notes).catch(() => null);
-  if (!out?.narrative) return { narrative: draft, costUsd: out?.costUsd ?? 0, reconciled: false };
+  if (!out?.narrative) {
+    const corrected = draftWithCorrection(draft, notes, rejections as { message?: string }[]);
+    campaign.rewriteNarrative(from, corrected);
+    return { narrative: corrected, costUsd: out?.costUsd ?? 0, reconciled: false };
+  }
   campaign.rewriteNarrative(from, out.narrative);
   return { narrative: out.narrative, costUsd: out.costUsd, reconciled: true };
 }
@@ -1511,7 +1526,7 @@ export function transfersFromRecord(
     if (amount > 0) ops.push({ op: 'pay', factionId: by, to: otherOf(by), amount, for: 'the terms agreed' });
   }
   for (const [by, ids] of assetsGiven) {
-    for (const assetId of ids) ops.push({ op: 'transfer_asset', assetId, toFactionId: otherOf(by), reason: 'the terms agreed' });
+    for (const assetId of ids) ops.push({ op: 'transfer_asset', assetId, toFactionId: otherOf(by), reason: '(under the terms agreed)' });
   }
   for (const c of agreed) {
     const to = otherOf(c.by);
@@ -2160,6 +2175,7 @@ export async function writeEpilogue(
     campaign.maxTurns ?? state.turn,
     controlHistory(campaign.journal),
     overrulings(campaign.journal),
+    battleHistory(campaign.journal),
   );
 
   const base = {

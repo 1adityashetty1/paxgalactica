@@ -217,9 +217,12 @@ export const CONCESSION_SCALE_MAX = 3;
  * its damage is bounded elsewhere.
  */
 export function concessionWorth(state: WorldState, c: Concession): number {
+  // Only a world the conceder holds is given up by it. A buyer's payment that
+  // names the world it is buying was valued with that world on top, and struck
+  // by the budget three times running (playtest 2026-10-19, B1).
   const worlds = c.systems.reduce((n, id) => {
     const sys = state.systems.find((x) => x.id === id);
-    return n + (sys ? sys.strategicValue * INCOME_PER_STRATEGIC_POINT * DEVELOPMENT_PAYBACK_TURNS : 0);
+    return n + (sys && sys.controllerFactionId === c.by ? sys.strategicValue * INCOME_PER_STRATEGIC_POINT * DEVELOPMENT_PAYBACK_TURNS : 0);
   }, 0);
   const things = c.assets.reduce((n, id) => {
     const asset = (state.assets ?? []).find((a) => a.id === id);

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { isTreatyLive } from '../domain/diplomacy.js';
 import { routeEarnings } from '../domain/trade.js';
-import type { ControlChange, Overruling } from './journal.js';
+import type { BattleRecord, ControlChange, Overruling } from './journal.js';
 import { isDebtLive } from '../domain/debt.js';
 import {
   fleetStrengthOf,
@@ -103,6 +103,8 @@ export function campaignOutcome(
    * `overrulings`. Optional for `history`'s reason; absent reads as none.
    */
   overruled: Readonly<Record<string, Overruling>> = {},
+  /** Every battle each power fought, from `battleHistory`. Absent reads as none. */
+  battles: Readonly<Record<string, BattleRecord>> = {},
 ): CampaignOutcome {
   const nameOf = (id: string): string => getFaction(state, id)?.name ?? id;
   const me = state.playerFactionId;
@@ -188,6 +190,10 @@ export function campaignOutcome(
       credits: f.credits,
       net: ledger.net,
       dissent: f.dissent,
+      battlesFought: Object.entries(battles[f.id]?.fought ?? {})
+        .map(([world, times]) => ({ world, times }))
+        .sort((a, b) => b.times - a.times || a.world.localeCompare(b.world)),
+      shipsLost: battles[f.id]?.shipsLost ?? 0,
       refusals: overruled[f.id]?.refusals ?? 0,
       defiances: overruled[f.id]?.defiances ?? 0,
       // `null`, not 100. A faction holds no disposition toward itself — the
@@ -337,6 +343,14 @@ export const FactionOutcomeSchema = z.object({
    * so the figure at the final bell cannot say this: a power refused on turn 3
    * reads at zero by turn 8. Defaulted, for `took`'s reason.
    */
+  /**
+   * Every world this power fought over, battles that moved no border included,
+   * and the hulls it lost doing so. `contested` names only ground that changed
+   * hands, and an epilogue read "not one of them was ever contested" after
+   * three battles cost Meridian 39 ships (playtest 2026-10-19, D3).
+   */
+  battlesFought: z.array(z.object({ world: z.string(), times: z.number().int() })).default([]),
+  shipsLost: z.number().int().default(0),
   refusals: z.number().int().default(0),
   defiances: z.number().int().default(0),
   /**
@@ -485,6 +499,9 @@ export function serializeOutcome(outcome: CampaignOutcome): string {
       f.took.length === 0 && f.ceded.length === 0
         ? '- no world ever changed hands with this power, in either direction'
         : '',
+      f.battlesFought.length > 0
+        ? `- **battles fought**: ${f.battlesFought.map((b) => (b.times === 1 ? b.world : `${b.world} (${b.times} times)`)).join(', ')}, losing ${f.shipsLost} ${f.shipsLost === 1 ? 'hull' : 'hulls'} in all — true whether or not a border moved; do not write that it was never contested`
+        : '- fought no battle in the whole campaign',
       `- fleet: ${standing(f.fleet, fleets, ['the largest navy in the Rim', 'a middling navy', 'the thinnest navy of any power still standing'])}`,
       `- treasury: ${standing(f.credits, purses, ['the heaviest purse in the Rim', 'comfortable enough', 'the emptiest treasury of any power still standing'])}`,
       f.net > 0

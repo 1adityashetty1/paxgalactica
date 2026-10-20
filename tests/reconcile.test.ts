@@ -83,12 +83,15 @@ describe('a declaration whose ops were trimmed', () => {
     expect(campaign.stagedNarratives().slice(before).find((n) => n)).toBe(outcome.narrative);
   });
 
-  it('keeps the draft when the rewrite invents a number', async () => {
+  it('says what did not land beside the draft when the rewrite invents a number', async () => {
     const campaign = Campaign.start('meridian', 'reconcile-guard');
     queue = script('The yards at Brannix lay down 9999 battleships.');
     const outcome = await submitAction(campaign, 'Lay down eighty battleships at Brannix.');
     expect(calls.map((c) => c.kind)).toContain('reconcile');
-    expect(outcome.narrative).toBe('The yards at Brannix lay down eighty battleships, every berth filled.');
+    expect(outcome.narrative).not.toMatch(/9999/);
+    // The draft is known to be wrong, so it never stands alone (playtest 2026-10-19, B3).
+    expect(outcome.narrative).toMatch(/^The yards at Brannix lay down eighty battleships, every berth filled\.\n\nNot as told: /);
+    expect(campaign.stagedNarratives().find((n) => n)).toBe(outcome.narrative);
   });
 
   it('makes no call when nothing differed', async () => {
