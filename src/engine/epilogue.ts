@@ -479,7 +479,9 @@ export function serializeOutcome(outcome: CampaignOutcome): string {
               : 'its own institutions stood behind it throughout';
     const times = (n: number): string => (n === 1 ? 'once' : n === 2 ? 'twice' : `${n} times`);
     const overruled = [
-      f.refusals > 0 ? `its own institutions refused its orders ${times(f.refusals)}` : '',
+      // "Refused" alone read as grumbling the leader rode over (loop 4: "overruled
+      // three times anyway"); a refused order was never carried out.
+      f.refusals > 0 ? `its own institutions refused its orders ${times(f.refusals)}, and ${f.refusals === 1 ? 'that order was' : 'those orders were'} never carried out` : '',
       f.defiances > 0 ? `its leader overrode their objections ${times(f.defiances)}` : '',
     ].filter(Boolean);
 

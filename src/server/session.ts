@@ -95,7 +95,10 @@ export const SessionSnapshotSchema = z.object({
    * turns running, with no memory of the last (playtest 2026-10-19, loop 3).
    * Not world state: a counsellor's words change nothing in the Rim.
    */
-  lastCounsel: z.object({ turn: z.number().int(), counsel: z.string(), recommendation: z.string().nullable() }).nullable().default(null),
+  lastCounsel: z
+    .object({ turn: z.number().int(), counsel: z.string(), recommendation: z.string().nullable(), followed: z.string().nullable().default(null) })
+    .nullable()
+    .default(null),
 });
 export type SessionSnapshot = z.infer<typeof SessionSnapshotSchema>;
 
@@ -221,7 +224,7 @@ export class GameSession {
 
   /** Numbers declared actions within a turn, for the trace. Reset each turn. */
   private actionSeq = 0;
-  private lastCounsel: { turn: number; counsel: string; recommendation: string | null } | null = null;
+  private lastCounsel: { turn: number; counsel: string; recommendation: string | null; followed: string | null } | null = null;
 
   /** Run a top-level phase of play inside a trace span. */
   private traced<T>(phase: string, work: () => Promise<T>, actionId?: string): Promise<T> {
@@ -583,6 +586,12 @@ export class GameSession {
       () => this.exclusive('Resolving', () => submitAction(campaign, text)),
       actionId,
     );
+    // What became of the first order after the counsel, so the counsellor is not
+    // left to urge the same refused act turn after turn (loop 4: three red-line
+    // refusals and three redirects of one recommendation).
+    if (this.lastCounsel && this.lastCounsel.followed === null) {
+      this.lastCounsel = { ...this.lastCounsel, followed: `"${text.trim().slice(0, 200)}" — ${whatCameOf(outcome)}` };
+    }
     this.pushState();
     return {
       narrative: outcome.narrative,
@@ -640,7 +649,7 @@ export class GameSession {
     const result = await this.traced('advisor', () =>
       this.exclusive('Consulting', () => askAdvisor(campaign.state, campaign.state.playerFactionId, question, this.lastCounsel)),
     );
-    this.lastCounsel = { turn: campaign.state.turn, counsel: result.counsel, recommendation: result.recommendation };
+    this.lastCounsel = { turn: campaign.state.turn, counsel: result.counsel, recommendation: result.recommendation, followed: null };
     campaign.spendActionPoint();
     this.pushState();
     return {
@@ -983,3 +992,19 @@ const BINDING_REASON: Record<StagedBinding, string> = {
   record: 'That is the record of a ruling, not an order, and it cannot be withdrawn.',
   attached: 'That goes with the accord it belongs to: withdraw the accord and it goes too.',
 };
+
+/** One line on what a declaration came to, for the counsellor's memory. */
+function whatCameOf(outcome: {
+  refusal?: { by: string; violated: string } | null;
+  negotiation?: { withFactionIds: string[] } | null;
+  inadmissible?: string | null;
+  outOfActions?: unknown;
+  check?: { outcome: string } | null;
+}): string {
+  if (outcome.refusal) return `refused by ${outcome.refusal.by}, on the line "${outcome.refusal.violated}"`;
+  if (outcome.negotiation) return `turned back: it needs ${outcome.negotiation.withFactionIds.join(' and ')} to agree, so it is a conversation, not an order`;
+  if (outcome.inadmissible) return `could not be attempted: ${outcome.inadmissible}`;
+  if (outcome.outOfActions) return 'not attempted: the turn was spent';
+  if (outcome.check) return `attempted; it came out a ${outcome.check.outcome.replace('_', ' ')}`;
+  return 'carried out';
+}

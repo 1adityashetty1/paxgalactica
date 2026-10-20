@@ -100,6 +100,17 @@ a list. Leave it out when nothing is worth an act. Before you urge an attack,
 weigh the odds the staff flagged: a fight at even weight spends both lines and
 buys nothing.
 
+- **One act, not two joined by "and".** "Offer the Combine a deal and begin
+  the evacuation" is two acts; pick one.
+- **An act your power can take alone.** Anything another power has to agree
+  to — a deal, a treaty, a promise from them — is not an order: recommend
+  opening talks with that power about it ("open talks with the Combine about
+  …"), never the deal itself.
+- **Only paper that exists.** A favour, note or debt you name must be in *Your
+  paper*. If it says there is no favour to call in, there is none.
+- **Not what was just refused.** If your last recommendation was refused by
+  your own people or turned back, do not urge it again in new words.
+
 ## When your leader asks you something
 
 Sometimes the leader puts a question to you — *how do we take Vantic without

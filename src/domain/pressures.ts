@@ -2,6 +2,7 @@ import { buildAdjacency } from './graph.js';
 import { HULL_SPEC, LIFTER_CARRY } from './hulls.js';
 import { statModifier } from './checks.js';
 import { effectiveStats, getFaction, orbitalWeightAt, stackAt, systemIncome, type WorldState } from './state.js';
+import { NOTE_TITLE, isNote } from './diplomacy.js';
 
 /**
  * What presses on a power, computed rather than read (playtest 2026-10-19, S6).
@@ -110,4 +111,38 @@ export function pressuresOn(state: WorldState, me: string): string[] {
   const held = state.systems.filter((s) => s.controllerFactionId === me).map((s) => s.name);
   const header = `Worlds you hold: ${held.join(', ') || 'none'}. A rival's ships in an orbit do not make the world theirs.`;
   return [header, ...[...new Set(out)].slice(0, 10)];
+}
+
+/**
+ * The paper between a power and the others, stated whole, including what it
+ * does not have (playtest 2026-10-19, loop 4). The counsellor urged "your
+ * standing favour with Arkane" three turns running when none existed, and read
+ * a debt to the Combine as a promissory note. Listing every favour, note and
+ * debt — and saying "none" — leaves nothing to invent.
+ */
+export function paperOf(state: WorldState, me: string): string[] {
+  const name = (id: string) => getFaction(state, id)?.name ?? id;
+  const open = state.obligations.filter((o) => o.status === 'open');
+  const owedMe = open.filter((o) => o.holderFactionId === me);
+  const iOwe = open.filter((o) => o.debtorFactionId === me);
+  const notes = state.assets.filter((a) => a.heldBy === me && isNote(a));
+  const debts = state.debts.filter((d) => (d.creditorFactionId === me || d.debtorFactionId === me) && d.balance > 0 && (d.status === 'current' || d.status === 'delinquent'));
+  const out: string[] = [];
+  out.push(
+    owedMe.length > 0
+      ? `Favours owed to you: ${owedMe.map((o) => `${name(o.debtorFactionId)} (${o.strength}) — ${o.text}`).join('; ')}. Calling one in is an order of yours.`
+      : 'Favours owed to you: none. There is no favour to call in with anybody.',
+  );
+  out.push(iOwe.length > 0 ? `Favours you owe: ${iOwe.map((o) => `to ${name(o.holderFactionId)} — ${o.text}`).join('; ')}.` : 'Favours you owe: none.');
+  out.push(
+    notes.length > 0
+      ? `Promissory notes in your hands: ${notes.map((a) => (isNote(a) && a.issuedBy === me ? `your own ${NOTE_TITLE[a.note]} note — yours to give to another power, not to call in` : isNote(a) ? `${name(a.issuedBy)}'s ${NOTE_TITLE[a.note]} note — yours to call in` : a.kind)).join('; ')}.`
+      : 'Promissory notes in your hands: none.',
+  );
+  out.push(
+    debts.length > 0
+      ? `Debts: ${debts.map((d) => (d.debtorFactionId === me ? `you owe ${name(d.creditorFactionId)} ${d.balance}, paid ${d.perTurn} a turn` : `${name(d.debtorFactionId)} owes you ${d.balance}, paid ${d.perTurn} a turn`)).join('; ')}. A debt is not a note.`
+      : 'Debts: none.',
+  );
+  return out;
 }

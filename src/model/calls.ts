@@ -45,7 +45,8 @@ import { concessionBudget, withinBudget } from '../domain/leverage.js';
 import { callStructured } from './client.js';
 import { serializeArchetypes } from '../domain/assets.js';
 import { loadPrompt } from './prompts.js';
-import { pressuresOn } from '../domain/pressures.js';
+import { paperOf, pressuresOn } from '../domain/pressures.js';
+import { ACT_WORDS } from '../domain/acts.js';
 import {
   serializeCharacter,
   serializePrinciples,
@@ -366,7 +367,18 @@ export async function verifyBreachRelevance(
   action: string,
   principle: string,
   kind: 'red_line' | 'compulsion',
+  /**
+   * The power whose line it is. Where its seed tags the line with the acts it
+   * forbids (`Faction.lineActs`), the check is shown that closed list and asked
+   * whether the act is one of them. Loop 4 of the advisor playtest: "will not
+   * repudiate a contract" refused handing Meridian's own note to the Combine
+   * and offering Arkane a seat, three times — neither goes back on anything,
+   * and an open "is this about that" let all three through.
+   */
+  sheet?: { lineActs?: readonly { text: string; forbids: readonly string[] }[] } | null,
 ): Promise<{ relevant: boolean; why: string; costUsd: number }> {
+  const forbids = sheet?.lineActs?.find((t) => t.text === principle)?.forbids ?? [];
+  const named = forbids.map((a) => (ACT_WORDS as Record<string, string>)[a] ?? a.replace(/_/g, ' '));
   const system = [
     'You check one thing and answer nothing else.',
     '',
@@ -398,6 +410,13 @@ export async function verifyBreachRelevance(
       `ACT: ${action}`,
       '',
       `LINE (${kind === 'red_line' ? 'something this power refuses' : 'something its institutions demand'}): ${principle}`,
+      ...(named.length > 0
+        ? [
+            '',
+            `This line forbids exactly these acts, and nothing else: ${named.join('; ')}.`,
+            'Say `relevant: true` only if the act is one of them.',
+          ]
+        : []),
     ].join('\n'),
     schema: BreachRelevanceSchema,
   });
@@ -712,7 +731,7 @@ export async function resolveAction(
   let classified = firstPass;
   let relevant: boolean | null = null;
   if (firstPass) {
-    const check = await verifyBreachRelevance(action, firstPass.principle, firstPass.kind);
+    const check = await verifyBreachRelevance(action, firstPass.principle, firstPass.kind, actor);
     relevanceCost = check.costUsd;
     relevant = check.relevant;
     if (!check.relevant) classified = null;
@@ -1472,7 +1491,7 @@ export async function askAdvisor(
    */
   question?: string,
   /** What the counsellor said last time, so a change of course is said and explained. */
-  last?: { turn: number; counsel: string; recommendation: string | null } | null,
+  last?: { turn: number; counsel: string; recommendation: string | null; followed?: string | null } | null,
 ): Promise<{ counsel: string; recommendation: string | null; attempts: number; costUsd: number }> {
   const faction = getFaction(state, viewerId);
   if (!faction) throw new Error(`No faction ${viewerId}`);
@@ -1494,6 +1513,9 @@ export async function askAdvisor(
             '',
             `> ${last.counsel}`,
             ...(last.recommendation ? ['', `Your recommendation then: ${last.recommendation}`] : []),
+            ...(last.followed
+              ? ['', `What came of the next order your leader gave: ${last.followed}.`, 'An order refused by your own people, or turned back as needing another power, will be refused or turned back again: do not urge it a second time in other words.']
+              : []),
             '',
             'Hold to it unless the board has changed. If your counsel now differs, say so in a clause and say what changed — a counsellor who reverses course without a reason is one the leader stops trusting.',
             '',
@@ -1506,6 +1528,10 @@ export async function askAdvisor(
       ...(pressures.length > 0 ? pressures.map((p) => `- ${p}`) : ['- Nothing massing against you, and no rival in any orbit you hold.']),
       '',
       'Weigh these first: they are the facts most likely to decide the next turns. Anything else you raise must be in the state block below.',
+      '',
+      '## Your paper (computed; complete — what is not listed does not exist)',
+      '',
+      ...paperOf(state, viewerId).map((p) => `- ${p}`),
       '',
       '---',
       '',
