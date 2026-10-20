@@ -214,7 +214,7 @@ describe('the composition tournament shards exactly', () => {
         serial.defenders.map((c) => [c.label, c.wins, c.trials]),
       );
     }
-  });
+  }, 20_000); // CPU-bound: ~3.6s alone, past the 5s default under a full parallel run
 
   it('runs every battle exactly once across the shards', () => {
     // The failure a stride-sharded loop invites: an attacker covered twice, or

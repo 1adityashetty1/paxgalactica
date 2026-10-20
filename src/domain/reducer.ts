@@ -3375,6 +3375,8 @@ export interface LegacyRules {
   pricedWarmth?: boolean;
   /** A declared `move` must name its force. Journal version 29. */
   declaredMovesNameForce?: boolean;
+  /** A levy on a world already at its garrison ceiling is left out at no cost. Journal version 30. */
+  fullBarracksRefused?: boolean;
   /**
    * Officers come off a power's **Lists** — one of each school always waiting
    * — and only by appointment: no successor is put in post when the last one
@@ -3645,6 +3647,7 @@ function applyOpsUnderRules(
     honestYardNote = true,
     pricedWarmth = true,
     declaredMovesNameForce = true,
+    fullBarracksRefused = true,
   } = legacy;
   const state = cloneState(input);
   // Worlds a fleet landed on at once this batch, as `faction:system`: a move out
@@ -4031,6 +4034,20 @@ function applyOpsUnderRules(
       // A declared move names what sails (journal version 29). With no force
       // the whole port went, and "the battle line" took its lifters and
       // freighter into the fight (playtest 2026-10-19, B6).
+      // A levy on a world whose barracks are full raises nobody: it was taken,
+      // charged and reported "already full" two turns later, for the player
+      // and for a bot alike (playtest 2026-10-19, loop 2). Left out, at no
+      // cost, with the way to raise the ceiling (journal version 30).
+      if (fullBarracksRefused && op.op === 'raise_garrison') {
+        const levy = op as { systemId: string; factionId: string };
+        const where = state.systems.find((x) => x.id === levy.systemId);
+        if (where && where.garrison >= where.garrisonMax) {
+          const note = `${where.name}'s barracks are already full (${where.garrison}/${where.garrisonMax}): no levy is raised and nothing is spent. Fortify it to raise the ceiling.`;
+          notes.push(note);
+          logEvent(state, 'clamp', note, actor ?? levy.factionId);
+          continue;
+        }
+      }
       if (declaredMovesNameForce && path === 'declared' && op.op === 'move' && op.force === undefined) {
         reject(raw, 'illegal_value', 'A declared move names what sails: give `force` — the classes and counts the player sent, or every hull at the origin if they sent everything.');
         continue;

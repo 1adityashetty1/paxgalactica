@@ -1420,7 +1420,7 @@ export const AdvisorReplySchema = z.object({
    * names. The prose has to carry it, and the refine below is what stops the
    * prose becoming the list anyway.
    */
-  counsel: cappedProse(560)
+  counsel: cappedProse(640)
     .refine((c) => !looksLikeAPlan(c), {
       message:
         'This is a plan, not counsel. Do not enumerate steps or list actions — name what is pressing on your leader, in your own voice, and let them decide what to do about it.',

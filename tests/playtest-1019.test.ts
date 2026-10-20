@@ -77,7 +77,7 @@ describe('D3: the epilogue knows the battles that moved no border', () => {
 
     const text = serializeOutcome(campaignOutcome(campaign.state, createSeedState('meridian'), 10, [], {}, battles));
     const meridian = text.slice(text.indexOf('(`meridian`)'), text.indexOf('(`vigil`)'));
-    expect(meridian).toMatch(/battles fought\*\*: Torrek Anchorage/);
+    expect(meridian).toMatch(/battles fought\*\*: defended Torrek Anchorage \(its own world\) once/);
     expect(text.slice(text.indexOf('(`ojjul`)'))).toMatch(/fought no battle/);
   });
 });

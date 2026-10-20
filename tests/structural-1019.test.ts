@@ -121,7 +121,7 @@ describe('S6: what presses on a power', () => {
     s = applyOps(s, [{ op: 'adjust_ships', factionId: 'vigil', systemId: 'tor-3', delta: 11, hull: 'lifter' }], 'engine').state;
     s.systems.find((x) => x.id === 'tor-1')!.ships.vigil = { battleship: 7 };
     const flagged = pressuresOn(s, 'meridian').join('\n');
-    expect(flagged).toMatch(/Iron Vigil Remnant has lift for \d+ troops on or a jump from Torrek Anchorage/);
+    expect(flagged).toMatch(/Iron Vigil Remnant has lift for \d+ troops within reach of Torrek Anchorage \(.*\d+ at Vantic, a jump away\); none of it has sailed/);
     expect(flagged).toMatch(/in the orbit of Torrek Anchorage, a world you hold \(garrison \d+, yours\)/);
   });
 });

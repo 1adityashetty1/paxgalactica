@@ -432,6 +432,33 @@ export function boundPayloadsToOutcome(
   const notes: string[] = [...builtNotes];
   const failed = outcome === 'failure' || outcome === 'critical_failure';
 
+  // An open build is held to the band as work is: a partial lays down half, a
+  // failure lays down nothing and costs nothing. A partial industry check
+  // delivered all five battleships it was rolled for, which made the roll a
+  // formality (playtest 2026-10-19, loop 2). A yard programme is work already
+  // and is bounded with the payloads below.
+  {
+    const bounded: unknown[] = [];
+    let touched = false;
+    for (const op of ops) {
+      const o = op && typeof op === 'object' ? (op as Record<string, unknown>) : null;
+      if (o === null || o.op !== 'build_ships' || o.programme === true || typeof o.count !== 'number') {
+        bounded.push(op);
+        continue;
+      }
+      touched = true;
+      const hull = String(o.hull ?? 'battleship').replace(/_/g, ' ');
+      if (failed) {
+        notes.push(`The yards lay down nothing: the attempt to build ${o.count} ${hull}s failed, and nothing is spent on it.`);
+        continue;
+      }
+      const half = Math.max(1, Math.floor(o.count / 2));
+      if (half < o.count) notes.push(`A partial result: the yards lay down ${half} ${hull}s rather than ${o.count}.`);
+      bounded.push({ ...o, count: half });
+    }
+    if (touched) ops = bounded;
+  }
+
   // An operative placed on a failed attempt.
   //
   // This pass bounded `onComplete` payloads and nothing else, so a

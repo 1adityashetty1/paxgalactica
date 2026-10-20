@@ -20,7 +20,7 @@ export function pressuresOn(state: WorldState, me: string): string[] {
 
   for (const world of state.systems.filter((s) => s.controllerFactionId === me)) {
     const mine = orbitalWeightAt(world, me) / be;
-    const rivals = new Map<string, { line: number; troops: number; over: number }>();
+    const rivals = new Map<string, { line: number; troops: number; over: number; staged: Map<string, number> }>();
     for (const id of [world.id, ...(adjacency.get(world.id) ?? [])]) {
       const sys = byId.get(id);
       if (!sys) continue;
@@ -29,10 +29,12 @@ export function pressuresOn(state: WorldState, me: string): string[] {
         // orbit is still named, whatever it thinks of you.
         if (f === me) continue;
         if (id !== world.id && (getFaction(state, f)?.disposition[me] ?? 0) > 0) continue;
-        const row = rivals.get(f) ?? { line: 0, troops: 0, over: 0 };
+        const row = rivals.get(f) ?? { line: 0, troops: 0, over: 0, staged: new Map<string, number>() };
         const line = orbitalWeightAt(sys, f) / be;
         row.line += line;
-        row.troops += (stackAt(sys, f).lifter ?? 0) * LIFTER_CARRY;
+        const lift = (stackAt(sys, f).lifter ?? 0) * LIFTER_CARRY;
+        row.troops += lift;
+        if (lift > 0) row.staged.set(sys.name, (row.staged.get(sys.name) ?? 0) + lift);
         if (id === world.id) row.over += line;
         rivals.set(f, row);
       }
@@ -45,7 +47,16 @@ export function pressuresOn(state: WorldState, me: string): string[] {
         );
       }
       if (r.troops > world.garrison) {
-        out.push(`${name(f)} has lift for ${r.troops} troops on or a jump from ${world.name}, against your garrison of ${world.garrison} there.`);
+        // Where the lift stands, and that it has not sailed; and what is on
+        // the world's side too. A counsellor read "on or a jump from" as "is
+        // moving to", invented a landing date, and weighed it against the
+        // garrison alone while 36 troops of the player's own lift and nine
+        // battleships stood over the world (playtest 2026-10-19, loop 2).
+        const where = [...r.staged].map(([at, n]) => (at === world.name ? `${n} in its orbit` : `${n} at ${at}, a jump away`)).join(' and ');
+        const ownLift = (stackAt(world, me).lifter ?? 0) * LIFTER_CARRY;
+        out.push(
+          `${name(f)} has lift for ${r.troops} troops within reach of ${world.name} (${where}); none of it has sailed, and nothing says when it will. On ${world.name}'s side: your garrison of ${world.garrison}, your own lift for ${ownLift} troops, and ${mine.toFixed(1)} battleships' weight in its orbit.`,
+        );
       } else if (r.line > Math.max(mine, 0.5) * 1.5 && r.over === 0) {
         out.push(`${name(f)} has ${r.line.toFixed(1)} battleships' weight within a jump of ${world.name}, against your ${mine.toFixed(1)} there.`);
       }

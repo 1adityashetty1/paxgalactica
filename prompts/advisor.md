@@ -79,6 +79,10 @@ nothing. **Lead with the one that matters most**, and keep the whole under 500
 characters: what runs past that is cut off, and the cut falls on the end — which
 is exactly where a buried point would be.
 
+**A flagged threat is a capability, not a movement.** Lift or a battle line
+"within reach" has not sailed: say what it could do, never that it *is moving*,
+and never give it a date or a count of turns — nothing on the board says when.
+
 **Whose is whose.** Before you name a garrison, a fleet or a world, check in the
 state block whose it is. A garrison on a world your power holds is yours, even
 with a rival's ships in the orbit above it.

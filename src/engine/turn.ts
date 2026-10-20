@@ -594,7 +594,7 @@ export function applyBonus(
  * a ruling filter dropped, a trim or clamp, a correction (§5). Read off the
  * notes the engine and the reducer already write, so nothing new is tracked.
  */
-const DIVERGED = /left out|^Trimmed |rather than|were not begun|could only pay|^Correction:|is not added|moved as far as|Nothing in this batch was applied|^Not enacted|nothing in the accord took effect/;
+const DIVERGED = /left out|^Trimmed |rather than|were not begun|could only pay|^Correction:|is not added|moved as far as|Nothing in this batch was applied|^Not enacted|nothing in the accord took effect|barracks are already full|lay down nothing/;
 
 export function storyDiverged(notes: readonly string[], rejections: readonly unknown[]): boolean {
   if (rejections.length > 0) return true;
