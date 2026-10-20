@@ -372,12 +372,12 @@ export function useGame() {
   );
 
   const talk = useCallback(
-    (factionId: string, text: string) =>
+    (factionId: string, text: string, strike: string[] = []) =>
       guard(async () => {
         const name = view?.state.factions.find((f) => f.id === factionId)?.name ?? factionId;
         const color = view?.state.factions.find((f) => f.id === factionId)?.displayColor;
         say(`You → ${name}: ${text}`, 'you');
-        const { reply } = await api.talk(factionId, text);
+        const { reply } = await api.talk(factionId, text, strike);
         say(`${name}: ${reply}`, 'faction', color);
       }),
     [guard, say, view],

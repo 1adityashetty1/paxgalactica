@@ -445,6 +445,8 @@ export function replay(
       // A defence pact lent hulls to every battle, drawn from anywhere in loss
       // order, and never put the ally at war with the attacker.
       callToArms: parsed.version >= 19,
+      // A guard over unaligned ground fought whoever already stood there.
+      stationBesidePeers: parsed.version >= 29,
     },
   };
 

@@ -752,6 +752,7 @@ export class GameSession {
   async talk(
     factionId: string,
     text: string,
+    strike: readonly string[] = [],
   ): Promise<{
     reply: string;
     concessions: Concession[];
@@ -795,7 +796,17 @@ export class GameSession {
       );
     }
 
-    this.channelHistory.push({ speaker: 'player', text });
+    // The player's own withdrawals, applied in code before the other power
+    // answers, and said in the message so the persona reads them (S2).
+    const me = campaign.state.playerFactionId;
+    const struck = this.channelConcessions.filter((c) => c.by === me && strike.includes(c.kind));
+    if (struck.length > 0) {
+      this.channelConcessions = this.channelConcessions.filter((c) => !struck.includes(c));
+      const gone = new Set(struck.map((c) => c.text));
+      this.channelBlockers = this.channelBlockers.filter((b) => !gone.has(b.concession));
+    }
+    const said = struck.length > 0 ? `${text}\n\n(Withdrawn from our side of the record: ${struck.map((c) => c.text).join('; ')}.)` : text;
+    this.channelHistory.push({ speaker: 'player', text: said });
 
     const { result, rulings } = await this.traced('talk', async () => {
       const result = await this.exclusive(`${faction.name} considers`, async () =>

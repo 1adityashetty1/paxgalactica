@@ -144,16 +144,33 @@ export function prizesAsRuled(
  * mechanism that ruling chose, which the reducer then holds it to. A
  * commitment the arbiter never ruled is dropped.
  */
+/** Ops whose act already has a mechanism, so a record commitment beside them is a duplicate. */
+const ACT_HAS_A_HOME = new Set([
+  'move', 'fortify', 'raise_garrison', 'develop', 'found_fixture', 'repair_fixture', 'send_envoy',
+  'blockade', 'raid', 'sweep', 'build_ships', 'suborn_crews', 'scuttle_ships', 'post_bounty',
+  'issue_ultimatum', 'back_ultimatum', 'deploy_agent', 'lay_groundwork', 'set_toll_policy', 'pay', 'gift',
+]);
+
 export function commitmentsAsRuled(
   ops: readonly unknown[],
   establishes: { kind: string; mechanism?: string } | undefined,
 ): { ops: unknown[]; dropped: string[] } {
   const kept: unknown[] = [];
   const dropped: string[] = [];
+  // A record and nothing more is redundant beside an act that already has a
+  // mechanism: the order, the bounty or the ultimatum IS the record. Three
+  // ordinary acts minted one each in one campaign — a fortification, a fleet
+  // movement, a bounty — and every later reader took them for promises
+  // (playtest 2026-10-19, S1).
+  const expressed = ops.some((op) => ACT_HAS_A_HOME.has((op as { op?: string } | null)?.op ?? ''));
   for (const op of ops) {
     const o = op as { op?: string; kind?: string } | null;
     if (o?.op !== 'establish_commitment') {
       kept.push(op);
+      continue;
+    }
+    if (expressed && (establishes?.mechanism ?? 'record') === 'record') {
+      dropped.push(o.kind ?? 'an arrangement');
       continue;
     }
     if (!establishes || o.kind !== establishes.kind) {

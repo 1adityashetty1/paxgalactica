@@ -4307,8 +4307,20 @@ harness boards stay 5/5/6/5/4 (5/6/6/5/3 at 100 turns without events).
   (`battleHistory`, `battlesFought`, `shipsLost`).
 
 A declared `move` must now name its `force` (journal version 29,
-`declaredMovesNameForce`). Six structural problems are written up there and
-left open:
+`declaredMovesNameForce`). The six structural problems the audit found are
+then built in a second pass, described there:
+
+- a record commitment beside an act with a mechanism is dropped, and a
+  one-party record is served as policy, not a promise;
+- the player strikes their own terms in a channel (`strike`, and a withdraw
+  button);
+- reactions are told what sailed, not a battle not yet fought;
+- a fleet with no lift over unaligned ground takes station beside powers it is
+  at peace with (`stationBesidePeers`, v29);
+- the counsellor's voice loses the rule to number its points;
+- `pressuresOn` hands the counsellor the threats and costs on the board.
+
+The six, as found:
 
 - the arbiter's `establishes` is unbounded;
 - the player's side of a negotiation's record is written by the other party;

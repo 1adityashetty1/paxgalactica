@@ -133,8 +133,8 @@ async function route(
 
   const talk = matchFaction(path, '/api/talk/');
   if (method === 'POST' && talk) {
-    const { text } = parseBody(TalkRequestSchema, body);
-    return ok(await session.talk(talk, text));
+    const { text, strike } = parseBody(TalkRequestSchema, body);
+    return ok(await session.talk(talk, text, strike));
   }
 
   const endtalk = matchFaction(path, '/api/endtalk/');

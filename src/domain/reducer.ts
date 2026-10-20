@@ -3471,6 +3471,12 @@ export interface LegacyRules {
  * battles are fought as they were.
  */
 export interface BattleRules {
+  /**
+   * A fleet with no lift aboard arriving over unaligned ground where only
+   * powers it is at peace with stand takes station beside them rather than
+   * fighting them. Journal version 29 (playtest 2026-10-19, S4).
+   */
+  stationBesidePeers?: boolean;
   /** An officer who sails between your own worlds is placed on arrival rather than stranded. */
   officerHomecoming?: boolean;
   /** An attacker's hulls already parked on the target join its attack. */
@@ -12660,6 +12666,7 @@ function resolveBattle(
     officersFallWithFleet = true,
     callToArms = true,
     assetsGoWithWorld: worldTakesAssets = true,
+    stationBesidePeers = true,
   } = rules;
   const target = state.systems.find((s) => s.id === systemId);
   if (!target) {
@@ -12824,10 +12831,29 @@ function resolveBattle(
   // case a fleet could not be stationed in friendly space at all: any movement
   // into a partner's system was resolved as an attack on them, which made the
   // treaty type unusable rather than merely inert.
+  // Over ground nobody holds, a fleet carrying no troops cannot be taking the
+  // world, and the powers already there are not its enemies: it stands guard
+  // beside them. "Protect Sennex, not take it" was fought as an assault on
+  // Arkane, a power on good terms with the sender, and both squadrons died
+  // (playtest 2026-10-19, S4). At war with anybody present, or with lift
+  // aboard, it is an arrival like any other.
+  const atPeace = (a: string, b: string): boolean => {
+    const fa = state.factions.find((f) => f.id === a);
+    const fb = state.factions.find((f) => f.id === b);
+    return (fa?.disposition[b] ?? 0) > WAR_DISPOSITION_THRESHOLD && (fb?.disposition[a] ?? 0) > WAR_DISPOSITION_THRESHOLD;
+  };
+  const stations = (id: string): boolean =>
+    stationBesidePeers &&
+    holder === null &&
+    (arriving.get(id)?.lifter ?? 0) === 0 &&
+    presentAt(target).some(([other, n]) => n > 0 && other !== id) &&
+    presentAt(target).every(([other, n]) => n === 0 || other === id || atPeace(id, other)) &&
+    [...arriving.keys()].every((other) => other === id || atPeace(id, other));
   const guest = (id: string): boolean =>
-    holder !== null &&
-    id !== holder &&
-    treatyBetween(state.treaties, state.turn, id, holder, ['basing_rights']) !== undefined;
+    stations(id) ||
+    (holder !== null &&
+      id !== holder &&
+      treatyBetween(state.treaties, state.turn, id, holder, ['basing_rights']) !== undefined);
 
   /**
    * Rivals sitting in orbit over a world they do not hold.
@@ -12872,7 +12898,9 @@ function resolveBattle(
     const note =
       guests.length > 0 && holder !== null
         ? `${guests.map(([id]) => nameOf(id)).join(' and ')} puts in at ${target.name} under basing rights.`
-        : `${who} reinforces ${target.name}.`;
+        : guests.length > 0
+          ? `${guests.map(([id]) => nameOf(id)).join(' and ')} takes station over ${target.name} beside the ships already there.`
+          : `${who} reinforces ${target.name}.`;
     // **The officers who sailed get off the ship.** This is the third exit found
     // to strand one, after the unopposed walk-in and `cancel_order`, and it is
     // the commonest of the three: moving a fleet between your OWN worlds takes

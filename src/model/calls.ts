@@ -45,6 +45,7 @@ import { concessionBudget, withinBudget } from '../domain/leverage.js';
 import { callStructured } from './client.js';
 import { serializeArchetypes } from '../domain/assets.js';
 import { loadPrompt } from './prompts.js';
+import { pressuresOn } from '../domain/pressures.js';
 import {
   serializeCharacter,
   serializePrinciples,
@@ -1460,6 +1461,7 @@ export async function askAdvisor(
   const faction = getFaction(state, viewerId);
   if (!faction) throw new Error(`No faction ${viewerId}`);
   const asked = question?.trim();
+  const pressures = pressuresOn(state, viewerId);
 
   const res = await callStructured({
     kind: 'advisor',
@@ -1470,9 +1472,17 @@ export async function askAdvisor(
       '',
       '---',
       '',
+      '## What your staff has flagged (computed from the board; true)',
+      '',
+      ...(pressures.length > 0 ? pressures.map((p) => `- ${p}`) : ['- Nothing massing against you, and no rival in any orbit you hold.']),
+      '',
+      'Weigh these first: they are the facts most likely to decide the next turns. Anything else you raise must be in the state block below.',
+      '',
+      '---',
+      '',
       '## The voice you speak in',
       '',
-      serializeCharacter(faction),
+      serializeCharacter(faction, { enumerates: false }),
       '',
       '---',
       '',
