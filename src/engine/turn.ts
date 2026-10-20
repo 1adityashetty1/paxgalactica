@@ -638,9 +638,19 @@ async function reconcileStory(
   draft: string,
   notes: readonly string[],
   rejections: readonly unknown[],
+  /** Orders that existed before this act, so the ones it began can be timed. */
+  ordersBefore?: ReadonlySet<string>,
 ): Promise<{ narrative: string; costUsd: number; reconciled: boolean }> {
-  if (!draft.trim() || !storyDiverged(notes, rejections)) return { narrative: draft, costUsd: 0, reconciled: false };
-  const landed = describeLanded(campaign.opsStagedSince(from));
+  // The story is written before the engine knows when anything lands. A
+  // two-jump reinforcement "already in orbit", a ceiling that "rises" three
+  // turns early, an open build that "will take time" (playtest 2026-10-19,
+  // loop 2, L5). Whenever the act began work that runs over turns, the pass is
+  // handed the timing and checks the tense.
+  const timing = ordersBefore ? timingOf(campaign, ordersBefore) : [];
+  if (!draft.trim() || (!storyDiverged(notes, rejections) && timing.length === 0)) {
+    return { narrative: draft, costUsd: 0, reconciled: false };
+  }
+  const landed = [describeLanded(campaign.opsStagedSince(from)), ...timing].filter(Boolean).join('\n');
   const out = await reconcileNarrative(draft, landed, notes).catch(() => null);
   if (!out?.narrative) {
     const corrected = draftWithCorrection(draft, notes, rejections as { message?: string }[]);
@@ -649,6 +659,18 @@ async function reconcileStory(
   }
   campaign.rewriteNarrative(from, out.narrative);
   return { narrative: out.narrative, costUsd: out.costUsd, reconciled: true };
+}
+
+/** When each order the act began will land, said plainly for the reconcile pass. */
+function timingOf(campaign: Campaign, ordersBefore: ReadonlySet<string>): string[] {
+  const me = campaign.state.playerFactionId;
+  return campaign.state.pendingOrders
+    .filter((o) => o.factionId === me && !ordersBefore.has(o.id))
+    .map((o) => {
+      const left = o.durationTurns - o.progress;
+      const where = campaign.state.systems.find((x) => x.id === o.targetId)?.name ?? o.targetId;
+      return `- TIMING: "${o.label}" at ${where} has only begun; it ${isMovementType(o.type) ? 'arrives' : 'completes'} in ${left} turn${left === 1 ? '' : 's'}, not now.`;
+    });
 }
 
 /** A crossing said as the institutions would say it. */
@@ -1013,6 +1035,7 @@ export async function submitAction(campaign: Campaign, action: string): Promise<
     resolution.output.narrative,
     [...resolution.notes, ...staged.notes],
     staged.rejections,
+    ordersBefore,
   );
 
   return {

@@ -8426,8 +8426,11 @@ gets back the answer it already gave, which is the confirmation bias
 and code does lookups. One marker is not enough to fire, because a single dash
 mid-sentence is ordinary speech and rejecting it would cost a retry every time.
 
-`AdvisorReplySchema` has **one field and no second one**, and that is the other
-half. A `pressures: []` beside the prose would render as a checklist however it
+`AdvisorReplySchema` had **one field and no second one**, and that was the other
+half. It now carries an optional `recommendation`: one sentence naming a single
+act, held to the same guards and refused as a sequence ("then", a list). The
+counsel alone named problems and left the move implicit on three turns in ten
+(playtest 2026-10-19, loop 2). A `pressures: []` beside the prose would render as a checklist however it
 was worded, and a checklist is a queue of instructions wearing a different
 label.
 

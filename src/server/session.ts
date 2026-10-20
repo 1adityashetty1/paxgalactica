@@ -619,6 +619,7 @@ export class GameSession {
     if (campaign.actionPointsLeft <= 0) {
       return {
         counsel: `There is no more of the day to spend, ${faction?.title ?? 'Commander'}. Let the turn close.`,
+        recommendation: null,
         speaker: faction?.name ?? campaign.state.playerFactionId,
         title: faction?.title ?? 'Commander',
         outOfActions: { perTurn: ACTION_POINTS_PER_TURN },
@@ -633,6 +634,7 @@ export class GameSession {
     this.pushState();
     return {
       counsel: result.counsel,
+      recommendation: result.recommendation,
       speaker: faction?.name ?? campaign.state.playerFactionId,
       title: faction?.title ?? 'Commander',
       outOfActions: null,

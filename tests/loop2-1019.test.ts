@@ -35,3 +35,22 @@ describe('an open build is held to the band', () => {
     expect(boundPayloadsToOutcome([build], 'success').ops).toEqual([build]);
   });
 });
+
+describe('structural fixes from loop 2', async () => {
+  const { pressuresOn } = await import('../src/domain/pressures.js');
+  const { AdvisorReplySchema } = await import('../src/model/calls.js');
+
+  it('L9: the staff flags the odds of attacking a hostile base, in the battle’s own reckoning', () => {
+    const s = createSeedState('meridian');
+    const flagged = pressuresOn(s, 'meridian').join('\n');
+    expect(flagged).toMatch(/An attack on (Kalzir|Vantic) \(Iron Vigil Remnant\) with what stands at Torrek Anchorage would be [\d.]+:1/);
+    expect(flagged).toMatch(/it never breaks off/);
+  });
+
+  it('L8: the counsellor may recommend one act, never a sequence', () => {
+    const counsel = 'Chief Executive, the Vigil has lift a jump from Torrek.';
+    expect(AdvisorReplySchema.safeParse({ counsel, recommendation: 'Raise the walls at Torrek Anchorage.' }).success).toBe(true);
+    expect(AdvisorReplySchema.safeParse({ counsel, recommendation: 'Raise the walls at Torrek, then strike Kalzir.' }).success).toBe(false);
+    expect(AdvisorReplySchema.safeParse({ counsel }).success).toBe(true);
+  });
+});

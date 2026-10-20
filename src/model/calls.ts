@@ -1429,6 +1429,19 @@ export const AdvisorReplySchema = z.object({
       message:
         'This speaks of turns, action points, difficulty or dice. You are inside the fiction: say "last month", "soon", "it will not be easy" — never the game\'s own terms.',
     }),
+  /**
+   * One act the counsellor would take, if any: a single sentence, never a
+   * sequence. The counsel alone named problems and left the move implicit on
+   * three turns in ten, so a player following it had nothing to follow
+   * (playtest 2026-10-19, loop 2, L8). Held to the same guards, so it cannot
+   * become the plan the counsel is forbidden to be.
+   */
+  recommendation: cappedProse(220)
+    .refine((c) => !looksLikeAPlan(c) && !/\b(?:then|after that|next)\b/i.test(c), {
+      message: 'One act, not a sequence: name the single thing you would do, with no "then" and no list.',
+    })
+    .refine((c) => !breaksTheFourthWall(c), { message: 'Stay in the fiction: no turns, action points, difficulties or dice.' })
+    .optional()
 });
 export type AdvisorReply = z.infer<typeof AdvisorReplySchema>;
 
@@ -1457,7 +1470,7 @@ export async function askAdvisor(
    * Vantic" is answered with what holds Vantic, not with an order of march.
    */
   question?: string,
-): Promise<{ counsel: string; attempts: number; costUsd: number }> {
+): Promise<{ counsel: string; recommendation: string | null; attempts: number; costUsd: number }> {
   const faction = getFaction(state, viewerId);
   if (!faction) throw new Error(`No faction ${viewerId}`);
   const asked = question?.trim();
@@ -1512,7 +1525,7 @@ export async function askAdvisor(
     ].join('\n'),
     schema: AdvisorReplySchema,
   });
-  return { counsel: res.value.counsel, attempts: res.attempts, costUsd: res.costUsd };
+  return { counsel: res.value.counsel, recommendation: res.value.recommendation ?? null, attempts: res.attempts, costUsd: res.costUsd };
 }
 
 /**

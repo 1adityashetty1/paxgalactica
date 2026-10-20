@@ -1,6 +1,7 @@
 import { buildAdjacency } from './graph.js';
 import { HULL_SPEC, LIFTER_CARRY } from './hulls.js';
-import { getFaction, orbitalWeightAt, stackAt, systemIncome, type WorldState } from './state.js';
+import { statModifier } from './checks.js';
+import { effectiveStats, getFaction, orbitalWeightAt, stackAt, systemIncome, type WorldState } from './state.js';
 
 /**
  * What presses on a power, computed rather than read (playtest 2026-10-19, S6).
@@ -62,5 +63,38 @@ export function pressuresOn(state: WorldState, me: string): string[] {
       }
     }
   }
-  return [...new Set(out)].slice(0, 8);
+  // The odds of the obvious answer. Twice a player who followed the counsel
+  // attacked at even weight and both lines died — 21 against 19, 17 against 18
+  // (playtest 2026-10-19, loop 2, L9). The exchange's own arithmetic: weight
+  // times one plus a twentieth of the might modifier, and 2:1 to break the
+  // defender off.
+  const might = (f: string) => 1 + statModifier(effectiveStats(state, f, { seenBy: me }).might) / 20;
+  for (const world of state.systems.filter((s) => s.controllerFactionId === me)) {
+    const mine = (orbitalWeightAt(world, me) / be) * might(me);
+    if (mine <= 0) continue;
+    for (const id of adjacency.get(world.id) ?? []) {
+      const base = byId.get(id);
+      const holder = base?.controllerFactionId;
+      if (!base || !holder || holder === me) continue;
+      const them = getFaction(state, holder);
+      // Only a power that dislikes you: odds against a near-neutral read as an invitation.
+      if (!them || (them.disposition[me] ?? 0) > -25) continue;
+      const theirs = (orbitalWeightAt(base, holder) / be) * might(holder);
+      if (theirs <= 0) continue;
+      const ratio = mine / theirs;
+      const holds = them.warEthic === 'crusading' ? ', and it never breaks off' : '';
+      const verdict =
+        ratio >= 2 && !holds
+          ? 'enough that its line would break off'
+          : ratio >= 1.5
+            ? 'a win that costs a large part of your line'
+            : ratio >= 1
+              ? 'an even exchange: both lines would be spent and nothing taken'
+              : 'too little: your line would be driven off';
+      out.push(
+        `An attack on ${base.name} (${name(holder)}) with what stands at ${world.name} would be ${ratio.toFixed(1)}:1 in the battle's own reckoning — ${verdict}${holds}.`,
+      );
+    }
+  }
+  return [...new Set(out)].slice(0, 10);
 }
