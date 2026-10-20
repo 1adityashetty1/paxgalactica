@@ -3373,6 +3373,8 @@ export interface LegacyRules {
    * (`docs/design-2026-10-18-code-knows.md` §8). Journal version 28.
    */
   pricedWarmth?: boolean;
+  /** A declared `move` must name its force. Journal version 29. */
+  declaredMovesNameForce?: boolean;
   /**
    * Officers come off a power's **Lists** — one of each school always waiting
    * — and only by appointment: no successor is put in post when the last one
@@ -3636,6 +3638,7 @@ function applyOpsUnderRules(
     counterpartyTolls = true,
     honestYardNote = true,
     pricedWarmth = true,
+    declaredMovesNameForce = true,
   } = legacy;
   const state = cloneState(input);
   // Worlds a fleet landed on at once this batch, as `faction:system`: a move out
@@ -4017,6 +4020,13 @@ function applyOpsUnderRules(
     if (op.op !== 'issue_order') {
       if (op.op === 'build_ships' && op.programme && op.systemId === undefined) {
         reject(raw, 'illegal_value', 'A yard programme is laid down at a named world: give `systemId`.');
+        continue;
+      }
+      // A declared move names what sails (journal version 29). With no force
+      // the whole port went, and "the battle line" took its lifters and
+      // freighter into the fight (playtest 2026-10-19, B6).
+      if (declaredMovesNameForce && path === 'declared' && op.op === 'move' && op.force === undefined) {
+        reject(raw, 'illegal_value', 'A declared move names what sails: give `force` — the classes and counts the player sent, or every hull at the origin if they sent everything.');
         continue;
       }
       const asOrder = orderFor(op);

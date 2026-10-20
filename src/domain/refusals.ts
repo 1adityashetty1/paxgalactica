@@ -238,7 +238,6 @@ export function reachOf(op: unknown, foreignOrders: readonly string[]): Reach | 
       return 'their_paper';
     case 'issue_ultimatum':
     case 'back_ultimatum':
-    case 'post_bounty':
     case 'publish_dossier':
     case 'blackmail':
       return 'coercion';

@@ -52,7 +52,7 @@ describe('the engine builds the transfers the record names', () => {
       'vigil',
     );
     expect(built.ops).toContainEqual({ op: 'pay', factionId: 'meridian', to: 'vigil', amount: 500, for: 'the terms agreed' });
-    expect(built.ops).toContainEqual({ op: 'transfer_asset', assetId: 'ast-0-1', toFactionId: 'meridian', reason: 'the terms agreed' });
+    expect(built.ops).toContainEqual({ op: 'transfer_asset', assetId: 'ast-0-1', toFactionId: 'meridian', reason: '(under the terms agreed)' });
     const lift = transfersFromRecord(s, [c('ojjul', 'toll_lift', { lifts: ['meridian'], liftTurns: 5 })], 'meridian', 'ojjul');
     expect(lift.ops).toEqual([{ op: 'set_toll_policy', factionId: 'ojjul', targets: ['vigil', 'freeworlds', 'drajk'], forTurns: 5 }]);
     // Only the two powers at the table: a third power's term builds nothing.

@@ -403,7 +403,7 @@ about another power's affairs rather than the actor's own:
 | `their_orders` | standing down, delaying or hurrying another power's order |
 | `their_ships` | turning another power's crews |
 | `their_paper` | breaking a treaty, refusing a favour or a loan, calling a favour in |
-| `coercion` | an ultimatum, backing one, a bounty, publishing proof, blackmail |
+| `coercion` | an ultimatum, backing one, publishing proof, blackmail |
 
 **Almost every act reaches nothing**: building, moving, fortifying, the court,
 an envoy, a payment, and even an attack — a fleet that sails at a rival is met

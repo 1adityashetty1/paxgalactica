@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { applyOps, tickTurn, type LegacyRules } from '../domain/reducer.js';
+import { applyOps, tickTurn, type LegacyRules, type TurnReport } from '../domain/reducer.js';
 import { OP_PATHS_LIST } from '../domain/ops.js';
 import { WorldStateSchema, type WorldState } from '../domain/state.js';
 import { createSeedState } from '../seed/scenario.js';
@@ -17,7 +17,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 28;
+export const JOURNAL_VERSION = 29;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -117,6 +117,7 @@ export const JournalVersionSchema = z.union([
   z.literal(26),
   z.literal(27),
   z.literal(28),
+  z.literal(29),
 ]);
 
 export const JournalSchema = z.object({
@@ -229,7 +230,7 @@ export function replay(
    * journal version, and a copy of that logic would drift the first time a
    * third exemption is added. There is one reader of the journal.
    */
-  observe?: (state: WorldState, entry: JournalEntry) => void,
+  observe?: (state: WorldState, entry: JournalEntry, report?: TurnReport) => void,
 ): ReplayResult {
   const parsed = JournalSchema.parse(journal);
   const seed = parsed.entries[0];
@@ -429,6 +430,8 @@ export function replay(
     // An accord narrated its warmth with `adjust_disposition`, up to 25 a
     // direction, for a conversation.
     pricedWarmth: parsed.version >= 28,
+    // A declared move with no force sailed the whole port.
+    declaredMovesNameForce: parsed.version >= 29,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.
@@ -481,7 +484,10 @@ export function replay(
       state = res.state;
       rejectionCount += res.rejections.length;
     } else if (entry.kind === 'tick') {
-      state = tickTurn(state, legacy).state;
+      const ticked = tickTurn(state, legacy);
+      state = ticked.state;
+      observe?.(state, entry, ticked.report);
+      continue;
     }
     observe?.(state, entry);
   }
@@ -607,5 +613,44 @@ export function overrulings(journal: Journal): Record<string, Overruling> {
       row[kind] += 1;
     }
   }
+  return out;
+}
+
+/** One power's battles across a campaign: the worlds fought over, and the hulls it lost. */
+export interface BattleRecord {
+  /** World name to how many battles this power fought there. */
+  fought: Record<string, number>;
+  shipsLost: number;
+}
+
+/**
+ * Every battle across a campaign, by power (playtest 2026-10-19, D3).
+ *
+ * `controlHistory` sees only worlds that changed hands, so three battles that
+ * cost Meridian 39 ships and moved no border were invisible, and the epilogue
+ * said its worlds were "never contested". The tick's battle reports carry the
+ * fact; a report is not state, so it is read off a replay, as control is.
+ */
+export function battleHistory(journal: Journal): Record<string, BattleRecord> {
+  const out: Record<string, BattleRecord> = {};
+  replay(journal, (_state, _entry, report) => {
+    for (const battle of report?.battles ?? []) {
+      // A fleet taking station over an empty orbit is reported as a battle
+      // with nobody on the other side; that is not a fight.
+      const fought = battle.rounds.some((r) => r.defenders.length > 0 || (r.phase === 'ground' && r.assault > 0));
+      if (!fought) continue;
+      const lost = new Map<string, number>();
+      for (const round of battle.rounds) {
+        for (const side of [...round.attackers, ...round.defenders]) {
+          lost.set(side.factionId, (lost.get(side.factionId) ?? 0) + Math.max(0, side.before - side.after));
+        }
+      }
+      for (const [factionId, n] of lost) {
+        const row = (out[factionId] ??= { fought: {}, shipsLost: 0 });
+        row.fought[battle.systemName] = (row.fought[battle.systemName] ?? 0) + 1;
+        row.shipsLost += n;
+      }
+    }
+  });
   return out;
 }
