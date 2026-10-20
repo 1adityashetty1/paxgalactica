@@ -89,6 +89,13 @@ export const SessionSnapshotSchema = z.object({
   channel: ChannelSchema,
   briefing: z.unknown().nullable(),
   actionSeq: z.number().int().min(0),
+  /**
+   * What the counsellor last told the leader, and on which turn. It urged
+   * defending Torrek, then abandoning it, then attacking from it, on three
+   * turns running, with no memory of the last (playtest 2026-10-19, loop 3).
+   * Not world state: a counsellor's words change nothing in the Rim.
+   */
+  lastCounsel: z.object({ turn: z.number().int(), counsel: z.string(), recommendation: z.string().nullable() }).nullable().default(null),
 });
 export type SessionSnapshot = z.infer<typeof SessionSnapshotSchema>;
 
@@ -214,6 +221,7 @@ export class GameSession {
 
   /** Numbers declared actions within a turn, for the trace. Reset each turn. */
   private actionSeq = 0;
+  private lastCounsel: { turn: number; counsel: string; recommendation: string | null } | null = null;
 
   /** Run a top-level phase of play inside a trace span. */
   private traced<T>(phase: string, work: () => Promise<T>, actionId?: string): Promise<T> {
@@ -379,6 +387,7 @@ export class GameSession {
       channel: this.channelState(),
       briefing: this.lastBriefing,
       actionSeq: this.actionSeq,
+      lastCounsel: this.lastCounsel,
     };
   }
 
@@ -390,6 +399,7 @@ export class GameSession {
       (snapshot.briefing as Briefing | null) ?? briefingFromState(this.campaign.state);
     this.epilogue = this.campaign.epilogue;
     this.actionSeq = snapshot.actionSeq;
+    this.lastCounsel = snapshot.lastCounsel ?? null;
   }
 
   /** The turn in progress, for a save archive. */
@@ -628,8 +638,9 @@ export class GameSession {
     }
 
     const result = await this.traced('advisor', () =>
-      this.exclusive('Consulting', () => askAdvisor(campaign.state, campaign.state.playerFactionId, question)),
+      this.exclusive('Consulting', () => askAdvisor(campaign.state, campaign.state.playerFactionId, question, this.lastCounsel)),
     );
+    this.lastCounsel = { turn: campaign.state.turn, counsel: result.counsel, recommendation: result.recommendation };
     campaign.spendActionPoint();
     this.pushState();
     return {

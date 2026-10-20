@@ -1410,6 +1410,12 @@ export function breaksTheFourthWall(counsel: string): boolean {
   );
 }
 
+export const RecommendationSchema = cappedProse(220)
+  .refine((c) => !looksLikeAPlan(c) && !/\b(?:then|after that|next)\b/i.test(c), {
+    message: 'One act, not a sequence: name the single thing you would do, with no "then" and no list.',
+  })
+  .refine((c) => !breaksTheFourthWall(c), { message: 'Stay in the fiction: no turns, action points, difficulties or dice.' });
+
 export const AdvisorReplySchema = z.object({
   /**
    * What the counsellor actually says, out loud, to their leader.
@@ -1436,12 +1442,7 @@ export const AdvisorReplySchema = z.object({
    * (playtest 2026-10-19, loop 2, L8). Held to the same guards, so it cannot
    * become the plan the counsel is forbidden to be.
    */
-  recommendation: cappedProse(220)
-    .refine((c) => !looksLikeAPlan(c) && !/\b(?:then|after that|next)\b/i.test(c), {
-      message: 'One act, not a sequence: name the single thing you would do, with no "then" and no list.',
-    })
-    .refine((c) => !breaksTheFourthWall(c), { message: 'Stay in the fiction: no turns, action points, difficulties or dice.' })
-    .optional()
+  recommendation: RecommendationSchema.optional()
 });
 export type AdvisorReply = z.infer<typeof AdvisorReplySchema>;
 
@@ -1470,6 +1471,8 @@ export async function askAdvisor(
    * Vantic" is answered with what holds Vantic, not with an order of march.
    */
   question?: string,
+  /** What the counsellor said last time, so a change of course is said and explained. */
+  last?: { turn: number; counsel: string; recommendation: string | null } | null,
 ): Promise<{ counsel: string; recommendation: string | null; attempts: number; costUsd: number }> {
   const faction = getFaction(state, viewerId);
   if (!faction) throw new Error(`No faction ${viewerId}`);
@@ -1485,6 +1488,19 @@ export async function askAdvisor(
       '',
       '---',
       '',
+      ...(last
+        ? [
+            `## What you told your leader ${last.turn === state.turn ? 'earlier this turn' : `on turn ${last.turn}`}`,
+            '',
+            `> ${last.counsel}`,
+            ...(last.recommendation ? ['', `Your recommendation then: ${last.recommendation}`] : []),
+            '',
+            'Hold to it unless the board has changed. If your counsel now differs, say so in a clause and say what changed — a counsellor who reverses course without a reason is one the leader stops trusting.',
+            '',
+            '---',
+            '',
+          ]
+        : []),
       '## What your staff has flagged (computed from the board; true)',
       '',
       ...(pressures.length > 0 ? pressures.map((p) => `- ${p}`) : ['- Nothing massing against you, and no rival in any orbit you hold.']),
@@ -1523,7 +1539,9 @@ export async function askAdvisor(
             `Speak to the ${faction.title}. Name what is pressing, in your own voice. Do not tell them what to do.`,
           ]),
     ].join('\n'),
-    schema: AdvisorReplySchema,
+    // Asked what to do, the counsellor names one act: left optional, it named
+    // none in ten turns of ten (playtest 2026-10-19, loop 3).
+    schema: asked ? AdvisorReplySchema.extend({ recommendation: RecommendationSchema }) : AdvisorReplySchema,
   });
   return { counsel: res.value.counsel, recommendation: res.value.recommendation ?? null, attempts: res.attempts, costUsd: res.costUsd };
 }

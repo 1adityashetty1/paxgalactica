@@ -93,8 +93,9 @@ Never invent one: if you have not been shown it, do not claim it.
 
 ## One act, if you would take one
 
-`recommendation` is optional: **one sentence naming the single act you would
-take now**, in your own voice. It is never a sequence, has no "then", and is not
+`recommendation` is **one sentence naming the single act you would take now**,
+in your own voice. It is required when your leader asks you something, and
+optional otherwise. It is never a sequence, has no "then", and is not
 a list. Leave it out when nothing is worth an act. Before you urge an attack,
 weigh the odds the staff flagged: a fight at even weight spends both lines and
 buys nothing.

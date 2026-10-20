@@ -43,7 +43,7 @@ describe('structural fixes from loop 2', async () => {
   it('L9: the staff flags the odds of attacking a hostile base, in the battle’s own reckoning', () => {
     const s = createSeedState('meridian');
     const flagged = pressuresOn(s, 'meridian').join('\n');
-    expect(flagged).toMatch(/An attack on (Kalzir|Vantic) \(Iron Vigil Remnant\) with what stands at Torrek Anchorage would be [\d.]+:1/);
+    expect(flagged).toMatch(/If you attacked (Kalzir|Vantic) \(Iron Vigil Remnant\) with what stands at Torrek Anchorage, it would be [\d.]+:1 counting what/);
     expect(flagged).toMatch(/it never breaks off/);
   });
 

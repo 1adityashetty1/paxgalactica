@@ -71,7 +71,8 @@ export function pressuresOn(state: WorldState, me: string): string[] {
   const might = (f: string) => 1 + statModifier(effectiveStats(state, f, { seenBy: me }).might) / 20;
   for (const world of state.systems.filter((s) => s.controllerFactionId === me)) {
     const mine = (orbitalWeightAt(world, me) / be) * might(me);
-    if (mine <= 0) continue;
+    // Two lifters are not a battle line: "0.0:1" told nobody anything.
+    if (mine < 0.5) continue;
     for (const id of adjacency.get(world.id) ?? []) {
       const base = byId.get(id);
       const holder = base?.controllerFactionId;
@@ -79,7 +80,14 @@ export function pressuresOn(state: WorldState, me: string): string[] {
       const them = getFaction(state, holder);
       // Only a power that dislikes you: odds against a near-neutral read as an invitation.
       if (!them || (them.disposition[me] ?? 0) > -25) continue;
-      const theirs = (orbitalWeightAt(base, holder) / be) * might(holder);
+      // The holder's own ships a jump from the base land in the batch that
+      // answers an attack, and fought it: a 2.0:1 attack met 9 battleships
+      // moved in from Vantic and was mutual ruin (playtest 2026-10-19, loop 3).
+      const nearby = [...(adjacency.get(base.id) ?? [])]
+        .map((n) => byId.get(n))
+        .filter((n) => n !== undefined && n.controllerFactionId === holder)
+        .reduce((w, n) => w + orbitalWeightAt(n!, holder), 0);
+      const theirs = ((orbitalWeightAt(base, holder) + nearby) / be) * might(holder);
       if (theirs <= 0) continue;
       const ratio = mine / theirs;
       const holds = them.warEthic === 'crusading' ? ', and it never breaks off' : '';
@@ -92,9 +100,14 @@ export function pressuresOn(state: WorldState, me: string): string[] {
               ? 'an even exchange: both lines would be spent and nothing taken'
               : 'too little: your line would be driven off';
       out.push(
-        `An attack on ${base.name} (${name(holder)}) with what stands at ${world.name} would be ${ratio.toFixed(1)}:1 in the battle's own reckoning — ${verdict}${holds}.`,
+        `If you attacked ${base.name} (${name(holder)}) with what stands at ${world.name}, it would be ${ratio.toFixed(1)}:1 counting what ${name(holder)} could move in from a jump away — ${verdict}${holds}. (These are the odds of YOUR attack, not of theirs on you.)`,
       );
     }
   }
-  return [...new Set(out)].slice(0, 10);
+  // Whose is whose, once, at the top: the counsellor called a world of the
+  // player's "held" by the Vigil for one freighter in its orbit (playtest
+  // 2026-10-19, loop 3). A ship in an orbit holds nothing.
+  const held = state.systems.filter((s) => s.controllerFactionId === me).map((s) => s.name);
+  const header = `Worlds you hold: ${held.join(', ') || 'none'}. A rival's ships in an orbit do not make the world theirs.`;
+  return [header, ...[...new Set(out)].slice(0, 10)];
 }

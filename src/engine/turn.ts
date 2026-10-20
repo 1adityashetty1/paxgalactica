@@ -1526,7 +1526,11 @@ export function transfersFromRecord(
   const assetsGiven = new Map([player, other].map((p) => [p, assetsOf(p)] as [string, string[]]));
 
   for (const ceder of [player, other]) {
-    const systems = [...new Set(agreed.filter((c) => c.by === ceder).flatMap((c) => c.systems))];
+    // Only worlds the ceder holds: a world named that it does not hold is not
+    // its to hand over, whatever the record says (playtest 2026-10-19, loop 3).
+    const systems = [...new Set(agreed.filter((c) => c.by === ceder).flatMap((c) => c.systems))].filter(
+      (id) => state.systems.find((x) => x.id === id)?.controllerFactionId === ceder,
+    );
     if (systems.length === 0) continue;
     const buyer = otherOf(ceder);
     const price = credits.get(buyer) ?? 0;
