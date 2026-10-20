@@ -1,3 +1,4 @@
+import { ACT_WORDS } from '../domain/acts.js';
 import {
   CONTENT_REGARD,
   JOIN_LEAD,
@@ -80,6 +81,7 @@ import {
   WORLD_TYPE_STAT,
   dispositionBetween,
   getFaction,
+  charterWorth,
   getSystem,
   isMovementType,
   agentsVisibleTo,
@@ -377,10 +379,10 @@ export function serializeCharacter(faction: Faction): string {
     '',
     `Capabilities: ${serializeStats(effectiveFor(faction))}`,
     faction.redLines.length > 0
-      ? `\nYou will NOT, whatever the incentive:\n${faction.redLines.map((r) => `  - ${r}`).join('\n')}`
+      ? `\nYou will NOT, whatever the incentive:\n${faction.redLines.map((r) => `  - ${r}${heldTo(faction, r)}`).join('\n')}`
       : '',
     faction.compulsions.length > 0
-      ? `\nYour own institutions DEMAND of you:\n${faction.compulsions.map((c) => `  - ${c.text}`).join('\n')}`
+      ? `\nYour own institutions DEMAND of you:\n${faction.compulsions.map((c) => `  - ${c.text}${heldTo(faction, c.text)}`).join('\n')}`
       : '',
     faction.buildBias.length > 0
       ? `\nWhen you build, you reach first for: ${faction.buildBias.map((b) => b.replace(/_/g, ' ')).join(', ')}.`
@@ -388,6 +390,18 @@ export function serializeCharacter(faction: Faction): string {
   ]
     .filter(Boolean)
     .join('\n');
+}
+
+/**
+ * What a line is held to in code, said beside it, so a persona that is about to
+ * agree to what its sheet forbids knows the price before it agrees, and the
+ * arbiter knows which acts are already checked (`Faction.lineActs`).
+ */
+function heldTo(faction: Faction, text: string): string {
+  const tag = faction.lineActs?.find((l) => l.text === text);
+  if (!tag) return '';
+  const toward = tag.with ? ` (toward ${tag.with.join(', ')})` : '';
+  return ` [binding on any order or deal to ${tag.forbids.map((k) => ACT_WORDS[k]).join('; or to ')}${toward}]`;
 }
 
 /**
@@ -406,10 +420,10 @@ export function serializePrinciples(faction: Faction): string {
     `Doctrine: ${faction.doctrine}`,
     `On war — ${faction.warEthic}. On trade — ${faction.tradeEthic}.`,
     faction.redLines.length > 0
-      ? `\nYou will NOT, whatever the incentive:\n${faction.redLines.map((r) => `  - ${r}`).join('\n')}`
+      ? `\nYou will NOT, whatever the incentive:\n${faction.redLines.map((r) => `  - ${r}${heldTo(faction, r)}`).join('\n')}`
       : '\n_This power holds no red lines._',
     faction.compulsions.length > 0
-      ? `\nYour own institutions DEMAND of you:\n${faction.compulsions.map((c) => `  - ${c.text}`).join('\n')}`
+      ? `\nYour own institutions DEMAND of you:\n${faction.compulsions.map((c) => `  - ${c.text}${heldTo(faction, c.text)}`).join('\n')}`
       : '\n_This power is under no compulsions._',
   ].join('\n');
 }
@@ -1176,6 +1190,13 @@ export function serializeCommitments(state: WorldState, viewerId?: string): stri
         c.incomePerTurn !== 0
           ? ` · ${c.incomePerTurn > 0 ? '+' : ''}${c.incomePerTurn} credits/turn`
           : '';
+      // A charter pays from a world, and what it pays now is the honest figure
+      // (§7): at most a quarter of the world's take, nothing once it is lost.
+      const world = c.atSystemId === undefined ? undefined : state.systems.find((x) => x.id === c.atSystemId);
+      const chartered =
+        c.atSystemId === undefined
+          ? ''
+          : ` · chartered on ${world?.name ?? c.atSystemId}, paying ${charterWorth(state, c, c.factionIds[0]!)} a turn now`;
       // A proportional term is worth reading out in full: it is the one part
       // of a commitment whose value changes every turn, so a flat figure would
       // tell the reader nothing about what it is currently paying.
@@ -1183,7 +1204,7 @@ export function serializeCommitments(state: WorldState, viewerId?: string): stri
         c.share === undefined
           ? ''
           : ` · ${c.share.percent}% of ${getFaction(state, c.share.from)?.name ?? c.share.from}'s ${c.share.of} to ${getFaction(state, c.share.to)?.name ?? c.share.to} (currently worth ${shareWorth(state, c.share)} a turn)`;
-      return `- \`${c.id}\` ${c.kind.replace(/_/g, ' ')} · ${who} · since turn ${c.establishedTurn}${worth}${cut}${flag}\n  _as agreed, in their words: ${c.text}_`;
+      return `- \`${c.id}\` ${c.kind.replace(/_/g, ' ')} · ${who} · since turn ${c.establishedTurn}${worth}${chartered}${cut}${flag}\n  _as agreed, in their words: ${c.text}_`;
     })
     .join('\n');
 }

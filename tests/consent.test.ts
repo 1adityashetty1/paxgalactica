@@ -44,11 +44,12 @@ describe('what an accord may not produce', () => {
 
   it('refuses hulls, operatives, doctrine and dissent', () => {
     for (const op of [
-      { op: 'adjust_fleet', factionId: 'drajk', delta: 5, reason: 'yards' },
+      { op: 'build_ships', factionId: 'drajk', count: 5, hull: 'battleship', reason: 'yards' },
+      { op: 'scuttle_ships', factionId: 'drajk', systemId: 'ilv-6', count: 1, reason: 'x' },
+      { op: 'suborn_crews', factionId: 'drajk', fromFactionId: 'ojjul', systemId: 'ilv-6', count: 1, reason: 'x' },
       { op: 'deploy_agent', ownerFactionId: 'drajk', systemId: 'ilv-6', mission: 'surveillance', effect: { kind: 'intel', revealsOrders: true } },
       { op: 'set_doctrine', factionId: 'drajk', doctrine: 'a new posture entirely' },
       { op: 'adjust_dissent', factionId: 'drajk', delta: 5, reason: 'x' },
-      { op: 'adjust_ships', systemId: 'ilv-6', factionId: 'drajk', delta: 3, reason: 'x' },
     ]) {
       expect(codes(viaAccord(op)), String(op.op)).toEqual(['declared_only']);
     }
@@ -96,8 +97,11 @@ describe('the allowlist is a closed set, and says so', () => {
       'form_treaty', 'establish_debt', 'assign_debt', 'restructure_debt', 'establish_loan',
       'establish_obligation', 'assign_obligation',
     ]);
+    // Kept so accords journaled before it left the model's vocabulary replay.
+    // An accord's warmth is `regard` from journal version 28 (code-knows §8).
+    const replayOnly = new Set(['spawn_event', 'adjust_credits', 'adjust_disposition']);
     for (const op of EXTRACTION_ALLOWED) {
-      expect(modelOps.has(op) || negotiated.has(op), `${op} is not an op anything can emit`).toBe(true);
+      expect(modelOps.has(op) || negotiated.has(op) || replayOnly.has(op), `${op} is not an op anything can emit`).toBe(true);
     }
   });
 

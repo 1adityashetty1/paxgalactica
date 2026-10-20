@@ -40,7 +40,7 @@ import {
   type WorldState,
 } from '../domain/state.js';
 import { classifyPrinciple, classifyPrinciples } from '../domain/compulsions.js';
-import { checkGround, covertSendOnly, INVENTED_REFUSAL_NOTE, inventedRefusal, ownOperativeNamed, sendsAsRuled } from '../domain/refusals.js';
+import { checkGround, holdToRuling, INVENTED_REFUSAL_NOTE, inventedRefusal, ownOperativeNamed, type RulingBounds } from '../domain/refusals.js';
 import { concessionBudget, withinBudget } from '../domain/leverage.js';
 import { callStructured } from './client.js';
 import { serializeArchetypes } from '../domain/assets.js';
@@ -477,6 +477,39 @@ export async function dressRimEvent(
   return { line: flavourKeepsTheFacts(plain, line) ? line : null, costUsd: res.costUsd };
 }
 
+export const ReconcileSchema = z.object({
+  narrative: z.string().min(1).max(1200),
+});
+
+/**
+ * A story rewritten to what landed (`docs/design-2026-10-18-code-knows.md` §5).
+ *
+ * Resolution writes the story and the ops in one call, before the reducer has
+ * ruled on them, and half the playtest's declarations ended with a story that
+ * said more than happened — a crew that defected and did not, twelve lifters
+ * where six were laid down. Run only when the two differ, on the cheap tier,
+ * and held to the guard the Rim's lines are: no number the landed acts and the
+ * notes do not contain. A rewrite that fails it, or a call that fails, leaves
+ * the draft standing.
+ */
+export async function reconcileNarrative(
+  draft: string,
+  landed: string,
+  notes: readonly string[],
+): Promise<{ narrative: string | null; costUsd: number }> {
+  const facts = [landed, ...notes].join('\n');
+  const res = await callStructured({
+    kind: 'reconcile',
+    label: 'reconcile',
+    system: loadPrompt('reconcile'),
+    user: [`DRAFT STORY:\n${draft}`, `ACTS THAT LANDED (settled):\n${landed || '(none)'}`, `NOTES (settled):\n${notes.join('\n')}`].join('\n\n'),
+    schema: ReconcileSchema,
+    maxRetries: 1,
+  });
+  const narrative = res.value.narrative.trim();
+  return { narrative: flavourKeepsTheFacts(facts, narrative) ? narrative : null, costUsd: res.costUsd };
+}
+
 /* ------------------------------------------------------------------ */
 /* The epilogue                                                        */
 /* ------------------------------------------------------------------ */
@@ -526,6 +559,13 @@ export async function narrateEpilogue(
   return { output: res.value, costUsd: res.costUsd };
 }
 
+/** How resolution writes the mechanism the arbiter named for a commitment (intent-ops §5). */
+const MECHANISM_GUIDANCE: Record<string, string> = {
+  income:
+    'It pays every turn: set `incomePerTurn`, positive for the side that earns. Without it the commitment is refused. A charter pays from a world: name it in `systemId`, a world this power holds, or it is chartered on the richest. It pays at most a quarter of what that world pays, and nothing once the world is lost — say so if the figure is more.',
+  record: 'It is a record and nothing more: no income — any you write is left out.',
+};
+
 export async function resolveAction(
   state: WorldState,
   action: string,
@@ -544,6 +584,8 @@ export async function resolveAction(
   ruling: BreachRuling | null;
   /** What code changed about the ruling or the batch, for the player to read. */
   notes: string[];
+  /** What the ruling lets a batch carry, so a correction is held to it too. Absent when nothing was resolved. */
+  bounds?: RulingBounds;
 }> {
   /* --- 1. Arbitrate: admissible at all, and priced blind to the roll --- */
   let priced = await appraiseAction(state, action);
@@ -766,8 +808,8 @@ export async function resolveAction(
   // tried this turn. Turned away here, before the roll and before resolution,
   // at the price of an inadmissible ruling — nothing — rather than rolled,
   // charged an action, and then rejected by the reducer for want of a person.
-  const covert = priced.appraisal.covert ?? [];
-  const groundwork = priced.appraisal.groundwork ?? [];
+  let covert = priced.appraisal.covert ?? [];
+  let groundwork = priced.appraisal.groundwork ?? [];
   // An outcome no mission produces is said so, and costs nothing: the act is
   // turned away as inadmissible — no action point — and the reason is the
   // record of what the next mission should be. Only when nothing else in the
@@ -790,6 +832,16 @@ export async function resolveAction(
   const onBooks = (state.agents ?? []).some(
     (a) => a.ownerFactionId === state.playerFactionId && !a.exposed,
   );
+  // An act with open work in it is not turned away for its covert half: the
+  // open work goes ahead and the sending is left out, said. "Recruit an
+  // operative and settle the debt", and a build beside an invasion, were both
+  // turned away whole as "nobody to send" (playtest 2026-10-18, B9).
+  if ((covert.length > 0 || groundwork.length > 0) && !onBooks && priced.appraisal.overt) {
+    notes.push('You have nobody on the books to send, so the covert part of this was left out; the rest goes ahead.');
+    covert = [];
+    groundwork = [];
+    priced = { ...priced, appraisal: { ...priced.appraisal, covert: [], groundwork: [] } };
+  }
   if ((covert.length > 0 || groundwork.length > 0) && !onBooks) {
     const why =
       'You have nobody to send. Recruit an operative first — that is an action of its own, at a world you hold — and send them with your next.';
@@ -986,12 +1038,34 @@ export async function resolveAction(
             '',
           ]
         : []),
+      ...(priced.appraisal.yields && priced.appraisal.yields.length > 0 && check && check.outcome !== 'failure' && check.outcome !== 'critical_failure'
+        ? [
+            '### What it may come away with',
+            '',
+            `The arbiter ruled this attempt could yield: ${priced.appraisal.yields.map((y) => `\`${y}\``).join(', ')}. A \`create_asset\` of one of those kinds is yours to write if the narrative brings it back; any other kind is dropped.`,
+            '',
+          ]
+        : []),
+      ...(priced.appraisal.reaches && priced.appraisal.reaches.length > 0
+        ? [
+            '### How it may reach another power',
+            '',
+            `The arbiter ruled this act reaches into another power's business by: ${priced.appraisal.reaches.map((r) => `\`${r}\``).join(', ')}. An op of another reach — standing down a rival's orders, turning crews, breaking paper, coercion — is dropped.`,
+            '',
+          ]
+        : [
+            '### It reaches no other power',
+            '',
+            "The arbiter named no way this act reaches into another power's business, so do not write one: no `interrupt_order`, `extend_order` or `accelerate_order` on a rival's order, no `suborn_crews`, `break_treaty`, ultimatum, bounty, blackmail or published dossier. They are dropped.",
+            '',
+          ]),
       ...(priced.appraisal.establishes && check && check.outcome !== 'failure' && check.outcome !== 'critical_failure'
         ? [
             '### This action establishes something lasting',
             '',
             `The arbiter ruled that success here creates: **${priced.appraisal.establishes.text}**`,
             `Emit \`establish_commitment\` with kind \`${priced.appraisal.establishes.kind}\`, parties ${priced.appraisal.establishes.factionIds.join(', ')}, exclusive ${priced.appraisal.establishes.exclusive}.`,
+            MECHANISM_GUIDANCE[priced.appraisal.establishes.mechanism ?? 'record'],
             'On a PARTIAL, record it only if the reduced result still amounts to the arrangement being made.',
             '',
           ]
@@ -1018,26 +1092,37 @@ export async function resolveAction(
     ...(priced.appraisal.groundwork && priced.appraisal.groundwork.length > 0 ? { groundwork: priced.appraisal.groundwork } : {}),
   });
 
-  // The check line rides at the FRONT of the batch, so the log reads
-  // roll-then-consequence rather than the other way round.
+  // What the ruling lets a batch carry — this one, and any correction of it.
+  const bounds: RulingBounds = {
+    covert,
+    groundwork,
+    stat: check?.stat,
+    outcome: check?.outcome,
+    establishes: priced.appraisal.establishes,
+    yields: priced.appraisal.yields ?? [],
+    sentOnly: !checkOp,
+    reaches: priced.appraisal.reaches ?? [],
+    foreignOrders: state.pendingOrders.filter((o) => o.factionId !== state.playerFactionId).map((o) => o.id),
+  };
   const withCheck = (o: ResolutionOutput): ResolutionOutput => {
-    // Sends are the ruling's: a resolution call may detail a send that was
-    // ruled, never add one. The engine writes any it left out.
-    const ruled = sendsAsRuled(o.ops, covert, groundwork);
-    if (ruled.dropped.length > 0) {
-      notes.push(
-        `An operative is sent only when the act is ruled covert: left out ${ruled.dropped.join(', ')}. Declare it as their mission.`,
-      );
-      o = { ...o, ops: ruled.ops as ResolutionOutput['ops'] };
+    // Sends, sways, commitments and prizes are the ruling's (intent-ops §3–5),
+    // and covert work carries only its sending. See `holdToRuling`.
+    const held = holdToRuling(o.ops, bounds);
+    notes.push(...held.notes);
+    let ops = held.ops as ResolutionOutput['ops'];
+    // A windfall is one more of a prize the ruling named, and only on a
+    // critical (§4). The other bonuses are applied by the engine once staged.
+    if (check?.outcome === 'critical_success' && o.bonus === 'windfall') {
+      const at = ops.findIndex((x) => x.op === 'create_asset' && (bounds.yields as readonly string[]).includes(x.kind));
+      if (at >= 0) {
+        const prize = ops[at] as Extract<ResolutionOutput['ops'][number], { op: 'create_asset' }>;
+        ops = ops.map((x, i) => (i === at ? { ...prize, quantity: (prize.quantity ?? 1) + 1 } : x));
+        notes.push('A windfall: one more than the attempt was after.');
+      }
     }
-    if (checkOp) return { ...o, ops: [checkOp, ...o.ops] };
-    const sent = covertSendOnly(o.ops);
-    if (sent.dropped.length > 0) {
-      notes.push(
-        `Covert work is sent, not rolled, so it carries only the sending: left out ${[...new Set(sent.dropped)].join(', ')}. Declare anything else on its own.`,
-      );
-    }
-    return { ...o, ops: sent.ops as ResolutionOutput['ops'] };
+    // The check line rides at the FRONT of the batch, so the log reads
+    // roll-then-consequence rather than the other way round.
+    return { ...o, ops: checkOp ? [checkOp, ...ops] : ops };
   };
 
   const output: ResolutionOutput = withCheck(withCovert(
@@ -1071,6 +1156,7 @@ export async function resolveAction(
     roll,
     ruling,
     notes,
+    bounds,
     attempts: priced.attempts + res.attempts,
     costUsd: priced.costUsd + relevanceCost + res.costUsd,
   };
@@ -1085,11 +1171,11 @@ export async function resolveAction(
  */
 const OUTCOME_GUIDANCE: Record<CheckResult['outcome'], string> = {
   critical_success:
-    'It worked, and better than intended. Emit the ops for the full result plus one concrete bonus that follows from it — an unexpected defection, a rival caught off balance, a cost avoided.',
+    'It worked, and better than intended. Emit the ops for the full result, and name ONE bonus in `bonus` — `cost_avoided` (a quarter of what it spent comes back), `tempo` (one of its new orders finishes a bucket sooner), `goodwill` (the power most involved warms to you) or `windfall` (one more of a prize the ruling named). The engine applies it: write no ops for the bonus, and narrate it however you like.',
   success:
     'It worked as intended. Emit the ops for exactly what was attempted; no windfall, no complication.',
   partial:
-    'It half-worked, and there is a bill. Emit ops for the reduced result AND for the cost — credits spent for less than was bought, a relationship soured, a fleet out of position. This is the most common interesting outcome; do not quietly round it up to success.',
+    'It half-worked, and there is a bill. Write each piece of work, programme and prize at the size that was attempted — the engine halves them itself, so halving them here halves them twice — and emit ops for the cost: credits spent for less than was bought, a relationship soured, a fleet out of position. This is the most common interesting outcome; do not quietly round it up to success.',
   failure:
     'It did not work. Emit the ops for what the attempt COST — spent credits, wasted turns, a rival forewarned — and NOT the ops for the thing the player wanted. Nothing they were reaching for changes hands.',
   critical_failure:
@@ -1623,6 +1709,14 @@ export async function extractAgreements(
   state: WorldState,
   factionId: string,
   history: ChatMessage[],
+  /**
+   * What each power recorded conceding as it spoke. This pass is the one that
+   * writes the ops, and it was never shown the record: the state block is the
+   * player's view, which lists the player's own things and none of the other
+   * power's, so a conceded crate of luxuries had no id to move and a bought set
+   * of drawings was minted afresh as a dossier (playtest 2026-10-18, C7, C8).
+   */
+  conceded: readonly Concession[] = [],
 ): Promise<{ output: ExtractionOutput; attempts: number; costUsd: number }> {
   const faction = getFaction(state, factionId);
   const player = getFaction(state, state.playerFactionId);
@@ -1643,6 +1737,7 @@ export async function extractAgreements(
     '',
     transcript || '_The channel opened and closed without anything being said._',
     '',
+    ...(conceded.length > 0 ? ['---', '', serializeConcessionRecord(state, conceded), ''] : []),
     '---',
     '',
     'Emit ops for what these two powers actually committed to. Nothing else.',
@@ -1659,4 +1754,34 @@ export async function extractAgreements(
     schema: ExtractionOutputSchema,
   });
   return { output: res.value, attempts: res.attempts, costUsd: res.costUsd };
+}
+
+/**
+ * The concessions each side wrote down, as the extraction pass needs them: who
+ * gave what, and the ids of the worlds, things and favours named. A thing named
+ * here already exists, so moving it is `transfer_asset` of that id.
+ */
+export function serializeConcessionRecord(state: WorldState, conceded: readonly Concession[]): string {
+  const lines = conceded.map((c) => {
+    const who = getFaction(state, c.by)?.name ?? c.by;
+    const parts: string[] = [];
+    if (c.systems.length > 0) parts.push(`worlds ${c.systems.map((id) => `\`${id}\``).join(', ')}`);
+    if (c.credits > 0) parts.push(`${c.credits} credits`);
+    if (c.perTurn > 0) parts.push(`${c.perTurn} a turn`);
+    if (c.hulls > 0) parts.push(`${c.hulls} hulls`);
+    for (const id of c.assets) {
+      const a = (state.assets ?? []).find((x) => x.id === id);
+      parts.push(a ? `\`${id}\` (${a.quantity} ${a.unit} — ${a.text}, held by ${a.heldBy})` : `\`${id}\``);
+    }
+    for (const id of c.obligations) parts.push(`favour \`${id}\``);
+    if (c.lifts.length > 0) parts.push(`stops tolling ${c.lifts.join(', ')}${c.liftTurns ? ` for ${c.liftTurns} turns` : ''}`);
+    return `- \`${c.by}:${c.kind}\` — ${who}: ${c.text}${parts.length > 0 ? ` — ${parts.join('; ')}` : ''}`;
+  });
+  return [
+    '## What each side recorded conceding',
+    '',
+    'Written down by each power as it spoke, and struck when it was withdrawn. List every term the two actually agreed in `accepted`, by the key at the start of its line. The engine builds the payments, things, favours, worlds and toll lifts from these lines; a thing named by id here already exists.',
+    '',
+    ...lines,
+  ].join('\n');
 }

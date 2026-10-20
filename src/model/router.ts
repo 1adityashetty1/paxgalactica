@@ -44,6 +44,12 @@ export type CallKind =
    * call cannot answer it by accident.
    */
   | 'event_flavour'
+  /**
+   * A declaration's or an accord's story, rewritten to what actually landed
+   * when the reducer refused, trimmed or dropped some of it
+   * (`docs/design-2026-10-18-code-knows.md` §5). Runs only when they differ.
+   */
+  | 'reconcile'
   | 'flavor';
 
 export interface TierConfig {
@@ -166,6 +172,9 @@ export const ROUTES: Record<CallKind, ModelTier> = {
   // One sentence of colour over a fact already decided. The cheap tier, and
   // it never blocks the turn — see `GameSession.dressEvents`.
   event_flavour: 'flavor',
+  // A short rewrite against a list of facts: the cheap tier, and only when the
+  // story and the result disagreed.
+  reconcile: 'flavor',
   flavor: 'flavor',
 };
 

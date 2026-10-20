@@ -359,6 +359,9 @@ function fixtureBuilt(kind: string, stat: string | undefined): string | null {
     : `A ${shape.kind} takes ${wants}, and this was a ${stat} undertaking; the fixture was not begun.`;
 }
 
+/** Work declared as its own op whose whole point is a payload (intent-ops §1). */
+const PAYLOAD_WORK = new Set(['fortify', 'raise_garrison', 'develop', 'found_fixture', 'repair_fixture', 'send_envoy']);
+
 export function boundPayloadsToOutcome(
   ops: unknown[],
   outcome: 'critical_success' | 'success' | 'partial' | 'failure' | 'critical_failure',
@@ -379,8 +382,28 @@ export function boundPayloadsToOutcome(
   // the programme still runs; it simply raises nothing.
   const builtNotes: string[] = [];
   let changed = false;
-  const kept = ops.map((op) => {
+  const kept: unknown[] = [];
+  for (const op of ops) {
     const o = op && typeof op === 'object' ? (op as Record<string, unknown>) : null;
+    // A fixture declared as work is nothing but the fixture, so a wrong attempt
+    // or a half-built one founds nothing and starts nothing.
+    if (o !== null && o.op === 'found_fixture') {
+      const kind = String(o.kind ?? '');
+      const wrong = fixtureBuilt(kind, stat);
+      const reason =
+        wrong ??
+        (outcome === 'partial'
+          ? `A ${kind.replace(/_/g, ' ')} is one thing or nothing: a partial result leaves the ground broken and the fixture unbuilt.`
+          : null);
+      if (reason !== null) {
+        builtNotes.push(reason);
+        changed = true;
+        continue;
+      }
+    }
+    kept.push(boundFixtureOrder(o, op));
+  }
+  function boundFixtureOrder(o: Record<string, unknown> | null, op: unknown): unknown {
     if (o === null || o.op !== 'issue_order') return op;
     const effect = o.onComplete as { kind?: unknown; fixtureKind?: unknown } | undefined;
     if (!effect || effect.kind !== 'found_fixture') return op;
@@ -399,7 +422,7 @@ export function boundPayloadsToOutcome(
     changed = true;
     const { onComplete: _dropped, ...rest } = o;
     return rest;
-  });
+  }
   // Identity is preserved when nothing was refused: a clean success that founds
   // no fixture must hand back the array it was given, which a test pins.
   if (changed) ops = kept;
@@ -479,7 +502,32 @@ export function boundPayloadsToOutcome(
       })
     : ops;
 
-  const bounded = withoutFailedAgents.map((op) => {
+  // Work declared as its own op is nothing but its payload, so a failure starts
+  // nothing — where an `issue_order` stripped of its payload ran its course and
+  // completed doing nothing, which is the shape intent-ops §1 exists to end. A
+  // move, a blockade, a raid and a sweep carry no payload and still go out: a
+  // failed attack must still be issued.
+  const workBounded: unknown[] = [];
+  for (const op of withoutFailedAgents) {
+    const o = op && typeof op === 'object' ? (op as Record<string, unknown>) : null;
+    const programme = o?.op === 'build_ships' && o.programme === true;
+    if (o === null || (!PAYLOAD_WORK.has(String(o.op)) && !programme)) {
+      workBounded.push(op);
+      continue;
+    }
+    const what = String(o.label || String(o.op).replace(/_/g, ' '));
+    if (failed) {
+      notes.push(`The attempt failed, so the ${what} was never started and nothing was paid for it.`);
+      continue;
+    }
+    const field = programme ? 'count' : 'magnitude';
+    const had = Number(o[field] ?? 1);
+    const reduced = Math.max(1, Math.floor(had / PARTIAL_PAYLOAD_DIVISOR));
+    if (reduced !== had) notes.push(`A partial result: the ${what} delivers ${reduced} rather than ${had}.`);
+    workBounded.push(reduced === had ? op : { ...o, [field]: reduced });
+  }
+
+  const bounded = workBounded.map((op) => {
     if (!op || typeof op !== 'object') return op;
     const o = op as Record<string, unknown>;
     if (o.op !== 'issue_order') return op;

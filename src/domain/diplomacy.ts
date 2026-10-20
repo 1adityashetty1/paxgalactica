@@ -97,6 +97,15 @@ export const ConcessionSchema = z.object({
    * reason `assets` is: *"forget what you owe us"* names no record.
    */
   obligations: z.array(z.string().min(1)).max(6).default([]),
+  /**
+   * Powers `by` stops charging for passage through its space — usually the
+   * other party. A toll lift is the commonest thing a toll is traded for, and
+   * it had no field, so it was the one transfer the engine could not build from
+   * the record (`docs/design-2026-10-18-code-knows.md` §3).
+   */
+  lifts: z.array(z.string().min(1)).max(4).default([]),
+  /** Turns the lift runs for, when the parties named a term. Absent: for good. */
+  liftTurns: z.number().int().min(1).max(50).optional(),
 });
 export type Concession = z.infer<typeof ConcessionSchema>;
 

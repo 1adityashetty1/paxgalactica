@@ -4,6 +4,7 @@ import { stockAgentLists, stockOfficerLists, withNameStock } from '../domain/com
 import { fillSeats, stockLists } from '../domain/seats.js';
 import type { FactionStats } from '../domain/checks.js';
 import type { DurationCategory } from '../domain/duration.js';
+import type { ActKind } from '../domain/act-kinds.js';
 import type { WorldType } from '../domain/state.js';
 import { commanderArchetype, commanderName } from '../domain/command.js';
 import {
@@ -135,6 +136,15 @@ const LANES: [string, string][] = [
   ['tor-3', 'ilv-5'], ['tor-6', 'ilv-6'],
 ];
 
+
+/** A line on a seeded sheet, with the acts code holds it to. */
+interface SeedLine {
+  text: string;
+  /** What the line said before version 27, where it has been reworded. */
+  was?: string;
+  forbids?: ActKind[];
+  with?: string[];
+}
 interface SeedFaction {
   id: string;
   name: string;
@@ -148,13 +158,20 @@ interface SeedFaction {
   title: string;
   warEthic: WarEthic;
   tradeEthic: TradeEthic;
-  redLines: string[];
+  /**
+   * A bare string, or the line with the acts it forbids — which code holds a
+   * power to after the arbiter has ruled (`Faction.lineActs`). `was` is the
+   * wording a journal before version 27 was played under, for a line that has
+   * since been reworded.
+   */
+  redLines: (string | SeedLine)[];
   /**
    * A bare string for a compulsion enforced only by refusal; `{text, trigger}`
    * for one that also fires on drift. Both shapes are normalised by
-   * `CompulsionSchema` when the seed is parsed.
+   * `CompulsionSchema` when the seed is parsed. `forbids` and `with`, as on a
+   * red line.
    */
-  compulsions: (string | { text: string; trigger?: CompulsionTrigger; barsPeaceWith?: string[] })[];
+  compulsions: (string | (SeedLine & { trigger?: CompulsionTrigger; barsPeaceWith?: string[] }))[];
   buildBias: DurationCategory[];
   /** Which of the Rim's events tend to find it. Absent: the galaxy's weights. */
   luck?: RimLuck;
@@ -203,12 +220,38 @@ const SEED_FACTIONS: SeedFaction[] = [
     redLines: [
       // Absorbs what used to be a second copy of this as a compulsion, which
       // added embargoes and closed borders to the same prohibition.
-      'will not close a lane — no blockade of civilian traffic, no embargo, no shut border; closed lanes are bad for everyone, including the closer',
-      'will not repudiate a contract it has signed, even a ruinous one; its whole value rests on that',
+      {
+        text: 'will not close a lane — no blockade of civilian traffic, no embargo, no shut border; closed lanes are bad for everyone, including the closer',
+        forbids: ['blockade_ordered'],
+      },
+      // Every way a power goes back on its word, as `acts.ts` names them —
+      // including sending a fleet against a partner, which is how a playtest
+      // broke a pact unrefused while "repudiate the pact" was refused
+      // (2026-10-18, B4). Conceding an ultimatum that demands a break is not
+      // here: that is a treaty taken off you, not one you went back on.
+      {
+        text: 'will not repudiate a contract it has signed, even a ruinous one; its whole value rests on that',
+        forbids: [
+          'treaty_repudiated',
+          'marriage_repudiated',
+          'pact_attack_ordered',
+          'favour_repudiated',
+          'loan_defaulted',
+          'commitment_walked',
+        ],
+      },
     ],
     compulsions: [
-      'commerce raiding is refused outright — the Authority insures the cargo it would be seizing, and preying on shipping ends it as a going concern',
-      'trafficking in narcotics, slaves or proscribed weapons is refused outright — shareholders will not launder it, whatever it pays',
+      {
+        text: 'commerce raiding is refused outright — the Authority insures the cargo it would be seizing, and preying on shipping ends it as a going concern',
+        forbids: ['raid_ordered'],
+      },
+      // Selling a person is the part code can see; narcotics and weapons stay
+      // the arbiter's to read.
+      {
+        text: 'trafficking in narcotics, slaves or proscribed weapons is refused outright — shareholders will not launder it, whatever it pays',
+        forbids: ['person_trafficked'],
+      },
       {
         text: 'the Trade Council will not sit through an unprofitable quarter: while net income is negative it expects the leadership to have a plan, and says so',
         trigger: 'unprofitable',
@@ -237,7 +280,10 @@ const SEED_FACTIONS: SeedFaction[] = [
     warEthic: 'crusading',
     tradeEthic: 'monopolist',
     redLines: [
-      'will not accept payment to stand down; being bought is the insult, not the price',
+      {
+        text: 'will not accept payment to stand down; being bought is the insult, not the price',
+        forbids: ['paid_for_peace'],
+      },
       'will not recognise a rebel government as legitimate, whatever it controls',
     ],
     compulsions: [
@@ -254,6 +300,8 @@ const SEED_FACTIONS: SeedFaction[] = [
         // The Confederacy and the Combine, as ids, for the bots' peace — which
         // has no arbiter to read the sentence. See `CompulsionSchema`.
         barsPeaceWith: ['drajk', 'ojjul'],
+        forbids: ['treaty_signed'],
+        with: ['drajk', 'ojjul'],
       },
       // Same defect as the Combine's proxy line, found in the sweep after it: a
       // prohibition with ANOTHER POWER'S behaviour named inside it. "raiding
@@ -262,7 +310,10 @@ const SEED_FACTIONS: SeedFaction[] = [
       // this line against an action involving Drajk raiding, or against the
       // Vigil merely tolerating it. The forbidden act is the Vigil's own
       // officers turning pirate, and nothing else.
-      'the officer corps will not turn pirate — Imperial hulls do not raid commerce, whatever the arithmetic says; what other powers do with their own ships is not what this line is about',
+      {
+        text: 'the officer corps will not turn pirate — Imperial hulls do not raid commerce, whatever the arithmetic says; what other powers do with their own ships is not what this line is about',
+        forbids: ['raid_ordered'],
+      },
     ],
     buildBias: ['capital_ship_construction', 'fortification', 'garrison_raising'],
   },
@@ -309,8 +360,14 @@ const SEED_FACTIONS: SeedFaction[] = [
       // Two warnings and a worked example not being enough is the evidence that
       // the sentence was the defect. A line whose correct reading needs a
       // footnote is a line that will be read wrong.
-      'will not spend Combine hulls on a war of conquest — hiring a mercenary or an ally to fight it is looked on favourably by the family, and is never a breach',
-      'will not forgive an unpaid debt — the debt is the whole instrument of control',
+      {
+        text: 'will not spend Combine hulls on a war of conquest — hiring a mercenary or an ally to fight it is looked on favourably by the family, and is never a breach',
+        forbids: ['invasion_launched'],
+      },
+      {
+        text: 'will not forgive an unpaid debt — the debt is the whole instrument of control',
+        forbids: ['debt_forgiven'],
+      },
     ],
     compulsions: [
       // "Every favour must carry a price" was read as covering any transaction
@@ -318,7 +375,10 @@ const SEED_FACTIONS: SeedFaction[] = [
       // officers BACK-PAY to change sides, which is a price, and the most
       // transactional act available. The line is about giving something for
       // nothing; anything paid for is already keeping it.
-      'the Combine requires that nothing be given away for nothing; a gift, a waiver or a favour with no consideration is refused as ruinous precedent — a deal on any terms, however cheap, is not a gift',
+      {
+        text: 'the Combine requires that nothing be given away for nothing; a gift, a waiver or a favour with no consideration is refused as ruinous precedent — a deal on any terms, however cheap, is not a gift',
+        forbids: ['gift_given', 'given_for_nothing'],
+      },
       // Purely about pursuit. It used to end "forgiving one invites every
       // client to test the next", which restated the red line above it — so
       // forgiving a debt was stated twice at two different severities, and
@@ -354,15 +414,28 @@ const SEED_FACTIONS: SeedFaction[] = [
     warEthic: 'defensive',
     tradeEthic: 'autarkic',
     redLines: [
-      'will never accept occupation or a protectorate, on any terms, however generous',
+      // A protectorate is the part code can see; occupation stays the arbiter's.
+      {
+        text: 'will never accept occupation or a protectorate, on any terms, however generous',
+        forbids: ['protection_accepted'],
+      },
       // Absorbs the compulsion that restated this: no world of the Drift is
       // abandoned to occupation to buy safety elsewhere either.
       'will not sell out another free world, or abandon one to occupation, to buy its own safety',
     ],
     compulsions: [
-      'the councils require consultation: any pact ceding territory, autonomy or basing rights is refused without their consent',
-      'tribute is refused. The Drift does not pay to be left alone, whatever the arithmetic says',
-      'the Drift does not prey on shipping. Being raided is the grievance the Free Worlds were founded on, and doing it would make the founding a lie',
+      {
+        text: 'the councils require consultation: any pact ceding territory, autonomy or basing rights is refused without their consent',
+        forbids: ['territory_ceded', 'basing_granted'],
+      },
+      {
+        text: 'tribute is refused. The Drift does not pay to be left alone, whatever the arithmetic says',
+        forbids: ['tribute_paid'],
+      },
+      {
+        text: 'the Drift does not prey on shipping. Being raided is the grievance the Free Worlds were founded on, and doing it would make the founding a lie',
+        forbids: ['raid_ordered'],
+      },
     ],
     buildBias: ['fortification', 'garrison_raising', 'counter_intelligence'],
   },
@@ -416,8 +489,29 @@ const SEED_FACTIONS: SeedFaction[] = [
       // forbids having a garrison, because `GARRISON_REGROWTH` creates one
       // passively on every world it holds. A line that forbids a state the
       // engine produces on its own is a line the faction breaches by existing.
-      'will not hold a defensive line — no siege endured, no fleet committed to sit and wait to be attacked; a raid or an offensive under way is the opposite of this and never breaches it',
-      'will not put its name to a written treaty; a handshake it can deny is the most it offers',
+      {
+        text: 'will not hold a defensive line — no siege endured, no fleet committed to sit and wait to be attacked; a raid or an offensive under way is the opposite of this and never breaches it',
+        forbids: ['defence_pledged'],
+      },
+      // Reworded at journal version 27, because the sheet and the Confederacy's
+      // own play disagreed. "Will not put its name to a written treaty" forbade
+      // the two deals it actually makes — a letter of marque from the Combine
+      // and a ceasefire in a war gone quiet, thirteen treaties in a hundred
+      // harness turns — and a playtest signed a public contract under it with
+      // nothing charged. Held to in code, the old line would have ended both,
+      // and a faction defined by deniability would have been the one that could
+      // never stop a war. What the Confederacy refuses is to be BOUND IN PUBLIC
+      // to somebody else's side: an alliance, a coalition, a foreign fleet in
+      // its ports. A truce and a commission are deals with a price, and it makes
+      // them. A marriage is left out on purpose: the bots wed a Drajk notable
+      // into the Combine about once in a hundred turns, a family tie between
+      // two houses that already deal, and it is the one marriage the
+      // Confederacy makes.
+      {
+        text: 'will not be bound in public to another power — no alliance, no coalition, no foreign fleet based in its space; a truce or a letter of marque is a deal with a price on it, and that is the most it signs',
+        was: 'will not put its name to a written treaty; a handshake it can deny is the most it offers',
+        forbids: ['alliance_signed', 'basing_granted'],
+      },
     ],
     compulsions: [
       {
@@ -737,7 +831,15 @@ function buildSystems(auxiliaries = true): StarSystem[] {
   }));
 }
 
-function buildFactions(luck = true, commodities = true): Faction[] {
+function buildFactions(luck = true, commodities = true, lineActs = true): Faction[] {
+  const textOf = (line: string | SeedLine): string =>
+    typeof line === 'string' ? line : lineActs ? line.text : (line.was ?? line.text);
+  const tagsOf = (f: SeedFaction) =>
+    [...f.redLines, ...f.compulsions].flatMap((line) =>
+      typeof line !== 'string' && line.forbids && line.forbids.length > 0
+        ? [{ text: line.text, forbids: [...line.forbids], ...(line.with ? { with: [...line.with] } : {}) }]
+        : [],
+    );
   return SEED_FACTIONS.map((f) => ({
     id: f.id,
     name: f.name,
@@ -752,8 +854,19 @@ function buildFactions(luck = true, commodities = true): Faction[] {
     title: f.title,
     warEthic: f.warEthic,
     tradeEthic: f.tradeEthic,
-    redLines: [...f.redLines],
-    compulsions: f.compulsions.map((c) => (typeof c === 'string' ? { text: c } : { ...c })),
+    redLines: f.redLines.map(textOf),
+    // The compulsion as `CompulsionSchema` has it: text, trigger, and the ids
+    // the bots' peace reads. Its tags go to `lineActs`.
+    compulsions: f.compulsions.map((c) =>
+      typeof c === 'string'
+        ? { text: c }
+        : {
+            text: textOf(c),
+            ...(c.trigger ? { trigger: c.trigger } : {}),
+            ...(c.barsPeaceWith ? { barsPeaceWith: [...c.barsPeaceWith] } : {}),
+          },
+    ),
+    ...(lineActs ? { lineActs: tagsOf(f) } : {}),
     dissent: 0,
     heat: 0,
     intel: {},
@@ -894,6 +1007,8 @@ function buildSeedState(
    * `widerNames: false` draws from ten given names and thirty families, and
    * `agentLists: false` puts nobody on anybody's operatives' Lists, as before
    * version 22.
+   * `lineActs: false` tags no line with the acts it forbids, and keeps the
+   * wording each line had before it was reworded, as before version 27.
    */
   {
     fourSchools = true,
@@ -907,6 +1022,7 @@ function buildSeedState(
     seats = true,
     officerLists = true,
     agentLists = true,
+    lineActs = true,
   }: {
     fourSchools?: boolean;
     auxiliaries?: boolean;
@@ -920,6 +1036,7 @@ function buildSeedState(
     officerLists?: boolean;
     agentLists?: boolean;
     widerNames?: boolean;
+    lineActs?: boolean;
   } = {},
 ): WorldState {
   if (!SEED_FACTIONS.some((f) => f.id === playerFactionId)) {
@@ -930,7 +1047,7 @@ function buildSeedState(
 
   const systems = buildSystems(auxiliaries);
   applyOpeningFloors(systems, auxiliaries);
-  const factions = buildFactions(luck, commodities);
+  const factions = buildFactions(luck, commodities, lineActs);
   // Every world opens on its baseline: its own power at `HOME_REGARD`, and
   // nobody else anything. See `regard.ts`.
   if (regard) {

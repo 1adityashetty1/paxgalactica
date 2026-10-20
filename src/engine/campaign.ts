@@ -8,6 +8,7 @@ import {
   type TurnReport,
 } from '../domain/reducer.js';
 import { WorldStateSchema, type OrderType, type WorldState } from '../domain/state.js';
+import { OP_PATHS_LIST, orderFor, type OpPath } from '../domain/ops.js';
 import { isPublicOrderType } from '../domain/intel.js';
 import { createSeedState } from '../seed/scenario.js';
 import { emptyJournal, replay, seedStateFor, type Journal } from './journal.js';
@@ -54,6 +55,8 @@ export interface StagedBatch {
   narrative: string;
   /** Whose ops these are — carried so the commit replays under the same guards. */
   actor?: string;
+  /** Which writer staged them — the player, or the engine charging the player. See `OP_PATHS`. */
+  path?: OpPath;
   /**
    * Where the batch came from, carried for the same reason as `actor`: a
    * negotiated treaty must commit under the source that permits it, or a deal
@@ -78,12 +81,19 @@ export interface StagedBatch {
    * - `charge` — an objection priced on an accord, kept even if the accord goes.
    * - `record` — an engine row, such as the arbiter's ruling. Records of what
    *   happened are not the player's to delete.
+   * - `attached` — part of another batch's `group`, withdrawn with it and
+   *   never alone: the other power's charge for signing an accord goes when
+   *   the accord does.
    *
    * What stays discardable is an accord: unrolled, and still the player's to
    * walk away from before the turn lands. A charge its institutions levied for
    * proposing it is a separate batch and stays.
    */
   binding?: StagedBinding;
+  /** Batches withdrawn together: an accord, its correction, and what is `attached` to it. */
+  group?: string;
+  /** The power an accord was made with, so withdrawing it can be written into that conversation. */
+  accordWith?: string;
   /**
    * The acting power's business alone: covert work, or an order its own
    * institutions refused. Left out of what the reactions are told, and its
@@ -92,7 +102,7 @@ export interface StagedBatch {
   secret?: boolean;
 }
 
-export type StagedBinding = 'rolled' | 'sent' | 'refused' | 'charge' | 'record';
+export type StagedBinding = 'rolled' | 'sent' | 'refused' | 'charge' | 'record' | 'attached';
 
 /**
  * A campaign as the browser carries it between requests. See
@@ -108,8 +118,11 @@ export const StagedBatchSchema = z.object({
   narrative: z.string(),
   actor: z.string().optional(),
   source: z.enum(['model', 'extraction', 'engine']).optional(),
-  binding: z.enum(['rolled', 'sent', 'refused', 'charge', 'record']).optional(),
+  path: z.enum(OP_PATHS_LIST).optional(),
+  binding: z.enum(['rolled', 'sent', 'refused', 'charge', 'record', 'attached']).optional(),
   secret: z.boolean().optional(),
+  group: z.string().optional(),
+  accordWith: z.string().optional(),
 });
 
 export const CampaignSnapshotSchema = z.object({
@@ -126,6 +139,12 @@ export type CampaignSnapshot = z.infer<typeof CampaignSnapshotSchema>;
 export interface StageMeta {
   binding?: StagedBinding;
   secret?: boolean;
+  /** Withdrawn together — see `StagedBatch.group`. */
+  group?: string;
+  /** The power an accord was made with. */
+  accordWith?: string;
+  /** Which writer this is. Every live caller says; a test may not. */
+  path?: OpPath;
 }
 
 /**
@@ -284,7 +303,7 @@ export class Campaign {
     // nobody, so it carries no `deploy_agent` to recognise it by. On the op, it
     // is journaled and replays exactly.
     if (meta.secret) ops = ops.map(privateNote);
-    const res = applyOps(this.state, ops, source, actor, true);
+    const res = applyOps(this.state, ops, source, actor, true, {}, meta.path);
     this.state = res.state;
     // `ops` is what was PROPOSED and is what gets journaled, because replay must
     // re-run the rejections to reproduce them. `applied` is what actually
@@ -305,9 +324,13 @@ export class Campaign {
       narrative,
       actor,
       source,
-      // An engine row is a record whatever the caller says.
+      path: meta.path,
+      // An engine row is a record whatever the caller says, unless it is
+      // attached to a batch it goes with.
       binding: meta.binding ?? (source === 'engine' ? 'record' : undefined),
       secret: meta.secret,
+      ...(meta.group ? { group: meta.group } : {}),
+      ...(meta.accordWith ? { accordWith: meta.accordWith } : {}),
     });
     return { rejections: res.rejections, notes: res.notes };
   }
@@ -368,8 +391,33 @@ export class Campaign {
       .filter((b) => !b.secret)
       .map((b, i) => `${i + 1}. ${b.label}${b.narrative ? ` — ${b.narrative}` : ''}`)
       .join('\n');
-    const ops = acts.flatMap((b) => (b.secret ? b.ops.filter(isPublicAct) : b.ops));
+    // What LANDED decides who answers, not what was proposed: a refused op
+    // reaches nobody (playtest 2026-10-18, D4).
+    const ops = acts.flatMap((b) => {
+      const landed = b.applied ?? b.ops;
+      return b.secret ? landed.filter(isPublicAct) : landed;
+    });
     return { summary, ops };
+  }
+
+  /**
+   * Replace one declaration's story with the reconciled one (§5): the first
+   * non-engine batch from `from` carries it, and any correction after it is
+   * cleared, so the reactions read one story and it is the true one.
+   */
+  rewriteNarrative(from: number, text: string): void {
+    let first = true;
+    for (const batch of this.stagedBatches.slice(from)) {
+      if (batch.source === 'engine') continue;
+      batch.narrative = first ? text : '';
+      first = false;
+    }
+  }
+
+  /** Write what a correction changed onto the batch it staged, for the reactions to read. */
+  amendLastNarrative(text: string): void {
+    const last = this.stagedBatches[this.stagedBatches.length - 1];
+    if (last) last.narrative = last.narrative ? `${last.narrative} ${text}` : text;
   }
 
   /** Whether each staged batch may be discarded, index for index. */
@@ -413,7 +461,9 @@ export class Campaign {
    */
   discardStaged(): number {
     const before = this.stagedBatches.length;
-    this.stagedBatches = this.stagedBatches.filter((b) => b.binding !== undefined);
+    const going = this.stagedBatches.filter((b) => b.binding === undefined || b.binding === 'attached');
+    this.stagedBatches = this.stagedBatches.filter((b) => b.binding !== undefined && b.binding !== 'attached');
+    this.recordWithdrawals(going);
     this.resyncPreview();
     return before - this.stagedBatches.length;
   }
@@ -427,11 +477,37 @@ export class Campaign {
    */
   discardStagedAt(index: number): boolean | StagedBinding {
     if (index < 0 || index >= this.stagedBatches.length) return false;
-    const binding = this.stagedBatches[index]!.binding;
-    if (binding !== undefined) return binding;
-    this.stagedBatches.splice(index, 1);
+    const target = this.stagedBatches[index]!;
+    if (target.binding !== undefined) return target.binding;
+    // Its group goes with it: the accord's correction, and the charge attached
+    // to it. Anything bound in the group stays, for its own reason.
+    const goes = (b: StagedBatch): boolean =>
+      b === target ||
+      (target.group !== undefined && b.group === target.group && (b.binding === undefined || b.binding === 'attached'));
+    const going = this.stagedBatches.filter(goes);
+    this.stagedBatches = this.stagedBatches.filter((b) => !goes(b));
+    this.recordWithdrawals(going);
     this.resyncPreview();
     return true;
+  }
+
+  /**
+   * Tell the conversation an accord came from that it was withdrawn. The
+   * transcript is replayed into that power's persona, which otherwise goes on
+   * believing in a deal that never took effect — measured: after a withdrawn
+   * toll lift, the Combine insisted "you paid 400, and my customs houses struck
+   * you from the list" (playtest 2026-10-18, C13). Once per conversation.
+   */
+  private recordWithdrawals(going: readonly StagedBatch[]): void {
+    for (const factionId of new Set(going.flatMap((b) => (b.accordWith ? [b.accordWith] : [])))) {
+      const sessions = this.transcripts[factionId];
+      const last = sessions?.[sessions.length - 1];
+      if (!last) continue;
+      last.push({
+        speaker: 'record',
+        text: '[The accord reached above was WITHDRAWN before it took effect. Nothing in it was carried out — no treaty, no payment, no concession by either side.]',
+      });
+    }
   }
 
   stagedLabels(): string[] {
@@ -453,11 +529,12 @@ export class Campaign {
       // committing it as `model` would reject it at the moment the turn landed
       // — the deal visible in the preview would quietly not exist afterwards.
       const source = batch.source ?? 'model';
-      const res = applyOps(this.committed, batch.ops, source, batch.actor, true);
+      const res = applyOps(this.committed, batch.ops, source, batch.actor, true, {}, batch.path);
       this.committed = res.state;
       this.journal.entries.push({
         kind: 'ops',
         source,
+        ...(batch.path ? { path: batch.path } : {}),
         label: batch.label,
         ops: batch.ops,
         // The actor MUST be journaled. It was applied above and dropped here,
@@ -491,10 +568,11 @@ export class Campaign {
     source: OpSource,
     label: string,
     actor?: string,
+    path?: OpPath,
   ): { rejections: ApplyResult['rejections']; notes: string[] } {
-    const res = applyOps(this.committed, ops, source, actor, true);
+    const res = applyOps(this.committed, ops, source, actor, true, {}, path);
     this.committed = res.state;
-    this.journal.entries.push({ kind: 'ops', source, label, ops, actor });
+    this.journal.entries.push({ kind: 'ops', source, ...(path ? { path } : {}), label, ops, actor });
     this.resyncPreview();
     return { rejections: res.rejections, notes: res.notes };
   }
@@ -511,7 +589,7 @@ export class Campaign {
   private resyncPreview(): void {
     let s = this.committed;
     for (const batch of this.stagedBatches) {
-      const res = applyOps(s, batch.ops, batch.source ?? 'model', batch.actor, true);
+      const res = applyOps(s, batch.ops, batch.source ?? 'model', batch.actor, true, {}, batch.path);
       s = res.state;
       // Same rule as `stage`, and it has to be the same rule: a preview that
       // recomputed `applied` differently would change the reported ops
@@ -697,11 +775,8 @@ function privateNote(op: unknown): unknown {
  * of a public category, which `intel.ts` already rules visible to everyone.
  */
 function isPublicAct(op: unknown): boolean {
-  if (!op || typeof op !== 'object') return false;
-  const o = op as { op?: unknown; type?: unknown };
-  return (
-    o.op === 'issue_order' &&
-    typeof o.type === 'string' &&
-    isPublicOrderType(o.type as OrderType)
-  );
+  // Work is read as the order it means, so a declared move is as public as the
+  // fleet movement it becomes.
+  const o = orderFor(op) as { type?: unknown } | null;
+  return o !== null && typeof o.type === 'string' && isPublicOrderType(o.type as OrderType);
 }

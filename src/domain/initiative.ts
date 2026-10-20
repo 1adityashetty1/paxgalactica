@@ -6,6 +6,7 @@ import {
   type CommanderArchetype,
 } from './command.js';
 import { neighboursOf, shortestPath } from './graph.js';
+import { orderFor } from './ops.js';
 import {
   AGENT_COST,
   FIXTURE_COST,
@@ -100,6 +101,7 @@ import {
 } from './hulls.js';
 import { routeEarnings, routeLegs, tradeRoutes } from './trade.js';
 import { STAT_NAMES, statModifier } from './checks.js';
+import { ACT_WORDS, linesCrossed, type Act } from './acts.js';
 
 /**
  * Doctrine initiative: what a power would reach for, on this board, unprompted.
@@ -387,14 +389,12 @@ function raise(ctx: Ctx): Ops {
   const { site, kind } = pick;
   return [
     {
-      op: 'issue_order',
+      op: 'found_fixture',
       factionId: me,
-      type: 'construction_infrastructure',
-      originId: site.id,
-      targetId: site.id,
+      systemId: site.id,
+      kind,
       durationTurns: 3,
       label: `${kind.replace(/_/g, ' ')} at ${site.name}`,
-      onComplete: { kind: 'found_fixture', magnitude: 1, fixtureKind: kind },
     },
   ];
 }
@@ -425,14 +425,13 @@ function mend(ctx: Ctx): Ops {
   const site = sys(state, broken.atSystemId!)!;
   return [
     {
-      op: 'issue_order',
+      op: 'repair_fixture',
       factionId: me,
-      type: 'construction_infrastructure',
-      originId: site.id,
-      targetId: site.id,
+      systemId: site.id,
+      kind: broken.kind,
+      magnitude: points,
       durationTurns: 3,
       label: `repair the ${broken.kind.replace(/_/g, ' ')} at ${site.name}`,
-      onComplete: { kind: 'repair_fixture', magnitude: points, fixtureKind: broken.kind },
     },
   ];
 }
@@ -709,11 +708,7 @@ function sweep(ctx: Ctx): Ops {
   if (!caught) return [];
   const where = sys(state, caught.systemId)!;
   return [
-    {
-      op: 'issue_order', factionId: me, type: 'counter_intelligence',
-      originId: where.id, targetId: where.id, durationTurns: 3,
-      label: `sweep ${where.name}`,
-    },
+    { op: 'sweep', factionId: me, systemId: where.id, durationTurns: 3, label: `sweep ${where.name}` },
   ];
 }
 
@@ -831,7 +826,7 @@ function buy(ctx: Ctx, appetite: number, reserveTurns: number, doctrine: BuyDoct
   const lifterTons = HULL_SPEC.lifter.tonnage;
   const buyLift = Math.min(Math.max(0, wantLift - lift), Math.floor(tonsToSpend / lifterTons));
   if (buyLift > 0) {
-    ops.push({ op: 'adjust_fleet', factionId: ctx.me, delta: buyLift, hull: 'lifter', reason: 'lift' });
+    ops.push({ op: 'build_ships', factionId: ctx.me, count: buyLift, hull: 'lifter', reason: 'lift' });
     tonsToSpend -= buyLift * lifterTons;
   }
 
@@ -851,7 +846,7 @@ function buy(ctx: Ctx, appetite: number, reserveTurns: number, doctrine: BuyDoct
     Math.floor(tonsToSpend / escortTons),
   );
   if (buyScreen > 0) {
-    ops.push({ op: 'adjust_fleet', factionId: ctx.me, delta: buyScreen, hull: 'escort', reason: 'screen' });
+    ops.push({ op: 'build_ships', factionId: ctx.me, count: buyScreen, hull: 'escort', reason: 'screen' });
     tonsToSpend -= buyScreen * escortTons;
   }
 
@@ -872,7 +867,7 @@ function buy(ctx: Ctx, appetite: number, reserveTurns: number, doctrine: BuyDoct
   const haulTons = HULL_SPEC.freighter.tonnage;
   const buyHaul = Math.min(Math.max(0, wantHaul - haul), Math.floor(tonsToSpend / haulTons));
   if (buyHaul > 0) {
-    ops.push({ op: 'adjust_fleet', factionId: ctx.me, delta: buyHaul, hull: 'freighter', reason: 'hauling' });
+    ops.push({ op: 'build_ships', factionId: ctx.me, count: buyHaul, hull: 'freighter', reason: 'hauling' });
     tonsToSpend -= buyHaul * haulTons;
   }
 
@@ -888,13 +883,13 @@ function buy(ctx: Ctx, appetite: number, reserveTurns: number, doctrine: BuyDoct
   const earTons = HULL_SPEC.listener.tonnage;
   const buyEars = Math.min(Math.max(0, wantEars - ears), Math.floor(tonsToSpend / earTons));
   if (buyEars > 0) {
-    ops.push({ op: 'adjust_fleet', factionId: ctx.me, delta: buyEars, hull: 'listener', reason: 'sigint' });
+    ops.push({ op: 'build_ships', factionId: ctx.me, count: buyEars, hull: 'listener', reason: 'sigint' });
     tonsToSpend -= buyEars * earTons;
   }
 
   const buyLine = Math.floor(tonsToSpend / HULL_SPEC[line].tonnage);
   if (buyLine > 0) {
-    ops.push({ op: 'adjust_fleet', factionId: ctx.me, delta: buyLine, hull: line, reason: 'yards' });
+    ops.push({ op: 'build_ships', factionId: ctx.me, count: buyLine, hull: line, reason: 'yards' });
   }
   return ops;
 }
@@ -974,10 +969,21 @@ function lifterCount(s: WorldState, me: string): number {
   return inSystems + inTransit;
 }
 
-/** Concentrate scattered hulls at one holding, so a blow can be struck. */
+/**
+ * Concentrate scattered hulls at one holding, so a blow can be struck, by a
+ * `fleet_movement` from each base that can spare them. One jump inside its own
+ * territory lands at once (`movesAtOnce` in the reducer); anything further
+ * takes its turns. Hulls already under way to it count toward the want, so a
+ * power does not send a second wave each turn while the first is in transit.
+ * (Before journal version 23 this moved them in an instant from anywhere, as a
+ * pair of `adjust_ships`.)
+ */
 function massAt(ctx: Ctx, whereId: string, want: number): Ops {
   const ops: Ops = [];
-  let owed = want - lineStrengthAt(ctx.state, whereId, ctx.me);
+  const inbound = ctx.state.pendingOrders
+    .filter((o) => o.factionId === ctx.me && o.type === 'fleet_movement' && o.targetId === whereId)
+    .reduce((n, o) => n + battleshipEquivalents(o.force), 0);
+  let owed = want - lineStrengthAt(ctx.state, whereId, ctx.me) - inbound;
   if (owed <= 0) return ops;
   for (const base of held(ctx.state, ctx.me)
     .filter((b) => b.id !== whereId)
@@ -987,15 +993,16 @@ function massAt(ctx: Ctx, whereId: string, want: number): Ops {
     const spare = Math.max(0, lineStrengthAt(ctx.state, base.id, ctx.me) - 4);
     const take = Math.min(spare, owed);
     if (take <= 0) continue;
-    // Class by class, so concentrating a fleet does not silently turn its
-    // transports into battleships on the way: a bare `adjust_ships` removes in
-    // loss order and adds battleships.
-    for (const [hull, n] of movedClasses(ctx.state, base.id, ctx.me, take)) {
-      ops.push(
-        { op: 'adjust_ships', systemId: base.id, factionId: ctx.me, delta: -n, hull },
-        { op: 'adjust_ships', systemId: whereId, factionId: ctx.me, delta: n, hull },
-      );
-    }
+    // Class by class, so a concentrating fleet keeps its transports.
+    const force: ShipStack = {};
+    for (const [hull, n] of movedClasses(ctx.state, base.id, ctx.me, take)) force[hull] = n;
+    if (hullsIn(force) === 0) continue;
+    const target = ctx.state.systems.find((x) => x.id === whereId);
+    ops.push({
+      op: 'move', factionId: ctx.me,
+      originId: base.id, targetId: whereId, force,
+      label: `concentrate at ${target?.name ?? whereId}`,
+    });
     owed -= take;
   }
   return ops;
@@ -1047,7 +1054,7 @@ function sortie(ctx: Ctx, targetId: string, force: number, label: string): Ops {
   const warships = subtractStack(here, { lifter: here.lifter ?? 0 });
   return [
     {
-      op: 'issue_order', factionId: ctx.me, type: 'fleet_movement',
+      op: 'move', factionId: ctx.me,
       originId: from.id, targetId,
       force: mergeStacks(drawToWeight(warships, force), { lifter }),
       // The officer sails if they are standing at the port the sortie leaves
@@ -1448,7 +1455,7 @@ function occupy(ctx: Ctx, target: StarSystem, label: string): Ops {
   if (hullsIn(force) === 0) return [];
   return [
     {
-      op: 'issue_order', factionId: ctx.me, type: 'fleet_movement',
+      op: 'move', factionId: ctx.me,
       originId: from.id, targetId: target.id, force,
       officers: officersAt(ctx, from.id),
       label,
@@ -1500,6 +1507,13 @@ function press(ctx: Ctx, target: StarSystem, label: string): Ops {
  * `sortie` and `occupy` both return `[]` when nothing can supply the blow, so
  * "can I do this today" needs no separate predicate — the attempt is the test.
  */
+/** A fleet movement onto ground the mover does not hold: an attack, not a concentration. */
+function strikes(state: WorldState, me: string, op: Record<string, unknown>): boolean {
+  const order = orderFor(op);
+  if (order?.type !== 'fleet_movement') return false;
+  return sys(state, String(order.targetId ?? ''))?.controllerFactionId !== me;
+}
+
 function pursue(
   ctx: Ctx,
   candidates: StarSystem[],
@@ -1509,8 +1523,10 @@ function pursue(
   for (const target of candidates) {
     const ops = go(ctx, target, label(target));
     // `press` also returns massing ops, which are not an attack — those are the
-    // fallback, not a reason to stop looking for something reachable.
-    if (ops.some((o) => o.op === 'issue_order')) return ops;
+    // fallback, not a reason to stop looking for something reachable. Massing
+    // is a fleet movement too, onto ground the bot already holds, so a strike
+    // is told apart by where it goes rather than by what kind of op it is.
+    if (ops.some((o) => strikes(ctx.state, ctx.me, o))) return ops;
   }
   const best = candidates[0];
   return best ? go(ctx, best, label(best)) : [];
@@ -1619,11 +1635,7 @@ const ojjul: Bot = (ctx) => {
       .filter((x) => shipsAt(ctx.state, x.id, ctx.me) >= 5 && x.controllerFactionId !== ctx.me)
       .sort((a, b) => trafficAt(ctx.state, b.id) - trafficAt(ctx.state, a.id))[0];
     if (squeeze && trafficAt(ctx.state, squeeze.id) > 0) {
-      ops.push({
-        op: 'issue_order', factionId: ctx.me, type: 'blockade',
-        originId: squeeze.id, targetId: squeeze.id, durationTurns: 3,
-        label: `close ${squeeze.name}`,
-      });
+      ops.push({ op: 'blockade', factionId: ctx.me, systemId: squeeze.id, durationTurns: 3, label: `close ${squeeze.name}` });
     }
   }
   return ops;
@@ -1787,8 +1799,7 @@ const drajk: Bot = (ctx) => {
       .sort((a, b) => b.worth - a.worth)[0]?.x;
     if (prey && raidWorth(ctx.state, ctx.me, prey) > 0) {
       ops.push({
-        op: 'issue_order', factionId: ctx.me, type: 'commerce_raiding',
-        originId: prey.id, targetId: prey.id, durationTurns: 3,
+        op: 'raid', factionId: ctx.me, systemId: prey.id, durationTurns: 3,
         label: `raid ${prey.name}`,
         ...(raidsDark(ctx.state, ctx.me, prey) ? { dark: true } : {}),
       });
@@ -1917,7 +1928,7 @@ function station(ctx: Ctx, target: StarSystem, shape: 'line' | 'freighter', labe
       ? { freighter: 1 }
       : drawToWeight(subtractStack(here, { lifter: here.lifter ?? 0, freighter: here.freighter ?? 0, listener: here.listener ?? 0 }), PROTECTION_LINE + 0.5);
   if (hullsIn(force) === 0) return [];
-  return [{ op: 'issue_order', factionId: ctx.me, type: 'fleet_movement', originId: from.id, targetId: target.id, force, label }];
+  return [{ op: 'move', factionId: ctx.me, originId: from.id, targetId: target.id, force, label }];
 }
 
 /**
@@ -1952,10 +1963,8 @@ function court(ctx: Ctx): Ops {
     const envoy = 2 * EFFECT_COST.court;
     if (!pending('court') && left >= envoy) {
       ops.push({
-        op: 'issue_order', factionId: me, type: 'political_maneuver',
-        originId: target.id, targetId: target.id, durationTurns: 1,
+        op: 'send_envoy', factionId: me, systemId: target.id, magnitude: 2, durationTurns: 1,
         label: `an envoy to ${target.name}`,
-        onComplete: { kind: 'court', magnitude: 2, summary: `court ${target.name}` },
       });
       left -= envoy;
     }
@@ -1970,19 +1979,15 @@ function court(ctx: Ctx): Ops {
     }
     if (present && want === 'development' && !pending('develop_system') && left >= 2 * MIN_DEVELOPMENT_COST) {
       ops.push({
-        op: 'issue_order', factionId: me, type: 'construction_infrastructure',
-        originId: target.id, targetId: target.id, durationTurns: 3,
+        op: 'develop', factionId: me, systemId: target.id, magnitude: 1, durationTurns: 3,
         label: `works at ${target.name}`,
-        onComplete: { kind: 'develop_system', magnitude: 1, summary: `develop ${target.name}` },
       });
       left -= 2 * MIN_DEVELOPMENT_COST;
     }
     if (present && want === 'arms' && !pending('fortify') && left >= EFFECT_COST.fortify) {
       ops.push({
-        op: 'issue_order', factionId: me, type: 'fortification',
-        originId: target.id, targetId: target.id, durationTurns: 3,
+        op: 'fortify', factionId: me, systemId: target.id, magnitude: 1, durationTurns: 3,
         label: `walls for ${target.name}`,
-        onComplete: { kind: 'fortify', magnitude: 1, summary: `fortify ${target.name}` },
       });
       left -= EFFECT_COST.fortify;
     }
@@ -2333,33 +2338,71 @@ export interface Proposal {
  */
 export const BOT_AGGRESSION_CEILING = 0;
 
-/** Strip acts that would break a pact this faction has actually signed. */
-function honourTreaties(
+/**
+ * Strip acts that would break a pact this faction has actually signed. Read by
+ * the bots' post-filter and by an NPC's reaction before it commits
+ * (`docs/design-2026-10-17-intent-ops.md` §7). An order that names the power it
+ * knowingly breaks with (`breaks`) is kept: a bot never names one, and a
+ * reaction that does has chosen the betrayal.
+ */
+/**
+ * A bot's own lines, read off what its ops would do. Every line a doctrine
+ * bot's op crosses is held back, red line or compulsion alike: a doctrine bot
+ * does not defy its own sheet, the decision `barsPeaceWith` made for one line
+ * and this makes for all of them (`docs/design-2026-10-18-code-knows.md` §1).
+ *
+ * Measured with the sheets as written at journal version 27: no bot crosses a
+ * tagged line in 30, 100 or 300 harness turns, with events and without, so this
+ * is a guard on what a bot added later might do rather than a change to what the
+ * bots do now.
+ */
+export function honourLines(
+  state: WorldState,
+  factionId: string,
+  ops: Ops,
+  actsOf: (ops: Ops) => Act[],
+): { ops: Ops; withheld: string[] } {
+  let kept = ops;
+  const withheld: string[] = [];
+  for (let pass = 0; pass < 3; pass++) {
+    const hits = linesCrossed(state.factions, actsOf(kept), [factionId]).filter((h) => h.act.opIndex >= 0);
+    if (hits.length === 0) break;
+    const drop = new Set(hits.map((h) => h.act.opIndex));
+    withheld.push(...hits.map((h) => `${ACT_WORDS[h.act.kind]}, against its own line`));
+    kept = kept.filter((_, i) => !drop.has(i));
+  }
+  return { ops: kept, withheld };
+}
+
+export function honourTreaties(
   state: WorldState,
   me: string,
   ops: Record<string, unknown>[],
 ): { ops: Record<string, unknown>[]; withheld: string[] } {
   const withheld: string[] = [];
   const kept = ops.filter((op) => {
-    if (op.op !== 'issue_order') return true;
-    const target = sys(state, String(op.targetId ?? ''));
+    // Work is read as the order it means: a move, a blockade, a raid.
+    const order = orderFor(op);
+    if (!order) return true;
+    const target = sys(state, String(order.targetId ?? ''));
     const holder = target?.controllerFactionId;
     if (!holder || holder === me) return true;
+    if (order.breaks === holder) return true;
 
-    if (op.type === 'fleet_movement' && boundBy(state, me, holder, PEACE_TYPES)) {
+    if (order.type === 'fleet_movement' && boundBy(state, me, holder, PEACE_TYPES)) {
       withheld.push(`an attack on ${target.name}, which a standing pact forbids`);
       return false;
     }
     // A truce outlives the paper that made it, and breaking one is the dearest
     // public act in the game — see `TruceSchema`.
-    if (op.type === 'fleet_movement' && truceBetween(state.truces, state.turn, me, holder)) {
+    if (order.type === 'fleet_movement' && truceBetween(state.truces, state.turn, me, holder)) {
       withheld.push(`an attack on ${target.name}, which the truce with ${getFaction(state, holder)?.name ?? holder} forbids`);
       return false;
     }
     // A `trade_accord` makes its parties immune to each other's blockades and
     // raiding, so this is not only bad faith but mechanically inert.
     if (
-      (op.type === 'blockade' || op.type === 'commerce_raiding') &&
+      (order.type === 'blockade' || order.type === 'commerce_raiding') &&
       boundBy(state, me, holder, new Set(['trade_accord']))
     ) {
       withheld.push(`interdiction at ${target.name}, which a trade accord makes pointless`);
@@ -2367,7 +2410,7 @@ function honourTreaties(
     }
     // Protection sold is a promise kept, and a commissioner is a paymaster.
     if (
-      (op.type === 'blockade' || op.type === 'commerce_raiding') &&
+      (order.type === 'blockade' || order.type === 'commerce_raiding') &&
       (protectedFrom(state.treaties, state.turn, me, holder) ||
         state.treaties.some(
           (t) => t.type === 'contract' && isTreatyLive(t, state.turn) && t.terms.commission?.raider === me && t.parties.includes(holder),
@@ -2400,8 +2443,9 @@ function honourStanding(
   const withheld: string[] = [];
   const enemies = new Set(warsFor(state, me));
   const kept = ops.filter((op) => {
-    if (op.op !== 'issue_order' || op.type !== 'fleet_movement') return true;
-    const target = sys(state, String(op.targetId ?? ''));
+    const order = orderFor(op);
+    if (order?.type !== 'fleet_movement') return true;
+    const target = sys(state, String(order.targetId ?? ''));
     const holder = target?.controllerFactionId;
     // Your own world is reinforcement, and unaligned ground has nobody to have
     // offended.
@@ -2428,11 +2472,16 @@ function describeProposal(state: WorldState, me: string, ops: Record<string, unk
   let bought = 0;
   let massed = 0;
 
-  for (const op of ops) {
-    if (op.op === 'adjust_fleet') bought += Number(op.delta ?? 0);
-    else if (op.op === 'adjust_ships' && Number(op.delta ?? 0) > 0) massed += Number(op.delta);
-    else if (op.op === 'issue_order') {
-      if (op.type === 'fleet_movement') {
+  for (const raw of ops) {
+    if (raw.op === 'build_ships' && raw.programme !== true) {
+      bought += Number(raw.count ?? 0);
+      continue;
+    }
+    const op = orderFor(raw);
+    if (op) {
+      if (op.type === 'fleet_movement' && String(op.label ?? '').startsWith('concentrate')) {
+        massed += hullsIn(normaliseStack((op.force ?? {}) as ShipStack));
+      } else if (op.type === 'fleet_movement') {
         // `op.force` is a stack now, and interpolating one yields
         // "[object Object]" — legal TypeScript, and it would put that in the
         // event log the next reaction call reads back.
@@ -2449,7 +2498,7 @@ function describeProposal(state: WorldState, me: string, ops: Record<string, unk
       }
     }
   }
-  if (massed > 0) parts.unshift(`concentrates ${massed} hull(s)`);
+  if (massed > 0) parts.unshift(`sails ${massed} hull(s) to concentrate`);
   if (bought > 0) parts.unshift(`lays down ${bought} hull(s)`);
 
   return parts.length === 0 ? `${name} holds its position.` : `${name} ${parts.join(', ')}.`;
@@ -2479,6 +2528,12 @@ export function proposeFor(
    * because this module ships to the browser and the reducer does not.
    */
   applies?: (ops: Record<string, unknown>[]) => boolean,
+  /**
+   * The acts a batch would commit, read off a dry run (`ApplyResult.acts`).
+   * Given, the proposal is held to the bot's own lines (`honourLines`). Passed
+   * in for the reason `applies` is.
+   */
+  actsOf?: (ops: Record<string, unknown>[]) => Act[],
 ): Proposal | null {
   const bot = BOTS[factionId];
   if (!bot) return null;
@@ -2496,7 +2551,8 @@ export function proposeFor(
   const filtered = (raw: Ops) => {
     const paper = honourTreaties(state, factionId, raw);
     const standing = honourStanding(state, factionId, paper.ops);
-    return { ops: standing.ops, withheld: [...paper.withheld, ...standing.withheld] };
+    const lines = actsOf ? honourLines(state, factionId, standing.ops, actsOf) : { ops: standing.ops, withheld: [] };
+    return { ops: lines.ops, withheld: [...paper.withheld, ...standing.withheld, ...lines.withheld] };
   };
   let chosen = filtered([...bot(ctx), ...rules.flat()]);
   if (applies && chosen.ops.length > 0 && !applies(chosen.ops)) {

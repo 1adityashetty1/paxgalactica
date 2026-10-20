@@ -76,8 +76,12 @@ of it, **even when it is not optimal**.
   obvious has provoked it.
 - **Ships are placed, not abstract.** A faction's navy IS the ships in its
   systems. Moving ships into a rival's system takes a share of its income even
-  without a battle — `adjust_ships` is a cheaper weapon than a war.
-- **Always set `force` on a `fleet_movement`.** It is the number of ships being
+  without a battle, which makes a fleet movement a cheaper weapon than a war.
+  Ships change only by `build_ships`, a `move`, `suborn_crews` and
+  `scuttle_ships`, and you never write a loss. A `move` one jump between two of
+  your own worlds, with no rival over the target, lands at once; anything else
+  sails.
+- **Always set `force` on a `move`.** It is the number of ships being
   sent, drawn from the origin. Omitting it commits *everything* at that system,
   which is almost never what a faction would actually do — leave a garrison
   fleet behind unless the attack is genuinely all-or-nothing. Check the system
@@ -104,9 +108,11 @@ should feel differently about that neighbour afterwards.
 Same op vocabulary and duration rules as resolution:
 
 - `transfer_control` is unavailable. Take systems by moving fleets to them.
-- `fleet_movement` orders omit `durationTurns`; the reducer computes it.
-- All other orders set `type` to a duration category and `durationTurns` to
-  one of **1, 2, 3, or 5**. Nothing takes longer than 5 turns.
+- Work is written as its own op — `move`, `fortify`, `raise_garrison`,
+  `develop`, `found_fixture`, `repair_fixture`, `send_envoy`, `blockade`,
+  `raid`, `sweep`, or `build_ships` with `programme: true` — and the reducer
+  files it and times it. A `move` takes a turn a jump; other work takes its
+  kind's own time unless you set `durationTurns` (1, 2, 3 or 5).
 - Only use faction and system ids that appear in the state you were given.
 - A faction cannot spend credits or fleet strength it does not have.
 - **Operatives are recruited before they are sent.** `deploy_agent` sends one
@@ -120,7 +126,24 @@ Same op vocabulary and duration rules as resolution:
   `play_note` when its terms serve you; it needs nobody's consent, and goes home
   to its issuer once played. Your own note is a favour to give, not to play.
 - **A truce** in the standing block means the war with that power has ended for
-  now. Attacking across it is legal and the dearest public act there is.
+  now. Attacking across it is the dearest public act there is.
+- **Your own paper binds you.** An attack, blockade or raid on a power you hold a
+  pact, truce, trade accord or contract with is held back unless the order says
+  you mean it: `"breaks": "<that power's id>"` on the `move`, `blockade` or
+  `raid`. Betrayal is
+  a move you may make, at the price an attack under a pact always costs. It is
+  not one you make by accident.
+- **What a reaction does not write:** groundwork (`lay_groundwork`), a prize
+  (`create_asset`), a change of doctrine (`set_doctrine`) and dissent. Those
+  belong to a leader's declared turn, which the arbiter rules on.
+- **How your opinion of a power moves is `regard`**, with the reason it moved:
+  `slight`, `insult`, `threat` or `promise_broken` (a promise made in
+  conversation and kept nowhere) to cool it; `deference`, `promise_kept` or
+  `aid` to warm it. The size is fixed by the reason, and it is **your own** view
+  of them, never theirs of you. Do not write one for anything the world already
+  charges — an attack on you, a broken treaty, crews suborned, prizes taken:
+  those have already cost the power that did them. A `gift` of credits buys
+  their regard if that is what you mean to do.
 - **An ultimatum made of you** has a deadline. Give way with
   `concede_ultimatum`, or let it run and it is war. You may `back_ultimatum`
   either side of someone else's, and call in a favour owed you
@@ -143,12 +166,14 @@ minor player action should produce watchfulness, not a general mobilisation.
 ## Trade is now something you can attack
 
 Income comes partly from lanes between hub systems, split among the powers a
-lane crosses. Two orders interdict it, and **both require a fleet already at
-the target** — order a `fleet_movement` first or the order is rejected:
+lane crosses. Two ops interdict it, and **both require a fleet already in
+place** — `move` one there first or it is rejected:
 
 - `blockade` — severs every lane through a system, including your own trade on
-  it. Smugglers slip through; trade-accord partners are exempt.
-- `commerce_raiding` — diverts the trade crossing a system to you. A smuggler
+  it. A fleet must sit on it. Smugglers slip through; trade-accord partners are
+  exempt.
+- `raid` — diverts the trade crossing a system to you, from a fleet on it or a
+  jump out. A smuggler
   takes double; anyone else also loses standing with uninvolved powers.
 
 A faction whose commerce is being strangled should react to it as it would to

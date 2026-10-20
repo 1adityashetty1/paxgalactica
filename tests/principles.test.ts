@@ -226,7 +226,7 @@ describe('a compulsion is a price, and the price is charged', () => {
       appraisal: appraisal({ breach: compulsionBreach }),
       resolution: {
         narrative: 'The tribute is agreed.',
-        ops: [{ op: 'adjust_disposition', factionId: 'freeworlds', towardFactionId: 'ojjul', delta: 5 }],
+        ops: [{ op: 'spend', factionId: 'freeworlds', amount: 30, for: 'the first instalment' }],
       },
     };
     const campaign = Campaign.start('freeworlds', 'test-compulsion');
@@ -238,7 +238,7 @@ describe('a compulsion is a price, and the price is charged', () => {
     expect(arkanis.dissent).toBe(COMPULSION_BREACH_DISSENT);
     // The order was carried out. That is the whole difference from a red line.
     const ops = outcome.ops as { op: string }[];
-    expect(ops.some((o) => o.op === 'adjust_disposition')).toBe(true);
+    expect(ops.some((o) => o.op === 'spend')).toBe(true);
   });
 });
 
@@ -669,7 +669,7 @@ describe('an accord cannot launder a red line', () => {
     scripted = {
       extraction: {
         narrative: 'The Combine gives the Free Worlds a season of grace, asking nothing.',
-        ops: [{ op: 'adjust_disposition', factionId: 'ojjul', towardFactionId: 'freeworlds', delta: 5 }],
+        ops: [{ op: 'regard', factionId: 'freeworlds', toward: 'ojjul', because: 'promise_kept' }],
       },
       appraisal: appraisal({
         breach: {
@@ -691,7 +691,7 @@ describe('an accord cannot launder a red line', () => {
     expect(outcome.defiance?.violated).toMatch(/nothing be given away for nothing/);
     // The accord stands — that is the whole difference from a red line.
     const ops = outcome.ops as { op: string }[];
-    expect(ops.some((o) => o.op === 'adjust_disposition')).toBe(true);
+    expect(ops.some((o) => o.op === 'regard')).toBe(true);
     expect(campaign.state.factions.find((f) => f.id === 'ojjul')!.dissent).toBe(
       COMPULSION_BREACH_DISSENT,
     );
@@ -701,7 +701,7 @@ describe('an accord cannot launder a red line', () => {
     scripted = {
       extraction: {
         narrative: 'A trade accord is signed.',
-        ops: [{ op: 'adjust_disposition', factionId: 'ojjul', towardFactionId: 'meridian', delta: 5 }],
+        ops: [{ op: 'regard', factionId: 'meridian', toward: 'ojjul', because: 'promise_kept' }],
       },
       appraisal: appraisal(),
     };
@@ -722,7 +722,7 @@ describe('an accord cannot launder a red line', () => {
     scripted = {
       extraction: {
         narrative: 'The Free Worlds agree to let a Combine factor sit at Pell Reach.',
-        ops: [{ op: 'adjust_disposition', factionId: 'freeworlds', towardFactionId: 'ojjul', delta: 5 }],
+        ops: [{ op: 'regard', factionId: 'freeworlds', toward: 'ojjul', because: 'deference' }],
       },
       appraisal: appraisal({
         breach: {

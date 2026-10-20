@@ -14,7 +14,7 @@ import {
   OBLIGATION_SIGNABLE,
   ULTIMATUM_MAX_DEADLINE,
 } from './diplomacy.js';
-import { FibScaleSchema } from './duration.js';
+import { CATEGORY_FLOORS, FibScaleSchema, type DurationCategory } from './duration.js';
 import { LentSchema } from './loan.js';
 import { HullClassSchema, TypedStackSchema } from './hulls.js';
 import { CheatSchema } from './cheats.js';
@@ -93,6 +93,64 @@ export const AdjustCreditsOp = z.object({
   factionId: z.string().min(1),
   delta: z.number().int(),
   reason: z.string().default(''),
+});
+
+/**
+ * Credits from one power to another: `factionId` pays, `to` receives. On a
+ * declaration the payer is the acting power; in an accord either party may pay,
+ * because the transcript is where the payer agreed. Conserved by construction —
+ * a payment cannot invent the money it moves (intent-ops §2).
+ */
+export const PayOp = z.object({
+  op: z.literal('pay'),
+  factionId: z.string().min(1),
+  to: z.string().min(1),
+  amount: z.number().int().min(1),
+  /** What it buys, in a phrase: a bribe, a ransom, the price of a world. */
+  for: z.string().default(''),
+});
+
+/**
+ * What an influence check that worked moves: how `whom` sees the actor. The
+ * engine sizes it by the band (`SWAY_BY_BAND`) and drops it when the check was
+ * not influence or did not work; a model never chooses the amount (intent-ops §3).
+ */
+export const SwayOp = z.object({
+  op: z.literal('sway'),
+  factionId: z.string().min(1),
+  whom: z.string().min(1),
+  /** Written by the engine from the roll. */
+  amount: z.number().int().min(1).max(15).optional(),
+  reason: z.string().default(''),
+});
+
+/**
+ * A reacting power's own view of another moves, for a reason from a closed
+ * list; the size is the table's (`REGARD_BECAUSE`), never the model's.
+ */
+export const RegardOp = z.object({
+  op: z.literal('regard'),
+  factionId: z.string().min(1),
+  toward: z.string().min(1),
+  because: z.enum(['slight', 'insult', 'threat', 'promise_broken', 'deference', 'promise_kept', 'aid']),
+  reason: z.string().default(''),
+});
+
+/** Credits given to another power, which buy its regard at a published rate (`GIFT_RATE`). */
+export const GiftOp = z.object({
+  op: z.literal('gift'),
+  factionId: z.string().min(1),
+  to: z.string().min(1),
+  amount: z.number().int().min(1),
+  for: z.string().default(''),
+});
+
+/** The acting power's credits to nobody on the board: a bribe, a hire, materials. */
+export const SpendOp = z.object({
+  op: z.literal('spend'),
+  factionId: z.string().min(1),
+  amount: z.number().int().min(1),
+  for: z.string().default(''),
 });
 
 /** Internal standing with your own institutions. Reducer-driven, not narrative. */
@@ -640,6 +698,14 @@ export const IssueOrderOp = z.object({
    * prizes. Refused on any other order.
    */
   dark: z.boolean().optional(),
+  /**
+   * The power whose pact, truce, accord or contract this order knowingly
+   * breaks. An NPC's reaction that attacks, blockades or raids a power it is
+   * bound to is held back unless it names that power here: betrayal stays a
+   * move, but a deliberate one. The price is unchanged — charged on arrival by
+   * `acts.ts`, as any attack under a pact is.
+   */
+  breaks: z.string().min(1).optional(),
 });
 
 export const CancelOrderOp = z.object({
@@ -927,6 +993,18 @@ export const EstablishCommitmentOp = z.object({
     )
     .max(4)
     .default([]),
+  /**
+   * The mechanism the arbiter's ruling named for it, written by the engine on
+   * a declared commitment. Absent on an accord's, and on every commitment
+   * written before journal version 25.
+   */
+  mechanism: z.enum(['income', 'record']).optional(),
+  /**
+   * The world a declared charter is chartered on — one its power holds (§7).
+   * It pays at most a quarter of what that world pays, and nothing once the
+   * world is lost. Named nobody, the power's richest world.
+   */
+  systemId: z.string().min(1).optional(),
 });
 
 /**
@@ -1228,9 +1306,14 @@ export const EXTRACTION_ALLOWED = new Set<string>([
   // money in the reducer, so neither can be wished into existence.
   'forgive_debt',
   'settle_debt',
-  // The relational product of having talked at all.
+  // The relational product of having talked at all, priced from journal
+  // version 28 (code-knows §8): `regard`, for a reason from a closed list.
+  // `adjust_disposition` stays only so older accords replay.
+  'regard',
   'adjust_disposition',
-  // A payment agreed across the table.
+  // A payment agreed across the table — `pay`, and `adjust_credits` only so
+  // accords journaled before `pay` existed replay.
+  'pay',
   'adjust_credits',
   // Lifting a toll is a concession, and a concession is the thing an accord is
   // FOR — "I'll open the Sennex lane to your hulls" produced nothing before,
@@ -1267,6 +1350,9 @@ export const EXTRACTION_ALLOWED = new Set<string>([
   'concede_ultimatum',
   // The record of what was said.
   'log_narrative',
+  // No model can write this any more (intent-ops §6: it left `ModelOpSchema`),
+  // but accords journaled before that carry it, and refusing it here would
+  // sink those whole batches on replay.
   'spawn_event',
 ]);
 
@@ -1291,11 +1377,298 @@ export const EXTRACTION_REFUSAL_REASON: Record<string, string> = {
     'Crews change hands by suborning them, which needs presence and a stat contest. A conversation cannot hand over hulls.',
 };
 
+/**
+ * **Ships change only through intent ops** (journal version 22). A model never
+ * writes ship arithmetic: `adjust_ships` and `adjust_fleet` are the reducer's
+ * mechanism, and what a model may say is one of these, or a fleet movement.
+ * The reducer used to infer intent from who was acting, whose hulls they were
+ * and the sign of the number — so a casualty a model invented beside a fleet
+ * movement read as an attempt to suborn, was refused for it, and sank the
+ * movement with it.
+ */
+
+/** Lay down new hulls of your own, now, billed by displacement and held to your yards' capacity. */
+/**
+ * What every piece of work carries, as an order does. Every one is optional
+ * with a default, and every one is used: models set `label` on most orders,
+ * `onInterrupt` on a fifth of them (`partial` refunds the unspent money), and
+ * `visibility` when a power chooses to be seen.
+ */
+const WorkFields = {
+  label: z.string().default(''),
+  /** 1, 2, 3 or 5 turns. Omitted, the kind's own: its category floor, and two for an envoy. */
+  durationTurns: FibScaleSchema.optional(),
+  durationRationale: z.string().default(''),
+  interruptible: z.boolean().default(true),
+  onInterrupt: OnInterruptSchema.default('cancel'),
+  visibility: z.array(z.string()).default([]),
+};
+
+export const BuildShipsOp = z.object({
+  op: z.literal('build_ships'),
+  factionId: z.string().min(1),
+  hull: HullClassSchema,
+  count: z.number().int().min(1),
+  /** A world you hold; omitted, your best one. A programme needs one named. */
+  systemId: z.string().min(1).optional(),
+  reason: z.string().default(''),
+  /**
+   * Built out of sight instead of laid down now: a hidden, interruptible yard
+   * programme, paid at issue and delivered on completion. Counted against the
+   * same berths as an open build.
+   */
+  programme: z.boolean().default(false),
+  ...WorkFields,
+});
+
+/**
+ * Move ships of your own — to your own world, against a rival's, onto ground
+ * nobody holds. One jump between two worlds you hold, with no rival over the
+ * target, lands at once; anything else sails a turn a jump and is settled on
+ * arrival. The reducer decides which.
+ */
+export const MoveOp = z.object({
+  op: z.literal('move'),
+  factionId: z.string().min(1),
+  originId: z.string().min(1),
+  targetId: z.string().min(1),
+  /** A count, drawn proportionally, or a composition. Omitted, the whole port and its officers. */
+  force: z.union([z.number().int().min(1), TypedStackSchema]).optional(),
+  officers: z.array(z.string().min(1)).max(5).default([]),
+  /** The power whose pact, truce, accord or contract this knowingly breaks. */
+  breaks: z.string().min(1).optional(),
+  label: z.string().default(''),
+  interruptible: z.boolean().default(true),
+  onInterrupt: OnInterruptSchema.default('cancel'),
+  visibility: z.array(z.string()).default([]),
+});
+
+/** Raise a world's garrison ceiling. Permanent, and it defends whoever holds the world next. */
+export const FortifyOp = z.object({
+  op: z.literal('fortify'),
+  factionId: z.string().min(1),
+  systemId: z.string().min(1),
+  magnitude: z.number().int().min(1).max(99),
+  ...WorkFields,
+});
+
+/** Raise troops on a world, up to its ceiling. */
+export const RaiseGarrisonOp = z.object({
+  op: z.literal('raise_garrison'),
+  factionId: z.string().min(1),
+  systemId: z.string().min(1),
+  magnitude: z.number().int().min(1).max(99),
+  ...WorkFields,
+});
+
+/** Develop a world: strategic value up, and at 7 it becomes a trade hub. Priced by what it is worth. */
+export const DevelopOp = z.object({
+  op: z.literal('develop'),
+  factionId: z.string().min(1),
+  systemId: z.string().min(1),
+  magnitude: z.number().int().min(1).max(99),
+  ...WorkFields,
+});
+
+/** Raise a fixture of a catalogue kind on a world you hold, if its ground takes it and a slot is free. */
+export const FoundFixtureOp = z.object({
+  op: z.literal('found_fixture'),
+  factionId: z.string().min(1),
+  systemId: z.string().min(1),
+  kind: z.string().min(1),
+  ...WorkFields,
+});
+
+/** Mend a fixture a saboteur has hit. */
+export const RepairFixtureOp = z.object({
+  op: z.literal('repair_fixture'),
+  factionId: z.string().min(1),
+  systemId: z.string().min(1),
+  kind: z.string().min(1).optional(),
+  magnitude: z.number().int().min(1).max(99),
+  ...WorkFields,
+});
+
+/** Send an envoy to court a world — one you hold, or an independent one you border or orbit. */
+export const SendEnvoyOp = z.object({
+  op: z.literal('send_envoy'),
+  factionId: z.string().min(1),
+  systemId: z.string().min(1),
+  magnitude: z.number().int().min(1).max(99).default(2),
+  ...WorkFields,
+});
+
+/** Close every lane through a world your fleet already sits over. */
+export const BlockadeOp = z.object({
+  op: z.literal('blockade'),
+  factionId: z.string().min(1),
+  systemId: z.string().min(1),
+  originId: z.string().min(1).optional(),
+  breaks: z.string().min(1).optional(),
+  ...WorkFields,
+});
+
+/** Raid the shipping through a world, from a fleet on it or a jump out. `dark` runs it unowned. */
+export const RaidOp = z.object({
+  op: z.literal('raid'),
+  factionId: z.string().min(1),
+  systemId: z.string().min(1),
+  originId: z.string().min(1).optional(),
+  dark: z.boolean().optional(),
+  breaks: z.string().min(1).optional(),
+  ...WorkFields,
+});
+
+/** Sweep a world of your own for rival operatives: counter-intelligence, read while it runs. */
+export const SweepOp = z.object({
+  op: z.literal('sweep'),
+  factionId: z.string().min(1),
+  systemId: z.string().min(1),
+  ...WorkFields,
+});
+
+/** The ops that are work: each one an order, with the reducer choosing its category. */
+export const WORK_OPS = [
+  'move', 'fortify', 'raise_garrison', 'develop', 'found_fixture', 'repair_fixture',
+  'send_envoy', 'blockade', 'raid', 'sweep',
+] as const;
+
+/**
+ * The order a piece of work means, as an `issue_order` would have written it —
+ * or null when the op is not work. One conversion, read by the reducer and by
+ * every reader of a batch (payload bounding, the fog's public test, the treaty
+ * filter), so none of them restates which category a kind of work is filed
+ * under (`docs/design-2026-10-17-intent-ops.md` §1).
+ *
+ * A `build_ships` is work only as a `programme`. An `issue_order` is returned as
+ * it is: the engine, the bots' legacy shapes and old journals still write it.
+ */
+export function orderFor(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  if (o.op === 'issue_order') return o;
+  const work = (type: string, systemId: unknown, onComplete?: Record<string, unknown>, duration?: unknown) => ({
+    op: 'issue_order',
+    factionId: o.factionId,
+    type,
+    originId: o.originId ?? systemId,
+    targetId: systemId,
+    ...(duration !== undefined ? { durationTurns: duration } : {}),
+    durationRationale: o.durationRationale ?? '',
+    interruptible: o.interruptible ?? true,
+    onInterrupt: o.onInterrupt ?? 'cancel',
+    visibility: o.visibility ?? [],
+    label: o.label ?? '',
+    ...(onComplete ? { onComplete } : {}),
+  });
+  const floor = (type: DurationCategory) => o.durationTurns ?? CATEGORY_FLOORS[type];
+  switch (o.op) {
+    case 'move':
+      return {
+        op: 'issue_order',
+        factionId: o.factionId,
+        type: 'fleet_movement',
+        originId: o.originId,
+        targetId: o.targetId,
+        ...(o.force !== undefined ? { force: o.force } : {}),
+        officers: o.officers ?? [],
+        ...(o.breaks !== undefined ? { breaks: o.breaks } : {}),
+        interruptible: o.interruptible ?? true,
+        onInterrupt: o.onInterrupt ?? 'cancel',
+        visibility: o.visibility ?? [],
+        label: o.label ?? '',
+      };
+    case 'fortify':
+      return work('fortification', o.systemId, { kind: 'fortify', magnitude: o.magnitude }, floor('fortification'));
+    case 'raise_garrison':
+      return work('garrison_raising', o.systemId, { kind: 'raise_garrison', magnitude: o.magnitude }, floor('garrison_raising'));
+    case 'develop':
+      return work('construction_infrastructure', o.systemId, { kind: 'develop_system', magnitude: o.magnitude }, floor('construction_infrastructure'));
+    case 'found_fixture':
+      return work('construction_infrastructure', o.systemId, { kind: 'found_fixture', magnitude: 1, fixtureKind: o.kind }, floor('construction_infrastructure'));
+    case 'repair_fixture':
+      return work(
+        'construction_infrastructure',
+        o.systemId,
+        { kind: 'repair_fixture', magnitude: o.magnitude, ...(o.kind !== undefined ? { fixtureKind: o.kind } : {}) },
+        floor('construction_infrastructure'),
+      );
+    case 'send_envoy':
+      // Two turns: every envoy in the saved campaigns was estimated at two
+      // against a floor of one, and the floor alone would double their pace.
+      return work('political_maneuver', o.systemId, { kind: 'court', magnitude: o.magnitude ?? 2 }, o.durationTurns ?? 2);
+    case 'blockade':
+      return { ...work('blockade', o.systemId, undefined, floor('blockade')), ...(o.breaks !== undefined ? { breaks: o.breaks } : {}) };
+    case 'raid':
+      return {
+        ...work('commerce_raiding', o.systemId, undefined, floor('commerce_raiding')),
+        ...(o.dark !== undefined ? { dark: o.dark } : {}),
+        ...(o.breaks !== undefined ? { breaks: o.breaks } : {}),
+      };
+    case 'sweep':
+      return work('counter_intelligence', o.systemId, undefined, floor('counter_intelligence'));
+    case 'build_ships':
+      if (o.programme !== true) return null;
+      // Filed as capital ship construction; the reducer re-files a lighter hull
+      // as a refit (`commissionCategory`).
+      return work(
+        'capital_ship_construction',
+        o.systemId,
+        { kind: 'commission_ships', magnitude: o.count, hull: o.hull },
+        o.durationTurns ?? CATEGORY_FLOORS[o.hull === 'battleship' ? 'capital_ship_construction' : 'refit'],
+      );
+    default:
+      return null;
+  }
+}
+
+/**
+ * Talk another power's crews into changing sides where they stand — at a world
+ * you have ships at or next to, or an operative on. Their resolve against your
+ * guile decides how many will; the cheapest hulls go first, they are paid for
+ * by the ton, and it costs standing with them and everyone watching.
+ */
+export const SubornCrewsOp = z.object({
+  op: z.literal('suborn_crews'),
+  factionId: z.string().min(1),
+  /** The power whose crews are turned. */
+  fromFactionId: z.string().min(1),
+  systemId: z.string().min(1),
+  count: z.number().int().min(1),
+  reason: z.string().default(''),
+});
+
+/** Scuttle or strike off hulls of your own at a world. Never another power's. */
+export const ScuttleShipsOp = z.object({
+  op: z.literal('scuttle_ships'),
+  factionId: z.string().min(1),
+  systemId: z.string().min(1),
+  count: z.number().int().min(1),
+  /** Which class; omitted, the cheapest go first. */
+  hull: HullClassSchema.optional(),
+  reason: z.string().default(''),
+});
+
 /** Everything the model is allowed to emit. */
 export const ModelOpSchema = z.discriminatedUnion('op', [
-  AdjustDispositionOp,
-  AdjustFleetOp,
-  AdjustCreditsOp,
+  SwayOp,
+  RegardOp,
+  GiftOp,
+  BuildShipsOp,
+  MoveOp,
+  FortifyOp,
+  RaiseGarrisonOp,
+  DevelopOp,
+  FoundFixtureOp,
+  RepairFixtureOp,
+  SendEnvoyOp,
+  BlockadeOp,
+  RaidOp,
+  SweepOp,
+  SubornCrewsOp,
+  ScuttleShipsOp,
+  PayOp,
+  SpendOp,
   SetDoctrineOp,
   CreateAssetOp,
   SetStanceOp,
@@ -1321,7 +1694,6 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   WithdrawUltimatumOp,
   PostBountyOp,
   WithdrawBountyOp,
-  IssueOrderOp,
   CancelOrderOp,
   InterruptOrderOp,
   ExtendOrderOp,
@@ -1334,8 +1706,6 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   RecruitAgentOp,
   RecallAgentOp,
   LayGroundworkOp,
-  AdjustShipsOp,
-  ModelAdjustDissentOp,
   EstablishCommitmentOp,
   DissolveCommitmentOp,
   // `establish_debt` is deliberately ABSENT, like `form_treaty`: lending binds
@@ -1348,7 +1718,6 @@ export const ModelOpSchema = z.discriminatedUnion('op', [
   RepudiateLoanOp,
   ForgiveLoanOp,
   RecruitCommanderOp,
-  SpawnEventOp,
   LogNarrativeOp,
 ]);
 export type ModelOp = z.infer<typeof ModelOpSchema>;
@@ -1369,6 +1738,9 @@ export type ModelOp = z.infer<typeof ModelOpSchema>;
  */
 export const ExtractionOpSchema = z.union([
   ModelOpSchema,
+  // An accord's regard is `regard`, in `ModelOpSchema`, priced by the reducer
+  // (code-knows §8); narrated `adjust_disposition` left this pass at journal
+  // version 28.
   FormTreatyOp,
   EstablishDebtOp,
   AssignDebtOp,
@@ -1387,8 +1759,26 @@ export const OpSchema = z.discriminatedUnion('op', [
   TransferControlOp,
   CheatOp,
   AdjustDispositionOp,
+  SwayOp,
+  RegardOp,
+  GiftOp,
   AdjustFleetOp,
+  BuildShipsOp,
+  MoveOp,
+  FortifyOp,
+  RaiseGarrisonOp,
+  DevelopOp,
+  FoundFixtureOp,
+  RepairFixtureOp,
+  SendEnvoyOp,
+  BlockadeOp,
+  RaidOp,
+  SweepOp,
+  SubornCrewsOp,
+  ScuttleShipsOp,
   AdjustCreditsOp,
+  PayOp,
+  SpendOp,
   SetDoctrineOp,
   CreateAssetOp,
   LogRulingOp,
@@ -1459,6 +1849,130 @@ export type OpInput = z.input<typeof OpSchema>;
 
 export const REDUCER_ONLY_OPS = new Set(['transfer_control']);
 
+/**
+ * The path a batch came by. `source` says whether a model wrote it; this says
+ * which writer, because a declared action, an NPC's reaction and a bot's turn
+ * all arrive as `model` and are bounded very differently before they get here:
+ * the player by the arbiter, the roll and two actions a turn, a bot by its
+ * post-filters, and a reaction by nothing but the reducer
+ * (`docs/design-2026-10-17-intent-ops.md` §7).
+ */
+export const OP_PATHS_LIST = ['declared', 'reaction', 'bot', 'accord', 'engine', 'cheat'] as const;
+export type OpPath = (typeof OP_PATHS_LIST)[number];
+
+const D = 'declared';
+const R = 'reaction';
+const B = 'bot';
+const A = 'accord';
+const E = 'engine';
+/** What an NPC may do: everything the player may, less what only the arbiter bounds. */
+const NPC = [R, B] as const;
+
+/**
+ * Which paths may write each op. Typed over every op name, so an op added later
+ * does not compile until it is given its paths — the closed-allowlist argument
+ * `EXTRACTION_ALLOWED` makes, of which this table's `accord` column is a copy
+ * held equal by a test. A batch with no path (an old journal, a test building a
+ * board) is checked against nothing here.
+ *
+ * Player only, never an NPC's reaction or a bot:
+ * - `lay_groundwork`, whose whole price is the player's action point;
+ * - `create_asset`, bounded by the arbiter's ruling and the roll;
+ * - `set_doctrine`, since an NPC's doctrine is an authored character sheet.
+ *
+ * The engine alone: `adjust_dissent` (its own charges for a refusal, a breach,
+ * an objection), the ship arithmetic and the reducer's own ops. `spawn_event`
+ * is the engine's and a bot's rationale line.
+ */
+export const OP_PATHS: Record<Op['op'], readonly OpPath[]> = {
+  transfer_control: [E],
+  cheat: ['cheat'],
+  log_ruling: [E],
+  // Regard is written as `sway` (a declaration's influence payoff), `regard` (a
+  // reaction's or an accord's view, for a listed reason) or `gift` (intent-ops
+  // §3, code-knows §8). `adjust_disposition` keeps the accord path only so
+  // accords journaled before version 28 replay; the reducer refuses it from a
+  // newer one, and the extraction schema no longer offers it.
+  adjust_disposition: [A, E],
+  sway: [D],
+  regard: [R, A, E],
+  gift: [D, R],
+  adjust_fleet: [E],
+  adjust_ships: [E],
+  build_ships: [D, ...NPC, E],
+  suborn_crews: [D, ...NPC, E],
+  scuttle_ships: [D, ...NPC, E],
+  // Money is written as `pay` or `spend` (intent-ops §2). An accord keeps it
+  // only so accords journaled before that replay.
+  adjust_credits: [A, E],
+  pay: [D, ...NPC, A, E],
+  spend: [D, ...NPC, E],
+  set_doctrine: [D, E],
+  create_asset: [D, A, E],
+  set_stance: [D, ...NPC, E],
+  grant_stipend: [D, ...NPC, E],
+  revoke_stipend: [D, ...NPC, E],
+  seat_estate: [D, ...NPC, E],
+  propose_marriage: [D, ...NPC, E],
+  set_toll_policy: [D, ...NPC, A, E],
+  split_asset: [D, ...NPC, E],
+  consume_asset: [D, ...NPC, A, E],
+  decide_fate: [D, ...NPC, E],
+  relocate_asset: [D, ...NPC, E],
+  transfer_asset: [D, ...NPC, A, E],
+  play_note: [D, ...NPC, E],
+  call_obligation: [D, ...NPC, E],
+  repudiate_obligation: [D, ...NPC, E],
+  release_obligation: [D, ...NPC, A, E],
+  publish_dossier: [D, ...NPC, E],
+  blackmail: [D, ...NPC, E],
+  issue_ultimatum: [D, ...NPC, E],
+  back_ultimatum: [D, ...NPC, E],
+  concede_ultimatum: [D, ...NPC, A, E],
+  withdraw_ultimatum: [D, ...NPC, E],
+  post_bounty: [D, ...NPC, E],
+  withdraw_bounty: [D, ...NPC, E],
+  // Work is written as its own op (`move`, `fortify`, …); the order is the engine's.
+  issue_order: [E],
+  move: [D, ...NPC, E],
+  fortify: [D, ...NPC, E],
+  raise_garrison: [D, ...NPC, E],
+  develop: [D, ...NPC, E],
+  found_fixture: [D, ...NPC, E],
+  repair_fixture: [D, ...NPC, E],
+  send_envoy: [D, ...NPC, E],
+  blockade: [D, ...NPC, E],
+  raid: [D, ...NPC, E],
+  sweep: [D, ...NPC, E],
+  cancel_order: [D, ...NPC, E],
+  interrupt_order: [D, ...NPC, E],
+  extend_order: [D, ...NPC, E],
+  accelerate_order: [D, ...NPC, E],
+  form_treaty: [A, E],
+  break_treaty: [D, ...NPC, A, E],
+  deploy_agent: [D, ...NPC, E],
+  recruit_agent: [D, ...NPC, E],
+  recall_agent: [D, ...NPC, E],
+  lay_groundwork: [D],
+  adjust_dissent: [E],
+  establish_commitment: [D, ...NPC, A, E],
+  dissolve_commitment: [D, ...NPC, A, E],
+  establish_debt: [A, E],
+  forgive_debt: [D, ...NPC, A, E],
+  assign_debt: [A, E],
+  restructure_debt: [A, E],
+  settle_debt: [D, ...NPC, A, E],
+  establish_loan: [A, E],
+  return_loan: [D, ...NPC, A, E],
+  repudiate_loan: [D, ...NPC, E],
+  forgive_loan: [D, ...NPC, A, E],
+  establish_obligation: [A, E],
+  assign_obligation: [A, E],
+  recruit_commander: [D, ...NPC, E],
+  spawn_event: [B, A, E],
+  log_narrative: [D, ...NPC, A, E],
+};
+
 /** Standard envelope for every model call that produces state change. */
 export const ModelTurnOutputSchema = z.object({
   narrative: z.string().min(1),
@@ -1470,6 +1984,15 @@ export type ModelTurnOutput = z.infer<typeof ModelTurnOutputSchema>;
 /** What `/endtalk` extraction returns: the ordinary vocabulary plus treaties. */
 export const ExtractionOutputSchema = z.object({
   narrative: z.string().min(1),
+  /**
+   * Which recorded concessions the two powers actually agreed, each as
+   * `by:kind`. The engine builds every transfer they name — a payment, a thing
+   * handed over, a favour let go, a world ceded, a toll lifted — from the
+   * record itself (`docs/design-2026-10-18-code-knows.md` §3). Deciding which
+   * terms on the table were agreed is the judgement; the ids were settled when
+   * each power wrote its concession down.
+   */
+  accepted: z.array(z.string().min(1)).default([]),
   // "Nothing was agreed" is the commonest honest outcome of a conversation.
   ops: z.array(ExtractionOpSchema).default([]),
 });
@@ -1575,6 +2098,17 @@ export const BreachSchema = z
     });
 export type Breach = z.infer<typeof BreachSchema>;
 
+/**
+ * What makes a DECLARED commitment more than a record, named by the arbiter
+ * before the roll (intent-ops §5): an income per turn, or nothing beyond the
+ * record. A declared commitment binds the actor alone, so a share of a lane flow
+ * or a contingency — each needing two parties bound — is an accord's to write,
+ * and a declaration that needs one is a negotiation. In the saved campaigns five
+ * declared commitments carried an income nobody ruled (+20, +20, +25, −20, −25).
+ */
+export const COMMITMENT_MECHANISMS = ['income', 'record'] as const;
+export const CommitmentMechanismSchema = z.enum(COMMITMENT_MECHANISMS);
+
 /** A durable arrangement an act would create if it succeeds — see `AppraisalSchema.establishes`. */
 export const EstablishesSchema = z
     .object({
@@ -1582,6 +2116,8 @@ export const EstablishesSchema = z
       factionIds: z.array(z.string().min(1)).min(1).max(5),
       text: z.string().min(1).max(240),
       exclusive: z.boolean().default(false),
+      /** What gives it force, if anything. `record` for the arrangement and nothing more. */
+      mechanism: CommitmentMechanismSchema.default('record'),
     });
 
 /**
@@ -1745,6 +2281,10 @@ export const AppraisalSchema = z.object({
    * is exclusive; the reducer enforces it.
    */
   establishes: EstablishesSchema.optional(),
+  /** The prizes the overt part could yield, named before the roll. See `OvertPartSchema.yields`. */
+  yields: z.array(z.string()).optional(),
+  /** How the overt part reaches another power, named before the roll. See `OvertPartSchema.reaches`. */
+  reaches: z.array(z.enum(['their_orders', 'their_ships', 'their_paper', 'coercion'])).optional(),
   /**
    * Read off a `DeclaredRulingSchema` ruling: whether the act has an overt part
    * (which is rolled), which of the actor's operatives that part involves, and
@@ -1797,7 +2337,23 @@ export const OvertPartSchema = z.object({
   /** The acting power's own operatives this part involves, by name. Usually none. */
   involves: z.array(z.string().min(1).max(60)).max(4).default([]),
   establishes: EstablishesSchema.optional(),
+  /**
+   * The kinds of thing this part could come away with if it works — `salvage`,
+   * `prisoners`, `dossier` — named BEFORE the roll. A prize is minted only of a
+   * kind named here, sized by the band; empty for nearly every act
+   * (intent-ops §4).
+   */
+  yields: z.array(z.string().regex(/^[a-z][a-z0-9_]*$/)).max(4).default([]),
+  /**
+   * How this part reaches into another power's business, named BEFORE the roll
+   * — its orders, its crews, the paper binding the two, or coercion. An op that
+   * reaches is written only when the ruling named its reach; empty for nearly
+   * every act (`docs/design-2026-10-18-code-knows.md` §4).
+   */
+  reaches: z.array(z.enum(['their_orders', 'their_ships', 'their_paper', 'coercion'])).max(4).default([]),
 });
+/** How a declaration may reach into another power's business — see `OvertPartSchema.reaches`. */
+export type Reach = 'their_orders' | 'their_ships' | 'their_paper' | 'coercion';
 export const CovertPartSchema = z.object({
   kind: z.literal('covert'),
   /** The operative, by name; omitted, the nearest one awaiting orders. */
@@ -1941,6 +2497,8 @@ export function rulingToAppraisal(value: unknown): Appraisal {
     overt: overt !== undefined,
     ...(overt ? { stat: overt.stat, difficulty: overt.difficulty, involves: overt.involves } : {}),
     ...(overt?.establishes ? { establishes: overt.establishes } : {}),
+    ...(overt?.yields && overt.yields.length > 0 ? { yields: overt.yields } : {}),
+    ...(overt?.reaches && overt.reaches.length > 0 ? { reaches: overt.reaches } : {}),
     ...(covert.length > 0
       ? {
           covert: covert.map((c) => ({
@@ -1966,6 +2524,13 @@ export const ResolutionOutputSchema = ModelTurnOutputSchema.extend({
   // nothing reads, while the prompt told it the outcome was already settled.
   /** Present when the player's OWN faction will not carry the order out. */
   refusal: RefusalSchema.optional(),
+  /**
+   * On a critical success, the one bonus it brings, from a closed menu the
+   * engine prices and applies (§4): a quarter of what the act spent back,
+   * one of its new orders a bucket sooner, goodwill with the power most
+   * involved, or one more of a prize the ruling named. Ignored on any other band.
+   */
+  bonus: z.enum(['cost_avoided', 'tempo', 'goodwill', 'windfall']).optional(),
   /**
    * Present when the order breaches a COMPULSION rather than a red line: the
    * institutions object, the ops still land, and the faction pays for it.
@@ -2149,7 +2714,8 @@ export interface OpRejection {
      * `conflictingTreaty`. A renegotiation between the SAME parties is not this:
      * that supersedes.
      */
-    | 'treaty_conflict';
+    | 'treaty_conflict'
+    | 'wrong_path';
   message: string;
 }
 

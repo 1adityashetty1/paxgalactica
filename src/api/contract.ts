@@ -183,7 +183,7 @@ export const StagedItemSchema = z.object({
    * Discard withdraws an order, never an attempt: once the dice are thrown or
    * the institutions have refused, what it cost is a fact of the turn.
    */
-  binding: z.enum(['rolled', 'sent', 'refused', 'charge', 'record']).nullable(),
+  binding: z.enum(['rolled', 'sent', 'refused', 'charge', 'record', 'attached']).nullable(),
 });
 
 export const EffectiveStatsSchema = z.object({

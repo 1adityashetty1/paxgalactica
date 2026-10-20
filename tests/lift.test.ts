@@ -289,7 +289,7 @@ describe('tonnage is the unit every fleet limit is measured in', () => {
       const start = fresh();
       const purse = start.factions.find((f) => f.id === 'freeworlds')!.credits;
       const res = applyOps(start, [
-        { op: 'adjust_fleet', factionId: 'freeworlds', delta: n, hull },
+        { op: 'build_ships', factionId: 'freeworlds', count: n, hull },
       ]);
       expect(res.rejections).toHaveLength(0);
       return purse - res.state.factions.find((f) => f.id === 'freeworlds')!.credits;

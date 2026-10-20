@@ -15,6 +15,7 @@ import { isLoanLive } from './loan.js';
 import { SECRET_CATEGORIES } from './intel.js';
 import { DEVELOPMENT_PAYBACK_TURNS } from './development.js';
 import { statModifier } from './checks.js';
+import { routeEarnings } from './trade.js';
 import { HULL_SPEC, orbitalWeightOf } from './hulls.js';
 import {
   INCOME_PER_STRATEGIC_POINT,
@@ -48,7 +49,17 @@ import type { DurationCategory } from './duration.js';
  * Every secret `subject` is keeping right now, in a fixed order so the watcher
  * that finds one finds the same one on replay.
  */
-export function secretsAbout(state: WorldState, subject: string): Secret[] {
+export function secretsAbout(
+  state: WorldState,
+  subject: string,
+  /**
+   * Journal version 26: a programme every other power already sees in full is
+   * no secret. A watcher filed proof of Meridian's "secret" yards at Sekkar
+   * Gate while the order's visibility named all four rivals (playtest
+   * 2026-10-18, D2).
+   */
+  hideSeen = true,
+): Secret[] {
   const out: Secret[] = [];
   for (const agent of [...(state.agents ?? [])].sort((a, b) => a.id.localeCompare(b.id))) {
     if (agent.ownerFactionId === subject && atWork(agent, state.turn)) {
@@ -60,7 +71,9 @@ export function secretsAbout(state: WorldState, subject: string): Secret[] {
     // A raid run dark is proof of whose the raids are, priced at what it owed.
     if (order.dark) out.push(darkRaidSecret(state, order.id, subject, order.dark));
     else if (SECRET_CATEGORIES.has(order.type as DurationCategory)) {
-      out.push({ kind: 'secret_programme', subject, ref: order.id });
+      const others = state.factions.filter((f) => f.id !== subject).map((f) => f.id);
+      const seenByAll = others.length > 0 && others.every((f) => order.visibility.includes(f));
+      if (!(hideSeen && seenByAll)) out.push({ kind: 'secret_programme', subject, ref: order.id });
     }
   }
   for (const debt of [...(state.debts ?? [])].sort((a, b) => a.id.localeCompare(b.id))) {
@@ -216,7 +229,19 @@ export function concessionWorth(state: WorldState, c: Concession): number {
     const owed = (state.obligations ?? []).find((o) => o.id === id && o.holderFactionId === c.by);
     return n + (owed ? FAVOUR_WORTH * (owed.strength === 'strong' ? 2 : 1) : 0);
   }, 0);
-  return c.credits + c.perTurn * CONCESSION_FLOW_TURNS + c.hulls * SHIP_COST + worlds + things + favours;
+  // A toll lifted is the passage the lifted power pays at the conceder's
+  // worlds, for the term or as a standing flow.
+  let lifted = 0;
+  if (c.lifts.length > 0) {
+    const paidAt = routeEarnings(state).tollsPaidBySystem;
+    const held = new Set(state.systems.filter((x) => x.controllerFactionId === c.by).map((x) => x.id));
+    const perTurn = c.lifts.reduce(
+      (n, payer) => n + Object.entries(paidAt[payer] ?? {}).reduce((m, [sys, v]) => m + (held.has(sys) ? v : 0), 0),
+      0,
+    );
+    lifted = perTurn * Math.min(c.liftTurns ?? CONCESSION_FLOW_TURNS, CONCESSION_FLOW_TURNS);
+  }
+  return c.credits + c.perTurn * CONCESSION_FLOW_TURNS + c.hulls * SHIP_COST + worlds + things + favours + Math.round(lifted);
 }
 
 export interface ConcessionBudget {

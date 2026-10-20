@@ -30,7 +30,7 @@ import type { RimEventKind } from '../domain/events.js';
 import { effectiveStats, getFaction, ledgerFor, spanOfControl } from '../domain/state.js';
 import { playableFactions } from '../seed/scenario.js';
 import { ApiFailure, toApiFailure } from './errors.js';
-import { appraiseAgreement } from '../model/calls.js';
+import { appraiseAgreement, verifyBreachRelevance } from '../model/calls.js';
 import { stats, timingReport } from '../model/client.js';
 import { spendCap } from '../model/settings.js';
 import { FileSink, NULL_SINK, setTelemetrySink, span } from '../model/telemetry.js';
@@ -720,7 +720,7 @@ export class GameSession {
   async cheat(cheat: Cheat): Promise<CheatResult> {
     const campaign = this.requirePlayable();
     if (this.isBusy) throw new ApiFailure('conflict', `Busy: ${this.busyLabel}.`);
-    const res = campaign.commit([{ op: 'cheat', cheat }], 'cheat', `cheat:${cheat.kind}`);
+    const res = campaign.commit([{ op: 'cheat', cheat }], 'cheat', `cheat:${cheat.kind}`, undefined, 'cheat');
     if (res.rejections.length === 0) await campaign.save();
     this.pushState();
     return { notes: res.notes, rejections: res.rejections };
@@ -815,6 +815,13 @@ export class GameSession {
       const merged = mergeConcessions(this.channelConcessions, result.concessions, result.retractions);
       const held = withinBudget(campaign.state, merged, factionId, campaign.state.playerFactionId);
       this.channelConcessions = held.kept;
+      // A blocker stands on a concession of the player's, and goes when that
+      // concession does. A retracted note handover still refused the whole
+      // accord at the close (playtest 2026-10-18, C6).
+      const standing = new Set(
+        this.channelConcessions.filter((c) => c.by === campaign.state.playerFactionId).map((c) => c.text),
+      );
+      this.channelBlockers = this.channelBlockers.filter((b) => standing.has(b.concession));
       this.channelBudget = {
         budget: held.budget,
         given: held.given,
@@ -832,20 +839,29 @@ export class GameSession {
       // awaiting them in a loop made a message carrying three offers three times
       // slower to answer than one carrying a single offer. Order is preserved by
       // `Promise.all`, so the blockers still read in the order they were conceded.
+      //
+      // A red line found here is held to the same relevance check the close and
+      // a declared action get: "will not close a lane" blocked a payment made
+      // FOR open lanes, and stayed through an explicit reframe (playtest
+      // 2026-10-18, C5). Struck in the same pass when the line is not about
+      // the concession.
+      const me = getFaction(campaign.state, campaign.state.playerFactionId);
       const rulings = await Promise.all(
-        mine.map(async (c) => ({ c, ruled: await appraiseAgreement(campaign.state, factionId, c.text) })),
+        mine.map(async (c) => {
+          const ruled = await appraiseAgreement(campaign.state, factionId, c.text);
+          const named = ruled.appraisal.breach?.principles ?? [];
+          const found = me && named.length > 0 ? classifyPrinciples(me, named) : null;
+          if (found?.kind !== 'red_line') return { c, ruled, found: null, extra: 0 };
+          const check = await verifyBreachRelevance(c.text, found.principle, 'red_line');
+          return { c, ruled, found: check.relevant ? found : null, extra: check.costUsd };
+        }),
       );
       return { result, rulings };
     });
     let costUsd = result.costUsd;
-    for (const { c, ruled } of rulings) {
-      costUsd += ruled.costUsd;
-      const named = ruled.appraisal.breach?.principles ?? [];
-      const me = getFaction(campaign.state, campaign.state.playerFactionId);
-      const found = me && named.length > 0 ? classifyPrinciples(me, named) : null;
-      if (found?.kind === 'red_line') {
-        this.channelBlockers.push({ concession: c.text, principle: found.principle });
-      }
+    for (const { c, ruled, found, extra } of rulings) {
+      costUsd += ruled.costUsd + extra;
+      if (found) this.channelBlockers.push({ concession: c.text, principle: found.principle });
     }
 
     this.pushState();
@@ -941,4 +957,5 @@ const BINDING_REASON: Record<StagedBinding, string> = {
   refused: 'A refusal cannot be withdrawn — your institutions have already said no, and that is what it cost.',
   charge: 'That is a charge your institutions levied for the proposal itself, and it stands even if the accord is withdrawn.',
   record: 'That is the record of a ruling, not an order, and it cannot be withdrawn.',
+  attached: 'That goes with the accord it belongs to: withdraw the accord and it goes too.',
 };

@@ -177,8 +177,27 @@ export const CommitmentSchema = z.object({
   contingencies: z.array(ContingencySchema).max(4).default([]),
   establishedTurn: z.number().int().min(0),
   status: z.enum(['active', 'dissolved']).default('active'),
+  /**
+   * The world a declared charter is chartered on
+   * (`docs/design-2026-10-18-code-knows.md` §7, journal version 28).
+   *
+   * A declared income was the one standing income a ruling created rather
+   * than a mechanism: up to 25 a turn from nowhere, for one action. Chartered
+   * on a world, it pays at most `CHARTER_SHARE` of what that world pays its
+   * power, and nothing once the world is lost — the asset rule, *"a thing that
+   * pays must sit somewhere it can be taken"*, applied to the last income that
+   * did not. Absent on an accord's commitment and on every one written before.
+   */
+  atSystemId: z.string().min(1).optional(),
 });
 export type Commitment = z.infer<typeof CommitmentSchema>;
+
+/**
+ * The most of a world's take a charter on it can pay its power. A quarter: on
+ * the opening board a charter on a power's best world pays 10–18, under
+ * `MAX_COMMITMENT_INCOME`, and on a poor world a few credits.
+ */
+export const CHARTER_SHARE = 0.25;
 
 /**
  * Most any single arrangement can be worth per turn.
@@ -258,12 +277,19 @@ export function commitmentIncomeFor(
   commitments: Commitment[],
   factionId: string,
   ceiling: number,
+  /**
+   * What a charter on a world pays this power now (§7): passed in by
+   * `ledgerFor`, which can read the world's income, so this module needs none
+   * of the economy. Absent, a charter pays its figure, as before.
+   */
+  charter?: (c: Commitment) => number,
 ): number {
   let earned = 0;
   let owed = 0;
   for (const c of commitmentsFor(commitments, factionId)) {
-    if (c.incomePerTurn > 0) earned += c.incomePerTurn;
-    else owed += c.incomePerTurn;
+    const worth = c.atSystemId !== undefined && c.incomePerTurn > 0 && charter ? charter(c) : c.incomePerTurn;
+    if (worth > 0) earned += worth;
+    else owed += worth;
   }
   return Math.min(earned, Math.max(0, ceiling)) + owed;
 }

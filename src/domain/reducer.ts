@@ -11,12 +11,12 @@ import {
   type FibScale,
 } from './duration.js';
 import {
-  COMMITMENT_BREAKING_COST,
   COMMITMENT_GOODWILL,
   conflictingCommitment,
   MAX_COMMITMENT_INCOME,
   MAX_COMMITMENT_SHARE,
 } from './arbitration.js';
+import { BREACH_PRICES, LEGACY_BREACH_PRICES, REGARD_BECAUSE, breachCharges, giftRegard, type Act, type ActKind, type Breach, type BreachKind, type BreachPrice } from './acts.js';
 import type {
   BattleOutcome,
   BattleReport,
@@ -48,10 +48,8 @@ import {
   MAX_ASSET_DISSENT,
   MAX_ASSET_YIELD,
   MISSION_PROFILE,
-  PACT_BREAKING_REPUTATION_COST,
   PIRACY_REPUTATION_COST,
   DARK_PROOF_TURNS,
-  TRUCE_BREAKING_REPUTATION_COST,
   TRUCE_RECOVERY,
   TRUCE_TREATIES,
   TRUCE_TURNS,
@@ -148,7 +146,7 @@ import {
   CLASS_SUCCESS_SHIFT,
   type AgentMission,
 } from './diplomacy.js';
-import { HEAT_ANSWERED, HEAT_BLACKMAIL, HEAT_CAUGHT, HEAT_DECAY, HEAT_FOR_MISSION, HEAT_PACT_BROKEN, HEAT_PER_RAID, addHeat } from './heat.js';
+import { HEAT_ANSWERED, HEAT_BLACKMAIL, HEAT_CAUGHT, HEAT_DECAY, HEAT_FOR_MISSION, HEAT_PER_RAID, addHeat } from './heat.js';
 import { darkRaidSecret, describeSecret, secretLive, secretsAbout, sideStrength } from './leverage.js';
 import { ASSET_ARCHETYPES, PAPER_KINDS, PEOPLE_KINDS, archetypeFor, fixtureYieldFor } from './assets.js';
 import { CHEAT_ASSET_QUANTITY, CHEAT_ASSET_VALUE, type Cheat } from './cheats.js';
@@ -201,7 +199,6 @@ import {
 } from './command.js';
 import { jumpsBetween, neighboursOf, positionAlongPath, shortestPath } from './graph.js';
 import {
-  LOAN_DEFAULT_DISPOSITION_COST,
   MAX_LOAN_CREDITS,
   MAX_LOAN_RENT,
   assetOnLoan,
@@ -317,6 +314,10 @@ import {
 } from './estates.js';
 import {
   EXTRACTION_ALLOWED,
+  OP_PATHS,
+  IssueOrderOp,
+  orderFor,
+  type OpPath,
   EXTRACTION_REFUSAL_REASON,
   OpSchema,
   REDUCER_ONLY_OPS,
@@ -368,6 +369,7 @@ import {
   isMovementType,
   ledgerFor,
   systemIncome,
+  charterWorth,
   liveAgentsOf,
   maxAgentsFor,
   subornLimit,
@@ -548,6 +550,12 @@ export interface ApplyResult {
   rejections: OpRejection[];
   /** Human-readable record of discards, clamps and arrivals. */
   notes: string[];
+  /**
+   * What the batch did, as acts a faction's lines may forbid (`acts.ts`).
+   * Output only: nothing in the world records them. Empty when the batch was
+   * held back.
+   */
+  acts: Act[];
 }
 
 /**
@@ -690,6 +698,57 @@ let runHeat = true;
 function heatUp(state: WorldState, factionId: string | null | undefined, amount: number): void {
   if (!runHeat || !factionId) return;
   addHeat(state.factions.find((f) => f.id === factionId), amount);
+}
+
+/**
+ * The price table a breach of faith is charged from — `LegacyRules.breachPrices`,
+ * journal version 24. Module-scoped for `runHeat`'s reason: breaches are charged
+ * from helpers (`defaultLoan`, `breakMarriage`, the pact check on an attack)
+ * that have no access to the batch's rules.
+ */
+let breachTable: Record<BreachKind, BreachPrice> = BREACH_PRICES;
+/** `LegacyRules.secretsAreHidden`, scoped the way `breachTable` is: two sites read it. */
+let hideSeenSecrets = true;
+
+/** Why an op cannot come by this path, in words a correction pass can act on. */
+function wrongPathReason(op: string, path: OpPath): string {
+  if (path === 'reaction' || path === 'bot') {
+    if (op === 'lay_groundwork') return 'Groundwork is laid by a leader spending an action on it; a reaction has no actions to spend.';
+    if (op === 'create_asset') return 'A prize comes out of an attempt the arbiter ruled on and the dice decided, and a reaction has neither. Take a thing by an operation, or trade for it.';
+    if (op === 'set_doctrine') return "A power's doctrine is not rewritten in a reaction.";
+  }
+  if (op === 'adjust_dissent') return "Dissent is the engine's to charge: a refusal, a defiance, a doctrine change. It is not written by hand.";
+  if (op === 'spawn_event') return 'Write a log_narrative instead.';
+  return `"${op}" cannot be written by a ${path === 'declared' ? 'declared action' : path}.`;
+}
+
+/**
+ * Charge a breach of faith: every site that breaks a power's word comes here,
+ * and `acts.ts` alone decides what it costs (`docs/design-2026-10-17-acts.md`).
+ */
+/**
+ * The acts a running `applyOps` has committed, and the op it is on. Scoped the
+ * way `breachTable` is, and null outside a batch, so the tick records nothing.
+ */
+let actsOut: Act[] | null = null;
+let actOpIndex = -1;
+
+/** Record that `actor` did `kind`, toward `toward`, at the op being applied. */
+function recordAct(kind: ActKind, actor: string | null | undefined, toward: readonly (string | null | undefined)[]): void {
+  if (!actsOut || !actor) return;
+  actsOut.push({
+    kind,
+    actor,
+    with: [...new Set(toward.filter((x): x is string => !!x && x !== actor))],
+    opIndex: actOpIndex,
+  });
+}
+
+function chargeBreach(state: WorldState, breach: Breach): void {
+  recordAct(breach.kind, breach.breaker, breach.parties);
+  const charge = breachCharges(breach, state.factions.map((f) => f.id), breachTable);
+  for (const m of charge.regard) moveRegard(state, m.who, m.toward, m.delta);
+  if (charge.heat > 0) heatUp(state, breach.breaker, charge.heat);
 }
 
 function logEvent(
@@ -994,21 +1053,11 @@ function reclaimHulls(
 function defaultLoan(state: WorldState, loan: Loan, why: string, notes: string[]): void {
   if (loan.status === 'defaulted') return;
   loan.status = 'defaulted';
-  heatUp(state, loan.borrowerFactionId, HEAT_PACT_BROKEN);
-  const lender = state.factions.find((f) => f.id === loan.lenderFactionId);
-  if (lender) {
-    lender.disposition[loan.borrowerFactionId] = Math.max(
-      -100,
-      (lender.disposition[loan.borrowerFactionId] ?? 0) - LOAN_DEFAULT_DISPOSITION_COST,
-    );
-  }
-  for (const witness of state.factions) {
-    if (witness.id === loan.borrowerFactionId || witness.id === loan.lenderFactionId) continue;
-    witness.disposition[loan.borrowerFactionId] = Math.max(
-      -100,
-      (witness.disposition[loan.borrowerFactionId] ?? 0) - PACT_BREAKING_REPUTATION_COST,
-    );
-  }
+  chargeBreach(state, {
+    kind: 'loan_defaulted',
+    breaker: loan.borrowerFactionId,
+    parties: [loan.borrowerFactionId, loan.lenderFactionId],
+  });
   const note = `${nameFor(state, loan.borrowerFactionId)} does not return ${describeOutstanding(loan)} to ${nameFor(state, loan.lenderFactionId)} — ${why}. ${loan.text}`;
   notes.push(note);
   logEvent(state, 'diplomacy', note, loan.lenderFactionId);
@@ -1360,7 +1409,13 @@ function pairLevelFootprint(t: Treaty): string[] {
  * concession and the deadline, so the two cannot disagree about what giving
  * way means.
  */
-function concedeDemand(state: WorldState, demand: Demand, withAssets = true): string[] {
+function concedeDemand(
+  state: WorldState,
+  demand: Demand,
+  withAssets = true,
+  /** Journal version 26: the world comes out of the target's hands, or nothing moves. */
+  fromTarget = true,
+): string[] {
   const notes: string[] = [];
   const from = demand.fromFactionId;
   const to = demand.toFactionId;
@@ -1382,6 +1437,7 @@ function concedeDemand(state: WorldState, demand: Demand, withAssets = true): st
   };
   switch (demand.kind) {
     case 'tribute': {
+      recordAct('tribute_paid', to, [from]);
       const treaty = term(
         'tribute',
         { incomePerTurn: { [to]: -demand.perTurn, [from]: demand.perTurn } },
@@ -1392,6 +1448,17 @@ function concedeDemand(state: WorldState, demand: Demand, withAssets = true): st
       break;
     }
     case 'cession': {
+      // What the target gives up is a world IT holds. `cedeTerritory` moves a
+      // named world from whichever party holds it, so a demand the issuer had
+      // already settled by force ceded the world back to the target at the
+      // deadline (playtest 2026-10-18, A1).
+      const held = state.systems.find((x) => x.id === demand.systemId)?.controllerFactionId;
+      if (fromTarget && held !== to) {
+        notes.push(
+          `${nameFor(state, to)} no longer holds ${systemName(state, demand.systemId ?? '')}; there is nothing to give up.`,
+        );
+        break;
+      }
       const treaty = term('cession', { territory: demand.systemId ? [demand.systemId] : [] }, false, 'a world given up under ultimatum');
       notes.push(...cedeTerritory(state, treaty, withAssets));
       break;
@@ -1403,11 +1470,11 @@ function concedeDemand(state: WorldState, demand: Demand, withAssets = true): st
     case 'break_treaty': {
       const t = state.treaties.find((x) => x.id === demand.treatyId);
       if (t && isTreatyLive(t, state.turn) && t.type === 'marriage' && t.parties.includes(to)) {
-        notes.push(breakMarriage(state, t, to));
+        notes.push(breakMarriage(state, t, to, 'treaty_conceded'));
       } else if (t && isTreatyLive(t, state.turn)) {
         t.status = 'broken';
         const third = t.parties.find((p) => p !== to);
-        if (third) moveRegard(state, third, to, -25);
+        if (third) chargeBreach(state, { kind: 'treaty_conceded', breaker: to, parties: [to, third] });
       }
       break;
     }
@@ -1493,9 +1560,14 @@ function wed(state: WorldState, treaty: Treaty): string[] {
  * (`fateWhenBrokenBy`). The breaker's own estate in the match takes it as a
  * grant revoked.
  */
-function breakMarriage(state: WorldState, treaty: Treaty, breaker: string): string {
+function breakMarriage(
+  state: WorldState,
+  treaty: Treaty,
+  breaker: string,
+  kind: Extract<BreachKind, 'marriage_repudiated' | 'treaty_conceded' | 'match_betrayed'>,
+): string {
   const other = treaty.parties.find((p) => p !== breaker);
-  if (other) moveRegard(state, other, breaker, -25);
+  if (other) chargeBreach(state, { kind, breaker, parties: [breaker, other] });
   for (const id of treaty.terms.spouses ?? []) {
     const n = notableById(state, id);
     if (!n || notablesPower(n) !== breaker) continue;
@@ -2587,7 +2659,7 @@ if (asset.commanderId !== null || asset.agentId !== null || asset.notableId) {
   // them, priced as the pact it breaks.
   if (theirNotable) {
     const betrayed = marriageOf(state, theirNotable.id);
-    if (betrayed) notes.push(breakMarriage(state, betrayed, asset.heldBy));
+    if (betrayed) notes.push(breakMarriage(state, betrayed, asset.heldBy, 'match_betrayed'));
     removeNotable(state, theirNotable);
   }
   const file: Asset = {
@@ -2786,6 +2858,7 @@ function regardForHandover(state: WorldState, asset: Asset, from: string, to: st
   // Sold on, over their head. Their power resents the seller, and every
   // onlooker marks down a power that deals in people at all — visible to
   // everybody, the same shape as `PACT_BREAKING_REPUTATION_COST`.
+  recordAct('person_trafficked', from, [whose, to]);
   moveRegard(state, whose, from, -TRAFFICKING_RESENTMENT);
   for (const f of state.factions) {
     if (f.id === from || f.id === whose || f.id === to) continue;
@@ -2962,6 +3035,7 @@ function cedeTerritory(state: WorldState, treaty: Treaty, withAssets = true): st
     if (!receiver) continue;
 
     system.controllerFactionId = receiver;
+    recordAct('territory_ceded', ceder, [receiver]);
     // A ceded world's notable stays, now a foreign notable to the receiver
     // until it is reseated; an independent world has nobody to cede it.
     const seatNote = onWorldChangesHands(state, system, ceder, 'cession', () => mintId(state, 'ast'));
@@ -3228,6 +3302,78 @@ export interface LegacyRules {
    */
   operativesComeHome?: boolean;
   /**
+   * Ships change only through intent ops — `build_ships`, `suborn_crews`,
+   * `scuttle_ships` and a fleet movement — and `adjust_ships` /
+   * `adjust_fleet` are refused from a model-written batch, and a fleet
+   * movement one jump between two worlds the mover holds lands in the batch
+   * (`movesAtOnce`). Journal version 23; before it a model wrote the
+   * arithmetic and the reducer inferred what it meant, and every movement
+   * sailed.
+   */
+  shipIntents?: boolean;
+  /**
+   * A breach of faith is charged from one table in `acts.ts`, and four of its
+   * prices were decided rather than left where they fell: repudiating a treaty
+   * costs `REPUDIATION_REPUTATION_COST` with onlookers, the breaker's own regard
+   * no longer falls, a commitment's parties are not charged again as
+   * onlookers, and walking away from a two-party one carries heat. And
+   * `break_treaty` needs the actor to be a party and the treaty to be live.
+   * Journal version 24; before it the table is `LEGACY_BREACH_PRICES`.
+   */
+  breachPrices?: boolean;
+  /**
+   * A yard programme's hulls count against the berths of the declaration that
+   * starts it, as an open build's do. Before journal version 25 a programme
+   * bypassed `yardCapacityFor` altogether: twelve hulls each, delivered in the
+   * tick outside `billConstruction`, and any number of programmes at once.
+   */
+  programmeBerths?: boolean;
+  /**
+   * The playtest of 2026-10-18, one rule each, journal version 26:
+   *
+   * - `cessionFromTarget` — a world given up under an ultimatum comes out of
+   *   the target's hands and no one else's. `cedeTerritory` moves a named world
+   *   from whichever party holds it, so an issuer that had already taken the
+   *   world it demanded ceded it back at the deadline.
+   * - `oneJumpOnce` — a move lands at once only from a world the batch did not
+   *   just land on; a chain of one-jump moves crossed three jumps in a turn.
+   * - `stealNamesARivalsThing` — a larceny naming an asset that is not a
+   *   rival's thing on that world is aimed at what is worth most there, rather
+   *   than at nothing.
+   * - `secretsAreHidden` — a programme every other power already sees is no
+   *   secret, so a watcher files no proof of it.
+   * - `fleetsMeetInBattle` — another power's fleet under way cannot be stood
+   *   down by an `interrupt_order`; it is met where it arrives.
+   * - `counterpartyTolls` — an accord may lift the other party's toll, which
+   *   the actor-only guard refused while the payment for it landed.
+   * - `honestYardNote` — a build the yards could not take is not reported as
+   *   one the treasury could not pay for.
+   * - `ledgerAfterArrivals` — the turn's ledger line is read after arriving
+   *   fleets land, where it missed every hull that arrived that tick.
+   */
+  cessionFromTarget?: boolean;
+  oneJumpOnce?: boolean;
+  stealNamesARivalsThing?: boolean;
+  secretsAreHidden?: boolean;
+  fleetsMeetInBattle?: boolean;
+  counterpartyTolls?: boolean;
+  honestYardNote?: boolean;
+  ledgerAfterArrivals?: boolean;
+  /**
+   * A declared income is chartered on a world its power holds, and pays at
+   * most a quarter of what that world pays (`docs/design-2026-10-18-code-knows.md`
+   * §7). Journal version 28; before it, a declared charter paid its figure from
+   * nowhere.
+   */
+  charterOnWorld?: boolean;
+  /**
+   * An accord's warmth is priced: it writes `regard` for a listed reason, once
+   * a direction, none beside a treaty's goodwill and none when nothing else
+   * was agreed, and may no longer narrate `adjust_disposition`
+   * (`docs/design-2026-10-18-code-knows.md` §8). Journal version 28.
+   */
+  pricedWarmth?: boolean;
+  /**
    * Officers come off a power's **Lists** — one of each school always waiting
    * — and only by appointment: no successor is put in post when the last one
    * falls, and one handed home goes back on the Lists. Journal version 20;
@@ -3361,21 +3507,38 @@ export function applyOps(
   actor?: string,
   atomic = false,
   legacy: LegacyRules = {},
+  /** Which writer this batch came from — see `OP_PATHS`. Omitted, nothing is checked. */
+  path?: OpPath,
 ): ApplyResult {
   const outer = scopeEngineNotes;
   const outerOrders = scopeOrderLines;
   const outerHeat = runHeat;
+  const outerBreaches = breachTable;
+  const outerSecrets = hideSeenSecrets;
+  const outerActs = actsOut;
+  const outerActIndex = actOpIndex;
   scopeEngineNotes = legacy.privateEngineNotes ?? true;
   scopeOrderLines = legacy.privateOrderLines ?? true;
   runHeat = legacy.heat ?? true;
+  breachTable = (legacy.breachPrices ?? true) ? BREACH_PRICES : LEGACY_BREACH_PRICES;
+  hideSeenSecrets = legacy.secretsAreHidden ?? true;
+  const acts: Act[] = [];
+  actsOut = acts;
+  actOpIndex = -1;
   try {
-    return withNameStock(legacy.widerNames ?? true, () =>
-      applyOpsUnderRules(input, rawOps, source, actor, atomic, legacy),
+    const out = withNameStock(legacy.widerNames ?? true, () =>
+      applyOpsUnderRules(input, rawOps, source, actor, atomic, legacy, path),
     );
+    // A batch held back did nothing, so it committed nothing.
+    return { ...out, acts: atomic && out.rejections.length > 0 ? [] : acts };
   } finally {
     scopeEngineNotes = outer;
     scopeOrderLines = outerOrders;
     runHeat = outerHeat;
+    breachTable = outerBreaches;
+    hideSeenSecrets = outerSecrets;
+    actsOut = outerActs;
+    actOpIndex = outerActIndex;
   }
 }
 
@@ -3427,7 +3590,8 @@ function applyOpsUnderRules(
    * third bare `true, false, true` at a call site is unreadable.
    */
   legacy: LegacyRules = {},
-): ApplyResult {
+  path?: OpPath,
+): Omit<ApplyResult, 'acts'> {
   const {
     unbuildFromGain = true,
     arrangementStanding = true,
@@ -3462,8 +3626,21 @@ function applyOpsUnderRules(
     missionEffectsHeld = true,
     methodsCount = true,
     oneRecordPerPerson = true,
+    shipIntents = true,
+    breachPrices = true,
+    programmeBerths = true,
+    cessionFromTarget = true,
+    oneJumpOnce = true,
+    stealNamesARivalsThing = true,
+    fleetsMeetInBattle = true,
+    counterpartyTolls = true,
+    honestYardNote = true,
+    pricedWarmth = true,
   } = legacy;
   const state = cloneState(input);
+  // Worlds a fleet landed on at once this batch, as `faction:system`: a move out
+  // of one of them sails, so one-jump moves cannot be chained (`oneJumpOnce`).
+  const landedAtOnce = new Set<string>();
   // Who holds office before the batch, so a seat emptied by it is charged.
   const officeBefore = seatLossCostsFavour && courtRecorded(input) ? inOffice(input) : null;
   const rejections: OpRejection[] = [];
@@ -3539,6 +3716,13 @@ function applyOpsUnderRules(
       treatyPairs.add([...(o.parties as string[])].sort().join('|'));
     }
   }
+  // What an accord agreed besides its warmth (§8): an accord that agreed
+  // nothing warms nobody, and a direction of regard moves once an accord.
+  const agreedBesidesWarmth = rawOps.some((raw) => {
+    const o = (raw as { op?: unknown } | null)?.op;
+    return typeof o === 'string' && o !== 'regard' && o !== 'adjust_disposition' && o !== 'log_narrative';
+  });
+  const regardedThisAccord = new Set<string>();
   const subornedThisBatch = new Map<string, number>();
   /**
    * Hulls this batch has already put on the board, by faction and class.
@@ -3607,6 +3791,8 @@ function applyOpsUnderRules(
    * that are neither built nor lost.
    */
   const changedFlag = new Map<string, number>();
+  /** Berths taken this batch by yard programmes, so open builds get what is left. */
+  const programmeTons = new Map<string, number>();
 
   const uprooted = new Map<string, ShipStack>();
   const commissioned = new Map<string, { count: number; at: StarSystem }>();
@@ -3625,7 +3811,120 @@ function applyOpsUnderRules(
     ]),
   );
 
+  /**
+   * Move a faction's credits by `requested` — the one money path every op that
+   * writes money goes through (`adjust_credits`, `pay`, `spend`), so the
+   * conservation rules, the declaration's cap and the duplicate-charge ledger
+   * are applied once (intent-ops §2).
+   */
+  const credit = (raw: unknown, factionId: string, requested: number): void => {
+        const f = state.factions.find((x) => x.id === factionId);
+        if (!f) {
+          reject(raw, 'unknown_faction', `No faction "${factionId}".`);
+          return;
+        }
+        // Taking another power's money is not something a sentence can do. The
+        // same shape as the `adjust_fleet` guard: there are mechanisms for this
+        // — an `income_penalty` agent, an extortionist's toll, commerce raiding
+        // — and all of them cost something. Paying someone is still allowed,
+        // because nothing needs protecting from a faction giving money away.
+        // An accord may move money BETWEEN the parties, because a transcript is
+        // the one place the other side's consent exists. A declared action may
+        // not: that is looting a treasury by narration.
+        if (source === 'extraction') {
+          negotiated[factionId] = (negotiated[factionId] ?? 0) + requested;
+          return;
+        }
+        if (actor !== undefined && factionId !== actor && requested < 0) {
+          reject(
+            raw,
+            'illegal_value',
+            `${actor} cannot take credits out of ${factionId}'s treasury directly. Skim it with an agent on an income_penalty mission, toll it, or raid its lanes.`,
+          );
+          return;
+        }
+        // Narrative money is capped. Every large movement of credits has a
+        // mechanism that owns its price and debits the treasury itself, so an
+        // `adjust_credits` this big is either duplicating one of those or
+        // inventing a sum outright — a failed action once charged 380 for
+        // nothing, and a priced 156-credit programme arrived with a freeform
+        // 180 riding alongside it.
+        //
+        // The allowance is the BATCH's, not the op's. Per op it could be
+        // multiplied by saying the same thing three times, which is exactly
+        // what happened to `subornLimit` below.
+        let delta = requested;
+        if (actor !== undefined) {
+          const used = spentOnNarrative.get(factionId) ?? 0;
+          const room = Math.max(0, MAX_NARRATIVE_CREDITS - used);
+          if (Math.abs(delta) > room) {
+            const trimmed = Math.sign(delta) * room;
+            const note =
+              room === 0
+                ? `Dropped a ${delta > 0 ? 'windfall' : 'charge'} of ${Math.abs(delta)} credits for ${nameFor(state, factionId)}; this declaration has already moved its ${MAX_NARRATIVE_CREDITS} of narrative money.`
+                : `Trimmed a ${delta > 0 ? 'windfall' : 'charge'} of ${Math.abs(delta)} credits to ${room} for ${nameFor(state, factionId)}; sums past that belong to a mechanic that prices them.`;
+            notes.push(note);
+            logEvent(state, 'clamp', note, factionId);
+            delta = trimmed;
+          }
+          spentOnNarrative.set(factionId, used + Math.abs(delta));
+          if (delta < 0) {
+            chargedByNarrative.set(
+              factionId,
+              (chargedByNarrative.get(factionId) ?? 0) + -delta,
+            );
+          }
+        }
+        // A CREDIT TO SOMEBODY ELSE HAS TO COME FROM SOMEWHERE.
+        //
+        // Taking another power's money by declaration is already refused above.
+        // Giving it money was not, and that is the other half of the same hole:
+        // a one-sided `adjust_credits meridian +300` was capped and applied, so
+        // the cap bounded the SIZE of the invention rather than the fact of it.
+        // Measured on an arbitral award — the galaxy ended 320 credits richer
+        // and no treasury paid.
+        //
+        // Deferred rather than dropped here, because whether it is a transfer
+        // is a property of the whole batch: the actor may be paying for it two
+        // ops later. Funded at settle time out of what the actor actually paid
+        // out, and the surplus is minting and is dropped.
+        //
+        // **A windfall to the actor's OWN treasury needs a payer too**, and
+        // exempting it was the whole of the remaining hole. The exemption read
+        // "the fiction paying you is a real thing and `MAX_NARRATIVE_CREDITS`
+        // bounds it" — but the cap bounds one batch, and a power may declare
+        // every turn, so what it bounded was the RATE of invention rather than
+        // the fact of it. Measured in a playtest: one 60-crate lot was "sold"
+        // back and forth between two NPCs across three turns, crediting the
+        // seller each time and debiting no buyer, and the galaxy ended about
+        // 600 credits richer on a lot worth at most 480. Twice the lot, out of
+        // nowhere, by describing a sale nobody paid for.
+        //
+        // Selling a thing to a power that never paid is precisely what the
+        // asset rules already refuse: *"it becomes credits only when a power
+        // actually pays"*. The honest routes are all still open — an accord,
+        // where the buyer's consent and its debit exist in the same transcript;
+        // a toll; a raid; an `income_penalty` operative. What is closed is the
+        // one route with no counterparty at all.
+        //
+        // Scoped to `model`. An `engine` batch is the reducer's own arithmetic
+        // paying out something it already priced, and an `extraction` one has
+        // returned above into `negotiated`, which conserves more strictly.
+        if (source === 'model' && actor !== undefined && (selfCreditNeedsPayer || factionId !== actor) && delta > 0) {
+          declaredCredits[factionId] = (declaredCredits[factionId] ?? 0) + delta;
+          return;
+        }
+        if (source === 'model' && actor !== undefined && factionId === actor && delta < 0) {
+          declaredPaidOut += -delta;
+        }
+        f.credits = Math.max(0, f.credits + delta);
+        return;
+        };
+
+  let opIndex = -1;
   for (const raw of rawOps) {
+    opIndex += 1;
+    actOpIndex = opIndex;
     const parsed = OpSchema.safeParse(raw);
     if (!parsed.success) {
       const opName =
@@ -3647,7 +3946,7 @@ function applyOpsUnderRules(
       continue;
     }
 
-    const op: Op = parsed.data;
+    let op: Op = parsed.data;
 
     // The cheat menu's op is refused from every other source, and a cheat batch
     // carries nothing else — so the menu cannot smuggle an ordinary op past the
@@ -3692,6 +3991,47 @@ function applyOpsUnderRules(
           `"${op.op}" needs nobody's agreement, so it cannot come out of a negotiation. Declare it on your own turn, where it costs an action.`,
       );
       continue;
+    }
+
+    // Who may write what. A declared action, a reaction and a bot all arrive as
+    // `model`; the path says which, and some acts are bounded only by the
+    // arbiter and the roll, which a reaction and a bot do not have.
+    if (path !== undefined && !OP_PATHS[op.op].includes(path)) {
+      reject(raw, 'wrong_path', wrongPathReason(op.op, path));
+      continue;
+    }
+    // An accord's warmth is `regard` from journal version 28 (§8); narrated
+    // `adjust_disposition` stays on the accord path only for older accords.
+    if (pricedWarmth && path === 'accord' && op.op === 'adjust_disposition') {
+      reject(
+        raw,
+        'wrong_path',
+        'An accord moves regard for a listed reason: write `regard` — `promise_kept` or `deference` for a deal made, `slight`, `insult`, `threat` or `promise_broken` for one gone sour.',
+      );
+      continue;
+    }
+
+    // Work is an order. One conversion (`orderFor`) files it under its
+    // category, and the `issue_order` case below does the rest: the floor, the
+    // price, the presence it needs, the fog (intent-ops §1).
+    if (op.op !== 'issue_order') {
+      if (op.op === 'build_ships' && op.programme && op.systemId === undefined) {
+        reject(raw, 'illegal_value', 'A yard programme is laid down at a named world: give `systemId`.');
+        continue;
+      }
+      const asOrder = orderFor(op);
+      if (asOrder) {
+        const order = IssueOrderOp.safeParse(asOrder);
+        if (!order.success) {
+          reject(
+            raw,
+            'schema_invalid',
+            `Op "${op.op}" failed validation: ${order.error.issues.map((i) => `${i.path.join('.') || '(root)'} ${i.message}`).join('; ')}`,
+          );
+          continue;
+        }
+        op = order.data;
+      }
     }
 
     switch (op.op) {
@@ -3805,6 +4145,19 @@ function applyOpsUnderRules(
       }
 
       case 'adjust_fleet': {
+        // The mechanism, not a model's to write (journal version 23): a model
+        // says what it means — build_ships, suborn_crews, scuttle_ships or a
+        // fleet movement — and the reducer does the arithmetic. Every batch a
+        // model or a bot writes carries an actor; one without is the engine or
+        // a test setting a board, and keeps the mechanism.
+        if (shipIntents && actor !== undefined && (source === 'model' || source === 'extraction')) {
+          reject(
+            raw,
+            'reducer_only',
+            `${op.op} is the reducer's ship arithmetic, not an order. Build hulls with build_ships, turn a rival's crews with suborn_crews, strike off your own with scuttle_ships, and move ships with a fleet_movement order. Losses in battle are the reducer's, when a fleet arrives.`,
+          );
+          break;
+        }
         if (!factionExists(op.factionId)) {
           reject(raw, 'unknown_faction', `No faction "${op.factionId}".`);
           break;
@@ -3875,107 +4228,280 @@ function applyOpsUnderRules(
         break;
       }
 
-      case 'adjust_credits': {
-        const f = state.factions.find((x) => x.id === op.factionId);
-        if (!f) {
+      case 'build_ships': {
+        if (!factionExists(op.factionId)) {
           reject(raw, 'unknown_faction', `No faction "${op.factionId}".`);
           break;
         }
-        // Taking another power's money is not something a sentence can do. The
-        // same shape as the `adjust_fleet` guard: there are mechanisms for this
-        // — an `income_penalty` agent, an extortionist's toll, commerce raiding
-        // — and all of them cost something. Paying someone is still allowed,
-        // because nothing needs protecting from a faction giving money away.
-        // An accord may move money BETWEEN the parties, because a transcript is
-        // the one place the other side's consent exists. A declared action may
-        // not: that is looting a treasury by narration.
-        if (source === 'extraction') {
-          negotiated[op.factionId] = (negotiated[op.factionId] ?? 0) + op.delta;
+        if (actor !== undefined && op.factionId !== actor) {
+          reject(raw, 'illegal_value', `${actor} lays down hulls for itself, not for ${op.factionId}.`);
           break;
         }
-        if (actor !== undefined && op.factionId !== actor && op.delta < 0) {
+        // **No ground, no yards** — see `livesOffTheLanes`.
+        if (!canLayDownHulls(state, op.factionId)) {
+          reject(raw, 'no_presence', noYardsMessage(state, op.factionId));
+          break;
+        }
+        // Where the yards deliver: a world you hold, or one your ships already
+        // stand over (a smuggler's yard is its orbit). Never a world you have
+        // not reached — a fleet arrives by moving there.
+        let yard: StarSystem | undefined;
+        if (op.systemId !== undefined) {
+          yard = state.systems.find((x) => x.id === op.systemId);
+          if (!yard) {
+            reject(raw, 'unknown_system', `No system "${op.systemId}".`);
+            break;
+          }
+          if (yard.controllerFactionId !== op.factionId && hullsAt(yard, op.factionId) === 0) {
+            reject(
+              raw,
+              'no_presence',
+              `${nameFor(state, op.factionId)} holds neither ${yard.name} nor any ships over it; hulls are delivered where its yards can reach, and a fleet arrives by moving there.`,
+            );
+            break;
+          }
+        } else {
+          yard = fleetBases(state, op.factionId).find((x) => x.controllerFactionId === op.factionId) ?? fleetBases(state, op.factionId)[0];
+          if (!yard) {
+            reject(raw, 'illegal_value', `${op.factionId} holds no system to base ships at.`);
+            break;
+          }
+        }
+        // Billed, and held to yard capacity, by `billConstruction` after the
+        // batch: what is charged is what actually landed.
+        addShipsAt(yard, op.factionId, op.count, op.hull);
+        break;
+      }
+
+      case 'scuttle_ships': {
+        const host = state.systems.find((x) => x.id === op.systemId);
+        if (!host) {
+          reject(raw, 'unknown_system', `No system "${op.systemId}".`);
+          break;
+        }
+        if (actor !== undefined && op.factionId !== actor) {
           reject(
             raw,
             'illegal_value',
-            `${actor} cannot take credits out of ${op.factionId}'s treasury directly. Skim it with an agent on an income_penalty mission, toll it, or raid its lanes.`,
+            `${actor} cannot strike off ${op.factionId}'s hulls. Another power's ships are lost in battle, when a fleet arrives, or turned with suborn_crews.`,
           );
           break;
         }
-        // Narrative money is capped. Every large movement of credits has a
-        // mechanism that owns its price and debits the treasury itself, so an
-        // `adjust_credits` this big is either duplicating one of those or
-        // inventing a sum outright — a failed action once charged 380 for
-        // nothing, and a priced 156-credit programme arrived with a freeform
-        // 180 riding alongside it.
-        //
-        // The allowance is the BATCH's, not the op's. Per op it could be
-        // multiplied by saying the same thing three times, which is exactly
-        // what happened to `subornLimit` below.
-        let delta = op.delta;
-        if (actor !== undefined) {
-          const used = spentOnNarrative.get(op.factionId) ?? 0;
-          const room = Math.max(0, MAX_NARRATIVE_CREDITS - used);
-          if (Math.abs(delta) > room) {
-            const trimmed = Math.sign(delta) * room;
-            const note =
-              room === 0
-                ? `Dropped a ${delta > 0 ? 'windfall' : 'charge'} of ${Math.abs(delta)} credits for ${nameFor(state, op.factionId)}; this declaration has already moved its ${MAX_NARRATIVE_CREDITS} of narrative money.`
-                : `Trimmed a ${delta > 0 ? 'windfall' : 'charge'} of ${Math.abs(delta)} credits to ${room} for ${nameFor(state, op.factionId)}; sums past that belong to a mechanic that prices them.`;
-            notes.push(note);
-            logEvent(state, 'clamp', note, op.factionId);
-            delta = trimmed;
-          }
-          spentOnNarrative.set(op.factionId, used + Math.abs(delta));
-          if (delta < 0) {
-            chargedByNarrative.set(
-              op.factionId,
-              (chargedByNarrative.get(op.factionId) ?? 0) + -delta,
-            );
-          }
-        }
-        // A CREDIT TO SOMEBODY ELSE HAS TO COME FROM SOMEWHERE.
-        //
-        // Taking another power's money by declaration is already refused above.
-        // Giving it money was not, and that is the other half of the same hole:
-        // a one-sided `adjust_credits meridian +300` was capped and applied, so
-        // the cap bounded the SIZE of the invention rather than the fact of it.
-        // Measured on an arbitral award — the galaxy ended 320 credits richer
-        // and no treasury paid.
-        //
-        // Deferred rather than dropped here, because whether it is a transfer
-        // is a property of the whole batch: the actor may be paying for it two
-        // ops later. Funded at settle time out of what the actor actually paid
-        // out, and the surplus is minting and is dropped.
-        //
-        // **A windfall to the actor's OWN treasury needs a payer too**, and
-        // exempting it was the whole of the remaining hole. The exemption read
-        // "the fiction paying you is a real thing and `MAX_NARRATIVE_CREDITS`
-        // bounds it" — but the cap bounds one batch, and a power may declare
-        // every turn, so what it bounded was the RATE of invention rather than
-        // the fact of it. Measured in a playtest: one 60-crate lot was "sold"
-        // back and forth between two NPCs across three turns, crediting the
-        // seller each time and debiting no buyer, and the galaxy ended about
-        // 600 credits richer on a lot worth at most 480. Twice the lot, out of
-        // nowhere, by describing a sale nobody paid for.
-        //
-        // Selling a thing to a power that never paid is precisely what the
-        // asset rules already refuse: *"it becomes credits only when a power
-        // actually pays"*. The honest routes are all still open — an accord,
-        // where the buyer's consent and its debit exist in the same transcript;
-        // a toll; a raid; an `income_penalty` operative. What is closed is the
-        // one route with no counterparty at all.
-        //
-        // Scoped to `model`. An `engine` batch is the reducer's own arithmetic
-        // paying out something it already priced, and an `extraction` one has
-        // returned above into `negotiated`, which conserves more strictly.
-        if (source === 'model' && actor !== undefined && (selfCreditNeedsPayer || op.factionId !== actor) && delta > 0) {
-          declaredCredits[op.factionId] = (declaredCredits[op.factionId] ?? 0) + delta;
+        const here = stackAt(host, op.factionId);
+        if (hullsIn(here) === 0) {
+          reject(raw, 'illegal_value', `${nameFor(state, op.factionId)} has no ships at ${host.name}.`);
           break;
         }
-        if (source === 'model' && actor !== undefined && op.factionId === actor && delta < 0) {
-          declaredPaidOut += -delta;
+        // The class named first, then the loss order — the cheapest hulls.
+        const named = op.hull ? Math.min(op.count, here[op.hull] ?? 0) : 0;
+        if (named > 0) setStackAt(host, op.factionId, subtractStack(here, { [op.hull!]: named }));
+        if (op.count > named) takeShipsAt(host, op.factionId, op.count - named);
+        // A batch that scuttles more than `MAX_SELF_INFLICTED_LOSS_FRACTION`
+        // of a fleet is cut back by `capSelfInflictedLosses` afterwards.
+        break;
+      }
+
+      case 'suborn_crews': {
+        const host = state.systems.find((x) => x.id === op.systemId);
+        if (!host) {
+          reject(raw, 'unknown_system', `No system "${op.systemId}".`);
+          break;
         }
-        f.credits = Math.max(0, f.credits + delta);
+        if (!factionExists(op.factionId) || !factionExists(op.fromFactionId)) {
+          reject(raw, 'unknown_faction', `No faction "${factionExists(op.factionId) ? op.fromFactionId : op.factionId}".`);
+          break;
+        }
+        const turner = op.factionId;
+        const victimId = op.fromFactionId;
+        if (actor !== undefined && turner !== actor) {
+          reject(raw, 'illegal_value', `${actor} turns crews for itself, not for ${turner}.`);
+          break;
+        }
+        if (turner === victimId) {
+          reject(raw, 'illegal_value', 'A power cannot suborn its own crews.');
+          break;
+        }
+        // Presence: ships here or a jump out, or an operative here.
+        if (!canSubornAt(state, turner, op.systemId)) {
+          reject(
+            raw,
+            'no_presence',
+            `${nameFor(state, turner)} has no ships at or next to ${host.name}, and no operative there; a crew cannot be talked into changing sides from further off.`,
+          );
+          break;
+        }
+        // How many will: the turner's guile against the victim's resolve.
+        const limit = subornLimit(state, turner, victimId);
+        if (limit <= 0) {
+          reject(
+            raw,
+            'illegal_value',
+            `${nameFor(state, victimId)}'s crews will not be turned by ${nameFor(state, turner)} — their resolve is beyond its guile.`,
+          );
+          break;
+        }
+        // Against what this declaration has already turned, so a ceiling cannot
+        // be multiplied by asking class by class.
+        const key = `${turner}->${victimId}`;
+        const room = Math.max(0, limit - (subornedThisBatch.get(key) ?? 0));
+        let want = op.count;
+        if (room <= 0) {
+          const note = `${nameFor(state, turner)} has already turned its ${limit} ${nameFor(state, victimId)} crews with this declaration; the rest will not be moved.`;
+          notes.push(note);
+          logEvent(state, 'system', note, turner);
+          break;
+        }
+        if (want > room) {
+          const note = `${nameFor(state, turner)} could only talk ${room} of ${want} ${nameFor(state, victimId)} hulls into changing sides.`;
+          notes.push(note);
+          logEvent(state, 'system', note, turner);
+          want = room;
+        }
+        // Which of their ships defect is not the suborner's choice: the loss
+        // order, cheapest first. They change flag where they stand.
+        const before = stackAt(host, victimId);
+        takeShipsAt(host, victimId, want);
+        const turned = subtractStack(before, stackAt(host, victimId));
+        const taken = hullsIn(turned);
+        if (taken === 0) {
+          reject(raw, 'illegal_value', `${nameFor(state, victimId)} has no ships at ${host.name} to turn.`);
+          break;
+        }
+        addStackAt(host, turner, turned);
+        subornedThisBatch.set(key, (subornedThisBatch.get(key) ?? 0) + taken);
+        // Bought, not captured: billed by the ton after the batch, and occupying
+        // no berth — they sail over rather than using anybody's slipway.
+        changedFlag.set(turner, (changedFlag.get(turner) ?? 0) + tonsIn(turned));
+        // An act of statecraft, priced in standing.
+        const victim = state.factions.find((f) => f.id === victimId);
+        if (victim) {
+          victim.disposition[turner] = Math.max(-100, (victim.disposition[turner] ?? 0) - SUBORN_DISPOSITION_COST * taken);
+        }
+        for (const witness of state.factions) {
+          if (witness.id === turner || witness.id === victimId) continue;
+          witness.disposition[turner] = Math.max(-100, (witness.disposition[turner] ?? 0) - SUBORN_REPUTATION_COST);
+        }
+        const note = `${nameFor(state, turner)} turns ${taken} ${nameFor(state, victimId)} hull(s) at ${host.name} without a shot fired.`;
+        notes.push(note);
+        logEvent(state, 'diplomacy', note, turner);
+        break;
+      }
+
+      case 'adjust_credits': {
+        credit(raw, op.factionId, op.delta);
+        break;
+      }
+
+      // Money moves between two powers: the payer's debit and the payee's
+      // credit, through the one money path. On a declaration the payer is the
+      // actor; across a table either party may pay, because the transcript is
+      // where the payer agreed. Nothing here credits the power paying.
+      case 'pay': {
+        if (actor !== undefined && source !== 'extraction' && op.factionId !== actor) {
+          reject(raw, 'illegal_value', `${nameFor(state, actor)} pays out of its own treasury, not ${nameFor(state, op.factionId)}'s.`);
+          break;
+        }
+        if (op.to === op.factionId) {
+          reject(raw, 'illegal_value', 'A power cannot pay itself.');
+          break;
+        }
+        if (!factionExists(op.to)) {
+          reject(raw, 'unknown_faction', `No faction "${op.to}".`);
+          break;
+        }
+        credit(raw, op.factionId, -op.amount);
+        credit(raw, op.to, op.amount);
+        break;
+      }
+
+      // An influence check that worked: how `whom` sees the actor moves, by an
+      // amount the engine read off the roll (intent-ops §3). A model never
+      // sizes it, so one without an amount was not rolled for.
+      case 'sway': {
+        if (actor !== undefined && op.factionId !== actor) {
+          reject(raw, 'illegal_value', `${nameFor(state, actor)} sways others toward itself, not toward ${nameFor(state, op.factionId)}.`);
+          break;
+        }
+        if (!factionExists(op.whom) || op.whom === op.factionId) {
+          reject(raw, 'unknown_faction', `No other faction "${op.whom}".`);
+          break;
+        }
+        if (op.amount === undefined) {
+          reject(raw, 'illegal_value', 'A sway is sized by an influence check that worked, and this one was not rolled for.');
+          break;
+        }
+        moveRegard(state, op.whom, op.factionId, op.amount);
+        break;
+      }
+
+      // A reacting power's own view of another, for a reason from a closed
+      // list, at the table's price (`REGARD_BECAUSE`).
+      case 'regard': {
+        // An accord speaks for both parties at the table, so either view may
+        // move — the actor's of them, or theirs of the actor (§8).
+        const onAccord = pricedWarmth && path === 'accord';
+        if (actor !== undefined && op.factionId !== actor && !(onAccord && op.toward === actor)) {
+          reject(
+            raw,
+            'illegal_value',
+            onAccord
+              ? `${nameFor(state, actor)} cannot decide what ${nameFor(state, op.factionId)} thinks of ${nameFor(state, op.toward)}. Move your own standing, or theirs toward you.`
+              : `${nameFor(state, actor)} answers for its own view of others, not ${nameFor(state, op.factionId)}'s.`,
+          );
+          break;
+        }
+        if (!factionExists(op.toward) || op.toward === op.factionId) {
+          reject(raw, 'unknown_faction', `No other faction "${op.toward}".`);
+          break;
+        }
+        const delta = REGARD_BECAUSE[op.because];
+        if (onAccord) {
+          // Priced, not narrated (§8). Each left-out case is said, never
+          // rejected: the accord's terms are what it is for, and a warmth
+          // written twice should not sink them.
+          const who = `${nameFor(state, op.factionId)}'s regard for ${nameFor(state, op.toward)}`;
+          let left: string | null = null;
+          if (op.because === 'aid') left = `${who} is not moved by "aid" in an accord: aid is what a gift or a payment buys.`;
+          else if (delta > 0 && !agreedBesidesWarmth) left = `${who} is not warmed: the conversation agreed nothing.`;
+          else if (delta > 0 && treatyPairs.has([op.factionId, op.toward].sort().join('|')))
+            left = `The treaty's own goodwill is what ${who.replace(/'s regard for .*/, '')} takes from this accord; the warmth written beside it is not added.`;
+          else if (regardedThisAccord.has(`${op.factionId}>${op.toward}`)) left = `${who} has moved once for this accord; a second reason is not added.`;
+          if (left !== null) {
+            notes.push(left);
+            logEvent(state, 'clamp', left, op.factionId);
+            break;
+          }
+          regardedThisAccord.add(`${op.factionId}>${op.toward}`);
+        }
+        moveRegard(state, op.factionId, op.toward, delta);
+        break;
+      }
+
+      // Credits given, which buy the receiver's regard at a published rate.
+      case 'gift': {
+        if (actor !== undefined && op.factionId !== actor) {
+          reject(raw, 'illegal_value', `${nameFor(state, actor)} gives out of its own treasury, not ${nameFor(state, op.factionId)}'s.`);
+          break;
+        }
+        if (!factionExists(op.to) || op.to === op.factionId) {
+          reject(raw, 'unknown_faction', `No other faction "${op.to}".`);
+          break;
+        }
+        credit(raw, op.factionId, -op.amount);
+        credit(raw, op.to, op.amount);
+        moveRegard(state, op.to, op.factionId, giftRegard(Math.min(op.amount, MAX_NARRATIVE_CREDITS)));
+        recordAct('gift_given', op.factionId, [op.to]);
+        break;
+      }
+
+      // Money out of the actor's treasury to nobody on the board: a bribe, a
+      // hire, materials. The cost of an attempt.
+      case 'spend': {
+        if (actor !== undefined && op.factionId !== actor) {
+          reject(raw, 'illegal_value', `${nameFor(state, actor)} spends its own money, not ${nameFor(state, op.factionId)}'s.`);
+          break;
+        }
+        credit(raw, op.factionId, -op.amount);
         break;
       }
 
@@ -4590,7 +5116,7 @@ function applyOpsUnderRules(
           const notable = notableById(state, asset.notableId);
           if (notable) {
             const betrayed = marriageOf(state, notable.id);
-            if (betrayed) notes.push(breakMarriage(state, betrayed, holder));
+            if (betrayed) notes.push(breakMarriage(state, betrayed, holder, 'match_betrayed'));
             removeNotable(state, notable);
           }
           if (theirs) moveRegard(state, theirs, holder, -EXECUTION_RESENTMENT);
@@ -4975,14 +5501,13 @@ function applyOpsUnderRules(
           break;
         }
         owed.status = 'repudiated';
-        heatUp(state, owed.debtorFactionId, HEAT_PACT_BROKEN);
         // Priced like a broken pact, and public, because a debt of honour
         // refused is the same kind of news.
-        moveRegard(state, owed.holderFactionId, owed.debtorFactionId, -25);
-        for (const witness of state.factions) {
-          if (witness.id === owed.holderFactionId || witness.id === owed.debtorFactionId) continue;
-          moveRegard(state, witness.id, owed.debtorFactionId, -PACT_BREAKING_REPUTATION_COST);
-        }
+        chargeBreach(state, {
+          kind: 'favour_repudiated',
+          breaker: owed.debtorFactionId,
+          parties: [owed.debtorFactionId, owed.holderFactionId],
+        });
         const note = `${nameFor(state, owed.debtorFactionId)} refuses what it owes ${nameFor(state, owed.holderFactionId)}. ${op.reason}`.trim();
         notes.push(note);
         logEvent(state, 'diplomacy', note, owed.debtorFactionId);
@@ -5266,7 +5791,7 @@ function applyOpsUnderRules(
           reject(raw, 'illegal_value', `Only ${nameFor(state, demand.toFactionId)} can give way to a demand made of it.`);
           break;
         }
-        notes.push(...concedeDemand(state, demand, worldTakesAssets));
+        notes.push(...concedeDemand(state, demand, worldTakesAssets, cessionFromTarget));
         break;
       }
 
@@ -5632,7 +6157,14 @@ function applyOpsUnderRules(
         // Your own customs service only, the same actor-shaped guard
         // `set_stance` and `set_doctrine` carry. Opening a rival's borders for
         // them would be a free strike at their treasury.
-        if (actor !== undefined && op.factionId !== actor) {
+        //
+        // Except in an accord, where the other party may LIFT its own toll —
+        // the commonest thing a toll is traded for. The guard refused it while
+        // the payment for it landed (playtest 2026-10-18, C4). Only a lift: an
+        // accord adding a target is refused below, and `groundInConcessions`
+        // holds a lift to the party that conceded it.
+        const theirLift = counterpartyTolls && source === 'extraction';
+        if (actor !== undefined && op.factionId !== actor && !theirLift) {
           reject(
             raw,
             'illegal_value',
@@ -6011,6 +6543,22 @@ function applyOpsUnderRules(
         // that cannot buy a single unit is refused outright.
         let effect: OrderEffect | undefined;
         let invested = 0;
+        // A programme takes berths as an open build does, from the same yards.
+        if (op.onComplete?.kind === 'commission_ships' && programmeBerths && yardCapacity) {
+          const perHull = HULL_SPEC[op.onComplete.hull].tonnage;
+          const left = yardCapacityFor(state, op.factionId) - (programmeTons.get(op.factionId) ?? 0);
+          const fits = Math.max(0, Math.floor(left / perHull));
+          if (fits === 0) {
+            reject(raw, 'illegal_value', `${nameFor(state, op.factionId)}'s yards have no berths left this turn for a ${HULL_SPEC[op.onComplete.hull].label} programme.`);
+            break;
+          }
+          if (op.onComplete.magnitude > fits) {
+            const note = `${nameFor(state, op.factionId)}'s yards have berths for ${fits} ${HULL_SPEC[op.onComplete.hull].label}(s) this turn; the programme lays down ${fits} of ${op.onComplete.magnitude}.`;
+            notes.push(note);
+            logEvent(state, 'clamp', note, op.factionId);
+            op.onComplete = { ...op.onComplete, magnitude: fits };
+          }
+        }
         if (op.onComplete) {
           const treasury = state.factions.find((f) => f.id === op.factionId)!;
           const site = getSystem(state, op.targetId)!;
@@ -6040,6 +6588,12 @@ function applyOpsUnderRules(
             effect = trim.effect;
             invested = trim.cost;
             treasury.credits -= invested;
+            if (effect.kind === 'commission_ships' && programmeBerths) {
+              programmeTons.set(
+                op.factionId,
+                (programmeTons.get(op.factionId) ?? 0) + effect.magnitude * HULL_SPEC[effect.hull].tonnage,
+              );
+            }
             if (trim.from !== undefined) {
               const why =
                 trim.reason === 'cap'
@@ -6125,6 +6679,37 @@ function applyOpsUnderRules(
           }
         }
 
+        // One jump between two worlds this power holds, with no rival's ships
+        // over the target, is a shuffle inside its own territory: it lands in
+        // the batch, where the rest of the turn sees it. Anything else sails
+        // and is resolved on arrival — an attack, a voyage, a sweep of a
+        // squatter. One move intent, and the reducer decides which it is, so
+        // the model never has to pick a mechanism and cannot pick the wrong one.
+        // Once a batch: hulls that landed at once on a world do not jump on from
+        // it in the same batch, or a chain of one-jump moves crosses the map in
+        // a turn (playtest 2026-10-18, B2). The second leg sails.
+        const chained = oneJumpOnce && landedAtOnce.has(`${op.factionId}:${op.originId}`);
+        if (
+          shipIntents &&
+          !chained &&
+          isMovementType(op.type) &&
+          movesAtOnce(state, op.factionId, op.originId, op.targetId)
+        ) {
+          const dest = getSystem(state, op.targetId)!;
+          addStackAt(dest, op.factionId, force);
+          landedAtOnce.add(`${op.factionId}:${dest.id}`);
+          for (const c of state.commanders ?? []) {
+            if (riding.includes(c.id)) c.atSystemId = dest.id;
+          }
+          const aboard = riding.length > 0
+            ? `, ${riding.map((id) => (state.commanders ?? []).find((c) => c.id === id)?.name ?? id).join(' and ')} with them`
+            : '';
+          const note = `${nameFor(state, op.factionId)} moves ${describeStack(force)} from ${getSystem(state, op.originId)!.name} to ${dest.name}${aboard}.`;
+          notes.push(note);
+          logEvent(state, 'order', note, op.factionId);
+          break;
+        }
+
         const order: PendingOrder = {
           id: mintOrderId(state),
           factionId: op.factionId,
@@ -6146,6 +6731,31 @@ function applyOpsUnderRules(
           ...(op.dark ? { dark: { turns: 0, heat: 0 } } : {}),
         };
         state.pendingOrders.push(order);
+        {
+          // What the order does to another power, for the lines that forbid it.
+          const holder = getSystem(state, op.targetId)?.controllerFactionId ?? null;
+          const other = holder && holder !== op.factionId ? holder : null;
+          if (isMovementType(op.type) && other && !isGuestOf(state, op.factionId, other)) {
+            const named = op.breaks ? state.treaties.find((t) => t.id === op.breaks && t.parties.includes(other)) : undefined;
+            const bound =
+              named !== undefined ||
+              treatyBetween(state.treaties, state.turn, op.factionId, other, PEACE_TREATIES) !== undefined ||
+              truceBetween(state.truces, state.turn, op.factionId, other) !== undefined;
+            if (bound) recordAct('pact_attack_ordered', op.factionId, [other]);
+          }
+          // Troops sent at a world the mover does not hold, a guest's excepted:
+          // conquest of a rival's world or of one that answers to nobody.
+          if (
+            isMovementType(op.type) &&
+            holder !== op.factionId &&
+            !isGuestOf(state, op.factionId, holder) &&
+            (force.lifter ?? 0) > 0
+          ) {
+            recordAct('invasion_launched', op.factionId, [other]);
+          }
+          if (op.type === 'blockade') recordAct('blockade_ordered', op.factionId, [other]);
+          if (op.type === 'commerce_raiding') recordAct('raid_ordered', op.factionId, [other]);
+        }
         const delivers = effect
           ? `, to deliver ${describeOrderEffect(effect)} for ${invested} credits`
           : '';
@@ -6374,6 +6984,19 @@ function applyOpsUnderRules(
         // needs nothing, which is what `cancel_order` is for; this is the path
         // for reaching into a rival's, and reaching needs a hand.
         const mine = actor === undefined || order.factionId === actor;
+        // A fleet under way is met where it arrives, and the battle decides
+        // what becomes of it. An order cannot stand somebody else's down: a
+        // critical success wrote `interrupt_order` on a rival's relief fleet
+        // and sent eight battleships home with no shot fired (playtest
+        // 2026-10-18, D3).
+        if (fleetsMeetInBattle && !mine && isMovementType(order.type)) {
+          reject(
+            raw,
+            'illegal_value',
+            `${nameFor(state, order.factionId)}'s fleet under way is not stood down by an order; it is met where it arrives.`,
+          );
+          break;
+        }
         const standsAt = (systemId: string): boolean => {
           const sys = getSystem(state, systemId);
           return sys !== undefined && hullsAt(sys, actor!) > 0;
@@ -6828,6 +7451,19 @@ function applyOpsUnderRules(
           summary: op.summary || `${op.treatyType.replace(/_/g, ' ')} between ${op.parties.join(' and ')}`,
         });
         state.treaties.push(treaty);
+        // What each party did by signing it, for the lines that forbid it.
+        for (const [p, q] of [op.parties, [...op.parties].reverse()] as [string, string][]) {
+          recordAct('treaty_signed', p, [q]);
+          if ((PEACE_TREATIES as readonly string[]).includes(treaty.type)) recordAct('peace_signed', p, [q]);
+          if ((DEFENCE_PACTS as readonly string[]).includes(treaty.type)) recordAct('alliance_signed', p, [q]);
+          if (treaty.type === 'marriage') recordAct('marriage_signed', p, [q]);
+          if (treaty.type === 'basing_rights') recordAct('basing_granted', p, [q]);
+          if (treaty.type === 'tribute' && (treaty.terms.incomePerTurn?.[p] ?? 0) < 0) recordAct('tribute_paid', p, [q]);
+          if ((treaty.terms.protection ?? []).includes(p) && treaty.type === 'contract') recordAct('protection_accepted', p, [q]);
+          if ((DEFENCE_PACTS as readonly string[]).includes(treaty.type) && (treaty.terms.shipsPledged?.[p] ?? 0) > 0) {
+            recordAct('defence_pledged', p, [q]);
+          }
+        }
         // One live treaty per (pair, type). A pending one supersedes nothing
         // yet — it does so when it is promoted in `tickTurn`, or the parties
         // would have nothing in force while the council deliberates.
@@ -6927,7 +7563,12 @@ function applyOpsUnderRules(
               op.parties.includes(owner)
             );
           });
-          const paid = Object.values(treaty.terms.payment ?? {}).some((n) => (n ?? 0) < 0);
+          // Paid in credits, or in things handed to the power giving the world
+          // up — a cession built from the record carries what the buyer gave
+          // as its consideration, whatever it was (design 2026-10-18 §3).
+          const paid =
+            Object.values(treaty.terms.payment ?? {}).some((n) => (n ?? 0) < 0) ||
+            (treaty.terms.assets ?? []).some((a) => op.parties.includes(a.toFactionId) && a.toFactionId !== actor);
           if (actor !== undefined && acquiring.length > 0 && !paid) {
             reject(
               raw,
@@ -6958,25 +7599,37 @@ function applyOpsUnderRules(
           reject(raw, 'unknown_treaty', `No treaty "${op.treatyId}".`);
           break;
         }
+        // A treaty is broken by a power bound by it, and only while it stands.
+        // Before version 24 neither was asked: any power could declare two
+        // others' pact void and leave them 25 colder toward each other, for
+        // nothing, and breaking a dead treaty charged again.
+        if (breachPrices && actor !== undefined) {
+          if (!treaty.parties.includes(actor)) {
+            reject(
+              raw,
+              'illegal_value',
+              `${nameFor(state, actor)} is not bound by "${treaty.summary}", so it is not ${nameFor(state, actor)}'s to break. Setting two other powers against each other is an operative's work — a discord mission.`,
+            );
+            break;
+          }
+          if (treaty.status !== 'pending' && !isTreatyLive(treaty, state.turn)) {
+            reject(raw, 'already_void', `"${treaty.summary}" is no longer in force (${treaty.status}).`);
+            break;
+          }
+        }
         // A marriage carries a ward, whose fate turns on who broke it.
         if (treaty.type === 'marriage' && isTreatyLive(treaty, state.turn) && actor !== undefined && treaty.parties.includes(actor)) {
-          heatUp(state, actor, HEAT_PACT_BROKEN);
-          notes.push(breakMarriage(state, treaty, actor));
+          notes.push(breakMarriage(state, treaty, actor, 'marriage_repudiated'));
           break;
         }
         treaty.status = 'broken';
-        // Tearing up your word is what notoriety is made of.
-        if (actor !== undefined && treaty.parties.includes(actor)) heatUp(state, actor, HEAT_PACT_BROKEN);
-        // Breaking a pact is public and costly: both signatories' opinion of
-        // the breaker sours, whoever was in the right.
-        for (const party of treaty.parties) {
-          for (const other of treaty.parties) {
-            if (party === other) continue;
-            const f = state.factions.find((x) => x.id === other);
-            if (!f) continue;
-            f.disposition[party] = Math.max(-100, (f.disposition[party] ?? 0) - 25);
-          }
-        }
+        // Tearing up your word is public and costly — see `acts.ts`. A treaty
+        // broken by no party (the engine) charges each side's view of the other.
+        chargeBreach(state, {
+          kind: 'treaty_repudiated',
+          breaker: actor !== undefined && treaty.parties.includes(actor) ? actor : null,
+          parties: treaty.parties,
+        });
         logEvent(state, 'diplomacy', `Treaty broken: ${treaty.summary}. ${op.reason}`.trim());
         // A marriage broken by nobody's hand — an engine batch — ends with its
         // ward sent home.
@@ -7016,6 +7669,22 @@ function applyOpsUnderRules(
             const was = op.effect.kind;
             op.effect = DEFAULT_COVERT_EFFECT[op.mission];
             notes.push(`A ${op.mission} operative carries ${describeEffect(op.effect)}, not ${was.replace(/_/g, ' ')}.`);
+          }
+        }
+        // A thief is sent at a rival's thing on the world it is sent to. A name
+        // that is the id of something else — the thief's own, or a thing on
+        // another world — was carried to the tick and found nothing (playtest
+        // 2026-10-18, D1, where it named the sender's own dossier). Dropped
+        // here, so the thief takes what is worth most on that world instead.
+        const theft = op.effect;
+        if (stealNamesARivalsThing && theft.kind === 'steal' && theft.assetId) {
+          const named = (state.assets ?? []).find((a) => a.id === theft.assetId);
+          const sender = op.ownerFactionId ?? actor;
+          if (named && (named.heldBy === sender || named.atSystemId !== op.systemId)) {
+            notes.push(
+              `${named.text} is ${named.heldBy === sender ? 'already yours' : `not at ${systemName(state, op.systemId)}`}; the thief will take whatever is worth most there.`,
+            );
+            op.effect = { ...theft, assetId: null };
           }
         }
         // You may only run your own operatives. Reproduced three times in
@@ -7786,6 +8455,19 @@ function applyOpsUnderRules(
       }
 
       case 'adjust_ships': {
+        // The mechanism, not a model's to write (journal version 23): a model
+        // says what it means — build_ships, suborn_crews, scuttle_ships or a
+        // fleet movement — and the reducer does the arithmetic. Every batch a
+        // model or a bot writes carries an actor; one without is the engine or
+        // a test setting a board, and keeps the mechanism.
+        if (shipIntents && actor !== undefined && (source === 'model' || source === 'extraction')) {
+          reject(
+            raw,
+            'reducer_only',
+            `${op.op} is the reducer's ship arithmetic, not an order. Build hulls with build_ships, turn a rival's crews with suborn_crews, strike off your own with scuttle_ships, and move ships with a fleet_movement order. Losses in battle are the reducer's, when a fleet arrives.`,
+          );
+          break;
+        }
         const host = state.systems.find((x) => x.id === op.systemId);
         if (!host) {
           reject(raw, 'unknown_system', `No system "${op.systemId}".`);
@@ -8004,6 +8686,37 @@ function applyOpsUnderRules(
       }
 
       case 'establish_commitment': {
+        // A declared commitment carries the mechanism the arbiter named before
+        // the roll (intent-ops §5): an income, or a record and nothing more. An
+        // income the ruling named must be written; one it did not is left out,
+        // because an income nobody ruled is a model choosing its own revenue.
+        // A share or a contingency binds two parties, which a declaration
+        // cannot, so neither survives one. Absent on an accord's commitment,
+        // which is held to its consent instead.
+        if (op.mechanism !== undefined) {
+          if (op.mechanism === 'income' && op.incomePerTurn === 0) {
+            reject(raw, 'illegal_value', `The arbiter ruled that "${op.kind}" pays every turn: write its \`incomePerTurn\`, or it is a record and nothing more.`);
+            break;
+          }
+          const unruled: string[] = [];
+          if (op.mechanism !== 'income' && op.incomePerTurn !== 0) {
+            unruled.push(`an income of ${op.incomePerTurn}`);
+            op.incomePerTurn = 0;
+          }
+          if (op.share !== undefined) {
+            unruled.push('a share');
+            op.share = undefined;
+          }
+          if (op.contingencies.length > 0) {
+            unruled.push('its contingencies');
+            op.contingencies = [];
+          }
+          if (unruled.length > 0) {
+            const note = `"${op.kind}" was ruled ${op.mechanism === 'record' ? 'a record' : 'an income'}, so it is written without ${unruled.join(' or ')}.`;
+            notes.push(note);
+            logEvent(state, 'clamp', note, op.factionIds[0] ?? null);
+          }
+        }
         // A commitment can bind another power exactly the way a treaty does —
         // a dynastic marriage or a charter naming a partner is not something
         // one side can declare into the other's ledger, and "a good roll is
@@ -8032,6 +8745,37 @@ function applyOpsUnderRules(
         if (unknown) {
           reject(raw, 'unknown_faction', `No faction "${unknown}".`);
           break;
+        }
+        // A declared income pays from a world (§7, journal version 28): the
+        // world named, if its power holds it, or else its richest. A thing
+        // that pays must sit somewhere it can be taken, and a ruling was the
+        // last thing in the game that minted a standing income from nowhere.
+        let charteredOn: string | undefined;
+        if ((legacy.charterOnWorld ?? true) && op.mechanism === 'income' && op.incomePerTurn > 0) {
+          const holder = actor ?? op.factionIds[0]!;
+          const held = state.systems.filter((x) => x.controllerFactionId === holder);
+          if (op.systemId !== undefined) {
+            const named = state.systems.find((x) => x.id === op.systemId);
+            if (!named) {
+              reject(raw, 'unknown_system', `No system "${op.systemId}".`);
+              break;
+            }
+            if (named.controllerFactionId !== holder) {
+              reject(raw, 'no_presence', `A charter pays from a world its power holds, and ${named.name} is not ${nameFor(state, holder)}'s.`);
+              break;
+            }
+            charteredOn = named.id;
+          } else {
+            const richest = held
+              .map((x) => ({ id: x.id, name: x.name, take: systemIncome(state, x).shares[holder] ?? 0 }))
+              .sort((a, b) => b.take - a.take || a.id.localeCompare(b.id))[0];
+            if (!richest) {
+              reject(raw, 'no_presence', `A charter pays from a world, and ${nameFor(state, holder)} holds none.`);
+              break;
+            }
+            charteredOn = richest.id;
+            notes.push(`${op.kind.replace(/_/g, ' ')} is chartered on ${richest.name}, ${nameFor(state, holder)}'s richest world.`);
+          }
         }
         // The arbitrator rules that a marriage is exclusive; THIS is what
         // stops a second one. Trusting the arbitrator to remember turn 3 on
@@ -8166,7 +8910,18 @@ function applyOpsUnderRules(
             .map((c) => ({ ...c, firedTurn: null })),
           establishedTurn: state.turn,
           status: 'active',
+          ...(charteredOn === undefined ? {} : { atSystemId: charteredOn }),
         });
+        if (charteredOn !== undefined) {
+          const world = state.systems.find((x) => x.id === charteredOn)!;
+          const holder = actor ?? op.factionIds[0]!;
+          const pays = charterWorth(state, state.commitments[state.commitments.length - 1]!, holder);
+          if (pays < yieldPerTurn) {
+            notes.push(
+              `A charter on ${world.name} pays at most a quarter of what the world pays, so ${op.kind.replace(/_/g, ' ')} is worth ${pays} a turn rather than ${yieldPerTurn} — and nothing if ${world.name} is lost.`,
+            );
+          }
+        }
         // Binding yourself to another power is worth something in standing even
         // when no money moves. Without this a commitment with no `incomePerTurn`
         // was entirely inert, and a playtest closed five accords that each
@@ -8229,30 +8984,19 @@ function applyOpsUnderRules(
           // journals DID pay it — gating both together would have changed ten
           // recorded campaigns in the other direction, which is the mistake the
           // exemption exists to avoid.
+          chargeBreach(state, {
+            kind: 'commitment_walked',
+            breaker: actor,
+            parties: found.factionIds,
+            chargeInjured: arrangementStanding,
+          });
           if (arrangementStanding) {
-            for (const party of found.factionIds) {
-              if (party === actor) continue;
-              const injured = state.factions.find((f) => f.id === party);
-              if (!injured) continue;
-              injured.disposition[actor] = Math.max(
-                -100,
-                (injured.disposition[actor] ?? 0) - COMMITMENT_BREAKING_COST,
-              );
-            }
-            const felt = `${nameFor(state, actor)} walks away from an arrangement it swore: −${COMMITMENT_BREAKING_COST} with ${found.factionIds.filter((id) => id !== actor).map((id) => nameFor(state, id)).join(' and ')}.`;
+            const felt = `${nameFor(state, actor)} walks away from an arrangement it swore: −${breachTable.commitment_walked.injured} with ${found.factionIds.filter((id) => id !== actor).map((id) => nameFor(state, id)).join(' and ')}.`;
             notes.push(felt);
             logEvent(state, 'diplomacy', felt, actor, [...found.factionIds]);
           }
 
           if (found.factionIds.length > 2) {
-            for (const witness of state.factions) {
-              if (witness.id === actor) continue;
-              witness.disposition[actor] = Math.max(
-                -100,
-                (witness.disposition[actor] ?? 0) - PACT_BREAKING_REPUTATION_COST,
-              );
-            }
-            heatUp(state, actor, HEAT_PACT_BROKEN);
             const seen = `${nameFor(state, actor)} tears up an arrangement it swore to ${found.factionIds.length - 1} other powers; everyone notices.`;
             notes.push(seen);
             logEvent(state, 'diplomacy', seen, actor);
@@ -8654,6 +9398,7 @@ function applyOpsUnderRules(
           break;
         }
         debt.status = 'forgiven';
+        recordAct('debt_forgiven', debt.creditorFactionId, [debt.debtorFactionId]);
         const debtor = state.factions.find((f) => f.id === debt.debtorFactionId);
         // Being let off a debt is worth something to the debtor, which is what
         // makes forgiveness a real instrument rather than pure loss — and what
@@ -8967,6 +9712,8 @@ function applyOpsUnderRules(
   billConstruction(
     state, hullsBefore, shipsBefore, unbuildFromGain, yardCapacity, changedFlag, notes, pricedByYards,
     movesNotBuilt ? navyBefore : undefined,
+    programmeTons,
+    honestYardNote,
   );
   refundDuplicateCharges(state, chargedByNarrative, pricedByYards, notes);
   }
@@ -9253,6 +10000,10 @@ function billConstruction(
    * journal written before that rule.
    */
   navyBefore?: Map<string, ShipStack>,
+  /** Berths a yard programme took this batch, which an open build cannot have too. */
+  programmeTons: Map<string, number> = new Map(),
+  /** Journal version 26: tonnage the yards could not take is not reported as unaffordable. */
+  honestNote = true,
 ): void {
   for (const faction of state.factions) {
     // Billed in TONS, so a class costs what it displaces and nothing has to
@@ -9270,7 +10021,9 @@ function billConstruction(
     // the yards are asked for is the gain minus whatever merely changed flag.
     const swapped = changedFlag.get(faction.id) ?? 0;
     const laidDown = Math.max(0, gained - swapped);
-    const berths = capped ? yardCapacityFor(state, faction.id) : Number.POSITIVE_INFINITY;
+    const berths = capped
+      ? Math.max(0, yardCapacityFor(state, faction.id) - (programmeTons.get(faction.id) ?? 0))
+      : Number.POSITIVE_INFINITY;
     const overYard = Math.max(0, laidDown - berths);
     const deliverable = gained - overYard;
     if (overYard > 0) {
@@ -9309,7 +10062,14 @@ function billConstruction(
     faction.credits -= delivered * CREDITS_PER_TON;
     if (delivered > 0) charged.add(faction.id);
 
-    if (trimmed > 0 || shortfall > 0) {
+    // When the yards were the limit and the treasury was not, the yard note
+    // above has said so; this one is the bill. It read "could only pay for 28
+    // of 56" with 3,100 credits in hand (playtest 2026-10-18, B11).
+    if (honestNote && shortfall === 0 && delivered > 0) {
+      const note = `${faction.name} commissions ${delivered} tons of shipping for ${delivered * CREDITS_PER_TON} credits.`;
+      notes.push(note);
+      logEvent(state, 'system', note, faction.id);
+    } else if (trimmed > 0 || shortfall > 0) {
       const note = `${faction.name} could only pay for ${delivered} of ${gained} new tons (${CREDITS_PER_TON} credits each); ${trimmed} tons were never laid down.`;
       notes.push(note);
       logEvent(state, 'system', note, faction.id);
@@ -9542,7 +10302,7 @@ export interface TurnReport {
   };
 }
 
-export interface TickResult extends ApplyResult {
+export interface TickResult extends Omit<ApplyResult, 'acts'> {
   report: TurnReport;
 }
 
@@ -9552,19 +10312,46 @@ export interface TickResult extends ApplyResult {
  * originates.
  */
 /** Advance one turn. Sets `scopeEngineNotes` for the journal's rules; see `applyOps`. */
+/**
+ * Whether a fleet movement from `originId` to `targetId` lands at once: one
+ * jump, both worlds held by the mover, and nobody's ships over the target but
+ * its own and its guests'. A rival squatting there makes it a sweep, which is
+ * fought on arrival, so it sails.
+ */
+export function movesAtOnce(state: WorldState, factionId: string, originId: string, targetId: string): boolean {
+  if (originId === targetId) return false;
+  const origin = state.systems.find((x) => x.id === originId);
+  const target = state.systems.find((x) => x.id === targetId);
+  if (!origin || !target) return false;
+  if (origin.controllerFactionId !== factionId || target.controllerFactionId !== factionId) return false;
+  if (!neighboursOf(state, originId).includes(targetId)) return false;
+  return !Object.keys(target.ships ?? {}).some(
+    (f) => f !== factionId && hullsAt(target, f) > 0 && !isGuestOf(state, f, factionId),
+  );
+}
+
 export function tickTurn(input: WorldState, legacy: LegacyRules = {}): TickResult {
   const outer = scopeEngineNotes;
   const outerOrders = scopeOrderLines;
   const outerHeat = runHeat;
+  const outerBreaches = breachTable;
+  const outerSecrets = hideSeenSecrets;
   scopeEngineNotes = legacy.privateEngineNotes ?? true;
   scopeOrderLines = legacy.privateOrderLines ?? true;
   runHeat = legacy.heat ?? true;
+  breachTable = (legacy.breachPrices ?? true) ? BREACH_PRICES : LEGACY_BREACH_PRICES;
+  hideSeenSecrets = legacy.secretsAreHidden ?? true;
+  const outerActs = actsOut;
+  actsOut = null;
   try {
     return withNameStock(legacy.widerNames ?? true, () => tickTurnUnderRules(input, legacy));
   } finally {
+    actsOut = outerActs;
     scopeEngineNotes = outer;
     scopeOrderLines = outerOrders;
     runHeat = outerHeat;
+    breachTable = outerBreaches;
+    hideSeenSecrets = outerSecrets;
   }
 }
 
@@ -10286,7 +11073,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
       demand.toFactionId !== state.playerFactionId &&
       sideStrength(state, fromSide) >= ULTIMATUM_YIELD_RATIO * sideStrength(state, toSide);
     if (yields) {
-      notes.push(...concedeDemand(state, demand, worldTakesAssets));
+      notes.push(...concedeDemand(state, demand, worldTakesAssets, legacy.cessionFromTarget ?? true));
       continue;
     }
     demand.status = 'war';
@@ -10925,7 +11712,7 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
             .filter((o) => o.holderFactionId === agent.ownerFactionId && o.status === 'open' && o.secret)
             .map((o) => `${o.secret!.kind}:${o.secret!.ref}`),
         ]);
-        const found = secretsAbout(state, target.id).find(
+        const found = secretsAbout(state, target.id, hideSeenSecrets).find(
           (x) => !filed.has(`${x.kind}:${x.ref}`) && !(x.kind === 'covert_operation' && x.ref === agent.id),
         );
         if (found) {
@@ -11362,10 +12149,15 @@ function tickTurnUnderRules(input: WorldState, legacy: LegacyRules): TickResult 
     });
   }
 
+  // Read again now that arrivals have landed. Taken above, it was after the
+  // arriving orders left `pendingOrders` and before their hulls landed, so the
+  // ledger missed every ship that arrived this tick: the briefing read 120 to
+  // upkeep against a navy of 238 tons (playtest 2026-10-18).
+  if (legacy.ledgerAfterArrivals ?? true) report.ledger = ledgerFor(state, state.playerFactionId);
   logEvent(
     state,
     'system',
-    `Turn ${state.turn}: ${playerLedger.gross} credits from ${playerLedger.systems} systems, ${playerLedger.upkeep} to upkeep.`,
+    `Turn ${state.turn}: ${report.ledger.gross} credits from ${report.ledger.systems} systems, ${report.ledger.upkeep} to upkeep.`,
     state.playerFactionId,
   );
 
@@ -11706,7 +12498,7 @@ function applyRimEvent(state: WorldState, plan: RimEventPlan): RimEvent {
           .filter((o) => o.holderFactionId === to && o.status === 'open' && o.secret)
           .map((o) => `${o.secret!.kind}:${o.secret!.ref}`),
       ]);
-      const told = secretsAbout(state, f).find((x) => !filed.has(`${x.kind}:${x.ref}`));
+      const told = secretsAbout(state, f, hideSeenSecrets).find((x) => !filed.has(`${x.kind}:${x.ref}`));
       if (told) {
         state.assets.push(
           AssetSchema.parse({
@@ -12159,8 +12951,7 @@ function resolveBattle(
       logEvent(state, 'diplomacy', endMarriage(state, m, fateWhenBrokenBy(state, m, attackerId), 'broken'), attackerId);
       if (!treatyBetween(state.treaties, state.turn, attackerId, victimId, PEACE_TREATIES)) {
         // The marriage was their only peace; price its breaking here.
-        const injured = state.factions.find((f) => f.id === victimId);
-        if (injured) injured.disposition[attackerId] = Math.max(-100, (injured.disposition[attackerId] ?? 0) - 25);
+        chargeBreach(state, { kind: 'attack_on_inlaws', breaker: attackerId, parties: [attackerId, victimId] });
       }
     }
     const pact = treatyBetween(state.treaties, state.turn, attackerId, victimId, PEACE_TREATIES);
@@ -12171,20 +12962,12 @@ function resolveBattle(
 
     if (pact) pact.status = 'broken';
     if (truce) truce.status = 'broken';
-    const injured = state.factions.find((f) => f.id === victimId);
-    if (injured) {
-      injured.disposition[attackerId] = Math.max(-100, (injured.disposition[attackerId] ?? 0) - 25);
-    }
-    const reputation = truce ? TRUCE_BREAKING_REPUTATION_COST : PACT_BREAKING_REPUTATION_COST;
     // A truce is the dearer word to break, in heat as in reputation.
-    heatUp(state, attackerId, truce ? HEAT_PACT_BROKEN * 2 : HEAT_PACT_BROKEN);
-    for (const witness of state.factions) {
-      if (witness.id === attackerId || witness.id === victimId) continue;
-      witness.disposition[attackerId] = Math.max(
-        -100,
-        (witness.disposition[attackerId] ?? 0) - reputation,
-      );
-    }
+    chargeBreach(state, {
+      kind: truce ? 'attack_across_truce' : 'attack_under_pact',
+      breaker: attackerId,
+      parties: [attackerId, victimId],
+    });
     logEvent(
       state,
       'diplomacy',

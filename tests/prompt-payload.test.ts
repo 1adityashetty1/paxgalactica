@@ -105,30 +105,24 @@ describe('the duration rubric goes to the passes that set durations', () => {
 });
 
 describe('the model is not offered values it can never use', () => {
-  it('cannot express a downward dissent adjustment at all', async () => {
+  it('cannot express a dissent adjustment at all, in either direction', async () => {
     const { ModelOpSchema, OpSchema } = await import('../src/domain/ops.js');
-    const down = { op: 'adjust_dissent', factionId: 'meridian', delta: -10 };
-
-    // Layer 1: ungeneratable. `ModelOpSchema` becomes the JSON schema handed
-    // to the model, so a floor of zero means the rejected half never appears.
-    expect(ModelOpSchema.safeParse(down).success).toBe(false);
-    expect(
-      ModelOpSchema.safeParse({ op: 'adjust_dissent', factionId: 'meridian', delta: 8 }).success,
-    ).toBe(true);
-
-    // Layer 2 keeps the full range: journals written before this carry
-    // negative deltas that were rejected, and replay has to parse them to
-    // reach the same verdict rather than failing to load.
-    expect(OpSchema.safeParse(down).success).toBe(true);
+    // Dissent is the engine's to charge — a refusal, a defiance, a doctrine
+    // change — so a model is never offered the op (intent-ops §6).
+    for (const delta of [-10, 8]) {
+      expect(ModelOpSchema.safeParse({ op: 'adjust_dissent', factionId: 'meridian', delta }).success).toBe(false);
+    }
+    // The full schema keeps it: the engine stages its charges with it, and old
+    // journals carry model-written ones that replay has to parse.
+    expect(OpSchema.safeParse({ op: 'adjust_dissent', factionId: 'meridian', delta: -10 }).success).toBe(true);
   });
 
-  it('advertises the floor in the schema the model actually receives', async () => {
+  it('leaves dissent and spawn_event out of the schema the model actually receives', async () => {
     const { z } = await import('zod');
     const { ModelOpSchema } = await import('../src/domain/ops.js');
     const json = JSON.stringify(z.toJSONSchema(ModelOpSchema, { target: 'draft-7', io: 'input' }));
-    // The constraint is worthless if it does not survive into the JSON schema,
-    // which is the artefact that does the enforcing.
-    expect(json).toMatch(/"adjust_dissent"[\s\S]{0,400}?"minimum":0/);
+    expect(json).not.toMatch(/"adjust_dissent"/);
+    expect(json).not.toMatch(/"spawn_event"/);
   });
 });
 

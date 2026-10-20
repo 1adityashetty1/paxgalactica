@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { asOrders } from './orders.js';
 import { createSeedState } from '../src/seed/scenario.js';
 import { applyOps, INTERDICTION_DISPOSITION_COST, tickTurn } from '../src/domain/reducer.js';
 import { DARK_PROOF_TURNS } from '../src/domain/diplomacy.js';
@@ -24,7 +25,7 @@ const regard = (s: WorldState, from: string, toward: string) =>
 /** Drajk raiding Oridin, the Combine's, under way. */
 function raiding(dark: boolean): WorldState {
   let s = createSeedState('meridian');
-  const raid = { ...proposeFor(s, 'drajk')!.ops.find((o) => o.type === 'commerce_raiding')!, dark };
+  const raid = { ...asOrders(proposeFor(s, 'drajk')!.ops).find((o) => o.type === 'commerce_raiding')!, dark };
   s = applyOps(s, [raid], 'model', 'drajk').state;
   return tickTurn(s, calm).state;
 }
@@ -134,14 +135,14 @@ describe('what the counsel sees', () => {
 describe('the bots', () => {
   it('raid dark where being seen would cost them a friend', () => {
     // The Combine thinks well of the Confederacy, and pays nothing for the raid.
-    const raid = proposeFor(createSeedState('meridian'), 'drajk')!.ops.find((o) => o.type === 'commerce_raiding')!;
+    const raid = asOrders(proposeFor(createSeedState('meridian'), 'drajk')!.ops).find((o) => o.type === 'commerce_raiding')!;
     expect(raid).toMatchObject({ targetId: 'ilv-5', dark: true });
   });
 
   it('raid open where nothing is lost by being seen', () => {
     const s = createSeedState('meridian');
     s.factions.find((f) => f.id === 'ojjul')!.disposition.drajk = -80;
-    const raid = proposeFor(s, 'drajk')!.ops.find((o) => o.type === 'commerce_raiding');
+    const raid = asOrders(proposeFor(s, 'drajk')!.ops).find((o) => o.type === 'commerce_raiding');
     expect(raid?.dark).toBeUndefined();
   });
 });

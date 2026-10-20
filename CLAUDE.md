@@ -340,6 +340,18 @@ turn 4  admissible: false  "You are already bound by the exclusive dynastic
 string; an inconsistent slug would silently disable the mechanism, so the
 schema rejects anything else.
 
+### A declared commitment works by what the ruling named
+
+`docs/design-2026-10-17-intent-ops.md` §5, journal version 25. The arbiter's
+`establishes` names a `mechanism` before the roll: `income` (a figure every
+turn) or `record` (nothing more). `commitmentsAsRuled` keeps only the
+commitment the ruling named and stamps the mechanism on it; the reducer refuses
+a ruled income left unwritten, and leaves out an unruled one with a note — in
+the saved campaigns five declared commitments paid their own power an income
+nobody ruled. A share or a contingency binds a second party, so neither
+survives a declaration: an act that needs one is a negotiation. An accord's
+commitment carries no mechanism and is held to its consent, as before.
+
 ### An arrangement can be worth money
 
 Commitments were economically inert for their entire existence. The readers were
@@ -359,6 +371,9 @@ a commitment is the easiest place in the game for a model to invent revenue:
   Vigil at the floor of 10. A trading authority runs charters; a military
   remnant does not. Costs are deliberately uncapped — nothing needs protecting
   from a faction agreeing to pay.
+- **A declared charter pays from a world** (journal version 28): at most a
+  quarter of what that world pays its power, and nothing once it is lost — see
+  *"What code knows, code decides"* §7.
 
 It is read where it is used rather than paid out each tick, for the same reason
 agent effects are: a per-turn mutation would compound instead of recurring.
@@ -859,9 +874,10 @@ Billing happens in `billConstruction`, a post-pass over each `applyOps` batch
 that compares each faction's **tonnage** before and after. Two consequences
 follow from billing the **net** rather than each op:
 
-- Repositioning is free. `adjust_ships -5` here and `+5` there costs nothing,
-  in either order, and issuing a `fleet_movement` is not read as scrapping the
-  ships that left.
+- Repositioning is free. A `fleet_movement` is not read as scrapping the ships
+  that left, whether it sails or lands in the batch (see "Ships change by
+  intent"), and in a journal before version 23 an `adjust_ships -5` here and
+  `+5` there costs nothing, in either order.
 - Overreach is **not a rejection**. The yards deliver what was paid for and the
   surplus is trimmed off, deterministically. A partly-affordable order is partly
   fulfilled, which reads the way a partial check reads.
@@ -944,10 +960,11 @@ could go on commissioning battleships in a rival's orbit forever. A galaxy where
 every defeated power survives as a shipyard in somebody else's sky is not the
 fiction — being driven off your worlds should end you.
 
-Guarded in the reducer on **both** minting paths, because one would have been a
-sentence away from useless: `adjust_fleet` with a positive delta, and
+Guarded in the reducer on **every** minting path, because one would have been a
+sentence away from useless: `build_ships`, and — for the engine and for
+journals before version 23 — `adjust_fleet` with a positive delta and
 `adjust_ships` placing your own new hulls at a named world, which was entirely
-unguarded. Both reject with `no_presence` and the same message. Losses,
+unguarded. All reject with `no_presence` and the same message. Losses,
 suborning and upkeep attrition are untouched — a landless power can still lose
 ships, have crews turned and be billed; it simply cannot replace them.
 
@@ -1502,6 +1519,12 @@ already draw: ships at the order's origin or target. Your **own** order needs
 nothing, which is what `cancel_order` is for; this is the path for reaching into
 a rival's, and reaching needs a hand.
 
+**And a fleet under way is not reached at all.** It is met where it arrives, and
+the battle decides what becomes of it: a critical success wrote
+`interrupt_order` on the Vigil's relief fleet and sent eight battleships home
+with no shot fired (playtest 2026-10-18). Another power's movement is refused
+(`fleetsMeetInBattle`, journal version 26).
+
 ## A refund cannot exceed the outlay
 
 `onInterrupt: 'partial'` refunds the unspent share of `investedCredits`,
@@ -1740,7 +1763,11 @@ refuses an accord that **adds** a target. Opening your lanes needs the room;
 closing them needs nobody, so imposing a tariff stays on the declared path where
 the action economy prices it. A `trade_accord` deliberately does **not** waive
 tolls automatically: folding it into an existing type would hand the chip over
-for free.
+for free. **Either party's toll may be lifted in an accord** — the other party
+lifting its toll on the player is the commonest thing a toll is traded for, and
+the actor-only guard refused it while the payment for it landed (playtest
+2026-10-18; `counterpartyTolls`, journal version 26). `groundInConcessions` holds
+the lift to the power that conceded it.
 
 **A lift can be for a term.** `set_toll_policy` takes `forTurns`, and
 `whileTreaty` — a treaty type that must keep binding the two — and the powers it
@@ -2091,8 +2118,8 @@ the next turn at no net standing loss whatever.
 | ending the same arrangement | costs |
 |---|---|
 | as a **commitment**, before | −5 privately, against the +5 it paid — **net zero** |
-| as a **commitment**, now | the refund, plus `COMMITMENT_BREAKING_COST` (12) with each bound party |
-| as a **treaty** | −25 with the party, plus a permanent reputation hit with every onlooker |
+| as a **commitment**, now | the refund, plus `COMMITMENT_BREAKING_COST` (12) with each bound party, and `HEAT_PACT_BROKEN` |
+| as a **treaty** | −25 with the party, plus `REPUDIATION_REPUTATION_COST` (5) with every onlooker (journal version 24; nothing before it) |
 
 The multi-party case was patched earlier; two parties is the commonest shape a
 commitment has and was the one still open. `COMMITMENT_BREAKING_COST` sits below
@@ -2378,10 +2405,20 @@ could be invented at all.
 
 | origin | how |
 |---|---|
-| a successful attempt | `create_asset` from the resolution pass, stripped by `boundPayloadsToOutcome` on a failure and **halved** on a partial — an asset has a magnitude, unlike an operative, who is placed or is not |
+| a successful attempt | `create_asset` from the resolution pass, **only of a kind the arbiter named in the overt part's `yields` before the roll** (journal version 25), stripped by `boundPayloadsToOutcome` on a failure and **halved** on a partial — an asset has a magnitude, unlike an operative, who is placed or is not |
 | a fixture | only a `found_fixture` **programme** — `create_asset` refuses any stat yield; see "A fixture is infrastructure" |
 | a world changing hands | anything with that `atSystemId` goes with it |
 | **the seed** | nine, authored — four cargo (one per power except the Combine) and five split fixtures (one apiece) |
+
+**A prize is named before the roll** (`docs/design-2026-10-17-intent-ops.md`
+§4). Routine court acts at DC 5 came back with sellable charts, contraband and
+dossiers on a critical success (playtest 2026-10-15, A10): the prize was
+invented after the dice, by the pass with every reason to be generous. The
+arbiter's overt part now carries `yields` — the kinds of thing the attempt could
+bring back, empty for nearly every act — and `prizesAsRuled` drops any
+`create_asset` of another kind, the way `sendsAsRuled` drops a send nobody
+ruled. A reaction may not write `create_asset` at all (`OP_PATHS`), having no
+ruling. What a battle yields is still only its captured officers.
 
 `create_asset` is refused from an **accord** (`declared_only`): a conversation
 trades what exists and cannot conjure what does not. It is also refused when the
@@ -3059,6 +3096,14 @@ it off in the next would be a pump. **Calling one in stays on the declared
 path** — it needs nobody's agreement, so from a channel it would be the same
 act without its action. No journal pin: no old journal can hold either op.
 
+**Calling one in is a declared action, never an accord** — `call_obligation`
+is not in `EXTRACTION_ALLOWED`, and the arbiter prices it `trivial`, consent
+having been given when the favour was made. The Treaties tab lists your favours
+both ways, with a **call in** button per term (and *back our ultimatum* while
+you have one open) that writes the declaration on the command line; a blackmail
+hook shows the secret it rests on, since it lapses the turn that stops being
+true.
+
 Made only where consent or proof exists: an accord (`establish_obligation`,
 extraction only, always weak, grounded in the debtor having conceded
 something), **a forgiven debt** (the debtor owes the creditor that let it off —
@@ -3072,7 +3117,10 @@ files proof of one thing its host is hiding — **typed from state, never
 invented** (`secretsAbout`): an operative of theirs at work, a programme in a
 secret category, an unpaid debt or an unreturned loan. Never one the owner
 already has proof of, and never the watcher itself. Pinned to v13
-(`LegacyRules.secrets`).
+(`LegacyRules.secrets`). A programme every other power already sees in full is
+no secret, whatever its category (`secretsAreHidden`, journal version 26: a
+watcher filed proof of Meridian's "secret" yards while the order's visibility
+named all four rivals).
 
 **A blackmail hook lasts exactly as long as its secret.** The obligation carries
 the secret, and the tick lapses it the turn the secret goes stale — an operative
@@ -3111,6 +3159,12 @@ battleship-equivalents (`sideStrength`); the player concedes by declaring it, a
 model-driven power by its reaction, and a target in the issuer's own channel by
 the transcript. Otherwise every party on each side goes to war with every party
 on the other: regard set to `WAR_DISPOSITION_THRESHOLD` wherever it was warmer.
+
+**A cession comes out of the target's hands.** `cedeTerritory` moves a named
+world from whichever party holds it, so an issuer that took the world by force
+before the deadline ceded it back to the target when the target gave way
+(playtest 2026-10-18). If the target no longer holds the world, nothing moves
+(`cessionFromTarget`, journal version 26).
 
 ### What a power will give up
 
@@ -3226,7 +3280,7 @@ pressure that builds and breaks:
 | sending an operative | `HEAT_FOR_MISSION`: 1 for a watcher up to 8 for a knife |
 | an operative taken | `HEAT_CAUGHT` (6) |
 | a turn of prizes from a power no commission names | `HEAT_PER_RAID` (2), per power robbed |
-| breaking a pact, a favour owed, a loan, a sworn arrangement | `HEAT_PACT_BROKEN` (8); a truce twice that |
+| breaking a pact, a favour owed, a loan, a sworn arrangement | `HEAT_PACT_BROKEN` (8); a truce twice that. A two-party arrangement carried none before journal version 24 |
 | blackmail | `HEAT_BLACKMAIL` (4) |
 | proof published against you | what the scandal costs you with each onlooker |
 
@@ -3457,6 +3511,15 @@ needs you to cross it is no deal); a compulsion lets it stand and charges. The
 check is scoped to the acting faction by construction, because the arbiter
 appraises from `playerFactionId` — the other party's concessions are theirs to
 make and cannot trip your line.
+
+**They trip its own, as a price.** The other power's concessions are appraised
+against its sheet and charged `COUNTERPARTY_BREACH_DISSENT`, never refused.
+Three rules, all from the playtest of 2026-10-18: the charge is staged **only
+once the accord has landed** (it was charged on an accord the player's own side
+refused); it goes through the **relevance check** the player's breach gets
+(unrelated lines were quoted against fully paid deals); and it is **attached**
+to the accord, withdrawn with it and never alone (withdrawing and re-signing
+charged it twice).
 
 A red-line ruling is also **cheaper** than what it replaces: it skips the Sonnet
 resolution call entirely, so the most flagrant actions in the game now cost
@@ -4011,6 +4074,33 @@ reducer sets the price. Neither half is resolution's to decide. And
 nothing further fires at the cap on purpose — the penalty there is already
 crippling, and a terminal state on top of it would charge twice for one decision.
 
+### Regard is judged by the model and priced by the table
+
+`docs/design-2026-10-17-intent-ops.md` §3, journal version 25. Narrated
+`adjust_disposition` was the largest model-written op in the saved campaigns —
+310 of them — and the reducer could bound its size but never its cause, so a
+narrated cooling for an attack charged the attack twice. A model now says why,
+and `acts.ts` says how much:
+
+- **A declaration writes `sway`** — the payoff of an influence check — and the
+  engine sizes it from the band (`swaysAsRolled`): 3 on a partial, 6 on a
+  success, 10 on a critical, nothing on another stat or a failure, one a power
+  per declaration. Sized off the declared warmings in the saves (median 5).
+- **A reaction writes `regard`** — its own view, for a reason from a closed
+  list: slight, insult, threat, a promise made in conversation and broken;
+  deference, a promise kept, aid. Each has a fixed size off the reactions in
+  the saves, and none names an act the reducer already prices. It warms as well
+  as cools, so a vocabulary of grievances does not ratchet the galaxy to war.
+- **Either may `gift`** — a payment that buys regard at 20 credits a point.
+- **An accord writes `regard` too**, from journal version 28 — see *"What code
+  knows, code decides"* §8. It narrated `adjust_disposition` before, held to
+  the batch cap and to a treaty's own goodwill, as below.
+
+**Not measured in play**: the harness never narrates, so its boards cannot
+move, and they do not. What it does to a played campaign — how warm the Rim
+stays, how often reactions go to war — is the next playtest's to read off the
+trace and the epilogue's standing table.
+
 ### Disposition needs you to be in the room
 
 `adjust_disposition` checked that both factions existed and differed, and
@@ -4042,7 +4132,8 @@ measured at 5 → 17 from the treaty and 42 with one narrated +25 (playtest
 whole batch, as the credits cap already did, and an accord that signs a treaty
 adds no narrated warmth between its parties; a cooling still lands. Journal
 version 22 (`LegacyRules.narrationCapPerBatch`), and only where the per-op cap
-itself applies.
+itself applies. From version 28 an accord does not narrate regard at all; the
+same two rules hold its `regard` (§8 below).
 
 ### Dissent moves one way, on your own faction only
 
@@ -4064,6 +4155,145 @@ operative's work.
 Reactions commit with the reacting faction as `actor`, so an NPC can still move
 its own dissent; only the cross-faction reach is closed.
 
+## A breach of faith is priced once
+
+`src/domain/acts.ts`, `docs/design-2026-10-17-acts.md`. Going back on your word
+was priced at **eight sites with five sets of numbers**: an attack under a pact,
+an attack on in-laws, `break_treaty` on a treaty and on a marriage, a treaty
+broken by conceding an ultimatum, a match betrayed by the court holding its
+ward, a favour refused, a loan defaulted and a commitment walked away from. The
+figure 25 was a bare number at six of them. Every site now calls
+`chargeBreach` with a kind, and `breachCharges` decides what it costs from one
+table: the injured party's regard, every onlooker's, and heat. The rules each
+site used to restate are written once — the injured are the other parties,
+onlookers are everybody else, nobody is charged twice, nobody resents itself.
+
+**Four prices were decided rather than left where they fell** (journal version
+24, `LegacyRules.breachPrices`; `LEGACY_BREACH_PRICES` is the old table, written
+out exactly):
+
+| | before | from version 24 |
+|---|---|---|
+| `break_treaty`, onlookers | nothing — so repudiating and then attacking skipped the onlooker price an attack under the pact pays | `REPUDIATION_REPUTATION_COST` (5): half an attack's, since breaking your word in the open is the smaller act |
+| `break_treaty`, the breaker's own regard | fell 25 for its victim too | unchanged, as at every other breach |
+| a commitment of three or more, its other parties | charged as injured (12) **and** as onlookers (10) | the injured price, once |
+| a two-party commitment walked away from | no heat, against 8 for a favour refused | `HEAT_PACT_BROKEN` |
+
+**And two exploits closed in the same place.** `break_treaty` never checked who
+was breaking what: any power could declare two others' pact void and leave them
+25 colder toward each other, for nothing — strictly better than a discord
+operative, which costs 100 and is capped at 20 for its life. And a treaty
+already broken could be broken again, charging again. From version 24 the actor
+must be a party and the treaty in force (`already_void`); a pending one may
+still be backed out of.
+
+**Verified as a move before it was a change.** With the old table, all saved
+campaigns replay byte-identically through the new layer; with the new table
+forced on, one of them changes, so the saves exercise it. The harness boards do
+not move (bots break no treaties). `tests/acts.test.ts` writes the old table out
+by hand from the sites it replaced, and fails on any breach constant or bare
+`-25` regard written outside `acts.ts` — the guard that keeps the next mechanic
+from pricing the act a sixth way.
+
+**Left as it was, and open:** attacking in-laws whose marriage was the only peace
+between you costs the injured party's 25 and nothing with onlookers, where an
+attack under any other peace costs 10. Hostile acts, goodwill, money and dissent
+are the other families in the design, not yet moved.
+
+## What code knows, code decides
+
+`docs/design-2026-10-18-code-knows.md`, from the audit of the 2026-10-18
+adversarial playtest. Each finding had one shape: **the engine held a fact, and
+a model was asked to say it again.** Each fix moves a lookup from a model to
+code and leaves the model the judgement that remains — the `classifyPrinciple`
+rule, applied six more times.
+
+**§1. A line reads the acts it forbids** (journal version 27). `applyOps`
+returns `acts` — the ten breach kinds plus `pact_attack_ordered`,
+`blockade_ordered`, `raid_ordered`, `invasion_launched`, `treaty_signed`,
+`peace_signed`, `alliance_signed`, `marriage_signed`, `basing_granted`,
+`protection_accepted`, `debt_forgiven`, `tribute_paid`, `territory_ceded`,
+`defence_pledged`, `person_trafficked`, `gift_given` — output only, never
+state. The seed tags each line that code can check with the acts it forbids
+(`Faction.lineActs`, by line text, with an optional `with` naming
+counterparties), and `linesCrossed` matches them. The engine reads them after
+the ops are known: a declaration crossing a red line is refused as an arbiter
+red line is, and a compulsion is charged once even if the arbiter named it too;
+a reaction's offending ops are held back; a bot's are dropped (`honourLines`,
+beside `honourTreaties`); an accord reads `paid_for_peace` and
+`given_for_nothing` off the whole batch and the concession record
+(`accordActs`). The arbiter still rules on every line before the roll — a
+tagged line simply cannot be missed afterwards. **Drajk's second red line was
+reworded** to *"will not be bound in public to another power — no alliance, no
+coalition, no foreign fleet based in its space"*, forbidding `alliance_signed`
+and `basing_granted`, so its letters of marque and ceasefires stand: no bot
+crosses a tagged line in 30, 100 or 300 harness turns, and the boards do not
+move. A journal before 27 rebuilds the old wording, untagged.
+
+**§2–3. An accord is built from the record, and lands whole.** Extraction
+returns `accepted` — which recorded concessions were agreed, as `by:kind` — and
+writes only terms that have no field on a concession: a treaty's type, a
+commitment, a debt, a loan, a favour owed. `transfersFromRecord` builds every
+payment, thing handed over, favour released or sold, cession and toll lift from
+the ids each power wrote as it spoke (`Concession` gained `lifts` and
+`liftTurns`), and `withoutRecordTransfers` drops any extraction wrote itself, so
+a sale is paid once. A cession carries the buyer's credits and things as its
+`terms.payment` and `terms.assets`. The built transfers go in as `fixed`: one
+the reducer refuses fails the accord with no correction (a refused transfer
+cannot be reworded), and a correction may fix a term but never drop one. The
+transcript says *"nothing agreed above took effect"* when it did not land.
+
+**§4. A declaration produces what was ruled.** An overt part names how it
+`reaches` into another power's business — `their_orders`, `their_ships`,
+`their_paper`, `coercion` — and `opsAsRuled`, inside `holdToRuling`, drops a
+reaching op the ruling did not name (an `interrupt_order` on a rival's
+programme, a `suborn_crews`, a `break_treaty`), with a note. A critical success
+names one `bonus` off a closed menu — `cost_avoided` (a quarter of what the
+declaration spent comes back), `tempo` (an order it started finishes a step
+sooner), `goodwill` (the power it most touched warms by a partial sway),
+`windfall` (one more of the ruled prize) — and the engine applies it, where
+resolution used to write any op as its flourish.
+
+**§5. Narrate what landed.** When a declaration's or an accord's ops were
+rejected, left out, trimmed or corrected (`storyDiverged`, read off the notes
+already written), one call on the flavour tier (`reconcile`,
+`prompts/reconcile.md`) rewrites the story from the draft, the ops that landed
+and the notes, onto the staged batch the reactions read. It is held to
+`flavourKeepsTheFacts`: a rewrite with a number the landed ops and notes do not
+contain leaves the draft, as does a call that fails, and the `Correction:`
+notes stay as the fallback. The model's own `log_narrative` is not rewritten —
+it is journaled, and narratives are not state. **The epilogue** now carries
+each power's `refusals` and `defiances`, counted off the journal's labelled
+dissent charges (`overrulings`), because dissent decays: a power refused on
+turn 3 was narrated as one whose institutions "never once had to overrule"
+it.
+
+**§6** (a prize's worth set in code) is designed and not built.
+
+**§7. A declared charter pays from a world** (journal version 28,
+`charterOnWorld`). A declared `income` commitment is chartered on a world its
+power holds (`establish_commitment.systemId`, else its richest, said in a
+note) — `Commitment.atSystemId` — and pays its figure but no more than
+`CHARTER_SHARE` (a quarter) of what that world pays the power, and nothing
+while the power does not hold it (`charterWorth`, read in `ledgerFor`). The
+last standing income a ruling minted from nowhere now sits where it can be
+taken. On the opening board a charter on a power's best world pays 12–15.
+
+**§8. An accord's warmth is priced** (journal version 28, `pricedWarmth`). An
+accord writes `regard` — either party's view of the other, one of them the
+actor — for a reason off `REGARD_BECAUSE`: `promise_kept` or `deference` for a
+deal, `slight`, `insult`, `threat` or `promise_broken` for one gone sour. Each
+direction moves once an accord; no warmth beside a treaty's goodwill between
+the same two; **no warmth when nothing else was agreed**, which ends the
+conversation-only pump; never `aid`, which a gift or a payment buys. Each is
+left out with a note rather than rejected, so a warmth written twice does not
+sink the terms. Narrated `adjust_disposition` left the extraction schema and is
+refused from an accord; `OP_PATHS` keeps its accord column only so older
+accords replay, as `spawn_event`'s does.
+
+Measured after every step: every save replays byte-identically and the four
+harness boards stay 5/5/6/5/4 (5/6/6/5/3 at 100 turns without events).
+
 ## Treaties and agents
 
 Both live in world state (`src/domain/diplomacy.ts`), because both have
@@ -4073,7 +4303,8 @@ that quietly stops existing.
 **Treaties** have two parties, a type, an optional expiry, and terms the reducer
 applies: `territory`, `shipsPledged`, `incomePerTurn`, `incomeShares`,
 `mutualDefenseTrigger`. They lapse on schedule during `tickTurn`. Breaking one
-costs the breaker 25 disposition with the other party.
+is a breach of faith, priced in `acts.ts` — see "A breach of faith is priced
+once".
 
 **Agents** separate two things that are easy to conflate:
 
@@ -4231,7 +4462,11 @@ person (`PEOPLE_KINDS`; that will be kidnapping), a fixture, a promissory note,
 a thing on loan or a ward. The victim is told it is gone and not who took it;
 win or lose, the operative is back awaiting orders. And every mission whose
 effect is its meaning is held to it (`MISSION_EFFECTS`, journal version 22):
-an embezzler carries `income_penalty`, only a thief carries `steal`.
+an embezzler carries `income_penalty`, only a thief carries `steal`. A name
+that is not a rival's thing on the world the thief is sent to — the sender's
+own dossier, in the playtest of 2026-10-18 — is dropped when the thief is sent,
+and they take what is worth most there (`stealNamesARivalsThing`, journal
+version 26).
 
 **An operation is a mission carried out by a method**
 (`docs/design-2026-10-16-operations.md`). The arbiter reads a covert act by its
@@ -5356,6 +5591,12 @@ unit; this is the same move for money and for crews. A batch-scoped ledger
 carries what has been spent against each cap, so a ceiling cannot be multiplied
 by saying the same thing more times.
 
+> The next three paragraphs describe journals before version 23, and the
+> engine's own actorless batches: since then a model writes a move as a
+> `fleet_movement` and a build as `build_ships`, and cannot reach
+> `adjust_ships` at all — see "Ships change by intent". The machinery stays so
+> an old campaign replays as it was played.
+
 **And a squadron moved is the squadron that arrives.** `adjust_ships -N` spends
 the loss order and `+N` mints the class named, which defaults to `battleship` —
 so the obvious way to write a reposition scrapped escorts at the origin and
@@ -5422,6 +5663,21 @@ What is closed is the shape with no counterparty at all — and every honest
 route is untouched, because each has a payer. An accord has the buyer's consent
 and its debit in one transcript; a toll, a raid and an `income_penalty`
 operative all take money from a treasury that had it.
+
+### Money is written as a payment or a cost
+
+`docs/design-2026-10-17-intent-ops.md` §2, journal version 25. Every rule in
+this section exists because `adjust_credits` was a signed number on any faction
+and the reducer had to work out what it meant: whether a credit was a windfall
+or the other half of a payment, whether a debit was a cost or a theft. A model
+now writes `pay` — from one power to another — or `spend` — the actor's money to
+nobody on the board — and **nothing a model writes credits the power writing
+it**. Both run through one money path in the reducer (`credit`), so
+conservation, the declaration's cap and the duplicate-charge ledger are applied
+exactly as before; an accord's `pay` is the conserved, uncapped transfer
+`moveConserved` already made. `adjust_credits` left `ModelOpSchema`. What is
+left where a model chooses a figure of money is a commitment's
+`incomePerTurn`, still held to its caps.
 
 ### An accord may move money; a declaration may not
 
@@ -5522,12 +5778,114 @@ The `defection` agent mission (`crew_defection` effect) is the standing version:
 it turns crews every turn under the same limit, costs the victim 6 disposition
 per hull, and reports finding "no takers" against a resolute power.
 
+From journal version 23 a declaration turns crews with `suborn_crews`
+(`fromFactionId` names whose), under the same two rules and the same prices,
+and `adjust_ships` is not the model's to write — see "Ships change by intent".
+
+## Ships change by intent, and the reducer picks the mechanism
+
+`build_ships`, `suborn_crews`, `scuttle_ships` and a `fleet_movement`, journal
+version 23 (`LegacyRules.shipIntents`). Found by a playtest move that came back
+rejected with *"drajk's crews will not be suborned by vigil — their resolve is
+beyond its guile"*. The resolution call had written an invented casualty on the
+defender as `adjust_ships`, the reducer read a take of another power's hulls as
+suborning, the suborning refused, and an atomic batch took the move down with
+it. `adjust_ships` was one op for five intents — build, move, suborn, scuttle
+and a casualty nobody fought — and the reducer guessed which from signs and
+owners. The same shape let a natural 1 on a move between a power's own worlds
+scuttle an escort (playtest 2026-10-15, B16).
+
+- **The model states an intent; the reducer does the arithmetic.**
+  `adjust_ships` and `adjust_fleet` stay as the reducer's ship arithmetic, and
+  are refused (`reducer_only`) from any model or extraction batch with an
+  actor. Actorless batches — the engine, a test building a board — and older
+  journals keep them. Losses are the battle's, or a saboteur's `hull_damage`;
+  no op a model writes takes another power's hulls except `suborn_crews`.
+- **A move is one intent, whatever its length.** A `fleet_movement` one jump
+  between two worlds the mover holds, with nobody's ships over the target but
+  its own and its guests' (`movesAtOnce`), lands in the batch. Anything else
+  sails a turn a jump and is settled on arrival: an attack, a voyage, a sweep
+  of a squatter. There was briefly a separate `redeploy_ships` for the first
+  case, and it was folded in: two move ops made the model pick a mechanism, and
+  a wrong pick — a redeploy refused because a rival hull had turned up at the
+  target — sank the whole declaration. Control is the reducer's alone and
+  deterministic, so it can decide at the moment the batch applies, and replay
+  decides the same way.
+
+**Why a short move lands at once at all**, which is narrower than it looks. The
+tick pays income first, then resolves arrivals, then reads regard, and a
+holder's ships landing on a world in the same tick as an attack fight in that
+battle. So a one-jump move that sails differs from one that lands in two ways
+only: one income settlement, and whether the rest of the turn sees the ships
+there — the player's second action, which can sail on from the new world, and
+every bot deciding after. The second is what matters: `guardFronts` deters by
+the attacking bot reading the guard on the board, and a guard still under way
+deters nobody. Measured with every move sailing: Drajk loses Threx by turn 10
+and the board is 5/6/6/5/3 at 30 and 100 turns with events, 5/7/6/5/2 at 100
+without. With one jump landing at once it is **5/5/6/5/4** at 30 and 100 with
+events and at 30 without, and **5/6/6/5/3** at 100 without — the Vigil takes
+one Confederacy world between turns 50 and 100.
+
+**And a bot tells an attack from massing by where it goes.** `pursue` walks a
+doctrine's targets and stops at the first one it can strike, and it treated any
+`issue_order` as the strike — right while massing was `adjust_ships`, and wrong
+once massing became a movement: every bot stopped at its first target and only
+massed, and in a quiet twelve-turn campaign no power took a world off another.
+`strikes` reads whether the movement goes onto ground the mover does not hold.
+
+The arbiter prices moving a power's own ships, building and scuttling as
+`trivial` (`prompts/appraisal.md`): nobody resists a shuffle inside your own
+territory, and what a fleet meets on arrival is the battle's to decide.
+
 ### applyOps now knows who is asking
 
 `applyOps(state, ops, source, actor?)`. Some guards depend on *who*, not merely
 on whether a model asked. The actor is recorded in the journal so replay stays
 exact; it is optional, so journals written before the guard existed still
 replay — reproducing what happened rather than retroactively rejecting it.
+
+### And by which path
+
+`OP_PATHS` in `ops.ts`, `docs/design-2026-10-17-intent-ops.md` §7, journal
+version 25. A declared action, an NPC's reaction and a bot's turn all arrived as
+source `model` with an actor, and the reducer could not tell them apart — while
+they are bounded very differently before they get there: the player by the
+arbiter, the roll and two actions a turn; a bot by its post-filters; a reaction
+by nothing but the reducer. So every batch now carries its **path** —
+`declared`, `reaction`, `bot`, `accord`, `engine` or `cheat` — on the staged
+batch and the journal entry, beside `source`, and `OP_PATHS` says which paths
+may write each op. It is typed over every op name, so a new op does not compile
+until it is given its paths, and its `accord` column is held equal to
+`EXTRACTION_ALLOWED` by a test. An off-path op is rejected `wrong_path`. An old
+journal entry has no path and is checked against nothing.
+
+- **Player only:** `lay_groundwork` (its whole price is the action point),
+  `create_asset` (bounded by the ruling and the roll), `set_doctrine` (an NPC's
+  doctrine is authored).
+- **The engine only:** `adjust_dissent`. The engine's charges — a refusal, a
+  defiance, an objection to an accord, a counterparty's breach — are staged on
+  the `engine` path in batches of their own; a defiance used to ride inside the
+  declaration's batch and now stands apart, so it lands on the attempt whatever
+  became of the order.
+- **Regard, by direction:** a declaration moves how another power sees the
+  actor (the payoff of an influence check), a reaction or a bot moves its own
+  view. The other direction on each path was a model narrating the wrong side's
+  feelings.
+- **A reaction honours its own paper.** `honourTreaties`, the bots' filter, now
+  runs on a reaction before it commits: an attack, blockade or raid on a power
+  it holds a pact, truce, trade accord or contract with is held back — shown as
+  held back — unless the order names that power in `breaks`. Measured before:
+  a reaction from the Vigil attacked a pact partner and the reducer simply
+  priced the betrayal. The price is unchanged; `breaks` only proves it was
+  meant.
+
+**`adjust_dissent` and `spawn_event` left `ModelOpSchema`** (§6). Dissent is the
+engine's to charge, and 27 of the 37 in the saves were the engine's own;
+`spawn_event` duplicated `log_narrative` and escaped `markNotesPrivate`. Both
+stay in `OpSchema` for the engine, the bots' rationale line and old journals,
+and `spawn_event` stays on the accord allowlist only so old accords replay.
+Measured: 229 bot batches over 100 turns on the bot path, none refused; all
+saves replay byte-identically; the harness boards do not move.
 
 ## War ethics have mechanical force
 
@@ -6117,6 +6475,14 @@ name anyone in the campaign has carried (`personOnRoster`, read off
 named in the refusal. Somebody new — an informant, a defector — is still
 creatable.
 
+**Every batch of a declaration is held to its ruling**, the first and any
+correction alike: `holdToRuling` applies the sends, sways, commitments and
+prizes rules below, and keeps what they stamp whether or not they dropped
+anything. The caller kept their output only when something was dropped, so a
+clean success swayed three powers by the model's 9 rather than the band's 6, and
+nine declared commitments carried no ruled mechanism; and a correction call's
+batch went to staging through none of them (playtest 2026-10-18).
+
 **Sends are the ruling's.** A resolution call may fill in a send the arbiter
 ruled (the cover, the effect) and never add one: `sendsAsRuled` drops any
 `deploy_agent` or `lay_groundwork` that matches no covert or groundwork part, and
@@ -6635,10 +7001,18 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 |---|---|
 | `transfer_control` | **reducer-only** — absent from `ModelOpSchema` entirely |
 | `cheat` | **menu-only** — accepted from the `cheat` source alone, in batches of nothing else; see "A cheat menu" |
-| `adjust_disposition` | clamped to −100..100; self-disposition rejected |
-| `adjust_fleet` | floors at 0; `hull` picks the class the yards lay down |
-| `adjust_ships` | `hull` picks the class — which to build, and which of *your own* to move. Taking another power's is suborning, and spends their loss order |
-| `adjust_credits` | floors at 0 |
+| `adjust_disposition` | clamped to −100..100; self-disposition rejected. **The engine's** from journal version 28 (an accord's from 25 to 27) — a declaration writes `sway` or `gift`, a reaction or an accord `regard` or `gift` |
+| `sway` | an influence check that worked moves how `whom` sees the actor, by `SWAY_BY_BAND` (3, 6, 10). The engine sizes it; nothing on another stat or a failure |
+| `regard` | a reacting power's own view, or either party's in an accord, by a reason from a closed list priced in `REGARD_BECAUSE` (slight −4 … broken promise −12; deference +3 … aid +6). In an accord: once a direction, no warmth beside a treaty or without a deal, never aid |
+| `gift` | credits given, which buy the receiver's regard at `GIFT_RATE` (20 a point, 10 at most) |
+| `build_ships` | lay down hulls of a `hull` class at a world you hold (`systemId`, or your best); billed by tonnage and held to yard capacity. `programme: true` makes it a hidden yard programme at a named world, delivered on completion, counted against the same berths |
+| `suborn_crews` | turn `count` of another power's crews where they stand; presence and `subornLimit` |
+| `scuttle_ships` | strike off hulls of your own at a world; the named class first |
+| `adjust_fleet` | **reducer arithmetic** from journal version 23 — refused from a model batch with an actor. Floors at 0; `hull` picks the class the yards lay down |
+| `adjust_ships` | **reducer arithmetic** from journal version 23, as `adjust_fleet`. Before it: `hull` picks the class — which to build, and which of *your own* to move; taking another power's is suborning, and spends their loss order |
+| `adjust_credits` | floors at 0. **Not the model's** from journal version 25 — money is `pay` or `spend`; an accord keeps it only so old accords replay |
+| `pay` | `factionId` pays `to` an `amount`, through the one money path. A declaration pays only out of the actor's treasury, held to the declaration's cap; an accord may name either party and is conserved and uncapped |
+| `spend` | the actor's credits to nobody on the board — a bribe, a hire, materials |
 | `set_doctrine` | 1–240 chars; may move `warEthic`/`tradeEthic` and retire lines, charged in dissent; actor's own faction only |
 | `set_toll_policy` | who pays to cross your space; free, actor's own faction only. An accord may only **lift** a toll — adding one is `declared_only`. `forTurns` / `whileTreaty` make a lift temporary |
 | `consume_asset` | spend, release or destroy a thing you hold; draws an instrument's `uses` or stuff's `quantity`. Never a promissory note, and from journal version 22 never a person |
@@ -6658,15 +7032,21 @@ Defined in `src/domain/ops.ts`. Two schemas, deliberately:
 | `withdraw_ultimatum` | issuer only |
 | `post_bounty` | your own credits into escrow against another power; trimmed to the treasury, topped up by posting again |
 | `withdraw_bounty` | poster only; what is left comes back, the grievance stays. Never a merchants' bounty |
-| `issue_order` | see Duration below; optional `onComplete` payload, paid at issue. `force` is a count (drawn proportionally) or a named composition. `dark` runs a `commerce_raiding` order unowned — see "Running dark" |
+| `issue_order` | **the engine's** from journal version 25 — a model writes work as its own op (below). See Duration; optional `onComplete` payload, paid at issue. `force` is a count (drawn proportionally) or a named composition. `dark` runs a `commerce_raiding` order unowned — see "Running dark". A `fleet_movement` one jump between two worlds you hold, with no rival over the target, lands at once |
+| `move` | ships of yours somewhere: `force`, `officers`, `breaks`. Becomes a `fleet_movement` |
+| `fortify` · `raise_garrison` · `develop` | a world's ceiling, troops or value, by `magnitude`; each becomes its order and payload |
+| `found_fixture` · `repair_fixture` | a fixture of a catalogue `kind` raised, or mended, on a world |
+| `send_envoy` | court a world; two turns unless told otherwise |
+| `blockade` · `raid` · `sweep` | interdiction and counter-intelligence on a world; `raid` takes `dark` |
 | `cancel_order` | returns the unspent part of an `onComplete` payload |
 | `interrupt_order` | rejected when the order is not interruptible; **somebody else's** order also needs ships at its origin or target |
 | `extend_order` | rejected for movement |
 | `accelerate_order` | spends credits, drops one Fibonacci bucket, min 1; rejected for movement |
 | `form_treaty` | **extraction-only** — absent from `ModelOpSchema`; a treaty needs the other party's consent. `exclusive` forecloses another of that type with anyone else. A `coalition` must name `terms.against`; no other type may |
 | `restructure_debt` | **extraction-only** — new terms need the creditor's agreement; keeps the id, the balance and the history |
-| `establish_commitment` | optional `incomePerTurn`, trimmed to `MAX_COMMITMENT_INCOME` |
-| `dissolve_commitment` | returns the goodwill **and** charges `COMMITMENT_BREAKING_COST` with each bound party; onlookers only at three or more |
+| `establish_commitment` | optional `incomePerTurn`, trimmed to `MAX_COMMITMENT_INCOME`. A declared income is chartered on `systemId` (a world the power holds, else its richest) and pays at most a quarter of it |
+| `dissolve_commitment` | returns the goodwill **and** charges `COMMITMENT_BREAKING_COST` with each bound party, and heat; onlookers only at three or more, and never the parties |
+| `break_treaty` | a party only, and only a treaty still in force (journal version 24); priced in `acts.ts` |
 | `establish_debt` | **extraction-only** — a principal that depletes; trimmed to `MAX_DEBT_PRINCIPAL` |
 | `establish_loan` | **extraction-only** — a thing that comes back: hulls, credits or a portable asset. Never a world, never a fixture |
 | `return_loan` | borrower only; the hulls really leave its stacks |
@@ -6708,7 +7088,12 @@ Rejection codes: `unknown_op`, `schema_invalid`, `reducer_only`,
 
 Cost is **computed**, never estimated: one turn per jump on the shortest
 hyperlane path (BFS, neighbours visited in sorted order so ties break
-identically on replay).
+identically on replay). One jump inside the mover's own territory takes none —
+it lands in the batch (`movesAtOnce`, journal version 23) — **once a batch**: a
+move out of a world the same batch just landed on sails, or a chain of one-jump
+moves crosses three jumps in a turn (`oneJumpOnce`, journal version 26). A move
+from a world to itself is not a no-op: it is the assault from an orbit you
+already hold, one turn.
 
 If a model returns `durationTurns` for a `fleet_movement` order, it is
 **discarded**, recomputed, and the discard is logged to `eventLog` and to the
@@ -6758,6 +7143,51 @@ programme chosen on purpose and stands. Re-filed and said, never re-estimated:
 the new floor still clamps upward from what the model proposed. Pinned to
 `JOURNAL_VERSION` **11** (`hullFilesTheOrder`), because `pt117_raw` holds exactly
 the escorts that took five turns.
+
+### Work is its own op
+
+`docs/design-2026-10-17-intent-ops.md` §1, journal version 25. `issue_order`
+carried fourteen categories, an optional payload and an estimated duration, and
+the reducer read the act out of the combination. In the saved campaigns 31 of
+the 111 non-movement orders that were not raids carried no payload and completed
+doing nothing — courier runs, decrees, an envoy without a `court`, fortifications
+that fortified nothing — and one envoy declaration staged a bare manoeuvre, a
+fleet movement nobody asked for and a stipend.
+
+So a model writes the work, and the reducer files it. `move`, `fortify`,
+`raise_garrison`, `develop`, `found_fixture`, `repair_fixture`, `send_envoy`,
+`blockade`, `raid`, `sweep`, and `build_ships` with `programme: true`. **One
+conversion, `orderFor` in `ops.ts`**, turns each into the order it means — the
+category, the payload, the default duration — and the reducer runs that through
+the `issue_order` case unchanged, so every bound on an order (the floors, the
+price, the presence a payload needs, the fog) holds for work by construction.
+Every reader of a batch reads work through the same function: payload bounding,
+the fog's public test, the covert test, the bots' treaty and standing filters.
+`issue_order` left `ModelOpSchema` and is the engine's alone (`OP_PATHS`); the
+bots write work too.
+
+- **Every piece of work is its payload, so a failure starts nothing.** An order
+  stripped of its payload ran its course doing nothing; work that failed is not
+  begun and costs nothing, and a partial delivers half. A `move`, `blockade`,
+  `raid` and `sweep` carry no payload and still go out on a failure — a failed
+  attack must still be issued.
+- **A duration is the kind's own** unless the model sets one: the category
+  floor, and two turns for an envoy, because every envoy in the saves was
+  estimated at two against a floor of one.
+- **`label`, `onInterrupt`, `interruptible` and `visibility` stay** on every
+  piece of work: models set a label on 112 of 132 orders, `partial` on 33 and a
+  visibility on 19.
+- **There is no work that does nothing.** A courier run, a decree, a bare
+  manoeuvre and `espionage` left the model's vocabulary; an act with no
+  mechanism is a `log_narrative`.
+- **A yard programme takes berths** (`LegacyRules.programmeBerths`). It
+  bypassed `yardCapacityFor` entirely — twelve hulls a programme, delivered in
+  the tick outside `billConstruction`, any number at once. A programme now takes
+  its tonnage from the declaration's berths when it starts, trimmed to what
+  fits, and an open build in the same declaration gets what is left.
+
+Measured: all saves replay byte-identically, the four harness boards do not
+move, and the bots' twelve order shapes are work ops.
 
 ### 3. What a finished order does — `onComplete`
 
@@ -7065,10 +7495,12 @@ red lines that charging a point for a refusal exists to prevent.
 | `refused` | a refusal *is* its charge, with no order inside to withdraw |
 | `charge` | an objection priced on an accord, which stands even if the accord goes |
 | `record` | an engine row such as the arbiter's ruling — every `engine` batch |
+| `attached` | part of an accord's `group` — the other power's charge for signing it — withdrawn with the accord and never alone |
 
 What stays withdrawable is an **accord**: unrolled, and still the player's to
 walk away from before the turn lands. Its objection charge is a separate batch
-and stays. The panel hides the × on a binding row and says why, and "withdraw
+and stays. Withdrawing it writes a `record` line into the conversation it came
+from, so the other power does not go on believing in it. The panel hides the × on a binding row and says why, and "withdraw
 all" appears only when something can go — a button that could only ever leave
 the list untouched reads as broken.
 
@@ -7146,15 +7578,20 @@ per-message pass appraises the player's own concessions through
 walks toward it. It still refuses the whole accord if it is standing when the
 channel closes — a deal that needs you to cross a red line is no deal — but
 there is now a conversation left in which to steer around it, where before the
-whole negotiation was lost after both sides had said yes.
+whole negotiation was lost after both sides had said yes. A blocker goes through
+the relevance check first, and goes when the concession it stands on is
+retracted (playtest 2026-10-18: a payment made *for* open lanes was blocked by
+"will not close a lane", and a retracted handover still refused the accord).
 
 What this does **not** establish: a persona that records a concession
 contradicting its own prose is still possible. But that is a contradiction
 inside one message, on screen, in the turn it happens — which is the difference
 between a bug you can find and the one this replaced.
 
-On `/endtalk`, a **separate extraction call** reads the transcript and emits ops
-for what was actually agreed. It is the **only** pass that may emit
+On `/endtalk`, a **separate extraction call** reads the transcript and says
+which recorded concessions were agreed; the engine builds every transfer they
+name from the record, and extraction writes only the terms that have no field
+(see *"What code knows, code decides"* §2–3). It is the **only** pass that may emit
 `form_treaty`: a treaty binds a power that is not the actor, and a transcript is
 the only place that power's consent exists. A treaty asked for as an ordinary
 declared action is redirected here rather than rolled for. An NPC may promise anything in dialogue; only the
@@ -7183,6 +7620,7 @@ is a reviewable diff that can be replayed against a recorded campaign.
 | `duration-rubric.md` | appended to every prompt that estimates duration |
 | `advisor.md` | the counsellor at the leader's shoulder |
 | `event-flavour.md` | the line a random event is dressed in, after the fact |
+| `reconcile.md` | a story rewritten to what landed, when the two differ |
 | `flavor.md` | Haiku-tier colour text |
 
 ### Prompt contract
@@ -7247,6 +7685,7 @@ table below is the subscription's (`TIERS`); the keyed providers use the same
 | resolution, reaction, diplomacy, extraction, advisor | `reasoning` | `claude-sonnet-5` |
 | breach relevance | `flavor` | `claude-haiku-4-5-20251001` |
 | event flavour | `flavor` | `claude-haiku-4-5-20251001` |
+| reconcile | `flavor` | `claude-haiku-4-5-20251001` |
 | flavour text | `flavor` | `claude-haiku-4-5-20251001` |
 
 Every call is single-shot JSON with `tools: []` and `settingSources: []`, so no
@@ -8295,7 +8734,7 @@ replays **every** past conversation with a power into every reply, uncapped.
 src/
   domain/     state, ops, hulls, duration, development, graph, checks,
               diplomacy, arbitration, compulsions, debt, loan, trade, intel,
-              battle, initiative, events, pulse, reducer
+              battle, initiative, events, pulse, acts, reducer
               ← pure. No I/O, no network, no imports from engine/model/ui.
   api/        contract.ts — Zod schemas shared by server and browser
   engine/     campaign, store, journal, turn, briefing, epilogue

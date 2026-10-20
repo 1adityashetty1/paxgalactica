@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { OpInput } from '../src/domain/ops.js';
 import { applyOps, tickTurn as tickWithEvents, GARRISON_REGROWTH, DISSENT_DECAY } from '../src/domain/reducer.js';
 import type { LegacyRules } from '../src/domain/reducer.js';
 
@@ -671,19 +672,78 @@ describe('coalitions', () => {
   });
 
   it('counts arrivals for the holder as reinforcement, not invasion', () => {
+    // Two jumps, so the relief sails: one jump between two worlds the holder
+    // already has lands in the batch and never reaches an arrival.
     const state = fresh();
     setShipsAt(sys(state, 'ark-1'), 'freeworlds', 20);
-    const before = shipsOf(state, 'ark-3', 'freeworlds');
+    const before = shipsOf(state, 'ark-4', 'freeworlds');
     const issued = applyOps(state, [
       {
         op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
-        originId: 'ark-1', targetId: 'ark-3', force: 9, label: 'relief',
+        originId: 'ark-1', targetId: 'ark-4', force: 9, label: 'relief',
       },
     ]);
+    expect(issued.state.pendingOrders.filter((o) => o.factionId === 'freeworlds')).toHaveLength(1);
     let r = tickTurn(issued.state);
-    while (r.state.pendingOrders.length > 0) r = tickTurn(r.state);
+    while (r.state.pendingOrders.some((o) => o.factionId === 'freeworlds')) r = tickTurn(r.state);
     expect(r.notes.join(' ')).toMatch(/reinforces/);
+    expect(shipsOf(r.state, 'ark-4', 'freeworlds')).toBe(before + 9);
+  });
+});
+
+/**
+ * One move intent, and the reducer decides what it is (journal version 23).
+ * A fleet movement one jump between two worlds the mover holds, with nobody's
+ * ships over the target but its own and its guests', lands in the batch, where
+ * the rest of the turn sees it. Anything else sails and is settled on arrival.
+ */
+describe('a move inside your own territory', () => {
+  const move = (extra: Partial<OpInput & { op: 'issue_order' }> = {}): OpInput => ({
+    op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement',
+    originId: 'ark-1', targetId: 'ark-3', force: 9, label: 'shift', ...extra,
+  } as OpInput);
+
+  it('lands at once, one jump between two worlds it holds', () => {
+    const state = fresh();
+    setShipsAt(sys(state, 'ark-1'), 'freeworlds', 20);
+    const before = shipsOf(state, 'ark-3', 'freeworlds');
+    const r = applyOps(state, [move()], 'model', 'freeworlds');
+    expect(r.rejections).toEqual([]);
+    expect(r.state.pendingOrders.filter((o) => o.factionId === 'freeworlds')).toHaveLength(0);
     expect(shipsOf(r.state, 'ark-3', 'freeworlds')).toBe(before + 9);
+    expect(shipsOf(r.state, 'ark-1', 'freeworlds')).toBe(11);
+    expect(r.notes.join(' ')).toMatch(/moves .* from .* to /);
+  });
+
+  it('takes the officers standing there when the whole port goes', () => {
+    const state = fresh();
+    const officer = (state.commanders ?? []).find((c) => c.factionId === 'freeworlds' && c.status === 'active')!;
+    officer.atSystemId = 'ark-1';
+    const r = applyOps(state, [move({ force: undefined })], 'model', 'freeworlds');
+    expect(r.state.commanders!.find((c) => c.id === officer.id)!.atSystemId).toBe('ark-3');
+    expect(hullsAt(sys(r.state, 'ark-1'), 'freeworlds')).toBe(0);
+  });
+
+  it('sails when a rival has ships over the target, and is fought for on arrival', () => {
+    const state = fresh();
+    setShipsAt(sys(state, 'ark-1'), 'freeworlds', 20);
+    setShipsAt(sys(state, 'ark-3'), 'vigil', 2);
+    const r = applyOps(state, [move()], 'model', 'freeworlds');
+    expect(r.state.pendingOrders.filter((o) => o.factionId === 'freeworlds' && o.targetId === 'ark-3')).toHaveLength(1);
+  });
+
+  it('sails onto ground it does not hold', () => {
+    const state = fresh();
+    setShipsAt(sys(state, 'ark-1'), 'freeworlds', 20);
+    const r = applyOps(state, [move({ targetId: 'ark-2' })], 'model', 'freeworlds');
+    expect(r.state.pendingOrders.filter((o) => o.factionId === 'freeworlds' && o.targetId === 'ark-2')).toHaveLength(1);
+  });
+
+  it('sails in a journal written before version 23', () => {
+    const state = fresh();
+    setShipsAt(sys(state, 'ark-1'), 'freeworlds', 20);
+    const r = applyOps(state, [move()], 'model', 'freeworlds', false, { shipIntents: false });
+    expect(r.state.pendingOrders.filter((o) => o.factionId === 'freeworlds' && o.targetId === 'ark-3')).toHaveLength(1);
   });
 });
 
@@ -887,12 +947,11 @@ describe('a declared action cannot resolve its own battle', () => {
     // the tick, which never routes through applyOps and is unaffected here.
     const state = fresh();
     const before = total(state, 'freeworlds');
-    const res = applyOps(
-      state,
-      [{ op: 'adjust_fleet', factionId: 'freeworlds', delta: -before, reason: 'the raid went badly' }],
-      'model',
-      'freeworlds',
-    );
+    // Every hull it has, struck off world by world.
+    const everything = state.systems
+      .filter((x) => hullsAt(x, 'freeworlds') > 0)
+      .map((x) => ({ op: 'scuttle_ships', factionId: 'freeworlds', systemId: x.id, count: hullsAt(x, 'freeworlds'), reason: 'the raid went badly' }) as OpInput);
+    const res = applyOps(state, everything, 'model', 'freeworlds');
     const after = total(res.state, 'freeworlds');
     expect(after).toBeGreaterThan(0);
     expect(before - after).toBeLessThanOrEqual(Math.max(1, Math.floor(before * 0.25)));
@@ -904,9 +963,10 @@ describe('a declared action cannot resolve its own battle', () => {
     // deletion is the bug.
     const state = fresh();
     const before = total(state, 'freeworlds');
+    const yard = state.systems.find((x) => hullsAt(x, 'freeworlds') >= 2)!;
     const res = applyOps(
       state,
-      [{ op: 'adjust_fleet', factionId: 'freeworlds', delta: -2, reason: 'a hangar fire' }],
+      [{ op: 'scuttle_ships', factionId: 'freeworlds', systemId: yard.id, count: 2, reason: 'a hangar fire' } as OpInput],
       'model',
       'freeworlds',
     );
@@ -915,18 +975,28 @@ describe('a declared action cannot resolve its own battle', () => {
   });
 
   it('refuses to destroy another faction’s fleet outright', () => {
-    // `adjust_ships` has been guarded since the suborn work; `adjust_fleet`
-    // was not, and being untargeted it is worse — it draws from the victim's
-    // largest concentrations anywhere in the galaxy.
+    // Another power's hulls are lost in battle or turned by suborning, never
+    // struck off by a declaration — and the ship arithmetic is not an order.
     const state = fresh();
     const before = total(state, 'vigil');
+    const where = state.systems.find((x) => hullsAt(x, 'vigil') > 0)!;
     const res = applyOps(
+      state,
+      [
+        { op: 'scuttle_ships', factionId: 'vigil', systemId: where.id, count: 30, reason: 'we crushed them' } as OpInput,
+      ],
+      'model',
+      'freeworlds',
+    );
+    expect(res.rejections.map((r) => r.code)).toContain('illegal_value');
+    expect(total(res.state, 'vigil')).toBe(before);
+    const arithmetic = applyOps(
       state,
       [{ op: 'adjust_fleet', factionId: 'vigil', delta: -30, reason: 'we crushed them' }],
       'model',
       'freeworlds',
     );
-    expect(res.rejections.map((r) => r.code)).toContain('reducer_only');
+    expect(arithmetic.rejections.map((r) => r.code)).toContain('reducer_only');
     expect(total(res.state, 'vigil')).toBe(before);
   });
 
@@ -935,7 +1005,7 @@ describe('a declared action cannot resolve its own battle', () => {
     const before = total(state, 'freeworlds');
     const res = applyOps(
       state,
-      [{ op: 'adjust_fleet', factionId: 'freeworlds', delta: 3 }],
+      [{ op: 'build_ships', factionId: 'freeworlds', count: 3, hull: 'battleship' } as OpInput],
       'model',
       'freeworlds',
     );

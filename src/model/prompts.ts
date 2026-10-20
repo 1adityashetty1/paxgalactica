@@ -25,6 +25,7 @@ export type PromptName =
   | 'epilogue'
   | 'advisor'
   | 'event-flavour'
+  | 'reconcile'
   | 'flavor';
 
 export function loadPrompt(name: PromptName): string {

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { applyOps, tickTurn, type LegacyRules } from '../domain/reducer.js';
+import { OP_PATHS_LIST } from '../domain/ops.js';
 import { WorldStateSchema, type WorldState } from '../domain/state.js';
 import { createSeedState } from '../seed/scenario.js';
 import { RimEventKindSchema, type RimEventKind } from '../domain/events.js';
@@ -16,7 +17,7 @@ import { primeRimSandbox } from '../domain/pulse.js';
  */
 
 /** Bumped when a change would otherwise make an older journal replay differently. */
-export const JOURNAL_VERSION = 22;
+export const JOURNAL_VERSION = 28;
 
 export const JournalEntrySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -59,6 +60,12 @@ export const JournalEntrySchema = z.discriminatedUnion('kind', [
      * retroactively rejecting it.
      */
     source: z.enum(['model', 'engine', 'extraction', 'cheat']),
+    /**
+     * Which writer: the player's declaration, an NPC's reaction, a bot, an
+     * accord, the engine or the cheat menu (`OP_PATHS`). Absent before journal
+     * version 25, and an entry without it is checked against no path.
+     */
+    path: z.enum(OP_PATHS_LIST).optional(),
     label: z.string(),
     ops: z.array(z.unknown()),
     /**
@@ -104,6 +111,12 @@ export const JournalVersionSchema = z.union([
   z.literal(20),
   z.literal(21),
   z.literal(22),
+  z.literal(23),
+  z.literal(24),
+  z.literal(25),
+  z.literal(26),
+  z.literal(27),
+  z.literal(28),
 ]);
 
 export const JournalSchema = z.object({
@@ -252,6 +265,9 @@ export function replay(
     // and thirty families, before version 22.
     agentLists: parsed.version >= 22,
     widerNames: parsed.version >= 22,
+    // No line was tagged with the acts it forbids, and Drajk's second red line
+    // read "will not put its name to a written treaty", before version 27.
+    lineActs: parsed.version >= 27,
   });
   let rejectionCount = 0;
   // The opening board, before anything is applied. Without it an observer's
@@ -386,6 +402,33 @@ export function replay(
     // A prisoner could be spent (questioned) by a generic verb, and a person
     // already on a roster minted again as a new asset.
     oneRecordPerPerson: parsed.version >= 22,
+    // A model wrote ship arithmetic (adjust_ships, adjust_fleet) directly,
+    // and the reducer inferred whether it meant a build, a move or a suborn.
+    shipIntents: parsed.version >= 23,
+    // A breach of faith was priced where it happened, at eight sites with five
+    // sets of numbers, and any power could break any treaty.
+    breachPrices: parsed.version >= 24,
+    // A yard programme bypassed the yards' berths.
+    programmeBerths: parsed.version >= 25,
+    // The playtest of 2026-10-18: an ultimatum's cession moved a world from
+    // whichever party held it; one-jump moves chained; a thief could be named
+    // at its own thing; a programme everybody saw was a secret; an order stood
+    // a rival's fleet down; an accord could not lift the other party's toll; a
+    // yard limit read as a bill; and the turn's ledger line missed every
+    // arrival.
+    cessionFromTarget: parsed.version >= 26,
+    oneJumpOnce: parsed.version >= 26,
+    stealNamesARivalsThing: parsed.version >= 26,
+    secretsAreHidden: parsed.version >= 26,
+    fleetsMeetInBattle: parsed.version >= 26,
+    counterpartyTolls: parsed.version >= 26,
+    honestYardNote: parsed.version >= 26,
+    ledgerAfterArrivals: parsed.version >= 26,
+    // A declared charter paid its figure from nowhere, chartered on no world.
+    charterOnWorld: parsed.version >= 28,
+    // An accord narrated its warmth with `adjust_disposition`, up to 25 a
+    // direction, for a conversation.
+    pricedWarmth: parsed.version >= 28,
     // Crediting your own treasury by narration needed no payer.
     selfCreditNeedsPayer: parsed.version >= 7,
     // Only fixtures and producers needed their holder present; a haul did not.
@@ -434,7 +477,7 @@ export function replay(
       // prevent. Each entry replays under the rule that was in force when it
       // was written, exactly as the legacy-treaty clause above does.
       const atomicBatches = parsed.version >= 3;
-      const res = applyOps(state, entry.ops.map(officersFromCommanderId), source, entry.actor, atomicBatches, legacy);
+      const res = applyOps(state, entry.ops.map(officersFromCommanderId), source, entry.actor, atomicBatches, legacy, entry.path);
       state = res.state;
       rejectionCount += res.rejections.length;
     } else if (entry.kind === 'tick') {
@@ -523,4 +566,46 @@ export function controlHistory(journal: Journal): ControlChange[] {
   });
 
   return changes;
+}
+
+/** How often a power's own institutions overruled it, or were overruled. */
+export interface Overruling {
+  /** Orders and accords its institutions refused outright. */
+  refusals: number;
+  /** Lines its leader crossed over their objection, and paid for. */
+  defiances: number;
+}
+
+/**
+ * Every refusal and defiance across a campaign, by power
+ * (`docs/design-2026-10-18-code-knows.md` §5).
+ *
+ * The epilogue told one campaign "the Board never once had to overrule its own
+ * officers" after a refusal, because its dossier carried a power's dissent at
+ * the final bell and nothing about how it got there — and dissent decays. The
+ * charges are in the journal, each as an `adjust_dissent` under a label the
+ * engine writes, so they are read off it rather than recorded twice.
+ *
+ * Read by the label, not the delta: a model could write `adjust_dissent` in a
+ * journal before version 25, at any figure, and that was neither.
+ */
+export function overrulings(journal: Journal): Record<string, Overruling> {
+  const out: Record<string, Overruling> = {};
+  for (const entry of journal.entries) {
+    if (entry.kind !== 'ops') continue;
+    const kind = /^refused[: ]/.test(entry.label)
+      ? 'refusals'
+      : /^objection[: ]| acts against its own line$/.test(entry.label)
+        ? 'defiances'
+        : null;
+    if (!kind) continue;
+    for (const raw of entry.ops) {
+      const op = raw as { op?: unknown; factionId?: unknown; delta?: unknown };
+      if (op.op !== 'adjust_dissent' || typeof op.factionId !== 'string') continue;
+      if (typeof op.delta !== 'number' || op.delta <= 0) continue;
+      const row = (out[op.factionId] ??= { refusals: 0, defiances: 0 });
+      row[kind] += 1;
+    }
+  }
+  return out;
 }

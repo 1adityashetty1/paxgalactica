@@ -17,7 +17,9 @@ Every ruling is exactly one of three kinds, named in `kind`:
 - **`act`** — the action goes ahead, as a list of `parts`. Each part is one of:
   - **`overt`** — open work, rolled once: `what` it does, the `stat` it tests,
     its `difficulty`, a `rationale`, the acting power's own operatives it
-    `involves` (almost always none), and anything it `establishes`. At most one.
+    `involves` (almost always none), anything it `establishes`, the kinds
+    of thing it `yields` if it works (almost always none), and how it
+    `reaches` into another power's business (almost always none). At most one.
   - **`covert`** — an operative's mission: sent, never rolled here (section 3b).
   - **`groundwork`** — an operative getting into position for a later act.
   - **`unexpressed`** — an outcome no mission produces yet, in one sentence.
@@ -377,12 +379,44 @@ whether the act depends on somebody working *unacknowledged* inside another
 power's space. And an overt part never `involves` the acting power's own
 operative: if one of them does it, it is covert.
 
+## 3c. What could it come away with?
+
+Name it before the roll, in the overt part's `yields`: the kinds of thing the
+attempt could bring back if it works, from the asset catalogue — `salvage` from
+a sweep of a battlefield, `ore` from a survey, `prisoners` from a boarding,
+`dossier` from a raid on a registry. **Almost every act yields nothing**: a
+stipend, an appointment, a decree, a fortification, an envoy or a fleet sailing
+comes back with no prize, and its `yields` is empty. Resolution may mint a
+thing only of a kind named here, and the roll decides how much of it; a prize
+named after the dice is the one an attempt never earned.
+
+Never name a person (`officer`, `operative`, a notable) or a fixture here: a
+person is taken by an operation or a battle, and a fixture is built.
+
+## 3d. Does it reach into another power's business?
+
+Name it before the roll, in the overt part's `reaches`, when the act itself is
+about another power's affairs rather than the actor's own:
+
+| reach | the act |
+|---|---|
+| `their_orders` | standing down, delaying or hurrying another power's order |
+| `their_ships` | turning another power's crews |
+| `their_paper` | breaking a treaty, refusing a favour or a loan, calling a favour in |
+| `coercion` | an ultimatum, backing one, a bounty, publishing proof, blackmail |
+
+**Almost every act reaches nothing**: building, moving, fortifying, the court,
+an envoy, a payment, and even an attack — a fleet that sails at a rival is met
+in battle, which decides what becomes of it. An op that reaches is written only
+when its reach is named here, so a critical success cannot stand a rival's fleet
+down as a flourish.
+
 ## 4. What does it establish?
 
 If the action would create a **durable arrangement that the game has no
-mechanic for** — a standing policy, a declared sphere over unclaimed space, a
-programme, ground gained in a campaign of persuasion — describe it in the overt
-part's `establishes`:
+mechanic for** — a standing policy, a declared sphere over unclaimed space,
+ground gained in a campaign of persuasion — describe it in the overt part's
+`establishes`:
 
 - `kind` — a lower_snake_case slug, reused exactly for the same sort of thing
   every time. Exclusivity is checked on this string, so an inconsistent slug
@@ -391,9 +425,35 @@ part's `establishes`:
 - `exclusive` — true when a faction can only sensibly have one at a time.
 - `factionIds` — everyone bound. For `establishes` this should almost always
   be the acting faction alone — see below.
+- `mechanism` — what gives it force: `income` (a figure every turn — a
+  charter's fee, a smuggling ring's take) or `record` (nothing beyond the
+  arrangement written down, the default). An income is chartered on a world
+  the power holds and pays at most a quarter of what that world pays — nothing
+  once it is lost — so a power with no world cannot hold one. Name it now, before the roll:
+  resolution is held to it, and an income nobody ruled is a model choosing its
+  own revenue, so it is left out. **A share of a lane flow or a contingency —
+  a tithe, an indemnity, insurance, a surety — binds another power**, so it is
+  a `negotiation`, not something a power establishes on its own.
 
 Leave `establishes` out for anything the ops already cover. A treaty is a
-treaty; a fleet movement is a fleet movement.
+treaty; a fleet movement is a fleet movement. **Most arrangements that reach for
+a commitment already have a home**, and that home is the ruling, not
+`establishes`:
+
+- a bribed official, an informant, a watcher in a port — a `covert` part;
+- a listening post — a listener, built with `build_ships`;
+- a free port or a toll waived — `set_toll_policy`;
+- freighters running a route — a `move` of freighters onto it;
+- a world you already hold — nothing; the board says so;
+- an attack, an assault or a push, however many turns it runs — a `move`;
+- a build or construction programme — `build_ships`, `fortify`, `develop` and
+  the other work ops, which already run for turns and deliver;
+- an ultimatum — `issue_ultimatum`; a toll — `set_toll_policy`.
+
+A record of any of those is read back to you on later turns as a standing
+arrangement, and it is not one: a `kalzir_assault` or a
+`battleship_construction_programme` once made a later ruling refuse a build
+on the strength of what it "specified". Leave `establishes` out.
 
 **Never record a bilateral arrangement here, and that includes a dynastic
 marriage, an exclusive charter naming a partner, a hostage exchange, a shared
@@ -507,7 +567,12 @@ Two failure modes, in both directions:
   because it matters. Difficulty measures resistance, not consequence.
 
 An action with no meaningful way to fail — a decree in your own space, a
-courier to your own capital — is `trivial`, not exempt. **Calling in a
+courier to your own capital — is `trivial`, not exempt. **Moving the acting
+power's own ships between worlds it holds** is `trivial`, and so is laying down
+hulls it can pay for or striking off its own: nobody resists a shuffle inside
+your own territory, and what a fleet meets on arrival is settled by the battle,
+never by this roll. A move onto ground somebody else holds is a different act
+and is priced as the strike it is. **Calling in a
 promissory note the acting power holds is `trivial` and is not a
 negotiation**: the issuer consented when it wrote the note.
 

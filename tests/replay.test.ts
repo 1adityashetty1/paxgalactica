@@ -52,7 +52,7 @@ describe('journal replay', () => {
           // pure battle fleet would win the orbitals over sek-6 and leave it
           // unaligned. Omitting `force` sends everything at ark-3, transports
           // included.
-          { op: 'adjust_ships', systemId: 'ark-3', factionId: 'freeworlds', delta: 3, hull: 'lifter' },
+          { op: 'build_ships', systemId: 'ark-3', factionId: 'freeworlds', count: 3, hull: 'lifter' },
           { op: 'issue_order', factionId: 'freeworlds', type: 'fleet_movement', originId: 'ark-3', targetId: 'sek-6' },
         ],
       },
@@ -310,7 +310,7 @@ describe('campaign / journal agreement', () => {
   it('discards staged actions cleanly, restoring the committed world', () => {
     const campaign = Campaign.start('freeworlds', 'test-discard');
     const before = fleetStrengthOf(campaign.state, 'freeworlds');
-    campaign.stage([{ op: 'adjust_fleet', factionId: 'freeworlds', delta: 50 }], 'muster');
+    campaign.stage([{ op: 'build_ships', factionId: 'freeworlds', count: 50, hull: 'escort' }], 'muster');
     // 1100 credits buys 18 hulls at 60 apiece; the other 32 are never laid
     // down. What matters here is that discarding restores whatever landed.
     const mustered = fleetStrengthOf(campaign.state, 'freeworlds');

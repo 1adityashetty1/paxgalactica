@@ -1,5 +1,6 @@
 import { familyOf, resolvePerson } from './command.js';
-import type { RefusalGround } from './ops.js';
+import { SWAY_BY_BAND } from './acts.js';
+import type { Reach, RefusalGround } from './ops.js';
 import { hullsAt, type WorldState } from './state.js';
 
 /**
@@ -110,6 +111,218 @@ export function sendsAsRuled(
     kept.push(op);
   }
   return { ops: kept, dropped };
+}
+
+/**
+ * Prizes are the ruling's, as sends are: a resolution call may mint a thing only
+ * of a kind the arbiter named in the overt part's `yields`, before the roll. A
+ * prize invented after the roll, by the pass with every reason to be generous,
+ * was how routine court acts at DC 5 produced sellable charts and contraband
+ * (playtest 2026-10-15, A10). The band still sizes it (`boundPayloadsToOutcome`).
+ */
+export function prizesAsRuled(
+  ops: readonly unknown[],
+  yields: readonly string[],
+): { ops: unknown[]; dropped: string[] } {
+  const named = new Set(yields);
+  const kept: unknown[] = [];
+  const dropped: string[] = [];
+  for (const op of ops) {
+    const o = op as { op?: string; kind?: string } | null;
+    if (o?.op === 'create_asset' && !named.has(o.kind ?? '')) {
+      dropped.push(o.kind ?? 'a thing');
+      continue;
+    }
+    kept.push(op);
+  }
+  return { ops: kept, dropped };
+}
+
+/**
+ * A declared commitment is the ruling's too (intent-ops §5): one is recorded
+ * only of the kind the arbiter's `establishes` named, and it carries the
+ * mechanism that ruling chose, which the reducer then holds it to. A
+ * commitment the arbiter never ruled is dropped.
+ */
+export function commitmentsAsRuled(
+  ops: readonly unknown[],
+  establishes: { kind: string; mechanism?: string } | undefined,
+): { ops: unknown[]; dropped: string[] } {
+  const kept: unknown[] = [];
+  const dropped: string[] = [];
+  for (const op of ops) {
+    const o = op as { op?: string; kind?: string } | null;
+    if (o?.op !== 'establish_commitment') {
+      kept.push(op);
+      continue;
+    }
+    if (!establishes || o.kind !== establishes.kind) {
+      dropped.push(o.kind ?? 'an arrangement');
+      continue;
+    }
+    kept.push({ ...o, mechanism: establishes.mechanism ?? 'record' });
+  }
+  return { ops: kept, dropped };
+}
+
+/**
+ * A sway is sized by the roll, never by the model (intent-ops §3): an influence
+ * check that worked moves the other power's view of the actor by
+ * `SWAY_BY_BAND`, one sway a power per declaration. Any other stat, a failure,
+ * or no check at all, and it moves nothing.
+ */
+export function swaysAsRolled(
+  ops: readonly unknown[],
+  stat: string | undefined,
+  outcome: string | undefined,
+): { ops: unknown[]; dropped: string[] } {
+  const amount =
+    stat === 'influence' && outcome !== undefined && outcome in SWAY_BY_BAND
+      ? SWAY_BY_BAND[outcome as keyof typeof SWAY_BY_BAND]
+      : undefined;
+  const swayed = new Set<string>();
+  const kept: unknown[] = [];
+  const dropped: string[] = [];
+  for (const op of ops) {
+    const o = op as { op?: string; whom?: string } | null;
+    if (o?.op !== 'sway') {
+      kept.push(op);
+      continue;
+    }
+    if (amount === undefined || swayed.has(o.whom ?? '')) {
+      dropped.push(o.whom ?? 'a power');
+      continue;
+    }
+    swayed.add(o.whom ?? '');
+    kept.push({ ...o, amount });
+  }
+  return { ops: kept, dropped };
+}
+
+/** What a declaration's ruling allows a resolution batch to carry. */
+export interface RulingBounds {
+  covert: readonly { mission: string; systemId: string }[];
+  groundwork: readonly { systemId: string }[];
+  stat: string | undefined;
+  outcome: string | undefined;
+  establishes: { kind: string; mechanism?: string } | undefined;
+  yields: readonly string[];
+  /** Covert work with nothing rolled: the batch carries only the sending. */
+  sentOnly: boolean;
+  /** How the act was ruled able to reach another power (§4). Absent: not at all. */
+  reaches?: readonly Reach[];
+  /** Pending orders that are not the actor's, by id, for `their_orders`. */
+  foreignOrders?: readonly string[];
+}
+
+/**
+ * The reach an op makes into another power's business, or null for the
+ * actor's own (`docs/design-2026-10-18-code-knows.md` §4). Drawn where the
+ * damage is: a fortification dropped for want of a ruling is a worse failure
+ * than a flourish, so a power's own building, moving, works, court and orders
+ * pass unruled, and only these need naming.
+ */
+export function reachOf(op: unknown, foreignOrders: readonly string[]): Reach | null {
+  const o = op as { op?: string; orderId?: string } | null;
+  switch (o?.op) {
+    case 'interrupt_order':
+    case 'extend_order':
+    case 'accelerate_order':
+      return o.orderId && foreignOrders.includes(o.orderId) ? 'their_orders' : null;
+    case 'suborn_crews':
+      return 'their_ships';
+    case 'break_treaty':
+    case 'repudiate_obligation':
+    case 'repudiate_loan':
+    case 'call_obligation':
+      return 'their_paper';
+    case 'issue_ultimatum':
+    case 'back_ultimatum':
+    case 'post_bounty':
+    case 'publish_dossier':
+    case 'blackmail':
+      return 'coercion';
+    default:
+      return null;
+  }
+}
+
+/**
+ * Keep an op that reaches another power only when the ruling named its reach.
+ * A critical success wrote `interrupt_order` on a rival's relief fleet as its
+ * flourish and sent it home with no battle (playtest 2026-10-18, D3); four
+ * filters each closed one op, and the vocabulary has sixty.
+ */
+export function opsAsRuled(
+  ops: readonly unknown[],
+  reaches: readonly Reach[],
+  foreignOrders: readonly string[],
+): { ops: unknown[]; dropped: string[] } {
+  const kept: unknown[] = [];
+  const dropped: string[] = [];
+  for (const op of ops) {
+    const reach = reachOf(op, foreignOrders);
+    if (reach !== null && !reaches.includes(reach)) {
+      dropped.push(String((op as { op?: unknown }).op));
+      continue;
+    }
+    kept.push(op);
+  }
+  return { ops: kept, dropped };
+}
+
+/**
+ * Hold a resolution batch to the ruling it was written under: sends, sways,
+ * commitments and prizes as `sendsAsRuled`, `swaysAsRolled`,
+ * `commitmentsAsRuled` and `prizesAsRuled` have them, and nothing but the
+ * sending for covert work.
+ *
+ * One function, so the batch a correction call writes is held to the same
+ * ruling as the first. And the filters' output is kept whether or not they
+ * dropped anything: two of them STAMP what they keep — a sway with the band's
+ * figure, a commitment with its ruled mechanism — and the caller kept their
+ * output only when something was dropped, so a clean success swayed three
+ * powers 9 each and nine declared commitments carried no mechanism at all
+ * (playtest 2026-10-18, B1 and B5).
+ */
+export function holdToRuling(ops: readonly unknown[], bounds: RulingBounds): { ops: unknown[]; notes: string[] } {
+  const notes: string[] = [];
+  const sends = sendsAsRuled(ops, bounds.covert, bounds.groundwork);
+  if (sends.dropped.length > 0) {
+    notes.push(
+      `An operative is sent only when the act is ruled covert: left out ${sends.dropped.join(', ')}. Declare it as their mission.`,
+    );
+  }
+  const sways = swaysAsRolled(sends.ops, bounds.stat, bounds.outcome);
+  if (sways.dropped.length > 0) {
+    notes.push('A sway moves another power only on an influence check that worked, once a power: the rest came to nothing.');
+  }
+  const committed = commitmentsAsRuled(sways.ops, bounds.establishes);
+  if (committed.dropped.length > 0) {
+    notes.push(
+      `A lasting arrangement is recorded only when the arbiter ruled one: left out ${[...new Set(committed.dropped)].join(', ')}.`,
+    );
+  }
+  const prized = prizesAsRuled(committed.ops, bounds.yields);
+  if (prized.dropped.length > 0) {
+    notes.push(
+      `A prize comes only of what the attempt was ruled able to yield: left out ${[...new Set(prized.dropped)].join(', ')}.`,
+    );
+  }
+  const reached = opsAsRuled(prized.ops, bounds.reaches ?? [], bounds.foreignOrders ?? []);
+  if (reached.dropped.length > 0) {
+    notes.push(
+      `An act reaches into another power's business only as it was ruled to: left out ${[...new Set(reached.dropped)].join(', ')}. Declare it as its own act.`,
+    );
+  }
+  if (!bounds.sentOnly) return { ops: reached.ops, notes };
+  const sent = covertSendOnly(reached.ops);
+  if (sent.dropped.length > 0) {
+    notes.push(
+      `Covert work is sent, not rolled, so it carries only the sending: left out ${[...new Set(sent.dropped)].join(', ')}. Declare anything else on its own.`,
+    );
+  }
+  return { ops: sent.ops, notes };
 }
 
 /**

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { isTreatyLive } from '../domain/diplomacy.js';
 import { routeEarnings } from '../domain/trade.js';
-import type { ControlChange } from './journal.js';
+import type { ControlChange, Overruling } from './journal.js';
 import { isDebtLive } from '../domain/debt.js';
 import {
   fleetStrengthOf,
@@ -98,6 +98,11 @@ export function campaignOutcome(
    * than the narration being free to guess.
    */
   history: readonly ControlChange[] = [],
+  /**
+   * How often each power's institutions refused it or were overruled, from
+   * `overrulings`. Optional for `history`'s reason; absent reads as none.
+   */
+  overruled: Readonly<Record<string, Overruling>> = {},
 ): CampaignOutcome {
   const nameOf = (id: string): string => getFaction(state, id)?.name ?? id;
   const me = state.playerFactionId;
@@ -183,6 +188,8 @@ export function campaignOutcome(
       credits: f.credits,
       net: ledger.net,
       dissent: f.dissent,
+      refusals: overruled[f.id]?.refusals ?? 0,
+      defiances: overruled[f.id]?.defiances ?? 0,
       // `null`, not 100. A faction holds no disposition toward itself — the
       // reducer rejects the op that would set one — so a synthesised 100 was a
       // fact invented inside the one document whose whole selling point is
@@ -325,6 +332,14 @@ export const FactionOutcomeSchema = z.object({
   net: z.number().int(),
   dissent: z.number().int(),
   /**
+   * How often its own institutions refused an order or an accord outright, and
+   * how often its leader crossed a line over their objection. Dissent decays,
+   * so the figure at the final bell cannot say this: a power refused on turn 3
+   * reads at zero by turn 8. Defaulted, for `took`'s reason.
+   */
+  refusals: z.number().int().default(0),
+  defiances: z.number().int().default(0),
+  /**
    * How this power ended up regarding the player, and vice versa.
    *
    * `null` on the player's own slide: nobody holds a disposition toward
@@ -428,7 +443,14 @@ export function serializeOutcome(outcome: CampaignOutcome): string {
           ? 'its institutions are restive and have been overruled once too often'
           : f.dissent > 0
             ? 'a little grumbling at home, nothing that bites'
-            : 'its own institutions stood behind it throughout';
+            : f.refusals + f.defiances > 0
+              ? 'its institutions have settled again'
+              : 'its own institutions stood behind it throughout';
+    const times = (n: number): string => (n === 1 ? 'once' : n === 2 ? 'twice' : `${n} times`);
+    const overruled = [
+      f.refusals > 0 ? `its own institutions refused its orders ${times(f.refusals)}` : '',
+      f.defiances > 0 ? `its leader overrode their objections ${times(f.defiances)}` : '',
+    ].filter(Boolean);
 
     lines.push(
       `## ${f.name} (\`${f.factionId}\`)${f.factionId === outcome.playerFactionId ? ' — THE PLAYER' : ''}`,
@@ -469,6 +491,9 @@ export function serializeOutcome(outcome: CampaignOutcome): string {
         ? `- income: in credit — ${standing(f.net, incomes, ['the richest flow in the Rim', 'steady', 'thin, and thinner than anyone else'])}`
         : '- income: running at a loss, and paying for itself out of savings',
       `- at home: ${dissent}`,
+      overruled.length > 0
+        ? `- **over the campaign, ${overruled.join(', and ')}** — true whatever the mood at the end; do not write that it never happened`
+        : '- its institutions never once refused it, and it never overrode them',
       f.wars.length > 0 ? `- at war with: ${f.wars.join(', ')}` : '- at war with nobody',
       f.liveTreaties.length > 0
         ? `- standing agreements: ${f.liveTreaties.join('; ')}`
