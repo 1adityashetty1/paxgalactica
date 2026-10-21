@@ -647,18 +647,43 @@ async function reconcileStory(
   // loop 2, L5). Whenever the act began work that runs over turns, the pass is
   // handed the timing and checks the tense.
   const timing = ordersBefore ? timingOf(campaign, ordersBefore) : [];
-  if (!draft.trim() || (!storyDiverged(notes, rejections) && timing.length === 0)) {
+  const holders = holdersOf(campaign, draft);
+  if (!draft.trim() || (!storyDiverged(notes, rejections) && timing.length === 0 && holders.length === 0)) {
     return { narrative: draft, costUsd: 0, reconciled: false };
   }
-  const landed = [describeLanded(campaign.opsStagedSince(from)), ...timing].filter(Boolean).join('\n');
+  const landed = [describeLanded(campaign.opsStagedSince(from)), ...timing, ...holders].filter(Boolean).join('\n');
   const out = await reconcileNarrative(draft, landed, notes).catch(() => null);
   if (!out?.narrative) {
-    const corrected = draftWithCorrection(draft, notes, rejections as { message?: string }[]);
+    const base = draftWithCorrection(draft, notes, rejections as { message?: string }[]);
+    const corrected = holders.length > 0 ? `${base}\n\nNot as told: ${holders.map((h) => h.replace(/^- HOLDER: /, '')).join(' ')}` : base;
     campaign.rewriteNarrative(from, corrected);
     return { narrative: corrected, costUsd: out?.costUsd ?? 0, reconciled: false };
   }
   campaign.rewriteNarrative(from, out.narrative);
   return { narrative: out.narrative, costUsd: out.costUsd, reconciled: true };
+}
+
+/**
+ * Worlds the story says were taken that the power does not hold. A declaration
+ * is written before any battle it starts is fought, and one told the player
+ * "Sorel's dash on Threx lands home… Meridian colors go up" a turn after the
+ * dash lost twelve hulls and the Vigil kept the world (loop 18). Read off the
+ * sentences that name a world beside a word of taking it.
+ */
+const TAKEN = /\b(?:colou?rs? (?:go|goes|went) up|banners? (?:come|comes|came) down|falls?|fell|taken|takes|took|captured?|seized?|storm(?:s|ed)?|lands home|is ours|ours now|in (?:our|meridian) hands)\b/i;
+function holdersOf(campaign: Campaign, draft: string): string[] {
+  const me = campaign.state.playerFactionId;
+  const out: string[] = [];
+  for (const sentence of draft.split(/(?<=[.!?])\s+/)) {
+    if (!TAKEN.test(sentence)) continue;
+    for (const world of campaign.state.systems) {
+      if (world.controllerFactionId === me || !sentence.includes(world.name)) continue;
+      const holder = world.controllerFactionId ? (getFaction(campaign.state, world.controllerFactionId)?.name ?? world.controllerFactionId) : 'nobody';
+      const line = `- HOLDER: ${world.name} is held by ${holder}, not by you; nothing in this act took it.`;
+      if (!out.includes(line)) out.push(line);
+    }
+  }
+  return out;
 }
 
 /** When each order the act began will land, said plainly for the reconcile pass. */
