@@ -1492,6 +1492,22 @@ export function talksAndAnOrder(text: string): boolean {
   );
 }
 
+/**
+ * A recommendation cut to its first act. A counsel whose one act ran on into
+ * "…, then …" failed the guard three times and the player was handed a model
+ * error instead of advice (loop 17): the first act is the recommendation, and
+ * what followed it is dropped.
+ */
+export function firstActOnly(value: unknown): unknown {
+  const v = value as { recommendation?: unknown };
+  if (!v || typeof v !== 'object' || typeof v.recommendation !== 'string') return value;
+  const cut = v.recommendation
+    .split(/[;:—]|\s[–-]\s|,?\s+(?:and\s+)?(?:then|after that|next)\b/i)[0]!
+    .replace(/[,\s]+(?:and|while)?\s*$/i, '')
+    .trim();
+  return cut.length >= 12 ? { ...v, recommendation: /[.!?]$/.test(cut) ? cut : `${cut}.` } : value;
+}
+
 export const AdvisorReplySchema = z.object({
   /**
    * What the counsellor actually says, out loud, to their leader.
@@ -1625,6 +1641,7 @@ export async function askAdvisor(
     // Asked what to do, the counsellor names one act: left optional, it named
     // none in ten turns of ten (playtest 2026-10-19, loop 3).
     schema: asked ? AdvisorReplySchema.extend({ recommendation: RecommendationSchema }) : AdvisorReplySchema,
+    lenient: firstActOnly,
   });
   return { counsel: res.value.counsel, recommendation: res.value.recommendation ?? null, attempts: res.attempts, costUsd: res.costUsd };
 }
